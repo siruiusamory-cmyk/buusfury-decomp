@@ -8,6 +8,12 @@ from pathlib import Path
 import sys
 
 from .gba_header import GbaHeaderError
+from .formats.map_entry import (
+    MAP_ENTRY_SIZE,
+    MapEntryError,
+    MapEntryValidationResult,
+    validate_map_entry_round_trips,
+)
 from .profile import ProfileConfigError, RomProfileCatalog, VerificationStatus
 from .rom import RomIdentification, RomReadError, identify_rom
 
@@ -42,6 +48,11 @@ def build_parser() -> argparse.ArgumentParser:
     subparsers = parser.add_subparsers(dest="command", required=True)
     identify = subparsers.add_parser("identify", help="hash and identify a local GBA ROM")
     identify.add_argument("rom", type=Path)
+    validate = subparsers.add_parser(
+        "validate-map-entries",
+        help="validate every configured Buu's Fury MapEntry round trip",
+    )
+    validate.add_argument("rom", type=Path)
     return parser
 
 
@@ -82,19 +93,57 @@ def _print_identification(identification: RomIdentification) -> None:
         print(f"Conflict: {mismatch}")
 
 
+def _print_map_entry_validation(result: MapEntryValidationResult) -> None:
+    table = result.table
+    match = table.identification.profile_match
+    profile_id = match.profile.id if match.profile is not None else "NONE"
+    print("Buu's Fury MapEntry Validation")
+    print("--------------------------------")
+    print()
+    print(f"Profile: {profile_id}")
+    print(f"Table GBA address: 0x{table.table_address.raw:08X}")
+    print(f"Table file offset: 0x{table.table_offset:08X}")
+    print(f"Record size: 0x{MAP_ENTRY_SIZE:X}")
+    print(f"Entries parsed: {len(table.records)}")
+    print(f"Entries serialized: {result.serialized_count}")
+    print(f"Round-trip failures: {len(result.mismatches)}")
+    print(f"Byte mismatches: {result.byte_mismatch_count}")
+    for mismatch in result.mismatches:
+        print(
+            f"Mismatch: index {mismatch.index}, file 0x{mismatch.file_offset:08X}, "
+            f"record +0x{mismatch.record_byte_offset:02X}"
+        )
+    print()
+    print("RESULT:")
+    print("PASS" if result.passed else "FAIL")
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = build_parser()
     args = parser.parse_args(argv)
     try:
         catalog = load_catalog(args.profiles)
-        result = identify_rom(args.rom, catalog)
-    except (ProfileConfigError, GbaHeaderError, RomReadError, OSError) as exc:
+        if args.command == "identify":
+            identification = identify_rom(args.rom, catalog)
+        else:
+            validation = validate_map_entry_round_trips(args.rom, catalog)
+    except (
+        ProfileConfigError,
+        GbaHeaderError,
+        MapEntryError,
+        RomReadError,
+        OSError,
+    ) as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 2
 
-    _print_identification(result)
-    if result.profile_match.status is VerificationStatus.VERIFIED:
+    if args.command == "validate-map-entries":
+        _print_map_entry_validation(validation)
+        return 0 if validation.passed else 2
+
+    _print_identification(identification)
+    if identification.profile_match.status is VerificationStatus.VERIFIED:
         return 0
-    if result.profile_match.status is VerificationStatus.UNKNOWN:
+    if identification.profile_match.status is VerificationStatus.UNKNOWN:
         return 1
     return 2

@@ -1,6 +1,6 @@
 # Reverse-Engineering Notes
 
-All findings below are evidence scoped. They are research input for later tickets, not implemented formats in Phase 0.
+All findings below are evidence scoped. Structural facts and semantic interpretations are tracked separately.
 
 ## Confirmed across relevant sources
 
@@ -8,7 +8,7 @@ All findings below are evidence scoped. They are research input for later ticket
 - `CONFIRMED`: DragonByteZ treats GBA ROM pointers as values at or above `0x08000000`, subtracts that base, and bounds-checks against loaded size. Evidence: same commit, `src/rom.cpp`, `Rom::is_rom_pointer` and `Rom::pointer_to_offset`.
 - `CONFIRMED`: DragonByteZ's current map research uses a `0x38`-byte `MapEntry`. Evidence: same commit, `src/analysis.cpp:462-624`, `MapEntry` and `read_map_entries`.
 - `CONFIRMED`: in that implementation, byte fields occupy the beginning, pointer-bearing fields are read through `+0x10` to `+0x20`, music is at `+0x24`, and variation/entry/exit script references occupy `+0x28` through `+0x34`. This is upstream implementation evidence, not yet an independent byte-exact proof for every Buu profile.
-- `CONFIRMED`: DragonByteZ's Buu profile uses a map table offset `0x08E2E0` with 452 entries and a global atlas table at `0x179764` with 187 records. Evidence: same commit, `src/rom.cpp`, Buu profile initialization. These addresses are not present in Phase 0 application configuration and must not transfer to another hash without validation.
+- `CONFIRMED`: DragonByteZ's Buu profile uses a map table offset `0x08E2E0` with 452 entries and a global atlas table at `0x179764` with 187 records. Evidence: same commit, `src/rom.cpp`, Buu profile initialization. The map table metadata is now configured only for `buus_fury_usa_rev0_01c1707f`; it must not transfer to another hash without validation.
 - `CONFIRMED`: DragonByteZ implements stored and custom compressed containers in `src/compression.cpp`; `src/analysis.cpp` also contains a BIOS LZ77 decoder. Presence of the latter does not prove that a particular map asset uses BIOS LZ77.
 - `CONFIRMED`: the pinned disassembly expects SHA-1 `f1c4b07554d2a3b1ad2f325307051e775ce68087`, matching the local ROM exactly. Evidence: `2genkidev/buusfury@cc53d0cd2d1c167e749419187e2d92017ac07468`, `README.md:6`, plus the reproducible local identification recorded in `docs/hash-investigation.md`.
 - `CONFIRMED`: the pinned Buu recomp expects SHA-1 `e65738e9d67688309f09811a54f495523ec9aada`, which does not match the local ROM. Evidence: `mstan/DragonBallZBuusFuryRecomp@453a913a9f67916b9b358776da1c1229b09a6c80`, `baserom.md:13`.
@@ -28,13 +28,58 @@ All findings below are evidence scoped. They are research input for later ticket
 - `CONFIRMED`: reconstructed pieces include startup/header assembly, a partial allocator, RAM reservations, `src/color_transforms.cpp`, and `src/strings.cpp`; large regions remain preserved binary.
 - `INFERRED`: fixed scatter addresses and hard-sized compressed replacements indicate strong byte-layout constraints. A successful byte-identical build was not independently demonstrated in Phase 0.
 
+## Buu's Fury MapEntry
+
+ROM-002 targets only `buus_fury_usa_rev0_01c1707f`.
+
+### Table structure
+
+- `CONFIRMED`: table GBA address `0x0808E2E0`, file offset `0x0008E2E0`.
+- `CONFIRMED`: 452 fixed records, no terminator, with stride and record size `0x38`.
+- `CONFIRMED`: table range `[0x0008E2E0, 0x000945C0)` is within the 8 MiB target ROM.
+- `CONFIRMED`: multi-byte values in the DragonByteZ interpretation are little-endian `u32` values.
+
+Primary implementation evidence is `spicybung/DragonByteZ@b2691209fa873cc0c1d7aa9cdea7c1da4430afe4`: `src/rom.cpp:76-92` (`buus_fury_usa_rev0`), `src/rom.cpp:118-130` (`Rom::u16` and `Rom::u32`), and `src/analysis.cpp:578-622` (`read_map_entries`). Independent profile-scoped evidence comes from a read-only inspection of the verified local ROM: Thumb code at file offset `0x0089FC` loads literal `0x0808E2E0` from `0x008A58`, advances by `0x38`, and uses a helper at `0x0125E0` that returns `0x1C4`. The code is preserved by `extern/buusfury/asm/buu.s:6-11`; the table is inside the unresolved `INCBIN` range documented by `extern/buusfury/build.bat:28-38` and `asm/rest_of_the_game.s:8-12` at commit `cc53d0cd2d1c167e749419187e2d92017ac07468`.
+
+The disassembly corroborates the table address, stride, count, and byte accesses at `+0x00` and `+0x01`. It does not independently establish the remaining field meanings. Names ending in `_raw` deliberately preserve that limitation.
+
+### Physical record layout
+
+| Offset | Width | Internal name | Interpretation | Layout | Semantics | Evidence |
+|---:|---:|---|---|---|---|---|
+| `0x00` | 1 | `output_raw` | DragonByteZ `output` label | `CONFIRMED` | `INFERRED` | `read_map_entries`; raw code accesses byte `+0x00` |
+| `0x01` | 1 | `zone_raw` | DragonByteZ `zone` label | `CONFIRMED` | `INFERRED` | `read_map_entries`; raw code accesses byte `+0x01` |
+| `0x02` | 1 | `area_raw` | DragonByteZ `area` label | `CONFIRMED` | `INFERRED` | `read_map_entries` |
+| `0x03` | 1 | `variation_raw` | DragonByteZ `variation` label | `CONFIRMED` | `INFERRED` | `read_map_entries` |
+| `0x04` | 1 | `trigger_count_raw` | Upstream-labelled count | `CONFIRMED` | `INFERRED` | `read_map_entries` |
+| `0x05` | 1 | `script_count_raw` | Upstream-labelled count | `CONFIRMED` | `INFERRED` | `read_map_entries` |
+| `0x06` | 1 | `item_count_raw` | Upstream-labelled count | `CONFIRMED` | `INFERRED` | `read_map_entries` |
+| `0x07` | 1 | `object_count_raw` | Upstream-labelled count | `CONFIRMED` | `INFERRED` | `read_map_entries` |
+| `0x08` | 1 | `npc_count_raw` | Upstream-labelled count | `CONFIRMED` | `INFERRED` | `read_map_entries` |
+| `0x09` | 1 | `flags_raw` | Upstream-labelled flags byte | `CONFIRMED` | `INFERRED` | `read_map_entries` |
+| `0x0A` | 1 | `unknown_0a` | Unknown byte | `CONFIRMED` | `UNKNOWN` | `read_map_entries` |
+| `0x0B` | 1 | `unknown_0b` | Unknown byte | `CONFIRMED` | `UNKNOWN` | `read_map_entries` |
+| `0x0C` | 4 | `unknown_0c` | Unknown little-endian word | `CONFIRMED` | `UNKNOWN` | `read_map_entries`, `Rom::u32` |
+| `0x10` | 4 | `triggers_pointer_raw` | Upstream-labelled raw pointer word | `CONFIRMED` | `INFERRED` | `read_map_entries` |
+| `0x14` | 4 | `scripts_pointer_raw` | Upstream-labelled raw pointer word | `CONFIRMED` | `INFERRED` | `read_map_entries` |
+| `0x18` | 4 | `items_pointer_raw` | Upstream-labelled raw pointer word | `CONFIRMED` | `INFERRED` | `read_map_entries` |
+| `0x1C` | 4 | `objects_pointer_raw` | Upstream-labelled raw pointer word | `CONFIRMED` | `INFERRED` | `read_map_entries` |
+| `0x20` | 4 | `npcs_pointer_raw` | Upstream-labelled raw pointer word | `CONFIRMED` | `INFERRED` | `read_map_entries` |
+| `0x24` | 4 | `music_id_raw` | Upstream-labelled music identifier | `CONFIRMED` | `INFERRED` | `read_map_entries` |
+| `0x28` | 4 | `variation_script_pointer_raw` | Upstream-labelled raw pointer word | `CONFIRMED` | `INFERRED` | `read_map_entries` |
+| `0x2C` | 4 | `variation_array_pointer_raw` | Raw word dereferenced by DragonByteZ as a ROM pointer | `CONFIRMED` | `INFERRED` array meaning | `read_map_entries:610-618` |
+| `0x30` | 4 | `entry_script_pointer_raw` | Upstream-labelled raw pointer word | `CONFIRMED` | `INFERRED` | `read_map_entries` |
+| `0x34` | 4 | `exit_script_pointer_raw` | Upstream-labelled raw pointer word | `CONFIRMED` | `INFERRED` | `read_map_entries` |
+
+`graphics_pointer` in DragonByteZ is derived by following the word at `+0x2C`; it is not a byte field in the `0x38` record and is not serialized. ROM-002 follows none of these raw pointer words.
+
 ## GBARecomp boundary
 
 Generated C/C++ is behavioral evidence only. The pinned framework explicitly directs fixes into analyzer/emitter code followed by regeneration (`mstan/gbarecomp@6571cb39858af70d691914132f81b01a4558d815`, `README.md:248-250`). Useful future surfaces include TCP debug queries, snapshots, IO traces, reverse-debug rings, symbol mapping, and strict-static coverage. None is canonical editable game source for this project.
 
-## Unresolved before ROM-002
+## Unresolved after ROM-002
 
-- Whether every DragonByteZ `MapEntry` field interpretation is byte-exact for `buus_fury_usa_rev0_01c1707f`.
+- Semantic meaning of every `_raw` field above, especially `output`, `zone`, `area`, `variation`, counts, flags, `music_id`, and pointer target types.
 - Whether offsets and generated behavior from the `DCF23468` recomp profile transfer to `01C1707F`. They must currently be treated as incompatible.
 - Semantics of unknown structure bytes and incomplete script opcodes.
 - Portable compression integration and exact compatibility with Webfoot's streams.

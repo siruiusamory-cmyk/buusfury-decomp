@@ -12,6 +12,7 @@ import yaml
 
 from .gba_header import GbaHeader
 from .hashing import RomHashes
+from .binary import BinaryAddressError, GBA_ROM_BASE, GbaRomAddress
 
 
 _HEX_LENGTHS = {"crc32": 8, "md5": 32, "sha1": 40, "sha256": 64}
@@ -28,7 +29,10 @@ _ALLOWED_KEYS = {
     "sha256",
     "sources",
     "notes",
+    "tables",
 }
+_ALLOWED_TABLES = {"map_entries"}
+_ALLOWED_MAP_ENTRY_TABLE_KEYS = {"address", "count", "record_size"}
 
 
 class ProfileConfigError(ValueError):
@@ -43,6 +47,56 @@ class VerificationStatus(str, Enum):
     VERIFIED = "VERIFIED"
     UNKNOWN = "UNKNOWN"
     CONFLICT = "CONFLICT"
+
+
+@dataclass(frozen=True, slots=True)
+class MapEntryTableProfile:
+    address: GbaRomAddress
+    count: int
+    record_size: int
+
+
+def _optional_map_entry_table(data: Mapping[str, Any]) -> MapEntryTableProfile | None:
+    tables = data.get("tables")
+    if tables is None:
+        return None
+    if not isinstance(tables, Mapping):
+        raise ProfileConfigError("profile tables must be a mapping")
+    unexpected_tables = set(tables) - _ALLOWED_TABLES
+    if unexpected_tables:
+        joined = ", ".join(sorted(str(key) for key in unexpected_tables))
+        raise ProfileConfigError(f"profile contains unexpected tables: {joined}")
+
+    map_entries = tables.get("map_entries")
+    if map_entries is None:
+        return None
+    if not isinstance(map_entries, Mapping):
+        raise ProfileConfigError("map_entries table must be a mapping")
+    unexpected_keys = set(map_entries) - _ALLOWED_MAP_ENTRY_TABLE_KEYS
+    if unexpected_keys:
+        joined = ", ".join(sorted(str(key) for key in unexpected_keys))
+        raise ProfileConfigError(f"map_entries contains unexpected fields: {joined}")
+
+    address = map_entries.get("address")
+    count = map_entries.get("count")
+    record_size = map_entries.get("record_size")
+    if type(address) is not int:
+        raise ProfileConfigError("map_entries address must be an integer GBA address")
+    if type(count) is not int or count <= 0:
+        raise ProfileConfigError("map_entries count must be a positive integer")
+    if type(record_size) is not int or record_size <= 0:
+        raise ProfileConfigError("map_entries record_size must be a positive integer")
+    try:
+        gba_address = GbaRomAddress(address)
+    except BinaryAddressError as exc:
+        raise ProfileConfigError(f"invalid map_entries address: {exc}") from exc
+    if gba_address.raw < GBA_ROM_BASE:
+        raise ProfileConfigError("map_entries address must be in the GBA ROM window")
+    return MapEntryTableProfile(
+        address=gba_address,
+        count=count,
+        record_size=record_size,
+    )
 
 
 def _required_string(data: Mapping[str, Any], key: str) -> str:
@@ -81,6 +135,7 @@ class RomProfile:
     sha256: str | None
     sources: tuple[str, ...]
     notes: str
+    map_entries: MapEntryTableProfile | None
 
     @classmethod
     def from_mapping(cls, data: Mapping[str, Any]) -> "RomProfile":
@@ -133,6 +188,7 @@ class RomProfile:
             sha256=hashes["sha256"],
             sources=tuple(source.strip() for source in sources_value),
             notes=notes.strip(),
+            map_entries=_optional_map_entry_table(data),
         )
 
 

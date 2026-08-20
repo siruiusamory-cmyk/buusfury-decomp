@@ -1,6 +1,6 @@
 # Legacy of Goku Remake Toolchain
 
-Phase 0 builds a reproducible reverse-engineering laboratory for Webfoot's Dragon Ball Z GBA trilogy. The long-term target is a Legacy of Goku campaign rebuilt on the Buu's Fury engine, guided by Legacy of Goku II gameplay. No remake content or ROM editing exists yet.
+This project is a reproducible reverse-engineering laboratory for Webfoot's Dragon Ball Z GBA trilogy. The long-term target is a Legacy of Goku campaign rebuilt on the Buu's Fury engine, guided by Legacy of Goku II gameplay. No remake content or ROM editing exists yet.
 
 ## Legal boundary
 
@@ -49,13 +49,21 @@ python -m tools.webfoot identify ".\roms\Dragon Ball Z - Buu's Fury (U).gba"
 
 The command streams CRC32, MD5, SHA-1, and SHA-256; parses minimal GBA header metadata; and compares exact SHA-256 identity plus configured corroborating metadata against `config\roms.yaml`. Built packages carry the same default catalog as package data. Exit code `0` means `VERIFIED`, `1` means `UNKNOWN`, and `2` means malformed input, profile conflict, or ambiguity. Game code, size, revision, MD5, or SHA-1 alone never yields `VERIFIED`.
 
+Validate every MapEntry in the exact supported Buu's Fury profile without writing the ROM:
+
+```powershell
+webfoot validate-map-entries ".\roms\Dragon Ball Z - Buu's Fury (U).gba"
+```
+
+The command reads all 452 configured `0x38`-byte records, parses and serializes each in memory, and fails if any serialized byte differs. ROM-002 also enforces the fixed target SHA-256 and canonical table tuple, so an alternate catalog cannot relabel another ROM or redirect validation. It does not follow record pointers or expose an editing operation.
+
 ## Tests
 
 ```powershell
 .\scripts\test.ps1
 ```
 
-Tests use synthetic bytes only. No ROM-derived fixture is committed.
+Committed fixtures use synthetic bytes only. When the user's exact local ROM is present, one runtime integration test validates its complete MapEntry table; otherwise that test skips. No ROM-derived fixture is committed.
 
 ## Emulator
 
@@ -63,8 +71,8 @@ Phase 0 found mGBA at `C:\Program Files\mGBA\mGBA.exe`. A later ticket may invok
 
 ## Current scope
 
-Implemented: streaming hashes, GBA header parsing, exact ROM profiles, conservative matching, CLI packaging, pinned upstream setup, research audit, and synthetic tests.
+Implemented: streaming hashes, GBA header parsing, exact ROM profiles, conservative matching, CLI packaging, pinned upstream setup, research audit, and byte-exact read-only Buu's Fury MapEntry round-trip validation.
 
-Not implemented: parsing or serializing `MapEntry`, ROM modification, map editing, Tiled integration, allocation, relocation, compression integration, scripts, graphics, audio, gameplay, or remake content.
+Not implemented: ROM modification, pointer following, semantic MapEntry editing, map editing, Tiled integration, allocation, relocation, compression integration, scripts, graphics, audio, gameplay, or remake content.
 
-Next ticket: `ROM-002 - byte-exact Buu's Fury MapEntry parser/serializer`.
+The next ticket will be selected after ROM-002 review; it is not implemented here.

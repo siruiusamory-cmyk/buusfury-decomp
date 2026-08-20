@@ -18,6 +18,7 @@ Profiles are cryptographic identities, not fuzzy classifiers. `config/roms.yaml`
 - Evidence: local reproducible observation; `2genkidev/buusfury@cc53d0cd2d1c167e749419187e2d92017ac07468`, `README.md:6`
 - Confidence: `CONFIRMED`
 - Compatibility: exact local/disassembly base. No compatibility claim with the recomp profile.
+- MapEntry table: GBA address `0x0808E2E0`, file offset `0x0008E2E0`, 452 records of `0x38` bytes. This metadata is profile-scoped and independently corroborated by target-ROM code inspection.
 
 ### `buus_fury_usa_rev0_dcf23468`
 
@@ -33,6 +34,7 @@ Profiles are cryptographic identities, not fuzzy classifiers. `config/roms.yaml`
 - Evidence: `mstan/DragonBallZBuusFuryRecomp@453a913a9f67916b9b358776da1c1229b09a6c80`, `baserom.md`
 - Confidence: `CONFIRMED` as the upstream requirement
 - Compatibility: distinct from the local profile. Binary differences are unresolved.
+- MapEntry table: intentionally unconfigured. No table metadata transfers from the local profile.
 
 ### `legacy_of_goku_usa_a3c8c767`
 

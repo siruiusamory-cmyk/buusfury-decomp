@@ -11,6 +11,11 @@ profiles:
     md5: 3a74fce97f1ea2b28c2a50ec3df0acee
     sha1: f1c4b07554d2a3b1ad2f325307051e775ce68087
     sha256: 940ad5f01db4465b8877dfe739510cbf34f4ea3d390f3df13519808bc36f059e
+    tables:
+      map_entries:
+        address: 0x0808e2e0
+        count: 452
+        record_size: 0x38
     sources:
       - "2genkidev/buusfury@cc53d0cd2d1c167e749419187e2d92017ac07468 README.md"
       - "Local reproducible observation, 2026-08-19"

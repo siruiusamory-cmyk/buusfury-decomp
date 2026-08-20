@@ -129,3 +129,35 @@ def test_checked_in_profile_configuration_loads():
     catalog = RomProfileCatalog.load("config/roms.yaml")
 
     assert len(catalog.profiles) == 4
+    local = next(
+        profile
+        for profile in catalog.profiles
+        if profile.id == "buus_fury_usa_rev0_01c1707f"
+    )
+    recomp = next(
+        profile
+        for profile in catalog.profiles
+        if profile.id == "buus_fury_usa_rev0_dcf23468"
+    )
+    assert local.map_entries is not None
+    assert local.map_entries.address.raw == 0x0808E2E0
+    assert local.map_entries.count == 452
+    assert local.map_entries.record_size == 0x38
+    assert recomp.map_entries is None
+
+
+@pytest.mark.parametrize(
+    "tables,message",
+    [
+        (True, "tables must be a mapping"),
+        ({"other": {}}, "unexpected tables"),
+        ({"map_entries": {"address": True, "count": 1, "record_size": 0x38}}, "address"),
+        ({"map_entries": {"address": 0, "count": 1, "record_size": 0x38}}, "ROM window"),
+        ({"map_entries": {"address": 0x08000000, "count": 0, "record_size": 0x38}}, "count"),
+        ({"map_entries": {"address": 0x08000000, "count": 1, "record_size": False}}, "record_size"),
+        ({"map_entries": {"address": 0x08000000, "count": 1, "record_size": 0x38, "stride": 0x38}}, "unexpected fields"),
+    ],
+)
+def test_malformed_map_entry_table_configuration_is_rejected(tables, message):
+    with pytest.raises(ProfileConfigError, match=message):
+        profile_for(make_synthetic_rom(), tables=tables)

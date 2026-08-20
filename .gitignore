@@ -1,0 +1,42 @@
+# Commercial ROM images
+roms/
+*.gba
+*.gb
+*.gbc
+*.sav
+*.srm
+
+# Extracted/generated game data
+extracted/
+dump/
+dumps/
+stock/
+exports/
+*.bin
+*.dump
+*.raw
+
+# Generated builds
+build/
+dist/
+*.egg-info/
+
+# External upstream repositories
+extern/
+
+# Python
+.venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Local workflow-hook state
+<tool-state>/
+
+# IDE / OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db

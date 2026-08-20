@@ -1,0 +1,47 @@
+{
+  "schema_version": 1,
+  "repositories": [
+    {
+      "name": "DragonByteZ",
+      "url": "https://github.com/spicybung/DragonByteZ.git",
+      "commit": "b2691209fa873cc0c1d7aa9cdea7c1da4430afe4",
+      "path": "extern/DragonByteZ"
+    },
+    {
+      "name": "Legacy",
+      "url": "https://github.com/Arefu/Legacy.git",
+      "commit": "d22a556cd33dee56513d5b606b6ae8065ccc5752",
+      "path": "extern/Legacy"
+    },
+    {
+      "name": "buusfury",
+      "url": "https://github.com/2genkidev/buusfury.git",
+      "commit": "cc53d0cd2d1c167e749419187e2d92017ac07468",
+      "path": "extern/buusfury"
+    },
+    {
+      "name": "gbarecomp",
+      "url": "https://github.com/mstan/gbarecomp.git",
+      "commit": "6571cb39858af70d691914132f81b01a4558d815",
+      "path": "extern/gbarecomp"
+    },
+    {
+      "name": "legacy-of-goku-recomp",
+      "url": "https://github.com/mstan/DragonBallZLegacyOfGokuRecomp.git",
+      "commit": "fbe502a3d44256402262cd3f5baeb072a7235932",
+      "path": "extern/dbz-log-recomp"
+    },
+    {
+      "name": "legacy-of-goku-ii-recomp",
+      "url": "https://github.com/mstan/DragonBallZLegacyofGokuIIRecomp.git",
+      "commit": "add98b5d76fb2b822be870f29fa27b22c9a95631",
+      "path": "extern/dbz-log2-recomp"
+    },
+    {
+      "name": "buus-fury-recomp",
+      "url": "https://github.com/mstan/DragonBallZBuusFuryRecomp.git",
+      "commit": "453a913a9f67916b9b358776da1c1229b09a6c80",
+      "path": "extern/dbz-buus-fury-recomp"
+    }
+  ]
+}

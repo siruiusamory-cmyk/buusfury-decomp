@@ -1,0 +1,34 @@
+[build-system]
+requires = ["setuptools==84.0.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "webfoot-toolchain"
+version = "0.1.0"
+description = "Safe ROM-identification infrastructure for Webfoot GBA research"
+readme = "README.md"
+requires-python = ">=3.12"
+license = { text = "Project code license not yet selected; upstream licenses remain separate" }
+dependencies = [
+    "PyYAML>=6.0.2,<7",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pip==26.2.1",
+    "pytest==8.4.2",
+    "setuptools==84.0.0",
+]
+
+[project.scripts]
+webfoot = "tools.webfoot.cli:main"
+
+[tool.setuptools.packages.find]
+include = ["tools*"]
+
+[tool.setuptools.package-data]
+"tools.webfoot.data" = ["roms.yaml"]
+
+[tool.pytest.ini_options]
+addopts = "-ra"
+testpaths = ["tests"]

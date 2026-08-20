@@ -184,11 +184,18 @@ The runtime consumer, semantic type, reason every value is ROM-address-shaped, t
 
 ## Executable Consumer Analysis
 
-ROM-005 identifies Thumb resolver `0x080089CC` in the verified ROM. It loads MapEntry `+0x2C`, indexes a word at `source + 4 * (selector - 1)`, and therefore consumes `first_word_raw` when selector is `1`. One downstream path stores the selected value in a destination structure; another passes it to `0x08009670`, which dereferences the selected value at `+0x40/+0x44`.
+ROM-005 identified Thumb resolver `0x080089CC` in the verified ROM. It loads MapEntry `+0x2C`, indexes a word at `source + 4 * (selector - 1)`, and therefore consumes `first_word_raw` when selector is `1`. ROM-006 raises that result to Level 3 with frame-synchronized mGBA routes from reset and two exact runtime captures:
 
-Evidence is Level 2: static downstream role. Two bounded mGBA runs installed the consumer breakpoint plus read watchpoints for a shared and unique sample, but ordinary boot/menu input reached none of them; no runtime hit is claimed. The recomp checkout contains no generated C++ and requires the separate `e65738...` profile, so no recomp offset or semantic name was transferred.
+| MapEntry | Source | Expected/observed `first_word_raw` | Resolver caller |
+|---:|---:|---:|---:|
+| 1 | `0x080728D4` | `0x082B5FA0` | `0x0800906A` |
+| 4 | `0x080728E0` | `0x082B5B2C` | `0x0800906A` |
 
-The field remains `first_word_raw`: static code supports address use, but not a graphics/resource subsystem name. Full addresses, instruction flow, sample lookup, runtime procedure, safety result, portability boundary, and unresolved questions are in [consumer-analysis.md](consumer-analysis.md).
+At `0x080089D4`, both captures had scaled `r1 = 4`, proving original selector `1`; one single-step placed the predicted value in `r0`. The verified ROM hash, size, and mtime were unchanged.
+
+Static ownership analysis shows `0x08009670` loads selected value `+0x40/+0x44`, passes them as count/pointer-array inputs to `0x08012664`, invokes descriptor factories, and appends returned objects to IWRAM registry `0x03002A64`. Neighboring rectangle/bounds queries strongly support a map-load spatial-object/region registry. There is no direct VRAM, palette, OAM, DMA, decompression, or graphics-copy behavior in this path. Exact collision/trigger/activation subtype remains unknown, and the deterministic runtime routes did not hit `0x08009670`, so Level 4 is not claimed.
+
+The field remains `first_word_raw`. Full selector provenance, exact commands, registers, automation-source evidence, subsystem call graph, safety results, and unresolved questions are in [consumer-analysis.md](consumer-analysis.md).
 
 ## GBARecomp boundary
 

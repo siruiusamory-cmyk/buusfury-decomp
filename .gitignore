@@ -5,6 +5,9 @@ roms/
 *.gbc
 *.sav
 *.srm
+*.mss
+*.ss?
+*.state
 
 # Extracted/generated game data
 extracted/

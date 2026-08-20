@@ -1,4 +1,4 @@
-# ROM-005 executable consumer analysis
+# ROM-005/ROM-006 executable consumer analysis
 
 ## Scope and profile
 
@@ -145,3 +145,141 @@ Keep the project name `first_word_raw`. Evidence supports pointer use in one sta
 - Do all variation elements have the same pointer role?
 
 The next ticket should obtain or create a reproducible route/save for one known map, capture the `0x080089D4` dataflow, then step only through `0x08009670` far enough to identify its owning subsystem. It should not parse the target structure first.
+
+# ROM-006 runtime reachability and subsystem ownership
+
+ROM-006 supersedes the ROM-005 runtime no-hit result above. It raises the resolver evidence to Level 3 on the same verified profile while retaining `first_word_raw` and the no-target-parsing boundary.
+
+## ROM-005 baseline
+
+ROM-005 was committed before this work as `245a6efc9f4fb78b683b27ab6a6960bcf9682769` (`feat: identify variation-array executable consumer`). Its pre-commit suite passed 118 tests, prior ROM-002 through ROM-004 regressions matched their recorded counts, evidence remained Level 2, and the worktree was clean before ROM-006 began.
+
+## Selector provenance
+
+All addresses below are Thumb instruction-fetch addresses. Stored Thumb code pointers would carry bit 0; arbitrary data values are not normalized.
+
+The resolver receives `r0 = MapEntry*` and `r1 = selector`. At `0x080089CE`, `LSLS r1,r1,#2` changes selector `1` to the scaled value `4` observed at `0x080089D4`. The final effective address is still:
+
+```text
+MapEntry[+0x2C] + 4 * (selector - 1)
+```
+
+The three direct callers have distinct selector sources:
+
+- `0x08008ABA`: byte `[r7+0x02]`, with MapEntry pointer `[r7+0x04]`; this path passes the selected value to `0x08009670`.
+- `0x08008BC4`: byte `[r4+0x02]`, populated from helper `0x080089A0`; this path passes the selected value to `0x0800953E`.
+- `0x0800906A`: low byte of the `0x080089A0` result; this also passes the selected value to `0x0800953E`.
+
+Helper `0x080089A0` returns a nonzero supplied selector unchanged. With supplied selector zero, it returns exactly `1` when MapEntry `+0x28` is null; all 452 verified-profile `variation_script_pointer_raw` observations at that offset are null. A statically simple route is `0x08008EA4 -> 0x08008B30`: `r3` is set to zero before the call, so the null `+0x28` case selects `1`. The runtime captures below instead returned through `LR = 0x0800906F`, proving the reached caller was `0x0800906A`.
+
+No executable path examined here derives the selector from MapEntry byte `variation_raw` at `+0x03`. That relationship remains unknown.
+
+## Reproducible runtime route
+
+The installed emulator was `mGBA 0.10.5 (26b7884bc25a5933960f3cdcd98bac1ae14d42e2)`. Matching source exposes the Qt Scripting window at `src/platform/qt/Window.cpp:1673-1675`, attaches the active core as Lua global `emu` at `src/core/scripting.c:679-697`, exposes frame/key/state/screenshot methods at `src/core/scripting.c:431-466`, implements GDB register reads at `src/debugger/gdb-stub.c:357-382`, and installs hardware breakpoints without ROM patching at `src/debugger/gdb-stub.c:573-610`.
+
+Tracked helper source contains no save state or extracted ROM data:
+
+- `tools/runtime/load_mgba_lua.ps1` verifies the trusted ROM before launch, gives each run a fresh task-local save directory, loads Lua through Qt UI Automation, and verifies hash, size, and mtime afterward.
+- `tools/runtime/rom006_bootstrap.lua` resets the core, pulses GBA A on frames `1210..1214`, `1810..1814`, and `2410..2414`, then saves ignored local state `build/rom006/bootstrap.mss` at frame `2420`.
+- `tools/runtime/rom006_bootstrap_map4.lua` adds pulses at `2630..2634` and `2960..2964`, then saves ignored local state `build/rom006/bootstrap-map4.mss` at frame `2970`.
+- `tools/runtime/rom006_gdb_probe.py` gives mGBA a fresh state-adjacent save directory, allowlists only `?`, `qSupported`, `g`, `Z0`, `z0`, `s`, and `c`, rejects GDB memory/register-write packets, and compares observed `r0` against the profile-scoped first-word census.
+
+Exact first-sample replay from reset:
+
+```powershell
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File `
+  ".\tools\runtime\load_mgba_lua.ps1" `
+  -RomPath "<checkout>\roms\Dragon Ball Z - Buu's Fury (U).gba" `
+  -LuaPath "<checkout>\tools\runtime\rom006_bootstrap.lua" `
+  -ExpectedState "<checkout>\build\rom006\bootstrap.mss"
+
+.\.venv\Scripts\python.exe -m tools.runtime.rom006_gdb_probe `
+  "<checkout>\roms\Dragon Ball Z - Buu's Fury (U).gba" `
+  "<checkout>\build\rom006\bootstrap.mss" `
+  --timeout 20
+```
+
+The second sample uses the same commands with `rom006_bootstrap_map4.lua` and `bootstrap-map4.mss`. No existing save or human reaction timing is required. Save files, screenshots, states, and run directories stay beneath ignored `build/rom006/`.
+
+## Level 3 captures
+
+Both selected raw values are unique in the 452-entry census. A heavily duplicated sample was not early-reachable within the bounded route, so it was not substituted for these deterministic captures.
+
+| Capture | MapEntry | Entry address | Variation source | Expected | Observed | Match |
+|---|---:|---:|---:|---:|---:|---|
+| Reset route | 1 | `0x0808E318` | `0x080728D4` | `0x082B5FA0` | `0x082B5FA0` | yes |
+| Early prologue transition | 4 | `0x0808E3C0` | `0x080728E0` | `0x082B5B2C` | `0x082B5B2C` | yes |
+
+First capture register flow:
+
+```text
+PC 080089CC  r0=0808E318  r1=00000001  lr=0800906F  CPSR=0000003F
+PC 080089D4  r0=08072898  r1=00000004  lr=0800906F  CPSR=2000003F
+effective source = r0 + 0x3C = 080728D4
+single-step
+PC 080089D6  r0=082B5FA0
+```
+
+Second capture register flow:
+
+```text
+PC 080089CC  r0=0808E3C0  r1=00000001  lr=0800906F  CPSR=0000003F
+PC 080089D4  r0=080728A4  r1=00000004  lr=0800906F  CPSR=2000003F
+effective source = r0 + 0x3C = 080728E0
+single-step
+PC 080089D6  r0=082B5B2C
+```
+
+The CPSR T bit is set in every captured state. These are even logical instruction-fetch addresses reported by mGBA, not raw stored code pointers.
+
+## `0x08009670` subsystem ownership
+
+Thumb function `0x08009670..0x0800967F` is a thin population adapter. It ignores its incoming `r0`, advances selected-value argument `r1` by `0x40`, loads two words from selected value `+0x40/+0x44` into `r1/r2`, resolves global `0x03002A64`, and calls `0x08012664`:
+
+```text
+08009670  PUSH {r3,lr}
+08009672  ADDS r1,#0x40
+08009674  LDR  r0,[pc,#0x280]  ; literal 080716C4
+08009676  LDM  r1,{r1,r2}
+08009678  LDR  r0,[r0,#8]      ; 080716CC -> 03002A64
+0800967A  BL   08012664
+0800967E  POP  {r3,pc}
+```
+
+The only direct Thumb `BL` reference is `0x08008AC2` inside `0x08008AA0`. That caller selects a variation word through `0x08008ABA -> 0x080089CC`, moves the selected address to `r1`, and calls the adapter. `0x08008AA0` itself is reached at `0x0800271A` and `0x08008C66`; the latter is in the broader MapEntry load flow begun at `0x08008B30`.
+
+`0x08012664` treats the two loaded words as a count and pointer-array base. It iterates descriptors backward, loads each descriptor's first word as an indirect factory target, calls it through the Thumb `BX r1` veneer at `0x08046AA2`, then appends each returned runtime pointer to the IWRAM registry at `0x03002A64` while incrementing its count. Mode-dependent neighboring paths destroy or prune old registry entries through `0x08012628` and `0x08012900`.
+
+Immediate proven writes are IWRAM registry count/pointers only. This path has no direct VRAM (`0x06000000`), palette RAM (`0x05000000`), OAM (`0x07000000`), I/O (`0x04000000`), DMA setup, decompression call, or graphics copy. Indirect factories may have further effects and were not resolved.
+
+Neighboring manager functions `0x080126D4..0x080128F2` compare positions against four signed bounds at managed entries `+0x04/+0x06/+0x08/+0x0A`, perform rectangle-overlap queries, and dispatch relative virtual methods. Combined with its placement in MapEntry loading, this strongly supports **map-load spatial-object/region registry population**. Exact subtype remains unresolved: collision region, trigger region, activation/event zone, or a mixture.
+
+The deterministic early routes hit `0x0800906A -> 0x0800953E`, not `0x08008ABA -> 0x08009670`; bounded attempts to reach the adapter at runtime produced no hit. Therefore subsystem ownership is **STRONGLY SUPPORTED** by static executable behavior, not runtime-confirmed Level 4 evidence.
+
+## Evidence and naming decision
+
+Overall result is **Level 3 - runtime observed on the verified ROM**. Two reproducible captures satisfy the required chain:
+
+```text
+verified MapEntry
+  -> +0x2C variation source
+  -> selector 1
+  -> source +0x00
+  -> predicted first_word_raw
+  -> same value observed in r0 after 080089D4
+```
+
+Subsystem classification does not raise the overall result to Level 4 because `0x08009670` was not reached in the bounded runtime route and its dynamic factory targets remain unknown. Keep `first_word_raw`; neither `graphics_pointer_raw` nor a narrower spatial-object name is justified for every selected value.
+
+No project data reader follows `first_word_raw` or reads target `+0x40/+0x44`. Those offsets appear only because executable instructions access them.
+
+## ROM-006 unresolved questions
+
+- Which ordinary route reaches the `0x08008ABA -> 0x08009670` caller with selector `1`?
+- What exact semantic types do the count and pointer-array words loaded at selected value `+0x40/+0x44` have?
+- Which factory targets can occur, and what concrete region subtypes do they create?
+- Is the registry homogeneous, or does it combine collision, trigger, activation, and event objects?
+- Can an early duplicated `first_word_raw` sample be reached without unrelated progression?
+
+The next ticket should obtain a deterministic state immediately before `0x08008ABA -> 0x08009670`, capture the adapter and one indirect factory at runtime, and stop before general target parsing.

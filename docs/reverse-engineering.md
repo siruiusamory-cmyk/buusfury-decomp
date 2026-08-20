@@ -197,6 +197,26 @@ Static ownership analysis shows `0x08009670` loads selected value `+0x40/+0x44`,
 
 The field remains `first_word_raw`. Full selector provenance, exact commands, registers, automation-source evidence, subsystem call graph, safety results, and unresolved questions are in [consumer-analysis.md](consumer-analysis.md).
 
+## ROM-007 concrete spatial-object factory
+
+User-provided Higher Plane state starts with runtime MapEntry pointer `0x0808EB30` (index 38). Deterministic 120-frame south input transitions through MapEntry 39 and reproduces full verified chain:
+
+```text
+MapEntry 39 / selector 1
+  -> variation source 080753F0
+  -> first_word_raw 08294968 (runtime = Webfoot)
+  -> 08009670: field_40_raw=2, field_44_raw=08294960
+  -> 08012664
+  -> descriptor 08294948
+  -> raw factory 08007675, Thumb fetch 08007674
+  -> returned object 0203DEBC
+  -> registry slot 03002A68
+```
+
+Static instructions show factory `0x08007674` allocates `0x18` bytes and initializes exact signed halfword bounds later consumed by registry AABB queries. Classification is **STRONGLY SUPPORTED: rectangle-aware runtime object**. Collision, trigger, activation, event, and transition semantics remain unknown because bounded spatial callback hit belonged to a different object.
+
+Same count-2 population pass used a second distinct factory (`0x080072CD`, Thumb fetch `0x080072CC`) and inserted a second object at `0x03002A6C`; construction paths are therefore heterogeneous for this active load. Evidence remains Level 3, `first_word_raw` remains unchanged, and no target/descriptor/object parser was added. Full commands, registers, factory initialization, callback blocker, and safety rules are in [consumer-analysis.md](consumer-analysis.md#rom-007-higher-plane-factory-capture).
+
 ## GBARecomp boundary
 
 Generated C/C++ is behavioral evidence only. The pinned framework explicitly directs fixes into analyzer/emitter code followed by regeneration (`mstan/gbarecomp@6571cb39858af70d691914132f81b01a4558d815`, `README.md:248-250`). Useful future surfaces include TCP debug queries, snapshots, IO traces, reverse-debug rings, symbol mapping, and strict-static coverage. None is canonical editable game source for this project.

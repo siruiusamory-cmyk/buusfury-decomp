@@ -283,3 +283,111 @@ No project data reader follows `first_word_raw` or reads target `+0x40/+0x44`. T
 - Can an early duplicated `first_word_raw` sample be reached without unrelated progression?
 
 The next ticket should obtain a deterministic state immediately before `0x08008ABA -> 0x08009670`, capture the adapter and one indirect factory at runtime, and stop before general target parsing.
+
+# ROM-007 Higher Plane factory capture
+
+ROM-007 used the user-provided playable state at the first save point outside Grand Kai's mansion in the Higher Plane. Original `.ss1` and `.sav` stayed beneath ignored `roms/`; byte-identical working copies stayed beneath ignored `build/rom007/`. Installed emulator remained `mGBA 0.10.5 (26b7884bc25a5933960f3cdcd98bac1ae14d42e2)`.
+
+## Reproducible runtime route
+
+At paused save state, a read-only GDB packet for instruction-referenced global `0x03001980` (`context 0x0300197C + 4`) returned MapEntry pointer `0x0808EB30`, canonical index 38. Webfoot independently predicted variation source `0x08075278` and `first_word_raw = 0x08295C58` for that entry.
+
+Tracked Lua holds GBA Down for frames 1 through 120. This crosses nearby south transition without human timing. Probe opens mGBA's Scripting window only after its title reports loaded game, preventing execution before Lua global `emu` is attached. Exact local command:
+
+```powershell
+.\.venv\Scripts\python.exe -m tools.runtime.rom007_factory_probe `
+  "roms\Dragon Ball Z - Buu's Fury (U).gba" `
+  "build\rom007\higher-plane-original.ss1" `
+  "build\rom007\higher-plane-original.sav" `
+  --state-sha256 329b06bc1adc458e637bd1a3afc1692ee40854d327567ea0885379c275baeb28 `
+  --save-sha256 e12c350970b21ac0b5df32dba0a76b3a333c2a17a976f12a6cc5844880f08e5a `
+  --lua tools\runtime\rom007_move_south.lua `
+  --injector tools\runtime\inject_mgba_lua.ps1 `
+  --timeout 20
+```
+
+Probe allowlists register reads, one exact four-byte RAM read at `0x03001980`, hardware-breakpoint operations, continue, and single-step. It never sends GDB memory-write or register-write packets. Each run uses fresh save/state/screenshot directories under ignored `build/rom007/`.
+
+## Active MapEntry and adapter capture
+
+South transition selected MapEntry 39, not starting MapEntry 38. Runtime and Webfoot agreed exactly:
+
+| Evidence | Value |
+|---|---:|
+| MapEntry | `0x0808EB68` (index 39) |
+| Resolver selector | `1` |
+| Variation source | `0x080753F0` |
+| Predicted `first_word_raw` | `0x08294968` |
+| Observed after `0x080089D4` | `0x08294968` |
+| Resolver LR | `0x08008ABF` |
+
+At `0x080089D4`, `r0 = 0x080753B4`, scaled `r1 = 4`, `PC = 0x080089D4`, and CPSR T was set. One step reached `0x080089D6` with `r0 = 0x08294968`.
+
+Same selected value then reached required adapter:
+
+```text
+PC=08009670  LR=08008AC7
+r0=030019A4  r1=08294968  r2=03002B24  r3=00000000
+```
+
+CPU stepping through `0x08009672..0x08009678` observed, without a Webfoot target parser:
+
+```text
+field_40_raw = 00000002
+field_44_raw = 08294960
+manager      = 03002A64
+```
+
+At `0x08012664`, these arrived as `r0 = 0x03002A64`, `r1 = 2`, and `r2 = 0x08294960`. Function iterated two array elements in reverse. For each it loaded descriptor pointer, loaded raw factory target `[descriptor+0]`, dispatched through `0x08046AA2: BX r1`, incremented manager count, and stored returned `r0` at `manager + 4 + old_count*4`.
+
+## Concrete factory
+
+First runtime dispatch:
+
+| Item | Runtime value |
+|---|---:|
+| Descriptor argument `r0` | `0x08294948` |
+| Raw factory target `r1` | `0x08007675` |
+| Execution state | Thumb |
+| Fetch address after `BX r1` | `0x08007674` |
+| Return pointer | `0x0203DEBC` |
+| Registry slot | `0x03002A68` |
+| Old/new registry count | `0` / `1` |
+
+Static executable tracing identifies `0x08007674` as a 24-byte allocator/initializer factory:
+
+```text
+08007674  save descriptor argument
+08007678  r0 = 0x18
+0800767A  BL 0803D5B8              ; allocation-like call
+0800768A  BL 08009AEC              ; common initializer
+08007690  install table base 0804A09C at object+0
+08007694  retain descriptor at object+0x14
+08007696..080076A0 initialize bytes object+0x10/+0x11
+```
+
+Common initializer copies descriptor words `+0x08/+0x0C` into object `+0x04/+0x08`. Those four signed halfword lanes become object `+0x04/+0x06/+0x08/+0x0A`, exactly AABB bounds tested by registry consumers `0x080126D4..0x08012843`. It also stores at object `+0x0C` a dynamically produced callback reference later used by overlap-gated relative dispatch. Table bases `0x0804A09C` and `0x0804E444` are data, not direct code pointers.
+
+This proves captured factory creates and registers a 24-byte rectangle-aware runtime object. It does not prove collision, trigger, activation, event, or transition semantics.
+
+## Bounded behavior experiment
+
+Controlled action was same 120-frame south movement. After population, breakpoint `0x08012784` caught one AABB-gated callback:
+
+```text
+queried object = 0203DDD4
+query context  = 0202E56C
+callback raw   = 080077B1
+callback fetch = 080077B0 Thumb
+callback body  = MOVS r0,#1; BX lr
+```
+
+Callback returned true and had no direct memory side effect. Crucially, queried object `0x0203DDD4` was neither captured return `0x0203DEBC` nor second return `0x0203DF2C`. Experiment therefore does **not** attribute callback or visible map transition to captured factory. No matching callback for `0x0203DEBC` was reached within bounded route. This is precise runtime blocker to a collision/trigger/transition label.
+
+## Registry model and conclusion
+
+Same population call ran a second distinct Thumb factory, raw `0x080072CD` / fetch `0x080072CC`, returning `0x0203DF2C` into slot `0x03002A6C`. Two distinct factories populated same registry in one count-2 pass, so this active load has **clearly heterogeneous construction paths**. Whether all produced objects share one semantic family remains unknown.
+
+Semantic classification for factory `0x08007675`: **STRONGLY SUPPORTED - 24-byte rectangle-aware runtime object**. This is narrower than generic registry object and no stronger than executable evidence permits. Overall evidence remains **Level 3**: runtime confirms resolver, adapter, factory dispatch, returned object, and insertion, but no runtime callback was matched to that object and no meaningful collision/trigger/transition role is confirmed. Keep `first_word_raw`.
+
+No general parser was added for selected values, `+0x40/+0x44`, descriptors, or runtime objects. Next bounded work should track `0x0203DEBC` from insertion to its first overlap-gated callback, including prune/repopulation events, before any source-format parser is designed.

@@ -226,6 +226,26 @@ class VariationArrayFirstWordCensus:
         return sum(item.aligned_4 for item in self.observations)
 
 
+def find_first_word_observations(
+    census: VariationArrayFirstWordCensus,
+    first_word_raw: int,
+) -> tuple[VariationArrayFirstWordObservation, ...]:
+    """Return census observations whose exact raw first word matches *value*."""
+    if not isinstance(census, VariationArrayFirstWordCensus):
+        raise VariationArrayAnalysisError(
+            "first-word lookup requires a VariationArrayFirstWordCensus"
+        )
+    if type(first_word_raw) is not int or not 0 <= first_word_raw <= UINT32_MAX:
+        raise VariationArrayAnalysisError(
+            "first-word lookup value must be a raw 32-bit value"
+        )
+    return tuple(
+        item
+        for item in census.observations
+        if item.first_word_raw == first_word_raw
+    )
+
+
 def read_variation_array_first_word(
     stream: BinaryIO,
     *,

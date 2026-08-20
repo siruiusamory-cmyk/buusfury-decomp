@@ -82,6 +82,7 @@ def test_cli_path_error_returns_two(tmp_path, capsys):
     [
         ["validate-map-entries"],
         ["variation-arrays", "first-word-census"],
+        ["variation-arrays", "find-first-word"],
     ],
 )
 def test_cli_rejects_spoofed_target_profile(tmp_path, capsys, command):
@@ -105,8 +106,26 @@ def test_cli_rejects_spoofed_target_profile(tmp_path, capsys, command):
     )
     write_catalog(config, [profile])
 
-    exit_code = main(["--profiles", str(config), *command, str(rom)])
+    arguments = ["--profiles", str(config), *command, str(rom)]
+    if command[-1] == "find-first-word":
+        arguments.append("0x0822CC08")
+    exit_code = main(arguments)
     error = capsys.readouterr().err
 
     assert exit_code == 2
     assert "fixed ROM-002 target identity" in error
+
+
+@pytest.mark.parametrize("value", ["not-a-number", "-1", "0x100000000"])
+def test_cli_rejects_malformed_first_word_lookup_value(value):
+    with pytest.raises(SystemExit) as error:
+        main(
+            [
+                "variation-arrays",
+                "find-first-word",
+                "missing.gba",
+                value,
+            ]
+        )
+
+    assert error.value.code == 2

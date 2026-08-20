@@ -73,6 +73,14 @@ webfoot variation-arrays first-word-census ".\roms\Dragon Ball Z - Buu's Fury (U
 
 This read-only command requires the canonical packaged ROM identity, bounds-checks every four-byte access, and does not read a second word or follow the observed raw value.
 
+Find every MapEntry whose already-bounded first-word observation matches one exact value:
+
+```powershell
+webfoot variation-arrays find-first-word ".\roms\Dragon Ball Z - Buu's Fury (U).gba" 0x0822CC08
+```
+
+The lookup reports indices, variation-array source addresses, and raw MapEntry metadata. It still reads only target `+0x00` and never follows the matched value.
+
 ## Tests
 
 ```powershell

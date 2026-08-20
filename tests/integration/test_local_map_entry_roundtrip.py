@@ -164,3 +164,23 @@ def test_cli_runs_complete_local_variation_array_first_word_census(capsys):
     assert "Words read: 452" in output
     assert "Bounds failures: 0" in output
     assert "RESULT:\nCOMPLETE" in output
+
+
+def test_cli_finds_shared_local_variation_array_first_word(capsys):
+    if not LOCAL_ROM.is_file():
+        pytest.skip("user-supplied Buu's Fury ROM is not present")
+
+    exit_code = main(
+        [
+            "variation-arrays",
+            "find-first-word",
+            str(LOCAL_ROM),
+            "0x0822CC08",
+        ]
+    )
+    output = capsys.readouterr().out
+
+    assert exit_code == 0
+    assert "First word: 0x0822CC08" in output
+    assert "Matches: 10" in output
+    assert "  172 0x0807D294" in output

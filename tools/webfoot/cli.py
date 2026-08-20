@@ -14,6 +14,7 @@ from .analysis.map_entry_pointers import (
 from .analysis.variation_arrays import (
     VariationArrayFirstWordCensus,
     census_variation_array_first_words,
+    find_first_word_observations,
 )
 from .gba_header import GbaHeaderError
 from .formats.map_entry import (
@@ -43,6 +44,20 @@ def load_catalog(profile_path: Path | None) -> RomProfileCatalog:
         packaged.read_text(encoding="utf-8"),
         source="packaged tools.webfoot.data/roms.yaml",
     )
+
+
+def _parse_u32(value: str) -> int:
+    try:
+        parsed = int(value, 0)
+    except ValueError as exc:
+        raise argparse.ArgumentTypeError(
+            f"expected a 32-bit integer, got {value!r}"
+        ) from exc
+    if not 0 <= parsed <= 0xFFFFFFFF:
+        raise argparse.ArgumentTypeError(
+            f"expected a 32-bit integer, got {value!r}"
+        )
+    return parsed
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -85,6 +100,12 @@ def build_parser() -> argparse.ArgumentParser:
         help="read and summarize exactly the first u32 at each target",
     )
     first_word_census.add_argument("rom", type=Path)
+    find_first_word = variation_commands.add_parser(
+        "find-first-word",
+        help="find MapEntries with an exact observed first-word value",
+    )
+    find_first_word.add_argument("rom", type=Path)
+    find_first_word.add_argument("value", type=_parse_u32)
     return parser
 
 
@@ -285,6 +306,30 @@ def _print_variation_array_first_word_census(
     print("COMPLETE" if not census.failures else "INCOMPLETE")
 
 
+def _print_first_word_matches(
+    census: VariationArrayFirstWordCensus,
+    first_word_raw: int,
+) -> None:
+    matches = find_first_word_observations(census, first_word_raw)
+    print("Buu's Fury Variation-Array First-Word Lookup")
+    print("---------------------------------------------")
+    print()
+    print(f"Profile: {census.profile_id}")
+    print(f"First word: 0x{first_word_raw:08X}")
+    print(f"Matches: {len(matches)}")
+    print()
+    print(
+        f"{'Index':>5} {'Source':>10} {'Output':>6} "
+        f"{'Zone':>4} {'Area':>4} {'Variation':>9}"
+    )
+    for item in matches:
+        print(
+            f"{item.map_entry_index:5} 0x{item.source_pointer_raw:08X} "
+            f"{item.output_raw:6} {item.zone_raw:4} "
+            f"{item.area_raw:4} {item.variation_raw:9}"
+        )
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = build_parser()
     args = parser.parse_args(argv)
@@ -315,7 +360,10 @@ def main(argv: list[str] | None = None) -> int:
         _print_map_entry_pointer_census(census)
         return 0
     if args.command == "variation-arrays":
-        _print_variation_array_first_word_census(variation_census)
+        if args.variation_arrays_command == "find-first-word":
+            _print_first_word_matches(variation_census, args.value)
+        else:
+            _print_variation_array_first_word_census(variation_census)
         return 0 if not variation_census.failures else 2
 
     _print_identification(identification)

@@ -182,6 +182,14 @@ These correlations do not establish what either side means. In particular, they 
 
 The runtime consumer, semantic type, reason every value is ROM-address-shaped, target alignment contract, second and later words, array length, and any formal relationship to MapEntry raw metadata remain unknown. ROM-004 intentionally gathers no adjacent target data to answer them.
 
+## Executable Consumer Analysis
+
+ROM-005 identifies Thumb resolver `0x080089CC` in the verified ROM. It loads MapEntry `+0x2C`, indexes a word at `source + 4 * (selector - 1)`, and therefore consumes `first_word_raw` when selector is `1`. One downstream path stores the selected value in a destination structure; another passes it to `0x08009670`, which dereferences the selected value at `+0x40/+0x44`.
+
+Evidence is Level 2: static downstream role. Two bounded mGBA runs installed the consumer breakpoint plus read watchpoints for a shared and unique sample, but ordinary boot/menu input reached none of them; no runtime hit is claimed. The recomp checkout contains no generated C++ and requires the separate `e65738...` profile, so no recomp offset or semantic name was transferred.
+
+The field remains `first_word_raw`: static code supports address use, but not a graphics/resource subsystem name. Full addresses, instruction flow, sample lookup, runtime procedure, safety result, portability boundary, and unresolved questions are in [consumer-analysis.md](consumer-analysis.md).
+
 ## GBARecomp boundary
 
 Generated C/C++ is behavioral evidence only. The pinned framework explicitly directs fixes into analyzer/emitter code followed by regeneration (`mstan/gbarecomp@6571cb39858af70d691914132f81b01a4558d815`, `README.md:248-250`). Useful future surfaces include TCP debug queries, snapshots, IO traces, reverse-debug rings, symbol mapping, and strict-static coverage. None is canonical editable game source for this project.

@@ -8,6 +8,7 @@ from tools.webfoot.analysis.variation_arrays import (
     VariationArrayAnalysisError,
     VariationArrayBoundsError,
     analyze_variation_array_first_words,
+    find_first_word_observations,
     read_variation_array_first_word,
 )
 from tools.webfoot.binary import GBA_ROM_BASE
@@ -165,6 +166,36 @@ def test_duplicate_and_unique_value_statistics_are_consistent():
     assert census.most_frequent_values[0].count == 2
     assert census.minimum_raw_value == 7
     assert census.maximum_raw_value == 9
+
+
+def test_first_word_lookup_returns_all_duplicate_observations_in_entry_order():
+    data = bytearray(0x20)
+    write_u32(data, 0, 7)
+    write_u32(data, 4, 9)
+    write_u32(data, 8, 7)
+    census = analyze_variation_array_first_words(
+        [entry_at(0), entry_at(4), entry_at(8)],
+        BytesIO(data),
+        rom_size=len(data),
+    )
+
+    matches = find_first_word_observations(census, 7)
+
+    assert [item.map_entry_index for item in matches] == [0, 2]
+    assert [item.source_pointer_raw for item in matches] == [
+        GBA_ROM_BASE,
+        GBA_ROM_BASE + 8,
+    ]
+
+
+@pytest.mark.parametrize("value", [-1, 0x1_0000_0000, True, "7"])
+def test_first_word_lookup_rejects_non_u32_values(value):
+    census = analyze_variation_array_first_words(
+        [entry_at(0)], BytesIO(bytes(16)), rom_size=16
+    )
+
+    with pytest.raises(VariationArrayAnalysisError, match="raw 32-bit"):
+        find_first_word_observations(census, value)
 
 
 def test_source_address_ordering_retains_signed_deltas():

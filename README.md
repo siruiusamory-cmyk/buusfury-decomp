@@ -57,6 +57,14 @@ webfoot validate-map-entries ".\roms\Dragon Ball Z - Buu's Fury (U).gba"
 
 The command reads all 452 configured `0x38`-byte records, parses and serializes each in memory, and fails if any serialized byte differs. ROM-002 also enforces the fixed target SHA-256 and canonical table tuple, so an alternate catalog cannot relabel another ROM or redirect validation. It does not follow record pointers or expose an editing operation.
 
+Run the read-only pointer-field census without dereferencing targets:
+
+```powershell
+webfoot map-entries pointer-census ".\roms\Dragon Ball Z - Buu's Fury (U).gba"
+```
+
+The census classifies all 4,068 raw candidate observations as null, valid in-ROM, or out of range; reports alignment, duplicates, numeric target ranges, and count/pointer correlations; and never reads pointed-to data.
+
 ## Tests
 
 ```powershell
@@ -71,7 +79,7 @@ Phase 0 found mGBA at `C:\Program Files\mGBA\mGBA.exe`. A later ticket may invok
 
 ## Current scope
 
-Implemented: streaming hashes, GBA header parsing, exact ROM profiles, conservative matching, CLI packaging, pinned upstream setup, research audit, and byte-exact read-only Buu's Fury MapEntry round-trip validation.
+Implemented: streaming hashes, GBA header parsing, exact ROM profiles, conservative matching, CLI packaging, pinned upstream setup, research audit, byte-exact read-only Buu's Fury MapEntry round-trip validation, and a non-dereferencing pointer-field census.
 
 Not implemented: ROM modification, pointer following, semantic MapEntry editing, map editing, Tiled integration, allocation, relocation, compression integration, scripts, graphics, audio, gameplay, or remake content.
 

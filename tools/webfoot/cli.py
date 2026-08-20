@@ -7,6 +7,10 @@ from importlib import resources
 from pathlib import Path
 import sys
 
+from .analysis.map_entry_pointers import (
+    MapEntryPointerCensus,
+    census_map_entry_pointers,
+)
 from .gba_header import GbaHeaderError
 from .formats.map_entry import (
     MAP_ENTRY_SIZE,
@@ -53,6 +57,18 @@ def build_parser() -> argparse.ArgumentParser:
         help="validate every configured Buu's Fury MapEntry round trip",
     )
     validate.add_argument("rom", type=Path)
+    map_entries = subparsers.add_parser(
+        "map-entries",
+        help="read-only MapEntry research commands",
+    )
+    map_entry_commands = map_entries.add_subparsers(
+        dest="map_entries_command", required=True
+    )
+    pointer_census = map_entry_commands.add_parser(
+        "pointer-census",
+        help="classify and summarize raw pointer-labelled fields",
+    )
+    pointer_census.add_argument("rom", type=Path)
     return parser
 
 
@@ -118,6 +134,63 @@ def _print_map_entry_validation(result: MapEntryValidationResult) -> None:
     print("PASS" if result.passed else "FAIL")
 
 
+def _format_optional_address(value: int | None) -> str:
+    return "-" if value is None else f"0x{value:08X}"
+
+
+def _print_map_entry_pointer_census(census: MapEntryPointerCensus) -> None:
+    print("Buu's Fury MapEntry Pointer-Field Census")
+    print("------------------------------------------")
+    print()
+    print(f"Profile: {census.profile_id}")
+    print(f"MapEntries analyzed: {census.entry_count}")
+    print(f"Pointer fields analyzed: {census.pointer_field_count}")
+    print(f"Total observations: {census.total_observation_count}")
+    print(f"Null: {census.null_count}")
+    print(f"Valid ROM addresses: {census.valid_rom_count}")
+    print(f"Out of range: {census.out_of_range_count}")
+    print()
+    print(
+        f"{'Field':32} {'Null':>5} {'Valid':>5} {'OOR':>5} "
+        f"{'A2':>5} {'A4':>5} {'Unique':>6} {'Dup':>5}"
+    )
+    for stats in census.field_stats:
+        print(
+            f"{stats.field_name:32} {stats.null_count:5} "
+            f"{stats.valid_rom_count:5} {stats.out_of_range_count:5} "
+            f"{stats.aligned_2_count:5} {stats.aligned_4_count:5} "
+            f"{stats.unique_valid_target_count:6} "
+            f"{stats.duplicate_reference_count:5}"
+        )
+    print()
+    print("Valid target ranges")
+    print(f"{'Field':32} {'Minimum GBA':>12} {'Maximum GBA':>12}")
+    for stats in census.field_stats:
+        print(
+            f"{stats.field_name:32} "
+            f"{_format_optional_address(stats.minimum_gba_address):>12} "
+            f"{_format_optional_address(stats.maximum_gba_address):>12}"
+        )
+    print()
+    print("Count / pointer correlation")
+    print(
+        f"{'Pointer field':32} {'0/null':>7} {'0/non':>7} "
+        f"{'>0/null':>7} {'>0/valid':>8} {'>0/OOR':>7}"
+    )
+    for correlation in census.correlations:
+        print(
+            f"{correlation.pointer_field_name:32} "
+            f"{correlation.count_zero_pointer_null:7} "
+            f"{correlation.count_zero_pointer_non_null:7} "
+            f"{correlation.count_positive_pointer_null:7} "
+            f"{correlation.count_positive_pointer_valid:8} "
+            f"{correlation.count_positive_pointer_out_of_range:7}"
+        )
+    print()
+    print("RESULT:")
+    print("COMPLETE")
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = build_parser()
     args = parser.parse_args(argv)
@@ -125,8 +198,10 @@ def main(argv: list[str] | None = None) -> int:
         catalog = load_catalog(args.profiles)
         if args.command == "identify":
             identification = identify_rom(args.rom, catalog)
-        else:
+        elif args.command == "validate-map-entries":
             validation = validate_map_entry_round_trips(args.rom, catalog)
+        else:
+            census = census_map_entry_pointers(args.rom, catalog)
     except (
         ProfileConfigError,
         GbaHeaderError,
@@ -140,6 +215,9 @@ def main(argv: list[str] | None = None) -> int:
     if args.command == "validate-map-entries":
         _print_map_entry_validation(validation)
         return 0 if validation.passed else 2
+    if args.command == "map-entries":
+        _print_map_entry_pointer_census(census)
+        return 0
 
     _print_identification(identification)
     if identification.profile_match.status is VerificationStatus.VERIFIED:

@@ -3,6 +3,7 @@ from pathlib import Path
 import pytest
 import yaml
 
+from tools.webfoot.analysis.map_entry_pointers import census_map_entry_pointers
 from tools.webfoot.cli import main
 from tools.webfoot.formats.map_entry import validate_map_entry_round_trips
 from tools.webfoot.profile import RomProfileCatalog
@@ -73,3 +74,44 @@ def test_cli_rejects_conflicting_target_table_metadata(tmp_path, capsys):
 
     assert exit_code == 2
     assert "metadata conflicts with the ROM-002 contract" in error
+
+
+def test_complete_local_pointer_census_accounting():
+    if not LOCAL_ROM.is_file():
+        pytest.skip("user-supplied Buu's Fury ROM is not present")
+
+    census = census_map_entry_pointers(
+        LOCAL_ROM,
+        RomProfileCatalog.load("config/roms.yaml"),
+    )
+
+    assert census.profile_id == "buus_fury_usa_rev0_01c1707f"
+    assert census.entry_count == 452
+    assert census.pointer_field_count == 9
+    assert census.total_observation_count == 452 * 9
+    assert (
+        census.null_count + census.valid_rom_count + census.out_of_range_count
+        == census.total_observation_count
+    )
+    for stats in census.field_stats:
+        assert stats.null_count + stats.valid_rom_count + stats.out_of_range_count == 452
+        assert stats.aligned_4_count <= stats.aligned_2_count <= stats.valid_rom_count
+        assert (
+            stats.unique_valid_target_count + stats.duplicate_reference_count
+            == stats.valid_rom_count
+        )
+    assert all(item.total_count == 452 for item in census.correlations)
+
+
+def test_cli_runs_complete_local_pointer_census(capsys):
+    if not LOCAL_ROM.is_file():
+        pytest.skip("user-supplied Buu's Fury ROM is not present")
+
+    exit_code = main(["map-entries", "pointer-census", str(LOCAL_ROM)])
+    output = capsys.readouterr().out
+
+    assert exit_code == 0
+    assert "MapEntries analyzed: 452" in output
+    assert "Pointer fields analyzed: 9" in output
+    assert "Total observations: 4068" in output
+    assert "RESULT:\nCOMPLETE" in output

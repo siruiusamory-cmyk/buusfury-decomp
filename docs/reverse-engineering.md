@@ -73,6 +73,59 @@ The disassembly corroborates the table address, stride, count, and byte accesses
 
 `graphics_pointer` in DragonByteZ is derived by following the word at `+0x2C`; it is not a byte field in the `0x38` record and is not serialized. ROM-002 follows none of these raw pointer words.
 
+## ROM-003 pointer-field census
+
+ROM-003 observes the nine 32-bit pointer-labelled words in every MapEntry for `buus_fury_usa_rev0_01c1707f`. It does not read any target byte. A raw value is `NULL` only when zero, `VALID_ROM_ADDRESS` when the existing checked `GbaRomAddress` converts it to an offset in `[0, 0x800000)`, and `OUT_OF_RANGE` otherwise. Alignment is measured separately and never changes classification. Duplicate references are `valid references - unique valid targets`. Numeric clustering uses 64 KiB file-offset buckets without semantic region names.
+
+### Upstream behavior and confidence
+
+At `spicybung/DragonByteZ@b2691209fa873cc0c1d7aa9cdea7c1da4430afe4`, `src/analysis.cpp:578-622` reads all nine words. Only `variation_array_pointer` is bounds-checked and dereferenced, at `src/analysis.cpp:613-618`, to read one little-endian word. DragonByteZ does not follow the other eight words, combine the five paired counts with them, establish target record sizes, or impose alignment. Its heuristic scanner treats the words as optional ROM-pointer candidates at `src/analysis.cpp:1807-1840`; this is plausibility logic rather than target-format proof.
+
+The pinned Buu disassembly independently confirms only the table base, stride, count, and byte accesses at entry `+0x00/+0x01`. No identified consumer in that evidence loads the nine candidate words. Confidence therefore remains:
+
+- Category B, strongly supported pointer: `variation_array_pointer_raw` only. The pointer behavior is supported by DragonByteZ; the array label and extent remain inferred.
+- Category C, upstream-labelled candidate: the other eight fields. Their address distributions support pointer-like shape, not semantic target names.
+- Category A, independently confirmed ROM pointer: none.
+
+### Complete census
+
+All 452 entries and nine fields were analyzed: 4,068 observations, comprising 2,827 null values, 1,241 valid in-ROM values, and zero out-of-range values.
+
+| Field | Null | Valid | OOR | Aligned 2 | Aligned 4 | Unique | Duplicate refs | Minimum GBA | Maximum GBA |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| `triggers_pointer_raw` | 230 | 222 | 0 | 222 | 222 | 222 | 0 | `0x08072998` | `0x0808E2D0` |
+| `scripts_pointer_raw` | 136 | 316 | 0 | 316 | 316 | 316 | 0 | `0x0807293C` | `0x0808E294` |
+| `items_pointer_raw` | 399 | 53 | 0 | 53 | 53 | 53 | 0 | `0x08075ADC` | `0x0808DBE0` |
+| `objects_pointer_raw` | 440 | 12 | 0 | 12 | 12 | 12 | 0 | `0x08078C98` | `0x0808BE1C` |
+| `npcs_pointer_raw` | 437 | 15 | 0 | 15 | 15 | 15 | 0 | `0x08075A44` | `0x0808D434` |
+| `variation_script_pointer_raw` | 452 | 0 | 0 | 0 | 0 | 0 | 0 | - | - |
+| `variation_array_pointer_raw` | 0 | 452 | 0 | 452 | 452 | 452 | 0 | `0x080728CC` | `0x0808E1E0` |
+| `entry_script_pointer_raw` | 285 | 167 | 0 | 166 | 166 | 132 | 35 | `0x08072974` | `0x0808E13C` |
+| `exit_script_pointer_raw` | 448 | 4 | 0 | 1 | 1 | 3 | 1 | `0x0807853D` | `0x0807B3C7` |
+
+### Count/pointer correlation
+
+The five pairings remain statistical hypotheses. `0/non` combines valid and out-of-range nonzero words; this ROM has no out-of-range observations.
+
+| Pair | Count 0 / null | Count 0 / non-null | Count >0 / null | Count >0 / valid | Count >0 / OOR |
+|---|---:|---:|---:|---:|---:|
+| trigger / `triggers_pointer_raw` | 67 | 69 | 163 | 153 | 0 |
+| script / `scripts_pointer_raw` | 122 | 277 | 14 | 39 | 0 |
+| item / `items_pointer_raw` | 391 | 49 | 8 | 4 | 0 |
+| object / `objects_pointer_raw` | 425 | 12 | 15 | 0 | 0 |
+| NPC / `npcs_pointer_raw` | 31 | 1 | 406 | 14 | 0 |
+
+These matrices do not support a simple invariant that zero count means null pointer or positive count means non-null pointer. This is an observed contradiction to that simple pairing model, not evidence that the upstream field names are wrong.
+
+### Ranges, clusters, duplicates, and anomalies
+
+- Every valid target falls in the 64 KiB file-offset buckets beginning at `0x070000` or `0x080000`; collectively the observed range is `0x0728CC..0x08E2D0`.
+- Six fields with valid observations have no duplicate targets: triggers, scripts, items, objects, NPCs, and variation arrays. `entry_script_pointer_raw` has 167 valid references to 132 unique values; `0x08083E00` occurs 24 times, while `0x0807C4BC` and `0x0807C6B4` occur six times each.
+- `exit_script_pointer_raw` has four valid references to three unique values. `0x0807B3C7` occurs twice.
+- Four valid values are not 2-byte aligned and are retained unchanged: entry 81 `entry_script_pointer_raw = 0x08076C3F`; entry 103 `exit_script_pointer_raw = 0x0807853D`; entries 146 and 310 `exit_script_pointer_raw = 0x0807B3C7`.
+- `variation_script_pointer_raw` is null in all 452 records. `variation_array_pointer_raw` is valid and 4-byte aligned in all 452, with 452 unique targets. Neither observation proves target semantics.
+- No address bit is masked, cleared, aligned, or normalized by the census.
+
 ## GBARecomp boundary
 
 Generated C/C++ is behavioral evidence only. The pinned framework explicitly directs fixes into analyzer/emitter code followed by regeneration (`mstan/gbarecomp@6571cb39858af70d691914132f81b01a4558d815`, `README.md:248-250`). Useful future surfaces include TCP debug queries, snapshots, IO traces, reverse-debug rings, symbol mapping, and strict-static coverage. None is canonical editable game source for this project.

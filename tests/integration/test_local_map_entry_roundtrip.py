@@ -4,6 +4,9 @@ import pytest
 import yaml
 
 from tools.webfoot.analysis.map_entry_pointers import census_map_entry_pointers
+from tools.webfoot.analysis.variation_arrays import (
+    census_variation_array_first_words,
+)
 from tools.webfoot.cli import main
 from tools.webfoot.formats.map_entry import validate_map_entry_round_trips
 from tools.webfoot.profile import RomProfileCatalog
@@ -114,4 +117,50 @@ def test_cli_runs_complete_local_pointer_census(capsys):
     assert "MapEntries analyzed: 452" in output
     assert "Pointer fields analyzed: 9" in output
     assert "Total observations: 4068" in output
+    assert "RESULT:\nCOMPLETE" in output
+
+
+def test_complete_local_variation_array_first_word_census():
+    if not LOCAL_ROM.is_file():
+        pytest.skip("user-supplied Buu's Fury ROM is not present")
+
+    census = census_variation_array_first_words(
+        LOCAL_ROM,
+        RomProfileCatalog.load("config/roms.yaml"),
+    )
+
+    assert census.profile_id == "buus_fury_usa_rev0_01c1707f"
+    assert census.pointer_count == 452
+    assert census.source_valid_address_count == 452
+    assert census.source_null_count == 0
+    assert census.source_out_of_range_count == 0
+    assert census.unique_valid_source_address_count == 452
+    assert census.successful_read_count == 452
+    assert census.bounds_failure_count == 0
+    assert census.successful_read_count + census.bounds_failure_count == 452
+    assert census.zero_count + census.nonzero_count == 452
+    assert (
+        census.zero_count
+        + census.rom_address_shaped_count
+        + census.non_rom_value_count
+        == 452
+    )
+    assert census.ordering.address_count == 452
+    assert census.ordering.unique_address_count == 452
+
+
+def test_cli_runs_complete_local_variation_array_first_word_census(capsys):
+    if not LOCAL_ROM.is_file():
+        pytest.skip("user-supplied Buu's Fury ROM is not present")
+
+    exit_code = main(
+        ["variation-arrays", "first-word-census", str(LOCAL_ROM)]
+    )
+    output = capsys.readouterr().out
+
+    assert exit_code == 0
+    assert "MapEntries: 452" in output
+    assert "Pointers validated: 452" in output
+    assert "Words read: 452" in output
+    assert "Bounds failures: 0" in output
     assert "RESULT:\nCOMPLETE" in output

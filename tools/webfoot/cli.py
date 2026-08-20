@@ -11,6 +11,10 @@ from .analysis.map_entry_pointers import (
     MapEntryPointerCensus,
     census_map_entry_pointers,
 )
+from .analysis.variation_arrays import (
+    VariationArrayFirstWordCensus,
+    census_variation_array_first_words,
+)
 from .gba_header import GbaHeaderError
 from .formats.map_entry import (
     MAP_ENTRY_SIZE,
@@ -69,6 +73,18 @@ def build_parser() -> argparse.ArgumentParser:
         help="classify and summarize raw pointer-labelled fields",
     )
     pointer_census.add_argument("rom", type=Path)
+    variation_arrays = subparsers.add_parser(
+        "variation-arrays",
+        help="read-only variation-array research commands",
+    )
+    variation_commands = variation_arrays.add_subparsers(
+        dest="variation_arrays_command", required=True
+    )
+    first_word_census = variation_commands.add_parser(
+        "first-word-census",
+        help="read and summarize exactly the first u32 at each target",
+    )
+    first_word_census.add_argument("rom", type=Path)
     return parser
 
 
@@ -191,6 +207,84 @@ def _print_map_entry_pointer_census(census: MapEntryPointerCensus) -> None:
     print("COMPLETE")
 
 
+def _format_signed_hex(value: int) -> str:
+    sign = "-" if value < 0 else "+"
+    return f"{sign}0x{abs(value):X}"
+
+
+def _print_variation_array_first_word_census(
+    census: VariationArrayFirstWordCensus,
+) -> None:
+    print("Buu's Fury Variation-Array First-Word Census")
+    print("---------------------------------------------")
+    print()
+    print(f"Profile: {census.profile_id}")
+    print(f"MapEntries: {census.pointer_count}")
+    print(f"Valid source pointers: {census.source_valid_address_count}")
+    print(f"Null source pointers: {census.source_null_count}")
+    print(f"Out-of-range source pointers: {census.source_out_of_range_count}")
+    print(f"Unique valid source pointers: {census.unique_valid_source_address_count}")
+    print(f"Pointers validated: {census.successful_read_count}")
+    print(f"Words read: {census.successful_read_count}")
+    print(f"Bounds failures: {census.bounds_failure_count}")
+    print()
+    print(f"Zero: {census.zero_count}")
+    print(f"Nonzero: {census.nonzero_count}")
+    print(f"Unique values: {census.unique_value_count}")
+    print(f"Duplicate references: {census.duplicate_reference_count}")
+    print(f"Repeated values: {census.repeated_value_count}")
+    print(f"Minimum raw value: {_format_optional_address(census.minimum_raw_value)}")
+    print(f"Maximum raw value: {_format_optional_address(census.maximum_raw_value)}")
+    print()
+    print(f"ROM-address-shaped: {census.rom_address_shaped_count}")
+    print(f"Non-ROM values: {census.non_rom_value_count}")
+    print(f"Odd nonzero values: {census.odd_count}")
+    print(f"2-byte aligned nonzero values: {census.aligned_2_count}")
+    print(f"4-byte aligned nonzero values: {census.aligned_4_count}")
+    print()
+    ordering = census.ordering
+    print("Source address ordering")
+    print(f"Unique source addresses: {ordering.unique_address_count}")
+    print(f"Strictly increasing: {'YES' if ordering.strictly_increasing else 'NO'}")
+    print(f"Increases: {ordering.increase_count}")
+    print(f"Decreases: {ordering.decrease_count}")
+    print(f"Equal: {ordering.equal_count}")
+    print(
+        "Positive delta range: "
+        f"{_format_optional_address(ordering.minimum_positive_delta)} .. "
+        f"{_format_optional_address(ordering.maximum_positive_delta)}"
+    )
+    if ordering.common_deltas:
+        common = ", ".join(
+            f"{_format_signed_hex(item.raw_value)} x{item.count}"
+            for item in ordering.common_deltas
+        )
+        print(f"Common deltas: {common}")
+    print()
+    print("Duplicate-value metadata correlation")
+    print(f"{'Raw metadata field':18} {'Groups':>7} {'Same':>7} {'Vary':>7}")
+    for correlation in census.correlations:
+        print(
+            f"{correlation.field_name:18} "
+            f"{correlation.duplicate_first_word_group_count:7} "
+            f"{correlation.constant_metadata_group_count:7} "
+            f"{correlation.varying_metadata_group_count:7}"
+        )
+    if census.most_frequent_values:
+        print()
+        print("Most frequent raw values")
+        for item in census.most_frequent_values:
+            print(f"0x{item.raw_value:08X}: {item.count}")
+    for failure in census.failures:
+        print(
+            f"Failure: entry {failure.map_entry_index}, "
+            f"source 0x{failure.source_pointer_raw:08X}: {failure.reason}"
+        )
+    print()
+    print("RESULT:")
+    print("COMPLETE" if not census.failures else "INCOMPLETE")
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = build_parser()
     args = parser.parse_args(argv)
@@ -200,8 +294,10 @@ def main(argv: list[str] | None = None) -> int:
             identification = identify_rom(args.rom, catalog)
         elif args.command == "validate-map-entries":
             validation = validate_map_entry_round_trips(args.rom, catalog)
-        else:
+        elif args.command == "map-entries":
             census = census_map_entry_pointers(args.rom, catalog)
+        else:
+            variation_census = census_variation_array_first_words(args.rom, catalog)
     except (
         ProfileConfigError,
         GbaHeaderError,
@@ -218,6 +314,9 @@ def main(argv: list[str] | None = None) -> int:
     if args.command == "map-entries":
         _print_map_entry_pointer_census(census)
         return 0
+    if args.command == "variation-arrays":
+        _print_variation_array_first_word_census(variation_census)
+        return 0 if not variation_census.failures else 2
 
     _print_identification(identification)
     if identification.profile_match.status is VerificationStatus.VERIFIED:

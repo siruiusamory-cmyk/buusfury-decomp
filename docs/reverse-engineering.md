@@ -126,6 +126,62 @@ These matrices do not support a simple invariant that zero count means null poin
 - `variation_script_pointer_raw` is null in all 452 records. `variation_array_pointer_raw` is valid and 4-byte aligned in all 452, with 452 unique targets. Neither observation proves target semantics.
 - No address bit is masked, cleared, aligned, or normalized by the census.
 
+## ROM-004 variation-array first-word analysis
+
+ROM-004 performs one deliberately bounded dereference for `buus_fury_usa_rev0_01c1707f`. For every MapEntry it validates `variation_array_pointer_raw`, converts it through `GbaRomAddress`, requires `file_offset + 4 <= ROM size`, reads exactly `target[0x00:0x04]`, and decodes one explicit little-endian unsigned word named `first_word_raw`. It does not read a second word, inspect neighboring bytes, infer a record size, or follow the observed value.
+
+### Evidence and confidence
+
+At `spicybung/DragonByteZ@b2691209fa873cc0c1d7aa9cdea7c1da4430afe4`, `src/analysis.cpp:578-621` function `read_map_entries` validates the raw `+0x2C` value, converts it to a file offset, requires four in-bounds bytes, and calls `Rom::u32` once at target `+0x00`. `src/rom.cpp:124-130` proves that `Rom::u32` decodes four bytes little-endian; `src/rom.cpp:138-147` establishes its ROM-address check and conversion. DragonByteZ then calls the result `graphics_pointer` and attempts a level-record parse in `src/analysis.cpp:687-719`. That downstream name and target interpretation are upstream behavior, not independently proven game semantics.
+
+The pinned disassembly `2genkidev/buusfury@cc53d0cd2d1c167e749419187e2d92017ac07468` preserves both relevant executable and target regions as unresolved `INCBIN` data (`asm/buu.s:6-11`, `asm/rest_of_the_game.s:8-12`, and `build.bat:28-38`). No identified consumer independently corroborates a MapEntry `+0x2C` load followed by target `+0x00`. There is no conflicting evidence.
+
+- Source-pointer confidence: **INFERRED, strongly behaviorally supported**. All 452 values are unique, aligned, and valid in-ROM, and DragonByteZ validates and uses them.
+- First-word structural confidence: **CONFIRMED as an evidence-backed tool access**. The exact four-byte read, bounds rule, and little-endian width are explicit in DragonByteZ and reproduced safely here. Runtime game consumption remains independently unconfirmed.
+- First-word semantic confidence: **UNKNOWN**. `first_word_raw` is deliberately not called a graphics pointer, ID, flags word, or record reference.
+
+### Complete first-word census
+
+All 452 source values were valid in-ROM addresses, none were null or out of range, and all 452 were unique. Exactly 452 four-byte reads succeeded with zero bounds failures.
+
+| Measure | Result |
+|---|---:|
+| Zero first words | 0 |
+| Nonzero first words | 452 |
+| Unique raw values | 421 |
+| Duplicate references | 31 |
+| Distinct repeated values | 11 |
+| Minimum raw value | `0x0817B1B0` |
+| Maximum raw value | `0x082B8C38` |
+| ROM-address-shaped | 452 |
+| Non-ROM values | 0 |
+| Odd nonzero values | 0 |
+| 2-byte aligned nonzero values | 452 |
+| 4-byte aligned nonzero values | 452 |
+
+`ROM-address-shaped` is a numeric classification only. It does not promote any of the 452 words to a confirmed pointer. The most frequent raw values are `0x0822CC08` (10 observations), `0x0829C2D8` (5), `0x0822DBC4` (4), `0x0822DF88` (4), and `0x08228290` (3).
+
+### Source-address ordering and spacing
+
+The 452 source variation-array addresses are strictly increasing by MapEntry index: 451 increases, zero decreases, and zero equal neighbors. Positive deltas range from `0x4` to `0xD08`. The most common signed deltas are `+0x4` (48), `+0x70` (17), `+0x4C` (12), `+0x94` (12), and `+0xDC` (11). These spacings are observations only and do not establish an array or record length.
+
+### Raw metadata correlations
+
+The 11 duplicated `first_word_raw` groups were compared with four raw MapEntry bytes. `Same` means every observation in a duplicated first-word group had one metadata value; `Vary` means at least two metadata values occurred.
+
+| Raw field | Duplicate groups | Same | Vary | Unique `(first word, metadata)` pairs |
+|---|---:|---:|---:|---:|
+| `output_raw` | 11 | 11 | 0 | 421 |
+| `zone_raw` | 11 | 0 | 11 | 452 |
+| `area_raw` | 11 | 11 | 0 | 421 |
+| `variation_raw` | 11 | 10 | 1 | 422 |
+
+These correlations do not establish what either side means. In particular, they do not prove that `first_word_raw` is a map variation ID or that repeated values identify a shared structure.
+
+### Unresolved
+
+The runtime consumer, semantic type, reason every value is ROM-address-shaped, target alignment contract, second and later words, array length, and any formal relationship to MapEntry raw metadata remain unknown. ROM-004 intentionally gathers no adjacent target data to answer them.
+
 ## GBARecomp boundary
 
 Generated C/C++ is behavioral evidence only. The pinned framework explicitly directs fixes into analyzer/emitter code followed by regeneration (`mstan/gbarecomp@6571cb39858af70d691914132f81b01a4558d815`, `README.md:248-250`). Useful future surfaces include TCP debug queries, snapshots, IO traces, reverse-debug rings, symbol mapping, and strict-static coverage. None is canonical editable game source for this project.

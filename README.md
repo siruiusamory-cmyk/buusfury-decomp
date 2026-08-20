@@ -65,6 +65,14 @@ webfoot map-entries pointer-census ".\roms\Dragon Ball Z - Buu's Fury (U).gba"
 
 The census classifies all 4,068 raw candidate observations as null, valid in-ROM, or out of range; reports alignment, duplicates, numeric target ranges, and count/pointer correlations; and never reads pointed-to data.
 
+Read exactly the first little-endian word at each validated variation-array target:
+
+```powershell
+webfoot variation-arrays first-word-census ".\roms\Dragon Ball Z - Buu's Fury (U).gba"
+```
+
+This read-only command requires the canonical packaged ROM identity, bounds-checks every four-byte access, and does not read a second word or follow the observed raw value.
+
 ## Tests
 
 ```powershell
@@ -79,7 +87,7 @@ Phase 0 found mGBA at `C:\Program Files\mGBA\mGBA.exe`. A later ticket may invok
 
 ## Current scope
 
-Implemented: streaming hashes, GBA header parsing, exact ROM profiles, conservative matching, CLI packaging, pinned upstream setup, research audit, byte-exact read-only Buu's Fury MapEntry round-trip validation, and a non-dereferencing pointer-field census.
+Implemented: streaming hashes, GBA header parsing, exact ROM profiles, conservative matching, CLI packaging, pinned upstream setup, research audit, byte-exact read-only Buu's Fury MapEntry round-trip validation, a non-dereferencing pointer-field census, and an exact-width variation-array first-word census.
 
 Not implemented: ROM modification, pointer following, semantic MapEntry editing, map editing, Tiled integration, allocation, relocation, compression integration, scripts, graphics, audio, gameplay, or remake content.
 

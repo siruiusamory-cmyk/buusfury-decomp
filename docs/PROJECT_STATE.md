@@ -9,12 +9,13 @@ This file records current verified facts. Permanent rules live in
 
 - ROM-008 baseline: `59180741c376d01ec52ffe0473d26f8ef77433fa`
   (`feat: trace spatial-object runtime behavior`).
-- Latest completed research ticket: ROM-008.
+- Latest completed research ticket: ROM-009, uncommitted and awaiting review.
 - ROM-008 research is committed in the baseline above.
 - ROM-008 portable baseline: **192 passed, 0 failed, 0 skipped**.
 - Current portable suite after workflow migration: **199 passed, 0 failed, 0 skipped**.
+- Current portable suite after ROM-009: **208 passed, 0 failed, 0 skipped**.
 - Persistent the tool workflow migration is installed.
-- `docs/PROJECT_<local-state-name>` remains ROM-009, which has not started.
+- `docs/PROJECT_<local-state-name>` remains completed ROM-009 pending human review and archival.
 
 ## Verified ROM
 
@@ -145,21 +146,25 @@ Current evidence level: **Level 3**.
 
 Parser readiness for the `0x08007675` descriptor family: **NO** as of ROM-008.
 
-## New Runtime Input
+## ROM-009 Result
 
-A new private save/runtime state exists after ROM-008. The user reports:
-
-- normal player control;
-- normal movement with no active dialogue or observed cutscene/dialogue gate;
-- travelling south to the next map also produces no dialogue.
-
-Dialogue gating is a hypothesis for the earlier callback failure, not an
-established cause. The state has not yet been located or hashed by ROM-009.
+Private input hashes: state 72,775 bytes /
+`ea500f3a774d42032202d9c3d7bfb437478417ba37e4b72c634993d7d701ac82`;
+save 8,192 bytes / `9bbd7cb67b724fbe1263d9b5b7cedf0a6c935a2ff6448befd0a0348b7607f46a`.
+Runtime reproduced MapEntry 39, descriptor `0x08294948`, raw factory
+`0x08007675`, X `0x0203DE7C`, slot `0x03002A68`, and bounds
+`(592,136)..(601,241)`. No verified query, caller, guard, exact AABB, or callback
+ran after X became live; context slot `0x03001C34` was raw zero at insertion.
+Result: **D. ENVIRONMENT BLOCKED**; dialogue **UNRESOLVED**; cause `UNKNOWN`;
+evidence Level 3. Parser readiness remains **NO** because source-descriptor
+extent/boundary and a complete lossless field map remain unestablished.
 
 ## Unresolved Questions
 
-- Does the clean dialogue-free state reach the exact object's AABB/callback?
-- If not, what is the first rejecting scheduler or query guard?
+- Which different verified dialogue-free state or scoped route instantiates a
+  non-null point-query scheduler context for the exact object?
+- What scheduler decision prevents the verified query-capable callers in the
+  ROM-009 input? No instruction-level rejecting guard was reached.
 - What immediate behavior follows the exact callback, if captured?
 - Is the `0x08007675` source descriptor structurally bounded well enough for a
   future minimal read-only parser?

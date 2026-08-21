@@ -39,7 +39,7 @@ def test_required_workflow_files_exist_and_are_bounded():
     expected_limits = {
         "<local-state-name>": (150, 300),
         "docs/PROJECT_<local-state-name>": (100, 200),
-        "docs/PROJECT_<local-state-name>": (100, 250),
+        "docs/PROJECT_<local-state-name>": (100, 450),
         "docs/REVIEW.md": (20, 100),
         "scripts/run-current.ps1": (40, 140),
     }
@@ -59,23 +59,25 @@ def test_context_split_keeps_permanent_state_and_ticket_content_separate():
     assert "buus_fury_usa_rev0_01c1707f" not in agents
     assert "ROM-008 portable baseline: **192 passed" in state
     assert "Current portable suite after workflow migration: **199 passed" in state
-    assert "# ROM-009 - Clean Gameplay Exact-Object Callback Trace" in current
+    assert "# ROM-010" in current
     assert "Original ROM Safety - Mandatory" not in current
-    assert "## Required Result Classifications" in current
+    assert "## Required Result" in current
 
 
-def test_current_ticket_preserves_critical_rom009_order_and_boundaries():
+def test_current_ticket_preserves_critical_rom010_order_and_boundaries():
     current = (PROJECT_ROOT / "docs/PROJECT_<local-state-name>").read_text(encoding="utf-8")
 
-    assert current.index("## Required Experiment") < current.index("## Conditional Fallback")
-    assert "Only if the clean dialogue-free experiment fails" in current
-    assert "including when the AABB is reached but the callback is filtered" in current
-    assert "Optionally transition south exactly once" in current
-    assert "Do not brute-force gameplay" in current
-    assert "Do not implement any parser" in current
-    assert "Object Y" not in current
-    assert "Reject callbacks from unrelated objects" in current
-    assert "Do not request it prematurely" in current
+    assert current.index("## Required Work - Phase 1") < current.index(
+        "## Required Work - Phase 4"
+    )
+    assert (
+        "As soon as the runtime path is working, STOP infrastructure expansion"
+        in current
+    )
+    assert "optionally transition SOUTH once" in current
+    assert "Object Y is never evidence for object X" in current
+    assert "Do not implement a descriptor parser" in current
+    assert "Do not begin ROM-011" in current
 
 
 def test_runner_dry_run_works_from_an_unrelated_directory(tmp_path):
@@ -91,7 +93,7 @@ def test_runner_dry_run_works_from_an_unrelated_directory(tmp_path):
     assert f"agents: {PROJECT_ROOT / 'docs/DEVELOPMENT.md'}" in result.stdout
     assert f"state: {PROJECT_ROOT / 'docs' / 'PROJECT_<local-state-name>'}" in result.stdout
     assert f"ticket: {PROJECT_ROOT / 'docs' / 'tickets' / 'PROJECT_<local-state-name>'}" in result.stdout
-    assert "current: ROM-009" in result.stdout
+    assert "current: ROM-010" in result.stdout
     assert "mode: interactive the tool session" in result.stdout
     assert "dry-run: no the tool session launched" in result.stdout
 
@@ -104,6 +106,7 @@ def test_runner_uses_small_bootstrap_without_concatenating_context():
     assert "docs/PROJECT_<local-state-name>" in runner
     assert "docs/PROJECT_<local-state-name>" in runner
     assert "--cd" in runner
+    assert "Select-Object -First 1" in runner
     assert len(runner) < 6_000
 
 

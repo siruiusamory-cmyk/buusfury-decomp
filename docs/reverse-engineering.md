@@ -225,6 +225,26 @@ No after-guard AABB candidate or callback was captured for that exact object. St
 
 Semantic classification therefore stays **STRONGLY SUPPORTED: 24-byte rectangle-aware runtime object**, at Level 3. Parser readiness is **NO**; one exact current-load-epoch AABB/callback and downstream consequence remains required. The runtime helper adds fail-closed identity/timeline validation only and introduces no ROM structure parser. Full evidence and safety details are in [consumer-analysis.md](consumer-analysis.md#rom-008-exact-object-behavior-trace).
 
+## ROM-009 clean gameplay trace
+
+The newer ignored `.ss1` and `.sav` were identified as 72,775 bytes /
+`ea500f3a774d42032202d9c3d7bfb437478417ba37e4b72c634993d7d701ac82`
+and 8,192 bytes /
+`9bbd7cb67b724fbe1263d9b5b7cedf0a6c935a2ff6448befd0a0348b7607f46a`.
+Dynamic runtime discovery reproduced MapEntry 39, descriptor `0x08294948`, raw
+factory `0x08007675`, X `0x0203DE7C`, slot `0x03002A68`, and bounds
+`(592,136)..(601,241)` in load epoch 1.
+
+No verified query entry, direct caller, query-capable caller entry, internal
+guard, exact AABB, or callback executed after X became live. Point-query context
+slot `0x03001C34` was raw zero at insertion. Primary classification is
+**D. ENVIRONMENT BLOCKED** for this supplied state/route; the causal mechanism
+and dialogue hypothesis remain `UNKNOWN` / **UNRESOLVED**. Evidence stays Level
+3. Structural parser readiness remains **NO** because descriptor extent/boundary
+and a complete lossless field map are not established. Full private-runtime and
+safety evidence is in
+[consumer-analysis.md](consumer-analysis.md#rom-009-clean-gameplay-exact-object-callback-trace).
+
 ## GBARecomp boundary
 
 Generated C/C++ is behavioral evidence only. The pinned framework explicitly directs fixes into analyzer/emitter code followed by regeneration (`mstan/gbarecomp@6571cb39858af70d691914132f81b01a4558d815`, `README.md:248-250`). Useful future surfaces include TCP debug queries, snapshots, IO traces, reverse-debug rings, symbol mapping, and strict-static coverage. None is canonical editable game source for this project.

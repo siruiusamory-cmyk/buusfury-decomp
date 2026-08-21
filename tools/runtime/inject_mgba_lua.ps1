@@ -7,12 +7,20 @@ param(
 
 $ErrorActionPreference = 'Stop'
 $workspaceRoot = [System.IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..\..'))
-$allowedLua = [System.IO.Path]::GetFullPath(
-    (Join-Path $workspaceRoot 'tools\runtime\rom007_move_south.lua')
+$allowedLua = @(
+    [System.IO.Path]::GetFullPath(
+        (Join-Path $workspaceRoot 'tools\runtime\rom007_move_south.lua')
+    )
+    [System.IO.Path]::GetFullPath(
+        (Join-Path $workspaceRoot 'tools\runtime\rom009_clean_route.lua')
+    )
+    [System.IO.Path]::GetFullPath(
+        (Join-Path $workspaceRoot 'tools\runtime\rom009_post_transition_route.lua')
+    )
 )
 $resolvedLua = [System.IO.Path]::GetFullPath($LuaPath)
-if ($resolvedLua -ne $allowedLua) {
-    throw 'LuaPath is not the tracked ROM-007 movement script'
+if ($resolvedLua -notin $allowedLua) {
+    throw 'LuaPath is not an allowlisted tracked movement script'
 }
 
 Add-Type -AssemblyName UIAutomationClient

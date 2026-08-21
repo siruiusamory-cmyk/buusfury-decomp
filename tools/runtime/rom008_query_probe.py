@@ -16,7 +16,7 @@ import shutil
 import socket
 import subprocess
 import time
-from typing import Sequence
+from typing import Callable, Sequence
 import uuid
 
 from tools.runtime.rom006_gdb_probe import (
@@ -182,6 +182,19 @@ def run_probe(
     mgba_path: Path,
     profile_path: Path,
     timeout_seconds: float,
+    tracker_factory: Callable[[], ExactObjectTracker] = ExactObjectTracker,
+    dynamic_load: bool = False,
+    run_label: str = "rom008",
+    fallback_callsite_targets: dict[int, int] | None = None,
+    scheduler_guard_pc: int | None = None,
+    scheduler_guard_validator: Callable[[int, int, int], bool] | None = None,
+    fallback_entry_pcs: Sequence[int] = (),
+    fallback_guard_pcs: Sequence[int] = (),
+    fallback_guard_evaluator: Callable[
+        [Rom008RspClient, Sequence[int]], dict[str, object]
+    ]
+    | None = None,
+    point_context_pointer_address: int | None = None,
 ) -> dict[str, object]:
     sources = (rom_path, state_path, save_path)
     before = {path: (path.stat(), sha256(path)) for path in sources}
@@ -196,7 +209,7 @@ def run_probe(
         rom_path, RomProfileCatalog.load(profile_path)
     )
     by_index = {item.map_entry_index: item for item in census.observations}
-    run_root = state_path.parent / f"rom008-{uuid.uuid4().hex}"
+    run_root = state_path.parent / f"{run_label}-{uuid.uuid4().hex}"
     state_copy, save_copy = private_working_paths(
         state_source=state_path,
         save_source=save_path,
@@ -241,11 +254,15 @@ def run_probe(
         ]
     )
     started = time.monotonic()
-    tracker = ExactObjectTracker()
+    tracker = tracker_factory()
     timeline: list[dict[str, object]] = []
     query_entries: list[dict[str, object]] = []
     exact_query: dict[str, object] | None = None
     callbacks: list[dict[str, object]] = []
+    callsites: list[dict[str, object]] = []
+    entry_hits: list[dict[str, object]] = []
+    precaller_guards: list[dict[str, object]] = []
+    rejecting_guard: dict[str, object] | None = None
     accepted_entry: tuple[int, int] | None = None
     verified_load: LoadIdentity | None = None
     verified_adapter = False
@@ -321,7 +338,7 @@ def run_probe(
                     except ValueError:
                         continue
                     if (
-                        index == 39
+                        (dynamic_load or index == 39)
                         and registers[1] == 1
                         and registers[14] == EXPECTED_RESOLVER_LR
                         and bool(registers[16] & THUMB_STATE_BIT)
@@ -332,7 +349,7 @@ def run_probe(
                     observation = by_index[accepted_entry[1]]
                     source = effective_variation_source(registers[0])
                     if registers[1] != 4 or source != observation.source_pointer_raw:
-                        raise RuntimeError("resolver load disagrees with MapEntry 39")
+                        raise RuntimeError("resolver load disagrees with runtime MapEntry")
                     client.command("s")
                     after = _registers(client)
                     if (
@@ -349,7 +366,7 @@ def run_probe(
                     )
                 elif pc == ADAPTER_PC and verified_load is not None:
                     if not adapter_entry_is_valid(registers, verified_load.selected_value):
-                        raise RuntimeError("adapter lost verified MapEntry-39 selected value")
+                        raise RuntimeError("adapter lost verified runtime-selected value")
                     verified_adapter = True
                 elif pc == POPULATION_PC and registers[0] == MANAGER:
                     if verified_load is None or not verified_adapter:
@@ -383,7 +400,9 @@ def run_probe(
                             _breakpoint(client, address)
                             installed.add(address)
                 elif pc == FACTORY_VENEER_PC and registers[14] == EXPECTED_FACTORY_LR:
-                    if registers[0] != tracker.descriptor or registers[1] != tracker.factory.raw:
+                    if registers[1] != tracker.factory.raw:
+                        continue
+                    if tracker.descriptor is not None and registers[0] != tracker.descriptor:
                         continue
                     target = tracker.accept_factory(registers[0], registers[1])
                     _remove_breakpoint(client, FACTORY_VENEER_PC)
@@ -424,13 +443,47 @@ def run_probe(
                         slot=slot,
                     )
                     bounds = signed_halfwords(_read_bytes(client, returned + 4, 8))
+                    point_context = None
+                    if point_context_pointer_address is not None:
+                        context_pointer = _read_u32(client, point_context_pointer_address)
+                        point_context = {
+                            "pointer": f"0x{context_pointer:08X}",
+                            "valid_ewram": 0x02000000 <= context_pointer < 0x02040000,
+                        }
+                        if point_context["valid_ewram"]:
+                            fixed_xy = _read_bytes(client, context_pointer + 0x1A0, 8)
+                            point_context.update(
+                                {
+                                    "x_raw": int.from_bytes(
+                                        fixed_xy[0:4], "little", signed=True
+                                    ),
+                                    "y_raw": int.from_bytes(
+                                        fixed_xy[4:8], "little", signed=True
+                                    ),
+                                    "x_shifted": int.from_bytes(
+                                        fixed_xy[0:4], "little", signed=True
+                                    )
+                                    >> 8,
+                                    "y_shifted": int.from_bytes(
+                                        fixed_xy[4:8], "little", signed=True
+                                    )
+                                    >> 8,
+                                }
+                            )
                     timeline.append(
                         {
                             "event": "live",
                             "load_epoch": identity.load_epoch,
+                            "manager": f"0x{identity.manager:08X}",
+                            "descriptor": f"0x{identity.descriptor:08X}",
+                            "factory_raw": f"0x{identity.factory.raw:08X}",
+                            "factory_fetch": f"0x{identity.factory.fetch_address:08X}",
                             "object": f"0x{returned:08X}",
                             "slot": f"0x{slot:08X}",
+                            "insertion_serial": identity.insertion_serial,
+                            "count": [identity.old_count, identity.new_count],
                             "bounds": list(bounds),
+                            "point_query_context": point_context,
                         }
                     )
                     for address in SUPPORTED_CALLBACK_CALLS:
@@ -438,6 +491,18 @@ def run_probe(
                             _breakpoint(client, address)
                             installed.add(address)
                     for address in QUERY_ENTRY_PCS:
+                        if address not in installed:
+                            _breakpoint(client, address)
+                            installed.add(address)
+                    if fallback_callsite_targets is not None:
+                        for address in fallback_callsite_targets:
+                            if address not in installed:
+                                _breakpoint(client, address)
+                                installed.add(address)
+                    if scheduler_guard_pc is not None and scheduler_guard_pc not in installed:
+                        _breakpoint(client, scheduler_guard_pc)
+                        installed.add(scheduler_guard_pc)
+                    for address in (*fallback_entry_pcs, *fallback_guard_pcs):
                         if address not in installed:
                             _breakpoint(client, address)
                             installed.add(address)
@@ -485,6 +550,75 @@ def run_probe(
                         }
                     )
                     pending_point_action = False
+                elif pc in fallback_entry_pcs and tracker.current is not None:
+                    if not thumb_fetch_is_valid(pc, registers[16], pc):
+                        raise RuntimeError("query-capable caller did not execute in Thumb state")
+                    entry_hits.append(
+                        {
+                            **_event(registers),
+                            "load_epoch": tracker.current.load_epoch,
+                            "object": f"0x{tracker.current.object_pointer:08X}",
+                        }
+                    )
+                elif pc in fallback_guard_pcs and tracker.current is not None:
+                    if fallback_guard_evaluator is None:
+                        raise RuntimeError("pre-caller guard has no evaluator")
+                    if not thumb_fetch_is_valid(pc, registers[16], pc):
+                        raise RuntimeError("pre-caller guard did not execute in Thumb state")
+                    evaluated = fallback_guard_evaluator(client, registers)
+                    guard = {
+                        **evaluated,
+                        **_event(registers),
+                        "load_epoch": tracker.current.load_epoch,
+                        "object": f"0x{tracker.current.object_pointer:08X}",
+                    }
+                    precaller_guards.append(guard)
+                    if bool(guard["rejects"]):
+                        rejecting_guard = guard
+                        break
+                elif (
+                    scheduler_guard_pc is not None
+                    and pc == scheduler_guard_pc
+                    and tracker.current is not None
+                ):
+                    if scheduler_guard_validator is None:
+                        raise RuntimeError("scheduler guard has no validator")
+                    if not thumb_fetch_is_valid(pc, registers[16], scheduler_guard_pc):
+                        raise RuntimeError("scheduler guard did not execute in Thumb state")
+                    scheduler_manager = _read_u32(client, registers[6] + 0x1C)
+                    stored_counter = _read_u32(client, registers[4] + 0x28)
+                    rejects = scheduler_guard_validator(
+                        scheduler_manager, registers[0], stored_counter
+                    )
+                    rejecting_guard = {
+                        "pc": f"0x{pc:08X}",
+                        "branch_pc": "0x08021DF2",
+                        "manager": f"0x{scheduler_manager:08X}",
+                        "object": f"0x{tracker.current.object_pointer:08X}",
+                        "load_epoch": tracker.current.load_epoch,
+                        "counter": registers[0],
+                        "stored_counter": stored_counter,
+                        "rejects": rejects,
+                        "taken_path": "0x08021DF4 -> 0x08021E0A" if rejects else "0x08021DFA",
+                        **_event(registers),
+                    }
+                    if rejects:
+                        break
+                elif (
+                    fallback_callsite_targets is not None
+                    and pc in fallback_callsite_targets
+                    and tracker.current is not None
+                ):
+                    if not thumb_fetch_is_valid(pc, registers[16], pc):
+                        raise RuntimeError("query callsite did not execute in Thumb state")
+                    callsites.append(
+                        {
+                            **_event(registers),
+                            "target": f"0x{fallback_callsite_targets[pc]:08X}",
+                            "load_epoch": tracker.current.load_epoch,
+                            "object": f"0x{tracker.current.object_pointer:08X}",
+                        }
+                    )
                 elif pc in QUERY_ENTRY_PCS:
                     if not thumb_fetch_is_valid(pc, registers[16], pc):
                         raise RuntimeError("query entry did not execute in Thumb state")
@@ -579,6 +713,10 @@ def run_probe(
     return {
         "timeline": timeline,
         "query_entries": query_entries,
+        "callsites": callsites,
+        "entry_hits": entry_hits,
+        "precaller_guards": precaller_guards,
+        "rejecting_guard": rejecting_guard,
         "exact_query": exact_query,
         "callbacks": callbacks,
         "complete": validate_complete_timeline(tracker.events),

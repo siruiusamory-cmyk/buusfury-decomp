@@ -473,3 +473,89 @@ Exit `0` requires one same-load-epoch population, target factory, live insertion
 No AABB query or callback for the exact load-epoch-1 object was captured. Consequently there is no executable chain from this object to movement rejection, script/event activation, map transition, interaction, or another meaningful consequence.
 
 Classification remains **STRONGLY SUPPORTED: 24-byte rectangle-aware runtime object**. Evidence remains **Level 3**, not Level 4. `first_word_raw` remains the correct global field name. A ROM descriptor parser is **not ready**: the smallest blocker is one same-load-epoch target AABB/callback capture plus its immediate downstream behavior. No selected-value, descriptor, callback-table, or runtime-object parser was introduced.
+
+# ROM-009 Clean Gameplay Exact-Object Callback Trace
+
+## Inputs, reviews, and safety
+
+ROM-009 located the newer private runtime inputs beneath ignored `roms/` without
+assuming their names. Canonical identities recorded before use were:
+
+| Artifact | Size | SHA-256 |
+|---|---:|---|
+| Verified ROM | 8,388,608 | `940ad5f01db4465b8877dfe739510cbf34f4ea3d390f3df13519808bc36f059e` |
+| Original `.ss1` | 72,775 | `ea500f3a774d42032202d9c3d7bfb437478417ba37e4b72c634993d7d701ac82` |
+| Original `.sav` | 8,192 | `9bbd7cb67b724fbe1263d9b5b7cedf0a6c935a2ff6448befd0a0348b7607f46a` |
+
+Byte-identical working sources remained under ignored `build/rom009/`. The ROM
+and working sources retained their pre-run hashes, sizes, and mtimes after every
+completed replay; the untouched originals matched their before-ticket identities
+again after runtime work. The canonical profile was reidentified as
+`buus_fury_usa_rev0_01c1707f` before and after runtime work. No ROM, register, or
+memory write packet was sent.
+
+The required pre-runtime static review kept dispatch base `0x0804A09C` separate
+from object `+0x0C`: the former has a verified cleanup entry, while the latter is
+the dynamically produced reference used by spatial callback callsites. The
+required runtime design rejected ROM-008's fixed MapEntry-39 and descriptor
+assumptions. ROM-009 therefore derives the load from the runtime resolver and
+active MapEntry, then captures the first aligned trusted-ROM descriptor whose raw
+factory is exactly `0x08007675`.
+
+## Exact runtime identity and bounded result
+
+Five completed bounded replays reproduced one exact current-load identity:
+
+```text
+active load          MapEntry 39 / address 0808EB68 / selector 1
+variation source     080753F0
+selected value       08294968
+manager              03002A64
+probe load epoch     1
+descriptor           08294948
+factory raw/fetch    08007675 / 08007674 Thumb
+returned object X    0203DE7C
+registry slot        03002A68
+insertion serial     1
+count                0 -> 1
+runtime bounds       (592,136)..(601,241)
+```
+
+The clean route used 120 no-input frames, 120 Down frames, then no input through
+frame 400. A second bounded route used the same single south transition followed
+by 60 Left and 60 Right frames on MapEntry 39. No second population epoch or X2
+was observed.
+
+After X became live, none of the three verified query entries, five verified BL
+callsites, four query-capable caller entries, or three instrumented internal
+guard sites executed. No exact AABB or callback was captured. The runtime slot
+`0x03001C34`, loaded as the point-query context by verified caller `0x08006E3C`,
+contained raw zero at X insertion. This is an observed input/runtime-environment
+blocker, not a proven guard and not a proven cause of absent scheduling.
+
+The conditional an independent reviewer scheduler review was used because the clean replay
+produced no exact callback. It confirmed that zero query-entry hits cannot be
+promoted to an instruction-level rejection. Further state creation, story
+progression, or gameplay expansion would exceed the ticket boundary.
+
+Required classifications:
+
+- Primary runtime result: **D. ENVIRONMENT BLOCKED**.
+- Dialogue hypothesis: **UNRESOLVED**.
+- Evidence remains **Level 3**.
+
+The D result is limited to this supplied state and allowed route: they did not
+instantiate a query-capable scheduler context after X became live. The causal
+relationship between the null context slot and absent scheduling is `UNKNOWN`.
+It is not evidence that X is never queried or that dialogue controls the path.
+
+## Structural parser readiness
+
+Structural parser readiness is **NO**. Family factory identity, rectangle source
+fields, retained descriptor, and callback-producing source field have evidence,
+but the source descriptor's minimal extent/boundary and complete lossless field
+map remain unestablished. No parser was implemented.
+
+Portable validation after ROM-009 is **208 passed, 0 failed, 0 skipped**. Runtime
+checks remain private and ignored; no ROM, save, state, dump, screenshot, or
+extracted proprietary artifact is tracked or staged.

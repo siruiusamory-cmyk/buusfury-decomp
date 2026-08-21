@@ -38,6 +38,9 @@ htmlcov/
 # Local workflow-hook state
 <tool-state>/
 
+# Superseded one-off workflow migration prompt
+/<working-notes>.txt
+
 # IDE / OS
 .vscode/
 .idea/

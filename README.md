@@ -89,9 +89,35 @@ The lookup reports indices, variation-array source addresses, and raw MapEntry m
 
 Committed fixtures use synthetic bytes only. When the user's exact local ROM is present, one runtime integration test validates its complete MapEntry table; otherwise that test skips. No ROM-derived fixture is committed.
 
+## the tool Research Workflow
+
+- Permanent project rules: [`docs/DEVELOPMENT.md`](<local-state-name>)
+- Current verified state: [`docs/PROJECT_<local-state-name>`](docs/PROJECT_<local-state-name>)
+- Current research ticket: [`docs/PROJECT_<local-state-name>`](docs/PROJECT_<local-state-name>)
+- Detailed evidence: [`docs/reverse-engineering.md`](docs/reverse-engineering.md) and [`docs/consumer-analysis.md`](docs/consumer-analysis.md)
+
+Inspect the handoff without launching the tool:
+
+```powershell
+.\scripts\run-current.ps1 -DryRun
+```
+
+Launch the current ticket from any working directory:
+
+```powershell
+<checkout>\scripts\run-current.ps1
+```
+
+From the repository root, use `.\scripts\run-current.ps1`. Completed-ticket
+archival and replacement are documented in
+[`docs/README.md`](docs/README.md).
+
 ## Emulator
 
-Phase 0 found mGBA at `C:\Program Files\mGBA\mGBA.exe`. A later ticket may invoke it explicitly against generated ROM output. Emulator automation is intentionally not implemented yet; never point an automated modification workflow at an original file beneath `roms\`.
+Phase 0 found mGBA at `C:\Program Files\mGBA\mGBA.exe`. Bounded read-only
+runtime research may use the verified local ROM with ignored working copies of
+private saves and states. Never let emulator automation modify the original ROM;
+future write experiments must target generated output only.
 
 ## Current scope
 
@@ -99,4 +125,5 @@ Implemented: streaming hashes, GBA header parsing, exact ROM profiles, conservat
 
 Not implemented: ROM modification, pointer following, semantic MapEntry editing, map editing, Tiled integration, allocation, relocation, compression integration, scripts, graphics, audio, gameplay, or remake content.
 
-The next ticket will be selected after ROM-002 review; it is not implemented here.
+See `docs/PROJECT_<local-state-name>` for the current verified baseline and
+`docs/PROJECT_<local-state-name>` for the next bounded research task.

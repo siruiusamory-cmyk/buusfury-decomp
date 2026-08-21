@@ -391,3 +391,85 @@ Same population call ran a second distinct Thumb factory, raw `0x080072CD` / fet
 Semantic classification for factory `0x08007675`: **STRONGLY SUPPORTED - 24-byte rectangle-aware runtime object**. This is narrower than generic registry object and no stronger than executable evidence permits. Overall evidence remains **Level 3**: runtime confirms resolver, adapter, factory dispatch, returned object, and insertion, but no runtime callback was matched to that object and no meaningful collision/trigger/transition role is confirmed. Keep `first_word_raw`.
 
 No general parser was added for selected values, `+0x40/+0x44`, descriptors, or runtime objects. Next bounded work should track `0x0203DEBC` from insertion to its first overlap-gated callback, including prune/repopulation events, before any source-format parser is designed.
+
+# ROM-008 Exact Object Behavior Trace
+
+ROM-008 keeps the Higher Plane state, in-game save, and ROM as read-only sources. Experiments use byte-identical copies below ignored `build/rom008/`. Canonical identities rechecked before the bounded probe were:
+
+| Artifact | Size | SHA-256 |
+|---|---:|---|
+| Verified ROM | 8,388,608 | `940ad5f01db4465b8877dfe739510cbf34f4ea3d390f3df13519808bc36f059e` |
+| Original `.ss1` | 70,875 | `329b06bc1adc458e637bd1a3afc1692ee40854d327567ea0885379c275baeb28` |
+| Original `.sav` | 8,192 | `e12c350970b21ac0b5df32dba0a76b3a333c2a17a976f12a6cc5844880f08e5a` |
+
+## Factory instance and verified load epoch
+
+The deterministic MapEntry-38-to-39 south transition reproduced the target tuple without assuming a fixed EWRAM address:
+
+```text
+active load       MapEntry 39 / selected value 08294968
+manager           03002A64
+load epoch        1
+descriptor        08294948
+factory raw       08007675
+factory fetch     08007674 Thumb
+returned object   0203DEBC
+registry slot     03002A68
+count             0 -> 1
+runtime bounds    left=592, top=136, right=601, bottom=241
+```
+
+The object became live only after `0x08012682` stored its return pointer. A replay identifier is the tuple `(verified MapEntry/selector/value, manager, probe load epoch, descriptor, raw factory target, returned pointer, insertion serial)`. The EWRAM pointer alone is not durable identity. The probe load epoch begins only after the runtime resolver, adapter, active MapEntry, and static census all agree on MapEntry 39, selector 1, variation source `0x080753F0`, and selected value `0x08294968`; it is not claimed to be an internal game generation counter.
+
+Static lifecycle evidence supports that rule:
+
+- `0x08048488` clears registry count at `0x03002A64` without walking stale slots.
+- `0x0801268A` removes one matching pointer, commits the lower count at `0x080126AC`, compacts later slots, and invokes object cleanup at `0x080126CE`.
+- For dispatch base `0x0804A09C`, the cleanup entry has raw target `0x080510A1`, Thumb fetch `0x080510A0`, and reaches allocator-release path `0x0803D63C`.
+- A committed reset, committed target removal, or a new verified population load epoch invalidates the old runtime pointer. The probe retires on reset only after `0x08048488` stores count zero, and on removal only after `0x080126AC` commits a one-step count decrease. No reset or target-removal event occurred between insertion and the bounded ROM-008 observation window.
+
+## Dispatch-table boundary
+
+Factory `0x08007674` installs data/table base `0x0804A09C` at object `+0`. Its evidence-backed entry in this ticket is cleanup raw `0x080510A1` / Thumb fetch `0x080510A0`, reached from registry removal.
+
+The AABB callback source is separate. Common initializer `0x08009AEC` calls a descriptor-driven function from descriptor `+0x04` and stores the returned callback reference at object `+0x0C`. AABB consumers then derive relative callback targets from that reference at `0x08012784`, `0x0801279C`, and `0x08012832`. No concrete callback target from this reference was captured for the `0x08007675` object, so dispatch base `0x0804A09C` is not mislabeled as its spatial callback table.
+
+## Query correction and bounded runtime result
+
+Independent Thumb-1 `BL` decoding over the verified ROM established the real query entries and callers:
+
+```text
+08006E4E -> 080126D4
+08021DFE -> 080126D4
+08021E06 -> 080126D4
+08012AEC -> 080127AE
+08022142 -> 08012846
+```
+
+`0x080127AC` is the `POP` ending `0x080126D4`, not an entry. `0x08012844` is the terminal branch of the routine beginning at `0x080127AE`, not an entry. Earlier after-guard candidate breakpoints at `0x0801273C`, `0x080127F4`, and `0x08012864` therefore cannot distinguish an uncalled query routine from an entry rejected by a pre-loop guard.
+
+Three bounded replays reproduced the target factory and live insertion. The standard 120-frame south route and one six-second Down-only extension produced no after-guard AABB candidate for object `0x0203DEBC`; they also produced no reset or removal of that object. No unrelated object callback was accepted. The extension was discarded after this negative result and is not tracked.
+
+The next minimum runtime check is entry-level, not more navigation: break at `0x080126D4`, `0x080127AE`, and `0x08012846`, verify LR against the callers above, and record the first rejecting guard. For `0x080126D4`, `0x080126F4/0x080126F8` additionally expose its dynamic precursor and the signed halfword gate at returned value `+0x16`. The tracked `rom008_query_probe` encodes exact current-load-epoch identity checks and rejects wrong-object callbacks. Only direct point-query callsites `0x08012784/0x0801279C`, where `r1` is the current target object, may satisfy callback completion; the other callback families remain observation-only until their `this` provenance is proven. Its GUI replay could not be executed after implementation because the environment rejected further mGBA launches at the approval quota; this is an external runtime blocker, not evidence that the queries are unreachable.
+
+Entry-level replay command, once GUI launch approval is available:
+
+```powershell
+.\.venv\Scripts\python.exe -m tools.runtime.rom008_query_probe `
+  "roms\Dragon Ball Z - Buu's Fury (U).gba" `
+  "build\rom008\higher-plane-original.ss1" `
+  "build\rom008\higher-plane-original.sav" `
+  --state-sha256 329b06bc1adc458e637bd1a3afc1692ee40854d327567ea0885379c275baeb28 `
+  --save-sha256 e12c350970b21ac0b5df32dba0a76b3a333c2a17a976f12a6cc5844880f08e5a `
+  --lua tools\runtime\rom007_move_south.lua `
+  --injector tools\runtime\inject_mgba_lua.ps1 `
+  --timeout 25
+```
+
+Exit `0` requires one same-load-epoch population, target factory, live insertion, exact target AABB, and exact target callback chain. An incomplete bounded route exits `2`; MapEntry/selector/value, descriptor, factory, manager, slot, epoch, pointer, callback order, Thumb state, and original-artifact identity mismatches raise rather than being accepted.
+
+## Attribution and semantic conclusion
+
+No AABB query or callback for the exact load-epoch-1 object was captured. Consequently there is no executable chain from this object to movement rejection, script/event activation, map transition, interaction, or another meaningful consequence.
+
+Classification remains **STRONGLY SUPPORTED: 24-byte rectangle-aware runtime object**. Evidence remains **Level 3**, not Level 4. `first_word_raw` remains the correct global field name. A ROM descriptor parser is **not ready**: the smallest blocker is one same-load-epoch target AABB/callback capture plus its immediate downstream behavior. No selected-value, descriptor, callback-table, or runtime-object parser was introduced.

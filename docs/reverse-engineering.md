@@ -217,6 +217,14 @@ Static instructions show factory `0x08007674` allocates `0x18` bytes and initial
 
 Same count-2 population pass used a second distinct factory (`0x080072CD`, Thumb fetch `0x080072CC`) and inserted a second object at `0x03002A6C`; construction paths are therefore heterogeneous for this active load. Evidence remains Level 3, `first_word_raw` remains unchanged, and no target/descriptor/object parser was added. Full commands, registers, factory initialization, callback blocker, and safety rules are in [consumer-analysis.md](consumer-analysis.md#rom-007-higher-plane-factory-capture).
 
+## ROM-008 exact-object trace
+
+Three bounded Higher Plane replays rediscovered descriptor `0x08294948`, raw factory `0x08007675`, current return `0x0203DEBC`, slot `0x03002A68`, and executable-initialized bounds `(592,136)..(601,241)`. Identity tracking uses a verified probe load epoch, not an assumed internal generation counter. Committed reset at `0x08048488`, committed removal through `0x080126AC`, or a new verified load epoch invalidates the pointer.
+
+No after-guard AABB candidate or callback was captured for that exact object. Static correction established actual query entries `0x080126D4`, `0x080127AE`, and `0x08012846`; addresses `0x080127AC` and `0x08012844` are endpoints, not entries. Direct verified callers are `0x08006E4E`, `0x08021DFE`, `0x08021E06`, `0x08012AEC`, and `0x08022142`. The entry-level replay needed to identify the rejecting guard was blocked when the environment rejected further mGBA launches at its approval quota.
+
+Semantic classification therefore stays **STRONGLY SUPPORTED: 24-byte rectangle-aware runtime object**, at Level 3. Parser readiness is **NO**; one exact current-load-epoch AABB/callback and downstream consequence remains required. The runtime helper adds fail-closed identity/timeline validation only and introduces no ROM structure parser. Full evidence and safety details are in [consumer-analysis.md](consumer-analysis.md#rom-008-exact-object-behavior-trace).
+
 ## GBARecomp boundary
 
 Generated C/C++ is behavioral evidence only. The pinned framework explicitly directs fixes into analyzer/emitter code followed by regeneration (`mstan/gbarecomp@6571cb39858af70d691914132f81b01a4558d815`, `README.md:248-250`). Useful future surfaces include TCP debug queries, snapshots, IO traces, reverse-debug rings, symbol mapping, and strict-static coverage. None is canonical editable game source for this project.

@@ -7,15 +7,15 @@ This file records current verified facts. Permanent rules live in
 
 ## Current Baseline
 
-- ROM-008 baseline: `59180741c376d01ec52ffe0473d26f8ef77433fa`
-  (`feat: trace spatial-object runtime behavior`).
-- Latest completed research ticket: ROM-009, uncommitted and awaiting review.
-- ROM-008 research is committed in the baseline above.
+- ROM-009 baseline: `5b39389e5b9a663e2465ee454f27da9a55c787fd`
+  (`feat: prepare clean-state spatial callback tracing`).
+- Latest completed research ticket: ROM-009.
+- ROM-009 research is committed in the baseline above.
 - ROM-008 portable baseline: **192 passed, 0 failed, 0 skipped**.
 - Current portable suite after workflow migration: **199 passed, 0 failed, 0 skipped**.
 - Current portable suite after ROM-009: **208 passed, 0 failed, 0 skipped**.
 - Persistent the tool workflow migration is installed.
-- `docs/PROJECT_<local-state-name>` remains completed ROM-009 pending human review and archival.
+- `docs/PROJECT_<local-state-name>` is ROM-010; archived ROM-009 is committed.
 
 ## Verified ROM
 

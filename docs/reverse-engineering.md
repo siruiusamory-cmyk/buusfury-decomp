@@ -245,6 +245,23 @@ and a complete lossless field map are not established. Full private-runtime and
 safety evidence is in
 [consumer-analysis.md](consumer-analysis.md#rom-009-clean-gameplay-exact-object-callback-trace).
 
+## ROM-010 harness and replay result
+
+ROM-010 reproduced the clean replay with machine-detected success through input
+verification, one mGBA launch, allowlisted Lua completion, GDB attachment,
+breakpoint installation, runtime load, and exact X insertion. The exact runtime
+identity matched ROM-009. No known caller entry, query entry, callsite, guard,
+AABB, or callback executed after X became live. The earlier state produced the
+same post-live boundary in a separate bounded replay.
+
+ROM-010 has **NO VALID A/B/C/D RESULT**: infrastructure succeeds, A/B do not
+occur, no rejecting guard supports C, and the ticket forbids D when execution
+succeeds. Available inputs do not schedule a known query-capable caller after X
+is live. Dialogue remains **UNRESOLVED**, evidence stays Level 3, and parser
+readiness remains **NO** because source-descriptor extent/boundary is not
+independently established. Full pipeline, runtime, and safety evidence is in
+[consumer-analysis.md](consumer-analysis.md#rom-010-runtime-harness-reliability-and-clean-state-replay).
+
 ## GBARecomp boundary
 
 Generated C/C++ is behavioral evidence only. The pinned framework explicitly directs fixes into analyzer/emitter code followed by regeneration (`mstan/gbarecomp@6571cb39858af70d691914132f81b01a4558d815`, `README.md:248-250`). Useful future surfaces include TCP debug queries, snapshots, IO traces, reverse-debug rings, symbol mapping, and strict-static coverage. None is canonical editable game source for this project.

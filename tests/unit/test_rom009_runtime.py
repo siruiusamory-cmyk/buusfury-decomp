@@ -3,8 +3,11 @@ import pytest
 from tools.runtime.rom008_object_trace import LoadIdentity, MANAGER, TARGET_FACTORY_RAW
 from tools.runtime.rom009_object_trace import (
     POINT_QUERY_CALLSITE_TARGETS,
+    SCHEDULER_FLAG_GATES,
+    SCHEDULER_PREDECESSOR_CALLSITE_TARGETS,
     DynamicExactObjectTracker,
     classify_precaller_guard,
+    classify_scheduler_flag_gate,
     point_scheduler_guard_rejects,
 )
 
@@ -88,3 +91,34 @@ def test_precaller_guard_classification_is_pc_specific_and_fail_closed():
         classify_precaller_guard(0x08012A36, MANAGER + 4, 0)
     with pytest.raises(ValueError, match="unknown"):
         classify_precaller_guard(0x08000000, MANAGER, 0)
+
+
+def test_scheduler_predecessor_callsites_and_flag_gates_are_exact():
+    assert SCHEDULER_PREDECESSOR_CALLSITE_TARGETS == {
+        0x08012DCA: 0x08012A24,
+        0x08012F84: 0x08012A24,
+        0x08013196: 0x08012A24,
+        0x08013306: 0x08012A24,
+        0x0801A2DC: 0x080220D8,
+    }
+    assert SCHEDULER_FLAG_GATES == {
+        0x08012DC2: (0x08012DCA, 0x08012DD0),
+        0x08012F7C: (0x08012F84, 0x08012F8C),
+        0x0801318E: (0x08013196, 0x0801319C),
+        0x080132FE: (0x08013306, 0x0801330C),
+    }
+
+
+def test_scheduler_flag_gate_classifies_bit_zero_and_fails_closed():
+    rejected = classify_scheduler_flag_gate(0x08012DC2, 0x0000)
+    assert rejected["rejects"]
+    assert not rejected["target_attributed"]
+    assert rejected["taken_path"] == "0x08012DD0"
+    accepted = classify_scheduler_flag_gate(0x08012DC2, 0x0001)
+    assert not accepted["rejects"]
+    assert not accepted["target_attributed"]
+    assert accepted["taken_path"] == "0x08012DCA"
+    with pytest.raises(ValueError, match="unknown scheduler"):
+        classify_scheduler_flag_gate(0x08000000, 0)
+    with pytest.raises(ValueError, match="fit u16"):
+        classify_scheduler_flag_gate(0x08012DC2, 0x10000)

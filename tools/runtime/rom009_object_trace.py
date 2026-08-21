@@ -19,9 +19,22 @@ POINT_QUERY_CALLSITE_TARGETS = {
     0x08012AEC: 0x080127AE,
     0x08022142: 0x08012846,
 }
+SCHEDULER_PREDECESSOR_CALLSITE_TARGETS = {
+    0x08012DCA: 0x08012A24,
+    0x08012F84: 0x08012A24,
+    0x08013196: 0x08012A24,
+    0x08013306: 0x08012A24,
+    0x0801A2DC: 0x080220D8,
+}
 POINT_SCHEDULER_GUARD_PC = 0x08021DF0
 QUERY_CAPABLE_CALLER_ENTRIES = (0x08006E3C, 0x08012A24, 0x08021CC0, 0x080220D8)
 PRECALLER_GUARD_PCS = (0x08012A36, 0x08021CC8)
+SCHEDULER_FLAG_GATES = {
+    0x08012DC2: (0x08012DCA, 0x08012DD0),
+    0x08012F7C: (0x08012F84, 0x08012F8C),
+    0x0801318E: (0x08013196, 0x0801319C),
+    0x080132FE: (0x08013306, 0x0801330C),
+}
 
 
 def point_scheduler_guard_rejects(
@@ -47,6 +60,7 @@ def classify_precaller_guard(pc: int, manager: int, operand: int) -> dict[str, o
             "operand": operand,
             "condition": "r0 == 0",
             "rejects": rejects,
+            "target_attributed": True,
             "taken_path": "0x08012B20" if rejects else "0x08012A3C",
         }
     if pc == 0x08021CC8:
@@ -57,9 +71,30 @@ def classify_precaller_guard(pc: int, manager: int, operand: int) -> dict[str, o
             "operand": operand,
             "condition": "r0 != 0",
             "rejects": rejects,
+            "target_attributed": True,
             "taken_path": "0x08021CCC" if rejects else "0x08021CD0",
         }
     raise ValueError("unknown pre-caller guard PC")
+
+
+def classify_scheduler_flag_gate(pc: int, halfword: int) -> dict[str, object]:
+    if pc not in SCHEDULER_FLAG_GATES:
+        raise ValueError("unknown scheduler flag gate PC")
+    if isinstance(halfword, bool) or not isinstance(halfword, int):
+        raise ValueError("scheduler flag operand must be an integer")
+    if not 0 <= halfword <= 0xFFFF:
+        raise ValueError("scheduler flag operand must fit u16")
+    callsite, skip_target = SCHEDULER_FLAG_GATES[pc]
+    rejects = not bool(halfword & 1)
+    return {
+        "guard": f"0x{pc:08X}",
+        "operand_halfword": halfword,
+        "condition": "u16[r0 + 4] bit 0 == 0",
+        "rejects": rejects,
+        "target_attributed": False,
+        "taken_path": f"0x{skip_target:08X}" if rejects else f"0x{callsite:08X}",
+        "paired_callsite": f"0x{callsite:08X}",
+    }
 
 
 class DynamicExactObjectTracker(ExactObjectTracker):

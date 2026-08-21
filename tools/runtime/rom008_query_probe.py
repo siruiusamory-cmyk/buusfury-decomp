@@ -204,6 +204,15 @@ def run_probe(
         raise RuntimeError("save-state identity mismatch")
     if before[save_path][1].lower() != save_sha256.lower():
         raise RuntimeError("save identity mismatch")
+    orchestration = {
+        "inputs_verified": True,
+        "emulator_launched": False,
+        "lua_ready": False,
+        "debugger_attached": False,
+        "breakpoints_installed": False,
+        "runtime_load_verified": False,
+        "target_live": False,
+    }
 
     census = census_variation_array_first_words(
         rom_path, RomProfileCatalog.load(profile_path)
@@ -253,6 +262,7 @@ def run_probe(
             str(rom_path),
         ]
     )
+    orchestration["emulator_launched"] = True
     started = time.monotonic()
     tracker = tracker_factory()
     timeline: list[dict[str, object]] = []
@@ -290,15 +300,22 @@ def run_probe(
                 str(process.pid),
                 "-LuaPath",
                 str(lua_path),
+                "-ReadyPath",
+                str(run_root / "lua-ready.txt"),
             ],
             check=True,
             timeout=30,
+            capture_output=True,
+            text=True,
         )
+        orchestration["lua_ready"] = True
         with _connect(started + 15) as sock:
             client = Rom008RspClient(sock)
             client.command("?")
+            orchestration["debugger_attached"] = True
             for address in installed:
                 _breakpoint(client, address)
+            orchestration["breakpoints_installed"] = True
             deadline = time.monotonic() + timeout_seconds
             for _ in range(96):
                 remaining = deadline - time.monotonic()
@@ -364,6 +381,7 @@ def run_probe(
                         variation_source=source,
                         selected_value=after[0],
                     )
+                    orchestration["runtime_load_verified"] = True
                 elif pc == ADAPTER_PC and verified_load is not None:
                     if not adapter_entry_is_valid(registers, verified_load.selected_value):
                         raise RuntimeError("adapter lost verified runtime-selected value")
@@ -442,6 +460,7 @@ def run_probe(
                         new_count=new_count,
                         slot=slot,
                     )
+                    orchestration["target_live"] = True
                     bounds = signed_halfwords(_read_bytes(client, returned + 4, 8))
                     point_context = None
                     if point_context_pointer_address is not None:
@@ -573,7 +592,7 @@ def run_probe(
                         "object": f"0x{tracker.current.object_pointer:08X}",
                     }
                     precaller_guards.append(guard)
-                    if bool(guard["rejects"]):
+                    if bool(guard["rejects"]) and guard.get("target_attributed") is True:
                         rejecting_guard = guard
                         break
                 elif (
@@ -599,6 +618,7 @@ def run_probe(
                         "counter": registers[0],
                         "stored_counter": stored_counter,
                         "rejects": rejects,
+                        "target_attributed": True,
                         "taken_path": "0x08021DF4 -> 0x08021E0A" if rejects else "0x08021DFA",
                         **_event(registers),
                     }
@@ -711,6 +731,17 @@ def run_probe(
     if probe_error is not None:
         raise probe_error
     return {
+        "probe_configuration": {
+            "run_label": run_label,
+            "lua_path": str(lua_path),
+            "lua_sha256": sha256(lua_path),
+            "injector_path": str(injector_path),
+            "injector_sha256": sha256(injector_path),
+            "profile_path": str(profile_path),
+            "profile_sha256": sha256(profile_path),
+            "installed_breakpoints": [f"0x{address:08X}" for address in sorted(installed)],
+        },
+        "orchestration": orchestration,
         "timeline": timeline,
         "query_entries": query_entries,
         "callsites": callsites,

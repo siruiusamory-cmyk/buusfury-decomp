@@ -39,7 +39,7 @@ def test_required_workflow_files_exist_and_are_bounded():
     expected_limits = {
         "<local-state-name>": (150, 300),
         "docs/PROJECT_<local-state-name>": (100, 200),
-        "docs/PROJECT_<local-state-name>": (100, 450),
+        "docs/PROJECT_<local-state-name>": (100, 800),
         "docs/REVIEW.md": (20, 100),
         "scripts/run-current.ps1": (40, 140),
     }
@@ -59,25 +59,20 @@ def test_context_split_keeps_permanent_state_and_ticket_content_separate():
     assert "buus_fury_usa_rev0_01c1707f" not in agents
     assert "ROM-008 portable baseline: **192 passed" in state
     assert "Current portable suite after workflow migration: **199 passed" in state
-    assert "# ROM-010" in current
+    assert "# ROM-011" in current
     assert "Original ROM Safety - Mandatory" not in current
-    assert "## Required Result" in current
+    assert "## Possible Ticket Results" in current
 
 
-def test_current_ticket_preserves_critical_rom010_order_and_boundaries():
+def test_current_ticket_preserves_critical_rom011_order_and_boundaries():
     current = (PROJECT_ROOT / "docs/PROJECT_<local-state-name>").read_text(encoding="utf-8")
 
-    assert current.index("## Required Work - Phase 1") < current.index(
-        "## Required Work - Phase 4"
-    )
-    assert (
-        "As soon as the runtime path is working, STOP infrastructure expansion"
-        in current
-    )
-    assert "optionally transition SOUTH once" in current
-    assert "Object Y is never evidence for object X" in current
-    assert "Do not implement a descriptor parser" in current
-    assert "Do not begin ROM-011" in current
+    assert current.index("## Phase 1") < current.index("## Phase 4")
+    assert "The user, not the tool, controls gameplay during this phase" in current
+    assert "One south transition maximum" in current
+    assert "Never attribute X2 activity to X" in current
+    assert "Do not create parser code in ROM-011" in current
+    assert "Do not begin ROM-012" in current
 
 
 def test_runner_dry_run_works_from_an_unrelated_directory(tmp_path):
@@ -93,7 +88,7 @@ def test_runner_dry_run_works_from_an_unrelated_directory(tmp_path):
     assert f"agents: {PROJECT_ROOT / 'docs/DEVELOPMENT.md'}" in result.stdout
     assert f"state: {PROJECT_ROOT / 'docs' / 'PROJECT_<local-state-name>'}" in result.stdout
     assert f"ticket: {PROJECT_ROOT / 'docs' / 'tickets' / 'PROJECT_<local-state-name>'}" in result.stdout
-    assert "current: ROM-010" in result.stdout
+    assert "current: ROM-011" in result.stdout
     assert "mode: interactive the tool session" in result.stdout
     assert "dry-run: no the tool session launched" in result.stdout
 

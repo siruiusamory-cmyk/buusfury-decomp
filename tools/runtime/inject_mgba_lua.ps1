@@ -2,7 +2,8 @@ param(
     [Parameter(Mandatory = $true)]
     [int]$TargetProcessId,
     [Parameter(Mandatory = $true)]
-    [string]$LuaPath
+    [string]$LuaPath,
+    [string]$ReadyPath
 )
 
 $ErrorActionPreference = 'Stop'
@@ -21,6 +22,25 @@ $allowedLua = @(
 $resolvedLua = [System.IO.Path]::GetFullPath($LuaPath)
 if ($resolvedLua -notin $allowedLua) {
     throw 'LuaPath is not an allowlisted tracked movement script'
+}
+$resolvedReady = $null
+if ($ReadyPath) {
+    $resolvedReady = [System.IO.Path]::GetFullPath($ReadyPath)
+    $allowedReadyRoot = [System.IO.Path]::GetFullPath(
+        (Join-Path $workspaceRoot 'build')
+    ).TrimEnd('\') + '\'
+    if (-not $resolvedReady.StartsWith(
+        $allowedReadyRoot,
+        [System.StringComparison]::OrdinalIgnoreCase
+    )) {
+        throw 'ReadyPath must remain beneath ignored build directory'
+    }
+    if ($resolvedReady.Contains(']]')) {
+        throw 'ReadyPath contains unsupported Lua long-string terminator'
+    }
+    if (Test-Path -LiteralPath $resolvedReady) {
+        throw 'ReadyPath already exists'
+    }
 }
 
 Add-Type -AssemblyName UIAutomationClient
@@ -103,6 +123,11 @@ foreach ($edit in $edits) {
 }
 if (-not $prompt) { throw 'Scripting prompt not found' }
 $command = 'dofile([[' + ($resolvedLua -replace '\\', '/') + ']])'
+if ($resolvedReady) {
+    $luaReady = $resolvedReady -replace '\\', '/'
+    $command += '; local f=assert(io.open([[' + $luaReady + ']], [[w]])); ' +
+        'f:write([[ready]]); f:close()'
+}
 $prompt.GetCurrentPattern([System.Windows.Automation.ValuePattern]::Pattern).SetValue($command)
 
 $run = $scripting.FindFirst(
@@ -114,3 +139,18 @@ $run = $scripting.FindFirst(
 )
 if (-not $run) { throw 'Run button not found' }
 $run.GetCurrentPattern([System.Windows.Automation.InvokePattern]::Pattern).Invoke()
+
+if ($resolvedReady) {
+    $readyConfirmed = $false
+    for ($attempt = 0; $attempt -lt 100 -and -not $readyConfirmed; $attempt++) {
+        if ((Test-Path -LiteralPath $resolvedReady) -and
+            [System.IO.File]::ReadAllText($resolvedReady) -eq 'ready') {
+            $readyConfirmed = $true
+            break
+        }
+        Start-Sleep -Milliseconds 100
+    }
+    if (-not $readyConfirmed) {
+        throw 'Lua script did not report ready'
+    }
+}

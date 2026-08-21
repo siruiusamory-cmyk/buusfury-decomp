@@ -9,13 +9,13 @@ This file records current verified facts. Permanent rules live in
 
 - ROM-009 baseline: `5b39389e5b9a663e2465ee454f27da9a55c787fd`
   (`feat: prepare clean-state spatial callback tracing`).
-- Latest completed research ticket: ROM-009.
-- ROM-009 research is committed in the baseline above.
-- ROM-008 portable baseline: **192 passed, 0 failed, 0 skipped**.
-- Current portable suite after workflow migration: **199 passed, 0 failed, 0 skipped**.
-- Current portable suite after ROM-009: **208 passed, 0 failed, 0 skipped**.
+- Latest completed research ticket: ROM-010.
+- ROM-010 research is included in the transition commit; its baseline SHA is
+  recorded by the follow-up state update.
+- ROM-008 portable baseline: **192 passed, 0 failed, 0 skipped**. Current portable suite after workflow migration: **199 passed, 0 failed, 0 skipped**.
+- Current portable suite after ROM-009: **208 passed, 0 failed, 0 skipped**; during ROM-010: **219 passed, 0 failed, 0 skipped**.
 - Persistent the tool workflow migration is installed.
-- `docs/PROJECT_<local-state-name>` is ROM-010; archived ROM-009 is committed.
+- `docs/PROJECT_<local-state-name>` is ROM-011; ROM-010 is archived in the transition commit.
 
 ## Verified ROM
 
@@ -148,23 +148,24 @@ Parser readiness for the `0x08007675` descriptor family: **NO** as of ROM-008.
 
 ## ROM-009 Result
 
-Private input hashes: state 72,775 bytes /
-`ea500f3a774d42032202d9c3d7bfb437478417ba37e4b72c634993d7d701ac82`;
-save 8,192 bytes / `9bbd7cb67b724fbe1263d9b5b7cedf0a6c935a2ff6448befd0a0348b7607f46a`.
-Runtime reproduced MapEntry 39, descriptor `0x08294948`, raw factory
-`0x08007675`, X `0x0203DE7C`, slot `0x03002A68`, and bounds
-`(592,136)..(601,241)`. No verified query, caller, guard, exact AABB, or callback
-ran after X became live; context slot `0x03001C34` was raw zero at insertion.
-Result: **D. ENVIRONMENT BLOCKED**; dialogue **UNRESOLVED**; cause `UNKNOWN`;
-evidence Level 3. Parser readiness remains **NO** because source-descriptor
-extent/boundary and a complete lossless field map remain unestablished.
+Private inputs: state 72,775 bytes / `ea500f3a774d42032202d9c3d7bfb437478417ba37e4b72c634993d7d701ac82`; save 8,192 bytes / `9bbd7cb67b724fbe1263d9b5b7cedf0a6c935a2ff6448befd0a0348b7607f46a`.
+Runtime reproduced MapEntry 39, descriptor `0x08294948`, factory `0x08007675`, X `0x0203DE7C`, slot `0x03002A68`, bounds `(592,136)..(601,241)`, and raw-zero context slot `0x03001C34`.
+No verified caller, query, guard, AABB, or callback ran after X became live.
+Result: **D. ENVIRONMENT BLOCKED**; dialogue **UNRESOLVED**; cause `UNKNOWN`; evidence Level 3. Parser readiness **NO** because descriptor extent/boundary and a complete lossless field map remain unestablished.
+
+## ROM-010 Verified Blocker
+
+The one-launch mGBA/GDB/Lua path is functional. ROM-010 added a bounded ignored Lua-ready marker and stable fail-closed orchestration/result classification.
+Clean, post-transition, and earlier-state private replays verified trusted runtime loads and exact live targets; none reached a known caller, query, guard, AABB, or callback.
+ROM-010 has **NO VALID A/B/C/D RESULT**: A/B did not occur, no executed rejecting guard supports C, and D is disallowed because runtime infrastructure succeeds. A different read-only state must execute one verified caller entry post-live, or the ticket must permit an inconclusive functional-runtime result.
+Dialogue hypothesis remains **UNRESOLVED**. Evidence stays Level 3. Parser readiness **NO**; smallest blocker is the lack of an independently established source-descriptor extent/boundary.
 
 ## Unresolved Questions
 
 - Which different verified dialogue-free state or scoped route instantiates a
-  non-null point-query scheduler context for the exact object?
-- What scheduler decision prevents the verified query-capable callers in the
-  ROM-009 input? No instruction-level rejecting guard was reached.
+  known query-capable caller for the exact object?
+- What scheduler decision prevents the verified query-capable callers in both
+  available inputs? No instruction-level rejecting guard was reached.
 - What immediate behavior follows the exact callback, if captured?
 - Is the `0x08007675` source descriptor structurally bounded well enough for a
   future minimal read-only parser?

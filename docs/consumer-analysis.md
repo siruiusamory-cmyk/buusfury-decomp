@@ -559,3 +559,97 @@ map remain unestablished. No parser was implemented.
 Portable validation after ROM-009 is **208 passed, 0 failed, 0 skipped**. Runtime
 checks remain private and ignored; no ROM, save, state, dump, screenshot, or
 extracted proprietary artifact is tracked or staged.
+
+# ROM-010 Runtime Harness Reliability and Clean-State Replay
+
+## Audited pipeline and exact launch boundary
+
+The existing ROM-008/009 runner already performs one bounded process lifetime:
+
+| Stage | Existing mechanism | GUI required | Reuse | Machine detection |
+|---|---|---|---|---|
+| Working inputs | Verify original ROM/state/save, create ignored copies | No | Per replay | Exact hashes, sizes, mtimes |
+| Emulator | `mGBA.exe --gdb --savestate ...` | Window created | No; port 2345 must be free | Child PID and GDB port |
+| Lua | PID-scoped `inject_mgba_lua.ps1` opens Tools/Scripting and runs allowlisted `dofile` | Yes | Same child | ROM title plus new ignored ready marker |
+| Debugger | Connect to `127.0.0.1:2345` | No | Same child | Bounded handshake timeout |
+| Breakpoints | GDB RSP `Z0` packets from a strict allowlist | No | Same connection | Every install must return `OK` |
+| Runtime identity | Resolver, population, factory, insertion, epoch | No | Same connection | Exact static/runtime agreement |
+| Input/events | Allowlisted Lua frame callback plus bounded continues | No | Same child | Ready marker and captured event timeline |
+
+Local mGBA 0.10.5 exposes GDB and savestate startup switches but no Lua startup
+switch. GUI scripting is therefore the one required GUI stage. A fresh ROM-010
+replay completed it on the first launch; no manual launch boundary or reusable
+process was needed. The previous broad launch-blocker premise was not reproduced.
+
+The concrete reliability gap was narrower: the injector returned immediately
+after clicking Run without proving that `dofile` completed. ROM-010 adds an
+ignored `build/.../lua-ready.txt` marker written only after the allowlisted Lua
+script returns, waits at most ten seconds, and rejects missing or wrong marker
+content. The runner now records input, emulator, Lua, debugger, breakpoint,
+runtime-load, and target-live milestones. Its stable outcome taxonomy separates
+infrastructure failure from bounded research failure and distinguishes missing
+mGBA, occupied port, debugger timeouts, wrong process/title, wrong ROM/input,
+Lua failure, breakpoint rejection, stale/wrong target, and A/B/C research exits.
+
+## Private runtime result
+
+The hardened clean-state replay reproduced:
+
+```text
+active load          MapEntry 39 / address 0808EB68 / selector 1
+variation source     080753F0
+selected value       08294968
+manager              03002A64
+probe load epoch     1
+descriptor           08294948
+factory raw/fetch    08007675 / 08007674 Thumb
+returned object X    0203DE7C
+registry slot        03002A68
+insertion serial     1
+count                0 -> 1
+runtime bounds       (592,136)..(601,241)
+point context slot   03001C34 = 00000000
+```
+
+All infrastructure milestones succeeded. After X became live, no known
+query-capable caller entry, callsite, query entry, instrumented guard, exact
+AABB, or callback executed. A bounded replay of the earlier state also reached
+its exact X (`0x0203DEBC`) with all infrastructure milestones successful and
+again produced zero caller, query, guard, AABB, or callback hits.
+
+One-level static archaeology established four immediate flag gates before
+direct calls to `0x08012A24` and one direct predecessor call to `0x080220D8`.
+The clean and allowed post-transition routes were replayed with these additional
+breakpoints. None executed after X became live. Ignored review evidence is
+retained at `build/rom010/clean-final-result.json`,
+`build/rom010/post-transition-final-result.json`, and
+`build/rom010/earlier-final-result.json`.
+
+Static candidate guards remain unpromoted: `0x08012A36/0x08012A3A` can reject
+zero, `0x08021CC8/0x08021CCA` can reject nonzero, and
+`0x08021DF0/0x08021DF2` can reject nonzero. None executed after X became live.
+The zero context slot is an observation, not a proven cause.
+
+Result status:
+
+- **NO VALID A/B/C/D RESULT**. A and B did not occur. No executed rejecting
+  guard supports C. D is disallowed because launch, Lua, debugger, breakpoint,
+  state-load, and exact-target stages all succeeded. ROM-010 cannot satisfy its
+  required result taxonomy with the available bounded inputs.
+- Precise blocker: both available inputs and both allowed clean routes fail to
+  schedule a known query-capable caller after exact X becomes live. The smallest
+  external change is one additional read-only state from a different normal-play
+  context; it qualifies only when the probe observes one of `0x08006E3C`,
+  `0x08012A24`, `0x08021CC0`, or `0x080220D8` after X is live. Alternatively,
+  the ticket must explicitly permit an inconclusive functional-runtime result.
+- Dialogue hypothesis: **UNRESOLVED**. Neither input reaches the compared
+  scheduler path, so the equal negative traces do not establish dialogue
+  causality or its absence.
+- Evidence remains **Level 3**. No meaningful runtime subsystem behavior was
+  established.
+- Parser readiness remains **NO**. The single smallest blocker is the lack of an
+  independently established source-descriptor extent/boundary sufficient for
+  lossless parsing.
+
+Portable validation during ROM-010 is **219 passed, 0 failed, 0 skipped**.
+Private source ROM/state/save hashes, sizes, and mtimes remained unchanged.

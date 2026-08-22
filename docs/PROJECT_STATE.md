@@ -10,11 +10,10 @@ This file records current verified facts. Permanent rules live in
 - ROM-011 research baseline: `0d0c0e39c058b7cfba9abcdc30d95849c6310e10` (`feat: capture live spatial-object read`).
 - TOOL-001 starting repository baseline: `931794cb5f03caa58431281c3f703a60b3ff5dba` (`feat: capture spatial transition action`).
 - Latest completed and committed research ticket: ROM-012.
-- Latest completed tooling ticket: TOOL-001.
+- Latest completed tooling ticket: TOOL-001. TOOL-002 is **BLOCKED - independent related binary unavailable**; BSim remains **UNCALIBRATED** and no adoption decision was made.
 - ROM-008 portable baseline: **192 passed, 0 failed, 0 skipped**. Current portable suite after workflow migration: **199 passed, 0 failed, 0 skipped**. Current portable suite after ROM-011: **250 passed, 0 failed, 0 skipped**. Current TOOL-001 portable suite: **293 passed, 0 failed, 0 skipped**.
 - Persistent the tool workflow migration is installed.
-- ROM-011, ROM-012, and TOOL-001 are archived under `docs/research/archive/`.
-  `docs/PROJECT_<local-state-name>` is a stop-only placeholder; TOOL-002 and ROM-013 are unstarted.
+- ROM-011, ROM-012, TOOL-001, and blocked TOOL-002 are archived under `docs/research/archive/`. `docs/PROJECT_<local-state-name>` contains VERTICAL-001; ROM-013 remains unstarted.
 
 ## Verified ROM
 

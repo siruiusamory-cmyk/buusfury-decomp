@@ -7,14 +7,11 @@ This file records current verified facts. Permanent rules live in
 
 ## Current Baseline
 
-- ROM-010 baseline: `02e6f6c21f8a28d1c29bc480bd3f8f919a5d6146`
-  (`feat: harden clean-state spatial object probing`).
-- Latest completed research ticket: ROM-010.
-- ROM-010 research is committed in the baseline above.
-- ROM-008 portable baseline: **192 passed, 0 failed, 0 skipped**. Current portable suite after workflow migration: **199 passed, 0 failed, 0 skipped**.
-- Current portable suite after ROM-009: **208 passed, 0 failed, 0 skipped**; during ROM-010: **219 passed, 0 failed, 0 skipped**.
+- ROM-010 research baseline: `02e6f6c21f8a28d1c29bc480bd3f8f919a5d6146` (`feat: harden clean-state spatial object probing`).
+- Latest completed and committed research ticket: ROM-011.
+- ROM-008 portable baseline: **192 passed, 0 failed, 0 skipped**. Current portable suite after workflow migration: **199 passed, 0 failed, 0 skipped**. Current portable suite after ROM-011: **250 passed, 0 failed, 0 skipped**.
 - Persistent the tool workflow migration is installed.
-- `docs/PROJECT_<local-state-name>` is ROM-011; archived ROM-010 is committed.
+- ROM-011 is archived at `docs/research/archive/ROM-011.md`; `docs/PROJECT_<local-state-name>` records that no next ticket is active and ROM-012 remains unstarted.
 
 ## Verified ROM
 
@@ -159,12 +156,17 @@ Clean, post-transition, and earlier-state private replays verified trusted runti
 ROM-010 has **NO VALID A/B/C/D RESULT**: A/B did not occur, no executed rejecting guard supports C, and D is disallowed because runtime infrastructure succeeds. A different read-only state must execute one verified caller entry post-live, or the ticket must permit an inconclusive functional-runtime result.
 Dialogue hypothesis remains **UNRESOLVED**. Evidence stays Level 3. Parser readiness **NO**; smallest blocker is the lack of an independently established source-descriptor extent/boundary.
 
+## ROM-011 Result
+
+Stock GDB read watchpoints reduced play below 1 FPS. A separate SDL build from exact mGBA commit `26b7884bc25a5933960f3cdcd98bac1ae14d42e2` now provides a dedicated one-shot CPU EWRAM read-range probe with command-driven control and no UI automation; stock mGBA and the ROM are unchanged.
+The five-second check observed stock 59.890, disarmed 59.129, and armed 59.727 VCOUNT rollovers/second, rejecting sub-1-FPS behavior. Long sampling gaps and Qt-versus-SDL prevent a valid throughput ratio; the corrected human run supplied the qualitative latency check.
+The corrected human run retired discovery breakpoints after native arming; the user reported normal performance. The first exact read was a signed 16-bit load at PC `0x08012748` from live X `0x0203DE7C` offset `+0x04`, inside point-query routine `0x080126D4`. Human context was Goku entering the idle sit-down animation; this does not prove causation.
+ROM-011 result is **C - IDLE/NORMAL PROCESSING READ CAPTURED**. Exact-X consumption at the point-query is **CONFIRMED, Level 3**. Dialogue and the specific region subtype remain **UNRESOLVED**; parser readiness remains **NO** because source-descriptor extent/boundary is still unknown.
+
 ## Unresolved Questions
 
-- Which different verified dialogue-free state or scoped route instantiates a
-  known query-capable caller for the exact object?
-- What scheduler decision prevents the verified query-capable callers in both
-  available inputs? No instruction-level rejecting guard was reached.
+- Which higher-level caller invokes point-query `0x080126D4` during this
+  idle/normal-processing path?
 - What immediate behavior follows the exact callback, if captured?
 - Is the `0x08007675` source descriptor structurally bounded well enough for a
   future minimal read-only parser?

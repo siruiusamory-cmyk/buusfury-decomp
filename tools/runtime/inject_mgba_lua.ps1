@@ -3,7 +3,8 @@ param(
     [int]$TargetProcessId,
     [Parameter(Mandatory = $true)]
     [string]$LuaPath,
-    [string]$ReadyPath
+    [string]$ReadyPath,
+    [string]$MarkerPath
 )
 
 $ErrorActionPreference = 'Stop'
@@ -17,6 +18,15 @@ $allowedLua = @(
     )
     [System.IO.Path]::GetFullPath(
         (Join-Path $workspaceRoot 'tools\runtime\rom009_post_transition_route.lua')
+    )
+    [System.IO.Path]::GetFullPath(
+        (Join-Path $workspaceRoot 'tools\runtime\rom011_human_ready.lua')
+    )
+    [System.IO.Path]::GetFullPath(
+        (Join-Path $workspaceRoot 'tools\runtime\rom011_stop_setup.lua')
+    )
+    [System.IO.Path]::GetFullPath(
+        (Join-Path $workspaceRoot 'tools\runtime\rom011_idle_benchmark.lua')
     )
 )
 $resolvedLua = [System.IO.Path]::GetFullPath($LuaPath)
@@ -42,6 +52,25 @@ if ($ReadyPath) {
         throw 'ReadyPath already exists'
     }
 }
+$resolvedMarker = $null
+if ($MarkerPath) {
+    $resolvedMarker = [System.IO.Path]::GetFullPath($MarkerPath)
+    $allowedMarkerRoot = [System.IO.Path]::GetFullPath(
+        (Join-Path $workspaceRoot 'build')
+    ).TrimEnd('\') + '\'
+    if (-not $resolvedMarker.StartsWith(
+        $allowedMarkerRoot,
+        [System.StringComparison]::OrdinalIgnoreCase
+    )) {
+        throw 'MarkerPath must remain beneath ignored build directory'
+    }
+    if ($resolvedMarker.Contains(']]')) {
+        throw 'MarkerPath contains unsupported Lua long-string terminator'
+    }
+    if (Test-Path -LiteralPath $resolvedMarker) {
+        throw 'MarkerPath already exists'
+    }
+}
 
 Add-Type -AssemblyName UIAutomationClient
 Add-Type -AssemblyName UIAutomationTypes
@@ -50,49 +79,6 @@ $processCondition = New-Object System.Windows.Automation.PropertyCondition(
     [System.Windows.Automation.AutomationElement]::ProcessIdProperty,
     $TargetProcessId
 )
-$mainWindow = $null
-for ($attempt = 0; $attempt -lt 200 -and -not $mainWindow; $attempt++) {
-    Start-Sleep -Milliseconds 100
-    $mainWindow = $desktop.FindFirst(
-        [System.Windows.Automation.TreeScope]::Children,
-        $processCondition
-    )
-}
-if (-not $mainWindow) { throw 'mGBA window did not appear' }
-
-for ($attempt = 0; $attempt -lt 200; $attempt++) {
-    if ($mainWindow.Current.Name -match "Buu's Fury") { break }
-    Start-Sleep -Milliseconds 100
-}
-if ($mainWindow.Current.Name -notmatch "Buu's Fury") {
-    throw 'mGBA did not report the loaded Buu''s Fury ROM'
-}
-
-$tools = $mainWindow.FindFirst(
-    [System.Windows.Automation.TreeScope]::Descendants,
-    (New-Object System.Windows.Automation.PropertyCondition(
-        [System.Windows.Automation.AutomationElement]::NameProperty,
-        'Tools'
-    ))
-)
-if (-not $tools) { throw 'Tools menu not found' }
-$tools.GetCurrentPattern([System.Windows.Automation.ExpandCollapsePattern]::Pattern).Expand()
-
-$scriptCondition = New-Object System.Windows.Automation.PropertyCondition(
-    [System.Windows.Automation.AutomationElement]::NameProperty,
-    'Scripting...'
-)
-$scriptMenu = $null
-for ($attempt = 0; $attempt -lt 50 -and -not $scriptMenu; $attempt++) {
-    Start-Sleep -Milliseconds 100
-    $scriptMenu = $desktop.FindFirst(
-        [System.Windows.Automation.TreeScope]::Descendants,
-        $scriptCondition
-    )
-}
-if (-not $scriptMenu) { throw 'Scripting menu item not found' }
-$scriptMenu.GetCurrentPattern([System.Windows.Automation.InvokePattern]::Pattern).Invoke()
-
 $scriptingCondition = New-Object System.Windows.Automation.AndCondition(
     $processCondition,
     (New-Object System.Windows.Automation.PropertyCondition(
@@ -100,15 +86,68 @@ $scriptingCondition = New-Object System.Windows.Automation.AndCondition(
         'Scripting'
     ))
 )
-$scripting = $null
-for ($attempt = 0; $attempt -lt 50 -and -not $scripting; $attempt++) {
+$scripting = $desktop.FindFirst(
+    [System.Windows.Automation.TreeScope]::Children,
+    $scriptingCondition
+)
+
+$mainWindow = $null
+for ($attempt = 0; $attempt -lt 200 -and -not $mainWindow; $attempt++) {
     Start-Sleep -Milliseconds 100
-    $scripting = $desktop.FindFirst(
+    $windows = $desktop.FindAll(
         [System.Windows.Automation.TreeScope]::Children,
-        $scriptingCondition
+        $processCondition
     )
+    foreach ($window in $windows) {
+        if ($window.Current.Name -match "Buu's Fury") {
+            $mainWindow = $window
+            break
+        }
+    }
 }
-if (-not $scripting) { throw 'Scripting window did not appear' }
+if (-not $mainWindow) {
+    throw 'mGBA did not report the loaded Buu''s Fury ROM'
+}
+
+if (-not $scripting) {
+    $tools = $mainWindow.FindFirst(
+        [System.Windows.Automation.TreeScope]::Descendants,
+        (New-Object System.Windows.Automation.PropertyCondition(
+            [System.Windows.Automation.AutomationElement]::NameProperty,
+            'Tools'
+        ))
+    )
+    if (-not $tools) { throw 'Tools menu not found' }
+    $tools.GetCurrentPattern(
+        [System.Windows.Automation.ExpandCollapsePattern]::Pattern
+    ).Expand()
+
+    $scriptCondition = New-Object System.Windows.Automation.PropertyCondition(
+        [System.Windows.Automation.AutomationElement]::NameProperty,
+        'Scripting...'
+    )
+    $scriptMenu = $null
+    for ($attempt = 0; $attempt -lt 50 -and -not $scriptMenu; $attempt++) {
+        Start-Sleep -Milliseconds 100
+        $scriptMenu = $desktop.FindFirst(
+            [System.Windows.Automation.TreeScope]::Descendants,
+            $scriptCondition
+        )
+    }
+    if (-not $scriptMenu) { throw 'Scripting menu item not found' }
+    $scriptMenu.GetCurrentPattern(
+        [System.Windows.Automation.InvokePattern]::Pattern
+    ).Invoke()
+
+    for ($attempt = 0; $attempt -lt 50 -and -not $scripting; $attempt++) {
+        Start-Sleep -Milliseconds 100
+        $scripting = $desktop.FindFirst(
+            [System.Windows.Automation.TreeScope]::Children,
+            $scriptingCondition
+        )
+    }
+    if (-not $scripting) { throw 'Scripting window did not appear' }
+}
 
 $edits = $scripting.FindAll(
     [System.Windows.Automation.TreeScope]::Descendants,
@@ -122,7 +161,12 @@ foreach ($edit in $edits) {
     if (-not $edit.Current.IsReadOnly) { $prompt = $edit; break }
 }
 if (-not $prompt) { throw 'Scripting prompt not found' }
-$command = 'dofile([[' + ($resolvedLua -replace '\\', '/') + ']])'
+$command = ''
+if ($resolvedMarker) {
+    $luaMarker = $resolvedMarker -replace '\\', '/'
+    $command = 'rom011_marker_path = [[' + $luaMarker + ']]; '
+}
+$command += 'dofile([[' + ($resolvedLua -replace '\\', '/') + ']])'
 if ($resolvedReady) {
     $luaReady = $resolvedReady -replace '\\', '/'
     $command += '; local f=assert(io.open([[' + $luaReady + ']], [[w]])); ' +
@@ -130,27 +174,54 @@ if ($resolvedReady) {
 }
 $prompt.GetCurrentPattern([System.Windows.Automation.ValuePattern]::Pattern).SetValue($command)
 
-$run = $scripting.FindFirst(
-    [System.Windows.Automation.TreeScope]::Descendants,
-    (New-Object System.Windows.Automation.PropertyCondition(
-        [System.Windows.Automation.AutomationElement]::NameProperty,
-        'Run'
-    ))
+$invokeScript = Join-Path $PSScriptRoot 'invoke_mgba_run.ps1'
+$invokeArguments = @(
+    '-NoProfile',
+    '-ExecutionPolicy',
+    'Bypass',
+    '-File',
+    $invokeScript,
+    '-TargetProcessId',
+    [string]$TargetProcessId
 )
-if (-not $run) { throw 'Run button not found' }
-$run.GetCurrentPattern([System.Windows.Automation.InvokePattern]::Pattern).Invoke()
-
-if ($resolvedReady) {
-    $readyConfirmed = $false
-    for ($attempt = 0; $attempt -lt 100 -and -not $readyConfirmed; $attempt++) {
-        if ((Test-Path -LiteralPath $resolvedReady) -and
-            [System.IO.File]::ReadAllText($resolvedReady) -eq 'ready') {
-            $readyConfirmed = $true
-            break
+$invokeProcess = $null
+try {
+    $invokeProcess = Start-Process `
+        -FilePath 'powershell.exe' `
+        -ArgumentList $invokeArguments `
+        -WindowStyle Hidden `
+        -PassThru
+    if ($resolvedReady) {
+        $readyConfirmed = $false
+        for ($attempt = 0; $attempt -lt 100 -and -not $readyConfirmed; $attempt++) {
+            if ((Test-Path -LiteralPath $resolvedReady) -and
+                [System.IO.File]::ReadAllText($resolvedReady) -eq 'ready') {
+                $readyConfirmed = $true
+                break
+            }
+            $invokeProcess.Refresh()
+            if ($invokeProcess.HasExited -and $invokeProcess.ExitCode -ne 0) {
+                throw 'Asynchronous Run invocation failed'
+            }
+            Start-Sleep -Milliseconds 100
         }
-        Start-Sleep -Milliseconds 100
+        if (-not $readyConfirmed) {
+            throw 'Lua script did not report ready'
+        }
+    } else {
+        if (-not $invokeProcess.WaitForExit(10000)) {
+            throw 'Asynchronous Run invocation did not complete'
+        }
+        if ($invokeProcess.ExitCode -ne 0) {
+            throw 'Asynchronous Run invocation failed'
+        }
     }
-    if (-not $readyConfirmed) {
-        throw 'Lua script did not report ready'
+} finally {
+    if ($invokeProcess) {
+        $invokeProcess.Refresh()
+        if (-not $invokeProcess.HasExited) {
+            Stop-Process -Id $invokeProcess.Id -Force -ErrorAction SilentlyContinue
+            $invokeProcess.WaitForExit(5000) | Out-Null
+        }
     }
 }

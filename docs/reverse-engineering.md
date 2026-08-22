@@ -262,6 +262,67 @@ readiness remains **NO** because source-descriptor extent/boundary is not
 independently established. Full pipeline, runtime, and safety evidence is in
 [consumer-analysis.md](consumer-analysis.md#rom-010-runtime-harness-reliability-and-clean-state-replay).
 
+## ROM-011 native mGBA read probe
+
+Stock mGBA 0.10.5 GDB read watchpoints failed the playability gate: the stub
+ignored the requested range length, byte coverage required approximately 16
+watchpoints, and the generic memory-debugger shim scanned them on ordinary
+emulated accesses, reducing gameplay below 1 FPS. This remains negative tooling
+evidence, not ROM behavior evidence.
+
+A separate SDL mGBA executable was built from exact upstream commit
+`26b7884bc25a5933960f3cdcd98bac1ae14d42e2`; the installed stock executable and
+commercial ROM were not changed. The tracked patch adds a dedicated probe state
+to `struct GBA`, observes CPU EWRAM loads in `GBALoad8/16/32` plus the direct
+load-multiple path, and overlaps mGBA's bus-aligned physical access span with
+`[X+0x04,X+0x10)` and `[X+0x14,X+0x18)`, while retaining the instruction's
+logical address and width. Disarmed reads pay one predicted branch. The armed hot path
+does no allocation, logging, formatting, socket work, or generic watchpoint-list
+scan. First match records the original address/width, overlap, PC, CPSR, r0-r15,
+externally supplied identity, and event ID, then disarms before a controlled
+debugger pause. Control and deferred event serialization use four custom GDB
+query packets; numeric control fields are lowercase because the pinned stub's
+hex parser does not accept uppercase `A-F`.
+
+The standalone Windows SDL frontend also exposed an upstream initialization
+gap: `SocketSubsystemInit` existed but no mGBA caller invoked it. Qt incidentally
+initialized Winsock elsewhere. The patch balances socket subsystem setup and
+teardown in the GDB stub, allowing command-driven SDL `--gdb --savestate`
+startup without Lua or Windows UI automation.
+
+The human capture used the pre-review patch/executable hashes `a18e6f9a...` /
+`6d67481b...`. Final review corrected generic unaligned 16/32-bit physical-span
+overlap and bound launch verification to the tracked patch hash, producing
+current hashes `8863b2e2...` / `cdd871ae...`. The captured aligned 16-bit
+`X+0x04` read is unaffected by that correction.
+
+Ignored performance gate `build/rom011/performance-gate-13` used the same
+verified ROM/state/save copies and direct GBA VCOUNT rollover counting over GDB,
+without memory watchpoints or injected input. Five-second results were stock
+59.890, instrumented-disarmed 59.129, and instrumented-armed 59.727 observed
+VCOUNT rollovers per second. These are near-real-time lower-bound observations,
+not a valid throughput ratio: some sampling gaps exceed one frame, and stock Qt
+versus instrumented SDL is not an uncapped like-for-like comparison. Originals
+remained unchanged. A corrected human run retired discovery breakpoints after
+arming and retained only reset/removal lifecycle breakpoints; the user reported
+normal performance, completing the qualitative playability gate.
+
+Corrected run `build/rom011/human-native-02` dynamically established the exact
+load-epoch-1 X `0x0203DE7C` and captured the first qualifying CPU read before
+immediate disarm. PC `0x08012748` performed a signed 16-bit read at
+`0x0203DE80` (`X+0x04`) inside point-query routine `0x080126D4`. The captured
+query coordinate was 172 and X's loaded lower bound was 592. The next compare
+therefore implies the first lower-bound rejection path, before the remaining
+bounds or callback. The user separately reported that Goku had entered his
+idle sit-down animation when execution stopped; this is timing context, not
+proof that X caused that animation.
+
+ROM-011 result is **C - IDLE/NORMAL PROCESSING READ CAPTURED**. Exact-X
+consumption at PC `0x08012748` inside point-query `0x080126D4` is **CONFIRMED,
+Level 3**. The specific region subtype and dialogue hypothesis remain
+unresolved, and parser readiness remains **NO** because descriptor
+extent/boundary is still unknown.
+
 ## GBARecomp boundary
 
 Generated C/C++ is behavioral evidence only. The pinned framework explicitly directs fixes into analyzer/emitter code followed by regeneration (`mstan/gbarecomp@6571cb39858af70d691914132f81b01a4558d815`, `README.md:248-250`). Useful future surfaces include TCP debug queries, snapshots, IO traces, reverse-debug rings, symbol mapping, and strict-static coverage. None is canonical editable game source for this project.

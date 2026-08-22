@@ -653,3 +653,137 @@ Result status:
 
 Portable validation during ROM-010 is **219 passed, 0 failed, 0 skipped**.
 Private source ROM/state/save hashes, sizes, and mtimes remained unchanged.
+
+# ROM-011 Native mGBA One-Shot Read Probe
+
+## Rejected stock GDB watchpoint path
+
+The original ROM-011 approach installed enough stock mGBA 0.10.5 GDB `Z3`
+watchpoints to cover `X+0x04..0x0F` and `X+0x14..0x17`. The pinned stub parsed
+the address but did not honor the requested range length for this use, so exact
+coverage became approximately sixteen byte watchpoints. Every emulated memory
+access then entered the generic debugger memory shim and linearly inspected the
+active watchpoint list. Observed gameplay fell below 1 FPS, including with a
+reduced set. This is a confirmed instrumentation failure and is preserved as
+negative tooling evidence; it says nothing about whether the ROM reads X.
+
+## Pinned native probe and build provenance
+
+The replacement is a separate ignored SDL build from exact mGBA commit
+`26b7884bc25a5933960f3cdcd98bac1ae14d42e2`. The tracked patch SHA-256 is
+`8863b2e235add144c7af6d817bf30375a44326ccd13dc1acb89ccf6cd3be9e9a`.
+The ignored executable SHA-256 is
+`cdd871aebd38b7a796bc3856f69a8b1728b3dce1e89266c9332d2313dd1f2e3f`.
+It was built with MSYS2 GCC 16.2.0-3, CMake 4.4.2-2, Ninja 1.13.2-1, and SDL2
+2.32.10-1. The build is static, non-LTO, Qt-free, scripting-free, and retains
+the upstream GDB stub. Exact package and option provenance is in the ignored
+build manifest. The installed stock mGBA was untouched.
+
+The successful `human-native-02` capture preceded final-review hardening and
+used patch `a18e6f9adddb7e80c699442529af2c6922a3a8f0addfb8997311086c7fbf3277`
+with executable
+`6d67481b644dce19ea57cca2e2aa547b56b8d8b4a203c61479119110449547a3`.
+Review found incorrect overlap only for unaligned 16/32-bit accesses and a
+missing launch-time binding to the tracked patch hash. The captured access was
+an aligned 16-bit read at `X+0x04`, so its evidence is unaffected. The current
+hashes above identify the rebuilt physical-span-corrected binary; launch now
+also verifies the manifest patch hash against the tracked patch.
+
+The patch modifies only the GBA probe state/read hooks, GDB query transport,
+probe tests, and balanced socket initialization. Standalone Windows SDL needed
+the last item because the pinned tree defines `SocketSubsystemInit` but never
+calls it; Qt initializes Winsock incidentally, while SDL otherwise stays alive
+without opening port 2345.
+
+The dedicated hot path covers CPU `GBALoad8`, `GBALoad16`, `GBALoad32`, and
+the load-multiple path that bypasses `GBALoad32`. DMA and debugger/view reads
+are excluded. mGBA's bus-aligned physical access span overlaps half-open ranges
+`[X+0x04,X+0x10)` and `[X+0x14,X+0x18)`; the event preserves the instruction's
+original logical start and width plus the exact physical overlap.
+Disarmed overhead is one predicted branch. Armed ordinary reads perform only
+fixed comparisons. No allocation, formatting, logging, socket operation, or
+generic debugger-list scan occurs there.
+
+Python dynamically establishes the existing profile/factory/descriptor/return/
+registry/load-epoch identity chain, then sends `qLog1ProbeArm`. On first match,
+mGBA copies PC, CPSR, r0-r15, access fields, identity, and a unique event ID,
+disarms immediately, and enters a controlled debugger pause. Event formatting
+is deferred until `qLog1ProbeEvent`; `qLog1ProbeAck` prevents overwrite before
+explicit acknowledgement. Control numeric fields are lowercase because pinned
+mGBA `_hex2int` rejects uppercase `A-F`. Startup uses only `--gdb` and
+`--savestate`; no Lua or Windows UI automation is required.
+
+## Performance gate
+
+Ignored `build/rom011/performance-gate-13/performance-gate.json` compares the
+installed stock Qt 0.10.5 control with instrumented SDL disarmed and armed on
+copies of the same verified ROM, state, and save. It injects no input and uses
+ordinary GDB reads of hardware VCOUNT, not memory watchpoints. Raw high-rate
+samples are retained beside each case. Direct observed VCOUNT rollovers over
+five seconds produced:
+
+| Case | Observed VCOUNT rollovers/second |
+|---|---:|
+| stock mGBA 0.10.5 | 59.890 |
+| instrumented, disarmed | 59.129 |
+| instrumented, armed on a valid nonmatching EWRAM sentinel | 59.727 |
+
+All three cases show near-real-time display cadence and reject a recurrence of
+the earlier sub-1-FPS behavior. They do **not** establish a quantitative 99.73%
+throughput ratio: retained samples include gaps longer than one frame, making
+missed rollover counts ambiguous, and stock Qt versus instrumented SDL is not
+an uncapped like-for-like comparison. The sentinel exists only to keep the
+branch armed for the entire measurement; semantic capture still requires
+dynamically discovered X.
+
+The first human run exposed a separate orchestration cost: six discovery GDB
+breakpoints remained installed after native arming, making the next map load a
+slideshow. The runner now retires every discovery breakpoint after X is armed
+and leaves only registry-reset and target-removal lifecycle breakpoints. It
+reinstalls discovery breakpoints only if lifecycle handling retires X. In the
+corrected run the user explicitly reported normal performance after arming.
+This completes the qualitative playability/input-latency gate without claiming
+an invalid exact throughput ratio.
+
+## Runtime result
+
+Corrected ignored run `build/rom011/human-native-02` dynamically established
+MapEntry 39, descriptor `0x08294948`, factory raw/fetch
+`0x08007675/0x08007674`, current load epoch 1, registry slot `0x03002A68`, and
+X `0x0203DE7C` with bounds `(592,136)..(601,241)`. The native probe then
+captured and disarmed on the first qualifying read:
+
+| Field | Captured value |
+|---|---|
+| event | 1 |
+| read | 16-bit CPU read at `0x0203DE80` |
+| object-relative offset | `X+0x04` |
+| overlap | `[X+0x04,X+0x06)` |
+| PC / LR | `0x08012748` / `0x080126F9` |
+| execution state | Thumb, CPSR `0x0000003F` |
+| query coordinate before the load | `r1 = 172` |
+| loaded signed bound from X | `592` |
+
+Executable evidence: `0x08012748` is the first signed-halfword bound load in
+the point-query routine at `0x080126D4`. The immediate static continuation
+compares query coordinate 172 with X's lower bound 592; those captured values
+imply the first lower-bound rejection path, before the remaining bounds or
+X's callback are reached. This confirms that normal processing reads the exact
+live object's bounds as part of the registry point query. It does not identify
+the higher-level caller because the routine's earlier subcall had already
+replaced LR, and it does not prove a semantic subtype.
+
+Human observation, kept separate from executable evidence: the user reported
+that Goku had entered his idle animation and sat down when the probe stopped.
+That temporal association does not establish that X caused the animation.
+A second replay was not attempted: reaching this load again requires another
+human-controlled transition, so it would not be deterministic, and the exact
+first-read result had already met the bounded experiment's stopping point.
+
+ROM-011 result: **C - IDLE/NORMAL PROCESSING READ CAPTURED**. Exact-X
+consumption at PC `0x08012748` inside point-query `0x080126D4` is **CONFIRMED,
+Level 3**. Dialogue remains **UNRESOLVED**. Collision, trigger, activation,
+transition, event, and interaction subtypes remain unproven. Parser readiness remains **NO**
+because source-descriptor extent/boundary and a lossless field map are still
+not independently established. The ROM, original state, and original save
+hashes remained unchanged.

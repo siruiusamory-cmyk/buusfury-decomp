@@ -155,6 +155,16 @@ def test_lua_ready_marker_is_bounded_and_ignored():
     assert "$attempt -lt 100" in injector
     assert 'str(run_root / "lua-ready.txt")' in probe
     assert "ReadyPath already exists" in injector
+    invoke_helper = (
+        PROJECT_ROOT / "tools/runtime/invoke_mgba_run.ps1"
+    ).read_text(encoding="utf-8")
+    assert "$run.GetCurrentPattern" not in injector
+    assert "InvokePattern]::Pattern" in invoke_helper
+    assert "Start-Process" in injector
+    assert "-WindowStyle Hidden" in injector
+    assert "Stop-Process -Id $invokeProcess.Id" in injector
+    assert "$windows = $desktop.FindAll" in injector
+    assert "if (-not $scripting)" in injector
 
 
 def test_probe_output_is_atomic_and_limited_to_ignored_build(tmp_path: Path):

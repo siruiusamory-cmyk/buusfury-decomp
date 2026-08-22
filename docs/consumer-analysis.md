@@ -669,10 +669,11 @@ negative tooling evidence; it says nothing about whether the ROM reads X.
 
 ## Pinned native probe and build provenance
 
-The replacement is a separate ignored SDL build from exact mGBA commit
-`26b7884bc25a5933960f3cdcd98bac1ae14d42e2`. The tracked patch SHA-256 is
+The ROM-011 replacement was a separate ignored SDL build from exact mGBA commit
+`26b7884bc25a5933960f3cdcd98bac1ae14d42e2`. At ROM-011 completion its tracked
+patch SHA-256 was
 `8863b2e235add144c7af6d817bf30375a44326ccd13dc1acb89ccf6cd3be9e9a`.
-The ignored executable SHA-256 is
+Its ignored executable SHA-256 was
 `cdd871aebd38b7a796bc3856f69a8b1728b3dce1e89266c9332d2313dd1f2e3f`.
 It was built with MSYS2 GCC 16.2.0-3, CMake 4.4.2-2, Ninja 1.13.2-1, and SDL2
 2.32.10-1. The build is static, non-LTO, Qt-free, scripting-free, and retains
@@ -787,3 +788,98 @@ transition, event, and interaction subtypes remain unproven. Parser readiness re
 because source-descriptor extent/boundary and a lossless field map are still
 not independently established. The ROM, original state, and original save
 hashes remained unchanged.
+
+# ROM-012 Post-Load Registry Reconstruction and Exact Action Capture
+
+## Private runtime input and target reconstruction
+
+ROM-012 used the user-created post-transition state directly rather than
+replaying the expensive transition discovery path. The original state was
+53,247 bytes with SHA-256
+`58228e1dc4ce81c80182242b650e18c0ee3db71f79473a614e5e373de207e0f7`;
+the runner verified it and used an ignored copy under `build/rom012/`.
+The ROM-012 accepted-containment extension kept the same pinned mGBA commit;
+the tracked patch SHA-256 was
+`8ee9d92dd1d69fda96f7c31bc8b10e17d6aa7195b56ab103e56cb5f8d9583346`
+and the ignored executable SHA-256 was
+`0698a84715adcd8fd34dc45837c01ef2c52e7eefd5ad19b6def72f8c8d791641`.
+
+After command-line state restoration and completed map population, the runner
+enumerated every live slot in manager `0x03002A64`. Each candidate was accepted
+only through the full retrospective chain:
+
+```text
+registry slot 03002A68
+  -> runtime object X 0203DE6C
+  -> X+14 retained descriptor 08294948
+  -> descriptor+00 raw factory 08007675
+  -> Thumb fetch 08007674
+```
+
+The active runtime MapEntry was `0x0808EB68` (index 39). This was the sole live
+factory-`0x08007675` match. Its signed half-open bounds were
+`x=[592,601), y=[136,241)`, object `+0x0C` was `0x0300195C`, and object dispatch
+base `0x0804A09C` matched the established family. No allocation event or stale
+EWRAM address was assumed.
+
+## Query correlation and exact containment
+
+At point-query PC `0x08012748`, callee-saved `r5` retained the entry query
+entity. The same entity pointer `0x0202E4D0` moved from `(176,96)` to `(499,218)`
+after the user's reported south/east movement. The pointer stayed stable and
+both coordinate changes matched the human input, **STRONGLY SUPPORTING** that
+this query instance used the player-controlled entity.
+
+The native accepted-containment mode remained playable with no discovery
+software breakpoints armed. It stopped on the first event satisfying both PC
+`0x0801277A` and a CPU read overlapping `X+0x0C..X+0x10`. The captured 32-bit
+read was exactly `0x0203DE78` (`X+0x0C`), with query coordinates `(592,218)`
+inside the reconstructed bounds. The event preserved raw PC state, registers,
+load epoch, descriptor, factory raw/fetch values, and exact target identity.
+
+## Concrete filter and action dispatch
+
+The callback receiver at `X+0x0C` was `0x0300195C`, whose dispatch base was
+`0x0804A0AC`.
+
+| Stage | Raw target | Fetch address | Runtime result |
+|---|---:|---:|---|
+| vtable[2] filter | `0x08007769` | `0x08007768` | target reached, returned `1` |
+| vtable[1] action | `0x080125E9` | `0x080125E8` | target reached and executed |
+
+The filter trace was
+`0x08012786 -> 0x08046AA6 -> 0x08007768 -> 0x0800776A -> 0x08012788`.
+The accepted action then entered `0x080125E8`, re-dispatched through the exact
+object, and reached concrete downstream target `0x080075AC`. The retained
+bounded trace also reached `0x080077EC`, `0x08009744`, and `0x080094B8` while
+performing descriptor-driven and spatial-position updates. It did not return
+to the point query within 512 single steps; this limits complete call-tree
+attribution but does not negate that the concrete vtable[1] target executed.
+The runner's outcome rule was corrected accordingly: target execution is
+Result B even when a deliberately bounded trace has not yet returned.
+
+**Executable evidence:** exact target containment, filter acceptance, and
+concrete action execution are **CONFIRMED, Level 3**. The controlled action
+trace plus the immediate visible result **STRONGLY SUPPORT, Level 4** a
+transition-initiating spatial action. The bounded trace does not independently
+establish a final source-descriptor subtype or dialogue scheduler/gating role.
+
+**Human observation, separate from executable evidence:** entering the target
+moved the player into the next area and started another dialogue. A requested
+save in that new area was not created before the bounded runner shut down, so
+no such state is claimed or used.
+
+ROM-012 result is **B - EXACT TARGET ACTION CAPTURED**. Dialogue remains
+**UNRESOLVED** because no direct scheduler/gating connection was established.
+Collision semantics and a final subtype remain unproven. Parser readiness is
+**NO**; the smallest remaining structural blocker is still an independently
+established source-descriptor extent/boundary and complete lossless field map.
+No parser was implemented.
+
+The original ROM, state, and save hashes remained unchanged. Runtime captures,
+working state copies, instrumented binaries, and build output remain ignored.
+Portable validation is **289 passed, 0 failed, 0 skipped**. Independent final
+review found no blocking issues in the identity chain, Result B classification,
+evidence wording, safety controls, or test coverage. No proprietary artifact was
+tracked or staged, and the reviewed ROM-012 batch was left uncommitted and
+unstaged before archival.

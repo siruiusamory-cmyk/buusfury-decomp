@@ -1,12 +1,14 @@
 diff --git a/include/mgba/internal/gba/gba.h b/include/mgba/internal/gba/gba.h
-index 206aedf70..3aea5e046 100644
+index 206aedf70..eda83fb2c 100644
 --- a/include/mgba/internal/gba/gba.h
 +++ b/include/mgba/internal/gba/gba.h
-@@ -58,6 +58,44 @@ struct VFile;
+@@ -58,6 +58,47 @@ struct VFile;
  mLOG_DECLARE_CATEGORY(GBA);
  mLOG_DECLARE_CATEGORY(GBA_DEBUG);
  
 +#define GBA_LOG1_READ_PROBE_PROFILE_SHA256 "940ad5f01db4465b8877dfe739510cbf34f4ea3d390f3df13519808bc36f059e"
++#define GBA_LOG1_READ_PROBE_RANGE 0
++#define GBA_LOG1_READ_PROBE_ACCEPTED_X0C 1
 +
 +struct GBALog1ReadProbeRequest {
 +	uint64_t sequence;
@@ -15,6 +17,7 @@ index 206aedf70..3aea5e046 100644
 +	uint32_t descriptor;
 +	uint32_t factoryRaw;
 +	uint32_t factoryFetch;
++	uint32_t matchKind;
 +};
 +
 +struct GBALog1ReadProbeEvent {
@@ -47,7 +50,7 @@ index 206aedf70..3aea5e046 100644
  DECL_BITFIELD(GBADebugFlags, uint16_t);
  DECL_BITS(GBADebugFlags, Level, 0, 3);
  DECL_BIT(GBADebugFlags, Send, 8);
-@@ -125,6 +163,8 @@ struct GBA {
+@@ -125,6 +166,8 @@ struct GBA {
  	bool debug;
  	char debugString[0x100];
  	GBADebugFlags debugFlags;
@@ -56,7 +59,7 @@ index 206aedf70..3aea5e046 100644
  };
  
  struct GBACartridge {
-@@ -144,6 +184,12 @@ struct GBACartridge {
+@@ -144,6 +187,12 @@ struct GBACartridge {
  
  void GBACreate(struct GBA* gba);
  void GBADestroy(struct GBA* gba);
@@ -70,7 +73,7 @@ index 206aedf70..3aea5e046 100644
  void GBAReset(struct ARMCore* cpu);
  void GBASkipBIOS(struct GBA* gba);
 diff --git a/src/debugger/gdb-stub.c b/src/debugger/gdb-stub.c
-index 0e3b1538c..d4e198229 100644
+index 0e3b1538c..553940932 100644
 --- a/src/debugger/gdb-stub.c
 +++ b/src/debugger/gdb-stub.c
 @@ -8,6 +8,7 @@
@@ -89,7 +92,7 @@ index 0e3b1538c..d4e198229 100644
  }
  
  static void _gdbStubEntered(struct mDebugger* debugger, enum mDebuggerEntryReason reason, struct mDebuggerEntryInfo* info) {
-@@ -463,7 +465,122 @@ static void _processQSupportedCommand(struct GDBStub* stub, const char* message)
+@@ -463,7 +465,127 @@ static void _processQSupportedCommand(struct GDBStub* stub, const char* message)
  		}
  		message = end + 1;
  	}
@@ -116,7 +119,8 @@ index 0e3b1538c..d4e198229 100644
 +	             _readLog1HexField(&cursor, ',', &request.loadEpoch) &&
 +	             _readLog1HexField(&cursor, ',', &request.descriptor) &&
 +	             _readLog1HexField(&cursor, ',', &request.factoryRaw) &&
-+	             _readLog1HexField(&cursor, ',', &request.factoryFetch);
++	             _readLog1HexField(&cursor, ',', &request.factoryFetch) &&
++	             _readLog1HexField(&cursor, ',', &request.matchKind);
 +	request.sequence = sequence;
 +	if (!valid || strncmp(cursor, GBA_LOG1_READ_PROBE_PROFILE_SHA256, 64) || cursor[64] != '#') {
 +		strncpy(stub->outgoing, "E61", GDB_STUB_MAX_LINE - 4);
@@ -141,6 +145,10 @@ index 0e3b1538c..d4e198229 100644
 +	}
 +	if (request.factoryRaw != 0x08007675 || request.factoryFetch != 0x08007674) {
 +		strncpy(stub->outgoing, "E634", GDB_STUB_MAX_LINE - 4);
++		return;
++	}
++	if (request.matchKind > GBA_LOG1_READ_PROBE_ACCEPTED_X0C) {
++		strncpy(stub->outgoing, "E636", GDB_STUB_MAX_LINE - 4);
 +		return;
 +	}
 +	if (request.target < BASE_WORKING_RAM || request.target > BASE_WORKING_RAM + SIZE_WORKING_RAM - 0x18) {
@@ -213,7 +221,7 @@ index 0e3b1538c..d4e198229 100644
  }
  
  static void _processQXferCommand(struct GDBStub* stub, const char* params, const char* data) {
-@@ -542,6 +659,14 @@ static void _processQReadCommand(struct GDBStub* stub, const char* message) {
+@@ -542,6 +664,14 @@ static void _processQReadCommand(struct GDBStub* stub, const char* message) {
  		_processQXferCommand(stub, message + 22, stub->memoryMapXml);
  	} else if (!strncmp("Supported:", message, 10)) {
  		_processQSupportedCommand(stub, message + 10);
@@ -228,7 +236,7 @@ index 0e3b1538c..d4e198229 100644
  	}
  	_sendMessage(stub);
  }
-@@ -765,6 +890,7 @@ size_t _parseGDBMessage(struct GDBStub* stub, const char* message) {
+@@ -765,6 +895,7 @@ size_t _parseGDBMessage(struct GDBStub* stub, const char* message) {
  }
  
  void GDBStubCreate(struct GDBStub* stub) {
@@ -249,7 +257,7 @@ index 26c2058ae..c5412584d 100644
  	GBAInterruptHandlerInit(&gba->cpu->irqh);
  	GBAMemoryInit(gba);
 diff --git a/src/gba/memory.c b/src/gba/memory.c
-index 5bb5182aa..fae663ac9 100644
+index 5bb5182aa..00dad5f33 100644
 --- a/src/gba/memory.c
 +++ b/src/gba/memory.c
 @@ -5,7 +5,10 @@
@@ -263,7 +271,7 @@ index 5bb5182aa..fae663ac9 100644
  #include <mgba/internal/arm/macros.h>
  #include <mgba/internal/defines.h>
  #include <mgba/internal/gba/gba.h>
-@@ -458,6 +461,109 @@ uint32_t GBALoadBad(struct ARMCore* cpu) {
+@@ -458,6 +461,120 @@ uint32_t GBALoadBad(struct ARMCore* cpu) {
  	return value;
  }
  
@@ -278,6 +286,9 @@ index 5bb5182aa..fae663ac9 100644
 +		return false;
 +	}
 +	if (request->factoryRaw != 0x08007675 || request->factoryFetch != 0x08007674) {
++		return false;
++	}
++	if (request->matchKind > GBA_LOG1_READ_PROBE_ACCEPTED_X0C) {
 +		return false;
 +	}
 +	if (request->target < BASE_WORKING_RAM || request->target > BASE_WORKING_RAM + SIZE_WORKING_RAM - 0x18) {
@@ -335,8 +346,16 @@ index 5bb5182aa..fae663ac9 100644
 +	uint32_t overlapStart;
 +	uint32_t overlapEnd;
 +	uint32_t physicalAddress = width == 4 ? address & ~3U : width == 2 ? address & ~1U : address;
-+	if (!_log1Overlaps(physicalAddress, width, probe->request.target + 0x04, probe->request.target + 0x10, &overlapStart, &overlapEnd) &&
-+	    !_log1Overlaps(physicalAddress, width, probe->request.target + 0x14, probe->request.target + 0x18, &overlapStart, &overlapEnd)) {
++	uint32_t instructionPc = _ARMPCAddress(cpu);
++	bool matched = false;
++	if (probe->request.matchKind == GBA_LOG1_READ_PROBE_ACCEPTED_X0C) {
++		matched = instructionPc == 0x0801277A &&
++		    _log1Overlaps(physicalAddress, width, probe->request.target + 0x0C, probe->request.target + 0x10, &overlapStart, &overlapEnd);
++	} else {
++		matched = _log1Overlaps(physicalAddress, width, probe->request.target + 0x04, probe->request.target + 0x10, &overlapStart, &overlapEnd) ||
++		    _log1Overlaps(physicalAddress, width, probe->request.target + 0x14, probe->request.target + 0x18, &overlapStart, &overlapEnd);
++	}
++	if (!matched) {
 +		return;
 +	}
 +	uint32_t target = probe->request.target;
@@ -354,7 +373,7 @@ index 5bb5182aa..fae663ac9 100644
 +	event->width = width;
 +	event->overlapStart = overlapStart;
 +	event->overlapEnd = overlapEnd;
-+	event->instructionPc = _ARMPCAddress(cpu);
++	event->instructionPc = instructionPc;
 +	memcpy(event->gprs, cpu->gprs, sizeof(event->gprs));
 +	event->cpsr = cpu->cpsr.packed;
 +	probe->armed = false;
@@ -373,7 +392,7 @@ index 5bb5182aa..fae663ac9 100644
  uint32_t GBALoad32(struct ARMCore* cpu, uint32_t address, int* cycleCounter) {
  	struct GBA* gba = (struct GBA*) cpu->master;
  	struct GBAMemory* memory = &gba->memory;
-@@ -470,6 +576,9 @@ uint32_t GBALoad32(struct ARMCore* cpu, uint32_t address, int* cycleCounter) {
+@@ -470,6 +587,9 @@ uint32_t GBALoad32(struct ARMCore* cpu, uint32_t address, int* cycleCounter) {
  		LOAD_BIOS;
  		break;
  	case REGION_WORKING_RAM:
@@ -383,7 +402,7 @@ index 5bb5182aa..fae663ac9 100644
  		LOAD_WORKING_RAM;
  		break;
  	case REGION_WORKING_IRAM:
-@@ -538,6 +647,9 @@ uint32_t GBALoad16(struct ARMCore* cpu, uint32_t address, int* cycleCounter) {
+@@ -538,6 +658,9 @@ uint32_t GBALoad16(struct ARMCore* cpu, uint32_t address, int* cycleCounter) {
  		}
  		break;
  	case REGION_WORKING_RAM:
@@ -393,7 +412,7 @@ index 5bb5182aa..fae663ac9 100644
  		LOAD_16(value, address & (SIZE_WORKING_RAM - 2), memory->wram);
  		wait = memory->waitstatesNonseq16[REGION_WORKING_RAM];
  		break;
-@@ -653,6 +765,9 @@ uint32_t GBALoad8(struct ARMCore* cpu, uint32_t address, int* cycleCounter) {
+@@ -653,6 +776,9 @@ uint32_t GBALoad8(struct ARMCore* cpu, uint32_t address, int* cycleCounter) {
  		}
  		break;
  	case REGION_WORKING_RAM:
@@ -403,7 +422,7 @@ index 5bb5182aa..fae663ac9 100644
  		value = ((uint8_t*) memory->wram)[address & (SIZE_WORKING_RAM - 1)];
  		wait = memory->waitstatesNonseq16[REGION_WORKING_RAM];
  		break;
-@@ -1408,6 +1523,12 @@ void GBAPatch8(struct ARMCore* cpu, uint32_t address, int8_t value, int8_t* old)
+@@ -1408,6 +1534,12 @@ void GBAPatch8(struct ARMCore* cpu, uint32_t address, int8_t value, int8_t* old)
  	}
  }
  
@@ -416,7 +435,7 @@ index 5bb5182aa..fae663ac9 100644
  #define LDM_LOOP(LDM) \
  	if (UNLIKELY(!mask)) { \
  		LDM; \
-@@ -1473,7 +1594,7 @@ uint32_t GBALoadMultiple(struct ARMCore* cpu, uint32_t address, int mask, enum L
+@@ -1473,7 +1605,7 @@ uint32_t GBALoadMultiple(struct ARMCore* cpu, uint32_t address, int mask, enum L
  		LDM_LOOP(LOAD_BIOS);
  		break;
  	case REGION_WORKING_RAM:
@@ -426,10 +445,10 @@ index 5bb5182aa..fae663ac9 100644
  	case REGION_WORKING_IRAM:
  		LDM_LOOP(LOAD_WORKING_IRAM);
 diff --git a/src/gba/test/core.c b/src/gba/test/core.c
-index 25b8f3ce3..2b9269c26 100644
+index 25b8f3ce3..8b16c8ed6 100644
 --- a/src/gba/test/core.c
 +++ b/src/gba/test/core.c
-@@ -7,6 +7,44 @@
+@@ -7,6 +7,45 @@
  
  #include <mgba/core/core.h>
  #include <mgba/gba/core.h>
@@ -468,13 +487,14 @@ index 25b8f3ce3..2b9269c26 100644
 +		.descriptor = 0x08294948,
 +		.factoryRaw = 0x08007675,
 +		.factoryFetch = 0x08007674,
++		.matchKind = GBA_LOG1_READ_PROBE_RANGE,
 +	};
 +	return request;
 +}
  
  M_TEST_DEFINE(create) {
  	struct mCore* core = GBACoreCreate();
-@@ -44,8 +82,104 @@ M_TEST_DEFINE(loadNullROM) {
+@@ -44,8 +83,125 @@ M_TEST_DEFINE(loadNullROM) {
  	core->deinit(core);
  }
  
@@ -569,6 +589,26 @@ index 25b8f3ce3..2b9269c26 100644
 +	_probeFixtureDestroy(&fixture);
 +}
 +
++M_TEST_DEFINE(log1ProbeAcceptedX0CRequiresExactPcAndSpan) {
++	struct ProbeFixture fixture = _probeFixtureCreate();
++	struct GBALog1ReadProbeRequest request = _probeRequest(1);
++	request.matchKind = GBA_LOG1_READ_PROBE_ACCEPTED_X0C;
++	assert_true(GBALog1ReadProbeArm(fixture.gba, &request));
++	int cycles = 0;
++	struct GBALog1ReadProbeEvent event;
++	GBALog1ReadProbeObserve(fixture.gba, fixture.cpu, request.target + 0x0C, 4, &cycles);
++	assert_false(GBALog1ReadProbeGetEvent(fixture.gba, &event));
++	fixture.cpu->gprs[ARM_PC] = 0x0801277E;
++	GBALog1ReadProbeObserve(fixture.gba, fixture.cpu, request.target + 4, 2, &cycles);
++	assert_false(GBALog1ReadProbeGetEvent(fixture.gba, &event));
++	GBALog1ReadProbeObserve(fixture.gba, fixture.cpu, request.target + 0x0D, 4, &cycles);
++	assert_true(GBALog1ReadProbeGetEvent(fixture.gba, &event));
++	assert_int_equal(event.instructionPc, 0x0801277A);
++	assert_int_equal(event.overlapStart, request.target + 0x0C);
++	assert_int_equal(event.overlapEnd, request.target + 0x10);
++	_probeFixtureDestroy(&fixture);
++}
++
  M_TEST_SUITE_DEFINE(GBACore,
  	cmocka_unit_test(create),
  	cmocka_unit_test(platform),
@@ -579,4 +619,5 @@ index 25b8f3ce3..2b9269c26 100644
 +	cmocka_unit_test(log1ProbeNonmatchAndExplicitDisarm),
 +	cmocka_unit_test(log1ProbeCapturesOnceAndDisarms),
 +	cmocka_unit_test(log1ProbeUnalignedPhysicalSpanControlsOverlap),
-+	cmocka_unit_test(log1ProbeReadValueUnchangedAndNonCpuIgnored))
++	cmocka_unit_test(log1ProbeReadValueUnchangedAndNonCpuIgnored),
++	cmocka_unit_test(log1ProbeAcceptedX0CRequiresExactPcAndSpan))

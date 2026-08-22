@@ -20,6 +20,8 @@ FACTORY_FETCH = 0x08007674
 EWRAM_START = 0x02000000
 EWRAM_END = 0x02040000
 WATCH_RANGES = ((0x04, 0x10), (0x14, 0x18))
+MATCH_RANGE = 0
+MATCH_ACCEPTED_X0C = 1
 PATCH_PATH = Path(__file__).with_name("mgba-0.10.5-log1-read-probe.patch")
 
 
@@ -70,6 +72,7 @@ class ArmRequest:
     descriptor: int
     factory_raw: int = FACTORY_RAW
     factory_fetch: int = FACTORY_FETCH
+    match_kind: int = MATCH_RANGE
     profile_sha256: str = PROFILE_SHA256
 
     def __post_init__(self) -> None:
@@ -79,6 +82,8 @@ class ArmRequest:
         _require_int(self.descriptor, "descriptor")
         if self.factory_raw != FACTORY_RAW or self.factory_fetch != FACTORY_FETCH:
             raise ValueError("factory identity does not match ROM-011 target")
+        if self.match_kind not in (MATCH_RANGE, MATCH_ACCEPTED_X0C):
+            raise ValueError("native probe match kind is unsupported")
         if self.profile_sha256 != PROFILE_SHA256:
             raise ValueError("ROM profile SHA-256 does not match trusted profile")
 

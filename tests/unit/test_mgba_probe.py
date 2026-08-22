@@ -10,6 +10,7 @@ from tools.mgba_probe.benchmark import analyze_vcount_samples, reanalyze_gate_re
 from tools.mgba_probe.runtime import (
     FACTORY_FETCH,
     FACTORY_RAW,
+    MATCH_ACCEPTED_X0C,
     PROFILE_SHA256,
     ArmRequest,
     instrumented_environment,
@@ -105,6 +106,9 @@ def test_wrong_or_out_of_range_x_is_rejected():
         watched_ranges(0x03000000)
     with pytest.raises(ValueError, match="factory"):
         ArmRequest(1, X, 1, 0x08294948, factory_raw=0x08007677)
+    assert ArmRequest(1, X, 1, 0x08294948, match_kind=MATCH_ACCEPTED_X0C).match_kind == 1
+    with pytest.raises(ValueError, match="match kind"):
+        ArmRequest(1, X, 1, 0x08294948, match_kind=2)
 
 
 def test_event_parser_preserves_width_registers_and_identity(tmp_path: Path):

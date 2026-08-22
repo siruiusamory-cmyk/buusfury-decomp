@@ -7,11 +7,13 @@ This file records current verified facts. Permanent rules live in
 
 ## Current Baseline
 
-- ROM-010 research baseline: `02e6f6c21f8a28d1c29bc480bd3f8f919a5d6146` (`feat: harden clean-state spatial object probing`).
-- Latest completed and committed research ticket: ROM-011.
-- ROM-008 portable baseline: **192 passed, 0 failed, 0 skipped**. Current portable suite after workflow migration: **199 passed, 0 failed, 0 skipped**. Current portable suite after ROM-011: **250 passed, 0 failed, 0 skipped**.
+- ROM-011 research baseline: `0d0c0e39c058b7cfba9abcdc30d95849c6310e10` (`feat: capture live spatial-object read`).
+- Latest completed and committed research ticket: ROM-012.
+- ROM-008 portable baseline: **192 passed, 0 failed, 0 skipped**. Current portable suite after workflow migration: **199 passed, 0 failed, 0 skipped**. Current portable suite after ROM-011: **250 passed, 0 failed, 0 skipped**. Current ROM-012 portable suite: **289 passed, 0 failed, 0 skipped**.
 - Persistent the tool workflow migration is installed.
-- ROM-011 is archived at `docs/research/archive/ROM-011.md`; `docs/PROJECT_<local-state-name>` records that no next ticket is active and ROM-012 remains unstarted.
+- ROM-011 and ROM-012 are archived at `docs/research/archive/ROM-011.md` and
+  `docs/research/archive/ROM-012.md`. `docs/PROJECT_<local-state-name>` records that no
+  next ticket is active. ROM-013 is unstarted.
 
 ## Verified ROM
 
@@ -128,33 +130,14 @@ Supported classification:
 
 Not proven: collision, trigger, activation, transition, event, or interaction.
 
-## ROM-008 Result and Current Blocker
+## Earlier Runtime Results
 
-ROM-008 dynamically reproduced the target factory, exact returned object,
-registry insertion, bounds, and lifecycle attribution. It did not reach an
-AABB query or callback for that exact object. A callback from another object is
-not evidence for this object.
-
-Verified query entries are `0x080126D4`, `0x080127AE`, and `0x08012846`.
-Direct point-query callback paths include `0x08012784` and `0x0801279C`.
-
-Current evidence level: **Level 3**.
-
-Parser readiness for the `0x08007675` descriptor family: **NO** as of ROM-008.
-
-## ROM-009 Result
-
-Private inputs: state 72,775 bytes / `ea500f3a774d42032202d9c3d7bfb437478417ba37e4b72c634993d7d701ac82`; save 8,192 bytes / `9bbd7cb67b724fbe1263d9b5b7cedf0a6c935a2ff6448befd0a0348b7607f46a`.
-Runtime reproduced MapEntry 39, descriptor `0x08294948`, factory `0x08007675`, X `0x0203DE7C`, slot `0x03002A68`, bounds `(592,136)..(601,241)`, and raw-zero context slot `0x03001C34`.
-No verified caller, query, guard, AABB, or callback ran after X became live.
-Result: **D. ENVIRONMENT BLOCKED**; dialogue **UNRESOLVED**; cause `UNKNOWN`; evidence Level 3. Parser readiness **NO** because descriptor extent/boundary and a complete lossless field map remain unestablished.
-
-## ROM-010 Verified Blocker
-
-The one-launch mGBA/GDB/Lua path is functional. ROM-010 added a bounded ignored Lua-ready marker and stable fail-closed orchestration/result classification.
-Clean, post-transition, and earlier-state private replays verified trusted runtime loads and exact live targets; none reached a known caller, query, guard, AABB, or callback.
-ROM-010 has **NO VALID A/B/C/D RESULT**: A/B did not occur, no executed rejecting guard supports C, and D is disallowed because runtime infrastructure succeeds. A different read-only state must execute one verified caller entry post-live, or the ticket must permit an inconclusive functional-runtime result.
-Dialogue hypothesis remains **UNRESOLVED**. Evidence stays Level 3. Parser readiness **NO**; smallest blocker is the lack of an independently established source-descriptor extent/boundary.
+ROM-008 established exact object lifecycle attribution and query entries
+`0x080126D4`, `0x080127AE`, and `0x08012846`, but no exact callback. ROM-009's
+clean state reached the same live family without scheduling a verified query and
+ended environment-blocked. ROM-010 confirmed its one-launch harness worked but
+the available bounded inputs still scheduled no known post-live query. Detailed
+inputs, negative evidence, and safety records remain in the research documents.
 
 ## ROM-011 Result
 
@@ -163,11 +146,35 @@ The five-second check observed stock 59.890, disarmed 59.129, and armed 59.727 V
 The corrected human run retired discovery breakpoints after native arming; the user reported normal performance. The first exact read was a signed 16-bit load at PC `0x08012748` from live X `0x0203DE7C` offset `+0x04`, inside point-query routine `0x080126D4`. Human context was Goku entering the idle sit-down animation; this does not prove causation.
 ROM-011 result is **C - IDLE/NORMAL PROCESSING READ CAPTURED**. Exact-X consumption at the point-query is **CONFIRMED, Level 3**. Dialogue and the specific region subtype remain **UNRESOLVED**; parser readiness remains **NO** because source-descriptor extent/boundary is still unknown.
 
+## ROM-012 Result
+
+Post-load registry reconstruction on private state SHA-256
+`58228e1dc4ce81c80182242b650e18c0ee3db71f79473a614e5e373de207e0f7`
+validated MapEntry 39, slot `0x03002A68`, X `0x0203DE6C`, descriptor
+`0x08294948`, raw/fetch factory `0x08007675/0x08007674`, and half-open bounds
+`x=[592,601), y=[136,241)`. Query entity `0x0202E4D0` tracked human movement.
+
+The native exact gate captured PC `0x0801277A` reading `X+0x0C` at query point
+`(592,218)`. Receiver `0x0300195C` / dispatch base `0x0804A0AC` invoked
+vtable[2] raw/fetch `0x08007769/0x08007768`, which returned 1, then vtable[1]
+raw/fetch `0x080125E9/0x080125E8`, which executed and reached downstream target
+`0x080075AC`. Human observation, kept separate, was an immediate transition to
+the next area followed by dialogue.
+
+ROM-012 result is **B - EXACT TARGET ACTION CAPTURED**. Exact containment,
+filter acceptance, and action execution are **CONFIRMED, Level 3**. A
+transition-initiating spatial action is **STRONGLY SUPPORTED, Level 4** by the
+controlled executable trace plus immediate observation. Dialogue gating,
+collision semantics, and a final subtype remain **UNRESOLVED**. Parser
+readiness remains **NO** because source-descriptor extent/boundary and a
+complete lossless field map are still unestablished.
+
 ## Unresolved Questions
 
-- Which higher-level caller invokes point-query `0x080126D4` during this
-  idle/normal-processing path?
-- What immediate behavior follows the exact callback, if captured?
+- Which higher-level caller invokes point-query `0x080126D4` during the
+  ROM-011 idle/normal-processing path?
+- What is the complete call tree after ROM-012 action target `0x080125E8`,
+  which did not return within the bounded 512-step trace?
 - Is the `0x08007675` source descriptor structurally bounded well enough for a
   future minimal read-only parser?
 - Which semantic subtype, if any, is justified for this rectangle-aware family?
@@ -186,14 +193,3 @@ operational source of truth.
 | Legacy of Goku recomp | `fbe502a3d44256402262cd3f5baeb072a7235932` |
 | Legacy of Goku II recomp | `add98b5d76fb2b822be870f29fa27b22c9a95631` |
 | Buu's Fury recomp | `453a913a9f67916b9b358776da1c1229b09a6c80` |
-
-## State Update Policy
-
-At the end of each completed ticket:
-
-- record only facts actually established;
-- preserve unresolved status where evidence is insufficient;
-- update portable test counts and evidence levels;
-- record a baseline SHA only after its commit exists;
-- keep detailed evidence in the research documents;
-- keep this file concise rather than chronological.

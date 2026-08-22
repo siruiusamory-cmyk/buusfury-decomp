@@ -25,7 +25,7 @@ on an ordinary memory read.
 
 Control packets are project-specific GDB queries:
 
-- `qLog1ProbeArm:<sequence>,<X>,<epoch>,<descriptor>,<factory_raw>,<factory_fetch>,<profile_sha256>`
+- `qLog1ProbeArm:<sequence>,<X>,<epoch>,<descriptor>,<factory_raw>,<factory_fetch>,<match_kind>,<profile_sha256>`
 - `qLog1ProbeDisarm:<sequence>`
 - `qLog1ProbeEvent`
 - `qLog1ProbeAck:<event_id>`
@@ -35,6 +35,11 @@ No Lua scripting or Windows UI automation is part of the native workflow.
 The patch also balances `SocketSubsystemInit`/`SocketSubsystemDeinit` inside the
 GDB stub. This is required by the standalone Windows SDL frontend; Qt happens
 to initialize Winsock elsewhere, while SDL does not.
+
+`match_kind=0` preserves the ROM-011 range mode. `match_kind=1` is the
+ROM-012 accepted-containment mode: it captures only the CPU read at
+`0x0801277A` overlapping `[X+0x0C,X+0x10)`. This fixed PC-and-span gate avoids
+ordinary bounds reads while the human navigates.
 
 ## Build
 

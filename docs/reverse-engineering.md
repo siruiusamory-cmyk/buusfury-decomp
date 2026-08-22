@@ -291,10 +291,11 @@ teardown in the GDB stub, allowing command-driven SDL `--gdb --savestate`
 startup without Lua or Windows UI automation.
 
 The human capture used the pre-review patch/executable hashes `a18e6f9a...` /
-`6d67481b...`. Final review corrected generic unaligned 16/32-bit physical-span
-overlap and bound launch verification to the tracked patch hash, producing
-current hashes `8863b2e2...` / `cdd871ae...`. The captured aligned 16-bit
-`X+0x04` read is unaffected by that correction.
+`6d67481b...`. Final ROM-011 review corrected generic unaligned 16/32-bit
+physical-span overlap and bound launch verification to the tracked patch hash,
+producing ROM-011 completion hashes `8863b2e2...` / `cdd871ae...`. The captured
+aligned 16-bit `X+0x04` read is unaffected by that correction. ROM-012 later
+extended this patch with an exact accepted-containment mode.
 
 Ignored performance gate `build/rom011/performance-gate-13` used the same
 verified ROM/state/save copies and direct GBA VCOUNT rollover counting over GDB,
@@ -322,6 +323,37 @@ consumption at PC `0x08012748` inside point-query `0x080126D4` is **CONFIRMED,
 Level 3**. The specific region subtype and dialogue hypothesis remain
 unresolved, and parser readiness remains **NO** because descriptor
 extent/boundary is still unknown.
+
+## ROM-012 exact target action capture
+
+A user-created post-transition state allowed post-load reconstruction without
+replaying the factory/allocation/insertion chain. Runtime enumeration validated
+the complete identity chain from live registry slot `0x03002A68`, through X
+`0x0203DE6C` and retained descriptor `0x08294948`, to descriptor raw factory
+`0x08007675`. X had half-open bounds `x=[592,601), y=[136,241)` and callback
+receiver `0x0300195C`. Query entity `0x0202E4D0` tracked the user's movement,
+strongly supporting player correlation.
+
+The ROM-012 tracked patch/executable SHA-256 values were `8ee9d92d...` and
+`0698a847...`, built from the same pinned mGBA commit as ROM-011. The new mode
+requires exact PC `0x0801277A` plus a read overlapping `X+0x0C..X+0x10`.
+
+The native exact gate captured PC `0x0801277A` reading `X+0x0C` when the query
+was `(592,218)`. Receiver dispatch base `0x0804A0AC` resolved vtable[2] raw/fetch
+`0x08007769/0x08007768`; it returned 1. Vtable[1] raw/fetch
+`0x080125E9/0x080125E8` then executed and re-dispatched through X to concrete
+target `0x080075AC`. The retained bounded trace reached descriptor-driven and
+spatial-position update paths but did not return to the point query within 512
+steps.
+
+Human observation is separate: entering X moved the player to the next area
+and began dialogue. The exact containment/filter/action chain is **CONFIRMED,
+Level 3**; a transition-initiating spatial action is **STRONGLY SUPPORTED,
+Level 4** by the controlled trace plus immediate observation. Dialogue gating,
+collision semantics, and a final subtype remain unresolved. ROM-012 result is
+**B - EXACT TARGET ACTION CAPTURED**. Parser readiness remains **NO** because
+source-descriptor extent/boundary and a complete lossless field map remain
+unestablished.
 
 ## GBARecomp boundary
 

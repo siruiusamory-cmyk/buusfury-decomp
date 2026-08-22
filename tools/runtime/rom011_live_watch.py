@@ -520,6 +520,7 @@ class Rom011RspClient(Rom008RspClient):
             f"qLog1ProbeArm:{request.sequence:x},{request.target:08x},"
             f"{request.load_epoch:x},{request.descriptor:08x},"
             f"{request.factory_raw:08x},{request.factory_fetch:08x},"
+            f"{request.match_kind:x},"
             f"{request.profile_sha256}"
         )
         self.sock.sendall(rsp_packet(payload))

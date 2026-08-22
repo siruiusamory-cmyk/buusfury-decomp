@@ -8,12 +8,13 @@ This file records current verified facts. Permanent rules live in
 ## Current Baseline
 
 - ROM-011 research baseline: `0d0c0e39c058b7cfba9abcdc30d95849c6310e10` (`feat: capture live spatial-object read`).
+- TOOL-001 starting repository baseline: `931794cb5f03caa58431281c3f703a60b3ff5dba` (`feat: capture spatial transition action`).
 - Latest completed and committed research ticket: ROM-012.
-- ROM-008 portable baseline: **192 passed, 0 failed, 0 skipped**. Current portable suite after workflow migration: **199 passed, 0 failed, 0 skipped**. Current portable suite after ROM-011: **250 passed, 0 failed, 0 skipped**. Current ROM-012 portable suite: **289 passed, 0 failed, 0 skipped**.
+- Latest completed tooling ticket: TOOL-001.
+- ROM-008 portable baseline: **192 passed, 0 failed, 0 skipped**. Current portable suite after workflow migration: **199 passed, 0 failed, 0 skipped**. Current portable suite after ROM-011: **250 passed, 0 failed, 0 skipped**. Current TOOL-001 portable suite: **293 passed, 0 failed, 0 skipped**.
 - Persistent the tool workflow migration is installed.
-- ROM-011 and ROM-012 are archived at `docs/research/archive/ROM-011.md` and
-  `docs/research/archive/ROM-012.md`. `docs/PROJECT_<local-state-name>` records that no
-  next ticket is active. ROM-013 is unstarted.
+- ROM-011, ROM-012, and TOOL-001 are archived under `docs/research/archive/`.
+  `docs/PROJECT_<local-state-name>` is a stop-only placeholder; TOOL-002 and ROM-013 are unstarted.
 
 ## Verified ROM
 
@@ -168,6 +169,10 @@ controlled executable trace plus immediate observation. Dialogue gating,
 collision semantics, and a final subtype remain **UNRESOLVED**. Parser
 readiness remains **NO** because source-descriptor extent/boundary and a
 complete lossless field map are still unestablished.
+
+## Ghidra Static-Analysis Calibration
+
+TOOL-001 calibrated Ghidra 12.1.2, Temurin 21.0.11+10, and `pudii/gba-ghidra-loader` commit `9bfb2d1fe891aa78bab7093a328feb3a52318ab7`; all local tools, ROM copies, projects, caches, and reports remain ignored under `build/ghidra/`. The verified ROM imported as `ARM:LE:32:v4t:default` with ROM at `0x08000000`, mapped GBA regions, a parsed header, and an ARM entry at `0x080000C0`. Bounded default analysis timed out at 900 seconds but saved the project. Blind analysis missed all five target functions and chose the wrong ARM/Thumb context for four; established entry/callsite seeds then yielded matching point-query, factory, and callback bodies, but not the indirect action path to `0x080075AC`. Outcome: **B - ADOPT WITH REQUIRED CORRECTIONS**. Use Ghidra as the default static database only with explicit Thumb checks, conservative labels, and corroboration of boundaries and indirect targets. Headless reporting is verified; [`ghidra-workflow.md`](ghidra-workflow.md) has full details. No Ghidra MCP work, broad BSim transfer, Data Crystal import, or ROM-013 research occurred.
 
 ## Unresolved Questions
 

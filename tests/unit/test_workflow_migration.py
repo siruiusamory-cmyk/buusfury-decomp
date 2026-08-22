@@ -59,18 +59,24 @@ def test_context_split_keeps_permanent_state_and_ticket_content_separate():
     assert "buus_fury_usa_rev0_01c1707f" not in agents
     assert "ROM-008 portable baseline: **192 passed" in state
     assert "Current portable suite after workflow migration: **199 passed" in state
-    assert "# ROM-012 - Complete; No Active Ticket" in current
+    assert "# TOOL-001 - Complete; No Active Ticket" in current
     assert "Original ROM Safety - Mandatory" not in current
-    assert "ROM-013 remains" in current
+    assert "TOOL-002" in current
+    assert "ROM-013" in current
 
 
-def test_current_placeholder_blocks_unapproved_research():
+def test_current_placeholder_blocks_unapproved_work():
     current = (PROJECT_ROOT / "docs/PROJECT_<local-state-name>").read_text(encoding="utf-8")
 
-    assert "ROM-012 is complete and archived" in current
-    assert "No next research ticket has been authored or authorized" in current
-    assert "Do not execute ROM-012 again" in current
+    assert "TOOL-001 is complete and archived" in current
+    assert "No next research or tooling ticket has been authored or authorized" in current
+    assert "Do not execute TOOL-001 again" in current
+    assert "Do not begin TOOL-002" in current
     assert "Do not begin ROM-013" in current
+    assert "Do not run BSim matching" in current
+    assert "Do not import Data Crystal labels" in current
+    assert "Do not perform project MCP work" in current
+    assert "Do not perform new ROM reverse engineering" in current
     assert "Stop immediately" in current
 
 
@@ -87,7 +93,7 @@ def test_runner_dry_run_works_from_an_unrelated_directory(tmp_path):
     assert f"agents: {PROJECT_ROOT / 'docs/DEVELOPMENT.md'}" in result.stdout
     assert f"state: {PROJECT_ROOT / 'docs' / 'PROJECT_<local-state-name>'}" in result.stdout
     assert f"ticket: {PROJECT_ROOT / 'docs' / 'tickets' / 'PROJECT_<local-state-name>'}" in result.stdout
-    assert "current: ROM-012" in result.stdout
+    assert "current: TOOL-001" in result.stdout
     assert "mode: interactive the tool session" in result.stdout
     assert "dry-run: no the tool session launched" in result.stdout
 

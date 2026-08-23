@@ -63,6 +63,44 @@ attach/post/remove-shaped calls around interaction paths. Also allocator
 `0x0803D5B8` (shared with spatial factory), release-ish `0x0803D8A0`,
 resource-by-id getter `FUN_0802bfbc(id,table)`.
 
+## Transition pipeline (synthesis; frontier CLOSED 2026-08-23)
+
+Evidence-separated map of how area transitions work on the canonical profile:
+
+```text
+[CONFIRMED]        MapEntry table / lookup 0x080089FC
+[CONFIRMED L3]     variation resolver 0x080089CC -> selected value S
+                   (S word0 000C10xx; +0x40 count, +0x44 descriptor array)
+[STRONG_STATIC]    population adapter 0x08009670 -> registry_populate_08012664
+                   (descriptor-array members into manager 0x03002A64)
+[CONFIRMED static] SECOND member source: MapEntry +0x10 trigger records
+                   (8-byte records, count at MapEntry +0x04) ->
+                   candidate_registry_spawn_080026EA /
+                   candidate_registry_writer_08009172 ->
+                   handler 0x0800742C builds the SAME 24-byte rectangle object
+                   via common initializer FUN_08009AEC (family vtable
+                   0x08049BD4); appended to the SAME manager
+[L3 CONFIRMED]     per-frame point query 0x080126D4 (+ two sibling queries)
+                   tests entities against member bounds (half-open AABB)
+[L3/L4 CONFIRMED]  accepted containment -> filter/action dispatch through
+                   member's +0x0C receiver (descriptor family: vtable base
+                   0x0804A0AC, filter 0x08007768, action 0x080125E8)
+[STRONG_STATIC]    action -> downstream_080075AC (map-transition executor)
+                   -> candidate_map_loader_08008d44:
+                      zone/area bytes -> new context; spawn coords -0x70/-0x4C;
+                      MapEntry lookup; load flow 0x08008B30; entity spawn
+                      (0x18-stride table); music change check
+[INFERRED]         retained variation word carried to new-context +0x8C then
+                   re-population dispatch (new ctx table +0x28 method)
+[UNKNOWN]          concrete action target for trigger-family receivers
+                   (e.g., table 0x0804ACE0; computed dispatch)
+```
+
+VERTICAL-001 result-C resolution: MapEntry 39 carries BOTH a descriptor door
+(emtpyable) AND trigger record[1] with bounds `(481,121)..(615,271)`
+containing the doorway `(592,136)..(601,241)`; emptying one accept region
+leaves the other accepting - the observed persistence.
+
 ## 3. Rectangle runtime object family
 
 - Size 0x18; dispatch base installed at `+0x00`; bounds halfwords

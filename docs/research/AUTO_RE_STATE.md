@@ -10,12 +10,50 @@ Rules of the lane: static-first, bounded units, evidence labels
 canonical ROM or user saves/states, narrow commits only, never commit
 proprietary artifacts.
 
+## Priority Steering (2026-08-23, user)
+
+1. Finish the transition thread cleanly (AUTO-012 first). The causal target:
+   WHY did VERTICAL-001 still transition after MapEntry 39's only
+   descriptor-owned doorway rectangle was emptied? Strongest remaining
+   candidate chain: non-descriptor registry population -> append site
+   `candidate_registry_writer_08009172` -> caller path `0x080026FC`. Answer:
+   what object is appended, where its bounds originate, whether it exists on
+   MapEntry 39, whether it accepts the doorway query, what action it
+   dispatches, and whether it reaches `downstream_080075AC`. If explained,
+   mark VERTICAL-001 C RESOLVED with the full chain; do NOT enumerate every
+   remaining transition subtype. If not explained after bounded work,
+   document why and move on.
+2. One concise transition-pipeline synthesis in SUBSYSTEM_MAP.md
+   (CONFIRMED / STRONGLY SUPPORTED / INFERRED / UNKNOWN separated). Close the
+   frontier; do not keep polishing it.
+3. Then PIVOT HARD to player/combat as top priority: player entity ->
+   update root -> minimum runtime structure (position/velocity/facing/
+   animation/HP/ki/attack state/i-frames) -> input->movement rules with
+   numbers -> melee initiation/state progression (startup/active/recovery)
+   -> one complete damage event (hit detection -> damage calc -> HP mutation
+   -> reaction/knockback/i-frames -> death) -> one simple enemy's update loop.
+4. Produce BEHAVIORAL SPECIFICATIONS, not field lists (with evidence labels;
+   no invented semantics).
+5. Use LoG1/LoGII material as differential evidence (manual structural
+   comparison; RELATED_IMPLEMENTATION_CANDIDATE until validated).
+6. Recover usable gameplay constants: value / unit-representation / where
+   used / evidence / game-version.
+7. At synthesis passes: audit older claims against new evidence; record
+   OLD CLAIM / NEW EVIDENCE / RESOLUTION; archive stays historical.
+8. Stay discovery-dominated; synthesis must be cheaper than the units it
+   summarizes. Prefer subsystem roots, closed causal chains, state machines,
+   formulas/timings, eliminated hypotheses; ignore anonymous leaves.
+9. Next-major-checkpoint report must attempt: player update location,
+   movement computation, melee initiation, hit->HP-loss chain, knockback,
+   enemy update location, recovered constants, LoGII-vs-Buu deltas.
+
 ## Current Objective
 
-AUTO-012: recover the containing function behind callsite `0x080026FC`
-(caller of second registry-append site `candidate_registry_writer_08009172`)
-and classify what record table it iterates; classify the direct manager writes
-in `FUN_0800d30e` (`0x0800D4C4`) and `FUN_08017f5a` (`0x0801804E`).
+P-001 (player/combat pivot per steering): identify the canonical
+player-controlled entity during ordinary gameplay and its update root.
+Anchors already in hand: query entity `0x0202E4D0` strongly supported as
+player-controlled (ROM-012); `candidate_caller_08006E3C` is a global-driven
+frame handler querying at a tracked entity.
 
 ## Research Queue
 
@@ -30,7 +68,13 @@ in `FUN_0800d30e` (`0x0800D4C4`) and `FUN_08017f5a` (`0x0801804E`).
 | AUTO-006 | descriptor-format | What is the minimal extent/field map of a source descriptor such that parsing is lossless? | Recorded parser-readiness blocker across ROM-008..ROM-012 | Consumers read `+0x00` (factory), `+0x04` (callback producer), `+0x08/+0x0C` (bounds) | Static census of all descriptor accesses from all factories reached via variation arrays; adjacency analysis in ROM | READY |
 | AUTO-010 | map-loader | Does `FUN_08008d44` resolve a MapEntry via `0x080089FC` from zone/area/variation bytes, and what are its argument/return contracts? | Completes the transition mechanism chain end-to-end; needed for any future map-warp tooling | AUTO-003: called by `downstream_080075AC` with `(ctx, byte, byte, ptr, byte, 1)`, returns new context | Ghidra: seed + decompile `0x08008d44`; check for `0x080089FC` call and literal use | RESOLVED |
 | AUTO-011 | registry-population | Do MapEntry objects/npcs pointer-driven spawns add spatial registry members beyond the variation-array path? | Tests the remaining descriptor-free explanation for VERTICAL-001 C | ROM-007: registry construction is heterogeneous; objects/npcs pointers exist in MapEntry (+0x1C/+0x20) | Enumerate callers of `registry_populate_08012664`; census manager-global xrefs; classify write sites | RESOLVED (refined) |
-| AUTO-012 | registry-population | Which load path drives second append site `candidate_registry_writer_08009172` via callsite `0x080026FC`, and what do the `FUN_0800d30e`/`FUN_08017f5a` manager writes do? | Completes the registry-mutation map; candidate VERTICAL-001 C mechanism | AUTO-011: append site appends vtable[0]-dispatch results from an 8-byte-stride record table; caller `0x080026FC` unrecovered | Ghidra: recover containing function of `0x080026FC` (backward seeding), decompile writers | READY |
+| AUTO-012 | registry-population | Which load path drives second append site `candidate_registry_writer_08009172` via callsite `0x080026FC`, and what do the `FUN_0800d30e`/`FUN_08017f5a` manager writes do? | Completes the registry-mutation map; candidate VERTICAL-001 C mechanism | AUTO-011: append site appends vtable[0]-dispatch results from an 8-byte-stride record table; caller `0x080026FC` unrecovered | Ghidra: recover containing function of `0x080026FC` (backward seeding), decompile writers | RESOLVED (VERTICAL-001 C explained; FUN_0800d30e/FUN_08017f5a write classification deferred as low-value) |
+| P-001 | player-entity | Which runtime entity is the player and where is its update root/dispatcher? | Root anchor for all player/combat research | ROM-012: query entity `0x0202E4D0` tracked human movement; `candidate_caller_08006E3C` frame handler queries at a tracked entity; map loader spawns via 0x18-stride table + `FUN_080109aa/080104f2` | Static: decompile loader spawn path (`FUN_0801713c`, `FUN_080109aa`) to find the player-class factory + its update dispatch entry; then find per-frame update root | READY |
+| P-002 | player-movement | How does directional input become movement (speed, normalization, facing, inhibition)? | Core behavioral spec for remake | P-001 dependency | Trace input bits from `candidate_caller_08006E3C` button tests into entity velocity/position fields | BLOCKED by P-001 |
+| P-003 | melee | Where does basic melee begin and what is its state progression (startup/active/recovery/hitbox query)? | Core combat spec | none yet | From player update root, follow attack-button branch to melee state machine | BLOCKED by P-001 |
+| P-004 | damage | One complete damage event: hit detection -> damage calc -> HP mutation -> reaction/knockback/i-frames -> death | Closes the combat loop end-to-end | none yet | Follow melee hitbox accept into enemy entity HP mutation | BLOCKED by P-003 |
+| P-005 | enemy-ai | One simple enemy's update loop (idle/detect/approach/attack/receive-damage/death) | Enemy behavioral spec | `candidate_caller_08021CC0` periodic dual-point sensor candidate | From entity spawn table, pick simplest enemy class and trace update | BLOCKED by P-001 |
+| P-006 | differential | Compare recovered Buu player/combat functions against LoGII/LoG1 material (manual structural comparison only) | Answers what combat feel is shared vs changed | recomp repos lack generated code; Legacy repo has LoG1 tooling/VM data | After P-002/P-003 produce constants/state machines, compare shapes/constants with Legacy repo data | DEFERRED until P-003 |
 | AUTO-007 | script-vm | How does the Buu bytecode VM relate to Legacy repo's 145-opcode LoG1 VM inventory? | Dialogue/quest scripting is a whole engine subsystem | `extern/Legacy/OpCodes.csv`, `DBZKit/Legacy/Games/BYTECODE_VM.cs` (LoG1 lineage, INFERRED transferability) | Locate Buu bytecode consumers from MapEntry script pointers; compare opcode dispatch shape | DEFERRED |
 | AUTO-008 | bsim | Calibrate BSim against an independent related binary | TOOL-002 closed BLOCKED: no independent related binary locally | TOOL-002 archive | Needs a new local binary (e.g., another-region dump) before any work | BLOCKED |
 | AUTO-009 | external-knowledge | Data Crystal / community addresses for Buu's Fury or LoG1/LoGII worth validating? | Cheap candidate anchors if any exist | None imported so far (deliberate) | Web search; record EXTERNAL CLAIM then validate against canonical profile before use | DEFERRED |
@@ -211,6 +255,43 @@ research-lane findings only.)
     non-descriptor members (e.g., entity-spawned) remain a live candidate for
     VERTICAL-001 C. Refined into AUTO-012.
 
+- **AUTO-012 (2026-08-23), Ghidra static + byte decode - VERTICAL-001
+  RESOLVED:**
+  - `CONFIRMED` (static): containing function of callsite `0x080026FC` is
+    `candidate_registry_spawn_080026EA` (`..0x08002701`): pops an index from a
+    `{count, elems[]}` stack-array and calls the writer with the map-context
+    global **`0x0300197C`** (literal chain `0x08002954 -> 0x08054FBC+0xC`).
+    Reached via function-pointer table entry `0x080552C0 -> 0x080026EB`
+    (dense engine dispatch table region `~0x08055284..`).
+  - `CONFIRMED` (static): `candidate_registry_writer_08009172` iterates
+    **`MapEntry[+0x10] triggers_pointer_raw` as 8-byte records** (count =
+    MapEntry `+0x04`), reads each record's `+4` pointer, and dispatches its
+    vtable[0] to construct the registry member.
+  - `CONFIRMED` (static): handler `candidate_trigger_handler_0800742C`
+    allocates the SAME 24-byte rectangle object and runs the SAME common
+    initializer `FUN_08009AEC`; source field roles identical to spatial
+    descriptors (`+04` callback producer, `+08/+0C` bounds); installs family
+    vtable base `0x08049BD4`; copies source `+0x10` word to object `+0x14`.
+    Trigger objects are first-class rectangle members of the same registry.
+  - MapEntry 39 has 11 trigger records; record[1] type `0x00020006` ->
+    source `0x080755C0`: producer `0x08007791`, bounds **`(481,121)..(615,271)`
+    - CONTAINING the entire doorway rectangle `(592,136)..(601,241)`**
+    (`producer candidate_trigger_producer_08007790` builds an 8-byte receiver
+    `{table 0x0804ACE0, 0}`).
+  - CAUSAL CHAIN for VERTICAL-001 result C (STRONGLY SUPPORTED, Level 2/3
+    boundary): after descriptor `0x08294948` was emptied, the player still
+    stood inside trigger[1]'s rectangle; the generic point query accepted it;
+    ITS action path executed; the transition persisted. The exact concrete
+    action target behind receiver table `0x0804ACE0` is UNKNOWN (computed
+    dispatch; no static refs beyond producer). Per steering rule this does
+    not change the resolution.
+  - OLD CLAIM / NEW EVIDENCE / RESOLUTION:
+    - OLD: "The remaining transition source is not established" (VERTICAL-001,
+      PROJECT_STATE unresolved list).
+    - NEW: trigger-array population path + containing rectangle identified.
+    - RESOLUTION: descriptor-driven doorway was one of at least two overlapping
+      accept regions on MapEntry 39; the trigger-family member persists.
+
 ## Function Knowledge
 
 See `SUBSYSTEM_MAP.md` for the consolidated table. Confidence vocabulary:
@@ -237,5 +318,6 @@ behavior, multiple corroborations), `CANDIDATE` (single static observation).
 
 ## Next Candidate
 
-AUTO-011 (entity-spawned registry members) - the sharpest remaining
-VERTICAL-001 C question after AUTO-004 eliminated descriptor-driven sources.
+P-001 (player entity + update root) - top of the player/combat pivot.
+Transition frontier is CLOSED; do not spend further units on transition
+taxonomy (AUTO-005 vtable dump remains READY but demoted below P-series).

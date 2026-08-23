@@ -320,6 +320,11 @@ research-lane findings only.)
       transition).
   - Update-root candidate: `FUN_080043d8` (sole non-recursive caller of the
     tick) - NEXT decompile target.
+  - `CONFIRMED` (static): `candidate_frame_update_080043D8` is a thin adapter:
+    `tick(base + base[0]*0x68 + 0x4f8)` - i.e., it runs the entity state
+    machine for the ACTIVE record of the recurring 0x68-stride per-character
+    array (leading byte = active index). Its caller is `FUN_080033d2`
+    (next link toward the frame scheduler).
 
 ## Function Knowledge
 

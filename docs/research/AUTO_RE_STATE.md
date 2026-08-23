@@ -590,6 +590,35 @@ research-lane findings only.)
     was dialogue entry. Attack identification now rests on the open-field
     punch evidence.
 
+- **P-003 progress 2 (2026-08-23), punch-timing probe:**
+  - `tools/runtime/p003_punch_timing.lua` sampled buffered input,
+    `+0x10` word, and OAM entries 0..15 (words `0x07000000..0x0700003F`)
+    per tick across TapA (2-tick press), HoldA (14-tick press), and a
+    no-press control, all from identical walk-ups.
+  - Result: **all three legs byte-identical** in every sampled channel
+    (only background-scroll words changed). Combined with the earlier
+    entity-word null result, the punch presentation uses channels outside
+    {entity words 0x000..0x23C, OAM[0..15], +0x10} - candidates: higher
+    OAM entries, a shadow OAM buffer committed at VBlank, or sprite
+    tile/VRAM state. Whether the punch fired in THESE runs is unverifiable
+    with current sampling (the MoveA screenshot proof of the punch stands).
+  - Conservative wording per steering: "no word-level player-entity
+    mutation was observed during sampled punches" - NOT "punch state lives
+    outside the entity" (byte/halfword or external-controller state not
+    excluded).
+  - OAM words `0x07000018/0x20/0x28` high bytes decrement continuously
+    (background scroll drift) - useful as a liveness signal, not sprite
+    state.
+  - BLOCKER (clean statement per steering #5/#11): no locally available
+    legal save/state contains a hittable enemy (Higher Plane mansion
+    exterior + interior dialogue area only). A human-provided state in a
+    simple combat encounter would unlock the contact chain (hit region ->
+    target dispatch -> damage) and is the single highest-value next input.
+    Everything establishable without a target has been established:
+    attack input = A/0x0001 (context-sensitive interact-vs-attack),
+    edge-consumed buffer, registry-negative, entity-word-negative,
+    presentation channel unidentified.
+
 ## Function Knowledge
 
 See `SUBSYSTEM_MAP.md` for the consolidated table. Confidence vocabulary:

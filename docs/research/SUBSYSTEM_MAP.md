@@ -28,7 +28,9 @@ at `0x08048488`.
 | Function | Role | Evidence |
 |---|---|---|
 | `0x08009670` | population adapter: selected value `+0x40`=count, `+0x44`=descriptor array -> `0x08012664` | L3 runtime (ROM-007) |
-| `0x08012664` | descriptor-array iteration (backward), indirect factory dispatch via `0x08046AA2 BX r1`, registry append | L3 runtime |
+| `0x08012664` | descriptor-array iteration (backward), indirect factory dispatch via `0x08046AA2 BX r1`, registry append. AUTO-011: sole caller is the population adapter | L3 runtime |
+| `0x08009172` | SECOND append site: vtable[0]-dispatch of records from 8-byte-stride table, appends to manager via literal table `+0x10`; callsite `0x080026FC` (AUTO-011) | STRONG_STATIC |
+| Manager-global accessors | READ/WRITE census at `03002A64`: `FUN_08008aa0`, `FUN_08009172`, `FUN_0800d30e`, `FUN_08017f5a/08018078/08018346`, `FUN_0803643c/3656c/36914` (AUTO-011) | static xref census |
 | `0x0801268A..0x080126CE` | removal by pointer, compaction, cleanup dispatch | static + runtime lifecycle (ROM-008) |
 | `0x080126D4..0x080127AD` | point query: signed half-open AABB vs `+0x04..+0x0B`, first-accept exit; two-stage callback dispatch | L3 (ROM-011/ROM-012) |
 | `0x080127AE..0x08012844` | second AABB query routine | static entries; callers below |

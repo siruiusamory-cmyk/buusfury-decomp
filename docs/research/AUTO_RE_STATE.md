@@ -12,9 +12,10 @@ proprietary artifacts.
 
 ## Current Objective
 
-Synthesis pass (units 1-5 complete): reconcile ledger, subsystem map, and
-queue; then select AUTO-011 (entity-spawned registry members) as the next
-research objective unless synthesis surfaces a sharper frontier.
+AUTO-012: recover the containing function behind callsite `0x080026FC`
+(caller of second registry-append site `candidate_registry_writer_08009172`)
+and classify what record table it iterates; classify the direct manager writes
+in `FUN_0800d30e` (`0x0800D4C4`) and `FUN_08017f5a` (`0x0801804E`).
 
 ## Research Queue
 
@@ -28,7 +29,8 @@ research objective unless synthesis surfaces a sharper frontier.
 | AUTO-005 | registry-manager | Complete function graph of registry manager around `0x03002A64` (`0x08012628`, `0x08012664`, `0x0801268A`, `0x080126D4`, `0x080127AE`, `0x08012846`, `0x08012900`, neighbors to `0x080128F2+`) | One coherent subsystem map for the best-understood engine area | Individual behaviors established in ROM-006/008/011/012 | Ghidra seeding + decompilation sweep over `0x08012600..0x08012A00` | READY |
 | AUTO-006 | descriptor-format | What is the minimal extent/field map of a source descriptor such that parsing is lossless? | Recorded parser-readiness blocker across ROM-008..ROM-012 | Consumers read `+0x00` (factory), `+0x04` (callback producer), `+0x08/+0x0C` (bounds) | Static census of all descriptor accesses from all factories reached via variation arrays; adjacency analysis in ROM | READY |
 | AUTO-010 | map-loader | Does `FUN_08008d44` resolve a MapEntry via `0x080089FC` from zone/area/variation bytes, and what are its argument/return contracts? | Completes the transition mechanism chain end-to-end; needed for any future map-warp tooling | AUTO-003: called by `downstream_080075AC` with `(ctx, byte, byte, ptr, byte, 1)`, returns new context | Ghidra: seed + decompile `0x08008d44`; check for `0x080089FC` call and literal use | RESOLVED |
-| AUTO-011 | registry-population | Do MapEntry objects/npcs pointer-driven spawns add spatial registry members beyond the variation-array path? | Tests the remaining descriptor-free explanation for VERTICAL-001 C | ROM-007: registry construction is heterogeneous; objects/npcs pointers exist in MapEntry (+0x1C/+0x20) | Static first: seed object/npc spawn factories; look for `0x08012664`/registry-append callers outside `0x08009670` path | READY |
+| AUTO-011 | registry-population | Do MapEntry objects/npcs pointer-driven spawns add spatial registry members beyond the variation-array path? | Tests the remaining descriptor-free explanation for VERTICAL-001 C | ROM-007: registry construction is heterogeneous; objects/npcs pointers exist in MapEntry (+0x1C/+0x20) | Enumerate callers of `registry_populate_08012664`; census manager-global xrefs; classify write sites | RESOLVED (refined) |
+| AUTO-012 | registry-population | Which load path drives second append site `candidate_registry_writer_08009172` via callsite `0x080026FC`, and what do the `FUN_0800d30e`/`FUN_08017f5a` manager writes do? | Completes the registry-mutation map; candidate VERTICAL-001 C mechanism | AUTO-011: append site appends vtable[0]-dispatch results from an 8-byte-stride record table; caller `0x080026FC` unrecovered | Ghidra: recover containing function of `0x080026FC` (backward seeding), decompile writers | READY |
 | AUTO-007 | script-vm | How does the Buu bytecode VM relate to Legacy repo's 145-opcode LoG1 VM inventory? | Dialogue/quest scripting is a whole engine subsystem | `extern/Legacy/OpCodes.csv`, `DBZKit/Legacy/Games/BYTECODE_VM.cs` (LoG1 lineage, INFERRED transferability) | Locate Buu bytecode consumers from MapEntry script pointers; compare opcode dispatch shape | DEFERRED |
 | AUTO-008 | bsim | Calibrate BSim against an independent related binary | TOOL-002 closed BLOCKED: no independent related binary locally | TOOL-002 archive | Needs a new local binary (e.g., another-region dump) before any work | BLOCKED |
 | AUTO-009 | external-knowledge | Data Crystal / community addresses for Buu's Fury or LoG1/LoGII worth validating? | Cheap candidate anchors if any exist | None imported so far (deliberate) | Web search; record EXTERNAL CLAIM then validate against canonical profile before use | DEFERRED |
@@ -187,6 +189,27 @@ research-lane findings only.)
   - Transition chain now end-to-end statically: containment -> filter ->
     `spatial_action_080125E8` -> `downstream_080075AC` ->
     `candidate_map_loader_08008d44` -> MapEntry lookup + load flow.
+
+- **AUTO-011 (2026-08-23), Ghidra static + xref census:**
+  - `CONFIRMED` (static): `registry_populate_08012664` has exactly ONE
+    caller - `population_adapter_08009670`. The descriptor-array path is the
+    only feeder of that primitive.
+  - `CONFIRMED` (static): a SECOND independent registry-append site exists at
+    `candidate_registry_writer_08009172` (body `..0x08009195`): reads an
+    object pointer from `*(arg+4)+0x10 + idx*8 + 4` (8-byte-stride record
+    table), dispatches vtable[0] via `FUN_08046aa2`, appends result to the
+    manager reached through literal `DAT_080091fc+0x10`. Its only recovered
+    callsite is `0x080026FC` (containing function unrecovered).
+  - Manager-global `0x03002A64` xref census (25 refs): known sites plus
+    direct READ/WRITE accessors `FUN_0800d30e` (`0x0800D4C0/C4`),
+    `FUN_08017f5a` (`0x0801804A/E`), `FUN_08018078`, `FUN_08018346`,
+    `FUN_0803643c`, `FUN_0803656c` (x3), `FUN_08036914`, `FUN_08002862`,
+    and DATA references at `0x08070190`, `0x080707B4/E0/E4`. The reset at
+    `0x08048488` did not appear in recovered xrefs (likely unrecovered
+    literal flow; not evidence of absence).
+  - Consequence (INFERRED): the spatial registry has multiple mutation sites;
+    non-descriptor members (e.g., entity-spawned) remain a live candidate for
+    VERTICAL-001 C. Refined into AUTO-012.
 
 ## Function Knowledge
 

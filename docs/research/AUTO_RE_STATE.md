@@ -455,6 +455,56 @@ research-lane findings only.)
     vtable (esp. early slots) for the frame update that consumes buffered
     direction bits; then movement quantities.
 
+- **P-002 progress 4 (2026-08-23), static - position fields + body model
+  CONFIRMED; slot triage pass 1:**
+  - CORRECTION (OLD / NEW / RESOLUTION):
+    - OLD: `entity+0xA0/+0xA4` treated as generic entity position words.
+    - NEW: for the player/actor class, position lives at **`+0x1A0` (X),
+      `+0x1A4` (Y)** - independently confirmed by `cand_body_bounds_0800FE78`,
+      `cand_point_in_body_0800FDFA`, and `cand_slot3_0801003A`
+      (`param_1[0x68]>>8`, `param_1[0x69]>>8`). The `+0xA0/A4` pattern seen
+      earlier belongs to a different entity class.
+    - RESOLUTION: movement-spec POSITION rows use `+0x1A0/+0x1A4`.
+  - `CONFIRMED` behavioral facts (raw):
+    - Body rect A (table-driven): `bounds(entity)` =
+      `{px + T[i].x0, py + T[i].y0, px + T[i].x1, py + T[i].y1}` where
+      `T = *(entity+0x58) + byte(entity+0x10)*0x10` and each entry is
+      `{+0x10 x0, +0x14 y0, +0x18 x1, +0x1C y1}` (signed, pixel units after
+      `px=*(+0x1A0)>>8`).
+    - Body rect B (simple): `{px, py, px + byte(+0x19C), py + byte(+0x19D)}`
+      from `cand_point_in_body_0800FDFA`; slot3 additionally uses signed
+      extent bytes `+0x19E/+0x19F` around the position for an in-map test.
+    - slot3 also derives camera-relative coords into entity words `[0x1b]/
+      [0x1c]` from map-ctx (`DAT_080102d0` -> ctx +0x28/+0x2C origin,
+      +0x1C/+0x20/+0x24 map rect) and sets in-bounds flags `[0x18]/[0x19]`,
+      plus a secondary hotspot-rect test driven by tables at `[0x14]/
+      [0x16]`.
+  - Shallow vtable triage (16-slot table `0x0804C9F0`; sizes are function
+    body spans):
+    - [0] `0x08010B80` (0x38) UNKNOWN (named candidate_player_method0)
+    - [1] `0x0804F53C` (0x14) UTILITY tiny
+    - [2] `0x08010BD2` (0x20) UNKNOWN small
+    - [3] `0x0801003A` (0x293) UTILITY - derived spatial status (above)
+    - [4] `0x0800EF94` (~0x463) RENDER-candidate - packs entity data into a
+      buffer with `>>2` packing via `FUN_08046ff4/FUN_0803fcf4`
+    - [5] `0x0800F3F8` (0x16) UTILITY tiny
+    - [6] `0x08011050` (0x8) STUB/tiny
+    - [7] `0x0800F516` (0x26) UNKNOWN small
+    - [8] `0x0800F4E6` (0x30) UNKNOWN small
+    - [9] `0x08010DDE` MESSAGE (message-handler ABI; DB name currently
+      `candidate_player_method9_08010DDE` - forced rename to
+      `candidate_entity_message_handler_08010DDE` did not apply due to arg
+      quoting; same function)
+    - [10] `0x0800ECF0` (0x28) UNKNOWN small
+    - [11] `0x08010974` (0x36) helper directly preceding ctor_a
+    - [12] `0x0800ED3E` (0x42) UNKNOWN small
+    - [13] `0x08010D26` (0x56) UNKNOWN
+    - [14] `0x0800FFA2` (0x66) UNKNOWN
+    - [15] `0x0804E4F8` (0x2) STUB
+  - No input-consumer slot identified yet; next pass targets remaining
+    UNKNOWN slots ([0][2][13][14] first) and key-mask constant hunting
+    around the player method cluster.
+
 ## Function Knowledge
 
 See `SUBSYSTEM_MAP.md` for the consolidated table. Confidence vocabulary:

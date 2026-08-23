@@ -49,10 +49,12 @@ proprietary artifacts.
 
 ## Current Objective
 
-P-001 (player/combat pivot): player entity + update root. Substantial static
-progress recorded below; next concrete step is decompiling `FUN_080043d8`
-(the caller of the entity state-machine tick) to establish the per-frame
-update root, then tracing directional input into movement.
+P-002 (movement): trace directional input to entity movement and recover the
+movement behavioral spec (input representation, cardinal/diagonal speed,
+normalization, facing rules, state gates). Anchors: input halfwords read at
+`*(global)+4` in frame handlers; positions are `>>8` fixed-point words
+(`entity+0xA0/+0xA4` pattern seen in `candidate_caller_08012A24`);
+per-state data blobs (UTF-16-labelled) hold packed per-state parameters.
 
 ## Research Queue
 
@@ -68,7 +70,7 @@ update root, then tracing directional input into movement.
 | AUTO-010 | map-loader | Does `FUN_08008d44` resolve a MapEntry via `0x080089FC` from zone/area/variation bytes, and what are its argument/return contracts? | Completes the transition mechanism chain end-to-end; needed for any future map-warp tooling | AUTO-003: called by `downstream_080075AC` with `(ctx, byte, byte, ptr, byte, 1)`, returns new context | Ghidra: seed + decompile `0x08008d44`; check for `0x080089FC` call and literal use | RESOLVED |
 | AUTO-011 | registry-population | Do MapEntry objects/npcs pointer-driven spawns add spatial registry members beyond the variation-array path? | Tests the remaining descriptor-free explanation for VERTICAL-001 C | ROM-007: registry construction is heterogeneous; objects/npcs pointers exist in MapEntry (+0x1C/+0x20) | Enumerate callers of `registry_populate_08012664`; census manager-global xrefs; classify write sites | RESOLVED (refined) |
 | AUTO-012 | registry-population | Which load path drives second append site `candidate_registry_writer_08009172` via callsite `0x080026FC`, and what do the `FUN_0800d30e`/`FUN_08017f5a` manager writes do? | Completes the registry-mutation map; candidate VERTICAL-001 C mechanism | AUTO-011: append site appends vtable[0]-dispatch results from an 8-byte-stride record table; caller `0x080026FC` unrecovered | Ghidra: recover containing function of `0x080026FC` (backward seeding), decompile writers | RESOLVED (VERTICAL-001 C explained; FUN_0800d30e/FUN_08017f5a write classification deferred as low-value) |
-| P-001 | player-entity | Which runtime entity is the player and where is its update root/dispatcher? | Root anchor for all player/combat research | ROM-012: query entity `0x0202E4D0` tracked human movement; `candidate_caller_08006E3C` frame handler queries at a tracked entity; map loader spawns via 0x18-stride table + `FUN_080109aa/080104f2` | Static: decompile loader spawn path (`FUN_0801713c`, `FUN_080109aa`) to find the player-class factory + its update dispatch entry; then find per-frame update root | IN_PROGRESS |
+| P-001 | player-entity | Which runtime entity is the player and where is its update root/dispatcher? | Root anchor for all player/combat research | ROM-012: query entity `0x0202E4D0` tracked human movement; `candidate_caller_08006E3C` frame handler queries at a tracked entity; map loader spawns via 0x18-stride table + `FUN_080109aa/080104f2` | Static: decompile loader spawn path (`FUN_0801713c`, `FUN_080109aa`) to find the player-class factory + its update dispatch entry; then find per-frame update root | RESOLVED |
 | P-002 | player-movement | How does directional input become movement (speed, normalization, facing, inhibition)? | Core behavioral spec for remake | P-001 dependency | Trace input bits from `candidate_caller_08006E3C` button tests into entity velocity/position fields | BLOCKED by P-001 |
 | P-003 | melee | Where does basic melee begin and what is its state progression (startup/active/recovery/hitbox query)? | Core combat spec | none yet | From player update root, follow attack-button branch to melee state machine | BLOCKED by P-001 |
 | P-004 | damage | One complete damage event: hit detection -> damage calc -> HP mutation -> reaction/knockback/i-frames -> death | Closes the combat loop end-to-end | none yet | Follow melee hitbox accept into enemy entity HP mutation | BLOCKED by P-003 |
@@ -325,6 +327,25 @@ research-lane findings only.)
     machine for the ACTIVE record of the recurring 0x68-stride per-character
     array (leading byte = active index). Its caller is `FUN_080033d2`
     (next link toward the frame scheduler).
+  - `CONFIRMED` (static): scheduler chain completed -
+    `candidate_game_tick_080033D2(tasklist)` pops a task (`count--`, element
+    `[count]`) and ticks it with base = `[0x08054FBC]+0x14` = IWRAM
+    **`0x03001068`** (reached via function pointer; no direct BL callers).
+  - `CONFIRMED` (byte-level): game-state block at IWRAM `0x03001068`
+    (`+0x00` active character byte; character records begin at `+0x4F8`);
+    record array base in ROM at **`0x086B7578`** (`DAT_08013ba0=0x086B7080`
+    literal pool + 0x4F8). The tick's `DAT_08013ba4` is literally
+    **`0x03001C34`** - the state machine directly drives the player-entity
+    slot.
+  - Observation: character records embed UTF-16 dev labels (record[0]
+    begins `'state data "'`) followed by packed parameter groups pairing ROM
+    data pointers (`0x086B75DC/61C/65C/69C...`) with consecutive IWRAM words
+    (`0x03002B88..0x03002B94`). Layout semantics UNKNOWN; likely per-state
+    definitions. P-002 will decode as needed.
+  - P-001 answer summary: player entity = object stored at `0x03001C34`;
+    update path = task stack -> `candidate_game_tick_080033D2` ->
+    `candidate_frame_update_080043D8` -> `candidate_entity_dispatch_08013914`
+    (state machine) over active character record.
 
 ## Function Knowledge
 

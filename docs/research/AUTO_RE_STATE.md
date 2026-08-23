@@ -347,6 +347,32 @@ research-lane findings only.)
     `candidate_frame_update_080043D8` -> `candidate_entity_dispatch_08013914`
     (state machine) over active character record.
 
+- **P-002 progress (2026-08-23), static - input/position anchors:**
+  - `CONFIRMED` (byte-level): ROM table `0x08070180` is a master global
+    directory: `[0]=0x03003300` (system/input ctx), `[1]=0x03003898`,
+    `[2]=0x030019A4`, `[3]=0x03001068` (character block),
+    `[4]=0x03002A64` (spatial registry manager), `[5]=0x03001C4C`.
+    Only two literal-pool references exist to the directory
+    (`0x08006FE0` frame-handler pool; `0x0804FDB0`).
+  - Behavioral fact (raw): button state is read as
+    `*(u16*)(*(0x08070180)+4)` = `*(u16*)(0x03003300+4)`; masks observed:
+    `& 0xF3` (text entry gate), `& 0xF0` (interact toggle). Bit meanings and
+    the +4 writer are UNKNOWN (no KEYINPUT literal anywhere in ROM -> IRQ or
+    computed-address copy).
+  - Behavioral fact (raw): positions behave as `>>8` fixed-point words
+    (`param+0xA0/+0xA4` pattern in `candidate_caller_08012A24`; point query
+    compares `>>8` values against descriptor bounds).
+  - Behavioral fact (raw): `candidate_input_acc_b_0802C564` writes entity
+    `+0x1A0/+0x1A4` from stored coords before dispatching vtable[+0x28] on
+    both entities - warp/respawn-position shape (INFERRED purpose).
+  - Behavioral fact (raw): linear-animator pattern in
+    `candidate_input_acc_c_0802D940`: per-tick `field+0x20 += field+0x40`,
+    `+0x24 += +0x44`, frame counter `+0x48` wraps at 24 ticks, row stride
+    0xC into `+0x4C` table (sprite/frame stepper candidate; INFERRED).
+  - Next P-002 step: identify the `0x03003300+4` writer (IRQ/main-loop key
+    copy), then follow direction-bit consumers into entity velocity writes;
+    recover cardinal/diagonal speeds.
+
 ## Function Knowledge
 
 See `SUBSYSTEM_MAP.md` for the consolidated table. Confidence vocabulary:

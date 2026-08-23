@@ -12,11 +12,11 @@ proprietary artifacts.
 
 ## Current Objective
 
-AUTO-003: statically characterize the transition action chain
-`spatial_action_080125E8 -> downstream_080075AC` (bounded trace also reached
-`0x080077EC`, `0x08009744`, `0x080094B8`). Goal: determine what executable
-mechanism the accepted spatial action drives (map reload? dialogue? both?) and
-whether it explains VERTICAL-001 result C's persisting transition.
+AUTO-004: ROM-wide census of candidate spatial descriptors beginning with
+confirmed factory raw words (`0x08007675`, `0x080072CD`), decoding bounds at
+`+0x08..+0x0F`, and reporting every candidate overlapping the ROM-012 doorway
+rectangle `x=[592,601), y=[136,241)`. Goal: identify remaining VERTICAL-001
+result-C transition source candidates among descriptor-driven objects.
 
 ## Research Queue
 
@@ -24,7 +24,7 @@ whether it explains VERTICAL-001 result C's persisting transition.
 |---|---|---|---|---|---|---|
 | AUTO-001 | spatial-descriptors | What descriptors exist in the count-2 array at `0x08294960`, and does a sibling cover the ROM-012 doorway? | Directly targets the recorded smallest blocker of VERTICAL-001 C; extends descriptor format knowledge | Array base/count from ROM-007 runtime (`field_40_raw=2`, `field_44_raw=0x08294960`); descriptor `0x08294948` fully characterized | Read-only byte reads at file offsets `0x00294960..68` + both descriptors; decode factory/bounds fields; cross-check with `webfoot variation-arrays find-first-word` | RESOLVED |
 | AUTO-002 | spatial-registry-callers | Which containing functions call point-query entries (`0x08006E4E -> 0x080126D4`, `0x08021DFE/08021E06 -> 0x080126D4`, `0x08012AEC -> 0x080127AE`, `0x08022142 -> 0x08012846`)? | Names the scheduler layer that decides when spatial queries run; open PROJECT_STATE unresolved question | Callsite instructions CONFIRMED by independent BL decode (ROM-008); Ghidra did not recover containing functions | Seed callsite instructions in calibrated Ghidra project; recover boundaries; decompile callers; conservative names | RESOLVED |
-| AUTO-003 | transition-action | What does action `0x080125E8 -> downstream 0x080075AC` actually do (map reload? dialogue start?)? | Would explain transition mechanism and likely close VERTICAL-001 C mechanism question | Runtime: action executed and reached `0x080075AC`; trace hit `0x080077EC`, `0x08009744`, `0x080094B8`; no return within 512 steps | Ghidra: seed `0x080125E8`, `0x080075AC`, `0x080077EC`, `0x08009744`, `0x080094B8`; decompile; enumerate callees; look for MapEntry-load flow entry (`0x08008B30`) and registry reset (`0x08048488`) | READY |
+| AUTO-003 | transition-action | What does action `0x080125E8 -> downstream 0x080075AC` actually do (map reload? dialogue start?)? | Would explain transition mechanism and likely close VERTICAL-001 C mechanism question | Runtime: action executed and reached `0x080075AC`; trace hit `0x080077EC`, `0x08009744`, `0x080094B8`; no return within 512 steps | Ghidra: seed `0x080125E8`, `0x080075AC`, `0x080077EC`, `0x08009744`, `0x080094B8`; decompile; enumerate callees; look for MapEntry-load flow entry (`0x08008B30`) and registry reset (`0x08048488`) | RESOLVED |
 | AUTO-004 | object-vtables | What methods live in dispatch tables `0x0804A09C`, `0x0804A0AC`, `0x0804E444`? | Defines the rectangle-object class hierarchy; every spatial object routes through these | Cleanup slot raw/fetch `0x080510A1/080510A0`; filter vtable[2] `0x08007769`; receiver base `0x0804A0AC` vtable[1]/[2] used | Ghidra data-word dump of each table; follow each raw target; classify per-slot semantics conservatively | READY |
 | AUTO-005 | registry-manager | Complete function graph of registry manager around `0x03002A64` (`0x08012628`, `0x08012664`, `0x0801268A`, `0x080126D4`, `0x080127AE`, `0x08012846`, `0x08012900`, neighbors to `0x080128F2+`) | One coherent subsystem map for the best-understood engine area | Individual behaviors established in ROM-006/008/011/012 | Ghidra seeding + decompilation sweep over `0x08012600..0x08012A00` | READY |
 | AUTO-006 | descriptor-format | What is the minimal extent/field map of a source descriptor such that parsing is lossless? | Recorded parser-readiness blocker across ROM-008..ROM-012 | Consumers read `+0x00` (factory), `+0x04` (callback producer), `+0x08/+0x0C` (bounds) | Static census of all descriptor accesses from all factories reached via variation arrays; adjacency analysis in ROM | READY |
@@ -98,6 +98,35 @@ research-lane findings only.)
     08011a1e / 08011c0c / 08011c70 / 08011db4 / 08011e0e / 08011e94`
     (CANDIDATE roles).
 
+- **AUTO-003 (2026-08-23), Ghidra static, calibrated project:**
+  - `downstream_080075AC` (body `0x080075AC..0x08007673`) is a **map-transition
+    executor** (STRONG_STATIC, semantics CANDIDATE):
+    - gates on object vtable`+0x84` dispatch result halfword `+2` vs receiver
+      byte `+0x11`;
+    - invokes the object's vtable`+0x34` method with arg `2`, remembering the
+      result;
+    - calls `FUN_08008d44(global_ctx, byte[ctx+0x11], byte[ctx+0x12],
+      ptr=ctx+0x14, byte[ctx+0x13], 1)` -> returns a NEW map-context pointer.
+      `FUN_08008d44` sits inside the established map-load flow between the
+      confirmed MapEntry-lookup BL sites `0x08008D2A/0x08008D6C`. Three bytes +
+      pointer args match MapEntry's zone/area/variation byte shape.
+    - transfers spawn-position byte (`ctx+0x10`, nibble logic) into new
+      context `+0x10`;
+    - when the vtable method returned nonzero: stores the pre-transition saved
+      word at **new context `+0x8C`** - exactly where consumer-analysis placed
+      the retained selected variation word - then dispatches the new context's
+      table`+0x28` method (population-shaped);
+    - else allocates a 0xC-byte pending marker object via `FUN_0803d5b8`.
+  - Trace-site functions recovered and named:
+    `candidate_trace_site_080077EC` (`..0x08007853`, calls `08009744`),
+    `candidate_trace_site_08009744` (`..0x080097A5`, calls `080094B8`,
+    callers also `08007916`, `080211fa`),
+    `candidate_trace_site_080094B8` (`..0x080094EF`, copy-shaped).
+  - Interpretation (INFERRED): accepted spatial actions of this family execute
+    area transitions; VERTICAL-001's persisting transition therefore likely
+    came from another accepted containment on some other descriptor-driven
+    object or another mechanism feeding the same loader.
+
 ## Function Knowledge
 
 See `SUBSYSTEM_MAP.md` for the consolidated table. Confidence vocabulary:
@@ -124,6 +153,7 @@ behavior, multiple corroborations), `CANDIDATE` (single static observation).
 
 ## Next Candidate
 
-If AUTO-002 completes: AUTO-003 (static characterization of action
-`0x080125E8 -> 0x080075AC`), reusing the same Ghidra session; AUTO-004 table
-dumps can share that session's data-word queries but get recorded separately.
+If AUTO-004 completes: AUTO-005 (dispatch-table dump `0x0804A09C/0804A0AC/
+0804E444`) or, if the census finds doorway-overlapping candidates, a targeted
+runtime identification of the remaining transition object using the existing
+ROM-012 native probe.

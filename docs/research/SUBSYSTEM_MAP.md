@@ -69,7 +69,11 @@ resource-by-id getter `FUN_0802bfbc(id,table)`.
   point-query accept path.
 - Accept chain (CONFIRMED L3/L4): containment -> vtable[2] filter
   `0x08007768` (returns 1) -> vtable[1] action `0x080125E8` -> concrete
-  downstream `0x080075AC`. Action semantics (transition? dialogue?) UNKNOWN.
+  downstream `0x080075AC`. Action semantics: **map-transition executor**
+  (AUTO-003, STRONG_STATIC / semantics CANDIDATE) - calls `FUN_08008d44`
+  (map-load flow) with zone/area/variation-shaped bytes, gets a new map
+  context, carries the retained variation word into new-context `+0x8C`, and
+  dispatches the new context's `+0x28` population method.
 - Example source descriptor `0x08294948`: factory raw `0x08007675`,
   `+0x08=(592,136)`, `+0x0C=(601,241)`; bounds copied to object by common
   initializer `0x08009AEC`; `+0x04` drives callback-reference production.

@@ -49,11 +49,10 @@ proprietary artifacts.
 
 ## Current Objective
 
-P-001 (player/combat pivot per steering): identify the canonical
-player-controlled entity during ordinary gameplay and its update root.
-Anchors already in hand: query entity `0x0202E4D0` strongly supported as
-player-controlled (ROM-012); `candidate_caller_08006E3C` is a global-driven
-frame handler querying at a tracked entity.
+P-001 (player/combat pivot): player entity + update root. Substantial static
+progress recorded below; next concrete step is decompiling `FUN_080043d8`
+(the caller of the entity state-machine tick) to establish the per-frame
+update root, then tracing directional input into movement.
 
 ## Research Queue
 
@@ -69,7 +68,7 @@ frame handler querying at a tracked entity.
 | AUTO-010 | map-loader | Does `FUN_08008d44` resolve a MapEntry via `0x080089FC` from zone/area/variation bytes, and what are its argument/return contracts? | Completes the transition mechanism chain end-to-end; needed for any future map-warp tooling | AUTO-003: called by `downstream_080075AC` with `(ctx, byte, byte, ptr, byte, 1)`, returns new context | Ghidra: seed + decompile `0x08008d44`; check for `0x080089FC` call and literal use | RESOLVED |
 | AUTO-011 | registry-population | Do MapEntry objects/npcs pointer-driven spawns add spatial registry members beyond the variation-array path? | Tests the remaining descriptor-free explanation for VERTICAL-001 C | ROM-007: registry construction is heterogeneous; objects/npcs pointers exist in MapEntry (+0x1C/+0x20) | Enumerate callers of `registry_populate_08012664`; census manager-global xrefs; classify write sites | RESOLVED (refined) |
 | AUTO-012 | registry-population | Which load path drives second append site `candidate_registry_writer_08009172` via callsite `0x080026FC`, and what do the `FUN_0800d30e`/`FUN_08017f5a` manager writes do? | Completes the registry-mutation map; candidate VERTICAL-001 C mechanism | AUTO-011: append site appends vtable[0]-dispatch results from an 8-byte-stride record table; caller `0x080026FC` unrecovered | Ghidra: recover containing function of `0x080026FC` (backward seeding), decompile writers | RESOLVED (VERTICAL-001 C explained; FUN_0800d30e/FUN_08017f5a write classification deferred as low-value) |
-| P-001 | player-entity | Which runtime entity is the player and where is its update root/dispatcher? | Root anchor for all player/combat research | ROM-012: query entity `0x0202E4D0` tracked human movement; `candidate_caller_08006E3C` frame handler queries at a tracked entity; map loader spawns via 0x18-stride table + `FUN_080109aa/080104f2` | Static: decompile loader spawn path (`FUN_0801713c`, `FUN_080109aa`) to find the player-class factory + its update dispatch entry; then find per-frame update root | READY |
+| P-001 | player-entity | Which runtime entity is the player and where is its update root/dispatcher? | Root anchor for all player/combat research | ROM-012: query entity `0x0202E4D0` tracked human movement; `candidate_caller_08006E3C` frame handler queries at a tracked entity; map loader spawns via 0x18-stride table + `FUN_080109aa/080104f2` | Static: decompile loader spawn path (`FUN_0801713c`, `FUN_080109aa`) to find the player-class factory + its update dispatch entry; then find per-frame update root | IN_PROGRESS |
 | P-002 | player-movement | How does directional input become movement (speed, normalization, facing, inhibition)? | Core behavioral spec for remake | P-001 dependency | Trace input bits from `candidate_caller_08006E3C` button tests into entity velocity/position fields | BLOCKED by P-001 |
 | P-003 | melee | Where does basic melee begin and what is its state progression (startup/active/recovery/hitbox query)? | Core combat spec | none yet | From player update root, follow attack-button branch to melee state machine | BLOCKED by P-001 |
 | P-004 | damage | One complete damage event: hit detection -> damage calc -> HP mutation -> reaction/knockback/i-frames -> death | Closes the combat loop end-to-end | none yet | Follow melee hitbox accept into enemy entity HP mutation | BLOCKED by P-003 |
@@ -291,6 +290,36 @@ research-lane findings only.)
     - NEW: trigger-array population path + containing rectangle identified.
     - RESOLUTION: descriptor-driven doorway was one of at least two overlapping
       accept regions on MapEntry 39; the trigger-family member persists.
+
+- **P-001 progress (2026-08-23), Ghidra static - player entity anchors:**
+  - `CONFIRMED` (static): `candidate_entity_ctor_a_080109AA` allocates a
+    **0x240-byte entity**, base-initializes via `FUN_0800e6b8`, installs table
+    base (literal `0x08010b68`), and stores the entity into global
+    **`0x03001C34`** (write at `0x080109e6`; literal `0x08010b6c`). It then
+    attaches a per-type component chosen through a `0x68`-stride record array
+    (`FUN_0801714a`) and dispatches its vtable[0].
+  - `STRONG_STATIC`: the stored `0x03001C34` entity is the player-controlled
+    entity candidate: ROM-009 identified that slot as the point-query context;
+    ROM-012's query entity tracked human movement; frame handler
+    `candidate_caller_08006E3C` queries at this slot's value.
+  - `CONFIRMED` (static): wrapper ctor `candidate_entity_ctor_b_080104F2`
+    (0x240 alloc, calls ctor_a with flag 1, overrides vtable, attaches a
+    0x10-byte sub-object via `FUN_0800ed18`, `FUN_0800ecda(ent,0xf)`); called
+    by the map loader in its alternate branch.
+  - `CONFIRMED` (static): `candidate_entity_dispatch_08013914(entity, arg)` is
+    an **entity state-machine tick**:
+    - gate: halfword `entity+0x16 != 0` (the ubiquitous +0x16 gate);
+    - state-group byte at `+0x14` indexes a 0x18-stride table
+      (`DAT_08013b9c`);
+    - current/next state halfwords at `+0x16/+0x18` (+ copies to `+0x1A/
+      +0x1C`) advance on timer expiry (`FUN_080135d2` reads `+0x24` timer;
+      threshold from table; advance via `FUN_08013678`; sound wrappers
+      `FUN_0800f53c/f558` around `FUN_0801064c`);
+    - nibbles of `entity+0x02` select two 0x68-stride per-character records
+      at `DAT_08013ba0+0x4f8` (recursion over both; `FUN_0801375e` on
+      transition).
+  - Update-root candidate: `FUN_080043d8` (sole non-recursive caller of the
+    tick) - NEXT decompile target.
 
 ## Function Knowledge
 

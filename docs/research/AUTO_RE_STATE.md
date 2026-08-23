@@ -49,34 +49,11 @@ proprietary artifacts.
 
 ## Current Objective
 
-P-002 final step - RUNTIME DISPLACEMENT EXPERIMENT (sanctioned by steering;
-static pass bounded and stalled). Design below; execute next iteration using
-ONLY existing infrastructure.
-
-EXPERIMENT: ordinary walking displacement on MapEntry 39 state.
-- QUESTION: raw/tick player displacement for held Right, held Up, held
-  Up+Right; bit->direction mapping; normalization.
-- METHOD: stock mGBA + established Lua injection (tools/runtime/
-  inject_mgba_lua.ps1 + load_mgba_lua.ps1); ignored working state
-  build/rom008/higher-plane-original.ss1/.sav (hashes recorded in
-  consumer-analysis.md ROM-008 section). One Lua script:
-  1. wait ~120 frames after state load;
-  2. read player entity pointer at 0x03001C34, position words at
-     ptr+0x1A0/ptr+0x1A4; log baseline;
-  3. hold Right for exactly 60 frames; log positions every frame (first 10
-     + last 5);
-  4. repeat for Up, then Up+Right (fresh re-load of state between legs);
-  5. write results to a marker text file under build/.
-- PREDICTED DISTINGUISHING OUTCOMES:
-  - constant per-tick delta -> immediate velocity (no acceleration);
-  - growing deltas -> acceleration model;
-  - diagonal |dx| == |dy| == cardinal -> NOT normalized;
-  - diagonal ~0.7x cardinal on an axis -> normalized/partials present;
-  - direction observed vs bit set establishes polarity empirically.
-- MINIMUM INSTRUMENTATION: single Lua script + existing injector + fresh
-  save/state dir under build/research/p002-exp/. NO new frameworks, no GDB
-  writes, canonical ROM untouched (working copies only per established
-  route).
+P-003 - NORMAL BASIC MELEE. First question: WHAT INPUT/COMMAND INITIATES THE
+NORMAL PHYSICAL ATTACK? Known: buffered input bits (below); melee must be
+traced from the attack input bit through the entity message ABI / spatial
+queries to a hit region and target interaction. Do NOT route through the
+energy-attack cluster except as architecture reference.
 
 ## Research Queue
 
@@ -93,7 +70,7 @@ EXPERIMENT: ordinary walking displacement on MapEntry 39 state.
 | AUTO-011 | registry-population | Do MapEntry objects/npcs pointer-driven spawns add spatial registry members beyond the variation-array path? | Tests the remaining descriptor-free explanation for VERTICAL-001 C | ROM-007: registry construction is heterogeneous; objects/npcs pointers exist in MapEntry (+0x1C/+0x20) | Enumerate callers of `registry_populate_08012664`; census manager-global xrefs; classify write sites | RESOLVED (refined) |
 | AUTO-012 | registry-population | Which load path drives second append site `candidate_registry_writer_08009172` via callsite `0x080026FC`, and what do the `FUN_0800d30e`/`FUN_08017f5a` manager writes do? | Completes the registry-mutation map; candidate VERTICAL-001 C mechanism | AUTO-011: append site appends vtable[0]-dispatch results from an 8-byte-stride record table; caller `0x080026FC` unrecovered | Ghidra: recover containing function of `0x080026FC` (backward seeding), decompile writers | RESOLVED (VERTICAL-001 C explained; FUN_0800d30e/FUN_08017f5a write classification deferred as low-value) |
 | P-001 | player-entity | Which runtime entity is the player and where is its update root/dispatcher? | Root anchor for all player/combat research | ROM-012: query entity `0x0202E4D0` tracked human movement; `candidate_caller_08006E3C` frame handler queries at a tracked entity; map loader spawns via 0x18-stride table + `FUN_080109aa/080104f2` | Static: decompile loader spawn path (`FUN_0801713c`, `FUN_080109aa`) to find the player-class factory + its update dispatch entry; then find per-frame update root | RESOLVED |
-| P-002 | player-movement | How does directional input become movement (speed, normalization, facing, inhibition)? | Core behavioral spec for remake | P-001 dependency | Trace input bits from `candidate_caller_08006E3C` button tests into entity velocity/position fields | BLOCKED by P-001 |
+| P-002 | player-movement | How does directional input become movement (speed, normalization, facing, inhibition)? | Core behavioral spec for remake | Runtime displacement experiment (see Recent Discoveries) completed the spec | RESOLVED via experiment; static input-consumer function remains a future structural question | RESOLVED |
 | P-003 | melee | Where does basic melee begin and what is its state progression (startup/active/recovery/hitbox query)? | Core combat spec | none yet | From player update root, follow attack-button branch to melee state machine | BLOCKED by P-001 |
 | P-004 | damage | One complete damage event: hit detection -> damage calc -> HP mutation -> reaction/knockback/i-frames -> death | Closes the combat loop end-to-end | none yet | Follow melee hitbox accept into enemy entity HP mutation | BLOCKED by P-003 |
 | P-005 | enemy-ai | One simple enemy's update loop (idle/detect/approach/attack/receive-damage/death) | Enemy behavioral spec | `candidate_caller_08021CC0` periodic dual-point sensor candidate | From entity spawn table, pick simplest enemy class and trace update | BLOCKED by P-001 |
@@ -538,6 +515,43 @@ research-lane findings only.)
   - Static per-function triage has diminishing returns -> steering §6
     runtime displacement experiment designed (see Current Objective) and
     queued as the P-002 closer.
+
+- **P-002 RESOLVED (2026-08-23), RUNTIME displacement experiment:**
+  - Method: stock mGBA `--savestate` launches (one per condition; NO --gdb -
+    the gdb flag halts emulation without a client), established Lua injector,
+    tracked probe `tools/runtime/p002_walk_probe.lua` (allowlisted in the
+    injector), untracked driver `build/research/p002-exp/run_experiment.ps1`.
+    Working state = hash-verified copy of ROM-008 Higher Plane state; canonical
+    ROM SHA verified before/after every launch. Per-frame trajectory CSV under
+    ignored build/research/p002-exp/p002-walk-log.csv.
+  - BEHAVIORAL SPECIFICATION (evidence: this experiment unless noted):
+    - INPUT: buffered halfword at **`0x03003304`**, ACTIVE-HIGH mirror of GBA
+      KEYINPUT bits, empirically: Right=0x0010 (+X motion CONFIRMED),
+      Left=0x0020 (-X), Up=0x0040 (-Y), Down=0x0080 (+Y); A=0x0001, B=0x0002,
+      Select=0x0004, Start=0x0008 echoed but not motion-relevant (INFERRED
+      identity). Game consumes/clears the buffer (value visible only on some
+      sampled frames). NOTE: `C.GBA_KEY.*` Lua constants are enum indices,
+      NOT bitmasks - do not feed them to setKeys.
+    - POSITION: X=`player+0x1A0`, Y=`player+0x1A4`, player ptr from
+      `0x03001C34` (dynamically re-read every frame). 32-bit fixed-point with
+      8 fractional bits. Start pixel (272,352).
+    - CARDINAL MOVEMENT: raw delta **352/tick** (= 352/256 = **1.375
+      px/gameplay-tick**) on each axis, sign per direction. Constant while
+      held.
+    - DIAGONAL MOVEMENT: components remain **352 & 352** - UNNORMALIZED;
+      resultant ~498 raw (~1.945 px/tick) = sqrt(2) x cardinal.
+    - INPUT->MOTION DELAY: first nonzero delta observed 2-3 ticks after
+      buffer assertion.
+    - ACCELERATION: IMMEDIATE (constant step magnitude from first moving
+      tick; no ramp).
+    - UPDATE CADENCE: movement steps appear on consecutive sampled frames
+      during hold; display frames vs gameplay ticks behaved 1:1 in this
+      experiment (warmup ticks advanced ~60/second wall-clock).
+    - FACING: UNKNOWN (not sampled; deferred to animation/melee work).
+    - STATE GATES/COLLISION: none encountered on tested open area; where
+      desired movement is rejected/clamped remains UNKNOWN.
+  - Static input-consumer function (writer/reader of 0x03003304) remains
+    UNKNOWN and is deprioritized per steering.
 
 ## Function Knowledge
 

@@ -28,6 +28,9 @@ $allowedLua = @(
     [System.IO.Path]::GetFullPath(
         (Join-Path $workspaceRoot 'tools\runtime\rom011_idle_benchmark.lua')
     )
+    [System.IO.Path]::GetFullPath(
+        (Join-Path $workspaceRoot 'tools\runtime\p002_walk_probe.lua')
+    )
 )
 $resolvedLua = [System.IO.Path]::GetFullPath($LuaPath)
 if ($resolvedLua -notin $allowedLua) {
@@ -99,14 +102,14 @@ for ($attempt = 0; $attempt -lt 200 -and -not $mainWindow; $attempt++) {
         $processCondition
     )
     foreach ($window in $windows) {
-        if ($window.Current.Name -match "Buu's Fury") {
+        if ($window.Current.Name -match "Buu's Fury|DBZBUUSFURY") {
             $mainWindow = $window
             break
         }
     }
 }
 if (-not $mainWindow) {
-    throw 'mGBA did not report the loaded Buu''s Fury ROM'
+    throw 'mGBA did not report the loaded Buu''s Fury ROM title'
 }
 
 if (-not $scripting) {

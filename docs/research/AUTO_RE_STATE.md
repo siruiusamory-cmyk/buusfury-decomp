@@ -359,9 +359,12 @@ research-lane findings only.)
     `& 0xF3` (text entry gate), `& 0xF0` (interact toggle). Bit meanings and
     the +4 writer are UNKNOWN (no KEYINPUT literal anywhere in ROM -> IRQ or
     computed-address copy).
-  - Behavioral fact (raw): positions behave as `>>8` fixed-point words
-    (`param+0xA0/+0xA4` pattern in `candidate_caller_08012A24`; point query
-    compares `>>8` values against descriptor bounds).
+  - Behavioral fact (raw): positions are 32-bit fixed-point words whose
+    map-pixel value is obtained with `>>8` (integer part in upper bits;
+    "32-bit fixed-point with 8 fractional bits", not 8.8). Seen as
+    `param+0xA0/+0xA4` in `candidate_caller_08012A24`; point query compares
+    `>>8` values against descriptor bounds; projectile stepper integrates
+    `pos += vel` on the same representation.
   - Behavioral fact (raw): `candidate_input_acc_b_0802C564` writes entity
     `+0x1A0/+0x1A4` from stored coords before dispatching vtable[+0x28] on
     both entities - warp/respawn-position shape (INFERRED purpose).
@@ -372,6 +375,42 @@ research-lane findings only.)
   - Next P-002 step: identify the `0x03003300+4` writer (IRQ/main-loop key
     copy), then follow direction-bit consumers into entity velocity writes;
     recover cardinal/diagonal speeds.
+
+- **P-002 progress 2 (2026-08-23), static - dev labels + first combat
+  quantities:**
+  - `CONFIRMED` (byte-level): UTF-16 developer diagnostics embedded before
+    the character-record region:
+    - `0x086B7400`: "Energy attack level set for attack which doesn't exist
+      for player!"
+    - `0x086B748C`: "Energy attack level requested for attack which doesn't
+      exist for player!"
+    - `0x086B7524`: "Unable to find sprite index in character state data"
+    Literal-pool refs: `0x08013BC8` and `0x08013E20` - an energy-attack
+    accessor cluster immediately after the state-machine tick (P-003 lead).
+    INTERNAL DEVELOPER EVIDENCE only; semantics to be validated against
+    executable behavior before naming.
+  - Record-region layout note: record[0] is a `'state data "'` header;
+    subsequent 0x68-stride slots are heterogeneous (pointers like
+    `0x086B7CCC`, packed bytes) - the uniform-record model needs revision;
+    treat 0x68 indexing as into a mixed state-data blob until decoded.
+  - `CONFIRMED` (static): `candidate_player_update_080247BE` (body
+    `..0x080248DB`) is a projectile/effect stepper, NOT the walking player.
+    Behavioral spec captured anyway (first concrete combat quantities):
+    - integration per tick: `pos+0x20 += vel+0x48`; `pos+0x24 += vel+0x4C`
+      (32-bit words, 8 fractional bits);
+    - animation counter `+0x50++`; anim byte `+0x44 = counter>>2`;
+      frames table at `+0x54` stride 0xC; after counter>>2 >= 5 the object
+      detaches via message-family remove (`FUN_08011944`);
+    - hitbox: rect `(pos>>8 -8) .. (pos>>8 +8)` on both axes = 16x16 pixels,
+      tested against target bounds by AABB helper `FUN_0800fe78`
+      (`iStack_* < ...` overlap form);
+    - on hit: attach to target (`FUN_0800e9d8`), dispatch target vtable
+      `+0x5C`, then vtable[+0x34] with id 0x17, and on nonzero vtable[+0x28];
+      sets self flag `+0x40=1`;
+    - a timer clamp compares two globals' `+4` fields and raises the lower
+      to the higher (cooldown-style; roles UNKNOWN).
+  - Next P-002 step unchanged (buffered-input consumers -> walk speed);
+    P-004 anchors now include projectile integration + hitbox + hit dispatch.
 
 ## Function Knowledge
 

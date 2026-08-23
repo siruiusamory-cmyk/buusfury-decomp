@@ -49,12 +49,11 @@ proprietary artifacts.
 
 ## Current Objective
 
-P-002 (movement): trace directional input to entity movement and recover the
-movement behavioral spec (input representation, cardinal/diagonal speed,
-normalization, facing rules, state gates). Anchors: input halfwords read at
-`*(global)+4` in frame handlers; positions are `>>8` fixed-point words
-(`entity+0xA0/+0xA4` pattern seen in `candidate_caller_08012A24`);
-per-state data blobs (UTF-16-labelled) hold packed per-state parameters.
+P-002 (movement) - continued: find the buffered-direction consumer that
+writes player velocity/position during normal walking. New anchors below
+(message protocol, body-bounds helpers, relative-offset vtable). Note: the
+earlier state-machine interpretation of `candidate_entity_dispatch_08013914`
+was CORRECTED - see Recent Discoveries.
 
 ## Research Queue
 
@@ -411,6 +410,50 @@ research-lane findings only.)
       to the higher (cooldown-style; roles UNKNOWN).
   - Next P-002 step unchanged (buffered-input consumers -> walk speed);
     P-004 anchors now include projectile integration + hitbox + hit dispatch.
+
+- **P-002 progress 3 (2026-08-23), static - corrections + collision concept A:**
+  - CORRECTION (OLD CLAIM / NEW EVIDENCE / RESOLUTION):
+    - OLD: `candidate_entity_dispatch_08013914` interpreted as the player
+      behavior state-machine tick.
+    - NEW: its helpers are `candidate_state_timer_080135D2` (binary search in
+      a 150-entry tier table), `candidate_state_advance_08013678` (RNG-scaled
+      blends of paired halfwords via `FUN_0803facc(0x100)` randoms),
+      `candidate_dual_transition_0801375E` (averages TWO character records'
+      paired values with ~0.605 weighting (`*0x9A>>8`), packs both component
+      IDs into `entity+2` nibbles, averages timers, adds +10 to three bytes).
+    - RESOLUTION: reclassify as CANDIDATE character-blend/progression system
+      (not input-driven movement). Movement lives elsewhere.
+  - `CONFIRMED` (static): player entity dispatch table at `0x0804C9F0`
+    uses **signed 32-bit relative offsets** (target = table + offset); 16
+    slots resolved, all valid Thumb entries.
+  - `CONFIRMED` (static): slot[9] -> `candidate_player_method9_08010DDE`
+    is an entity MESSAGE HANDLER (inter-entity query protocol):
+    - msg 0x00: rect-vs-body overlap via bounds helper `FUN_0800fe78`;
+      accept -> attach caller obj + dispatch own vtable`+0x58`, return 1
+    - msg 0x01: point-in-body via `FUN_0800fdfa`; same accept path
+    - msg 0x02: overlap test only (no attach)
+    - msg 0x09: return self
+    - msg 0x0a/0x0b: singleton acquire/release keyed by active character
+      record byte (`[char*0x68+0x50C]` pattern); stores self into a global
+    - msg 0x1a: dispatch through retained ref at entity word index 0x8b
+    - msg 0x28: **circle-vs-body**: clamp point to body AABB, squared-distance
+      vs radius^2; accept -> attach + vtable`+0x58`
+    - default: `FUN_080102d8` continuation
+  - Collision concepts now separated (steering #4):
+    - **A. PLAYER WORLD BODY**: bounds getter `FUN_0800fe78(entity)`, point
+      test `FUN_0800fdfa`, message ids 0/1/2/0x28 on entity vtable slot 9;
+      accept reaction = attach + vtable`+0x58`. Dimensions UNKNOWN so far.
+    - **B. MELEE ATTACK REGION**: not yet located.
+    - **C. PROJECTILE/EFFECT REGION** (`candidate_projectile_stepper_080247BE`,
+      renamed): per-tick `pos(+0x20/+0x24) += vel(+0x48/+0x4C)`; 16x16
+      centered AABB `(pos>>8 -8)..(pos>>8 +8)` vs target body via
+      `FUN_0800fe78`; hit dispatch target vtable`+0x5C` ->
+      vtable`+0x34`(id 0x17) -> conditional vtable`+0x28`; lifetime counter
+      `+0x50`, frame byte `counter>>2`, detach at >=5. Counter cadence NOT
+      established (the 4-ticks/frame idea is speculation; do not rely).
+  - Next P-002 steps: decompile remaining resolved slots of the player
+    vtable (esp. early slots) for the frame update that consumes buffered
+    direction bits; then movement quantities.
 
 ## Function Knowledge
 

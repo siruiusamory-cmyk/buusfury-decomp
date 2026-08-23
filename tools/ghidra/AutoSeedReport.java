@@ -148,9 +148,12 @@ public class AutoSeedReport extends GhidraScript {
             }
         }
         String currentName = function.getName();
-        if (currentName.startsWith("FUN_") || currentName.startsWith("None")) {
-            function.setName(desiredName, SourceType.USER_DEFINED);
-        } else if (!currentName.equals(desiredName)) {
+        boolean force = desiredName.endsWith("!");
+        String finalName = force ? desiredName.substring(0, desiredName.length() - 1)
+            : desiredName;
+        if (force || currentName.startsWith("FUN_") || currentName.startsWith("None")) {
+            function.setName(finalName, SourceType.USER_DEFINED);
+        } else if (!currentName.equals(finalName)) {
             return "EXISTING_NAME " + currentName;
         }
         return "OK";

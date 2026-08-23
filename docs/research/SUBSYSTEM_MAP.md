@@ -30,10 +30,30 @@ at `0x08048488`.
 | `0x08012900` | prune path (mode-dependent) | STRONG_STATIC |
 | `0x08012628` | destroy/prune helper (mode-dependent) | STRONG_STATIC |
 
-Point-query direct callsites -> containing caller UNKNOWN:
-`0x08006E4E`, `0x08021DFE`, `0x08021E06`, `0x08012AEC`, `0x08022142`.
-Query-capable caller entries seen statically: `0x08006E3C`, `0x08012A24`,
-`0x08021CC0`, `0x080220D8` (flag-gated).
+Point-query callsites -> containing functions (AUTO-002; callsite
+relationships CONFIRMED via independent BL decode, boundaries are Ghidra
+candidates):
+- `candidate_caller_08006E3C` (`0x08006E3C..0x08006FDF`) -> `0x080126D4`
+  at `0x08006E4E`. Global-driven frame handler; button-bit tests; message
+  family heavy. Player-interaction candidate.
+- `candidate_caller_08021CC0` (`..0x08021EAD`) -> two point queries
+  (`0x08021DFE/08021E06`). Periodic dual-point sensor, animation ids
+  `0x6f..0x73`.
+- `candidate_caller_08012A24` (`..0x08012B5D`) -> `aabb_query_080127AE`
+  at `0x08012AEC`. Entity method; flag gate; table-indexed text calls;
+  `+0x16` gate. Examine/interact candidate.
+- `candidate_caller_080220D8` (`..0x08022149`) -> `aabb_query_08012846`
+  at `0x08022142`. Factory: allocates 0x200 via `FUN_0803d5b8`, registers a
+  child, immediately area-queries it.
+Callers-of-these: UNKNOWN.
+
+## 3a. Candidate dialogue/message family (CANDIDATE roles)
+
+`FUN_0801191a`, `FUN_08011944`, `FUN_08011a1e`, `FUN_08011c0c`,
+`FUN_08011c70`, `FUN_08011db4`, `FUN_08011e0e`, `FUN_08011e94` - recurring
+attach/post/remove-shaped calls around interaction paths. Also allocator
+`0x0803D5B8` (shared with spatial factory), release-ish `0x0803D8A0`,
+resource-by-id getter `FUN_0802bfbc(id,table)`.
 
 ## 3. Rectangle runtime object family
 

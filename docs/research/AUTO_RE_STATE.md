@@ -12,19 +12,18 @@ proprietary artifacts.
 
 ## Current Objective
 
-AUTO-002: recover the containing functions behind the five verified point-query
-callsites (`0x08006E4E`, `0x08021DFE`, `0x08021E06`, `0x08012AEC`,
-`0x08022142`) in the calibrated Ghidra project by seeding those call
-instructions, then decompile and conservatively name each containing caller.
-Answers a recorded PROJECT_STATE unresolved question (who schedules spatial
-queries).
+AUTO-003: statically characterize the transition action chain
+`spatial_action_080125E8 -> downstream_080075AC` (bounded trace also reached
+`0x080077EC`, `0x08009744`, `0x080094B8`). Goal: determine what executable
+mechanism the accepted spatial action drives (map reload? dialogue? both?) and
+whether it explains VERTICAL-001 result C's persisting transition.
 
 ## Research Queue
 
 | ID | Subsystem | Question | Why useful | Known evidence | Suggested next method | Status |
 |---|---|---|---|---|---|---|
 | AUTO-001 | spatial-descriptors | What descriptors exist in the count-2 array at `0x08294960`, and does a sibling cover the ROM-012 doorway? | Directly targets the recorded smallest blocker of VERTICAL-001 C; extends descriptor format knowledge | Array base/count from ROM-007 runtime (`field_40_raw=2`, `field_44_raw=0x08294960`); descriptor `0x08294948` fully characterized | Read-only byte reads at file offsets `0x00294960..68` + both descriptors; decode factory/bounds fields; cross-check with `webfoot variation-arrays find-first-word` | RESOLVED |
-| AUTO-002 | spatial-registry-callers | Which containing functions call point-query entries (`0x08006E4E -> 0x080126D4`, `0x08021DFE/08021E06 -> 0x080126D4`, `0x08012AEC -> 0x080127AE`, `0x08022142 -> 0x08012846`)? | Names the scheduler layer that decides when spatial queries run; open PROJECT_STATE unresolved question | Callsite instructions CONFIRMED by independent BL decode (ROM-008); Ghidra did not recover containing functions | Seed callsite instructions in calibrated Ghidra project; recover boundaries; decompile callers; conservative names | READY |
+| AUTO-002 | spatial-registry-callers | Which containing functions call point-query entries (`0x08006E4E -> 0x080126D4`, `0x08021DFE/08021E06 -> 0x080126D4`, `0x08012AEC -> 0x080127AE`, `0x08022142 -> 0x08012846`)? | Names the scheduler layer that decides when spatial queries run; open PROJECT_STATE unresolved question | Callsite instructions CONFIRMED by independent BL decode (ROM-008); Ghidra did not recover containing functions | Seed callsite instructions in calibrated Ghidra project; recover boundaries; decompile callers; conservative names | RESOLVED |
 | AUTO-003 | transition-action | What does action `0x080125E8 -> downstream 0x080075AC` actually do (map reload? dialogue start?)? | Would explain transition mechanism and likely close VERTICAL-001 C mechanism question | Runtime: action executed and reached `0x080075AC`; trace hit `0x080077EC`, `0x08009744`, `0x080094B8`; no return within 512 steps | Ghidra: seed `0x080125E8`, `0x080075AC`, `0x080077EC`, `0x08009744`, `0x080094B8`; decompile; enumerate callees; look for MapEntry-load flow entry (`0x08008B30`) and registry reset (`0x08048488`) | READY |
 | AUTO-004 | object-vtables | What methods live in dispatch tables `0x0804A09C`, `0x0804A0AC`, `0x0804E444`? | Defines the rectangle-object class hierarchy; every spatial object routes through these | Cleanup slot raw/fetch `0x080510A1/080510A0`; filter vtable[2] `0x08007769`; receiver base `0x0804A0AC` vtable[1]/[2] used | Ghidra data-word dump of each table; follow each raw target; classify per-slot semantics conservatively | READY |
 | AUTO-005 | registry-manager | Complete function graph of registry manager around `0x03002A64` (`0x08012628`, `0x08012664`, `0x0801268A`, `0x080126D4`, `0x080127AE`, `0x08012846`, `0x08012900`, neighbors to `0x080128F2+`) | One coherent subsystem map for the best-understood engine area | Individual behaviors established in ROM-006/008/011/012 | Ghidra seeding + decompilation sweep over `0x08012600..0x08012A00` | READY |
@@ -62,6 +61,42 @@ research-lane findings only.)
     neighborhood. Matches DragonByteZ's upstream claim of a global atlas table
     at file offset `0x179764`; independent consumer proof pending.
     Classification: EXTERNAL CLAIM corroborated by byte presence only.
+
+- **AUTO-002 (2026-08-23), Ghidra static, calibrated project:**
+  - All five verified query callsites are now attributed to recovered
+    containing functions; every containment check CONTAINS:
+    - `candidate_caller_08006E3C` (body `0x08006E3C..0x08006FDF`) contains
+      point-query callsite `0x08006E4E`.
+    - `candidate_caller_08012A24` (body `..0x08012B5D`) contains
+      `0x08012AEC -> aabb_query_080127AE`.
+    - `candidate_caller_08021CC0` (body `..0x08021EAD`) contains both
+      `0x08021DFE/08021E06 -> point_query`.
+    - `candidate_caller_080220D8` (body `..0x08022149`) contains
+      `0x08022142 -> aabb_query_08012846`.
+  - New DB entries: `aabb_query_080127AE`, `aabb_query_08012846`
+    (`STRONG_STATIC`; entries from ROM-008 independent BL decode).
+  - Cross-validation: post-seed entry references for all three query entries
+    list exactly the ROM-008 callsites with resolved source functions.
+  - Static shape classifications (CANDIDATE semantics, boundaries candidate):
+    - `candidate_caller_08006E3C`: parameterless global-driven frame handler;
+      button bits (halfword at `*ctx+4` bit0/bit1), point query at a tracked
+      entity, heavy use of message family `FUN_08011xxx`.
+    - `candidate_caller_08012A24`: entity method; flag gate on global `+0xC`;
+      table-indexed text/message calls (`FUN_08052fd4` +
+      `FUN_08011c0c/08011c70`); the known `+0x16` halfword gate; sound-like
+      `FUN_0800797c(0xf,0x4b)`. Entity position words at `+0xA0/+0xA4`
+      (`>>8` fixed point).
+    - `candidate_caller_08021CC0`: periodic dual-point spatial sensor with
+      60-frame counters, animation-id getter `FUN_0802bfbc(0x6f..0x73,...)`,
+      two dispatched objects' `+0x16` gates.
+    - `candidate_caller_080220D8`: factory allocating 0x200 via shared
+      allocator `FUN_0803d5b8`, installs table `_DAT_080222d8`, registers a
+      child into the message family, then immediately runs
+      `aabb_query_08012846` - area-effect/hitbox-spawner shape.
+  - New subsystem anchors: allocator `0x0803D5B8`, resource-by-id getter
+    `FUN_0802bfbc`, message/dialogue family `FUN_0801191a / 08011944 /
+    08011a1e / 08011c0c / 08011c70 / 08011db4 / 08011e0e / 08011e94`
+    (CANDIDATE roles).
 
 ## Function Knowledge
 

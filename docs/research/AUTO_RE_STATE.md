@@ -49,11 +49,34 @@ proprietary artifacts.
 
 ## Current Objective
 
-P-002 (movement) - continued: find the buffered-direction consumer that
-writes player velocity/position during normal walking. New anchors below
-(message protocol, body-bounds helpers, relative-offset vtable). Note: the
-earlier state-machine interpretation of `candidate_entity_dispatch_08013914`
-was CORRECTED - see Recent Discoveries.
+P-002 final step - RUNTIME DISPLACEMENT EXPERIMENT (sanctioned by steering;
+static pass bounded and stalled). Design below; execute next iteration using
+ONLY existing infrastructure.
+
+EXPERIMENT: ordinary walking displacement on MapEntry 39 state.
+- QUESTION: raw/tick player displacement for held Right, held Up, held
+  Up+Right; bit->direction mapping; normalization.
+- METHOD: stock mGBA + established Lua injection (tools/runtime/
+  inject_mgba_lua.ps1 + load_mgba_lua.ps1); ignored working state
+  build/rom008/higher-plane-original.ss1/.sav (hashes recorded in
+  consumer-analysis.md ROM-008 section). One Lua script:
+  1. wait ~120 frames after state load;
+  2. read player entity pointer at 0x03001C34, position words at
+     ptr+0x1A0/ptr+0x1A4; log baseline;
+  3. hold Right for exactly 60 frames; log positions every frame (first 10
+     + last 5);
+  4. repeat for Up, then Up+Right (fresh re-load of state between legs);
+  5. write results to a marker text file under build/.
+- PREDICTED DISTINGUISHING OUTCOMES:
+  - constant per-tick delta -> immediate velocity (no acceleration);
+  - growing deltas -> acceleration model;
+  - diagonal |dx| == |dy| == cardinal -> NOT normalized;
+  - diagonal ~0.7x cardinal on an axis -> normalized/partials present;
+  - direction observed vs bit set establishes polarity empirically.
+- MINIMUM INSTRUMENTATION: single Lua script + existing injector + fresh
+  save/state dir under build/research/p002-exp/. NO new frameworks, no GDB
+  writes, canonical ROM untouched (working copies only per established
+  route).
 
 ## Research Queue
 
@@ -504,6 +527,17 @@ research-lane findings only.)
   - No input-consumer slot identified yet; next pass targets remaining
     UNKNOWN slots ([0][2][13][14] first) and key-mask constant hunting
     around the player method cluster.
+
+- **P-002 progress 5 (2026-08-23), static - bounded pass CLOSED:**
+  - Additional frame-handler callees ruled out as walkers:
+    `cand_frame_step_0800425C` = timer/flag housekeeping (countdowns at
+    ctx+0x4D4/0x4D8/0x4DC, one point-in-body liveness check);
+    `cand_frame_helper_0800938C` = BG/DISPCNT video-mode setup from map ctx
+    (BGxCNT scroll fields +0xA4..+0xC0).
+  - Projectile stepper has NO recovered callers (indirect dispatch).
+  - Static per-function triage has diminishing returns -> steering §6
+    runtime displacement experiment designed (see Current Objective) and
+    queued as the P-002 closer.
 
 ## Function Knowledge
 

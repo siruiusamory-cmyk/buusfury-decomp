@@ -1,4 +1,4 @@
-param(
+﻿param(
     [Parameter(Mandatory = $true)]
     [int]$TargetProcessId,
     [Parameter(Mandatory = $true)]
@@ -30,6 +30,12 @@ $allowedLua = @(
     )
     [System.IO.Path]::GetFullPath(
         (Join-Path $workspaceRoot 'tools\runtime\p002_walk_probe.lua')
+    )
+    [System.IO.Path]::GetFullPath(
+        (Join-Path $workspaceRoot 'tools\runtime\p003_attack_scout.lua')
+    )
+    [System.IO.Path]::GetFullPath(
+        (Join-Path $workspaceRoot 'tools\runtime\p003_move_attack.lua')
     )
 )
 $resolvedLua = [System.IO.Path]::GetFullPath($LuaPath)
@@ -228,3 +234,4 @@ try {
         }
     }
 }
+

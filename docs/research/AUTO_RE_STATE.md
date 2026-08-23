@@ -49,11 +49,19 @@ proprietary artifacts.
 
 ## Current Objective
 
-P-003 - NORMAL BASIC MELEE. First question: WHAT INPUT/COMMAND INITIATES THE
-NORMAL PHYSICAL ATTACK? Known: buffered input bits (below); melee must be
-traced from the attack input bit through the entity message ABI / spatial
-queries to a hit region and target interaction. Do NOT route through the
-energy-attack cluster except as architecture reference.
+P-003 (continued): locate the executable punch path. Runtime established:
+A (buffer 0x0001) produces a VISIBLE punch in open field (screenshot
+evidence) with NO writes to player entity words 0x000..0x23C and no
++0x10/+0x11 animation-word change - the punch's observable state lives in
+the sprite/effect layer outside the sampled struct. Next steps:
+1. Static: hunt the 0x03003304 bit0 consumer that drives the punch
+   (previous accessor census was incomplete; include computed-address reads).
+2. Runtime: obtain/produce a state with a hittable target (current local
+   states are safe areas without enemies); then trace one contact event
+   (feeds P-004 directly).
+3. Determine whether punch spawns a transient hit-region object (watch
+   entity-list/allocator activity rather than the spatial registry - count
+   stayed 3 during punches).
 
 ## Research Queue
 
@@ -552,6 +560,35 @@ research-lane findings only.)
       desired movement is rejected/clamped remains UNKNOWN.
   - Static input-consumer function (writer/reader of 0x03003304) remains
     UNKNOWN and is deprioritized per steering.
+
+- **P-003 progress (2026-08-23), runtime attack scout:**
+  - Method: `tools/runtime/p003_attack_scout.lua` +
+    `tools/runtime/p003_move_attack.lua` (both allowlisted), untracked driver
+    `build/research/p002-exp/run_scout.ps1` / `run_move_attack.ps1`; per-tick
+    differential of player entity words 0x000..0x23C + registry count +
+    buffered input; screenshots at fixed offsets. ROM hash verified per
+    launch; same clean Higher Plane state throughout.
+  - `CONFIRMED` (runtime): **A (buffer 0x0001) is the attack/interact
+    button.**
+    - Near the fountain NPC: A opens a dialogue/menu overlay (screenshot:
+      darkened scene + text bar; entity fields freeze; pointer swap burst
+      +0x14/+0x4c/+0x50 at that moment was dialogue entry, NOT attack).
+    - After walking ~35 px away: A produces a VISIBLE PUNCH (screenshot
+      p003-MoveA.png: extended-arm pose) with **zero** entity-word changes
+      in 0x000..0x23C during the punch window and no +0x10/+0x11 anim-word
+      change - punch presentation is handled outside the sampled struct.
+  - `CONFIRMED` (runtime): B (0x0002) produced no observable entity change
+    in open field (role UNKNOWN - candidate: energy/charge/guard).
+  - `CONFIRMED` (runtime): walk->idle transition swaps +0x14/+0x4c/+0x50
+    (animation-table pointers) and sets +0x11 anim byte to 01; registry
+    count stays 3 throughout (melee does not register spatial objects).
+  - Entity word +0x10 layout refined: byte +0x11 = animation/segment id,
+    byte +0x12 = per-anim frame counter (control idle cycles segments
+    03->02; values observed only, semantics INFERRED).
+  - OLD CLAIM / NEW EVIDENCE / RESOLUTION: earlier Scout_A pointer-swap
+    burst was interpreted as possible attack state; screenshot proved it
+    was dialogue entry. Attack identification now rests on the open-field
+    punch evidence.
 
 ## Function Knowledge
 

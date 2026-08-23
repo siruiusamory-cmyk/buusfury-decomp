@@ -35,6 +35,18 @@ research objective unless synthesis surfaces a sharper frontier.
 
 ## Recent Discoveries
 
+Synthesis pass after units 1-5 (2026-08-23):
+- No contradictory field interpretations found; `+0x8C` variation-word
+  retention (ROM-005) is now linked to `downstream_080075AC` carrying it
+  across transitions (AUTO-003).
+- Ghidra markup updated: `FUN_080089fc -> map_entry_lookup_080089FC`,
+  `FUN_08009670 -> population_adapter_08009670`.
+- Queue reconciled: AUTO-001/002/003/004/010 RESOLVED; BSim stays BLOCKED;
+  script VM and external-knowledge stay DEFERRED; next research objective is
+  AUTO-011.
+- Naming consistency rule going forward: new DB names use
+  `<role>_0XXXXXXXXX` lowercase-hex suffix form.
+
 (Inherited anchors are summarized in SUBSYSTEM_MAP.md; this section records new
 research-lane findings only.)
 

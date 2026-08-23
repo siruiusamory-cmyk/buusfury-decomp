@@ -13,6 +13,12 @@ aid: "where does X live?" without re-doing archaeology.
 | Variation-word resolver | `0x080089CC` | CONFIRMED L3 | `MapEntry[+0x2C] + 4*(selector-1)`; callers `0x08008ABA`, `0x08008BC4`, `0x0800906A` |
 | Selector default helper | `0x080089A0` | STRONG_STATIC | Returns supplied selector; 0 -> 1 when MapEntry `+0x28` null (always true in this ROM) |
 | Map load flow | `0x08008B30` region (`0x08008D2A..0x08009078`) | STRONG_STATIC | Resolves variation word, retains at struct `+0x8C` via `0x0800953E`; alt path `0x08008AA0 -> 0x08009670` |
+| Map-transition loader | `0x08008D44..0x08008E6F` (AUTO-010, STRONG_STATIC) | zone/area bytes -> ctx `+0/+1`; spawn coords `-0x70,-0x4C`; calls `0x080089FC` then `0x08008B30`; entity spawn via 0x18-stride table; music change check. Callers: `downstream_080075AC`, `FUN_080022e6`, `FUN_08002390`, `FUN_08005abe` |
+
+Transition chain (statically end-to-end after AUTO-003/AUTO-010):
+containment -> filter `0x08007768` -> action `0x080125E8` ->
+`downstream_080075AC` (vtable gates; carries variation word to new ctx
+`+0x8C`) -> `candidate_map_loader_08008d44` -> lookup + load flow.
 
 ## 2. Spatial-object registry (best understood subsystem)
 

@@ -12,10 +12,9 @@ proprietary artifacts.
 
 ## Current Objective
 
-AUTO-010: statically characterize `FUN_08008d44` (called by
-`downstream_080075AC` with zone/area/variation-shaped bytes) - confirm whether
-it resolves a MapEntry via `0x080089FC` and what its pointer argument and
-return context are. Names the map-loader entry used by transitions.
+Synthesis pass (units 1-5 complete): reconcile ledger, subsystem map, and
+queue; then select AUTO-011 (entity-spawned registry members) as the next
+research objective unless synthesis surfaces a sharper frontier.
 
 ## Research Queue
 
@@ -28,7 +27,7 @@ return context are. Names the map-loader entry used by transitions.
 | AUTO-005 | object-vtables | What methods live in dispatch tables `0x0804A09C`, `0x0804A0AC`, `0x0804E444`? | Defines the rectangle-object class hierarchy; every spatial object routes through these | Cleanup slot raw/fetch `0x080510A1/080510A0`; filter vtable[2] `0x08007769`; receiver base `0x0804A0AC` vtable[1]/[2] used; AUTO-003 added vtable+0x34/+0x84/+0x28 uses | Ghidra data-word dump of each table; follow each raw target; classify per-slot semantics conservatively | READY |
 | AUTO-005 | registry-manager | Complete function graph of registry manager around `0x03002A64` (`0x08012628`, `0x08012664`, `0x0801268A`, `0x080126D4`, `0x080127AE`, `0x08012846`, `0x08012900`, neighbors to `0x080128F2+`) | One coherent subsystem map for the best-understood engine area | Individual behaviors established in ROM-006/008/011/012 | Ghidra seeding + decompilation sweep over `0x08012600..0x08012A00` | READY |
 | AUTO-006 | descriptor-format | What is the minimal extent/field map of a source descriptor such that parsing is lossless? | Recorded parser-readiness blocker across ROM-008..ROM-012 | Consumers read `+0x00` (factory), `+0x04` (callback producer), `+0x08/+0x0C` (bounds) | Static census of all descriptor accesses from all factories reached via variation arrays; adjacency analysis in ROM | READY |
-| AUTO-010 | map-loader | Does `FUN_08008d44` resolve a MapEntry via `0x080089FC` from zone/area/variation bytes, and what are its argument/return contracts? | Completes the transition mechanism chain end-to-end; needed for any future map-warp tooling | AUTO-003: called by `downstream_080075AC` with `(ctx, byte, byte, ptr, byte, 1)`, returns new context | Ghidra: seed + decompile `0x08008d44`; check for `0x080089FC` call and literal use | READY |
+| AUTO-010 | map-loader | Does `FUN_08008d44` resolve a MapEntry via `0x080089FC` from zone/area/variation bytes, and what are its argument/return contracts? | Completes the transition mechanism chain end-to-end; needed for any future map-warp tooling | AUTO-003: called by `downstream_080075AC` with `(ctx, byte, byte, ptr, byte, 1)`, returns new context | Ghidra: seed + decompile `0x08008d44`; check for `0x080089FC` call and literal use | RESOLVED |
 | AUTO-011 | registry-population | Do MapEntry objects/npcs pointer-driven spawns add spatial registry members beyond the variation-array path? | Tests the remaining descriptor-free explanation for VERTICAL-001 C | ROM-007: registry construction is heterogeneous; objects/npcs pointers exist in MapEntry (+0x1C/+0x20) | Static first: seed object/npc spawn factories; look for `0x08012664`/registry-append callers outside `0x08009670` path | READY |
 | AUTO-007 | script-vm | How does the Buu bytecode VM relate to Legacy repo's 145-opcode LoG1 VM inventory? | Dialogue/quest scripting is a whole engine subsystem | `extern/Legacy/OpCodes.csv`, `DBZKit/Legacy/Games/BYTECODE_VM.cs` (LoG1 lineage, INFERRED transferability) | Locate Buu bytecode consumers from MapEntry script pointers; compare opcode dispatch shape | DEFERRED |
 | AUTO-008 | bsim | Calibrate BSim against an independent related binary | TOOL-002 closed BLOCKED: no independent related binary locally | TOOL-002 archive | Needs a new local binary (e.g., another-region dump) before any work | BLOCKED |
@@ -158,6 +157,25 @@ research-lane findings only.)
     `01`, MapEntry-377 set has `0F`). Descriptors also carry unknown halfword
     fields at `+0x12/+0x14`.
 
+- **AUTO-010 (2026-08-23), Ghidra static, calibrated project:**
+  - `candidate_map_loader_08008d44` (body `0x08008D44..0x08008E6F`) is the
+    map-transition loader (STRONG_STATIC):
+    - writes its zone/area byte args into context `+0/+1`;
+    - adjusts spawn coordinates by `-0x70, -0x4C`;
+    - calls **`FUN_080089fc`** (the CONFIRMED MapEntry lookup) and feeds the
+      result plus adjusted spawn into **`FUN_08008b30`** (the established
+      map-load flow);
+    - spawns entities through an 0x18-stride per-type table
+      (`FUN_0801713c`, `FUN_080109aa`/`FUN_080104f2`, allocator wrappers,
+      list-add `FUN_08021094`, message attach `FUN_0801191a`);
+    - compares `FUN_08008a36(ctx+4)` music id against ctx `+8` and attaches a
+      change object on difference (map BGM switch).
+  - Additional direct callers of the loader: `FUN_080022e6`, `FUN_08002390`,
+    `FUN_08005abe` - candidate non-door warp sources (scripts/NPCs).
+  - Transition chain now end-to-end statically: containment -> filter ->
+    `spatial_action_080125E8` -> `downstream_080075AC` ->
+    `candidate_map_loader_08008d44` -> MapEntry lookup + load flow.
+
 ## Function Knowledge
 
 See `SUBSYSTEM_MAP.md` for the consolidated table. Confidence vocabulary:
@@ -184,5 +202,5 @@ behavior, multiple corroborations), `CANDIDATE` (single static observation).
 
 ## Next Candidate
 
-If AUTO-010 completes: AUTO-011 (entity-spawned registry members) or AUTO-005
-(dispatch-table dump), whichever the findings make sharper.
+AUTO-011 (entity-spawned registry members) - the sharpest remaining
+VERTICAL-001 C question after AUTO-004 eliminated descriptor-driven sources.

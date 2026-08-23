@@ -83,6 +83,11 @@ resource-by-id getter `FUN_0802bfbc(id,table)`.
   0x18: layout candidate
   `{+00 factory_raw, +04 code_ptr_raw, +08..+0F four signed bound halfwords,
   +10/+11 bytes, +12..+17 unknown}`. Extent not yet globally proven.
+- ROM-wide (AUTO-004, CONFIRMED): 839 shape-plausible descriptors match the
+  two confirmed factory words; ownership chains resolve through
+  `descriptor <- ptr array <- selected value S (word0 000C10xx, +40 count,
+  +44 array) <- variation source <- MapEntry`. Bounds are map-local.
+  byte10/byte11 clustering leads recorded in AUTO_RE_<local-state-name>.
 
 ## 4. Runtime observation infrastructure
 

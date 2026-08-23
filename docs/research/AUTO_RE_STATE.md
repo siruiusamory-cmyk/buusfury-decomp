@@ -12,11 +12,10 @@ proprietary artifacts.
 
 ## Current Objective
 
-AUTO-004: ROM-wide census of candidate spatial descriptors beginning with
-confirmed factory raw words (`0x08007675`, `0x080072CD`), decoding bounds at
-`+0x08..+0x0F`, and reporting every candidate overlapping the ROM-012 doorway
-rectangle `x=[592,601), y=[136,241)`. Goal: identify remaining VERTICAL-001
-result-C transition source candidates among descriptor-driven objects.
+AUTO-010: statically characterize `FUN_08008d44` (called by
+`downstream_080075AC` with zone/area/variation-shaped bytes) - confirm whether
+it resolves a MapEntry via `0x080089FC` and what its pointer argument and
+return context are. Names the map-loader entry used by transitions.
 
 ## Research Queue
 
@@ -25,9 +24,12 @@ result-C transition source candidates among descriptor-driven objects.
 | AUTO-001 | spatial-descriptors | What descriptors exist in the count-2 array at `0x08294960`, and does a sibling cover the ROM-012 doorway? | Directly targets the recorded smallest blocker of VERTICAL-001 C; extends descriptor format knowledge | Array base/count from ROM-007 runtime (`field_40_raw=2`, `field_44_raw=0x08294960`); descriptor `0x08294948` fully characterized | Read-only byte reads at file offsets `0x00294960..68` + both descriptors; decode factory/bounds fields; cross-check with `webfoot variation-arrays find-first-word` | RESOLVED |
 | AUTO-002 | spatial-registry-callers | Which containing functions call point-query entries (`0x08006E4E -> 0x080126D4`, `0x08021DFE/08021E06 -> 0x080126D4`, `0x08012AEC -> 0x080127AE`, `0x08022142 -> 0x08012846`)? | Names the scheduler layer that decides when spatial queries run; open PROJECT_STATE unresolved question | Callsite instructions CONFIRMED by independent BL decode (ROM-008); Ghidra did not recover containing functions | Seed callsite instructions in calibrated Ghidra project; recover boundaries; decompile callers; conservative names | RESOLVED |
 | AUTO-003 | transition-action | What does action `0x080125E8 -> downstream 0x080075AC` actually do (map reload? dialogue start?)? | Would explain transition mechanism and likely close VERTICAL-001 C mechanism question | Runtime: action executed and reached `0x080075AC`; trace hit `0x080077EC`, `0x08009744`, `0x080094B8`; no return within 512 steps | Ghidra: seed `0x080125E8`, `0x080075AC`, `0x080077EC`, `0x08009744`, `0x080094B8`; decompile; enumerate callees; look for MapEntry-load flow entry (`0x08008B30`) and registry reset (`0x08048488`) | RESOLVED |
-| AUTO-004 | object-vtables | What methods live in dispatch tables `0x0804A09C`, `0x0804A0AC`, `0x0804E444`? | Defines the rectangle-object class hierarchy; every spatial object routes through these | Cleanup slot raw/fetch `0x080510A1/080510A0`; filter vtable[2] `0x08007769`; receiver base `0x0804A0AC` vtable[1]/[2] used | Ghidra data-word dump of each table; follow each raw target; classify per-slot semantics conservatively | READY |
+| AUTO-004 | doorway-descriptor-census | Which candidate descriptors ROM-wide overlap the ROM-012 doorway, and which map owns them? | Identifies or eliminates descriptor-driven explanations for VERTICAL-001 C; builds global descriptor corpus | Factory raw words `0x08007675`/`0x080072CD`; half-open AABB semantics; per-map coordinate caveat | 4-aligned scan for factory words, decode bounds, reverse-reference ownership chain (descriptor <- pointer array <- selected value <- variation source <- MapEntry) | RESOLVED |
+| AUTO-005 | object-vtables | What methods live in dispatch tables `0x0804A09C`, `0x0804A0AC`, `0x0804E444`? | Defines the rectangle-object class hierarchy; every spatial object routes through these | Cleanup slot raw/fetch `0x080510A1/080510A0`; filter vtable[2] `0x08007769`; receiver base `0x0804A0AC` vtable[1]/[2] used; AUTO-003 added vtable+0x34/+0x84/+0x28 uses | Ghidra data-word dump of each table; follow each raw target; classify per-slot semantics conservatively | READY |
 | AUTO-005 | registry-manager | Complete function graph of registry manager around `0x03002A64` (`0x08012628`, `0x08012664`, `0x0801268A`, `0x080126D4`, `0x080127AE`, `0x08012846`, `0x08012900`, neighbors to `0x080128F2+`) | One coherent subsystem map for the best-understood engine area | Individual behaviors established in ROM-006/008/011/012 | Ghidra seeding + decompilation sweep over `0x08012600..0x08012A00` | READY |
 | AUTO-006 | descriptor-format | What is the minimal extent/field map of a source descriptor such that parsing is lossless? | Recorded parser-readiness blocker across ROM-008..ROM-012 | Consumers read `+0x00` (factory), `+0x04` (callback producer), `+0x08/+0x0C` (bounds) | Static census of all descriptor accesses from all factories reached via variation arrays; adjacency analysis in ROM | READY |
+| AUTO-010 | map-loader | Does `FUN_08008d44` resolve a MapEntry via `0x080089FC` from zone/area/variation bytes, and what are its argument/return contracts? | Completes the transition mechanism chain end-to-end; needed for any future map-warp tooling | AUTO-003: called by `downstream_080075AC` with `(ctx, byte, byte, ptr, byte, 1)`, returns new context | Ghidra: seed + decompile `0x08008d44`; check for `0x080089FC` call and literal use | READY |
+| AUTO-011 | registry-population | Do MapEntry objects/npcs pointer-driven spawns add spatial registry members beyond the variation-array path? | Tests the remaining descriptor-free explanation for VERTICAL-001 C | ROM-007: registry construction is heterogeneous; objects/npcs pointers exist in MapEntry (+0x1C/+0x20) | Static first: seed object/npc spawn factories; look for `0x08012664`/registry-append callers outside `0x08009670` path | READY |
 | AUTO-007 | script-vm | How does the Buu bytecode VM relate to Legacy repo's 145-opcode LoG1 VM inventory? | Dialogue/quest scripting is a whole engine subsystem | `extern/Legacy/OpCodes.csv`, `DBZKit/Legacy/Games/BYTECODE_VM.cs` (LoG1 lineage, INFERRED transferability) | Locate Buu bytecode consumers from MapEntry script pointers; compare opcode dispatch shape | DEFERRED |
 | AUTO-008 | bsim | Calibrate BSim against an independent related binary | TOOL-002 closed BLOCKED: no independent related binary locally | TOOL-002 archive | Needs a new local binary (e.g., another-region dump) before any work | BLOCKED |
 | AUTO-009 | external-knowledge | Data Crystal / community addresses for Buu's Fury or LoG1/LoGII worth validating? | Cheap candidate anchors if any exist | None imported so far (deliberate) | Web search; record EXTERNAL CLAIM then validate against canonical profile before use | DEFERRED |
@@ -127,6 +129,35 @@ research-lane findings only.)
     came from another accepted containment on some other descriptor-driven
     object or another mechanism feeding the same loader.
 
+- **AUTO-004 (2026-08-23), read-only static census, canonical profile:**
+  - `CONFIRMED`: 839 four-aligned words match confirmed factory raw values
+    (`669 x 0x08007675`, `170 x 0x080072CD`); ALL decode as shape-plausible
+    descriptors (odd Thumb-shaped `+0x04`, ordered signed bounds). Nearly all
+    share `+0x04 = 0x0800776D`; an earlier data region uses `0x080077DF`.
+    Strong global support for the descriptor field map (extent still
+    unproven; feeds AUTO-006).
+  - `CONFIRMED`: exactly ONE candidate besides `0x08294948` overlaps the
+    doorway rectangle: `0x081BE1B8`, bounds `(600,176)..(609,201)`.
+  - `CONFIRMED` ownership chain for that candidate:
+    descriptor <- array `0x081BE260[7]` of 14 pointers <- selected value
+    `S=0x081BE298` (`+0x40`=14, `+0x44`=array; word0 `0x000C1041`) <-
+    variation source `0x0808AEBC[0]` <- **MapEntry 377**
+    (out=15, zone=19, area=1, variation=5). Different map: its map-local
+    bounds cannot fire at MapEntry-39's doorway.
+  - `CONFIRMED`: MapEntry 39's variation source `0x080753F0` contains exactly
+    one selected-value-shaped structure (`source[0] = S39`); no selector!=1
+    alternative population exists statically there.
+  - Consequence (INFERRED, strong): after the VERTICAL-001 patch, NO
+    descriptor-driven registry member of MapEntry 39 could accept containment
+    at the doorway. The persisting transition must come from non-descriptor
+    registry members (heterogeneous population, e.g., entity-spawned) or a
+    non-registry mechanism. New queue items AUTO-010/AUTO-011 target these.
+  - INFERRED leads (unproven): descriptor byte10 clusters by rectangle shape
+    (`00` interior/bottom strips, `01` top strips, `02` left strips,
+    `03` right strips); byte11 clusters by map group (MapEntry-39 pair has
+    `01`, MapEntry-377 set has `0F`). Descriptors also carry unknown halfword
+    fields at `+0x12/+0x14`.
+
 ## Function Knowledge
 
 See `SUBSYSTEM_MAP.md` for the consolidated table. Confidence vocabulary:
@@ -153,7 +184,5 @@ behavior, multiple corroborations), `CANDIDATE` (single static observation).
 
 ## Next Candidate
 
-If AUTO-004 completes: AUTO-005 (dispatch-table dump `0x0804A09C/0804A0AC/
-0804E444`) or, if the census finds doorway-overlapping candidates, a targeted
-runtime identification of the remaining transition object using the existing
-ROM-012 native probe.
+If AUTO-010 completes: AUTO-011 (entity-spawned registry members) or AUTO-005
+(dispatch-table dump), whichever the findings make sharper.

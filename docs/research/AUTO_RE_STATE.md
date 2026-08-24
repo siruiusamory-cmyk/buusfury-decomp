@@ -724,6 +724,13 @@ research-lane findings only.)
     HP. Player current-HP field is UNKNOWN again; max-HP `0x0203DBB4`
     (+6 level-up) remains the only runtime-supported stat. Damage-hunt
     must target discrete multi-unit drops on other fields.
+  - STAGE A asset: clean no-debugger human session captured
+    (`p004-actor-diff.csv`, 14400 ticks, u32 diff of
+    `0x0203C400..0x0203DE50` + player pos/keys/HP-timer per tick).
+    First-pass knockback heuristic (px jump + no-dpad) found zero
+    player-hit events - detection needs loosening or explicit hit
+    marking; intersection analysis pending. Data remains on disk for
+    re-analysis.
 
 - **P-003 progress 10 (2026-08-23), constructor-hunt false positive:**
   - The aligned word `0x08049DF0` at `0x0802A008` is CODE, not a literal

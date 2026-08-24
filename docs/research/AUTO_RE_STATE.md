@@ -621,6 +621,24 @@ research-lane findings only.)
     player-side; enemy entity struct/location UNKNOWN; knockback/hitstun
     not yet captured; message-ABI participation untested (needs a reliable
     hit first).
+- **P-003 progress 10 (2026-08-23), constructor-hunt false positive:**
+  - The aligned word `0x08049DF0` at `0x0802A008` is CODE, not a literal
+    (bytes `F0 9D 04 08` = `LDR r5,[sp,#0x3C0]` + next-instruction
+    halfwords, inside function `0x08029FE6..0x0802A026` which is a small
+    initializer reading `obj->+0xC`/`obj->+0x0` and storing to
+    `obj->+0x1C/+0x20` - relationship to the attack object unclear).
+  - No aligned ROM reference to `0x08049DF0` (or thumb-form `...DF1`)
+    exists anywhere - the attack object's vtable pointer is installed by
+    COPY/ADDITION from a template or parent object, not a direct literal.
+    Consequence: static constructor hunt via literal scan is a dead end;
+    the m1-caller chain must be reached via runtime capture (GDB Z0 at
+    m5 fetch `0x08029ED8`, log r0/r1 per call = attack object + target)
+    or by finding the attack-object LIST owner another way.
+  - m5 geometry terminology per steering: the inequalities define the
+    MELEE-ADJUSTED TARGET BODY RECT (x0-4 outward, x1+3 outward, y0
+    unchanged, y1-6 reduced) tested against the plain player world body;
+    canonical form preserved verbatim in progress 9.
+
 - **P-003/P-004 progress 9 (2026-08-23), m5 exact hit geometry:**
   - Full decompile mapped (stack-slot to rect-field assignment):
     - player rect via global-form `cand_body_bounds_0800FE78(&out)`:

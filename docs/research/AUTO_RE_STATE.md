@@ -760,6 +760,18 @@ research-lane findings only.)
     single watchpoint on 0x0203D328 during short armed session ->
     writer PC -> contact/damage function; also test the old five-punch
     signature (0x203C400..2C) against these labels (not yet done).
+  - STAGE B ON D328 EXECUTED - NEGATIVE WITH INFO: single `Z2` on
+    `0x0203D328` armed through a human session where one punch was
+    visibly LANDED; zero watchpoint hits while the labeled bank proves
+    the value changes post-hit. CONCLUSION: D328/D330 are DMA-written
+    (impact-effect tile staging), so CPU watchpoints cannot see their
+    writer. Pre-hit values are tile-pattern bytes
+    (`0x3032`, `0x312a2b29`), consistent with palette/tile payload.
+    NEXT ROUTES: (a) static - identify what requests the impact-effect
+    upload (find DMA descriptor/source for that tile block); (b) wolf-
+    side - the labeled-bank zone ended at 0x0203DE50; diff a WIDER
+    range around landed-vs-missed punches to locate the wolf actor's
+    flinch/state mutation (CPU-written), then watch THAT.
 
 - **P-003 progress 10 (2026-08-23), constructor-hunt false positive:**
   - The aligned word `0x08049DF0` at `0x0802A008` is CODE, not a literal

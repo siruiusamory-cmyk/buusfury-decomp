@@ -970,7 +970,20 @@ research-lane findings only.)
     flows from STATE DATA. ALSO REJECTED: `0x03003488` = sprite-
     pipeline working slot (writers `0x0803D50A/544/5A4`) - false lead
     #4. NEXT: decode handler family vs state-data clip selection;
-    find dispatcher loop; HURT-state entry = contact decision.
+    find dispatcher loop;     HURT-state entry = contact decision.
+  - WOLF GAMEPLAY OBJECT FOUND (progress 13 addendum, STRONG):
+    decrement-mining surfaced `0x03007BBC` rotating pointers across
+    three combat-object blocks per punch window. Two identified:
+    `0x0203DBB0` = PLAYER combat object (max-HP candidate 0x203DBB4 =
+    +4 inside it), and **`0x0203D504` = WOLF combat object**: its +0
+    state-vtable word SWAPS `0x0804C484 <-> 0x0804E454` on landed
+    punches (h=3 direct, plus +4 byte jitter h=9 m=0), zero on
+    misses - first actor-owned non-presentation hit-correlated state
+    transition. Layout hypothesis: +0 vtable, +4 state byte/timer.
+    ALSO: `0x0203DECC` third combat block (second wolf?). NEXT: Z2 on
+    `0x0203D504` vtable word during labeled punches -> transition
+    writer PC -> state-switch routine -> damage flow upstream.
+    Static follow-up: inspect vtables 0x0804C484 / 0x0804E454.
   - CAPSTONE DEPLOYED (progress 13 addendum): `capstone 5.0.7` installed
     into .venv; reusable disassembler at
     `build/research/p003-exp/disasm.py` (`python disasm.py <addr> <len>`).

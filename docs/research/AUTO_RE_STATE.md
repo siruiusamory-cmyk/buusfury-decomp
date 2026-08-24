@@ -1059,6 +1059,22 @@ research-lane findings only.)
     (4) connect to wolf object 0x0203D504 field +0x4 byte jitter as
     the likely HP/state byte. All tooling ready: disasm.py,
     find_callers.py, AutoP3Func.java.
+  - REL-DISPATCH TABLES CONFIRMED (progress 13 addendum, CONFIRMED):
+    wolf object `+0` points to RELATIVE-OFFSET function tables (entries
+    = signed deltas from table base). Decoded targets:
+    - table[0] = despawn/destructor slot: `0x804C484[0]->FUN_0800F76E`,
+      `0x804C888[0]->FUN_0800E85E`, `0x804AC20[0]->FUN_0800EC34`
+    - table[1] shared -> `0x0804F53D`; entries [2..5] state-specific.
+    State transition = swapping obj->+0 between tables (observed
+    C484<->E454 on hits). DISPATCHER = generic code doing
+    `call obj->[0][k]` - still to locate. This mirrors the veneer/
+    offset-table convention at `0x0804A4B8` (same engine idiom).
+    P-003 CHAIN STATUS: A press -> punch presentation -> HIT/MISS
+    (classifier: wolf flinch clips) -> wolf combat obj 0x0203D504
+    vtable swap via FUN_0800EC34-family installers -> death ->
+    FUN_0800F76E removal. MISSING LINK: damage application + the
+    dispatcher loop. Fresh-session resume at step (1) of previous
+    entry, now armed with confirmed rel-table mechanism.
   - CAPSTONE DEPLOYED (progress 13 addendum): `capstone 5.0.7` installed
     into .venv; reusable disassembler at
     `build/research/p003-exp/disasm.py` (`python disasm.py <addr> <len>`).

@@ -1092,6 +1092,22 @@ research-lane findings only.)
     contact decision = a sequencer branch comparing attacker/target
     overlap. Writer containing function entry ~= `0x0801154F`
     (prologue scan; verify).
+  - SEQUENCER ENTRY DECODED (progress 13 addendum): `FUN_0801142A` =
+    RECORD RELINKER, not a script VM - it moves 10-byte records
+    between linked chains in a work array (`[+6]/[+7]` = next/prev
+    indices, 0xFF = none; `[+4]` accumulator; calls `FUN_0801137C`
+    twice per move). Shape matches a queue manager (effects/sounds/
+    scheduled tasks), weakening the "damage via sequence commands"
+    model. The wolf+4 oscillation thread may terminate here (bob
+    driven by a task queue). NEXT SESSION SHOULD DECIDE: continue
+    queue thread vs pivot to (a) full Ghidra analysis run on the
+    calibrated project (previous attempt exceeded 1h timeout - run
+    headless overnight-style or restrict analysis scope), then use
+    real xrefs to find who calls the rel-table wrappers indirectly;
+    or (b) runtime: Z2 on `FUN_0801890A` (node ENTER handler!) during
+    labeled punches -> catches every state entry including HURT ->
+    LR reveals the dispatcher directly. Option (b) is cheap and
+    high-signal: enter-handler fires rarely (only on state changes).
   - EWRAM STUB REGION DECODED (progress 13 addendum): the
     `0x020363A4..0x02036870` copied block = THUNK/VENEER POOL
     (`b target` stubs over nop sleds), NOT the dispatcher. LR landing

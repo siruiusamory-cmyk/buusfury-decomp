@@ -1027,7 +1027,23 @@ research-lane findings only.)
     on death `FUN_0800E85E` teardown via deciders
     `FUN_0800F76E`/`FUN_0800E6F8`. NEXT: decompile those two deciders
     to find the HP/death condition test; trace their caller passing
-    damage; identify the HURT-state installer vs DEATH installer.
+    damage;     identify the HURT-state installer vs DEATH installer.
+  - DECIDERS DECOMPILED (progress 13 addendum, CONFIRMED):
+    - `FUN_0800F76E(obj,flag)` = REMOVE-ACTOR-from-active-list:
+      unlinks obj from global array `DAT_0800F914` (count+entries),
+      optional body-check via `cand_point_in_body_0800FDFA`, then
+      teardown `FUN_0800E85E`. Byte at obj+0x291 gates an extra
+      body-register write.
+    - `FUN_0800E6F8(obj,flag)` = remove from second global list
+      `DAT_0800E750`. CALLERS: `FUN_08039182` and
+      **`candidate_player_method0_08010B80`** - THE PLAYER-SIDE METHOD
+      removes actors! Strong signal that the player melee/kill flow
+      runs through 0x08010B80.
+    NEXT (highest priority): decompile
+    `candidate_player_method0_08010B80` and `FUN_08039182`; find the
+    damage/HP test upstream of the removal call; that branch IS the
+    HIT-vs-DEATH-vs-KNOCKBACK decision. Then link back to the labeled
+    hit frames for the per-hit non-lethal path (hurt-state installer).
   - CAPSTONE DEPLOYED (progress 13 addendum): `capstone 5.0.7` installed
     into .venv; reusable disassembler at
     `build/research/p003-exp/disasm.py` (`python disasm.py <addr> <len>`).

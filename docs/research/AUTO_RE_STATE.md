@@ -828,6 +828,23 @@ research-lane findings only.)
     tree -> next target `0x03007C50` with the same single-watchpoint
     method. Note for Stage B design: IWRAM candidates from dump-phase
     sampling need writer capture BEFORE being treated as leads.
+  - 0x03007C50 WRITER CAPTURED - REAL ROM CODE, COLLISION RAYCAST:
+    single Z2 during landed-punch session (mGBA closed early but 120
+    stops captured first). Writers are ROM Thumb code alternating in a
+    loop: PC `0x0803B68C`/`0x0803B69A`, plus `0x0803B590`/`0x0803B66E`;
+    **LR = `0x020363AC` (EWRAM-resident caller)**; args include two
+    adjacent actor pointers `r1=0x0203C7C8`, `r2=0x0203C7C4`; written
+    values are signed word pairs (delta-like). STATIC ID: containing
+    function **`FUN_0803B4FC`** (body `0x0803B4FC..0x0803B6E9`) is a
+    dual ray-march against map collision via `FUN_08046AA4` (point
+    query on `*param_2+0x54` room data), up to 255 steps, storing the
+    clamped endpoint to `param_1+0xC/+0x10`; picks ray by distance to
+    target `(param_7,param_8)`. CLASSIFICATION: wall-collision clamp /
+    line-of-sight utility - plausibly invoked for hit knockback
+    repositioning or AI approach, called through an EWRAM function
+    pointer. Stack slot 0x3007C50 = its local. NEXT: capture r0/param_1
+    at these writers (CSV column gap), identify EWRAM caller chain at
+    0x020363AC, decide knockback-vs-AI provenance.
 
 - **P-003 progress 10 (2026-08-23), constructor-hunt false positive:**
   - The aligned word `0x08049DF0` at `0x0802A008` is CODE, not a literal

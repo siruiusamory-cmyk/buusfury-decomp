@@ -1074,7 +1074,22 @@ research-lane findings only.)
     vtable swap via FUN_0800EC34-family installers -> death ->
     FUN_0800F76E removal. MISSING LINK: damage application + the
     dispatcher loop. Fresh-session resume at step (1) of previous
-    entry, now armed with confirmed rel-table mechanism.
+    dispatcher loop; HURT-state entry = contact decision.
+  - WOLF HP CANDIDATE TESTED AND REJECTED (progress 13 addendum):
+    fresh-object read showed `0x0203D578 = 0x64`(100) - attractive HP
+    value. Corpus check: D578 flips between patterns
+    (`3d63e00<->3222100`) on hits, becomes tile-junk near death
+    (`2fc0e1cc`) - it is a GRAPHICS/FRAME pointer slot, not HP.
+    Wolf current-HP field remains UNLOCATED. CRITICAL NEW OBSERVATION:
+    P11 window (t=176) shows the WHOLE 0x203D504 object being RESET
+    (+4->1000000, +0x74->0...) = despawn/death signature, and earlier
+    sessions showed wolf controller addresses MOVING across punches
+    (`C7A0/C8D4/C934`). WORKING EXPLANATION (INFERRED): combat-object
+    slots get RE-BOUND to different actors over time, so fixed-address
+    grading scatters real signals. FUTURE WORK: track wolf identity via
+    the `0x03003488` actor-slot rotation chain instead of absolute
+    addresses, or capture with only ONE wolf alive. Damage application
+    path remains the open P-004 question.
   - WOLF +4 WRITER CAPTURED - SEQUENCER-DRIVEN (progress 13 addendum,
     CONFIRMED): single writer `PC 0x080101C8` (LR `0x080115DB`) writes
     an oscillating byte (e3<->dd sine-like, r2=4 r3=0xE constant) into

@@ -904,6 +904,17 @@ research-lane findings only.)
     routine switching wolf into flinch -> upstream contact decision.
     Also noted: `0x20366EC` packed s16 pairs change 10/10 hits 0/2
     miss = probable screen-shake BG scroll (presentation, unproven).
+  - ANIM INSTALLER FAMILY PINNED (progress 13 addendum): ROM literal
+    hunt shows flinch clips installed by code at
+    **`0x080188xx..0x080192xx`** (literals `0x0804A710`@`0x0801923C`,
+    `0x0804BC98`@`0x0801894C`; earlier runtime catches `0x080188C4`,
+    `0x0801891C`, `0x080190D0` same family). Prologue scan found
+    candidate entries (`0x08019 20F/1E9/1C7`, `0x08018 937/921/90B/
+    8CB`); Ghidra seeds created but bodies empty under `-noanalysis`.
+    NEXT ITERATION (no human needed): rerun headless WITH analysis
+    enabled for these seeds -> callers of the installer family ->
+    find the caller passing FLINCH clip id on hit frames -> upstream
+    contact decision. This is the current strongest P-003 thread.
 
 - **P-003 progress 10 (2026-08-23), constructor-hunt false positive:**
   - The aligned word `0x08049DF0` at `0x0802A008` is CODE, not a literal

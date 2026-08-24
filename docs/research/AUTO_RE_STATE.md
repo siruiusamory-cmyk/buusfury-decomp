@@ -1185,6 +1185,14 @@ research-lane findings only.)
     dump node defs `0x08706B7C`/`0x08706BF8` ids+links; determine
     actor identity of `0x0203DBB0` decisively (check whether its
     fields track player position 0x03001C34->+0x1A0 during movement).
+  - CALLER 0x0800AA5F DECODED (progress 13 addendum): containing fn
+    `0x0800AA4A` does `r1*8` indexing into an 8-byte-stride STATE
+    TABLE (literal [pc,#0xfc]) -> node-def ptr -> point query ->
+    flinch-wrapper enter. CONFIRMED: state-index -> node-def lookup
+    dispatch (indexed state machine). NEXT: dump that state table
+    (base = word at pool ~0x0800ab50), map indices to node defs,
+    find which index = HURT for wolves vs player, and decompile
+    second caller `FUN_~08018FC9` context.
   - WOLF STATE GRAPH EXTRACTED (progress 13 addendum, CONFIRMED):
     node defs = `{fn[3] handlers, param=clip/state id, enter-variant
     ptr, links}`. Wolf nodes: ids `428`(enter 0x080188A9 point-test),

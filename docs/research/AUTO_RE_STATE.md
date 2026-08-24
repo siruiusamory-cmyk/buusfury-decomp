@@ -621,7 +621,38 @@ research-lane findings only.)
     player-side; enemy entity struct/location UNKNOWN; knockback/hitstun
     not yet captured; message-ABI participation untested (needs a reliable
     hit first).
-- **P-003/P-004 progress 8 (2026-08-23), attack-object vtable decoded:**
+- **P-003/P-004 progress 9 (2026-08-23), m5 exact hit geometry:**
+  - Full decompile mapped (stack-slot to rect-field assignment):
+    - player rect via global-form `cand_body_bounds_0800FE78(&out)`:
+      `x0p=iStack_24, y0p=iStack_20, x1p=iStack_1C, y1p=iStack_18`;
+    - target rect via `cand_body_bounds_0800FE78(&out, target)`:
+      `x0t=iStack_34, y0t=iStack_30, x1t=iStack_2C, y1t=iStack_28`.
+  - Gate: global `*DAT_0802a004 != 0` AND `*global != 0 -> +0x1CC != 0`.
+  - **Initial reach test** (all strict `<`; TARGET rect expanded against
+    plain player world body):
+    `target.x0 - 4 < player.x1  &&  player.x0 < target.x1 + 3  &&
+     target.y0      < player.y1  &&  player.y0 < target.y1 - 6`
+  - **Direction resolution** (player center `(x0p+x1p)/2,(y0p+y1p)/2`;
+    target center analogous):
+    - `dx = playerCx - targetCx`, `dy = playerCy - targetCy`;
+    - horizontal dominant (`|dy| < |dx|`): writes `*(u8*)(target+0x10) =
+      2` if `dx < 1` else `3`;
+    - else vertical dominant: `1` if `dy < 1` else `0`;
+    - secondary rect test then confirms (horizontal: uses
+      `target.x1+3`; vertical: `target.y1-6`).
+  - **`target+0x10` = hit-direction byte**, same byte the body-bounds
+    getter multiplies by 0x10 to select the body-table entry - getting
+    hit sets the victim's direction byte. Encoding 0/1/2/3 semantics
+    INFERRED (likely a down/up/left/right family).
+  - Boundary semantics: strict inequality (half-open style, consistent
+    with registry AABB). Player rect IS the ordinary world-body; melee
+    reach = body-vs-EXPANDED-target-body (no separate hitbox).
+  - Caller chain: **m1 (0x080342AE) dispatches obj.vtable[+0x14] = m5**
+    with its own target argument; the target list lives in m1's caller
+    (attack-object update loop) - next structural target.
+  - Facing table (hit-direction written to target+0x10, INFERRED
+    semantics): horizontal-dominant dx<1 -> 2, dx>=1 -> 3;
+    vertical-dominant dy<1 -> 1, dy>=1 -> 0.
   - `0x08049DF0` is a **relative-offset dispatch table** (same format as the
     player entity vtable) with two identical 5-method groups; referenced by
     a literal at `0x0802A008` (constructor in the `0x08029Exx-0x0802A0xx`
@@ -654,6 +685,8 @@ research-lane findings only.)
     enemy HP field, damage application.
   - Steering names adopted: `candidate_attack_object_dispatch_08049DF0`
     semantics; `0x0203DFA4` remains adjacent-runtime-object candidate.
+
+- **P-003/P-004 progress 8 (2026-08-23), attack-object vtable decoded:**
 
 - **P-003/P-004 progress 7 (2026-08-23), armed-punch methodology + punch
   writes into enemy struct:**

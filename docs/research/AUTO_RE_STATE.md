@@ -772,6 +772,15 @@ research-lane findings only.)
     side - the labeled-bank zone ended at 0x0203DE50; diff a WIDER
     range around landed-vs-missed punches to locate the wolf actor's
     flinch/state mutation (CPU-written), then watch THAT.
+  - D328 GENERALIZATION FAILURE (progress 13 addendum): follow-up
+    single-watch session (one human-confirmed landed punch) - Z2 on
+    `0x0203D328` fired zero times AND the parallel Lua zone diff shows
+    `d328` unchanged across all 14400 post-resume ticks. Arming race
+    excluded (halt-arm-continue verified). CONCLUSION: the 6-hit/0-miss
+    discrimination does NOT generalize across sessions/areas - treat
+    D328/D330 as CONTEXT-DEPENDENT EFFECT-TILE candidates only. The
+    labeled-bank protocol must be repeated from THIS starting state
+    before any field graduates to contact-signature status.
 
 - **P-003 progress 10 (2026-08-23), constructor-hunt false positive:**
   - The aligned word `0x08049DF0` at `0x0802A008` is CODE, not a literal

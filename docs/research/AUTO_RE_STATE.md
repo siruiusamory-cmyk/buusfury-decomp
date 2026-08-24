@@ -1121,6 +1121,18 @@ research-lane findings only.)
     `0x08706A2C-B44`. NEXT: decompile dispatcher fn containing
     `0x080188B5` (~entry 0x08018870-88x) and `0x08029FE6` body ->
     find state-id selection = HIT/MISS decision; then damage write.
+    REFINEMENT: `0x080188B5` sits in node-type handler `0x080188A4`
+    (point-test enter variant allocating 16-byte instance) - these
+    0x080188xx-90xx functions are PER-NODE-TYPE handlers, so the TRUE
+    dispatcher (which walks an actor's node list and calls type
+    handlers) is still one level up - find code calling
+    `0x080188A4`/`0x0801890A` indirectly via their addresses as DATA
+    (they appeared as fn-ptrs INSIDE behavior nodes: e.g. secondary
+    arrays {0x08018F90, 0x0801900A, 0x08019042} and node words).
+    So node defs CONTAIN handler ptrs -> two-level design:
+    interpreter walks node def -> calls its type handlers with
+    (node, actor). Decompile `FUN_08029FE6` fully next - it already
+    showed dispatcher LR behavior (`0x08029FF1`).
   - EWRAM STUB REGION DECODED (progress 13 addendum): the
     `0x020363A4..0x02036870` copied block = THUNK/VENEER POOL
     (`b target` stubs over nop sleds), NOT the dispatcher. LR landing

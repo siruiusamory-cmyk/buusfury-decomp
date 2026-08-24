@@ -1156,11 +1156,22 @@ research-lane findings only.)
     OBSERVATION: several LRs are ODD (`0x08029FF1`) => the caller
     sets LR to a THUMB CONTINUATION POINTER rather than a normal BL
     return - i.e., an INTERPRETER loads LR with the next descriptor
-    and jumps into the node handler; on return, execution continues
-    inside descriptor glue. NEXT: disassemble around `0x08029FE0-
-    0x802A000` and `0x08018FA0-0x8018FD0` as continuation glue to
-    expose how the state id selects the next node -> that selection
     after a landed hit IS the HURT transition.
+  - DISPATCHER BODY LOCATED (progress 13 addendum): LR `0x08029FF1`
+    resolves to REAL sequential code at `0x08029FF0` directly above
+    the enter-handler `FUN_08029FE6` - i.e., one large function spans
+    ~`0x08029Exx..0x0802A0xx` containing: an AABB overlap test
+    (4 signed compares -> bool, ends `0x8029FE2`), inline calls to
+    node-enter handlers (`FUN_08029FE6`, and via LRs to
+    `FUN_0801890A` etc.), and 12-byte instance allocation. THIS IS
+    THE BEHAVIOR INTERPRETER/OVERLAP-CONTACT EVALUATOR for actor
+    states. NEXT SESSION (fresh context): find its entry via wider
+    prologue scan (~0x08029B00-9F0), full capstone decode, identify
+    (a) which overlap = punch contact vs movement, (b) the branch
+    selecting HURT node id on contact, (c) the damage operand source.
+    Then P-003 chain closes: A -> punch seq -> interpreter overlap
+    check vs wolf combat obj -> HURT node enter -> clip swap ->
+    (P-004) damage write in same path.
   - EWRAM STUB REGION DECODED (progress 13 addendum): the
     `0x020363A4..0x02036870` copied block = THUNK/VENEER POOL
     (`b target` stubs over nop sleds), NOT the dispatcher. LR landing

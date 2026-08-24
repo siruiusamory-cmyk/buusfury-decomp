@@ -1075,6 +1075,20 @@ research-lane findings only.)
     FUN_0800F76E removal. MISSING LINK: damage application + the
     dispatcher loop. Fresh-session resume at step (1) of previous
     entry, now armed with confirmed rel-table mechanism.
+  - EWRAM STUB REGION DECODED (progress 13 addendum): the
+    `0x020363A4..0x02036870` copied block = THUNK/VENEER POOL
+    (`b target` stubs over nop sleds), NOT the dispatcher. LR landing
+    there = caller returned through a veneer. Static idiom scans for
+    the rel-table dispatch loop found nothing in early ROM; dispatcher
+    remains UNLOCATED - possibly also ROM-indirect or in the
+    interpreter-driven layer. RECOMMENDED NEXT EXPERIMENTS (in order):
+    (1) runtime: Z2 on wolf obj `+4` byte (`0x0203D508`, hit-jitter
+    h=9/m=0 small signed changes) during labeled kill run -> writer PC
+    at damage moment; (2) static: capstone-decode
+    `FUN_0800F76E`'s callers (who invokes removal = death decision);
+    (3) locate rel-table dispatcher by scanning for `adds rX, rY`
+    resolve-then-`bx` idiom across FULL ROM incl. high addresses
+    (prior scan covered only <0x8030000).
   - CAPSTONE DEPLOYED (progress 13 addendum): `capstone 5.0.7` installed
     into .venv; reusable disassembler at
     `build/research/p003-exp/disasm.py` (`python disasm.py <addr> <len>`).

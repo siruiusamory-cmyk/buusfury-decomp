@@ -1004,6 +1004,30 @@ research-lane findings only.)
     `0x0800E868`, `0x0800EC3E/ECA6`, and caller context `0x080114F5`;
     identify which state = HURT vs DEATH vs AGGRO; trace the damage
     operand upstream through the installer arguments.
+  - STATE INSTALLERS DECOMPILED (progress 13 addendum, CONFIRMED):
+    - `FUN_0800E85E` (`0x0800E85E..E85`) = wolf object TEARDOWN/
+      DESTROY: unlinks from a doubly-linked actor list (+0x1F0/+0x1F4/
+      +0x1F8/+0x1FC neighbor ptrs!), clears children (+500), releases
+      point-query obj, then calls `FUN_0800EC34(obj, flag)`.
+      Callers: `FUN_0800F76E` and `FUN_0800E6F8` - THE DECIDERS of
+      wolf removal (death/respawn).
+    - `FUN_0800EC34` (`0x0800EC34..CAF`) = state REINIT: swaps vtable
+      (DAT_0800EDDC then DAT_0800EDF0 - matches observed
+      C484<->E454-class vtables), frees old resources
+      (`FUN_0804FE20`), rebinds point-query objects (+0x28/+0x30),
+      and calls `FUN_0801142A(*DAT_0800EDE0)` when a ushort at
+      obj+0xC differs from a table value.
+    - `FUN_0801142A` (`0x0801142A..11551`) = CENTRAL SEQUENCER
+      (19 callers across engine!): byte-array work area,
+      `(param_2>>1)+0xC00` indexing, 10-byte records chained by
+      0xFF-terminated next-indices - plays scripted
+      animation/effect/event sequences.
+    PROVENANCE CHAIN NOW EXECUTABLE: hit -> wolf anim plays ->
+    completion callback -> `FUN_0800EC34` re-init (state swap) ->
+    on death `FUN_0800E85E` teardown via deciders
+    `FUN_0800F76E`/`FUN_0800E6F8`. NEXT: decompile those two deciders
+    to find the HP/death condition test; trace their caller passing
+    damage; identify the HURT-state installer vs DEATH installer.
   - CAPSTONE DEPLOYED (progress 13 addendum): `capstone 5.0.7` installed
     into .venv; reusable disassembler at
     `build/research/p003-exp/disasm.py` (`python disasm.py <addr> <len>`).

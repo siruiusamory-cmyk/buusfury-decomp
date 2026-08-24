@@ -1,4 +1,4 @@
-# Reverse-Engineering Research Ledger
+﻿# Reverse-Engineering Research Ledger
 
 Durable brain of the Webfoot reverse-engineering programme
 (`OX-AUTO-RE`). Read this file first every loop iteration. Keep it compact;
@@ -49,19 +49,23 @@ proprietary artifacts.
 
 ## Current Objective
 
-P-003 (continued): locate the executable punch path. Runtime established:
-A (buffer 0x0001) produces a VISIBLE punch in open field (screenshot
-evidence) with NO writes to player entity words 0x000..0x23C and no
-+0x10/+0x11 animation-word change - the punch's observable state lives in
-the sprite/effect layer outside the sampled struct. Next steps:
-1. Static: hunt the 0x03003304 bit0 consumer that drives the punch
-   (previous accessor census was incomplete; include computed-address reads).
-2. Runtime: obtain/produce a state with a hittable target (current local
-   states are safe areas without enemies); then trace one contact event
-   (feeds P-004 directly).
-3. Determine whether punch spawns a transient hit-region object (watch
-   entity-list/allocator activity rather than the spatial registry - count
-   stayed 3 during punches).
+P-003/P-004 contact resolution. Human-provided combat state validated
+(sha256 `d8d8578d081e6bc4e535160b52fa0182cf2619ae70c93f63f5401b1d1624dcf1`,
+79,767 bytes, mtime 2026-08-23 16:10:07; working copies only under ignored
+build/research/p003-exp/). Damage-candidate fields identified but hit
+connection is intermittent (enemy AI wanders). Next:
+1. Pure-control trace leg (no punches, ~300 ticks): do `0x0203DBB4/
+   0x0203DC20` drift without punches? Distinguishes enemy-HP-pair vs
+   player-side pair.
+2. Locate the enemy entity struct/position (enemy wanders; per-tick diff
+   of candidate regions during a no-input leg should expose moving position
+   words).
+3. Punch leg timed when enemy is within range (read enemy pos per tick,
+   punch when close) for a RELIABLE hit with per-tick HP/knockback capture.
+1. RESOLVED by runtime: A/0x0001 is the contextual action (dialogue near
+   NPC, punch in open field); resolver function still UNKNOWN (deprioritized).
+2. RESOLVED: human-provided combat state received and validated (see above).
+3. Punch tile-staging timeline established; see P-003 progress 3.
 
 ## Research Queue
 
@@ -520,7 +524,7 @@ research-lane findings only.)
     `cand_frame_helper_0800938C` = BG/DISPCNT video-mode setup from map ctx
     (BGxCNT scroll fields +0xA4..+0xC0).
   - Projectile stepper has NO recovered callers (indirect dispatch).
-  - Static per-function triage has diminishing returns -> steering §6
+  - Static per-function triage has diminishing returns -> steering Â§6
     runtime displacement experiment designed (see Current Objective) and
     queued as the P-002 closer.
 
@@ -589,6 +593,36 @@ research-lane findings only.)
     burst was interpreted as possible attack state; screenshot proved it
     was dialogue entry. Attack identification now rests on the open-field
     punch evidence.
+
+- **P-003/P-004 progress 3 (2026-08-23), combat-state hit experiments:**
+  - Probes: `tools/runtime/p003_hit_dump.lua` (before/after EWRAM 256KB
+    dumps + per-tick trace) and `tools/runtime/p004_hit_trace.lua` (per-tick
+    enemy-window diff); drivers under ignored build/research/p003-exp/.
+    BUG FIXED during iteration: per-leg log path referenced LEG_NAME before
+    declaration (top-level nil concat killed dofile silently; lupa compiles
+    such files fine - runtime-only failure).
+  - `CONFIRMED` (runtime): combat state has player at `0x0203D074`,
+    px(48,208), registry count 2; enemy present (screenshot t20: creature on
+    left path). Player-class vtable scan found ONLY the player - enemy uses
+    a different class/table (UNKNOWN).
+  - `CONFIRMED` (runtime): punch tile-staging timeline - buffer consumed at
+    press+1; punch sprite tiles staged `+1..+4/5`; second punch re-triggers;
+    player animation struct at ~`0x0203DBC0` swaps table ptrs (`+0x3DBC4`
+    anim descriptor, `+0x3DBE0/+0x3DC00/+0x3DC04` frame-row tables) at punch
+    start and returns to idle tables ~34 ticks after the second punch.
+    Walk/turn also swaps these tables (facing-dependent).
+  - DAMAGE CANDIDATES (identity UNCONFIRMED): `0x0203DBB4` and
+    `0x0203DC20` moved TOGETHER in two runs (212->199 = -13; 211->191 &
+    80->60 = -20) but did NOT change in a third identical-pattern run
+    (Trace2) - consistent with punches connecting only when the wandering
+    enemy is in range. Damage varies between hits (13 vs 20) - stat/RNG
+    formula implied. The -1 pre-dump drift (212 vs 211) is unexplained.
+  - OPEN: whether the pair is enemy HP (two enemies? HP+mirror?) or
+    player-side; enemy entity struct/location UNKNOWN; knockback/hitstun
+    not yet captured; message-ABI participation untested (needs a reliable
+    hit first).
+  - Next steps in Current Objective (control-drift leg, enemy position
+    discovery, position-gated punch).
 
 - **P-003 progress 2 (2026-08-23), punch-timing probe:**
   - `tools/runtime/p003_punch_timing.lua` sampled buffered input,

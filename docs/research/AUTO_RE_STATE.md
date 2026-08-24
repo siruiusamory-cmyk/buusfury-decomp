@@ -858,6 +858,20 @@ research-lane findings only.)
     WIDER EWRAM code region (0x02036000..0x02037000) BEFORE first
     write, find dispatch interpreter owning record {0x0800EBE0,
     0x3001D4D0}.
+  - EWRAM CALLER REGION DUMPED (progress 13 addendum): live 4KB read of
+    `0x02036000..0x02037000` via one-shot GDB probe (`dump_ewram.py`,
+    chunked `m` reads - stub rejects >=0x400 per packet). Nonzero span
+    `0x020363A4..0x02036870` = REAL COPIED CODE/data in EWRAM. Record
+    confirmed: `0x020363A4`=word `0x0800E0EB` (ROM Thumb ptr ->
+    0x0800E0EA), `0x020363A8`=word `0x03001D4D4`, `0x020363AC`
+    halfword `0xE000` (Thumb unconditional branch) = the LR landing
+    site. Shape matches a TRAMPOLINE/dispatch record rather than a
+    normal call frame. NEXT: disassemble `0x020363AC..0x02036870` as
+    Thumb from the saved dump (`ewram-caller.bin`) to find the BL into
+    `FUN_0803B4FC`; statically inspect ROM `0x0800E0EA`; identify the
+    interpreter that owns/copies this block. Session corpus: 312 writer
+    stops across varied play confirm `FUN_0803B4FC` runs CONTINUOUSLY
+    (every-frame utility), further weakening any hit-specific reading.
 
 - **P-003 progress 10 (2026-08-23), constructor-hunt false positive:**
   - The aligned word `0x08049DF0` at `0x0802A008` is CODE, not a literal

@@ -621,6 +621,31 @@ research-lane findings only.)
     player-side; enemy entity struct/location UNKNOWN; knockback/hitstun
     not yet captured; message-ABI participation untested (needs a reliable
     hit first).
+- **P-003 progress 6 (2026-08-23), mash-A contact run - NEGATIVE +
+  candidate invalidation:**
+  - `tools/runtime/p003_mash.lua`: stood still (px=48,py=207 all run),
+    17 A presses (2 ticks on / 10 off, t=20..212), per-tick entity-zone
+    diff + all four HP-candidate words.
+  - NO CONTACT: no enemy-side decrement of any candidate; enemy never
+    entered melee range during 220 ticks (it does not approach the idle
+    player in this state).
+  - **CANDIDATE INVALIDATION** (OLD / NEW / RESOLUTION):
+    - OLD: `0x0203DE7C` (18->13 twice) and `0x0203DEE4` (192->187) treated
+      as enemy HP candidates; "ki damage = 5".
+    - NEW: the SAME savestate re-run reads `0x3DE7C` = 0 -> 16 ->
+      33801380 and `0x3DEE4` = 522178 constant with one transient blip.
+      Values are not stable across runs of an identical state.
+    - RESOLUTION: both addresses are VOLATILE FRAME DATA (sprite/tile
+      streaming buffers), NOT persistent HP. The earlier 18->13 pair was
+      coincidence. "Ki damage = 5" RETRACTED. Enemy HP remains UNKNOWN.
+  - `CONFIRMED` (runtime): player HP pair `0x3DBB4/0x3DC20` + regeneration
+    re-confirmed (three separate +1 recoveries: 210->211, 211->212,
+    208->209 with both words moving together).
+  - Per steering #6: requesting a human savestate with the enemy ALREADY
+    directly beside the player and the player FACING it (saved before any
+    attack). The mash technique did not work here because the enemy does
+    not approach an idle player in this state.
+
 - **P-003/P-004 progress 5 (2026-08-23), armed watcher on ki-blast state:**
   - New human state: sha256 `95de20ae4166995f66c28510aa01c0eeef57d69d490a785f14009694b40b44dc`,
     38,560 bytes, mtime 2026-08-23 17:19:57 (ki blast in flight). Probe

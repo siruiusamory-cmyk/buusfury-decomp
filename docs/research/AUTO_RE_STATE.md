@@ -731,6 +731,15 @@ research-lane findings only.)
     player-hit events - detection needs loosening or explicit hit
     marking; intersection analysis pending. Data remains on disk for
     re-analysis.
+  - BANK MINED (progress 13 addendum): 9 A-rising-edge presses; punch
+    BASE signature = 157 rare fields in `0x0203C4xx-51x` (presentation);
+    a recurring punch EXTRA signature
+    `{0x203C400,404,408,40C,410,414,418,41C,420,42C}` appears as an
+    identical set after 5 presses (t1074/1126/1311/1324/1341) -
+    CANDIDATE contact-punch group. Independent non-punch rare clusters
+    recur on `{0x0203D248, 0x0203D24C, 0x0203D29C}` (t346/820/1233/
+    1039) - CANDIDATE wolf-event/wolf->player fields. Stage B: watch
+    these two field sets' writers during armed human play.
 
 - **P-003 progress 10 (2026-08-23), constructor-hunt false positive:**
   - The aligned word `0x08049DF0` at `0x0802A008` is CODE, not a literal

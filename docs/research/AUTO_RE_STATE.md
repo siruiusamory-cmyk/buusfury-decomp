@@ -621,6 +621,38 @@ research-lane findings only.)
     player-side; enemy entity struct/location UNKNOWN; knockback/hitstun
     not yet captured; message-ABI participation untested (needs a reliable
     hit first).
+- **P-003/P-004 progress 5 (2026-08-23), armed watcher on ki-blast state:**
+  - New human state: sha256 `95de20ae4166995f66c28510aa01c0eeef57d69d490a785f14009694b40b44dc`,
+    38,560 bytes, mtime 2026-08-23 17:19:57 (ki blast in flight). Probe
+    `tools/runtime/p004_watcher.lua`: per-tick diff of entity zone
+    `0x0203C000..0x02040000` from tick 0 + full-EWRAM snapshots
+    (t=0,15,30,45,60,90,120). NOTE: an earlier "wrong save state" report
+    coincided with a probe bug (primed-tick early return skipped the t0
+    snapshot and desynced the chain) - fixed; disk had exactly one .ss1 and
+    sha verification confirmed the correct state was loaded.
+  - `CONFIRMED` (runtime): impact burst at **t=8** (93 changes: object-list
+    pointer swaps at `0x3DDF0/0x3DE1C/0x3DE6C/0x3DE70`, tile waves).
+  - **ENEMY HP CANDIDATES (paired-decrement convention):**
+    - `0x0203DE7C`: 18 -> 13 (d=-5) - ALSO 18->13 in the previous ki-hit
+      state (independent reproduction).
+    - `0x0203DEE4`: 192 -> 187 (d=-5).
+    - Ki-blast physical-energy damage = 5. Ownership split (HP vs mirror vs
+      two actors) still to be resolved by a physical punch test.
+  - CORRECTIONS (OLD / NEW / RESOLUTION):
+    - `0x0203DF28`: earlier treated as HP candidate - it is a **periodic AI
+      timer** (18-tick countdown inside a ~52-tick cycle; bursts at cycle
+      boundaries). NOT HP.
+    - `0x0203DF88`: steadily walking actor position, constant +110
+      raw/tick (= 0.43 px/tick) - movement candidate, not damage.
+    - Player-side pair `0x3DBB4/0x3DC20` (-13/-20 in earlier runs): now
+      attributed to WOLF COUNTERATTACKS on the player (player HP pair),
+      plus observed +1 regen at t~110. Player combat/anim block sits at
+      ~`0x0203DBB0..0x0203DC40` (HP words + anim complex `0x3DBC0`).
+  - Enemy struct web ~`0x0203DD80..0x0203DF00` includes pointer
+    `0x3DDE8 -> 0x0203DBB0` (links enemy block to player block).
+  - Next: physical punch at this enemy -> which candidate drops (resolves
+    ownership split); then damage formula, knockback, hitstun per steering.
+
 - **P-003/P-004 progress 4 (2026-08-23), control-drift + enemy search:**
   - `CONFIRMED` (runtime, Wander leg: no input, 380 ticks): `0x0203DBB4`
     (0xD4=212) and `0x0203DC20` (0x51=81) are **completely stable** without

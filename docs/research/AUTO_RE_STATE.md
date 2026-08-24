@@ -946,6 +946,19 @@ research-lane findings only.)
     why normal punches never executed it. NEXT: decompile ~
     `0x0800CA0A` (state runner), find the HURT/flinch state transition
     for the wolf = the contact decision; then downstream damage write.
+  - STATE-RUNNER PARTIAL DECODE (progress 13 addendum): manual Thumb
+    decode of `0x0800CA0A..0x0800CB10` - function performs bounds/
+    collision checks via point-query `0x08046AA6` and signed range
+    compares, consumes table root `0x086FD9D0` from its literal pool,
+    calls `0x08009930`/`0x0800C912`; Ghidra createFunction fails here
+    (conflicting flow) so manual decoding required. TOOLING NEXT:
+    `pip install capstone` into .venv for proper Thumb disassembly
+    (hand-decoding too slow/error-prone); then decode state-runner
+    fully, find node-dispatch loop, locate HURT-state transition =
+    contact decision. Concurrent-session WIP note: untracked failing
+    test `tests/integration/test_local_thumb_decoders.py` (private-ROM
+    dependent) appeared mid-loop from another session - preserved
+    untouched, excluded from my gate runs (tests/unit green 310).
 
 - **P-003 progress 10 (2026-08-23), constructor-hunt false positive:**
   - The aligned word `0x08049DF0` at `0x0802A008` is CODE, not a literal

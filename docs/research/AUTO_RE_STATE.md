@@ -1185,8 +1185,18 @@ research-lane findings only.)
     count; (2) identify which actor field holds the current state
     INDEX and who writes it on landed hits (= HIT-vs-MISS decision);
     (3) decompile that writer -> damage operand source = P-004
-    handoff. All tooling ready (disasm.py, find_callers.py,
+    handoff. All tooling ready (disasm.py,     find_callers.py,
     corpus analyzers).
+  - TABLE STRUCTURE CORRECTION (progress 13 addendum): the
+    `0x0871027C+` "entries" are part of one CONTIGUOUS LINKED NODE
+    GRAPH spanning `~0x086FD900..0x08710400` - nodes as pairs of
+    pointers into `0x08706xxx/0x086FDxxx` def clusters plus shared
+    default `0x080716F4`. NOT an indexed array. The behavior system
+    is a LINKED STATE GRAPH walked by the (still unlocated)
+    interpreter. Remaining closure work unchanged: interpreter entry +
+    HURT-transition branch + damage operand. Recommend fresh-session
+    full decode starting from `FUN_0801890A` callers' continuation
+    glue (`0x08029FF0`, `0x08018FC9` regions) upward.
   - KI-VS-MELEE FLINCH RUN CAPTURED (progress 13 addendum): Z0 on
     flinch wrapper `0x0801920E` during human session (ki blast landed,
     then punch) -> 13 stops. ALL have r1=`0x0203DBB0`; TWO alternating

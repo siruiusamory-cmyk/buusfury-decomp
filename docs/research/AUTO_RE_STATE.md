@@ -691,6 +691,33 @@ research-lane findings only.)
     then kill-detection watch for wolf HP; damage write hunt moves to
     the contact frame, not the press frame.
 
+- **P-003/P-004 progress 13 (2026-08-23), human-session watchers -
+  current-HP candidate weakened, wolf candidates listed:**
+  - METHOD ADOPTED (steering): human plays + OX arms narrow watchers =
+    primary runtime method for combat events.
+  - Two armed sessions with `Z2` on `0x0203DC20` + per-tick EWRAM diff:
+    both hit the 40-stop cap on ONE repetitive per-frame writer
+    **PC `0x8010252`** (r2=`0x0203DC24`, watched word rewritten every
+    frame). Session 2 values rose steadily (~1/frame) - regen/timer-like
+    behavior.
+  - DOWNGRADE: `0x0203DC20` = player current-HP is now UNCERTAIN (it
+    also climbs steadily between fights); max-HP `0x0203DBB4` stays
+    STRONG (level-up +6 delta). Do not treat DC20 as proven HP.
+    Static identity of `FUN_08010250..` writer queued.
+  - Watcher cap lesson: repetitive writers exhaust MAX_STOPS before
+    rare events; next runs need cap >=400 or skip-filtering of known
+    PCs.
+  - Lua full-zone per-tick diff (27K words) throttles emulation to a
+    crawl (40 ticks/session) - zone narrowed to `0x0203C400..0x0203DE50`.
+  - Player-still/wolf-moving change candidates (single short window,
+    UNVERIFIED): `0x0203C57C/0x0203C590/0x0203C570` trio,
+    `0x0203D214`; always-active writers `0x0203C5D0`, `0x0203D084`,
+    `0x0203DBC0`. Require multi-second coherent-motion validation
+    before any classification.
+  - NEXT: static decode of writer `0x08010252`; rerun with big cap +
+    narrow zone; validate wolf candidates across long player-still
+    spans; then contact-frame hunt.
+
 - **P-003 progress 10 (2026-08-23), constructor-hunt false positive:**
   - The aligned word `0x08049DF0` at `0x0802A008` is CODE, not a literal
     (bytes `F0 9D 04 08` = `LDR r5,[sp,#0x3C0]` + next-instruction

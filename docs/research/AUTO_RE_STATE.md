@@ -959,6 +959,18 @@ research-lane findings only.)
     test `tests/integration/test_local_thumb_decoders.py` (private-ROM
     dependent) appeared mid-loop from another session - preserved
     untouched, excluded from my gate runs (tests/unit green 310).
+  - NODE LAYOUT FULLY DECODED (progress 13 addendum, CONFIRMED):
+    behavior node = fn[3] `{0x08018 90A, 0x08018920, 0x08018936}`
+    (GENERIC shared handlers - enter/tick/exit shape), `+0x0C` =
+    state-id (chains: 1,2,3,4 / 6 / D,E,F), secondary fn array
+    {0x08018F90, 0x0801900A, 0x08019042}, tail links to adjacent
+    nodes/state-data. All states SHARE handlers - per-state behavior
+    comes via linked DATA blocks. Flinch clip `0x0804BC98` literal sits
+    in this handler family's pool (`@0x0801894C`) - clip selection
+    flows from STATE DATA. ALSO REJECTED: `0x03003488` = sprite-
+    pipeline working slot (writers `0x0803D50A/544/5A4`) - false lead
+    #4. NEXT: decode handler family vs state-data clip selection;
+    find dispatcher loop; HURT-state entry = contact decision.
   - CAPSTONE DEPLOYED (progress 13 addendum): `capstone 5.0.7` installed
     into .venv; reusable disassembler at
     `build/research/p003-exp/disasm.py` (`python disasm.py <addr> <len>`).

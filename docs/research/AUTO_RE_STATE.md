@@ -1172,6 +1172,20 @@ research-lane findings only.)
     Then P-003 chain closes: A -> punch seq -> interpreter overlap
     check vs wolf combat obj -> HURT node enter -> clip swap ->
     (P-004)     damage write in same path.
+  - WOLF STATE GRAPH EXTRACTED (progress 13 addendum, CONFIRMED):
+    node defs = `{fn[3] handlers, param=clip/state id, enter-variant
+    ptr, links}`. Wolf nodes: ids `428`(enter 0x080188A9 point-test),
+    `435` (r0 seen at runtime!), `436`, `437` (enter FUN_08029FE6
+    point-query), `438`, `439`, `762`. FLINCH node identified:
+    `0x08706A48` family (fns `0x0801920E/0x08018FDA/0x08019042`,
+    param 2) - its wrapper's pool literal IS `0x0804A710`, the clip
+    observed installed at the wolf controller ONLY on labeled hits.
+    No static refs to the flinch node => entered via interpreter
+    computation. CLOSING EXPERIMENT READY: Z0 execution breakpoint on
+    wrapper `0x0801920E` during one labeled punch session -> the LR
+    at the flinch stop = the HURT-transition decider -> decompile it
+    -> HIT-vs-MISS branch -> P-003 closed + damage operand upstream
+    for P-004 handoff.
   - WOLF NODE DEFS MAPPED (progress 13 addendum, CONFIRMED): wolf
     behavior defs at `0x08706A00..0x08706B6C`. Nodes = `{fn[3],
     param, links}` where param looks like an ANIMATION/CLIP id:

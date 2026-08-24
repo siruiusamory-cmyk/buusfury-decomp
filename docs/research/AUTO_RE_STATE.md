@@ -817,6 +817,17 @@ research-lane findings only.)
     -> writer PC -> containing function = candidate contact/damage
     routine. All EWRAM hit-correlated fields so far remain
     presentation-only.
+  - 0x03006F48 WRITER CAPTURED - CLASSIFIED NOISE: single Z2 during a
+    human-confirmed landed punch produced 14 stops. ALL writers execute
+    from IWRAM-resident code (PC `0x0300026C`/`0x03000280`/
+    `0x03000ED4`/`0x03000EE8`; LR `0x030001F4`/`0x03000E5C`; constant
+    SP `0x03006B1C`) writing drifting single bytes
+    (`0x4e`,`0x4d`,`0x5f`,`0xd0`,`0x40`). Classification: frame-
+    counter/bookkeeping maintenance by a RAM-executed handler; its
+    bank correlation was a dump-phase alignment artifact. Per decision
+    tree -> next target `0x03007C50` with the same single-watchpoint
+    method. Note for Stage B design: IWRAM candidates from dump-phase
+    sampling need writer capture BEFORE being treated as leads.
 
 - **P-003 progress 10 (2026-08-23), constructor-hunt false positive:**
   - The aligned word `0x08049DF0` at `0x0802A008` is CODE, not a literal

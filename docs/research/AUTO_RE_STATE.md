@@ -984,6 +984,26 @@ research-lane findings only.)
     `0x0203D504` vtable word during labeled punches -> transition
     writer PC -> state-switch routine -> damage flow upstream.
     Static follow-up: inspect vtables 0x0804C484 / 0x0804E454.
+  - WOLF STATE-TRANSITION WRITERS CAPTURED (progress 13 addendum,
+    CONFIRMED runtime): Z2 on `0x0203D504` during two-wolf fight-to-
+    death produced 4 stops, all ROM-code state installations writing
+    DIFFERENT state-vtable values into the wolf object:
+    - `PC 0x0800E868` (LR `0x0800F7FF`) wrote `0x0804C888`
+    - `PC 0x0800EC3E` (LR `0x0800E8DB`, i.e. chained from the previous
+      function) wrote `0x0804AC20`
+    - `PC 0x0800EC90` (LR `0x0803D6C9` - sprite-side caller) wrote
+      `0x08049680`
+    - `PC 0x0800ECA6` (LR `0x080114F5` - the animation-CALLBACK family
+      `FUN_08011944` neighborhood!) wrote `0x0804E454` with r1=3
+    INTERPRETATION: wolf combat object runs a VTABLE-SWAPPED state
+    machine; installers live in `0x0800E800..0x0800ED00`; one
+    transition fires from an animation-completion callback (hit anim
+    ends -> next state), another from the sprite/death side. This is
+    the executable contact/reaction chain - NO more correlation
+    guessing. NEXT (static): decompile functions containing
+    `0x0800E868`, `0x0800EC3E/ECA6`, and caller context `0x080114F5`;
+    identify which state = HURT vs DEATH vs AGGRO; trace the damage
+    operand upstream through the installer arguments.
   - CAPSTONE DEPLOYED (progress 13 addendum): `capstone 5.0.7` installed
     into .venv; reusable disassembler at
     `build/research/p003-exp/disasm.py` (`python disasm.py <addr> <len>`).

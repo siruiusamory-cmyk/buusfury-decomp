@@ -1171,7 +1171,19 @@ research-lane findings only.)
     selecting HURT node id on contact, (c) the damage operand source.
     Then P-003 chain closes: A -> punch seq -> interpreter overlap
     check vs wolf combat obj -> HURT node enter -> clip swap ->
-    (P-004) damage write in same path.
+    (P-004)     damage write in same path.
+  - HANDLER LIBRARY SEGMENTED (progress 13 addendum, CONFIRMED):
+    `0x08029800..0x0802A100` = ~30 SMALL node-type handler functions
+    (push/pop bounded), including **`0x08029ED8` = the old "m5"** -
+    REIDENTIFIED: its tail (`0x8029FC0..FE2`) is the 4-signed-compare
+    AABB overlap -> bool. So m5 IS an overlap-evaluator node handler
+    (not presentation), just not exercised by the normal player punch
+    in the tested context. No giant interpreter function exists in
+    this range - it lives elsewhere (still unlocated). NEXT: find the
+    dispatcher by scanning ROM for aligned DATA references to these
+    handler addresses (they must appear in behavior NODE DEFS like
+    `0x08706A2C` do); cross-ref which defs contain them; then find
+    who walks those defs.
   - EWRAM STUB REGION DECODED (progress 13 addendum): the
     `0x020363A4..0x02036870` copied block = THUNK/VENEER POOL
     (`b target` stubs over nop sleds), NOT the dispatcher. LR landing

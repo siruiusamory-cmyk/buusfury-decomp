@@ -1172,6 +1172,21 @@ research-lane findings only.)
     Then P-003 chain closes: A -> punch seq -> interpreter overlap
     check vs wolf combat obj -> HURT node enter -> clip swap ->
     (P-004)     damage write in same path.
+  - WOLF STATE TABLE LOCATED (progress 13 addendum, CONFIRMED):
+    indexed `{primary-node, secondary-node}` pairs at
+    `0x0871027C..0x087102D4+`, including the entry
+    **`{0x08706B7C, 0x08706A64}` @ `0x087102AC` containing the
+    flinch-family node** (`0x08706B7C` = runtime-captured r0 on flinch
+    wrapper entries). Other entries map ids 762/773 states and shared
+    defaults (`0x080716F4`). This is the wolf family's
+    state-index->behavior-node table consumed by the indexed
+    dispatcher (`FUN_0800AA4A` pattern). REMAINING FOR P-003 CLOSURE:
+    (1) scan back from 0x87102AC for the table's true base and entry
+    count; (2) identify which actor field holds the current state
+    INDEX and who writes it on landed hits (= HIT-vs-MISS decision);
+    (3) decompile that writer -> damage operand source = P-004
+    handoff. All tooling ready (disasm.py, find_callers.py,
+    corpus analyzers).
   - KI-VS-MELEE FLINCH RUN CAPTURED (progress 13 addendum): Z0 on
     flinch wrapper `0x0801920E` during human session (ki blast landed,
     then punch) -> 13 stops. ALL have r1=`0x0203DBB0`; TWO alternating

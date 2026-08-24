@@ -781,6 +781,18 @@ research-lane findings only.)
     D328/D330 as CONTEXT-DEPENDENT EFFECT-TILE candidates only. The
     labeled-bank protocol must be repeated from THIS starting state
     before any field graduates to contact-signature status.
+  - REPEAT LABELED RUN (same start state): human threw 5 punches
+    (missed 3rd); probe detected 6 rising edges (P1..P6 - one spurious,
+    likely double-edge; mapping ambiguity noted). `D328/D330` again
+    unchanged in ALL windows - confirmed dead in this context. New
+    perfect discriminators (4 HIT / 0 MISS): 12 fields in
+    `0x0203CD8C..0x0203CFA8` (+ near-perfect neighbors) - AGAIN inside
+    the presentation zone. CROSS-SESSION PATTERN: every hit-correlated
+    field so far lives in sprite/effect memory; the wolf's gameplay
+    state must lie OUTSIDE the diffed zone (`0x0203C400..0x0203DE50`).
+    NEXT: widen zone beyond 0x0203DE50 / below 0x0203C400 around labeled
+    punches to find CPU-written wolf flinch state; or static route -
+    locate impact-effect request caller from tile-block provenance.
 
 - **P-003 progress 10 (2026-08-23), constructor-hunt false positive:**
   - The aligned word `0x08049DF0` at `0x0802A008` is CODE, not a literal

@@ -1172,6 +1172,19 @@ research-lane findings only.)
     Then P-003 chain closes: A -> punch seq -> interpreter overlap
     check vs wolf combat obj -> HURT node enter -> clip swap ->
     (P-004)     damage write in same path.
+  - KI-VS-MELEE FLINCH RUN CAPTURED (progress 13 addendum): Z0 on
+    flinch wrapper `0x0801920E` during human session (ki blast landed,
+    then punch) -> 13 stops. ALL have r1=`0x0203DBB0`; TWO alternating
+    call-site/node pairs: (`LR 0x0800AA5F`, node `0x08706B7C`) and
+    (`LR 0x08018FC9`, node `0x08706BF8`). OPEN QUESTION: is
+    `0x0203DBB0` the PLAYER (max-HP adjacency) or the WOLF (ki+melee
+    both landing on it)? The alternating two-node pattern entered via
+    two different callers suggests a state PAIR (e.g. hurt<->recover,
+    or action<->idle toggle). NEXT: decompile callers `0x0800AA5F`
+    (containing fn near engine core 0x0800Axxx!) and `0x08018FC9`;
+    dump node defs `0x08706B7C`/`0x08706BF8` ids+links; determine
+    actor identity of `0x0203DBB0` decisively (check whether its
+    fields track player position 0x03001C34->+0x1A0 during movement).
   - WOLF STATE GRAPH EXTRACTED (progress 13 addendum, CONFIRMED):
     node defs = `{fn[3] handlers, param=clip/state id, enter-variant
     ptr, links}`. Wolf nodes: ids `428`(enter 0x080188A9 point-test),

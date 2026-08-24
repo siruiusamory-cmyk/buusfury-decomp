@@ -959,6 +959,18 @@ research-lane findings only.)
     test `tests/integration/test_local_thumb_decoders.py` (private-ROM
     dependent) appeared mid-loop from another session - preserved
     untouched, excluded from my gate runs (tests/unit green 310).
+  - CAPSTONE DEPLOYED (progress 13 addendum): `capstone 5.0.7` installed
+    into .venv; reusable disassembler at
+    `build/research/p003-exp/disasm.py` (`python disasm.py <addr> <len>`).
+    First full decode: `0x0800CA0A` = mode-switched AABB TRIGGER CHECK -
+    compares actor body rect (+0x14/+0x18/+0x1C/+0x20) against node-data
+    rect via `0x8046AA6` point queries and signed range compares;
+    consumes table root `0x086FD9D0`. Same check-shape as the
+    transition-trigger system from VERTICAL-001 - behavior nodes use
+    region tests to gate state transitions. NEXT: decode the node
+    DISPATCHER that evaluates these checks and swaps handler arrays
+    (find callers of 0x0800CA0A first), then map the wolf HURT node +
+    its entry transition = contact decision.
 
 - **P-003 progress 10 (2026-08-23), constructor-hunt false positive:**
   - The aligned word `0x08049DF0` at `0x0802A008` is CODE, not a literal

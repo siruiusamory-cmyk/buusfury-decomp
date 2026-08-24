@@ -1090,7 +1090,8 @@ research-lane findings only.)
     format + command set (entry `FUN_0801142A`, worker `0x080101C8`,
     `LR 0x080115DB` region), find the DAMAGE/OVERLAP command; then the
     contact decision = a sequencer branch comparing attacker/target
-    overlap.
+    overlap. Writer containing function entry ~= `0x0801154F`
+    (prologue scan; verify).
   - EWRAM STUB REGION DECODED (progress 13 addendum): the
     `0x020363A4..0x02036870` copied block = THUNK/VENEER POOL
     (`b target` stubs over nop sleds), NOT the dispatcher. LR landing

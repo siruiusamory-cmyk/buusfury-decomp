@@ -930,6 +930,22 @@ research-lane findings only.)
     addr<->offset helpers + assertions, re-derive installer function
     boundaries, then caller recovery via corrected tools. Do not trust
     any pre-audit disassembly addresses from this iteration.
+  - ENEMY AI STATE MACHINE LOCATED (progress 13 addendum, CONFIRMED):
+    clean-read static pass found the behavior-table region
+    `0x086FC000..0x08702000` (~2K+ code pointers). NODE LAYOUT decoded:
+    arrays of 2-3 handler fn-ptrs (the installer wrappers, e.g.
+    {0x0801890B, 0x08018921, 0x08018937}), an id/param word
+    (0x11/0x12/0x13...), links to other nodes, and cross-links into
+    `0x08029D14`-style handlers. Table ROOT literal `0x086FD9D0`
+    referenced by ~12 functions across the `0x0802xxxx..0x0804xxxx`
+    combat/AI cluster; early-engine readers at entries ~`0x0800CA0A`,
+    `0x08004A88`, `0x0800446C`. REINTERPRETATION (INFERRED): the old
+    m1/m5/ctor-lit addresses (`0x08029ED8`, `0x08029FE6`,
+    `0x080342AE`) sit inside THIS AI machinery - the "attack object"
+    was likely an enemy ATTACK state of the table machine, explaining
+    why normal punches never executed it. NEXT: decompile ~
+    `0x0800CA0A` (state runner), find the HURT/flinch state transition
+    for the wolf = the contact decision; then downstream damage write.
 
 - **P-003 progress 10 (2026-08-23), constructor-hunt false positive:**
   - The aligned word `0x08049DF0` at `0x0802A008` is CODE, not a literal

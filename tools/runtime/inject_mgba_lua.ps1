@@ -79,6 +79,9 @@ $allowedLua = @(
     [System.IO.Path]::GetFullPath(
         (Join-Path $workspaceRoot 'tools\runtime\p004_punch_label.lua')
     )
+    [System.IO.Path]::GetFullPath(
+        (Join-Path $workspaceRoot 'tools\runtime\p004_full_label.lua')
+    )
 )
 $resolvedLua = [System.IO.Path]::GetFullPath($LuaPath)
 if ($resolvedLua -notin $allowedLua) {
@@ -168,7 +171,16 @@ if (-not $scripting) {
             'Tools'
         ))
     )
-    if (-not $tools) { throw 'Tools menu not found' }
+    if (-not $tools) {
+        $allNames = @()
+        foreach ($el in $mainWindow.FindAll(
+                [System.Windows.Automation.TreeScope]::Descendants,
+                [System.Windows.Automation.Condition]::TrueCondition)) {
+            $allNames += $el.Current.Name
+        }
+        Write-Output ("UIA tree: " + ($allNames -join ' | '))
+        throw 'Tools menu not found'
+    }
     $tools.GetCurrentPattern(
         [System.Windows.Automation.ExpandCollapsePattern]::Pattern
     ).Expand()
@@ -276,5 +288,6 @@ try {
         }
     }
 }
+
 
 

@@ -793,6 +793,18 @@ research-lane findings only.)
     NEXT: widen zone beyond 0x0203DE50 / below 0x0203C400 around labeled
     punches to find CPU-written wolf flinch state; or static route -
     locate impact-effect request caller from tile-block provenance.
+  - FULL-MEMORY LABELED RUN CAPTURED (progress 13 addendum): root cause
+    of arming failures found - mGBA had gone FULLSCREEN/borderless, so
+    UI Automation saw an empty control tree ("Tools menu not found");
+    windowed mode fixed it. New p004_full_label.lua probes raw A edges,
+    dumps changed words across FULL EWRAM+IWRAM at T+1/+9/+17 per punch
+    vs rolling reference. Session captured 16 edge events x 3 dumps.
+    Human labels (post-levelup): miss 1st two, rest hit - but probe/edge
+    count mismatch (16) leaves mapping uncertain. Strict all-HIT/0-MISS
+    intersection: zero fields. NEXT: confirm true throw count with
+    human, coalesce edges by presentation onset, rerun graded
+    differential (>=N-1 hits, 0 misses); STOP-NOW.txt kill-switch now
+    ends capture instantly when human says done.
 
 - **P-003 progress 10 (2026-08-23), constructor-hunt false positive:**
   - The aligned word `0x08049DF0` at `0x0802A008` is CODE, not a literal

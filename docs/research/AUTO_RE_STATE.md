@@ -1075,6 +1075,22 @@ research-lane findings only.)
     FUN_0800F76E removal. MISSING LINK: damage application + the
     dispatcher loop. Fresh-session resume at step (1) of previous
     entry, now armed with confirmed rel-table mechanism.
+  - WOLF +4 WRITER CAPTURED - SEQUENCER-DRIVEN (progress 13 addendum,
+    CONFIRMED): single writer `PC 0x080101C8` (LR `0x080115DB`) writes
+    an oscillating byte (e3<->dd sine-like, r2=4 r3=0xE constant) into
+    `0x0203D508`. Classification: animation-driven oscillation (bob/
+    hover), NOT HP - another dump-phase artifact explained. BIG
+    STRUCTURAL FINDING: LR lands inside the `FUN_0801142A` SEQUENCER
+    family - wolf combat objects are driven by the central SEQUENCER
+    (19 callers, byte-array work area, 10-byte chained records).
+    WORKING MODEL (INFERRED): actor behavior = scripted sequences;
+    damage/contact likely applied via SEQUENCE COMMANDS at scripted
+    frames (explains why no persistent field diverged at fixed offsets
+    on hits vs misses in sampled dumps). NEXT: decode sequencer record
+    format + command set (entry `FUN_0801142A`, worker `0x080101C8`,
+    `LR 0x080115DB` region), find the DAMAGE/OVERLAP command; then the
+    contact decision = a sequencer branch comparing attacker/target
+    overlap.
   - EWRAM STUB REGION DECODED (progress 13 addendum): the
     `0x020363A4..0x02036870` copied block = THUNK/VENEER POOL
     (`b target` stubs over nop sleds), NOT the dispatcher. LR landing

@@ -1146,8 +1146,21 @@ research-lane findings only.)
     arrays {0x08018F90, 0x0801900A, 0x08019042} and node words).
     So node defs CONTAIN handler ptrs -> two-level design:
     interpreter walks node def -> calls its type handlers with
-    (node, actor). Decompile `FUN_08029FE6` fully next - it already
+    (node, actor).     Decompile `FUN_08029FE6` fully next - it already
     showed dispatcher LR behavior (`0x08029FF1`).
+  - NODE-ENTER CALL SITES CHARACTERIZED (progress 13 addendum): 44
+    enter-handler stops during wolf fight. Three call sites:
+    `LR 0x080188B5` (main), `LR 0x08029FF1`, `LR 0x08018FC9`. Args:
+    r0=node def (`0x08706A28-B44`), r1=actor combat object
+    (wolf `0x0203D504` / player `0x0203DBB0` alternating). KEY
+    OBSERVATION: several LRs are ODD (`0x08029FF1`) => the caller
+    sets LR to a THUMB CONTINUATION POINTER rather than a normal BL
+    return - i.e., an INTERPRETER loads LR with the next descriptor
+    and jumps into the node handler; on return, execution continues
+    inside descriptor glue. NEXT: disassemble around `0x08029FE0-
+    0x802A000` and `0x08018FA0-0x8018FD0` as continuation glue to
+    expose how the state id selects the next node -> that selection
+    after a landed hit IS the HURT transition.
   - EWRAM STUB REGION DECODED (progress 13 addendum): the
     `0x020363A4..0x02036870` copied block = THUNK/VENEER POOL
     (`b target` stubs over nop sleds), NOT the dispatcher. LR landing

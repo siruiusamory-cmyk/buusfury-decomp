@@ -621,8 +621,22 @@ research-lane findings only.)
     player-side; enemy entity struct/location UNKNOWN; knockback/hitstun
     not yet captured; message-ABI participation untested (needs a reliable
     hit first).
-  - Next steps in Current Objective (control-drift leg, enemy position
-    discovery, position-gated punch).
+- **P-003/P-004 progress 4 (2026-08-23), control-drift + enemy search:**
+  - `CONFIRMED` (runtime, Wander leg: no input, 380 ticks): `0x0203DBB4`
+    (0xD4=212) and `0x0203DC20` (0x51=81) are **completely stable** without
+    player action. Steering wording adopted: "variable hit-associated deltas
+    observed" (-13, -20); damage RNG/stat contribution UNKNOWN; the fields
+    are STRONGER hit-associated candidates (stable in control, changed only
+    in punch legs). Ownership (enemy HP pair vs player-side vs mirrors)
+    still UNPROVEN. The DoubleA pre-dump -1 drift (211/80 vs 212/81) remains
+    unexplained.
+  - Enemy-position search NEGATIVE in `0x02030000..0x0203FFFF` (4 snapshots
+    100 ticks apart): no coordinate-like movers passed filters (values
+    0..0x40000, |d|<=0x8000, >=2 moves). Enemy entity likely lives outside
+    this window, uses another coordinate representation, or barely moves.
+    Next: full-EWRAM snapshots (0x02000000..0x02040000) with looser filters.
+  - Probe: `tools/runtime/p004_wander.lua` (allowlisted); snapshots +
+    drift log under ignored build/research/p003-exp/.
 
 - **P-003 progress 2 (2026-08-23), punch-timing probe:**
   - `tools/runtime/p003_punch_timing.lua` sampled buffered input,

@@ -1044,6 +1044,21 @@ research-lane findings only.)
     damage/HP test upstream of the removal call; that branch IS the
     HIT-vs-DEATH-vs-KNOCKBACK decision. Then link back to the labeled
     hit frames for the per-hit non-lethal path (hurt-state installer).
+  - DESPAWN METHODS DECODED (progress 13 addendum): both "deciders"
+    are generic per-object DESPAWN methods called THROUGH VTABLES
+    (`candidate_player_method0_08010B80` = player's own despawn used
+    on map transition; `FUN_08039182` = generic enemy despawn) - so
+    the kill decision lives in whoever CALLS obj->despawn after a
+    HP<=0 test. BL scanning cannot find vtable-dispatched callers.
+    NEXT ITERATION PLAN (fresh session): (1) locate the state vtables
+    (dump words at 0x0804C484/0x0804E454/0x0804C888/0x0804AC20/
+    0x08049680 - each should contain the despawn + tick + hurt method
+    ptrs for that state); (2) find ROM code holding those vtable
+    ADDRESSES as literals = the state-machine core that dispatches
+    them; (3) decompile the dispatcher's damage branch (HP test);
+    (4) connect to wolf object 0x0203D504 field +0x4 byte jitter as
+    the likely HP/state byte. All tooling ready: disasm.py,
+    find_callers.py, AutoP3Func.java.
   - CAPSTONE DEPLOYED (progress 13 addendum): `capstone 5.0.7` installed
     into .venv; reusable disassembler at
     `build/research/p003-exp/disasm.py` (`python disasm.py <addr> <len>`).

@@ -891,6 +891,19 @@ research-lane findings only.)
     somewhere); or (b) execution-trajectory diffing (PC samples)
     between human-labeled HIT and MISS frames. Presentation-zone
     discriminators remain valid CLASSIFIERS but carry no provenance.
+  - WOLF CONTROLLER LOCATED (progress 13 addendum): regraded full-
+    memory corpus with clean labels (miss 1,2 / hit rest) surfaced
+    `0x03003488` = engine actor-slot pointer that swaps from player
+    block `0x0203DEAC` to wolf-side `0x0203C7A0/C8D4/C934..` on every
+    landed punch (10/10 hits, 0/2 misses). Neighborhood mining:
+    **wolf sprite/anim controller at `0x0203C8C8..0x0203C94x`** -
+    8/10 hits, 0 misses, receiving ROM clip pointers
+    (`0x0804BC98`, `0x0804A710`, `0x08049DF0`) = CPU-written flinch
+    clip installs. `0x203CAD0` also 10/10 (tile junk). Watchpoint now
+    armed on `0x0203C8DC` (clip-slot) - next session: writer PC ->
+    routine switching wolf into flinch -> upstream contact decision.
+    Also noted: `0x20366EC` packed s16 pairs change 10/10 hits 0/2
+    miss = probable screen-shake BG scroll (presentation, unproven).
 
 - **P-003 progress 10 (2026-08-23), constructor-hunt false positive:**
   - The aligned word `0x08049DF0` at `0x0802A008` is CODE, not a literal

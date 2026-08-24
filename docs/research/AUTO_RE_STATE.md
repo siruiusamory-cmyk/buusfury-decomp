@@ -805,6 +805,18 @@ research-lane findings only.)
     human, coalesce edges by presentation onset, rerun graded
     differential (>=N-1 hits, 0 misses); STOP-NOW.txt kill-switch now
     ends capture instantly when human says done.
+  - SLOT-1 FULL-MEMORY LABELED SESSION (progress 13 addendum): fresh
+    working copy `slot1-working.ss1` (sha16 D084E8D5ABB91830); human
+    labels: 11 throws, MISS=1,2,9, rest HIT. Probe saw 12 edges (one
+    spurious - known artifact). GRADED RESULT: 79 fields with >=6/8
+    hits and 0/3 misses; 76 are presentation-zone, **3 are IWRAM**:
+    `0x03006F48` (6/8), `0x03006F50` (6/8), `0x03007C50` (7/8) - first
+    non-presentation hit-correlated mutations ever captured. Likely
+    stack-resident locals of a combat routine (stable call depth).
+    NEXT: single Z2 watchpoint on 0x03006F48 during armed human punch
+    -> writer PC -> containing function = candidate contact/damage
+    routine. All EWRAM hit-correlated fields so far remain
+    presentation-only.
 
 - **P-003 progress 10 (2026-08-23), constructor-hunt false positive:**
   - The aligned word `0x08049DF0` at `0x0802A008` is CODE, not a literal

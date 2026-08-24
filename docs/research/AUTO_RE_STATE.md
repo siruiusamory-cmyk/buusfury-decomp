@@ -621,6 +621,34 @@ research-lane findings only.)
     player-side; enemy entity struct/location UNKNOWN; knockback/hitstun
     not yet captured; message-ABI participation untested (needs a reliable
     hit first).
+- **P-003 progress 11 (2026-08-23), armed Z0 run - m5 never executes on
+  normal punch:**
+  - Setup: `--gdb` halt + Lua arm + GDB continue (all worked; game ran
+    220 ticks, 18 A presses at 2on/10off, punch signature at every press);
+    `Z0,8029ed8,2` installed (stub OK) BEFORE continue; watcher captured
+    zero stops.
+  - `CONFIRMED` (runtime): **the normal A-punch in this state does NOT
+    execute m1/m5 (0x080342AE/0x08029ED8)** - Z0-on-ROM is proven
+    functional (ROM-006 hits at 0x080089D4), so absence is real.
+  - REINTERPRETATION (OLD / NEW / RESOLUTION):
+    - OLD: "punch writes attack-object vtable 0x08049DF0 into the enemy
+      struct at 0x3DE6C" (progress 7).
+    - NEW: bytes `F0 9D 04 08` are equally plausible as sprite tile pixel
+      data; the 0x3DE64..0x3DEB8 punch-time writes match the tile-staging
+      pattern class already invalidated twice (18->13; 0->16).
+    - RESOLUTION: the attack-object<->A-press linkage is UNPROVEN; m1/m5's
+      owner and trigger are UNKNOWN. The m5/m1 FUNCTIONS remain valid
+      static decodes (genuine body-bounds hit test + phase machine) but
+      belong to an untriggered path in this state.
+  - NEW LEAD: punch writes ROM pointer **`0x0804A4B8`** at `0x0203DEA4`
+    (0x0804A4B8 also appears in the frame-handler literal-pool region).
+    Static identity check queued.
+  - P-003 status: PARTIAL - input/presentation/geometry candidates exist;
+    the executable contact path is NOT yet runtime-confirmed.
+  - Methodology note: armed GDB run is clean and reusable (halt-arm-
+    continue; per-frame capture; 220 ticks at full speed with Z0 armed
+    and never hit).
+
 - **P-003 progress 10 (2026-08-23), constructor-hunt false positive:**
   - The aligned word `0x08049DF0` at `0x0802A008` is CODE, not a literal
     (bytes `F0 9D 04 08` = `LDR r5,[sp,#0x3C0]` + next-instruction

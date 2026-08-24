@@ -621,6 +621,39 @@ research-lane findings only.)
     player-side; enemy entity struct/location UNKNOWN; knockback/hitstun
     not yet captured; message-ABI participation untested (needs a reliable
     hit first).
+- **P-003/P-004 progress 7 (2026-08-23), armed-punch methodology + punch
+  writes into enemy struct:**
+  - Human correction adopted: the current state ALREADY has the enemy
+    adjacent/facing; previous runs armed too late (6s launch + injection
+    latency = ~400 free frames before sampling). Solution implemented:
+    launch with `--gdb` (core HALTED until a client continues - proven in
+    P-002), inject the Lua via the Scripting window WHILE HALTED (prime the
+    diff baseline + register callbacks), then GDB-continue via
+    `build/research/p003-exp/gdb_continue.py` (RspClient handshake + 'c').
+    Driver: `build/research/p003-exp/run_armed.ps1`; probe
+    `tools/runtime/p003_armed_punch.lua`. Per-frame capture now starts at
+    the true first frame.
+  - `CONFIRMED` (runtime, armed punch, A at t=2):
+    - punch writes INTO the enemy-struct region at press+0:
+      `0x0203DE6C: f7e7f0ef -> 08049df0` (ROM pointer -
+      **punch-effect/hit handler candidate 0x08049DF0**) and
+      `0x0203DE70: 03002bd0 -> 0203DFA4` (pointer to the adjacent object
+      at 0x0203DFA4).
+    - at t=27: large tile-streaming burst into `0x3CA38..0x3CB68`
+      (sprite tiles).
+    - at t=61: entity-list reorder - the sampled words `0x3DE7C` and
+      `0x3DF88` SWAPPED contents (e1: f799 -> 0203DE8C; walk:
+      804bc98 -> f799) - confirming these are volatile list/pointer-ish
+      slots, NOT stable stats. Reinforces the progress-6 invalidation.
+    - player HP pair +1 regen at t=68 (d4->d5 / 54->55).
+  - NEXT (static-first, cheap): xref/inspect `0x08049DF0` - the pointer the
+    punch writes into the enemy struct; it should lead to the punch effect
+    constructor and from there to damage application. Also identify the
+    object at `0x0203DFA4`.
+  - Enemy HP location: STILL UNKNOWN (volatile fields invalidated; the
+    armed-capture machinery is now good enough to catch the real decrement
+    once the punch connects - hit confirmation still pending).
+
 - **P-003 progress 6 (2026-08-23), mash-A contact run - NEGATIVE +
   candidate invalidation:**
   - `tools/runtime/p003_mash.lua`: stood still (px=48,py=207 all run),

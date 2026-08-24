@@ -872,6 +872,25 @@ research-lane findings only.)
     interpreter that owns/copies this block. Session corpus: 312 writer
     stops across varied play confirm `FUN_0803B4FC` runs CONTINUOUSLY
     (every-frame utility), further weakening any hit-specific reading.
+  - DISPATCH STATIC RESOLUTION - FUN_0803B4FC CLOSED AS FALSE LEAD
+    (progress 13 addendum): ROM @`0x0800E0EA` is a bare epilogue
+    (`str r1,[r0,#0x28]; pop {r4,r5}; bx lr`) - the record word
+    `0x0800E0EB` is a CONTINUATION/tail address, not an entry. NO
+    aligned ROM literals reference the record, block base, fnptr, or
+    IWRAM ptr -> all addresses are computed at runtime => interpreter/
+    copy-driven construction CONFIRMED (INFERRED). Dump was taken at
+    idle post-load; block contents are likely rebuilt per area/load,
+    so byte-level trampoline reconstruction from this snapshot alone
+    is unreliable. CLASSIFICATION: FUN_0803B4FC = generic per-frame
+    wall-clamp utility dispatched by an interpreter for actor movement;
+    NOT hit/knockback-specific. All three non-presentation
+    discriminators from the graded bank (6F48/6F50/7C50) are now
+    rejected as leads. STRONGEST NEXT TARGETS: (a) locate the WOLF
+    gameplay object by widening labeled-bank capture beyond
+    `0x0203DE50` (its flinch/AI mutation must be CPU-written
+    somewhere); or (b) execution-trajectory diffing (PC samples)
+    between human-labeled HIT and MISS frames. Presentation-zone
+    discriminators remain valid CLASSIFIERS but carry no provenance.
 
 - **P-003 progress 10 (2026-08-23), constructor-hunt false positive:**
   - The aligned word `0x08049DF0` at `0x0802A008` is CODE, not a literal

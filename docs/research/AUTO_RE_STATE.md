@@ -1172,6 +1172,19 @@ research-lane findings only.)
     Then P-003 chain closes: A -> punch seq -> interpreter overlap
     check vs wolf combat obj -> HURT node enter -> clip swap ->
     (P-004)     damage write in same path.
+  - WOLF NODE DEFS MAPPED (progress 13 addendum, CONFIRMED): wolf
+    behavior defs at `0x08706A00..0x08706B6C`. Nodes = `{fn[3],
+    param, links}` where param looks like an ANIMATION/CLIP id:
+    nodes with generic fns carry params `0x2FA(762)`, `0x305(773)`,
+    `0x1B3(435)`, `0x1B5(437)`, `0x1B8(440)`; special nodes:
+    `0x08706A38` (handler `FUN_08029D14` + const `0x2710`=10000),
+    `0x08706A48` -> fns {0x0801920E,...} param 2 (the FLINCH-clip
+    family!), `0x08706A8C` (handler `FUN_08029FE6`, param 0x1B5),
+    `0x08706AAC` (thumb ptr `0x080188A9` = point-test enter variant).
+    Runtime r0=`0x08706A28` confirms THIS def set drives the fought
+    wolves. NEXT SESSION: enumerate all wolf node ids/params in
+    `0x087069xx..B6C`, correlate param values with observed flinch
+    clip swaps, find which node id = HURT and what enters it.
   - HANDLER LIBRARY SEGMENTED (progress 13 addendum, CONFIRMED):
     `0x08029800..0x0802A100` = ~30 SMALL node-type handler functions
     (push/pop bounded), including **`0x08029ED8` = the old "m5"** -

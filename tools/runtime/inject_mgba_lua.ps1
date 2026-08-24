@@ -1,4 +1,4 @@
-﻿param(
+param(
     [Parameter(Mandatory = $true)]
     [int]$TargetProcessId,
     [Parameter(Mandatory = $true)]
@@ -75,6 +75,9 @@ $allowedLua = @(
     )
     [System.IO.Path]::GetFullPath(
         (Join-Path $workspaceRoot 'tools\runtime\p004_human_watch.lua')
+    )
+    [System.IO.Path]::GetFullPath(
+        (Join-Path $workspaceRoot 'tools\runtime\p004_punch_label.lua')
     )
 )
 $resolvedLua = [System.IO.Path]::GetFullPath($LuaPath)
@@ -273,4 +276,5 @@ try {
         }
     }
 }
+
 

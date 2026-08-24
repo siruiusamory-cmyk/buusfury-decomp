@@ -749,6 +749,17 @@ research-lane findings only.)
     alternative - Lua-side polling of the three fields each tick
     (values, not writers) + single-field watchpoint only at confirmed
     event windows.
+  - HUMAN-LABELED PUNCH EXPERIMENT (progress 13 addendum): 16 punches
+    captured with per-tick zone diff; the maintainer labels post-return set
+    (PUNCH 10..16): HIT = 10,11,12,14,15,16; MISS = 13. PERFECT
+    discriminator: `0x0203D328` and `0x0203D330` changed after all
+    6 landed, never after the miss. Player-relative: base `0x0203D074`
+    + **+0x2B4 / +0x2BC** (adjacent combat/stat block; nominal size
+    0x240 exceeded - block boundary needs re-check). Supporting hit-
+    active neighborhood: `0x0203D2FC..0x0203D334`. NEXT (Stage B):
+    single watchpoint on 0x0203D328 during short armed session ->
+    writer PC -> contact/damage function; also test the old five-punch
+    signature (0x203C400..2C) against these labels (not yet done).
 
 - **P-003 progress 10 (2026-08-23), constructor-hunt false positive:**
   - The aligned word `0x08049DF0` at `0x0802A008` is CODE, not a literal

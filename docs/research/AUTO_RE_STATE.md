@@ -649,6 +649,48 @@ research-lane findings only.)
     continue; per-frame capture; 220 ticks at full speed with Z0 armed
     and never hit).
 
+- **P-003 progress 12 (2026-08-23), writer-watch taxonomy - the
+  0x3DE6C zone is sprite/animation work, not combat state:**
+  - Human play session (the maintainer: melee kills, area transition + respawn,
+    ki kills, one level-up) with `Z2` write watch on `0x0203DEA4`
+    armed before resume: 110 captures, 27 distinct writer PCs; control
+    run (no input) diffed against it. Watchpoint cost: gameplay stayed
+    fully playable.
+  - Watched address classified: `0x0203DEA4` = accumulator field
+    (`+0x38`) of a sprite/animation controller block based at
+    **`0x0203DE6C`**, inside EWRAM sprite-work zone `0x3DE60..0x3DFA0`.
+    Zone layout (INFERRED from FUN_0802A8AA decode + dump): `+0x10/+0x14`
+    sprite-space pos, `+0x20..+0x2C` live rect, `+0x34` frame-stream ptr,
+    `+0x38` accumulator, `+0x3C` frames left, `+0x40` step rate.
+  - `FUN_0802A8AA` (top punch-session writer, 48 hits) decoded: frame
+    stepper walking 12-byte records `{dx,dy,w,h}`, advancing `+0x34`,
+    writing rect `+0x20..+0x2C`, ending via
+    `FUN_08011944(&DAT_03001c4c,...)` when `+0x3C` exhausts.
+  - RECLASSIFICATION of the orphaned subsystem (progress 11): code in
+    the `0x080342xx` region executes during ORDINARY frames (shared with
+    no-input control), installing function pointer `0x080342A9` into
+    sprite-block `+0x30`; clip pointers (`0x0804BC98`, `0x080499E4`,
+    `0x080497C4/D4`, `0x0804AAF4`) rotate through zone slots on
+    animation change. The `cand_49df0_*` family is best explained as
+    the SPRITE/ANIMATION subsystem, not melee combat. m5's body-test
+    geometry stands as decoded but its subsystem role is presentation-
+    adjacent, not proven contact logic.
+  - Punch press-tick footprint (single-punch zone dump t12): ONLY
+    animation-clip pointer swaps + tile staging changed in the zone -
+    NO HP-like decrement anywhere in `0x3DE60..0x3DFA0` at press.
+    Damage application must occur at the CONTACT frame, not at press.
+  - RUNTIME CONFIRMED player stat pair: max HP `0x0203DBB4` rose
+    0x212 -> 0x218 exactly across the maintainer's level-up; current HP
+    `0x0203DC20` fell 0x81 -> 0x77 across the fights.
+  - `0x0804A4B8` classification (bounded): offset-table data region
+    immediately after an ARM interworking veneer block; aligned refs at
+    `0x08006FFC` and `0x08050588`; NOT established as punch handler -
+    its "punch correlation" was the same volatile-slot artifact class.
+  - NEXT (P-003/P-004): find the enemy ACTOR struct outside the sprite
+    zone (per-tick diff during wolf-only movement with player still),
+    then kill-detection watch for wolf HP; damage write hunt moves to
+    the contact frame, not the press frame.
+
 - **P-003 progress 10 (2026-08-23), constructor-hunt false positive:**
   - The aligned word `0x08049DF0` at `0x0802A008` is CODE, not a literal
     (bytes `F0 9D 04 08` = `LDR r5,[sp,#0x3C0]` + next-instruction

@@ -740,6 +740,15 @@ research-lane findings only.)
     recur on `{0x0203D248, 0x0203D24C, 0x0203D29C}` (t346/820/1233/
     1039) - CANDIDATE wolf-event/wolf->player fields. Stage B: watch
     these two field sets' writers during armed human play.
+  - STAGE B FIRST ATTEMPT FAILED INSTRUMENTATION-WISE: three
+    simultaneous `Z2` watchpoints (203d248/24c/29c) throttled emulation
+    to 33 Lua ticks in the whole window; zero writer rows. Watchpoints
+    on per-frame-changing player fields are too hot for RSP halt/resume
+    capture. NEXT: narrow to ONE field (start `+0x1D8`) or use skip-
+    filtering by writer PC once the first capture identifies it;
+    alternative - Lua-side polling of the three fields each tick
+    (values, not writers) + single-field watchpoint only at confirmed
+    event windows.
 
 - **P-003 progress 10 (2026-08-23), constructor-hunt false positive:**
   - The aligned word `0x08049DF0` at `0x0802A008` is CODE, not a literal

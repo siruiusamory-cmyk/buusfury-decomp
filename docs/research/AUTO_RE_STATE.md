@@ -621,6 +621,40 @@ research-lane findings only.)
     player-side; enemy entity struct/location UNKNOWN; knockback/hitstun
     not yet captured; message-ABI participation untested (needs a reliable
     hit first).
+- **P-003/P-004 progress 8 (2026-08-23), attack-object vtable decoded:**
+  - `0x08049DF0` is a **relative-offset dispatch table** (same format as the
+    player entity vtable) with two identical 5-method groups; referenced by
+    a literal at `0x0802A008` (constructor in the `0x08029Exx-0x0802A0xx`
+    cluster).
+  - Resolved methods (fetch addrs): m0 `0x080342A8` (zeroes obj+8),
+    **m1 `0x080342AE` = attack phase state machine** (dispatches owner
+    vtable`+0x14`; toggles phase flag obj`+8`; on transitions notifies
+    owner via obj[1] vtable`+0x0/+0x8` and dispatches target vtable`+0x4`
+    with the caller arg), m4 `0x08050F08`, **m5 `0x08029ED8` = the melee
+    reach/target test**, m5b `0x08029ED8` group-2, slot[5] `0x08029ED9`
+    region, slot[11] `0x080379B0`.
+  - **`cand_49df0_m5_08029ED8(obj, target)` decompiled behavior** (the
+    melee hit-region + target acquisition):
+    - gates on global `*_DAT_0802a004` and its `+0x1CC` field;
+    - `cand_body_bounds_0800FE78(&rA)` - PLAYER body (global form);
+      `cand_body_bounds_0800FE78(&rB, target)` - candidate target body;
+    - expands target rect by facing-directional margins
+      (`x0-4, y0+3, x1, y1-6` shape);
+    - overlap test, then center-to-center deltas
+      (`(x0+x1)>>1` both rects) for direction.
+  - **Attack object layout (from m1/m5 usage):** `+0x00` vtable
+    (0x08049DF0), `+0x04` owner pointer (player; its vtable supplies
+    `+0x14/+0x8/+0x4/+0x0` methods), `+0x08` phase/active flag.
+  - Interpretation (STRONG_STATIC): A press creates an attack object that
+    per-frame tests candidates' body rectangles against a facing-extended
+    player reach rectangle, and on phase changes notifies owner and
+    dispatches the target. This is the P-003 melee structural chain:
+    A -> attack object -> reach test vs target body -> owner/target
+    dispatch. Remaining: target-list source, enemy object identity,
+    enemy HP field, damage application.
+  - Steering names adopted: `candidate_attack_object_dispatch_08049DF0`
+    semantics; `0x0203DFA4` remains adjacent-runtime-object candidate.
+
 - **P-003/P-004 progress 7 (2026-08-23), armed-punch methodology + punch
   writes into enemy struct:**
   - Human correction adopted: the current state ALREADY has the enemy

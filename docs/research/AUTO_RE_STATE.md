@@ -845,6 +845,19 @@ research-lane findings only.)
     pointer. Stack slot 0x3007C50 = its local. NEXT: capture r0/param_1
     at these writers (CSV column gap), identify EWRAM caller chain at
     0x020363AC, decide knockback-vs-AI provenance.
+  - PROVENANCE PARTIAL (progress 13 addendum): fixed r0 capture + LR-
+    region dump. param_1 = STACK-LOCAL output struct (`r0=0x03007C48/`
+    `C30`) - FUN_0803B4FC is a pure utility (clamp movement vs walls);
+    r1/r2 = per-frame actor-struct pairs from the presentation zone.
+    The EWRAM "LR site" `0x020363AC` contains ZEROS flanked by a
+    dispatch-record pair (`0x0800EBE0` ROM ptr, `0x3001D4D0` IWRAM
+    ptr) - the call is made by TABLE/SCRIPT DISPATCH that loads LR
+    manually, not ordinary BL. Cap removed permanently after repeated
+    budget-exhaustion auto-closes (hot field = stop cap burned in
+    seconds; the maintainer directive: no budgets). NEXT: unlimited run, dump
+    WIDER EWRAM code region (0x02036000..0x02037000) BEFORE first
+    write, find dispatch interpreter owning record {0x0800EBE0,
+    0x3001D4D0}.
 
 - **P-003 progress 10 (2026-08-23), constructor-hunt false positive:**
   - The aligned word `0x08049DF0` at `0x0802A008` is CODE, not a literal

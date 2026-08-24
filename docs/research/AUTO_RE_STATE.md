@@ -717,6 +717,13 @@ research-lane findings only.)
   - NEXT: static decode of writer `0x08010252`; rerun with big cap +
     narrow zone; validate wolf candidates across long player-still
     spans; then contact-frame hunt.
+  - RESOLVED (progress 13 addendum, value-change capture): during real
+    human combat, `0x0203DC20` shows ONLY smooth ±1/frame ramps
+    (0x51->0x2c decay mid-fight; climb when idle) - writer always PC
+    `0x08010252`. RECLASSIFIED: timer-like field, NOT player current
+    HP. Player current-HP field is UNKNOWN again; max-HP `0x0203DBB4`
+    (+6 level-up) remains the only runtime-supported stat. Damage-hunt
+    must target discrete multi-unit drops on other fields.
 
 - **P-003 progress 10 (2026-08-23), constructor-hunt false positive:**
   - The aligned word `0x08049DF0` at `0x0802A008` is CODE, not a literal

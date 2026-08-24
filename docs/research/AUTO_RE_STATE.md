@@ -915,6 +915,21 @@ research-lane findings only.)
     enabled for these seeds -> callers of the installer family ->
     find the caller passing FLINCH clip id on hit frames -> upstream
     contact decision. This is the current strongest P-003 thread.
+  - TOOLING AUDIT REQUIRED BEFORE NEXT STATIC STEP (progress 13
+    addendum): two scripting defects found and one fixed. (1) FIXED:
+    BL scanner had Python precedence bug (`h1 & 0xF800 == 0xF000`
+    parses as `h1 & (0xF800 == 0xF000)` = always False) - all prior
+    "no direct BL callers" results were vacuous; corrected scanner
+    still shows no direct BL callers for the wrapper entries (now a
+    REAL negative), consistent with pointer-based dispatch.
+    (2) UNRESOLVED: prologue-scan candidate dumps disagree with direct
+    byte reads at the same addresses (e.g. claimed `b570` at
+    `0x0801920F`, direct read says `05 b5 1c c0`). Canonical ROM hash
+    verified; reader bug suspected in the scan's address arithmetic.
+    NEXT: rewrite prologue/decoder scripts with single shared
+    addr<->offset helpers + assertions, re-derive installer function
+    boundaries, then caller recovery via corrected tools. Do not trust
+    any pre-audit disassembly addresses from this iteration.
 
 - **P-003 progress 10 (2026-08-23), constructor-hunt false positive:**
   - The aligned word `0x08049DF0` at `0x0802A008` is CODE, not a literal

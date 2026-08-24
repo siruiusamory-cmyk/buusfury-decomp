@@ -1108,6 +1108,19 @@ research-lane findings only.)
     labeled punches -> catches every state entry including HURT ->
     LR reveals the dispatcher directly. Option (b) is cheap and
     high-signal: enter-handler fires rarely (only on state changes).
+  - DISPATCHER FOUND (progress 13 addendum, CONFIRMED): Z0 on
+    `FUN_0801890A` (node enter) during wolf fight -> 146 stops.
+    Call-site LRs: **`0x080188B5`** (main dispatcher, x83),
+    **`0x08029FF1`** (x35 - INSIDE the old `0x08029FE6..A026`
+    "ctor_lit" function => that cluster IS part of the state
+    dispatch machinery after all!), `0x08018FC9` (x27). Args: r0 =
+    ROM node-def pointers `0x08706A28..0x08706B44` (wolf behavior
+    definitions!), r1 = actor combat object alternating
+    `0x0203D504`(wolf)/`0x0203DBB0`(player). CONFIRMS: player AND
+    wolves are nodes of the same table machine; wolf node defs at
+    `0x08706A2C-B44`. NEXT: decompile dispatcher fn containing
+    `0x080188B5` (~entry 0x08018870-88x) and `0x08029FE6` body ->
+    find state-id selection = HIT/MISS decision; then damage write.
   - EWRAM STUB REGION DECODED (progress 13 addendum): the
     `0x020363A4..0x02036870` copied block = THUNK/VENEER POOL
     (`b target` stubs over nop sleds), NOT the dispatcher. LR landing

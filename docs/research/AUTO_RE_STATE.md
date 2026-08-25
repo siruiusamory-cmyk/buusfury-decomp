@@ -49,7 +49,40 @@ proprietary artifacts.
 
 ## Current Objective
 
-P-003/P-004 contact resolution. Human-provided combat state validated
+P-004 INSTRUMENTATION PREPARED (2026-08-25) - awaiting one human gameplay
+run. Reused-slot finding (`0x0203D504` is a slot, not identity) is honored:
+wolf identity comes ONLY from registers captured live at flinch-wrapper
+(`0x0801920E`) stops; no absolute-address HP assumption is used.
+
+Prepared experiment (single run):
+- GDB side `build/research/p003-exp/p004_hurt_capture.py` (driver
+  `run_p4_focus.ps1`): arms `Z0,801920e,2`; at each HURT stop logs
+  wallclock, pc/lr/r0-r7/sp, 16-word stack walk (ROM-range return chain),
+  dumps `hurt-object-dumps.bin` records `{stop, addr, len, bytes}` for
+  candidate actor objects (EWRAM regs in `0x02030000..0x0203FFFF`,
+  4-aligned) plus always-dumped `0x0203DBB0`/`0x0203D504`
+  (disambiguation only), and publishes new candidate pointers to
+  `p004-actor-focus-ptr.txt`.
+- Lua side `tools/runtime/p004_actor_focus.lua`: per-tick header
+  (`T,t,k<keys>,as<actor-slot>,s0<sword0>,s74<sword+0x74>`), A-edge
+  PUNCH ordinals with tick+wallclock, dynamic pickup of published
+  pointers (max 4), then per-tick rolling diff of each tracked object's
+  first 0x200 bytes (`OBJ`) + full raw re-dump every 60 ticks (`FULL`)
+  + SEED snapshot at track time.
+- Alignment: punch ordinal + wallclock on both sides; HURT-stop k-th
+  occurrence maps to labeled HIT windows; object diffs give pre/post-hit
+  windows per tracked actor.
+- Smoke-tested end-to-end idle through real mGBA (armed, Z0 accepted,
+  TRACK/SEED/OBJ pickup verified by publishing `0x203DBB0`); canonical
+  ROM hash verified before/after; state `slot1-working.ss1`
+  (sha256 D084E8D5ABB91830...) recorded to `focus-state-hash.txt`.
+
+Post-run plan: grade HP candidates across HIT windows on the
+dynamically tracked actor only (byte/halfword/word), then writer
+provenance (existing capture may already contain it via stack chains;
+else prepare second run only if genuinely required).
+
+P-003/P-004 contact resolution background. Human-provided combat state validated
 (sha256 `d8d8578d081e6bc4e535160b52fa0182cf2619ae70c93f63f5401b1d1624dcf1`,
 79,767 bytes, mtime 2026-08-23 16:10:07; working copies only under ignored
 build/research/p003-exp/). Damage-candidate fields identified but hit

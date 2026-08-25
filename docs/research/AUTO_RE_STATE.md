@@ -1236,6 +1236,16 @@ research-lane findings only.)
     pointer argument - ONE of these four contains the damage/HP write
     on the HIT arm. Then watchpoint the identified HP field during
     one labeled punch for writer PC confirmation.
+  - ARM A RESOLVED (P-004 Track C, partial): rel-entry [+5] of C484
+    -> Thumb handler `0x0800FAE6` (`push {r4,lr}; bl 0x800EF08;
+    r0 += 0x238; bl 0x0800AB0C`) - passes ACTOR+0x238 into
+    `FUN_0800AB0C`. Adjacent big switch fn (~0x0800FAF6) branches on
+    command values (2/0x16/0x19) calling
+    `cand_body_bounds_0800FE78` - the melee/body-rect comparison
+    region. NOTE: rel-table targets must be disassembled at EVEN
+    addresses (thumb bit stripped) - odd-start reads decode garbage.
+    NEXT: decode `FUN_0800AB0C` (actor+0x238 consumer - candidate
+    damage/hit application) and map the switch commands.
   - NEXT-SESSION PROBE SPECIFIED (progress 13 addendum): at each
     `FUN_0801890A` stop, also DUMP THE STACK (`m<sp>,40`) - nested
     return addresses in the stack walk the full dispatcher call chain

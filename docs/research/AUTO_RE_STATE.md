@@ -1172,6 +1172,30 @@ research-lane findings only.)
     Then P-003 chain closes: A -> punch seq -> interpreter overlap
     check vs wolf combat obj -> HURT node enter -> clip swap ->
     (P-004)     damage write in same path.
+  - **P-003 SOLVED (progress 13 addendum, CONFIRMED runtime):** stack-
+    walk capture during labeled punches returned nested return chains
+    proving the full contact path. Flinch-wrapper stops showed chains
+    `0x80342EB -> 0x8018907 -> 0x804ECBD` where **0x080342EB lies
+    INSIDE m1 (`0x080342AE..34305`) - the old attack-object phase
+    machine directly invokes the flinch/HURT-node enter on landed
+    punches**. Other stops chained through the indexed dispatcher
+    (`0x0800AA5F`) with wolf node defs + state table (`0x087102C4`).
+    RESOLUTION OF THE EARLIER CONTRADICTION: the armed Z0-on-m5 run
+    that "never fired" was a context/timing failure, not evidence -
+    m1/m5 WERE the melee path all along. FULL CONFIRMED CHAIN:
+    A press -> attack object created -> m1 phase machine ->
+    m5 AABB reach test (melee-adjusted target rect) -> HIT branch ->
+    flinch wrapper `0x0801920E` -> wolf HURT node enter ->
+    clip install at controller. REJECTED-LEADS REHABILITATED:
+    `candidate_attack_object_dispatch_08049DF0`, m1, m5 all restored
+    to the canonical melee path.
+  - P-004 handover point: damage operand lives in the m1 -> HURT-enter
+    argument flow (m1 dispatches owner vtable methods with target;
+    m5 computes direction byte at target+0x10). Next session: decode
+    m1's full body for the damage constant/source passed alongside
+    the HURT transition; watchpoint on wolf obj fields during ONE
+    labeled punch with m1-region breakpoints isolates the exact HP
+    write. Wolf combat obj = `0x0203D504`; player = `0x0203DBB0`.
   - NEXT-SESSION PROBE SPECIFIED (progress 13 addendum): at each
     `FUN_0801890A` stop, also DUMP THE STACK (`m<sp>,40`) - nested
     return addresses in the stack walk the full dispatcher call chain

@@ -1246,6 +1246,17 @@ research-lane findings only.)
     addresses (thumb bit stripped) - odd-start reads decode garbage.
     NEXT: decode `FUN_0800AB0C` (actor+0x238 consumer - candidate
     damage/hit application) and map the switch commands.
+  - DEEPER LAYER (progress 13 addendum): `FUN_0800AB0C` = another
+    dispatch wrapper - indexes an 8-byte-stride table by [r4+4],
+    resolves ptr, calls `0x8046AA4` yet again. The engine is a
+    MULTI-LEVEL command interpreter: m1 -> rel-entry handler ->
+    actor+0x238 -> indexed table -> deeper call. Static layer-peeling
+    has diminishing returns. DECISION: next runtime session captures
+    the BOTTOM directly - Z2 watchpoints on wolf combat obj
+    (`0x0203D504..+0x84` full range, or targeted +4/+74 fields) during
+    ONE labeled landed punch, WITH the proven stack-walk logging ->
+    writer PC + full dispatcher chain to the top in one capture. That
+    closes P-004's writer-provenance requirement in a single run.
   - NEXT-SESSION PROBE SPECIFIED (progress 13 addendum): at each
     `FUN_0801890A` stop, also DUMP THE STACK (`m<sp>,40`) - nested
     return addresses in the stack walk the full dispatcher call chain

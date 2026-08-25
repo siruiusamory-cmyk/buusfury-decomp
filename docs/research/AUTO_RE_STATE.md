@@ -1534,3 +1534,5 @@ behavior, multiple corroborations), `CANDIDATE` (single static observation).
 P-001 (player entity + update root) - top of the player/combat pivot.
 Transition frontier is CLOSED; do not spend further units on transition
 taxonomy (AUTO-005 vtable dump remains READY but demoted below P-series).
+
+  - CALLER `LR=0x08018FC9` DECODED (progress 13 addendum): containing`n    fn `0x08018F90` = collision-instance BUILDER - allocates 16-byte`n    instance, binds node+0xC, loops node-data ptrs (+0x10 array)`n    calling point-query `0x8046AA4` per element, storing results into`n    the instance. The flinch wrapper `0x0801920E` is invoked from this`n    loop's vicinity (odd LR = continuation-style call). CONFIRMED: this`n    whole layer is overlap/collision evaluation feeding state instances.`n    Remaining unknown is only the TOP-level selector (which state id gets`n    entered on landed hit) - one level up.

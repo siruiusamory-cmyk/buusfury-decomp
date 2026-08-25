@@ -1,4 +1,4 @@
-﻿# Reverse-Engineering Research Ledger
+# Reverse-Engineering Research Ledger
 
 Durable brain of the Webfoot reverse-engineering programme
 (`OX-AUTO-RE`). Read this file first every loop iteration. Keep it compact;
@@ -1172,6 +1172,16 @@ research-lane findings only.)
     Then P-003 chain closes: A -> punch seq -> interpreter overlap
     check vs wolf combat obj -> HURT node enter -> clip swap ->
     (P-004)     damage write in same path.
+  - NEXT-SESSION PROBE SPECIFIED (progress 13 addendum): at each
+    `FUN_0801890A` stop, also DUMP THE STACK (`m<sp>,40`) - nested
+    return addresses in the stack walk the full dispatcher call chain
+    (LR alone only shows the innermost continuation). Add to
+    gdb_writer_watch.py: after regs, read 16 words at SP and log them;
+    ROM-range words = return sites -> containing functions via
+    disasm.py. This resolves the top-level selector without any new
+    tooling. Ghidra route permanently abandoned for this task (OSGi
+    cache poisons script recompiles even after deletion; capstone +
+    manual decode authoritative).
   - WOLF STATE TABLE LOCATED (progress 13 addendum, CONFIRMED):
     indexed `{primary-node, secondary-node}` pairs at
     `0x0871027C..0x087102D4+`, including the entry

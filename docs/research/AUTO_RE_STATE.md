@@ -1631,3 +1631,14 @@ Transition frontier is CLOSED; do not spend further units on transition
 taxonomy (AUTO-005 vtable dump remains READY but demoted below P-series).
 
   - CALLER `LR=0x08018FC9` DECODED (progress 13 addendum): containing`n    fn `0x08018F90` = collision-instance BUILDER - allocates 16-byte`n    instance, binds node+0xC, loops node-data ptrs (+0x10 array)`n    calling point-query `0x8046AA4` per element, storing results into`n    the instance. The flinch wrapper `0x0801920E` is invoked from this`n    loop's vicinity (odd LR = continuation-style call). CONFIRMED: this`n    whole layer is overlap/collision evaluation feeding state instances.`n    Remaining unknown is only the TOP-level selector (which state id gets`n    entered on landed hit) - one level up.
+
+- PROGRESS-13 FINAL (dual-probe session): removal dumps captured
+  (player 203DBB0 on area transition + wolf objects); hp_writes.csv
+  logged rows but register-parse bug (pc offset wrong in raw g-packet
+  slice) misattributed Z0-vs-Z2 stops - raw evidence preserved in
+  removal_objs.bin + hp_writes.csv for reparse with
+  decode_register_payload. WOLF HP CANDIDATE CONFIRMED DIRECTIONALLY:
+  wolf obj +0x74 was 100 (fresh spawn read) and 92 at a removal dump
+  (decremented across fights). NEXT SESSION: fix reg decode (use
+  decode_register_payload), rerun dual probe, capture HP writer PC +
+  damage operand = P-004 closure.

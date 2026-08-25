@@ -1195,7 +1195,47 @@ research-lane findings only.)
     m1's full body for the damage constant/source passed alongside
     the HURT transition; watchpoint on wolf obj fields during ONE
     labeled punch with m1-region breakpoints isolates the exact HP
-    write. Wolf combat obj = `0x0203D504`; player = `0x0203DBB0`.
+    write.     Wolf combat obj = `0x0203D504`; player = `0x0203DBB0`.
+  - M1 FULLY DECODED (P-004 Track A, CONFIRMED byte-exact):
+    ```
+    m1(obj, target):                  ; 0x080342AE
+      table = [obj+0]                 ; rel-table ptr
+      r2 = table + [table+0x14]       ; resolve rel entry [+5]
+      res = 0x8046AA4(r?, target, r2) ; overlap/query w/ resolved data
+      if res == 0 -> 0x080342EC:
+          if [obj+8](phase) != 0: phase=0
+            owner=[obj+4]; vt=[owner]
+            call [vt+8](owner, target)   ; arm B: owner slot +8
+          return 0
+      else (res != 0):
+          if phase == 0: phase = 1
+            owner=[obj+4]; vt=[owner]
+            call [vt+0](owner, target)   ; arm A: owner slot +0
+          fallthrough pop
+    ```
+    Attack object layout CONFIRMED: +0 rel-table, +4 owner actor,
+    +8 phase flag. Arms call OWNER ABSOLUTE-VTABLE methods with the
+    TARGET pointer as argument - damage flows through those methods.
+  - CRITICAL REFINEMENT: the stack-chain word `0x80342EB` (odd) is a
+    CONTINUATION into the code immediately AFTER m1's pop - i.e.
+    function `0x080342EC..0x08034305` (arm-B body, starts right at
+    m1's exit) is a SEPARATE handler dispatched back-to-back with m1
+    via LR-as-continuation. The attack-object rel-table lists these
+    as consecutive entries. Flinch-wrapper invocation observed from
+    this continuation context.
+  - PLAYER/WOLF SHARED TABLES: player obj 0x203DBB0 and wolf
+    0x203D504 both carry +0 = same state-table family
+    (`0x0804C484`<->`0x0804E454` swaps observed); rel-table entries
+    decoded earlier: C484[0]=despawn(F76F),[1]=0x804F53D,
+    [2]=0x0800FAE7,[3]=0x0801003B,[4]=0x0800EF95,[5]=0x0800F3F9;
+    E454[0]=0x08052EC9,[2]=0x080501E1,[3]=0x0804FC41,[4]=0x08046CAD,
+    [5]=0x0804FE9D. Arm A calls [vt+0], arm B calls [vt+8] (=entry
+    index +2 in the rel-table = 0x0800FAE7 / 0x080501E1 pair).
+  - NEXT (Track C/D): decompile owner-method targets 0x0800FAE7 and
+    0x080501E1 (and slot+0 pair 0x0801003B / 0x08052EC9) with target
+    pointer argument - ONE of these four contains the damage/HP write
+    on the HIT arm. Then watchpoint the identified HP field during
+    one labeled punch for writer PC confirmation.
   - NEXT-SESSION PROBE SPECIFIED (progress 13 addendum): at each
     `FUN_0801890A` stop, also DUMP THE STACK (`m<sp>,40`) - nested
     return addresses in the stack walk the full dispatcher call chain

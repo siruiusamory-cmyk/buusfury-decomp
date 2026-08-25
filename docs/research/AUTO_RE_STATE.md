@@ -1044,7 +1044,23 @@ research-lane findings only.)
     damage/HP test upstream of the removal call; that branch IS the
     HIT-vs-DEATH-vs-KNOCKBACK decision. Then link back to the labeled
     hit frames for the per-hit non-lethal path (hurt-state installer).
-  - DESPAWN METHODS DECODED (progress 13 addendum): both "deciders"
+  - DUAL PROBE SESSION RESULTS (progress 13 final addendum): register
+    decode fixed (decode_register_payload); session captured exactly
+    TWO removal stops - wolf `0x0203D504` and PLAYER `0x0203DBB0`
+    (player removal = area transition) - but **ZERO writes to wolf
+    +0x74 (D578) despite landed punches**. Combined with slot rebinding
+    evidence: the `0x0203D504` object is a REUSED SLOT; its occupant
+    changes across spawns, so cross-session "+74: 100 -> 92" compared
+    DIFFERENT actors. Wolf HP field remains UNLOCATED via absolute
+    addresses. NEXT SESSION PLAN (fresh context, high confidence):
+    (1) single-wolf focus - do not transition areas mid-capture;
+    (2) per-tick FULL object dump of whichever combat object receives
+    flinch-wrapper entries (r1 of Z0-on-0x8018920E-family stops gives
+    actor ptr directly); (3) within one continuous same-object span,
+    HP = the word decrementing on labeled HIT windows only; (4) Z2 on
+    that word -> damage writer PC -> P-004 closure. Alternative
+    faster route: at a removal stop, dump BOTH wolves' objects while
+    ALIVE by scanning r0-neighbors (actor structs cluster).
     are generic per-object DESPAWN methods called THROUGH VTABLES
     (`candidate_player_method0_08010B80` = player's own despawn used
     on map transition; `FUN_08039182` = generic enemy despawn) - so

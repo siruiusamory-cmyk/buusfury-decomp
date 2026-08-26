@@ -49,38 +49,37 @@ proprietary artifacts.
 
 ## Current Objective
 
-P-004 INSTRUMENTATION PREPARED (2026-08-25) - awaiting one human gameplay
-run. Reused-slot finding (`0x0203D504` is a slot, not identity) is honored:
-wolf identity comes ONLY from registers captured live at flinch-wrapper
-(`0x0801920E`) stops; no absolute-address HP assumption is used.
+P-004 RETRY READY (2026-08-25, evening). Run-1 postmortem and fixes, all
+validated automatically end-to-end through real mGBA:
+- RSP reader rewritten ($-anchored, checksum-verified, acks sent,
+  192-byte chunked reads with truncate-tolerant oversize handling).
+  mGBA's stub intermittently pads/repeats frames around breakpoint
+  stops (e.g. 100-byte replies to 64-byte requests); run-1 lost all
+  object dumps to this. Wire-log evidence captured.
+- Lua horizon 14400 -> 108000 (run-1 probe expired during pre-play
+  idle; zero PUNCH/TRACK/OBJ rows).
+- Pointer publish narrowed to r1 only (the confirmed actor argument);
+  run-1 published 34 junk candidates that filled the 4-track cap
+  before the wolf object appeared.
+- Stale STOP-NOW.txt from a prior session silently finished probes;
+  driver already clears it - manual launches now verified clean too.
+- Autonomous validation: ki-blast aggro via `p004_aggro.lua` (B-taps;
+  player already faces wolves) produced 8 live player-side HURT stops;
+  27 exact-size dump records; ptr publish -> TRACK -> SEED -> 1108 OBJ
+  diff lines + 19 FULL snapshots on the Lua side. Canonical ROM hash
+  re-verified after all experiments.
 
-Prepared experiment (single run):
-- GDB side `build/research/p003-exp/p004_hurt_capture.py` (driver
-  `run_p4_focus.ps1`): arms `Z0,801920e,2`; at each HURT stop logs
-  wallclock, pc/lr/r0-r7/sp, 16-word stack walk (ROM-range return chain),
-  dumps `hurt-object-dumps.bin` records `{stop, addr, len, bytes}` for
-  candidate actor objects (EWRAM regs in `0x02030000..0x0203FFFF`,
-  4-aligned) plus always-dumped `0x0203DBB0`/`0x0203D504`
-  (disambiguation only), and publishes new candidate pointers to
-  `p004-actor-focus-ptr.txt`.
-- Lua side `tools/runtime/p004_actor_focus.lua`: per-tick header
-  (`T,t,k<keys>,as<actor-slot>,s0<sword0>,s74<sword+0x74>`), A-edge
-  PUNCH ordinals with tick+wallclock, dynamic pickup of published
-  pointers (max 4), then per-tick rolling diff of each tracked object's
-  first 0x200 bytes (`OBJ`) + full raw re-dump every 60 ticks (`FULL`)
-  + SEED snapshot at track time.
-- Alignment: punch ordinal + wallclock on both sides; HURT-stop k-th
-  occurrence maps to labeled HIT windows; object diffs give pre/post-hit
-  windows per tracked actor.
-- Smoke-tested end-to-end idle through real mGBA (armed, Z0 accepted,
-  TRACK/SEED/OBJ pickup verified by publishing `0x203DBB0`); canonical
-  ROM hash verified before/after; state `slot1-working.ss1`
-  (sha256 D084E8D5ABB91830...) recorded to `focus-state-hash.txt`.
+Run-1 salvage (60 HURT entries, valid registers/stacks even though
+dumps were empty): r1 cleanly splits actors (wolf 0x203d504 x27,
+player 0x203dbb0 x33); chains re-confirm the canonical P-003 path
+(m1 continuation 0x80342eb -> 0x8018907 -> flinch wrapper) and the
+indexed-dispatcher path (0x800aa5f family). Wolf combat object first
+0x180 bytes showed NO word changes at any HURT instant - HP is NOT in
+that window; per-tick dumps from the retry are required.
 
-Post-run plan: grade HP candidates across HIT windows on the
-dynamically tracked actor only (byte/halfword/word), then writer
-provenance (existing capture may already contain it via stack chains;
-else prepare second run only if genuinely required).
+Next human run protocol unchanged: punch #1 deliberately (identity
+capture), then ~3 landed punches spaced 2-3 s, no transitions, then
+ordinal HIT/MISS labels. After data lands: automated candidate grading -> writer provenance -> P-004 closure.
 
 P-003/P-004 contact resolution background. Human-provided combat state validated
 (sha256 `d8d8578d081e6bc4e535160b52fa0182cf2619ae70c93f63f5401b1d1624dcf1`,

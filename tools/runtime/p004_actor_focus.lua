@@ -7,7 +7,7 @@ assert(done_path and #done_path > 0, "marker path not provided")
 local exp_dir = done_path:gsub("[^/\\]+$", "")
 local log_path = exp_dir .. "p004-actor-focus.csv"
 local ptr_path = exp_dir .. "p004-actor-focus-ptr.txt"
-local HORIZON = 14400
+local HORIZON = 108000
 local COALESCE = 25
 local OBJ_WORDS = 128          -- 0x200 bytes per object dump
 local FULL_EVERY = 60

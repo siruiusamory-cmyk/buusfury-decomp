@@ -1,19 +1,20 @@
 # LOG1 Remake - Verified Project State
 
-This file records current verified facts. Permanent rules live in
-[`../DEVELOPMENT.md`](../DEVELOPMENT.md). Detailed evidence and provenance live in
-[`reverse-engineering.md`](reverse-engineering.md) and
-[`consumer-analysis.md`](consumer-analysis.md).
+This file records current verified facts. Permanent rules live in [`../DEVELOPMENT.md`](../DEVELOPMENT.md).
+Detailed evidence lives in [`reverse-engineering.md`](reverse-engineering.md) and [`consumer-analysis.md`](consumer-analysis.md).
 
 ## Current Baseline
 
+- VERTICAL-001 starting baseline: `478db31967ae0f0ba2d05f3bb51aab521e76d20c` (`docs: record blocked BSim calibration`).
 - ROM-011 research baseline: `0d0c0e39c058b7cfba9abcdc30d95849c6310e10` (`feat: capture live spatial-object read`).
 - TOOL-001 starting repository baseline: `931794cb5f03caa58431281c3f703a60b3ff5dba` (`feat: capture spatial transition action`).
-- Latest completed and committed research ticket: ROM-012.
+- Latest completed research ticket: P-006C (accepted attack and AI resume anchors). **P-006 is RESOLVED**; its deferred unknowns are listed below and do not block closure. No ticket is in progress; P-007 is **NOT STARTED**.
 - Latest completed tooling ticket: TOOL-001. TOOL-002 is **BLOCKED - independent related binary unavailable**; BSim remains **UNCALIBRATED** and no adoption decision was made.
-- ROM-008 portable baseline: **192 passed, 0 failed, 0 skipped**. Current portable suite after workflow migration: **199 passed, 0 failed, 0 skipped**. Current portable suite after ROM-011: **250 passed, 0 failed, 0 skipped**. Current TOOL-001 portable suite: **293 passed, 0 failed, 0 skipped**.
+- ROM-008 portable baseline: **192 passed, 0 failed, 0 skipped**. Current portable suite after workflow migration: **199 passed, 0 failed, 0 skipped**. Current portable suite after ROM-011: **250 passed, 0 failed, 0 skipped**. Current TOOL-001 portable suite: **293 passed, 0 failed, 0 skipped**. Current VERTICAL-001 portable suite: **280 passed, 0 failed, 0 skipped**. Current P-006B suite: **362 passed, 0 failed, 0 skipped**. Current P-006C suite: **371 passed, 0 failed, 0 skipped**.
 - Persistent the tool workflow migration is installed.
-- ROM-011, ROM-012, TOOL-001, and blocked TOOL-002 are archived under `docs/research/archive/`. `docs/PROJECT_<local-state-name>` contains VERTICAL-001; ROM-013 remains unstarted.
+- ROM-011, ROM-012, TOOL-001, blocked TOOL-002, VERTICAL-001, P-004, P-006,
+  P-006A, and P-006C are archived. `docs/PROJECT_<local-state-name>` is a stop-only
+  placeholder; ROM-013 and P-007 remain unstarted.
 
 ## Verified ROM
 
@@ -94,16 +95,10 @@ Thumb function `0x08009670` receives a selected value, reads words at
 `selected +0x40/+0x44`, and calls `0x08012664`.
 
 `0x08012664` receives manager, count, and pointer-array base; iterates
-descriptors; loads each descriptor's factory pointer; dispatches indirectly;
-and stores returned runtime objects in an IWRAM registry.
-
-One observed runtime tuple included:
-
-- `field_40_raw = 0x00000002`.
-- `field_44_raw = 0x08294960`.
-- manager `0x03002A64`.
-
-This path is not graphics evidence.
+descriptors; loads each descriptor's factory pointer; dispatches indirectly; and
+stores returned runtime objects in an IWRAM registry. One observed runtime tuple
+had `field_40_raw = 0x00000002`, `field_44_raw = 0x08294960`, and manager
+`0x03002A64`. This path is not graphics evidence.
 
 ## Spatial Object Research
 
@@ -120,15 +115,11 @@ ROM-007 and ROM-008 established this factory family:
 | Retained descriptor | object `+0x14` |
 | Callback-like reference | object `+0x0C` |
 
-The factory creates a 24-byte rectangle-aware runtime object. The population
-manager then registers the returned object. Construction paths in the observed
-registry are heterogeneous.
-
-Supported classification:
-
-**STRONGLY SUPPORTED: generic 24-byte rectangle-aware runtime object.**
-
-Not proven: collision, trigger, activation, transition, event, or interaction.
+The factory creates a 24-byte rectangle-aware runtime object, which the
+population manager then registers; construction paths in the observed registry
+are heterogeneous. **STRONGLY SUPPORTED: generic 24-byte rectangle-aware
+runtime object.** Not proven: collision, trigger, activation, transition,
+event, or interaction.
 
 ## Earlier Runtime Results
 
@@ -139,35 +130,10 @@ ended environment-blocked. ROM-010 confirmed its one-launch harness worked but
 the available bounded inputs still scheduled no known post-live query. Detailed
 inputs, negative evidence, and safety records remain in the research documents.
 
-## ROM-011 Result
+## Completed Ticket Results
 
-Stock GDB read watchpoints reduced play below 1 FPS. A separate SDL build from exact mGBA commit `26b7884bc25a5933960f3cdcd98bac1ae14d42e2` now provides a dedicated one-shot CPU EWRAM read-range probe with command-driven control and no UI automation; stock mGBA and the ROM are unchanged.
-The five-second check observed stock 59.890, disarmed 59.129, and armed 59.727 VCOUNT rollovers/second, rejecting sub-1-FPS behavior. Long sampling gaps and Qt-versus-SDL prevent a valid throughput ratio; the corrected human run supplied the qualitative latency check.
-The corrected human run retired discovery breakpoints after native arming; the user reported normal performance. The first exact read was a signed 16-bit load at PC `0x08012748` from live X `0x0203DE7C` offset `+0x04`, inside point-query routine `0x080126D4`. Human context was Goku entering the idle sit-down animation; this does not prove causation.
-ROM-011 result is **C - IDLE/NORMAL PROCESSING READ CAPTURED**. Exact-X consumption at the point-query is **CONFIRMED, Level 3**. Dialogue and the specific region subtype remain **UNRESOLVED**; parser readiness remains **NO** because source-descriptor extent/boundary is still unknown.
-
-## ROM-012 Result
-
-Post-load registry reconstruction on private state SHA-256
-`58228e1dc4ce81c80182242b650e18c0ee3db71f79473a614e5e373de207e0f7`
-validated MapEntry 39, slot `0x03002A68`, X `0x0203DE6C`, descriptor
-`0x08294948`, raw/fetch factory `0x08007675/0x08007674`, and half-open bounds
-`x=[592,601), y=[136,241)`. Query entity `0x0202E4D0` tracked human movement.
-
-The native exact gate captured PC `0x0801277A` reading `X+0x0C` at query point
-`(592,218)`. Receiver `0x0300195C` / dispatch base `0x0804A0AC` invoked
-vtable[2] raw/fetch `0x08007769/0x08007768`, which returned 1, then vtable[1]
-raw/fetch `0x080125E9/0x080125E8`, which executed and reached downstream target
-`0x080075AC`. Human observation, kept separate, was an immediate transition to
-the next area followed by dialogue.
-
-ROM-012 result is **B - EXACT TARGET ACTION CAPTURED**. Exact containment,
-filter acceptance, and action execution are **CONFIRMED, Level 3**. A
-transition-initiating spatial action is **STRONGLY SUPPORTED, Level 4** by the
-controlled executable trace plus immediate observation. Dialogue gating,
-collision semantics, and a final subtype remain **UNRESOLVED**. Parser
-readiness remains **NO** because source-descriptor extent/boundary and a
-complete lossless field map are still unestablished.
+Result records for ROM-011, ROM-012, and VERTICAL-001 live in
+[`PROJECT_<local-state-name>`](PROJECT_<local-state-name>).
 
 ## Ghidra Static-Analysis Calibration
 
@@ -175,25 +141,77 @@ TOOL-001 calibrated Ghidra 12.1.2, Temurin 21.0.11+10, and `pudii/gba-ghidra-loa
 
 ## Unresolved Questions
 
-- Which higher-level caller invokes point-query `0x080126D4` during the
-  ROM-011 idle/normal-processing path?
-- What is the complete call tree after ROM-012 action target `0x080125E8`,
-  which did not return within the bounded 512-step trace?
-- Is the `0x08007675` source descriptor structurally bounded well enough for a
-  future minimal read-only parser?
+- Which higher-level caller invokes point-query `0x080126D4` during the ROM-011 idle/normal-processing path?
+- What is the complete call tree after ROM-012 action target `0x080125E8`, which did not return within 512 steps?
+- Is the `0x08007675` source descriptor bounded well enough for a future lossless read-only parser?
 - Which semantic subtype, if any, is justified for this rectangle-aware family?
+- Which additional object or mechanism causes the remaining VERTICAL-001 transition after descriptor `0x08294948` is empty?
+
+## P-006A/P-006B Corrected Damage and Reaction
+
+- P-006A confirmed signed current HP at `target+0x28C`, incoming damage at
+  `record+0x18`, writer `0x0800FA50`, and death threshold `HP <= 0`.
+- `0x080101C6` and `target+0x04` are position-derived, not HP. All HP, healing,
+  damage, and re-hit claims derived from them are **SUPERSEDED**.
+- Controlled punch run `20260827-154856-842990b7` entered reaction node
+  `0x08706BA8` at tick 320 and wrote HP at tick 323, so HURT preceded damage by
+  3 ticks. Controller state is rooted at `target+0x238`.
+- Writer-only mash run `20260827-211421-4e307ab8` recorded post-ki HP writes at
+  ticks 673, 976, and 992, giving intervals of 303 and 16 ticks; the latter
+  ended in the death path. Neither establishes an immunity timer.
+
+## P-006C Behavior Controller, Reaction and Attack Timing
+
+State-machine primitives: `0x0800AA9C` push (guards `depth < 5`), `0x0800AA4A`
+replace, `0x0800AAD8` pop, `0x0800AB0C` update, each taking a controller pointer
+and selector index. A controller holds depth at `+0x04` and 8-byte
+`{node, table_slot}` entries at `+0x08`; **state-table base is `0x0870F514`**,
+stride 8. Nodes: `{entry, update, exit, param, child, sibling}`.
+
+**Correction:** `0x0801920F` is a generic clip-entry handler shared by ~170
+selectors, so executing `0x0801920E`/`0x0801920F` alone does **not** establish
+HURT semantics; any earlier claim resting on that PC alone is superseded. Wolf
+selector 436 has primary node `0x08706BC4` with reaction node `0x08706BA8` as
+its child; wolf selectors are contiguous 434-439. Reading `wolf+0x238` per frame
+reproduced these selectors with zero stops, confirming the table at **Level 3**.
+
+**Correction:** the player has **no** behavior controller. A structural probe
+over every 4-byte offset of each actor matched only `wolf+0x238`. Any
+interpretation assuming a player controller is superseded.
+
+Run `20260827-231643-47eeb42a` measured landed hits without breakpoints. A hit
+pushes a reaction state (depth 1 to 2), coinciding with authoritative HP
+decreases and not observed on unrelated events: push 708/pop 732 and push
+1241/pop 1265, both **24 ticks**, the canonical low-perturbation duration. The
+earlier 28-tick observation is retained as historical evidence from the
+three-breakpoint run, and is **superseded and explained** by that
+instrumentation's pacing perturbation.
+
+`T_ATTACK_ACCEPT` is player object `+0x04C`, the current animation-clip pointer.
+`0x0851C618` is idle; `0x0851C680`, `0x0851C6C0`, and `0x0851C6A0` are punch
+clips observed only with A held. An accepted punch is idle to punch clip with A
+held; `+0x050` and `+0x014` move with it. Run `20260828-004513-27dae1f8`
+recorded 154 accepted punches: minimum interval **20 ticks**, median 26, against
+330 raw A edges at minimum 8. Raw A assertion is therefore not equivalent to an
+accepted punch, and 20 ticks is the minimum observed acceptance cadence for this
+capture and configuration. The three clips occurred at roughly similar counts;
+combo semantics must **not** be inferred from that observation alone.
+
+Rejected anchors, non-authoritative unless future evidence explicitly
+rehabilitates them: `0x080342A8`, `0x08034298`, `0x080342AE`, `0x08029FFE`, and
+the attack-object `+0x08` phase watch.
+
+### P-006 final status: RESOLVED
+
+Implementation-useful results: accepted-punch anchor is the `player+0x04C` clip
+transition, minimum cadence 20 ticks and median 26, with raw input faster and
+not equivalent; a landed damaging physical hit pushes a reaction state of 24
+ticks. From P-006A: current HP `target+0x28C` signed 32-bit, incoming damage
+`record+0x18`, authoritative writer `0x0800FA50`, death `HP <= 0`.
+
+Open, not blocking closure: separate invulnerability **UNKNOWN**; reaction/HURT
+exit condition **UNKNOWN**; authoritative world position **DEFERRED**; knockback
+kinematics **DEFERRED**; possible three-clip combo cycle **OBSERVED PATTERN /
+DEFERRED**.
 
 ## Upstream Pins
-
-These verified pins mirror `../upstreams.lock`; that lock file remains the
-operational source of truth.
-
-| Upstream | Commit |
-|---|---|
-| DragonByteZ | `b2691209fa873cc0c1d7aa9cdea7c1da4430afe4` |
-| Legacy | `d22a556cd33dee56513d5b606b6ae8065ccc5752` |
-| buusfury | `cc53d0cd2d1c167e749419187e2d92017ac07468` |
-| gbarecomp | `6571cb39858af70d691914132f81b01a4558d815` |
-| Legacy of Goku recomp | `fbe502a3d44256402262cd3f5baeb072a7235932` |
-| Legacy of Goku II recomp | `add98b5d76fb2b822be870f29fa27b22c9a95631` |
-| Buu's Fury recomp | `453a913a9f67916b9b358776da1c1229b09a6c80` |

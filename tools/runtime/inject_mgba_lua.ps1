@@ -91,6 +91,39 @@ $allowedLua = @(
     [System.IO.Path]::GetFullPath(
         (Join-Path $workspaceRoot 'tools\runtime\p004_aggro.lua')
     )
+    [System.IO.Path]::GetFullPath(
+        (Join-Path $workspaceRoot 'tools\runtime\p004_actor_enum.lua')
+    )
+    [System.IO.Path]::GetFullPath(
+        (Join-Path $workspaceRoot 'tools\runtime\p006_reaction_trace.lua')
+    )
+    [System.IO.Path]::GetFullPath(
+        (Join-Path $workspaceRoot 'tools\runtime\p006c_anchor_trace.lua')
+    )
+    [System.IO.Path]::GetFullPath(
+        (Join-Path $workspaceRoot 'tools\runtime\p006c_dev_breakpoint_probe.lua')
+    )
+    [System.IO.Path]::GetFullPath(
+        (Join-Path $workspaceRoot 'tools\runtime\p006c_ctrl_stack.lua')
+    )
+    [System.IO.Path]::GetFullPath(
+        (Join-Path $workspaceRoot 'tools\runtime\p006c_scan_timing_probe.lua')
+    )
+    [System.IO.Path]::GetFullPath(
+        (Join-Path $workspaceRoot 'tools\runtime\p006c_ctrl_probe.lua')
+    )
+    [System.IO.Path]::GetFullPath(
+        (Join-Path $workspaceRoot 'tools\runtime\p006c_pool_probe.lua')
+    )
+    [System.IO.Path]::GetFullPath(
+        (Join-Path $workspaceRoot 'tools\runtime\p006c_punch_field_probe.lua')
+    )
+    [System.IO.Path]::GetFullPath(
+        (Join-Path $workspaceRoot 'tools\runtime\p006_ewram_hp_scan.lua')
+    )
+    [System.IO.Path]::GetFullPath(
+        (Join-Path $workspaceRoot 'tools\runtime\p006_hit_bracket_scan.lua')
+    )
 )
 $resolvedLua = [System.IO.Path]::GetFullPath($LuaPath)
 if ($resolvedLua -notin $allowedLua) {
@@ -228,9 +261,31 @@ $edits = $scripting.FindAll(
         [System.Windows.Automation.ControlType]::Edit
     ))
 )
+# Identify the prompt by control identity, not by IsReadOnly. The Scripting
+# window exposes three Edit elements - the log pane, the script buffer, and the
+# prompt - and Qt does not always report IsReadOnly for them. When that property
+# comes back empty, "-not IsReadOnly" is true for the log pane, which is the
+# first descendant, so SetValue then fails with "Value is read-only."
 $prompt = $null
 foreach ($edit in $edits) {
-    if (-not $edit.Current.IsReadOnly) { $prompt = $edit; break }
+    $automationId = $edit.Current.AutomationId
+    if ($automationId -and $automationId.EndsWith('.prompt')) {
+        $prompt = $edit
+        break
+    }
+}
+if (-not $prompt) {
+    foreach ($edit in $edits) {
+        if ($edit.Current.ClassName -eq 'QGBA::HistoryLineEdit') {
+            $prompt = $edit
+            break
+        }
+    }
+}
+if (-not $prompt) {
+    foreach ($edit in $edits) {
+        if ($edit.Current.IsReadOnly -eq $false) { $prompt = $edit; break }
+    }
 }
 if (-not $prompt) { throw 'Scripting prompt not found' }
 $command = ''
@@ -297,6 +352,3 @@ try {
         }
     }
 }
-
-
-

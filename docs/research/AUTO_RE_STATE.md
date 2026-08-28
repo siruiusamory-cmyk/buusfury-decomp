@@ -116,9 +116,11 @@ connection is intermittent (enemy AI wanders). Next:
 | P-001 | player-entity | Which runtime entity is the player and where is its update root/dispatcher? | Root anchor for all player/combat research | ROM-012: query entity `0x0202E4D0` tracked human movement; `candidate_caller_08006E3C` frame handler queries at a tracked entity; map loader spawns via 0x18-stride table + `FUN_080109aa/080104f2` | Static: decompile loader spawn path (`FUN_0801713c`, `FUN_080109aa`) to find the player-class factory + its update dispatch entry; then find per-frame update root | RESOLVED |
 | P-002 | player-movement | How does directional input become movement (speed, normalization, facing, inhibition)? | Core behavioral spec for remake | Runtime displacement experiment (see Recent Discoveries) completed the spec | RESOLVED via experiment; static input-consumer function remains a future structural question | RESOLVED |
 | P-003 | melee | Where does basic melee begin and what is its state progression (startup/active/recovery/hitbox query)? | Core combat spec | none yet | From player update root, follow attack-button branch to melee state machine | BLOCKED by P-001 |
-| P-004 | damage | One complete damage event: hit detection -> damage calc -> HP mutation -> reaction/knockback/i-frames -> death | Closes the combat loop end-to-end | none yet | Follow melee hitbox accept into enemy entity HP mutation | BLOCKED by P-003 |
-| P-005 | enemy-ai | One simple enemy's update loop (idle/detect/approach/attack/receive-damage/death) | Enemy behavioral spec | `candidate_caller_08021CC0` periodic dual-point sensor candidate | From entity spawn table, pick simplest enemy class and trace update | BLOCKED by P-001 |
-| P-006 | differential | Compare recovered Buu player/combat functions against LoGII/LoG1 material (manual structural comparison only) | Answers what combat feel is shared vs changed | recomp repos lack generated code; Legacy repo has LoG1 tooling/VM data | After P-002/P-003 produce constants/state machines, compare shapes/constants with Legacy repo data | DEFERRED until P-003 |
+| P-004 | damage | One complete damage event: hit detection -> damage calc -> HP mutation -> reaction/knockback/i-frames -> death | Closes the combat loop end-to-end | P-006A confirmed HP `+0x28C`, damage record `+0x18`, and writer `0x0800FA50`; full event chain remains incomplete | Resume only from the corrected anchor | PARTIAL / BLOCKED |
+| P-005 | damage | Physical Damage Semantics and Wolf Hit Reaction | One normal player melee hit through damage and reaction timing | Former timing evidence used a positional field; P-006A corrected the damage anchor | Repeat semantics from writer `0x0800FA50` | PARTIAL / READY |
+| P-006 | melee-reaction | Measure hit reaction, knockback, recovery, and re-hit eligibility from a confirmed damage event | Core combat reaction spec | P-006B confirmed HURT-to-damage, HURT exit timing, and authoritative writer intervals | Resolve accepted attack start/gating and exact state/AI-resume boundaries; do not begin P-007 | PARTIAL / TIMING BLOCKERS |
+| P-006A | damage-anchor | Correct the invalidated wolf HP and writer attribution | Unblocks P-006 reaction timing | HP `+0x28C`, damage record `+0x18`, writer `0x0800FA50`, death threshold confirmed | Complete | COMPLETE |
+| P-007 | differential | Compare recovered Buu player/combat functions against LoGII/LoG1 material (manual structural comparison only) | Answers what combat feel is shared vs changed | P-006 reaction timing remains incomplete | Defer until P-006 reaction work completes | DEFERRED until P-006 |
 | AUTO-007 | script-vm | How does the Buu bytecode VM relate to Legacy repo's 145-opcode LoG1 VM inventory? | Dialogue/quest scripting is a whole engine subsystem | `extern/Legacy/OpCodes.csv`, `DBZKit/Legacy/Games/BYTECODE_VM.cs` (LoG1 lineage, INFERRED transferability) | Locate Buu bytecode consumers from MapEntry script pointers; compare opcode dispatch shape | DEFERRED |
 | AUTO-008 | bsim | Calibrate BSim against an independent related binary | TOOL-002 closed BLOCKED: no independent related binary locally | TOOL-002 archive | Needs a new local binary (e.g., another-region dump) before any work | BLOCKED |
 | AUTO-009 | external-knowledge | Data Crystal / community addresses for Buu's Fury or LoG1/LoGII worth validating? | Cheap candidate anchors if any exist | None imported so far (deliberate) | Web search; record EXTERNAL CLAIM then validate against canonical profile before use | DEFERRED |
@@ -1690,3 +1692,455 @@ taxonomy (AUTO-005 vtable dump remains READY but demoted below P-series).
   (decremented across fights). NEXT SESSION: fix reg decode (use
   decode_register_payload), rerun dual probe, capture HP writer PC +
   damage operand = P-004 closure.
+
+- **CORRECTION (2026-08-26): +0x6c/+0x70 are NOT HP fields.**
+  Prior handoff summary identified wolf combat-object `+0x6c` as an HP
+  field (192->115 monotonic decrement across 17 HURT stops). This is
+  RETRACTED. Static and runtime evidence proves `+0x6c` and `+0x70` are
+  screen-space position deltas computed by the periodic writer at
+  `0x08010250`:
+
+  Static proof (`0x0801023e..0x08010250`):
+  ```
+  0801023e: adds     r0, r4, #0x6c       ; r0 = entity + 0x6c
+  08010240: subs     r2, r2, r3          ; delta_x = entity_x - camera_x
+  08010242: ldr      r3, [sp, #0x20]     ; camera_y
+  08010244: ldr      r1, [r1, #4]        ; camera_y_component
+  08010248: subs     r1, r3, r1          ; delta_y
+  0801024c: adds     r1, r2, #0          ; r1 = delta_x
+  0801024e: ldr      r2, [sp, #0x10]     ; r2 = delta_y
+  08010250: stm      r0!, {r1, r2}       ; store delta_x to +0x6c, delta_y to +0x70
+  ```
+  STM writes r1 (delta_x) to `[entity+0x6c]` and r2 (delta_y) to
+  `[entity+0x70]`. These are recomputed every frame from entity world
+  position minus camera position.
+
+  Runtime confirmation:
+  - Z2 watchpoint on `0x0203d570` (+0x6c) fires at PC `0x08010252`
+    (instruction after the STM), value = 0xc0, with the same chain
+    (`8715ed8`) at every stop, a presentation-periodic writer, not a
+    damage writer.
+  - Conditional Z2 capture (value-change filter) showed +0x6c decrementing
+    by 1/frame continuously, consistent with wolf walking left on screen,
+    not HP damage.
+  - Field probe (Z0+Z2 combined) showed +0x6c changing by -19, -14, -7
+    between HURT entries, consistent with screen-position jumps during
+    movement, not discrete damage events.
+
+  Same-object dump audit confirms:
+  - 17 wolf records (addr `0x0203d504`) and 17 player records
+    (`0x0203dbb0`) at fixed addresses, one per HURT stop.
+  - Wolf `+0x6c` values: screen X positions as wolf walks left.
+  - Wolf `+0x70` values: screen Y positions.
+  - Wolf `+0x0004` values: 228 constant across two-wolf capture (wolf
+    wasn't being hit in that session). Single-wolf capture showed 35
+    decrementing to 34, THIS IS THE HP FIELD.
+
+  IMPLICATION: HP IS in the 0x180-byte combat object at `+0x0004` (u16).
+  The two-wolf capture showed constant 228 because the breakpoint fired
+  on wolf-attack events (wolf hitting player), not player-attack events
+  (player hitting wolf). Single-wolf capture with write watchpoint
+  confirmed HP decrement at this offset.
+
+## P-004 Closure (2026-08-26, corrected)
+
+Wolf HP located in combat object at `wolf_obj + 0x0004` (u16).
+
+**HP field**: `wolf_obj + 0x0004` (u16)
+- Value copied from monster stat block (`+0x0036`), which gets it from
+  ROM entities (`gWolfAnimSet_base_804c52c + 0x42`)
+- HP decrements on each hit (confirmed via write watchpoint)
+- Initial HP = 35 (single-wolf capture)
+- HP write at `0x0800aba8`: `add r0,r0,#0x1f00; strh r3,[r0,#0x34]`
+  where r0 = `wolf_obj - 0x1F0`
+
+**HP initialization chain**:
+```
+ROM entities → monster stat block (+0x0036) → combat obj (+0x0004)
+  str r1,[r6,#0x50] at 0x0800aebc (stat_block → combat_obj+0x50)
+  str r1,[r1,#0x42] at 0x080190de (stat_block → combat_obj+0x42)
+```
+
+**Secondary HP mirror**: `wolf_obj + 0x3e`, written at
+`m4_phase1_enter_s20_or_s30` with same initial value
+
+**Retracted claims**:
+- +0x6C/+0x70 = screen-space position deltas (NOT HP)
+- `0x0203C934 + 0x0118` = player HP (NOT wolf HP, confirmed by
+  call-path analysis: stops 2,4,6,7 are wolf-attack chain)
+
+**Evidence level**: CONFIRMED (write watchpoint on wolf_obj+0x04,
+HP decrement observed, writer PC identified)
+
+## P-004/P-005 Correction (2026-08-27, supersedes closure above)
+
+- `CONFIRMED`: `+0x04` is not HP. Across 2,060 per-frame samples from three
+  fresh captures, `u32(target+0x04) == floor(u32(target+0x1A4)/256) + 4`
+  with zero mismatches, including no-input movement.
+- `CONFIRMED` static role: `0x080101C6` is inside spatial-status function
+  `cand_slot3_0801003A`, not combat. It converts `+0x1A4` fixed-point world Y
+  to integer pixels, adds half of byte `+0x19D`, and stores the body-center/
+  anchor at `+0x04`. The same function forms body/map bounds and derives
+  camera-relative coordinates. See `build/ghidra/reports/p2-slot-triage.txt`
+  lines 890-893, 1080-1106, and 1222-1233.
+- `RETRACTED`: `+0x04` as u16/u32 HP; `0x080101C6` as an HP writer; 1 HP
+  damage; autonomous healing; and all re-hit intervals based on this field.
+  The old value 35 and newer values 228..233 were position-derived.
+- `RETRACTED`: `0x0800ABA8` as an STRH writer. Canonical Thumb decode has a
+  `bl 0x0803DC96` beginning at `0x0800ABA6`; `0x0800ABA8` is inside that BL
+  encoding, and the next instruction at `0x0800ABAA` is `ldrh`, not a store.
+- `RETRACTED`: classifying the `0x0804C484` object as the wolf combat/HP
+  object. It is retained only as a moving HURT-path target of unresolved type.
+- `REJECTED`: `+0x74` as a fallback HP candidate; prior evidence identifies it
+  as a graphics/frame pointer slot (`AUTO_RE_<local-state-name>` lines 1081-1095 and
+  1128-1142 before this insertion).
+- True wolf entity, HP field, and damage mutation are `UNKNOWN`. The strongest
+  bounded next locus is hit-phase function `0x080342AE..0x08034305`, which
+  passes the target through callbacks at `0x080342D8` and `0x080342E6` after a
+  nonzero hit query (`build/ghidra/reports/p3-49df0.txt` lines 44-69). This is
+  a candidate capture boundary, not a damage or HP claim.
+
+## P-006 Damage-Anchor Search (2026-08-27)
+
+Human observation establishes that the preloaded ki blast in
+`single-wolf.ss1` deals 37 damage and that frames 5 and 60 intentionally
+bracket its hit. The Lua-only full-EWRAM scan in run
+`20260827-104049-25bad19b` reported `EXACT16_TOTAL,0` and
+`EXACT32_TOTAL,0`; therefore no aligned u16/u32 EWRAM value had a net decrease
+of exactly 37 across that broad interval. This is a clean negative for those
+representations and interval only.
+
+The tighter tracked `p006_hit_bracket_scan.lua` dynamically rediscovers the
+single `0x0804C484` target on every load, monitors its `+0x1D4` event marker,
+and preserves full EWRAM/IWRAM snapshots for two frames before, the event
+frame, and two frames after. Runs `20260827-110937-767e2653`,
+`20260827-111207-7f191534`, and `20260827-111608-dd69bad4` all observed the
+same marker transition at tick 32. All used ROM SHA-256
+`940ad5f01db4465b8877dfe739510cbf34f4ea3d390f3df13519808bc36f059e`
+and source-state SHA-256
+`c7c97aa7eb673f6260f08e9a9b315d8561f3ebab2764266f7aa05b36cb2bd6a2`.
+
+The five-frame run found no aligned or unaligned u16/u32 value in EWRAM or
+IWRAM that decreased by exactly 37 on the marker-transition frame. Four EWRAM
+bytes did: `0x0200049C` 53->16, `0x02000507` 38->1,
+`0x0203C876` 37->0, and `0x0203C91E` 37->0. Every surrounding neighborhood
+was simultaneously rewritten across many adjacent bytes, so none is an
+isolated stable-field mutation. One IWRAM byte also decreased by 37, but its
+containing word changed again on the next frame. These coincidences are not
+adequate HP candidates. The negative does not exclude encoding, indirection,
+a mutation outside the sampled event boundary, or a non-literal damage update.
+
+Bounded static decoding of the observed m1 path found:
+
+- `0x080342D8` resolves through the observed owner table to slot 0 method
+  `0x0804E500`, a `bx lr` no-op;
+- `0x080342E6` resolves through owner slot 4 to `0x080188F4`, then target
+  vtable `+0x68`, state selector `0x0800AA4A`, and HURT composite
+  `0x08706B7C` / constructor `0x0801920E`;
+- no damage/stat store occurs in those bounded wrappers;
+- `0x08039182` installs table `0x0804D514`, performs cleanup/list removal,
+  and optionally frees based on a caller flag. It neither reads nor tests an
+  HP candidate and is reached only through runtime-relative slot-0 dispatch.
+
+The authoritative HP mutation therefore remains `UNKNOWN`. The minimum
+resolving evidence is an execution breakpoint at `0x08039182` during a
+human-confirmed enemy death, recording LR and a bounded stack walk, followed
+by static decoding of the concrete continuation. That is a corrective
+damage-anchor ticket, not P-007.
+
+## P-006A Corrective Damage Anchor (2026-08-27)
+
+The `0x08039182` candidate produced zero stops during a human-confirmed wolf
+death and is rejected for this target family. The observed `0x0804C484`
+relative table instead resolves slot 0 to `0x0800F76E`. A death run stopped at
+that method with target `0x0203D504`; its LR `0x0804F54E` identifies generic
+slot-1 wrapper `0x0804F53C`, which forwards to target slot 0 with free flag 1.
+
+The final complete run `20260827-133446-e142dd9e` captured the concrete
+upstream method at `0x08018950`: target `r1=0x0203D504`, LR `0x0800FA78`, and
+stack chain beginning `0x0800FA2B`. Static decode of `0x0800FA2A` is the
+authoritative correction:
+
+- current HP is signed u32 at target `+0x28C`;
+- applied damage is loaded from incoming record `+0x18`;
+- `0x0800FA4E` subtracts damage from current HP;
+- `0x0800FA50` stores the new HP;
+- signed result `> 0` returns the survivor path;
+- result `<= 0` is zeroed, broadcasts event `0x11`, invokes the configured
+  death callback, and reaches the captured removal path.
+
+The retained 0x2A0-byte death dump independently records target `+0x28C = 0`.
+Combined with the maintainer's separate visible-death confirmation, current HP, damage
+operand, writer, and death threshold are **CONFIRMED, Level 4** for this
+observed target family. Earlier full-memory scans missed a literal `-37` on
+their marker-transition frame because that frame was not independently tied
+to this mutation; their bounded negative remains valid.
+
+## P-006B Corrected Melee Reaction Timing (2026-08-27)
+
+Run `20260827-154856-842990b7` is the controlled single-punch evidence. The
+physical reaction node `0x08706BA8` was selected at gameplay tick 320 and the
+authoritative HP writer `0x0800FA50` executed at tick 323. Its load-specific
+target was `0x0203D504`; old/new HP were `0x00022A3C`/`0x000161B2`, incoming
+record was `0x03007D44`, and record `+0x18` was `0x0000C88A`. This was a
+nonlethal survivor result. Therefore physical HURT preceded real damage by
+three gameplay ticks (**CONFIRMED, Level 3**).
+
+The controller is rooted at target `+0x238`. Physical reaction node
+`0x08706BA8` contains raw entry/update/exit pointers
+`0x0801920F`/`0x08018FDB`/`0x08019043` (fetch addresses `0x0801920E`,
+`0x08018FDA`, and `0x08019042`). Its controller depth unwound from 2 to 1 at
+tick 348, supporting `T_HURT_ENTER=320` and `T_HURT_EXIT=348`. A generic
+`0x08706B7C` controller event followed at tick 350, but that node also occurs
+outside ordinary attack behavior. The separate human observation that the wolf
+recovered quickly and began punching was not tick-synchronized. Exact
+`T_AI_RESUME` and HURT-to-AI suppression duration therefore remain **UNKNOWN**.
+
+Writer-only mash run `20260827-211421-4e307ab8` preserved full-speed play and
+recorded post-ki authoritative decrements at ticks 673, 976, and 992. The
+consecutive observed writer intervals were 303 ticks (673 to 976) and 16 ticks
+(976 to 992). The latter hit crossed HP below zero and is retained only as a
+timing observation because death behavior is out of scope. Neither interval
+establishes an immunity timer or general minimum eligibility window. The user's
+visible report that the wolf died is separate corroboration, not a death-path
+investigation.
+
+Lua samples at ticks 969 and 984 are raw A-held input among many such samples;
+their proximity to damage writes cannot establish attack acceptance or cadence.
+Breakpoint `0x080342AE` was rejected for `T_ATTACK` because runtime showed it
+serves broad animation/collision objects rather than uniquely accepted player
+punches. Historical presentation evidence at 22 ticks was not a minimum test.
+
+Reaction-family entries without a writer in the noisy mash capture could not
+be attributed strongly enough to accepted physical punches. They therefore do
+not prove contact gating or post-hit damage immunity. Separate invulnerability,
+the exact executable `T_ATTACK`, minimum accepted-punch cadence, exact AI resume,
+HURT-to-AI suppression duration, HURT exit condition, normal pre/post handler
+identity, and accepted-punch gating classifications remain **UNKNOWN**. Explicit
+knockback kinematics are deferred under the ticket's bounded rule. P-006B
+stops **PARTIAL** at these precise timing blockers and does not begin P-007.
+
+## P-006C Behavior-Controller Decode (2026-08-27)
+
+### Controller primitives and the state table
+
+Capstone decode of the canonical ROM resolved the actor state machine's public
+primitives. Each takes `r0` = controller pointer and `r1` = selector index:
+
+| Address | Role |
+|---|---|
+| `0x0800AA9C` | PUSH a state, guarded by `depth < 5` |
+| `0x0800AA4A` | REPLACE the top state |
+| `0x0800AAD8` | POP the top state |
+| `0x0800AB0C` | update the current state |
+
+The controller structure is:
+
+```text
+ctrl+0x00   context/actor pointer
+ctrl+0x04   stack depth
+ctrl+0x08 + 8*i   entry i = { node_ptr, table_slot }
+ctrl+0x30   pending-notify count, ring at ctrl+0x34
+```
+
+Both `LDR` sites (`0x0800AA50` and `0x0800AAA8`) resolve through the literal
+pool at `0x0800AB50` to **state-table base `0x0870F514`**, stride 8, entry
+`{primary_node, secondary_node}`. A selector therefore addresses
+`0x0870F514 + selector * 8`.
+
+Six wrappers expose the primitives per controller offset. They have zero `BL`
+callers and are dispatched indirectly:
+
+| Wrapper | Controller offset | Operation |
+|---|---|---|
+| `0x0804EC8C` | `+0x238` | push |
+| `0x0804ECA0` | `+0x228` | push |
+| `0x0804ECB0` | `+0x238` | replace |
+| `0x0804ECC4` | `+0x228` | replace |
+| `0x0804ECD4` | `+0x238` | pop |
+| `0x0804ECE8` | `+0x228` | pop |
+
+A behavior node is 24 bytes: `{entry_fn, update_fn, exit_fn, param, child,
+sibling}`.
+
+### Correction: `0x0801920F` is a generic handler
+
+`0x0801920F` is **not** HURT-specific. It appears as the entry handler of about
+170 selectors spanning every actor family in the table. Breakpoint
+`0x0801920E` therefore cannot establish HURT identity by itself; identity comes
+from the node pointer and table slot.
+
+Wolf selector `0x1B4` (436) has primary node `0x08706BC4`, whose handlers are
+`{0x08018F91, 0x0801900B, 0x08019043}`. The previously named reaction node
+`0x08706BA8` is that node's **child** at `+0x10`, carrying the clip handlers
+`{0x0801920F, 0x08018FDB, 0x08019043}` and param 3.
+
+The wolf's selectors are contiguous:
+
+| Selector | Table slot |
+|---:|---|
+| 434 | `0x087102A4` |
+| 435 | `0x087102AC` |
+| 436 | `0x087102B4` |
+| 437 | `0x087102BC` |
+| 438 | `0x087102C4` |
+| 439 | `0x087102CC` |
+
+Selector 2 (`0x0870F524`) is a shared default seen beneath wolf states.
+
+### Runtime confirmation without breakpoints
+
+Runs `20260827-230924-163182ab` and `20260827-231155-d5b7df8d` used the tracked
+launcher in Lua-only mode on stable mGBA 0.10.5, with zero executable stops and
+no effect on gameplay pacing. Reading `wolf+0x238` per frame produced live depth
+and `{node, slot}` entries whose slots decode exactly to the statically resolved
+selectors 434-439 and the default 2. The state table at `0x0870F514` is
+therefore **CONFIRMED, Level 3**.
+
+### Negative result: the player has no behavior controller
+
+A structural probe scanned every 4-byte offset across the first `0x400` bytes of
+each actor on twelve sampled ticks, accepting any offset whose depth was in
+`[1,5]` and whose top entry pointed into the state table. Only `wolf+0x238`
+matched, on all twelve samples. The player object, taken from the documented
+slot `0x03001C34`, matched at **no** offset, and `wolf+0x228` did not match
+either despite a wrapper existing for that offset.
+
+The accepted normal-punch anchor consequently cannot come from this controller
+system and must be sought on the attack-object path of the P-003 chain.
+
+### Attack-object constructor located (P-006C, 2026-08-27)
+
+The P-003 progress-10 conclusion that the aligned word `0x08049DF0` at
+`0x0802A008` is "code, not a literal" and that the static constructor hunt was a
+dead end is **corrected**. `0x0802A008` is a literal pool word that a
+disassembler renders as an instruction, which is why it was dismissed.
+
+Function `0x08029FE6` is the attack-object constructor:
+
+```text
+08029FF2  movs r0, #0xC       ; 12-byte allocation
+08029FF4  bl 0x0803D5B8       ; heap allocator
+08029FF8  cmp r0, #0
+08029FFA  beq 0x0802A002      ; skip on allocation failure
+08029FFC  ldr r1, [pc, #8]    ; pool 0x0802A008 = 0x08049DF0
+08029FFE  stm r0!, {r1, r4}   ; vtable at +0x00, owner at +0x04
+```
+
+This matches the confirmed attack-object layout `{+0x00 vtable, +0x04 owner,
++0x08 phase}` exactly. `r4` is loaded at `0x08029FF0` from the result of the
+`0x08046AA4` query at `0x08029FEC`.
+
+The constructor is a **behavior-node handler**, not an ordinary function. It has
+zero `BL` callers ROM-wide and 77 aligned data references as the Thumb pointer
+`0x08029FE7`, spread across `0x086FE11C..0x0870F444` at roughly one per actor
+family. The wolf-cluster node at `0x08706A8C` is
+`{0x0801890B, 0x08018921, 0x08018937, param 0x1B5, ctor 0x08029FE7, ...}`, so
+the constructor occupies node slot `+0x10`.
+
+These nodes are reached by chaining through `+0x18`, not directly from the state
+table's primary and secondary pointers; scanning only the six slots hanging off
+`0x0870F514` entries finds no match, which is why the constructor was missed.
+
+The runtime anchor initially selected for `T_ATTACK_ACCEPT` was `0x08029FFE`
+rather than `0x08029FF4`, because it executes only after a successful
+allocation and carries `r0` = the new attack object.
+
+**That selection was refuted at runtime; see the following subsection.** The
+expectation that `r4` would identify the owning actor was also wrong.
+
+#### Runtime refutation of the constructor as the punch anchor
+
+Run `20260827-233643-45f579b4` armed breakpoint `0x08029FFE` alongside the Lua
+controller observer, so executable stops and input shared one gameplay tick.
+
+The capture recorded 11 stops, all between tick 31 and tick 204. The human's A
+presses ran ticks 278 to 806, with 188 rising edges. **No constructor stop
+occurred during the entire mash window.** The recorded stops are startup and
+idle activity belonging to other actors.
+
+Two families appeared among those stops, and neither is the player:
+
+| Family | LR | Object | Ticks |
+|---|---|---|---|
+| A | `0x0803D604` | always `0x0203DEB4` | 31, 74, 117, 144, 170, 198 |
+| B | `0x08029FF8` | fresh each time | 63, 118, 157, 178, 204 |
+
+Neither family's `r4` matches the observer's player object `0x0203CEB4` or the
+wolf `0x0203D504`, so `r4` at this site is **not** the owning actor. It is the
+result of the `0x08046AA4` query at `0x08029FEC`; do not read it as an owner.
+
+The static decode of `0x08029FE6` stands: it allocates 12 bytes and installs
+vtable `0x08049DF0`. What is refuted is the inference that a player punch
+triggers that construction. Family A reusing the identical address
+`0x0203DEB4` six times suggests the melee attack object may be **pooled and
+recycled** rather than constructed per punch, which would explain the absence
+of construction events during sustained attacking.
+
+`0x08029FFE` is therefore **rejected** as the `T_ATTACK_ACCEPT` anchor, joining
+`0x080342A8`, `0x08034298`, and `0x080342AE`.
+
+### `T_ATTACK_ACCEPT` resolved: the animation-clip pointer (P-006C, 2026-08-28)
+
+Two proposed-structure candidates were refuted at runtime. The attack-object
+constructor `0x08029FFE` never executed across 188 A presses, and no
+attack-object phase field at `+0x08` moved across 290 A presses
+(run `20260828-003928-9c690116`, 90.1 seconds, complete, zero transitions in
+ticks 571 to 3407).
+
+The method that worked stopped proposing a field. `p006c_punch_field_probe.lua`
+snapshots the entire player object from slot `0x03001C34` every frame, records
+every changed word offset, and emits a standalone row for each A rising edge.
+Taking the differential of offsets changing on press ticks against off-press
+ticks lets the data select the anchor.
+
+In run `20260828-004513-27dae1f8` three offsets stood out, changing on 163, 163,
+and 162 of the press frames: `+0x04C`, `+0x050`, and `+0x014`. `+0x04C` holds a
+ROM pointer in the `0x0851Cxxx` family and is an **animation-clip pointer**:
+
+| Value | Meaning |
+|---|---|
+| `0x0851C618` | idle / neutral |
+| `0x0851C680`, `0x0851C6C0`, `0x0851C6A0` | normal punch clips, entered only while A is held |
+| `0x0851C6E0` | a different action, entered on `keys=0x0100`, never on A |
+
+An accepted normal punch is therefore the transition of `+0x04C` from idle into
+a punch clip while A is held. Off-press changes are returns to idle or other
+actions, so that filter is what makes the anchor exact.
+
+Measured over 154 accepted punches in one 90-second window:
+
+| Metric | Accepted punch | Raw A |
+|---|---:|---:|
+| Count | 154 | 330 |
+| Minimum interval | **20 ticks** | 8 ticks |
+| Median interval | 26 ticks | 13 ticks |
+
+The engine accepts roughly every second to third press, confirming the ticket's
+requirement that raw A assertion cannot substitute for acceptance. The three
+punch clips appeared about 50 times each, which suggests a combo cycle; that is
+an observation from clip counts only and was not investigated.
+
+### P-006 closed (2026-08-28)
+
+P-006 is **RESOLVED**. P-006C is archived at `docs/research/archive/P-006C.md`
+and `docs/PROJECT_<local-state-name>` is a stop-only placeholder; P-007 is not started.
+
+Two corrections carried into the permanent state file:
+
+- `0x0801920F` is a generic handler shared by roughly 170 selectors, so
+  executing `0x0801920E` or `0x0801920F` alone does **not** establish HURT
+  semantics. Any earlier claim resting on that program counter alone is
+  superseded. The reaction-state push and pop, correlated with authoritative HP
+  decreases, is the stronger anchor.
+- The player has **no** behavior controller. Any interpretation that assumed one
+  is superseded.
+
+The 28-tick reaction duration from the three-breakpoint run is retained as
+historical evidence and explained by that instrumentation's pacing
+perturbation; the canonical low-perturbation value is 24 ticks.
+
+`docs/PROJECT_<local-state-name>` is bounded at 240 lines by
+`tests/unit/test_workflow_migration.py`. Completed-ticket result records now
+continue in `docs/PROJECT_<local-state-name>`, linked from the primary file, so closing
+a ticket no longer forces older verified records to be compressed away.

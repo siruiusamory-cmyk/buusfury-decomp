@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+import re
 import shutil
 import subprocess
 import sys
@@ -38,7 +39,8 @@ def _run_runner(*arguments: str, cwd: Path) -> subprocess.CompletedProcess[str]:
 def test_required_workflow_files_exist_and_are_bounded():
     expected_limits = {
         "<local-state-name>": (150, 300),
-        "docs/PROJECT_<local-state-name>": (100, 200),
+        "docs/PROJECT_<local-state-name>": (100, 240),
+        "docs/PROJECT_<local-state-name>": (10, 240),
         "docs/PROJECT_<local-state-name>": (10, 800),
         "docs/REVIEW.md": (20, 100),
         "scripts/run-current.ps1": (40, 140),
@@ -50,6 +52,19 @@ def test_required_workflow_files_exist_and_are_bounded():
         assert minimum <= line_count <= maximum, (relative_path, line_count)
 
 
+def test_state_continuation_is_reachable_from_the_primary_state_file():
+    """The primary state file is line-bounded, so completed-ticket records
+    overflow into a continuation. That file must stay linked, or the records
+    become orphaned."""
+    state = (PROJECT_ROOT / "docs/PROJECT_<local-state-name>").read_text(encoding="utf-8")
+    part2 = (PROJECT_ROOT / "docs/PROJECT_<local-state-name>").read_text(
+        encoding="utf-8"
+    )
+
+    assert "PROJECT_<local-state-name>" in state
+    assert "PROJECT_<local-state-name>" in part2
+
+
 def test_context_split_keeps_permanent_state_and_ticket_content_separate():
     agents = (PROJECT_ROOT / "<local-state-name>").read_text(encoding="utf-8")
     state = (PROJECT_ROOT / "docs/PROJECT_<local-state-name>").read_text(encoding="utf-8")
@@ -59,20 +74,27 @@ def test_context_split_keeps_permanent_state_and_ticket_content_separate():
     assert "buus_fury_usa_rev0_01c1707f" not in agents
     assert "ROM-008 portable baseline: **192 passed" in state
     assert "Current portable suite after workflow migration: **199 passed" in state
-    assert "# VERTICAL-001 - First Controlled Playable ROM Modification" in current
+    assert "# P-006C-COMPLETE - No Active Ticket" in current
     assert "Original ROM Safety - Mandatory" not in current
-    assert "TOOL-002 was archived as blocked" in current
-    assert "Do not begin another ticket" in current
+    assert "Do not begin P-007" in current
 
 
-def test_current_ticket_authorizes_only_vertical_001():
+def test_current_ticket_is_a_stop_only_placeholder_after_p006_closure():
+    """P-006 closed with P-006C archived, so PROJECT_<local-state-name> must hold no runnable
+    ticket and must forbid starting the next one without authorization."""
     current = (PROJECT_ROOT / "docs/PROJECT_<local-state-name>").read_text(encoding="utf-8")
+    archive = PROJECT_ROOT / "docs/research/archive/P-006C.md"
 
-    assert "Create a generated, non-canonical Buu's Fury ROM" in current
-    assert "x_max: 601 → 592" in current
-    assert "Do not build a generic patch framework" in current
-    assert "Do not begin another ticket, BSim work" in current
-    assert "VERTICAL-001 must remain uncommitted and unstaged" in current
+    assert archive.is_file()
+    assert "# P-006C - Accepted Attack & AI Resume Anchors" in archive.read_text(
+        encoding="utf-8"
+    )
+    assert "STOP-ONLY PLACEHOLDER" in current
+    assert "No research ticket is in progress" in current
+    # The deferred unknowns must stay visible so they are not silently dropped.
+    assert "separate invulnerability: UNKNOWN" in current
+    assert "knockback kinematics: DEFERRED" in current
+    assert "Do not begin P-007" in current
 
 
 def test_runner_dry_run_works_from_an_unrelated_directory(tmp_path):
@@ -88,7 +110,15 @@ def test_runner_dry_run_works_from_an_unrelated_directory(tmp_path):
     assert f"agents: {PROJECT_ROOT / 'docs/DEVELOPMENT.md'}" in result.stdout
     assert f"state: {PROJECT_ROOT / 'docs' / 'PROJECT_<local-state-name>'}" in result.stdout
     assert f"ticket: {PROJECT_ROOT / 'docs' / 'tickets' / 'PROJECT_<local-state-name>'}" in result.stdout
-    assert "current: VERTICAL-001" in result.stdout
+    # The runner parses the identifier out of the ticket heading, so derive the
+    # expectation the same way rather than pinning one ticket's name here.
+    heading = (
+        (PROJECT_ROOT / "docs/PROJECT_<local-state-name>")
+        .read_text(encoding="utf-8")
+        .splitlines()[0]
+    )
+    ticket_id = re.match(r"^#\s+([A-Z][A-Z0-9]*-\d+[A-Z]?)\b", heading).group(1)
+    assert f"current: {ticket_id}" in result.stdout
     assert "mode: interactive the tool session" in result.stdout
     assert "dry-run: no the tool session launched" in result.stdout
 

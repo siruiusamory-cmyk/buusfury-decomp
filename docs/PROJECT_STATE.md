@@ -8,13 +8,13 @@ Detailed evidence lives in [`reverse-engineering.md`](reverse-engineering.md) an
 - VERTICAL-001 starting baseline: `478db31967ae0f0ba2d05f3bb51aab521e76d20c` (`docs: record blocked BSim calibration`).
 - ROM-011 research baseline: `0d0c0e39c058b7cfba9abcdc30d95849c6310e10` (`feat: capture live spatial-object read`).
 - TOOL-001 starting repository baseline: `931794cb5f03caa58431281c3f703a60b3ff5dba` (`feat: capture spatial transition action`).
-- Latest completed research ticket: P-006C (accepted attack and AI resume anchors). **P-006 is RESOLVED**; its deferred unknowns are listed below and do not block closure. No ticket is in progress; P-007 is **NOT STARTED**.
+- Latest completed research ticket: P-007 (wolf combat AI). **P-006 and P-007 are RESOLVED**; their deferred unknowns are listed below and do not block closure. No ticket is in progress; P-008 is **NOT STARTED**.
 - Latest completed tooling ticket: TOOL-001. TOOL-002 is **BLOCKED - independent related binary unavailable**; BSim remains **UNCALIBRATED** and no adoption decision was made.
 - ROM-008 portable baseline: **192 passed, 0 failed, 0 skipped**. Current portable suite after workflow migration: **199 passed, 0 failed, 0 skipped**. Current portable suite after ROM-011: **250 passed, 0 failed, 0 skipped**. Current TOOL-001 portable suite: **293 passed, 0 failed, 0 skipped**. Current VERTICAL-001 portable suite: **280 passed, 0 failed, 0 skipped**. Current P-006B suite: **362 passed, 0 failed, 0 skipped**. Current P-006C suite: **371 passed, 0 failed, 0 skipped**.
 - Persistent the tool workflow migration is installed.
 - ROM-011, ROM-012, TOOL-001, blocked TOOL-002, VERTICAL-001, P-004, P-006,
-  P-006A, and P-006C are archived. `docs/PROJECT_<local-state-name>` is a stop-only
-  placeholder; ROM-013 and P-007 remain unstarted.
+  P-006A, P-006C, and P-007 are archived. `docs/PROJECT_<local-state-name>` is a
+  stop-only placeholder; ROM-013 and P-008 remain unstarted.
 
 ## Verified ROM
 
@@ -133,7 +133,10 @@ inputs, negative evidence, and safety records remain in the research documents.
 ## Completed Ticket Results
 
 Result records for ROM-011, ROM-012, and VERTICAL-001 live in
-[`PROJECT_<local-state-name>`](PROJECT_<local-state-name>).
+[`PROJECT_<local-state-name>`](PROJECT_<local-state-name>), together with the **P-007 wolf
+combat AI implementation spec**: acquisition at `dist_sq <= 10000` (r 100),
+attack at `dist_sq <= 524` (r ~22.9), a 35-tick attack state, a 36-tick minimum
+observed cadence, and no disengagement.
 
 ## Ghidra Static-Analysis Calibration
 

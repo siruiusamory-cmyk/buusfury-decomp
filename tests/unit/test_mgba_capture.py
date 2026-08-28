@@ -469,3 +469,34 @@ def test_pool_probe_logs_input_independently_of_phase_changes():
     assert 'kind = "NEW"' in probe
     assert "setKeys" not in probe
     assert "emu:write" not in probe
+
+
+def test_p007_observer_tracks_every_wolf_and_flags_absent_actors():
+    """The P-007 acquisition state holds two wolves. An earlier revision
+    asserted exactly one and aborted at init before arming, and it also emitted
+    numeric deltas against a despawned actor, which read as enormous
+    distances."""
+    root = Path(__file__).resolve().parents[2]
+    probe = (root / "tools/runtime/p007_wolf_ai_trace.lua").read_text(
+        encoding="utf-8"
+    )
+    injector = (root / "tools/runtime/inject_mgba_lua.ps1").read_text(
+        encoding="utf-8"
+    )
+
+    # Discovery returns every match and records the real count.
+    assert "discover_targets()" in probe
+    assert "expected exactly one target dispatch match" not in probe
+    assert '"SCAN,0,0000,%08x,count=%d' in probe
+    # An absent actor yields a sentinel, never a zero-derived delta.
+    assert 'local dx, dy = "na", "na"' in probe
+    # Decoded offsets, not guesses.
+    assert "local POS_X = 0x1A0" in probe
+    assert "local POS_Y = 0x1A4" in probe
+    assert "local CTRL = 0x238" in probe
+    assert "local TABLE_LO = 0x0870F514" in probe
+    # Read-only, and no reused runtime address.
+    assert "setKeys" not in probe
+    assert "emu:write" not in probe
+    assert "0x0203D504" not in probe
+    assert "p007_wolf_ai_trace.lua" in injector

@@ -119,6 +119,9 @@ $allowedLua = @(
         (Join-Path $workspaceRoot 'tools\runtime\p006c_punch_field_probe.lua')
     )
     [System.IO.Path]::GetFullPath(
+        (Join-Path $workspaceRoot 'tools\runtime\p007_wolf_ai_trace.lua')
+    )
+    [System.IO.Path]::GetFullPath(
         (Join-Path $workspaceRoot 'tools\runtime\p006_ewram_hp_scan.lua')
     )
     [System.IO.Path]::GetFullPath(

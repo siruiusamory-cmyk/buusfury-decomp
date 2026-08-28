@@ -2144,3 +2144,118 @@ perturbation; the canonical low-perturbation value is 24 ticks.
 `tests/unit/test_workflow_migration.py`. Completed-ticket result records now
 continue in `docs/PROJECT_<local-state-name>`, linked from the primary file, so closing
 a ticket no longer forces older verified records to be compressed away.
+
+## P-007 Wolf Combat AI (2026-08-28)
+
+### Behavior-tree architecture
+
+The actor system is a behavior tree, not a flat state machine. A node is
+`{entry, update, exit, count, child[count]}`; the field at `+0x0C` is an array
+length, proven by builder `0x08018F90`, which allocates `count * 4 + 0x10` bytes
+and iterates `node+0x10[]`. Composite update `0x0801900A` calls every child,
+ANDs their results, and short-circuits on status 2.
+
+### One reusable distance primitive
+
+`0x08029C90` and `0x08029BE0` are instruction-for-instruction equivalent. Both
+call body-bounds getter `0x0800FDFA` for each actor, reduce each rectangle to a
+center via `(lo + hi) >> 1`, then:
+
+```text
+dx = centerA.x - centerB.x
+dy = centerA.y - centerB.y
+r0 = dx*dx + dy*dy          ; muls, muls, adds
+r1 = [instance + 0x0C]      ; threshold copied from the node
+cmp r0, r1
+bgt -> return 0             ; outside
+     -> return 1            ; inside, inclusive
+```
+
+The comparison is a signed `bgt`, so the test is `dist_sq <= threshold`. This is
+one primitive parameterised per node, not a family of separate range checks.
+Constructors `0x08029C64` and `0x08029D14` allocate a 16-byte instance and copy
+the node's `+0x0C` constant into instance `+0x0C`; they differ only in the
+vtable installed, `0x08049C28` versus `0x08049C40`, whose evaluator slot `+0x14`
+selects `0x08029BE0` or `0x08029C90` respectively.
+
+Observed thresholds: idle node `0x08706A38` carries 10000; hub node
+`0x08706B7C` children carry 440, 524, 2500, 4900, 7864, and 8100.
+
+### Confirmed transition graph
+
+```text
+IDLE 434
+  - dist_sq <= 10000           -> HUB 435
+
+HUB 435
+  - dist_sq <= 524             -> ATTACK 437
+  - otherwise                  -> PURSUIT 438 / 439
+
+ATTACK 437
+  - after 35 ticks             -> HUB 435
+
+DISENGAGE: NONE
+```
+
+Pooled transition counts across four captures: `435->438` 144, `437->435` 108,
+`438->435` 73, `438->437` 69, `435->437` 40, `435->436` 32, `436->435` 32,
+`435->439` 6, `439->435` 5, `434->435` 2. Selector 438 is near pursuit and 439
+far pursuit; both return to the hub. Selector 436 is observed and returns to the
+hub, but no condition was established for it.
+
+ATTACK 437 held for exactly 35 ticks in 52 of 52 episodes and returned to 435 in
+all 52. The minimum observed attack-start cadence is 36 ticks, consistent with
+the 35-tick state plus the earliest following start. No executable timer was
+found, and `+0x12` was tested and refuted: all 17 attacks in run
+`20260828-012734-586c44d8` entered at counter 0 yet exited at values from 4 to
+252, so it is an animation clock rather than an attack timer.
+
+### OLD CLAIM / NEW EVIDENCE / RESOLUTION: acquisition radius
+
+**OLD CLAIM.** Hub constant 8100, radius 90, might be the wolf acquisition
+radius.
+
+**NEW EVIDENCE.** Idle selector 434 owns its own distance condition. Its primary
+node's `child[0]` is node `0x08706A38`, entry `0x08029D15`, threshold 10000.
+In run `20260828-101954-32dfd87b` both wolves held idle for over 1000 ticks and
+left it independently:
+
+| Wolf | Last idle | First pursuit |
+|---|---|---|
+| `0x0203D504` | 10709 (r 103.5) | 9602 (r 98.0) |
+| `0x0203DBB0` | 9870 (r 99.3) | 9356 (r 96.7) |
+
+No hub constant lies in either bracket; 10000 lies inside the `0x0203D504`
+bracket. Rows are change-triggered, so no row was sampled at exactly 10000.
+
+**RESOLUTION.** The acquisition-radius interpretation of 8100 is **SUPERSEDED**.
+Acquisition is `dist_sq <= 10000`, radius 100. The static threshold is
+CONFIRMED; the runtime transition is consistent and strongly bracketed. The 8100
+constant remains a real hub band whose role is unmapped.
+
+### OLD CLAIM / NEW EVIDENCE / RESOLUTION: absolute-address identity
+
+**OLD CLAIM.** P-004-era notes associated `0x0203DBB0` with player context.
+
+**NEW EVIDENCE.** In state `wolf-acquire.ss1`, `0x0203DBB0` carries the wolf
+dispatch word `0x0804C484`, holds a behavior controller at `+0x238`, idles in
+selector 434, and executes the full wolf combat loop.
+
+**RESOLUTION.** Absolute EWRAM addresses are session and state dependent and are
+not permanent actor identity. Structural provenance, meaning the dispatch word
+and controller, overrides address-based naming. The older observation stands for
+its own capture and is marked with this caveat rather than rewritten.
+
+### Disengagement
+
+**NONE.** The wolf does not disengage once acquired. Runtime testing observed
+continued engagement out to at least radius 157 in run
+`20260828-100719-3a8e0ca3`, where the wolf remained in selectors 435, 438, and
+439 throughout the retreat and left only because the player changed area.
+Firsthand gameplay experience independently confirms wolves do not drop aggro.
+Classification is CONFIRMED BEHAVIOR; a static mechanism for the absence of a
+disengagement path was not required for closure.
+
+Implementation rule: once IDLE 434 enters the combat loop, do not add a
+distance-based leash. The observed radius 157 is a lower bound on engagement,
+not a leash value, and must not be implemented as one.

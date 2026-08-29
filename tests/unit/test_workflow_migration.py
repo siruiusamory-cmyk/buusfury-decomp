@@ -74,30 +74,46 @@ def test_context_split_keeps_permanent_state_and_ticket_content_separate():
     assert "buus_fury_usa_rev0_01c1707f" not in agents
     assert "ROM-008 portable baseline: **192 passed" in state
     assert "Current portable suite after workflow migration: **199 passed" in state
-    assert "# P-007-COMPLETE - No Active Ticket" in current
+    assert "# P-008-COMPLETE - No Active Ticket" in current
     assert "Original ROM Safety - Mandatory" not in current
-    assert "Do not begin P-008" in current
+    assert "Do not begin P-009" in current
 
 
-def test_current_ticket_is_a_stop_only_placeholder_after_p007_closure():
-    """P-007 closed with its ticket archived, so PROJECT_<local-state-name> must hold no
-    runnable ticket and must forbid starting the next one without
-    authorization."""
+def test_current_ticket_is_a_stop_only_placeholder_after_p008_closure():
+    """P-008 closed with its ticket archived, so PROJECT_<local-state-name> must hold no
+    runnable ticket and must carry its unknowns forward."""
     current = (PROJECT_ROOT / "docs/PROJECT_<local-state-name>").read_text(encoding="utf-8")
-    archive = PROJECT_ROOT / "docs/research/archive/P-007.md"
+    archive = PROJECT_ROOT / "docs/research/archive/P-008.md"
 
     assert archive.is_file()
-    assert "# P-007 - Wolf AI & Attack Behavior" in archive.read_text(
-        encoding="utf-8"
-    )
+    archived = archive.read_text(encoding="utf-8")
+    assert "# P-008 - Normal Melee Variant Selection" in archived
+    # The archive records the outcome, not only the original intent.
+    assert "## RESULT: RESOLVED" in archived
     assert "STOP-ONLY PLACEHOLDER" in current
-    assert "No research ticket is in progress" in current
-    # The deferred unknowns must stay visible so they are not silently dropped.
-    assert "separate invulnerability: UNKNOWN" in current
-    assert "knockback and world position: DEFERRED" in current
-    assert "Do not begin P-008" in current
-    # The remake must not invent a leash the original game does not have.
-    assert "no disengagement exists" in current
+    # Uniform random is behavioral; the mechanism was never decoded.
+    assert "selection mechanism: **UNKNOWN**" in current
+    # The outliers must not drift into being called critical hits.
+    assert "not to be" in current
+    assert "critical-hit mechanism: DEFERRED" in current
+
+
+def test_earlier_ticket_archives_are_retained():
+    """Archiving a later ticket must not drop an earlier one."""
+    archive_dir = PROJECT_ROOT / "docs/research/archive"
+
+    for name in ("P-006C.md", "P-007.md", "P-008.md"):
+        assert (archive_dir / name).is_file(), name
+
+
+def test_agents_requires_external_research_before_behavior_tickets():
+    """The rule is permanent and belongs in docs/DEVELOPMENT.md, not a ticket."""
+    agents = (PROJECT_ROOT / "<local-state-name>").read_text(encoding="utf-8")
+
+    assert "## External-Research-First Rule" in agents
+    assert "player-visible behavior" in agents
+    # Runtime wins when the two disagree, because the binary is ground truth.
+    assert "prefer the runtime observation" in agents
 
 
 def test_p006c_archive_is_retained_after_p007_closure():

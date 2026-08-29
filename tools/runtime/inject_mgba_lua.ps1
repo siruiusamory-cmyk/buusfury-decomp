@@ -122,6 +122,15 @@ $allowedLua = @(
         (Join-Path $workspaceRoot 'tools\runtime\p007_wolf_ai_trace.lua')
     )
     [System.IO.Path]::GetFullPath(
+        (Join-Path $workspaceRoot 'tools\runtime\p008_clip_sequence.lua')
+    )
+    [System.IO.Path]::GetFullPath(
+        (Join-Path $workspaceRoot 'tools\runtime\p008_mash_driver.lua')
+    )
+    [System.IO.Path]::GetFullPath(
+        (Join-Path $workspaceRoot 'tools\runtime\p008_contact_trace.lua')
+    )
+    [System.IO.Path]::GetFullPath(
         (Join-Path $workspaceRoot 'tools\runtime\p006_ewram_hp_scan.lua')
     )
     [System.IO.Path]::GetFullPath(

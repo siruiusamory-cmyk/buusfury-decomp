@@ -500,3 +500,77 @@ def test_p007_observer_tracks_every_wolf_and_flags_absent_actors():
     assert "emu:write" not in probe
     assert "0x0203D504" not in probe
     assert "p007_wolf_ai_trace.lua" in injector
+
+
+def test_p008_clip_observer_stays_read_only():
+    """The clip-sequence observer is evidence-grade and must never drive
+    input, so a scripted run cannot be confused with a human one."""
+    root = Path(__file__).resolve().parents[2]
+    probe = (root / "tools/runtime/p008_clip_sequence.lua").read_text(
+        encoding="utf-8"
+    )
+
+    assert "setKeys" not in probe
+    assert "addKeys" not in probe
+    assert "clearKeys" not in probe
+    assert "emu:write" not in probe
+    assert "local IDLE_CLIP = 0x0851C618" in probe
+    assert "local CLIP = 0x04C" in probe
+
+
+def test_p008_mash_driver_is_separate_and_varies_its_interval():
+    """the maintainer asked that repetitive mashing be scripted. The driver is a
+    deliberately separate tool: a fixed period could alias against an internal
+    timer, so the interval varies and is recorded on every row."""
+    root = Path(__file__).resolve().parents[2]
+    driver = (root / "tools/runtime/p008_mash_driver.lua").read_text(
+        encoding="utf-8"
+    )
+    observer = (root / "tools/runtime/p008_clip_sequence.lua").read_text(
+        encoding="utf-8"
+    )
+    injector = (root / "tools/runtime/inject_mgba_lua.ps1").read_text(
+        encoding="utf-8"
+    )
+
+    # The driver drives input; the observer must not.
+    assert "addKeys" in driver
+    assert "clearKeys" in driver
+    assert "addKeys" not in observer
+    # Interval variation, and the gap recorded per row.
+    assert "local GAPS = {" in driver
+    assert "gap_used" in driver
+    # Input is released on every exit path, so a stopped run cannot leave A held.
+    assert driver.count("emu:clearKeys(KEY_A_MASK)") >= 3
+    # It reads, never writes, emulated memory.
+    assert "emu:write" not in driver
+    assert "p008_mash_driver.lua" in injector
+
+
+def test_p008_contact_observer_latches_any_punch_clip_not_only_from_idle():
+    """An earlier revision only latched active_punch when the previous clip was
+    idle. Real combat goes punch to punch or hurt to punch without passing
+    through idle, so the tracker froze on a non-punch clip and every row
+    carried a stale value."""
+    root = Path(__file__).resolve().parents[2]
+    probe = (root / "tools/runtime/p008_contact_trace.lua").read_text(
+        encoding="utf-8"
+    )
+    injector = (root / "tools/runtime/inject_mgba_lua.ps1").read_text(
+        encoding="utf-8"
+    )
+
+    # Membership is an explicit set, not "anything that is not idle".
+    assert "local PUNCH_CLIPS = {" in probe
+    assert "if PUNCH_CLIPS[clip] then" in probe
+    assert "prev_clip == IDLE_CLIP and clip ~= IDLE_CLIP" not in probe
+    # Two wolves can be struck, so an unattributable tick is flagged.
+    assert "simultaneous" in probe
+    # The human drives this capture, so it must never touch input. Match the
+    # call form rather than the bare word, because the file's own header
+    # comment names these APIs while explaining that it does not use them.
+    assert "emu:setKeys" not in probe
+    assert "emu:addKeys" not in probe
+    assert "emu:clearKeys" not in probe
+    assert "emu:write" not in probe
+    assert "p008_contact_trace.lua" in injector

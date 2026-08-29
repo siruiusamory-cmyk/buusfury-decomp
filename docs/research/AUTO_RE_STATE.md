@@ -2259,3 +2259,193 @@ disengagement path was not required for closure.
 Implementation rule: once IDLE 434 enters the combat loop, do not add a
 distance-based leash. The observed radius 157 is a lower bound on engagement,
 not a leash value, and must not be implemented as one.
+
+## P-008 Normal Melee Variant Selection (2026-08-28)
+
+### External research first
+
+This ticket is the first run under the External-Research-First rule, and it is
+the rule's own justification. Seven angles were opened before any probe.
+
+The decisive source was `<reference-checkout>\docs\REFERENCE.md:518`,
+drawn from the retail instruction booklet read cover to cover, which records
+that the real behavior is "a single repeating attack alternating punch/kick
+animations, so the plan implements one attack, not a combo string". Line 273
+records a critical hit as exactly twice normal melee damage with chance rising
+with STR, and line 494 records that public attack, hitstun, and knockback frame
+data is confirmed absent rather than merely unfound. The IGN control list
+documents `A` as "Melee attack" with no combo notation.
+
+That baseline removed four investigations from the ticket before it opened:
+combo-reset timing, miss-dependent combo advancement, movement-reset combo
+semantics, and finite or looping chain behavior. External research narrowed the
+question; it is not executable proof and is not recorded as such.
+
+### Clip table
+
+The three punch clips are contiguous entries in the character animation table
+based at `0x0851C898`:
+
+| Index | Slot | Clip |
+|---:|---|---|
+| 0 | `0x0851C898` | `0x0851C618` idle |
+| 4 | `0x0851C8A8` | `0x0851C680` punch |
+| 5 | `0x0851C8AC` | `0x0851C6A0` punch |
+| 6 | `0x0851C8B0` | `0x0851C6C0` punch |
+
+The contiguity of indices 4 to 6 is consistent with a base-plus-offset
+selection, and it also explains `0x0851C708`, seen once during an idle smoke
+test: that is index 9, an unrelated animation.
+
+### Selection: uniform random, mechanism UNKNOWN
+
+Run `20260828-105601-6865162d`, 120.219 seconds, human air-punch with no
+contact, read-only observer. 266 accepted punches.
+
+| Hypothesis | Predicts | Observed | Verdict |
+|---|---|---|---:|
+| Previous-animation avoidance | 0 immediate repeats | 94 of 265 | REFUTED |
+| Fixed cycle | 100% self-match at some lag | 26 to 34% at lags 2 to 6 | REFUTED |
+| Uniform random | about 88.3 repeats | 94, z = 0.74 | CONSISTENT |
+
+Counts were `0x0851C6C0` 91, `0x0851C6A0` 91, `0x0851C680` 84; chi-square for
+uniformity is 0.37 on 2 degrees of freedom against a 5% critical value of 5.99.
+
+**The executable selector was never located, and the mechanism is UNKNOWN.**
+The only aligned reference to the clip-table base `0x0851C898` is `0x086AD35C`,
+which is a data slot inside a per-character table of clip tables, not an
+instruction. Uniform random is therefore a **behavioral** finding from the
+observed distribution, not a decoded `rand() % 3`. Do not record it as executable
+provenance.
+
+A published lead was refuted. `REFERENCE.md:491` records LoG2 RNG seeds at
+`0x03003890` and `0x03003894` from TASVideos. Those words, and the adjacent
+`0x03003898`, were sampled on all 532 rows of the run and **never changed**
+(`0x00000200`, `0x00000200`, `0x00000000`; zero changes across 265 consecutive
+punch pairs) while selection varied 266 times. They are not this game's RNG.
+This also retires the P-007 hunch that leaf node `0x0875028C` referencing
+`0x03003898` might be reading one.
+
+### Duration: identical, 16 ticks
+
+Run `20260828-110417-0e6ef2a1`, 150.235 seconds, **scripted input**, 50 punches.
+
+| Clip | n | Duration |
+|---|---:|---|
+| `0x0851C680` | 19 | 16, no variance |
+| `0x0851C6A0` | 13 | 16, no variance |
+| `0x0851C6C0` | 18 | 16, no variance |
+
+Every observation was exactly 16 ticks; the distinct-value set is `{16}` for all
+three. Measured clip-leaves-idle to clip-returns-to-idle at frame granularity,
+Lua-only with zero executable breakpoints.
+
+The press interval cycled through 18, 21, 24, 19, 27, 22, 31 and 20 ticks
+precisely so a fixed period could not alias against an internal timer; each gap
+appeared 6 or 7 times.
+
+**Do not conflate 16 with 20.** The animation completes in 16 ticks, but P-006C
+established the minimum accepted-punch cadence as 20, so at maximum mash rate
+there are about 4 non-attacking ticks between swings. The gate is not the
+animation finishing.
+
+### Damage: indistinguishable
+
+Run `20260828-111132-b8551f49`, human-driven combat, wolves killed and
+respawned repeatedly. Authoritative HP is `target+0x28C` signed 32-bit, per
+P-006A, with writer `0x0800FA50`.
+
+Of 30 recorded hits, 8 were discarded because two wolves lost HP on the same
+tick and could not be attributed to one swing. Excluding two outliers:
+
+| Clip | n | Mean | Range | Spread |
+|---|---:|---:|---|---:|
+| `0x0851C680` | 7 | 51018 | 49476 to 52440 | 2964 |
+| `0x0851C6A0` | 8 | 49884 | 47956 to 51528 | 3572 |
+| `0x0851C6C0` | 5 | 50358 | 49096 to 51148 | 2052 |
+
+The between-variant mean difference is about 1100, while each variant's own
+internal spread is 2000 to 3600. Variation within a variant exceeds variation
+between variants, so the three are indistinguishable at this sample size.
+
+A level-up confound was raised and checked rather than assumed away: damage
+holds a stable 48000 to 52000 band from tick 943 to tick 5006 with no upward
+drift, so the per-variant means are not comparing different STR values. Keep
+this check in future damage comparisons.
+
+The run ended at 175.907 seconds with `ConnectionError`, an emulator exit of the
+same class seen in run `20260828-100719-3a8e0ca3`. It is not a Lua fault, and 30
+hits were captured before it ended.
+
+### Unexplained outliers
+
+Two events measured 72010 and 75354, which are 1.43 and 1.50 times the pooled
+non-outlier mean of 50399.
+
+**OBSERVATION:** two anomalous higher-magnitude events.
+**INTERPRETATION:** UNKNOWN.
+**POSSIBLE FUTURE LEAD:** the critical-hit system.
+
+`REFERENCE.md:273` documents a critical hit as **exactly twice** normal damage.
+1.43 and 1.50 are not 2. These must not be labelled critical hits, combo
+finishers, special attacks, or RNG damage bonuses without executable
+provenance. External documentation makes critical hits a plausible future
+hypothesis, not a P-008 conclusion.
+
+### OLD CLAIM / NEW EVIDENCE / RESOLUTION: the combo hypothesis
+
+**OLD CLAIM.** Three punch clips at roughly balanced usage counts, first
+observed in P-006C, might represent a deterministic three-step combo cycle.
+
+**NEW EVIDENCE.** Selection is uniform random across 266 accepted punches, with
+avoidance and fixed-cycle both refuted; all three variants have an identical
+16-tick duration with zero variance; damage is indistinguishable; and no
+deterministic progression is needed to explain the observed sequence.
+
+**RESOLUTION.** The deterministic-combo interpretation is **RETRACTED**. The
+canonical classification is random normal-melee presentation variants. The
+original balanced-count observation stands, and this resolution explains it.
+
+### Tooling correction
+
+`tools/runtime/p008_contact_trace.lua` latched its `active_punch` attribution
+only when the immediately preceding clip was idle. Real combat transitions punch
+to punch and hurt to punch without passing through idle, so in run
+`20260828-111132-b8551f49` the tracker latched once at tick 857 on
+`0x0851C628`, a non-punch clip, and never updated; all 30 rows carried that
+stale value.
+
+**The defect did not reach the result.** Every damage figure came from the
+`clip` column, which is read live at the hit tick and correctly recorded the
+three variants at 11, 11 and 8 occurrences. The stale column was redundant.
+
+The fix replaces the idle-predecessor test with an explicit `PUNCH_CLIPS`
+membership set, because "not idle" is wrong: the player has non-idle clips that
+are not punches, such as being hurt. A regression test covers the membership
+logic and asserts the observer still performs no input.
+
+A runtime re-run was **not** required for this correction. The justification is
+the combination of impact analysis, regression coverage, and an unchanged
+evidence basis, not an assumption that the bug was harmless.
+
+A second defect was found in the new test itself: it asserted the bare word
+`setKeys` was absent, but the file's header comment names those APIs while
+explaining it does not call them. A grep confirmed line 4 is the only
+occurrence and no call exists, so the assertion was tightened to the call form
+`emu:setKeys` rather than the probe being changed.
+
+### Scripted input
+
+the maintainer directed that repetitive mashing be scripted rather than performed by hand.
+`tools/runtime/p008_mash_driver.lua` is deliberately a **separate** file from
+the read-only observers, whose tests assert input APIs are absent; that
+assertion encodes the guarantee that a capture was input-free, and merging input
+into an observer would void it silently while leaving the test green.
+
+The mGBA scripting documentation records that `setKeys`, `addKeys` and
+`clearKeys` take a `u32` bitmask and that `C.GBA_KEY.A` is bit index 0, so the A
+mask is 1 rather than the constant itself.
+
+Scripted input is not equivalent evidence to human input. The selection result
+rests on a human capture; the scripted run establishes duration only, and each
+run's provenance is recorded with it.

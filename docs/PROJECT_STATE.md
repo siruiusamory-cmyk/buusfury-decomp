@@ -140,6 +140,13 @@ observed cadence, and no disengagement. **P-008 normal melee**: the three punch
 clips are presentation variants selected uniformly at random, each lasting 16
 ticks with indistinguishable damage, and there is no deterministic combo.
 
+[`PROJECT_<local-state-name>`](PROJECT_<local-state-name>) continues from there. **P-009
+critical hits (PARTIAL)**: HP and damage are fixed-point scaled by 1024, so the
+displayed number is `(raw + 1023) >> 10` and earlier "~50,000 per hit" figures
+were raw units; criticals are discriminated by damage `record+0x10` and multiply
+damage by **exactly 1.5**, contradicting the documented 2. The critical roll,
+its RNG, and the STR probability formula are **blocked**, not merely unfinished.
+
 ## Ghidra Static-Analysis Calibration
 
 TOOL-001 calibrated Ghidra 12.1.2, Temurin 21.0.11+10, and `pudii/gba-ghidra-loader` commit `9bfb2d1fe891aa78bab7093a328feb3a52318ab7`; all local tools, ROM copies, projects, caches, and reports remain ignored under `build/ghidra/`. The verified ROM imported as `ARM:LE:32:v4t:default` with ROM at `0x08000000`, mapped GBA regions, a parsed header, and an ARM entry at `0x080000C0`. Bounded default analysis timed out at 900 seconds but saved the project. Blind analysis missed all five target functions and chose the wrong ARM/Thumb context for four; established entry/callsite seeds then yielded matching point-query, factory, and callback bodies, but not the indirect action path to `0x080075AC`. Outcome: **B - ADOPT WITH REQUIRED CORRECTIONS**. Use Ghidra as the default static database only with explicit Thumb checks, conservative labels, and corroboration of boundaries and indirect targets. Headless reporting is verified; [`ghidra-workflow.md`](ghidra-workflow.md) has full details. No Ghidra MCP work, broad BSim transfer, Data Crystal import, or ROM-013 research occurred.

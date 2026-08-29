@@ -41,6 +41,7 @@ def test_required_workflow_files_exist_and_are_bounded():
         "<local-state-name>": (150, 300),
         "docs/PROJECT_<local-state-name>": (100, 240),
         "docs/PROJECT_<local-state-name>": (10, 240),
+        "docs/PROJECT_<local-state-name>": (10, 240),
         "docs/PROJECT_<local-state-name>": (10, 800),
         "docs/REVIEW.md": (20, 100),
         "scripts/run-current.ps1": (40, 140),
@@ -54,15 +55,22 @@ def test_required_workflow_files_exist_and_are_bounded():
 
 def test_state_continuation_is_reachable_from_the_primary_state_file():
     """The primary state file is line-bounded, so completed-ticket records
-    overflow into a continuation. That file must stay linked, or the records
-    become orphaned."""
+    overflow into a continuation. Every part must stay linked from the one
+    before it, or the records become orphaned."""
     state = (PROJECT_ROOT / "docs/PROJECT_<local-state-name>").read_text(encoding="utf-8")
     part2 = (PROJECT_ROOT / "docs/PROJECT_<local-state-name>").read_text(
+        encoding="utf-8"
+    )
+    part3 = (PROJECT_ROOT / "docs/PROJECT_<local-state-name>").read_text(
         encoding="utf-8"
     )
 
     assert "PROJECT_<local-state-name>" in state
     assert "PROJECT_<local-state-name>" in part2
+    # The chain must reach part 3 from both directions.
+    assert "PROJECT_<local-state-name>" in state
+    assert "PROJECT_<local-state-name>" in part2
+    assert "PROJECT_<local-state-name>" in part3
 
 
 def test_context_split_keeps_permanent_state_and_ticket_content_separate():
@@ -74,35 +82,70 @@ def test_context_split_keeps_permanent_state_and_ticket_content_separate():
     assert "buus_fury_usa_rev0_01c1707f" not in agents
     assert "ROM-008 portable baseline: **192 passed" in state
     assert "Current portable suite after workflow migration: **199 passed" in state
-    assert "# P-008-COMPLETE - No Active Ticket" in current
+    assert "# P-009-COMPLETE - No Active Ticket" in current
     assert "Original ROM Safety - Mandatory" not in current
-    assert "Do not begin P-009" in current
+    assert "Do not begin P-010" in current
 
 
-def test_current_ticket_is_a_stop_only_placeholder_after_p008_closure():
-    """P-008 closed with its ticket archived, so PROJECT_<local-state-name> must hold no
-    runnable ticket and must carry its unknowns forward."""
+def test_current_ticket_is_a_stop_only_placeholder_after_p009_closure():
+    """P-009 closed PARTIAL with its ticket archived, so PROJECT_<local-state-name> must hold
+    no runnable ticket and must carry its unknowns forward."""
     current = (PROJECT_ROOT / "docs/PROJECT_<local-state-name>").read_text(encoding="utf-8")
-    archive = PROJECT_ROOT / "docs/research/archive/P-008.md"
+    archive = PROJECT_ROOT / "docs/research/archive/P-009.md"
 
     assert archive.is_file()
     archived = archive.read_text(encoding="utf-8")
-    assert "# P-008 - Normal Melee Variant Selection" in archived
+    assert "# P-009 - Critical Hit Mechanics" in archived
     # The archive records the outcome, not only the original intent.
-    assert "## RESULT: RESOLVED" in archived
+    assert "## RESULT: PARTIAL" in archived
     assert "STOP-ONLY PLACEHOLDER" in current
-    # Uniform random is behavioral; the mechanism was never decoded.
-    assert "selection mechanism: **UNKNOWN**" in current
-    # The outliers must not drift into being called critical hits.
-    assert "not to be" in current
-    assert "critical-hit mechanism: DEFERRED" in current
+    # The producer questions are blocked, not merely unfinished.
+    assert "**BLOCKED**" in current
+    # Probability must never be stated or estimated from the observed rate.
+    assert "critical probability formula: **UNKNOWN**" in current
+    assert "Do not state a critical probability" in current
+
+
+def test_p009_archive_records_the_multiplier_correction_and_failed_routes():
+    """The 1.5x multiplier contradicts documentation, and two producer routes
+    failed structurally. Both must survive in the archive so neither the
+    correction nor the dead ends are lost."""
+    archived = (PROJECT_ROOT / "docs/research/archive/P-009.md").read_text(
+        encoding="utf-8"
+    )
+
+    # The measured multiplier, and that it overturns the documented value.
+    assert "exactly x1.5" in archived
+    assert "76494 = 1.5 * 50996" in archived
+    assert "contradicted" in archived
+    # The discriminator, confirmed from two directions.
+    assert "record+0x10" in archived
+    # Both failed producer routes, so they are not retried.
+    assert "0x0801902A" in archived
+    assert "0x03007D54" in archived
+    # The observed rate must not be promoted into a probability. The phrase
+    # wraps across lines in the archive, so match on a single-line fragment.
+    assert "a probability estimate, and must not be quoted as one" in archived
+    assert "Critical probability: UNKNOWN" in archived
+
+
+def test_p008_outliers_are_reclassified_rather_than_left_contradictory():
+    """P-008 recorded the outliers as UNKNOWN under a wrong 2x prior. Once
+    P-009 measured 1.5x, that record must be corrected in place instead of
+    leaving two files disagreeing."""
+    part2 = (PROJECT_ROOT / "docs/PROJECT_<local-state-name>").read_text(encoding="utf-8")
+
+    assert "RESOLVED by P-009" in part2
+    assert "reclassified as genuine critical hits" in part2
+    # The superseded refusal must no longer read as a live conclusion.
+    assert "The critical-hit system is a plausible future lead" not in part2
 
 
 def test_earlier_ticket_archives_are_retained():
     """Archiving a later ticket must not drop an earlier one."""
     archive_dir = PROJECT_ROOT / "docs/research/archive"
 
-    for name in ("P-006C.md", "P-007.md", "P-008.md"):
+    for name in ("P-006C.md", "P-007.md", "P-008.md", "P-009.md"):
         assert (archive_dir / name).is_file(), name
 
 

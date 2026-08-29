@@ -2449,3 +2449,139 @@ mask is 1 rather than the constant itself.
 Scripted input is not equivalent evidence to human input. The selection result
 rests on a human capture; the scripted run establishes duration only, and each
 run's provenance is recorded with it.
+
+## P-009 Critical Hit Mechanics (2026-08-28)
+
+### External research first
+
+The behavioral prior was taken from documentation before any probe: criticals
+occur on normal melee, deal double damage, become more likely with STR, display
+yellow rather than red, and are reported to knock enemies back. Scope therefore
+began at *how exactly*, not *do criticals exist*.
+
+One element of that prior is now contradicted by the binary. Per the
+External-Research-First rule the runtime observation wins, and "double damage"
+is retained as EXTERNAL_BEHAVIOR that runtime evidence overturned.
+
+### OLD CLAIM / NEW EVIDENCE / RESOLUTION: the damage scale
+
+**OLD CLAIM.** Damage of roughly 50,000 per normal punch, recorded across
+P-006B and P-008 as though it were an HP quantity.
+
+**NEW EVIDENCE.** Two independent static paths fix a 1024 scale. The
+number-refresh path at `0x0800AB9A` loads the accumulator at `obj+0x14`, adds
+literal `0x3FF` from pool `0x0800AD84`, executes `asrs r2, r0, #0xA`, and passes
+the result to formatter `0x0803DC96` with the format string at `0x0800AD88`,
+which is `"%d"` in UTF-16LE. The heal counterpart at `0x0800FA80` computes
+`(record[0] + 0x3FF) >> 10 << 10`, adds it to `+0x28C`, and clamps against
+`maxHP << 10`; the explicit shift on an unscaled maximum is decisive.
+
+Applied to the P-006B capture, raw HP `141884` displays as **139** and raw
+damage `51338` as **51**, which is about 50 damage on a 139 HP wolf and roughly
+three hits to kill. That matches firsthand gameplay, which the earlier figures
+did not.
+
+**RESOLUTION.** `target+0x28C` and `record+0x18` are **fixed-point with ten
+fractional bits**, not raw HP. Displayed value is `(raw + 1023) >> 10`, a
+ceiling divide. HP is not a multiple of 1024 (`141884 mod 1024 = 572`), so the
+field carries real fractional residue. This is a different scale from the 8.8
+world position at `0x0800FE78`; the two must not be conflated. Every previously
+recorded damage figure needs division by 1024 to become player-facing.
+
+### The critical discriminator
+
+`0x0800E94E` tests `record+0x10` and branches: zero selects spawner mode 3 with
+flag 0, nonzero selects mode 4 with flag 1. The flag reaches number-object
+`+0x1C`, and `0x0800AB6A` uses it to choose asset `0x0806F150` or `0x0806E050`
+from context table `0x08071700`. The heal path `0x0800E97E` uses mode 6, so mode
+is the number *type* selector.
+
+Run `20260828-213108-fab01490` broke at `0x0800FA2A` with `--dump-register r1`
+and took 60 stops. Across the 59 usable records `record+0x10` was the **sole**
+field separating the 2 special hits from the other 57: every other offset was
+either constant across all hits or was the damage magnitude itself.
+
+**CONFIRMED**, static branch plus runtime discrimination.
+
+### OLD CLAIM / NEW EVIDENCE / RESOLUTION: the critical multiplier
+
+**OLD CLAIM.** `REFERENCE.md:273`, from the retail instruction booklet, records
+a critical hit as exactly twice normal melee damage. P-008 relied on this to
+refuse the 1.43x and 1.50x outliers.
+
+**NEW EVIDENCE.** Both flagged hits are exactly three halves of an integer base
+that lands on the same 38-raw-unit lattice all damage uses, and both bases fall
+inside the observed normal range of 47804 to 52440:
+
+```text
+76494 = 1.5 * 50996      (50996 divisible by 38)
+75924 = 1.5 * 50616      (50616 divisible by 38)
+```
+
+Normal hits were n = 57, mean 50250. All damage values, critical and normal
+alike, are multiples of 38 raw units.
+
+**RESOLUTION.** The multiplier is **exactly 1.5**, and the documented 2x is
+contradicted for this game. The P-008 outliers are **reclassified as genuine
+critical hits**; the P-008 refusal was correct on the evidence then available.
+
+### Producer trace: two routes attempted and failed
+
+Recorded so future work does not repeat them.
+
+Route 1, walking up from the consumer. Run `20260828-213908-6dd2f261` broke at
+`0x080187A8` for 60 stops; LR was `0x0801902A` on all 60. That sits inside
+`0x0801900A`, a generic behavior-tree child iterator that walks `node+0x10[i]`,
+calls each child through vtable `+0x04`, ANDs results and early-exits on 2.
+Above it are only `0x08019298`, a thin node-type dispatcher, and composite nodes
+`0x08706C94`, `0x086FDBC8` and `0x08706C30` carrying the documented
+`{entry, update, exit, count, child[]}` layout. Node `0x08706C30` contains
+`0x0801920F`, the P-006B HURT entry, so this chain is the **reaction tree**,
+downstream of damage. The arithmetic completes before the tree is entered.
+`0x0800FA2A` also has zero direct BL callers, reached only through
+relative-vtable dispatch as P-006A found for `0x08039182`.
+
+Route 2, a write watchpoint on the damage field. The record is stack scratch at
+`0x03007D3C`, so `+0x18` is `0x03007D54`. Run `20260828-214512-d8e5d344` armed a
+4-byte Z2 write watchpoint there for 40 stops and caught only two program
+counters in a fixed repeating cycle with no gameplay ticks: `0x08007E4C`
+(LR `0x08007E34`) and `0x08029CE2` (LR `0x08029CCC`), both unrelated
+stack-local sprite and position writes reusing the slot. The address is
+meaningful only during the damage call, so a persistent watchpoint cannot
+isolate the producer regardless of tuning.
+
+Both failures are **structural**, not sampling shortfalls.
+
+### Static scans deliberately rejected
+
+Four scans were run and their output discarded rather than reported, because
+none discriminated and mining them would manufacture a false lead of exactly the
+kind P-008 produced: a relative-table scan yielding 230 arithmetic coincidences,
+stores to `[rN,#0x18]` yielding 584 sites, record-builder shape matching
+yielding 50+, and `lsls #10` proximity yielding 40+. No candidate from these is
+recorded, and none should be revived.
+
+### Corrections made during this ticket
+
+`record+0x00` was briefly read as a class discriminator because the two critical
+hits carried EWRAM pointers where normal hits carried a ROM pointer. Checking
+the full set refuted it: flag=0 hits show the same EWRAM values. It is
+uninitialized stack scratch. `+0x34` and `+0x38` were likewise considered as STR
+inputs and refuted; they vary continuously without tracking the flag.
+
+### Limits
+
+Only 2 critical events were observed, so 2-of-59 is a raw count and **not** a
+probability estimate. Both observed bases were even multiples of 38, so the
+multiply landed exactly and the rounding rule for an odd base is **UNKNOWN**.
+Whether criticals select a distinct reaction or knockback path was not reached.
+The claim that the critical asset renders yellow is not established, only that
+it is the distinct critical-side asset.
+
+### Status
+
+**PARTIAL.** Discriminator, multiplier, fixed-point scale and presentation
+branch are confirmed. The RNG source, the STR probability formula, the producer
+of `record+0x10`, and the exact site of the 1.5 multiply are **blocked** on a
+hit-resolution-side search. Continuation is a new ticket, P-010 - Critical
+Producer & Hit-Resolution Path, not an extension of P-009.

@@ -146,6 +146,14 @@ displayed number is `(raw + 1023) >> 10` and earlier "~50,000 per hit" figures
 were raw units; criticals are discriminated by damage `record+0x10` and multiply
 damage by **exactly 1.5**, contradicting the documented 2. The critical roll,
 its RNG, and the STR probability formula are **blocked**, not merely unfinished.
+**P-010 enemy death and rewards (RESOLVED)**: EXP is awarded exactly one
+gameplay tick after lethal damage, from a reward object's destructor; the
+amount is fixed at kill time with the equipment bonus already applied, while
+the recipient is resolved at payout, which is why the save-point
+character-switch glitch works. Wolf base EXP is 225, qualifying equipment adds
++23 per item additively, and zeni denominations are 5, 25, 50 and 100. The EXP
+bonus arithmetic site and the drop roll remain bounded unknowns with named
+anchors.
 
 ## Ghidra Static-Analysis Calibration
 

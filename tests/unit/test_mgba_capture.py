@@ -574,3 +574,61 @@ def test_p008_contact_observer_latches_any_punch_clip_not_only_from_idle():
     assert "emu:clearKeys" not in probe
     assert "emu:write" not in probe
     assert "p008_contact_trace.lua" in injector
+
+
+def test_p010_death_timeline_observer_is_read_only_and_discovers_targets():
+    """P-010 needs the death lifecycle and the reward writes on one clock.
+
+    The observer supplies the shared gameplay tick the breakpoints are stamped
+    with, so it must be allowlisted; and it must perform no input, or the
+    input-free guarantee that makes the capture evidence would be void.
+
+    Targets are discovered rather than pinned. P-007 established that asserting
+    a single enemy aborts on the two-wolf state, and that absolute EWRAM
+    addresses are not stable actor identity.
+    """
+    root = Path(__file__).resolve().parents[2]
+    observer = (root / "tools/runtime/p010_death_timeline.lua").read_text(
+        encoding="utf-8"
+    )
+    injector = (root / "tools/runtime/inject_mgba_lua.ps1").read_text(
+        encoding="utf-8"
+    )
+
+    # Confirmed anchors, used as given rather than rediscovered.
+    assert "local HP = 0x28C" in observer
+    assert "local CTRL = 0x238" in observer
+    assert "local CLIP = 0x04C" in observer
+    # Save base was confirmed this ticket from ROM pool 0x086B7080.
+    assert "local SAVE_BASE = 0x03001068" in observer
+    assert "local GOKU_XP = 0x03001584" in observer
+
+    # Read-only: no input, no emulated writes.
+    assert "emu:setKeys" not in observer
+    assert "emu:addKeys" not in observer
+    assert "emu:clearKeys" not in observer
+    assert "emu:write" not in observer
+
+    # Discovery, not a pinned actor address.
+    assert "looks_like_actor" in observer
+    assert "0x0203D504" not in observer
+
+    assert "p010_death_timeline.lua" in injector
+
+
+def test_p010_timeline_reports_the_lethal_edge_distinctly():
+    """A death is the HP crossing to <= 0, which is a different row from an
+    ordinary damage tick. Collapsing them would lose T_LETHAL, the anchor the
+    whole timeline is measured against."""
+    root = Path(__file__).resolve().parents[2]
+    observer = (root / "tools/runtime/p010_death_timeline.lua").read_text(
+        encoding="utf-8"
+    )
+
+    assert 'kind = "LETHAL"' in observer
+    assert "hp <= 0 and state.hp > 0" in observer
+    # Reward edges are logged even with no target tracked, because a reward can
+    # land after its enemy has already been removed.
+    assert '"ZENI,%d' in observer
+    assert '"ITEM,%d' in observer
+    assert '"XP,%d' in observer

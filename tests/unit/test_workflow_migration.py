@@ -82,28 +82,63 @@ def test_context_split_keeps_permanent_state_and_ticket_content_separate():
     assert "buus_fury_usa_rev0_01c1707f" not in agents
     assert "ROM-008 portable baseline: **192 passed" in state
     assert "Current portable suite after workflow migration: **199 passed" in state
-    assert "# P-009-COMPLETE - No Active Ticket" in current
+    assert "# P-010-COMPLETE - No Active Ticket" in current
     assert "Original ROM Safety - Mandatory" not in current
-    assert "Do not begin P-010" in current
+    assert "Do not begin P-011" in current
 
 
-def test_current_ticket_is_a_stop_only_placeholder_after_p009_closure():
-    """P-009 closed PARTIAL with its ticket archived, so PROJECT_<local-state-name> must hold
+def test_current_ticket_is_a_stop_only_placeholder_after_p010_closure():
+    """P-010 closed RESOLVED with its ticket archived, so PROJECT_<local-state-name> must hold
     no runnable ticket and must carry its unknowns forward."""
     current = (PROJECT_ROOT / "docs/PROJECT_<local-state-name>").read_text(encoding="utf-8")
-    archive = PROJECT_ROOT / "docs/research/archive/P-009.md"
+    archive = PROJECT_ROOT / "docs/research/archive/P-010.md"
 
     assert archive.is_file()
     archived = archive.read_text(encoding="utf-8")
-    assert "# P-009 - Critical Hit Mechanics" in archived
+    assert "# P-010 - Enemy Death, EXP & Drop Pipeline" in archived
     # The archive records the outcome, not only the original intent.
-    assert "## RESULT: PARTIAL" in archived
+    assert "## RESULT: RESOLVED" in archived
     assert "STOP-ONLY PLACEHOLDER" in current
-    # The producer questions are blocked, not merely unfinished.
-    assert "**BLOCKED**" in current
-    # Probability must never be stated or estimated from the observed rate.
-    assert "critical probability formula: **UNKNOWN**" in current
-    assert "Do not state a critical probability" in current
+    # Both bounded unknowns must survive with their named next anchors.
+    assert "EXP bonus arithmetic producer: **UNKNOWN**" in current
+    assert "drop probability producer / roll: **UNKNOWN**" in current
+    assert "0x0804A820" in current
+    # P-009's blocker must not be quietly dropped when P-010 closes.
+    assert "critical-hit producer" in current
+    assert "**BLOCKED** from P-009" in current
+    # The observed drop split is a count, never a rate.
+    assert "raw count, not a rate" in current
+
+
+def test_p010_archive_preserves_the_timing_and_the_additive_bonus_rule():
+    """The one-tick delay and the additive composition are the two results a
+    remake would most easily get wrong, so both must survive in the archive
+    together with the evidence that refuted the alternatives."""
+    archived = (PROJECT_ROOT / "docs/research/archive/P-010.md").read_text(
+        encoding="utf-8"
+    )
+
+    # Timing must not be softened into "immediate".
+    assert "exactly 1 gameplay tick" in archived
+    assert 'Do not round this to\n"immediate"' in archived
+    # Additive composition, and the exact integer that refutes compounding.
+    assert "225 + 23 + 23 = 271" in archived
+    assert "273" in archived
+    # The amount/recipient asymmetry is the mechanism behind the glitch.
+    assert "The amount is fixed at kill time; the recipient is resolved at payout." in archived
+    # Both bounded unknowns carry a named next anchor.
+    assert "0x0804A820" in archived
+
+
+def test_p010_archive_records_its_own_tooling_defect():
+    """The timeline observer emitted 73 bogus lethal rows. That must be
+    recorded, not hidden, along with why it did not reach the results."""
+    archived = (PROJECT_ROOT / "docs/research/archive/P-010.md").read_text(
+        encoding="utf-8"
+    )
+
+    assert "73 bogus LETHAL rows" in archived
+    assert "did not reach any result" in archived
 
 
 def test_p009_archive_records_the_multiplier_correction_and_failed_routes():
@@ -145,7 +180,7 @@ def test_earlier_ticket_archives_are_retained():
     """Archiving a later ticket must not drop an earlier one."""
     archive_dir = PROJECT_ROOT / "docs/research/archive"
 
-    for name in ("P-006C.md", "P-007.md", "P-008.md", "P-009.md"):
+    for name in ("P-006C.md", "P-007.md", "P-008.md", "P-009.md", "P-010.md"):
         assert (archive_dir / name).is_file(), name
 
 

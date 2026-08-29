@@ -2585,3 +2585,165 @@ branch are confirmed. The RNG source, the STR probability formula, the producer
 of `record+0x10`, and the exact site of the 1.5 multiply are **blocked** on a
 hit-resolution-side search. Continuation is a new ticket, P-010 - Critical
 Producer & Hit-Resolution Path, not an extension of P-009.
+
+## P-010 Enemy Death, EXP & Drop Pipeline (2026-08-29)
+
+### External research first
+
+External sources established **player-visible behavior only**; RE established
+the entire precision layer. This ticket is the clearest example so far of the
+standing method.
+
+The decisive artifact was the Data Crystal RAM map for this game. It is
+fetch-blocked by a human-verification interstitial on both `curl` and WebFetch;
+the working route is the Wayback mirror, which is worth recording for reuse:
+
+```text
+curl -sL "https://web.archive.org/web/2024/https://datacrystal.tcrf.net/wiki/Dragon_Ball_Z:_Buu%27s_Fury/RAM_map"
+```
+
+It supplied current-character index `0x03001068`, Zeni `0x0300155C`, Goku XP
+`0x03001584`, item count `0x0300114C`, and a per-character stat block stride of
+`0x68`. GameFAQs supplied the character-switch glitch and the detail that the
+enemy must be lured onto a **save point**.
+
+Every address was then verified against our own ROM, because P-008 refuted a
+published address set. The save-block base was confirmed independently from ROM
+pool `0x086B7080`, which holds `0x03001068`, and the `0x68` stride was found in
+executable code at `0x0801394A` and `0x080043DC`. External evidence narrowed
+the search; it was never accepted as proof.
+
+### Death to EXP timing
+
+Run `20260828-234311-1426d3c4`, breakpoints `0x0800FA50` and `0x080139F8`, with
+`p010_death_timeline.lua` supplying the shared tick. Wolf A: T_LETHAL 9630,
+T_EXP 9631. Wolf B: T_LETHAL 9744, T_EXP 9745.
+
+**`T_EXP - T_LETHAL` = exactly 1 gameplay tick.** Do not round to "immediate".
+
+HP goes negative at the lethal write (`-22390`, `-24252`) before `0x0800FA56`
+zeroes it, so `HP <= 0` is a genuine signed test on a value transiently holding
+the overkill amount.
+
+### The amount/recipient asymmetry
+
+The award **amount** is fixed at reward-object creation with the equipment bonus
+already applied; the **recipient** is resolved one tick later at payout. This is
+the mechanism behind the documented save-point switch glitch, derived from the
+binary rather than from the anecdote.
+
+Evidence for amount-at-creation: reward object `+0x08` read 225 unequipped
+(`20260829-000534-be15deff`) and 271 equipped (`20260829-000912-69c3fb0e`).
+Evidence for recipient-at-payout: `0x080043DA` reads the index with
+`ldrb r2,[r0]` and multiplies by `0x68` at `0x080043DC`, inside the payout call.
+LR was `0x08011A5E` on every stop, runtime-confirming award-on-destroy from the
+refcount destructor loop `0x08011A1E`.
+
+### OLD CLAIM / NEW EVIDENCE / RESOLUTION: the 300 award
+
+**OLD CLAIM.** An early capture showed awards of 300 then 225, suggesting the
+per-wolf award varied.
+
+**NEW EVIDENCE.** A clean run gave four consecutive awards of exactly 225. The
+300 appeared only on the first stop of the earlier run.
+
+**RESOLUTION.** The 300 was the tail of an award already in progress when the
+breakpoint armed. Wolf base EXP is a constant **225**.
+
+### OLD CLAIM / NEW EVIDENCE / RESOLUTION: the +46 bonus
+
+**OLD CLAIM.** A single unexplained `+46` was measured; `46/225 = 20.44%` is not
+a round percentage, so additive was recorded as "more plausible than a
+multiplier" and explicitly unproven.
+
+**NEW EVIDENCE.** the maintainer isolated the two items: 1 Ton Armbands alone gave 248,
+1 Ton Boots alone gave 248, both gave 271. Run `20260829-000057-5b79657e`.
+
+**RESOLUTION.** Each item contributes exactly **+23**, and composition is
+**additive**: `225 + 23 + 23 = 271`. Multiplicative is refuted by an exact
+integer, since `225 * (248/225)^2 = 273.35` gives 273, not 271.
+
+### OLD CLAIM / NEW EVIDENCE / RESOLUTION: the award queue
+
+**OLD CLAIM.** `0x080033D2` was read as popping a queued EXP award, making it a
+candidate site for the bonus arithmetic.
+
+**NEW EVIDENCE.** The push side at `0x080033EA` stores `charblock+0x24`, the
+character's *current* XP, on the same `0x68` stride.
+
+**RESOLUTION.** The pair is an XP **save/restore**, not an award queue and not
+the bonus arithmetic. The original reading was wrong.
+
+### OLD CLAIM / NEW EVIDENCE / RESOLUTION: an apparent contradiction
+
+**OLD CLAIM.** Captured reward objects carried an unmodified 225 while the
+awarder received 271, appearing to contradict the static finding that `r1`
+passes through the award path untouched.
+
+**NEW EVIDENCE.** The equipped re-run showed reward objects carrying 271.
+
+**RESOLUTION.** The two earlier kills were simply **unequipped**; that capture
+had not recorded equipment state. The static reading was correct. This was a gap
+in experiment design, not in the analysis.
+
+### Drop structure
+
+Two **independent** four-entry tables; reward value and presentation are
+separate concerns.
+
+Denominations: pointer table `0x086FC250`, amounts a plain integer at `+0x0C` -
+`0x086FC260` = 5, `0x086FC378` = 25, `0x086FC790` = 50, `0x086FC8A8` = 100. The
+live pickup reaches its record through `+0x60`. Runtime: Zeni `165 -> 325`
+across 13 pickups, deltas only `{5, 100}`.
+
+Visual tiers: 16-byte records at `0x086B759C`, reached from pickup `+0x10`,
+resolved by a two-key lookup fully decoded at `0x08013E38` over exactly 4
+entries with keys `(4,2) (10,4) (16,6) (24,10)`. Every +5 pickup used record 0;
+the +100 used record 1. Reward-type identity therefore lives at object `+0x10`.
+
+An earlier suspicion that the packed word at descriptor `+0x00` encoded the
+amount was **refuted** by the wider dump: the amount is the plain u32 at
+`[+0x60]+0x0C`.
+
+### Item add
+
+`0x08004448`: cap at `0xFA` (250, silent no-op), increment count, then store
+`item_id & 0x0FFFFFFF` at `inventory + 0xE4 + 4 + old_count*4`. The top 4 bits
+of each entry are a flag field, read back at `0x08004406-0x08004410`. Runtime:
+item id `0x74`, count `0 -> 1`.
+
+A real asymmetry: the XP writer (`0x080139F4`) and Zeni writer (`0x08017ED6`)
+both use a readback-verify retry loop; the item writer at `0x08004464` does not.
+
+### Level thresholds and cap - extra results
+
+Pool literal `0x086B7080` holds the save-block pointer `0x03001068`; the XP
+threshold table begins at `0x086B7084` with `0, 10, 40, 100, 200, 350, 560, 840,
+1200, 1650, 2200, 2875, 3700, 4700, 5900, ...`, strictly increasing over at
+least 150 entries. Lookup at `0x08013A08-0x08013A1A`. Level cap 200 at
+`0x08013A00` (`cmp r6,#0xc8`).
+
+Cross-check: captured XP began at exactly **3700**, threshold entry 12, so the
+player had just reached level 13. The table lands on the observed value.
+
+An earlier decode of this table read entries as `141249528` and similar; those
+are ROM pointers, because the region below `0x086B7084` is a pointer table. The
+thresholds start at `0x086B7084`.
+
+### Tooling defect
+
+`tools/runtime/p010_death_timeline.lua`'s `looks_like_actor()` is too loose and
+produced **73 bogus LETHAL rows for 2 real kills** across 13,513 rows. The
+defect did not reach any result: every value came from the breakpoint capture,
+which is independent of the observer's own rows, and the observer's tick counter
+was correct. Tighten discovery before trusting its SCAN or LETHAL rows.
+
+### Status
+
+**RESOLVED**, all 11 closure criteria met, with two bounded unknowns recorded as
+research debts. The EXP bonus **arithmetic site** is upstream of reward-object
+creation and unlocated; next anchor is the constructor, vtable `0x0804A820` at
+object `+0x00`. The **drop roll** selecting a table index is unlocated, the same
+producer-tracing class as the P-009 blocker; next anchor is the pickup-object
+constructor on the death path. Drop probability was **not** estimated
+statistically; the observed 25-to-1 split is a raw count, not a rate.

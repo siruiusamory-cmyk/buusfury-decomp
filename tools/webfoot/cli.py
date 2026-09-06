@@ -39,6 +39,7 @@ from .formats.stat_tables import StatEncodeError, StatIdentity
 from .formats.text_tables import TextCodecError, TextIdentity, encode_string
 from .stats import StatTableError, load_stat_tables
 from .text import TextTableError, load_text_strings
+from .maps import MAP_FIELDS, MapError, MapIdentity, load_maps
 from .write import WriteError, emit_image
 
 
@@ -212,6 +213,50 @@ def build_parser() -> argparse.ArgumentParser:
     text_set.add_argument(
         "--manifest", type=Path, default=None, help="write the change manifest here"
     )
+
+    # TOOLKIT-007. Maps are read and inspected here; they are *edited* through
+    # the project files, because a map edit is one field among 452 records and
+    # belongs in reviewable source rather than in a shell command. No command
+    # below takes or prints a raw address as its normal interface.
+    maps_parser = subparsers.add_parser(
+        "map",
+        help="list and inspect map records, slot extents and connections",
+    )
+    map_commands = maps_parser.add_subparsers(dest="map_command", required=True)
+
+    map_list = map_commands.add_parser(
+        "list", help="list maps with identity, editable fields and slot shape"
+    )
+    map_list.add_argument("rom", type=Path)
+    map_list.add_argument(
+        "--limit", type=int, default=None, help="stop after this many maps"
+    )
+    map_list.add_argument(
+        "--typed-only",
+        action="store_true",
+        help="only maps whose slot extent is fully typed",
+    )
+
+    map_show = map_commands.add_parser(
+        "show", help="print one map's fields, slot extent and classification"
+    )
+    map_show.add_argument("rom", type=Path)
+    map_show.add_argument("identity", help="map identity, e.g. map:0039")
+
+    map_connections = map_commands.add_parser(
+        "connections",
+        help="print the verified connections a map declares",
+    )
+    map_connections.add_argument("rom", type=Path)
+    map_connections.add_argument(
+        "identity", nargs="?", default=None, help="map identity; omit for all"
+    )
+
+    map_round_trip = map_commands.add_parser(
+        "validate-round-trip",
+        help="prove every map record and slot extent re-serializes byte-identically",
+    )
+    map_round_trip.add_argument("rom", type=Path)
 
     # TOOLKIT-002. These call the same project/build APIs a GUI or automation
     # would; the CLI parses arguments and formats output and does nothing else.
@@ -614,6 +659,139 @@ def _print_text_list(strings, contains: str | None, limit: int | None) -> None:
         print(f"  ... {len(entries) - len(shown)} more")
 
 
+def _parse_map_identity(value: str) -> MapIdentity:
+    prefix, _, digits = value.partition(":")
+    if prefix != "map" or not digits.isdigit():
+        raise MapError(f'{value!r} is not a map identity; expected "map:0039"')
+    return MapIdentity(int(digits, 10))
+
+
+def _print_map_list(maps, limit: int | None, typed_only: bool) -> None:
+    entries = [
+        entry
+        for entry in maps.entries()
+        if not typed_only
+        or (maps.slot_array(entry.identity) is not None
+            and maps.slot_array(entry.identity).is_typed)
+    ]
+    shown = entries if limit is None else entries[:limit]
+
+    print("Map Records")
+    print("-----------")
+    print()
+    print(f"Profile: {maps.profile.id}")
+    print(f"Maps: {len(entries)} shown {len(shown)}")
+    print()
+    for entry in shown:
+        array = maps.slot_array(entry.identity)
+        extent = "-" if array is None else f"{array.array.slot_count:>3} {array.shape.value}"
+        print(
+            f"  {entry.identity}  zone {maps.field(entry.identity, 'zone'):>3}  "
+            f"area {maps.field(entry.identity, 'area'):>3}  "
+            f"var {maps.field(entry.identity, 'variation'):>3}  "
+            f"music {maps.field(entry.identity, 'music_id'):>5}  slots {extent}"
+        )
+    if limit is not None and len(entries) > len(shown):
+        print(f"  ... {len(entries) - len(shown)} more")
+
+
+def _print_map_show(maps, identity: MapIdentity) -> None:
+    entry = maps.entry(identity)
+    array = maps.slot_array(identity)
+
+    print("Map Record")
+    print("----------")
+    print()
+    print(f"Identity: {entry.identity}")
+    for name in MAP_FIELDS:
+        print(f"{name}: {maps.field(identity, name)}")
+    print()
+    if array is None:
+        print("Slot extent: none declared")
+        return
+    print(f"Slot extent: {array.array.slot_count} slot(s), "
+          f"{array.array.byte_size} bytes, {array.shape.value}")
+    if not array.is_typed:
+        # Stated rather than left implicit: an opaque extent is carried exactly
+        # but this toolkit does not claim what its words mean.
+        print("Slot fields: UNKNOWN (carried verbatim; not typed)")
+        return
+    print()
+    print("Typed slots:")
+    for index, slot in enumerate(array.array.slots):
+        print(f"  [{index:>2}] type 0x{slot.word0:08X} -> source 0x{slot.word1:08X}")
+
+
+def _print_map_connections(maps, identity: MapIdentity | None) -> None:
+    graph = maps.graph()
+    connections = graph.connections if identity is None else graph.from_map(identity)
+
+    print("Map Connections")
+    print("---------------")
+    print()
+    print(f"Profile: {maps.profile.id}")
+    print(f"Connections: {len(connections)}")
+    print(f"Resolved destinations: {graph.resolved_destination_count}")
+    print()
+    for connection in connections:
+        reference = connection.reference
+        print(
+            f"  {connection.source} slot[{reference.slot_index}] "
+            f"type 0x{reference.type_raw:08X} -> source "
+            f"0x{reference.target_address:08X} -> destination UNKNOWN"
+        )
+    if connections:
+        print()
+        print(
+            "Destinations are UNKNOWN: resolving one needs the layout of the "
+            "referenced structure, which is verified for a single instance."
+        )
+
+
+def _print_map_round_trip(maps) -> bool:
+    """Re-encode every map record and slot extent; report the whole extent."""
+    record_failures = []
+    slot_failures = []
+    records = 0
+    for entry in maps.entries():
+        records += 1
+        if entry.record.to_bytes() != entry.original_bytes:
+            record_failures.append(entry.identity)
+
+    arrays = 0
+    slots = 0
+    slot_bytes = 0
+    typed_arrays = 0
+    for item in maps.slot_arrays():
+        arrays += 1
+        slots += item.array.slot_count
+        slot_bytes += item.array.byte_size
+        if item.is_typed:
+            typed_arrays += 1
+        if item.array.to_bytes() != item.array.original_bytes:
+            slot_failures.append(item.identity)
+
+    print("Map Round-Trip")
+    print("--------------")
+    print()
+    print(f"Profile: {maps.profile.id}")
+    print(f"Map records checked: {records}")
+    print(f"Slot arrays checked: {arrays}")
+    print(f"Slots checked: {slots} ({slot_bytes} bytes)")
+    print(f"Typed arrays: {typed_arrays}")
+    print(f"Record failures: {len(record_failures)}")
+    print(f"Slot failures: {len(slot_failures)}")
+    if record_failures or slot_failures:
+        print()
+        for identity in (record_failures + slot_failures)[:20]:
+            print(f"  {identity}")
+    print()
+    print("RESULT:")
+    passed = not record_failures and not slot_failures
+    print("PASS" if passed else "FAIL")
+    return passed
+
+
 def _print_text_show(strings, identity: TextIdentity) -> None:
     entry = strings.entry(identity)
     print("Buu's Fury String")
@@ -726,6 +904,7 @@ def _print_validate(report: ValidationReport) -> None:
     print(f"Enemy records: {report.enemy_count}")
     print(f"Character records: {report.character_count}")
     print(f"Strings: {report.string_count}")
+    print(f"Maps: {report.map_count}")
     print(f"Problems: {len(report.problems)}")
     for problem in report.problems:
         print(f"  {problem}")
@@ -825,6 +1004,8 @@ def main(argv: list[str] | None = None) -> int:
             tables = load_stat_tables(args.rom, catalog)
         elif args.command == "text":
             strings = load_text_strings(args.rom, catalog)
+        elif args.command == "map":
+            maps = load_maps(args.rom, catalog)
         elif args.command == "identify":
             identification = identify_rom(args.rom, catalog)
         elif args.command == "validate-map-entries":
@@ -837,6 +1018,7 @@ def main(argv: list[str] | None = None) -> int:
         ProfileConfigError,
         GbaHeaderError,
         MapEntryError,
+        MapError,
         RomReadError,
         StatTableError,
         StatEncodeError,
@@ -847,6 +1029,27 @@ def main(argv: list[str] | None = None) -> int:
     ) as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 2
+
+    if args.command == "map":
+        try:
+            if args.map_command == "list":
+                _print_map_list(maps, args.limit, args.typed_only)
+                return 0
+            if args.map_command == "show":
+                _print_map_show(maps, _parse_map_identity(args.identity))
+                return 0
+            if args.map_command == "connections":
+                _print_map_connections(
+                    maps,
+                    None
+                    if args.identity is None
+                    else _parse_map_identity(args.identity),
+                )
+                return 0
+            return 0 if _print_map_round_trip(maps) else 2
+        except (MapError, MapEntryError, OSError) as exc:
+            print(f"error: {exc}", file=sys.stderr)
+            return 2
 
     if args.command == "text":
         try:

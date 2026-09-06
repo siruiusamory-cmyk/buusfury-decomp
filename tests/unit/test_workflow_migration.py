@@ -11,6 +11,33 @@ PROJECT_ROOT = Path(__file__).resolve().parents[2]
 RUNNER = PROJECT_ROOT / "scripts" / "run-current.ps1"
 
 
+def _current_ticket_id() -> str:
+    """The active ticket's identifier, read from PROJECT_<local-state-name>'s own heading.
+
+    Derived rather than pinned. Assertions that hardcode one ticket's name go
+    stale the moment the next ticket activates - which they did at TOOLKIT-003
+    ("obsolete ticket assertions, fixed") and again at TOOLKIT-007. What these
+    tests actually mean to check is that PROJECT_<local-state-name> holds *the active ticket*
+    and points back to its predecessor, which is true across activations;
+    `test_runner_dry_run_works_from_an_unrelated_directory` already derives the
+    id this way for exactly that reason.
+    """
+    heading = (
+        (PROJECT_ROOT / "docs/PROJECT_<local-state-name>")
+        .read_text(encoding="utf-8")
+        .splitlines()[0]
+    )
+    match = re.match(r"^#\s+([A-Z][A-Z0-9]*-\d+[A-Z]?)\b", heading)
+    assert match is not None, f"PROJECT_<local-state-name> heading names no ticket: {heading!r}"
+    return match.group(1)
+
+
+def _predecessor_ticket_id(ticket_id: str) -> str:
+    """The ticket before `ticket_id` in the same series, e.g. TOOLKIT-006."""
+    prefix, _, number = ticket_id.rpartition("-")
+    return f"{prefix}-{int(number) - 1:03d}"
+
+
 def _powershell() -> str:
     executable = shutil.which("powershell.exe") or shutil.which("powershell")
     assert executable is not None, "Windows PowerShell is required by this project"
@@ -82,16 +109,28 @@ def test_context_split_keeps_permanent_state_and_ticket_content_separate():
     assert "buus_fury_usa_rev0_01c1707f" not in agents
     assert "ROM-008 portable baseline: **192 passed" in state
     assert "Current portable suite after workflow migration: **199 passed" in state
-    assert "# TOOLKIT-006" in current
+    # Derived, not pinned: PROJECT_<local-state-name> must name the active ticket in its heading
+    # and forbid starting the next one. Both hold across activations.
+    ticket_id = _current_ticket_id()
+    prefix, _, number = ticket_id.rpartition("-")
+    successor = f"{prefix}-{int(number) + 1:03d}"
+    assert f"# {ticket_id}" in current
     assert "Original ROM Safety - Mandatory" not in current
-    assert "Do not begin TOOLKIT-007" in current
+    assert f"Do not begin {successor}" in current
 
 
 def test_toolkit_activation_preserves_completed_placeholder_and_research_debts():
     """Activation archives closure evidence and preserves unresolved research."""
     active = (PROJECT_ROOT / "docs/PROJECT_<local-state-name>").read_text(encoding="utf-8")
-    assert "# TOOLKIT-006" in active
-    assert "archive/TOOLKIT-005.md" in active
+    ticket_id = _current_ticket_id()
+    predecessor = _predecessor_ticket_id(ticket_id)
+    assert f"# {ticket_id}" in active
+    # The active ticket must link its immediate predecessor's archived record,
+    # whichever spelling that closure used, so the chain stays traversable.
+    assert (
+        f"archive/{predecessor}.md" in active
+        or f"archive/{predecessor}-COMPLETE.md" in active
+    ), f"PROJECT_<local-state-name> does not link {predecessor}'s archive"
     closed_five = (
         PROJECT_ROOT / "docs/research/archive/TOOLKIT-005.md"
     ).read_text(encoding="utf-8")

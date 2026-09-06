@@ -63,6 +63,14 @@ from ..formats import stat_tables as st
 from ..formats import text_tables as tt
 from .format import ProjectFormatError, dump_toml, load_toml
 
+#: TOOLKIT-007. Authored map field order, mirroring `_ENEMY_FIELD_ORDER`:
+#: fixed so output is deterministic, and ordered for reading rather than sorted.
+#: Kept as a local constant rather than imported from `webfoot.maps`, because
+#: this package owns the authoring surface and must not reach into a module that
+#: opens ROMs - the same boundary `webfoot.project` docstring states. The names
+#: are checked against `maps.MAP_FIELDS` by a test, so the two cannot drift.
+_MAP_FIELD_ORDER = ("zone", "area", "variation", "flags", "music_id")
+
 #: Bumped when the authored layout changes incompatibly. A project declaring a
 #: version this toolkit does not implement is refused rather than guessed at.
 PROJECT_FORMAT_VERSION = 1
@@ -71,6 +79,7 @@ _PROJECT_FILE = "project.toml"
 _ENEMY_FILE = Path("enemies") / "enemies.toml"
 _CHARACTER_FILE = Path("characters") / "characters.toml"
 _TEXT_FILE = Path("text") / "strings.toml"
+_MAP_FILE = Path("maps") / "maps.toml"
 
 #: Authored field order within a record. Fixed, so output is deterministic;
 #: chosen for reading rather than sorted, because a human edits these.
@@ -197,6 +206,11 @@ class StatProject:
     #: `text/strings.toml` means "this project does not author text", not
     #: "this project is broken". A build then leaves the ROM's text alone.
     strings: dict[tt.TextIdentity, str] = field(default_factory=dict)
+    #: TOOLKIT-007. Authored map records by table index. Empty for a project
+    #: extracted before map support existed, which stays loadable on the same
+    #: reasoning as `strings`: a missing `maps/maps.toml` means "this project
+    #: does not author maps", not "this project is broken".
+    maps: dict[int, dict[str, Any]] = field(default_factory=dict)
 
 
 # --- helpers -------------------------------------------------------------
@@ -313,6 +327,36 @@ def _text_document(strings: list[tuple[tt.TextIdentity, str]]) -> dict[str, Any]
     return {"text": tables}
 
 
+def _map_document(maps: list[dict[str, Any]]) -> dict[str, Any]:
+    """Build the maps document, ordered by map index.
+
+    One entry per map record, keyed `map:0039` so lexical order is numeric
+    order. Each carries the editable semantic fields, the record's undecoded
+    bytes as `raw`, and - when the map has a readable slot extent - that
+    extent's bytes as `slots`.
+
+    `slots` is a second opaque blob rather than a decoded structure because for
+    117 of the 152 extents this toolkit cannot say what the bytes mean, and for
+    the other 35 the typed reading is a classification of the same bytes rather
+    than a different encoding of them. One blob per extent reconstructs both
+    exactly; a decoded form would have to reconstruct the opaque case anyway,
+    and would then be two sources of truth for one span. `shape` records the
+    classification so a reader can see which extents are typed without the file
+    implying the toolkit can rebuild them from fields it does not have.
+    """
+    tables: dict[str, Any] = {}
+    for entry in sorted(maps, key=lambda item: item["index"]):
+        record: dict[str, Any] = {}
+        for field in _MAP_FIELD_ORDER:
+            record[field] = entry[field]
+        record["raw"] = entry["raw"].hex()
+        if entry.get("slots") is not None:
+            record["shape"] = entry["shape"]
+            record["slots"] = entry["slots"].hex()
+        tables[entry["key"]] = record
+    return {"map": tables}
+
+
 def write_project(
     directory: str | Path,
     meta: ProjectMeta,
@@ -320,6 +364,7 @@ def write_project(
     enemies: list[tuple[st.StatIdentity, st.EnemyRecord, bytes, str | None]],
     characters: list[tuple[st.StatIdentity, st.BaseStatRecord, bytes, str]],
     strings: list[tuple[tt.TextIdentity, str]] | None = None,
+    maps: list[dict[str, Any]] | None = None,
 ) -> list[Path]:
     """Write the whole authored tree. Returns the files written, in order.
 
@@ -348,6 +393,8 @@ def write_project(
         documents.append((_CHARACTER_FILE, _character_document(characters)))
     if strings:
         documents.append((_TEXT_FILE, _text_document(strings)))
+    if maps:
+        documents.append((_MAP_FILE, _map_document(maps)))
 
     for relative, document in documents:
         path = root / relative
@@ -499,6 +546,95 @@ def _read_strings(path: Path) -> dict[tt.TextIdentity, str]:
     return strings
 
 
+def _read_maps(path: Path) -> dict[int, dict[str, Any]]:
+    """Load `maps/maps.toml`, or nothing at all if it is absent.
+
+    Structure is checked here - key form, field names, integer types, hex blob
+    validity. Value *ranges* are not: the supported range for a field is a fact
+    about the map codec, and a project is not paired with one until a build, so
+    that check lives in `webfoot.build` alongside the same check for stats.
+    """
+    if not path.is_file():
+        return {}
+
+    document = _read_document(path)
+    table = document.get("map")
+    if not isinstance(table, Mapping):
+        raise ProjectLoadError(f"{path}: missing required [map] table")
+
+    records: dict[int, dict[str, Any]] = {}
+    for key, entry in table.items():
+        label = f"map.{key}"
+        if not isinstance(entry, Mapping):
+            raise ProjectLoadError(f"{path}: {label} must be a table")
+
+        prefix, _, digits = key.partition(":")
+        if prefix != "map" or not digits.isdigit():
+            raise ProjectLoadError(
+                f"{path}: {label} is not a valid map identity key; expected "
+                'the form "map:0000"'
+            )
+        index = int(digits, 10)
+
+        values: dict[str, Any] = {}
+        for name in _MAP_FIELD_ORDER:
+            values[name] = _require_int(entry, name, label, path)
+
+        raw = entry.get("raw")
+        if not isinstance(raw, str):
+            raise ProjectValidationError(
+                f"{path}: {label}.raw must be a hexadecimal string carrying the "
+                "record's bytes; without it the record cannot be rebuilt"
+            )
+        try:
+            values["raw"] = bytes.fromhex(raw)
+        except ValueError as exc:
+            raise ProjectValidationError(
+                f"{path}: {label}.raw is not valid hex: {exc}"
+            ) from exc
+
+        # `slots` and `shape` travel together: an extent with no classification
+        # would be unattributable, and a classification with no extent would
+        # describe nothing. Refusing one without the other catches a hand-edit
+        # that deleted half a pair.
+        slots = entry.get("slots")
+        shape = entry.get("shape")
+        if (slots is None) != (shape is None):
+            raise ProjectValidationError(
+                f"{path}: {label} must declare both 'slots' and 'shape', or "
+                "neither; one without the other describes nothing"
+            )
+        if slots is not None:
+            if not isinstance(slots, str):
+                raise ProjectValidationError(
+                    f"{path}: {label}.slots must be a hexadecimal string"
+                )
+            try:
+                values["slots"] = bytes.fromhex(slots)
+            except ValueError as exc:
+                raise ProjectValidationError(
+                    f"{path}: {label}.slots is not valid hex: {exc}"
+                ) from exc
+            if not isinstance(shape, str):
+                raise ProjectValidationError(
+                    f"{path}: {label}.shape must be a string"
+                )
+            values["shape"] = shape
+
+        unexpected = set(entry) - set(_MAP_FIELD_ORDER) - {"raw", "slots", "shape"}
+        if unexpected:
+            joined = ", ".join(sorted(unexpected))
+            raise ProjectLoadError(f"{path}: {label} has unknown fields: {joined}")
+
+        if index in records:
+            raise ProjectLoadError(f"{path}: duplicate map identity map:{index:04d}")
+        records[index] = values
+
+    if not records:
+        raise ProjectLoadError(f"{path}: [map] declares no records")
+    return records
+
+
 def read_project(directory: str | Path) -> StatProject:
     """Load and structurally validate a project. Opens no ROM.
 
@@ -537,10 +673,12 @@ def read_project(directory: str | Path) -> StatProject:
             )
 
     strings = _read_strings(root / _TEXT_FILE)
+    maps = _read_maps(root / _MAP_FILE)
 
     return StatProject(
         meta=meta,
         enemies=enemies,
         characters=characters,
         strings=strings,
+        maps=maps,
     )

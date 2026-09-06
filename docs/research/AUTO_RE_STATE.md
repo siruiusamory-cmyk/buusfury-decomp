@@ -338,6 +338,42 @@ research-lane findings only.)
     - RESOLUTION: descriptor-driven doorway was one of at least two overlapping
       accept regions on MapEntry 39; the trigger-family member persists.
 
+- **TOOLKIT-007 (2026-09-06), corpus-wide byte measurement - AUTO-012 scope
+  narrowed:**
+  - Measured all 452 MapEntry records against the canonical Buu ROM, rather
+    than the single entry AUTO-012 decoded. The `+0x04`/`+0x10` pairing splits
+    four ways: 136 entries count 0 + NULL pointer; **163 entries count > 0 with
+    a NULL pointer**; **69 entries count 0 with a live ROM pointer**; 153
+    entries count > 0 with an in-window pointer. No entry points outside the
+    ROM window, and no two arrays share a start.
+  - Of the 153 readable extents, only **35 have every slot shaped like the
+    confirmed `{type, source_ptr}` example**; the other 118 contain words that
+    are neither small type codes nor ROM pointers. MapEntry 39 is itself one of
+    the 118: its declared count of 11 runs past its four well-formed records
+    into data of another shape.
+  - **MapEntry 451 declares 4 records at `0x0008E2D0`, an extent covering the
+    first 16 bytes of the MapEntry table at `0x0008E2E0`** - the table that
+    indexes it. A count describing an array that consumes its own table is not
+    describing an array.
+  - Unaffected: the AUTO-012 static findings stand exactly as recorded, and the
+    MapEntry 39 example reproduces byte-for-byte - slot[1] is
+    `{0x00020006, 0x080755C0}` and that source's halfwords at `+0x08` are
+    `(481,121,615,271)`. TOOLKIT-007 keeps it as a regression fixture.
+  - OLD CLAIM / NEW EVIDENCE / RESOLUTION:
+    - OLD: `MapEntry +0x04` broadly counts 8-byte trigger records reached
+      through `+0x10` (read from AUTO-012's single-entry static decode).
+    - NEW: corpus-wide measurement contradicts that generalisation - 232 of 452
+      entries pair a count with no array or an array with no count, 118 of 153
+      readable extents are non-uniform, and one declared extent overruns the
+      map table itself.
+    - RESOLUTION: `+0x04` is NOT a general trigger count. The stride and the
+      one verified example remain CONFIRMED; the corpus-wide reading is
+      withdrawn. TOOLKIT-007 therefore carries all readable extents as opaque
+      8-byte slots (152 arrays, 873 slots, 6,984 bytes, byte-exact) and applies
+      typed `{type, source_ref}` semantics only to the 35 uniform arrays
+      (89 slots, 712 bytes). What `+0x04` actually counts is UNKNOWN and was
+      not investigated; TOOLKIT-007 scope forbids fresh RE on it.
+
 - **P-001 progress (2026-08-23), Ghidra static - player entity anchors:**
   - `CONFIRMED` (static): `candidate_entity_ctor_a_080109AA` allocates a
     **0x240-byte entity**, base-initializes via `FUN_0800e6b8`, installs table
@@ -1448,11 +1484,23 @@ research-lane findings only.)
     canonical form preserved verbatim in progress 9.
 
 - **P-003/P-004 progress 9 (2026-08-23), m5 exact hit geometry:**
-  - Full decompile mapped (stack-slot to rect-field assignment):
-    - player rect via global-form `cand_body_bounds_0800FE78(&out)`:
-      `x0p=iStack_24, y0p=iStack_20, x1p=iStack_1C, y1p=iStack_18`;
-    - target rect via `cand_body_bounds_0800FE78(&out, target)`:
-      `x0t=iStack_34, y0t=iStack_30, x1t=iStack_2C, y1t=iStack_28`.
+  - Full decompile mapped (stack-slot to rect-field assignment). CORRECTED
+    2026-08-31 from the static disassembly: the two rect buffers were
+    previously assigned to the wrong actors. The proven assignment is
+    - PLAYER rect buffer = `sp+0x2c, 0x30, 0x34, 0x38` via the global form
+      `cand_body_bounds_0800FE78(&out)`: buffer built at
+      `08029EF6 add r0, sp, #0x2c` then `08029EF8 bl 0x800fe78`, with r1 =
+      the GLOBAL actor `[[0x0802A004]] = 0x03001B94` loaded at `08029EDE`;
+    - TARGET rect buffer = `sp+0x1c, 0x20, 0x24, 0x28` via
+      `cand_body_bounds_0800FE78(&out, target)`: buffer built at
+      `08029EFE add r0, sp, #0x1c` then `08029F00 bl 0x800fe78`, with
+      r1 = r4 = the `target` argument (`08029EFC adds r1, r4, #0`; r4 saved
+      at `08029EDC`). So `x0t=[sp+0x1c], y0t=[sp+0x20], x1t=[sp+0x24],
+      y1t=[sp+0x28]`.
+    - The reach inequalities below are UNAFFECTED by this correction. They
+      were derived from the registers the compare instructions actually
+      read, not from these buffer labels; only the player/target naming of
+      the two stack groups was wrong.
   - Gate: global `*DAT_0802a004 != 0` AND `*global != 0 -> +0x1CC != 0`.
   - **Initial reach test** (all strict `<`; TARGET rect expanded against
     plain player world body):
@@ -1495,8 +1543,17 @@ research-lane findings only.)
     - gates on global `*_DAT_0802a004` and its `+0x1CC` field;
     - `cand_body_bounds_0800FE78(&rA)` - PLAYER body (global form);
       `cand_body_bounds_0800FE78(&rB, target)` - candidate target body;
-    - expands target rect by facing-directional margins
-      (`x0-4, y0+3, x1, y1-6` shape);
+    - expands the target rect by per-edge margins
+      (`x0-4, y0+0, x1+3, y1-6` shape) - CORRECTED 2026-08-31; the earlier
+      `x0-4, y0+3, x1, y1-6` wording transposed the `+3` from x1 onto y0.
+      Disassembly evidence: `08029F2A adds r1, #3` where r1 = `[sp+0x24]` =
+      x1t, consumed at `08029F38 cmp r2, r1`, so x1 IS expanded by +3;
+      and y0t is loaded at `08029F32 ldr r6, [sp, #0x20]` and compared at
+      `08029F3E cmp r6, r2` with nothing writing r6 in between
+      (`08029F34 bge`, `08029F36 ldr r2,[sp,#0x2c]`, `08029F38 cmp`,
+      `08029F3A bge`, `08029F3C ldr r2,[sp,#0x38]`), so NO constant is
+      applied to y0 anywhere in the reach test. Agrees with the canonical
+      form in progress 9 above;
     - overlap test, then center-to-center deltas
       (`(x0+x1)>>1` both rects) for direction.
   - **Attack object layout (from m1/m5 usage):** `+0x00` vtable

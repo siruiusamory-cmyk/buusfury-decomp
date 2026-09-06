@@ -53,6 +53,13 @@ from .text import (
     TextTooLongError,
     load_text_strings,
 )
+from .maps import (
+    MAP_FIELDS,
+    MapIdentity,
+    Maps,
+    load_maps,
+)
+from .formats.map_entry import MapEntryProfileError
 from .write import (
     ByteChange,
     ProjectProvenance,
@@ -88,6 +95,8 @@ class ValidationReport:
     problems: tuple[str, ...]
     #: TOOLKIT-004. Zero when the project authors no text, which is legal.
     string_count: int = 0
+    #: TOOLKIT-007. Zero when the project authors no maps, which is legal.
+    map_count: int = 0
 
     @property
     def passed(self) -> bool:
@@ -113,6 +122,7 @@ _EXTRACTABLE = (
     capability.Capability.ENEMY_STATS,
     capability.Capability.CHARACTER_BASE_STATS,
     capability.Capability.TEXT_STRINGS,
+    capability.Capability.MAP_ENTRIES,
 )
 
 
@@ -208,13 +218,42 @@ def extract_project(
     except TextProfileError:
         strings = []
 
+    # Maps are extracted when the verified profile declares the map table, and
+    # omitted otherwise - Legacy of Goku II's records are a variant layout and
+    # its profile deliberately does not declare `map_entries` against this
+    # codec, so `MapEntryProfileError` here means "this ROM has no maps this
+    # toolkit can read" rather than a failure.
+    try:
+        maps = _map_documents(load_maps(rom_path, catalog))
+    except MapEntryProfileError:
+        maps = []
+
     return write_project(
         project_dir,
         meta,
         enemies=enemies,
         characters=characters,
         strings=strings,
+        maps=maps,
     )
+
+
+def _map_documents(maps: Maps) -> list[dict]:
+    """Flatten loaded maps into the authored form `write_project` expects."""
+    documents: list[dict] = []
+    for entry in maps.entries():
+        array = maps.slot_array(entry.identity)
+        document: dict = {
+            "index": entry.identity.index,
+            "key": entry.identity.key,
+            "raw": entry.original_bytes,
+            "slots": None if array is None else array.array.original_bytes,
+            "shape": None if array is None else array.shape.value,
+        }
+        for name in MAP_FIELDS:
+            document[name] = maps.field(entry.identity, name)
+        documents.append(document)
+    return documents
 
 
 # --- shared validation ---------------------------------------------------
@@ -361,6 +400,87 @@ def _check_strings(project: StatProject, strings: TextStrings | None) -> list[st
     return problems
 
 
+def _check_maps(project: StatProject, maps: Maps | None) -> list[str]:
+    """Check every authored map against the loaded table.
+
+    Mirrors `_check_records`: a map the ROM does not have, a map the project
+    omitted, a record whose bytes came from a different image, and a field value
+    the codec refuses. The slot extent is checked as bytes, because the project
+    carries it as bytes - that is what makes the opaque 117 arrays rebuildable
+    at all.
+
+    Every problem is reported before anything is emitted, which is the
+    fail-closed ordering ticket TOOLKIT-007 sec 18 requires.
+    """
+    problems: list[str] = []
+    if not project.maps:
+        return problems
+    if maps is None:
+        return [
+            "project authors maps, but this ROM's profile declares no map "
+            "table; a build would silently drop every authored map"
+        ]
+
+    live = {entry.identity.index: entry for entry in maps.entries()}
+
+    for index in sorted(set(project.maps) - set(live)):
+        problems.append(
+            f"map:{index:04d}: project declares a map that this ROM does not contain"
+        )
+    for index in sorted(set(live) - set(project.maps)):
+        problems.append(
+            f"map:{index:04d}: project is missing this map; a build would "
+            "silently leave it at its base value"
+        )
+
+    for index in sorted(set(project.maps) & set(live)):
+        identity = MapIdentity(index)
+        values = project.maps[index]
+        entry = live[index]
+
+        if values["raw"] != entry.original_bytes:
+            problems.append(
+                f"{identity}: authored raw bytes do not match this ROM; the "
+                "record was extracted from a different image"
+            )
+
+        array = maps.slot_array(identity)
+        authored_slots = values.get("slots")
+        if array is None and authored_slots is not None:
+            problems.append(
+                f"{identity}: project authors a slot extent, but this ROM's "
+                "record declares none"
+            )
+        elif array is not None and authored_slots is None:
+            problems.append(
+                f"{identity}: project is missing this map's slot extent; a "
+                "build would silently leave it at its base value"
+            )
+        elif array is not None and authored_slots != array.array.original_bytes:
+            problems.append(
+                f"{identity}: authored slot bytes do not match this ROM; the "
+                "extent was extracted from a different image"
+            )
+        elif array is not None and values.get("shape") != array.shape.value:
+            problems.append(
+                f"{identity}: authored slot shape {values.get('shape')!r} does "
+                f"not match this ROM's {array.shape.value!r}"
+            )
+
+        for name, (minimum, maximum) in MAP_FIELDS.items():
+            value = values[name]
+            if value < minimum:
+                problems.append(
+                    f"{identity}.{name}={value} is below the minimum {minimum}"
+                )
+            elif value > maximum:
+                problems.append(
+                    f"{identity}.{name}={value} exceeds the maximum {maximum}"
+                )
+
+    return problems
+
+
 def _identity_order(identity: object) -> int:
     """Sort key for reporting. Only table-indexed identities reach this."""
     return getattr(identity, "index", -1)
@@ -376,6 +496,7 @@ def _load_for_project(
     RomProfile,
     StatTables | None,
     TextStrings | None,
+    Maps | None,
 ]:
     """Read the project and whichever subsystems this ROM's profile declares.
 
@@ -394,7 +515,11 @@ def _load_for_project(
         strings: TextStrings | None = load_text_strings(rom_path, catalog)
     except TextProfileError:
         strings = None
-    return project, identification, profile, tables, strings
+    try:
+        maps: Maps | None = load_maps(rom_path, catalog)
+    except MapEntryProfileError:
+        maps = None
+    return project, identification, profile, tables, strings, maps
 
 
 # --- validate ------------------------------------------------------------
@@ -406,7 +531,7 @@ def validate_project(
     catalog: RomProfileCatalog,
 ) -> ValidationReport:
     """Check a project against a base ROM. Writes nothing, ever."""
-    project, identification, profile, tables, strings = _load_for_project(
+    project, identification, profile, tables, strings, maps = _load_for_project(
         project_dir, rom_path, catalog
     )
 
@@ -414,7 +539,11 @@ def validate_project(
     # Record checks are meaningful only against the right image; running them
     # after an identity failure would bury the real cause under 150 mismatches.
     if not problems:
-        problems = _check_records(project, tables) + _check_strings(project, strings)
+        problems = (
+            _check_records(project, tables)
+            + _check_strings(project, strings)
+            + _check_maps(project, maps)
+        )
 
     return ValidationReport(
         project_name=project.meta.name,
@@ -423,6 +552,7 @@ def validate_project(
         enemy_count=len(project.enemies),
         character_count=len(project.characters),
         string_count=len(project.strings),
+        map_count=len(project.maps),
         problems=tuple(problems),
     )
 
@@ -449,6 +579,19 @@ def _apply_project_to_tables(project: StatProject, tables: StatTables) -> None:
                 tables.set_character_field(identity, field, values[field])
 
 
+def _apply_project_to_maps(project: StatProject, maps: Maps) -> None:
+    """Push authored semantic map values into the loaded table.
+
+    Only fields that actually differ are set, so the manifest's reason strings
+    name the real edits rather than reporting every map as touched.
+    """
+    for index, values in project.maps.items():
+        identity = MapIdentity(index)
+        for name in MAP_FIELDS:
+            if maps.field(identity, name) != values[name]:
+                maps.set_field(identity, name, values[name])
+
+
 def build_project(
     project_dir: str | Path,
     rom_path: str | Path,
@@ -464,7 +607,7 @@ def build_project(
     exists as its own step rather than as a flag - the check has to be usable
     without the build, and the build has to run it regardless.
     """
-    project, identification, profile, tables, strings = _load_for_project(
+    project, identification, profile, tables, strings, maps = _load_for_project(
         project_dir, rom_path, catalog
     )
 
@@ -474,7 +617,11 @@ def build_project(
 
     # `_check_strings` applies the authored text as it checks it, so it runs
     # before `_apply_project_to_tables` and its problems join the same gate.
-    problems = _check_records(project, tables) + _check_strings(project, strings)
+    problems = (
+        _check_records(project, tables)
+        + _check_strings(project, strings)
+        + _check_maps(project, maps)
+    )
     if problems:
         raise ProjectValidationError(
             f"project failed validation with {len(problems)} problem(s): "
@@ -499,6 +646,10 @@ def build_project(
     if strings is not None:
         changes += strings.changes()
         base_bytes = strings.base_bytes if base_bytes is None else base_bytes
+    if maps is not None:
+        _apply_project_to_maps(project, maps)
+        changes += maps.changes()
+        base_bytes = maps.base_bytes if base_bytes is None else base_bytes
 
     if base_bytes is None:
         # Unreachable: `_require_extractable_profile` refuses a profile that

@@ -40,21 +40,30 @@ Two independent witnesses against the general reading:
 
 1. **Non-uniformity.** Only **35 of 153** arrays have every slot shaped like the
    confirmed `{type, source_ptr}` example. The other 118 contain words that are
-   neither small type codes nor ROM pointers. (117 of those survive into the
-   supported corpus; the 118th is MapEntry 451, refused by the next witness.)
+   neither small type codes nor ROM pointers. (117 of those survived into the
+   corpus as TOOLKIT-007 measured it; the 118th is MapEntry 451, refused by the
+   next witness. TOOLKIT-008 refused 40 more, leaving **77** opaque arrays. The
+   typed 35 are unaffected.)
 2. **MapEntry 451** declares 4 records at `0x0008E2D0`, an extent covering the
    first 16 bytes of the MapEntry table at `0x0008E2E0`, the table indexing it.
    A count describing an array that consumes its own table is not describing an
-   array. That entry's extent is therefore refused, leaving 152 readable.
+   array. That entry's extent is therefore refused, leaving 152 readable at the
+   time TOOLKIT-007 measured this. **TOOLKIT-008 refused 40 more by the same
+   test; the supported corpus is 112.** See "Supported extents" below.
 
 **What `+0x04` actually counts is UNKNOWN.** TOOLKIT-007 scope forbids fresh RE
 on it; nothing here guesses.
 
 ## Supported extents
 
+> **SUPERSEDED IN PART BY TOOLKIT-008.** 40 of the 152 extents below were
+> measured to cover factory-led placement records and are now refused; the
+> corpus is **112 arrays, 596 slots, 4,768 bytes**. The typed rung is unchanged.
+> See [ENTITY_FORMAT.md](ENTITY_FORMAT.md) for the evidence and the correction.
+
 | Rung | Extent | Status |
 | --- | --- | --- |
-| Opaque 8-byte slots | 152 arrays, **873 slots, 6,984 bytes** | ROUND_TRIP |
+| Opaque 8-byte slots | ~~152 arrays, 873 slots, 6,984 bytes~~ -> **112 arrays, 596 slots, 4,768 bytes** | ROUND_TRIP |
 | Typed `{type, source_ref}` | 35 arrays, **89 slots, 712 bytes** | ROUND_TRIP |
 | Referenced source structures | 89 distinct typed targets, located | READ |
 | Source bounds semantics | 1 instance, reached from an **opaque** array | CONFIRMED (instance only) |
@@ -158,7 +167,7 @@ Refused, each for a stated reason:
 | Target family | Rung | Note |
 | --- | --- | --- |
 | MapEntry records | **ROUND_TRIP** | 452/452, editable fields above |
-| Map-linked 8-byte extents | **ROUND_TRIP** | 152 arrays, 873 slots, opaque-exact |
+| Map-linked 8-byte extents | **ROUND_TRIP** | 112 arrays, 596 slots, opaque-exact (corrected by TOOLKIT-008) |
 | Typed slot arrays | **ROUND_TRIP** | 35 arrays, 89 slots |
 | Source references | **READ** | 89 targets located; no layout claimed |
 | Source bounds | **READ** | one instance, from an opaque array, not a typed one |

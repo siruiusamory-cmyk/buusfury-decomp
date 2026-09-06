@@ -18,15 +18,27 @@ read even though the arrays do not tile.
 
 One of the 153 is refused a second time, by `webfoot.maps`: MapEntry 451's
 declared extent covers the start of the MapEntry table that indexes it, so its
-count cannot be describing slots. The supported corpus is therefore **152**
-arrays.
+count cannot be describing slots.
+
+**TOOLKIT-008 refused 40 more, by the same test, leaving 112.** Those 40
+declared extents cover bytes belonging to factory-led placement records
+(`webfoot.formats.map_placements`) - 57 records in total - and the placement
+reading is the better-witnessed one: **33 of the 40** have their first record
+starting at byte 4 mod 8, *mid slot*, so those bytes cannot be whole 8-byte
+slots at all. MapEntry 146 declares 12 slots whose extent walks through three
+complete records, with the factory word landing in `slots[2]` and one record's
+constant tail split across `slots[5]` and `slots[6]`. The corrected corpus is
+**112 arrays**. `docs/research/ENTITY_FORMAT.md` carries the measurement.
 
 **Two rungs, deliberately separate.** The broad corpus is carried as opaque
-8-byte slots: all 873 of them, 6,984 bytes, reproduced verbatim. Only 35 of the
-152 arrays have every slot shaped like the one confirmed example, and only those
-get typed `{type_raw, source_ref}` decoding. Calling all 873 slots "triggers"
+8-byte slots: all 596 of them, 4,768 bytes, reproduced verbatim. Only 35 of the
+112 arrays have every slot shaped like the one confirmed example, and only those
+get typed `{type_raw, source_ref}` decoding. Calling all 596 slots "triggers"
 would promote a single-entry static finding to a corpus-wide fact the bytes
 contradict, so this module does not name them that.
+
+The typed rung is **unchanged** by the TOOLKIT-008 correction at 35 arrays / 89
+slots: every refused extent was opaque.
 
 **What the confirmed example proves.** MapEntry 39 slot[1] is
 `{0x00020006, 0x080755C0}`, and the halfwords at that source `+0x08` are
@@ -113,7 +125,7 @@ class MapSlot:
     """One 8-byte slot, as two raw words.
 
     Both words are kept raw. `word0`/`word1` are positional names, not semantic
-    ones, because for 117 of the 152 supported arrays this project cannot say
+    ones, because for 77 of the 112 supported arrays this project cannot say
     what either word is. `MapSlotArray.shape` is what tells a caller whether the
     typed reading applies.
     """

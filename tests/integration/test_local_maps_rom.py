@@ -25,11 +25,39 @@ CATALOG = "config/roms.yaml"
 
 #: Measured from the canonical ROM, TOOLKIT-007.
 MAP_RECORD_COUNT = 452
-SLOT_ARRAY_COUNT = 152
-SLOT_COUNT = 873
-SLOT_BYTES = 6984
+
+#: CORRECTED by TOOLKIT-008, from 152 arrays / 873 slots / 6,984 bytes.
+#:
+#: OLD CLAIM: every MapEntry whose `trigger_count_raw` and `triggers_pointer_raw`
+#: describe an in-bounds extent contributes a slot array, giving 152 arrays.
+#:
+#: NEW EVIDENCE: 40 of those 152 declared extents cover bytes belonging to
+#: factory-led placement records (`webfoot.formats.map_placements`), 57 records
+#: in total. The two readings cannot both hold, and the placement reading is the
+#: better-witnessed one: **33 of the 40** have their first record starting at
+#: byte 4 mod 8, *mid slot*, so those bytes cannot be whole 8-byte slots at all.
+#: MapEntry 146 declares 12 slots whose extent walks through three complete
+#: records - `slots[2]` is the factory word and `slots[5..6]` split a record's
+#: constant tail across a slot boundary. Two slots were classified TYPED only
+#: because a record's tail constants satisfy the `{type, source_ref}` shape test.
+#:
+#: RESOLUTION: those 40 extents are refused, exactly as MapEntry 451 already was
+#: and for the same reason - a declared extent that provably is not slots is not
+#: read as slots. `trigger_count_raw` remains UNKNOWN in meaning, as
+#: `docs/research/MAP_FORMAT.md` records; this narrows where it is trusted.
+#:
+#: The typed corpus is UNCHANGED at 35 arrays / 89 slots: every refused extent
+#: was opaque, so TOOLKIT-007's typed rung and connection graph stand as proven.
+SLOT_ARRAY_COUNT = 112
+SLOT_COUNT = 596
+SLOT_BYTES = 4768
 TYPED_ARRAY_COUNT = 35
 TYPED_SLOT_COUNT = 89
+
+#: TOOLKIT-008. The factory-led placement corpus, measured from the same image.
+PLACEMENT_COUNT = 1295
+PLACEMENT_MAP_COUNT = 215
+PLACEMENT_BYTES = 41440
 
 #: The one instance whose referenced structure `AUTO_RE_<local-state-name>:314` verifies.
 CONFIRMED_MAP = 39
@@ -450,3 +478,298 @@ def test_cli_rejects_a_malformed_identity(capsys):
     require_rom()
     assert main(["map", "show", str(LOCAL_ROM), "0039"]) == 2
     assert "not a map identity" in capsys.readouterr().err
+
+
+# --- TOOLKIT-008: factory-led placement records -------------------------
+
+
+def test_the_complete_placement_corpus_round_trips_byte_identically(maps):
+    """Exhaustive, not sampled: every reachable record, decoded and re-encoded."""
+    placements = list(maps.placements())
+    assert len(placements) == PLACEMENT_COUNT
+    assert sum(len(item.original_bytes) for item in placements) == PLACEMENT_BYTES
+    for item in placements:
+        assert item.record.to_bytes() == item.original_bytes
+
+
+def test_every_placement_belongs_to_exactly_one_map(maps):
+    """Exclusive ownership is what lets a placement carry a semantic owner."""
+    placements = list(maps.placements())
+    owners = {}
+    for item in placements:
+        assert item.file_offset not in owners
+        owners[item.file_offset] = item.identity.map_index
+    assert len({item.identity.map_index for item in placements}) == PLACEMENT_MAP_COUNT
+
+
+def test_placement_identities_are_stable_and_carry_no_address(maps):
+    for item in maps.placements():
+        assert item.identity.key == (
+            f"map:{item.identity.map_index:04d}"
+            f"/placement:{item.identity.placement_index:04d}"
+        )
+        assert hex(item.file_offset) not in item.identity.key
+
+
+def test_map_to_placement_ownership_is_answerable_without_offsets(maps):
+    """A caller asks a map for its placements and never computes an offset."""
+    identity = MapIdentity(10)
+    owned = maps.map_placements(identity)
+    assert owned
+    assert all(item.identity.map_index == identity.index for item in owned)
+    assert [item.identity.placement_index for item in owned] == list(range(len(owned)))
+
+
+def test_enumeration_is_deterministic_across_loads():
+    require_rom()
+    first = [item.identity for item in load_maps(LOCAL_ROM, catalog()).placements()]
+    second = [item.identity for item in load_maps(LOCAL_ROM, catalog()).placements()]
+    assert first == second
+
+
+def test_no_slot_extent_overlaps_a_placement_record(maps):
+    """The TOOLKIT-008 correction, asserted rather than described.
+
+    40 declared slot extents covered placement-record bytes; those extents are
+    refused. If a future change re-admits one, this fails before a build does.
+    """
+    records = [
+        (item.file_offset, item.file_offset + len(item.original_bytes))
+        for item in maps.placements()
+    ]
+    for array_entry in maps.slot_arrays():
+        start = array_entry.array.file_offset
+        end = start + len(array_entry.array.original_bytes)
+        for record_start, record_end in records:
+            assert not (start < record_end and record_start < end), (
+                f"{array_entry.identity} slot extent covers a placement record"
+            )
+
+
+def test_the_typed_slot_corpus_survives_the_correction(maps):
+    """The refused extents were all opaque; TOOLKIT-007's typed rung stands."""
+    typed = [item for item in maps.slot_arrays() if item.is_typed]
+    assert len(typed) == TYPED_ARRAY_COUNT
+    assert sum(item.array.slot_count for item in typed) == TYPED_SLOT_COUNT
+
+
+def test_a_placement_position_edit_changes_exactly_one_byte(maps):
+    """The TOOLKIT-008 closure proof, at the semantic layer."""
+    identity = next(iter(maps.placements())).identity
+    before = maps.placement(identity)
+    original_low = before.record.position_low
+    original_high = before.record.position_high
+
+    maps.set_placement_position(identity, low=original_low + 16, high=original_high)
+
+    after = maps.placement(identity)
+    assert after.record.position_low == original_low + 16
+    assert after.record.position_high == original_high
+
+    edited = [
+        change
+        for change in maps.plan().changes
+        if change.old != change.new
+    ]
+    assert len(edited) == 1
+    change = edited[0]
+    assert change.owner == identity.key
+    assert change.reason == "placement edit: position"
+    differing = [i for i in range(len(change.old)) if change.old[i] != change.new[i]]
+    assert differing == [0x0C]
+
+
+def test_a_placement_edit_leaves_every_other_record_untouched(maps):
+    identity = next(iter(maps.placements())).identity
+    maps.set_placement_position(identity, low=1, high=1)
+    for item in maps.placements():
+        if item.identity == identity:
+            continue
+        assert item.record.to_bytes() == item.original_bytes
+
+
+def test_an_out_of_range_position_is_refused_before_any_plan(maps):
+    from tools.webfoot.formats.map_placements import MapPlacementValueError
+
+    identity = next(iter(maps.placements())).identity
+    with pytest.raises(MapPlacementValueError):
+        maps.set_placement_position(identity, low=0x10000, high=0)
+    assert maps.placement(identity).record.to_bytes() == (
+        maps.placement(identity).original_bytes
+    )
+
+
+def test_an_unknown_placement_identity_is_refused(maps):
+    from tools.webfoot.maps import PlacementIdentity, UnknownMapError
+
+    with pytest.raises(UnknownMapError):
+        maps.placement(PlacementIdentity(9999, 0))
+
+
+def test_a_no_op_placement_pass_emits_no_differing_bytes(maps):
+    assert not [change for change in maps.changes() if change.old != change.new]
+
+
+def test_cli_round_trip_reports_the_placement_corpus(capsys):
+    require_rom()
+    assert main(["map", "validate-round-trip", str(LOCAL_ROM)]) == 0
+    output = capsys.readouterr().out
+    assert f"Placements checked: {PLACEMENT_COUNT} ({PLACEMENT_BYTES} bytes)" in output
+    assert f"Maps with placements: {PLACEMENT_MAP_COUNT}" in output
+    assert "Placement failures: 0" in output
+    assert "RESULT:\nPASS" in output
+
+
+def test_a_project_round_trip_carries_every_placement(tmp_path):
+    require_rom()
+    project = tmp_path / "project"
+    extract_project(LOCAL_ROM, project, catalog())
+
+    authored = (project / "maps" / "maps.toml").read_text(encoding="utf-8")
+    assert authored.count("position_low") == PLACEMENT_COUNT
+
+    report = validate_project(project, LOCAL_ROM, catalog())
+    assert not report.problems
+
+    output = tmp_path / "out.gba"
+    build_project(project, LOCAL_ROM, output, catalog())
+    assert output.read_bytes() == LOCAL_ROM.read_bytes()
+
+
+def test_an_authored_placement_edit_changes_exactly_one_rom_byte(tmp_path):
+    """The TOOLKIT-008 closure proof, through the whole project lifecycle."""
+    require_rom()
+    project = tmp_path / "project"
+    extract_project(LOCAL_ROM, project, catalog())
+
+    authored_file = project / "maps" / "maps.toml"
+    text = authored_file.read_text(encoding="utf-8")
+    before = '[map."map:0010".placements."placement:0000"]\nposition_low = 60'
+    after = '[map."map:0010".placements."placement:0000"]\nposition_low = 76'
+    assert before in text
+    authored_file.write_text(text.replace(before, after, 1), encoding="utf-8", newline="\n")
+
+    assert not validate_project(project, LOCAL_ROM, catalog()).problems
+
+    output = tmp_path / "out.gba"
+    manifest = tmp_path / "manifest.json"
+    build_project(project, LOCAL_ROM, output, catalog(), manifest_path=manifest)
+
+    base = LOCAL_ROM.read_bytes()
+    built = output.read_bytes()
+    differing = [i for i in range(len(base)) if base[i] != built[i]]
+    assert differing == [0x72908]
+    assert base[0x72908] == 0x3C
+    assert built[0x72908] == 0x4C
+
+    entries = [
+        change
+        for change in json.loads(manifest.read_text())["changes"]
+        if change["owner"] == "map:0010/placement:0000"
+    ]
+    assert len(entries) == 1
+    assert entries[0]["reason"] == "placement edit: position"
+
+    repeated = tmp_path / "again.gba"
+    build_project(project, LOCAL_ROM, repeated, catalog())
+    assert repeated.read_bytes() == built
+
+    assert hashlib.sha256(LOCAL_ROM.read_bytes()).hexdigest() == (
+        "940ad5f01db4465b8877dfe739510cbf34f4ea3d390f3df13519808bc36f059e"
+    )
+
+
+def test_an_authored_placement_out_of_range_is_refused_before_a_build(tmp_path):
+    require_rom()
+    project = tmp_path / "project"
+    extract_project(LOCAL_ROM, project, catalog())
+
+    authored_file = project / "maps" / "maps.toml"
+    text = authored_file.read_text(encoding="utf-8")
+    authored_file.write_text(
+        text.replace(
+            '[map."map:0010".placements."placement:0000"]\nposition_low = 60',
+            '[map."map:0010".placements."placement:0000"]\nposition_low = 70000',
+            1,
+        ),
+        encoding="utf-8",
+        newline="\n",
+    )
+
+    problems = validate_project(project, LOCAL_ROM, catalog()).problems
+    assert any("position_low=70000" in problem for problem in problems)
+
+    output = tmp_path / "out.gba"
+    with pytest.raises(Exception):
+        build_project(project, LOCAL_ROM, output, catalog())
+    assert not output.exists()
+
+
+def test_cli_lists_and_shows_placements_without_leaking_offsets(capsys):
+    require_rom()
+    assert main(["map", "placements", str(LOCAL_ROM), "map:0010"]) == 0
+    listed = capsys.readouterr().out
+    assert "map:0010/placement:0000" in listed
+    assert "0x728fc" not in listed.lower()
+
+    assert main(
+        ["map", "placement", str(LOCAL_ROM), "map:0010/placement:0000"]
+    ) == 0
+    shown = capsys.readouterr().out
+    assert "Identity: map:0010/placement:0000" in shown
+    assert "axis UNKNOWN" in shown
+    assert "0x728fc" not in shown.lower()
+
+
+def test_cli_rejects_a_malformed_placement_identity(capsys):
+    require_rom()
+    assert main(["map", "placement", str(LOCAL_ROM), "map:0010"]) == 2
+    assert "not a placement identity" in capsys.readouterr().err
+
+
+def test_a_placement_edit_merges_with_map_stat_and_text_edits(tmp_path):
+    """Sec 30: four subsystems, one merged plan, four attributed owners."""
+    require_rom()
+    import re
+
+    project = tmp_path / "project"
+    extract_project(LOCAL_ROM, project, catalog())
+
+    maps_file = project / "maps" / "maps.toml"
+    text = maps_file.read_text(encoding="utf-8")
+    start = text.index('[map."map:0039"]')
+    end = text.index("\n[map.", start + 1)
+    block = text[start:end]
+    text = text[:start] + block.replace("music_id = 15", "music_id = 14", 1) + text[end:]
+    text = text.replace(
+        '[map."map:0010".placements."placement:0000"]\nposition_low = 60',
+        '[map."map:0010".placements."placement:0000"]\nposition_low = 76',
+        1,
+    )
+    maps_file.write_text(text, encoding="utf-8", newline="\n")
+
+    enemies_file = project / "enemies" / "enemies.toml"
+    enemies = enemies_file.read_text(encoding="utf-8")
+    match = re.search(r"\[enemy\.\d+\]\n(.*?)(?=\n\[|\Z)", enemies, re.S)
+    enemy_block = match.group(1)
+    hp = int(re.search(r"hp = (\d+)", enemy_block).group(1))
+    enemies_file.write_text(
+        enemies.replace(
+            enemy_block, enemy_block.replace(f"hp = {hp}", f"hp = {hp + 1}", 1), 1
+        ),
+        encoding="utf-8",
+        newline="\n",
+    )
+
+    assert not validate_project(project, LOCAL_ROM, catalog()).problems
+
+    manifest = tmp_path / "manifest.json"
+    build_project(
+        project, LOCAL_ROM, tmp_path / "out.gba", catalog(), manifest_path=manifest
+    )
+    owners = {
+        change["owner"] for change in json.loads(manifest.read_text())["changes"]
+    }
+    assert "map:0010/placement:0000" in owners
+    assert "map:0039" in owners
+    assert any(owner.startswith("enemy:") for owner in owners)

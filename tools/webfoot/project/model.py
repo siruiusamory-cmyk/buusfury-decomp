@@ -336,13 +336,22 @@ def _map_document(maps: list[dict[str, Any]]) -> dict[str, Any]:
     extent's bytes as `slots`.
 
     `slots` is a second opaque blob rather than a decoded structure because for
-    117 of the 152 extents this toolkit cannot say what the bytes mean, and for
+    77 of the 112 extents this toolkit cannot say what the bytes mean, and for
     the other 35 the typed reading is a classification of the same bytes rather
     than a different encoding of them. One blob per extent reconstructs both
     exactly; a decoded form would have to reconstruct the opaque case anyway,
     and would then be two sources of truth for one span. `shape` records the
     classification so a reader can see which extents are typed without the file
     implying the toolkit can rebuild them from fields it does not have.
+
+    TOOLKIT-008 adds `placements`: one entry per factory-led placement record the
+    map owns, in placement-index order. Unlike `slots` these carry authorable
+    semantic fields, because the record's layout *is* established - but only
+    `position_low`/`position_high` are authored, and `raw` still carries the
+    whole record so every UNKNOWN word round-trips exactly. The halfwords are
+    named by position in the word rather than by axis: nothing in this project
+    establishes which is X, and writing `x` into an authored file would assert
+    it.
     """
     tables: dict[str, Any] = {}
     for entry in sorted(maps, key=lambda item: item["index"]):
@@ -353,6 +362,20 @@ def _map_document(maps: list[dict[str, Any]]) -> dict[str, Any]:
         if entry.get("slots") is not None:
             record["shape"] = entry["shape"]
             record["slots"] = entry["slots"].hex()
+        placements = entry.get("placements")
+        if placements:
+            # A table keyed `placement:0000` rather than an array of tables:
+            # the emitter carries nested tables and flat scalars only, and a
+            # zero-padded key sorts lexically in numeric order, so the file is
+            # deterministic without teaching the writer a new TOML construct.
+            record["placements"] = {
+                f"placement:{item['index']:04d}": {
+                    "position_low": item["position_low"],
+                    "position_high": item["position_high"],
+                    "raw": item["raw"].hex(),
+                }
+                for item in sorted(placements, key=lambda item: item["index"])
+            }
         tables[entry["key"]] = record
     return {"map": tables}
 
@@ -621,7 +644,69 @@ def _read_maps(path: Path) -> dict[int, dict[str, Any]]:
                 )
             values["shape"] = shape
 
-        unexpected = set(entry) - set(_MAP_FIELD_ORDER) - {"raw", "slots", "shape"}
+        placements = entry.get("placements")
+        if placements is not None:
+            if not isinstance(placements, dict):
+                raise ProjectValidationError(
+                    f"{path}: {label}.placements must be a table of records "
+                    'keyed "placement:0000"'
+                )
+            parsed: list[dict[str, Any]] = []
+            for placement_key, item in placements.items():
+                item_label = f"{label}.placements.{placement_key}"
+                kind, _, index_digits = str(placement_key).partition(":")
+                if kind != "placement" or not index_digits.isdigit():
+                    raise ProjectLoadError(
+                        f"{path}: {item_label} is not a valid placement key; "
+                        'expected the form "placement:0000"'
+                    )
+                if not isinstance(item, dict):
+                    raise ProjectValidationError(
+                        f"{path}: {item_label} must be a table"
+                    )
+                placement: dict[str, Any] = {
+                    "index": int(index_digits, 10),
+                    "position_low": _require_int(
+                        item, "position_low", item_label, path
+                    ),
+                    "position_high": _require_int(
+                        item, "position_high", item_label, path
+                    ),
+                }
+                placement_raw = item.get("raw")
+                if not isinstance(placement_raw, str):
+                    raise ProjectValidationError(
+                        f"{path}: {item_label}.raw must be a hexadecimal string "
+                        "carrying the record's bytes; without it the record's "
+                        "unknown words cannot be rebuilt"
+                    )
+                try:
+                    placement["raw"] = bytes.fromhex(placement_raw)
+                except ValueError as exc:
+                    raise ProjectValidationError(
+                        f"{path}: {item_label}.raw is not valid hex: {exc}"
+                    ) from exc
+                unknown = set(item) - {"position_low", "position_high", "raw"}
+                if unknown:
+                    joined = ", ".join(sorted(unknown))
+                    raise ProjectLoadError(
+                        f"{path}: {item_label} has unknown fields: {joined}"
+                    )
+                parsed.append(placement)
+            indices = [item["index"] for item in parsed]
+            if len(set(indices)) != len(indices):
+                raise ProjectLoadError(
+                    f"{path}: {label} declares a placement index twice"
+                )
+            # Sorted on load as well as on write, so a hand-reordered file
+            # rebuilds identically rather than depending on line order.
+            values["placements"] = sorted(parsed, key=lambda item: item["index"])
+
+        unexpected = (
+            set(entry)
+            - set(_MAP_FIELD_ORDER)
+            - {"raw", "slots", "shape", "placements"}
+        )
         if unexpected:
             joined = ", ".join(sorted(unexpected))
             raise ProjectLoadError(f"{path}: {label} has unknown fields: {joined}")

@@ -57,6 +57,7 @@ from .maps import (
     MAP_FIELDS,
     MapIdentity,
     Maps,
+    PlacementIdentity,
     load_maps,
 )
 from .formats.map_entry import MapEntryProfileError
@@ -252,6 +253,22 @@ def _map_documents(maps: Maps) -> list[dict]:
         }
         for name in MAP_FIELDS:
             document[name] = maps.field(entry.identity, name)
+        # TOOLKIT-008. Placements are authored as semantic halfwords, ordered by
+        # placement index so the file is deterministic and diffs stay readable.
+        # The halfwords are named by position in the word, never by axis: this
+        # project has not established which one is X, and an authored file that
+        # said `x` would assert what the evidence does not.
+        placements = maps.map_placements(entry.identity)
+        if placements:
+            document["placements"] = [
+                {
+                    "index": item.identity.placement_index,
+                    "position_low": item.record.position_low,
+                    "position_high": item.record.position_high,
+                    "raw": item.original_bytes,
+                }
+                for item in placements
+            ]
         documents.append(document)
     return documents
 
@@ -461,11 +478,45 @@ def _check_maps(project: StatProject, maps: Maps | None) -> list[str]:
                 f"{identity}: authored slot bytes do not match this ROM; the "
                 "extent was extracted from a different image"
             )
+
         elif array is not None and values.get("shape") != array.shape.value:
             problems.append(
                 f"{identity}: authored slot shape {values.get('shape')!r} does "
                 f"not match this ROM's {array.shape.value!r}"
             )
+
+        # TOOLKIT-008. Placements are checked the same way and before any
+        # output exists: count, identity, provenance bytes, and halfword range.
+        owned = maps.map_placements(identity)
+        authored_placements = values.get("placements", [])
+        if len(owned) != len(authored_placements):
+            problems.append(
+                f"{identity}: project authors {len(authored_placements)} "
+                f"placement(s) but this ROM's map owns {len(owned)}"
+            )
+        else:
+            by_index = {item.identity.placement_index: item for item in owned}
+            for item in authored_placements:
+                placement_index = item["index"]
+                live_placement = by_index.get(placement_index)
+                if live_placement is None:
+                    problems.append(
+                        f"{identity}/placement:{placement_index:04d}: project "
+                        "declares a placement that this ROM's map does not own"
+                    )
+                    continue
+                if item["raw"] != live_placement.original_bytes:
+                    problems.append(
+                        f"{live_placement.identity}: authored raw bytes do not "
+                        "match this ROM; the record was extracted from a "
+                        "different image"
+                    )
+                for half in ("position_low", "position_high"):
+                    if not 0 <= item[half] <= 0xFFFF:
+                        problems.append(
+                            f"{live_placement.identity}: {half}={item[half]} "
+                            "is outside the 0..65535 range this field holds"
+                        )
 
         for name, (minimum, maximum) in MAP_FIELDS.items():
             value = values[name]
@@ -590,6 +641,23 @@ def _apply_project_to_maps(project: StatProject, maps: Maps) -> None:
         for name in MAP_FIELDS:
             if maps.field(identity, name) != values[name]:
                 maps.set_field(identity, name, values[name])
+
+        # TOOLKIT-008. An authored placement whose halfwords differ from the
+        # loaded record is staged as an edit. An index the loaded image does not
+        # own is refused by `Maps.placement`, so a project naming a placement
+        # that this ROM does not have fails before anything is written.
+        for item in values.get("placements", ()):
+            placement_identity = PlacementIdentity(index, item["index"])
+            current = maps.placement(placement_identity).record
+            if (
+                current.position_low != item["position_low"]
+                or current.position_high != item["position_high"]
+            ):
+                maps.set_placement_position(
+                    placement_identity,
+                    low=item["position_low"],
+                    high=item["position_high"],
+                )
 
 
 def build_project(

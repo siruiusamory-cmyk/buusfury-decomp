@@ -39,7 +39,13 @@ from .formats.stat_tables import StatEncodeError, StatIdentity
 from .formats.text_tables import TextCodecError, TextIdentity, encode_string
 from .stats import StatTableError, load_stat_tables
 from .text import TextTableError, load_text_strings
-from .maps import MAP_FIELDS, MapError, MapIdentity, load_maps
+from .maps import (
+    MAP_FIELDS,
+    MapError,
+    MapIdentity,
+    PlacementIdentity,
+    load_maps,
+)
 from .write import WriteError, emit_image
 
 
@@ -250,6 +256,25 @@ def build_parser() -> argparse.ArgumentParser:
     map_connections.add_argument("rom", type=Path)
     map_connections.add_argument(
         "identity", nargs="?", default=None, help="map identity; omit for all"
+    )
+
+    map_placements_parser = map_commands.add_parser(
+        "placements",
+        help="list the factory-led placement records a map owns",
+    )
+    map_placements_parser.add_argument("rom", type=Path)
+    map_placements_parser.add_argument(
+        "identity", nargs="?", default=None, help="map identity; omit for all"
+    )
+    map_placements_parser.add_argument("--limit", type=int, default=40)
+
+    map_placement_show = map_commands.add_parser(
+        "placement",
+        help="print one placement record's fields",
+    )
+    map_placement_show.add_argument("rom", type=Path)
+    map_placement_show.add_argument(
+        "identity", help="placement identity, e.g. map:0010/placement:0000"
     )
 
     map_round_trip = map_commands.add_parser(
@@ -666,6 +691,74 @@ def _parse_map_identity(value: str) -> MapIdentity:
     return MapIdentity(int(digits, 10))
 
 
+def _parse_placement_identity(value: str) -> PlacementIdentity:
+    map_part, _, placement_part = value.partition("/")
+    map_prefix, _, map_digits = map_part.partition(":")
+    kind, _, index_digits = placement_part.partition(":")
+    if (
+        map_prefix != "map"
+        or not map_digits.isdigit()
+        or kind != "placement"
+        or not index_digits.isdigit()
+    ):
+        raise MapError(
+            f"{value!r} is not a placement identity; "
+            'expected "map:0010/placement:0000"'
+        )
+    return PlacementIdentity(int(map_digits, 10), int(index_digits, 10))
+
+
+def _print_map_placements(maps, identity: MapIdentity | None, limit: int | None) -> None:
+    items = (
+        list(maps.placements())
+        if identity is None
+        else list(maps.map_placements(identity))
+    )
+    print("Map Placements")
+    print("--------------")
+    print()
+    if identity is not None:
+        print(f"Map: {identity}")
+    print(f"Placements: {len(items)}")
+    print()
+    if not items:
+        return
+    # Halfwords are labelled by position in the word, never by axis: no
+    # evidence in this project establishes which one is X.
+    print("  identity                      type    id   pos.low  pos.high")
+    for item in items[:limit] if limit else items:
+        record = item.record
+        print(
+            f"  {item.identity.key:<28}  "
+            f"{record.type_raw:>4}  {record.id_raw:>4}  "
+            f"{record.position_low:>8}  {record.position_high:>8}"
+        )
+    if limit and len(items) > limit:
+        print(f"  ... {len(items) - limit} more")
+
+
+def _print_placement_show(maps, identity: PlacementIdentity) -> None:
+    entry = maps.placement(identity)
+    record = entry.record
+    print("Placement Record")
+    print("----------------")
+    print()
+    print(f"Identity: {entry.identity}")
+    print(f"Owner map: map:{entry.identity.map_index:04d}")
+    print()
+    print(f"factory_raw:  0x{record.factory_raw:08X}  (family constant)")
+    print(f"flags_raw:    0x{record.flags_raw:08X}  UNKNOWN")
+    print(f"type_raw:     0x{record.type_raw:08X}  UNKNOWN")
+    print(f"position_raw: 0x{record.position_raw:08X}")
+    print(f"  low halfword:  {record.position_low}  (axis UNKNOWN)")
+    print(f"  high halfword: {record.position_high}  (axis UNKNOWN)")
+    print(f"id_raw:       0x{record.id_raw:08X}  UNKNOWN")
+    print(
+        f"tail:         0x{record.tail0_raw:08X} "
+        f"0x{record.tail1_raw:08X} 0x{record.tail2_raw:08X}  (family constants)"
+    )
+
+
 def _print_map_list(maps, limit: int | None, typed_only: bool) -> None:
     entries = [
         entry
@@ -771,6 +864,17 @@ def _print_map_round_trip(maps) -> bool:
         if item.array.to_bytes() != item.array.original_bytes:
             slot_failures.append(item.identity)
 
+    placement_failures: list[str] = []
+    placements = 0
+    placement_bytes = 0
+    placement_maps: set[int] = set()
+    for placement in maps.placements():
+        placements += 1
+        placement_bytes += len(placement.original_bytes)
+        placement_maps.add(placement.identity.map_index)
+        if placement.record.to_bytes() != placement.original_bytes:
+            placement_failures.append(str(placement.identity))
+
     print("Map Round-Trip")
     print("--------------")
     print()
@@ -779,15 +883,22 @@ def _print_map_round_trip(maps) -> bool:
     print(f"Slot arrays checked: {arrays}")
     print(f"Slots checked: {slots} ({slot_bytes} bytes)")
     print(f"Typed arrays: {typed_arrays}")
+    print(f"Placements checked: {placements} ({placement_bytes} bytes)")
+    print(f"Maps with placements: {len(placement_maps)}")
     print(f"Record failures: {len(record_failures)}")
     print(f"Slot failures: {len(slot_failures)}")
-    if record_failures or slot_failures:
+    print(f"Placement failures: {len(placement_failures)}")
+    if record_failures or slot_failures or placement_failures:
         print()
-        for identity in (record_failures + slot_failures)[:20]:
+        for identity in (
+            [str(item) for item in record_failures]
+            + [str(item) for item in slot_failures]
+            + placement_failures
+        )[:20]:
             print(f"  {identity}")
     print()
     print("RESULT:")
-    passed = not record_failures and not slot_failures
+    passed = not record_failures and not slot_failures and not placement_failures
     print("PASS" if passed else "FAIL")
     return passed
 
@@ -1044,6 +1155,20 @@ def main(argv: list[str] | None = None) -> int:
                     None
                     if args.identity is None
                     else _parse_map_identity(args.identity),
+                )
+                return 0
+            if args.map_command == "placements":
+                _print_map_placements(
+                    maps,
+                    None
+                    if args.identity is None
+                    else _parse_map_identity(args.identity),
+                    args.limit,
+                )
+                return 0
+            if args.map_command == "placement":
+                _print_placement_show(
+                    maps, _parse_placement_identity(args.identity)
                 )
                 return 0
             return 0 if _print_map_round_trip(maps) else 2

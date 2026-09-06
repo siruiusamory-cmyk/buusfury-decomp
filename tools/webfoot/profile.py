@@ -14,7 +14,7 @@ from .gba_header import GbaHeader
 from .hashing import RomHashes
 from .binary import BinaryAddressError, GBA_ROM_BASE, GbaRomAddress
 from .binary import FileOffset
-from .layout import FreeRegion, LayoutError, RomRange
+from .layout import FreeRegion, LayoutError, RomRange, check_alignment
 
 
 _HEX_LENGTHS = {"crc32": 8, "md5": 32, "sha1": 40, "sha256": 64}
@@ -34,8 +34,23 @@ _ALLOWED_KEYS = {
     "tables",
     "free_regions",
 }
-_ALLOWED_TABLES = {"map_entries"}
+_ALLOWED_TABLES = {"map_entries", "enemy_stats", "character_base_stats", "text_strings"}
 _ALLOWED_MAP_ENTRY_TABLE_KEYS = {"address", "count", "record_size"}
+_ALLOWED_RECORD_TABLE_KEYS = {"address", "count", "record_size"}
+_ALLOWED_TEXT_TABLE_KEYS = {
+    "pointer_table_address",
+    "count",
+    "pool_address",
+    "pool_size",
+    "encoding",
+    "alignment",
+    "relocatable",
+    "evidence",
+}
+
+#: Encodings the text codec implements. A profile naming anything else is
+#: refused rather than decoded with the wrong reader.
+_SUPPORTED_TEXT_ENCODINGS = {"utf16le_nul_terminated"}
 
 
 class ProfileConfigError(ValueError):
@@ -57,6 +72,161 @@ class MapEntryTableProfile:
     address: GbaRomAddress
     count: int
     record_size: int
+
+
+@dataclass(frozen=True, slots=True)
+class RecordTableProfile:
+    """A fixed-stride table of records, located by address rather than offset.
+
+    Address is stored as a `GbaRomAddress` so the ROM-window check and the
+    offset conversion stay in `binary`, and no caller is tempted to treat a
+    file offset and a cartridge address as interchangeable.
+    """
+
+    address: GbaRomAddress
+    count: int
+    record_size: int
+
+    @property
+    def total_size(self) -> int:
+        return self.count * self.record_size
+
+
+@dataclass(frozen=True, slots=True)
+class TextTableProfile:
+    """A pointer-indexed pool of variable-length strings.
+
+    Unlike `RecordTableProfile` there is no stride: entries are located through
+    the pointer table, and the pool is described by its extent instead. The
+    encoding is named rather than assumed, so a profile whose text this codec
+    cannot read is refused instead of being decoded with the wrong reader.
+
+    `relocatable` is a property of the *pool*, and it is False for every profile
+    shipped today: relocation additionally requires declared free space, which
+    no verified profile has. Declaring it True without free space still cannot
+    move anything - the allocator refuses - so the flag records intent, never
+    permission.
+    """
+
+    pointer_table_address: GbaRomAddress
+    count: int
+    pool_address: GbaRomAddress
+    pool_size: int
+    encoding: str
+    alignment: int
+    relocatable: bool
+    evidence: str
+
+    @property
+    def pointer_table_size(self) -> int:
+        return self.count * 4
+
+
+def _optional_text_table(
+    tables: Mapping[str, Any] | None,
+    name: str = "text_strings",
+) -> TextTableProfile | None:
+    if tables is None:
+        return None
+    table = tables.get(name)
+    if table is None:
+        return None
+    if not isinstance(table, Mapping):
+        raise ProfileConfigError(f"{name} table must be a mapping")
+    unexpected = set(table) - _ALLOWED_TEXT_TABLE_KEYS
+    if unexpected:
+        joined = ", ".join(sorted(str(key) for key in unexpected))
+        raise ProfileConfigError(f"{name} contains unexpected fields: {joined}")
+    missing = _ALLOWED_TEXT_TABLE_KEYS - set(table)
+    if missing:
+        joined = ", ".join(sorted(missing))
+        raise ProfileConfigError(f"{name} is missing required fields: {joined}")
+
+    for key in ("pointer_table_address", "pool_address"):
+        if type(table[key]) is not int:
+            raise ProfileConfigError(f"{name} {key} must be an integer GBA address")
+    for key in ("count", "pool_size"):
+        if type(table[key]) is not int or table[key] <= 0:
+            raise ProfileConfigError(f"{name} {key} must be a positive integer")
+
+    encoding = table["encoding"]
+    if encoding not in _SUPPORTED_TEXT_ENCODINGS:
+        supported = ", ".join(sorted(_SUPPORTED_TEXT_ENCODINGS))
+        raise ProfileConfigError(
+            f"{name} encoding {encoding!r} is not implemented; supported: {supported}"
+        )
+
+    alignment = table["alignment"]
+    try:
+        check_alignment(alignment)
+    except LayoutError as exc:
+        raise ProfileConfigError(f"invalid {name} alignment: {exc}") from exc
+
+    relocatable = table["relocatable"]
+    if type(relocatable) is not bool:
+        raise ProfileConfigError(f"{name} relocatable must be a boolean")
+
+    evidence = table["evidence"]
+    if not isinstance(evidence, str) or not evidence.strip():
+        raise ProfileConfigError(f"{name} evidence must be a non-empty string")
+
+    addresses = {}
+    for key in ("pointer_table_address", "pool_address"):
+        try:
+            addresses[key] = GbaRomAddress(table[key])
+        except BinaryAddressError as exc:
+            raise ProfileConfigError(f"invalid {name} {key}: {exc}") from exc
+        if addresses[key].raw < GBA_ROM_BASE:
+            raise ProfileConfigError(f"{name} {key} must be in the GBA ROM window")
+
+    return TextTableProfile(
+        pointer_table_address=addresses["pointer_table_address"],
+        count=table["count"],
+        pool_address=addresses["pool_address"],
+        pool_size=table["pool_size"],
+        encoding=encoding,
+        alignment=alignment,
+        relocatable=relocatable,
+        evidence=evidence.strip(),
+    )
+
+
+def _optional_record_table(
+    tables: Mapping[str, Any] | None,
+    name: str,
+) -> RecordTableProfile | None:
+    if tables is None:
+        return None
+    table = tables.get(name)
+    if table is None:
+        return None
+    if not isinstance(table, Mapping):
+        raise ProfileConfigError(f"{name} table must be a mapping")
+    unexpected = set(table) - _ALLOWED_RECORD_TABLE_KEYS
+    if unexpected:
+        joined = ", ".join(sorted(str(key) for key in unexpected))
+        raise ProfileConfigError(f"{name} contains unexpected fields: {joined}")
+
+    address = table.get("address")
+    count = table.get("count")
+    record_size = table.get("record_size")
+    if type(address) is not int:
+        raise ProfileConfigError(f"{name} address must be an integer GBA address")
+    if type(count) is not int or count <= 0:
+        raise ProfileConfigError(f"{name} count must be a positive integer")
+    if type(record_size) is not int or record_size <= 0:
+        raise ProfileConfigError(f"{name} record_size must be a positive integer")
+    try:
+        gba_address = GbaRomAddress(address)
+    except BinaryAddressError as exc:
+        raise ProfileConfigError(f"invalid {name} address: {exc}") from exc
+    if gba_address.raw < GBA_ROM_BASE:
+        raise ProfileConfigError(f"{name} address must be in the GBA ROM window")
+    return RecordTableProfile(
+        address=gba_address,
+        count=count,
+        record_size=record_size,
+    )
 
 
 def _optional_map_entry_table(data: Mapping[str, Any]) -> MapEntryTableProfile | None:
@@ -139,6 +309,9 @@ class RomProfile:
     sources: tuple[str, ...]
     notes: str
     map_entries: MapEntryTableProfile | None
+    enemy_stats: RecordTableProfile | None
+    character_base_stats: RecordTableProfile | None
+    text_strings: TextTableProfile | None = None
     free_regions: tuple[FreeRegion, ...] = ()
 
     @classmethod
@@ -171,6 +344,10 @@ class RomProfile:
         ):
             raise ProfileConfigError("profile sources must be a list of non-empty strings")
 
+        tables_value = data.get("tables")
+        if tables_value is not None and not isinstance(tables_value, Mapping):
+            raise ProfileConfigError("profile tables must be a mapping")
+
         hashes = {key: _optional_hash(data, key) for key in _HEX_LENGTHS}
         if hashes["sha256"] is None:
             raise ProfileConfigError("profile must provide sha256 for exact verification")
@@ -193,6 +370,11 @@ class RomProfile:
             sources=tuple(source.strip() for source in sources_value),
             notes=notes.strip(),
             map_entries=_optional_map_entry_table(data),
+            enemy_stats=_optional_record_table(tables_value, "enemy_stats"),
+            character_base_stats=_optional_record_table(
+                tables_value, "character_base_stats"
+            ),
+            text_strings=_optional_text_table(tables_value),
             free_regions=_free_regions(data.get("free_regions", []), size),
         )
 

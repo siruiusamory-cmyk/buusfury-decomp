@@ -16,6 +16,29 @@ profiles:
         address: 0x0808e2e0
         count: 452
         record_size: 0x38
+      enemy_stats:
+        address: 0x08711274
+        count: 141
+        record_size: 0x1c
+      character_base_stats:
+        address: 0x086fda4c
+        count: 9
+        record_size: 0x12
+      text_strings:
+        pointer_table_address: 0x0806bce8
+        count: 1534
+        pool_address: 0x0805792c
+        pool_size: 82874
+        encoding: utf16le_nul_terminated
+        alignment: 2
+        relocatable: false
+        evidence: >-
+          TOOLKIT-004 verified against the canonical image: 1534 pointers,
+          strictly ascending with no duplicate targets, whose strings tile
+          0x0005792c..0x0006bce6 exhaustively with no gap or overlap. The pool
+          base has exactly one inbound word-aligned reference in the whole ROM
+          (this table); the table base has 51. Relocatable is false because no
+          verified free region is declared for this profile.
     sources:
       - "2genkidev/buusfury@cc53d0cd2d1c167e749419187e2d92017ac07468 README.md"
       - "Local reproducible observation, 2026-08-19"

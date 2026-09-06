@@ -24,8 +24,22 @@ from .formats.map_entry import (
     MapEntryValidationResult,
     validate_map_entry_round_trips,
 )
+from .build import (
+    BuildError,
+    BuildResult,
+    ValidationReport,
+    build_project,
+    extract_project,
+    validate_project,
+)
 from .profile import ProfileConfigError, RomProfileCatalog, VerificationStatus
+from .project import ProjectError
 from .rom import RomIdentification, RomReadError, identify_rom
+from .formats.stat_tables import StatEncodeError, StatIdentity
+from .formats.text_tables import TextCodecError, TextIdentity, encode_string
+from .stats import StatTableError, load_stat_tables
+from .text import TextTableError, load_text_strings
+from .write import WriteError, emit_image
 
 
 def development_profile_path() -> Path:
@@ -108,6 +122,130 @@ def build_parser() -> argparse.ArgumentParser:
     )
     find_first_word.add_argument("rom", type=Path)
     find_first_word.add_argument("value", type=_parse_u32)
+
+    stats = subparsers.add_parser(
+        "stats",
+        help="read, validate and edit the static stat tables",
+    )
+    stats_commands = stats.add_subparsers(dest="stats_command", required=True)
+
+    stats_list = stats_commands.add_parser(
+        "list", help="list stat records with identity, alias and location"
+    )
+    stats_list.add_argument("rom", type=Path)
+    stats_list.add_argument(
+        "--kind", choices=("enemy", "character", "all"), default="all"
+    )
+
+    stats_round_trip = stats_commands.add_parser(
+        "validate-round-trip",
+        help="prove every stat record re-serializes byte-identically",
+    )
+    stats_round_trip.add_argument("rom", type=Path)
+
+    stats_set = stats_commands.add_parser(
+        "set",
+        help="edit one stat field and emit a NEW ROM image plus a manifest",
+    )
+    stats_set.add_argument("rom", type=Path)
+    stats_set.add_argument(
+        "identity",
+        help="record identity, e.g. enemy:434 or character:0",
+    )
+    stats_set.add_argument("field")
+    stats_set.add_argument("value", type=int)
+    stats_set.add_argument(
+        "--output", type=Path, required=True, help="output ROM path (must not exist)"
+    )
+    stats_set.add_argument(
+        "--manifest", type=Path, default=None, help="write the change manifest here"
+    )
+
+    # TOOLKIT-004. Mirrors `stats`: list, prove the round trip, edit one entry.
+    # Deliberately not a research dump - there is no "scan for strings" command,
+    # because enumeration comes from the verified pointer table and a heuristic
+    # scan would produce a different, unreproducible answer.
+    text = subparsers.add_parser(
+        "text",
+        help="read, validate and edit the string table",
+    )
+    text_commands = text.add_subparsers(dest="text_command", required=True)
+
+    text_list = text_commands.add_parser(
+        "list", help="list strings with identity, location and text"
+    )
+    text_list.add_argument("rom", type=Path)
+    text_list.add_argument(
+        "--contains",
+        default=None,
+        help="only strings containing this substring (case-sensitive)",
+    )
+    text_list.add_argument(
+        "--limit", type=int, default=None, help="stop after this many strings"
+    )
+
+    text_show = text_commands.add_parser(
+        "show", help="print one string's text, identity and location"
+    )
+    text_show.add_argument("rom", type=Path)
+    text_show.add_argument("identity", help="string identity, e.g. text:0010")
+
+    text_round_trip = text_commands.add_parser(
+        "validate-round-trip",
+        help="prove every string re-serializes byte-identically",
+    )
+    text_round_trip.add_argument("rom", type=Path)
+
+    text_set = text_commands.add_parser(
+        "set",
+        help="edit one string and emit a NEW ROM image plus a manifest",
+    )
+    text_set.add_argument("rom", type=Path)
+    text_set.add_argument("identity", help="string identity, e.g. text:0010")
+    text_set.add_argument(
+        "value",
+        help='replacement text; "{08:XX}" is a control code, "{{" a literal brace',
+    )
+    text_set.add_argument(
+        "--output", type=Path, required=True, help="output ROM path (must not exist)"
+    )
+    text_set.add_argument(
+        "--manifest", type=Path, default=None, help="write the change manifest here"
+    )
+
+    # TOOLKIT-002. These call the same project/build APIs a GUI or automation
+    # would; the CLI parses arguments and formats output and does nothing else.
+    extract = subparsers.add_parser(
+        "extract",
+        help="extract a verified ROM into a deterministic project directory",
+    )
+    extract.add_argument("rom", type=Path)
+    extract.add_argument("project", type=Path)
+    extract.add_argument(
+        "--name",
+        default=None,
+        help="project name recorded in project.toml (default: the profile id)",
+    )
+
+    validate_project_parser = subparsers.add_parser(
+        "validate",
+        help="validate a project against its base ROM, writing nothing",
+    )
+    validate_project_parser.add_argument("project", type=Path)
+    validate_project_parser.add_argument("--rom", type=Path, required=True)
+
+    build = subparsers.add_parser(
+        "build",
+        help="build a project into a NEW ROM image; the base ROM is never modified",
+    )
+    build.add_argument("project", type=Path)
+    build.add_argument("--rom", type=Path, required=True)
+    build.add_argument(
+        "--output", type=Path, required=True, help="output ROM path (must not exist)"
+    )
+    build.add_argument(
+        "--manifest", type=Path, default=None, help="write the build manifest here"
+    )
     return parser
 
 
@@ -332,6 +470,303 @@ def _print_first_word_matches(
         )
 
 
+
+def _parse_identity(text: str) -> StatIdentity:
+    kind, _, key = text.partition(":")
+    if not key:
+        raise StatTableError(
+            f"identity must look like 'enemy:434' or 'character:0'; got {text!r}"
+        )
+    try:
+        return StatIdentity(kind=kind, key=int(key, 0))
+    except ValueError as exc:
+        raise StatTableError(f"invalid identity {text!r}: {exc}") from exc
+
+
+def _print_stats_list(tables, kind: str) -> None:
+    print("Buu's Fury Stat Records")
+    print("-------------------------")
+    print()
+    print(f"Profile: {tables.profile.id}")
+    print()
+    if kind in ("enemy", "all"):
+        print(f"{'Identity':>14}  {'Idx':>4}  {'Offset':>10}  {'HP':>7}  "
+              f"{'EXP':>7}  {'Lv':>3}  {'Str':>4}  {'Pow':>4}  {'End':>4}")
+        for entry in tables.enemies():
+            r = entry.record
+            print(
+                f"{str(entry.identity):>14}  {entry.location.index:4}  "
+                f"0x{entry.location.file_offset:08X}  {r.hp:7}  {r.exp:7}  "
+                f"{r.level:3}  {r.strength:4}  {r.power:4}  {r.endurance:4}"
+            )
+        print()
+    if kind in ("character", "all"):
+        print(f"{'Identity':>14}  {'Alias':>9}  {'Offset':>10}  {'HP':>6}  "
+              f"{'EP':>6}  {'Lv':>3}  {'Spd':>4}")
+        for entry in tables.characters():
+            r = entry.record
+            print(
+                f"{str(entry.identity):>14}  {entry.alias:>9}  "
+                f"0x{entry.location.file_offset:08X}  {r.hp:6}  {r.ep:6}  "
+                f"{r.level:3}  {r.speed:4}"
+            )
+        print()
+    print("Identity is durable; index and offset are current location only.")
+
+
+def _print_round_trip(tables) -> bool:
+    plan = tables.plan()
+    print("Buu's Fury Stat Round-Trip Validation")
+    print("---------------------------------------")
+    print()
+    print(f"Profile: {tables.profile.id}")
+    print(f"Base SHA256: {plan.base_sha256}")
+    print(f"Records encoded: {len(plan.changes)}")
+    print(f"Records differing from original: {len(plan.effective_changes)}")
+    print(f"Bytes differing: {plan.changed_byte_count}")
+    for change in plan.effective_changes:
+        print(
+            f"Mismatch: {change.owner} at 0x{change.offset:08X}: "
+            f"{change.old.hex()} -> {change.new.hex()}"
+        )
+    print()
+    print("RESULT:")
+    print("PASS" if plan.is_noop else "FAIL")
+    return plan.is_noop
+
+
+def _print_stats_set(tables, args) -> int:
+    identity = _parse_identity(args.identity)
+    if identity.kind == "enemy":
+        entry = tables.enemy(identity)
+        before = getattr(entry.record, args.field, None)
+        tables.set_enemy_field(identity, args.field, args.value)
+    else:
+        entry = tables.character(identity)
+        before = getattr(entry.record, args.field, None)
+        tables.set_character_field(identity, args.field, args.value)
+
+    plan = tables.plan()
+    manifest = emit_image(
+        args.rom, args.output, plan, manifest_path=args.manifest
+    )
+
+    print("Buu's Fury Stat Edit")
+    print("----------------------")
+    print()
+    print(f"Profile: {manifest.base_profile_id}")
+    print(f"Record: {identity}")
+    print(f"Field: {args.field}  {before} -> {args.value}")
+    print()
+    print(f"Base SHA256:   {manifest.base_sha256}")
+    print(f"Output SHA256: {manifest.output_sha256}")
+    print(f"Output: {args.output}")
+    if args.manifest is not None:
+        print(f"Manifest: {args.manifest}")
+    print()
+    print("Changes")
+    for change in manifest.changes:
+        differing = [
+            change.offset + i
+            for i, (a, b) in enumerate(zip(change.old, change.new))
+            if a != b
+        ]
+        print(f"  {change.owner}: {change.reason}")
+        print(f"    record at 0x{change.offset:08X} (+{change.size})")
+        print(f"    bytes changed: {', '.join(f'0x{d:08X}' for d in differing)}")
+    print()
+    print("RESULT:")
+    print("COMPLETE")
+    return 0
+
+def _parse_text_identity(value: str) -> TextIdentity:
+    """Parse `text:0010`. Accepts unpadded digits, since a person types those."""
+    prefix, separator, digits = value.partition(":")
+    if prefix != "text" or not separator or not digits.isdigit():
+        raise TextTableError(
+            f"{value!r} is not a string identity; expected the form text:0010"
+        )
+    return TextIdentity(int(digits, 10))
+
+
+def _format_text(text: str) -> str:
+    """One-line form for listings. Real newlines would break column alignment."""
+    return text.replace("\n", "\\n")
+
+
+def _print_text_list(strings, contains: str | None, limit: int | None) -> None:
+    entries = strings.find(contains) if contains is not None else tuple(strings.entries())
+    shown = entries if limit is None else entries[:limit]
+
+    print("Buu's Fury Strings")
+    print("--------------------")
+    print()
+    print(f"Profile: {strings.profile.id}")
+    print(f"Encoding: {strings.layout.encoding}")
+    print(f"Strings: {len(entries)} shown {len(shown)}")
+    print()
+    for entry in shown:
+        print(
+            f"  {entry.identity}  0x{entry.location.gba_address:08X}  "
+            f"{entry.location.allocation:>4}B  {_format_text(entry.text)}"
+        )
+    if limit is not None and len(entries) > len(shown):
+        print(f"  ... {len(entries) - len(shown)} more")
+
+
+def _print_text_show(strings, identity: TextIdentity) -> None:
+    entry = strings.entry(identity)
+    print("Buu's Fury String")
+    print("-------------------")
+    print()
+    print(f"Identity: {entry.identity}")
+    print(f"Address: 0x{entry.location.gba_address:08X}")
+    print(f"File offset: 0x{entry.location.file_offset:08X}")
+    print(f"Allocation: {entry.location.allocation} bytes")
+    print(f"Pointer slot: 0x{entry.location.pointer_offset:08X}")
+    print()
+    print("Text:")
+    print(entry.text)
+
+
+def _print_text_round_trip(strings) -> bool:
+    """Re-encode every string and report whether the whole extent is exact.
+
+    This is the ROUND_TRIP proof in command form: it covers every string the
+    pointer table enumerates, which - because the table tiles the pool - is
+    every byte of the pool.
+    """
+    failures = []
+    total = 0
+    for entry in strings.entries():
+        total += 1
+        if encode_string(entry.text) != entry.original_bytes:
+            failures.append(entry.identity)
+
+    print("Buu's Fury String Round-Trip")
+    print("------------------------------")
+    print()
+    print(f"Profile: {strings.profile.id}")
+    print(f"Strings checked: {total}")
+    print(f"Byte-identical: {total - len(failures)}")
+    print(f"Failures: {len(failures)}")
+    if failures:
+        print()
+        for identity in failures[:20]:
+            print(f"  {identity}")
+    print()
+    print("RESULT:")
+    print("COMPLETE" if not failures else "FAILED")
+    return not failures
+
+
+def _print_text_set(strings, args) -> int:
+    identity = _parse_text_identity(args.identity)
+    entry = strings.entry(identity)
+    before = entry.text
+    strings.set_text(identity, args.value)
+
+    manifest = emit_image(
+        args.rom, args.output, strings.plan(), manifest_path=args.manifest
+    )
+
+    print("Buu's Fury String Edit")
+    print("------------------------")
+    print()
+    print(f"Profile: {manifest.base_profile_id}")
+    print(f"String: {identity}")
+    print(f"Text: {_format_text(before)} -> {_format_text(args.value)}")
+    print()
+    print(f"Base SHA256:   {manifest.base_sha256}")
+    print(f"Output SHA256: {manifest.output_sha256}")
+    print(f"Output: {args.output}")
+    if args.manifest is not None:
+        print(f"Manifest: {args.manifest}")
+    print()
+    print("Changes")
+    for change in manifest.changes:
+        differing = [
+            change.offset + i
+            for i, (a, b) in enumerate(zip(change.old, change.new))
+            if a != b
+        ]
+        print(f"  {change.owner}: {change.reason}")
+        print(f"    string at 0x{change.offset:08X} (+{change.size})")
+        print(f"    bytes changed: {', '.join(f'0x{d:08X}' for d in differing)}")
+    print()
+    print("RESULT:")
+    print("COMPLETE")
+    return 0
+
+
+def _print_extract(rom: Path, project: Path, written: list[Path]) -> None:
+    print("Webfoot Project Extract")
+    print("-------------------------")
+    print()
+    print(f"Base ROM: {rom}")
+    print(f"Project: {project}")
+    print()
+    print("Files written")
+    for path in written:
+        print(f"  {path}")
+    print()
+    print("The base ROM was not modified and was not copied into the project.")
+    print()
+    print("RESULT:")
+    print("COMPLETE")
+
+
+def _print_validate(report: ValidationReport) -> None:
+    print("Webfoot Project Validation")
+    print("----------------------------")
+    print()
+    print(f"Project: {report.project_name}")
+    print(f"Profile: {report.profile_id}")
+    print(f"Base SHA256: {report.base_sha256}")
+    print(f"Enemy records: {report.enemy_count}")
+    print(f"Character records: {report.character_count}")
+    print(f"Strings: {report.string_count}")
+    print(f"Problems: {len(report.problems)}")
+    for problem in report.problems:
+        print(f"  {problem}")
+    print()
+    print("RESULT:")
+    print("PASS" if report.passed else "FAIL")
+
+
+def _print_build(result: BuildResult) -> None:
+    manifest = result.manifest
+    print("Webfoot Project Build")
+    print("-----------------------")
+    print()
+    print(f"Project: {result.project_name}")
+    print(f"Profile: {manifest.base_profile_id}")
+    print()
+    print(f"Base SHA256:   {manifest.base_sha256}")
+    print(f"Output SHA256: {manifest.output_sha256}")
+    print(f"Output: {result.output_path}")
+    if result.manifest_path is not None:
+        print(f"Manifest: {result.manifest_path}")
+    print()
+    print(f"Semantic edits applied: {len(manifest.changes)}")
+    for change in manifest.changes:
+        differing = [
+            change.offset + i
+            for i, (a, b) in enumerate(zip(change.old, change.new))
+            if a != b
+        ]
+        print(f"  {change.owner}: {change.reason}")
+        print(f"    record at 0x{change.offset:08X} (+{change.size})")
+        print(f"    bytes changed: {', '.join(f'0x{d:08X}' for d in differing)}")
+    if not manifest.changes:
+        print("  none; this build reproduces the base image exactly")
+    print()
+    print("The base ROM was not modified.")
+    print()
+    print("RESULT:")
+    print("COMPLETE")
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = build_parser()
     args = parser.parse_args(argv)
@@ -341,9 +776,56 @@ def main(argv: list[str] | None = None) -> int:
         print(json.dumps(synthetic_relocation_proof().to_json(), indent=2, sort_keys=True))
         return 0
 
+    # TOOLKIT-002 commands are dispatched before the ROM-loading block below,
+    # which assumes every command takes a positional `rom` and would otherwise
+    # load one for commands whose base ROM arrives as `--rom`.
+    if args.command in ("extract", "validate", "build"):
+        try:
+            catalog = load_catalog(args.profiles)
+            if args.command == "extract":
+                _print_extract(
+                    args.rom,
+                    args.project,
+                    extract_project(
+                        args.rom, args.project, catalog, name=args.name
+                    ),
+                )
+                return 0
+            if args.command == "validate":
+                report = validate_project(args.project, args.rom, catalog)
+                _print_validate(report)
+                return 0 if report.passed else 2
+            _print_build(
+                build_project(
+                    args.project,
+                    args.rom,
+                    args.output,
+                    catalog,
+                    manifest_path=args.manifest,
+                )
+            )
+            return 0
+        except (
+            ProfileConfigError,
+            GbaHeaderError,
+            RomReadError,
+            ProjectError,
+            BuildError,
+            StatTableError,
+            StatEncodeError,
+            WriteError,
+            OSError,
+        ) as exc:
+            print(f"error: {exc}", file=sys.stderr)
+            return 2
+
     try:
         catalog = load_catalog(args.profiles)
-        if args.command == "identify":
+        if args.command == "stats":
+            tables = load_stat_tables(args.rom, catalog)
+        elif args.command == "text":
+            strings = load_text_strings(args.rom, catalog)
+        elif args.command == "identify":
             identification = identify_rom(args.rom, catalog)
         elif args.command == "validate-map-entries":
             validation = validate_map_entry_round_trips(args.rom, catalog)
@@ -356,10 +838,42 @@ def main(argv: list[str] | None = None) -> int:
         GbaHeaderError,
         MapEntryError,
         RomReadError,
+        StatTableError,
+        StatEncodeError,
+        TextTableError,
+        TextCodecError,
+        WriteError,
         OSError,
     ) as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 2
+
+    if args.command == "text":
+        try:
+            if args.text_command == "list":
+                _print_text_list(strings, args.contains, args.limit)
+                return 0
+            if args.text_command == "show":
+                _print_text_show(strings, _parse_text_identity(args.identity))
+                return 0
+            if args.text_command == "validate-round-trip":
+                return 0 if _print_text_round_trip(strings) else 2
+            return _print_text_set(strings, args)
+        except (TextTableError, TextCodecError, WriteError, OSError) as exc:
+            print(f"error: {exc}", file=sys.stderr)
+            return 2
+
+    if args.command == "stats":
+        if args.stats_command == "list":
+            _print_stats_list(tables, args.kind)
+            return 0
+        if args.stats_command == "validate-round-trip":
+            return 0 if _print_round_trip(tables) else 2
+        try:
+            return _print_stats_set(tables, args)
+        except (StatTableError, StatEncodeError, WriteError, OSError) as exc:
+            print(f"error: {exc}", file=sys.stderr)
+            return 2
 
     if args.command == "validate-map-entries":
         _print_map_entry_validation(validation)

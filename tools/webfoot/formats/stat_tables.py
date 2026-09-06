@@ -1,4 +1,4 @@
-"""Read-only parsers for the Buu's Fury static stat tables.
+"""Pure codecs for the Buu's Fury static stat tables.
 
 Provenance
 ----------
@@ -20,9 +20,16 @@ Evidence labels follow docs/DEVELOPMENT.md:
   BuusFuryToolkit's author and were not re-derived. Numbers are trustworthy;
   a name is a label of convenience.
 
-This module never writes. It is a pure decoder over bytes supplied by the
-caller, so it carries no ROM path, no profile check, and no I/O of its own -
-`webfoot.rom` and `webfoot.profile` already own identity and safety.
+This module performs NO I/O. It is a pure codec over bytes supplied by the
+caller, so it carries no ROM path, no profile check, and no file access of its
+own - `webfoot.rom` and `webfoot.profile` own identity and safety, and
+`webfoot.write` owns emission.
+
+TOOLKIT-001 added encoding to what was originally a read-only decoder. The
+purity constraint is unchanged and is load-bearing: because this module only
+maps bytes to records and back, the same codec keeps working when the byte
+source is a decomp tree rather than a ROM image, which is the backend
+abstraction ARCH-TOOL-001 depends on.
 """
 
 from __future__ import annotations
@@ -243,3 +250,204 @@ def find_enemy_by_hp(data: bytes, hp: int) -> list[EnemyRecord]:
     record is itself the assertion.
     """
     return [r for r in iter_enemy_records(data) if r.hp == hp]
+
+
+# =========================================================================
+# TOOLKIT-001: identity, encode, and unknown-byte preservation
+# =========================================================================
+#
+# Everything below turns the read-only decoders above into an editable,
+# byte-exact round-tripping codec. Three rules shape it, and each exists
+# because getting it wrong is expensive to undo later:
+#
+# 1. IDENTITY IS NOT LOCATION. A record identity must survive the record
+#    moving, being re-indexed, or being renamed. So three separate concepts
+#    are kept apart and never collapsed into one another:
+#
+#        StatIdentity  - stable, durable, the thing a project file stores
+#        alias         - human-readable, mutable, a display convenience
+#        location      - table index and file offset, valid only right now
+#
+#    `iter_enemy_records` yields records in table order, and that order is
+#    NOT identity: `test_enemy_type_ids_are_unique_but_not_assumed_sorted`
+#    pins that 3 of 140 type-id transitions decrease, so position and key
+#    genuinely disagree in this data.
+#
+# 2. UNKNOWN BYTES ARE DATA. Both record layouts have spans this project has
+#    not decoded - 12 bytes of enemy after-battle data, 6 character technique
+#    ids, and the pad bytes. A writer that emits only known fields destroys
+#    them. Each record therefore keeps the exact bytes it was decoded from
+#    and re-emits them, overwriting only the spans it actually understands.
+#
+#    This is deliberately implemented as a BACKING SLICE, not as a named
+#    `opaque_tail` field: these two layouts happen to have contiguous
+#    undecoded tails, but the general rule is only that unknown information
+#    survives unchanged. Formats reached later (scripts, maps) will need
+#    opaque nodes, opcodes or regions instead, and this shape does not
+#    presume otherwise.
+#
+# 3. VALIDATE IS A SEPARATE STEP. Field assignment does not validate;
+#    `encode_*` does, and refuses to emit a record that cannot fit its
+#    original binary widths. Kaitai Struct made the same call in v0.11,
+#    where `_write()` raises unless `_check()` ran after the last edit.
+#    Setter-time validation cannot see cross-field invariants; emit-time
+#    validation can, and it is the last point where refusing is still free.
+
+
+#: Byte spans this module decodes, per record kind. Everything in a record
+#: stride that is NOT listed here is undecoded and is preserved verbatim.
+#: Keep these in sync with `decode_enemy_record` / `decode_base_stat_record`.
+ENEMY_DECODED_SPANS = (
+    (0x00, 3, "exp"),
+    (0x04, 3, "hp"),
+    (0x08, 2, "type_id"),
+    (0x0C, 1, "level"),
+    (0x0D, 1, "strength"),
+    (0x0E, 1, "power"),
+    (0x0F, 1, "endurance"),
+)
+
+BASE_STAT_DECODED_SPANS = (
+    (0x00, 1, "level"),
+    (0x02, 2, "hp"),
+    (0x04, 2, "ep"),
+    (0x06, 1, "strength"),
+    (0x07, 1, "power"),
+    (0x08, 1, "endurance"),
+    (0x09, 1, "speed"),
+    (0x0A, 1, "person"),
+    (0x0B, 1, "technique_count"),
+)
+
+
+class StatEncodeError(ValueError):
+    """Raised when a stat value cannot fit the width the ROM gave it."""
+
+
+@dataclass(frozen=True)
+class StatIdentity:
+    """A durable handle for one stat record.
+
+    Deliberately NOT an address, a file offset, or a table index - all three
+    change the moment anything is inserted, removed or relocated, and a mod
+    that stored one would break on the next edit.
+
+    `kind` plus `key` is the whole identity. For enemies the key is the
+    record type_id, which DATA-001 established is unique across all 141
+    records; for characters it is the roster position, which is the only
+    discriminator those 9 records currently offer and is marked as such.
+
+    This is intentionally a within-profile identity. TOOLKIT-001 does not
+    attempt the cross-game scheme, and nothing here forecloses it: a future
+    scheme can wrap this without changing what callers already store.
+    """
+
+    kind: str
+    key: int
+
+    def __post_init__(self) -> None:
+        if self.kind not in ("enemy", "character"):
+            raise ValueError(f"unknown stat record kind: {self.kind!r}")
+        if type(self.key) is not int or self.key < 0:
+            raise ValueError("identity key must be a non-negative integer")
+
+    def __str__(self) -> str:
+        return f"{self.kind}:{self.key}"
+
+
+def enemy_identity(record: EnemyRecord) -> StatIdentity:
+    """Identity of an enemy record, keyed on its unique type_id.
+
+    Type ids are unique but only mostly ascending, so this is a stable KEY
+    and must never be used as a sort order or an array index.
+    """
+    return StatIdentity(kind="enemy", key=record.type_id)
+
+
+def character_identity(index: int) -> StatIdentity:
+    """Identity of a character record, keyed on roster position.
+
+    UNLIKE the enemy key this is positional, because the base-stat records
+    carry no verified unique discriminator of their own - the `person` byte
+    points at appearance variants and is not confirmed to be one-per-record.
+    It is a stable key only so long as the roster does not get reordered,
+    which nothing in this ticket does. Recorded here so a future ticket
+    replaces it deliberately rather than inheriting it by accident.
+    """
+    if type(index) is not int or not 0 <= index < BASE_STAT_RECORD_COUNT:
+        raise ValueError(f"character index out of range: {index}")
+    return StatIdentity(kind="character", key=index)
+
+
+def character_alias(index: int) -> str:
+    """Human-readable name for a character record.
+
+    A display alias, never an identity: these names are INFERRED from
+    BuusFuryToolkit and could be renamed without the record changing.
+    """
+    return BASE_STAT_NAMES[index]
+
+
+def _put_uint(buffer: bytearray, offset: int, width: int, value: int,
+              field: str) -> None:
+    """Write one little-endian unsigned field, refusing anything that would
+    not fit the width the ROM actually gave it."""
+    if type(value) is not int:
+        raise StatEncodeError(
+            f"{field} must be an integer, got {type(value).__name__}"
+        )
+    maximum = (1 << (width * 8)) - 1
+    if not 0 <= value <= maximum:
+        raise StatEncodeError(
+            f"{field}={value} does not fit an unsigned {width * 8}-bit field "
+            f"(0..{maximum})"
+        )
+    buffer[offset : offset + width] = value.to_bytes(width, "little")
+
+
+def encode_enemy_record(record: EnemyRecord, original: bytes) -> bytes:
+    """Re-encode one enemy record over the bytes it was decoded from.
+
+    `original` must be the exact ENEMY_RECORD_SIZE bytes this record came
+    from. Only the decoded spans are overwritten; the two pad bytes and the
+    12-byte after-battle block ride through untouched, which is what makes
+    an unchanged record re-serialize byte-identically.
+    """
+    if len(original) != ENEMY_RECORD_SIZE:
+        raise StatEncodeError(
+            f"enemy record backing must be exactly {ENEMY_RECORD_SIZE} bytes; "
+            f"got {len(original)}"
+        )
+    blob = bytearray(original)
+    _put_uint(blob, 0x00, 3, record.exp, "exp")
+    _put_uint(blob, 0x04, 3, record.hp, "hp")
+    _put_uint(blob, 0x08, 2, record.type_id, "type_id")
+    _put_uint(blob, 0x0C, 1, record.level, "level")
+    _put_uint(blob, 0x0D, 1, record.strength, "strength")
+    _put_uint(blob, 0x0E, 1, record.power, "power")
+    _put_uint(blob, 0x0F, 1, record.endurance, "endurance")
+    return bytes(blob)
+
+
+def encode_base_stat_record(record: BaseStatRecord, original: bytes) -> bytes:
+    """Re-encode one character base-stat record over its original bytes.
+
+    The pad byte at +0x01 and the 6 technique ids at +0x0C are undecoded and
+    are preserved exactly.
+    """
+    if len(original) != BASE_STAT_RECORD_SIZE:
+        raise StatEncodeError(
+            f"base-stat record backing must be exactly {BASE_STAT_RECORD_SIZE} "
+            f"bytes; got {len(original)}"
+        )
+    blob = bytearray(original)
+    _put_uint(blob, 0x00, 1, record.level, "level")
+    _put_uint(blob, 0x02, 2, record.hp, "hp")
+    _put_uint(blob, 0x04, 2, record.ep, "ep")
+    _put_uint(blob, 0x06, 1, record.strength, "strength")
+    _put_uint(blob, 0x07, 1, record.power, "power")
+    _put_uint(blob, 0x08, 1, record.endurance, "endurance")
+    _put_uint(blob, 0x09, 1, record.speed, "speed")
+    _put_uint(blob, 0x0A, 1, record.person, "person")
+    _put_uint(blob, 0x0B, 1, record.technique_count, "technique_count")
+    return bytes(blob)

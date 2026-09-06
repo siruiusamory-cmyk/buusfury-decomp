@@ -6,7 +6,6 @@ from tests.helpers import make_synthetic_rom, profile_for
 from tools.webfoot.formats.map_entry import (
     MAP_ENTRY_LAYOUT,
     MAP_ENTRY_SIZE,
-    SUPPORTED_PROFILE_ID,
     MapEntry,
     MapEntryLengthError,
     MapEntryProfileError,
@@ -87,6 +86,12 @@ def test_explicit_layout_covers_every_record_byte_exactly_once():
     assert coverage == [1] * MAP_ENTRY_SIZE
 
 
+#: A synthetic ROM claims this id so it is matched against a real packaged
+#: contract; the point of the spoofing test is that borrowing a packaged id
+#: does not buy access, because the hashes still have to match.
+PACKAGED_PROFILE_ID = "buus_fury_usa_rev0_01c1707f"
+
+
 def synthetic_table_rom() -> tuple[bytes, RomProfileCatalog]:
     table_offset = 0xC0
     data = bytearray(make_synthetic_rom(game_code="BG3E", size=0x200))
@@ -97,7 +102,7 @@ def synthetic_table_rom() -> tuple[bytes, RomProfileCatalog]:
     frozen = bytes(data)
     profile = profile_for(
         frozen,
-        id=SUPPORTED_PROFILE_ID,
+        id=PACKAGED_PROFILE_ID,
         tables={
             "map_entries": {
                 "address": 0x08000000 + table_offset,
@@ -110,21 +115,64 @@ def synthetic_table_rom() -> tuple[bytes, RomProfileCatalog]:
 
 
 def test_spoofed_target_profile_is_rejected(tmp_path):
+    """A local profile may not borrow a packaged id to authorise other bytes.
+
+    The catalog here is internally consistent - it hashes the synthetic ROM
+    correctly, so identification succeeds - and it names a packaged profile id.
+    Access must still be refused, because the packaged contract is what
+    authorises the read, not the supplied file.
+
+    The refusal names the table metadata rather than the hashes because the
+    supplied extents are compared first; both checks would refuse this ROM, and
+    the earlier one is the more specific complaint.
+    """
     data, catalog = synthetic_table_rom()
     rom = tmp_path / "synthetic.gba"
     rom.write_bytes(data)
 
-    with pytest.raises(MapEntryProfileError, match="fixed ROM-002 target identity"):
+    with pytest.raises(MapEntryProfileError, match="conflicts with the packaged"):
         read_map_entry_table(rom, catalog)
 
 
-def test_different_verified_profile_is_rejected(tmp_path):
+def test_profile_not_in_the_packaged_catalog_is_rejected(tmp_path):
+    """A verified profile the packaged catalog does not carry has no contract.
+
+    This replaces TOOLKIT-004's "supports only <one id>" check. The refusal is
+    now about the absence of a packaged contract rather than about the profile
+    failing to be one specific game, which is what lets a second game be added
+    by declaring it rather than by editing this gate.
+    """
+    data = make_synthetic_rom()
+    rom = tmp_path / "synthetic.gba"
+    rom.write_bytes(data)
+    catalog = RomProfileCatalog(
+        [
+            profile_for(
+                data,
+                id="different_profile",
+                tables={
+                    "map_entries": {
+                        "address": 0x080000C0,
+                        "count": 1,
+                        "record_size": MAP_ENTRY_SIZE,
+                    }
+                },
+            )
+        ]
+    )
+
+    with pytest.raises(MapEntryProfileError, match="packaged catalog has no"):
+        read_map_entry_table(rom, catalog)
+
+
+def test_verified_profile_without_the_capability_is_rejected(tmp_path):
+    """Not declaring the table is refused by name, never by falling through."""
     data = make_synthetic_rom()
     rom = tmp_path / "synthetic.gba"
     rom.write_bytes(data)
     catalog = RomProfileCatalog([profile_for(data, id="different_profile")])
 
-    with pytest.raises(MapEntryProfileError, match="supports only"):
+    with pytest.raises(MapEntryProfileError, match="does not declare map_entries"):
         read_map_entry_table(rom, catalog)
 
 

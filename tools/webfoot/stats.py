@@ -1,6 +1,6 @@
-"""Semantic access to the Buu's Fury stat tables.
+"""Semantic access to a profile's stat tables, whichever game declares them.
 
-TOOLKIT-001. This is the layer callers are meant to use:
+This is the layer callers are meant to use:
 
     table = load_stat_tables(rom_path, catalog)
     wolf, = table.find_enemies_by_hp(175)
@@ -13,25 +13,30 @@ provenance carried alongside a value, which is the boundary ARCH-TOOL-001
 requires so a decomp backend can later replace the binary one underneath.
 
 The table extents come from the ROM profile rather than from module constants,
-so a second game or revision is a data change rather than a code change.
+so a second game or revision is a data change rather than a code change. Access
+is gated by declared capability rather than by a profile id, so a profile that
+declares both stat tables is served here and one that does not is refused by
+name. Per-game addresses, counts and strides live in `config/roms.yaml` and in
+the evidence documents under `docs/research/`, never in this module.
+
+The record *layouts* this module's codecs implement remain specific to the
+tables they were verified against; `formats/stat_tables.py` documents which.
 """
 
 from __future__ import annotations
 
 from dataclasses import dataclass, replace
-from functools import cache
-from importlib import resources
 import os
 from pathlib import Path
 from typing import Iterator
 
+from . import capability
 from .formats import stat_tables as st
 from .hashing import hash_stream
 from .profile import (
     RecordTableProfile,
     RomProfile,
     RomProfileCatalog,
-    VerificationStatus,
 )
 from .rom import RomChangedError, RomIdentification, identify_rom
 from .write import ByteChange, WritePlan, plan_changes
@@ -41,8 +46,14 @@ class StatTableError(ValueError):
     """Base error for semantic stat-table access."""
 
 
-class StatProfileError(StatTableError):
-    """Raised when a ROM or profile is not authorized for stat access."""
+class StatProfileError(StatTableError, capability.CapabilityError):
+    """Raised when a ROM or profile is not authorized for stat access.
+
+    Inherits `CapabilityError` so the shared gate's refusals arrive as this
+    subsystem's own error type: callers that already catch `StatProfileError`
+    keep working, and a caller handling capability failures generically can
+    catch them too.
+    """
 
 
 class UnknownRecordError(StatTableError):
@@ -119,82 +130,32 @@ class CharacterEntry:
     original_bytes: bytes
 
 
-#: The profile whose stat extents DATA-001 verified against the canonical ROM.
-SUPPORTED_PROFILE_ID = "buus_fury_usa_rev0_01c1707f"
-
-
-@cache
-def _supported_profile_contract() -> RomProfile:
-    """The packaged, in-repo statement of where the stat tables live.
-
-    Read from the packaged catalog rather than from whatever the caller passed
-    to `--profiles`, so it cannot be redirected by a supplied file.
-    """
-    packaged = resources.files("tools.webfoot.data").joinpath("roms.yaml")
-    catalog = RomProfileCatalog.loads(
-        packaged.read_text(encoding="utf-8"),
-        source="packaged tools.webfoot.data/roms.yaml",
-    )
-    try:
-        profile = next(
-            item for item in catalog.profiles if item.id == SUPPORTED_PROFILE_ID
-        )
-    except StopIteration as exc:
-        raise StatProfileError(
-            f"packaged catalog has no {SUPPORTED_PROFILE_ID!r} profile"
-        ) from exc
-    if profile.enemy_stats is None or profile.character_base_stats is None:
-        raise StatProfileError(
-            "packaged target profile does not declare the stat tables"
-        )
-    return profile
-
-
 def _require_stat_profile(identification: RomIdentification) -> RomProfile:
     """Fail closed unless this exact ROM is verified and declares both tables.
 
-    The supplied profile is then cross-checked against the packaged contract,
-    mirroring `formats.map_entry._require_target_profile`. This matters more on
-    a write path than on a read one: without it, a hand-edited `--profiles`
-    YAML could keep the ROM hashes intact while moving the declared table
-    extents, and the toolkit would dutifully write records into whatever region
-    that file named. Identity verification alone does not prevent that, because
-    it authenticates the ROM rather than the metadata describing it.
+    Both stat tables are required together because the semantic layer exposes
+    enemies and characters through one `StatTables` object; a profile declaring
+    only one of them cannot serve it, and is refused by name rather than served
+    half-populated.
 
-    The cost is deliberate and recorded: adding a new game profile means adding
-    it to the packaged catalog, not only to a local file. That is the intended
-    direction anyway - a verified extent is a project fact, not a user setting.
+    `capability.require` owns the checks themselves - verified identity,
+    declared capability, and the packaged-contract comparison that stops a
+    hand-edited `--profiles` YAML from redirecting the extents while leaving the
+    ROM hashes intact. Before TOOLKIT-005 this function also required the
+    profile id to equal one constant naming Buu's Fury, which authorised exactly
+    one game; the contract is now fetched by the identified profile's own id, so
+    any packaged profile that declares the tables is served and no core path
+    asks which game it is looking at.
     """
-    match = identification.profile_match
-    if match.status is not VerificationStatus.VERIFIED or match.profile is None:
-        raise StatProfileError("stat-table access requires an exactly verified ROM")
-    profile = match.profile
-    if profile.enemy_stats is None or profile.character_base_stats is None:
-        raise StatProfileError(
-            f"profile {profile.id!r} does not declare the stat tables; "
-            "stat access is unavailable for this ROM"
-        )
-    if profile.id != SUPPORTED_PROFILE_ID:
-        raise StatProfileError(
-            f"stat-table access supports only profile {SUPPORTED_PROFILE_ID!r}; "
-            f"got {profile.id!r}"
-        )
-
-    contract = _supported_profile_contract()
-    if (
-        profile.enemy_stats != contract.enemy_stats
-        or profile.character_base_stats != contract.character_base_stats
+    for required in (
+        capability.Capability.ENEMY_STATS,
+        capability.Capability.CHARACTER_BASE_STATS,
     ):
-        raise StatProfileError(
-            "supplied profile stat-table metadata conflicts with the packaged "
-            "contract; refusing to read or write against unverified extents"
-        )
-    if (
-        identification.hashes.sha256 != contract.sha256
-        or identification.size != contract.size
-    ):
-        raise StatProfileError(
-            "stat-table access requires the exact DATA-001 target identity"
+        profile = capability.require(
+            identification,
+            required,
+            subsystem="stat-table access",
+            error_type=StatProfileError,
         )
     return profile
 

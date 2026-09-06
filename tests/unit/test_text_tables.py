@@ -158,10 +158,22 @@ def test_identity_key_is_zero_padded_so_string_order_equals_index_order():
     assert keys == sorted(keys)
 
 
-def test_identity_refuses_an_index_outside_the_declared_table():
-    for bad in (-1, tt.TEXT_ENTRY_COUNT, "0"):
+def test_identity_refuses_a_negative_or_non_integer_index():
+    for bad in (-1, "0", 1.0):
         with pytest.raises(tt.TextCodecError):
             tt.TextIdentity(bad)
+
+
+def test_identity_accepts_an_index_beyond_this_games_table():
+    """The upper bound belongs to the profile, not to this codec.
+
+    TOOLKIT-004 capped the index at Buu's Fury's 1,534 here, which made identity
+    - the one concept genuinely shared across games - carry one game's table
+    size. Legacy of Goku II declares 217, and a future profile could declare
+    more; `webfoot.text` checks the index against the loaded profile's count,
+    which is the only place that number is actually known.
+    """
+    assert tt.TextIdentity(tt.TEXT_ENTRY_COUNT).index == tt.TEXT_ENTRY_COUNT
 
 
 def test_identity_is_hashable_and_compares_by_value():

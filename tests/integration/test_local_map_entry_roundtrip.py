@@ -76,7 +76,7 @@ def test_cli_rejects_conflicting_target_table_metadata(tmp_path, capsys):
     error = capsys.readouterr().err
 
     assert exit_code == 2
-    assert "metadata conflicts with the ROM-002 contract" in error
+    assert "map_entries metadata conflicts with the packaged contract" in error
 
 
 def test_complete_local_pointer_census_accounting():

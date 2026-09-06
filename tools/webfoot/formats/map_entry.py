@@ -3,24 +3,21 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, fields
-from functools import cache
-from importlib import resources
 import os
 from pathlib import Path
 import struct
 
+from .. import capability
 from ..binary import BinaryAddressError, GbaRomAddress
 from ..hashing import hash_stream
 from ..profile import (
     MapEntryTableProfile,
     RomProfile,
     RomProfileCatalog,
-    VerificationStatus,
 )
 from ..rom import RomChangedError, RomIdentification, identify_rom
 
 
-SUPPORTED_PROFILE_ID = "buus_fury_usa_rev0_01c1707f"
 MAP_ENTRY_SIZE = 0x38
 _MAP_ENTRY_STRUCT = struct.Struct("<12B11I")
 
@@ -37,8 +34,12 @@ class MapEntryValueError(MapEntryError):
     """Raised when a field cannot fit its original binary width."""
 
 
-class MapEntryProfileError(MapEntryError):
-    """Raised when a ROM/profile is not authorized for this format."""
+class MapEntryProfileError(MapEntryError, capability.CapabilityError):
+    """Raised when a ROM/profile is not authorized for this format.
+
+    Inherits `CapabilityError` so the shared gate raises this exact type and
+    existing callers keep catching what they already caught.
+    """
 
 
 @dataclass(frozen=True, slots=True)
@@ -169,54 +170,30 @@ def _file_identity(stat_result: os.stat_result) -> tuple[int, int, int, int]:
     )
 
 
-@cache
-def _supported_profile_contract() -> RomProfile:
-    packaged = resources.files("tools.webfoot.data").joinpath("roms.yaml")
-    catalog = RomProfileCatalog.loads(
-        packaged.read_text(encoding="utf-8"),
-        source="packaged tools.webfoot.data/roms.yaml",
-    )
-    try:
-        profile = next(
-            item for item in catalog.profiles if item.id == SUPPORTED_PROFILE_ID
-        )
-    except StopIteration as exc:
-        raise MapEntryProfileError(
-            f"packaged catalog has no {SUPPORTED_PROFILE_ID!r} profile"
-        ) from exc
-    if profile.map_entries is None:
-        raise MapEntryProfileError(
-            "packaged target profile has no map-entry table metadata"
-        )
-    return profile
-
-
 def _require_target_profile(identification: RomIdentification) -> RomProfile:
-    match = identification.profile_match
-    if match.status is not VerificationStatus.VERIFIED or match.profile is None:
-        raise MapEntryProfileError("MapEntry access requires an exactly verified ROM")
-    if match.profile.id != SUPPORTED_PROFILE_ID:
-        raise MapEntryProfileError(
-            f"MapEntry access supports only profile {SUPPORTED_PROFILE_ID!r}; "
-            f"got {match.profile.id!r}"
-        )
-    if match.profile.map_entries is None:
-        raise MapEntryProfileError("verified profile has no map-entry table metadata")
-    contract = _supported_profile_contract()
-    if (
-        identification.hashes.sha256 != contract.sha256
-        or identification.size != contract.size
-        or identification.header.game_code != contract.game_code
-        or identification.header.software_version != contract.revision
-    ):
-        raise MapEntryProfileError(
-            "MapEntry access requires the fixed ROM-002 target identity"
-        )
-    if match.profile.map_entries != contract.map_entries:
-        raise MapEntryProfileError(
-            "verified profile map-entry metadata conflicts with the ROM-002 contract"
-        )
-    return match.profile
+    """Fail closed unless this exact ROM is verified and declares the table.
+
+    The header cross-check ROM-002 introduced is kept via ``check_header``. The
+    SHA-256 comparison already implies it for an intact image, but asserting the
+    game code and software version separately states *which* game the bytes
+    claim to be, and costs nothing.
+
+    TOOLKIT-005 removed the fourth check requiring the profile id to equal one
+    constant naming Buu's Fury. Structure still gates the codec:
+    `resolve_map_entry_table_range` refuses any record size other than
+    `MAP_ENTRY_SIZE`, so a profile whose map records are not this shape is
+    rejected on its layout rather than on the game's name. That is the check
+    which should have been carrying the weight all along - Legacy of Goku II
+    also has a 0x38-stride map table, but its fields are laid out differently,
+    so it must not declare `map_entries` against this codec.
+    """
+    return capability.require(
+        identification,
+        capability.Capability.MAP_ENTRIES,
+        subsystem="MapEntry access",
+        error_type=MapEntryProfileError,
+        check_header=True,
+    )
 
 
 def resolve_map_entry_table_range(

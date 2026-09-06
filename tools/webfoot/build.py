@@ -29,7 +29,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 
-from .profile import RomProfileCatalog
+from . import capability
+from .profile import RomProfile, RomProfileCatalog, VerificationStatus
 from .project import (
     PROJECT_FORMAT_VERSION,
     ProjectMeta,
@@ -38,9 +39,11 @@ from .project import (
     read_project,
     write_project,
 )
+from .rom import RomIdentification, identify_rom
 from .stats import (
     CHARACTER_FIELDS,
     ENEMY_FIELDS,
+    StatProfileError,
     StatTables,
     load_stat_tables,
 )
@@ -50,7 +53,13 @@ from .text import (
     TextTooLongError,
     load_text_strings,
 )
-from .write import ProjectProvenance, WriteManifest, emit_image, plan_changes
+from .write import (
+    ByteChange,
+    ProjectProvenance,
+    WriteManifest,
+    emit_image,
+    plan_changes,
+)
 
 
 class BuildError(ValueError):
@@ -98,6 +107,37 @@ class BuildResult:
 # --- extract -------------------------------------------------------------
 
 
+#: Capabilities `extract` knows how to write into a project. A profile must
+#: declare at least one; which ones it declares decides what the project holds.
+_EXTRACTABLE = (
+    capability.Capability.ENEMY_STATS,
+    capability.Capability.CHARACTER_BASE_STATS,
+    capability.Capability.TEXT_STRINGS,
+)
+
+
+def _require_extractable_profile(identification: RomIdentification) -> RomProfile:
+    """The verified profile, if it declares anything this toolkit can extract.
+
+    Verification is delegated to the subsystem gates that follow, which each
+    re-check identity and the packaged contract for the capability they use.
+    This function answers only the prior question - is there anything here to
+    extract at all - so that a profile with no readable content is refused with
+    that reason instead of with whichever subsystem happened to be tried first.
+    """
+    match = identification.profile_match
+    if match.status is not VerificationStatus.VERIFIED or match.profile is None:
+        raise BuildError("extraction requires an exactly verified ROM")
+    profile = match.profile
+    declared = [item for item in _EXTRACTABLE if capability.declared(profile, item)]
+    if not declared:
+        raise BuildError(
+            f"profile {profile.id!r} declares no extractable content; this "
+            "toolkit can read none of its stats, characters or text"
+        )
+    return profile
+
+
 def extract_project(
     rom_path: str | Path,
     project_dir: str | Path,
@@ -114,34 +154,52 @@ def extract_project(
     `name` defaults to the profile id rather than to the directory name,
     because a directory name is a fact about where the project currently sits -
     exactly the kind of mutable filesystem detail `project.toml` must not pin.
+
+    Every subsystem is extracted when the profile declares it and omitted when it
+    does not, so one project layout serves games with different capabilities
+    rather than forking per game. A profile declaring nothing this toolkit can
+    read is refused outright: an empty project would be a misleading artifact
+    rather than a useful one.
     """
-    tables = load_stat_tables(rom_path, catalog)
+    identification = identify_rom(rom_path, catalog)
+    profile = _require_extractable_profile(identification)
 
     meta = ProjectMeta(
         format_version=PROJECT_FORMAT_VERSION,
-        profile_id=tables.profile.id,
-        game=tables.profile.game,
-        base_rom_sha256=tables.identification.hashes.sha256,
-        base_rom_size=tables.identification.size,
-        name=name if name is not None else tables.profile.id,
+        profile_id=profile.id,
+        game=profile.game,
+        base_rom_sha256=identification.hashes.sha256,
+        base_rom_size=identification.size,
+        name=name if name is not None else profile.id,
     )
 
-    enemies = [
-        # Alias is None: this project has verified NAMES for the 9 characters
-        # and for no enemy. Emitting an invented label would put a fabricated
-        # fact into authored source, where it would then look extracted.
-        (entry.identity, entry.record, entry.original_bytes, None)
-        for entry in tables.enemies()
-    ]
-    characters = [
-        (entry.identity, entry.record, entry.original_bytes, entry.alias)
-        for entry in tables.characters()
-    ]
+    # Stats are extracted when the verified profile declares both stat tables.
+    # `StatProfileError` here means "this ROM has no stats this toolkit can
+    # read" - true of Legacy of Goku II, whose stat tables match none of this
+    # toolkit's record shapes - which is a fact about the profile rather than a
+    # failure of the extraction, so the rest of the project is still written.
+    try:
+        tables = load_stat_tables(rom_path, catalog)
+    except StatProfileError:
+        enemies: list = []
+        characters: list = []
+    else:
+        enemies = [
+            # Alias is None: this project has verified NAMES for the 9 characters
+            # and for no enemy. Emitting an invented label would put a fabricated
+            # fact into authored source, where it would then look extracted.
+            (entry.identity, entry.record, entry.original_bytes, None)
+            for entry in tables.enemies()
+        ]
+        characters = [
+            (entry.identity, entry.record, entry.original_bytes, entry.alias)
+            for entry in tables.characters()
+        ]
 
     # Text is extracted when the verified profile declares a string table, and
     # omitted otherwise. `TextProfileError` here means "this ROM has no text
     # this toolkit can read", which is a fact about the profile rather than a
-    # failure of the extraction - so the stat project is still written.
+    # failure of the extraction - so the rest of the project is still written.
     try:
         strings = [
             (entry.identity, entry.text)
@@ -162,38 +220,59 @@ def extract_project(
 # --- shared validation ---------------------------------------------------
 
 
-def _check_identity(project: StatProject, tables: StatTables) -> list[str]:
-    """Confirm the project was authored against exactly this base image."""
+def _check_identity(
+    project: StatProject,
+    identification: RomIdentification,
+    profile: RomProfile,
+) -> list[str]:
+    """Confirm the project was authored against exactly this base image.
+
+    Takes the identification directly rather than reaching through a loaded stat
+    table, because identity must be checkable for a profile that declares no
+    stats at all - and because reading it off whichever subsystem happened to
+    load was always incidental.
+    """
     problems: list[str] = []
-    actual_sha256 = tables.identification.hashes.sha256
+    actual_sha256 = identification.hashes.sha256
 
     if project.meta.base_rom_sha256 != actual_sha256:
         problems.append(
             f"base ROM mismatch: project requires sha256 "
             f"{project.meta.base_rom_sha256}, supplied ROM is {actual_sha256}"
         )
-    if project.meta.base_rom_size != tables.identification.size:
+    if project.meta.base_rom_size != identification.size:
         problems.append(
             f"base ROM size mismatch: project requires "
             f"{project.meta.base_rom_size} bytes, supplied ROM is "
-            f"{tables.identification.size}"
+            f"{identification.size}"
         )
-    if project.meta.profile_id != tables.profile.id:
+    if project.meta.profile_id != profile.id:
         problems.append(
             f"profile mismatch: project targets {project.meta.profile_id!r}, "
-            f"supplied ROM verified as {tables.profile.id!r}"
+            f"supplied ROM verified as {profile.id!r}"
         )
     return problems
 
 
-def _check_records(project: StatProject, tables: StatTables) -> list[str]:
+def _check_records(project: StatProject, tables: StatTables | None) -> list[str]:
     """Check every authored record against the loaded tables.
 
     Three distinct failures, each reported against the offending entity:
     a record the ROM does not have, a record the project omitted, and a field
     whose value the semantic layer refuses.
+
+    ``tables`` is None when the profile declares no stat tables. Mirrors
+    `_check_strings`: only a project that *authors* records against such a ROM
+    is a problem, and it is reported as one.
     """
     problems: list[str] = []
+    if tables is None:
+        if project.enemies or project.characters:
+            return [
+                "project authors stat records, but this ROM's profile declares "
+                "no stat tables; a build would silently drop every authored record"
+            ]
+        return problems
 
     for label, authored, live, allowed in (
         ("enemy", project.enemies, {e.identity: e for e in tables.enemies()}, ENEMY_FIELDS),
@@ -246,6 +325,11 @@ def _check_strings(project: StatProject, strings: TextStrings | None) -> list[st
     project omitted, and text the codec or the allocation refuses. The last of
     those is the one specific to variable-length content - a stat field fails on
     its value, a string fails on its *size*.
+
+    Encodability is checked here rather than at project load, because whether a
+    string can be encoded depends on the profile's encoding and a project is not
+    paired with a profile until a build. `set_text` raises `TextCodecError` for
+    text this ROM's codec cannot produce, which arrives below as a `ValueError`.
     """
     problems: list[str] = []
     if not project.strings:
@@ -258,17 +342,17 @@ def _check_strings(project: StatProject, strings: TextStrings | None) -> list[st
 
     live = {entry.identity: entry for entry in strings.entries()}
 
-    for identity in sorted(set(project.strings) - set(live), key=lambda i: i.index):
+    for identity in sorted(set(project.strings) - set(live), key=_identity_order):
         problems.append(
             f"{identity}: project declares a string that this ROM does not contain"
         )
-    for identity in sorted(set(live) - set(project.strings), key=lambda i: i.index):
+    for identity in sorted(set(live) - set(project.strings), key=_identity_order):
         problems.append(
             f"{identity}: project is missing this string; a build would silently "
             "leave it at its base value"
         )
 
-    for identity in sorted(set(project.strings) & set(live), key=lambda i: i.index):
+    for identity in sorted(set(project.strings) & set(live), key=_identity_order):
         try:
             strings.set_text(identity, project.strings[identity])
         except (TextTooLongError, ValueError) as exc:
@@ -277,21 +361,40 @@ def _check_strings(project: StatProject, strings: TextStrings | None) -> list[st
     return problems
 
 
+def _identity_order(identity: object) -> int:
+    """Sort key for reporting. Only table-indexed identities reach this."""
+    return getattr(identity, "index", -1)
+
+
 def _load_for_project(
     project_dir: str | Path,
     rom_path: str | Path,
     catalog: RomProfileCatalog,
-) -> tuple[StatProject, StatTables, TextStrings | None]:
+) -> tuple[
+    StatProject,
+    RomIdentification,
+    RomProfile,
+    StatTables | None,
+    TextStrings | None,
+]:
+    """Read the project and whichever subsystems this ROM's profile declares.
+
+    A None subsystem means the profile does not declare it, which is a supported
+    state rather than an error - only a project that *authors* content against a
+    ROM lacking it is a problem, and the `_check_*` functions report that.
+    """
     project = read_project(project_dir)
-    tables = load_stat_tables(rom_path, catalog)
-    # None means this profile declares no string table, which is a supported
-    # state rather than an error - only a project that *authors* text against
-    # such a ROM is a problem, and `_check_strings` reports that.
+    identification = identify_rom(rom_path, catalog)
+    profile = _require_extractable_profile(identification)
+    try:
+        tables: StatTables | None = load_stat_tables(rom_path, catalog)
+    except StatProfileError:
+        tables = None
     try:
         strings: TextStrings | None = load_text_strings(rom_path, catalog)
     except TextProfileError:
         strings = None
-    return project, tables, strings
+    return project, identification, profile, tables, strings
 
 
 # --- validate ------------------------------------------------------------
@@ -303,9 +406,11 @@ def validate_project(
     catalog: RomProfileCatalog,
 ) -> ValidationReport:
     """Check a project against a base ROM. Writes nothing, ever."""
-    project, tables, strings = _load_for_project(project_dir, rom_path, catalog)
+    project, identification, profile, tables, strings = _load_for_project(
+        project_dir, rom_path, catalog
+    )
 
-    problems = _check_identity(project, tables)
+    problems = _check_identity(project, identification, profile)
     # Record checks are meaningful only against the right image; running them
     # after an identity failure would bury the real cause under 150 mismatches.
     if not problems:
@@ -359,9 +464,11 @@ def build_project(
     exists as its own step rather than as a flag - the check has to be usable
     without the build, and the build has to run it regardless.
     """
-    project, tables, strings = _load_for_project(project_dir, rom_path, catalog)
+    project, identification, profile, tables, strings = _load_for_project(
+        project_dir, rom_path, catalog
+    )
 
-    identity_problems = _check_identity(project, tables)
+    identity_problems = _check_identity(project, identification, profile)
     if identity_problems:
         raise ProjectRomMismatchError("; ".join(identity_problems))
 
@@ -375,21 +482,38 @@ def build_project(
             + ("; ..." if len(problems) > 5 else "")
         )
 
-    _apply_project_to_tables(project, tables)
-
     # One plan for every subsystem, not one plan each. Overlap detection is
     # per-plan, so two plans could each validate while together writing the
     # same bytes; merging makes a stat record and a string that claimed the
     # same span a hard error instead of a silent last-writer-wins.
-    changes = list(tables.changes())
-    if strings is not None and project.strings:
+    #
+    # Every declared subsystem contributes every record, edited or not - that is
+    # what proves the round trip, since an unedited record must re-encode to its
+    # original bytes and `plan_changes` then drops it as a no-op.
+    changes: list[ByteChange] = []
+    base_bytes: bytes | None = None
+    if tables is not None:
+        _apply_project_to_tables(project, tables)
+        changes += tables.changes()
+        base_bytes = tables.base_bytes
+    if strings is not None:
         changes += strings.changes()
+        base_bytes = strings.base_bytes if base_bytes is None else base_bytes
+
+    if base_bytes is None:
+        # Unreachable: `_require_extractable_profile` refuses a profile that
+        # declares nothing, so at least one subsystem loaded. Kept because
+        # silently emitting a copy of the base would look like a successful
+        # build that applied the project.
+        raise BuildError(
+            f"profile {profile.id!r} declares no buildable content"
+        )
 
     plan = plan_changes(
-        tables.base_bytes,
+        base_bytes,
         changes,
-        profile_id=tables.profile.id,
-        base_sha256=tables.identification.hashes.sha256,
+        profile_id=profile.id,
+        base_sha256=identification.hashes.sha256,
     )
 
     manifest = emit_image(

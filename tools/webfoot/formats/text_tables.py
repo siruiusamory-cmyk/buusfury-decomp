@@ -212,14 +212,21 @@ class TextIdentity:
     - the pool base has exactly one inbound reference in the whole image, and it
     is the table itself. An address, by contrast, is only where the bytes sit
     right now.
+
+    Identity is shared across games: an index is an index whatever the encoding,
+    which is why the project format and the write planner need no per-game
+    variant. Only non-negativity is checked here. The upper bound belongs to the
+    profile that declares the table's count, and `webfoot.text` enforces it at
+    load time against that count - a bound baked in here would be one game's
+    1,534 and would reject a second game's table for no reason.
     """
 
     index: int
 
     def __post_init__(self) -> None:
-        if type(self.index) is not int or not 0 <= self.index < TEXT_ENTRY_COUNT:
+        if type(self.index) is not int or self.index < 0:
             raise TextCodecError(
-                f"text index must be 0..{TEXT_ENTRY_COUNT - 1}, got {self.index!r}"
+                f"text index must be a non-negative integer, got {self.index!r}"
             )
 
     @property

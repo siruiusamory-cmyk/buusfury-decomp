@@ -84,6 +84,41 @@ profiles:
     md5: 4e1565aa1f0627c2bf5e51019440cb70
     sha1: 18e0715dec419f3501c301511530d2edcd590f8b
     sha256: 6e6c370c339ec9171cb1956adf837a0d342a197f78964882ef46c3086656ff75
+    tables:
+      text_strings:
+        pointer_table_address: 0x080e2840
+        count: 260
+        pool_address: 0x080e2c50
+        pool_size: 5184
+        encoding: ascii_nul_terminated
+        alignment: 1
+        relocatable: false
+        evidence: >-
+          TOOLKIT-005 verified against the canonical image: 260 pointers at
+          0x080e2840, every one resolving to a string start inside the pool and
+          together naming all 246 distinct targets. The table aliases - 9
+          targets are shared by 14 extra slots - so its pointers are neither
+          unique nor strictly ascending, unlike the Buu's Fury table. Both
+          boundaries are sharp: the word before the run is 0x48900000, not a
+          pool address, and the run's last entry abuts the pool base exactly.
+          The pool's 5,184 bytes are tiled exhaustively by 246 NUL-terminated
+          ASCII strings with no gap or overlap, and the table reaches every one
+          of them. The pool base has two inbound word-aligned references
+          (0x000e2840, which is this table's own first entry, and 0x000e2bb4);
+          the table base has none, so it is reached through a computed address.
+          Relocatable is false because no verified free region is declared for
+          this profile.
     sources:
       - "mstan/DragonBallZLegacyofGokuIIRecomp@add98b5d76fb2b822be870f29fa27b22c9a95631 baserom.md"
-    notes: "Exact recomp base-ROM profile; no compatibility claim beyond this hash identity."
+      - "Local reproducible observation, 2026-09-06"
+    notes: >-
+      Hash identity is corroborated independently by the pinned recomp
+      baserom.md and by direct measurement of the local image. Only text_strings
+      is declared. No LOGII table matches this toolkit's stat record shapes, and
+      LOGII dialogue is a script-interleaved, partly JCALG1-compressed stream
+      that cannot be enumerated without script-VM work; neither is declared
+      approximately. The 0x38-stride table at 0x08409368 is real but its records
+      are a variant type rather than the Buu MapEntry layout, so map_entries is
+      not declared against that codec. This string table is menu, item, quest
+      and map-name text; it is NOT the dialogue system, which is separate and
+      remains unsupported.

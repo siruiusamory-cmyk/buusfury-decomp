@@ -48,9 +48,17 @@ _ALLOWED_TEXT_TABLE_KEYS = {
     "evidence",
 }
 
-#: Encodings the text codec implements. A profile naming anything else is
-#: refused rather than decoded with the wrong reader.
-_SUPPORTED_TEXT_ENCODINGS = {"utf16le_nul_terminated"}
+#: Encodings a text codec implements. A profile naming anything else is refused
+#: rather than decoded with the wrong reader.
+#:
+#: This set is what makes the codec choice *data*: `webfoot.text` selects a
+#: reader by looking the profile's declared encoding up in its own registry, so
+#: supporting a game whose strings are shaped differently means adding an
+#: encoding and a codec, never a branch on which game is loaded.
+_SUPPORTED_TEXT_ENCODINGS = {
+    "utf16le_nul_terminated",
+    "ascii_nul_terminated",
+}
 
 
 class ProfileConfigError(ValueError):

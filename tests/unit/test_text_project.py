@@ -156,28 +156,35 @@ def test_a_project_without_a_strings_file_loads_with_no_strings(tmp_path):
 # --- exit criterion 8: invalid text fails before output ------------------
 
 
-def test_a_malformed_control_token_is_refused_at_load(tmp_path):
+@pytest.mark.parametrize(
+    "value",
+    ["bad {08:ZZ} token", "emoji \U0001F600"],
+    ids=["malformed-control-token", "unencodable-character"],
+)
+def test_text_the_codec_cannot_encode_loads_but_never_reaches_an_image(
+    tmp_path, value
+):
+    """Encodability is a property of the ROM's encoding, not of the project.
+
+    TOOLKIT-004 refused these at project load, against the UTF-16LE codec. That
+    was right while one game existed and is wrong now: "{08:ZZ}" and an
+    astral-plane character are unencodable *in UTF-16LE*, and a project does not
+    know which encoding its base ROM uses until a build pairs the two.
+
+    So loading now succeeds and the refusal moved to `build`, which runs with
+    the profile-selected codec. The guarantee that matters is unchanged and is
+    asserted here: nothing is emitted. The ROM-gated proof that a build actually
+    reports these lives in `tests/integration/test_text_rom.py`.
+    """
     root = _write(tmp_path, [(TextIdentity(0), "ok")])
     path = root / "text" / "strings.toml"
     path.write_text(
-        dump_toml({"text": {"text:0000": {"text": "bad {08:ZZ} token"}}}),
+        dump_toml({"text": {"text:0000": {"text": value}}}),
         encoding="utf-8",
         newline="\n",
     )
-    with pytest.raises(ProjectValidationError, match="not encodable"):
-        read_project(root)
 
-
-def test_an_unencodable_character_is_refused_at_load(tmp_path):
-    root = _write(tmp_path, [(TextIdentity(0), "ok")])
-    path = root / "text" / "strings.toml"
-    path.write_text(
-        dump_toml({"text": {"text:0000": {"text": "emoji \U0001F600"}}}),
-        encoding="utf-8",
-        newline="\n",
-    )
-    with pytest.raises(ProjectValidationError, match="not encodable"):
-        read_project(root)
+    assert read_project(root).strings == {TextIdentity(0): value}
 
 
 def test_a_malformed_identity_key_is_refused(tmp_path):
@@ -192,15 +199,23 @@ def test_a_malformed_identity_key_is_refused(tmp_path):
         read_project(root)
 
 
-def test_an_out_of_range_identity_is_refused(tmp_path):
+def test_a_negative_identity_is_refused(tmp_path):
+    """The one bound that is game-independent: an index cannot be negative.
+
+    An *upper* bound is deliberately not checked here. It is the profile's table
+    count, which differs per game - 1,534 for Buu's Fury, 217 for Legacy of Goku
+    II - and a project is not tied to a profile until it is built. An index past
+    the end is caught by `build._check_strings` as "a string this ROM does not
+    contain", which is both accurate and the earliest point it can be known.
+    """
     root = _write(tmp_path, [(TextIdentity(0), "ok")])
     path = root / "text" / "strings.toml"
     path.write_text(
-        dump_toml({"text": {"text:9999": {"text": "hi"}}}),
+        dump_toml({"text": {"text:-1": {"text": "hi"}}}),
         encoding="utf-8",
         newline="\n",
     )
-    with pytest.raises(ProjectLoadError, match="text index must be"):
+    with pytest.raises(ProjectLoadError, match="not a valid text identity key"):
         read_project(root)
 
 

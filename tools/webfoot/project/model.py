@@ -332,13 +332,20 @@ def write_project(
     root = Path(directory)
     written: list[Path] = []
 
-    documents = [
-        (Path(_PROJECT_FILE), meta.to_document()),
-        (_ENEMY_FILE, _enemy_document(enemies)),
-        (_CHARACTER_FILE, _character_document(characters)),
-    ]
-    # Written only when there is text to write, so a profile without a declared
-    # string table produces no empty file claiming it authors one.
+    # Each subsystem's file is written only when that subsystem has content, so
+    # a profile that does not declare one produces no empty file claiming it
+    # authors it. `project.toml` is unconditional: it is what makes the
+    # directory a project at all.
+    #
+    # This matters beyond tidiness. `read_project` refuses a file whose table is
+    # empty, on the grounds that "I meant to author this and did not" is a
+    # mistake worth catching - so an empty file written here would make the
+    # project it just extracted unloadable.
+    documents = [(Path(_PROJECT_FILE), meta.to_document())]
+    if enemies:
+        documents.append((_ENEMY_FILE, _enemy_document(enemies)))
+    if characters:
+        documents.append((_CHARACTER_FILE, _character_document(characters)))
     if strings:
         documents.append((_TEXT_FILE, _text_document(strings)))
 
@@ -375,6 +382,17 @@ def _read_records(
     fixed: tuple[str, ...],
     record_size: int,
 ) -> dict[st.StatIdentity, dict[str, Any]]:
+    """Load one record file, or nothing at all if it is absent.
+
+    Absence is legal and means the project does not author these records,
+    matching `_read_strings`. A profile that declares no stat tables - Legacy of
+    Goku II declares none this toolkit can read - extracts to a project with no
+    stat files, and that project must load. A file that exists but is malformed
+    is still an error; "missing" and "wrong" are different answers.
+    """
+    if not path.is_file():
+        return {}
+
     document = _read_document(path)
     table = document.get(section)
     if not isinstance(table, Mapping):
@@ -426,10 +444,14 @@ def _read_strings(path: Path) -> dict[tt.TextIdentity, str]:
     text untouched. A file that exists but is malformed is still an error;
     "missing" and "wrong" are different answers.
 
-    Every string is encode-checked here, at load, so a malformed control token
-    is reported against its own line before any image is opened. That is the
-    validation-before-emission rule: the cheapest place to refuse is the
-    earliest one.
+    Structure is checked here - key form, field names, duplicate identities, the
+    value being a string. *Encodability* is not, and deliberately so: whether a
+    given string can be encoded depends on the profile's encoding, which a
+    project does not know. TOOLKIT-004 checked it here against the UTF-16LE
+    codec, which was correct while one game existed and would now reject valid
+    Legacy of Goku II text. The check moved to `build._check_strings`, which runs
+    with the ROM's selected codec and reports against the same line; it is still
+    validation before emission, just at the first point that can be right.
     """
     if not path.is_file():
         return {}
@@ -464,10 +486,6 @@ def _read_strings(path: Path) -> dict[tt.TextIdentity, str]:
         text = entry.get("text")
         if not isinstance(text, str):
             raise ProjectValidationError(f"{path}: {label}.text must be a string")
-        try:
-            tt.encode_string(text)
-        except tt.TextCodecError as exc:
-            raise ProjectValidationError(f"{path}: {label}.text is not encodable: {exc}") from exc
 
         if identity in strings:
             # Unreachable through TOML (duplicate keys are a parse error), but

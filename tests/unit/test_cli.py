@@ -3,7 +3,11 @@ import yaml
 
 from tests.helpers import make_synthetic_rom, profile_for
 from tools.webfoot.cli import main
-from tools.webfoot.formats.map_entry import MAP_ENTRY_SIZE, SUPPORTED_PROFILE_ID
+from tools.webfoot.formats.map_entry import MAP_ENTRY_SIZE
+
+#: A synthetic ROM borrows this packaged id so the spoofing test proves that
+#: naming a real profile does not authorise unrelated bytes.
+PACKAGED_PROFILE_ID = "buus_fury_usa_rev0_01c1707f"
 
 
 def write_catalog(path, profiles):
@@ -95,7 +99,7 @@ def test_cli_rejects_spoofed_target_profile(tmp_path, capsys, command):
     rom.write_bytes(frozen)
     profile = profile_for(
         frozen,
-        id=SUPPORTED_PROFILE_ID,
+        id=PACKAGED_PROFILE_ID,
         tables={
             "map_entries": {
                 "address": 0x08000000 + table_offset,
@@ -113,7 +117,7 @@ def test_cli_rejects_spoofed_target_profile(tmp_path, capsys, command):
     error = capsys.readouterr().err
 
     assert exit_code == 2
-    assert "fixed ROM-002 target identity" in error
+    assert "conflicts with the packaged" in error
 
 
 @pytest.mark.parametrize("value", ["not-a-number", "-1", "0x100000000"])

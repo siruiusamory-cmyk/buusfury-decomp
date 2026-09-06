@@ -7,14 +7,14 @@ import subprocess
 import sys
 
 
-def test_upstream_lock_has_seven_unique_pins():
+def test_upstream_lock_has_eight_unique_pins():
     data = json.loads(Path("upstreams.lock").read_text(encoding="utf-8"))
     repositories = data["repositories"]
 
     assert data["schema_version"] == 1
-    assert len(repositories) == 7
-    assert len({item["name"] for item in repositories}) == 7
-    assert len({item["path"] for item in repositories}) == 7
+    assert len(repositories) == 8
+    assert len({item["name"] for item in repositories}) == 8
+    assert len({item["path"] for item in repositories}) == 8
     assert all(re.fullmatch(r"[0-9a-f]{40}", item["commit"]) for item in repositories)
     assert all(item["url"].startswith("https://github.com/") for item in repositories)
     assert all(item["path"].startswith("extern/") for item in repositories)

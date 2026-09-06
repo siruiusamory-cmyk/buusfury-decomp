@@ -1,0 +1,10 @@
+[gd_scene load_steps=2 format=3 uid="uid://bvs001runtests"]
+
+; A SCENE, not a `--script` SceneTree: autoload globals (Clock, EventLog, Party)
+; are only bound on a scene run, and player.gd / wolf.gd reference EventLog at
+; compile time. See the header of tests/run_tests.gd.
+
+[ext_resource type="Script" path="res://tests/run_tests.gd" id="1_runner"]
+
+[node name="RunTests" type="Node"]
+script = ExtResource("1_runner")

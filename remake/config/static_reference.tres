@@ -1,0 +1,30 @@
+[gd_resource type="Resource" format=3]
+
+[resource]
+; DATA-001 static reference values, harvested from the canonical ROM
+; buus_fury_usa_rev0_01c1707f (sha1 f1c4b07554d2a3b1ad2f325307051e775ce68087).
+; Layouts documented by yoav74/BuusFuryToolkit @4353f6a2 and verified
+; against the ROM before export. Offsets are PROVENANCE only.
+
+; --- Wolf / enemy type 434 ---
+; source: file offset 0x711bdc, GBA 0x08711bdc
+; cross-check: P-010 runtime capture recorded 175 displayed HP and 225 EXP.
+wolf_source_offset = 7412700
+wolf_type_id = 434
+wolf_hp_displayed = 175
+wolf_base_exp = 225
+wolf_level = 60
+wolf_strength = 10
+wolf_power = 0
+wolf_endurance = 20
+
+; --- Goku starting stats ---
+; source: file offset 0x6fda4c, GBA 0x086fda4c
+player_source_offset = 7330380
+player_start_level = 60
+player_hp_displayed = 135
+player_ep_displayed = 90
+player_strength = 27
+player_power = 27
+player_endurance = 26
+player_speed = 50

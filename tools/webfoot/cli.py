@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import json
 from importlib import resources
 from pathlib import Path
 import sys
@@ -69,6 +70,7 @@ def build_parser() -> argparse.ArgumentParser:
         help="ROM profile YAML (default: project config or packaged catalog)",
     )
     subparsers = parser.add_subparsers(dest="command", required=True)
+    subparsers.add_parser("relocation-proof", help="validate synthetic relocation and print JSON; no ROM I/O")
     identify = subparsers.add_parser("identify", help="hash and identify a local GBA ROM")
     identify.add_argument("rom", type=Path)
     validate = subparsers.add_parser(
@@ -333,6 +335,12 @@ def _print_first_word_matches(
 def main(argv: list[str] | None = None) -> int:
     parser = build_parser()
     args = parser.parse_args(argv)
+
+    if args.command == "relocation-proof":
+        from .relocation_proof import synthetic_relocation_proof
+        print(json.dumps(synthetic_relocation_proof().to_json(), indent=2, sort_keys=True))
+        return 0
+
     try:
         catalog = load_catalog(args.profiles)
         if args.command == "identify":

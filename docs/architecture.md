@@ -57,6 +57,30 @@ The Buu's Fury engine is the target. Direct LoG1-binary-to-Buu-binary conversion
 - Ambiguity and contradictory metadata are errors, not nearest-match opportunities.
 - No proprietary ROM bytes, extracted assets, or binary dumps belong in tracked files.
 
+## Relocation infrastructure (TOOLKIT-003)
+
+The new foundation uses `binary` and `layout` contracts, trusted `profile`
+metadata, a verified `document` and deterministic `allocation`. `relocation`
+compiles the batch into the shared `write` layer; semantic stat/project consumers
+remain independent. These additions are separate from earlier toolkit work.
+
+Anchors carry a logical identity separately from their current typed file range.
+The document accepts profile-bound layout/research contracts and validates their
+source bytes; numeric scanning produces candidates only. Declared and confirmed
+references may be rewritten; unresolved candidates affected by movement abort.
+Allocation uses only explicit verified profile free regions, in stable anchor
+order and lowest aligned first-fit order. No existing game profile declares
+free space. The portable proof uses a constructed synthetic profile.
+
+A relocation batch verifies the original image, plans all destinations, retains
+interior target deltas, moves source fields with their containing anchors, then
+validates the proposed graph before invoking the existing image writer. Old
+regions remain intact and reserved in the output document. Fixed-size stat and
+project builds remain independent of relocation. See [relocation.md](relocation.md)
+for trust boundaries, limitations, APIs and the executable proof command.
+
 ## Deliberate omissions
 
-Phase 0 contains no `MapEntry` parser/serializer, allocator, relocation system, compression integration, script VM, graphics/audio replacement, Tiled support, GUI, emulator automation, or remake content.
+No content authoring system, compression integration, script VM, graphics/audio
+replacement, Tiled support, GUI, plugin system, expansion or reclamation is
+introduced by TOOLKIT-003. No canonical relocation safety claim is made.

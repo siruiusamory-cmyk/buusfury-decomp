@@ -5,6 +5,9 @@ Detailed evidence lives in [`reverse-engineering.md`](reverse-engineering.md) an
 
 ## Current Baseline
 
+- **TOOLKIT-003 COMPLETE (2026-09-05)**, independently reviewed; owner accepted and authorized a narrow local commit; no TOOLKIT-004. Implementation baseline `f66007b34d81c7f7c5aac0d1bf8cbf796918a07e`; unrelated work preserved. First post-activation run **497 passed, 2 failed** (obsolete ticket assertions, fixed); post-staging worktree suite **555 passed, 0 failed, 0 skipped**: **494 portable unit**, **61 local-ROM integration**, including **56 synthetic relocation cases**, with three pre-existing marker warnings. Isolated staged relevant suite **109 passed**; staged packaging retry **1 passed**. Broad staged unit run: **418 passed, 4 failed** (three excluded untracked runtime-script dependencies; one wheel subprocess error resolved by the packaging retry). [Closure and file inventory](tickets/TOOLKIT-003-review.md); older baselines below are historical.
+- Anchors, classified/reverse references, profile-only free space, deterministic allocation, atomic batch relocation and provenance proven synthetically (`0x100/8 -> 0x208/39`); old bytes preserved, candidates block. Canonical stat/build guarantees pass; ROM SHA-256 remains `940ad5f01db4465b8877dfe739510cbf34f4ea3d390f3df13519808bc36f059e`, ROM/save/state hashes and mtimes unchanged. Canonical relocation omitted: no verified free region declared; no new research/runtime capture. Raw diff-check has pre-existing CRLF whitespace; `core.whitespace=cr-at-eol` passes. [Design/limits](relocation.md).
+
 - VERTICAL-001 starting baseline: `478db31967ae0f0ba2d05f3bb51aab521e76d20c` (`docs: record blocked BSim calibration`).
 - ROM-011 research baseline: `0d0c0e39c058b7cfba9abcdc30d95849c6310e10` (`feat: capture live spatial-object read`).
 - TOOL-001 starting repository baseline: `931794cb5f03caa58431281c3f703a60b3ff5dba` (`feat: capture spatial transition action`).

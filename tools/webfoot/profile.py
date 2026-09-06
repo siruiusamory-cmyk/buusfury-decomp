@@ -13,6 +13,8 @@ import yaml
 from .gba_header import GbaHeader
 from .hashing import RomHashes
 from .binary import BinaryAddressError, GBA_ROM_BASE, GbaRomAddress
+from .binary import FileOffset
+from .layout import FreeRegion, LayoutError, RomRange
 
 
 _HEX_LENGTHS = {"crc32": 8, "md5": 32, "sha1": 40, "sha256": 64}
@@ -30,6 +32,7 @@ _ALLOWED_KEYS = {
     "sources",
     "notes",
     "tables",
+    "free_regions",
 }
 _ALLOWED_TABLES = {"map_entries"}
 _ALLOWED_MAP_ENTRY_TABLE_KEYS = {"address", "count", "record_size"}
@@ -136,6 +139,7 @@ class RomProfile:
     sources: tuple[str, ...]
     notes: str
     map_entries: MapEntryTableProfile | None
+    free_regions: tuple[FreeRegion, ...] = ()
 
     @classmethod
     def from_mapping(cls, data: Mapping[str, Any]) -> "RomProfile":
@@ -189,7 +193,30 @@ class RomProfile:
             sources=tuple(source.strip() for source in sources_value),
             notes=notes.strip(),
             map_entries=_optional_map_entry_table(data),
+            free_regions=_free_regions(data.get("free_regions", []), size),
         )
+
+
+def _free_regions(value: Any, size: int) -> tuple[FreeRegion, ...]:
+    if not isinstance(value, list):
+        raise ProfileConfigError("free_regions must be a list of verified declarations")
+    regions = []
+    for item in value:
+        if not isinstance(item, Mapping) or set(item) != {"file_offset", "size", "status", "evidence"}:
+            raise ProfileConfigError("free region requires file_offset, size, status, evidence")
+        if item["status"] != "CONFIRMED":
+            raise ProfileConfigError("production free regions must be CONFIRMED")
+        try:
+            region = FreeRegion(RomRange(FileOffset(item["file_offset"]), item["size"]), item["evidence"])
+            region.range.validate(size)
+        except (LayoutError, BinaryAddressError) as exc:
+            raise ProfileConfigError(str(exc)) from exc
+        regions.append(region)
+    regions.sort(key=lambda r: r.range.start.value)
+    for left, right in zip(regions, regions[1:]):
+        if left.range.overlaps(right.range):
+            raise ProfileConfigError("overlapping profile free regions")
+    return tuple(regions)
 
 
 @dataclass(frozen=True, slots=True)

@@ -9,6 +9,22 @@ GBA_ROM_BASE = 0x08000000
 UINT32_MAX = 0xFFFFFFFF
 
 
+@dataclass(frozen=True, slots=True, order=True)
+class FileOffset:
+    """A file position, never implicitly interchangeable with a GBA address."""
+
+    value: int
+
+    def __post_init__(self) -> None:
+        if type(self.value) is not int or self.value < 0:
+            raise BinaryAddressError("file offset must be a non-negative integer")
+
+    def to_gba_address(self, rom_size: int) -> GbaRomAddress:
+        address = GbaRomAddress(GBA_ROM_BASE + self.value)
+        address.to_file_offset(rom_size)
+        return address
+
+
 class BinaryAddressError(ValueError):
     """Raised when an address cannot safely identify bytes in a ROM."""
 

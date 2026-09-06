@@ -34,7 +34,7 @@ _ALLOWED_KEYS = {
     "tables",
     "free_regions",
 }
-_ALLOWED_TABLES = {"map_entries", "enemy_stats", "character_base_stats", "text_strings"}
+_ALLOWED_TABLES = {"map_entries", "enemy_stats", "character_base_stats", "text_strings", "scripts"}
 _ALLOWED_MAP_ENTRY_TABLE_KEYS = {"address", "count", "record_size"}
 _ALLOWED_RECORD_TABLE_KEYS = {"address", "count", "record_size"}
 _ALLOWED_TEXT_TABLE_KEYS = {
@@ -303,6 +303,58 @@ def _optional_hash(data: Mapping[str, Any], key: str) -> str | None:
 
 
 @dataclass(frozen=True, slots=True)
+class ScriptProfile:
+    encoding: str
+    family: str
+    table_address: GbaRomAddress
+    count: int
+    stride: int
+    slots: tuple[int, ...]
+    pool_address: GbaRomAddress
+    pool_size: int
+    evidence: str
+
+
+def _optional_scripts(tables, size):
+    value = (tables or {}).get("scripts")
+    if value is None:
+        return None
+    keys = {"encoding", "family", "table_address", "count", "stride", "slots",
+            "pool_address", "pool_size", "evidence"}
+    if not isinstance(value, Mapping) or set(value) != keys:
+        raise ProfileConfigError("scripts requires exact contract fields")
+    for key in ("encoding", "family", "evidence"):
+        if not isinstance(value[key], str) or not value[key].strip():
+            raise ProfileConfigError(f"scripts {key} requires a string")
+    for key in ("count", "stride", "pool_size"):
+        if type(value[key]) is not int or value[key] <= 0:
+            raise ProfileConfigError(f"scripts {key} requires a positive integer")
+    slots = value["slots"]
+    if (not isinstance(slots, list) or not slots or
+            any(type(x) is not int or x < 0 or x % 4 or x+4 > value["stride"] for x in slots)
+            or len(set(slots)) != len(slots)):
+        raise ProfileConfigError("scripts slots invalid")
+    try:
+        table = GbaRomAddress(value["table_address"])
+        pool = GbaRomAddress(value["pool_address"])
+        if table.raw % 4 or value["stride"] % 4:
+            raise ProfileConfigError("scripts pointer records must be word aligned")
+        table_start = table.to_file_offset(size)
+        pool_start = pool.to_file_offset(size)
+        if (table_start < pool_start + value["pool_size"] and
+                pool_start < table_start + value["count"] * value["stride"]):
+            raise ProfileConfigError("scripts pointer table overlaps code pool")
+        if (table.to_file_offset(size)+value["count"]*value["stride"] > size
+                or pool.to_file_offset(size)+value["pool_size"] > size):
+            raise ProfileConfigError("scripts extent outside ROM")
+    except BinaryAddressError as exc:
+        raise ProfileConfigError(str(exc)) from exc
+    return ScriptProfile(value["encoding"], value["family"], table,
+                         value["count"], value["stride"], tuple(slots), pool,
+                         value["pool_size"], value["evidence"])
+
+
+@dataclass(frozen=True, slots=True)
 class RomProfile:
     id: str
     game: str
@@ -321,6 +373,7 @@ class RomProfile:
     character_base_stats: RecordTableProfile | None
     text_strings: TextTableProfile | None = None
     free_regions: tuple[FreeRegion, ...] = ()
+    scripts: ScriptProfile | None = None
 
     @classmethod
     def from_mapping(cls, data: Mapping[str, Any]) -> "RomProfile":
@@ -383,6 +436,7 @@ class RomProfile:
                 tables_value, "character_base_stats"
             ),
             text_strings=_optional_text_table(tables_value),
+            scripts=_optional_scripts(tables_value, size),
             free_regions=_free_regions(data.get("free_regions", []), size),
         )
 

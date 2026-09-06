@@ -85,6 +85,16 @@ profiles:
     sha1: 18e0715dec419f3501c301511530d2edcd590f8b
     sha256: 6e6c370c339ec9171cb1956adf837a0d342a197f78964882ef46c3086656ff75
     tables:
+      scripts:
+        encoding: stack_be7_v1
+        family: static43
+        table_address: 0x086d68dc
+        count: 43
+        stride: 16
+        slots: [4, 8]
+        pool_address: 0x086d66c0
+        pool_size: 539
+        evidence: "TOOLKIT-006 docs/research/SCRIPT_VM.md; native caller 0x08004A86..0x08004AE4"
       text_strings:
         pointer_table_address: 0x080e2840
         count: 260

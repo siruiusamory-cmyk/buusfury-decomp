@@ -57,6 +57,7 @@ class Capability(str, Enum):
     ENEMY_STATS = "enemy_stats"
     CHARACTER_BASE_STATS = "character_base_stats"
     TEXT_STRINGS = "text_strings"
+    SCRIPTS = "scripts"
 
 
 class CapabilityError(ValueError):

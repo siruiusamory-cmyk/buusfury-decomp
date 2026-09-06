@@ -82,20 +82,24 @@ def test_context_split_keeps_permanent_state_and_ticket_content_separate():
     assert "buus_fury_usa_rev0_01c1707f" not in agents
     assert "ROM-008 portable baseline: **192 passed" in state
     assert "Current portable suite after workflow migration: **199 passed" in state
-    assert "# TOOLKIT-005" in current
+    assert "# TOOLKIT-006" in current
     assert "Original ROM Safety - Mandatory" not in current
-    assert "Do not begin TOOLKIT-006" in current
+    assert "Do not begin TOOLKIT-007" in current
 
 
 def test_toolkit_activation_preserves_completed_placeholder_and_research_debts():
     """Activation archives closure evidence and preserves unresolved research."""
     active = (PROJECT_ROOT / "docs/PROJECT_<local-state-name>").read_text(encoding="utf-8")
-    assert "# TOOLKIT-005" in active
+    assert "# TOOLKIT-006" in active
+    assert "archive/TOOLKIT-005.md" in active
+    closed_five = (
+        PROJECT_ROOT / "docs/research/archive/TOOLKIT-005.md"
+    ).read_text(encoding="utf-8")
     # Activation archives the closed ticket's placeholder rather than deleting
     # it, and the chain back to the earlier placeholders must stay reachable.
-    assert "archive/TOOLKIT-004-COMPLETE.md" in active
-    assert "archive/TOOLKIT-003-COMPLETE.md" in active
-    assert "archive/TOOLKIT-002-COMPLETE.md" in active
+    assert "archive/TOOLKIT-004-COMPLETE.md" in closed_five
+    assert "archive/TOOLKIT-003-COMPLETE.md" in closed_five
+    assert "archive/TOOLKIT-002-COMPLETE.md" in closed_five
     # Each archived placeholder must keep linking one step further back, so the
     # chain is traversable from the active ticket to the oldest closure.
     closed_four = (

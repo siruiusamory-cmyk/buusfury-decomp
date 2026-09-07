@@ -229,7 +229,7 @@ def extract_project(
     except MapEntryProfileError:
         maps = []
 
-    return write_project(
+    written = write_project(
         project_dir,
         meta,
         enemies=enemies,
@@ -237,6 +237,16 @@ def extract_project(
         strings=strings,
         maps=maps,
     )
+    if capability.declared(profile, capability.Capability.PLACEMENT_TYPES):
+        from .entities import load_placement_types
+        from .project.model import PLACEMENT_TYPES_FILE
+        from .project.format import dump_toml
+        document = load_placement_types(rom_path, catalog).project_document()
+        target = Path(project_dir) / PLACEMENT_TYPES_FILE
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_text(dump_toml(document), encoding="utf-8", newline="\n")
+        written.append(target)
+    return written
 
 
 def _map_documents(maps: Maps) -> list[dict]:
@@ -430,6 +440,18 @@ def _check_maps(project: StatProject, maps: Maps | None) -> list[str]:
     fail-closed ordering ticket TOOLKIT-007 sec 18 requires.
     """
     problems: list[str] = []
+    if project.placement_types is not None:
+        from .entities import PlacementTypes, PlacementTypeError
+        import json
+        if maps is None:
+            problems.append("placement type catalog requires verified map/type support")
+        else:
+            try:
+                expected = PlacementTypes(maps).project_document()
+                if json.dumps(project.placement_types, sort_keys=True) != json.dumps(expected, sort_keys=True):
+                    problems.append("placement type catalog differs from verified base; type reassignment is unsupported")
+            except (PlacementTypeError, TypeError, ValueError) as exc:
+                problems.append(f"invalid placement type catalog: {exc}")
     if not project.maps:
         return problems
     if maps is None:

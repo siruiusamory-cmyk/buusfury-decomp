@@ -80,6 +80,7 @@ _ENEMY_FILE = Path("enemies") / "enemies.toml"
 _CHARACTER_FILE = Path("characters") / "characters.toml"
 _TEXT_FILE = Path("text") / "strings.toml"
 _MAP_FILE = Path("maps") / "maps.toml"
+PLACEMENT_TYPES_FILE = Path("placement_types") / "types.toml"
 
 #: Authored field order within a record. Fixed, so output is deterministic;
 #: chosen for reading rather than sorted, because a human edits these.
@@ -211,6 +212,8 @@ class StatProject:
     #: reasoning as `strings`: a missing `maps/maps.toml` means "this project
     #: does not author maps", not "this project is broken".
     maps: dict[int, dict[str, Any]] = field(default_factory=dict)
+    # Optional v1 read-only relationship catalog. Missing keeps old projects valid.
+    placement_types: dict[str, Any] | None = None
 
 
 # --- helpers -------------------------------------------------------------
@@ -766,4 +769,6 @@ def read_project(directory: str | Path) -> StatProject:
         characters=characters,
         strings=strings,
         maps=maps,
+        placement_types=(_read_document(root / PLACEMENT_TYPES_FILE)
+                         if (root / PLACEMENT_TYPES_FILE).exists() else None),
     )

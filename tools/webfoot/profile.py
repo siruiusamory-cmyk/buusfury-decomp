@@ -34,7 +34,7 @@ _ALLOWED_KEYS = {
     "tables",
     "free_regions",
 }
-_ALLOWED_TABLES = {"map_entries", "enemy_stats", "character_base_stats", "text_strings", "scripts"}
+_ALLOWED_TABLES = {"map_entries", "enemy_stats", "character_base_stats", "text_strings", "scripts", "placement_types"}
 _ALLOWED_MAP_ENTRY_TABLE_KEYS = {"address", "count", "record_size"}
 _ALLOWED_RECORD_TABLE_KEYS = {"address", "count", "record_size"}
 _ALLOWED_TEXT_TABLE_KEYS = {
@@ -355,6 +355,45 @@ def _optional_scripts(tables, size):
 
 
 @dataclass(frozen=True, slots=True)
+class PlacementTypeProfile:
+    table_address: GbaRomAddress
+    stride: int
+    max_selector: int
+    factory_raw: int
+    constructor_address: GbaRomAddress
+    evidence: str
+
+
+def _optional_placement_types(tables, size):
+    value = (tables or {}).get("placement_types")
+    if value is None:
+        return None
+    keys = {"table_address", "stride", "max_selector", "factory_raw",
+            "constructor_address", "evidence"}
+    if not isinstance(value, Mapping) or set(value) != keys:
+        raise ProfileConfigError("placement_types requires exact contract fields")
+    for key in ("stride", "max_selector", "factory_raw"):
+        if type(value[key]) is not int or value[key] <= 0:
+            raise ProfileConfigError(f"placement_types {key} must be positive integer")
+    if value["stride"] % 4 or not isinstance(value["evidence"], str) or not value["evidence"].strip():
+        raise ProfileConfigError("invalid placement type stride/evidence")
+    try:
+        table = GbaRomAddress(value["table_address"])
+        ctor = GbaRomAddress(value["constructor_address"])
+        start = table.to_file_offset(size)
+        ctor.to_file_offset(size)
+        GbaRomAddress(value["factory_raw"]).to_file_offset(size)
+        if table.raw % 4 or ctor.raw % 2 or not value["factory_raw"] & 1:
+            raise ProfileConfigError("placement type address alignment/state mismatch")
+        if start + value["max_selector"] * value["stride"] >= size:
+            raise ProfileConfigError("placement type selector target outside ROM")
+    except BinaryAddressError as exc:
+        raise ProfileConfigError(str(exc)) from exc
+    return PlacementTypeProfile(table, value["stride"], value["max_selector"],
+                                value["factory_raw"], ctor, value["evidence"])
+
+
+@dataclass(frozen=True, slots=True)
 class RomProfile:
     id: str
     game: str
@@ -374,6 +413,7 @@ class RomProfile:
     text_strings: TextTableProfile | None = None
     free_regions: tuple[FreeRegion, ...] = ()
     scripts: ScriptProfile | None = None
+    placement_types: PlacementTypeProfile | None = None
 
     @classmethod
     def from_mapping(cls, data: Mapping[str, Any]) -> "RomProfile":
@@ -437,6 +477,7 @@ class RomProfile:
             ),
             text_strings=_optional_text_table(tables_value),
             scripts=_optional_scripts(tables_value, size),
+            placement_types=_optional_placement_types(tables_value, size),
             free_regions=_free_regions(data.get("free_regions", []), size),
         )
 

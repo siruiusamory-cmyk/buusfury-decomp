@@ -125,12 +125,15 @@ class ReferenceEncoding(str, Enum):
 
     ABSOLUTE_ROM_U32_LE = "absolute_rom_u32_le"
     RELATIVE_I32_LE = "relative_i32_le"
+    INDEX_U32_LE = "index_u32_le"
 
     @property
     def width(self) -> int:
         return 4
 
     def decode(self, data: bytes, source: FileOffset, image_size: int) -> FileOffset:
+        if self is ReferenceEncoding.INDEX_U32_LE:
+            raise LayoutError("indexed references require their declared table context")
         if len(data) != self.width:
             raise LayoutError("malformed reference width")
         if self is ReferenceEncoding.ABSOLUTE_ROM_U32_LE:
@@ -141,6 +144,8 @@ class ReferenceEncoding(str, Enum):
         return FileOffset(target)
 
     def encode(self, target: FileOffset, source: FileOffset, image_size: int) -> bytes:
+        if self is ReferenceEncoding.INDEX_U32_LE:
+            raise LayoutError("indexed references are read-only; reassignment is not verified")
         RomRange(source, self.width).validate(image_size)
         RomRange(target, 1).validate(image_size)
         if self is ReferenceEncoding.ABSOLUTE_ROM_U32_LE:
@@ -159,6 +164,8 @@ class Reference:
     encoding: ReferenceEncoding
     classification: ReferenceClass
     provenance: Provenance
+    index_base: FileOffset | None = None
+    index_stride: int | None = None
 
     def __post_init__(self) -> None:
         if not isinstance(self.source, FileOffset) or not isinstance(self.target, AnchorId):
@@ -169,16 +176,35 @@ class Reference:
             raise LayoutError("unsupported reference encoding")
         if not isinstance(self.classification, ReferenceClass):
             raise LayoutError("unsupported reference classification")
+        if self.encoding is ReferenceEncoding.INDEX_U32_LE:
+            if (not isinstance(self.index_base, FileOffset)
+                    or type(self.index_stride) is not int or self.index_stride <= 0):
+                raise LayoutError("indexed reference requires a table base and positive stride")
+        elif self.index_base is not None or self.index_stride is not None:
+            raise LayoutError("index context on a non-index reference")
+
+    def decode_target(self, data: bytes, image_size: int) -> FileOffset:
+        if self.encoding is not ReferenceEncoding.INDEX_U32_LE:
+            return self.encoding.decode(data, self.source, image_size)
+        if len(data) != 4:
+            raise LayoutError("malformed index width")
+        assert self.index_base is not None and self.index_stride is not None
+        target = self.index_base.value + int.from_bytes(data, "little") * self.index_stride
+        RomRange(FileOffset(target), 1).validate(image_size)
+        return FileOffset(target)
 
     @property
     def source_range(self) -> RomRange:
         return RomRange(self.source, self.encoding.width)
 
     def to_json(self) -> dict:
-        return {"source_file_offset": self.source.value, "target_anchor": self.target.value,
+        result = {"source_file_offset": self.source.value, "target_anchor": self.target.value,
                 "target_delta": self.target_delta, "encoding": self.encoding.value,
                 "classification": self.classification.value,
                 "provenance": self.provenance.to_json()}
+        if self.index_base is not None:
+            result.update(index_base_file_offset=self.index_base.value, index_stride=self.index_stride)
+        return result
 
 
 @dataclass(frozen=True, slots=True)

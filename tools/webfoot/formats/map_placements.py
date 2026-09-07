@@ -35,14 +35,14 @@ with **no record claimed by two maps** and **no two pointer arrays overlapping
 each other**. 108 well-formed records exist in the image that no map reaches;
 they are left out rather than forced into a map's extent.
 
-**UNRESOLVED, and it blocks a build.** Those record extents collide with the
-slot extents `webfoot.formats.map_slots` resolves: **57 records overlap 40 slot
-arrays**, so `plan_changes` refuses the merged plan with `OverlappingChangeError`
-rather than letting two owners write the same bytes. That refusal is correct.
-Which extent is wrong is NOT yet determined - the slot extent rests on
-`trigger_count_raw`, recorded UNKNOWN in `docs/research/MAP_FORMAT.md`, and this
-walk rests only on record shape. Until that is measured, this family does not
-reach ROUND_TRIP and no placement edit can be built.
+**Resolved in TOOLKIT-008.** The 40 overlapping opaque slot extents are
+refused (112 arrays / 596 slots remain); the typed 35 / 89 subset is unchanged.
+The old unresolved paragraph was stale after closure. See ENTITY_FORMAT.md.
+
+**TOOLKIT-009 correction.** Supported +08 has 101 distinct engine selectors,
+not 111. The wrapper computes 08711274 + 28 * selector and calls 0800F68C.
+The semantic layer is `webfoot.entities`; this lossless codec preserves raw
+fields. See PLACEMENT_TYPES.md for verified enemy links and six unknown targets.
 
 **The declared count does not bound the array.** `script_count_raw` (`+0x05`)
 matches the reachable array length for only 2 of those 215 maps; 212 declare a
@@ -54,7 +54,7 @@ resolved by walking, exactly as `webfoot.formats.map_slots` refuses to trust
 
     +0x00  factory_raw     always 0x0800FD55 (the family's defining constant)
     +0x04  flags_raw       33 distinct values
-    +0x08  type_raw        1..149, 111 distinct, high halfword always 0
+    +0x08  type_raw        1..149, 101 distinct, high halfword always 0
     +0x0C  position_raw    low halfword 0..1982, high halfword 0..930
     +0x10  id_raw          5..306, high halfword always 0
     +0x14  0x080555A0      constant across every reachable record
@@ -87,11 +87,9 @@ _PLACEMENT_STRUCT = struct.Struct("<8I")
 #: image actually being read, which is checked against that image's real size.
 ROM_BASE = 0x08000000
 
-#: The raw word every record in this family begins with. CONFIRMED as a factory
-#: raw value by `docs/research/AUTO_RE_<local-state-name>`, which records the sibling
-#: factories `0x08007675` and `0x080072CD` from runtime evidence. Being odd, it
-#: is Thumb-shaped, as a factory pointer must be. What the factory *constructs*
-#: is not established here.
+#: CONFIRMED by canonical static wrapper 0800FD54..0800FD6C, TOOLKIT-009.
+#: Raw Thumb pointer is preserved; the typed consumer is documented in
+#: docs/research/PLACEMENT_TYPES.md. Sibling factories are not its proof.
 FACTORY_RAW = 0x0800FD55
 
 #: The three trailing words, identical in every one of the 1,403 well-formed

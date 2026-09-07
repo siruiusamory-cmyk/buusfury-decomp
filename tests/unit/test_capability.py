@@ -53,6 +53,7 @@ def test_each_profile_declares_exactly_the_capabilities_it_supports(catalog):
         Capability.ENEMY_STATS,
         Capability.CHARACTER_BASE_STATS,
         Capability.TEXT_STRINGS,
+        Capability.PLACEMENT_TYPES,
     )
     assert capability.capabilities(_profile(catalog, LOGII)) == (
         Capability.TEXT_STRINGS,
@@ -78,6 +79,7 @@ def test_a_capability_name_is_the_profile_field_that_backs_it():
             "character_base_stats",
             "text_strings",
             "scripts",
+            "placement_types",
         }
 
 
@@ -222,6 +224,7 @@ def test_the_profile_loader_refuses_an_encoding_no_codec_implements():
 
 #: Every module a ROM's bytes pass through on the read, edit and write paths.
 _CORE_MODULES = (
+    "tools/webfoot/entities.py",
     "tools/webfoot/binary.py",
     "tools/webfoot/scripts.py",
     "tools/webfoot/formats/script_vm.py",

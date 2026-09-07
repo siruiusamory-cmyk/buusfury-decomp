@@ -58,6 +58,7 @@ class Capability(str, Enum):
     CHARACTER_BASE_STATS = "character_base_stats"
     TEXT_STRINGS = "text_strings"
     SCRIPTS = "scripts"
+    PLACEMENT_TYPES = "placement_types"
 
 
 class CapabilityError(ValueError):

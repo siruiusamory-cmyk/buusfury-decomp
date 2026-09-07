@@ -54,9 +54,16 @@ class RomDocument:
 
     def inbound(self, target: AnchorId | RomRange) -> tuple[Reference, ...]:
         """Reverse index view, stable by source, including interior targets."""
-        region = self.anchor(target).range if isinstance(target, AnchorId) else target
-        return tuple(sorted((r for r in self.references if region.contains(self.target_offset(r))),
-                            key=lambda r: r.source.value))
+        if isinstance(target, AnchorId):
+            self.anchor(target)  # retain unknown-identity refusal
+            # Validated anchor regions cannot overlap. Matching the anchor ID
+            # includes all interior deltas without repeatedly scanning anchors.
+            return tuple(sorted((r for r in self.references if r.target == target),
+                                key=lambda r: r.source.value))
+        anchors = {a.identity: a for a in self.anchors}
+        return tuple(sorted((r for r in self.references if target.contains(
+            FileOffset(anchors[r.target].range.start.value + r.target_delta))),
+            key=lambda r: r.source.value))
 
     def _check_provenance(self, provenance: Provenance) -> None:
         if (provenance.profile_id, provenance.base_sha256) != (self.profile.id, self.profile.sha256):
@@ -98,7 +105,7 @@ class RomDocument:
             expected = self.target_offset(ref)
             raw = self.image[ref.source.value:ref.source_range.end]
             try:
-                actual = ref.encoding.decode(raw, ref.source, len(self.image))
+                actual = ref.decode_target(raw, len(self.image))
             except (ValueError, BinaryAddressError) as exc:
                 raise LayoutError(f"malformed reference at 0x{ref.source.value:08X}: {exc}") from exc
             if actual != expected:

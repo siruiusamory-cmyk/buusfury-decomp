@@ -91,6 +91,15 @@ def build_parser() -> argparse.ArgumentParser:
         help="ROM profile YAML (default: project config or packaged catalog)",
     )
     subparsers = parser.add_subparsers(dest="command", required=True)
+    entity = subparsers.add_parser("entity", help="verified static placement/type relationships")
+    entity_commands = entity.add_subparsers(dest="entity_command", required=True)
+    for command in ("list", "show", "type", "types", "placements-of-type", "summary", "references"):
+        child = entity_commands.add_parser(command)
+        child.add_argument("rom", type=Path)
+        if command in ("show", "type", "placements-of-type"):
+            child.add_argument("identity")
+        if command == "list":
+            child.add_argument("--map", dest="map_identity")
     subparsers.add_parser("relocation-proof", help="validate synthetic relocation and print JSON; no ROM I/O")
     identify = subparsers.add_parser("identify", help="hash and identify a local GBA ROM")
     identify.add_argument("rom", type=Path)
@@ -1060,6 +1069,39 @@ def _print_build(result: BuildResult) -> None:
 def main(argv: list[str] | None = None) -> int:
     parser = build_parser()
     args = parser.parse_args(argv)
+
+    if args.command == "entity":
+        from .entities import load_placement_types, PlacementTypeIdentity
+        try:
+            types = load_placement_types(args.rom, load_catalog(args.profiles))
+            command = args.entity_command
+            if command == "summary":
+                result = types.summary()
+            elif command == "references":
+                result = types.reference_document().to_json()
+            elif command == "types":
+                result = [t.to_json() for t in types.types()]
+            elif command == "placements-of-type":
+                profile_id, separator, digits = args.identity.partition("/placement_type:")
+                if not separator or not digits.isdecimal():
+                    raise ValueError("expected profile-qualified placement_type:NNNN identity")
+                identity = PlacementTypeIdentity(profile_id, int(digits))
+                result = [str(p) for p in types.placements_of_type(identity)]
+            elif command in ("show", "type"):
+                identity = _parse_placement_identity(args.identity)
+                item = types.type_of(identity)
+                result = ({**item.to_json(), "factory": types.factory_of(item.identity)}
+                          if command == "show" else {"placement_id": str(identity), "type_id": str(item.identity)})
+            else:
+                placements = (types.maps.placements() if args.map_identity is None else
+                              types.maps.map_placements(_parse_map_identity(args.map_identity)))
+                result = [{"placement_id": str(p.identity), "type_id": str(types.type_of(p.identity).identity)}
+                          for p in placements]
+            print(json.dumps(result, sort_keys=True, indent=2))
+            return 0
+        except (ValueError, OSError) as exc:
+            print(f"error: {exc}", file=sys.stderr)
+            return 2
 
     if args.command == "relocation-proof":
         from .relocation_proof import synthetic_relocation_proof

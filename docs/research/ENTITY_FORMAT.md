@@ -104,7 +104,7 @@ Measured over the 1,295 reachable records:
 | ---: | ---: | --- | --- | --- |
 | `+0x00` | 4 | `factory_raw` | always `0x0800FD55` | CONFIRMED constant |
 | `+0x04` | 4 | `flags_raw` | 33 distinct values | UNKNOWN |
-| `+0x08` | 4 | `type_raw` | 1..149, 111 distinct, high halfword always 0 | UNKNOWN |
+| `+0x08` | 4 | `type_raw` | 1..149, 101 distinct, high halfword always 0 | CONFIRMED table selector (TOOLKIT-009; see correction below) |
 | `+0x0C` | 4 | `position_raw` | low 0..1982, high 0..930 | see below |
 | `+0x10` | 4 | `id_raw` | 5..306, high halfword always 0 | UNKNOWN |
 | `+0x14` | 4 | `tail0_raw` | always `0x080555A0` | CONFIRMED constant |
@@ -237,3 +237,13 @@ Preferred escalation is `gbarecomp` instrumentation first, mGBA second, per the
 ticket's ladder. It was **not** run: the placement-edit milestone is proven at
 the byte level without an axis claim, so the question does not block closure.
 Answering it is what would let `position_low` be renamed `x`.
+
+## TOOLKIT-009 follow-up correction
+
+The supported corpus has **101**, not 111, distinct type_raw selectors.
+The factory now has a confirmed static consumer chain: placement +08 selects
+08711274 + 28 * selector, passed to constructor 0800F68C. 95 selected targets
+are existing enemy-stat records (1,284 placements); six targets (11 placements)
+remain reference-only. Earlier UNKNOWN labels above are historical; see
+[placement type evidence](PLACEMENT_TYPES.md) for the new evidence and limits.
+No coordinate-axis or NPC/item/friendly taxonomy claim was added.

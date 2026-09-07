@@ -12,6 +12,17 @@ profiles:
     sha1: f1c4b07554d2a3b1ad2f325307051e775ce68087
     sha256: 940ad5f01db4465b8877dfe739510cbf34f4ea3d390f3df13519808bc36f059e
     tables:
+      placement_types:
+        table_address: 0x08711274
+        stride: 28
+        max_selector: 149
+        factory_raw: 0x0800fd55
+        constructor_address: 0x0800f68c
+        evidence: >-
+          TOOLKIT-009 PLACEMENT_TYPES.md: canonical FD54 wrapper computes
+          table + 28 * placement[8], then calls F68C. Maximum selector is the
+          observed supported bound, NOT a total table count. Targets outside
+          the independently verified enemy_stats extent have no record codec.
       map_entries:
         address: 0x0808e2e0
         count: 452

@@ -67,6 +67,30 @@ profiles:
           base has exactly one inbound word-aligned reference in the whole ROM
           (this table); the table base has 51. Relocatable is false because no
           verified free region is declared for this profile.
+      scripts:
+        encoding: stack_be16_buu_v1
+        family: static40
+        table_address: 0x08720564
+        count: 40
+        stride: 16
+        slots: [4, 8, 12]
+        pool_address: 0x08720340
+        pool_size: 548
+        evidence: >-
+          TOOLKIT-013 docs/research/BUU_SCRIPT_VM.md, verified against the
+          canonical image. Interpreter 0x08004038 fetches one opcode byte,
+          indexes primary dispatch table 0x080554C0 and calls the handler
+          through the __call_via veneer; a null slot terminates. That table
+          holds exactly 31 slots because slot 0x1F onward is UTF-16 text.
+          Walker 0x080141EE loads this table, forms table + 16*i and interprets
+          record +0x04, +0x08 and +0x0C, bounded by cmp r6,#0x28 = 40 records.
+          All 120 pointers are non-null, distinct and strictly ascending, and
+          the pool ends exactly where the table begins. The 120 roots tile the
+          548-byte pool exhaustively with zero uncovered bytes. That tiling
+          confirms the widths of the opcodes that occur (00/01/02/04/11); the
+          branch contract rests on the handler disassembly instead, because this
+          corpus contains no branch opcode. Relocatable is false because no
+          verified free region is declared for this profile.
     sources:
       - "2genkidev/buusfury@cc53d0cd2d1c167e749419187e2d92017ac07468 README.md"
       - "Local reproducible observation, 2026-08-19"

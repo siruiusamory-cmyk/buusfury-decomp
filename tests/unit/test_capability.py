@@ -44,18 +44,23 @@ def test_each_profile_declares_exactly_the_capabilities_it_supports(catalog):
     """Declared capabilities are asserted per profile, not assumed symmetrical.
 
     The point of the second profile is that it is *different*. Buu's Fury
-    declares six subsystems; Legacy of Goku II declares two, because that is what
-    was verified. A test that allowed LOGII to quietly grow a declaration would
-    let capability inflation pass review - and note that LOGII gets no
+    declares seven subsystems; Legacy of Goku II declares two, because that is
+    what was verified. A test that allowed LOGII to quietly grow a declaration
+    would let capability inflation pass review - and note that LOGII gets no
     `actor_sprites` declaration from TOOLKIT-010: the sprite chain was verified
     against the Buu image only, and DragonByteZ's own profiles put LOGII's
     palettes at entirely different offsets.
+
+    Both profiles declare `scripts`, but they are not the same subsystem: each
+    game got its own opcode set re-derived from its own interpreter, and the two
+    disagree on branch operand width and branch base (TOOLKIT-013).
     """
     assert capability.capabilities(_profile(catalog, BUU)) == (
         Capability.MAP_ENTRIES,
         Capability.ENEMY_STATS,
         Capability.CHARACTER_BASE_STATS,
         Capability.TEXT_STRINGS,
+        Capability.SCRIPTS,
         Capability.PLACEMENT_TYPES,
         Capability.ACTOR_SPRITES,
     )

@@ -26,6 +26,10 @@ class Opcode:
     evidence: Evidence = Evidence.UNKNOWN
     provenance: str = ''
     semantics: Evidence = Evidence.UNKNOWN
+    # A branch displacement is measured from either the cursor before the
+    # operand bytes or the one after them. The VM decides; the toolkit must not
+    # assume, because the two games differ here.
+    branch_base: str = 'after_operand'
 
 
 @dataclass(frozen=True)
@@ -97,6 +101,10 @@ def _operand(data: bytes, pos: int, encoding: str) -> tuple[Operand, int]:
         raise ScriptError(f'truncated operand at {pos}')
     if encoding == 'u8':
         return Operand(data[pos], data[pos:pos+1]), pos+1
+    if encoding == 'be16':
+        if pos + 2 > len(data):
+            raise ScriptError(f'truncated big-endian halfword at {pos}')
+        return Operand((data[pos] << 8) | data[pos+1], data[pos:pos+2]), pos+2
     if encoding != 'sm7':
         raise ScriptError(f'unsupported operand encoding {encoding}')
     raw = 0
@@ -122,7 +130,7 @@ def decode_instruction(data: bytes, offset: int, spec: OpcodeSet) -> Instruction
     op = spec.lookup(data[offset])
     pos = offset + 1
     args = []
-    if op.encoding in ('u8', 'sm7'):
+    if op.encoding in ('u8', 'sm7', 'be16'):
         arg, pos = _operand(data, pos, op.encoding)
         args.append(arg)
     elif op.encoding == 'count_sm7':
@@ -137,9 +145,19 @@ def decode_instruction(data: bytes, offset: int, spec: OpcodeSet) -> Instruction
         raise ScriptError(f'unknown width for opcode {op.value}')
     target = None
     if op.flow in ('forward', 'if_zero', 'count_back'):
-        if len(args) != 1 or op.encoding != 'u8':
-            raise ScriptError('branch specification requires one byte')
-        target = pos + (-args[0].value if op.flow == 'count_back' else args[0].value)
+        if len(args) != 1 or op.encoding not in ('u8', 'be16'):
+            raise ScriptError('branch specification requires one byte or halfword')
+        if op.branch_base == 'after_operand':
+            base = pos
+        elif op.branch_base == 'before_operand':
+            base = pos - len(args[0].encoding)
+        else:
+            raise ScriptError(f'unknown branch base {op.branch_base}')
+        displacement = -args[0].value if op.flow == 'count_back' else args[0].value
+        # A negative intermediate is legal here: encode_instruction re-decodes an
+        # instruction in isolation at offset 0, so only disassemble, which knows
+        # the real corpus offsets, can judge whether a target is in range.
+        target = base + displacement
     elif op.flow not in ('next', 'stop'):
         raise ScriptError('unknown control-flow contract')
     return Instruction(op.value, tuple(args), offset, pos-offset, target,

@@ -143,9 +143,89 @@ def test_invalid_profile_contract(field,value):
     import yaml
     from tools.webfoot.profile import RomProfileCatalog,ProfileConfigError
     data=yaml.safe_load(Path('config/roms.yaml').read_text())
-    profile=next(p for p in data['profiles'] if 'scripts' in p.get('tables',{}))
+    # Pinned to LOGII: more than one profile declares scripts since TOOLKIT-013,
+    # and the table_address case is an overlap against LOGII's pool specifically.
+    profile=next(p for p in data['profiles']
+                 if p['id']=='legacy_of_goku_ii_usa_rev0_204142e1')
     profile['tables']['scripts'][field]=value
     with pytest.raises(ProfileConfigError): RomProfileCatalog.loads(yaml.safe_dump(data))
+
+
+# --- TOOLKIT-013: the Buu grammar, exercised on synthetic streams -----------
+# The real Buu corpus contains no branch opcode, so the branch contract is only
+# reachable here. These fixtures are synthetic by design: no ROM payload is
+# embedded, and they test the mechanics the handler disassembly established.
+
+from tools.webfoot.data.script_specs import STACK_BE16_BUU_V1 as B
+
+
+def buu_ir(raw, entries=(Entry('script:a', 0),)):
+    return disassemble(bytes(raw), entries, B)
+
+
+def test_buu_forward_branch_is_be16_from_the_pre_operand_cursor():
+    # 0x12 at 0 with displacement 4: base is the cursor *before* the halfword
+    # (offset 1), so the target is 5 - not 7, which a post-operand base gives.
+    raw = bytes([0x12, 0x00, 0x04, 0xFF, 0xFF, 0x11])
+    graph = buu_ir(raw)
+    assert graph.blocks[0].instructions[0].target == 5
+    assert graph.opaque == ((3, b'\xff\xff'),)
+    assert assemble(graph) == raw
+
+
+def test_buu_backward_branch_subtracts():
+    raw = bytes([0x00, 0x05, 0x1C, 0x00, 0x03, 0x11])
+    graph = buu_ir(raw)
+    branch = next(i for b in graph.blocks for i in b.instructions if i.opcode == 0x1C)
+    assert branch.target == 0
+    assert len(graph.blocks) == 2
+    assert assemble(graph) == raw
+
+
+def test_buu_conditional_branch_has_both_edges():
+    # 0x13 at offset 2, base 3, displacement 4 -> taken target 7; the
+    # fallthrough at 5 terminates, so both successors are real instructions.
+    raw = bytes([0x00, 0x01, 0x13, 0x00, 0x04, 0x11, 0x14, 0x11])
+    graph = buu_ir(raw)
+    branch = next(i for b in graph.blocks for i in b.instructions if i.opcode == 0x13)
+    assert branch.target == 7
+    block = next(b for b in graph.blocks if branch in b.instructions)
+    assert tuple(e.kind for e in block.edges) == ('taken', 'fallthrough')
+    assert assemble(graph) == raw
+
+
+@pytest.mark.parametrize('raw', [
+    b'\x12\x00',      # truncated be16 displacement
+    b'\x13\x00',
+    b'\x1c\x00',
+    b'\x1f',          # past the measured 31-slot table
+    b'\xff',
+])
+def test_buu_malformed_fails_closed(raw):
+    """Never guess a width, skip bytes, or treat an unknown opcode as a no-op."""
+    with pytest.raises(ScriptError):
+        decode_instruction(raw, 0, B)
+
+
+def test_buu_opcode_table_stops_at_the_measured_bound():
+    assert len(B.instructions) == 31
+    assert B.lookup(0x1E).name
+    with pytest.raises(ScriptError):
+        B.lookup(0x1F)
+
+
+@pytest.mark.parametrize('raw', [
+    # Backward branch landing inside push_byte's operand at offset 1.
+    [0x00, 0x05, 0x1C, 0x00, 0x02, 0x11],
+    # Backward branch past the start of the stream.
+    [0x00, 0x05, 0x1C, 0x00, 0x40, 0x11],
+    # Forward branch past the end of the stream.
+    [0x12, 0x00, 0x40, 0x11],
+])
+def test_buu_branch_outside_an_instruction_boundary_is_refused(raw):
+    """A target must land on a real instruction; it is never nudged to fit."""
+    with pytest.raises(ScriptError):
+        buu_ir(raw)
 
 
 def test_unverified_rom_rejected_before_scripts(tmp_path):

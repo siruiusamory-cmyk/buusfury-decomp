@@ -100,6 +100,21 @@ def build_parser() -> argparse.ArgumentParser:
             child.add_argument("identity")
         if command == "list":
             child.add_argument("--map", dest="map_identity")
+    # TOOLKIT-013. Read-only inspection of the verified script/event corpus.
+    # There is no event editor and no authoring command: the corpus is
+    # fixed-size (free capacity is zero), so anything that could grow a stream
+    # is deliberately absent rather than refused at runtime.
+    event = subparsers.add_parser(
+        "event", help="inspect the verified static script/event corpus"
+    )
+    event_commands = event.add_subparsers(dest="event_command", required=True)
+    for command in ("summary", "list", "show", "validate-round-trip"):
+        child = event_commands.add_parser(command)
+        child.add_argument("rom", type=Path)
+        if command == "show":
+            child.add_argument("identity", help="entry identity from `event list`")
+        if command == "list":
+            child.add_argument("--limit", type=int, default=None)
     # TOOLKIT-010. Inspection only: normal project extraction stays the
     # authoring workflow, and nothing here is a sprite editor.
     graphics_parser = subparsers.add_parser(
@@ -1244,6 +1259,69 @@ def _run_graphics(args) -> int:
         return 2
 
 
+def _event_instruction_json(instruction, opcode_set) -> dict:
+    """One instruction, named structurally. No gameplay meaning is asserted."""
+    spec = opcode_set.lookup(instruction.opcode)
+    payload = {
+        "offset": instruction.source_offset,
+        "opcode": f"0x{instruction.opcode:02X}",
+        "name": spec.name,
+        "encoded_length": instruction.encoded_length,
+        "operands": [operand.value for operand in instruction.operands],
+        "semantics": spec.semantics.value,
+    }
+    if instruction.target is not None:
+        payload["target"] = instruction.target
+    return payload
+
+
+def _run_event(args) -> int:
+    from .scripts import load_scripts
+    from .formats.script_vm import ScriptError
+
+    try:
+        corpus = load_scripts(args.rom, load_catalog(args.profiles))
+        opcode_set = corpus.ir.opcode_set
+        command = args.event_command
+        if command == "summary":
+            result = {
+                "profile_id": corpus.profile_id,
+                "opcode_set": opcode_set.name,
+                "entries": len(corpus.ir.entries),
+                "blocks": len(corpus.ir.blocks),
+                "instructions": corpus.instruction_count,
+                "extent_bytes": corpus.ir.extent,
+                "uncovered_bytes": sum(len(raw) for _, raw in corpus.ir.opaque),
+            }
+        elif command == "list":
+            entries = corpus.ir.entries
+            if args.limit is not None:
+                entries = entries[: args.limit]
+            result = [e.identity for e in entries]
+        elif command == "show":
+            entry = next((e for e in corpus.ir.entries if e.identity == args.identity), None)
+            if entry is None:
+                raise ValueError(f"unknown event identity {args.identity!r}")
+            starts = {b.instructions[0].source_offset: b for b in corpus.ir.blocks}
+            block = starts[entry.offset]
+            result = {
+                "identity": entry.identity,
+                "instructions": [_event_instruction_json(i, opcode_set)
+                                 for i in block.instructions],
+                "edges": [{"kind": e.kind, "target": e.target} for e in block.edges],
+            }
+        else:
+            # load_scripts already refuses a corpus that does not re-encode
+            # byte-identically, so reaching here is itself the proof.
+            from .formats.script_vm import assemble
+            result = {"round_trip": True, "bytes": len(assemble(corpus.ir))}
+        print(json.dumps(result, sort_keys=True, indent=2))
+        return 0
+    except (ScriptError, ProfileConfigError, RomReadError, ValueError, OSError) as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 2
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = build_parser()
     args = parser.parse_args(argv)
@@ -1280,6 +1358,9 @@ def main(argv: list[str] | None = None) -> int:
         except (ValueError, OSError) as exc:
             print(f"error: {exc}", file=sys.stderr)
             return 2
+
+    if args.command == "event":
+        return _run_event(args)
 
     if args.command == "graphics":
         return _run_graphics(args)

@@ -2804,3 +2804,35 @@ object `+0x00`. The **drop roll** selecting a table index is unlocated, the same
 producer-tracing class as the P-009 blocker; next anchor is the pickup-object
 constructor on the death path. Drop probability was **not** estimated
 statistically; the observed 25-to-1 split is a raw count, not a rate.
+
+## TOOLKIT-012 correction: `0x08046AA4` is a call veneer, not a point query
+
+**OLD CLAIM.** Entries above at lines 910, 1022, 1291, 1338, 1461, 1741, 2090
+and 2129 describe a "point query" or "overlap/query" function at `0x08046AA4`
+(and `0x08046AA6`), and read `FUN_0803B4FC` as ray-marching "against map
+collision via `FUN_08046AA4` (point query on `*param_2+0x54` room data)".
+
+**NEW EVIDENCE.** Disassembly of the canonical image at that address:
+
+```
+08046AA0  bx r0     08046AA8  bx r4
+08046AA2  bx r1     08046AAA  bx r5
+08046AA4  bx r2     08046AAC  bx r6
+08046AA6  bx r3     08046AAE  bx r7
+```
+
+This is the gcc `__call_via_rN` indirect-call thunk block. `0x08046AA4` performs
+no query; it jumps to whatever address is in `r2`. `docs/consumer-analysis.md:252`
+already identified `0x08046AA2` correctly as "the Thumb `BX r1` veneer".
+
+At the `FUN_0803B4FC` call site, `[base+0x54]` is loaded and added to the base to
+form `r2` **as the call target**, so `+0x54` is a self-relative *virtual method
+slot* taking `(object, point*)` and returning a boolean - not a pointer to room
+data.
+
+**RESOLUTION.** The predicate those entries describe is real, and a movement
+guard does route through it (57 such call sites exist ROM-wide). What is wrong is
+the callee identity: it is a virtual dispatch, and the vtables involved resolve
+to IWRAM addresses built at load time, not to static ROM tables. No shipped
+capability depended on the old reading. See
+[collision evidence](COLLISION_FORMAT.md).

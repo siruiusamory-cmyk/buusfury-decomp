@@ -11,14 +11,36 @@ from .rom import identify_rom, RomChangedError
 
 
 @dataclass(frozen=True)
+class Attachment:
+    """A proven static owner of one script entry.
+
+    ``owner`` is a semantic identity, never a physical address: the ROM address
+    is provenance for the claim, not the thing the project refers to.
+    """
+    owner: str
+    event: str
+    owner_kind: str
+    label_text_ids: tuple[int, ...]
+    provenance: str
+
+
+@dataclass(frozen=True)
 class ScriptCorpus:
     profile_id: str
     source_offset: int
     ir: ScriptIR
+    family: str = ''
+    attachments: tuple[Attachment, ...] = ()
 
     @property
     def instruction_count(self):
         return sum(len(b.instructions) for b in self.ir.blocks)
+
+    def owners_of(self, event: str) -> tuple[str, ...]:
+        return tuple(a.owner for a in self.attachments if a.event == event)
+
+    def events_of(self, owner: str) -> tuple[str, ...]:
+        return tuple(a.event for a in self.attachments if a.owner == owner)
 
 
 @dataclass(frozen=True)
@@ -75,11 +97,26 @@ def script_references(ir: ScriptIR):
     return tuple(sorted(found,key=lambda r:(r.script,r.block,r.instruction_offset)))
 
 
-def load_scripts(path, catalog) -> ScriptCorpus:
+def script_families(path, catalog) -> tuple[str, ...]:
+    """Names of every script family this ROM's profile declares."""
     identification = identify_rom(path, catalog)
     profile = capability.require(identification, capability.Capability.SCRIPTS,
                                  subsystem='script access')
-    layout = profile.scripts
+    return tuple(family.family for family in profile.scripts)
+
+
+def load_scripts(path, catalog, family: str | None = None) -> ScriptCorpus:
+    identification = identify_rom(path, catalog)
+    profile = capability.require(identification, capability.Capability.SCRIPTS,
+                                 subsystem='script access')
+    declared = profile.scripts
+    if family is None:
+        layout = declared[0]
+    else:
+        matches = [item for item in declared if item.family == family]
+        if len(matches) != 1:
+            raise ScriptError(f'unknown script family {family!r}')
+        layout = matches[0]
     spec = OPCODE_SETS.get(layout.encoding)
     if spec is None:
         raise ScriptError(f'unsupported opcode set {layout.encoding}')
@@ -91,18 +128,33 @@ def load_scripts(path, catalog) -> ScriptCorpus:
     table = layout.table_address.to_file_offset(len(data))
     pool = layout.pool_address.to_file_offset(len(data))
     entries = []
+    attachments = []
     for ordinal in range(layout.count):
         for slot in layout.slots:
             ptr = struct.unpack_from('<I',data,table+ordinal*layout.stride+slot)[0]
+            if ptr == 0:
+                # A null slot is a record that owns no script, not a defect.
+                # Skipping it keeps the corpus to the scripts that exist; the
+                # record still exists and simply has no attachment.
+                continue
             offset = GbaRomAddress(ptr).to_file_offset(len(data))-pool
             if not 0 <= offset < layout.pool_size:
                 raise ScriptError('entry outside declared script corpus')
             identity = f'{profile.id}:{layout.family}:{ordinal:02d}:slot{slot:02x}'
             entries.append(Entry(identity,offset))
+            if layout.owner_kind is not None:
+                record = table+ordinal*layout.stride
+                labels = tuple(struct.unpack_from('<H',data,record+at)[0]
+                               for at in layout.owner_label_slots)
+                attachments.append(Attachment(
+                    f'{layout.owner_kind}:{ordinal:04d}', identity,
+                    layout.owner_kind, labels, layout.evidence))
+    if not entries:
+        raise ScriptError('declared script family has no entries')
     original = data[pool:pool+layout.pool_size]
     ir = disassemble(original,tuple(entries),spec)
     if ir.opaque:
         raise ScriptError('declared rooted corpus contains uncovered bytes')
     if assemble(ir) != original:
         raise ScriptError('script corpus does not round-trip')
-    return ScriptCorpus(profile.id,pool,ir)
+    return ScriptCorpus(profile.id,pool,ir,layout.family,tuple(attachments))

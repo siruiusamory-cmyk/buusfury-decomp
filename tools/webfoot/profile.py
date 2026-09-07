@@ -313,15 +313,51 @@ class ScriptProfile:
     pool_address: GbaRomAddress
     pool_size: int
     evidence: str
+    # An owner-attached family names the static record kind that owns each
+    # script and the label field, so an attachment carries a semantic owner
+    # identity rather than a physical address. None means "no owner proven".
+    owner_kind: str | None = None
+    owner_label_slots: tuple[int, ...] = ()
 
 
 def _optional_scripts(tables, size):
+    """Return the declared script families, or None when the profile has none.
+
+    A profile may declare one family as a mapping or several as a list. Every
+    family is validated identically; multiple families exist because one VM can
+    be entered from unrelated static owners, and merging their corpora would
+    lose the ownership distinction that makes an attachment meaningful.
+    """
     value = (tables or {}).get("scripts")
     if value is None:
         return None
+    declarations = value if isinstance(value, list) else [value]
+    if not declarations:
+        raise ProfileConfigError("scripts requires at least one family")
+    families = tuple(_one_script_family(item, size) for item in declarations)
+    names = [family.family for family in families]
+    if len(set(names)) != len(names):
+        raise ProfileConfigError("scripts families must have distinct names")
+    for left in range(len(families)):
+        for right in range(left + 1, len(families)):
+            _refuse_overlapping_pools(families[left], families[right], size)
+    return families
+
+
+def _refuse_overlapping_pools(first, second, size):
+    """Two families must not claim the same bytes; overlap would double-own."""
+    first_start = first.pool_address.to_file_offset(size)
+    second_start = second.pool_address.to_file_offset(size)
+    if (first_start < second_start + second.pool_size and
+            second_start < first_start + first.pool_size):
+        raise ProfileConfigError("script family pools overlap")
+
+
+def _one_script_family(value, size):
     keys = {"encoding", "family", "table_address", "count", "stride", "slots",
             "pool_address", "pool_size", "evidence"}
-    if not isinstance(value, Mapping) or set(value) != keys:
+    optional = {"owner_kind", "owner_label_slots"}
+    if not isinstance(value, Mapping) or not keys <= set(value) or set(value) - keys - optional:
         raise ProfileConfigError("scripts requires exact contract fields")
     for key in ("encoding", "family", "evidence"):
         if not isinstance(value[key], str) or not value[key].strip():
@@ -349,9 +385,20 @@ def _optional_scripts(tables, size):
             raise ProfileConfigError("scripts extent outside ROM")
     except BinaryAddressError as exc:
         raise ProfileConfigError(str(exc)) from exc
+    owner_kind = value.get("owner_kind")
+    if owner_kind is not None and (not isinstance(owner_kind, str) or not owner_kind.strip()):
+        raise ProfileConfigError("scripts owner_kind requires a string")
+    label_slots = value.get("owner_label_slots", [])
+    if (not isinstance(label_slots, list) or
+            any(type(x) is not int or x < 0 or x + 2 > value["stride"] for x in label_slots) or
+            len(set(label_slots)) != len(label_slots)):
+        raise ProfileConfigError("scripts owner_label_slots invalid")
+    if label_slots and owner_kind is None:
+        raise ProfileConfigError("scripts owner_label_slots requires owner_kind")
     return ScriptProfile(value["encoding"], value["family"], table,
                          value["count"], value["stride"], tuple(slots), pool,
-                         value["pool_size"], value["evidence"])
+                         value["pool_size"], value["evidence"],
+                         owner_kind, tuple(label_slots))
 
 
 @dataclass(frozen=True, slots=True)
@@ -466,7 +513,7 @@ class RomProfile:
     character_base_stats: RecordTableProfile | None
     text_strings: TextTableProfile | None = None
     free_regions: tuple[FreeRegion, ...] = ()
-    scripts: ScriptProfile | None = None
+    scripts: tuple[ScriptProfile, ...] | None = None
     placement_types: PlacementTypeProfile | None = None
     actor_sprites: ActorSpriteProfile | None = None
 

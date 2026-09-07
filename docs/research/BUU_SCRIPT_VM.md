@@ -162,3 +162,24 @@ The other 28 interpreter call sites take cursors from runtime objects or caller
 arguments. Their scripts are reachable only at runtime, so they have **no
 deterministic static entry enumeration** and are outside the supported corpus.
 Bounding them is the narrow future question.
+
+## Superseded in part by TOOLKIT-014
+`docs/research/BUU_SCRIPT_OWNERSHIP.md` censused all 29 call sites and bounded a
+second family, `item_use`, owned by the static item table `0x083BD2F8`. Three
+statements above are narrowed by it; everything else on this page still holds.
+
+1. **"Bounding them is the narrow future question."** One has now been bounded.
+   26 call sites remain runtime-fed and unattributed.
+2. **The branch contract.** This page correctly records that `static40` contains
+   no branch, so Buu's `0x12/0x13/0x1C` widths rest on handler disassembly.
+   `item_use` exercises `0x12` and `0x13` over 42 canonical instructions, and
+   only the two-byte big-endian reading makes them real jumps rather than
+   no-ops. **`0x12` and `0x13` are now corpus-backed as well as handler-derived.
+   `0x1C` is still handler-derived only** - no supported corpus exercises it.
+3. **The `0x0266..0x028D` CANDIDATE.** Still CANDIDATE, deliberately. TOOLKIT-014
+   proved a text consumer for the *item* table's halfwords, which begin at
+   `0x028E`, immediately after this range. Adjacency to a proven range is not a
+   consumer, and no path from a `static40` record to the text table was found.
+
+`static40`'s own measurements are unchanged: 40 records, 120 roots, 328
+instructions, 548 bytes, 5 opcodes, no attachment.

@@ -26,14 +26,18 @@ def _run(capsys, *argv):
 
 
 def test_event_summary_reports_the_measured_corpus(rom, capsys):
+    # No --family, so the first declared family is used and static40 remains the
+    # default surface. TOOLKIT-014 proved no owner for it, hence 0 attachments.
     assert _run(capsys, 'event', 'summary', rom) == {
         'profile_id': 'buus_fury_usa_rev0_01c1707f',
+        'family': 'static40',
         'opcode_set': 'stack_be16_buu_v1',
         'entries': 120,
         'blocks': 120,
         'instructions': 328,
         'extent_bytes': 548,
         'uncovered_bytes': 0,
+        'attachments': 0,
     }
 
 
@@ -81,4 +85,7 @@ def test_no_event_authoring_command_exists(rom):
     event = next(a for a in parser._subparsers._group_actions[0].choices.items()
                  if a[0] == 'event')[1]
     commands = set(event._subparsers._group_actions[0].choices)
-    assert commands == {'summary', 'list', 'show', 'validate-round-trip'}
+    # TOOLKIT-014 added family selection and owner queries. All are read-only:
+    # nothing here writes, grows or relocates a stream.
+    assert commands == {'summary', 'list', 'show', 'validate-round-trip',
+                        'families', 'attachments', 'for-owner', 'owners-of'}

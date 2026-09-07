@@ -108,13 +108,24 @@ def build_parser() -> argparse.ArgumentParser:
         "event", help="inspect the verified static script/event corpus"
     )
     event_commands = event.add_subparsers(dest="event_command", required=True)
-    for command in ("summary", "list", "show", "validate-round-trip"):
+    # `families` and the owner queries exist only because TOOLKIT-014 proved a
+    # static owner. Commands are not added for symmetry: a family with no
+    # proven owner simply reports no attachments.
+    for command in ("summary", "list", "show", "validate-round-trip",
+                    "families", "attachments", "for-owner", "owners-of"):
         child = event_commands.add_parser(command)
         child.add_argument("rom", type=Path)
         if command == "show":
             child.add_argument("identity", help="entry identity from `event list`")
+        if command == "for-owner":
+            child.add_argument("owner", help="owner identity, e.g. item:0000")
+        if command == "owners-of":
+            child.add_argument("identity", help="entry identity from `event list`")
         if command == "list":
             child.add_argument("--limit", type=int, default=None)
+        if command != "families":
+            child.add_argument("--family", default=None,
+                               help="script family; defaults to the first declared")
     # TOOLKIT-010. Inspection only: normal project extraction stays the
     # authoring workflow, and nothing here is a sprite editor.
     graphics_parser = subparsers.add_parser(
@@ -1276,23 +1287,38 @@ def _event_instruction_json(instruction, opcode_set) -> dict:
 
 
 def _run_event(args) -> int:
-    from .scripts import load_scripts
+    from .scripts import load_scripts, script_families
     from .formats.script_vm import ScriptError
 
     try:
-        corpus = load_scripts(args.rom, load_catalog(args.profiles))
-        opcode_set = corpus.ir.opcode_set
+        catalog = load_catalog(args.profiles)
         command = args.event_command
+        if command == "families":
+            print(json.dumps(list(script_families(args.rom, catalog)),
+                             sort_keys=True, indent=2))
+            return 0
+        corpus = load_scripts(args.rom, catalog, args.family)
+        opcode_set = corpus.ir.opcode_set
         if command == "summary":
             result = {
                 "profile_id": corpus.profile_id,
+                "family": corpus.family,
                 "opcode_set": opcode_set.name,
                 "entries": len(corpus.ir.entries),
                 "blocks": len(corpus.ir.blocks),
                 "instructions": corpus.instruction_count,
                 "extent_bytes": corpus.ir.extent,
                 "uncovered_bytes": sum(len(raw) for _, raw in corpus.ir.opaque),
+                "attachments": len(corpus.attachments),
             }
+        elif command == "attachments":
+            result = [{"owner": a.owner, "owner_kind": a.owner_kind,
+                       "event": a.event, "label_text_ids": list(a.label_text_ids)}
+                      for a in corpus.attachments]
+        elif command == "for-owner":
+            result = list(corpus.events_of(args.owner))
+        elif command == "owners-of":
+            result = list(corpus.owners_of(args.identity))
         elif command == "list":
             entries = corpus.ir.entries
             if args.limit is not None:

@@ -68,7 +68,7 @@ profiles:
           (this table); the table base has 51. Relocatable is false because no
           verified free region is declared for this profile.
       scripts:
-        encoding: stack_be16_buu_v1
+      - encoding: stack_be16_buu_v1
         family: static40
         table_address: 0x08720564
         count: 40
@@ -91,6 +91,35 @@ profiles:
           branch contract rests on the handler disassembly instead, because this
           corpus contains no branch opcode. Relocatable is false because no
           verified free region is declared for this profile.
+      - encoding: stack_be16_buu_v1
+        family: item_use
+        table_address: 0x083bd2f8
+        count: 83
+        stride: 52
+        slots: [48]
+        pool_address: 0x083bbbb0
+        pool_size: 703
+        owner_kind: item
+        owner_label_slots: [2, 4, 6, 8]
+        evidence: >-
+          TOOLKIT-014 docs/research/BUU_SCRIPT_OWNERSHIP.md, verified against
+          the canonical image. The static item table at 0x083BD2F8 holds 83
+          records of 52 bytes; twelve independent code sites compute
+          table + 52*index, and 0x0800D742 and 0x0800DDC2 pass the resulting
+          record to 0x0801E164, which interprets the pointer at record +0x30
+          through interpreter 0x08004038. That makes the item record the static
+          owner of the script, not a runtime object. 23 of the 83 records carry
+          a non-null +0x30 pointer; those 23 are distinct, strictly ascending
+          and tile the 703-byte pool 0x083BBBB0..0x083BBE6F exhaustively with
+          zero uncovered bytes, and the corpus re-encodes byte-identically.
+          The four halfwords at +0x02, +0x04, +0x06 and +0x08 are text indices,
+          proven consumers rather than numeric matches: 0x0801F818 loads the
+          verified text pointer table 0x0806BCE8 and 0x0801F85E..0x0801F862
+          reads record +0x02, shifts it left by two and indexes that table.
+          Unlike static40 this corpus exercises branch opcodes 0x12 and 0x13,
+          which is what gives the Buu branch contract canonical-byte evidence.
+          Relocatable is false because no verified free region is declared for
+          this profile.
     sources:
       - "2genkidev/buusfury@cc53d0cd2d1c167e749419187e2d92017ac07468 README.md"
       - "Local reproducible observation, 2026-08-19"

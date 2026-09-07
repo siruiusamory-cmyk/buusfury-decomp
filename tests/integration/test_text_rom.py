@@ -367,8 +367,8 @@ def test_extraction_includes_every_string_deterministically(
 ):
     first = tmp_path / "a"
     second = tmp_path / "b"
-    extract_project(rom, first, catalog)
-    extract_project(rom, second, catalog)
+    extract_project(rom, first, catalog, graphics=False)
+    extract_project(rom, second, catalog, graphics=False)
 
     path = first / "text" / "strings.toml"
     assert path.is_file()
@@ -379,7 +379,7 @@ def test_extraction_includes_every_string_deterministically(
 def test_an_extracted_project_validates_against_its_base_rom(
     tmp_path, rom: str, catalog: RomProfileCatalog
 ):
-    extract_project(rom, tmp_path / "p", catalog)
+    extract_project(rom, tmp_path / "p", catalog, graphics=False)
     report = validate_project(tmp_path / "p", rom, catalog)
     assert report.problems == ()
     assert report.passed
@@ -390,7 +390,7 @@ def test_a_no_op_build_reproduces_the_canonical_rom_exactly(
     tmp_path, rom: str, catalog: RomProfileCatalog
 ):
     """TOOLKIT-002's whole-ROM guarantee, still holding with text in the pipeline."""
-    extract_project(rom, tmp_path / "p", catalog)
+    extract_project(rom, tmp_path / "p", catalog, graphics=False)
     result = build_project(tmp_path / "p", rom, tmp_path / "out.gba", catalog)
 
     assert result.manifest.output_sha256 == CANONICAL_SHA256
@@ -404,7 +404,7 @@ def test_a_no_op_build_reproduces_the_canonical_rom_exactly(
 def test_a_text_edit_through_the_project_changes_only_that_string(
     tmp_path, rom: str, catalog: RomProfileCatalog, image: bytes
 ):
-    extract_project(rom, tmp_path / "p", catalog)
+    extract_project(rom, tmp_path / "p", catalog, graphics=False)
     path = tmp_path / "p" / "text" / "strings.toml"
     source = path.read_text(encoding="utf-8")
     assert f'text = "{EDIT_TEXT}"' in source
@@ -427,7 +427,7 @@ def test_a_text_edit_through_the_project_changes_only_that_string(
 def test_repeated_modified_builds_are_byte_identical(
     tmp_path, rom: str, catalog: RomProfileCatalog
 ):
-    extract_project(rom, tmp_path / "p", catalog)
+    extract_project(rom, tmp_path / "p", catalog, graphics=False)
     path = tmp_path / "p" / "text" / "strings.toml"
     path.write_text(
         path.read_text(encoding="utf-8").replace(
@@ -446,7 +446,7 @@ def test_an_unencodable_authored_string_fails_before_any_output_exists(
     tmp_path, rom: str, catalog: RomProfileCatalog
 ):
     """Validation before emission: a rejected build leaves no partial image."""
-    extract_project(rom, tmp_path / "p", catalog)
+    extract_project(rom, tmp_path / "p", catalog, graphics=False)
     path = tmp_path / "p" / "text" / "strings.toml"
     path.write_text(
         path.read_text(encoding="utf-8").replace(
@@ -465,7 +465,7 @@ def test_an_unencodable_authored_string_fails_before_any_output_exists(
 def test_an_over_long_authored_string_fails_before_any_output_exists(
     tmp_path, rom: str, catalog: RomProfileCatalog
 ):
-    extract_project(rom, tmp_path / "p", catalog)
+    extract_project(rom, tmp_path / "p", catalog, graphics=False)
     path = tmp_path / "p" / "text" / "strings.toml"
     path.write_text(
         path.read_text(encoding="utf-8").replace(
@@ -602,7 +602,7 @@ def test_the_canonical_rom_is_unchanged_by_the_whole_text_path(
     entry, = strings.find(EDIT_TEXT)
     strings.set_text(entry.identity, EDIT_REPLACEMENT)
     strings.plan()
-    extract_project(rom, tmp_path / "p", catalog)
+    extract_project(rom, tmp_path / "p", catalog, graphics=False)
     build_project(tmp_path / "p", rom, tmp_path / "out.gba", catalog)
 
     assert hashlib.sha256(open(rom, "rb").read()).hexdigest() == before == CANONICAL_SHA256

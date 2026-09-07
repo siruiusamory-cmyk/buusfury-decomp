@@ -145,10 +145,40 @@ leaves the other accepting - the observed persistence.
   wrapper `tools/ghidra/run-calibration.ps1`. Blind discovery POOR; seed
   entries explicitly.
 
-## 5. Not yet mapped (frontier)
+## 5. Static graphics data (TOOLKIT-010)
+
+| Item | Address | Evidence | Notes |
+|---|---|---|---|
+| Character pointer table | `0x006B6BDC`, 297 x 4 | CONFIRMED_ROM | All valid, strictly ascending; last structure ends at the table |
+| Character structures | `0x006A89D0..0x006B6BDC` | CONFIRMED_ROM | 0x50 header, then animation pointers; 295 reach art |
+| Graphics containers | `0x03C34D0..0x06A88AC` | CONFIRMED_ROM | 7,355 payloads, packed with **no slack** (4,014 gap-0 pairs) |
+| Object palette | `0x0005652C`, 512 bytes | CONFIRMED_ROM | 16 inbound refs; uncompressed and fixed-size |
+| Background palette | `0x0005632C` | DISCOVERED | 1 inbound ref; not the sprite palette |
+
+The chain is mapped end to end: table -> structure -> animation -> frame -> OBJ
+piece -> compressed container -> 8x8 tiles. Every container decodes, and its
+declared size agrees with the referring piece's OAM dimensions on all 7,355.
+Full evidence, corpus counts and the capability matrix:
+[`GRAPHICS_FORMAT.md`](GRAPHICS_FORMAT.md).
+
+**Compression is now mapped** - an 8-byte container header over a packed
+bitstream, implemented in `webfoot.formats.webfoot_lz`. This is the project's
+first working compression codec, and it is plausibly shared with other asset
+families, none of which has been checked.
+
+Deliberately **not** established: any static path from an enemy record to a
+sprite. All 141 enemy records were scanned; none holds a pointer into the
+character or graphics regions, and no field indexes the 297-entry table. The
+character table has only 2 inbound word-aligned references in the image
+(`0x3C0`, `0x1715C`), so selection happens in code.
+
+## 6. Not yet mapped (frontier)
 
 Main loop / scheduler, player entity update, movement/collision resolution,
 enemy AI, combat/damage, script VM + dialogue, inventory/stats, save format,
-graphics/animation/audio loaders, compression usage. Anchors into these exist
-only where noted above (e.g., query entity `0x0202E4D0` strongly supported as
-player-controlled in ROM-012).
+animation/audio loaders, and every graphics family other than actor sprites
+(map tilesets, portraits, UI, fonts, effects). The **runtime** graphics path is
+also unmapped: `AUTO_RE_<local-state-name>` records EWRAM `0x3DE60..0x3DFA0` as
+sprite/animation work, but nothing links it to the static tables above. Anchors
+into these exist only where noted (e.g., query entity `0x0202E4D0` strongly
+supported as player-controlled in ROM-012).

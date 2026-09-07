@@ -38,8 +38,12 @@ webfoot.rom       identity, read-only access, change detection
 webfoot.layout    anchors, owned regions, typed references, free regions (TOOLKIT-003)
 webfoot.formats   PURE byte <-> record codecs; no I/O, no paths          (TOOLKIT-001)
                   formats.text_tables: the UTF-16LE string codec        (TOOLKIT-004)
+                  formats.webfoot_lz: the container/bitstream codec     (TOOLKIT-010)
+                  formats.sprite_graphics: tiles, palette, OBJ records  (TOOLKIT-010)
+                  formats.indexed_png: the editable image representation (TOOLKIT-010)
 webfoot.stats     semantic records; callers name a field, not an offset  (TOOLKIT-001)
 webfoot.text      semantic strings; callers name an identity, not a slot (TOOLKIT-004)
+webfoot.graphics  semantic sprite assets; stable IDs and shared consumers (TOOLKIT-010)
 webfoot.allocation deterministic first-fit over declared free space      (TOOLKIT-003)
 webfoot.relocation atomic anchor movement with reference rewriting       (TOOLKIT-003)
 webfoot.write     validated, attributed emission of a NEW image          (TOOLKIT-001)
@@ -52,6 +56,15 @@ webfoot.cli       argument parsing and presentation only
 `webfoot.stats` rather than under it: both are semantic layers over their own
 codec, and `webfoot.build` merges their changes into one write plan so overlap
 detection spans subsystems instead of only within one.
+
+`webfoot.graphics` sits in the same row for the same reason, and adds one thing
+the earlier subsystems did not need: **shared ownership**. A stat record belongs
+to one enemy, but 2,986 of the 7,355 sprite payloads are reached by more than one
+frame and 2,644 by more than one character, so "edit this asset" is often a
+global change. The semantic layer therefore exposes consumers as a first-class
+answer rather than as a diagnostic - see
+[`research/GRAPHICS_FORMAT.md`](research/GRAPHICS_FORMAT.md), which also records
+why pixel writes stop at EDIT while palette writes reach WRITE.
 
 Two rules are load-bearing and are enforced by tests rather than by convention:
 codecs never perform I/O, so the byte source is swappable; and the project format

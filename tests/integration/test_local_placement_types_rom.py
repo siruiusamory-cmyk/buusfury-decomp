@@ -95,7 +95,7 @@ def test_project_catalog_determinism_and_old_v1_noop(types, tmp_path):
     catalog = RomProfileCatalog.load('config/roms.yaml')
     roots = [tmp_path/'one', tmp_path/'two']
     for root in roots:
-        extract_project(ROM, root, catalog)
+        extract_project(ROM, root, catalog, graphics=False)
     def files(root):
         return {p.relative_to(root): p.read_bytes() for p in root.rglob('*') if p.is_file()}
     assert files(roots[0]) == files(roots[1])
@@ -117,7 +117,7 @@ def test_project_catalog_determinism_and_old_v1_noop(types, tmp_path):
 def test_invalid_or_reassigned_catalog_fails_before_output(types, tmp_path, field, value):
     catalog = RomProfileCatalog.load('config/roms.yaml')
     root = tmp_path/'project'
-    extract_project(ROM, root, catalog)
+    extract_project(ROM, root, catalog, graphics=False)
     path = root/PLACEMENT_TYPES_FILE
     doc = load_toml(path.read_text())
     first = next(iter(doc['placement_types'].values()))

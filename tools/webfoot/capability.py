@@ -59,6 +59,7 @@ class Capability(str, Enum):
     TEXT_STRINGS = "text_strings"
     SCRIPTS = "scripts"
     PLACEMENT_TYPES = "placement_types"
+    ACTOR_SPRITES = "actor_sprites"
 
 
 class CapabilityError(ValueError):

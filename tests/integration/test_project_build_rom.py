@@ -70,8 +70,25 @@ def catalog() -> RomProfileCatalog:
 
 @pytest.fixture
 def project(tmp_path: Path, rom: str, catalog: RomProfileCatalog) -> Path:
+    """A private, writable project. Extracted WITHOUT graphics, deliberately.
+
+    Nothing in this file asserts anything about sprite assets - these tests are
+    about project identity, stat records, validation and the whole-ROM build -
+    and graphics extraction writes 7,355 indexed PNGs against this project's few
+    dozen TOML files. Measured on the canonical image: 44.0s with graphics
+    against 1.8s without, and this fixture runs for 18 tests.
+
+    Skipping them costs nothing here that matters. A build from such a project
+    is still byte-identical to the canonical ROM, because unchanged graphics are
+    re-emitted from the base image rather than from the project - verified, not
+    assumed. The graphics representation itself is proven in
+    `test_graphics_rom.py`, which extracts them in full.
+
+    Per-test rather than shared, because half of these tests edit the project
+    and a shared directory would leak that state between them.
+    """
     directory = tmp_path / "project"
-    extract_project(rom, directory, catalog)
+    extract_project(rom, directory, catalog, graphics=False)
     return directory
 
 

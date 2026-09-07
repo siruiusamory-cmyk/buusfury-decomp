@@ -218,8 +218,8 @@ def test_extraction_is_deterministic_and_the_no_op_build_is_identical(tmp_path):
     require_rom()
     first = tmp_path / "one"
     second = tmp_path / "two"
-    extract_project(LOCAL_ROM, first, catalog())
-    extract_project(LOCAL_ROM, second, catalog())
+    extract_project(LOCAL_ROM, first, catalog(), graphics=False)
+    extract_project(LOCAL_ROM, second, catalog(), graphics=False)
 
     authored = first / "maps" / "maps.toml"
     assert authored.is_file()
@@ -241,7 +241,7 @@ def test_extraction_is_deterministic_and_the_no_op_build_is_identical(tmp_path):
 def test_one_semantic_map_edit_changes_only_the_expected_bytes(tmp_path):
     require_rom()
     project = tmp_path / "project"
-    extract_project(LOCAL_ROM, project, catalog())
+    extract_project(LOCAL_ROM, project, catalog(), graphics=False)
 
     # Edit map:0039's own block, located by its header. Several maps share a
     # music id, so replacing the first match in the whole file would silently
@@ -285,7 +285,7 @@ def test_the_canonical_rom_is_unchanged_by_a_build(tmp_path):
     require_rom()
     before = hashlib.sha256(LOCAL_ROM.read_bytes()).hexdigest()
     project = tmp_path / "project"
-    extract_project(LOCAL_ROM, project, catalog())
+    extract_project(LOCAL_ROM, project, catalog(), graphics=False)
     build_project(project, LOCAL_ROM, tmp_path / "out.gba", catalog())
     assert hashlib.sha256(LOCAL_ROM.read_bytes()).hexdigest() == before
 
@@ -296,7 +296,7 @@ def test_a_map_stat_and_text_edit_coexist_in_one_build(tmp_path):
     import re
 
     project = tmp_path / "project"
-    extract_project(LOCAL_ROM, project, catalog())
+    extract_project(LOCAL_ROM, project, catalog(), graphics=False)
 
     maps_file = project / "maps" / "maps.toml"
     text = maps_file.read_text(encoding="utf-8")
@@ -388,7 +388,7 @@ def test_two_owners_writing_one_span_is_refused(maps):
 def test_an_out_of_range_field_value_is_refused_before_emission(tmp_path):
     require_rom()
     project = tmp_path / "project"
-    extract_project(LOCAL_ROM, project, catalog())
+    extract_project(LOCAL_ROM, project, catalog(), graphics=False)
 
     maps_file = project / "maps" / "maps.toml"
     text = maps_file.read_text(encoding="utf-8")
@@ -410,7 +410,7 @@ def test_an_out_of_range_field_value_is_refused_before_emission(tmp_path):
 def test_a_map_absent_from_the_project_is_reported(tmp_path):
     require_rom()
     project = tmp_path / "project"
-    extract_project(LOCAL_ROM, project, catalog())
+    extract_project(LOCAL_ROM, project, catalog(), graphics=False)
 
     maps_file = project / "maps" / "maps.toml"
     text = maps_file.read_text(encoding="utf-8")
@@ -431,7 +431,7 @@ def test_a_project_built_against_the_wrong_rom_is_refused(tmp_path):
         pytest.skip("Legacy of Goku II ROM is not present")
 
     project = tmp_path / "project"
-    extract_project(LOCAL_ROM, project, catalog())
+    extract_project(LOCAL_ROM, project, catalog(), graphics=False)
 
     report = validate_project(project, other, catalog())
     assert not report.passed
@@ -623,7 +623,7 @@ def test_cli_round_trip_reports_the_placement_corpus(capsys):
 def test_a_project_round_trip_carries_every_placement(tmp_path):
     require_rom()
     project = tmp_path / "project"
-    extract_project(LOCAL_ROM, project, catalog())
+    extract_project(LOCAL_ROM, project, catalog(), graphics=False)
 
     authored = (project / "maps" / "maps.toml").read_text(encoding="utf-8")
     assert authored.count("position_low") == PLACEMENT_COUNT
@@ -640,7 +640,7 @@ def test_an_authored_placement_edit_changes_exactly_one_rom_byte(tmp_path):
     """The TOOLKIT-008 closure proof, through the whole project lifecycle."""
     require_rom()
     project = tmp_path / "project"
-    extract_project(LOCAL_ROM, project, catalog())
+    extract_project(LOCAL_ROM, project, catalog(), graphics=False)
 
     authored_file = project / "maps" / "maps.toml"
     text = authored_file.read_text(encoding="utf-8")
@@ -682,7 +682,7 @@ def test_an_authored_placement_edit_changes_exactly_one_rom_byte(tmp_path):
 def test_an_authored_placement_out_of_range_is_refused_before_a_build(tmp_path):
     require_rom()
     project = tmp_path / "project"
-    extract_project(LOCAL_ROM, project, catalog())
+    extract_project(LOCAL_ROM, project, catalog(), graphics=False)
 
     authored_file = project / "maps" / "maps.toml"
     text = authored_file.read_text(encoding="utf-8")
@@ -733,7 +733,7 @@ def test_a_placement_edit_merges_with_map_stat_and_text_edits(tmp_path):
     import re
 
     project = tmp_path / "project"
-    extract_project(LOCAL_ROM, project, catalog())
+    extract_project(LOCAL_ROM, project, catalog(), graphics=False)
 
     maps_file = project / "maps" / "maps.toml"
     text = maps_file.read_text(encoding="utf-8")

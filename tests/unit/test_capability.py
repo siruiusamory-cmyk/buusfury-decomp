@@ -44,9 +44,12 @@ def test_each_profile_declares_exactly_the_capabilities_it_supports(catalog):
     """Declared capabilities are asserted per profile, not assumed symmetrical.
 
     The point of the second profile is that it is *different*. Buu's Fury
-    declares four subsystems; Legacy of Goku II declares one, because one is what
+    declares six subsystems; Legacy of Goku II declares two, because that is what
     was verified. A test that allowed LOGII to quietly grow a declaration would
-    let capability inflation pass review.
+    let capability inflation pass review - and note that LOGII gets no
+    `actor_sprites` declaration from TOOLKIT-010: the sprite chain was verified
+    against the Buu image only, and DragonByteZ's own profiles put LOGII's
+    palettes at entirely different offsets.
     """
     assert capability.capabilities(_profile(catalog, BUU)) == (
         Capability.MAP_ENTRIES,
@@ -54,6 +57,7 @@ def test_each_profile_declares_exactly_the_capabilities_it_supports(catalog):
         Capability.CHARACTER_BASE_STATS,
         Capability.TEXT_STRINGS,
         Capability.PLACEMENT_TYPES,
+        Capability.ACTOR_SPRITES,
     )
     assert capability.capabilities(_profile(catalog, LOGII)) == (
         Capability.TEXT_STRINGS,
@@ -80,6 +84,7 @@ def test_a_capability_name_is_the_profile_field_that_backs_it():
             "text_strings",
             "scripts",
             "placement_types",
+            "actor_sprites",
         }
 
 
@@ -225,6 +230,10 @@ def test_the_profile_loader_refuses_an_encoding_no_codec_implements():
 #: Every module a ROM's bytes pass through on the read, edit and write paths.
 _CORE_MODULES = (
     "tools/webfoot/entities.py",
+    "tools/webfoot/graphics.py",
+    "tools/webfoot/formats/webfoot_lz.py",
+    "tools/webfoot/formats/sprite_graphics.py",
+    "tools/webfoot/formats/indexed_png.py",
     "tools/webfoot/binary.py",
     "tools/webfoot/scripts.py",
     "tools/webfoot/formats/script_vm.py",

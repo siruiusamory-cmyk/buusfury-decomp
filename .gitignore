@@ -19,6 +19,12 @@ exports/
 *.dump
 *.raw
 
+# Extracted graphics (TOOLKIT-010). Project extraction writes one indexed PNG
+# per sprite payload; those pixels are the publisher's artwork, so they are
+# project OUTPUT and are never committed, wherever a project happens to sit.
+graphics/assets/
+**/graphics/assets/
+
 # Generated builds
 build/
 dist/

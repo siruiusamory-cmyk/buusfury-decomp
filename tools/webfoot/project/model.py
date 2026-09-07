@@ -82,6 +82,15 @@ _TEXT_FILE = Path("text") / "strings.toml"
 _MAP_FILE = Path("maps") / "maps.toml"
 PLACEMENT_TYPES_FILE = Path("placement_types") / "types.toml"
 
+#: TOOLKIT-010. Graphics extraction writes one manifest plus one indexed PNG per
+#: distinct payload. The manifest is the canonical part: a PNG carries pixels and
+#: a palette but not the ROM-specific facts - dimensions as the *piece* declares
+#: them, bit depth, sharing, the packed extent an edit is bounded by - so those
+#: live in deterministic sidecar metadata rather than being inferred from the
+#: image. Assets are named by stable identity, so a shared payload appears once.
+GRAPHICS_FILE = Path("graphics") / "graphics.toml"
+GRAPHICS_ASSET_DIR = Path("graphics") / "assets"
+
 #: Authored field order within a record. Fixed, so output is deterministic;
 #: chosen for reading rather than sorted, because a human edits these.
 _ENEMY_FIELD_ORDER = ("hp", "exp", "level", "strength", "power", "endurance")

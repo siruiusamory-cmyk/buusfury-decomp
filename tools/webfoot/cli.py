@@ -100,6 +100,70 @@ def build_parser() -> argparse.ArgumentParser:
             child.add_argument("identity")
         if command == "list":
             child.add_argument("--map", dest="map_identity")
+    # TOOLKIT-010. Inspection only: normal project extraction stays the
+    # authoring workflow, and nothing here is a sprite editor.
+    graphics_parser = subparsers.add_parser(
+        "graphics", help="inspect verified actor sprite assets and their consumers"
+    )
+    graphics_commands = graphics_parser.add_subparsers(
+        dest="graphics_command", required=True
+    )
+    graphics_summary = graphics_commands.add_parser(
+        "summary", help="corpus totals and sharing distribution"
+    )
+    graphics_summary.add_argument("rom", type=Path)
+
+    graphics_list = graphics_commands.add_parser(
+        "list", help="list graphic assets with dimensions and sharing"
+    )
+    graphics_list.add_argument("rom", type=Path)
+    graphics_list.add_argument("--limit", type=int, default=40)
+    graphics_list.add_argument(
+        "--shared-only", action="store_true",
+        help="only assets reached by more than one frame",
+    )
+
+    graphics_show = graphics_commands.add_parser(
+        "show", help="print one graphic asset's fields"
+    )
+    graphics_show.add_argument("rom", type=Path)
+    graphics_show.add_argument("identity", help="e.g. <profile>/graphic:0768")
+
+    graphics_consumers = graphics_commands.add_parser(
+        "consumers",
+        help="every frame and character an edit to this asset would affect",
+    )
+    graphics_consumers.add_argument("rom", type=Path)
+    graphics_consumers.add_argument("identity", help="e.g. <profile>/graphic:0768")
+
+    graphics_characters = graphics_commands.add_parser(
+        "characters", help="list character-table slots that reached art"
+    )
+    graphics_characters.add_argument("rom", type=Path)
+    graphics_characters.add_argument("--limit", type=int, default=40)
+
+    graphics_export = graphics_commands.add_parser(
+        "export", help="write one asset as an indexed PNG"
+    )
+    graphics_export.add_argument("rom", type=Path)
+    graphics_export.add_argument("identity", help="e.g. <profile>/graphic:0768")
+    graphics_export.add_argument("--out", type=Path, required=True)
+
+    graphics_references = graphics_commands.add_parser(
+        "references",
+        help="publish the verified graphics pointers into the common graph",
+    )
+    graphics_references.add_argument("rom", type=Path)
+
+    graphics_palette = graphics_commands.add_parser(
+        "palette", help="print the object palette, or who uses one entry"
+    )
+    graphics_palette.add_argument("rom", type=Path)
+    graphics_palette.add_argument(
+        "--index", type=int, default=None,
+        help="report the graphics referencing this palette index",
+    )
+
     subparsers.add_parser("relocation-proof", help="validate synthetic relocation and print JSON; no ROM I/O")
     identify = subparsers.add_parser("identify", help="hash and identify a local GBA ROM")
     identify.add_argument("rom", type=Path)
@@ -304,6 +368,16 @@ def build_parser() -> argparse.ArgumentParser:
         "--name",
         default=None,
         help="project name recorded in project.toml (default: the profile id)",
+    )
+    extract.add_argument(
+        "--no-graphics",
+        action="store_true",
+        help=(
+            "skip sprite assets. They are the bulk of an extraction (7,355 "
+            "indexed PNGs against a few dozen TOML files); a build from such a "
+            "project is still byte-exact, because unchanged graphics come from "
+            "the base image"
+        ),
     )
 
     validate_project_parser = subparsers.add_parser(
@@ -1066,6 +1140,110 @@ def _print_build(result: BuildResult) -> None:
     print("COMPLETE")
 
 
+def _parse_graphic_identity(value: str):
+    """`<profile>/graphic:NNNN` -> a GraphicIdentity, or a clear refusal."""
+    from .graphics import GraphicIdentity
+
+    profile_id, separator, digits = value.partition("/graphic:")
+    if not separator or not digits.isdecimal():
+        raise ValueError("expected a profile-qualified graphic:NNNN identity")
+    return GraphicIdentity(profile_id, int(digits))
+
+
+def _run_graphics(args) -> int:
+    """TOOLKIT-010 inspection commands.
+
+    Self-contained like the `entity` block: it owns its ROM load and its error
+    handling, so adding graphics cannot change how any existing command behaves.
+    """
+    from .formats import indexed_png, sprite_graphics
+    from .graphics import GraphicsError, load_actor_sprites
+
+    try:
+        catalog = load_catalog(args.profiles)
+        identification = identify_rom(args.rom, catalog)
+        image = Path(args.rom).read_bytes()
+        sprites = load_actor_sprites(image, identification)
+
+        command = args.graphics_command
+        if command == "summary":
+            assets = sprites.graphics()
+            result = {
+                "profile": sprites.profile.id,
+                "characters": len(sprites.characters()),
+                "character_table_entries": sprites.layout.character_count,
+                "graphics": len(assets),
+                "frames": sum(len(a.consumers) for a in assets),
+                "shared_by_frame": sum(1 for a in assets if a.shared),
+                "shared_by_character": sum(1 for a in assets if len(a.characters) > 1),
+                "packed_bytes": sum(a.packed_size for a in assets),
+                "tile_bytes": sum(a.width * a.height for a in assets),
+            }
+        elif command == "list":
+            assets = [
+                a for a in sprites.graphics()
+                if not args.shared_only or a.shared
+            ][: args.limit]
+            result = [a.to_document() for a in assets]
+        elif command == "show":
+            result = sprites.graphic(_parse_graphic_identity(args.identity)).to_document()
+        elif command == "consumers":
+            identity = _parse_graphic_identity(args.identity)
+            result = {
+                "id": str(identity),
+                "characters": [str(c) for c in sprites.characters_using(identity)],
+                "frames": [
+                    {
+                        "frame_offset": reference.frame_offset,
+                        "character": reference.character_index,
+                        "animation": reference.animation_index,
+                        "frame": reference.frame_index,
+                        "direction_slot": reference.direction,
+                    }
+                    for reference in sprites.consumers_of(identity)
+                ],
+            }
+        elif command == "characters":
+            result = [c.to_document() for c in sprites.characters()[: args.limit]]
+        elif command == "references":
+            result = sprites.reference_document().to_json()
+        elif command == "export":
+            asset = sprites.graphic(_parse_graphic_identity(args.identity))
+            blob = indexed_png.encode(
+                asset.pixels,
+                asset.width,
+                asset.height,
+                sprites.palette.rgb,
+                transparent_index=sprite_graphics.TRANSPARENT_INDEX,
+            )
+            out = Path(args.out)
+            out.parent.mkdir(parents=True, exist_ok=True)
+            out.write_bytes(blob)
+            result = {"id": str(asset.identity), "path": str(out), "bytes": len(blob)}
+        else:  # palette
+            if args.index is None:
+                result = {
+                    "entries": [
+                        {"index": i, "raw": word, "rgb": list(sprites.palette.rgb[i])}
+                        for i, word in enumerate(sprites.palette.raw)
+                    ]
+                }
+            else:
+                users = sprites.palette_users(args.index)
+                result = {
+                    "index": args.index,
+                    "raw": sprites.palette.raw[args.index],
+                    "rgb": list(sprites.palette.rgb[args.index]),
+                    "graphics_using": len(users),
+                    "graphics": [str(g) for g in users],
+                }
+        print(json.dumps(result, sort_keys=True, indent=2))
+        return 0
+    except (GraphicsError, ProfileConfigError, RomReadError, ValueError, OSError) as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 2
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = build_parser()
     args = parser.parse_args(argv)
@@ -1103,6 +1281,9 @@ def main(argv: list[str] | None = None) -> int:
             print(f"error: {exc}", file=sys.stderr)
             return 2
 
+    if args.command == "graphics":
+        return _run_graphics(args)
+
     if args.command == "relocation-proof":
         from .relocation_proof import synthetic_relocation_proof
         print(json.dumps(synthetic_relocation_proof().to_json(), indent=2, sort_keys=True))
@@ -1119,7 +1300,11 @@ def main(argv: list[str] | None = None) -> int:
                     args.rom,
                     args.project,
                     extract_project(
-                        args.rom, args.project, catalog, name=args.name
+                        args.rom,
+                        args.project,
+                        catalog,
+                        name=args.name,
+                        graphics=not args.no_graphics,
                     ),
                 )
                 return 0

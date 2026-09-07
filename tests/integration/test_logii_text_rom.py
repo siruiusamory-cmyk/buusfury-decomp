@@ -322,8 +322,8 @@ def test_extraction_is_deterministic_and_omits_undeclared_subsystems(
 ):
     first = tmp_path / "a"
     second = tmp_path / "b"
-    extract_project(rom, first, catalog)
-    extract_project(rom, second, catalog)
+    extract_project(rom, first, catalog, graphics=False)
+    extract_project(rom, second, catalog, graphics=False)
 
     written = sorted(p.name for p in first.rglob("*.toml"))
     assert written == ["project.toml", "strings.toml"]
@@ -335,7 +335,7 @@ def test_extraction_is_deterministic_and_omits_undeclared_subsystems(
 
 
 def test_the_extracted_project_loads_and_carries_every_string(rom, catalog, tmp_path):
-    extract_project(rom, tmp_path, catalog)
+    extract_project(rom, tmp_path, catalog, graphics=False)
     project = read_project(tmp_path)
 
     assert project.meta.profile_id == PROFILE_ID
@@ -346,7 +346,7 @@ def test_the_extracted_project_loads_and_carries_every_string(rom, catalog, tmp_
 
 
 def test_the_extracted_project_validates_with_no_problems(rom, catalog, tmp_path):
-    extract_project(rom, tmp_path, catalog)
+    extract_project(rom, tmp_path, catalog, graphics=False)
     report = validate_project(tmp_path, rom, catalog)
 
     assert report.problems == ()
@@ -365,7 +365,7 @@ def test_an_unchanged_project_rebuilds_the_whole_rom_byte_for_byte(
     """The strongest integration proof: every byte, including undecoded ones."""
     project = tmp_path / "project"
     output = tmp_path / "out.gba"
-    extract_project(rom, project, catalog)
+    extract_project(rom, project, catalog, graphics=False)
 
     result = build_project(project, rom, output, catalog)
 
@@ -390,7 +390,7 @@ def test_a_semantic_edit_changes_only_the_expected_bytes(
     identity = _edit_identity(strings)
     project = tmp_path / "project"
     output = tmp_path / "out.gba"
-    extract_project(rom, project, catalog)
+    extract_project(rom, project, catalog, graphics=False)
 
     path = project / "text" / "strings.toml"
     source = path.read_text(encoding="utf-8")
@@ -425,7 +425,7 @@ def test_a_semantic_edit_changes_only_the_expected_bytes(
 def test_repeated_builds_of_the_same_edit_are_byte_identical(rom, catalog, tmp_path):
     """Exit criterion 11: determinism, asserted on the modified build."""
     project = tmp_path / "project"
-    extract_project(rom, project, catalog)
+    extract_project(rom, project, catalog, graphics=False)
     path = project / "text" / "strings.toml"
     path.write_text(
         path.read_text(encoding="utf-8").replace(
@@ -464,7 +464,7 @@ def test_an_over_long_edit_writes_no_output_at_all(rom, catalog, tmp_path):
 
     project = tmp_path / "project"
     output = tmp_path / "out.gba"
-    extract_project(rom, project, catalog)
+    extract_project(rom, project, catalog, graphics=False)
     path = project / "text" / "strings.toml"
     path.write_text(
         path.read_text(encoding="utf-8").replace(
@@ -489,7 +489,7 @@ def test_the_canonical_rom_is_unchanged_by_every_operation(rom, catalog, tmp_pat
     before_mtime = os.stat(rom).st_mtime_ns
 
     project = tmp_path / "project"
-    extract_project(rom, project, catalog)
+    extract_project(rom, project, catalog, graphics=False)
     build_project(project, rom, tmp_path / "noop.gba", catalog)
     path = project / "text" / "strings.toml"
     path.write_text(

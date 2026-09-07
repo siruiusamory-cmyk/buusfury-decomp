@@ -1,0 +1,231 @@
+"""Indexed PNG: the editable representation that preserves palette indices.
+
+TOOLKIT-010. A minimal colour-type-3 PNG reader and writer, pure over ``bytes``.
+
+**Why indexed and not RGBA.** The canonical asset is a grid of *palette indices*,
+and the index is the identity: two entries of the ROM palette may hold the same
+colour, and a pixel that means "index 7" is not interchangeable with one that
+means "index 200" even when both render identically. Exporting RGBA would throw
+that away and force a colour-match on import, which is a quantiser - lossy by
+construction, and unable to round-trip. So the export carries PLTE, and the
+pixel bytes stay exactly the bytes the ROM holds. The PNG 1.2 specification
+gives colour type 3 a ``tRNS`` chunk of one alpha byte per palette entry
+starting at index 0, which is precisely the shape this family's transparency
+needs.
+
+**Why hand-rolled.** Pillow is not a dependency of this project and adding an
+imaging library to write one chunk type is not worth the install surface. The
+same reasoning already produced the PNG codec in `tools/sprites/slice_sheets.py`;
+this one is separate because that file reads RGBA reference sheets for the Godot
+remake and this one must never leave the indexed domain.
+
+**Round-trip contract.** ``decode(encode(pixels, palette)) == (pixels, palette)``
+for every image this project exports. Filtering is fixed at type 0 (None) on
+every scanline: filters exist to help compressors on photographic data, they
+change nothing about the decoded result, and a single filter keeps the writer
+deterministic - the same asset always produces the same file bytes, which is
+what makes a project directory diffable and a rebuild reproducible.
+"""
+
+from __future__ import annotations
+
+import struct
+import zlib
+
+
+class PngError(ValueError):
+    """Raised when a PNG is missing, malformed, or not the indexed form."""
+
+
+_MAGIC = b"\x89PNG\r\n\x1a\n"
+
+#: Colour type 3 is "each pixel is a palette index". The only type written here.
+_COLOUR_TYPE_INDEXED = 3
+
+#: Eight bits per pixel, so one index per byte and up to 256 palette entries.
+_BIT_DEPTH = 8
+
+
+def _chunk(kind: bytes, body: bytes) -> bytes:
+    return (
+        struct.pack(">I", len(body))
+        + kind
+        + body
+        + struct.pack(">I", zlib.crc32(kind + body) & 0xFFFFFFFF)
+    )
+
+
+def encode(
+    pixels: bytes,
+    width: int,
+    height: int,
+    palette_rgb: tuple[tuple[int, int, int], ...],
+    *,
+    transparent_index: int | None = None,
+) -> bytes:
+    """Write an 8-bit indexed PNG.
+
+    ``palette_rgb`` is written in full and in order. It is never sorted,
+    deduplicated, or trimmed to the colours actually used: entry order is what
+    every pixel byte refers to, so reordering it would silently recolour the
+    image and trimming it would break the next edit that reaches for an unused
+    index.
+    """
+    if width <= 0 or height <= 0:
+        raise PngError(f"dimensions must be positive, got {width}x{height}")
+    if len(pixels) != width * height:
+        raise PngError(
+            f"{width}x{height} needs {width * height} pixels, got {len(pixels)}"
+        )
+    if not 1 <= len(palette_rgb) <= 256:
+        raise PngError(f"palette must hold 1..256 entries, got {len(palette_rgb)}")
+    highest = max(pixels) if pixels else 0
+    if highest >= len(palette_rgb):
+        raise PngError(
+            f"pixel index {highest} has no entry in a {len(palette_rgb)}-colour palette"
+        )
+
+    raw = bytearray()
+    for y in range(height):
+        raw.append(0)  # filter type 0 (None), always
+        raw += pixels[y * width : (y + 1) * width]
+
+    plte = bytearray()
+    for red, green, blue in palette_rgb:
+        for channel in (red, green, blue):
+            if not 0 <= channel <= 255:
+                raise PngError(f"palette channel {channel} is outside 0..255")
+        plte += bytes((red, green, blue))
+
+    out = bytearray(_MAGIC)
+    out += _chunk(
+        b"IHDR",
+        struct.pack(
+            ">IIBBBBB", width, height, _BIT_DEPTH, _COLOUR_TYPE_INDEXED, 0, 0, 0
+        ),
+    )
+    out += _chunk(b"PLTE", bytes(plte))
+    if transparent_index is not None:
+        if not 0 <= transparent_index < len(palette_rgb):
+            raise PngError(f"transparent index {transparent_index} is outside the palette")
+        # tRNS is a prefix: entries beyond its length are opaque. Writing just
+        # enough bytes to reach the transparent entry keeps the file small
+        # without making any claim about the entries after it.
+        alpha = bytearray(b"\xff" * (transparent_index + 1))
+        alpha[transparent_index] = 0
+        out += _chunk(b"tRNS", bytes(alpha))
+    out += _chunk(b"IDAT", zlib.compress(bytes(raw), 9))
+    out += _chunk(b"IEND", b"")
+    return bytes(out)
+
+
+def decode(data: bytes) -> tuple[bytes, int, int, tuple[tuple[int, int, int], ...], int | None]:
+    """Read an 8-bit indexed PNG.
+
+    Returns ``(pixels, width, height, palette_rgb, transparent_index)``. Anything
+    that is not 8-bit, non-interlaced, colour type 3 is refused by name rather
+    than converted: a caller who hands this an RGBA file has lost the index
+    identity somewhere upstream, and quietly re-quantising would hide that.
+
+    All five PNG filter types are supported on read, because an image editor
+    that round-trips one of these files will very likely re-filter it.
+    """
+    if not data.startswith(_MAGIC):
+        raise PngError("not a PNG")
+
+    header: tuple[int, ...] | None = None
+    palette = b""
+    transparency = b""
+    idat = bytearray()
+    position = len(_MAGIC)
+    while position + 8 <= len(data):
+        length = struct.unpack_from(">I", data, position)[0]
+        kind = data[position + 4 : position + 8]
+        body = data[position + 8 : position + 8 + length]
+        if len(body) != length:
+            raise PngError(f"chunk {kind!r} is truncated")
+        if kind == b"IHDR":
+            header = struct.unpack(">IIBBBBB", body)
+        elif kind == b"PLTE":
+            palette = body
+        elif kind == b"tRNS":
+            transparency = body
+        elif kind == b"IDAT":
+            idat += body
+        elif kind == b"IEND":
+            break
+        position += 12 + length
+
+    if header is None:
+        raise PngError("PNG has no IHDR")
+    width, height, depth, colour_type, compression, filter_method, interlace = header
+    if depth != _BIT_DEPTH or colour_type != _COLOUR_TYPE_INDEXED:
+        raise PngError(
+            f"expected an 8-bit indexed PNG, got depth {depth} colour type {colour_type}"
+        )
+    if compression != 0 or filter_method != 0:
+        raise PngError("PNG uses a non-standard compression or filter method")
+    if interlace:
+        raise PngError("interlaced PNG is not supported")
+    if not palette or len(palette) % 3:
+        raise PngError("indexed PNG needs a PLTE chunk of whole RGB triples")
+    if width == 0 or height == 0:
+        raise PngError("PNG dimensions must be positive")
+
+    raw = zlib.decompress(bytes(idat))
+    stride = width
+    expected = (stride + 1) * height
+    if len(raw) != expected:
+        raise PngError(f"PNG image data is {len(raw)} bytes, expected {expected}")
+
+    pixels = bytearray(width * height)
+    previous = bytearray(stride)
+    source = 0
+    for y in range(height):
+        filter_type = raw[source]
+        source += 1
+        line = bytearray(raw[source : source + stride])
+        source += stride
+        if filter_type == 1:  # Sub
+            for x in range(1, stride):
+                line[x] = (line[x] + line[x - 1]) & 0xFF
+        elif filter_type == 2:  # Up
+            for x in range(stride):
+                line[x] = (line[x] + previous[x]) & 0xFF
+        elif filter_type == 3:  # Average
+            for x in range(stride):
+                left = line[x - 1] if x else 0
+                line[x] = (line[x] + ((left + previous[x]) >> 1)) & 0xFF
+        elif filter_type == 4:  # Paeth
+            for x in range(stride):
+                left = line[x - 1] if x else 0
+                up = previous[x]
+                upper_left = previous[x - 1] if x else 0
+                estimate = left + up - upper_left
+                da, db, dc = (
+                    abs(estimate - left),
+                    abs(estimate - up),
+                    abs(estimate - upper_left),
+                )
+                if da <= db and da <= dc:
+                    predictor = left
+                elif db <= dc:
+                    predictor = up
+                else:
+                    predictor = upper_left
+                line[x] = (line[x] + predictor) & 0xFF
+        elif filter_type != 0:
+            raise PngError(f"unknown PNG filter type {filter_type}")
+        pixels[y * width : (y + 1) * width] = line
+        previous = line
+
+    colours = tuple(
+        (palette[i * 3], palette[i * 3 + 1], palette[i * 3 + 2])
+        for i in range(len(palette) // 3)
+    )
+    transparent_index = None
+    for index, alpha in enumerate(transparency):
+        if alpha == 0:
+            transparent_index = index
+            break
+    return bytes(pixels), width, height, colours, transparent_index

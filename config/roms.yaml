@@ -12,6 +12,23 @@ profiles:
     sha1: f1c4b07554d2a3b1ad2f325307051e775ce68087
     sha256: 940ad5f01db4465b8877dfe739510cbf34f4ea3d390f3df13519808bc36f059e
     tables:
+      actor_sprites:
+        character_table_address: 0x086b6bdc
+        character_count: 297
+        animation_pointer_offset: 0x54
+        object_palette_address: 0x0805652c
+        evidence: >-
+          TOOLKIT-010 GRAPHICS_FORMAT.md, verified against the canonical image.
+          All 297 table entries are ROM pointers, strictly ascending, and the
+          last structure ends immediately before the table itself. Walking
+          animation pointers from structure+0x54 reaches 295 characters, 1,013
+          unique animations, 10,959 unique single-piece frames and 7,355 unique
+          compressed graphics containers; every container decodes and every
+          decoded length equals the width by height its own piece record
+          independently declares. The object palette has 16 inbound word-aligned
+          references against the background palette's 1. NOT a free-space
+          declaration: the containers are packed with no slack, so edits are
+          bounded by each container's measured extent.
       placement_types:
         table_address: 0x08711274
         stride: 28

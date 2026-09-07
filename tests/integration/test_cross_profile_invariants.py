@@ -104,7 +104,7 @@ def test_extraction_writes_exactly_the_declared_subsystems(
 ):
     """One project layout serves both games; content follows the declaration."""
     rom = _rom(pattern, sha256)
-    extract_project(rom, tmp_path, catalog)
+    extract_project(rom, tmp_path, catalog, graphics=False)
     profile = next(p for p in catalog.profiles if p.id == profile_id)
     declared = set(capability.capabilities(profile))
 
@@ -125,7 +125,7 @@ def test_the_project_pins_its_base_by_hash_and_holds_no_rom_copy(
     profile_id, pattern, sha256, catalog, tmp_path
 ):
     rom = _rom(pattern, sha256)
-    extract_project(rom, tmp_path, catalog)
+    extract_project(rom, tmp_path, catalog, graphics=False)
     project = read_project(tmp_path)
 
     assert project.meta.profile_id == profile_id
@@ -141,8 +141,8 @@ def test_the_project_pins_its_base_by_hash_and_holds_no_rom_copy(
 def test_extraction_is_deterministic(profile_id, pattern, sha256, catalog, tmp_path):
     rom = _rom(pattern, sha256)
     first, second = tmp_path / "a", tmp_path / "b"
-    extract_project(rom, first, catalog)
-    extract_project(rom, second, catalog)
+    extract_project(rom, first, catalog, graphics=False)
+    extract_project(rom, second, catalog, graphics=False)
 
     produced = sorted(p.relative_to(first) for p in first.rglob("*.toml"))
     assert produced
@@ -155,7 +155,7 @@ def test_an_extracted_project_validates_cleanly(
     profile_id, pattern, sha256, catalog, tmp_path
 ):
     rom = _rom(pattern, sha256)
-    extract_project(rom, tmp_path, catalog)
+    extract_project(rom, tmp_path, catalog, graphics=False)
 
     report = validate_project(tmp_path, rom, catalog)
     assert report.problems == ()
@@ -173,7 +173,7 @@ def test_an_unchanged_project_rebuilds_the_whole_rom_byte_for_byte(
     """The strongest shared proof: every byte, including undecoded regions."""
     rom = _rom(pattern, sha256)
     project, output = tmp_path / "project", tmp_path / "out.gba"
-    extract_project(rom, project, catalog)
+    extract_project(rom, project, catalog, graphics=False)
 
     build_project(project, rom, output, catalog)
 
@@ -187,7 +187,7 @@ def test_repeated_no_op_builds_are_byte_identical(
 ):
     rom = _rom(pattern, sha256)
     project = tmp_path / "project"
-    extract_project(rom, project, catalog)
+    extract_project(rom, project, catalog, graphics=False)
 
     first, second = tmp_path / "one.gba", tmp_path / "two.gba"
     build_project(project, rom, first, catalog)
@@ -207,7 +207,7 @@ def test_the_canonical_rom_is_never_modified(
     before_mtime = os.stat(rom).st_mtime_ns
 
     project = tmp_path / "project"
-    extract_project(rom, project, catalog)
+    extract_project(rom, project, catalog, graphics=False)
     build_project(project, rom, tmp_path / "out.gba", catalog)
 
     assert hashlib.sha256(open(rom, "rb").read()).hexdigest() == sha256
@@ -222,7 +222,7 @@ def test_a_build_refuses_to_overwrite_the_base_rom(
 
     rom = _rom(pattern, sha256)
     project = tmp_path / "project"
-    extract_project(rom, project, catalog)
+    extract_project(rom, project, catalog, graphics=False)
 
     with pytest.raises(WriteError, match="over the input image"):
         build_project(project, rom, rom, catalog)
@@ -244,7 +244,7 @@ def test_a_project_cannot_be_built_against_the_other_games_rom(catalog, tmp_path
 
     project = tmp_path / "project"
     output = tmp_path / "out.gba"
-    extract_project(logii, project, catalog)
+    extract_project(logii, project, catalog, graphics=False)
 
     with pytest.raises(ProjectRomMismatchError):
         build_project(project, buu, output, catalog)

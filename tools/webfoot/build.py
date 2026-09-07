@@ -155,6 +155,7 @@ def extract_project(
     catalog: RomProfileCatalog,
     *,
     name: str | None = None,
+    graphics: bool = True,
 ) -> list[Path]:
     """Read a verified ROM and write a deterministic project. Never writes the ROM.
 
@@ -171,6 +172,13 @@ def extract_project(
     rather than forking per game. A profile declaring nothing this toolkit can
     read is refused outright: an empty project would be a misleading artifact
     rather than a useful one.
+
+    `graphics=False` skips the sprite assets. They are by far the most expensive
+    part of an extraction - 7,355 indexed PNGs against a few dozen TOML files -
+    and someone editing stats or text has no use for them. Everything else is
+    unaffected, and a build from such a project is still exact, because
+    unchanged graphics are re-emitted from the base image rather than from the
+    project. Omitting them therefore costs authoring reach, not correctness.
     """
     identification = identify_rom(rom_path, catalog)
     profile = _require_extractable_profile(identification)
@@ -246,6 +254,95 @@ def extract_project(
         target.parent.mkdir(parents=True, exist_ok=True)
         target.write_text(dump_toml(document), encoding="utf-8", newline="\n")
         written.append(target)
+    if graphics and capability.declared(profile, capability.Capability.ACTOR_SPRITES):
+        written.extend(
+            _extract_graphics(rom_path, project_dir, identification)
+        )
+    return written
+
+
+def _extract_graphics(
+    rom_path: str | Path,
+    project_dir: str | Path,
+    identification: RomIdentification,
+) -> list[Path]:
+    """Write the graphics manifest and one indexed PNG per distinct payload.
+
+    Shared payloads are extracted **once**. Writing a private copy per consumer
+    would turn 7,355 real assets into 10,959 fictional ones and make an edit look
+    local when the ROM makes it global, so the manifest records each asset's
+    consumers instead and the file count matches the corpus.
+
+    PNGs are ROM-derived and therefore project *output*, never committed here;
+    the deterministic part - the same ROM always producing the same bytes - is
+    what makes a project directory diffable and a rebuild reproducible.
+    """
+    from .formats import indexed_png, sprite_graphics
+    from .graphics import load_actor_sprites
+    from .project.format import dump_toml
+    from .project.model import GRAPHICS_ASSET_DIR, GRAPHICS_FILE
+
+    image = Path(rom_path).read_bytes()
+    sprites = load_actor_sprites(image, identification)
+    root = Path(project_dir)
+    asset_root = root / GRAPHICS_ASSET_DIR
+    asset_root.mkdir(parents=True, exist_ok=True)
+
+    palette = sprites.palette.rgb
+    written: list[Path] = []
+    assets: dict[str, dict] = {}
+    for graphic in sprites.graphics():
+        # The filename carries the numeric part of the stable identity, so it is
+        # deterministic and independent of any address.
+        filename = f"graphic_{graphic.identity.index:04d}.png"
+        target = asset_root / filename
+        target.write_bytes(
+            indexed_png.encode(
+                graphic.pixels,
+                graphic.width,
+                graphic.height,
+                palette,
+                transparent_index=sprite_graphics.TRANSPARENT_INDEX,
+            )
+        )
+        written.append(target)
+        assets[str(graphic.identity)] = {
+            "file": (GRAPHICS_ASSET_DIR / filename).as_posix(),
+            "width": graphic.width,
+            "height": graphic.height,
+            "bit_depth": 8 if graphic.colour_256 else 4,
+            # The extent an edit is bounded by. Recorded because it is a fact
+            # about the base image that the PNG cannot carry.
+            "packed_size": graphic.packed_size,
+            "shared": graphic.shared,
+            "consumer_count": len(graphic.consumers),
+            "characters": [str(c) for c in graphic.characters],
+        }
+
+    characters = {
+        str(character.identity): {
+            "animation_count": len(character.animation_offsets),
+            "graphics": [str(g) for g in character.graphics],
+        }
+        for character in sprites.characters()
+    }
+
+    manifest = {
+        "graphics": {
+            "profile_id": sprites.profile.id,
+            "transparent_index": sprite_graphics.TRANSPARENT_INDEX,
+            # The palette travels as raw GBA words. An RGB triple cannot round
+            # trip to a unique 15-bit word, so storing display colour here would
+            # make the project lossy against its own source.
+            "palette_raw": list(sprites.palette.raw),
+        },
+        "asset": assets,
+        "character": characters,
+    }
+    manifest_path = root / GRAPHICS_FILE
+    manifest_path.parent.mkdir(parents=True, exist_ok=True)
+    manifest_path.write_text(dump_toml(manifest), encoding="utf-8", newline="\n")
+    written.append(manifest_path)
     return written
 
 

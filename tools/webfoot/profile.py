@@ -34,7 +34,7 @@ _ALLOWED_KEYS = {
     "tables",
     "free_regions",
 }
-_ALLOWED_TABLES = {"map_entries", "enemy_stats", "character_base_stats", "text_strings", "scripts", "placement_types"}
+_ALLOWED_TABLES = {"map_entries", "enemy_stats", "character_base_stats", "text_strings", "scripts", "placement_types", "actor_sprites"}
 _ALLOWED_MAP_ENTRY_TABLE_KEYS = {"address", "count", "record_size"}
 _ALLOWED_RECORD_TABLE_KEYS = {"address", "count", "record_size"}
 _ALLOWED_TEXT_TABLE_KEYS = {
@@ -364,6 +364,60 @@ class PlacementTypeProfile:
     evidence: str
 
 
+@dataclass(frozen=True, slots=True)
+class ActorSpriteProfile:
+    """A profile's declaration of its actor-sprite graphics family.
+
+    Every field is an extent the profile vouches for, never something a scanner
+    inferred. ``animation_pointer_offset`` is where a character structure's
+    animation pointers begin; it is declared rather than hard-coded because the
+    header layout is a per-game fact, and the one place a wrong value could
+    silently produce plausible-but-wrong assets.
+    """
+
+    character_table_address: GbaRomAddress
+    character_count: int
+    animation_pointer_offset: int
+    object_palette_address: GbaRomAddress
+    evidence: str
+
+
+def _optional_actor_sprites(tables, size):
+    value = (tables or {}).get("actor_sprites")
+    if value is None:
+        return None
+    keys = {"character_table_address", "character_count",
+            "animation_pointer_offset", "object_palette_address", "evidence"}
+    if not isinstance(value, Mapping) or set(value) != keys:
+        raise ProfileConfigError("actor_sprites requires exact contract fields")
+    if type(value["character_count"]) is not int or value["character_count"] <= 0:
+        raise ProfileConfigError("actor_sprites character_count must be a positive integer")
+    offset = value["animation_pointer_offset"]
+    if type(offset) is not int or offset < 0 or offset % 4:
+        raise ProfileConfigError(
+            "actor_sprites animation_pointer_offset must be a non-negative multiple of 4"
+        )
+    if not isinstance(value["evidence"], str) or not value["evidence"].strip():
+        raise ProfileConfigError("actor_sprites requires non-empty evidence")
+    try:
+        table = GbaRomAddress(value["character_table_address"])
+        palette = GbaRomAddress(value["object_palette_address"])
+        start = table.to_file_offset(size)
+        palette_start = palette.to_file_offset(size)
+        if table.raw % 4 or palette.raw % 2:
+            raise ProfileConfigError("actor_sprites address alignment mismatch")
+        if start + value["character_count"] * 4 > size:
+            raise ProfileConfigError("actor_sprites character table runs past the ROM")
+        # A palette is 256 little-endian halfwords; a declaration whose palette
+        # would run off the end is refused here rather than truncated later.
+        if palette_start + 512 > size:
+            raise ProfileConfigError("actor_sprites object palette runs past the ROM")
+    except BinaryAddressError as exc:
+        raise ProfileConfigError(str(exc)) from exc
+    return ActorSpriteProfile(table, value["character_count"], offset, palette,
+                              value["evidence"])
+
+
 def _optional_placement_types(tables, size):
     value = (tables or {}).get("placement_types")
     if value is None:
@@ -414,6 +468,7 @@ class RomProfile:
     free_regions: tuple[FreeRegion, ...] = ()
     scripts: ScriptProfile | None = None
     placement_types: PlacementTypeProfile | None = None
+    actor_sprites: ActorSpriteProfile | None = None
 
     @classmethod
     def from_mapping(cls, data: Mapping[str, Any]) -> "RomProfile":
@@ -478,6 +533,7 @@ class RomProfile:
             text_strings=_optional_text_table(tables_value),
             scripts=_optional_scripts(tables_value, size),
             placement_types=_optional_placement_types(tables_value, size),
+            actor_sprites=_optional_actor_sprites(tables_value, size),
             free_regions=_free_regions(data.get("free_regions", []), size),
         )
 

@@ -1,6 +1,14 @@
 # Legacy of Goku Remake Toolchain
 
-This project is a reproducible reverse-engineering laboratory for Webfoot's Dragon Ball Z GBA trilogy. The long-term target is a Legacy of Goku campaign rebuilt on the Buu's Fury engine, guided by Legacy of Goku II gameplay. No remake content or ROM editing exists yet.
+This project is a modding SDK and reproducible reverse-engineering laboratory for
+Webfoot's Dragon Ball Z GBA trilogy: inspect, extract, decode, edit, validate and
+rebuild. The long-term target is a Legacy of Goku campaign rebuilt on the Buu's
+Fury engine, guided by Legacy of Goku II gameplay.
+
+Editing is real but deliberately narrow. Every write goes verified base image ->
+generated output, the canonical ROM is never modified in place, and an unchanged
+project rebuilds the entire ROM byte-identically. Anything not proven against the
+canonical image is refused rather than approximated.
 
 ## Legal boundary
 
@@ -81,6 +89,37 @@ webfoot variation-arrays find-first-word ".\roms\Dragon Ball Z - Buu's Fury (U).
 
 The lookup reports indices, variation-array source addresses, and raw MapEntry metadata. It still reads only target `+0x00` and never follows the matched value.
 
+## Graphics
+
+Inspect the verified actor sprite corpus. Extraction into a project remains the
+authoring workflow; these commands are for looking, not editing.
+
+```powershell
+webfoot graphics summary ".\roms\Dragon Ball Z - Buu's Fury (U).gba"
+webfoot graphics list ".\roms\Dragon Ball Z - Buu's Fury (U).gba" --shared-only
+webfoot graphics export ".\roms\Dragon Ball Z - Buu's Fury (U).gba" "<profile>/graphic:0768" --out buu.png
+```
+
+Before changing anything, ask who else uses it. Most payloads are shared, so an
+edit is usually not local:
+
+```powershell
+webfoot graphics consumers ".\roms\Dragon Ball Z - Buu's Fury (U).gba" "<profile>/graphic:1652"
+webfoot graphics palette ".\roms\Dragon Ball Z - Buu's Fury (U).gba" --index 40
+```
+
+The verified pointers join the common reference graph - 7,652 anchors and 11,254
+confirmed references - rather than living in a private index:
+
+```powershell
+webfoot graphics references ".\roms\Dragon Ball Z - Buu's Fury (U).gba"
+```
+
+Assets are named by stable profile-qualified identity, never by ROM address, so a
+name survives a rebuild. See
+[`docs/research/GRAPHICS_FORMAT.md`](docs/research/GRAPHICS_FORMAT.md) for the
+format evidence, the corpus counts, and the capability matrix.
+
 ## Tests
 
 ```powershell
@@ -121,9 +160,29 @@ future write experiments must target generated output only.
 
 ## Current scope
 
-Implemented: streaming hashes, GBA header parsing, exact ROM profiles, conservative matching, CLI packaging, pinned upstream setup, research audit, byte-exact read-only Buu's Fury MapEntry round-trip validation, a non-dereferencing pointer-field census, and an exact-width variation-array first-word census.
+Implemented: streaming hashes, GBA header parsing, exact ROM profiles and
+conservative matching, profile-declared capabilities, CLI packaging, pinned
+upstream setup, deterministic project extract / validate / build with an exact
+whole-ROM no-op rebuild, and transactional attributed writes. Byte-exact
+round-trips exist for enemy and character stats, Buu's Fury text, Legacy of Goku
+II UI/map text and its bounded script VM, MapEntry records, map placements,
+placement types, and actor sprite graphics.
 
-Not implemented: ROM modification, pointer following, semantic MapEntry editing, map editing, Tiled integration, allocation, relocation, compression integration, scripts, graphics, audio, gameplay, or remake content.
+Graphics (TOOLKIT-010) cover the Buu's Fury actor sprite family: 7,355 payloads
+across 295 characters decompress, decode and re-encode exactly, extract as
+indexed PNGs with the ROM palette and index identity preserved, and report the
+consumers a shared asset would affect. **Palette editing is the supported visual
+write path** - uncompressed, fixed-size, and exactly in place. Pixel editing
+decodes and re-encodes to a valid stream but is capacity-blocked for most assets,
+because payloads are packed with no slack and no free space is declared;
+[`docs/research/GRAPHICS_FORMAT.md`](docs/research/GRAPHICS_FORMAT.md) records
+that measurement rather than an aspiration.
+
+Not implemented: creating new assets of any kind (AUTHOR_NEW), free-space
+discovery, ROM expansion, relocation beyond the verified path, map tilesets and
+every other graphics family, audio, gameplay, engine patches, a GUI, Tiled
+integration, or remake content. Enemy-to-graphics linkage was probed across all
+141 enemy records and has no static path.
 
 See `docs/PROJECT_<local-state-name>` for the current verified baseline and
 `docs/PROJECT_<local-state-name>` for the next bounded research task.

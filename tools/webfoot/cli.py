@@ -117,10 +117,13 @@ def build_parser() -> argparse.ArgumentParser:
     # text query here because no map-scene event-to-text edge exists.
     # TOOLKIT-019 adds `resource-show`: the record's exact extent and the
     # engine's own dialog type. Read-only, like every verb above it.
+    # TOOLKIT-020 adds `dialog-refs` and `dialogs-for-text`: the proven
+    # dialog-to-text edge and its reverse. Read-only, and deliberately silent
+    # for a dialog whose text index is computed at runtime.
     for command in ("summary", "list", "show", "validate-round-trip",
                     "families", "attachments", "for-owner", "owners-of", "for-map",
                     "for-placement", "references", "consumers-of",
-                    "resource-show"):
+                    "resource-show", "dialog-refs", "dialogs-for-text"):
         child = event_commands.add_parser(command)
         child.add_argument("rom", type=Path)
         if command == "show":
@@ -132,6 +135,12 @@ def build_parser() -> argparse.ArgumentParser:
         if command == "resource-show":
             child.add_argument("resource",
                                help="resource identity, e.g. event_resource:0508")
+        if command == "dialog-refs":
+            child.add_argument("resource", nargs="?", default=None,
+                               help="resource identity, e.g. event_resource:0290; "
+                                    "omit for the whole corpus")
+        if command == "dialogs-for-text":
+            child.add_argument("index", help="text entry index, e.g. 1525")
         if command == "consumers-of":
             child.add_argument("resource",
                                help="resource identity, e.g. event_resource:0508 "
@@ -1313,7 +1322,7 @@ def _run_event(args) -> int:
                              sort_keys=True, indent=2))
             return 0
         if command in ('for-map', 'for-placement', 'references', 'consumers-of',
-                       'resource-show'):
+                       'resource-show', 'dialog-refs', 'dialogs-for-text'):
             from .placement_events import PlacementEvents
             from .maps import load_maps
             relationships = PlacementEvents(load_maps(args.rom, catalog))
@@ -1332,6 +1341,24 @@ def _run_event(args) -> int:
                 if kind != 'event_resource' or not index.isdigit():
                     raise ValueError(f"unknown resource identity {args.resource!r}")
                 result = relationships.resource_show(int(index))
+            elif command == 'dialog-refs':
+                scope = None
+                if args.resource is not None:
+                    kind, _, index = args.resource.rpartition(':')
+                    if kind != 'event_resource' or not index.isdigit():
+                        raise ValueError(f"unknown resource identity {args.resource!r}")
+                    scope = int(index)
+                result = [{'dialog': f'event_resource:{r.dialog:04d}',
+                           'text': r.index, 'x': r.x, 'y': r.y,
+                           'block': r.block, 'ir_offset': r.ir_offset,
+                           'source_file_offset': r.source,
+                           'encoded_length': r.encoded_length}
+                          for r in relationships.dialog_text_references(scope)]
+            elif command == 'dialogs-for-text':
+                if not args.index.isdigit():
+                    raise ValueError(f"unknown text index {args.index!r}")
+                result = [f'event_resource:{d:04d}'
+                          for d in relationships.dialogs_for_text(int(args.index))]
             else:
                 kind, _, index = args.resource.rpartition(':')
                 if kind not in ('event_resource', 'save_flag') or not index.isdigit():

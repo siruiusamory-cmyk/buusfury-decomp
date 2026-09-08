@@ -245,6 +245,76 @@ def event_resource_records(image, resource):
     return tuple(records)
 
 
+@dataclass(frozen=True)
+class DialogTextReference:
+    """One dialog operand proven to index the verified UTF-16 text table.
+
+    TOOLKIT-020. This is a *new* relation reached through a new consumer chain,
+    not a reversal of TOOLKIT-018: that ticket refuted three map-scene *event*
+    consumer families as text sources, and none of them is this one.
+
+    ``index`` is the text-table entry; ``x``/``y`` are the screen coordinates
+    the same call supplies. ``source`` is the physical file offset of the index
+    operand's own bytes, so provenance survives IR virtualisation.
+    """
+    dialog: int
+    block: str
+    ir_offset: int
+    source: int
+    encoded_length: int
+    index: int
+    x: int
+    y: int
+
+
+def dialog_text_references(image, record, spec, dialog_text):
+    """Text-table indices a type-0 dialog proves it renders, or ().
+
+    The consumer slot is named by the contract, never inferred. Native handler
+    0x08003030 pops three values and routes the deepest into 0x0802BFBC, which
+    indexes the verified text pointer table and measures the result as a
+    UTF-16LE NUL-terminated string before drawing it. So the index is the value
+    pushed *first*, which is exactly what `_producer` resolves at that depth.
+
+    A call whose index is left by an earlier instruction rather than a literal
+    push is computed at runtime and yields nothing. Refusing it is the point:
+    an unresolvable operand stays UNKNOWN instead of being guessed.
+    """
+    block = dialog_code_block(image, record, spec)
+    if block is None:
+        return ()
+    start, _, ir = block
+    slot = dialog_text['consumer_slot']
+    depth = dialog_text['pops']
+    found = []
+    for code in ir.blocks:
+        for position, ins in enumerate(code.instructions):
+            if ins.opcode != NATIVE_STACK or not ins.operands:
+                continue
+            if ins.operands[0].value != slot:
+                continue
+            producer, where = _producer(code, position, depth)
+            if producer is None:
+                continue
+            # The handler pops three: index deepest, then x, then y. A producer
+            # that supplies fewer than all three leaves the index off-stack, so
+            # only a full-width push proves the whole call.
+            if where != 1 or len(producer.operands) != depth + 1:
+                continue
+            operand = producer.operands[where]
+            if not 0 <= operand.value < dialog_text['count']:
+                raise ValueError('dialog text index outside declared table')
+            offset = start + producer.source_offset + 1
+            for earlier in producer.operands[:where]:
+                offset += len(earlier.encoding)
+            found.append(DialogTextReference(
+                record.index, code.identity, producer.source_offset, offset,
+                len(operand.encoding), operand.value,
+                producer.operands[where + 1].value,
+                producer.operands[where + 2].value))
+    return tuple(sorted(found, key=lambda r: r.ir_offset))
+
+
 def dialog_code_block(image, record, spec):
     """Exact ROM extent of a type-0 dialog's code block, or None.
 

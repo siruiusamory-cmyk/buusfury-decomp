@@ -86,12 +86,13 @@ def test_no_event_authoring_command_exists(rom):
                  if a[0] == 'event')[1]
     commands = set(event._subparsers._group_actions[0].choices)
     # TOOLKIT-014 added family selection and owner queries; TOOLKIT-018 added
-    # the two reference queries; TOOLKIT-019 added resource-show. All are
-    # read-only: nothing here writes, grows or relocates a stream.
+    # the two reference queries; TOOLKIT-019 added resource-show; TOOLKIT-020
+    # added the dialog-to-text edge and its reverse. All are read-only:
+    # nothing here writes, grows or relocates a stream.
     assert commands == {'summary', 'list', 'show', 'validate-round-trip',
                         'families', 'attachments', 'for-owner', 'owners-of',
                         'for-map', 'for-placement', 'references', 'consumers-of',
-                        'resource-show'}
+                        'resource-show', 'dialog-refs', 'dialogs-for-text'}
     # The set above is exact, so a new verb fails this test. Name the mutating
     # verbs explicitly too, so the reason a future addition fails is legible.
     assert not commands & {'set', 'edit', 'write', 'author', 'new', 'insert',

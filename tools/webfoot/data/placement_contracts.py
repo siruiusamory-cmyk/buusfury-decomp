@@ -38,6 +38,35 @@ CONTRACTS = {'buus_fury_usa_rev0_01c1707f': {'encoding': 'stack_be16_buu_v1',
                                              # handlers already declared in script_specs.
                                              'record_evidence': 'docs/research/BUU_EVENT_RESOURCE.md',
                                          },
+                                         # TOOLKIT-020 docs/research/BUU_DIALOG_RUNTIME.md.
+                                         # Of the 107 native slots the 236 type-0 dialogs use,
+                                         # exactly one reaches the verified text pointer table:
+                                         # slot 178 (0x08003031). It pops three values and passes
+                                         # the deepest to 0x0802BFBC, which does
+                                         # ldr r1,=0x0806BCE8 / lsls r0,#2 / ldr r4,[r1,r0] - the
+                                         # same access shape TOOLKIT-014 proved at 0x0801F85E for
+                                         # the item consumer. 0x0803FFE8 then walks that pointer as
+                                         # UTF-16LE halfwords to NUL summing per-glyph advance
+                                         # widths, and 0x0802BFEC emits 8-byte OAM entries with an
+                                         # 8-bit Y and a 9-bit X, so the output is on-screen sprite
+                                         # text. The other two popped values are those X/Y
+                                         # coordinates; 0x0802BF5E centres the string on X.
+                                         # This is a NEW relation via a new consumer chain, not a
+                                         # reversal of TOOLKIT-018, which refuted three map-scene
+                                         # EVENT consumer families - none of them this slot.
+                                         'dialog_text': {
+                                             'consumer_slot': 178,
+                                             'pops': 3,
+                                             'count': 1534,
+                                             'text_table': 0x0806BCE8,
+                                             'native': 0x08003031,
+                                             'evidence': 'docs/research/BUU_DIALOG_RUNTIME.md; '
+                                                         'handler 0x08003030 pops three at '
+                                                         '0x0800303E/0x0800304C/0x0800305A and '
+                                                         'calls 0x0802BFBC, which loads '
+                                                         '0x0806BCE8 at 0x0802BFC0 and indexes it '
+                                                         'at 0x0802BFC4',
+                                         },
                                          # Slot 29 pops one value into a bitfield SET at
                                          # 0x08004380: byte = operand >> 3, bit = operand & 7.
                                          # 0x08004396 is the matching clear; unreached by this

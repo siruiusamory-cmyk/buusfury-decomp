@@ -126,6 +126,42 @@ class PlacementEvents:
             view['instructions'] = sum(len(b.instructions) for b in ir.blocks)
         return view
 
+    def dialog_text_references(self, index=None):
+        """Text-table indices the supported dialogs prove they render.
+
+        TOOLKIT-020. Slot 178 is the only one of the 107 native slots this
+        corpus uses whose call graph reaches the verified text pointer table,
+        and it reaches it at depth 1. Dialogs whose index is computed at
+        runtime rather than pushed as a literal produce nothing here.
+
+        This is a new relation, not a reversal: TOOLKIT-018's refutation
+        concerned three map-scene *event* consumer families, none of them this
+        native slot.
+        """
+        contract = self.contract.get('dialog_text')
+        if contract is None:
+            return ()
+        spec = OPCODE_SETS[self.contract['encoding']]
+        records = self.resource_records()
+        if index is not None:
+            if not 0 <= int(index) < len(records):
+                raise ScriptError(f'unknown event resource index {index}')
+            records = [records[int(index)]]
+        found = []
+        for record in records:
+            found.extend(links.dialog_text_references(
+                self.maps.base_bytes, record, spec, contract))
+        return tuple(found)
+
+    def dialogs_for_text(self, index):
+        """Reverse traversal: which dialogs render this text entry.
+
+        Kept separate from TOOLKIT-014's item->text consumers. Both reach the
+        same table through distinct provenance paths and are not merged.
+        """
+        return tuple(sorted({r.dialog for r in self.dialog_text_references()
+                             if r.index == int(index)}))
+
     def consumers_of(self, kind, index):
         """Reverse traversal: which events, placements and maps reach a resource."""
         events = tuple(sorted({r.event for r in self.operand_references()

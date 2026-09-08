@@ -65,7 +65,13 @@ def _run_runner(*arguments: str, cwd: Path) -> subprocess.CompletedProcess[str]:
 
 def test_required_workflow_files_exist_and_are_bounded():
     expected_limits = {
-        "<local-state-name>": (150, 300),
+        # Raised 300 -> 340 at TOOLKIT-020 to admit the Full-Suite Policy, a
+        # permanent operating rule that belongs here per the Context Contract.
+        # The bound is a context budget, not a style rule: it keeps this file
+        # readable as always-loaded context. Trimming a genuinely permanent
+        # rule to fit would defeat what the bound protects, so the bound moved
+        # deliberately instead - and stays tight enough to still bite.
+        "<local-state-name>": (150, 340),
         "docs/PROJECT_<local-state-name>": (100, 240),
         "docs/PROJECT_<local-state-name>": (10, 240),
         "docs/PROJECT_<local-state-name>": (10, 240),
@@ -254,6 +260,35 @@ def test_agents_requires_external_research_before_behavior_tickets():
     assert "player-visible behavior" in agents
     # Runtime wins when the two disagree, because the binary is ground truth.
     assert "prefer the runtime observation" in agents
+
+
+def test_agents_bounds_full_suite_reruns_by_blast_radius():
+    """The rule is permanent and belongs in docs/DEVELOPMENT.md, not a ticket.
+
+    Motivated by measured cost: the full suite takes 15+ minutes, and at
+    TOOLKIT-020 it was relaunched reflexively after a one-line documentation
+    fix whose blast radius was a single bounded test. This pins the policy's
+    substance - the gate, the narrow-fix exception, and the honesty rule about
+    derived totals - not merely a heading that could survive a gutted body.
+    """
+    agents = (PROJECT_ROOT / "<local-state-name>").read_text(encoding="utf-8")
+
+    assert "### Full-Suite Policy - Evidence-Proportional Validation" in agents
+    # It stays a real gate: cost is never a reason to skip a warranted run.
+    assert "Never skip a" in agents and "gate for being slow" in agents
+    # Narrow, understood, locally covered fixes get focused verification.
+    assert "smallest scope that actually validates the correction" in agents
+    assert "blast radius" in agents.lower()
+    # A changed repository is not itself grounds for a second 15-minute run.
+    assert "not itself a reason" in agents
+    assert "Never rerun solely for a cleaner aggregate number." in agents
+    # Derived totals must never be passed off as observed ones.
+    assert "DERIVED / NOT DIRECTLY OBSERVED" in agents
+    assert "Never call a derived number measured." in agents
+    # The optimisation must not become an excuse to skip real integration work.
+    assert "never substitutes for real" in agents
+    # An environment-blocked failure is reported, never weakened away.
+    assert "environment-blocked failure does not by itself force a rerun" in agents
 
 
 def test_p006c_archive_is_retained_after_p007_closure():

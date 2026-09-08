@@ -101,17 +101,27 @@ def prepare_authored_runs(project, maps):
 def require_materialization_contract(runs):
     """Fail at the exact existing ownership boundary, before allocation/writes.
 
-    All current placement graph anchors are non-relocatable, and no trusted
-    declaration supplies an engine count/termination or suffix ownership rule.
-    A free-region declaration alone cannot grant that missing authority.
+    TOOLKIT-024 PROVED the outer traversal contract, so this gate no longer
+    rests on an UNKNOWN. The map loader at 0x08008C9E runs a counted loop over
+    `MapEntry+0x04` (unsigned byte) indexing the pointer array at
+    `MapEntry+0x14`; there is no sentinel and no suffix, so a run owns exactly
+    `count * 4` array bytes. See BUU_PLACEMENT_RUN_RELOCATION.md.
+
+    What still blocks materialization is narrower and structural: growing a run
+    requires writing a NEW `MapEntry+0x04` count, and `relocation.plan_relocation`
+    emits only reference-source and relocated-payload changes. A count field is
+    neither, so no production path can express the rewrite. `maps.MAP_FIELDS`
+    independently refuses every `*_count_raw` byte as non-editable. Verified
+    capacity alone cannot grant that missing authority.
     """
     if runs:
         run = runs[0]
         raise LayoutError(
             f"{run.identity.value}: valid authored placement content serialized; "
             f"proposed capacity request {run.allocation_request.size} bytes, alignment 4; "
-            "materialization blocked by non-relocatable placement_reference_array: "
-            "MapEntry+0x14 reference is CONFIRMED, but expanded-run engine count/termination "
-            "and suffix ownership are UNKNOWN (MapEntry+0x05 is not a verified count). "
-            "Verified capacity alone does not authorize this rewrite."
+            "materialization blocked by an unwritable engine count: the outer traversal "
+            "bound is CONFIRMED as MapEntry+0x04 (counted loop at 0x08008C9E indexing the "
+            "MapEntry+0x14 array), but no production path can rewrite a count field - the "
+            "relocator emits only reference and payload changes, and every *_count_raw byte "
+            "is refused as non-editable. Verified capacity alone does not authorize this rewrite."
         )

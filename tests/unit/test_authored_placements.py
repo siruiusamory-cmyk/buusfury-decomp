@@ -164,12 +164,14 @@ def test_synthetic_capacity_does_not_grant_relocation_authority(project, types):
     document = replace(types.reference_document(), profile=profile)
     with pytest.raises(LayoutError, match="non-relocatable anchor"):
         plan_relocation(document, [RelocationRequest(run.identity, run.serialized_records)])
-    with pytest.raises(LayoutError, match="engine count/termination"):
+    # TOOLKIT-024 proved the traversal contract; the gate now names the real
+    # remaining blocker, an engine count field no write path can express.
+    with pytest.raises(LayoutError, match="unwritable engine count"):
         require_materialization_contract((run,))
     assert document.image == types.maps.base_bytes
 
 
-def test_build_fails_at_ownership_not_count_and_publishes_nothing(project, types, monkeypatch, tmp_path):
+def test_build_fails_at_the_unwritable_count_and_publishes_nothing(project, types, monkeypatch, tmp_path):
     add(project)
     maps = types.maps
     monkeypatch.setattr(build, "_load_for_project", lambda *args:
@@ -179,7 +181,7 @@ def test_build_fails_at_ownership_not_count_and_publishes_nothing(project, types
     assert run.allocation_request.size == 108
     output, manifest = tmp_path / "out.gba", tmp_path / "manifest.json"
     for _ in range(2):
-        with pytest.raises(LayoutError, match="108 bytes.*non-relocatable"):
+        with pytest.raises(LayoutError, match="108 bytes.*unwritable engine count"):
             build.build_project(project, "unused", output, None, manifest_path=manifest)
     assert not output.exists() and not manifest.exists()
 

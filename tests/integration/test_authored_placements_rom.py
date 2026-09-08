@@ -57,7 +57,7 @@ def test_canonical_authoring_serializes_but_preserves_ownership_and_zero_capacit
         errors = []
         for index in range(2):
             out, manifest = tmp_path / f"authored{index}.gba", tmp_path / f"authored{index}.json"
-            with pytest.raises(LayoutError, match="engine count/termination") as blocked:
+            with pytest.raises(LayoutError, match="unwritable engine count") as blocked:
                 build_project(roots[0], rom, out, catalog, manifest_path=manifest)
             errors.append(str(blocked.value))
             assert not out.exists() and not manifest.exists()

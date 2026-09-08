@@ -67,6 +67,14 @@ Failed builds publish neither output ROM nor success manifest.
 
 ## Exact ownership blocker
 
+> **SUPERSEDED IN PART BY TOOLKIT-024.** The "UNKNOWN engine consumption" bullet
+> below is resolved: the outer traversal is a counted loop over `MapEntry+0x04`
+> at `0x08008C9E`, with no sentinel and no suffix, so a run owns exactly
+> `count * 4` array bytes. The blocker is now narrower - a run cannot grow
+> because no production write path can rewrite a count field. The `+0x05`
+> reference below was the wrong field. See
+> [placement-run relocation](BUU_PLACEMENT_RUN_RELOCATION.md).
+
 These are existing evidence/code facts, not new reverse engineering:
 
 - **CONFIRMED representation:** map `+0x14` points at the placement reference

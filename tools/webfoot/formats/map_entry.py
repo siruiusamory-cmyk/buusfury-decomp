@@ -49,6 +49,14 @@ class MapEntryField:
     name: str
 
 
+#: Field names are the INFERRED upstream (DragonByteZ) names and are retained
+#: for continuity; several are now known to be misleading. TOOLKIT-024 proved by
+#: disassembly that `trigger_count_raw` (`+0x04`) is the engine's placement-run
+#: count: the map loader at 0x08008C9E runs `ldrb r0,[r0,#4]` as the bound of a
+#: counted loop that indexes the pointer array at `scripts_pointer_raw` (`+0x14`).
+#: It is NOT the count of the `triggers_pointer_raw` (`+0x10`) slot array; that
+#: AUTO-012 pairing stays refuted. See BUU_PLACEMENT_RUN_RELOCATION.md. The names
+#: are not renamed here because every project file and test pins them.
 MAP_ENTRY_LAYOUT = (
     MapEntryField(0x00, 1, "output_raw"),
     MapEntryField(0x01, 1, "zone_raw"),

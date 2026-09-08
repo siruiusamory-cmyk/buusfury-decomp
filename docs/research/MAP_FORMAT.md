@@ -54,6 +54,13 @@ Two independent witnesses against the general reading:
 **What `+0x04` actually counts is UNKNOWN.** TOOLKIT-007 scope forbids fresh RE
 on it; nothing here guesses.
 
+> **RESOLVED BY TOOLKIT-024.** `+0x04` is the **placement-run record count**: the
+> map loader at `0x08008C9E` reads it with `ldrb` as the bound of a counted loop
+> that indexes the pointer array at `+0x14`. It is not a count of the `+0x10`
+> slot array - the AUTO-012 pairing corrected above stays refuted, and this
+> result identifies the field's real consumer rather than reviving it. See
+> [placement-run relocation](BUU_PLACEMENT_RUN_RELOCATION.md).
+
 ## Supported extents
 
 > **SUPERSEDED IN PART BY TOOLKIT-008.** 40 of the 152 extents below were
@@ -187,7 +194,8 @@ correspondence across games that no evidence supports.
 
 ## Remaining unknowns
 
-* What `MapEntry[+0x04]` counts.
+* ~~What `MapEntry[+0x04]` counts.~~ **RESOLVED by TOOLKIT-024**: the
+  placement-run record count, proven at the consuming loop `0x08008C9E`.
 * Why 163 entries carry a positive count with a NULL pointer, and 69 the reverse.
 * The layout of all **89** typed source targets. The one verified structure
   (`0x080755C0`) is reached from MapEntry 39, whose array is opaque, so it is

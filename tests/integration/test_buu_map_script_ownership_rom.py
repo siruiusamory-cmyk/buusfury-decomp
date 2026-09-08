@@ -135,10 +135,20 @@ def test_the_trampoline_interprets_its_records_script_pointer(data):
     assert TRAMPOLINE + 0x10 + 4 + offset == INTERPRETER
 
 
-# --- candidate 1: placement +0x18/+0x1C is a shared vtable, not a script ------
+# --- candidate 1: placement +0x18/+0x1C carries no per-placement script -------
 
 def test_placement_vtable_fields_are_constant_and_cannot_select_a_script(rom, data):
-    """A field identical on all 1,295 placements selects nothing per-placement."""
+    """A field identical on all 1,295 placements selects nothing per-placement.
+
+    TOOLKIT-016 CORRECTION to this test's original framing, not to its
+    assertions, which still hold exactly. These two words are not a "shared
+    vtable pointer pair": `+0x18` is a child count and `+0x1C` is `child_ptr[0]`,
+    consumed as `{count, ptr[count]}` by `0x0800A93C`. They read as constants
+    here because every record in the *verified* corpus carries count 1, which is
+    also why that corpus looks fixed-size at 32 bytes. The conclusion the test
+    pins is unchanged - neither word selects a script - because the script is
+    selected by `+0x14`. See docs/research/BUU_FD55_SCRIPT_OWNER.md.
+    """
     maps = load_maps(rom, load_catalog(None))
     placements = list(maps.placements())
     assert len(placements) == VERIFIED_PLACEMENTS
@@ -304,8 +314,14 @@ def test_no_verified_placement_owns_or_precedes_a_record(rom, data):
     """The refuted hypothesis, pinned so it cannot be re-adopted silently.
 
     A hand-written walker once suggested 57 map-reachable placements sat 8 bytes
-    after a record. That walker over-collected 1,442 placements; the verified
-    parser reaches 1,295 and the true count is zero.
+    after a record. The arithmetic-adjacency hypothesis is refuted and stays
+    refuted: the verified parser reaches 1,295 and the true count is zero.
+
+    TOOLKIT-016 CORRECTION to one clause of the original framing: that walker's
+    1,442 records were not over-collection. Under the corrected variable-length
+    layout the 1,442-record walk is bounded and correct, and it is a strict
+    superset of the 1,295. Ownership of the extra records is by pointer, never
+    by the byte adjacency this test refutes.
     """
     maps = load_maps(rom, load_catalog(None))
     verified = {0x08000000 + e.file_offset for e in maps.placements()}

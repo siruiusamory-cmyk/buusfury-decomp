@@ -107,12 +107,40 @@ Measured over the 1,295 reachable records:
 | `+0x08` | 4 | `type_raw` | 1..149, 101 distinct, high halfword always 0 | CONFIRMED table selector (TOOLKIT-009; see correction below) |
 | `+0x0C` | 4 | `position_raw` | low 0..1982, high 0..930 | see below |
 | `+0x10` | 4 | `id_raw` | 5..306, high halfword always 0 | UNKNOWN |
-| `+0x14` | 4 | `tail0_raw` | always `0x080555A0` | CONFIRMED constant |
-| `+0x18` | 4 | `tail1_raw` | always `0x00000001` | CONFIRMED constant |
-| `+0x1C` | 4 | `tail2_raw` | always `0x080716EC` | CONFIRMED constant |
+| `+0x14` | 4 | `tail0_raw` | always `0x080555A0` **in this corpus** | behavior-descriptor pointer - see correction |
+| `+0x18` | 4 | `tail1_raw` | always `0x00000001` **in this corpus** | child count - see correction |
+| `+0x1C` | 4 | `tail2_raw` | always `0x080716EC` **in this corpus** | `child_ptr[0]` - see correction |
 
 Every field keeps a `_raw` suffix: the width and position are CONFIRMED, the
 meaning is not.
+
+### OLD CLAIM / NEW EVIDENCE / RESOLUTION: the record is variable-length
+
+**OLD CLAIM.** The record is a fixed 32 bytes ending in the constant tail
+`{0x080555A0, 0x00000001, 0x080716EC}`, and the 168 occurrences not carrying
+that tail are non-conforming.
+
+**NEW EVIDENCE** (TOOLKIT-016). `+0x18` is a **child count** and `+0x1C..` a
+`count`-long **pointer array**, so a record occupies `0x1C + 4n` bytes. Over all
+1,442 map-reached records the sizes are 32 (`n = 1`) x1,427, 36 x7, 40 x6 and
+44 x2; **zero** record bodies collide with the next record and **zero**
+pointer-array slots are shared, so the variable extent is self-consistent.
+This is corroborated in code: `0x0800F6D2` does `adds r1, #0x18` and calls
+`0x0800A93C`, which walks its argument as `{count, ptr[count]}` - that argument
+is exactly this field pair.
+
+`+0x14` points at a 2-word behavior descriptor `{handler, payload}`, and
+`0x080555A0` is the shared **null-handler** descriptor: it holds `0x0800421D`
+(`bx lr`), and it has 1,442 inbound references - one per map-reached record.
+
+**RESOLUTION.** The three words are not a tail and are not constants of the
+family; they read as constants here only because `n == 1` dominates the corpus.
+Everything measured above stays valid **as the `n == 1` subset** - no count,
+proof or edit path in this document is withdrawn - but that subset is not the
+whole family. Reading `+0x18` as a count reaches 1,442 records including the
+1,295 here, of which 57 name a script handler across 10 maps. This also answers
+the "what the three tail constants are" entry under Remaining unknowns. Full
+evidence: [`BUU_FD55_SCRIPT_OWNER.md`](BUU_FD55_SCRIPT_OWNER.md).
 
 ## `position_raw`: what is and is not established
 
@@ -220,8 +248,10 @@ UNKNOWN; this narrows where it is trusted rather than reinterpreting it.
 * What `flags_raw`, `type_raw` and `id_raw` mean.
 * What `script_count_raw` (`+0x05`) counts, given it does not bound this array.
 * Why 108 well-formed records are unreachable from any map.
-* What the three tail constants are - a vtable, a shared callback, a template
-  pointer, or something else.
+* ~~What the three tail constants are - a vtable, a shared callback, a template
+  pointer, or something else.~~ **ANSWERED (TOOLKIT-016)**: `+0x14` is a
+  behavior-descriptor pointer, `+0x18` a child count and `+0x1C` `child_ptr[0]`.
+  See the variable-length correction above.
 * Whether any record corresponds to an NPC, an enemy, a pickup or a generic
   object. Nothing here names one.
 * The **168** factory occurrences that are not well-formed records (1,571

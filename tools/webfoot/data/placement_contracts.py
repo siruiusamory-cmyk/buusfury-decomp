@@ -69,13 +69,46 @@ CONTRACTS = {'buus_fury_usa_rev0_01c1707f': {'encoding': 'stack_be16_buu_v1',
                                          },
                                          # Slot 29 pops one value into a bitfield SET at
                                          # 0x08004380: byte = operand >> 3, bit = operand & 7.
-                                         # 0x08004396 is the matching clear; unreached by this
-                                         # corpus, so only SET is claimed.
+                                         # This is the EVENT corpus, and only SET is claimed for
+                                         # it. TOOLKIT-021 reached 0x08004396 (clear) separately,
+                                         # through the dialog corpus - see dialog_save_flag below.
                                          'save_flag': {
                                              'consumers': {29: 'set'},
                                              'evidence': 'docs/research/BUU_MAP_EVENT_REFERENCES.md; '
                                                          'slot 29 handler 0x080007E6 calls '
                                                          '0x08004380 (orrs bit set)',
+                                         },
+                                         # TOOLKIT-021 docs/research/BUU_MAP_DIALOG_SEMANTICS.md.
+                                         # The four map-reachable dialogs act on the same save
+                                         # bitfield through RANGE consumers. Three primitives
+                                         # share one bit-addressing shape - byte = base + 0x50 + 5
+                                         # + (bit >> 3), mask = 1 << (bit & 7), on the save object
+                                         # [0x08054FBC + 0x14] - and differ only in the bitwise
+                                         # operation, which is what classifies them:
+                                         #   0x08004364 ands -> TEST,  0x08004380 orrs -> SET,
+                                         #   0x08004396 bics -> CLEAR.
+                                         # Slot 186 pops 2 (count on top, base beneath), tests
+                                         # base..base+count-1 and pushes a packed mask. Slot 187
+                                         # pops 3 (mask, count, base) and per bit calls SET when
+                                         # the bit is 1 and CLEAR when it is 0. Pop order was read
+                                         # from the handlers at 0x080032D2/0x080032DC and
+                                         # 0x0800331C/0x08003326/0x08003330, never inferred from
+                                         # operand position.
+                                         # Kept SEPARATE from save_flag above rather than merged:
+                                         # the two were proven by different consumers, and only
+                                         # this one reaches CLEAR.
+                                         'dialog_save_flag': {
+                                             'consumers': {186: 'test_range', 187: 'write_range'},
+                                             'primitives': {'test': 0x08004364,
+                                                            'set': 0x08004380,
+                                                            'clear': 0x08004396},
+                                             'evidence': 'docs/research/BUU_MAP_DIALOG_SEMANTICS.md; '
+                                                         'slot 186 handler 0x080032C2 calls '
+                                                         '0x08004364 (ands) in a loop and packs '
+                                                         'the results; slot 187 handler '
+                                                         '0x08003310 calls 0x08004380 (orrs) at '
+                                                         '0x08003352 and 0x08004396 (bics) at '
+                                                         '0x08003358',
                                          },
                                          'descriptors': [134567328,
                                                  134687048,

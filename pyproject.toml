@@ -32,3 +32,10 @@ include = ["tools*"]
 [tool.pytest.ini_options]
 addopts = "-ra"
 testpaths = ["tests"]
+# Build and extract tests write whole 8 MB ROMs and thousands of sprite PNGs
+# into `tmp_path`. pytest's defaults (policy "all", count 3) keep those for
+# three *basetemp roots*, so a run under a fresh TEMP never collects the
+# previous one: 3,484 orphaned ROMs and 1.25M PNGs reached 17 GB before this
+# was set. Keep only what diagnosing a failure actually needs.
+tmp_path_retention_policy = "failed"
+tmp_path_retention_count = 3

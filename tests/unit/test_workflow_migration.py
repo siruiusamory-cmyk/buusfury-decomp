@@ -65,13 +65,10 @@ def _run_runner(*arguments: str, cwd: Path) -> subprocess.CompletedProcess[str]:
 
 def test_required_workflow_files_exist_and_are_bounded():
     expected_limits = {
-        # Raised 300 -> 340 at TOOLKIT-020 to admit the Full-Suite Policy, a
-        # permanent operating rule that belongs here per the Context Contract.
-        # The bound is a context budget, not a style rule: it keeps this file
-        # readable as always-loaded context. Trimming a genuinely permanent
-        # rule to fit would defeat what the bound protects, so the bound moved
-        # deliberately instead - and stays tight enough to still bite.
-        "<local-state-name>": (150, 340),
+        # 300 is a context budget, not a style rule: this file is always-loaded
+        # context, so it has to stay readable. A new permanent rule earns its
+        # place by being condensed to fit, not by moving the bound.
+        "<local-state-name>": (150, 300),
         "docs/PROJECT_<local-state-name>": (100, 240),
         "docs/PROJECT_<local-state-name>": (10, 240),
         "docs/PROJECT_<local-state-name>": (10, 240),
@@ -267,28 +264,73 @@ def test_agents_bounds_full_suite_reruns_by_blast_radius():
 
     Motivated by measured cost: the full suite takes 15+ minutes, and at
     TOOLKIT-020 it was relaunched reflexively after a one-line documentation
-    fix whose blast radius was a single bounded test. This pins the policy's
-    substance - the gate, the narrow-fix exception, and the honesty rule about
-    derived totals - not merely a heading that could survive a gutted body.
+    fix whose blast radius was a single bounded test.
+
+    Each requirement is asserted by its own concepts rather than by one exact
+    sentence, so the policy can be reworded or condensed - as it was, to fit
+    the 300-line budget - without this test either breaking spuriously or
+    silently passing over a rule that was dropped.
     """
     agents = (PROJECT_ROOT / "<local-state-name>").read_text(encoding="utf-8")
+    # The file wraps at 80 columns, so a required phrase routinely spans a line
+    # break. Collapse whitespace before matching, or this test would fail on
+    # rewrapping alone - which is a formatting change, not a policy change.
+    lower = re.sub(r"\s+", " ", agents).lower()
 
-    assert "### Full-Suite Policy - Evidence-Proportional Validation" in agents
-    # It stays a real gate: cost is never a reason to skip a warranted run.
-    assert "Never skip a" in agents and "gate for being slow" in agents
-    # Narrow, understood, locally covered fixes get focused verification.
-    assert "smallest scope that actually validates the correction" in agents
-    assert "blast radius" in agents.lower()
-    # A changed repository is not itself grounds for a second 15-minute run.
-    assert "not itself a reason" in agents
-    assert "Never rerun solely for a cleaner aggregate number." in agents
-    # Derived totals must never be passed off as observed ones.
-    assert "DERIVED / NOT DIRECTLY OBSERVED" in agents
-    assert "Never call a derived number measured." in agents
-    # The optimisation must not become an excuse to skip real integration work.
-    assert "never substitutes for real" in agents
-    # An environment-blocked failure is reported, never weakened away.
-    assert "environment-blocked failure does not by itself force a rerun" in agents
+    assert "### Full-Suite Policy" in agents
+
+    # Each entry: what the rule guarantees, and the terms that must survive any
+    # rewording for it to still be stated at all.
+    required = {
+        "expensive gate, not an automatic post-fix ritual":
+            ("expensive integration gate", "reflex after every fix"),
+        "runs at meaningful integration boundaries":
+            ("meaningful integration boundaries",),
+        "cost alone never excuses skipping a warranted gate":
+            ("gate for being slow",),
+        "narrow local fixes use the smallest sufficient scope":
+            ("smallest scope that validates the correction",),
+        "a mere repository change is not grounds for a rerun":
+            ("not itself a reason",),
+        "blast radius decides the scope":
+            ("blast radius sets the scope",),
+        "focused testing is no substitute for warranted integration testing":
+            ("never substitutes for real integration validation",),
+        "no rerun merely for prettier totals":
+            ("never rerun for a cleaner aggregate number",),
+        "observed and derived totals are distinguished":
+            ("derived / not directly observed",),
+        "derived totals are never presented as measured":
+            ("never called measured",),
+        "ticket-caused failures block closure":
+            ("ticket-caused failures stop closure",),
+        "environment-blocked tests are not weakened to reach zero":
+            ("environment-blocked failure", "weakening it to reach zero"),
+        "focused tests come before the deliberate gate":
+            ("prefer one deliberate run",),
+        "cost and radius are weighed before a repeat long run":
+            ("weigh cost and blast", "repeat long run"),
+    }
+    missing = [
+        guarantee
+        for guarantee, terms in required.items()
+        if not all(term.lower() in lower for term in terms)
+    ]
+    assert not missing, f"validation policy no longer states: {missing}"
+
+
+def test_pytest_does_not_retain_passing_run_artifacts():
+    """Build/extract tests write 8 MB ROMs and thousands of PNGs into tmp_path.
+
+    pytest's defaults (policy "all", count 3) keep those for three *basetemp
+    roots*, so a run under a fresh TEMP never collects the previous one: 3,484
+    orphaned ROMs and 1.25M PNGs reached 17 GB and filled the disk mid-run.
+    Retaining only failed runs keeps what diagnosis needs and nothing else.
+    """
+    config = (PROJECT_ROOT / "pyproject.toml").read_text(encoding="utf-8")
+
+    assert 'tmp_path_retention_policy = "failed"' in config
+    assert "tmp_path_retention_count" in config
 
 
 def test_p006c_archive_is_retained_after_p007_closure():

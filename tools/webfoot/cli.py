@@ -33,6 +33,7 @@ from .build import (
     validate_project,
 )
 from .profile import ProfileConfigError, RomProfileCatalog, VerificationStatus
+from .layout import LayoutError
 from .project import ProjectError
 from .rom import RomIdentification, RomReadError, identify_rom
 from .formats.stat_tables import StatEncodeError, StatIdentity
@@ -91,6 +92,18 @@ def build_parser() -> argparse.ArgumentParser:
         help="ROM profile YAML (default: project config or packaged catalog)",
     )
     subparsers = parser.add_subparsers(dest="command", required=True)
+    placement = subparsers.add_parser("placement", help="author placement clones and inspect capacity plans")
+    placement_commands = placement.add_subparsers(dest="placement_command", required=True)
+    clone = placement_commands.add_parser("clone", help="add a named canonical-template clone to a project")
+    clone.add_argument("project", type=Path)
+    clone.add_argument("--map", required=True)
+    clone.add_argument("--source", required=True, help="map:NNNN/placement:NNNN")
+    clone.add_argument("--name", required=True, help="stable lowercase name; never an address")
+    clone.add_argument("--position-low", type=int, required=True)
+    clone.add_argument("--position-high", type=int, required=True)
+    planning = placement_commands.add_parser("plan", help="validate and serialize; report ownership/capacity requirements")
+    planning.add_argument("project", type=Path)
+    planning.add_argument("--rom", type=Path, required=True)
     entity = subparsers.add_parser("entity", help="verified static placement/type relationships")
     entity_commands = entity.add_subparsers(dest="entity_command", required=True)
     for command in ("list", "show", "type", "types", "placements-of-type", "summary", "references"):
@@ -1468,6 +1481,23 @@ def main(argv: list[str] | None = None) -> int:
     # TOOLKIT-002 commands are dispatched before the ROM-loading block below,
     # which assumes every command takes a positional `rom` and would otherwise
     # load one for commands whose base ROM arrives as `--rom`.
+    if args.command == "placement":
+        try:
+            from .project.placements import clone_placement
+            from .build import authored_capacity_plan
+            if args.placement_command == "clone":
+                clone = clone_placement(args.project, map_index=_parse_map_identity(args.map).index,
+                    source=args.source, name=args.name, position_low=args.position_low,
+                    position_high=args.position_high)
+                print(clone.identity)
+            else:
+                runs = authored_capacity_plan(args.project, args.rom, load_catalog(args.profiles))
+                print(json.dumps([r.to_json() for r in runs], indent=2, sort_keys=True))
+            return 0
+        except (ValueError, OSError) as exc:
+            print(f"error: {exc}", file=sys.stderr)
+            return 2
+
     if args.command in ("extract", "validate", "build"):
         try:
             catalog = load_catalog(args.profiles)
@@ -1504,6 +1534,7 @@ def main(argv: list[str] | None = None) -> int:
             RomReadError,
             ProjectError,
             BuildError,
+            LayoutError,
             StatTableError,
             StatEncodeError,
             WriteError,

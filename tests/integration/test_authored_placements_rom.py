@@ -1,0 +1,71 @@
+"""Private local-ROM TOOLKIT-022 proof. No emulator or proprietary fixtures."""
+import hashlib
+import json
+from pathlib import Path
+
+import pytest
+
+from tools.webfoot.allocation import allocate, InsufficientSpaceError
+from tools.webfoot.build import extract_project, build_project, validate_project, authored_capacity_plan
+from tools.webfoot.layout import LayoutError
+from tools.webfoot.profile import RomProfileCatalog
+from tools.webfoot.project import read_project
+from tools.webfoot.project.placements import clone_placement
+
+
+SHA = "940ad5f01db4465b8877dfe739510cbf34f4ea3d390f3df13519808bc36f059e"
+
+
+def test_canonical_authoring_serializes_but_preserves_ownership_and_zero_capacity(tmp_path):
+    candidates = sorted(Path("roms").glob("*Buu*.gba"))
+    if not candidates:
+        pytest.skip("canonical Buu ROM not configured locally")
+    rom = candidates[0]
+    before = rom.read_bytes()
+    if hashlib.sha256(before).hexdigest() != SHA:
+        pytest.skip("local ROM does not match exact canonical Buu identity")
+    stamp = rom.stat().st_mtime_ns
+    catalog = RomProfileCatalog.load("config/roms.yaml")
+    try:
+        roots = (tmp_path / "a", tmp_path / "b")
+        for root in roots:
+            extract_project(rom, root, catalog, graphics=False)
+        contents = lambda root: {p.relative_to(root).as_posix(): p.read_bytes()
+                                 for p in root.rglob("*") if p.is_file()}
+        assert contents(roots[0]) == contents(roots[1])
+        no_op = tmp_path / "noop.gba"
+        result = build_project(roots[0], rom, no_op, catalog)
+        assert not result.manifest.changes
+        assert no_op.read_bytes() == before
+        project = read_project(roots[0])
+        assert all(not m.get("authored_placements") for m in project.maps.values())
+        owner = next(i for i, m in sorted(project.maps.items()) if m.get("placements"))
+        source = f"map:{owner:04d}/placement:{project.maps[owner]['placements'][0]['index']:04d}"
+        clone = clone_placement(roots[0], map_index=owner, source=source, name="toolkit022",
+                                position_low=123, position_high=456)
+        assert validate_project(roots[0], rom, catalog).passed
+        run, = authored_capacity_plan(roots[0], rom, catalog)
+        assert owner == 10 and run.allocation_request.size == 108
+        assert run.record(clone.identity).provenance == "AUTHORED_CLONE"
+        assert len(run.records) == len(project.maps[owner]["placements"]) + 1
+        assert run == authored_capacity_plan(roots[0], rom, catalog)[0]
+        profile = next(p for p in catalog.profiles if p.id == project.meta.profile_id)
+        assert profile.free_regions == ()
+        # A capacity feasibility check, NOT a claim that build reached allocation.
+        with pytest.raises(InsufficientSpaceError) as capacity:
+            allocate(profile, [run.allocation_request])
+        errors = []
+        for index in range(2):
+            out, manifest = tmp_path / f"authored{index}.gba", tmp_path / f"authored{index}.json"
+            with pytest.raises(LayoutError, match="engine count/termination") as blocked:
+                build_project(roots[0], rom, out, catalog, manifest_path=manifest)
+            errors.append(str(blocked.value))
+            assert not out.exists() and not manifest.exists()
+        assert errors[0] == errors[1]
+        evidence = {**run.to_json(), "capacity_feasibility_error": str(capacity.value),
+                    "production_build_error": errors[0], "extraction_files": len(contents(roots[1])),
+                    "noop_bytes": len(before), "base_sha256": SHA}
+        print(json.dumps(evidence, indent=2))
+    finally:
+        assert hashlib.sha256(rom.read_bytes()).hexdigest() == SHA
+        assert rom.stat().st_mtime_ns == stamp

@@ -178,7 +178,14 @@ because payloads are packed with no slack and no free space is declared;
 [`docs/research/GRAPHICS_FORMAT.md`](docs/research/GRAPHICS_FORMAT.md) records
 that measurement rather than an aspiration.
 
-Not implemented: creating new assets of any kind (AUTHOR_NEW), free-space
+TOOLKIT-022 adds explicit named placement clones to projects, production-codec
+serialization and proposed capacity requests. ROM materialization remains blocked
+by the placement-run ownership contract, including with synthetic free space;
+canonical Buu also has zero verified capacity. See
+[`AUTHORED_PLACEMENTS.md`](docs/research/AUTHORED_PLACEMENTS.md) for commands,
+the precise blocker and the distinction between representation and materialization.
+
+Not implemented: materializing newly authored assets (AUTHOR_NEW), free-space
 discovery, ROM expansion, relocation beyond the verified path, map tilesets and
 every other graphics family, audio, gameplay, engine patches, a GUI, Tiled
 integration, or remake content. Enemy-to-graphics linkage was probed across all

@@ -86,7 +86,7 @@ class ProjectRomMismatchError(BuildError):
 
 @dataclass(frozen=True, slots=True)
 class ValidationReport:
-    """What `validate` found. Empty `problems` means the project can build."""
+    """What `validate` found. Empty `problems` means semantic validation passed."""
 
     project_name: str
     profile_id: str
@@ -644,11 +644,15 @@ def _check_maps(project: StatProject, maps: Maps | None) -> list[str]:
         # output exists: count, identity, provenance bytes, and halfword range.
         owned = maps.map_placements(identity)
         authored_placements = values.get("placements", [])
+        expected_indices = [p.identity.placement_index for p in owned]
+        actual_indices = [p["index"] for p in authored_placements]
         if len(owned) != len(authored_placements):
             problems.append(
                 f"{identity}: project authors {len(authored_placements)} "
                 f"placement(s) but this ROM's map owns {len(owned)}"
             )
+        elif actual_indices != expected_indices:
+            problems.append(f"{identity}: extracted placement identities/order differ from canonical run")
         else:
             by_index = {item.identity.placement_index: item for item in owned}
             for item in authored_placements:
@@ -693,6 +697,12 @@ def _check_maps(project: StatProject, maps: Maps | None) -> list[str]:
                     f"{identity}.{name}={value} exceeds the maximum {maximum}"
                 )
 
+    if not problems:
+        from .authored_placements import prepare_authored_runs
+        try:
+            prepare_authored_runs(project, maps)
+        except (ValueError, KeyError) as exc:
+            problems.append(str(exc))
     return problems
 
 
@@ -861,6 +871,10 @@ def build_project(
             + ("; ..." if len(problems) > 5 else "")
         )
 
+    from .authored_placements import prepare_authored_runs, require_materialization_contract
+    authored_runs = prepare_authored_runs(project, maps)
+    require_materialization_contract(authored_runs)
+
     # One plan for every subsystem, not one plan each. Overlap detection is
     # per-plan, so two plans could each validate while together writing the
     # same bytes; merging makes a stat record and a string that claimed the
@@ -920,3 +934,22 @@ def build_project(
         manifest_path=Path(manifest_path) if manifest_path is not None else None,
         project_name=project.meta.name,
     )
+
+
+def authored_capacity_plan(project_dir, rom_path, catalog):
+    """Validate and serialize authored records into explicit capacity requests.
+
+    Planning evidence only: returned packing is not approved for ROM emission.
+    Existing build safety checks and exact canonical reconciliation run first.
+    """
+    project, identification, profile, tables, strings, maps = _load_for_project(
+        project_dir, rom_path, catalog)
+    problems = _check_identity(project, identification, profile)
+    if problems:
+        raise ProjectRomMismatchError("; ".join(problems))
+    problems = (_check_records(project, tables) + _check_strings(project, strings)
+                + _check_maps(project, maps))
+    if problems:
+        raise ProjectValidationError("; ".join(problems))
+    from .authored_placements import prepare_authored_runs
+    return prepare_authored_runs(project, maps)

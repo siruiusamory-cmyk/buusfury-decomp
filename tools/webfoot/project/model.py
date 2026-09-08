@@ -390,6 +390,9 @@ def _map_document(maps: list[dict[str, Any]]) -> dict[str, Any]:
                 }
                 for item in sorted(placements, key=lambda item: item["index"])
             }
+        if entry.get("authored_placements"):
+            record["authored_placements"] = {p.identity: p.to_document()
+                for p in sorted(entry["authored_placements"], key=lambda p: p.identity)}
         tables[entry["key"]] = record
     return {"map": tables}
 
@@ -737,10 +740,14 @@ def _read_maps(path: Path) -> dict[int, dict[str, Any]]:
             # rebuilds identically rather than depending on line order.
             values["placements"] = sorted(parsed, key=lambda item: item["index"])
 
+        if "authored_placements" in entry:
+            from .placements import parse_authored
+            values["authored_placements"] = parse_authored(entry["authored_placements"], index)
+
         unexpected = (
             set(entry)
             - set(_MAP_FIELD_ORDER)
-            - {"raw", "slots", "shape", "placements"}
+            - {"raw", "slots", "shape", "placements", "authored_placements"}
         )
         if unexpected:
             joined = ", ".join(sorted(unexpected))
@@ -794,6 +801,8 @@ def read_project(directory: str | Path) -> StatProject:
 
     strings = _read_strings(root / _TEXT_FILE)
     maps = _read_maps(root / _MAP_FILE)
+    from .placements import validate_templates
+    validate_templates(maps)
 
     events_path = root / 'events/placement_descriptors.json'
     events = None

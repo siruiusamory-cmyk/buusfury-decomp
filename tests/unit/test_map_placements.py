@@ -90,9 +90,8 @@ def test_a_word_wider_than_32_bits_is_refused_at_encode() -> None:
         type_raw=0,
         position_raw=0,
         id_raw=0,
-        tail0_raw=RECORD_TAIL[0],
-        tail1_raw=RECORD_TAIL[1],
-        tail2_raw=RECORD_TAIL[2],
+        descriptor_pointer_raw=RECORD_TAIL[0],
+        child_pointers_raw=(RECORD_TAIL[2],),
     )
     with pytest.raises(MapPlacementValueError):
         record.to_bytes()

@@ -88,4 +88,4 @@ def test_no_event_authoring_command_exists(rom):
     # TOOLKIT-014 added family selection and owner queries. All are read-only:
     # nothing here writes, grows or relocates a stream.
     assert commands == {'summary', 'list', 'show', 'validate-round-trip',
-                        'families', 'attachments', 'for-owner', 'owners-of'}
+                        'families', 'attachments', 'for-owner', 'owners-of', 'for-map', 'for-placement'}

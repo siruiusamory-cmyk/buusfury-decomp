@@ -126,13 +126,14 @@ class ReferenceEncoding(str, Enum):
     ABSOLUTE_ROM_U32_LE = "absolute_rom_u32_le"
     RELATIVE_I32_LE = "relative_i32_le"
     INDEX_U32_LE = "index_u32_le"
+    INDEX_U8 = "index_u8"
 
     @property
     def width(self) -> int:
-        return 4
+        return 1 if self is ReferenceEncoding.INDEX_U8 else 4
 
     def decode(self, data: bytes, source: FileOffset, image_size: int) -> FileOffset:
-        if self is ReferenceEncoding.INDEX_U32_LE:
+        if self in (ReferenceEncoding.INDEX_U32_LE, ReferenceEncoding.INDEX_U8):
             raise LayoutError("indexed references require their declared table context")
         if len(data) != self.width:
             raise LayoutError("malformed reference width")
@@ -144,7 +145,7 @@ class ReferenceEncoding(str, Enum):
         return FileOffset(target)
 
     def encode(self, target: FileOffset, source: FileOffset, image_size: int) -> bytes:
-        if self is ReferenceEncoding.INDEX_U32_LE:
+        if self in (ReferenceEncoding.INDEX_U32_LE, ReferenceEncoding.INDEX_U8):
             raise LayoutError("indexed references are read-only; reassignment is not verified")
         RomRange(source, self.width).validate(image_size)
         RomRange(target, 1).validate(image_size)
@@ -176,7 +177,7 @@ class Reference:
             raise LayoutError("unsupported reference encoding")
         if not isinstance(self.classification, ReferenceClass):
             raise LayoutError("unsupported reference classification")
-        if self.encoding is ReferenceEncoding.INDEX_U32_LE:
+        if self.encoding in (ReferenceEncoding.INDEX_U32_LE, ReferenceEncoding.INDEX_U8):
             if (not isinstance(self.index_base, FileOffset)
                     or type(self.index_stride) is not int or self.index_stride <= 0):
                 raise LayoutError("indexed reference requires a table base and positive stride")
@@ -184,9 +185,9 @@ class Reference:
             raise LayoutError("index context on a non-index reference")
 
     def decode_target(self, data: bytes, image_size: int) -> FileOffset:
-        if self.encoding is not ReferenceEncoding.INDEX_U32_LE:
+        if self.encoding not in (ReferenceEncoding.INDEX_U32_LE, ReferenceEncoding.INDEX_U8):
             return self.encoding.decode(data, self.source, image_size)
-        if len(data) != 4:
+        if len(data) != self.encoding.width:
             raise LayoutError("malformed index width")
         assert self.index_base is not None and self.index_stride is not None
         target = self.index_base.value + int.from_bytes(data, "little") * self.index_stride

@@ -233,7 +233,8 @@ def extract_project(
     # codec, so `MapEntryProfileError` here means "this ROM has no maps this
     # toolkit can read" rather than a failure.
     try:
-        maps = _map_documents(load_maps(rom_path, catalog))
+        loaded_maps = load_maps(rom_path, catalog)
+        maps = _map_documents(loaded_maps)
     except MapEntryProfileError:
         maps = []
 
@@ -253,6 +254,17 @@ def extract_project(
         target = Path(project_dir) / PLACEMENT_TYPES_FILE
         target.parent.mkdir(parents=True, exist_ok=True)
         target.write_text(dump_toml(document), encoding="utf-8", newline="\n")
+        written.append(target)
+    from .data.placement_contracts import CONTRACTS
+    if profile.id in CONTRACTS:
+        from .placement_events import PlacementEvents
+        import json
+        events = PlacementEvents(loaded_maps)
+        document = events.project_document()
+        document['reference_graph'] = load_placement_types(rom_path, catalog).reference_document().to_compact_json()
+        target = Path(project_dir) / 'events/placement_descriptors.json'
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_text(json.dumps(document, sort_keys=True, separators=(',', ':')) + '\n', encoding='utf-8', newline='\n')
         written.append(target)
     if graphics and capability.declared(profile, capability.Capability.ACTOR_SPRITES):
         written.extend(
@@ -349,6 +361,9 @@ def _extract_graphics(
 def _map_documents(maps: Maps) -> list[dict]:
     """Flatten loaded maps into the authored form `write_project` expects."""
     documents: list[dict] = []
+    from .data.placement_contracts import CONTRACTS
+    from .placement_events import PlacementEvents
+    relationships = PlacementEvents(maps) if maps.profile.id in CONTRACTS else None
     for entry in maps.entries():
         array = maps.slot_array(entry.identity)
         document: dict = {
@@ -373,6 +388,10 @@ def _map_documents(maps: Maps) -> list[dict]:
                     "position_low": item.record.position_low,
                     "position_high": item.record.position_high,
                     "raw": item.original_bytes,
+                    **({'descriptor': relationships.descriptor_of(item.identity).identity,
+                        'child_count': item.record.child_count,
+                        'child_pointers_raw': list(item.record.child_pointers_raw),
+                        'record_size': item.record.consumed_length} if relationships else {}),
                 }
                 for item in placements
             ]
@@ -537,6 +556,23 @@ def _check_maps(project: StatProject, maps: Maps | None) -> list[str]:
     fail-closed ordering ticket TOOLKIT-007 sec 18 requires.
     """
     problems: list[str] = []
+    from .data.placement_contracts import CONTRACTS
+    structured = any('descriptor' in p for m in project.maps.values() for p in m.get('placements', []))
+    legacy = project.placement_events is None and not structured
+    if maps is not None and maps.profile.id in CONTRACTS:
+        from .placement_events import PlacementEvents
+        from .entities import PlacementTypes
+        relationships = PlacementEvents(maps)
+        if not legacy:
+            import json
+            expected_events = relationships.project_document()
+            expected_events['reference_graph'] = PlacementTypes(maps).reference_document().to_compact_json()
+            if project.placement_events != expected_events:
+                problems.append('placement descriptor/event catalog differs from verified base; editing unsupported')
+        else:
+            maps = maps.legacy_view()
+    elif project.placement_events is not None or structured:
+        problems.append('placement descriptor/event data requires verified profile support')
     if project.placement_types is not None:
         from .entities import PlacementTypes, PlacementTypeError
         import json
@@ -630,6 +666,15 @@ def _check_maps(project: StatProject, maps: Maps | None) -> list[str]:
                         "match this ROM; the record was extracted from a "
                         "different image"
                     )
+                if not legacy:
+                    expected_structure = {
+                        'descriptor': relationships.descriptor_of(live_placement.identity).identity,
+                        'child_count': live_placement.record.child_count,
+                        'child_pointers_raw': list(live_placement.record.child_pointers_raw),
+                        'record_size': live_placement.record.consumed_length,
+                    }
+                    if any(item.get(k) != v for k, v in expected_structure.items()):
+                        problems.append(f'{live_placement.identity}: structural placement fields differ from base')
                 for half in ("position_low", "position_high"):
                     if not 0 <= item[half] <= 0xFFFF:
                         problems.append(
@@ -836,6 +881,10 @@ def build_project(
     if maps is not None:
         _apply_project_to_maps(project, maps)
         changes += maps.changes()
+        from .data.placement_contracts import CONTRACTS
+        if maps.profile.id in CONTRACTS:
+            from .placement_events import PlacementEvents
+            changes += PlacementEvents(maps).changes()
         base_bytes = maps.base_bytes if base_bytes is None else base_bytes
 
     if base_bytes is None:

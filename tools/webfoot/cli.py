@@ -112,12 +112,12 @@ def build_parser() -> argparse.ArgumentParser:
     # static owner. Commands are not added for symmetry: a family with no
     # proven owner simply reports no attachments.
     for command in ("summary", "list", "show", "validate-round-trip",
-                    "families", "attachments", "for-owner", "owners-of"):
+                    "families", "attachments", "for-owner", "owners-of", "for-map", "for-placement"):
         child = event_commands.add_parser(command)
         child.add_argument("rom", type=Path)
         if command == "show":
             child.add_argument("identity", help="entry identity from `event list`")
-        if command == "for-owner":
+        if command in ("for-owner", "for-map", "for-placement"):
             child.add_argument("owner", help="owner identity, e.g. item:0000")
         if command == "owners-of":
             child.add_argument("identity", help="entry identity from `event list`")
@@ -862,10 +862,10 @@ def _print_placement_show(maps, identity: PlacementIdentity) -> None:
     print(f"  low halfword:  {record.position_low}  (axis UNKNOWN)")
     print(f"  high halfword: {record.position_high}  (axis UNKNOWN)")
     print(f"id_raw:       0x{record.id_raw:08X}  UNKNOWN")
-    print(
-        f"tail:         0x{record.tail0_raw:08X} "
-        f"0x{record.tail1_raw:08X} 0x{record.tail2_raw:08X}  (family constants)"
-    )
+    print(f"descriptor_pointer_raw: 0x{record.descriptor_pointer_raw:08X}")
+    print(f"child_count: {record.child_count}; record_size: {record.consumed_length}")
+    print('child_pointers_raw: ' + ', '.join(f'0x{p:08X}' for p in record.child_pointers_raw))
+
 
 
 def _print_map_list(maps, limit: int | None, typed_only: bool) -> None:
@@ -1296,6 +1296,17 @@ def _run_event(args) -> int:
         if command == "families":
             print(json.dumps(list(script_families(args.rom, catalog)),
                              sort_keys=True, indent=2))
+            return 0
+        if command in ('for-map', 'for-placement'):
+            from .placement_events import PlacementEvents
+            from .maps import load_maps
+            relationships = PlacementEvents(load_maps(args.rom, catalog))
+            if command == 'for-map':
+                result = relationships.events_for_map(_parse_map_identity(args.owner))
+            else:
+                descriptor = relationships.descriptor_of(_parse_placement_identity(args.owner))
+                result = {'descriptor': descriptor.identity, 'event': descriptor.event}
+            print(json.dumps(result, sort_keys=True, indent=2))
             return 0
         corpus = load_scripts(args.rom, catalog, args.family)
         opcode_set = corpus.ir.opcode_set

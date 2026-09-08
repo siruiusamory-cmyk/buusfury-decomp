@@ -150,7 +150,7 @@ def test_placement_vtable_fields_are_constant_and_cannot_select_a_script(rom, da
     selected by `+0x14`. See docs/research/BUU_FD55_SCRIPT_OWNER.md.
     """
     maps = load_maps(rom, load_catalog(None))
-    placements = list(maps.placements())
+    placements = list(maps.legacy_placements())
     assert len(placements) == VERIFIED_PLACEMENTS
     for entry in placements:
         base = 0x08000000 + entry.file_offset
@@ -324,7 +324,7 @@ def test_no_verified_placement_owns_or_precedes_a_record(rom, data):
     by the byte adjacency this test refutes.
     """
     maps = load_maps(rom, load_catalog(None))
-    verified = {0x08000000 + e.file_offset for e in maps.placements()}
+    verified = {0x08000000 + e.file_offset for e in maps.legacy_placements()}
     records = set(_records(data))
     assert len(verified) == VERIFIED_PLACEMENTS
     assert not any(addr - 8 in records for addr in verified)
@@ -341,7 +341,7 @@ def test_the_only_structural_referrers_are_outside_the_verified_corpus(rom, data
     records = set(_records(data))
     words = struct.unpack_from('<%dI' % (len(data) // 4), data, 0)
     maps = load_maps(rom, load_catalog(None))
-    verified = {0x08000000 + e.file_offset for e in maps.placements()}
+    verified = {0x08000000 + e.file_offset for e in maps.legacy_placements()}
     bases, incidental = set(), []
     for i, w in enumerate(words):
         if w in records:
@@ -353,19 +353,19 @@ def test_the_only_structural_referrers_are_outside_the_verified_corpus(rom, data
     assert len(bases) == 64
     assert incidental == [0x081267A0]
     assert not STREAM[0] <= incidental[0] < STREAM[1]
-    # None of the 64 bases is a placement the project supports, and in every
+    # None of the 64 bases belongs to the legacy fixed-codec subset; in every
     # verified placement +0x14 is a constant, not a pointer to a script record.
     assert not (bases & verified)
-    for entry in maps.placements():
+    for entry in maps.legacy_placements():
         assert _u32(data, 0x08000000 + entry.file_offset + 0x14) == 0x080555A0
 
 
 # --- guards: nothing here is promoted ----------------------------------------
 
-def test_the_family_is_not_declared_as_a_supported_script_family(rom):
-    """Measured is not promoted. Without an owner it stays out of the profile."""
+def test_only_owned_subset_is_declared_as_a_supported_script_family(rom):
+    """TOOLKIT-017 promotes only the owned partition, never the whole candidate."""
     families = script_families(rom, load_catalog(None))
-    assert set(families) == {'static40', 'item_use'}
+    assert set(families) == {'static40', 'item_use', 'placement_descriptor_event'}
 
 
 def test_existing_families_are_unregressed(rom):

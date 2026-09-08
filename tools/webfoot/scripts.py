@@ -25,12 +25,21 @@ class Attachment:
 
 
 @dataclass(frozen=True)
+class ScriptSegment:
+    event: str
+    ir_offset: int
+    file_offset: int
+    size: int
+
+
+@dataclass(frozen=True)
 class ScriptCorpus:
     profile_id: str
-    source_offset: int
+    source_offset: int | None
     ir: ScriptIR
     family: str = ''
     attachments: tuple[Attachment, ...] = ()
+    segments: tuple[ScriptSegment, ...] = ()
 
     @property
     def instruction_count(self):
@@ -102,7 +111,10 @@ def script_families(path, catalog) -> tuple[str, ...]:
     identification = identify_rom(path, catalog)
     profile = capability.require(identification, capability.Capability.SCRIPTS,
                                  subsystem='script access')
-    return tuple(family.family for family in profile.scripts)
+    from .data.placement_contracts import CONTRACTS
+    from .placement_events import FAMILY
+    return (tuple(family.family for family in profile.scripts) +
+            ((FAMILY,) if profile.id in CONTRACTS else ()))
 
 
 def load_scripts(path, catalog, family: str | None = None) -> ScriptCorpus:
@@ -110,6 +122,10 @@ def load_scripts(path, catalog, family: str | None = None) -> ScriptCorpus:
     profile = capability.require(identification, capability.Capability.SCRIPTS,
                                  subsystem='script access')
     declared = profile.scripts
+    from .placement_events import FAMILY, PlacementEvents
+    if family == FAMILY:
+        from .maps import load_maps
+        return PlacementEvents(load_maps(path, catalog)).corpus()
     if family is None:
         layout = declared[0]
     else:

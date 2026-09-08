@@ -143,9 +143,9 @@ def test_the_rejected_candidate_has_no_owner_at_all(rom):
 # --------------------------------------------------------------------------
 
 def test_both_families_are_declared_and_stay_separate(rom):
-    """One VM, two owners, two corpora - merging them would lose the ownership."""
+    """The historical families stay separate when the owned placement family joins."""
     catalog = RomProfileCatalog.load('config/roms.yaml')
-    assert script_families(rom, catalog) == ('static40', 'item_use')
+    assert script_families(rom, catalog) == ('static40', 'item_use', 'placement_descriptor_event')
     static40 = load_scripts(rom, catalog, 'static40')
     item_use = load_scripts(rom, catalog, 'item_use')
     assert static40.ir.opcode_set is item_use.ir.opcode_set

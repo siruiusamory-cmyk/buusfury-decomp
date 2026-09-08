@@ -223,6 +223,7 @@ class StatProject:
     maps: dict[int, dict[str, Any]] = field(default_factory=dict)
     # Optional v1 read-only relationship catalog. Missing keeps old projects valid.
     placement_types: dict[str, Any] | None = None
+    placement_events: dict[str, Any] | None = None
 
 
 # --- helpers -------------------------------------------------------------
@@ -385,6 +386,7 @@ def _map_document(maps: list[dict[str, Any]]) -> dict[str, Any]:
                     "position_low": item["position_low"],
                     "position_high": item["position_high"],
                     "raw": item["raw"].hex(),
+                    **{key: item[key] for key in ('descriptor', 'child_count', 'child_pointers_raw', 'record_size') if key in item},
                 }
                 for item in sorted(placements, key=lambda item: item["index"])
             }
@@ -698,7 +700,28 @@ def _read_maps(path: Path) -> dict[int, dict[str, Any]]:
                     raise ProjectValidationError(
                         f"{path}: {item_label}.raw is not valid hex: {exc}"
                     ) from exc
-                unknown = set(item) - {"position_low", "position_high", "raw"}
+                structural = {'descriptor', 'child_count', 'child_pointers_raw', 'record_size'}
+                if structural & set(item):
+                    if not structural <= set(item):
+                        raise ProjectValidationError(f'{item_label}: incomplete placement structure')
+                    children = item['child_pointers_raw']
+                    if (not isinstance(item['descriptor'], str) or not item['descriptor'] or
+                            not isinstance(children, list) or
+                            any(type(v) is not int or not 0 <= v <= 0xFFFFFFFF for v in children) or
+                            type(item['child_count']) is not int or
+                            item['child_count'] != len(children) or
+                            type(item['record_size']) is not int):
+                        raise ProjectValidationError(f'{item_label}: malformed child array or descriptor')
+                    from ..formats.map_placements import PlacementRecord, MapPlacementError
+                    try:
+                        decoded = PlacementRecord.from_bytes(placement['raw'])
+                    except MapPlacementError as exc:
+                        raise ProjectValidationError(f'{item_label}: {exc}') from exc
+                    if (tuple(children) != decoded.child_pointers_raw or
+                            item['record_size'] != decoded.consumed_length):
+                        raise ProjectValidationError(f'{item_label}: structural values differ from raw record')
+                    placement.update({key: item[key] for key in structural})
+                unknown = set(item) - {'position_low', 'position_high', 'raw'} - structural
                 if unknown:
                     joined = ", ".join(sorted(unknown))
                     raise ProjectLoadError(
@@ -772,12 +795,24 @@ def read_project(directory: str | Path) -> StatProject:
     strings = _read_strings(root / _TEXT_FILE)
     maps = _read_maps(root / _MAP_FILE)
 
+    events_path = root / 'events/placement_descriptors.json'
+    events = None
+    if events_path.exists():
+        import json
+        try:
+            events = json.loads(events_path.read_text(encoding='utf-8'))
+        except (ValueError, OSError) as exc:
+            raise ProjectLoadError(f'{events_path}: invalid descriptor/event catalog: {exc}') from exc
+        if not isinstance(events, dict):
+            raise ProjectLoadError(f'{events_path}: descriptor/event catalog must be an object')
+
     return StatProject(
         meta=meta,
         enemies=enemies,
         characters=characters,
         strings=strings,
         maps=maps,
+        placement_events=events,
         placement_types=(_read_document(root / PLACEMENT_TYPES_FILE)
                          if (root / PLACEMENT_TYPES_FILE).exists() else None),
     )

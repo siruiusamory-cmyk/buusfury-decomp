@@ -1,5 +1,9 @@
 # Buu's Fury map-linked placement records
 
+TOOLKIT-017 implementation and corrected full-corpus accounting:
+[variable-length codec, descriptors, attachments and stable IDs](PLACEMENT_CODEC.md).
+The TOOLKIT-008 measurements below retain their historical legacy-subset meaning.
+
 TOOLKIT-008 evidence. Every count here was measured against the canonical Buu's
 Fury image (SHA-256 `940ad5f0...f059e`) by reading it; none is inherited from a
 prior ticket's summary or from an upstream project.

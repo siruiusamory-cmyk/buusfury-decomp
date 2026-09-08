@@ -209,7 +209,7 @@ def test_walk_reaches_every_verified_placement_and_loses_none(data):
     reaches all 1,295 and adds 147 records the tail requirement truncated.
     """
     maps = load_maps("roms/Dragon Ball Z - Buu's Fury (U).gba", load_catalog(None))
-    verified = {ROM_BASE + e.file_offset for e in maps.placements()}
+    verified = {ROM_BASE + e.file_offset for e in maps.legacy_placements()}
     assert len(verified) == VERIFIED_PLACEMENTS
 
     reached = {r for _, rs in _walk(data).values() for r in rs}
@@ -228,7 +228,7 @@ def test_both_placement_counts_stay_meaningful(data):
     and the shared null descriptor, which is why the old codec saw a constant.
     """
     maps = load_maps("roms/Dragon Ball Z - Buu's Fury (U).gba", load_catalog(None))
-    verified = {ROM_BASE + e.file_offset for e in maps.placements()}
+    verified = {ROM_BASE + e.file_offset for e in maps.legacy_placements()}
     reached = {r for _, rs in _walk(data).values() for r in rs}
 
     assert len(verified) == VERIFIED_PLACEMENTS
@@ -240,13 +240,11 @@ def test_both_placement_counts_stay_meaningful(data):
         assert _u32(data, record + 0x14) == NULL_DESCRIPTOR
 
 
-def test_fixed_width_codec_cannot_yet_read_the_owned_records(data):
-    """The codec limit, pinned as a fact rather than left as prose.
+def test_owned_records_remain_outside_the_legacy_fixed_tail_shape(data):
+    """The historical fixed-tail restriction excluded every owned script record.
 
-    TOOLKIT-016 proves ownership; it deliberately does not widen the codec.
-    Every owned record is one the current fixed 32-byte reader refuses, which is
-    exactly why the subset is "proven" and not "wired". When a later ticket
-    teaches the codec `0x1C + 4n`, this is the test to update deliberately.
+    TOOLKIT-017 supports these through the variable-length path. This assertion
+    preserves the historical distinction rather than claiming a current limit.
     """
     from tools.webfoot.formats.map_placements import RECORD_TAIL
 
@@ -345,7 +343,7 @@ def test_owned_records_are_not_verified_placements(data):
     them cannot silently restate an existing capability.
     """
     maps = load_maps("roms/Dragon Ball Z - Buu's Fury (U).gba", load_catalog(None))
-    verified = {ROM_BASE + e.file_offset for e in maps.placements()}
+    verified = {ROM_BASE + e.file_offset for e in maps.legacy_placements()}
     assert not {record for _, record, _, _ in _owned(data)} & verified
 
 

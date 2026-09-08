@@ -66,6 +66,31 @@ def test_shared_type_and_map_traversal(types):
     assert three.identity.selector == 3
 
 
+def test_compact_graph_preserves_every_reference_and_shared_provenance(types):
+    doc = types.reference_document()
+    full = doc.to_json()
+    compact = doc.to_compact_json()
+    strings, proofs = compact['strings'], compact['provenance']
+    anchors = []
+    for ident, span, kind, owner, alignment, relocatable, proof in compact['anchors']:
+        anchors.append({'anchor':strings[ident], 'range':span, 'kind':strings[kind],
+                        'owner':strings[owner], 'alignment':alignment,
+                        'relocatable':relocatable, 'provenance':proofs[proof]})
+    refs = []
+    for source, target, delta, encoding, classification, proof, base, stride in compact['references']:
+        r = {'source_file_offset':source,'target_anchor':strings[target],'target_delta':delta,
+             'encoding':strings[encoding],'classification':strings[classification],
+             'provenance':proofs[proof]}
+        if base is not None:
+            r.update(index_base_file_offset=base,index_stride=stride)
+        refs.append(r)
+    assert anchors == full['anchors']
+    assert refs == full['references']
+    assert compact['retired'] == full['retired']
+    assert compact == doc.to_compact_json()
+    assert len(proofs) == 1
+
+
 def test_identity_stable_when_type_address_moves(types):
     item = types.types()[0]
     assert replace(item, file_offset=0x900).identity == item.identity

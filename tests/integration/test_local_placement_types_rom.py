@@ -33,13 +33,13 @@ def types():
 
 def test_complete_corpus_and_shared_distribution(types):
     summary = types.summary()
-    assert (summary['placement_count'], summary['map_count'], summary['type_count']) == (1295, 215, 101)
-    assert (summary['enemy_linked_placements'], summary['enemy_linked_types']) == (1284, 95)
+    assert (summary['placement_count'], summary['map_count'], summary['type_count']) == (1442, 240, 111)
+    assert (summary['enemy_linked_placements'], summary['enemy_linked_types']) == (1420, 105)
     assert summary['placements_per_type_distribution'][1] == 34
-    assert max(summary['placements_per_type_distribution']) == 69
-    assert sum(n*count for n,count in summary['placements_per_type_distribution'].items()) == 1295
-    assert len({p.identity for p in types.maps.placements()}) == 1295
-    assert sum(len(p.original_bytes) for p in types.maps.placements()) == 41440
+    assert max(summary['placements_per_type_distribution']) == 82
+    assert sum(n*count for n,count in summary['placements_per_type_distribution'].items()) == 1442
+    assert len({p.identity for p in types.maps.placements()}) == 1442
+    assert sum(len(p.original_bytes) for p in types.maps.placements()) == 46244
 
 
 def test_selector_factory_literal_and_exact_targets(types):
@@ -64,7 +64,7 @@ def test_enemy_link_proven_by_selected_record_not_numeric_adjacency(types):
 
 def test_outside_stat_extent_stays_reference_only(types):
     unknown = {t.identity.selector: len(t.placements) for t in types.types() if t.enemy_identity is None}
-    assert unknown == {141:1, 142:6, 146:1, 147:1, 148:1, 149:1}
+    assert unknown == {141:12, 142:6, 146:1, 147:1, 148:1, 149:1}
     assert all(t.original_bytes is None for t in types.types() if t.enemy_identity is None)
     assert types.profile.enemy_stats.count == 141
 
@@ -77,14 +77,14 @@ def test_exhaustive_existing_type_codec_roundtrip(types):
         raw = t.original_bytes
         assert encode_enemy_record(decode_enemy_record(raw, 0), raw) == raw
         total += len(raw)
-    assert total == 2660
+    assert total == 2940
 
 
 def test_common_graph_ownership_index_and_factory_links(types):
     doc = types.reference_document()
     indexed = [r for r in doc.references if r.encoding is ReferenceEncoding.INDEX_U32_LE]
-    assert len(indexed) == 1295
-    assert len(doc.references) == 4100  # 215 map arrays + 3 references per placement
+    assert len(indexed) == 1442
+    assert len(doc.references) > 240 + 3 * 1442  # descriptor/event/native edges now included
     for t in types.types():
         assert len(doc.inbound(AnchorId(str(t.identity)))) == len(t.placements)
     assert all(not a.relocatable for a in doc.anchors)

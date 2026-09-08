@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from bisect import bisect_right
 from io import BytesIO
 
 from .binary import BinaryAddressError, FileOffset
@@ -78,6 +79,9 @@ class RomDocument:
         for region in regions:
             region.range.validate(len(self.image))
         ordered = sorted(regions, key=lambda r: r.range.start.value)
+        anchor_by_id = {a.identity: a for a in self.anchors}
+        ordered_anchors = sorted(self.anchors, key=lambda a: a.range.start.value)
+        anchor_starts = [a.range.start.value for a in ordered_anchors]
         for left, right in zip(ordered, ordered[1:]):
             if left.range.overlaps(right.range):
                 raise LayoutError(f"overlapping ownership: {left.owner}, {right.owner}")
@@ -97,12 +101,20 @@ class RomDocument:
         for ref in refs:
             self._check_provenance(ref.provenance)
             ref.source_range.validate(len(self.image))
-            for anchor in self.anchors:
+            # Only the anchor containing the start and its successor can
+            # intersect a reference field; anchors are already disjoint.
+            at = max(0, bisect_right(anchor_starts, ref.source.value) - 1)
+            for anchor in ordered_anchors[at:at + 2]:
                 if ref.source_range.overlaps(anchor.range) and not (
                     anchor.range.contains(ref.source) and ref.source_range.end <= anchor.range.end
                 ):
                     raise LayoutError("reference field straddles anchor boundary")
-            expected = self.target_offset(ref)
+            target = anchor_by_id.get(ref.target)
+            if target is None:
+                raise LayoutError(f'unknown anchor {ref.target}')
+            if ref.target_delta >= target.range.size:
+                raise LayoutError('reference target outside anchor')
+            expected = FileOffset(target.range.start.value + ref.target_delta)
             raw = self.image[ref.source.value:ref.source_range.end]
             try:
                 actual = ref.decode_target(raw, len(self.image))
@@ -116,6 +128,46 @@ class RomDocument:
                 "anchors": [a.to_json() for a in sorted(self.anchors, key=lambda a: a.identity)],
                 "references": [r.to_json() for r in sorted(self.references, key=lambda r: r.source)],
                 "retired": [{"range": r.range.to_json(), "owner": r.owner} for r in self.retired]}
+
+    def to_compact_json(self) -> dict:
+        """Deterministic project snapshot with shared strings/provenance interned.
+
+        This is the same reference graph, stored as explicitly labelled tables.
+        Integer table indices are serialization references, not public identities.
+        """
+        expanded = self.to_json()
+        strings = set()
+        provenances = {}
+        for a in expanded['anchors']:
+            strings.update((a['anchor'], a['kind'], a['owner']))
+        for r in expanded['references']:
+            strings.update((r['target_anchor'], r['encoding'], r['classification']))
+        import json
+        for row in expanded['anchors'] + expanded['references']:
+            key = json.dumps(row['provenance'], sort_keys=True)
+            provenances[key] = row['provenance']
+        names = sorted(strings)
+        ids = {name:i for i,name in enumerate(names)}
+        proofs = sorted(provenances)
+        proof_ids = {key:i for i,key in enumerate(proofs)}
+        def proof(row):
+            return proof_ids[json.dumps(row['provenance'], sort_keys=True)]
+        return {
+            'schema': 1, 'profile_id': self.profile.id,
+            'strings': names, 'provenance': [provenances[k] for k in proofs],
+            'anchor_columns': ['id_string','range','kind_string','owner_string',
+                               'alignment','relocatable','provenance_index'],
+            'anchors': [[ids[a['anchor']],a['range'],ids[a['kind']],ids[a['owner']],
+                         a['alignment'],a['relocatable'],proof(a)] for a in expanded['anchors']],
+            'reference_columns': ['source_file_offset','target_string','target_delta',
+                                  'encoding_string','classification_string','provenance_index',
+                                  'index_base_file_offset','index_stride'],
+            'references': [[r['source_file_offset'],ids[r['target_anchor']],r['target_delta'],
+                            ids[r['encoding']],ids[r['classification']],proof(r),
+                            r.get('index_base_file_offset'),r.get('index_stride')]
+                           for r in expanded['references']],
+            'retired': expanded['retired'],
+        }
 
 
 def scan_pointer_candidates(document: RomDocument, scan_range: RomRange, *, stride: int = 4) -> tuple[Reference, ...]:

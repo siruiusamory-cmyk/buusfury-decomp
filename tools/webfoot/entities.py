@@ -210,7 +210,12 @@ class PlacementTypes:
                 ref(p.file_offset + 8, str(self.type_of(p.identity).identity),
                     ReferenceEncoding.INDEX_U32_LE, index_base=FileOffset(self.table_offset),
                     index_stride=self.layout.stride)
-        return RomDocument.from_bytes(image, self.profile, anchors=tuple(anchors), references=tuple(refs))
+        document = RomDocument.from_bytes(image, self.profile, anchors=tuple(anchors), references=tuple(refs))
+        from .data.placement_contracts import CONTRACTS
+        if self.profile.id in CONTRACTS:
+            from .placement_events import PlacementEvents
+            document = PlacementEvents(self.maps).extend_references(document)
+        return document
 
 
 def load_placement_types(path, catalog) -> PlacementTypes:

@@ -251,7 +251,7 @@ def _resolve_slot_extent(
     entry: MapEntry,
     image_size: int,
     table_range: tuple[int, int],
-    placement_offsets: frozenset[int] = frozenset(),
+    placement_offsets: tuple[tuple[int, int], ...] = (),
 ) -> tuple[int, int] | None:
     """This entry's readable slot extent as `(file_offset, size)`, or None.
 
@@ -284,11 +284,10 @@ def _resolve_slot_extent(
     * Two slots in the corpus were classified TYPED purely because a record's
       tail constants happen to satisfy the `{type, source_ref}` shape test.
 
-    The placement reading is preferred over the slot reading here because it
-    rests on a stronger witness: an eight-word record whose leading factory word
-    and three trailing constants all match, 1,295 times, versus a count byte
-    that `docs/research/MAP_FORMAT.md` records as UNKNOWN in meaning and that
-    matches nothing else in the record.
+    That TOOLKIT-008 decision used the legacy fixed-tail subset (1,295).
+    TOOLKIT-017 protects the full variable-length record extents, descriptors
+    and owned scripts. Four additional opaque extents are refused; the typed
+    subset is unchanged. See PLACEMENT_CODEC.md for corrected accounting.
 
     The extent is refused rather than truncated. Truncating would keep whatever
     prefix precedes the first record, and 33 of the 40 cannot be cut on a slot
@@ -307,8 +306,8 @@ def _resolve_slot_extent(
     table_start, table_end = table_range
     if offset < table_end and table_start < offset + size:
         return None
-    for record_offset in placement_offsets:
-        if offset < record_offset + mp.PLACEMENT_SIZE and record_offset < offset + size:
+    for record_offset, record_size in placement_offsets:
+        if offset < record_offset + record_size and record_offset < offset + size:
             return None
     return offset, size
 
@@ -319,14 +318,14 @@ def _resolve_placements(
     table_range: tuple[int, int],
     claimed: dict[int, int],
     entry_index: int,
+    declared_run: tuple[int, int] | None = None,
 ) -> tuple[int, ...]:
     """File offsets of the placement records this map owns, in array order.
 
-    TOOLKIT-008. The array is located by `scripts_pointer_raw` (`+0x14`) and
-    bounded by walking, never by `script_count_raw` (`+0x05`): measured across
-    the canonical image, the declared count equals the reachable length for only
-    2 of the 215 maps that reach any record, 212 declare a smaller count - most
-    of them zero - and 1 declares a larger one. What `+0x05` counts is UNKNOWN.
+    The array is located by `scripts_pointer_raw` (`+0x14`). TOOLKIT-017 uses
+    trusted profile run counts, never `script_count_raw` (`+0x05`). Historical
+    TOOLKIT-008 walking covered 215 maps; only two declared counts matched that
+    legacy subset. What `+0x05` counts remains UNKNOWN.
 
     That the placement array hangs off the field upstream named "scripts" is an
     observation about where the pointer lives, not a claim that these records
@@ -339,7 +338,7 @@ def _resolve_placements(
     consumes the table indexing it is not that structure.
 
     Exclusive ownership is a MEASURED property of the canonical image - walking
-    all 452 maps reaches 1,295 records with none claimed twice - so a second
+    all 452 maps reaches 1,442 records with none claimed twice - so a second
     claim is raised rather than skipped. Dropping it silently would give the
     caller a shorter array with no indication that the walk had left the extent
     it believed it was reading.
@@ -352,7 +351,10 @@ def _resolve_placements(
     except BinaryAddressError:
         return ()
 
-    offsets = mp.iter_placement_offsets(image, array_offset)
+    if declared_run is not None and pointer != declared_run[0]:
+        raise MapError('placement run pointer differs from trusted provenance')
+    offsets = mp.iter_placement_offsets(image, array_offset,
+                                       count=None if declared_run is None else declared_run[1])
     if not offsets:
         return ()
 
@@ -363,8 +365,8 @@ def _resolve_placements(
 
     accepted: list[int] = []
     for offset in offsets:
-        if offset < table_end and table_start < offset + mp.PLACEMENT_SIZE:
-            continue
+        if offset < table_end and table_start < offset + mp.read_placement_record(image, offset).consumed_length:
+            raise MapError("placement overlaps map table")
         owner = claimed.get(offset)
         if owner is not None:
             raise MapError(
@@ -443,11 +445,39 @@ class Maps:
         for identity in self._placement_order:
             yield self._placement_entry(identity)
 
+    def legacy_view(self):
+        """Explicit TOOLKIT-008 project compatibility; no new production ceiling."""
+        placements = self.legacy_placements()
+        extents = tuple((p.file_offset, len(p.original_bytes)) for p in placements)
+        start = min(e.file_offset for e in self.entries())
+        end = max(e.file_offset + len(e.original_bytes) for e in self.entries())
+        arrays = []
+        for e in self.entries():
+            extent = _resolve_slot_extent(e.record, len(self.base_bytes), (start, end), extents)
+            if extent is not None:
+                offset, size = extent
+                arrays.append(SlotArrayEntry(e.identity, ms.decode_slot_array(
+                    self.base_bytes[offset:offset + size], entry_index=e.identity.index,
+                    file_offset=offset, image_size=len(self.base_bytes))))
+        return Maps(identification=self.identification, profile=self.profile,
+                    entries=tuple(self.entries()), arrays=tuple(arrays),
+                    placements=placements, base_bytes=self.base_bytes)
+
+    def legacy_placements(self) -> tuple[PlacementEntry, ...]:
+        """Exact TOOLKIT-008 prefixes, not every full-census record with old shape."""
+        result = []
+        for entry in self.entries():
+            for p in self.map_placements(entry.identity):
+                if not mp.is_legacy_placement_record(p.original_bytes, 0):
+                    break
+                result.append(p)
+        return tuple(result)
+
     def map_placements(self, identity: MapIdentity) -> tuple[PlacementEntry, ...]:
         """Every placement this map owns, in array order. Possibly empty.
 
         Ownership is exclusive by measurement: walking all 452 maps reaches
-        1,295 records with none claimed twice, so a placement belongs to exactly
+        1,442 records with none claimed twice, so a placement belongs to exactly
         one map and this never needs to report a shared record.
         """
         return tuple(
@@ -549,10 +579,9 @@ class Maps:
         matches the single CONFIRMED bounds structure in this project, and that
         correspondence is not established for this record family.
 
-        Only `position_raw` is editable. The factory word and the three tail
-        constants are what identify the family, and `flags_raw`, `type_raw` and
-        `id_raw` have UNKNOWN semantics, so editing any of them would be writing
-        a value this toolkit cannot validate.
+        Only `position_raw` is editable here. Descriptor and child relations are
+        read-only; their counts and pointers cannot grow or be reassigned.
+        Flags and IDs retain UNKNOWN semantics. Type reassignment is unsupported.
         """
         entry = self.placement(identity)
         self._placement_edits[identity] = entry.record.with_position(low, high)
@@ -699,11 +728,15 @@ def load_maps(path: str | Path, catalog: RomProfileCatalog) -> Maps:
     entries: list[MapEntryEntry] = []
     arrays: list[SlotArrayEntry] = []
     placements: list[PlacementEntry] = []
-    #: Guards the exclusivity the corpus measurement showed: 1,295 reachable
+    #: Guards the exclusivity the full corpus measurement showed: 1,442 reachable
     #: records, none claimed by two maps. A second claim raises rather than
     #: being dropped, because giving one record two owners would make
     #: `plan_changes` emit overlapping writes for the same bytes.
     claimed_placements: dict[int, int] = {}
+    from .data.placement_contracts import CONTRACTS
+    contract = CONTRACTS.get(profile.id)
+    if contract is not None and contract['sha256'] != identification.hashes.sha256:
+        raise MapError('placement contract provenance mismatch')
 
     #: Placements are resolved for EVERY map before any slot extent, because a
     #: slot extent is only accepted once it is known to cover no record, and a
@@ -716,7 +749,9 @@ def load_maps(path: str | Path, catalog: RomProfileCatalog) -> Maps:
         offset = table_offset + index * MAP_ENTRY_SIZE
         record = MapEntry.from_bytes(image[offset : offset + MAP_ENTRY_SIZE])
         for placement_index, record_offset in enumerate(
-            _resolve_placements(record, image, table_range, claimed_placements, index)
+            _resolve_placements(record, image, table_range, claimed_placements, index,
+                                None if contract is None else
+                                contract['runs'].get(index, (record.scripts_pointer_raw, 0)))
         ):
             placements.append(
                 PlacementEntry(
@@ -724,11 +759,27 @@ def load_maps(path: str | Path, catalog: RomProfileCatalog) -> Maps:
                     record=mp.read_placement_record(image, record_offset),
                     file_offset=record_offset,
                     original_bytes=image[
-                        record_offset : record_offset + mp.PLACEMENT_SIZE
+                        record_offset : record_offset + mp.read_placement_record(image, record_offset).consumed_length
                     ],
                 )
             )
-    placement_offsets = frozenset(item.file_offset for item in placements)
+    placement_offsets = tuple((item.file_offset, len(item.original_bytes)) for item in placements)
+    bodies = sorted((offset, offset + size) for offset, size in placement_offsets)
+    if any(a[1] > b[0] for a, b in zip(bodies, bodies[1:])):
+        raise MapError('overlapping placement record bodies across maps')
+    runs = sorted((GbaRomAddress(ptr).to_file_offset(len(image)), count * 4)
+                  for ptr, count in contract['runs'].values()) if contract else []
+    if any(a + n > b for (a, n), (b, _) in zip(runs, runs[1:])):
+        raise MapError('overlapping placement pointer runs')
+    if any(a < end and start < a + n for a, n in runs for start, end in bodies):
+        raise MapError('placement run overlaps a record body')
+
+    protected_extents = placement_offsets
+    if contract is not None:
+        protected_extents += tuple((GbaRomAddress(ptr).to_file_offset(len(image)), 8)
+                                   for ptr in contract['descriptors'])
+        protected_extents += tuple((GbaRomAddress(ptr).to_file_offset(len(image)), size)
+                                   for ptr, size in contract['roots'])
 
     for index in range(table_profile.count):
         offset = table_offset + index * MAP_ENTRY_SIZE
@@ -745,7 +796,7 @@ def load_maps(path: str | Path, catalog: RomProfileCatalog) -> Maps:
         )
 
         extent = _resolve_slot_extent(
-            record, len(image), table_range, placement_offsets
+            record, len(image), table_range, protected_extents
         )
         if extent is None:
             continue
@@ -762,7 +813,7 @@ def load_maps(path: str | Path, catalog: RomProfileCatalog) -> Maps:
             )
         )
 
-    return Maps(
+    result = Maps(
         identification=identification,
         profile=profile,
         entries=tuple(entries),
@@ -770,3 +821,8 @@ def load_maps(path: str | Path, catalog: RomProfileCatalog) -> Maps:
         placements=tuple(placements),
         base_bytes=image,
     )
+
+    if contract is not None:
+        from .placement_events import PlacementEvents
+        PlacementEvents(result)  # Validate descriptor/child provenance on normal map reads.
+    return result

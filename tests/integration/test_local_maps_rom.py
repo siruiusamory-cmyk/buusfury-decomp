@@ -48,16 +48,18 @@ MAP_RECORD_COUNT = 452
 #:
 #: The typed corpus is UNCHANGED at 35 arrays / 89 slots: every refused extent
 #: was opaque, so TOOLKIT-007's typed rung and connection graph stand as proven.
-SLOT_ARRAY_COUNT = 112
-SLOT_COUNT = 596
-SLOT_BYTES = 4768
+# TOOLKIT-017: three more opaque extents overlap placements; one overlaps a descriptor.
+# Legacy values remain pinned by test_toolkit017_rom.py.
+SLOT_ARRAY_COUNT = 108
+SLOT_COUNT = 556
+SLOT_BYTES = 4448
 TYPED_ARRAY_COUNT = 35
 TYPED_SLOT_COUNT = 89
 
 #: TOOLKIT-008. The factory-led placement corpus, measured from the same image.
-PLACEMENT_COUNT = 1295
-PLACEMENT_MAP_COUNT = 215
-PLACEMENT_BYTES = 41440
+PLACEMENT_COUNT = 1442
+PLACEMENT_MAP_COUNT = 240
+PLACEMENT_BYTES = 46244
 
 #: The one instance whose referenced structure `AUTO_RE_<local-state-name>:314` verifies.
 CONFIRMED_MAP = 39

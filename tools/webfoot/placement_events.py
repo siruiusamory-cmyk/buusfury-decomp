@@ -9,6 +9,7 @@ from .binary import FileOffset, GbaRomAddress
 from .data.placement_contracts import CONTRACTS
 from .formats.map_placements import DescriptorRecord, HANDLERS, SCRIPT_DISPATCH_HANDLER
 from .formats import placement_links as links
+from .data.script_specs import OPCODE_SETS
 from .formats.script_vm import Entry, disassemble, assemble, ScriptError
 from .layout import Anchor, AnchorId, Provenance, Reference, ReferenceClass, ReferenceEncoding, RomRange
 from .write import ByteChange
@@ -91,6 +92,39 @@ class PlacementEvents:
         return links.operand_references(corpus.ir, corpus.segments,
                                         self.contract['event_resource'],
                                         self.contract['save_flag'])
+
+    def resource_records(self):
+        """Every event-resource record, tiled exactly from the pointer table."""
+        return links.event_resource_records(self.maps.base_bytes,
+                                            self.contract['event_resource'])
+
+    def resource_show(self, index):
+        """Structural view of one record, plus its code block when readable.
+
+        Gameplay meaning stays UNKNOWN. The engine's own assertion string calls
+        these dialogs, so the field is named for the branch the consumer takes,
+        not for anything observed on screen.
+        """
+        records = self.resource_records()
+        if not 0 <= int(index) < len(records):
+            raise ScriptError(f'unknown event resource index {index}')
+        record = records[int(index)]
+        spec = OPCODE_SETS[self.contract['encoding']]
+        block = links.dialog_code_block(self.maps.base_bytes, record, spec)
+        view = {'identity': f'event_resource:{record.index:04d}',
+                'slot_file_offset': record.slot_offset,
+                'record_file_offset': record.start,
+                'record_end_file_offset': record.end,
+                'record_size': record.size,
+                'dialog_file_offset': record.dialog_offset,
+                'dialog_type': record.dialog_type,
+                'supported': record.supported}
+        if block is not None:
+            start, raw, ir = block
+            view['code_file_offset'] = start
+            view['code_size'] = len(raw)
+            view['instructions'] = sum(len(b.instructions) for b in ir.blocks)
+        return view
 
     def consumers_of(self, kind, index):
         """Reverse traversal: which events, placements and maps reach a resource."""

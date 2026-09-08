@@ -7,6 +7,7 @@ from dataclasses import dataclass
 import struct
 from ..binary import GbaRomAddress
 from .map_placements import DescriptorRecord, MapPlacementLengthError
+from .script_vm import Entry, assemble, decode_instruction, disassemble
 
 
 def descriptor_at(image, pointer):
@@ -163,3 +164,128 @@ def operand_references(ir, segments, resource, save_flag):
                     len(operand.encoding), operand.value,
                     save_flag['consumers'][slot]))
     return tuple(sorted(found, key=lambda r: (r.kind, r.event, r.ir_offset)))
+
+
+@dataclass(frozen=True)
+class EventResourceRecord:
+    """One physical entry of the event-resource pointer table.
+
+    `start`/`end` are the record's own tiled extent. `dialog_pointer_raw` is the
+    record's first word, which the consumer dereferences before doing anything
+    else; `dialog_type` is the byte the consumer then reads from that target and
+    branches on. Naming follows the engine's own assertion text, not a guess.
+    """
+    index: int
+    slot_offset: int
+    pointer_raw: int
+    start: int
+    end: int
+    dialog_pointer_raw: int
+    dialog_offset: int
+    dialog_type: int
+
+    @property
+    def size(self):
+        return self.end - self.start
+
+    @property
+    def supported(self):
+        """Only a type-0 dialog exposes its code block directly in ROM.
+
+        Type 4 is real and handled by the engine, but its block is expanded at
+        runtime by a routine relocated into IWRAM, so ROM bytes alone cannot
+        reproduce it. Everything else hits the engine's own assertion.
+        """
+        return self.dialog_type == DIALOG_TYPE_CODE_BLOCK
+
+
+#: The consumer reads this byte and branches on it (0x080040BA..0x080040C2).
+DIALOG_TYPE_CODE_BLOCK = 0
+DIALOG_TYPE_PACKED = 4
+#: Type 0 runs the block starting three bytes into the dialog (0x080040EA).
+DIALOG_CODE_OFFSET = 3
+
+
+def event_resource_records(image, resource):
+    """Tile the whole pointer table into exact, non-overlapping records.
+
+    The table is the authority for both bounds: record i runs to the start of
+    record i+1, and the last record runs to the table itself. That the result
+    tiles the pool exhaustively is asserted, never assumed.
+    """
+    table = GbaRomAddress(resource['table']).to_file_offset(len(image))
+    count = resource['count']
+    pool = GbaRomAddress(resource['pool_start']).to_file_offset(len(image))
+    if table + 4 * count > len(image):
+        raise ValueError('event resource table outside image')
+    raw = [struct.unpack_from('<I', image, table + 4 * i)[0] for i in range(count)]
+    starts = []
+    for pointer in raw:
+        offset = GbaRomAddress(pointer).to_file_offset(len(image))
+        if not pool <= offset < table:
+            raise ValueError('event resource record outside declared pool')
+        starts.append(offset)
+    if any(starts[i] >= starts[i + 1] for i in range(count - 1)):
+        raise ValueError('event resource table is not strictly ascending')
+    if starts[0] != pool:
+        raise ValueError('event resource pool does not start at the first record')
+    records = []
+    for i, start in enumerate(starts):
+        end = starts[i + 1] if i + 1 < count else table
+        dialog_raw = struct.unpack_from('<I', image, start)[0]
+        # Every record in the canonical image resolves here, record 0 included:
+        # its dialog sits just below the pool rather than inside it, which the
+        # dialog_offset makes visible instead of hiding behind a sentinel.
+        dialog = GbaRomAddress(dialog_raw).to_file_offset(len(image))
+        dialog_type = image[dialog + 2]
+        records.append(EventResourceRecord(i, table + 4 * i, raw[i], start, end,
+                                           dialog_raw, dialog, dialog_type))
+    if sum(r.size for r in records) != table - pool:
+        raise ValueError('event resource records do not tile the pool exhaustively')
+    return tuple(records)
+
+
+def dialog_code_block(image, record, spec):
+    """Exact ROM extent of a type-0 dialog's code block, or None.
+
+    The extent is not searched for. Every reachable path is walked from the
+    entry the consumer uses, one instruction at a time. A terminate ends a path
+    but not necessarily the block: a forward branch may legitimately jump over
+    a terminate, so the extent is the furthest byte any path reaches. The walk
+    is then required to round-trip, which is what actually pins it.
+    """
+    if not record.supported:
+        return None
+    start = record.dialog_offset + DIALOG_CODE_OFFSET
+    limit = min(len(image), record.start)
+    # decode_instruction owns operand widths, both branch bases and the sign of
+    # a count_back displacement. Re-deriving any of that here would be a second
+    # implementation of the VM that could drift from the real one.
+    window = image[start:limit]
+    end, seen, pending = 0, set(), [0]
+    while pending:
+        pos = pending.pop()
+        while 0 <= pos < len(window) and pos not in seen:
+            seen.add(pos)
+            ins = decode_instruction(window, pos, spec)
+            after = pos + ins.encoded_length
+            if ins.target is not None:
+                if not 0 <= ins.target <= len(window):
+                    raise ValueError('dialog branch leaves the record')
+                pending.append(ins.target)
+                end = max(end, ins.target)
+            end = max(end, after)
+            if spec.lookup(ins.opcode).flow == 'stop':
+                break
+            pos = after
+    if end <= 0:
+        raise ValueError('dialog code block is empty')
+    raw = image[start:start + end]
+    ir = disassemble(raw, (Entry('dialog', 0),), spec)
+    # Opaque bytes are tolerated here, unlike in the map-scene corpus, because
+    # a block may branch over a terminate that no path falls through to. Such a
+    # byte is real code the walk already bounded, so exact re-encoding is the
+    # guarantee that matters; a byte that did not re-encode would still fail.
+    if assemble(ir) != raw:
+        raise ValueError('dialog code block does not round-trip')
+    return start, raw, ir

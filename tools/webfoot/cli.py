@@ -115,9 +115,12 @@ def build_parser() -> argparse.ArgumentParser:
     # selects; `consumers-of` answers the reverse, which is the practically
     # useful direction: where in the game is this resource used. There is no
     # text query here because no map-scene event-to-text edge exists.
+    # TOOLKIT-019 adds `resource-show`: the record's exact extent and the
+    # engine's own dialog type. Read-only, like every verb above it.
     for command in ("summary", "list", "show", "validate-round-trip",
                     "families", "attachments", "for-owner", "owners-of", "for-map",
-                    "for-placement", "references", "consumers-of"):
+                    "for-placement", "references", "consumers-of",
+                    "resource-show"):
         child = event_commands.add_parser(command)
         child.add_argument("rom", type=Path)
         if command == "show":
@@ -126,6 +129,9 @@ def build_parser() -> argparse.ArgumentParser:
             child.add_argument("owner", help="owner identity, e.g. item:0000")
         if command == "owners-of":
             child.add_argument("identity", help="entry identity from `event list`")
+        if command == "resource-show":
+            child.add_argument("resource",
+                               help="resource identity, e.g. event_resource:0508")
         if command == "consumers-of":
             child.add_argument("resource",
                                help="resource identity, e.g. event_resource:0508 "
@@ -1306,7 +1312,8 @@ def _run_event(args) -> int:
             print(json.dumps(list(script_families(args.rom, catalog)),
                              sort_keys=True, indent=2))
             return 0
-        if command in ('for-map', 'for-placement', 'references', 'consumers-of'):
+        if command in ('for-map', 'for-placement', 'references', 'consumers-of',
+                       'resource-show'):
             from .placement_events import PlacementEvents
             from .maps import load_maps
             relationships = PlacementEvents(load_maps(args.rom, catalog))
@@ -1320,6 +1327,11 @@ def _run_event(args) -> int:
                            'access': r.access, 'source_file_offset': r.source,
                            'encoded_length': r.encoded_length}
                           for r in relationships.operand_references()]
+            elif command == 'resource-show':
+                kind, _, index = args.resource.rpartition(':')
+                if kind != 'event_resource' or not index.isdigit():
+                    raise ValueError(f"unknown resource identity {args.resource!r}")
+                result = relationships.resource_show(int(index))
             else:
                 kind, _, index = args.resource.rpartition(':')
                 if kind not in ('event_resource', 'save_flag') or not index.isdigit():

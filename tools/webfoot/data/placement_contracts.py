@@ -23,6 +23,20 @@ CONTRACTS = {'buus_fury_usa_rev0_01c1707f': {'encoding': 'stack_be16_buu_v1',
                                                          '0x08003118 and indexes it at 0x0800311C; '
                                                          'handler 0x0800327E does the same at '
                                                          '0x080032B0',
+                                             # TOOLKIT-019 docs/research/BUU_EVENT_RESOURCE.md.
+                                             # A record's first word is dereferenced by the
+                                             # consumer, which then branches on the byte at +0x02
+                                             # of that target (0x080040BA..0x080040C2). Type 0 runs
+                                             # a code block three bytes in; type 4 expands through
+                                             # a routine relocated into IWRAM and is unsupported.
+                                             # The engine's own assertion at 0x08004098 names these
+                                             # structures: "Expected dialog to start with a code
+                                             # block", T:\Source\ByteCodeInterpreter\
+                                             # ByteCodeInterpreter.cpp line 60. The block is a
+                                             # script for the VM above, not a second format: the
+                                             # dispatch table at 0x080554C0 holds exactly the
+                                             # handlers already declared in script_specs.
+                                             'record_evidence': 'docs/research/BUU_EVENT_RESOURCE.md',
                                          },
                                          # Slot 29 pops one value into a bitfield SET at
                                          # 0x08004380: byte = operand >> 3, bit = operand & 7.

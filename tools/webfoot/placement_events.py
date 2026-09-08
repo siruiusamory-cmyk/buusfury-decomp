@@ -79,6 +79,28 @@ class PlacementEvents:
         except KeyError:
             raise ScriptError(f'unknown owned placement {placement}') from None
 
+    def operand_references(self):
+        """Operands proven to select a stable resource; see TOOLKIT-018.
+
+        No map-scene event reference to text is emitted. The strongest text
+        candidates were traced to their consumers and refuted, so a numeric
+        resemblance to the text table can never produce an edge here.
+        Gameplay semantics of both resource classes remain UNKNOWN.
+        """
+        corpus = self.corpus()
+        return links.operand_references(corpus.ir, corpus.segments,
+                                        self.contract['event_resource'],
+                                        self.contract['save_flag'])
+
+    def consumers_of(self, kind, index):
+        """Reverse traversal: which events, placements and maps reach a resource."""
+        events = tuple(sorted({r.event for r in self.operand_references()
+                               if r.kind == kind and r.index == int(index)}))
+        placements = tuple(sorted({p for d in self.descriptors
+                                   if d.event in events for p in d.placements}))
+        return {'events': events, 'placements': placements,
+                'maps': tuple(sorted({p.split('/')[0] for p in placements}))}
+
     def events_for_map(self, identity):
         return tuple(sorted({self.descriptor_of(p.identity).event
                              for p in self.maps.map_placements(identity)
@@ -122,6 +144,20 @@ class PlacementEvents:
             'events': {e.identity: {'raw': e.original_bytes.hex(),
                                    'extent': len(e.original_bytes)} for e in self.events},
             'instruction_count': corpus.instruction_count,
+            # Supplemental and derived: the raw event bytes above stay
+            # authoritative. Several references per event are preserved
+            # individually, keyed by instruction provenance, never collapsed
+            # into one field per event.
+            'operand_references': [{
+                'kind': r.kind,
+                'event': r.event,
+                'block': r.block,
+                'ir_offset': r.ir_offset,
+                'source': r.source,
+                'encoded_length': r.encoded_length,
+                'index': r.index,
+                'access': r.access,
+            } for r in self.operand_references()],
         }
 
     def changes(self):
@@ -173,5 +209,19 @@ class PlacementEvents:
             refs.append(Reference(FileOffset(call.source), AnchorId(key), 0,
                                   ReferenceEncoding.INDEX_U8, ReferenceClass.CONFIRMED_REFERENCE,
                                   prov, FileOffset(call.table), 4))
+        # TOOLKIT-018. Each referenced resource slot is a real, protectable ROM
+        # object, so it earns an anchor, named structurally because the record's
+        # meaning is UNKNOWN. A save flag gets no anchor: it lives in a runtime
+        # bitfield, not in the ROM. The operand edges themselves are NOT graph
+        # references either - an operand is a variable-width big-endian
+        # signed-magnitude varint, while every ReferenceEncoding is fixed-width
+        # little-endian, so the graph could not decode the field back. Those
+        # edges live in operand_references(), which keeps exact provenance.
+        resource = self.contract['event_resource']
+        table = GbaRomAddress(resource['table']).to_file_offset(len(document.image))
+        for index in sorted({r.index for r in self.operand_references()
+                             if r.kind == 'event_resource'}):
+            anchor(f'event_resource:{index:04d}', table + 4 * index, 4,
+                   'event_resource_slot', 4)
         return RomDocument.from_bytes(document.image, document.profile,
                                       anchors=tuple(anchors), references=tuple(refs))

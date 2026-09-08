@@ -8,6 +8,32 @@ CONTRACTS = {'buus_fury_usa_rev0_01c1707f': {'encoding': 'stack_be16_buu_v1',
                                          'native_evidence': 'docs/research/BUU_SCRIPT_VM.md:49,64-65',
                                          'native_table': 0x08055098,
                                          'native_opcodes': (2, 3),
+                                         # TOOLKIT-018 docs/research/BUU_MAP_EVENT_REFERENCES.md.
+                                         # Both consumers pop their table index LAST, so it is the
+                                         # value pushed FIRST. Read from the handlers, never assumed
+                                         # from operand position. The mapped value is how many
+                                         # values the handler pops; the index sits at the bottom.
+                                         'event_resource': {
+                                             'table': 0x0879B704,
+                                             'count': 522,
+                                             'pool_start': 0x0877C5A4,
+                                             'consumers': {182: 2, 216: 3},
+                                             'evidence': 'docs/research/BUU_MAP_EVENT_REFERENCES.md; '
+                                                         'handler 0x080030F8 loads 0x0879B704 at '
+                                                         '0x08003118 and indexes it at 0x0800311C; '
+                                                         'handler 0x0800327E does the same at '
+                                                         '0x080032B0',
+                                         },
+                                         # Slot 29 pops one value into a bitfield SET at
+                                         # 0x08004380: byte = operand >> 3, bit = operand & 7.
+                                         # 0x08004396 is the matching clear; unreached by this
+                                         # corpus, so only SET is claimed.
+                                         'save_flag': {
+                                             'consumers': {29: 'set'},
+                                             'evidence': 'docs/research/BUU_MAP_EVENT_REFERENCES.md; '
+                                                         'slot 29 handler 0x080007E6 calls '
+                                                         '0x08004380 (orrs bit set)',
+                                         },
                                          'descriptors': [134567328,
                                                  134687048,
                                                  134687156,

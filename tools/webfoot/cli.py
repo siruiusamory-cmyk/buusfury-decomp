@@ -111,8 +111,13 @@ def build_parser() -> argparse.ArgumentParser:
     # `families` and the owner queries exist only because TOOLKIT-014 proved a
     # static owner. Commands are not added for symmetry: a family with no
     # proven owner simply reports no attachments.
+    # TOOLKIT-018 adds two reference queries. `references` reports what an event
+    # selects; `consumers-of` answers the reverse, which is the practically
+    # useful direction: where in the game is this resource used. There is no
+    # text query here because no map-scene event-to-text edge exists.
     for command in ("summary", "list", "show", "validate-round-trip",
-                    "families", "attachments", "for-owner", "owners-of", "for-map", "for-placement"):
+                    "families", "attachments", "for-owner", "owners-of", "for-map",
+                    "for-placement", "references", "consumers-of"):
         child = event_commands.add_parser(command)
         child.add_argument("rom", type=Path)
         if command == "show":
@@ -121,6 +126,10 @@ def build_parser() -> argparse.ArgumentParser:
             child.add_argument("owner", help="owner identity, e.g. item:0000")
         if command == "owners-of":
             child.add_argument("identity", help="entry identity from `event list`")
+        if command == "consumers-of":
+            child.add_argument("resource",
+                               help="resource identity, e.g. event_resource:0508 "
+                                    "or save_flag:0266")
         if command == "list":
             child.add_argument("--limit", type=int, default=None)
         if command != "families":
@@ -1297,15 +1306,25 @@ def _run_event(args) -> int:
             print(json.dumps(list(script_families(args.rom, catalog)),
                              sort_keys=True, indent=2))
             return 0
-        if command in ('for-map', 'for-placement'):
+        if command in ('for-map', 'for-placement', 'references', 'consumers-of'):
             from .placement_events import PlacementEvents
             from .maps import load_maps
             relationships = PlacementEvents(load_maps(args.rom, catalog))
             if command == 'for-map':
                 result = relationships.events_for_map(_parse_map_identity(args.owner))
-            else:
+            elif command == 'for-placement':
                 descriptor = relationships.descriptor_of(_parse_placement_identity(args.owner))
                 result = {'descriptor': descriptor.identity, 'event': descriptor.event}
+            elif command == 'references':
+                result = [{'kind': r.kind, 'event': r.event, 'index': r.index,
+                           'access': r.access, 'source_file_offset': r.source,
+                           'encoded_length': r.encoded_length}
+                          for r in relationships.operand_references()]
+            else:
+                kind, _, index = args.resource.rpartition(':')
+                if kind not in ('event_resource', 'save_flag') or not index.isdigit():
+                    raise ValueError(f"unknown resource identity {args.resource!r}")
+                result = relationships.consumers_of(kind, int(index))
             print(json.dumps(result, sort_keys=True, indent=2))
             return 0
         corpus = load_scripts(args.rom, catalog, args.family)

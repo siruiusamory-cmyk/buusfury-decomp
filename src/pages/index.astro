@@ -1,0 +1,29 @@
+---
+import BaseLayout from "../layouts/BaseLayout.astro";
+import SiteHeader from "../components/SiteHeader.astro";
+import StatusHero from "../components/StatusHero.astro";
+import CapabilityStrip from "../components/CapabilityStrip.astro";
+import GoalPanel from "../components/GoalPanel.astro";
+import Questline from "../components/Questline.astro";
+import BlockerPanel from "../components/BlockerPanel.astro";
+import BreakthroughLog from "../components/BreakthroughLog.astro";
+import TechnicalSnapshot from "../components/TechnicalSnapshot.astro";
+import SiteFooter from "../components/SiteFooter.astro";
+---
+
+<BaseLayout>
+  <div id="top"></div>
+  <SiteHeader />
+  <main id="main-content" class="shell">
+    <StatusHero />
+    <CapabilityStrip />
+    <GoalPanel />
+    <div class="authoring-grid">
+      <Questline />
+      <BlockerPanel />
+    </div>
+    <BreakthroughLog />
+    <TechnicalSnapshot />
+  </main>
+  <SiteFooter />
+</BaseLayout>

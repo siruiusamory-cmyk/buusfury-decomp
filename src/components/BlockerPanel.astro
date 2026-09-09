@@ -1,0 +1,22 @@
+---
+import { project } from "../data/project";
+---
+
+<section class="blocker-panel panel" aria-labelledby="blocker-title">
+  <header>
+    <p class="eyebrow">CURRENT BLOCKER</p>
+    <h2 id="blocker-title">{project.blockerTitle}</h2>
+  </header>
+  <div class="blocker-copy">
+    {project.blockerParagraphs.map((paragraph) => <p>{paragraph}</p>)}
+    <p class="frontier-tag">FRONTIER: {project.currentPhase}</p>
+  </div>
+  <ol class="dependency-ladder" aria-label="Authoring dependency ladder">
+    {project.dependencyLadder.map((item) => (
+      <li class:list={[`is-${item.state}`]}>
+        <span>{item.label}</span>
+        {item.marker && <strong>{item.marker}</strong>}
+      </li>
+    ))}
+  </ol>
+</section>

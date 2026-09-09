@@ -1,0 +1,17 @@
+---
+import { project, statusMeta } from "../data/project";
+---
+
+<section class="capability-strip" aria-label="Product trajectory">
+  {project.capabilities.map((capability, index) => (
+    <article class:list={["capability", `is-${capability.status}`]}>
+      <div class="capability-index" aria-hidden="true">0{index + 1}</div>
+      <div>
+        <p class="eyebrow">{capability.label}</p>
+        <h2>{capability.title}</h2>
+        <p>{capability.description}</p>
+      </div>
+      <p class="state-line"><span aria-hidden="true">{statusMeta[capability.status].icon}</span> {capability.state}</p>
+    </article>
+  ))}
+</section>

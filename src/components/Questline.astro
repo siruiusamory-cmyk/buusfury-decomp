@@ -1,0 +1,29 @@
+---
+import { project, statusMeta } from "../data/project";
+---
+
+<section class="quest-panel panel" id="questline" aria-labelledby="questline-title">
+  <header class="section-header">
+    <p class="eyebrow">CORE AUTHORING PATH</p>
+    <h2 id="questline-title">AUTHOR_NEW QUESTLINE</h2>
+    <p>The path from “I can edit an object” to “I can create one.”</p>
+  </header>
+  <ol class="questline">
+    {project.milestones.map((milestone) => (
+      <li class:list={["quest", `is-${milestone.status}`]}>
+        <span class="quest-node" aria-hidden="true">{statusMeta[milestone.status].icon}</span>
+        <article>
+          <p class="quest-status">{statusMeta[milestone.status].icon} {statusMeta[milestone.status].label}</p>
+          <h3>{milestone.title}</h3>
+          <p>{milestone.plainEnglish}</p>
+          {milestone.technical && (
+            <details>
+              <summary>Technical detail</summary>
+              <p>{milestone.technical}</p>
+            </details>
+          )}
+        </article>
+      </li>
+    ))}
+  </ol>
+</section>

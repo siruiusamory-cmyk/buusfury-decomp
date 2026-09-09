@@ -1,0 +1,21 @@
+---
+import { project } from "../data/project";
+const base = import.meta.env.BASE_URL;
+---
+
+<header class="site-header">
+  <div class="shell header-inner">
+    <a class="brand" href={`${base}#top`}>
+      <span class="brand-mark" aria-hidden="true">WF</span>
+      <span>
+        <strong>{project.name}</strong>
+        <small>{project.subtitle}</small>
+      </span>
+    </a>
+    <nav aria-label="Primary navigation">
+      <ul>
+        {project.nav.map((item) => <li><a href={`${base}#${item.href}`}>{item.label}</a></li>)}
+      </ul>
+    </nav>
+  </div>
+</header>

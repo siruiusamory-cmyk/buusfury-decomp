@@ -28,6 +28,8 @@ graphics/assets/
 # Generated builds
 build/
 dist/
+node_modules/
+.astro/
 *.egg-info/
 
 # External upstream repositories

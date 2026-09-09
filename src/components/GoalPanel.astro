@@ -1,0 +1,14 @@
+---
+import { project } from "../data/project";
+---
+
+<section class="goal-panel panel" id="about" aria-labelledby="goal-title">
+  <div>
+    <p class="eyebrow">DEFINITION OF DONE</p>
+    <h2 id="goal-title">WHAT DOES FINISHED MEAN?</h2>
+  </div>
+  <div class="goal-copy">
+    <p class="goal-statement">{project.acceptanceTarget}</p>
+    {project.definitionOfDone.map((paragraph) => <p>{paragraph}</p>)}
+  </div>
+</section>

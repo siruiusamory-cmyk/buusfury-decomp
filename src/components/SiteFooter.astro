@@ -1,0 +1,22 @@
+---
+import { project } from "../data/project";
+const links = project.links.filter((link) => link.url);
+---
+
+<footer class="site-footer">
+  <div class="shell footer-grid">
+    <div>
+      <p class="footer-brand">{project.name}</p>
+      <p>{project.footerTagline}</p>
+    </div>
+    <div>
+      <p class="active-status"><span aria-hidden="true"></span> STATUS: {project.developmentStatus}</p>
+      {links.length > 0 && (
+        <nav aria-label="Project links">
+          <ul>{links.map((link) => <li><a href={link.url}>{link.label}</a></li>)}</ul>
+        </nav>
+      )}
+    </div>
+  </div>
+  <div class="shell disclaimer">{project.disclaimer}</div>
+</footer>

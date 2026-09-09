@@ -10,6 +10,36 @@ generated output, the canonical ROM is never modified in place, and an unchanged
 project rebuilds the entire ROM byte-identically. Anything not proven against the
 canonical image is refused rather than approximated.
 
+## Public progress website
+
+The repository includes a one-page Astro site that explains the SDK's current
+authoring frontier. Almost every public status update belongs in one typed data
+file: `src/data/project.ts`.
+
+Install and run it with npm:
+
+```powershell
+npm install
+npm run dev
+npm run build
+npm run preview
+```
+
+In `src/data/project.ts`, edit `overallProgress` and `overallProgressLabel` to
+change the explicitly approximate headline. Update the blocker fields to move
+the current frontier, change a milestone's `status` to `complete`, `current`,
+`next`, or `target`, and append a typed item to `breakthroughs` for a new log
+entry. Breakthrough `date` and `commit` fields are optional; omit them when the
+project has no verified value. Footer links are also optional and disappear
+when their `url` is absent.
+
+The GitHub Pages workflow is `.github/workflows/deploy.yml`. In the repository's
+Actions variables, set `SITE_URL` to the Pages origin, such as
+`https://USERNAME.github.io`, and `BASE_PATH` to the project path, such as
+`/REPOSITORY`. Leave `BASE_PATH` as `/` for a user or organization site. Then
+select **GitHub Actions** as the Pages source. The workflow installs, builds,
+uploads, and deploys the static site; compiled output remains ignored.
+
 ## Legal boundary
 
 This repository does not distribute ROMs, BIOS images, extracted game assets, or other proprietary game data. Supply only ROMs you legally obtained. `roms/`, generated ROMs, extracted data, dumps, build output, and upstream clones are Git-ignored.

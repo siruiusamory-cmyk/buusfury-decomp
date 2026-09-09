@@ -1,0 +1,16 @@
+---
+interface Props {
+  value: number;
+  label: string;
+  caveat: string;
+}
+const { value, label, caveat } = Astro.props;
+---
+
+<div class="progress-block">
+  <p class="progress-number">{label}</p>
+  <div class="meter" role="progressbar" aria-label="Approximate overall project progress" aria-valuemin="0" aria-valuemax="100" aria-valuenow={value} aria-valuetext={`Approximately ${value}% complete`}>
+    <span style={`--progress: ${value}%`}></span>
+  </div>
+  <p class="fine-print">{caveat}</p>
+</div>

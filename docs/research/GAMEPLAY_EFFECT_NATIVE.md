@@ -1,6 +1,6 @@
 # TOOLKIT-033 - One gameplay-effect native handler
 
-Status: **CONFIRMED_ROM + LEVEL 4 runtime** (2026-09-10).
+Status: **CONFIRMED_ROM + LEVEL 4 runtime** (2026-09-09).
 
 This is intentionally one narrow authoring bridge, not a native-handler census.
 Discovery stopped when slot 178 satisfied the ticket.

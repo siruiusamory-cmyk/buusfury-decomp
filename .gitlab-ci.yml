@@ -3,16 +3,17 @@ image: node:22
 stages:
   - deploy
 
-deploy-pages:
+deploy-site:
   stage: deploy
+  variables:
+    SITE_URL: "https://webfoot-sdk.siruiusamory.workers.dev"
+    BASE_PATH: "/"
+    CLOUDFLARE_ACCOUNT_ID: "ff3bf4332547a755ec1c5a344ab15f33"
   before_script:
     - npm ci
   script:
-    - export SITE_URL="$(node -e 'const u = new URL(process.env.CI_PAGES_URL); process.stdout.write(u.origin)')"
-    - export BASE_PATH="$(node -e 'const u = new URL(process.env.CI_PAGES_URL); process.stdout.write(u.pathname.replace(/\/$/, "") || "/")')"
     - npm run check
     - npm run build
-  pages:
-    publish: dist
+    - npx --yes wrangler@4.105.0 deploy
   rules:
     - if: '$CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH'

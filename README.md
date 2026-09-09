@@ -25,12 +25,14 @@ npm run build
 npm run preview
 ```
 
-The public site is deployed at
-<https://siruiusamory.gitlab.io/log1-remake/>. GitLab Pages builds it from the
-repository's default branch with `.gitlab-ci.yml`; the pipeline runs the focused
-site checks, builds Astro, and publishes `dist/` without committing generated
-output. GitLab's Pages settings show the active deployment URL and are also
-where a future custom domain would be configured.
+The public site is deployed as Cloudflare Workers Static Assets at
+<https://webfoot-sdk.siruiusamory.workers.dev/>. The source repository remains
+private on GitLab. A push to its default branch runs `.gitlab-ci.yml`, which
+checks and builds Astro before deploying `dist/` without committing generated
+output. The pipeline requires a masked GitLab CI/CD variable named
+`CLOUDFLARE_API_TOKEN` with Workers Scripts: Edit permission for this account.
+Cloudflare's **Workers & Pages > webfoot-sdk > Settings > Domains & Routes**
+screen is where an optional custom domain can be added later.
 
 In `src/data/project.ts`, edit `overallProgress` and `overallProgressLabel` to
 change the explicitly approximate headline. Update the blocker fields to move

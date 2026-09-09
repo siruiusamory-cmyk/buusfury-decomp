@@ -78,22 +78,22 @@ export const project: ProjectStatus = {
   tagline: "Building a real authoring toolkit for the Legacy of Goku engine.",
   description:
     "The SDK can already make proven changes to existing game content. The current frontier is creating entirely new content that the original engine accepts and runs.",
-  overallProgress: 80,
-  overallProgressLabel: "≈ 80% COMPLETE",
+  overallProgress: 85,
+  overallProgressLabel: "≈ 85% COMPLETE",
   progressCaveat:
     "Progress is a directional project estimate. The milestones below are the authoritative measure of capability.",
   currentPhase: "AUTHOR_NEW",
   currentFrontierLabel: "CURRENT FRONTIER",
   existingContentState: "MATURE",
-  blockerCode: "NEW BEHAVIOR",
-  blockerTitle: "Author new behavior",
+  blockerCode: "GAMEPLAY EFFECT",
+  blockerTitle: "Make authored behavior affect gameplay",
   blockerShort:
-    "A newly authored entity now runs behavior the project gave it: the original engine was observed executing the assigned script, and a control build differing only in that assignment never did. The current question is authoring new behavior rather than reusing behavior the game already had.",
+    "The SDK now creates behavior content that did not exist in the original game, and the original engine runs it: the interpreter was observed walking a newly written script three times during ordinary play. That script deliberately does nothing visible. The current question is which engine action an authored script can invoke to produce an observable effect.",
   blockerParagraphs: [
-    "The SDK creates a new entity's real binary data, finds proven-safe space for it in the unmodified game, writes it, and rebuilds the game file. Running that build in the original engine, the engine read the authored object count, followed the relocated pointer list to the new entity, and instantiated it. The new entity was observed in the running game.",
-    "That entity can be given a behavior chosen by the project rather than inherited from the object it was copied from, and the original engine now demonstrably runs it. During ordinary play the engine was caught entering the behavior it was assigned, five separate times, each time carrying the exact behavior the project selected.",
-    "A control build settles what that proves. It is identical in every respect except the one assignment, down to the same entity type, and across a comparable session the engine never entered the behavior at all. The same measurement was watching in both runs and saw other game scripts running throughout, so the difference is the assignment itself.",
-    "The behavior being run is one the game already had. The next measured step is authoring new behavior rather than reusing existing behavior.",
+    "A newly authored entity now carries behavior the project created rather than behavior the project selected. The SDK writes a new behavior record and a new script body into proven-safe space in the unmodified game, points the entity at the record and the record at the script, and rebuilds the game file.",
+    "The original engine executed it. During ordinary play the engine followed the authored entity to the authored behavior record, took the script pointer out of it, and entered the interpreter with its read position inside the newly written script — three separate times, with the exact authored bytes present at that position each time. The same byte sequence appears nowhere in the original game, so what ran is new content rather than existing content at a new address.",
+    "A control build settles what that proves. It is the same authored entity without the authored behavior, and it contains neither the new record nor the new script. The measurement also proved itself independently: it caught the engine running other scripts in a room where the authored entity does not exist, so a silent result would have been meaningful rather than blind.",
+    "The authored script deliberately computes a value and discards it. That is what makes the execution evidence clean, and it is also the current limit: every instruction that would change something the player can see routes through the engine's own action table, and none of those actions has a confirmed meaning yet. The next measured step is establishing one of them, which is enough to author an intentional visible effect.",
   ],
   acceptanceTarget:
     "Author playable Legacy of Goku content inside the real LOGII/Buu engine.",
@@ -209,9 +209,18 @@ export const project: ProjectStatus = {
       id: "author-new-behavior",
       title: "Author new behavior",
       plainEnglish:
-        "Create behavior, conditions, events, and text that did not exist in the original game.",
+        "Create executable behavior content that did not exist in the original game and have the original engine run it.",
       technical:
-        "Attaching existing behavior is proven end to end. The open question is authoring new behavior content rather than selecting behavior the game already contained.",
+        "Confirmed. The SDK writes a new behavior record and a new script body into verified space, points the authored entity at the record and the record at the script, and the original engine executed it: the interpreter was entered three times with its read position inside the newly allocated script body, the authored bytes present at that position each time, dispatched from the authored record. That byte sequence occurs zero times in the original game, and a control build contains neither structure. The script computes and discards a value, so no visible effect is claimed.",
+      status: "complete",
+    },
+    {
+      id: "gameplay-effect",
+      title: "Make authored behavior affect gameplay",
+      plainEnglish:
+        "Identify a known engine action that authored scripts can intentionally invoke to create an observable gameplay effect.",
+      technical:
+        "Authored scripts execute, but only through instructions whose effects stay inside the interpreter. Every gameplay-visible instruction routes through the engine's native action table, whose entries have no confirmed meaning. Establishing one useful action is enough to author an intentional visible effect.",
       status: "current",
     },
     {
@@ -237,10 +246,19 @@ export const project: ProjectStatus = {
     { label: "VERIFIED ROM CAPACITY", state: "done" },
     { label: "NEW ENTITY RUNS IN ENGINE", state: "done" },
     { label: "ATTACHED BEHAVIOR EXECUTES", state: "done" },
-    { label: "NEW SCRIPTS + DIALOGUE", state: "current", marker: "↑ YOU ARE HERE" },
+    { label: "AUTHORED SCRIPT EXECUTES", state: "done" },
+    { label: "GAMEPLAY-EFFECT ACTION", state: "current", marker: "↑ YOU ARE HERE" },
     { label: "PLAYABLE LOG1 CONTENT", state: "target" },
   ],
   breakthroughs: [
+    {
+      id: "runtime-proven-new-behavior",
+      title: "First runtime-proven new behavior",
+      summary:
+        "Webfoot SDK created new executable behavior data that did not exist in the original game, attached it to a newly authored entity, and the original Buu's Fury engine executed it.",
+      technical:
+        "The interpreter entered the exact newly allocated 7-byte script body three times at runtime, dispatched from a newly written behavior record, with the authored bytes present at the interpreter's read position each time. That byte sequence occurs zero times in the original game and a control build contains neither structure. The script deliberately computes and discards a value, so no visible gameplay effect is claimed.",
+    },
     {
       id: "runtime-proven-authored-entity",
       title: "First runtime-proven authored entity",

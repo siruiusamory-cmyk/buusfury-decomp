@@ -30,6 +30,11 @@ class PlannedPlacement:
     behavior: str | None = None
     inherited_descriptor_raw: int | None = None
     descriptor_pointer_raw: int | None = None
+    #: TOOLKIT-032. The authored script body's bytes, produced by the production
+    #: `script_vm` codec from the project's mnemonic instruction list, when this
+    #: record declares a behavior whose descriptor AND script this build creates.
+    #: None when the behavior names an existing canonical descriptor, or none at all.
+    script_body: bytes | None = None
 
     @property
     def behavior_is_authored(self):
@@ -37,14 +42,43 @@ class PlannedPlacement:
         return (self.behavior is not None and
                 self.descriptor_pointer_raw != self.inherited_descriptor_raw)
 
+    @property
+    def body_is_authored(self):
+        """True when the descriptor and its script are content this build creates.
+
+        TOOLKIT-030 attached descriptors the canonical ROM already contained;
+        `behavior_is_authored` still describes that. This is the stronger case: the
+        descriptor bytes and the script bytes both come from project state, so
+        neither exists in the verified base at any address.
+        """
+        return self.script_body is not None
+
+    @property
+    def behavior_identity(self):
+        """The authored behavior's stable semantic ID: `<record>/behavior`."""
+        return f"{self.identity}/behavior"
+
+    @property
+    def script_identity(self):
+        """The authored script body's stable semantic ID: `<record>/behavior/script`."""
+        return f"{self.identity}/behavior/script"
+
     def to_json(self):
         document = {"identity": self.identity, "provenance": self.provenance,
                     "clone_from": self.clone_from, "serialized_size": len(self.payload)}
         if self.behavior is not None:
             document.update(behavior=self.behavior,
                             inherited_descriptor=f"0x{self.inherited_descriptor_raw:08X}",
-                            attached_descriptor=f"0x{self.descriptor_pointer_raw:08X}",
                             behavior_is_authored=self.behavior_is_authored)
+            # An authored body has no descriptor address until the build allocates
+            # one, so reporting a number here would be reporting the inherited one
+            # as though project state had chosen it.
+            if self.body_is_authored:
+                document.update(attached_descriptor="ALLOCATED_AT_BUILD",
+                                authored_script_bytes=len(self.script_body),
+                                body_is_authored=True)
+            else:
+                document["attached_descriptor"] = f"0x{self.descriptor_pointer_raw:08X}"
         return document
 
 
@@ -62,6 +96,12 @@ def _resolve_behavior(clone, maps):
     """
     if clone.behavior is None:
         return None
+    if clone.authored_behavior:
+        # TOOLKIT-032: this behavior names content the build is about to create, so
+        # there is no verified catalog entry to resolve and no address to return
+        # yet. `plan_authored_materialization` allocates the descriptor and writes
+        # its address into the record's `+0x14` once the address exists.
+        return None
     from .placement_events import PlacementEvents
     from .scripts import ScriptError
     owner = clone.behavior.rsplit("/", 1)[0]
@@ -77,6 +117,33 @@ def _resolve_behavior(clone, maps):
             f"{descriptor.identity}; a behavior must name a descriptor by its own "
             "published identity, not by a sharing consumer")
     return 0x08000000 + descriptor.file_offset
+
+
+def _assemble_script(clone, maps):
+    """Assemble one authored script body through the production `script_vm` codec.
+
+    TOOLKIT-032. The opcode set is the one this profile's verified placement
+    contract already names, and `script_vm.assemble_source` refuses any mnemonic
+    or operand width that set does not carry - so an authored body can only ever
+    be instructions the toolkit has actually decoded from canonical bytes. No
+    second encoder exists, and nothing here accepts bytes from project source.
+    """
+    from .data.placement_contracts import CONTRACTS
+    from .data.script_specs import OPCODE_SETS
+    from .formats.script_vm import ScriptError, assemble_source
+    contract = CONTRACTS.get(maps.profile.id)
+    if contract is None or contract['sha256'] != maps.identification.hashes.sha256:
+        raise AuthoredBehaviorError(
+            f"{clone.identity}: no verified script contract for this profile, so an "
+            "authored behavior body cannot be encoded")
+    spec = OPCODE_SETS[contract['encoding']]
+    if maps.profile.id not in spec.profiles:
+        raise AuthoredBehaviorError(
+            f"{clone.identity}: the {spec.name} VM is not verified for this profile")
+    try:
+        return assemble_source(clone.script, spec)
+    except ScriptError as exc:
+        raise AuthoredBehaviorError(f"{clone.identity}: authored script body rejected: {exc}") from None
 
 
 #: `MapEntry+0x04` is read by the engine with `ldrb` (0x08008CA2, 0x08008CD2), so the
@@ -260,11 +327,13 @@ def prepare_authored_runs(project, maps):
             source = maps.placement(source_id)
             template = PlacementRecord.from_bytes(source.original_bytes)
             pointer = _resolve_behavior(clone, maps)
+            script = _assemble_script(clone, maps) if clone.authored_behavior else None
             records.append(PlannedPlacement(clone.identity, clone.provenance, clone.clone_from,
                                            clone.serialize(template, pointer),
                                            behavior=clone.behavior,
                                            inherited_descriptor_raw=template.descriptor_pointer_raw,
-                                           descriptor_pointer_raw=pointer or template.descriptor_pointer_raw))
+                                           descriptor_pointer_raw=pointer or template.descriptor_pointer_raw,
+                                           script_body=script))
         runs.append(AuthoredRun(index, tuple(records), len(canonical),
                                 canonical_slots=slots,
                                 map_entry_offset=entry.file_offset,
@@ -278,6 +347,23 @@ def prepare_authored_runs(project, maps):
 #: Keeping the kinds distinct is what lets `RELOCATION_ELIGIBLE_KINDS` stay a
 #: statement about measured canonical structure.
 AUTHORED_BODY_KIND = "authored_placement_body"
+
+#: TOOLKIT-032: the kinds published for an authored behavior. They are distinct from
+#: `placement_descriptor` and from the canonical script family for the same reason
+#: `AUTHORED_BODY_KIND` is not `placement`: those kinds describe bytes measured in
+#: the verified base, and these describe bytes the build is about to create. Keeping
+#: them separate is what stops an authored body from ever satisfying a check that
+#: was written about canonical structure.
+AUTHORED_DESCRIPTOR_KIND = "authored_placement_descriptor"
+AUTHORED_SCRIPT_KIND = "authored_placement_script"
+
+#: `PlacementRecord+0x14` holds the descriptor pointer and `DescriptorRecord+0x04`
+#: holds the script pointer. Both are the fields the engine itself reads
+#: (`placement_links.descriptor_source` / `payload_source`), expressed here as
+#: offsets INSIDE an authored body rather than as absolute file offsets, because the
+#: body does not have an address until the allocator gives it one.
+DESCRIPTOR_POINTER_OFFSET = 0x14
+SCRIPT_POINTER_OFFSET = 0x04
 
 
 class AuthoringOverlayError(LayoutError):
@@ -332,33 +418,70 @@ def authoring_overlay(document, run):
             "cannot be created; an authored body must not be published against a fixed array")
     provenance = array.provenance
     bodies = []
-    for position, record in enumerate(run.authored_records):
-        identity = _authored_anchor_id(record.identity)
+
+    def fresh(identity):
         try:
             document.anchor(identity)
         except LayoutError:
-            pass
-        else:
-            raise AuthoringOverlayError(
-                f"{identity.value}: an anchor with this authored identity already exists")
+            return identity
+        raise AuthoringOverlayError(
+            f"{identity.value}: an anchor with this authored identity already exists")
+
+    for position, record in enumerate(run.authored_records):
+        identity = fresh(_authored_anchor_id(record.identity))
         bodies.append(AuthoredBody(identity, record.payload,
-                                   len(run.canonical_slots) + position, array.owner, provenance))
+                                   len(run.canonical_slots) + position, array.owner, provenance,
+                                   AUTHORED_BODY_KIND))
+        if not record.body_is_authored:
+            continue
+        # TOOLKIT-032: the descriptor and its script are two more authored bodies,
+        # created here for exactly the reason the record body is - the relocator
+        # creates no anchors and no references, and neither structure exists in the
+        # verified base at any address. Each is reached from a fixed 4-byte field
+        # inside the body above it, which is the same edge the engine follows:
+        # `PlacementRecord+0x14` -> descriptor, `DescriptorRecord+0x04` -> script.
+        # The descriptor's payload word is a placeholder until the allocator gives
+        # the script an address; `plan_authored_materialization` writes the real one
+        # through the production `DescriptorRecord` codec before anything is emitted.
+        from .formats.map_placements import DescriptorRecord, SCRIPT_DISPATCH_HANDLER
+        descriptor = fresh(AnchorId(record.behavior_identity))
+        script = fresh(AnchorId(record.script_identity))
+        bodies.append(AuthoredBody(descriptor,
+                                   DescriptorRecord(SCRIPT_DISPATCH_HANDLER, 0).to_bytes(),
+                                   None, array.owner, provenance, AUTHORED_DESCRIPTOR_KIND,
+                                   (identity, DESCRIPTOR_POINTER_OFFSET)))
+        bodies.append(AuthoredBody(script, record.script_body, None, array.owner, provenance,
+                                   AUTHORED_SCRIPT_KIND, (descriptor, SCRIPT_POINTER_OFFSET)))
     return tuple(bodies)
 
 
 @dataclass(frozen=True, slots=True)
 class AuthoredBody:
-    """One authored record body, its slot index, and the provenance it inherits."""
+    """One authored body, where it is pointed at from, and its inherited provenance.
+
+    TOOLKIT-032. A body is reached either from an appended object-array slot
+    (`slot_index`, the placement record) or from a fixed field inside another
+    authored body (`pointer_source`, the descriptor's `+0x04` and the record's
+    `+0x14`). Exactly one of the two applies, and both are edges the graph
+    publishes as real references rather than bytes written on trust.
+    """
 
     identity: AnchorId
     payload: bytes
-    slot_index: int
+    slot_index: int | None
     owner: str
     provenance: object
+    kind: str = None
+    #: `(anchor identity, byte offset within that anchor)` of the 4-byte field that
+    #: will hold this body's address, for a body the array does not point at.
+    pointer_source: tuple | None = None
 
     def to_json(self):
-        return {"anchor": self.identity.value, "slot_index": self.slot_index,
-                "body_size": len(self.payload), "owner": self.owner}
+        document = {"anchor": self.identity.value, "slot_index": self.slot_index,
+                    "body_size": len(self.payload), "owner": self.owner}
+        if self.pointer_source is not None:
+            document["pointer_source"] = [self.pointer_source[0].value, self.pointer_source[1]]
+        return document
 
 
 def _withhold(free_regions, taken):
@@ -387,6 +510,50 @@ def _withhold(free_regions, taken):
         for start, end in spans:
             result.append(FreeRegion(RomRange(FileOffset(start), end - start), region.evidence))
     return tuple(result)
+
+
+def _bind_pointers(bodies, allocations, image_size):
+    """Write each pointing body's allocated address into the field that reaches it.
+
+    TOOLKIT-032. `authoring_overlay` publishes the descriptor with a zero payload
+    word because the script has no address yet; this is where that word becomes
+    real. Both rewrites go through the production codec that owns the record - a
+    `PlacementRecord` for `+0x14`, a `DescriptorRecord` for `+0x04` - so the field
+    is re-encoded from a decoded record rather than patched as a raw word, and a
+    body whose bytes are not a valid record of its family fails here.
+
+    Returns bodies in the same order, with finished payloads. Nothing else sees a
+    placeholder: the array payload, the anchors, the references and the byte
+    changes are all built from what this returns.
+    """
+    from .binary import FileOffset
+    from .formats.map_placements import DescriptorRecord, PlacementRecord
+    from dataclasses import replace as _replace
+
+    payloads = {b.identity: b.payload for b in bodies}
+    for body in bodies:
+        if body.pointer_source is None:
+            continue
+        owner, offset = body.pointer_source
+        if owner not in payloads:
+            raise AuthoringOverlayError(
+                f"{body.identity.value}: nothing authored owns the field that points at it")
+        address = FileOffset(allocations[body.identity].range.start.value).to_gba_address(
+            image_size).raw
+        if offset == DESCRIPTOR_POINTER_OFFSET:
+            record = PlacementRecord.from_bytes(payloads[owner])
+            payloads[owner] = _replace(record, descriptor_pointer_raw=address).to_bytes()
+        elif offset == SCRIPT_POINTER_OFFSET:
+            record = DescriptorRecord.from_bytes(payloads[owner])
+            payloads[owner] = _replace(record, payload_raw=address).to_bytes()
+        else:
+            raise AuthoringOverlayError(
+                f"{body.identity.value}: no production codec owns a pointer field at "
+                f"+0x{offset:02X}")
+        if len(payloads[owner]) != len(next(b for b in bodies if b.identity == owner).payload):
+            raise AuthoringOverlayError(
+                f"{owner.value}: rewriting its pointer field changed its serialized size")
+    return tuple(_replace(b, payload=payloads[b.identity]) for b in bodies)
 
 
 def plan_authored_materialization(document, run):
@@ -431,6 +598,14 @@ def plan_authored_materialization(document, run):
                           occupied=occupied)
     allocations = {a.request.anchor: a for a in placements}
 
+    # TOOLKIT-032: an authored body that POINTS AT another authored body cannot know
+    # the address it must carry until the allocator has placed the target, so its
+    # payload is finished here, once, and every later step sees only finished bytes.
+    # The rewrite goes through the production codecs - `PlacementRecord` for the
+    # record's `+0x14`, `DescriptorRecord` for the descriptor's `+0x04` - so no field
+    # is poked as a raw word and a malformed body fails in the codec, not in the ROM.
+    bodies = _bind_pointers(bodies, allocations, len(document.image))
+
     # `plan_relocation` runs the allocator AGAIN, deriving its reserved set from the
     # document's anchors and profile alone. A body allocated only here would be
     # invisible to that call and the array would be handed the very same bytes - the
@@ -451,6 +626,12 @@ def plan_authored_materialization(document, run):
     if len(payload) != 4 * len(run.canonical_slots):
         raise AuthoringOverlayError(f"{run.identity.value}: canonical slot bytes are not intact")
     for body in bodies:
+        # Only a record body occupies an object-array slot. A descriptor and a script
+        # are reached from a field inside the body above them, never from the array,
+        # so appending a slot for them would declare objects the engine would then
+        # count and dereference as placements.
+        if body.slot_index is None:
+            continue
         destination = FileOffset(allocations[body.identity].range.start.value)
         payload += destination.to_gba_address(len(image)).raw.to_bytes(4, "little")
 
@@ -466,16 +647,43 @@ def plan_authored_materialization(document, run):
     anchors = list(result.document.anchors)
     references = list(result.document.references)
     changes = []
+    spans = {b.identity: allocations[b.identity].range for b in bodies}
     for body in bodies:
-        span = allocations[body.identity].range
-        anchors.append(Anchor(body.identity, span, AUTHORED_BODY_KIND, body.owner, 4,
+        span = spans[body.identity]
+        anchors.append(Anchor(body.identity, span, body.kind, body.owner, 4,
                               False, body.provenance))
-        references.append(Reference(FileOffset(moved.range.start.value + 4 * body.slot_index),
-                                    body.identity, 0, ReferenceEncoding.ABSOLUTE_ROM_U32_LE,
+        # Every authored body earns a real reference edge to whatever reaches it: an
+        # appended array slot for a record, and the owning body's own pointer field
+        # for a descriptor or a script. Both decode against the emitted image, so
+        # `validate` checks the edge rather than taking it on trust.
+        if body.slot_index is not None:
+            source = FileOffset(moved.range.start.value + 4 * body.slot_index)
+        else:
+            owner, offset = body.pointer_source
+            source = FileOffset(spans[owner].start.value + offset)
+        references.append(Reference(source, body.identity, 0,
+                                    ReferenceEncoding.ABSOLUTE_ROM_U32_LE,
                                     ReferenceClass.DECLARED_REFERENCE, body.provenance))
         changes.append(ByteChange(span.start.value,
                                   result.document.image[span.start.value:span.end], body.payload,
                                   body.owner, f"authored placement body: {body.identity.value}"))
+    # TOOLKIT-032: the record->descriptor and descriptor->script edges are SOURCED
+    # inside authored bodies, whose bytes exist only in `changes` until they are
+    # applied - so unlike the array slot, the relocated image cannot decode them and
+    # publishing them against it would be publishing an edge on trust. Applying this
+    # plan's own changes gives the one image in which every authored edge decodes,
+    # and re-validating the whole graph there is what makes them measured rather
+    # than declared. Uses the same production write path; it emits nothing.
+    from hashlib import sha256
+    from .write import apply_plan, plan_changes
+    from .document import RomDocument
+    relocated = result.document.image
+    wired = apply_plan(relocated,
+                       plan_changes(relocated, changes, profile_id=document.profile.id,
+                                    base_sha256=sha256(relocated).hexdigest()))
+    RomDocument(wired, document.profile, tuple(anchors), tuple(references),
+                result.document.retired).validate()
+
     every = (*allocations.values(), *result.allocations)
     return AuthoredMaterialization(run, result, tuple(bodies), tuple(anchors), tuple(references),
                                    tuple(changes),

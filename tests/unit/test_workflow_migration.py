@@ -72,6 +72,7 @@ def test_required_workflow_files_exist_and_are_bounded():
         "docs/PROJECT_<local-state-name>": (100, 240),
         "docs/PROJECT_<local-state-name>": (10, 240),
         "docs/PROJECT_<local-state-name>": (10, 240),
+        "docs/PROJECT_<local-state-name>": (10, 240),
         "docs/PROJECT_<local-state-name>": (10, 800),
         "docs/REVIEW.md": (20, 100),
         "scripts/run-current.ps1": (40, 140),

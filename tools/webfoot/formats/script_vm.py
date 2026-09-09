@@ -251,6 +251,61 @@ def disassemble(data: bytes, entries: tuple[Entry, ...], spec: OpcodeSet,
                     tuple(blocks), len(data), tuple(opaque))
 
 
+def assemble_source(source: tuple[str, ...], spec: OpcodeSet) -> bytes:
+    """Encode a straight-line mnemonic sequence, then prove it through `assemble`.
+
+    TOOLKIT-032. This is the smallest thing that turns an authored, semantic
+    instruction list into bytes; it is deliberately NOT a script compiler.
+    Only the two operand widths a straight-line body can use are encoded here -
+    `none` and `u8` - so nothing has to invent a varint or a branch displacement,
+    and any opcode needing one is refused by name rather than mis-encoded.
+
+    Every instruction is validated by the production decoder as it is built, and
+    the finished bytes must disassemble back to a fully-covered IR that
+    `assemble` re-emits identically. So an authored body is bytes the existing
+    codec accepts, or it is an error - there is no third outcome and no second
+    encoding of the same instruction.
+    """
+    if not isinstance(source, (tuple, list)) or not source:
+        raise ScriptError('an authored script body requires at least one instruction')
+    names = {op.name: op for op in spec.instructions}
+    raw = bytearray()
+    for line in source:
+        if not isinstance(line, str):
+            raise ScriptError('every authored instruction must be a string')
+        parts = line.split()
+        if not parts or parts[0] not in names:
+            raise ScriptError(f'unknown instruction {line!r} for opcode set {spec.name}')
+        op = names[parts[0]]
+        if op.encoding == 'none':
+            if len(parts) != 1:
+                raise ScriptError(f'{op.name} takes no operand')
+            encoded = bytes((op.value,))
+        elif op.encoding == 'u8':
+            if len(parts) != 2:
+                raise ScriptError(f'{op.name} takes exactly one operand')
+            try:
+                value = int(parts[1], 0)
+            except ValueError:
+                raise ScriptError(f'{op.name} operand must be an integer') from None
+            if not 0 <= value <= 255:
+                raise ScriptError(f'{op.name} operand must be an unsigned byte')
+            encoded = bytes((op.value, value))
+        else:
+            raise ScriptError(
+                f'{op.name} uses the {op.encoding} operand encoding, which a straight-line '
+                'authored body does not support')
+        check = decode_instruction(encoded, 0, spec)
+        if check.encoded_length != len(encoded):
+            raise ScriptError(f'{op.name} does not re-decode to the bytes emitted for it')
+        raw += encoded
+    body = bytes(raw)
+    ir = disassemble(body, (Entry('authored', 0),), spec)
+    if ir.opaque or assemble(ir) != body:
+        raise ScriptError('authored script body does not round-trip through the production codec')
+    return body
+
+
 def assemble(ir: ScriptIR) -> bytes:
     _integer(ir.extent, 'extent')
     if ir.extent > 16 * 1024 * 1024:

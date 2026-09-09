@@ -97,7 +97,14 @@ def test_every_node_falls_in_its_own_colour_band():
               "next": "pending", "target": "target"}
 
     for index, status in enumerate(statuses):
-        position = (index / spans) * 100
+        # Compare at the precision the stops are actually emitted with. The
+        # stops are rounded to two decimals for the stylesheet, so an exact
+        # node position must be rounded the same way before it is tested
+        # against them. With 13 milestones the current node sits at
+        # 10/12 = 83.333...%, against a stop written as 83.33%, and an
+        # unrounded comparison drops it into the following band even though
+        # they denote the same point on the rail.
+        position = round((index / spans) * 100, 2)
         if position <= stops["--rail-complete"]:
             band = "complete"
         elif position <= stops["--rail-current"]:

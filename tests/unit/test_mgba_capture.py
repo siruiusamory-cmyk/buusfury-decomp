@@ -758,3 +758,99 @@ def test_toolkit030_probe_refuses_to_read_a_broken_grid_as_negative():
     assert "GRID-UNRESOLVED-scan-uninformative" in probe
     # An off-rect control tile keeps a saturated grid from looking like success.
     assert "control_tile_a" in probe
+
+
+def test_launcher_generated_rom_mode_is_explicit_and_still_verifies_a_digest():
+    """TOOLKIT-030 could not launch a generated authored ROM at all, because the
+    launcher hard-pinned the canonical SHA-256 with no override, and it started
+    mGBA by hand instead. The fix is a mode that is *more* verified than that
+    bypass, not less: the caller must name the exact expected digest, and the
+    launcher still refuses anything that does not equal it."""
+    root = Path(__file__).resolve().parents[2]
+    launcher = (root / "tools/runtime/run_mgba_capture.ps1").read_text(
+        encoding="utf-8"
+    )
+
+    # Opting in is explicit and carries the expectation with it.
+    assert "[string]$GeneratedRomSha256," in launcher
+    assert "Generated ROM identity mismatch" in launcher
+    # The supplied digest must be a full digest, not a prefix or a pattern.
+    assert "^[0-9A-F]{64}$" in launcher
+    # Size is still checked in generated mode.
+    assert "Generated ROM size mismatch" in launcher
+    # The run records which mode it used, so evidence is self-describing.
+    assert "rom_mode" in launcher
+
+
+def test_launcher_generated_mode_has_no_accept_anything_escape_hatch():
+    """The guard must not gain a wildcard, a skip switch, or a way to pass the
+    canonical digest through the generated path and call it verified."""
+    root = Path(__file__).resolve().parents[2]
+    launcher = (root / "tools/runtime/run_mgba_capture.ps1").read_text(
+        encoding="utf-8"
+    )
+
+    # No switch that turns verification off.
+    for escape in (
+        "$SkipRomHashCheck",
+        "$AllowAnyRom",
+        "$IgnoreRomHash",
+        "$ForceRom",
+    ):
+        assert escape not in launcher
+
+    # Reusing the canonical digest under the generated flag is refused, so the
+    # two modes cannot be silently collapsed into one.
+    assert "GeneratedRomSha256 is the canonical digest" in launcher
+
+
+def test_launcher_canonical_guard_is_unchanged_by_default():
+    """Callers that say nothing must keep exactly the strict canonical check
+    they had before the generated mode existed."""
+    root = Path(__file__).resolve().parents[2]
+    launcher = (root / "tools/runtime/run_mgba_capture.ps1").read_text(
+        encoding="utf-8"
+    )
+
+    assert (
+        "$expectedRomSha256 = "
+        "'940AD5F01DB4465B8877DFE739510CBF34F4EA3D390F3DF13519808BC36F059E'"
+    ) in launcher
+    assert "Canonical ROM identity mismatch; capture refused before launch" in launcher
+    # The canonical branch is the fallback when no generated digest is supplied.
+    assert "} elseif ($romInfo.Length -ne $expectedRomSize" in launcher
+
+
+def test_toolkit031_observer_measures_execution_not_downstream_effect():
+    """TOOLKIT-030's collision sampler was non-discriminating: both builds read
+    the same saturated grid, so it could not separate 'the script ran' from
+    'these tiles were already set'. The replacement must watch the program
+    counter reach the handler instead of inferring execution from world state."""
+    root = Path(__file__).resolve().parents[2]
+    probe = (root / "tools/runtime/toolkit031_execution_watch.lua").read_text(
+        encoding="utf-8"
+    )
+
+    # The script trampoline itself is the observable.
+    assert "0x0800421E" in probe
+    assert "setBreakpoint" in probe
+    # And the descriptor is recorded, so a hit is attributable rather than a
+    # bare count that cannot say WHICH attachment executed.
+    assert "0x0808D788" in probe          # authored descriptor
+    assert "0x0808D77C" in probe          # its script root
+    assert "AUTHORED-BEHAVIOR" in probe
+
+
+def test_toolkit031_observer_refuses_to_degrade_to_a_blind_poll():
+    """Zero hits only mean something if the instrument can see hits at all. If
+    the breakpoint API is missing the observer must abort rather than emit rows
+    that look like a measured negative."""
+    root = Path(__file__).resolve().parents[2]
+    probe = (root / "tools/runtime/toolkit031_execution_watch.lua").read_text(
+        encoding="utf-8"
+    )
+
+    assert "requires the mGBA 0.11 scripted-breakpoint API" in probe
+    assert "cannot see execution and must not be substituted" in probe
+    # Structural rows exist but are labelled so they cannot be read as execution.
+    assert "structural sample only; not execution" in probe

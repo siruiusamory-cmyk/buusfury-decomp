@@ -14,6 +14,9 @@ param(
     [UInt32]$Breakpoint = 0,
     [string[]]$AdditionalBreakpoint = @(),
     [string]$RomPath = 'roms\Dragon Ball Z - Buu''s Fury (U).gba',
+    # Opt in to launching a GENERATED ROM by naming its exact expected digest.
+    # Omitting this keeps the strict canonical-only guard unchanged.
+    [string]$GeneratedRomSha256,
     [string]$MGBPath = 'build\tools\mgba-0.10.5\extracted\mGBA-0.10.5-win64\mGBA.exe',
     [string]$RequiredMGBVersion = '0.10.5',
     [string]$LuaPath,
@@ -113,9 +116,39 @@ foreach ($item in $AdditionalBreakpoint) {
     }
 }
 
+# ROM identity gate.
+#
+# DEFAULT (canonical mode): the ROM must be the canonical image, byte for byte.
+# This path is unchanged and is still the only behaviour when the caller says
+# nothing, so every existing invocation keeps exactly the guard it had.
+#
+# GENERATED MODE: opting in requires -GeneratedRomSha256 with the EXACT expected
+# digest of the generated image. The check is still an equality test against a
+# caller-supplied constant -- there is deliberately no "accept anything" switch,
+# no wildcard, and no way to skip verification. TOOLKIT-030 had to start mGBA by
+# hand because this launcher could not run a generated ROM at all; that bypass,
+# not the guard, is what this parameter removes.
 $romInfo = Get-Item -LiteralPath $resolvedRom
 $romHashBefore = (Get-FileHash -Algorithm SHA256 -LiteralPath $resolvedRom).Hash
-if ($romInfo.Length -ne $expectedRomSize -or $romHashBefore -ne $expectedRomSha256) {
+$romMode = 'canonical'
+if ($GeneratedRomSha256) {
+    $expectedGenerated = $GeneratedRomSha256.Trim().ToUpperInvariant()
+    if ($expectedGenerated -notmatch '^[0-9A-F]{64}$') {
+        throw 'GeneratedRomSha256 must be a full 64-character SHA-256 hex digest'
+    }
+    if ($expectedGenerated -eq $expectedRomSha256) {
+        throw ('GeneratedRomSha256 is the canonical digest; omit the parameter ' +
+            'to run in canonical mode')
+    }
+    if ($romHashBefore -ne $expectedGenerated) {
+        throw ("Generated ROM identity mismatch; capture refused before launch. " +
+            "Expected $expectedGenerated, found $romHashBefore at $resolvedRom")
+    }
+    if ($romInfo.Length -ne $expectedRomSize) {
+        throw 'Generated ROM size mismatch; capture refused before launch'
+    }
+    $romMode = 'generated'
+} elseif ($romInfo.Length -ne $expectedRomSize -or $romHashBefore -ne $expectedRomSha256) {
     throw 'Canonical ROM identity mismatch; capture refused before launch'
 }
 $stateInfo = Get-Item -LiteralPath $resolvedState
@@ -124,6 +157,7 @@ $identity = [ordered]@{
     rom_path = $resolvedRom
     rom_size = $romInfo.Length
     rom_sha256 = $romHashBefore
+    rom_mode = $romMode
     state_path = $resolvedState
     state_size = $stateInfo.Length
     state_sha256 = $stateHash
@@ -161,6 +195,21 @@ $process = $null
 try {
     $startupLua = $null
     if ($resolvedLua -and $LuaStartup) {
+        # Fail closed when this mGBA build has no --script flag. The official
+        # 0.10.5 win64 release does NOT expose it: scripting is a build-time
+        # option, and passing an unknown flag makes mGBA exit 1 immediately,
+        # before it ever opens the GDB port. Without this check the failure
+        # surfaces as the misleading downstream error 'mGBA exited before
+        # opening the GDB port', which reads as an emulator/port problem and
+        # sent one investigation looking at stale processes and savestates.
+        # The UI-injection path (omit -LuaStartup) is the supported route on
+        # such a build, and is what produced the P-011 capture.
+        $helpText = (& $resolvedMGB --help 2>&1 | Out-String)
+        if ($helpText -notmatch '--script') {
+            throw ("This mGBA build does not support --script, so -LuaStartup " +
+                   "cannot work: " + $resolvedMGB + ". Re-run without " +
+                   "-LuaStartup to use UI injection instead.")
+        }
         $startupLua = Join-Path $runDir 'startup.lua'
         $luaPathForScript = $resolvedLua -replace '\\', '/'
         $markerPathForScript = (Join-Path $runDir 'lua-done.txt') -replace '\\', '/'

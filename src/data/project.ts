@@ -85,14 +85,15 @@ export const project: ProjectStatus = {
   currentPhase: "AUTHOR_NEW",
   currentFrontierLabel: "CURRENT FRONTIER",
   existingContentState: "MATURE",
-  blockerCode: "AUTHORED BEHAVIOR",
-  blockerTitle: "Give new entities behavior",
+  blockerCode: "NEW BEHAVIOR",
+  blockerTitle: "Author new behavior",
   blockerShort:
-    "The SDK can explicitly attach an existing behavior to a newly authored entity, and the engine loads that behavior. The current question is proving when and how the attached behavior actually executes.",
+    "A newly authored entity now runs behavior the project gave it: the original engine was observed executing the assigned script, and a control build differing only in that assignment never did. The current question is authoring new behavior rather than reusing behavior the game already had.",
   blockerParagraphs: [
     "The SDK creates a new entity's real binary data, finds proven-safe space for it in the unmodified game, writes it, and rebuilds the game file. Running that build in the original engine, the engine read the authored object count, followed the relocated pointer list to the new entity, and instantiated it. The new entity was observed in the running game.",
-    "That entity can now be given a behavior chosen by the project rather than inherited from the object it was copied from. The engine was observed loading the new entity and reading the behavior the SDK assigned to it, which a control build without that assignment does not carry.",
-    "What is not yet proven is execution. Observing that the engine holds the assigned behavior is not the same as observing it run, and the measurement built to tell those apart could not distinguish them. Establishing when and how an attached behavior actually executes is the next measured step.",
+    "That entity can be given a behavior chosen by the project rather than inherited from the object it was copied from, and the original engine now demonstrably runs it. During ordinary play the engine was caught entering the behavior it was assigned, five separate times, each time carrying the exact behavior the project selected.",
+    "A control build settles what that proves. It is identical in every respect except the one assignment, down to the same entity type, and across a comparable session the engine never entered the behavior at all. The same measurement was watching in both runs and saw other game scripts running throughout, so the difference is the assignment itself.",
+    "The behavior being run is one the game already had. The next measured step is authoring new behavior rather than reusing existing behavior.",
   ],
   acceptanceTarget:
     "Author playable Legacy of Goku content inside the real LOGII/Buu engine.",
@@ -197,10 +198,20 @@ export const project: ProjectStatus = {
     },
     {
       id: "scripts-dialogue",
-      title: "Give new entities behavior",
-      plainEnglish: "Give newly created content its own behavior, conditions, events, and text.",
+      title: "Attach and execute behavior",
+      plainEnglish:
+        "Give a newly authored entity an explicit engine behavior and prove the original game executes it.",
       technical:
-        "Behavior attachment works; execution proof pending. The SDK assigns an existing behavior to a newly authored entity through its normal build path, and the engine was observed loading the new entity carrying that assigned behavior rather than the one it was copied from. Proving when and how that behavior executes is the open question.",
+        "Confirmed. The SDK assigns an existing behavior to a newly authored entity through its normal build path, and the original engine was observed executing it: the program counter reached the script handler five times in one session, each time carrying the authored behavior pointer and its script, with the interpreter entered on the same frame. A control build differing in exactly one word, with the same entity type, reached the handler zero times while the same instrument recorded other scripts running throughout.",
+      status: "complete",
+    },
+    {
+      id: "author-new-behavior",
+      title: "Author new behavior",
+      plainEnglish:
+        "Create behavior, conditions, events, and text that did not exist in the original game.",
+      technical:
+        "Attaching existing behavior is proven end to end. The open question is authoring new behavior content rather than selecting behavior the game already contained.",
       status: "current",
     },
     {
@@ -225,6 +236,7 @@ export const project: ProjectStatus = {
     { label: "MATERIALIZE + CONNECT ENTITY", state: "done" },
     { label: "VERIFIED ROM CAPACITY", state: "done" },
     { label: "NEW ENTITY RUNS IN ENGINE", state: "done" },
+    { label: "ATTACHED BEHAVIOR EXECUTES", state: "done" },
     { label: "NEW SCRIPTS + DIALOGUE", state: "current", marker: "↑ YOU ARE HERE" },
     { label: "PLAYABLE LOG1 CONTENT", state: "target" },
   ],

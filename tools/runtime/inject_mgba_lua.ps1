@@ -134,6 +134,21 @@ $allowedLua = @(
         (Join-Path $workspaceRoot 'tools\runtime\p010_death_timeline.lua')
     )
     [System.IO.Path]::GetFullPath(
+        (Join-Path $workspaceRoot 'tools\runtime\p011_wolf_speed_probe.lua')
+    )
+    [System.IO.Path]::GetFullPath(
+        (Join-Path $workspaceRoot 'tools\runtime\p012_rng_probe.lua')
+    )
+    [System.IO.Path]::GetFullPath(
+        (Join-Path $workspaceRoot 'tools\runtime\p013_knockback_probe.lua')
+    )
+    [System.IO.Path]::GetFullPath(
+        (Join-Path $workspaceRoot 'tools\runtime\p015_bodyrect_probe.lua')
+    )
+    [System.IO.Path]::GetFullPath(
+        (Join-Path $workspaceRoot 'tools\runtime\p016_anchor_probe.lua')
+    )
+    [System.IO.Path]::GetFullPath(
         (Join-Path $workspaceRoot 'tools\runtime\p006_ewram_hp_scan.lua')
     )
     [System.IO.Path]::GetFullPath(
@@ -144,6 +159,12 @@ $allowedLua = @(
     )
     [System.IO.Path]::GetFullPath(
         (Join-Path $workspaceRoot 'tools\runtime\toolkit030_behavior_watch.lua')
+    )
+    [System.IO.Path]::GetFullPath(
+        (Join-Path $workspaceRoot 'tools\runtime\toolkit031_api_probe.lua')
+    )
+    [System.IO.Path]::GetFullPath(
+        (Join-Path $workspaceRoot 'tools\runtime\toolkit031_execution_watch.lua')
     )
 )
 $resolvedLua = [System.IO.Path]::GetFullPath($LuaPath)

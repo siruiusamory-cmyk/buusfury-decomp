@@ -51,6 +51,18 @@ meaningful outside-facing breakthrough, or the acceptance-target story. Update
 status change belongs in the capability's ticket commit. `NONE` requires a
 one-sentence reason and no cosmetic website edit.
 
+A ticket that passes a standing blocker or discovers a new one is always
+`UPDATED`, because the frontier moved: set the passed milestone to `complete`,
+make the newly measured blocker `current` (adding a milestone if the questline
+has no step for it), and rewrite the blocker fields. Such a ticket is not closed
+until the live site serves the change, so the repository and the deployed site
+never disagree. Either push the ticket commit to GitLab `master` and let
+`.gitlab-ci.yml` deploy, or deploy directly from the repo root with
+`npx --yes wrangler@4.105.0 deploy` (this uses the account's stored Wrangler
+credentials and needs no CI). Then re-fetch the public URL and confirm the new
+text is actually being served. A direct deploy publishes ahead of recorded
+history, so push the same commit during the same closure.
+
 The overall percentage is a directional product estimate, never a calculation
 from ticket count. Change it only when the maintainer reviews it explicitly or a broader
 roadmap review finds a material shift. Milestones are authoritative. Questline

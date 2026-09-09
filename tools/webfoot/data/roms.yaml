@@ -120,9 +120,38 @@ profiles:
           which is what gives the Buu branch contract canonical-byte evidence.
           Relocatable is false because no verified free region is declared for
           this profile.
+    free_regions:
+      - file_offset: 0x007ea400
+        size: 256
+        status: CONFIRMED
+        evidence: >-
+          TOOLKIT-028 docs/research/BUU_VERIFIED_CAPACITY.md, verified against
+          the canonical image by tools/research/capacity_proof.py. A bounded
+          256-byte window of the upstream tail, NOT the tail itself: TOOLKIT-011
+          correctly refused the whole [0x007B89A8, 0x00800000) region because 516
+          unresolved candidate references target it, and every one of those 516
+          remains blocking for the bytes it addresses. This window is carved to
+          contain none of them. All seven checks pass on the canonical bytes:
+          the 256 bytes are entirely FF fill; no CONFIRMED or DECLARED reference
+          in the production graph targets any byte of it; no modelled anchor or
+          declared table overlaps it; no candidate observation targets any byte
+          of it at any alignment, interior bytes included; no candidate
+          observation is sourced inside it, so writing it cannot alter a word
+          some unknown consumer reads as a pointer; the nearest candidate target
+          is 1,717 bytes below and 2,816 above, against a required 1,024-byte
+          clearance, so a structure beginning at an unresolved candidate and
+          running on still misses it; and it lies far above the declared header.
+          The scanner's positive controls pass in the same run: it rejects the
+          declared header, the largest declared table, the most-referenced target
+          in the graph, and - decisively - a window placed at an actual candidate
+          observation that is FF fill inside this same tail, which is rejected on
+          candidate_target alone. Absence of detection is therefore evidence of
+          absence for exactly these checks, not a blind scan. This is a general
+          SDK capacity declaration, not a per-map allocation.
     sources:
       - "2genkidev/buusfury@cc53d0cd2d1c167e749419187e2d92017ac07468 README.md"
       - "Local reproducible observation, 2026-08-19"
+      - "TOOLKIT-028 bounded window verification, 2026-09-09"
     notes: >-
       Exact local profile and the base image expected by the pinned disassembly.
       Do not assume compatibility with the distinct mstan recomp profile.

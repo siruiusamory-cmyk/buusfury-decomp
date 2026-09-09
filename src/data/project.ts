@@ -85,13 +85,13 @@ export const project: ProjectStatus = {
   currentPhase: "AUTHOR_NEW",
   currentFrontierLabel: "CURRENT FRONTIER",
   existingContentState: "MATURE",
-  blockerCode: "VERIFIED ROM CAPACITY",
-  blockerTitle: "Establish verified ROM capacity",
+  blockerCode: "RUNTIME VALIDITY",
+  blockerTitle: "Prove newly authored content runs in the engine",
   blockerShort:
-    "The SDK can now create a new entity's real binary data, allocate it, and connect the map's new object slot to it. The missing piece is proven-safe physical space in the game to put newly authored content.",
+    "The SDK now builds a real game file containing a newly authored entity. What is not yet proven is that the original engine accepts and runs it.",
   blockerParagraphs: [
-    "The SDK can now create a new entity's real binary data, allocate it, and connect the map's new object slot to it. When space is supplied for testing, the whole chain completes.",
-    "The missing piece is physical room in the game itself. No verified free space has been established yet, so building against the unmodified game stops for lack of somewhere safe to put the new content.",
+    "The SDK now creates a new entity's real binary data, finds proven-safe space for it in the unmodified game, writes it, and rebuilds the game file. Exactly 48 bytes change, all of them intended, and repeated builds are identical.",
+    "That is a structural result, not yet a playable one. The next measured step is running the built game and confirming the engine loads the new entity and behaves correctly with it.",
   ],
   acceptanceTarget:
     "Author playable Legacy of Goku content inside the real LOGII/Buu engine.",
@@ -180,9 +180,18 @@ export const project: ProjectStatus = {
     {
       id: "rom-capacity",
       title: "Establish verified ROM capacity",
-      plainEnglish: "Provide proven-safe physical space for growing amounts of newly authored content.",
+      plainEnglish: "Provide proven-safe physical space for newly authored content.",
       technical:
-        "This is now the binding requirement. With capacity supplied for testing, the whole authoring chain completes; against the unmodified game it stops here, because no verified free space has been established yet.",
+        "A 256-byte region of the unmodified game is now verified writable and declared in the SDK profile, established by a check that also proves it detects the game's real structures. The whole authoring chain completes against the unmodified game and produces a built game file.",
+      status: "complete",
+    },
+    {
+      id: "runtime-validity",
+      title: "Prove new entity in-game",
+      plainEnglish:
+        "Build the authored ROM and verify that the original engine actually loads and runs the newly created entity.",
+      technical:
+        "The built game file already contains the authored entity, with the map's object count and the pointer that reaches it updated. Whether the engine accepts it at runtime is a separate proof and is not yet claimed.",
       status: "current",
     },
     {
@@ -216,6 +225,14 @@ export const project: ProjectStatus = {
     { label: "PLAYABLE LOG1 CONTENT", state: "target" },
   ],
   breakthroughs: [
+    {
+      id: "authored-rom-materialization",
+      title: "First canonical AUTHOR_NEW ROM build",
+      summary:
+        "The SDK produced a deterministic Buu's Fury build containing genuinely new authored map data using verified writable space.",
+      technical:
+        "A 256-byte region of the unmodified game is verified writable and declared in the SDK profile. Materializing the authored entity requests 44 bytes of it, and exactly 48 bytes change across the whole game file. Repeated builds are byte-identical and the original game file is never modified.",
+    },
     {
       id: "authored-body-materialization",
       title: "Authored entity body materialization",

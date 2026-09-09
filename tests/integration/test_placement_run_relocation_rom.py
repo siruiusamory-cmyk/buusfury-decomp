@@ -478,16 +478,23 @@ def test_capacity_is_still_necessary_and_relocation_now_reaches_the_allocator(ty
     with `non-relocatable anchor`. It does not any more: the array's measured
     reference set satisfies the relocation safety contract, so the request now
     reaches the allocator, which still needs declared capacity to satisfy it.
+
+    TOOLKIT-028 declared a real verified region, so "capacity is still necessary"
+    can no longer be demonstrated by the profile having none. It is demonstrated
+    the way that survives a profile which DOES declare capacity: a request larger
+    than every declared region still fails, and it fails at the ALLOCATOR - the
+    capacity boundary - rather than being refused on authority.
     """
     array = AnchorId(f"map:{SELECTED_MAP:04d}/placement_references")
     request = AllocationRequest(array, f"map:{SELECTED_MAP:04d}", 108, 4)
+    declared = sum(f.range.size for f in types.profile.free_regions)
+    beyond = 4 * ((declared + 4 + 3) // 4)
     with pytest.raises(InsufficientSpaceError):
-        allocate(types.profile, [request])
-    # Canonical Buu declares no free space, so relocation reaches the allocator
-    # and fails THERE - the capacity boundary, not an authority boundary.
+        allocate(types.profile,
+                 [AllocationRequest(array, f"map:{SELECTED_MAP:04d}", beyond, 4)])
     with pytest.raises(InsufficientSpaceError):
         plan_relocation(types.reference_document(),
-                        [RelocationRequest(array, b"\x00" * 12)])
+                        [RelocationRequest(array, b"\x00" * beyond)])
     profile = replace(types.profile, free_regions=(
         FreeRegion(RomRange(FileOffset(0x10000), 4096), "synthetic verified capacity"),))
     first = allocate(profile, [request])

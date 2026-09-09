@@ -61,6 +61,7 @@ from .maps import (
     load_maps,
 )
 from .formats.map_entry import MapEntryProfileError
+from .layout import LayoutError
 from .write import (
     ByteChange,
     ProjectProvenance,
@@ -871,7 +872,8 @@ def build_project(
             + ("; ..." if len(problems) > 5 else "")
         )
 
-    from .authored_placements import prepare_authored_runs, require_materialization_contract
+    from .authored_placements import (materialize_authored_runs, prepare_authored_runs,
+                                      require_materialization_contract)
     authored_runs = prepare_authored_runs(project, maps)
     # TOOLKIT-025: the image is passed so an authored expansion derives and validates
     # its `MapEntry+0x04` count change against the bytes actually being built, rather
@@ -879,9 +881,28 @@ def build_project(
     # TOOLKIT-026: the document is passed so the gate REPORTS the array anchor's
     # measured relocation eligibility instead of asserting it, and names the exact
     # anchors the graph is still missing.
-    require_materialization_contract(
-        authored_runs, None if maps is None else maps.base_bytes,
-        None if not authored_runs or maps is None else _placement_document(maps))
+    # TOOLKIT-028: capacity is now declared, so materialization SUCCEEDS and its
+    # changes join the single merged plan below rather than being planned and
+    # discarded. `require_materialization_contract` still runs whenever the
+    # materialization cannot be produced, so every existing refusal keeps its exact
+    # message and no path silently emits a partial expansion.
+    authored_changes = []
+    authored_map_identities = frozenset(MapIdentity(run.map_index) for run in authored_runs)
+    if authored_runs and maps is not None:
+        document = _placement_document(maps)
+        if document is None:
+            require_materialization_contract(authored_runs, maps.base_bytes, None)
+        else:
+            try:
+                authored_changes = materialize_authored_runs(
+                    document, authored_runs, maps.base_bytes)
+            except LayoutError:
+                # Re-raise through the gate so the blocker is reported with its full
+                # measured context instead of a bare allocator or overlay error.
+                require_materialization_contract(authored_runs, maps.base_bytes, document)
+                raise
+    elif authored_runs:
+        require_materialization_contract(authored_runs, None, None)
 
     # One plan for every subsystem, not one plan each. Overlap detection is
     # per-plan, so two plans could each validate while together writing the
@@ -902,12 +923,20 @@ def build_project(
         base_bytes = strings.base_bytes if base_bytes is None else base_bytes
     if maps is not None:
         _apply_project_to_maps(project, maps)
-        changes += maps.changes()
+        # TOOLKIT-028: an authored expansion derives its map's MapEntry record and
+        # moves its object array, so `maps` yields both structures to it rather than
+        # re-encoding them at their canonical values and colliding.
+        changes += maps.changes(authored_maps=authored_map_identities)
         from .data.placement_contracts import CONTRACTS
         if maps.profile.id in CONTRACTS:
             from .placement_events import PlacementEvents
             changes += PlacementEvents(maps).changes()
         base_bytes = maps.base_bytes if base_bytes is None else base_bytes
+
+    # TOOLKIT-028: the authored expansion joins the SAME merged plan as every other
+    # subsystem, so an authored body that claimed bytes another subsystem also wrote
+    # is a hard overlap error rather than a silent last-writer-wins.
+    changes += authored_changes
 
     if base_bytes is None:
         # Unreachable: `_require_extractable_profile` refuses a profile that

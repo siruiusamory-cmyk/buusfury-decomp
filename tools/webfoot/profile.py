@@ -110,9 +110,11 @@ class TextTableProfile:
     cannot read is refused instead of being decoded with the wrong reader.
 
     `relocatable` is a property of the *pool*, and it is False for every profile
-    shipped today: relocation additionally requires declared free space, which
-    no verified profile has. Declaring it True without free space still cannot
-    move anything - the allocator refuses - so the flag records intent, never
+    shipped today. TOOLKIT-028 declared a verified free region for canonical Buu,
+    so that is no longer because capacity is absent: capacity is necessary for
+    relocation but never sufficient, and moving the pool needs its own evidence
+    that no ticket has supplied. Declaring the flag True without free space still
+    cannot move anything - the allocator refuses - so it records intent, never
     permission.
     """
 

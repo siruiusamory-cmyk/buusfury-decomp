@@ -661,7 +661,7 @@ class Maps:
 
     # --- planning ------------------------------------------------------
 
-    def changes(self) -> tuple[ByteChange, ...]:
+    def changes(self, *, authored_maps: frozenset[MapIdentity] = frozenset()) -> tuple[ByteChange, ...]:
         """Encode every record and every slot extent into attributed changes.
 
         Everything is encoded, not just what was edited, because that is what
@@ -669,10 +669,23 @@ class Maps:
         original bytes and `plan_changes` then drops it as a no-op. Returned as
         changes rather than a plan so a caller can merge subsystems into one
         plan, which is what makes cross-subsystem overlap a hard error.
+
+        TOOLKIT-028: `authored_maps` names the maps an authored expansion has taken
+        ownership of, and this yields BOTH their MapEntry record and their object
+        array to it. Two structures of such a map are no longer describable here:
+        its `MapEntry+0x04` count and `MapEntry+0x14` owner pointer are both derived
+        by the expansion, and its object array has MOVED, so re-encoding the record
+        at its canonical value or the array at its canonical home would contradict
+        the expansion byte-for-byte. Yielding is what keeps that a single-owner
+        write; the round-trip property is unaffected because the expansion emits the
+        same bytes for everything it did not deliberately change, and any map NOT in
+        this set is still encoded in full exactly as before.
         """
         changes: list[ByteChange] = []
 
         for item in self.entries():
+            if item.identity in authored_maps:
+                continue
             record = item.record
             edits = self._edits.get(item.identity, {})
             if edits:
@@ -688,6 +701,8 @@ class Maps:
             )
 
         for array_entry in self.slot_arrays():
+            if array_entry.identity in authored_maps:
+                continue
             array = array_entry.array
             changes.append(
                 ByteChange(

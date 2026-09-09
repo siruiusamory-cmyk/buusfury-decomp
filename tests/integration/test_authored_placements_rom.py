@@ -22,7 +22,7 @@ def maps_for(rom, catalog):
     return load_maps(rom, catalog)
 
 
-def test_canonical_authoring_serializes_but_preserves_ownership_and_zero_capacity(tmp_path):
+def test_canonical_authoring_materializes_into_a_built_rom(tmp_path):
     candidates = sorted(Path("roms").glob("*Buu*.gba"))
     if not candidates:
         pytest.skip("canonical Buu ROM not configured locally")
@@ -56,10 +56,19 @@ def test_canonical_authoring_serializes_but_preserves_ownership_and_zero_capacit
         assert len(run.records) == len(project.maps[owner]["placements"]) + 1
         assert run == authored_capacity_plan(roots[0], rom, catalog)[0]
         profile = next(p for p in catalog.profiles if p.id == project.meta.profile_id)
-        assert profile.free_regions == ()
-        # A capacity feasibility check, NOT a claim that build reached allocation.
-        with pytest.raises(InsufficientSpaceError) as capacity:
-            allocate(profile, [run.allocation_request])
+        # TOOLKIT-028: the profile now declares ONE verified 256-byte window. It is a
+        # narrow carve of the tail TOOLKIT-011 refused whole, not that tail.
+        region, = profile.free_regions
+        assert (region.range.start.value, region.range.size) == (0x7EA400, 256)
+        assert "TOOLKIT-028" in region.evidence
+        # `allocation_request` is the OLD single-block packing PROPOSAL: 108 bytes,
+        # 3 pointer slots plus all 3 whole bodies. The transaction the build actually
+        # issues is smaller and split in two - a 32-byte body and a 12-byte array,
+        # 44 bytes - because the two canonical bodies are not rewritten, only
+        # re-pointed. This pins BOTH numbers so the stale proposal cannot quietly
+        # become the sizing rule for a future declaration.
+        assert run.allocation_request.size == 108
+        assert allocate(profile, [run.allocation_request])[0].range.size == 108
         # TOOLKIT-025: the derived `MapEntry+0x04` count write now EXISTS, so the build
         # no longer stops on an unwritable count. It is derived from the validated
         # object array - never supplied by the project - and names the exact byte it
@@ -90,19 +99,18 @@ def test_canonical_authoring_serializes_but_preserves_ownership_and_zero_capacit
         assert all(not a.relocatable for a in document.anchors
                    if a.kind != "placement_reference_array")
 
-        # TOOLKIT-027: under SYNTHETIC verified capacity the whole chain runs on
-        # canonical Buu bytes - the authored body is anchored by its stable project
-        # identity, allocated by the production allocator, and its address is what
-        # the relocated array's third slot actually holds.
-        from dataclasses import replace as _replace
+        # TOOLKIT-028: the chain runs against the PRODUCTION profile, not a synthetic
+        # one. The authored body is anchored by its stable project identity, allocated
+        # by the production allocator out of the declared window, and its address is
+        # what the relocated array's third slot actually holds.
         from tools.webfoot.authored_placements import plan_authored_materialization
-        from tools.webfoot.binary import FileOffset
-        from tools.webfoot.layout import FreeRegion, RomRange
-        synthetic = _replace(document, profile=_replace(document.profile, free_regions=(
-            FreeRegion(RomRange(FileOffset(0x800000 - 0x1000), 0x1000),
-                       "synthetic verified capacity for the TOOLKIT-027 proof"),)))
-        plan = plan_authored_materialization(synthetic, run)
+        plan = plan_authored_materialization(document, run)
         placed = {a.request.anchor.value: a.range for a in plan.allocations}
+        # The EXACT canonical demand, measured from the plan rather than assumed:
+        # two requests, 32 + 12 = 44 bytes, both alignment 4.
+        assert sorted((a.request.size, a.request.alignment) for a in plan.allocations) == [
+            (12, 4), (32, 4)]
+        assert sum(a.range.size for a in plan.allocations) == 44
         body_span = placed[clone.identity]
         assert placed[run.identity.value].size == 4 * 3
         assert body_span.size == len(run.authored_records[0].payload)
@@ -115,33 +123,55 @@ def test_canonical_authoring_serializes_but_preserves_ownership_and_zero_capacit
         third = plan.slot_pointer(2)
         assert third != 0x00000000
         assert third == 0x08000000 + body_span.start.value
-        assert plan.to_json() == plan_authored_materialization(synthetic, run).to_json()
-        # The canonical profile itself still declares no capacity at all.
-        assert document.profile.free_regions == ()
+        assert plan.to_json() == plan_authored_materialization(document, run).to_json()
+        # Both allocations land inside the ONE declared window, and stay disjoint.
+        assert body_span.start.value >= 0x7EA400 and body_span.end <= 0x7EA500
+        array_span = placed[run.identity.value]
+        assert array_span.start.value >= 0x7EA400 and array_span.end <= 0x7EA500
+        assert not body_span.overlaps(array_span)
+        # The allocator used the PRODUCTION declaration, not an injected one.
+        assert all("TOOLKIT-028" in a.free_region_evidence for a in plan.allocations)
 
-        errors = []
+        # TOOLKIT-028: the build now EMITS the expansion instead of refusing it.
+        built = []
         for index in range(2):
             out, manifest = tmp_path / f"authored{index}.gba", tmp_path / f"authored{index}.json"
-            # The blocker moved one gate downstream again: the body is modelled and
-            # referenced, so what remains against CANONICAL Buu is declared capacity.
-            with pytest.raises(LayoutError, match="bodies are MODELLED") as blocked:
-                build_project(roots[0], rom, out, catalog, manifest_path=manifest)
-            errors.append(str(blocked.value))
-            assert not out.exists() and not manifest.exists()
-        assert errors[0] == errors[1]
-        assert "derived count write is AVAILABLE and validated" in errors[0]
-        assert "array anchor IS relocatable" in errors[0]
-        assert "InsufficientSpaceError" in errors[0]
-        assert "unmodelled authored record bodies" not in errors[0]
-        assert "unwritable engine count" not in errors[0]
-        assert "non-relocatable" not in errors[0]
-        assert clone.identity in errors[0]
-        evidence = {**run.to_json(), "capacity_feasibility_error": str(capacity.value),
-                    "production_build_error": errors[0], "extraction_files": len(contents(roots[1])),
+            result = build_project(roots[0], rom, out, catalog, manifest_path=manifest)
+            assert out.exists() and manifest.exists()
+            built.append((out.read_bytes(), json.loads(manifest.read_text())))
+        # Repeated builds are byte-identical, ROM and manifest alike.
+        assert built[0][0] == built[1][0]
+        assert built[0][1] == built[1][1]
+        image = built[0][0]
+        assert len(image) == len(before)
+
+        # EXACTLY the intended bytes changed - nothing else in the 8 MiB image.
+        differing = [i for i in range(len(before)) if before[i] != image[i]]
+        assert len(differing) == 48
+        assert min(differing) == 0x08E514 and max(differing) == 0x7EA42B
+        # The derived count, written as part of its own MapEntry record.
+        assert image[0x08E514] == 3 and before[0x08E514] == 2
+        # The owner pointer now addresses the relocated array.
+        assert int.from_bytes(image[0x08E524:0x08E528], "little") == 0x08000000 + start
+        # The two canonical slots survive the move byte-for-byte, and the third
+        # slot in the BUILT image points at the authored body.
+        assert image[start:start + 8] == canonical_slots
+        assert int.from_bytes(image[start + 8:start + 12], "little") == third
+        # The authored body's bytes are the production codec's, in the ROM.
+        assert image[body_span.start.value:body_span.end] == run.authored_records[0].payload
+        # Everything outside the declared window and that one MapEntry is untouched.
+        assert image[:0x08E510] == before[:0x08E510]
+        assert image[0x08E548:0x7EA400] == before[0x08E548:0x7EA400]
+        assert image[0x7EA500:] == before[0x7EA500:]
+
+        evidence = {**run.to_json(), "extraction_files": len(contents(roots[1])),
                     "noop_bytes": len(before), "base_sha256": SHA,
                     "authored_materialization": plan.to_json(),
                     "third_slot_pointer": f"0x{third:08X}",
-                    "relocated_array_file_offset": start}
+                    "relocated_array_file_offset": start,
+                    "built_sha256": hashlib.sha256(image).hexdigest(),
+                    "changed_byte_count": len(differing),
+                    "manifest": built[0][1]}
         print(json.dumps(evidence, indent=2))
     finally:
         assert hashlib.sha256(rom.read_bytes()).hexdigest() == SHA

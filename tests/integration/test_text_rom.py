@@ -93,10 +93,11 @@ def test_the_profile_declares_the_verified_text_layout(catalog: RomProfileCatalo
     assert layout.count == ENTRY_COUNT
     assert layout.pool_size == POOL_SIZE
     assert layout.encoding == "utf16le_nul_terminated"
-    # No verified free region exists for this profile, so canonical growth is
-    # blocked. If a future ticket declares one, this flag flips deliberately.
+    # Text growth is blocked by the POOL's own flag, which is a declared profile
+    # field and not a consequence of capacity. TOOLKIT-028 declared a verified
+    # free region for this profile, and that deliberately did NOT unblock text:
+    # relocating the pool needs its own evidence, which no ticket has supplied.
     assert layout.relocatable is False
-    assert profile.free_regions == ()
 
 
 def test_the_pointer_table_tiles_the_pool_exhaustively(image: bytes):
@@ -340,15 +341,25 @@ def test_an_edit_that_would_not_fit_is_refused_with_the_exact_deficit(strings):
         strings.set_text(entry.identity, "A Very Much Longer Replacement Name")
 
 
-def test_canonical_growth_stays_blocked_because_no_free_space_is_declared(strings):
+def test_canonical_growth_stays_blocked_because_the_pool_is_not_relocatable(strings):
     """The capability boundary, asserted rather than only documented.
 
-    Longer text is refused for this ROM because no verified free region exists
-    to relocate into - not because the machinery is missing. The machinery is
-    proved in `tests/unit/test_text_relocation.py`.
+    Longer text is refused for this ROM because the pool is not declared
+    relocatable - not because the machinery is missing. The machinery is proved
+    in `tests/unit/test_text_relocation.py`.
+
+    TOOLKIT-028 declared a verified free region for this profile, which makes the
+    old "no free space exists" form of this assertion false. That declaration
+    deliberately did NOT unblock text: capacity is necessary for relocation but
+    never sufficient, and the pool's own evidence is what is still missing. This
+    now pins that separation, so a future capacity declaration cannot silently
+    become permission to move the text pool.
     """
-    assert strings.profile.free_regions == ()
+    assert strings.profile.free_regions != ()
     assert strings.layout.relocatable is False
+    entry, = strings.find(EDIT_TEXT)
+    with pytest.raises(TextTooLongError, match="bytes too long"):
+        strings.set_text(entry.identity, "A Very Much Longer Replacement Name")
 
 
 def test_a_malformed_control_token_is_refused_before_any_plan(strings):

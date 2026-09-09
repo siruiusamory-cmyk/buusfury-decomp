@@ -12,6 +12,7 @@ array slot a real reference, so both move through the existing relocator.
 from dataclasses import dataclass, replace
 
 from .allocation import AllocationRequest
+from .formats.map_entry import MAP_ENTRY_SIZE
 from .layout import AnchorId, LayoutError
 from .maps import MapIdentity, PlacementIdentity
 
@@ -450,6 +451,88 @@ class AuthoredMaterialization:
                 "bodies": [b.to_json() for b in self.bodies],
                 "allocations": [a.to_json() for a in self.allocations],
                 "expanded_slot_count": self.run.target_slot_count}
+
+
+def materialize_authored_runs(document, runs, image):
+    """Every attributed byte change one or more authored runs require, in order.
+
+    TOOLKIT-028: capacity is declared, so the plan `plan_authored_materialization`
+    already produced against canonical Buu can be EMITTED rather than described and
+    thrown away. This is the whole of that translation - it introduces no second
+    allocator, writer or codec, and every change it returns was produced by the
+    existing machinery:
+
+      * the relocation's own effective changes (the expanded array's bytes at their
+        allocated home, and the `MapEntry+0x14` owner pointer rewritten to it);
+      * one body change per authored record, writing the production codec's bytes
+        into the allocated body span;
+      * the derived `MapEntry+0x04` count change, which `derive_count_change`
+        independently re-validates against the image actually being built.
+
+    The count and the owner pointer are two fields of ONE MapEntry record, so they
+    are emitted as one change over that record rather than as two changes that would
+    each claim bytes inside it. `Maps.changes` yields the record for exactly these
+    maps, which is what keeps the record single-owner; `derive_count_change` still
+    computes and validates the count byte, and its value is folded into that record
+    rather than written separately.
+
+    Runs are processed in map order so a multi-run build is deterministic. Each run
+    is planned against the same verified base document, which is what `plan_relocation`
+    requires; two runs competing for the same declared bytes therefore surface as an
+    overlap error in the merged `plan_changes`, not as silent last-writer-wins.
+    """
+    from .write import ByteChange
+
+    changes = []
+    for run in sorted(runs, key=lambda r: r.map_index):
+        plan = plan_authored_materialization(document, run)
+        count = run.derive_count_change(image)
+
+        entry_changes = []
+        for change in plan.relocation.plan.effective_changes:
+            if run.map_entry_offset is not None and (
+                    change.offset < run.map_entry_offset + MAP_ENTRY_SIZE
+                    and change.offset + len(change.new) > run.map_entry_offset):
+                entry_changes.append(change)
+            else:
+                changes.append(change)
+        changes.extend(plan.body_changes)
+
+        # Fold every field this expansion derives - the relocated owner pointer and
+        # the derived count - into one record-wide change, so the MapEntry has a
+        # single writer instead of one per field.
+        base = run.map_entry_offset
+        if base is None:
+            if entry_changes or count is not None:
+                raise AuthoredCountError(
+                    f"map:{run.map_index:04d}: authored expansion derives MapEntry fields "
+                    "without map-entry provenance; refusing to write an unnamed record")
+            continue
+        old = image[base:base + MAP_ENTRY_SIZE]
+        new = bytearray(old)
+        for change in entry_changes:
+            at = change.offset - base
+            if at < 0 or at + len(change.new) > MAP_ENTRY_SIZE:
+                raise AuthoredCountError(
+                    f"map:{run.map_index:04d}: derived MapEntry change at "
+                    f"0x{change.offset:06X} is not wholly inside the record")
+            if bytes(new[at:at + len(change.old)]) != change.old:
+                raise AuthoredCountError(
+                    f"map:{run.map_index:04d}: derived MapEntry change at "
+                    f"0x{change.offset:06X} does not match the image being built")
+            new[at:at + len(change.new)] = change.new
+        if count is not None:
+            at = count.offset - base
+            if bytes(new[at:at + 1]) != count.old:
+                raise AuthoredCountError(
+                    f"map:{run.map_index:04d}: derived count does not match the record "
+                    "being built")
+            new[at:at + 1] = count.new
+        if bytes(new) != old:
+            changes.append(ByteChange(
+                base, old, bytes(new), f"map:{run.map_index:04d}",
+                "authored object-array expansion: relocated owner pointer and derived count"))
+    return changes
 
 
 def require_materialization_contract(runs, image=None, document=None):

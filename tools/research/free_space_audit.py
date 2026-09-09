@@ -87,8 +87,16 @@ def occupancy(size, owned):
     return {'annotations': records, 'segments': result}
 
 
-def audit(path):
-    catalog = RomProfileCatalog.load(Path(__file__).resolve().parents[1] / 'webfoot/data/roms.yaml')
+def build_model(path, catalog_path=None):
+    """The shared annotation/reference model, so a second report cannot drift.
+
+    TOOLKIT-028 verifies one narrow window of the same tail this audit bounds. It
+    reuses THIS model rather than building its own, so its negatives are directly
+    comparable with the positives recorded here. Returns the raw pieces; it makes
+    no judgement and promotes nothing.
+    """
+    catalog = RomProfileCatalog.load(catalog_path or
+                                     Path(__file__).resolve().parents[1] / 'webfoot/data/roms.yaml')
     identification = identify_rom(path, catalog)
     profile = identification.profile_match.profile
     if (identification.profile_match.status is not VerificationStatus.VERIFIED
@@ -139,18 +147,71 @@ def audit(path):
     owned.append({'start': 0, 'end': 0x158, 'kind': 'header_startup_code',
                   'owner': 'buusfury/asm/crt0.s', 'status': 'DECLARED'})
     span = RomRange(FileOffset(0x7B89A8), 0x800000 - 0x7B89A8)
+    if identify_rom(path, catalog).hashes != identification.hashes:
+        raise ValueError('canonical image changed during audit')
+    model = {'image': image, 'owned': owned, 'references': refs, 'profile': profile,
+             'tail': span}
+    model['controls'] = lambda *_: positive_control_windows(model)
+    return model
+
+
+def positive_control_windows(model):
+    """Windows this project independently models as USED, for scanner controls.
+
+    A negative result is evidence only if the SAME procedure returns a positive on
+    live structures, so each control is derived from the model rather than picked
+    by eye, and each names the specific check it must trip. A control that failed
+    for some unrelated reason would prove nothing about the check it exercises, so
+    the caller asserts the named checks, not merely a REJECTED verdict.
+
+    One control per detection path the window proof depends on:
+
+      * `header_startup`    - `bounds` and `fill`, on the declared header;
+      * `declared_table`    - `known_overlap`, on the largest modelled table;
+      * `referenced_target` - `known_inbound`, on the most-referenced target in
+                              the production graph;
+      * `candidate_target`  - `candidate_target`, on a window placed at an actual
+                              TOOLKIT-011 candidate observation. That window is
+                              `FF` fill inside the same tail, so `candidate_target`
+                              is the only thing that can reject it - which is
+                              precisely the discrimination the narrow proof rests on.
+    """
+    owned, refs, span = model['owned'], model['references'], model['tail']
+    windows = [('header_startup', RomRange(FileOffset(0), 0x100), ('bounds', 'fill'))]
+
+    table = max((r for r in owned if r['kind'] == 'declared_table'),
+                key=lambda r: (r['end'] - r['start'], r['start']))
+    windows.append(('declared_table:' + table['owner'],
+                    RomRange(FileOffset(table['start']), 0x100), ('known_overlap',)))
+
+    counts = Counter(r['target'] for r in refs)
+    target = max(counts, key=lambda t: (counts[t], -t))
+    windows.append((f'referenced_target:0x{target:06X}',
+                    RomRange(FileOffset(target), 4), ('known_inbound',)))
+
+    hits = candidate_report(model['image'], span, [], [])['candidate_observations']
+    if hits:
+        probe = min(h['target'] for h in hits)
+        windows.append((f'candidate_target:0x{probe:06X}',
+                        RomRange(FileOffset(probe), 4), ('candidate_target',)))
+    return windows
+
+
+def audit(path, catalog_path=None):
+    catalog = RomProfileCatalog.load(catalog_path or
+                                     Path(__file__).resolve().parents[1] / 'webfoot/data/roms.yaml')
+    model = build_model(path, catalog_path=catalog_path)
+    image, owned, refs, profile, span = (model['image'], model['owned'], model['references'],
+                                         model['profile'], model['tail'])
     candidate = candidate_report(image, span, owned, refs)
     annotated = owned + [{'start': span.start.value, 'end': span.end,
                          'kind': 'candidate_tail', 'owner': 'upstream_tail', 'status': 'CANDIDATE'}]
-    result = {'profile_id': profile.id, 'base_sha256': profile.sha256,
-              'candidate': candidate, 'occupancy': occupancy(len(image), annotated),
-              'reference_model_count': len(refs),
-              'verified_capacity': sum(f.range.size for f in profile.free_regions),
-              'decision': 'NOT_PROMOTED',
-              'limits': 'Partial typed ownership only; broad INCBINs remain semantically UNKNOWN.'}
-    if identify_rom(path, catalog).hashes != identification.hashes:
-        raise ValueError('canonical image changed during audit')
-    return result
+    return {'profile_id': profile.id, 'base_sha256': profile.sha256,
+            'candidate': candidate, 'occupancy': occupancy(len(image), annotated),
+            'reference_model_count': len(refs),
+            'verified_capacity': sum(f.range.size for f in profile.free_regions),
+            'decision': 'NOT_PROMOTED',
+            'limits': 'Partial typed ownership only; broad INCBINs remain semantically UNKNOWN.'}
 
 
 if __name__ == '__main__':

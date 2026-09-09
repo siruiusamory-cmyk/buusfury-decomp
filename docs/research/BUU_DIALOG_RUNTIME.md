@@ -119,7 +119,7 @@ Families investigated:
 `0x08003030` pops **three** values, innermost last:
 
 ```
-0x08003032  ldr  r1,[r0]        ; VM stack pointer
+0x08003032  ldr  r1,[r0]        ; inline VM stack depth/index
 0x0800303E  ldr  r1,[r1,#4]     ; pop 1 -> [sp+8]
 0x0800304C  ldr  r1,[r1,#4]     ; pop 2 -> [sp+4]
 0x0800305A  ldr  r0,[r0,#4]     ; pop 3 -> r0

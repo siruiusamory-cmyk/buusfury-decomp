@@ -854,3 +854,23 @@ def test_toolkit031_observer_refuses_to_degrade_to_a_blind_poll():
     assert "cannot see execution and must not be substituted" in probe
     # Structural rows exist but are labelled so they cannot be read as execution.
     assert "structural sample only; not execution" in probe
+
+
+def test_toolkit033_observer_is_read_only_discriminating_and_allowlisted():
+    root = Path(__file__).resolve().parents[2]
+    probe_path = root / "tools/runtime/toolkit033_gameplay_effect_watch.lua"
+    probe = probe_path.read_text(encoding="utf-8")
+    injector = (root / "tools/runtime/inject_mgba_lua.ps1").read_text(
+        encoding="utf-8")
+
+    assert "toolkit033_gameplay_effect_watch.lua" in injector
+    assert "0x08004038" in probe       # authored script entry
+    assert "0x08003CBE" in probe       # native_stack opcode handler
+    assert "0x08003030" in probe       # selected slot-178 handler
+    assert 'safe32(cursor_holder)' in probe  # live cursor via [r1]
+    assert "last_authored_native_frame" in probe
+    assert "EXPECTED-ARGS" in probe
+    assert "emu:screenshot" in probe
+    assert "negative" in probe
+    assert "emu:write" not in probe
+    assert "emu:addKey" not in probe and "emu:clearKey" not in probe

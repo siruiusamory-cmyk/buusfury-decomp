@@ -10,6 +10,7 @@ TOOLKIT-027: `authoring_overlay` gives that body a real anchor and the appended
 array slot a real reference, so both move through the existing relocator.
 """
 from dataclasses import dataclass, replace
+import re
 
 from .allocation import AllocationRequest
 from .formats.map_entry import MAP_ENTRY_SIZE
@@ -119,6 +120,43 @@ def _resolve_behavior(clone, maps):
     return 0x08000000 + descriptor.file_offset
 
 
+def _expand_semantic_source(source, profile_id, identity):
+    """Resolve the profile's narrow proven effects to ordinary VM mnemonics."""
+    from .data.script_effects import SCRIPT_EFFECTS
+    expanded = []
+    effects = SCRIPT_EFFECTS.get(profile_id, {})
+    for line in source:
+        parts = line.split()
+        effect = effects.get(parts[0]) if parts else None
+        if effect is None:
+            expanded.append(line)
+            continue
+        if parts[0] != 'show_centered_sprite_text' or len(parts) != 4:
+            raise AuthoredBehaviorError(
+                f"{identity}: show_centered_sprite_text requires text:NNNN, X and Y")
+        match = re.fullmatch(r'text:([0-9]+)', parts[1])
+        if match is None:
+            raise AuthoredBehaviorError(
+                f"{identity}: show_centered_sprite_text requires a text:NNNN identity")
+        text_index = int(match.group(1), 10)
+        try:
+            x, y = (int(value, 0) for value in parts[2:])
+        except ValueError:
+            raise AuthoredBehaviorError(
+                f"{identity}: show_centered_sprite_text coordinates must be integers") from None
+        if not 0 <= text_index < effect['text_count']:
+            raise AuthoredBehaviorError(
+                f"{identity}: text identity is outside the verified table")
+        if not (0 <= x < 240 and 0 <= y < 160):
+            raise AuthoredBehaviorError(
+                f"{identity}: show_centered_sprite_text coordinates must be on screen")
+        expanded.extend((
+            f"push_many 3 {text_index} {x} {y}",
+            f"{effect['native_opcode']} {effect['native_slot']}",
+        ))
+    return tuple(expanded)
+
+
 def _assemble_script(clone, maps):
     """Assemble one authored script body through the production `script_vm` codec.
 
@@ -140,8 +178,9 @@ def _assemble_script(clone, maps):
     if maps.profile.id not in spec.profiles:
         raise AuthoredBehaviorError(
             f"{clone.identity}: the {spec.name} VM is not verified for this profile")
+    source = _expand_semantic_source(clone.script, maps.profile.id, clone.identity)
     try:
-        return assemble_source(clone.script, spec)
+        return assemble_source(source, spec)
     except ScriptError as exc:
         raise AuthoredBehaviorError(f"{clone.identity}: authored script body rejected: {exc}") from None
 

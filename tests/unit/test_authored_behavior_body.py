@@ -64,7 +64,8 @@ def test_authored_script_uses_only_confirmed_rom_opcodes():
     (("push_byte 256",), "unsigned byte"),
     (("push_byte x",), "must be an integer"),
     (("branch_forward 4",), "does not support"),
-    (("push_signed_magnitude 3",), "does not support"),
+    (("push_signed_magnitude",), "exactly one operand"),
+    (("push_many 2 1",), "disagrees"),
 ])
 def test_authored_script_refuses_what_it_cannot_encode_exactly(source, reason):
     """A body the codec cannot express is refused by name, never mis-encoded."""

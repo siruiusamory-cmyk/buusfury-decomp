@@ -77,7 +77,7 @@ export const project: ProjectStatus = {
   subtitle: "Legacy of Goku authoring toolkit",
   tagline: "Building a real authoring toolkit for the Legacy of Goku engine.",
   description:
-    "The SDK can already make proven changes to existing game content. The current frontier is creating entirely new content that the original engine accepts and runs.",
+    "The SDK can create new entities and behavior that the original engine accepts, runs, and visibly renders. The current frontier is controlling when that authored behavior runs.",
   overallProgress: 85,
   overallProgressLabel: "≈ 85% COMPLETE",
   progressCaveat:
@@ -85,15 +85,15 @@ export const project: ProjectStatus = {
   currentPhase: "AUTHOR_NEW",
   currentFrontierLabel: "CURRENT FRONTIER",
   existingContentState: "MATURE",
-  blockerCode: "GAMEPLAY EFFECT",
-  blockerTitle: "Make authored behavior affect gameplay",
+  blockerCode: "BEHAVIOR TRIGGER",
+  blockerTitle: "Control when authored behavior runs",
   blockerShort:
-    "The SDK now creates behavior content that did not exist in the original game, and the original engine runs it: the interpreter was observed walking a newly written script three times during ordinary play. That script deliberately does nothing visible. The current question is which engine action an authored script can invoke to produce an observable effect.",
+    "The SDK can now invoke a known engine action from newly authored behavior and intentionally render visible text in the original game. The remaining measured limit is timing: the script still runs through an inherited, intermittent trigger whose schedule the SDK does not author.",
   blockerParagraphs: [
-    "A newly authored entity now carries behavior the project created rather than behavior the project selected. The SDK writes a new behavior record and a new script body into proven-safe space in the unmodified game, points the entity at the record and the record at the script, and rebuilds the game file.",
-    "The original engine executed it. During ordinary play the engine followed the authored entity to the authored behavior record, took the script pointer out of it, and entered the interpreter with its read position inside the newly written script — three separate times, with the exact authored bytes present at that position each time. The same byte sequence appears nowhere in the original game, so what ran is new content rather than existing content at a new address.",
-    "A control build settles what that proves. It is the same authored entity without the authored behavior, and it contains neither the new record nor the new script. The measurement also proved itself independently: it caught the engine running other scripts in a room where the authored entity does not exist, so a silent result would have been meaningful rather than blind.",
-    "The authored script deliberately computes a value and discards it. That is what makes the execution evidence clean, and it is also the current limit: every instruction that would change something the player can see routes through the engine's own action table, and none of those actions has a confirmed meaning yet. The next measured step is establishing one of them, which is enough to author an intentional visible effect.",
+    "A newly authored entity now carries a newly authored script that calls one narrowly proven native engine action. The SDK expresses that action semantically as centred sprite text, then assembles the verified Buu VM instructions and arguments through its production codec.",
+    "At runtime the original engine followed the authored descriptor to the authored script, executed the native-call opcode, reached handler 178 with the intended text and coordinates, and visibly rendered MATCH 2 FIGHT! at the intentionally authored screen position.",
+    "The controls discriminate the effect. Replaying the exact canonical tournament arguments rendered the banner at the canonical position. The same authored entity and literal setup with the native invocation removed still ran its script but displayed no banner.",
+    "The remaining limit is the trigger. The effect is intentional, but the entity still inherits a gameplay-driven trigger whose timing is intermittent and whose meaning is unknown. The next authoring step is a deterministic SDK-authored trigger or schedule — not a broader census of engine actions.",
   ],
   acceptanceTarget:
     "Author playable Legacy of Goku content inside the real LOGII/Buu engine.",
@@ -218,9 +218,18 @@ export const project: ProjectStatus = {
       id: "gameplay-effect",
       title: "Make authored behavior affect gameplay",
       plainEnglish:
-        "Identify a known engine action that authored scripts can intentionally invoke to create an observable gameplay effect.",
+        "Newly authored behavior can intentionally invoke the original engine and produce a visible result.",
       technical:
-        "Authored scripts execute, but only through instructions whose effects stay inside the interpreter. Every gameplay-visible instruction routes through the engine's native action table, whose entries have no confirmed meaning. Establishing one useful action is enough to author an intentional visible effect.",
+        "Confirmed. An authored script invoked native slot 178 with text 1525 at X=120, Y=105. Runtime tracing captured the authored cursor, native opcode, selected handler and exact arguments; the next frames visibly rendered MATCH 2 FIGHT!. The same authored script without the native invocation ran but showed no banner.",
+      status: "complete",
+    },
+    {
+      id: "behavior-trigger",
+      title: "Control when authored behavior runs",
+      plainEnglish:
+        "Give authored behavior a deterministic trigger or schedule instead of inheriting intermittent timing.",
+      technical:
+        "The visible effect is authored, but its gameplay-driven trigger remains inherited and its timing and meaning are unknown.",
       status: "current",
     },
     {
@@ -247,10 +256,19 @@ export const project: ProjectStatus = {
     { label: "NEW ENTITY RUNS IN ENGINE", state: "done" },
     { label: "ATTACHED BEHAVIOR EXECUTES", state: "done" },
     { label: "AUTHORED SCRIPT EXECUTES", state: "done" },
-    { label: "GAMEPLAY-EFFECT ACTION", state: "current", marker: "↑ YOU ARE HERE" },
+    { label: "GAMEPLAY-EFFECT ACTION", state: "done" },
+    { label: "AUTHORED BEHAVIOR TRIGGER", state: "current", marker: "↑ YOU ARE HERE" },
     { label: "PLAYABLE LOG1 CONTENT", state: "target" },
   ],
   breakthroughs: [
+    {
+      id: "first-visible-authored-behavior",
+      title: "First visible authored behavior",
+      summary:
+        "Webfoot SDK authored new behavior that intentionally caused a visible gameplay effect in the original Buu's Fury engine.",
+      technical:
+        "The authored script called native slot 178 with an existing text record and new screen coordinates. The engine reached the exact authored bytes and handler arguments, then rendered MATCH 2 FIGHT! on screen; an omitted-native control ran without the banner.",
+    },
     {
       id: "runtime-proven-new-behavior",
       title: "First runtime-proven new behavior",

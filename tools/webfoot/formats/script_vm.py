@@ -164,6 +164,21 @@ def decode_instruction(data: bytes, offset: int, spec: OpcodeSet) -> Instruction
                        op.evidence, op.provenance)
 
 
+def _encode_sm7(value: int) -> bytes:
+    """Encode the VM's bounded big-endian signed-magnitude varint."""
+    if type(value) is not int or not -(0x3fffffff) <= value <= 0x3fffffff:
+        raise ScriptError('signed-magnitude operand outside supported range')
+    raw = (abs(value) << 1) | (1 if value < 0 else 0)
+    groups = [raw & 0x7f]
+    raw >>= 7
+    while raw:
+        groups.append(raw & 0x7f)
+        raw >>= 7
+    groups.reverse()
+    return bytes((group | 0x80) if i + 1 < len(groups) else group
+                 for i, group in enumerate(groups))
+
+
 def encode_instruction(ins: Instruction, spec: OpcodeSet) -> bytes:
     _integer(ins.opcode, 'opcode')
     if ins.opcode > 255:
@@ -256,9 +271,9 @@ def assemble_source(source: tuple[str, ...], spec: OpcodeSet) -> bytes:
 
     TOOLKIT-032. This is the smallest thing that turns an authored, semantic
     instruction list into bytes; it is deliberately NOT a script compiler.
-    Only the two operand widths a straight-line body can use are encoded here -
-    `none` and `u8` - so nothing has to invent a varint or a branch displacement,
-    and any opcode needing one is refused by name rather than mis-encoded.
+    TOOLKIT-033 adds the VM's already-proven signed-magnitude encodings because
+    the selected canonical native call uses `push_many`. Branch displacements
+    remain refused: this stays a straight-line assembler, not a compiler.
 
     Every instruction is validated by the production decoder as it is built, and
     the finished bytes must disassemble back to a fully-covered IR that
@@ -291,6 +306,33 @@ def assemble_source(source: tuple[str, ...], spec: OpcodeSet) -> bytes:
             if not 0 <= value <= 255:
                 raise ScriptError(f'{op.name} operand must be an unsigned byte')
             encoded = bytes((op.value, value))
+        elif op.encoding == 'sm7':
+            if len(parts) != 2:
+                raise ScriptError(f'{op.name} takes exactly one operand')
+            try:
+                value = int(parts[1], 0)
+            except ValueError:
+                raise ScriptError(f'{op.name} operand must be an integer') from None
+            encoded = bytes((op.value,)) + _encode_sm7(value)
+        elif op.encoding == 'count_sm7':
+            if len(parts) < 3:
+                raise ScriptError(f'{op.name} takes a count and that many operands')
+            try:
+                count = int(parts[1], 0)
+            except ValueError:
+                raise ScriptError(f'{op.name} count must be an integer') from None
+            if not 1 <= count <= 255:
+                raise ScriptError(f'{op.name} count must be 1 through 255')
+            if len(parts) != count + 2:
+                raise ScriptError(
+                    f'{op.name} count {count} disagrees with {len(parts) - 2} operands')
+            values = []
+            for token in parts[2:]:
+                try:
+                    values.append(int(token, 0))
+                except ValueError:
+                    raise ScriptError(f'{op.name} operands must be integers') from None
+            encoded = bytes((op.value, count)) + b''.join(_encode_sm7(v) for v in values)
         else:
             raise ScriptError(
                 f'{op.name} uses the {op.encoding} operand encoding, which a straight-line '

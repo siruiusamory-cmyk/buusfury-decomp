@@ -12,11 +12,12 @@ it does not author a descriptor, script or event body, and no author-facing ROM
 address is accepted here.
 
 TOOLKIT-032: `behavior` may instead name this record's OWN authored behavior -
-`map:NNNN/authored:<name>/behavior` - in which case `script` carries the body as
-a list of mnemonic instructions. That is the semantic form: opcode NAMES from the
-verified opcode set and integer operands, assembled by the production
-`script_vm` codec at build time. No ROM address, no opaque hex blob and no
-descriptor bytes are accepted from project source.
+    `map:NNNN/authored:<name>/behavior` - in which case `script` carries the body as
+    a list of mnemonic instructions, plus the narrow evidence-backed semantic
+    operations declared for that profile. TOOLKIT-033 adds exactly one:
+    `show_centered_sprite_text text:NNNN X Y`. Both forms assemble through the
+    production `script_vm` codec at build time. No ROM address, no opaque hex blob
+    and no descriptor bytes are accepted from project source.
 """
 from dataclasses import dataclass
 from pathlib import Path

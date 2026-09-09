@@ -8,10 +8,14 @@ import pytest
 from tests.unit.test_placement_types import types  # shared synthetic graph fixture
 from tools.webfoot import build
 from tools.webfoot.allocation import allocate, InsufficientSpaceError
-from tools.webfoot.authored_placements import prepare_authored_runs, require_materialization_contract
+from tools.webfoot.authored_placements import (AuthoringOverlayError, authoring_overlay,
+                                               plan_authored_materialization,
+                                               prepare_authored_runs,
+                                               require_materialization_contract)
 from tools.webfoot.cli import main
 from tools.webfoot.formats.map_placements import PlacementRecord
-from tools.webfoot.layout import AnchorId, LayoutError, FreeRegion, RomRange
+from tools.webfoot.layout import (AnchorId, LayoutError, FreeRegion, ReferenceEncoding,
+                                  RomRange)
 from tools.webfoot.binary import FileOffset
 from tools.webfoot.project import ProjectMeta, ProjectError, read_project, write_project
 from tools.webfoot.project.format import load_toml, dump_toml
@@ -33,6 +37,12 @@ def add(project, name="wolf", **changes):
                 position_low=123, position_high=456)
     args.update(changes)
     return clone_placement(project, **args)
+
+
+def _capacity(types):
+    """Synthetic verified capacity, declared exactly as a profile free region."""
+    return replace(types.profile, free_regions=(
+        FreeRegion(RomRange(FileOffset(0x10000), 1024), "synthetic verified capacity"),))
 
 
 def rewrite(project, edit):
@@ -175,14 +185,158 @@ def test_synthetic_capacity_relocates_the_array_but_not_the_authored_body(projec
     assert result.allocations[0].range.size == slots
     # ...and the base image is still untouched: relocation plans, it does not write.
     assert document.image == types.maps.base_bytes
-    # The authored clone has no anchor at all, so it cannot be relocated.
+    # TOOLKIT-027: the authored clone has no anchor in the BASE graph - and cannot,
+    # because its bytes do not exist there. `authoring_overlay` is what creates one.
     with pytest.raises(LayoutError, match="unknown anchor"):
         plan_relocation(document, [RelocationRequest(
             AnchorId(run.authored_records[0].identity), b"\x00" * 32)])
-    # And the production gate stops there, naming that record.
-    with pytest.raises(LayoutError, match="unmodelled authored record bodies"):
-        require_materialization_contract((run,), types.maps.base_bytes, document)
     assert document.image == types.maps.base_bytes
+
+
+# --- TOOLKIT-027: the authored body gets an anchor and the new slot a reference ---
+
+def test_authored_body_anchor_uses_the_stable_project_identity(project, types):
+    """The anchor ID is the authored project identity, never a ROM address."""
+    add(project, name="alpha")
+    run, = prepare_authored_runs(read_project(project), types.maps)
+    document = replace(types.reference_document(), profile=_capacity(types))
+    body, = authoring_overlay(document, run)
+    assert body.identity == AnchorId("map:0000/authored:alpha")
+    assert body.identity.value == run.authored_records[0].identity
+    # It survives a different allocation, because it is not derived from one.
+    assert body.slot_index == len(run.canonical_slots) == 2
+    assert body.payload == run.authored_records[0].payload
+
+
+def test_authored_body_is_the_production_codec_output(project, types):
+    """No parallel test-only body format: the anchor holds exactly codec bytes."""
+    add(project)
+    run, = prepare_authored_runs(read_project(project), types.maps)
+    document = replace(types.reference_document(), profile=_capacity(types))
+    body, = authoring_overlay(document, run)
+    decoded = PlacementRecord.from_bytes(body.payload)
+    assert (decoded.position_low, decoded.position_high) == (123, 456)
+    from tools.webfoot.maps import PlacementIdentity
+    template = PlacementRecord.from_bytes(
+        types.maps.placement(PlacementIdentity(0, 0)).original_bytes)
+    assert decoded == template.with_position(123, 456)
+    assert len(body.payload) == decoded.consumed_length
+
+
+def test_synthetic_capacity_allocates_body_and_array_and_fills_the_third_slot(project, types):
+    """The whole TOOLKIT-027 chain, on production machinery only.
+
+    description -> anchor -> production codec body -> allocation under synthetic
+    verified capacity -> new array-slot reference -> third slot holds the body
+    pointer rather than 0x00000000.
+    """
+    add(project)
+    run, = prepare_authored_runs(read_project(project), types.maps)
+    profile = _capacity(types)
+    document = replace(types.reference_document(), profile=profile)
+    plan = plan_authored_materialization(document, run)
+
+    # Both the expanded array and the authored body were placed by `allocate`.
+    placed = {a.request.anchor.value: a for a in plan.allocations}
+    assert set(placed) == {run.identity.value, "map:0000/authored:wolf"}
+    body_span = placed["map:0000/authored:wolf"].range
+    array_span = placed[run.identity.value].range
+    assert array_span.size == 4 * run.target_slot_count
+    assert body_span.size == len(run.authored_records[0].payload)
+    assert not body_span.overlaps(array_span)
+
+    # The two canonical slots are preserved EXACTLY, byte for byte.
+    canonical = types.maps.base_bytes[
+        document.anchor(run.identity).range.start.value:document.anchor(run.identity).range.end]
+    moved = plan.relocation.document
+    relocated = moved.anchor(run.identity)
+    assert moved.image[relocated.range.start.value:relocated.range.start.value + 8] == canonical
+
+    # The third slot holds the authored body's address, not a null pointer.
+    pointer = plan.slot_pointer(2)
+    assert pointer != 0x00000000
+    assert pointer == 0x08000000 + body_span.start.value
+
+    # That slot is a real reference in the graph, targeting the body anchor.
+    slot_source = relocated.range.start.value + 8
+    slot = next(r for r in plan.references if r.source.value == slot_source)
+    assert slot.target == AnchorId("map:0000/authored:wolf")
+    assert slot.target_delta == 0
+    assert slot.encoding is ReferenceEncoding.ABSOLUTE_ROM_U32_LE
+
+    # And the body anchor is published over exactly the allocated span.
+    anchor = next(a for a in plan.anchors if a.identity.value == "map:0000/authored:wolf")
+    assert anchor.range == body_span and anchor.kind == "authored_placement_body"
+    assert not anchor.relocatable
+
+    # The verified base was never touched.
+    assert document.image == types.maps.base_bytes
+
+
+def test_body_and_expanded_array_never_share_bytes(project, types):
+    """Regression: two allocator calls must agree about what is already taken.
+
+    `plan_authored_materialization` allocates the bodies, then `plan_relocation`
+    allocates the expanded array on its own. Before the free regions offered to
+    relocation had the body spans withheld, both calls chose the SAME lowest first
+    fit, so the array was laid over the body and the appended slot pointed at the
+    array's own first byte - non-null, and wrong.
+    """
+    add(project)
+    run, = prepare_authored_runs(read_project(project), types.maps)
+    document = replace(types.reference_document(), profile=_capacity(types))
+    plan = plan_authored_materialization(document, run)
+    spans = [a.range for a in plan.allocations]
+    assert len(spans) == 2
+    assert not spans[0].overlaps(spans[1])
+    body = next(a.range for a in plan.allocations if a.request.anchor.value.endswith("authored:wolf"))
+    array = plan.relocation.document.anchor(run.identity).range
+    assert not body.overlaps(array)
+    # The slot resolves to the body, not to the array it sits next to.
+    assert plan.slot_pointer(2) - 0x08000000 == body.start.value != array.start.value
+
+
+def test_withhold_only_ever_subtracts_capacity(types):
+    """The relocation profile is the declared regions minus taken spans, never more."""
+    from tools.webfoot.authored_placements import _withhold
+    regions = (FreeRegion(RomRange(FileOffset(0x1000), 0x100), "declared"),)
+    # A span carved from the middle splits the region in two, total size shrinks.
+    out = _withhold(regions, (RomRange(FileOffset(0x1040), 0x20),))
+    assert [(r.range.start.value, r.range.size) for r in out] == [(0x1000, 0x40), (0x1060, 0xA0)]
+    assert sum(r.range.size for r in out) == 0x100 - 0x20
+    # A span covering the whole region removes it entirely.
+    assert _withhold(regions, (RomRange(FileOffset(0x1000), 0x100),)) == ()
+    # A disjoint span changes nothing.
+    assert _withhold(regions, (RomRange(FileOffset(0x2000), 8),)) == regions
+    assert all(r.evidence == "declared" for r in out)
+
+
+def test_authored_materialization_is_deterministic(project, types):
+    add(project)
+    run, = prepare_authored_runs(read_project(project), types.maps)
+    document = replace(types.reference_document(), profile=_capacity(types))
+    first = plan_authored_materialization(document, run)
+    second = plan_authored_materialization(document, run)
+    assert first.to_json() == second.to_json()
+    assert first.relocation.document.image == second.relocation.document.image
+    assert first.slot_pointer(2) == second.slot_pointer(2)
+    assert [c.new for c in first.body_changes] == [c.new for c in second.body_changes]
+
+
+def test_overlay_refuses_a_fixed_array_and_a_duplicate_identity(project, types):
+    add(project)
+    run, = prepare_authored_runs(read_project(project), types.maps)
+    document = replace(types.reference_document(), profile=_capacity(types))
+    fixed = replace(document, anchors=tuple(
+        replace(a, relocatable=False) if a.identity == run.identity else a
+        for a in document.anchors))
+    with pytest.raises(AuthoringOverlayError, match="not relocatable"):
+        authoring_overlay(fixed, run)
+    body, = authoring_overlay(document, run)
+    clash = replace(document, anchors=(*document.anchors,
+        replace(document.anchor(run.identity), identity=body.identity)))
+    with pytest.raises(AuthoringOverlayError, match="already exists"):
+        authoring_overlay(clash, run)
 
 
 def test_build_fails_at_the_relocation_gate_and_publishes_nothing(project, types, monkeypatch, tmp_path):
@@ -195,10 +349,13 @@ def test_build_fails_at_the_relocation_gate_and_publishes_nothing(project, types
     assert run.allocation_request.size == 108
     output, manifest = tmp_path / "out.gba", tmp_path / "manifest.json"
     for _ in range(2):
-        # TOOLKIT-026: the array anchor is no longer the blocker. The build now
-        # reaches - and passes - relocation eligibility, and stops at the authored
-        # record body, which has no anchor and no array-slot reference.
-        with pytest.raises(LayoutError, match="108 bytes.*unmodelled authored record bodies"):
+        # TOOLKIT-027: the authored body is no longer the blocker either. The build
+        # reaches relocation eligibility, models the body and its array-slot
+        # reference, and now stops at CAPACITY - the synthetic profile declares no
+        # free regions, so the production allocator refuses the body.
+        with pytest.raises(LayoutError, match="108 bytes.*bodies are MODELLED"):
+            build.build_project(project, "unused", output, None, manifest_path=manifest)
+        with pytest.raises(LayoutError, match="InsufficientSpaceError"):
             build.build_project(project, "unused", output, None, manifest_path=manifest)
     assert not output.exists() and not manifest.exists()
 

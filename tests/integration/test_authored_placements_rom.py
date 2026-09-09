@@ -90,25 +90,58 @@ def test_canonical_authoring_serializes_but_preserves_ownership_and_zero_capacit
         assert all(not a.relocatable for a in document.anchors
                    if a.kind != "placement_reference_array")
 
+        # TOOLKIT-027: under SYNTHETIC verified capacity the whole chain runs on
+        # canonical Buu bytes - the authored body is anchored by its stable project
+        # identity, allocated by the production allocator, and its address is what
+        # the relocated array's third slot actually holds.
+        from dataclasses import replace as _replace
+        from tools.webfoot.authored_placements import plan_authored_materialization
+        from tools.webfoot.binary import FileOffset
+        from tools.webfoot.layout import FreeRegion, RomRange
+        synthetic = _replace(document, profile=_replace(document.profile, free_regions=(
+            FreeRegion(RomRange(FileOffset(0x800000 - 0x1000), 0x1000),
+                       "synthetic verified capacity for the TOOLKIT-027 proof"),)))
+        plan = plan_authored_materialization(synthetic, run)
+        placed = {a.request.anchor.value: a.range for a in plan.allocations}
+        body_span = placed[clone.identity]
+        assert placed[run.identity.value].size == 4 * 3
+        assert body_span.size == len(run.authored_records[0].payload)
+        # The two canonical map 10 slots are preserved byte-for-byte.
+        moved = plan.relocation.document.anchor(run.identity)
+        canonical_slots = before[0x07293C:0x07293C + 8]
+        start = moved.range.start.value
+        assert plan.relocation.document.image[start:start + 8] == canonical_slots
+        # The third slot points at the authored body, not at 0x00000000.
+        third = plan.slot_pointer(2)
+        assert third != 0x00000000
+        assert third == 0x08000000 + body_span.start.value
+        assert plan.to_json() == plan_authored_materialization(synthetic, run).to_json()
+        # The canonical profile itself still declares no capacity at all.
+        assert document.profile.free_regions == ()
+
         errors = []
         for index in range(2):
             out, manifest = tmp_path / f"authored{index}.gba", tmp_path / f"authored{index}.json"
-            # The blocker moved one gate downstream again: the array now relocates,
-            # and what remains is the authored record body, which has no anchor and
-            # no array-slot reference for the appended slot to point at.
-            with pytest.raises(LayoutError, match="unmodelled authored record bodies") as blocked:
+            # The blocker moved one gate downstream again: the body is modelled and
+            # referenced, so what remains against CANONICAL Buu is declared capacity.
+            with pytest.raises(LayoutError, match="bodies are MODELLED") as blocked:
                 build_project(roots[0], rom, out, catalog, manifest_path=manifest)
             errors.append(str(blocked.value))
             assert not out.exists() and not manifest.exists()
         assert errors[0] == errors[1]
         assert "derived count write is AVAILABLE and validated" in errors[0]
         assert "array anchor IS relocatable" in errors[0]
+        assert "InsufficientSpaceError" in errors[0]
+        assert "unmodelled authored record bodies" not in errors[0]
         assert "unwritable engine count" not in errors[0]
         assert "non-relocatable" not in errors[0]
         assert clone.identity in errors[0]
         evidence = {**run.to_json(), "capacity_feasibility_error": str(capacity.value),
                     "production_build_error": errors[0], "extraction_files": len(contents(roots[1])),
-                    "noop_bytes": len(before), "base_sha256": SHA}
+                    "noop_bytes": len(before), "base_sha256": SHA,
+                    "authored_materialization": plan.to_json(),
+                    "third_slot_pointer": f"0x{third:08X}",
+                    "relocated_array_file_offset": start}
         print(json.dumps(evidence, indent=2))
     finally:
         assert hashlib.sha256(rom.read_bytes()).hexdigest() == SHA

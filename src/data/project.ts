@@ -85,13 +85,13 @@ export const project: ProjectStatus = {
   currentPhase: "AUTHOR_NEW",
   currentFrontierLabel: "CURRENT FRONTIER",
   existingContentState: "MATURE",
-  blockerCode: "MATERIALIZE NEW ENTITY BODY",
-  blockerTitle: "Materialize and connect the new entity",
+  blockerCode: "VERIFIED ROM CAPACITY",
+  blockerTitle: "Establish verified ROM capacity",
   blockerShort:
-    "The SDK can now make a new slot for an entity, enlarge and safely relocate the map's object list, and rewrite the map to its new location. The missing piece is creating the actual new entity body and making the new slot point to it.",
+    "The SDK can now create a new entity's real binary data, allocate it, and connect the map's new object slot to it. The missing piece is proven-safe physical space in the game to put newly authored content.",
   blockerParagraphs: [
-    "The SDK can now make a new slot for an entity, enlarge and safely relocate the map's object list, and rewrite the map to its new location.",
-    "The missing piece is creating the actual new entity body and making the new slot point to it.",
+    "The SDK can now create a new entity's real binary data, allocate it, and connect the map's new object slot to it. When space is supplied for testing, the whole chain completes.",
+    "The missing piece is physical room in the game itself. No verified free space has been established yet, so building against the unmodified game stops for lack of somewhere safe to put the new content.",
   ],
   acceptanceTarget:
     "Author playable Legacy of Goku content inside the real LOGII/Buu engine.",
@@ -174,16 +174,16 @@ export const project: ProjectStatus = {
       title: "Materialize and connect the new entity",
       plainEnglish: "Create the actual new object data and make the map's new slot point to it.",
       technical:
-        "The authored placement exists semantically and serializes correctly, but it is not yet an allocatable graph anchor with a reference from the newly created map-object-array slot.",
-      status: "current",
+        "An authored placement now becomes a real allocatable anchor holding the production codec's own bytes, and the map's newly created object slot holds a reference that resolves exactly to it.",
+      status: "complete",
     },
     {
       id: "rom-capacity",
-      title: "Verified ROM capacity",
+      title: "Establish verified ROM capacity",
       plainEnglish: "Provide proven-safe physical space for growing amounts of newly authored content.",
       technical:
-        "This is a known downstream requirement. It becomes binding after authored entity bodies can be materialized.",
-      status: "next",
+        "This is now the binding requirement. With capacity supplied for testing, the whole authoring chain completes; against the unmodified game it stops here, because no verified free space has been established yet.",
+      status: "current",
     },
     {
       id: "scripts-dialogue",
@@ -210,12 +210,20 @@ export const project: ProjectStatus = {
     { label: "COMPLETE MAP OBJECT MODEL", state: "done" },
     { label: "EXPANDED OBJECT LIST", state: "done" },
     { label: "SAFE RELOCATION", state: "done" },
-    { label: "MATERIALIZE + CONNECT ENTITY", state: "current", marker: "↑ YOU ARE HERE" },
-    { label: "VERIFIED ROM CAPACITY", state: "next" },
+    { label: "MATERIALIZE + CONNECT ENTITY", state: "done" },
+    { label: "VERIFIED ROM CAPACITY", state: "current", marker: "↑ YOU ARE HERE" },
     { label: "NEW SCRIPTS + DIALOGUE", state: "next" },
     { label: "PLAYABLE LOG1 CONTENT", state: "target" },
   ],
   breakthroughs: [
+    {
+      id: "authored-body-materialization",
+      title: "Authored entity body materialization",
+      summary:
+        "The SDK can now turn a newly authored placement into real binary data, allocate it, and connect the map's new object slot to it when verified space is available.",
+      technical:
+        "The authored body and the expanded pointer array are allocated independently, and the map's new slot resolves exactly to the authored body's address.",
+    },
     {
       id: "safe-relocation",
       title: "Safe relocation of map object arrays",

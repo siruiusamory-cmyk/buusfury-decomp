@@ -1,4 +1,4 @@
-# Buu map object arrays (TOOLKIT-025, TOOLKIT-026)
+# Buu map object arrays (TOOLKIT-025, TOOLKIT-026, TOOLKIT-027)
 
 Canonical ROM `940ad5f01db4465b8877dfe739510cbf34f4ea3d390f3df13519808bc36f059e`
 (`Dragon Ball Z - Buu's Fury (U).gba`, 8,388,608 bytes). Read-only; the image is an
@@ -7,7 +7,8 @@ input and is unchanged. Baseline `2673ec5`, parent `ffdf543`.
 **COMPLETE ENGINE-COUNTED MAP ARRAY MODEL: YES.**
 **AUTHORED MAP COUNT WRITE: YES.**
 **PLACEMENT_REFERENCE_ARRAY RELOCATION: YES** (TOOLKIT-026).
-**AUTHOR_NEW NEXT BLOCKER: unmodelled authored record bodies** (TOOLKIT-026).
+**AUTHORED PLACEMENT BODY MATERIALIZATION: YES** (TOOLKIT-027).
+**AUTHOR_NEW NEXT BLOCKER: declared free capacity / TOOLKIT-011** (TOOLKIT-027).
 
 ## Authoritative count semantics
 
@@ -502,7 +503,7 @@ nothing to point at.
 Deterministic across repeated runs; no output ROM and no manifest are produced; the
 canonical image and its mtime are unchanged.
 
-## The next blocker - measured, not predicted
+## The next blocker - measured, not predicted (resolved by TOOLKIT-027)
 
 **Unmodelled authored record bodies.**
 
@@ -558,3 +559,191 @@ Not investigated, per ticket section 8: the seven excluded script roots, sibling
 semantics, collision, dialog/native handlers, the TOOLKIT-011 tail, the 516 candidate
 references, ROM expansion, and other placement runs beyond the 268-anchor eligibility
 census used as the rule's own control.
+
+---
+
+# TOOLKIT-027 - materializing one authored placement body
+
+Same canonical ROM
+`940ad5f01db4465b8877dfe739510cbf34f4ea3d390f3df13519808bc36f059e`, read-only and
+unchanged. Baseline `28ae50b`.
+
+**AUTHORED PLACEMENT BODY MATERIALIZATION: YES.**
+
+One question, answered for the map 10 `+1` case: *can an authored placement body be
+given a real anchor and a real array-slot reference, and be allocated by production
+machinery?* It can, and the relocated array's third slot holds its address.
+
+## Why the authored anchor cannot live in the base graph
+
+This is the constraint that shapes the whole design, and it is measured, not assumed.
+
+`document.RomDocument.validate` decodes **every** reference against the image the
+document holds and refuses any whose decoded target is not exactly
+`anchor.start + target_delta` (`malformed reference ... target mismatch`). For an
+authored record:
+
+* the body has no bytes in the verified base, so an anchor over its future span
+  describes nothing that is there;
+* the appended array slot does not exist in the base either - map 10's array anchor is
+  8 bytes, exactly `count * 4` - so a reference sourced at the third slot would decode
+  whatever those neighbouring bytes happen to be.
+
+A second, independent guard points the same way: `RomDocument.from_bytes` refuses a
+document whose anchors overlap a declared free region (`profile free region overlaps
+existing content/reference`), and free space is precisely where an authored body goes.
+
+So the authored anchor and its slot reference are created in the **same transaction
+that creates the slot**, at their post-relocation addresses, rather than published onto
+the verified base. That is `authored_placements.authoring_overlay`.
+
+## The overlay - minimum reference relationship
+
+Per authored record, exactly two objects are created, and nothing else:
+
+| Object | Value for the map 10 case |
+| --- | --- |
+| Body anchor identity | `map:0010/authored:toolkit022` |
+| Body anchor kind | `authored_placement_body` |
+| Body anchor size | **32 bytes** - the production codec's own `consumed_length` |
+| Slot reference source | relocated array start `+ 4 * slot_index` (slot **2**) |
+| Slot reference target | the body anchor, delta **0** |
+| Slot reference encoding | `ABSOLUTE_ROM_U32_LE` - identical to canonical slots |
+| Slot reference class | `DECLARED_REFERENCE` |
+
+The anchor ID is the project's own authored identity, which
+`project.placements.AuthoredPlacement` already validates as a stable map-scoped name
+(`map:NNNN/authored:<stable-name>`). It is **not** derived from any ROM address, so it
+does not change when the allocator places the body somewhere else.
+
+The body bytes are `PlannedPlacement.payload` - the output of
+`PlacementRecord.with_position(...).to_bytes()`, the same production codec that
+serializes canonical records. No parallel test-only body format exists anywhere; the
+proof asserts the anchor's bytes decode back through `PlacementRecord.from_bytes` and
+equal `template.with_position(123, 456)`.
+
+`authored_placement_body` is deliberately a distinct kind from `placement`: a canonical
+placement anchor describes bytes in the verified base, and this one describes bytes the
+build is about to create. Keeping them separate is what lets
+`RELOCATION_ELIGIBLE_KINDS` stay a statement about measured canonical structure.
+
+## Two allocator calls, one answer - a real defect found and fixed
+
+`plan_authored_materialization` allocates the bodies, and then `plan_relocation`
+allocates the expanded array **itself**, deriving its own reserved set from the
+document's anchors and profile (`relocation.py:73-79`). The first implementation left
+those two calls ignorant of each other, and the measured result was:
+
+```text
+alloc map:0010/authored:toolkit022  0x7FF000  32 bytes
+anchor(map:0010/placement_references).range.start = 0x7FF000   <- SAME BYTES
+third slot pointer = 0x087FF000                                <- the array's own start
+```
+
+Both calls chose the same lowest first fit. The third slot was non-null and **wrong**:
+it pointed at the array laid over the body. A pointer being non-zero is not the proof;
+pointing at the body is.
+
+The fix is subtraction, not a new allocator: the body spans are **withheld** from the
+free regions offered to relocation (`_withhold`, which only ever splits or trims a
+declared region and can never grow, merge or invent one). A body anchor could not do
+the job, because of the free-region guard above. Measured after the fix:
+
+```text
+alloc map:0010/authored:toolkit022        0x7FF000  32 bytes
+alloc map:0010/placement_references       0x7FF020  12 bytes
+overlap                                   none
+third slot pointer                        0x087FF000 -> file 0x7FF000 == body start
+```
+
+Pinned by `test_body_and_expanded_array_never_share_bytes` and
+`test_withhold_only_ever_subtracts_capacity`.
+
+## Synthetic verified-capacity result - canonical Buu bytes
+
+Production machinery only: `allocation.allocate` for the body, `relocation.plan_relocation`
+for the array, and the existing attributed write path for both. The only synthetic input
+is one `FreeRegion(0x7FF000, 0x1000)` declared as capacity.
+
+```text
+authored placement description (map:0010/authored:toolkit022)
+-> real authored placement anchor            OK  stable semantic ID, 32 bytes
+-> serialize production placement body       OK  PlacementRecord codec, round-trips
+-> allocate body under synthetic capacity    OK  file 0x7FF000, 32 bytes, align 4
+-> allocate expanded array                   OK  file 0x7FF020, 12 bytes, align 4
+-> body and array disjoint                   OK
+-> canonical slots preserved exactly         OK  fc280708 1c290708 (bytes unchanged)
+-> create new array-slot reference           OK  src 0x7FF028 -> body, delta 0, ABSOLUTE_ROM_U32_LE
+-> third slot contains body pointer          OK  0x087FF000, NOT 0x00000000
+-> body payload applies to the image         OK  final bytes == codec payload
+-> repeated planning byte-identical          OK
+-> base image unmodified by planning         OK
+```
+
+The two canonical map 10 slots are carried over **byte for byte** (`fc280708`,
+`1c290708`); an authored record can only ever append, which
+`AuthoredRun.derive_count_change` independently refuses to violate.
+
+## Canonical Buu result
+
+Same authored +1 build through `build_project`, against canonical Buu with its real
+zero free capacity. `require_materialization_contract` no longer asserts a boundary at
+all - it **runs** the materialization and reports whatever production refuses.
+Production error, verbatim:
+
+```text
+map:0010/placement_references: valid authored placement content serialized;
+proposed capacity request 108 bytes, alignment 4;
+derived count write is AVAILABLE and validated (file 0x08E514: 2 -> 3);
+array anchor IS relocatable and plan_relocation accepts it (2 -> 3 slots);
+authored record bodies are MODELLED (map:0010/authored:toolkit022) with an anchor
+and an array-slot reference each; materialization blocked by InsufficientSpaceError:
+insufficient declared free space for map:0010/authored:toolkit022 (32 bytes, alignment 4)
+```
+
+Deterministic across repeated runs; no output ROM and no manifest are produced; the
+canonical image and its mtime are unchanged (asserted in the test's `finally`).
+
+## The next blocker - measured, not predicted
+
+**Declared free capacity.**
+
+The chain now runs end to end and stops where the ROM genuinely has nothing to give:
+`allocation.allocate` raises `InsufficientSpaceError` for the 32-byte authored body,
+because the canonical Buu profile declares **zero** free regions
+(`document.profile.free_regions == ()`, asserted directly).
+
+This is the first time the authored-placement path has been blocked by *capacity alone*
+with every structural prerequisite satisfied - the count write, the array relocation,
+the body anchor and the slot reference all exist and validate.
+
+**Did production reach the allocator? YES.** It is reached and it is the thing that
+refuses.
+
+**Is TOOLKIT-011 binding? YES.** This is the change from TOOLKIT-026. Free-space work is
+no longer waiting on a graph-construction prerequisite: nothing structural remains
+between an authored placement description and a written body except declared bytes to
+put it in. Buu free capacity remains zero, and the candidate tail remains uninspected -
+per this ticket's scope, free space was not investigated here.
+
+## Superseded claims
+
+**OLD CLAIM (TOOLKIT-026).** *An authored clone has no anchor to hold its body and no
+reference source to fill the new array slot, so the expanded array's appended slot has
+nothing to point at*, and *plan_relocation creates neither*.
+
+**NEW EVIDENCE.** `plan_relocation` still creates neither - that half stands, and is
+unchanged. `authoring_overlay` creates both, outside the relocator, and the relocated
+map 10 array's third slot holds `0x087FF000`, the authored body's allocated address.
+
+**RESOLUTION.** The blocker was a missing graph-construction step, not a limit of the
+relocator. The correction to the TOOLKIT-026 write-up is narrow: "the appended slot
+would have nothing to point at" was true of the machinery as it stood, not a property
+of the format.
+
+## Scope held
+
+Not investigated, per the ticket: free space (including the TOOLKIT-011 tail and the
+516 candidate references), scripts, sibling object semantics, collision, and unrelated
+map structures. No engine behaviour is claimed for a materialized body - this ticket
+proves the SDK can construct and place one, not that the game runs it.

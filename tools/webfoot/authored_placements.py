@@ -6,8 +6,10 @@ TOOLKIT-026: the graph now publishes the object-array anchor as relocatable
 wherever its measured references satisfy the relocation safety contract, so the
 remaining boundary is the authored record body, not the array. See
 maps.py:_resolve_placements and entities.py:PlacementTypes.reference_document.
+TOOLKIT-027: `authoring_overlay` gives that body a real anchor and the appended
+array slot a real reference, so both move through the existing relocator.
 """
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 
 from .allocation import AllocationRequest
 from .layout import AnchorId, LayoutError
@@ -215,6 +217,241 @@ def prepare_authored_runs(project, maps):
     return tuple(runs)
 
 
+#: TOOLKIT-027: the kind published for an authored record body. It is deliberately
+#: NOT `placement`, because a canonical placement anchor describes bytes that exist
+#: in the verified base and this one describes bytes the build is about to create.
+#: Keeping the kinds distinct is what lets `RELOCATION_ELIGIBLE_KINDS` stay a
+#: statement about measured canonical structure.
+AUTHORED_BODY_KIND = "authored_placement_body"
+
+
+class AuthoringOverlayError(LayoutError):
+    """An authored overlay cannot be justified against the document it extends."""
+
+
+def _authored_anchor_id(identity):
+    """The stable semantic ID of an authored body anchor.
+
+    It is the project's own authored identity - `map:NNNN/authored:<name>` - which
+    `project.placements.AuthoredPlacement` already validates as a stable, map-scoped
+    name that is neither a ROM offset nor an engine `id_raw`. Deriving the anchor ID
+    from anything physical would make it move when the allocator moved the body.
+    """
+    return AnchorId(identity)
+
+
+def authoring_overlay(document, run):
+    """Describe one authored run's bodies and the array slots that will hold them.
+
+    The relocator's contract is to move EXISTING anchors and rewrite EXISTING
+    references; it creates neither. This is where they are created, and it is the
+    smallest relationship that lets the appended slot point at something:
+
+      * one anchor per authored record, holding exactly the bytes the production
+        codec serialized (`PlannedPlacement.payload`), so no parallel body format
+        exists anywhere in the toolkit;
+      * one `ABSOLUTE_ROM_U32_LE` reference per authored record, sourced at the
+        appended slot inside the EXPANDED array and targeting that body at delta 0 -
+        the same encoding and the same `array_offset + 4 * slot_index` arithmetic
+        `entities.reference_document` uses for canonical slots.
+
+    Both are placed at their POST-relocation addresses, because that is the only
+    image in which they decode: `RomDocument.validate` decodes every reference
+    against the image it holds, and neither the appended slot nor the body exists in
+    the verified base. So this returns a description to be materialized by
+    `plan_authored_materialization`, which owns the ordering, rather than a document
+    that would be invalid the moment it was built.
+
+    The canonical slots are untouched. An authored record only ever appends, which
+    `AuthoredRun.derive_count_change` independently refuses to violate.
+    """
+    array = document.anchor(run.identity)
+    if array.range.size != 4 * len(run.canonical_slots):
+        raise AuthoringOverlayError(
+            f"{run.identity.value}: published array anchor is {array.range.size} bytes against "
+            f"{len(run.canonical_slots)} modelled canonical slots; the overlay refuses to append "
+            "to an array whose extent it cannot account for")
+    if not array.relocatable:
+        raise AuthoringOverlayError(
+            f"{run.identity.value}: the array anchor is not relocatable, so the appended slot "
+            "cannot be created; an authored body must not be published against a fixed array")
+    provenance = array.provenance
+    bodies = []
+    for position, record in enumerate(run.authored_records):
+        identity = _authored_anchor_id(record.identity)
+        try:
+            document.anchor(identity)
+        except LayoutError:
+            pass
+        else:
+            raise AuthoringOverlayError(
+                f"{identity.value}: an anchor with this authored identity already exists")
+        bodies.append(AuthoredBody(identity, record.payload,
+                                   len(run.canonical_slots) + position, array.owner, provenance))
+    return tuple(bodies)
+
+
+@dataclass(frozen=True, slots=True)
+class AuthoredBody:
+    """One authored record body, its slot index, and the provenance it inherits."""
+
+    identity: AnchorId
+    payload: bytes
+    slot_index: int
+    owner: str
+    provenance: object
+
+    def to_json(self):
+        return {"anchor": self.identity.value, "slot_index": self.slot_index,
+                "body_size": len(self.payload), "owner": self.owner}
+
+
+def _withhold(free_regions, taken):
+    """The same declared free regions, minus spans already spoken for.
+
+    Subtraction only. A region is split or trimmed around each taken span and is
+    never grown, merged or moved, so this can only ever offer LESS capacity than the
+    profile declared - it cannot manufacture space that was not already trusted.
+    """
+    from .layout import FreeRegion, RomRange
+    from .binary import FileOffset
+    result = []
+    for region in free_regions:
+        spans = [(region.range.start.value, region.range.end)]
+        for span in taken:
+            remaining = []
+            for start, end in spans:
+                if span.end <= start or span.start.value >= end:
+                    remaining.append((start, end))
+                    continue
+                if start < span.start.value:
+                    remaining.append((start, span.start.value))
+                if span.end < end:
+                    remaining.append((span.end, end))
+            spans = remaining
+        for start, end in spans:
+            result.append(FreeRegion(RomRange(FileOffset(start), end - start), region.evidence))
+    return tuple(result)
+
+
+def plan_authored_materialization(document, run):
+    """Allocate the expanded array AND one authored body, then wire the new slot.
+
+    Uses production machinery end to end - `relocation.plan_relocation` for the
+    array, `allocation.allocate` for the body, and the existing attributed write
+    path for both - so nothing here is a second allocator or a second writer.
+
+    Ordering is forced by what each step needs to know:
+
+      1. allocate the authored body first, because the array payload has to CONTAIN
+         its address before the array itself can be written;
+      2. build the expanded array payload: every canonical slot pointer carried over
+         byte-for-byte, then one appended pointer per authored body;
+      3. hand that payload to `plan_relocation`, which moves the array, rewrites the
+         `MapEntry+0x14` owner pointer, and validates the result.
+
+    The body allocation reserves the array's own destination too, so the two can
+    never be handed the same bytes. Both requests are deterministic: `allocate`
+    sorts by anchor identity and takes the lowest aligned first fit.
+    """
+    from .allocation import allocate
+    from .binary import FileOffset
+    from .layout import Anchor, OwnedRegion, Reference, ReferenceClass, ReferenceEncoding
+    from .relocation import RelocationRequest, plan_relocation
+    from .write import ByteChange
+
+    bodies = authoring_overlay(document, run)
+    if not bodies:
+        raise AuthoringOverlayError(f"{run.identity.value}: no authored records to materialize")
+    array = document.anchor(run.identity)
+
+    # Allocate the bodies FIRST, reserving everything the base already owns exactly
+    # as `plan_relocation` computes it, so a body can never land on live content.
+    occupied = [OwnedRegion(a.range, a.owner) for a in document.anchors]
+    for ref in document.references:
+        if not any(a.range.contains(ref.source) for a in document.anchors):
+            occupied.append(OwnedRegion(ref.source_range, f"reference:{ref.target.value}"))
+    placements = allocate(document.profile,
+                          [AllocationRequest(b.identity, b.owner, len(b.payload), 4) for b in bodies],
+                          occupied=occupied)
+    allocations = {a.request.anchor: a for a in placements}
+
+    # `plan_relocation` runs the allocator AGAIN, deriving its reserved set from the
+    # document's anchors and profile alone. A body allocated only here would be
+    # invisible to that call and the array would be handed the very same bytes - the
+    # two allocations must be made to agree. A body anchor cannot do it: free space
+    # is precisely where a body goes, and `RomDocument.from_bytes` refuses to call a
+    # declared free region live content. So the agreement is expressed where it
+    # actually belongs, in the capacity the array is offered: the bodies' spans are
+    # withheld from the free regions handed to relocation. Nothing is invented - the
+    # remaining regions are the same declarations, minus bytes now spoken for.
+    staged = replace(document, profile=replace(document.profile,
+        free_regions=_withhold(document.profile.free_regions,
+                               tuple(allocations[b.identity].range for b in bodies))))
+
+    # The expanded array: canonical pointers carried over verbatim, then the
+    # authored bodies at their freshly allocated addresses.
+    image = document.image
+    payload = bytearray(image[array.range.start.value:array.range.end])
+    if len(payload) != 4 * len(run.canonical_slots):
+        raise AuthoringOverlayError(f"{run.identity.value}: canonical slot bytes are not intact")
+    for body in bodies:
+        destination = FileOffset(allocations[body.identity].range.start.value)
+        payload += destination.to_gba_address(len(image)).raw.to_bytes(4, "little")
+
+    result = plan_relocation(staged, [RelocationRequest(run.identity, bytes(payload))])
+    moved = result.document.anchor(run.identity)
+    if any(moved.range.overlaps(allocations[b.identity].range) for b in bodies):
+        raise AuthoringOverlayError(
+            f"{run.identity.value}: the expanded array was placed over an authored body")
+
+    # The slot references are published onto the RELOCATED document, where the
+    # appended slot now physically holds each body's address, so `validate` decodes
+    # it rather than taking the reference on trust.
+    anchors = list(result.document.anchors)
+    references = list(result.document.references)
+    changes = []
+    for body in bodies:
+        span = allocations[body.identity].range
+        anchors.append(Anchor(body.identity, span, AUTHORED_BODY_KIND, body.owner, 4,
+                              False, body.provenance))
+        references.append(Reference(FileOffset(moved.range.start.value + 4 * body.slot_index),
+                                    body.identity, 0, ReferenceEncoding.ABSOLUTE_ROM_U32_LE,
+                                    ReferenceClass.DECLARED_REFERENCE, body.provenance))
+        changes.append(ByteChange(span.start.value,
+                                  result.document.image[span.start.value:span.end], body.payload,
+                                  body.owner, f"authored placement body: {body.identity.value}"))
+    every = (*allocations.values(), *result.allocations)
+    return AuthoredMaterialization(run, result, tuple(bodies), tuple(anchors), tuple(references),
+                                   tuple(changes),
+                                   tuple(sorted(every, key=lambda a: a.request.anchor)))
+
+
+@dataclass(frozen=True, slots=True)
+class AuthoredMaterialization:
+    """The planned array move plus the authored bodies that fill its new slots."""
+
+    run: object
+    relocation: object
+    bodies: tuple
+    anchors: tuple
+    references: tuple
+    body_changes: tuple
+    allocations: tuple
+
+    def slot_pointer(self, slot_index):
+        """The raw GBA pointer word this plan writes into one expanded array slot."""
+        array = self.relocation.document.anchor(self.run.identity)
+        offset = array.range.start.value + 4 * slot_index
+        return int.from_bytes(self.relocation.document.image[offset:offset + 4], "little")
+
+    def to_json(self):
+        return {"array_anchor": self.run.identity.value,
+                "bodies": [b.to_json() for b in self.bodies],
+                "allocations": [a.to_json() for a in self.allocations],
+                "expanded_slot_count": self.run.target_slot_count}
+
+
 def require_materialization_contract(runs, image=None, document=None):
     """Fail at the exact remaining ownership boundary, before allocation/writes.
 
@@ -235,13 +472,18 @@ def require_materialization_contract(runs, image=None, document=None):
     graph, and both slot sources wholly inside the anchor. `plan_relocation` moves
     it and rewrites that owner pointer.
 
-    What remains is the authored record itself. The relocator's contract is to move
-    EXISTING anchors and rewrite EXISTING references; it creates neither. An
-    authored clone has no anchor to hold its body and no reference source to fill
-    the new array slot, so the expanded array's appended slot has nothing to point
-    at. That is the next real boundary, and it is REPORTED FROM PRODUCTION rather
-    than asserted: when a `document` is supplied, the blocker names the anchors the
-    graph is actually missing.
+    TOOLKIT-027 removed the authored record body from this gate. The relocator still
+    creates no anchors and no references - `authoring_overlay` does, publishing one
+    anchor per authored body over exactly the production codec's bytes and one
+    `ABSOLUTE_ROM_U32_LE` reference from the appended slot to it, both at their
+    post-relocation addresses because that is the only image in which they decode.
+    `plan_authored_materialization` then allocates the body and the expanded array
+    together and fills the new slot with the body's real address.
+
+    So this gate no longer asserts a boundary at all. It RUNS the materialization
+    and reports whatever production actually refuses. Against canonical Buu that is
+    capacity: the profile declares no free regions, so `allocate` raises
+    `InsufficientSpaceError` and TOOLKIT-011 free-space work becomes binding.
     """
     if not runs:
         return ()
@@ -269,13 +511,26 @@ def require_materialization_contract(runs, image=None, document=None):
                            f"({len(run.canonical_slots)} -> {run.target_slot_count} slots)")
         elif anchor is not None:
             array_state = "array anchor is published relocatable=False for this document"
-    missing = tuple(p.identity for p in run.authored_records)
+    bodies = ", ".join(p.identity for p in run.authored_records)
+    reason = ("no reference document was supplied, so materialization was not attempted"
+              if document is None else None)
+    if document is not None:
+        # Run the real thing. Whatever production refuses IS the blocker; nothing
+        # here predicts it.
+        try:
+            plan_authored_materialization(document, run)
+        except LayoutError as exc:
+            reason = f"{type(exc).__name__}: {exc}"
+        else:
+            reason = None
+    if reason is None:
+        raise LayoutError(
+            f"{run.identity.value}: authored materialization planned successfully but this "
+            "build path does not yet emit it; no output was written")
     raise LayoutError(
         f"{run.identity.value}: valid authored placement content serialized; "
         f"proposed capacity request {run.allocation_request.size} bytes, alignment 4; "
         f"{detail}{array_state}; "
-        f"materialization blocked by unmodelled authored record bodies: "
-        f"{', '.join(missing)} {'has' if len(missing) == 1 else 'have'} no anchor and no "
-        "array-slot reference in the graph, and plan_relocation creates neither, so the "
-        "appended slot would have nothing to point at."
+        f"authored record bodies are MODELLED ({bodies}) with an anchor and an "
+        f"array-slot reference each; materialization blocked by {reason}"
     )

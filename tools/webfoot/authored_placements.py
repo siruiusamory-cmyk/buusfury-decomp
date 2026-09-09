@@ -2,7 +2,9 @@
 
 No engine termination rule is invented here. A packing request accounts for
 pointer slots plus codec-serialized bodies, but is not an approved ROM layout.
-The current graph explicitly refuses relocating placement runs. See
+TOOLKIT-026: the graph now publishes the object-array anchor as relocatable
+wherever its measured references satisfy the relocation safety contract, so the
+remaining boundary is the authored record body, not the array. See
 maps.py:_resolve_placements and entities.py:PlacementTypes.reference_document.
 """
 from dataclasses import dataclass
@@ -213,7 +215,7 @@ def prepare_authored_runs(project, maps):
     return tuple(runs)
 
 
-def require_materialization_contract(runs, image=None):
+def require_materialization_contract(runs, image=None, document=None):
     """Fail at the exact remaining ownership boundary, before allocation/writes.
 
     TOOLKIT-024 PROVED the outer traversal contract: the map loader at 0x08008C9E
@@ -221,19 +223,25 @@ def require_materialization_contract(runs, image=None):
     array at `MapEntry+0x14`; there is no sentinel and no suffix, so a run owns
     exactly `count * 4` array bytes. See BUU_PLACEMENT_RUN_RELOCATION.md.
 
-    TOOLKIT-025 removed the count field from this gate. An authored expansion now
+    TOOLKIT-025 removed the count field from this gate: an authored expansion
     derives its new `MapEntry+0x04` value from the validated object array and emits
-    it as an attributed `ByteChange` (see `AuthoredRun.derive_count_change`), so the
-    count is no longer the thing that cannot be expressed. `maps.MAP_FIELDS` still
-    refuses every `*_count_raw` byte as directly editable - the derived path is
-    reachable only through a validated AUTHOR_NEW expansion, never through a project
-    supplying a raw count.
+    it as an attributed `ByteChange` (`AuthoredRun.derive_count_change`).
 
-    What remains is the array's own relocation. A grown array no longer fits its
-    canonical extent, so it must move, and the anchor that owns it is published
-    `relocatable=False` by `entities.PlacementTypes.reference_document`. That is the
-    next real boundary, and it is reported with the derived count change alongside
-    it so the caller can see the count is settled and what now blocks.
+    TOOLKIT-026 removed the array anchor's relocatability from this gate. The
+    `placement_reference_array` anchor is now published relocatable wherever its
+    measured reference set satisfies the relocation safety contract
+    (`layout.relocation_eligible`), and the map 10 array does: exactly one inbound
+    CONFIRMED reference at `MapEntry+0x14`, no CANDIDATE reference anywhere in the
+    graph, and both slot sources wholly inside the anchor. `plan_relocation` moves
+    it and rewrites that owner pointer.
+
+    What remains is the authored record itself. The relocator's contract is to move
+    EXISTING anchors and rewrite EXISTING references; it creates neither. An
+    authored clone has no anchor to hold its body and no reference source to fill
+    the new array slot, so the expanded array's appended slot has nothing to point
+    at. That is the next real boundary, and it is REPORTED FROM PRODUCTION rather
+    than asserted: when a `document` is supplied, the blocker names the anchors the
+    graph is actually missing.
     """
     if not runs:
         return ()
@@ -249,12 +257,25 @@ def require_materialization_contract(runs, image=None):
         c = changes[0]
         detail = (f"derived count write is AVAILABLE and validated "
                   f"(file 0x{c.offset:06X}: {c.old[0]} -> {c.new[0]}); ")
+    array_state = "array anchor relocation eligibility is NOT ESTABLISHED for this document"
+    if document is not None:
+        from .layout import LayoutError as _LayoutError
+        try:
+            anchor = document.anchor(run.identity)
+        except _LayoutError:
+            anchor = None
+        if anchor is not None and anchor.relocatable:
+            array_state = ("array anchor IS relocatable and plan_relocation accepts it "
+                           f"({len(run.canonical_slots)} -> {run.target_slot_count} slots)")
+        elif anchor is not None:
+            array_state = "array anchor is published relocatable=False for this document"
+    missing = tuple(p.identity for p in run.authored_records)
     raise LayoutError(
         f"{run.identity.value}: valid authored placement content serialized; "
         f"proposed capacity request {run.allocation_request.size} bytes, alignment 4; "
-        f"{detail}"
-        f"materialization blocked by a non-relocatable object-array anchor: the array grows "
-        f"from {len(run.canonical_slots)} to {run.target_slot_count} slots and cannot stay at "
-        "its canonical extent, but the placement_reference_array anchor is published "
-        "relocatable=False, so plan_relocation refuses it before any allocation is attempted."
+        f"{detail}{array_state}; "
+        f"materialization blocked by unmodelled authored record bodies: "
+        f"{', '.join(missing)} {'has' if len(missing) == 1 else 'have'} no anchor and no "
+        "array-slot reference in the graph, and plan_relocation creates neither, so the "
+        "appended slot would have nothing to point at."
     )

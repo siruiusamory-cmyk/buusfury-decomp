@@ -155,7 +155,12 @@ def test_common_graph_contains_chain_and_native_references(maps):
     for event in e.events:
         assert graph.inbound(AnchorId(event.identity))
     assert any(r.encoding is ReferenceEncoding.INDEX_U8 for r in graph.references)
-    assert all(not a.relocatable for a in graph.anchors)
+    # TOOLKIT-026: relocation eligibility is published narrowly. Only
+    # `placement_reference_array` anchors whose measured reference set satisfies
+    # the relocation safety contract are movable; every other kind stays fixed.
+    assert {a.kind for a in graph.anchors if a.relocatable} == {"placement_reference_array"}
+    assert all(not a.relocatable for a in graph.anchors
+               if a.kind != "placement_reference_array")
     assert graph.to_json() == PlacementTypes(maps).reference_document().to_json()
 
 

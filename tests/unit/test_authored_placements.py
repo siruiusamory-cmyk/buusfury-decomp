@@ -11,7 +11,7 @@ from tools.webfoot.allocation import allocate, InsufficientSpaceError
 from tools.webfoot.authored_placements import prepare_authored_runs, require_materialization_contract
 from tools.webfoot.cli import main
 from tools.webfoot.formats.map_placements import PlacementRecord
-from tools.webfoot.layout import LayoutError, FreeRegion, RomRange
+from tools.webfoot.layout import AnchorId, LayoutError, FreeRegion, RomRange
 from tools.webfoot.binary import FileOffset
 from tools.webfoot.project import ProjectMeta, ProjectError, read_project, write_project
 from tools.webfoot.project.format import load_toml, dump_toml
@@ -148,7 +148,15 @@ def test_order_capacity_and_template_edits_are_deterministic(project, types):
     assert "payload" not in json.dumps(evidence)
 
 
-def test_synthetic_capacity_does_not_grant_relocation_authority(project, types):
+def test_synthetic_capacity_relocates_the_array_but_not_the_authored_body(project, types):
+    """TOOLKIT-026: the array anchor moves; the authored record still cannot.
+
+    This replaces the TOOLKIT-022/025 assertion that capacity never granted
+    relocation authority. It no longer holds: the array's measured reference set
+    satisfies the relocation safety contract, so `plan_relocation` accepts it and
+    reaches the allocator. What capacity still does NOT grant is an anchor for a
+    record that does not exist in the base image.
+    """
     add(project)
     run, = prepare_authored_runs(read_project(project), types.maps)
     assert run.allocation_request.size == 108
@@ -159,16 +167,21 @@ def test_synthetic_capacity_does_not_grant_relocation_authority(project, types):
     first = allocate(profile, [run.allocation_request])
     assert first == allocate(profile, [run.allocation_request])
     assert first[0].range.start.value == 0x10000
-    # Exercise the real relocator against the actual synthetic placement graph.
-    # Sufficient capacity must not override its fixed-anchor authority guard.
+    # The real relocator, against the actual placement graph, now MOVES the array.
     document = replace(types.reference_document(), profile=profile)
-    with pytest.raises(LayoutError, match="non-relocatable anchor"):
-        plan_relocation(document, [RelocationRequest(run.identity, run.serialized_records)])
-    # TOOLKIT-025: the count field is no longer the blocker - the gate derives and
-    # validates the count change, then stops at the non-relocatable array anchor,
-    # which is the same authority guard the real relocator raises just above.
-    with pytest.raises(LayoutError, match="non-relocatable object-array anchor"):
-        require_materialization_contract((run,), types.maps.base_bytes)
+    slots = 4 * run.target_slot_count
+    result = plan_relocation(document, [RelocationRequest(run.identity, b"\x00" * slots)])
+    assert result.allocations[0].range.start.value == 0x10000
+    assert result.allocations[0].range.size == slots
+    # ...and the base image is still untouched: relocation plans, it does not write.
+    assert document.image == types.maps.base_bytes
+    # The authored clone has no anchor at all, so it cannot be relocated.
+    with pytest.raises(LayoutError, match="unknown anchor"):
+        plan_relocation(document, [RelocationRequest(
+            AnchorId(run.authored_records[0].identity), b"\x00" * 32)])
+    # And the production gate stops there, naming that record.
+    with pytest.raises(LayoutError, match="unmodelled authored record bodies"):
+        require_materialization_contract((run,), types.maps.base_bytes, document)
     assert document.image == types.maps.base_bytes
 
 
@@ -182,7 +195,10 @@ def test_build_fails_at_the_relocation_gate_and_publishes_nothing(project, types
     assert run.allocation_request.size == 108
     output, manifest = tmp_path / "out.gba", tmp_path / "manifest.json"
     for _ in range(2):
-        with pytest.raises(LayoutError, match="108 bytes.*non-relocatable object-array anchor"):
+        # TOOLKIT-026: the array anchor is no longer the blocker. The build now
+        # reaches - and passes - relocation eligibility, and stops at the authored
+        # record body, which has no anchor and no array-slot reference.
+        with pytest.raises(LayoutError, match="108 bytes.*unmodelled authored record bodies"):
             build.build_project(project, "unused", output, None, manifest_path=manifest)
     assert not output.exists() and not manifest.exists()
 

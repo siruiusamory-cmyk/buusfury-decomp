@@ -177,7 +177,14 @@ def test_common_graph_indexed_traversal_and_thumb_raw(types):
     assert all(doc.target_offset(r).value == item.file_offset for r in inbound)
     factory = doc.inbound(AnchorId(types.factory_of(item.identity)['id']))
     assert len(factory) == 3 and all(r.target_delta == 1 for r in factory)
-    assert all(not a.relocatable for a in doc.anchors)
+    # TOOLKIT-026: relocation eligibility is published narrowly. Only
+    # `placement_reference_array` anchors whose measured references satisfy the
+    # relocation safety contract are movable; every other kind stays fixed.
+    movable = [a for a in doc.anchors if a.relocatable]
+    assert movable, "the eligibility rule must actually publish something"
+    assert {a.kind for a in movable} == {"placement_reference_array"}
+    assert all(not a.relocatable for a in doc.anchors
+               if a.kind != "placement_reference_array")
 
 
 def test_index_wrong_target_and_encoding_fail_closed(types):

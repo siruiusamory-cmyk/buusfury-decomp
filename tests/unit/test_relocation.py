@@ -11,7 +11,8 @@ from tools.webfoot.allocation import AllocationRequest, InsufficientSpaceError, 
 from tools.webfoot.binary import BinaryAddressError, FileOffset, GbaRomAddress
 from tools.webfoot.document import RomDocument, scan_pointer_candidates
 from tools.webfoot.layout import (Anchor, AnchorId, LayoutError, OwnedRegion, Provenance,
-    Reference, ReferenceClass as RC, ReferenceEncoding as RE, RomRange)
+    Reference, ReferenceClass as RC, ReferenceEncoding as RE, RomRange,
+    RELOCATION_ELIGIBLE_KINDS, relocation_eligible)
 from tools.webfoot.profile import ProfileConfigError, RomProfile
 from tools.webfoot.relocation import (CandidateReferenceError, RelocationRequest,
                                       emit_relocation, plan_relocation)
@@ -432,3 +433,68 @@ def test_post_validation_failure_emits_nothing(document, tmp_path, monkeypatch):
     with pytest.raises(LayoutError, match="post-validation"):
         emit_relocation(document, [request()], tmp_path / "unused-base", output)
     assert not output.exists()
+
+
+# --- TOOLKIT-026: the relocation eligibility rule, on synthetic anchors ------
+
+_PROV = Provenance("synthetic-eligibility-v1", "0" * 64, "constructed TOOLKIT-026 fixture")
+
+
+def _anchor(kind="placement_reference_array", start=0x100, size=8):
+    return Anchor(AnchorId("fixture:array"), RomRange(FileOffset(start), size),
+                  kind, "fixture:owner", 4, False, _PROV)
+
+
+def _ref(source, target="fixture:array", delta=0, cls=RC.CONFIRMED_REFERENCE):
+    return Reference(FileOffset(source), AnchorId(target), delta,
+                     RE.ABSOLUTE_ROM_U32_LE, cls, _PROV)
+
+
+def test_eligible_when_every_reference_is_confirmed_or_declared():
+    anchor = _anchor()
+    owner = _ref(0x200)
+    slots = (_ref(0x100, "fixture:body", 0), _ref(0x104, "fixture:body", 0))
+    assert relocation_eligible(anchor, (owner,) + slots) is True
+    # DECLARED carries the same authority as CONFIRMED for this contract.
+    assert relocation_eligible(anchor, (_ref(0x200, cls=RC.DECLARED_REFERENCE),) + slots) is True
+
+
+def test_one_candidate_reference_withdraws_eligibility():
+    """SC6: a CANDIDATE is an unresolved numeric hit; the rule refuses it here."""
+    anchor = _anchor()
+    inbound_candidate = _ref(0x200, cls=RC.CANDIDATE_REFERENCE)
+    assert relocation_eligible(anchor, (inbound_candidate,)) is False
+    # ...and one merely SOURCED inside the anchor is refused too, because its
+    # field travels with the payload and its meaning is not established.
+    interior_candidate = _ref(0x104, "fixture:body", 0, RC.CANDIDATE_REFERENCE)
+    assert relocation_eligible(anchor, (_ref(0x200), interior_candidate)) is False
+
+
+def test_unlisted_anchor_kinds_stay_fixed_however_clean_their_references():
+    """SC8: eligibility is scoped by proven kind, never granted generally."""
+    assert RELOCATION_ELIGIBLE_KINDS == frozenset({"placement_reference_array"})
+    owner = _ref(0x200)
+    for kind in ("map_entry", "placement", "enemy_stat_record", "thumb_entry",
+                 "placement_descriptor", "opaque-test"):
+        assert relocation_eligible(_anchor(kind=kind), (owner,)) is False
+
+
+def test_an_anchor_nothing_points_at_is_not_eligible():
+    """Moving an unreferenced anchor would orphan whatever really reaches it."""
+    assert relocation_eligible(_anchor(), ()) is False
+    assert relocation_eligible(_anchor(), (_ref(0x300, "fixture:other"),)) is False
+
+
+def test_a_stranded_or_straddling_reference_withdraws_eligibility():
+    anchor = _anchor(size=8)
+    # An inbound reference pointing past the anchor's extent cannot be rehomed.
+    assert relocation_eligible(anchor, (_ref(0x200, delta=8),)) is False
+    # A source field starting inside but ending past the end would be split.
+    assert relocation_eligible(anchor, (_ref(0x200), _ref(0x106, "fixture:body"))) is False
+
+
+def test_eligibility_never_consults_an_address_or_an_identity():
+    """The rule is a statement about references, not about which array it is."""
+    owner_at = lambda start: (_ref(0x900),)
+    for start in (0x100, 0x2000, 0x40000):
+        assert relocation_eligible(_anchor(start=start), owner_at(start)) is True

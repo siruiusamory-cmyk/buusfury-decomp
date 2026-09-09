@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from enum import Enum
+from typing import Iterable
 
 from .binary import FileOffset, GbaRomAddress
 
@@ -217,3 +218,56 @@ class FreeRegion:
 
     def __post_init__(self) -> None:
         require_name(self.evidence)
+
+
+#: TOOLKIT-026: anchor kinds whose relocation safety this toolkit can decide from
+#: the reference graph alone. A kind is listed here only once a ticket has proven
+#: that moving one of its anchors requires rewriting nothing except the references
+#: the graph already carries - for `placement_reference_array`, TOOLKIT-024 proved
+#: the engine reaches the array through exactly two fields (`MapEntry+0x14` for the
+#: base, `MapEntry+0x04` for the count) with no sentinel, terminator or suffix, so
+#: the array's whole inbound surface is expressible as references.
+RELOCATION_ELIGIBLE_KINDS = frozenset({"placement_reference_array"})
+
+
+def relocation_eligible(anchor: Anchor, references: Iterable[Reference]) -> bool:
+    """Whether `anchor` satisfies the existing relocation safety contract.
+
+    This is the SAME contract `relocation.plan_relocation` enforces, evaluated at
+    publication time so an anchor is not marked movable on hope. An anchor is
+    eligible only when every one of these holds:
+
+      * its kind is one whose inbound surface a ticket has proven the graph fully
+        expresses (`RELOCATION_ELIGIBLE_KINDS`) - an unproven kind stays fixed;
+      * every inbound reference is DECLARED or CONFIRMED. One CANDIDATE reference
+        is an unresolved numeric hit that `plan_relocation` would refuse anyway,
+        and refusing it here keeps the flag honest rather than deferring;
+      * every inbound reference targets an offset inside the anchor, so no
+        reference is stranded when the extent changes;
+      * every reference SOURCED inside the anchor is DECLARED or CONFIRMED and
+        lies wholly within it, so the payload rewrite carries each source field
+        with it instead of leaving one behind in retired bytes.
+
+    Eligibility is decided per anchor from measured references. It never consults
+    a map index, an address range, or any other hardcoded identity: an array whose
+    graph does not satisfy the contract stays non-relocatable, and so does every
+    anchor of an unlisted kind.
+    """
+    if anchor.kind not in RELOCATION_ELIGIBLE_KINDS:
+        return False
+    inbound = False
+    for reference in references:
+        if reference.target == anchor.identity:
+            inbound = True
+            if reference.classification is ReferenceClass.CANDIDATE_REFERENCE:
+                return False
+            if reference.target_delta >= anchor.range.size:
+                return False
+        if anchor.range.contains(reference.source):
+            if reference.classification is ReferenceClass.CANDIDATE_REFERENCE:
+                return False
+            if reference.source_range.end > anchor.range.end:
+                return False
+    # An anchor nothing points at has no proven owner to rewrite, so moving it
+    # would silently orphan whatever actually reaches it.
+    return inbound

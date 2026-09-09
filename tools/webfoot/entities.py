@@ -7,14 +7,14 @@ verified extent covers it. There is no second editable copy of those records.
 from __future__ import annotations
 
 from collections import Counter
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 
 from . import capability
 from .binary import FileOffset, GbaRomAddress
 from .document import RomDocument
 from .formats import stat_tables as st
 from .layout import (Anchor, AnchorId, Provenance, Reference, ReferenceClass,
-                     ReferenceEncoding, RomRange)
+                     ReferenceEncoding, RomRange, relocation_eligible)
 from .maps import MapIdentity, Maps, PlacementIdentity, load_maps
 
 
@@ -219,7 +219,13 @@ class PlacementTypes:
                 ref(p.file_offset + 8, str(self.type_of(p.identity).identity),
                     ReferenceEncoding.INDEX_U32_LE, index_base=FileOffset(self.table_offset),
                     index_stride=self.layout.stride)
-        document = RomDocument.from_bytes(image, self.profile, anchors=tuple(anchors), references=tuple(refs))
+        #: TOOLKIT-026: relocation eligibility is decided AFTER the whole graph exists,
+        #: because the contract is a statement about an anchor's measured references,
+        #: not about the anchor alone. `relocation_eligible` reads the same rules
+        #: `plan_relocation` enforces; nothing here consults a map index or address.
+        anchors = tuple(replace(a, relocatable=True)
+                        if relocation_eligible(a, refs) else a for a in anchors)
+        document = RomDocument.from_bytes(image, self.profile, anchors=anchors, references=tuple(refs))
         from .data.placement_contracts import CONTRACTS
         if self.profile.id in CONTRACTS:
             from .placement_events import PlacementEvents

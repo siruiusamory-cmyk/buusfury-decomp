@@ -100,7 +100,12 @@ def test_common_graph_ownership_index_and_factory_links(types):
     assert len(doc.references) > 268 + 3 * 1559  # descriptor/event/native edges now included
     for t in types.types():
         assert len(doc.inbound(AnchorId(str(t.identity)))) == len(t.placements)
-    assert all(not a.relocatable for a in doc.anchors)
+    # TOOLKIT-026: relocation eligibility is published narrowly. Only
+    # `placement_reference_array` anchors whose measured reference set satisfies
+    # the relocation safety contract are movable; every other kind stays fixed.
+    assert {a.kind for a in doc.anchors if a.relocatable} == {"placement_reference_array"}
+    assert all(not a.relocatable for a in doc.anchors
+               if a.kind != "placement_reference_array")
     assert doc.to_json()['profile_id'] == types.profile.id
 
 

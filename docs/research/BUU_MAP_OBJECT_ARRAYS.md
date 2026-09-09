@@ -1,4 +1,4 @@
-# Buu map object arrays (TOOLKIT-025)
+# Buu map object arrays (TOOLKIT-025, TOOLKIT-026)
 
 Canonical ROM `940ad5f01db4465b8877dfe739510cbf34f4ea3d390f3df13519808bc36f059e`
 (`Dragon Ball Z - Buu's Fury (U).gba`, 8,388,608 bytes). Read-only; the image is an
@@ -6,7 +6,8 @@ input and is unchanged. Baseline `2673ec5`, parent `ffdf543`.
 
 **COMPLETE ENGINE-COUNTED MAP ARRAY MODEL: YES.**
 **AUTHORED MAP COUNT WRITE: YES.**
-**AUTHOR_NEW NEXT BLOCKER: non-relocatable `placement_reference_array` anchor.**
+**PLACEMENT_REFERENCE_ARRAY RELOCATION: YES** (TOOLKIT-026).
+**AUTHOR_NEW NEXT BLOCKER: unmodelled authored record bodies** (TOOLKIT-026).
 
 ## Authoritative count semantics
 
@@ -325,26 +326,235 @@ complete canonical heterogeneous array
 -> relocation machinery                   BLOCKED
 ```
 
-## Next blocker
+## Next blocker (TOOLKIT-025, superseded by TOOLKIT-026)
 
 **Non-relocatable object-array anchor.**
 
 The grown array no longer fits its canonical extent, so it must move. The
-`placement_reference_array` anchor is published `relocatable=False` by
-`entities.PlacementTypes.reference_document`, and `relocation.plan_relocation` refuses a
-non-relocatable anchor before any allocation is attempted. Verified independently of the
-authored gate: map 10's anchor is `relocatable=False`, and **all 2,438 anchors** in the
-production graph are non-relocatable.
+`placement_reference_array` anchor was published `relocatable=False` by
+`entities.PlacementTypes.reference_document`, and `relocation.plan_relocation` refused a
+non-relocatable anchor before any allocation was attempted. Verified independently of the
+authored gate: map 10's anchor was `relocatable=False`, and **all 2,438 anchors** in the
+production graph were non-relocatable.
 
 The allocator was **not** reached. `InsufficientSpaceError` was not the outcome, and was
 not forced to be.
 
-**Is TOOLKIT-011 binding? NO.** The build does not reach verified-capacity failure, so
-free-space work remains downstream. Buu free capacity remains zero and the candidate
-tail remains unused and uninspected.
+**Is TOOLKIT-011 binding? NO.** The build did not reach verified-capacity failure.
 
-## Scope held
+TOOLKIT-026 resolved this blocker. What follows supersedes it.
+
+## Scope held (TOOLKIT-025)
 
 Not investigated, per the ticket's diminishing-returns guard: the seven new script
 roots, sibling-family semantics, additional native handlers, collision, the free-space
 tail, the 516 TOOLKIT-011 references, and unrelated relocation cases.
+
+---
+
+# TOOLKIT-026 - relocating one authored map object array
+
+Same canonical ROM
+`940ad5f01db4465b8877dfe739510cbf34f4ea3d390f3df13519808bc36f059e`, read-only and
+unchanged. Baseline `f808a67`.
+
+**PLACEMENT_REFERENCE_ARRAY RELOCATION: YES.**
+
+One question, answered for one representative array: *can the pointer array for an
+authored placement expansion safely move?* It can.
+
+## The selected array - map 10
+
+Every value below was re-measured against the image for this ticket, not carried from
+TOOLKIT-025's summary.
+
+| Property | Measured |
+| --- | --- |
+| Map | 10 |
+| MapEntry offset | file `0x08E510` |
+| Canonical slot count (`MapEntry+0x04`) | **2** |
+| Array pointer (`MapEntry+0x14`) raw | `0x0807293C` |
+| Array start | file `0x07293C` |
+| Array byte length | **8** (`count * 4`) |
+| Slot 0 | src `0x07293C` -> `0x080728FC` (file `0x0728FC`), lead word `0x0800FD55` PLACEMENT |
+| Slot 1 | src `0x072940` -> `0x0807291C` (file `0x07291C`), lead word `0x0800FD55` PLACEMENT |
+
+## The owner pointer
+
+| Property | Value |
+| --- | --- |
+| Owning field | `MapEntry+0x14` |
+| Source ROM address | file `0x08E524` |
+| Encoding | `ABSOLUTE_ROM_U32_LE` |
+| Target delta | 0 |
+| Evidence class | **CONFIRMED** |
+
+The owner is rewrite-eligible under the existing reference rules: it is a CONFIRMED
+absolute-u32 reference whose source lies outside the anchor, so `plan_relocation`
+rewrites it as an ordinary `ByteChange`.
+
+## Reverse-reference census - the selected array only
+
+Complete and bounded: every 4-byte window at **every byte alignment** across all
+8,388,608 bytes, tested against the array start and every interior byte of its
+`count * 4` extent.
+
+| Class | Count | Sources |
+| --- | --- | --- |
+| CONFIRMED | **1** | `0x08E524` (`MapEntry+0x14`) |
+| DECLARED | 0 | - |
+| CANDIDATE | 0 | - |
+| numeric coincidence / rejected | 0 | - |
+| interior-address hits | 0 | - |
+| unaligned hits | 0 | - |
+
+**Positive control (ticket section 9).** The same loop that returns the negative result
+finds the known owner reference at `0x08E524`. A census whose instrument could not
+find the positive is not trusted, and this one does find it.
+
+The graph agrees: `scan_pointer_candidates` over the MapEntry window returns nothing,
+because the only numeric hit is already a declared reference source, and the production
+document carries **zero** `CANDIDATE_REFERENCE` entries anywhere.
+
+So the answer to *if this array moves, what existing ROM locations must be rewritten?*
+is exactly one location: `0x08E524`.
+
+## Relocation eligibility rule
+
+Encoded in `layout.relocation_eligible`, applied as a post-pass over the assembled graph
+in `entities.PlacementTypes.reference_document`. It is a statement about an anchor's
+**measured references**, never about a map index or an address:
+
+An anchor is relocatable when all of the following hold.
+
+1. Its `kind` is in `RELOCATION_ELIGIBLE_KINDS` - today only
+   `placement_reference_array`, because TOOLKIT-024 proved the engine reaches such an
+   array through exactly two fields (`MapEntry+0x14` base, `MapEntry+0x04` count) with
+   no sentinel, terminator or suffix, so the whole inbound surface is expressible as
+   references. Every other kind stays fixed.
+2. Every inbound reference is DECLARED or CONFIRMED. One CANDIDATE withdraws
+   eligibility - the same refusal `plan_relocation` would raise, made at publication
+   time so the flag stays honest.
+3. Every inbound reference targets an offset inside the anchor, so none is stranded
+   when the extent changes.
+4. Every reference **sourced inside** the anchor is DECLARED or CONFIRMED and lies
+   wholly within it, so the payload rewrite carries each source field along.
+5. Something actually points at it. An unreferenced anchor has no proven owner to
+   rewrite, so moving it would orphan whatever really reaches it.
+
+Scope of the capability, measured on the production graph:
+
+| Quantity | Value |
+| --- | --- |
+| Anchors in the graph | 2,438 |
+| Now relocatable | **268** |
+| Their kind | `placement_reference_array`, all of them |
+| Other kinds made relocatable | **0** |
+| `placement_reference_array` anchors NOT eligible | 0 |
+
+All 268 arrays have exactly one CONFIRMED inbound reference at delta 0, and clean
+interior slot sources, so the rule admits the whole class rather than a hand-picked
+subset. That is a measured outcome of the rule, not a special case written into it.
+
+## Synthetic verified-capacity result
+
+Production machinery only - `relocation.plan_relocation` and `allocation.allocate`, with
+one synthetic `FreeRegion(0x10000, 4096)`. No test-only relocation algorithm exists.
+
+```text
+map 10 canonical array (2 slots, 8 bytes)
+-> append authored placement slot                  OK  (3 slots, 12 bytes)
+-> relocation eligibility accepted                 OK  (was: refused at the flag)
+-> allocator reached                               OK  <- previously never reached
+-> expanded array allocated                        OK  file 0x010000, 12 bytes
+-> expanded array written                          OK
+-> owner pointer rewritten                         OK  0x08E524: 0x0807293C -> 0x08010000
+-> canonical slot order preserved                  OK  0x080728FC, 0x0807291C
+-> appended slot                                   0x00000000 (no anchor to point at)
+-> repeated plan byte-identical                    OK
+-> old extent left intact                          OK  (relocation retires, never scrubs)
+-> base image unmodified by planning               OK
+```
+
+`MapEntry+0x04` stays `2` through relocation, correctly: a count field is neither a
+reference source nor a relocated payload. The derived count write is a separate,
+validated `ByteChange` (TOOLKIT-025), and both are available at the same time.
+
+## Canonical Buu result
+
+Same authored +1 build (`clone_placement` on map 10), through `build_project`, against
+canonical Buu with its real zero free capacity.
+
+Acceptance for TOOLKIT-026 is met: the build **no longer fails because the array anchor
+is non-relocatable**. Production error, verbatim:
+
+```text
+map:0010/placement_references: valid authored placement content serialized;
+proposed capacity request 108 bytes, alignment 4;
+derived count write is AVAILABLE and validated (file 0x08E514: 2 -> 3);
+array anchor IS relocatable and plan_relocation accepts it (2 -> 3 slots);
+materialization blocked by unmodelled authored record bodies:
+map:0010/authored:toolkit026 has no anchor and no array-slot reference in the
+graph, and plan_relocation creates neither, so the appended slot would have
+nothing to point at.
+```
+
+Deterministic across repeated runs; no output ROM and no manifest are produced; the
+canonical image and its mtime are unchanged.
+
+## The next blocker - measured, not predicted
+
+**Unmodelled authored record bodies.**
+
+The relocator's contract is to move **existing** anchors and rewrite **existing**
+references. It creates neither. Measured consequences for the map 10 +1 case:
+
+* `plan_relocation` on the clone's identity raises
+  `LayoutError: unknown anchor AnchorId(value='map:0010/authored:toolkit026')` - the
+  authored body has no anchor to hold it;
+* after the array relocates to 3 slots, only two reference sources exist inside the new
+  extent (`0x10000`, `0x10004`), so the appended slot at `0x10008` stays `0x00000000`
+  with nothing to point at.
+
+This is reported **from production** rather than asserted: the gate reads the array
+anchor's actual `relocatable` flag off the same document the build uses, and names the
+authored records the graph is missing.
+
+The gate message is not a prediction about what comes after that. Closing this blocker
+means giving an authored record its own anchor and its own array-slot reference, which
+is a graph-construction question, not a relocation one.
+
+**Did production actually reach the allocator? YES**, under synthetic verified capacity
+(allocated file `0x010000`, 12 bytes). Against canonical Buu the allocator is reached
+and raises `InsufficientSpaceError`, because the profile declares zero free regions -
+`plan_relocation(types.reference_document(), ...)` now fails at the capacity boundary,
+not at an authority boundary. That is proven directly in
+`test_capacity_is_still_necessary_and_relocation_now_reaches_the_allocator`.
+
+**Is TOOLKIT-011 binding? NO.** The allocator is reached, which was TOOLKIT-011's
+precondition, but it is not the *binding* blocker for AUTHOR_NEW: the authored-body
+blocker above stops `build_project` before relocation is ever requested. Free-space work
+becomes binding only once an authored record can be modelled in the graph. Buu free
+capacity remains zero, and the candidate tail remains unused and uninspected.
+
+## Superseded claims
+
+**OLD CLAIM (TOOLKIT-025).** *All 2,438 anchors in the production graph are
+non-relocatable*, and capacity never grants relocation authority.
+
+**NEW EVIDENCE.** 268 `placement_reference_array` anchors satisfy the existing
+relocation safety contract on their measured references, and `plan_relocation` moves
+map 10's array through production machinery.
+
+**RESOLUTION.** The blanket `relocatable=False` was a conservative default, not a
+finding. It is replaced by an evidence-driven rule; every other anchor kind keeps the
+default. The claim that *capacity does not override the fixed-anchor authority guard*
+is retired for this kind: there is no longer a fixed-anchor guard to override here, and
+what capacity still cannot grant is an anchor for a record absent from the base image.
+
+## Scope held
+
+Not investigated, per ticket section 8: the seven excluded script roots, sibling object
+semantics, collision, dialog/native handlers, the TOOLKIT-011 tail, the 516 candidate
+references, ROM expansion, and other placement runs beyond the 268-anchor eligibility
+census used as the rule's own control.

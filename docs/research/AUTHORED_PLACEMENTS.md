@@ -114,7 +114,17 @@ plus one 32-byte clone serialize to **96 bytes**; three proposed pointer slots
 add **12 bytes**, for a deterministic **108-byte**, 4-aligned capacity request.
 Project parsing, semantic validation and authored-ID resolution pass.
 
-Production **build** raises `LayoutError`:
+> **SUPERSEDED by TOOLKIT-026 (relocation) and TOOLKIT-025 (count).** The two
+> reasons quoted in the TOOLKIT-022 error below are both resolved. The engine
+> count is `MapEntry+0x04`, proven by disassembly (TOOLKIT-024) and now written
+> as a derived, validated `ByteChange`; `MapEntry+0x05` was never the count. The
+> `placement_reference_array` anchor is no longer published `relocatable=False`:
+> its measured reference set satisfies the relocation safety contract, and
+> `plan_relocation` moves it and rewrites the `MapEntry+0x14` owner pointer. The
+> current blocker is unmodelled authored record bodies. See
+> [BUU_MAP_OBJECT_ARRAYS.md](BUU_MAP_OBJECT_ARRAYS.md).
+
+Production **build** raises `LayoutError` (TOOLKIT-022 form, superseded):
 
 ```text
 map:0010/placement_references: valid authored placement content serialized; proposed capacity request 108 bytes, alignment 4; materialization blocked by non-relocatable placement_reference_array: MapEntry+0x14 reference is CONFIRMED, but expanded-run engine count/termination and suffix ownership are UNKNOWN (MapEntry+0x05 is not a verified count). Verified capacity alone does not authorize this rewrite.

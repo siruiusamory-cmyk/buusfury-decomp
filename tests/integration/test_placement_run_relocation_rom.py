@@ -29,7 +29,9 @@ from tools.webfoot.formats.map_placements import (
     PlacementRecord,
     read_placement_record,
 )
-from tools.webfoot.layout import AnchorId, FreeRegion, LayoutError, ReferenceClass, RomRange
+from tools.webfoot.layout import (AnchorId, FreeRegion, LayoutError, Reference,
+                                  ReferenceClass, ReferenceEncoding, RomRange,
+                                  relocation_eligible)
 from tools.webfoot.maps import MAP_FIELDS, MapIdentity, load_maps
 from tools.webfoot.profile import RomProfileCatalog
 from tools.webfoot.relocation import RelocationRequest, plan_relocation
@@ -344,19 +346,60 @@ def test_map_17_proves_the_census_lost_live_placements(image):
 # --- SC3/SC6: owner and reverse references -------------------------------
 
 
-def test_the_owner_reference_is_confirmed_and_non_relocatable(types):
-    """SC3: classification read off the implemented rule, not asserted."""
+def test_the_owner_reference_is_confirmed_and_the_array_is_eligible(types):
+    """SC3: classification read off the implemented rule, not asserted.
+
+    TOOLKIT-026 replaced this test's `relocatable is False` assertion. The array
+    is now published relocatable, and the reason is exactly what the rest of this
+    test measures: one CONFIRMED owner reference at `MapEntry+0x14`, delta 0.
+    """
     document = types.reference_document()
     array = AnchorId(f"map:{SELECTED_MAP:04d}/placement_references")
     anchor = next(a for a in document.anchors if a.identity == array)
     assert anchor.range.start.value == RUN_ARRAY_OFFSET
     assert anchor.range.size == RUN_ARRAY_BYTES == RUN_RECORD_COUNT * 4
     assert anchor.kind == "placement_reference_array"
-    assert anchor.relocatable is False
     owner = [r for r in document.references if r.target == array]
     assert len(owner) == 1
     assert owner[0].source.value == OWNER_SOURCE_OFFSET
+    assert owner[0].target_delta == 0
     assert owner[0].classification is ReferenceClass.CONFIRMED_REFERENCE
+    # The published flag is the eligibility rule's own verdict on that owner set.
+    assert relocation_eligible(anchor, document.references) is True
+    assert anchor.relocatable is True
+
+
+def test_relocation_eligibility_is_narrow_and_evidence_driven(types):
+    """TOOLKIT-026: what the rule grants, and everything it still refuses."""
+    document = types.reference_document()
+    array = AnchorId(f"map:{SELECTED_MAP:04d}/placement_references")
+    anchor = document.anchor(array)
+    movable = [a for a in document.anchors if a.relocatable]
+    # Only object arrays are eligible; no other anchor kind was made movable.
+    assert {a.kind for a in movable} == {"placement_reference_array"}
+    assert len(movable) == sum(1 for a in document.anchors
+                               if a.kind == "placement_reference_array")
+    assert all(not a.relocatable for a in document.anchors
+               if a.kind != "placement_reference_array")
+    # A CANDIDATE reference anywhere in the anchor's surface withdraws eligibility.
+    provenance = anchor.provenance
+    candidate = Reference(FileOffset(OWNER_SOURCE_OFFSET), array, 0,
+                          ReferenceEncoding.ABSOLUTE_ROM_U32_LE,
+                          ReferenceClass.CANDIDATE_REFERENCE, provenance)
+    others = tuple(r for r in document.references if r.source.value != OWNER_SOURCE_OFFSET)
+    assert relocation_eligible(anchor, others + (candidate,)) is False
+    # And so does one sourced inside the array, even with the owner intact.
+    inside = Reference(FileOffset(RUN_ARRAY_OFFSET),
+                       AnchorId(f"map:{SELECTED_MAP:04d}/placement:0000"), 0,
+                       ReferenceEncoding.ABSOLUTE_ROM_U32_LE,
+                       ReferenceClass.CANDIDATE_REFERENCE, provenance)
+    kept = tuple(r for r in document.references if r.source.value != RUN_ARRAY_OFFSET)
+    assert relocation_eligible(anchor, kept + (inside,)) is False
+    # An anchor nothing points at is not eligible: there is no owner to rewrite.
+    orphan = tuple(r for r in document.references if r.target != array)
+    assert relocation_eligible(anchor, orphan) is False
+    # An unlisted kind stays fixed no matter how clean its references are.
+    assert relocation_eligible(replace(anchor, kind="map_entry"), document.references) is False
 
 
 def test_the_run_has_exactly_one_external_inbound_reference(image, types):
@@ -428,42 +471,50 @@ def test_the_required_owner_metadata_changes_are_closed(image):
 # --- SC8: synthetic relocation, and the exact blocker --------------------
 
 
-def test_capacity_is_necessary_but_the_published_graph_refuses_relocation(types):
-    request = AllocationRequest(
-        AnchorId(f"map:{SELECTED_MAP:04d}/placement_references"),
-        f"map:{SELECTED_MAP:04d}", 108, 4)
+def test_capacity_is_still_necessary_and_relocation_now_reaches_the_allocator(types):
+    """TOOLKIT-026: production relocation proceeds past the retired flag gate.
+
+    The previous form of this test asserted `plan_relocation` refused the array
+    with `non-relocatable anchor`. It does not any more: the array's measured
+    reference set satisfies the relocation safety contract, so the request now
+    reaches the allocator, which still needs declared capacity to satisfy it.
+    """
+    array = AnchorId(f"map:{SELECTED_MAP:04d}/placement_references")
+    request = AllocationRequest(array, f"map:{SELECTED_MAP:04d}", 108, 4)
     with pytest.raises(InsufficientSpaceError):
         allocate(types.profile, [request])
+    # Canonical Buu declares no free space, so relocation reaches the allocator
+    # and fails THERE - the capacity boundary, not an authority boundary.
+    with pytest.raises(InsufficientSpaceError):
+        plan_relocation(types.reference_document(),
+                        [RelocationRequest(array, b"\x00" * 12)])
     profile = replace(types.profile, free_regions=(
         FreeRegion(RomRange(FileOffset(0x10000), 4096), "synthetic verified capacity"),))
     first = allocate(profile, [request])
     assert first[0].range.start.value == 0x10000
     assert first == allocate(profile, [request]), "deterministic"
-    # Capacity does not override the fixed-anchor authority guard.
     document = replace(types.reference_document(), profile=profile)
-    with pytest.raises(LayoutError, match="non-relocatable anchor"):
-        plan_relocation(document, [RelocationRequest(request.anchor, b"\x00" * 12)])
-    assert document.image == types.maps.base_bytes
+    result = plan_relocation(document, [RelocationRequest(array, b"\x00" * 12)])
+    assert result.allocations[0].range.start.value == 0x10000
+    assert result.allocations[0].range.size == 12
+    assert document.image == types.maps.base_bytes, "planning never writes the base"
 
 
 def test_the_relocator_cannot_express_the_count_rewrite(types):
     """SC8: the blocker, measured rather than argued.
 
-    This probe relaxes exactly one published boolean IN MEMORY to locate the
-    NEXT gate. It writes nothing and grants nothing: the published graph keeps
-    `relocatable=False`, which the test above pins. What it establishes is that
-    even past the flag, `plan_relocation` rewrites the owner pointer correctly
-    and still leaves `MapEntry+0x04` untouched, because a count field is
-    neither a reference source nor a relocated payload.
+    TOOLKIT-024 ran this as an in-memory probe that relaxed one published
+    boolean. TOOLKIT-026 published that boolean for real, so this is now the
+    production path: `plan_relocation` rewrites the owner pointer correctly and
+    still leaves `MapEntry+0x04` untouched, because a count field is neither a
+    reference source nor a relocated payload.
     """
     document = types.reference_document()
     array = AnchorId(f"map:{SELECTED_MAP:04d}/placement_references")
     profile = replace(types.profile, free_regions=(
         FreeRegion(RomRange(FileOffset(0x10000), 4096), "synthetic verified capacity"),))
-    probe = replace(
-        document, profile=profile,
-        anchors=tuple(replace(a, relocatable=True) if a.identity == array else a
-                      for a in document.anchors))
+    probe = replace(document, profile=profile)
+    assert probe.anchor(array).relocatable is True, "no in-memory relaxation is used"
     result = plan_relocation(probe, [RelocationRequest(array, b"\x00" * 12)])
     output = result.document.image
     # The owner pointer rewrite DOES work.
@@ -512,6 +563,76 @@ def test_the_census_totals_are_preserved(maps):
     assert len(runs_table()) == 240
     counts = [p.record.child_count for p in placements]
     assert [counts.count(n) for n in (1, 2, 3, 4)] == [1544, 7, 6, 2]
+
+
+# --- TOOLKIT-026: the census that licenses the eligibility rule -----------
+
+
+def test_the_reverse_reference_census_is_complete_at_every_byte_alignment(image, types):
+    """TOOLKIT-026 SC5 + PC: a census the eligibility rule can actually rest on.
+
+    The 4-byte-aligned scan above answers "what other pointer TABLE names this
+    array". This one answers the stricter question the relocation contract needs:
+    if the array moves, is there ANY word anywhere in the image - at any byte
+    alignment, in code or in data - that would still name its old extent?
+
+    A negative census is worthless without a control, so the same loop must find
+    the known owner reference at `MapEntry+0x14`. It does, and it finds nothing
+    else, which is what licenses `relocation_eligible` to publish the flag.
+    """
+    document = types.reference_document()
+    anchor = document.anchor(AnchorId(f"map:{SELECTED_MAP:04d}/placement_references"))
+    low = 0x08000000 + anchor.range.start.value
+    high = low + anchor.range.size
+    declared = {r.source.value for r in document.references}
+    hits = []
+    for offset in range(len(image) - 3):
+        word = int.from_bytes(image[offset:offset + 4], "little")
+        if low <= word < high:
+            hits.append((offset, word, offset in declared))
+    # PC: the instrument finds the positive control.
+    assert (OWNER_SOURCE_OFFSET, RUN_ARRAY_ADDRESS, True) in hits, "positive control"
+    # ...and finds nothing else, at any alignment, into any interior byte.
+    assert hits == [(OWNER_SOURCE_OFFSET, RUN_ARRAY_ADDRESS, True)]
+    # Every hit is a DECLARED/CONFIRMED graph reference; none is a CANDIDATE.
+    owner = next(r for r in document.references if r.source.value == OWNER_SOURCE_OFFSET)
+    assert owner.classification is ReferenceClass.CONFIRMED_REFERENCE
+    assert not [r for r in document.references
+                if r.classification is ReferenceClass.CANDIDATE_REFERENCE]
+
+
+def test_the_relocated_array_preserves_canonical_order_and_appends_once(types):
+    """TOOLKIT-026 SC9/SC10/SC11: contents, order, and the derived count.
+
+    The array that moves carries exactly the canonical pointers, in canonical
+    order, and the expansion adds exactly one slot - which the relocator leaves
+    empty, because creating a reference for an anchor that does not exist is not
+    something it is allowed to do.
+    """
+    from tools.webfoot.formats.map_placements import iter_object_slots
+    document = types.reference_document()
+    array = AnchorId(f"map:{SELECTED_MAP:04d}/placement_references")
+    image = types.maps.base_bytes
+    canonical = iter_object_slots(image, RUN_ARRAY_OFFSET, RUN_RECORD_COUNT)
+    assert [s.target_offset for s in canonical] == list(RUN_RECORD_OFFSETS)
+    profile = replace(types.profile, free_regions=(
+        FreeRegion(RomRange(FileOffset(0x10000), 4096), "synthetic verified capacity"),))
+    probe = replace(document, profile=profile)
+    result = plan_relocation(probe, [RelocationRequest(array, b"\x00" * 12)])
+    output = result.document.image
+    moved = [struct.unpack_from("<I", output, 0x10000 + i * 4)[0] for i in range(3)]
+    # SC9: canonical order preserved, pointer for pointer.
+    assert moved[:2] == [0x08000000 + o for o in RUN_RECORD_OFFSETS]
+    # SC10: exactly one appended slot, and it is the ONLY new one.
+    assert len(moved) == RUN_RECORD_COUNT + 1
+    assert moved[2] == 0, "the relocator creates no anchor and no reference"
+    # SC13: repeating the whole plan is byte-for-byte deterministic.
+    again = plan_relocation(replace(types.reference_document(), profile=profile),
+                            [RelocationRequest(array, b"\x00" * 12)])
+    assert again.document.image == output
+    # The old extent is left intact; relocation retires, it does not scrub.
+    assert output[RUN_ARRAY_OFFSET:RUN_ARRAY_OFFSET + RUN_ARRAY_BYTES] == \
+        image[RUN_ARRAY_OFFSET:RUN_ARRAY_OFFSET + RUN_ARRAY_BYTES]
 
 
 def test_the_selected_run_round_trips_byte_identically(image, maps):

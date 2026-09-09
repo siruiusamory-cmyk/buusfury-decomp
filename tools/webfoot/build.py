@@ -876,8 +876,12 @@ def build_project(
     # TOOLKIT-025: the image is passed so an authored expansion derives and validates
     # its `MapEntry+0x04` count change against the bytes actually being built, rather
     # than against the model alone. A stale model fails closed instead of writing.
+    # TOOLKIT-026: the document is passed so the gate REPORTS the array anchor's
+    # measured relocation eligibility instead of asserting it, and names the exact
+    # anchors the graph is still missing.
     require_materialization_contract(
-        authored_runs, None if maps is None else maps.base_bytes)
+        authored_runs, None if maps is None else maps.base_bytes,
+        None if not authored_runs or maps is None else _placement_document(maps))
 
     # One plan for every subsystem, not one plan each. Overlap detection is
     # per-plan, so two plans could each validate while together writing the
@@ -938,6 +942,22 @@ def build_project(
         manifest_path=Path(manifest_path) if manifest_path is not None else None,
         project_name=project.meta.name,
     )
+
+
+def _placement_document(maps):
+    """The production reference graph for `maps`, or None where unavailable.
+
+    TOOLKIT-026: the authored gate reports the array anchor's MEASURED relocation
+    eligibility, so it needs the same document the relocator would receive. A
+    profile without placement-type capability simply has no such graph; the gate
+    then reports eligibility as not established rather than guessing.
+    """
+    from .entities import PlacementTypes, PlacementTypeError
+    from .capability import CapabilityError
+    try:
+        return PlacementTypes(maps).reference_document()
+    except (PlacementTypeError, CapabilityError):
+        return None
 
 
 def authored_capacity_plan(project_dir, rom_path, catalog):

@@ -144,7 +144,11 @@ main { padding-block: var(--s6) var(--s8); }
 .section-header { margin-bottom: var(--s6); }
 .section-header > p:last-child { margin: var(--s3) 0 0; color: var(--text-muted); }
 .questline { position: relative; margin: 0; padding: 0; list-style: none; }
-.questline::before { content: ""; position: absolute; top: 1.2rem; bottom: 1.2rem; left: 0.95rem; width: 2px; background: linear-gradient(var(--complete) 0 52%, var(--current) 52% 62%, var(--border) 62% 91%, var(--target) 91%); }
+/* Stops come from the milestone statuses via --rail-* (set in Questline.astro),
+   the same way the hero meter uses --progress. They were hardcoded percentages
+   and drifted as milestones were checked off: at 9 of 12 complete the rail was
+   still filling to 52%. */
+.questline::before { content: ""; position: absolute; top: 1.2rem; bottom: 1.2rem; left: 0.95rem; width: 2px; background: linear-gradient(var(--complete) 0 var(--rail-complete), var(--current) var(--rail-complete) var(--rail-current), var(--border) var(--rail-current) var(--rail-target), var(--target) var(--rail-target)); }
 .quest { position: relative; display: grid; grid-template-columns: 2rem 1fr; gap: var(--s4); padding-bottom: var(--s5); }
 .quest:last-child { padding-bottom: 0; }
 .quest-node { position: relative; z-index: 1; display: grid; place-items: center; width: 2rem; height: 2rem; background: var(--surface); border: 1px solid var(--border); color: var(--future); font: 700 0.9rem/1 var(--mono); }

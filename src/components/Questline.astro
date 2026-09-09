@@ -1,5 +1,35 @@
 ---
 import { project, statusMeta } from "../data/project";
+
+// The rail's colour stops are derived from the milestone statuses rather than
+// hardcoded, so checking a milestone off actually moves the fill. They were
+// fixed percentages before, and had drifted badly: 9 of 12 milestones complete
+// still rendered a rail filled to 52%.
+//
+// The rail is inset to the first and last node centres (top/bottom: 1.2rem), so
+// node k sits at k / (n - 1). The rail is a CONNECTOR: the segment for
+// milestone k runs from node k to node k+1, so a band that ends after the last
+// complete milestone ends at that milestone's own node, not one past it.
+const milestones = project.milestones;
+const spans = Math.max(milestones.length - 1, 1);
+const at = (nodeIndex: number) =>
+  `${((Math.min(Math.max(nodeIndex, 0), spans) / spans) * 100).toFixed(2)}%`;
+
+const lastIndexOf = (wanted: string) =>
+  milestones.reduce((found, { status }, i) => (status === wanted ? i : found), -1);
+
+const lastComplete = lastIndexOf("complete");
+const lastCurrent = lastIndexOf("current");
+const firstTarget = milestones.findIndex(({ status }) => status === "target");
+
+// Green ends at the last completed node; amber covers the current milestone's
+// own node; violet begins at the first target node, leaving the milestones
+// between them a visible grey segment.
+const railStyle = [
+  `--rail-complete: ${at(lastComplete)}`,
+  `--rail-current: ${at(Math.max(lastCurrent, lastComplete))}`,
+  `--rail-target: ${at(firstTarget === -1 ? spans : firstTarget)}`,
+].join("; ");
 ---
 
 <section class="quest-panel panel" id="questline" aria-labelledby="questline-title">
@@ -8,8 +38,8 @@ import { project, statusMeta } from "../data/project";
     <h2 id="questline-title">AUTHOR_NEW QUESTLINE</h2>
     <p>The path from “I can edit an object” to “I can create one.”</p>
   </header>
-  <ol class="questline">
-    {project.milestones.map((milestone) => (
+  <ol class="questline" style={railStyle}>
+    {milestones.map((milestone) => (
       <li class:list={["quest", `is-${milestone.status}`]}>
         <span class="quest-node" aria-hidden="true">{statusMeta[milestone.status].icon}</span>
         <article>

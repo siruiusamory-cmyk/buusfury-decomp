@@ -25,6 +25,13 @@ npm run build
 npm run preview
 ```
 
+The public site is deployed at
+<https://siruiusamory.gitlab.io/log1-remake/>. GitLab Pages builds it from the
+repository's default branch with `.gitlab-ci.yml`; the pipeline runs the focused
+site checks, builds Astro, and publishes `dist/` without committing generated
+output. GitLab's Pages settings show the active deployment URL and are also
+where a future custom domain would be configured.
+
 In `src/data/project.ts`, edit `overallProgress` and `overallProgressLabel` to
 change the explicitly approximate headline. Update the blocker fields to move
 the current frontier, change a milestone's `status` to `complete`, `current`,
@@ -33,12 +40,20 @@ entry. Breakthrough `date` and `commit` fields are optional; omit them when the
 project has no verified value. Footer links are also optional and disappear
 when their `url` is absent.
 
-The GitHub Pages workflow is `.github/workflows/deploy.yml`. In the repository's
-Actions variables, set `SITE_URL` to the Pages origin, such as
-`https://USERNAME.github.io`, and `BASE_PATH` to the project path, such as
-`/REPOSITORY`. Leave `BASE_PATH` as `/` for a user or organization site. Then
-select **GitHub Actions** as the Pages source. The workflow installs, builds,
-uploads, and deploys the static site; compiled output remains ignored.
+At ticket closure, classify the measured result as
+`public progress impact: UPDATED` or `public progress impact: NONE`. `UPDATED`
+means the result changes public capability, the blocker/frontier, the
+capability-based AUTHOR_NEW questline, a completed capability's wording, a
+meaningful outside-facing breakthrough, or the acceptance-target story. Update
+`src/data/project.ts`, then run `npm run check` and `npm run build`; normally the
+status change belongs in the capability's ticket commit. `NONE` requires a
+one-sentence reason and no cosmetic website edit.
+
+The overall percentage is a directional product estimate, never a calculation
+from ticket count. Change it only when the maintainer reviews it explicitly or a broader
+roadmap review finds a material shift. Milestones are authoritative. Questline
+entries represent capabilities rather than ticket numbers, and breakthroughs
+are reserved for results useful to outside visitors. Never invent dates.
 
 ## Legal boundary
 

@@ -1,0 +1,18 @@
+image: node:22
+
+stages:
+  - deploy
+
+deploy-pages:
+  stage: deploy
+  before_script:
+    - npm ci
+  script:
+    - export SITE_URL="$(node -e 'const u = new URL(process.env.CI_PAGES_URL); process.stdout.write(u.origin)')"
+    - export BASE_PATH="$(node -e 'const u = new URL(process.env.CI_PAGES_URL); process.stdout.write(u.pathname.replace(/\/$/, "") || "/")')"
+    - npm run check
+    - npm run build
+  pages:
+    publish: dist
+  rules:
+    - if: '$CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH'

@@ -277,6 +277,27 @@ export const project: ProjectStatus = {
     "Independent fan development project. Not affiliated with Webfoot Technologies or the relevant game/IP rights holders.",
 };
 
+function validateProjectStatus(value: ProjectStatus): void {
+  if (!Number.isFinite(value.overallProgress) || value.overallProgress < 0 || value.overallProgress > 100) {
+    throw new Error("Project progress must be a finite number from 0 through 100.");
+  }
+
+  const currentMilestones = value.milestones.filter(({ status }) => status === "current");
+  if (currentMilestones.length !== 1) {
+    throw new Error(`Project questline must have exactly one current milestone; found ${currentMilestones.length}.`);
+  }
+
+  if (!value.blockerTitle.trim()) {
+    throw new Error("Project status must include a current blocker title.");
+  }
+
+  if (!value.acceptanceTarget.trim() || !value.milestones.some(({ status }) => status === "target")) {
+    throw new Error("Project status must include an acceptance target and a target milestone.");
+  }
+}
+
+validateProjectStatus(project);
+
 export const statusMeta: Record<MilestoneStatus, { icon: string; label: string }> = {
   complete: { icon: "✓", label: "COMPLETE" },
   current: { icon: "◆", label: "CURRENT" },

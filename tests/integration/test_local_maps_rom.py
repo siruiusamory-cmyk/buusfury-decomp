@@ -50,16 +50,25 @@ MAP_RECORD_COUNT = 452
 #: was opaque, so TOOLKIT-007's typed rung and connection graph stand as proven.
 # TOOLKIT-017: three more opaque extents overlap placements; one overlaps a descriptor.
 # Legacy values remain pinned by test_toolkit017_rom.py.
-SLOT_ARRAY_COUNT = 108
-SLOT_COUNT = 556
-SLOT_BYTES = 4448
+#: TOOLKIT-025: three further opaque extents are refused, because an extent covering
+#: any byte of a placement record is refused whole and the corrected census exposes
+#: 117 more records. The TYPED subset below is deliberately unchanged (35/89) - only
+#: contested opaque extents were shed, and no typed slot was reclassified.
+SLOT_ARRAY_COUNT = 105
+SLOT_COUNT = 518
+SLOT_BYTES = 4144
 TYPED_ARRAY_COUNT = 35
 TYPED_SLOT_COUNT = 89
 
 #: TOOLKIT-008. The factory-led placement corpus, measured from the same image.
-PLACEMENT_COUNT = 1442
-PLACEMENT_MAP_COUNT = 240
-PLACEMENT_BYTES = 46244
+#: TOOLKIT-025 corrected these from the engine's own traversal bound. The previous
+#: 1,442 / 240 / 46,244 came from a frozen run contract that expressed only 240 of
+#: the 316 arrays the engine counts, and stored a truncated count for one more; it
+#: is the pre-TOOLKIT-025 SDK census, not the canonical placement census. Deriving
+#: the bound from `MapEntry+0x04` recovers 117 further placement-family records.
+PLACEMENT_COUNT = 1559
+PLACEMENT_MAP_COUNT = 268
+PLACEMENT_BYTES = 49988
 
 #: The one instance whose referenced structure `AUTO_RE_<local-state-name>:314` verifies.
 CONFIRMED_MAP = 39
@@ -166,16 +175,26 @@ def test_the_confirmed_source_reference_reproduces_exactly(maps):
 
     Kept as a regression fixture: this is the single instance whose referenced
     structure this project has verified, and the evidence it rests on.
-    """
-    array = maps.slot_array(MapIdentity(CONFIRMED_MAP))
-    slot = array.array.slots[CONFIRMED_SLOT]
-    assert slot.word0 == CONFIRMED_TYPE
-    assert slot.word1 == CONFIRMED_SOURCE
 
+    TOOLKIT-025: map 39's declared 11-slot extent is now refused whole, because it
+    covers `map:0040/placement:0000` at 0x075638 - a placement the frozen run
+    contract could not see, since map 40 was absent from it entirely. The refusal
+    CONFIRMS this test's own reading rather than contradicting it: slots 8-10 fall
+    inside that record and slot[7] reads the factory word 0x0800FD55 itself, which
+    is the "count of 11 runs past its four well-formed slots" already asserted
+    below. The verified slot[1] at 0x075604 does not collide with anything, so the
+    evidence is read straight from the image instead of through a refused extent.
+    """
     import struct
 
+    entry = maps.entry(MapIdentity(CONFIRMED_MAP))
+    base = entry.record.triggers_pointer_raw - 0x08000000
+    word0, word1 = struct.unpack_from("<2I", maps.base_bytes, base + 8 * CONFIRMED_SLOT)
+    assert word0 == CONFIRMED_TYPE
+    assert word1 == CONFIRMED_SOURCE
+
     bounds = struct.unpack_from(
-        "<4h", maps.base_bytes, slot.source_file_offset + 0x08
+        "<4h", maps.base_bytes, (word1 - 0x08000000) + 0x08
     )
     assert bounds == CONFIRMED_BOUNDS
 
@@ -185,10 +204,24 @@ def test_the_confirmed_example_is_not_itself_a_typed_array(maps):
 
     The example is real; the corpus-wide generalisation it was read as is not.
     Asserting this keeps the distinction from quietly eroding.
+
+    TOOLKIT-025 strengthened this from a classification to a byte-level witness.
+    The extent is no longer merely OPAQUE - it is refused outright, and the reason
+    is visible in the bytes: the declared 11 slots overrun the four well-formed
+    ones and walk into a real placement record.
     """
-    array = maps.slot_array(MapIdentity(CONFIRMED_MAP))
-    assert array.array.slot_count == 11
-    assert array.shape is ArrayShape.OPAQUE
+    import struct
+
+    entry = maps.entry(MapIdentity(CONFIRMED_MAP))
+    assert entry.record.trigger_count_raw == 11
+    assert maps.slot_array(MapIdentity(CONFIRMED_MAP)) is None
+
+    base = entry.record.triggers_pointer_raw - 0x08000000
+    # slot[7] reads the placement factory tag; slots 8-10 lie inside the record.
+    assert struct.unpack_from("<I", maps.base_bytes, base + 8 * 7 + 4)[0] == 0x0800FD55
+    record = next(p for p in maps.placements()
+                  if p.file_offset <= base + 8 * 8 < p.file_offset + len(p.original_bytes))
+    assert str(record.identity) == "map:0040/placement:0000"
 
 
 # --- graph ---------------------------------------------------------------
@@ -459,10 +492,14 @@ def test_cli_round_trip_reports_the_measured_corpus(capsys):
 
 
 def test_cli_show_does_not_leak_raw_offsets_for_an_opaque_map(capsys):
+    # TOOLKIT-025: map 39's extent is now refused outright (it covers a placement
+    # record), so it no longer exercises the OPAQUE rendering path. Map 19 is one of
+    # the 70 arrays still classified OPAQUE; the behaviour under test - an opaque
+    # extent renders without leaking raw offsets - is unchanged.
     require_rom()
-    assert main(["map", "show", str(LOCAL_ROM), "map:0039"]) == 0
+    assert main(["map", "show", str(LOCAL_ROM), "map:0019"]) == 0
     output = capsys.readouterr().out
-    assert "Identity: map:0039" in output
+    assert "Identity: map:0019" in output
     assert "OPAQUE" in output
     assert "UNKNOWN" in output
 
@@ -502,6 +539,55 @@ def test_every_placement_belongs_to_exactly_one_map(maps):
         assert item.file_offset not in owners
         owners[item.file_offset] = item.identity.map_index
     assert len({item.identity.map_index for item in placements}) == PLACEMENT_MAP_COUNT
+
+
+def test_map_17_is_the_frozen_truncated_count_discriminator(maps):
+    """Cause A: the contract stored a count smaller than the engine's own.
+
+    Map 17 is the single map in the frozen run contract whose stored count was a
+    truncated traversal result rather than the engine's: it declared 1 against a
+    `MapEntry+0x04` of 4. Slot 1 holds a sibling-family object, and the historical
+    walk stopped there, losing the two placement records behind it. Traversing the
+    engine's count recovers them, which is what this pins.
+    """
+    from tools.webfoot.formats import map_placements as mp
+
+    entry = maps.entry(MapIdentity(17))
+    assert entry.record.trigger_count_raw == 4
+    base = entry.record.scripts_pointer_raw - 0x08000000
+    slots = mp.iter_object_slots(maps.base_bytes, base, 4)
+    assert [s.is_placement for s in slots] == [True, False, True, True]
+    assert slots[1].family_raw == 0x080111A9      # sibling, not a placement
+    placements = maps.map_placements(MapIdentity(17))
+    assert len(placements) == 3
+    # The two records behind the sibling are the ones the old count could not reach.
+    assert [p.slot_index for p in placements] == [0, 2, 3]
+
+
+def test_map_138_is_the_missing_contract_discriminator(maps):
+    """Cause B: absence from the contract silently meant "empty map".
+
+    Map 138 was absent from the frozen run contract entirely, and the loader
+    defaulted a missing entry to a count of zero, so a map with 21 engine-counted
+    slots and 19 placement records was censused as owning nothing. Absence of
+    provenance is not evidence of emptiness; the count comes from the MapEntry.
+    """
+    from tools.webfoot.data.placement_contracts import CONTRACTS
+    from tools.webfoot.formats import map_placements as mp
+
+    assert 138 not in CONTRACTS[maps.profile.id]['runs']
+    entry = maps.entry(MapIdentity(138))
+    assert entry.record.trigger_count_raw == 21
+    base = entry.record.scripts_pointer_raw - 0x08000000
+    slots = mp.iter_object_slots(maps.base_bytes, base, 21)
+    assert len(slots) == 21
+    assert sum(s.is_placement for s in slots) == 19
+    assert sum(s.is_sibling for s in slots) == 2
+    placements = maps.map_placements(MapIdentity(138))
+    assert len(placements) == 19
+    # Slot 0 is a sibling, so the historical walk found nothing at all here.
+    assert not slots[0].is_placement
+    assert placements[0].slot_index == 1
 
 
 def test_placement_identities_are_stable_and_carry_no_address(maps):

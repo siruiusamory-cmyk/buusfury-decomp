@@ -54,14 +54,33 @@ def test_canonical_authoring_serializes_but_preserves_ownership_and_zero_capacit
         # A capacity feasibility check, NOT a claim that build reached allocation.
         with pytest.raises(InsufficientSpaceError) as capacity:
             allocate(profile, [run.allocation_request])
+        # TOOLKIT-025: the derived `MapEntry+0x04` count write now EXISTS, so the build
+        # no longer stops on an unwritable count. It is derived from the validated
+        # object array - never supplied by the project - and names the exact byte it
+        # changes. Map 10's MapEntry sits at file 0x08E510, so the count byte is 0x08E514.
+        change = run.derive_count_change(before)
+        assert change.offset == 0x08E514
+        assert (change.old, change.new) == (bytes((2,)), bytes((3,)))
+        assert change.owner == "map:0010/object_array_count"
+        assert "authored object-array expansion" in change.reason
+        assert run.canonical_engine_count == 2 and run.target_slot_count == 3
+        # The canonical array is carried whole, siblings included; map 10 happens to be
+        # homogeneous, so its slot count equals its placement count.
+        assert len(run.canonical_slots) == 2
+        assert all(s.is_placement for s in run.canonical_slots)
+
         errors = []
         for index in range(2):
             out, manifest = tmp_path / f"authored{index}.gba", tmp_path / f"authored{index}.json"
-            with pytest.raises(LayoutError, match="unwritable engine count") as blocked:
+            # The blocker moved exactly one gate downstream: the grown array cannot stay
+            # at its canonical extent, and every anchor in the graph is relocatable=False.
+            with pytest.raises(LayoutError, match="non-relocatable object-array anchor") as blocked:
                 build_project(roots[0], rom, out, catalog, manifest_path=manifest)
             errors.append(str(blocked.value))
             assert not out.exists() and not manifest.exists()
         assert errors[0] == errors[1]
+        assert "derived count write is AVAILABLE and validated" in errors[0]
+        assert "unwritable engine count" not in errors[0]
         evidence = {**run.to_json(), "capacity_feasibility_error": str(capacity.value),
                     "production_build_error": errors[0], "extraction_files": len(contents(roots[1])),
                     "noop_bytes": len(before), "base_sha256": SHA}

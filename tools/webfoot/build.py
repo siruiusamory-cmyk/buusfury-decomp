@@ -873,7 +873,11 @@ def build_project(
 
     from .authored_placements import prepare_authored_runs, require_materialization_contract
     authored_runs = prepare_authored_runs(project, maps)
-    require_materialization_contract(authored_runs)
+    # TOOLKIT-025: the image is passed so an authored expansion derives and validates
+    # its `MapEntry+0x04` count change against the bytes actually being built, rather
+    # than against the model alone. A stale model fails closed instead of writing.
+    require_materialization_contract(
+        authored_runs, None if maps is None else maps.base_bytes)
 
     # One plan for every subsystem, not one plan each. Overlap detection is
     # per-plan, so two plans could each validate while together writing the

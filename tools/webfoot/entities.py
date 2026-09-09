@@ -200,12 +200,21 @@ class PlacementTypes:
             array_id = map_id + "/placement_references"
             array_offset = GbaRomAddress(entry.record.scripts_pointer_raw).to_file_offset(len(image))
             anchor(map_id, entry.file_offset, len(entry.original_bytes), "map_entry", alignment=4)
-            anchor(array_id, array_offset, len(placements) * 4, "placement_reference_array", alignment=4)
+            #: TOOLKIT-025: the array the engine owns is `MapEntry+0x04` slots wide, not
+            #: one slot per placement. Sibling-family objects share it, so sizing this
+            #: anchor by placement count under-covers every heterogeneous array, and
+            #: indexing references by `placement_index` writes a placement's pointer
+            #: into a sibling's slot wherever the two interleave - which is exactly the
+            #: target mismatch measured at map 17's slot 0x00072A38. Both now use the
+            #: engine's own geometry: `trigger_count_raw` for the extent, and each
+            #: record's measured `slot_index` for its position.
+            anchor(array_id, array_offset, entry.record.trigger_count_raw * 4,
+                   "placement_reference_array", alignment=4)
             ref(entry.file_offset + 0x14, array_id)
             for p in placements:
                 key = str(p.identity)
                 anchor(key, p.file_offset, len(p.original_bytes), "placement", alignment=4)
-                ref(array_offset + p.identity.placement_index * 4, key)
+                ref(array_offset + p.slot_index * 4, key)
                 ref(p.file_offset, factory_id, delta=1)
                 ref(p.file_offset + 8, str(self.type_of(p.identity).identity),
                     ReferenceEncoding.INDEX_U32_LE, index_base=FileOffset(self.table_offset),

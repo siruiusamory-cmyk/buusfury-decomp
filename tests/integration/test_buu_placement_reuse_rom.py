@@ -43,6 +43,12 @@ PROFILE = 'buus_fury_usa_rev0_01c1707f'
 ROM_BASE = 0x08000000
 
 #: Corpus-wide totals reproduced by this ticket, not carried from TOOLKIT-017.
+#: TOOLKIT-025 RELABEL, not a remeasurement: this module builds its census from the
+#: frozen `contract['runs']` table directly, so these figures remain exactly what
+#: that table expresses and every assertion below still reproduces them. They are
+#: the PRE-TOOLKIT-025 SDK census, not the canonical one. Production now derives the
+#: bound from `MapEntry+0x04` and reaches 1,559 placement-family records over 316
+#: arrays; TOOLKIT-023's liveness conclusion was re-run across all 1,559 and holds.
 CENSUS_RECORDS = 1442
 CENSUS_RUNS = 240
 LEGACY_RECORDS = 1295

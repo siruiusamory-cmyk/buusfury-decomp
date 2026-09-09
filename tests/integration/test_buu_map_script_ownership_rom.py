@@ -47,7 +47,11 @@ INSTRUCTIONS = 358
 UNIQUE_BYTES = 921
 
 #: The verified placement corpus every ownership claim is measured against.
-VERIFIED_PLACEMENTS = 1295
+#: TOOLKIT-025: `legacy_placements()` applies the unchanged TOOLKIT-008 fixed-tail
+#: predicate to a census that no longer truncates at sibling-family objects, so the
+#: subset it selects grows from 1,295 to 1,330. The predicate itself is untouched,
+#: and every ownership property asserted against it below is unchanged.
+VERIFIED_PLACEMENTS = 1330
 
 #: Constants that are byte-identical on every verified placement, which is what
 #: disqualifies +0x18/+0x1C as a per-placement script selector.

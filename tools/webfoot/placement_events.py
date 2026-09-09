@@ -46,10 +46,25 @@ class PlacementEvents:
             groups.setdefault(p.record.descriptor_pointer_raw, []).append(str(p.identity))
             for child in p.record.child_pointers_raw:
                 GbaRomAddress(child).to_file_offset(len(image))
-        if set(groups) != set(contract['descriptors']):
-            raise ScriptError('descriptor pointer outside declared ownership provenance')
+        #: TOOLKIT-025: the verified event contract is a proven SUBSET of the canonical
+        #: descriptor universe, not an exhaustive census of it. The corrected
+        #: engine-counted placement census (1,559 records) reaches 131 descriptors; the
+        #: contract declares 82. The 49 additional descriptors all carry handlers this
+        #: codec already verifies - 42 `0x0800424F` and 7 `0x0800421F` - so no unknown
+        #: family appears, but seven of them point at script roots whose extents were
+        #: never established under the VM evidence contract. Those seven are therefore
+        #: NOT admitted to the decoded event corpus here; they are canonical structure
+        #: whose decoded event membership is not yet evidenced.
+        #:
+        #: This stays an exact check in the direction that carries the evidence: every
+        #: declared descriptor must still be present and still be reached by a canonical
+        #: placement. A declared descriptor disappearing, or moving, still fails.
+        missing = set(contract['descriptors']) - set(groups)
+        if missing:
+            raise ScriptError('declared descriptor is unreachable from canonical placements')
         roots = dict(contract['roots'])
         owned = set(contract['owned_descriptors'])
+        declared = set(contract['descriptors'])
         events = {}
         descriptors = []
         for pointer, consumers in sorted(groups.items(), key=lambda pair: pair[1][0]):
@@ -58,7 +73,16 @@ class PlacementEvents:
                 raise ScriptError('descriptor has an unverified handler')
             key = consumers[0] + '/descriptor'
             event = None
-            if record.handler_pointer_raw == SCRIPT_DISPATCH_HANDLER:
+            #: TOOLKIT-025: a descriptor outside the verified event contract is carried
+            #: STRUCTURALLY - it gets an identity and a handler reference, so the
+            #: placement->descriptor edge exists for all 1,559 canonical placements -
+            #: but it is never decoded into an event. Seven of these use the verified
+            #: `0x0800421F` script-dispatch handler and point at seven script roots
+            #: whose extents were never established under the VM evidence contract;
+            #: admitting them here would promote undecoded roots into the event corpus
+            #: on reachability alone, which is not evidence. They stay out until a root
+            #: extent is actually established.
+            if record.handler_pointer_raw == SCRIPT_DISPATCH_HANDLER and pointer in declared:
                 if pointer not in owned or record.payload_raw not in roots:
                     raise ScriptError('script attachment outside verified owned subset')
                 if record.payload_raw not in events:

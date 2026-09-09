@@ -182,6 +182,18 @@ class PlacementEntry:
     record: mp.PlacementRecord
     file_offset: int
     original_bytes: bytes
+    #: Index of this record's pointer within the map's ENGINE-owned object array.
+    #: TOOLKIT-025: this is not the same as `identity.placement_index`. The array is
+    #: heterogeneous - sibling-family objects interleave with placements - so a map
+    #: whose slot 1 holds a sibling has its second placement at slot 2. Writing a
+    #: placement reference at `placement_index * 4` corrupted exactly that case
+    #: (map 17, slot 0x00072A38). The slot index is canonical layout provenance and
+    #: is preserved rather than recomputed.
+    #:
+    #: Deliberately NOT defaulted. A default of 0 is silently wrong for every record
+    #: after the first, and it produced exactly that failure - overlapping reference
+    #: sources - when a construction site omitted it. Every caller states the slot.
+    slot_index: int
 
 
 @dataclass(frozen=True, slots=True)
@@ -312,6 +324,50 @@ def _resolve_slot_extent(
     return offset, size
 
 
+def _declared_run(contract, index: int, record: MapEntry) -> tuple[int, int] | None:
+    """The contract's declared run for one map, or None when it declares none.
+
+    TOOLKIT-025 removed a silent `(pointer, 0)` fallback here. A map absent from the
+    frozen contract used to be modelled as owning zero object slots, which is how
+    map 138 - 21 engine-counted slots, 19 of them placements - reached the census as
+    an empty map. Absence of provenance is not evidence of emptiness, so a missing
+    entry now yields None, which means "no declared run to cross-check" and lets the
+    derived MapEntry traversal stand alone. It never means "this map is empty".
+    """
+    declared = contract['runs'].get(index)
+    if declared is None:
+        return None
+    return declared
+
+
+def _resolve_object_slots(record: MapEntry, image: bytes) -> tuple[mp.ObjectSlot, ...]:
+    """Every engine-owned object slot this map declares, in exact array order.
+
+    The count is `trigger_count_raw` (`+0x04`) and the base is `scripts_pointer_raw`
+    (`+0x14`); both names are upstream-INFERRED and are read here without being
+    believed - TOOLKIT-024 proved what the engine does with these two fields, and
+    that proof, not the name, is why they are used. The result is heterogeneous:
+    placement-family and sibling-family targets interleave, and the order is
+    canonical.
+
+    An array reaching into the MapEntry table is refused whole, on the same
+    reasoning `_resolve_slot_extent` refuses MapEntry 451: a structure that
+    consumes the table indexing it is not that structure.
+    """
+    pointer = record.scripts_pointer_raw
+    count = record.trigger_count_raw
+    if not pointer or not count:
+        return ()
+    try:
+        array_offset = GbaRomAddress(pointer).to_file_offset(len(image))
+    except BinaryAddressError:
+        return ()
+    try:
+        return mp.iter_object_slots(image, array_offset, count)
+    except mp.MapPlacementLengthError:
+        return ()
+
+
 def _resolve_placements(
     record: MapEntry,
     image: bytes,
@@ -338,10 +394,22 @@ def _resolve_placements(
     consumes the table indexing it is not that structure.
 
     Exclusive ownership is a MEASURED property of the canonical image - walking
-    all 452 maps reaches 1,442 records with none claimed twice - so a second
-    claim is raised rather than skipped. Dropping it silently would give the
-    caller a shorter array with no indication that the walk had left the extent
-    it believed it was reading.
+    every engine-counted object array reaches 1,559 placement records with none
+    claimed twice - so a second claim is raised rather than skipped. Dropping it
+    silently would give the caller a shorter array with no indication that the
+    walk had left the extent it believed it was reading.
+
+    TOOLKIT-025: the bound is `trigger_count_raw` (`+0x04`), read straight from the
+    MapEntry, NOT the historical `contract['runs']` count. TOOLKIT-024 proved that
+    byte is the engine's own loop bound (`ldrb` at 0x08008CA2 and 0x08008CD2), and
+    the frozen contract was measured to be wrong in two independent ways: five maps
+    stored a count disagreeing with it (map 17 stored 1 against an engine count of
+    4, losing two placements behind a sibling object), and 76 maps with engine slots
+    were absent from it entirely, defaulting to count zero (map 138: 21 engine
+    slots, 0 modelled). Deriving the bound recovers 117 genuine placement records
+    that the frozen table could not express, so the contract is no longer consulted
+    for traversal at all. The declared run is still accepted, and is now checked
+    against the derived truth rather than trusted over it.
     """
     pointer = record.scripts_pointer_raw
     if not pointer:
@@ -353,18 +421,22 @@ def _resolve_placements(
 
     if declared_run is not None and pointer != declared_run[0]:
         raise MapError('placement run pointer differs from trusted provenance')
-    offsets = mp.iter_placement_offsets(image, array_offset,
-                                       count=None if declared_run is None else declared_run[1])
+    slots = _resolve_object_slots(record, image)
+    placement_slots = tuple((slot.index, slot.target_offset)
+                            for slot in slots if slot.is_placement)
+    offsets = tuple(offset for _, offset in placement_slots)
     if not offsets:
         return ()
 
     table_start, table_end = table_range
-    array_end = array_offset + 4 * len(offsets)
+    #: The array spans every ENGINE slot, not only the placement-family ones, so the
+    #: table-overlap refusal is measured against the real extent (`count * 4`).
+    array_end = array_offset + 4 * len(slots)
     if array_offset < table_end and table_start < array_end:
         return ()
 
-    accepted: list[int] = []
-    for offset in offsets:
+    accepted: list[tuple[int, int]] = []
+    for slot_index, offset in placement_slots:
         if offset < table_end and table_start < offset + mp.read_placement_record(image, offset).consumed_length:
             raise MapError("placement overlaps map table")
         owner = claimed.get(offset)
@@ -376,7 +448,7 @@ def _resolve_placements(
                 "breaks it"
             )
         claimed[offset] = entry_index
-        accepted.append(offset)
+        accepted.append((slot_index, offset))
     return tuple(accepted)
 
 
@@ -477,7 +549,7 @@ class Maps:
         """Every placement this map owns, in array order. Possibly empty.
 
         Ownership is exclusive by measurement: walking all 452 maps reaches
-        1,442 records with none claimed twice, so a placement belongs to exactly
+        1,559 records with none claimed twice, so a placement belongs to exactly
         one map and this never needs to report a shared record.
         """
         return tuple(
@@ -501,6 +573,7 @@ class Maps:
             record=pending,
             file_offset=entry.file_offset,
             original_bytes=entry.original_bytes,
+            slot_index=entry.slot_index,
         )
 
     def field(self, identity: MapIdentity, name: str) -> int:
@@ -728,7 +801,7 @@ def load_maps(path: str | Path, catalog: RomProfileCatalog) -> Maps:
     entries: list[MapEntryEntry] = []
     arrays: list[SlotArrayEntry] = []
     placements: list[PlacementEntry] = []
-    #: Guards the exclusivity the full corpus measurement showed: 1,442 reachable
+    #: Guards the exclusivity the full corpus measurement showed: 1,559 reachable
     #: records, none claimed by two maps. A second claim raises rather than
     #: being dropped, because giving one record two owners would make
     #: `plan_changes` emit overlapping writes for the same bytes.
@@ -748,10 +821,10 @@ def load_maps(path: str | Path, catalog: RomProfileCatalog) -> Maps:
     for index in range(table_profile.count):
         offset = table_offset + index * MAP_ENTRY_SIZE
         record = MapEntry.from_bytes(image[offset : offset + MAP_ENTRY_SIZE])
-        for placement_index, record_offset in enumerate(
+        for placement_index, (slot_index, record_offset) in enumerate(
             _resolve_placements(record, image, table_range, claimed_placements, index,
                                 None if contract is None else
-                                contract['runs'].get(index, (record.scripts_pointer_raw, 0)))
+                                _declared_run(contract, index, record))
         ):
             placements.append(
                 PlacementEntry(
@@ -761,17 +834,31 @@ def load_maps(path: str | Path, catalog: RomProfileCatalog) -> Maps:
                     original_bytes=image[
                         record_offset : record_offset + mp.read_placement_record(image, record_offset).consumed_length
                     ],
+                    slot_index=slot_index,
                 )
             )
     placement_offsets = tuple((item.file_offset, len(item.original_bytes)) for item in placements)
     bodies = sorted((offset, offset + size) for offset, size in placement_offsets)
     if any(a[1] > b[0] for a, b in zip(bodies, bodies[1:])):
         raise MapError('overlapping placement record bodies across maps')
-    runs = sorted((GbaRomAddress(ptr).to_file_offset(len(image)), count * 4)
-                  for ptr, count in contract['runs'].values()) if contract else []
-    if any(a + n > b for (a, n), (b, _) in zip(runs, runs[1:])):
+    #: TOOLKIT-025: these extents are the ENGINE-counted arrays, derived per map from
+    #: `+0x04` and `+0x14`, not the frozen contract runs. The contract expressed only
+    #: 240 of the 316 arrays the engine actually traverses, so checking its runs left
+    #: 76 arrays unchecked for overlap and let their records go unmodelled entirely.
+    #: Each array owns exactly `count * 4` bytes - TOOLKIT-024 proved the loop reads
+    #: no sentinel and no suffix - so the extent is exact, not a bound.
+    object_arrays = []
+    for index in range(table_profile.count):
+        offset = table_offset + index * MAP_ENTRY_SIZE
+        record = MapEntry.from_bytes(image[offset : offset + MAP_ENTRY_SIZE])
+        if _resolve_object_slots(record, image):
+            object_arrays.append(
+                (GbaRomAddress(record.scripts_pointer_raw).to_file_offset(len(image)),
+                 record.trigger_count_raw * 4))
+    object_arrays.sort()
+    if any(a + n > b for (a, n), (b, _) in zip(object_arrays, object_arrays[1:])):
         raise MapError('overlapping placement pointer runs')
-    if any(a < end and start < a + n for a, n in runs for start, end in bodies):
+    if any(a < end and start < a + n for a, n in object_arrays for start, end in bodies):
         raise MapError('placement run overlaps a record body')
 
     protected_extents = placement_offsets

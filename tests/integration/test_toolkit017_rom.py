@@ -35,8 +35,14 @@ def maps():
 
 def test_full_and_legacy_census_identity(maps):
     placements = tuple(maps.placements())
-    assert len(placements) == 1442
-    assert len(maps.legacy_placements()) == 1295
+    # TOOLKIT-025: the census is now bounded by the engine's own `MapEntry+0x04`, so it
+    # reaches 1,559 records where the frozen run contract reached 1,442. The old walk
+    # rebuilt below stays pinned at its historical 1,295 on purpose: it documents the
+    # stop-at-first-unsupported behavior, and the point of the assertion is that every
+    # record it DOES reach still resolves identically. The corrected census is a strict
+    # superset, never a renumbering.
+    assert len(placements) == 1559
+    assert len(maps.legacy_placements()) == 1330
     # Independent old walk, including stop-at-first-unsupported behavior.
     expected = {}
     for e in maps.entries():
@@ -51,13 +57,14 @@ def test_full_and_legacy_census_identity(maps):
             ordinal += 1
             at += 4
     actual = {str(p.identity):p.file_offset for p in placements}
-    assert len(expected) == 1295 and len(actual.keys() - expected.keys()) == 147
+    assert len(expected) == 1295 and len(actual.keys() - expected.keys()) == 264
     assert all(actual[k] == v for k, v in expected.items())
 
 
 def test_dynamic_extent_distribution_and_exact_encode(maps):
-    assert Counter(p.record.child_count for p in maps.placements()) == {1:1427, 2:7, 3:6, 4:2}
-    assert sum(len(p.original_bytes) for p in maps.placements()) == 46244
+    # TOOLKIT-025: all 117 recovered records carry child_count 1, so only that bucket moves.
+    assert Counter(p.record.child_count for p in maps.placements()) == {1:1544, 2:7, 3:6, 4:2}
+    assert sum(len(p.original_bytes) for p in maps.placements()) == 49988
     for p in maps.placements():
         assert p.record.to_bytes() == p.original_bytes
 
@@ -66,37 +73,55 @@ def test_run_ownership_and_nonoverlap(maps):
     ps = sorted(maps.placements(), key=lambda p:p.file_offset)
     assert len({p.file_offset for p in ps}) == len(ps)
     assert all(a.file_offset + len(a.original_bytes) <= b.file_offset for a,b in zip(ps,ps[1:]))
-    assert len({p.identity.map_index for p in ps}) == 240
+    assert len({p.identity.map_index for p in ps}) == 268
+    # TOOLKIT-025: slots are addressed by each record's measured `slot_index`, not by its
+    # ordinal among placements. The two differ in every heterogeneous array - a map whose
+    # slot 1 holds a sibling object has its second placement at slot 2 - and assuming they
+    # matched is what wrote a placement pointer over a sibling's slot (map 17, 0x00072A38).
     runs = []
     for m in maps.entries():
-        n = len(maps.map_placements(m.identity))
-        if n:
-            runs.extend(m.record.scripts_pointer_raw + 4*i for i in range(n))
-    assert len(runs) == len(set(runs)) == 1442
+        for p in maps.map_placements(m.identity):
+            runs.append(m.record.scripts_pointer_raw + 4*p.slot_index)
+    assert len(runs) == len(set(runs)) == 1559
+    # Every claimed slot lies inside its map's engine-counted array.
+    for m in maps.entries():
+        for p in maps.map_placements(m.identity):
+            assert 0 <= p.slot_index < m.record.trigger_count_raw
 
 
 def test_corrected_slot_and_type_accounting_keeps_legacy_meaning(maps):
     legacy = maps.legacy_view()
-    assert (len(tuple(legacy.slot_arrays())),sum(a.array.slot_count for a in legacy.slot_arrays())) == (112,596)
-    assert (len(tuple(maps.slot_arrays())),sum(a.array.slot_count for a in maps.slot_arrays())) == (108,556)
+    # TOOLKIT-025: both views shed opaque extents, because a declared slot extent is
+    # refused whole wherever it covers a placement record, and 117 further records are
+    # now visible. The typed subset asserted below is unchanged at 35/89 in both views,
+    # which is the invariant that matters: no typed slot was reclassified, only opaque
+    # extents that were always contested by the placement family's reading of the bytes.
+    assert (len(tuple(legacy.slot_arrays())),sum(a.array.slot_count for a in legacy.slot_arrays())) == (110,572)
+    assert (len(tuple(maps.slot_arrays())),sum(a.array.slot_count for a in maps.slot_arrays())) == (105,518)
     for view in (maps, legacy):
         assert sum(a.is_typed for a in view.slot_arrays()) == 35
         assert sum(a.array.slot_count for a in view.slot_arrays() if a.is_typed) == 89
-    assert PlacementTypes(legacy).summary()['type_count'] == 101
-    assert PlacementTypes(maps).summary()['type_count'] == 111
+    assert PlacementTypes(legacy).summary()['type_count'] == 102
+    assert PlacementTypes(maps).summary()['type_count'] == 125
 
 
 def test_descriptor_sharing_handler_census_and_map_coverage(maps):
     e = PlacementEvents(maps)
-    assert len(e.descriptors) == 82
+    # TOOLKIT-025: 131 descriptors are reached by canonical placements; 82 of them are the
+    # verified event contract, which is a proven SUBSET and is asserted separately below.
+    # The `0x0800421F` fan-in here is the RAW structural count (64), not the decoded event
+    # corpus (57) - seven placements reach that verified handler through descriptors whose
+    # roots have no established extent, so they are carried structurally and never decoded.
+    assert len(e.descriptors) == 131
+    assert len([d for d in e.descriptors if d.event]) == 57
     records, coverage = Counter(), defaultdict(set)
     for p in maps.placements():
         d = e.descriptor_of(p.identity)
         records[d.record.handler_pointer_raw] += 1
         coverage[d.record.handler_pointer_raw].add(p.identity.map_index)
-    assert records == {0x0800421D:1361,0x0800421F:57,0x0800424F:24}
-    assert {k:len(v) for k,v in coverage.items()} == {0x0800421D:226,0x0800421F:10,0x0800424F:16}
-    assert sorted(len(d.placements) for d in e.descriptors if len(d.placements)>1) == [1361]
+    assert records == {0x0800421D:1429,0x0800421F:64,0x0800424F:66}
+    assert {k:len(v) for k,v in coverage.items()} == {0x0800421D:245,0x0800421F:17,0x0800424F:28}
+    assert sorted(len(d.placements) for d in e.descriptors if len(d.placements)>1) == [1429]
 
 
 def test_owned_events_are_normal_family_and_exact(maps):
@@ -135,16 +160,31 @@ def test_common_graph_contains_chain_and_native_references(maps):
 
 
 def test_normal_path_excludes_unreached_records_and_roots(maps):
+    """TOOLKIT-025 inverted half of this test's premise, on measurement.
+
+    These seven records were called "unreached" because the frozen run contract could
+    not express the arrays holding them - six of their maps were absent from it
+    entirely. Under the engine's own `MapEntry+0x04` bound all seven ARE reached, and
+    they are exactly the seven placements whose descriptors use the verified
+    `0x0800421F` script-dispatch handler while pointing at roots with no established
+    extent. So the record-level exclusion is gone, and what survives is the part that
+    was always the real claim: their ROOTS stay outside the decoded event corpus, and
+    nothing promotes them into it on reachability alone.
+    """
     e = PlacementEvents(maps)
     addresses = {p.file_offset+0x08000000 for p in maps.placements()}
-    excluded = {0x0807CDF4,0x0807FA1C,0x08081A04,0x08083DA4,0x0808DF58,0x0808E018,0x0808E0CC}
-    assert not addresses & excluded
+    formerly_unreached = {0x0807CDF4,0x0807FA1C,0x08081A04,0x08083DA4,0x0808DF58,0x0808E018,0x0808E0CC}
+    assert formerly_unreached <= addresses
+    reached = [p for p in maps.placements() if p.file_offset+0x08000000 in formerly_unreached]
+    assert len(reached) == 7
+    assert all(e.descriptor_of(p.identity).event is None for p in reached)
+    assert {e.descriptor_of(p.identity).record.handler_pointer_raw for p in reached} == {0x0800421F}
     image = maps.base_bytes
     descriptors = {0x08000000+o for o in range(0,len(image)-8,4)
                    if struct.unpack_from('<I',image,o)[0] == 0x0800421F
                    and 0x08000000 <= struct.unpack_from('<I',image,o+4)[0] < 0x08000000+len(image)}
     owned = {d.file_offset+0x08000000 for d in e.descriptors if d.event}
-    assert len(descriptors-owned) == 7+76
+    assert len(descriptors-owned) == 83
     unowned_roots = {struct.unpack_from('<I',image,d-0x08000000+4)[0] for d in descriptors-owned}
     assert len(unowned_roots) == 19
     assert not unowned_roots & {v.file_offset+0x08000000 for v in e.events}
@@ -165,8 +205,9 @@ def test_project_structures_deterministic_and_whole_rom_noop(project,tmp_path):
     assert files(project) == files(other)
     assert len(files(project)) == 7
     p = read_project(project)
-    assert sum(len(m.get('placements',[])) for m in p.maps.values()) == 1442
-    assert len(p.placement_events['descriptors']) == 82
+    assert sum(len(m.get('placements',[])) for m in p.maps.values()) == 1559
+    # 131 canonical descriptors are serialized; the decoded event corpus stays at 25.
+    assert len(p.placement_events['descriptors']) == 131
     assert len(p.placement_events['events']) == 25
     output = tmp_path/'noop.gba'
     build_project(project,ROM,output,load_catalog(None))

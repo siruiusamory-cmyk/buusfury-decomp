@@ -490,14 +490,28 @@ def test_count_fields_are_refused_as_editable_independently():
 
 
 def test_the_census_totals_are_preserved(maps):
-    """TOOLKIT-023's numbers are unchanged; this ticket corrected no census."""
+    """The census TOOLKIT-025 corrected, held against renewed drift.
+
+    These totals were 1,442 / 46,244 / [1427, 7, 6, 2] while the loader bounded each
+    map's array with the frozen contract run. TOOLKIT-025 replaced that bound with the
+    engine's own `MapEntry+0x04` count (CONFIRMED by TOOLKIT-024 at 0x08008CA2 and
+    0x08008CD2), which recovers 117 placement records the contract could not express:
+    2 sat behind a sibling-family object in a map whose stored count the contract
+    contradicted (`CENSUS_SHORT_RUNS`), and 115 belonged to 28 maps the contract omitted
+    entirely, which the loader had silently modelled as empty. The old 1,442 offsets
+    remain a strict subset and no identity was renumbered.
+
+    `runs_table()` stays 240 deliberately: the frozen contract was NOT rewritten. It is
+    no longer consulted for traversal, only cross-checked, so its size is unchanged
+    while the census it used to bound is not.
+    """
     placements = tuple(maps.placements())
-    assert len(placements) == 1442
-    assert len({p.file_offset for p in placements}) == 1442
-    assert sum(len(p.original_bytes) for p in placements) == 46244
+    assert len(placements) == 1559
+    assert len({p.file_offset for p in placements}) == 1559
+    assert sum(len(p.original_bytes) for p in placements) == 49988
     assert len(runs_table()) == 240
     counts = [p.record.child_count for p in placements]
-    assert [counts.count(n) for n in (1, 2, 3, 4)] == [1427, 7, 6, 2]
+    assert [counts.count(n) for n in (1, 2, 3, 4)] == [1544, 7, 6, 2]
 
 
 def test_the_selected_run_round_trips_byte_identically(image, maps):

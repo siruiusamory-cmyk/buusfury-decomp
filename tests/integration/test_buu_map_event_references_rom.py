@@ -334,7 +334,14 @@ def test_graph_counts_are_deterministic(catalog):
         extended = PlacementEvents(maps).extend_references(document)
         return len(extended.anchors), len(extended.references)
 
-    assert build() == build() == (168, 1684)
+    #: TOOLKIT-025: the graph is larger because the placement census is larger, not
+    #: because anything here changed shape. Bounding each map's object array by the
+    #: engine's `MapEntry+0x04` count recovered 117 placement records the frozen
+    #: contract could not express, and each one contributes its anchors and references
+    #: like every other placement. The equality either side of the literal is the real
+    #: invariant - two independent builds of the same bytes agree exactly - and it is
+    #: asserted first so a determinism break is never mistaken for a stale total.
+    assert build() == build() == (217, 1850)
 
 
 def test_save_flag_gets_no_rom_anchor(catalog):

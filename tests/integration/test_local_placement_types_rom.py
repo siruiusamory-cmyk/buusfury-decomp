@@ -33,13 +33,20 @@ def types():
 
 def test_complete_corpus_and_shared_distribution(types):
     summary = types.summary()
-    assert (summary['placement_count'], summary['map_count'], summary['type_count']) == (1442, 240, 111)
-    assert (summary['enemy_linked_placements'], summary['enemy_linked_types']) == (1420, 105)
-    assert summary['placements_per_type_distribution'][1] == 34
-    assert max(summary['placements_per_type_distribution']) == 82
-    assert sum(n*count for n,count in summary['placements_per_type_distribution'].items()) == 1442
-    assert len({p.identity for p in types.maps.placements()}) == 1442
-    assert sum(len(p.original_bytes) for p in types.maps.placements()) == 46244
+    # TOOLKIT-025 remeasured every figure here over the complete engine-counted census.
+    # The old tuple (1442, 240, 111) described what a frozen run contract could reach,
+    # not the canonical corpus: that contract held 240 of the 316 arrays the engine
+    # counts and stored a truncated count for one more. Deriving the bound from
+    # `MapEntry+0x04` adds 117 placement-family records, which also moves the enemy
+    # links (1420/105 -> 1534/118) and the per-type distribution. Nothing here is
+    # adjusted by hand; all of it is measured.
+    assert (summary['placement_count'], summary['map_count'], summary['type_count']) == (1559, 268, 125)
+    assert (summary['enemy_linked_placements'], summary['enemy_linked_types']) == (1534, 118)
+    assert summary['placements_per_type_distribution'][1] == 31
+    assert max(summary['placements_per_type_distribution']) == 88
+    assert sum(n*count for n,count in summary['placements_per_type_distribution'].items()) == 1559
+    assert len({p.identity for p in types.maps.placements()}) == 1559
+    assert sum(len(p.original_bytes) for p in types.maps.placements()) == 49988
 
 
 def test_selector_factory_literal_and_exact_targets(types):
@@ -64,7 +71,11 @@ def test_enemy_link_proven_by_selected_record_not_numeric_adjacency(types):
 
 def test_outside_stat_extent_stays_reference_only(types):
     unknown = {t.identity.selector: len(t.placements) for t in types.types() if t.enemy_identity is None}
-    assert unknown == {141:12, 142:6, 146:1, 147:1, 148:1, 149:1}
+    # TOOLKIT-025: remeasured over the complete census. Selector 145 is reachable only
+    # from records the frozen run contract could not express, and 147/148 each gain one.
+    # The property under test is unchanged - every selector outside the verified stat
+    # extent stays reference-only, with no invented record extent.
+    assert unknown == {141:12, 142:6, 145:1, 146:1, 147:2, 148:2, 149:1}
     assert all(t.original_bytes is None for t in types.types() if t.enemy_identity is None)
     assert types.profile.enemy_stats.count == 141
 
@@ -77,14 +88,16 @@ def test_exhaustive_existing_type_codec_roundtrip(types):
         raw = t.original_bytes
         assert encode_enemy_record(decode_enemy_record(raw, 0), raw) == raw
         total += len(raw)
-    assert total == 2940
+    # TOOLKIT-025: 3,304 bytes over the complete census (was 2,940); 13 further stat
+    # records are selected by placements the frozen run contract could not reach.
+    assert total == 3304
 
 
 def test_common_graph_ownership_index_and_factory_links(types):
     doc = types.reference_document()
     indexed = [r for r in doc.references if r.encoding is ReferenceEncoding.INDEX_U32_LE]
-    assert len(indexed) == 1442
-    assert len(doc.references) > 240 + 3 * 1442  # descriptor/event/native edges now included
+    assert len(indexed) == 1559
+    assert len(doc.references) > 268 + 3 * 1559  # descriptor/event/native edges now included
     for t in types.types():
         assert len(doc.inbound(AnchorId(str(t.identity)))) == len(t.placements)
     assert all(not a.relocatable for a in doc.anchors)

@@ -164,14 +164,15 @@ def test_synthetic_capacity_does_not_grant_relocation_authority(project, types):
     document = replace(types.reference_document(), profile=profile)
     with pytest.raises(LayoutError, match="non-relocatable anchor"):
         plan_relocation(document, [RelocationRequest(run.identity, run.serialized_records)])
-    # TOOLKIT-024 proved the traversal contract; the gate now names the real
-    # remaining blocker, an engine count field no write path can express.
-    with pytest.raises(LayoutError, match="unwritable engine count"):
-        require_materialization_contract((run,))
+    # TOOLKIT-025: the count field is no longer the blocker - the gate derives and
+    # validates the count change, then stops at the non-relocatable array anchor,
+    # which is the same authority guard the real relocator raises just above.
+    with pytest.raises(LayoutError, match="non-relocatable object-array anchor"):
+        require_materialization_contract((run,), types.maps.base_bytes)
     assert document.image == types.maps.base_bytes
 
 
-def test_build_fails_at_the_unwritable_count_and_publishes_nothing(project, types, monkeypatch, tmp_path):
+def test_build_fails_at_the_relocation_gate_and_publishes_nothing(project, types, monkeypatch, tmp_path):
     add(project)
     maps = types.maps
     monkeypatch.setattr(build, "_load_for_project", lambda *args:
@@ -181,9 +182,128 @@ def test_build_fails_at_the_unwritable_count_and_publishes_nothing(project, type
     assert run.allocation_request.size == 108
     output, manifest = tmp_path / "out.gba", tmp_path / "manifest.json"
     for _ in range(2):
-        with pytest.raises(LayoutError, match="108 bytes.*unwritable engine count"):
+        with pytest.raises(LayoutError, match="108 bytes.*non-relocatable object-array anchor"):
             build.build_project(project, "unused", output, None, manifest_path=manifest)
     assert not output.exists() and not manifest.exists()
+
+
+# --- TOOLKIT-025 derived count-write contract --------------------------------
+
+def test_no_op_project_derives_no_count_write(project, types):
+    """A canonical project authors nothing, so no run and no count write exist."""
+    assert prepare_authored_runs(read_project(project), types.maps) == ()
+    # And a run that happens to declare exactly its canonical slots emits None
+    # rather than a no-change write.
+    add(project)
+    run, = prepare_authored_runs(read_project(project), types.maps)
+    unchanged = replace(run, records=tuple(r for r in run.records
+                                           if r.provenance == "EXTRACTED"))
+    assert unchanged.target_slot_count == unchanged.canonical_engine_count
+    assert unchanged.derive_count_change(types.maps.base_bytes) is None
+
+
+def test_authored_expansion_derives_exactly_old_plus_one(project, types):
+    add(project)
+    run, = prepare_authored_runs(read_project(project), types.maps)
+    image = types.maps.base_bytes
+    change = run.derive_count_change(image)
+    assert change is not None
+    assert change.new[0] == change.old[0] + 1
+    assert change.old[0] == run.canonical_engine_count
+    assert change.new[0] == run.target_slot_count
+    assert change.offset == run.map_entry_offset + 0x04
+    assert image[change.offset] == change.old[0]
+    # Provenance identifies the authoring operation, not a generic field edit.
+    assert change.owner.endswith("/object_array_count")
+    assert "authored object-array expansion" in change.reason
+    # Deterministic.
+    assert run.derive_count_change(image) == change
+
+
+def test_count_write_is_not_reachable_as_a_raw_field_edit():
+    """Users cannot edit a count directly; MAP_FIELDS still refuses every one."""
+    from tools.webfoot.maps import MAP_FIELDS
+    assert not [name for name in MAP_FIELDS if "count" in name]
+
+
+def test_stale_model_fails_closed_rather_than_writing(project, types):
+    add(project)
+    run, = prepare_authored_runs(read_project(project), types.maps)
+    from tools.webfoot.authored_placements import AuthoredCountError
+    # The image disagrees with the modelled canonical count -> refuse, never write.
+    corrupt = bytearray(types.maps.base_bytes)
+    corrupt[run.map_entry_offset + 0x04] = run.canonical_engine_count + 5
+    with pytest.raises(AuthoredCountError, match="disagrees with MapEntry"):
+        run.derive_count_change(bytes(corrupt))
+
+
+def test_model_and_count_must_agree_before_either_is_rewritten(project, types):
+    add(project)
+    run, = prepare_authored_runs(read_project(project), types.maps)
+    from tools.webfoot.authored_placements import AuthoredCountError
+    mismatched = replace(run, canonical_slots=run.canonical_slots[:-1],
+                         canonical_engine_count=run.canonical_engine_count)
+    with pytest.raises(AuthoredCountError, match="model and the count field must agree"):
+        mismatched.derive_count_change(types.maps.base_bytes)
+
+
+def test_canonical_slot_deletion_is_unsupported(project, types):
+    """Deletion is refused, and the refusal is structural rather than incidental.
+
+    `target_slot_count` counts every canonical slot plus the authored additions, so a
+    well-formed run can never declare fewer slots than the canonical array - deletion
+    is unrepresentable, not merely rejected. The explicit guard exists so a future
+    model that CAN express removal fails closed instead of quietly shrinking a count,
+    and it is exercised here directly.
+    """
+    add(project)
+    run, = prepare_authored_runs(read_project(project), types.maps)
+    from tools.webfoot.authored_placements import AuthoredCountError
+    # Unrepresentable through the normal path: dropping authored records only ever
+    # returns the count to canonical, never below it.
+    stripped = replace(run, records=tuple(r for r in run.records
+                                          if r.provenance == "EXTRACTED"))
+    assert stripped.target_slot_count == stripped.canonical_engine_count
+    assert stripped.derive_count_change(types.maps.base_bytes) is None
+    # The guard itself, reached with a model whose slots and count agree but whose
+    # canonical array is longer than what the image declares.
+    image = bytearray(types.maps.base_bytes)
+    image[run.map_entry_offset + 0x04] = 3
+    deleting = replace(run, canonical_engine_count=3,
+                       canonical_slots=run.canonical_slots[:1] * 3,
+                       records=tuple(r for r in run.records
+                                     if r.provenance == "EXTRACTED")[:1])
+    assert deleting.target_slot_count == 3
+    shrunk = replace(deleting, canonical_slots=run.canonical_slots[:1] * 2,
+                     canonical_engine_count=3)
+    with pytest.raises(AuthoredCountError):
+        shrunk.derive_count_change(bytes(image))
+
+
+def test_count_overflow_is_refused(project, types):
+    add(project)
+    run, = prepare_authored_runs(read_project(project), types.maps)
+    from tools.webfoot.authored_placements import AuthoredCountError, MAX_ENGINE_COUNT
+    # A full array of 255 canonical slots plus one authored addition needs 256, which
+    # the single byte the engine reads cannot express. The model and the count field
+    # agree here, so this reaches the overflow check rather than the agreement check.
+    huge = replace(run, canonical_slots=run.canonical_slots[:1] * MAX_ENGINE_COUNT,
+                   canonical_engine_count=MAX_ENGINE_COUNT)
+    assert len(huge.canonical_slots) == MAX_ENGINE_COUNT
+    assert huge.target_slot_count == MAX_ENGINE_COUNT + 1
+    image = bytearray(types.maps.base_bytes)
+    image[run.map_entry_offset + 0x04] = MAX_ENGINE_COUNT
+    with pytest.raises(AuthoredCountError, match="one unsigned byte"):
+        huge.derive_count_change(bytes(image))
+
+
+def test_missing_provenance_refuses_to_name_a_byte(project, types):
+    add(project)
+    run, = prepare_authored_runs(read_project(project), types.maps)
+    from tools.webfoot.authored_placements import AuthoredCountError
+    orphan = replace(run, map_entry_offset=None)
+    with pytest.raises(AuthoredCountError, match="no map-entry provenance"):
+        orphan.derive_count_change(types.maps.base_bytes)
 
 
 def test_cli_clone_is_narrow_and_deterministic(project, capsys):

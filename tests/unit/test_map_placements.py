@@ -16,11 +16,13 @@ from tools.webfoot.formats.map_placements import (
     PLACEMENT_SIZE,
     RECORD_TAIL,
     ROM_BASE,
+    SIBLING_FACTORIES,
     MapPlacementLengthError,
     MapPlacementShapeError,
     MapPlacementValueError,
     PlacementRecord,
     is_placement_record,
+    iter_object_slots,
     iter_placement_offsets,
     read_placement_record,
 )
@@ -182,3 +184,69 @@ def test_the_walk_is_deterministic_for_the_same_bytes() -> None:
     pointers = {0x100: ROM_BASE + 0x400, 0x104: ROM_BASE + 0x420, 0x108: 0}
     data = image_with(records, pointers)
     assert iter_placement_offsets(data, 0x100) == iter_placement_offsets(data, 0x100)
+
+
+# --- TOOLKIT-025: the heterogeneous engine-counted object array ---------------
+
+def _sibling_bytes(factory: int) -> bytes:
+    """A minimal sibling-family object: only its leading factory word matters here."""
+    return struct.pack('<4I', factory, 0, 0, 0)
+
+
+def test_object_slots_do_not_stop_at_a_sibling_family_target() -> None:
+    """The engine dereferences every counted slot without inspecting its family.
+
+    This is the defect TOOLKIT-025 corrected: a placement-only walk terminates at
+    the first non-placement pointer and loses every record behind it.
+    """
+    data = image_with(
+        {0x400: record_bytes(), 0x440: _sibling_bytes(SIBLING_FACTORIES[1]),
+         0x460: record_bytes(), 0x480: record_bytes()},
+        {0x100: ROM_BASE + 0x400, 0x104: ROM_BASE + 0x440,
+         0x108: ROM_BASE + 0x460, 0x10C: ROM_BASE + 0x480})
+    slots = iter_object_slots(data, 0x100, 4)
+    assert [s.is_placement for s in slots] == [True, False, True, True]
+    assert [s.index for s in slots] == [0, 1, 2, 3]
+    # The placement-only view is a filtered projection, and it truncates.
+    assert iter_placement_offsets(data, 0x100) == (0x400,)
+
+
+def test_object_slots_preserve_order_pointers_and_sources() -> None:
+    data = image_with(
+        {0x400: record_bytes(), 0x440: _sibling_bytes(SIBLING_FACTORIES[0])},
+        {0x100: ROM_BASE + 0x400, 0x104: ROM_BASE + 0x440})
+    slots = iter_object_slots(data, 0x100, 2)
+    assert [s.source_offset for s in slots] == [0x100, 0x104]
+    assert [s.pointer_raw for s in slots] == [ROM_BASE + 0x400, ROM_BASE + 0x440]
+    assert [s.target_offset for s in slots] == [0x400, 0x440]
+    assert slots[1].family == f'SIBLING_{SIBLING_FACTORIES[0]:08X}'
+    assert slots[0].family == 'PLACEMENT'
+
+
+def test_object_slot_count_is_exact_and_bounded() -> None:
+    data = image_with({0x400: record_bytes()}, {0x100: ROM_BASE + 0x400})
+    assert len(iter_object_slots(data, 0x100, 1)) == 1
+    assert iter_object_slots(data, 0x100, 0) == ()
+    with pytest.raises(MapPlacementLengthError):
+        iter_object_slots(data, IMAGE_SIZE - 4, 4)
+    with pytest.raises(MapPlacementLengthError):
+        iter_object_slots(data, 0x100, -1)
+
+
+def test_an_unclassifiable_target_is_reported_rather_than_dropped() -> None:
+    """An unknown family keeps its slot; nothing is silently skipped."""
+    data = image_with({0x400: record_bytes()},
+                      {0x100: ROM_BASE + 0x400, 0x104: ROM_BASE + 0x700})
+    slots = iter_object_slots(data, 0x100, 2)
+    assert len(slots) == 2
+    assert slots[1].family == 'UNKNOWN'
+    assert not slots[1].is_placement and not slots[1].is_sibling
+
+
+def test_a_pointer_outside_the_image_keeps_its_slot() -> None:
+    data = image_with({0x400: record_bytes()},
+                      {0x100: ROM_BASE + 0x400, 0x104: 0x02000000})
+    slots = iter_object_slots(data, 0x100, 2)
+    assert slots[1].target_offset is None
+    assert slots[1].family == 'OUT_OF_IMAGE'
+    assert slots[1].pointer_raw == 0x02000000

@@ -53,9 +53,17 @@ INTERPRETER = 0x08004038
 NULL_DESCRIPTOR = 0x080555A0
 
 #: Corrected corpus-wide walk measurements.
+#: These describe THIS module's own `_walk`, which deliberately reproduces the
+#: historical stop-at-first-mismatch traversal and is unchanged by TOOLKIT-025.
+#: The production census is now bounded by `MapEntry+0x04` instead and reaches
+#: 1,559 records over 316 arrays; the gap between the two is the point of
+#: `test_walk_reaches_every_verified_placement_and_loses_none` below.
 REACHED_RECORDS = 1442
 REACHED_ARRAYS = 240
-VERIFIED_PLACEMENTS = 1295
+#: `Maps.legacy_placements()` measured over the corrected census. It is the same
+#: predicate as before - the exact TOOLKIT-008 fixed-tail prefix - applied to a
+#: census that no longer truncates, so it rises from 1,295 to 1,330.
+VERIFIED_PLACEMENTS = 1330
 
 #: The owned script subset, which is what this ticket promotes.
 OWNED_RECORDS = 57
@@ -202,11 +210,18 @@ def test_record_bodies_never_run_into_the_next_record(data):
 # --- the walk is bounded, not merely larger ----------------------------------
 
 def test_walk_reaches_every_verified_placement_and_loses_none(data):
-    """The corrected walk is a strict superset of the verified corpus.
+    """This module's historical walk is itself truncated, and TOOLKIT-025 measures it.
 
-    TOOLKIT-015 rejected a 1,442-record walk for disagreeing with the verified
-    1,295. The disagreement is real and the walk is the correct side of it: it
-    reaches all 1,295 and adds 147 records the tail requirement truncated.
+    The original claim was that the 1,442-record walk is a strict superset of the
+    legacy corpus. That held only while the legacy corpus was computed by the SAME
+    truncating traversal. Under the engine's `MapEntry+0x04` bound the legacy
+    fixed-tail predicate matches 1,330 records, and 35 of them sit behind a
+    sibling-family object where this module's stop-at-first-mismatch walk gives up.
+
+    So the direction of the old assertion is now false, and pinning it would be
+    pinning the defect. What is asserted instead is the real relation: the local
+    walk is a strict SUBSET of the production census, and every record it does
+    reach is genuinely reached by production too.
     """
     maps = load_maps("roms/Dragon Ball Z - Buu's Fury (U).gba", load_catalog(None))
     verified = {ROM_BASE + e.file_offset for e in maps.legacy_placements()}
@@ -214,26 +229,36 @@ def test_walk_reaches_every_verified_placement_and_loses_none(data):
 
     reached = {r for _, rs in _walk(data).values() for r in rs}
     assert len(reached) == REACHED_RECORDS
-    assert verified <= reached
-    assert not verified - reached
+
+    census = {ROM_BASE + p.file_offset for p in maps.placements()}
+    assert len(census) == 1559
+    assert reached < census                     # the historical walk loses records
+    assert verified <= census                   # the legacy subset is fully censused
+    assert len(verified - reached) == 35        # exactly those behind a sibling slot
 
 
 def test_both_placement_counts_stay_meaningful(data):
-    """1,295 and 1,442 name different things and both remain correct.
+    """Three figures now name three different things, and all three stay correct.
 
-    1,442 is the full census under the variable-length contract. 1,295 is the
-    legacy supported fixed-codec subset -- the records the 32-byte codec can
-    read. This test exists so neither figure is quietly rewritten into the
-    other: the legacy subset is exactly the reached records carrying one child
-    and the shared null descriptor, which is why the old codec saw a constant.
+    1,559 is the canonical census under the engine's own `MapEntry+0x04` bound.
+    1,442 is what this module's historical stop-at-first-mismatch walk reaches, and
+    is retained as the pre-TOOLKIT-025 SDK census. 1,330 is the legacy fixed-codec
+    subset -- the records the 32-byte codec can read -- measured over the corrected
+    census. This test exists so none of them is quietly rewritten into another.
+
+    The legacy subset's defining property is unchanged and still checked below:
+    one child and the shared null descriptor, which is why the old codec saw a
+    constant tail.
     """
     maps = load_maps("roms/Dragon Ball Z - Buu's Fury (U).gba", load_catalog(None))
     verified = {ROM_BASE + e.file_offset for e in maps.legacy_placements()}
     reached = {r for _, rs in _walk(data).values() for r in rs}
+    census = {ROM_BASE + p.file_offset for p in maps.placements()}
 
     assert len(verified) == VERIFIED_PLACEMENTS
     assert len(reached) == REACHED_RECORDS
-    assert len(reached - verified) == REACHED_RECORDS - VERIFIED_PLACEMENTS
+    assert len(census) == 1559
+    assert len(census - verified) == 1559 - VERIFIED_PLACEMENTS
 
     for record in verified:
         assert _u32(data, record + 0x18) == 1

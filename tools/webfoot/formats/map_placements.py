@@ -143,6 +143,81 @@ def is_placement_record(data, offset: int) -> bool:
         return False
 
 
+#: Sibling object factories that share the engine-owned map object array with the
+#: placement family. TOOLKIT-025 measured the complete `MapEntry+0x04` traversal over
+#: canonical Buu: 1,898 slots resolve to exactly three leading words - 1,559
+#: `0x0800FD55` placements, 191 `0x08017DA3` and 148 `0x080111A9` - with zero UNKNOWN
+#: and zero out-of-image targets. These are recorded so a slot can be CLASSIFIED and
+#: round-tripped, never decoded: nothing here claims any gameplay semantics for them,
+#: and TOOLKIT-025 explicitly does not authorize reverse engineering their payloads.
+SIBLING_FACTORIES = (0x08017DA3, 0x080111A9)
+
+
+@dataclass(frozen=True, slots=True)
+class ObjectSlot:
+    """One physical 4-byte pointer slot of a map's engine-owned object array.
+
+    The engine's outer loop (`0x08008C9E`, proven in TOOLKIT-024) consumes exactly
+    `MapEntry+0x04` slots of `MapEntry+0x14`, dereferencing each without inspecting
+    the target's family. The array is therefore HETEROGENEOUS: placement-family
+    records and sibling-family objects interleave in an order that is canonical and
+    must survive round-trip exactly as measured.
+    """
+
+    index: int
+    #: File offset of the 4-byte slot itself, not of its target.
+    source_offset: int
+    pointer_raw: int
+    #: File offset of the target, or None when the pointer leaves the image.
+    target_offset: int | None
+    #: Leading word of the target - the factory that leads its family.
+    family_raw: int | None
+
+    @property
+    def is_placement(self) -> bool:
+        return self.family_raw == FACTORY_RAW
+
+    @property
+    def is_sibling(self) -> bool:
+        return self.family_raw in SIBLING_FACTORIES
+
+    @property
+    def family(self) -> str:
+        if self.family_raw is None:
+            return 'OUT_OF_IMAGE'
+        if self.is_placement:
+            return 'PLACEMENT'
+        if self.is_sibling:
+            return f'SIBLING_{self.family_raw:08X}'
+        return 'UNKNOWN'
+
+
+def iter_object_slots(data, array_offset: int, count: int) -> tuple[ObjectSlot, ...]:
+    """Every slot of one engine-counted map object array, in exact array order.
+
+    This is the authoritative traversal: it reproduces the engine's counted loop and
+    classifies each target instead of terminating at the first non-placement pointer.
+    `iter_placement_offsets` below keeps the placement-only view for the codec's
+    existing consumers, and is a filtered projection of this sequence.
+    """
+    if type(count) is not int or count < 0:
+        raise MapPlacementLengthError('object-array count must be a non-negative integer')
+    if array_offset < 0 or array_offset + 4 * count > len(data):
+        raise MapPlacementLengthError('object pointer array outside image')
+    slots = []
+    for index in range(count):
+        source = array_offset + 4 * index
+        pointer = struct.unpack_from('<I', data, source)[0]
+        target = pointer - ROM_BASE
+        if 0 <= target <= len(data) - 4:
+            family = struct.unpack_from('<I', data, target)[0]
+        else:
+            target, family = None, None
+        slots.append(ObjectSlot(index=index, source_offset=source, pointer_raw=pointer,
+                                target_offset=target, family_raw=family))
+    return tuple(slots)
+
+
 def iter_placement_offsets(data, array_offset: int, *, count: int | None = None) -> tuple[int, ...]:
     """Walk a pointer run; only a non-family target terminates an unbounded run.
 

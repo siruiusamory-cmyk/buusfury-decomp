@@ -27,12 +27,22 @@ def types(monkeypatch):
         base = 0x100 + index * 56
         array = 0x200 + index * 16
         struct.pack_into('<I', data, base + 0x14, 0x08000000 + array)
+        # TOOLKIT-025: `+0x04` is the engine's object-array count (`ldrb` at 0x08008CA2
+        # and 0x08008CD2), and traversal is bounded by it rather than by a frozen run
+        # contract, so a synthetic map must declare the count its array actually has.
+        data[base + 0x04] = len(selectors)
         for slot, selector in enumerate(selectors):
             offset = 0x400 + len(placements) * 32
             raw = struct.pack('<8I', FACTORY_RAW, 0x12345678, selector, 0x12340056, 9, *RECORD_TAIL)
             data[offset:offset+32] = raw
             struct.pack_into('<I', data, array + slot*4, 0x08000000 + offset)
-            placements.append(PlacementEntry(PlacementIdentity(index, slot), PlacementRecord.from_bytes(raw), offset, raw))
+            # `slot_index` is the position in the map's engine object array. This
+            # synthetic array is homogeneous, so it equals the placement ordinal;
+            # it is passed explicitly because it is layout provenance, and a
+            # default would silently point every reference at slot 0.
+            placements.append(PlacementEntry(PlacementIdentity(index, slot),
+                                             PlacementRecord.from_bytes(raw), offset, raw,
+                                             slot_index=slot))
         raw = bytes(data[base:base+56])
         entries.append(MapEntryEntry(MapIdentity(index), MapEntry.from_bytes(raw), base, raw))
     for index in range(3):

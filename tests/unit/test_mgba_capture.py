@@ -687,3 +687,74 @@ def test_toolkit029_probe_scans_a_canonical_control():
     assert "0x08075670" in probe  # canonical map 40 slot 3
     assert "canonical-control-present" in probe
     assert "CONTROL-ABSENT-scan-uninformative" in probe
+
+
+def test_toolkit030_behavior_watch_is_read_only_and_allowlisted():
+    """TOOLKIT-030's probe observes whether the engine EXECUTES the behavior the
+    SDK attached to an authored placement. It must never drive input: the
+    evidence depends on the run being ordinary gameplay, and a probe that
+    pressed keys would also silently break the read-only guarantee every other
+    observer carries."""
+    root = Path(__file__).resolve().parents[2]
+    probe = (root / "tools/runtime/toolkit030_behavior_watch.lua").read_text(
+        encoding="utf-8"
+    )
+    injector = (root / "tools/runtime/inject_mgba_lua.ps1").read_text(
+        encoding="utf-8"
+    )
+
+    assert "setKeys" not in probe
+    assert "addKey" not in probe
+    assert "clearKey" not in probe
+    assert "emu:write" not in probe
+    assert "toolkit030_behavior_watch.lua" in injector
+
+
+def test_toolkit030_probe_separates_attachment_from_execution():
+    """Two distinct questions, kept in separate columns. That the live record
+    carries the authored descriptor does NOT establish that its script ran, and
+    a probe reporting only the first would invite exactly the overclaim this
+    ticket has to avoid - TOOLKIT-029 stopped at instantiation for the same
+    reason."""
+    root = Path(__file__).resolve().parents[2]
+    probe = (root / "tools/runtime/toolkit030_behavior_watch.lua").read_text(
+        encoding="utf-8"
+    )
+
+    # Channel 1: the attached descriptor, through the live MapEntry pointer.
+    assert "0x03001980" in probe
+    assert "0x0808D788" in probe          # the authored behavior descriptor
+    assert "AUTHORED-BEHAVIOR" in probe
+    # Channel 2: the collision effect that behavior actually produces.
+    assert "0x08054FBC" in probe          # collision grid holder, measured
+    assert "rect_set_count" in probe
+
+
+def test_toolkit030_probe_distinguishes_authored_from_inherited():
+    """The independence control has to be visible in the runtime evidence too.
+    The inherited-null descriptor is what the clone template carries, so a run
+    that reports it is the CONTROL, and the probe must label the two apart
+    rather than reporting a single undifferentiated 'descriptor present'."""
+    root = Path(__file__).resolve().parents[2]
+    probe = (root / "tools/runtime/toolkit030_behavior_watch.lua").read_text(
+        encoding="utf-8"
+    )
+
+    assert "0x080555A0" in probe          # the null descriptor the template has
+    assert "INHERITED-NULL" in probe
+    assert "CONTROL inherited-null descriptor" in probe
+
+
+def test_toolkit030_probe_refuses_to_read_a_broken_grid_as_negative():
+    """A broken instrument is not negative evidence. TOOLKIT-029's EWRAM scan was
+    invalidated because it could not tell 'absent' from 'this instrument sees
+    nothing'; an unresolved collision grid must be labelled uninformative rather
+    than written out as a clear rectangle."""
+    root = Path(__file__).resolve().parents[2]
+    probe = (root / "tools/runtime/toolkit030_behavior_watch.lua").read_text(
+        encoding="utf-8"
+    )
+
+    assert "GRID-UNRESOLVED-scan-uninformative" in probe
+    # An off-rect control tile keeps a saturated grid from looking like success.
+    assert "control_tile_a" in probe

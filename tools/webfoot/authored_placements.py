@@ -23,10 +23,60 @@ class PlannedPlacement:
     provenance: str
     clone_from: str | None
     payload: bytes
+    #: TOOLKIT-030. The declared behavior identity, or None when the record simply
+    #: inherits its template's descriptor. Keeping the inherited value alongside the
+    #: effective one is what lets a build PROVE the attachment was authored rather
+    #: than copied - the two differ exactly when project state chose the behavior.
+    behavior: str | None = None
+    inherited_descriptor_raw: int | None = None
+    descriptor_pointer_raw: int | None = None
+
+    @property
+    def behavior_is_authored(self):
+        """True when project state, not the clone source, decided this descriptor."""
+        return (self.behavior is not None and
+                self.descriptor_pointer_raw != self.inherited_descriptor_raw)
 
     def to_json(self):
-        return {"identity": self.identity, "provenance": self.provenance,
-                "clone_from": self.clone_from, "serialized_size": len(self.payload)}
+        document = {"identity": self.identity, "provenance": self.provenance,
+                    "clone_from": self.clone_from, "serialized_size": len(self.payload)}
+        if self.behavior is not None:
+            document.update(behavior=self.behavior,
+                            inherited_descriptor=f"0x{self.inherited_descriptor_raw:08X}",
+                            attached_descriptor=f"0x{self.descriptor_pointer_raw:08X}",
+                            behavior_is_authored=self.behavior_is_authored)
+        return document
+
+
+class AuthoredBehaviorError(LayoutError):
+    """A declared behavior cannot be resolved to a verified descriptor."""
+
+
+def _resolve_behavior(clone, maps):
+    """Resolve a declared behavior identity to its verified descriptor address.
+
+    Resolution goes through `PlacementEvents`, the same read-only catalog that
+    publishes descriptor identities, so a behavior can only ever name a descriptor
+    this profile has actually verified. Nothing is fabricated and no address is
+    accepted from project source; an unknown identity fails the build.
+    """
+    if clone.behavior is None:
+        return None
+    from .placement_events import PlacementEvents
+    from .scripts import ScriptError
+    owner = clone.behavior.rsplit("/", 1)[0]
+    try:
+        descriptor = PlacementEvents(maps).descriptor_of(owner)
+    except ScriptError as exc:
+        raise AuthoredBehaviorError(
+            f"{clone.identity}: declared behavior {clone.behavior} names no verified "
+            f"placement descriptor in this profile ({exc})") from None
+    if descriptor.identity != clone.behavior:
+        raise AuthoredBehaviorError(
+            f"{clone.identity}: declared behavior {clone.behavior} resolved to "
+            f"{descriptor.identity}; a behavior must name a descriptor by its own "
+            "published identity, not by a sharing consumer")
+    return 0x08000000 + descriptor.file_offset
 
 
 #: `MapEntry+0x04` is read by the engine with `ldrb` (0x08008CA2, 0x08008CD2), so the
@@ -209,8 +259,12 @@ def prepare_authored_runs(project, maps):
             source_id = PlacementIdentity(int(parts[0].split(":")[1]), int(parts[1].split(":")[1]))
             source = maps.placement(source_id)
             template = PlacementRecord.from_bytes(source.original_bytes)
+            pointer = _resolve_behavior(clone, maps)
             records.append(PlannedPlacement(clone.identity, clone.provenance, clone.clone_from,
-                                           clone.serialize(template)))
+                                           clone.serialize(template, pointer),
+                                           behavior=clone.behavior,
+                                           inherited_descriptor_raw=template.descriptor_pointer_raw,
+                                           descriptor_pointer_raw=pointer or template.descriptor_pointer_raw))
         runs.append(AuthoredRun(index, tuple(records), len(canonical),
                                 canonical_slots=slots,
                                 map_entry_offset=entry.file_offset,

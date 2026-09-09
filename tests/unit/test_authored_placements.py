@@ -494,3 +494,94 @@ def test_future_version_still_fails(project):
     path.write_text(path.read_text().replace("format_version = 1", "format_version = 99"))
     with pytest.raises(ProjectError, match="version"):
         read_project(project)
+
+
+# --- TOOLKIT-030: authored behavior attachment ---------------------------------
+#
+# The clone codec is the only place a behavior can reach the ROM, so these pin
+# the representation itself. The ROM-grounded resolution proof lives in
+# tests/integration/test_authored_behavior_rom.py, because only the canonical
+# image publishes real descriptor identities.
+
+
+@pytest.mark.parametrize("value", [
+    "0x0808D788",                                   # a raw ROM address
+    "0808D788",                                     # a bare descriptor word
+    "map:0428/placement:0000/descriptor/event",     # the event, not the descriptor
+    "behavior:collision_rect",                      # an invented namespace
+    134666632,                                      # an integer address
+])
+def test_behavior_must_be_a_descriptor_identity(value):
+    """Raw addresses are not an authoring API; only published identities are."""
+    with pytest.raises(ProjectError, match="existing placement descriptor identity"):
+        AuthoredPlacement("map:0000/authored:wolf", 0, "map:0000/placement:0000",
+                          123, 456, behavior=value)
+
+
+def test_absent_behavior_inherits_the_template_descriptor():
+    """The pre-TOOLKIT-030 path is unchanged: no declaration, no attachment."""
+    template = PlacementRecord(0x0800FD55, 7, 86, 0, 0xD3, 0x080555A0, (0x080716EC,))
+    clone = AuthoredPlacement("map:0000/authored:wolf", 0, "map:0000/placement:0000", 123, 456)
+    assert clone.behavior is None
+    assert "behavior" not in clone.to_document()
+    decoded = PlacementRecord.from_bytes(clone.serialize(template))
+    assert decoded.descriptor_pointer_raw == template.descriptor_pointer_raw
+
+
+def test_declared_behavior_replaces_only_the_descriptor_word():
+    """Ancestry is preserved: the authored record still IS a clone of its template."""
+    template = PlacementRecord(0x0800FD55, 7, 86, 0, 0xD3, 0x080555A0, (0x080716EC,))
+    clone = AuthoredPlacement("map:0000/authored:wolf", 0, "map:0000/placement:0000", 176, 176,
+                              behavior="map:0428/placement:0000/descriptor")
+    decoded = PlacementRecord.from_bytes(clone.serialize(template, 0x0808D788))
+    assert decoded.descriptor_pointer_raw == 0x0808D788
+    assert decoded == replace(template, position_raw=(176 << 16) | 176,
+                              descriptor_pointer_raw=0x0808D788)
+    # Every other word, children included, comes from the verified template.
+    for field in ("factory_raw", "flags_raw", "type_raw", "id_raw", "child_pointers_raw"):
+        assert getattr(decoded, field) == getattr(template, field)
+
+
+def test_declared_behavior_without_resolution_refuses_to_serialize():
+    """A behavior the build never resolved must never reach bytes."""
+    template = PlacementRecord(0x0800FD55, 7, 86, 0, 0xD3, 0x080555A0, (0x080716EC,))
+    clone = AuthoredPlacement("map:0000/authored:wolf", 0, "map:0000/placement:0000", 176, 176,
+                              behavior="map:0428/placement:0000/descriptor")
+    with pytest.raises(ProjectError, match="was not resolved"):
+        clone.serialize(template)
+
+
+def test_behavior_round_trips_through_project_source(project):
+    """The declaration survives write -> read, and stays optional in v1."""
+    clone = add(project, behavior="map:0428/placement:0000/descriptor")
+    assert clone.behavior == "map:0428/placement:0000/descriptor"
+    reloaded, = read_project(project).maps[0]["authored_placements"]
+    assert reloaded.behavior == "map:0428/placement:0000/descriptor"
+    assert reloaded == clone
+
+
+def test_behavior_removal_reverts_to_inheritance(project):
+    """Removing the declaration must remove the attachment, not strand it."""
+    clone = add(project, behavior="map:0428/placement:0000/descriptor")
+    rewrite(project, lambda m: m["authored_placements"][clone.identity].pop("behavior"))
+    reloaded, = read_project(project).maps[0]["authored_placements"]
+    assert reloaded.behavior is None
+
+
+def test_unknown_authored_field_is_still_refused(project):
+    """`behavior` is the ONLY field the additive surface gained."""
+    clone = add(project)
+    rewrite(project, lambda m: m["authored_placements"][clone.identity].update(
+        {"descriptor_pointer_raw": 134666632}))
+    with pytest.raises(ProjectError, match="structural fabrication"):
+        read_project(project)
+
+
+def test_cli_clone_accepts_a_behavior(project, capsys):
+    assert main(["placement", "clone", str(project), "--map", "map:0000", "--source",
+                 "map:0000/placement:0000", "--name", "wolf", "--position-low", "176",
+                 "--position-high", "176", "--behavior",
+                 "map:0428/placement:0000/descriptor"]) == 0
+    assert capsys.readouterr().out.strip() == "map:0000/authored:wolf"
+    reloaded, = read_project(project).maps[0]["authored_placements"]
+    assert reloaded.behavior == "map:0428/placement:0000/descriptor"

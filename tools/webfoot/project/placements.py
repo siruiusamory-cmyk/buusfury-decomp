@@ -1,8 +1,15 @@
 """Explicit authored clones, separate from extracted canonical placement rows.
 
 The map-scoped name is project identity, never a ROM offset or engine id_raw.
-Only position overrides are supported. All structural words come from the
-verified canonical template, including descriptor, children and unknown words.
+Position overrides and an explicit behavior attachment are supported. Every
+other structural word comes from the verified canonical template, including
+children and unknown words.
+
+TOOLKIT-030: `behavior` names an EXISTING semantic descriptor identity, so the
+authored record's `+0x14` is chosen by project state rather than inherited from
+the clone source. It selects an already-verified `{handler, payload}` descriptor;
+it does not author a descriptor, script or event body, and no author-facing ROM
+address is accepted here.
 """
 from dataclasses import dataclass
 from pathlib import Path
@@ -19,6 +26,10 @@ class AuthoredPlacement:
     position_low: int
     position_high: int
     provenance: str = "AUTHORED_CLONE"
+    #: An existing descriptor's semantic identity, or None to inherit the
+    #: template's. Never a ROM address: resolution happens against the verified
+    #: descriptor catalog at build time, so an unknown identity fails closed.
+    behavior: str | None = None
 
     def __post_init__(self):
         from .model import ProjectValidationError
@@ -37,14 +48,37 @@ class AuthoredPlacement:
         if any(type(v) is not int or not 0 <= v <= 65535
                for v in (self.position_low, self.position_high)):
             raise ProjectValidationError("authored position halfwords must be unsigned 16-bit integers")
+        if self.behavior is not None and (
+                not isinstance(self.behavior, str) or
+                re.fullmatch(r"map:[0-9]{4,}/placement:[0-9]{4,}/descriptor", self.behavior) is None):
+            raise ProjectValidationError(
+                "behavior must name an existing placement descriptor identity, "
+                "map:NNNN/placement:NNNN/descriptor; raw ROM addresses are not an authoring API")
 
     def to_document(self):
-        return {"provenance": self.provenance, "clone_from": self.clone_from,
-                "position_low": self.position_low, "position_high": self.position_high}
+        document = {"provenance": self.provenance, "clone_from": self.clone_from,
+                    "position_low": self.position_low, "position_high": self.position_high}
+        if self.behavior is not None:
+            document["behavior"] = self.behavior
+        return document
 
-    def serialize(self, template):
-        """Use the production variable-length codec; no invented opaque bytes."""
-        return template.with_position(self.position_low, self.position_high).to_bytes()
+    def serialize(self, template, descriptor_pointer=None):
+        """Use the production variable-length codec; no invented opaque bytes.
+
+        `descriptor_pointer` is the resolved address of the declared behavior's
+        descriptor. It is supplied by the build, which resolves the semantic
+        identity against the verified catalog; this method never resolves an
+        address itself and never accepts one from project source.
+        """
+        from dataclasses import replace
+        from .model import ProjectValidationError
+        record = template.with_position(self.position_low, self.position_high)
+        if self.behavior is not None:
+            if descriptor_pointer is None:
+                raise ProjectValidationError(
+                    f"{self.identity}: declared behavior {self.behavior} was not resolved")
+            record = replace(record, descriptor_pointer_raw=descriptor_pointer)
+        return record.to_bytes()
 
 
 def parse_authored(table, map_index):
@@ -54,8 +88,10 @@ def parse_authored(table, map_index):
     result = []
     fields = {"clone_from", "position_low", "position_high", "provenance"}
     for key, row in sorted(table.items()):
-        if not isinstance(row, dict) or set(row) != fields:
-            raise ProjectLoadError(f"{key}: authored clone requires exactly {sorted(fields)}; structural fabrication unsupported")
+        # `behavior` is the one optional field: absent means inherit the template's
+        # descriptor, which is exactly the pre-TOOLKIT-030 behavior.
+        if not isinstance(row, dict) or set(row) - {"behavior"} != fields:
+            raise ProjectLoadError(f"{key}: authored clone requires exactly {sorted(fields)} plus optional 'behavior'; structural fabrication unsupported")
         result.append(AuthoredPlacement(key, map_index, **row))
     return tuple(result)
 
@@ -76,7 +112,8 @@ def validate_templates(maps):
                 raise ProjectValidationError(f"{clone.identity}: missing extracted clone template {clone.clone_from}")
 
 
-def clone_placement(project_dir, *, map_index, source, name, position_low, position_high):
+def clone_placement(project_dir, *, map_index, source, name, position_low, position_high,
+                    behavior=None):
     """Add a named clone to an existing map in a project. Opens no ROM.
 
     Clones copy canonical template structure, not current edits to that template.
@@ -87,7 +124,7 @@ def clone_placement(project_dir, *, map_index, source, name, position_low, posit
     if map_index not in project.maps:
         raise ProjectValidationError(f"unknown owning map: {map_index}")
     clone = AuthoredPlacement(f"map:{map_index:04d}/authored:{name}", map_index,
-                             source, position_low, position_high)
+                             source, position_low, position_high, behavior=behavior)
     values = project.maps[map_index]
     values["authored_placements"] = (*values.get("authored_placements", ()), clone)
     validate_templates(project.maps)

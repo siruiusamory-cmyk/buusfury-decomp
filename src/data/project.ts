@@ -86,12 +86,13 @@ export const project: ProjectStatus = {
   currentFrontierLabel: "CURRENT FRONTIER",
   existingContentState: "MATURE",
   blockerCode: "AUTHORED BEHAVIOR",
-  blockerTitle: "Give newly authored content its own behavior",
+  blockerTitle: "Give new entities behavior",
   blockerShort:
-    "A newly authored entity now runs in the original engine. It is still a copy of an existing one, with no behavior, dialogue, or events of its own.",
+    "The SDK can explicitly attach an existing behavior to a newly authored entity, and the engine loads that behavior. The current question is proving when and how the attached behavior actually executes.",
   blockerParagraphs: [
     "The SDK creates a new entity's real binary data, finds proven-safe space for it in the unmodified game, writes it, and rebuilds the game file. Running that build in the original engine, the engine read the authored object count, followed the relocated pointer list to the new entity, and instantiated it. The new entity was observed in the running game.",
-    "What that entity does is still borrowed. It is a copy of an existing object, so it has no scripts, conditions, events, or text of its own. Authoring those is the next measured step toward content that is genuinely new rather than duplicated.",
+    "That entity can now be given a behavior chosen by the project rather than inherited from the object it was copied from. The engine was observed loading the new entity and reading the behavior the SDK assigned to it, which a control build without that assignment does not carry.",
+    "What is not yet proven is execution. Observing that the engine holds the assigned behavior is not the same as observing it run, and the measurement built to tell those apart could not distinguish them. Establishing when and how an attached behavior actually executes is the next measured step.",
   ],
   acceptanceTarget:
     "Author playable Legacy of Goku content inside the real LOGII/Buu engine.",
@@ -196,10 +197,10 @@ export const project: ProjectStatus = {
     },
     {
       id: "scripts-dialogue",
-      title: "Author new behavior, scripts and events",
+      title: "Give new entities behavior",
       plainEnglish: "Give newly created content its own behavior, conditions, events, and text.",
       technical:
-        "The authored entity exists and runs, but it is a copy of an existing one. It has no behavior, conditions, events, or text of its own; authoring those is the next measured step.",
+        "Behavior attachment works; execution proof pending. The SDK assigns an existing behavior to a newly authored entity through its normal build path, and the engine was observed loading the new entity carrying that assigned behavior rather than the one it was copied from. Proving when and how that behavior executes is the open question.",
       status: "current",
     },
     {

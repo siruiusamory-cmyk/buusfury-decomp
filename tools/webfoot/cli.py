@@ -101,6 +101,9 @@ def build_parser() -> argparse.ArgumentParser:
     clone.add_argument("--name", required=True, help="stable lowercase name; never an address")
     clone.add_argument("--position-low", type=int, required=True)
     clone.add_argument("--position-high", type=int, required=True)
+    clone.add_argument("--behavior", default=None,
+                       help="attach an existing descriptor by identity, "
+                            "map:NNNN/placement:NNNN/descriptor; omit to inherit the template's")
     planning = placement_commands.add_parser("plan", help="validate and serialize; report ownership/capacity requirements")
     planning.add_argument("project", type=Path)
     planning.add_argument("--rom", type=Path, required=True)
@@ -1488,7 +1491,7 @@ def main(argv: list[str] | None = None) -> int:
             if args.placement_command == "clone":
                 clone = clone_placement(args.project, map_index=_parse_map_identity(args.map).index,
                     source=args.source, name=args.name, position_low=args.position_low,
-                    position_high=args.position_high)
+                    position_high=args.position_high, behavior=args.behavior)
                 print(clone.identity)
             else:
                 runs = authored_capacity_plan(args.project, args.rom, load_catalog(args.profiles))

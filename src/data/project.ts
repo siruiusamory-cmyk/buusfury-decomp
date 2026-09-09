@@ -78,20 +78,20 @@ export const project: ProjectStatus = {
   tagline: "Building a real authoring toolkit for the Legacy of Goku engine.",
   description:
     "The SDK can already make proven changes to existing game content. The current frontier is creating entirely new content that the original engine accepts and runs.",
-  overallProgress: 70,
-  overallProgressLabel: "≈ 70% COMPLETE",
+  overallProgress: 80,
+  overallProgressLabel: "≈ 80% COMPLETE",
   progressCaveat:
     "Progress is a directional project estimate. The milestones below are the authoritative measure of capability.",
   currentPhase: "AUTHOR_NEW",
   currentFrontierLabel: "CURRENT FRONTIER",
   existingContentState: "MATURE",
-  blockerCode: "RUNTIME VALIDITY",
-  blockerTitle: "Prove newly authored content runs in the engine",
+  blockerCode: "AUTHORED BEHAVIOR",
+  blockerTitle: "Give newly authored content its own behavior",
   blockerShort:
-    "The SDK now builds a real game file containing a newly authored entity. What is not yet proven is that the original engine accepts and runs it.",
+    "A newly authored entity now runs in the original engine. It is still a copy of an existing one, with no behavior, dialogue, or events of its own.",
   blockerParagraphs: [
-    "The SDK now creates a new entity's real binary data, finds proven-safe space for it in the unmodified game, writes it, and rebuilds the game file. Exactly 48 bytes change, all of them intended, and repeated builds are identical.",
-    "That is a structural result, not yet a playable one. The next measured step is running the built game and confirming the engine loads the new entity and behaves correctly with it.",
+    "The SDK creates a new entity's real binary data, finds proven-safe space for it in the unmodified game, writes it, and rebuilds the game file. Running that build in the original engine, the engine read the authored object count, followed the relocated pointer list to the new entity, and instantiated it. The new entity was observed in the running game.",
+    "What that entity does is still borrowed. It is a copy of an existing object, so it has no scripts, conditions, events, or text of its own. Authoring those is the next measured step toward content that is genuinely new rather than duplicated.",
   ],
   acceptanceTarget:
     "Author playable Legacy of Goku content inside the real LOGII/Buu engine.",
@@ -191,14 +191,16 @@ export const project: ProjectStatus = {
       plainEnglish:
         "Build the authored ROM and verify that the original engine actually loads and runs the newly created entity.",
       technical:
-        "The built game file already contains the authored entity, with the map's object count and the pointer that reaches it updated. Whether the engine accepts it at runtime is a separate proof and is not yet claimed.",
-      status: "current",
+        "Confirmed. The built game file was run in the original engine, which read the authored object count and the relocated pointer list, resolved the new slot to the authored entity, and instantiated it. The new entity was observed in the running game.",
+      status: "complete",
     },
     {
       id: "scripts-dialogue",
-      title: "Author new scripts and dialogue",
+      title: "Author new behavior, scripts and events",
       plainEnglish: "Give newly created content its own behavior, conditions, events, and text.",
-      status: "next",
+      technical:
+        "The authored entity exists and runs, but it is a copy of an existing one. It has no behavior, conditions, events, or text of its own; authoring those is the next measured step.",
+      status: "current",
     },
     {
       id: "complete-scene",
@@ -220,11 +222,20 @@ export const project: ProjectStatus = {
     { label: "EXPANDED OBJECT LIST", state: "done" },
     { label: "SAFE RELOCATION", state: "done" },
     { label: "MATERIALIZE + CONNECT ENTITY", state: "done" },
-    { label: "VERIFIED ROM CAPACITY", state: "current", marker: "↑ YOU ARE HERE" },
-    { label: "NEW SCRIPTS + DIALOGUE", state: "next" },
+    { label: "VERIFIED ROM CAPACITY", state: "done" },
+    { label: "NEW ENTITY RUNS IN ENGINE", state: "done" },
+    { label: "NEW SCRIPTS + DIALOGUE", state: "current", marker: "↑ YOU ARE HERE" },
     { label: "PLAYABLE LOG1 CONTENT", state: "target" },
   ],
   breakthroughs: [
+    {
+      id: "runtime-proven-authored-entity",
+      title: "First runtime-proven authored entity",
+      summary:
+        "Webfoot SDK created a map entity that did not exist in the original game, built it into Buu's Fury, and the original engine successfully loaded and instantiated it.",
+      technical:
+        "The engine read the authored fifth object slot and instantiated the clone from newly allocated ROM data. Exactly 56 bytes differ from the unmodified game, and the original file is never touched. The new entity is a copy of an existing one; it does not yet have behavior of its own.",
+    },
     {
       id: "authored-rom-materialization",
       title: "First canonical AUTHOR_NEW ROM build",

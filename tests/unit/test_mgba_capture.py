@@ -632,3 +632,58 @@ def test_p010_timeline_reports_the_lethal_edge_distinctly():
     assert '"ZENI,%d' in observer
     assert '"ITEM,%d' in observer
     assert '"XP,%d' in observer
+
+
+def test_toolkit029_placement_watch_is_read_only_and_allowlisted():
+    """TOOLKIT-029's runtime probe observes whether the engine consumes the
+    authored map 10 slot. It must never drive input: the ticket's evidence
+    depends on the run being ordinary gameplay, and a probe that pressed keys
+    would also silently break the read-only guarantee every other observer
+    carries."""
+    root = Path(__file__).resolve().parents[2]
+    probe = (root / "tools/runtime/toolkit029_placement_watch.lua").read_text(
+        encoding="utf-8"
+    )
+    injector = (root / "tools/runtime/inject_mgba_lua.ps1").read_text(
+        encoding="utf-8"
+    )
+
+    assert "setKeys" not in probe
+    assert "addKey" not in probe
+    assert "clearKey" not in probe
+    assert "emu:write" not in probe
+    assert "toolkit029_placement_watch.lua" in injector
+
+
+def test_toolkit029_probe_separates_structure_from_instantiation():
+    """The two questions must stay distinct in the evidence. That the engine is
+    pointed at the expanded array (count/array/slot2) does NOT establish that an
+    object was built from it, and a probe that reported only the first would
+    invite exactly the overclaim this ticket has to avoid."""
+    root = Path(__file__).resolve().parents[2]
+    probe = (root / "tools/runtime/toolkit029_placement_watch.lua").read_text(
+        encoding="utf-8"
+    )
+
+    # Channel 1: the live MapEntry pointer ROM-007 established.
+    assert "0x03001980" in probe
+    assert "slot2-is-authored-body" in probe
+    # Channel 2: a scan for live references to the authored record body.
+    assert "0x087EA400" in probe
+    assert "AUTHORED-RECORD-REFERENCED-IN-EWRAM" in probe
+
+
+def test_toolkit029_probe_scans_a_canonical_control():
+    """A negative instantiation result is only trustworthy alongside a positive
+    control. Scanning the canonical bodies on the same frames means "authored
+    record absent" can be distinguished from "the scan finds nothing at all",
+    which is the failure mode that would otherwise masquerade as refutation."""
+    root = Path(__file__).resolve().parents[2]
+    probe = (root / "tools/runtime/toolkit029_placement_watch.lua").read_text(
+        encoding="utf-8"
+    )
+
+    assert "0x08075638" in probe  # canonical map 40 slot 1 = the clone source
+    assert "0x08075670" in probe  # canonical map 40 slot 3
+    assert "canonical-control-present" in probe
+    assert "CONTROL-ABSENT-scan-uninformative" in probe

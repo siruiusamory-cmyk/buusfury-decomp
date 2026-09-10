@@ -1,9 +1,9 @@
 """Explicit authored clones, separate from extracted canonical placement rows.
 
 The map-scoped name is project identity, never a ROM offset or engine id_raw.
-Position overrides and an explicit behavior attachment are supported. Every
-other structural word comes from the verified canonical template, including
-children and unknown words.
+Position overrides, an explicit behavior attachment, and one evidence-scoped
+behavior trigger are supported. Every other structural word comes from the
+verified canonical template, including children and unknown words.
 
 TOOLKIT-030: `behavior` names an EXISTING semantic descriptor identity, so the
 authored record's `+0x14` is chosen by project state rather than inherited from
@@ -20,10 +20,17 @@ TOOLKIT-032: `behavior` may instead name this record's OWN authored behavior -
     and no descriptor bytes are accepted from project source.
 """
 from dataclasses import dataclass
+from enum import Enum
 from pathlib import Path
 import re
 
 from .format import dump_toml
+
+
+class BehaviorTrigger(str, Enum):
+    """Author-facing behavior start conditions with runtime-proven semantics."""
+
+    ON_DEFEAT = "on_defeat"
 
 
 @dataclass(frozen=True, slots=True)
@@ -42,6 +49,9 @@ class AuthoredPlacement:
     #: integer operands. Present exactly when `behavior` names this record's own
     #: authored behavior; the bytes are produced by `script_vm.assemble_source`.
     script: tuple[str, ...] | None = None
+    #: A deliberate gameplay condition that selects the declared behavior.
+    #: Absence preserves the legacy, semantically UNKNOWN dispatch relationship.
+    trigger: BehaviorTrigger | None = None
 
     @property
     def authored_behavior(self):
@@ -91,6 +101,17 @@ class AuthoredPlacement:
                 raise ProjectValidationError(
                     "an authored script must be a non-empty list of instruction strings")
             object.__setattr__(self, "script", tuple(self.script))
+        if self.trigger is not None:
+            try:
+                trigger = BehaviorTrigger(self.trigger)
+            except (TypeError, ValueError):
+                raise ProjectValidationError(
+                    "trigger must be exactly 'on_defeat'; raw or unsupported trigger "
+                    "values are not an authoring API") from None
+            if self.behavior is None:
+                raise ProjectValidationError(
+                    f"{self.identity}: trigger {trigger.value} requires a behavior")
+            object.__setattr__(self, "trigger", trigger)
 
     def to_document(self):
         document = {"provenance": self.provenance, "clone_from": self.clone_from,
@@ -99,6 +120,8 @@ class AuthoredPlacement:
             document["behavior"] = self.behavior
         if self.script is not None:
             document["script"] = list(self.script)
+        if self.trigger is not None:
+            document["trigger"] = self.trigger.value
         return document
 
     def serialize(self, template, descriptor_pointer=None):
@@ -137,8 +160,8 @@ def parse_authored(table, map_index):
         # which is exactly the pre-TOOLKIT-030 behavior. `script` is optional and
         # meaningful only alongside an authored behavior, which AuthoredPlacement
         # enforces rather than trusting.
-        if not isinstance(row, dict) or set(row) - {"behavior", "script"} != fields:
-            raise ProjectLoadError(f"{key}: authored clone requires exactly {sorted(fields)} plus optional 'behavior' and 'script'; structural fabrication unsupported")
+        if not isinstance(row, dict) or set(row) - {"behavior", "script", "trigger"} != fields:
+            raise ProjectLoadError(f"{key}: authored clone requires exactly {sorted(fields)} plus optional 'behavior', 'script', and 'trigger'; structural fabrication unsupported")
         result.append(AuthoredPlacement(key, map_index, **row))
     return tuple(result)
 
@@ -160,7 +183,7 @@ def validate_templates(maps):
 
 
 def clone_placement(project_dir, *, map_index, source, name, position_low, position_high,
-                    behavior=None, script=None):
+                    behavior=None, script=None, trigger=None):
     """Add a named clone to an existing map in a project. Opens no ROM.
 
     Clones copy canonical template structure, not current edits to that template.
@@ -172,7 +195,7 @@ def clone_placement(project_dir, *, map_index, source, name, position_low, posit
         raise ProjectValidationError(f"unknown owning map: {map_index}")
     clone = AuthoredPlacement(f"map:{map_index:04d}/authored:{name}", map_index,
                              source, position_low, position_high, behavior=behavior,
-                             script=script)
+                             script=script, trigger=trigger)
     values = project.maps[map_index]
     values["authored_placements"] = (*values.get("authored_placements", ()), clone)
     validate_templates(project.maps)

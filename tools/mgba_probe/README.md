@@ -4,6 +4,20 @@ This directory tracks the narrow LOG1 instrumentation applied to upstream mGBA
 `0.10.5` commit `26b7884bc25a5933960f3cdcd98bac1ae14d42e2`. The full upstream checkout and
 generated executable remain ignored under `extern/` and `build/`.
 
+## Licensing
+
+- Upstream project: [mGBA](https://github.com/mgba-emu/mgba), version `0.10.5`,
+  commit `26b7884bc25a5933960f3cdcd98bac1ae14d42e2`.
+- Upstream license: MPL-2.0. mGBA is Copyright (c) 2013-2022 Jeffrey Pfau.
+- `mgba-0.10.5-log1-read-probe.patch` modifies MPL-2.0-covered mGBA source
+  files (`include/mgba/internal/gba/gba.h`, `src/debugger/gdb-stub.c`,
+  `src/gba/gba.c`, `src/gba/memory.c`, `src/gba/test/core.c`) and, being a diff,
+  also carries unchanged upstream context from them.
+- Those covered portions remain MPL-2.0 in both upstream and modified form.
+- The root Webfoot SDK license does not supersede or relicense mGBA material.
+
+Full notice: [`THIRD-PARTY-NOTICES.md`](../../THIRD-PARTY-NOTICES.md).
+
 ## Architecture
 
 The patch adds one probe state to the GBA core. Normal disarmed EWRAM reads pay

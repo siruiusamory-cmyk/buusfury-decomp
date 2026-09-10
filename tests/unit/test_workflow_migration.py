@@ -2,13 +2,9 @@ from __future__ import annotations
 
 from pathlib import Path
 import re
-import shutil
-import subprocess
-import sys
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
-RUNNER = PROJECT_ROOT / "scripts" / "run-current.ps1"
 
 
 def _current_ticket_id() -> str:
@@ -18,9 +14,8 @@ def _current_ticket_id() -> str:
     stale the moment the next ticket activates - which they did at TOOLKIT-003
     ("obsolete ticket assertions, fixed") and again at TOOLKIT-007. What these
     tests actually mean to check is that PROJECT_<local-state-name> holds *the active ticket*
-    and points back to its predecessor, which is true across activations;
-    `test_runner_dry_run_works_from_an_unrelated_directory` already derives the
-    id this way for exactly that reason.
+    and points back to its predecessor, which is true across activations, so the
+    id is derived from the heading for exactly that reason.
     """
     heading = (
         (PROJECT_ROOT / "docs/PROJECT_<local-state-name>")
@@ -38,31 +33,6 @@ def _predecessor_ticket_id(ticket_id: str) -> str:
     return f"{prefix}-{int(number) - 1:03d}"
 
 
-def _powershell() -> str:
-    executable = shutil.which("powershell.exe") or shutil.which("powershell")
-    assert executable is not None, "Windows PowerShell is required by this project"
-    return executable
-
-
-def _run_runner(*arguments: str, cwd: Path) -> subprocess.CompletedProcess[str]:
-    return subprocess.run(
-        [
-            _powershell(),
-            "-NoProfile",
-            "-ExecutionPolicy",
-            "Bypass",
-            "-File",
-            str(RUNNER),
-            *arguments,
-        ],
-        cwd=cwd,
-        check=False,
-        capture_output=True,
-        text=True,
-        encoding="utf-8",
-    )
-
-
 def test_required_workflow_files_exist_and_are_bounded():
     expected_limits = {
         # 300 is a context budget, not a style rule: this file is always-loaded
@@ -75,7 +45,6 @@ def test_required_workflow_files_exist_and_are_bounded():
         "docs/PROJECT_<local-state-name>": (10, 240),
         "docs/PROJECT_<local-state-name>": (10, 800),
         "docs/REVIEW.md": (20, 100),
-        "scripts/run-current.ps1": (40, 140),
     }
 
     for relative_path, (minimum, maximum) in expected_limits.items():
@@ -358,85 +327,12 @@ def test_p006c_archive_is_retained_after_p007_closure():
     )
 
 
-def test_runner_dry_run_works_from_an_unrelated_directory(tmp_path):
-    result = _run_runner(
-        "-DryRun",
-        "-CodexPath",
-        sys.executable,
-        cwd=tmp_path,
-    )
-
-    assert result.returncode == 0, result.stdout + result.stderr
-    assert f"repo: {PROJECT_ROOT}" in result.stdout
-    assert f"agents: {PROJECT_ROOT / 'docs/DEVELOPMENT.md'}" in result.stdout
-    assert f"state: {PROJECT_ROOT / 'docs' / 'PROJECT_<local-state-name>'}" in result.stdout
-    assert f"ticket: {PROJECT_ROOT / 'docs' / 'tickets' / 'PROJECT_<local-state-name>'}" in result.stdout
-    # The runner parses the identifier out of the ticket heading, so derive the
-    # expectation the same way rather than pinning one ticket's name here.
-    heading = (
-        (PROJECT_ROOT / "docs/PROJECT_<local-state-name>")
-        .read_text(encoding="utf-8")
-        .splitlines()[0]
-    )
-    ticket_id = re.match(r"^#\s+([A-Z][A-Z0-9]*-\d+[A-Z]?)\b", heading).group(1)
-    assert f"current: {ticket_id}" in result.stdout
-    assert "mode: interactive the tool session" in result.stdout
-    assert "dry-run: no the tool session launched" in result.stdout
-
-
-def test_runner_uses_small_bootstrap_without_concatenating_context():
-    runner = RUNNER.read_text(encoding="utf-8")
-
-    assert "Get-Content" not in runner
-    assert "Read and obey <local-state-name>" in runner
-    assert "docs/PROJECT_<local-state-name>" in runner
-    assert "docs/PROJECT_<local-state-name>" in runner
-    assert "--cd" in runner
-    assert "Select-Object -First 1" in runner
-    assert len(runner) < 6_000
-
-
-def test_runner_fails_before_launch_when_current_is_missing(tmp_path):
-    fake_root = tmp_path / "incomplete"
-    fake_scripts = fake_root / "scripts"
-    fake_docs = fake_root / "docs"
-    fake_scripts.mkdir(parents=True)
-    fake_docs.mkdir()
-    shutil.copy2(RUNNER, fake_scripts / RUNNER.name)
-    (fake_root / "<local-state-name>").write_text("# Rules\n", encoding="utf-8")
-    (fake_docs / "PROJECT_<local-state-name>").write_text("# State\n", encoding="utf-8")
-
-    result = subprocess.run(
-        [
-            _powershell(),
-            "-NoProfile",
-            "-ExecutionPolicy",
-            "Bypass",
-            "-File",
-            str(fake_scripts / RUNNER.name),
-            "-DryRun",
-            "-CodexPath",
-            sys.executable,
-        ],
-        cwd=tmp_path,
-        check=False,
-        capture_output=True,
-        text=True,
-        encoding="utf-8",
-    )
-
-    assert result.returncode != 0
-    assert "Required workflow file missing" in result.stdout + result.stderr
-    assert "PROJECT_<local-state-name>" in result.stdout + result.stderr
-
-
 def test_workflow_files_do_not_embed_proprietary_artifacts():
     workflow_paths = [
         PROJECT_ROOT / "<local-state-name>",
         PROJECT_ROOT / "docs/PROJECT_<local-state-name>",
         PROJECT_ROOT / "docs/PROJECT_<local-state-name>",
         PROJECT_ROOT / "docs/REVIEW.md",
-        RUNNER,
     ]
 
     for path in workflow_paths:

@@ -15,7 +15,6 @@ This file records current verified facts. Permanent rules live in [`../DEVELOPME
 - Latest completed research ticket: P-008 (normal melee variant selection). **P-006, P-007 and P-008 are RESOLVED**; their deferred unknowns are listed below and do not block closure. No ticket is in progress; P-009 is **NOT STARTED**.
 - Latest completed tooling ticket: TOOL-001. TOOL-002 is **BLOCKED - independent related binary unavailable**; BSim remains **UNCALIBRATED** and no adoption decision was made.
 - ROM-008 portable baseline: **192 passed, 0 failed, 0 skipped**. Current portable suite after workflow migration: **199 passed, 0 failed, 0 skipped**. Current portable suite after ROM-011: **250 passed, 0 failed, 0 skipped**. Current TOOL-001 portable suite: **293 passed, 0 failed, 0 skipped**. Current VERTICAL-001 portable suite: **280 passed, 0 failed, 0 skipped**. Current P-006B suite: **362 passed, 0 failed, 0 skipped**. Current P-006C suite: **371 passed, 0 failed, 0 skipped**.
-- Persistent the tool workflow migration is installed.
 - ROM-011, ROM-012, TOOL-001, blocked TOOL-002, VERTICAL-001, P-004, P-006,
   P-006A, P-006C, P-007, and P-008 are archived. `docs/PROJECT_<local-state-name>` is a
   stop-only placeholder; ROM-013 and P-009 remain unstarted.

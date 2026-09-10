@@ -87,13 +87,17 @@ def test_review_fix_loop_and_closure_order_are_explicit():
         cursor = closure_flow.index(step, cursor) + len(step)
 
 
-def test_review_workflow_records_cross_model_and_gitlab_preferences():
+def test_review_workflow_records_reviewer_independence_and_gitlab_preferences():
+    """The reviewer-selection rule is about independence, not about which tool
+    or vendor performed the review: a reviewer must carry fresh context and
+    different strengths, and disagreements are settled by evidence rather than
+    by whoever ranks higher."""
     detail = _flat("docs/DEVELOPMENT.md")
 
     assert "prefer a fresh-context reviewer" in detail
-    assert "different strong model" in detail
-    assert "not a vendor lock" in detail
-    assert "resolved by evidence, never model authority" in detail
+    assert "different strengths from the implementer" in detail
+    assert "not a seniority ranking" in detail
+    assert "resolved by evidence, never by authority" in detail
     assert "authenticated `glab` workflow" in detail
     assert "never assume ssh keys" in detail
     assert "feature branch" in detail
@@ -109,9 +113,9 @@ def test_ticket_template_and_closure_checklist_require_review_records():
     checklist = _flat("docs/README.md")
 
     assert "required review" in template
-    assert "independent reviewer/model" in template
+    assert "independent reviewer" in template
     assert "explicit re-review" in template
-    assert "reviewer identity/model, verdict, findings and resolution" in template
+    assert "reviewer identity, verdict, findings and resolution" in template
     assert "code review" in review_template
     assert "scope reviewed" in review_template
     assert "blocking findings" in review_template

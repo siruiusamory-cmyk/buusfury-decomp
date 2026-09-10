@@ -1,7 +1,7 @@
 # Reverse-Engineering Research Ledger
 
-Durable brain of the Webfoot reverse-engineering programme
-(`OX-AUTO-RE`). Read this file first every loop iteration. Keep it compact;
+Durable record of the Webfoot reverse-engineering research program. Read this
+file first when picking up static or runtime research. Keep it compact;
 detailed evidence lives in `docs/reverse-engineering.md`,
 `docs/consumer-analysis.md`, and `docs/research/SUBSYSTEM_MAP.md`.
 
@@ -79,7 +79,8 @@ that window; per-tick dumps from the retry are required.
 
 Next human run protocol unchanged: punch #1 deliberately (identity
 capture), then ~3 landed punches spaced 2-3 s, no transitions, then
-ordinal HIT/MISS labels. After data lands: automated candidate grading -> writer provenance -> P-004 closure.
+ordinal HIT/MISS labels. After data lands: automated candidate
+grading -> writer provenance -> P-004 closure.
 
 P-003/P-004 contact resolution background. Human-provided combat state validated
 (sha256 `d8d8578d081e6bc4e535160b52fa0182cf2619ae70c93f63f5401b1d1624dcf1`,
@@ -140,7 +141,7 @@ Synthesis pass after units 1-5 (2026-08-23):
   `<role>_0XXXXXXXXX` lowercase-hex suffix form.
 
 (Inherited anchors are summarized in SUBSYSTEM_MAP.md; this section records new
-research-lane findings only.)
+findings from this research lane only.)
 
 - **AUTO-001 (2026-08-23), read-only static, canonical profile:**
   - `CONFIRMED`: MapEntry-39 selected value `0x08294968` is unique among all

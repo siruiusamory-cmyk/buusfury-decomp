@@ -10,7 +10,14 @@ param(
 
 $ErrorActionPreference = 'Stop'
 $expectedHash = '940AD5F01DB4465B8877DFE739510CBF34F4EA3D390F3DF13519808BC36F059E'
-$workspaceRoot = [System.IO.Path]::GetFullPath('<checkout>')
+# Repository root is derived from this script's own location, matching the
+# convention in inject_mgba_lua.ps1. A hardcoded absolute path broke every
+# clone that did not live at the original developer's path.
+$workspaceRoot = [System.IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..\..'))
+if (-not (Test-Path -LiteralPath (Join-Path $workspaceRoot 'tools\runtime') -PathType Container)) {
+    throw ("Could not resolve the repository root from $PSScriptRoot. " +
+        'Run this script from its tracked location at tools\runtime\ inside the repository.')
+}
 $allowedRuntimeRoot = [System.IO.Path]::GetFullPath((Join-Path $workspaceRoot 'build\rom006'))
 $resolvedLuaPath = [System.IO.Path]::GetFullPath($LuaPath)
 $resolvedExpectedState = [System.IO.Path]::GetFullPath($ExpectedState)

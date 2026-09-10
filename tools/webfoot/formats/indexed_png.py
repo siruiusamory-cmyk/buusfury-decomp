@@ -14,10 +14,8 @@ starting at index 0, which is precisely the shape this family's transparency
 needs.
 
 **Why hand-rolled.** Pillow is not a dependency of this project and adding an
-imaging library to write one chunk type is not worth the install surface. The
-same reasoning already produced the PNG codec in `tools/sprites/slice_sheets.py`;
-this one is separate because that file reads RGBA reference sheets for the Godot
-remake and this one must never leave the indexed domain.
+imaging library to write one chunk type is not worth the install surface. This
+codec is deliberately narrow and must never leave the indexed domain.
 
 **Round-trip contract.** ``decode(encode(pixels, palette)) == (pixels, palette)``
 for every image this project exports. Filtering is fixed at type 0 (None) on

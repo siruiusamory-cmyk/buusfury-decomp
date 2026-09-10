@@ -167,10 +167,15 @@ def test_removed_godot_prototype_stays_out_of_the_product_repository():
 
     agents = _flat("<local-state-name>")
     detail = _flat("docs/DEVELOPMENT.md")
+    readme = _flat("README.md")
     assert "former godot prototype" in agents
     assert "do not recreate it" in agents
     assert "owner selected `remove`" in detail
     assert "must not ship or be reintroduced" in detail
+    assert readme.startswith("# webfoot sdk")
+    assert "the product goal is not a standalone remake" in readme
+    assert "legacy of goku content running inside the actual legacy of goku ii/buu's fury engine" in readme
+    assert "remake/" not in readme
 
 
 def test_instruction_continuations_remain_within_established_bounds():

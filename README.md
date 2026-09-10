@@ -1,254 +1,166 @@
-# Legacy of Goku Remake Toolchain
+# Webfoot SDK
 
-This project is a modding SDK and reproducible reverse-engineering laboratory for
-Webfoot's Dragon Ball Z GBA trilogy: inspect, extract, decode, edit, validate and
-rebuild. The long-term target is a Legacy of Goku campaign rebuilt on the Buu's
-Fury engine, guided by Legacy of Goku II gameplay.
+Webfoot SDK is a safe, deterministic modding toolkit for Webfoot's three
+Dragon Ball Z games on Game Boy Advance:
 
-Editing is real but deliberately narrow. Every write goes verified base image ->
-generated output, the canonical ROM is never modified in place, and an unchanged
-project rebuilds the entire ROM byte-identically. Anything not proven against the
-canonical image is refused rather than approximated.
+- *Dragon Ball Z: The Legacy of Goku*
+- *Dragon Ball Z: The Legacy of Goku II*
+- *Dragon Ball Z: Buu's Fury*
 
-## Public progress website
+The SDK turns a verified local ROM into an inspectable, versionable project,
+then validates and builds that project into a new ROM image. The original ROM
+is always read-only.
 
-The repository includes a one-page Astro site that explains the SDK's current
-authoring frontier. Almost every public status update belongs in one typed data
-file: `src/data/project.ts`.
+The product goal is not a standalone remake. The acceptance target is authored
+Legacy of Goku content running inside the actual Legacy of Goku II/Buu's Fury
+engine. Buu's Fury currently leads the implementation because it is the primary
+measurement target, but the architecture is intended for all three games.
 
-Install and run it with npm:
+> [!IMPORTANT]
+> This is pre-release reverse-engineering software. Supported operations are
+> deliberately narrower than the final goal, and unverified inputs or unsafe
+> writes fail closed.
 
-```powershell
-npm install
-npm run dev
-npm run build
-npm run preview
-```
+## What works today
 
-The public site is deployed as Cloudflare Workers Static Assets at
-<https://webfoot-sdk.siruiusamory.workers.dev/>. The source repository remains
-private on GitLab. A push to its default branch runs `.gitlab-ci.yml`, which
-checks and builds Astro before deploying `dist/` without committing generated
-output. The pipeline requires a masked GitLab CI/CD variable named
-`CLOUDFLARE_API_TOKEN` with Workers Scripts: Edit permission for this account.
-Cloudflare's **Workers & Pages > webfoot-sdk > Settings > Domains & Routes**
-screen is where an optional custom domain can be added later.
+- exact ROM identification against profile hashes and corroborating GBA header
+  metadata;
+- deterministic `extract`, `validate`, and `build` project lifecycle;
+- byte-identical no-op rebuilds from the canonical supported input;
+- attributed, transactional writes to a new output image;
+- editing for verified enemy and character stats, text, and selected fixed-size
+  visual data;
+- lossless codecs and read-only inspection for verified map, placement, script,
+  event, dialog, reference, and actor-sprite structures;
+- indexed-PNG extraction for the supported Buu's Fury actor-sprite family;
+- synthetic relocation proofs and explicit refusal when real free capacity or
+  reference coverage has not been established.
 
-In `src/data/project.ts`, edit `overallProgress` and `overallProgressLabel` to
-change the explicitly approximate headline. Update the blocker fields to move
-the current frontier, change a milestone's `status` to `complete`, `current`,
-`next`, or `target`, and append a typed item to `breakthroughs` for a new log
-entry. Breakthrough `date` and `commit` fields are optional; omit them when the
-project has no verified value. Footer links are also optional and disappear
-when their `url` is absent.
+The largest missing capability is materializing newly authored content. The
+canonical Buu's Fury profile has no verified free region, so growth and broad
+relocation remain blocked rather than borrowing space speculatively. Map
+tilesets, most graphics families, audio, executable patches, a GUI, and a
+complete LoG-to-Buu authoring path are not yet implemented.
 
-At ticket closure, classify the measured result as
-`public progress impact: UPDATED` or `public progress impact: NONE`. `UPDATED`
-means the result changes public capability, the blocker/frontier, the
-capability-based AUTHOR_NEW questline, a completed capability's wording, a
-meaningful outside-facing breakthrough, or the acceptance-target story. Update
-`src/data/project.ts`, then run `npm run check` and `npm run build`; normally the
-status change belongs in the capability's ticket commit. `NONE` requires a
-one-sentence reason and no cosmetic website edit.
-
-A ticket that passes a standing blocker or discovers a new one is always
-`UPDATED`, because the frontier moved: set the passed milestone to `complete`,
-make the newly measured blocker `current` (adding a milestone if the questline
-has no step for it), and rewrite the blocker fields. Such a ticket is not closed
-until the live site serves the change, so the repository and the deployed site
-never disagree. Either push the ticket commit to GitLab `master` and let
-`.gitlab-ci.yml` deploy, or deploy directly from the repo root with
-`npx --yes wrangler@4.105.0 deploy` (this uses the account's stored Wrangler
-credentials and needs no CI). Then re-fetch the public URL and confirm the new
-text is actually being served. A direct deploy publishes ahead of recorded
-history, so push the same commit during the same closure.
-
-The overall percentage is a directional product estimate, never a calculation
-from ticket count. Change it only when the maintainer reviews it explicitly or a broader
-roadmap review finds a material shift. Milestones are authoritative. Questline
-entries represent capabilities rather than ticket numbers, and breakthroughs
-are reserved for results useful to outside visitors. Never invent dates.
-
-## Legal boundary
-
-This repository does not distribute ROMs, BIOS images, extracted game assets, or other proprietary game data. Supply only ROMs you legally obtained. `roms/`, generated ROMs, extracted data, dumps, build output, and upstream clones are Git-ignored.
+See [project state](docs/PROJECT_<local-state-name>) for current verified facts and the
+[public progress site](https://webfoot-sdk.siruiusamory.workers.dev/) for a
+shorter capability overview.
 
 ## Requirements
 
 - Windows PowerShell
 - Git
-- `uv` 0.11 or newer; setup uses `uv.lock` and installs Python 3.12 when needed
-- Optional for upstream experiments: CMake and Visual Studio 2022 C++ Build Tools
-- mGBA for later manual emulator checks
+- [`uv`](https://docs.astral.sh/uv/) 0.11 or newer
+- Python 3.12 (installed by the setup script when needed)
+- mGBA for optional runtime research and manual emulator checks
 
-ARM Developer Suite 1.2 is required by the historical Buu's Fury disassembly build, but is not required for Phase 0 and is not installed by this project.
+Some historical upstream experiments require additional tools, but they are not
+needed to install or use the Python SDK.
 
 ## Setup
 
 ```powershell
-cd <checkout>
+git clone <repository-url>
+cd log1-remake
 Set-ExecutionPolicy -Scope Process Bypass
 .\scripts\setup.ps1
 .\.venv\Scripts\Activate.ps1
 ```
 
-The process-scoped execution-policy change lasts only for the current PowerShell process. It is needed when Windows reports the default effective policy as Restricted; the setup does not change machine or user policy.
+The execution-policy change applies only to the current PowerShell process.
+`setup.ps1` creates or repairs `.venv`, synchronizes `uv.lock`, installs the SDK
+in editable mode, and verifies the pinned upstream sources. Use
+`-SkipUpstreams` when only the Python project is needed.
 
-`setup.ps1` creates or repairs `.venv`, synchronizes the exact dependency set in `uv.lock`, installs this project in editable mode, and clones/checks out the exact commits in `upstreams.lock`. Existing clone origins are verified before fetch. Use `-SkipUpstreams` to install only the Python project.
+## Quick start
 
-Manual equivalent:
-
-```powershell
-.\.venv\Scripts\Activate.ps1
-python -m pip install -e ".[dev]"
-```
-
-The manual pip command is supported but resolves declared dependency constraints; use `setup.ps1` for the locked reproducible environment.
-
-## ROM identification
-
-Leave your own ROM at its existing path beneath `roms\`; do not rename it for this tool.
+Keep a legally obtained ROM under the ignored `roms\` directory or at another
+local path. Do not add it to Git.
 
 ```powershell
+# Verify the exact ROM profile before parsing it.
 webfoot identify ".\roms\Dragon Ball Z - Buu's Fury (U).gba"
-python -m tools.webfoot identify ".\roms\Dragon Ball Z - Buu's Fury (U).gba"
+
+# Extract an authored project. Omit --no-graphics to include supported sprites.
+webfoot extract ".\roms\Dragon Ball Z - Buu's Fury (U).gba" ".\work\my-mod" --no-graphics
+
+# Validate without writing a ROM.
+webfoot validate ".\work\my-mod" --rom ".\roms\Dragon Ball Z - Buu's Fury (U).gba"
+
+# Build a new image. The output path must not already exist.
+webfoot build ".\work\my-mod" `
+  --rom ".\roms\Dragon Ball Z - Buu's Fury (U).gba" `
+  --output ".\build\my-mod.gba" `
+  --manifest ".\build\my-mod.json"
 ```
 
-The command streams CRC32, MD5, SHA-1, and SHA-256; parses minimal GBA header metadata; and compares exact SHA-256 identity plus configured corroborating metadata against `config\roms.yaml`. Built packages carry the same default catalog as package data. Exit code `0` means `VERIFIED`, `1` means `UNKNOWN`, and `2` means malformed input, profile conflict, or ambiguity. Game code, size, revision, MD5, or SHA-1 alone never yields `VERIFIED`.
+The project format stores semantic values and stable identities rather than ROM
+addresses. Given the same verified base ROM, project state, and SDK version, a
+build is deterministic. See the [project format](docs/project-format.md) for
+the authored files, guarantees, and current editing limits.
 
-Validate every MapEntry in the exact supported Buu's Fury profile without writing the ROM:
+Run `webfoot --help` or `webfoot <command> --help` for the full command tree.
 
-```powershell
-webfoot validate-map-entries ".\roms\Dragon Ball Z - Buu's Fury (U).gba"
+## Repository map
+
+| Path | Purpose |
+| --- | --- |
+| `tools/webfoot/` | Shipping SDK, codecs, project model, build system, and CLI |
+| `config/roms.yaml` | Exact supported ROM profiles and measured layout data |
+| `tests/` | Portable synthetic tests and opt-in local-ROM integration tests |
+| `docs/` | Architecture, formats, evidence, contributor workflow, and project state |
+| `tools/runtime/` | Reusable mGBA instrumentation for LoG-family research |
+| `tools/ghidra/` | Static-analysis helpers used to reproduce SDK evidence |
+| `src/` | Source for the public progress website |
+
+ROMs, saves, states, dumps, extracted assets, generated ROMs, build output, and
+checked-out upstream repositories are local artifacts and must remain ignored.
+
+## Safety and legal boundary
+
+Every write follows this path:
+
+```text
+verified base ROM -> generated working output -> patch/output ROM
 ```
 
-The command reads all 452 configured `0x38`-byte records, parses and serializes each in memory, and fails if any serialized byte differs. ROM-002 also enforces the fixed target SHA-256 and canonical table tuple, so an alternate catalog cannot relabel another ROM or redirect validation. It does not follow record pointers or expose an editing operation.
+The SDK refuses to overwrite its input or an existing output. Profile-specific
+access requires exact identity, and addresses are not transferred between game
+revisions without independent evidence.
 
-Run the read-only pointer-field census without dereferencing targets:
+This repository does not provide commercial ROMs, BIOS images, saves, states,
+memory dumps, or extracted proprietary game assets. Supply only game images you
+are legally entitled to use. No license has yet been selected for the project
+code; do not assume redistribution rights until that release decision is made.
 
-```powershell
-webfoot map-entries pointer-census ".\roms\Dragon Ball Z - Buu's Fury (U).gba"
-```
-
-The census classifies all 4,068 raw candidate observations as null, valid in-ROM, or out of range; reports alignment, duplicates, numeric target ranges, and count/pointer correlations; and never reads pointed-to data.
-
-Read exactly the first little-endian word at each validated variation-array target:
-
-```powershell
-webfoot variation-arrays first-word-census ".\roms\Dragon Ball Z - Buu's Fury (U).gba"
-```
-
-This read-only command requires the canonical packaged ROM identity, bounds-checks every four-byte access, and does not read a second word or follow the observed raw value.
-
-Find every MapEntry whose already-bounded first-word observation matches one exact value:
-
-```powershell
-webfoot variation-arrays find-first-word ".\roms\Dragon Ball Z - Buu's Fury (U).gba" 0x0822CC08
-```
-
-The lookup reports indices, variation-array source addresses, and raw MapEntry metadata. It still reads only target `+0x00` and never follows the matched value.
-
-## Graphics
-
-Inspect the verified actor sprite corpus. Extraction into a project remains the
-authoring workflow; these commands are for looking, not editing.
-
-```powershell
-webfoot graphics summary ".\roms\Dragon Ball Z - Buu's Fury (U).gba"
-webfoot graphics list ".\roms\Dragon Ball Z - Buu's Fury (U).gba" --shared-only
-webfoot graphics export ".\roms\Dragon Ball Z - Buu's Fury (U).gba" "<profile>/graphic:0768" --out buu.png
-```
-
-Before changing anything, ask who else uses it. Most payloads are shared, so an
-edit is usually not local:
-
-```powershell
-webfoot graphics consumers ".\roms\Dragon Ball Z - Buu's Fury (U).gba" "<profile>/graphic:1652"
-webfoot graphics palette ".\roms\Dragon Ball Z - Buu's Fury (U).gba" --index 40
-```
-
-The verified pointers join the common reference graph - 7,652 anchors and 11,254
-confirmed references - rather than living in a private index:
-
-```powershell
-webfoot graphics references ".\roms\Dragon Ball Z - Buu's Fury (U).gba"
-```
-
-Assets are named by stable profile-qualified identity, never by ROM address, so a
-name survives a rebuild. See
-[`docs/research/GRAPHICS_FORMAT.md`](docs/research/GRAPHICS_FORMAT.md) for the
-format evidence, the corpus counts, and the capability matrix.
-
-## Tests
+## Testing
 
 ```powershell
 .\scripts\test.ps1
 ```
 
-Committed fixtures use synthetic bytes only. When the user's exact local ROM is present, one runtime integration test validates its complete MapEntry table; otherwise that test skips. No ROM-derived fixture is committed.
+Portable tests use synthetic byte fixtures. Local-ROM integration tests are
+opt-in and never turn ROM-derived data into committed fixtures. The full suite
+is an integration gate; focused tests are preferred while iterating on a narrow
+change.
 
-## the tool Research Workflow
+## Contributing and evidence
 
-- Permanent project rules: [`docs/DEVELOPMENT.md`](<local-state-name>)
-- Current verified state: [`docs/PROJECT_<local-state-name>`](docs/PROJECT_<local-state-name>)
-- Current research ticket: [`docs/PROJECT_<local-state-name>`](docs/PROJECT_<local-state-name>)
-- Detailed evidence: [`docs/reverse-engineering.md`](docs/reverse-engineering.md) and [`docs/consumer-analysis.md`](docs/consumer-analysis.md)
+Start with:
 
-Inspect the handoff without launching the tool:
+- [architecture](docs/architecture.md)
+- [verified project state](docs/PROJECT_<local-state-name>)
+- [current ticket](docs/PROJECT_<local-state-name>)
+- [ticket workflow](docs/README.md)
+- [reverse-engineering evidence](docs/reverse-engineering.md)
 
-```powershell
-.\scripts\run-current.ps1 -DryRun
-```
+Binary claims are labelled `CONFIRMED`, `INFERRED`, or `UNKNOWN`. Round-trip
+tests prove representation, not semantics; runtime and executable claims need
+direct evidence. Product work should remove a concrete authoring blocker rather
+than grow research infrastructure for its own sake.
 
-Launch the current ticket from any working directory:
-
-```powershell
-<checkout>\scripts\run-current.ps1
-```
-
-From the repository root, use `.\scripts\run-current.ps1`. Completed-ticket
-archival and replacement are documented in
-[`docs/README.md`](docs/README.md).
-
-## Emulator
-
-Phase 0 found mGBA at `C:\Program Files\mGBA\mGBA.exe`. Bounded read-only
-runtime research may use the verified local ROM with ignored working copies of
-private saves and states. Never let emulator automation modify the original ROM;
-future write experiments must target generated output only.
-
-## Current scope
-
-Implemented: streaming hashes, GBA header parsing, exact ROM profiles and
-conservative matching, profile-declared capabilities, CLI packaging, pinned
-upstream setup, deterministic project extract / validate / build with an exact
-whole-ROM no-op rebuild, and transactional attributed writes. Byte-exact
-round-trips exist for enemy and character stats, Buu's Fury text, Legacy of Goku
-II UI/map text and its bounded script VM, MapEntry records, map placements,
-placement types, and actor sprite graphics.
-
-Graphics (TOOLKIT-010) cover the Buu's Fury actor sprite family: 7,355 payloads
-across 295 characters decompress, decode and re-encode exactly, extract as
-indexed PNGs with the ROM palette and index identity preserved, and report the
-consumers a shared asset would affect. **Palette editing is the supported visual
-write path** - uncompressed, fixed-size, and exactly in place. Pixel editing
-decodes and re-encodes to a valid stream but is capacity-blocked for most assets,
-because payloads are packed with no slack and no free space is declared;
-[`docs/research/GRAPHICS_FORMAT.md`](docs/research/GRAPHICS_FORMAT.md) records
-that measurement rather than an aspiration.
-
-TOOLKIT-022 adds explicit named placement clones to projects, production-codec
-serialization and proposed capacity requests. ROM materialization remains blocked
-by the placement-run ownership contract, including with synthetic free space;
-canonical Buu also has zero verified capacity. See
-[`AUTHORED_PLACEMENTS.md`](docs/research/AUTHORED_PLACEMENTS.md) for commands,
-the precise blocker and the distinction between representation and materialization.
-
-Not implemented: materializing newly authored assets (AUTHOR_NEW), free-space
-discovery, ROM expansion, relocation beyond the verified path, map tilesets and
-every other graphics family, audio, gameplay, engine patches, a GUI, Tiled
-integration, or remake content. Enemy-to-graphics linkage was probed across all
-141 enemy records and has no static path.
-
-See `docs/PROJECT_<local-state-name>` for the current verified baseline and
-`docs/PROJECT_<local-state-name>` for the next bounded research task.
+Nontrivial code-bearing changes require independent review of the actual diff,
+surrounding code, tests, architecture, and evidence before closure. Substantial
+changes should use a feature branch and GitLab merge request through the
+authenticated `glab` workflow. See the [review gate](docs/DEVELOPMENT.md) and reusable
+[review template](docs/REVIEW.md).

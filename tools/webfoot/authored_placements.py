@@ -890,6 +890,157 @@ def materialize_authored_runs(document, runs, image):
     return changes
 
 
+def materialize_for_build(project, maps, document_factory):
+    """Every authored byte change a build must emit, and the maps that yield to it.
+
+    ARCH-REFACTOR-001. This is the orchestration policy that joins the steps this
+    module already owns. It lived in the build driver, which meant the driver had
+    to know that authored materialization has a failure gate at all; the sequencing
+    is domain knowledge and belongs with the domain.
+
+    Four decisions live here and nowhere else:
+
+      1. a missing reference document REPORTS the ownership contract rather than
+         failing on its own terms, because "no graph for this profile" is a fact
+         about the profile and the gate is what states it with measured context;
+      2. a `LayoutError` out of materialization is re-raised THROUGH that same gate,
+         so the blocker carries its full measured context instead of surfacing as a
+         bare allocator or overlay error;
+      3. the authored map identities are derived here, because the caller has to
+         tell `Maps.changes` which maps yield their MapEntry and array to this
+         expansion, and that set is a property of the runs;
+      4. runs that exist against no loaded maps still reach the gate, so an
+         authored project can never be silently dropped.
+
+    `document_factory` is injected rather than imported: the reference graph is the
+    build driver's to supply, and taking it as a callable keeps this function from
+    reaching back into the driver it was extracted from.
+
+    Returns `(authored_changes, authored_map_identities)`. Merge-plan ORDERING is
+    deliberately not decided here - where the changes join the merged plan is the
+    coordinator's call, and it keeps it.
+    """
+    authored_runs = prepare_authored_runs(project, maps)
+    authored_changes = []
+    authored_map_identities = frozenset(MapIdentity(run.map_index) for run in authored_runs)
+    if authored_runs and maps is not None:
+        document = document_factory(maps)
+        if document is None:
+            require_materialization_contract(authored_runs, maps.base_bytes, None)
+        else:
+            try:
+                authored_changes = materialize_authored_runs(
+                    document, authored_runs, maps.base_bytes)
+            except LayoutError:
+                # Re-raise through the gate so the blocker is reported with its full
+                # measured context instead of a bare allocator or overlay error.
+                require_materialization_contract(authored_runs, maps.base_bytes, document)
+                raise
+    elif authored_runs:
+        require_materialization_contract(authored_runs, None, None)
+    return authored_changes, authored_map_identities
+
+
+@dataclass(frozen=True, slots=True)
+class AuthoredPlacementPolicy:
+    """Domain-owned continuation of authored-placement validation.
+
+    The build driver reconciles generic map records against ``map_view`` and
+    hands each matching placement back here.  Whether a structural comparison
+    applies, which descriptor catalog supplies it, and the terminal authored-run
+    preparation check remain private placement-domain decisions.
+    """
+
+    project: object
+    map_view: object
+    _legacy: bool
+    _relationships_bound: bool
+    _relationships: object
+
+    def placement_problems(self, item, live_placement):
+        """Validate domain-owned structure for one reconciled placement."""
+        # Preserve the baseline unsupported structured/non-CONTRACTS path exactly.
+        # In the original `_check_maps`, `relationships` was bound only by the
+        # CONTRACTS branch and its later structural read raised UnboundLocalError.
+        if self._relationships_bound:
+            relationships = self._relationships
+        if self._legacy:
+            return []
+        expected_structure = {
+            'descriptor': relationships.descriptor_of(live_placement.identity).identity,
+            'child_count': live_placement.record.child_count,
+            'child_pointers_raw': list(live_placement.record.child_pointers_raw),
+            'record_size': live_placement.record.consumed_length,
+        }
+        if any(item.get(k) != v for k, v in expected_structure.items()):
+            return [f'{live_placement.identity}: structural placement fields differ from base']
+        return []
+
+    def final_problems(self):
+        """Surface anything authored-run preparation refuses as a problem."""
+        try:
+            prepare_authored_runs(self.project, self.map_view)
+        except (ValueError, KeyError) as exc:
+            return [str(exc)]
+        return []
+
+
+def check_authored_placement_policy(project, maps):
+    """Validate the authored-placement catalogs a project carries against its base.
+
+    ARCH-REFACTOR-001. Extracted whole from `build._check_maps`, whose remaining
+    job is pure project-vs-ROM reconciliation. What moved is everything that
+    reasons about authored placement STRUCTURE rather than about map records:
+    the structured/legacy determination, the `legacy_view()` fallback, the
+    descriptor/event catalog comparison, the placement-type catalog comparison,
+    and the terminal `prepare_authored_runs` validation.
+
+    Returns `(problems, policy)`. The policy supplies the possibly substituted map
+    view and owns every remaining placement-domain decision, so `_check_maps` does
+    not branch on legacy state or handle the relationship catalog itself.
+
+    A structured project against a profile without contract support still reports
+    the baseline problem and, if record reconciliation reaches the structural
+    comparison, still raises the baseline `UnboundLocalError`. This ticket extracts
+    policy; repairing that pre-existing path is a separate decision.
+    """
+    from .data.placement_contracts import CONTRACTS
+    problems = []
+    relationships = None
+    relationships_bound = False
+    structured = any('descriptor' in p for m in project.maps.values()
+                     for p in m.get('placements', []))
+    legacy = project.placement_events is None and not structured
+    if maps is not None and maps.profile.id in CONTRACTS:
+        from .placement_events import PlacementEvents
+        from .entities import PlacementTypes
+        relationships = PlacementEvents(maps)
+        relationships_bound = True
+        if not legacy:
+            expected_events = relationships.project_document()
+            expected_events['reference_graph'] = PlacementTypes(maps).reference_document().to_compact_json()
+            if project.placement_events != expected_events:
+                problems.append('placement descriptor/event catalog differs from verified base; editing unsupported')
+        else:
+            maps = maps.legacy_view()
+    elif project.placement_events is not None or structured:
+        problems.append('placement descriptor/event data requires verified profile support')
+    if project.placement_types is not None:
+        from .entities import PlacementTypes, PlacementTypeError
+        import json
+        if maps is None:
+            problems.append("placement type catalog requires verified map/type support")
+        else:
+            try:
+                expected = PlacementTypes(maps).project_document()
+                if json.dumps(project.placement_types, sort_keys=True) != json.dumps(expected, sort_keys=True):
+                    problems.append("placement type catalog differs from verified base; type reassignment is unsupported")
+            except (PlacementTypeError, TypeError, ValueError) as exc:
+                problems.append(f"invalid placement type catalog: {exc}")
+    return problems, AuthoredPlacementPolicy(
+        project, maps, legacy, relationships_bound, relationships)
+
+
 def require_materialization_contract(runs, image=None, document=None):
     """Fail at the exact remaining ownership boundary, before allocation/writes.
 

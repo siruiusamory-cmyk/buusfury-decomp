@@ -61,7 +61,6 @@ from .maps import (
     load_maps,
 )
 from .formats.map_entry import MapEntryProfileError
-from .layout import LayoutError
 from .write import (
     ByteChange,
     ProjectProvenance,
@@ -556,36 +555,12 @@ def _check_maps(project: StatProject, maps: Maps | None) -> list[str]:
     Every problem is reported before anything is emitted, which is the
     fail-closed ordering ticket TOOLKIT-007 sec 18 requires.
     """
-    problems: list[str] = []
-    from .data.placement_contracts import CONTRACTS
-    structured = any('descriptor' in p for m in project.maps.values() for p in m.get('placements', []))
-    legacy = project.placement_events is None and not structured
-    if maps is not None and maps.profile.id in CONTRACTS:
-        from .placement_events import PlacementEvents
-        from .entities import PlacementTypes
-        relationships = PlacementEvents(maps)
-        if not legacy:
-            import json
-            expected_events = relationships.project_document()
-            expected_events['reference_graph'] = PlacementTypes(maps).reference_document().to_compact_json()
-            if project.placement_events != expected_events:
-                problems.append('placement descriptor/event catalog differs from verified base; editing unsupported')
-        else:
-            maps = maps.legacy_view()
-    elif project.placement_events is not None or structured:
-        problems.append('placement descriptor/event data requires verified profile support')
-    if project.placement_types is not None:
-        from .entities import PlacementTypes, PlacementTypeError
-        import json
-        if maps is None:
-            problems.append("placement type catalog requires verified map/type support")
-        else:
-            try:
-                expected = PlacementTypes(maps).project_document()
-                if json.dumps(project.placement_types, sort_keys=True) != json.dumps(expected, sort_keys=True):
-                    problems.append("placement type catalog differs from verified base; type reassignment is unsupported")
-            except (PlacementTypeError, TypeError, ValueError) as exc:
-                problems.append(f"invalid placement type catalog: {exc}")
+    # ARCH-REFACTOR-001: the placement domain supplies its validation context and
+    # possibly substituted map view. This function only reconciles generic map
+    # records; structural policy and final authored-run checks stay behind it.
+    from .authored_placements import check_authored_placement_policy
+    problems, authored_policy = check_authored_placement_policy(project, maps)
+    maps = authored_policy.map_view
     if not project.maps:
         return problems
     if maps is None:
@@ -671,15 +646,7 @@ def _check_maps(project: StatProject, maps: Maps | None) -> list[str]:
                         "match this ROM; the record was extracted from a "
                         "different image"
                     )
-                if not legacy:
-                    expected_structure = {
-                        'descriptor': relationships.descriptor_of(live_placement.identity).identity,
-                        'child_count': live_placement.record.child_count,
-                        'child_pointers_raw': list(live_placement.record.child_pointers_raw),
-                        'record_size': live_placement.record.consumed_length,
-                    }
-                    if any(item.get(k) != v for k, v in expected_structure.items()):
-                        problems.append(f'{live_placement.identity}: structural placement fields differ from base')
+                problems += authored_policy.placement_problems(item, live_placement)
                 for half in ("position_low", "position_high"):
                     if not 0 <= item[half] <= 0xFFFF:
                         problems.append(
@@ -699,11 +666,7 @@ def _check_maps(project: StatProject, maps: Maps | None) -> list[str]:
                 )
 
     if not problems:
-        from .authored_placements import prepare_authored_runs
-        try:
-            prepare_authored_runs(project, maps)
-        except (ValueError, KeyError) as exc:
-            problems.append(str(exc))
+        problems += authored_policy.final_problems()
     return problems
 
 
@@ -872,37 +835,14 @@ def build_project(
             + ("; ..." if len(problems) > 5 else "")
         )
 
-    from .authored_placements import (materialize_authored_runs, prepare_authored_runs,
-                                      require_materialization_contract)
-    authored_runs = prepare_authored_runs(project, maps)
-    # TOOLKIT-025: the image is passed so an authored expansion derives and validates
-    # its `MapEntry+0x04` count change against the bytes actually being built, rather
-    # than against the model alone. A stale model fails closed instead of writing.
-    # TOOLKIT-026: the document is passed so the gate REPORTS the array anchor's
-    # measured relocation eligibility instead of asserting it, and names the exact
-    # anchors the graph is still missing.
-    # TOOLKIT-028: capacity is now declared, so materialization SUCCEEDS and its
-    # changes join the single merged plan below rather than being planned and
-    # discarded. `require_materialization_contract` still runs whenever the
-    # materialization cannot be produced, so every existing refusal keeps its exact
-    # message and no path silently emits a partial expansion.
-    authored_changes = []
-    authored_map_identities = frozenset(MapIdentity(run.map_index) for run in authored_runs)
-    if authored_runs and maps is not None:
-        document = _placement_document(maps)
-        if document is None:
-            require_materialization_contract(authored_runs, maps.base_bytes, None)
-        else:
-            try:
-                authored_changes = materialize_authored_runs(
-                    document, authored_runs, maps.base_bytes)
-            except LayoutError:
-                # Re-raise through the gate so the blocker is reported with its full
-                # measured context instead of a bare allocator or overlay error.
-                require_materialization_contract(authored_runs, maps.base_bytes, document)
-                raise
-    elif authored_runs:
-        require_materialization_contract(authored_runs, None, None)
+    # ARCH-REFACTOR-001: the sequencing that joins the authored-materialization
+    # steps is owned by `authored_placements`, which owns every step. This driver
+    # supplies the reference graph and receives the result; it no longer encodes
+    # what a missing document means, how a LayoutError is reported, or which maps
+    # must yield their canonical structures to an authored expansion.
+    from .authored_placements import materialize_for_build
+    authored_changes, authored_map_identities = materialize_for_build(
+        project, maps, _placement_document)
 
     # One plan for every subsystem, not one plan each. Overlap detection is
     # per-plan, so two plans could each validate while together writing the

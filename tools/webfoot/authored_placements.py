@@ -16,6 +16,7 @@ from .allocation import AllocationRequest
 from .formats.map_entry import MAP_ENTRY_SIZE
 from .layout import AnchorId, LayoutError
 from .maps import MapIdentity, PlacementIdentity
+from .project.placements import BehaviorTrigger
 
 
 @dataclass(frozen=True, slots=True)
@@ -36,6 +37,10 @@ class PlannedPlacement:
     #: record declares a behavior whose descriptor AND script this build creates.
     #: None when the behavior names an existing canonical descriptor, or none at all.
     script_body: bytes | None = None
+    #: TOOLKIT-034. Semantic gameplay condition whose evidence contract was
+    #: validated against this record's canonical template type, or None for the
+    #: legacy dispatch relationship whose exact meaning remains UNKNOWN.
+    trigger: BehaviorTrigger | None = None
 
     @property
     def behavior_is_authored(self):
@@ -80,11 +85,56 @@ class PlannedPlacement:
                                 body_is_authored=True)
             else:
                 document["attached_descriptor"] = f"0x{self.descriptor_pointer_raw:08X}"
+        if self.trigger is not None:
+            document["trigger"] = self.trigger.value
         return document
 
 
 class AuthoredBehaviorError(LayoutError):
     """A declared behavior cannot be resolved to a verified descriptor."""
+
+
+class AuthoredTriggerError(LayoutError):
+    """A trigger lacks the exact profile/type evidence required to name it."""
+
+
+def _require_trigger_contract(clone, maps, source_id, placement_types=None):
+    """Validate one semantic trigger without inventing a ROM-side trigger field.
+
+    `on_defeat` is proven only for one stable placement-type identity. The type
+    is resolved from the clone's canonical template through `PlacementTypes`,
+    and its enemy-stat link is independently required so neither a copied
+    selector nor a broad "enemy-like" guess can satisfy the contract.
+    """
+    if clone.trigger is None:
+        return placement_types
+    from .data.behavior_triggers import BEHAVIOR_TRIGGER_CONTRACTS
+    from .entities import PlacementTypes
+
+    profile_contract = BEHAVIOR_TRIGGER_CONTRACTS.get(maps.profile.id)
+    if (profile_contract is None or
+            profile_contract.get("sha256") != maps.identification.hashes.sha256):
+        raise AuthoredTriggerError(
+            f"{clone.identity}: trigger {clone.trigger.value} has no evidence contract "
+            f"for verified profile {maps.profile.id}")
+    contract = profile_contract.get(clone.trigger.value)
+    if contract is None:
+        raise AuthoredTriggerError(
+            f"{clone.identity}: trigger {clone.trigger.value} is unsupported for "
+            f"verified profile {maps.profile.id}")
+    placement_types = placement_types or PlacementTypes(maps)
+    item = placement_types.type_of(source_id)
+    if str(item.identity) != contract["placement_type"]:
+        raise AuthoredTriggerError(
+            f"{clone.identity}: trigger {clone.trigger.value} requires canonical "
+            f"template type {contract['placement_type']}; {clone.clone_from} resolves "
+            f"to {item.identity}")
+    if (item.enemy_identity is None or item.original_bytes is None or
+            item.classification != contract["required_classification"]):
+        raise AuthoredTriggerError(
+            f"{clone.identity}: trigger {clone.trigger.value} requires a canonical "
+            "template with a CONFIRMED enemy-stat link")
+    return placement_types
 
 
 def _resolve_behavior(clone, maps):
@@ -338,6 +388,7 @@ def prepare_authored_runs(project, maps):
     from .project.placements import validate_templates
     validate_templates(project.maps)
     runs = []
+    placement_types = None
     for index, values in sorted(project.maps.items()):
         additions = values.get("authored_placements", ())
         if not additions:
@@ -365,6 +416,8 @@ def prepare_authored_runs(project, maps):
             source_id = PlacementIdentity(int(parts[0].split(":")[1]), int(parts[1].split(":")[1]))
             source = maps.placement(source_id)
             template = PlacementRecord.from_bytes(source.original_bytes)
+            placement_types = _require_trigger_contract(
+                clone, maps, source_id, placement_types)
             pointer = _resolve_behavior(clone, maps)
             script = _assemble_script(clone, maps) if clone.authored_behavior else None
             records.append(PlannedPlacement(clone.identity, clone.provenance, clone.clone_from,
@@ -372,7 +425,8 @@ def prepare_authored_runs(project, maps):
                                            behavior=clone.behavior,
                                            inherited_descriptor_raw=template.descriptor_pointer_raw,
                                            descriptor_pointer_raw=pointer or template.descriptor_pointer_raw,
-                                           script_body=script))
+                                           script_body=script,
+                                           trigger=clone.trigger))
         runs.append(AuthoredRun(index, tuple(records), len(canonical),
                                 canonical_slots=slots,
                                 map_entry_offset=entry.file_offset,

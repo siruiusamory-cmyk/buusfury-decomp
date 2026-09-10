@@ -874,3 +874,114 @@ def test_toolkit033_observer_is_read_only_discriminating_and_allowlisted():
     assert "negative" in probe
     assert "emu:write" not in probe
     assert "emu:addKey" not in probe and "emu:clearKey" not in probe
+
+
+def test_toolkit034_dispatch_observer_is_bounded_read_only_and_allowlisted():
+    """The caller capture must preserve attribution rather than guessing a trigger.
+
+    It is an observer only: neither input nor emulated memory may be modified.
+    The complete register and bounded stack snapshot make the indirect callsite
+    decodable from a captured authored trampoline entry.
+    """
+    root = Path(__file__).resolve().parents[2]
+    probe = (root / "tools/runtime/toolkit034_dispatch_caller_watch.lua").read_text(
+        encoding="utf-8"
+    )
+    injector = (root / "tools/runtime/inject_mgba_lua.ps1").read_text(
+        encoding="utf-8"
+    )
+
+    assert "toolkit034_dispatch_caller_watch.lua" in injector
+    assert "TOOLKIT031_OUT" in probe
+    assert "0x0800421E" in probe
+    assert "0x08004038" in probe
+    assert "NATIVE_STACK_BREAKPOINT = 0x08003CBE" in probe
+    assert "NATIVE_STACK_HANDLER_ENTRY = 0x08003CC0" in probe
+    assert "TEXT_HANDLER = 0x08003030" in probe
+    assert "0x0800F866" in probe
+    assert "0x08018950" in probe
+    assert "0x08011A38" in probe
+    assert "0x08011A3E" in probe
+    assert "0x08011A5A" in probe
+    assert "0x087EA420" in probe and "0x087EA428" in probe
+    assert "AUTHORED_NATIVE_CURSOR = 0x087EA431" in probe
+    assert "NATIVE_SLOT_178 = 178" in probe
+    assert "EXPECT_TEXT = 1525" in probe
+    assert "EXPECT_X = 120" in probe and "EXPECT_Y = 105" in probe
+    assert "0x080555A0" in probe
+    assert "CANONICAL_CONTROL_MAP = 40" in probe
+    assert "map_index == CANONICAL_CONTROL_MAP" in probe
+    assert "game_code == \"BG3E\"" in probe
+    assert "emu:romSize() == 8388608" in probe
+    assert "requires the mGBA 0.11 scripted-breakpoint API" in probe
+    assert "STACK_WINDOW_BYTES = 0x40" in probe
+    assert '"pc", "lr", "sp", "r0", "r1", "r2", "r3", "r4", "r5", "r6", "r7"' in probe
+    assert "stack_3c" in probe
+    assert "f62c_saved_r4" in probe
+    assert "f62c_saved_r5" in probe
+    assert "f62c_saved_r6" in probe
+    assert "f62c_saved_r7" in probe
+    assert "f62c_caller_lr" in probe
+    assert "safe32(sp + 0xDC)" in probe
+    assert "safe32(sp + 0xEC)" in probe
+    assert "assign behavior or trigger semantics to the caller" in probe
+    assert "AUTHORED-DESCRIPTOR-PAYLOAD" in probe
+    assert "AUTHORED-ACTOR" in probe
+    assert "AUTHORED-EVENT-OBJECT" in probe
+    assert "0x03001980" in probe
+    assert "0x03003304" in probe
+    assert "actor + 0x228" in probe
+    assert "actor + 0x1A0" in probe and "actor + 0x1A4" in probe
+    assert "actor + 0x28C" in probe
+    assert "actor_hp_raw" in probe
+    assert "actor_context(registers.r1)" in probe
+    assert '"DEATH-CALLBACK"' in probe
+    assert '"AUTHORED-ACTOR-DEATH"' in probe
+    assert '"CANONICAL-NULL-ACTOR-DEATH"' in probe
+    assert "runtime-confirmed death callback entry" in probe
+    assert "frames ~= last_authored_trampoline_frame" in probe
+    assert "frames ~= last_authored_script_frame" in probe
+    assert "cursor == AUTHORED_NATIVE_CURSOR" in probe
+    assert "slot == NATIVE_SLOT_178" in probe
+    assert '"NATIVE-OPCODE"' in probe
+    assert '"AUTHORED-NATIVE-SLOT-178"' in probe
+    assert '"NATIVE-HANDLER"' in probe
+    assert '"AUTHORED-NATIVE-178-EXPECTED-ARGS"' in probe
+    assert "depth and depth >= 3" in probe
+    assert "a0 == EXPECT_TEXT" in probe
+    assert "a1 == EXPECT_X and a2 == EXPECT_Y" in probe
+    assert "script_cursor" in probe and "native_slot_raw" in probe
+    assert "vm_depth_raw" in probe
+    assert "vm_arg0_raw" in probe and "vm_arg1_raw" in probe
+    assert "vm_arg2_raw" in probe
+    assert "emu:screenshot" in probe
+    assert "object + 0x1C" in probe
+    assert "event_object_register" in probe
+    assert "event_word_00" in probe
+    assert "event_word_04_raw" in probe
+    assert "safe32(object + 0x04)" in probe
+    assert "semantics UNKNOWN" in probe
+    assert "MAX_FRAMES = 216000" in probe
+    assert "emu:write" not in probe
+    assert "emu:setKeys" not in probe
+    assert "emu:addKeys" not in probe
+    assert "emu:clearKeys" not in probe
+
+
+def test_toolkit031_finisher_counts_toolkit034_row_kinds_as_live_channels():
+    """A TOOLKIT-034 capture must not be falsely summarised as a blind zero.
+
+    The established finisher remains compatible with historical EXEC/INTERP
+    CSVs while recognising the new observer's code-site row names.
+    """
+    root = Path(__file__).resolve().parents[2]
+    finisher = (root / "tools/runtime/finish_toolkit031_session.ps1").read_text(
+        encoding="utf-8"
+    )
+
+    assert "@('EXEC', 'TRAMPOLINE')" in finisher
+    assert "@('INTERP', 'INTERPRETER')" in finisher
+    assert "EXECUTION OBSERVED - descriptors reaching the trampoline:" in finisher
+    assert "$historicalExec | Group-Object descriptor_kind, descriptor" in finisher
+    assert "$callerExec | Group-Object attribution, r0, payload" in finisher
+    assert "TOOLKIT-034 caller snapshots (attribution, descriptor, payload):" in finisher

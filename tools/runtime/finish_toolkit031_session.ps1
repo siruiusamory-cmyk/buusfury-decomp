@@ -48,9 +48,15 @@ if (-not (Test-Path -LiteralPath $csv)) {
 }
 
 $rows = @(Import-Csv -LiteralPath $csv)
-$exec = @($rows | Where-Object { $_.kind -eq 'EXEC' })
-$interp = @($rows | Where-Object { $_.kind -eq 'INTERP' })
+# Historical TOOLKIT-031 rows are EXEC/INTERP. TOOLKIT-034 keeps the same
+# observer contract but names its evidence rows after the sampled code site.
+# Treat both spellings as their same channels so a live new observer cannot be
+# summarised as a zero-hit, liveness-unproven run.
+$exec = @($rows | Where-Object { $_.kind -in @('EXEC', 'TRAMPOLINE') })
+$interp = @($rows | Where-Object { $_.kind -in @('INTERP', 'INTERPRETER') })
 $struct = @($rows | Where-Object { $_.kind -eq 'STRUCT' })
+$historicalExec = @($exec | Where-Object { $_.kind -eq 'EXEC' })
+$callerExec = @($exec | Where-Object { $_.kind -eq 'TRAMPOLINE' })
 $maps = @($rows | Where-Object { $_.map_index } | Select-Object -ExpandProperty map_index -Unique | Sort-Object)
 $lastFrame = if ($rows.Count) { ($rows | Select-Object -Last 1).frame } else { 0 }
 
@@ -66,8 +72,17 @@ Write-Output ''
 
 if ($exec.Count -gt 0) {
     Write-Output 'EXECUTION OBSERVED - descriptors reaching the trampoline:'
-    $exec | Group-Object descriptor_kind, descriptor |
+    # Preserve the historical descriptor grouping for EXEC rows. TOOLKIT-034
+    # deliberately records the equivalent values under attribution/r0/payload,
+    # so presenting it through descriptor_kind/descriptor would create blank
+    # groups and hide the caller evidence.
+    $historicalExec | Group-Object descriptor_kind, descriptor |
         ForEach-Object { Write-Output ("  {0}  x{1}" -f $_.Name, $_.Count) }
+    if ($callerExec.Count -gt 0) {
+        Write-Output 'TOOLKIT-034 caller snapshots (attribution, descriptor, payload):'
+        $callerExec | Group-Object attribution, r0, payload |
+            ForEach-Object { Write-Output ("  {0}  x{1}" -f $_.Name, $_.Count) }
+    }
 } elseif ($interp.Count -gt 0) {
     # This is the case the liveness channel exists to distinguish: scripts DID
     # run, so the instrument sees execution, and the placement-descriptor path

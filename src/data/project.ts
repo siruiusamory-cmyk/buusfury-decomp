@@ -77,7 +77,7 @@ export const project: ProjectStatus = {
   subtitle: "Legacy of Goku authoring toolkit",
   tagline: "Building a real authoring toolkit for the Legacy of Goku engine.",
   description:
-    "The SDK can create new entities and behavior that the original engine accepts, runs, and visibly renders. The current frontier is controlling when that authored behavior runs.",
+    "The SDK can create new entities and behavior that the original engine accepts, runs, and visibly renders on a deliberate gameplay trigger. The current frontier is combining those pieces into a complete authored scene.",
   overallProgress: 85,
   overallProgressLabel: "≈ 85% COMPLETE",
   progressCaveat:
@@ -85,15 +85,15 @@ export const project: ProjectStatus = {
   currentPhase: "AUTHOR_NEW",
   currentFrontierLabel: "CURRENT FRONTIER",
   existingContentState: "MATURE",
-  blockerCode: "BEHAVIOR TRIGGER",
-  blockerTitle: "Control when authored behavior runs",
+  blockerCode: "COMPLETE SCENE",
+  blockerTitle: "Build a complete authored scene",
   blockerShort:
-    "The SDK can now invoke a known engine action from newly authored behavior and intentionally render visible text in the original game. The remaining measured limit is timing: the script still runs through an inherited, intermittent trigger whose schedule the SDK does not author.",
+    "The SDK can now author an entity, give it new behavior, and have that behavior run at a deliberate gameplay moment the author chooses. The remaining measured limit is scale: each of those pieces has been proven one at a time, not composed into a single authored scene.",
   blockerParagraphs: [
-    "A newly authored entity now carries a newly authored script that calls one narrowly proven native engine action. The SDK expresses that action semantically as centred sprite text, then assembles the verified Buu VM instructions and arguments through its production codec.",
-    "At runtime the original engine followed the authored descriptor to the authored script, executed the native-call opcode, reached handler 178 with the intended text and coordinates, and visibly rendered MATCH 2 FIGHT! at the intentionally authored screen position.",
-    "The controls discriminate the effect. Replaying the exact canonical tournament arguments rendered the banner at the canonical position. The same authored entity and literal setup with the native invocation removed still ran its script but displayed no banner.",
-    "The remaining limit is the trigger. The effect is intentional, but the entity still inherits a gameplay-driven trigger whose timing is intermittent and whose meaning is unknown. The next authoring step is a deterministic SDK-authored trigger or schedule — not a broader census of engine actions.",
+    "An author now declares a trigger alongside a behavior, and the engine honours it. Defeating the newly authored enemy ran the authored script and rendered the intended banner; the whole chain from the death callback to the visible effect completed inside eight frames.",
+    "The negative control is what gives the trigger its meaning, and it sits in the same capture as the positive one. For about 7,400 frames the instrument sampled the authored enemy 124 times and recorded it present and alive every time, and across all of that it recorded no authored behavior start at all. One of those samples, at frame 8820, caught the enemy damaged but still alive, and still nothing authored ran. Defeating it started the behavior. A separate canonical control confirmed the same instrument detects a known kill, so that silence is real evidence rather than a dead channel.",
+    "The trigger is deliberately narrow. It is proven for one enemy template on one verified game revision, and it is planning information rather than a new binary field: the engine relationship remains the ordinary placement descriptor pointer the SDK already writes.",
+    "The next step is composition. Entities, behavior, visible effects and triggers each work in isolation; a real Legacy of Goku scene needs them combined, along with dialogue and progression, in one authored build.",
   ],
   acceptanceTarget:
     "Author playable Legacy of Goku content inside the real LOGII/Buu engine.",
@@ -227,16 +227,16 @@ export const project: ProjectStatus = {
       id: "behavior-trigger",
       title: "Control when authored behavior runs",
       plainEnglish:
-        "Give authored behavior a deterministic trigger or schedule instead of inheriting intermittent timing.",
+        "Newly authored behavior can now be tied to a deliberate, repeatable gameplay trigger instead of relying on an uncontrolled engine dispatch.",
       technical:
-        "The visible effect is authored, but its gameplay-driven trigger remains inherited and its timing and meaning are unknown.",
-      status: "current",
+        "Confirmed. An author declares a trigger alongside the behavior, and the engine ran the authored script only when the player satisfied it. One capture holds both halves. For about 7,400 frames the authored enemy was sampled 124 times and found present and alive every time, and nothing authored ran; one sample at frame 8820 caught it damaged but still alive, and nothing authored ran then either. Defeating that same enemy produced the whole chain inside eight frames: the death callback carrying the authored actor at zero HP, the authored descriptor, the authored script, native slot 178 with the intended arguments, then the visible banner. The chain reproduced from a separate load, and a canonical control run confirmed the same instrument detects a known kill.",
+      status: "complete",
     },
     {
       id: "complete-scene",
       title: "Build a complete authored scene",
       plainEnglish: "Combine new entities, behavior, dialogue, and progression into a real Legacy of Goku scene.",
-      status: "next",
+      status: "current",
     },
     {
       id: "playable-log1",
@@ -257,10 +257,19 @@ export const project: ProjectStatus = {
     { label: "ATTACHED BEHAVIOR EXECUTES", state: "done" },
     { label: "AUTHORED SCRIPT EXECUTES", state: "done" },
     { label: "GAMEPLAY-EFFECT ACTION", state: "done" },
-    { label: "AUTHORED BEHAVIOR TRIGGER", state: "current", marker: "↑ YOU ARE HERE" },
+    { label: "AUTHORED BEHAVIOR TRIGGER", state: "done" },
+    { label: "COMPLETE AUTHORED SCENE", state: "current", marker: "↑ YOU ARE HERE" },
     { label: "PLAYABLE LOG1 CONTENT", state: "target" },
   ],
   breakthroughs: [
+    {
+      id: "first-controlled-authored-event",
+      title: "First controlled authored gameplay event",
+      summary:
+        "Webfoot SDK tied newly authored behavior to a deliberate gameplay condition and the original Buu's Fury engine executed it on command.",
+      technical:
+        "Defeating the authored enemy ran the authored script within eight frames: the death callback carried the authored actor at zero HP, the authored descriptor reached the authored script, native slot 178 received text 1525 at X=120, Y=105, and the banner appeared. In the same capture, leaving that enemy alive produced no dispatch and no banner across 124 samples that each confirmed it was still there and still alive, so the negative result is a measured absence rather than a silent instrument. A canonical kill in a separate run proved the death channel detects a known event.",
+    },
     {
       id: "first-visible-authored-behavior",
       title: "First visible authored behavior",

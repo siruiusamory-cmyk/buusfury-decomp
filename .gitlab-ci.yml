@@ -24,8 +24,11 @@ test-sdk:
       python -m pytest tests/unit -q
       --deselect tests/unit/test_workflow_migration.py::test_runner_dry_run_works_from_an_unrelated_directory
   rules:
+    # Run on merge requests, and on branch pushes that have no open merge
+    # request. The second condition suppresses the duplicate branch pipeline
+    # that would otherwise run alongside every merge-request pipeline.
     - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
-    - if: '$CI_COMMIT_BRANCH'
+    - if: '$CI_COMMIT_BRANCH && $CI_OPEN_MERGE_REQUESTS == null'
 
 deploy-site:
   stage: deploy

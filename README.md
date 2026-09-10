@@ -130,8 +130,23 @@ revisions without independent evidence.
 
 This repository does not provide commercial ROMs, BIOS images, saves, states,
 memory dumps, or extracted proprietary game assets. Supply only game images you
-are legally entitled to use. No license has yet been selected for the project
-code; do not assume redistribution rights until that release decision is made.
+are legally entitled to use.
+
+## License
+
+The Webfoot SDK and the other original code in this repository are licensed
+under the [Mozilla Public License 2.0](LICENSE). MPL-2.0 is a file-level
+copyleft: modifications to these files stay open, while a larger work that
+merely uses the SDK does not inherit the license. Commercial use is permitted.
+
+Third-party material keeps its own license, which the root license does not
+override. See [`THIRD-PARTY-NOTICES.md`](THIRD-PARTY-NOTICES.md) for the full
+notices. In particular:
+
+- `tools/webfoot/formats/webfoot_lz.py` derives its bit grammar from the
+  MIT-licensed `spicybung/DragonByteZ`.
+- `tools/mgba_probe/mgba-0.10.5-log1-read-probe.patch` modifies MPL-2.0-covered
+  mGBA source; those files remain governed by mGBA's own license and copyright.
 
 ## Testing
 

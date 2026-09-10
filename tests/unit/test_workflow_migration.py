@@ -103,6 +103,20 @@ def test_state_continuation_is_reachable_from_the_primary_state_file():
     assert "PROJECT_<local-state-name>" in part2
     assert "PROJECT_<local-state-name>" in part3
 
+    # The primary file must name the newest part directly, not only via the
+    # chain. Following four hops to find current state is how a reader ends up
+    # acting on a stale baseline, which is exactly what the pre-public audit
+    # found: the primary file stopped at part 3 while part 4 held the newest
+    # record.
+    parts = sorted(
+        PROJECT_ROOT.glob("docs/PROJECT_STATE_[0-9]*.md"),
+        key=lambda path: int(path.stem.rsplit("_", 1)[1]),
+    )
+    newest = parts[-1].name
+    assert newest in state, (
+        f"docs/PROJECT_<local-state-name> must point readers at {newest}, the newest part"
+    )
+
 
 def test_context_split_keeps_permanent_state_and_ticket_content_separate():
     agents = (PROJECT_ROOT / "<local-state-name>").read_text(encoding="utf-8")

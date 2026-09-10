@@ -46,6 +46,17 @@ htmlcov/
 # Local workflow-hook state
 <tool-state>/
 
+# Private agent/session workflow residue. These are local working notes, not
+# project history, and must never reach the public repository.
+/<working-notes>.md
+/<workflow-state>/
+/<working-notes>/
+
+# local tool runtime state
+<tool-state>/goals/
+<tool-state>/workflow-steps/
+<tool-state>/workflow-locks/
+
 # Superseded one-off workflow migration prompt
 /<working-notes>.txt
 

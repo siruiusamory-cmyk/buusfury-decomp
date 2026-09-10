@@ -1,7 +1,13 @@
 -- Deterministic ROM-006 bootstrap for mGBA 0.10.5.
 -- Output is local and ignored; no ROM or emulated-memory writes are performed.
 
-local output_root = "C:/Dev/log1-remake/build/rom006"
+-- Output root follows the established runtime convention (`os.getenv` override
+-- with a default), rather than a developer-specific absolute path. The default
+-- is repository-relative and resolves against mGBA's working directory, which
+-- `load_mgba_lua.ps1` inherits from its caller; run it from the repository root,
+-- or set `ROM006_OUT` to an absolute path. The launcher independently validates
+-- that the saved state lands directly beneath `build\rom006`.
+local output_root = os.getenv("ROM006_OUT") or "build/rom006"
 local output_state = output_root .. "/bootstrap.mss"
 local output_screen = output_root .. "/bootstrap.png"
 

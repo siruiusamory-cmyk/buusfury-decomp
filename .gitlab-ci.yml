@@ -1,10 +1,35 @@
-image: node:22
-
 stages:
+  - test
   - deploy
+
+# Portable SDK validation. The shipping product is `tools/webfoot/`, and its
+# unit suite is synthetic-fixture only: no commercial ROM is required, and the
+# ROM-gated integration tests are not collected here at all.
+#
+# One unit test invokes PowerShell to validate the Windows-only contributor
+# helper `scripts/run-current.ps1`. That is contributor-workflow validation, not
+# shipping SDK validation, and it cannot pass on a Linux runner, so it is
+# deselected here rather than weakened. It still runs in the full local suite.
+test-sdk:
+  stage: test
+  image: python:3.12-slim
+  variables:
+    # Do not inherit the deployment credential into a test job.
+    CLOUDFLARE_API_TOKEN: ""
+  before_script:
+    - python -m pip install --quiet --upgrade pip
+    - python -m pip install --quiet -e ".[dev]"
+  script:
+    - >
+      python -m pytest tests/unit -q
+      --deselect tests/unit/test_workflow_migration.py::test_runner_dry_run_works_from_an_unrelated_directory
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
+    - if: '$CI_COMMIT_BRANCH'
 
 deploy-site:
   stage: deploy
+  image: node:22
   variables:
     SITE_URL: "https://webfoot-sdk.siruiusamory.workers.dev"
     BASE_PATH: "/"

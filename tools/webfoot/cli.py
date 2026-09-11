@@ -232,6 +232,64 @@ def build_parser() -> argparse.ArgumentParser:
         help="report the graphics referencing this palette index",
     )
 
+    # ROM-ATLAS-001. Queries against the assembled atlas JSONL, never the ROM:
+    # this block opens no image, so it is self-contained like `graphics` and
+    # cannot change how any ROM-loading command behaves.
+    atlas_parser = subparsers.add_parser(
+        "atlas", help="query the assembled structural atlas; reads no ROM"
+    )
+    atlas_parser.add_argument(
+        "--atlas", type=Path, default=None,
+        help="atlas JSONL (default: build/atlas/atlas.jsonl)",
+    )
+    atlas_commands = atlas_parser.add_subparsers(dest="atlas_command", required=True)
+
+    atlas_build_cmd = atlas_commands.add_parser(
+        "build", help="assemble the evidence artifacts into atlas.jsonl"
+    )
+    atlas_build_cmd.add_argument(
+        "--artifacts", type=Path, default=None,
+        help="artifact directory (default: build/atlas)",
+    )
+
+    atlas_addr = atlas_commands.add_parser(
+        "addr", help="coverage, objects and observations at one offset"
+    )
+    atlas_addr.add_argument("offset", help="file offset or GBA address; 0x... or decimal")
+
+    atlas_refs_to = atlas_commands.add_parser("refs-to", help="inbound references")
+    atlas_refs_to.add_argument("offset")
+    atlas_refs_to.add_argument("--size", type=int, default=1,
+                               help="treat the offset as a range of this many bytes")
+    atlas_refs_to.add_argument("--limit", type=int, default=40)
+
+    atlas_refs_from = atlas_commands.add_parser("refs-from", help="outbound references")
+    atlas_refs_from.add_argument("offset")
+    atlas_refs_from.add_argument("--size", type=int, default=1)
+    atlas_refs_from.add_argument("--limit", type=int, default=40)
+
+    atlas_range = atlas_commands.add_parser("range", help="everything intersecting a range")
+    atlas_range.add_argument("start")
+    atlas_range.add_argument("end")
+    atlas_range.add_argument("--limit", type=int, default=40)
+
+    atlas_unknown = atlas_commands.add_parser(
+        "unknown", help="unclassified coverage, largest first"
+    )
+    atlas_unknown.add_argument("--largest", type=int, default=20)
+
+    atlas_objects = atlas_commands.add_parser("objects", help="located structures")
+    atlas_objects.add_argument("--kind", default=None)
+    atlas_objects.add_argument("--limit", type=int, default=40)
+
+    atlas_text = atlas_commands.add_parser(
+        "text", help="phrase search over the located text-run prefixes"
+    )
+    atlas_text.add_argument("phrase")
+    atlas_text.add_argument("--limit", type=int, default=40)
+
+    atlas_commands.add_parser("summary", help="coverage statistics and confidence distribution")
+
     subparsers.add_parser("relocation-proof", help="validate synthetic relocation and print JSON; no ROM I/O")
     identify = subparsers.add_parser("identify", help="hash and identify a local GBA ROM")
     identify.add_argument("rom", type=Path)
@@ -1218,6 +1276,124 @@ def _parse_graphic_identity(value: str):
     return GraphicIdentity(profile_id, int(digits))
 
 
+def _default_atlas_directory() -> Path:
+    return Path(__file__).resolve().parents[2] / "build" / "atlas"
+
+
+def _run_atlas(args) -> int:
+    """ROM-ATLAS-001 queries. Reads the assembled JSONL only; never a ROM."""
+    from .atlas import (Atlas, AtlasError, AtlasReference, addr as atlas_addr,
+                        in_range, objects_of_kind, refs_from, refs_to, unknowns)
+    from .atlas_build import (AtlasBuildError, build_atlas, coverage_statistics,
+                              load_atlas, parse_offset, write_atlas)
+    from .binary import FileOffset
+    from .layout import RomRange
+
+    default_directory = _default_atlas_directory()
+    atlas_path = args.atlas if args.atlas is not None else default_directory / "atlas.jsonl"
+
+    try:
+        if args.atlas_command == "build":
+            directory = args.artifacts if args.artifacts is not None else default_directory
+            report = build_atlas(directory)
+            write_atlas(report, atlas_path)
+            print(json.dumps({
+                "atlas": str(atlas_path),
+                "artifact_rows": dict(report.rows_read),
+                "conflicts": len(report.conflicts),
+                **coverage_statistics(report.atlas),
+            }, indent=2, sort_keys=True))
+            return 0
+
+        atlas = load_atlas(atlas_path)
+
+        def reference_json(reference) -> dict:
+            return {"source_file_offset": f"0x{reference.source.value:06X}",
+                    "target_file_offset": f"0x{reference.target.value:06X}"
+                    if isinstance(reference, AtlasReference) else str(reference.target),
+                    "confidence": getattr(reference, "confidence",
+                                          getattr(reference, "classification", None)).value}
+
+        def span_json(span) -> dict:
+            return {"file_offset": f"0x{span.range.start.value:06X}",
+                    "size": span.range.size, "classification": span.classification,
+                    "confidence": span.confidence.value,
+                    "evidence": span.provenance.evidence}
+
+        def object_json(object) -> dict:
+            return {"identity": object.identity,
+                    "file_offset": f"0x{object.range.start.value:06X}",
+                    "size": object.range.size, "kind": object.kind,
+                    "confidence": object.confidence.value,
+                    "attributes": dict(object.attributes)}
+
+        def observation_json(observation) -> dict:
+            return {"file_offset": f"0x{observation.range.start.value:06X}",
+                    "size": observation.range.size, "kind": observation.kind,
+                    "detail": observation.detail,
+                    "confidence": observation.confidence.value}
+
+        command = args.atlas_command
+        if command == "summary":
+            result = coverage_statistics(atlas)
+        elif command == "unknown":
+            result = [span_json(s) for s in unknowns(atlas, limit=args.largest)]
+        elif command == "objects":
+            found = (atlas.objects if args.kind is None
+                     else objects_of_kind(atlas, args.kind))
+            result = {"matched": len(found),
+                      "objects": [object_json(o) for o in
+                                  sorted(found, key=lambda o: o.range.start.value)
+                                  [:args.limit]]}
+        elif command == "text":
+            # The scanner truncates each prefix at 40 characters, so this
+            # searches the located prefixes rather than the full corpus.
+            needle = args.phrase.lower()
+            hits = [o for o in atlas.observations
+                    if o.kind.startswith("text-run-") and needle in o.detail.lower()]
+            result = {"searched": "located text-run prefixes only; scan_text.jsonl "
+                                  "truncates each prefix at 40 characters, so a phrase "
+                                  "longer than 40 characters cannot match",
+                      "matched": len(hits),
+                      "runs": [observation_json(o) for o in
+                               sorted(hits, key=lambda o: o.range.start.value)[:args.limit]]}
+        elif command == "addr":
+            offset, how = parse_offset(args.offset)
+            found = atlas_addr(atlas, FileOffset(offset))
+            result = {"interpretation": how,
+                      "coverage": span_json(found["coverage"]),
+                      "objects": [object_json(o) for o in found["objects"]],
+                      "observations": [observation_json(o) for o in found["observations"]]}
+        elif command in ("refs-to", "refs-from"):
+            offset, how = parse_offset(args.offset)
+            wanted = RomRange(FileOffset(offset), max(1, args.size))
+            edges = (refs_to(atlas, wanted) if command == "refs-to"
+                     else refs_from(atlas, wanted))
+            result = {"interpretation": how, "matched": len(edges),
+                      "references": [reference_json(r) for r in edges[:args.limit]]}
+        else:
+            start, start_how = parse_offset(args.start)
+            end, end_how = parse_offset(args.end)
+            if end <= start:
+                raise AtlasBuildError("range end must be greater than its start")
+            found = in_range(atlas, RomRange(FileOffset(start), end - start))
+            result = {"interpretation": [start_how, end_how],
+                      "coverage": [span_json(s) for s in found["coverage"]],
+                      "objects": [object_json(o) for o in found["objects"][:args.limit]],
+                      "object_count": len(found["objects"]),
+                      "reference_count": len(found["references"]),
+                      "references": [reference_json(r) for r in
+                                     found["references"][:args.limit]],
+                      "observation_count": len(found["observations"]),
+                      "observations": [observation_json(o) for o in
+                                       found["observations"][:args.limit]]}
+        print(json.dumps(result, indent=2, sort_keys=True))
+        return 0
+    except (AtlasError, AtlasBuildError, LayoutError, ValueError, OSError) as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 2
+
+
 def _run_graphics(args) -> int:
     """TOOLKIT-010 inspection commands.
 
@@ -1477,6 +1653,9 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.command == "graphics":
         return _run_graphics(args)
+
+    if args.command == "atlas":
+        return _run_atlas(args)
 
     if args.command == "relocation-proof":
         from .relocation_proof import synthetic_relocation_proof

@@ -257,8 +257,25 @@ def _paint(claims: Sequence[Claim]) -> tuple[list[CoverageSpan], list[Conflict]]
                     and held[0] != classification
                     and held[1] is not Confidence.UNKNOWN):
                 held_rank = _SPECIFICITY.get(held[2], 0)
-                winner, loser = ((incoming, held) if incoming_rank > held_rank
-                                 else (held, incoming))
+                # Freedom is the one claim an equal-strength rival always wins
+                # against: a region is only free if NOTHING occupies it, so a
+                # claim naming content is evidence the free claim is stale.
+                # Prior tickets have authored into the proven-free window, and
+                # without this the free claim wins on start address alone and
+                # the atlas reports occupied bytes as available.
+                # Freedom is the one claim an equal-strength rival always wins
+                # against: a region is only free if NOTHING occupies it, so a
+                # claim naming content is evidence the free claim is stale.
+                # Prior tickets have authored into the proven-free window, and
+                # without this the free claim wins on start address alone and
+                # the atlas reports occupied bytes as available.
+                if held[0] == VERIFIED_FREE and classification != VERIFIED_FREE:
+                    winner, loser = incoming, held
+                elif classification == VERIFIED_FREE and held[0] != VERIFIED_FREE:
+                    winner, loser = held, incoming
+                else:
+                    winner, loser = ((incoming, held) if incoming_rank > held_rank
+                                     else (held, incoming))
                 conflicts.append(Conflict(cursor, run, winner[0], winner[2],
                                           loser[0], loser[2], confidence.value))
                 owners[cursor:run] = array("H", [intern(winner)]) * (run - cursor)
@@ -460,6 +477,30 @@ def write_atlas(report: BuildReport, path: Path) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     with path.open("w", encoding="utf-8", newline="") as handle:
         handle.writelines(report.atlas.to_jsonl_lines())
+    write_conflicts(report, path.with_name("atlas_conflicts.jsonl"))
+
+
+def write_conflicts(report: BuildReport, path: Path) -> None:
+    """Serialize the losing side of every equal-strength disagreement.
+
+    The atlas records one classification per byte, so a conflict's loser has
+    nowhere to live in the coverage layer. Counting them and discarding the
+    detail would make "recorded, not silently resolved" untrue, so the pairs
+    are written beside the atlas for a later ticket to arbitrate.
+    """
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("w", encoding="utf-8", newline="") as handle:
+        for conflict in sorted(report.conflicts, key=lambda c: (c.start, c.end)):
+            handle.write(json.dumps({
+                "file_offset": conflict.start,
+                "size": conflict.end - conflict.start,
+                "gba_address": f"0x{GBA_ROM_BASE + conflict.start:08X}",
+                "confidence": conflict.confidence,
+                "kept": conflict.kept,
+                "kept_evidence": conflict.kept_evidence,
+                "dropped": conflict.dropped,
+                "dropped_evidence": conflict.dropped_evidence,
+            }, sort_keys=True, separators=(",", ":")) + "\n")
 
 
 def load_atlas(path: Path) -> Atlas:

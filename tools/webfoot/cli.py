@@ -1292,6 +1292,14 @@ def _run_atlas(args) -> int:
     default_directory = _default_atlas_directory()
     atlas_path = args.atlas if args.atlas is not None else default_directory / "atlas.jsonl"
 
+    # A negative limit would slice from the end and quietly hide the first rows
+    # rather than the last, so it is refused instead of reinterpreted.
+    for name in ("limit", "largest"):
+        bound = getattr(args, name, None)
+        if bound is not None and bound < 0:
+            print(f"--{name} must not be negative", file=sys.stderr)
+            return 2
+
     try:
         if args.atlas_command == "build":
             directory = args.artifacts if args.artifacts is not None else default_directory

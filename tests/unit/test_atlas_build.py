@@ -200,6 +200,35 @@ def test_only_the_proven_window_is_verified_free(report):
         (ab.VERIFIED_FREE_OFFSET, ab.VERIFIED_FREE_SIZE)]
 
 
+def test_authored_content_beats_the_free_window_it_sits_in(tmp_path):
+    """Two equally trusted seeds, one naming content inside the free window.
+
+    This is the real shape: prior tickets authored into the proven-free region,
+    so the free claim is stale for those bytes. Resolving it by provenance rank
+    cannot work, because both rows carry the same pass evidence; without the
+    explicit rule the free claim wins on start address alone and the atlas
+    reports occupied bytes as available.
+    """
+    occupied_at = ab.VERIFIED_FREE_OFFSET + 0x34
+    seeds = [
+        {"file_offset": ab.VERIFIED_FREE_OFFSET, "size": ab.VERIFIED_FREE_SIZE,
+         "kind": "free_region", "identity": "free_region.toolkit028",
+         "confidence": "CONFIRMED", "source": "synthetic:free",
+         "evidence": "synthetic", "notes": ""},
+        {"file_offset": occupied_at, "size": 20, "kind": "placement_data",
+         "identity": "fixture.authored_array", "confidence": "CONFIRMED",
+         "source": "synthetic:authored", "evidence": "synthetic", "notes": ""},
+    ]
+
+    report = ab.build_atlas(_artifacts(tmp_path, seed_knowledge=seeds))
+
+    span = report.atlas.coverage.at(FileOffset(occupied_at))
+    assert span.classification == "placement_data"
+    free = sum(s.range.size for s in report.atlas.coverage.spans
+               if s.classification == VERIFIED_FREE)
+    assert free == ab.VERIFIED_FREE_SIZE - 20
+
+
 def test_an_unproven_free_region_seed_is_refused(tmp_path):
     seeds = [{"file_offset": 0x5000, "size": 0x100, "kind": "free_region",
               "identity": "fixture.claimed_free", "confidence": "CONFIRMED",

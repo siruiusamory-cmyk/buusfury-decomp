@@ -561,7 +561,10 @@ def in_range(atlas: Atlas, range: RomRange) -> dict:
     return {
         "coverage": atlas.coverage.overlapping(range),
         "objects": tuple(o for o in atlas.objects if o.range.overlaps(range)),
-        "references": refs_from(atlas, range) + refs_to(atlas, range),
+        # A reference both sourced and targeted inside the range satisfies both
+        # queries, so concatenating them would report it twice.
+        "references": tuple(dict.fromkeys(refs_from(atlas, range)
+                                          + refs_to(atlas, range))),
         "observations": tuple(o for o in atlas.observations if o.range.overlaps(range)),
     }
 

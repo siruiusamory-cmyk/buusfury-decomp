@@ -186,11 +186,26 @@ def test_scene_message_is_authored_inside_the_existing_text_allocation(
 
 
 def test_over_long_scene_message_is_refused_before_any_output(tmp_path, catalog):
-    """A scene message that does not fit fails closed rather than truncating."""
-    root = _author_scene(tmp_path, catalog, text="SCENE 035 COMPLETE!")
+    """A scene message with nowhere to go fails closed rather than truncating.
+
+    TOOLKIT-036 changed what "over-long" means here. When this test was written,
+    exceeding text 1525's 30-byte body was the end of the matter: there was no
+    relocation, so "SCENE 035 COMPLETE!" was refused for being 40 bytes. That is
+    now the ordinary supported case - the SDK relocates it into declared verified
+    free space - and asserting a refusal for it would be asserting the absence of
+    the feature this branch adds.
+
+    The property the test was actually protecting is untouched and is what it
+    asserts now: text that CANNOT be stored, because no declared free space is
+    large enough once the scene's own placement, descriptor and script have taken
+    their share, is refused at validation, before any output exists. Truncation
+    is still never an outcome.
+    """
+    root = _author_scene(tmp_path, catalog, text="X" * 400)
     report = validate_project(root, LOCAL_ROM, catalog)
     assert not report.passed
-    assert any("too long" in problem for problem in report.problems)
+    assert any("too long" in problem for problem in report.problems), report.problems
+    assert not list(tmp_path.glob("*.gba"))
 
 
 def test_scene_fits_the_verified_region_with_measured_remaining_capacity(scene):

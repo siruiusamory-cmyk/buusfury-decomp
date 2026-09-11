@@ -840,9 +840,21 @@ def build_project(
     # supplies the reference graph and receives the result; it no longer encodes
     # what a missing document means, how a LayoutError is reported, or which maps
     # must yield their canonical structures to an authored expansion.
+    #
+    # TOOLKIT-036: this is also where the build-scoped RESERVATION SET starts. Two
+    # allocating domains - authored placements and relocated text - draw from the
+    # same profile-declared free regions, and each used to derive its reserved set
+    # from its own reference document alone, so neither could see the other's
+    # allocations. They met only in the merged `plan_changes` below, which detects
+    # an overlap but cannot prevent one. The coordinator now carries one set of
+    # allocated spans forward in its EXISTING domain order - placements here, text
+    # at its existing `strings.changes()` position - so every completed allocation
+    # is visible to every later allocating domain. No new priority policy: the
+    # order is the one this function already had.
     from .authored_placements import materialize_for_build
-    authored_changes, authored_map_identities = materialize_for_build(
-        project, maps, _placement_document)
+    reserved: tuple = ()
+    authored_changes, authored_map_identities, reserved = materialize_for_build(
+        project, maps, _placement_document, reserved)
 
     # One plan for every subsystem, not one plan each. Overlap detection is
     # per-plan, so two plans could each validate while together writing the
@@ -859,7 +871,12 @@ def build_project(
         changes += tables.changes()
         base_bytes = tables.base_bytes
     if strings is not None:
+        # The second allocating domain. It plans against the declared free regions
+        # minus everything the first one took, so its bodies cannot be handed bytes
+        # that are already spoken for. Its own allocations extend the set in turn.
+        strings.reserve(reserved)
         changes += strings.changes()
+        reserved += strings.allocated_spans()
         base_bytes = strings.base_bytes if base_bytes is None else base_bytes
     if maps is not None:
         _apply_project_to_maps(project, maps)

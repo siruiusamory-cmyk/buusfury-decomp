@@ -48,6 +48,18 @@ POOL_SIZE = POOL_END - POOL_START
 EDIT_TEXT = "New Game"
 EDIT_REPLACEMENT = "Old Game"
 
+#: TOOLKIT-036. Longer than any declared free region can hold, so it is refused
+#: for want of STORAGE rather than for want of permission.
+#:
+#: Before TOOLKIT-036, merely exceeding a string's own body was enough to be
+#: refused, and these tests used a modestly longer name to prove it. Growth is
+#: now the supported path - the SDK relocates such a string into declared
+#: verified free space - so a modestly longer name no longer proves anything
+#: about failing closed. What still needs proving is that text which genuinely
+#: cannot be stored is refused before any output exists, and that is what a
+#: string larger than the whole declared region establishes.
+UNSTORABLE_TEXT = "A Very Much Longer Replacement Name" * 40
+
 
 def _rom_path() -> str:
     matches = glob.glob(os.path.join("roms", "*Buu*.gba"))
@@ -93,11 +105,13 @@ def test_the_profile_declares_the_verified_text_layout(catalog: RomProfileCatalo
     assert layout.count == ENTRY_COUNT
     assert layout.pool_size == POOL_SIZE
     assert layout.encoding == "utf16le_nul_terminated"
-    # Text growth is blocked by the POOL's own flag, which is a declared profile
+    # Text growth is gated by the TABLE's own flag, which is a declared profile
     # field and not a consequence of capacity. TOOLKIT-028 declared a verified
-    # free region for this profile, and that deliberately did NOT unblock text:
-    # relocating the pool needs its own evidence, which no ticket has supplied.
-    assert layout.relocatable is False
+    # free region for this profile and deliberately did NOT unblock text, because
+    # capacity is necessary for relocation but never sufficient. TOOLKIT-036
+    # supplied the missing half - measured per-entry ownership - and declares the
+    # flag for this table. The flag is still what authorises the table at all.
+    assert layout.relocatable is True
 
 
 def test_the_pointer_table_tiles_the_pool_exhaustively(image: bytes):
@@ -338,28 +352,30 @@ def test_a_shorter_edit_pads_deterministically_and_stays_in_its_allocation(
 def test_an_edit_that_would_not_fit_is_refused_with_the_exact_deficit(strings):
     entry, = strings.find(EDIT_TEXT)
     with pytest.raises(TextTooLongError, match="bytes too long"):
-        strings.set_text(entry.identity, "A Very Much Longer Replacement Name")
+        strings.set_text(entry.identity, UNSTORABLE_TEXT)
 
 
-def test_canonical_growth_stays_blocked_because_the_pool_is_not_relocatable(strings):
+def test_canonical_growth_is_authorised_by_the_table_flag_and_bounded_by_capacity(
+        strings):
     """The capability boundary, asserted rather than only documented.
 
-    Longer text is refused for this ROM because the pool is not declared
-    relocatable - not because the machinery is missing. The machinery is proved
-    in `tests/unit/test_text_relocation.py`.
+    Longer text was once refused for this ROM because the table was not declared
+    relocatable. TOOLKIT-028 declared a verified free region and deliberately did
+    NOT unblock text, because capacity is necessary for relocation but never
+    sufficient; the table's own evidence was what was missing. TOOLKIT-036
+    supplied it - measured per-entry ownership - and declares the flag here.
 
-    TOOLKIT-028 declared a verified free region for this profile, which makes the
-    old "no free space exists" form of this assertion false. That declaration
-    deliberately did NOT unblock text: capacity is necessary for relocation but
-    never sufficient, and the pool's own evidence is what is still missing. This
-    now pins that separation, so a future capacity declaration cannot silently
-    become permission to move the text pool.
+    The separation that pinning existed to protect is unchanged, and is what this
+    asserts now: the FLAG authorises the table, and CAPACITY still bounds what can
+    actually be stored. Growth within the declared region succeeds; growth beyond
+    anything the region can hold is still refused, so a declared flag cannot
+    silently become permission to write bytes that do not exist.
     """
     assert strings.profile.free_regions != ()
-    assert strings.layout.relocatable is False
+    assert strings.layout.relocatable is True
     entry, = strings.find(EDIT_TEXT)
     with pytest.raises(TextTooLongError, match="bytes too long"):
-        strings.set_text(entry.identity, "A Very Much Longer Replacement Name")
+        strings.set_text(entry.identity, UNSTORABLE_TEXT)
 
 
 def test_a_malformed_control_token_is_refused_before_any_plan(strings):
@@ -480,7 +496,7 @@ def test_an_over_long_authored_string_fails_before_any_output_exists(
     path = tmp_path / "p" / "text" / "strings.toml"
     path.write_text(
         path.read_text(encoding="utf-8").replace(
-            f'text = "{EDIT_TEXT}"', 'text = "A Very Much Longer Replacement Name"'
+            f'text = "{EDIT_TEXT}"', f'text = "{UNSTORABLE_TEXT}"'
         ),
         encoding="utf-8",
         newline="\n",
@@ -590,7 +606,7 @@ def test_cli_text_set_refuses_over_long_text_and_writes_nothing(
                 "set",
                 rom,
                 "text:10",
-                "A Very Much Longer Replacement Name",
+                UNSTORABLE_TEXT,
                 "--output",
                 str(output_path),
             ]

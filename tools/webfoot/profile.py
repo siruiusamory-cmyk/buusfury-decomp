@@ -109,13 +109,14 @@ class TextTableProfile:
     encoding is named rather than assumed, so a profile whose text this codec
     cannot read is refused instead of being decoded with the wrong reader.
 
-    `relocatable` is a property of the *pool*, and it is False for every profile
-    shipped today. TOOLKIT-028 declared a verified free region for canonical Buu,
-    so that is no longer because capacity is absent: capacity is necessary for
-    relocation but never sufficient, and moving the pool needs its own evidence
-    that no ticket has supplied. Declaring the flag True without free space still
-    cannot move anything - the allocator refuses - so it records intent, never
-    permission.
+    `relocatable` authorises relocation of this table's ENTRIES, not of the pool
+    as a whole: no ticket has supplied evidence for moving a pool, and nothing
+    reads this flag as permission to. TOOLKIT-036 set it True for canonical Buu,
+    whose 1,534 pointers resolve to 1,534 distinct in-pool targets, and False
+    stays correct for Legacy of Goku II, whose table aliases. It remains
+    necessary and never sufficient: `webfoot.text` proves each entry's ownership
+    from the measured image before publishing its anchor as movable, and the
+    allocator still refuses a profile that declares no free space.
     """
 
     pointer_table_address: GbaRomAddress

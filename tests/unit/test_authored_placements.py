@@ -298,16 +298,16 @@ def test_body_and_expanded_array_never_share_bytes(project, types):
 
 def test_withhold_only_ever_subtracts_capacity(types):
     """The relocation profile is the declared regions minus taken spans, never more."""
-    from tools.webfoot.authored_placements import _withhold
+    from tools.webfoot.allocation import withhold
     regions = (FreeRegion(RomRange(FileOffset(0x1000), 0x100), "declared"),)
     # A span carved from the middle splits the region in two, total size shrinks.
-    out = _withhold(regions, (RomRange(FileOffset(0x1040), 0x20),))
+    out = withhold(regions, (RomRange(FileOffset(0x1040), 0x20),))
     assert [(r.range.start.value, r.range.size) for r in out] == [(0x1000, 0x40), (0x1060, 0xA0)]
     assert sum(r.range.size for r in out) == 0x100 - 0x20
     # A span covering the whole region removes it entirely.
-    assert _withhold(regions, (RomRange(FileOffset(0x1000), 0x100),)) == ()
+    assert withhold(regions, (RomRange(FileOffset(0x1000), 0x100),)) == ()
     # A disjoint span changes nothing.
-    assert _withhold(regions, (RomRange(FileOffset(0x2000), 8),)) == regions
+    assert withhold(regions, (RomRange(FileOffset(0x2000), 8),)) == regions
     assert all(r.evidence == "declared" for r in out)
 
 

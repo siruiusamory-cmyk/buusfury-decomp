@@ -577,34 +577,6 @@ class AuthoredBody:
         return document
 
 
-def _withhold(free_regions, taken):
-    """The same declared free regions, minus spans already spoken for.
-
-    Subtraction only. A region is split or trimmed around each taken span and is
-    never grown, merged or moved, so this can only ever offer LESS capacity than the
-    profile declared - it cannot manufacture space that was not already trusted.
-    """
-    from .layout import FreeRegion, RomRange
-    from .binary import FileOffset
-    result = []
-    for region in free_regions:
-        spans = [(region.range.start.value, region.range.end)]
-        for span in taken:
-            remaining = []
-            for start, end in spans:
-                if span.end <= start or span.start.value >= end:
-                    remaining.append((start, end))
-                    continue
-                if start < span.start.value:
-                    remaining.append((start, span.start.value))
-                if span.end < end:
-                    remaining.append((span.end, end))
-            spans = remaining
-        for start, end in spans:
-            result.append(FreeRegion(RomRange(FileOffset(start), end - start), region.evidence))
-    return tuple(result)
-
-
 def _bind_pointers(bodies, allocations, image_size):
     """Write each pointing body's allocated address into the field that reaches it.
 
@@ -649,7 +621,7 @@ def _bind_pointers(bodies, allocations, image_size):
     return tuple(_replace(b, payload=payloads[b.identity]) for b in bodies)
 
 
-def plan_authored_materialization(document, run):
+def plan_authored_materialization(document, run, reserved=()):
     """Allocate the expanded array AND one authored body, then wire the new slot.
 
     Uses production machinery end to end - `relocation.plan_relocation` for the
@@ -668,12 +640,24 @@ def plan_authored_materialization(document, run):
     The body allocation reserves the array's own destination too, so the two can
     never be handed the same bytes. Both requests are deterministic: `allocate`
     sorts by anchor identity and takes the lowest aligned first fit.
+
+    TOOLKIT-036. `reserved` is the build-scoped reservation set: spans already
+    allocated by an EARLIER allocating domain in this same build. They are withheld
+    from the declared free regions before anything here allocates, by exactly the
+    `withhold` subtraction this module already used internally, so a later domain
+    can never be handed bytes an earlier one took. Empty means "nothing allocated
+    before me", which is what a single-domain build passes.
     """
-    from .allocation import allocate
+    from .allocation import allocate, withhold
     from .binary import FileOffset
     from .layout import Anchor, OwnedRegion, Reference, ReferenceClass, ReferenceEncoding
     from .relocation import RelocationRequest, plan_relocation
     from .write import ByteChange
+
+    reserved = tuple(reserved)
+    if reserved:
+        document = replace(document, profile=replace(document.profile,
+            free_regions=withhold(document.profile.free_regions, reserved)))
 
     bodies = authoring_overlay(document, run)
     if not bodies:
@@ -709,8 +693,8 @@ def plan_authored_materialization(document, run):
     # withheld from the free regions handed to relocation. Nothing is invented - the
     # remaining regions are the same declarations, minus bytes now spoken for.
     staged = replace(document, profile=replace(document.profile,
-        free_regions=_withhold(document.profile.free_regions,
-                               tuple(allocations[b.identity].range for b in bodies))))
+        free_regions=withhold(document.profile.free_regions,
+                              tuple(allocations[b.identity].range for b in bodies))))
 
     # The expanded array: canonical pointers carried over verbatim, then the
     # authored bodies at their freshly allocated addresses.
@@ -808,7 +792,7 @@ class AuthoredMaterialization:
                 "expanded_slot_count": self.run.target_slot_count}
 
 
-def materialize_authored_runs(document, runs, image):
+def materialize_authored_runs(document, runs, image, reserved=()):
     """Every attributed byte change one or more authored runs require, in order.
 
     TOOLKIT-028: capacity is declared, so the plan `plan_authored_materialization`
@@ -835,12 +819,20 @@ def materialize_authored_runs(document, runs, image):
     is planned against the same verified base document, which is what `plan_relocation`
     requires; two runs competing for the same declared bytes therefore surface as an
     overlap error in the merged `plan_changes`, not as silent last-writer-wins.
+
+    TOOLKIT-036. `reserved` carries in the spans earlier allocating domains of this
+    build already took, and each run's own allocations are added to it before the next
+    run plans, so the reservation history is continuous across runs as well as across
+    domains. Returns `(changes, reserved)` - the same tuple, extended - so the
+    coordinator can hand it to the next domain.
     """
     from .write import ByteChange
 
+    reserved = tuple(reserved)
     changes = []
     for run in sorted(runs, key=lambda r: r.map_index):
-        plan = plan_authored_materialization(document, run)
+        plan = plan_authored_materialization(document, run, reserved)
+        reserved += tuple(a.range for a in plan.allocations)
         count = run.derive_count_change(image)
 
         entry_changes = []
@@ -887,10 +879,10 @@ def materialize_authored_runs(document, runs, image):
             changes.append(ByteChange(
                 base, old, bytes(new), f"map:{run.map_index:04d}",
                 "authored object-array expansion: relocated owner pointer and derived count"))
-    return changes
+    return changes, reserved
 
 
-def materialize_for_build(project, maps, document_factory):
+def materialize_for_build(project, maps, document_factory, reserved=()):
     """Every authored byte change a build must emit, and the maps that yield to it.
 
     ARCH-REFACTOR-001. This is the orchestration policy that joins the steps this
@@ -916,12 +908,18 @@ def materialize_for_build(project, maps, document_factory):
     build driver's to supply, and taking it as a callable keeps this function from
     reaching back into the driver it was extracted from.
 
-    Returns `(authored_changes, authored_map_identities)`. Merge-plan ORDERING is
-    deliberately not decided here - where the changes join the merged plan is the
-    coordinator's call, and it keeps it.
+    Returns `(authored_changes, authored_map_identities, reserved)`. Merge-plan
+    ORDERING is deliberately not decided here - where the changes join the merged
+    plan is the coordinator's call, and it keeps it.
+
+    TOOLKIT-036. `reserved` is the coordinator's build-scoped reservation set,
+    passed in and returned extended by every span this domain allocated. This domain
+    learns nothing about whoever allocated before or after it - it receives and
+    returns plain spans, which is the whole of the sharing.
     """
     authored_runs = prepare_authored_runs(project, maps)
     authored_changes = []
+    reserved = tuple(reserved)
     authored_map_identities = frozenset(MapIdentity(run.map_index) for run in authored_runs)
     if authored_runs and maps is not None:
         document = document_factory(maps)
@@ -929,8 +927,8 @@ def materialize_for_build(project, maps, document_factory):
             require_materialization_contract(authored_runs, maps.base_bytes, None)
         else:
             try:
-                authored_changes = materialize_authored_runs(
-                    document, authored_runs, maps.base_bytes)
+                authored_changes, reserved = materialize_authored_runs(
+                    document, authored_runs, maps.base_bytes, reserved)
             except LayoutError:
                 # Re-raise through the gate so the blocker is reported with its full
                 # measured context instead of a bare allocator or overlay error.
@@ -938,7 +936,7 @@ def materialize_for_build(project, maps, document_factory):
                 raise
     elif authored_runs:
         require_materialization_contract(authored_runs, None, None)
-    return authored_changes, authored_map_identities
+    return authored_changes, authored_map_identities, reserved
 
 
 @dataclass(frozen=True, slots=True)

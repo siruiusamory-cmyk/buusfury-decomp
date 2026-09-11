@@ -227,7 +227,15 @@ class FreeRegion:
 #: the engine reaches the array through exactly two fields (`MapEntry+0x14` for the
 #: base, `MapEntry+0x04` for the count) with no sentinel, terminator or suffix, so
 #: the array's whole inbound surface is expressible as references.
-RELOCATION_ELIGIBLE_KINDS = frozenset({"placement_reference_array"})
+#:
+#: TOOLKIT-036 added `text-string` on the same bar. A string body's whole inbound
+#: surface is its pointer-table slot: the engine reaches a string by index through
+#: that table and never by a direct pointer, and the canonical image was scanned
+#: word-aligned for every body address to confirm it. That scan is what makes the
+#: kind admissible, and `webfoot.text` still proves it PER ENTRY before publishing
+#: any anchor as relocatable - the five canonical bodies a second aligned word also
+#: names are refused by their measured inbound count.
+RELOCATION_ELIGIBLE_KINDS = frozenset({"placement_reference_array", "text-string"})
 
 
 def relocation_eligible(anchor: Anchor, references: Iterable[Reference]) -> bool:

@@ -103,9 +103,21 @@ def _read_jsonl(path: Path) -> list[dict]:
         return [json.loads(line) for line in handle if line.strip()]
 
 
+#: Delta artifacts, folded into the base artifact they extend. A later traversal
+#: pass emits only its new rows, so the base file stays the record of what that
+#: earlier pass alone established and the merge happens here.
+DELTAS = {"code_functions": ("code_functions_wave4",)}
+
+
 def load_artifacts(directory: Path) -> dict[str, list[dict]]:
     """Read exactly the named artifacts. Files another agent adds are ignored."""
-    return {name: _read_jsonl(directory / f"{name}.jsonl") for name in ARTIFACTS}
+    loaded = {name: _read_jsonl(directory / f"{name}.jsonl") for name in ARTIFACTS}
+    for base, deltas in DELTAS.items():
+        for delta in deltas:
+            path = directory / f"{delta}.jsonl"
+            if path.is_file():
+                loaded[base] = loaded[base] + _read_jsonl(path)
+    return loaded
 
 
 # --- Layer A: coverage -------------------------------------------------------

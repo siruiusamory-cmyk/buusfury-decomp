@@ -77,23 +77,24 @@ export const project: ProjectStatus = {
   subtitle: "Legacy of Goku authoring toolkit",
   tagline: "Building a real authoring toolkit for the Legacy of Goku engine.",
   description:
-    "The SDK can create new entities and behavior that the original engine accepts, runs, and visibly renders on a deliberate gameplay trigger. The current frontier is combining those pieces into a complete authored scene.",
-  overallProgress: 85,
-  overallProgressLabel: "≈ 85% COMPLETE",
+    "The SDK can compose a new entity, its behavior, a gameplay trigger and an author-written message into one complete scene that plays in the original engine. The current frontier is writing text of any length, rather than fitting it inside a line the game already has.",
+  overallProgress: 90,
+  overallProgressLabel: "≈ 90% COMPLETE",
   progressCaveat:
     "Progress is a directional project estimate. The milestones below are the authoritative measure of capability.",
   currentPhase: "AUTHOR_NEW",
   currentFrontierLabel: "CURRENT FRONTIER",
   existingContentState: "MATURE",
-  blockerCode: "COMPLETE SCENE",
-  blockerTitle: "Build a complete authored scene",
+  blockerCode: "AUTHORED TEXT",
+  blockerTitle: "Author text of any length",
   blockerShort:
-    "The SDK can now author an entity, give it new behavior, and have that behavior run at a deliberate gameplay moment the author chooses. The remaining measured limit is scale: each of those pieces has been proven one at a time, not composed into a single authored scene.",
+    "A complete authored scene now works end to end, including a message the author writes. The remaining measured limit is that message's size: the scene modifies existing text storage rather than creating new text, so a message can never be longer than the line it replaces.",
   blockerParagraphs: [
-    "An author now declares a trigger alongside a behavior, and the engine honours it. Defeating the newly authored enemy ran the authored script and rendered the intended banner; the whole chain from the death callback to the visible effect completed inside eight frames.",
-    "The negative control is what gives the trigger its meaning, and it sits in the same capture as the positive one. For about 7,400 frames the instrument sampled the authored enemy 124 times and recorded it present and alive every time, and across all of that it recorded no authored behavior start at all. One of those samples, at frame 8820, caught the enemy damaged but still alive, and still nothing authored ran. Defeating it started the behavior. A separate canonical control confirmed the same instrument detects a known kill, so that silence is real evidence rather than a dead channel.",
-    "The trigger is deliberately narrow. It is proven for one enemy template on one verified game revision, and it is planning information rather than a new binary field: the engine relationship remains the ordinary placement descriptor pointer the SDK already writes.",
-    "The next step is composition. Entities, behavior, visible effects and triggers each work in isolation; a real Legacy of Goku scene needs them combined, along with dialogue and progression, in one authored build.",
+    "The scene itself is done. A newly authored enemy, its own behavior and script, a defeat trigger, and an author-written message compose into one playable moment through the ordinary authoring steps, and the original engine runs it. Building the scene required no new SDK code at all, which is the clearest evidence yet that the authoring model holds together rather than being a row of separate proofs.",
+    "One distinction matters here, and it is worth stating plainly rather than leaving implied. The scene's message is MODIFIED EXISTING text, not newly allocated text: the SDK overwrites a line the game already ships with, in the exact bytes that line already occupies. The entity, its behavior and its script are genuinely new; the text is not. No new text was created, and none is claimed.",
+    "That existing slot holds 30 bytes, or fourteen characters, and the SDK refuses to build anything longer rather than quietly cutting it short — an attempt at a nineteen-character message failed with the exact shortfall named. Refusing is the correct behaviour, and it is also precisely the wall.",
+    "Real dialogue does not fit that constraint. Writing new lines freely means placing text somewhere it did not previously exist and updating the table that points at it, which the SDK does not yet do. What that costs is unmeasured: the space it would need, and which parts of the game share the text it would move.",
+    "Everything else the scene needs is already proven. This is the one prerequisite standing between a working technical scene and authored content someone would actually want to play.",
   ],
   acceptanceTarget:
     "Author playable Legacy of Goku content inside the real LOGII/Buu engine.",
@@ -235,7 +236,16 @@ export const project: ProjectStatus = {
     {
       id: "complete-scene",
       title: "Build a complete authored scene",
-      plainEnglish: "Combine new entities, behavior, dialogue, and progression into a real Legacy of Goku scene.",
+      plainEnglish: "Combine a new entity, its behavior, a gameplay trigger, and an author-written message into one playable moment.",
+      technical:
+        "Confirmed, and it needed no new SDK code: the scene is one authored record plus one line of text in the project. A newly authored enemy was placed on an existing map, given its own behavior and script, tied to defeat, and made to display a message the author wrote. In the running game nothing authored happened while the enemy was alive, across 37 samples that each confirmed it was still present — most of them with it untouched, and the last two with it damaged but still standing; the instrument was separately confirmed live inside that same window. Defeating it ran the authored script and displayed SCENE CLEAR! on screen, and the operator then defeated it a second time, which reproduced the chain exactly. The entity, behavior and script are newly authored; the message is MODIFIED EXISTING text, overwriting a line the game already ships with, and is bounded by that line's 30-byte storage. No new text was allocated.",
+      status: "complete",
+    },
+    {
+      id: "author-new-text",
+      title: "Author text of any length",
+      plainEnglish:
+        "Write new dialogue and messages freely, instead of fitting them inside the space an existing line already occupies.",
       status: "current",
     },
     {
@@ -258,10 +268,19 @@ export const project: ProjectStatus = {
     { label: "AUTHORED SCRIPT EXECUTES", state: "done" },
     { label: "GAMEPLAY-EFFECT ACTION", state: "done" },
     { label: "AUTHORED BEHAVIOR TRIGGER", state: "done" },
-    { label: "COMPLETE AUTHORED SCENE", state: "current", marker: "↑ YOU ARE HERE" },
+    { label: "COMPLETE AUTHORED SCENE", state: "done" },
+    { label: "UNBOUNDED AUTHORED TEXT", state: "current", marker: "↑ YOU ARE HERE" },
     { label: "PLAYABLE LOG1 CONTENT", state: "target" },
   ],
   breakthroughs: [
+    {
+      id: "first-complete-authored-scene",
+      title: "First complete authored gameplay scene",
+      summary:
+        "A mod project built with Webfoot SDK now produces a complete playable encounter: a new enemy appears in the original Buu's Fury engine, is fought normally, and on defeat displays a message its author wrote.",
+      technical:
+        "The whole scene is one authored record plus one line of text in the project, and it required no new SDK code — every piece was already reachable through the ordinary extract, edit, validate and build steps. In the running game the authored enemy ran nothing authored for as long as it was alive, across 37 confirming samples — untouched for most of them, then damaged but still standing for the last two — with the instrument separately confirmed live in the same window. Defeating it ran the authored script and rendered SCENE CLEAR! on screen; the operator defeated it a second time and the chain reproduced identically. Builds are byte-identical between runs and the original game file is never modified. The entity, behavior and script are newly authored; the message is MODIFIED EXISTING text, overwriting an existing line in the bytes that line already occupies, so no new text was allocated and its length is bounded by that slot.",
+    },
     {
       id: "first-controlled-authored-event",
       title: "First controlled authored gameplay event",

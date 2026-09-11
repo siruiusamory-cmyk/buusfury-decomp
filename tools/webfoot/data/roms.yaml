@@ -59,14 +59,23 @@ profiles:
         pool_size: 82874
         encoding: utf16le_nul_terminated
         alignment: 2
-        relocatable: false
+        relocatable: true
         evidence: >-
           TOOLKIT-004 verified against the canonical image: 1534 pointers,
           strictly ascending with no duplicate targets, whose strings tile
           0x0005792c..0x0006bce6 exhaustively with no gap or overlap. The pool
           base has exactly one inbound word-aligned reference in the whole ROM
-          (this table); the table base has 51. Relocatable is false because no
-          verified free region is declared for this profile.
+          (this table); the table base has 51. TOOLKIT-036 made relocatable true
+          for this table only: all 1534 pointers resolve inside the pool to 1534
+          distinct targets, so no body aliases, and a stride-4 census of every
+          word-aligned u32 in all 8388608 bytes attributes exactly one inbound
+          reference to 1529 of the 1534 bodies - each its own table slot. The
+          remaining five (indices 689, 818, 819, 856, 1342) carry a second
+          aligned word and are the coincidence candidates TEXT_FORMAT.md records;
+          they are refused per entry by that measured inbound count, never by a
+          list. Relocation is per ENTRY, not per pool: this flag authorises the
+          table, and webfoot.text still proves each body's ownership before
+          publishing its anchor as movable.
       scripts:
       - encoding: stack_be16_buu_v1
         family: static40

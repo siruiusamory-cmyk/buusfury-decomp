@@ -262,9 +262,16 @@ class TextEntry:
         return TEXT_TABLE_START + self.identity.index * TEXT_POINTER_SIZE
 
 
-def read_pointer(data: bytes, index: int) -> int:
-    """File offset the table's ``index`` entry points at."""
-    slot = TEXT_TABLE_START + index * TEXT_POINTER_SIZE
+def read_pointer(data: bytes, index: int, table_start: int = TEXT_TABLE_START) -> int:
+    """File offset the table's ``index`` entry points at.
+
+    ``table_start`` defaults to this profile's verified table base, which is what
+    every caller predating TOOLKIT-036 meant. A caller reading a table the ROM
+    profile locates - the enumerator in `webfoot.text` - passes that address
+    instead, so the codec reads the table it was actually pointed at rather than
+    the one constant this module happens to carry.
+    """
+    slot = table_start + index * TEXT_POINTER_SIZE
     if slot + TEXT_POINTER_SIZE > len(data):
         raise TextCodecError(f"pointer table entry {index} is out of bounds")
     address = int.from_bytes(data[slot : slot + TEXT_POINTER_SIZE], "little")

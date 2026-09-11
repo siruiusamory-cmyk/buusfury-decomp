@@ -85,11 +85,16 @@ def test_authored_map_identities_name_every_authoring_map(project, types):
         FreeRegion(RomRange(FileOffset(0x10000), 1024),
                    "synthetic verified capacity"),))
     document = replace(types.reference_document(), profile=capacity)
-    changes, identities = materialize_for_build(
+    changes, identities, reserved = materialize_for_build(
         read_project(project), types.maps, lambda maps: document)
     assert changes
     assert identities == frozenset({MapIdentity(0)})
     assert isinstance(identities, frozenset)
+    # TOOLKIT-036: the domain reports every span it allocated, so the coordinator
+    # can withhold them from whichever allocating domain runs next.
+    assert reserved
+    assert all(any(f.range.contains(span.start) for f in capacity.free_regions)
+               for span in reserved)
 
 
 def test_no_authored_runs_returns_empty_and_never_reaches_the_gate(project, types):
@@ -101,9 +106,11 @@ def test_no_authored_runs_returns_empty_and_never_reaches_the_gate(project, type
     def explode(maps):  # pragma: no cover - reaching this IS the failure
         raise AssertionError("no authored runs must never build a reference document")
 
-    changes, identities = materialize_for_build(read_project(project), types.maps, explode)
+    changes, identities, reserved = materialize_for_build(
+        read_project(project), types.maps, explode)
     assert changes == []
     assert identities == frozenset()
+    assert reserved == ()
 
 
 def test_runs_without_maps_still_reach_the_gate(project, types):

@@ -471,8 +471,15 @@ def test_one_candidate_reference_withdraws_eligibility():
 
 
 def test_unlisted_anchor_kinds_stay_fixed_however_clean_their_references():
-    """SC8: eligibility is scoped by proven kind, never granted generally."""
-    assert RELOCATION_ELIGIBLE_KINDS == frozenset({"placement_reference_array"})
+    """SC8: eligibility is scoped by proven kind, never granted generally.
+
+    Membership is asserted exactly, so a kind can only ever join it deliberately.
+    TOOLKIT-024 proved `placement_reference_array`; TOOLKIT-036 proved
+    `text-string`, whose whole inbound surface is its own pointer-table slot.
+    """
+    assert RELOCATION_ELIGIBLE_KINDS == frozenset(
+        {"placement_reference_array", "text-string"}
+    )
     owner = _ref(0x200)
     for kind in ("map_entry", "placement", "enemy_stat_record", "thumb_entry",
                  "placement_descriptor", "opaque-test"):

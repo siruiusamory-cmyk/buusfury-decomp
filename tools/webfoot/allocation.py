@@ -4,7 +4,8 @@ from dataclasses import dataclass
 from typing import Iterable
 
 from .binary import FileOffset
-from .layout import AnchorId, LayoutError, OwnedRegion, RomRange, check_alignment, require_name
+from .layout import (AnchorId, FreeRegion, LayoutError, OwnedRegion, RomRange,
+                     check_alignment, require_name)
 from .profile import RomProfile
 
 
@@ -38,6 +39,39 @@ class Allocation:
         return {"anchor": self.request.anchor.value, "owner": self.request.owner,
                 "range": self.range.to_json(), "alignment": self.request.alignment,
                 "free_region_evidence": self.free_region_evidence}
+
+
+def withhold(free_regions: Iterable[FreeRegion],
+             taken: Iterable[RomRange]) -> tuple[FreeRegion, ...]:
+    """The same declared free regions, minus spans already spoken for.
+
+    Subtraction only. A region is split or trimmed around each taken span and is
+    never grown, merged or moved, so this can only ever offer LESS capacity than the
+    profile declared - it cannot manufacture space that was not already trusted.
+
+    TOOLKIT-036 moved this out of `authored_placements`, where it was private. It
+    carries no domain semantics - it is span arithmetic over declared regions - and
+    it is the primitive a build-scoped reservation set is threaded with, so every
+    allocating domain subtracts what earlier domains already took the same way.
+    """
+    taken = tuple(taken)
+    result = []
+    for region in free_regions:
+        spans = [(region.range.start.value, region.range.end)]
+        for span in taken:
+            remaining = []
+            for start, end in spans:
+                if span.end <= start or span.start.value >= end:
+                    remaining.append((start, end))
+                    continue
+                if start < span.start.value:
+                    remaining.append((start, span.start.value))
+                if span.end < end:
+                    remaining.append((span.end, end))
+            spans = remaining
+        for start, end in spans:
+            result.append(FreeRegion(RomRange(FileOffset(start), end - start), region.evidence))
+    return tuple(result)
 
 
 def allocate(profile: RomProfile, requests: Iterable[AllocationRequest], *,

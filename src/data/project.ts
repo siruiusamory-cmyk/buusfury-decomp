@@ -77,7 +77,7 @@ export const project: ProjectStatus = {
   subtitle: "Legacy of Goku authoring toolkit",
   tagline: "Building a real authoring toolkit for the Legacy of Goku engine.",
   description:
-    "The SDK can compose a new entity, its behavior, a gameplay trigger and an author-written message into one complete scene that plays in the original engine. The current frontier is writing text of any length, rather than fitting it inside a line the game already has.",
+    "The SDK can compose a new entity, its behavior, a gameplay trigger and an author-written message into one complete scene that plays in the original engine, and that message is no longer limited to the size of the line it replaces. The current frontier is fitting a long line onto the screen the game draws it on.",
   overallProgress: 90,
   overallProgressLabel: "≈ 90% COMPLETE",
   progressCaveat:
@@ -85,16 +85,16 @@ export const project: ProjectStatus = {
   currentPhase: "AUTHOR_NEW",
   currentFrontierLabel: "CURRENT FRONTIER",
   existingContentState: "MATURE",
-  blockerCode: "AUTHORED TEXT",
-  blockerTitle: "Author text of any length",
+  blockerCode: "TEXT ON SCREEN",
+  blockerTitle: "Fit authored text to the screen",
   blockerShort:
-    "A complete authored scene now works end to end, including a message the author writes. The remaining measured limit is that message's size: the scene modifies existing text storage rather than creating new text, so a message can never be longer than the line it replaces.",
+    "An authored message is no longer limited by the size of the line it replaces — the SDK moves it into free space and repoints the game's text table automatically. The remaining measured limit is display: a long line runs past the edges of the screen when the game draws it.",
   blockerParagraphs: [
-    "The scene itself is done. A newly authored enemy, its own behavior and script, a defeat trigger, and an author-written message compose into one playable moment through the ordinary authoring steps, and the original engine runs it. Building the scene required no new SDK code at all, which is the clearest evidence yet that the authoring model holds together rather than being a row of separate proofs.",
-    "One distinction matters here, and it is worth stating plainly rather than leaving implied. The scene's message is MODIFIED EXISTING text, not newly allocated text: the SDK overwrites a line the game already ships with, in the exact bytes that line already occupies. The entity, its behavior and its script are genuinely new; the text is not. No new text was created, and none is claimed.",
-    "That existing slot holds 30 bytes, or fourteen characters, and the SDK refuses to build anything longer rather than quietly cutting it short — an attempt at a nineteen-character message failed with the exact shortfall named. Refusing is the correct behaviour, and it is also precisely the wall.",
-    "Real dialogue does not fit that constraint. Writing new lines freely means placing text somewhere it did not previously exist and updating the table that points at it, which the SDK does not yet do. What that costs is unmeasured: the space it would need, and which parts of the game share the text it would move.",
-    "Everything else the scene needs is already proven. This is the one prerequisite standing between a working technical scene and authored content someone would actually want to play.",
+    "The storage wall is gone. An authored message longer than the line it replaces is now written into verified free space, and the table entry the game uses to find that line is repointed at the new location, so the original engine renders the whole message through its ordinary lookup. The author writes a longer line and nothing else; no addresses, no flags, no request to relocate anything.",
+    "Safety here rests on a measurement rather than an assumption. Before an entry may move, the SDK requires that exactly one four-byte-aligned word in the entire eight-megabyte game names that line's storage, and that the word is the entry's own table slot. A scan of every byte found exactly one such reference for the line used. Five of the game's 1,534 lines carry a second reference and are refused by that same rule — not by a hand-written list of exceptions, which would silently rot the first time the rule and the list disagreed.",
+    "Two separate builds were played to confirm it, one carrying a 53-character message and one carrying 20, against an original line of 14. In both, the rewritten pointer resolved into the verified region and defeating the authored enemy rendered the relocated text. This reuses an existing text ID: creating entirely new entries in the text table is a different capability and is not claimed.",
+    "What the second run exposed is the new frontier. The 20-character message still ran past the edges of the screen, because the game draws this kind of message centred in a large font and does not wrap it. That is a display constraint rather than a storage one, and the two were entangled until now — a message could not previously be long enough to reveal it.",
+    "So the remaining question is no longer how much text can be stored, but how much can be shown at once. Nothing about the line's length in memory limits an author any more; what limits them is the width of a screen and the absence of wrapping. Neither the real character ceiling nor the cost of adding line breaks has been measured.",
   ],
   acceptanceTarget:
     "Author playable Legacy of Goku content inside the real LOGII/Buu engine.",
@@ -243,9 +243,18 @@ export const project: ProjectStatus = {
     },
     {
       id: "author-new-text",
-      title: "Author text of any length",
+      title: "Author text without the retail slot-size limit",
       plainEnglish:
-        "Write new dialogue and messages freely, instead of fitting them inside the space an existing line already occupies.",
+        "An authored message can now be longer than the line it replaces. The SDK moves it into verified free space and repoints the game's text table automatically.",
+      technical:
+        "Confirmed, and runtime-proven twice. A replacement longer than its original line is allocated into declared verified-writable space and the pointer-table entry that owns it is rewritten, so the original engine resolves the text through its normal lookup and renders the whole authored message. Relocation is gated per table by declared capability and per entry by measured ownership: an entry may move only when exactly one word-aligned reference in the whole 8 MiB image names its body, and that reference is its own table slot. A stride-1 scan found exactly one such word for the entry used. Five of the 1,534 entries carry a second reference and are refused by that rule rather than by any list. Two separate builds and play sessions, one with a 53-character message and one with 20 where the original line held 14, each showed the rewritten pointer resolving into the verified region and the authored script rendering the relocated text on defeat. This reuses an existing text ID; creating entirely new text-table IDs is not claimed.",
+      status: "complete",
+    },
+    {
+      id: "authored-text-display-width",
+      title: "Fit authored text to the screen",
+      plainEnglish:
+        "A message can now be any length in storage, but a long line still runs past the edges of the screen when the game draws it.",
       status: "current",
     },
     {
@@ -269,10 +278,19 @@ export const project: ProjectStatus = {
     { label: "GAMEPLAY-EFFECT ACTION", state: "done" },
     { label: "AUTHORED BEHAVIOR TRIGGER", state: "done" },
     { label: "COMPLETE AUTHORED SCENE", state: "done" },
-    { label: "UNBOUNDED AUTHORED TEXT", state: "current", marker: "↑ YOU ARE HERE" },
+    { label: "UNBOUNDED AUTHORED TEXT", state: "done" },
+    { label: "AUTHORED TEXT FITS SCREEN", state: "current", marker: "↑ YOU ARE HERE" },
     { label: "PLAYABLE LOG1 CONTENT", state: "target" },
   ],
   breakthroughs: [
+    {
+      id: "first-newly-allocated-authored-text",
+      title: "First newly allocated authored text resource",
+      summary:
+        "An overlength message written in a Webfoot SDK project was placed into new ROM space, connected through the game's own text table, and rendered by the original Buu's Fury engine.",
+      technical:
+        "The author writes a longer line and nothing else. The SDK encodes it, allocates it inside a region already verified as writable, rewrites the four-byte table entry that owns the original line, and the engine resolves the text through its normal lookup. Eligibility is measured, not assumed: an entry may relocate only when exactly one four-byte-aligned word in the whole eight-megabyte image names its storage and that word is the entry's own table slot. A scan of every byte found exactly one for the entry used; five of the 1,534 entries carry a second reference and are refused by that rule rather than by a list of indices. Two independent builds were played, carrying 53-character and 20-character messages against an original line of 14 characters, and both showed the rewritten pointer resolving into the verified region and the authored script rendering the relocated text on defeat. Builds are byte-identical between runs and the original game file is never modified. This reuses an existing text ID; the text table is not expanded and no new text ID is claimed. The 20-character run also showed the message running past the screen edges, which is a display limit rather than a storage one.",
+    },
     {
       id: "first-complete-authored-scene",
       title: "First complete authored gameplay scene",

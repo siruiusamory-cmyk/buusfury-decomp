@@ -77,7 +77,7 @@ export const project: ProjectStatus = {
   subtitle: "Legacy of Goku authoring toolkit",
   tagline: "Building a real authoring toolkit for the Legacy of Goku engine.",
   description:
-    "The SDK can compose a new entity, its behavior, a gameplay trigger and an author-written message into one complete scene that plays in the original engine, and that message is no longer limited to the size of the line it replaces. The current frontier is fitting a long line onto the screen the game draws it on.",
+    "The SDK can compose a new entity, its behavior, a gameplay trigger and an author-written message into one complete scene that plays in the original engine, and every kind of text in the game — including the text the game keeps compressed — can now be found by searching for the words themselves. The current frontier is the game code that puts an ordinary conversation on screen: the project can read that text, but has not yet identified and proven the routine that displays it.",
   overallProgress: 90,
   overallProgressLabel: "≈ 90% COMPLETE",
   progressCaveat:
@@ -85,16 +85,16 @@ export const project: ProjectStatus = {
   currentPhase: "AUTHOR_NEW",
   currentFrontierLabel: "CURRENT FRONTIER",
   existingContentState: "MATURE",
-  blockerCode: "TEXT ON SCREEN",
-  blockerTitle: "Fit authored text to the screen",
+  blockerCode: "WHO SHOWS THE WORDS",
+  blockerTitle: "Find the code that puts ordinary conversation on screen",
   blockerShort:
-    "An authored message is no longer limited by the size of the line it replaces — the SDK moves it into free space and repoints the game's text table automatically. The remaining measured limit is display: a long line runs past the edges of the screen when the game draws it.",
+    "Every kind of text in the game can now be found by searching for the words themselves, compressed text included. What is still missing is the other half: ordinary NPC conversation is stored in a form the project can already read, but the game code that actually draws it on screen has not been identified and watched running. That path is what authoring new everyday dialogue depends on.",
   blockerParagraphs: [
-    "The storage wall is gone. An authored message longer than the line it replaces is now written into verified free space, and the table entry the game uses to find that line is repointed at the new location, so the original engine renders the whole message through its ordinary lookup. The author writes a longer line and nothing else; no addresses, no flags, no request to relocate anything.",
-    "Safety here rests on a measurement rather than an assumption. Before an entry may move, the SDK requires that exactly one four-byte-aligned word in the entire eight-megabyte game names that line's storage, and that the word is the entry's own table slot. A scan of every byte found exactly one such reference for the line used. Five of the game's 1,534 lines carry a second reference and are refused by that same rule — not by a hand-written list of exceptions, which would silently rot the first time the rule and the list disagreed.",
-    "Two separate builds were played to confirm it, one carrying a 53-character message and one carrying 20, against an original line of 14. In both, the rewritten pointer resolved into the verified region and defeating the authored enemy rendered the relocated text. This reuses an existing text ID: creating entirely new entries in the text table is a different capability and is not claimed.",
-    "What the second run exposed is the new frontier. The 20-character message still ran past the edges of the screen, because the game draws this kind of message centred in a large font and does not wrap it. That is a display constraint rather than a storage one, and the two were entangled until now — a message could not previously be long enough to reveal it.",
-    "So the remaining question is no longer how much text can be stored, but how much can be shown at once. Nothing about the line's length in memory limits an author any more; what limits them is the width of a screen and the absence of wrapping. Neither the real character ceiling nor the cost of adding line breaks has been measured.",
+    "Searching the game for a line of dialogue now works whatever form that line is kept in. Plain text and compressed text are both indexed, so an author can look for the words a character says and be told where they live. The previous frontier — that compressed dialogue could not be searched at all, and so effectively could not be found — is closed.",
+    "Proving it took a line that does not exist anywhere in the game as readable text. The greeting \"Good luck, Goku!\" is invisible to any plain search of the game file, because it only exists once a block of packed data has been unpacked. The search found it anyway, inside a verified compressed block, and reported honestly what it is: a position inside the unpacked text, with no address of its own in the game.",
+    "Detail: the compressed block sits at `0x087A04F0`, and the phrase begins `0x132` bytes into the unpacked stream. That offset is a position within the unpacked data, not an address in the game and not a proven start of a stored line — where one line ends and the next begins in that stream is still unknown.",
+    "The frontier that this exposed is a different problem. Ordinary conversation — the kind a villager or a shopkeeper speaks — is stored in the game as ordinary readable text, so reading it is not the issue. The issue is the game code on the other end: the routine that takes one of those lines and paints it into a dialogue box has not been identified, and has never been watched doing it in a running game.",
+    "Until that routine is found and observed running, new everyday dialogue cannot be authored with any confidence, because there is no proven path from an author's line to words appearing on screen. Finding that code, and proving it by watching the running game execute it, is the work in front of the project now.",
   ],
   acceptanceTarget:
     "Author playable Legacy of Goku content inside the real LOGII/Buu engine.",
@@ -254,7 +254,27 @@ export const project: ProjectStatus = {
       id: "authored-text-display-width",
       title: "Fit authored text to the screen",
       plainEnglish:
-        "A message can now be any length in storage, but a long line still runs past the edges of the screen when the game draws it.",
+        "A message can be any length in storage, and a long line runs past the edges of the screen when the game draws it centred without wrapping.",
+      technical:
+        "Measured. Storage length no longer bounds an authored message; the remaining limit on this particular message style is display width, because the engine draws it centred in a large font with no wrapping. The character ceiling and the cost of adding line breaks are not yet measured. This is a known constraint of one message style rather than the project's frontier.",
+      status: "complete",
+    },
+    {
+      id: "find-any-text",
+      title: "Find any line of text in the game",
+      plainEnglish:
+        "Search the whole game for the words a character actually says, including text the game keeps compressed and never stores in readable form.",
+      technical:
+        "Confirmed. The full-ROM atlas is complete and reproducible, and its text search now covers verified compressed resources as well as plain ones, reporting each with its own result shape. The acceptance phrase \"Good luck, Goku!\" appears nowhere in the game as plain text; it was located inside a verified compressed container at ROM address 0x087A04F0, beginning 0x132 bytes into the decoded stream. That offset is a derived position within the decompressed data — it is not a ROM address and is not claimed as a string boundary, because segmentation of the decoded stream is still unknown. Indexing is gated to structurally reachable containers: a blind compression probe round-trips 24,285 hits into roughly 68.7 MiB of decode noise, and indexing that would present false positives as text sources.",
+      status: "complete",
+    },
+    {
+      id: "ordinary-dialogue-consumer",
+      title: "Find the code that displays ordinary conversation",
+      plainEnglish:
+        "Ordinary NPC conversation is stored in a form the project can already read, but the game code that draws it on screen has not been identified or watched running.",
+      technical:
+        "Open. Shop and scenario structure is materially understood: six known shop scenarios, 61 script targets, and a confirmed script framing of u16 next_script_index followed by u8 type. Seventeen of those targets carry plaintext payloads the project can already read. The dispatcher that reads the type byte accepts only two other type values and rejects the plaintext type, so the routine that consumes and renders it is elsewhere and remains unidentified. No runtime capture has caught it executing. Authoring ordinary new dialogue depends on finding that path and proving it in the running game.",
       status: "current",
     },
     {
@@ -279,10 +299,35 @@ export const project: ProjectStatus = {
     { label: "AUTHORED BEHAVIOR TRIGGER", state: "done" },
     { label: "COMPLETE AUTHORED SCENE", state: "done" },
     { label: "UNBOUNDED AUTHORED TEXT", state: "done" },
-    { label: "AUTHORED TEXT FITS SCREEN", state: "current", marker: "↑ YOU ARE HERE" },
+    { label: "AUTHORED TEXT FITS SCREEN", state: "done" },
+    { label: "ANY TEXT FINDABLE BY ITS WORDS", state: "done" },
+    { label: "ORDINARY DIALOGUE DISPLAY PATH", state: "current", marker: "↑ YOU ARE HERE" },
+    { label: "AUTHORED ORDINARY DIALOGUE", state: "next" },
     { label: "PLAYABLE LOG1 CONTENT", state: "target" },
   ],
   breakthroughs: [
+    {
+      id: "compressed-text-searchable",
+      title: "Every line of text in the game is now findable by its words",
+      summary:
+        "A line of dialogue that exists nowhere in the game as readable text was located by searching for the words themselves, inside the packed data that hides it. Searching the game for what a character says now works whether that line is stored plainly or compressed.",
+      technical:
+        "The full-ROM atlas is complete and reproducible, and its text search covers verified compressed resources alongside plain text runs, reporting each with its own result shape rather than flattening them together. The acceptance phrase \"Good luck, Goku!\" is absent from the game in every plaintext form. It was found inside a verified compressed container at ROM address 0x087A04F0, beginning 0x132 bytes into the decoded stream. That offset is a derived position within the decompressed data: there is no ROM address for the phrase, and no string boundary is claimed there — the run reads straight through neighbouring words with no delimiter, which is itself evidence that segmentation of the decoded stream is still unknown. Indexing is deliberately gated to structurally reachable containers; a blind compression probe round-trips 24,285 hits into roughly 68.7 MiB of decode noise, and indexing that would have presented false positives as genuine text sources. What this exposed is the next frontier: ordinary conversation is stored readably, but the game code that draws it on screen has not been identified or watched running.",
+    },
+    {
+      id: "shop-scenario-structure",
+      title: "Shop and scenario structure mapped",
+      summary:
+        "The way the game organises shop conversations is now materially understood, which is what narrowed the search for the code that displays ordinary dialogue.",
+      technical:
+        "Six known shop scenarios and 61 script targets, with the script framing confirmed as u16 next_script_index followed by u8 type across all of them. Every observed type value is accounted for; 17 targets carry plaintext payloads that can already be read. The dispatcher that reads the type byte accepts only two of the values and rejects the plaintext one, which places the consumer of that plaintext elsewhere in the engine — still unidentified, and never yet observed executing in a running game.",
+    },
+    {
+      id: "buu-rom-bible",
+      title: "Buu's Fury ROM Bible",
+      summary:
+        "A standalone reference covering what the project has established about the Buu's Fury game data, written for other people working on the same game and shared with the Legacy of Goku community on their Discord server. It is a document shared there, not a page hosted on this site.",
+    },
     {
       id: "first-newly-allocated-authored-text",
       title: "First newly allocated authored text resource",

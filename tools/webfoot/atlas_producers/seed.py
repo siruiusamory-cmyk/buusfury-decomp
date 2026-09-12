@@ -652,10 +652,125 @@ def _rows() -> list[dict]:
         conf="OBSERVED",
         source="docs/research/BUU_MAP_EVENT_REFERENCES.md:247",
         evidence="Seven compressed-text pointers stored at 0x7B5B64..0x7B5B7C; all seven values were verified "
-                 "present in our image. Deliberately NOT investigated - recorded only as a lead.",
-        notes="Size = 7 * 4 = 28 bytes, derived from the stated inclusive range 0x7B5B64..0x7B5B7C. OBSERVED: "
-              "the words were confirmed present, but no structural claim (that this IS the region's table) was "
-              "made by the document.")
+                 "present in our image. Deliberately NOT investigated - recorded only as a lead. TEXT-HANDLE-001 "
+                 "upgraded the structural claim: consumer 0x08012230 loads this very base as a literal "
+                 "(0x08012242 ldr r1,=0x087B5B64) and indexes it by the packed handle's low 6 bits scaled by 4 "
+                 "(0x08012248 ldr r0,[r1,r0]), so the table IS this region's container selector table and not "
+                 "merely seven words that happen to be present. The seven values read from the canonical image "
+                 "are [0]0x0879BF2C [1]0x087A04F0 [2]0x087A46C8 [3]0x087A8AD8 [4]0x087AD118 [5]0x087B1558 "
+                 "[6]0x087B5AA0.",
+        notes="Size = 7 * 4 = 28 bytes, derived from the stated inclusive range 0x7B5B64..0x7B5B7C. OLD "
+              "'OBSERVED / no structural claim' grading is SUPERSEDED by TEXT-HANDLE-001: the consumer's own "
+              "literal pool and indexed load make the table role CONFIRMED. STRUCTURAL GATE: exactly 7 "
+              "containers. A live capture of 65 consumer hits selected only containers 0 and 1, and every hit "
+              "decoded inside its container's bounds, so nothing observed argues for widening the gate; it must "
+              "NOT be widened, because the 6-bit selector field can encode 64 values while only 7 are backed by "
+              "a real pointer.")
+
+    # ------------------------------------------- TEXT-HANDLE-001 packed handle
+    # The packed compressed-text handle consumed from a runtime object's +0x04.
+    # TEXT-HANDLE-001 asked which code WRITES it and measured that none does:
+    # the "runtime object" pointer is a pointer INTO the ROM-resident dialog
+    # record pool, so the field is already in the image and the record is its
+    # durable owner. Producer stopping point A.
+    add(addr=0x08012230, size=None, kind="function",
+        identity="compressed_text.consumer_08012230",
+        conf="RUNTIME_CONFIRMED",
+        source="docs/research/BUU_EVENT_RESOURCE.md:35",
+        evidence="Consumer of the packed compressed-text handle. The record object arrives in r1, NOT r0: "
+                 "0x08012232 mov r5,r1; 0x08012240 ldr r0,[r5,#4] loads the packed handle from the object's "
+                 "+0x04; 0x08012242 ldr r1,=0x087B5B64 loads the container table; 0x08012248 ldr r0,[r1,r0] "
+                 "selects the container. The intervening 0x08012244 lsls #26 / 0x08012246 lsrs #24 isolate the "
+                 "low 6 bits and scale them by 4, which is the selector-to-byte-offset conversion. Re-read from "
+                 "the canonical image, the halfwords at 0x08012230 are B5F8 1C06 2001 1C0D 0400 F02B F9BD 1C04 "
+                 "6868 4962 0680 0E00 5808, in which 1C0D is mov r5,r1 and 6868 is ldr r0,[r5,#4]. "
+                 "TOOLKIT-031 captured 65 live hits at this site across frames 973..11367 covering 21 distinct "
+                 "objects, every one of them a ROM address in the dialog record pool.",
+        notes="size null: extent not measured. RUNTIME_CONFIRMED applies to the site EXECUTING and to the "
+              "objects/handles observed there - both are in the capture "
+              "(build/toolkit031/text-handle-001-target-01-20260912-1319/text-handle-001.jsonl). The r1 calling "
+              "convention itself is a STATIC disassembly result that the capture assumes rather than proves: "
+              "the capture latches the object from r1 at entry, so it could not have detected the object "
+              "arriving anywhere else. The instruction bytes are the evidence for r1, and they are CONFIRMED "
+              "strength, not runtime strength.")
+
+    add(addr=0x080122B4, size=None, kind="function",
+        identity="compressed_text.consumer_080122B4",
+        conf="CONFIRMED",
+        source="docs/research/BUU_EVENT_RESOURCE.md:35",
+        evidence="Second consumer with the same access shape as 0x08012230: the object arrives in r1 "
+                 "(0x080122BA mov r4,r1), and the handle is then read from its +0x04 and used to index the "
+                 "0x087B5B64 container table. Re-read from the canonical image, the halfwords at 0x080122B4 are "
+                 "B5F7 4B47 2001 1C0C 0400 449D F02B F97A 1C05 6860 4940 0680 0E00 5808, in which 1C0C is "
+                 "mov r4,r1 and 6860 is ldr r0,[r4,#4] - the same load, one register different.",
+        notes="size null: extent not measured. CONFIRMED and deliberately NOT RUNTIME_CONFIRMED: the "
+              "TOOLKIT-031 capture recorded 65 consumer hits and ALL 65 were at 0x08012230. This site was armed "
+              "and never observed executing, so its shape is proven from instruction bytes only. Do not read "
+              "the sibling site's runtime evidence as covering this one.")
+
+    add(addr=0x08781CF8, size=None, kind="other",
+        identity="compressed_text.handle_owner_record_84",
+        conf="RUNTIME_CONFIRMED",
+        source="docs/research/BUU_EVENT_RESOURCE.md:35",
+        evidence="TEXT-HANDLE-001 Producer stopping point A: there is NO runtime producer for the packed "
+                 "compressed-text handle. A WRITE watchpoint armed for the whole capture recorded zero producing "
+                 "writes, while the consumer read the value 65 times. The 'runtime object' the consumer receives "
+                 "in r1 is 0x08781CF8, a ROM address lying inside the dialog record pool 0x0877C5A4..0x0879B704 "
+                 "(BUU_EVENT_RESOURCE.md:35), so its +0x04 is ROM byte 0x781CFC and the value is already in the "
+                 "image before the machine starts. All 21 distinct objects seen at the consumer are likewise "
+                 "pool addresses in 0x087818C8..0x08781CF8. The ROM-resident record is therefore the durable "
+                 "owner of the handle, and any edit must patch the record, not chase a writer.",
+        notes="size null: this record's extent was not measured; it is identified by the pointer the consumer "
+              "receives, not by a record census. This is the structural answer to TEXT-HANDLE-001 and it is a "
+              "NEGATIVE result about producers, which is why the WRITE watchpoint's silence is quoted as "
+              "evidence rather than omitted. The record is dialog record 84 and the handle sits at its +0x48; "
+              "record numbering is from the 522-entry pointer table at 0x0879B704.")
+
+    add(off=0x781CFC, addr=0x08781CFC, size=4, kind="other",
+        identity="compressed_text.handle_0x02002641",
+        conf="RUNTIME_CONFIRMED",
+        source="docs/research/BUU_EVENT_RESOURCE.md:35",
+        evidence="Packed compressed-text handle 0x02002641, stored little-endian as bytes 41 26 00 02 at file "
+                 "offset 0x781CFC, read back from the canonical image. Bit layout, corroborated in situ by the "
+                 "consumer's lsls #26 / lsrs #24 at 0x08012244/0x08012246: bits 0-5 selector, table byte offset "
+                 "= (v & 0x3F) * 4; bits 6-20 decoded start, bytes = ((v >> 6) & 0x7FFF) * 2; bits 21-31 length, "
+                 "bytes = (v >> 21) * 2. Decoding 0x02002641 by that layout gives selector 1 -> container "
+                 "0x087A04F0, decoded start 0x132, decoded length 0x20. Two independent surfaces agree: the live "
+                 "capture decoded exactly those values at all 41 hits carrying this handle, and the atlas's own "
+                 "decoded-container index independently reports container_index 1, "
+                 "decoded_offset_of_phrase 0x132 and char_count 16 (= 0x20 bytes) for the phrase "
+                 "'Good luck, Goku!'.",
+        notes="IDENTITY IS PER-TEXT, NOT PER-SITE. The word 0x02002641 occurs word-aligned exactly three times "
+              "image-wide - 0x08781C4C (record 83 +0x58), 0x08781CB0 (record 83 +0xBC) and 0x08781CFC "
+              "(record 84 +0x48) - and this row is emitted once, at the site the capture actually read. The "
+              "other two are additional REFERENCE/PATCH SITES for the SAME message identity, not two further "
+              "messages: all three decode to the same container, offset and length, so re-pointing this text "
+              "means patching three words, while renumbering it as three messages would be wrong. Size 4 is the "
+              "handle word itself, not the text it addresses; the decoded bytes live in container 0x087A04F0.")
+
+    # Selector-0 is included because it is what makes the 6-bit selector field a
+    # real structural claim rather than a one-container coincidence: without a
+    # second container observed, the selector bits could not be distinguished
+    # from padding that happens to be zero.
+    add(addr=0x0879BF2C, size=None, kind="compressed_stream",
+        identity="compressed_text.container_0_selector_evidence",
+        conf="CONFIRMED",
+        source="docs/research/BUU_MAP_EVENT_REFERENCES.md:246",
+        evidence="Container 0 of the seven-entry table, exercised by the selector field. Of the 21 distinct "
+                 "objects seen at consumer 0x08012230, 20 carried handles selecting container 0 and one selected "
+                 "container 1, so both a zero and a non-zero selector were observed decoding correctly through "
+                 "the same field. Container 0 decompresses to 65,348 bytes; all 19 tested (start,length) pairs "
+                 "decoded to literal readable English NPC dialogue, each range beginning on a sentence boundary "
+                 "and ending on terminal punctuation, which is what a correct start/length interpretation looks "
+                 "like and what an off-by-N interpretation does not. The atlas's decoded-container index "
+                 "independently places the phrase 'five million pushups' at container_index 0, "
+                 "decoded_offset_of_phrase 0xE2FC, exact match.",
+        notes="This row records DECODE evidence for a stream whose start was already seeded as "
+              "compressed_text_region at CANDIDATE from an upstream source; it does not restate the extent, "
+              "which is still unmeasured, and it does not supersede that row. Counting note: the 20-of-21 "
+              "figure counts DISTINCT OBJECTS, not consumer hits - by hit the same capture is 24 selector-0 and "
+              "41 selector-1, because the single container-1 object was re-read 41 times. Both denominators are "
+              "recorded so neither is mistaken for the other.")
 
     # ---------------------------------------------------------- rejected tail
     add(off=0x007B89A8, addr=0x087B89A8, size=0x00800000 - 0x007B89A8, kind="other",

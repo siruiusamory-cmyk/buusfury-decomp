@@ -176,9 +176,10 @@ The copying was convenience, not necessity.
 | clean chain, tracked at ROM-ATLAS-001 closure | `8b6e440023eb61fdaf0e00a3ee205ebb83e62774273b29bedf021081c7533adb` |
 | clean chain, tracked at TOOLKIT-038 closure | `5350ba1d8708564e6408fe8db1e532b897a6cf746198d6384b5f6e290d20553a` |
 | clean chain, tracked at TEXT-INDEX-001 closure | `3121faa123cdf2745c386c679c39fa46de71c4e5b7ed5133a46e1e40ad89b7f1` |
-| **clean chain, tracked at HEAD (canonical)** | `030fe799db12b37f62ba87eefb14d0bb3f2e76791673f7cea2b00274b96e7d57` |
+| clean chain, tracked at the Latin-1 text reclassification | `030fe799db12b37f62ba87eefb14d0bb3f2e76791673f7cea2b00274b96e7d57` |
+| **clean chain, tracked at HEAD (canonical)** | `e0bcf1b4a572401bd85a86e762c067ae2d9614fea58e9dc433388ea53352bd89` |
 
-The first five are retained as provenance baselines. **The sixth is what the
+The first six are retained as provenance baselines. **The seventh is what the
 tracked tooling produces today and is the canonical atlas going forward.**
 
 The second and third are the same value, which is itself a measured result: the
@@ -219,11 +220,29 @@ decoded-text index: 688 runs / 195,328 characters becomes 681 runs / 195,342
 characters, because nine boundaries disappear and the fragments they separated
 merge.
 
+The seventh differs from the sixth because TEXT-HANDLE-001 added five seed rows
+and extended a sixth, and unlike the two preceding moves this one **is** a
+structural change: the atlas now carries objects it did not have. The added rows
+are the two handle consumers `0x08012230` and `0x080122B4`, the ROM-resident
+dialog record `0x08781CF8` that owns the packed compressed-text handle, the
+handle word itself at `0x08781CFC`, and container 0's selector evidence; the
+extended row is `compressed_text.pointer_table`, whose table role moved from
+`OBSERVED` to `CONFIRMED` on the consumer's own indexed load. The delta is
+additive: no existing row was removed and no classification moved, and the only
+coverage change is the 4 bytes at `0x781CFC`, which the handle row now owns at
+`RUNTIME_CONFIRMED` inside the enclosing record pool. See
+[BUU_EVENT_RESOURCE.md](BUU_EVENT_RESOURCE.md).
+
+Note that a seed row's `evidence` and `source` do reach `atlas.jsonl` even though
+its `notes` does not, so the note-only invariant recorded above for the second
+and third digests is specific to `notes` and does not generalise.
+
 Regenerating from current HEAD via the documented command reproduces
-`030fe799...`; two consecutive clean runs produced byte-identical
-`atlas.jsonl`, so determinism holds. `build/atlas/` holds this canonical output;
-`build/atlas_v2a/` is retained as the pre-TOOLKIT-038 `8b6e4400...` comparison
-oracle.
+`e0bcf1b4...`; two consecutive clean runs into separate empty directories
+produced byte-identical output across every artifact, so determinism holds.
+`build/atlas/` still holds the previous `030fe799...` output and is stale
+against this row until it is regenerated; `build/atlas_v2a/` is retained as the
+pre-TOOLKIT-038 `8b6e4400...` comparison oracle.
 
 ### The decoded-container index is gated, deliberately
 

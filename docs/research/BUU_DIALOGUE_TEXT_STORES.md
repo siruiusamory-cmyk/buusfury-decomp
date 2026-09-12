@@ -178,7 +178,7 @@ could have reached speech.
 | Shop region consumer | **UNKNOWN** |
 | Shop region ownership / relocation eligibility | **UNMEASURED** |
 | Which routine writes `0x03003AE4` | **UNKNOWN** |
-| Compressed region `0x0879BF2C` | **UNTOUCHED** (unchanged) |
+| Compressed region `0x0879BF2C` | **CONFIRMED_RUNTIME** (TEXT-HANDLE-001: reached, decodes to NPC dialogue) |
 | Relocated authored dialogue | **NO** |
 
 ## 6. Next measured blocker
@@ -189,4 +189,5 @@ could have reached speech.
 > own table slot) cannot be evaluated against it.
 
 That is a better target than the compressed region at `0x0879BF2C`: it is
-uncompressed, already decodes, and is demonstrably real NPC dialogue.
+uncompressed. (`0x0879BF2C` is also reached and decodes to real NPC dialogue --
+TEXT-HANDLE-001 -- so decoding is no longer what separates the two.)

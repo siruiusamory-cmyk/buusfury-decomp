@@ -267,7 +267,7 @@ def test_a_terminator_free_scan_breaks_on_every_control_unit():
 # --- search behaviour through the CLI -----------------------------------------
 
 
-def _search(tmp_path, phrase, decoded_rows, capsys, raw_rows=()):
+def _search(tmp_path, phrase, decoded_rows, capsys, raw_rows=(), rom=None):
     """Run `atlas text` against a synthetic atlas directory and parse its JSON.
 
     The atlas itself is assembled from the same minimal synthetic artifact set
@@ -283,8 +283,10 @@ def _search(tmp_path, phrase, decoded_rows, capsys, raw_rows=()):
     (directory / "scan_decoded_text.jsonl").write_text(
         "".join(json.dumps(row) + "\n" for row in decoded_rows), encoding="utf-8")
 
-    assert main(["atlas", "--atlas", str(directory / "atlas.jsonl"),
-                 "text", phrase]) == 0
+    argv = ["atlas", "--atlas", str(directory / "atlas.jsonl"), "text", phrase]
+    if rom is not None:
+        argv += ["--rom", str(rom)]
+    assert main(argv) == 0
     return json.loads(capsys.readouterr().out)
 
 
@@ -356,3 +358,239 @@ def test_both_surfaces_are_searched_and_reported_separately(tmp_path, capsys):
     assert result["runs"][0]["source"] == "raw-rom-run"
     assert result["runs"][0]["file_offset"] == "0x100000"
     assert result["decoded"][0]["source"] == "decoded-container-text"
+
+
+# --- TEXT-HANDLE-001: the durable packed-handle identity -----------------------
+#
+# A decoded string has no ROM address of its own, so its identity is the packed
+# u32 an event-resource record stores to address it. Identity is per-TEXT; the
+# ROM addresses holding that word are per-SITE. Collapsing the two in either
+# direction is the failure these tests pin. Every fixture below is synthetic:
+# the handles are built by the same bit layout the recovery reads, and the
+# phrases are invented.
+
+from tools.webfoot import cli
+from tools.webfoot.binary import GBA_ROM_BASE
+from tools.webfoot.data.placement_contracts import CONTRACTS
+
+_RESOURCE = CONTRACTS["buus_fury_usa_rev0_01c1707f"]["event_resource"]
+_POOL = _RESOURCE["pool_start"] - GBA_ROM_BASE
+_TABLE = _RESOURCE["table"] - GBA_ROM_BASE
+
+#: Invented for this test, and deliberately 8 characters so its packed length
+#: (16 bytes) is easy to read in the assertions below.
+HANDLE_PHRASE = "Zephyrs!"
+
+
+def _packed_handle(selector: int, start: int, size: int) -> int:
+    """Build a handle the way the ROM stores one, from the documented layout."""
+    return (selector | ((start // 2) << cli.HANDLE_START_SHIFT)
+            | ((size // 2) << cli.HANDLE_LENGTH_SHIFT))
+
+
+def _image_with_handles(*sites: tuple[int, int]) -> bytes:
+    """A synthetic image carrying handle words at chosen pool offsets."""
+    image = bytearray(scan.IMAGE_SIZE)
+    for pool_offset, value in sites:
+        struct.pack_into("<I", image, _POOL + pool_offset, value)
+    return bytes(image)
+
+
+def test_the_handle_layout_round_trips_through_its_own_unpacker():
+    """The three fields survive packing, so the fixtures below are meaningful."""
+    handle = _packed_handle(1, 0x132, 0x20)
+
+    assert cli._unpack_handle(handle) == (1, 0x132, 0x20)
+
+
+def test_a_decoded_match_reports_the_packed_handle_naming_it():
+    image = _image_with_handles((0x40, _packed_handle(3, 0x80, 0x10)))
+
+    identity = cli._recover_handle(image, 3, 0x80, 0x10)
+
+    assert identity["packed_handle"] == f"0x{_packed_handle(3, 0x80, 0x10):08X}"
+    assert identity["handle_selector"] == 3
+    assert identity["handle_decoded_start"] == "0x80"
+    assert identity["handle_decoded_length"] == "0x10"
+
+
+def test_the_identity_is_one_value_while_its_references_are_a_list():
+    """The anti-collapse property, stated directly as a shape assertion."""
+    handle = _packed_handle(2, 0x200, 0x40)
+    image = _image_with_handles((0x10, handle), (0x80, handle), (0x300, handle))
+
+    identity = cli._recover_handle(image, 2, 0x200, 0x40)
+
+    # ONE identity...
+    assert isinstance(identity["packed_handle"], str)
+    # ...and a LIST of the places that reference it.
+    assert isinstance(identity["reference_sites"], list)
+    assert identity["reference_sites"] == [
+        f"0x{GBA_ROM_BASE + _POOL + offset:08X}" for offset in (0x10, 0x80, 0x300)
+    ]
+    assert identity["reference_site_count"] == 3
+
+
+def test_three_references_do_not_become_three_identities():
+    """Three sites naming one string stay one message, not three."""
+    handle = _packed_handle(1, 0x60, 0x20)
+    image = _image_with_handles((0x20, handle), (0x24, handle), (0x400, handle))
+
+    identity = cli._recover_handle(image, 1, 0x60, 0x20)
+
+    assert len({identity["packed_handle"]}) == 1
+    assert identity["reference_site_count"] == 3
+    # The identity is a single object, not a sequence of them.
+    assert isinstance(identity, dict)
+
+
+def test_a_phrase_resolves_to_at_most_one_identity():
+    """The mirror-image collapse: many handles covering one phrase, one answer.
+
+    A real indexed run merges several handle-defined records, and long records
+    overlap short ones, so many records contain any given phrase. Recovery
+    still names exactly one.
+    """
+    wanted = _packed_handle(1, 0x100, 0x20)
+    image = _image_with_handles(
+        (0x00, wanted),
+        # Wider records that also contain the phrase, and so would collapse the
+        # answer into several identities if containment alone decided it.
+        (0x10, _packed_handle(1, 0x0E0, 0x60)),
+        (0x20, _packed_handle(1, 0x0C0, 0x400)),
+        (0x30, _packed_handle(1, 0x100, 0x80)),
+    )
+
+    identity = cli._recover_handle(image, 1, 0x100, 0x20)
+
+    assert identity["packed_handle"] == f"0x{wanted:08X}"
+    assert identity["reference_sites"] == [f"0x{GBA_ROM_BASE + _POOL:08X}"]
+
+
+def test_the_narrowest_containing_record_wins():
+    """A phrase is a substring, so the tightest record covering it is its own.
+
+    The searcher types part of a message; the record that IS that message is
+    the smallest one spanning every character typed.
+    """
+    tight = _packed_handle(2, 0x40, 0x20)
+    image = _image_with_handles(
+        (0x00, _packed_handle(2, 0x00, 0x200)),
+        (0x10, tight),
+        (0x20, _packed_handle(2, 0x30, 0x80)),
+    )
+
+    # The phrase sits inside all three, and starts past the tight record's own
+    # start, so an equality rule would find nothing at all here.
+    identity = cli._recover_handle(image, 2, 0x48, 0x10)
+
+    assert identity["packed_handle"] == f"0x{tight:08X}"
+    assert identity["handle_decoded_length"] == "0x20"
+
+
+def test_a_hit_with_no_recoverable_handle_degrades_honestly():
+    """No record covers this span, so the identity is null and says why."""
+    image = _image_with_handles((0x40, _packed_handle(1, 0x100, 0x20)))
+
+    identity = cli._recover_handle(image, 1, 0x900, 0x20)
+
+    assert identity["packed_handle"] is None
+    assert "no event-resource record" in identity["unrecovered_because"]
+
+
+def test_a_phrase_running_past_a_records_end_is_not_covered_by_it():
+    """Containment is both-ended: overlapping the start is not enough."""
+    image = _image_with_handles((0x00, _packed_handle(1, 0x100, 0x20)))
+
+    identity = cli._recover_handle(image, 1, 0x110, 0x40)
+
+    assert identity["packed_handle"] is None
+
+
+def test_a_handle_in_another_container_is_never_the_answer():
+    """The selector is part of the identity: same span, different container."""
+    image = _image_with_handles((0x00, _packed_handle(4, 0x100, 0x20)))
+
+    assert cli._recover_handle(image, 1, 0x100, 0x20)["packed_handle"] is None
+    assert cli._recover_handle(image, 4, 0x100, 0x20)["packed_handle"] is not None
+
+
+def test_a_handle_outside_the_pool_is_not_a_reference_site():
+    """The pool bounds the search: an identical word elsewhere is not a site."""
+    handle = _packed_handle(1, 0x100, 0x20)
+    image = bytearray(scan.IMAGE_SIZE)
+    struct.pack_into("<I", image, _TABLE + 0x40, handle)
+
+    identity = cli._recover_handle(bytes(image), 1, 0x100, 0x20)
+
+    assert identity["packed_handle"] is None
+
+
+def test_a_search_without_a_rom_reports_the_identity_as_unrecovered(
+        tmp_path, capsys):
+    """The default path opens no image, so it must not invent a handle."""
+    rows = [_decoded_row(f"Prelude.{HANDLE_PHRASE}")]
+
+    result = _search(tmp_path, HANDLE_PHRASE, rows, capsys)
+    identity = result["decoded"][0]["identity"]
+
+    assert identity["packed_handle"] is None
+    assert "no ROM supplied" in identity["unrecovered_because"]
+
+
+#: A decoded row and a synthetic image that agree: the row's phrase begins at
+#: decoded offset 0x20 in container 0, and the image carries a handle whose
+#: record covers exactly that span. An exact search therefore recovers the
+#: handle, which is what makes the normalized refusal below meaningful.
+_SPAN_ROW_TEXT = f"Prelude.{HANDLE_PHRASE}"
+_SPAN_HANDLE = _packed_handle(0, 0x20, len(_SPAN_ROW_TEXT) * 2)
+
+
+def _rom_for_span(tmp_path):
+    path = tmp_path / "synthetic.gba"
+    path.write_bytes(_image_with_handles((0x100, _SPAN_HANDLE)))
+    return path
+
+
+def test_an_exact_match_recovers_its_handle_through_the_cli(tmp_path, capsys):
+    """The positive half: with a ROM and an exact span, the identity resolves."""
+    rows = [_decoded_row(_SPAN_ROW_TEXT, index=0, decoded_offset=0x20)]
+
+    result = _search(tmp_path, HANDLE_PHRASE, rows, capsys,
+                     rom=_rom_for_span(tmp_path))
+    identity = result["decoded"][0]["identity"]
+
+    assert identity["packed_handle"] == f"0x{_SPAN_HANDLE:08X}"
+    assert identity["reference_sites"] == [f"0x{GBA_ROM_BASE + _POOL + 0x100:08X}"]
+
+
+def test_a_normalized_match_recovers_no_handle_rather_than_guessing(
+        tmp_path, capsys):
+    """Without an exact span there is no way to pick one handle honestly.
+
+    The ROM here is the same image whose handle the exact search above does
+    recover, so the null below is a deliberate refusal to guess, not a handle
+    that happens to be absent.
+    """
+    rows = [_decoded_row(_SPAN_ROW_TEXT, index=0, decoded_offset=0x20)]
+
+    result = _search(tmp_path, HANDLE_PHRASE.upper() + "  ", rows, capsys,
+                     rom=_rom_for_span(tmp_path))
+    hit = result["decoded"][0]
+
+    assert hit["match"] == "normalized"
+    assert hit["identity"]["packed_handle"] is None
+    assert "exact decoded span" in hit["identity"]["unrecovered_because"]
+
+
+def test_the_no_rom_address_property_still_holds_alongside_the_identity(
+        tmp_path, capsys):
+    """The handle names the text; it is not an address FOR the text."""
+    rows = [_decoded_row(f"Prelude.{HANDLE_PHRASE}")]
+
+    result = _search(tmp_path, HANDLE_PHRASE, rows, capsys)
+    hit = result["decoded"][0]
+
+    assert "NONE" in hit["rom_offset_of_text"]
+    assert "file_offset" not in hit
+    assert hit["container_rom_address"].startswith("0x")

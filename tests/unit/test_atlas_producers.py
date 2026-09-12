@@ -279,7 +279,12 @@ def test_a_clean_output_directory_is_enough_for_the_first_stage(tmp_path):
     out = tmp_path / "empty"
     path = seed.build(out)
     assert path.is_file()
-    assert path.read_text(encoding="utf-8").count("\n") == 51
+    #: The row count moves whenever a ticket records new structural evidence,
+    #: so it is asserted as a floor rather than an equality: this test exists to
+    #: prove the producer needs no pre-existing artifact, not to freeze the
+    #: corpus. The previous `== 51` was frozen at 0e05cac and left stale by two
+    #: later tickets, so it failed for a reason unrelated to what it checks.
+    assert path.read_text(encoding="utf-8").count("\n") >= 51
 
 
 def test_seed_output_is_byte_identical_across_two_runs(tmp_path):

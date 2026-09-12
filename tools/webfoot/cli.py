@@ -17,6 +17,7 @@ from .analysis.variation_arrays import (
     census_variation_array_first_words,
     find_first_word_observations,
 )
+from .binary import GBA_ROM_BASE
 from .gba_header import GbaHeaderError
 from .formats.map_entry import (
     MAP_ENTRY_SIZE,
@@ -233,10 +234,14 @@ def build_parser() -> argparse.ArgumentParser:
     )
 
     # ROM-ATLAS-001. Queries against the assembled atlas JSONL, never the ROM:
-    # this block opens no image, so it is self-contained like `graphics` and
-    # cannot change how any ROM-loading command behaves.
+    # this block opens no image by default, so it is self-contained like
+    # `graphics` and cannot change how any ROM-loading command behaves. Two
+    # commands opt in explicitly: `regenerate`, which requires a ROM, and
+    # `text --rom`, which reads one only to recover packed text handles.
     atlas_parser = subparsers.add_parser(
-        "atlas", help="query the assembled structural atlas; reads no ROM"
+        "atlas",
+        help="query the assembled structural atlas; reads no ROM unless "
+             "`text --rom` is given",
     )
     atlas_parser.add_argument(
         "--atlas", type=Path, default=None,
@@ -309,6 +314,13 @@ def build_parser() -> argparse.ArgumentParser:
     )
     atlas_text.add_argument("phrase")
     atlas_text.add_argument("--limit", type=int, default=40)
+    atlas_text.add_argument(
+        "--rom", type=Path, default=None,
+        help="the canonical ROM, opened READ-ONLY, solely to recover the packed "
+             "text handle naming each decoded match and the ROM sites that "
+             "reference it. Omit it and the search reads no image: every "
+             "identity is reported as unrecovered, never guessed.",
+    )
 
     atlas_commands.add_parser("summary", help="coverage statistics and confidence distribution")
 
@@ -1323,8 +1335,105 @@ def _text_match(phrase: str, haystack: str) -> str | None:
     return None
 
 
+#: Bit layout of a packed text handle, corroborated in situ by the
+#: `lsls #26 / lsrs #24` pair at 0x08012244/0x08012246: bits 0-5 select the
+#: container, bits 6-20 give the decoded start in halfwords, bits 21-31 the
+#: decoded length in halfwords. TEXT-HANDLE-001.
+HANDLE_SELECTOR_MASK = 0x3F
+HANDLE_START_MASK = 0x7FFF
+HANDLE_START_SHIFT = 6
+HANDLE_LENGTH_SHIFT = 21
+
+
+def _unpack_handle(value: int) -> tuple[int, int, int]:
+    """`(selector, decoded start, decoded length)`, the last two in BYTES."""
+    return (value & HANDLE_SELECTOR_MASK,
+            ((value >> HANDLE_START_SHIFT) & HANDLE_START_MASK) * 2,
+            (value >> HANDLE_LENGTH_SHIFT) * 2)
+
+
+def _recover_handle(image: bytes, container_index: int, phrase_start: int,
+                    phrase_size: int) -> dict:
+    """Name one decoded phrase by the ROM-resident handle that defines it.
+
+    A decoded string has no ROM address of its own — it exists only after
+    decompression — so the durable identity is the packed u32 an event-resource
+    record stores to address it. This walks the record pool for word-aligned
+    occurrences of the handle the phrase's own span implies.
+
+    The span must be the PHRASE's, never the indexed run's. Runs are segmented
+    by control units and routinely merge several handle-defined records: the
+    real run at decoded offset 0x12A spans nine distinct handles, so keying on
+    it would return nine identities for one phrase. That is the same collapse
+    the result shape forbids, in mirror image.
+
+    A phrase is a SUBSTRING of the record that holds it — a searcher types part
+    of a message, not all of it — so the record is the one whose span CONTAINS
+    the phrase's. Containment alone is not enough to name one record, because
+    long records overlap short ones: searching the target phrase finds thirteen
+    containing records, most of them unrelated messages that merely span the
+    same bytes. The narrowest containing record is the answer, being the
+    tightest one that still covers every character searched for.
+
+    Returns ONE identity or none. Never a guess: a span no record covers
+    reports its absence and says why.
+    """
+    import struct
+
+    from .data.placement_contracts import CONTRACTS
+
+    resource = CONTRACTS["buus_fury_usa_rev0_01c1707f"]["event_resource"]
+    pool = resource["pool_start"] - GBA_ROM_BASE
+    table = resource["table"] - GBA_ROM_BASE
+    if not 0 <= pool < table <= len(image):
+        return {"packed_handle": None,
+                "unrecovered_because": "the event-resource record pool lies "
+                                       "outside this image"}
+
+    phrase_end = phrase_start + phrase_size
+    sites: dict[int, list[int]] = {}
+    handle = None
+    narrowest = None
+    for offset in range(pool, table, 4):
+        value = struct.unpack_from("<I", image, offset)[0]
+        selector, start, size = _unpack_handle(value)
+        if (selector != container_index or not size
+                or start > phrase_start or phrase_end > start + size):
+            continue
+        sites.setdefault(value, []).append(GBA_ROM_BASE + offset)
+        # Ties break on the handle value so one image always answers the same
+        # way; a search result that reordered between runs would not be citable.
+        if narrowest is None or (size, value) < narrowest:
+            narrowest, handle = (size, value), value
+
+    references = [] if handle is None else sites[handle]
+
+    if handle is None:
+        return {"packed_handle": None,
+                "unrecovered_because": "no event-resource record addresses this "
+                                       "exact decoded span; the phrase may sit "
+                                       "inside a larger record rather than at "
+                                       "its boundary"}
+
+    selector, start, size = _unpack_handle(handle)
+    return {
+        "packed_handle": f"0x{handle:08X}",
+        "handle_selector": selector,
+        "handle_decoded_start": f"0x{start:X}",
+        "handle_decoded_length": f"0x{size:X}",
+        # One identity, a LIST of sites. The handle NAMES the string; these are
+        # the places a patcher would rewrite to repoint it. Collapsing the two
+        # would turn one message into several.
+        "reference_sites": [f"0x{site:08X}" for site in references],
+        "reference_site_count": len(references),
+    }
+
+
 def _run_atlas(args) -> int:
-    """ROM-ATLAS-001 queries. Reads the assembled JSONL only; never a ROM."""
+    """ROM-ATLAS-001 queries. Reads the assembled JSONL only, and no ROM, unless
+    `text --rom` is given: that opt-in path opens the image read-only to recover
+    packed text handles. Every other command, and `text` without `--rom`, still
+    touches no image."""
     from .atlas import (Atlas, AtlasError, AtlasReference, addr as atlas_addr,
                         in_range, objects_of_kind, refs_from, refs_to, unknowns)
     from .atlas_build import (AtlasBuildError, build_atlas, coverage_statistics,
@@ -1428,6 +1537,12 @@ def _run_atlas(args) -> int:
                 return {"source": "raw-rom-run", "match": how,
                         **observation_json(observation)}
 
+            # Opened ONCE, and only when asked for. Without `--rom` this stays
+            # None and every identity below reports itself unrecovered, which
+            # keeps the default search path free of any image read.
+            handle_image = (None if getattr(args, "rom", None) is None
+                            else Path(args.rom).read_bytes())
+
             def decoded_json(row: dict, how: str) -> dict:
                 # No "file_offset" key at this level, deliberately: every other
                 # result shape uses that name for a ROM offset, and giving a
@@ -1442,7 +1557,35 @@ def _run_atlas(args) -> int:
                 found = row["text"].find(args.phrase) if how == "exact" else -1
                 phrase_offset = (None if found < 0
                                  else row["decoded_offset"] + found * 2)
+
+                # The durable identity, where it can be recovered. It is keyed
+                # on the PHRASE's span, never the run's: a run merges several
+                # handle-defined records, so the run's own span names many
+                # identities and the phrase's names one. A normalized match
+                # cannot locate the phrase exactly, so it recovers nothing
+                # rather than guessing between candidates.
+                if handle_image is None:
+                    identity = {"packed_handle": None,
+                                "unrecovered_because":
+                                    "no ROM supplied; pass --rom to recover the "
+                                    "handle and its reference sites"}
+                elif phrase_offset is None:
+                    identity = {"packed_handle": None,
+                                "unrecovered_because":
+                                    f"a {how} match cannot locate the phrase's "
+                                    "exact decoded span, and a span is what "
+                                    "names the handle"}
+                else:
+                    identity = _recover_handle(handle_image,
+                                               row["container_index"],
+                                               phrase_offset,
+                                               len(args.phrase) * 2)
+
                 return {"source": "decoded-container-text", "match": how,
+                        # ONE identity object, carrying a LIST of reference
+                        # sites. Never one row per site: the handle is the
+                        # message's name, the sites are where it is referenced.
+                        "identity": identity,
                         "container_file_offset":
                             f"0x{row['container_file_offset']:06X}",
                         "container_rom_address": row["container_rom_address"],
@@ -1463,7 +1606,9 @@ def _run_atlas(args) -> int:
                             "full decoded run text). Neither is truncated. A "
                             "decoded match reports its container's ROM offset and "
                             "an offset within the decoded stream; the text itself "
-                            "has no ROM address.",
+                            "has no ROM address. Its durable identity is the "
+                            "packed handle naming it, recovered only when --rom "
+                            "is given and reported as null otherwise.",
                 "matched": len(raw_hits) + len(decoded_hits),
                 "raw_matched": len(raw_hits),
                 "decoded_matched": len(decoded_hits),

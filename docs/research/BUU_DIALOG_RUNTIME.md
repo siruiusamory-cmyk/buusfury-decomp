@@ -403,7 +403,7 @@ evidence goes.
 | Source | Status |
 |---|---|
 | Existing Buu UTF-16 text (`0x0806BCE8`) | **CONFIRMED_ROM** for slot 178 in 7 dialogs |
-| Compressed text at `0x0879BF2C` | **NOT REACHED**: see below |
+| Compressed text at `0x0879BF2C` | **CONFIRMED_RUNTIME**: reached and decodes to NPC dialogue (TEXT-HANDLE-001) |
 | Separate text corpus | Not observed |
 | Generated/formatted content | Not observed |
 | UI-only resource | Not observed |
@@ -412,12 +412,26 @@ evidence goes.
 | Game-state-only behaviour | **CONFIRMED_ROM** for slots 139, 48 |
 | Dialog 516 slot-178 content | **UNKNOWN** (runtime index) |
 
-### The compressed-text region was not investigated
+### The compressed-text region is reached and decodes
 
-`0x0879BF2C` was left alone, per the ticket's condition. No investigated dialog
-consumer reaches it or a decoder owning it: the one slot that reaches a text
-store reaches `0x0806BCE8`, the already-verified UTF-16 table. The region
-remains untouched and unclaimed.
+> **SUPERSEDED BY TEXT-HANDLE-001.** This ticket left `0x0879BF2C` alone, per
+> its own condition, and none of the dialog consumers it investigated reached
+> the region: the one slot that reaches a text store reaches `0x0806BCE8`, the
+> already-verified UTF-16 table. That was a statement about this ticket's scope,
+> not about the region, and later measurement settled the region directly.
+
+A live capture at consumer `0x08012230` observed the engine consuming packed
+compressed-text handles: 65 consumer hits over 21 distinct objects, frames 973
+to 11367. Twenty of the 21 captured handles select container index 0, which is
+`0x0879BF2C`. The container decompresses to 65,348 bytes, and all 19 tested
+`(start, length)` pairs decoded to literal readable English NPC dialogue, each
+range starting on a sentence boundary and ending on terminal punctuation. The
+atlas indexes the same content independently: `webfoot atlas text "five million
+pushups"` returns container_index 0 at decoded offset `0xE2FC`, exact match.
+
+The handle itself is read from a ROM-resident record at `+0x04` of the runtime
+object pointer the consumer receives. There is no runtime write to that field.
+So the region is reached, it decodes, and it holds real NPC dialogue.
 
 ---
 
@@ -520,6 +534,6 @@ was launched, and no CONFIRMED_RUNTIME claim is made anywhere in this document.
 | Dialog lifecycle: wait / close | **UNKNOWN**: not found, not claimed |
 | Dialog 516 text content | **UNKNOWN** (runtime index) |
 | `map -> placement -> event -> dialog -> text` | **NOT ESTABLISHED** |
-| Compressed text `0x0879BF2C` | **UNTOUCHED** |
+| Compressed text `0x0879BF2C` | **CONFIRMED_RUNTIME** (TEXT-HANDLE-001: reached, decodes to NPC dialogue) |
 | Type-4 and the other 286 records | **UNSUPPORTED** (unchanged) |
 | Semantic WRITE / AUTHOR_NEW / growth | **ABSENT** |

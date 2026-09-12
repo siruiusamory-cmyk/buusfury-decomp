@@ -9,8 +9,9 @@ import json
 import pytest
 
 from tools.webfoot import atlas_build as ab
-from tools.webfoot.atlas import (Confidence as C, UNKNOWN, UNKNOWN_HIGH_ENTROPY,
-                                 VERIFIED_FREE, addr, refs_to, unknowns)
+from tools.webfoot.atlas import (Confidence as C, PADDING_CANDIDATE, UNKNOWN,
+                                 UNKNOWN_HIGH_ENTROPY, VERIFIED_FREE, addr,
+                                 refs_to, unknowns)
 from tools.webfoot.binary import FileOffset
 from tools.webfoot.layout import RomRange
 
@@ -246,6 +247,42 @@ def test_a_scanner_cannot_paint_verified_free(tmp_path):
     atlas = ab.build_atlas(_artifacts(tmp_path, scan_entropy=blocks)).atlas
 
     assert atlas.coverage.at(FileOffset(0)).classification == "PADDING_CANDIDATE"
+
+
+def test_a_graphics_row_cannot_paint_verified_free(tmp_path):
+    """Graphics rows carry CONFIRMED, so an unguarded one would be the worst
+    leak of the three: free space published at the strongest scanner level."""
+    extents = [{"file_offset": 0x2000, "size": 0x100, "kind": VERIFIED_FREE,
+                "identity": "graphics.container.0000", "confidence": "CONFIRMED",
+                "decoded_size": 1024, "reachable_from": "synthetic", "notes": "",
+                "evidence": "synthetic", "source": "synthetic",
+                "gba_address": "0x08002000"}]
+
+    atlas = ab.build_atlas(_artifacts(tmp_path, graphics_extents=extents)).atlas
+
+    assert atlas.coverage.at(FileOffset(0x2000)).classification == PADDING_CANDIDATE
+
+
+def test_a_code_region_row_cannot_paint_verified_free(tmp_path):
+    regions = [{"file_offset": 0x3000, "size": 0x40, "classification": VERIFIED_FREE,
+                "confidence": "INFERRED", "coverage_bytes": 0x40,
+                "function_count": 1, "notes": ""}]
+
+    atlas = ab.build_atlas(_artifacts(tmp_path, code_regions=regions)).atlas
+
+    assert atlas.coverage.at(FileOffset(0x3000)).classification == PADDING_CANDIDATE
+
+
+def test_a_code_shape_row_cannot_paint_verified_free(tmp_path):
+    shapes = [{"file_offset": 0x3000 & ~0xFFF, "size": 4096,
+               "suggested_class": VERIFIED_FREE, "code_shape_score": 500,
+               "bl_count": 100, "bl_in_range_count": 100, "literal_load_count": 50,
+               "prologue_count": 40, "in_claimed_region": False}]
+
+    atlas = ab.build_atlas(_artifacts(tmp_path, scan_code_shape=shapes,
+                                      code_regions=[])).atlas
+
+    assert atlas.coverage.at(FileOffset(0x3000)).classification == PADDING_CANDIDATE
 
 
 # --- scan-derived evidence stays capped ---------------------------------------

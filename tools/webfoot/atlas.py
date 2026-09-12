@@ -231,6 +231,17 @@ class CoverageMap:
                 raise AtlasError(
                     f"refusing to downgrade 0x{span.range.start.value:X}..0x{span.range.end:X} "
                     f"from {span.confidence.value} to {confidence.value}")
+            # Freedom needs more than equal evidence to overwrite content: a
+            # region is only free if NOTHING occupies it, so a span naming
+            # content is evidence the incoming free claim is stale. The reverse
+            # stays allowed, because that is a stale free claim being corrected.
+            if (classification == VERIFIED_FREE
+                    and span.classification != VERIFIED_FREE
+                    and strength(span.confidence) == incoming):
+                raise AtlasError(
+                    f"refusing to free 0x{span.range.start.value:X}..0x{span.range.end:X} "
+                    f"over {span.classification} at equal {span.confidence.value}; "
+                    f"content on those bytes outranks an equal-strength {VERIFIED_FREE}")
 
         rebuilt: list[CoverageSpan] = []
         for span in self.spans:

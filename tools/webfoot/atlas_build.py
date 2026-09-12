@@ -148,6 +148,22 @@ def _confidence(value: str, cap: Confidence | None = None) -> Confidence:
     return confidence
 
 
+def _unfree(claims: Iterable[Claim]) -> Iterator[Claim]:
+    """Demote VERIFIED_FREE to PADDING_CANDIDATE on every non-seed claim.
+
+    Freedom is not a shape a scanner can see. Only the TOOLKIT-028 window is
+    proven free, and it reaches the map through `_seed_claims`, which refuses
+    any other window outright. Every other producer passes its artifact's own
+    classification string through verbatim, so this is applied once to all of
+    them rather than trusted to each one: a graphics or code-region row naming
+    VERIFIED_FREE would otherwise publish free space at CONFIRMED.
+    """
+    for start, end, classification, confidence, evidence in claims:
+        if classification == VERIFIED_FREE:
+            classification = PADDING_CANDIDATE
+        yield (start, end, classification, confidence, evidence)
+
+
 def _entropy_claims(rows: Iterable[dict]) -> Iterator[Claim]:
     # Only the 4 KiB grid: the 1 KiB rows cover the same bytes, and two grids
     # would be two equal-strength claims per byte for no added information.
@@ -157,12 +173,8 @@ def _entropy_claims(rows: Iterable[dict]) -> Iterator[Claim]:
         clipped = _clip(row["file_offset"], row["size"])
         if clipped is None:
             continue
-        name = row["suggested_class"]
-        # PADDING_CANDIDATE is a shape, never freedom: only the TOOLKIT-028
-        # window may claim VERIFIED_FREE, and it arrives through the seeds.
-        if name == VERIFIED_FREE:
-            name = PADDING_CANDIDATE
-        yield (*clipped, name, Confidence.OBSERVED, EVIDENCE["entropy"])
+        yield (*clipped, row["suggested_class"], Confidence.OBSERVED,
+               EVIDENCE["entropy"])
 
 
 def _code_shape_claims(rows: Iterable[dict]) -> Iterator[Claim]:
@@ -257,12 +269,6 @@ def _paint(claims: Sequence[Claim]) -> tuple[list[CoverageSpan], list[Conflict]]
                     and held[0] != classification
                     and held[1] is not Confidence.UNKNOWN):
                 held_rank = _SPECIFICITY.get(held[2], 0)
-                # Freedom is the one claim an equal-strength rival always wins
-                # against: a region is only free if NOTHING occupies it, so a
-                # claim naming content is evidence the free claim is stale.
-                # Prior tickets have authored into the proven-free window, and
-                # without this the free claim wins on start address alone and
-                # the atlas reports occupied bytes as available.
                 # Freedom is the one claim an equal-strength rival always wins
                 # against: a region is only free if NOTHING occupies it, so a
                 # claim naming content is evidence the free claim is stale.
@@ -454,11 +460,13 @@ def build_atlas(directory: Path) -> BuildReport:
     shop_path = directory / "shop_dialogue_ownership.json"
     shop = json.loads(shop_path.read_text(encoding="utf-8")) if shop_path.is_file() else None
 
-    claims: list[Claim] = []
-    claims.extend(_entropy_claims(artifacts["scan_entropy"]))
-    claims.extend(_code_shape_claims(artifacts["scan_code_shape"]))
-    claims.extend(_code_region_claims(artifacts["code_regions"]))
-    claims.extend(_graphics_claims(artifacts["graphics_extents"]))
+    # Every scanner-derived claim goes through `_unfree`; only the seed pass,
+    # which proves its one window, may name VERIFIED_FREE.
+    claims: list[Claim] = list(_unfree(
+        [*_entropy_claims(artifacts["scan_entropy"]),
+         *_code_shape_claims(artifacts["scan_code_shape"]),
+         *_code_region_claims(artifacts["code_regions"]),
+         *_graphics_claims(artifacts["graphics_extents"])]))
     claims.extend(_seed_claims(artifacts["seed_knowledge"]))
 
     spans, conflicts = _paint(claims)

@@ -155,6 +155,23 @@ def test_refine_refuses_to_downgrade_a_stronger_span():
         coverage.refine(span(0x1F0, 0x40), UNKNOWN_HIGH_ENTROPY, C.OBSERVED, PROOF)
 
 
+def test_refine_refuses_to_free_content_at_equal_strength():
+    """The `_paint` rule, on the `refine` path: equal evidence does not make a
+    free claim win over one naming content, because free means nothing is there."""
+    coverage = base_coverage().refine(span(0x200, 0x20), "text-pool", C.CONFIRMED, PROOF)
+
+    with pytest.raises(AtlasError, match="refusing to free"):
+        coverage.refine(span(0x200, 0x20), VERIFIED_FREE, C.CONFIRMED, PROOF)
+
+
+def test_refine_allows_content_over_a_stale_free_span():
+    coverage = base_coverage().refine(span(0x200, 0x20), VERIFIED_FREE, C.CONFIRMED, PROOF)
+
+    corrected = coverage.refine(span(0x200, 0x20), "placement_data", C.CONFIRMED, PROOF)
+
+    assert corrected.at(FileOffset(0x200)).classification == "placement_data"
+
+
 def test_refine_allows_an_equal_or_stronger_overwrite():
     coverage = base_coverage().refine(span(0x200, 0x20), UNKNOWN_TEXTLIKE, C.INFERRED, PROOF)
 

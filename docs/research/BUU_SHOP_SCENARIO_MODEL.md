@@ -242,11 +242,12 @@ not account for all six scenarios.
 
 ## 7. External lead verification
 
-### `0x0801226A`: REFUTED
+### `0x0801226A`: useful packed-handle breakpoint, not direct display
 
 Data Crystal reports a breakpoint here reaching message display with `r1`
-carrying a text-related value. It is real code inside `func.08012230`, but it is
-not message display:
+carrying a text-related value. TEXT-HANDLE-002 establishes the narrower
+interpretation: it is real code inside packed-text consumer `0x08012230`, but
+it is neither the dispatcher nor a direct message-display instruction:
 
 ```
 0x08012268  ldr   r1, [r5, #4]
@@ -257,10 +258,15 @@ not message display:
 0x08012272  strh  r0, [r1, #8]
 ```
 
-`r1` at that instruction holds `[r5,#4]` being shifted as a **packed
-bitfield** to index a structure, not a text pointer. The enclosing function
-calls the allocator `0x0803D5B8` and indexes table `0x087B5B64`. The claim is
-refuted as stated.
+`r1` at that instruction holds `[r5,#4]`: the **packed compressed-text
+handle**, not a text pointer. It is subsequently shifted to derive the packed
+fields, while the enclosing function allocates its consumer object and indexes
+table `0x087B5B64`. Thus the external recipe does not identify a dialogue
+handler, handle producer, or direct display instruction; nevertheless, this is
+a useful breakpoint because `r1` has already received a text-related handle.
+The authoritative structural explanation is the independently measured
+byte-`0x05` dispatcher route to this consumer, documented in
+`BUU_DIALOG_RUNTIME.md`.
 
 ### `0x0202BA70`: NOT ESTABLISHED
 
@@ -315,7 +321,7 @@ ticket censused only the 61 shop scripts and makes no claim beyond them.
 | `0x02CE74C0` role | **UNKNOWN** |
 | Consumer of a type-0x03 plaintext body | **UNKNOWN** |
 | Type-0x03 body reaching the live dialogue cursor | **NOT ESTABLISHED** |
-| `0x0801226A` is message display | **REFUTED** |
+| `0x0801226A` is direct message display | **NOT ESTABLISHED**; useful packed-handle breakpoint |
 | `0x0202BA70` is dialogue state | **NOT ESTABLISHED** |
 | Relocated authored dialogue | **NO** (unchanged) |
 

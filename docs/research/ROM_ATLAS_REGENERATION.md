@@ -177,10 +177,12 @@ The copying was convenience, not necessity.
 | clean chain, tracked at TOOLKIT-038 closure | `5350ba1d8708564e6408fe8db1e532b897a6cf746198d6384b5f6e290d20553a` |
 | clean chain, tracked at TEXT-INDEX-001 closure | `3121faa123cdf2745c386c679c39fa46de71c4e5b7ed5133a46e1e40ad89b7f1` |
 | clean chain, tracked at the Latin-1 text reclassification | `030fe799db12b37f62ba87eefb14d0bb3f2e76791673f7cea2b00274b96e7d57` |
-| **clean chain, tracked at HEAD (canonical)** | `e0bcf1b4a572401bd85a86e762c067ae2d9614fea58e9dc433388ea53352bd89` |
+| clean chain, tracked at TEXT-HANDLE-001 closure | `e0bcf1b4a572401bd85a86e762c067ae2d9614fea58e9dc433388ea53352bd89` |
+| **clean chain, measured at TEXT-HANDLE-002 closure (canonical)** | `5347bb720d59f80312520a38ee11d073a12a1b86e07c854117e657499fa38023` |
 
-The first six are retained as provenance baselines. **The seventh is what the
-tracked tooling produces today and is the canonical atlas going forward.**
+The first seven are retained as provenance baselines. **The eighth is what the
+tracked tooling produces for the measured TEXT-HANDLE-002 evidence and is the
+canonical atlas going forward.**
 
 The second and third are the same value, which is itself a measured result: the
 notes rewording changes `seed_knowledge.jsonl` but not one byte of the atlas,
@@ -233,12 +235,19 @@ coverage change is the 4 bytes at `0x781CFC`, which the handle row now owns at
 `RUNTIME_CONFIRMED` inside the enclosing record pool. See
 [BUU_EVENT_RESOURCE.md](BUU_EVENT_RESOURCE.md).
 
+The eighth differs from the seventh because TEXT-HANDLE-002 adds the executed
+byte-`0x05` dispatch loop and its selected handler thunk as seed objects. The
+new evidence corrects the apparent `0xNN05` opcode family boundary: only record
+byte `+0x02` selects this handler; byte `+0x03` is a downstream parameter. The
+change is additive and does not reclassify existing coverage. See
+[BUU_DIALOG_RUNTIME.md](BUU_DIALOG_RUNTIME.md#executable-compressed-text-dispatch).
+
 Note that a seed row's `evidence` and `source` do reach `atlas.jsonl` even though
 its `notes` does not, so the note-only invariant recorded above for the second
 and third digests is specific to `notes` and does not generalise.
 
-Regenerating from current HEAD via the documented command reproduces
-`e0bcf1b4...`; two consecutive clean runs into separate empty directories
+Regenerating the measured producer state via the documented command reproduces
+`5347bb72...`; two consecutive clean runs into separate empty directories
 produced byte-identical output across every artifact, so determinism holds.
 `build/atlas/` still holds the previous `030fe799...` output and is stale
 against this row until it is regenerated; `build/atlas_v2a/` is retained as the

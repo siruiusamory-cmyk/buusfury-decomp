@@ -433,6 +433,39 @@ The handle itself is read from a ROM-resident record at `+0x04` of the runtime
 object pointer the consumer receives. There is no runtime write to that field.
 So the region is reached, it decodes, and it holds real NPC dialogue.
 
+### Executable compressed-text dispatch
+
+**TEXT-HANDLE-002** captured the same ROM record, `0x08781CF8`, through one
+narrow executable path on 83 repeated hits at each observed site. Its first
+word is `0x68050001`; its word at `+0x04` is packed handle `0x02002641`.
+At `0x0801242C`, `0x0801227E`, and `0x08012230`, the live register snapshot
+carried `r1 = 0x08781CF8`; the first site also carried `r5 = 0x080728AC`.
+The shared interpreter liveness point `0x08004038` fired three times. The
+source savestate was deterministically reloaded twice after the initial load;
+the route and target values remained unchanged.
+
+Static reading of only that executed route resolves the dispatch. The loop at
+`0x08012552` reads the record word, then `0x08012556 ldrb r0,[r1,#2]`,
+`0x08012558 lsls r0,#2`, and `0x0801255A ldr r2,[r5,r0]`. For byte `0x05`,
+the entry at `0x080728C0` is raw Thumb pointer `0x0801242D`, fetched at
+`0x0801242C`; `0x0801255E` calls the `0x08046AA4` veneer, whose instruction
+at `0x08046AA4` is `bx r2`. The selected thunk preserves the record in `r1`
+and calls `0x0801227E`, which calls `0x08012230`. There, `0x08012236 mov
+r5,r1` and `0x08012240 ldr r0,[r5,#4]` load the packed handle; the following
+instructions isolate its selector, choose the container, and derive its start
+and length.
+
+The former `0xNN05` framing is therefore corrected: the executable dispatch
+key is **record byte `+0x02` = `0x05`**, not the whole `0xNN05` halfword. The
+observed `NN` is byte `+0x03` (`0x68` for the target); it does not select this
+handler. `0x080122A6 ldrb r2,[r5,#3]` reads it after text construction and
+passes it as `r2` to `0x08012012`, so `NN SEMANTICS` is **PARTIAL**: it is a
+downstream parameter, but its presentation meaning is not established.
+
+The separate `0x1D00` structural form remains **INFERRED** and unexplained. It
+was not observed or investigated on this route, and this result neither merges
+it with byte-`0x05` dispatch nor promotes any interpretation of it.
+
 ---
 
 ## Rejected interpretations

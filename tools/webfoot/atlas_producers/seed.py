@@ -708,6 +708,28 @@ def _rows() -> list[dict]:
               "and never observed executing, so its shape is proven from instruction bytes only. Do not read "
               "the sibling site's runtime evidence as covering this one.")
 
+    add(addr=0x0801242C, size=14, kind="function",
+        identity="compressed_text.opcode_05_handler_thunk",
+        conf="RUNTIME_CONFIRMED",
+        source="docs/research/BUU_DIALOG_RUNTIME.md:438",
+        evidence="TEXT-HANDLE-002 captured ROM record 0x08781CF8 at this exact PC on 83 repeated hits, "
+                 "with r1 = 0x08781CF8 and r5 = 0x080728AC. The selected table entry is raw Thumb "
+                 "pointer 0x0801242D (fetch 0x0801242C). Its instructions preserve the record in r1 and "
+                 "call 0x0801227E, which calls packed-handle consumer 0x08012230.",
+        notes="The handler's executable key is record byte +0x02 = 0x05, not a full 0xNN05 halfword. "
+              "Size 14 is the thunk 0x0801242C..0x0801243A, ending before the next push prologue.")
+
+    add(addr=0x080124F8, size=None, kind="function",
+        identity="compressed_text.opcode_05_dispatch_loop",
+        conf="CONFIRMED",
+        source="docs/research/BUU_DIALOG_RUNTIME.md:447",
+        evidence="TEXT-HANDLE-002 static reading of the path observed at 0x0801242C: 0x08012556 ldrb "
+                 "r0,[r1,#2], 0x08012558 lsls r0,#2, and 0x0801255A ldr r2,[r5,r0] select the entry. "
+                 "For 0x05, r5=0x080728AC and table word 0x080728C0 is 0x0801242D. 0x0801255E calls "
+                 "the 0x08046AA4 veneer, which is bx r2, entering fetch address 0x0801242C.",
+        notes="Size null: the complete dispatcher extent was not measured. The confirmed relation is the "
+              "one observed byte-2 dispatch branch only; no opcode census is implied.")
+
     add(addr=0x08781CF8, size=None, kind="other",
         identity="compressed_text.handle_owner_record_84",
         conf="RUNTIME_CONFIRMED",
@@ -724,7 +746,9 @@ def _rows() -> list[dict]:
               "receives, not by a record census. This is the structural answer to TEXT-HANDLE-001 and it is a "
               "NEGATIVE result about producers, which is why the WRITE watchpoint's silence is quoted as "
               "evidence rather than omitted. The record is dialog record 84 and the handle sits at its +0x48; "
-              "record numbering is from the 522-entry pointer table at 0x0879B704.")
+              "record numbering is from the 522-entry pointer table at 0x0879B704. TEXT-HANDLE-002 additionally "
+              "confirmed the live dispatcher reaches this record's byte-2=0x05 thunk, whose consumer loads +0x04 "
+              "as the packed handle.")
 
     add(off=0x781CFC, addr=0x08781CFC, size=4, kind="other",
         identity="compressed_text.handle_0x02002641",

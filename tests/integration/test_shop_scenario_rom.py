@@ -71,7 +71,8 @@ INTERPRETER = 0x08004038
 SHOP_RECORDS = (0x08074360, 0x080743C4, 0x08074450, 0x080744B4, 0x0807451C)
 RECORD_SCENARIO_FIELD = 0x0C
 
-#: Data Crystal's claimed message-display address, refuted by TOOLKIT-038.
+#: A Data Crystal breakpoint inside the confirmed packed-text consumer. It is
+#: not itself a message-display instruction; r1 already holds the packed handle.
 DC_MESSAGE_SITE = 0x0801226A
 DC_RAM_SLOT = 0x0202BA70
 
@@ -246,12 +247,18 @@ def test_shop_records_carry_a_scenario_pointer(rom):
         assert len(values) == 1, f"field +{field:#04x} varies: {values}"
 
 
-def test_data_crystal_message_claim_is_refuted(rom):
-    """0x0801226A is `movs r0,#0`, not a message-display call.
+def test_data_crystal_message_site_is_packed_handle_breakpoint_not_direct_display(rom):
+    """0x0801226A is `movs r0,#0`, following the packed-handle load into r1.
 
-    MOVS Rd,#imm8 is 0010 0 Rd imm8. Recorded so the refutation is checkable
-    rather than a reading of a disassembly listing in a document.
+    This proves the address is not itself a message-display instruction. The
+    preceding `ldr r1,[r5,#4]` explains its useful diagnostic value without
+    promoting the external recipe to a handler or producer claim.
     """
+    handle_load = _u16(rom, DC_MESSAGE_SITE - 2)
+    assert handle_load & 0xF800 == 0x6800, f"expected LDR immediate: {handle_load:#06x}"
+    assert (handle_load >> 6) & 0x1F == 1, "r1 load must use byte offset +4"
+    assert (handle_load >> 3) & 0x7 == 5, "r1 must be loaded from r5"
+    assert handle_load & 0x7 == 1, "packed handle must arrive in r1"
     encoded = _u16(rom, DC_MESSAGE_SITE)
     assert encoded & 0xF800 == 0x2000, f"expected MOVS immediate: {encoded:#06x}"
     assert encoded & 0xFF == 0

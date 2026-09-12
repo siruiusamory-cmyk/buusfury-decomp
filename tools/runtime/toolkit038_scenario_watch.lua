@@ -86,11 +86,12 @@
 --
 --   CHANNEL C - DATA CRYSTAL LEADS. Sample 0x0202BA70 every frame and record
 --   transitions. Separately, a breakpoint at 0x0801226A, which Data Crystal
---   claims reaches message display with r1 carrying a text value. The static
---   pass DISPUTES that: 0x0801226A is `movs r0, #0` inside func.08012230, a
---   routine that calls the allocator at 0x0803D5B8 and indexes table
---   0x087B5B64, and r1 there holds a packed bitfield being shifted. Recorded so
---   the claim is settled by measurement rather than by my reading.
+--   claims reaches message display with r1 carrying a text value. TEXT-HANDLE-002
+--   established the narrower explanation: 0x0801226A is `movs r0, #0` inside
+--   packed-text consumer 0x08012230, after `ldr r1,[r5,#4]` has loaded the packed
+--   handle. It is not itself a display instruction, handler entry, or producer,
+--   but remains a useful breakpoint for its text-related r1 state. The byte-0x05
+--   dispatcher chain is the authoritative structural explanation.
 --
 --   CHANNEL D - LIVENESS (POSITIVE CONTROL). Breakpoint at the shared
 --   interpreter 0x08004038. TOOLKIT-036 logged this exactly ONCE across a full

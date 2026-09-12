@@ -133,15 +133,18 @@ measured and is now superseded.
 
 | lead | verdict |
 |---|---|
-| `0x0801226A` reaches message display, `r1` carries text | **REFUTED** |
+| `0x0801226A` reaches message display, `r1` carries text | **REINTERPRETED by TEXT-HANDLE-002** |
 | `0x0202BA70` is dialogue start/state | **NOT ESTABLISHED** |
 | NPC structure contains a dialogue pointer | **CONFIRMED, stronger form** |
 
-`0x0801226A` is real code inside `func.08012230` but is `movs r0, #0`. `r1` there
-holds `[r5,#4]` being shifted as a packed bitfield to index a structure, not a
-text pointer; the enclosing function calls the allocator `0x0803D5B8` and indexes
-table `0x087B5B64`. The claim is refuted as stated, and a test pins the
-instruction encoding so the refutation is checkable.
+`0x0801226A` is real code inside `func.08012230` but is `movs r0, #0`. Later
+TEXT-HANDLE-002 established that the preceding `ldr r1,[r5,#4]` has loaded the
+packed compressed-text handle: it is not a text pointer, direct display
+instruction, handler entry, or producer, but it can be a useful breakpoint
+because `r1` already carries text-related state. The independently measured
+byte-`0x05` dispatcher chain, not this single instruction, is the authoritative
+explanation. The instruction-encoding test remains a check that the address is
+not itself a message-display call.
 
 `0x0202BA70` has **zero** word-aligned references anywhere in the image, nor at
 ±4 or ±8. It is reachable only by computed addressing, so static analysis can

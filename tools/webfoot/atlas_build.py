@@ -46,6 +46,25 @@ ARTIFACTS = ("seed_knowledge", "graphics_extents", "code_functions", "code_regio
              "scan_text", "scan_pointers", "scan_pointer_tables", "scan_entropy",
              "scan_compression", "scan_code_shape")
 
+#: The decoded-container text index, deliberately NOT in `ARTIFACTS`.
+#: Every artifact above is coverage or observation evidence about ROM BYTES, and
+#: each is addressed by a file offset. A decoded run has no ROM offset of its
+#: own — only its container does — so it cannot become an `Observation`, whose
+#: identity IS a `RomRange`, without inventing an address the ROM does not have.
+#: It is a sibling index instead: produced by the same regeneration, read
+#: alongside the atlas, never merged into coverage.
+DECODED_TEXT_ARTIFACT = "scan_decoded_text"
+
+
+def load_decoded_text(directory: Path) -> list[dict]:
+    """Read the decoded-container text index, or nothing if it was not built.
+
+    Missing is not an error: an atlas directory generated before this index
+    existed is still a valid atlas, it simply has no decoded text to search.
+    """
+    path = Path(directory) / f"{DECODED_TEXT_ARTIFACT}.jsonl"
+    return _read_jsonl(path) if path.is_file() else []
+
 #: One stable evidence string per pass. `Provenance.evidence` is part of a span's
 #: coalescing key (atlas.py:143), so a per-row string would defeat `_coalesce`
 #: and leave tens of thousands of one-row spans.
@@ -432,8 +451,8 @@ def _observations(artifacts: dict[str, list[dict]]) -> tuple[Observation, ...]:
 
     for row in artifacts["scan_text"]:
         add(row["file_offset"], row["size"], f"text-run-{row['encoding']}",
-            row["prefix"], Confidence.CANDIDATE,
-            "scan_text.jsonl: decoded run (prefix truncated at 40 characters)")
+            row.get("text") or row["prefix"], Confidence.CANDIDATE,
+            "scan_text.jsonl: decoded run, full text")
     for row in artifacts["scan_entropy"]:
         add(row["file_offset"], row["size"], f"entropy-block-{row['block_size']}",
             f"{row['entropy_bits']} bits, {row['distinct_bytes']} distinct",

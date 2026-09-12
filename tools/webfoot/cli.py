@@ -304,7 +304,8 @@ def build_parser() -> argparse.ArgumentParser:
     atlas_objects.add_argument("--limit", type=int, default=40)
 
     atlas_text = atlas_commands.add_parser(
-        "text", help="phrase search over the located text-run prefixes"
+        "text",
+        help="phrase search over raw ROM text runs and the decoded-container index",
     )
     atlas_text.add_argument("phrase")
     atlas_text.add_argument("--limit", type=int, default=40)
@@ -1301,12 +1302,34 @@ def _default_atlas_directory() -> Path:
     return Path(__file__).resolve().parents[2] / "build" / "atlas"
 
 
+def _collapse_whitespace(value: str) -> str:
+    """Fold every whitespace run to one space. Conservative: nothing else moves."""
+    return " ".join(value.split())
+
+
+def _text_match(phrase: str, haystack: str) -> str | None:
+    """`"exact"`, `"normalized"`, or None when the phrase is absent.
+
+    Normalization is comparison-only and deliberately small: case folding and
+    whitespace collapsing, nothing fuzzy. A caller must be able to tell which of
+    the two happened, because a normalized hit is a weaker claim than an exact
+    one and silently conflating them would make the result unciteable.
+    """
+    if phrase in haystack:
+        return "exact"
+    if (_collapse_whitespace(phrase).casefold()
+            in _collapse_whitespace(haystack).casefold()):
+        return "normalized"
+    return None
+
+
 def _run_atlas(args) -> int:
     """ROM-ATLAS-001 queries. Reads the assembled JSONL only; never a ROM."""
     from .atlas import (Atlas, AtlasError, AtlasReference, addr as atlas_addr,
                         in_range, objects_of_kind, refs_from, refs_to, unknowns)
     from .atlas_build import (AtlasBuildError, build_atlas, coverage_statistics,
-                              load_atlas, parse_offset, write_atlas)
+                              load_atlas, load_decoded_text, parse_offset,
+                              write_atlas)
     from .binary import FileOffset
     from .layout import RomRange
 
@@ -1389,17 +1412,70 @@ def _run_atlas(args) -> int:
                                   sorted(found, key=lambda o: o.range.start.value)
                                   [:args.limit]]}
         elif command == "text":
-            # The scanner truncates each prefix at 40 characters, so this
-            # searches the located prefixes rather than the full corpus.
-            needle = args.phrase.lower()
-            hits = [o for o in atlas.observations
-                    if o.kind.startswith("text-run-") and needle in o.detail.lower()]
-            result = {"searched": "located text-run prefixes only; scan_text.jsonl "
-                                  "truncates each prefix at 40 characters, so a phrase "
-                                  "longer than 40 characters cannot match",
-                      "matched": len(hits),
-                      "runs": [observation_json(o) for o in
-                               sorted(hits, key=lambda o: o.range.start.value)[:args.limit]]}
+            # Two surfaces, one phrase. A raw hit is a ROM run and reports its
+            # real file offset. A decoded hit lives inside a decompressed
+            # container and reports its CONTAINER's ROM offset plus an offset
+            # within the decoded stream — never a ROM address for the text
+            # itself, because the text has none.
+            raw_hits = [(o, _text_match(args.phrase, o.detail))
+                        for o in atlas.observations if o.kind.startswith("text-run-")]
+            raw_hits = [(o, how) for o, how in raw_hits if how is not None]
+            decoded_hits = [(row, _text_match(args.phrase, row.get("text") or ""))
+                            for row in load_decoded_text(atlas_path.parent)]
+            decoded_hits = [(row, how) for row, how in decoded_hits if how is not None]
+
+            def raw_json(observation, how: str) -> dict:
+                return {"source": "raw-rom-run", "match": how,
+                        **observation_json(observation)}
+
+            def decoded_json(row: dict, how: str) -> dict:
+                # No "file_offset" key at this level, deliberately: every other
+                # result shape uses that name for a ROM offset, and giving a
+                # decoded run one would be a lie a reader could not detect.
+                # Where the PHRASE itself sits, when it can be located exactly.
+                # A run may hold several logical strings (these streams have no
+                # delimiter between some of them), so the run's own start is
+                # often not where the searched phrase begins. Both are reported:
+                # the run's offset, and the phrase's, each in decoded-stream
+                # units. Two UTF-16LE bytes per character is the encoding, so
+                # the character index doubles into a byte offset.
+                found = row["text"].find(args.phrase) if how == "exact" else -1
+                phrase_offset = (None if found < 0
+                                 else row["decoded_offset"] + found * 2)
+                return {"source": "decoded-container-text", "match": how,
+                        "container_file_offset":
+                            f"0x{row['container_file_offset']:06X}",
+                        "container_rom_address": row["container_rom_address"],
+                        "container_index": row["container_index"],
+                        "decompressor": row["decompressor"],
+                        "decoded_offset": f"0x{row['decoded_offset']:X}",
+                        "decoded_offset_of_phrase":
+                            None if phrase_offset is None else f"0x{phrase_offset:X}",
+                        "encoding": row["encoding"],
+                        "char_count": row["char_count"],
+                        "text": row["text"],
+                        "rom_offset_of_text": "NONE: this text exists only after "
+                                              "decompression and has no ROM address"}
+
+            result = {
+                "searched": "raw ROM text runs (scan_text.jsonl, full run text) and "
+                            "the decoded-container index (scan_decoded_text.jsonl, "
+                            "full decoded run text). Neither is truncated. A "
+                            "decoded match reports its container's ROM offset and "
+                            "an offset within the decoded stream; the text itself "
+                            "has no ROM address.",
+                "matched": len(raw_hits) + len(decoded_hits),
+                "raw_matched": len(raw_hits),
+                "decoded_matched": len(decoded_hits),
+                "runs": [raw_json(o, how) for o, how in
+                         sorted(raw_hits, key=lambda item: item[0].range.start.value)
+                         [:args.limit]],
+                "decoded": [decoded_json(row, how) for row, how in
+                            sorted(decoded_hits,
+                                   key=lambda item: (item[0]["container_file_offset"],
+                                                     item[0]["decoded_offset"]))
+                            [:args.limit]],
+            }
         elif command == "addr":
             offset, how = parse_offset(args.offset)
             found = atlas_addr(atlas, FileOffset(offset))

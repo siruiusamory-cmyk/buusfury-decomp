@@ -10,7 +10,7 @@ run's timestamps:
 1. `seed`               — reads documents only, writes `seed_knowledge.jsonl`.
 2. `graphics_extents`   — needs only the ROM and the profile catalog.
 3. `scan`               — needs the seed rows (for `in_claimed_region`); runs all
-                          six passes.
+                          six passes plus the decoded-text index.
 4. `code_functions.build_wave2` — needs the seed rows.
 5. `code_functions.build_wave4` — needs wave 2's function set for its delta rule.
 6. `regions`            — needs both traversals' reach records.
@@ -60,7 +60,8 @@ def run(rom_path: Path, out_dir: Path, *, config_path: Path | None = None,
     scan_summary = scan.build(rom_path, out_dir)
     written.extend(f"{name}.jsonl" for name in
                    ("scan_text", "scan_pointers", "scan_pointer_tables",
-                    "scan_entropy", "scan_compression", "scan_code_shape"))
+                    "scan_entropy", "scan_compression", "scan_decoded_text",
+                    "scan_code_shape"))
 
     wave2_path, wave2 = code_functions.build_wave2(rom_path, out_dir)
     written.append(wave2_path.name)

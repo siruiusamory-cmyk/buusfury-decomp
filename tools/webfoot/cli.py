@@ -252,6 +252,27 @@ def build_parser() -> argparse.ArgumentParser:
         help="artifact directory (default: build/atlas)",
     )
 
+    # The only command in this block that opens a ROM. `build` assembles
+    # artifacts that already exist; `regenerate` produces them first, from the
+    # image, into a directory the caller names.
+    atlas_regen = atlas_commands.add_parser(
+        "regenerate",
+        help="run every evidence producer from the ROM, then assemble the atlas",
+    )
+    atlas_regen.add_argument("rom", type=Path, help="the canonical ROM; opened read-only")
+    atlas_regen.add_argument(
+        "--out", type=Path, required=True,
+        help="artifact output directory; must be empty or absent",
+    )
+    atlas_regen.add_argument(
+        "--config", type=Path, default=None,
+        help="ROM profile catalog (default: config/roms.yaml)",
+    )
+    atlas_regen.add_argument(
+        "--no-assemble", action="store_true",
+        help="write the evidence artifacts but do not build atlas.jsonl",
+    )
+
     atlas_addr = atlas_commands.add_parser(
         "addr", help="coverage, objects and observations at one offset"
     )
@@ -1311,6 +1332,20 @@ def _run_atlas(args) -> int:
                 "conflicts": len(report.conflicts),
                 **coverage_statistics(report.atlas),
             }, indent=2, sort_keys=True))
+            return 0
+
+        if args.atlas_command == "regenerate":
+            from .atlas_producers import run as regenerate
+
+            out = args.out
+            if out.exists() and any(out.iterdir()):
+                print(f"{out} is not empty; regenerate writes into a clean directory",
+                      file=sys.stderr)
+                return 2
+            summary = regenerate(args.rom, out, config_path=args.config,
+                                 assemble=not args.no_assemble,
+                                 atlas_path=args.atlas)
+            print(json.dumps(summary, indent=2, sort_keys=True))
             return 0
 
         atlas = load_atlas(atlas_path)

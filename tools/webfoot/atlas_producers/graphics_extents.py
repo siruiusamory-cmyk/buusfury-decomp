@@ -1,0 +1,92 @@
+"""ROM-ATLAS-001 graphics extents: `graphics_extents.jsonl`.
+
+Ported from scratchpad/gen_graphics_extents.py (session
+afdddff1-9c87-4859-818c-7a39efc68a28 — note the different session id from the
+other five producers; this one was recovered separately).
+
+Records where the existing walker already goes: `graphics.load_actor_sprites`
+(graphics.py:612) is called and one row is written per distinct container file
+offset. No new parsing — `file_offset` is `Graphic.file_offset` (graphics.py:122)
+and `size` is `Graphic.packed_size` (graphics.py:128), which comes from
+`Container.packed_end` (webfoot_lz.py:99).
+
+Changes from the original: the hardcoded repository root, ROM path and output
+path (gen_graphics_extents.py:15-25) became parameters, and the `os.chdir` the
+original used to resolve `config/roms.yaml` became an explicit `config_path`.
+The before/after ROM SHA assertions (gen_graphics_extents.py:28,127) are kept.
+"""
+
+from __future__ import annotations
+
+import hashlib
+from pathlib import Path
+
+from .. import graphics
+from ..profile import RomProfileCatalog
+from ..rom import identify_rom
+from ._io import write_jsonl
+
+GBA_BASE = 0x08000000
+EXPECTED_SHA = "940ad5f01db4465b8877dfe739510cbf34f4ea3d390f3df13519808bc36f059e"
+
+
+def build(rom_path: Path, out_dir: Path, config_path: Path) -> Path:
+    """Write `graphics_extents.jsonl` into `out_dir`. Opens the ROM read-only."""
+    rom_path = Path(rom_path)
+    image = rom_path.read_bytes()
+    before = hashlib.sha256(image).hexdigest()
+    assert before == EXPECTED_SHA, f"ROM identity mismatch before: {before}"
+
+    catalog = RomProfileCatalog.load(Path(config_path))
+    sprites = graphics.load_actor_sprites(image, identify_rom(rom_path, catalog))
+
+    rows = []
+    for graphic in sprites.graphics():
+        first = graphic.consumers[0]
+        notes = []
+        if len(graphic.consumers) > 1:
+            notes.append(f"referenced by {len(graphic.consumers)} frames")
+        if len(graphic.characters) > 1:
+            notes.append(f"used by {len(graphic.characters)} characters")
+        rows.append({
+            "file_offset": graphic.file_offset,
+            "size": graphic.packed_size,
+            "gba_address": f"0x{GBA_BASE + graphic.file_offset:08X}",
+            "kind": "compressed_stream",
+            "identity": f"graphics.container.{graphic.identity.index:04d}",
+            "confidence": "CONFIRMED",
+            "decoded_size": len(graphic.pixels),
+            "reachable_from": (
+                f"character:{first.character_index:03d}"
+                f"/animation:{first.animation_index:03d}"
+                f"/frame:{first.frame_index:03d}"
+                f"/direction:{first.direction}"
+                f"@frame_offset:0x{first.frame_offset:X}"
+            ),
+            "source": "tools/webfoot/graphics.py:612",
+            "evidence": (
+                "reached by load_actor_sprites walk (graphics.py:612); packed extent is "
+                "Graphic.packed_size (graphics.py:128) from Container.packed_end "
+                "(webfoot_lz.py:99) measured by running the decoder; decoded length "
+                "equals the width*height the referring piece record independently declares"
+            ),
+            "notes": "; ".join(notes),
+        })
+
+    rows.sort(key=lambda r: r["file_offset"])
+    assert len({r["file_offset"] for r in rows}) == len(rows), "duplicate offsets"
+
+    # Overlap detection on the sorted extents.
+    for earlier, later in zip(rows, rows[1:]):
+        if earlier["file_offset"] + earlier["size"] > later["file_offset"]:
+            for this, other in ((earlier, later), (later, earlier)):
+                tag = (f"OVERLAP: {other['identity']} at 0x{other['file_offset']:X}"
+                       f"..0x{other['file_offset'] + other['size']:X}")
+                this["notes"] = f"{this['notes']}; {tag}" if this["notes"] else tag
+
+    path = Path(out_dir) / "graphics_extents.jsonl"
+    write_jsonl(path, rows)
+
+    after = hashlib.sha256(rom_path.read_bytes()).hexdigest()
+    assert after == EXPECTED_SHA, f"ROM changed during the run: {after}"
+    return path

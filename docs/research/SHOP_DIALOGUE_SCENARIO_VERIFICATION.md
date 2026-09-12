@@ -255,11 +255,18 @@ pipeline before and after:
 
 | seed | `atlas.jsonl` sha256 |
 |---|---|
-| HEAD, 51 rows | `8b6e440023eb61fdaf0e00a3ee205ebb83e62774273b29bedf021081c7533adb` |
-| TOOLKIT-038, 69 rows | `5350ba1d8708564e6408fe8db1e532b897a6cf746198d6384b5f6e290d20553a` |
+| pre-038 baseline, 51 rows | `8b6e440023eb61fdaf0e00a3ee205ebb83e62774273b29bedf021081c7533adb` |
+| **TOOLKIT-038, 69 rows (canonical at HEAD)** | `5350ba1d8708564e6408fe8db1e532b897a6cf746198d6384b5f6e290d20553a` |
 
-The first value **reproduces the canonical digest** `ROM_ATLAS_REGENERATION.md`
-records, which validates the comparison rather than merely asserting it.
+The first value reproduced the digest `ROM_ATLAS_REGENERATION.md` recorded as
+canonical at ROM-ATLAS-001 closure, which validates the comparison rather than
+merely asserting it. Because this ticket's seed change is now committed, the
+**second value is the canonical atlas at HEAD** and the first is retained as the
+pre-038 comparison oracle in `build/atlas_v2a/`.
+
+A later full regeneration from committed HEAD reproduced `5350ba1d...` and was
+byte-identical to this ticket's run across **every** artifact, not only
+`atlas.jsonl`, with the ROM hash verified unchanged before and after.
 
 **The atlas delta is purely additive**: +18 rows, **0 removed, 0 reclassified**.
 No coverage span, object, reference or observation moved, and zero unnamed
@@ -316,8 +323,10 @@ No independent reviewer was engaged in this session.
   output to `build/atlas`. The file is ignored and generated; it held the
   historical `7c7087a8...` provenance baseline, which is superseded and not
   canonical, and `build/atlas_v2a/atlas.jsonl` retains an identical copy of the
-  canonical value. The directory was restored to the canonical
-  `8b6e4400...` before closure. Nothing unique or tracked was lost.
+  pre-038 value. The directory was restored to `8b6e4400...` at closure, and
+  then, once this ticket's seed change was committed, regenerated from HEAD so
+  `build/atlas/` now holds the canonical `5350ba1d...`; `build/atlas_v2a/`
+  remains the pre-038 `8b6e4400...` oracle. Nothing unique or tracked was lost.
 - Unrelated dirty and untracked worktree paths preserved; nothing staged, nothing
   committed; no `git add .`, `-A`, `commit -a`, stash, clean, hard reset or force
   push.

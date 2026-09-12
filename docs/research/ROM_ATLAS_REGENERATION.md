@@ -173,14 +173,27 @@ The copying was convenience, not necessity.
 | --- | --- |
 | historical ROM-ATLAS-001 artifact | `7c7087a88614ad8c97414599e3aa557cc8aa70d0529756318bbc21f49ee08ca9` |
 | clean chain, pre-policy rewording | `8b6e440023eb61fdaf0e00a3ee205ebb83e62774273b29bedf021081c7533adb` |
-| clean chain, tracked (canonical) | `8b6e440023eb61fdaf0e00a3ee205ebb83e62774273b29bedf021081c7533adb` |
+| clean chain, tracked at ROM-ATLAS-001 closure | `8b6e440023eb61fdaf0e00a3ee205ebb83e62774273b29bedf021081c7533adb` |
+| **clean chain, tracked at HEAD (canonical)** | `5350ba1d8708564e6408fe8db1e532b897a6cf746198d6384b5f6e290d20553a` |
 
-The first two are retained as provenance baselines. The third is what the tracked
-tooling produces today and is the canonical atlas going forward.
+The first three are retained as provenance baselines. **The fourth is what the
+tracked tooling produces today and is the canonical atlas going forward.**
 
 The second and third are the same value, which is itself a measured result: the
 notes rewording changes `seed_knowledge.jsonl` but not one byte of the atlas,
 because `notes` never reaches it.
+
+The fourth differs from the third because TOOLKIT-038 added 18 seed rows for the
+shop scenario arrays, their type-0x05 descriptors, five shop object records and
+the scenario master index. That delta is **purely additive**: +18 rows, none
+removed and none reclassified, so no earlier classification moved. See
+[BUU_SHOP_SCENARIO_MODEL.md](BUU_SHOP_SCENARIO_MODEL.md).
+
+Regenerating from current HEAD via the documented command reproduces
+`5350ba1d...` and is byte-identical to the TOOLKIT-038 run across **every**
+artifact, not only `atlas.jsonl`. `build/atlas/` holds this canonical output;
+`build/atlas_v2a/` is retained as the pre-TOOLKIT-038 `8b6e4400...` comparison
+oracle.
 
 | artifact | sha256 |
 | --- | --- |

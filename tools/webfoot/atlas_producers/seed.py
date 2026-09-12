@@ -76,8 +76,17 @@ def _rows() -> list[dict]:
         source="docs/research/BUU_EVENT_RESOURCE.md:101",
         evidence="Dialog entry point: branches on dialog type byte at +0x02 (0x080040BA..0x080040C2); type 0 "
                  "runs the code block at dialog+0x03 through interpreter 0x08004038; type 4 expands via "
-                 "0x08049120. Fails an assertion carrying 'Expected dialog to start with a code block'.",
-        notes="size null: extent not stated.")
+                 "0x08049120. Fails an assertion carrying 'Expected dialog to start with a code block'. "
+                 "TOOLKIT-038 re-measured the dispatch: 0x080040BA is ldrb r1,[r0,#2], the SAME type byte the "
+                 "shop script census measures, and 0x080040BC/0x080040C0 compare against 0 and 4 only. Its "
+                 "else-branch calls 0x0803DF14 with Webfoot's own source path "
+                 "'T:\\\\Source\\\\ByteCodeInterpreter\\\\ByteCodeInterpreter.cpp'. Ten BL sites call it: "
+                 "0x08003242, 0x08003276, 0x080032BA, 0x08004C00, 0x0800E1A6, 0x0800E666, 0x0800FC5E, "
+                 "0x0801096C, 0x0801A1B8, 0x08026480.",
+        notes="size null: extent not stated. BOUNDARY, TOOLKIT-038: because this routine accepts only types 0 "
+              "and 4 and asserts on everything else, it CANNOT be the consumer of the 17 type-0x03 plaintext "
+              "shop bodies. The routine that reads a type-0x03 body and advances the live dialogue cursor at "
+              "0x03003898 +0x24C is NOT IDENTIFIED, and is the next measured blocker.")
 
     add(addr=0x08003030, size=None, kind="function",
         identity="native_slot_178.handler",
@@ -525,12 +534,77 @@ def _rows() -> list[dict]:
                  "encoding as the declared pool, different location. Examples: 'Welcome to the Hercule City "
                  "Z-Mart! How can I help you?', '-Buy', '-Sell', '-End'. A conversational dialogue system with "
                  "branching choices.",
-        notes="UNOWNED (line 18): no pointer table, no consumer, no ownership measurement, no relocation "
-              "eligibility, no runtime observation. Named as the next measured blocker (line 186). Size derived "
-              "from the stated inclusive extent as an exclusive end. OVERLAP, UNRESOLVED: these 4,410 bytes lie "
-              "INSIDE event_resource.record_pool [0x77C5A4,0x79B704), which TOOLKIT-019 measured as exhaustively "
-              "tiled by its 522 records with zero gap. Whether this speech is event-record payload or a distinct "
-              "store is NOT established by either document; neither reconciles them. Flagged, not resolved.")
+        notes="OVERLAP RESOLVED by TOOLKIT-038 (docs/research/BUU_SHOP_SCENARIO_MODEL.md): this speech IS "
+              "event-record payload, not a distinct store. The six stride-4 scenario arrays in the region are "
+              "entries 28/30/31/33/34/36 of event_resource.pointer_table, and none of their 61 script targets is "
+              "itself a table entry, so the region is owned through the table TOOLKIT-019 already proved. The "
+              "OLD 'UNOWNED' label (BUU_DIALOGUE_TEXT_STORES.md:18) was correct for what it measured and is "
+              "SUPERSEDED. All 61 scripts satisfy TOOLKIT-036's unique-ownership relocation gate. Size derived "
+              "from the stated inclusive extent as an exclusive end.")
+
+    # TOOLKIT-038 measured the six shop scenarios inside that region. Each is an
+    # event record whose body is a stride-4 array of script pointers, preceded by
+    # an 8-byte type-0x05 descriptor whose u16 count equals the entry count.
+    # (array address, entry count, event pointer-table index)
+    SHOP_SCENARIOS = (
+        (0x0877F3B0, 10, 28),
+        (0x0877F73C, 10, 30),
+        (0x0877FAB8, 11, 31),
+        (0x0877FE00, 10, 33),
+        (0x08780008, 8, 34),
+        (0x087803E4, 12, 36),
+    )
+    for _array, _count, _event in SHOP_SCENARIOS:
+        add(addr=_array, size=_count * 4, kind="pointer_table",
+            identity="shop_scenario.array_%06X" % (_array - BASE),
+            conf="CONFIRMED",
+            source="docs/research/BUU_SHOP_SCENARIO_MODEL.md:41",
+            evidence="TOOLKIT-038, evidence class CONFIRMED_ROM: stride-4 array of %d script pointers, "
+                     "addressed by event_resource.pointer_table entry %d. Its last slot points 8 bytes below "
+                     "the base, at a type-0x05 descriptor whose u16 count equals %d. Every script target has "
+                     "EXACTLY ONE word-aligned inbound reference in the whole 8 MiB image - its own slot - so "
+                     "TOOLKIT-036's per-entry relocation gate is satisfied."
+                     % (_count, _event, _count),
+            notes="Scripts are NOT separately addressable: 0 of the 61 targets across all six scenarios appears "
+                  "in the 522-entry pointer table. Branch correspondence to Buy/Sell/End is INFERRED, not "
+                  "runtime-proven.")
+        add(addr=_array - 8, size=8, kind="other",
+            identity="shop_scenario.descriptor_%06X" % (_array - BASE - 8),
+            conf="CONFIRMED",
+            source="docs/research/BUU_SHOP_SCENARIO_MODEL.md:132",
+            evidence="TOOLKIT-038: +0 u16 entry_count = %d, +2 u8 type = 0x05, +3 u8 = 0, "
+                     "+4 u32 = 0x02CE74C0 (identical across all six scenarios). The count cross-checks the "
+                     "array it precedes." % _count,
+            notes="These 8 bytes fall inside the PRECEDING event record's extent, so whether they are that "
+                  "record's trailing field or an 8-byte prefix the engine reads before the array is UNKNOWN "
+                  "from bytes alone; both readings fit. The role of 0x02CE74C0 is UNKNOWN.")
+
+    add(addr=0x0879B774, size=None, kind="pointer_table",
+        identity="shop_scenario.master_index",
+        conf="CANDIDATE",
+        source="docs/research/BUU_SHOP_SCENARIO_MODEL.md:206",
+        evidence="TOOLKIT-038: a contiguous run of aligned words listing every scenario array in the "
+                 "0x0877Fxxx..0x0878xxxx region, including all six shop arrays. Found by scanning the image for "
+                 "words equal to a scenario array address.",
+        notes="size null: extent not measured. CANDIDATE, not CONFIRMED: the run's bounds and its consumer were "
+              "not established, and it lies just past event_resource.pointer_table's end at 0x0879BF2C.")
+
+    # TOOLKIT-038: the shop object records that carry a scenario pointer. This is
+    # Data Crystal's "NPC structure contains a dialogue pointer" in stronger
+    # form - the pointer is to a scenario, not to a string.
+    for _record, _scenario in ((0x08074360, 0x0877F3B0), (0x080743C4, 0x0877F73C),
+                               (0x08074450, 0x0877FAB8), (0x080744B4, 0x0877FE00),
+                               (0x0807451C, 0x08780008)):
+        add(addr=_record, size=None, kind="other",
+            identity="shop_object.record_%06X" % (_record - BASE),
+            conf="CONFIRMED",
+            source="docs/research/BUU_SHOP_SCENARIO_MODEL.md:238",
+            evidence="TOOLKIT-038: field +0x0C holds scenario 0x%08X. Fields +0x00, +0x04, +0x08, +0x10, +0x14, "
+                     "+0x18 and +0x1C are byte-identical across all five records; +0x00/+0x10/+0x14 are Thumb "
+                     "code pointers 0x0800775F / 0x08007675 / 0x080077DF that disassemble as object-lifecycle "
+                     "callbacks, none of which touches text." % _scenario,
+            notes="size null: the record's full extent was not measured. Event 36 (0x087803E4) has no record in "
+                  "this cluster, so the five records do not account for all six scenarios.")
 
     EVENT_POOL = 0x0877C5A4
     EVENT_TABLE = 0x0879B704
@@ -543,10 +617,12 @@ def _rows() -> list[dict]:
                  "multiples of 4. The pool ends exactly where the table begins. 236 type-0 dialog records are "
                  "ROUND_TRIP over 10,263 code bytes; the remaining 286 are structurally classified by type byte "
                  "and explicitly refused by the codec.",
-        notes="OVERLAP WARNING: this pool [0x77C5A4,0x79B704) CONTAINS the shop_dialogue_store region "
-              "[0x77F09A,0x7801D4). BUU_DIALOGUE_TEXT_STORES.md calls the shop region UNOWNED and does not "
-              "reconcile it against this pool; whether those bytes are event-record payload or a separate store "
-              "is NOT established by either document. Flagged for follow-up.")
+        notes="OVERLAP RESOLVED by TOOLKIT-038: this pool [0x77C5A4,0x79B704) CONTAINS the "
+              "shop_dialogue_store region [0x77F09A,0x7801D4) because that speech is this pool's own record "
+              "payload. The six shop scenario arrays are pool records addressed by entries 28/30/31/33/34/36 of "
+              "the pointer table, and their 61 script targets are payload reached only through them. The pool's "
+              "exhaustive zero-gap tiling and the shop region's contents are therefore consistent, not in "
+              "conflict.")
 
     add(addr=EVENT_TABLE, size=2088, kind="pointer_table",
         identity="event_resource.pointer_table",

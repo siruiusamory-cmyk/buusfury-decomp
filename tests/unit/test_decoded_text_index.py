@@ -199,6 +199,52 @@ def test_both_surfaces_use_one_run_extraction_implementation():
     assert text.count("CONTROL_PREFIX and cursor") == 1
 
 
+#: The three Latin-1 halfwords that are text, not control units. They are the
+#: only units in the seven compressed-text containers whose low byte exceeds
+#: PRINT_MAX, and each occurs mid-word, so classifying them as control units
+#: split valid words in half. Every fixture phrase below is invented.
+LATIN1_ACUTE = "The décor is plain."
+LATIN1_DIAERESIS = "A naïve guess only."
+LATIN1_NBSP = "Ten thousand units."
+
+
+def _one_run(text: str):
+    runs = list(scan.scan_runs(_utf16_run(text), require_terminator=False))
+    assert len(runs) == 1, f"expected one unbroken run, got {[r[3] for r in runs]}"
+    return runs[0]
+
+
+def test_an_acute_e_stays_inside_one_run():
+    assert _one_run(LATIN1_ACUTE)[3] == LATIN1_ACUTE
+    assert "é" in _one_run(LATIN1_ACUTE)[3]
+
+
+def test_a_diaeresis_i_stays_inside_one_run():
+    assert _one_run(LATIN1_DIAERESIS)[3] == LATIN1_DIAERESIS
+    assert "ï" in _one_run(LATIN1_DIAERESIS)[3]
+
+
+def test_a_non_breaking_space_stays_inside_one_run():
+    assert _one_run(LATIN1_NBSP)[3] == LATIN1_NBSP
+    assert " " in _one_run(LATIN1_NBSP)[3]
+
+
+@pytest.mark.parametrize("control", [0x0002, 0x0007, 0x0008, 0x000A, 0x000B])
+def test_every_true_control_unit_still_ends_a_run(control):
+    """The allowlist is three values wide; the real control units are untouched."""
+    blob = (_utf16_run("First fragment") + struct.pack("<H", control)
+            + _utf16_run("Second fragment"))
+
+    runs = list(scan.scan_runs(blob, require_terminator=False))
+
+    assert [run[3] for run in runs] == ["First fragment", "Second fragment"]
+
+
+def test_the_allowlist_is_exactly_the_three_measured_units():
+    """A blanket 'zero high byte is printable' rule would sweep in the controls."""
+    assert scan.TEXT_LATIN1 == frozenset({0x00A0, 0x00E9, 0x00EF})
+
+
 def test_a_terminator_free_stream_needs_no_nul_to_yield_runs():
     """Decoded streams carry no NUL halfwords, so requiring one finds nothing."""
     blob = _utf16_run(DECODED_TEXT)

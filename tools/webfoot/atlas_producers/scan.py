@@ -43,6 +43,15 @@ from ._io import read_jsonl, write_jsonl
 BASE = 0x08000000
 IMAGE_SIZE = 8388608
 PRINT_MIN, PRINT_MAX = 0x20, 0x7E
+
+#: Latin-1 halfwords that are TEXT, not control units. Measured: these are the
+#: only three units in the seven compressed-text containers whose low byte
+#: exceeds PRINT_MAX, and each sits mid-word (U+00A0 between words, U+00E9 in
+#: "decor", U+00EF in "naive"). Treating them as run boundaries split those
+#: words in half. This is an explicit three-value allowlist, NOT a rule about
+#: high-byte-zero units in general: 0x0002, 0x0007, 0x0008, 0x000A and 0x000B
+#: also have a zero high byte and remain control units.
+TEXT_LATIN1 = frozenset({0x00A0, 0x00E9, 0x00EF})
 TEXT_CLUSTER_GAP = 64
 POINTER_TABLE_MIN_ENTRIES = 8
 ENTROPY_HIGH_BITS = 7.5
@@ -56,6 +65,17 @@ _VOWEL = re.compile(r"[AEIOUaeiou]")
 #: Regions BUU_DIALOGUE_TEXT_STORES.md documents as genuine prose. 0x77F09A is
 #: the one an earlier newline-terminator bug hid, so the check is load-bearing.
 _TEXT_SELF_CHECK = ((0x0005794A, "prose"), (0x0077F09A, "prose"), (0x006B7400, "prose"))
+
+
+def _is_text_halfword(data: bytes, offset: int) -> bool:
+    """True when the UTF-16LE halfword at `offset` is a text character.
+
+    ASCII printable, plus the three measured Latin-1 units in `TEXT_LATIN1`.
+    """
+    if data[offset + 1] != 0:
+        return False
+    low = data[offset]
+    return PRINT_MIN <= low <= PRINT_MAX or low in TEXT_LATIN1
 
 
 def _prose(text: str) -> bool:
@@ -110,15 +130,21 @@ def scan_runs(data: bytes, *, require_terminator: bool = True):
       and dropping that requirement would let any printable byte sequence
       anywhere in the image register as a string.
     - A decoded container (False): these streams contain ZERO NUL halfwords —
-      measured across all seven containers, 196,386 halfwords, of which 195,354
-      are printable UTF-16LE and 1,032 are control units (0x0008 328, 0x000B
-      266, 0x0007 164, 0x0002 164, 0x000A 101, and a short tail). There is no
-      terminator to require, so a run is instead a maximal printable span and
-      EVERY non-printable unit ends it, 0x000A and 0x0008 included.
+      measured across all seven containers, 196,386 halfwords, of which 195,363
+      are text units and 1,023 are control units (0x0008 328, 0x000B 266, 0x0007 164,
+      0x0002 164, 0x000A 101). There is no terminator to require, so a run is
+      instead a maximal text span and EVERY control unit ends it, 0x000A and
+      0x0008 included.
 
-    That second rule is the one the region was measured with: it yields 688 runs
-    of >= 4 characters totalling 195,328 characters across the seven containers,
-    reproducing the figures recorded for this region exactly.
+    "Text" is ASCII printable plus the three Latin-1 units in `TEXT_LATIN1`.
+    Those three (0x00A0 seven times, 0x00E9 once, 0x00EF once) are the ONLY
+    units in the corpus whose low byte exceeds PRINT_MAX, every one of them
+    occurs mid-word, and treating them as boundaries split those words in half.
+
+    That second rule is the one the region was measured with: it yields 681 runs
+    of >= 4 characters totalling 195,342 characters across the seven containers.
+    The run total is below the 195,363 text units because a run shorter than 4
+    characters is not emitted.
 
     UNKNOWN: what 0x0002, 0x0007 and 0x000B mean, and whether 0x000A separates
     strings here or formats one. They are treated as run boundaries because
@@ -134,12 +160,12 @@ def scan_runs(data: bytes, *, require_terminator: bool = True):
     size = len(data)
     offset = 0
     while offset + 1 < size:
-        if data[offset + 1] == 0 and PRINT_MIN <= data[offset] <= PRINT_MAX:
+        if _is_text_halfword(data, offset):
             cursor = offset
             chars: list[str] = []
             while cursor + 1 < size:
                 unit = data[cursor] | (data[cursor + 1] << 8)
-                if data[cursor + 1] == 0 and PRINT_MIN <= data[cursor] <= PRINT_MAX:
+                if _is_text_halfword(data, cursor):
                     chars.append(chr(data[cursor]))
                     cursor += 2
                 elif not require_terminator:

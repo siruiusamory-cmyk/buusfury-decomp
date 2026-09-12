@@ -185,4 +185,5 @@ def test_removed_godot_prototype_stays_out_of_the_product_repository():
 def test_instruction_continuations_remain_within_established_bounds():
     assert len(_read("<local-state-name>").splitlines()) <= 300
     assert len(_read("docs/DEVELOPMENT.md").splitlines()) <= 240
+    assert len(_read("docs/DEVELOPMENT.md").splitlines()) <= 240
     assert len(_read("docs/REVIEW.md").splitlines()) <= 100

@@ -75,19 +75,27 @@ def withhold(free_regions: Iterable[FreeRegion],
 
 
 def allocate(profile: RomProfile, requests: Iterable[AllocationRequest], *,
-             occupied: Iterable[OwnedRegion] = ()) -> tuple[Allocation, ...]:
+             occupied: Iterable[OwnedRegion] = (),
+             capacity_regions: Iterable[FreeRegion] = (),
+             image_size: int | None = None) -> tuple[Allocation, ...]:
     """Stable identity order, lowest aligned first fit. No mutable allocator state."""
     ordered = sorted(requests, key=lambda r: r.anchor)
     if len({r.anchor for r in ordered}) != len(ordered):
         raise LayoutError("duplicate allocation request")
+    limit = profile.size if image_size is None else image_size
+    if type(limit) is not int or limit < profile.size:
+        raise LayoutError("allocation image size must include the canonical profile")
     reserved = sorted(occupied, key=lambda r: r.range.start.value)
     for region in reserved:
-        region.range.validate(profile.size)
+        region.range.validate(limit)
     if any(a.range.overlaps(b.range) for a, b in zip(reserved, reserved[1:])):
         raise LayoutError("overlapping allocation ownership")
-    free = sorted(profile.free_regions, key=lambda r: r.range.start.value)
+    # ``capacity_regions`` is intentionally a separate input: generated-image
+    # capacity is not a claim that bytes are free in the canonical retail ROM.
+    free = sorted((*profile.free_regions, *tuple(capacity_regions)),
+                  key=lambda r: r.range.start.value)
     for region in free:
-        region.range.validate(profile.size)
+        region.range.validate(limit)
     if any(a.range.overlaps(b.range) for a, b in zip(free, free[1:])):
         raise LayoutError("overlapping profile free regions")
     result = []

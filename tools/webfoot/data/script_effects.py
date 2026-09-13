@@ -9,6 +9,7 @@ SCRIPT_EFFECTS = {
             'native_handler_raw': 0x08003031,
             'arguments': ('text', 'x', 'y'),
             'text_count': 1534,
+            'coordinate_ranges': {'x': (0, 239), 'y': (0, 159)},
             'evidence': (
                 'docs/research/BUU_DIALOG_RUNTIME.md:115-230; handler 0x08003030 '
                 'pops three values, passes the deepest as an index into text table '

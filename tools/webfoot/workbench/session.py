@@ -25,6 +25,7 @@ from ..formats.map_entry import MapEntryProfileError
 from ..maps import Maps, load_maps
 from ..profile import RomProfile, RomProfileCatalog, VerificationStatus
 from ..rom import identify_rom
+from ..text import TextProfileError, TextStrings, TextTableError, load_text_strings
 
 
 class SessionError(Exception):
@@ -49,6 +50,9 @@ class Session:
     # None when the open ROM's profile declares no readable map table (Legacy of
     # Goku's variant layout). The Scene tab reads this through `tools.webfoot.scene`.
     maps: Maps | None = None
+    # Semantic text identities/previews used by specialized script editors.
+    # None means this profile exposes no supported text table.
+    text_strings: TextStrings | None = None
     # The map the Scene tab is authoring against, by `map:NNNN` identity string.
     selected_map: str | None = None
     project_dir: Path | None = None
@@ -140,11 +144,18 @@ class Session:
             maps: Maps | None = load_maps(path, catalog)
         except MapEntryProfileError:
             maps = None
+        try:
+            text_strings: TextStrings | None = load_text_strings(path, catalog)
+        except TextProfileError:
+            text_strings = None
+        except TextTableError as exc:
+            raise SessionError(f"could not load semantic text content: {exc}") from exc
 
         self.profile = match.profile
         self.atlas = atlas
         self.decoded_text = decoded_text
         self.maps = maps
+        self.text_strings = text_strings
         self.selected_map = None
         self.rom_path = path
         self.rom_image = rom_image

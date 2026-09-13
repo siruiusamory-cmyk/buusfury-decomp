@@ -1,4 +1,4 @@
-"""Headless Workbench Scene-tab controller/state tests (WORKBENCH-003).
+"""Headless Workbench Maps-tab controller/state tests.
 
 Reuses the synthetic map/type graph (`types` fixture from test_placement_types)
 so no canonical ROM bytes are needed: it carries a type-0001 source classified
@@ -68,7 +68,13 @@ def session(types, project):
 
 
 @pytest.fixture
-def tab(qapp, session):
+def tab(qapp, session, monkeypatch, types):
+    monkeypatch.setattr(scene, "SCRIPT_EFFECTS", {types.maps.profile.id: {
+        "show_centered_sprite_text": {
+            "text_count": 1534,
+            "coordinate_ranges": {"x": (0, 239), "y": (0, 159)},
+        },
+    }})
     return SceneTab(session)
 
 
@@ -81,9 +87,10 @@ def _select_source(tab, identity):
 # --- population --------------------------------------------------------------
 
 
-def test_map_selector_lists_authorable_maps(tab):
+def test_map_selector_lists_known_maps_with_support(tab):
     data = [tab._map_select.itemData(i) for i in range(tab._map_select.count())]
-    assert data == ["map:0000", "map:0001"]
+    assert [item["identity"] for item in data] == ["map:0000", "map:0001"]
+    assert {item["support"] for item in data} == {"Partial"}
 
 
 def test_selecting_map_populates_placements_and_sources(tab):
@@ -92,6 +99,58 @@ def test_selecting_map_populates_placements_and_sources(tab):
     assert tab._placements.item(0, 0).text() == "map:0000/placement:0000"
     sources = [tab._source_select.itemData(i) for i in range(tab._source_select.count())]
     assert sources == ["map:0000/placement:0000", "map:0000/placement:0001"]
+
+
+def test_placement_widgets_consume_sdk_constraints(
+    qapp, session, monkeypatch
+):
+    monkeypatch.setattr(
+        scene, "placement_editor_constraints",
+        lambda: {"position_low": (7, 19), "position_high": (23, 41)},
+    )
+
+    tab = SceneTab(session)
+
+    assert (tab._pos_low.minimum(), tab._pos_low.maximum()) == (7, 19)
+    assert (tab._pos_high.minimum(), tab._pos_high.maximum()) == (23, 41)
+
+
+def test_profile_mismatched_project_fails_closed_in_qt_refresh(
+    qapp, types, tmp_path
+):
+    project_dir = tmp_path / "wrong-profile"
+    meta = ProjectMeta(
+        1, "wrong-profile", types.maps.profile.game, "0" * 64,
+        len(types.maps.base_bytes), "wrong-profile",
+    )
+    write_project(
+        project_dir, meta, enemies=[], characters=[],
+        maps=build._map_documents(types.maps),
+    )
+    session = Session(maps=types.maps)
+    session.set_project(project_dir)
+
+    tab = SceneTab(session)
+
+    assert tab._placements.rowCount() == 0
+    assert not tab._add.isEnabled()
+    assert session.selected_map is None
+    assert "does not match open ROM profile" in tab._status.text()
+
+
+def test_semantic_navigation_follows_bound_relationship_and_returns(tab):
+    tab._placements.selectRow(0)
+    assert tab._editor_kind == "placement"
+    assert tab._editor_identity == "map:0000/placement:0000"
+    entity = tab._relationships["entity"]
+    assert entity
+
+    tab._open_entity.click()
+    assert tab._editor_kind == "entity"
+    assert tab._editor_identity == entity
+    tab._back.click()
+    assert tab._editor_kind == "placement"
+    assert tab._editor_identity == "map:0000/placement:0000"
 
 
 def test_trigger_options_reflect_source_type(qapp, project, with_on_defeat):
@@ -110,7 +169,7 @@ def test_trigger_options_reflect_source_type(qapp, project, with_on_defeat):
 
 def test_authored_script_input_is_available(tab):
     data = [tab._behavior_select.itemData(i) for i in range(tab._behavior_select.count())]
-    assert "__authored_script__" in data
+    assert any(isinstance(item, tuple) and item[0] == "authored-script" for item in data)
 
 
 # --- Apply success -----------------------------------------------------------
@@ -139,6 +198,31 @@ def test_apply_writes_emits_and_invalidates_state(tab, session, project):
     reloaded, = read_project(project).maps[0]["authored_placements"]
     assert reloaded.identity == "map:0000/authored:wolf"
     assert (reloaded.position_low, reloaded.position_high) == (123, 456)
+    assert any("Added placement map:0000/authored:wolf" in tab._pending.item(i).text()
+               for i in range(tab._pending.count()))
+    assert any(tab._placements.item(row, 0).text() == "map:0000/authored:wolf"
+               for row in range(tab._placements.rowCount()))
+
+
+def test_pending_revert_uses_project_state_and_invalidates(tab, session, project):
+    scene.add_authored_npc(
+        project, "map:0000", "map:0000/placement:0000", "wolf", (1, 2)
+    )
+    tab._refresh_pending()
+    tab._pending.setCurrentRow(0)
+    session.record_validation(True)
+    session.last_build = object()
+    session.build_revision = session.project_revision
+    before = session.project_revision
+
+    tab._revert.click()
+
+    assert read_project(project).maps[0].get("authored_placements", ()) == ()
+    assert session.project_revision == before + 1
+    assert not session.validation_current
+    assert not session.build_current
+    assert all(tab._placements.item(row, 0).text() != "map:0000/authored:wolf"
+               for row in range(tab._placements.rowCount()))
 
 
 def test_apply_authored_script_sets_behavior_and_terminates(tab, session, project, monkeypatch):
@@ -163,7 +247,8 @@ def test_apply_authored_script_sets_behavior_and_terminates(tab, session, projec
 
     _select_source(tab, "map:0000/placement:0000")
     tab._name.setText("wolf")
-    idx = tab._behavior_select.findData("__authored_script__")
+    idx = next(i for i in range(tab._behavior_select.count())
+               if isinstance(tab._behavior_select.itemData(i), tuple))
     tab._behavior_select.setCurrentIndex(idx)
     tab._script_text.setValue(1525)
     tab._script_x.setValue(120)
@@ -200,3 +285,28 @@ def test_apply_rejected_input_surfaces_error_without_escaping(tab, session, proj
     assert warnings, "rejected input did not surface a QMessageBox"
     assert len(emitted) == 1  # only the first (successful) add emitted
     assert session.project_revision == before + 1  # only the first add advanced state
+
+
+def test_apply_os_write_error_surfaces_without_mutating_session(
+    tab, session, monkeypatch
+):
+    warnings = []
+    monkeypatch.setattr(
+        "tools.webfoot.workbench.scene_tab.QMessageBox.critical",
+        lambda *a, **k: warnings.append(a[-1]),
+    )
+    monkeypatch.setattr(
+        "tools.webfoot.workbench.scene_tab.scene_sdk.add_authored_npc",
+        lambda *a, **k: (_ for _ in ()).throw(OSError("disk unavailable")),
+    )
+    emitted = []
+    tab.projectChanged.connect(lambda: emitted.append(True))
+    before = session.project_revision
+    _select_source(tab, "map:0000/placement:0000")
+    tab._name.setText("wolf")
+
+    tab._on_apply()
+
+    assert warnings == ["disk unavailable"]
+    assert emitted == []
+    assert session.project_revision == before

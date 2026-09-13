@@ -1,4 +1,4 @@
-"""WORKBENCH-003 public scene-authoring façade tests; no committed ROM bytes.
+"""WORKBENCH semantic scene-authoring façade tests; no committed ROM bytes.
 
 The synthetic map/type graph is the shared `types` fixture from
 `test_placement_types.py`: two maps, a type-0001 source classified
@@ -14,7 +14,12 @@ import pytest
 from tests.unit.test_placement_types import types  # shared synthetic graph fixture
 from tools.webfoot import build
 from tools.webfoot import scene
-from tools.webfoot.project import ProjectMeta, read_project, write_project
+from tools.webfoot.project import (
+    ProjectMeta,
+    read_project,
+    write_dialogue_replacements,
+    write_project,
+)
 from tools.webfoot.project.placements import BehaviorTrigger
 from tools.webfoot.scene import SceneAuthoringError
 from tools.webfoot.workbench.session import Session
@@ -49,6 +54,12 @@ def with_on_defeat(monkeypatch, types):
         },
     }}
     monkeypatch.setattr(scene, "BEHAVIOR_TRIGGER_CONTRACTS", contract)
+    monkeypatch.setattr(scene, "SCRIPT_EFFECTS", {profile_id: {
+        "show_centered_sprite_text": {
+            "text_count": 1534,
+            "coordinate_ranges": {"x": (0, 239), "y": (0, 159)},
+        },
+    }})
     return types
 
 
@@ -60,6 +71,37 @@ def test_list_authorable_maps_reports_placement_counts(types):
     assert [m["identity"] for m in maps_list] == ["map:0000", "map:0001"]
     assert maps_list[0]["placement_count"] == 2
     assert maps_list[1]["placement_count"] == 1
+
+
+def test_map_browser_reports_semantic_support_states(with_on_defeat):
+    maps_list = scene.list_maps(with_on_defeat.maps)
+    by_id = {item["identity"]: item for item in maps_list}
+    assert by_id["map:0000"]["support"] == "Editable"
+    assert by_id["map:0000"]["label"] == "map:0000"
+    assert "address" not in by_id["map:0000"]
+
+
+def test_map_browser_keeps_unsupported_map_visible_and_read_only(monkeypatch, types):
+    class EmptyMaps:
+        profile = types.maps.profile
+
+        @staticmethod
+        def entries():
+            return types.maps.entries()
+
+        @staticmethod
+        def map_placements(_identity):
+            return ()
+
+        @staticmethod
+        def placements():
+            return ()
+
+    monkeypatch.setattr(scene, "_placement_types", lambda _maps: None)
+    result = scene.list_maps(EmptyMaps())
+    assert result
+    assert all(item["support"] == "Read-only" for item in result)
+    assert all(item["placement_count"] == 0 for item in result)
 
 
 def test_map_placements_annotate_type_and_classification(types):
@@ -78,6 +120,17 @@ def test_map_placements_bad_map_fails_closed(types):
         scene.map_placements(types.maps, "map:9999")
     with pytest.raises(SceneAuthoringError):
         scene.map_placements(types.maps, "not-a-map")
+
+
+def test_placement_relationships_use_semantic_identities(types):
+    relationships = scene.placement_relationships(
+        types.maps, "map:0000/placement:0000"
+    )
+    assert relationships["placement"] == "map:0000/placement:0000"
+    assert relationships["entity_type"].endswith("placement_type:0001")
+    assert relationships["classification"] == "CONFIRMED_ENEMY_STAT_LINK"
+    assert relationships["dialogue"] is None
+    assert "file_offset" not in relationships
 
 
 def test_clone_source_candidates_filter_by_type(types):
@@ -121,6 +174,59 @@ def test_add_authored_npc_writes_and_returns_identity(project, types):
     reloaded, = read_project(project).maps[0]["authored_placements"]
     assert reloaded.identity == identity
     assert (reloaded.position_low, reloaded.position_high) == (123, 456)
+
+
+def test_pending_change_is_semantic_and_revert_removes_authored_placement(
+    project, types
+):
+    identity = scene.add_authored_npc(
+        project, "map:0000", "map:0000/placement:0000", "wolf", (123, 456)
+    )
+    changes = scene.pending_changes(project, types.maps)
+    change = next(item for item in changes if item.object_identity == identity)
+    assert change.revertible
+    assert change.summary == "Added placement map:0000/authored:wolf to map:0000"
+    assert "offset" not in " ".join((change.summary, *change.details)).lower()
+
+    assert scene.revert_pending_change(project, types.maps, change.identity)
+    assert read_project(project).maps[0].get("authored_placements", ()) == ()
+
+
+def test_scene_placements_and_relationships_include_authored_project_content(
+    project, types
+):
+    identity = scene.add_authored_npc(
+        project, "map:0000", "map:0000/placement:0000", "wolf", (123, 456),
+        behavior="map:0000/authored:wolf/behavior",
+        script=("show_centered_sprite_text text:0001 10 20", "terminate"),
+    )
+
+    placements = scene.scene_placements(types.maps, "map:0000", project)
+    authored = next(item for item in placements if item["identity"] == identity)
+    assert authored["provenance"] == "Project"
+    assert authored["position_low"] == 123
+    relationships = scene.placement_relationships(types.maps, identity, project)
+    assert relationships["clone_from"] == "map:0000/placement:0000"
+    assert relationships["entity"]
+    assert relationships["behavior"] == "map:0000/authored:wolf/behavior"
+    assert relationships["script"] == "map:0000/authored:wolf/behavior/script"
+    assert "offset" not in repr(relationships).lower()
+
+
+def test_pending_change_revert_invalid_identity_fails_closed(project, types):
+    with pytest.raises(SceneAuthoringError, match="cannot be reverted"):
+        scene.revert_pending_change(project, types.maps, "placement-edit:map:0000")
+
+
+def test_unknown_dialogue_change_is_not_advertised_as_revertible(project, types):
+    write_dialogue_replacements(project, {"not-a-registered-target": "Hello"})
+
+    change = next(
+        item for item in scene.pending_changes(project, types.maps)
+        if item.identity == "dialogue:not-a-registered-target"
+    )
+
+    assert not change.revertible
 
 
 @pytest.mark.parametrize("kwargs", [

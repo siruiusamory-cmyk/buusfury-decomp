@@ -1,13 +1,13 @@
 """WORKBENCH-001 GUI shell.
 
-`MainWindow` is a thin QMainWindow holding a QTabWidget with the four tabs -
-Atlas, Inspector, Build, Launch - in that order. It holds the shared `Session`
+`MainWindow` is a thin QMainWindow holding a QTabWidget with the five tabs -
+Atlas, Inspector, Maps, Build, Launch - in that order. It holds the shared `Session`
 and the ROM profile catalog by constructor injection (no global state) and hands
 them to whatever tab content is mounted; Wave 2 replaces the stub placeholders
 with the real tab widgets.
 
 The locked UX (the maintainer): no toolbar, no menu bar, no status bar, no docks. Only the
-Atlas tab (0) is enabled at launch; Inspector/Build/Launch (1-3) are disabled
+Atlas tab (0) is enabled at launch; Inspector/Maps/Build/Launch (1-4) are disabled
 until a ROM is open. This shell holds no ROM-format knowledge - no offsets, masks
 or record constants; that all lives behind the SDK the Session calls.
 """
@@ -26,7 +26,7 @@ from .session import Session
 
 # Tab order is the contract. Scene sits between Inspector and Build so authoring
 # precedes building.
-_TAB_TITLES = ("Atlas", "Inspector", "Scene", "Build", "Launch")
+_TAB_TITLES = ("Atlas", "Inspector", "Maps", "Build", "Launch")
 _POST_ROM_TABS = (1, 2, 3, 4)  # enabled only once a ROM is open
 
 

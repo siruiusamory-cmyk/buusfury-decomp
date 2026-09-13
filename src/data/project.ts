@@ -77,22 +77,22 @@ export const project: ProjectStatus = {
   subtitle: "Legacy of Goku authoring toolkit",
   tagline: "Building a real authoring toolkit for the Legacy of Goku engine.",
   description:
-    "A complete playable scene can now be authored end to end inside Webfoot Workbench — pick a map, place an entity, give it behavior, a script, a defeat trigger, and an author-written message, then validate, build, and launch, all without touching Python, TOML, the CLI, or hex. The current frontier is breadth: only a handful of maps are reachable for authoring and testing, so more maps and more authoring targets are the next step toward producing real LOG1 content.",
-  overallProgress: 95,
-  overallProgressLabel: "≈ 95% COMPLETE",
+    "Workbench now browses known maps and their related content semantically, and playable authored scenes have been built and run on multiple maps without raw addresses or project-file editing. The remaining product frontier is usability: the workflow works, but the owner found it difficult and unintuitive for normal content production.",
+  overallProgress: 97,
+  overallProgressLabel: "≈ 97% COMPLETE",
   progressCaveat:
     "Progress is a directional project estimate. The milestones below are the authoritative measure of capability.",
   currentPhase: "AUTHOR_NEW",
   currentFrontierLabel: "CURRENT FRONTIER",
   existingContentState: "MATURE",
-  blockerCode: "SCENE AUTHORING BREADTH",
-  blockerTitle: "Reach and author more maps and targets",
+  blockerCode: "CONTENT WORKFLOW ERGONOMICS",
+  blockerTitle: "Make scene authoring easy and intuitive",
   blockerShort:
-    "A complete playable scene now builds end to end through Workbench, proven on one map with one authored NPC. The next product blocker is breadth: only a handful of maps are reachable for authoring and testing, and the proven scene uses one entity, one behavior, one trigger, and one message.",
+    "Semantic multi-map scene authoring is runtime-proven, but the owner found the successful workflow difficult and unintuitive. Webfoot is functionally capable; the remaining gap is making it comfortable enough to use as the normal environment for real remake production.",
   blockerParagraphs: [
-    "The scene that closed this frontier was authored on map:0040, chosen because the proven on_defeat trigger is contractually valid only on a type_0086 enemy-linked placement, which exists on maps 40/41/42. Producing real Legacy of Goku content means authoring across many more maps than that.",
-    "Some maps are not reachable in-session at all. Map:0010, for example, cannot be reached by any existing savestate or non-reverse-engineering map-load path, so a scene authored there cannot yet be tested by playing to it. Whether an untriggered placement descriptor's script fires on plain player interaction there is unproven for the same reason. A deterministic runtime map-warp test helper would remove the manual-traversal dependency for acceptance testing.",
-    "The proven scene is deliberately one authored record plus one line of text: one entity, one behavior, one script, one defeat trigger, one message. Comfortable production of remake content needs more of each reachable and authorable — broader authoring surfaces, more reachable maps, and the ergonomics to place many of them without hand-operating the SDK.",
+    "The Maps workspace exposes all 452 known semantic maps with Editable, Partial, or Read-only support, keeps placement, entity, behavior, script, and visible-response relationships together, and shows pending project changes before output. A second complete scene was personally authored and run on map:0041, beyond the original map:0040 proof.",
+    "That successful walkthrough still required too much interpretation. Labels, selection flow, form organization, and navigation do not yet make the intended sequence obvious to a content author. The measured blocker is no longer whether the architecture can author across maps; it is whether ordinary production feels direct and understandable.",
+    "The next product pass should be driven by observed author friction: reduce cognitive load, clarify the scene-building sequence, and make the common path discoverable without turning Workbench into a generic editor framework or moving ROM semantics into widgets.",
   ],
   acceptanceTarget:
     "Author playable Legacy of Goku content inside the real LOGII/Buu engine.",
@@ -317,7 +317,16 @@ export const project: ProjectStatus = {
       plainEnglish:
         "Make more maps reachable for authoring and testing, and expand the entity, behavior, and dialogue targets an author can place, so real remake content can be produced comfortably.",
       technical:
-        "The one-NPC scene proves the pipeline; real content needs breadth. The proven scene is bounded to map:0040 because the on_defeat trigger is valid only on a type_0086 placement (maps 40/41/42). Other maps are not reachable in-session — map:0010 has no savestate or non-RE load path — so scenes there cannot yet be play-tested, and a deterministic runtime map-warp test helper is not built. Broader authoring surfaces, more reachable maps, and placement ergonomics are the next measured friction.",
+        "Confirmed and runtime-proven across maps. Workbench lists all 452 known maps with explicit support states, composes retail and authored placements in one scene view, follows semantic relationships without copied IDs, and reviews pending changes in author-facing language. The owner personally authored, built, launched, and interacted with a second playable scene on map:0041.",
+      status: "complete",
+    },
+    {
+      id: "content-workflow-ergonomics",
+      title: "Make authoring comfortable for real production",
+      plainEnglish:
+        "Make the successful scene workflow easy to understand and efficient enough to use repeatedly for actual remake content.",
+      technical:
+        "The owner completed the multi-map workflow but found it difficult and unintuitive. Improve discoverability, labels, form flow, and navigation while preserving the thin-client boundary and SDK-owned semantics.",
       status: "current",
     },
     {
@@ -351,10 +360,19 @@ export const project: ProjectStatus = {
     { label: "GRAPHICAL WORKBENCH", state: "done" },
     { label: "GUI DIALOGUE EDITING", state: "done" },
     { label: "PLAYABLE SCENE AUTHORING", state: "done" },
-    { label: "SCENE AUTHORING BREADTH", state: "current", marker: "↑ YOU ARE HERE" },
+    { label: "SCENE AUTHORING BREADTH", state: "done" },
+    { label: "CONTENT WORKFLOW ERGONOMICS", state: "current", marker: "↑ YOU ARE HERE" },
     { label: "PLAYABLE LOG1 CONTENT", state: "target" },
   ],
   breakthroughs: [
+    {
+      id: "semantic-multi-map-workspace",
+      title: "Semantic scene authoring across multiple maps",
+      summary:
+        "Workbench now browses maps and related game content by semantic identity, keeps a scene's relationships together, previews pending changes, and has produced a second playable authored scene on a different map.",
+      technical:
+        "Runtime-proven on map:0041 after the earlier map:0040 scene. The owner selected the map, cloned and configured a supported entity, assigned behavior and a visible response, reviewed project changes, validated, built, launched, reached the map, and observed the authored interaction—without raw ROM addresses or project-file editing. Independent review approved the thin-client architecture.",
+    },
     {
       id: "scene-authored-through-workbench",
       title: "First complete playable scene authored entirely in the desktop tool",

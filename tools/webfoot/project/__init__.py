@@ -22,6 +22,7 @@ from .model import (
     write_dialogue_replacements,
     write_project,
 )
+from .placements import remove_authored_placement
 
 __all__ = [
     "PROJECT_FORMAT_VERSION",
@@ -34,6 +35,7 @@ __all__ = [
     "dump_toml",
     "load_toml",
     "read_project",
+    "remove_authored_placement",
     "write_dialogue_replacements",
     "write_project",
 ]

@@ -21,11 +21,13 @@ from .atlas_browser import AtlasBrowserTab
 from .build_panel import BuildPanelTab
 from .inspector import InspectorTab
 from .launcher import LauncherTab
+from .scene_tab import SceneTab
 from .session import Session
 
-# Tab order is the contract; Wave 2 mounts real content at these indices.
-_TAB_TITLES = ("Atlas", "Inspector", "Build", "Launch")
-_POST_ROM_TABS = (1, 2, 3)  # enabled only once a ROM is open
+# Tab order is the contract. Scene sits between Inspector and Build so authoring
+# precedes building.
+_TAB_TITLES = ("Atlas", "Inspector", "Scene", "Build", "Launch")
+_POST_ROM_TABS = (1, 2, 3, 4)  # enabled only once a ROM is open
 
 
 class MainWindow(QMainWindow):
@@ -39,23 +41,31 @@ class MainWindow(QMainWindow):
         self._tabs = QTabWidget()
         self._atlas = AtlasBrowserTab(session, catalog)
         self._inspector = InspectorTab(session)
+        self._scene = SceneTab(session)
         self._build = BuildPanelTab(session, catalog)
         self._launcher = LauncherTab(session)
         self._tabs.addTab(self._atlas, _TAB_TITLES[0])
         self._tabs.addTab(self._inspector, _TAB_TITLES[1])
-        self._tabs.addTab(self._build, _TAB_TITLES[2])
-        self._tabs.addTab(self._launcher, _TAB_TITLES[3])
+        self._tabs.addTab(self._scene, _TAB_TITLES[2])
+        self._tabs.addTab(self._build, _TAB_TITLES[3])
+        self._tabs.addTab(self._launcher, _TAB_TITLES[4])
         for index in _POST_ROM_TABS:
             self._tabs.setTabEnabled(index, False)
 
         self._atlas.romOpened.connect(self._enable_post_rom_tabs)
         self._atlas.romOpened.connect(self._build.on_session_changed)
+        self._atlas.romOpened.connect(self._scene.on_session_changed)
         self._atlas.resultActivated.connect(self._on_result_activated)
         self._build.buildFinished.connect(self._launcher.on_session_changed)
         self._build.projectChanged.connect(self._inspector.on_session_changed)
         self._build.projectChanged.connect(self._launcher.on_session_changed)
+        self._build.projectChanged.connect(self._scene.on_session_changed)
         self._inspector.projectChanged.connect(self._build.on_project_mutated)
         self._inspector.projectChanged.connect(self._launcher.on_session_changed)
+        # Scene authoring invalidates validation/build/launch the same way
+        # Inspector dialogue edits do.
+        self._scene.projectChanged.connect(self._build.on_project_mutated)
+        self._scene.projectChanged.connect(self._launcher.on_session_changed)
 
         self.setCentralWidget(self._tabs)
 

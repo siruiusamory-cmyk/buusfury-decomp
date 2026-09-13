@@ -21,6 +21,8 @@ from ..atlas import Atlas
 from ..atlas_build import load_atlas, load_decoded_text
 from ..build import BuildResult
 from ..cli import _default_atlas_directory
+from ..formats.map_entry import MapEntryProfileError
+from ..maps import Maps, load_maps
 from ..profile import RomProfile, RomProfileCatalog, VerificationStatus
 from ..rom import identify_rom
 
@@ -43,6 +45,12 @@ class Session:
     atlas: Atlas | None = None
     decoded_text: list[dict] = field(default_factory=list)
     rom_image: bytes | None = None
+    # The loaded map domain, populated in `open_rom` the same way `atlas` is, or
+    # None when the open ROM's profile declares no readable map table (Legacy of
+    # Goku's variant layout). The Scene tab reads this through `tools.webfoot.scene`.
+    maps: Maps | None = None
+    # The map the Scene tab is authoring against, by `map:NNNN` identity string.
+    selected_map: str | None = None
     project_dir: Path | None = None
     selected_result: dict | None = None
     output_dir: Path | None = None
@@ -70,6 +78,15 @@ class Session:
         self.validation_revision = None
         self.build_revision = None
         self.last_build = None
+
+    def scene_mutated(self) -> None:
+        """A scene edit committed; invalidate prior validation/build.
+
+        Routes through the existing `project_mutated()` rather than inventing a
+        second invalidation path: a scene edit changes the project on disk (via
+        `scene.add_authored_npc`), so it is a project mutation like any other.
+        """
+        self.project_mutated()
 
     def record_validation(self, passed: bool) -> None:
         self.validation_revision = self.project_revision if passed else None
@@ -115,9 +132,20 @@ class Session:
 
         rom_image = path.read_bytes()
 
+        # Maps are loaded the same way the atlas is: through the public SDK read,
+        # from the same path/catalog the identify used. A profile that declares no
+        # readable map table (`MapEntryProfileError`) is a supported state - that
+        # ROM simply has no scene to author - not a failure.
+        try:
+            maps: Maps | None = load_maps(path, catalog)
+        except MapEntryProfileError:
+            maps = None
+
         self.profile = match.profile
         self.atlas = atlas
         self.decoded_text = decoded_text
+        self.maps = maps
+        self.selected_map = None
         self.rom_path = path
         self.rom_image = rom_image
         # A newly opened base changes what any existing project result represents.

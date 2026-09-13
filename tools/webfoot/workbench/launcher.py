@@ -25,6 +25,7 @@ from PySide6.QtCore import QTimer
 from PySide6.QtWidgets import (QFileDialog, QHBoxLayout, QLabel, QLineEdit,
                                QMessageBox, QPushButton, QVBoxLayout, QWidget)
 
+from . import settings
 from .session import Session
 
 # mGBA's PATH names (README executable-name conventions); which() adds .exe on Windows.
@@ -41,6 +42,18 @@ def _detect_mgba() -> str:
     return ""
 
 
+def _initial_mgba() -> str:
+    """Saved path if it still exists, else PATH detection. A stale saved path
+    falls back to detection rather than showing a dead path. Fails safe."""
+    try:
+        saved = settings.load_mgba_path()
+    except Exception:  # pragma: no cover - helper already fails safe
+        saved = None
+    if saved and Path(saved).is_file():
+        return saved
+    return _detect_mgba()
+
+
 class LauncherTab(QWidget):
     """Pick the built ROM + mGBA, then launch mGBA on the ROM (fire-and-forget)."""
 
@@ -54,7 +67,7 @@ class LauncherTab(QWidget):
         rom_browse = QPushButton("Browse...")
         rom_browse.clicked.connect(self._pick_rom)
 
-        self._mgba_field = QLineEdit(_detect_mgba())
+        self._mgba_field = QLineEdit(_initial_mgba())
         self._mgba_field.setPlaceholderText("mGBA executable")
         mgba_browse = QPushButton("Browse...")
         mgba_browse.clicked.connect(self._pick_mgba)
@@ -100,6 +113,12 @@ class LauncherTab(QWidget):
         path, _ = QFileDialog.getOpenFileName(self, "mGBA executable", "", "All files (*)")
         if path:
             self._mgba_field.setText(path)
+            # Persist the moment the user picks it - not only after a launch, or
+            # a set-but-not-launched path is lost on close. Never crash the app.
+            try:
+                settings.save_mgba_path(path)
+            except Exception:  # pragma: no cover - helper already fails safe
+                pass
 
     def _launch(self) -> None:
         mgba = self._mgba_field.text().strip()
@@ -117,6 +136,12 @@ class LauncherTab(QWidget):
         except OSError as exc:  # FileNotFoundError et al. on immediate start failure
             QMessageBox.critical(self, "Launch", f"mGBA failed to start: {exc}")
             return
+        # Popen succeeded: the path was just proven runnable, so remember it.
+        # A settings write must never crash the app or block launch.
+        try:
+            settings.save_mgba_path(mgba)
+        except Exception:  # pragma: no cover - helper already fails safe
+            pass
         # Debounce: re-enable after a beat so a double-click can't spawn twice.
         self._launch_button.setEnabled(False)
         QTimer.singleShot(_DEBOUNCE_MS, lambda: self._launch_button.setEnabled(True))

@@ -77,22 +77,22 @@ export const project: ProjectStatus = {
   subtitle: "Legacy of Goku authoring toolkit",
   tagline: "Building a real authoring toolkit for the Legacy of Goku engine.",
   description:
-    "Supported NPC dialogue can now be searched, edited, validated, built, and launched directly through Webfoot Workbench. The current frontier is mapping more persistent dialogue records to stable semantic identities so the same graphical workflow can author more conversations.",
-  overallProgress: 90,
-  overallProgressLabel: "≈ 90% COMPLETE",
+    "A complete playable scene can now be authored end to end inside Webfoot Workbench — pick a map, place an entity, give it behavior, a script, a defeat trigger, and an author-written message, then validate, build, and launch, all without touching Python, TOML, the CLI, or hex. The current frontier is breadth: only a handful of maps are reachable for authoring and testing, so more maps and more authoring targets are the next step toward producing real LOG1 content.",
+  overallProgress: 95,
+  overallProgressLabel: "≈ 95% COMPLETE",
   progressCaveat:
     "Progress is a directional project estimate. The milestones below are the authoritative measure of capability.",
   currentPhase: "AUTHOR_NEW",
   currentFrontierLabel: "CURRENT FRONTIER",
   existingContentState: "MATURE",
-  blockerCode: "MORE EDITABLE DIALOGUE",
-  blockerTitle: "Map more dialogue records to stable identities",
+  blockerCode: "SCENE AUTHORING BREADTH",
+  blockerTitle: "Reach and author more maps and targets",
   blockerShort:
-    "The complete graphical authoring loop now works for mapped dialogue. The next product blocker is coverage: additional persistent dialogue records need stable semantic identities before Workbench can safely make them editable.",
+    "A complete playable scene now builds end to end through Workbench, proven on one map with one authored NPC. The next product blocker is breadth: only a handful of maps are reachable for authoring and testing, and the proven scene uses one entity, one behavior, one trigger, and one message.",
   blockerParagraphs: [
-    "The Workbench Inspector resolves a recovered storage identity through the production semantic dialogue API. For a mapped record it shows the retail text and saved project override separately, validates unsaved editor text, and applies or reverts only through the normal project representation.",
-    "A project edit makes prior validation and build results stale. The user validates again, builds through the normal shared allocator and generated-ROM transaction, then launches the result from Workbench. The mapped Goku greeting completed that loop twice and displayed the authored words in the retail dialogue box.",
-    "Searchable is not automatically editable. Records without a measured semantic mapping remain read-only, with no fallback through visible English, raw addresses, handles, compression, or relocation controls. Expanding that safe mapping is now the shortest path to more authorable content.",
+    "The scene that closed this frontier was authored on map:0040, chosen because the proven on_defeat trigger is contractually valid only on a type_0086 enemy-linked placement, which exists on maps 40/41/42. Producing real Legacy of Goku content means authoring across many more maps than that.",
+    "Some maps are not reachable in-session at all. Map:0010, for example, cannot be reached by any existing savestate or non-reverse-engineering map-load path, so a scene authored there cannot yet be tested by playing to it. Whether an untriggered placement descriptor's script fires on plain player interaction there is unproven for the same reason. A deterministic runtime map-warp test helper would remove the manual-traversal dependency for acceptance testing.",
+    "The proven scene is deliberately one authored record plus one line of text: one entity, one behavior, one script, one defeat trigger, one message. Comfortable production of remake content needs more of each reachable and authorable — broader authoring surfaces, more reachable maps, and the ergonomics to place many of them without hand-operating the SDK.",
   ],
   acceptanceTarget:
     "Author playable Legacy of Goku content inside the real LOGII/Buu engine.",
@@ -303,12 +303,21 @@ export const project: ProjectStatus = {
       status: "complete",
     },
     {
-      id: "more-editable-dialogue",
-      title: "Make more dialogue records editable",
+      id: "playable-scene-authoring",
+      title: "Author a complete playable scene in Workbench",
       plainEnglish:
-        "Map more persistent dialogue records to stable names so authors can safely edit more conversations in Workbench.",
+        "Bring entity, placement, script, and dialogue authoring together in the desktop tool so a whole playable scene can be built without hand-operating the SDK.",
       technical:
-        "The GUI authoring path is complete; current coverage is deliberately bounded to measured semantic targets. Additional records need durable semantic mappings in SDK metadata, not text matching or address fallbacks.",
+        "Confirmed and runtime-proven. The owner personally authored a complete playable NPC scene entirely through the Workbench GUI: select map:0040, clone a type_0086 enemy-linked placement, configure the entity, assign an on_defeat behavior plus an authored show_centered_sprite_text script, then Validate, Build, and Launch. Defeating the NPC in the retail Buu's Fury engine displayed the authored banner in-game. No new reverse engineering was required; every capability was surfaced through the existing SDK. Independent review approved.",
+      status: "complete",
+    },
+    {
+      id: "scene-authoring-breadth",
+      title: "Reach and author more maps and targets",
+      plainEnglish:
+        "Make more maps reachable for authoring and testing, and expand the entity, behavior, and dialogue targets an author can place, so real remake content can be produced comfortably.",
+      technical:
+        "The one-NPC scene proves the pipeline; real content needs breadth. The proven scene is bounded to map:0040 because the on_defeat trigger is valid only on a type_0086 placement (maps 40/41/42). Other maps are not reachable in-session — map:0010 has no savestate or non-RE load path — so scenes there cannot yet be play-tested, and a deterministic runtime map-warp test helper is not built. Broader authoring surfaces, more reachable maps, and placement ergonomics are the next measured friction.",
       status: "current",
     },
     {
@@ -341,10 +350,19 @@ export const project: ProjectStatus = {
     { label: "GENERATED-ROM RESOURCE RELOCATION", state: "done" },
     { label: "GRAPHICAL WORKBENCH", state: "done" },
     { label: "GUI DIALOGUE EDITING", state: "done" },
-    { label: "MORE EDITABLE DIALOGUE", state: "current", marker: "↑ YOU ARE HERE" },
+    { label: "PLAYABLE SCENE AUTHORING", state: "done" },
+    { label: "SCENE AUTHORING BREADTH", state: "current", marker: "↑ YOU ARE HERE" },
     { label: "PLAYABLE LOG1 CONTENT", state: "target" },
   ],
   breakthroughs: [
+    {
+      id: "scene-authored-through-workbench",
+      title: "First complete playable scene authored entirely in the desktop tool",
+      summary:
+        "The project owner built a full playable NPC scene from start to finish inside Webfoot Workbench — choosing a map, placing an enemy, giving it behavior, a script, a defeat trigger, and an author-written message, then validating, building, and launching — with no Python, TOML, command line, or hex. Defeating the NPC in the original Buu's Fury engine showed the authored banner on screen.",
+      technical:
+        "Runtime-proven and independently approved. The scene was authored on map:0040: clone a type_0086 enemy-linked placement, configure the entity, assign an on_defeat behavior plus an authored show_centered_sprite_text script, then Validate, Build, Launch, defeat the NPC, and observe the authored banner in the retail engine — every step through the GUI. No new reverse engineering was required; the capabilities were surfaced through the existing SDK. The proven scene is deliberately one authored record plus one line of text, which makes breadth the next frontier.",
+    },
     {
       id: "first-usable-workbench",
       title: "First usable Webfoot Workbench",

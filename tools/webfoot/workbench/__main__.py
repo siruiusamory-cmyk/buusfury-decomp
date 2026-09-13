@@ -19,6 +19,10 @@ from .session import Session
 
 def main() -> int:
     app = QApplication(sys.argv)
+    # Namespace AppConfigLocation so settings land in .../Local/Webfoot/Workbench,
+    # not the shared generic .../Local/python dir.
+    app.setOrganizationName("Webfoot")
+    app.setApplicationName("Workbench")
     catalog = load_catalog(None)
     window = MainWindow(Session(), catalog)
     window.show()

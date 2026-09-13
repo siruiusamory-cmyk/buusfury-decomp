@@ -56,14 +56,12 @@ class BuildPanelTab(QWidget):
     """Extract / open, validate, and build a project against the open ROM."""
 
     buildFinished = Signal()  # emitted after a successful build; Launcher re-reads session.
+    projectChanged = Signal()  # emitted after open/extract so Inspector can re-evaluate editing.
 
     def __init__(self, session: Session, catalog) -> None:
         super().__init__()
         self._session = session
         self._catalog = catalog
-        # The last report's pass state gates Build; None until a validation runs.
-        self._validated_ok = False
-
         self._open_button = QPushButton("Open Project")
         self._open_button.clicked.connect(self._on_open_project)
 
@@ -121,7 +119,7 @@ class BuildPanelTab(QWidget):
         # Validate: once a project is set AND a compatible ROM is open.
         self._validate_button.setEnabled(rom_open and has_project)
         # Build: only when the last ValidationReport passed.
-        self._build_button.setEnabled(self._validated_ok)
+        self._build_button.setEnabled(self._session.validation_current)
 
     def _output_dir(self) -> Path | None:
         return self._session.output_dir
@@ -136,8 +134,7 @@ class BuildPanelTab(QWidget):
         # an invalid pick is a QMessageBox, not a traceback (GAP-11). Validation
         # itself is the operator's next step, so we only record the dir now and
         # let _on_validate surface any read_project error.
-        self._session.project_dir = Path(chosen)
-        self._validated_ok = False
+        self._session.set_project(Path(chosen))
         if self._rom_open():
             self._status.setPlainText(f"Project set: {chosen}\nValidate to continue.")
         else:
@@ -146,6 +143,7 @@ class BuildPanelTab(QWidget):
                 "Open the required base ROM in the Atlas tab before validating."
             )
         self._refresh()
+        self.projectChanged.emit()
 
     # -- Extract -------------------------------------------------------------
 
@@ -161,10 +159,10 @@ class BuildPanelTab(QWidget):
         except (build_sdk.BuildError, ProjectError, OSError) as exc:
             QMessageBox.critical(self, "Extract", str(exc))
             return
-        self._session.project_dir = Path(chosen)
-        self._validated_ok = False
+        self._session.set_project(Path(chosen))
         self._status.setPlainText(f"Extracted project: {chosen}\nValidate to continue.")
         self._refresh()
+        self.projectChanged.emit()
 
     # -- Output directory ----------------------------------------------------
 
@@ -183,12 +181,12 @@ class BuildPanelTab(QWidget):
                 self._session.project_dir, self._session.rom_path, self._catalog)
         except (build_sdk.BuildError, ProjectError, OSError) as exc:
             # Invalid project dir (no project.toml) surfaces here (GAP-11).
-            self._validated_ok = False
+            self._session.record_validation(False)
             QMessageBox.critical(self, "Validate", str(exc))
             self._refresh()
             return
 
-        self._validated_ok = report.passed
+        self._session.record_validation(report.passed)
         if report.passed:
             self._status.setPlainText(
                 f"Validation passed for {report.project_name} "
@@ -207,6 +205,12 @@ class BuildPanelTab(QWidget):
     # -- Build ---------------------------------------------------------------
 
     def _on_build(self) -> None:
+        if not self._session.validation_current:
+            QMessageBox.information(
+                self, "Build", "Project validation is stale. Validate again before building."
+            )
+            self._refresh()
+            return
         if self._output_dir() is None:
             QMessageBox.information(self, "Build", "Choose an output directory first.")
             return
@@ -264,6 +268,11 @@ class BuildPanelTab(QWidget):
         result = build_sdk.build_project(
             self._session.project_dir, self._session.rom_path,
             output_path, self._catalog)
-        self._session.last_build = result
+        self._session.record_build(result)
         self._status.setPlainText(f"Build succeeded: {result.output_path}")
         self.buildFinished.emit()
+
+    def on_project_mutated(self) -> None:
+        """Refresh immediately after an Inspector Apply/Revert invalidates state."""
+        self._status.setPlainText("Project changed. Validate again before building.")
+        self._refresh()

@@ -28,6 +28,7 @@ class CompressedDialogueTarget:
     packed_handle: int
     decoded_start: int
     decoded_length: int
+    profile_id: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -44,7 +45,8 @@ class CompressedDialogueBuild:
 
 AUTHORED_DIALOGUE_TARGETS = {
     "goku-greeting": CompressedDialogueTarget(
-        "goku-greeting", 1, 0x7B5B64, 0x02002641, 0x132, 0x20
+        "goku-greeting", 1, 0x7B5B64, 0x02002641, 0x132, 0x20,
+        "buus_fury_usa_rev0_01c1707f",
     ),
 }
 
@@ -56,13 +58,12 @@ def target_named(name: str) -> CompressedDialogueTarget:
         raise CompressedDialogueError(f"unsupported authored dialogue target: {name}") from exc
 
 
-def _prepare_replacement(canonical: bytes, profile: RomProfile,
-                         target: CompressedDialogueTarget, replacement: str,
-                         reserved: Iterable[RomRange]) -> CompressedDialogueBuild:
-    if profile.generated_expansion is None:
-        raise CompressedDialogueError("profile declares no verified generated expansion")
-    if not replacement:
-        raise CompressedDialogueError("replacement dialogue must not be empty")
+def _retail_container(canonical: bytes, profile: RomProfile,
+                      target: CompressedDialogueTarget):
+    if target.profile_id is not None and profile.id != target.profile_id:
+        raise CompressedDialogueError(
+            f"{target.name}: target is not supported by profile {profile.id!r}"
+        )
     table_slot = target.table_offset + target.selector * 4
     if not 0 <= table_slot <= len(canonical) - 8:
         raise CompressedDialogueError("container-table slot lies outside canonical ROM")
@@ -72,7 +73,32 @@ def _prepare_replacement(canonical: bytes, profile: RomProfile,
     old_offset = FileOffset(old_pointer - 0x08000000).value
     if old_offset >= len(canonical):
         raise CompressedDialogueError("container-table slot is not a canonical ROM pointer")
-    container = unpack(canonical, old_offset)
+    return table_slot, old_offset, unpack(canonical, old_offset)
+
+
+def read_original_text(canonical: bytes, profile: RomProfile,
+                       target: CompressedDialogueTarget) -> str:
+    """Decode only the measured retail span named by ``target``."""
+    _slot, _offset, container = _retail_container(canonical, profile, target)
+    end = target.decoded_start + target.decoded_length
+    if end > len(container.data):
+        raise CompressedDialogueError("durable handle range lies outside decoded container")
+    try:
+        return container.data[target.decoded_start:end].decode("utf-16le")
+    except UnicodeDecodeError as exc:
+        raise CompressedDialogueError(
+            f"{target.name}: retail dialogue is not valid UTF-16LE"
+        ) from exc
+
+
+def _prepare_replacement(canonical: bytes, profile: RomProfile,
+                         target: CompressedDialogueTarget, replacement: str,
+                         reserved: Iterable[RomRange]) -> CompressedDialogueBuild:
+    if profile.generated_expansion is None:
+        raise CompressedDialogueError("profile declares no verified generated expansion")
+    if not replacement:
+        raise CompressedDialogueError("replacement dialogue must not be empty")
+    table_slot, old_offset, container = _retail_container(canonical, profile, target)
     encoded = replacement.encode("utf-16le")
     if len(encoded) != target.decoded_length:
         raise CompressedDialogueError(

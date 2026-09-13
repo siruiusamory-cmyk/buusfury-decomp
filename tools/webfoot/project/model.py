@@ -457,6 +457,26 @@ def write_project(
     return written
 
 
+def write_dialogue_replacements(
+    directory: str | Path, dialogues: Mapping[str, str]
+) -> Path:
+    """Persist only the canonical dialogue source document for a loaded project.
+
+    The authoring API validates the project and replacements before calling this
+    narrow writer.  An empty mapping means the project has no dialogue override,
+    so the optional document is removed instead of writing an invalid empty table.
+    """
+    path = Path(directory) / _DIALOGUE_FILE
+    if not dialogues:
+        path.unlink(missing_ok=True)
+        return path
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(
+        dump_toml(_dialogue_document(dialogues)), encoding="utf-8", newline="\n"
+    )
+    return path
+
+
 def _read_document(path: Path) -> dict[str, Any]:
     try:
         text = path.read_text(encoding="utf-8")

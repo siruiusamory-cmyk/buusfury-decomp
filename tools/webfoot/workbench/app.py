@@ -38,7 +38,7 @@ class MainWindow(QMainWindow):
 
         self._tabs = QTabWidget()
         self._atlas = AtlasBrowserTab(session, catalog)
-        self._inspector = InspectorTab()
+        self._inspector = InspectorTab(session)
         self._build = BuildPanelTab(session, catalog)
         self._launcher = LauncherTab(session)
         self._tabs.addTab(self._atlas, _TAB_TITLES[0])
@@ -52,6 +52,10 @@ class MainWindow(QMainWindow):
         self._atlas.romOpened.connect(self._build.on_session_changed)
         self._atlas.resultActivated.connect(self._on_result_activated)
         self._build.buildFinished.connect(self._launcher.on_session_changed)
+        self._build.projectChanged.connect(self._inspector.on_session_changed)
+        self._build.projectChanged.connect(self._launcher.on_session_changed)
+        self._inspector.projectChanged.connect(self._build.on_project_mutated)
+        self._inspector.projectChanged.connect(self._launcher.on_session_changed)
 
         self.setCentralWidget(self._tabs)
 

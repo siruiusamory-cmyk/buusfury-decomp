@@ -41,6 +41,7 @@ def _make_panel(tmp_path, _app):
         project_dir=tmp_path / "proj",
         output_dir=out_dir,
     )
+    session.record_validation(True)
     panel = BuildPanelTab(session, catalog=None)
     output_path = output_file_for(out_dir, session.profile.id)
     return panel, session, output_path
@@ -105,6 +106,7 @@ def test_output_equals_rom_never_deletes(tmp_path, monkeypatch, _app):
     monkeypatch.setattr(
         bp.build_sdk, "build_project",
         lambda *a, **k: build_called.__setitem__("n", build_called["n"] + 1))
+    monkeypatch.setattr(QMessageBox, "critical", staticmethod(lambda *a, **k: None))
     # If code ever reached the delete branch this would flag it:
     monkeypatch.setattr(QMessageBox, "question", staticmethod(lambda *a, **k: QMessageBox.Yes))
 
@@ -112,3 +114,19 @@ def test_output_equals_rom_never_deletes(tmp_path, monkeypatch, _app):
 
     assert build_called["n"] == 0, "build must not run when guard fails"
     assert rom.exists() and rom.read_bytes() == rom_before, "source ROM untouched"
+
+
+def test_stale_validation_never_authorizes_build(tmp_path, monkeypatch, _app):
+    panel, session, _ = _make_panel(tmp_path, _app)
+    session.project_mutated()
+    build_called = {"n": 0}
+    monkeypatch.setattr(
+        bp.build_sdk, "build_project",
+        lambda *a, **k: build_called.__setitem__("n", build_called["n"] + 1),
+    )
+    monkeypatch.setattr(QMessageBox, "information", staticmethod(lambda *a, **k: None))
+
+    panel._on_build()
+
+    assert build_called["n"] == 0
+    assert not panel._build_button.isEnabled()

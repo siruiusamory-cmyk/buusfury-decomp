@@ -670,21 +670,20 @@ def _check_maps(project: StatProject, maps: Maps | None) -> list[str]:
     return problems
 
 
-def _check_dialogues(project: StatProject) -> list[str]:
+def _check_dialogues(project: StatProject, profile: RomProfile) -> list[str]:
     """Validate semantic dialogue identities before any build writes exist."""
     if not project.dialogues:
         return []
     from .compressed_dialogue import CompressedDialogueError, target_named
+    from .dialogue import validate_dialogue_replacement
     problems = []
     for name, text in sorted(project.dialogues.items()):
         try:
             target = target_named(name)
-            if not text:
-                raise CompressedDialogueError("replacement dialogue must not be empty")
-            if len(text.encode("utf-16le")) != target.decoded_length:
+            validation = validate_dialogue_replacement(target, text, profile)
+            if not validation.valid:
                 raise CompressedDialogueError(
-                    f"replacement encodes to {len(text.encode('utf-16le'))} bytes; durable "
-                    f"handle requires exactly {target.decoded_length}"
+                    "; ".join(problem.message for problem in validation.problems)
                 )
         except CompressedDialogueError as exc:
             problems.append(f"dialogue:{name}: {exc}")
@@ -753,7 +752,7 @@ def validate_project(
             _check_records(project, tables)
             + _check_strings(project, strings)
             + _check_maps(project, maps)
-            + _check_dialogues(project)
+            + _check_dialogues(project, profile)
         )
 
     return ValidationReport(
@@ -849,7 +848,7 @@ def build_project(
         _check_records(project, tables)
         + _check_strings(project, strings)
         + _check_maps(project, maps)
-        + _check_dialogues(project)
+        + _check_dialogues(project, profile)
     )
     if problems:
         raise ProjectValidationError(

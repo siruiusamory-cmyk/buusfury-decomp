@@ -47,6 +47,41 @@ class Session:
     selected_result: dict | None = None
     output_dir: Path | None = None
     last_build: BuildResult | None = None
+    project_revision: int = 0
+    validation_revision: int | None = None
+    build_revision: int | None = None
+
+    @property
+    def validation_current(self) -> bool:
+        return self.validation_revision == self.project_revision
+
+    @property
+    def build_current(self) -> bool:
+        return self.build_revision == self.project_revision and self.last_build is not None
+
+    def set_project(self, path: Path) -> None:
+        """Select project source and invalidate results tied to prior source."""
+        self.project_dir = Path(path)
+        self.project_mutated()
+
+    def project_mutated(self) -> None:
+        """Advance project state and make prior validation/build unusable."""
+        self.project_revision += 1
+        self.validation_revision = None
+        self.build_revision = None
+        self.last_build = None
+
+    def record_validation(self, passed: bool) -> None:
+        self.validation_revision = self.project_revision if passed else None
+        if not passed:
+            self.build_revision = None
+            self.last_build = None
+
+    def record_build(self, result: BuildResult) -> None:
+        if not self.validation_current:
+            raise SessionError("project validation is stale; validate again before building")
+        self.last_build = result
+        self.build_revision = self.project_revision
 
     def open_rom(self, path: Path, catalog: RomProfileCatalog) -> None:
         """Identify `path` against `catalog`, load its atlas, and cache its bytes.
@@ -85,3 +120,7 @@ class Session:
         self.decoded_text = decoded_text
         self.rom_path = path
         self.rom_image = rom_image
+        # A newly opened base changes what any existing project result represents.
+        self.validation_revision = None
+        self.build_revision = None
+        self.last_build = None

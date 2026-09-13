@@ -77,7 +77,7 @@ export const project: ProjectStatus = {
   subtitle: "Legacy of Goku authoring toolkit",
   tagline: "Building a real authoring toolkit for the Legacy of Goku engine.",
   description:
-    "The SDK can compose a new entity, its behavior, a gameplay trigger and an author-written message into one complete scene that plays in the original engine, and every kind of text in the game — including the text the game keeps compressed — can now be found by searching for the words themselves. The current frontier is the game code that puts an ordinary conversation on screen: the project can read that text, but has not yet identified and proven the routine that displays it.",
+    "The SDK can rebuild an overflowed compressed dialogue resource into generated ROM expansion space, repoint the original table entry, and display the authored line through the retail dialogue engine. The current frontier is mapping more persistent conversation records to durable handles rather than treating a decoded offset as a new record.",
   overallProgress: 90,
   overallProgressLabel: "≈ 90% COMPLETE",
   progressCaveat:
@@ -85,16 +85,14 @@ export const project: ProjectStatus = {
   currentPhase: "AUTHOR_NEW",
   currentFrontierLabel: "CURRENT FRONTIER",
   existingContentState: "MATURE",
-  blockerCode: "WHO SHOWS THE WORDS",
-  blockerTitle: "Find the code that puts ordinary conversation on screen",
+  blockerCode: "DIALOGUE RECORD IDENTITIES",
+  blockerTitle: "Map more authored dialogue records to durable handles",
   blockerShort:
-    "Every kind of text in the game can now be found by searching for the words themselves, compressed text included. What is still missing is the other half: ordinary NPC conversation is stored in a form the project can already read, but the game code that actually draws it on screen has not been identified and watched running. That path is what authoring new everyday dialogue depends on.",
+    "Compressed NPC dialogue now has a proven overflow path: the SDK rebuilds the resource, allocates generated expansion capacity, rewrites its container-table entry, and the original engine displays the new line. The next limit is identifying more persistent dialogue records and handles that can safely select such resources.",
   blockerParagraphs: [
-    "Searching the game for a line of dialogue now works whatever form that line is kept in. Plain text and compressed text are both indexed, so an author can look for the words a character says and be told where they live. The previous frontier — that compressed dialogue could not be searched at all, and so effectively could not be found — is closed.",
-    "Proving it took a line that does not exist anywhere in the game as readable text. The greeting \"Good luck, Goku!\" is invisible to any plain search of the game file, because it only exists once a block of packed data has been unpacked. The search found it anyway, inside a verified compressed block, and reported honestly what it is: a position inside the unpacked text, with no address of its own in the game.",
-    "Detail: the compressed block sits at `0x087A04F0`, and the phrase begins `0x132` bytes into the unpacked stream. That offset is a position within the unpacked data, not an address in the game and not a proven start of a stored line — where one line ends and the next begins in that stream is still unknown.",
-    "The frontier that this exposed is a different problem. Ordinary conversation — the kind a villager or a shopkeeper speaks — is stored in the game as ordinary readable text, so reading it is not the issue. The issue is the game code on the other end: the routine that takes one of those lines and paints it into a dialogue box has not been identified, and has never been watched doing it in a running game.",
-    "Until that routine is found and observed running, new everyday dialogue cannot be authored with any confidence, because there is no proven path from an author's line to words appearing on screen. Finding that code, and proving it by watching the running game execute it, is the work in front of the project now.",
+    "The acceptance line \"Nice work, Goku!\" has the same 32 decoded bytes as its original, but recompresses 1,076 bytes too large for its retail allocation. The SDK puts the complete rebuilt resource at file offset `0x00800000` in a deterministic 16 MiB generated image, updates only selector 1's authoritative table word to `0x08800000`, and leaves the existing record and packed handle unchanged.",
+    "In mGBA the normal retail dialogue box displayed the authored line. Runtime observation captured the same packed handle `0x02002641`, selector 1, and relocated pointer `0x08800000`. This proves generated expansion capacity for relocatable resources; it is not claimed as free space in the original retail ROM.",
+    "The remaining authoring problem is narrower and durable: the project has not yet mapped a broad set of conversation records to their packed handles. A decoded offset alone is not enough to invent a new dialogue identity, so that mapping remains the next measured blocker.",
   ],
   acceptanceTarget:
     "Author playable Legacy of Goku content inside the real LOGII/Buu engine.",
@@ -272,9 +270,18 @@ export const project: ProjectStatus = {
       id: "ordinary-dialogue-consumer",
       title: "Find the code that displays ordinary conversation",
       plainEnglish:
-        "Ordinary NPC conversation is stored in a form the project can already read, but the game code that draws it on screen has not been identified or watched running.",
+        "Prove that the original dialogue engine follows a relocated compressed resource and displays authored words.",
       technical:
-        "Open. Shop and scenario structure is materially understood: six known shop scenarios, 61 script targets, and a confirmed script framing of u16 next_script_index followed by u8 type. Seventeen of those targets carry plaintext payloads the project can already read. The dispatcher that reads the type byte accepts only two other type values and rejects the plaintext type, so the routine that consumes and renders it is elsewhere and remains unidentified. No runtime capture has caught it executing. Authoring ordinary new dialogue depends on finding that path and proving it in the running game.",
+        "Confirmed. The existing selector-1 packed handle remained `0x02002641`; its table entry was changed from `0x087A04F0` to `0x08800000` in generated ROM expansion, and mGBA displayed \"Nice work, Goku!\" through the normal retail dialogue box. The rebuilt container is 17,932 bytes, exceeding its 16,856-byte retail allocation by 1,076 bytes.",
+      status: "complete",
+    },
+    {
+      id: "dialogue-record-identities",
+      title: "Map durable conversation records and handles",
+      plainEnglish:
+        "Give authors more ordinary dialogue targets without guessing where one decoded phrase begins or inventing a new record identity.",
+      technical:
+        "Generated-ROM capacity and selector-1 relocation are proven. The next task is a measured mapping from persistent dialogue records to their packed handles and container selectors; decoded offsets alone remain insufficient evidence for a new authoring identity.",
       status: "current",
     },
     {
@@ -301,11 +308,21 @@ export const project: ProjectStatus = {
     { label: "UNBOUNDED AUTHORED TEXT", state: "done" },
     { label: "AUTHORED TEXT FITS SCREEN", state: "done" },
     { label: "ANY TEXT FINDABLE BY ITS WORDS", state: "done" },
-    { label: "ORDINARY DIALOGUE DISPLAY PATH", state: "current", marker: "↑ YOU ARE HERE" },
+    { label: "ORDINARY DIALOGUE DISPLAY PATH", state: "done" },
+    { label: "EXPANDED DIALOGUE CAPACITY", state: "done" },
+    { label: "DIALOGUE RECORD IDENTITIES", state: "current", marker: "↑ YOU ARE HERE" },
     { label: "AUTHORED ORDINARY DIALOGUE", state: "next" },
     { label: "PLAYABLE LOG1 CONTENT", state: "target" },
   ],
   breakthroughs: [
+    {
+      id: "expanded-authored-dialogue",
+      title: "Authored dialogue now crosses the original ROM boundary",
+      summary:
+        "A rebuilt compressed dialogue resource that no longer fits in the retail image was placed into generated expansion space, selected by the original table, and displayed by the retail engine.",
+      technical:
+        "The selector-1 container grew from its 16,856-byte retail allocation to 17,932 bytes. The SDK emitted a deterministic 16 MiB image, placed the complete payload at file offset 0x00800000 / ROM address 0x08800000, and changed only selector 1's table word. The record and packed handle remained unchanged. mGBA observed the handle and selector reach the relocated pointer, then displayed \"Nice work, Goku!\" in the ordinary dialogue box. The original 8 MiB ROM remains unchanged; appended bytes are generated capacity, not a retail free-space claim.",
+    },
     {
       id: "compressed-text-searchable",
       title: "Every line of text in the game is now findable by its words",

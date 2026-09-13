@@ -33,6 +33,7 @@ _ALLOWED_KEYS = {
     "notes",
     "tables",
     "free_regions",
+    "generated_expansion",
 }
 _ALLOWED_TABLES = {"map_entries", "enemy_stats", "character_base_stats", "text_strings", "scripts", "placement_types", "actor_sprites"}
 _ALLOWED_MAP_ENTRY_TABLE_KEYS = {"address", "count", "record_size"}
@@ -131,6 +132,37 @@ class TextTableProfile:
     @property
     def pointer_table_size(self) -> int:
         return self.count * 4
+
+
+@dataclass(frozen=True, slots=True)
+class GeneratedExpansionProfile:
+    """Verified capacity created after, and separate from, a retail image.
+
+    ``RomProfile.size`` remains the measured canonical input size. This object
+    describes only the deterministic generated output and its append-only
+    allocation range; it must never be reported as canonical free space.
+    """
+
+    output_size: int
+    padding_byte: int
+    evidence: str
+
+    def free_region(self, canonical_size: int) -> FreeRegion:
+        return FreeRegion(
+            RomRange(FileOffset(canonical_size), self.output_size - canonical_size),
+            self.evidence,
+        )
+
+    def generated_image(self, canonical_size: int, allocated_spans: tuple[RomRange, ...]):
+        """Make the write-layer contract from this profile declaration only."""
+        from .write import GeneratedImage
+        return GeneratedImage(
+            self.output_size,
+            self.padding_byte,
+            self.free_region(canonical_size).range,
+            self.evidence,
+            allocated_spans,
+        )
 
 
 def _optional_text_table(
@@ -519,6 +551,7 @@ class RomProfile:
     scripts: tuple[ScriptProfile, ...] | None = None
     placement_types: PlacementTypeProfile | None = None
     actor_sprites: ActorSpriteProfile | None = None
+    generated_expansion: GeneratedExpansionProfile | None = None
 
     @classmethod
     def from_mapping(cls, data: Mapping[str, Any]) -> "RomProfile":
@@ -585,7 +618,38 @@ class RomProfile:
             placement_types=_optional_placement_types(tables_value, size),
             actor_sprites=_optional_actor_sprites(tables_value, size),
             free_regions=_free_regions(data.get("free_regions", []), size),
+            generated_expansion=_optional_generated_expansion(
+                data.get("generated_expansion"), size
+            ),
         )
+
+
+def _optional_generated_expansion(
+    value: Any, canonical_size: int
+) -> GeneratedExpansionProfile | None:
+    if value is None:
+        return None
+    if not isinstance(value, Mapping) or set(value) != {
+        "output_size", "padding_byte", "evidence"
+    }:
+        raise ProfileConfigError(
+            "generated_expansion requires output_size, padding_byte, evidence"
+        )
+    output_size = value["output_size"]
+    padding_byte = value["padding_byte"]
+    evidence = value["evidence"]
+    if (type(output_size) is not int or output_size <= canonical_size or
+            output_size > 0x02000000):
+        raise ProfileConfigError(
+            "generated_expansion output_size must be above canonical size and at most 32 MiB"
+        )
+    if output_size & (output_size - 1):
+        raise ProfileConfigError("generated_expansion output_size must be a power of two")
+    if type(padding_byte) is not int or not 0 <= padding_byte <= 0xFF:
+        raise ProfileConfigError("generated_expansion padding_byte must be one byte")
+    if not isinstance(evidence, str) or not evidence.strip():
+        raise ProfileConfigError("generated_expansion evidence must be non-empty")
+    return GeneratedExpansionProfile(output_size, padding_byte, evidence.strip())
 
 
 def _free_regions(value: Any, size: int) -> tuple[FreeRegion, ...]:

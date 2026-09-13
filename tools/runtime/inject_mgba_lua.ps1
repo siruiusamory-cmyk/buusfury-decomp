@@ -182,6 +182,15 @@ $allowedLua = @(
         (Join-Path $workspaceRoot 'tools\runtime\toolkit037_dialogue_watch.lua')
     )
     [System.IO.Path]::GetFullPath(
+        (Join-Path $workspaceRoot 'tools\runtime\rom_expand_001_dialogue_watch.lua')
+    )
+    [System.IO.Path]::GetFullPath(
+        (Join-Path $workspaceRoot 'tools\runtime\rom_expand_001_dialogue_driver.lua')
+    )
+    [System.IO.Path]::GetFullPath(
+        (Join-Path $workspaceRoot 'tools\runtime\rom_expand_001_snapshot.lua')
+    )
+    [System.IO.Path]::GetFullPath(
         (Join-Path $workspaceRoot 'tools\runtime\toolkit038_scenario_watch.lua')
     )
     [System.IO.Path]::GetFullPath(

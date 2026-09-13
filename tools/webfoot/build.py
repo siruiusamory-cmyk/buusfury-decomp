@@ -670,6 +670,27 @@ def _check_maps(project: StatProject, maps: Maps | None) -> list[str]:
     return problems
 
 
+def _check_dialogues(project: StatProject) -> list[str]:
+    """Validate semantic dialogue identities before any build writes exist."""
+    if not project.dialogues:
+        return []
+    from .compressed_dialogue import CompressedDialogueError, target_named
+    problems = []
+    for name, text in sorted(project.dialogues.items()):
+        try:
+            target = target_named(name)
+            if not text:
+                raise CompressedDialogueError("replacement dialogue must not be empty")
+            if len(text.encode("utf-16le")) != target.decoded_length:
+                raise CompressedDialogueError(
+                    f"replacement encodes to {len(text.encode('utf-16le'))} bytes; durable "
+                    f"handle requires exactly {target.decoded_length}"
+                )
+        except CompressedDialogueError as exc:
+            problems.append(f"dialogue:{name}: {exc}")
+    return problems
+
+
 def _identity_order(identity: object) -> int:
     """Sort key for reporting. Only table-indexed identities reach this."""
     return getattr(identity, "index", -1)
@@ -732,6 +753,7 @@ def validate_project(
             _check_records(project, tables)
             + _check_strings(project, strings)
             + _check_maps(project, maps)
+            + _check_dialogues(project)
         )
 
     return ValidationReport(
@@ -827,6 +849,7 @@ def build_project(
         _check_records(project, tables)
         + _check_strings(project, strings)
         + _check_maps(project, maps)
+        + _check_dialogues(project)
     )
     if problems:
         raise ProjectValidationError(
@@ -895,6 +918,22 @@ def build_project(
     # is a hard overlap error rather than a silent last-writer-wins.
     changes += authored_changes
 
+    # ROM-EXPAND-001: compressed dialogue is a normal third allocating build
+    # domain. It receives every span reserved by earlier domains and returns its
+    # own span to the same build-scoped set before the one final plan is formed.
+    dialogue_image = None
+    dialogue_provenance: tuple = ()
+    if project.dialogues:
+        if base_bytes is None:
+            raise BuildError("compressed dialogue requires a canonical build image")
+        from .compressed_dialogue import materialize_dialogues
+        dialogue_runs, dialogue_reserved, dialogue_image, dialogue_provenance = materialize_dialogues(
+            base_bytes, profile, project.dialogues, reserved
+        )
+        for run in dialogue_runs:
+            changes += run.changes
+        reserved += dialogue_reserved
+
     if base_bytes is None:
         # Unreachable: `_require_extractable_profile` refuses a profile that
         # declares nothing, so at least one subsystem loaded. Kept because
@@ -909,6 +948,8 @@ def build_project(
         changes,
         profile_id=profile.id,
         base_sha256=identification.hashes.sha256,
+        generated_image=dialogue_image,
+        generated_allocations=dialogue_provenance,
     )
 
     manifest = emit_image(

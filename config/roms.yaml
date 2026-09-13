@@ -157,6 +157,16 @@ profiles:
           candidate_target alone. Absence of detection is therefore evidence of
           absence for exactly these checks, not a blind scan. This is a general
           SDK capacity declaration, not a per-map allocation.
+    generated_expansion:
+      output_size: 0x01000000
+      padding_byte: 0xff
+      evidence: >-
+        ROM-EXPAND-001: GBA Game Pak ROM window is 0x08000000..0x09FFFFFF
+        (GBATEK); a generated 16 MiB image therefore maps appended file offset
+        0x00800000 to 0x08800000. Direct mGBA runtime observation consumed the
+        selector-1 compressed-dialogue pointer at 0x08800000 and displayed the
+        authored line through the retail dialogue engine. This is generated
+        expansion capacity, not canonical retail free space.
     sources:
       - "2genkidev/buusfury@cc53d0cd2d1c167e749419187e2d92017ac07468 README.md"
       - "Local reproducible observation, 2026-08-19"

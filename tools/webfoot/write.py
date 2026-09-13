@@ -65,6 +65,95 @@ class OverlappingChangeError(ChangeValidationError):
 
 
 @dataclass(frozen=True, slots=True)
+class GeneratedAllocationProvenance:
+    """Why one generated-image span exists in this otherwise canonical ROM."""
+
+    domain: str
+    resource: str
+    owner: str
+    source_range: RomRange
+    allocated_range: RomRange
+    allocated_rom_address: int
+    pointer_offset: int
+    expansion_evidence: str
+
+    def owns(self, change: "ByteChange") -> bool:
+        """Whether this allocator-issued span authorizes this appended write."""
+        return (
+            self.owner == change.owner
+            and self.allocated_range.start.value <= change.offset
+            and change.end <= self.allocated_range.end
+        )
+
+    def to_json(self) -> dict:
+        return {
+            "domain": self.domain,
+            "resource": self.resource,
+            "owner": self.owner,
+            "source_range": self.source_range.to_json(),
+            "allocated_range": self.allocated_range.to_json(),
+            "allocated_rom_address": self.allocated_rom_address,
+            "allocated_rom_address_hex": f"0x{self.allocated_rom_address:08X}",
+            "allocation_class": "generated_expansion",
+            "pointer_offset": self.pointer_offset,
+            "pointer_offset_hex": f"0x{self.pointer_offset:08X}",
+            "expansion_evidence": self.expansion_evidence,
+        }
+
+
+@dataclass(frozen=True, slots=True)
+class GeneratedImage:
+    """A deterministic append-only image shape for a generated ROM.
+
+    This is deliberately a write-time property, not a retail-ROM profile size.
+    The source remains the exact canonical image named by ``WritePlan``; bytes
+    after it are synthesized from one explicit padding value before any change
+    is validated or written.
+    """
+
+    output_size: int
+    padding_byte: int
+    expansion_range: RomRange
+    expansion_evidence: str
+    allocated_spans: tuple[RomRange, ...] = ()
+
+    def __post_init__(self) -> None:
+        if type(self.output_size) is not int or self.output_size <= 0:
+            raise ChangeValidationError("generated image size must be positive")
+        if type(self.padding_byte) is not int or not 0 <= self.padding_byte <= 0xFF:
+            raise ChangeValidationError("generated image padding must be one byte")
+        if not self.expansion_evidence:
+            raise ChangeValidationError("generated expansion requires evidence")
+
+    def materialize(self, canonical: bytes) -> bytes:
+        if len(canonical) > self.output_size:
+            raise ChangeValidationError(
+                f"generated image is {self.output_size} bytes but canonical input is "
+                f"{len(canonical)} bytes"
+            )
+        if self.expansion_range.start.value != len(canonical):
+            raise ChangeValidationError("generated expansion must begin at canonical EOF")
+        if self.expansion_range.end != self.output_size:
+            raise ChangeValidationError("generated expansion must end at generated image EOF")
+        return canonical + bytes([self.padding_byte]) * (self.output_size - len(canonical))
+
+    def contains_allocated(self, change: "ByteChange") -> bool:
+        return any(
+            span.start.value <= change.offset and change.end <= span.end
+            for span in self.allocated_spans
+        )
+
+    def to_json(self) -> dict:
+        return {
+            "output_size": self.output_size,
+            "padding_byte": self.padding_byte,
+            "expansion_range": self.expansion_range.to_json(),
+            "expansion_evidence": self.expansion_evidence,
+            "allocated_spans": [span.to_json() for span in self.allocated_spans],
+        }
+
+
+@dataclass(frozen=True, slots=True)
 class ByteChange:
     """One contiguous, fully attributed overwrite.
 
@@ -169,6 +258,8 @@ class WritePlan:
     base_size: int
     changes: tuple[ByteChange, ...]
     relocations: tuple[RelocationProvenance, ...] = ()
+    generated_image: GeneratedImage | None = None
+    generated_allocations: tuple[GeneratedAllocationProvenance, ...] = ()
 
     @property
     def effective_changes(self) -> tuple[ByteChange, ...]:
@@ -221,6 +312,8 @@ class WriteManifest:
     #: no project. TOOLKIT-002.
     project: ProjectProvenance | None = None
     relocations: tuple[RelocationProvenance, ...] = ()
+    generated_image: GeneratedImage | None = None
+    generated_allocations: tuple[GeneratedAllocationProvenance, ...] = ()
 
     def to_json(self) -> dict:
         document = {
@@ -242,6 +335,12 @@ class WriteManifest:
             document["project"] = self.project.to_json()
         if self.relocations:
             document["relocations"] = [r.to_json() for r in self.relocations]
+        if self.generated_image is not None:
+            document["generated_image"] = self.generated_image.to_json()
+        if self.generated_allocations:
+            document["generated_allocations"] = [
+                allocation.to_json() for allocation in self.generated_allocations
+            ]
         return document
 
     def dumps(self) -> str:
@@ -264,6 +363,8 @@ def plan_changes(
     profile_id: str,
     base_sha256: str,
     relocations: tuple[RelocationProvenance, ...] = (),
+    generated_image: GeneratedImage | None = None,
+    generated_allocations: tuple[GeneratedAllocationProvenance, ...] = (),
 ) -> WritePlan:
     """Validate `changes` against `base` and return an applicable plan.
 
@@ -275,21 +376,52 @@ def plan_changes(
        computed against a different image cannot be applied to this one;
     3. it does not overlap another change.
     """
+    if generated_allocations and generated_image is None:
+        raise ChangeValidationError(
+            "generated allocation provenance requires a generated-image policy"
+        )
+    if generated_image is not None:
+        allocation_spans = tuple(a.allocated_range for a in generated_allocations)
+        if set(generated_image.allocated_spans) != set(allocation_spans):
+            raise ChangeValidationError(
+                "generated image allocation spans must exactly match allocation provenance"
+            )
+        for allocation in generated_allocations:
+            span = allocation.allocated_range
+            expansion = generated_image.expansion_range
+            if not (expansion.start.value <= span.start.value and span.end <= expansion.end):
+                raise ChangeValidationError(
+                    f"{allocation.owner}: generated allocation lies outside the profile expansion range"
+                )
+    planning_image = (generated_image.materialize(base)
+                       if generated_image is not None else base)
     ordered = sorted(changes, key=lambda c: c.offset)
 
     for change in ordered:
-        if change.end > len(base):
+        if change.end > len(planning_image):
             raise ChangeValidationError(
                 f"{change.owner}: change at 0x{change.offset:08X} "
-                f"(+{change.size}) extends past the {len(base)}-byte image"
+                f"(+{change.size}) extends past the {len(planning_image)}-byte image"
             )
-        actual = base[change.offset : change.end]
+        actual = planning_image[change.offset : change.end]
         if actual != change.old:
             raise ChangeValidationError(
                 f"{change.owner}: base bytes at 0x{change.offset:08X} are "
                 f"{actual.hex()}, but the change expected {change.old.hex()}; "
                 "this plan was computed against a different image"
             )
+        if change.offset < len(base) < change.end:
+            raise ChangeValidationError(
+                f"{change.owner}: change at 0x{change.offset:08X} straddles canonical EOF"
+            )
+        if change.offset >= len(base):
+            if generated_image is None or not any(
+                allocation.owns(change) for allocation in generated_allocations
+            ):
+                raise ChangeValidationError(
+                    f"{change.owner}: generated write at 0x{change.offset:08X} is not "
+                    "authorized by its allocator-issued expansion provenance"
+                )
 
     for previous, current in zip(ordered, ordered[1:]):
         if current.offset < previous.end:
@@ -305,6 +437,8 @@ def plan_changes(
         base_size=len(base),
         changes=tuple(ordered),
         relocations=relocations,
+        generated_image=generated_image,
+        generated_allocations=generated_allocations,
     )
 
 
@@ -325,18 +459,21 @@ def apply_plan(base: bytes, plan: WritePlan) -> bytes:
         )
 
     # Public dataclasses can be constructed directly; recheck even no-op plans.
+    planning_image = (plan.generated_image.materialize(base)
+                      if plan.generated_image is not None else base)
     plan_changes(base, plan.changes, profile_id=plan.base_profile_id,
-                 base_sha256=plan.base_sha256)
+                 base_sha256=plan.base_sha256, generated_image=plan.generated_image,
+                 generated_allocations=plan.generated_allocations)
 
     if plan.is_noop:
         # Explicit, not incidental: a no-op must reproduce the input exactly.
-        return bytes(base)
+        return bytes(planning_image)
 
-    out = bytearray(base)
+    out = bytearray(planning_image)
     for change in plan.changes:
         out[change.offset : change.end] = change.new
     result = bytes(out)
-    if len(result) != len(base):
+    if len(result) != len(planning_image):
         raise AssertionError("internal error: emitted image changed size")
     return result
 
@@ -407,6 +544,8 @@ def emit_image(
         changes=plan.effective_changes,
         project=project,
         relocations=plan.relocations,
+        generated_image=plan.generated_image,
+        generated_allocations=plan.generated_allocations,
     )
     # Stage complete files first. Publish using exclusive links: never replace
     # a raced destination. Publish image last; roll back our links on failure.

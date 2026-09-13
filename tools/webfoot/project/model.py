@@ -79,6 +79,7 @@ _PROJECT_FILE = "project.toml"
 _ENEMY_FILE = Path("enemies") / "enemies.toml"
 _CHARACTER_FILE = Path("characters") / "characters.toml"
 _TEXT_FILE = Path("text") / "strings.toml"
+_DIALOGUE_FILE = Path("dialogue") / "replacements.toml"
 _MAP_FILE = Path("maps") / "maps.toml"
 PLACEMENT_TYPES_FILE = Path("placement_types") / "types.toml"
 
@@ -216,6 +217,7 @@ class StatProject:
     #: `text/strings.toml` means "this project does not author text", not
     #: "this project is broken". A build then leaves the ROM's text alone.
     strings: dict[tt.TextIdentity, str] = field(default_factory=dict)
+    dialogues: dict[str, str] = field(default_factory=dict)
     #: TOOLKIT-007. Authored map records by table index. Empty for a project
     #: extracted before map support existed, which stays loadable on the same
     #: reasoning as `strings`: a missing `maps/maps.toml` means "this project
@@ -340,6 +342,10 @@ def _text_document(strings: list[tuple[tt.TextIdentity, str]]) -> dict[str, Any]
     return {"text": tables}
 
 
+def _dialogue_document(dialogues: Mapping[str, str]) -> dict[str, Any]:
+    return {"dialogue": {name: {"text": text} for name, text in sorted(dialogues.items())}}
+
+
 def _map_document(maps: list[dict[str, Any]]) -> dict[str, Any]:
     """Build the maps document, ordered by map index.
 
@@ -404,6 +410,7 @@ def write_project(
     enemies: list[tuple[st.StatIdentity, st.EnemyRecord, bytes, str | None]],
     characters: list[tuple[st.StatIdentity, st.BaseStatRecord, bytes, str]],
     strings: list[tuple[tt.TextIdentity, str]] | None = None,
+    dialogues: Mapping[str, str] | None = None,
     maps: list[dict[str, Any]] | None = None,
 ) -> list[Path]:
     """Write the whole authored tree. Returns the files written, in order.
@@ -433,6 +440,8 @@ def write_project(
         documents.append((_CHARACTER_FILE, _character_document(characters)))
     if strings:
         documents.append((_TEXT_FILE, _text_document(strings)))
+    if dialogues:
+        documents.append((_DIALOGUE_FILE, _dialogue_document(dialogues)))
     if maps:
         documents.append((_MAP_FILE, _map_document(maps)))
 
@@ -584,6 +593,30 @@ def _read_strings(path: Path) -> dict[tt.TextIdentity, str]:
     if not strings:
         raise ProjectLoadError(f"{path}: [text] declares no strings")
     return strings
+
+
+def _read_dialogues(path: Path) -> dict[str, str]:
+    """Load semantic compressed-dialogue replacements, or no dialogue edits."""
+    if not path.is_file():
+        return {}
+    document = _read_document(path)
+    table = document.get("dialogue")
+    if not isinstance(table, Mapping):
+        raise ProjectLoadError(f"{path}: missing required [dialogue] table")
+    result: dict[str, str] = {}
+    for target, entry in table.items():
+        label = f"dialogue.{target}"
+        if not isinstance(target, str) or not target:
+            raise ProjectLoadError(f"{path}: dialogue target must be a non-empty string")
+        if not isinstance(entry, Mapping) or set(entry) != {"text"}:
+            raise ProjectLoadError(f"{path}: {label} requires exactly a text field")
+        text = entry["text"]
+        if not isinstance(text, str):
+            raise ProjectValidationError(f"{path}: {label}.text must be a string")
+        result[target] = text
+    if not result:
+        raise ProjectLoadError(f"{path}: [dialogue] declares no replacements")
+    return result
 
 
 def _read_maps(path: Path) -> dict[int, dict[str, Any]]:
@@ -800,6 +833,7 @@ def read_project(directory: str | Path) -> StatProject:
             )
 
     strings = _read_strings(root / _TEXT_FILE)
+    dialogues = _read_dialogues(root / _DIALOGUE_FILE)
     maps = _read_maps(root / _MAP_FILE)
     from .placements import validate_templates
     validate_templates(maps)
@@ -820,6 +854,7 @@ def read_project(directory: str | Path) -> StatProject:
         enemies=enemies,
         characters=characters,
         strings=strings,
+        dialogues=dialogues,
         maps=maps,
         placement_events=events,
         placement_types=(_read_document(root / PLACEMENT_TYPES_FILE)

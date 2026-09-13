@@ -160,6 +160,21 @@ def test_valid_project_loads(project_dir: Path):
     assert len(project.characters) == 1
 
 
+def test_dialogue_replacements_round_trip_as_semantic_targets(tmp_path: Path):
+    root = tmp_path / "dialogue-project"
+    write_project(
+        root,
+        _meta(),
+        enemies=[_enemy()],
+        characters=[_character()],
+        dialogues={"goku-greeting": "Nice work, Goku!"},
+    )
+    document = (root / "dialogue" / "replacements.toml").read_text(encoding="utf-8")
+    assert "0x" not in document
+    assert "address" not in document
+    assert read_project(root).dialogues == {"goku-greeting": "Nice work, Goku!"}
+
+
 def test_unsupported_format_version_is_refused(project_dir: Path):
     path = project_dir / "project.toml"
     path.write_text(

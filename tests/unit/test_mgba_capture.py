@@ -1010,3 +1010,28 @@ def test_toolkit031_finisher_counts_toolkit034_row_kinds_as_live_channels():
     assert "$historicalExec | Group-Object descriptor_kind, descriptor" in finisher
     assert "$callerExec | Group-Object attribution, r0, payload" in finisher
     assert "TOOLKIT-034 caller snapshots (attribution, descriptor, payload):" in finisher
+
+
+def test_rom_expand_observer_and_session_gate_bind_exact_generated_size():
+    """Expansion proof accepts only the caller's exact hash and exact size."""
+    root = Path(__file__).resolve().parents[2]
+    session = (root / "tools/runtime/start_toolkit031_session.ps1").read_text(
+        encoding="utf-8"
+    )
+    observer = (root / "tools/runtime/rom_expand_001_dialogue_watch.lua").read_text(
+        encoding="utf-8"
+    )
+    injector = (root / "tools/runtime/inject_mgba_lua.ps1").read_text(
+        encoding="utf-8"
+    )
+
+    assert "[UInt32]$ExpectedRomSize = 8388608" in session
+    assert "$romInfo.Length -ne $ExpectedRomSize" in session
+    assert "rom_expand_001_dialogue_watch.lua" in injector
+    assert "0x08012240" in observer
+    assert "0x02002641" in observer
+    assert "0x08800000" in observer
+    assert "emu:romSize() == 16777216" in observer
+    assert "emu:screenshot" in observer
+    assert "emu:write" not in observer
+    assert "emu:setKey" not in observer

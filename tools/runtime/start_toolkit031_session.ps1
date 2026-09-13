@@ -38,13 +38,17 @@ param(
     [string]$Label,
     [string]$LuaPath = 'tools\runtime\toolkit031_execution_watch.lua',
     [string]$MGBPath = 'build\tools\mgba-dev\extracted\mGBA-build-2026-08-27-win64-9128-c65e8a3d4666b0ea68a01578232452f31b185332\mGBA.exe',
-    [string]$RequiredMGBVersion = '0.11'
+    [string]$RequiredMGBVersion = '0.11',
+    # The default continues to bind ordinary sessions to canonical Buu. An
+    # expanded experiment must name its exact, hardware-window-bounded size
+    # alongside its exact image digest; a hash alone must not turn size into an
+    # implicit acceptance criterion.
+    [ValidateRange(1, 33554432)]
+    [UInt32]$ExpectedRomSize = 8388608
 )
 
 $ErrorActionPreference = 'Stop'
 $root = (Resolve-Path -LiteralPath (Join-Path $PSScriptRoot '..\..')).Path
-$expectedRomSize = 8388608
-
 function Resolve-Required([string]$Path, [string]$What) {
     $candidate = if ([System.IO.Path]::IsPathRooted($Path)) { $Path } else { Join-Path $root $Path }
     if (-not (Test-Path -LiteralPath $candidate -PathType Leaf)) {
@@ -74,7 +78,7 @@ if ($expected -notmatch '^[0-9A-F]{64}$') {
 }
 $romInfo = Get-Item -LiteralPath $resolvedRom
 $romHashBefore = (Get-FileHash -Algorithm SHA256 -LiteralPath $resolvedRom).Hash
-if ($romInfo.Length -ne $expectedRomSize -or $romHashBefore -ne $expected) {
+if ($romInfo.Length -ne $ExpectedRomSize -or $romHashBefore -ne $expected) {
     throw "ROM identity mismatch; run refused. Expected $expected, found $romHashBefore"
 }
 
@@ -131,6 +135,7 @@ $identity = [ordered]@{
     rom_path     = $resolvedRom
     rom_sha256   = $romHashBefore
     rom_size     = $romInfo.Length
+    expected_rom_size = $ExpectedRomSize
     state_path   = $resolvedState
     state_sha256 = $stateHash
     lua_path     = $resolvedLua

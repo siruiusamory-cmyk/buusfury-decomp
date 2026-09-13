@@ -77,7 +77,7 @@ export const project: ProjectStatus = {
   subtitle: "Legacy of Goku authoring toolkit",
   tagline: "Building a real authoring toolkit for the Legacy of Goku engine.",
   description:
-    "The SDK can rebuild an overflowed compressed dialogue resource into generated ROM expansion space, repoint the original table entry, and display the authored line through the retail dialogue engine. The current frontier is mapping more persistent conversation records to durable handles rather than treating a decoded offset as a new record.",
+    "The SDK can rebuild an overflowed compressed dialogue resource into generated ROM expansion space, repoint the original table entry, and display the authored line through the retail dialogue engine, and a desktop Workbench now drives the find, inspect, build and run loop over that same SDK. The current frontier is wiring the proven dialogue-authoring backend into the Workbench so an author can edit a supported line graphically.",
   overallProgress: 90,
   overallProgressLabel: "≈ 90% COMPLETE",
   progressCaveat:
@@ -85,14 +85,14 @@ export const project: ProjectStatus = {
   currentPhase: "AUTHOR_NEW",
   currentFrontierLabel: "CURRENT FRONTIER",
   existingContentState: "MATURE",
-  blockerCode: "DIALOGUE RECORD IDENTITIES",
-  blockerTitle: "Map more authored dialogue records to durable handles",
+  blockerCode: "DIALOGUE EDITING IN WORKBENCH",
+  blockerTitle: "Wire supported dialogue editing into Workbench",
   blockerShort:
-    "Compressed NPC dialogue now has a proven overflow path: the SDK rebuilds the resource, allocates generated expansion capacity, rewrites its container-table entry, and the original engine displays the new line. The next limit is identifying more persistent dialogue records and handles that can safely select such resources.",
+    "The backend that authors an ordinary compressed NPC line is proven end to end, and the Workbench drives find, inspect, build and run. The next step is connecting the two so an author can search a supported line, edit it, then build and run it from the graphical tool instead of the command line.",
   blockerParagraphs: [
-    "The acceptance line \"Nice work, Goku!\" has the same 32 decoded bytes as its original, but recompresses 1,076 bytes too large for its retail allocation. The SDK puts the complete rebuilt resource at file offset `0x00800000` in a deterministic 16 MiB generated image, updates only selector 1's authoritative table word to `0x08800000`, and leaves the existing record and packed handle unchanged.",
-    "In mGBA the normal retail dialogue box displayed the authored line. Runtime observation captured the same packed handle `0x02002641`, selector 1, and relocated pointer `0x08800000`. This proves generated expansion capacity for relocatable resources; it is not claimed as free space in the original retail ROM.",
-    "The remaining authoring problem is narrower and durable: the project has not yet mapped a broad set of conversation records to their packed handles. A decoded offset alone is not enough to invent a new dialogue identity, so that mapping remains the next measured blocker.",
+    "The Workbench ships as a second client of the SDK with four working tabs: find a line in the atlas, inspect an object or text record, build the game, and run the built game. Text editing is deliberately switched off there, marked \"Edit Text — not yet supported\", because the authoring backend was not yet wired in.",
+    "That backend is now proven. The SDK rebuilds an overflowing compressed line, places it in generated ROM expansion space, repoints the original table entry, and the retail engine displays the authored words — runtime-observed in mGBA. Nothing about that path requires the command line; it simply is not exposed in the graphical tool yet.",
+    "The blocker is the wiring: give the Workbench an edit surface for a supported line that calls the proven authoring path, so a user finds a line, edits it, builds and runs it entirely from the GUI. This is a plumbing step, not new engine research — the capability underneath it already works.",
   ],
   acceptanceTarget:
     "Author playable Legacy of Goku content inside the real LOGII/Buu engine.",
@@ -276,12 +276,30 @@ export const project: ProjectStatus = {
       status: "complete",
     },
     {
-      id: "dialogue-record-identities",
-      title: "Map durable conversation records and handles",
+      id: "expanded-dialogue-authored",
+      title: "Author an ordinary NPC line through the normal build",
       plainEnglish:
-        "Give authors more ordinary dialogue targets without guessing where one decoded phrase begins or inventing a new record identity.",
+        "Rewrite a real NPC conversation line, build the game the normal way, and have the original engine show the new words.",
       technical:
-        "Generated-ROM capacity and selector-1 relocation are proven. The next task is a measured mapping from persistent dialogue records to their packed handles and container selectors; decoded offsets alone remain insufficient evidence for a new authoring identity.",
+        "Confirmed. An ordinary compressed NPC line was rebuilt so long it no longer fit its retail slot; the SDK placed the complete resource in generated ROM expansion space, repointed only that container's table word, and the retail Buu's Fury engine displayed the authored line in its normal dialogue box — runtime-observed in mGBA with the original packed handle and selector unchanged. The canonical 8 MiB ROM is never modified; the appended space is generated capacity, allocated through the same shared allocator every other domain uses.",
+      status: "complete",
+    },
+    {
+      id: "graphical-workbench",
+      title: "Drive the SDK from a desktop tool",
+      plainEnglish:
+        "Do the whole find, inspect, build and run loop from a graphical application instead of the command line.",
+      technical:
+        "Confirmed. The Webfoot Workbench is a desktop GUI and a second client of the same SDK, with four tabs backing the full loop: search the atlas, inspect an object or text record, build the game, and run the build. The build panel refuses to write over the source ROM. Graphical dialogue editing is intentionally not part of this milestone.",
+      status: "complete",
+    },
+    {
+      id: "gui-dialogue-editing",
+      title: "Edit dialogue inside the Workbench",
+      plainEnglish:
+        "Search a supported line in the desktop tool, edit it, then build and run it — all without touching the command line.",
+      technical:
+        "The authoring backend and the Workbench both exist and are proven separately. The remaining work is exposing an edit surface in the Workbench that calls the proven dialogue-authoring path, so a supported line can be found, edited, built and run entirely in the GUI.",
       status: "current",
     },
     {
@@ -310,11 +328,31 @@ export const project: ProjectStatus = {
     { label: "ANY TEXT FINDABLE BY ITS WORDS", state: "done" },
     { label: "ORDINARY DIALOGUE DISPLAY PATH", state: "done" },
     { label: "EXPANDED DIALOGUE CAPACITY", state: "done" },
-    { label: "DIALOGUE RECORD IDENTITIES", state: "current", marker: "↑ YOU ARE HERE" },
-    { label: "AUTHORED ORDINARY DIALOGUE", state: "next" },
+    { label: "AUTHORED ORDINARY NPC DIALOGUE", state: "done" },
+    { label: "GENERATED-ROM RESOURCE RELOCATION", state: "done" },
+    { label: "GRAPHICAL WORKBENCH", state: "done" },
+    { label: "GUI DIALOGUE EDITING", state: "current", marker: "↑ YOU ARE HERE" },
     { label: "PLAYABLE LOG1 CONTENT", state: "target" },
   ],
   breakthroughs: [
+    {
+      id: "first-usable-workbench",
+      title: "First usable Webfoot Workbench",
+      summary:
+        "The SDK now has a desktop application. An author can search for a line, inspect a record, build the game and run it, all from a graphical tool instead of the command line. Editing dialogue in that tool is the next step.",
+    },
+    {
+      id: "first-ordinary-authored-dialogue",
+      title: "First ordinary NPC line authored through the normal build",
+      summary:
+        "A real NPC conversation line was rewritten in a Webfoot SDK project, built the ordinary way, and shown by the original Buu's Fury engine in its normal dialogue box — the first time an everyday compressed line has been replaced through the standard project build.",
+    },
+    {
+      id: "first-expanded-rom-resource",
+      title: "First authored resource proven from expanded ROM space",
+      summary:
+        "An authored line that no longer fit its original slot was placed into new, generated ROM space, selected by the game's own table, and displayed by the retail engine — the first authored resource proven to run from beyond the original ROM boundary, with the original game file left untouched.",
+    },
     {
       id: "expanded-authored-dialogue",
       title: "Authored dialogue now crosses the original ROM boundary",

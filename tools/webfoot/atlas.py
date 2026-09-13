@@ -33,6 +33,7 @@ import json
 from typing import Iterable, Iterator
 
 from .binary import FileOffset
+from .handles import recover_handle
 from .layout import (LayoutError, Provenance, Reference, ReferenceClass,
                      ReferenceEncoding, RomRange, require_name)
 
@@ -591,3 +592,141 @@ def unknowns(atlas: Atlas, limit: int | None = None) -> tuple[CoverageSpan, ...]
 def objects_of_kind(atlas: Atlas, kind: str) -> tuple[AtlasObject, ...]:
     return tuple(sorted((o for o in atlas.objects if o.kind == kind),
                         key=lambda o: o.range.start.value))
+
+
+# --- Text search ------------------------------------------------------------
+#
+# These read no ROM by themselves: `search_text` recovers a decoded phrase's
+# handle only when the caller hands it `rom_image` bytes, so the atlas module
+# still opens no image of its own. Lifted from `cli.py` so the CLI and the
+# Workbench GUI search through one implementation (WORKBENCH-001).
+
+
+def _collapse_whitespace(value: str) -> str:
+    """Fold every whitespace run to one space. Conservative: nothing else moves."""
+    return " ".join(value.split())
+
+
+def text_match(phrase: str, haystack: str) -> str | None:
+    """`"exact"`, `"normalized"`, or None when the phrase is absent.
+
+    Normalization is comparison-only and deliberately small: case folding and
+    whitespace collapsing, nothing fuzzy. A caller must be able to tell which of
+    the two happened, because a normalized hit is a weaker claim than an exact
+    one and silently conflating them would make the result unciteable.
+    """
+    if phrase in haystack:
+        return "exact"
+    if (_collapse_whitespace(phrase).casefold()
+            in _collapse_whitespace(haystack).casefold()):
+        return "normalized"
+    return None
+
+
+def search_text(atlas: Atlas, phrase: str, decoded_rows,
+                *, rom_image: bytes | None = None) -> dict:
+    """Phrase search over raw ROM text runs and the decoded-container index.
+
+    Two surfaces, one phrase. A raw hit is a ROM run and reports its real file
+    offset. A decoded hit lives inside a decompressed container and reports its
+    CONTAINER's ROM offset plus an offset within the decoded stream — never a
+    ROM address for the text itself, because the text has none.
+
+    Returns the full `{"searched", "matched", "raw_matched", "decoded_matched",
+    "runs", "decoded"}` shape. `runs`/`decoded` are unsliced: the caller applies
+    any `[:limit]` and the `0x%06X` field formatting stays where the atlas rows
+    already carry it.
+    """
+    raw_hits = [(o, text_match(phrase, o.detail))
+                for o in atlas.observations if o.kind.startswith("text-run-")]
+    raw_hits = [(o, how) for o, how in raw_hits if how is not None]
+    decoded_hits = [(row, text_match(phrase, row.get("text") or ""))
+                    for row in decoded_rows]
+    decoded_hits = [(row, how) for row, how in decoded_hits if how is not None]
+
+    def observation_json(observation) -> dict:
+        return {"file_offset": f"0x{observation.range.start.value:06X}",
+                "size": observation.range.size, "kind": observation.kind,
+                "detail": observation.detail,
+                "confidence": observation.confidence.value}
+
+    def raw_json(observation, how: str) -> dict:
+        return {"source": "raw-rom-run", "match": how,
+                **observation_json(observation)}
+
+    def decoded_json(row: dict, how: str) -> dict:
+        # No "file_offset" key at this level, deliberately: every other
+        # result shape uses that name for a ROM offset, and giving a
+        # decoded run one would be a lie a reader could not detect.
+        # Where the PHRASE itself sits, when it can be located exactly.
+        # A run may hold several logical strings (these streams have no
+        # delimiter between some of them), so the run's own start is
+        # often not where the searched phrase begins. Both are reported:
+        # the run's offset, and the phrase's, each in decoded-stream
+        # units. Two UTF-16LE bytes per character is the encoding, so
+        # the character index doubles into a byte offset.
+        found = row["text"].find(phrase) if how == "exact" else -1
+        phrase_offset = (None if found < 0
+                         else row["decoded_offset"] + found * 2)
+
+        # The durable identity, where it can be recovered. It is keyed
+        # on the PHRASE's span, never the run's: a run merges several
+        # handle-defined records, so the run's own span names many
+        # identities and the phrase's names one. A normalized match
+        # cannot locate the phrase exactly, so it recovers nothing
+        # rather than guessing between candidates.
+        if rom_image is None:
+            identity = {"packed_handle": None,
+                        "unrecovered_because":
+                            "no ROM supplied; pass --rom to recover the "
+                            "handle and its reference sites"}
+        elif phrase_offset is None:
+            identity = {"packed_handle": None,
+                        "unrecovered_because":
+                            f"a {how} match cannot locate the phrase's "
+                            "exact decoded span, and a span is what "
+                            "names the handle"}
+        else:
+            identity = recover_handle(rom_image,
+                                      row["container_index"],
+                                      phrase_offset,
+                                      len(phrase) * 2)
+
+        return {"source": "decoded-container-text", "match": how,
+                # ONE identity object, carrying a LIST of reference
+                # sites. Never one row per site: the handle is the
+                # message's name, the sites are where it is referenced.
+                "identity": identity,
+                "container_file_offset":
+                    f"0x{row['container_file_offset']:06X}",
+                "container_rom_address": row["container_rom_address"],
+                "container_index": row["container_index"],
+                "decompressor": row["decompressor"],
+                "decoded_offset": f"0x{row['decoded_offset']:X}",
+                "decoded_offset_of_phrase":
+                    None if phrase_offset is None else f"0x{phrase_offset:X}",
+                "encoding": row["encoding"],
+                "char_count": row["char_count"],
+                "text": row["text"],
+                "rom_offset_of_text": "NONE: this text exists only after "
+                                      "decompression and has no ROM address"}
+
+    return {
+        "searched": "raw ROM text runs (scan_text.jsonl, full run text) and "
+                    "the decoded-container index (scan_decoded_text.jsonl, "
+                    "full decoded run text). Neither is truncated. A "
+                    "decoded match reports its container's ROM offset and "
+                    "an offset within the decoded stream; the text itself "
+                    "has no ROM address. Its durable identity is the "
+                    "packed handle naming it, recovered only when --rom "
+                    "is given and reported as null otherwise.",
+        "matched": len(raw_hits) + len(decoded_hits),
+        "raw_matched": len(raw_hits),
+        "decoded_matched": len(decoded_hits),
+        "runs": [raw_json(o, how) for o, how in
+                 sorted(raw_hits, key=lambda item: item[0].range.start.value)],
+        "decoded": [decoded_json(row, how) for row, how in
+                    sorted(decoded_hits,
+                           key=lambda item: (item[0]["container_file_offset"],
+                                             item[0]["decoded_offset"]))],
+    }

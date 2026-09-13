@@ -1,0 +1,91 @@
+{
+  "decoded": [
+    {
+      "char_count": 1464,
+      "container_file_offset": "0x79BF2C",
+      "container_index": 0,
+      "container_rom_address": "0x0879BF2C",
+      "decoded_offset": "0x0",
+      "decoded_offset_of_phrase": "0x13C",
+      "decompressor": "webfoot_lz",
+      "encoding": "utf16le",
+      "identity": {
+        "packed_handle": null,
+        "unrecovered_because": "no ROM supplied; pass --rom to recover the handle and its reference sites"
+      },
+      "match": "exact",
+      "rom_offset_of_text": "NONE: this text exists only after decompression and has no ROM address",
+      "source": "decoded-container-text",
+      "text": "The magic of the Lazarus Crystal restores your life-force!@^You have died!@You have been disconnected.%s has reached level %d!%s currently has %d stat points.Goku learned Instant Transmission Level 2!Goku learned Kamehameha Level 2!Goku learned Instant Transmission Level 3!Goku learned Kamehameha Level 3!Gohan learned Masenko Level 2!Gohan learned Electric Kamehameha Level 2!Gohan learned Masenko Level 3!Gohan learned Electric Kamehameha Level 3!Goten learned KameKameha Level 2!Goten learned Energy Punch Level 3!Goten learned KameKameha Level 3!Trunks learned Burning Attack Level 2!Trunks learned Flame Kamehameha Level 2!Trunks learned Burning Attack Level 3!Trunks learned Flame Kamehameha Level 3!Vegeta learned Final Flash Level 2!Vegeta learned Big Bang Level 3!Vegeta learned Final Flash Level 3!!Previously in DRAGON BALL Z: LEGACY OF GOKU 2...!Goku's son, Gohan was able to tap into his deepest powers and finally destroy the monstrous Cell.!Finally, after years of turmoil caused by Dr. Gero's Androids, the Earth was brought back to normal...!Except for one thing...!Goku, who was killed in a desperate attempt to defeat Cell, could not be revived by the powers of the Earth's Dragon...!And despite a clever plan to bring him back to life, Goku decided it'd be safer for the Earth if he didn't return....!And so, friends and family were forced to say goodbye to the Saiyan they loved...Despite this terrible loss, the world was finally at peace..."
+    },
+    {
+      "char_count": 712,
+      "container_file_offset": "0x79BF2C",
+      "container_index": 0,
+      "container_rom_address": "0x0879BF2C",
+      "decoded_offset": "0x1922",
+      "decoded_offset_of_phrase": "0x1C04",
+      "decompressor": "webfoot_lz",
+      "encoding": "utf16le",
+      "identity": {
+        "packed_handle": null,
+        "unrecovered_because": "no ROM supplied; pass --rom to recover the handle and its reference sites"
+      },
+      "match": "exact",
+      "rom_offset_of_text": "NONE: this text exists only after decompression and has no ROM address",
+      "source": "decoded-container-text",
+      "text": "SHENRON!This can't be real! I must be dreaming!You, who have disturbed me from my slumber, speak! And name your wish!Hmmm... How should I phrase this wish?I thought you had this all figured out. Shenron! Bring everyone who died today back to life! Except for the really bad ones!It is done. Now name your second wish!Did he just say \"second wish\"? Oh, no! I'm too late!Goku? What do you mean?There's no time to explain! Shenron! You don't have to grant anymore wishes today! Thanks! We'll call you again some time!As you wish. Farewell.What's gotten into you, Goku? We still had a perfectly good wish left!The monster Majin Buu is still out there. There's been a lot of stuff going on that you guys haven't seen."
+    },
+    {
+      "char_count": 877,
+      "container_file_offset": "0x79BF2C",
+      "container_index": 0,
+      "container_rom_address": "0x0879BF2C",
+      "decoded_offset": "0x683A",
+      "decoded_offset_of_phrase": "0x683C",
+      "decompressor": "webfoot_lz",
+      "encoding": "utf16le",
+      "identity": {
+        "packed_handle": null,
+        "unrecovered_because": "no ROM supplied; pass --rom to recover the handle and its reference sites"
+      },
+      "match": "exact",
+      "rom_offset_of_text": "NONE: this text exists only after decompression and has no ROM address",
+      "source": "decoded-container-text",
+      "text": ".Goku has learned Super Saiyan 3! Super Saiyan 3 is far more powerful than the normal Super Saiyan technique. You must become a Super Saiyan before you can use Super Saiyan 3.Buu not scared! Big hair make you look big funny!I'm inclined to agree. This \"Super Three\" whatever you said is ridiculous! Majin Buu, I think our friend is in need of a haircut!I'm ready. Show me what you got?Why you go back to normal? You and me no fight no more? Buu was having fun!Well, I had a lot of fun too, Buu. Unfortunately, I have some place else to be and I can't play with you all day. It's time to say goodbye!Wait a second! I decide when you get to leave!Hold it a second. I'm asking you to have some patience. Goten, Trunks, and Piccolo will come to you in due time and then you'll get a real fight.Are they strong?Unbelievably strong!Like it really matters! It won't make a difference."
+    }
+  ],
+  "decoded_matched": 65,
+  "matched": 90,
+  "raw_matched": 25,
+  "runs": [
+    {
+      "confidence": "CANDIDATE",
+      "detail": "Goku",
+      "file_offset": "0x0583DC",
+      "kind": "text-run-utf16le",
+      "match": "exact",
+      "size": 10,
+      "source": "raw-rom-run"
+    },
+    {
+      "confidence": "CANDIDATE",
+      "detail": "SS Goku",
+      "file_offset": "0x0583E6",
+      "kind": "text-run-utf16le",
+      "match": "exact",
+      "size": 16,
+      "source": "raw-rom-run"
+    },
+    {
+      "confidence": "CANDIDATE",
+      "detail": "SS3 Goku",
+      "file_offset": "0x0583F6",
+      "kind": "text-run-utf16le",
+      "match": "exact",
+      "size": 18,
+      "source": "raw-rom-run"
+    }
+  ],
+  "searched": "raw ROM text runs (scan_text.jsonl, full run text) and the decoded-container index (scan_decoded_text.jsonl, full decoded run text). Neither is truncated. A decoded match reports its container's ROM offset and an offset within the decoded stream; the text itself has no ROM address. Its durable identity is the packed handle naming it, recovered only when --rom is given and reported as null otherwise."
+}

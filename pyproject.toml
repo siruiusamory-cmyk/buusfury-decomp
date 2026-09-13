@@ -20,6 +20,9 @@ dev = [
     "pytest==8.4.2",
     "setuptools==84.0.0",
 ]
+workbench = [
+    "PySide6",
+]
 
 [project.scripts]
 webfoot = "tools.webfoot.cli:main"

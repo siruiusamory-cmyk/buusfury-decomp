@@ -23,42 +23,42 @@ measurement target, but the architecture is intended for all three games.
 
 ## What works today
 
-Webfoot SDK already supports both editing existing game data and a growing `AUTHOR_NEW` path for creating content that did not exist in the original ROM.
+- exact ROM identification against profile hashes and corroborating GBA header
+  metadata;
+- deterministic `extract`, `validate`, and `build` project lifecycle;
+- byte-identical no-op rebuilds from the canonical supported input;
+- attributed, transactional writes to a new output image;
+- editing for verified enemy and character stats, text, and selected fixed-size
+  visual data;
+- lossless codecs and read-only inspection for verified map, placement, script,
+  event, dialog, reference, and actor-sprite structures;
+- indexed-PNG extraction for the supported Buu's Fury actor-sprite family;
+- synthetic relocation proofs and explicit refusal when real free capacity or
+  reference coverage has not been established;
+- the Webfoot Workbench, an optional desktop GUI over the SDK for finding,
+  inspecting, building, and running (`python -m tools.webfoot.workbench`);
+  editing compressed text from the GUI is not yet supported.
 
-Current verified capabilities include:
+The largest missing capability is materializing newly authored content. The
+canonical Buu's Fury profile has no verified free region, so growth and broad
+relocation remain blocked rather than borrowing space speculatively. Map
+tilesets, most graphics families, audio, executable patches, and a complete
+LoG-to-Buu authoring path are not yet implemented.
 
-* exact ROM identification against profile hashes and corroborating GBA header metadata;
-* deterministic `extract`, `validate`, and `build` project lifecycle;
-* byte-identical no-op rebuilds from canonical supported inputs;
-* attributed, transactional writes to a new output image while keeping the source ROM read-only;
-* editing verified enemy and character stats, text, and selected fixed-size visual data;
-* lossless codecs and inspection for verified map, placement, script, event, dialog, reference, and actor-sprite structures;
-* indexed-PNG extraction for the supported Buu's Fury actor-sprite family;
-* describing entirely new map entities with stable semantic identities;
-* expanding and safely relocating qualifying map object arrays using evidence-backed reference coverage;
-* allocating newly authored entity data into verified writable ROM capacity and connecting it to the map;
-* building a Buu's Fury ROM containing a newly authored entity and proving that the original engine loads and instantiates it;
-* authoring new behavior records and new script bytecode that do not exist in the original ROM, then proving that the original Buu's Fury VM executes them;
-* invoking a narrowly verified native engine action from authored behavior. The first visible proof calls the game's centered sprite-text routine and renders `MATCH 2 FIGHT!` at an authored screen position.
-
-The current `AUTHOR_NEW` frontier is **behavior triggering**. Newly authored behavior can execute and visibly affect the running game, but the demonstrated entity still inherits an intermittent gameplay-driven trigger whose timing and semantic meaning are not yet under SDK control. The next authoring milestone is a deterministic SDK-authored trigger or schedule.
-
-The SDK is still pre-release. Map tilesets, most graphics families, audio, general executable patching, a GUI, and the complete Legacy of Goku-to-Buu's Fury authoring path are not yet implemented. Relocation and allocation remain evidence-scoped: the SDK refuses operations when writable capacity or reference coverage has not been established.
-
-See [project state](docs/PROJECT_<local-state-name>) for the detailed evidence trail and the [public progress site](https://webfoot-sdk.siruiusamory.workers.dev/) for a shorter capability overview.
+See [project state](docs/PROJECT_<local-state-name>) for current verified facts and the
+[public progress site](https://webfoot-sdk.siruiusamory.workers.dev/) for a
+shorter capability overview.
 
 ## Requirements
 
-For the Python SDK itself:
+- Windows PowerShell
+- Git
+- [`uv`](https://docs.astral.sh/uv/) 0.11 or newer
+- Python 3.12 (installed by the setup script when needed)
+- mGBA for optional runtime research and manual emulator checks
 
-* Python 3.12
-* Git
-* [`uv`](https://docs.astral.sh/uv/) 0.11 or newer
-
-The SDK itself is platform-independent Python. The repository's current setup, test, mGBA runtime-research, and Ghidra helper scripts are primarily written for Windows PowerShell, so Windows is presently the best-supported contributor environment.
-
-mGBA is optional and is only required for runtime research and manual emulator verification. Some historical upstream experiments require additional tools, but they are not needed to install or use the Python SDK.
-
+Some historical upstream experiments require additional tools, but they are not
+needed to install or use the Python SDK.
 
 ## Setup
 
@@ -74,6 +74,10 @@ The execution-policy change applies only to the current PowerShell process.
 `setup.ps1` creates or repairs `.venv`, synchronizes `uv.lock`, installs the SDK
 in editable mode, and verifies the pinned upstream sources. Use
 `-SkipUpstreams` when only the Python project is needed.
+
+The desktop Workbench needs PySide6, kept out of the base install. Add the
+`workbench` extra (`uv pip install -e ".[workbench]"`) and launch it with
+`python -m tools.webfoot.workbench`.
 
 ## Quick start
 
@@ -109,6 +113,7 @@ Run `webfoot --help` or `webfoot <command> --help` for the full command tree.
 | Path | Purpose |
 | --- | --- |
 | `tools/webfoot/` | Shipping SDK, codecs, project model, build system, and CLI |
+| `tools/webfoot/workbench/` | Optional desktop GUI over the SDK (PySide6 extra) |
 | `config/roms.yaml` | Exact supported ROM profiles and measured layout data |
 | `tests/` | Portable synthetic tests and opt-in local-ROM integration tests |
 | `docs/` | Architecture, formats, evidence, contributor workflow, and project state |

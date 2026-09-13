@@ -27,6 +27,9 @@ import re
 from .format import dump_toml
 
 
+PLACEMENT_POSITION_RANGE = (0, 65535)
+
+
 class BehaviorTrigger(str, Enum):
     """Author-facing behavior start conditions with runtime-proven semantics."""
 
@@ -72,7 +75,7 @@ class AuthoredPlacement:
             raise ProjectValidationError("clone_from must name an extracted canonical placement")
         if self.provenance != "AUTHORED_CLONE":
             raise ProjectValidationError("unsupported authored placement provenance")
-        if any(type(v) is not int or not 0 <= v <= 65535
+        if any(type(v) is not int or not PLACEMENT_POSITION_RANGE[0] <= v <= PLACEMENT_POSITION_RANGE[1]
                for v in (self.position_low, self.position_high)):
             raise ProjectValidationError("authored position halfwords must be unsigned 16-bit integers")
         if self.behavior is not None and not (
@@ -208,3 +211,51 @@ def clone_placement(project_dir, *, map_index, source, name, position_low, posit
     doc["map"][key]["authored_placements"] = dict(sorted(authored.items()))
     path.write_text(dump_toml(doc), encoding="utf-8", newline="\n")
     return clone
+
+
+def remove_authored_placement(project_dir, identity):
+    """Remove one authored placement by semantic identity.
+
+    Returns whether project source changed. Extracted placements are never
+    accepted, so this is a narrow project-level revert rather than binary undo.
+    """
+    from .model import read_project, _read_document, _MAP_FILE, ProjectValidationError
+
+    if not isinstance(identity, str):
+        raise ProjectValidationError("authored placement identity must be a string")
+    map_part, separator, authored_part = identity.partition("/")
+    if (
+        separator != "/"
+        or not map_part.startswith("map:")
+        or not map_part[4:].isdigit()
+        or not authored_part.startswith("authored:")
+        or not authored_part[9:]
+    ):
+        raise ProjectValidationError(
+            "revert requires an authored identity, map:NNNN/authored:<name>"
+        )
+    map_index = int(map_part[4:])
+    project = read_project(project_dir)
+    if map_index not in project.maps:
+        raise ProjectValidationError(f"unknown owning map: {map_index}")
+    if not any(
+        placement.identity == identity
+        for placement in project.maps[map_index].get("authored_placements", ())
+    ):
+        return False
+
+    path = Path(project_dir) / _MAP_FILE
+    doc = _read_document(path)
+    key = next(k for k in doc["map"] if int(k.split(":")[1]) == map_index)
+    authored = doc["map"][key].get("authored_placements")
+    if not isinstance(authored, dict) or identity not in authored:
+        raise ProjectValidationError(
+            f"{identity}: loaded project and source document disagree"
+        )
+    del authored[identity]
+    if authored:
+        doc["map"][key]["authored_placements"] = dict(sorted(authored.items()))
+    else:
+        del doc["map"][key]["authored_placements"]
+    path.write_text(dump_toml(doc), encoding="utf-8", newline="\n")
+    return True

@@ -13,12 +13,14 @@ from types import SimpleNamespace
 
 import pytest
 
-from tools.webfoot.workbench import build_panel as bp
-from tools.webfoot.workbench.build_panel import BuildPanelTab, output_file_for
-from tools.webfoot.workbench.session import Session
-from tools.webfoot.write import WriteError
-
+# build_panel imports PySide6 at module scope; the SDK CI job installs only the
+# base package. Skip before importing it so collection does not error there.
 pytest.importorskip("PySide6")
+
+from tools.webfoot.workbench import build_panel as bp  # noqa: E402
+from tools.webfoot.workbench.build_panel import BuildPanelTab, output_file_for  # noqa: E402
+from tools.webfoot.workbench.session import Session  # noqa: E402
+from tools.webfoot.write import WriteError  # noqa: E402
 from PySide6.QtWidgets import QApplication, QMessageBox  # noqa: E402
 
 

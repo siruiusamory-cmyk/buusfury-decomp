@@ -8,7 +8,15 @@ are allowed; the SAME parent directory with a DIFFERENT filename is allowed.
 
 from pathlib import Path
 
-from tools.webfoot.workbench.build_panel import is_safe_output_path, output_file_for
+import pytest
+
+# build_panel imports PySide6 at module scope; the SDK CI job installs only the
+# base package, not the [workbench] extra. Skip cleanly there rather than error
+# at collection. (The functions under test are themselves Qt-free.)
+pytest.importorskip("PySide6")
+
+from tools.webfoot.workbench.build_panel import (  # noqa: E402
+    is_safe_output_path, output_file_for)
 
 
 def test_identical_file_path_is_rejected(tmp_path):

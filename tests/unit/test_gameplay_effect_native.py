@@ -27,6 +27,7 @@ def test_selected_native_semantic_mapping_is_exact_and_narrow():
                 'native_handler_raw': 0x08003031,
                 'arguments': ('text', 'x', 'y'),
                 'text_count': 1534,
+                'coordinate_ranges': {'x': (0, 239), 'y': (0, 159)},
                 'evidence': SCRIPT_EFFECTS[PROFILE]['show_centered_sprite_text']['evidence'],
             },
         },

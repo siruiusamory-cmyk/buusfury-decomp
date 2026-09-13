@@ -77,7 +77,7 @@ export const project: ProjectStatus = {
   subtitle: "Legacy of Goku authoring toolkit",
   tagline: "Building a real authoring toolkit for the Legacy of Goku engine.",
   description:
-    "The SDK can rebuild an overflowed compressed dialogue resource into generated ROM expansion space, repoint the original table entry, and display the authored line through the retail dialogue engine, and a desktop Workbench now drives the find, inspect, build and run loop over that same SDK. The current frontier is wiring the proven dialogue-authoring backend into the Workbench so an author can edit a supported line graphically.",
+    "Supported NPC dialogue can now be searched, edited, validated, built, and launched directly through Webfoot Workbench. The current frontier is mapping more persistent dialogue records to stable semantic identities so the same graphical workflow can author more conversations.",
   overallProgress: 90,
   overallProgressLabel: "≈ 90% COMPLETE",
   progressCaveat:
@@ -85,14 +85,14 @@ export const project: ProjectStatus = {
   currentPhase: "AUTHOR_NEW",
   currentFrontierLabel: "CURRENT FRONTIER",
   existingContentState: "MATURE",
-  blockerCode: "DIALOGUE EDITING IN WORKBENCH",
-  blockerTitle: "Wire supported dialogue editing into Workbench",
+  blockerCode: "MORE EDITABLE DIALOGUE",
+  blockerTitle: "Map more dialogue records to stable identities",
   blockerShort:
-    "The backend that authors an ordinary compressed NPC line is proven end to end, and the Workbench drives find, inspect, build and run. The next step is connecting the two so an author can search a supported line, edit it, then build and run it from the graphical tool instead of the command line.",
+    "The complete graphical authoring loop now works for mapped dialogue. The next product blocker is coverage: additional persistent dialogue records need stable semantic identities before Workbench can safely make them editable.",
   blockerParagraphs: [
-    "The Workbench ships as a second client of the SDK with four working tabs: find a line in the atlas, inspect an object or text record, build the game, and run the built game. Text editing is deliberately switched off there, marked \"Edit Text — not yet supported\", because the authoring backend was not yet wired in.",
-    "That backend is now proven. The SDK rebuilds an overflowing compressed line, places it in generated ROM expansion space, repoints the original table entry, and the retail engine displays the authored words — runtime-observed in mGBA. Nothing about that path requires the command line; it simply is not exposed in the graphical tool yet.",
-    "The blocker is the wiring: give the Workbench an edit surface for a supported line that calls the proven authoring path, so a user finds a line, edits it, builds and runs it entirely from the GUI. This is a plumbing step, not new engine research — the capability underneath it already works.",
+    "The Workbench Inspector resolves a recovered storage identity through the production semantic dialogue API. For a mapped record it shows the retail text and saved project override separately, validates unsaved editor text, and applies or reverts only through the normal project representation.",
+    "A project edit makes prior validation and build results stale. The user validates again, builds through the normal shared allocator and generated-ROM transaction, then launches the result from Workbench. The mapped Goku greeting completed that loop twice and displayed the authored words in the retail dialogue box.",
+    "Searchable is not automatically editable. Records without a measured semantic mapping remain read-only, with no fallback through visible English, raw addresses, handles, compression, or relocation controls. Expanding that safe mapping is now the shortest path to more authorable content.",
   ],
   acceptanceTarget:
     "Author playable Legacy of Goku content inside the real LOGII/Buu engine.",
@@ -299,7 +299,16 @@ export const project: ProjectStatus = {
       plainEnglish:
         "Search a supported line in the desktop tool, edit it, then build and run it — all without touching the command line.",
       technical:
-        "The authoring backend and the Workbench both exist and are proven separately. The remaining work is exposing an edit surface in the Workbench that calls the proven dialogue-authoring path, so a supported line can be found, edited, built and run entirely in the GUI.",
+        "Confirmed. The Inspector resolves mapped semantic targets through the production authoring API, keeps original, saved and unsaved values distinct, validates before mutation, persists the normal project schema, invalidates stale validation/build state, and builds through validate_project and build_project. The goku-greeting workflow was completed twice through the GUI and the retail engine displayed Nice work, Goku!; unsupported search results remain read-only.",
+      status: "complete",
+    },
+    {
+      id: "more-editable-dialogue",
+      title: "Make more dialogue records editable",
+      plainEnglish:
+        "Map more persistent dialogue records to stable names so authors can safely edit more conversations in Workbench.",
+      technical:
+        "The GUI authoring path is complete; current coverage is deliberately bounded to measured semantic targets. Additional records need durable semantic mappings in SDK metadata, not text matching or address fallbacks.",
       status: "current",
     },
     {
@@ -331,7 +340,8 @@ export const project: ProjectStatus = {
     { label: "AUTHORED ORDINARY NPC DIALOGUE", state: "done" },
     { label: "GENERATED-ROM RESOURCE RELOCATION", state: "done" },
     { label: "GRAPHICAL WORKBENCH", state: "done" },
-    { label: "GUI DIALOGUE EDITING", state: "current", marker: "↑ YOU ARE HERE" },
+    { label: "GUI DIALOGUE EDITING", state: "done" },
+    { label: "MORE EDITABLE DIALOGUE", state: "current", marker: "↑ YOU ARE HERE" },
     { label: "PLAYABLE LOG1 CONTENT", state: "target" },
   ],
   breakthroughs: [
@@ -339,7 +349,7 @@ export const project: ProjectStatus = {
       id: "first-usable-workbench",
       title: "First usable Webfoot Workbench",
       summary:
-        "The SDK now has a desktop application. An author can search for a line, inspect a record, build the game and run it, all from a graphical tool instead of the command line. Editing dialogue in that tool is the next step.",
+        "The SDK now has a desktop application. An author can search for a supported dialogue line, edit and validate it, build the game, and launch the result without using the command line.",
     },
     {
       id: "first-ordinary-authored-dialogue",

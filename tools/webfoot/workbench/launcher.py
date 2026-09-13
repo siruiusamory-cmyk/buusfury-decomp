@@ -83,6 +83,8 @@ class LauncherTab(QWidget):
         last = getattr(self._session.last_build, "output_path", None)
         if last is not None:
             self._rom_field.setText(str(last))
+        else:
+            self._rom_field.clear()
 
     def on_session_changed(self) -> None:
         """Re-read session state (e.g. after a build sets last_build)."""

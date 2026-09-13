@@ -19,6 +19,7 @@ from .model import (
     ProjectValidationError,
     StatProject,
     read_project,
+    write_dialogue_replacements,
     write_project,
 )
 
@@ -33,5 +34,6 @@ __all__ = [
     "dump_toml",
     "load_toml",
     "read_project",
+    "write_dialogue_replacements",
     "write_project",
 ]

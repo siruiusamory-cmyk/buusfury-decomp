@@ -75,3 +75,19 @@ def test_open_rom_rejects_unrecognized_bytes(
     # Nothing was populated on the failed open.
     assert session.profile is None
     assert session.rom_image is None
+
+
+def test_project_revision_invalidates_validation_and_build() -> None:
+    session = Session()
+    session.set_project(Path("project"))
+    session.record_validation(True)
+    session.last_build = object()
+    session.build_revision = session.project_revision
+    assert session.validation_current
+    assert session.build_current
+
+    session.project_mutated()
+
+    assert not session.validation_current
+    assert not session.build_current
+    assert session.last_build is None

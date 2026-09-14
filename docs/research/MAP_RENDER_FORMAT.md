@@ -1,186 +1,236 @@
 # Buu's Fury map background rendering chain
 
-Evidence document. Every address here was measured against the canonical Buu's
-Fury image (SHA-256 `940ad5f0...f059e`), read-only, by static byte-match, Thumb
-disassembly, or a read-only runtime capture of live VRAM, and is cross-checked
-against the live retail-assembled state of map 40.
+Evidence document for the canonical Buu's Fury USA image (SHA-256
+`940ad5f01db4465b8877dfe739510cbf34f4ea3d390f3df13519808bc36f059e`).
+Addresses are GBA ROM addresses; file offset is address minus `0x08000000`.
+Claims use **CONFIRMED_ROM**, **CONFIRMED_RUNTIME**, and **INFERRED** exactly as
+defined by repository governance.
 
-Evidence labels follow the project convention: **CONFIRMED_ROM** (measured in the
-image), **CONFIRMED_RUNTIME** (measured in a live read-only capture),
-**VERIFIED_UPSTREAM** (from a pinned upstream and re-checked), **INFERRED**,
-**UNKNOWN**.
+## 1. Result
 
-File offset = ROM address - `0x08000000`.
-
----
-
-## 0. Status: what is proven, and the one thing that is not
-
-This document records a **partial** result. The background *representation* and
-the path from runtime-resident tile/tilemap data to pixels are proven; the fully
-ROM-resident source of the tile-graphics and tilemap bytes is **not yet proven**.
-
-**PROVEN**
-
-* Map identity -> scene descriptor resolution, from ROM (section 2).
-* Scene-descriptor relationships (section 3) and the tileset pointer array (section 4).
-* Webfoot LZ decompressor identity (section 5).
-* Background palette: exact ROM source and RGB888->BGR555 conversion, byte-verified
-  against live palette RAM (section 6).
-* GBA background interpretation: Mode 0, four regular tiled BGs, 8bpp, direct
-  hardware tilemap (not metatiles), screen-entry flip/priority semantics (section 8).
-* A neutral software renderer that reproduces the retail map **from live-VRAM
-  tile/tilemap bytes** (section 9), validated on two structurally distinct maps.
-
-**NOT YET PROVEN (the one remaining blocker)**
-
-* The exact, general, ROM-resident source and reconstruction path for the tile
-  **graphics (charblock)** and **tilemap (screenblock)** bytes. Those bytes are
-  currently supplied by a per-map runtime VRAM capture, not derived from the
-  immutable ROM. The tileset/tilemap **containers** are located in ROM and
-  decompress cleanly, but only ~40-65 % of a container's tiles land in the live
-  charblock, at offsets no clean overlay reproduces, so a ROM-only charblock
-  cannot yet be assembled (section 7). Until this is solved, there is **no ROM-only map
-  renderer**; the renderer is VRAM-backed.
-
-## 1. The chain, top to bottom
+MAP-VIS-002 closes the one gap left by MAP-VIS-001:
 
 ```text
-map:NNNN (a MapEntry table index)
-  -> MapEntry[N] @ 0x0808E2E0 + N*0x38, field +0x2C  (content-stream pointer)   [PROVEN]
-    -> *(that pointer) = a scene descriptor                                      [PROVEN]
-      -> descriptor fields -> tilemap (screenblock) LZ containers               [containers located, PROVEN]
-      -> flat tileset-pointer array @ file 0x00179764 -> tileset LZ containers  [containers located, PROVEN]
-      -> engine-global BG palette @ 0x080701B0 (RGB888)                         [PROVEN]
-    -> Webfoot LZ decompressor 0x0803D940                                       [PROVEN]
-      -> VRAM: charblocks (tile graphics) + screenblocks (tilemaps)            [ROM->VRAM assembly UNKNOWN, see section 7]
-      -> palette RAM 0x05000000 (via a fade blend)                             [PROVEN]
-  -> hardware composes four regular tiled BG layers -> screen pixels            [PROVEN, from VRAM bytes]
+semantic map
+-> MapEntry +0x2C
+-> scene descriptor
+-> tile-selector + tileset + logical-layer containers
+-> ROM-resident assembly
+-> complete logical BG layers + static-frame character data
+-> global palette
+-> pixels
 ```
 
-Every arrow is CONFIRMED **except** the reconstruction of the VRAM charblock and
-screenblocks from the ROM containers (see section 7), which is **UNKNOWN**. That single
-gap is why a fully ROM-derived renderer does not yet exist; the software renderer
-reproduces the map from VRAM-resident bytes rather than ROM-resident ones.
+`tools/webfoot/map_render.py:550` exposes the production API
+`render_map(rom, map_id)`. It takes no VRAM argument. The previous VRAM renderer
+remains at `tools/webfoot/map_render.py:476` and
+`tools/webfoot/map_render.py:629` only as an independent reference path.
 
-## 2. Map identity and the scene selector
+## 2. Map identity and palette (MAP-VIS-001, retained)
 
-| Fact | Value | Status |
+| Fact | Value | Evidence |
 | --- | --- | --- |
-| MapEntry table address | `0x0808E2E0` (file `0x0008E2E0`) | CONFIRMED_ROM |
-| Record stride | `0x38` | CONFIRMED_ROM |
-| Graphics/scene selector field | MapEntry `+0x2C` (content-stream pointer) | CONFIRMED_ROM |
-| MapEntry has a dedicated tileset field | No, `+0x2C` is the only graphics route | CONFIRMED_ROM |
+| MapEntry table | `0x0808E2E0`, stride `0x38` | **CONFIRMED_ROM** |
+| scene route | MapEntry `+0x2C`, dereference target once | **CONFIRMED_ROM** |
+| map 39 descriptor | `0x08294968` | **CONFIRMED_ROM** |
+| map 40 descriptor | `0x08293474` | **CONFIRMED_ROM** |
+| BG palette | `0x080701B0`, 256 RGB888 entries | **CONFIRMED_ROM** |
+| display conversion | channel `c -> (c>>3)` expanded from 5 bits | **CONFIRMED_ROM/RUNTIME** |
 
-`+0x2C` points into the content stream; the value it points at is the scene
-descriptor address. Worked example, map 40 (index `0x28`):
+The palette is engine-global. Runtime fade is a display effect and is not part
+of immutable map data.
+
+## 3. Phase-0 mismatch and rejected simple transforms
+
+The MAP-VIS-001 overlap statement was converted to 64-byte tile mappings before
+new runtime work. Exact hashes classified source indices, destination indices,
+duplicates, absent source tiles, contiguous runs, and unmatched live tiles.
+
+**OLD CLAIM:** each 0x4000 tileset container might be overlaid or concatenated
+into character memory, but only roughly 40–65% appeared to match.
+
+**NEW EVIDENCE:** the load captured at `0x0803D940` groups work by selector bank,
+not by destination range. For map 39 the observed groups cover destination
+ordinals `[0,1)`, `[1,64)`, `[64,143)`, `[143,172)`, `[172,173)`,
+`[173,175)`, `[175,198)`, `[198,199)`, `[199,200)`, `[200,201)`,
+`[201,202)`, and `[202,259)` while their ROM sources are twelve independent
+0x4000 containers. Static code at `0x08009C62..0x08009C78` selects one tile per
+ordinal and advances VRAM by exactly 64 bytes.
+
+**RESOLUTION:** fixed offset, whole-container overlay, concatenation,
+interleaving, row/column permutation, tile-index bias, blank suppression, and
+container-base placement are rejected. The apparent partial overlaps were the
+wrong unit of comparison. The unit is a decoded u16 selector.
+
+## 4. Character-memory assembly
+
+### Selector object
+
+The scene descriptor carries:
+
+| Offset | Meaning | Evidence |
+| --- | --- | --- |
+| `+0x48` | Webfoot-LZ container of delta-coded u16 tile selectors | **CONFIRMED_ROM/RUNTIME** |
+| `+0x4C` | pointer to the tileset-container `u32[]` | **CONFIRMED_ROM** |
+
+Map 39's selector container is `0x08294660` and decodes to `0x206` bytes / 259
+selectors. Map 40's is `0x082932F8` and decodes to `0x1DE` bytes / 239
+selectors.
+
+The engine decompresses `+0x48` at `0x08009BF2..0x08009BF6`, then prefix-decodes
+entries at `0x08009C02..0x08009C12`:
 
 ```text
-MapEntry[40] @ 0x0808EBA0
-  +0x2C -> 0x0807561C
-  *(0x0807561C) = 0x08293474   (scene descriptor; the only pointer to it in ROM)
+absolute[0] = raw[0]
+absolute[i] = (raw[i] + absolute[i-1] + 1) & 0xFFFF
 ```
 
-Map 39 resolves the same way to descriptor `0x08294968`, a different scene,
-proving the resolution is general and not map-40-specific.
+For each absolute selector, the high byte selects `descriptor[+0x4C][bank]` and
+the low byte selects a 64-byte tile within that decoded 0x4000-byte atlas. Code
+`0x08009C4E..0x08009C5A` decompresses each bank once into the 0x4000-byte work
+buffer; `0x08009C62..0x08009C78` copies tile `selector & 0xFF` to sequential
+destination tile `i` through copy veneer `0x08049138`.
 
-## 3. Scene descriptor
+Consequences, all **CONFIRMED_ROM**:
 
-The scene descriptor (map 40: `0x08293474`, `0x40` bytes) carries the tilemap
-container source pointers at `+0x34`/`+0x38` and tilemap-bank record header
-pointers at `+0x10..+0x20`. The four background screenblocks are kind-1 Webfoot
-LZ containers, each declaring `0x800` bytes (one 2 KiB screenblock).
+- destination tile index is selector ordinal;
+- selector order is preserved;
+- repeated selectors produce repeated destination tiles (no deduplication);
+- unselected atlas tiles are unused;
+- selected blank tiles are copied (no zero suppression);
+- multiple atlas containers populate one character region;
+- no descriptor-specified destination base or per-map constant participates.
 
-| Map 40 screenblock | Container source | Status |
+The runtime capture caught decompressor `0x0803D940` with return PC
+`0x08009C5E`, ROM container in `r0`, work buffer `0x0202C2A8` in `r1`, and the
+sequential VRAM destination/range state in `r4/r5/r6`. This establishes the live
+writer family and the pre-VRAM intermediate buffer (**CONFIRMED_RUNTIME**, capture
+`20260914-010341-f59fb76a`; private ignored evidence).
+
+### ROM-resident animated tiles
+
+The static selector assembly is followed by descriptor-owned animated-tile
+records:
+
+| Descriptor field | Meaning | Evidence |
 | --- | --- | --- |
-| BG0 (screen base 28) | ~`0x0829C7A8` | CONFIRMED_RUNTIME |
-| BG1 (screen base 29) | `0x082928DC` | CONFIRMED_RUNTIME (r0 at 0x0803D940) |
-| BG2 (screen base 30) | `0x08292F48` | CONFIRMED_RUNTIME |
-| BG3 (screen base 31) | `0x08293028` | CONFIRMED_RUNTIME |
+| `+0x0C` | animation-record count | **CONFIRMED_ROM** |
+| `+0x10` | animation-record pointer array | **CONFIRMED_ROM** |
 
-## 4. Tileset graphics
+Each record is `{u8 frame_count, u8 tile_count, u16 destination_tile,
+u32 frame_pointer[frame_count]}`. A frame begins with a u32 duration followed by
+a headerless Webfoot bitstream. The relocated IWRAM routine at `0x03000040`,
+captured read-only from mGBA 0.11, is instruction-for-instruction the existing
+Webfoot grammar with initial literal width 8. Loader `0x08009B12..0x08009B42`
+expands one frame and copies `tile_count * 64` bytes to
+`0x06000000 + destination_tile*64`.
 
-| Fact | Value | Status |
+This is ROM data, not runtime synthesis. In the later MAP-VIS-001 captures,
+every reserved animation range matches one decoded ROM frame exactly: map 39's
+3-tile record matches frame 1 and its 11-tile record matches every equivalent
+odd frame; map 40's 4-tile record matches frame 0 and its 11-tile record matches
+frames 2/10/12/14. Production rendering deliberately chooses frame 0.
+
+## 5. Logical layer and screenblock assembly
+
+The four descriptor pointers at `+0x14`, `+0x18`, `+0x1C`, and `+0x20` are BG
+layer records. A non-empty proven record has handler `0x08008087`, width and
+height in 32x32 chunks at bytes `+0x14/+0x15`, and a row-major u32 container
+array at `+0x18`. Every container decodes to `0x800` bytes: 1024 little-endian
+regular-BG screen entries. A zero-by-zero record is an absent layer.
+
+**OLD CLAIM:** descriptor `+0x34/+0x38` and `+0x10..+0x20` were described as
+screenblock sources, and the residual could have implied another compression or
+tilemap transform.
+
+**NEW EVIDENCE:** constructor `0x08007BDE..0x08007C08` multiplies the record's
+`+0x14/+0x15` chunk dimensions, reads container pointers at `+0x18 + 4*i`, and
+decompresses up to four resident chunks to 0x800-spaced EWRAM buffers. Camera
+loader `0x08007C82..0x08007C90` computes chunk index `y * width + x`.
+`0x08007D44..0x08007D5C` decompresses a missing selected chunk and copies it to
+the chosen resident buffer. Streaming code beginning `0x08007D98` splits rows
+at `(coordinate & 0xFF) >> 3` and writes the camera-relative circular hardware
+screenblock. Consequently a resident logical cell `(x, y)` is stored at
+`(y & 31) * 32 + (x & 31)`. Applying that equation to the retained captures is
+exact for all populated screen entries. Capture-specific logical origins are
+map 39 BG1 `(54,8)`, BG2 `(62,8)`, BG3 `(70,8)` and map 40 BG0 `(0,0)`, BG1–3
+`(0,9)`; these origins are runtime viewport state and are not production map
+constants.
+
+**RESOLUTION:** the ROM objects are complete logical 32x32 chunks in row-major
+chunk order. The live 32x32 screenblock is a mutable camera window, not the map
+format. BG scroll changes the resident storage/window; it does not reorder ROM
+logical cells. The production renderer decompresses every chunk and stitches
+rows directly, preserving the entire u16 entry (tile ID, H/V flips, and palette
+bits). It does not emulate camera streaming.
+
+The direct single-chunk comparison from the initial investigation was the wrong
+coordinate model and is retained here as a rejected diagnostic:
+
+| Map | BG -> selected chunk | exact live entries / 1024 |
 | --- | --- | --- |
-| Tileset pointer array | file `0x00179764`, 187 ascending u32 ROM pointers | CONFIRMED_ROM |
-| Array element | plain u32 pointer (not a record/stride) | CONFIRMED_ROM |
-| Each target | kind-1 Webfoot LZ container, declared `0x4000` (256 8bpp tiles) | CONFIRMED_ROM |
+| 39 | BG1 -> 2; BG2 -> 2; BG3 -> 2 | 792; 915; 858 |
+| 40 | BG0 -> 0; BG1 -> 0; BG2 -> 2; BG3 -> 0 | 999; 739; 792; 973 |
 
-The upstream claim of a `+0x4C` per-record stride is **REFUTED**: the array is a
-flat `u32[]`; `+0x4C` is simply element index 19.
+Map 39's BG0 record is absent; its live BG0 is runtime-only and is not promoted
+to map data. Map 39 logical layer grids are 3x2, 3x2, and 4x2 chunks for BG1–3.
+Map 40 uses 1x1 for BG0 and 2x2 for BG1–3.
 
-Map 40 loads (runtime-observed source pointers at the decompressor, in order):
-array indices 0, 1, 2, 10, 14, 17, 22, 91, 92, 100, 119, 136. These decompress
-into the charblock region; see section 7 for why their placement is not a clean overlay.
+Under the proven circular coordinate transform, every populated live word
+matches the corresponding ROM logical word exactly, including tile number,
+H/V flips, and palette bits. Map 39 has zero residual screen entries. Map 40's
+only residual is a pinned set of zero/unpopulated live cells: 25 on BG0, 6 on
+BG1, 3 on BG2, and the off-window final column (32) on BG3. The comparison test
+enumerates those physical cells and fails if any nonzero live entry conflicts
+with ROM. The BG0 4x5 cleared rectangle is classified as captured runtime state,
+not persistent layout; the immutable ROM renderer correctly retains the logical
+cells.
 
-## 5. Decompressor
+## 6. Reference comparison and retail validation
 
-`0x0803D940` is the Webfoot container unpacker: reads kind at `[r2]`
-(0 = stored, 1/2 = packed), declared size at `[r2+4]`, payload at `r2+8`. It is
-byte-for-byte equivalent to `tools/webfoot/formats/webfoot_lz.py`
-(CONFIRMED_ROM by disassembly).
+**OLD CLAIM:** the first oracle test rebuilt both char data and screen entries
+from the new ROM assembly before invoking the VRAM renderer. Its pixel equality
+was tautological and did not prove the retained capture.
 
-## 6. Background palette
+**NEW EVIDENCE:** the replacement test starts with the actual captured VRAM. It
+asserts the circular projection against every raw screen word, enumerates the
+zero/unpopulated cells above, and pins the exact post-load mutable destination
+tile sets (49 tiles for map 39; 38 for map 40). The initial selector writer at
+`0x08009C62..0x08009C78` proves the low ranges held the selected ROM tiles at
+load; later differences are post-load mutation. Each high animated range is
+also required to equal one decoded ROM animation frame exactly. Only those
+enumerated screen cells and tile destinations are normalized to static frame
+zero. The old VRAM-backed renderer then matches the new logical-entry renderer
+exactly for every layer and for the priority-composited pixels on both maps.
 
-| Fact | Value | Status |
-| --- | --- | --- |
-| Source | ROM `0x080701B0` (file `0x000701B0`) | CONFIRMED_ROM |
-| Size / format | 768 bytes, 256 x RGB888, uncompressed | CONFIRMED_ROM |
-| Scope | engine-global (one master BG palette for all maps) | CONFIRMED_RUNTIME |
-| Display conversion | per channel `v5 = c >> 3`, expand `v5<<3 \| v5>>2` | CONFIRMED_ROM |
-| Match to live palette RAM | 256/256 verbatim at full brightness | CONFIRMED_RUNTIME |
+**RESOLUTION:** `ROM-only vs VRAM oracle: EXACT` is supported for the static map
+structure after the proven circular coordinate transform and the explicitly
+enumerated runtime state are normalized. Raw later-frame VRAM is expected to
+differ; it is not used by production rendering.
 
-The fade routine `sub_08007074` (store at `0x080070C0`) blends the master palette
-toward a target colour per channel:
-`out_c = (src_c*(256-level) + target_c*level) >> 11`, output packed BGR555. A
-fade-in from black passes target `(0,0,0)`; at full brightness (`level` 0) the
-output equals `src >> 3`. A static ROM scan for the palette must apply the
-`>> 3` reduction or it will not match.
+Read-only visual inspection of generated ROM-only outputs confirmed:
 
-The palette is not selected per map, the map selects the fade *behaviour* (via
-the descriptor's object handlers near `0x0829343C`), not the palette bytes.
+- map 39: the continuous forest, branching dirt path, tree-stump landmarks,
+  flowers, layer transparency, and path-border geometry;
+- map 40: the forked forest trail, both white pillars, trees, flowers, correct
+  palette, and foreground/background occlusion.
 
-## 7. VRAM charblock reconstruction, UNKNOWN
+No per-map branch or constant exists in production code. Unsupported layer
+handlers, malformed dimensions, missing tile coverage, invalid selectors, and
+out-of-range entries raise `UnsupportedMapAssemblyVariant`.
 
-Reconstructing the exact charblock the hardware indexes, purely from the ROM
-tileset containers, is **not solved**. Measured against live VRAM (map 40):
+Measured uncached renders with the production SHA-256 gate were 1.03 s (map 39)
+and 0.53 s (map 40). Each selector/layout container is decoded once per render and
+atlas banks are cached within the assembly; there is no full-ROM scan and no
+per-cell decompression.
 
-| Container | Tiles present in live charblock | Status |
-| --- | --- | --- |
-| index 2 (`0x08096DA0`) | 103 / 256 | CONFIRMED_RUNTIME |
-| index 1 (`0x080959B4`) | 67 / 256 | CONFIRMED_RUNTIME |
-| index 0 (`0x080945C0`) | 0 / 256 | CONFIRMED_RUNTIME |
+## 7. Proven display interpretation (MAP-VIS-001, retained)
 
-Each container decompresses 256 tiles, but only a fraction land in the live
-charblock, at offsets that do not follow a simple cumulative-tile overlay. The
-engine's per-tile placement is more granular than a container copy; the exact
-rule is UNKNOWN. Consequently a faithful renderer sources the charblock (and
-screenblocks) from a captured VRAM state, not from ROM-container reconstruction.
+Retail runtime uses Mode 0, four regular tiled BGs, 8bpp, shared char base 0,
+and screen bases 28–31. A 16-bit entry is tile index bits 0–9, H flip bit 10, V
+flip bit 11, and palette bank bits 12–15 (ignored by 8bpp). Hardware priority is
+descriptor bytes `+0x04..+0x07`; lower priority number is above higher, with
+lower BG number winning ties.
 
-## 8. Display configuration
-
-Measured from live DISPCNT/BGxCNT (map 40):
-
-| Fact | Value | Status |
-| --- | --- | --- |
-| Video mode | 0 (four regular tiled BGs) | CONFIRMED_RUNTIME |
-| Colour depth | 8bpp (256-colour) all layers | CONFIRMED_RUNTIME |
-| Layer size | 256x256 (32x32 tiles) | CONFIRMED_RUNTIME |
-| Char base | block 0 (all layers) | CONFIRMED_RUNTIME |
-| Screen bases | 28 / 29 / 30 / 31 (BG0..3) | CONFIRMED_RUNTIME |
-
-Screen entry (16-bit, GBATEK): bits 0-9 tile index, 10 H-flip, 11 V-flip, 12-15
-palette bank (unused at 8bpp). Maps use direct hardware tilemap entries, not a
-metatile layer (no metatile indirection observed).
-
-## 9. Rendering fidelity and known omissions
-
-A software renderer over the (VRAM-sourced) charblock/screenblock plus the
-ROM-proven palette reproduces the retail map. The charblock/screenblock bytes are
-from a runtime capture, not ROM (section 0, section 7). Documented omissions:
-
-* **Runtime fade / brightness**, not applied; rendered at full brightness.
-* **Animated tiles**, rendered at their static frame-0 bytes.
-* **Runtime sprite/HUD overwrites of shared VRAM**, a live capture taken during
-  gameplay carries these; they account for the 1-15% screenblock deltas between a
-  mid-gameplay dump and the static map.
+Runtime fade and the selected animation phase remain intentional display-time
+effects. They do not require a VRAM capture for production rendering.

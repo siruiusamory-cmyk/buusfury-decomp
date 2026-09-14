@@ -158,6 +158,49 @@ def render_layer(
             f"entries but one screenblock holds only {len(entries)}"
         )
 
+    try:
+        return render_entries(
+            vram,
+            entries[:needed],
+            map_width_tiles=map_width_tiles,
+            map_height_tiles=map_height_tiles,
+            color_256=color_256,
+            char_offset=char_base,
+        )
+    except BgTilemapError as exc:
+        # Preserve this hardware-facing API's established diagnostic wording.
+        raise BgTilemapError(str(exc).replace("character data", "VRAM")) from exc
+
+
+def render_entries(
+    char_data: bytes,
+    entries: tuple[ScreenEntry, ...],
+    *,
+    map_width_tiles: int,
+    map_height_tiles: int,
+    color_256: bool,
+    char_offset: int = 0,
+) -> tuple[bytes, int, int]:
+    """Render a logical regular-BG layout from linear character bytes.
+
+    Unlike :func:`render_layer`, this accepts a complete logical entry array,
+    so maps larger than the engine's camera-relative 32x32 hardware window do
+    not need to be forced through a synthetic screenblock.
+    """
+    if map_width_tiles <= 0 or map_height_tiles <= 0:
+        raise BgTilemapError(
+            f"map dimensions must be positive, got "
+            f"{map_width_tiles}x{map_height_tiles} tiles"
+        )
+    needed = map_width_tiles * map_height_tiles
+    if len(entries) != needed:
+        raise BgTilemapError(
+            f"logical layout has {len(entries)} entries, expected {needed}"
+        )
+    if char_offset < 0 or char_offset > len(char_data):
+        raise BgTilemapError(f"character offset {char_offset:#x} is outside data")
+
+    tile_bytes = TILE_BYTES_8BPP if color_256 else TILE_BYTES_4BPP
     width = map_width_tiles * TILE_SIDE
     height = map_height_tiles * TILE_SIDE
     out = bytearray(width * height)
@@ -165,15 +208,14 @@ def render_layer(
     for tile_y in range(map_height_tiles):
         for tile_x in range(map_width_tiles):
             entry = entries[tile_y * map_width_tiles + tile_x]
-            src = char_base + entry.tile_index * tile_bytes
-            if src + tile_bytes > len(vram):
+            src = char_offset + entry.tile_index * tile_bytes
+            if src + tile_bytes > len(char_data):
                 raise BgTilemapError(
                     f"screen entry at tile ({tile_x},{tile_y}) references tile "
                     f"{entry.tile_index} at {src:#x}, whose {tile_bytes} bytes run "
-                    f"past VRAM ({len(vram):#x}) from char base block "
-                    f"{char_base_block}"
+                    f"past character data ({len(char_data):#x})"
                 )
-            raw = vram[src : src + tile_bytes]
+            raw = char_data[src : src + tile_bytes]
             tile = sprite_graphics.unswizzle_tiles(
                 raw, TILE_SIDE, TILE_SIDE, colour_256=color_256
             )

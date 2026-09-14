@@ -297,6 +297,42 @@ def _rows() -> list[dict]:
                  "(map_entry_table = 0x0008E2E0, count 452).",
         notes="Size = 452 * 0x38 = 25,312 bytes, which lands exactly on the stated exclusive end 0x000945C0.")
 
+    add(addr=0x08009BD4, size=None, kind="function",
+        identity="map_background.character_assembler",
+        conf="CONFIRMED",
+        source="docs/research/MAP_RENDER_FORMAT.md:80",
+        evidence="MAP-VIS-002 static/runtime proof: expands descriptor +0x48 delta selectors; high selector "
+                 "byte chooses descriptor +0x4C tileset pointer, low byte chooses one 64-byte tile, and "
+                 "0x08009C62..0x08009C78 copies selected tiles to sequential VRAM destinations.",
+        notes="Size null: the function's exact extent is not claimed. Runtime decompressor captures with "
+              "LR 0x08009C5E independently establish its ROM -> EWRAM -> VRAM writer family.")
+
+    add(addr=0x08007BDE, size=None, kind="function",
+        identity="map_background.logical_chunk_loader",
+        conf="CONFIRMED",
+        source="docs/research/MAP_RENDER_FORMAT.md:146",
+        evidence="MAP-VIS-002: reads layer-record +0x14/+0x15 chunk dimensions and +0x18 u32 container "
+                 "array; 0x08007C82..0x08007C90 selects row-major y*width+x chunks, each decoding to "
+                 "one 0x800-byte regular-BG entry block.",
+        notes="Transient EWRAM buffers and camera-relative screenblock windows are deliberately not Atlas "
+              "objects; the persistent object is the ROM layer/chunk relationship.")
+
+    add(addr=0x082932F8, size=None, kind="graphics",
+        identity="map:0040.tile_selector_container",
+        conf="CONFIRMED",
+        source="docs/research/MAP_RENDER_FORMAT.md:67",
+        evidence="Descriptor 0x08293474 +0x48; Webfoot-LZ container decodes to 0x1DE bytes / 239 "
+                 "delta-coded u16 selectors consumed by map_background.character_assembler.",
+        notes="Packed ROM extent is decoder-measured at use time; no size asserted in the seed row.")
+
+    add(addr=0x08294660, size=None, kind="graphics",
+        identity="map:0039.tile_selector_container",
+        conf="CONFIRMED",
+        source="docs/research/MAP_RENDER_FORMAT.md:67",
+        evidence="Descriptor 0x08294968 +0x48; Webfoot-LZ container decodes to 0x206 bytes / 259 "
+                 "delta-coded u16 selectors consumed by map_background.character_assembler.",
+        notes="Packed ROM extent is decoder-measured at use time; no size asserted in the seed row.")
+
     # ------------------------------------------------------------- script VM
     add(addr=0x080554C0, size=31 * 4, kind="pointer_table",
         identity="script_vm.primary_dispatch_table",

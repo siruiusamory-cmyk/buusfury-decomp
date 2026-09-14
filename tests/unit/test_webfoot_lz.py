@@ -29,6 +29,14 @@ def test_stored_container_round_trips_verbatim() -> None:
     assert container.packed_end == wl.HEADER_SIZE + len(payload)
 
 
+def test_headerless_stream_with_eight_bit_literals() -> None:
+    # Three literal tokens: prefix 1 followed by each 8-bit byte, padded to a
+    # little-endian 32-bit bit word.
+    bits = "".join("1" + f"{value:08b}" for value in b"MAP").ljust(32, "0")
+    stream = struct.pack("<I", int(bits, 2))
+    assert wl.unpack_raw_stream(stream, 0, 3) == b"MAP"
+
+
 @pytest.mark.parametrize(
     "payload",
     [

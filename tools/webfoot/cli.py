@@ -1320,6 +1320,11 @@ def _parse_graphic_identity(value: str):
 
 
 def _default_atlas_directory() -> Path:
+    # Frozen (PyInstaller): the atlas lives NEXT TO the exe, not bundled inside
+    # _internal, so it can be regenerated without rebuilding the app. Non-frozen:
+    # derive from the module path as before.
+    if getattr(sys, "frozen", False):
+        return Path(sys.executable).resolve().parent / "build" / "atlas"
     return Path(__file__).resolve().parents[2] / "build" / "atlas"
 
 

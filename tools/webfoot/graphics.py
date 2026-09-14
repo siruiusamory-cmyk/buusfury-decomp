@@ -174,6 +174,34 @@ class Character:
         }
 
 
+@dataclass(frozen=True)
+class ActorFrame:
+    """One frame of a neutral animation view: its direction slots' graphics.
+
+    ``graphics`` holds one entry per direction slot in slot order, each the
+    graphic that slot reaches or None where the pointer resolved to nothing this
+    walk decoded. ``duration`` is always None and ``timing_unknown`` always True:
+    the ROM records no per-frame timing this project has established, and this
+    view refuses to invent one.
+    """
+
+    frame_index: int
+    graphics: tuple["GraphicIdentity | None", ...]
+    duration: None = None
+
+    @property
+    def timing_unknown(self) -> bool:
+        return True
+
+
+@dataclass(frozen=True)
+class ActorAnimation:
+    """One animation as a neutral, ordered set of frames. Timing is unknown."""
+
+    index: int
+    frames: tuple[ActorFrame, ...]
+
+
 class ActorSprites:
     """The decoded actor-sprite corpus for one exactly-verified ROM.
 
@@ -520,7 +548,120 @@ class ActorSprites:
         preserved = self.base_bytes[tail_start:tail_end]
         return plan.offset, plan.payload + preserved
 
+    def plan_palette_entry_rgb(
+        self, index: int, red: int, green: int, blue: int
+    ) -> tuple[int, bytes]:
+        """Recolour one palette entry from an RGB triple. GUI-facing.
+
+        The RGB->word packing lives HERE, in the SDK, because the ROM stores a
+        15-bit word and nothing above this layer may know that format. The
+        caller (a colour picker) hands 8-bit channels; this quantises them with
+        :func:`sprite_graphics.pack_gba_colour` and forwards to
+        :meth:`plan_palette_entry`, so it carries that method's guarantees -
+        exact two-byte in-place write, every graphic on this index affected.
+        """
+        return self.plan_palette_entry(index, sg.pack_gba_colour(red, green, blue))
+
+    def get_actor_animations(
+        self, identity: CharacterIdentity
+    ) -> tuple["ActorAnimation", ...]:
+        """A neutral read view of one character's animations, GUI-facing.
+
+        Frames are an ordered set of direction slots, each carrying the graphic
+        it reaches (or None where the pointer resolves to nothing decodable).
+        Timing is NOT invented: the ROM records no per-frame duration this
+        project has established, so :attr:`ActorFrame.duration` is always None
+        with :attr:`ActorFrame.timing_unknown` True. A caller that wants to play
+        the animation must supply its own timing rather than trust a fabricated
+        one.
+        """
+        character = self.character(identity)
+        animations: list[ActorAnimation] = []
+        for animation_index, animation_offset in enumerate(character.animation_offsets):
+            animation = sg.decode_animation(self.base_bytes, animation_offset)
+            frames: list[ActorFrame] = []
+            for frame_index in range(animation.frame_count):
+                slots: list[GraphicIdentity | None] = []
+                for direction in range(sg.DIRECTION_COUNT):
+                    pointer = animation.pointer_for(frame_index, direction)
+                    offset = self._offset_of(pointer)
+                    graphic = (
+                        self._by_offset.get(self._graphic_offset_at(offset))
+                        if offset is not None
+                        else None
+                    )
+                    slots.append(graphic)
+                frames.append(
+                    ActorFrame(frame_index=frame_index, graphics=tuple(slots))
+                )
+            animations.append(
+                ActorAnimation(index=animation_index, frames=tuple(frames))
+            )
+        return tuple(animations)
+
+    def import_graphic_png(
+        self, identity: GraphicIdentity, png_bytes: bytes
+    ) -> sg.PayloadPlan:
+        """Decode an indexed PNG and plan it into one graphic. GUI-facing.
+
+        A thin façade over `indexed_png.decode` + :meth:`plan_pixels`, so the
+        GUI never imports either codec. It FAILS CLOSED exactly as `plan_pixels`
+        does: an oversized or wrong-dimension image, or one whose indices exceed
+        the depth, raises `SpriteFormatError` rather than truncating or
+        relocating. A PNG that is not the indexed form raises `PngError` from the
+        decoder below; both are the honest refusal, never a silent quantise.
+        """
+        from .formats import indexed_png
+        pixels, width, height, _palette, _transparent = indexed_png.decode(png_bytes)
+        graphic = self.graphic(identity)
+        if (width, height) != (graphic.width, graphic.height):
+            raise sg.SpriteFormatError(
+                f"imported PNG is {width}x{height}, but {identity} is "
+                f"{graphic.width}x{graphic.height}; this write path does not resize"
+            )
+        return self.plan_pixels(identity, pixels)
+
+    def export_graphic_png(
+        self,
+        identity: GraphicIdentity,
+        palette_rgb: tuple[tuple[int, int, int], ...] | None = None,
+    ) -> bytes:
+        """Encode one graphic to indexed-PNG bytes. GUI-facing, fail-closed.
+
+        Symmetric to :meth:`import_graphic_png`: a thin façade over
+        `indexed_png.encode` so the GUI never imports the codec. `palette_rgb`
+        lets the caller pass the EFFECTIVE palette (canonical + committed
+        overrides) so the export matches what the user authored; omitted, the
+        SDK's canonical `self.palette.rgb` is used. An unknown identity raises
+        `GraphicsError` from :meth:`graphic`, a bad pixel/palette raises
+        `PngError` from the encoder - both before any bytes exist, so no partial
+        write. Mirrors the CLI export at cli.py:1531.
+        """
+        from .formats import indexed_png
+        graphic = self.graphic(identity)
+        return indexed_png.encode(
+            graphic.pixels,
+            graphic.width,
+            graphic.height,
+            palette_rgb or self.palette.rgb,
+            transparent_index=sg.TRANSPARENT_INDEX,
+        )
+
     # --- internals -----------------------------------------------------------
+
+    def _graphic_offset_at(self, offset: int | None) -> int | None:
+        """The container offset a frame piece points at, if this walk decoded it."""
+        if offset is None:
+            return None
+        try:
+            frame = sg.decode_frame(self.base_bytes, offset)
+        except sg.SpriteFormatError:
+            return None
+        for piece in frame.pieces:
+            graphic_offset = self._offset_of(piece.graphics_pointer)
+            if graphic_offset in self._by_offset:
+                return graphic_offset
+        return None
 
     def _read_structure_table(self) -> tuple[int, ...]:
         size = len(self.base_bytes)
@@ -611,3 +752,88 @@ class ActorSprites:
 
 def load_actor_sprites(image: bytes, identification: RomIdentification) -> ActorSprites:
     return ActorSprites(image, identification)
+
+
+# --- project-level palette authoring (GUI-facing) ---------------------------
+#
+# The trio below mirrors `dialogue.set/get/remove_dialogue_replacement`: a
+# caller (the Graphics workspace) hands a project directory, a verified profile,
+# a palette index and an 8-bit RGB triple, and this layer validates and persists
+# the edit into the Layer-1 `GraphicsOverrides` model. The GUI never touches
+# project TOML and never packs colour; the RGB->word packing stays in the build
+# via `plan_palette_entry_rgb`. Only RGB is stored, per `GraphicsOverrides`.
+
+
+def _load_compatible_project(project_dir, profile: RomProfile):
+    from .project import ProjectValidationError, read_project
+
+    project = read_project(project_dir)
+    if project.meta.profile_id != profile.id:
+        raise ProjectValidationError(
+            f"project profile {project.meta.profile_id!r} does not match open "
+            f"ROM profile {profile.id!r}"
+        )
+    return project
+
+
+def _validate_palette_edit(index: int, red: int, green: int, blue: int) -> None:
+    """Range-check one recolour the same way the model's loader does.
+
+    Raises `GraphicsError` (a `ValueError`) on a bad index or channel, so the
+    GUI catches one family at its boundary. The authoritative index bound is the
+    palette's own `PALETTE_ENTRIES`; channels are 8-bit 0..255.
+    """
+    if type(index) is not int or not 0 <= index < sg.PALETTE_ENTRIES:
+        raise GraphicsError(
+            f"palette index {index} is outside 0..{sg.PALETTE_ENTRIES - 1}"
+        )
+    for name, value in (("red", red), ("green", green), ("blue", blue)):
+        if type(value) is not int or not 0 <= value <= 255:
+            raise GraphicsError(f"palette {name} channel {value} is outside 0..255")
+
+
+def get_palette_override(
+    project_dir, profile: RomProfile, index: int
+) -> tuple[int, int, int] | None:
+    """The current authored RGB for one palette index, or None if unauthored."""
+    return _load_compatible_project(project_dir, profile).graphics_overrides.palette.get(
+        index
+    )
+
+
+def get_palette_overrides(
+    project_dir, profile: RomProfile
+) -> dict[int, tuple[int, int, int]]:
+    """The whole committed palette-override map in ONE project load.
+
+    For a full-palette repaint the GUI needs every override at once; reading them
+    one index at a time reloads the project per call. This loads it once and
+    returns a copy of ``graphics_overrides.palette``.
+    """
+    return dict(_load_compatible_project(project_dir, profile).graphics_overrides.palette)
+
+
+def set_palette_override(
+    project_dir, profile: RomProfile, index: int, red: int, green: int, blue: int
+) -> None:
+    """Validate and persist one palette recolour in the normal project form."""
+    from .project import write_graphics_overrides
+
+    _validate_palette_edit(index, red, green, blue)
+    project = _load_compatible_project(project_dir, profile)
+    palette = dict(project.graphics_overrides.palette)
+    palette[index] = (red, green, blue)
+    write_graphics_overrides(project_dir, palette)
+
+
+def remove_palette_override(project_dir, profile: RomProfile, index: int) -> bool:
+    """Remove one authored recolour; return whether project source changed."""
+    from .project import write_graphics_overrides
+
+    project = _load_compatible_project(project_dir, profile)
+    if index not in project.graphics_overrides.palette:
+        return False
+    palette = dict(project.graphics_overrides.palette)
+    del palette[index]
+    write_graphics_overrides(project_dir, palette)
+    return True

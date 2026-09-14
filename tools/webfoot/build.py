@@ -917,6 +917,35 @@ def build_project(
     # is a hard overlap error rather than a silent last-writer-wins.
     changes += authored_changes
 
+    # WORKBENCH-005: authored palette recolours contribute ByteChanges the same
+    # way every other subsystem does. Each override is packed RGB->GBA word and
+    # planned through `ActorSprites.plan_palette_entry`, so the change is an exact
+    # two-byte in-place write; it merges into the one plan below, where an overlap
+    # with another owner is a hard error rather than a silent last-writer-wins.
+    palette_overrides = project.graphics_overrides.palette
+    if palette_overrides:
+        if not capability.declared(profile, capability.Capability.ACTOR_SPRITES):
+            raise ProjectValidationError(
+                "project authors palette overrides, but this ROM's profile "
+                "declares no actor_sprites; a build would silently drop them"
+            )
+        from .graphics import load_actor_sprites
+        image = Path(rom_path).read_bytes()
+        sprites = load_actor_sprites(image, identification)
+        for index in sorted(palette_overrides):
+            red, green, blue = palette_overrides[index]
+            offset, new = sprites.plan_palette_entry_rgb(index, red, green, blue)
+            changes.append(
+                ByteChange(
+                    offset=offset,
+                    old=image[offset : offset + len(new)],
+                    new=new,
+                    owner=f"palette_entry:{index:03d}",
+                    reason=f"WORKBENCH-005 palette recolour to rgb({red},{green},{blue})",
+                )
+            )
+        base_bytes = image if base_bytes is None else base_bytes
+
     # ROM-EXPAND-001: compressed dialogue is a normal third allocating build
     # domain. It receives every span reserved by earlier domains and returns its
     # own span to the same build-scoped set before the one final plan is formed.

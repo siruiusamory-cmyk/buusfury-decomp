@@ -92,6 +92,15 @@ PLACEMENT_TYPES_FILE = Path("placement_types") / "types.toml"
 GRAPHICS_FILE = Path("graphics") / "graphics.toml"
 GRAPHICS_ASSET_DIR = Path("graphics") / "assets"
 
+#: WORKBENCH-005. Authored graphics edits, kept apart from the extracted
+#: `graphics.toml` manifest: the manifest is deterministic ROM-derived output a
+#: user does not hand-edit, while this file is authored source - one palette
+#: recolour per line, so a visual edit made in the GUI travels into the build.
+#: A missing file means the project authors no graphics edits, matching every
+#: other subsystem; only RGB is stored, because the SDK owns the RGB->GBA-word
+#: packing and a project that stored the word would leak that format upward.
+GRAPHICS_OVERRIDES_FILE = Path("graphics") / "overrides.toml"
+
 #: Authored field order within a record. Fixed, so output is deterministic;
 #: chosen for reading rather than sorted, because a human edits these.
 _ENEMY_FIELD_ORDER = ("hp", "exp", "level", "strength", "power", "endurance")
@@ -226,6 +235,79 @@ class StatProject:
     # Optional v1 read-only relationship catalog. Missing keeps old projects valid.
     placement_types: dict[str, Any] | None = None
     placement_events: dict[str, Any] | None = None
+    #: WORKBENCH-005. Authored palette recolours. Empty for a project that
+    #: authors no graphics edits, which stays loadable on the same reasoning as
+    #: `strings`: absence means "no graphics edits", not "broken".
+    graphics_overrides: "GraphicsOverrides" = field(default_factory=lambda: GraphicsOverrides())
+
+
+@dataclass(frozen=True)
+class GraphicsOverrides:
+    """Authored graphics edits: palette-index -> 8-bit RGB recolour.
+
+    Only RGB is held, never the packed GBA word: the SDK owns the RGB->word
+    packing (`sprite_graphics.pack_gba_colour`), and a project that stored the
+    word would bake ROM-format knowledge into authored source. The build packs
+    each triple and plans it through `ActorSprites.plan_palette_entry`, so an
+    authored recolour reaches the emitted ROM at that entry's two bytes.
+    """
+
+    #: palette index -> (red, green, blue), each channel 0..255.
+    palette: dict[int, tuple[int, int, int]] = field(default_factory=dict)
+
+    def to_document(self) -> dict[str, Any]:
+        """The `[palette]` table, keyed by zero-padded index for numeric order."""
+        return {
+            "palette": {
+                f"{index:03d}": {
+                    "red": rgb[0],
+                    "green": rgb[1],
+                    "blue": rgb[2],
+                }
+                for index, rgb in sorted(self.palette.items())
+            }
+        }
+
+    @classmethod
+    def from_document(cls, document: Mapping[str, Any], where: object) -> "GraphicsOverrides":
+        table = document.get("palette")
+        if table is None:
+            raise ProjectLoadError(f"{where}: missing required [palette] table")
+        if not isinstance(table, Mapping):
+            raise ProjectLoadError(f"{where}: [palette] must be a table")
+        palette: dict[int, tuple[int, int, int]] = {}
+        for key, entry in table.items():
+            label = f"palette.{key}"
+            if not str(key).isdigit():
+                raise ProjectLoadError(
+                    f"{where}: {label} is not a valid palette index; expected a "
+                    "zero-padded integer key"
+                )
+            index = int(key, 10)
+            if not 0 <= index < 256:
+                raise ProjectValidationError(
+                    f"{where}: {label} index {index} is outside 0..255"
+                )
+            if not isinstance(entry, Mapping):
+                raise ProjectLoadError(f"{where}: {label} must be a table")
+            unexpected = set(entry) - {"red", "green", "blue"}
+            if unexpected:
+                joined = ", ".join(sorted(unexpected))
+                raise ProjectLoadError(f"{where}: {label} has unknown fields: {joined}")
+            channels = []
+            for name in ("red", "green", "blue"):
+                value = _require_int(entry, name, label, where)
+                if not 0 <= value <= 255:
+                    raise ProjectValidationError(
+                        f"{where}: {label}.{name}={value} is outside 0..255"
+                    )
+                channels.append(value)
+            if index in palette:
+                raise ProjectLoadError(f"{where}: duplicate palette index {index}")
+            palette[index] = (channels[0], channels[1], channels[2])
+        if not palette:
+            raise ProjectLoadError(f"{where}: [palette] declares no overrides")
+        return cls(palette=palette)
 
 
 # --- helpers -------------------------------------------------------------
@@ -412,6 +494,7 @@ def write_project(
     strings: list[tuple[tt.TextIdentity, str]] | None = None,
     dialogues: Mapping[str, str] | None = None,
     maps: list[dict[str, Any]] | None = None,
+    graphics_overrides: "GraphicsOverrides | None" = None,
 ) -> list[Path]:
     """Write the whole authored tree. Returns the files written, in order.
 
@@ -444,6 +527,8 @@ def write_project(
         documents.append((_DIALOGUE_FILE, _dialogue_document(dialogues)))
     if maps:
         documents.append((_MAP_FILE, _map_document(maps)))
+    if graphics_overrides and graphics_overrides.palette:
+        documents.append((GRAPHICS_OVERRIDES_FILE, graphics_overrides.to_document()))
 
     for relative, document in documents:
         path = root / relative
@@ -474,6 +559,26 @@ def write_dialogue_replacements(
     path.write_text(
         dump_toml(_dialogue_document(dialogues)), encoding="utf-8", newline="\n"
     )
+    return path
+
+
+def write_graphics_overrides(
+    directory: str | Path, palette: Mapping[int, tuple[int, int, int]]
+) -> Path:
+    """Persist only the graphics overrides document for a loaded project.
+
+    The narrow writer that mirrors `write_dialogue_replacements`: the graphics
+    authoring API validates before calling it. An empty mapping means the project
+    authors no palette edit, so the optional document is removed rather than
+    written as an invalid empty table (which `read_project` would then refuse).
+    """
+    path = Path(directory) / GRAPHICS_OVERRIDES_FILE
+    if not palette:
+        path.unlink(missing_ok=True)
+        return path
+    path.parent.mkdir(parents=True, exist_ok=True)
+    document = GraphicsOverrides(palette=dict(palette)).to_document()
+    path.write_text(dump_toml(document), encoding="utf-8", newline="\n")
     return path
 
 
@@ -815,6 +920,18 @@ def _read_maps(path: Path) -> dict[int, dict[str, Any]]:
     return records
 
 
+def _read_graphics_overrides(path: Path) -> "GraphicsOverrides":
+    """Load `graphics/overrides.toml`, or nothing at all if it is absent.
+
+    Absence is legal and means the project authors no graphics edits. A file
+    that exists but is malformed is still an error; "missing" and "wrong" are
+    different answers, matching `_read_strings` and `_read_maps`.
+    """
+    if not path.is_file():
+        return GraphicsOverrides()
+    return GraphicsOverrides.from_document(_read_document(path), path)
+
+
 def read_project(directory: str | Path) -> StatProject:
     """Load and structurally validate a project. Opens no ROM.
 
@@ -876,6 +993,7 @@ def read_project(directory: str | Path) -> StatProject:
         strings=strings,
         dialogues=dialogues,
         maps=maps,
+        graphics_overrides=_read_graphics_overrides(root / GRAPHICS_OVERRIDES_FILE),
         placement_events=events,
         placement_types=(_read_document(root / PLACEMENT_TYPES_FILE)
                          if (root / PLACEMENT_TYPES_FILE).exists() else None),

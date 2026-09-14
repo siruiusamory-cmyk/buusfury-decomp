@@ -1,25 +1,20 @@
-"""MAP-VIS-001 VRAM-oracle map renderer.
+"""Synthetic and local-oracle tests for the ROM-only MAP-VIS renderer.
 
-The renderer resolves map identity, provenance, and the BG palette from ROM
-(proven), but takes the tile graphics and tilemaps from a VRAM capture because
-exact ROM->charblock reconstruction is an unsolved sub-problem (Outcome B).
-
-The synthetic tests build a tiny fake ROM (a MapEntry, a descriptor, a palette)
-plus a tiny fake VRAM (a 1-tile charblock + a screenblock) and assert
-``render_map`` resolves identity, decodes the palette, and composes the layers.
-No copyrighted bytes are committed. The ROM+dump-gated test renders map 40 from
-its VRAM capture only when both the canonical image and the dump are present.
+The synthetic tests exercise selector, atlas, layout, palette, and render logic
+without committed commercial bytes. Local-ROM and VRAM checks remain gated on
+private inputs and retain the older renderer as an independent code-path oracle.
 """
 
 from __future__ import annotations
 
+import hashlib
 from pathlib import Path
 import struct
 
 import pytest
 
 from tools.webfoot import map_render as mr
-from tools.webfoot.formats import bg_tilemap
+from tools.webfoot.formats import bg_tilemap, webfoot_lz
 
 
 # --- synthetic ROM (identity + palette only) ---------------------------------
@@ -33,7 +28,7 @@ def _place(rom: bytearray, address: int, data: bytes) -> None:
 
 
 def _synthetic_rom() -> tuple[bytes, int]:
-    """A fake ROM wired for map-identity resolution. Returns (rom, descriptor)."""
+    """A fake ROM wired for one complete ROM-only map assembly."""
     rom = bytearray(_ROM_SIZE)
 
     map_index = 3
@@ -43,6 +38,27 @@ def _synthetic_rom() -> tuple[bytes, int]:
     _place(rom, map_entry + mr.MAP_ENTRY_SCENE_POINTER_OFFSET,
            struct.pack("<I", scene_pointer_target))
     _place(rom, scene_pointer_target, struct.pack("<I", descriptor))
+
+    remap = 0x08320000
+    atlas_array = 0x08321000
+    atlas = 0x08322000
+    layer_record = 0x08330000
+    screen = 0x08331000
+    # Absolute selectors [0, 1] are delta-coded [0, 0].
+    _place(rom, remap, webfoot_lz.build_stored(struct.pack("<2H", 0, 0)))
+    _place(rom, atlas_array, struct.pack("<I", atlas))
+    atlas_pixels = bytes([5]) * 64 + bytes([9]) * 64 + bytes(0x4000 - 128)
+    _place(rom, atlas, webfoot_lz.build_stored(atlas_pixels))
+    _place(rom, descriptor + 4, bytes((2, 3, 3, 3)))
+    _place(rom, descriptor + 0x0C, struct.pack("<II", 0, 0))
+    _place(rom, descriptor + 0x14, struct.pack("<4I", layer_record, 0, 0, 0))
+    _place(rom, descriptor + 0x48, struct.pack("<II", remap, atlas_array))
+    record = bytearray(0x1C)
+    struct.pack_into("<I", record, 0, mr.SUPPORTED_LAYER_HANDLER)
+    record[0x14:0x16] = bytes((1, 1))
+    struct.pack_into("<I", record, 0x18, screen)
+    _place(rom, layer_record, record)
+    _place(rom, screen, webfoot_lz.build_stored(struct.pack("<1024H", *([1] * 1024))))
 
     # Palette: 256 RGB888 triples, a visible ramp so decode is checkable.
     palette = bytearray()
@@ -157,18 +173,62 @@ def test_render_map_from_vram_rejects_non_bytes():
         mr.render_map_from_vram("not bytes", layers, tuple((0, 0, 0) for _ in range(256)))
 
 
-# --- T3: ROM-charblock reconstruction fails closed ---------------------------
+# --- T3: ROM-only assembly ---------------------------------------------------
 
-def test_reconstruct_charblock_from_rom_fails_closed():
-    rom, _ = _synthetic_rom()
-    with pytest.raises(mr.MapRenderError, match="unsolved MAP-VIS-001"):
-        mr.reconstruct_charblock_from_rom(rom)
+def test_tile_selector_delta_decode_and_charblock_assembly():
+    rom, descriptor = _synthetic_rom()
+    assert mr.decode_tile_selectors(rom, descriptor) == (0, 1)
+    chars = mr.reconstruct_charblock_from_rom(rom, descriptor)
+    assert chars[:64] == bytes([5]) * 64
+    assert chars[64:128] == bytes([9]) * 64
 
 
-def test_render_map_requires_layers_spec(synthetic_rom):
-    vram, _ = _synthetic_vram()
-    with pytest.raises(mr.MapRenderError, match="layers_spec"):
-        mr.render_map(synthetic_rom, "map:0003", vram)
+def test_multiple_atlases_duplicate_selectors_and_unused_tiles():
+    rom, descriptor = _synthetic_rom()
+    changed = bytearray(rom)
+    remap = 0x08320000
+    atlas_array = 0x08321000
+    second_atlas = 0x08327000
+    # Absolute [0x0000, 0x0100, 0x0100] -> delta [0, 0x00ff, 0xffff].
+    _place(changed, remap, webfoot_lz.build_stored(struct.pack("<3H", 0, 0xFF, 0xFFFF)))
+    _place(changed, atlas_array, struct.pack("<2I", 0x08322000, second_atlas))
+    _place(changed, second_atlas, webfoot_lz.build_stored(bytes([7]) * 64 + bytes(0x4000 - 64)))
+    chars = mr.reconstruct_charblock_from_rom(bytes(changed), descriptor)
+    assert mr.decode_tile_selectors(bytes(changed), descriptor) == (0, 0x100, 0x100)
+    assert chars[:192] == bytes([5]) * 64 + bytes([7]) * 128
+
+
+def test_render_map_is_rom_only_and_deterministic(synthetic_rom, monkeypatch):
+    monkeypatch.setattr(mr, "SUPPORTED_ROM_SHA256", hashlib.sha256(synthetic_rom).hexdigest())
+    first = mr.render_map(synthetic_rom, "map:0003")
+    second = mr.render_map(synthetic_rom, "map:0003")
+    assert first == second
+    assert first.width == first.height == 256
+    assert set(first.composite) == {9}
+    assert first.provenance["tile_selector_address"] == "0x08320000"
+
+
+def test_unsupported_layer_variant_fails_closed():
+    rom, descriptor = _synthetic_rom()
+    changed = bytearray(rom)
+    record = struct.unpack_from("<I", changed, descriptor - mr.GBA_ROM_BASE + 0x14)[0]
+    _place(changed, record, struct.pack("<I", 0x08001235))
+    with pytest.raises(mr.UnsupportedMapAssemblyVariant, match="layer handler"):
+        mr.reconstruct_map_assembly(bytes(changed), descriptor)
+
+
+def test_render_map_refuses_unverified_rom_bytes(synthetic_rom):
+    with pytest.raises(mr.MapRenderError, match="SHA-256"):
+        mr.render_map(synthetic_rom, "map:0003")
+
+
+def test_tileset_atlas_must_match_the_proven_0x4000_extent():
+    rom, descriptor = _synthetic_rom()
+    changed = bytearray(rom)
+    atlas = 0x08322000
+    _place(changed, atlas, webfoot_lz.build_stored(bytes(0x4040)))
+    with pytest.raises(mr.UnsupportedMapAssemblyVariant, match="expected 0x4000"):
+        mr.reconstruct_map_assembly(bytes(changed), descriptor)
 
 
 # --- T4: no Qt / Workbench import --------------------------------------------
@@ -193,7 +253,7 @@ _MAP40_DUMP = _REPO / "build" / "toolkit031" / "mapvis001-map40"
 def test_map40_renders_from_vram_capture():
     rom = _CANONICAL_ROM.read_bytes()
     vram, layers, capture_palette = mr.load_vram_dump(_MAP40_DUMP)
-    result = mr.render_map(
+    result = mr.render_map_vram_reference(
         rom, "map:0040", vram,
         layers_spec=layers, capture_palette_rgb=capture_palette,
     )

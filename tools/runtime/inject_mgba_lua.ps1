@@ -205,6 +205,9 @@ $allowedLua = @(
     [System.IO.Path]::GetFullPath(
         (Join-Path $workspaceRoot 'tools\runtime\mapvis001_vram_dump_any.lua')
     )
+    [System.IO.Path]::GetFullPath(
+        (Join-Path $workspaceRoot 'tools\runtime\mapvis002_bg_provenance.lua')
+    )
 )
 $resolvedLua = [System.IO.Path]::GetFullPath($LuaPath)
 if ($resolvedLua -notin $allowedLua) {

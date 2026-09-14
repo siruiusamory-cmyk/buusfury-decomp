@@ -312,6 +312,40 @@ def unpack(
     raise ContainerError(f"unsupported Webfoot container kind {kind} at {offset:#x}")
 
 
+def unpack_raw_stream(
+    data: bytes,
+    offset: int,
+    expected_size: int,
+    *,
+    initial_literal_bits: int = 8,
+) -> bytes:
+    """Decode a headerless Webfoot bitstream of a caller-proven size.
+
+    Some engine-owned records store the same packed grammar without the usual
+    eight-byte container header.  Their surrounding record supplies both the
+    decoded byte count and initial literal width.  This entry point preserves
+    that distinction: it never guesses a size from the stream and it rejects
+    invalid widths and bounds before delegating to the shared decoder.
+    """
+    if expected_size < 0:
+        raise ContainerError(f"negative raw-stream size {expected_size}")
+    if expected_size > DEFAULT_MAX_OUTPUT:
+        raise ContainerError(
+            f"raw stream declares {expected_size} bytes, over the "
+            f"{DEFAULT_MAX_OUTPUT}-byte safety limit"
+        )
+    if initial_literal_bits not in range(1, 9):
+        raise ContainerError(
+            f"raw stream literal width {initial_literal_bits} is outside 1..8"
+        )
+    if not 0 <= offset <= len(data):
+        raise ContainerError(f"raw stream at {offset:#x} is outside the image")
+    decoded, _packed_end = _unpack_stream(
+        data, offset, expected_size, initial_literal_bits
+    )
+    return decoded
+
+
 def build_stored(payload: bytes) -> bytes:
     """Build a ``kind 0`` container carrying ``payload`` verbatim.
 

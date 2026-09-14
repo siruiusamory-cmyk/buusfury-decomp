@@ -165,6 +165,37 @@ class Palette:
         )
 
 
+def _to5(channel: int) -> int:
+    """One 8-bit channel to the nearest 5-bit step, clamped to 0..31.
+
+    Inverts the decode's ``v << 3 | v >> 2`` expansion: every representable
+    value sits exactly on a step so it round-trips, and a free value snaps to
+    the closest step instead of truncating down.
+    """
+    return min(31, (channel * 31 + 127) // 255)
+
+
+def pack_gba_colour(red: int, green: int, blue: int) -> int:
+    """Pack an 8-bit RGB triple into a GBA 15-bit palette word.
+
+    The inverse of :attr:`Palette.rgb`'s 5-bit-per-channel decode: that property
+    expands ``word & 31`` etc. up to 8 bits (``v << 3 | v >> 2``), so this maps
+    each 8-bit channel to the NEAREST 5-bit step (round, not truncate) and
+    repacks ``r | g << 5 | b << 10``. Bit 15 is unused on this hardware and
+    stays clear.
+
+    Rounding to nearest keeps two properties: any triple already produced by
+    :attr:`Palette.rgb` packs back to the word it came from (idempotent for
+    representable colours, since those sit exactly on a step), AND a triple
+    picked freely maps to the closest representable colour rather than always
+    rounding down - so a channel like 250 becomes 31 (nearest) not 30 (trunc).
+    """
+    for name, channel in (("red", red), ("green", green), ("blue", blue)):
+        if type(channel) is not int or not 0 <= channel <= 255:
+            raise SpriteFormatError(f"{name} channel {channel!r} is not an 8-bit value")
+    return _to5(red) | (_to5(green) << 5) | (_to5(blue) << 10)
+
+
 def decode_palette(data: bytes, offset: int) -> Palette:
     """Read a 256-entry object palette at ``offset``."""
     if offset < 0 or offset + PALETTE_BYTES > len(data):

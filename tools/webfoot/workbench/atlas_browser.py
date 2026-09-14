@@ -1,8 +1,8 @@
 """WORKBENCH-001 T2A.1 - Atlas Browser tab.
 
-The one tab enabled at launch. It owns "Open ROM" (the locked UX: the button
-lives inside this tab's content, not a toolbar or menu), a search box with a
-Text / Address mode switch, and a results table. A row activation emits
+The one tab enabled at launch. It owns "Open ROM" (the button lives inside this
+tab's content), a search box with a Text / Address mode switch, and a results
+table. A row activation emits
 `resultActivated(dict)`; MainWindow routes that to the Inspector.
 
 THIN by contract: this widget computes no ROM-format values. It hands phrases

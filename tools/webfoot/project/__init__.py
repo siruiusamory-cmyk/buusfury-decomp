@@ -13,6 +13,7 @@ from .format import (
 )
 from .model import (
     PROJECT_FORMAT_VERSION,
+    GraphicsOverrides,
     ProjectError,
     ProjectLoadError,
     ProjectMeta,
@@ -20,12 +21,14 @@ from .model import (
     StatProject,
     read_project,
     write_dialogue_replacements,
+    write_graphics_overrides,
     write_project,
 )
 from .placements import remove_authored_placement
 
 __all__ = [
     "PROJECT_FORMAT_VERSION",
+    "GraphicsOverrides",
     "ProjectError",
     "ProjectFormatError",
     "ProjectLoadError",
@@ -37,5 +40,6 @@ __all__ = [
     "read_project",
     "remove_authored_placement",
     "write_dialogue_replacements",
+    "write_graphics_overrides",
     "write_project",
 ]

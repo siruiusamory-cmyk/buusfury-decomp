@@ -31,6 +31,7 @@ dist/
 node_modules/
 .astro/
 *.egg-info/
+*.spec
 
 # External upstream repositories
 extern/

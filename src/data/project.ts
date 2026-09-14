@@ -77,7 +77,7 @@ export const project: ProjectStatus = {
   subtitle: "Legacy of Goku authoring toolkit",
   tagline: "Building a real authoring toolkit for the Legacy of Goku engine.",
   description:
-    "Workbench now browses known maps and their related content semantically, and playable authored scenes have been built and run on multiple maps without raw addresses or project-file editing. The remaining product frontier is usability: the workflow works, but the owner found it difficult and unintuitive for normal content production.",
+    "Core semantic authoring is mature: playable scenes have been built and run in the retail engine, and the owner has now visually edited a sprite palette through the desktop tool and seen the change in-game. DragonByte Z is exposing that capability as a full visual editing environment: real game graphics as first-class authoring objects, not anonymous IDs.",
   overallProgress: 97,
   overallProgressLabel: "≈ 97% COMPLETE",
   progressCaveat:
@@ -85,14 +85,14 @@ export const project: ProjectStatus = {
   currentPhase: "AUTHOR_NEW",
   currentFrontierLabel: "CURRENT FRONTIER",
   existingContentState: "MATURE",
-  blockerCode: "CONTENT WORKFLOW ERGONOMICS",
-  blockerTitle: "Make scene authoring easy and intuitive",
+  blockerCode: "VISUAL EDITOR FOUNDATION",
+  blockerTitle: "Show and edit real game graphics visually",
   blockerShort:
-    "Semantic multi-map scene authoring is runtime-proven, but the owner found the successful workflow difficult and unintuitive. Webfoot is functionally capable; the remaining gap is making it comfortable enough to use as the normal environment for real remake production.",
+    "Semantic authoring is mature and runtime-proven. The frontier is now visual: DragonByte Z presents the game's actual sprites, frames, animations, and palettes as things an author selects and edits by sight, with edits that reach the retail engine. This is the foundation the rendered map editor is built on.",
   blockerParagraphs: [
-    "The Maps workspace exposes all 452 known semantic maps with Editable, Partial, or Read-only support, keeps placement, entity, behavior, script, and visible-response relationships together, and shows pending project changes before output. A second complete scene was personally authored and run on map:0041, beyond the original map:0040 proof.",
-    "That successful walkthrough still required too much interpretation. Labels, selection flow, form organization, and navigation do not yet make the intended sequence obvious to a content author. The measured blocker is no longer whether the architecture can author across maps; it is whether ordinary production feels direct and understandable.",
-    "The next product pass should be driven by observed author friction: reduce cognitive load, clarify the scene-building sequence, and make the common path discoverable without turning Workbench into a generic editor framework or moving ROM semantics into widgets.",
+    "DragonByte Z now browses the game's real decoded sprites as thumbnails, inspects a selected sprite's frames, animations, and palette, and edits a palette colour that is recorded as a semantic project change, built into the ROM, and observed in the retail engine. The edit is undoable, with the affected shared consumers disclosed before it is applied. The owner personally made a visible palette change and saw it in-game.",
+    "This establishes the conventions later visual editors reuse: real game imagery beside semantic identity, direct visual selection, undoable semantic mutations, and a thin client that holds no ROM-format knowledge. What a sprite's own palette bank is, and which direction a sprite faces, are deliberately left as measured gaps rather than guessed.",
+    "The next frontier is the rendered map: proving the retail map-rendering contract (map layout → tilemap → tileset → tiles → palette → rendered map) as a pixel-faithful read-only renderer, before any tile painting. Visual sprites and palettes come first; the map canvas is built on top of them.",
   ],
   acceptanceTarget:
     "Author playable Legacy of Goku content inside the real LOGII/Buu engine.",
@@ -326,7 +326,16 @@ export const project: ProjectStatus = {
       plainEnglish:
         "Make the successful scene workflow easy to understand and efficient enough to use repeatedly for actual remake content.",
       technical:
-        "The owner completed the multi-map workflow but found it difficult and unintuitive. Improve discoverability, labels, form flow, and navigation while preserving the thin-client boundary and SDK-owned semantics.",
+        "Delivered. The multi-map semantic workspace keeps a scene's relationships together and reviews pending changes in author-facing language, and authoring moved from list-and-form interaction toward direct visual selection, which is the real answer to the friction the owner reported.",
+      status: "complete",
+    },
+    {
+      id: "visual-editor-foundation",
+      title: "Show and edit real game graphics visually",
+      plainEnglish:
+        "See the game's actual sprites, frames, animations, and palettes, select them by sight, edit a colour, and watch the change appear in the running game.",
+      technical:
+        "Runtime-proven. DragonByte Z browses the real decoded sprite corpus as thumbnails, inspects a selected sprite's frames, animations, and the colours it uses, and edits a palette colour as an undoable semantic project change that is built into the ROM and observed in the retail engine, with shared consumers disclosed before the edit and PNG export of a sprite. The GUI holds no ROM-format knowledge; colour packing, allocation, and the palette write stay in the SDK. The owner personally made a visible palette change and saw it in-game. Per-sprite palette banks and sprite facing direction are recorded as measured gaps, not guessed.",
       status: "current",
     },
     {
@@ -361,7 +370,8 @@ export const project: ProjectStatus = {
     { label: "GUI DIALOGUE EDITING", state: "done" },
     { label: "PLAYABLE SCENE AUTHORING", state: "done" },
     { label: "SCENE AUTHORING BREADTH", state: "done" },
-    { label: "CONTENT WORKFLOW ERGONOMICS", state: "current", marker: "↑ YOU ARE HERE" },
+    { label: "CONTENT WORKFLOW ERGONOMICS", state: "done" },
+    { label: "VISUAL GRAPHICS + PALETTE EDITING", state: "current", marker: "↑ YOU ARE HERE" },
     { label: "PLAYABLE LOG1 CONTENT", state: "target" },
   ],
   breakthroughs: [

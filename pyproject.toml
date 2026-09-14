@@ -23,9 +23,14 @@ dev = [
 workbench = [
     "PySide6",
 ]
+packaging = [
+    "PySide6",
+    "pyinstaller>=6",
+]
 
 [project.scripts]
 webfoot = "tools.webfoot.cli:main"
+dragonbyte-z = "tools.webfoot.workbench.__main__:main"
 
 [tool.setuptools.packages.find]
 include = ["tools*"]

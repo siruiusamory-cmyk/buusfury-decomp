@@ -22,9 +22,10 @@ from ..atlas_build import load_atlas, load_decoded_text
 from ..build import BuildResult
 from ..cli import _default_atlas_directory
 from ..formats.map_entry import MapEntryProfileError
+from ..graphics import ActorSprites, GraphicsError, load_actor_sprites
 from ..maps import Maps, load_maps
 from ..profile import RomProfile, RomProfileCatalog, VerificationStatus
-from ..rom import identify_rom
+from ..rom import RomIdentification, identify_rom
 from ..text import TextProfileError, TextStrings, TextTableError, load_text_strings
 
 
@@ -62,6 +63,36 @@ class Session:
     project_revision: int = 0
     validation_revision: int | None = None
     build_revision: int | None = None
+    # Full identification kept so the actor-sprite corpus can be loaded lazily
+    # (it needs the RomIdentification, not just the matched profile).
+    identification: RomIdentification | None = None
+    # Cached decoded actor-sprite corpus for the open ROM. Lazy because building
+    # it walks all ~7k graphics once; None when unbuilt or the profile declares
+    # no actor_sprites. Reached only through `sprites`.
+    _sprites: ActorSprites | None = None
+    _sprites_loaded: bool = False
+
+    @property
+    def sprites(self) -> ActorSprites | None:
+        """The decoded actor-sprite corpus, or None when unavailable.
+
+        Loaded on first read, the same way `maps`/`atlas` are obtained through
+        the public SDK: `load_actor_sprites(rom_image, identification)`. A
+        profile that declares no actor_sprites raises `GraphicsError`, which is a
+        supported state (that ROM simply has no sprites to edit) and yields None,
+        not a failure. Result is cached until the next `open_rom`.
+        """
+        if self._sprites_loaded:
+            return self._sprites
+        self._sprites_loaded = True
+        if self.rom_image is None or self.identification is None:
+            self._sprites = None
+            return None
+        try:
+            self._sprites = load_actor_sprites(self.rom_image, self.identification)
+        except GraphicsError:
+            self._sprites = None
+        return self._sprites
 
     @property
     def validation_current(self) -> bool:
@@ -152,6 +183,7 @@ class Session:
             raise SessionError(f"could not load semantic text content: {exc}") from exc
 
         self.profile = match.profile
+        self.identification = identification
         self.atlas = atlas
         self.decoded_text = decoded_text
         self.maps = maps
@@ -159,6 +191,9 @@ class Session:
         self.selected_map = None
         self.rom_path = path
         self.rom_image = rom_image
+        # Drop the prior ROM's sprite corpus; the next `sprites` read rebuilds it.
+        self._sprites = None
+        self._sprites_loaded = False
         # A newly opened base changes what any existing project result represents.
         self.validation_revision = None
         self.build_revision = None

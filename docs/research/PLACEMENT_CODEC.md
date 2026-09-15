@@ -13,7 +13,7 @@ tests. See [ownership evidence](BUU_FD55_SCRIPT_OWNER.md) and the constructor
 | +00 | factory_raw |
 | +04 | flags_raw |
 | +08 | type_raw |
-| +0C | position_raw; position_low/high remain axis-UNKNOWN |
+| +0C | `position_raw`: low halfword is signed map/world X pixels; high halfword is signed map/world Y pixels. Preserve each stored halfword losslessly as unsigned raw bits. |
 | +10 | id_raw |
 | +14 | descriptor_pointer_raw |
 | +18 | child_count |

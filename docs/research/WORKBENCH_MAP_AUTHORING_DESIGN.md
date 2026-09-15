@@ -1,4 +1,4 @@
-﻿# WORKBENCH-006 -- Visual map-authoring workspace -- DESIGN NOTE
+# WORKBENCH-006 -- Visual map-authoring workspace -- DESIGN NOTE
 
 Design analyst note. No production code written. Every mechanism claim is
 grounded in `file:line` or a research doc section per the project #1 rule
@@ -8,17 +8,15 @@ Status of the three load-bearing verdicts (full evidence in SC2/SC3/SC5):
 
 | Verdict | Class |
 |---|---|
-| SC2 coordinate contract | **BLOCKED-NEEDS-RE** (halfword->pixel unproven) |
+| SC2 coordinate contract | **CONFIRMED** (signed low/high map-world X/Y pixels) |
 | SC3 authoring round-trip | **ROUND-TRIP-PROVEN** (structural build; runtime unverified) |
 | SC5 placement->sprite identity | **PROVEN-COUNT = 0 / NEUTRAL-only** |
 
-The headline consequence: the TOOLKIT-022 ownership refusal that threatened
-Outcome A is **superseded** -- a built playable-shaped ROM with an added
-placement exists today. But Outcome A's *visual* premise (drag a marker to a
-pixel, see it there in-game) is **not** deliverable, because the placement
-coordinate->map-pixel transform is not established. WORKBENCH-006 can ship a
-real visual **viewer + semantic authoring** workspace now; direct pixel-move is
-the part that would hit a §42-style block. Details below.
+The headline consequence: the TOOLKIT-022 ownership refusal and the former SC2
+coordinate block are **superseded**. A built playable-shaped ROM with an added
+placement exists today, and PLACEMENT-POS-001 now establishes the reversible
+logical-canvas transform. The remaining work is implementation and validation of
+the visual workspace, not another prerequisite research ticket. Details below.
 
 ---
 
@@ -29,9 +27,9 @@ the part that would hit a §42-style block. Details below.
 | 1 | User's primary task | See the rendered retail map, see its placements overlaid on it, select one, inspect/author its behavior/text, add or clone a supported placement, build, run. This is the scene-authoring loop of `scene_tab.py` given a visual surface. `dragonbyte-ui-design` the guide:29-34 (visual game content -> tools -> inspector). |
 | 2 | Primary visual object | The composited map image. `render_map(rom, map_id)` returns `MapRenderResult` with `width`, `height`, 8-bit indexed `composite` bytes, `layers`, and 256-triple `palette` (`map_render.py:558,632-641`). Overlaid on it: placement markers. |
 | 3 | Selection/context model | ONE selected placement persists while its behavior/text/trigger are edited in the inspector -- mirrors `scene_tab.py`'s navigation stack (`scene_tab.py:172,384,432-437`) which keeps `("map", id)` context under a placement. Map identity + selected placement live in `Session` (`session.py:57-58 selected_map`), not in the widget. |
-| 4 | Primary actions (on the canvas) | Select placement (click), pan (middle-mouse), zoom (scroll) -- `desktop-editor-patterns.md:24-27`. Drag-to-move is DESIRABLE but blocked on SC2 (see there); ship click-select first, keep drag behind the coordinate transform. Add/Clone placement (canvas-anchored button or context action). |
-| 5 | Secondary actions (inspector) / menus/toolbars | Inspector: choose behavior (existing descriptor or authored `show_centered_sprite_text` script), set trigger, edit position halfwords, revert a pending change -- all already exist in `scene_tab.py:298-335,439-455,486-504`. Toolbar: layer/overlay toggles, zoom, Add/Clone, Build/Run (`desktop-editor-patterns.md:9-12`). Menus: File/project-level only (`desktop-editor-patterns.md:4-6`). |
-| 6 | Hidden / progressively disclosed | Every ROM address, file offset, `position_raw` word, `id_raw`, descriptor pointer, allocation/relocation. The workspace names things by semantic identity `map:NNNN` / `map:NNNN/placement:NNNN` (`scene.py:6-11`; webfoot-workbench the guide:65-84 "Navigate concepts, not storage"). Raw halfword spinboxes are the one leak today (`scene_tab.py:89-98`) -- see SC2. |
+| 4 | Primary actions (on the canvas) | Select placement (click), pan (middle-mouse), zoom (scroll), and drag-to-move -- `desktop-editor-patterns.md:24-27`. Add/Clone placement (canvas-anchored button or context action). The coordinate transform is now gated by signed-16 range validation, not by unproven semantics. |
+| 5 | Secondary actions (inspector) / menus/toolbars | Inspector: choose behavior (existing descriptor or authored `show_centered_sprite_text` script), set trigger, edit X/Y map pixels, revert a pending change -- all already exist in `scene_tab.py:298-335,439-455,486-504`. Toolbar: layer/overlay toggles, zoom, Add/Clone, Build/Run (`desktop-editor-patterns.md:9-12`). Menus: File/project-level only (`desktop-editor-patterns.md:4-6`). |
+| 6 | Hidden / progressively disclosed | Every ROM address, file offset, `position_raw` word, `id_raw`, descriptor pointer, allocation/relocation. The workspace names things by semantic identity `map:NNNN` / `map:NNNN/placement:NNNN` (`scene.py:6-11`; webfoot-workbench the guide:65-84 "Navigate concepts, not storage"). Preserve raw halfword bits internally; present signed X/Y pixels. |
 | 7 | Keyboard path | Tab order through map list -> canvas -> inspector fields; Ctrl+Z/Ctrl+Y undo/redo via `QUndoStack.createUndoAction` exactly as `graphics_tab.py:323-339`; arrow-key nudge of the selected placement is a keyboard alternative to drag (`accessibility-and-input.md:1-3,12`). Every mouse action needs a keyboard alternative. |
 | 8 | Empty / error / read-only / disabled states | No ROM open -> tab disabled (`app.py:33,57-58`). Map with no supported placement source -> READ-ONLY, no fallback (`scene.py:126-131` MapSupport.READ_ONLY; the guide fail-closed). Render failure -> `MapRenderError` caught at the slot boundary, QMessageBox not a dead click (webfoot-workbench the guide:31-37; the parent-catch rule). No project open -> authoring disabled with reason (`scene_tab.py:339-341`). |
 | 9 | Expected data volume | Maps are small: a BG layer is W×H 32×32-tile chunks; a chunk = 256×256 px. Map 39 is 3×2/3×2/4×2 chunks per BG -> composite ≈ up to 1024×512 px; map 40 is 1×1/2×2 (`MAP_RENDER_FORMAT.md:176-178`; `SCREEN_CHUNK_SIDE`/`map_render.py:61,316`). Worst realistic case ≈ ~1024×1024 px. Placements: **1,442 total across 240 maps**, max **69 placements for one type across 36 maps** but per-map counts are modest (`PLACEMENT_CODEC.md:39-43`; `PLACEMENT_TYPES.md:112`). So: one moderate image + tens of markers per map, never thousands. |
@@ -39,41 +37,28 @@ the part that would hit a §42-style block. Details below.
 
 ---
 
-## SC2 -- Coordinate contract -- **BLOCKED-NEEDS-RE**
+## SC2 -- Coordinate contract -- **CONFIRMED**
 
 A placement's stored position is a single 32-bit word `position_raw` at record
 `+0x0C`; `position_low = raw & 0xFFFF`, `position_high = (raw>>16) & 0xFFFF`
 (`formats/map_placements.py:106-107`).
 
-The **axis meaning of those halfwords is explicitly UNKNOWN**, stated in three
-independent places:
+PLACEMENT-POS-001 Phase 3 establishes the full transform for the supported Buu
+placement constructor (`PLACEMENT_POSITION_PROVENANCE.md`, Phase 3): low and high
+halfwords are the two's-complement encodings of signed map/world X and Y pixels.
+The constructor writes each as Q8 at actor `+0x1A0/+0x1A4`; its installed
+`0x0804C484` dispatch table subtracts the viewport origin into `+0x6C/+0x70`,
+and the following dispatch slot packs those values into OAM X/Y fields. Camera
+and sprite-anchor terms are presentation state, not map authoring inputs.
 
-- `formats/map_placements.py:6` -- "Prefix meanings stay raw, including position halfwords."
-- `PLACEMENT_CODEC.md:20` -- "+0C position_raw; position_low/high remain axis-UNKNOWN".
-- `PLACEMENT_TYPES.md:81` -- "position_low/high retained; **no axis claim added**"; and :189 "Coordinates remain deferred as before."
+**Consequence.** Plot a marker at `(signed16(position_low),
+signed16(position_high))`; a drag to map pixel `(x, y)` writes those two signed
+16-bit encodings through `PlacementRecord.with_position`. Reject instead of
+clamping/wrapping values outside `[-32768, 32767]`. A placement outside the
+currently rendered BG extent is not invalid by itself, so marker viewport bounds
+must be independent of layer bounds.
 
-Nothing in `MAP_RENDER_FORMAT.md` connects a placement position to a render
-pixel -- that doc is the BG tile-assembly chain (selectors, chunks, layers) and
-never mentions placement coordinates. The rendered image's own coordinate
-origin is logical chunk `(0,0)` row-major (`MAP_RENDER_FORMAT.md:159-166`);
-whether `position_low/high` are pixels, tiles, subpixels, or a different origin
-is not measured anywhere.
-
-**Consequence.** The toolkit can READ the two halfwords, round-trip them, and
-WRITE new values (`scene.py:151-187`, `PlacementRecord.with_position`
-`map_placements.py:109-112`). It CANNOT place a marker at the correct pixel, and
-therefore cannot convert a dragged pixel back to a correct halfword. Correct
-overlay positioning **requires NEW substantial RE** (a runtime capture that
-observes an object's on-screen pixel against its `position_raw`, of the kind
-`MAP_RENDER_FORMAT.md` cites for the BG chain but has not done for placements).
-
-**Design implication** (not a fix -- surfaced per Karpathy "surface, don't
-invent"): the visual workspace can plot markers at a *documented-unproven*
-position only if it is labelled as such, OR it defers marker positions until the
-transform is proven. It must NOT silently draw a marker at `(low, high)` as if
-that were a pixel -- that would fabricate a coordinate claim the evidence forbids.
-
-Classification: **BLOCKED-NEEDS-RE.**
+Classification: **CONFIRMED.**
 
 ---
 
@@ -218,7 +203,7 @@ Panel hierarchy (all within the one tab):
   from `scene_tab.py`: behavior chooser (`scene_tab.py:298-313`), authored
   `show_centered_sprite_text` script controls (`scene_tab.py:107-119,315-324`),
   trigger (`scene_tab.py:326-335`), position halfwords (`scene_tab.py:89-98`,
-  labelled unproven per SC2), and the semantic relationship navigator
+  to be surfaced as signed X/Y pixels per SC2), and the semantic relationship navigator
   (`scene_tab.py:139-165,346-385`). Named reused editors: scene, behavior,
   script, text -- the same `scene`/`PlacementEvents`/`TextStrings` facades
   (`scene.py:265-279,383-393`).
@@ -256,18 +241,15 @@ Ordered implementable chunks, each with rough SDK touch-points:
    pixmap path (`graphics_tab.py:154-168`); cache by map id + `project_revision`.
 2. **Map list + selection** -- populate from `scene.list_maps` (`scene.py:102`);
    support-state labels; enable/disable per ROM (`app.py`, `session.py`).
-3. **Placement overlay (markers)** -- plot NEUTRAL markers from
-   `scene.scene_placements` (`scene.py:190-224`). **Gated on SC2**: until the
-   coordinate transform is proven, either (a) label markers "position unproven"
-   or (b) list placements beside the canvas without pixel positions. Do not
-   fabricate a pixel from `(low, high)`.
+3. **Placement overlay (markers)** -- plot markers from
+   `scene.scene_placements` (`scene.py:190-224`) at signed low/high X/Y map
+   pixels. Preserve identity-neutral styling: visual sprite identity remains
+   unproven and is not necessary for a coordinate marker.
 4. **Selection + inspector** -- click a marker -> reuse `scene.placement_relationships`
    (`scene.py:282`) and the `scene_tab.py` relationship navigator + editors.
-5. **Direct-move + undo** -- arrow-nudge / drag -> `with_position` write via
-   `scene`/project (`map_placements.py:109`); one `QUndoCommand` per gesture
-   (SC6). **Gated on SC2** for correctness; nudging raw halfwords works now but
-   is not a proven pixel move -- ship as "adjust position value", not "drag on map",
-   until RE lands.
+5. **Direct-move + undo** -- arrow-nudge / drag -> signed-16 X/Y encoding through
+   `with_position` via `scene`/project (`map_placements.py:109`); one
+   `QUndoCommand` per gesture (SC6). Reject out-of-range map coordinates.
 6. **Add / Clone** -- `scene.add_authored_npc` -> `clone_placement`
    (`scene.py:425-481`; `project/placements.py:188`); fail-closed on validation.
 7. **Inspector behavior/script/text integration** -- behavior chooser, authored
@@ -286,24 +268,19 @@ Ordered implementable chunks, each with rough SDK touch-points:
     Feedback GUI except-breadth is a known live-walkthrough-only defect
     (MEMORY.md).
 
-Scope honesty: chunks 1-2, 4, 6-11 are deliverable on today's backend. Chunks 3
-and 5's *visual-pixel* correctness are the parts blocked by SC2 and are the
-ticket's real Outcome-A risk.
+Scope honesty: all listed chunks have a measured backend contract. Chunks 3 and
+5 still require normal implementation, validation, and GUI QA; they are no
+longer blocked by coordinate research.
 
 ---
 
 ## BLOCKERS
 
-- **SC2 coordinate transform (BLOCKED-NEEDS-RE).** `position_low/high`->map-pixel
-  is unproven (`map_placements.py:6`, `PLACEMENT_CODEC.md:20`,
-  `PLACEMENT_TYPES.md:81,189`). Blocks true drag-to-pixel and honest marker
-  positioning. This is a research prerequisite, not a design gap -- surfaced, not
-  invented around.
 - **SC3 runtime proof + capacity.** Structural build is proven; in-game behavior
   is not (`BUU_VERIFIED_CAPACITY.md:186-188`); only 256 bytes of Buu capacity
   declared (`:196-197`), zero elsewhere (`:137`).
 
-Neither stopped the note; both are reported with exactly where the evidence sits.
+SC3 remains the reported constraint; SC2 is closed by PLACEMENT-POS-001 Phase 3.
 
 ## SCOPE ADHERENCE
 
@@ -311,10 +288,9 @@ The note follows the design brief exactly; no scope changes were made.
 
 ## RECOMMENDED NEXT
 
-Resolve SC2 first: a runtime RE ticket proving `position_raw`->screen-pixel is the
-single unblock for visual drag-authoring. WORKBENCH-006 implement can still
-proceed on chunks 1-2,4,6-11 (viewer + semantic authoring + build/run) in
-parallel, treating marker pixel-position as deferred rather than fabricated.
+The coordinate prerequisite is closed. If the owner elects to open the
+implementation ticket, execute the full ordered canvas plan with signed-16 range
+validation and the mandatory GUI QA pass.
 
 ---
 
@@ -322,15 +298,11 @@ parallel, treating marker pixel-position as deferred rather than fabricated.
 
 This decision takes precedence over the Recommended Next paragraph above.
 
-WORKBENCH-006 stops at design. Implementation is blocked by deliberate decision,
-not by inability to write GUI code. Rationale: the core acceptance
-(`see object on actual map -> drag object -> build -> object appears there in
-retail`) depends on the placement coordinate transform, which is unproven. A
-"best-known" provisional marker would make the canvas visually assert a location
-the project cannot prove -- that undermines the entire purpose of a visual editor.
-No viewer-only reduced WORKBENCH-006. No provisional markers. No direct-manipulation
-UI built around an unproven coordinate meaning. The parallel-viewer path in
-RECOMMENDED NEXT above is explicitly NOT taken.
+WORKBENCH-006 remains a design-only ticket; this note does not authorize its GUI
+implementation. Its former reason for stopping is superseded: the core
+acceptance path now has a proven placement coordinate transform. A future
+implementation ticket may use direct manipulation, but still needs normal
+implementation, runtime acceptance validation, and GUI QA.
 
 ### Dependency graph at design close
 
@@ -338,8 +310,8 @@ RECOMMENDED NEXT above is explicitly NOT taken.
 - visual map renderer: **PROVEN**
 - placement read/write halfwords: **PROVEN**
 - placement -> sprite identity: **UNKNOWN**, non-blocking (neutral markers acceptable)
-- placement raw position -> logical map pixel coordinate: **BLOCKED-NEEDS-RE**
-- logical map pixel coordinate -> authored raw position: **BLOCKED-NEEDS-RE**
+- placement raw position -> logical map pixel coordinate: **CONFIRMED**
+- logical map pixel coordinate -> authored raw position: **CONFIRMED** (signed-16 range guard)
 
 The prior WORKBENCH-006 threat around TOOLKIT-022 materialization refusal is
 **STALE** -- superseded by later authoring/materialization work
@@ -347,11 +319,11 @@ The prior WORKBENCH-006 threat around TOOLKIT-022 materialization refusal is
 
 ### Handback
 
-    WORKBENCH-006 STATUS: DESIGN COMPLETE / IMPLEMENTATION BLOCKED
-    EXACT BLOCKER: placement position_raw <-> logical map pixel coordinate transform
+    WORKBENCH-006 STATUS: DESIGN COMPLETE / AWAITING IMPLEMENTATION TICKET
+    COORDINATE CONTRACT: placement position_raw <-> logical map pixel CONFIRMED
     PLACEMENT MATERIALIZATION: PROVEN
     PLACEMENT -> SPRITE IDENTITY: UNKNOWN / NON-BLOCKING
-    PROVISIONAL MAP MARKERS ALLOWED: NO
-    NEXT REQUIRED WORK: focused runtime RE of placement coordinate semantics
+    PROVISIONAL MAP MARKERS ALLOWED: N/A - markers may use the proven transform
+    NEXT REQUIRED WORK: owner-selected GUI implementation ticket
 
 The next ticket is NOT defined here (ticket section 44: do not define or begin the next ticket).

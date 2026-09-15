@@ -24,6 +24,7 @@ from pathlib import Path
 from .data.behavior_triggers import BEHAVIOR_TRIGGER_CONTRACTS
 from .data.script_effects import SCRIPT_EFFECTS
 from .entities import PlacementTypeError, PlacementTypes
+from .formats.map_placements import MapPlacementValueError, decode_position, encode_position
 from .formats.script_vm import ScriptError
 from .maps import MapError, MapIdentity, Maps, PlacementIdentity, UnknownMapError
 from .placement_events import PlacementEvents
@@ -151,9 +152,9 @@ def list_authorable_maps(maps: Maps) -> list[dict]:
 def map_placements(maps: Maps, map_id: str) -> list[dict]:
     """Existing placements for one map, annotated with type and clone-source use.
 
-    Each entry: `{identity, position_low, position_high, placement_type,
-    classification, is_clone_source}`. `placement_type`/`classification` are None
-    when this ROM has no verified type view.
+    Each entry includes lossless raw `position_low`/`position_high` plus confirmed
+    signed map-pixel `position_x`/`position_y`. `placement_type`/`classification`
+    are None when this ROM has no verified type view.
     """
     identity = _map_from_identity(map_id)
     try:
@@ -177,6 +178,8 @@ def map_placements(maps: Maps, map_id: str) -> list[dict]:
                 "identity": str(placement.identity),
                 "position_low": placement.record.position_low,
                 "position_high": placement.record.position_high,
+                "position_x": placement.record.position_x,
+                "position_y": placement.record.position_y,
                 "placement_type": type_id,
                 "classification": classification,
                 # Any existing placement is a valid clone source; a type is not
@@ -212,10 +215,13 @@ def scene_placements(
                 classification = ptype.classification
             except PlacementTypeError:
                 pass
+        position_x, position_y = decode_position(clone.position_low, clone.position_high)
         result.append({
             "identity": clone.identity,
             "position_low": clone.position_low,
             "position_high": clone.position_high,
+            "position_x": position_x,
+            "position_y": position_y,
             "placement_type": type_identity,
             "classification": classification,
             "is_clone_source": False,
@@ -479,6 +485,28 @@ def add_authored_npc(
         # as the façade type so the GUI catches one parent, preserving the message.
         raise SceneAuthoringError(str(exc)) from exc
     return clone.identity
+
+
+def add_authored_npc_at(
+    project_dir: str | Path,
+    map_id: str,
+    source_identity: str,
+    name: str,
+    map_position: tuple[int, int],
+    **kwargs,
+) -> str:
+    """Author one NPC at signed map-pixel `(x, y)` without raw-bit arithmetic."""
+    try:
+        map_x, map_y = map_position
+    except (TypeError, ValueError) as exc:
+        raise SceneAuthoringError("map_position must be an (x, y) pair") from exc
+    try:
+        raw_position = encode_position(map_x, map_y)
+    except MapPlacementValueError as exc:
+        raise SceneAuthoringError(str(exc)) from exc
+    return add_authored_npc(
+        project_dir, map_id, source_identity, name, raw_position, **kwargs
+    )
 
 
 def pending_changes(project_dir: str | Path, maps: Maps) -> list[PendingChange]:

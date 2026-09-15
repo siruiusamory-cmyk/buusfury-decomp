@@ -113,6 +113,7 @@ def test_map_placements_annotate_type_and_classification(types):
     assert placements[1]["placement_type"].endswith("placement_type:0003")
     assert placements[1]["classification"] == "UNKNOWN_CATEGORY"
     assert all(p["is_clone_source"] for p in placements)
+    assert (placements[0]["position_x"], placements[0]["position_y"]) == (86, 4660)
 
 
 def test_map_placements_bad_map_fails_closed(types):
@@ -174,6 +175,18 @@ def test_add_authored_npc_writes_and_returns_identity(project, types):
     reloaded, = read_project(project).maps[0]["authored_placements"]
     assert reloaded.identity == identity
     assert (reloaded.position_low, reloaded.position_high) == (123, 456)
+
+
+def test_add_authored_npc_at_encodes_signed_map_coordinates(project, types):
+    identity = scene.add_authored_npc_at(
+        project, "map:0000", "map:0000/placement:0000", "edge", (-1, -32768)
+    )
+    reloaded, = read_project(project).maps[0]["authored_placements"]
+    assert reloaded.identity == identity
+    assert (reloaded.position_low, reloaded.position_high) == (0xFFFF, 0x8000)
+    row = next(item for item in scene.scene_placements(types.maps, "map:0000", project)
+               if item["identity"] == identity)
+    assert (row["position_x"], row["position_y"]) == (-1, -32768)
 
 
 def test_pending_change_is_semantic_and_revert_removes_authored_placement(

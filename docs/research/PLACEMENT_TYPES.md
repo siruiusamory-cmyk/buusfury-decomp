@@ -78,7 +78,7 @@ treated as executable evidence; the boundaries above exclude FD70's data word.
 | +00 factory_raw | CONFIRMED | Static wrapper pointer; one factory across supported corpus |
 | +04 flags_raw | UNKNOWN | Preserved; no flag meanings assigned |
 | +08 type_raw | CONFIRMED | u32 selector in base+28*selector formula; exposed as stable placement type ID |
-| +0C position_raw | Existing structural DECODE/EDIT | position_low/high retained; no axis claim added |
+| +0C position_raw | Existing structural DECODE/EDIT | low/high raw halfwords encode signed map/world X/Y pixels; preserve raw bits losslessly (`PLACEMENT_POSITION_PROVENANCE.md`, Phase 3) |
 | +10 id_raw | CONFIRMED load, semantics UNKNOWN | F6AE loads it and passes it to 08000158; resource/graphics role not promoted |
 | +14 tail0_raw | CONFIRMED retention, semantics UNKNOWN | F6F0/F6F4 copy it to object+228; not sufficient to name script/graphics/descriptor |
 | +18/+1C tail1_raw/tail2_raw | CONFIRMED structural attachment, semantics UNKNOWN | F6D2/F6D6 passes address placement+18 to A93C; A956 retains that address. No VM/script/event interpretation |
@@ -185,8 +185,10 @@ Existing map-position/stat/text editing remains the authoring surface.
 
 Unresolved: six out-of-stat-extent targets and their actual extents, flags,
 remaining construction arguments/configuration, type-swap compatibility,
-human names/behavior, script/event/graphics attachment. Coordinates remain
-deferred as before. None warrants expanding TOOLKIT-009 into gameplay RE.
+human names/behavior, script/event/graphics attachment. Coordinate semantics are
+now established for the supported Buu placement constructor: signed raw low/high
+halfwords are map/world X/Y pixels (`PLACEMENT_POSITION_PROVENANCE.md`, Phase 3).
+None warrants expanding TOOLKIT-009 into gameplay RE.
 
 Validation and independent final review results are recorded in
 `../tickets/TOOLKIT-009-review.md` after completion.

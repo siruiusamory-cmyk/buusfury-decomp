@@ -17,6 +17,8 @@ from tools.webfoot.formats.map_placements import (
     RECORD_TAIL,
     ROM_BASE,
     SIBLING_FACTORIES,
+    decode_position,
+    encode_position,
     MapPlacementLengthError,
     MapPlacementShapeError,
     MapPlacementValueError,
@@ -103,6 +105,27 @@ def test_the_position_halfwords_split_the_word_low_first() -> None:
     record = PlacementRecord.from_bytes(record_bytes(position=0x0041003C))
     assert record.position_low == 0x003C
     assert record.position_high == 0x0041
+
+
+@pytest.mark.parametrize(
+    ("raw", "coordinate"),
+    [(0x0000, 0), (0x7FFF, 32767), (0x8000, -32768), (0xFFFF, -1)],
+)
+def test_position_halfword_codec_is_reversible_at_signed_16_bounds(raw, coordinate) -> None:
+    assert decode_position(raw, raw) == (coordinate, coordinate)
+    assert encode_position(coordinate, coordinate) == (raw, raw)
+
+
+def test_map_position_accessor_and_writer_preserve_signed_coordinate_contract() -> None:
+    record = PlacementRecord.from_bytes(record_bytes(position=0xFFFF8000))
+    assert (record.position_x, record.position_y) == (-32768, -1)
+    assert record.with_map_position(-1, 32767).position_raw == 0x7FFFFFFF
+
+
+@pytest.mark.parametrize("coordinate", [-32769, 32768, 1.5, True])
+def test_map_position_codec_refuses_out_of_range_or_non_integer_coordinates(coordinate) -> None:
+    with pytest.raises(MapPlacementValueError):
+        encode_position(coordinate, 0)
 
 
 def test_editing_the_position_changes_only_that_word() -> None:

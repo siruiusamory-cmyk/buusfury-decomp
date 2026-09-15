@@ -2,7 +2,9 @@
 
 CONFIRMED: 0x1C + 4*n bytes; +14 descriptor pointer, +18 child count,
 +1C ordered child pointers. Evidence: BUU_FD55_SCRIPT_OWNER.md, constructor
-0800F6D2 -> 0800A93C. Prefix meanings stay raw, including position halfwords.
+0800F6D2 -> 0800A93C. Position halfwords stay lossless raw bits at this layer;
+for the supported Buu placement constructor, their signed interpretations are
+map/world X (low) and Y (high) pixels; see PLACEMENT_POSITION_PROVENANCE.md.
 TOOLKIT-008's 32-byte fixed-tail shape remains a legacy subset predicate only.
 """
 from __future__ import annotations
@@ -36,6 +38,30 @@ class MapPlacementValueError(MapPlacementError):
 
 class MapPlacementShapeError(MapPlacementError):
     pass
+
+
+def decode_position_halfword(raw: int) -> int:
+    """Decode one lossless placement halfword as its signed map-pixel value."""
+    if type(raw) is not int or not 0 <= raw <= 0xFFFF:
+        raise MapPlacementValueError('position halfword must be an unsigned 16-bit integer')
+    return raw if raw < 0x8000 else raw - 0x10000
+
+
+def encode_position_coordinate(coordinate: int) -> int:
+    """Encode one signed map-pixel coordinate without wrapping or clamping."""
+    if type(coordinate) is not int or not -0x8000 <= coordinate <= 0x7FFF:
+        raise MapPlacementValueError('position coordinate must be a signed 16-bit integer')
+    return coordinate & 0xFFFF
+
+
+def decode_position(low: int, high: int) -> tuple[int, int]:
+    """Decode raw low/high halves to the confirmed `(map_x, map_y)` pair."""
+    return decode_position_halfword(low), decode_position_halfword(high)
+
+
+def encode_position(map_x: int, map_y: int) -> tuple[int, int]:
+    """Encode map-pixel X/Y to lossless raw low/high halves."""
+    return encode_position_coordinate(map_x), encode_position_coordinate(map_y)
 
 
 @dataclass(frozen=True)
@@ -105,11 +131,17 @@ class PlacementRecord:
 
     position_low = property(lambda self: self.position_raw & 0xFFFF)
     position_high = property(lambda self: (self.position_raw >> 16) & 0xFFFF)
+    position_x = property(lambda self: decode_position_halfword(self.position_low))
+    position_y = property(lambda self: decode_position_halfword(self.position_high))
 
     def with_position(self, low: int, high: int) -> PlacementRecord:
         if any(type(v) is not int or not 0 <= v <= 0xFFFF for v in (low, high)):
             raise MapPlacementValueError('position halfwords must be unsigned 16-bit integers')
         return replace(self, position_raw=(high << 16) | low)
+
+    def with_map_position(self, map_x: int, map_y: int) -> PlacementRecord:
+        """Return this record at signed map-pixel `(map_x, map_y)`."""
+        return self.with_position(*encode_position(map_x, map_y))
 
 
 def is_legacy_placement_record(data, offset: int) -> bool:

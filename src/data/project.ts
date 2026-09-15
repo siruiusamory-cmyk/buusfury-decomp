@@ -88,11 +88,11 @@ export const project: ProjectStatus = {
   blockerCode: "VISUAL MAP EDITOR",
   blockerTitle: "Put the proven ROM-only maps into DragonByte Z",
   blockerShort:
-    "The SDK can now reconstruct supported retail map graphics and complete logical tile layers directly from the immutable ROM, with no runtime VRAM capture. The remaining frontier is the author-facing map canvas: expose that proven backend in DragonByte Z before adding tile painting or map mutation.",
+    "The SDK can now reconstruct supported retail map graphics and complete logical tile layers directly from the immutable ROM, with no runtime VRAM capture. Placement coordinates are also proven as signed map-pixel X/Y values. The remaining frontier is the author-facing map canvas: expose those proven backends in DragonByte Z before adding tile painting or map mutation.",
   blockerParagraphs: [
     "The unknown ROM-to-VRAM assembly step is closed. Runtime observation and static analysis proved the tile-selector stream, multi-container character assembly, logical layer chunks, and the distinction between complete ROM layout and the engine's camera-relative circular screenblocks. Two contrasting retail maps render deterministically from ROM alone and agree exactly with the independently decoded VRAM reference after the runtime viewport transformation is normalized.",
-    "This is an SDK backend result, not the map editor itself. DragonByte Z still needs a read-only map surface that lets an author browse maps and inspect their real layered graphics by sight. Tile painting, resizing, collision, placements, and map writing remain separate work.",
-    "The broader visual-editor foundation therefore remains open and the overall estimate stays at 97%. The next measured blocker is integration of the ROM-only map renderer into the desktop tool without moving ROM-format knowledge into the GUI.",
+    "This is an SDK backend result, not the map editor itself. DragonByte Z still needs a map surface that lets an author browse maps, inspect their real layered graphics by sight, and use the proven placement coordinate plane. Tile painting, resizing, collision, and map writing remain separate work.",
+    "The broader visual-editor foundation therefore remains open and the overall estimate stays at 97%. The next measured blocker is integration of the ROM-only map renderer and proven placement coordinates into the desktop tool without moving ROM-format knowledge into the GUI.",
   ],
   acceptanceTarget:
     "Author playable Legacy of Goku content inside the real LOGII/Buu engine.",
@@ -339,12 +339,21 @@ export const project: ProjectStatus = {
       status: "complete",
     },
     {
+      id: "map-placement-coordinate-contract",
+      title: "Place map objects on the logical map",
+      plainEnglish:
+        "Use a placement's stored position as an exact X/Y pixel location on the map canvas, and convert a map-pixel move back into the engine's own record format.",
+      technical:
+        "Controlled authored-ROM runs proved both signed position halfwords copy exactly into the placement actor's Q8 coordinate fields. The actor's installed dispatch table then converts them to camera-relative X/Y values and its renderer packs them into OAM X/Y fields. The reversible authoring contract is signed low-halfword X and high-halfword Y map/world pixels, with an explicit signed-16 range guard; camera and sprite-anchor terms are presentation state.",
+      status: "complete",
+    },
+    {
       id: "visual-editor-foundation",
       title: "Show and edit real game graphics visually",
       plainEnglish:
         "See the game's actual sprites, frames, animations, and palettes, select them by sight, edit a colour, and watch the change appear in the running game.",
       technical:
-        "Sprite browsing and palette editing are runtime-proven, and the SDK now renders complete supported retail maps from ROM alone. The remaining work is the DragonByte Z map canvas itself: present the proven layered map graphics for visual browsing and inspection while keeping every ROM-format rule in the SDK. Per-sprite palette banks and sprite facing direction remain measured gaps, not guesses.",
+        "Sprite browsing and palette editing are runtime-proven, complete supported retail maps render from ROM alone, and placement coordinates now have a proven logical X/Y pixel contract. The remaining work is the DragonByte Z map canvas itself: present those capabilities for visual browsing and direct placement editing while keeping every ROM-format rule in the SDK. Per-sprite palette banks and sprite facing direction remain measured gaps, not guesses.",
       status: "current",
     },
     {

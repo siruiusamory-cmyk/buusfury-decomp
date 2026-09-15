@@ -448,11 +448,11 @@ def _map_document(maps: list[dict[str, Any]]) -> dict[str, Any]:
     TOOLKIT-008 adds `placements`: one entry per factory-led placement record the
     map owns, in placement-index order. Unlike `slots` these carry authorable
     semantic fields, because the record's layout *is* established - but only
-    `position_low`/`position_high` are authored, and `raw` still carries the
-    whole record so every UNKNOWN word round-trips exactly. The halfwords are
-    named by position in the word rather than by axis: nothing in this project
-    establishes which is X, and writing `x` into an authored file would assert
-    it.
+    `position_low`/`position_high` are authored raw halfwords, and `raw` still
+    carries the whole record so every UNKNOWN word round-trips exactly. Their
+    confirmed signed map/world interpretation is X then Y; the scene facade
+    exposes that interpretation while this project model retains the lossless
+    source representation.
     """
     tables: dict[str, Any] = {}
     for entry in sorted(maps, key=lambda item: item["index"]):

@@ -175,6 +175,10 @@ class BuildPanelTab(QWidget):
 
     # -- Validate ------------------------------------------------------------
 
+    def validate_project(self) -> None:
+        """Run the established validation action for another authoring surface."""
+        self._on_validate()
+
     def _on_validate(self) -> None:
         try:
             report = build_sdk.validate_project(
@@ -203,6 +207,10 @@ class BuildPanelTab(QWidget):
         self._refresh()
 
     # -- Build ---------------------------------------------------------------
+
+    def build_project(self) -> None:
+        """Run the established build action for another authoring surface."""
+        self._on_build()
 
     def _on_build(self) -> None:
         if not self._session.validation_current:

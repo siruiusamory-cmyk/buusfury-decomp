@@ -189,6 +189,46 @@ def test_add_authored_npc_at_encodes_signed_map_coordinates(project, types):
     assert (row["position_x"], row["position_y"]) == (-1, -32768)
 
 
+def test_set_placement_map_position_uses_confirmed_inverse_transform(project, types):
+    identity = "map:0000/placement:0000"
+
+    assert scene.set_placement_map_position(
+        project, types.maps, identity, (-16, 80)
+    ) is True
+    assert scene.set_placement_map_position(
+        project, types.maps, identity, (-16, 80)
+    ) is False
+
+    row = next(
+        row for row in read_project(project).maps[0]["placements"]
+        if row["index"] == 0
+    )
+    assert (row["position_low"], row["position_high"]) == (0xFFF0, 80)
+    rendered = next(
+        row for row in scene.scene_placements(types.maps, "map:0000", project)
+        if row["identity"] == identity
+    )
+    assert (rendered["position_x"], rendered["position_y"]) == (-16, 80)
+    change = next(
+        value for value in scene.pending_changes(project, types.maps)
+        if value.object_identity == identity
+    )
+    assert change.summary == "Moved placement on map:0000"
+    assert change.details == ("X 86 → -16", "Y 4660 → 80")
+
+
+@pytest.mark.parametrize("position", [(32768, 0), (0, -32769), (1.5, 0)])
+def test_set_placement_map_position_rejects_out_of_range_without_write(project, types, position):
+    before = (project / "maps" / "maps.toml").read_bytes()
+
+    with pytest.raises(SceneAuthoringError, match="signed 16-bit"):
+        scene.set_placement_map_position(
+            project, types.maps, "map:0000/placement:0000", position
+        )
+
+    assert (project / "maps" / "maps.toml").read_bytes() == before
+
+
 def test_pending_change_is_semantic_and_revert_removes_authored_placement(
     project, types
 ):

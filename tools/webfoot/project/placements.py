@@ -259,3 +259,102 @@ def remove_authored_placement(project_dir, identity):
         del doc["map"][key]["authored_placements"]
     path.write_text(dump_toml(doc), encoding="utf-8", newline="\n")
     return True
+
+
+def set_project_placement_position(
+    project_dir,
+    *,
+    map_index: int,
+    placement_identity: str,
+    position_low: int,
+    position_high: int,
+):
+    """Set one extracted or authored placement position in project source.
+
+    This is deliberately a project-source operation: it accepts a semantic
+    placement identity and lossless halfwords, validates the loaded project,
+    then updates only its declared position fields.  It never accepts a ROM
+    address or writes a ROM.  ``True`` means the project document changed.
+    """
+    from .model import _MAP_FILE, ProjectValidationError, _read_document, read_project
+
+    if type(map_index) is not int or map_index < 0:
+        raise ProjectValidationError("map index must be a non-negative integer")
+    if any(
+        type(value) is not int
+        or not PLACEMENT_POSITION_RANGE[0] <= value <= PLACEMENT_POSITION_RANGE[1]
+        for value in (position_low, position_high)
+    ):
+        raise ProjectValidationError("position halfwords must be unsigned 16-bit integers")
+    if not isinstance(placement_identity, str):
+        raise ProjectValidationError("placement identity must be a string")
+
+    project = read_project(project_dir)
+    if map_index not in project.maps:
+        raise ProjectValidationError(f"unknown owning map: {map_index}")
+    values = project.maps[map_index]
+    path = Path(project_dir) / _MAP_FILE
+    document = _read_document(path)
+    key = next(key for key in document["map"] if int(key.split(":")[1]) == map_index)
+    entry = document["map"][key]
+
+    if "/authored:" in placement_identity:
+        clone = next(
+            (
+                item
+                for item in values.get("authored_placements", ())
+                if item.identity == placement_identity
+            ),
+            None,
+        )
+        if clone is None:
+            raise ProjectValidationError(
+                f"unknown authored placement: {placement_identity}"
+            )
+        authored = entry.get("authored_placements")
+        if not isinstance(authored, dict) or placement_identity not in authored:
+            raise ProjectValidationError(
+                f"{placement_identity}: loaded project and source document disagree"
+            )
+        current = (clone.position_low, clone.position_high)
+        if current == (position_low, position_high):
+            return False
+        authored[placement_identity]["position_low"] = position_low
+        authored[placement_identity]["position_high"] = position_high
+        entry["authored_placements"] = dict(sorted(authored.items()))
+    else:
+        marker = "/placement:"
+        map_part, separator, placement_part = placement_identity.partition(marker)
+        if (
+            separator != marker
+            or map_part != f"map:{map_index:04d}"
+            or not placement_part.isdigit()
+        ):
+            raise ProjectValidationError(
+                "canonical placement identity must be map:NNNN/placement:NNNN"
+            )
+        placement_index = int(placement_part, 10)
+        row = next(
+            (
+                item
+                for item in values.get("placements", ())
+                if item["index"] == placement_index
+            ),
+            None,
+        )
+        if row is None:
+            raise ProjectValidationError(f"unknown placement: {placement_identity}")
+        placements = entry.get("placements")
+        placement_key = f"placement:{placement_index:04d}"
+        if not isinstance(placements, dict) or placement_key not in placements:
+            raise ProjectValidationError(
+                f"{placement_identity}: loaded project and source document disagree"
+            )
+        current = (row["position_low"], row["position_high"])
+        if current == (position_low, position_high):
+            return False
+        placements[placement_key]["position_low"] = position_low
+        placements[placement_key]["position_high"] = position_high
+
+    path.write_text(dump_toml(document), encoding="utf-8", newline="\n")
+    return True

@@ -34,6 +34,7 @@ from .project.placements import (
     PLACEMENT_POSITION_RANGE,
     clone_placement,
     remove_authored_placement,
+    set_project_placement_position,
 )
 
 
@@ -204,6 +205,26 @@ def scene_placements(
             f"{maps.profile.id!r}"
         )
     map_identity = _map_from_identity(map_id)
+    # Project source may override a canonical placement's proven position.  The
+    # build path applies these same semantic rows through Maps before it plans
+    # bytes, so the visual scene must present that current project composition,
+    # not the immutable retail coordinate behind it.
+    overrides = {
+        row["index"]: (row["position_low"], row["position_high"])
+        for row in project.maps.get(map_identity.index, {}).get("placements", ())
+    }
+    for row in result:
+        placement = _placement_from_identity(row["identity"])
+        override = overrides.get(placement.placement_index)
+        if override is None:
+            continue
+        low, high = override
+        if (low, high) == (row["position_low"], row["position_high"]):
+            continue
+        row["position_low"] = low
+        row["position_high"] = high
+        row["position_x"], row["position_y"] = decode_position(low, high)
+        row["provenance"] = "Retail (project position)"
     types = _placement_types(maps)
     for clone in project.maps.get(map_identity.index, {}).get("authored_placements", ()):
         type_identity = None
@@ -509,6 +530,51 @@ def add_authored_npc_at(
     )
 
 
+def set_placement_map_position(
+    project_dir: str | Path,
+    maps: Maps,
+    placement_identity: str,
+    map_position: tuple[int, int],
+) -> bool:
+    """Persist one placement at signed logical map pixels.
+
+    The facade owns the proven inverse coordinate transform.  GUI callers name
+    the semantic placement and supply `(x, y)` map pixels; this function rejects
+    out-of-range values instead of wrapping, then updates project source only.
+    It returns whether the saved semantic project state changed.
+    """
+    try:
+        map_x, map_y = map_position
+    except (TypeError, ValueError) as exc:
+        raise SceneAuthoringError("map_position must be an (x, y) pair") from exc
+    try:
+        low, high = encode_position(map_x, map_y)
+    except MapPlacementValueError as exc:
+        raise SceneAuthoringError(str(exc)) from exc
+
+    map_part = placement_identity.split("/", 1)[0]
+    map_identity = _map_from_identity(map_part)
+    try:
+        maps.entry(map_identity)
+        if "/authored:" not in placement_identity:
+            maps.placement(_placement_from_identity(placement_identity))
+        project = read_project(project_dir)
+        if project.meta.profile_id != maps.profile.id:
+            raise ProjectValidationError(
+                f"project profile {project.meta.profile_id!r} does not match open ROM profile "
+                f"{maps.profile.id!r}"
+            )
+        return set_project_placement_position(
+            project_dir,
+            map_index=map_identity.index,
+            placement_identity=placement_identity,
+            position_low=low,
+            position_high=high,
+        )
+    except (ProjectError, MapError) as exc:
+        raise SceneAuthoringError(str(exc)) from exc
+
+
 def pending_changes(project_dir: str | Path, maps: Maps) -> list[PendingChange]:
     """Describe current project edits without exposing byte locations."""
     project = read_project(project_dir)
@@ -530,15 +596,21 @@ def pending_changes(project_dir: str | Path, maps: Maps) -> list[PendingChange]:
             before = (original.record.position_low, original.record.position_high)
             after = (row["position_low"], row["position_high"])
             if before != after:
+                before_x, before_y = decode_position(*before)
+                after_x, after_y = decode_position(*after)
                 result.append(PendingChange(
                     f"placement-edit:{identity}", identity,
-                    f"Position changed on {identity}: {before[0]}, {before[1]} -> {after[0]}, {after[1]}",
+                    f"Moved placement on map:{map_index:04d}",
+                    (f"X {before_x} → {after_x}", f"Y {before_y} → {after_y}"),
                 ))
 
         for clone in values.get("authored_placements", ()):
+            position_x, position_y = decode_position(
+                clone.position_low, clone.position_high
+            )
             details = [
                 f"Added placement to map:{map_index:04d}",
-                f"Position set to {clone.position_low}, {clone.position_high}",
+                f"Position set to X {position_x}, Y {position_y}",
                 f"Cloned from {clone.clone_from}",
             ]
             if types is not None:

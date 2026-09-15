@@ -77,7 +77,7 @@ export const project: ProjectStatus = {
   subtitle: "Legacy of Goku authoring toolkit",
   tagline: "Building a real authoring toolkit for the Legacy of Goku engine.",
   description:
-    "Core semantic authoring is mature: playable scenes have been built and run in the retail engine, the owner has visually edited a sprite palette through the desktop tool, and retail maps can now be rendered directly from immutable ROM data. DragonByte Z is exposing those capabilities as a full visual editing environment: real game graphics as first-class authoring objects, not anonymous IDs.",
+    "Core semantic authoring is mature: playable scenes have been built and run in the retail engine, the owner has visually edited a sprite palette through the desktop tool, and DragonByte Z now renders retail maps directly from immutable ROM data and supports direct visual placement editing on the actual game map.",
   overallProgress: 97,
   overallProgressLabel: "≈ 97% COMPLETE",
   progressCaveat:
@@ -85,14 +85,14 @@ export const project: ProjectStatus = {
   currentPhase: "AUTHOR_NEW",
   currentFrontierLabel: "CURRENT FRONTIER",
   existingContentState: "MATURE",
-  blockerCode: "VISUAL MAP EDITOR",
-  blockerTitle: "Put the proven ROM-only maps into DragonByte Z",
+  blockerCode: "MAP-LAYOUT WRITING",
+  blockerTitle: "Author verified map-layout data",
   blockerShort:
-    "The SDK can now reconstruct supported retail map graphics and complete logical tile layers directly from the immutable ROM, with no runtime VRAM capture. Placement coordinates are also proven as signed map-pixel X/Y values. The remaining frontier is the author-facing map canvas: expose those proven backends in DragonByte Z before adding tile painting or map mutation.",
+    "DragonByte Z now makes the retail map the direct placement-authoring surface: an author can select, inspect, add, and move supported objects with exact map-pixel coordinates, then validate, build, and run the result. The next product gap is the reverse authoring path for map-layout data; tile painting itself is not implemented.",
   blockerParagraphs: [
-    "The unknown ROM-to-VRAM assembly step is closed. Runtime observation and static analysis proved the tile-selector stream, multi-container character assembly, logical layer chunks, and the distinction between complete ROM layout and the engine's camera-relative circular screenblocks. Two contrasting retail maps render deterministically from ROM alone and agree exactly with the independently decoded VRAM reference after the runtime viewport transformation is normalized.",
-    "This is an SDK backend result, not the map editor itself. DragonByte Z still needs a map surface that lets an author browse maps, inspect their real layered graphics by sight, and use the proven placement coordinate plane. Tile painting, resizing, collision, and map writing remain separate work.",
-    "The broader visual-editor foundation therefore remains open and the overall estimate stays at 97%. The next measured blocker is integration of the ROM-only map renderer and proven placement coordinates into the desktop tool without moving ROM-format knowledge into the GUI.",
+    "The map workspace uses the production ROM-only renderer and the proven signed X/Y placement transform. Its neutral markers deliberately do not pretend to know placement-to-sprite identity. Direct movement is a semantic project mutation with Undo/Redo, and the ordinary validation and build path produces the generated ROM.",
+    "The remaining blocker is distinct: the SDK has not yet proven a safe reverse authoring path for the map layout itself. Tile painting, resizing, collision, warps, connections, map creation, and map-layout mutation remain out of scope for the completed visual placement workspace.",
+    "The overall estimate remains 97% after product review: direct visual placement work is complete, while the larger remaining authoring surface and the ultimate playable-LOG1 target are not mechanically reduced to a ticket count.",
   ],
   acceptanceTarget:
     "Author playable Legacy of Goku content inside the real LOGII/Buu engine.",
@@ -353,7 +353,16 @@ export const project: ProjectStatus = {
       plainEnglish:
         "See the game's actual sprites, frames, animations, and palettes, select them by sight, edit a colour, and watch the change appear in the running game.",
       technical:
-        "Sprite browsing and palette editing are runtime-proven, complete supported retail maps render from ROM alone, and placement coordinates now have a proven logical X/Y pixel contract. The remaining work is the DragonByte Z map canvas itself: present those capabilities for visual browsing and direct placement editing while keeping every ROM-format rule in the SDK. Per-sprite palette banks and sprite facing direction remain measured gaps, not guesses.",
+        "Sprite browsing and palette editing are runtime-proven. DragonByte Z renders supported retail maps through the SDK's ROM-only renderer and overlays neutral placement markers at the proven signed map-pixel coordinates. The owner used the map itself to select, add, and move an object, then built and confirmed the generated ROM in the retail Buu's Fury engine. The GUI stays a thin client over semantic scene and project APIs; it contains no map-format or direct-ROM-write logic.",
+      status: "complete",
+    },
+    {
+      id: "map-layout-authoring",
+      title: "Author verified map-layout data",
+      plainEnglish:
+        "Give authors a safe way to change a map's layout itself, after the reverse write path has been proved.",
+      technical:
+        "Retail map rendering and direct placement editing are complete. No reversible tile-layout mutation contract has been established yet, so tile painting, layout writing, collision, warps, connections, resizing, and map creation are intentionally not claimed or started.",
       status: "current",
     },
     {
@@ -391,10 +400,19 @@ export const project: ProjectStatus = {
     { label: "CONTENT WORKFLOW ERGONOMICS", state: "done" },
     { label: "VISUAL GRAPHICS + PALETTE EDITING", state: "done" },
     { label: "ROM-ONLY MAP RENDERING", state: "done" },
-    { label: "VISUAL MAP EDITOR", state: "current", marker: "↑ YOU ARE HERE" },
+    { label: "VISUAL MAP EDITOR", state: "done" },
+    { label: "MAP-LAYOUT AUTHORING", state: "current", marker: "↑ YOU ARE HERE" },
     { label: "PLAYABLE LOG1 CONTENT", state: "target" },
   ],
   breakthroughs: [
+    {
+      id: "visual-map-placement-authoring",
+      title: "Direct visual placement editing on retail maps",
+      summary:
+        "DragonByte Z now renders a retail map from ROM as the primary authoring surface, where an author can select, add, inspect, and move supported objects directly on the map.",
+      technical:
+        "The workspace consumes the production ROM-only map renderer and the confirmed signed map-pixel placement transform. It uses neutral markers because placement-to-sprite identity remains unproven, persists movement through semantic project APIs, supports Undo/Redo, and builds through normal validation. The owner completed the visual workflow and confirmed the generated ROM places the authored object at the intended location in the retail Buu's Fury engine.",
+    },
     {
       id: "semantic-multi-map-workspace",
       title: "Semantic scene authoring across multiple maps",

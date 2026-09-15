@@ -145,3 +145,7 @@ class LauncherTab(QWidget):
         # Debounce: re-enable after a beat so a double-click can't spawn twice.
         self._launch_button.setEnabled(False)
         QTimer.singleShot(_DEBOUNCE_MS, lambda: self._launch_button.setEnabled(True))
+
+    def launch_built_rom(self) -> None:
+        """Launch the selected built ROM through the normal launcher action."""
+        self._launch()

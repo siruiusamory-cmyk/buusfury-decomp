@@ -1,7 +1,7 @@
 """T1.4 headless GUI smoke test for the workbench `MainWindow`.
 
-Proves the window constructs and the tab-enable contract holds: six tabs in
-order, only Atlas (0) enabled, Inspector/Maps/Graphics/Build/Launch (1-5)
+Proves the window constructs and the tab-enable contract holds: seven tabs in
+order, only Atlas (0) enabled, Inspector/Maps/Map/Graphics/Build/Launch (1-6)
 disabled until a ROM is open. Needs no ROM and no tmp dir - construction alone
 exercises the contract.
 
@@ -38,7 +38,7 @@ def test_mainwindow_tab_enable_contract(qapp) -> None:
 
     tabs = window.findChild(QtWidgets.QTabWidget)
     assert tabs is not None
-    assert tabs.count() == 6
+    assert tabs.count() == 7
     assert tabs.isTabEnabled(0)  # Atlas
-    for index in (1, 2, 3, 4, 5):  # Inspector, Maps, Graphics, Build, Launch
+    for index in (1, 2, 3, 4, 5, 6):  # Inspector, Maps, Map, Graphics, Build, Launch
         assert not tabs.isTabEnabled(index)

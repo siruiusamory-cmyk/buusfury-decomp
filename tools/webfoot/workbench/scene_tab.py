@@ -203,8 +203,31 @@ class SceneTab(QWidget):
         """Re-populate from the session (e.g. after a ROM opens)."""
         self._populate_maps()
 
+    def select_placement(self, map_id: str, placement_identity: str) -> None:
+        """Focus one semantic placement from the visual Map workspace."""
+        map_index = next(
+            (
+                index
+                for index in range(self._map_select.count())
+                if (entry := self._map_select.itemData(index))
+                and entry["identity"] == map_id
+            ),
+            -1,
+        )
+        if map_index < 0:
+            return
+        self._map_select.setCurrentIndex(map_index)
+        for row in range(self._placements.rowCount()):
+            item = self._placements.item(row, 0)
+            placement = item.data(Qt.ItemDataRole.UserRole) if item is not None else None
+            if placement and placement["identity"] == placement_identity:
+                self._placements.selectRow(row)
+                self._placements.setFocus()
+                return
+
     def _populate_maps(self) -> None:
         """Fill the map selector from `list_authorable_maps`; empty-safe."""
+        previous_map = self._session.selected_map
         self._map_select.blockSignals(True)
         self._map_select.clear()
         maps = self._session.maps
@@ -212,16 +235,19 @@ class SceneTab(QWidget):
             self._map_select.blockSignals(False)
             self._set_disabled("No authorable maps for the open ROM.")
             return
-        for entry in scene_sdk.list_maps(maps):
+        selected_index = 0
+        for index, entry in enumerate(scene_sdk.list_maps(maps)):
             self._map_select.addItem(
                 f"{entry['label']} - {entry['support']} ({entry['placement_count']} placements)",
                 entry,
             )
+            if entry["identity"] == previous_map:
+                selected_index = index
         self._map_select.blockSignals(False)
         if self._map_select.count() == 0:
             self._set_disabled("No authorable maps for the open ROM.")
             return
-        self._map_select.setCurrentIndex(0)
+        self._map_select.setCurrentIndex(selected_index)
         self._on_map_changed()
         self._refresh_pending()
 

@@ -269,7 +269,7 @@ region is a code *and data* span; a linear sweep decodes data as code, so the
 47 offset hits are not evidence that any of them reads a layer record, and the
 sign of a 2,035-halfword gap cannot be recovered from a sweep of this shape. An
 earlier draft of this document claimed "no `ldrsb` at all" and "no offset
-`0x0D`/`0x11` load" for this region; **that claim is withdrawn as REFUTED** , 
+`0x0D`/`0x11` load" for this region; **that claim is withdrawn as REFUTED**,
 it was based on a sweep whose reported undecodable count (18) corresponds to
 roughly the first 0x100 bytes of the documented range, not to the range.
 
@@ -706,7 +706,7 @@ The two iterations index a base taken from the record and decompress through
 `0x0803D5B8` (the same allocator entry the `0x08007A40` and `0x0800897B`
 wrappers use). This ticket did **not** fully reconstruct this family; it is
 recorded because `0x08007B63` reaches it, because its `+0x00` type word is
-`0x08049604`, a **different** code site from any of the five census values , 
+`0x08049604`, a **different** code site from any of the five census values,
 and because its loop bound of two is hard-coded, which is direct evidence that
 this family's object carries **two** chunk buffers while the `0x08007B78`
 family's carries **four** (`object+0x4C + 0x800*i`, `i < 4`).

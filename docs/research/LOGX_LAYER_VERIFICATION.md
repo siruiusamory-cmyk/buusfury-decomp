@@ -5,11 +5,13 @@ Reconstruct Buu's Fury layer record structure. Research only.
 ## Repository and safety
 
 - **START SHA:** `67fe01bdd8457954382190400870c3291449938a`
-- **END SHA:** recorded in the final handoff after commit; the branch head is the
-  START SHA plus this ticket's commits
+- **END SHA:** the branch head of `logx-layer-001` after this commit
+  (`git rev-parse logx-layer-001`); it is one commit past the two SHAs below
+  because this document records them in the commit that follows them
 - **BRANCH:** `logx-layer-001`
-- **COMMIT SHA(S):** recorded in the final handoff; the change set is 5 new files
-  plus the `docs/reverse-engineering.md` section
+- **COMMIT SHA(S):** `095cf48` `research(map): reconstruct Buu layer records`
+  (the research result), plus `8abd70a` `docs(tickets): record LOGX layer review
+  verdict` (the independent review verdict and correction gate)
 - **CANONICAL ROM SHA BEFORE:**
   `940AD5F01DB4465B8877DFE739510CBF34F4EA3D390F3DF13519808BC36F059E`
 - **CANONICAL ROM SHA AFTER:**
@@ -523,4 +525,7 @@ No ROM, save, state, dump, generated commercial asset, or `extern/` checkout is
 staged or untracked in the worktree; the canonical ROM lives outside it and
 outside the repository tree.
 
-Commit SHA(s) are recorded in the ticket handoff after the commit is created.
+Commit SHA(s): `095cf48` `research(map): reconstruct Buu layer records`, plus
+`8abd70a` `docs(tickets): record LOGX layer review verdict` recording the
+independent review verdict and the correction gate. The branch head after those
+two is one commit further, since this text records their SHAs.

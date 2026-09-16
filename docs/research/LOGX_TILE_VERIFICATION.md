@@ -5,13 +5,15 @@ Reconstruct Buu's Fury chunk / tile representation. Research only.
 ## Repository and safety
 
 - **START SHA:** `22d60419d61132ecaa3128b28a2ef274d317be66`
-- **END SHA:** the branch head of `logx-tile-001` after this commit
-  (`git rev-parse logx-tile-001`); this document records the SHAs of the commits
-  that precede it
+- **END SHA:** the branch head of `logx-tile-001` after the commit that records
+  these SHAs; the two commits below are `5dd99cb` and `f4e3076`
 - **BRANCH:** `logx-tile-001`
-- **COMMIT SHA(S):** `research(map): reconstruct Buu chunk and tile format`
-  (the research result) plus a review/correction commit recording the
-  independent verdict and the correction gate
+- **COMMIT SHA(S):** `5dd99cb4fa5bf7e6f6e3fe72f653681d8012762e`
+  `research(map): reconstruct Buu chunk and tile format` (the research result),
+  up to and including `f4e30767f149f3ba6862752358deb820cf70c059`
+  `docs(tickets): record LOGX tile review verdict and corrections` (the
+  independent review verdicts, the 20 required corrections and the correction
+  gate)
 - **CANONICAL ROM SHA BEFORE:**
   `940AD5F01DB4465B8877DFE739510CBF34F4EA3D390F3DF13519808BC36F059E`
 - **CANONICAL ROM SHA AFTER:**

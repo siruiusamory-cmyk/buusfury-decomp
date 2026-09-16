@@ -8,7 +8,7 @@ All findings below are evidence scoped. Structural facts and semantic interpreta
 - `CONFIRMED`: DragonByteZ treats GBA ROM pointers as values at or above `0x08000000`, subtracts that base, and bounds-checks against loaded size. Evidence: same commit, `src/rom.cpp`, `Rom::is_rom_pointer` and `Rom::pointer_to_offset`.
 - `CONFIRMED`: DragonByteZ's current map research uses a `0x38`-byte `MapEntry`. Evidence: same commit, `src/analysis.cpp:462-624`, `MapEntry` and `read_map_entries`.
 - `CONFIRMED`: in that implementation, byte fields occupy the beginning, pointer-bearing fields are read through `+0x10` to `+0x20`, music is at `+0x24`, and variation/entry/exit script references occupy `+0x28` through `+0x34`. This is upstream implementation evidence, not yet an independent byte-exact proof for every Buu profile.
-- `CONFIRMED`: DragonByteZ's Buu profile uses a map table offset `0x08E2E0` with 452 entries and a global atlas table at `0x179764` with 187 records. Evidence: same commit, `src/rom.cpp`, Buu profile initialization. The map table metadata is now configured only for `buus_fury_usa_rev0_01c1707f`; it must not transfer to another hash without validation.
+- `CONFIRMED`: DragonByteZ's Buu profile uses a map table offset `0x08E2E0` with 452 entries and loads an atlas table from file offset `0x179764`. Evidence: same commit, `src/rom.cpp`, Buu profile initialization. The map table metadata is now configured only for `buus_fury_usa_rev0_01c1707f`; it must not transfer to another hash without validation. The upstream *"global atlas table at `0x179764`"* reading is **superseded** by [LOGX-TILE-001](#logx-tile-001-chunk-payloads-and-tile-entries) below: GBA address `0x08179764` is the value held at scene-descriptor `+0x4C` on all 452 selector-1 roots, and the 187 entries there are selector-bank containers, so `0x179764` is a descriptor field's value rather than a standalone global structure. The two statements agree on the location and the entry count and disagree only on ownership.
 - `CONFIRMED`: DragonByteZ implements stored and custom compressed containers in `src/compression.cpp`; `src/analysis.cpp` also contains a BIOS LZ77 decoder. Presence of the latter does not prove that a particular map asset uses BIOS LZ77.
 - `CONFIRMED`: the pinned disassembly expects SHA-1 `f1c4b07554d2a3b1ad2f325307051e775ce68087`, matching the local ROM exactly. Evidence: `2genkidev/buusfury@cc53d0cd2d1c167e749419187e2d92017ac07468`, `README.md:6`, plus the reproducible local identification recorded in `docs/hash-investigation.md`.
 - `CONFIRMED`: the pinned Buu recomp expects SHA-1 `e65738e9d67688309f09811a54f495523ec9aada`, which does not match the local ROM. Evidence: `mstan/DragonBallZBuusFuryRecomp@453a913a9f67916b9b358776da1c1229b09a6c80`, `baserom.md:13`.
@@ -500,13 +500,15 @@ Tile entry bits, over the union of all 3745 unique decoded payloads
 | 12-15 | zero on all 3,834,880 entries | **RESERVED / CONSTANT IN CANONICAL DATA**; unused by any known consumer; semantic role UNRESOLVED |
 
 The bits 0-9 reading is not inferred from the hardware format: expanding every
-nonzero entry of every dominant payload (1,241,888 entries) and comparing the
-field against the map's own two tile sources leaves **0 exceptions** - 1,218,581
-entries fall inside the `root+0x48` selector stream's ordinals and 23,307 inside
-an animated-tile destination range on 178 maps. Bit 10 and bit 11 are not
-documented here as "horizontal" and "vertical": no recovered engine instruction
-reads either bit, and the direction assignment rests on the platform BG entry
-layout applied to bytes the engine copies verbatim into a screenblock whose
+nonzero entry of every dominant payload **that a map references** (1,241,888
+entries, a per-map expansion of shared payloads) and comparing the field against
+the map's own two tile sources leaves **0 exceptions** - 1,218,581 entries fall
+inside the `root+0x48` selector stream's ordinals and 23,307 inside an
+animated-tile destination range on 178 maps. (Aggregating over *unique* payloads
+instead gives 1,107,699 nonzero entries and is a different unit.) Bit 10 and
+bit 11 are not documented here as "horizontal" and "vertical": no payload
+consumer reads either bit, and the direction assignment rests on the platform BG
+entry layout applied to bytes the engine copies verbatim into a screenblock whose
 control word it writes as 8bpp with character base 0. That assignment is
 **PARTIALLY CONFIRMED**.
 

@@ -90,7 +90,7 @@ Additional confirmed physical facts not in the external hypothesis: `+0x00` is
 a halfword read whole (`0x08009630 ldrh`); `+0x02`/`+0x03` are bytes
 (`0x08009634`, `0x08009638`); `+0x04..+0x07` are four bytes added to
 `BG0CNT..BG3CNT`; `+0x24`/`+0x28` are a null-coupled count/pointer pair walked at
-a 12-byte stride by `0x08009420`; `+0x34`/`+0x38` are decompressed by
+a 0x18-byte element stride by `0x08009420`; `+0x34`/`+0x38` are decompressed by
 `0x0803D940` into 0x2000-byte buffers; `+0x3C` selects an engine table row;
 `+0x4C` is the single word `0x08179764` on every root.
 
@@ -114,8 +114,9 @@ reverse.
 
 452 records, 452 valid sources, 452 valid selector-1 roots, 0 null roots, 421
 distinct roots, 11 shared-root groups. Root range
-`0x0817B1B0..0x082B8C38`. Source-array run histogram: 397/38/6/3/2 records with
-1/2/3/4/5 words and one each at 6,7,8,9,10,12.
+`0x0817B1B0..0x082B8C38`. Source-array run histogram: 397 records with one valid
+word, 38 with 2, 6 with 3, 3 with 4, 2 with 5, and one each with 6, 7, 8, 9, 10,
+and 12 (55 records expose more than one selector).
 
 Largest shared groups: `0x0822CC08` x10 (maps 163,172,175,182,184,189,194,197,201,203);
 `0x0829C2D8` x5 (maps 24,25,26,27,28); three x4 groups and five x3 groups.
@@ -249,7 +250,7 @@ outside-usable feature, so `src/data/project.ts` is untouched.
 
 - Which instruction reads `root+0x0C`/`+0x10` out of the root?
 - Does any executable path pass a selector other than `1`, and what chooses it?
-- What object types populate `+0x24`/`+0x28` (12-byte stride, dispatch targets
+- What object types populate `+0x24`/`+0x28` (0x18-byte elements, dispatch targets
   `0x0800CE1A`/`0x0800D15A`) and `+0x40`/`+0x44`?
 - What are `+0x30`, `+0x50`, `+0x54`, `+0x58`, `+0x5C`? The `+0x50`/`+0x54`
   handler+size shape hints that the root is itself a layer-record-family member.
@@ -291,7 +292,7 @@ documentation errors were found. All were corrected before commit:
 | source-array run table summed to 451 | Corrected to eleven separate rows summing to 452 (`{1:397,2:38,3:6,4:3,5:2,6:1,7:1,8:1,9:1,10:1,12:1}`). |
 | `+0x50` alignment column said "0 (37 unaligned)" | Corrected to "0 (451 unaligned)"; 451 of 452 values are odd, i.e. Thumb-bit-set code pointers, and the `37` was a misread count. `+0x54`'s single unaligned value `0x266` is now also stated. |
 | "37 occurrences of `0x08008087` across the four layer-pointer targets" | Removed. Measured: 36 root headers, all at `+0x50`; 1516 layer-target first words; 0 layer slot values. The section now states the 1808-slot handler census directly. |
-| `+0x24`/`+0x28` described as a "12-byte stride" in one place | Corrected to a 0x18-byte element stride, consistent with `0x08009452/54/58`. The same error was corrected in `docs/reverse-engineering.md`. |
+| `+0x24`/`+0x28` described as a "12-byte stride" in the findings and unresolved-questions sections | Corrected to a 0x18-byte element stride in every location, consistent with `0x08009452/54/58`. The same error was corrected in `docs/reverse-engineering.md`. |
 | glibc `param_1 + 0x27` annotated "dest +0x4E" | Corrected to `dest +0x9C`; `strh r0,[r4,#0x1c]` with `r4 = param_1 + 0x80`. |
 | MapEntry `+0x05` annotated "a count, 1..3" | Corrected with the measured distribution and the `+0x18` coupling, and the missing `cmp`/`ble` guard was added to the snippet. |
 
@@ -310,6 +311,14 @@ census 1516/249/41/1/1 over 1808 slots; 98 roots and 249 slots pointing at
 re-verified by the implementer against the ROM before being applied, and every
 one reproduced; no finding was accepted on the reviewer's authority alone and no
 finding was left unaddressed.
+
+**Closeout follow-up.** During canonical closeout a systematic search for the
+superseded wording found three residual instances of the corrected `12`-byte
+stride inside this review document's own findings and unresolved-questions
+sections, and one run-length sentence that omitted the tail of the histogram.
+Those were corrected in the closeout commit without touching the accepted
+research commits. The corrections table above now names every affected section,
+and this document contains no remaining instance of the superseded values.
 
 ## Git status
 

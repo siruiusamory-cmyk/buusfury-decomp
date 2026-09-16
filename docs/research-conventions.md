@@ -50,3 +50,22 @@ Do not promote `INFERRED` to `CONFIRMED` through repetition. Promotion requires 
 - Addresses belong to named profiles.
 - Record endianness, width, alignment, pointer domain, bounds checks, and failure behavior.
 - Do not store proprietary sample bytes in notes or fixtures.
+
+## Static disassembly discipline
+
+A naive linear disassembly sweep can stop at the first undecodable halfword and
+silently return nothing for every later address. An empty sweep result is
+therefore **not** evidence that no consumer, caller, or reference exists. This
+produced a real false negative during `LOGX-MAP-RENDER-001`, where a sweep
+reported zero matches for patterns that were in fact present.
+
+For ROM-code analysis:
+
+- Do not treat an empty linear-sweep result as absence evidence.
+- Use resynchronising disassembly (advance past undecodable halfwords), known
+  function boundaries, cross-references, or another independently grounded
+  route before concluding that a reference is absent.
+- Distinguish incomplete disassembly from a genuine lack of references, and say
+  which one the evidence supports.
+- When a negative claim rests on a scan, report the scan's coverage explicitly
+  rather than asserting absence from the image as a whole.

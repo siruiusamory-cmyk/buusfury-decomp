@@ -12,13 +12,26 @@ that regression returns.
 
 The ROM-gated half of LOGX-TILE-001 lives in
 ``tests/integration/test_logx_tile_rom.py``.
+
+``tools.research.thumb_disasm`` needs **capstone**, which is research tooling
+rather than a declared dependency of the shipping SDK, and the CI image installs
+only ``.[dev]``. The module raises ``SystemExit`` when capstone is missing, which
+pytest reports as a collection INTERNALERROR, so capstone is probed *before* the
+import and an environment without it skips this file cleanly instead of failing
+the pipeline.
 """
 
 from __future__ import annotations
 
 import struct
 
-from tools.research.thumb_disasm import (
+import pytest
+
+pytest.importorskip(
+    "capstone", reason="the Thumb decoder under test requires capstone"
+)
+
+from tools.research.thumb_disasm import (  # noqa: E402
     FieldExtraction,
     decode_thumb_at,
     find_field_extractions,

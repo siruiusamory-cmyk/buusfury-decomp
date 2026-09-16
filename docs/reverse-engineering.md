@@ -417,6 +417,53 @@ recovered), the record layout of `+0x44`, and the meaning of `+0x30`,
 source resolves to `1`, yet 55 MapEntries expose multi-word source arrays, so a
 wider valid range is possible and unresolved.
 
+## LOGX-LAYER-001 layer records
+
+The four selector-1 root layer slots (`+0x14`, `+0x18`, `+0x1C`, `+0x20`) are
+**all non-null in all 452 canonical roots**: 1808 references resolving to **1464
+unique layer records** in `0x080707FC..0x082B8BC8`, 35 of which are shared
+between maps. An unused layer is a zero-dimension record (`0x080707FC`,
+referenced 249 times), never a null slot. Four root slots therefore mean four
+layer instances, not four record types
+([`research/LOGX_LAYER_PROVENANCE.md`](research/LOGX_LAYER_PROVENANCE.md)).
+
+Physical layout of a record, at the access width the engine uses:
+
+| offset | width | confirmed reading |
+| --- | --- | --- |
+| `+0x00` | 4 | an odd (Thumb-bit-set), non-4-byte-aligned word that is a valid Thumb code entry. Five distinct values occur; three of them are independently disassembled allocator/constructor routines. It is **not** the word the constructor writes into its object: that object field is an even data pointer (`0x08049410`, `0x08049548`, `0x080498B0`, `0x08049604`, one per family). Whether the record word is ever branched through is UNRESOLVED |
+| `+0x04`, `+0x08` | 4 each | scalar words, read at `0x08007BBE`/`0x08007BC4` and copied to `object+0x3C`/`object+0x40`; meaning UNKNOWN |
+| `+0x0C` .. `+0x13` | 4 + 4 | two 4-byte words, read whole by `ldm r0!,{r2}` at `0x08007BD0` and `ldr r0,[r0]` at `0x08007BD4`, copied to `object+0x44`/`object+0x48`. Nothing recovered consumes those object fields; signedness, units and any X/Y pairing are UNRESOLVED |
+| `+0x14` | 1 | unsigned grid count in x: `ldrb` at `0x08007BDC`, used as the horizontal bound at `0x08007C66`/`0x08007C70` |
+| `+0x15` | 1 | unsigned grid count in y: `ldrb` at `0x08007BDE`, used as the vertical bound at `0x08007C3C`/`0x08007C3E` |
+| `+0x16` | 2 | signed halfword, `ldrsh` at `0x08007BB6`, copied to object `+0x0C`; 0 in all 1420 dominant-class records |
+| `+0x18` | 4 x (`+0x14` * `+0x15`) | the chunk-pointer window. The constructor indexes it at `record + 0x18 + 4*i` (`lsls r1,r5,#2` at `0x08007BEE`, load at `0x08007BF2`) and decompresses each non-null entry through `0x0803D940` to a `0x800`-byte destination at `object + 0x4C + 0x800*i`. When the product exceeds four the loop is **skipped entirely** (`cmp r6,#4` / `bgt` at `0x08007BE2`/`0x08007BE4`) |
+
+`+0x14` and `+0x15` are **separate byte fields** read by two distinct `ldrb`
+instructions and multiplied at `0x08007BE0`; they are never loaded as a
+halfword. The streaming consumer computes the chunk index as
+`y * (record+0x14) + x` at `0x08007C86`, which independently fixes `+0x14` as
+the x-count and `+0x15` as the y-count.
+
+`+0x00` vocabulary over the 1464 unique records (references in brackets):
+`0x08008087` 1420 [1516], `0x0800897B` 41 [41], `0x08007A41` 1 [249],
+`0x08007B63` 1 [1], `0x080088BD` 1 [1].
+
+The LOGExtractor readings of `+0x14`, `+0x15` and `+0x18` are independently
+**confirmed**. Its `+0x0D` and `+0x11` X/Y readings are **refuted at the value
+level**: those bytes are zero on 1458 and 1453 of 1464 records respectively and
+neither is among the fields the one recovered record consumer reads. A stronger
+"no consumer exists" claim is **not** made - the region's instruction census is
+incomplete (2,035 undecodable halfwords in `0x08007000..0x08010000`), so no
+absence claim rests on it. Layer **positioning remains UNRESOLVED** - no signed
+coordinate transform was found, and none is imported.
+
+The layer record's `+0x18` window is a **4-byte-element** pointer array. The
+`0x18`-byte element stride established elsewhere in this project is
+**CONFIRMED for root `+0x24`/`+0x28`** (`0x08009452..0x08009458`); the MapEntry
+`+0x18` array examined here uses a 4-byte stride, so it is **not** a second
+`0x18`-byte site.
+
 ## Unresolved after ROM-002
 
 - Semantic meaning of every `_raw` field above, especially `output`, `zone`, `area`, `variation`, counts, flags, `music_id`, and pointer target types.

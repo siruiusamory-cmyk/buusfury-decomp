@@ -359,6 +359,64 @@ unestablished.
 
 Generated C/C++ is behavioral evidence only. The pinned framework explicitly directs fixes into analyzer/emitter code followed by regeneration (`mstan/gbarecomp@6571cb39858af70d691914132f81b01a4558d815`, `README.md:248-250`). Useful future surfaces include TCP debug queries, snapshots, IO traces, reverse-debug rings, symbol mapping, and strict-static coverage. None is canonical editable game source for this project.
 
+## LOGX-MAP-RENDER-001 selected map root
+
+The selector route confirmed by LOGX-MAP-RECORD-001
+(`MapEntry[+0x2C] + 4 * (selector - 1)`, Thumb `0x080089CC`) resolves, at
+selector `1`, a per-map ROM-resident **load-time definition template**. Thumb
+`0x0800953E`, reached from the MapEntry load flows `0x08008BD0` and
+`0x08009078`, copies its scalar fields into the RAM map-state structure and
+hands its pointer fields to the graphics, layer, and object loaders
+(**CONFIRMED**, static instruction and decompilation evidence; full detail and
+the read-only Ghidra report procedure are in
+[`research/LOGX_MAP_RENDER_PROVENANCE.md`](research/LOGX_MAP_RENDER_PROVENANCE.md)).
+
+All 452 canonical records resolve a non-null, 4-byte aligned, in-ROM selector-1
+root (`0x0817B1B0..0x082B8C38`, 421 distinct). Exactly 453 word-aligned ROM words
+hold one of those root values: the 452 `MapEntry+0x2C` selector-1 slots plus one
+stray hold at `0x0837F900` (value `0x08250A24`). A resynchronising full-image
+Thumb and ARM scan found no **code** that loads or computes a root address by
+PC-relative constant, so the intended access route is `MapEntry+0x2C`. (Root
+range values do appear as data inside the root region itself; an earlier claim
+of "zero literal loads in the image" was wrong and is recorded as refuted in the
+provenance document.)
+
+Confirmed physical layout of the selected root. Widths are the access width the
+engine uses, not an assumed schema:
+
+| offset | width | confirmed reading |
+| --- | --- | --- |
+| `+0x00` | 2 | halfword, loaded whole at `0x08009630` |
+| `+0x02`, `+0x03` | 1 each | bytes at `0x08009634`/`0x08009638` |
+| `+0x04`..`+0x07` | 1 each | four bytes at `0x0800961E`..`0x0800962E`, added to `BG0CNT`..`BG3CNT` at `0x080093E0`..`0x08009406` |
+| `+0x08`, `+0x0A` | 2 each | `ldrh` at `0x0800958A`/`0x08009592`; horizontal and vertical map extent in pixels, stored as `extent - 1`; maximum camera scroll is `extent - 1 + 239` / `+ 159` |
+| `+0x0C` | 4 | count |
+| `+0x10` | 4 | aligned in-ROM pointer, null exactly when `+0x0C` is null |
+| `+0x14`, `+0x18`, `+0x1C`, `+0x20` | 4 each | aligned in-ROM pointers to layer records; target `+0x00` is a Thumb handler (`0x08008087` dominant, also `0x08007A41`, `0x0800897B`, `0x08007B63`, `0x080088BD`), `+0x14`/`+0x15` are chunk width/height bytes, `+0x18` is a container-pointer array |
+| `+0x24` | 4 | count |
+| `+0x28` | 4 | aligned in-ROM pointer, null exactly when `+0x24` is null; `0x08009420` walks it at a 0x18-byte element stride |
+| `+0x34`, `+0x38` | 4 each | aligned in-ROM pointers decompressed by `0x0803D940` into 0x2000-byte buffers at `0x080095AE`/`0x080095B6` |
+| `+0x3C` | 4 | word (`0` in 451 roots, `1` in map 19), selects an engine table row for the BG control values |
+| `+0x40` | 4 | count in `1..14` |
+| `+0x44` | 4 | aligned in-ROM pointer, null exactly when `+0x40` is null; `0x08009670` loads exactly this pair and forwards it to registry routine `0x08012664` |
+| `+0x48` | 4 | aligned in-ROM pointer to a Webfoot-LZ container whose decoded payload is a delta-coded u16 selector stream (`0x08009BE6`..`0x08009C12`) |
+| `+0x4C` | 4 | the single word `0x08179764` on all 452 roots; engine-global, not per-map |
+
+All three count/pointer pairs (`+0x0C`/`+0x10`, `+0x24`/`+0x28`,
+`+0x40`/`+0x44`) are null-coupled: no root has a count without a pointer or the
+reverse.
+
+Provisional or unresolved, and deliberately not promoted: the semantic names
+"width"/"height" (the pixel-extent reading is confirmed, the tile-vs-pixel unit
+name is not), the BG0-BG3 slot assignment (slot order is consumed by the BG
+control programming but the per-slot assignment is not directly proven), the
+animated-tile identity of `+0x0C`/`+0x10` (the record loader and VRAM target are
+established, but the instruction that reads the pair out of the root was not
+recovered), the record layout of `+0x44`, and the meaning of `+0x30`,
+`+0x50`..`+0x5C`. Selector use is partially confirmed: every examined selector
+source resolves to `1`, yet 55 MapEntries expose multi-word source arrays, so a
+wider valid range is possible and unresolved.
+
 ## Unresolved after ROM-002
 
 - Semantic meaning of every `_raw` field above, especially `output`, `zone`, `area`, `variation`, counts, flags, `music_id`, and pointer target types.

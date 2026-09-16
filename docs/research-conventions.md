@@ -69,3 +69,44 @@ For ROM-code analysis:
   which one the evidence supports.
 - When a negative claim rests on a scan, report the scan's coverage explicitly
   rather than asserting absence from the image as a whole.
+
+### Aggregate and constant-offset access
+
+A constant-offset operand scan is **not** sufficient evidence that a field has no
+consumer. Code can consume several adjacent fields through one aggregate access
+without ever encoding an individual field offset, and a scan that looks for
+`ldr rd,[rn,#off]` will miss it entirely.
+
+`LOGX-CONNECTOR-001` produced a real instance. The consumer of `root + 0x40` and
+`root + 0x44` is
+
+```text
+08009672  adds r1, #0x40
+08009676  ldm  r1, {r1, r2}
+```
+
+The base pointer is first advanced to `+0x40`, and the two fields are then read
+**together** by one 8-byte `ldm`. Neither word is ever the target of a
+constant-offset load, so a scan for displacement `0x40` or `0x44` returns three
+unrelated sites and looks like an absence. The scan was correct; the inference
+from it would have been wrong.
+
+For absence claims:
+
+- Do not conclude "no consumer" from a constant-offset scan alone.
+- Account for **base-pointer adjustment followed by an aggregate access** -
+  `ldm`/`stm`, or any equivalent pattern that consumes a run of adjacent fields
+  from one adjusted base. Look for an `adds`/`subs` that forms `base + k`
+  followed by a multi-register load or store.
+- State the scanner's coverage and its deliberate gaps rather than its result
+  alone. For an operand scanner those gaps include the aggregate forms, the
+  register-offset forms, and any encoding the scanner does not decode.
+- A scanner used for absence claims should be **differentially tested against an
+  independent disassembler**, with both the site population and the agreement
+  count reported. `tools/research/thumb_mem_operands.py` was validated that way
+  over `0x08000000..0x08007000` on the canonical image: **3147** in-scope
+  constant-immediate sites at real instruction boundaries, **0** misses and
+  **0** misreports, where in-scope means the displacement is written out
+  (a 16-bit `[Rn]` counts as displacement zero), the base register is neither SP
+  nor PC, and the displacement is non-negative. Report the definition alongside
+  the count, because the number is meaningless without it.

@@ -10,10 +10,10 @@ The active WORKBENCH-006 worktree was not touched.
 | | |
 | --- | --- |
 | **START SHA** | `d0b29f9f1e8b6d0e11d67605dc96ba82ade5ab96` |
-| **END SHA** | `a67faee` (primary research commit); the follow-on commit records the review verdict and the correction gate |
-| **BRANCH** | `logx-connector-001` |
-| **WORKTREE** | `<temp>\log1-remake-logx-connector-001` |
-| **COMMIT SHA(S)** | primary `a67faee`; follow-on review-record commit appended after it |
+| **END SHA** | `e3d65e3b9136098b1cedef99f4738ddce9b15a7c` (accepted end SHA) |
+| **BRANCH** | `logx-connector-001` (isolated research) -> `integrate/logx-connector-001` |
+| **WORKTREE** | `<temp>\log1-remake-logx-connector-001` (research); `<temp>\log1-remake-integrate-logx-connector-001` (integration) |
+| **COMMIT SHA(S)** | research `a67faee`, review record `e3d65e3`; integration cherry-picks `0b56ca0` and `f113c27`, taken from `origin/master` `d0b29f9f1e8b6d0e11d67605dc96ba82ade5ab96` |
 | **CANONICAL ROM SHA BEFORE** | `940AD5F01DB4465B8877DFE739510CBF34F4EA3D390F3DF13519808BC36F059E` |
 | **CANONICAL ROM SHA AFTER** | `940AD5F01DB4465B8877DFE739510CBF34F4EA3D390F3DF13519808BC36F059E` |
 
@@ -211,7 +211,7 @@ halfword-typed field. Four independent engine places handle it byte-wise:
    `cmp r3,r5`, then `adds r1,#0x38`;
 3. the warp routine `0x08008D44`: two `strb` into a two-byte staging buffer
    (`0x08008D68`, `0x08008D6A`);
-4. no `ldrh` reads these offsets anywhere on these paths.
+4. no `ldrh` reads these offsets on either traced path.
 
 Taking `+0x11` as high and `+0x12` as low resolves to an accepted
 `MapEntry +0x00` lookup key on **735/735** records. No other content byte pair
@@ -567,10 +567,11 @@ as "zero disagreements over a population of more than 1,500 in-scope sites",
 which is literally what `test_the_operand_scan_agrees_with_capstone` asserts
 (`assert matched > 1500`, line 548) but is **21x weaker** than the measured
 population. `docs/research/LOGX_CONNECTOR_PROVENANCE.md:804-808` states
-"31,971 of 31,973". The reviewer measured 31,962 in-scope sites and 0
-disagreements, so the substance is sound; the problem is that the asserted
-threshold is far below the measured value, so the test would still pass if
-coverage collapsed by 95%. **Raise the bound to the measured value** so the
+"31,971 of 31,973" (a figure that **did not survive re-measurement** and was
+replaced; see the correction gate below). The reviewer measured 31,962 in-scope
+sites and 0 disagreements, so the substance is sound; the problem is that the
+asserted threshold is far below the measured value, so the test would still pass
+if coverage collapsed by 95%. **Raise the bound to the measured value** so the
 regression net is real.
 
 **5. NON-BLOCKING - one exactness claim is unverified and should be softened or
@@ -695,8 +696,10 @@ confirm the ledger now carries one status per claim.
 | | |
 | --- | --- |
 | START SHA | `d0b29f9f1e8b6d0e11d67605dc96ba82ade5ab96` |
-| Primary commit | `a67faee` |
-| Files in the commit | 7 changed, 3597 insertions(+), 3 deletions(-) |
+| Accepted research commits | `a67faee` (research/tooling/tests/ROM Bible), `e3d65e3` (independent-review record) |
+| Accepted end SHA | `e3d65e3b9136098b1cedef99f4738ddce9b15a7c` |
+| Integration cherry-picks | `0b56ca0`, `f113c27` from `origin/master` `d0b29f9f1e8b6d0e11d67605dc96ba82ade5ab96`; both clean, every blob byte-identical to the accepted branch |
+| Files in the research commit | 7 changed, 3597 insertions(+), 3 deletions(-) |
 | Worktree | `<temp>\log1-remake-logx-connector-001` |
 
 ```

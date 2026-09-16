@@ -10,10 +10,10 @@ The active WORKBENCH-006 worktree was not touched.
 | | |
 | --- | --- |
 | **START SHA** | `d0b29f9f1e8b6d0e11d67605dc96ba82ade5ab96` |
-| **END SHA** | `PENDING` |
+| **END SHA** | `a67faee` (primary research commit); the follow-on commit records the review verdict and the correction gate |
 | **BRANCH** | `logx-connector-001` |
 | **WORKTREE** | `<temp>\log1-remake-logx-connector-001` |
-| **COMMIT SHA(S)** | `PENDING` |
+| **COMMIT SHA(S)** | primary `a67faee`; follow-on review-record commit appended after it |
 | **CANONICAL ROM SHA BEFORE** | `940AD5F01DB4465B8877DFE739510CBF34F4EA3D390F3DF13519808BC36F059E` |
 | **CANONICAL ROM SHA AFTER** | `940AD5F01DB4465B8877DFE739510CBF34F4EA3D390F3DF13519808BC36F059E` |
 
@@ -695,7 +695,7 @@ confirm the ledger now carries one status per claim.
 | | |
 | --- | --- |
 | START SHA | `d0b29f9f1e8b6d0e11d67605dc96ba82ade5ab96` |
-| Primary commit | `PENDING` |
+| Primary commit | `a67faee` |
 | Files in the commit | 7 changed, 3597 insertions(+), 3 deletions(-) |
 | Worktree | `<temp>\log1-remake-logx-connector-001` |
 

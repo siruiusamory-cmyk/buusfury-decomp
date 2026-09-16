@@ -465,6 +465,10 @@ def analyze_chunks(targets: dict[str, Any]) -> dict[str, Any]:
     union: dict[str, Any] = {
         "entries": totals["entries"],
         "zero_entries": totals["zero_entries"],
+        # Aggregated over UNIQUE payloads, so this is not the denominator for the
+        # per-map tile-index coverage check in :func:`analyze_tile_index`, which
+        # expands shared payloads once per map that references them.
+        "nonzero_entries": totals["entries"] - totals["zero_entries"],
         "bit_occurrence": {f"bit{bit}": totals[f"bit{bit}"] for bit in range(16)},
         "bit10_set": bit10_total,
         "bit11_set": bit11_total,

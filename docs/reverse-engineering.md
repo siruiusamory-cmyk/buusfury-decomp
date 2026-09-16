@@ -514,27 +514,40 @@ Bits 12-15 are **not** to be documented as "unused by the format": the
 all-zero census is a property of canonical data, no `0x0000F000` or
 `0x00000FFF` mask exists anywhere in the image, and the engine's occupancy test
 treats any nonzero entry as occupied. The four bits are separately classified as
-reserved/constant and as unread by any known consumer.
+reserved/constant and as unread by any known payload consumer. Bits 10 and 11
+are individually **CONFIRMED** to exist, to be used and to lie outside the
+tile-index field; the up/down and left/right *direction* assignment is
+**PARTIALLY CONFIRMED** only, because no engine consumer of a payload reads
+either bit. That negative is scoped deliberately: it rests on an image-wide
+adjacent `lsls`/`lsrs` mask scan plus an aligned-constant search, and
+shift-then-branch carry tests, `movs`+`lsls` mask builds and non-adjacent
+`lsls`/`lsrs` pairs were **not** scanned. Every such site sampled in the
+map/layer region reads an object field, never a payload word.
 
 The tile unit is **8x8 pixels**, which the engine proves rather than inherits:
 the query method shifts pixels to tiles with `asrs #3` on both axes
 (`0x0800805C`/`0x0800805E`), the character-data writer copies exactly 64 bytes
 per destination tile (`0x08009C6A`/`0x08009C78`), and the chunk index is a pixel
 coordinate shifted by 8 (`0x08008022`), i.e. 256x256 pixels per chunk. The
-engine's own `REG_BG0CNT..REG_BG3CNT` values are the four halfwords at
-`0x080716D8` selected by `root+0x3C`: `0x1C80 0x1D80 0x1E80 0x1F80`, which is
-8bpp, character base 0 and screen bases 28..31 - matching the blit destination
-`0x0600E000 + slot*0x800`.
+engine's own `REG_BG0CNT..REG_BG3CNT` values come from one of two records at
+`0x080716D8`, selected by `root+0x3C`: **451 roots select index 0**
+(`0x1C80 0x1D80 0x1E80 0x1F80`) and one - map 19, root `0x082AD8BC` - selects
+index 1 (`0x1C80 0x1D80 0xBE80 0x1F80`). Both are 8bpp with character base 0 and
+screen bases 28..31, matching the blit destination `0x0600E000 + slot*0x800`;
+they differ only in map 19's BG2, whose `0xBE80` makes that one screenblock
+512x256 rather than 256x256.
 
 `root+0x48` is a Webfoot container whose decoded `u16` array the engine prefix-
 decodes in place at `0x08009C02`..`0x08009C12` as
 `absolute[i] = (raw[i] + absolute[i-1] + 1) & 0xFFFF`, with `absolute[0] = raw[0]`
 and the container's declared size as the terminator. All 452 canonical roots
 decode; sizes are 4..1784 bytes (2..892 selectors). Each decoded value is a
-packed pair: `value >> 8` indexes the container array at `root+0x4C`
-(`0x08009C54`/`0x08009C56`) and `value & 0xFF` selects a 64-byte tile inside that
-bank's `0x4000`-byte payload (`0x08009C6E`), so one selector contributes one 8x8
-tile to character memory at `0x06000000 + 64*ordinal`.
+packed pair: `value >> 8` is a bank index and `value & 0xFF` selects a 64-byte
+tile inside that bank's `0x4000`-byte payload (`0x08009C6E`). The engine loads
+`root+0x4C` as a **pointer to a `u32` array of bank container addresses**
+(`0x08009C54` loads the field, `0x08009C56` indexes the array it points at), so
+one selector contributes one 8x8 tile to character memory at
+`0x06000000 + 64*ordinal`.
 
 File offset `0x179764` is not an independent global graphics structure: the GBA
 address `0x08179764` is the value stored at `root+0x4C` on all 452 roots, and it

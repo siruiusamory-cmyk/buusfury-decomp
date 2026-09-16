@@ -110,27 +110,67 @@ all-zero payload; every payload exactly 1024 entries.
 
 - **BITS 0-9: CONFIRMED** as an integer field, and **CONFIRMED** as the tile
   ordinal the engine's own loaders populate. 896 distinct values, maximum 895,
-  covering `0..895`. Expanding every nonzero entry (1,241,888 of them) against
-  the map's static selector ordinals and its animated-tile destination ranges
-  leaves **0 exceptions** (1,218,581 static, 23,307 animated, on 178 maps). Bits
-  0-9 are also CONFIRMED as the hardware character name: the halfword reaches the
-  BG screenblock unchanged, and the engine writes `BG0CNT..BG3CNT` =
-  `0x1C80 0x1D80 0x1E80 0x1F80` (8bpp, character base 0, screen bases 28..31).
+  covering `0..895`. Expanding every nonzero entry of every dominant payload a
+  map references - a per-map, per-reference expansion of shared payloads -
+  gives 1,241,888 entries; comparing bits 0-9 against the map's static selector
+  ordinals and its animated-tile destination ranges leaves **0 exceptions**
+  (1,218,581 static, 23,307 animated, on 178 maps). Aggregating over *unique*
+  payloads instead gives a smaller and differently-scoped 1,107,699 nonzero
+  entries, which is not the denominator this check uses. Bits 0-9 are also
+  CONFIRMED as the hardware character name: the halfword reaches the BG
+  screenblock unchanged, and the engine writes `BG0CNT..BG3CNT` from one of two
+  records at `0x080716D8` selected by `root+0x3C` - index 0 on **451** roots
+  (`0x1C80 0x1D80 0x1E80 0x1F80`) and index 1 on **map 19 only**
+  (`0x1C80 0x1D80 0xBE80 0x1F80`). Both are 8bpp with character base 0 and
+  screen bases 28..31; they differ only in map 19's BG2, whose `0xBE80` makes
+  that single screenblock 512x256 instead of 256x256. The value actually stored
+  is the table halfword **plus** a per-frame offset (`0x080093E2`/`0x080093E4`,
+  `[r6,#0x34]`) whose source no recovered code writes. The blit destination
+  `0x0600E000 + slot*0x800` matches the table record's screen base in both cases.
+- **BITS 10 AND 11 (existence and independence): CONFIRMED.** **Direction
+  assignment: PARTIALLY CONFIRMED.** See above.
 - **BIT 10: CONFIRMED** to exist, to be used and to lie outside the tile-index
   field. **Horizontal-flip direction: PARTIALLY CONFIRMED** - the platform BG
-  entry layout applied to a verbatim VRAM copy; no recovered engine instruction
-  reads the bit. No site anywhere in the image isolates bit 10.
+  entry layout applied to a verbatim VRAM copy. **No site anywhere in the image
+  isolates bit 10** (0 of the image's 1532 adjacent `lsls`/`lsrs`
+  mask-or-field pairs).
 - **BIT 11: CONFIRMED** likewise. **Vertical-flip direction: PARTIALLY
   CONFIRMED**, same basis. Four sites isolate bit 11, all inside the
   `0x0806E000..0x0806F000` table block, which no `BL`/`BLX` in the image reaches
-  and which is not the map/layer code region.
+  (0 targets from all 8,838 4-byte-aligned encodings) and which is not the
+  map/layer code region.
 - **BIT 12, 13, 14, 15: RESERVED / CONSTANT IN CANONICAL DATA; UNUSED BY ANY
   KNOWN CONSUMER; semantic role UNRESOLVED.** Zero on all 3,834,880 entries. No
   `0x0000F000` or `0x00000FFF` mask exists as an aligned word anywhere in the
-  image; no site extracts a 4-bit field at shift 12 in code. They are **not**
+  image; no site extracts a 4-bit field at shift 12 in code (the four `(12, 4)`
+  sites are all at `0x0816A0E2` or above, inside data). They are **not**
   documented as "unused by the format": the engine's occupancy test at
   `0x08008076` treats any nonzero entry as occupied, so a nonzero high nibble
   would not be inert.
+
+The absence evidence is a raw-halfword scan over the whole image, not a linear
+disassembly sweep. It finds **1532** adjacent mask-or-field pairs - **46** below
+`0x08007000`, **29** inside the map/layer code region `0x08007000..0x0800A000`,
+**961** inside the first `0x70000` bytes and **571** at or above `0x08070000` -
+and **none of the region's 29 pairs has a `right_shift` that reaches bit 9**, so
+nothing in the code that owns a payload *selects* a field beginning at bit 9 or
+above. (The region does contain two `(0, 16)` `& 0xFFFF` truncations at
+`0x08009E32`/`0x08009FB6`, which read a whole halfword and select none of it.)
+The low-ten-bit mask `(0, 10)` exists 51 times elsewhere in the image and never
+in that region; the sampled uses are OAM attribute packing.
+
+**The scope of this negative is deliberately narrow.** It is *not* "no engine
+instruction anywhere reads those bits". Three idioms that could test a bit of
+another value were not scanned, and each was measured so the gap is visible:
+shift-immediately-followed-by-a-conditional-branch pairs (8,014 image-wide; 241 /
+395 / 372 / 312 / 350 / 760 of them put bits 10-15 in the tested position; none
+of the bit-10..14 ones is in the map/layer region, and most are result tests
+rather than carry tests); `movs #imm ; lsls` mask builds with a bit at 10 or
+above set (1,204 sites, 301 constants, the bits-10-11 constant `0x0C00` 34 times,
+none in the map/layer region); and non-adjacent `lsls`/`lsrs` pairs, one of which
+does sit in the map/layer region (`& 0x3FF` at `0x08008728`..`0x08008730`) but
+operates on a shifted coordinate, not a payload word. Every sampled source of
+every one of those idioms is an object field, never `object+0x10..object+0x1C`.
 
 ## Root `+0x48`
 
@@ -158,6 +198,12 @@ bank's `0x4000`-byte decoded payload (`0x08009C6E`). One selector contributes on
 groups: a bank container is decoded once per contiguous run of equal
 `value >> 8` (`0x08009C3A`..`0x08009C48`). LOGExtractor's "running index selects
 a tile directly" is **REFUTED**; its recurrence is **CONFIRMED**.
+
+**Consumers.** The decoded *stream* has exactly one consumer, `0x08009BD4`. The
+*field* `root+0x48` has two: `0x08009B80` also loads it and takes
+`declared_size / 2` to derive the static selector count used with the
+`root+0x0C`/`+0x10` animation records. That second reader does not decode the
+stream, so the recurrence and the `(bank, tile)` split are unaffected.
 
 ## Global graphics source and `0x179764`
 
@@ -292,6 +338,8 @@ image):
 | Tile reference outside both engine loaders | **0 of 1,241,888** |
 | Bank table entry that is not a kind-1 container | 0 |
 | Bank declaring a size other than `0x4000` | 1 (index 186, `0x3C40`) |
+| Selector-1 roots whose `+0x3C` is not 0 | **1** (map 19, root `0x082AD8BC`, value 1) |
+| Selector-1 roots whose four `BGxCNT` screen bases are not `28..31` | **0** (map 19's index-1 record keeps bases 28..31; only its BG2 screenblock size differs) |
 
 ## Tooling added
 
@@ -301,11 +349,12 @@ image):
   `--selectors`, `--tile-index`. Shared-target aware: the entry census is
   aggregated over **unique payloads**, never over references. Columns describe
   physical shape, container kind, decoded width and raw bit position only.
+  Determinism verified by two byte-identical runs over the canonical image.
 - `tools/research/thumb_disasm.py` - **extended**, not replaced:
   `decode_thumb_at`, `iter_thumb_wide`, `linear_thumb_wide` offer each site a
   four-byte window so two-halfword Thumb instructions decode, and
-  `find_field_extractions` enumerates every `lsls`/`lsrs` field-extraction pair
-  by raw halfword scan. The legacy two-byte entry points are left unchanged so
+  `find_field_extractions` enumerates every `lsls`/`lsrs` mask-or-field pair by
+  raw halfword scan. The legacy two-byte entry points are left unchanged so
   LOGX-LAYER-001's published undecodable-halfword census stays reproducible; the
   distinction is documented in the module docstring.
 
@@ -319,27 +368,43 @@ non-dominant handlers reported by shape only; the union entry census and the
 full per-bit table; representative payload words and selector streams; the
 32x32 constants; the exact instruction bytes for the array indexing, the row and
 column masks, the occupancy test, the pixel shifts, the VRAM destination, the BG
-register write, the recurrence and the 64-byte tile copy; the BG control halfwords
-`0x1C80 0x1D80 0x1E80 0x1F80`; the 187-entry bank table; the largest bank index;
-the tile-index coverage invariant; the engine-side bit scans; and the probe's
-documented invocation and refusal behaviour.
+register write, the recurrence and the 64-byte tile copy; the BG control
+halfwords and the two-record variation; the 187-entry bank table; the largest
+bank index; the tile-index coverage invariant; the engine-side bit scans; and the
+probe's documented invocation and refusal behaviour.
+
+`tests/unit/test_thumb_disasm_field_extraction.py`, **11 portable synthetic
+tests**. No ROM and no private input: they build the halfword sequences the
+helper claims to recognise and pin both the plain mask idiom
+(`lsls #a ; lsrs #a`, `right_shift == 0`) and true field extraction, plus the
+wide-window `bl` decode. They exist because the first draft of the helper
+required a strictly larger second shift, which made `right_shift == 0`
+unreachable and every ROM-gated "no site masks the low *n* bits" assertion
+vacuously true.
 
 ## Test results
 
 Measured in this worktree with `LOGX_CANONICAL_ROM` and `WEBFOOT_BUU_ROM` set to
-the canonical ROM:
+the canonical ROM, after the review corrections:
 
-- `tests/integration/test_logx_tile_rom.py`: **30 passed** (72 s).
-- The four LOGX files plus `tests/integration/test_map_render_rom.py` (the
-  accepted production renderer): **81 passed, 2 skipped** (57 s). The two skips
-  are the MAP-VIS-001 VRAM oracle inputs, which are not configured here; the
-  LOGX-LAYER-001 review records the same two skips.
+- `tests/integration/test_logx_tile_rom.py` + `tests/unit/test_thumb_disasm_field_extraction.py`:
+  **41 passed** (52.5 s) - 30 ROM-gated integration tests and 11 portable
+  synthetic tests.- The four LOGX files plus `tests/integration/test_map_render_rom.py` (the
+  accepted production renderer) and the two safety files: **101 passed,
+  2 skipped** (78.9 s). The two skips are the MAP-VIS-001 VRAM oracle inputs,
+  which are not configured here; the LOGX-LAYER-001 review records the same two
+  skips.
+- `tests/unit` (whole directory): **1308 passed, 15 skipped**. The skips are nine
+  PySide6-dependent Workbench modules, three site-build-dependent questline
+  tests, one VRAM-dump-dependent map-render test and one ROM-dependent Workbench
+  session test.
 - `tests/unit/test_project_safety.py`, `test_rom_safety.py`,
   `test_code_review_workflow.py`, `test_workflow_migration.py`: **31 passed**.
 - With the ROM unavailable, `test_logx_tile_rom.py` reports **4 passed,
   26 skipped, 0 failed** - the four that need no ROM are the pointer-classification
   contract, the payload-shape constants, the non-canonical-image rejection and
-  the non-canonical-file refusal.
+  the non-canonical-file refusal. The portable synthetic file needs no ROM and
+  passes either way.
 
 The record-shape findings of this ticket do not disturb the accepted production
 renderer.
@@ -351,7 +416,9 @@ Environment note: `tmp_path`-using tests fail with
 `PermissionError: [WinError 5] ... \AppData\Local\Temp\pytest-of-<user>` in this
 environment. That is pre-existing and not ticket-caused - the same failure occurs
 on the untouched `tests/integration/test_logx_layer_rom.py` - and every run above
-was made with an explicit `--basetemp`.
+was made with an explicit `--basetemp`. The independent reviewer could not
+reproduce the claim on their machine and therefore did not confirm it; it is a
+local environment observation, not a ticket finding.
 
 ## ROM_BIBLE_IMPACT
 
@@ -433,21 +500,116 @@ and MapEntry `+0x18`; no layer-record site uses it.
 
 ## Independent review
 
-**Verdict: PENDING.** Recorded in the review/correction commit that follows the
-research commit, together with a required-corrections table and the correction
-gate state.
+Two fresh-context reviewers were used, each with no knowledge of this ticket's
+working sessions and each free to write and run its own analysis code against the
+canonical image. Both verified the ROM SHA-256 before and after their work and
+neither wrote to the image or to the worktree.
+
+**Reviewer A - census and disassembly gate. Verdict: REJECT (fixable), then
+re-verified.** It independently re-derived every census number with its own code:
+452 / 421 / 1808 / 1464; 1516 / 1420; `4274 = 156 + 4118`; 3745 distinct with 165
+shared and a maximum reuse of 10; the target range; all 3745 targets kind-1
+declaring `0x800` and decoding to 2048 bytes with 3745 distinct digests; the full
+union bit table; the 117/85 anomalies; all 452 selector streams; map 39's stream
+and recurrence; the 187-entry bank table; and the coverage invariant
+`1,218,581 + 23,307 = 1,241,888` with 0 exceptions on 178 maps. Every one matched
+exactly. It reproduced all 17 cited instruction byte ranges, found no
+instruction-level statement in provenance sections 4, 6, 9 or 10 contradicted by
+disassembly, and confirmed that the only platform-convention claim (bit 10/11
+direction) is correctly labelled PARTIALLY CONFIRMED. It confirmed the ROM
+unchanged. It then reported seven blocking corrections, of which C1 was found
+independently by this ticket during self-check before the verdict arrived.
+
+**Reviewer B - adversarial verification. Verdict: APPROVE WITH REQUIRED
+CORRECTIONS.** It attacked each conclusion rather than confirming it, using
+dataflow rather than linear sweeps:
+
+- **no second dereference**: enumerated every `ldr rN,[rM,#8]` and
+  `ldr rP,[rQ,#0x18]` site with a nine-instruction backward window. Exactly seven
+  candidates, of which only the two dominant-layer consumers hand the value to
+  `0x0803D940`; no site dereferences one more level. **SURVIVES.**
+- **verbatim copy, no repack or runtime mutation**: the only reads of
+  `object+0x10`..`+0x1C` are the row `memcpy` and the `ldrh`; the only `strh` in
+  the layer code region writes `REG_BGxHOFS`. **SURVIVES.**
+- **bit absence claim**: **WEAKENED.** It confirmed the cited sites and the
+  table-block claim, but showed the technique set does not cover
+  shift-then-branch carry tests, `movs`+`lsls` mask builds or non-adjacent
+  `lsls`/`lsrs` pairs, and that the image-wide form of the claim is therefore not
+  established. Every sampled source is an object field, never a payload buffer,
+  so the payload-scoped conclusion stands but the wording had to be corrected
+  (correction 4 below).
+- **BGxCNT derivation**: decoded bit by bit and confirmed; also independently
+  reproduced the `root+0x3C` census (451 zeros, map 19 = 1). **SURVIVES.**
+- **bits 12-15 classification**: re-expanded **all 1439** dominant-shape records
+  (4002 non-null elements, 160 nulls) and confirmed no size outlier, no entry
+  writer anywhere, and that the null-cell default container `0x08070808` is
+  kind 0 with `0x800` zero bytes - so no runtime path can set those bits.
+  **SURVIVES.**
+- **selector recurrence and `(bank, tile)` split**: verified instruction by
+  instruction. **SURVIVES**, with the one omission corrected below
+  (correction 5).
+- **`0x08179764`**: 427 aligned words hold the value, all inside the descriptor
+  region; the 30 apparent direct code references are data coincidences whose
+  "disassembly" contains Thumb-2 forms that cannot execute on ARM7TDMI.
+  **SURVIVES.**
+- **`0x800` stride and the 19 orphan records**: reproduced the orphans and the
+  products, and confirmed over all 1439 records that no element declares anything
+  but kind-1 `0x800`, so the stride cannot overrun the `0x204C` allocation.
+  **SURVIVES.**
+- **four-entry resident cache**: read `0x08007C12` end to end and confirmed the
+  cache size and the conclusion. **SURVIVES, not over-stated.**
 
 ## Required corrections
 
-Recorded in the review/correction commit.
+Every correction below was independently re-verified against the ROM by this
+ticket before being applied, and the affected numbers were re-measured rather
+than copied from a review.
+
+| # | Correction | Source | Status |
+| ---: | --- | --- | --- |
+| 1 | `find_field_extractions` compared the two shift amounts with a strict `>`; `right_shift == 0` was therefore **unreachable**, and every "no site masks the low *n* bits" statement was vacuously true rather than measured. Changed to `>=`; the scan total rose from 959 to **1532**; added a portable synthetic test that fails if the vacuous form returns. | found in self-check, independently confirmed by A as its worst blocker | APPLIED and re-verified |
+| 2 | `root+0x3C` is **not** 0 on every root: 451 roots hold 0 and **map 19 (root `0x082AD8BC`) holds 1**, selecting `0x080716E0 = 1C80 1D80 BE80 1F80`, whose BG2 is 512x256. Corrected in the provenance document, the review document and the ROM bible. | A (C2), independently confirmed by B | APPLIED and re-verified |
+| 3 | `"961 of them inside 0x08000000..0x08007000"` transposed two digits of the range. Corrected to the full breakdown: 46 below `0x08007000`, 29 in the map/layer region, 961 in the first `0x70000` bytes, 571 above. | B (1) | APPLIED and re-verified |
+| 4 | The absence claim was stated image-wide. Rewritten to the payload-scoped form, with the three unscanned idioms measured and published (8,014 shift-then-branch pairs, 1,204 `movs`+`lsls` builds, non-adjacent pairs) and the sampling result that none of them reads a payload buffer. Corrected in the provenance document, the review document and the ROM bible. | B (4), corroborated by A (C) | APPLIED and re-verified |
+| 5 | `"its only consumer"` was too narrow: the decoded stream has one consumer, but the *field* `root+0x48` has two, because `0x08009B80` reads its declared size. | B (5) | APPLIED and re-verified |
+| 6 | `"inside the code that owns a layer payload there is no mask or field extraction reaching bit 9 or above at all"` contradicted the ticket's own table row for the two in-region `(0, 16)` `& 0xFFFF` truncations. Rewritten as "no pair in the region has `right_shift >= 9`". | B (3) | APPLIED and re-verified |
+| 7 | The BL/BLX figures mixed two enumerations. Replaced with one enumeration stated per number: **8,838** 4-byte-aligned encodings, **8,266** resolving in-ROM, **4,440** distinct targets, per-block call targets **2**..**1,384**, block `0x08060000` = **9**, `0x0806E000..0x0806F000` = **0**. Also corrected the bytes quoted at `0x0806E640` to `0x03800070` / `0x00000C00` / `0x40040002`. | B (2) and A (C3, C4, C5) | APPLIED and re-verified |
+| 8 | `"Expanding every unique dominant payload (1,241,888 nonzero entries)"` used the wrong unit. 1,241,888 is a per-map, per-reference expansion; the unique-payload expansion is **1,107,699** (`3,834,880 - 2,727,181`). Both are now stated with their units, and the probe's union output carries `nonzero_entries` so the two can never be confused again. | A (C6), independently confirmed by B | APPLIED and re-verified |
+| 9 | `0x0800897B`'s first-window-word prose was ambiguous. Replaced with the four exact values and their record counts: `0x00000000` on 38 records, plus `0xFFFFFF56`, `0xFFFFFFAB` and `0x000000AA` once each, all three outside the ROM address range. | A (C7) - A's own classification of `0x000000AA` as unaligned-in-ROM is itself incorrect, since it lies below the ROM base; the document states the measured class | APPLIED and re-verified |
+| 10 | BGxCNT receives `record[bg]` **plus** a per-frame offset (`0x080093E2`/`0x080093E4`), not the record unconditionally. Stated. | B (6) | APPLIED and re-verified |
+| 11 | Two image-wide absence claims ("the only payload read", "the only engine test") stated no coverage method. Both now name the enumeration and the region scan behind them. | A (a) | APPLIED and re-verified |
+| 12 | `"only when x*y <= 4"` omitted the constructor's `x*y == 0` guard at `0x08007BE8`. Corrected to `0 < x*y <= 4`. | A (b) | APPLIED and re-verified |
+| 13 | ROM bible: `root+0x4C` is a pointer to the bank array, which is then indexed; reworded. | A (c) | APPLIED and re-verified |
+| 14 | The quoted BG-register instruction block skipped `0x080093E2`/`0x080093E4`. Added. | A (d) | APPLIED and re-verified |
+| 15 | "invoked by the layer object's own render methods" was asserted as fact; it rests on the recovered class table, not on a direct call. Now marked **INFERRED** and the two `bl` callers named. | A (e) | APPLIED and re-verified |
+| 16 | The 19 orphan records yield **86** cells of which **82** are non-null; the paragraph implied all 82. Corrected, and the independent reproduction recorded. | B (non-blocking) | APPLIED and re-verified |
+| 17 | The placeholder class `0x08049548` `memset`s the same screenblock region to zero (`0x08007A28`..`0x08007A38`); the blit is not the region's only writer. Recorded. | B (non-blocking) | APPLIED and re-verified |
+| 18 | The constructor initialises `object+0x10`..`+0x1C` to the default container `0x08070808` (`0x08007BA8`..`0x08007BB2`); added, because it explains the null-cell blit path. | B (non-blocking) | APPLIED and re-verified |
+| 19 | The payload-read enumeration cannot exclude an indirect call reaching a reader. Scoping caveat added. | B (non-blocking) | APPLIED and re-verified |
+| 20 | `tmp_path` `PermissionError` claim: reviewer A could not reproduce it on its machine. Retained as a local environment observation only, and labelled as such. | A (non-blocking) | APPLIED |
+
+No correction was rejected, and no reviewer finding was accepted on its word
+alone: each was re-measured here first. Two reviewer assertions did not survive
+that check and are recorded rather than adopted - reviewer A's classification of
+`0x000000AA` as unaligned-in-ROM, and reviewer B's per-64 KiB-block range, which
+belongs to a different enumeration than the one the document now cites.
 
 ## Correction gate
 
-Recorded in the review/correction commit.
+Closed. All 20 corrections were verified against the ROM by this ticket, the
+provenance document, the review document and the ROM bible were updated, and the
+focused suites plus the surrounding integration files were re-run after the last
+edit: `test_logx_tile_rom.py` + `test_thumb_disasm_field_extraction.py`
+**41 passed**; with the four LOGX files, `test_map_render_rom.py` and the four
+safety/workflow unit files **123 passed, 2 skipped**; `tests/unit`
+**1308 passed, 15 skipped**; and with the ROM unavailable `test_logx_tile_rom.py`
+**4 passed, 26 skipped, 0 failed**.
+The canonical ROM SHA-256 was re-verified as unchanged after the corrections, and
+the probe's output was re-checked for determinism (two byte-identical runs).
 
 ## Git status
 
-The isolated worktree's change set is **3 new files plus 2 edited files**:
+The isolated worktree's change set is **4 new files plus 2 edited files**:
 
 ```text
  M docs/reverse-engineering.md
@@ -455,11 +617,12 @@ The isolated worktree's change set is **3 new files plus 2 edited files**:
 ?? docs/research/LOGX_TILE_PROVENANCE.md
 ?? docs/research/LOGX-TILE-001-review.md
 ?? tests/integration/test_logx_tile_rom.py
+?? tests/unit/test_thumb_disasm_field_extraction.py
 ?? tools/research/logx_tile_probe.py
 ```
 
 Unlike the LOGX-LAYER-001 worktree, this checkout produced no CRLF noise: the
-worktree reports exactly those five paths, so a whole-tree `git diff --check` is
+worktree reports exactly those seven paths, so a whole-tree `git diff --check` is
 usable here and is clean (`exit 0`). None of the new files contains trailing
 whitespace or a tab; all are LF.
 

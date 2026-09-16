@@ -157,9 +157,11 @@ def linear_thumb_wide(data: bytes, start: int, end: int) -> SweepResult:
 class FieldExtraction:
     """One ``lsls rd,rs,#a ; lsrs rd,rd,#b`` site, as a mask/field operation.
 
-    The pair computes ``(value << a) >> b``, i.e. it keeps ``width`` bits of
-    ``value`` starting at bit ``right_shift``.  ``right_shift == 0`` is the
-    plain mask idiom ``value & ((1 << width) - 1)``.
+    The pair computes ``(value << a) >> b``.  With ``b == a`` that is the plain
+    mask idiom ``value & ((1 << (32 - a)) - 1)``, reported as
+    ``right_shift == 0``; with ``b > a`` it keeps ``width`` bits of ``value``
+    starting at bit ``right_shift``.  ``b < a`` shifts left and is not a mask,
+    so it is not reported.
     """
 
     address: int
@@ -194,12 +196,22 @@ def _shift_halfword(high: int, low: int) -> tuple[int, int, int, int] | None:
 def find_field_extractions(
     data: bytes, start: int = ROM_BASE, end: int | None = None
 ) -> list[FieldExtraction]:
-    """Every adjacent ``lsls``/``lsrs`` field-extraction pair in ``[start, end)``.
+    """Every adjacent ``lsls``/``lsrs`` mask-or-field pair in ``[start, end)``.
 
     A raw halfword scan, not a disassembly sweep: it cannot stop at an
     undecodable halfword, so a count of zero for a given ``(right_shift,
     width)`` is coverage evidence rather than a sweep artifact.  The caller must
     still state the range scanned.
+
+    Both forms are reported, and both matter for a negative claim about a mask:
+
+    * ``lsls rd,rs,#a`` followed by ``lsrs rd,rd,#a`` - the plain mask idiom
+      ``value & ((1 << (32 - a)) - 1)``, reported as ``(0, 32 - a)``.  A scan
+      that only accepted a strictly larger second shift would silently never
+      produce ``right_shift == 0`` and would make "no site masks the low ten
+      bits" vacuously true, so the two shifts are compared with ``>=``;
+    * ``lsls rd,rs,#a`` followed by ``lsrs rd,rd,#b`` with ``b > a`` - a field
+      extraction of ``32 - b`` bits starting at bit ``b - a``.
     """
     limit = end if end is not None else ROM_BASE + len(data)
     found: list[FieldExtraction] = []
@@ -218,7 +230,7 @@ def find_field_extractions(
                 and opcode == 1  # lsrs
                 and rd == prev_rd
                 and rs == prev_rd
-                and imm > prev_imm
+                and imm >= prev_imm
             ):
                 found.append(
                     FieldExtraction(

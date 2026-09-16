@@ -97,6 +97,21 @@ and no pointer-to-pointer step: the constructor at `0x08007B78` loads the word
 with `ldr r0,[r0,#0x18]` (`0x08007BF2`) and hands that same value to the
 decompressor in `r0` at `0x08007C04`. **CONFIRMED** (physical).
 
+**PROJECT OBSERVATION (reach beyond the selector-1 root set).** LOGX-LAYER-001
+recorded 19 aligned `0x08008087` occurrences in `0x08100000..0x08400000` that no
+selector-1 root references. Expanding those 19 records' own `x*y` windows gives
+**86 cells, of which 82 are non-null** (4 nulls: one in `0x0822F748`, three in
+`0x0824A2A8`). Every non-null element is an aligned in-ROM kind-1 container
+declaring exactly `0x800`; the dimension products are `{1, 2, 3, 4, 6, 8}`.
+So the container shape of section 3.2 is not an artifact of the reachable set;
+an independent reviewer's own scan of all 1439 dominant-shape records reached
+the same result (4002 non-null elements, 160 nulls, zero size outliers).
+The addresses are `0x08220804`, `0x08220EEC`, `0x08221418`, `0x08221884`,
+`0x0822F674`, `0x0822F748`, `0x0822FB10`, `0x0823048C`, `0x0823275C`,
+`0x08232C30`, `0x0824A1CC`, `0x0824A2A8`, `0x0824A8C8`, `0x0824AC58`,
+`0x0826512C`, `0x0826561C`, `0x082659D4`, `0x08265F74`, `0x082B608C`.
+Which selector reaches them stays **UNRESOLVED**, as LOGX-LAYER-001 recorded.
+
 **PROJECT CONCLUSION.** The element target is compressed, not raw tile data.
 **CONFIRMED** (the header's kind word is the decompressor's own dispatch key, see
 section 4.2).
@@ -217,16 +232,20 @@ LOGX-CODEC-001's scope; no canonical dominant target uses either.
 | Question | Answer | Evidence |
 | --- | --- | --- |
 | Iteration order over the array | ascending `i`, `0` to `x*y - 1` | `0x08007BE6`/`0x08007C08`/`0x08007C0A` |
-| How many elements traversed | `x*y`, and only when `x*y <= 4` | `0x08007BE2`/`0x08007BE4` |
+| How many elements traversed | `x*y`, and only when `0 < x*y <= 4`; the `x*y == 0` case exits at `0x08007BE8`/`0x08007BEA` | `0x08007BE2`/`0x08007BE4`/`0x08007BE8` |
 | Destination | `object + 0x4C + 0x800*i`, in EWRAM | `0x08007BFE`..`0x08007C02` |
 | Object allocation | `0x204C` bytes = `4 * 0x800 + 0x4C` | pool `0x08007E64` read at `0x08007B84` |
 | Is data copied to RAM? | **yes**, always; entries are never read from ROM at draw time | `0x08007C04` |
 | Are dimensions hardcoded? | the *count* is data-driven (`+0x14`/`+0x15`); the per-payload 32x32 shape is hardcoded (section 6) | `0x08007BE0`, `0x0800806A` |
+| What the constructor leaves in the four slots | all four `object+0x10`..`+0x1C` pointers are first set to the default container `0x08070808` (`0x08007BA8`..`0x08007BB2`), which is kind 0, declares size 0 and is followed by `0x800` zero bytes | pool `0x08007E6C`, `0x08007BA8` |
 
-The four-slot cap is not a limit on the format. `0x08007C12` (invoked by the
-layer object's own render methods, section 9) recomputes the 2x2 viewport window
-into a four-entry id array at `stack+0x804`, then installs whichever of the four
-slots is not resident:
+The four-slot cap is not a limit on the format. `0x08007C12` recomputes the 2x2
+viewport window into a four-entry id array at `stack+0x804`, then installs
+whichever of the four slots is not resident. `0x08007C12` has exactly two
+`bl` callers, `0x08007EE4` and `0x08007F9E`, both inside methods of the layer
+object class that section 9.4 recovers from the class word's self-relative
+offset table; that is an **INFERRED** attribution (a table entry, not a direct
+call, is what makes those two functions reachable):
 
 ```text
 08007D0E  bne  0x08007D68        ; slot already resident -> next slot
@@ -254,7 +273,13 @@ object class (section 9.3):
 1. **blit to VRAM** - `0x08007D98`, row-by-row `memcpy` (section 9.2);
 2. **a 16-bit query** - `0x0800800A`, `ldrh` at `payload + (y & 31)*64 + (x & 31)*2` (section 6.2).
 
-The section 8 scan finds no third consumer and no bit-level decode anywhere.
+Both are reached by enumerating every read of `object+0x10`..`object+0x1C`, and
+all four methods of the class word's offset table are accounted for. The
+section 8 scan finds no third consumer and no bit-level decode anywhere. The
+limit of this enumeration is that it is a *static* one: an indirect call could
+in principle reach a payload reader that does not load its base from
+`object+0x10`..`+0x1C`, and nothing in this ticket excludes that. What is
+excluded is a second reader inside the payload's own code region.
 
 ---
 
@@ -331,11 +356,16 @@ chunk indices to be in `[0, 2)` (a 2x2 resident window), loads the entry, and:
 08008082  movs r0, #1            ; return 1
 ```
 
-**PROJECT OBSERVATION.** The only engine test applied to a 16-bit entry value in
-the whole image is "is it zero". **PROJECT CONCLUSION.** `0` is the engine's
-empty/absent entry; every nonzero entry is "occupied", **including** a word whose
-low ten bits are zero but whose upper bits are set. This matters for bits 12-15
-(section 8.4).
+**PROJECT OBSERVATION.** The only engine test applied to a 16-bit entry value is
+"is it zero". Coverage: the predicate is `cmp r1,#0` on the result of the single
+`ldrh` at `0x08008074`; every site in the image that loads from a payload buffer
+is enumerated in section 4.5 (the VRAM blit's row `memcpy` and this `ldrh`), and
+the image-wide mask and field-extraction scan of section 8.4 finds no site
+inside `0x08007000..0x0800A000` whose `right_shift` reaches bit 9 or above, so
+no code in the payload's own region extracts or masks any part of an entry.
+**PROJECT CONCLUSION.** `0` is the engine's empty/absent entry; every nonzero
+entry is "occupied", **including** a word whose low ten bits are zero but whose
+upper bits are set. This matters for bits 12-15 (section 8.4).
 
 ---
 
@@ -348,7 +378,7 @@ low ten bits are zero but whose upper bits are set. This matters for bits 12-15
 | Stride | 2 bytes | `(tile_col & 31) * 2` at `0x08008070` |
 | Alignment | payload base 4-byte aligned; every read offset is even | all 3745 targets 4-byte aligned; offsets are `2*k` |
 | Copied or transformed before use? | **copied verbatim**; no transformation, packing or reordering anywhere | `0x08007DCE`..`0x08007DDC` `memcpy` of whole rows |
-| `ldrb` / `ldr` alternative | none found; the only payload read in the image is the `ldrh` above plus the row `memcpy` | section 8 scan |
+| `ldrb` / `ldr` alternative | none found; the only payload reads in the image are the `ldrh` above and the row `memcpy` | section 4.5 enumerates every read of `object+0x10`..`object+0x1C`; section 8.4's region scan finds no bit-level consumer |
 
 **PROJECT CONCLUSION.** 16-bit little-endian elements, stride 2, no packing.
 **CONFIRMED.**
@@ -371,7 +401,16 @@ its coverage:
    neighbour cannot hide a site), reported as `(right_shift, width)`.
    `(0, 10)` is the plain `& 0x3FF` idiom, `(10, 1)` extracts bit 10, `(11, 1)`
    bit 11, `(12, 4)` bits 12-15. Implemented as
-   `tools.research.thumb_disasm.find_field_extractions`.
+   `tools.research.thumb_disasm.find_field_extractions`. **Both** forms are
+   reported, and the pairing accepts `b == a` as well as `b > a`: a scan that
+   only accepted a strictly larger second shift would never emit
+   `right_shift == 0` and would make every "no site masks the low *n* bits"
+   statement vacuously true. The synthetic suite
+   `tests/unit/test_thumb_disasm_field_extraction.py` pins that behaviour.
+   Measured totals: **1532** pairs over the whole image - **46** below
+   `0x08007000`, **29** inside the map/layer code region `0x08007000..0x0800A000`,
+   **961** inside the first `0x70000` bytes (`0x08000000..0x08070000`) and **571**
+   at or above `0x08070000`.
 3. **Exhaustive payload census** over all 3745 unique decoded payloads.
 
 ### 8.2 Census over the 3745 unique payloads (3,834,880 entries)
@@ -407,19 +446,31 @@ values, i.e. the field covers `0..895` contiguously. No payload is entirely zero
 
 ### 8.3 Bits 0-9
 
-**PROJECT OBSERVATION.** No engine instruction masks bits 0-9 of an entry, and
-none extracts a 10-bit field from one:
+**PROJECT OBSERVATION.** No engine consumer of a payload masks bits 0-9 of an
+entry, and none extracts a 10-bit field from one. The scan covers the adjacent
+`lsls`/`lsrs` mask idiom and the aligned-constant search; section 8.4 lists the
+idioms it does not cover.
 
 | Scan | Result |
 | --- | --- |
-| `(right_shift, width) = (0, 10)` over the whole image | **0 sites** |
+| `(right_shift, width) = (0, 10)`, the plain `& 0x3FF` idiom, over the whole image | 51 sites |
+| ... of those, inside the map/layer code region `0x08007000..0x0800A000` | **0** |
+| `(0, 9)`, `(0, 11)`, `(0, 13)`, `(0, 14)` - masks of width 9, 11, 13, 14 | 1 (at `0x08271402`, data), 0, 0, 0 |
+| any pair with `right_shift` in `9..12`, inside `0x08007000..0x0800A000` | **0 of the region's 29 pairs** (123 such pairs exist elsewhere in the image) |
 | `0x000003FF` as an aligned word anywhere | 5 (`0x0800AD84`, `0x0800FCE8`, `0x08010F30`, `0x082AC294`, `0x082FC748`) |
-| ... of those, PC-relative loaders | 5, at `0x0800AB9A`, `0x0800FA8A`, `0x0800FB98`, `0x0800FC4E`, `0x08010CEA` - **none inside the map/layer code region `0x08007000..0x0800A000`** |
+| ... of those, PC-relative loaders | 5, at `0x0800AB9A`, `0x0800FA8A`, `0x0800FB98`, `0x0800FC4E`, `0x08010CEA` - **none inside the map/layer code region** |
+
+The low-ten-bit mask is therefore a real engine idiom, used 51 times, and **none
+of its uses is in the code that owns a layer payload**; the sampled uses are OAM
+attribute packing (section 8.4). The negative claim is about *where* it is used,
+not about whether it exists.
 
 **PROJECT OBSERVATION.** Bits 0-9 alone account for the whole tile space the two
-graphics loaders can populate. Expanding every unique dominant payload
-(1,241,888 nonzero entries) and comparing each entry's bits 0-9 against the map's
-own two tile sources:
+graphics loaders can populate. Expanding every nonzero entry of every dominant
+payload that a map's four layer slots reference - a per-map, per-reference
+expansion, so a payload shared by ten maps is expanded ten times - gives
+**1,241,888 nonzero entries**, and comparing each entry's bits 0-9 against the
+map's own two tile sources:
 
 - the static source is the `root+0x48` selector stream; it writes **one 64-byte
   tile per selector**, sequentially, at `0x06000000 + 64*i` (section 10), so a
@@ -427,6 +478,11 @@ own two tile sources:
 - the animated-tile records (`root+0x0C` count, `root+0x10` pointer array) each
   write `tile_count` 64-byte tiles starting at their own `destination_tile`
   (`0x08009B12`).
+
+A different, smaller number belongs to a different unit and is not used here:
+aggregating over the **unique payloads** instead (each payload counted once)
+gives 1,107,699 nonzero entries, which is `3,834,880 - 2,727,181`. The coverage
+check is per map, so 1,241,888 is the correct denominator for it.
 
 **Result: 0 of 1,241,888 nonzero entries has a bits 0-9 value that is neither a
 static selector ordinal nor inside one of the map's own animation destination
@@ -448,32 +504,97 @@ payload and VRAM modifies the word.
 
 ### 8.4 Bits 10, 11, 12-15
 
-**PROJECT OBSERVATION (engine side).**
+**PROJECT OBSERVATION (engine side).** 1532 pairs over the whole image; 29 of
+them inside the map/layer code region `0x08007000..0x0800A000`.
 
-| Scan (`tools.research.thumb_disasm.find_field_extractions`, raw halfword, whole image) | Sites |
-| --- | ---: |
-| `(10, 1)` - isolate bit 10 | **0** |
-| `(11, 1)` - isolate bit 11 | 4, at `0x0806E682`, `0x0806ECD8`, `0x0806ECF4`, `0x0806ED10` |
-| `(12, 4)` - isolate bits 12-15 | 4, at `0x0816A0E2`, `0x08780714`, `0x08781C16`, `0x08788D9E` |
-| `(0, 9)`, `(0, 10)`, `(0, 11)`, `(0, 12)`, `(0, 13)`, `(0, 14)` - mask a field of that width | all **0 sites**, over the whole image |
-| `0x00000FFF` aligned word | 0 |
-| `0x0000F000` aligned word | 0 |
-| `0x0000FC00` aligned word | 3, none inside the code region |
+| Scan (`find_field_extractions`, raw halfword) | Whole image | Inside `0x08007000..0x0800A000` |
+| --- | ---: | ---: |
+| `(10, 1)` - isolate bit 10 | **0** | 0 |
+| `(11, 1)` - isolate bit 11 | 4, at `0x0806E682`, `0x0806ECD8`, `0x0806ECF4`, `0x0806ED10` | 0 |
+| `(12, 4)` - isolate bits 12-15 | 4, at `0x0816A0E2`, `0x08780714`, `0x08781C16`, `0x08788D9E` | 0 |
+| `(0, 9)` - mask `0x1FF` | 1, at `0x08271402` (data) | 0 |
+| `(0, 10)` - mask `0x3FF` | 51 | **0** |
+| `(0, 11)` - mask `0x7FF` | **0** | 0 |
+| `(0, 12)` - mask `0xFFF` | 5, all at `0x082D8F1E` or above (data) | 0 |
+| `(0, 13)` - mask `0x1FFF` | **0** | 0 |
+| `(0, 14)` - mask `0x3FFF` | **0** | 0 |
+| `(0, 15)` - mask `0x7FFF` | 2, at `0x0802EEB6`, `0x08043E0E` | 0 |
+| `(0, 16)` - mask `0xFFFF` | 156 | 2, at `0x08009E32`, `0x08009FB6` |
+| any pair with `right_shift` in `9..12` | 123 | **0** of 29 |
+| `0x00000FFF` aligned word | 0 | 0 |
+| `0x0000F000` aligned word | 0 | 0 |
+| `0x0000FC00` aligned word | 3 | 0 |
+
+So **no pair in the map/layer region has `right_shift >= 9`** (0 of its 29
+pairs): nothing in the code that owns a payload extracts or masks a field that
+*begins* at bit 9 or above. The region does contain two `(0, 16)` `& 0xFFFF`
+pairs (`0x08009E32`, `0x08009FB6`), which read all sixteen bits of a 16-bit
+counter and select none of them, so the statement is about field *selection*,
+not about touching a whole halfword. The low-ten-bit mask that does exist
+elsewhere in the image is used 51 times, never in that region. The three sampled
+`(0, 10)` sites are OAM attribute packing - `ldrh r0,[r0,#0xC]` masked to ten
+bits and merged into a sprite attribute word at `[r3,#4]`/`[r4,#4]`
+(`lsls` at `0x0800ACF4` and `0x0801798A`) and an unrelated `subs` difference at
+`0x0803F2A6`. **PROJECT OBSERVATION.**
+
+**PROJECT CONCLUSION (scope of the negative).** The exact statement this ticket
+supports is: **no recovered engine consumer of a payload reads bits 10-15**, and
+**no code in the payload's own region selects any field beginning at bit 9 or
+above**. It is *not* "no engine instruction anywhere reads those bits", and the
+image-wide form is not established. Three idioms that could test a bit of some
+*other* value are outside this ticket's scan and are measured here so the
+negative is not over-read:
+
+- **shift immediately followed by a conditional branch** - `lsrs`/`lsls` with a
+  non-zero immediate directly before a `Bcond`. **8,014** such pairs exist
+  image-wide; restricting to shift amounts that put bits 10-15 in the carry or
+  top position gives 241 / 395 / 372 / 312 / 350 / 760 sites respectively. Inside
+  `0x08007000..0x0800A000` the only such pairs are 2 for bit 1
+  (`0x0800772A`, `0x08009872`), 1 for bit 4 (`0x0800763C`) and 2 for bit 15
+  (`0x080089DE`, `0x08008A3E`) - **none for bits 10-14**. This count is an upper
+  bound on *carry* tests: most of these pairs test the shifted **result**, e.g.
+  `0x08008A3E` is `lsrs r2,r0,#0x10` / `beq`, which asks whether the word at
+  `object+0x0C` fits in 16 bits. Every one sampled reads an object field, never
+  `object+0x10..object+0x1C`.
+- **`movs #imm` followed by `lsls` on the same register** - a mask constant built
+  in two instructions. **1,204** such builds produce a constant with a bit at 10
+  or above set, over 301 distinct constants. The bits-10-11 constant `0x0C00`
+  accounts for 34 of them, none inside `0x08007000..0x0800A000`, and they are the
+  same OAM attribute packing sampled above (`0x0800ACFC`, `0x0800B5B0`,
+  `0x0800B7E2`, `0x0800B9C8`, `0x0800C55A`).
+- **non-adjacent `lsls`/`lsrs` pairs** on one register, which the scan requires
+  to be adjacent. One exists in the map/layer region:
+  `0x08008728 lsls r3,r3,#0x16` and `0x08008730 lsrs r3,r3,#0x16`, an `& 0x3FF`
+  applied to a coordinate already shifted by `asrs r3,r3,#0xA` at `0x08008712`
+  and combined with a `0x400` scale constant at `0x0800872E`. It reads no payload
+  buffer.
+- `ldrb` byte-wise access into a payload is not scanned in either direction,
+  because no payload read other than the `ldrh` of section 6.1 exists
+  (section 4.5).
+
+Each of those idioms is a way to test a bit of *something*; none was found
+operating on a payload entry. Section 8.5's classification rests on that scoped
+statement.
 
 Coverage caveats, stated so the negatives are not over-read:
 
 - the four `(11, 1)` sites all lie in `0x0806E000..0x0806F000`. That 4 KiB block
-  is a table, not code: its bytes at `0x0806E640` are values such as
-  `0x000500C0`, `0x20082008`, `0x40040000`, and **no Thumb `BL`/`BLX` encoding
-  anywhere in the image resolves into it** (measured over all 9,624 encodings in
-  the image; every other 64 KiB block receives between 23 and 330 targets).
+  is a table, not code: the aligned words at `0x0806E640` are `0x03800070`,
+  `0x00000C00` and `0x40040002`, and **no Thumb `BL`/`BLX` encoding in the image
+  resolves into that block**. Measured by decoding every `BL`/`BLX` halfword
+  encoding at a **4-byte-aligned** offset: **8,838** encodings, of which **8,266**
+  resolve to an in-ROM address and **4,440** are distinct targets. Per-64 KiB-block
+  call-target counts span **2** (blocks `0x08680000` and `0x087E0000`) to
+  **1,384** (block `0x08040000`); block `0x08060000` receives **9**; and
+  `0x0806E000..0x0806F000` receives **0**. (Enumerating every *even* offset
+  instead gives 17,748 encodings; that wider population is not used for the
+  per-block figures.) This bounds *direct* calls only; a function pointer could
+  still reach the block, so the statement is "no `BL`/`BLX` in the image targets
+  it", not "it is unreachable".
 - the four `(12, 4)` sites are all at `0x0816A0E2` or above, i.e. inside
   compressed/graphics data, not the executable region.
-- nor is the *field* scanned for an `ands`-with-register mask; a mask kept in a
-  register across a register-allocation distance longer than one instruction
-  would not be caught by idiom scan 2. No such mask constant exists in the image
-  (scan 1 is exhaustive), so the only way to build one would be arithmetic, and
-  no arithmetic consumer of a payload word exists (section 4.5).
+- `0x0000F000` occurs twice as an *unaligned* byte sequence; it never occurs as a
+  4-byte-aligned word, which is the only way the engine could load it as a mask.
 
 **PROJECT CONCLUSION (bit 10 and bit 11).** Both bits are used in canonical data
 and neither is any part of the tile ordinal:
@@ -494,12 +615,13 @@ bit 10 to horizontal flip and bit 11 to vertical flip, and ignores bits 12-15.
 **Direction assignment: PARTIALLY CONFIRMED.** The bits are confirmed to exist,
 to be used, and to be outside the tile-index field. Which of the two is
 horizontal is derived from the platform BG entry format applied to bytes the
-engine copies verbatim into a live screenblock; **no recovered engine instruction
-reads either bit**, so the direction is not engine-proven here. The accepted
-production renderer (`docs/research/MAP_RENDER_FORMAT.md` section 7) assumes the
-same assignment and matched retail VRAM pixel-exactly in MAP-VIS-002, which
-corroborates it; this ticket did not repeat that comparison and no runtime
-experiment was performed (mutation is optional per the ticket).
+engine copies verbatim into a live screenblock; **no recovered engine consumer of
+a payload reads either bit** (section 8.4 states the exact scope and the
+techniques that were not scanned), so the direction is not engine-proven here.
+The accepted production renderer (`docs/research/MAP_RENDER_FORMAT.md` section 7)
+assumes the same assignment and matched retail VRAM pixel-exactly in
+MAP-VIS-002, which corroborates it; this ticket did not repeat that comparison
+and no runtime experiment was performed (mutation is optional per the ticket).
 
 **PROJECT CONCLUSION (bits 12-15).** Each of bits 12, 13, 14 and 15:
 
@@ -559,7 +681,10 @@ by the query method's own `>> 8` chunk-index arithmetic at `0x08008022`.
 
 ### 9.2 The VRAM blit
 
-`0x08007D98(object, coordinate)`, reached from the layer object's render methods:
+`0x08007D98(object, coordinate)`, reached from the layer object's render methods
+(**INFERRED** on the same basis as section 4.4: `0x08007D98` has exactly two
+`bl` callers, `0x08007EEC` and `0x08007FA6`, both inside methods recovered from
+the class word's self-relative offset table):
 
 ```text
 08007D9C  ldr  r0, [r1]          ; coordinate[0] = x_px
@@ -588,7 +713,12 @@ loops read `object+0x14`, `object+0x18` and `object+0x1C` (`0x08007DFA`,
 `0x08007E20`, `0x08007E4C`).
 
 **PROJECT CONCLUSION.** The payload leaves EWRAM as **whole unchanged 16-bit
-elements**; nothing is decoded, re-ordered or masked. **CONFIRMED.**
+elements**; nothing is decoded, re-ordered or masked. **CONFIRMED.** The blit is
+not quite the screenblock region's only writer: the absent-layer placeholder
+class (`0x08049548`) `memset`s the same region to zero
+(`0x08007A28`..`0x08007A38` → `0x0600E000 + slot*0x800`, 0x800 bytes), so the
+lane can also be *cleared*. Only whole zero halfwords are written, so nothing
+decodes, re-orders or masks an entry there either.
 
 ### 9.3 The hardware configuration the engine writes
 
@@ -603,6 +733,8 @@ runs the animation setup, the character-data assembly and the layer install, the
 080093DC  adds r1, #0x14         ; r1 = 0x080716D8
 080093DE  adds r0, r0, r1        ; r0 = 0x080716D8 + 8*root[+0x3C]
 080093E0  ldrh r1, [r0]          ; BG0CNT value
+080093E2  ldr  r2, [r6, #0x34]   ; per-frame offset added to BG0CNT
+080093E4  adds r2, r1, r2
 080093E6  movs r1, #1
 080093E8  lsls r1, r1, #0x1A     ; r1 = 0x04000000
 080093EA  strh r2, [r1, #8]      ; REG_BG0CNT
@@ -613,20 +745,30 @@ runs the animation setup, the character-data assembly and the layer install, the
 0800941C  strh r0, [r1]          ; REG_DISPCNT
 ```
 
-**PROJECT OBSERVATION.** The record selected by `root[+0x3C] = 0` - true for
-every root examined, and for maps 0, 39 and 40 explicitly - is the four
-halfwords at `0x080716D8`:
+**PROJECT OBSERVATION.** `root+0x3C` is **not** zero on every root. Measured over
+all 452: **451 roots hold 0** and exactly one - map 19, root `0x082AD8BC` - holds **1**.
+The two selected records are:
 
 ```text
-1C80 1D80 1E80 1F80
+index 0, 0x080716D8:  1C80 1D80 1E80 1F80     (451 roots, including maps 0, 39, 40)
+index 1, 0x080716E0:  1C80 1D80 BE80 1F80     (map 19 only)
 ```
 
-Decoded as BGxCNT text-mode words: priority `0`, character base `0`
-(`0x06000000`), **8bpp** (bit 7 set), screen base `28, 29, 30, 31` (that is,
-`0x0600E000 + i*0x800`), size `256x256` (bits 14-15 clear), mosaic off.
+The halfword actually stored into `REG_BGxCNT` is `record[i] + [r6,#0x34]`
+(`0x080093E2`/`0x080093E4`, then `strh r2,[r1,#8]`), i.e. the table record plus a
+per-frame offset whose source is not written by any code recovered in this
+ticket. The table record itself is what the decoding below describes.
+
+Decoded as BGxCNT text-mode words, both records agree on priority `0`, character
+base `0` (`0x06000000`), **8bpp** (bit 7 set) and screen bases `28, 29, 30, 31`
+(that is, `0x0600E000 + i*0x800`), with mosaic off. They differ in exactly one
+word: map 19's BG2 value is `0xBE80` rather than `0x1E80`, whose bits 14-15 are
+`0b10`, i.e. a **512x256** screenblock rather than 256x256. Every other field,
+including the screen base of 30, is unchanged.
 
 **PROJECT CONCLUSION.** The VRAM address in section 9.2 and the screen base in
-the engine's own register value agree exactly, and the character base agrees with
+the engine's own register value agree exactly for both records and all four
+slots, and the character base agrees with
 the `0x06000000` destination of the character-data writer (section 10.4). The
 slot index in `object+0x04` is therefore the BG index. **CONFIRMED** from ROM
 data plus the register write, not from a runtime capture.
@@ -776,10 +918,15 @@ map 0   root 0x082B8C38  root+0x48 = 0x082B8BF4
 
 The selector value never reaches a map entry. The engine does not write it into
 the payload, does not compare it against one, and does not use it to relocate
-one. Its only consumer is the character-region writer above. **PROJECT
-OBSERVATION.** Consequently "selector" names an input to character memory, and
-the payload's bits 0-9 name an *output* ordinal of that same memory - a
-relationship the coverage invariant of section 8.3 exercises.
+one. The decoded **stream** has exactly one consumer, the character-region writer
+`0x08009BD4`; the **field** `root+0x48` has two, because `0x08009B80` also reads
+its declared size (`ldr r2,[r1,#0x48]` / `asrs r2,r2,#1`) to derive the static
+selector count and pair it with the `root+0x0C`/`+0x10` animation records. That
+second reader takes only the size; it neither decodes nor consumes the stream, so
+the selector semantics below are unaffected. **PROJECT OBSERVATION.**
+Consequently "selector" names an input to character memory, and the payload's
+bits 0-9 name an *output* ordinal of that same memory - a relationship the
+coverage invariant of section 8.3 exercises.
 
 ---
 
@@ -901,7 +1048,7 @@ dereferencing anything:
 | `0x08007A41` | 249 | 1 | `0` | `0` | `0` | `0` (one value) |
 | `0x08007B63` | 1 | 1 | `64` | `192` | `12288` | one value, **outside ROM** |
 | `0x080088BD` | 1 | 1 | `48` | `251` | `12048` | one value, aligned in ROM |
-| `0x0800897B` | 41 | 41 | `0` x28, `85` x4, `86` x2, `170` x1, `171` x6 | `0` x1, `1` x4, `2` x1, `4` x1, `240` x9, `242` x1, `246` x2, `248` x5, `252` x1, `254` x13, `255` x3 | `0` x29, `85` x4, `21930` x2, `41382` x1, `43434` x4, `43605` x1 | one `null` and three out-of-ROM values |
+| `0x0800897B` | 41 | 41 | `0` x28, `85` x4, `86` x2, `170` x1, `171` x6 | `0` x1, `1` x4, `2` x1, `4` x1, `240` x9, `242` x1, `246` x2, `248` x5, `252` x1, `254` x13, `255` x3 | `0` x29, `85` x4, `21930` x2, `41382` x1, `43434` x4, `43605` x1 | four distinct values: `0x00000000` on 38 records (`null`), and `0xFFFFFF56`, `0xFFFFFFAB`, `0x000000AA` once each (all three outside the ROM address range) |
 
 **PROJECT CONCLUSION.** LOGX-TILE-001's chunk and tile-entry format is
 **CONFIRMED for handler `0x08008087` only**.
@@ -1045,9 +1192,9 @@ Representative instruction bytes (raw halfwords, little-endian, as stored):
 | a chunk is 32x32 tiles / 256x256 pixels | **CONFIRMED** for the dominant class, from the 64-byte row stride, `& 31` masks and `>> 8` chunk arithmetic |
 | a chunk holds little-endian 16-bit entries | **CONFIRMED**, from the `ldrh` at `0x08008074` and the verbatim row `memcpy` |
 | bits 0-9 are the tile ID | **CONFIRMED**, and additionally bounded against both engine tile loaders |
-| bit 10 is horizontal flip | **PARTIALLY CONFIRMED** (platform BG entry layout; no engine read) - direction assignment |
-| bit 11 is vertical flip | **PARTIALLY CONFIRMED** (platform BG entry layout; no engine read) - direction assignment |
-| bits 12-15 unused / uninterpreted | **REFUTED as a format statement.** They are zero in all canonical data and no consumer reads them; they are not inert to the engine's own occupancy test. Status: reserved / constant in canonical data, semantic role UNRESOLVED |
+| bit 10 is horizontal flip | **PARTIALLY CONFIRMED** (platform BG entry layout; no engine consumer of a payload reads it) - direction assignment |
+| bit 11 is vertical flip | **PARTIALLY CONFIRMED** (platform BG entry layout; no engine consumer of a payload reads it) - direction assignment |
+| bits 12-15 unused / uninterpreted | **REFUTED as a format statement.** They are zero in all canonical data and no payload consumer reads them; they are not inert to the engine's own occupancy test. Status: reserved / constant in canonical data, semantic role UNRESOLVED |
 | global graphics source near file offset `0x179764` | **CORRECTED**: `0x08179764` is the value of the scene descriptor's `+0x4C` field, an array of 187 Webfoot containers - a per-descriptor field, not a global structure |
 | a referenced source image is 128x128 px / 16x16 tiles / 256 tiles | **PARTIALLY CONFIRMED** as the addressed capacity of one bank (`0x4000` bytes, 8-bit index * 64); **REFUTED** as a universal source-block property |
 | `root+0x48` is decompressed as a u16 sequence | **CONFIRMED** |
@@ -1061,7 +1208,7 @@ Representative instruction bytes (raw halfwords, little-endian, as stored):
 2. The `128x128` source block is a bank's *capacity*, not a declared dimension,
    and one canonical bank is `0x3C40` bytes.
 3. Bits 12-15 must not be documented as "unused": they are absent from canonical
-   data and unread by any consumer, but a nonzero value would be read as
+   data and unread by any payload consumer, but a nonzero value would be read as
    "occupied" by the engine's own entry test.
 4. The decoded selector value is a `(bank, tile)` pair, not a bare tile index;
    the engine's own arithmetic at `0x08009C34`/`0x08009C6E` splits it.
@@ -1072,9 +1219,10 @@ Representative instruction bytes (raw halfwords, little-endian, as stored):
 
 ## 20. Unresolved questions
 
-1. **Bit 10 versus bit 11 direction.** Platform-derived, engine-unread. A
-   reversible runtime experiment on a derived ROM (a single flipped entry, then
-   a screenshot comparison) would settle it; not performed.
+1. **Bit 10 versus bit 11 direction.** Platform-derived; no engine consumer of a
+   payload reads either bit. A reversible runtime experiment on a derived ROM (a
+   single flipped entry, then a screenshot comparison) would settle it; not
+   performed.
 2. **Bits 12-15 semantic role.** All-zero canonically, no consumer. Whether the
    format reserves them or the 8bpp configuration merely makes them inert is not
    distinguishable from this image.
@@ -1112,5 +1260,16 @@ two-byte window, which reports two `bl` sites as undecodable. The legacy entry
 points are left unchanged so LOGX-LAYER-001's published census stays
 reproducible; the distinction is documented in the module docstring.
 
+`find_field_extractions` reports **both** the plain mask idiom
+(`lsls rd,rs,#a ; lsrs rd,rd,#a`, `right_shift == 0`) and true field extraction
+(`b > a`). An earlier draft of this ticket compared the two shift amounts with a
+strict `>`, which made `right_shift == 0` unreachable and every "no site masks a
+field of width *n*" statement above vacuously true. The defect was found during
+self-check while writing the synthetic suite, fixed, and the affected numbers
+were re-measured; the corrected scan reports 1532 pairs rather than 959. The
+synthetic regression `tests/unit/test_thumb_disasm_field_extraction.py` pins the
+behaviour so the vacuous form cannot return.
+
 `tests/integration/test_logx_tile_rom.py` gates on the canonical ROM and skips
-cleanly when it is absent. It asserts only the facts above.
+cleanly when it is absent; `tests/unit/test_thumb_disasm_field_extraction.py` is
+portable and synthetic. Together they assert only the facts above.

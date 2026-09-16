@@ -596,33 +596,66 @@ def test_map39_animation_records_explain_its_high_tile_indices(
 # --- section 8.2/8.4: engine-side bit scans ----------------------------------
 
 
-def test_no_engine_site_extracts_bit_10_or_a_field_at_shift_12(canonical_bytes: bytes) -> None:
-    """A raw halfword scan, so an undecodable neighbour cannot hide a site."""
+def test_no_engine_site_reads_the_control_bits_of_an_entry(canonical_bytes: bytes) -> None:
+    """A raw halfword scan, so an undecodable neighbour cannot hide a site.
+
+    The scan reports every ``lsls rd,rs,#a ; lsrs rd,rd,#b`` pair as
+    ``(right_shift, width)``, covering both the plain mask idiom
+    (``right_shift == 0``) and true field extraction.  A strict ``b > a`` test
+    would never produce ``right_shift == 0`` and would make the mask half of
+    this assertion vacuously true, which is why the pairing is verified
+    separately in the portable synthetic suite.
+    """
     extractions = find_field_extractions(canonical_bytes)
+    assert len(extractions) == 1532
+
     by_key: dict[tuple[int, int], list[int]] = {}
     for item in extractions:
         by_key.setdefault((item.right_shift, item.width), []).append(item.address)
 
-    # No site isolates bit 10 anywhere in the image.
+    # No site anywhere in the image isolates bit 10.
     assert by_key.get((10, 1), []) == []
-    # No site masks a field of width 9..14 (the plain `& 0x3FF` idiom is (0, 10)).
-    for width in range(9, 15):
-        assert by_key.get((0, width), []) == []
+    # No site masks a field of width 11, 13 or 14 (masks 0x7FF, 0x1FFF, 0x3FFF).
+    assert by_key.get((0, 11), []) == []
+    assert by_key.get((0, 13), []) == []
+    assert by_key.get((0, 14), []) == []
 
     # The four `(11, 1)` sites all sit in the 0x0806E000..0x0806F000 table block,
     # which no BL/BLX encoding in the image reaches, and none is in map code.
     bit11 = by_key.get((11, 1), [])
     assert bit11 == [0x0806E682, 0x0806ECD8, 0x0806ECF4, 0x0806ED10]
     assert all(0x0806E000 <= address < 0x0806F000 for address in bit11)
-    assert not any(0x08007000 <= address < 0x0800A000 for address in bit11)
 
-    # No in-code site isolates bits 12-15.
+    # No site isolates bits 12-15 inside the executable region.
     assert by_key.get((12, 4), []) == [
         0x0816A0E2,
         0x08780714,
         0x08781C16,
         0x08788D9E,
     ]
+
+    # Nothing in the map/layer code region touches a field starting at bit 9..12.
+    map_region = [
+        item for item in extractions if 0x08007000 <= item.address < 0x0800A000
+    ]
+    assert len(map_region) == 29
+    assert [item.right_shift for item in map_region if item.right_shift >= 9] == []
+    assert max(item.width for item in map_region) <= 16
+    # The widest mask used in the map/layer region is one byte.
+    assert max(
+        item.width for item in map_region if item.right_shift == 0
+    ) == 16
+
+    # The low-ten-bit mask does exist in the image, but only outside that region.
+    low_ten = by_key.get((0, 10), [])
+    assert len(low_ten) == 51
+    assert not any(0x08007000 <= address < 0x0800A000 for address in low_ten)
+    # Sampled sites are OAM attribute packing: `ldrh r0,[r0,#0xc]` masked to ten
+    # bits and merged into an OAM attribute word at `[r3,#4]` / `[r4,#4]`.
+    assert (
+        canonical_bytes[0x0800ACEE - ROM_BASE : 0x0800ACFC - ROM_BASE].hex()
+        == "80895968890a8005800d89020843"
+    )
 
 
 def test_no_mask_constant_for_the_high_nibble_or_the_low_field(canonical_bytes: bytes) -> None:

@@ -3,9 +3,14 @@
 ## Repository and safety
 
 - **START SHA:** `4eabf4a74af999375acd281e390bbcce011ecd2a`
-- **END SHA:** `HEAD` after this ticket's single commit (recorded below)
+- **END SHA:** `HEAD` of branch `logx-map-render-001` after this review commit;
+  the exact value is reported in the ticket handoff
 - **BRANCH:** `logx-map-render-001`
-- **COMMIT SHA:** this ticket's single `research(map): verify selected map root layout` commit
+- **COMMIT SHA:** `a59d0856fed3d9bb3dc8726168063e5be3c221e9`
+  (`research(map): verify selected map root layout`), plus one
+  documentation-only commit, `docs(tickets): record LOGX map root review
+  verdict`, recording this independent review verdict and the
+  reviewer-required corrections
 - **CANONICAL ROM SHA BEFORE:**
   `940AD5F01DB4465B8877DFE739510CBF34F4EA3D390F3DF13519808BC36F059E`
 - **CANONICAL ROM SHA AFTER:**

@@ -9,12 +9,25 @@ sweep.  It offers:
 * :func:`linear_thumb` - a resynchronising single-pass sweep that advances two
   bytes past an undecodable halfword instead of stopping and reports how many
   halfwords it could not decode;
+* :func:`linear_thumb_wide` / :func:`iter_thumb_wide` - the same sweep, but each
+  site is offered a full four-byte window so that two-halfword Thumb
+  instructions (``bl``, ``blx``, and the Thumb-2 wide forms) decode instead of
+  being counted as undecodable;
+* :func:`find_field_extractions` - every ``lsls rd,rs,#a ; lsrs rd,rd,#b`` site
+  in a range, reported as ``(right_shift, width)``, which is how this project
+  states a negative claim about a mask such as ``0x3FF`` or ``0xF000``;
 * :func:`thumb_function` - a control-flow-following decode from a seeded entry;
 * :func:`find_thumb_function_entries` - discovers Thumb ``push {.., lr}``
   prologues across a bounded region as candidate boundaries;
 * :func:`resolve_thumb_bl` - exact BL/BLX target decoding from raw halfwords.
 
 Nothing here writes to the ROM image or to any file.
+
+The two sweeps are deliberately different entry points.  ``linear_thumb`` is
+the one LOGX-LAYER-001's published undecodable-halfword census was taken with;
+it offers Capstone only two bytes at a time, so it cannot decode a two-halfword
+instruction and its undecodable count includes every such site.  New work that
+needs real coverage uses ``linear_thumb_wide``.
 """
 
 from __future__ import annotations
@@ -90,6 +103,145 @@ def linear_thumb(data: bytes, start: int, end: int) -> SweepResult:
         else:
             result.instructions.append(item)
     return result
+
+
+def decode_thumb_at(data: bytes, address: int) -> Instruction | None:
+    """Decode one Thumb instruction at ``address`` using a four-byte window.
+
+    Returns ``None`` when no instruction decodes.  The wider window is what
+    makes two-halfword instructions visible; :func:`iter_thumb` cannot see them
+    because it hands Capstone two bytes.
+    """
+    offset = address - ROM_BASE
+    if offset < 0 or offset + 2 > len(data):
+        return None
+    window = data[offset : offset + 4]
+    item = next(_THUMB.disasm(window, address, 1), None)
+    if item is None:
+        return None
+    if item.size > len(window):
+        return None
+    return Instruction(item.address, item.size, item.mnemonic, item.op_str)
+
+
+def iter_thumb_wide(data: bytes, start: int, end: int) -> Iterator[Instruction | int]:
+    """Like :func:`iter_thumb`, but decodes two-halfword Thumb instructions.
+
+    Each site is offered four bytes, so ``bl``/``blx`` and Thumb-2 wide forms
+    decode and advance by their real size.  A site that still does not decode
+    yields its address (an ``int``) and the sweep advances two bytes.
+    """
+    address = start & ~1
+    while address + 2 <= end:
+        item = decode_thumb_at(data, address)
+        if item is None:
+            yield address
+            address += 2
+            continue
+        yield item
+        address += item.size
+
+
+def linear_thumb_wide(data: bytes, start: int, end: int) -> SweepResult:
+    """Materialised wide-window Thumb sweep over ``[start, end)``."""
+    result = SweepResult(start=start, end=end)
+    for item in iter_thumb_wide(data, start, end):
+        if isinstance(item, int):
+            result.undecodable_halfwords.append(item)
+        else:
+            result.instructions.append(item)
+    return result
+
+
+@dataclass(frozen=True, slots=True)
+class FieldExtraction:
+    """One ``lsls rd,rs,#a ; lsrs rd,rd,#b`` site, as a mask/field operation.
+
+    The pair computes ``(value << a) >> b``.  With ``b == a`` that is the plain
+    mask idiom ``value & ((1 << (32 - a)) - 1)``, reported as
+    ``right_shift == 0``; with ``b > a`` it keeps ``width`` bits of ``value``
+    starting at bit ``right_shift``.  ``b < a`` shifts left and is not a mask,
+    so it is not reported.
+    """
+
+    address: int
+    right_shift: int
+    width: int
+
+    @property
+    def mask(self) -> int:
+        return (1 << self.width) - 1
+
+
+def _shift_halfword(high: int, low: int) -> tuple[int, int, int, int] | None:
+    """``(opcode, rd, rs, imm)`` for a Thumb format-1 shift, else ``None``.
+
+    ``imm`` is left as the encoded 5-bit field, so ``imm == 0`` on ``lsrs`` is
+    the architecturally different "shift by 32" form and is rejected there.
+    """
+    halfword = high | (low << 8)
+    if (halfword & 0xE000) != 0x0000:
+        return None
+    opcode = (halfword >> 11) & 3
+    if opcode == 3:
+        return None
+    imm = (halfword >> 6) & 0x1F
+    rs = (halfword >> 3) & 7
+    rd = halfword & 7
+    if opcode in (1, 2) and imm == 0:
+        return None
+    return opcode, rd, rs, imm
+
+
+def find_field_extractions(
+    data: bytes, start: int = ROM_BASE, end: int | None = None
+) -> list[FieldExtraction]:
+    """Every adjacent ``lsls``/``lsrs`` mask-or-field pair in ``[start, end)``.
+
+    A raw halfword scan, not a disassembly sweep: it cannot stop at an
+    undecodable halfword, so a count of zero for a given ``(right_shift,
+    width)`` is coverage evidence rather than a sweep artifact.  The caller must
+    still state the range scanned.
+
+    Both forms are reported, and both matter for a negative claim about a mask:
+
+    * ``lsls rd,rs,#a`` followed by ``lsrs rd,rd,#a`` - the plain mask idiom
+      ``value & ((1 << (32 - a)) - 1)``, reported as ``(0, 32 - a)``.  A scan
+      that only accepted a strictly larger second shift would silently never
+      produce ``right_shift == 0`` and would make "no site masks the low ten
+      bits" vacuously true, so the two shifts are compared with ``>=``;
+    * ``lsls rd,rs,#a`` followed by ``lsrs rd,rd,#b`` with ``b > a`` - a field
+      extraction of ``32 - b`` bits starting at bit ``b - a``.
+    """
+    limit = end if end is not None else ROM_BASE + len(data)
+    found: list[FieldExtraction] = []
+    previous: tuple[int, int, int, int, int] | None = None
+    address = start & ~1
+    while address + 2 <= limit:
+        offset = address - ROM_BASE
+        if offset < 0 or offset + 2 > len(data):
+            break
+        decoded = _shift_halfword(data[offset], data[offset + 1])
+        if decoded is not None and previous is not None:
+            prev_address, prev_opcode, prev_rd, prev_rs, prev_imm = previous
+            opcode, rd, rs, imm = decoded
+            if (
+                prev_opcode == 0  # lsls
+                and opcode == 1  # lsrs
+                and rd == prev_rd
+                and rs == prev_rd
+                and imm >= prev_imm
+            ):
+                found.append(
+                    FieldExtraction(
+                        address=prev_address,
+                        right_shift=imm - prev_imm,
+                        width=32 - imm,
+                    )
+                )
+        previous = (address, *decoded) if decoded is not None else None
+        address += 2
+    return found
 
 
 def linear_arm(data: bytes, start: int, end: int) -> SweepResult:

@@ -397,8 +397,8 @@ engine uses, not an assumed schema:
 | `+0x28` | 4 | aligned in-ROM pointer, null exactly when `+0x24` is null; `0x08009420` walks it at a 0x18-byte element stride |
 | `+0x34`, `+0x38` | 4 each | aligned in-ROM pointers decompressed by `0x0803D940` into 0x2000-byte buffers at `0x080095AE`/`0x080095B6` |
 | `+0x3C` | 4 | word (`0` in 451 roots, `1` in map 19), selects an engine table row for the BG control values |
-| `+0x40` | 4 | count in `1..14` |
-| `+0x44` | 4 | aligned in-ROM pointer, null exactly when `+0x40` is null; `0x08009670` loads exactly this pair and forwards it to registry routine `0x08012664` |
+| `+0x40` | 4 | count in `1..14`; read together with `+0x44` by one `ldm r1,{r1,r2}` at `0x08009676` (base = `root + 0x40`), so no constant-offset load of either word exists |
+| `+0x44` | 4 | aligned in-ROM pointer, null exactly when `+0x40` is null; points at an array of `+0x40` 4-byte ROM pointers whose targets are the transition records of [LOGX-CONNECTOR-001](#logx-connector-001-root-0x40-0x44-transition-records) |
 | `+0x48` | 4 | aligned in-ROM pointer to a Webfoot-LZ container whose decoded payload is a delta-coded u16 selector stream (`0x08009BE6`..`0x08009C12`) |
 | `+0x4C` | 4 | the single word `0x08179764` on all 452 roots; engine-global, not per-map |
 
@@ -412,11 +412,76 @@ name is not), the BG0-BG3 slot assignment (slot order is consumed by the BG
 control programming but the per-slot assignment is not directly proven), the
 animated-tile identity of `+0x0C`/`+0x10` (the record loader and VRAM target are
 established, but the instruction that reads the pair out of the root was not
-recovered), the record layout of `+0x44`, and the meaning of `+0x30`,
+recovered), and the meaning of `+0x30`,
 `+0x50`..`+0x5C`. Selector use is partially confirmed: every examined selector
 source resolves to `1`, yet 55 MapEntries expose multi-word source arrays, so a
 wider valid range is possible and unresolved.
 
+## LOGX-CONNECTOR-001 `root +0x40`/`+0x44` transition records
+
+`root +0x44` points at an array of `root +0x40` 4-byte ROM pointers. The engine
+reads the pair with a single `ldm` and walks the array once per map load. The
+consumer was recorded as located by LOGX-MAP-RENDER-001; this ticket read it and
+recovered the record layout
+([`research/LOGX_CONNECTOR_PROVENANCE.md`](research/LOGX_CONNECTOR_PROVENANCE.md)).
+
+The pair is consumed on the selector-1 map-load route:
+
+```text
+08008AB6  ldrb r1, [r7, #2]      ; request[+0x02] = the selector
+08008AB8  ldr  r0, [r7, #4]      ; request[+0x04] = the MapEntry source array
+08008ABA  bl   0x080089CC        ; the accepted "root + 4*(selector-1)" resolver
+08008AC0  ldr  r0, [r5, #0xc]    ; the registry object
+08008AC2  bl   0x08009670        ; register this root's records
+08009672  adds r1, #0x40         ; base = root + 0x40
+08009676  ldm  r1, {r1, r2}      ; r1 = count, r2 = pointer array   (one 8-byte read)
+08009678  ldr  r0, [r0, #8]
+0800967A  bl   0x08012664        ; walk
+```
+
+`0x08012664(registry, count, array)` is the walk. It indexes with
+`lsls r0, r4, #2` (`0x0801266E`), loads `array[index]` (`0x08012670`), takes that
+record's `+0x00` word as a function pointer (`ldr r1,[r0]` at `0x08012672`,
+called through the `bx r1` trampoline `0x08046AA2`), and appends the returned
+object at `registry + 4 + 4*n`. It iterates index `count-1` down to `0`.
+
+A record's physical layout, at the access width the engine uses:
+
+| offset | width | confirmed reading |
+| --- | --- | --- |
+| `+0x00` | 4 | the record's class/constructor function pointer, called by the walk at `0x08012672`. Two values in the canonical corpus: `0x08007675` (566 records) and `0x080072CD` (169). The meaning of the two classes is UNRESOLVED |
+| `+0x04` | 4 | one value on all 735 records: `0x0800776D`. Meaning UNRESOLVED |
+| `+0x08`, `+0x0A`, `+0x0C`, `+0x0E` | 2 each | four little-endian `u16` forming two ordered intervals: `A <= C` and `B <= D` on 735/735 records, no zero-area case. Axis names, units and signedness are UNRESOLVED. Every value is `0` or `8k+1` (24 exceptions at `8k+7`), maximum 977 |
+| `+0x10` | 1 | `ldrb` at `0x0800729C`; `0..3` on 725 records, ten outliers |
+| `+0x11` | 1 | destination key **high** byte, `ldrb` at `0x0800728E` |
+| `+0x12` | 1 | destination key **low** byte, `ldrb` at `0x0800728C` |
+| `+0x13` | 1 | a separate byte read at `0x08007282` and passed as a further argument; census `{0:561, 1:174}` |
+| `+0x14` | 2 | `ldrh` read by the object the record feeds (`0x0800CDC6`), added to an animation counter |
+| `+0x16`, `+0x17` | 1 each | bytes read by that object's constructor (`0x0800CB70`, `0x0800CF28`); `+0x16` is compared against `0x28` and `0x3C` |
+
+The destination is **two independent key bytes**, not a halfword-typed field:
+the producer reads them with two `ldrb` sites, the lookup at `0x080089FC`
+compares the entry's two bytes with two separate `ldrb` loads and a byte
+`cmp r3,r4`, and the warp routine at `0x08008D68`/`0x08008D6A` copies them into a
+two-byte staging buffer with two `strb`. Taking `+0x11` as the high byte and
+`+0x12` as the low byte resolves to an accepted `MapEntry +0x00` lookup key on
+**735 of 735** records; no other content byte pair scores above 589.
+
+Census across all 452 selector-1 roots: 104 roots have `+0x40 == 0` with
+`+0x44 == 0`, 348 are non-null, the count sums to **735**, the maximum is
+**14**, and `root + 0x44 == root - 4 * (root + 0x40)` on all 348 non-null roots.
+All 735 array elements are distinct, 4-byte-aligned, in-ROM pointers, so
+*references*, *unique records* and *shared records* are 735, 735 and 0 in this
+image. Resolving every destination against the `MapEntry` key table gives 694
+directed links, 674 reciprocal, 20 one-way and 3 self-links (maps 125, 126, 127),
+with no unresolved destination.
+
+Unresolved, and deliberately not promoted: the engine's own name for these
+records; the meaning of the two `+0x00` classes; whether the four `u16` are
+tested against a player or object position, and with which two coordinates; the
+axis names, units and signedness of those intervals; the semantics of `+0x10`,
+`+0x13`, `+0x14`, `+0x16` and `+0x17`; and LOGExtractor's viewer-side `X += 8`,
+for which no engine counterpart was found.
 ## LOGX-LAYER-001 layer records
 
 The four selector-1 root layer slots (`+0x14`, `+0x18`, `+0x1C`, `+0x20`) are

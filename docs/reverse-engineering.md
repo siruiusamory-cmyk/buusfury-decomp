@@ -464,6 +464,102 @@ The layer record's `+0x18` window is a **4-byte-element** pointer array. The
 `+0x18` array examined here uses a 4-byte stride, so it is **not** a second
 `0x18`-byte site.
 
+## LOGX-TILE-001 chunk payloads and tile entries
+
+For the dominant layer handler `0x08008087`, every `+0x18` array element
+resolves **directly to a Webfoot container**: the constructor loads it with
+`ldr r0,[r0,#0x18]` at `0x08007BF2` and passes that same value to the
+decompressor `0x0803D940` at `0x08007C04`, with no second dereference. Measured
+over the canonical image: 1516 dominant references enumerate 4274 grid cells,
+156 of them null, 4118 aligned in-ROM, 0 malformed; those 4118 references
+resolve to **3745 unique targets**, 165 of which are shared, the most-referenced
+being used 10 times. All 3745 targets are kind-1 containers declaring exactly
+`0x800` bytes, and all 3745 decode to 2048 bytes
+([`research/LOGX_TILE_PROVENANCE.md`](research/LOGX_TILE_PROVENANCE.md)).
+
+**A chunk is 0x800 decoded bytes consumed as 1024 little-endian 16-bit entries
+laid out 32 columns by 32 rows.** The engine states neither dimension as data;
+both come from its own accesses: the query method `0x0800800A` computes
+`(tile_row & 31) * 64` (`lsls r4,r5,#0x1B` / `lsrs r4,r4,#0x15` at
+`0x0800806A`) and `(tile_col & 31) * 2` (`0x0800806E`/`0x08008070`) and reads a
+halfword with `ldrh r1,[r3,r1]` at `0x08008074`; the VRAM blit `0x08007D98`
+`memcpy`s whole 64-byte rows unchanged. The entry width is therefore 2 bytes,
+the row stride 64 bytes, the element stride 2 bytes, and the byte order
+little-endian. No packing, no transformation and no second entry access exist:
+the engine's only test on an entry value is `cmp r1,#0` at `0x08008076`.
+
+Tile entry bits, over the union of all 3745 unique decoded payloads
+(3,834,880 entries):
+
+| bits | measurement | status |
+| --- | --- | --- |
+| 0-9 | integer field; maximum 895; 896 distinct values, `0..895` | **CONFIRMED** as an integer field |
+| 0-9 | the tile ordinal the engine's own loaders populate | **CONFIRMED** |
+| 10 | set on 46,034 entries | **CONFIRMED** to exist, be used, and lie outside the index field |
+| 11 | set on 15,668 entries (both 10 and 11 on 5,239) | **CONFIRMED** likewise |
+| 12-15 | zero on all 3,834,880 entries | **RESERVED / CONSTANT IN CANONICAL DATA**; unused by any known consumer; semantic role UNRESOLVED |
+
+The bits 0-9 reading is not inferred from the hardware format: expanding every
+nonzero entry of every dominant payload (1,241,888 entries) and comparing the
+field against the map's own two tile sources leaves **0 exceptions** - 1,218,581
+entries fall inside the `root+0x48` selector stream's ordinals and 23,307 inside
+an animated-tile destination range on 178 maps. Bit 10 and bit 11 are not
+documented here as "horizontal" and "vertical": no recovered engine instruction
+reads either bit, and the direction assignment rests on the platform BG entry
+layout applied to bytes the engine copies verbatim into a screenblock whose
+control word it writes as 8bpp with character base 0. That assignment is
+**PARTIALLY CONFIRMED**.
+
+Bits 12-15 are **not** to be documented as "unused by the format": the
+all-zero census is a property of canonical data, no `0x0000F000` or
+`0x00000FFF` mask exists anywhere in the image, and the engine's occupancy test
+treats any nonzero entry as occupied. The four bits are separately classified as
+reserved/constant and as unread by any known consumer.
+
+The tile unit is **8x8 pixels**, which the engine proves rather than inherits:
+the query method shifts pixels to tiles with `asrs #3` on both axes
+(`0x0800805C`/`0x0800805E`), the character-data writer copies exactly 64 bytes
+per destination tile (`0x08009C6A`/`0x08009C78`), and the chunk index is a pixel
+coordinate shifted by 8 (`0x08008022`), i.e. 256x256 pixels per chunk. The
+engine's own `REG_BG0CNT..REG_BG3CNT` values are the four halfwords at
+`0x080716D8` selected by `root+0x3C`: `0x1C80 0x1D80 0x1E80 0x1F80`, which is
+8bpp, character base 0 and screen bases 28..31 - matching the blit destination
+`0x0600E000 + slot*0x800`.
+
+`root+0x48` is a Webfoot container whose decoded `u16` array the engine prefix-
+decodes in place at `0x08009C02`..`0x08009C12` as
+`absolute[i] = (raw[i] + absolute[i-1] + 1) & 0xFFFF`, with `absolute[0] = raw[0]`
+and the container's declared size as the terminator. All 452 canonical roots
+decode; sizes are 4..1784 bytes (2..892 selectors). Each decoded value is a
+packed pair: `value >> 8` indexes the container array at `root+0x4C`
+(`0x08009C54`/`0x08009C56`) and `value & 0xFF` selects a 64-byte tile inside that
+bank's `0x4000`-byte payload (`0x08009C6E`), so one selector contributes one 8x8
+tile to character memory at `0x06000000 + 64*ordinal`.
+
+File offset `0x179764` is not an independent global graphics structure: the GBA
+address `0x08179764` is the value stored at `root+0x4C` on all 452 roots, and it
+points at a **187-entry array of Webfoot containers**, 186 declaring `0x4000`
+bytes and one declaring `0x3C40`. The largest `value >> 8` bank index used by any
+canonical selector stream is 186, exactly the last table entry. The "128x128 /
+256-tile source block" is that bank's `0x4000 / 64` capacity under an 8-bit tile
+field - **PARTIALLY CONFIRMED** as an engine resource unit, not a stored
+dimension and not universal.
+
+Applicability is bounded: only handler `0x08008087` is covered. `0x08007A41` is
+the zero-dimension absent-layer placeholder (`0x08007A40` allocates 8 bytes, no
+payload); `0x08007B63` and `0x080088BD` are singletons whose dimension bytes
+cannot be a chunk grid; `0x0800897B` fails the dominant reading on 29 of 41
+records. No dominant-form decoding is applied to those records.
+
+This section resolves LOGX-LAYER-001's open question about the four-slot install
+cap: `cmp r6,#4` / `bgt` at `0x08007BE2`/`0x08007BE4` bounds only the
+constructor's warm-up. The streaming method `0x08007C12` recomputes a 2x2
+viewport window and decompresses whichever chunk of the record is missing into a
+four-entry resident cache (`0x08007D04`..`0x08007D60`), so a record with
+`x*y > 4` loses nothing.
+
+Layer **positioning remains UNRESOLVED**, unchanged from LOGX-LAYER-001.
+
 ## Unresolved after ROM-002
 
 - Semantic meaning of every `_raw` field above, especially `output`, `zone`, `area`, `variation`, counts, flags, `music_id`, and pointer target types.

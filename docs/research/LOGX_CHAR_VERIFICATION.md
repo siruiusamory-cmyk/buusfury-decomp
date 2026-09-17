@@ -4,10 +4,14 @@
 
 ```text
 START SHA:                005795fdf540bd4c8997e2014a16c5c7eb0ba89f
-END SHA:                  recorded in the follow-up documentation commit
+END SHA:                  5caa671e6a2d84a9915918f0052b943870e7935f
+                          (branch tip after the last content-bearing commit; the
+                          commit that adds these three lines is documentation-only)
 BRANCH:                   logx-char-001
-COMMIT SHA(S):            caeb773285209d662c16d6fa79b08e83b57ca5e9 (primary)
-                          + one follow-up commit that fills in END SHA and GIT STATUS
+COMMIT SHA(S):            caeb773285209d662c16d6fa79b08e83b57ca5e9
+                          research(char): reconstruct Buu character definitions
+                          5caa671e6a2d84a9915918f0052b943870e7935f
+                          docs(tickets): record LOGX character research SHAs and gate
 WORKTREE:                 <temp>\log1-remake-logx-char-001
 
 CANONICAL ROM SHA BEFORE: 940AD5F01DB4465B8877DFE739510CBF34F4EA3D390F3DF13519808BC36F059E

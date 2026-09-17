@@ -819,14 +819,20 @@ section.
 - Authoring branch `logx-codec-001`: `5149d07` plus child
   `53c992749fbf8b75e3a483f287efc087b8eed799`. Never pushed; not an ancestor of
   `master`; retained locally as a safety reference.
-- Merge request: `!26`, merged into `master`.
-- Merge commit and post-merge `origin/master` SHA:
-  `ee2252c00a24d9bc3b73fa64d7f0358d79a494e9`.
+- Merge request: `!26`, merged into `master`; merge commit
+  `ee2252c00a24d9bc3b73fa64d7f0358d79a494e9`, whose parents are START SHA
+  `4d230a5` and closeout commit `ce2dfaf`.
+- Documentation correction merged as `!27`: commit `e5fe7ad` (`docs(tickets):
+  record LOGX codec integration ancestry`) and merge commit
+  `0f2243c3b2b30f9457e0f5f307573062992f3e5c`. That change corrected the ancestry
+  record and is documentation only, so it changes no accepted result.
 - Accepted blobs verified identical between the authoring branch tip `53c9927`
   and `master` for all eight research files; `git diff --stat` between them is
   empty in the changed scope.
 - The MR pipeline and the `master` pipeline ran `pytest tests/unit -q` and passed.
 - Archived as [LOGX-CODEC-001-COMPLETE](archive/LOGX-CODEC-001-COMPLETE.md);
   `docs/PROJECT_<local-state-name>` and `docs/PROJECT_<local-state-name>` record the closeout.
-- The authorized baseline for `LOGX-CHAR-001` is the post-merge `origin/master`
-  SHA `ee2252c00a24d9bc3b73fa64d7f0358d79a494e9`.
+- The authorized baseline for `LOGX-CHAR-001` is the `origin/master` tip that
+  carries the complete integration and closeout record, that is
+  `0f2243c3b2b30f9457e0f5f307573062992f3e5c` or any later `origin/master` commit
+  that differs from it only in documentation.

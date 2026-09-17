@@ -172,12 +172,19 @@ numbered, never named - see §10.
 > Evidence: [`LOGX_FRAME_PROVENANCE.md`](LOGX_FRAME_PROVENANCE.md);
 > closure: [`../tickets/archive/LOGX-FRAME-001-COMPLETE.md`](../tickets/archive/LOGX-FRAME-001-COMPLETE.md).
 
+> **SUPERSEDED - the paragraph below is the accepted reader's original description,
+> retained as history. LOGX-FRAME-001 refutes it; see the correction note above.**
+
 `u32 piece_count`, then that many 16-byte pieces. **All 10,959 distinct frames
 in this corpus declare exactly one piece.** The format permits more (the count
 is a full word) and the codec handles the general case, but nothing may assume a
 frame and its piece are interchangeable.
 
 ### Piece record (16 bytes)
+
+> **SUPERSEDED - the heading and table below are the original description, retained
+> as history. LOGX-FRAME-001 corrects the record to 12 bytes and moves the two
+> offsets; see the correction note immediately below.**
 
 > **(LOGX-FRAME-001, added later - CORRECTED.)** The record is **12 bytes**, not 16,
 > and the attribute and graphics fields sit at different offsets. `GRAPHICS_FORMAT.md`'s

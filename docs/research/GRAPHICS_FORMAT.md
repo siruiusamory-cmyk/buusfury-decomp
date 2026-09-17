@@ -93,6 +93,26 @@ with per-direction bounding boxes. **INFERRED**; not decoded, not exposed.
 > ten are animations the scan misses is **UNKNOWN** and was not chased, because
 > §47 forbids turning this into another archaeology ticket.
 
+> **(LOGX-SPRITE-001, added later.)** The extent question above is now settled and
+> this section's two statements about it are superseded, without any figure in this
+> document changing. `structure + 0x00` (a `u16` whose low byte is the element
+> count) **does** bound the animation-pointer array: five engine sites read it with
+> `ldrb`, compare it against the requested index, load `+0x54 + 4*index` and then
+> null-test the element. The array is therefore count-bounded and **sparse** -
+> 4,070 slots over the 297 structures, 1,721 non-null, 2,349 null - not a fixed
+> 23-slot table. Consequently "no header field bounds the list" is no longer
+> available as a justification, the header is `0x54` bytes rather than `0x50`, and
+> the structures do not strictly tile one contiguous region: 65 of them are
+> separated from the next by exactly `0x100` bytes, and each such block is what the
+> **following** structure's `+0x04` points at. Every corpus figure in this
+> document still reproduces exactly under the count model once this reader's own
+> filters are applied (`1017 - 4 = 1013`, `13660 - 64 = 13596`,
+> `10964 - 5 = 10959`, `1562` deduplicated); the reader itself
+> (`tools/webfoot/graphics.py::_animations_in`) is **deliberately left unchanged**
+> here, and the bounded correction is recorded as a deferred follow-up in
+> [`../tickets/archive/LOGX-SPRITE-001-COMPLETE.md`](../tickets/archive/LOGX-SPRITE-001-COMPLETE.md).
+> Evidence: [`LOGX_SPRITE_PROVENANCE.md`](LOGX_SPRITE_PROVENANCE.md).
+
 ### Animation record
 
 `u32 frame_count`, then `frame_count * 4` frame pointers, **direction-major

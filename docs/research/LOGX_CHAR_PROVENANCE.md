@@ -91,6 +91,10 @@ field is not inert. Two further external statements are given a narrower reading
 rather than a flat correction: the `+0x04` pointer array's *arithmetic* base is
 indeed `0x086B6BB4`, but which byte is the array's first entry stays
 **UNRESOLVED** (section 10.3), and "character table" is replaced by the neutral
+*(Resolved later by LOGX-SPRITE-001: `0x086B6BB4` is the inline animation
+array of the definition at `0x086B6B60`, the run's own final definition, id
+306; the run's first entry is logical id 10. This document is left as
+LOGX-CHAR-001 wrote it.)*
 name because the table spans more than characters (section 14).
 
 ---
@@ -463,6 +467,9 @@ pointer` is **CONFIRMED**; the identification of the array's first entry is
 reading given precedence and LOGExtractor's `0x086B6BB4` recorded as the
 accessor's compiler-folded base. Resolving which byte is the array's first entry
 needs the entry layout and is handed to LOGX-SPRITE-001 (section 16).
+*(Resolved by LOGX-SPRITE-001: see that ticket's provenance document, section
+2.1. The ten words are the last definition's own inline array and the run's
+first entry is logical id 10.)*
 
 ### 10.4 The `f(0x95)` / `f(0x92)` substitution
 
@@ -763,7 +770,9 @@ boundary shows that stopping there lands on a real edge rather than mid-run.
 - The project's accepted base is `0x086B6BDC` with **297** entries, strictly
   ascending, terminated by `0x03001068` at `0x086B7080`. LOGExtractor's
   `0x086B6BB4` is the accessor's folded base. **Resolving which byte is the
-  array's first entry needs the object layer.**
+  array's first entry needs the object layer.** *(Resolved by LOGX-SPRITE-001:
+  the run's first entry is logical id 10, and `0x086B6BB4` is not an array
+  prefix at all.)*
 - The ten words at `0x086B6BB4..0x086B6BD8` are `0x086A6424`, `0x086A7238`,
   `0`, `0`, `0x086A7E7C`, `0`, `0`, `0`, `0`, `0x086A899C` - **four** valid
   ascending pointers and **six** nulls.

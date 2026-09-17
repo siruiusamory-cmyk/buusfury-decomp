@@ -110,3 +110,47 @@ For absence claims:
   (a 16-bit `[Rn]` counts as displacement zero), the base register is neither SP
   nor PC, and the displacement is non-negative. Report the definition alongside
   the count, because the number is meaningless without it.
+
+### Bitstream and grammar claims
+
+A bit-level grammar is the easiest place in this project to be confidently wrong,
+because a wrong field order produces output that looks plausible for a while and
+then desynchronises. `LOGX-CODEC-001` hit this twice, in two different layers.
+
+**Validating a transcription.** A grammar transcribed from an implementation, or
+from instructions, must be validated against a **population** of real fixtures -
+not one or two. The canonical Buu container at `0x0817C144` decodes correctly
+under several mutually incompatible field orders, because the fields happen to
+agree whenever a distance code is exactly 3; the order only becomes observable on
+a container where that code takes another value. State the population and the
+exception count, not a single worked example.
+
+**Polarity and field boundaries.** When a prefix bit selects between two branches,
+say which polarity selects which, and check it against the raw bytes rather than
+against the control flow. Inverting that one branch test in `LOGX-CODEC-001`
+decoded **0 of 4,322** canonical containers - a total failure, and therefore one
+of the easier mistakes to catch *if* the test population is the real corpus rather
+than one fixture. The subtle variant is a *field order* error inside one token,
+which can pass small fixtures and only desynchronise later.
+
+**Prose is not covered by tests.** A correct implementation documented with
+inverted prose passes every test and misleads every later reader - including the
+next ticket's author and any future review. When a document states a bit layout,
+re-derive that layout from the raw bytes and correct the prose in the same change
+as the code; do not transcribe a layout out of an implementation's control flow.
+`LOGX-CODEC-001` shipped the correct code and the inverted prose in the same
+commit, and it took an independent reviewer reading the raw bits to catch it.
+
+**Reading the raw bits.** A multi-byte word must be read at the correct
+endianness *and* consumed in the correct bit order. Writing a little-endian
+32-bit word as if it were big-endian produces a bit string that appears nowhere in
+the image and makes every worked example wrong even when the described grammar is
+right. Worked examples in documents should be derived from the raw bytes and show
+the byte sequence they came from, so a reader can check the arithmetic.
+
+**Do not let a differential flatter itself.** Comparing two implementations of one
+grammar is useful for policy differences and for catching transcription slips, but
+it is not an independent derivation if the second was written after reading the
+first. Say what a differential does and does not prove; the grammar's authority
+must rest on real data - sizes, digests and independent downstream invariants -
+not on agreement between two copies of one reading.

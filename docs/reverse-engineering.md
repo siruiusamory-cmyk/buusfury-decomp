@@ -640,9 +640,98 @@ four-entry resident cache (`0x08007D04`..`0x08007D60`), so a record with
 
 Layer **positioning remains UNRESOLVED**, unchanged from LOGX-LAYER-001.
 
+## LOGX-CODEC-001 Webfoot container and packed-stream semantics
+
+Full evidence: [`research/LOGX_CODEC_PROVENANCE.md`](research/LOGX_CODEC_PROVENANCE.md).
+
+**The wrapper is the engine's, not an inference from a decoder.** `0x0803D940`
+is a Thumb dispatcher taking exactly two arguments - `r0` = container address,
+`r1` = destination - because its first instruction is `adds r2, r0, #0`, which
+discards its incoming third argument. It reads `container[+0x00]` and branches:
+
+| `container[+0x00]` | Engine action |
+| --- | --- |
+| `0` | `memcpy(dst, container + 8, container[+0x04])` at `0x0803D95E`/`0x0803D960` |
+| `1` or `2` | the packed decoder, via the Thumb->ARM veneer at `0x08049120` |
+| anything else | return with the destination untouched (`0x0803D956 bne`) |
+
+So the eight-byte wrapper is `u32` form, `u32` declared decoded size, then
+payload at `+0x08`; and a **zero first word selects a raw copy of
+`container[+0x04]` bytes** - it is neither "empty" nor a sentinel. The engine's
+own dominant-layer constructor installs `0x08070808` (form 0, declared 0,
+followed by `0x800` zero bytes) as its default, so the zero-length case is
+engine-observed as well as engine-supported.
+
+`0x0803D966` is a **second dispatcher entry that does test its third argument**.
+It has no `BL` caller in the image and none of the accepted call sites use it.
+The wrapper has 57 `BL` callers, including `0x08007C04` and `0x08007D4C`
+(dominant chunks), `0x08009BF6` (`root+0x48`) and `0x08009C5A` (`root+0x4C`).
+
+The decoder itself does not run from ROM: `0x08049120` is a Thumb->ARM
+interworking veneer (`bx pc` / `nop` / `ldr pc,[pc,#-4]` / `.word 0x03000040`)
+and the code executes from IWRAM. The copied blob's ROM base is `0x087B79A4`
+(**INFERRED** from the library table at `0x087B7970` and the region's
+self-consistent internal `BL` offsets); its literal pool holds the length-bias
+thresholds `0x37FF` (`0x087B7CCC`) and `0x027F` (`0x087B7CD0`).
+
+**No engine-side destination bound exists.** The packed decoder receives no
+length and stores without any comparison. What makes the canonical callers safe
+is that each sizes its buffer from the same constant the container declares:
+`0x800` per dominant chunk (`0x08007BFE`) and `0x4000` per selector bank.
+
+**Packed grammar** (CONFIRMED against the whole reachable corpus, not from the
+disassembly alone): MSB-first bits over little-endian `u32` words; prefix `1` =
+literal of `literal_bits` added to `literal_base`; `0 1` = long match with the
+field order *distance-code gamma, low distance bits, count gamma*, the match
+length biased by distance (`>= 0x10000 +3`, `>= 0x37FF +2`, `>= 0x027F +1`,
+`<= 0x007F +4`); `0 0 0` = seven-bit short/control field (non-zero = short match,
+zero = distance-width control or, with a second zero, the end marker);
+`0 0 1` = four-bit code at `b3..b6` (1 = write `base`, 2..15 = one-byte copy from
+`code - 1`, 0 = the literal-width/base escape, which then reads a two-bit field:
+non-zero selects 8-bit literals with no base read, zero keeps 7-bit literals and
+reads a base byte).
+
+**The third prefix bit is a discriminator and its polarity matters.** Bit 2
+**clear** is the seven-bit form and bit 2 **set** is the four-bit form; every one
+of the 4,322 reachable packed containers opens on the four-bit escape with prefix
+`0 0 1`. Inverting that reading desynchronises most of the corpus.
+
+**CENSUS over the accepted resource graphs** (421 distinct selector-1 roots):
+4,520 references, 4,324 unique containers, 4,324 unique payload digests, 4,322
+packed and 2 stored, and **2 zero-header containers**. Every one of the 4,322
+packed containers decodes byte-identically under two implementations, produces
+exactly its declared size, and reaches its own end marker at that same length.
+There are no malformed candidates and no digest collisions. Declared sizes run
+4..16,384 bytes; packed sources consume 12..8,708 bytes each.
+
+**CORRECTED.** The phrase "all Buu data is JCALG1-compressed" is not supported.
+What is supported is narrower: *these Webfoot container forms, carrying these
+declared sizes and reached through `0x0803D940`, use this packed grammar.* The
+codec's identity as JCALG1 is **PARTIALLY CONFIRMED** at best (JCALG1-like /
+derived, engine-consistent); the name is not promoted.
+
+**KNOWN ROBUSTNESS GAP, host-side only.** `webfoot_lz` does not enforce that a
+packed stream produces exactly its declared size: an over-long final match is
+silently clipped and the decode is reported as successful, so a caller can
+receive a truncated payload with no error
+(`01000000040000000558d020000000c0` -> accepts, returns 4 bytes). The engine has
+no length comparison either, so this is not an engine-contract violation, and the
+case never arises on the canonical corpus. It is recorded, pinned by a test, and
+its fix belongs to a follow-up implementation ticket.
+
+**REFUTED.** `mainant/LOGExtractor`'s `UnknownHeader` path is not a container
+form the engine can be handed: the dispatcher knows only `{0, 1, 2}` at `+0x08`,
+and there is no engine path that skips four bytes and then decodes. Four-byte
+prefixes belong to engine *records*, not to the codec. The ~64 KiB temporary
+buffer is host-tool convenience, **not** an engine limit; the largest declared
+size in the reachable corpus is `0x4000` and no engine instruction compares
+against 65,536.
+
 ## Unresolved after ROM-002
 
 - Semantic meaning of every `_raw` field above, especially `output`, `zone`, `area`, `variation`, counts, flags, `music_id`, and pointer target types.
 - Whether offsets and generated behavior from the `DCF23468` recomp profile transfer to `01C1707F`. They must currently be treated as incompatible.
 - Semantics of unknown structure bytes and incomplete script opcodes.
-- Portable compression integration and exact compatibility with Webfoot's streams.
+- Portable compression **encoding**: the packed grammar is understood well enough
+  to decode and to state an encoder's obligations (LOGX-CODEC-001, PARTIAL), but
+  reproducing Webfoot's compressor bit-for-bit is not established.

@@ -355,7 +355,7 @@ Measured on the corrected, committed revision, not derived.
 | Command | Result |
 | --- | --- |
 | `pytest tests/unit/test_logx_sprite_reference.py tests/integration/test_logx_sprite_rom.py -q` | **65 passed** |
-| the same with `LOGX_CANONICAL_ROM` pointed at a non-existent file | **40 passed, 23 skipped**, every skip reported as "canonical Buu ROM not configured locally" |
+| the same with `LOGX_CANONICAL_ROM` pointed at a non-existent file | **40 passed, 25 skipped**, every skip reported as "canonical Buu ROM not configured locally" |
 | `pytest tests/unit tests/integration/test_logx_sprite_rom.py tests/integration/test_logx_char_rom.py tests/integration/test_graphics_rom.py -q` | **1484 passed, 44 skipped** |
 | `pytest tests/integration/test_logx_{sprite,char,codec,connector,layer,map_record,map_render,tile}_rom.py tests/integration/test_text_rom.py tests/unit/test_project_safety.py tests/unit/test_code_review_workflow.py tests/unit/test_workflow_migration.py -q` | **210 passed, 37 skipped** |
 | `pytest tests/unit -q` with a meta-path blocker that makes `import capstone` raise (CI's exact command and dependency set) | **1422 passed, 16 skipped, 0 failed** |

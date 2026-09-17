@@ -793,7 +793,10 @@ ascending pointers starting at `0x086B6BDC` and terminated by the non-ROM word
 `0x03001068` at `0x086B7080`; the ten words at `0x086B6BB4` are **four** ascending
 valid pointers interleaved with **six** nulls. **Which byte is the array's first
 entry is UNRESOLVED** and LOGExtractor's `0x6B6BB4` is recorded as the folded
-base; resolving it belongs to LOGX-SPRITE-001.
+base; resolving it belongs to LOGX-SPRITE-001. *(Resolved by LOGX-SPRITE-001 -
+see "LOGX-SPRITE-001 sprite-definition objects and animation tables" below: the
+ten words are the last definition object's own inline array, and the run's first
+entry is id 10. The paragraph above is left as LOGX-CHAR-001 wrote it.)*
 
 **`+0x08` is a `u32` index into the pointer array at `0x086F393C`**, which is the
 accessor's own literal (`0x08011F52`, pool `0x08012194`). `0x08011F20` returns
@@ -842,6 +845,117 @@ records resolve to 198 distinct `+0x04` ids, 110 distinct non-zero `+0x08` slots
 and 123 distinct `+0x0C` values, and exactly one pair of records (80, 81) is
 byte-identical in all five fields. No engine code groups or orders the variant
 families, so what a family means is **UNKNOWN**.
+
+## LOGX-SPRITE-001 sprite-definition objects and animation tables
+
+Full evidence: [`research/LOGX_SPRITE_PROVENANCE.md`](research/LOGX_SPRITE_PROVENANCE.md).
+
+The pointer run LOGX-CHAR-001 accepted is the array the appearance table's
+`+0x04` accessor indexes. It holds **297 entries** at `0x086B6BDC`, ids `10..306`
+(`index = id - 10`), all word-aligned ROM pointers, strictly ascending, with
+**297 unique targets** and no duplicates; the word after the last entry is the
+non-ROM `0x03001068` at `0x086B7080`. The accessor's literal `0x086B6BDC` is
+reached by exactly two `ldr Rt,[pc,#imm]` sites in the whole image
+(`0x0800015E` from pool `0x080003C0`, `0x0801713E` from pool `0x0801715C`).
+
+**The folded base `0x086B6BB4` is not a run prefix.** The accessor computes
+`0x086B6BB4 + 4*id` for `id >= 10`, so for `id` in `0..9` it would read the ten
+words `0x086B6BB4..0x086B6BD8`. Those words are the inline animation array of the
+definition object at `0x086B6B60` - the run's own last entry, id 306 - whose
+count is `10` and whose array therefore occupies `0x086B6B60 + 0x54` through
+`0x086B6BDC`: exactly the ten words, ending exactly where the run starts. Ids
+`0..9` never reach them, because `0x08000158` branches at `cmp r0,#0xa` into a
+party-slot path that resolves a party slot through a 24-byte-record table at
+`0x086B82EC` and re-enters the array through `0x0801713C`, which applies the same
+arithmetic from a record's `u16 +0x0E`. **The run's first entry is id 10 and
+index 0 carries no special meaning.**
+
+**Definition object.** Physical layout, all offsets in bytes:
+
+| Offset | Physical field | Engine read |
+| --- | --- | --- |
+| `+0x00` | `u16` LE; low byte is the inline array's element count, high byte always `0` | `ldrb` at `0x08013046`, `0x08013088`, `0x080131DA`, `0x0802736C`, `0x0802A28E` |
+| `+0x02` | `u16` LE, a byte size | `ldrh` at `0x0800EB7C`, `0x0800EC00` |
+| `+0x04` | `u32` LE | `ldr` at `0x0800EBF6` |
+| `+0x08` | four individual bytes | `ldrb` at `0x0800EF74` (byte 0), `0x0800EC0A`/`0x0800EC0C` (bytes 2 and 3) |
+| `+0x0C` | `u32` LE | none found |
+| `+0x10..+0x4F` | four 16-byte records of four `s32` LE | none found |
+| `+0x50` | `u32` LE | `ldr` at `0x0800EBB6`; indexed by animation index at `0x0800ECE4`, `0x0800ED08` |
+| `+0x54` | `count` x `u32` LE inline array | `ldr` at `0x0800EBD0`; indexed at `0x0800ECE0`, `0x0800ED50` |
+
+**`definition + 0x00`, low byte, is the inline array's element count -
+CONFIRMED.** The object's extent is `0x54 + 4*count`: 232 of the 296 consecutive
+run pairs place the next definition exactly at `+0x54 + 4*count`, the last
+object's computed end is exactly the run start, and the 65 exceptions are
+separated by exactly `0x100` - the 256-byte remap block below. Five engine sites
+then use the byte as an index bound, comparing it with the index of the element
+they are about to load and skipping the load when the count is not greater than
+that index:
+
+```text
+0x08013046  ldrb r1, [r0]       0x08013048  cmp r1, #7      0x0801304C  ldr r0, [r0, #0x70]
+0x08013088  ldrb r1, [r0]       0x0801308A  cmp r1, #8      0x0801308E  ldr r0, [r0, #0x74]
+0x080131DA  ldrb r1, [r0]       0x080131DC  cmp r1, #7      0x080131E0  ldr r0, [r0, #0x70]
+0x0802736C  ldrb r2, [r1]       0x0802736E  cmp r2, #1      0x08027372  ldr r1, [r1, #0x58]
+0x0802A28E  ldrb r1, [r0]       0x0802A290  cmp r1, #6      0x0802A294  ldr r2, [r0, #0x6c]
+```
+
+`+0x54 + 4*index` is `+0x58`, `+0x6C`, `+0x70`, `+0x74` for indices 1, 6, 7, 8,
+which is exactly what those five sites load. A raw scan of every decodable
+instruction boundary in `0x08000000..0x08060000` for the whole pattern finds
+these five sites and no others.
+
+**`definition + 0x54` begins an inline array of `count` 32-bit ROM pointers -
+CONFIRMED.** The elements point at **animation records**. The model is
+**count-bounded and sparse**, not fixed: over the 4,070 slots the 297 counts
+describe, **1,721 are non-null and 2,349 are null**; index 0 is non-null in 297
+of 297 definitions and index 1 in 262 of the 285 that have it. No object carries
+an index at or above its own count.
+
+**Animation record.** `u32 frame_count` at `+0x00` (values `1..16`), then
+`4 * frame_count` 32-bit ROM pointers; frame `f`, direction slot `d` is at byte
+offset `+0x04 + 16*f + 4*d`. Over the canonical image: **1,017 unique animation
+records** reached by 1,721 slots, **13,660 frame-pointer slots** with zero
+malformed, and **10,980 unique frame records**. Two trailing words follow the
+pointer array; their meaning is unknown.
+
+**Animation selection.** `0x0800ECDA(obj, index)` assigns
+`*(u32*)(definition + 0x54 + 4*index)` to `obj+0x50`, and also
+`definition[0x50][index]` to `obj+0x4C` when `definition + 0x50` is non-null. It
+has **no range check** and 159 of its 162 direct `BL` call sites pass a constant
+in `0..21`. `0x0800ECF0(obj, state)` and `0x0800ED3E(obj, state, row)` first
+translate the state through a 25-byte table at `0x08072670`; that table is
+`0..15` identity, `16..22 -> 17..23`, and states `23`/`24` both alias indices
+`10`/`11`, so the mapping is a translation and not an identity. `0x0800ED3E`
+also writes `obj+0x11`, the second index. `0x0800EF38` then computes
+`*(u32*)(obj+0x50 + 16*obj[0x11] + 4*obj[0x10] + 4)` into `obj+0x54`; that is
+the current frame record, whose `+0x04` and `+0x05` are read as signed byte
+offsets and `+0x06`/`+0x07` as additive extents by the constructor at
+`0x080273F0..0x08027414`. Everything below the frame record's `piece_count`
+belongs to LOGX-FRAME-001.
+
+**Semantic scope.** Positional slots are comparable across definitions, and the
+engine consults the count to decide whether indices 1, 6, 7 and 8 exist, but no
+engine instruction names an animation. "Stand", "walk", "run", "attack",
+"block" and the rest are **LOGExtractor conventions, not engine facts**, and are
+not written here; LOGExtractor's 23-slot numbering is not adopted, and no code
+adds one to an animation index. **Fixed positional slots: CONFIRMED
+structurally. Individual semantic slot names: mostly UNRESOLVED.** An animation
+element may legitimately be null and no selector tests for it, so a sprite may
+have no animation at a given index.
+
+**Known disagreement with the accepted graphics corpus.** `GRAPHICS_FORMAT.md`
+and `tools/webfoot/graphics.py::_animations_in` resolve a structure's animation
+pointers by walking from `+0x54` to the next structure, on the stated ground
+that no header field bounds the list, and they filter the walk's words to ROM
+pointers. That ground is refuted: the `+0x00` byte bounds the list and the engine
+uses it. The walk scans 8,230 slots where the count model scans 4,070; its 4,160
+extra slots are all nonzero and none is a ROM pointer, so its corpus figures stay
+right for the wrong reason, but its 1,562 "animation references" is a
+per-structure deduplicated count rather than a slot count (the slot count is
+1,721) and its 1,013 unique animation records exclude the 4 that fail its art
+filter (1,017 raw; `13660 - 64 = 13596` direction slots). The accepted document
+and reader are **not** modified here; the correction is handed to synthesis.
 
 ## Unresolved after ROM-002
 

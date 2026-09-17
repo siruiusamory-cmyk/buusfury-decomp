@@ -179,8 +179,6 @@ STATE_TABLE_SIZE = 25
 STATE_TABLE_LOOKUP_SITES = (0x0800ECF6, 0x0800ED48, 0x0802CB96, 0x0800EEB6)
 STATE_TABLE_LITERAL_SITES = (0x0800ECF4, 0x0800ED46)
 STATE_TABLE_ADDRESS_LITERAL_SITE = 0x0802CB94
-STATE_TABLE_PREDICATE_SITE = 0x0800EEB6
-STATE_TABLE_PREDICATE_LITERAL_SITE = 0x0800EEB0
 
 #: The ``cmp`` that null-tests the element each guarded array load produced.  The
 #: engine checks both that the animation index exists (the count compare) and
@@ -1164,11 +1162,6 @@ def state_table_report(data: bytes) -> dict[str, Any]:
         "address_literal_site": f"{STATE_TABLE_ADDRESS_LITERAL_SITE:#010x}",
         "address_literal_sites": state_table_address_literal_sites(data),
     }
-
-
-def _ldr_pool(site: int) -> int:
-    """Pool address of a 16-bit Thumb ``ldr Rt,[pc,#imm]`` at ``site``."""
-    return (site + 4) & ~3
 
 
 def state_table_address_literal_sites(data: bytes) -> list[dict[str, Any]]:

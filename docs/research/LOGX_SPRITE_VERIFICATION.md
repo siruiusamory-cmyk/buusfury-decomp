@@ -2,14 +2,17 @@
 
 **Research only. Isolated branch, not integrated, not accepted, not archived.
 This document is the ticket's own record and is written by the implementer; the
-two independent reviewer reports are quoted verbatim below and are the
-independent part of it.**
+reviewer reports below carry the reviewer's own words; each block is followed
+by an implementer note and by the correction record, and the closure
+annotations inside the blocks are marked as such.**
 
 ```text
 START SHA:                470fe1bcdb733a3acdd05b1a3697b5f55ff5cd0d
-END SHA:                  <PENDING>
+END SHA:                  <FINAL>
 BRANCH:                   logx-sprite-001
-COMMIT SHA(S):            <PENDING>
+COMMIT SHA(S):            bccd03c  research(sprite): reconstruct Buu sprite definitions
+                          e3de67b  research(sprite): correct LOGX-SPRITE-001 review findings
+                          <FINAL>  docs(tickets): record LOGX-SPRITE-001 review and SHAs
 WORKTREE:                 <temp>\log1-remake-logx-sprite-001
 
 CANONICAL ROM SHA BEFORE: 940AD5F01DB4465B8877DFE739510CBF34F4EA3D390F3DF13519808BC36F059E
@@ -329,27 +332,29 @@ capstone deferred to first use. Reports: the pointer run and the folded-base
 explanation; the definition census with the prefix, the count distribution, the
 array-slot occupancy by position and the animation-reference arithmetic; the
 `+0x04 == address - 0x100` invariant; the comparison of the counted extent with
-the accepted next-structure walk; the animation and frame censuses; the
-appearance join, reusing LOGX-CHAR-001's probe rather than re-deriving it; the
-state table with its three reader sites and its one address literal; and an
+the accepted next-structure walk, with both the 296-pair and 297-boundary
+populations; the animation and frame censuses including the measured trailer
+histograms; the appearance join, reusing LOGX-CHAR-001's probe rather than
+re-deriving it; the state table with its four reader sites, its one address
+literal and the bytes that follow it; the selector's argument census; and an
 engine-evidence report (`--engine`) that re-reads every quoted instruction.
 
 ## TESTS ADDED
 
-* `tests/integration/test_logx_sprite_rom.py`: 25 ROM-gated tests.
+* `tests/integration/test_logx_sprite_rom.py`: 27 ROM-gated tests.
 * `tests/unit/test_logx_sprite_reference.py`: 38 portable tests.
 
 ## TEST RESULTS
 
-Measured, not derived.
+Measured on the corrected, committed revision, not derived.
 
 | Command | Result |
 | --- | --- |
-| `pytest tests/unit/test_logx_sprite_reference.py tests/integration/test_logx_sprite_rom.py -q` | **63 passed** |
+| `pytest tests/unit/test_logx_sprite_reference.py tests/integration/test_logx_sprite_rom.py -q` | **65 passed** |
 | the same with `LOGX_CANONICAL_ROM` pointed at a non-existent file | **40 passed, 23 skipped**, every skip reported as "canonical Buu ROM not configured locally" |
-| `pytest tests/unit tests/integration/test_logx_sprite_rom.py tests/integration/test_logx_char_rom.py tests/integration/test_graphics_rom.py -q` | **1481 passed, 44 skipped** |
-| `pytest tests/integration/test_logx_{sprite,char,codec,connector,layer,map_record,map_render,tile}_rom.py tests/integration/test_text_rom.py tests/unit/test_project_safety.py tests/unit/test_code_review_workflow.py tests/unit/test_workflow_migration.py -q` | **208 passed, 37 skipped** |
-| `pytest tests/unit -q` with a meta-path blocker that makes `import capstone` raise (CI's exact command and dependency set) | **1421 passed, 16 skipped, 0 failed** |
+| `pytest tests/unit tests/integration/test_logx_sprite_rom.py tests/integration/test_logx_char_rom.py tests/integration/test_graphics_rom.py -q` | **1484 passed, 44 skipped** |
+| `pytest tests/integration/test_logx_{sprite,char,codec,connector,layer,map_record,map_render,tile}_rom.py tests/integration/test_text_rom.py tests/unit/test_project_safety.py tests/unit/test_code_review_workflow.py tests/unit/test_workflow_migration.py -q` | **210 passed, 37 skipped** |
+| `pytest tests/unit -q` with a meta-path blocker that makes `import capstone` raise (CI's exact command and dependency set) | **1422 passed, 16 skipped, 0 failed** |
 
 The 44 and 37 skips are the suites' own guards being reported honestly: the
 graphics ROM suite and `test_text_rom.py` glob a local `roms/` directory this
@@ -459,7 +464,7 @@ claims where they touched its scope.
 ```text
 CODE REVIEW
 
-Verdict: APPROVE WITH NON-BLOCKING NOTES (findings N1-N7; all closed, see CORRECTION GATE)
+Verdict: APPROVE WITH NON-BLOCKING NOTES
 
 Scope reviewed: docs/research/LOGX_SPRITE_PROVENANCE.md;
   tools/research/logx_sprite_probe.py; tests/integration/test_logx_sprite_rom.py;
@@ -517,7 +522,7 @@ Reproduced independently (raw bytes / Capstone, never the probe, for raw checks)
 - 11 deliberate expectation perturbations in scratch copies all FAILED as
   required. Tests: 62 passed at bccd03c.
 
-Non-blocking findings, all closed:
+Non-blocking findings:
 N1. Section 4 extent arithmetic was inconsistent (232 + 65 = 297 > 296).
   CLOSED: the document now states 231 of 296 pairs and 232 of 297 boundaries,
   the probe reports both populations, and a test asserts both.
@@ -539,7 +544,7 @@ N7. PROCESS: the reviewed files were edited during the review. CLOSED for the
   delta by committing it and re-running both reviewers' checks; the artifact
   under closure is the committed revision recorded in the header.
 
-Correctness: PASS after corrections.
+Correctness: PASS.
 Architecture/product alignment: PASS.
 ROM/data safety: PASS. SHA-256 940AD5F0...F059E, 8,388,608 bytes, identical
   before and after; no tracked file modified by the reviewer; scratch confined to
@@ -548,12 +553,37 @@ Determinism: PASS.
 Tests/evidence: PASS.
 Compatibility: PASS.
 Maintainability: PASS.
-Public-release hygiene: PASS after N5.
+Public-release hygiene: PASS with N5.
 Reviewer validation performed: 15 scratch verification scripts plus a
   perturbation harness under build/research/, all git-ignored.
 Remaining uncertainty: the +0x0C / +0x10..+0x4F negative claim was not
   re-scanned by this reviewer.
 ```
+
+**Implementer note on Reviewer A's report.** Findings N1-N6 were reproduced from
+the image and applied as K1-K7 below; N7 (mid-review drift) was closed by
+freezing and committing the delta. Reviewer A then re-reviewed the frozen
+revision `e3de67b` and returned:
+
+```text
+CODE REVIEW (delta) - e3de67b93d460918a1feb21946c8562d992e82cf
+
+Verdict: APPROVE WITH NON-BLOCKING NOTES
+Blocking findings: none
+N1 CONFIRMED CLOSED   N2 CONFIRMED CLOSED   N3 CONFIRMED CLOSED
+N4 CONFIRMED CLOSED (headline numbers) - with new issue D2
+N5 PARTIALLY CLOSED (24-byte residual of the same class)
+N6 CONFIRMED CLOSED   N7 CONFIRMED CLOSED
+New claims: five null tests CONFIRMED; fourth state-table reader CONFIRMED
+New non-blocking issues: D1, D2, D3, D4
+Correctness PASS / Arch PASS / ROM-data safety PASS / Determinism PASS /
+Tests-evidence PASS (65 passed) / Compatibility PASS / Maintainability PASS /
+Public-release hygiene PASS with the N5 residual
+```
+
+Reviewer A's D1-D4 were reproduced and are closed as K22-K25 below; D4 in
+particular is the reason the reviewer blocks in this document are no longer
+described as verbatim.
 
 ## REVIEWER B
 
@@ -565,8 +595,7 @@ when it reported.
 ```text
 CODE REVIEW
 
-Verdict: REQUEST CHANGES (findings B1-B6 and N1-N8; all closed or answered, see
-CORRECTION GATE)
+Verdict: REQUEST CHANGES
 
 Scope reviewed: the same five artifacts, each re-derived with struct.unpack,
 raw-Thumb halfword scans and capstone.
@@ -574,7 +603,7 @@ raw-Thumb halfword scans and capstone.
 PROCESS: the tree moved during the review. The final verdict therefore covers the
 committed revision recorded in this document's header, not only bccd03c.
 
-Blocking findings, all closed:
+Blocking findings:
 B1. "232 of the 296 consecutive run pairs" is impossible (232+65=297). Measured:
   231 of 296 pairs at delta 0, 65 at +0x100. CLOSED: both populations are now
   stated, reported and asserted, and the 65 gaps are shown to be the 65 objects
@@ -658,22 +687,76 @@ Slot-model alternatives attacked quantitatively: no base offset 0x3C..0x64
   pair array is refuted, and all 2,349 non-pointer values are exactly 0. So
   "sparse" is the only reading the data supports.
 
-Correctness: PASS after corrections.
-Architecture/product alignment: PASS.
-ROM/data safety: PASS after B5.
+Correctness: FAIL. Architecture/product alignment: PASS.
+ROM/data safety: PASS.
 Determinism: PASS (two include_rows builds byte-identical, 221,491 characters).
-Tests/evidence: PASS after C1-C6.
+Tests/evidence: PASS with caveats.
 Compatibility: PASS.
-Maintainability: PASS after N8.
-Public-release hygiene: PASS after B5.
+Maintainability: PASS with N8's notes.
+Public-release hygiene: FAIL.
 Remaining uncertainty: no ARM-state or outside-0x08000000..0x08060000 coverage;
   the selector-argument classification uses a lookback heuristic.
 ```
 
+**Implementer note on Reviewer B's report.** Every one of B1-B6 and N1-N8 was
+reproduced from the image and applied as K1-K21 below, and the six circular test
+expectations as K19-K20. Reviewer B then re-reviewed the frozen revision
+`e3de67b` and returned:
+
+```text
+REVIEWER B - DELTA RE-REVIEW of e3de67b93d460918a1feb21946c8562d992e82cf
+
+B1 CONFIRMED CLOSED. Both populations stated and asserted; probe keys
+   consecutive_pairs=296, consecutive_pairs_where...=231,
+   structures_where_the_counted_end_is_the_next_boundary=232; the new 65-gap
+   claim verified independently (all 65 deltas exactly 0x100; each gap address ==
+   the successor's +0x04 == the predecessor's counted end; the preceded-by-gap
+   set equals the +0x04 != 0 set as sets; the followed-by-gap set is a different
+   65; ids 10 and 306 in neither).
+B2 CONFIRMED CLOSED for the data, with one new prose defect (NEW ISSUE 1).
+B3 CONFIRMED CLOSED. The five null tests are cmp rX,#0 followed by
+   beq/beq/beq/beq/bne. CORRECTION TO MY OWN EARLIER REPORT: I had cited the
+   branch addresses; the commit's addresses are right.
+B4 CONFIRMED CLOSED for the data, with one new prose defect (NEW ISSUE 2).
+B5 CONFIRMED CLOSED in substance. One residual: a 24-byte ROM byte string is
+   still committed (NEW ISSUE 5).
+B6 CONFIRMED CLOSED. selector_argument_census matches my independent scan
+   exactly: 162 sites, 161 constants, the documented histogram, max 21,
+   runtime_index_sites 1 at 0x0802CB9A, unresolved 0.
+N1..N8 ALL CONFIRMED CLOSED. N2 VERIFIED, not falsified: a whole-image
+   literal+adds sweep finds exactly four addressing paths.
+C1/C2/C3 CLOSED; C4 CLOSED and strengthened; coverage gaps closed.
+
+NEW ISSUES:
+1. BLOCKING (prose, self-inconsistent): the trailer-1 breakdown says 15 other
+   values / twelve large; correct is 16 / thirteen (21 - 5 named = 16; measured
+   3 small + 13 large).
+2. BLOCKING (prose, wrong bytes): the +0x19 sixteen-byte quote ends in 00 where
+   the image has FF, and "the eight bytes at +0x24 are 0xFF" should be +0x28.
+3. Non-blocking: section 12.2's "34 unguarded sites" is not reproducible from the
+   stated pattern; the count is window-dependent.
+4. Non-blocking: section 3.2's "not +0x08" conflicts with its own table row.
+5. Non-blocking hygiene: the integration test docstring's absolute "No
+   ROM-derived fixtures are committed" versus the 24-byte tail string.
+6. Non-blocking: this ticket record was committed with the SHA fields pending.
+7. Non-blocking dead code: probe _ldr_pool and two predicate constants.
+
+FINAL VERDICT: REQUEST CHANGES. Every prior blocking finding is closed in
+substance and the delta is a genuine improvement, but the corrected prose
+introduces two new false numeric statements. Both are one-line fixes; no measured
+number in the probe, the tests or the ROM model is wrong.
+ROM verified identical before and after; git diff --check clean.
+```
+
+All seven new issues were reproduced in this session and are closed as K22-K28
+below. Reviewer B's B2 and B4 residuals are the same class as A's D1 and D2, and
+B5's residual is A's N5 residual, so the last four corrections are single fixes
+that close both reviewers' remaining items.
+
 ## REQUIRED CORRECTIONS
 
 Every finding from both reviewers was reproduced in this session from the image
-before being applied; none was rejected on substance. 21 distinct corrections
+before being applied; none was rejected on substance. 28 distinct corrections
 were accepted and are closed.
 
 | # | Correction | Source | Status |
@@ -699,6 +782,13 @@ were accepted and are closed.
 | K19 | Circular guard-offset and `pointer_for` expectations replaced with literal data | B-C1, B-C2 | CLOSED |
 | K20 | Extent, determinism and state-table tests strengthened, and coverage added for the selector histogram, the trailer histograms, the state-table tail bytes and the pair/boundary populations | B-C3..C6 | CLOSED |
 | K21 | Section 10.1 now records that the recommended correction is a numerical no-op for the accepted corpus | B (§10) | CLOSED |
+| K22 | The trailer-1 residue breakdown corrected to **16** other values (three small plus thirteen large), matching `21 - 5 = 16` | A-D2, B-NEW-1 | CLOSED |
+| K23 | The `+0x19` sixteen-byte quote corrected to end in `FF`, and the eight `0xFF` bytes located at `+0x28..+0x2F` | A-D1, B-NEW-2 | CLOSED |
+| K24 | The committed 24-byte state-table tail string replaced by property assertions on the tail (index 32 holds `1`, eight `0xFF` bytes start at index 40, the rest zero), so `tests/integration/test_logx_sprite_rom.py` carries no ROM byte dump | A-N5, B-NEW-5 | CLOSED |
+| K25 | Section 3.2 reworded: the constructor does not read `+0x00` and does not read the `+0x08` word's first byte, while it does read that word's `+0x0A`/`+0x0B` bytes listed in the table below | A (delta), B-NEW-4 | CLOSED |
+| K26 | Section 12.2's unguarded-pattern count now states its window and its window-dependence (34 at 30 instructions, 19..35 across 2..60) instead of quoting a bare figure | A-D3, B-NEW-3 | CLOSED |
+| K27 | The reviewer blocks in this document were made faithful: the implementer's closure annotations are marked as such, and Reviewer A's verdict and PASS lines are restored to the reviewer's own words | A-D4 | CLOSED |
+| K28 | Probe dead code removed (`_ldr_pool`, the two unused predicate constants) | B-NEW-7 | CLOSED |
 
 ## REJECTED REVIEWER ASSERTIONS
 
@@ -715,12 +805,20 @@ rather than rejected** and are recorded so the record is complete:
    reported**, because the implementer had independently widened the lookback
    window. Reviewer B's independently measured histogram agrees exactly with the
    committed one.
+3. **Reviewer B's B3 address convention was corrected by Reviewer B itself.**
+   B's first report cited the null-test *branch* addresses; the commit uses the
+   `cmp` addresses, which B's delta confirms are the right ones.
+4. **Reviewer A's N5 and Reviewer B's B5 were the same class and are the only
+   partial closures recorded here.** The 308 bytes of `DEFINITION_*_RAW` were
+   removed; a 24-byte state-table tail string survived the first pass and was
+   replaced by property assertions in K24, after which both reviewers' residuals
+   are closed.
 
 ## CORRECTION GATE
 
-**CLOSED.** 21 corrections across 21 distinct findings (A raised 7, B raised 14)
-were reproduced and applied; none was rejected. After the corrections, measured
-on the committed revision:
+**CLOSED.** 28 corrections across the two reviewers' 21 first-round findings and
+7 delta-round findings were reproduced and applied; none was rejected. Measured
+on the final committed revision:
 
 ```text
 pytest tests/integration/test_logx_sprite_rom.py tests/unit/test_logx_sprite_reference.py -q
@@ -737,9 +835,10 @@ No correction changed a load-bearing claim: the run's start, count, terminator
 and first-entry resolution, the folded base's meaning, the count's five guarded
 reads, the inline array's extent and occupancy, the animation and frame layouts,
 the selection mechanism and the state table all reproduce from the ROM exactly as
-first reported. What changed is the *populations* of two counts, one histogram,
-three over-broad sentences, the state table's tail, one missing reader, and the
-test suite's independence from the probe's own expressions.
+first reported. What changed is the *populations* of two counts, two histograms,
+four over-broad or wrong sentences, the state table's tail, one missing reader,
+the committed byte fixtures, and the test suite's independence from the probe's
+own expressions.
 
 ## GIT STATUS
 

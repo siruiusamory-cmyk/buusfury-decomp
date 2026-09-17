@@ -191,8 +191,9 @@ character constructor:
 `0x0800EB60(obj, definition, class)` is the consumer this ticket read in full.
 It stores the definition at `obj + 0x58`, and across its whole body
 (`0x0800EB60..0x0800EC32`) it reads definition fields `+0x02`, `+0x04`, `+0x0A`,
-`+0x0B`, `+0x50` and `+0x54` - not `+0x00` and not `+0x08`, which other
-consumers read.
+`+0x0B`, `+0x50` and `+0x54`. It does **not** read `+0x00`, and it does not read
+the `+0x08` word's first byte; the two `+0x08`-word bytes it does read are the
+`+0x0A` and `+0x0B` bytes that the table below lists.
 
 `definition + 0x54` is read in two ways and the two must not be conflated:
 
@@ -384,8 +385,8 @@ PROJECT OBSERVATION:
   in **1,006** of the 1,017 records and six large raw words (one each, except
   `3825263616` which appears 6 times); the word after it takes **21 distinct
   values**, of which `256:11, 512:430, 1024:379, 2048:38, 4096:116` cover 974
-  records and the remaining 43 records carry 15 other values (`0`, `64`, `128`
-  and twelve large raw words). Both are recorded raw; **UNRESOLVED**.
+  records and the remaining 43 records carry **16** other values: `0`, `64`,
+  `128` and thirteen large raw words. Both are recorded raw; **UNRESOLVED**.
 
 **Sharing does not imply semantic identity** and is not treated as if it did:
 1,017 animation records are reached by 1,721 slots, and 10,980 frame records are
@@ -473,9 +474,9 @@ not the case that one fixed slot corresponds to one game state by construction.
 The table's used range is `0..24`, because the engine addresses it only with
 those states. The bytes immediately after it are **not** part of it and are not
 zero either: the sixteen bytes at `+0x19` are
-`00 00 00 00 00 00 00 01 00 00 00 00 00 00 00 00`, so a hypothetical index 32
-would read `1`, and the eight bytes at `+0x24` are `0xFF`. "Everything above 24
-is zero" is **false** and is not claimed.
+`00 00 00 00 00 00 00 01 00 00 00 00 00 00 00 FF`, so a hypothetical index 32
+would read `1`, and the eight `0xFF` bytes are at `+0x28..+0x2F`. "Everything
+above 24 is zero" is **false** and is not claimed.
 
 **Four sites in `0x08000000..0x08060000` read the table**, a closed and
 checkable set:
@@ -682,10 +683,13 @@ decodable instruction boundary in `0x08000000..0x08060000` (183,296
 instructions, resynchronising wide-window sweep) and returned exactly the five
 sites of §4. Widening the windows to 10 instructions for the `ldrb`, 8 for the
 `cmp` and 40 for the array load returns the same five. The *unguarded* pattern
-(`ldr rX,[x,#0x58]` and later `ldr rZ,[rX,#0x54+4k]` with no `cmp`) matches 34
-sites in that region; each was read, and every one is either a different base
-(they add `+0x4C` first, so the base is `[obj+0x58]+0x4C`), a class-vtable read,
-or bytes that are data rather than a decoded function. None is a definition read.
+(`ldr rX,[x,#0x58]`, then the first later `ldr rZ,[rX,#0x54+4k]`, with no `cmp`
+in between) matches 34 sites in that region with a 30-instruction window; the
+count is window-dependent (19 sites at a 2-instruction window, 35 at 60), so the
+count itself is not a claim. What is claimed is that every match in that scan was
+read, and every one is either a different base (they add `+0x4C` first, so the
+base is `[obj+0x58]+0x4C`), a class-vtable read, or bytes that are data rather
+than a decoded function. None is a definition read.
 This is **not** evidence about code that keeps a definition pointer in a register
 across a call, and it does not cover ARM state.
 

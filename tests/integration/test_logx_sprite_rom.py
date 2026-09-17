@@ -115,13 +115,12 @@ EXPECTED_COUNT_GUARDS = (
 #: the expectation cannot be re-derived from the probe's own expression.
 EXPECTED_GUARD_ARRAY_OFFSETS = {1: "0x58", 6: "0x6c", 7: "0x70", 8: "0x74"}
 
-#: The state -> animation-index table the engine applies before indexing, and
-#: the byte string immediately after it (not part of the table).
+#: The state -> animation-index table the engine applies before indexing.  The
+#: bytes after it are checked as structural properties rather than stored.
 EXPECTED_STATE_TABLE = (
     0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15,
     17, 18, 19, 20, 21, 22, 23, 10, 11,
 )
-EXPECTED_STATE_TABLE_BYTES_AFTER = "000000000000000100000000000000ffffffffffffffff00"
 EXPECTED_STATE_TABLE_LOOKUP_SITES = (
     "0x0800ecf6", "0x0800ed48", "0x0802cb96", "0x0800eeb6",
 )
@@ -547,9 +546,16 @@ def test_state_table_is_a_translation_not_an_identity(canonical_bytes: bytes) ->
     # translation table and not one fixed slot per state.
     assert report["entries"][23] == 10
     assert report["entries"][24] == 11
-    # The bytes after the table are not part of it: index 32 holds 1 and
-    # indices 40..47 hold 0xFF, so "above 24 is zero" would be false.
-    assert report["bytes_after_table_hex"] == EXPECTED_STATE_TABLE_BYTES_AFTER
+    # The bytes after the table are not part of it.  They are asserted as
+    # properties, not stored as a byte dump: index 32 (the eighth byte after the
+    # table) holds 1, and a run of eight 0xFF bytes starts at index 40.
+    tail = report["bytes_after_table_hex"]
+    assert len(tail) == 48
+    assert tail[14:16] == "01"
+    assert tail[30:46] == "ff" * 8
+    assert tail[:14] == "00" * 7
+    assert tail[16:30] == "00" * 7
+    assert tail[46:48] == "00"
     assert report["size"] == 25
     # The reader set is asserted as literals so a probe constant cannot make a
     # missing reader invisible.

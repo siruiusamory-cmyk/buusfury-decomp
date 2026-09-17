@@ -6,9 +6,10 @@ update canonical `PROJECT_STATE`.
 
 ```text
 START SHA:            274502187596066cabf77c09bbefea5062438580
-END SHA:              1ea6d42d4de9ca093bcd5a5afe5e3e4f05e0a467
+END SHA:              b731897c5e4c46646c3507c99edaf477d165d6a3
 BRANCH:               logx-frame-001
-COMMIT SHA(S):        1ea6d42d4de9ca093bcd5a5afe5e3e4f05e0a467
+COMMIT SHA(S):        b731897c5e4c46646c3507c99edaf477d165d6a3  (research)
+                      plus the follow-up commit that records this SHA
 
 CANONICAL ROM SHA BEFORE: 940AD5F01DB4465B8877DFE739510CBF34F4EA3D390F3DF13519808BC36F059E
 CANONICAL ROM SHA AFTER:  940AD5F01DB4465B8877DFE739510CBF34F4EA3D390F3DF13519808BC36F059E
@@ -531,7 +532,7 @@ GATE        : CLOSED - all corrections applied, focused suites green with and
 ```text
 WORKTREE:   <temp>\log1-remake-logx-frame-001   branch logx-frame-001
 START SHA:  274502187596066cabf77c09bbefea5062438580
-END SHA:    1ea6d42d4de9ca093bcd5a5afe5e3e4f05e0a467
+END SHA:    b731897c5e4c46646c3507c99edaf477d165d6a3
 
 SCOPED DIFF (7 paths, no unrelated edits):
   M  .gitignore                              (ignore /scratchpad/ and a bare roms symlink)

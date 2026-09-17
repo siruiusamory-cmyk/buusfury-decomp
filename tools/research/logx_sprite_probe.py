@@ -46,6 +46,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import re
 import struct
 import sys
 from dataclasses import dataclass
@@ -167,6 +168,32 @@ STATE_TABLE_ADDRESS = STATE_TABLE_LITERAL + STATE_TABLE_OFFSET
 
 #: The largest index the state table maps; entries above it are zero.
 STATE_TABLE_SIZE = 25
+
+#: The four sites that read the state -> animation-index table.  Two reach it
+#: from :data:`STATE_TABLE_LITERAL` with ``adds #0x88``; one reaches it from the
+#: only ``ldr Rt,[pc,#imm]`` in the whole image whose pool word is the table
+#: address; and one reaches it from the *other* literal in the same structure
+#: (``0x080725F0``) with ``adds #0x80``.  The last is a predicate, not an
+#: assignment: it compares the animation the state maps to against the one the
+#: object currently has.
+STATE_TABLE_LOOKUP_SITES = (0x0800ECF6, 0x0800ED48, 0x0802CB96, 0x0800EEB6)
+STATE_TABLE_LITERAL_SITES = (0x0800ECF4, 0x0800ED46)
+STATE_TABLE_ADDRESS_LITERAL_SITE = 0x0802CB94
+STATE_TABLE_PREDICATE_SITE = 0x0800EEB6
+STATE_TABLE_PREDICATE_LITERAL_SITE = 0x0800EEB0
+
+#: The ``cmp`` that null-tests the element each guarded array load produced.  The
+#: engine checks both that the animation index exists (the count compare) and
+#: that the element is non-null; the branch that acts on the test is the
+#: instruction after each of these.
+COUNT_GUARD_NULL_TESTS = (0x0801304E, 0x08013090, 0x080131E2, 0x08027374, 0x0802A296)
+
+#: The direct animation selector: ``(obj, index)`` assigns
+#: ``*(u32*)(definition + 0x54 + 4*index)`` to ``obj+0x50`` and has no range
+#: check.  It has 162 ``BL`` call sites, 161 of them with a compile-time
+#: constant in ``0..21``; whether a definition actually has that index is a data
+#: property, which is why the count's five guarded reads exist.
+ANIMATION_SELECTOR = 0x0800ECDA
 
 #: Instruction sites that read ``definition + 0x00`` as a byte and compare it
 #: against the index of the inline-array element they then load.  The five sites
@@ -661,20 +688,25 @@ def state_to_index_table(data: bytes) -> tuple[int, ...]:
 # --- census arithmetic (pure) ------------------------------------------------
 
 
+#: The eight `definition + 0x02` halfwords the canonical image uses.  They are
+#: *observed data values*, not an engine table: the engine only hands the
+#: halfword to an allocator.  The census flags any other value rather than
+#: pretending the set is a type enumeration.
+KNOWN_ALLOCATION_SIZES = (0x0040, 0x0100, 0x0200, 0x0400, 0x0800, 0x1000, 0x1800, 0x2400)
+
+
 @dataclass(frozen=True, slots=True)
 class DefinitionLimits:
     """Bounds a census row is checked against, each with a stated source.
 
-    ``count_min``/``count_max`` are the measured range of the canonical objects'
-    element counts - a *data* range, not an engine bound.  ``rows_max`` and
-    ``index_max`` come from the engine's own arithmetic: the animation row count
-    is scaled by 16 and the column index by 4 in ``0x0800EF38``, and the state
-    table has 25 entries.
+    ``count_min``/``count_max`` and ``known_allocations`` are the measured ranges
+    of the canonical objects' fields, a *data* range and not an engine bound.
+    ``index_max`` comes from the engine: the state table has 25 entries.
     """
 
     count_min: int = COUNT_MIN
     count_max: int = COUNT_MAX
-    rows_max: int = 64
+    known_allocations: tuple[int, ...] = KNOWN_ALLOCATION_SIZES
     index_max: int = STATE_TABLE_SIZE - 1
 
 
@@ -701,6 +733,7 @@ def census_definitions(
         "field_50_zero": 0,
         "field_50_nonzero": 0,
     }
+    allocations = set(limits.known_allocations)
     anomalies: list[dict[str, Any]] = []
     counts: dict[int, int] = {}
     for index, row in enumerate(rows):
@@ -721,6 +754,9 @@ def census_definitions(
         if field_02 == 0:
             flags.append("size_zero")
             counters["size_zero"] += 1
+        elif field_02 not in allocations:
+            flags.append("size_not_a_known_allocation")
+            counters["size_not_a_known_allocation"] += 1
         if field_04 == 0:
             counters["field_04_zero"] += 1
         if field_0C:
@@ -789,11 +825,11 @@ def census_animation_pointers(
         if value:
             seen[value] = seen.get(value, 0) + 1
     return {
-        "references": len(pointers),
-        "null_references": sum(1 for value in pointers if not value),
-        "non_null_references": sum(1 for value in pointers if value),
+        "slots": len(pointers),
+        "null_slots": sum(1 for value in pointers if not value),
+        "non_null_slots": sum(1 for value in pointers if value),
         "unique_targets": len(seen),
-        "malformed_references": sum(1 for value in pointers if value and not in_rom(value)),
+        "malformed_slots": sum(1 for value in pointers if value and not in_rom(value)),
         "reuse_histogram": dict(
             sorted(
                 {
@@ -881,6 +917,8 @@ def extent_model_comparison(data: bytes) -> dict[str, Any]:
     definitions = iter_definitions(data)
     addresses = [d.address for d in definitions]
     agree = 0
+    pairs = 0
+    pair_agree = 0
     counted_slots = 0
     walked_slots = 0
     extra_nonzero = 0
@@ -894,6 +932,10 @@ def extent_model_comparison(data: bytes) -> dict[str, Any]:
         end = definition.address + OBJECT_HEADER_SIZE + 4 * definition.count
         if next_start == end:
             agree += 1
+            if index + 1 < len(addresses):
+                pair_agree += 1
+        if index + 1 < len(addresses):
+            pairs += 1
         counted_slots += definition.count
         walked = max(0, (next_start - (definition.address + FIELD_ARRAY)) // 4)
         walked_slots += walked
@@ -905,7 +947,9 @@ def extent_model_comparison(data: bytes) -> dict[str, Any]:
                     extra_rom_pointers += 1
     return {
         "structures": len(definitions),
-        "structures_where_next_structure_follows_the_array": agree,
+        "consecutive_pairs": pairs,
+        "consecutive_pairs_where_the_next_definition_starts_at_the_counted_end": pair_agree,
+        "structures_where_the_counted_end_is_the_next_boundary": agree,
         "counted_slots": counted_slots,
         "walked_slots": walked_slots,
         "extra_slots_the_walk_scans": walked_slots - counted_slots,
@@ -923,6 +967,8 @@ def animation_census(data: bytes) -> dict[str, Any]:
                 addresses.setdefault(value, []).append((definition.identifier, index))
     frames: dict[int, int] = {}
     frame_counts: dict[int, int] = {}
+    trailer_0: dict[int, int] = {}
+    trailer_1: dict[int, int] = {}
     for address in addresses:
         animation = read_animation(data, address)
         frame_counts[animation.frame_count] = (
@@ -930,12 +976,19 @@ def animation_census(data: bytes) -> dict[str, Any]:
         )
         for pointer in animation.pointers:
             frames[pointer] = frames.get(pointer, 0) + 1
+        _, first, second = read_animation_tail(data, address)
+        trailer_0[first] = trailer_0.get(first, 0) + 1
+        trailer_1[second] = trailer_1.get(second, 0) + 1
     return {
         "unique_animations": len(addresses),
         "frame_count_distribution": dict(sorted(frame_counts.items())),
-        "frame_references": sum(frames.values()),
+        # Slots over the *unique* animation records, not over every reference:
+        # the 1,721 non-null references reach only 1,017 records.
+        "frame_slots_over_unique_animations": sum(frames.values()),
         "unique_frames": len(frames),
         "frame_max_reuse": max(frames.values()) if frames else 0,
+        "trailer_0_histogram": dict(sorted(trailer_0.items())),
+        "trailer_1_histogram": dict(sorted(trailer_1.items())),
         "animations_with_multiple_referrers": sum(
             1 for sites in addresses.values() if len(sites) > 1
         ),
@@ -1003,9 +1056,16 @@ def appearance_join(data: bytes) -> dict[str, Any]:
 
 
 def count_guard_report(data: bytes) -> list[dict[str, Any]]:
-    """The five engine sites that bound an array read with the definition's count."""
+    """The five engine sites that bound an array read with the definition's count.
+
+    Each entry also names the null test that follows the array load, because the
+    engine checks the element as well as the index.  ``array_offset`` is
+    ``FIELD_ARRAY + 4 * index`` and is what the site's load instruction uses.
+    """
     report = []
-    for pointer_site, count_site, compare_site, array_site in COUNT_GUARD_SITES:
+    for (pointer_site, count_site, compare_site, array_site), null_site in zip(
+        COUNT_GUARD_SITES, COUNT_GUARD_NULL_TESTS
+    ):
         # The compare immediate is the low byte of the ``cmp rX, #imm8``
         # halfword; the branch that follows skips the array load when the
         # count is at or below it.
@@ -1016,6 +1076,7 @@ def count_guard_report(data: bytes) -> list[dict[str, Any]]:
                 "count_site": f"{count_site:#010x}",
                 "compare_site": f"{compare_site:#010x}",
                 "array_site": f"{array_site:#010x}",
+                "null_test_site": f"{null_site:#010x}",
                 "index": index,
                 "array_offset": f"{FIELD_ARRAY + 4 * index:#04x}",
             }
@@ -1023,17 +1084,118 @@ def count_guard_report(data: bytes) -> list[dict[str, Any]]:
     return report
 
 
+def selector_argument_census(data: bytes, *, lookback: int = 20) -> dict[str, Any]:
+    """Census of the arguments the image passes to :data:`ANIMATION_SELECTOR`.
+
+    Requires capstone (see the module docstring).  The argument is classified by
+    looking back for the nearest write to ``r1``: a ``movs r1, #imm`` is a
+    compile-time index, anything else is a runtime index.  The lookback is
+    reported so the heuristic is visible.
+    """
+    from tools.research.thumb_disasm import iter_thumb_wide, scan_thumb_bl_callers
+
+    sites = sorted(scan_thumb_bl_callers(data, {ANIMATION_SELECTOR})[ANIMATION_SELECTOR])
+    items = [
+        item
+        for item in iter_thumb_wide(data, ROM_BASE, ROM_BASE + 0x60000)
+        if not isinstance(item, int)
+    ]
+    position = {item.address: i for i, item in enumerate(items)}
+    constants: dict[int, int] = {}
+    runtime = 0
+    unresolved = 0
+    for site in sites:
+        start = position.get(site)
+        if start is None:
+            unresolved += 1
+            continue
+        classified = False
+        for j in range(start - 1, max(-1, start - lookback), -1):
+            item = items[j]
+            text = f"{item.mnemonic} {item.operands}"
+            match = re.match(r"^movs?\s+r1,\s*#(0x[0-9a-f]+|\d+)$", text)
+            if match:
+                value = int(match.group(1), 16) if match.group(1).startswith("0x") else int(match.group(1))
+                constants[value] = constants.get(value, 0) + 1
+                classified = True
+                break
+            if re.match(r"^(ldr|ldrb|ldrh|adds?|mov)\s+r1,", text):
+                runtime += 1
+                classified = True
+                break
+        if not classified:
+            unresolved += 1
+    return {
+        "selector": f"{ANIMATION_SELECTOR:#010x}",
+        "call_sites": len(sites),
+        "lookback_instructions": lookback,
+        "constant_index_histogram": dict(sorted(constants.items())),
+        "constant_index_count": sum(constants.values()),
+        "max_constant_index": max(constants) if constants else None,
+        "runtime_index_sites": runtime,
+        "unresolved_sites": unresolved,
+    }
+
+
 def state_table_report(data: bytes) -> dict[str, Any]:
     table = state_to_index_table(data)
-    used = [value for value in table if value]
     return {
         "address": f"{STATE_TABLE_ADDRESS:#010x}",
         "size": len(table),
         "entries": list(table),
-        "max_index": max(table),
+        # ``max_value`` is the largest value the table holds; ``largest_state``
+        # is the largest index the engine addresses.  They are different numbers
+        # and must not be conflated.
+        "max_value": max(table),
+        "largest_state": STATE_TABLE_SIZE - 1,
         "identity_prefix": all(table[i] == i for i in range(16)),
-        "index_max": STATE_TABLE_SIZE - 1,
+        # The bytes immediately after the 25-entry table are *not* part of it.
+        # They are reported so the "above 24 is zero" reading can be falsified
+        # rather than assumed.
+        "bytes_after_table_hex": data[
+            STATE_TABLE_ADDRESS - ROM_BASE + STATE_TABLE_SIZE:
+            STATE_TABLE_ADDRESS - ROM_BASE + STATE_TABLE_SIZE + 0x18
+        ].hex(),
+        "lookup_sites": [f"{site:#010x}" for site in STATE_TABLE_LOOKUP_SITES],
+        "literal_sites": {
+            f"{site:#010x}": f"{STATE_TABLE_LITERAL:#010x}"
+            for site in STATE_TABLE_LITERAL_SITES
+        },
+        "address_literal_site": f"{STATE_TABLE_ADDRESS_LITERAL_SITE:#010x}",
+        "address_literal_sites": state_table_address_literal_sites(data),
     }
+
+
+def _ldr_pool(site: int) -> int:
+    """Pool address of a 16-bit Thumb ``ldr Rt,[pc,#imm]`` at ``site``."""
+    return (site + 4) & ~3
+
+
+def state_table_address_literal_sites(data: bytes) -> list[dict[str, Any]]:
+    """Every ``ldr Rt,[pc,#imm]`` whose literal-word value is the state table.
+
+    A raw halfword scan over every even offset of the whole image, so an
+    undecodable neighbour cannot hide a site.
+    """
+    found = []
+    address = ROM_BASE
+    limit = ROM_BASE + len(data)
+    while address + 4 <= limit:
+        halfword = _u16(data, address)
+        if (halfword & 0xF800) == 0x4800:
+            register = (halfword >> 8) & 7
+            pool = ((address + 4) & ~3) + (halfword & 0xFF) * 4
+            if ROM_BASE <= pool and pool + 4 <= limit:
+                if _u32(data, pool) == STATE_TABLE_ADDRESS:
+                    found.append(
+                        {
+                            "site": f"{address:#010x}",
+                            "register": f"r{register}",
+                            "pool": f"{pool:#010x}",
+                        }
+                    )
+        address += 2
+    return found
 
 
 ############################################
@@ -1118,11 +1280,13 @@ def engine_report(data: bytes) -> dict[str, Any]:
         "instructions": instructions,
         "count_guards": count_guard_report(data),
         "state_table": state_table_report(data),
+        "selector_arguments": selector_argument_census(data),
         "accessors": {
             "definition": f"{DEFINITION_ACCESSOR:#010x}",
             "definition_record": f"{DEFINITION_ACCESSOR_RECORD:#010x}",
             "character_ctor": f"{CHARACTER_CTOR:#010x}",
             "character_morph": f"{CHARACTER_MORPH:#010x}",
+            "animation_selector": f"{ANIMATION_SELECTOR:#010x}",
             "folded_arithmetic_base": f"{FOLDED_ARITHMETIC_BASE:#010x}",
         },
     }

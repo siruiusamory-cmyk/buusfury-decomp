@@ -60,6 +60,16 @@ def test_zero_size_is_flagged_and_zero_pointers_are_counted_not_flagged() -> Non
     assert summary["counters"]["field_50_zero"] == 1
 
 
+def test_unknown_allocation_size_is_flagged() -> None:
+    known = probe.KNOWN_ALLOCATION_SIZES[0]
+    assert probe.census_definitions([_row(field_02=known)])["anomalies"] == []
+    summary = probe.census_definitions([_row(field_02=0x1234)])
+    assert summary["anomalies"] == [
+        {"index": 0, "flags": ["size_not_a_known_allocation"]}
+    ]
+    assert summary["counters"]["size_not_a_known_allocation"] == 1
+
+
 def test_array_slot_census_is_position_scoped() -> None:
     summary = probe.census_array_slots(
         [(0x10, 0x20), (0x30,), (0, 0x40, 0), (0x50,)]
@@ -77,11 +87,11 @@ def test_animation_reference_arithmetic_separates_the_two_populations() -> None:
     summary = probe.census_animation_pointers(
         [0x08000010, 0x08000010, 0, 0x08000020, 0x03000000], inside
     )
-    assert summary["references"] == 5
-    assert summary["non_null_references"] == 4
-    assert summary["null_references"] == 1
+    assert summary["slots"] == 5
+    assert summary["non_null_slots"] == 4
+    assert summary["null_slots"] == 1
     assert summary["unique_targets"] == 3
-    assert summary["malformed_references"] == 1
+    assert summary["malformed_slots"] == 1
     assert summary["max_reuse"] == 2
     assert summary["reuse_histogram"] == {1: 2, 2: 1}
 

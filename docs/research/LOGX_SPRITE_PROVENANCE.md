@@ -189,11 +189,22 @@ character constructor:
 ```
 
 `0x0800EB60(obj, definition, class)` is the consumer this ticket read in full.
-It stores the definition at `obj + 0x58`, and it reads definition fields
-`+0x00`, `+0x02`, `+0x04`, `+0x08`, `+0x0A`, `+0x0B`, `+0x50` and `+0x54`. The
-only reader of `definition + 0x54` in the image is the `ldr r0,[r6,#0x54]` at
-`0x0800EBD0`; no other accessor caller and no base-class or
-`0x0804CEB8`-class method reads it.
+It stores the definition at `obj + 0x58`, and across its whole body
+(`0x0800EB60..0x0800EC32`) it reads definition fields `+0x02`, `+0x04`, `+0x0A`,
+`+0x0B`, `+0x50` and `+0x54` - not `+0x00` and not `+0x08`, which other
+consumers read.
+
+`definition + 0x54` is read in two ways and the two must not be conflated:
+
+* as a **scalar**, only at `0x0800EBD0` (`ldr r0,[r6,#0x54]`), which is the only
+  place the field is read without an index;
+* as the **base of an indexed element**, at `0x0800ECE0`, `0x0800ECFE` and
+  `0x0800ED50`, each of which computes `definition + 4*index` first and then
+  loads `+0x54`. Those three are the selectors of §8.1 and all three use index 0
+  in the flow this ticket read, so they load the same word `0x0800EBD0` does.
+
+No other accessor caller and no base-class or `0x0804CEB8`-class method reads the
+field in either way.
 
 Fields the constructor installs on the object (all `CONFIRMED` as reads):
 
@@ -244,29 +255,33 @@ values.
 **`+0x00` COUNT SEMANTIC: CONFIRMED.** The byte is the **number of elements in
 the inline array at `+0x54`**. Two independent lines of evidence:
 
-1. *Object extent.* The definition's extent is `0x54 + 4 * count`: of the 296
-   consecutive run pairs, **232** have the next definition starting exactly at
-   `definition + 0x54 + 4*count`; the last object's computed end is exactly
-   `0x086B6BDC`, where the run begins; and the 65 exceptions differ by exactly
-   `+0x100`, which is the 256-byte remap block of §6, so the formula holds for every
-   object.
-2. *Five engine sites use it as an array bound.* Each reads the byte and then
-   compares it with the index of the element it loads, skipping the load when
-   the count is not greater than that index:
+1. *Object extent.* The definition's extent is `0x54 + 4 * count`. Both
+   populations are stated, because they are different numbers:
+   **231 of the 296 consecutive run pairs** place the next definition exactly at
+   `definition + 0x54 + 4*count`, and **232 of the 297 structure boundaries**
+   agree once the last object is measured against `0x086B6BDC`, where the run
+   begins. The 65 disagreements are all exactly `+0x100`: they are the 65
+   objects followed by the 256-byte block of §6, and each such block's address
+   is the *successor's* `+0x04`. So the formula holds for every object.
+2. *Five engine sites use it as an array bound.* Each reads the byte, compares
+   it with the index of the element it loads, skips the load when the count is
+   not greater than that index, and then **null-tests the element it loaded**:
 
-| Site | Count read | Compare | Element loaded | Index |
-| --- | --- | --- | --- | --- |
-| `0x08013044` | `0x08013046 ldrb r1,[r0]` | `0x08013048 cmp r1,#7` then `0x0801304A bls` | `0x0801304C ldr r0,[r0,#0x70]` | 7 |
-| `0x08013086` | `0x08013088 ldrb r1,[r0]` | `0x0801308A cmp r1,#8` then `0x0801308C bls` | `0x0801308E ldr r0,[r0,#0x74]` | 8 |
-| `0x080131D8` | `0x080131DA ldrb r1,[r0]` | `0x080131DC cmp r1,#7` then `0x080131DE bls` | `0x080131E0 ldr r0,[r0,#0x70]` | 7 |
-| `0x0802736A` | `0x0802736C ldrb r2,[r1]` | `0x0802736E cmp r2,#1` then `0x08027370 bls` | `0x08027372 ldr r1,[r1,#0x58]` | 1 |
-| `0x0802A28A` | `0x0802A28E ldrb r1,[r0]` | `0x0802A290 cmp r1,#6` then `0x0802A292 bls` | `0x0802A294 ldr r2,[r0,#0x6c]` | 6 |
+| Site | Count read | Compare | Element loaded | Null test | Index |
+| --- | --- | --- | --- | --- | --- |
+| `0x08013044` | `0x08013046 ldrb r1,[r0]` | `0x08013048 cmp r1,#7` then `0x0801304A bls` | `0x0801304C ldr r0,[r0,#0x70]` | `0x0801304E cmp r0,#0` / `0x08013050 beq` | 7 |
+| `0x08013086` | `0x08013088 ldrb r1,[r0]` | `0x0801308A cmp r1,#8` then `0x0801308C bls` | `0x0801308E ldr r0,[r0,#0x74]` | `0x08013090 cmp r0,#0` / `0x08013092 beq` | 8 |
+| `0x080131D8` | `0x080131DA ldrb r1,[r0]` | `0x080131DC cmp r1,#7` then `0x080131DE bls` | `0x080131E0 ldr r0,[r0,#0x70]` | `0x080131E2 cmp r0,#0` / `0x080131E4 beq` | 7 |
+| `0x0802736A` | `0x0802736C ldrb r2,[r1]` | `0x0802736E cmp r2,#1` then `0x08027370 bls` | `0x08027372 ldr r1,[r1,#0x58]` | `0x08027374 cmp r1,#0` / `0x08027376 beq` | 1 |
+| `0x0802A28A` | `0x0802A28E ldrb r1,[r0]` | `0x0802A290 cmp r1,#6` then `0x0802A292 bls` | `0x0802A294 ldr r2,[r0,#0x6c]` | `0x0802A296 cmp r2,#0` / `0x0802A298 bne` | 6 |
 
 `+0x54 + 4*index` is `+0x58`, `+0x6C`, `+0x70` and `+0x74` for indices 1, 6, 7
 and 8, exactly the offsets those five sites load. A scan for the whole pattern
 (definition pointer load, `ldrb` of the count, `cmp` against a small immediate,
 then a load at `+0x54 + 4*index`) finds **exactly these five sites over
-`0x08000000..0x08060000`**, and no others.
+`0x08000000..0x08060000`**, and no others. Widening the windows (10 instructions
+for the `ldrb`, 8 for the `cmp`, 40 for the array load) returns the same five,
+and a desync-immune raw-halfword scan over the whole image agrees.
 
 **`+0x00` ANIMATION-COUNT SEMANTIC: CONFIRMED.** The elements the count bounds
 are animation pointers (§5, §7, §8), and the accessor that selects one is called
@@ -284,10 +299,11 @@ consults it.
 inline array of `count` 32-bit ROM pointers**, not a pointer to an external
 array and not a single pointer.
 
-* `0x0800EBD0 ldr r0,[r6,#0x54]` is the only read of the field in the image, and
-  the value it produces is used as an array base by `0x0800ECDA`
-  (`ldr r3,[r3,#0x54]` after `def + 4*index`) and by `0x0800ED3E`,
-  `0x0800ED50`.
+* `0x0800EBD0 ldr r0,[r6,#0x54]` is the only read of the field *as a scalar* -
+  every other read of a definition's `+0x54` first adds `4*index` to the
+  definition pointer (§3.2) - and the value it produces is used as an array base
+  by `0x0800ECDA` (`ldr r3,[r3,#0x54]` after `def + 4*index`) and by
+  `0x0800ED3E`, `0x0800ED50`.
 * `0x0800EF38` reaches element `index` of the *selected animation* at byte
   offset `4 + 16*frame + 4*direction`, which presupposes `+0x54` to be an array
   of animation pointers with the layout of §7.
@@ -301,11 +317,19 @@ Array occupancy over the 4,070 slots the 297 counts describe. The model is
 * index 0 is non-null in **297 of 297** definitions; index 1 in 262 of the 285
   that have it; index 22 in 5 of 5;
 * null counts by index, over the definitions that have the index: index 2 has
-  190 nulls of 244, index 8 has 231 of 241, index 18 has 12 of 133.
+  190 nulls of 244, index 8 has 231 of 241, index 18 has 12 of 133;
+* the word at `+0x54 + 4*count` is nonzero for all 297 definitions, so the array
+  is genuinely bounded by the count and not merely by "the next thing that
+  happens to be a pointer".
 
 **PROJECT CONCLUSION: the model is a count-bounded inline array with optional
 (sparse) null elements.** It is not a fixed 23-slot array: the array's extent
-tracks the count, and no definition carries an index at or above its count.
+tracks the count. The reader never produces an index at or above the count, so
+that fact is a property of the reader and is **not** offered as evidence for the
+model; the evidence is the extent arithmetic of §4, the five guarded reads, and
+the index-0 universality above. Null elements are real: the three selectors copy
+the loaded word into `obj+0x50` with no null test, while the five guarded sites
+of §4 do test the element they load.
 
 ---
 
@@ -319,7 +343,7 @@ The prefix's fields, physically; consumers named where found.
 | `+0x04` | `u32` LE | `ldr` `0x0800EBF6` (twice) | `0` in **232**; in **65** it equals `definition - 0x100` | **CONFIRMED** as a pointer to the 256 bytes immediately before the object. Those bytes are a near-identity byte permutation with 4..50 substituted positions, which is the shape of a palette-index remap. The pointer relationship is CONFIRMED; "palette remap" is **INFERRED** |
 | `+0x08` | 4 bytes, read individually | byte 0 `ldrb` `0x0800EF74`; bytes `+0x0A`,`+0x0B` `ldrb` `0x0800EC0A`/`0x0800EC0C` | byte 0 in `{0,8,16,32,64}` (`16` in 239); byte 1 in `{0,8,16,64}`; bytes 2/3 the pair `(0x0A,0x04)` in 222 objects | byte 0 is added to a screen x coordinate in `0x0800EF66`; bytes 2/3 select a resource through `0x08013E38`. Semantics **UNRESOLVED**; recorded as four separate bytes |
 | `+0x0C` | `u32` LE | none found | `0` in 283, 6 distinct values | **UNRESOLVED** |
-| `+0x10 .. +0x4F` | four 16-byte records of four `s32` LE | none found | value ranges per column are rect-like (`-18..8`, `-64..10`, `2..96`, `-7..56`), which is consistent with per-column bounding boxes | **UNRESOLVED**; accepted `GRAPHICS_FORMAT.md` calls these "per-direction bounding boxes, INFERRED" |
+| `+0x10 .. +0x4F` | four 16-byte records of four `s32` LE | none found | value ranges per column over **all four records**: `-24..8`, `-64..14`, `0..96`, `-7..56`; the first record's own ranges are `-18..8`, `-64..10`, `2..96`, `-7..56`, and the two must not be quoted interchangeably. The shape is consistent with per-column bounding boxes | **UNRESOLVED**; accepted `GRAPHICS_FORMAT.md` calls these "per-direction bounding boxes, INFERRED" |
 | `+0x50` | `u32` LE | `ldr` `0x0800EBB6`; indexed by animation index at `0x0800ECE4`, `0x0800ED08` | `0` in 287; in **10** a ROM pointer to a parallel, sparse, mostly 16-byte-spaced array with one entry per animation index | **PARTIALLY CONFIRMED**: a parallel per-animation pointer array used for the 10 objects that have one; the entries' meaning is **UNRESOLVED** |
 
 **PROJECT CONCLUSION: none of `+0x04 .. +0x53` is padding.** `+0x02`, `+0x04`,
@@ -356,9 +380,12 @@ PROJECT OBSERVATION:
   11:24, 12:2, 16:2` over the 1,017 unique records.
 * **13,660 frame-pointer slots**, all ROM pointers, **0 malformed**.
 * **10,980 unique frame pointers**; maximum reuse 4.
-* the trailer word at `+0x04 + 16*fc` is `1` for 1,006 of the 1,017 records;
-  the word after it takes 5 distinct values (`256, 512, 1024, 2048, 4096` with
-  11 outliers). Both are recorded raw; **UNRESOLVED**.
+* the trailer word at `+0x04 + 16*fc` takes **7 distinct values**, the value `1`
+  in **1,006** of the 1,017 records and six large raw words (one each, except
+  `3825263616` which appears 6 times); the word after it takes **21 distinct
+  values**, of which `256:11, 512:430, 1024:379, 2048:38, 4096:116` cover 974
+  records and the remaining 43 records carry 15 other values (`0`, `64`, `128`
+  and twelve large raw words). Both are recorded raw; **UNRESOLVED**.
 
 **Sharing does not imply semantic identity** and is not treated as if it did:
 1,017 animation records are reached by 1,721 slots, and 10,980 frame records are
@@ -404,10 +431,13 @@ corroboration of the accepted layout, not as a new piece claim.
 ```
 
 **`0x0800ECDA` has no range check against `def+0x00`.** It is called directly
-from **162 sites**, and 159 of those pass a constant in `0..21`
-(`0:9, 1:6, 3:10, 4:5, 7:2, 9:4, 10:2, 11:1, 12:4, 14:4, 15:3, 16:3, 17:3,
-18:54, 19:28, 20:14, 21:7`), so selection is **caller-side** and the count's five
-guarded reads (§4) are the engine's only bound consult.
+from **162 sites**. With a 20-instruction lookback, **161** of them pass a
+compile-time constant in `0..21` (`0:9, 1:8, 3:10, 4:5, 7:2, 9:4, 10:2, 11:1,
+12:4, 14:4, 15:3, 16:3, 17:3, 18:54, 19:28, 20:14, 21:7`); the remaining one,
+`0x0802CB9A`, passes an index the caller reads from the state table itself
+(`0x0802CB96 ldrb r1,[r1,r0]` with the literal `0x08072670`). Selection is
+therefore **caller-side** and the count's five guarded reads (§4) are the
+engine's only bound consult.
 
 **`obj+0x11` is a second index.** `0x0800ED3E` writes it (`strb r5,[r4,#0x11]`)
 from its third argument, `0x0800EF38` reads it, and `0x0800F53C`/`0x0800F558`
@@ -436,10 +466,26 @@ PROJECT OBSERVATION: the 25 bytes at `0x08072670` are
 ```
 
 so states `0..15` map to the same animation index, states `16..22` map to
-`17..23`, and states `23`/`24` alias indices `10`/`11`. Entries above 24 are
-zero. **The mapping is a translation table, not an identity**: two states alias
-the same index, and it is not the case that one fixed slot corresponds to one
-game state by construction.
+`17..23`, and states `23`/`24` alias indices `10`/`11`. **The mapping is a
+translation table, not an identity**: two states alias the same index, and it is
+not the case that one fixed slot corresponds to one game state by construction.
+
+The table's used range is `0..24`, because the engine addresses it only with
+those states. The bytes immediately after it are **not** part of it and are not
+zero either: the sixteen bytes at `+0x19` are
+`00 00 00 00 00 00 00 01 00 00 00 00 00 00 00 00`, so a hypothetical index 32
+would read `1`, and the eight bytes at `+0x24` are `0xFF`. "Everything above 24
+is zero" is **false** and is not claimed.
+
+**Four sites in `0x08000000..0x08060000` read the table**, a closed and
+checkable set:
+
+| Site | How it reaches the table | Role |
+| --- | --- | --- |
+| `0x0800ECF6` | literal `0x080725E8` (`0x0800ECF4`) `adds #0x88` | assignment |
+| `0x0800ED48` | literal `0x080725E8` (`0x0800ED46`) `adds #0x88` | assignment, plus `obj+0x11 = row` |
+| `0x0802CB96` | the only `ldr Rt,[pc,#imm]` whose pool word is `0x08072670` (`0x0802CB94`) | inlined assignment feeding `0x0800ECDA` |
+| `0x0800EEB6` | the other literal in the same structure, `0x080725F0` (`0x0800EEB0`) `adds #0x80` | **predicate**: compares the animation the state maps to against `obj+0x50` and returns 0 or 1 |
 
 ### 8.3 FIXED POSITIONAL SLOTS
 
@@ -451,13 +497,16 @@ game state by construction.
   is comparable across definitions.
 * **FIXED POSITIONAL SLOTS, as 23 mandatory slots: REFUTED.** The array is
   count-bounded (extent `0x54 + 4*count`), counts are `1..23` over 14 distinct
-  values, **2,349 of 4,070 slots are null**, and no object carries an index at
-  or above its own count. Index 0 is the only universally non-null position.
+  values, and **2,349 of 4,070 slots are null**. Index 0 is the only universally
+  non-null position.
 * **VARIABLE-LENGTH MODEL: CONFIRMED.** The count bounds the array's extent.
-* **SPARSE-SLOT MODEL: CONFIRMED.** Nulls are real: the selectors copy the
+* **SPARSE-SLOT MODEL: CONFIRMED.** Nulls are real. The three selectors copy the
   loaded word into `obj+0x50` with no null test, so a selected null is a null
-  animation base, which is a data property of the definition and not an engine
-  guarantee.
+  animation base. The five count-guarded sites of §4 are the other half of the
+  picture: the engine checks the count *and then* null-tests the element it
+  loaded, which is what a sparse optional array requires. Together those are the
+  engine's own acknowledgement that a definition may have no animation at an
+  index it does carry.
 * **FIXED POSITIONAL SLOTS as *semantic* slots: see §9.**
 
 ### 8.4 What gameplay code chooses
@@ -501,10 +550,17 @@ What is established:
 * The five count-guarded reads give four positions an *engine-visible role*
   rather than a name: index 1 is tested before a state-object swap
   (`0x0802736A`), index 6 before a two-versus-three selection (`0x0802A28A`),
-  index 7 before allocating a 12-byte object and before an unrelated check
-  (`0x08013044`, `0x080131D8`), and index 8 before dispatching method `+0x28`
-  with the argument `8` (`0x08013086`), i.e. "if this sprite has animation 8,
-  enter state 8", which is a *state/animation correlation*, not a name.
+  index 7 before allocating a 12-byte object (`0x08013044` and `0x080131D8`),
+  and index 8 before dispatching method `+0x28` with the argument `8`
+  (`0x08013086`), i.e. "if this sprite has animation 8, enter state 8", which is
+  a *state/animation correlation*, not a name.
+* Index 7's role goes further than the guard: **both** index-7 bodies then select
+  index 7 itself (`0x08013066 movs r1,#7` / `0x0801306A bl 0x0800ECDA`, and the
+  mirrored pair in the second body), and both then call `0x0800ED18`. So index 7
+  shows the same self-consistent state/animation correlation that index 8 does,
+  and the two bodies differ only in which object they build.
+* The counts correlate with the guard indices in the same direction: an object
+  whose count is above 7 is one the engine can put into the index-7 path at all.
 * The nonzero frequencies by position (§5) are consistent with optional
   abilities, but frequency is not meaning.
 
@@ -524,18 +580,24 @@ The labels in §1 claim 3 are recorded as **EXTERNAL CLAIM, not promoted**.
 ## 10. PROJECT CONCLUSION: RECONCILIATION WITH THE ACCEPTED ROM BIBLE
 
 `GRAPHICS_FORMAT.md` publishes corpus figures for the same structures. This
-ticket reproduced them independently and found exact agreement at the animation
-level and a residual at the frame level.
+ticket reproduced them two ways: from its own count model, and by running the
+accepted reader itself (`tools.webfoot.graphics.load_actor_sprites` on the
+canonical image through its configured profile). The two agree everywhere once
+the accepted reader's filters are accounted for.
 
-| Measure | `GRAPHICS_FORMAT.md` | this ticket, raw | reconciled |
-| --- | ---: | ---: | --- |
-| pointer-run entries | 297 | 297 | agree |
-| unique animation records | 1,013 | 1,017 | 4 of the 1,017 fail the accepted art filter; `1017 - 4 = 1013` |
-| animation references | 1,562 | 1,721 slots | the accepted walk **deduplicates** per structure; slot counts and distinct-reference counts are different populations |
-| direction slots populated | 13,596 | 13,660 | the 4 rejected animations hold **64** slots; `13660 - 64 = 13596` |
-| unique frame records | 10,959 | 10,980 | the 4 rejected animations carry 16 frames no accepted animation reaches; `10980 - 16 = 10964`, which is **5 more** than the accepted total; the residual is **UNRESOLVED** and recorded, not explained away |
-| structures with decodable art | 295 | 295 | 2 of 297 structures have no decodable animation |
-| animation NULL slots | 0 | 0 | agree over the accepted population |
+| Measure | `GRAPHICS_FORMAT.md` | accepted reader, re-run | this ticket, raw | reconciled |
+| --- | ---: | ---: | ---: | --- |
+| pointer-run entries | 297 | 297 (declared) | 297 | agree |
+| structures listed | 295 | 295 | 295 with art, 2 without | 2 of 297 structures reach no decodable animation |
+| unique animation records | 1,013 | 1,013 | 1,017 | 4 of the 1,017 fail the accepted art filter; `1017 - 4 = 1013` |
+| animation references | 1,562 | 1,562 | 1,721 slots | the accepted walk **deduplicates** per structure, so its figure is a distinct-reference count; the slot count is 1,721 |
+| direction slots populated | 13,596 | 13,660 over all 1,017 | 13,660 | the 4 rejected animations hold **64** slots; `13660 - 64 = 13596` |
+| unique frame records | 10,959 | 10,964 pointers, 10,959 of them resolving | 10,980 | 16 frames are reachable only through the 4 rejected animations, and **5** of the remaining pointers (`0x08424F9C`, `0x0869AF3C`, `0x0869AF5C`, `0x0869AF7C`, `0x0869AF9C`) do not resolve under the accepted `_frame_offset`; `10964 - 5 = 10959` |
+| graphics payloads | 7,355 | 7,355 | not censused here | agree |
+
+Every accepted figure is therefore reproduced exactly, and each difference has a
+stated cause. The one substantive disagreement is not a number but the
+*justification* of the extent model, below.
 
 ### 10.1 A genuine contradiction with an accepted conclusion
 
@@ -560,6 +622,12 @@ consequences of the wrong model on the canonical image:
   reason, and its per-structure deduplication (which the count model does not
   need) is what makes its "animation references" figure a distinct-reference
   count rather than a slot count.
+* **the correction is a numerical no-op for the accepted corpus**: applying the
+  counted extent and the accepted reader's own filters yields the same animation
+  set for all 297 structures, so replacing the walk with
+  `[+0x54, +0x54 + 4*count)` would change no published figure. What it would
+  change is the correctness of the justification and the meaning of the two
+  reference-count figures.
 
 **Action taken: none.** This ticket does not modify `tools/webfoot/graphics.py`
 or `GRAPHICS_FORMAT.md`; per the ticket's rule for a genuine contradiction it
@@ -602,16 +670,24 @@ Absence claims in this document are scoped, per `docs/research-conventions.md`.
 finds exactly two sites (`0x0800015E`, `0x0801713E`), so no folded base other
 than `0x086B6BB4` reaches the array through a literal, and that folded base is
 explained arithmetically. The `ldr r0,[r6,#0x54]` at `0x0800EBD0` is the only
-read of a definition's `+0x54` among the 121 direct accessor call sites and the
-object's whole method set as read in `0x0800EC34..0x0800F600`.
+read of a definition's `+0x54` **without an index** among the 121 direct accessor
+call sites and the object's whole method set as read in
+`0x0800EC34..0x0800F600`; the three indexed reads of the same word
+(`0x0800ECE0`, `0x0800ECFE`, `0x0800ED50`) are the selectors of §8.1.
 
 **12.2 The five count-guarded reads are exhaustive over the code region.** The
 scan pattern (`ldr rX,[obj,#0x58]`, then `ldrb rY,[rX]`, then `cmp rY,#k`, then
 within the next 18 instructions `ldr rZ,[rX,#0x54+4k]`) was run over every
 decodable instruction boundary in `0x08000000..0x08060000` (183,296
 instructions, resynchronising wide-window sweep) and returned exactly the five
-sites of §4. It is **not** evidence about code that keeps a definition pointer
-in a register across a call, and it does not cover ARM state.
+sites of §4. Widening the windows to 10 instructions for the `ldrb`, 8 for the
+`cmp` and 40 for the array load returns the same five. The *unguarded* pattern
+(`ldr rX,[x,#0x58]` and later `ldr rZ,[rX,#0x54+4k]` with no `cmp`) matches 34
+sites in that region; each was read, and every one is either a different base
+(they add `+0x4C` first, so the base is `[obj+0x58]+0x4C`), a class-vtable read,
+or bytes that are data rather than a decoded function. None is a definition read.
+This is **not** evidence about code that keeps a definition pointer in a register
+across a call, and it does not cover ARM state.
 
 **12.3 `+0x0C` and `+0x10..+0x4F` have no consumer.** The whole method set of
 the two classes the constructor installs (`0x0804AC20`, `0x0804CEB8`) was read,
@@ -632,29 +708,37 @@ two classes.
 
 ## 13. ANOMALIES
 
-1. **Two objects end where the run begins.** The last definition (id 306,
-   `0x086B6B60`) occupies the bytes immediately before the run, so the folded
-   base points into a *different* structure than the one the run holds. This is
-   the single fact that made LOGX-CHAR-001's first-entry question look
+1. **The run's first boundary is another object's tail.** The last definition
+   (id 306, `0x086B6B60`) occupies the bytes immediately before the run, so the
+   folded base points into a *different* structure than the one the run holds.
+   This is the single fact that made LOGX-CHAR-001's first-entry question look
    undecidable.
-2. **65 objects carry a `0x100`-byte remap block before them**, always
-   referenced by their `+0x04`, and always at `definition - 0x100`. The
-   correlation between "has `+0x04`" and "is preceded by a block" is exact over
-   the canonical image (65 and 65).
+2. **65 objects are preceded by a `0x100`-byte remap block**, always at
+   `definition - 0x100` and always referenced by that object's own `+0x04`. The
+   set of objects with the field and the set of objects preceded by a block are
+   the **same 65-element set**, verified as sets rather than by counting. The
+   block *between* two objects therefore belongs to the later one, so the 65
+   objects whose counted end leaves a gap are a different 65 from the 65 that
+   carry the pointer.
 3. **`+0x02` takes eight block sizes and never zero**, yet the value is also used
    as a resource selector through `0x0801124C` after a `>> 6`. Whether the two
    uses are one field with two views or two coincident fields is **UNRESOLVED**.
-4. **A selected animation can be null.** The selectors do not test for null, and
-   12 of the 133 definitions that have index 18 carry a null there. No engine
-   code was found that guards the selection.
+4. **The three selectors do not null-test what they load, but the five
+   count-guarded reads do.** `0x0800ECDA`, `0x0800ECF0` and `0x0800ED3E` copy the
+   loaded word into `obj+0x50` unconditionally, so a definition whose element at
+   the selected index is null yields a null animation base; 12 of the 133
+   definitions that have index 18 carry a null there. The five guarded sites of
+   §4 are the engine's own null checks, and they exist precisely because the
+   array is optional at an index its count still covers.
 5. **`+0x50` is populated for only 10 of 297 objects**, and the constructor
    branches on it (`0x0800EBB6`). Those 10 are the only objects whose
    `obj+0x4C` is initialised from the definition; the other 287 leave it zero.
 6. **The state table aliases two states onto indices 10 and 11** (states 23 and
    24), so state and animation index are not in bijection.
-7. **The frame-level corpus figures do not fully reconcile** with
-   `GRAPHICS_FORMAT.md`: this ticket reaches 10,964 frames under a reproduction
-   of the accepted filter where the accepted document reports 10,959.
+7. **Five frame pointers inside accepted animations do not resolve to a valid
+   frame** under the accepted reader's `_frame_offset` (listed in §10). The
+   accepted corpus silently drops them, which is why its frame total is 10,959
+   rather than 10,964.
 
 ---
 
@@ -664,17 +748,24 @@ two classes.
    palette-index remap and `obj+0x34`/`obj+0x3C` receive it, but no instruction
    was read that indexes it.
 2. What `definition + 0x0C` and `definition + 0x10..+0x4F` hold.
-3. What the animation record's two trailer words mean; the first is `1` for
-   1,006 of 1,017 records and the second takes five small values.
+3. What the animation record's two trailer words mean. The first is `1` for
+   1,006 of 1,017 records and takes six other raw values; the second takes 21
+   distinct values, five of which cover 974 records.
 4. What `obj+0x12` is: it is saved and restored with the animation state but
    not read in any function this ticket read.
 5. Which game states correspond to the state table's `0..24`, and therefore
    which animation indices they select.
-6. Whether any producer of the state numbers passes a value above 24 (the table
-   has zeroes there) or an animation index at or above a definition's count.
-7. Why the 4 art-filter-rejected animations exist and which definitions reach
-   only them.
-8. The 5-frame residual in §10.
+6. Whether any producer of the state numbers passes a value above 24. The table
+   is only addressed with `0..24`; the bytes after it are not part of it, and a
+   hypothetical index 32 would read a `1` that is not a table entry.
+7. Why the 4 art-filter-rejected animations exist. **Answered for which
+   definitions reach only them**: definition id 146 (`0x086AEBF0`, count 2)
+   carries the rejected `0x08579900` at both of its indices, and definition id
+   163 (`0x086AF688`, count 13) carries the rejected `0x0859A860` at index 0 and
+   `0x0859C974` at index 12; the fourth rejected record, `0x08423208`, is reached
+   by definition id 47 at index 12, which also has accepted animations. What the
+   four records *are* remains open.
+8. What the five unresolvable frame pointers listed in §10 are.
 
 ---
 

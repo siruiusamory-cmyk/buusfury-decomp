@@ -884,50 +884,60 @@ index 0 carries no special meaning.**
 | `+0x54` | `count` x `u32` LE inline array | `ldr` at `0x0800EBD0`; indexed at `0x0800ECE0`, `0x0800ED50` |
 
 **`definition + 0x00`, low byte, is the inline array's element count -
-CONFIRMED.** The object's extent is `0x54 + 4*count`: 232 of the 296 consecutive
-run pairs place the next definition exactly at `+0x54 + 4*count`, the last
-object's computed end is exactly the run start, and the 65 exceptions are
-separated by exactly `0x100` - the 256-byte remap block below. Five engine sites
-then use the byte as an index bound, comparing it with the index of the element
-they are about to load and skipping the load when the count is not greater than
-that index:
+CONFIRMED.** The object's extent is `0x54 + 4*count`: **231 of the 296
+consecutive run pairs** place the next definition exactly at `+0x54 + 4*count`
+(**232 of the 297 structure boundaries** once the last object is measured against
+`0x086B6BDC`, where the run starts), and the 65 disagreements are all exactly
+`0x100`. Five engine sites then use the byte as an index bound: each reads the
+byte, compares it with the index of the element it is about to load, skips the
+load when the count is not greater than that index, and then null-tests the
+element:
 
 ```text
-0x08013046  ldrb r1, [r0]       0x08013048  cmp r1, #7      0x0801304C  ldr r0, [r0, #0x70]
-0x08013088  ldrb r1, [r0]       0x0801308A  cmp r1, #8      0x0801308E  ldr r0, [r0, #0x74]
-0x080131DA  ldrb r1, [r0]       0x080131DC  cmp r1, #7      0x080131E0  ldr r0, [r0, #0x70]
-0x0802736C  ldrb r2, [r1]       0x0802736E  cmp r2, #1      0x08027372  ldr r1, [r1, #0x58]
-0x0802A28E  ldrb r1, [r0]       0x0802A290  cmp r1, #6      0x0802A294  ldr r2, [r0, #0x6c]
+0x08013046  ldrb r1, [r0]   0x08013048  cmp r1, #7   0x0801304C  ldr r0, [r0, #0x70]   0x0801304E  cmp r0, #0
+0x08013088  ldrb r1, [r0]   0x0801308A  cmp r1, #8   0x0801308E  ldr r0, [r0, #0x74]   0x08013090  cmp r0, #0
+0x080131DA  ldrb r1, [r0]   0x080131DC  cmp r1, #7   0x080131E0  ldr r0, [r0, #0x70]   0x080131E2  cmp r0, #0
+0x0802736C  ldrb r2, [r1]   0x0802736E  cmp r2, #1   0x08027372  ldr r1, [r1, #0x58]   0x08027374  cmp r1, #0
+0x0802A28E  ldrb r1, [r0]   0x0802A290  cmp r1, #6   0x0802A294  ldr r2, [r0, #0x6c]   0x0802A296  cmp r2, #0
 ```
 
 `+0x54 + 4*index` is `+0x58`, `+0x6C`, `+0x70`, `+0x74` for indices 1, 6, 7, 8,
 which is exactly what those five sites load. A raw scan of every decodable
 instruction boundary in `0x08000000..0x08060000` for the whole pattern finds
-these five sites and no others.
+these five sites and no others, under three different window widths.
 
 **`definition + 0x54` begins an inline array of `count` 32-bit ROM pointers -
-CONFIRMED.** The elements point at **animation records**. The model is
+CONFIRMED.** It is read in two ways: as a scalar only at `0x0800EBD0`
+(`ldr r0,[r6,#0x54]`), and as an indexed element at `0x0800ECE0`, `0x0800ECFE`
+and `0x0800ED50`. The elements point at **animation records**. The model is
 **count-bounded and sparse**, not fixed: over the 4,070 slots the 297 counts
 describe, **1,721 are non-null and 2,349 are null**; index 0 is non-null in 297
-of 297 definitions and index 1 in 262 of the 285 that have it. No object carries
-an index at or above its own count.
+of 297 definitions and index 1 in 262 of the 285 that have it. The word at
+`+0x54 + 4*count` is nonzero for all 297 objects, so the array is genuinely
+bounded by the count.
 
 **Animation record.** `u32 frame_count` at `+0x00` (values `1..16`), then
 `4 * frame_count` 32-bit ROM pointers; frame `f`, direction slot `d` is at byte
 offset `+0x04 + 16*f + 4*d`. Over the canonical image: **1,017 unique animation
-records** reached by 1,721 slots, **13,660 frame-pointer slots** with zero
-malformed, and **10,980 unique frame records**. Two trailing words follow the
-pointer array; their meaning is unknown.
+records** reached by 1,721 slots, **13,660 frame slots over those unique
+records** with zero malformed, and **10,980 unique frame records**. Two trailing
+words follow the pointer array; the first is `1` for 1,006 of the 1,017 records
+and the second takes 21 distinct values, of which `256:11, 512:430, 1024:379,
+2048:38, 4096:116` cover 974.
 
 **Animation selection.** `0x0800ECDA(obj, index)` assigns
 `*(u32*)(definition + 0x54 + 4*index)` to `obj+0x50`, and also
 `definition[0x50][index]` to `obj+0x4C` when `definition + 0x50` is non-null. It
-has **no range check** and 159 of its 162 direct `BL` call sites pass a constant
-in `0..21`. `0x0800ECF0(obj, state)` and `0x0800ED3E(obj, state, row)` first
-translate the state through a 25-byte table at `0x08072670`; that table is
-`0..15` identity, `16..22 -> 17..23`, and states `23`/`24` both alias indices
-`10`/`11`, so the mapping is a translation and not an identity. `0x0800ED3E`
-also writes `obj+0x11`, the second index. `0x0800EF38` then computes
+has **no range check**; 161 of its 162 direct `BL` call sites pass a compile-time
+constant in `0..21`, and the last passes an index read from the state table.
+`0x0800ECF0(obj, state)` and `0x0800ED3E(obj, state, row)` first translate the
+state through a 25-entry table at `0x08072670`; that table is `0..15` identity,
+`16..22 -> 17..23`, and states `23`/`24` both alias indices `10`/`11`, so the
+mapping is a translation and not an identity. Exactly four sites read that table
+(`0x0800ECF6`, `0x0800ED48`, the inlined lookup at `0x0802CB96`, and the
+predicate at `0x0800EEB6`); the table is addressed only with states `0..24`, and
+the bytes after it are not part of it. `0x0800ED3E` also writes `obj+0x11`, the
+second index. `0x0800EF38` then computes
 `*(u32*)(obj+0x50 + 16*obj[0x11] + 4*obj[0x10] + 4)` into `obj+0x54`; that is
 the current frame record, whose `+0x04` and `+0x05` are read as signed byte
 offsets and `+0x06`/`+0x07` as additive extents by the constructor at
@@ -941,8 +951,10 @@ engine instruction names an animation. "Stand", "walk", "run", "attack",
 not written here; LOGExtractor's 23-slot numbering is not adopted, and no code
 adds one to an animation index. **Fixed positional slots: CONFIRMED
 structurally. Individual semantic slot names: mostly UNRESOLVED.** An animation
-element may legitimately be null and no selector tests for it, so a sprite may
-have no animation at a given index.
+element may legitimately be null, the three selectors do not test for it, and
+the five count-guarded sites null-test exactly the elements they load, so a
+sprite may have no animation at an index its count still covers. What the
+positions *mean* is not claimed.
 
 **Known disagreement with the accepted graphics corpus.** `GRAPHICS_FORMAT.md`
 and `tools/webfoot/graphics.py::_animations_in` resolve a structure's animation
@@ -954,8 +966,14 @@ extra slots are all nonzero and none is a ROM pointer, so its corpus figures sta
 right for the wrong reason, but its 1,562 "animation references" is a
 per-structure deduplicated count rather than a slot count (the slot count is
 1,721) and its 1,013 unique animation records exclude the 4 that fail its art
-filter (1,017 raw; `13660 - 64 = 13596` direction slots). The accepted document
-and reader are **not** modified here; the correction is handed to synthesis.
+filter (1,017 raw; `13660 - 64 = 13596` direction slots over the unique
+animations), and its 10,959 frame records exclude 5 frame pointers inside
+accepted animations that its own `_frame_offset` rejects. Every accepted figure
+is reproduced exactly once those filters are applied, and replacing the walk with
+`[+0x54, +0x54 + 4*count)` is a **numerical no-op** for the accepted corpus: it
+changes the justification and the meaning of the reference counts, not a
+published number. The accepted document and reader are **not** modified here;
+the correction is handed to synthesis.
 
 ## Unresolved after ROM-002
 

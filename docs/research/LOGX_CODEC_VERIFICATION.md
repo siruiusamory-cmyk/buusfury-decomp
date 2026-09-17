@@ -7,14 +7,21 @@
 
 ## END SHA
 
-`5149d07` is the primary research commit; its child is the bookkeeping commit that
-first records this SHA. The primary commit was amended three times before that,
-purely for line-ending and trailing-blank normalization, and the tree was verified
-with `git diff --check` after each.
+`5149d07` is the primary research commit on the authoring branch; its child is the
+bookkeeping commit that first records this SHA. The primary commit was amended three
+times before that, purely for line-ending and trailing-blank normalization, and the
+tree was verified with `git diff --check` after each.
+
+Integration gave those two commits different hashes, so the END SHA for work that
+reached `master` is the merge commit
+`ee2252c00a24d9bc3b73fa64d7f0358d79a494e9`, whose parents are START SHA `4d230a5`
+and closeout commit `ce2dfaf`. See "Integration and post-merge state" at the end of
+this document for the full chain.
 
 ## BRANCH
 
-`logx-codec-001` (isolated worktree at `<temp>\log1-remake-logx-codec-001`)
+`logx-codec-001` (isolated worktree at `<temp>\log1-remake-logx-codec-001`);
+integrated to `master` through the short-lived branch `integrate/logx-codec-001`
 
 ## COMMIT SHA(S)
 
@@ -23,6 +30,11 @@ plus one child commit, `docs(tickets): record LOGX codec research SHAs and revie
 verdicts`, which records this SHA and is the branch tip. The ticket's scope is
 research plus tooling and tests, and no production file is touched, so no separate
 baseline commit was required.
+
+The cherry-picked equivalents of those two commits that reached `master` are
+`59acc86` and `8f8be08`, followed by the closeout commit `ce2dfaf` and the merge
+commit `ee2252c`. The authoring commits were never pushed and are not ancestors of
+`master`.
 
 ## CANONICAL ROM SHA BEFORE
 
@@ -790,7 +802,31 @@ state, dump or decoded payload is tracked. Working tree clean; `git diff --check
 clean from START to HEAD.
 
 The main checkout's `workbench-006` branch and the active WORKBENCH-006 worktree
-were not touched; this branch was created from the START SHA in its own worktree
-and is not integrated to master.
+were not touched; this branch was created from the START SHA in its own worktree.
 
-Not archived. `docs/PROJECT_<local-state-name>` and `docs/PROJECT_<local-state-name>` are unchanged.
+## Integration and post-merge state
+
+This ticket is integrated to `master` and closed. The paragraph that previously
+stood here recorded the then-true pre-integration state, in which the branch was
+not yet merged and this document was not archived; it is superseded by this
+section.
+
+- START SHA: `4d230a5e90f4c83b89ec5d02856d38aa4a364330`.
+- Commits that reached `master`, cherry-picked from the authoring branch:
+  `59acc86` (`research(codec): canonicalize Buu container decoding`), `8f8be08`
+  (`docs(tickets): record LOGX codec research SHAs and review verdicts`), and
+  `ce2dfaf` (`docs(research): close LOGX-CODEC-001`).
+- Authoring branch `logx-codec-001`: `5149d07` plus child
+  `53c992749fbf8b75e3a483f287efc087b8eed799`. Never pushed; not an ancestor of
+  `master`; retained locally as a safety reference.
+- Merge request: `!26`, merged into `master`.
+- Merge commit and post-merge `origin/master` SHA:
+  `ee2252c00a24d9bc3b73fa64d7f0358d79a494e9`.
+- Accepted blobs verified identical between the authoring branch tip `53c9927`
+  and `master` for all eight research files; `git diff --stat` between them is
+  empty in the changed scope.
+- The MR pipeline and the `master` pipeline ran `pytest tests/unit -q` and passed.
+- Archived as [LOGX-CODEC-001-COMPLETE](archive/LOGX-CODEC-001-COMPLETE.md);
+  `docs/PROJECT_<local-state-name>` and `docs/PROJECT_<local-state-name>` record the closeout.
+- The authorized baseline for `LOGX-CHAR-001` is the post-merge `origin/master`
+  SHA `ee2252c00a24d9bc3b73fa64d7f0358d79a494e9`.

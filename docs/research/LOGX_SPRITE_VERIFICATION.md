@@ -8,11 +8,15 @@ annotations inside the blocks are marked as such.**
 
 ```text
 START SHA:                470fe1bcdb733a3acdd05b1a3697b5f55ff5cd0d
-END SHA:                  <FINAL>
+END SHA:                  c992d8b44548559166f1e0f7ad166925705e6f8c
+                          (branch tip after the last content-bearing commit; the
+                          commit that adds these SHA lines is documentation-only)
 BRANCH:                   logx-sprite-001
 COMMIT SHA(S):            bccd03c  research(sprite): reconstruct Buu sprite definitions
                           e3de67b  research(sprite): correct LOGX-SPRITE-001 review findings
-                          <FINAL>  docs(tickets): record LOGX-SPRITE-001 review and SHAs
+                          1a3eb70  research(sprite): close LOGX-SPRITE-001 delta review findings
+                          c992d8b44548559166f1e0f7ad166925705e6f8c
+                                   docs(tickets): record LOGX-SPRITE-001 review and gate
 WORKTREE:                 <temp>\log1-remake-logx-sprite-001
 
 CANONICAL ROM SHA BEFORE: 940AD5F01DB4465B8877DFE739510CBF34F4EA3D390F3DF13519808BC36F059E

@@ -1,5 +1,8 @@
 # Commercial ROM images
+# `roms/` covers the directory; the bare `roms` covers a symlink or junction to
+# it, which git reports as an untracked *file* and the directory pattern misses.
 roms/
+roms
 *.gba
 *.gb
 *.gbc
@@ -66,3 +69,7 @@ htmlcov/
 .idea/
 .DS_Store
 Thumbs.db
+
+# Local research scratch space. Ad-hoc probes and one-off scripts live here while
+# a ticket is in flight; they are not deliverables and are never committed.
+/scratchpad/

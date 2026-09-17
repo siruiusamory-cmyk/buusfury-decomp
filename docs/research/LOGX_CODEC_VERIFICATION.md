@@ -450,7 +450,7 @@ is host-side policy.** The engine validates nothing. Reproduce with
 | packed, no end marker, size reached | keep decoding; no size comparison exists | accept | accept |
 | packed back-reference before output start | copy from bytes before the buffer | refuse | refuse |
 
-**The reference module decodes the packed arm only.** For the stored arm and for
+**The second module decodes the packed arm only.** For the stored arm and for
 unknown dispatch words its column states that, and the engine's own branch is
 reported beside it; it does not pretend to answer for a branch it does not
 implement.

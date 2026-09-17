@@ -226,6 +226,12 @@ and **`0x03000190` occurs zero times in the 8 MiB image** in any form. The two
 false constants were also hard-coded in `webfoot_codec_reference.py`; they are
 corrected there and the veneer count may not be asserted from the old table.
 
+**Scope note on the stub table.** The rows above give each stub's measured
+target. Where a row names a caller, it names the call site relevant to this
+ticket's resource graphs, **not** the stub's complete caller count: `0x08049120`
+has 10 callers in the image and `0x08049138` has 164. The table is a target
+census, not a caller census, and no row is exhaustive on callers.
+
 **PROJECT OBSERVATION (base CONFIRMED, not INFERRED).** The startup code copies
 the blob with DMA3. The literal at `0x08000150` is `0x00001007`, but that is only
 the *source* of the count: the register value is built at
@@ -823,16 +829,17 @@ Two implementations were run over the same corpus:
 | decoded length equals declared | 4,322 packed containers | **4,322** |
 | end marker at the decoded length | 4,322 packed containers | **4,322** |
 
-**What this proves, and what it does not.** The reference module does not import
+**What this proves, and what it does not.** The second module does not import
 or call `webfoot_lz`, its only imports are `struct` and `dataclasses`, so the
 two decoders are not literally one implementation run twice, and the differential
 does prove that the two agree on every reachable container and that they differ in
 their *policy* on malformed input (section 15).
 
-It does **not** prove that the grammar is correct. The reference was written after
-the project decoder was read, and the two share most of their token grammar line
-for line. An independent review measured **65 of 83** normalised grammar lines as
-verbatim identical, including the whole token dispatch table and the bias ladder.
+It does **not** prove that the grammar is correct. The second implementation was
+written after the project decoder was read, and the two share most of their token
+grammar line for line. An independent review measured **65 of 83** normalised
+grammar lines as verbatim identical, including the whole token dispatch table and
+the bias ladder.
 A shared misreading would therefore not be caught by this differential.
 
 **PROJECT CONCLUSION.** The grammar's authority rests on the corpus, not on the
@@ -863,7 +870,7 @@ validation at all, so every refusal below is host-side policy.
 | packed, no end marker, size reached | keep decoding; no size comparison exists | accept | accept |
 | packed back-reference before the output start | copy from bytes before the buffer | refuse | refuse |
 
-**The reference module decodes the packed arm only.** For the stored arm and for
+**The second module decodes the packed arm only.** For the stored arm and for
 unknown dispatch words its column says so and the engine's own branch is reported
 beside it; it does not answer for a branch it does not implement. Reproduce the
 whole table with `python -m tools.research.logx_codec_probe <rom> --malformed`.

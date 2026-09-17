@@ -7,7 +7,10 @@
 
 ## END SHA
 
-`<filled at commit>`
+`5149d07` is the primary research commit; its child is the bookkeeping commit that
+first records this SHA. The primary commit was amended three times before that,
+purely for line-ending and trailing-blank normalization, and the tree was verified
+with `git diff --check` after each.
 
 ## BRANCH
 
@@ -15,7 +18,11 @@
 
 ## COMMIT SHA(S)
 
-`<filled at commit>`
+`5149d07` - `research(codec): canonicalize Buu container decoding` (primary)
+plus one child commit, `docs(tickets): record LOGX codec research SHAs and review
+verdicts`, which records this SHA and is the branch tip. The ticket's scope is
+research plus tooling and tests, and no production file is touched, so no separate
+baseline commit was required.
 
 ## CANONICAL ROM SHA BEFORE
 
@@ -769,13 +776,21 @@ Committed on branch `logx-codec-001` in the isolated worktree
 `<temp>\log1-remake-logx-codec-001`, based on START SHA
 `4d230a5e90f4c83b89ec5d02856d38aa4a364330`.
 
+| Commit | Subject |
+| --- | --- |
+| `5149d07` | `research(codec): canonicalize Buu container decoding` |
+| branch tip | `docs(tickets): record LOGX codec research SHAs and review verdicts` |
+
+Files changed versus START SHA: exactly the eight listed under TOOLING ADDED,
+TESTS ADDED and ROM_BIBLE_IMPACT, plus `docs/research-conventions.md`.
+
 Only explicit paths were staged; the local `roms` directory junction used to run
-the ROM-gated suites was removed before the commit and never staged. The
-canonical ROM, its saves and states are untouched and untracked.
+the ROM-gated suites was removed before the commit and never staged. No ROM, save,
+state, dump or decoded payload is tracked. Working tree clean; `git diff --check`
+clean from START to HEAD.
 
-Not integrated to master. Not archived. `docs/PROJECT_<local-state-name>` and
-`docs/PROJECT_<local-state-name>` are unchanged.
+The main checkout's `workbench-006` branch and the active WORKBENCH-006 worktree
+were not touched; this branch was created from the START SHA in its own worktree
+and is not integrated to master.
 
-## GIT STATUS
-
-`<recorded below>`
+Not archived. `docs/PROJECT_<local-state-name>` and `docs/PROJECT_<local-state-name>` are unchanged.

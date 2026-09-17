@@ -22,6 +22,17 @@ instruction evidence in ``docs/research/LOGX_CHAR_PROVENANCE.md``.
 Evidence provenance labels follow ``docs/research-conventions.md``.  Addresses
 are GBA addresses; a file offset is an address minus ``0x08000000``.
 
+**Dependency boundary.** The census, record and target arithmetic are pure: they
+need only the project's own pure codecs (``webfoot.formats.text_tables``,
+``webfoot.formats.stat_tables``) and no third-party package.  Capstone is needed
+*only* to read instruction text, so that import is deferred to first use:
+``tools.research.thumb_disasm`` raises ``SystemExit`` when capstone is absent, and
+CI's portable unit job installs only ``.[dev]``.  Deferring it is what lets
+``tests/unit/test_logx_char_reference.py`` run in CI instead of skipping - an
+environment without capstone can still import this module, use the whole census
+API and run ``--rows``; only ``--engine``, ``format_instruction`` and
+``instruction_at`` require capstone.
+
 The probe performs no I/O beyond reading the caller's bytes and it never
 mutates the canonical image.
 """
@@ -36,9 +47,8 @@ import sys
 from dataclasses import dataclass
 from functools import lru_cache
 from pathlib import Path
-from typing import Any, Sequence
+from typing import Any, Callable, Sequence
 
-from tools.research.thumb_disasm import decode_thumb_at
 from tools.webfoot.formats import stat_tables
 from tools.webfoot.formats import text_tables
 
@@ -140,6 +150,7 @@ PRECEDING_POINTER_TABLE_ENTRIES = 8
 
 #: The engine instructions this ticket quotes.  Each is asserted by a test from
 #: the raw halfwords, so a re-transcription cannot drift from the record.
+#: Reading them back needs capstone (see the dependency boundary above).
 EVIDENCE_INSTRUCTIONS: dict[str, tuple[int, str]] = {
     "stride_loop_a": (0x080279A2, "lsls r0, r4, #4"),
     "stride_loop_b": (0x08027964, "lsls r0, r4, #4"),
@@ -365,9 +376,28 @@ def stat_record_address(data: bytes, index: int) -> int:
 # --- engine instruction evidence ---------------------------------------------
 
 
+@lru_cache(maxsize=1)
+def _decode_thumb_at() -> Callable[[bytes, int], Any]:
+    """The Thumb decoder, imported on first use rather than at module import.
+
+    ``tools.research.thumb_disasm`` raises ``SystemExit`` when capstone is
+    missing, and capstone is research tooling rather than a declared dependency
+    of the shipping SDK that CI's portable job installs.  Importing it lazily
+    keeps the census, record and target API usable - and CI-coverable - without
+    it; only the instruction helpers below require it, and they are exercised
+    only by the ROM-gated suite and ``--engine``.
+    """
+    from tools.research.thumb_disasm import decode_thumb_at
+
+    return decode_thumb_at
+
+
 def instruction_at(data: bytes, address: int) -> tuple[str, str, bytes]:
-    """``(mnemonic, operands, raw bytes)`` for the Thumb instruction at a site."""
-    item = decode_thumb_at(data, address)
+    """``(mnemonic, operands, raw bytes)`` for the Thumb instruction at a site.
+
+    Requires capstone; see the module docstring's dependency boundary.
+    """
+    item = _decode_thumb_at()(data, address)
     if item is None:
         raise CharProbeError(f"no Thumb instruction decodes at {address:#010x}")
     offset = address - ROM_BASE

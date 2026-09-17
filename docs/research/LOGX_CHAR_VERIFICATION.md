@@ -901,3 +901,45 @@ the same with the ROM path pointed at a non-existent file
 The broad gate, `git diff --check`, the staged-scope inspection, the
 proprietary-artifact scan and the canonical ROM re-hash are recorded in the
 closeout commit's own report.
+
+### One defect the reviewers could not have found, raised by CI
+
+The first merge-request pipeline failed the `test-sdk` job
+(`pytest tests/unit -q`, which CI runs with only `.[dev]` installed). It was a
+**real defect in this ticket's tooling, not an environment problem**:
+
+- `tests/unit/test_logx_char_reference.py` imports `tools.research.logx_char_probe`,
+  which imported `tools.research.thumb_disasm` at module scope, and that module
+  raises `SystemExit` when capstone is absent. Capstone is research tooling and is
+  not a declared dependency, so pytest reported a collection `INTERNALERROR` and
+  the job exited 3.
+- Neither fresh-context reviewer could have caught it: both ran on a workstation
+  with capstone installed, and the portable suite passed there.
+
+**Correction C26, raised by CI, accepted and applied.** The capstone import is
+now deferred to first use, so the census, record and target API - everything the
+portable tests exercise - imports and runs without capstone; only
+`instruction_at`, `format_instruction` and `--engine` require it, and those are
+used solely by the ROM-gated suite. The module docstring states the dependency
+boundary. Reproduced and verified in a simulated CI environment (capstone
+resolving to `ModuleNotFoundError`):
+
+```text
+python -m pytest tests/unit -q            # capstone absent, CI's exact command
+-> 1384 passed, 16 skipped, 0 failed
+python -m pytest tests/unit/test_logx_char_reference.py -q
+-> 22 passed
+python -m pytest tests/unit/test_thumb_disasm_field_extraction.py -q
+-> 1 skipped ("the Thumb decoder under test requires capstone")
+
+with capstone present, on the same tree:
+python -m pytest tests/unit/test_logx_char_reference.py tests/integration/test_logx_char_rom.py -q
+-> 46 passed
+python -m tools.research.logx_char_probe <rom> --engine
+-> exits 0
+```
+
+The correction changes no measured figure and no research claim: it changes when
+one import happens. **Correction gate: RE-CLOSED** after C26, with the
+merge-request pipeline re-run as the confirming evidence rather than a local
+re-run alone.

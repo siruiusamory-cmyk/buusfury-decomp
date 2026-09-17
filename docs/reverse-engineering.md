@@ -975,6 +975,151 @@ changes the justification and the meaning of the reference counts, not a
 published number. The accepted document and reader are **not** modified here;
 the correction is handed to synthesis.
 
+## LOGX-FRAME-001 animation records, frame records and multipart pieces
+
+Full evidence: [`research/LOGX_FRAME_PROVENANCE.md`](research/LOGX_FRAME_PROVENANCE.md).
+Probe: `python -m tools.research.logx_frame_probe <rom> --census`.
+
+**Animation object.** `u32 frame_count` at `+0x00` (values `1..16`; the halfword
+above it is always `0` on the canonical image), then a **4-byte-stride table of
+`4 * frame_count` 32-bit ROM pointers** beginning at `+0x04`. Cell
+`(frame, direction)` is at `animation + 0x04 + 16*frame + 4*direction`, i.e. flat
+index `4*frame + direction`. Two words follow the table; both are recorded raw
+and neither is named. The three readings the ticket had to keep apart:
+
+* **the physical field**: `u32`, read as a word rather than a byte;
+* **the count semantic**: the number of table rows, because the frame advance
+  compares the frame index with it and wraps modulo it
+  (`0x0800DE78..0x0800DE90`: `ldr r3,[r3]` / `cmp r3,r2` / `bgt` / `strb
+  r2,[r1,#0x11]`, and the wrapping form at `0x0800DEBA..0x0800DECC`);
+* **the extent semantic**: the object is `0x04 + 16*frame_count + 8` bytes, no
+  two canonical animation objects overlap, and the gap to the next object is
+  always a multiple of four.
+
+**What `16*frame + 4*direction + 4` indexes - CONFIRMED as a two-dimensional
+cell table.** The arithmetic appears in seven engine functions (`0x0800EF38`,
+`0x0800EF66`, `0x0800FFA4`, `0x080100A4`, `0x08010192`, `0x080272AE`, and
+`0x080273D6` with its `0x080273DA`/`0x080273DC` pair); in each, the base is the
+*selected animation*, `obj+0x50`, not the definition. An eighth site,
+`0x0800F0A2`, has the same shape but base `obj+0x4C`, an 8-byte row stride and a
+`0x80` terminator: it reads the definition's `+0x50` parallel slot table, which
+only 10 of 297 definitions populate. Recomputed
+from the data rather than assumed: **13,660 cell pointers** over the 1,017 unique
+animation objects, **all 13,660 are ROM pointers**, **zero are null**, and the
+four direction positions carry 3,415 cells each. **989 frame records are shared**,
+and every shared one is reached from exactly one *frame* index and from several
+*direction* indices - the signature of a cell table, not of a direction-major
+layout. The structurally decisive measurement is the frame record's footprint: a
+cell's target is a `u32` piece count followed by that many 12-byte pieces, so a
+table row's four cells are four alternative poses of one pose slot.
+
+**Direction count and order.** The number of direction positions is **four and
+independent of `frame_count`**: the engine's own facing computers write `obj+0x10`
+from a compare chain over two coordinate differences and the only values they
+write are `0`, `1`, `2` and `3` (`0x0800A8C2/#3`, `0x0800A8C8/#2`, `0x0800A8D2/#0`,
+`0x0800A8D8/#1`, `0x080159D4/#3`, `0x080159DC/#2`, `0x080159E6/#0`,
+`0x080159EC/#1`). In both functions the horizontal pair is compared first
+(`|dx| >= |dy|`) and the vertical pair is reached only otherwise, so `2`/`3` are
+the horizontal axis and `0`/`1` the vertical axis, with the sign of the
+difference choosing within each axis. The engine also mirrors the index
+arithmetically (`0x0801AF96 subs r0, r1, r0` with `r1 = 3`), which is consistent
+with four positions plus a flip. **Which physical facing each value is** -
+whether `3` is screen-right or screen-left, whether `0` is screen-down or
+screen-up - is **INFERRED from that sign convention, not independently observed**,
+and no direction is named here. One measured property of the horizontal pair
+sharpens the flip reading: in the **2,600 poses where directions 2 and 3 differ
+in attribute-1 bit 12**, the two cells name the **same** graphics container in
+**2,599** cases (a different one once). The bit is therefore a stored horizontal
+flip applied to the same graphic - the shape a flip flag has - and it is set on
+2,848 of the 11,005 pieces, with the vertical-flip bit set on none.
+
+Playback is a timer plus `frame_count`, not a per-frame duration table:
+`0x0800DE6C` increments a `u16` counter, shifts it right by a byte read from a
+state object, and clamps the result to `frame_count`. **The two trailing words of
+an animation object remain UNRESOLVED**; the second takes 21 values, five of
+which (`512`, `1024`, `4096`, `2048`, `256`) cover 974 of the 1,017 records, and
+whether it is a timing or a mode field is not established.
+
+**Frame record - the physical layout differs from the previously accepted one.**
+An 8-byte header then `piece_count` **12-byte** piece records. The header is
+`u32 piece_count` at `+0x00` followed by the frame's own bounding box over its
+pieces: `s8 min_x` at `+0x04`, `s8 min_y` at `+0x05`, `u8 width` at `+0x06`,
+`u8 height` at `+0x07`. The bounding box is confirmed, not inferred: on all
+10,980 canonical frames those four bytes equal the piece minima and the extent of
+the pieces' union, and the engine reads them (`0x0800F38E`/`0x0800F390` load
+`frame+6`/`frame+7` and `0x0800F392` multiplies them to size the composite
+buffer; the spawn constructor reads `frame+4`/`frame+5` at `0x080273F0`/
+`0x080273F4`). Piece records:
+
+| Piece offset | Physical field | Engine read |
+| --- | --- | --- |
+| `+0x00` | `s8` | `ldrsb` at `0x080273F0`, `0x0800F204`, `0x0800FE36`, `0x080101DE` |
+| `+0x01` | `s8` | `ldrsb` at `0x080273F4`, `0x0800FFFA` |
+| `+0x02` | `u8` | `ldrb` at `0x0802740C`, `0x0800F206`, `0x080101E2`; halved at `0x0800F20A` |
+| `+0x03` | `u8` | `ldrb` at `0x08027410`, `0x0800F22A`, `0x080101FE` |
+| `+0x04` | `u32` packed OBJ attribute pair `(attr1 << 16) \| attr0` | `ldr` at `0x0800F1C2` and `0x0800F24C`, merged into the outgoing OAM word under mask `0xFE00FFFF` (pool `0x0800F4B0`) |
+| `+0x08` | `u32` graphics-container word | `ldr` at `0x0800F3CE`, where the loop's index is `r7 = frame + 8 + 12*index` |
+
+The 12-byte stride and the 8-byte header are both read out of the engine: the
+render loop at `0x0800F3C0` computes `r1 = 3*index`, then `r1 <<= 2`, then
+`r7 = frame + r1 + 8`, so `r7 = frame + 8 + 12*index`. They are also the only
+layout under which the corpus is self-consistent: **all 11,005 pieces** in the
+canonical image resolve to a graphics container whose own declared decoded length
+equals `piece[+2] * piece[+3]`; under 8+12 no record's counted extent crosses the
+next known frame start, while the previously accepted "`u32 piece_count` then
+16-byte pieces" reading fails the size test on 25 pieces and overruns the next
+record on 16. Under it the graphics pointer would also fall inside the following
+piece.
+
+**OAM attribute bits are stored, at `+0x04`.** `GRAPHICS_FORMAT.md` §2's bit
+layout for the attribute pair is **correct**; only its offset is wrong. Read as
+`(attr1 << 16) | attr0`, the word gives colour-256 set on **all 11,005** pieces,
+shape in `{0, 1, 2}` with the reserved shape 3 never used, horizontal flip set on
+**2,848**, and vertical flip on **none** - and its shape/size decode reproduces
+the piece's separately stored `dim_0`/`dim_1` extents on **11,005 of 11,005**
+pieces. That independent agreement is what makes the word an attribute pair
+rather than a coincidence. Shape and size are therefore **raw stored bits** and
+the pixel dimensions derived from them are **derived**; horizontal flip is a
+**stored bit**, while its rendering effect was not observed; vertical flip is
+**absent from this corpus**. `sprite_graphics.Piece` accordingly needs its
+attribute offset moved from `+0x08` to `+0x04`, not its flip/shape/size
+properties removed. See the provenance document's disagreement section.
+
+**Piece fields.** `+0x00`/`+0x01` are signed byte offsets that the renderer adds
+to the entity's own coordinates (`0x0800F204`, `0x0800F22A`, `0x0800F25E`), and
+the frame header carries the same pair for the whole frame; `+0x02`/`+0x03` are
+unsigned pixel extents that the engine halves to centre an OBJ (`0x0800F20A`,
+`0x0800F230`) and multiplies to size the composite buffer (`0x0800F3DE`). Over the
+whole corpus the stated pair is one of 16 combinations of `8/16/32/64`, so a
+stated extent is a pixel count and not a tile count. **Origin meaning is not
+claimed**: the offsets are relative to the entity's own coordinates, and combat,
+hitbox, feet and camera semantics are outside this ticket. One anchor-adjacent
+computation was seen and not resolved - the renderer's OAM construction at
+`0x0800F0CA..0x0800F12E` composes the final position from `obj+0x6C`/`obj+0x70`
+and the piece's own offsets - and is recorded as a lead for a later ticket rather
+than promoted here.
+
+**Multipart frames - CONFIRMED, and the accepted corpus contradicts itself here.**
+Frames declare `1`, `2` or `4` pieces: **10,959 frames are single-piece, 19
+declare two and 2 declare four**, so there are **11,005 piece records over 10,980
+unique frames**. The count is a full `u32` read in a loop bounded by itself
+(`0x0800F3BA..0x0800F3F2`). The previously accepted statements that all 10,959
+frames declare exactly one piece and that "the format permits more" are therefore
+**REFUTED**: multi-piece frames exist, and one of them (`0x08579890`, reached by
+definition 146) declares four pieces and composites four containers.
+
+**Graphics relationship.** A piece's `+0x08` word is the only word in the record
+that resolves to a packed Webfoot container whose declared decoded length equals
+the piece's own `dim_0 * dim_1`: **11,005 of 11,005**. Every piece stores the full
+GBA-address form; the reader also accepts a bare file-offset form because a
+differently-authored image may use it. The targets occupy
+`0x003C34D0..0x006A87A8`, the region `GRAPHICS_FORMAT.md` §9 already records.
+**11,005 pieces resolve; 0 fail.** The number of *distinct container offsets
+reached by a piece* is **7,390**, all of which decode; that is a different
+population from the accepted "7,355 unique graphics containers", and the
+difference is itemised in the provenance document rather than reconciled by
+widening either figure.
+
 ## Unresolved after ROM-002
 
 - Semantic meaning of every `_raw` field above, especially `output`, `zone`, `area`, `variation`, counts, flags, `music_id`, and pointer target types.

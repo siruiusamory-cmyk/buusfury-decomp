@@ -4,9 +4,10 @@
 
 ```text
 START SHA:                005795fdf540bd4c8997e2014a16c5c7eb0ba89f
-END SHA:                  <fill at commit time>
+END SHA:                  recorded in the follow-up documentation commit
 BRANCH:                   logx-char-001
-COMMIT SHA(S):            <fill at commit time>
+COMMIT SHA(S):            caeb773285209d662c16d6fa79b08e83b57ca5e9 (primary)
+                          + one follow-up commit that fills in END SHA and GIT STATUS
 WORKTREE:                 <temp>\log1-remake-logx-char-001
 
 CANONICAL ROM SHA BEFORE: 940AD5F01DB4465B8877DFE739510CBF34F4EA3D390F3DF13519808BC36F059E
@@ -842,6 +843,26 @@ untouched.
 
 ## GIT STATUS
 
+Before the primary commit (`caeb773`), staged explicitly by path:
+
 ```text
-<fill at commit time>
+A  docs/research/LOGX_CHAR_PROVENANCE.md
+M  docs/reverse-engineering.md
+A  docs/research/LOGX-CHAR-001-review.md
+A  tests/integration/test_logx_char_rom.py
+A  tests/unit/test_logx_char_reference.py
+A  tools/research/logx_char_probe.py
 ```
+
+Verification performed against that index before committing:
+
+```text
+git diff --cached --check         -> exit 0, no output
+git diff --cached --stat          -> 6 files changed, 3385 insertions(+), 0 deletions(-)
+staged paths matching a proprietary extension (.gba/.sav/.srm/.ss?/.state/.bin/.dump/.raw/.png) -> none
+canonical ROM SHA-256             -> 940AD5F01DB4465B8877DFE739510CBF34F4EA3D390F3DF13519808BC36F059E (unchanged)
+```
+
+`docs/PROJECT_<local-state-name>`, `docs/PROJECT_<local-state-name>`, `src/data/project.ts` and the
+active WORKBENCH-006 worktree were **not** touched. The branch is not integrated
+to `master` and no push was attempted.

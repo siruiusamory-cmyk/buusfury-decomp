@@ -104,15 +104,15 @@ file 0x74D380  record 0 ... record 231        232 x 16 bytes = 0xE80 bytes
 file 0x74E200  first word 0x03001C4C          not a record (section 15)
 ```
 
-GBA addresses: byte table `0x0874D35C`, pointer table `0x0874D360`, character
-table `0x0874D380`, first word past it `0x0874E200`.
+GBA addresses: byte table `0x0874D35C`, pointer table `0x0874D360`, the
+232-record table `0x0874D380`, first word past it `0x0874E200`.
 
-The eight-entry pointer table immediately before the character table holds
+The eight-entry pointer table immediately before the records holds
 `0x0805752C, 0x0805762C, 0x0805772C, 0x0805782C, 0x0805782C, 0x0805772C,
 0x0805762C, 0x0805752C` and its consumer masks its index with `& 7`
 (`0x08027490 lsls r1,r1,#0x1b` / `0x08027492 lsrs r1,r1,#0x1d`), so it is an
-eight-entry table, not a misaligned character table. None of its words is a text
-index, and its own boundary is exactly the character table's first byte.
+eight-entry table, not a misaligned record table. None of its words is a text
+index, and its own boundary is exactly the first record's first byte.
 
 ---
 
@@ -305,7 +305,7 @@ loads is quoted with its instruction.
 `+0x04`**: it is compared after both values are mapped through the same accessor
 `0x08000158`. Argument 2, when non-null, is in the **same address space as
 `0x08711274 + 28 * +0x0C`**. The return value is a 0-based index into the
-character table, or `-1`.
+232-record table, or `-1`.
 
 ### 8.2 How runtime code arrives at a record
 
@@ -736,7 +736,7 @@ attempted here.
 | below | an 8-entry `u32` pointer table at `0x0874D360`, indexed `& 7` | literal load at `0x08027494` (pool `0x080274B0`), `lsls #0x1b`/`lsrs #0x1d` mask |
 | above | `0x03001C4C` at `0x0874E200`, followed by IWRAM addresses and negative words | raw read |
 
-The 8-entry pointer table ends exactly at the character table's first byte
+The 8-entry pointer table ends exactly at the first record's first byte
 (`0x0874D360 + 8*4 = 0x0874D380`), and the 4-byte table ends exactly where the
 8-entry table begins. **PROJECT OBSERVATION (invariants).** Record 232 reads
 `+0x00 = 7244` (outside 0..1533), `+0x02 = 768` (not `+0x00 + 1`), and
@@ -777,9 +777,9 @@ graphics; the `+0x08` array's targets were located but not decoded.
 
 **Other downstream:**
 
-- The `+0x0C` -> `0x08711274` relation now links the character table to the
-  placement/type table TOOLKIT-009 accepted; a ticket that wants
-  "placement -> character" has both ends and can join them.
+- The `+0x0C` -> `0x08711274` relation now links these appearance-definition
+  records to the placement/type table TOOLKIT-009 accepted; a ticket that wants
+  "placement -> appearance definition" has both ends and can join them.
 - The `"Human"` catch-all (16 records, one shared `+0x02` string) and the fact
   that three `+0x00` slots hold one identical string are text-table facts
   (TOOLKIT-004 territory) only in that they resolve.

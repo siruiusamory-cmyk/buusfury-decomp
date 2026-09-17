@@ -1,6 +1,8 @@
 # LOGX-CHAR-001: reconstruct Buu's Fury character table / character-definition records
 
-**Research only. Isolated branch. Not integrated to `master`.**
+**Research only. Integrated to `master` through the closeout merge recorded in
+[archive/LOGX-CHAR-001-COMPLETE.md](archive/LOGX-CHAR-001-COMPLETE.md); this
+review document is the accepted record and is not rewritten by integration.**
 
 ```text
 START SHA:                005795fdf540bd4c8997e2014a16c5c7eb0ba89f
@@ -12,6 +14,11 @@ COMMIT SHA(S):            caeb773285209d662c16d6fa79b08e83b57ca5e9
                           research(char): reconstruct Buu character definitions
                           5caa671e6a2d84a9915918f0052b943870e7935f
                           docs(tickets): record LOGX character research SHAs and gate
+                          24f6ef5a468a3b5c4e8b517b1ab43d80fe3eef05
+                          docs(tickets): record LOGX character branch SHAs
+INTEGRATED EQUIVALENTS:   caeb773 -> 13586f5, 5caa671 -> b151441, 24f6ef5 -> c712de4
+                          (cherry-picks into integrate/logx-char-001, whose base is
+                          origin/master 6fa9928; every accepted blob is identical)
 WORKTREE:                 <temp>\log1-remake-logx-char-001
 
 CANONICAL ROM SHA BEFORE: 940AD5F01DB4465B8877DFE739510CBF34F4EA3D390F3DF13519808BC36F059E
@@ -868,5 +875,29 @@ canonical ROM SHA-256             -> 940AD5F01DB4465B8877DFE739510CBF34F4EA3D390
 ```
 
 `docs/PROJECT_<local-state-name>`, `docs/PROJECT_<local-state-name>`, `src/data/project.ts` and the
-active WORKBENCH-006 worktree were **not** touched. The branch is not integrated
-to `master` and no push was attempted.
+active WORKBENCH-006 worktree were **not** touched during the isolated research
+pass; the branch was not pushed and was not integrated at that point. The
+project-level closeout that followed (queue update, archive record, project-state
+entry, integration) is recorded in
+[archive/LOGX-CHAR-001-COMPLETE.md](archive/LOGX-CHAR-001-COMPLETE.md), and the
+integrated commits correspond to the isolated ones as listed in the header above.
+
+## Closeout validation
+
+Re-run on the integration branch after the cherry-picks, with the canonical ROM
+configured, so the accepted measurements are re-proved on the tree that reaches
+`master`:
+
+```text
+python -m pytest tests/unit/test_logx_char_reference.py \
+    tests/integration/test_logx_char_rom.py -q
+-> 46 passed in 7.24s
+
+the same with the ROM path pointed at a non-existent file
+-> 22 passed, 24 skipped in 0.97s
+   (every skip: "canonical Buu ROM not configured locally")
+```
+
+The broad gate, `git diff --check`, the staged-scope inspection, the
+proprietary-artifact scan and the canonical ROM re-hash are recorded in the
+closeout commit's own report.

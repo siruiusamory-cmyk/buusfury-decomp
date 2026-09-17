@@ -727,6 +727,122 @@ buffer is host-tool convenience, **not** an engine limit; the largest declared
 size in the reachable corpus is `0x4000` and no engine instruction compares
 against 65,536.
 
+## LOGX-CHAR-001 character-definition records
+
+Full evidence: [`research/LOGX_CHAR_PROVENANCE.md`](research/LOGX_CHAR_PROVENANCE.md).
+
+A table of **232 sixteen-byte records** begins at file offset `0x74D380`
+(GBA `0x0874D380`), and the engine addresses it directly: `0x08027948` and
+`0x08024F3C` compute `record = 0x0874D380 + (index << 4)` and bound their loops
+with `cmp rN,#0xE8` (`0x08027998`, `0x080279CC`, `0x08024F92`), each incrementing
+its counter before the comparison so `0xE8` is an exclusive bound. `0x08027948`
+returns `-1` when its scans exhaust (`0x080279D0`/`0x080279D2`);
+`0x08024F3C` does not - its only `mvns` (`0x08024FFC`) builds a `-1` it stores at
+`[object + 0x14]`, and its loop simply falls through. Eight sites in all apply
+the `index << 4` scale, one per literal load: `0x08027964`, `0x080279A2`,
+`0x08024FA8` inside the two walks, and `0x08025088`, `0x080251B8`, `0x08025382`,
+`0x08025E92`, `0x080273AE` for single-record lookups.
+
+The address `0x0874D380` is loaded from eight `ldr Rt,[pc,#imm]` sites
+(`0x08024FA0`, `0x08025086`, `0x080251B6`, `0x08025380`, `0x08025E94`,
+`0x080273AC`, `0x08027962`, `0x080279A0`). No 16-bit `adr` or ARM `pc`-relative
+form reaches it, no folded base for it exists in the 0x100 bytes below it, and
+the only literals in that range are the two neighbouring structures below. The
+table is preceded by a 4-byte table at `0x0874D35C` (indexed `& 3` at
+`0x0802734C`) and an eight-entry `u32` pointer table at `0x0874D360` (indexed
+`& 7` at `0x08027494`); the eight-entry table ends exactly at the character
+table's first byte. The first candidate record past the count (`0x0874E200`)
+reads `+0x00 = 7244` (outside the 1,534-entry text table), `+0x02 = 768` (not
+`+0x00 + 1`) and `+0x04 = 0x030019A4` (an IWRAM address), so it fails three of
+the four invariants that hold on all 232 records and the limit is a real edge.
+
+Field layout, physical only:
+
+| Offset | Physical field | Read by |
+| --- | --- | --- |
+| `+0x00` | `u16` little-endian | `ldrh` at `0x08024FAC`, `0x080251BC` |
+| `+0x02` | `u16` little-endian | `ldrh` at `0x080252E6`, `0x0802539E`, `0x08025EC2` |
+| `+0x04` | `u32` little-endian | `ldr` at `0x080273B2`, `0x08027968` |
+| `+0x08` | `u32` little-endian | `ldr` at `0x080250CA` |
+| `+0x0C` | `i32` little-endian, sign-tested with `blt` | `ldr` at `0x08027974`, `0x080279AA` |
+
+**`+0x00` and `+0x02` are indices into the verified text pointer table
+`0x0806BCE8`.** Both are loaded as halfwords, scaled by four (`lsls r0,r0,#2` at
+`0x080251C0`, `0x080252EA`, `0x080253A2`, `0x08025EC6`) and then loaded with
+`ldr r1,[r1,r0]` (`0x080251C2`) or `ldr r0,[r1,r0]` (`0x080253A4`,
+`0x08025EC8`); the four table loads read three pool words (`0x08025328` twice,
+`0x080256C0`, `0x08026190`) and all of them hold `0x0806BCE8`. Over all 232
+records `+0x00` is in `986..1310` and `+0x02`
+in `987..1311`, so every record's text resolves; there are no invalid, empty or
+sentinel text references, and `+0x02 == +0x00 + 1` on 232 of 232 records. 154
+distinct `+0x00` indices resolve to **152** distinct strings (three slots hold
+`"Super Buu"`), and 154 distinct `+0x02` indices resolve to **104**. `+0x00` is
+drawn once (`0x0803DADA` at `0x080251C8`) and `+0x02` through a line-wrapping draw
+(`0x0803DE6A`, looped over a line counter at `0x080253B6..0x080253BC`), but no
+engine instruction names or derives either field, so they are documented as text
+indices, not as "name" and "description".
+
+**`+0x04` is a `u32` index into a 4-byte-entry pointer array** and is range
+`12..306` over the canonical records with no zero. The accessor is `0x08000158`:
+for `id >= 10` it returns `u32 at 0x086B6BDC + 4*id - 0x28` (`0x0800015E` loads
+the literal `0x086B6BDC` from pool `0x080003C0`; `0x08000164 subs r0,#0x40` and
+`0x08000166 ldr r0,[r0,#0x18]` carry the folded `-0x28`), i.e. the arithmetic
+base is `0x086B6BB4`. Ids `0..9` take a party-slot branch and never read the
+array. The project's accepted entry run is the contiguous 297 valid, strictly
+ascending pointers starting at `0x086B6BDC` and terminated by the non-ROM word
+`0x03001068` at `0x086B7080`; the ten words at `0x086B6BB4` are **four** ascending
+valid pointers interleaved with **six** nulls. **Which byte is the array's first
+entry is UNRESOLVED** and LOGExtractor's `0x6B6BB4` is recorded as the folded
+base; resolving it belongs to LOGX-SPRITE-001.
+
+**`+0x08` is a `u32` index into the pointer array at `0x086F393C`**, which is the
+accessor's own literal (`0x08011F52`, pool `0x08012194`). `0x08011F20` returns
+`0` for slots `0` and `7` without reading the array, takes a party-record path for
+slots `1..6`, and otherwise returns `u32 at 0x086F393C + 4*slot`. The canonical
+records use `0` plus a 110-element **subset** of `8..162` - 111 distinct values,
+exactly one of them zero, carried by 98 records, none in `1..7` - and the array
+itself holds 163 slots of which `0..7` are zero, `8..162` are 155 valid ascending
+ROM pointers (`0x086B880C..0x086F3360`), and slot 163 is the non-ROM word
+`0x0011E502`. Whether an entry is portrait graphics is **PARTIALLY CONFIRMED**:
+the consumer passes the pointer to the container dispatcher `0x0803D940`, and no
+pixel-format claim is made here.
+
+**`+0x0C` is one signed `i32` used as an index into the accepted stat table**
+`0x08711274` at its own `0x1C` stride: `0x08027948` computes
+`0x08711274 + 28 * +0x0C` (`0x080279B0 lsls r3,r1,#3`, `0x080279B2 subs r1,r3,r1`,
+`0x080279B4 lsls r1,r1,#2`, `0x080279B6 adds r1,r1,r6`) and compares it with a
+live pointer. `88` records carry a negative value (`-1..-9`) that the engine
+**skips** with `blt` at `0x080279AE`, forming no address; the `144` others use
+`0..149` over 123 distinct values, and the eight records whose value is
+`142, 143, 145, 146, 147, 148, 149` lie past the 141-record extent TOOLKIT-009
+validated (`141` and `144` are unused), so they are recorded as an anomaly rather
+than promoted. The field's semantic is **PARTIALLY CONFIRMED** only: the index
+arithmetic and the signed test are engine-established, and nothing in this ticket
+establishes what the target record means.
+
+**Runtime arrival.** Both `BL` callers of `0x08027948` - `0x0800FB72` and
+`0x08010312` - pass a live object's `+0x58` as the appearance id, and the first
+also passes `[object + 0x224]`, a pointer into the stat table's address space. So
+the engine's route is `runtime object -> (appearance id, stat record pointer) ->
+0x08027948 -> 0-based record index`, or `-1`. `0x08027948` maps both its argument
+and the record's `+0x04` through the same accessor before comparing, and
+substitutes `f(0x92)` for `f(0x95)` first; the meaning of both constants is
+**UNKNOWN**.
+
+**Semantic scope.** The table is a superset of whatever the roster bitmap can
+set: the roster code `0x08024F3C` intersects it with a 232-bit runtime bitmap
+(`bit (i & 7)` of byte `(i >> 3)` at `base + 0xC5`) rather than enumerating it.
+The 152 distinct labels span named fighters, story characters, generic enemies,
+machinery and body parts, which refutes "playable roster" and "enemy table"; it
+does **not** establish that the table is a complete registry, and the attributes
+are not universal - 98 records have `+0x08 == 0` (no slot) and 88 have
+`+0x0C < 0` (no stat record). It is documented as a table of **named appearance
+definitions with optional slot and stat-record indices**. Sharing is normal: 232
+records resolve to 198 distinct `+0x04` ids, 110 distinct non-zero `+0x08` slots
+and 123 distinct `+0x0C` values, and exactly one pair of records (80, 81) is
+byte-identical in all five fields. No engine code groups or orders the variant
+families, so what a family means is **UNKNOWN**.
+
 ## Unresolved after ROM-002
 
 - Semantic meaning of every `_raw` field above, especially `output`, `zone`, `area`, `variation`, counts, flags, `music_id`, and pointer target types.

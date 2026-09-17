@@ -67,6 +67,17 @@ character pointer table   0x006B6BDC, 297 entries
           -> container    8-byte header + packed bitstream -> raw 8x8 tiles
 ```
 
+> **(LOGX-FRAME-001, added later - CORRECTED.)** The last three chain steps read,
+> with the stride and the two piece offsets corrected:
+>
+> ```text
+> frame record     u32 piece_count + the frame's own bounding box (8-byte header),
+>                  then piece_count * 12-byte piece records
+>   piece record   x, y, two pixel extents, a packed OBJ attribute pair, and a
+>                  pointer to the graphics container (12 bytes)
+>     container    8-byte header + packed bitstream -> raw 8x8 tiles  (unchanged)
+> ```
+
 ### Character pointer table
 
 * 297 entries, **all 297** valid ROM pointers, **strictly ascending**.
@@ -121,7 +132,45 @@ within each frame**: slot `d` of frame `f` is at flat index `f * 4 + d`.
 **13,596 direction slots are populated and 0 are NULL.** The four slots are
 numbered, never named - see §10.
 
+> **(LOGX-FRAME-001, added later - CONFIRMED and extended.)** 13,596 is the
+> accepted reader's population over the animations it admits
+> (`13660 - 64 = 13596`). Over **all** 1,017 unique animation objects the corpus
+> holds **13,660 cells, none null**, with exactly **3,415 in each of the four
+> direction positions**. The four-position structure is engine-grounded: the
+> facing computers at `0x0800A890` and `0x080159B0` write `obj+0x10` from a
+> compare of `|dx|` against `|dy|` and the only values they write are `0`, `1`, `2`
+> and `3`, with the horizontal pair (`2`/`3`) chosen first and the sign selecting
+> within each axis. **The physical screen-space assignment of those four values
+> remains UNRESOLVED** and no direction is named here; the decisive structural
+> evidence for the two-dimensional table is that all **989** shared frame targets
+> are confined to **one frame index** while being reachable from several direction
+> indices. Evidence: [`LOGX_FRAME_PROVENANCE.md`](LOGX_FRAME_PROVENANCE.md) §3, §5.
+
 ### Frame record
+
+> **(LOGX-FRAME-001, added later - CORRECTED.)** This section's `u32 piece_count`
+> then **16-byte** pieces is **REFUTED**. The record is an **8-byte header**
+> followed by `piece_count` **12-byte** pieces, and the header's second word is the
+> frame's own bounding box. The render loop settles the stride from the engine:
+> `0x0800F3C0` computes `r1 = 3*index`, `r1 <<= 2`, then `r7 = frame + r1 + 8`, so
+> `r7 = frame + 8 + 12*index`. Under 8+12 **all 11,005 pieces** in the canonical
+> image resolve to a graphics container whose declared decoded length equals
+> `piece[+0x02] * piece[+0x03]`, and no record's counted extent crosses the next
+> known frame start; the 4+16 reading fails the size test on **25** pieces and
+> overruns the following record on **16**.
+>
+> **All 10,959 frames declare exactly one piece is also REFUTED.** The canonical
+> corpus contains **21 multi-piece frames**: **19** declare two pieces and **2**
+> declare four, for **11,005 piece records over 10,980 distinct frames**. The count
+> is a full `u32` read in a loop bounded by itself (`0x0800F3BA`..`0x0800F3F2`).
+> The accepted reader never observed one because its 16-byte stride makes
+> `_frame_offset` reject every multi-piece frame - measured: it accepts exactly the
+> 10,959 single-piece frames and rejects exactly the 21 - which is also the exact
+> reason this document's "7,355 unique graphics containers" differs from the
+> 7,390 distinct container offsets the corpus actually reaches (the 21 frames reach
+> 35 containers the single-piece set does not).
+> Evidence: [`LOGX_FRAME_PROVENANCE.md`](LOGX_FRAME_PROVENANCE.md);
+> closure: [`../tickets/archive/LOGX-FRAME-001-COMPLETE.md`](../tickets/archive/LOGX-FRAME-001-COMPLETE.md).
 
 `u32 piece_count`, then that many 16-byte pieces. **All 10,959 distinct frames
 in this corpus declare exactly one piece.** The format permits more (the count
@@ -130,13 +179,18 @@ frame and its piece are interchangeable.
 
 ### Piece record (16 bytes)
 
+> **(LOGX-FRAME-001, added later - CORRECTED.)** The record is **12 bytes**, not 16,
+> and the attribute and graphics fields sit at different offsets. `GRAPHICS_FORMAT.md`'s
+> **bit layout below is correct**; only its offset was wrong.
+
 | Offset | Field | Status |
 |---|---|---|
 | `+0x00` | `x`, signed 8-bit | CONFIRMED_ROM |
 | `+0x01` | `y`, signed 8-bit | CONFIRMED_ROM |
-| `+0x02..+0x07` | six bytes, purpose unexplained | **UNKNOWN**, preserved verbatim |
-| `+0x08` | OAM-style attribute pair | CONFIRMED_ROM |
-| `+0x0C` | pointer to the graphics container | CONFIRMED_ROM |
+| `+0x02` | pixel extent, unsigned 8-bit; the engine halves it to centre an OBJ | CONFIRMED_ROM |
+| `+0x03` | pixel extent, unsigned 8-bit; the engine halves it and multiplies the pair to size the composite buffer | CONFIRMED_ROM |
+| `+0x04` | **packed GBA OBJ attribute pair**, `(attribute1 << 16) \| attribute0` | CONFIRMED_ROM |
+| `+0x08` | pointer to the graphics container | CONFIRMED_ROM |
 
 The attribute word splits into GBA OAM attribute 0 (low half) and attribute 1
 (high half):
@@ -149,6 +203,28 @@ Cross-checked against GBATEK (via the mgba-emu gbatek mirror) and gbadev.net's
 OAM chapter, whose shape/size table matches ours entry for entry and whose
 attribute-1 bit layout `S S V H X X X I...` puts V at bit 13 and H at bit 12.
 Shape 3 is "not used" on this hardware and is refused rather than looked up.
+
+> **(LOGX-FRAME-001, added later.)** The cross-check above is **confirmed and
+> strengthened** at the corrected offset. Over all **11,005** canonical pieces the
+> attribute pair gives: colour-256 set on **11,005**; shape in `{0, 1, 2}` with the
+> reserved shape 3 never used; horizontal flip (attribute-1 bit 12) set on
+> **2,848**; vertical flip on **none**; and the shape/size decode reproduces the
+> piece's independently stored extents on **11,005 of 11,005**. The engine loads
+> the word at `0x0800F1C2` and `0x0800F24C` (`ldr r3,[r0,#4]` / `ldr r6,[r0,#4]`,
+> with `r0 = frame + 8 + 12*index`) and merges it into the outgoing OAM word under
+> the mask literal `0xFE00FFFF` (pool `0x0800F4B0`). **Stored bits stay separate
+> from derived dimensions**: the stored fields are the two extent bytes and the
+> attribute word; the pixel width/height are the GBATEK table's *derived* reading
+> of shape and size, and they agree.
+>
+> The horizontal-flip bit is a **stored bit whose rendering effect was not
+> observed**. Its correlation is measured, not assumed: in the **2,600 poses where
+> directions 2 and 3 differ in attribute-1 bit 12**, the two cells name the **same**
+> graphics container in **2,599** cases - which is what a flip of shared art looks
+> like. An earlier revision of LOGX-FRAME-001 concluded the opposite from a count
+> that compared *frame records* instead of *graphics containers*; Reviewer B
+> refuted it and the corrected measurement is the one above.
+> Evidence: [`LOGX_FRAME_PROVENANCE.md`](LOGX_FRAME_PROVENANCE.md) §6.5.
 
 ---
 
@@ -208,6 +284,22 @@ CONFIRMED_ROM. All 7,355 containers are `kind 1`; **zero** decode failures.
 | Total decoded tile bytes | 9,131,136 |
 | Compression ratio | ~3.35x |
 | Bit depth | 8bpp, uniformly |
+
+> **(LOGX-FRAME-001, added later.)** Two rows above are **reader-scoped**, not
+> corpus-wide, and are left in place as the accepted reader's figures:
+> **"Frames with exactly one piece: 10,959 (all)"** holds only for the frames the
+> 16-byte stride can parse; the canonical image has **11,005 piece records over
+> 10,980 distinct frames**, of which **21** declare two or four pieces. And
+> **"Unique graphics containers: 7,355"** is exactly the set reached by
+> *single-piece* frames; the corpus reaches **7,390** distinct container offsets,
+> the extra **35** being what the 21 multi-piece frames reach. Every other row in
+> this table is reproduced unchanged by LOGX-FRAME-001 under the corrected layout
+> (`1017 - 4 = 1013` unique animation records, `13660 - 64 = 13596` direction
+> slots, `10964 - 5 = 10959` frame records). The reader
+> (`tools/webfoot/graphics.py`) and `tools/webfoot/formats/sprite_graphics.py`
+> are **deliberately left unchanged** by this closeout; the bounded implementation
+> follow-up is recorded in
+> [`../tickets/archive/LOGX-FRAME-001-COMPLETE.md`](../tickets/archive/LOGX-FRAME-001-COMPLETE.md).
 
 ### Sharing
 
@@ -466,7 +558,7 @@ Reported per layer, never collapsed into "Graphics = ROUND_TRIP".
 | Palette | ROUND_TRIP | encodes to the exact 512 source bytes |
 | Logical graphic assets | ROUND_TRIP | stable IDs, sharing represented |
 | Pieces | ROUND_TRIP | 16 bytes exact, unknowns preserved |
-| Frames | READ | decoded; single-piece measured |
+| Frames | READ | decoded; the accepted reader reaches the 10,959 single-piece frames. **LOGX-FRAME-001 corrects the stride**: the corpus holds **11,005 piece records over 10,980 frames**, including **21 multi-piece frames** |
 | Animations | READ | structure decoded; **no semantics named** |
 | Project PNG export/import | ROUND_TRIP | exact on all 7,355 |
 | Palette writes | **WRITE** | in-place, 2 bytes, proven |

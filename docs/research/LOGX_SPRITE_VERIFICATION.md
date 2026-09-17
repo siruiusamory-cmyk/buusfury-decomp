@@ -751,12 +751,32 @@ ROM verified identical before and after; git diff --check clean.
 All seven new issues were reproduced in this session and are closed as K22-K28
 below. Reviewer B's B2 and B4 residuals are the same class as A's D1 and D2, and
 B5's residual is A's N5 residual, so the last four corrections are single fixes
-that close both reviewers' remaining items.
+that close both reviewers' remaining items. Reviewer B then confirmed all seven
+on the frozen revision `1a3eb70`, closing its REQUEST CHANGES into **APPROVE**
+with one non-blocking recommendation (drop section 12.2's illustrative window
+counts, which it could not reproduce under any natural rule variant); that
+recommendation was applied as K29:
+
+```text
+REVIEWER B - FINAL CONFIRMATION, LOGX-SPRITE-001 @ 1a3eb7011628ce6d779108838574e5619ee1f503
+
+1. CONFIRMED CLOSED   2. CONFIRMED CLOSED   3. CONFIRMED CLOSED in substance
+  (non-blocking: the three illustrative counts do not reproduce; recommendation
+  to delete them or pin the rule)
+4. CONFIRMED CLOSED   5. CONFIRMED CLOSED (a scan of all 440 committed text
+  files for 16+ byte hex runs finds no contiguous ROM byte literal in any
+  LOGX-SPRITE-001 artifact)   6. CONFIRMED (only the two intentional <FINAL>
+  tokens remain)   7. CONFIRMED CLOSED
+
+NEW BLOCKING FINDINGS: none.
+FINAL VERDICT for 1a3eb70: APPROVE.
+ROM verified identical before and after; git show --check exit 0; 65 passed.
+```
 
 ## REQUIRED CORRECTIONS
 
 Every finding from both reviewers was reproduced in this session from the image
-before being applied; none was rejected on substance. 28 distinct corrections
+before being applied; none was rejected on substance. 29 distinct corrections
 were accepted and are closed.
 
 | # | Correction | Source | Status |
@@ -789,6 +809,7 @@ were accepted and are closed.
 | K26 | Section 12.2's unguarded-pattern count now states its window and its window-dependence (34 at 30 instructions, 19..35 across 2..60) instead of quoting a bare figure | A-D3, B-NEW-3 | CLOSED |
 | K27 | The reviewer blocks in this document were made faithful: the implementer's closure annotations are marked as such, and Reviewer A's verdict and PASS lines are restored to the reviewer's own words | A-D4 | CLOSED |
 | K28 | Probe dead code removed (`_ldr_pool`, the two unused predicate constants) | B-NEW-7 | CLOSED |
+| K29 | Section 12.2's illustrative window counts removed entirely: Reviewer B could not reproduce 34/35 under any natural rule variant, and the section's conclusion does not rest on a count, so the scan is now described by its rule and its window with no figure claimed | B (final, item 3) | CLOSED |
 
 ## REJECTED REVIEWER ASSERTIONS
 
@@ -816,9 +837,12 @@ rather than rejected** and are recorded so the record is complete:
 
 ## CORRECTION GATE
 
-**CLOSED.** 28 corrections across the two reviewers' 21 first-round findings and
-7 delta-round findings were reproduced and applied; none was rejected. Measured
-on the final committed revision:
+**CLOSED.** 29 corrections across the two reviewers' 21 first-round findings, 7
+delta-round findings and 1 final round finding were reproduced and applied; none
+was rejected. Reviewer A's final verdict on `e3de67b` was APPROVE WITH
+NON-BLOCKING NOTES; Reviewer B's final verdict moved from REQUEST CHANGES on
+`bccd03c` and `e3de67b` to **APPROVE** on `1a3eb70`. Measured on the final
+committed revision:
 
 ```text
 pytest tests/integration/test_logx_sprite_rom.py tests/unit/test_logx_sprite_reference.py -q

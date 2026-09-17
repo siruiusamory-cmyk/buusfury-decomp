@@ -684,9 +684,10 @@ instructions, resynchronising wide-window sweep) and returned exactly the five
 sites of §4. Widening the windows to 10 instructions for the `ldrb`, 8 for the
 `cmp` and 40 for the array load returns the same five. The *unguarded* pattern
 (`ldr rX,[x,#0x58]`, then the first later `ldr rZ,[rX,#0x54+4k]`, with no `cmp`
-in between) matches 34 sites in that region with a 30-instruction window; the
-count is window-dependent (19 sites at a 2-instruction window, 35 at 60), so the
-count itself is not a claim. What is claimed is that every match in that scan was
+in between) also matches sites in that region, but its count depends entirely on
+the lookback window and on which of several natural rule variants is used, so no
+count is claimed: the scan is window-dependent and not self-describing. What is
+claimed is that every match of that pattern under a 30-instruction window was
 read, and every one is either a different base (they add `+0x4C` first, so the
 base is `[obj+0x58]+0x4C`), a class-vtable read, or bytes that are data rather
 than a decoded function. None is a definition read.

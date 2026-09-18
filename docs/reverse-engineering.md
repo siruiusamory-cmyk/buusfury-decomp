@@ -73,6 +73,8 @@ The disassembly corroborates the table address, stride, count, and byte accesses
 
 `graphics_pointer` in DragonByteZ is derived by following the word at `+0x2C`; it is not a byte field in the `0x38` record and is not serialized. ROM-002 follows none of these raw pointer words.
 
+**Accepted keys and accepted semantics (LOGX-MAP-RECORD-001).** The two bytes at `+0x00`/`+0x01` are physically **two ordered key bytes**, not a generic big-endian `u16`: the engine's own lookup at `0x080089FC` compares an entry's two bytes with two separate `ldrb` loads and a byte `cmp`, and all 452 records' byte pairs are unique, nonzero, and run `0x0001..0x1601`. Big-endian is a correct *display* of the pair. Reading the pair as a big-endian `u16` is **`CONFIRMED` as a key and as a byte order**; the key's semantic identity (the DragonByteZ `output`/`zone` labels and the name "map id") is **`UNRESOLVED`** and only `PARTIALLY CONFIRMED` at best. Likewise the word at `+0x0C` is physically a little-endian `u32` whose upper half is zero on every canonical record, and whose **low `u16` resolves through the verified text pointer table `0x0806BCE8`** (scale four) - that relationship is `CONFIRMED`, while the field's *purpose* is `UNRESOLVED`, so no `text_index` reading is promoted to an engine fact. The remaining `_raw` names in the table above are **upstream labels carried for history**; they are `INFERRED`/`UNKNOWN` in this same table and are not promoted by any accepted LOGX ticket.
+
 ## ROM-003 pointer-field census
 
 ROM-003 observes the nine 32-bit pointer-labelled words in every MapEntry for `buus_fury_usa_rev0_01c1707f`. It does not read any target byte. A raw value is `NULL` only when zero, `VALID_ROM_ADDRESS` when the existing checked `GbaRomAddress` converts it to an offset in `[0, 0x800000)`, and `OUT_OF_RANGE` otherwise. Alignment is measured separately and never changes classification. Duplicate references are `valid references - unique valid targets`. Numeric clustering uses 64 KiB file-offset buckets without semantic region names.
@@ -86,6 +88,8 @@ The pinned Buu disassembly independently confirms only the table base, stride, c
 - Category B, strongly supported pointer: `variation_array_pointer_raw` only. The pointer behavior is supported by DragonByteZ; the array label and extent remain inferred.
 - Category C, upstream-labelled candidate: the other eight fields. Their address distributions support pointer-like shape, not semantic target names.
 - Category A, independently confirmed ROM pointer: none.
+
+> **Superseded by LOGX-MAP-RECORD-001 and LOGX-MAP-RENDER-001.** The Category A/B/C ranking above is historical. `MapEntry+0x2C` is now an engine-confirmed **indexed word source**: Thumb `0x080089CC` performs one effective access at `source + 4*(selector-1)`, and its selector-1 target is the engine-confirmed **per-map load-time definition template** consumed by `0x0800953E`. The array label and extent questions this paragraph leaves open are answered for the selector-1 route; a general destination schema for arbitrary selectors remains `UNRESOLVED`. See "LOGX-MAP-RENDER-001 selected map root" below.
 
 ### Complete census
 
@@ -139,6 +143,8 @@ The pinned disassembly `2genkidev/buusfury@cc53d0cd2d1c167e749419187e2d92017ac07
 - Source-pointer confidence: **INFERRED, strongly behaviorally supported**. All 452 values are unique, aligned, and valid in-ROM, and DragonByteZ validates and uses them.
 - First-word structural confidence: **CONFIRMED as an evidence-backed tool access**. The exact four-byte read, bounds rule, and little-endian width are explicit in DragonByteZ and reproduced safely here. Runtime game consumption remains independently unconfirmed.
 - First-word semantic confidence: **UNKNOWN**. `first_word_raw` is deliberately not called a graphics pointer, ID, flags word, or record reference.
+
+> **Superseded in part by LOGX-MAP-RENDER-001.** The *semantic* status above stands: the selected word is not named a graphics pointer, ID or flags word. What changed is its **structural role** - at selector `1` the word is the per-map load-time definition template resolved by `MapEntry+0x2C + 4*(selector-1)` and consumed by `0x0800953E` - and the fact that all 452 selector-1 roots are non-null, aligned and in-ROM, with 421 distinct. The `read_map_entries`-only evidence basis described above is therefore no longer the whole picture; see "LOGX-MAP-RENDER-001 selected map root" below.
 
 ### Complete first-word census
 
@@ -213,7 +219,7 @@ MapEntry 39 / selector 1
   -> registry slot 03002A68
 ```
 
-Static instructions show factory `0x08007674` allocates `0x18` bytes and initializes exact signed halfword bounds later consumed by registry AABB queries. Classification is **STRONGLY SUPPORTED: rectangle-aware runtime object**. Collision, trigger, activation, event, and transition semantics remain unknown because bounded spatial callback hit belonged to a different object.
+Static instructions show factory `0x08007674` allocates `0x18` bytes and initializes exact signed halfword bounds later consumed by registry AABB queries. Classification is **STRONGLY SUPPORTED: runtime object whose engine-read bounds are the record's two ordered `u16` intervals**. *(Demoted later: LOGX-CONNECTOR-001 established that the four `u16` are two ordered intervals with `A<=C` and `B<=D` on 735/735 records and no zero-area case, but the two-axis "rectangle" reading is **UNRESOLVED** - axis names, units, origin, signedness and edge inclusivity are all unrecovered - so the "rectangle-aware" label is historical. `0x08294948` is a **transition record** in that ticket's vocabulary, not a "descriptor".)* Collision, trigger, activation, event, and transition semantics remain unknown because bounded spatial callback hit belonged to a different object.
 
 Same count-2 population pass used a second distinct factory (`0x080072CD`, Thumb fetch `0x080072CC`) and inserted a second object at `0x03002A6C`; construction paths are therefore heterogeneous for this active load. Evidence remains Level 3, `first_word_raw` remains unchanged, and no target/descriptor/object parser was added. Full commands, registers, factory initialization, callback blocker, and safety rules are in [consumer-analysis.md](consumer-analysis.md#rom-007-higher-plane-factory-capture).
 
@@ -223,7 +229,7 @@ Three bounded Higher Plane replays rediscovered descriptor `0x08294948`, raw fac
 
 No after-guard AABB candidate or callback was captured for that exact object. Static correction established actual query entries `0x080126D4`, `0x080127AE`, and `0x08012846`; addresses `0x080127AC` and `0x08012844` are endpoints, not entries. Direct verified callers are `0x08006E4E`, `0x08021DFE`, `0x08021E06`, `0x08012AEC`, and `0x08022142`. The entry-level replay needed to identify the rejecting guard was blocked when the environment rejected further mGBA launches at its approval quota.
 
-Semantic classification therefore stays **STRONGLY SUPPORTED: 24-byte rectangle-aware runtime object**, at Level 3. Parser readiness is **NO**; one exact current-load-epoch AABB/callback and downstream consequence remains required. The runtime helper adds fail-closed identity/timeline validation only and introduces no ROM structure parser. Full evidence and safety details are in [consumer-analysis.md](consumer-analysis.md#rom-008-exact-object-behavior-trace).
+Semantic classification therefore stays **STRONGLY SUPPORTED: 24-byte runtime object whose engine-read bounds are the record's two ordered `u16` intervals**, at Level 3. *(The two-axis "rectangle" reading was later demoted to **UNRESOLVED** by LOGX-CONNECTOR-001: the four `u16` at record `+0x08` are two ordered intervals on 735/735 records with no zero-area case, but axis names, units, origin, signedness and edge inclusivity are unrecovered. See "LOGX-CONNECTOR-001" below.)* Parser readiness is **NO**; one exact current-load-epoch AABB/callback and downstream consequence remains required. The runtime helper adds fail-closed identity/timeline validation only and introduces no ROM structure parser. Full evidence and safety details are in [consumer-analysis.md](consumer-analysis.md#rom-008-exact-object-behavior-trace).
 
 ## ROM-009 clean gameplay trace
 
@@ -473,8 +479,13 @@ Census across all 452 selector-1 roots: 104 roots have `+0x40 == 0` with
 All 735 array elements are distinct, 4-byte-aligned, in-ROM pointers, so
 *references*, *unique records* and *shared records* are 735, 735 and 0 in this
 image. Resolving every destination against the `MapEntry` key table gives 694
-directed links, 674 reciprocal, 20 one-way and 3 self-links (maps 125, 126, 127),
-with no unresolved destination.
+directed links, of which **674 are reciprocal between two different maps**, **20
+are not reciprocal**, and **3 are self-links** (maps 125, 126 and 127). The three
+categories are **not disjoint as this ticket's probe names them**: the probe's
+`reciprocal` excludes self-links while its `one_way = links - reciprocal`
+therefore *includes* them, so `674 + 20 = 694` closes the total and the 3
+self-links sit inside the 20. The disjoint reading is **674 non-self reciprocal +
+17 non-self one-way + 3 self = 694**. No destination is unresolved.
 
 Unresolved, and deliberately not promoted: the engine's own name for these
 records; the meaning of the two `+0x00` classes; whether the four `u16` are
@@ -659,19 +670,29 @@ So the eight-byte wrapper is `u32` form, `u32` declared decoded size, then
 payload at `+0x08`; and a **zero first word selects a raw copy of
 `container[+0x04]` bytes** - it is neither "empty" nor a sentinel. The engine's
 own dominant-layer constructor installs `0x08070808` (form 0, declared 0,
-followed by `0x800` zero bytes) as its default, so the zero-length case is
-engine-observed as well as engine-supported.
+followed by **2,040 (`0x7F8`)** zero bytes, the first non-zero byte `0xFF` being
+at `+0x800`) as its default, so the zero-length case is engine-observed as well as
+engine-supported.
 
-`0x0803D966` is a **second dispatcher entry that does test its third argument**.
-It has no `BL` caller in the image and none of the accepted call sites use it.
-The wrapper has 57 `BL` callers, including `0x08007C04` and `0x08007D4C`
+`0x0803D966` is a **second dispatcher entry whose third argument is not a
+length**. Its `r2` is tested only for NULL (`0x0803D972`/`0x0803D974`) and is then
+handed to alternate decode routines as a **per-byte lookup-table pointer** for a
+remapping path. It has **exactly one** `BL` caller, `0x0800F3D2` (verified by raw
+halfword scan), and none of the accepted container call sites uses it. An earlier
+revision of this section claimed it had no caller and called it "length-aware";
+both statements were **refuted by the LOGX-CODEC-001 independent review and are
+withdrawn here**. The wrapper has 57 `BL` callers, including `0x08007C04` and `0x08007D4C`
 (dominant chunks), `0x08009BF6` (`root+0x48`) and `0x08009C5A` (`root+0x4C`).
 
 The decoder itself does not run from ROM: `0x08049120` is a Thumb->ARM
 interworking veneer (`bx pc` / `nop` / `ldr pc,[pc,#-4]` / `.word 0x03000040`)
-and the code executes from IWRAM. The copied blob's ROM base is `0x087B79A4`
-(**INFERRED** from the library table at `0x087B7970` and the region's
-self-consistent internal `BL` offsets); its literal pool holds the length-bias
+and the code executes from IWRAM. The copied blob's ROM base is `0x087B79A4`,
+**CONFIRMED** from the startup DMA3 literals at `0x08000148`/`0x0800014C`/
+`0x08000150`, which copy **4,100 bytes** from `0x087B79A4` to IWRAM
+`0x03000000` (so the packed decoder is ROM `0x087B79E4` = IWRAM `0x03000040`).
+The earlier reading of a library table at `0x087B7970` was **withdrawn as
+address-shifted** by the LOGX-CODEC-001 independent review and is not cited. The
+blob's literal pool holds the length-bias
 thresholds `0x37FF` (`0x087B7CCC`) and `0x027F` (`0x087B7CD0`).
 
 **No engine-side destination bound exists.** The packed decoder receives no
@@ -992,9 +1013,13 @@ and neither is named. The three readings the ticket had to keep apart:
   compares the frame index with it and wraps modulo it
   (`0x0800DE78..0x0800DE90`: `ldr r3,[r3]` / `cmp r3,r2` / `bgt` / `strb
   r2,[r1,#0x11]`, and the wrapping form at `0x0800DEBA..0x0800DECC`);
-* **the extent semantic**: the object is `0x04 + 16*frame_count + 8` bytes, no
-  two canonical animation objects overlap, and the gap to the next object is
-  always a multiple of four.
+* **the extent semantic**: the counted extent is `0x04 + 16*frame_count + 8`
+  bytes, no two canonical animation objects overlap, and the gap to the next
+  object is always a multiple of four. **The two trailing words are not proven to
+  be a trailer at all**: in **30 of the 1,017** objects a frame record begins
+  exactly at `0x04 + 16*frame_count`, so at those addresses the two words are that
+  record's `u32` piece count and 8-byte header. Both the trailer's existence and
+  its extent are `UNPROVEN`;
 
 **What `16*frame + 4*direction + 4` indexes - CONFIRMED as a two-dimensional
 cell table.** The arithmetic appears in seven engine functions (`0x0800EF38`,
@@ -1021,9 +1046,13 @@ write are `0`, `1`, `2` and `3` (`0x0800A8C2/#3`, `0x0800A8C8/#2`, `0x0800A8D2/#
 `0x080159EC/#1`). In both functions the horizontal pair is compared first
 (`|dx| >= |dy|`) and the vertical pair is reached only otherwise, so `2`/`3` are
 the horizontal axis and `0`/`1` the vertical axis, with the sign of the
-difference choosing within each axis. The engine also mirrors the index
-arithmetically (`0x0801AF96 subs r0, r1, r0` with `r1 = 3`), which is consistent
-with four positions plus a flip. **Which physical facing each value is** -
+difference choosing within each axis. **NOT direction evidence.** An earlier draft of this section cited
+`0x0801AF96 subs r0, r1, r0` with `r1 = 3` as an arithmetic mirror consistent
+with four positions plus a flip. The LOGX-FRAME-001 independent review
+established that this site writes `obj+0x11`, the **frame index**, so it carries
+no direction information; the claim was **withdrawn from the direction argument
+and is withdrawn here**. The four-position structure rests instead on the facing
+computers' write set and on the shared-target measurement above. **Which physical facing each value is** -
 whether `3` is screen-right or screen-left, whether `0` is screen-down or
 screen-up - is **INFERRED from that sign convention, not independently observed**,
 and no direction is named here. One measured property of the horizontal pair
@@ -1112,13 +1141,65 @@ definition 146) declares four pieces and composites four containers.
 that resolves to a packed Webfoot container whose declared decoded length equals
 the piece's own `dim_0 * dim_1`: **11,005 of 11,005**. Every piece stores the full
 GBA-address form; the reader also accepts a bare file-offset form because a
-differently-authored image may use it. The targets occupy
-`0x003C34D0..0x006A87A8`, the region `GRAPHICS_FORMAT.md` §9 already records.
+differently-authored image may use it. The targets occupy **file offsets** `0x003C34D0..0x006A87A8` (GBA
+`0x083C34D0..0x086A87A8`), the region `GRAPHICS_FORMAT.md` §9 already records.
 **11,005 pieces resolve; 0 fail.** The number of *distinct container offsets
-reached by a piece* is **7,390**, all of which decode; that is a different
-population from the accepted "7,355 unique graphics containers", and the
-difference is itemised in the provenance document rather than reconciled by
-widening either figure.
+reached by a piece* is **7,390**, all of which decode. The figure this project
+previously published, **7,355**, is an exact **subset**: it is precisely the set
+reached by **single-piece frames**, and the extra 35 offsets are exactly what the
+**21 multi-piece frames** reach. The accepted reader's 16-byte piece stride cannot
+see those 21 frames, which is why its own total is 7,355. **7,390 is the accepted
+corpus figure and 7,355 is stale as a headline container count.**
+
+## LOGX-GFXSCAN-001 external scanner, measured (no format claim)
+
+This section records a **measurement of a tool**, not a format. Nothing here is
+promoted into canonical engine structure, which is why the ticket's
+`ROM_BIBLE_IMPACT` was `NONE` and why this is the only LOGX ticket whose section
+is a pointer rather than a schema
+([`research/LOGX_GFXSCAN_PROVENANCE.md`](research/LOGX_GFXSCAN_PROVENANCE.md)).
+
+The external ImageScan-style scan (reconstituted from `mainant/LOGExtractor`
+revision `3a78bb35ad181082fbc9da01057538e5a78e8c2d`) walks **every byte offset**
+from `0x200`, requires the first word to be exactly `1`, requires
+`1 <= declared < 0x20000` **and** `declared % 4 == 0`, and accepts a position when
+the decode returns without raising. It has **no alignment, palette, dimension or
+visual-plausibility test and no duplicate suppression**; its only post-decode size
+treatment (`decoded length == 256`) changes **sort priority** and does not
+establish graphics identity.
+
+**Suitability: shipping discovery tool NO, forensic/research tool YES, canonical
+resource enumerator NO.** Structured engine graph traversal remains authoritative.
+
+| Measurement | Value |
+| --- | ---: |
+| positions tested / form-word matches / submitted | 8,388,093 / 29,504 / 13,463 |
+| external candidates | 12,990 |
+| all-class recall, distinct known corpus | **11,513 / 11,715 = 98.3%** |
+| sprite-graphics recall | **7,390 / 7,390 = 100%**, digest-exact |
+| map chunks / banks | 3,745 / 3,745 and 187 / 187 |
+| portrait recall | **UNMEASURED** (non-blocking; see the synthesis document) |
+| engine-informed residual set | 5,479 (of which 414 engine-referenced, **387 packed**) |
+
+The 202 misses are the **scanner's own filters**, not engine limits: `kind == 1`
+hides the stored/form-0 resources (**3** known containers), and
+`declared % 4 == 0` rejects **199 genuine selector streams** declaring `4k + 2`
+bytes. **That modulo rule has no accepted engine basis and must not appear in
+project tooling.** `UnknownHeader` is `REFUTED` as an engine container form and
+is not re-promoted.
+
+**Discipline preserved.** A candidate is classified as known graphics, a known
+non-graphics resource, a valid container with unresolved semantics, an
+engine-referenced residual, an unreferenced candidate, or a scanner false
+positive - and a successful decode never promotes a candidate into any of them on
+its own. **The per-class sizes are not disjoint**:
+`zero_header_form0_containers` is a subset of `root_48_selector_streams`, sharing
+`0x082B5F1C` and `0x082B5F94`, so the classes sum to 11,717 against a real
+distinct population of **11,715**. Overlapping class counts must not be summed as
+if they were mutually exclusive. **No new canonical resource class and no
+graphics semantic is claimed for the 387 packed, engine-referenced residuals**;
+LOGX-SYNTHESIS-001 partially classified them (three pointer tables, one of which
+is the already-known compressed-text store) and recommends a bounded follow-up.
 
 ## Unresolved after ROM-002
 

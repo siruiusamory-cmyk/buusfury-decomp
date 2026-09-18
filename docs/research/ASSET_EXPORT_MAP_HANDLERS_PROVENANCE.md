@@ -290,7 +290,9 @@ parallax transform, with `+0x04` a 10.10 fixed-point scale (`0x400` = 1.0,
 secondary scales. The arithmetic is `CONFIRMED` - the fields are multiplied and
 the product shifted right by 10 - but the transform's *purpose* is read from its
 shape, not from a named engine routine, and no runtime capture was taken. The
-exporter does not consume these fields at all; they are recorded raw.
+exporter does not consume these fields: it renders the plane from `record + 0x1C`
+alone, and because `+0x14`/`+0x15` are a scroll scale here rather than a chunk
+grid it publishes no chunk-grid field for this record form at all (§7).
 
 **Structural cross-check.** All 41 `+0x1C` containers decode to exactly 1024
 little-endian screen entries with no non-zero high nibble, and for all 41 the

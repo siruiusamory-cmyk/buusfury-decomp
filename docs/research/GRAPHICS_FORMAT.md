@@ -9,6 +9,36 @@ Evidence labels follow the project convention: **CONFIRMED_ROM** (measured here)
 **VERIFIED_UPSTREAM** (taken from a pinned upstream and re-checked),
 **CONFIRMED_RUNTIME**, **INFERRED**, **UNKNOWN**.
 
+> ## SUPERSEDED STATEMENTS - READ THIS BEFORE QUOTING ANY FIGURE BELOW
+>
+> Audit performed by **LOGX-SYNTHESIS-001** (2026-09-17) against the accepted
+> LOGX-SPRITE-001 and LOGX-FRAME-001 tickets. The dated correction notes added
+> in place below remain the evidence trail and are **not** removed; this banner
+> exists so that no reader can mistake a superseded reading for current
+> canonical knowledge: **where a figure below disagrees with this list, this
+> list wins.**
+>
+> | This document says | Canonical position | Superseding ticket |
+> | --- | --- | --- |
+> | frame record is `u32 piece_count` then **16-byte** pieces | **REFUTED.** An **8-byte** header (`u32 piece_count` + the frame's own bounding box `s8 min_x`, `s8 min_y`, `u8 width`, `u8 height`) then `piece_count` **12-byte** pieces | LOGX-FRAME-001 |
+> | piece attribute word at `+0x08`, graphics pointer at `+0x0C` | **OFFSET CORRECTED.** Attribute pair at **`+0x04`**, graphics-container word at **`+0x08`.** The bit layout is confirmed | LOGX-FRAME-001 |
+> | "All 10,959 frames declare exactly one piece" | **REFUTED.** 10,959 declare one, **19 declare two and 2 declare four**; **11,005** piece records over **10,980** unique frames | LOGX-FRAME-001 |
+> | "Unique graphics containers: **7,355**" | **SUBSET, not the corpus total.** 7,355 is exactly the set reached by *single-piece* frames; the canonical corpus reaches **7,390**, the extra 35 being what the 21 multi-piece frames reach. The accepted reader's 16-byte stride cannot see them | LOGX-FRAME-001 |
+> | "Direction slots populated / NULL: 13,596 / 0" | **CONFIRMED for this reader's population**, and extended to **13,660 / 0** over all 1,017 animation objects | LOGX-FRAME-001 |
+> | the animation-pointer array is bounded by walking to the next structure, because "no header field bounds the list" | **REFUTED.** `structure + 0x00` (low byte) bounds the array: **4,070** slots, **1,721** non-null, **2,349** null. The header is **`0x54`** bytes, not `0x50`, and the structures do not tile one contiguous region (65 gaps of exactly `0x100`). Correcting the walk is a **numerical no-op** for every figure in this document | LOGX-SPRITE-001 |
+> | LOGExtractor's fixed **23-slot** animation table | **REFUTED as a physical model.** Positional slots are comparable across definitions; the array is count-bounded, variable-length and sparse. No engine instruction names an animation and the 23 slot names are **not** adopted | LOGX-SPRITE-001 |
+>
+> Two consequences that are **not** documentation edits and remain open: the
+> shipping reader `tools/webfoot/formats/sprite_graphics.py` still implements the
+> 4+16 layout, and `tools/webfoot/graphics.py::_animations_in` still walks to the
+> next structure. Both are listed as deferred production defects in
+> [`LOGX_SYNTHESIS.md`](LOGX_SYNTHESIS.md) §11 and scheduled in
+> [`POST_LOGX_IMPLEMENTATION_ROADMAP.md`](POST_LOGX_IMPLEMENTATION_ROADMAP.md).
+>
+> Reported populations in this document were produced by that reader. They stay
+> internally consistent with each other and remain reproducible; they are
+> **subsets of the canonical corpus**, not the canonical totals.
+
 ---
 
 ## 1. Selected family, and why
@@ -263,14 +293,19 @@ promote a verified implementation rather than invent one.
 
 The decode was **not** taken on trust. The container declares a decoded length;
 the piece that points at it independently declares OAM dimensions. Nothing in
-the file links the two. They agree on **all 7,355 payloads**:
+the file links the two. They agree on **all 7,355 payloads this reader reaches**
+(and, per LOGX-FRAME-001, on all **11,005** pieces of the full corpus once the
+12-byte piece stride is used):
 
 ```
 decoded_size == width * height   (8bpp, one byte per pixel)
 ```
 
 7,355 independent agreements is what moved this from VERIFIED_UPSTREAM to
-CONFIRMED_ROM. All 7,355 containers are `kind 1`; **zero** decode failures.
+CONFIRMED_ROM. All 7,355 containers this reader reaches are `kind 1`; **zero**
+decode failures. *(LOGX-FRAME-001: the corpus holds **11,005** pieces over
+**10,980** frames reaching **7,390** distinct container offsets; 7,355 is the
+single-piece-frame subset and this reader cannot see the 21 multi-piece frames.)*
 
 ---
 
@@ -316,8 +351,11 @@ CONFIRMED_ROM. All 7,355 containers are `kind 1`; **zero** decode failures.
 | 2 frames | 2,751 |
 | 3-10 frames | 235 |
 
-**2,986 of 7,355 graphics are reached by more than one frame; 2,644 are used by
-more than one character** (one by eight). Sharing is the normal case, and the
+**2,986 of the 7,355 graphics this reader reaches are used by more than one
+frame; 2,644 are used by
+more than one character** (one by eight). *(LOGX-FRAME-001: over the full corpus
+of **7,390** distinct container offsets, 2,994 are reached by more than one
+piece.)* Sharing is the normal case, and the
 API exposes it: `consumers_of()` and `characters_using()` exist to be read
 *before* an edit, not as diagnostics.
 
@@ -390,7 +428,7 @@ types are supported on read, because an editor round-tripping one of these files
 will re-filter it.
 
 **Proven:** export -> import returns identical pixels, dimensions, palette and
-transparent index for **all 7,355 assets**.
+transparent index for **all 7,355 assets this reader reaches**.
 
 ---
 
@@ -408,7 +446,8 @@ coherent, correct colours, clean transparency.
 
 ### The capacity fact
 
-**CONFIRMED_ROM.** The 7,355 containers occupy `0x03C34D0..0x06A88AC` with
+**CONFIRMED_ROM.** The 7,355 containers this reader reaches occupy **file
+offsets** `0x03C34D0..0x06A88AC` with
 **zero overlaps** and **4,014 exactly-adjacent pairs** (gap 0); 2,358 more have
 only a 4-byte gap. There is **no slack**, and no profile declares free space. A
 payload that grows by one byte overwrites the next asset.
@@ -480,9 +519,15 @@ exactness**, and must never be described as the latter.
 
 **DISCOVERED** only, deliberately unexplored per §33:
 
-* map tilesets (DragonByteZ records a `level_tileset_table` at `0x00179764`,
-  count 187, with a per-level pointer at record `+0x4C` - **VERIFIED_UPSTREAM**,
-  not checked here)
+* map tilesets (DragonByteZ records a `level_tileset_table` at file offset
+  `0x00179764`, count 187, with a per-level pointer at record `+0x4C` -
+  **VERIFIED_UPSTREAM**, not checked here).
+  **SUPERSEDED on ownership by LOGX-TILE-001:** GBA `0x08179764` is not a
+  standalone global table; it is the **value stored at `root + 0x4C`** on all 452
+  selector-1 roots, and it points at the **187-entry selector-bank container
+  table** - 186 entries declaring `0x4000` bytes and entry 186 declaring
+  `0x3C40`. The location and entry count agree; the ownership does not. The
+  project's own name for it is "bank table", not "atlas table"
 * the background palette at `0x0005632C` (1 inbound reference)
 * portraits, UI, fonts, effects, title graphics
 
@@ -564,7 +609,7 @@ Reported per layer, never collapsed into "Graphics = ROUND_TRIP".
 | Tiles / pixels | ROUND_TRIP | exact swizzle inverse on all 7,355 |
 | Palette | ROUND_TRIP | encodes to the exact 512 source bytes |
 | Logical graphic assets | ROUND_TRIP | stable IDs, sharing represented |
-| Pieces | ROUND_TRIP | 16 bytes exact, unknowns preserved |
+| Pieces | READ (codec) | the accepted reader's 16-byte walk. **LOGX-FRAME-001 corrects the layout**: pieces are **12 bytes** with the packed OBJ attribute pair at `+0x04` and the graphics-container word at `+0x08`. `Piece`'s properties are kept with the offsets moved |
 | Frames | READ | decoded; the accepted reader reaches the 10,959 single-piece frames. **LOGX-FRAME-001 corrects the stride**: the corpus holds **11,005 piece records over 10,980 frames**, including **21 multi-piece frames** |
 | Animations | READ | structure decoded; **no semantics named** |
 | Project PNG export/import | ROUND_TRIP | exact on all 7,355 |

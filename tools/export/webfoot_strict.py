@@ -36,12 +36,16 @@ ASSET-EXPORT-001 ticket asks for, and it never clips.
   Output reaching the declared size is not on its own evidence that the stream is
   the one the header describes.
 
-The accepted corpus satisfies all three: `LOGX-CODEC-001` measured that on
-4,322 of 4,322 reachable packed containers the decode produces exactly the
-declared size **and** the stream's own end marker falls at that same length. That
-is a canonical observation, not a format guarantee - the engine carries no output
-counter and performs no size comparison - so this module treats the observation
-as a checkable postcondition rather than as an assumption.
+The accepted corpus satisfies all three. `LOGX-CODEC-001` measured it over the
+4,322 packed containers reachable from the **map** side alone (chunk, selector
+stream and bank containers); this exporter's own reachable set is wider, 11,712
+packed containers, because it also walks the sprite graph, and every one of those
+11,712 also produces exactly its declared size with its end marker at that same
+length. Both figures were measured; they count different populations and are
+never interchangeable. That is a canonical observation, not a format guarantee -
+the engine carries no output counter and performs no size comparison - so this
+module treats the observation as a checkable postcondition rather than as an
+assumption.
 
 **Why the end-marker check is opt-in.** The project's own `webfoot_lz.pack`
 terminates by output length: it never emits the end-marker escape, and only

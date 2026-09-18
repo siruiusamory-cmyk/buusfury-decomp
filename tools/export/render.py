@@ -96,11 +96,20 @@ def rgba_table(palette: tuple[tuple[int, int, int], ...]) -> bytes:
     return bytes(table)
 
 
-def to_rgba(indices: bytes, table: bytes) -> bytes:
+def to_rgba(
+    indices: bytes, table: bytes, *, backdrop: tuple[int, int, int] | None = None
+) -> bytes:
     """Expand 8bpp palette indices to RGBA using a 256-entry lookup table.
 
-    Slice assignment on an ``array`` performs the interleave at C speed, which
-    is what keeps a quarter of a million pixels per chunk affordable.
+    With ``backdrop`` the image is flattened as the display would show it: an
+    index-0 pixel becomes the backdrop colour at full alpha instead of a hole.
+    On this hardware the backdrop is palette entry 0 of the background palette,
+    and it is what the display shows wherever no layer painted - so a flattened
+    composite is the faithful view of the screen, while the per-layer images stay
+    transparent so a consumer can still composite them itself.
+
+    Slice assignment on an ``array`` performs the interleave at C speed, which is
+    what keeps a quarter of a million pixels per chunk affordable.
     """
     import array
 
@@ -114,6 +123,14 @@ def to_rgba(indices: bytes, table: bytes) -> bytes:
     green = table[1::4]
     blue = table[2::4]
     alpha = table[3::4]
+    if backdrop is not None:
+        for channel in backdrop:
+            if type(channel) is not int or not 0 <= channel <= 255:
+                raise RenderError(f"backdrop channel {channel!r} is not 8-bit")
+        red = bytes([backdrop[0]]) + red[1:]
+        green = bytes([backdrop[1]]) + green[1:]
+        blue = bytes([backdrop[2]]) + blue[1:]
+        alpha = b"\xff" + alpha[1:]
     buffer = array.array("B", bytes(count * 4))
     buffer[0::4] = array.array("B", indices.translate(red))
     buffer[1::4] = array.array("B", indices.translate(green))

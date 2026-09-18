@@ -49,6 +49,34 @@ def test_palette_strip_is_opaque_and_ordered():
     assert rgba[0:3] == bytes((0, 0, 0))
 
 
+def test_backdrop_flattens_index_zero_to_the_backdrop_colour():
+    """A composite against a backdrop is the screen view, not a hole."""
+    table = _table()
+    flat = render.to_rgba(bytes([0, 1, 0, 2]), table, backdrop=(9, 8, 7))
+    assert flat[0:4] == bytes((9, 8, 7, 255))
+    assert flat[4:8] == bytes((1, 3, 5, 255))
+    assert flat[8:12] == bytes((9, 8, 7, 255))
+    assert flat[12:16] == bytes((2, 6, 10, 255))
+
+
+def test_backdrop_leaves_no_transparent_pixel():
+    table = _table()
+    flat = render.to_rgba(bytes([0, 0, 5, 0, 0, 0]), table, backdrop=(0, 0, 0))
+    assert set(flat[3::4]) == {255}
+
+
+def test_without_a_backdrop_index_zero_stays_transparent():
+    table = _table()
+    plain = render.to_rgba(bytes([0, 1]), table)
+    assert plain[3] == 0
+    assert plain[7] == 255
+
+
+def test_backdrop_rejects_a_bad_channel():
+    with pytest.raises(render.RenderError):
+        render.to_rgba(b"\x00", _table(), backdrop=(0, 0, 999))
+
+
 # --- tiling -----------------------------------------------------------------
 
 def test_unswizzle_is_tile_major():

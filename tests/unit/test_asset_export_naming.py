@@ -28,6 +28,76 @@ def test_map_paths_are_numeric_and_padded():
     assert naming.map_directory(451) == "map_451"
     assert naming.map_layer_relative_path(7, 2) == "maps/map_007/layer_2.png"
     assert naming.map_composite_relative_path(39) == "maps/map_039/composite.png"
+    assert naming.map_record_relative_path(39) == "maps/map_039/map.json"
+
+
+# --- ROM-derived names -------------------------------------------------------
+
+def test_sanitize_name_is_deterministic_and_ascii():
+    assert naming.sanitize_name("Grand Kai's Planet") == "grand_kai_s_planet"
+    assert naming.sanitize_name("Hercule Caf\u00e9") == "hercule_caf"
+    assert naming.sanitize_name("East District 439") == "east_district_439"
+    assert naming.sanitize_name("  ---  ") == ""
+    assert naming.sanitize_name("A  B") == "a_b"
+    assert naming.sanitize_name("---Leading") == "leading"
+    assert naming.sanitize_name("Trailing---") == "trailing"
+
+
+def test_sanitize_name_caps_length():
+    assert len(naming.sanitize_name("x" * 200)) == naming.NAME_LIMIT
+
+
+def test_sanitize_name_rejects_a_non_string():
+    with pytest.raises(TypeError):
+        naming.sanitize_name(7)  # type: ignore[arg-type]
+
+
+def test_named_directories_keep_the_numeric_id_first():
+    assert naming.map_directory(39, "Grand Kai's Planet") == (
+        "map_039_grand_kai_s_planet"
+    )
+    assert naming.sprite_directory(28, "Babidi") == "sprite_028_babidi"
+    assert (
+        naming.map_layer_relative_path(39, 1, "Grand Kai's Planet")
+        == "maps/map_039_grand_kai_s_planet/layer_1.png"
+    )
+    assert (
+        naming.frame_direction_relative_path(28, 3, 2, 1, "Babidi")
+        == "sprites/sprite_028_babidi/animations/animation_03/"
+        "frame_002/direction_1.png"
+    )
+    assert (
+        naming.animation_sheet_relative_path(28, 3, "Babidi")
+        == "sprites/sprite_028_babidi/animations/animation_03/sheet.png"
+    )
+
+
+@pytest.mark.parametrize("name", ["", "   ", "---", None])
+def test_an_unusable_name_falls_back_to_the_bare_numeric_id(name):
+    assert naming.map_directory(8, name) == "map_008"
+    assert naming.sprite_directory(300, name) == "sprite_300"
+
+
+def test_two_objects_sharing_a_name_still_have_distinct_paths():
+    first = naming.sprite_directory(20, "Human")
+    second = naming.sprite_directory(21, "Human")
+    assert first != second
+    assert first.startswith("sprite_020") and second.startswith("sprite_021")
+
+
+@pytest.mark.parametrize(
+    "builder",
+    [
+        lambda: naming.map_directory(0, "Grand Kai's Planet"),
+        lambda: naming.map_record_relative_path(39, "Grand Kai's Planet"),
+        lambda: naming.sprite_directory(28, "Babidi"),
+        lambda: naming.animation_sheet_relative_path(28, 3, "Android #18"),
+    ],
+)
+def test_a_named_path_stays_lowercase_and_ascii(builder):
+    path = builder()
+    assert path.isascii()
+    assert path == path.lower()
 
 
 def test_tile_paths_are_numeric_and_padded():
@@ -121,6 +191,7 @@ def test_no_path_builder_emits_a_document_suffix():
     """The resource library holds no README, note or text file."""
     for path in (
         naming.map_composite_relative_path(0),
+        naming.map_record_relative_path(0),
         naming.tile_sheet_relative_path(0),
         naming.chunk_relative_path(0),
         naming.graphic_relative_path(0),

@@ -28,6 +28,8 @@ import pytest
 
 from tools.export import buu_resource_export as export
 from tools.export import canonical as canon
+from tools.export import naming
+from tools.export import png
 from tools.export import render
 
 # --- accepted populations ----------------------------------------------------
@@ -75,6 +77,18 @@ EXPECTED_DIRECTIONAL_FRAME_IMAGES = 23068
 EXPECTED_PIECE_REFERENCES_OVER_ANIMATION_REFERENCES = 23180
 EXPECTED_SPRITE_ID_FLOOR = 10
 EXPECTED_SPRITE_ID_CEILING = 306
+
+#: Appearance definitions: 232 records, of which 198 name a sprite definition.
+EXPECTED_APPEARANCE_DEFINITIONS = 232
+EXPECTED_SPRITES_REACHED_BY_APPEARANCE = 198
+EXPECTED_SPRITES_WITH_A_RESOLVED_NAME = 198
+EXPECTED_DISTINCT_SPRITE_NAME_STRINGS = 147
+EXPECTED_SPRITES_WITH_SEVERAL_APPEARANCES = 25
+EXPECTED_SPRITES_WHOSE_APPEARANCES_DISAGREE = 8
+EXPECTED_MAPS_WITH_A_RESOLVED_NAME = 429
+EXPECTED_DISTINCT_MAP_NAME_STRINGS = 69
+EXPECTED_MAP_DIRECTORIES = 452
+EXPECTED_SPRITE_DIRECTORIES = 297
 
 #: Representative rendered digests, measured once and pinned.
 EXPECTED_MAP_LAYER_SHA256 = {
@@ -185,9 +199,95 @@ def exporter(canonical_bytes: bytes, tmp_path_factory) -> export.Exporter:
     analysis = export.Exporter(canon.Rom(canonical_bytes), root / "out", root / "audit")
     analysis.writer.enabled = False
     analysis.subsystems = {"maps", "tiles", "sprites"}
+    analysis.collect_names()
     analysis.collect_map_graph()
     analysis.collect_sprite_graph()
     return analysis
+
+
+# --- ROM-derived names -------------------------------------------------------
+
+def test_appearance_definitions_and_the_names_they_carry(
+    exporter: export.Exporter,
+) -> None:
+    assert len(exporter.appearances) == EXPECTED_APPEARANCE_DEFINITIONS
+    assert len(exporter.appearances_by_sprite) == (
+        EXPECTED_SPRITES_REACHED_BY_APPEARANCE
+    )
+    assert len(exporter.sprite_names) == EXPECTED_SPRITES_WITH_A_RESOLVED_NAME
+    assert len(set(exporter.sprite_names.values())) == (
+        EXPECTED_DISTINCT_SPRITE_NAME_STRINGS
+    )
+    several = sum(
+        1 for records in exporter.appearances_by_sprite.values() if len(records) > 1
+    )
+    assert several == EXPECTED_SPRITES_WITH_SEVERAL_APPEARANCES
+    disagree = 0
+    for records in exporter.appearances_by_sprite.values():
+        names = {
+            exporter.rom.text(record.name_text_index)
+            for record in records
+            if exporter.rom.text(record.name_text_index)
+        }
+        if len(names) > 1:
+            disagree += 1
+    assert disagree == EXPECTED_SPRITES_WHOSE_APPEARANCES_DISAGREE
+
+
+def test_every_appearance_selects_a_sprite_inside_the_run(
+    exporter: export.Exporter,
+) -> None:
+    """The `+0x04` selection is a logical sprite id, and every one resolves."""
+    valid = {definition.sprite_id for definition in exporter.definitions}
+    for record in exporter.appearances:
+        assert record.sprite_id in valid, record.appearance_index
+
+
+def test_map_names_resolve_from_the_text_table(exporter: export.Exporter) -> None:
+    assert len(exporter.map_names) == EXPECTED_MAPS_WITH_A_RESOLVED_NAME
+    assert len(set(exporter.map_names.values())) == EXPECTED_DISTINCT_MAP_NAME_STRINGS
+    assert exporter.map_name(39) == "Grand Kai's Planet"
+    assert exporter.map_name(451) == "Heaven"
+    assert exporter.map_name(8) is None
+
+
+def test_named_directories_are_unique_and_carry_the_numeric_id(
+    exporter: export.Exporter,
+) -> None:
+    map_directories = {
+        naming.map_directory(entry.index, exporter.map_name(entry.index))
+        for entry in exporter.map_entries
+    }
+    assert len(map_directories) == EXPECTED_MAP_DIRECTORIES
+    sprite_directories = {
+        naming.sprite_directory(
+            definition.sprite_id, exporter.sprite_name(definition.sprite_id)
+        )
+        for definition in exporter.definitions
+    }
+    assert len(sprite_directories) == EXPECTED_SPRITE_DIRECTORIES
+    assert naming.map_directory(39, exporter.map_name(39)) == (
+        "map_039_grand_kai_s_planet"
+    )
+    assert naming.sprite_directory(28, exporter.sprite_name(28)) == "sprite_028_babidi"
+    for directory in map_directories | sprite_directories:
+        assert directory.isascii() and directory == directory.lower()
+        assert directory.split("_")[1].isdigit()
+
+
+def test_a_map_whose_layers_are_all_unresolved_still_gets_a_directory(
+    exporter: export.Exporter,
+) -> None:
+    """Map 8 is the one map with no renderable layer, and it is still inventoried.
+
+    Rendering nothing must not remove the identity: the map writes its own record,
+    which is what creates the directory.
+    """
+    assert [layer.classification for layer in exporter.layers[8]] == [
+        "unresolved_record_representation"
+    ] * 4
+    assert exporter.map_name(8) is None
+    assert naming.map_directory(8, None) == "map_008"
 
 
 # --- completion gates --------------------------------------------------------
@@ -597,6 +697,103 @@ def test_palettes_match_their_sources(canonical_bytes: bytes) -> None:
 
 # --- determinism -------------------------------------------------------------
 
+def test_the_written_tree_gives_every_map_a_directory_and_a_record(
+    exporter: export.Exporter, tmp_path_factory
+) -> None:
+    """The export writes a directory and a `map.json` for all 452 maps.
+
+    This runs the map side with the writer enabled, which is the only way to
+    check the on-disk consequence rather than the inventory it came from. It is
+    the regression that a fully unrenderable map once slipped past: map 8 renders
+    nothing, so nothing created its directory and the library held 451 map
+    directories for 452 identities.
+    """
+    root = tmp_path_factory.mktemp("asset-export-written")
+    written = export.Exporter(canon.Rom(exporter.rom.data), root / "out", root / "audit")
+    written.subsystems = {"maps"}
+    written.collect_names()
+    written.layers = exporter.layers
+    written.char_blocks = exporter.char_blocks
+    written.selector_counts = exporter.selector_counts
+    written.animated_counts = exporter.animated_counts
+    written.chunk_entries = exporter.chunk_entries
+    written.chunk_maps = exporter.chunk_maps
+    written.export_maps()
+
+    maps_root = root / "out" / naming.MAPS
+    directories = sorted(entry.name for entry in maps_root.iterdir())
+    assert len(directories) == EXPECTED_MAP_DIRECTORIES
+    assert directories == sorted(
+        naming.map_directory(entry.index, written.map_name(entry.index))
+        for entry in written.map_entries
+    )
+    for directory in directories:
+        records = list((maps_root / directory).glob(f"{naming.MAP_RECORD_FILE}"))
+        assert len(records) == 1, directory
+    assert written.counters["map_directories_written"] == EXPECTED_MAP_DIRECTORIES
+    assert {
+        gate["key"]: gate["accounted"]
+        for gate in written.count_document()["gates"]
+    } == {
+        "map_entries": True,
+        "maps_exported": True,
+        "map_directories_written": True,
+        "map_layers_classified": True,
+    }
+
+
+def test_every_composite_on_disk_is_the_backdrop_flattened_view(
+    exporter: export.Exporter, tmp_path_factory
+) -> None:
+    """A composite file is opaque and equals its index image against the backdrop."""
+    root = tmp_path_factory.mktemp("asset-export-composite")
+    written = export.Exporter(canon.Rom(exporter.rom.data), root / "out", root / "audit")
+    written.subsystems = {"maps"}
+    written.collect_names()
+    written.layers = exporter.layers
+    written.char_blocks = exporter.char_blocks
+    written.selector_counts = exporter.selector_counts
+    written.animated_counts = exporter.animated_counts
+    written.chunk_entries = exporter.chunk_entries
+    written.chunk_maps = exporter.chunk_maps
+    written.export_maps()
+
+    checked = 0
+    for map_index in (0, 39, 40, 125):
+        records = exporter.layers[map_index]
+        rendered = [
+            (
+                exporter.rom.u8(
+                    exporter.map_entries[map_index].root_address
+                    + canon.ROOT_BG_ADDEND_OFFSET
+                    + layer.slot
+                ),
+                layer.slot,
+                layer.chunk_x * canon.CHUNK_PIXELS,
+                layer.chunk_y * canon.CHUNK_PIXELS,
+                exporter.render_layer(layer, map_index),
+            )
+            for layer in records
+            if layer.classification == "dominant"
+        ]
+        width = max(item[2] for item in rendered)
+        height = max(item[3] for item in rendered)
+        indices = render.compose_layers(rendered, width, height)
+        table = render.rgba_table(render.bg_palette_rgb(exporter.rom))
+        expected = render.to_rgba(indices, table, backdrop=(0, 0, 0))
+        name = written.map_name(map_index)
+        path = (
+            root / "out" / naming.MAPS / naming.map_directory(map_index, name)
+            / naming.COMPOSITE_FILE
+        )
+        got_width, got_height, got = png.decode_rgba(path.read_bytes())
+        assert (got_width, got_height) == (width, height)
+        assert got == expected
+        assert set(got[3::4]) == {255}
+        checked += 1
+    assert checked == 4
+
+
 def test_rendering_the_same_structures_twice_is_byte_identical(
     exporter: export.Exporter,
 ) -> None:
@@ -623,7 +820,6 @@ def test_rendering_the_same_structures_twice_is_byte_identical(
 def test_png_output_is_byte_identical_across_encodes(
     exporter: export.Exporter,
 ) -> None:
-    from tools.export import png
 
     table = render.rgba_table(render.bg_palette_rgb(exporter.rom))
     for map_index in (0, 39):

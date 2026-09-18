@@ -38,26 +38,41 @@ inside it.
 
 ```text
 <EXPORT_ROOT>/
-  maps/map_000/{composite.png,layer_0.png,...}
+  maps/map_039_grand_kai_s_planet/{map.json,composite.png,layer_0.png,...}
   tiles/banks/bank_000/{sheet.png,tiles/tile_0000.png,...}
   tiles/chunks/chunk_000000.png
-  sprites/sprite_010/animations/animation_00/
+  sprites/sprite_028_babidi/animations/animation_00/
       frame_000/direction_0.png ... sheet.png
   sprite_graphics/graphic_000000.png
   palettes/palette_000.png ... palette_001.json
-  metadata/{maps,tile_banks,chunks,sprites,animations,frames,sprite_graphics,aliases}.json
+  metadata/{maps,tile_banks,chunks,sprites,animations,frames,sprite_graphics,
+            aliases,names}.json
 ```
 
 Naming is numeric and fixed-width, and derives only from canonical identity:
-`map_000`, `sprite_010`, `animation_00`, `frame_003`, `direction_0`, `bank_017`,
-`tile_0042`, `chunk_001827`, `graphic_000000`. No direction, animation slot, map,
-bank or tile is given a semantic name, because the accepted work establishes
-occupancy and ordering rather than semantics. ROM-derived strings appear only as
-*data*, in `metadata/aliases.json` and in each map's `rom_text` field.
+`map_039`, `sprite_028`, `animation_00`, `frame_003`, `direction_0`, `bank_017`,
+`tile_0042`, `chunk_001827`, `graphic_000000`. Where the accepted ROM data carries
+a genuine text string for the object, the sanitized string is appended after the
+numeric id - `map_039_grand_kai_s_planet`, `sprite_028_babidi` - with lowercasing,
+one underscore per run of other characters, and a 48-character cap. The numeric id
+stays first and stays canonical, so a renamed or missing string can never make a
+path ambiguous. No direction and no animation slot is named, because nothing in
+the accepted data names them.
 
-Index 0 is transparent in every layer, composite, frame, tile and chunk image,
-and the alpha channel is written explicitly. Nothing is scaled, sharpened,
-padded for visibility, labelled or overlaid.
+Across the corpus, 429 of the 452 maps carry a ROM text string (69 distinct
+strings, because neighbouring maps share a place name) and 198 of the 297 sprite
+definitions are named by an appearance definition (147 distinct strings; 25
+sprites are reached by more than one appearance and 8 of those disagree on the
+name, in which case the directory uses the lowest appearance index and every
+alternative is listed in `metadata/names.json`).
+
+Every layer, frame, tile and chunk image keeps index 0 transparent, and the alpha
+channel is written explicitly. A **composite** is flattened instead: the display
+backdrop - palette entry 0 of the background palette - fills every pixel no layer
+painted, so a composite is the faithful view of the screen rather than an image
+full of holes. Each map's `composite_unpainted_pixels` records how many pixels
+that affects. Nothing is scaled, sharpened, padded for visibility, labelled or
+overlaid.
 
 ## The audit directory
 
@@ -70,8 +85,20 @@ of the resource library:
 | `counts.json` | every accepted population beside its measurement and an `accounted` flag |
 | `hashes.csv` | `relative_path,bytes,sha256` for every artifact |
 | `failures.json` | every structural failure, as `kind` / `population` / `identity` / `detail` |
-| `references.json` | chunk to maps, layers by classification, palettes, bank containers |
+| `references.json` | chunk to maps, layers by classification, palettes, bank containers, null chunk cells |
 | `duplicate_groups.json` | artifacts sharing identical bytes, grouped by digest |
+
+`metadata/names.json` is the numeric-identity to ROM-text index: every map's text
+relationship and directory, and every sprite definition's appearance-derived
+names, descriptions, portrait and stat indices. A sprite reached by several
+appearance definitions carries several names; the directory uses the lowest
+appearance index and all alternatives are listed there.
+
+The palette strips (`palettes/palette_000.png`, `palette_001.png`) are opaque on
+purpose: they are a view of the palette values, so suppressing entry 0 would hide
+an entry rather than show its colour. Both palettes have entries 0 and 1 equal to
+black, so only the alpha channel of a *layer* image distinguishes "entry 0,
+transparent" from "entry 1, opaque black".
 
 The exporter exits non-zero when a gate is unaccounted, a failure was recorded,
 or a prose field or prose file reached the library.
@@ -91,8 +118,9 @@ python -m tools.export.buu_resource_export ^
   --compare "D:\BuuFury_Resources"
 ```
 
-`--compare` reads the earlier root's `<root>_Audit/hashes.csv` and reports
-missing, extra and differing artifacts.
+`--compare` hashes every file in the given earlier root and compares it against
+**this run's** `<audit>/hashes.csv`, reporting missing, extra and differing
+artifacts.
 
 ## What is exported, and what is withheld
 
@@ -100,35 +128,46 @@ The exporter walks the accepted post-LOGX graphs and never substitutes a
 heuristic scan for them. `GFXSCAN`-style candidates are not enumerated and no
 residual container is exported.
 
-* **Maps.** All 452 `MapEntry` records get a directory. Their four root slots are
-  each classified by the `+0x00` Thumb handler entry: the dominant chunk-grid
-  form (`0x08008087`) is rendered, the shared zero-dimension absent-layer record
-  (`0x08007A41`) is recorded as non-graphical, and the three unresolved handlers
-  (`0x0800897B`, `0x08007B63`, `0x080088BD`) are recorded as unresolved. A
-  composite is produced only when every slot is either rendered or the absent
-  placeholder; otherwise it is withheld and the reason is recorded as a status
-  value, never silently dropped.
-  A null chunk pointer inside a dominant layer contributes no entries. The
-  accepted record set has an internal null in 117 of the 1,420 dominant layer
-  records, across 86 maps, occupying 156 of the 4,274 grid cells - exactly the
-  accepted `4274 = 156 null + 4118 non-null` arithmetic. What such a cell
-  displays is an open question: the constructor skips it while the streaming path
-  substitutes the default container `0x08070808`. That container is measured to be
-  a stored container declaring zero bytes, so the substitution carries no data
-  either - the exporter renders the cell as no-data and records the counts in
-  `references.json` rather than claiming the question is settled. Whether the
-  destination would retain stale bytes is not something the ROM image can show.
+* **Maps.** All 452 `MapEntry` records get a directory, a `map.json` record and an
+  entry in `metadata/maps.json`; a map whose four slots are all unresolved still
+  gets all three, so no identity is ever missing from the inventory. Their four
+  root slots are each classified by the `+0x00` Thumb handler entry: the dominant
+  chunk-grid form (`0x08008087`) is rendered, the shared zero-dimension
+  absent-layer record (`0x08007A41`) is recorded as non-graphical, and the three
+  unresolved handlers (`0x0800897B`, `0x08007B63`, `0x080088BD`) are recorded as
+  unresolved. A composite is produced only when every slot is either rendered or
+  the absent placeholder; otherwise it is withheld and the reason is recorded as a
+  status value, never silently dropped. That leaves 422 composites and 30 maps
+  withheld; `map_008` is the only map with no image at all.
+  A null chunk pointer inside a dominant layer contributes screen entry 0, the
+  value the engine's own occupancy test treats as unoccupied, so nothing is drawn
+  there. The accepted record set has an internal null in 117 of the 1,420 dominant
+  layer records, across 86 maps, occupying 156 of the 4,274 grid cells - exactly
+  the accepted `4274 = 156 null + 4118 non-null` arithmetic. What an in-game null
+  cell displays is an open question: the constructor skips it while the streaming
+  path substitutes the default container `0x08070808`. That container is measured
+  to be a stored container declaring zero bytes, so the substitution carries no
+  data either - but whether the destination would retain stale bytes is not
+  something the ROM image can show, so the counts are recorded in
+  `references.json` rather than the question being called settled.
   Rendering is cross-validated against the project's own accepted renderer: on
-  every one of the 342 maps that renderer can also render, the exporter's layer
-  images and composites are pixel-identical to it. The other 110 are exactly the
-  maps it refuses - null chunk cells, the partial-zero unresolved records, the two
-  unresolved singletons, and the one map reaching bank 186.
+  every one of the 342 maps that renderer can render, the exporter's layer images
+  and composites are pixel-identical to it. It refuses the other 110; measured by
+  first failure those are 85 with a null chunk cell, 20 with a partial-zero
+  unresolved record, 4 with an unsupported handler record, and 1 (map 0) whose
+  selector stream reaches the `0x3C40`-declaring bank. Relaxing exactly those two
+  fail-closed refusals in a scratch copy of the renderer - skip a null cell, honour
+  a bank's declared size - makes it agree with the exporter on all 422 rendered
+  maps, so the only place the two differ is the set of maps the renderer declines.
 * **Tiles.** All 187 bank entries are exported at their own declared size, which
-  is `0x4000` for 186 of them and `0x3C40` for entry 186 - and entry 186 is used
-  by a canonical selector stream, so its size must not be assumed. A screen
-  entry's bits 10 and 11 are applied as the platform's horizontal and vertical
-  flip selectors when a chunk or layer is rendered; they are never baked into the
-  exported tile resources, whose identity follows the underlying tile.
+  `map_000` is always `0x4000`; 186 of the 187 declare `0x4000` and entry 186
+  declares `0x3C40`. Entry 186 is used by a canonical selector stream (map 0), so
+  its size must not be assumed - and after that map's selectors are decoded, the
+  largest tile ordinal it names is 240, inside the 241 tiles the declaration
+  covers. A screen entry's bits 10 and 11 are applied as the platform's horizontal
+  and vertical flip selectors when a chunk or layer is rendered; they are never
+  baked into the exported tile resources, whose identity follows the underlying
+  tile.
 * **Chunks.** All 3,745 distinct dominant chunk containers are exported as
   256x256 images, rendered against the lowest-index map that references them.
   Every reference is recorded, and any chunk whose pixels differ between

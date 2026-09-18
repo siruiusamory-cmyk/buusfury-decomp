@@ -171,9 +171,67 @@ OBJECT_PALETTE_BYTES = OBJECT_PALETTE_ENTRIES * 2
 TEXT_POINTER_TABLE_ADDRESS = 0x0806BCE8
 TEXT_POINTER_COUNT = 1534
 
+#: Appearance-definition table: 232 fixed records, stride 0x10. Each record
+#: carries two text-table relationships and a sprite-definition selection.
+APPEARANCE_TABLE_ADDRESS = 0x0874D380
+APPEARANCE_COUNT = 232
+APPEARANCE_STRIDE = 0x10
+APPEARANCE_NAME_TEXT_OFFSET = 0x00   # u16 text index
+APPEARANCE_DESCRIPTION_TEXT_OFFSET = 0x02
+APPEARANCE_SPRITE_OFFSET = 0x04      # u32 logical sprite id
+APPEARANCE_PORTRAIT_OFFSET = 0x08    # u32 index into the 0x086F393C array
+APPEARANCE_STAT_OFFSET = 0x0C        # i32; negative values are skipped by the engine
+
 #: File-offset region the accepted sprite-graphics targets occupy.
 GRAPHICS_REGION_MIN_FILE_OFFSET = 0x003C34D0
 GRAPHICS_REGION_MAX_FILE_OFFSET = 0x006A87A8
+
+
+# --- appearance side ---------------------------------------------------------
+
+@dataclass(frozen=True, slots=True)
+class AppearanceRecord:
+    """One appearance definition: two text relationships and a sprite selection.
+
+    The accepted synthesis describes these as "named appearance definitions with
+    optional slot and stat indices". The `+0x00` and `+0x02` text relationships
+    are `CONFIRMED`; calling the first a *name* and the second a *description* is
+    `PARTIALLY CONFIRMED`, so both strings are carried as ROM text and the
+    higher-level claim is not made anywhere. `+0x04` selects a sprite definition
+    by logical id.
+    """
+
+    appearance_index: int
+    address: int
+    name_text_index: int | None
+    description_text_index: int | None
+    sprite_id: int
+    portrait_index: int
+    stat_index: int
+
+
+def read_appearances(rom: Rom) -> tuple[AppearanceRecord, ...]:
+    """Read all 232 appearance definitions at the accepted offsets."""
+    records: list[AppearanceRecord] = []
+    for index in range(APPEARANCE_COUNT):
+        address = APPEARANCE_TABLE_ADDRESS + index * APPEARANCE_STRIDE
+        rom.span(address, APPEARANCE_STRIDE)
+        name_index = rom.u16(address + APPEARANCE_NAME_TEXT_OFFSET)
+        description_index = rom.u16(address + APPEARANCE_DESCRIPTION_TEXT_OFFSET)
+        records.append(
+            AppearanceRecord(
+                appearance_index=index,
+                address=address,
+                name_text_index=name_index,
+                description_text_index=description_index,
+                sprite_id=rom.u32(address + APPEARANCE_SPRITE_OFFSET),
+                portrait_index=rom.u32(address + APPEARANCE_PORTRAIT_OFFSET),
+                stat_index=struct.unpack_from(
+                    "<i", rom.data, rom.offset(address + APPEARANCE_STAT_OFFSET)
+                )[0],
+            )
+        )
+    return tuple(records)
 
 
 class CanonicalError(ValueError):

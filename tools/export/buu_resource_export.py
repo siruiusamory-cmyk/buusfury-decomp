@@ -21,10 +21,12 @@ Safety
 * The ROM is opened read-only, hashed before and after, and never written,
   copied into the output, or named as a path inside the library.
 * The output root must not be inside a git repository. The exporter resolves the
-  path, looks for a ``.git`` entry in it or any ancestor, and refuses if it finds
-  one, so a generated library cannot be staged by accident. That is a hard
-  refusal rather than a ``.gitignore`` entry: an ignore rule protects one
-  checkout, a refusal protects every one.
+  path, looks for a usable ``.git`` in it or any ancestor - a directory that
+  contains ``HEAD``, or a work-tree ``.git`` file - and refuses if it finds one,
+  so a generated library cannot be staged by accident. A bare ``.git`` directory
+  left behind by an interrupted clone is not a repository and does not trigger
+  the refusal. That is a hard refusal rather than a ``.gitignore`` entry: an
+  ignore rule protects one checkout, a refusal protects every one.
 * The audit root must be a sibling of the export root, and neither root may
   contain the other.
 
@@ -74,10 +76,18 @@ ANIMATION_SHEET_COLUMNS = naming.SHEET_DIRECTION_COLUMNS
 PALETTE_OBJECT_ID = 0
 PALETTE_BACKGROUND_ID = 1
 
+#: The display backdrop is palette entry 0 of the background palette: that is
+#: what the hardware shows wherever no layer painted a pixel. A composite is
+#: flattened against it so the image is the faithful view of the screen instead
+#: of an image full of transparent holes, and the unpainted-pixel count is
+#: recorded beside it so the difference stays visible.
+BACKDROP_PALETTE_INDEX = 0
+
 #: The accepted populations this export must account for exactly.
 EXPECTED_POPULATIONS = {
     "map_entries": 452,
     "maps_exported": 452,
+    "map_directories_written": 452,
     "map_layers_classified": 1808,
     "sprite_definitions": 297,
     "animation_slots": 4070,
@@ -177,11 +187,18 @@ def clear_generated(output_root: Path) -> tuple[str, ...]:
     A hard refusal to delete anything else is deliberate: the caller's directory
     may hold unrelated work, and a wide recursive delete driven by a flag is not
     an acceptable failure mode for a tool that is pointed at a user directory.
+    A filesystem refusal is surfaced as an :class:`ExportError` rather than as a
+    raw traceback, because the caller needs to know which path blocked it.
     """
     for name in GENERATED_DIRECTORIES:
         target = output_root / name
-        if target.is_dir():
-            shutil.rmtree(target)
+        try:
+            if target.is_dir():
+                shutil.rmtree(target)
+        except OSError as exc:
+            raise ExportError(
+                f"cannot replace the generated directory {target}: {exc}"
+            ) from exc
     if not output_root.exists():
         return ()
     return tuple(sorted(entry.name for entry in output_root.iterdir()))
@@ -219,8 +236,14 @@ class Writer:
         )
         if self.enabled:
             target = self.root / relative_path
-            target.parent.mkdir(parents=True, exist_ok=True)
-            target.write_bytes(data)
+            try:
+                target.parent.mkdir(parents=True, exist_ok=True)
+                target.write_bytes(data)
+            except OSError as exc:
+                raise ExportError(
+                    f"cannot write {target}: {exc}; remove the blocking entry or "
+                    "choose another output root"
+                ) from exc
         self.artifacts.append(artifact)
         return artifact
 
@@ -256,9 +279,14 @@ def write_rgba_png(
     table: bytes,
     *,
     already_rgba: bool = False,
+    backdrop: tuple[int, int, int] | None = None,
 ) -> Artifact:
     """Expand an index image and write it as a lossless RGBA PNG."""
-    rgba = pixels if already_rgba else render.to_rgba(pixels, table)
+    rgba = (
+        pixels
+        if already_rgba
+        else render.to_rgba(pixels, table, backdrop=backdrop)
+    )
     return writer.write(relative_path, png.encode_rgba(width, height, rgba))
 
 
@@ -314,8 +342,13 @@ class Exporter:
         self.bg_palette = render.bg_palette_rgb(rom)
         self.object_table = render.rgba_table(self.object_palette)
         self.bg_table = render.rgba_table(self.bg_palette)
+        self.backdrop_rgb = self.bg_palette[BACKDROP_PALETTE_INDEX]
 
         self.map_entries = canon.read_map_entries(rom)
+        self.map_names: dict[int, str] = {}
+        self.sprite_names: dict[int, str] = {}
+        self.appearances: tuple[canon.AppearanceRecord, ...] = ()
+        self.appearances_by_sprite: dict[int, list[canon.AppearanceRecord]] = {}
         self.layers: dict[int, tuple[canon.LayerRecord, ...]] = {}
         self.char_blocks: dict[int, canon.CharBlock] = {}
         self.selector_counts: dict[int, int] = {}
@@ -471,6 +504,121 @@ class Exporter:
             digest.update(char_data[start : start + canon.BANK_TILE_BYTES])
         return digest.digest()
 
+    # -- ROM-derived names ----------------------------------------------------
+
+    def collect_names(self) -> None:
+        """Resolve every name the accepted structures carry.
+
+        Two accepted text relationships exist. A map's `MapEntry +0x0C` low half
+        resolves through the text pointer table; an appearance definition's
+        `+0x00` (and `+0x02`) do, and `+0x04` selects a sprite definition by
+        logical id. Both are recorded as ROM text: the *relationship* is
+        confirmed, while calling the first string a name and the second a
+        description is only partially confirmed, so nothing here invents beyond
+        what the strings say.
+
+        A sprite reached by several appearance definitions can carry several
+        names. The directory fragment takes the lowest appearance index - a fixed
+        rule, not a preference - and every alternative is kept in
+        `metadata/names.json`.
+        """
+        for entry in self.map_entries:
+            if entry.text_index is None:
+                continue
+            text = self.rom.text(entry.text_index)
+            if text and naming.sanitize_name(text):
+                self.map_names[entry.index] = text
+
+        self.appearances = canon.read_appearances(self.rom)
+        by_sprite: dict[int, list[canon.AppearanceRecord]] = {}
+        for record in self.appearances:
+            by_sprite.setdefault(record.sprite_id, []).append(record)
+        self.appearances_by_sprite = by_sprite
+        for sprite_id, records in sorted(by_sprite.items()):
+            for record in sorted(records, key=lambda item: item.appearance_index):
+                text = (
+                    self.rom.text(record.name_text_index)
+                    if record.name_text_index is not None
+                    else None
+                )
+                if text and naming.sanitize_name(text):
+                    self.sprite_names[sprite_id] = text
+                    break
+        self.count("map_names_resolved", len(self.map_names))
+        self.count("sprite_names_resolved", len(self.sprite_names))
+        self.count("appearance_definitions", len(self.appearances))
+        self.count("sprites_reached_by_appearance", len(by_sprite))
+
+    def map_name(self, map_index: int) -> str | None:
+        return self.map_names.get(map_index)
+
+    def sprite_name(self, sprite_id: int) -> str | None:
+        return self.sprite_names.get(sprite_id)
+
+    def export_names(self) -> None:
+        """The complete numeric-identity to ROM-text mapping, as data."""
+        map_rows = []
+        for entry in self.map_entries:
+            name = self.map_names.get(entry.index)
+            map_rows.append(
+                {
+                    "map_index": entry.index,
+                    "map_entry_address": f"{entry.address:#010x}",
+                    "key_high": entry.key_high,
+                    "key_low": entry.key_low,
+                    "text_index": entry.text_index,
+                    "rom_text": self.rom.text(entry.text_index)
+                    if entry.text_index is not None
+                    else None,
+                    "directory": naming.map_directory(entry.index, name),
+                }
+            )
+        sprite_rows = []
+        for definition in self.definitions or canon.read_sprite_definitions(self.rom):
+            records = sorted(
+                self.appearances_by_sprite.get(definition.sprite_id, ()),
+                key=lambda item: item.appearance_index,
+            )
+            sprite_rows.append(
+                {
+                    "sprite_id": definition.sprite_id,
+                    "run_index": definition.run_index,
+                    "definition_address": f"{definition.address:#010x}",
+                    "directory": naming.sprite_directory(
+                        definition.sprite_id, self.sprite_names.get(definition.sprite_id)
+                    ),
+                    "names": [
+                        {
+                            "appearance_index": record.appearance_index,
+                            "appearance_address": f"{record.address:#010x}",
+                            "text_index": record.name_text_index,
+                            "rom_text": self.rom.text(record.name_text_index)
+                            if record.name_text_index is not None
+                            else None,
+                            "description_text_index": record.description_text_index,
+                            "rom_description": self.rom.text(
+                                record.description_text_index
+                            )
+                            if record.description_text_index is not None
+                            else None,
+                            "portrait_index": record.portrait_index,
+                            "stat_index": record.stat_index,
+                        }
+                        for record in records
+                    ],
+                }
+            )
+        self.writer.write(
+            naming.metadata_relative_path(naming.NAMES_JSON),
+            meta.dumps(
+                {
+                    "schema": 1,
+                    "map_names": map_rows,
+                    "sprite_names": sprite_rows,
+                }
+            ).encode("utf-8"),
+        )
+
     # -- palettes -------------------------------------------------------------
 
     def export_palettes(self) -> None:
@@ -527,35 +675,38 @@ class Exporter:
         layers_classified = 0
         composites = 0
         withheld = 0
+        unpainted_pixels = 0
         status_counts: dict[str, int] = {}
 
         for entry in self.map_entries:
+            name = self.map_name(entry.index)
             layers = self.layers.get(entry.index)
             block = self.char_blocks.get(entry.index)
             if layers is None or block is None:
                 # The graph for this map could not be read; the failure is already
-                # recorded, and the map still gets an identity and an explicit
-                # status so no MapEntry can vanish from the inventory.
-                documents.append(
-                    {
-                        "map_index": entry.index,
-                        "map_entry_address": f"{entry.address:#010x}",
-                        "map_entry_file_offset": (
-                            f"{self.rom.offset(entry.address):#08x}"
-                        ),
-                        "key_high": entry.key_high,
-                        "key_low": entry.key_low,
-                        "source_address": f"{entry.source_address:#010x}",
-                        "root_address": f"{entry.root_address:#010x}",
-                        "text_index": entry.text_index,
-                        "rom_text": self.rom.text(entry.text_index)
-                        if entry.text_index is not None
-                        else None,
-                        "layer_count": 0,
-                        "layers": [],
-                        "composite_status": "withheld_map_graph_failure",
-                    }
+                # recorded, and the map still gets an identity, a directory and an
+                # explicit status so no MapEntry can vanish from the inventory.
+                document = {
+                    "map_index": entry.index,
+                    "map_entry_address": f"{entry.address:#010x}",
+                    "map_entry_file_offset": f"{self.rom.offset(entry.address):#08x}",
+                    "key_high": entry.key_high,
+                    "key_low": entry.key_low,
+                    "source_address": f"{entry.source_address:#010x}",
+                    "root_address": f"{entry.root_address:#010x}",
+                    "text_index": entry.text_index,
+                    "rom_text": self.rom.text(entry.text_index)
+                    if entry.text_index is not None
+                    else None,
+                    "layer_count": 0,
+                    "layers": [],
+                    "composite_status": "withheld_map_graph_failure",
+                }
+                self.writer.write(
+                    naming.map_record_relative_path(entry.index, name),
+                    meta.dumps(document).encode("utf-8"),
                 )
+                documents.append(document)
                 withheld += 1
                 status_counts["map_graph_failure"] = (
                     status_counts.get("map_graph_failure", 0) + 1
@@ -596,7 +747,9 @@ class Exporter:
                         addend = self.rom.u8(
                             entry.root_address + canon.ROOT_BG_ADDEND_OFFSET + layer.slot
                         )
-                        relative = naming.map_layer_relative_path(entry.index, layer.slot)
+                        relative = naming.map_layer_relative_path(
+                            entry.index, layer.slot, name
+                        )
                         artifact = write_rgba_png(
                             self.writer, relative, width, height, pixels, self.bg_table
                         )
@@ -668,16 +821,27 @@ class Exporter:
                 width = max(item[2] for item in rendered)
                 height = max(item[3] for item in rendered)
                 composed = render.compose_layers(rendered, width, height)
-                relative = naming.map_composite_relative_path(entry.index)
+                relative = naming.map_composite_relative_path(entry.index, name)
                 artifact = write_rgba_png(
-                    self.writer, relative, width, height, composed, self.bg_table
+                    self.writer,
+                    relative,
+                    width,
+                    height,
+                    composed,
+                    self.bg_table,
+                    backdrop=self.backdrop_rgb,
                 )
                 composites += 1
+                unpainted = sum(1 for value in composed if not value)
+                unpainted_pixels += unpainted
                 map_document.update(
                     {
                         "composite_status": "produced",
                         "composite_width": width,
                         "composite_height": height,
+                        "composite_unpainted_pixels": unpainted,
+                        "composite_backdrop_index": BACKDROP_PALETTE_INDEX,
+                        "composite_backdrop_rgb": list(self.backdrop_rgb),
                         "composite_image": relative,
                         "composite_sha256": artifact.sha256,
                     }
@@ -689,6 +853,10 @@ class Exporter:
                     if not all_accounted
                     else "withheld_no_renderable_layer"
                 )
+            self.writer.write(
+                naming.map_record_relative_path(entry.index, name),
+                meta.dumps(map_document).encode("utf-8"),
+            )
             documents.append(map_document)
 
         self.writer.write(
@@ -697,11 +865,22 @@ class Exporter:
         )
         self.count("map_entries", len(self.map_entries))
         self.count("maps_exported", len(documents))
+        # Counted from the artifacts actually written, not from the inventory, so
+        # a regression that stops writing a map's records fails the gate instead
+        # of passing on a number derived from the same list it is meant to check.
+        written_directories = {
+            artifact.relative_path.split("/", 2)[1]
+            for artifact in self.writer.artifacts
+            if artifact.relative_path.startswith(naming.MAPS + "/")
+            and artifact.relative_path.count("/") >= 2
+        }
+        self.count("map_directories_written", len(written_directories))
         self.count("maps_with_full_layer_classification", len(self.layers))
         self.count("map_layers_classified", layers_classified)
         self.count("map_layers_exported", layers_rendered)
         self.count("map_composites", composites)
         self.count("map_composites_withheld", withheld)
+        self.count("map_composite_unpainted_pixels", unpainted_pixels)
         for status, count in sorted(status_counts.items()):
             self.count(f"map_layer_status_{status}", count)
         self.references["map_layer_classification"] = dict(sorted(status_counts.items()))
@@ -1069,7 +1248,9 @@ class Exporter:
                     "frame_count": animation.frame_count,
                     "direction_cells": animation.direction_cells,
                     "directory": naming.animation_relative_directory(
-                        definition.sprite_id, slot
+                        definition.sprite_id,
+                        slot,
+                        self.sprite_name(definition.sprite_id),
                     ),
                 }
                 try:
@@ -1188,7 +1369,11 @@ class Exporter:
                     )
                 pixels = self.assemble(frame)
                 relative = naming.frame_direction_relative_path(
-                    sprite_id, slot, frame_index, direction_index
+                    sprite_id,
+                    slot,
+                    frame_index,
+                    direction_index,
+                    self.sprite_name(sprite_id),
                 )
                 write_rgba_png(
                     self.writer,
@@ -1204,7 +1389,9 @@ class Exporter:
         width, height, sheet = render.frame_sheet(cells, ANIMATION_SHEET_COLUMNS)
         write_rgba_png(
             self.writer,
-            naming.animation_sheet_relative_path(sprite_id, slot),
+            naming.animation_sheet_relative_path(
+                sprite_id, slot, self.sprite_name(sprite_id)
+            ),
             width,
             height,
             sheet,
@@ -1304,7 +1491,12 @@ class Exporter:
         wanted = set()
         if "maps" in self.subsystems:
             wanted.update(
-                {"map_entries", "maps_exported", "map_layers_classified"}
+                {
+                    "map_entries",
+                    "maps_exported",
+                    "map_directories_written",
+                    "map_layers_classified",
+                }
             )
         if "tiles" in self.subsystems:
             wanted.update({"chunks", "tile_banks"})
@@ -1427,6 +1619,7 @@ class Exporter:
             self.subsystems.add("tiles")
         if sprites:
             self.subsystems.add("sprites")
+        self.collect_names()
         if maps or tiles:
             self.collect_map_graph()
         if sprites:
@@ -1441,6 +1634,7 @@ class Exporter:
             self.export_sprite_graphics()
         self.export_palettes()
         self.export_aliases()
+        self.export_names()
         self.write_audit(
             options=options, rom_sha256=rom_sha256, foreign_entries=foreign_entries
         )

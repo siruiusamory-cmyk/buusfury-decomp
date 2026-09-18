@@ -133,31 +133,45 @@ residual container is exported.
   gets all three, so no identity is ever missing from the inventory. Their four
   root slots are each classified by the `+0x00` Thumb handler entry, and the
   layer installer confirms the calling convention: the constructor is reached by
-  branching through that word with the slot index and the record pointer.
+  branching through that word with the slot index and the record pointer. A
+  constructor is not the whole behaviour of the object it builds, so a handler is
+  classified from every engine path that reaches its records - the constructor and
+  the methods of the type word it installs.
   * `0x08008087` (`dominant`) - the accepted chunk-grid form, rendered.
   * `0x08007A41` (`absent_placeholder`) - the shared zero-dimension record an
     unused slot points at; it draws nothing.
-  * `0x0800897B` (`non_graphical`) - constructor `0x0800897A` allocates a
-    twelve-byte marker holding only a type word, the slot byte and the record
-    pointer. It performs no decompression, no copy and no background-register
-    write, so the slot draws nothing and is recorded as `not_graphical`.
   * `0x08007B63` (`static_graphical_screenblock`) - constructor `0x08007A60`
     decompresses `record + 0x04` into a 0x800-byte buffer. That payload is 1024
     little-endian screen entries, the same 32x32 form a dominant chunk carries,
     so the layer renders as a 256x256 screen-entry plane through the existing
     renderer. One canonical record (map 19, slot 1) and it renders.
+  * `0x0800897B` (`static_graphical_screenblock`) - constructor `0x0800897A`
+    allocates only a twelve-byte marker holding a type word, the slot byte and the
+    record pointer. That marker's type word is a method table, and the object's own
+    method 1 decompresses `record + 0x1C` into a 0x800-byte buffer and copies it to
+    `0x0600E000 + slot * 0x800`, which is the background screen base the owning
+    map's own `BGxCNT` declares for that slot; its method 2 programs
+    `BGxHOFS`/`BGxVOFS`. The payload is the same 1024-entry 32x32 screen form, so
+    the layer renders as a 256x256 screen-entry plane. 41 records over 29 maps, and
+    all 41 render.
   * `0x080088BD` (`static_graphical_assembly_unresolved`) - constructor
-    `0x080080C0` programs `DISPCNT` and the background control registers and
-    streams `record + 4` x `record + 5` containers of 0x400 decoded bytes through
-    a nine-slot resident cache. The layer is graphical, but the pixel arrangement
+    `0x080080C0` sets `DISPSTAT` bit 1 and clears `BG2PB`/`BG2PD`, then streams
+    `record + 4` x `record + 5` containers of 0x400 decoded bytes through a
+    nine-slot resident cache. The layer is graphical, but the pixel arrangement
     of a 0x400-byte container is not established, so it is recorded rather than
     guessed into an image. One canonical record (map 19, slot 2).
-  A composite is withheld only when a slot is graphical and cannot be assembled -
-  never because a handler is unknown. After the classification that is 450
-  composites produced and 2 withheld: map 19 (one slot is graphical but
-  unassembled) and map 8, whose four slots are all non-graphical so there is no
-  graphical layer to compose. The other 28 previously withheld maps compose, and
-  map 19's screenblock layer is still exported as `layer_1.png`.
+  A composite is withheld only for a class the exporter can name: a slot that is
+  graphical but cannot be assembled, or a record form the classification does not
+  account for at all - which is refused explicitly rather than rendered. After the
+  classification that is 451 composites produced and 1 withheld: map 19, whose
+  slot 2 is graphical but unassembled. Its screen-entry layer is still exported as
+  `layer_1.png`, so the art is preserved even though the composite is not.
+  `chunk_x`, `chunk_y`, `chunk_cells` and `null_chunk_cells` describe the dominant
+  record form only, and are published only for its records. `record + 0x14`/`+0x15`
+  are the chunk grid on the dominant form; on the screen-entry and
+  unresolved-assembly forms the same offsets hold unrelated bytes - on `0x0800897B`
+  the low halfword of a 32-bit scale the object's method 2 reads - so those
+  records publish no chunk-grid field at all rather than a refuted reading.
   A null chunk pointer inside a dominant layer contributes screen entry 0, the
   value the engine's own occupancy test treats as unoccupied, so nothing is drawn
   there. The accepted record set has an internal null in 117 of the 1,420 dominant

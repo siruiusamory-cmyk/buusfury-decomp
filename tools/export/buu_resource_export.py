@@ -391,8 +391,11 @@ class Exporter:
         self.chunk_maps: dict[int, list[int]] = {}
         self.chunk_images: dict[tuple[int, int], bytes] = {}
         #: Screen-entry planes for `static_graphical_screenblock` layers, keyed by
-        #: layer-record address. The handler's constructor decompresses
-        #: `record + 0x04` into a 0x800-byte buffer; it is read once here.
+        #: layer-record address. Each handler names its own container field - the
+        #: `0x08007B63` constructor decompresses `record + 0x04` into a 0x800-byte
+        #: buffer, while `0x0800897B` installs a marker whose type's method 1
+        #: uploads `record + 0x1C` - so the field is taken from the record itself.
+        #: Each plane is read once here.
         self.screenblock_entries: dict[int, tuple[int, ...]] = {}
 
         self.definitions: tuple[canon.SpriteDefinition, ...] = ()
@@ -781,18 +784,42 @@ class Exporter:
                     "record_file_offset": f"{self.rom.offset(layer.address):#08x}",
                     "handler": f"{layer.handler:#010x}",
                     "classification": layer.classification,
-                    "chunk_x": layer.chunk_x,
-                    "chunk_y": layer.chunk_y,
-                    "chunk_cells": layer.chunk_cells,
-                    "null_chunk_cells": layer.null_chunk_count,
                 }
+                if layer.classification in (
+                    "dominant",
+                    "dominant_zero_grid",
+                    "dominant_partial_zero_grid",
+                ):
+                    # `record + 0x14`/`+0x15` are the chunk grid only on the
+                    # dominant record form. On the screen-entry and
+                    # unresolved-assembly forms the same offsets hold unrelated
+                    # bytes - on `0x0800897B` the low halfword of the s32 scale
+                    # method 2 reads - so no chunk-grid key is published for them
+                    # at all, rather than a refuted reading under a dominant name.
+                    document["chunk_x"] = layer.chunk_x
+                    document["chunk_y"] = layer.chunk_y
+                    document["chunk_cells"] = layer.chunk_cells
+                    document["null_chunk_cells"] = layer.null_chunk_count
                 if layer.classification == "absent_placeholder":
                     status = "not_graphical_absent_layer"
-                elif layer.classification == "non_graphical":
-                    status = "not_graphical"
                 elif layer.classification == "static_graphical_assembly_unresolved":
                     status = "not_rendered_assembly_unresolved"
                     all_accounted = False
+                elif not layer.resolved:
+                    # A handler or a dominant grid the classification does not
+                    # account for. Refuse it explicitly: falling through to the
+                    # dominant grid path would read a record form this exporter
+                    # has not established, and would abort the export outright
+                    # when the record carries chunk-cell addresses that were
+                    # never collected.
+                    status = f"not_rendered_{layer.classification}"
+                    all_accounted = False
+                    self.fail(
+                        "map_layer_class",
+                        "map_entries",
+                        f"map:{entry.index:04d}:slot:{layer.slot}",
+                        f"{layer.handler:#010x} is {layer.classification}",
+                    )
                 else:
                     width = (
                         canon.SCREENBLOCK_PIXELS
@@ -806,7 +833,12 @@ class Exporter:
                     )
                     try:
                         if layer.classification == "static_graphical_screenblock":
-                            grid = self.screenblock_entries[layer.address]
+                            grid = self.screenblock_entries.get(layer.address)
+                            if grid is None:
+                                raise canon.CanonicalError(
+                                    f"no screen-entry plane was collected for the "
+                                    f"record at {layer.address:#010x}"
+                                )
                             pixels = render.render_chunk(grid, block.data)
                         else:
                             grid = self.layer_grid(layer)
@@ -833,12 +865,14 @@ class Exporter:
                                 "width": width,
                                 "height": height,
                                 "bg_control_addend": addend,
-                                "non_null_chunk_cells": layer.chunk_cells
-                                - layer.null_chunk_count,
                                 "image": relative,
                                 "image_sha256": artifact.sha256,
                             }
                         )
+                        if layer.classification == "dominant":
+                            document["non_null_chunk_cells"] = (
+                                layer.chunk_cells - layer.null_chunk_count
+                            )
                         document.update(entry_stats(grid))
                     except (
                         canon.CanonicalError,

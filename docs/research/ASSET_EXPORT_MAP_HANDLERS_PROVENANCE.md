@@ -8,6 +8,8 @@ Evidence record for classifying the 43 map-layer references that
 | --- | --- |
 | START SHA | `ac047fd6728759af9a32bd54841c19060881e7a3` (tip of `asset-export-001`) |
 | Parent project baseline | `2111a819e9fdfc0820e5a089eacfa8cd03a90890` |
+| Superseded freeze | `359d346d83cb0cc380ae9627d0be76455692c58d` (handler `0x0800897B` misclassified; see §9) |
+| END SHA | (filled at freeze) |
 | Branch | `asset-export-map-handlers-001` |
 | Canonical ROM SHA-256 | `940ad5f01db4465b8877dfe739510cbf34f4ea3d390f3df13519808bc36f059e` |
 | ROM access | read-only, hash verified before and after every run |
@@ -37,9 +39,9 @@ unique records:
 | `0x08007B63` | 1 | 1 | unresolved |
 | `0x080088BD` | 1 | 1 | unresolved |
 
-**PROJECT INTERPRETATION.** The 43 unresolved references sit on 30 maps:
-29 maps carry only `0x0800897B` references, and map 19 carries the two
-singletons. Every one of the 43 is a distinct record; nothing is shared.
+**PROJECT INTERPRETATION.** The 43 unresolved references sit on 30 maps: 29 maps
+carry `0x0800897B` references and no other unresolved handler, and map 19 carries
+the two singletons. Every one of the 43 is a distinct record; nothing is shared.
 
 **EXPORTER CONSEQUENCE.** Those 30 maps had their composites withheld with the
 status `withheld_unresolved_layer`.
@@ -80,9 +82,11 @@ record layout a given handler consumes is whatever that constructor reads.
 
 ---
 
-## 3. Handler `0x0800897B` - 41 references, 41 records
+## 3. Handler `0x0800897B` - 41 references, 41 records, 29 maps
 
-**ENGINE OBSERVATION.** Entry `0x0800897A` in full:
+**ENGINE OBSERVATION - the constructor installs only a marker.** Entry
+`0x0800897A`, reached with `r0 = slot` and `r1 = record` under the convention of
+§2, in full:
 
 ```text
 0800897A  push {r3, r4, r5, lr}
@@ -99,52 +103,212 @@ record layout a given handler consumes is whatever that constructor reads.
 08008992  pop  {r3, r4, r5, pc}
 ```
 
-The routine contains no `bl 0x0803D940` (the container decoder), no
+This routine contains no `bl 0x0803D940` (the container decoder), no
 `bl 0x08049138` (the copy veneer), no `bl 0x0804912C` (the memset veneer) and no
 store to a `0x04000000`-region register. Its object is twelve bytes: a type word,
-a slot byte and the record pointer. The word `0x080498B0` occurs exactly once in
-the whole image, at `0x08008994` - nothing dispatches on it by literal load.
+a slot byte and the record pointer. Reading only this routine is where the
+superseded revision of this ticket went wrong - see §9.
 
-For comparison, the method-0 slot of every layer type's descriptor table holds a
-relative offset to the same shared destructor shape, which is what the installer
-calls at `0x08009264`; the `0x0800897B` object's method 0 resolves to
-`0x08050C5C`, which is that shape:
+**ENGINE OBSERVATION - the object's own methods are the drawing path.**
+`0x080498B0`, the word the constructor stores, is a descriptor of 32-bit signed
+relative offsets from its own base:
+
+| Method | Stored offset | Resolves to |
+| --- | ---: | --- |
+| 0 | `+0x000073AD` | `0x08050C5C` - the shared destructor shape |
+| 1 | `-0x00040FC9` | `0x080088E6` |
+| 2 | `-0x00040F8B` | `0x08008924` |
+
+Method 1, `0x080088E6`, decompresses and uploads a screen-entry plane:
 
 ```text
-08050C5C  ldr  r2, [pc, #0xc]    ; the type word again
-08050C5E  push {r3, lr}
-08050C60  str  r2, [r0]          ; restore the type word
-08050C62  cmp  r1, #0
-08050C64  beq  0x08050C6A
-08050C66  bl   0x0803D63C        ; free
-08050C6A  pop  {r3, pc}
+080088E6  push {r4, r5, r6, lr}
+080088E8  ldr  r3, [pc, #0xac]   ; pool 0x08008998 = 0xFFFFF800 -> -0x800
+080088EA  adds r4, r0, #0        ; r4 = the object
+080088EC  add  sp, r3            ; a 0x800-byte stack buffer
+080088EE  ldr  r0, [r0, #8]      ; r0 = object + 0x08 = the record
+080088F0  adds r6, r1, #0        ; r6 = the argument the dispatcher passed
+080088F2  mov  r1, sp            ; destination = the stack buffer
+080088F4  mov  r5, sp
+080088F6  ldr  r0, [r0, #0x1c]   ; source = record + 0x1C  <-- the container
+080088F8  bl   0x0803D940        ; decode
+080088FC  ldrb r0, [r4, #4]      ; r0 = slot index
+080088FE  ldr  r1, [pc, #0x9c]   ; pool 0x0800899C = 0x0600E000
+08008900  movs r2, #1
+08008902  lsls r0, r0, #0xb      ; slot * 0x800
+08008904  adds r0, r0, r1        ; 0x0600E000 + slot * 0x800
+08008906  lsls r2, r2, #0xb      ; 0x800 bytes
+08008908  adds r1, r5, #0        ; source = the stack buffer
+0800890A  bl   0x08049138        ; copy to the background screen area
+0800890E  ldr  r1, [r4]          ; the object's type word
+08008910  adds r0, r4, #0        ; r0 = the object
+08008912  ldr  r2, [r1, #8]      ; method 2's relative offset
+08008914  adds r2, r2, r1
+08008916  adds r1, r6, #0        ; forward the argument
+08008918  bl   0x08046AA4        ; bx r2 - call method 2 on this object
+0800891C  movs r3, #1
+0800891E  lsls r3, r3, #0xb
+08008920  add  sp, r3            ; release the 0x800-byte buffer
+08008922  pop  {r4, r5, r6, pc}
 ```
+
+The three literals of the family are `0x08008994 = 0x080498B0` (the type word),
+`0x08008998 = 0xFFFFF800` (the buffer size) and `0x0800899C = 0x0600E000` (the
+background screen base).
+
+Method 2, `0x08008924`, programs the background scroll registers from the record
+and from the pointer the dispatcher forwarded in `r1`. Every comment below that
+names a *role* for a field is `INFERRED`; the register reads and writes are
+`CONFIRMED` by the listing itself. In full:
+
+```text
+08008924  push {r4}
+08008926  ldr  r2, [r0, #8]      ; r2 = the record
+08008928  ldr  r4, [r1, #0x18]   ; forwarded pointer + 0x18 (INFERRED: horizontal)
+0800892A  ldr  r3, [r2, #4]      ; record + 0x04
+0800892C  sub  sp, #8
+0800892E  muls r3, r4, r3
+08008930  ldr  r4, [r2, #0xc]    ; record + 0x0C
+08008932  adds r3, r3, r4
+08008934  ldr  r4, [r1, #0x30]   ; forwarded pointer + 0x30
+08008936  adds r3, r3, r4
+08008938  ldr  r4, [r1, #0x40]   ; forwarded pointer + 0x40
+0800893A  ldr  r2, [r2, #0x14]   ; record + 0x14
+0800893C  muls r2, r4, r2
+0800893E  adds r2, r3, r2
+08008940  str  r2, [sp]          ; horizontal term
+08008942  ldr  r2, [r0, #8]      ; the record again
+08008944  ldr  r4, [r1, #0x1c]   ; forwarded pointer + 0x1C (INFERRED: vertical)
+08008946  ldr  r3, [r2, #4]      ; record + 0x04
+08008948  muls r3, r4, r3
+0800894A  ldr  r4, [r2, #0x10]   ; record + 0x10
+0800894C  adds r3, r3, r4
+0800894E  ldr  r4, [r1, #0x34]   ; forwarded pointer + 0x34
+08008950  ldr  r1, [r1, #0x40]   ; forwarded pointer + 0x40
+08008952  ldr  r2, [r2, #0x18]   ; record + 0x18
+08008954  adds r3, r3, r4
+08008956  muls r2, r1, r2
+08008958  adds r1, r3, r2
+0800895A  str  r1, [sp, #4]      ; vertical term
+0800895C  ldrb r0, [r0, #4]      ; the slot byte
+0800895E  movs r1, #1
+08008960  lsls r1, r1, #0x1a     ; 0x04000000
+08008962  lsls r0, r0, #2
+08008964  adds r0, r0, r1
+08008966  ldr  r1, [sp]
+08008968  adds r0, #0x10         ; 0x04000010 + 4 * slot
+0800896A  ldr  r2, [sp, #4]
+0800896C  asrs r1, r1, #0xa
+0800896E  strh r1, [r0]          ; BG{slot}HOFS
+08008970  asrs r2, r2, #0xa
+08008972  strh r2, [r0, #2]      ; BG{slot}VOFS
+08008974  add  sp, #8
+08008976  pop  {r4}
+08008978  bx   lr
+```
+
+So both terms are `(scale * coordinate + offset + second term) >> 10`: the
+record's `+0x04` scales the forwarded pointer's `+0x18`/`+0x1C`, `+0x0C`/`+0x10`
+are constant offsets, and `+0x14`/`+0x18` scale its `+0x40`. Labelling the first
+pair a viewport position and the transform a parallax scroll is `INFERRED`; only
+the arithmetic is read from the instructions. The forwarded pointer is the
+dispatcher's own argument (loaded at `0x080093D0` from `r5`), not the map root -
+the root is reached separately at `0x080093B2` - and nothing in the image names
+it.
+
+**ENGINE OBSERVATION - both methods are dispatched on the live objects.** A whole
+image sweep for the exact `BL`/`BLX` immediate encoding
+(`hw1 & 0xF800 == 0xF000` and `hw2 & 0xD000 == 0xD000`) decodes exactly one caller
+for each of the three routines that reach these records. The predicate matters:
+`tools/research/thumb_disasm.py::scan_thumb_bl_callers` uses the narrower
+`hw2 & 0xF800 == 0xF800` and so sees only 17,748 of this image's 24,226 `BL`/`BLX`
+immediate sites (73.3 %), which is why this sweep was written directly against the
+halfwords rather than taken from that helper. See §7.
+
+| Routine | Callers |
+| --- | --- |
+| layer installer `0x0800924C` | `0x080093C2` |
+| method-1 dispatcher `0x0800929C` | `0x080093D2` |
+| method-2 dispatcher `0x080092BC` | `0x08009664` |
+
+Both callers sit in the background programmer `0x0800938C`, which passes the
+four-object layer array `[0x080716C4] = 0x03001990` to the installer at
+`0x080093C2`/`0x080093C0` and to the method-1 dispatcher at
+`0x080093D2`/`0x080093D0`. The dispatcher loads `object[+0x00]`, adds `[type + 4]`
+to it and branches - i.e. it calls method 1 of whatever type the object carries.
+`0x08009664` calls the method-2 dispatcher every frame with the same array, so
+the scroll programming runs per frame, not once.
+
+**ENGINE OBSERVATION - the upload destination is the map's own screen base.** The
+upload address `0x0600E000 + slot * 0x800` is background screen base `28 + slot`.
+The background programmer reads `root + 0x3C` at `0x080093D6`, scales it by 8 and
+indexes `0x080716C4 + 0x14 = 0x080716D8`, whose row 0 is
+`0x1C80 0x1D80 0x1E80 0x1F80` - screen bases 28, 29, 30, 31. For **all 42**
+screen-entry layers in the image, the `BG{slot}CNT` halfword their own map's row
+declares is exactly the base their slot uploads to:
+
+| `bg_control_index` | `BGxCNT` | screen base | layers |
+| ---: | ---: | ---: | ---: |
+| 0 | `0x1C80` | 28 | 5 |
+| 0 | `0x1D80` | 29 | 1 |
+| 0 | `0x1E80` | 30 | 11 |
+| 0 | `0x1F80` | 31 | 24 |
+| 1 | `0x1D80` | 29 | 1 |
+
+42 of 42 agree, with no exception. The one row-1 layer is map 19's, whose row is
+`0x1C80 0x1D80 0xBE80 0x1F80`.
 
 **The 41 records.** Field census, read directly from the image:
 
 | Field | Observed |
 | --- | --- |
 | `+0x00` | `0x0800897B` on all 41 |
-| `+0x04` == `+0x08` | on all 41; values `0x400` (35), `0x266` (4), `0x199` (3), `0x533` (1), `0x200` (4) |
-| `+0x0C`, `+0x10` | `0` on all 41 |
-| `+0x14`, `+0x15` | one byte `0` and the other in `2..255` on 29; `85/1` (4), `86/255` (2), `170/0` (1), `171/242..255` (5) |
-| `+0x16` (`s16`) | `-1` on 34, `0` on 7 |
-| `+0x18` window | 13 to 16 of the first 16 words non-zero; word 1 is a pointer to roughly `0xB0` bytes before the record |
+| `+0x04` (u32) == `+0x08` (u32) | on all 41; values `1024` (26), `614` (6), `512` (4), `409` (4), `1331` (1) |
+| `+0x0C` (u32) | `0` on 37; `10240` on 2, `204800` on 2 |
+| `+0x10` (u32) | `0` on 37; `10240` on 4 |
+| `+0x14` (s32) | `-4096` (9), `-512` (9), `-2048` (5), `-341` (4), `341` (4), `-2560` (2), `-170` (2), `-3413`, `-1024`, `-85`, `170`, `512`, `1024` |
+| `+0x18` (s32) | `0` on 38, `170`, `-170`, `-85` |
+| `+0x1C` (u32) | a container pointer on all 41; the 41 references name **33 distinct** containers |
+| every `+0x1C` container | kind 1, declaring `0x800` = 2048 decoded bytes |
+| after `+0x1C` | not read by either method; recorded raw, extent not established |
 
-**PROJECT INTERPRETATION.** `CONFIRMED`. The handler's constructor installs an
-inert marker: it decodes nothing and touches no graphics hardware. Whatever the
-41 records' `+0x04..+0x18` bytes describe, no instruction on this path reads them,
-so they cannot be a chunk grid, a container pointer array or a screen-entry map
-consumed by this handler. The class is **`NON_GRAPHICAL`**.
+The four records with a non-zero `+0x0C`/`+0x10` are the only ones whose `+0x04`
+is `0x200`: `0x0824DB1C` (map 132 slot 3), `0x082505D8` (map 129 slot 3),
+`0x082510F0` (map 128 slot 3) and `0x0825831C` (map 116 slot 3). Every
+`+0x14` value is a multiple of `1024 / 12`.
 
-The record fields are *not* promoted to semantics. They are recorded raw. The
-observation that `+0x04 == +0x08` and that `+0x0C`/`+0x10` are zero is stated as
-a measured regularity of this class, not as a schema.
+**PROJECT INTERPRETATION.** `CONFIRMED` - the class is
+**`STATIC_GRAPHICAL_RENDERABLE`**. The handler's object decodes
+`record + 0x1C` and uploads it to the background screen area the map itself
+declares for that slot, and the payload is a screen-entry plane (below). The
+record fields `+0x04..+0x18` are read on this path, by method 2, so they are not
+free-form padding.
+
+`INFERRED` - the reading of `+0x04`/`+0x0C`/`+0x10`/`+0x14`/`+0x18` as a
+parallax transform, with `+0x04` a 10.10 fixed-point scale (`0x400` = 1.0,
+`0x200` = 0.5, `0x199` ~ 0.4, `0x266` ~ 0.6, `0x533` ~ 1.3) and `+0x14`/`+0x18`
+secondary scales. The arithmetic is `CONFIRMED` - the fields are multiplied and
+the product shifted right by 10 - but the transform's *purpose* is read from its
+shape, not from a named engine routine, and no runtime capture was taken. The
+exporter does not consume these fields at all; they are recorded raw.
+
+**Structural cross-check.** All 41 `+0x1C` containers decode to exactly 1024
+little-endian screen entries with no non-zero high nibble, and for all 41 the
+highest tile ordinal resolves inside the owning map's own assembled character
+block. Rendered through the existing screen-entry renderer they are coherent art,
+not noise: sky-and-cloud planes for maps 7 and 128, a complete sky-and-rock scene
+for map 8, a starfield for map 20, a water surface for map 21, lava ground for
+map 390.
 
 **EXPORTER CONSEQUENCE.** All 41 references are written with
-`"classification": "non_graphical"` and `"status": "not_graphical"`. They no
-longer withhold a composite, because a slot that draws nothing cannot make a
-composite unfaithful.
+`"classification": "static_graphical_screenblock"` and `"status": "rendered"`,
+each emitting a 256x256 `layer_<slot>.png` through the existing screen-entry
+renderer - no second map renderer was added. The container field is taken from the
+record's own `+0x00` handler word, so a `0x0800897B` record reads `+0x1C` and a
+`0x08007B63` record reads `+0x04`; neither can be read at the other's offset. A
+plane whose ordinals did not resolve would fail closed and withhold the composite.
+Because these 41 layers now render, they also compose: the 29 maps that carry them
+all gained a composite (§6).
 
 ---
 
@@ -191,7 +355,7 @@ routine `0x08007B26`, reached only indirectly.
 | `+0x0C` | `0x00000001` |
 | `+0x10` | `0x00000400` |
 | `+0x14`, `+0x15` | `64`, `192` |
-| `+0x16` | `0x0020` |
+| `+0x16` | `0x2000` |
 
 **Container `0x0829F700`.** Kind 1, declares `0x800`, decodes to exactly 2048
 bytes with its own end marker at that length. Read as little-endian `u16`:
@@ -248,10 +412,15 @@ resolve would fail closed and withhold the composite.
 08008148  bl   0x0803D940        ; decompress into object + 0x3A0 + 0x400*i
 ```
 
-and then writes `DISPCNT` (`ORs` bit 2) and a state object at `0x08008152`
-onward. The continuation function `0x08008174` stores a type word and clears the
-same `DISPCNT` bit, and the renderer `0x08008192` reads a viewport
-(`[state+0x18..+0x24]`) and issues DMA row copies with 32-byte and 64-byte
+and then writes `DISPSTAT` (`ORs` bit 1) and a state object at `0x08008152`
+onward: `0x08008158 ldr r2,[pc,#0x344]` loads the pool at `0x080084A0` =
+`0x04000200`, `0x0800815C ldrh r0,[r2]`, `0x0800815E movs r1,#2`,
+`0x08008160 orrs r0,r1`, `0x08008166 strh r0,[r2]` sets bit 1. The following
+`strh 0` writes are `0x04000022`/`0x04000026` (via `adds r1,r2,#0`,
+`subs r1,#0xff`, `subs r1,#0xe1`), i.e. `BG2PB`/`BG2PD`, not the background
+control registers. The continuation function `0x08008174` stores a type
+word and clears the same `DISPSTAT` bit, and the renderer `0x08008192` reads a
+viewport (`[state+0x18..+0x24]`) and issues DMA row copies with 32-byte and 64-byte
 strides. `0x27A0 = 0x3A0 + 9 * 0x400` - the allocation is exactly nine resident
 0x400-byte chunk buffers plus the object header.
 
@@ -277,10 +446,15 @@ assembly: the pixel arrangement of a `0x400`-byte container is not established.
 The natural readings were tested and rejected rather than assumed:
 
 * as 512 little-endian screen entries, its ordinals are `257..771`, which
-  overshoot map 19's 539-tile character block - the reading is out of range;
-* as a 32x32, 64x16, 16x64 or 32x64 image at 8bpp, and as 64x32 or 32x64 at
-  4bpp, the assembled 14x10 grid is noise (44% to 96% of horizontally adjacent
-  pixels differ), not art.
+  overshoot map 19's 539-tile character block - the reading is out of range. This
+  is the decisive rejection: it is a hard structural failure, not a judgement
+  about how the result looks;
+* as a 32x32, 64x16 or 16x64 image at 8bpp the assembled 14x10 grid shows a
+  central silhouette but is dithered throughout (44.8 % to 45.3 % of horizontally
+  adjacent pixels differ, against 81.0 % for the same pixels shuffled, so it is
+  structured but not art), and as 64x32 or 32x64 at 4bpp it is 96.2 % - above its
+  own 81.7 % shuffled control, i.e. noise-like. Corroborating only: a coherence
+  metric cannot by itself establish what an arrangement means.
 
 So the class is **`STATIC_GRAPHICAL_NEEDS_UNRESOLVED_SEMANTIC`**, not
 `STATIC_GRAPHICAL_RENDERABLE`. Publishing any of those images would be a guess.
@@ -301,23 +475,30 @@ handler.
 dominant form or the absent placeholder" to "no slot is graphical-and-
 unassembled". A slot that draws nothing cannot make a composite unfaithful.
 
-| | Before | After |
-| --- | ---: | ---: |
-| Composites produced | 422 | **450** |
-| Composites withheld | 30 | **2** |
-| Rendered map layers | 1516 | **1517** |
-| References left unresolved | 43 | **0** |
+| | Before | Superseded revision | Corrected |
+| --- | ---: | ---: | ---: |
+| Composites produced | 422 | 450 | **451** |
+| Composites withheld | 30 | 2 | **1** |
+| Rendered map layers | 1516 | 1517 | **1558** |
+| References left unresolved | 43 | 0 | **0** |
 
-The two maps still without a composite, each for a proven structural reason:
+The one map still without a composite has a proven structural reason:
 
 | Map | Status | Reason |
 | --- | --- | --- |
 | 19 | `withheld_unresolved_layer` | slot `+0x1C` is graphical (handler `0x080088BD`) and its pixel arrangement is unresolved |
-| 8 | `withheld_no_renderable_layer` | all four slots are `non_graphical`; there is no graphical layer to compose and no layer dimension to size a canvas from |
 
-Map 19's renderable screenblock layer is still exported as
+Map 19's renderable screen-entry layer is still exported as
 `maps/map_019/layer_1.png`, so the art is preserved even though the composite is
 withheld.
+
+The 29 maps that carry a `0x0800897B` slot were all withheld at the start of this
+ticket, and all 29 now carry a composite built from their four classified layers.
+Against the superseded revision, 28 of those composites were already written and
+every one of them changed - by 0.45 % to 23.95 % of their pixels (median 8.75 %,
+measured as the fraction of pixels whose four RGBA bytes differ after PNG decode) -
+and map 8 gained a composite where it had none. That is the corrected revision
+replacing a composite that had silently omitted a real layer.
 
 ---
 
@@ -326,24 +507,103 @@ withheld.
 * The pixel arrangement of a `0x400`-byte container under `0x080088BD`. Its
   containers decode cleanly and its grid product matches its pointer count, but
   the tile order, tile size and destination layout were not recovered.
-* `+0x0C`, `+0x10`, `+0x14`, `+0x15`, `+0x16` on the two graphical records, and
-  the whole `+0x04..+0x18` span on the 41 `non_graphical` records. The
-  constructors do not read them, so they are recorded raw.
-* What a `non_graphical` slot does at run time. This ticket establishes what it
-  does *not* do - draw - and does not name a role.
+* The purpose of `+0x04`, `+0x0C`, `+0x10`, `+0x14` and `+0x18` on the 41
+  `0x0800897B` records. Their arithmetic is read from `0x08008924` and is
+  `CONFIRMED`; naming the transform a parallax scroll is `INFERRED`. The exporter
+  records them raw and does not consume them.
+* The record words after `+0x1C` on the 41 records. Neither method reads them, so
+  the record's extent on this path is not established; they are recorded raw.
+* What `0x0800897B`'s object does between frames beyond method 2, and whether any
+  other code mutates the same background screen area. Both dispatchers were
+  measured, so the drawing path is complete, but the frame budget was not.
 * The `0x08007B26` update routine's register arithmetic
-  (`0x04000010 + 4*slot`) was read but not interpreted.
+  (`0x04000010 + 4*slot`) was read but not interpreted. It belongs to the
+  `0x08007B63` family, not to `0x0800897B`.
+* `record + 0x14`/`+0x15` on a non-dominant layer. On the dominant record form
+  those two bytes are the chunk grid, and the exporter publishes `chunk_x`,
+  `chunk_y`, `chunk_cells` and `null_chunk_cells` for it. On the screen-entry and
+  unresolved-assembly forms they are not that grid: on `0x0800897B` the four
+  bytes at `+0x14` are the s32 scale method 2 multiplies, and the exporter
+  previously published their low halfword as a chunk extent - `0/240` on map 8
+  slot 0, `171 x 242 = 41382` on map 7 slot 3, `48 x 251 = 12048` on map 19
+  slot 2. No chunk-grid key is published for those classes now. The raw bytes are
+  not republished under invented names either, because the established reading of
+  `+0x14` on `0x0800897B` spans `+0x14..+0x17` and a published byte pair would be
+  a lossy split of it; the record address is in the document and the ROM is the
+  source of record.
+* `tools/research/thumb_disasm.py::scan_thumb_bl_callers` detects a `BL`/`BLX`
+  caller only when the second halfword's `J1` and `J2` bits are both set:
+  measured over the whole image it sees 17,748 of 24,226 immediate `BL`/`BLX`
+  sites, 73.3 %. The bug is pre-existing, is not in this ticket's diff, and
+  affects a helper other accepted tickets cite for caller censuses, so it is
+  recorded here rather than repaired under this ticket. This ticket's own
+  single-caller results were re-derived with the exact predicate and hold, and
+  the accepted `0x08009670` connector claim still resolves to exactly one caller
+  (`0x08008AC2`) under the exact predicate. Fixing the helper needs its own
+  ticket and its own re-validation of the censuses that cite it.
 
 ---
 
 ## 8. Artefacts and tests
 
-* `tools/export/canonical.py` - `LayerRecord.classification`, `.renderable`,
-  `.graphical`, `.blocks_composite`; `read_screenblock_entries`;
-  `read_unresolved_assembly_probe`.
-* `tools/export/buu_resource_export.py` - screenblock collection and rendering,
-  the composite gate, and the structural probe written to `references.json`.
+* `tools/export/canonical.py` - `SCREENBLOCK_HANDLERS` (handler to container
+  field), `screenblock_container_offset`, `LayerRecord.classification`,
+  `.resolved`, `.renderable`, `.graphical`, `.blocks_composite`,
+  `read_screenblock_entries`, `read_unresolved_assembly_probe`.
+* `tools/export/buu_resource_export.py` - screen-entry collection and rendering,
+  the composite gate, the refusal of an unaccounted record form, and the
+  structural probe written to `references.json`. `references.json` is written
+  into the sibling `_Audit` directory, not into `metadata/`.
 * `tests/integration/test_asset_export_rom.py` - handler and class censuses, the
-  43-reference classification, the screenblock render and its pixel digest, the
-  unresolved-assembly probe, the recovered-composite digests, and the two
-  withheld maps.
+  43-reference classification, the per-handler container field, 8 representative
+  screen-entry plane digests and the structural check over all 42, the
+  unresolved-assembly probe, the composite digests, the written-tree status
+  census and the withheld set.
+* `tests/unit/test_asset_export_map_handlers.py` (portable, synthetic fixtures) -
+  the handler-to-container-field registry, the refusal of a handler that is not a
+  screen-entry layer, the container field being taken from the record's own
+  handler word, the class and predicate table for every handler, and the
+  fail-closed predicates for an unaccounted record form.
+
+---
+
+## 9. Correction record
+
+This ticket was first frozen at `359d346d83cb0cc380ae9627d0be76455692c58d` with
+handler `0x0800897B` classified `NON_GRAPHICAL`. Independent review falsified that
+classification, and the corrected revision supersedes it. The record is kept here
+because the retraction is part of the evidence.
+
+**What the frozen revision claimed.** That the handler's constructor "performs no
+decompression, no copy and no background-register write, so the slot contributes
+no pixels", and that "no instruction on this path reads" the records'
+`+0x04..+0x18` fields.
+
+**Why it was wrong.** The constructor is not the object. It installs a type word,
+and the engine drives the resulting object through that type's method table. The
+methods of `0x080498B0` decompress `record + 0x1C` and copy it into the map's own
+background screen area (§3), and they are dispatched on the live objects: method 1
+by `0x0800929C` (single caller `0x080093D2`) and method 2 by `0x080092BC` (single
+caller `0x08009664`, the per-frame updater - not in the background programmer).
+The frozen revision also reported the record census with two counting errors and
+one semantics error: the `+0x04` distribution was `0x400` (35) / `0x266` (4) /
+`0x199` (3) / `0x200` (4) / `0x533` (1) where the measured values are
+26 / 6 / 4 / 4 / 1; it reported `+0x0C` and `+0x10` as zero on all 41 when four
+records carry non-zero values; and it described the `+0x04 == +0x08` pattern as a
+regularity of a class that "reads nothing" rather than as the two parallax scales
+method 2 multiplies.
+
+**Consequence of the error.** 41 real graphical layers were written with no image;
+28 composites that the frozen revision called "recovered" in fact omitted a layer
+and were less faithful than the withheld state they replaced; and map 8, whose four
+slots are all this handler, was left with no composite at all.
+
+**How it was caught.** Two independent reviewers, given only the frozen revision
+and the ROM, each traced the descriptor at `0x080498B0` to its methods, measured the
+41 `+0x1C` containers and rejected the classification. Their measurements agree with
+the ones recorded above, which were then reproduced here independently.
+
+**What did not change.** The census of the 43 references and their 41/1/1 split, the
+calling convention of §2, the map 19 screen-entry plane and its digest, the
+`0x080088BD` structure and its unresolved arrangement, and every dominant-layer
+image. The correction adds layers; it removes none.

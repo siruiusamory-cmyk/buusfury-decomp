@@ -217,13 +217,19 @@ the root is reached separately at `0x080093B2` - and nothing in the image names
 it.
 
 **ENGINE OBSERVATION - both methods are dispatched on the live objects.** A whole
-image sweep for the exact `BL`/`BLX` immediate encoding
-(`hw1 & 0xF800 == 0xF000` and `hw2 & 0xD000 == 0xD000`) decodes exactly one caller
-for each of the three routines that reach these records. The predicate matters:
-`tools/research/thumb_disasm.py::scan_thumb_bl_callers` uses the narrower
-`hw2 & 0xF800 == 0xF800` and so sees only 17,748 of this image's 24,226 `BL`/`BLX`
-immediate sites (73.3 %), which is why this sweep was written directly against the
-halfwords rather than taken from that helper. See §7.
+image sweep over every immediate `BL`/`BLX` site - enumerated with Capstone 5.0.7
+rather than by a halfword mask, because no single mask selects the population
+exactly - decodes exactly one caller for each of the three routines that reach
+these records. Capstone confirms **29,509** immediate `BL`/`BLX` sites in the
+image: **24,226 `BL`** and **5,283 `BLX`**. For reference, `hw2 & 0xD000 ==
+0xD000` selects exactly the 24,226 `BL` sites and nothing else, so it is the
+`BL`-only predicate, not the `BL`/`BLX` one; `hw2 & 0xC000 == 0xC000` selects
+33,960 sites of which only the same 29,509 are `BL`/`BLX`. The helper
+`tools/research/thumb_disasm.py::scan_thumb_bl_callers` accepts a site only when
+`hw2 & 0xF800` is `0xF800` or `0xE800`, i.e. only when its `J1` and `J2` bits are
+both set: it matches 17,748 sites, **16,196** of which are genuine `BL`/`BLX` -
+**54.9 %** of the population, with 1,552 false positives. That is why this sweep
+enumerates sites with a decoder instead of taking them from the helper. See §7.
 
 | Routine | Callers |
 | --- | --- |
@@ -512,7 +518,10 @@ replacing a composite that had silently omitted a real layer.
 * The purpose of `+0x04`, `+0x0C`, `+0x10`, `+0x14` and `+0x18` on the 41
   `0x0800897B` records. Their arithmetic is read from `0x08008924` and is
   `CONFIRMED`; naming the transform a parallax scroll is `INFERRED`. The exporter
-  records them raw and does not consume them.
+  does not consume them: it renders the plane from `record + 0x1C` alone, and
+  because `+0x14`/`+0x15` are a scroll scale here rather than a chunk grid it
+  publishes no chunk-grid field for this record form at all (see the
+  `record + 0x14`/`+0x15` bullet below).
 * The record words after `+0x1C` on the 41 records. Neither method reads them, so
   the record's extent on this path is not established; they are recorded raw.
 * What `0x0800897B`'s object does between frames beyond method 2, and whether any
@@ -533,16 +542,29 @@ replacing a composite that had silently omitted a real layer.
   `+0x14` on `0x0800897B` spans `+0x14..+0x17` and a published byte pair would be
   a lossy split of it; the record address is in the document and the ROM is the
   source of record.
-* `tools/research/thumb_disasm.py::scan_thumb_bl_callers` detects a `BL`/`BLX`
-  caller only when the second halfword's `J1` and `J2` bits are both set:
-  measured over the whole image it sees 17,748 of 24,226 immediate `BL`/`BLX`
-  sites, 73.3 %. The bug is pre-existing, is not in this ticket's diff, and
-  affects a helper other accepted tickets cite for caller censuses, so it is
-  recorded here rather than repaired under this ticket. This ticket's own
-  single-caller results were re-derived with the exact predicate and hold, and
-  the accepted `0x08009670` connector claim still resolves to exactly one caller
-  (`0x08008AC2`) under the exact predicate. Fixing the helper needs its own
-  ticket and its own re-validation of the censuses that cite it.
+* `tools/research/thumb_disasm.py::scan_thumb_bl_callers` accepts a `BL`/`BLX`
+  site only when the second halfword's `J1` and `J2` bits are both set
+  (`hw2 & 0xF800` in `(0xF800, 0xE800)`). Measured against Capstone 5.0.7 it
+  matches 17,748 sites, of which 16,196 are genuine immediate `BL`/`BLX` - **54.9
+  %** of the image's 29,509 such sites (24,226 `BL` + 5,283 `BLX`) - with 1,552
+  false positives. Two numbers that circulated during review are wrong and are
+  recorded here so they are not reused: the denominator is not 24,226 (that is
+  the `BL`-only set) and not 33,960 (that over-captures by 4,451 non-`BL`/`BLX`
+  patterns), and 73.3 % and 52.3 % both follow from a wrong denominator.
+  `resolve_thumb_bl` in the same module carries a second, independent defect: a
+  `BLX` immediate target is an ARM address and must be word-aligned, but the
+  helper returns the raw `address + 4 + offset` and only clears the low bit. Of
+  the sites it does match, it resolves all 14,447 genuine `BL` ones and the 881
+  word-aligned `BLX` ones correctly, and returns a target 2 bytes high for the
+  **868** matched `BLX` sites whose own instruction address is `2 (mod 4)` - the
+  only mismatching group.
+  Both defects are pre-existing, are not in this ticket's diff, and affect a
+  helper other accepted tickets cite for caller censuses, so they are recorded
+  here rather than repaired under this ticket. This ticket's own single-caller
+  results were re-derived over all 29,509 Capstone-confirmed sites - not over the
+  `BL`-only subset - and hold, and the accepted `0x08009670` connector claim
+  still resolves to exactly one caller (`0x08008AC2`). Fixing the helper needs
+  its own ticket and its own re-validation of the censuses that cite it.
 
 ---
 

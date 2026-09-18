@@ -72,7 +72,39 @@ LAYER_CHUNK_WINDOW_OFFSET = 0x18   # chunk-pointer window, 4-byte elements
 DOMINANT_LAYER_HANDLER = 0x08008087
 ABSENT_LAYER_HANDLER = 0x08007A41
 ABSENT_LAYER_RECORD = 0x080707FC
-UNRESOLVED_LAYER_HANDLERS = (0x0800897B, 0x08007B63, 0x080088BD)
+
+#: Constructor `0x0800897A`: allocates a twelve-byte marker and writes nothing
+#: else - no decompression, no copy, no background register. The slot draws
+#: nothing, so it is classified non-graphical.
+NON_GRAPHICAL_LAYER_HANDLER = 0x0800897B
+
+#: Tail-branch stub `0x08007B62` into constructor `0x08007A60`: decompresses
+#: `record + 0x04` (and `record + 0x08`) into 0x800-byte buffers. The canonical
+#: record's payload is 1024 little-endian screen entries, the 32x32 form a
+#: dominant chunk carries, so the layer renders as a screen-entry plane.
+SCREENBLOCK_LAYER_HANDLER = 0x08007B63
+SCREENBLOCK_CONTAINER_OFFSET = 0x04
+#: Same form as a dominant chunk: 1024 little-endian screen entries = 0x800
+#: decoded bytes = 32x32 tiles = 256x256 pixels. Declared again here rather than
+#: aliased so the constants block stays readable in one forward pass.
+SCREENBLOCK_ENTRY_COUNT = 1024
+SCREENBLOCK_DECODED_BYTES = 0x800
+SCREENBLOCK_PIXELS = 256
+#: `record + 0x08` is decompressed into the object's second buffer; on the
+#: canonical record it names the same container as `+0x04`.
+SCREENBLOCK_SECOND_CONTAINER_OFFSET = 0x08
+
+#: Entry `0x080088BC` -> constructor `0x080080C0`: programs `DISPCNT` and the
+#: background control registers and streams `record + 4` x `record + 5`
+#: containers of `0x400` decoded bytes through a nine-slot resident cache. The
+#: layer draws, but the pixel arrangement of a `0x400`-byte container is not
+#: established, so it stays unresolved rather than being guessed into an image.
+UNRESOLVED_ASSEMBLY_LAYER_HANDLER = 0x080088BD
+UNRESOLVED_ASSEMBLY_GRID_X_OFFSET = 0x04
+UNRESOLVED_ASSEMBLY_GRID_Y_OFFSET = 0x05
+UNRESOLVED_ASSEMBLY_CHUNK_OFFSET = 0x08
+UNRESOLVED_ASSEMBLY_CHUNK_BYTES = 0x400
+UNRESOLVED_ASSEMBLY_RESIDENT_SLOTS = 9
 
 #: Chunk payload: 32 x 32 little-endian u16 entries = 1024 entries = 2048 bytes.
 CHUNK_SIDE_TILES = 32
@@ -230,6 +262,57 @@ def read_appearances(rom: Rom) -> tuple[AppearanceRecord, ...]:
     return tuple(records)
 
 
+def read_screenblock_entries(rom: Rom, record_address: int) -> tuple[int, ...]:
+    """Read the screen-entry plane a `0x08007B63` record's constructor decodes.
+
+    Constructor `0x08007A60`, reached through the tail-branch stub
+    `0x08007B62`, decompresses `record + 0x04` into the object's first
+    0x800-byte buffer and `record + 0x08` into its second. On the canonical
+    record the two offsets name the same container, so the plane is unambiguous.
+    The payload is 1024 little-endian screen entries - the same 32x32 form a
+    dominant chunk carries - which is why the exporter can render it with the
+    existing screen-entry renderer rather than a second one.
+    """
+    container_address = rom.u32(record_address + SCREENBLOCK_CONTAINER_OFFSET)
+    container = rom.container(container_address)
+    if container.declared_size != SCREENBLOCK_DECODED_BYTES:
+        raise CanonicalError(
+            f"screenblock layer at {record_address:#010x} names a container "
+            f"declaring {container.declared_size} bytes, expected "
+            f"{SCREENBLOCK_DECODED_BYTES}"
+        )
+    return struct.unpack("<1024H", container.data)
+
+
+def read_unresolved_assembly_probe(rom: Rom, record_address: int) -> dict[str, int]:
+    """Structural facts about a `0x080088BD` record, for the audit only.
+
+    Constructor `0x080080C0` streams `record + 4` x `record + 5` containers of
+    0x400 decoded bytes through a nine-slot resident cache, and programs the
+    background control registers. The layer is graphical; the pixel arrangement
+    of a 0x400-byte container is not established, so this returns the structure
+    the classification rests on and nothing that would imply a rendering.
+    """
+    grid_x = rom.u8(record_address + UNRESOLVED_ASSEMBLY_GRID_X_OFFSET)
+    grid_y = rom.u8(record_address + UNRESOLVED_ASSEMBLY_GRID_Y_OFFSET)
+    targets: list[int] = []
+    for index in range(grid_x * grid_y):
+        address = rom.u32(
+            record_address + UNRESOLVED_ASSEMBLY_CHUNK_OFFSET + index * 4
+        )
+        if not rom.in_image(address):
+            break
+        targets.append(address)
+    return {
+        "grid_x": grid_x,
+        "grid_y": grid_y,
+        "grid_product": grid_x * grid_y,
+        "chunk_targets": len(targets),
+        "resident_slots": UNRESOLVED_ASSEMBLY_RESIDENT_SLOTS,
+        "chunk_decoded_bytes": UNRESOLVED_ASSEMBLY_CHUNK_BYTES,
+    }
+
+
 class CanonicalError(ValueError):
     """Raised when the accepted graph cannot be read as the schema states."""
 
@@ -372,10 +455,26 @@ class LayerRecord:
     def classification(self) -> str:
         """The structural class of this record, named by handler.
 
-        The names are structural, not semantic: `dominant` is the one accepted
-        chunk-grid form, `absent_placeholder` is the shared zero-dimension record
-        an unused slot points at, and the remaining handlers are recorded as
-        unresolved rather than guessed into either form.
+        The names are structural, not semantic. `dominant` is the accepted
+        chunk-grid form and `absent_placeholder` is the shared zero-dimension
+        record an unused slot points at. The three remaining handlers are now
+        classified by what their own constructors do, which ASSET-EXPORT-MAP-
+        HANDLERS-001 established from the engine's instructions:
+
+        * `non_graphical` (handler `0x0800897B`): the constructor allocates a
+          twelve-byte marker object holding only a type word, the slot byte and
+          the record pointer. It performs no decompression, no copy and no
+          background-register write, so the slot contributes no pixels.
+        * `static_graphical_screenblock` (handler `0x08007B63`): the constructor
+          decompresses `record + 0x04` into a 0x800-byte buffer, and that payload
+          is 1024 little-endian screen entries - the same 32x32 form a dominant
+          chunk carries - so the layer can be rendered as a screen-entry plane.
+        * `static_graphical_assembly_unresolved` (handler `0x080088BD`): the
+          constructor programs background registers and streams `record + 4` x
+          `record + 5` containers of 0x400 decoded bytes each through a
+          nine-slot resident cache. The layer is graphical, but the pixel
+          arrangement of a 0x400-byte container is not established, so it is
+          recorded as unresolved rather than guessed into an image.
         """
         if self.handler == DOMINANT_LAYER_HANDLER:
             if self.chunk_x == 0 and self.chunk_y == 0:
@@ -385,26 +484,45 @@ class LayerRecord:
             return "dominant"
         if self.handler == ABSENT_LAYER_HANDLER and self.address == ABSENT_LAYER_RECORD:
             return "absent_placeholder"
-        if self.handler == 0x0800897B:
-            return "unresolved_record_representation"
-        if self.handler in (0x08007B63, 0x080088BD):
-            return "unresolved_handler"
+        if self.handler == NON_GRAPHICAL_LAYER_HANDLER:
+            return "non_graphical"
+        if self.handler == SCREENBLOCK_LAYER_HANDLER:
+            return "static_graphical_screenblock"
+        if self.handler == UNRESOLVED_ASSEMBLY_LAYER_HANDLER:
+            return "static_graphical_assembly_unresolved"
         return "unclassified_handler"
 
     @property
     def renderable(self) -> bool:
-        return self.classification == "dominant"
+        """Whether this exporter can render the slot to a deterministic image."""
+        return self.classification in ("dominant", "static_graphical_screenblock")
 
     @property
     def graphical(self) -> bool:
-        """Whether the accepted evidence establishes this slot draws pixels.
+        """Whether the engine evidence establishes this slot draws pixels.
 
-        Only the dominant form is established as a chunk grid, and the absent
-        placeholder is a zero-dimension record with no payload. The three
-        remaining handlers are *unresolved*: the accepted work does not
-        establish that they draw, and does not establish that they do not.
+        `non_graphical` and `absent_placeholder` are established as drawing
+        nothing: neither constructor installs graphics. The dominant and
+        screenblock forms are established as graphical and renderable. The
+        remaining form is established as graphical by its background-register
+        writes, but its pixel arrangement is not established.
         """
-        return self.classification == "dominant"
+        return self.classification in (
+            "dominant",
+            "static_graphical_screenblock",
+            "static_graphical_assembly_unresolved",
+        )
+
+    @property
+    def blocks_composite(self) -> bool:
+        """Whether this slot prevents a faithful static composite.
+
+        A non-graphical slot draws nothing, so it cannot make a composite
+        unfaithful. A graphical slot whose pixels this exporter cannot assemble
+        does, and is the only reason a composite is withheld once handler
+        semantics are known.
+        """
+        return self.graphical and not self.renderable
 
 
 def read_map_entries(rom: Rom) -> tuple[MapEntry, ...]:

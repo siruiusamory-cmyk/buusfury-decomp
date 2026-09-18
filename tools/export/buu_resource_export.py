@@ -390,6 +390,10 @@ class Exporter:
         self.chunk_entries: dict[int, tuple[int, ...]] = {}
         self.chunk_maps: dict[int, list[int]] = {}
         self.chunk_images: dict[tuple[int, int], bytes] = {}
+        #: Screen-entry planes for `static_graphical_screenblock` layers, keyed by
+        #: layer-record address. The handler's constructor decompresses
+        #: `record + 0x04` into a 0x800-byte buffer; it is read once here.
+        self.screenblock_entries: dict[int, tuple[int, ...]] = {}
 
         self.definitions: tuple[canon.SpriteDefinition, ...] = ()
         self.animations: dict[int, canon.AnimationRecord] = {}
@@ -438,6 +442,24 @@ class Exporter:
             self.selector_counts[entry.index] = len(selectors)
             self.animated_counts[entry.index] = len(animated)
             for layer in layers:
+                if layer.classification == "static_graphical_screenblock":
+                    try:
+                        self.screenblock_entries[layer.address] = (
+                            canon.read_screenblock_entries(self.rom, layer.address)
+                        )
+                    except (canon.CanonicalError, ws.ContainerError) as exc:
+                        self.fail(
+                            "map_layer_screenblock",
+                            "map_entries",
+                            f"map:{entry.index:04d}:slot:{layer.slot}",
+                            str(exc),
+                        )
+                    continue
+                if layer.classification == "static_graphical_assembly_unresolved":
+                    self.references.setdefault("assembly_unresolved_records", {})[
+                        f"{layer.address:#010x}"
+                    ] = canon.read_unresolved_assembly_probe(self.rom, layer.address)
+                    continue
                 if layer.classification != "dominant":
                     continue
                 for address in layer.chunk_addresses:
@@ -766,20 +788,34 @@ class Exporter:
                 }
                 if layer.classification == "absent_placeholder":
                     status = "not_graphical_absent_layer"
-                elif layer.classification != "dominant":
-                    status = "not_rendered_unresolved_handler"
+                elif layer.classification == "non_graphical":
+                    status = "not_graphical"
+                elif layer.classification == "static_graphical_assembly_unresolved":
+                    status = "not_rendered_assembly_unresolved"
                     all_accounted = False
                 else:
-                    width = layer.chunk_x * canon.CHUNK_PIXELS
-                    height = layer.chunk_y * canon.CHUNK_PIXELS
+                    width = (
+                        canon.SCREENBLOCK_PIXELS
+                        if layer.classification == "static_graphical_screenblock"
+                        else layer.chunk_x * canon.CHUNK_PIXELS
+                    )
+                    height = (
+                        canon.SCREENBLOCK_PIXELS
+                        if layer.classification == "static_graphical_screenblock"
+                        else layer.chunk_y * canon.CHUNK_PIXELS
+                    )
                     try:
-                        grid = self.layer_grid(layer)
-                        pixels = render.render_entries(
-                            grid,
-                            block.data,
-                            layer.chunk_x * canon.CHUNK_SIDE_TILES,
-                            layer.chunk_y * canon.CHUNK_SIDE_TILES,
-                        )
+                        if layer.classification == "static_graphical_screenblock":
+                            grid = self.screenblock_entries[layer.address]
+                            pixels = render.render_chunk(grid, block.data)
+                        else:
+                            grid = self.layer_grid(layer)
+                            pixels = render.render_entries(
+                                grid,
+                                block.data,
+                                layer.chunk_x * canon.CHUNK_SIDE_TILES,
+                                layer.chunk_y * canon.CHUNK_SIDE_TILES,
+                            )
                         addend = self.rom.u8(
                             entry.root_address + canon.ROOT_BG_ADDEND_OFFSET + layer.slot
                         )

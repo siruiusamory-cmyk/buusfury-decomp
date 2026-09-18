@@ -38,7 +38,14 @@ EXPECTED_MAP_ENTRIES = 452
 EXPECTED_LAYER_REFERENCES = 1808
 EXPECTED_DOMINANT_LAYER_HANDLER = 0x08008087
 EXPECTED_ABSENT_LAYER_HANDLER = 0x08007A41
-EXPECTED_UNRESOLVED_HANDLERS = (0x0800897B, 0x08007B63, 0x080088BD)
+EXPECTED_NON_GRAPHICAL_LAYER_HANDLER = 0x0800897B
+EXPECTED_SCREENBLOCK_LAYER_HANDLER = 0x08007B63
+EXPECTED_UNRESOLVED_ASSEMBLY_LAYER_HANDLER = 0x080088BD
+EXPECTED_NON_DOMINANT_HANDLERS = (
+    EXPECTED_NON_GRAPHICAL_LAYER_HANDLER,
+    EXPECTED_SCREENBLOCK_LAYER_HANDLER,
+    EXPECTED_UNRESOLVED_ASSEMBLY_LAYER_HANDLER,
+)
 
 #: Layer `+0x00` handler census over the 1,808 references. Five values, exact.
 EXPECTED_HANDLER_CENSUS = {
@@ -49,12 +56,65 @@ EXPECTED_HANDLER_CENSUS = {
     0x080088BD: 1,
 }
 
-#: Classification over the same references.
+#: Classification over the same references, after ASSET-EXPORT-MAP-HANDLERS-001
+#: established what each non-dominant constructor does.
 EXPECTED_CLASS_CENSUS = {
     "dominant": 1516,
     "absent_placeholder": 249,
-    "unresolved_record_representation": 41,
-    "unresolved_handler": 2,
+    "non_graphical": 41,
+    "static_graphical_screenblock": 1,
+    "static_graphical_assembly_unresolved": 1,
+}
+
+#: The 43 previously unresolved references, by final class.
+EXPECTED_NON_GRAPHICAL_REFERENCES = 41
+EXPECTED_SCREENBLOCK_REFERENCES = 1
+EXPECTED_UNRESOLVED_ASSEMBLY_REFERENCES = 1
+EXPECTED_UNRESOLVED_REFERENCES_AFTER = 0
+
+#: Rendered map layers and composites after the classification.
+EXPECTED_MAP_LAYERS_RENDERED = 1517
+EXPECTED_MAP_COMPOSITES = 450
+EXPECTED_MAP_COMPOSITES_WITHHELD = 2
+
+#: Map 19's screenblock layer, and the two maps that stay withheld.
+EXPECTED_SCREENBLOCK_MAP = 19
+EXPECTED_SCREENBLOCK_SLOT = 1
+EXPECTED_SCREENBLOCK_DIMENSIONS = (256, 256)
+EXPECTED_SCREENBLOCK_MAX_ORDINAL = 538
+EXPECTED_UNRESOLVED_ASSEMBLY_MAP = 19
+EXPECTED_UNRESOLVED_ASSEMBLY_SLOT = 2
+EXPECTED_UNRESOLVED_ASSEMBLY_GRID = (14, 10)
+EXPECTED_UNRESOLVED_ASSEMBLY_CHUNKS = 140
+EXPECTED_UNRESOLVED_ASSEMBLY_CHUNK_BYTES = 1024
+EXPECTED_WITHHELD_COMPOSITES = {
+    8: "withheld_no_renderable_layer",
+    19: "withheld_unresolved_layer",
+}
+
+#: A map whose four slots are all `non_graphical` renders no image at all.
+EXPECTED_ALL_NON_GRAPHICAL_MAP = 8
+#: Composites recovered by no longer letting a non-graphical slot block one.
+EXPECTED_RECOVERED_COMPOSITES = 28
+
+#: Representative pixel digests for the newly rendered screenblock layer and for
+#: composites that the classification recovered, measured once and pinned.
+EXPECTED_SCREENBLOCK_SHA256 = (
+    "a9e283ba2fa92ff9661a80cd51fe777021a7a41bb72dbe88b0ba6b7c334d914a"
+)
+EXPECTED_RECOVERED_COMPOSITE_SHA256 = {
+    7: "c11d5f986b3333800fccd89e4992c30c92db6929c5a2b1e4818fc927fe7d2e55",
+    14: "176b7a84f07caf6a6d23df841be0b3cf048632845072976da40b509451831623",
+    17: "e12211f7253e2bc02d0afc7523c8f41f8617f4b0c43cd087f1be5d98803d1bf2",
+    22: "406e65d764617dad2d0f536a3b7e053a532787d1054cb77fb277d1410c2c4c4a",
+    390: "8b4aedbcc8276fd39e16036b74db122ed5b86d986dc3e7c1adc7fd861a02b122",
+}
+EXPECTED_RECOVERED_COMPOSITE_SIZE = {
+    7: (256, 256),
+    14: (256, 256),
+    17: (512, 512),
+    22: (512, 512),
+    390: (512, 512),
 }
 
 EXPECTED_CHUNKS = 3745
@@ -275,19 +335,197 @@ def test_named_directories_are_unique_and_carry_the_numeric_id(
         assert directory.split("_")[1].isdigit()
 
 
-def test_a_map_whose_layers_are_all_unresolved_still_gets_a_directory(
+def test_a_map_whose_layers_are_all_non_graphical_still_gets_a_directory(
     exporter: export.Exporter,
 ) -> None:
-    """Map 8 is the one map with no renderable layer, and it is still inventoried.
+    """Map 8's four slots are all `non_graphical`, and it is still inventoried.
 
     Rendering nothing must not remove the identity: the map writes its own record,
-    which is what creates the directory.
+    which is what creates the directory. Its composite is withheld for a proven
+    structural reason - there is no graphical layer to compose.
     """
     assert [layer.classification for layer in exporter.layers[8]] == [
-        "unresolved_record_representation"
+        "non_graphical"
     ] * 4
     assert exporter.map_name(8) is None
     assert naming.map_directory(8, None) == "map_008"
+    assert naming.map_directory(
+        EXPECTED_ALL_NON_GRAPHICAL_MAP, exporter.map_name(EXPECTED_ALL_NON_GRAPHICAL_MAP)
+    ) == "map_008"
+
+
+# --- ASSET-EXPORT-MAP-HANDLERS-001: the 43 non-dominant references ------------
+
+def test_all_43_non_dominant_references_have_a_final_class(
+    exporter: export.Exporter,
+) -> None:
+    """Zero remaining unresolved references, and no unknown handler anywhere."""
+    counted = {"non_graphical": 0, "static_graphical_screenblock": 0,
+               "static_graphical_assembly_unresolved": 0}
+    for records in exporter.layers.values():
+        for layer in records:
+            assert layer.classification != "unclassified_handler"
+            if layer.classification in counted:
+                counted[layer.classification] += 1
+    assert counted["non_graphical"] == EXPECTED_NON_GRAPHICAL_REFERENCES
+    assert counted["static_graphical_screenblock"] == EXPECTED_SCREENBLOCK_REFERENCES
+    assert counted["static_graphical_assembly_unresolved"] == (
+        EXPECTED_UNRESOLVED_ASSEMBLY_REFERENCES
+    )
+    assert sum(counted.values()) == 43
+
+
+def test_non_graphical_slots_do_not_block_a_composite(
+    exporter: export.Exporter,
+) -> None:
+    """The whole point of the classification: a slot that draws nothing cannot
+    make a static composite unfaithful, so it must stop withholding one."""
+    for records in exporter.layers.values():
+        for layer in records:
+            if layer.classification in ("non_graphical", "absent_placeholder"):
+                assert layer.graphical is False
+                assert layer.blocks_composite is False
+            elif layer.classification == "static_graphical_assembly_unresolved":
+                assert layer.graphical is True
+                assert layer.blocks_composite is True
+            else:
+                assert layer.graphical is True
+                assert layer.blocks_composite is False
+
+
+def test_the_screenblock_layer_renders_from_the_maps_own_char_block(
+    exporter: export.Exporter,
+) -> None:
+    """Handler `0x08007B63` decompresses a 0x800-byte screen-entry plane.
+
+    Its tile ordinals must resolve inside the map's own assembled character
+    block, which is the structural check that makes the plane renderable at all.
+    """
+    layer = exporter.layers[EXPECTED_SCREENBLOCK_MAP][EXPECTED_SCREENBLOCK_SLOT]
+    assert layer.handler == EXPECTED_SCREENBLOCK_LAYER_HANDLER
+    assert layer.classification == "static_graphical_screenblock"
+    entries = canon.read_screenblock_entries(exporter.rom, layer.address)
+    assert len(entries) == canon.SCREENBLOCK_ENTRY_COUNT
+    ordinals = [word & canon.TILE_ENTRY_ORDINAL_MASK for word in entries]
+    assert max(ordinals) == EXPECTED_SCREENBLOCK_MAX_ORDINAL
+    block = exporter.char_blocks[EXPECTED_SCREENBLOCK_MAP]
+    assert block.tile_count == EXPECTED_SCREENBLOCK_MAX_ORDINAL + 1
+    pixels = render.render_chunk(entries, block.data)
+    assert len(pixels) == (
+        EXPECTED_SCREENBLOCK_DIMENSIONS[0] * EXPECTED_SCREENBLOCK_DIMENSIONS[1]
+    )
+    assert digest(pixels) == EXPECTED_SCREENBLOCK_SHA256
+    assert sum(1 for value in pixels if value) == 14336
+
+
+@pytest.mark.parametrize("map_index", sorted(EXPECTED_RECOVERED_COMPOSITE_SHA256))
+def test_composites_recovered_by_the_classification_render_deterministically(
+    exporter: export.Exporter, map_index: int
+) -> None:
+    """Every layer in these maps is now either rendered or proven non-graphical."""
+    records = exporter.layers[map_index]
+    assert not any(layer.blocks_composite for layer in records)
+    rendered = []
+    for layer in records:
+        if layer.classification == "static_graphical_screenblock":
+            pixels = render.render_chunk(
+                exporter.screenblock_entries[layer.address],
+                exporter.char_blocks[map_index].data,
+            )
+            width = height = canon.SCREENBLOCK_PIXELS
+        elif layer.classification == "dominant":
+            pixels = exporter.render_layer(layer, map_index)
+            width = layer.chunk_x * canon.CHUNK_PIXELS
+            height = layer.chunk_y * canon.CHUNK_PIXELS
+        else:
+            continue
+        addend = exporter.rom.u8(
+            exporter.map_entries[map_index].root_address
+            + canon.ROOT_BG_ADDEND_OFFSET
+            + layer.slot
+        )
+        rendered.append((addend, layer.slot, width, height, pixels))
+    width = max(item[2] for item in rendered)
+    height = max(item[3] for item in rendered)
+    assert (width, height) == EXPECTED_RECOVERED_COMPOSITE_SIZE[map_index]
+    composite = render.compose_layers(rendered, width, height)
+    assert digest(composite) == EXPECTED_RECOVERED_COMPOSITE_SHA256[map_index]
+
+
+def test_the_screenblock_record_names_one_container_twice(
+    exporter: export.Exporter,
+) -> None:
+    """`record + 0x04` and `record + 0x08` are the two buffers the constructor
+    fills; on the canonical record they name the same container, which is what
+    makes the plane unambiguous."""
+    layer = exporter.layers[EXPECTED_SCREENBLOCK_MAP][EXPECTED_SCREENBLOCK_SLOT]
+    first = exporter.rom.u32(layer.address + canon.SCREENBLOCK_CONTAINER_OFFSET)
+    second = exporter.rom.u32(
+        layer.address + canon.SCREENBLOCK_SECOND_CONTAINER_OFFSET
+    )
+    assert first == second
+    assert exporter.rom.offset(first) >= 0
+
+
+def test_the_unresolved_assembly_record_is_recorded_structurally(
+    exporter: export.Exporter,
+) -> None:
+    """Handler `0x080088BD` streams a grid of 0x400-byte containers.
+
+    The grid product equals the number of container pointers the record carries,
+    which is why the record is graphical; the pixel arrangement of a container is
+    what stays unresolved.
+    """
+    layer = exporter.layers[EXPECTED_UNRESOLVED_ASSEMBLY_MAP][
+        EXPECTED_UNRESOLVED_ASSEMBLY_SLOT
+    ]
+    assert layer.handler == EXPECTED_UNRESOLVED_ASSEMBLY_LAYER_HANDLER
+    probe = canon.read_unresolved_assembly_probe(exporter.rom, layer.address)
+    assert (probe["grid_x"], probe["grid_y"]) == EXPECTED_UNRESOLVED_ASSEMBLY_GRID
+    assert probe["chunk_targets"] == EXPECTED_UNRESOLVED_ASSEMBLY_CHUNKS
+    assert probe["grid_product"] == EXPECTED_UNRESOLVED_ASSEMBLY_CHUNKS
+    assert probe["chunk_decoded_bytes"] == (
+        EXPECTED_UNRESOLVED_ASSEMBLY_CHUNK_BYTES
+    )
+    assert probe["resident_slots"] == canon.UNRESOLVED_ASSEMBLY_RESIDENT_SLOTS
+
+
+def test_the_unresolved_assembly_containers_decode_at_their_declared_size(
+    exporter: export.Exporter,
+) -> None:
+    layer = exporter.layers[EXPECTED_UNRESOLVED_ASSEMBLY_MAP][
+        EXPECTED_UNRESOLVED_ASSEMBLY_SLOT
+    ]
+    for index in range(EXPECTED_UNRESOLVED_ASSEMBLY_CHUNKS):
+        address = exporter.rom.u32(
+            layer.address + canon.UNRESOLVED_ASSEMBLY_CHUNK_OFFSET + 4 * index
+        )
+        container = exporter.rom.container(address)
+        assert container.declared_size == EXPECTED_UNRESOLVED_ASSEMBLY_CHUNK_BYTES
+
+
+def test_composites_recovered_and_withheld(
+    exporter: export.Exporter,
+) -> None:
+    """28 of the 30 previously withheld maps now compose; the two that do not
+    carry a proven structural reason instead of an unknown handler."""
+    blocking = {
+        map_index
+        for map_index, records in exporter.layers.items()
+        if any(layer.blocks_composite for layer in records)
+    }
+    assert blocking == {EXPECTED_UNRESOLVED_ASSEMBLY_MAP}
+    assert set(EXPECTED_WITHHELD_COMPOSITES) == {
+        EXPECTED_UNRESOLVED_ASSEMBLY_MAP,
+        EXPECTED_ALL_NON_GRAPHICAL_MAP,
+    }
+    assert EXPECTED_RECOVERED_COMPOSITES == 28
+    for map_index in (7, 14, 17, 20, 21, 22, 116, 270, 390, 414):
+        assert any(
+            layer.classification == "non_graphical"
+            for layer in exporter.layers[map_index]
+        )
+        assert not any(layer.blocks_composite for layer in exporter.layers[map_index])
 
 
 # --- completion gates --------------------------------------------------------
@@ -325,7 +563,7 @@ def test_layer_handler_census(exporter: export.Exporter) -> None:
     assert set(census) == {
         EXPECTED_DOMINANT_LAYER_HANDLER,
         EXPECTED_ABSENT_LAYER_HANDLER,
-        *EXPECTED_UNRESOLVED_HANDLERS,
+        *EXPECTED_NON_DOMINANT_HANDLERS,
     }
 
 
@@ -503,18 +741,25 @@ def test_representative_map_composites(
     assert digest(composite) == EXPECTED_MAP_COMPOSITE_SHA256[map_index]
 
 
-def test_map_19_composite_is_withheld_because_two_layers_are_unresolved(
+def test_map_19_composite_is_withheld_for_a_proven_reason(
     exporter: export.Exporter,
 ) -> None:
-    """The unresolved handlers are withheld, never silently dropped."""
+    """One slot draws, is graphical, and still cannot be assembled faithfully.
+
+    The reason recorded is a structural classification, not "unknown handler".
+    """
     classes = [layer.classification for layer in exporter.layers[19]]
     assert classes == [
         "dominant",
-        "unresolved_handler",
-        "unresolved_handler",
+        "static_graphical_screenblock",
+        "static_graphical_assembly_unresolved",
         "absent_placeholder",
     ]
+    assert [layer.blocks_composite for layer in exporter.layers[19]] == [
+        False, False, True, False,
+    ]
     assert 19 not in EXPECTED_MAP_COMPOSITE_SHA256
+    assert EXPECTED_WITHHELD_COMPOSITES[19] == "withheld_unresolved_layer"
 
 
 def test_null_chunk_cells_are_recorded_structurally(
@@ -718,6 +963,7 @@ def test_the_written_tree_gives_every_map_a_directory_and_a_record(
     written.animated_counts = exporter.animated_counts
     written.chunk_entries = exporter.chunk_entries
     written.chunk_maps = exporter.chunk_maps
+    written.screenblock_entries = exporter.screenblock_entries
     written.export_maps()
 
     maps_root = root / "out" / naming.MAPS
@@ -756,6 +1002,7 @@ def test_every_composite_on_disk_is_the_backdrop_flattened_view(
     written.animated_counts = exporter.animated_counts
     written.chunk_entries = exporter.chunk_entries
     written.chunk_maps = exporter.chunk_maps
+    written.screenblock_entries = exporter.screenblock_entries
     written.export_maps()
 
     checked = 0

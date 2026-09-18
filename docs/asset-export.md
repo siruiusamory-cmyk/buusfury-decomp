@@ -129,16 +129,35 @@ heuristic scan for them. `GFXSCAN`-style candidates are not enumerated and no
 residual container is exported.
 
 * **Maps.** All 452 `MapEntry` records get a directory, a `map.json` record and an
-  entry in `metadata/maps.json`; a map whose four slots are all unresolved still
+  entry in `metadata/maps.json`; a map whose four slots are all non-graphical still
   gets all three, so no identity is ever missing from the inventory. Their four
-  root slots are each classified by the `+0x00` Thumb handler entry: the dominant
-  chunk-grid form (`0x08008087`) is rendered, the shared zero-dimension
-  absent-layer record (`0x08007A41`) is recorded as non-graphical, and the three
-  unresolved handlers (`0x0800897B`, `0x08007B63`, `0x080088BD`) are recorded as
-  unresolved. A composite is produced only when every slot is either rendered or
-  the absent placeholder; otherwise it is withheld and the reason is recorded as a
-  status value, never silently dropped. That leaves 422 composites and 30 maps
-  withheld; `map_008` is the only map with no image at all.
+  root slots are each classified by the `+0x00` Thumb handler entry, and the
+  layer installer confirms the calling convention: the constructor is reached by
+  branching through that word with the slot index and the record pointer.
+  * `0x08008087` (`dominant`) - the accepted chunk-grid form, rendered.
+  * `0x08007A41` (`absent_placeholder`) - the shared zero-dimension record an
+    unused slot points at; it draws nothing.
+  * `0x0800897B` (`non_graphical`) - constructor `0x0800897A` allocates a
+    twelve-byte marker holding only a type word, the slot byte and the record
+    pointer. It performs no decompression, no copy and no background-register
+    write, so the slot draws nothing and is recorded as `not_graphical`.
+  * `0x08007B63` (`static_graphical_screenblock`) - constructor `0x08007A60`
+    decompresses `record + 0x04` into a 0x800-byte buffer. That payload is 1024
+    little-endian screen entries, the same 32x32 form a dominant chunk carries,
+    so the layer renders as a 256x256 screen-entry plane through the existing
+    renderer. One canonical record (map 19, slot 1) and it renders.
+  * `0x080088BD` (`static_graphical_assembly_unresolved`) - constructor
+    `0x080080C0` programs `DISPCNT` and the background control registers and
+    streams `record + 4` x `record + 5` containers of 0x400 decoded bytes through
+    a nine-slot resident cache. The layer is graphical, but the pixel arrangement
+    of a 0x400-byte container is not established, so it is recorded rather than
+    guessed into an image. One canonical record (map 19, slot 2).
+  A composite is withheld only when a slot is graphical and cannot be assembled -
+  never because a handler is unknown. After the classification that is 450
+  composites produced and 2 withheld: map 19 (one slot is graphical but
+  unassembled) and map 8, whose four slots are all non-graphical so there is no
+  graphical layer to compose. The other 28 previously withheld maps compose, and
+  map 19's screenblock layer is still exported as `layer_1.png`.
   A null chunk pointer inside a dominant layer contributes screen entry 0, the
   value the engine's own occupancy test treats as unoccupied, so nothing is drawn
   there. The accepted record set has an internal null in 117 of the 1,420 dominant
@@ -154,11 +173,12 @@ residual container is exported.
   every one of the 342 maps that renderer can render, the exporter's layer images
   and composites are pixel-identical to it. It refuses the other 110; measured by
   first failure those are 85 with a null chunk cell, 20 with a partial-zero
-  unresolved record, 4 with an unsupported handler record, and 1 (map 0) whose
-  selector stream reaches the `0x3C40`-declaring bank. Relaxing exactly those two
+  record, 4 with a non-dominant handler record, and 1 (map 0) whose selector
+  stream reaches the `0x3C40`-declaring bank. Relaxing exactly those two
   fail-closed refusals in a scratch copy of the renderer - skip a null cell, honour
-  a bank's declared size - makes it agree with the exporter on all 422 rendered
-  maps, so the only place the two differ is the set of maps the renderer declines.
+  a bank's declared size - makes it agree with the exporter on all 422 of the maps
+  that carry only dominant layers, so the only place the two differ is the set of
+  maps the renderer declines.
 * **Tiles.** All 187 bank entries are exported at their own declared size: 186
   declare `0x4000` and entry 186 declares `0x3C40`. Entry 186 is used by a
   canonical selector stream (map 0), so its size must not be assumed - and after

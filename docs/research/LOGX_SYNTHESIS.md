@@ -1298,9 +1298,9 @@ python -m tools.research.logx_synthesis_audit
 `tools/research/logx_synthesis_audit.py` scans the in-scope globs for every
 superseded pattern in §10 that can be recognised mechanically, and reports each
 surviving hit with its `file:line`, the pattern key and one line of context. On
-this revision it reports **20 surviving hits, 5 of them in live code**
+this revision it reports **28 surviving hits, 5 of them in live code**
 (`sprite_graphics.py` and `graphics.py`), and **every one of them is a defect
-already inventoried above** in §11.1-§11.4 - the instrument's purpose is to make a
+already inventoried above** in §11.1-§11.6 - the instrument's purpose is to make a
 new one visible, not to reach zero. It exits `1` while any finding remains, which
 is why the test asserts the finding *set*, not the exit code.
 

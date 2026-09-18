@@ -501,7 +501,7 @@ The canonical image is supplied only through `LOGX_CANONICAL_ROM`.
 | Suite | Command | Result |
 | --- | --- | --- |
 | synthesis audit (portable) | `pytest tests/unit/test_logx_synthesis_audit.py -q` | see the ticket review record |
-| synthesis audit instrument | `python -m tools.research.logx_synthesis_audit` | exits **1** with **20 findings** (5 in live code), every one already inventoried in `LOGX_SYNTHESIS.md` §11.1-§11.4; the instrument reports, it does not fix |
+| synthesis audit instrument | `python -m tools.research.logx_synthesis_audit` | exits **1** with **28 findings** (5 in live code), every one already inventoried in `LOGX_SYNTHESIS.md` §11.1-§11.6; the instrument reports, it does not fix |
 | LOGX portable unit suites | `pytest tests/unit/test_logx_*_reference.py tests/unit/test_logx_*_probe.py tests/unit/test_logx_frame_probe.py -q` | see the ticket review record |
 | LOGX ROM-gated integration suites | `pytest tests/integration/test_logx_*_rom.py -q` with `LOGX_CANONICAL_ROM` set | see the ticket review record |
 | projector/safety/workflow | `pytest tests/unit/test_project_safety.py tests/unit/test_rom_safety.py tests/unit/test_code_review_workflow.py tests/unit/test_workflow_migration.py -q` | see the ticket review record |

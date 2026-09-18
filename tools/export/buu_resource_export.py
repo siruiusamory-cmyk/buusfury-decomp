@@ -182,8 +182,46 @@ GENERATED_DIRECTORIES = (
 )
 
 
+def _has_files(target: Path) -> bool:
+    """Whether anything under ``target`` could carry a stale artifact."""
+    for entry in target.rglob("*"):
+        if entry.is_file() or entry.is_symlink():
+            return True
+    return False
+
+
+def _empty_directory(target: Path) -> None:
+    """Remove a directory's contents, tolerating a directory that cannot go.
+
+    On Windows a directory another process is sitting in cannot be removed or
+    renamed, but it can still be emptied and written into. Emptiness is what the
+    replacement actually needs: a generated directory with no file left beneath it
+    cannot carry a stale artifact into the new library, so a surviving empty
+    directory entry is a detail. A file that genuinely cannot be removed is an
+    error, and it is reported once, with the path, after the sweep.
+    """
+    try:
+        shutil.rmtree(target)
+        return
+    except OSError:
+        pass
+    for entry in sorted(target.rglob("*"), key=lambda item: len(item.parts), reverse=True):
+        try:
+            if entry.is_dir() and not entry.is_symlink():
+                entry.rmdir()
+            else:
+                entry.unlink()
+        except OSError:
+            continue
+    if _has_files(target):
+        raise ExportError(
+            f"cannot empty the generated directory {target}; remove its contents "
+            "or choose another output root"
+        )
+
+
 def clear_generated(output_root: Path) -> tuple[str, ...]:
-    """Remove the exporter's own directories; return whatever else is left.
+    """Empty the exporter's own directories; return whatever else is left.
 
     A hard refusal to delete anything else is deliberate: the caller's directory
     may hold unrelated work, and a wide recursive delete driven by a flag is not
@@ -193,13 +231,8 @@ def clear_generated(output_root: Path) -> tuple[str, ...]:
     """
     for name in GENERATED_DIRECTORIES:
         target = output_root / name
-        try:
-            if target.is_dir():
-                shutil.rmtree(target)
-        except OSError as exc:
-            raise ExportError(
-                f"cannot replace the generated directory {target}: {exc}"
-            ) from exc
+        if target.is_dir():
+            _empty_directory(target)
     if not output_root.exists():
         return ()
     return tuple(sorted(entry.name for entry in output_root.iterdir()))

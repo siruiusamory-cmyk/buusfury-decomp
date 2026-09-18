@@ -194,6 +194,48 @@ def test_clear_generated_on_an_absent_root_is_a_no_op(tmp_path: Path):
     assert export.clear_generated(tmp_path / "absent") == ()
 
 
+def test_clear_generated_empties_a_directory_it_cannot_remove(
+    tmp_path: Path, monkeypatch
+):
+    """A directory another process holds is emptied, not treated as a failure.
+
+    Windows refuses to remove or rename a directory a process is sitting in, and
+    that is not a reason to refuse the export: an empty generated directory
+    cannot carry a stale artifact into the new library.
+    """
+    root = tmp_path / "out"
+    (root / "maps").mkdir(parents=True)
+    (root / "maps" / "stale.png").write_bytes(b"x")
+    (root / "maps" / "nested").mkdir()
+    (root / "maps" / "nested" / "more.png").write_bytes(b"y")
+
+    def refuse(path, *args, **kwargs):
+        raise PermissionError(13, "held by another process")
+
+    monkeypatch.setattr(export.shutil, "rmtree", refuse)
+    foreign = export.clear_generated(root)
+    assert (root / "maps").is_dir()
+    assert list((root / "maps").iterdir()) == []
+    assert foreign == ("maps",)
+
+
+def test_clear_generated_reports_a_directory_it_cannot_empty(
+    tmp_path: Path, monkeypatch
+):
+    root = tmp_path / "out"
+    (root / "maps").mkdir(parents=True)
+    (root / "maps" / "stale.png").write_bytes(b"x")
+
+    def refuse(path, *args, **kwargs):
+        raise PermissionError(13, "held by another process")
+
+    monkeypatch.setattr(export.shutil, "rmtree", refuse)
+    monkeypatch.setattr(export.Path, "unlink", refuse, raising=False)
+    with pytest.raises(export.ExportError) as excinfo:
+        export.clear_generated(root)
+    assert "cannot empty" in str(excinfo.value)
+
+
 def test_generated_directories_are_exactly_the_documented_layout():
     assert export.GENERATED_DIRECTORIES == (
         "maps",

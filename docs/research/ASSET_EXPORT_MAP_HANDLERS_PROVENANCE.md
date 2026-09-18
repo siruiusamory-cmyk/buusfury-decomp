@@ -523,7 +523,9 @@ replacing a composite that had silently omitted a real layer.
   publishes no chunk-grid field for this record form at all (see the
   `record + 0x14`/`+0x15` bullet below).
 * The record words after `+0x1C` on the 41 records. Neither method reads them, so
-  the record's extent on this path is not established; they are recorded raw.
+  the record's extent on this path is not established. They are not published:
+  the record address is in the document and the ROM is the source of record, the
+  same convention the `record + 0x14`/`+0x15` bullet states.
 * What `0x0800897B`'s object does between frames beyond method 2, and whether any
   other code mutates the same background screen area. Both dispatchers were
   measured, so the drawing path is complete, but the frame budget was not.
@@ -560,11 +562,23 @@ replacing a composite that had silently omitted a real layer.
   only mismatching group.
   Both defects are pre-existing, are not in this ticket's diff, and affect a
   helper other accepted tickets cite for caller censuses, so they are recorded
-  here rather than repaired under this ticket. This ticket's own single-caller
+  here rather than repaired under this ticket. The defect cuts both ways: besides
+  the 13,313 genuine sites it never matches, its 1,552 false positives can invent
+  a caller - it reports one for the `0x0800897A` constructor entry at
+  `0x082F3DC8`, whose halfwords `F514 EDD7` match the predicate but are an
+  undefined `BLX` immediate that a decoder refuses. That is why a "zero callers"
+  conclusion in particular must be re-derived with a decoder.
+  The accepted census is not disturbed: `docs/research/LOGX_CODEC_PROVENANCE.md`
+  records 17,748 encoding pairs, 9,624 distinct targets and 57 callers of
+  `0x0803D940` for its every-even-offset walk, and re-measuring both ways here
+  reproduces all three exactly - the helper's convention gives 17,748 sites and
+  9,624 distinct targets, and enumerating the full 29,509-site population with a
+  decoder also finds exactly 57 callers of `0x0803D940`. So the helper's defect
+  does not change that accepted count, and this ticket's own single-caller
   results were re-derived over all 29,509 Capstone-confirmed sites - not over the
-  `BL`-only subset - and hold, and the accepted `0x08009670` connector claim
-  still resolves to exactly one caller (`0x08008AC2`). Fixing the helper needs
-  its own ticket and its own re-validation of the censuses that cite it.
+  `BL`-only subset - and hold, as does the accepted `0x08009670` connector claim
+  (`0x08008AC2`). Fixing the helper needs its own ticket and its own
+  re-validation of the censuses that cite it.
 
 ---
 

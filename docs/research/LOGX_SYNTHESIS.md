@@ -150,13 +150,15 @@ different units on the same population:
 4,274 grid cells = 156 null + 4,118 non-null          (LOGX-TILE-001, cell accounting)
 3,745 distinct payloads from 4,118 references         (LOGX-TILE-001, target accounting)
 3,912 dominant-chunk container references             (LOGX-CODEC-001 census)
+4,520 = 3,912 + 421 + 187                             (LOGX-CODEC-001, its own total)
 ```
 
-The two counts are **not reconciled in either ticket**, and this synthesis does
-not invent a reconciliation: they are two accepted measurements of the same
-resource class quoted at different granularity, and any tool that needs one must
-use the ticket that owns that unit. **The 3,745 distinct-payload figure is the
-one both tickets agree on.**
+The two dominant-chunk counts are **not reconciled in either ticket**, and this
+synthesis does not invent a reconciliation: the cell-level figure and the
+container-reference figure are accepted measurements of the same resource class
+at different granularity, and any tool that needs one must use the ticket that
+owns that unit. **The 3,745 distinct-payload figure is the one both tickets
+agree on.**
 
 **Applicability boundary.** The chunk/tile model is established **only** for
 handler `0x08008087`. On `0x08007A41` both dimension bytes are zero (the shared
@@ -549,7 +551,7 @@ no percentage is quoted alone:
 1241888 = 1218581 static + 23307 animated  (LOGX-TILE-001; 0 exceptions, 178 maps)
 4070 = 1721 non-null + 2349 null           (LOGX-SPRITE-001)
 4324 = 4322 packed + 2 stored              (LOGX-CODEC-001)
-11515 = 11513 + 202                        (LOGX-GFXSCAN-001 all-class recall)
+11715 = 11513 + 202                        (LOGX-GFXSCAN-001 all-class recall)
 11715 = 11715                              (distinct corpus; the per-class sizes
                                             sum to 11717 because
                                             zero_header_form0_containers is a

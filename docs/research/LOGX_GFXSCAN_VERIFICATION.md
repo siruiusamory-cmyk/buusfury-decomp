@@ -4,13 +4,19 @@ Research-only ticket. Isolated worktree and branch; no integration to master.
 
 ```text
 START SHA:            421ac94012a7cf7ace110685f1a639811f27702b
-END SHA:              PENDING_FINAL_COMMIT
+END SHA:              8dad4a2c5dbd1105b920e9e277aa3fa775cc05ca
 BRANCH:               logx-gfxscan-001
-COMMIT SHA(S):        PENDING_FINAL_COMMIT
+COMMIT SHA(S):        8dad4a2c5dbd1105b920e9e277aa3fa775cc05ca
                       research(gfxscan): validate Buu graphics discovery
-                      (single commit; the reviewed revision was 142d308, and the
-                      branch was amended repeatedly while the two review rounds ran,
-                      so no intermediate amend hash is named)
+                      <- all five artefacts, including every review correction.
+                      A second, documentation-only commit records this hash in this
+                      file:
+                      HEAD (git rev-parse logx-gfxscan-001), subject
+                      `docs(gfxscan): record the reviewed revision in the ticket
+                      result`.
+                      The reviewed revision was 142d308; the branch was amended
+                      repeatedly while the two review rounds ran, so no intermediate
+                      amend hash is named.
 WORKTREE:             <temp>\log1-remake-logx-gfxscan-001
 
 CANONICAL ROM SHA BEFORE: 940AD5F01DB4465B8877DFE739510CBF34F4EA3D390F3DF13519808BC36F059E
@@ -606,7 +612,7 @@ substance corrected, and both are recorded:
 ```text
 branch logx-gfxscan-001, worktree <temp>\log1-remake-logx-gfxscan-001
 
-PENDING  research(gfxscan): validate Buu graphics discovery
+8dad4a2  research(gfxscan): validate Buu graphics discovery
          (the reviewed revision was 142d308; this one commit is that same revision
           with every correction from both review rounds applied and the files
           re-encoded to the repository's LF line endings. The branch was amended

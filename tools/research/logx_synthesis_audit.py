@@ -217,6 +217,24 @@ class SupersededPattern:
 # scan scope
 # --------------------------------------------------------------------------- #
 
+#: Live project code. A hit here is a defect the roadmap must fix.
+LIVE_CODE_GLOBS: tuple[str, ...] = ("tools/webfoot/**/*.py",)
+
+#: Current canonical documentation and shipped profile/notice data. A hit here
+#: is stale current wording, not a wrong result.
+CANONICAL_DOC_GLOBS: tuple[str, ...] = (
+    "docs/research/GRAPHICS_FORMAT.md",
+    "docs/architecture.md",
+    "docs/project-format.md",
+    "docs/research/SUBSYSTEM_MAP.md",
+    "THIRD-PARTY-NOTICES.md",
+    "config/roms.yaml",
+    "tools/webfoot/data/*.yaml",
+)
+
+#: Everything a superseded assumption must not appear in as a surviving claim.
+SCAN_GLOBS: tuple[str, ...] = LIVE_CODE_GLOBS + CANONICAL_DOC_GLOBS
+
 #: Superseded LOGExtractor assumptions whose surviving occurrences in live
 #: project code or in the *current* canonical documentation are defects. The
 #: historical ticket review, provenance and archive records are out of scope by
@@ -225,12 +243,18 @@ class SupersededPattern:
 SUPERSEDED_PATTERNS: tuple[SupersededPattern, ...] = (
     SupersededPattern(
         key="sprite-run-base-0x6b6bb4",
-        regex=r"0x0?6[Bb]6[Bb]B4",
+        # Matches the address digits only, so it covers the file-offset form
+        # (``0x6B6BB4``), the full GBA form (``0x086B6BB4``) and any number of
+        # leading zeros, and ``ignore_case`` makes it match this repository's own
+        # lowercase hex convention. Requiring a literal ``0x0?`` prefix missed the
+        # GBA form, because the quantifier consumed the leading zero of ``086``.
+        regex=r"6[Bb]6[Bb]B4",
         summary=(
             "0x086B6BB4 is not the sprite-definition pointer-run start; it is "
             "definition id 306's inline animation array"
         ),
-        globs=("tools/webfoot/**/*.py", "docs/research/GRAPHICS_FORMAT.md"),
+        globs=SCAN_GLOBS,
+        ignore_case=True,
     ),
     SupersededPattern(
         key="fixed-23-animation-slots",
@@ -239,7 +263,7 @@ SUPERSEDED_PATTERNS: tuple[SupersededPattern, ...] = (
             "the fixed 23-slot animation model is refuted; definition +0x54 is "
             "a count-bounded, variable-length, sparse array"
         ),
-        globs=("tools/webfoot/**/*.py", "docs/research/GRAPHICS_FORMAT.md"),
+        globs=SCAN_GLOBS,
         ignore_case=True,
         # A dated correction note that quotes the refuted model in order to
         # refute it is the historical record, not a surviving claim.
@@ -250,7 +274,7 @@ SUPERSEDED_PATTERNS: tuple[SupersededPattern, ...] = (
         regex=r"4-byte frame header|frame header is (?:four|4) bytes|"
               r"u32 piece_count\b[^\n]*16-byte",
         summary="the frame header is 0x08 bytes, not 4",
-        globs=("tools/webfoot/**/*.py", "docs/research/GRAPHICS_FORMAT.md"),
+        globs=SCAN_GLOBS,
         ignore_case=True,
     ),
     SupersededPattern(
@@ -260,7 +284,7 @@ SUPERSEDED_PATTERNS: tuple[SupersededPattern, ...] = (
             "the piece stride is 0x0C; piece +0x04 is the packed OBJ attribute "
             "pair and piece +0x08 is the graphics-container word"
         ),
-        globs=("tools/webfoot/**/*.py", "docs/research/GRAPHICS_FORMAT.md"),
+        globs=SCAN_GLOBS,
         severity_production=True,
     ),
     SupersededPattern(
@@ -270,11 +294,7 @@ SUPERSEDED_PATTERNS: tuple[SupersededPattern, ...] = (
             "the accepted sprite-graphics container count is 7390; 7355 is the "
             "single-piece-frame subset and must not be the headline figure"
         ),
-        globs=(
-            "tools/webfoot/**/*.py",
-            "tools/webfoot/data/*.yaml",
-            "docs/research/GRAPHICS_FORMAT.md",
-        ),
+        globs=SCAN_GLOBS,
     ),
     SupersededPattern(
         key="unknown-header-as-container",
@@ -283,14 +303,14 @@ SUPERSEDED_PATTERNS: tuple[SupersededPattern, ...] = (
             "UnknownHeader is not an engine container form; the dispatcher "
             "knows only {0, 1, 2}"
         ),
-        globs=("tools/webfoot/**/*.py", "docs/research/GRAPHICS_FORMAT.md"),
+        globs=SCAN_GLOBS,
     ),
     SupersededPattern(
         key="sixty-four-kib-engine-limit",
         regex=r"64\s?KiB[^\n]*(?:engine|format) limit|"
               r"(?:engine|format)[^\n]*64\s?KiB limit",
         summary="no 64 KiB engine or format limit exists",
-        globs=("tools/webfoot/**/*.py", "docs/research/GRAPHICS_FORMAT.md"),
+        globs=SCAN_GLOBS,
         ignore_case=True,
     ),
     SupersededPattern(
@@ -301,7 +321,7 @@ SUPERSEDED_PATTERNS: tuple[SupersededPattern, ...] = (
             "a zero first wrapper word selects the stored form; it does not "
             "mean empty"
         ),
-        globs=("tools/webfoot/**/*.py",),
+        globs=LIVE_CODE_GLOBS,
         ignore_case=True,
     ),
     SupersededPattern(
@@ -312,7 +332,7 @@ SUPERSEDED_PATTERNS: tuple[SupersededPattern, ...] = (
             "layer +0x00 is a Thumb handler/function entry, not a numeric type "
             "tag"
         ),
-        globs=("tools/webfoot/**/*.py",),
+        globs=LIVE_CODE_GLOBS,
         ignore_case=True,
     ),
     SupersededPattern(
@@ -322,7 +342,7 @@ SUPERSEDED_PATTERNS: tuple[SupersededPattern, ...] = (
             "LOGExtractor's +8 connector adjustment has no engine counterpart "
             "and is unresolved"
         ),
-        globs=("tools/webfoot/**/*.py",),
+        globs=LIVE_CODE_GLOBS,
         severity_production=True,
     ),
     SupersededPattern(
@@ -333,7 +353,7 @@ SUPERSEDED_PATTERNS: tuple[SupersededPattern, ...] = (
             "the connector destination is two independent bytes at record "
             "+0x11/+0x12, not a big-endian u16"
         ),
-        globs=("tools/webfoot/**/*.py",),
+        globs=LIVE_CODE_GLOBS,
         ignore_case=True,
     ),
     SupersededPattern(
@@ -344,7 +364,7 @@ SUPERSEDED_PATTERNS: tuple[SupersededPattern, ...] = (
             "0x08179764 is the value stored at root +0x4C and points at a "
             "187-entry selector-bank container table"
         ),
-        globs=("tools/webfoot/**/*.py", "docs/research/GRAPHICS_FORMAT.md"),
+        globs=SCAN_GLOBS,
         ignore_case=True,
     ),
     SupersededPattern(
@@ -354,7 +374,7 @@ SUPERSEDED_PATTERNS: tuple[SupersededPattern, ...] = (
             "definition +0x00 does bound the inline animation array; the "
             "next-structure walk is unbounded by construction"
         ),
-        globs=("tools/webfoot/**/*.py", "docs/research/GRAPHICS_FORMAT.md"),
+        globs=SCAN_GLOBS,
         severity_production=True,
     ),
 )
@@ -363,21 +383,21 @@ SUPERSEDED_PATTERNS: tuple[SupersededPattern, ...] = (
 #: A line carrying one of these markers is *historical correction context*: it
 #: quotes a superseded reading in order to refute it. Such lines are always in
 #: scope for reading and never a defect, so every pattern's line filter honours
-#: them. The marker vocabulary is the one the queue already uses in place
-#: ("added later", "REFUTED", "SUPERSEDED", "CORRECTED") plus the banner heading
-#: this synthesis added to GRAPHICS_FORMAT.md and the synthesis documents
-#: themselves.
+#: them.
+#:
+#: **Deliberately narrow.** An earlier revision of this filter also accepted
+#: generic hedging phrases such as "must not be" and "no longer", and an
+#: independent review demonstrated that a real defect line carrying one of those
+#: phrases in a trailing comment went unreported. Only markers that *name the
+#: correction act* are accepted now, plus the synthesis documents' own banner
+#: identifier.
 HISTORICAL_MARKERS = (
     "superseded",
     "refuted",
     "added later",
     "corrected",
-    "corrected in place",
     "historical",
     "logx-synthesis-001",
-    "no longer",
-    "is not a run base",
-    "must not be",
 )
 
 
@@ -410,16 +430,17 @@ def superseded_hits(
     # A document that carries the synthesis's own supersession banner may quote
     # a superseded figure in its body: the banner is the authoritative statement
     # of the current reading and sits *above* every quotation. That is only
-    # acceptable while the banner and its "this list wins" clause are present, so
-    # the exemption is conditional on them rather than permanent.
-    banner_documents: set[str] = set()
-    for relative in BANNER_DOCUMENTS:
+    # acceptable while the banner and its "this list wins" clause are present,
+    # and only for the pattern keys the banner actually covers, so the exemption
+    # is conditional rather than permanent and does not blanket the document.
+    banner_exempt: dict[str, frozenset[str]] = {}
+    for relative, keys in BANNER_EXEMPT_KEYS.items():
         path = base / relative
         if not path.is_file():
             continue
         text = path.read_text(encoding="utf-8")
         if all(marker in text for marker in BANNER_REQUIRED_MARKERS):
-            banner_documents.add(relative)
+            banner_exempt[relative] = keys
     for pattern in patterns:
         flags = re.IGNORECASE if pattern.ignore_case else 0
         compiled = re.compile(pattern.regex, flags)
@@ -434,7 +455,7 @@ def superseded_hits(
             except (OSError, UnicodeDecodeError):
                 continue
             relative = path.relative_to(base).as_posix()
-            if relative in banner_documents:
+            if pattern.key in banner_exempt.get(relative, frozenset()):
                 continue
             for number, line in enumerate(text.splitlines(), start=1):
                 if not compiled.search(line):
@@ -534,7 +555,23 @@ AUTHORING_MATRIX_SENTINEL = "<!-- authoring-readiness-matrix -->"
 #: synthesis's supersession banner at the top. The exemption is granted only
 #: while every one of :data:`BANNER_REQUIRED_MARKERS` is present, so deleting the
 #: banner re-arms the scan instead of silently keeping the exemption.
-BANNER_DOCUMENTS: tuple[str, ...] = ("docs/research/GRAPHICS_FORMAT.md",)
+#: Per-document exemptions for a superseded figure that the document itself
+#: declares superseded in a banner the audit verifies. Keyed by document, valued
+#: by the **only** pattern keys the banner actually covers - so a *new* stale
+#: claim in the same document, of any other kind, is still reported. The
+#: exemption is granted only while every marker in
+#: :data:`BANNER_REQUIRED_MARKERS` is present.
+BANNER_EXEMPT_KEYS: dict[str, frozenset[str]] = {
+    "docs/research/GRAPHICS_FORMAT.md": frozenset(
+        {
+            "stale-7355",
+            "four-byte-frame-header",
+            "sixteen-byte-piece",
+            "fixed-23-animation-slots",
+            "unbounded-animation-walk",
+        }
+    ),
+}
 BANNER_REQUIRED_MARKERS: tuple[str, ...] = (
     "SUPERSEDED STATEMENTS",
     "this\n> list wins",

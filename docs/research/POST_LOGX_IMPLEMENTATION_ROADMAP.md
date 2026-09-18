@@ -187,7 +187,7 @@ editing of content the engine already has. All are `engineering`.
 | **Dependencies** | none (the whole record layout is `CONFIRMED`) |
 | **Subsystem** | a new `tools/webfoot/formats/` connection reader/writer over `root +0x40`/`+0x44` |
 | **Kind** | `engineering` |
-| **Acceptance** | all 735 records read with 0 anomalies; 694 directed / 674 reciprocal / 20 one-way / 3 self links reproduce; a destination rewrite changes exactly `+0x11`/`+0x12` and leaves the other 22 bytes byte-identical; **a proposed destination that does not resolve through `0x080089FC` is refused** |
+| **Acceptance** | all 735 records read with 0 anomalies; 694 directed / 674 reciprocal / 20 non-reciprocal / 3 self links reproduce, with the three categories stated as **not disjoint** (the 3 self-links sit inside the 20; the disjoint reading is 674 non-self reciprocal + 17 non-self one-way + 3 self); a destination rewrite changes exactly `+0x11`/`+0x12` and leaves the other 22 bytes byte-identical; **a proposed destination that does not resolve through `0x080089FC` is refused** |
 | **Risk** | **low.** Fixed-size record, in-place, no count or pointer changes. The one real risk is a UI that names `+0x10`/`+0x13`/`+0x14`/`+0x16`/`+0x17` or draws the interval as a rectangle - all `UNRESOLVED`, all must stay labelled unknown |
 | **`AUTHOR_NEW`** | no |
 | **Public** | yes - the first warp editing capability |
@@ -436,7 +436,10 @@ progression logic - not by the LOGX research line.
 
 ## Follow-up research
 
-Only what materially blocks a scheduled capability. Full reasoning in
+Only what materially blocks a scheduled capability: **three** are recommended, of
+which one is a hard gate for the writing phase and two are conditional on a
+capability being scheduled. A fourth lead is recorded as **parked** because it
+cannot name a blocked capability. Full reasoning in
 [`LOGX_SYNTHESIS.md`](LOGX_SYNTHESIS.md) §17.
 
 | Ticket | Blocks | Priority |
@@ -444,7 +447,7 @@ Only what materially blocks a scheduled capability. Full reasoning in
 | **`LOGX-CODEC-WRITE-001`** | `WRITE-2` and therefore every insertion capability (`WRITE-4`, `NEW-1`..`NEW-5`). The encoder format is `PARTIAL`: the initial literal width is `UNRESOLVED`, no production encoder exists, and `pack` has a measured size penalty | **high** - the gate for Phase 3/4 |
 | **`LOGX-CONNECTOR-GEOMETRY-001`** | `NEW-4` (arbitrary new warp trigger authoring) and map position authoring generally. Needs a runtime capture placing the player inside and outside a record's interval | **only when trigger authoring is scheduled.** Does **not** block `TOOLS-3`/`TOOLS-4` |
 | **`LOGX-PORTRAIT-FORMAT-001`** | portrait import/replacement. The pointer relationship is `CONFIRMED`; the resource's pixel format, dimensions and rendering claim are not, and portrait recall is unmeasured | **only when portrait import is scheduled.** Non-blocking today |
-| **`LOGX-RESTABLE-001`** | nothing currently planned. 177 of the 387 packed residuals sit in two size-locked pointer tables (`0x086F395C`, 155 x 4,096; `0x082ABF08`, 140 x 1,024) whose bases are computed and whose consumers are unknown | **conditional / low.** A sixth of the population turned out to be the known `compressed_text` store, so the remaining unknown is two homogeneous tables with no consumer |
+| **`LOGX-RESTABLE-001`** | **nothing currently planned - PARKED, not recommended.** It cannot complete the Vertical-Slice-First sentence, so it is recorded as a lead and left: 177 of the 387 packed residuals sit in two size-locked pointer tables (`0x086F395C`, 155 x 4,096; `0x082ABF08`, 140 x 1,024) whose bases are computed and whose consumers are unknown | **parked.** A sixth of the population turned out to be the known `compressed_text` store, so what remains is two homogeneous tables with no consumer and no capability waiting on them |
 
 ---
 

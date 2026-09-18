@@ -9,8 +9,9 @@ These assert the *synthesis's* own invariants, not prose:
   added to the document without a cited ticket or dropped silently;
 * the read-support and authoring-readiness tables use only their declared
   vocabularies;
-* every refuted assumption that survives in live code is one of the **recorded**
-  deferred production defects, so a new one cannot appear unnoticed;
+* every refuted assumption that survives is in a **recorded** location, so a new
+  one cannot appear unnoticed - the recorded defects themselves are expected to
+  remain until their Phase 1 fixes land, and a *disappearance* is also a finding;
 * the instrument is deterministic and needs no ROM and no optional dependency.
 
 No ROM, no private input, no proprietary fixture. Everything here reads tracked
@@ -156,7 +157,8 @@ KNOWN_PRODUCTION_DEFECTS: dict[str, frozenset[str]] = {
 }
 
 #: Documents and modules whose surviving hits are stale *wording* rather than a
-#: wrong result, all scheduled under FIX-5 or FIX-3.
+#: wrong result, all scheduled under FIX-5 or FIX-3. This is the audit's complete
+#: expected finding set: a hit anywhere else is a new defect.
 KNOWN_STALE_TEXT: frozenset[str] = frozenset(
     {
         "tools/webfoot/formats/sprite_graphics.py",
@@ -166,6 +168,11 @@ KNOWN_STALE_TEXT: frozenset[str] = frozenset(
         "tools/webfoot/graphics.py",
         "tools/webfoot/atlas_producers/seed.py",
         "tools/webfoot/data/roms.yaml",
+        "config/roms.yaml",
+        "docs/architecture.md",
+        "docs/project-format.md",
+        "docs/research/SUBSYSTEM_MAP.md",
+        "THIRD-PARTY-NOTICES.md",
     }
 )
 
@@ -206,6 +213,58 @@ def test_live_code_carries_no_superseded_assumption_of_an_unrecorded_kind():
         assert key in recorded, (relative, key)
 
 
+def test_a_new_stale_hit_inside_a_listed_file_is_reported(tmp_path):
+    """The file-set check alone is not the guard; the hit set is."""
+    target = tmp_path / "tools/webfoot/formats"
+    target.mkdir(parents=True)
+    (target / "planted.py").write_text("PIECE_SIZE = 16\n", encoding="utf-8")
+    findings = audit.superseded_hits(tmp_path)
+    assert any(
+        finding.location.startswith("tools/webfoot/formats/planted.py")
+        for finding in findings
+    ), "a planted PIECE_SIZE = 16 was not detected"
+
+
+def test_a_lowercase_hex_address_is_detected(tmp_path):
+    """The repository writes hex in lowercase, so the scan must be case-aware."""
+    target = tmp_path / "tools/webfoot"
+    target.mkdir(parents=True)
+    (target / "planted.py").write_text("base = 0x086b6bb4\n", encoding="utf-8")
+    findings = audit.superseded_hits(tmp_path)
+    assert any(
+        "sprite-run-base-0x6b6bb4" in finding.detail for finding in findings
+    ), "lowercase 0x086b6bb4 was not detected"
+
+
+def test_a_defect_line_carrying_hedging_prose_is_still_reported(tmp_path):
+    """The historical-marker filter must not swallow a real defect."""
+    target = tmp_path / "tools/webfoot/formats"
+    target.mkdir(parents=True)
+    (target / "planted.py").write_text(
+        "PIECE_SIZE = 16  # must not be changed without review\n", encoding="utf-8"
+    )
+    findings = audit.superseded_hits(tmp_path)
+    assert any(
+        finding.location.startswith("tools/webfoot/formats/planted.py")
+        for finding in findings
+    ), "a defect line with a hedging comment was filtered out"
+
+
+def test_a_new_stale_claim_in_a_banner_exempt_document_is_still_reported(tmp_path):
+    """The banner covers its own claims, not the whole document."""
+    target = tmp_path / "docs/research"
+    target.mkdir(parents=True)
+    (target / "GRAPHICS_FORMAT.md").write_text(
+        "> ## SUPERSEDED STATEMENTS\n> where a figure below disagrees, this\n"
+        "> list wins.\n\nUnknownHeader is the canonical wrapper.\n",
+        encoding="utf-8",
+    )
+    findings = audit.superseded_hits(tmp_path)
+    assert any(
+        "unknown-header-as-container" in finding.detail for finding in findings
+    ), "a new stale claim in an exempt document was not reported"
+
+
 def test_the_four_patterns_with_no_surviving_occurrence_stay_absent():
     """These four were refuted and have no hit anywhere; a regression is news."""
     keys = {"sixty-four-kib-engine-limit", "zero-first-word-means-empty",
@@ -214,15 +273,50 @@ def test_the_four_patterns_with_no_surviving_occurrence_stay_absent():
     assert keys & present == set(), sorted(keys & present)
 
 
-def test_banner_exemption_is_conditional_on_the_banner_being_present():
-    path = audit.project_root() / "docs/research/GRAPHICS_FORMAT.md"
-    text = path.read_text(encoding="utf-8")
-    if "docs/research/GRAPHICS_FORMAT.md" in audit.BANNER_DOCUMENTS:
+def test_banner_exemption_is_conditional_and_key_scoped():
+    """A banner covers only its own claims, and only while the banner stands."""
+    exempted_keys: set[str] = set()
+    for relative, keys in audit.BANNER_EXEMPT_KEYS.items():
+        text = (audit.project_root() / relative).read_text(encoding="utf-8")
         for marker in audit.BANNER_REQUIRED_MARKERS:
             assert marker in text, (
-                "the supersession banner lost a required marker; the scan "
-                "exemption is no longer justified"
+                f"{relative} lost the required banner marker {marker!r}; the "
+                "scan exemption is no longer justified"
             )
+        # the exemption must not blanket the document
+        assert keys, relative
+        assert keys < {pattern.key for pattern in audit.SUPERSEDED_PATTERNS}, (
+            f"{relative} exempts every pattern, which defeats the scan"
+        )
+        exempted_keys |= set(keys)
+    # and each exempt key must name a claim the banner actually states, so the
+    # exemption and the document cannot drift apart
+    banner = "\n".join(
+        (audit.project_root() / relative).read_text(encoding="utf-8")
+        for relative in audit.BANNER_EXEMPT_KEYS
+    )
+    for token in ("7,355", "16-byte", "8-byte", "23-slot", "no header field"):
+        assert token in banner, token
+
+
+def test_the_audit_scope_reaches_the_documents_that_carry_the_stale_figure():
+    """reviewer-found omissions: the scan must reach these files."""
+    for relative in (
+        "THIRD-PARTY-NOTICES.md",
+        "config/roms.yaml",
+        "docs/architecture.md",
+        "docs/project-format.md",
+        "docs/research/SUBSYSTEM_MAP.md",
+    ):
+        assert (audit.project_root() / relative).is_file(), relative
+        assert any(
+            (audit.project_root() / relative).match(glob)
+            for glob in audit.SCAN_GLOBS
+        ), f"{relative} is outside SCAN_GLOBS"
+    assert (audit.project_root() / "THIRD-PARTY-NOTICES.md").is_file()
+    stale = next(p for p in audit.SUPERSEDED_PATTERNS if p.key == "stale-7355")
+    assert "THIRD-PARTY-NOTICES.md" in stale.globs
+    assert "config/roms.yaml" in stale.globs
 
 
 # --------------------------------------------------------------------------- #

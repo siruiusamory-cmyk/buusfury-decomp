@@ -147,18 +147,20 @@ LOGX-CODEC-001 reports **3,912 dominant-chunk container references**. These are
 different units on the same population:
 
 ```text
-4,274 grid cells = 156 null + 4,118 non-null          (LOGX-TILE-001, cell accounting)
-3,745 distinct payloads from 4,118 references         (LOGX-TILE-001, target accounting)
-3,912 dominant-chunk container references             (LOGX-CODEC-001 census)
-4,520 = 3,912 + 421 + 187                             (LOGX-CODEC-001, its own total)
+4,274 grid cells = 156 null + 4,118 non-null          (LOGX-TILE-001)
+3,745 distinct payloads from 4,118 references         (LOGX-TILE-001)
+4,520 = 3,912 + 421 + 187                             (LOGX-CODEC-001)
 ```
 
-The two dominant-chunk counts are **not reconciled in either ticket**, and this
-synthesis does not invent a reconciliation: the cell-level figure and the
-container-reference figure are accepted measurements of the same resource class
-at different granularity, and any tool that needs one must use the ticket that
-owns that unit. **The 3,745 distinct-payload figure is the one both tickets
-agree on.**
+**Both are the same unit - non-null array-element (container) references - over
+different populations, and neither ticket states which population it used.**
+Re-traversing the same array gives **4,118 over the 452 MapEntries** and
+**3,920 over the 421 distinct selector-1 roots**: the population difference
+explains **198** of the 206 gap, and the remaining **8 is unexplained in both
+tickets**. This synthesis therefore reports the discrepancy rather than
+harmonising it, and any tool that needs a dominant-chunk reference count must
+state which population it measured. **The 3,745 distinct-payload figure is the
+one both tickets agree on.**
 
 **Applicability boundary.** The chunk/tile model is established **only** for
 handler `0x08008087`. On `0x08007A41` both dimension bytes are zero (the shared
@@ -581,7 +583,7 @@ Owner: LOGX-CONNECTOR-001.
 | the destination lives at `+0x11` (high) / `+0x12` (low) and is **two independent bytes** | `CONFIRMED` |
 | the four `u16` at `+0x08` are two ordered intervals (`A<=C`, `B<=D`, 735/735, no zero area) | `CONFIRMED` |
 | record census: 735 references, 735 unique, 0 shared, 0 malformed; `count == 0` iff `list == 0` on 452/452 | `CONFIRMED` |
-| link graph: 694 directed, 674 reciprocal, 20 one-way, 3 self-links, 350 distinct destinations, 348 maps with links | `CONFIRMED` as topology |
+| link graph: 694 directed, 674 reciprocal, 20 non-reciprocal, 3 self-links, 350 distinct destinations, 348 maps with links | `CONFIRMED` as topology, with a **definitional caution**: the three published categories are not disjoint. The ticket's probe computes `reciprocal` **excluding** self-links and `one_way = links - reciprocal`, so the 3 self-links are counted inside the 20. **674 + 20 = 694 closes the total**; the disjoint reading is **674 non-self reciprocal + 17 non-self one-way + 3 self** |
 
 The corpus layout invariant `root + 0x44 == root - 4 * root[+0x40]` holds on all
 348 non-null roots and is recorded as a **layout invariant, not an engine rule**.
@@ -629,7 +631,16 @@ The corpus layout invariant `root + 0x44 == root - 4 * root[+0x40]` holds on all
 | `+0x17` census | `{0:543, 1:180, 2:8, 3:2, 255:2}` |
 | state/byte `+0x14` distinct values / maximum | 139 / `0xFFFF` |
 
-### 4.5 Connector authoring readiness
+### 4.5 Transition-record authoring readiness
+
+> **Naming.** This synthesis uses **transition record** and **destination key**
+> for the accepted structures. "Connector", "warp", "door", "exit" and "edge
+> transition" are **community labels, not engine facts**: LOGX-CONNECTOR-001
+> recovered no engine vocabulary for the record, and its accepted closeout
+> explicitly assigns no such name. The task names `TOOLS-3`, `TOOLS-4` and
+> `NEW-4` keep the community word only because a human reader looks for it.
+> This supersedes the earlier wording in this document that used "warp" as a
+> class name.
 
 | Capability | Classification | Basis |
 | --- | --- | --- |
@@ -1123,8 +1134,12 @@ table around `0x087B5B64`.
 
 ## 10. Refuted LOGExtractor assumptions - one authoritative list
 
-Every entry is `REFUTED` (or offset-corrected) by an accepted ticket. **None of
-these may be reintroduced into production code or current canonical docs.**
+Most entries are `REFUTED`; three are **narrowed rather than refuted** - row 21
+(JCALG1 identity is `PARTIALLY CONFIRMED` as JCALG1-like/derived, not established),
+row 23 (`+0x0C` was *improved* from "unresolved" to a signed index whose target
+meaning remains `UNRESOLVED`), and row 27 (the animation count is a real count,
+just not a loop bound). **None of these readings may be reintroduced into
+production code or current canonical docs as the whole story.**
 
 | # | LOGExtractor claim | Canonical position | Ticket |
 | --- | --- | --- | --- |
@@ -1212,20 +1227,49 @@ future behaviour and the risk if it is not fixed.
 | **Observed effect today** | `decode_animation` itself needs **no change** (the animation layout is right). `decode_frame`'s `maximum_pieces = 16` is not the binding constraint; the 4+16 walk rejects the 21 multi-piece frames on the size/geometry test, which is exactly why the accepted reader reports 7,355 containers instead of 7,390, and why it needs the 5-frame `_frame_offset` rejection |
 | **Required future behaviour** | frame header `8`; piece stride `12`; attribute pair at piece `+0x04`; graphics word at piece `+0x08`; keep the flip/shape/size properties with the offset moved; update the stale figure and the docstrings |
 | **Risk if unfixed** | multipart sprites (21 frames, 35 graphics containers) cannot be rendered, edited or re-encoded correctly, and any write path built on the current offsets would corrupt every piece record |
+| **Recorded disagreement, not a defect** | LOGX-GFXSCAN-001's follow-up list also names `decode_animation`'s `maximum_frames = 64` as a "known-bad unbounded animation walk". This synthesis does **not** classify it as a defect: `64` is a *bound*, the canonical `frame_count` range is `1..16`, and the same ticker records the animation walk itself as correct (only the definition-side traversal is unbounded). Removing the cap would remove a sanity check with no demonstrated benefit, so the honest disposition is to record the disagreement rather than act on it |
 
 ### 11.4 Stale `7,355` figure across shipping code and documentation
 
 | | |
 | --- | --- |
-| **Files** | `tools/webfoot/graphics.py` (lines ~17, ~20), `tools/webfoot/build.py` (~177, ~284), `tools/webfoot/cli.py` (~545), `tools/webfoot/atlas_producers/seed.py` (~429), `tools/webfoot/formats/sprite_graphics.py` (~25, ~253, ~475), `tools/webfoot/formats/webfoot_lz.py` (~12, ~15, ~354, ~357), `tools/webfoot/data/roms.yaml` (~25), `docs/research/GRAPHICS_FORMAT.md` |
+| **Files** | `tools/webfoot/graphics.py` (~17, ~20), `tools/webfoot/build.py` (~177, ~284), `tools/webfoot/cli.py` (~545), `tools/webfoot/atlas_producers/seed.py` (~429), `tools/webfoot/formats/sprite_graphics.py` (~25, ~253, ~475), `tools/webfoot/formats/webfoot_lz.py` (~12, ~15, ~354, ~357), `tools/webfoot/data/roms.yaml` (~25), `config/roms.yaml` (~25), `THIRD-PARTY-NOTICES.md` (~41), `docs/architecture.md` (~62), `docs/project-format.md` (~26, ~38, ~52), `docs/research/SUBSYSTEM_MAP.md` (~154, ~160), `docs/research/GRAPHICS_FORMAT.md` |
 | **Class** | `STALE DOCUMENTATION` in docstrings, help text, profile comments and the graphics document; the **figures themselves** stay correct as the accepted reader's population |
 | **Problem** | `7,355` is presented as the corpus total in several places (module docstrings, CLI help text, the profile's own comment, the document's headline table). It is the **single-piece-frame subset**; the canonical corpus reaches **7,390**. Separately, the module docstrings' "13,588 reachable pieces" and "all frames are single-piece" statements belong to the same refuted layout |
 | **Required future behaviour** | restate each figure with its population: "7,390 distinct container offsets are reachable by a piece; 7,355 of them by single-piece frames, which is what the current reader accepts". Do **not** simply replace 7,355 with 7,390 while the reader still cannot see the 21 multipart frames |
 | **Risk if unfixed** | users read a subset as the corpus total, and the reader's own blind spot becomes invisible |
 
-### 11.5 Repository-wide stale-assumption audit
+### 11.5 Tests that pin the refuted layout
 
-See §11.6 for the mechanical result. **Classification vocabulary** used, and
+The `TEST EXPECTATION` class from §11.5's vocabulary has concrete members, and
+they are **part of this inventory** because a parser correction that leaves them
+alone will fail its own regression suite:
+
+| File | Pins | Moves with |
+| --- | --- | --- |
+| `tests/integration/test_graphics_rom.py` | `UNIQUE_GRAPHICS = 7355` (`:40`) and four dependants (`:74`, `:409`, `:498`, `:519`) | `FIX-2` (then 7,390) and `FIX-5` |
+| `tests/unit/test_logx_sprite_reference.py` | `probe.FRAME_FIRST_PIECE == 0x04` (`:142`) and `probe.PIECE_RECORD_SIZE == 0x10` (`:143`) | the research probe, or the expectation, whichever is corrected first |
+| `tests/unit/test_sprite_graphics.py` | a 4-byte-header frame fixture (`:172`, `:185`) and 16-byte `_piece_bytes` (`:125-127`) | `FIX-2` |
+
+**These expectations are not to be deleted when the parser is corrected** - they
+are to be re-pointed at the accepted layout, so the correction is pinned by the
+same tests that currently pin the defect. That is the acceptance condition
+`FIX-2` carries.
+
+### 11.6 `atlas_producers/scan.py::_compression_rows` is a noisy heuristic sweep
+
+| | |
+| --- | --- |
+| **File** | `tools/webfoot/atlas_producers/scan.py` |
+| **Class** | `PRODUCTION BUG` (output quality), **outside the SDK's canonical path** |
+| **Problem** | `_compression_rows` is a **stride-4 heuristic sweep** for container headers. Its own docstring calls its output noise, and the shipped atlas evidence records the scale as **24,285 hits / 68.7 MiB**, "overwhelmingly probe noise" |
+| **Why it is inventoried rather than fixed** | LOGX-GFXSCAN-001 recorded it as a production follow-up and noted it "is unaffected by this ticket and remains out of the SDK's canonical path". It produces atlas *rows*, not decoded resources, so it cannot corrupt a read or a write; but it is user-visible atlas content |
+| **Required future behaviour** | decide its fate explicitly: gate it behind a research flag, replace it with a reference-driven producer over the accepted graphs (which this synthesis now fully specifies), or delete it. **Do not leave it as an unlabelled default** |
+| **Risk if unfixed** | a user reading atlas output cannot distinguish a real resource row from sweep noise; the module's own docstring concedes this, so the defect is disclosure and default behaviour rather than silent corruption |
+
+### 11.7 Repository-wide stale-assumption audit
+
+See §11.8 for the mechanical result. **Classification vocabulary** used, and
 what it means here:
 
 | Class | Meaning |
@@ -1243,7 +1287,7 @@ refute it, and that is the evidence trail. Editing them would destroy the record
 of what was believed and corrected. This synthesis therefore audits **live code
 and current canonical documentation**, and leaves the historical records intact.
 
-### 11.6 Mechanical audit result
+### 11.8 Mechanical audit result
 
 Run:
 
@@ -1253,11 +1297,30 @@ python -m tools.research.logx_synthesis_audit
 
 `tools/research/logx_synthesis_audit.py` scans the in-scope globs for every
 superseded pattern in §10 that can be recognised mechanically, and reports each
-surviving hit with its `file:line`, the pattern key and one line of context. The
-audit is reviewed by `tests/unit/test_logx_synthesis_audit.py`, which asserts
-that **no `PRODUCTION BUG`-class hit survives in `tools/webfoot/**`**. Hits that
-are inside a dated correction note ("superseded", "refuted", "added later",
-"corrected") are history and are filtered out by design.
+surviving hit with its `file:line`, the pattern key and one line of context. On
+this revision it reports **20 surviving hits, 5 of them in live code**
+(`sprite_graphics.py` and `graphics.py`), and **every one of them is a defect
+already inventoried above** in §11.1-§11.4 - the instrument's purpose is to make a
+new one visible, not to reach zero. It exits `1` while any finding remains, which
+is why the test asserts the finding *set*, not the exit code.
+
+The audit is reviewed by `tests/unit/test_logx_synthesis_audit.py`, which asserts
+that (a) **no superseded hit exists anywhere in the scan scope outside the
+recorded defect files**, (b) inside `tools/webfoot/**` every surviving hit uses a
+pattern the synthesis already classifies, and (c) the five production hits are
+exactly the recorded ones, so neither a new defect nor a silent disappearance
+passes. Hits that are inside a dated correction note ("superseded", "refuted",
+"added later", "corrected") are history and are filtered out by design.
+
+**Two limits of the instrument, stated rather than implied.** Its globs cover
+`tools/webfoot/**/*.py`, `tools/webfoot/data/*.yaml`, `config/roms.yaml`,
+`THIRD-PARTY-NOTICES.md` and `docs/research/GRAPHICS_FORMAT.md`; the wider
+documentation sweep that found `docs/architecture.md`, `docs/project-format.md`
+and `docs/research/SUBSYSTEM_MAP.md` was performed by hand for this ticket, and
+those files are named in §11.4 and in `FIX-5` so the next pass does not have to
+rediscover them. And `docs/research/GRAPHICS_FORMAT.md` is exempt while its
+`SUPERSEDED STATEMENTS` banner stands - the exemption is conditional on the
+banner markers being present, so deleting the banner re-arms the scan.
 
 ---
 
@@ -1297,7 +1360,8 @@ ticket?).
 | 26 | whether the engine's codec is byte-compatible with any specific JCALG1 reference implementation | CODEC |
 | 27 | the consumer of the **387 referenced, packed residual containers**, and the meaning of the pointer structure around `0x087B5B64` | GFXSCAN. **Partly answered by this synthesis** (§12.1): `0x087B5B64` is the known `compressed_text` selector table and covers 6 of the 387; the remaining 177 sit in two size-locked pointer tables with no nameable consumer. The residual question is now narrowed, not closed |
 | 28 | **portrait recall** for the external scanner, and portrait pixel format / dimensions | GFXSCAN / CHAR |
-| 29 | MapEntry's DragonByteZ-labelled fields: `output`, `zone`, `area`, `variation`, the five counts, `flags`, `music_id` and the eight remaining pointer words | MAP-RECORD: upstream labels, `INFERRED`/`UNKNOWN` |
+| 29 | **is the appearance table's fixed count of 232 reloadable by the engine, or is it a compile-time constant?** The table has no terminator, its count appears as three `cmp rN,#0xE8` loop bounds, and the runtime roster walk is bounded by a 232-bit bitmap | CHAR: the one genuinely unresolved item behind `AUTHOR_NEW` appearance creation (`NEW-3`), and a **research** question rather than an engineering one |
+| 30 | MapEntry's DragonByteZ-labelled fields: `output`, `zone`, `area`, `variation`, the five counts, `flags`, `music_id` and the eight remaining pointer words | MAP-RECORD: upstream labels, `INFERRED`/`UNKNOWN` |
 
 ### 12.1 The 387 referenced residuals - bounded investigation result
 
@@ -1389,7 +1453,8 @@ provably blocks a named authoring operation. Classification below:
 | 24-26 | decoder initial literal width, disagreement rule, exact JCALG1 identity | **BLOCKS CURRENT PRODUCT GOAL** for the **encoder** | an encoder must emit streams the engine decodes; the requirements are `PARTIAL` and the two open items must be resolved or worked around before packed emission is trusted. Note the workaround exists: emit your own opening escape and self-verify by exact round-trip |
 | 27 | the 387 residuals' consumer | **DOES NOT CURRENTLY BLOCK** | see §12.1. It matters only if the residual family turns out to be a useful authoring class |
 | 28 | portrait recall and portrait pixel format | **BLOCKS ONLY ADVANCED AUTHORING** (portrait import); `DOES NOT CURRENTLY BLOCK` for reading the portrait *pointer* | see §16 |
-| 29 | MapEntry upstream-labelled fields | **DOES NOT CURRENTLY BLOCK** | the accepted discovery route uses `+0x00`, `+0x0C` and `+0x2C` only. A metadata editor must preserve the other bytes, which needs no semantics |
+| 29 | is the appearance table's count of 232 reloadable? | **BLOCKS ONLY ADVANCED AUTHORING** | nothing in the near roadmap grows the table; it blocks only `NEW-3` (a new appearance definition) and is why that ticket is `research + engineering` |
+| 30 | MapEntry upstream-labelled fields | **DOES NOT CURRENTLY BLOCK** | the accepted discovery route uses `+0x00`, `+0x0C` and `+0x2C` only. A metadata editor must preserve the other bytes, which needs no semantics |
 
 > **The reasoning this table exists to encode:** *connector destination
 > randomization does not require fully understanding the trigger rectangle.*
@@ -1409,7 +1474,7 @@ Vocabulary: `TRUSTED`, `TRUSTED WITH KNOWN FIX`, `PARTIAL`, `RESEARCH ONLY`.
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 <!-- read-support-matrix -->
 | MapEntry | `0x0808E2E0`, fixed 452 x `0x38` | `CONFIRMED` | `PARTIAL` (`+0x00`/`+0x0C`/`+0x2C` confirmed) | `TRUSTED` for `+0x00`, `+0x0C`, `+0x2C` | `tools/webfoot/formats/map_entry.py` | none found | `SAFE AFTER BOUNDED FIX` for metadata edits | none |
-| map root / template | `MapEntry+0x2C + 4*(selector-1)` | `CONFIRMED` | `PARTIAL` | `TRUSTED WITH KNOWN FIX` (`+0x0C`/`+0x10` consumer detail) | `tools/webfoot/map_render.py`, `map_slots.py` | none confirmed | `SAFE AFTER BOUNDED FIX` for reading; `PARTIAL` for editing | none |
+| map root / template | `MapEntry+0x2C + 4*(selector-1)` | `CONFIRMED` | `PARTIAL` | `TRUSTED` (`+0x0C`/`+0x10` is an unrecovered consumer, not a defect) | `tools/webfoot/map_render.py`, `map_slots.py` | none confirmed | `SAFE AFTER BOUNDED FIX` for reading; `PARTIAL` for editing | none |
 | dominant layer record | root `+0x14`/`+0x18`/`+0x1C`/`+0x20` | `CONFIRMED` | `PARTIAL` (grid dims confirmed; position unknown) | `TRUSTED WITH KNOWN FIX` (dominant handler only) | `tools/webfoot/map_render.py` | applicability must stay scoped to `0x08008087` | `SAFE AFTER BOUNDED FIX` for tile data; `PARTIAL` for position | none |
 | tile chunk | layer `+0x18 + 4*i` | `CONFIRMED` | `CONFIRMED` (1024 u16, 32x32, bits 0-9; bits 12-15 reserved) | `TRUSTED` | `tools/webfoot/formats/map_chunks.py`-family reader | none confirmed | `SAFE AFTER BOUNDED FIX` (replace data in place) | none |
 | selector stream | root `+0x48` | `CONFIRMED` | `CONFIRMED` (recurrence and packed pair) | `TRUSTED` | `tools/webfoot/map_render.py` | none confirmed | `SAFE AFTER BOUNDED FIX` | none |
@@ -1417,7 +1482,7 @@ Vocabulary: `TRUSTED`, `TRUSTED WITH KNOWN FIX`, `PARTIAL`, `RESEARCH ONLY`.
 | connection record | root `+0x40`/`+0x44` | `CONFIRMED` | `CONFIRMED` for destination bytes and the interval ordering; `PARTIAL`/`UNRESOLVED` for the rest | `TRUSTED` | none (research tooling only: `tools/research/logx_connector_probe.py`) | none | `SAFE AFTER BOUNDED FIX` for destination edits | `CONNECTOR-GEOMETRY` only if trigger authoring is needed |
 | Webfoot container | engine-reachable pointer or `root+0x48`/`+0x4C` | `CONFIRMED` | `CONFIRMED` for hand-rolled consistency | `TRUSTED WITH KNOWN FIX` (declared-size enforcement) | `tools/webfoot/formats/webfoot_lz.py` | clipping accepted as success | `SAFE AFTER BOUNDED FIX` for stored; `BLOCKED BY UNKNOWN SEMANTICS` for packed emission | `CODEC-WRITE` |
 | appearance definition | `0x0874D380`, 232 x `0x10` | `CONFIRMED` | `CONFIRMED` physical; `PARTIAL` semantic | `TRUSTED` | none (research tooling only: `tools/research/logx_char_probe.py`) | none | `SAFE AFTER BOUNDED FIX` for text-reference edits | none |
-| portrait lookup | appearance `+0x08` -> `0x086F393C` | `CONFIRMED` (pointer relationship) | `PARTIAL` (no pixel format, dimension or render claim) | `TRUSTED WITH KNOWN FIX` for the pointer; `PARTIAL` for the resource | none | none | `PARTIAL RESEARCH REQUIRED` for import; `SAFE NOW` for pointer inspection | `PORTRAIT-FORMAT` if import is required |
+| portrait lookup | appearance `+0x08` -> `0x086F393C` | `CONFIRMED` (pointer relationship) | `PARTIAL` (no pixel format, dimension or render claim) | `TRUSTED` for the pointer; `PARTIAL` for the resource (no defect) | none | none | `PARTIAL RESEARCH REQUIRED` for import; `SAFE NOW` for pointer inspection | `PORTRAIT-FORMAT` if import is required |
 | sprite definition | `0x086B6BDC`, 297 entries, ids 10..306 | `CONFIRMED` | `CONFIRMED` for `+0x00`, `+0x02`, `+0x04`, `+0x50`, `+0x54`; `UNRESOLVED` for `+0x08`, `+0x0C`, `+0x10..+0x4F` | `TRUSTED WITH KNOWN FIX` | `tools/webfoot/graphics.py` (walker) | `_animations_in` unbounded walk | `SAFE AFTER BOUNDED FIX` for animation-pointer edits | none |
 | animation object | definition `+0x54 + 4*index` | `CONFIRMED` | `CONFIRMED` for `frame_count` and the cell table; trailing words `UNRESOLVED` | `TRUSTED` | `tools/webfoot/formats/sprite_graphics.py::decode_animation` | none | `SAFE AFTER BOUNDED FIX` for replacing pointers | none |
 | frame record | animation cell | `CONFIRMED` | `CONFIRMED` (header, bounding box, piece count) | `TRUSTED WITH KNOWN FIX` | `sprite_graphics.py::decode_frame` | 4-byte header assumption, 16-byte stride | `SAFE AFTER BOUNDED FIX` | none |
@@ -1441,15 +1506,15 @@ Vocabulary: `SAFE NOW`, `SAFE AFTER BOUNDED FIX`, `PARTIAL RESEARCH REQUIRED`,
 | --- | --- | --- |
 <!-- authoring-readiness-matrix -->
 | edit existing map metadata | `SAFE AFTER BOUNDED FIX` | `+0x00`, `+0x0C`, `+0x2C` are `CONFIRMED` and fixed-size, so an in-place rewrite of those fields moves nothing. A tool must preserve the remaining 43 bytes byte-exactly. The bounded fix is the metadata reader plus round-trip proof |
-| edit existing layer/chunk tile data | `SAFE AFTER BOUNDED FIX` | the chunk payload is fully `CONFIRMED` (1024 u16, 32x32), so editing entries in place is a byte rewrite inside a fixed 2048-byte payload. The bounded fix is the 8+12 frame/piece parser (independent of this path) and a round-trip proof |
-| replace existing tile data | `SAFE AFTER BOUNDED FIX` | as above, **provided the replacement fits the existing container's decoded size**. Replacing a `0x800` chunk with different content is safe; changing the size requires the packed/stored writer |
+| edit existing layer/chunk tile data | `SAFE AFTER BOUNDED FIX` | the chunk payload is fully `CONFIRMED` (1024 u16, 32x32), so editing entries in place is a byte rewrite inside a fixed 2048-byte payload. The bounded fix is the 8+12 frame/piece parser (independent of this path) and a round-trip proof. **Two binding constraints, not one:** the replacement must fit the container's declared decoded size **and**, for a packed container, the re-encoded stream must fit `packed_end - offset` - the byte extent the decoder actually consumed (§5.3). A chunk whose content does not re-encode smaller than the original does **not** fit in place and needs the allocator |
+| replace existing tile data | `SAFE AFTER BOUNDED FIX` | as above: the replacement must fit both the declared decoded size and the measured `packed_end - offset`. Replacing a `0x800` chunk with content that re-encodes no larger is safe; changing the size, or exceeding the encoded extent, requires the writer and the allocator |
 | new map data / `AUTHOR_NEW` map | `BLOCKED BY UNKNOWN SEMANTICS` | needs layer positioning (unknown), selector semantics above 1 (unresolved), the `+0x0C`/`+0x10` consumer (unrecovered), the `+0x24`/`+0x28` object types (unknown), and a verified allocator for every new structure plus five pointer/count updates per root |
 | edit existing warp destination | `SAFE AFTER BOUNDED FIX` | two bytes in a fixed 24-byte record; no size change, no pointer move, no count update. Validation: the new pair must resolve through `0x080089FC`. Bounded fix = a connection-record reader/writer plus the resolve check |
 | warp randomizer | `SAFE AFTER BOUNDED FIX` (structural) | same write as above, plus a deterministic permutation policy. `GAMEPLAY LOGIC / SOFTLOCK VALIDATION` is a **separate, later** problem (see §14 of the roadmap) |
 | edit warp trigger geometry | `BLOCKED BY UNKNOWN SEMANTICS` | axis, origin, units, signedness and edge inclusivity are all `UNRESOLVED`, and no membership test was recovered. A tool cannot describe or validate a proposed region |
 | create new warp | `BLOCKED BY UNKNOWN SEMANTICS` | three independent obstacles: un-inventable class pointers at `+0x00`/`+0x04`; a non-null-terminated array whose count/pointer pair is null-coupled on 452/452 roots; and the `root + 0x44 == root - 4*count` corpus layout, where a grown array may overwrite the bytes immediately below the root |
 | edit appearance text references | `SAFE AFTER BOUNDED FIX` | `+0x00`/`+0x02` are two `u16` indices in a fixed 16-byte record. Bounded fix: a record reader/writer and a range check against the 1,534-entry text table. **Editorial invariant to surface to the user:** `+0x02 == +0x00 + 1` holds on all 232 records but is a *data* invariant, not an engine rule - changing one field alone makes the image diverge from the corpus |
-| edit sprite-definition animation pointers | `SAFE AFTER BOUNDED FIX` | `+0x54 + 4*index` elements are fixed-width pointers inside a variable-length object. Replacing a pointer changes no size. Bounded fix: honour the `+0x00` count bound and validate each new pointer as an in-ROM animation |
+| edit sprite-definition animation pointers | `SAFE AFTER BOUNDED FIX` | `+0x54 + 4*index` elements are fixed-width pointers inside a variable-length object. Replacing a pointer changes no size. Bounded fix: honour the `+0x00` count bound and validate each new pointer as an in-ROM animation. **Second coupling to respect:** when `definition + 0x50` is non-null (10 of 297 objects) the *same index* also selects `definition[0x50][index]` into `obj+0x4C`, and that entry's meaning is `UNRESOLVED` - so an editor must either leave `+0x54` alone for those definitions or present the pair as one edit, and must not silently desynchronise them |
 | replace animation/frame data | `SAFE AFTER BOUNDED FIX` | animation objects and frame records are fixed-size given their counts. Replacing an animation's cell pointers or a frame's pieces in place, at the same counts, moves nothing. The bounded fix is the 8+12 parser |
 | replace sprite graphics | `SAFE AFTER BOUNDED FIX` | `piece +0x08` points at a container whose declared size **must** equal `dim_0 * dim_1`. Replacing a container with one of the *same decoded size* is a byte rewrite. A different size needs the encoder and an allocator |
 | import new sprite graphics | `BLOCKED BY UNKNOWN SEMANTICS` | requires (a) a trusted packed encoder (currently `PARTIAL`: initial literal width unresolved, no production encoder) and (b) a verified allocator for new container bodies and for the pointers that name them. This is `NEEDS ENGINEERING` **and** `NEEDS RESEARCH` |
@@ -1512,9 +1577,13 @@ ____" stays parked.
 | **`LOGX-CONNECTOR-GEOMETRY-001`** | **arbitrary new warp trigger authoring**; map position authoring generally | the four `u16` are `CONFIRMED` only as two ordered intervals. Axis, origin, units, signedness, edge inclusivity, the membership test and the spawn mechanism are all `UNRESOLVED`. No amount of engineering can substitute: there is nothing to validate a proposed region against | a runtime capture that places the player at a known coordinate inside and outside a record's interval and observes whether the `0x08008B30` install fires (`docs/runtime-capture.md` path), plus the consumer entry path `0x080071F8` | **only when trigger authoring is scheduled.** Destination editing and randomization do **not** need it |
 | **`LOGX-CODEC-WRITE-001`** | trustworthy packed-resource emission: new sprite graphics, inserted resources, any size-changing container write | the encoder format is `PARTIAL`: the initial literal width is `UNRESOLVED`, no production encoder exists, and `webfoot_lz.pack` has a measured size penalty. The engine performs **no** validation, so a bad stream is not caught at runtime | an encoder that emits a stream, decodes it back, and requires exact round-trip equality of bytes, declared size **and** end-marker position; plus a decision on the initial literal state that does not rely on the unresolved dispatcher value | **high** - it is the gate for every "insert" capability and for `AUTHOR_NEW` graphics |
 | **`LOGX-PORTRAIT-FORMAT-001`** | portrait replacement / import | the pointer relationship is `CONFIRMED` but the resource behind it was never characterised: no pixel format, no dimensions, no rendering claim, and no portrait recall measurement | enumerate `0x086F393C`'s 155 valid pointers as a known-positive class, decode each, and establish the pixel format and dimensions from the piece/consumer side | **only when portrait import is scheduled.** Non-blocking today (§16) |
-| **`LOGX-RESTABLE-001`** | nothing currently planned | the two size-locked pointer tables `0x086F395C` (155 members, all declaring 4,096) and `0x082ABF08` (140 members, all declaring 1,024) carry 177 of the 387 residual containers and have **no nameable consumer**: neither base is named by any word in the image, so it is computed or folded | (1) static: resolve the computed base for both tables and disassemble the three code-region literal sites `0x08004EFC` / `0x08028118` / `0x0802837C`; (2) one bounded mGBA run arming read watchpoints on the two table bases in a deterministic state and recording the consumer PC; (3) explain why 60 table-A and 58 table-B members fall outside the 387, which decides whether they are a different container form | **conditional / low** - the 6 `compressed_text` members are already known, so the unknown shrinks to 177 structurally homogeneous containers with no consumer. Schedule only if a useful authoring class is suspected. **Do not widen into a graphics-scan campaign.** |
 
-**Not recommended** (deliberately, to avoid endless reverse engineering):
+**Parked, not recommended** (deliberately, to avoid endless reverse
+engineering). A parked item does **not** complete the Vertical-Slice-First
+sentence "this blocks the SDK from authoring ____", so it is recorded and left:
+`LOGX-RESTABLE-001` (the two size-locked residual tables have no consumer and no
+planned capability needs them; revisit only if that family turns out to be
+useful). The same treatment applies to:
 tile bits 12-15 semantics (forensic), LOGExtractor's `+8` (forensic), the
 connector record classes (does not block an in-place destination rewrite), the
 animation trailing words (preserving two unknown words needs no semantics),
@@ -1532,22 +1601,25 @@ For each known `AUTHOR_NEW` dependency, classified as `SOLVED`,
 | --- | --- | --- |
 | verified ROM allocation | `IMPLEMENTATION ONLY` | free-space discovery and relocation are established work elsewhere in the project (`FREE_SPACE_RELOCATION.md`, `ROM_EXPANSION.md`, `BUU_VERIFIED_CAPACITY.md`). Nothing in this queue blocks it, and this queue adds no allocator requirement beyond "carry the container's `packed_end`" |
 | materialising new entity/resource bodies | `PARTIAL` | the *sizes* are known for every structure this queue studied (container, chunk, frame, piece, animation, definition, appearance record). What is not built is a writer that materialises them; that is `IMPLEMENTATION ONLY` per class |
-| pointer/table expansion | `UNRESOLVED` | three concrete blockers: the layer chunk-pointer array's length is derived from `+0x14 * +0x15` **bytes** (so growing a layer means editing dimension bytes and relocating the window); the connection array is non-null-terminated with a null-coupled count, and `root + 0x44 == root - 4*count` means growth may collide with the bytes below the root; the appearance table has a **fixed count of 232 with no terminator**, so a 233rd record requires table growth and every `index << 4` site to follow. None of these is a *research* unknown for the layer and connection cases - they are relocation engineering - but the **appearance table's growth story is genuinely unresolved** because the count is baked into eight engine sites as `cmp rN,#0xE8` |
+| pointer/table expansion | `UNRESOLVED` | three concrete blockers: the layer chunk-pointer array's length is derived from `+0x14 * +0x15` **bytes** (so growing a layer means editing dimension bytes and relocating the window); the connection array is non-null-terminated with a null-coupled count, and `root + 0x44 == root - 4*count` means growth may collide with the bytes below the root; the appearance table has a **fixed count of 232 with no terminator**, so a 233rd record requires table growth and every `index << 4` site to follow. None of these is a *research* unknown for the layer and connection cases - they are relocation engineering - but the **appearance table's growth story is genuinely unresolved** because the count appears as **three** `cmp rN,#0xE8` loop bounds, in a table with no terminator, while **eight** separate sites load the base and apply the `index << 4` scale and the runtime roster walk is bounded by a **232-bit bitmap** |
 | map data | `PARTIAL` | the schema is `CONFIRMED` for the accepted subset, but a new map needs the unresolved items in §12 (#7, #8, #11, #12) |
 | tiles | `STRUCTURALLY SOLVED` | a chunk is fully understood: 2048 bytes, 1024 u16, 32x32, bits 0-9 ordinal, bits 10/11 stored, bits 12-15 preserve. Creating a **new** chunk means encoding or storing 2048 bytes and pointing a layer window cell at it |
 | connections | `PARTIAL` | destination rewriting is `SAFE AFTER BOUNDED FIX`; **new** records are `BLOCKED BY UNKNOWN SEMANTICS` (§4.5). The gap is split cleanly: structural editing is engineering, new-record and geometry authoring is research |
-| character definitions | `PARTIAL` | the record layout is `CONFIRMED` and fixed-size, but the table count is fixed at 232 by eight `cmp rN,#0xE8` sites. Appending is `UNRESOLVED`; editing an existing record is trivially safe |
+| character definitions | `PARTIAL` | the record layout is `CONFIRMED` and fixed-size, but the table count is fixed at 232 by three `cmp rN,#0xE8` bounds, a 232-bit runtime bitmap, and eight base-load/`index << 4` sites. Appending is `UNRESOLVED`; editing an existing record is trivially safe |
 | sprite definitions | `STRUCTURALLY SOLVED` for existing objects; `PARTIAL` for new ones | the object's extent formula `0x54 + 4*count` is `CONFIRMED`, so a new definition body can be materialised. What is unresolved is the id space: the run is 297 entries bounded by a literal and a terminator word, so a 298th definition needs the run relocated and the terminator moved |
 | animation/frame data | `STRUCTURALLY SOLVED` | the animation object is `u32 frame_count` plus `4*frame_count` cells plus two unknown words; the frame record is an 8-byte header plus `piece_count` 12-byte pieces. Extents are fully determined by the counts. The two trailing animation words are `UNRESOLVED` but a new animation can **preserve** them from an existing record |
 | graphics containers | `STRUCTURALLY SOLVED` for stored form; `PARTIAL` for packed | the wrapper is `CONFIRMED` and stored emission already exists (`build_stored`). Packed emission is the `LOGX-CODEC-WRITE-001` gate |
 | compression encoding | `PARTIAL` | see §5.3 and §17. The concrete obligations are enumerated; the initial literal width and the marker-vs-size rule are open |
 | scripts/dialogue | `NOT APPLICABLE` to this queue | outside LOGX scope; separate accepted work exists |
 
-**Do not read this table as "research is blocking implementation".** Six of the
-twelve rows are `IMPLEMENTATION ONLY`, `STRUCTURALLY SOLVED` or `SOLVED`. Only
-`pointer/table expansion` (the appearance-count case), `map data`, `connections`
-(new records and geometry) and `compression encoding` genuinely need research or
-a decision, and each is scheduled with its own blocking reason in §17 and
+**Do not read this table as "research is blocking implementation".** Of the
+twelve rows, `verified ROM allocation` is `IMPLEMENTATION ONLY`; `tiles`,
+`animation/frame data` and `sprite definitions` (for existing objects) are
+`STRUCTURALLY SOLVED`; and `graphics containers` is structurally solved for the
+stored form. Only `pointer/table expansion` (the appearance-count case), `map
+data`, `connections` (new records and geometry) and `compression encoding`
+genuinely need research or a decision, and each is scheduled with its own
+blocking reason in §17 and
 [`POST_LOGX_IMPLEMENTATION_ROADMAP.md`](POST_LOGX_IMPLEMENTATION_ROADMAP.md).
 
 ---
@@ -1569,16 +1641,24 @@ capability each one blocks. The basis for ending the freeze:
    MapEntry, the map root, the dominant layer, the tile chunk, the selector
    stream, the connection record, the container, the appearance definition, the
    sprite definition, the animation object, the frame record, the sprite piece
-   and the graphics container as `TRUSTED` or `TRUSTED WITH KNOWN FIX`, and every
-   `KNOWN FIX` is an enumerated, bounded, testable production defect in §11.
+   and the graphics container as `TRUSTED` or `TRUSTED WITH KNOWN FIX`. Every
+   `TRUSTED WITH KNOWN FIX` read row names a specific enumerated, bounded,
+   testable production defect in §11.1-§11.4; a row whose known gap is an
+   unresolved *consumer* rather than a defect is rated `TRUSTED` with the gap in
+   its field-confidence column (the map root) or `PARTIAL` for the resource
+   (the portrait pointer).
 3. **The near-roadmap authoring operations are engineering, not research.** §15
    rates in-place editing of map metadata, tiles, appearance text references,
    animation pointers, animation/frame data, sprite graphics and warp
    destinations as `SAFE AFTER BOUNDED FIX` - and every one of those fixes is a
-   parser correction, a validation or a writer. **Only four research tickets are
-   recommended** (§17), and two of them are explicitly conditional on a
-   capability being scheduled.
-4. **The remaining unknowns are bounded and located.** §12 names 29 questions;
+   parser correction, a validation or a writer. Each `TRUSTED WITH KNOWN FIX`
+   read row points at an enumerated defect in §11.1-§11.4; a row whose "known"
+   gap is an unrecovered consumer rather than a defect is rated plain `TRUSTED`
+   and carries the gap in its field-confidence column instead. **Only four research tickets are
+   recommended** (§17): one is a hard gate for the writing phase and the
+   other two are conditional on a capability being scheduled. A fourth lead is
+   recorded as **parked**, not recommended.
+4. **The remaining unknowns are bounded and located.** §12 names 30 questions;
    §13 classifies each as blocking nothing, blocking only advanced authoring, or
    forensic. None of them blocks the first post-freeze ticket.
 5. **The research method's own limits are published.** The queue's negative

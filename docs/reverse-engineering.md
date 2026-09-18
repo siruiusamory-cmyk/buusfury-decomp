@@ -48,7 +48,8 @@ The disassembly corroborates the table address, stride, count, and byte accesses
 | Offset | Width | Internal name | Interpretation | Layout | Semantics | Evidence |
 |---:|---:|---|---|---|---|---|
 | `0x00` | 1 | `output_raw` | DragonByteZ `output` label | `CONFIRMED` | `INFERRED` | `read_map_entries`; raw code accesses byte `+0x00` |
-| `0x01` | 1 | `zone_raw` | DragonByteZ `zone` label | `CONFIRMED` | `INFERRED` | `read_map_entries`; raw code accesses byte `+0x01` || `0x02` | 1 | `area_raw` | DragonByteZ `area` label | `CONFIRMED` | `INFERRED` | `read_map_entries` |
+| `0x01` | 1 | `zone_raw` | DragonByteZ `zone` label | `CONFIRMED` | `INFERRED` | `read_map_entries`; raw code accesses byte `+0x01` |
+| `0x02` | 1 | `area_raw` | DragonByteZ `area` label | `CONFIRMED` | `INFERRED` | `read_map_entries` |
 | `0x03` | 1 | `variation_raw` | DragonByteZ `variation` label | `CONFIRMED` | `INFERRED` | `read_map_entries` |
 | `0x04` | 1 | `trigger_count_raw` | Upstream-labelled count | `CONFIRMED` | `INFERRED` | `read_map_entries` |
 | `0x05` | 1 | `script_count_raw` | Upstream-labelled count | `CONFIRMED` | `INFERRED` | `read_map_entries` |
@@ -478,8 +479,13 @@ Census across all 452 selector-1 roots: 104 roots have `+0x40 == 0` with
 All 735 array elements are distinct, 4-byte-aligned, in-ROM pointers, so
 *references*, *unique records* and *shared records* are 735, 735 and 0 in this
 image. Resolving every destination against the `MapEntry` key table gives 694
-directed links, 674 reciprocal, 20 one-way and 3 self-links (maps 125, 126, 127),
-with no unresolved destination.
+directed links, of which **674 are reciprocal between two different maps**, **20
+are not reciprocal**, and **3 are self-links** (maps 125, 126 and 127). The three
+categories are **not disjoint as this ticket's probe names them**: the probe's
+`reciprocal` excludes self-links while its `one_way = links - reciprocal`
+therefore *includes* them, so `674 + 20 = 694` closes the total and the 3
+self-links sit inside the 20. The disjoint reading is **674 non-self reciprocal +
+17 non-self one-way + 3 self = 694**. No destination is unresolved.
 
 Unresolved, and deliberately not promoted: the engine's own name for these
 records; the meaning of the two `+0x00` classes; whether the four `u16` are

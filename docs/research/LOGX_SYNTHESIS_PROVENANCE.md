@@ -424,7 +424,8 @@ and corrected.
 | Class | Count | Where |
 | --- | ---: | --- |
 | `PRODUCTION BUG` | in `tools/webfoot/formats/sprite_graphics.py` and `tools/webfoot/graphics.py` | the two deferred defects in synthesis §11.2 and §11.3 |
-| `STALE DOCUMENTATION` | `GRAPHICS_FORMAT.md` (un-noted totals), `docs/architecture.md`, `docs/project-format.md`, `docs/research/SUBSYSTEM_MAP.md`, `config/roms.yaml` and its packaged copy `tools/webfoot/data/roms.yaml`, and docstrings in `build.py`, `cli.py` (user-visible help), `atlas_producers/seed.py`, `webfoot_lz.py` | the `7,355` subset presented as the corpus total, the structure-to-structure animation walk presented as the method, and the single-piece-only frame model |
+| `STALE DOCUMENTATION` | `GRAPHICS_FORMAT.md` (un-noted totals), `docs/architecture.md`, `docs/project-format.md`, `docs/research/SUBSYSTEM_MAP.md`, `THIRD-PARTY-NOTICES.md`, `config/roms.yaml` and its packaged copy `tools/webfoot/data/roms.yaml`, and docstrings in `build.py`, `cli.py` (user-visible help), `atlas_producers/seed.py`, `webfoot_lz.py` | the `7,355` subset presented as the corpus total, the structure-to-structure animation walk presented as the method, and the single-piece-only frame model |
+| `PRODUCTION BUG` (output quality, outside the canonical path) | `tools/webfoot/atlas_producers/scan.py::_compression_rows` | a stride-4 heuristic sweep whose own docstring calls its output noise (24,285 hits / 68.7 MiB); recorded by LOGX-GFXSCAN-001 and inventoried in `LOGX_SYNTHESIS.md` §11.6 |
 | `TEST EXPECTATION` | `tests/integration/test_graphics_rom.py` (`UNIQUE_GRAPHICS = 7355` and four dependants), `tests/unit/test_sprite_graphics.py` (16-byte piece and 4-byte-header fixtures), `tests/unit/test_logx_sprite_reference.py` (pins `FRAME_FIRST_PIECE == 0x04`, `PIECE_RECORD_SIZE == 0x10`) | these tests encode the refuted layout and **must move with the parser correction**, not before it |
 | `RESEARCH-ONLY LEGACY` | the ten tickets' review, provenance and archive records; `tools/research/logx_sprite_probe.py` (which still models the 4-byte header while the newer `logx_frame_probe.py` uses `0x08`); `docs/research/AUTO_RE_<local-state-name>`; earlier `PROJECT_STATE` parts | preserved deliberately |
 | `HARMLESS COMMENT` / `NO LONGER USED` | none material | - |
@@ -454,7 +455,24 @@ Two near-misses are **not** hits and are recorded so they are not "fixed" by
 mistake: `webfoot_lz.DEFAULT_MAX_OUTPUT = 64 * 1024` is a documented **host
 safety limit** whose own docstring says it is not a format fact, and
 `graphics.py`'s `maximum_size=64 * 1024` is a decode-plausibility filter. The
-largest canonical payload is 4 KiB, so neither can change behaviour.
+largest **reachable** declared size in the accepted corpus is `0x4000` (16 KiB)
+and the largest declared size anywhere in the image is `65,474` bytes - below
+65,536, so neither filter can change behaviour and the `LOGX_SYNTHESIS.md` §10
+#20 refutation still holds.
+
+### 4.4 One production defect the ten tickets recorded and had to be added
+
+Reviewer B found that LOGX-GFXSCAN-001's production-follow-up list names
+`tools/webfoot/atlas_producers/scan.py::_compression_rows` as a stride-4
+heuristic sweep whose own docstring calls its output noise, and that neither the
+synthesis nor the roadmap mentioned it. The finding was reproduced
+(`scan.py:331`, `:380-382`: **24,285 hits / 68.7 MiB**, "overwhelmingly probe
+noise"), accepted, and is now inventoried as `LOGX_SYNTHESIS.md` §11.6 with an
+explicit disposition. The same review also flagged
+`sprite_graphics.decode_animation`'s `maximum_frames = 64`, which this synthesis
+records §11.3 as a **recorded disagreement rather than a defect**: `64` is a
+bound, the canonical `frame_count` range is `1..16`, and removing it would delete
+a sanity check with no demonstrated benefit.
 
 ---
 
@@ -483,7 +501,7 @@ The canonical image is supplied only through `LOGX_CANONICAL_ROM`.
 | Suite | Command | Result |
 | --- | --- | --- |
 | synthesis audit (portable) | `pytest tests/unit/test_logx_synthesis_audit.py -q` | see the ticket review record |
-| synthesis audit instrument | `python -m tools.research.logx_synthesis_audit` | exit 0, zero findings |
+| synthesis audit instrument | `python -m tools.research.logx_synthesis_audit` | exits **1** with **20 findings** (5 in live code), every one already inventoried in `LOGX_SYNTHESIS.md` §11.1-§11.4; the instrument reports, it does not fix |
 | LOGX portable unit suites | `pytest tests/unit/test_logx_*_reference.py tests/unit/test_logx_*_probe.py tests/unit/test_logx_frame_probe.py -q` | see the ticket review record |
 | LOGX ROM-gated integration suites | `pytest tests/integration/test_logx_*_rom.py -q` with `LOGX_CANONICAL_ROM` set | see the ticket review record |
 | projector/safety/workflow | `pytest tests/unit/test_project_safety.py tests/unit/test_rom_safety.py tests/unit/test_code_review_workflow.py tests/unit/test_workflow_migration.py -q` | see the ticket review record |
@@ -514,5 +532,11 @@ the suite gate applies.
   claims.
 * **Historical records were not edited.** Superseded wording in the ten tickets'
   own review, provenance and archive files is preserved as evidence.
+* **No decode was taken on trust, and no limit is an engine limit.** The packed
+  decoder's own `DEFAULT_MAX_OUTPUT = 64 * 1024` is a **host safety bound**, not a
+  format maximum; the largest **reachable** declared size in the accepted corpus
+  is `0x4000` (16 KiB), and the largest declared size anywhere in the image is
+  `65,474` bytes - still below 65,536, which is why the refutation in
+  `LOGX_SYNTHESIS.md` §10 #20 holds.
 * **Production defects were inventoried, not fixed.** No production parser,
   codec, renderer or authoring path was modified.

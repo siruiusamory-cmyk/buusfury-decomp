@@ -159,15 +159,14 @@ residual container is exported.
   fail-closed refusals in a scratch copy of the renderer - skip a null cell, honour
   a bank's declared size - makes it agree with the exporter on all 422 rendered
   maps, so the only place the two differ is the set of maps the renderer declines.
-* **Tiles.** All 187 bank entries are exported at their own declared size, which
-  `map_000` is always `0x4000`; 186 of the 187 declare `0x4000` and entry 186
-  declares `0x3C40`. Entry 186 is used by a canonical selector stream (map 0), so
-  its size must not be assumed - and after that map's selectors are decoded, the
-  largest tile ordinal it names is 240, inside the 241 tiles the declaration
-  covers. A screen entry's bits 10 and 11 are applied as the platform's horizontal
-  and vertical flip selectors when a chunk or layer is rendered; they are never
-  baked into the exported tile resources, whose identity follows the underlying
-  tile.
+* **Tiles.** All 187 bank entries are exported at their own declared size: 186
+  declare `0x4000` and entry 186 declares `0x3C40`. Entry 186 is used by a
+  canonical selector stream (map 0), so its size must not be assumed - and after
+  that map's selectors are decoded, the largest tile ordinal it names is 240,
+  inside the 241 tiles the declaration covers. A screen entry's bits 10 and 11 are
+  applied as the platform's horizontal and vertical flip selectors when a chunk or
+  layer is rendered; they are never baked into the exported tile resources, whose
+  identity follows the underlying tile.
 * **Chunks.** All 3,745 distinct dominant chunk containers are exported as
   256x256 images, rendered against the lowest-index map that references them.
   Every reference is recorded, and any chunk whose pixels differ between

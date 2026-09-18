@@ -182,10 +182,6 @@ APPEARANCE_SPRITE_OFFSET = 0x04      # u32 logical sprite id
 APPEARANCE_PORTRAIT_OFFSET = 0x08    # u32 index into the 0x086F393C array
 APPEARANCE_STAT_OFFSET = 0x0C        # i32; negative values are skipped by the engine
 
-#: File-offset region the accepted sprite-graphics targets occupy.
-GRAPHICS_REGION_MIN_FILE_OFFSET = 0x003C34D0
-GRAPHICS_REGION_MAX_FILE_OFFSET = 0x006A87A8
-
 
 # --- appearance side ---------------------------------------------------------
 

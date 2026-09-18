@@ -92,8 +92,32 @@ def _arguments(tmp_path: Path, *extra: str) -> list[str]:
 
 def test_cli_refuses_a_rom_that_is_not_canonical(tmp_path: Path):
     (tmp_path / "rom.gba").write_bytes(b"\x01" * 32)
-    with pytest.raises(export.ExportError):
-        export.main(_arguments(tmp_path))
+    assert export.main(_arguments(tmp_path)) == 1
+
+
+def test_cli_reports_a_refusal_as_a_message_not_a_traceback(tmp_path: Path, capsys):
+    """A refusal must read as a refusal, with a status and no stack trace."""
+    repository = tmp_path / "repo"
+    (repository / ".git").mkdir(parents=True)
+    (repository / ".git" / "HEAD").write_text("ref: refs/heads/main\n", encoding="utf-8")
+    (tmp_path / "rom.gba").write_bytes(b"\x01" * 32)
+    status = export.main(
+        ["--rom", str(tmp_path / "rom.gba"), "--output", str(repository / "Present")]
+    )
+    captured = capsys.readouterr()
+    assert status == 1
+    assert captured.out == ""
+    assert "Traceback" not in captured.err
+    assert "outside version control" in captured.err
+    assert captured.err.startswith(export.TOOL_NAME + ":")
+
+
+def test_cli_reports_a_missing_rom_as_a_message(tmp_path: Path, capsys):
+    status = export.main(_arguments(tmp_path))
+    captured = capsys.readouterr()
+    assert status == 1
+    assert "Traceback" not in captured.err
+    assert "does not exist" in captured.err
 
 
 def test_cli_refuses_output_inside_a_repository(tmp_path: Path):
@@ -102,8 +126,11 @@ def test_cli_refuses_output_inside_a_repository(tmp_path: Path):
     (repository / ".git" / "HEAD").write_text("ref: refs/heads/main\n", encoding="utf-8")
     (tmp_path / "rom.gba").write_bytes(b"\x01" * 32)
     with pytest.raises(export.ExportError) as excinfo:
-        export.main(
-            ["--rom", str(tmp_path / "rom.gba"), "--output", str(repository / "Present")]
+        export._export(
+            export.build_parser().parse_args(
+                ["--rom", str(tmp_path / "rom.gba"),
+                 "--output", str(repository / "Present")]
+            )
         )
     assert "outside version control" in str(excinfo.value)
 
@@ -111,24 +138,28 @@ def test_cli_refuses_output_inside_a_repository(tmp_path: Path):
 def test_cli_refuses_an_audit_root_equal_to_the_output_root(tmp_path: Path):
     (tmp_path / "rom.gba").write_bytes(b"\x01" * 32)
     with pytest.raises(export.ExportError):
-        export.main(
-            [
-                "--rom", str(tmp_path / "rom.gba"),
-                "--output", str(tmp_path / "out"),
-                "--audit", str(tmp_path / "out"),
-            ]
+        export._export(
+            export.build_parser().parse_args(
+                [
+                    "--rom", str(tmp_path / "rom.gba"),
+                    "--output", str(tmp_path / "out"),
+                    "--audit", str(tmp_path / "out"),
+                ]
+            )
         )
 
 
 def test_cli_refuses_a_nested_audit_root(tmp_path: Path):
     (tmp_path / "rom.gba").write_bytes(b"\x01" * 32)
     with pytest.raises(export.ExportError):
-        export.main(
-            [
-                "--rom", str(tmp_path / "rom.gba"),
-                "--output", str(tmp_path / "out"),
-                "--audit", str(tmp_path / "out" / "audit"),
-            ]
+        export._export(
+            export.build_parser().parse_args(
+                [
+                    "--rom", str(tmp_path / "rom.gba"),
+                    "--output", str(tmp_path / "out"),
+                    "--audit", str(tmp_path / "out" / "audit"),
+                ]
+            )
         )
 
 
@@ -138,7 +169,9 @@ def test_cli_refuses_a_non_empty_output_without_force(tmp_path: Path, monkeypatc
     (output / "stale.png").write_bytes(b"x")
     monkeypatch.setattr(export, "read_canonical_rom", lambda path: b"\x00" * 16)
     with pytest.raises(export.ExportError) as excinfo:
-        export.main(_arguments(tmp_path))
+        export._export(
+            export.build_parser().parse_args(_arguments(tmp_path))
+        )
     assert "--force" in str(excinfo.value)
 
 

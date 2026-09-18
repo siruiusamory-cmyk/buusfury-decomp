@@ -182,6 +182,7 @@ def test_metadata_document_names_are_exact():
         naming.FRAMES_JSON,
         naming.SPRITE_GRAPHICS_JSON,
         naming.ALIASES_JSON,
+        naming.NAMES_JSON,
     ):
         assert name.endswith(".json")
         assert name.lower() == name

@@ -13,6 +13,15 @@ forbidden key set and :func:`check_structural` walks a document and raises on
 any occurrence, at any depth, in any case. It is wired into the writer, so a
 prose field cannot reach an artifact even by accident - and the portable test
 suite calls the same function over the produced tree.
+
+**Its limit, stated rather than implied.** :data:`PROSE_KEYS` is an explicit
+blacklist of *field names*, not a general property of a document. A field that
+carries ROM text - a map name, an appearance description - is data with
+provenance and passes on purpose, and a newly invented prose field name that
+nobody added to the list would pass too. The rule the exporter actually holds to
+is that every string it writes either comes from the ROM at a recorded address
+or is a numeric, enum or address value the accepted schema defines; the blacklist
+is the mechanical backstop for the obvious spellings.
 """
 
 from __future__ import annotations

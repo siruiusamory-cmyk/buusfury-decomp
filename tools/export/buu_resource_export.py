@@ -93,6 +93,7 @@ EXPECTED_POPULATIONS = {
     "animation_slots": 4070,
     "non_null_animations": 1721,
     "unique_frames": 10980,
+    "unique_animations": 1017,
     "sprite_pieces": 11005,
     "multipart_frames": 21,
     "structured_sprite_graphics": 7390,
@@ -362,6 +363,7 @@ class Exporter:
         self.frames: dict[int, canon.FrameRecord] = {}
         self.graphic_indices: dict[int, bytes] = {}
         self.graphic_extents: dict[int, tuple[int, int]] = {}
+        self.graphic_depth: dict[int, bool] = {}
         #: Piece count summed over every rendered cell of every animation
         #: reference. It reconciles with the accepted direction-cell total the
         #: same way `LOGX-SYNTHESIS.md` §8.2 states it: the extra pieces are
@@ -427,16 +429,17 @@ class Exporter:
         local row, for every chunk in that row, that local row's 32 entries.
         Concatenating whole chunks would scramble anything wider than one chunk.
 
-        **A null chunk pointer contributes no entries.** The accepted record set
+        **A null chunk pointer contributes entry 0.** The accepted record set
         carries an internal null in 117 of the 1,420 dominant layer records,
-        across 86 maps and 156 of the 4,274 grid cells, and what such a cell
-        displays is an open question: the constructor skips it while the
-        streaming path substitutes the default container `0x08070808`. The
-        substitution is measured to carry no data - that container is a stored
-        container declaring zero bytes - so this renders the cell as no-data,
-        which is the constructor's reading as well. Whether the *destination*
-        would retain stale bytes is not something the ROM image can settle, so it
-        is recorded here rather than resolved.
+        across 86 maps and 156 of the 4,274 grid cells. Entry 0 is the value the
+        engine's own occupancy test at `0x08008076` treats as unoccupied, so no
+        tile is drawn for that cell. What an in-game null cell displays is still an
+        open question, because the constructor skips it while the streaming path
+        substitutes the default container `0x08070808`. That container is measured
+        to be a stored container declaring zero bytes, so the substitution carries
+        no data either - but whether the *destination* would retain stale bytes is
+        not something the ROM image can settle, so the counts are recorded rather
+        than the question being called settled.
         """
         side = canon.CHUNK_SIDE_TILES
         blanks = (0,) * (side * side)
@@ -917,7 +920,7 @@ class Exporter:
             "default_container_declared_size": self.rom.u32(
                 canon.DEFAULT_CHUNK_CONTAINER + 4
             ),
-            "rendered_as": "no_data",
+            "rendered_as": "screen_entry_0_unoccupied",
         }
 
     # -- tiles ----------------------------------------------------------------
@@ -1175,6 +1178,11 @@ class Exporter:
                     f"graphics container {address:#010x} is referenced as both "
                     f"{extent[0]}x{extent[1]} and {width}x{height}"
                 )
+            if self.graphic_depth[address] != colour_256:
+                raise canon.CanonicalError(
+                    f"graphics container {address:#010x} is referenced at both "
+                    "4bpp and 8bpp"
+                )
             return cached, extent
         graphic = canon.read_graphic(self.rom, address, width, height, colour_256)
         indices = render.unswizzle_tiles(
@@ -1182,6 +1190,7 @@ class Exporter:
         )
         self.graphic_indices[address] = indices
         self.graphic_extents[address] = (width, height)
+        self.graphic_depth[address] = colour_256
         return indices, (width, height)
 
     def export_sprite_graphics(self) -> None:
@@ -1194,15 +1203,16 @@ class Exporter:
             artifact = write_rgba_png(
                 self.writer, relative, width, height, indices, self.object_table
             )
+            colour_256 = self.graphic_depth[address]
             documents.append(
                 {
                     "graphic_id": graphic_id,
                     "container_address": f"{address:#010x}",
                     "container_file_offset": f"{self.rom.offset(address):#08x}",
-                    "declared_size": width * height,
+                    "declared_size": width * height if colour_256 else width * height // 2,
                     "width": width,
                     "height": height,
-                    "colour_256": True,
+                    "colour_256": colour_256,
                     "palette_id": PALETTE_OBJECT_ID,
                     "image": relative,
                     "image_sha256": artifact.sha256,
@@ -1507,6 +1517,7 @@ class Exporter:
                     "animation_slots",
                     "non_null_animations",
                     "unique_frames",
+                    "unique_animations",
                     "sprite_pieces",
                     "multipart_frames",
                     "structured_sprite_graphics",
@@ -1714,8 +1725,21 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def main(argv: list[str] | None = None) -> int:
-    args = build_parser().parse_args(argv)
+    """Run the exporter, reporting a refusal as a message rather than a traceback.
 
+    Every guard raises :class:`ExportError` with the path and the reason; the CLI
+    turns that into one line on stderr and exit status 1, so a refusal reads as a
+    refusal instead of as a crash. Genuine defects still propagate with their
+    traceback, which is what a defect should look like.
+    """
+    try:
+        return _export(build_parser().parse_args(argv))
+    except ExportError as exc:
+        print(f"{TOOL_NAME}: {exc}", file=sys.stderr)
+        return 1
+
+
+def _export(args: argparse.Namespace) -> int:
     output_root = args.output.resolve()
     audit_root = (args.audit or audit_root_for(output_root)).resolve()
 

@@ -1,14 +1,14 @@
 """Deterministic numeric naming and directory layout for the resource library.
 
-ASSET-EXPORT-001. Every path is a pure function of numeric identity. No
-direction is named, no animation slot is named, no bank is named and no map is
-named: the accepted work establishes occupancy and ordering, not semantics, so
-the canonical identity stays the number.
+ASSET-EXPORT-001. Every path is built from a numeric identity. No direction is
+named, no animation slot is named and no bank is named: the accepted work
+establishes occupancy and ordering, not semantics, so the canonical identity
+stays the number.
 
 **A confirmed ROM name is appended where one exists.** Where the accepted data
 carries a genuine text string for an object - a map's text-table relationship, an
 appearance definition's name - the sanitized string is appended after the numeric
-id, so `map_039` becomes `map_039_grand_kais_planet` and `sprite_028` becomes
+id, so `map_039` becomes `map_039_grand_kai_s_planet` and `sprite_028` becomes
 `sprite_028_babidi`. The numeric id stays first and stays canonical: the name is
 a convenience for reference, and a stripped or changed name can never make a path
 ambiguous because the id alone is unique. Nothing is invented - a name is used

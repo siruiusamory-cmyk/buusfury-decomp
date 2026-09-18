@@ -11,9 +11,9 @@ tickets were synthesized; the LOGExtractor research freeze ends here.
 | | |
 | --- | --- |
 | **START SHA** | `64fa98626065cf49c631878c53e1c8e1073a3bd6` |
-| **END SHA** | `b80d098969e7f5d020b407116d0c36dc078908d8` |
+| **END SHA** | `ad217c362437fcccc23ff17598fc50a0e0a85177` |
 | **BRANCH** | `logx-synthesis-001` (isolated worktree `<temp>\log1-remake-logx-synthesis-001`) |
-| **COMMIT SHA(S)** | `f6a6bc7` `research(synthesis): consolidate LOGX archaeology` (the revision both reviewers measured)<br>`4722866` `research(synthesis): correct recall arithmetic and record project-state baseline` (self-check)<br>`b80d098` `research(synthesis): close independent review corrections` (frozen end SHA) |
+| **COMMIT SHA(S)** | `f6a6bc7` `research(synthesis): consolidate LOGX archaeology` (the synthesis, and the revision both reviewers measured)<br>`4722866` `research(synthesis): correct recall arithmetic and record project-state baseline` (self-check)<br>`b80d098` `research(synthesis): close independent review corrections`<br>`ad217c3` `docs(synthesis): record the LOGX-SYNTHESIS-001 result` (this review record and the count/link tidy-up) |
 | **CANONICAL ROM SHA BEFORE** | `940AD5F01DB4465B8877DFE739510CBF34F4EA3D390F3DF13519808BC36F059E` |
 | **CANONICAL ROM SHA AFTER** | `940AD5F01DB4465B8877DFE739510CBF34F4EA3D390F3DF13519808BC36F059E` |
 
@@ -440,6 +440,7 @@ rather than presented as review-driven work.
 ```text
 branch   logx-synthesis-001   (isolated; NOT integrated to master)
 worktree <temp>\log1-remake-logx-synthesis-001
+commits  64fa986 (START) -> f6a6bc7 -> 4722866 -> b80d098 -> ad217c3 (END, plus this record)
 ```
 
 ```text

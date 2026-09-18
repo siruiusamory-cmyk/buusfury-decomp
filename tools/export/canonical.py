@@ -13,10 +13,10 @@ definitions, §8 animation/frame/piece, §2.5 codec). Nothing here is derived fr
 `LOGExtractor`'s superseded readings, and the refuted model is not reachable
 from this module:
 
-* the fixed 23-slot animation model is **not** used; the array is bounded by
-  definition `+0x00`;
-* the 4-byte frame header and 16-byte piece stride are **not** used; the frame
-  header is `0x08` bytes and pieces are `0x0C` bytes at `frame + 0x08`;
+* the superseded fixed 23-slot animation model is not used; the array is bounded
+  by definition `+0x00`;
+* the refuted 4-byte frame header and 16-byte piece stride are not used; the
+  frame header is `0x08` bytes and pieces are `0x0C` bytes at `frame + 0x08`;
 * the piece attribute pair is read at `+0x04` and the graphics word at `+0x08`,
   not at `+0x08`/`+0x0C`;
 * tile-entry bits 12..15 are recorded raw and never explained;
@@ -640,9 +640,9 @@ class SpriteDefinition:
 def read_sprite_definitions(rom: Rom) -> tuple[SpriteDefinition, ...]:
     """Read the 297-entry pointer run as logical sprite ids 10..306.
 
-    The array is bounded by the definition's own `+0x00` low byte. The refuted
-    fixed 23-slot model is not reachable from this function: the walk is
-    `[+0x54, +0x54 + 4 * count)` and nothing else.
+    The array is bounded by the definition's own `+0x00` low byte. The superseded
+    fixed 23-slot model is not reachable from this function: the superseded walk
+    form is replaced by `[+0x54, +0x54 + 4 * count)` and nothing else.
     """
     definitions: list[SpriteDefinition] = []
     for run_index in range(SPRITE_DEFINITION_COUNT):

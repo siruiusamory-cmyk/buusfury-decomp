@@ -140,8 +140,10 @@ bytes are plainly not pointers. They are classified `CANDIDATE_REFERENCE` and ar
 
 ## Free space
 
-`UNKNOWN`, unchanged from TOOLKIT-003. No verified free region is declared for
-this profile, so **canonical growth and relocation remain blocked**. Per
+One small region **is** declared and verified for this profile
+(`[0x007EA400, 0x007EA500)`, 256 bytes, TOOLKIT-028), but it is far too small for
+this pool, so **canonical growth and relocation remain blocked**. This paragraph
+previously said no region was declared; TOOLKIT-028 superseded that. Per
 `ARCH-TOOL-001`, free space is profile-declared with recorded evidence and is
 never inferred by scanning for `0xFF` or `0x00` runs: a scan cannot distinguish
 padding from data and yields different answers on an already-edited image,

@@ -20,5 +20,10 @@ makes earlier project validation and build results stale; the Build tab then
 requires Validate before Build again. Unsupported search results remain
 read-only and have no address- or text-based fallback.
 
+The shipped window is titled DragonByte Z and has eight tabs, in contract order:
+Atlas, Inspector, Maps, Map, Map Browser, Graphics, Build, Launch. Only Atlas is
+enabled until a ROM is opened; the read-only Map Browser sits between the Map
+authoring workspace and Graphics.
+
 Workbench owns presentation and interaction. Webfoot SDK/domain code owns ROM
 semantics.

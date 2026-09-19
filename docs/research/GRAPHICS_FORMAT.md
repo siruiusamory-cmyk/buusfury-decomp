@@ -531,7 +531,12 @@ exactness**, and must never be described as the latter.
 * the background palette at `0x0005632C` (1 inbound reference)
 * portraits, UI, fonts, effects, title graphics
 
-None was investigated. Whether any shares this container format is **UNKNOWN**.
+None was investigated **in this record**. Whether any shares this container format
+is **UNKNOWN** here. **SUPERSEDED in part by GRAPHICS-COVERAGE-001:** the map
+tilesets, portraits, UI/HUD, fonts and effects families were subsequently located
+and bounded, and portrait reference coverage was later proven complete by
+PORTRAIT-COMPLETENESS-001. Graphics coverage overall is still **NOT** complete.
+See [`GRAPHICS_COVERAGE.md`](GRAPHICS_COVERAGE.md).
 
 ---
 

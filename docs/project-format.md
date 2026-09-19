@@ -143,9 +143,10 @@ text = "{08:05}HP:{08:02} {08:76}%d{08:05}/{08:76}%d{08:02}"
 **Editing is in-place.** The pool is exhaustively tiled, so a string has no slack
 to grow into: replacement text must fit the original allocation, and shorter text
 is zero-padded to it deterministically rather than repacking the pool. Longer
-text needs relocation, which needs profile-declared free space - and no verified
-free region exists for Buu's Fury, so canonical growth is refused with the exact
-byte deficit. The relocation machinery itself is proved on synthetic fixtures.
+text needs relocation, which needs profile-declared free space. Buu's Fury declares
+one small verified region (`[0x007EA400, 0x007EA500)`, 256 bytes, TOOLKIT-028),
+which is far too small to relocate a text pool, so canonical growth is still
+refused with the exact byte deficit. The relocation machinery itself is proved on synthetic fixtures.
 
 **Repeated text is not shared text.** 153 texts occur more than once, but each
 occurrence has its own bytes, so editing one changes only that one.

@@ -391,6 +391,54 @@ def assemble_frame(
     return bytes(canvas)
 
 
+def render_terrain_field(
+    containers: tuple[bytes, ...],
+    grid_x: int,
+    grid_y: int,
+) -> tuple[int, int, bytes]:
+    """Assemble a terrain field's containers into one one-byte-per-pixel image.
+
+    ASSET-EXPORT-MAP19-001 recovered this record form from the engine's own code:
+    the `0x080088BD` constructor streams `grid_x * grid_y` containers of
+    ``canon.TERRAIN_FIELD_CELL_BYTES`` decoded bytes through a nine-slot resident
+    cache, and the blitter that consumes them copies one raster row per step -
+    both its source and its destination advance by a row of
+    ``canon.TERRAIN_FIELD_CELL_PIXELS`` bytes at one byte per pixel - so each
+    container is a ``32 x 32`` pixel cell and the containers lay out in raster
+    order: container ``y * grid_x + x`` at ``(x * 32, y * 32)``.
+
+    The image is exactly ``grid_x * 32`` by ``grid_y * 32`` pixels; there is no
+    scaling, no padding and no interleaving.
+    """
+    if grid_x <= 0 or grid_y <= 0:
+        raise RenderError(
+            f"a terrain field needs a positive grid, got {grid_x}x{grid_y}"
+        )
+    expected = grid_x * grid_y
+    if len(containers) != expected:
+        raise RenderError(
+            f"a {grid_x}x{grid_y} terrain field needs {expected} containers, "
+            f"got {len(containers)}"
+        )
+    cell = canon.TERRAIN_FIELD_CELL_PIXELS
+    row_bytes = canon.TERRAIN_FIELD_CELL_BYTES // cell
+    width, height = grid_x * cell, grid_y * cell
+    out = bytearray(width * height)
+    for index, data in enumerate(containers):
+        if len(data) != canon.TERRAIN_FIELD_CELL_BYTES:
+            raise RenderError(
+                f"terrain-field container {index} holds {len(data)} bytes, "
+                f"expected {canon.TERRAIN_FIELD_CELL_BYTES}"
+            )
+        at_x = (index % grid_x) * cell
+        at_y = (index // grid_x) * cell
+        for y in range(cell):
+            target = (at_y + y) * width + at_x
+            source = y * row_bytes
+            out[target : target + cell] = data[source : source + row_bytes]
+    return width, height, bytes(out)
+
+
 def compose_layers(
     layers: tuple[tuple[int, int, int, int, bytes], ...],
     width: int,

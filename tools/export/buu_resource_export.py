@@ -397,6 +397,9 @@ class Exporter:
         #: uploads `record + 0x1C` - so the field is taken from the record itself.
         #: Each plane is read once here.
         self.screenblock_entries: dict[int, tuple[int, ...]] = {}
+        #: Decoded containers for `static_graphical_terrain_field` layers, keyed by
+        #: layer-record address, in the record's own raster order.
+        self.terrain_field_containers: dict[int, tuple[bytes, ...]] = {}
 
         self.definitions: tuple[canon.SpriteDefinition, ...] = ()
         self.animations: dict[int, canon.AnimationRecord] = {}
@@ -458,10 +461,24 @@ class Exporter:
                             str(exc),
                         )
                     continue
-                if layer.classification == "static_graphical_assembly_unresolved":
-                    self.references.setdefault("assembly_unresolved_records", {})[
+                if layer.classification == "static_graphical_terrain_field":
+                    try:
+                        targets = canon.read_terrain_field_containers(
+                            self.rom, layer.address
+                        )
+                        self.terrain_field_containers[layer.address] = tuple(
+                            self.rom.container(target).data for target in targets
+                        )
+                    except (canon.CanonicalError, ws.ContainerError) as exc:
+                        self.fail(
+                            "map_layer_terrain_field",
+                            "map_entries",
+                            f"map:{entry.index:04d}:slot:{layer.slot}",
+                            str(exc),
+                        )
+                    self.references.setdefault("terrain_field_records", {})[
                         f"{layer.address:#010x}"
-                    ] = canon.read_unresolved_assembly_probe(self.rom, layer.address)
+                    ] = canon.read_terrain_field_probe(self.rom, layer.address)
                     continue
                 if layer.classification != "dominant":
                     continue
@@ -515,13 +532,32 @@ class Exporter:
         return tuple(out)
 
     def render_layer(self, layer: canon.LayerRecord, map_index: int) -> bytes:
-        """Assemble a layer image from its chunks' rendered images.
+        """Assemble a layer image from the containers its own record form names.
 
-        A chunk image is cached per ``(container, map)`` and copied in 256 rows at
-        a time, which keeps a layer of `chunk_x * chunk_y` cells proportional to
-        the number of chunks rather than to the number of tiles. A null chunk
-        pointer contributes no pixels, so its cell is left transparent.
+        Each non-dominant record form is assembled by its own code and none of
+        them is a chunk grid, so the form decides what is read:
+
+        * `static_graphical_screenblock` - the 1024-entry plane collected for the
+          record, rendered against the map's own character block, 256x256.
+        * `static_graphical_terrain_field` - the record's own containers, each a
+          32x32 one-byte-per-pixel cell laid out in raster order.
+
+        The dominant form assembles from its chunks' rendered images. A chunk
+        image is cached per ``(container, map)`` and copied in 256 rows at a time,
+        which keeps a layer of `chunk_x * chunk_y` cells proportional to the
+        number of chunks rather than to the number of tiles. A null chunk pointer
+        contributes no pixels, so its cell is left transparent.
         """
+        if layer.classification == "static_graphical_screenblock":
+            grid = self.screenblock_entries[layer.address]
+            return render.render_chunk(grid, self.char_blocks[map_index].data)
+        if layer.classification == "static_graphical_terrain_field":
+            _width, _height, pixels = render.render_terrain_field(
+                self.terrain_field_containers[layer.address],
+                layer.terrain_grid_x,
+                layer.terrain_grid_y,
+            )
+            return pixels
         side = canon.CHUNK_PIXELS
         width = layer.chunk_x * side
         height = layer.chunk_y * side
@@ -802,9 +838,6 @@ class Exporter:
                     document["null_chunk_cells"] = layer.null_chunk_count
                 if layer.classification == "absent_placeholder":
                     status = "not_graphical_absent_layer"
-                elif layer.classification == "static_graphical_assembly_unresolved":
-                    status = "not_rendered_assembly_unresolved"
-                    all_accounted = False
                 elif not layer.resolved:
                     # A handler or a dominant grid the classification does not
                     # account for. Refuse it explicitly: falling through to the
@@ -821,18 +854,10 @@ class Exporter:
                         f"{layer.handler:#010x} is {layer.classification}",
                     )
                 else:
-                    width = (
-                        canon.SCREENBLOCK_PIXELS
-                        if layer.classification == "static_graphical_screenblock"
-                        else layer.chunk_x * canon.CHUNK_PIXELS
-                    )
-                    height = (
-                        canon.SCREENBLOCK_PIXELS
-                        if layer.classification == "static_graphical_screenblock"
-                        else layer.chunk_y * canon.CHUNK_PIXELS
-                    )
                     try:
                         if layer.classification == "static_graphical_screenblock":
+                            width = canon.SCREENBLOCK_PIXELS
+                            height = canon.SCREENBLOCK_PIXELS
                             grid = self.screenblock_entries.get(layer.address)
                             if grid is None:
                                 raise canon.CanonicalError(
@@ -840,7 +865,23 @@ class Exporter:
                                     f"record at {layer.address:#010x}"
                                 )
                             pixels = render.render_chunk(grid, block.data)
+                        elif layer.classification == "static_graphical_terrain_field":
+                            containers = self.terrain_field_containers.get(
+                                layer.address
+                            )
+                            if containers is None:
+                                raise canon.CanonicalError(
+                                    f"no terrain-field containers were collected "
+                                    f"for the record at {layer.address:#010x}"
+                                )
+                            width, height, pixels = render.render_terrain_field(
+                                containers,
+                                layer.terrain_grid_x,
+                                layer.terrain_grid_y,
+                            )
                         else:
+                            width = layer.chunk_x * canon.CHUNK_PIXELS
+                            height = layer.chunk_y * canon.CHUNK_PIXELS
                             grid = self.layer_grid(layer)
                             pixels = render.render_entries(
                                 grid,
@@ -873,7 +914,33 @@ class Exporter:
                             document["non_null_chunk_cells"] = (
                                 layer.chunk_cells - layer.null_chunk_count
                             )
-                        document.update(entry_stats(grid))
+                            document.update(entry_stats(grid))
+                        elif layer.classification == "static_graphical_terrain_field":
+                            # This record form carries one palette index per pixel,
+                            # not u16 tile entries, so publishing the tile-entry
+                            # census for it would describe a structure it does not
+                            # have. The byte census is the same shape of fact for
+                            # the form it does have.
+                            document.update(
+                                {
+                                    "cell_pixels": canon.TERRAIN_FIELD_CELL_PIXELS,
+                                    "cell_bytes": canon.TERRAIN_FIELD_CELL_BYTES,
+                                    "container_count": len(containers),
+                                    "index_min": min(pixels),
+                                    "index_max": max(pixels),
+                                    "distinct_indices": len(set(pixels)),
+                                }
+                            )
+                        else:
+                            document.update(entry_stats(grid))
+                        if layer.classification == "static_graphical_terrain_field":
+                            # The cell grid is published under its own record
+                            # form's names; the dominant `chunk_*` keys are not
+                            # written for it because `+0x14`/`+0x15` hold
+                            # unrelated bytes on this form.
+                            document["cell_grid_x"] = layer.terrain_grid_x
+                            document["cell_grid_y"] = layer.terrain_grid_y
+                            document["cell_grid_cells"] = layer.terrain_cells
                     except (
                         canon.CanonicalError,
                         ws.ContainerError,

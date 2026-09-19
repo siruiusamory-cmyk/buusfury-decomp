@@ -154,24 +154,29 @@ residual container is exported.
     `BGxHOFS`/`BGxVOFS`. The payload is the same 1024-entry 32x32 screen form, so
     the layer renders as a 256x256 screen-entry plane. 41 records over 29 maps, and
     all 41 render.
-  * `0x080088BD` (`static_graphical_assembly_unresolved`) - constructor
-    `0x080080C0` sets `DISPSTAT` bit 1 and clears `BG2PB`/`BG2PD`, then streams
+  * `0x080088BD` (`static_graphical_terrain_field`) - constructor `0x080080C0`
+    sets `DISPSTAT` bit 1 and clears `BG2PB`/`BG2PD`, then streams
     `record + 4` x `record + 5` containers of 0x400 decoded bytes through a
-    nine-slot resident cache. The layer is graphical, but the pixel arrangement
-    of a 0x400-byte container is not established, so it is recorded rather than
-    guessed into an image. One canonical record (map 19, slot 2).
+    nine-slot resident cache. ASSET-EXPORT-MAP19-001 recovered the container
+    geometry, so the form renders: each container is a 32x32 one-byte-per-pixel
+    cell - 32 bytes per raster row, one palette index per pixel - and the
+    containers lay out in raster order, container `y * grid_x + x` at
+    `(x * 32, y * 32)`, giving a `32 * grid_x` by `32 * grid_y` image. One
+    canonical record (map 19, slot 2), 14 x 10 cells, 448x320 pixels.
   A composite is withheld only for a class the exporter can name: a slot that is
   graphical but cannot be assembled, or a record form the classification does not
-  account for at all - which is refused explicitly rather than rendered. After the
-  classification that is 451 composites produced and 1 withheld: map 19, whose
-  slot 2 is graphical but unassembled. Its screen-entry layer is still exported as
-  `layer_1.png`, so the art is preserved even though the composite is not.
+  account for at all - which is refused explicitly rather than rendered. Every
+  handler the engine accounts for now renders, so as of ASSET-EXPORT-MAP19-001
+  that is 452 composites produced and 0 withheld.
   `chunk_x`, `chunk_y`, `chunk_cells` and `null_chunk_cells` describe the dominant
   record form only, and are published only for its records. `record + 0x14`/`+0x15`
-  are the chunk grid on the dominant form; on the screen-entry and
-  unresolved-assembly forms the same offsets hold unrelated bytes - on `0x0800897B`
-  the low halfword of a 32-bit scale the object's method 2 reads - so those
-  records publish no chunk-grid field at all rather than a refuted reading.
+  are the chunk grid on the dominant form; on the screen-entry and terrain-field
+  forms the same offsets hold unrelated bytes - on `0x0800897B` the low halfword of
+  a 32-bit scale the object's method 2 reads, and on the canonical `0x080088BD`
+  record the pair 48/251 - so those records publish no chunk-grid field at all
+  rather than a refuted reading. The terrain-field form states its own cell grid at
+  `+0x04`/`+0x05` and publishes it as `cell_grid_x`, `cell_grid_y` and
+  `cell_grid_cells`.
   A null chunk pointer inside a dominant layer contributes screen entry 0, the
   value the engine's own occupancy test treats as unoccupied, so nothing is drawn
   there. The accepted record set has an internal null in 117 of the 1,420 dominant
@@ -188,7 +193,10 @@ residual container is exported.
   and composites are pixel-identical to it. It refuses the other 110; measured by
   first failure those are 85 with a null chunk cell, 20 with a partial-zero
   record, 4 with a non-dominant handler record, and 1 (map 0) whose selector
-  stream reaches the `0x3C40`-declaring bank. Relaxing exactly those two
+  stream reaches the `0x3C40`-declaring bank. (The "4 with a non-dominant handler
+  record" count was measured before map 19's terrain-field record became
+  renderable; the renderer states were not re-measured in ASSET-EXPORT-MAP19-001.)
+  Relaxing exactly those two
   fail-closed refusals in a scratch copy of the renderer - skip a null cell, honour
   a bank's declared size - makes it agree with the exporter on all 422 of the maps
   that carry only dominant layers, so the only place the two differ is the set of

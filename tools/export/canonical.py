@@ -105,14 +105,23 @@ SCREENBLOCK_PIXELS = 256
 #: Entry `0x080088BC` -> constructor `0x080080C0`: sets `DISPSTAT` bit 1 (`VBlank`
 #: interrupt enable) and clears `BG2PB`/`BG2PD`, then streams `record + 4` x
 #: `record + 5` containers of `0x400` decoded bytes through a nine-slot resident
-#: cache. The layer draws, but the pixel arrangement of a `0x400`-byte container is
-#: not established, so it stays unresolved rather than being guessed into an image.
-UNRESOLVED_ASSEMBLY_LAYER_HANDLER = 0x080088BD
-UNRESOLVED_ASSEMBLY_GRID_X_OFFSET = 0x04
-UNRESOLVED_ASSEMBLY_GRID_Y_OFFSET = 0x05
-UNRESOLVED_ASSEMBLY_CHUNK_OFFSET = 0x08
-UNRESOLVED_ASSEMBLY_CHUNK_BYTES = 0x400
-UNRESOLVED_ASSEMBLY_RESIDENT_SLOTS = 9
+#: cache. ASSET-EXPORT-MAP19-001 recovered the container geometry: each
+#: `0x400`-byte container is a 32x32 one-byte-per-pixel raster (32 bytes per row,
+#: 32 rows), the driver's viewport wrap and the blitter's `src += 0x20` /
+#: `dst += 0x20` steps agree on a 32-byte raster row, and the container payloads
+#: use contiguous palette indices (`1..228`, index `0` absent) rather than packed
+#: nibbles. `record + 0x04` x `record + 0x05` containers lay out as the map's
+#: terrain field in raster order at 32x32 pixels per container.
+TERRAIN_FIELD_LAYER_HANDLER = 0x080088BD
+TERRAIN_FIELD_GRID_X_OFFSET = 0x04
+TERRAIN_FIELD_GRID_Y_OFFSET = 0x05
+TERRAIN_FIELD_CONTAINER_OFFSET = 0x08
+TERRAIN_FIELD_CELL_BYTES = 0x400
+TERRAIN_FIELD_CELL_PIXELS = 32
+TERRAIN_FIELD_RESIDENT_SLOTS = 9
+#: The accepted name for this record form before its geometry was recovered, kept
+#: so a stored class string from the previous revision is still recognisable.
+TERRAIN_FIELD_LEGACY_CLASS = "static_graphical_assembly_unresolved"
 
 #: Chunk payload: 32 x 32 little-endian u16 entries = 1024 entries = 2048 bytes.
 CHUNK_SIDE_TILES = 32
@@ -309,21 +318,49 @@ def read_screenblock_entries(rom: Rom, record_address: int) -> tuple[int, ...]:
     return struct.unpack("<1024H", container.data)
 
 
-def read_unresolved_assembly_probe(rom: Rom, record_address: int) -> dict[str, int]:
+def read_terrain_field_containers(rom: Rom, record_address: int) -> tuple[int, ...]:
+    """Read the container addresses of a `0x080088BD` terrain-field record.
+
+    The record states its own cell grid at `+0x04`/`+0x05` and names
+    `grid_x * grid_y` consecutive container pointers from `+0x08`. The pointer run
+    is exactly that long on the canonical record, so a shorter run is a
+    structural mismatch rather than something to silently pad.
+
+    An empty grid (either dimension zero) is an empty field: the engine's own
+    constructor skips the eager load when the product is not positive.
+    """
+    grid_x = rom.u8(record_address + TERRAIN_FIELD_GRID_X_OFFSET)
+    grid_y = rom.u8(record_address + TERRAIN_FIELD_GRID_Y_OFFSET)
+    cells = grid_x * grid_y
+    if cells == 0:
+        return ()
+    targets: list[int] = []
+    for index in range(cells):
+        address = rom.u32(
+            record_address + TERRAIN_FIELD_CONTAINER_OFFSET + index * 4
+        )
+        if not rom.in_image(address):
+            raise CanonicalError(
+                f"terrain-field record at {record_address:#010x} names container "
+                f"{index} at {address:#010x}, which is outside the image"
+            )
+        targets.append(address)
+    return tuple(targets)
+
+
+def read_terrain_field_probe(rom: Rom, record_address: int) -> dict[str, int]:
     """Structural facts about a `0x080088BD` record, for the audit only.
 
-    Constructor `0x080080C0` streams `record + 4` x `record + 5` containers of
-    0x400 decoded bytes through a nine-slot resident cache, and programs the
-    background control registers. The layer is graphical; the pixel arrangement
-    of a 0x400-byte container is not established, so this returns the structure
-    the classification rests on and nothing that would imply a rendering.
+    Kept as the audit probe the previous revision published: it names the grid,
+    the container count, the resident-cache size and the per-container decoded
+    bytes without decoding any of them.
     """
-    grid_x = rom.u8(record_address + UNRESOLVED_ASSEMBLY_GRID_X_OFFSET)
-    grid_y = rom.u8(record_address + UNRESOLVED_ASSEMBLY_GRID_Y_OFFSET)
+    grid_x = rom.u8(record_address + TERRAIN_FIELD_GRID_X_OFFSET)
+    grid_y = rom.u8(record_address + TERRAIN_FIELD_GRID_Y_OFFSET)
     targets: list[int] = []
     for index in range(grid_x * grid_y):
         address = rom.u32(
-            record_address + UNRESOLVED_ASSEMBLY_CHUNK_OFFSET + index * 4
+            record_address + TERRAIN_FIELD_CONTAINER_OFFSET + index * 4
         )
         if not rom.in_image(address):
             break
@@ -333,8 +370,9 @@ def read_unresolved_assembly_probe(rom: Rom, record_address: int) -> dict[str, i
         "grid_y": grid_y,
         "grid_product": grid_x * grid_y,
         "chunk_targets": len(targets),
-        "resident_slots": UNRESOLVED_ASSEMBLY_RESIDENT_SLOTS,
-        "chunk_decoded_bytes": UNRESOLVED_ASSEMBLY_CHUNK_BYTES,
+        "resident_slots": TERRAIN_FIELD_RESIDENT_SLOTS,
+        "chunk_decoded_bytes": TERRAIN_FIELD_CELL_BYTES,
+        "cell_pixels": TERRAIN_FIELD_CELL_PIXELS,
     }
 
 
@@ -471,10 +509,34 @@ class LayerRecord:
     chunk_y: int
     chunk_addresses: tuple[int, ...]
     null_chunk_count: int
+    #: The cell grid a terrain-field record states at its own `+0x04`/`+0x05`.
+    #: Held separately from `chunk_x`/`chunk_y` because on this record form those
+    #: two offsets carry unrelated bytes; see `read_layer`.
+    terrain_x: int = 0
+    terrain_y: int = 0
 
     @property
     def chunk_cells(self) -> int:
         return self.chunk_x * self.chunk_y
+
+    @property
+    def terrain_cells(self) -> int:
+        return self.terrain_x * self.terrain_y
+
+    @property
+    def terrain_grid_x(self) -> int:
+        """Cell-grid X count of a terrain-field record.
+
+        A terrain-field record states its grid at `+0x04`/`+0x05`, not at the
+        dominant form's `+0x14`/`+0x15`, so on this record form the dominant
+        chunk-grid fields carry unrelated bytes and are not published as a grid.
+        """
+        return self.terrain_x
+
+    @property
+    def terrain_grid_y(self) -> int:
+        """Cell-grid Y count of a terrain-field record; see `terrain_grid_x`."""
+        return self.terrain_y
 
     @property
     def classification(self) -> str:
@@ -494,12 +556,12 @@ class LayerRecord:
           plane is uploaded by method 1 of its type's descriptor, `0x080088E6`,
           from `record + 0x1C` to `0x0600E000 + slot * 0x800`. Both are static
           graphical layers and both render as a 256x256 screen-entry plane.
-        * `static_graphical_assembly_unresolved` (`0x080088BD`): the constructor
+        * `static_graphical_terrain_field` (`0x080088BD`): the constructor
           programs background registers and streams `record + 4` x `record + 5`
           containers of 0x400 decoded bytes each through a nine-slot resident
-          cache. The layer is graphical, but the pixel arrangement of a
-          0x400-byte container is not established, so it is recorded as
-          unresolved rather than guessed into an image.
+          cache. ASSET-EXPORT-MAP19-001 recovered the container geometry, so the
+          layer is renderable: each container is a 32x32 one-byte-per-pixel
+          raster and the containers lay out in raster order.
         """
         if self.handler == DOMINANT_LAYER_HANDLER:
             if self.chunk_x == 0 and self.chunk_y == 0:
@@ -511,14 +573,18 @@ class LayerRecord:
             return "absent_placeholder"
         if self.handler in SCREENBLOCK_HANDLERS:
             return "static_graphical_screenblock"
-        if self.handler == UNRESOLVED_ASSEMBLY_LAYER_HANDLER:
-            return "static_graphical_assembly_unresolved"
+        if self.handler == TERRAIN_FIELD_LAYER_HANDLER:
+            return "static_graphical_terrain_field"
         return "unclassified_handler"
 
     @property
     def renderable(self) -> bool:
         """Whether this exporter can render the slot to a deterministic image."""
-        return self.classification in ("dominant", "static_graphical_screenblock")
+        return self.classification in (
+            "dominant",
+            "static_graphical_screenblock",
+            "static_graphical_terrain_field",
+        )
 
     @property
     def resolved(self) -> bool:
@@ -542,15 +608,15 @@ class LayerRecord:
 
         `absent_placeholder` is the only class established as drawing nothing: it
         is a zero-dimension record with no payload. The dominant, screenblock and
-        unresolved-assembly classes all draw - the first two through a
-        decompressed screen-entry plane, the last through background-register
-        programming and a streaming chunk cache. An unresolved class establishes
-        neither, so this is false for it without asserting that it draws nothing.
+        terrain-field classes all draw - the first two through a decompressed
+        screen-entry plane, the last through background-register programming and a
+        streaming terrain-field cache. An unclassified class establishes neither,
+        so this is false for it without asserting that it draws nothing.
         """
         return self.classification in (
             "dominant",
             "static_graphical_screenblock",
-            "static_graphical_assembly_unresolved",
+            "static_graphical_terrain_field",
         )
 
     @property
@@ -593,13 +659,24 @@ def read_map_entries(rom: Rom) -> tuple[MapEntry, ...]:
 
 
 def read_layer(rom: Rom, root_address: int, slot: int) -> LayerRecord:
-    """Read one of a root's four layer slots at the accepted offsets."""
+    """Read one of a root's four layer slots at the accepted offsets.
+
+    The dominant form states its chunk grid at `+0x14`/`+0x15` and its chunk
+    window at `+0x18`. The terrain-field form states its cell grid at
+    `+0x04`/`+0x05` and its container run at `+0x08`, so its grid is read from
+    there into `terrain_x`/`terrain_y` and the dominant fields are left alone
+    rather than filled with the unrelated bytes those offsets happen to hold.
+    """
     record = rom.u32(root_address + ROOT_LAYER_SLOTS[slot])
     handler = rom.u32(record)
     chunk_x = rom.u8(record + LAYER_CHUNK_X_OFFSET)
     chunk_y = rom.u8(record + LAYER_CHUNK_Y_OFFSET)
+    terrain_x = terrain_y = 0
     addresses: list[int] = []
     nulls = 0
+    if handler == TERRAIN_FIELD_LAYER_HANDLER:
+        terrain_x = rom.u8(record + TERRAIN_FIELD_GRID_X_OFFSET)
+        terrain_y = rom.u8(record + TERRAIN_FIELD_GRID_Y_OFFSET)
     if handler == DOMINANT_LAYER_HANDLER:
         for cell in range(chunk_x * chunk_y):
             address = rom.u32(record + LAYER_CHUNK_WINDOW_OFFSET + cell * 4)
@@ -614,6 +691,8 @@ def read_layer(rom: Rom, root_address: int, slot: int) -> LayerRecord:
         chunk_y=chunk_y,
         chunk_addresses=tuple(addresses),
         null_chunk_count=nulls,
+        terrain_x=terrain_x,
+        terrain_y=terrain_y,
     )
 
 

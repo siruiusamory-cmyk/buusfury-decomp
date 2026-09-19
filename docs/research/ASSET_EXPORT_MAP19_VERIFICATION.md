@@ -11,10 +11,15 @@ FROZEN CONTENT REVISION: c01000953e2682918cc1f2d4e8071abbb5a2d1ba
               revision, reviewed and REJECTED)
 CORRECTED REVISION:      3529b80f6032c5a7bbb702bddc28802a6c04f441
               ("record the map 19 correction gate" - the tile-ordinal
-              correction, reviewed and REJECTED on documentation findings)
-FINAL REVISION:          c8cf6c6df40f555959c3ffe18943af015516e967
+              correction was bb0426d; this is its gate record. Reviewed and
+              REJECTED on documentation findings)
+PLACEMENT-PROVISIONAL REVISION: c8cf6c6df40f555959c3ffe18943af015516e967
               ("correct the map 19 engine claims and mark placement
-              provisional")
+              provisional" - reviewed and REJECTED on documentation findings)
+MODE/RECORD CORRECTION:  db52eaca5ceccb23d894900c3dad1280f42249c6
+              ("correct the map 19 mode and runtime register record")
+FINAL REVISION:          07a85b3652a6dd7cfc5eb4419ff2a862c8b8b7fe
+              ("record the map 19 reviewer re-reviews")
 BRANCH:       asset-export-map19-001
 COMMITS:      this ticket's own commits on top of the start SHA
 CANONICAL ROM SHA BEFORE: 940AD5F01DB4465B8877DFE739510CBF34F4EA3D390F3DF13519808BC36F059E
@@ -22,10 +27,10 @@ CANONICAL ROM SHA AFTER:  940AD5F01DB4465B8877DFE739510CBF34F4EA3D390F3DF1351980
 ```
 
 The commit history is: `c010009` (first freeze, rejected), `3bebe02` (inert
-dead-constant removal), `bb0426d` (the tile-ordinal correction, rejected on
-documentation findings), `3529b80f` (correction-gate record), `c8cf6c6` (the
-final revision: Reviewer A's second-pass findings closed and the composite
-placement marked provisional).
+dead-constant removal), `bb0426d` (the tile-ordinal correction), `3529b80f`
+(correction-gate record), `c8cf6c6` (engine claims corrected, placement marked
+provisional), `db52eac` (BGxCNT mode account and runtime register record
+corrected), `07a85b3` (review record).
 
 ## What the ticket set out to do
 
@@ -53,8 +58,8 @@ engine's own code fixes their shape and layout:
   ordinals the plane uses select a character-block tile that is more than half
   water (background-palette indices 83 and 177), the lowest such share being
   `35/64 = 0.546875`, while all 195 others select a tile at `0.375` or less - a
-  clean split whose plane-level water fraction falls from `0.619` to
-  `0.052`/`0.051`/`0.086` under three permuted ordinal assignments. Ordinal `2`
+  clean split whose plane-level water fraction is `0.6188` as read against a median
+  of `0.0981` over 200 seeded random ordinal permutations. Ordinal `2`
   alone (40.7 % of the plane) selects a tile that is 100 % water; `43`/`119` green
   land, `137` sand, `76`/`73` rock, `19` snow.
 
@@ -200,15 +205,18 @@ Required findings, all accepted and closed:
   placeholder - to `object + 0x08 + 4*i`, and `0xFF` to `object + 0x2C + 4*i`; the
   real slot buffers are installed by the driver at `0x08008688`..`0x08008698`.
   Reproduced from the ROM and corrected in the provenance.
-* **A9: the row-stride item was bounded wrongly.** Its premise was false: BG2CNT
-  `0xBE83` has bit 6 = 0, i.e. **text** mode, not affine, and its size field (`2`)
-  gives a 64-byte row in either mode (text `512x256` = 32 entries x 2 bytes; affine
-  `512x512` = 64 entries x 1 byte), so the `0x40` destination step *does*
-  reconcile with the control word. The earlier "does not reconcile" record is
-  withdrawn. What remains open is narrower and is stated as such: text versus
-  affine (the control word says text, yet the constructor's IRQ handler writes
-  `BG2PA`..`BG2PD` for VCOUNT 55..159, which only has effect in affine mode), and
-  how a byte-granular copy lands in a 16-bit-entry map.
+* **A9: the row-stride item was bounded wrongly.** Its premise was false: the
+  control word's size field (`2`) gives a 64-byte row, so the `0x40` destination
+  step *does* reconcile with it. The earlier "does not reconcile" record is
+  withdrawn. **This finding's reasoning was itself wrong and is superseded by
+  provenance §8:** `BGxCNT` bit 6 is the **mosaic** bit, not an affine selector, so
+  the control word does not say "text" at all - affine-ness comes from the DISPCNT
+  video mode. The text size this entry quoted, `512x256` = 32 entries x 2 bytes,
+  was size-field-1 geometry; size field 2 is `256x512` = `32 x 64` entries in text
+  mode and `512x512` = `64 x 64` entries in affine mode. What remains open is
+  DISPCNT's video mode for map 19 (from the per-map context field at `ctx + 0xA2`),
+  with the affine reading `INFERRED`, and how a byte-granular copy lands in a
+  16-bit-entry map if the mode is text.
 * **A10: the affine attribution over-claimed.** The 64-byte row follows from the
   size field, not from affine projection; the causal sentence is removed and the
   affine reading is labelled `INFERRED`.
@@ -323,8 +331,12 @@ control is stated as typical rather than universal, the origin overlay is descri
 as the 0.18 % corner it is, and the root extents are marked unreconciled. Its third
 nit identified a **pre-existing** mislabel (`0x04000200` is `REG_IE` bit 1, the
 HBlank interrupt, not `DISPSTAT` bit 1) present in the accepted text from
-`9154fed`; it is corrected in this revision and the correction is recorded here
-rather than applied silently.
+`9154fed`; it is corrected in the three files this ticket owns. The same mislabel
+also survives in the earlier ticket's records
+(`docs/research/ASSET_EXPORT_MAP_HANDLERS_PROVENANCE.md` and
+`docs/research/ASSET-EXPORT-MAP-HANDLERS-001-review.md`), which are outside this
+ticket's scope and are recorded here as a finding for a documentation sweep rather
+than edited.
 
 ### Correction gate
 
@@ -393,14 +405,20 @@ write and no input injection.
 frames run                900
 active_map_ptr            0x00000000   (no MapEntry loaded)
 DISPCNT                   0x00000200   (forced blank, mode 0)
-BG0CNT..BG3CNT            0x000078A3   (register noise outside an active mode)
-BG0HOFS..BG3VOFS          0x000078A3
-BG2PA..BG2PD              0x000078A3
 VCOUNT                    0x000000A0
+DISPSTAT                  0x00000019
+frame 900:  BG0CNT 0x0000  BG1CNT 0x1E83  BG2CNT 0x1F83  BG3CNT 0x0F83
+            BG0HOFS/BG0VOFS .. BG3HOFS/BG3VOFS   0x0001
+            BG2PA..BG2PD                          0x0001
+frame 300:  all scroll and affine registers         0xFFFB
 0x0600F000                ascending 0x0001, 0x0002, ... halfword ramp (boot VRAM)
-0x0600E000                distinct boot contents
+0x0600E000                the observer's own distinct boot contents
 screenshot frame 600      the game's title screen
 ```
+
+These are the values actually present in the retained capture. They are boot-state
+registers on a screen no map owns, so they are recorded raw and nothing is inferred
+from them.
 
 The session never left the title screen, so it is not map-19 evidence and no
 display-orientation inference is drawn from it.

@@ -755,10 +755,10 @@ def test_the_terrain_fields_payload_is_ordinals_not_palette_indices(
     If each byte were a palette index the byte would *be* the colour, and the tiles
     it happens to index need not be coherent. Here the split is clean: exactly 33
     of the 228 ordinals the plane uses select a tile that is more than half water
-    (background-palette indices 83 and 177), every one of them at a share of 0.547
-    or more, while all 195 others select a tile at 0.375 or less. That clean
-    separation is what establishes the unit, and it is a property of the ROM's own
-    data and character block - not of how the result looks.
+    (background-palette indices 83 and 177), the lowest such share being 35 of the
+    tile's 64 pixels, while all 195 others select a tile at 24 of 64 or less. That
+    clean separation is what establishes the unit, and it is a property of the ROM's
+    own data and character block - not of how the result looks.
     """
     from collections import Counter
 

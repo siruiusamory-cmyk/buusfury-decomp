@@ -23,8 +23,17 @@ START SHA:     c6821d450b475ec5d262f0b239b3f2dce8de6559
 FIRST FREEZE (REJECTED):    c01000953e2682918cc1f2d4e8071abbb5a2d1ba
 TILE-ORDINAL CORRECTION (REJECTED on documentation findings):
                             3529b80f6032c5a7bbb702bddc28802a6c04f441
-FINAL REVISION:             c8cf6c6df40f555959c3ffe18943af015516e967
+PLACEMENT-PROVISIONAL REVISION (REJECTED on documentation findings):
+                            c8cf6c6df40f555959c3ffe18943af015516e967
+MODE/RECORD CORRECTION:     db52eaca5ceccb23d894900c3dad1280f42249c6
+FINAL REVISION:             07a85b3652a6dd7cfc5eb4419ff2a862c8b8b7fe
 ```
+
+The commit history is: `c010009` (first freeze, rejected), `3bebe02` (inert
+dead-constant removal), `bb0426d` (the tile-ordinal correction), `3529b80f`
+(correction-gate record), `c8cf6c6` (engine claims corrected, placement marked
+provisional), `db52eac` (BGxCNT mode account and runtime register record
+corrected), `07a85b3` (review record).
 
 The record's own cell grid is **14 x 10 = 140**, and 140 is exactly the length of
 the container pointer run: the word after the last pointer (`+0x238`) is
@@ -160,13 +169,16 @@ this ticket replaced that reading (see §5).
   character-block tiles dominated by background-palette indices 83 and 177,
   `(24,140,255)` and `(33,165,231)`. The lowest share in that group is `35/64` =
   `0.546875` (ordinal 14), and the highest share outside it is `24/64` = `0.375`, so
-  the two classes are disjoint with a wide gap. The plane-level control is the
-  water fraction of the field under a permuted ordinal assignment: `0.619` as read,
-  against `0.052`, `0.051` and `0.086` for the permutations `+137 mod 539`, `+1` and
-  `+12345` respectively, and a mean of `14.0` of the 33 water ordinals over 200
-  random permutations. The control is typical rather than universal - the best of
-  those 200 permutations reaches 21 - because ordinal `2` alone is 40.7 % of the
-  plane and a permutation that maps it onto a water tile keeps that share. Ordinal
+  the two classes are disjoint with a wide gap. The plane-level control is the water
+  fraction of the field under a permuted ordinal assignment: `0.6188` as read,
+  against a **median of `0.0981`** (mean `0.1502`, range `0.0214`..`0.5824`) over
+  200 permutations drawn from `random.Random(20260918)` shuffles of the character
+  block's tile indices, and `0.0120`, `0.2776` and `0.0454` for the displacements
+  `+137 mod 539`, `+12345` and `538 - o`. The control is typical rather than
+  universal, and not every structured relabelling collapses: the displacement `+1`
+  reaches `0.5979`, and `*7+11 mod 539` reaches `0.4527`, because ordinal `2` alone
+  is 40.7 % of the plane and a relabelling that lands it on a water tile keeps much
+  of that share. Ordinal
   `2` alone - 40.7 % of the plane - selects a tile that is 100 % water; `43` and
   `119` select green land, `137` sand, `76`/`73` rock and `19` snow.
 * **Rendered result**: `448 x 320` tile ordinals, resolved at 8x8 pixels per tile
@@ -338,6 +350,15 @@ the source's `0x20` step is the 32-byte container row the copy covers. The strid
 therefore agrees with the control word, and there is no stride discrepancy left to
 record.
 
+**Supersession note.** The accepted `LOGX-TILE-001` records read the same size
+field `2` as `512x256` (`docs/research/LOGX_TILE_PROVENANCE.md`,
+`docs/reverse-engineering.md`, `docs/research/LOGX-TILE-001-review.md`). That is the
+size-field-`1` geometry; in text mode size `2` is `256x512` = `32 x 64` entries and
+in affine mode `512x512` = `64 x 64` entries, both 64 bytes on a row. The
+`256x512` reading is the one map 19's blit agrees with. Those documents belong to an
+earlier ticket and are not edited here; the discrepancy is recorded rather than
+silently reconciled.
+
 What remains genuinely open is narrower and is recorded as `UNRESOLVED`:
 
 * **DISPCNT's video mode for map 19.** That, not `BGxCNT`, selects affine
@@ -397,9 +418,12 @@ screen composition are different claims, and this document keeps them apart.
 * **The composite placement.** No map-19 runtime session was obtained (§6), so the
   origin-based placement and the resulting 3584x2560 composite are `PROVISIONAL`.
   The five readings §6 names are the missing evidence.
-* **Text versus affine, and how a byte-granular copy lands in a 16-bit-entry
-  map.** `G8` records both halves of what remains open on the destination. Neither
-  affects the layer's content, extent or ordinals.
+* **DISPCNT's video mode for map 19, and therefore text versus affine.** `BGxCNT`
+  does not select the mode; the scene's DISPCNT does, and it is read from a per-map
+  context field (`ctx + 0xA2`, stored at `0x0800941A`/`0x0800941C`) whose source is
+  not recovered here. The affine reading is `INFERRED` from the HBlank interrupt and
+  the per-scanline `BG2PA`..`BG2PD` writes. If the mode is text, it is also open how
+  a byte-granular `32 - m`-byte copy lands in a 16-bit-entry map.
 * **Whether map 19 is the flying world map**, and therefore whether the whole-field
   composite corresponds to any single displayed screen: `PARTIALLY CONFIRMED`
   (§9). The decisive runtime observation is missing.

@@ -165,8 +165,9 @@ residual container is exported.
     exactly 33 of the 228 ordinals the plane uses select a character-block tile
     that is more than half water (35 of its 64 pixels), the lowest such share being
     0.546875 and the highest share outside the group 0.375, while the other
-    195 select tiles at 0.375 or less, and the plane-level water fraction falls
-    from 0.619 to 0.05-0.09 under permuted ordinal assignments. The containers lay
+    195 select tiles at 0.375 or less, and the plane-level water fraction is 0.6188
+    as read against a median of 0.0981 over 200 seeded random ordinal
+    permutations. The containers lay
     out in raster order,
     container `y * grid_x + x` covering the cell at `(x * 32, y * 32)`, so the
     layer renders as `32 * grid_x * 8` by `32 * grid_y * 8` pixels. One canonical

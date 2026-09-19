@@ -53,7 +53,7 @@ EXPECTED_SCREENBLOCK_CONTAINER_OFFSETS = {
 }
 #: Handler `0x080088BD` carries one record whose container geometry
 #: ASSET-EXPORT-MAP19-001 recovered: 140 containers of 0x400 decoded bytes laid
-#: out as a 14 x 10 cell grid of 32x32 one-byte-per-pixel cells.
+#: out as a 14 x 10 cell grid of 32x32 planes of 8-bit tile ordinals.
 EXPECTED_TERRAIN_FIELD_LAYER_HANDLER = 0x080088BD
 #: `0x08007B63`'s constructor decompresses the same plane into a second 0x800-byte
 #: object buffer from this field. The exporter reads `+0x04`; the two agree on the
@@ -1431,6 +1431,14 @@ def test_the_written_tree_gives_every_map_a_directory_and_a_record(
     assert written_map19["composite_status"] == "produced"
     assert written_map19["composite_width"] == 3584
     assert written_map19["composite_height"] == 2560
+    # The placement model is inferred and unvalidated at runtime, and every
+    # composite says so rather than being reported as runtime-validated.
+    assert written_map19["composite_placement_model"] == (
+        export.COMPOSITE_PLACEMENT_MODEL
+    )
+    assert written_map19["composite_runtime_status"] == (
+        "provisional_runtime_capture_unavailable"
+    )
     assert {
         gate["key"]: gate["accounted"]
         for gate in written.count_document()["gates"]

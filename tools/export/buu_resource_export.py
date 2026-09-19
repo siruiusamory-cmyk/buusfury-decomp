@@ -83,6 +83,14 @@ PALETTE_BACKGROUND_ID = 1
 #: recorded beside it so the difference stays visible.
 BACKDROP_PALETTE_INDEX = 0
 
+#: The composite placement rule the exporter applies, named so a record can state
+#: which model its image came from. It is a pre-existing `INFERRED` rule: every
+#: layer is drawn at the canvas origin in the documented `(bg_control_addend, bg)`
+#: order, with no layer X/Y offset. `ASSET-EXPORT-MAP19-001` attempted a runtime
+#: validation of it and could not obtain a map-19 session, so composites are
+#: written with `composite_runtime_status` saying which of the two they are.
+COMPOSITE_PLACEMENT_MODEL = "origin_aligned_descending_addend_bg"
+
 #: The accepted populations this export must account for exactly.
 EXPECTED_POPULATIONS = {
     "map_entries": 452,
@@ -360,7 +368,12 @@ class Exporter:
     """Produces the resource library and its audit directory."""
 
     def __init__(
-        self, rom: canon.Rom, output_root: Path, audit_root: Path
+        self,
+        rom: canon.Rom,
+        output_root: Path,
+        audit_root: Path,
+        *,
+        runtime_placement_validated: bool = False,
     ) -> None:
         self.rom = rom
         self.output_root = output_root
@@ -369,6 +382,13 @@ class Exporter:
         self.counters: dict[str, int] = {}
         self.references: dict[str, object] = {}
         self.started = time.monotonic()
+        #: Whether the composite placement model has been validated against a
+        #: runtime session. It is a pre-existing `INFERRED` rule - every layer is
+        #: drawn at the canvas origin in the documented `(addend, bg)` order - and
+        #: it has not been observed in a running engine, so composites that depend
+        #: on it carry that state explicitly rather than being reported as
+        #: runtime-validated. See `ASSET_EXPORT_MAP19_PROVENANCE.md` sections 6-7.
+        self.runtime_placement_validated = runtime_placement_validated
 
         self.writer = Writer(output_root, enabled=True)
         self.subsystems: set[str] = set()
@@ -538,7 +558,8 @@ class Exporter:
         * `static_graphical_screenblock` - the 1024-entry plane collected for the
           record, rendered against the map's own character block, 256x256.
         * `static_graphical_terrain_field` - the record's own containers, each a
-          32x32 one-byte-per-pixel cell laid out in raster order.
+          32x32 plane of 8-bit tile ordinals laid out in raster order and resolved
+          through the map's assembled character block.
 
         The dominant form assembles from its chunks' rendered images. A chunk
         image is cached per ``(container, map)`` and copied in 256 rows at a time,
@@ -1025,6 +1046,17 @@ class Exporter:
                         "composite_backdrop_rgb": list(self.backdrop_rgb),
                         "composite_image": relative,
                         "composite_sha256": artifact.sha256,
+                        # The placement model is a pre-existing inferred rule, so
+                        # every composite states whether it has been validated
+                        # against a runtime session. A provisional composite is
+                        # still written: what is provisional is the placement
+                        # claim, not the layer pixels it is built from.
+                        "composite_placement_model": COMPOSITE_PLACEMENT_MODEL,
+                        "composite_runtime_status": (
+                            "runtime_validated"
+                            if self.runtime_placement_validated
+                            else "provisional_runtime_capture_unavailable"
+                        ),
                     }
                 )
             else:
@@ -1899,6 +1931,15 @@ def build_parser() -> argparse.ArgumentParser:
                         help="write into a non-empty output root")
     parser.add_argument("--compare", type=Path, default=None,
                         help="diff an earlier export root against this run")
+    parser.add_argument(
+        "--runtime-placement-validated",
+        action="store_true",
+        help=(
+            "record the composites as validated against a runtime session. It is "
+            "off by default because the placement model has not been observed in "
+            "a running engine; without it every composite is written as provisional"
+        ),
+    )
     return parser
 
 
@@ -1942,7 +1983,12 @@ def _export(args: argparse.Namespace) -> int:
     digest_before = sha256_bytes(rom_bytes)
 
     every = args.all or not (args.maps or args.tiles or args.sprites)
-    exporter = Exporter(canon.Rom(rom_bytes), output_root, audit_root)
+    exporter = Exporter(
+        canon.Rom(rom_bytes),
+        output_root,
+        audit_root,
+        runtime_placement_validated=args.runtime_placement_validated,
+    )
     exporter.run(
         maps=every or args.maps,
         tiles=every or args.tiles,
@@ -1953,6 +1999,7 @@ def _export(args: argparse.Namespace) -> int:
             "tiles": every or args.tiles,
             "sprites": every or args.sprites,
             "audit_only": args.audit_only,
+            "runtime_placement_validated": args.runtime_placement_validated,
         },
         rom_sha256=digest_before,
         foreign_entries=foreign,

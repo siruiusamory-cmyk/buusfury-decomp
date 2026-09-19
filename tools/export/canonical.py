@@ -593,9 +593,10 @@ class LayerRecord:
         * `static_graphical_terrain_field` (`0x080088BD`): the constructor
           programs background registers and streams `record + 4` x `record + 5`
           containers of 0x400 decoded bytes each through a nine-slot resident
-          cache. ASSET-EXPORT-MAP19-001 recovered the container geometry, so the
-          layer is renderable: each container is a 32x32 one-byte-per-pixel
-          raster and the containers lay out in raster order.
+          cache. ASSET-EXPORT-MAP19-001 recovered what they hold, so the layer is
+          renderable: each container is a 32x32 plane of 8-bit tile ordinals that
+          resolve through the owning map's assembled character block, and the
+          containers lay out in raster order.
         """
         if self.handler == DOMINANT_LAYER_HANDLER:
             if self.chunk_x == 0 and self.chunk_y == 0:

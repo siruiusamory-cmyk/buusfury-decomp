@@ -184,6 +184,17 @@ residual container is exported.
   `cell_grid_y`, `cell_grid_cells`, `cell_tiles`, `tile_grid_x` and
   `tile_grid_y`, with the ordinal census as `tile_ordinal_min`,
   `tile_ordinal_max` and `distinct_tile_ordinals`.
+  A composite is a composition rule applied to those layers, and the rule is
+  `INFERRED`: every layer is drawn at the canvas origin in the documented
+  `(bg_control_addend, bg)` order, with no layer X/Y offset. ASSET-EXPORT-MAP19-001
+  attempted a runtime validation of that rule and could not obtain a map-19
+  session, so every composite states which it is: `composite_placement_model`
+  names the rule and `composite_runtime_status` is
+  `provisional_runtime_capture_unavailable` unless the run passed
+  `--runtime-placement-validated`. A provisional composite is still written - what
+  is provisional is the placement claim, not the layer pixels. The count to quote
+  is therefore "452 composites produced, 452 structurally justified, 0 withheld",
+  not "452/452 runtime-validated".
   A null chunk pointer inside a dominant layer contributes screen entry 0, the
   value the engine's own occupancy test treats as unoccupied, so nothing is drawn
   there. The accepted record set has an internal null in 117 of the 1,420 dominant

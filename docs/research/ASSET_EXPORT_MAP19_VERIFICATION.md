@@ -155,7 +155,56 @@ generic helper still needs its own follow-up ticket.
 
 ## Independent review
 
-### Reviewer A - engine/assembly
+### Reviewer A - second pass at the corrected revision
+
+```text
+VERDICT: REJECT
+```
+
+Reviewed revision `3529b80f`. The three original blockers were confirmed closed:
+A1 (the payload is a 32x32 tile-ordinal plane), A2 (the destination literal is
+`0x0600F000`, `0x06008000` has zero hits in the image, the count pair computes
+`(32 - m) / 2` halfwords under a `0x8000` control = `32 - m` bytes, `0x040000D4`
+is DMA3SAD, and in all nine blocks the `0x20` advance is the source register and
+the `0x40` the destination register), A3, A4, A5 and A6. The reviewer reproduced
+the record chain, the container run, the plane digest, the ordinal population, the
+character block, the semantic split, both artifacts' digests and a `git archive`
+test run, and confirmed the correction history is preserved and reachable through
+`git show c010009`.
+
+Required findings, all accepted and closed:
+
+* **A7: the falsified one-byte-per-pixel unit survived in three places**
+  (`canonical.py` class docstring, `buu_resource_export.py` `render_layer`
+  docstring, and the integration-test constant comment). Independent review found
+  these by the ticket's own "no stale unit" criterion. All three are corrected.
+* **A8: the constructor description was wrong.** The nine-slot init writes the
+  constant `0x08071020` - a stored 0x400-byte all-zero ROM cell, the "no cell"
+  placeholder - to `object + 0x08 + 4*i`, and `0xFF` to `object + 0x2C + 4*i`; the
+  real slot buffers are installed by the driver at `0x08008688`..`0x08008698`.
+  Reproduced from the ROM and corrected in the provenance.
+* **A9: the row-stride item was bounded wrongly.** Its premise was false: BG2CNT
+  `0xBE83` has bit 6 = 0, i.e. **text** mode, not affine, and its size field (`2`)
+  gives a 64-byte row in either mode (text `512x256` = 32 entries x 2 bytes; affine
+  `512x512` = 64 entries x 1 byte), so the `0x40` destination step *does*
+  reconcile with the control word. The earlier "does not reconcile" record is
+  withdrawn. What remains open is narrower and is stated as such: text versus
+  affine (the control word says text, yet the constructor's IRQ handler writes
+  `BG2PA`..`BG2PD` for VCOUNT 55..159, which only has effect in affine mode), and
+  how a byte-granular copy lands in a 16-bit-entry map.
+* **A10: the affine attribution over-claimed.** The 64-byte row follows from the
+  size field, not from affine projection; the causal sentence is removed and the
+  affine reading is labelled `INFERRED`.
+* **A11: the corrected freeze SHA was recorded nowhere.** The identity block now
+  names the start SHA, the rejected revision and the corrected revision.
+
+Nits accepted: the quoted listing's addresses were one instruction early (the
+`mov r6,lr` / `mov r6,ip` moves were dropped) and are corrected to
+`0x08008270`/`0x08008274`/`0x08008282`/`0x08008288`; the count comment now reads
+`((32 - m) << 15) >> 16`; "nine structurally identical blocks" now states the two
+clip variants; and the terrain-classification sentence is labelled `INFERRED`.
+
+### Reviewer A - engine/assembly (first pass at the frozen revision)
 
 ```text
 VERDICT: REJECT
@@ -249,6 +298,117 @@ the accepted library is unchanged (2 added, 0 removed, 2 changed, nothing outsid
 map 19), the map-side export is byte-identical across two independent runs, the
 two artifacts are fully opaque and pinned by file and index-image digest, and the
 corrected layer and composite were inspected as images.
+
+## World-map hypothesis
+
+The human observation that map 19 is the flying world map was tested against the
+ROM and classified **`PARTIALLY CONFIRMED`** - never on visual resemblance, which
+is recorded as a lead only. Established: the `0x080088BD` handler occurs exactly
+once in the image so the terrain field is one-off; the field is 448x320 tile
+ordinals = 3584x2560 pixels, far beyond one screen; its ordinals resolve to
+terrain types (`INFERRED`); it is drawn through BG2 (`0xBE83`: priority 3, map
+base 30, 256-colour) with `BG2PA`..`BG2PD` written per scanline for VCOUNT
+55..159; map 19's declared root extents (3345x2401) are the largest of the 55
+distinct extent pairs across all 452 maps; and the driver streams a nine-cell 3x3
+window over a 14x10 grid, so the engine copies a **window** of the field rather
+than holding it whole. Not established, and therefore not claimed: that the
+overworld scene displays this map, and that player flight drives the viewport -
+both need the runtime observation this ticket could not obtain.
+
+The consequence is recorded plainly: **resource completeness** and **runtime
+screen composition** are different claims. `maps/map_019/layer_2.png` is complete
+and accepted as a resource; a 3584x2560 `composite.png` is a derived utility
+artifact, not a plane the hardware displays whole, and its placement is
+provisional.
+
+## Gate 2 - runtime placement validation
+
+**Status: COMPOSITE_PROVISIONAL_RUNTIME_CAPTURE_UNAVAILABLE.**
+
+**Method.** The project's pinned emulator was used, not another static parser:
+mGBA 0.10.5 at `build/tools/mgba-0.10.5/extracted/mGBA-0.10.5-win64/mGBA.exe`,
+`FileVersion 0.10.5.0`, SHA-256
+`5A3C98C2984DD04BD0D7C9378CDFAE937AE0D73A196C880BB2EECF3B254AF247`, against the
+canonical ROM with its local save, in an isolated portable profile
+(`savegamePath`/`savestatePath`/`screenshotPath` all outside the repository).
+A read-only observer, `tools/runtime/map19_bg_placement.lua`, was injected
+through the tracked `tools/runtime/inject_mgba_lua.ps1` path and ran 900 emulated
+frames, recording `DISPCNT`, `BG0CNT..BG3CNT`, the background scroll and affine
+registers, the active-map pointer, the raw bytes of `0x0600F000` and
+`0x0600E000`, and mGBA's own screenshots. The observer performs no emulated-memory
+write and no input injection.
+
+**Observed.**
+
+```text
+frames run                900
+active_map_ptr            0x00000000   (no MapEntry loaded)
+DISPCNT                   0x00000200   (forced blank, mode 0)
+BG0CNT..BG3CNT            0x000078A3   (register noise outside an active mode)
+BG0HOFS..BG3VOFS          0x000078A3
+BG2PA..BG2PD              0x000078A3
+VCOUNT                    0x000000A0
+0x0600F000                ascending 0x0001, 0x0002, ... halfword ramp (boot VRAM)
+0x0600E000                distinct boot contents
+screenshot frame 600      the game's title screen
+```
+
+The session never left the title screen, so it is not map-19 evidence and no
+display-orientation inference is drawn from it.
+
+**Why map 19 was not reached.** The local `roms/*.sav` is a save image, not a
+savestate: reaching map 19 from it requires the title/load menus to be driven with
+deterministic input, and no savestate already inside map 19 exists in this
+environment (the tracked states are P-002 / placement-pos / ROM-006 captures on
+other maps). The tracked GDB client is read-only by design, so the active-map
+pointer cannot be forced either. The observer's input path works
+(`emu:setKeys`), but driving an unknown menu path reliably is outside this
+ticket's scope.
+
+**Missing evidence, stated exactly.** One map-19 session reading: `DISPCNT`'s mode
+and enabled backgrounds; `BG2CNT` as the background programmer writes it;
+`BG2HOFS`/`BG2VOFS`; `BG2PA..BG2PD` sampled inside the VCOUNT 55..159 window the
+IRQ handler writes; and `0x0600F000` compared byte-for-byte with the ROM-derived
+ordinal plane. Those five readings settle which background displays the field,
+whether the whole 448x320 plane is ever resident, and whether the placement is a
+whole-layer blit or a windowed view.
+
+**Consequence.** `maps/map_019/layer_2.png` (3584x2560) is accepted. The
+composite rule is a pre-existing `INFERRED` model, and the placement dimension is
+not validated, so:
+
+* every composite now carries `composite_placement_model` and
+  `composite_runtime_status` in `map.json`; without
+  `--runtime-placement-validated` that status is
+  `provisional_runtime_capture_unavailable`;
+* map 19's composite is **provisional**, and the pipeline does not claim
+  452/452 composites runtime-validated. The 452 composites remain structurally
+  justified - no layer is withheld and no layer is silently omitted - which is a
+  different claim from runtime placement.
+
+## Runtime tooling change
+
+One tracked file changed for the runtime attempt:
+`tools/runtime/inject_mgba_lua.ps1` gained one additive allowlist entry for
+`tools/runtime/map19_bg_placement.lua`, which is the repository's documented way
+to add a runtime observer (`tools/runtime/README.md`: "Add new files; never tidy
+old names"). The entry was spliced into the byte stream rather than written
+through a text round-trip, because that file mixes CRLF and bare-LF lines and a
+normalising write made `git diff --check` flag every touched line; the resulting
+diff is six added lines and nothing else. The observer itself is new and
+read-only. No launcher, client or GBA-tooling behaviour was altered, and the
+generic Thumb helper was not touched.
+
+## Validation after the placement change
+
+```text
+PORTABLE TESTS:     1789 passed, 8 skipped (`pytest tests/unit`)
+ROM-GATED TESTS:    81 passed (`pytest tests/integration/test_asset_export_rom.py`)
+DETERMINISM:        PASS (two independent full exports; the map side is
+                    byte-identical and the change is confined to map.json)
+UNRELATED PNG CHANGES: 0
+DIFF CHECK:         `git diff --check` clean
+```
 
 ## stopping point
 

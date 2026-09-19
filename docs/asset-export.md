@@ -157,12 +157,17 @@ residual container is exported.
   * `0x080088BD` (`static_graphical_terrain_field`) - constructor `0x080080C0`
     sets `DISPSTAT` bit 1 and clears `BG2PB`/`BG2PD`, then streams
     `record + 4` x `record + 5` containers of 0x400 decoded bytes through a
-    nine-slot resident cache. ASSET-EXPORT-MAP19-001 recovered the container
-    geometry, so the form renders: each container is a 32x32 one-byte-per-pixel
-    cell - 32 bytes per raster row, one palette index per pixel - and the
-    containers lay out in raster order, container `y * grid_x + x` at
-    `(x * 32, y * 32)`, giving a `32 * grid_x` by `32 * grid_y` image. One
-    canonical record (map 19, slot 2), 14 x 10 cells, 448x320 pixels.
+    nine-slot resident cache. ASSET-EXPORT-MAP19-001 recovered what they hold: a
+    32x32 plane of 8-bit **tile ordinals**, 32 ordinals per raster row, which the
+    map's own assembled character block resolves at 8x8 pixels each. The ordinal
+    reading is established by the payload's semantics rather than its shape:
+    exactly 33 of the 228 ordinals the plane uses select a character-block tile
+    that is more than half water, all at a share of 0.547 or more, while the other
+    195 select tiles at 0.375 or less, and the same measurement over a permuted
+    ordinal assignment collapses. The containers lay out in raster order,
+    container `y * grid_x + x` covering the cell at `(x * 32, y * 32)`, so the
+    layer renders as `32 * grid_x * 8` by `32 * grid_y * 8` pixels. One canonical
+    record (map 19, slot 2), 14 x 10 cells, 3584x2560 pixels.
   A composite is withheld only for a class the exporter can name: a slot that is
   graphical but cannot be assembled, or a record form the classification does not
   account for at all - which is refused explicitly rather than rendered. Every
@@ -173,10 +178,12 @@ residual container is exported.
   are the chunk grid on the dominant form; on the screen-entry and terrain-field
   forms the same offsets hold unrelated bytes - on `0x0800897B` the low halfword of
   a 32-bit scale the object's method 2 reads, and on the canonical `0x080088BD`
-  record the pair 48/251 - so those records publish no chunk-grid field at all
-  rather than a refuted reading. The terrain-field form states its own cell grid at
-  `+0x04`/`+0x05` and publishes it as `cell_grid_x`, `cell_grid_y` and
-  `cell_grid_cells`.
+  record two bytes of the container pointer run - so those records publish no
+  chunk-grid field at all rather than a refuted reading. The terrain-field form
+  states its own cell grid at `+0x04`/`+0x05` and publishes it as `cell_grid_x`,
+  `cell_grid_y`, `cell_grid_cells`, `cell_tiles`, `tile_grid_x` and
+  `tile_grid_y`, with the ordinal census as `tile_ordinal_min`,
+  `tile_ordinal_max` and `distinct_tile_ordinals`.
   A null chunk pointer inside a dominant layer contributes screen entry 0, the
   value the engine's own occupancy test treats as unoccupied, so nothing is drawn
   there. The accepted record set has an internal null in 117 of the 1,420 dominant

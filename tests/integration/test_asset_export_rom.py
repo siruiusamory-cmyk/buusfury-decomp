@@ -114,8 +114,10 @@ EXPECTED_TERRAIN_FIELD_SLOT = 2
 EXPECTED_TERRAIN_FIELD_GRID = (14, 10)
 EXPECTED_TERRAIN_FIELD_CONTAINERS = 140
 EXPECTED_TERRAIN_FIELD_CELL_BYTES = 1024
-EXPECTED_TERRAIN_FIELD_CELL_PIXELS = 32
-EXPECTED_TERRAIN_FIELD_DIMENSIONS = (448, 320)
+EXPECTED_TERRAIN_FIELD_CELL_TILES = 32
+#: 14 x 10 cells of 32x32 tiles = 448x320 tiles = 3584x2560 pixels at 8x8.
+EXPECTED_TERRAIN_FIELD_TILE_GRID = (448, 320)
+EXPECTED_TERRAIN_FIELD_DIMENSIONS = (3584, 2560)
 EXPECTED_WITHHELD_COMPOSITES: dict[int, str] = {}
 
 #: Maps whose layers include an uploaded screen-entry plane, and the one map
@@ -210,25 +212,45 @@ EXPECTED_MAP_LAYER_SHA256 = {
 
 EXPECTED_MAP_COMPOSITE_SHA256 = {
     0: "ff02d371c5f49035701c3a8d7e5bc178ae7ddd6433c066b5053e6cbcc5117407",
-    19: "deb8fec4fe627b78f8feaeed8a9d69759eaf967b2195bf240d5c288a73a2d170",
+    19: "2ece490ffb793be9a15e4a176ab70fad1a45526793a9a39a85827429af4cfeec",
     39: "35d3b51f0929a9d1d408786b651b314f1458028f4a5d9ae1440d8ba78388ed2b",
     40: "21985e5c58150499b13c29696cabadd84956708e7f901b2b6ceb2c9bd6c70f9d",
     125: "718fdc0c8c44f340ec1ee5b16186067a6cdbf64b6a8519d925b353368ad15cbf",
 }
 
+#: PNG file digests for the same composites, as written to disk.
+EXPECTED_MAP_COMPOSITE_FILE_SHA256 = {
+    19: "827fd0688ff90da36471aa302aa7b6de9c6017bf12368c8c7dc4c668b42c5c66",
+}
+
 EXPECTED_MAP_COMPOSITE_SIZE = {
     0: (1280, 256),
-    19: (448, 320),
+    19: (3584, 2560),
     39: (1024, 512),
     40: (512, 512),
     125: (256, 512),
 }
 
-#: Map 19's recovered terrain field, pinned by pixel digest and size. It is the
-#: only record of its handler, so this is the whole population of that form.
-EXPECTED_TERRAIN_FIELD_SHA256 = (
+#: Map 19's recovered terrain field, pinned as an ordinal plane and as the image
+#: its ordinals resolve to through the map's own character block. It is the only
+#: record of its handler, so this is the whole population of that form.
+EXPECTED_TERRAIN_FIELD_PLANE_SHA256 = (
     "883f6db20c3b908eb61e7d7bcd0c16fade994e184e95c8d3118d85cbbc4976ec"
 )
+EXPECTED_TERRAIN_FIELD_SHA256 = (
+    "fc7eca6dc1fdefe8518cc49f46f51281d87529215d15032d4fdf6dbdcf252935"
+)
+EXPECTED_TERRAIN_FIELD_FILE_SHA256 = (
+    "900d7e0c4a4cc7dd3f2719c5ba600cff750fa4fc6b5a35de81bad9e88b2adaee"
+)
+EXPECTED_TERRAIN_FIELD_ORDINAL_RANGE = (1, 228)
+EXPECTED_TERRAIN_FIELD_DISTINCT_ORDINALS = 228
+#: The background-palette indices the map's water tiles are drawn with, and the
+#: number of ordinals the plane uses that select a tile more than half water. This
+#: split is what establishes that a byte is a tile ordinal rather than a palette
+#: index; see the discriminating test below.
+WATER_PALETTE_INDICES = (83, 177)
+EXPECTED_TERRAIN_FIELD_WATER_ORDINALS = 33
 
 EXPECTED_CHUNK_SHA256 = {
     0x08179A50: "aacfe538786cf8140fc69280a0db4986a15c26f5dce83d7f433c06e14340f6af",
@@ -633,15 +655,22 @@ def test_the_terrain_field_record_is_read_structurally(
     assert probe["chunk_targets"] == EXPECTED_TERRAIN_FIELD_CONTAINERS
     assert probe["grid_product"] == EXPECTED_TERRAIN_FIELD_CONTAINERS
     assert probe["chunk_decoded_bytes"] == EXPECTED_TERRAIN_FIELD_CELL_BYTES
-    assert probe["cell_pixels"] == EXPECTED_TERRAIN_FIELD_CELL_PIXELS
+    assert probe["cell_tiles"] == EXPECTED_TERRAIN_FIELD_CELL_TILES
     assert probe["resident_slots"] == canon.TERRAIN_FIELD_RESIDENT_SLOTS
     # The grid the record states at its own `+0x04`/`+0x05` is the cell grid; the
-    # dominant form's `+0x14`/`+0x15` hold unrelated bytes on this record, so they
-    # are not the grid and are not published as one.
+    # dominant form's `+0x14`/`+0x15` hold unrelated bytes on this record - two
+    # bytes of the container pointer run, reading as 48 x 251 - so they are not the
+    # grid and are not published as one.
     assert (layer.terrain_grid_x, layer.terrain_grid_y) == (
         EXPECTED_TERRAIN_FIELD_GRID
     )
     assert layer.terrain_cells == EXPECTED_TERRAIN_FIELD_CONTAINERS
+    assert (layer.terrain_tiles_x, layer.terrain_tiles_y) == (
+        EXPECTED_TERRAIN_FIELD_TILE_GRID
+    )
+    assert (layer.terrain_pixels_x, layer.terrain_pixels_y) == (
+        EXPECTED_TERRAIN_FIELD_DIMENSIONS
+    )
 
 
 def test_the_terrain_field_containers_decode_at_their_declared_size(
@@ -658,35 +687,112 @@ def test_the_terrain_field_containers_decode_at_their_declared_size(
         assert container.declared_size == EXPECTED_TERRAIN_FIELD_CELL_BYTES
 
 
-def test_the_terrain_field_renders_from_its_own_containers(
+def test_the_terrain_field_plane_places_every_cell_at_its_own_raster_position(
     exporter: export.Exporter,
 ) -> None:
-    """The recovered geometry renders one 448x320 image from the 140 containers.
+    """Container `y * grid_x + x` supplies the 32x32-tile cell at `(x*32, y*32)`.
 
-    Container `y * grid_x + x` supplies the 32x32 cell at `(x * 32, y * 32)`;
-    every container is one byte per pixel with 32 bytes per raster row, and no
-    ordinal is involved, so the map's character block plays no part.
+    The plane is pinned by digest as a whole, which is what makes a misplaced cell
+    detectable; the per-cell checks below name the same fact directly.
     """
     layer = exporter.layers[EXPECTED_TERRAIN_FIELD_MAP][
         EXPECTED_TERRAIN_FIELD_SLOT
     ]
-    containers = exporter.terrain_field_containers[layer.address]
-    assert len(containers) == EXPECTED_TERRAIN_FIELD_CONTAINERS
+    cells = exporter.terrain_field_cells[layer.address]
+    assert len(cells) == EXPECTED_TERRAIN_FIELD_CONTAINERS
+    width, height, plane = render.read_terrain_field_plane(
+        cells, layer.terrain_grid_x, layer.terrain_grid_y
+    )
+    assert (width, height) == EXPECTED_TERRAIN_FIELD_TILE_GRID
+    assert len(plane) == width * height
+    assert digest(plane) == EXPECTED_TERRAIN_FIELD_PLANE_SHA256
+    cell = canon.TERRAIN_FIELD_CELL_TILES
+    row_bytes = canon.TERRAIN_FIELD_CELL_BYTES // cell
+    assert plane[0] == cells[0][0]
+    assert plane[cell - 1] == cells[0][row_bytes - 1]
+    last = len(cells) - 1
+    at_x = (last % layer.terrain_grid_x) * cell
+    at_y = (last // layer.terrain_grid_x) * cell
+    assert plane[at_y * width + at_x] == cells[last][0]
+    ordinals = set(plane)
+    assert (min(ordinals), max(ordinals)) == EXPECTED_TERRAIN_FIELD_ORDINAL_RANGE
+    assert len(ordinals) == EXPECTED_TERRAIN_FIELD_DISTINCT_ORDINALS
+    # Every ordinal must resolve inside the map's own assembled character block,
+    # which is the structural check that makes the plane renderable at all.
+    block = exporter.char_blocks[EXPECTED_TERRAIN_FIELD_MAP]
+    assert 0 not in ordinals
+    assert max(ordinals) < block.tile_count
+
+
+def test_the_terrain_field_resolves_its_ordinals_through_the_maps_char_block(
+    exporter: export.Exporter,
+) -> None:
+    """The rendered field is 3584x2560 and pinned by digest.
+
+    Each byte of a container is an 8-bit tile ordinal, not a palette index, so the
+    image is the ordinal plane resolved through the owning map's own assembled 539
+    tile character block - the same block the dominant and screen-entry layers use.
+    """
+    layer = exporter.layers[EXPECTED_TERRAIN_FIELD_MAP][
+        EXPECTED_TERRAIN_FIELD_SLOT
+    ]
+    cells = exporter.terrain_field_cells[layer.address]
+    block = exporter.char_blocks[EXPECTED_TERRAIN_FIELD_MAP]
     width, height, pixels = render.render_terrain_field(
-        containers, layer.terrain_grid_x, layer.terrain_grid_y
+        cells, layer.terrain_grid_x, layer.terrain_grid_y, block.data
     )
     assert (width, height) == EXPECTED_TERRAIN_FIELD_DIMENSIONS
     assert len(pixels) == width * height
-    # Every cell is placed at its own raster position: check one byte of the
-    # first cell against the container it came from, and one byte of the last.
-    cell = canon.TERRAIN_FIELD_CELL_PIXELS
-    row_bytes = canon.TERRAIN_FIELD_CELL_BYTES // cell
-    assert pixels[0] == containers[0][0]
-    assert pixels[cell - 1] == containers[0][row_bytes - 1]
-    last = len(containers) - 1
-    at_x = (last % layer.terrain_grid_x) * cell
-    at_y = (last // layer.terrain_grid_x) * cell
-    assert pixels[at_y * width + at_x] == containers[last][0]
+    assert digest(pixels) == EXPECTED_TERRAIN_FIELD_SHA256
+    assert pixels == exporter.render_layer(layer, EXPECTED_TERRAIN_FIELD_MAP)
+
+
+def test_the_terrain_fields_payload_is_ordinals_not_palette_indices(
+    exporter: export.Exporter,
+) -> None:
+    """The discriminating measurement: an ordinal selects a coherent tile.
+
+    If each byte were a palette index the byte would *be* the colour, and the tiles
+    it happens to index need not be coherent. Here the split is clean: exactly 33
+    of the 228 ordinals the plane uses select a tile that is more than half water
+    (background-palette indices 83 and 177), every one of them at a share of 0.547
+    or more, while all 195 others select a tile at 0.375 or less. That clean
+    separation is what establishes the unit, and it is a property of the ROM's own
+    data and character block - not of how the result looks.
+    """
+    from collections import Counter
+
+    layer = exporter.layers[EXPECTED_TERRAIN_FIELD_MAP][
+        EXPECTED_TERRAIN_FIELD_SLOT
+    ]
+    cells = exporter.terrain_field_cells[layer.address]
+    _w, _h, plane = render.read_terrain_field_plane(
+        cells, layer.terrain_grid_x, layer.terrain_grid_y
+    )
+    block = exporter.char_blocks[EXPECTED_TERRAIN_FIELD_MAP]
+    tile = canon.TILE_PIXELS * canon.TILE_PIXELS
+    counts = Counter(plane)
+
+    def water_share(ordinal: int) -> float:
+        data = block.data[ordinal * tile : (ordinal + 1) * tile]
+        colours = Counter(data)
+        return sum(colours[index] for index in WATER_PALETTE_INDICES) / tile
+
+    water = [ordinal for ordinal in counts if water_share(ordinal) >= 0.5]
+    land = [ordinal for ordinal in counts if water_share(ordinal) < 0.5]
+    assert len(water) == EXPECTED_TERRAIN_FIELD_WATER_ORDINALS
+    assert len(water) + len(land) == EXPECTED_TERRAIN_FIELD_DISTINCT_ORDINALS
+    assert min(water_share(o) for o in water) >= 0.54
+    assert max(water_share(o) for o in land) <= 0.38
+    # Two thirds of the plane's pixels select a water tile, which is what a world
+    # map's landmass-in-ocean reading requires.
+    water_pixels = sum(counts[o] for o in water)
+    assert water_pixels / len(plane) > 0.6
+    # The same measure under a permuted ordinal assignment has no separation at
+    # all, which is the control that makes the split above meaningful.
+    rotated = {o: (o + 137) % block.tile_count for o in counts}
+    rotated_water = [o for o in counts if water_share(rotated[o]) >= 0.5]
+    assert len(rotated_water) < len(water) / 2
 
 
 def test_no_composite_is_withheld_after_the_terrain_field_renders(
@@ -943,8 +1049,8 @@ def test_representative_map_composites(
                 (canon.SCREENBLOCK_PIXELS, canon.SCREENBLOCK_PIXELS)
                 if layer.classification == "static_graphical_screenblock"
                 else (
-                    canon.TERRAIN_FIELD_CELL_PIXELS * layer.terrain_grid_x,
-                    canon.TERRAIN_FIELD_CELL_PIXELS * layer.terrain_grid_y,
+                    layer.terrain_pixels_x,
+                    layer.terrain_pixels_y,
                 )
                 if layer.classification == "static_graphical_terrain_field"
                 else (
@@ -1026,7 +1132,7 @@ def test_a_layer_document_names_the_chunk_grid_only_for_the_dominant_form(
     written.chunk_entries = exporter.chunk_entries
     written.chunk_maps = exporter.chunk_maps
     written.screenblock_entries = exporter.screenblock_entries
-    written.terrain_field_containers = exporter.terrain_field_containers
+    written.terrain_field_cells = exporter.terrain_field_cells
     written.export_maps()
 
     grid_keys = {
@@ -1059,7 +1165,13 @@ def test_a_layer_document_names_the_chunk_grid_only_for_the_dominant_form(
                 assert layer["cell_grid_x"] == 14
                 assert layer["cell_grid_y"] == 10
                 assert layer["cell_grid_cells"] == 140
-                assert layer["width"] == 448 and layer["height"] == 320
+                assert layer["cell_tiles"] == 32
+                assert layer["tile_grid_x"] == 448
+                assert layer["tile_grid_y"] == 320
+                assert layer["width"] == 3584 and layer["height"] == 2560
+                assert layer["tile_ordinal_min"] == 1
+                assert layer["tile_ordinal_max"] == 228
+                assert layer["distinct_tile_ordinals"] == 228
                 seen["terrain"] += 1
             else:
                 assert layer["classification"] == "absent_placeholder"
@@ -1275,7 +1387,7 @@ def test_the_written_tree_gives_every_map_a_directory_and_a_record(
     written.chunk_entries = exporter.chunk_entries
     written.chunk_maps = exporter.chunk_maps
     written.screenblock_entries = exporter.screenblock_entries
-    written.terrain_field_containers = exporter.terrain_field_containers
+    written.terrain_field_cells = exporter.terrain_field_cells
     written.export_maps()
 
     maps_root = root / "out" / naming.MAPS
@@ -1305,6 +1417,20 @@ def test_the_written_tree_gives_every_map_a_directory_and_a_record(
         directory = maps_root / naming.map_directory(entry.index, written.map_name(entry.index))
         has_composite = (directory / naming.COMPOSITE_FILE).is_file()
         assert has_composite is True, entry.index
+    # The two artifacts this ticket adds, pinned as written bytes.
+    map19 = maps_root / naming.map_directory(19, written.map_name(19))
+    assert hashlib.sha256((map19 / "layer_2.png").read_bytes()).hexdigest() == (
+        EXPECTED_TERRAIN_FIELD_FILE_SHA256
+    )
+    assert hashlib.sha256((map19 / naming.COMPOSITE_FILE).read_bytes()).hexdigest() == (
+        EXPECTED_MAP_COMPOSITE_FILE_SHA256[19]
+    )
+    written_map19 = json.loads(
+        (map19 / naming.MAP_RECORD_FILE).read_text(encoding="utf-8")
+    )
+    assert written_map19["composite_status"] == "produced"
+    assert written_map19["composite_width"] == 3584
+    assert written_map19["composite_height"] == 2560
     assert {
         gate["key"]: gate["accounted"]
         for gate in written.count_document()["gates"]
@@ -1331,7 +1457,7 @@ def test_every_composite_on_disk_is_the_backdrop_flattened_view(
     written.chunk_entries = exporter.chunk_entries
     written.chunk_maps = exporter.chunk_maps
     written.screenblock_entries = exporter.screenblock_entries
-    written.terrain_field_containers = exporter.terrain_field_containers
+    written.terrain_field_cells = exporter.terrain_field_cells
     written.export_maps()
 
     checked = 0

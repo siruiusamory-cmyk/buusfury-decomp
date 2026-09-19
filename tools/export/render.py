@@ -391,24 +391,24 @@ def assemble_frame(
     return bytes(canvas)
 
 
-def render_terrain_field(
+def read_terrain_field_plane(
     containers: tuple[bytes, ...],
     grid_x: int,
     grid_y: int,
 ) -> tuple[int, int, bytes]:
-    """Assemble a terrain field's containers into one one-byte-per-pixel image.
+    """Lay a terrain field's containers out as one plane of tile ordinals.
 
-    ASSET-EXPORT-MAP19-001 recovered this record form from the engine's own code:
-    the `0x080088BD` constructor streams `grid_x * grid_y` containers of
-    ``canon.TERRAIN_FIELD_CELL_BYTES`` decoded bytes through a nine-slot resident
-    cache, and the blitter that consumes them copies one raster row per step -
-    both its source and its destination advance by a row of
-    ``canon.TERRAIN_FIELD_CELL_PIXELS`` bytes at one byte per pixel - so each
-    container is a ``32 x 32`` pixel cell and the containers lay out in raster
-    order: container ``y * grid_x + x`` at ``(x * 32, y * 32)``.
+    ASSET-EXPORT-MAP19-001 recovered this record form from the engine's own code
+    and its payload's semantics: the `0x080088BD` constructor streams
+    `grid_x * grid_y` containers of ``canon.TERRAIN_FIELD_CELL_BYTES`` decoded
+    bytes through a nine-slot resident cache, and each container is a 32x32 plane
+    of 8-bit tile ordinals. Container ``y * grid_x + x`` covers the cell at
+    ``(x * 32, y * 32)``, so the whole field is ``32 * grid_x`` by ``32 * grid_y``
+    ordinals.
 
-    The image is exactly ``grid_x * 32`` by ``grid_y * 32`` pixels; there is no
-    scaling, no padding and no interleaving.
+    The plane is returned as ``(width, height, ordinals)`` in tile units. It is
+    not an image: the ordinals resolve through the owning map's assembled
+    character block, which the caller already holds.
     """
     if grid_x <= 0 or grid_y <= 0:
         raise RenderError(
@@ -420,10 +420,10 @@ def render_terrain_field(
             f"a {grid_x}x{grid_y} terrain field needs {expected} containers, "
             f"got {len(containers)}"
         )
-    cell = canon.TERRAIN_FIELD_CELL_PIXELS
+    cell = canon.TERRAIN_FIELD_CELL_TILES
     row_bytes = canon.TERRAIN_FIELD_CELL_BYTES // cell
     width, height = grid_x * cell, grid_y * cell
-    out = bytearray(width * height)
+    plane = bytearray(width * height)
     for index, data in enumerate(containers):
         if len(data) != canon.TERRAIN_FIELD_CELL_BYTES:
             raise RenderError(
@@ -435,8 +435,49 @@ def render_terrain_field(
         for y in range(cell):
             target = (at_y + y) * width + at_x
             source = y * row_bytes
-            out[target : target + cell] = data[source : source + row_bytes]
-    return width, height, bytes(out)
+            plane[target : target + cell] = data[source : source + row_bytes]
+    return width, height, bytes(plane)
+
+
+def render_terrain_field(
+    containers: tuple[bytes, ...],
+    grid_x: int,
+    grid_y: int,
+    char_data: bytes,
+) -> tuple[int, int, bytes]:
+    """Render a terrain field's containers to an image, 8x8 pixels per ordinal.
+
+    The plane's ordinals are masked to ``canon.TERRAIN_FIELD_TILE_ORDINAL_MASK``
+    and each selects one 8x8 tile from ``char_data`` - the owning map's assembled
+    character block, the same block the dominant and screen-entry layers resolve
+    against. The image is therefore ``32 * grid_x * 8`` by ``32 * grid_y * 8``
+    pixels, and it is written with no scaling, no padding and no interleaving.
+    """
+    width, height, plane = read_terrain_field_plane(containers, grid_x, grid_y)
+    blocks_x = width
+    tile = canon.TILE_PIXELS * canon.TILE_PIXELS
+    image_width = width * canon.TILE_PIXELS
+    image_height = height * canon.TILE_PIXELS
+    out = bytearray(image_width * image_height)
+    mask = canon.TERRAIN_FIELD_TILE_ORDINAL_MASK
+    for row in range(height):
+        for column in range(blocks_x):
+            ordinal = plane[row * blocks_x + column] & mask
+            start = ordinal * tile
+            block = char_data[start : start + tile]
+            if len(block) != tile:
+                raise RenderError(
+                    f"terrain-field ordinal {ordinal} at ({column}, {row}) is "
+                    f"outside the {len(char_data) // tile}-tile character block"
+                )
+            for y in range(canon.TILE_PIXELS):
+                target = (row * canon.TILE_PIXELS + y) * image_width + (
+                    column * canon.TILE_PIXELS
+                )
+                out[target : target + canon.TILE_PIXELS] = block[
+                    y * canon.TILE_PIXELS : (y + 1) * canon.TILE_PIXELS
+                ]
+    return image_width, image_height, bytes(out)
 
 
 def compose_layers(

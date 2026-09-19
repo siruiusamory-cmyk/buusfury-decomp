@@ -105,19 +105,23 @@ SCREENBLOCK_PIXELS = 256
 #: Entry `0x080088BC` -> constructor `0x080080C0`: sets `DISPSTAT` bit 1 (`VBlank`
 #: interrupt enable) and clears `BG2PB`/`BG2PD`, then streams `record + 4` x
 #: `record + 5` containers of `0x400` decoded bytes through a nine-slot resident
-#: cache. ASSET-EXPORT-MAP19-001 recovered the container geometry: each
-#: `0x400`-byte container is a 32x32 one-byte-per-pixel raster (32 bytes per row,
-#: 32 rows), the driver's viewport wrap and the blitter's `src += 0x20` /
-#: `dst += 0x20` steps agree on a 32-byte raster row, and the container payloads
-#: use contiguous palette indices (`1..228`, index `0` absent) rather than packed
-#: nibbles. `record + 0x04` x `record + 0x05` containers lay out as the map's
-#: terrain field in raster order at 32x32 pixels per container.
+#: cache. ASSET-EXPORT-MAP19-001 recovered what those containers hold: a 32x32
+#: plane of **8-bit tile ordinals** - 32 ordinals per raster row, one byte per
+#: ordinal, 1024 ordinals per container - which the map's own assembled character
+#: block resolves. The ordinal reading is established by the payload's semantics,
+#: not by its shape: each ordinal consistently selects tiles of one kind, so
+#: ordinal 2 selects a tile that is 100 % water, 43 and 119 green land, 137 sand,
+#: 76/73 rock and 19 snow, while the same measurement over a permuted ordinal
+#: assignment destroys the correspondence. `record + 0x04` x `record + 0x05`
+#: containers lay out in raster order, container `y * grid_x + x` covering the
+#: 32x32-tile cell at `(x * 32, y * 32)`.
 TERRAIN_FIELD_LAYER_HANDLER = 0x080088BD
 TERRAIN_FIELD_GRID_X_OFFSET = 0x04
 TERRAIN_FIELD_GRID_Y_OFFSET = 0x05
 TERRAIN_FIELD_CONTAINER_OFFSET = 0x08
 TERRAIN_FIELD_CELL_BYTES = 0x400
-TERRAIN_FIELD_CELL_PIXELS = 32
+TERRAIN_FIELD_CELL_TILES = 32
+TERRAIN_FIELD_TILE_ORDINAL_MASK = 0xFF
 TERRAIN_FIELD_RESIDENT_SLOTS = 9
 
 #: Chunk payload: 32 x 32 little-endian u16 entries = 1024 entries = 2048 bytes.
@@ -315,10 +319,10 @@ def read_screenblock_entries(rom: Rom, record_address: int) -> tuple[int, ...]:
     return struct.unpack("<1024H", container.data)
 
 
-def read_terrain_field_containers(rom: Rom, record_address: int) -> tuple[int, ...]:
-    """Read the container addresses of a `0x080088BD` terrain-field record.
+def read_terrain_field_cells(rom: Rom, record_address: int) -> tuple[bytes, ...]:
+    """Read a `0x080088BD` record's container payloads in its own raster order.
 
-    The record states its own cell grid at `+0x04`/`+0x05` and names
+    The record states its cell grid at `+0x04`/`+0x05` and names
     `grid_x * grid_y` consecutive container pointers from `+0x08`. The pointer run
     is exactly that long on the canonical record, so a shorter run is a
     structural mismatch rather than something to silently pad.
@@ -331,8 +335,26 @@ def read_terrain_field_containers(rom: Rom, record_address: int) -> tuple[int, .
     cells = grid_x * grid_y
     if cells == 0:
         return ()
-    targets: list[int] = []
+    payloads: list[bytes] = []
     for index in range(cells):
+        address = rom.u32(
+            record_address + TERRAIN_FIELD_CONTAINER_OFFSET + index * 4
+        )
+        if not rom.in_image(address):
+            raise CanonicalError(
+                f"terrain-field record at {record_address:#010x} names container "
+                f"{index} at {address:#010x}, which is outside the image"
+            )
+        payloads.append(rom.container(address).data)
+    return tuple(payloads)
+
+
+def read_terrain_field_containers(rom: Rom, record_address: int) -> tuple[int, ...]:
+    """The container addresses a `0x080088BD` record names, in raster order."""
+    grid_x = rom.u8(record_address + TERRAIN_FIELD_GRID_X_OFFSET)
+    grid_y = rom.u8(record_address + TERRAIN_FIELD_GRID_Y_OFFSET)
+    targets: list[int] = []
+    for index in range(grid_x * grid_y):
         address = rom.u32(
             record_address + TERRAIN_FIELD_CONTAINER_OFFSET + index * 4
         )
@@ -346,12 +368,7 @@ def read_terrain_field_containers(rom: Rom, record_address: int) -> tuple[int, .
 
 
 def read_terrain_field_probe(rom: Rom, record_address: int) -> dict[str, int]:
-    """Structural facts about a `0x080088BD` record, for the audit only.
-
-    Kept as the audit probe the previous revision published: it names the grid,
-    the container count, the resident-cache size and the per-container decoded
-    bytes without decoding any of them.
-    """
+    """Structural facts about a `0x080088BD` record, for the audit only."""
     grid_x = rom.u8(record_address + TERRAIN_FIELD_GRID_X_OFFSET)
     grid_y = rom.u8(record_address + TERRAIN_FIELD_GRID_Y_OFFSET)
     targets: list[int] = []
@@ -369,7 +386,7 @@ def read_terrain_field_probe(rom: Rom, record_address: int) -> dict[str, int]:
         "chunk_targets": len(targets),
         "resident_slots": TERRAIN_FIELD_RESIDENT_SLOTS,
         "chunk_decoded_bytes": TERRAIN_FIELD_CELL_BYTES,
-        "cell_pixels": TERRAIN_FIELD_CELL_PIXELS,
+        "cell_tiles": TERRAIN_FIELD_CELL_TILES,
     }
 
 
@@ -519,6 +536,26 @@ class LayerRecord:
     @property
     def terrain_cells(self) -> int:
         return self.terrain_x * self.terrain_y
+
+    @property
+    def terrain_tiles_x(self) -> int:
+        """Tile columns of a terrain-field record: `cell_tiles * grid_x`."""
+        return self.terrain_x * TERRAIN_FIELD_CELL_TILES
+
+    @property
+    def terrain_tiles_y(self) -> int:
+        """Tile rows of a terrain-field record: `cell_tiles * grid_y`."""
+        return self.terrain_y * TERRAIN_FIELD_CELL_TILES
+
+    @property
+    def terrain_pixels_x(self) -> int:
+        """Pixel width of a terrain-field record: `terrain_tiles_x * 8`."""
+        return self.terrain_tiles_x * TILE_PIXELS
+
+    @property
+    def terrain_pixels_y(self) -> int:
+        """Pixel height of a terrain-field record: `terrain_tiles_y * 8`."""
+        return self.terrain_tiles_y * TILE_PIXELS
 
     @property
     def terrain_grid_x(self) -> int:

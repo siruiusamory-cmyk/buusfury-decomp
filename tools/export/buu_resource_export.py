@@ -398,8 +398,9 @@ class Exporter:
         #: Each plane is read once here.
         self.screenblock_entries: dict[int, tuple[int, ...]] = {}
         #: Decoded containers for `static_graphical_terrain_field` layers, keyed by
-        #: layer-record address, in the record's own raster order.
-        self.terrain_field_containers: dict[int, tuple[bytes, ...]] = {}
+        #: layer-record address, in the record's own raster order. Each container
+        #: is a 32x32 plane of 8-bit tile ordinals.
+        self.terrain_field_cells: dict[int, tuple[bytes, ...]] = {}
 
         self.definitions: tuple[canon.SpriteDefinition, ...] = ()
         self.animations: dict[int, canon.AnimationRecord] = {}
@@ -463,11 +464,8 @@ class Exporter:
                     continue
                 if layer.classification == "static_graphical_terrain_field":
                     try:
-                        targets = canon.read_terrain_field_containers(
-                            self.rom, layer.address
-                        )
-                        self.terrain_field_containers[layer.address] = tuple(
-                            self.rom.container(target).data for target in targets
+                        self.terrain_field_cells[layer.address] = (
+                            canon.read_terrain_field_cells(self.rom, layer.address)
                         )
                     except (canon.CanonicalError, ws.ContainerError) as exc:
                         self.fail(
@@ -552,10 +550,11 @@ class Exporter:
             grid = self.screenblock_entries[layer.address]
             return render.render_chunk(grid, self.char_blocks[map_index].data)
         if layer.classification == "static_graphical_terrain_field":
-            _width, _height, pixels = render.render_terrain_field(
-                self.terrain_field_containers[layer.address],
+            width, height, pixels = render.render_terrain_field(
+                self.terrain_field_cells[layer.address],
                 layer.terrain_grid_x,
                 layer.terrain_grid_y,
+                self.char_blocks[map_index].data,
             )
             return pixels
         side = canon.CHUNK_PIXELS
@@ -854,6 +853,7 @@ class Exporter:
                         f"{layer.handler:#010x} is {layer.classification}",
                     )
                 else:
+                    ordinal_plane: bytes | None = None
                     try:
                         if layer.classification == "static_graphical_screenblock":
                             width = canon.SCREENBLOCK_PIXELS
@@ -866,18 +866,22 @@ class Exporter:
                                 )
                             pixels = render.render_chunk(grid, block.data)
                         elif layer.classification == "static_graphical_terrain_field":
-                            containers = self.terrain_field_containers.get(
-                                layer.address
-                            )
+                            containers = self.terrain_field_cells.get(layer.address)
                             if containers is None:
                                 raise canon.CanonicalError(
                                     f"no terrain-field containers were collected "
                                     f"for the record at {layer.address:#010x}"
                                 )
+                            _tw, _th, ordinal_plane = render.read_terrain_field_plane(
+                                containers,
+                                layer.terrain_grid_x,
+                                layer.terrain_grid_y,
+                            )
                             width, height, pixels = render.render_terrain_field(
                                 containers,
                                 layer.terrain_grid_x,
                                 layer.terrain_grid_y,
+                                block.data,
                             )
                         else:
                             width = layer.chunk_x * canon.CHUNK_PIXELS
@@ -916,19 +920,21 @@ class Exporter:
                             )
                             document.update(entry_stats(grid))
                         elif layer.classification == "static_graphical_terrain_field":
-                            # This record form carries one palette index per pixel,
-                            # not u16 tile entries, so publishing the tile-entry
+                            # This record form carries one tile ordinal per byte,
+                            # not u16 chunk entries, so publishing the tile-entry
                             # census for it would describe a structure it does not
-                            # have. The byte census is the same shape of fact for
+                            # have. The ordinal census is the same shape of fact for
                             # the form it does have.
+                            assert ordinal_plane is not None
+                            ordinals = set(ordinal_plane)
                             document.update(
                                 {
-                                    "cell_pixels": canon.TERRAIN_FIELD_CELL_PIXELS,
+                                    "cell_tiles": canon.TERRAIN_FIELD_CELL_TILES,
                                     "cell_bytes": canon.TERRAIN_FIELD_CELL_BYTES,
                                     "container_count": len(containers),
-                                    "index_min": min(pixels),
-                                    "index_max": max(pixels),
-                                    "distinct_indices": len(set(pixels)),
+                                    "tile_ordinal_min": min(ordinals),
+                                    "tile_ordinal_max": max(ordinals),
+                                    "distinct_tile_ordinals": len(ordinals),
                                 }
                             )
                         else:
@@ -941,6 +947,8 @@ class Exporter:
                             document["cell_grid_x"] = layer.terrain_grid_x
                             document["cell_grid_y"] = layer.terrain_grid_y
                             document["cell_grid_cells"] = layer.terrain_cells
+                            document["tile_grid_x"] = layer.terrain_tiles_x
+                            document["tile_grid_y"] = layer.terrain_tiles_y
                     except (
                         canon.CanonicalError,
                         ws.ContainerError,

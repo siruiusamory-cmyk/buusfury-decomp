@@ -132,11 +132,11 @@ TERRAIN_IMAGE_SIZE = 0x40000
 
 
 def _terrain_image(grid_x: int, grid_y: int, *, stride: int = 4) -> canon.Rom:
-    """A synthetic terrain-field record whose cells are recognisable byte runs.
+    """A synthetic terrain-field record whose cells are recognisable ordinal runs.
 
-    Cell ``n`` decodes to ``bytes(range(0x20 + n, 0x20 + n + 32))`` repeated to
-    fill its declared 0x400 bytes, so a renderer that places a cell in the wrong
-    position is detectable from the pixels alone.
+    Cell ``n`` decodes to ``bytes(range(n, n + 32))`` repeated to fill its
+    declared 0x400 bytes, so a plane that places a cell in the wrong position, or
+    a render that resolves the wrong ordinal, is detectable from the result alone.
     """
     data = bytearray(TERRAIN_IMAGE_SIZE)
     struct.pack_into("<I", data, TERRAIN_RECORD - GBA, canon.TERRAIN_FIELD_LAYER_HANDLER)
@@ -152,19 +152,29 @@ def _terrain_image(grid_x: int, grid_y: int, *, stride: int = 4) -> canon.Rom:
             cursor,
         )
         struct.pack_into("<II", data, cursor - GBA, 0, TERRAIN_CELL_BYTES)
-        fill = bytes(range(0x20 + index, 0x20 + index + 32))
+        fill = bytes((index + step) & 0xFF for step in range(32))
         payload = (fill * (TERRAIN_CELL_BYTES // len(fill) + 1))[:TERRAIN_CELL_BYTES]
         data[cursor - GBA + 8 : cursor - GBA + 8 + TERRAIN_CELL_BYTES] = payload
         cursor += 8 + TERRAIN_CELL_BYTES + stride
     return canon.Rom(bytes(data))
 
 
+def _char_block(ordinals: int) -> bytes:
+    """`ordinals` 8x8 tiles, each filled with that tile's own ordinal value."""
+    tile = canon.TILE_PIXELS * canon.TILE_PIXELS
+    return bytes(
+        value
+        for ordinal in range(ordinals)
+        for value in bytes([ordinal & 0xFF]) * tile
+    )
+
+
 def test_the_terrain_field_reader_takes_its_grid_from_its_own_record_fields():
     """A terrain-field record states its cell grid at `+0x04`/`+0x05`.
 
-    The dominant form's `+0x14`/`+0x15` hold unrelated bytes on this form, so a
-    reader that used those offsets would read the wrong grid - or, as on the
-    canonical record, a grid of 48 x 251.
+    The dominant form's `+0x14`/`+0x15` hold unrelated bytes on this form - on the
+    canonical record they are two bytes of the container pointer run, reading as
+    48 x 251 - so a reader that used those offsets would read the wrong grid.
     """
     rom = _terrain_image(3, 2)
     assert canon.read_terrain_field_containers(rom, TERRAIN_RECORD) == tuple(
@@ -175,13 +185,18 @@ def test_the_terrain_field_reader_takes_its_grid_from_its_own_record_fields():
     assert probe["grid_product"] == 6
     assert probe["chunk_targets"] == 6
     assert probe["chunk_decoded_bytes"] == TERRAIN_CELL_BYTES
-    assert probe["cell_pixels"] == canon.TERRAIN_FIELD_CELL_PIXELS
+    assert probe["cell_tiles"] == canon.TERRAIN_FIELD_CELL_TILES
+    cells = canon.read_terrain_field_cells(rom, TERRAIN_RECORD)
+    assert len(cells) == 6
+    assert all(len(cell) == TERRAIN_CELL_BYTES for cell in cells)
+    assert cells[0][0] == 0 and cells[5][0] == 5
 
 
 def test_an_empty_terrain_grid_names_no_containers():
     """A zero-dimension grid is an empty field, not an error."""
     rom = _terrain_image(0, 0)
     assert canon.read_terrain_field_containers(rom, TERRAIN_RECORD) == ()
+    assert canon.read_terrain_field_cells(rom, TERRAIN_RECORD) == ()
 
 
 def test_a_terrain_field_container_outside_the_image_is_refused():
@@ -193,40 +208,65 @@ def test_a_terrain_field_container_outside_the_image_is_refused():
     assert "outside the image" in str(excinfo.value)
 
 
-def test_the_terrain_field_renders_each_cell_at_its_own_raster_position():
-    """Container `y * grid_x + x` supplies the cell at `(x * 32, y * 32)`."""
+def test_the_terrain_field_plane_places_each_cell_at_its_own_raster_position():
+    """Container `y * grid_x + x` supplies the cell at `(x * 32, y * 32)` tiles."""
     from tools.export import render
 
     rom = _terrain_image(3, 2)
-    containers = tuple(
-        rom.container(address).data
-        for address in canon.read_terrain_field_containers(rom, TERRAIN_RECORD)
-    )
-    width, height, pixels = render.render_terrain_field(containers, 3, 2)
-    cell = canon.TERRAIN_FIELD_CELL_PIXELS
+    cells = canon.read_terrain_field_cells(rom, TERRAIN_RECORD)
+    width, height, plane = render.read_terrain_field_plane(cells, 3, 2)
+    cell = canon.TERRAIN_FIELD_CELL_TILES
     assert (width, height) == (3 * cell, 2 * cell)
-    assert len(pixels) == width * height
+    assert len(plane) == width * height
+    row_bytes = TERRAIN_CELL_BYTES // cell
     for index in range(6):
         at_x = (index % 3) * cell
         at_y = (index // 3) * cell
-        assert pixels[at_y * width + at_x] == containers[index][0]
-        # the last byte of the cell's first raster row
-        row_bytes = TERRAIN_CELL_BYTES // cell
-        assert pixels[at_y * width + at_x + cell - 1] == (
-            containers[index][row_bytes - 1]
+        assert plane[at_y * width + at_x] == cells[index][0]
+        # the last ordinal of the cell's first raster row
+        assert plane[at_y * width + at_x + cell - 1] == (
+            cells[index][row_bytes - 1]
         )
+
+
+def test_the_terrain_field_render_resolves_ordinals_through_the_char_block():
+    """The rendered image is the plane's ordinals resolved as 8x8 tiles."""
+    from tools.export import render
+
+    rom = _terrain_image(3, 2)
+    cells = canon.read_terrain_field_cells(rom, TERRAIN_RECORD)
+    block = _char_block(256)
+    width, height, pixels = render.render_terrain_field(cells, 3, 2, block)
+    cell = canon.TERRAIN_FIELD_CELL_TILES
+    assert (width, height) == (
+        3 * cell * canon.TILE_PIXELS,
+        2 * cell * canon.TILE_PIXELS,
+    )
+    assert len(pixels) == width * height
+    # Every 8x8 tile of the image must be one flat ordinal value - the fixture's
+    # character block fills each tile with its own ordinal - and the value at a
+    # cell's first tile must be that cell's own ordinal.
+    for index in range(6):
+        at_x = (index % 3) * cell * canon.TILE_PIXELS
+        at_y = (index // 3) * cell * canon.TILE_PIXELS
+        assert pixels[at_y * width + at_x] == cells[index][0]
+    # Every 8x8 tile of the image is one flat ordinal value: the fixture's
+    # character block fills each tile with its own ordinal. Probe a row inside
+    # three tiles chosen across the image.
+    span = canon.TILE_PIXELS
+    for tile_x, tile_y in ((0, 0), (5, 3), (width // span - 1, height // span - 1)):
+        row = (tile_y * span + 1) * width + tile_x * span
+        assert len(set(pixels[row : row + span])) == 1, (tile_x, tile_y)
 
 
 def test_a_terrain_field_with_the_wrong_container_count_is_refused():
     from tools.export import render
 
     rom = _terrain_image(2, 2)
-    containers = tuple(
-        rom.container(address).data
-        for address in canon.read_terrain_field_containers(rom, TERRAIN_RECORD)
-    )
+    cells = canon.read_terrain_field_cells(rom, TERRAIN_RECORD)
+    block = _char_block(256)
     with pytest.raises(render.RenderError) as excinfo:
-        render.render_terrain_field(containers[:3], 2, 2)
+        render.render_terrain_field(cells[:3], 2, 2, block)
     assert "needs 4 containers" in str(excinfo.value)
 
 
@@ -234,7 +274,7 @@ def test_a_terrain_field_container_of_the_wrong_size_is_refused():
     from tools.export import render
 
     with pytest.raises(render.RenderError) as excinfo:
-        render.render_terrain_field((bytes(64),), 1, 1)
+        render.render_terrain_field((bytes(64),), 1, 1, _char_block(16))
     assert "expected 1024" in str(excinfo.value)
 
 
@@ -242,8 +282,20 @@ def test_a_terrain_field_with_a_zero_grid_is_refused():
     from tools.export import render
 
     with pytest.raises(render.RenderError) as excinfo:
-        render.render_terrain_field((), 0, 5)
+        render.render_terrain_field((), 0, 5, _char_block(16))
     assert "positive grid" in str(excinfo.value)
+
+
+def test_an_ordinal_outside_the_character_block_is_refused():
+    """An ordinal that does not resolve must fail closed, not read past the block."""
+    from tools.export import render
+
+    rom = _terrain_image(0, 0)
+    # one container of ordinal 200 against a 16-tile character block
+    payload = bytes([200]) * TERRAIN_CELL_BYTES
+    with pytest.raises(render.RenderError) as excinfo:
+        render.render_terrain_field((payload,), 1, 1, _char_block(16))
+    assert "outside the 16-tile character block" in str(excinfo.value)
 
 
 # --- the class predicates ----------------------------------------------------

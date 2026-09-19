@@ -119,9 +119,6 @@ TERRAIN_FIELD_CONTAINER_OFFSET = 0x08
 TERRAIN_FIELD_CELL_BYTES = 0x400
 TERRAIN_FIELD_CELL_PIXELS = 32
 TERRAIN_FIELD_RESIDENT_SLOTS = 9
-#: The accepted name for this record form before its geometry was recovered, kept
-#: so a stored class string from the previous revision is still recognisable.
-TERRAIN_FIELD_LEGACY_CLASS = "static_graphical_assembly_unresolved"
 
 #: Chunk payload: 32 x 32 little-endian u16 entries = 1024 entries = 2048 bytes.
 CHUNK_SIDE_TILES = 32

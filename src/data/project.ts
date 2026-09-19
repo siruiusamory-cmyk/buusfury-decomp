@@ -78,12 +78,11 @@ export const project: ProjectStatus = {
   tagline: "Building a real authoring toolkit for the Legacy of Goku engine.",
   description:
     "The broad engine-archaeology phase is complete and that research queue is closed." +
-    " The SDK now extracts a complete resource library from the user's own copy of the" +
-    " game - every known map layer, tile, chunk, sprite, animation and frame - and" +
-    " DragonByte Z renders retail maps directly from immutable ROM data and supports" +
-    " direct visual placement editing on the actual game map. The next step is turning" +
-    " that extracted corpus into a clean, organised resource library before the editor" +
-    " grows feature by feature.",
+    " The SDK extracts a complete resource library from the user's own copy of the game" +
+    " and curates it into a clean, human-browsable resource pack with ROM-derived names" +
+    " and a full source map. DragonByte Z renders retail maps directly from immutable" +
+    " ROM data and supports direct visual placement editing on the actual game map, and" +
+    " the editor now grows one feature at a time against the curated corpus.",
   overallProgress: 97,
   overallProgressLabel: "≈ 97% COMPLETE",
   progressCaveat:
@@ -91,29 +90,31 @@ export const project: ProjectStatus = {
   currentPhase: "DRAGONBYTE Z BUILDOUT",
   currentFrontierLabel: "CURRENT FRONTIER",
   existingContentState: "MATURE",
-  blockerCode: "RESOURCE LIBRARY CURATION",
-  blockerTitle: "Organise the complete extracted resource corpus",
+  blockerCode: "DRAGONBYTE Z FEATURES",
+  blockerTitle: "Build DragonByte Z out feature by feature",
   blockerShort:
-    "The SDK can now export a complete resource library from the user's own ROM: every" +
-    " known map layer is classified, every known graphical layer is exported, and the" +
-    " full tile, chunk, sprite, animation, frame and graphics populations come out as" +
-    " reusable files. The next step is not another research question - it is curation:" +
-    " organising and de-duplicating that corpus into a clean, human-usable library" +
-    " without losing any structural metadata.",
+    "The resource pipeline is complete and curated: the SDK extracts every known map" +
+    " layer, tile, chunk, sprite, animation and frame from the user's own ROM, and a" +
+    " second pass organises that corpus into a clean, human-browsable resource pack" +
+    " with ROM-derived names and a complete source map. The next step is growing the" +
+    " desktop editor one feature at a time against that corpus - browsing and viewing," +
+    " then editing - instead of waiting for full arbitrary-content authoring to be" +
+    " solved first.",
   blockerParagraphs: [
-    "Engine archaeology is finished for the known visual resource graph. The complete" +
-    " exporter now walks the game's own structures rather than guessing at them: 452" +
-    " maps, every map-layer reference classified, every known graphical layer exported," +
-    " and complete sprite, animation, frame and tile populations. This runs against the" +
-    " user's own copy of the game; no extracted game content is published here.",
-    "What remains is organisation, not discovery. The extracted library is complete but" +
-    " raw, and the immediate work is making it clean, de-duplicated and easy to navigate" +
-    " while preserving every structural fact the exporter recorded.",
-    "After that, DragonByte Z grows one feature at a time against the verified corpus -" +
-    " browsing maps, tiles and sprites, then editing features - instead of waiting for" +
-    " full arbitrary-content authoring to be solved first. Authoring entirely new" +
-    " content remains the project's final acceptance target and is no longer the" +
-    " organising priority for current tool work. The overall estimate stays at 97%.",
+    "The resource pipeline is finished. The exporter walks the game's own structures -" +
+    " 452 maps, every map-layer reference classified, complete tile, chunk, sprite," +
+    " animation, frame and graphics populations - and the curator turns that raw output" +
+    " into a clean, human-navigable library: ROM-derived and neutral names, no generated" +
+    " prose, a deterministic rebuild, and a complete curated-to-raw source map. The" +
+    " canonical raw library stays byte-for-byte untouched.",
+    "What remains is building the desktop editor, not re-extracting the game. DragonByte" +
+    " Z already renders retail maps and supports direct visual placement editing; it now" +
+    " grows one feature at a time - first graphical coverage and browsing, then tiles," +
+    " sprites, animations and frames, then editing features such as warp editing and" +
+    " graphics replacement.",
+    "Authoring entirely new content remains the project's final acceptance target and is" +
+    " no longer the organising priority for current tool work. The overall estimate stays" +
+    " at 97%.",
   ],
   acceptanceTarget:
     "Author playable Legacy of Goku content inside the real LOGII/Buu engine.",
@@ -402,7 +403,7 @@ export const project: ProjectStatus = {
         " the work is measuring and reducing redundancy and improving navigation while" +
         " proving that every structural fact the exporter recorded still resolves. No" +
         " extraction, classification or rendering behaviour changes.",
-      status: "current",
+      status: "complete",
     },
     {
       id: "dragonbyte-z-buildout",
@@ -418,7 +419,7 @@ export const project: ProjectStatus = {
         " features such as warp editing and graphics replacement, with map-layout" +
         " authoring in that sequence. This is a direction rather than a committed" +
         " engineering order.",
-      status: "next",
+      status: "current",
     },
     {
       id: "playable-log1",
@@ -460,8 +461,8 @@ export const project: ProjectStatus = {
     { label: "ROM-ONLY MAP RENDERING", state: "done" },
     { label: "VISUAL MAP EDITOR", state: "done" },
     { label: "COMPLETE RESOURCE EXTRACTION", state: "done" },
-    { label: "RESOURCE LIBRARY CURATION", state: "current", marker: "↑ YOU ARE HERE" },
-    { label: "DRAGONBYTE Z FEATURES", state: "next" },
+    { label: "RESOURCE LIBRARY CURATION", state: "done" },
+    { label: "DRAGONBYTE Z FEATURES", state: "current", marker: "↑ YOU ARE HERE" },
     { label: "ADVANCED AUTHORING / AUTHOR_NEW", state: "target" },
     { label: "PLAYABLE LOG1 CONTENT", state: "target" },
   ],

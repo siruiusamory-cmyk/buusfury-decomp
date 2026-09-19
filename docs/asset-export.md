@@ -253,6 +253,61 @@ and, on the export path, also requires each packed stream's own end marker to
 fall at its declared size. Repairing the shared parsers is the `FIX-*` queue in
 `docs/research/POST_LOGX_IMPLEMENTATION_ROADMAP.md`.
 
+## Curating the library for people (RESOURCE-LIBRARY-CURATION-001)
+
+The export above is exhaustive and named by numeric identity, which is what makes
+it structural truth and what makes it unpleasant to browse. `tools/export/buu_resource_curate.py`
+reads it as an **immutable input** and writes a **separate** library organised the
+way a person looks for a resource. See
+[`research/RESOURCE_LIBRARY_CURATION.md`](research/RESOURCE_LIBRARY_CURATION.md)
+for the full design.
+
+```text
+python -m tools.export.buu_resource_curate ^
+  --source "<resource-library>" ^
+  --output "<resource-library>" ^
+  --audit "<resource-library> Audit"
+```
+
+| Option | Effect |
+| --- | --- |
+| *(none)* | build the curated library and its audit directory |
+| `--analyze` | measure the raw library and write the audit; write no resources |
+| `--dry-run` | plan and audit the layout without writing the curated library |
+| `--force` | replace the contents of an existing curated root |
+| `--compare <root>` | diff an earlier curated root against this run |
+| `--audit <dir>` | override the audit root (default `<OUTPUT> Audit`) |
+
+The curated tree is `Maps/`, `Tilesets/`, `Chunks/`, `Sprites/`, `Palettes/`,
+`Technical/` and `Index/`. Human-facing names are built from ROM text with normal
+spacing and punctuation (`West City`, `Buu's House`, `Grand Kai's Planet`,
+`Android #18`, `Chi-Chi`, `Z-Mart`); a name two canonical resources share becomes
+a flat one-based group (`West City 1`, `West City 2`); a resource with no verified
+name takes a contiguous neutral one-based label (`Map 1` … `Map 23`,
+`Sprite 1` … `Sprite 99`, `Animation 5`), independent of its canonical id. No
+curated human-facing path carries an underscore, a numeric identity, a ROM
+address or a hash - those live in `Index/`, which maps every curated path back to
+the raw paths it came from.
+
+`Technical/` holds only what exists nowhere else: the 41 structured
+sprite-graphics containers that are not already a sprite pose. Shared payloads are
+written once and attributed to the lowest sorted curated path that carries them;
+`Index/Source Map.json` records the attribution for every other identity.
+
+The curated library is generated output and stays outside version control, like
+the raw library it is built from. The curator refuses an output root that resolves
+inside a git work tree, that is the raw root, or that contains or is contained by
+it, and hashes the raw library before and after the build so "the input was not
+modified" is a measurement.
+
+```text
+python -m pytest tests/unit/test_resource_library_curation.py
+```
+
+No ROM and no emulator: the curator is a function of the raw library's metadata
+and its file bytes, so the tests build a faithful miniature raw library in
+`tmp_path`.
+
 ## Tests
 
 ```text

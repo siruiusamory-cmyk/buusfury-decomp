@@ -155,16 +155,19 @@ residual container is exported.
     the layer renders as a 256x256 screen-entry plane. 41 records over 29 maps, and
     all 41 render.
   * `0x080088BD` (`static_graphical_terrain_field`) - constructor `0x080080C0`
-    sets `DISPSTAT` bit 1 and clears `BG2PB`/`BG2PD`, then streams
+    enables `REG_IE` bit 1 (`0x04000200`, the HBlank interrupt) and clears
+    `BG2PB`/`BG2PD`, then streams
     `record + 4` x `record + 5` containers of 0x400 decoded bytes through a
     nine-slot resident cache. ASSET-EXPORT-MAP19-001 recovered what they hold: a
     32x32 plane of 8-bit **tile ordinals**, 32 ordinals per raster row, which the
     map's own assembled character block resolves at 8x8 pixels each. The ordinal
     reading is established by the payload's semantics rather than its shape:
     exactly 33 of the 228 ordinals the plane uses select a character-block tile
-    that is more than half water, all at a share of 0.547 or more, while the other
-    195 select tiles at 0.375 or less, and the same measurement over a permuted
-    ordinal assignment collapses. The containers lay out in raster order,
+    that is more than half water (35 of its 64 pixels), the lowest such share being
+    0.546875 and the highest share outside the group 0.375, while the other
+    195 select tiles at 0.375 or less, and the plane-level water fraction falls
+    from 0.619 to 0.05-0.09 under permuted ordinal assignments. The containers lay
+    out in raster order,
     container `y * grid_x + x` covering the cell at `(x * 32, y * 32)`, so the
     layer renders as `32 * grid_x * 8` by `32 * grid_y * 8` pixels. One canonical
     record (map 19, slot 2), 14 x 10 cells, 3584x2560 pixels.

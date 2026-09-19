@@ -102,8 +102,9 @@ SCREENBLOCK_ENTRY_COUNT = 1024
 SCREENBLOCK_DECODED_BYTES = 0x800
 SCREENBLOCK_PIXELS = 256
 
-#: Entry `0x080088BC` -> constructor `0x080080C0`: sets `DISPSTAT` bit 1 (`VBlank`
-#: interrupt enable) and clears `BG2PB`/`BG2PD`, then streams `record + 4` x
+#: Entry `0x080088BC` -> constructor `0x080080C0`: enables `REG_IE` bit 1
+#: (`0x04000200 |= 2`, the HBlank interrupt - not `DISPSTAT`, which is
+#: `0x04000004`) and clears `BG2PB`/`BG2PD`, then streams `record + 4` x
 #: `record + 5` containers of `0x400` decoded bytes through a nine-slot resident
 #: cache. ASSET-EXPORT-MAP19-001 recovered what those containers hold: a 32x32
 #: plane of **8-bit tile ordinals** - 32 ordinals per raster row, one byte per

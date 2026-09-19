@@ -782,8 +782,10 @@ def test_the_terrain_fields_payload_is_ordinals_not_palette_indices(
     land = [ordinal for ordinal in counts if water_share(ordinal) < 0.5]
     assert len(water) == EXPECTED_TERRAIN_FIELD_WATER_ORDINALS
     assert len(water) + len(land) == EXPECTED_TERRAIN_FIELD_DISTINCT_ORDINALS
-    assert min(water_share(o) for o in water) >= 0.54
-    assert max(water_share(o) for o in land) <= 0.38
+    # "more than half water" is a share of 35/64 = 0.546875 at the low end and the
+    # land group's high end is 24/64 = 0.375; the groups are disjoint.
+    assert min(water_share(o) for o in water) >= 0.546875
+    assert max(water_share(o) for o in land) <= 0.375
     # Two thirds of the plane's pixels select a water tile, which is what a world
     # map's landmass-in-ocean reading requires.
     water_pixels = sum(counts[o] for o in water)

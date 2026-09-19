@@ -7,20 +7,25 @@ START SHA:    c6821d450b475ec5d262f0b239b3f2dce8de6559
               clean, and both reviewer approvals are recorded in
               docs/research/ASSET-EXPORT-MAP-HANDLERS-001-review.md)
 FROZEN CONTENT REVISION: c01000953e2682918cc1f2d4e8071abbb5a2d1ba
-              ("export: resolve final special map layer" - the revision both
-              reviewers were given)
+              ("export: resolve final special map layer" - the first frozen
+              revision, reviewed and REJECTED)
+CORRECTED REVISION:      3529b80f6032c5a7bbb702bddc28802a6c04f441
+              ("record the map 19 correction gate" - the tile-ordinal
+              correction, reviewed and REJECTED on documentation findings)
+FINAL REVISION:          c8cf6c6df40f555959c3ffe18943af015516e967
+              ("correct the map 19 engine claims and mark placement
+              provisional")
 BRANCH:       asset-export-map19-001
 COMMITS:      this ticket's own commits on top of the start SHA
 CANONICAL ROM SHA BEFORE: 940AD5F01DB4465B8877DFE739510CBF34F4EA3D390F3DF13519808BC36F059E
 CANONICAL ROM SHA AFTER:  940AD5F01DB4465B8877DFE739510CBF34F4EA3D390F3DF13519808BC36F059E
 ```
 
-Two commits follow the frozen content revision: `3bebe02` ("drop an unused
-class-name constant", inert) and the correction commit that closes Reviewer A's
-blocking findings (see **Correction record** below). Everything the reviewers
-reproduced about the record, the grid, the container run and the census is
-unchanged by the correction; what changed is the unit of the payload and the
-rendered size.
+The commit history is: `c010009` (first freeze, rejected), `3bebe02` (inert
+dead-constant removal), `bb0426d` (the tile-ordinal correction, rejected on
+documentation findings), `3529b80f` (correction-gate record), `c8cf6c6` (the
+final revision: Reviewer A's second-pass findings closed and the composite
+placement marked provisional).
 
 ## What the ticket set out to do
 
@@ -46,11 +51,12 @@ engine's own code fixes their shape and layout:
   `3, 3, 3, 3` give BG2CNT = `0xBE83`. A map area holds tile entries;
 * the decisive measurement is semantic, not structural: exactly 33 of the 228
   ordinals the plane uses select a character-block tile that is more than half
-  water (background-palette indices 83 and 177), all at a share of `0.547` or
-  more, while all 195 others select a tile at `0.375` or less - a clean split that
-  collapses to fewer than half as many water ordinals under a permuted ordinal
-  assignment. Ordinal `2` alone (40.7 % of the plane) selects a tile that is
-  100 % water; `43`/`119` green land, `137` sand, `76`/`73` rock, `19` snow.
+  water (background-palette indices 83 and 177), the lowest such share being
+  `35/64 = 0.546875`, while all 195 others select a tile at `0.375` or less - a
+  clean split whose plane-level water fraction falls from `0.619` to
+  `0.052`/`0.051`/`0.086` under three permuted ordinal assignments. Ordinal `2`
+  alone (40.7 % of the plane) selects a tile that is 100 % water; `43`/`119` green
+  land, `137` sand, `76`/`73` rock, `19` snow.
 
 So a container is a 32x32 plane of 8-bit tile ordinals, the 140 cells lay out in
 raster order to 448x320 ordinals, and the layer renders at **3584x2560 pixels**
@@ -273,9 +279,9 @@ Both required findings were closed by re-deriving the unit from the ROM:
 * The provenance's engine section was rewritten from a Capstone listing of the
   constructor, driver and blitter, with the non-existent literal and the swapped
   advance labels removed, and a §5 correction record added.
-* A new ROM-gated test pins the semantic split (33 water ordinals at >= 0.547
-  against 195 at <= 0.375, collapsing under permutation) so the unit itself is
-  regression-guarded rather than only its consequence.
+* A new ROM-gated test pins the semantic split (33 water ordinals at more than half
+  water against 195 at `<= 0.375`, with a permuted assignment as the control) so the
+  unit itself is regression-guarded rather than only its consequence.
 * The synthetic unit fixtures cannot catch the unit error - they are built from
   the same model - which is recorded as the reason the ROM-gated semantic test
   exists.

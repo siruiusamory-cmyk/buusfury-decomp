@@ -20,8 +20,10 @@ GRID:          +0x04 = 0x0E (14), +0x05 = 0x0A (10)
 CONTAINERS:    140 consecutive u32 at +0x08, 0x0829F814 .. 0x082ABDF4
 CELL:          0x400 declared decoded bytes each, all 140 decoding to 1024
 START SHA:     c6821d450b475ec5d262f0b239b3f2dce8de6559
-REVIEWED REVISION (REJECTED): c01000953e2682918cc1f2d4e8071abbb5a2d1ba
-CORRECTED REVISION: 3529b80f6032c5a7bbb702bddc28802a6c04f441
+FIRST FREEZE (REJECTED):    c01000953e2682918cc1f2d4e8071abbb5a2d1ba
+TILE-ORDINAL CORRECTION (REJECTED on documentation findings):
+                            3529b80f6032c5a7bbb702bddc28802a6c04f441
+FINAL REVISION:             c8cf6c6df40f555959c3ffe18943af015516e967
 ```
 
 The record's own cell grid is **14 x 10 = 140**, and 140 is exactly the length of
@@ -59,15 +61,22 @@ Constructor `0x080080C0` (Capstone 5.0.7, Thumb):
   `0xFF` to `object + 0x2C + 4*i` (`0x08008114 str r2,[r1,#0x2c]`, `r2 = 0xFF`).
   Both fields therefore start as "no cell"; the **real** slot buffers are
   installed by the driver at `0x08008688`..`0x08008698`
-  (`str r1,[r2,#0x2c]` residency and `str r1,[r2,#8]` buffer, with
-  `r1 = object + 0x3A0 + slot*0x400`);
+  (`0x08008698 str r1,[r2,#8]` installs the buffer, where
+  `r1 = object + 0x3A0 + slot*0x400` from `0x08008688 lsls r1,r1,#0xa` /
+  `0x0800868C lsls r2,r2,#5`; the residency store is the separate
+  `0x08008684 str r0,[r2,#0x2c]`, and `0x08008694 str r1,[r3,#0x2c]` writes the
+  stack frame, not the object);
 * reads the record's grid product and eagerly loads while it is at most 9:
   `0x08008122 ldrb r6,[r0]`, `0x08008124 ldrb r0,[r0,#1]`,
   `0x08008126 muls r6,r0,r6`, `0x08008128 cmp r6,#9`, then per cell
   `0x08008148 bl 0x0803D940` with the destination
   `object + 0x3A0 + i*0x400` (`movs r7,#0x1d / lsls r7,r7,#5` gives `0x3A0`);
-* sets `DISPSTAT` bit 1 (`0x04000200`) and clears `0x04000022`/`0x04000026`
-  (`BG2PB`/`BG2PD`).
+* enables **`REG_IE` bit 1** (`0x04000200 |= 2`, `0x0800815C`..`0x08008166`), i.e.
+  the **HBlank interrupt**, and stores its own handler vector
+  (`0x08008154` loads `0x08008099`) into the IRQ handler table via
+  `0x0800815A str r1,[r0,#4]`; then clears `0x04000022`/`0x04000026`
+  (`BG2PB`/`BG2PD`). `0x04000200` is not `DISPSTAT`; `DISPSTAT` is `0x04000004`.
+  The HBlank enable is what makes the handler's per-scanline writes below happen.
 
 Driver `0x08008598` (through `0x080086D6`):
 
@@ -96,7 +105,8 @@ register literal at pool `0x080084AC` / `0x08008834`. One block's listing:
 0800826A  lsrs r6, r6, #0x10       ; count = ((32 - m) << 15) >> 16 = (32 - m) / 2
 0800826E  mov  r6, lr              ; r6 = the source descriptor value
 08008270  str  r6, [r7]            ; DMA3SAD = source
-08008272  str  r6, [r7, #4]        ; DMA3DAD = destination
+08008272  mov  r6, ip
+08008274  str  r6, [r7, #4]        ; DMA3DAD = destination
 08008278  strh r6, [r7, #8]        ; count, in halfwords
 0800827A  movs r6, #1
 0800827C  lsls r6, r6, #0xf
@@ -120,12 +130,13 @@ destination is a map area of wider rows, i.e. tile entries:
   `+0x04..+0x07` are `3, 3, 3, 3`, so the background programmer writes
   BG2CNT = `0xBE83`;
 * the same constructor family installs an IRQ handler at `0x08008098`..`0x080080BE`
-  that, for VCOUNT 55..159, loads a 16-byte record from a per-scanline table
-  (`[0x08071018]->+4`, `+0x28`, indexed by `(vcount+1)*16`) and stores it to
-  `0x04000020`..`0x0400002C`, i.e. `BG2PA`, `BG2PB`, `BG2PC`, `BG2PD`. Those
-  registers only affect the display in affine mode, so the layer is `INFERRED` to
-  be projected per scanline. The 64-byte destination row does **not** follow from
-  that: it follows from the control word's size field (`§8`).
+  and enables the HBlank interrupt, and that handler, for VCOUNT 55..159, loads a
+  16-byte record from a per-scanline table (`[0x08071018]->+4`, `+0x28`, indexed by
+  `(vcount+1)*16`) and stores it to `0x04000020`..`0x0400002C`, i.e. `BG2PA`,
+  `BG2PB`, `BG2PC`, `BG2PD`. Those registers only affect the display in affine
+  mode, so the layer is `INFERRED` to be projected per scanline. The 64-byte
+  destination row does **not** follow from that: it follows from the size field
+  (§8).
 
 The literal the earlier revision of this ticket quoted, `0x06008000`, does **not
 occur anywhere in the 8 MiB image**: 0 pool words and 0 references. It was a
@@ -145,14 +156,19 @@ this ticket replaced that reading (see §5).
   index arithmetic (`wrapped_y * grid_x + wrapped_x`).
 * **The ordinals are ordinals, not palette indices.** `CONFIRMED` by a semantic
   measurement, which is the decisive one: exactly 33 of the 228 ordinals the plane
-  uses select a tile that is more than half water (character-block tiles whose
-  pixels are dominated by background-palette indices 83 and 177, `(24,140,255)`
-  and `(33,165,231)`), every one of them at a share of `0.547` or more, while all
-  195 remaining ordinals select a tile at `0.375` or less. The two classes do not
-  overlap. The same measurement over a permuted ordinal assignment collapses to
-  fewer than half as many water ordinals. Ordinal `2` alone - 40.7 % of the plane
-  - selects a tile that is 100 % water; `43` and `119` select green land, `137`
-  sand, `76`/`73` rock and `19` snow.
+  uses select a tile that is more than half water - the water family being
+  character-block tiles dominated by background-palette indices 83 and 177,
+  `(24,140,255)` and `(33,165,231)`. The lowest share in that group is `35/64` =
+  `0.546875` (ordinal 14), and the highest share outside it is `24/64` = `0.375`, so
+  the two classes are disjoint with a wide gap. The plane-level control is the
+  water fraction of the field under a permuted ordinal assignment: `0.619` as read,
+  against `0.052`, `0.051` and `0.086` for the permutations `+137 mod 539`, `+1` and
+  `+12345` respectively, and a mean of `14.0` of the 33 water ordinals over 200
+  random permutations. The control is typical rather than universal - the best of
+  those 200 permutations reaches 21 - because ordinal `2` alone is 40.7 % of the
+  plane and a permutation that maps it onto a water tile keeps that share. Ordinal
+  `2` alone - 40.7 % of the plane - selects a tile that is 100 % water; `43` and
+  `119` select green land, `137` sand, `76`/`73` rock and `19` snow.
 * **Rendered result**: `448 x 320` tile ordinals, resolved at 8x8 pixels per tile
   = **3584 x 2560 pixels**, through the map's own character block. `CONFIRMED`
   for the construction; the image is clean game art - blue sea, coastline, rivers,
@@ -229,21 +245,31 @@ of `0x0600F000` and `0x0600E000`, plus mGBA's own screenshots. The observer writ
 no emulated memory and injects no input.
 
 **Observed.** The session sat on the title screen. `active_map_ptr` = `0`, so no
-`MapEntry` was loaded; `DISPCNT` = `0x0200` (forced blank, mode 0); the
-background-control and scroll registers read `0x78A3`, which is register noise
-outside any active display mode, not engine state. `0x0600F000` held an ascending
-`0x0001, 0x0002, ...` halfword ramp, the boot-time VRAM contents, and `0x0600E000`
-held its own distinct contents. Nothing about map 19 is therefore observable from
-this capture, and no display-orientation inference is drawn from it.
+`MapEntry` was loaded; `DISPCNT` = `0x0200` (forced blank, mode 0); `VCOUNT` was
+`0xA0` and `DISPSTAT` `0x19`. The measured background registers were, at frame
+900:
+
+```text
+BG0CNT 0x0000   BG1CNT 0x1E83   BG2CNT 0x1F83   BG3CNT 0x0F83
+BG0HOFS/BG0VOFS .. BG3HOFS/BG3VOFS   0x0001
+BG2PA..BG2PD                          0x0001
+```
+
+and at frame 300 the scroll and affine registers held `0xFFFB`. These are
+boot-state values on a screen no map owns, not map 19's configuration, so they are
+recorded as raw observations and nothing is inferred from them. `0x0600F000` held
+an ascending `0x0001, 0x0002, ...` halfword ramp, the boot-time VRAM contents, and
+`0x0600E000` held its own contents. Nothing about map 19 is therefore observable
+from this capture, and no display-orientation inference is drawn from it.
 
 **Why map 19 was not reached.** The local `roms/*.sav` is a save image, not a
 savestate: reaching map 19 from it needs the title/load menus driven with
-deterministic input, and no savestate already inside map 19 exists in this
-environment (the tracked states are P-002/placement-pos/ROM-006 captures on other
-maps). The documented input path is `emu:setKeys`/`emu:addKey` in a Lua observer,
-and reaching an unknown menu path reliably is not something this ticket can
-guarantee inside its scope. The tracked launcher's GDB client is read-only by
-design, so the active-map pointer cannot be forced either.
+deterministic input, and no savestate already inside map 19 exists in the tracked
+state set (P-002 / placement-pos / ROM-006 captures are on other maps). The
+documented input path is `emu:setKeys`/`emu:addKey` in a Lua observer, and driving
+an unknown menu path reliably is not something this ticket can guarantee inside its
+scope. The tracked launcher's GDB client is read-only by design, so the active-map
+pointer cannot be forced either.
 
 **What this leaves open, precisely.** The runtime observation that is missing is a
 map-19 session reading: DISPCNT's mode and enabled backgrounds; `BG2CNT` as
@@ -265,52 +291,67 @@ fact.
 Two static facts bound what the composite can mean:
 
 * `0x0600F000` is map 19's BG2 **map base 30** (`root + 0x3C` = 1 selects
-  `0x080716E0`, and the root addends `3, 3, 3, 3` give `BG2CNT` = `0xBE83`), and
-  its affine map block is 1024 bytes = one container. The field is 140 containers,
-  so the whole field is never resident in that one block at once. The destination
-  is the live background map the engine streams into - a windowed representation -
-  and the driver's nine-resident-cell 3x3 window over a 14 x 10 grid is the same
-  statement from the other side.
+  `0x080716E0`, and the root addends `3, 3, 3, 3` give `BG2CNT` = `0xBE83`), whose
+  map is **4 KiB** - four containers' worth - so the whole 140-container field is
+  never resident there at once. The destination is the live background map the
+  engine streams into, a windowed representation, and the driver's nine-resident-cell
+  3x3 window over a 14 x 10 grid is the same statement from the other side.
 * The driver's cell index is `wrapped_y * grid_x + wrapped_x`, so the field's own
   raster order is `CONFIRMED`, and a whole-field render is a faithful
   reconstruction of the resource.
 
 **Consequence for the export.** `maps/map_019/layer_2.png` (3584x2560) is the
 accepted whole-field extraction. `maps/map_019/composite.png` is the current
-placement rule applied to it and is **provisional** until the five runtime
-readings above exist. The pipeline cannot yet claim 452/452 composites
-runtime-validated.
+placement rule applied to it and is **provisional** until the runtime readings
+above exist. The pipeline cannot yet claim 452/452 composites runtime-validated.
+
+**What the provisional composite actually contains, measured.** The two 256x256
+layers change only the top-left corner: map 19's composite differs from
+`layer_2.png` in exactly **16,320 of 9,175,040 pixels**, every one of them inside
+the top-left 256x256, and outside that corner the composite equals the terrain
+field in all 9,109,504 remaining pixels. Those two layers also look like
+screen-space art - a 240-pixel gradient bar, a cloud and a line-art outline -
+which is a further reason to treat the corner overlay's placement as unvalidated:
+an origin-aligned 256x256 corner is not evidently where the engine puts them.
 
 ## 8. Row-stride question, resolved
 
 An earlier revision of this ticket recorded the `0x40` destination step as not
 reconciling with the background configuration. That record was wrong in its
-premise and is corrected here.
+premise and is withdrawn.
 
-**BG2CNT = `0xBE83` decoded field by field** (`0xBE83` = `1011 1110 1000 0011`):
-priority `3`, character base `0`, mosaic `0`, 256-colour `1`, map base `30`,
-wrap `1`, size field `2`. Bit 6 is **0**, so BG2 is in **text** mode, not affine.
-The size field (`2`) gives a map `512` pixels wide in either mode:
+**What decides the row width is the size field.** `BG2CNT` = `0xBE83` decoded field
+by field (`0xBE83` = `1011 1110 1000 0011`): priority `3`, character base `0`,
+**bit 6 = 0 (mosaic off)**, 256-colour `1`, map base `30`, screenblock wrap `1`,
+size field `2`.
 
-* text, `512x256` pixels = `64 x 32` entries at 2 bytes = **64-byte rows** for the
-  first 32 entries;
-* affine `512x512` pixels = `64 x 64` entries at 1 byte = **64-byte rows**.
+`BGxCNT` bit 6 is the **mosaic** bit, not an affine selector; affine-ness is chosen
+by the DISPCNT video mode. So the control word does not say "text" and cannot be
+used to refute an affine reading. What it does fix is the map's size. Size field
+`2` is the 4 KiB map in both modes:
 
-So the `0x40` destination step agrees with the control word under either reading,
-and the source's `0x20` step is the 32-byte half-row the copy covers. There is no
-stride obstruction left to record, and one earlier "does not reconcile" statement
-is withdrawn.
+* text, `256x512` pixels = `32 x 64` entries at 2 bytes;
+* affine, `512x512` pixels = `64 x 64` entries at 1 byte.
+
+Both are 64 bytes along a row, which is exactly the `0x40` destination step, and
+the source's `0x20` step is the 32-byte container row the copy covers. The stride
+therefore agrees with the control word, and there is no stride discrepancy left to
+record.
 
 What remains genuinely open is narrower and is recorded as `UNRESOLVED`:
 
-* **text versus affine.** The control word says text (bit 6 = 0), yet the
-  constructor's IRQ handler writes `BG2PA`..`BG2PD` for VCOUNT 55..159, and those
-  registers have no display effect in text mode. One of the two is not yet
-  accounted for.
-* **how a byte-granular copy lands in a 16-bit-entry map.** The copy moves
-  `32 - m` bytes from a one-byte-per-entry source into a map whose entries are 2
-  bytes wide in text mode. Whether the destination is staged and converted later,
-  or the map is affine after all, is not established.
+* **DISPCNT's video mode for map 19.** That, not `BGxCNT`, selects affine
+  backgrounds. The scene's DISPCNT comes from a per-map context field: the
+  background programmer stores `ctx + 0xA2` to `0x04000000` at
+  `0x0800941A`/`0x0800941C` (`ldrh r0,[r0,#2]` / `strh r0,[r1]`, `r1` =
+  `0x04000000`), and the source of that context field is not recovered here.
+  The affine reading is `INFERRED` from the HBlank interrupt the constructor
+  enables and from the per-scanline `BG2PA`..`BG2PD` writes, which only have
+  display effect in affine mode.
+* **How a byte-granular copy lands in a 16-bit-entry map.** In text mode the
+  destination entries are 2 bytes and the copy moves `32 - m` bytes; in affine
+  mode entries are 1 byte and the copy is a direct fit. Which it is follows from
+  the DISPCNT mode above.
 
 Neither affects the layer's content, extent or ordinals, and neither changes the
 placement status in §7.
@@ -325,12 +366,12 @@ of it is a runtime observation.
 | Check | Result |
 | --- | --- |
 | Map name / text | map 19's `text_index` is null: the map publishes no name. Neutral. |
-| Declared root extents | `root + 0x08`/`+0x0A` = **3345 x 2401**. Ranked against all 452 maps these are the **largest of 55 distinct extent pairs**, and no other map comes close. Weak corroboration. |
-| Maps large enough for the field | 10 maps declare extents reaching 448x320 tiles or more (`19, 46, 102, 107, 113, 138, 139, 359, 410, 425`), so size alone does not single map 19 out. |
+| Declared root extents | `root + 0x08`/`+0x0A` = **3345 x 2401**. Ranked against all 452 maps these are the **largest of 55 distinct extent pairs**, and no other map comes close (the nearest rival is map 102 at 641x561, about 22x smaller by area). Weak corroboration. The pair does not reconcile with the terrain field's 448x320 ordinals or 3584x2560 pixels and its unit is not established; see §10. |
+| Maps large enough for the field | 10 maps declare extents that are at least 448 wide **and** at least 320 high (`19, 46, 102, 107, 113, 138, 139, 359, 410, 425`), so size alone does not single map 19 out. |
 | Layer form | map 19 is the **only** map carrying the `0x080088BD` handler, and the handler word occurs exactly once in the image, so its terrain field is one-off. Corroborating. |
 | Field extent | 448x320 tile ordinals = 3584x2560 pixels, far beyond one screen. A field of that size exists to be traversed. Corroborating. |
 | Field content | the ordinals' tiles resolve to terrain types (sea, coast, river, forest, sand, rock, snow), `INFERRED` from the character block. Corroborating. |
-| Background configuration | BG2 (`BG2CNT` = `0xBE83`: priority 3, map base 30, 256-colour, text mode) with the constructor writing `BG2PA`..`BG2PD` per scanline. Consistent with a dedicated full-screen background. Corroborating. |
+| Background configuration | BG2 (`BG2CNT` = `0xBE83`: priority 3, map base 30, 256-colour, size field 2, mosaic off) with the constructor writing `BG2PA`..`BG2PD` per scanline under an HBlank interrupt. Consistent with a dedicated full-screen background. Corroborating. |
 | Camera traversal / streaming | the driver keeps a nine-cell 3x3 window over the 14x10 grid and the blitter is viewport-driven, so the engine streams the field as the view moves. **Confirmed structurally**, but the traversal itself (who moves the viewport, and whether player flight drives it) was **not** observed. |
 | World-flight state / map entry and exit | not investigated - out of this ticket's scope. **Missing.** |
 | Runtime capture of the overworld using this data | not obtained (`S6`). **Missing.** |
@@ -362,6 +403,11 @@ screen composition are different claims, and this document keeps them apart.
 * **Whether map 19 is the flying world map**, and therefore whether the whole-field
   composite corresponds to any single displayed screen: `PARTIALLY CONFIRMED`
   (§9). The decisive runtime observation is missing.
+* **The unit and meaning of map 19's declared root extents** (`root + 0x08`/`+0x0A`
+  = `3345 x 2401`). They are the largest of the 55 distinct pairs across the 452
+  maps, but they reconcile with neither the terrain field's 448x320 ordinals nor
+  its 3584x2560 pixels (`3345 x 8 = 26760` tiles), so they must not be read as this
+  layer's or the map's pixel size.
 * The per-scanline affine projection, and therefore the layer's on-screen scale
   and orientation, is `INFERRED` from the IRQ handler; no runtime capture of it was
   taken.

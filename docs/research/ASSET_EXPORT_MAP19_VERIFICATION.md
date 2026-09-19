@@ -131,12 +131,18 @@ written 452, layers classified 1808.
 DETERMINISM:        PASS (the export is a pure function of the ROM: the layer,
                     composite and plane digests are reproduced by the pinned tests
                     from the ROM alone, and the exporter's repeat-render test
-                    passes)
+                    passes). Reviewer B re-ran a maps-only export and matched all
+                    2,470 map-side rows byte-for-byte, and 33 of its focused
+                    integration tests passed.
 VISUAL VALIDATION:  PASS as a coherence check only - layer_2.png at 3584x2560 is
                     clean game art: blue sea, a coastline, rivers, snow-capped
                     mountains, forest and sand, with no seams and no repeated or
                     garbage blocks. Visual coherence is validation, not evidence;
                     the unit was established by the semantic split recorded above.
+                    Reviewer B re-measured the seams independently: boundary deltas
+                    fall below interior deltas at both the 32x32-cell and 8x8-tile
+                    scales, while column-major and x-descending alternatives are 8x
+                    to 10x discontinuous.
 PORTABLE TESTS:     1789 passed, 8 skipped (`pytest tests/unit`)
 ROM-GATED TESTS:    81 passed (`pytest tests/integration/test_asset_export_rom.py`,
                     `LOGX_CANONICAL_ROM` set; not collected by CI)
@@ -148,6 +154,11 @@ GENERATED ASSETS TRACKED BY GIT: 0   EXPECTED 0
 CANONICAL ROM:      unchanged before and after
 WORKBENCH-006:      UNTOUCHED
 ```
+
+The layer's artifact budget, measured: `layer_2.png` is 845,573 bytes,
+`composite.png` 851,442 bytes, both 3584x2560 and fully opaque; map 19's composite
+is the 0.18 % corner overlay described in the provenance, and no other map's
+composite changes size.
 
 ## Caller-search discipline
 
@@ -286,24 +297,56 @@ Both required findings were closed by re-deriving the unit from the ROM:
   the same model - which is recorded as the reason the ROM-gated semantic test
   exists.
 
+### Reviewer B - re-review of the changed surface
+
+```text
+VERDICT: APPROVE WITH NON-BLOCKING NOTES
+```
+
+Reviewer B re-derived the changed surface with its own packed decoder, its own
+raster plane, its own tile lookup and its own PNG decoder: the ordinal plane and
+its digest, the 539-tile character block, the 3584x2560 index image, and
+**0 mismatching pixels of 9,175,040** against both `layer_2.png` and
+`composite.png`. It proved the placement rule is load-bearing (ascending order
+would equal the terrain field exactly; all 16,320 pixels the composite differs by
+lie inside the top-left 256x256), reproduced the hash-table diff (2 added, 0
+removed, 453 changed, 0 changed PNGs anywhere) and verified the 452 changers are
+exactly the two new fields, exercised the CLI flag both ways (all 452 flip, no
+image byte changes), and re-measured the seams, the water/land split and the
+no-prose/no-tracked-asset checks.
+
+Its required item was the same bookkeeping item - freeze a clean tree - which this
+revision satisfies. Its nits are applied: the §6 register values now quote the
+retained capture, the listing names `mov r6, ip` and stores `DMA3DAD` at
+`0x08008274`, the water-share threshold is `35/64 = 0.546875`, the permutation
+control is stated as typical rather than universal, the origin overlay is described
+as the 0.18 % corner it is, and the root extents are marked unreconciled. Its third
+nit identified a **pre-existing** mislabel (`0x04000200` is `REG_IE` bit 1, the
+HBlank interrupt, not `DISPSTAT` bit 1) present in the accepted text from
+`9154fed`; it is corrected in this revision and the correction is recorded here
+rather than applied silently.
+
 ### Correction gate
 
-Both reviewers' required findings are closed. Reviewer B's required item was
-bookkeeping (freeze the reviewed revision), which is satisfied. Reviewer A's
-three required findings are closed by the correction above and re-verified by the
-full ROM-gated suite (81 passed) and the portable suite (1789 passed). Nothing in
-this revision relies on `scan_thumb_bl_callers`.
+Reviewer A's third pass returned `REJECT` on five documentation items (R1-R5) plus
+seven nits, explicitly stating that no artifact, field, mechanism or code change
+was implied. All of them are corrected in `db52eac`: the `BGxCNT` bit-6 error is
+replaced by the correct mosaic/mode account, the text-mode size is stated as
+`256x512` = `32 x 64` entries, the open item is reframed as DISPCNT's video mode
+from the per-map context field, the map area is `4 KiB`, the §6 register values
+quote the retained capture, the listing and count comments are exact, and the
+correction history names each revision.
 
-Reviewer B's verdict was returned against the frozen revision's pixel-unit
-artifacts. Its artifact-level, census-level, determinism, no-prose and
-no-generated-assets results are unit-independent and were carried forward; its
-own-renderer reconstruction was of the same wrong unit, which is why Reviewer A's
-semantic measurement, not agreement between two renderers, decided the model. The
-corrected revision re-validates the same properties: the byte-level diff against
-the accepted library is unchanged (2 added, 0 removed, 2 changed, nothing outside
-map 19), the map-side export is byte-identical across two independent runs, the
-two artifacts are fully opaque and pinned by file and index-image digest, and the
-corrected layer and composite were inspected as images.
+Reviewer B's re-review of the same material returned `APPROVE WITH NON-BLOCKING
+NOTES`, with its required bookkeeping item satisfied and its nits applied.
+
+**State of the gate: the required findings are closed, and a confirming
+Reviewer-A pass over `db52eac` is the outstanding formal step.** The three
+corrections Reviewer A asked for are mechanical documentation fixes to text it
+identified by exact line, no artifact changed between `c8cf6c6` and `db52eac`
+(the export is byte-identical), and the full ROM-gated suite passes on the final
+revision. The gate should be treated as closed only after Reviewer A re-reads the
+corrected text; this record does not claim that pass happened.
 
 ## World-map hypothesis
 

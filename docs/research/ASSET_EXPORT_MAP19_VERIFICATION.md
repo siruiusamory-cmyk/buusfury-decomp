@@ -352,13 +352,35 @@ correction history names each revision.
 Reviewer B's re-review of the same material returned `APPROVE WITH NON-BLOCKING
 NOTES`, with its required bookkeeping item satisfied and its nits applied.
 
-**State of the gate: the required findings are closed, and a confirming
-Reviewer-A pass over `db52eac` is the outstanding formal step.** The three
-corrections Reviewer A asked for are mechanical documentation fixes to text it
-identified by exact line, no artifact changed between `c8cf6c6` and `db52eac`
-(the export is byte-identical), and the full ROM-gated suite passes on the final
-revision. The gate should be treated as closed only after Reviewer A re-reads the
-corrected text; this record does not claim that pass happened.
+**State of the gate: OPEN.** Reviewer A's fourth pass reviewed `07a85b3` and
+returned `REJECT` on the ticket's own review record: the corrected provenance and
+`asset-export.md` text was verified right, but three of the falsified statements
+survived verbatim in this sheet (the A9 entry's bit-6/mode reasoning and its
+`512x256` size, and Gate 2's `0x78A3` register block), plus seven nits and one
+adjacent finding. All of them are corrected in `0bc8958`:
+
+* the A9 entry is annotated as superseded by provenance §8 (bit 6 is mosaic;
+  affine-ness is the DISPCNT mode) and its `512x256` text is corrected in place;
+* Gate 2's observed block now quotes the retained capture's actual values;
+* the test docstring's `0.547` is replaced by `35 of the tile's 64 pixels`;
+* the permutation control is restated with its seed, its median, and the honest
+  note that the `+1` and `*7+11` displacements do **not** collapse - my earlier
+  `0.052`/`0.051`/`0.086` figures were wrong and are withdrawn;
+* §10's open item names DISPCNT and the `ctx + 0xA2` source;
+* the identity blocks name every revision and no longer mislabel `3529b80f`;
+* the `REG_IE` correction is scoped to the three files this ticket owns, with the
+  surviving instances in the earlier ticket's records recorded as a finding for a
+  documentation sweep;
+* provenance §8 records that the accepted `LOGX-TILE-001` text reads size field 2
+  as `512x256`, states why the `256x512` reading is the correct one, and declines to
+  silently reconcile the two.
+
+No artifact or code behaviour changed in any of these passes: an AST comparison of
+every `tools/export/*.py` across `c8cf6c6`..`07a85b3` shows the only differing file
+is `canonical.py`, whose AST is identical (comment-only), and the export is
+byte-identical. A further confirming Reviewer-A pass over `0bc8958` is the
+outstanding formal step; this record does not claim that pass happened, and the
+gate stays `OPEN` until it does.
 
 ## World-map hypothesis
 

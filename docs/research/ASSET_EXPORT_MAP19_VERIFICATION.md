@@ -239,6 +239,17 @@ three required findings are closed by the correction above and re-verified by th
 full ROM-gated suite (81 passed) and the portable suite (1789 passed). Nothing in
 this revision relies on `scan_thumb_bl_callers`.
 
+Reviewer B's verdict was returned against the frozen revision's pixel-unit
+artifacts. Its artifact-level, census-level, determinism, no-prose and
+no-generated-assets results are unit-independent and were carried forward; its
+own-renderer reconstruction was of the same wrong unit, which is why Reviewer A's
+semantic measurement, not agreement between two renderers, decided the model. The
+corrected revision re-validates the same properties: the byte-level diff against
+the accepted library is unchanged (2 added, 0 removed, 2 changed, nothing outside
+map 19), the map-side export is byte-identical across two independent runs, the
+two artifacts are fully opaque and pinned by file and index-image digest, and the
+corrected layer and composite were inspected as images.
+
 ## stopping point
 
 `PROJECT_<local-state-name>` was not modified and no integration was performed. The result is

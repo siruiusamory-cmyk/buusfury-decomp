@@ -32,18 +32,25 @@ measurement target, but the architecture is intended for all three games.
   visual data;
 - lossless codecs and read-only inspection for verified map, placement, script,
   event, dialog, reference, and actor-sprite structures;
-- indexed-PNG extraction for the supported Buu's Fury actor-sprite family;
+- indexed-PNG extraction for the supported Buu's Fury actor-sprite family,
+  plus the complete resource exporter and curator in `tools/export/` (all 452
+  maps, 1,559 graphical layers, 452 composites, 3,745 dominant chunks, all 187
+  tileset banks and all 7,390 structured sprite graphics containers; see
+  [asset export](docs/asset-export.md));
 - synthetic relocation proofs and explicit refusal when real free capacity or
   reference coverage has not been established;
-- the Webfoot Workbench, an optional desktop GUI over the SDK for finding,
-  inspecting, building, and running (`python -m tools.webfoot.workbench`);
-  editing compressed text from the GUI is not yet supported.
+- the DragonByte Z desktop Workbench over the SDK for finding, inspecting and
+  authoring (`python -m tools.webfoot.workbench`); its Atlas, Inspector, Maps,
+  Map, Map Browser, Graphics, Build and Launch tabs include GUI dialogue and
+  compressed-text editing.
 
-The largest missing capability is materializing newly authored content. The
-canonical Buu's Fury profile has no verified free region, so growth and broad
-relocation remain blocked rather than borrowing space speculatively. Map
-tilesets, most graphics families, audio, executable patches, and a complete
-LoG-to-Buu authoring path are not yet implemented.
+The largest remaining capability gap is materializing arbitrarily large newly
+authored content. One bounded region of the canonical Buu's Fury profile is
+verified writable and declared (`[0x007EA400, 0x007EA500)`, **256 bytes**), which
+is enough for the narrow authored placements and map-10 authored body already
+proven byte-exact, but not for broad growth or relocation. Most graphics
+families beyond the accepted map/tile/sprite corpus, audio, executable patches,
+and a complete LoG-to-Buu authoring path are not yet implemented.
 
 See [project state](docs/PROJECT_<local-state-name>) for current verified facts and the
 [public progress site](https://webfoot-sdk.siruiusamory.workers.dev/) for a

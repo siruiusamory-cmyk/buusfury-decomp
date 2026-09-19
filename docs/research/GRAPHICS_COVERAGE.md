@@ -26,7 +26,7 @@ unclassified scanner hit is not proof of a missing asset.
 ## The coverage boundary this ticket starts from
 
 The accepted sprite pipeline reaches **7,390** graphics containers via the
-297-entry character table at `0x086B6BDC` (GRAPHICS_FORMAT.md section 12, corrected by
+297-entry sprite-definition pointer run at `0x086B6BDC` (corrected by
 LOGX-FRAME-001). LOGX-GFXSCAN-001 built the full *known-container corpus* from
 every accepted graph: **11,715** unique containers across five classes:
 7,390 sprite pieces, 3,745 map-dominant-layer chunks (tile-index data, not

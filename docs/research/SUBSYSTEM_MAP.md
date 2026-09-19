@@ -149,7 +149,7 @@ leaves the other accepting - the observed persistence.
 
 | Item | Address | Evidence | Notes |
 |---|---|---|---|
-| Character pointer table | `0x006B6BDC`, 297 x 4 | CONFIRMED_ROM | All valid, strictly ascending; last structure ends at the table |
+| Sprite-definition pointer run | `0x006B6BDC`, 297 x 4 | CONFIRMED_ROM | All valid, strictly ascending; last structure ends at the table. This is the `+0x04` target run, **not** the appearance-definition table (232 records at `0x0874D380`) |
 | Character structures | `0x006A89D0..0x006B6BDC` | CONFIRMED_ROM | 0x50 header, then animation pointers; 295 reach art |
 | Graphics containers | `0x03C34D0..0x06A88AC` | CONFIRMED_ROM | 7,355 payloads, packed with **no slack** (4,014 gap-0 pairs) |
 | Object palette | `0x0005652C`, 512 bytes | CONFIRMED_ROM | 16 inbound refs; uncompressed and fixed-size |
@@ -173,6 +173,13 @@ character table has only 2 inbound word-aligned references in the image
 (`0x3C0`, `0x1715C`), so selection happens in code.
 
 ## 6. Not yet mapped (frontier)
+
+**Partly superseded.** Script VM and dialogue (TOOLKIT-013/019/020/021), portraits
+(PORTRAIT-COMPLETENESS-001), and the map/tile/sprite graphics families (LOGX-*)
+have since been mapped to the degree recorded in
+[`PROJECT_<local-state-name>`](../PROJECT_<local-state-name>) and
+[`GRAPHICS_COVERAGE.md`](GRAPHICS_COVERAGE.md); UI/HUD and fonts stay open there.
+The rest of this list stands.
 
 Main loop / scheduler, player entity update, movement/collision resolution,
 enemy AI, combat/damage, script VM + dialogue, inventory/stats, save format,

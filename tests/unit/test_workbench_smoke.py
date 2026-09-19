@@ -1,9 +1,9 @@
 """T1.4 headless GUI smoke test for the workbench `MainWindow`.
 
-Proves the window constructs and the tab-enable contract holds: seven tabs in
-order, only Atlas (0) enabled, Inspector/Maps/Map/Graphics/Build/Launch (1-6)
-disabled until a ROM is open. Needs no ROM and no tmp dir - construction alone
-exercises the contract.
+Proves the window constructs and the tab-enable contract holds: eight tabs in
+order, only Atlas (0) enabled, Inspector/Maps/Map/Map Browser/Graphics/Build/
+Launch (1-7) disabled until a ROM is open. Needs no ROM and no tmp dir -
+construction alone exercises the contract.
 
 Offscreen Qt is set BEFORE PySide6 is imported; the whole module skips cleanly
 if PySide6 (or the offscreen plugin) is unavailable, so CI without Qt does not
@@ -38,7 +38,7 @@ def test_mainwindow_tab_enable_contract(qapp) -> None:
 
     tabs = window.findChild(QtWidgets.QTabWidget)
     assert tabs is not None
-    assert tabs.count() == 7
+    assert tabs.count() == 8
     assert tabs.isTabEnabled(0)  # Atlas
-    for index in (1, 2, 3, 4, 5, 6):  # Inspector, Maps, Map, Graphics, Build, Launch
+    for index in (1, 2, 3, 4, 5, 6, 7):  # Inspector..Launch
         assert not tabs.isTabEnabled(index)

@@ -1,9 +1,9 @@
 """WORKBENCH-001 GUI shell.
 
-`MainWindow` is a thin QMainWindow holding a QTabWidget with the seven tabs -
-Atlas, Inspector, Maps, Map, Graphics, Build, Launch - in that order. It holds the
-shared `Session` and the ROM profile catalog by constructor injection (no global
-state) and hands them to whatever tab content is mounted.
+`MainWindow` is a thin QMainWindow holding a QTabWidget with eight tabs - Atlas,
+Inspector, Maps, Map, Map Browser, Graphics, Build, Launch - in that order. It
+holds the shared `Session` and the ROM profile catalog by constructor injection
+(no global state) and hands them to whatever tab content is mounted.
 
 UX (from WORKBENCH-005): thin client does not mean simplistic UI - DragonByte Z
 may use standard desktop-editor patterns (menus, toolbars, status bars,
@@ -24,14 +24,24 @@ from .build_panel import BuildPanelTab
 from .graphics_tab import GraphicsTab
 from .inspector import InspectorTab
 from .launcher import LauncherTab
+from .map_browser_tab import MapBrowserTab
 from .map_tab import MapWorkspaceTab
 from .scene_tab import SceneTab
 from .session import Session
 
-# Tab order is the contract. Scene (Maps) and Graphics sit between Inspector and
-# Build so authoring precedes building.
-_TAB_TITLES = ("Atlas", "Inspector", "Maps", "Map", "Graphics", "Build", "Launch")
-_POST_ROM_TABS = (1, 2, 3, 4, 5, 6)  # enabled only once a ROM is open
+# Tab order is the contract. The read-only Map Browser sits between the Map
+# authoring workspace and Graphics; authoring still precedes building.
+_TAB_TITLES = (
+    "Atlas",
+    "Inspector",
+    "Maps",
+    "Map",
+    "Map Browser",
+    "Graphics",
+    "Build",
+    "Launch",
+)
+_POST_ROM_TABS = (1, 2, 3, 4, 5, 6, 7)  # enabled only once a ROM is open
 
 
 class MainWindow(QMainWindow):
@@ -47,6 +57,7 @@ class MainWindow(QMainWindow):
         self._inspector = InspectorTab(session)
         self._scene = SceneTab(session)
         self._map = MapWorkspaceTab(session)
+        self._map_browser = MapBrowserTab(session)
         self._graphics = GraphicsTab(session)
         self._build = BuildPanelTab(session, catalog)
         self._launcher = LauncherTab(session)
@@ -54,9 +65,10 @@ class MainWindow(QMainWindow):
         self._tabs.addTab(self._inspector, _TAB_TITLES[1])
         self._tabs.addTab(self._scene, _TAB_TITLES[2])
         self._tabs.addTab(self._map, _TAB_TITLES[3])
-        self._tabs.addTab(self._graphics, _TAB_TITLES[4])
-        self._tabs.addTab(self._build, _TAB_TITLES[5])
-        self._tabs.addTab(self._launcher, _TAB_TITLES[6])
+        self._tabs.addTab(self._map_browser, _TAB_TITLES[4])
+        self._tabs.addTab(self._graphics, _TAB_TITLES[5])
+        self._tabs.addTab(self._build, _TAB_TITLES[6])
+        self._tabs.addTab(self._launcher, _TAB_TITLES[7])
         for index in _POST_ROM_TABS:
             self._tabs.setTabEnabled(index, False)
 
@@ -64,6 +76,7 @@ class MainWindow(QMainWindow):
         self._atlas.romOpened.connect(self._build.on_session_changed)
         self._atlas.romOpened.connect(self._scene.on_session_changed)
         self._atlas.romOpened.connect(self._map.on_session_changed)
+        self._atlas.romOpened.connect(self._map_browser.on_session_changed)
         self._atlas.romOpened.connect(self._graphics.on_session_changed)
         self._atlas.resultActivated.connect(self._on_result_activated)
         self._build.buildFinished.connect(self._launcher.on_session_changed)

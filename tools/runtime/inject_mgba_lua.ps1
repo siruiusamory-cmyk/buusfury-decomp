@@ -211,6 +211,12 @@ $allowedLua = @(
     [System.IO.Path]::GetFullPath(
         (Join-Path $workspaceRoot 'tools\runtime\placementpos001_construct_watch.lua')
     )
+    # Added by ASSET-EXPORT-MAP19-001: read-only BG/VRAM placement observer
+    # for the terrain-field layer. It reads registers and VRAM and writes
+    # only host text.
+    [System.IO.Path]::GetFullPath(
+        (Join-Path $workspaceRoot 'tools\runtime\map19_bg_placement.lua')
+    )
 )
 $resolvedLua = [System.IO.Path]::GetFullPath($LuaPath)
 if ($resolvedLua -notin $allowedLua) {

@@ -48,7 +48,7 @@ Reproduction), not by the portrait probe, which only self-checks portrait extent
 |---|---|---|---|---|---|---|
 | UI / HUD / MENUS | PARTIAL / UNRESOLVED | code-referenced UI-asset descriptors near `0x08071700`; damage-number assets `0x0806E050` (normal, 11 refs) & `0x0806F150` (crit) selected by branch `0x0800E94E` (P-009 runtime) | descriptor record `{ptr, small int}`, not a bare container; underlying graphics format not established | UNKNOWN (no complete table bound) | NONE | **INFERRED** system exists; population **UNKNOWN** |
 | KI BLASTS / EFFECTS | UNRESOLVED (no separate system found) | none found outside the actor pipeline; ki-blast observed as an actor object (P-003/P-004 runtime) | n/a | n/a | ALREADY COVERED if actor sprites; else UNKNOWN | **INFERRED**: rides the sprite pipeline or is runtime-composited; **no dedicated effects graphics table located** |
-| PORTRAITS | **ENUMERABLE** | portrait pointer array `0x086F393C`, indexed by appearance-def field `+0x08` via accessor `0x08011F20`; array base read from pool word `0x08012194` (LOGX-CHAR-001 section 11) | Webfoot container, form 1, 4,096 B decoded (whole-tile block; INFERRED 64x64 @ 8bpp, no dimension field in the container header) | **155** | NONE | **CONFIRMED_SHAPE**: 155 pointers, all form 1, all decode to exactly 4,096 B, 0 failures, disjoint from the 11,715 known corpus |
+| PORTRAITS | **ENUMERABLE; REFERENCE COVERAGE PROVEN** (PORTRAIT-COMPLETENESS-001) | portrait pointer array `0x086F393C`, indexed by **appearance-definition-table** field `+0x08` via accessor `0x08011F20`; array base read from pool word `0x08012194` (LOGX-CHAR-001 section 11); the field's record base is `0x0874D380 + 16*index` (`0x08025086`/`0x08025088`/`0x0802508A`), i.e. the **232-record** table, not the 297-entry `+0x04` run | Webfoot container, form 1, 4,096 B decoded (whole-tile block; INFERRED 64x64 @ 8bpp, no dimension field in the container header) | **155** | NONE | **CONFIRMED_SHAPE**: 155 pointers, all form 1, all decode to exactly 4,096 B, 0 failures, disjoint from the 11,715 known corpus. **Completeness:** all **134** portrait references of the 232 appearance definitions (**110** distinct slots) resolve inside the run, **0** outside, **0** in the reserved slots 1..7; **45** run entries carry no appearance-definition reference. See [`PORTRAIT_COMPLETENESS_PROVENANCE.md`](PORTRAIT_COMPLETENESS_PROVENANCE.md) |
 | FONTS / GLYPHS | PARTIAL | font descriptor `0x08753A18` (`+0x00` RAM glyph buffer `0x03001C4C`, `+0x04` ROM glyph source `0x087548DC`); measurer `0x0803FFE8` (font metrics table, per-glyph advance, `0xFF` wide/narrow split); blitter `0x0802BF8E` -> OBJ VRAM `0x06010000` (BUU_DIALOG_RUNTIME.md) | glyph tiles blitted per code unit (32 B/glyph step); metrics table = per-glyph u16 advances | UNKNOWN (glyph-bank extent/count not bound) | NONE | **CONFIRMED** a font system is engine-owned and located; **UNKNOWN** glyph-tile population/format |
 | TITLE / STATIC / CUTSCENE | UNRESOLVED | residual load-descriptor table at `0x087B5B64` (single ref, pool word `0x080123CC`): 7 ROM container ptrs `0x0879BF2C..0x087B5AA0` then 6 EWRAM `0x0300xxxx` destinations | 6 containers form 1, ~65,322-65,474 B each; 1 small (436 B); RAM-destination load list | UNKNOWN (semantics not proven) | NONE | **CONFIRMED** table shape & that its 7 containers are outside the known corpus; **UNKNOWN** whether graphics vs other resource |
 | OTHER GRAPHICS SYSTEMS | see below | root+0x4C tileset banks `0x08179764` (187) already accepted by LOGX-TILE-001; background palette `0x0805632C` runtime-built | banks: form 1, 15,424-16,384 B | 187 (tilesets, prior ticket) | ALREADY COVERED (LOGX-TILE) | tilesets CONFIRMED as containers (LOGX-TILE-001); pixel identity UNRESOLVED there too |
@@ -119,6 +119,13 @@ that damage numbers and criticals are the visible UI-graphics surface).
 **Still open (honest UNKNOWNs).**
 - Portrait *render*: palette and on-screen size/placement not captured (static
   shape only).
+- Portrait *reference coverage* is **settled, not open**: PORTRAIT-COMPLETENESS-001
+  enumerated the appearance-definition `+0x08` field over all 232 records and
+  found every reference inside the run (**0** outside). What stays open is why
+  **45** run entries carry no appearance-definition reference (at least **22**
+  carry no reference from any portrait-slot source found), and whether the run's
+  `155` is engine-declared or only data-bounded: no upper-index clamp was found.
+  See [`PORTRAIT_COMPLETENESS_PROVENANCE.md`](PORTRAIT_COMPLETENESS_PROVENANCE.md).
 - Font glyph-tile *population*: the font descriptor and glyph source are located
   (`0x08753A18` -> `0x087548DC`), but the glyph-bank extent, glyph count and exact
   tile format were not bound.
@@ -145,6 +152,12 @@ reports `portrait_count: 155`, `container_kinds {1: 155}`, `declared_sizes
 does not compute corpus disjointness; that is established by the separate
 `--known` command shown immediately below (0 overlap, independently reproduced).
 
+Portrait *reference* coverage (PORTRAIT-COMPLETENESS-001), from the same probe:
+
+```
+.venv/Scripts/python.exe -m tools.research.logx_portrait_probe "roms/Dragon Ball Z - Buu's Fury (U).gba" --references
+```
+
 Known-corpus baseline used for the overlap check:
 
 ```
@@ -155,16 +168,29 @@ Known-corpus baseline used for the overlap check:
 
 ## Recommended follow-up exporter / RE tickets
 
-1. **Portrait exporter** (small, ready): the population is enumerable and decodes;
-   an indexed-PNG export reusing the sprite palette/codec path is a bounded ticket.
-   The one open question is the render palette.
-2. **Residual `0x087B5B64` load-descriptor** RE: walk the single reference at
-   `0x080123CC`/`0x080123xx` as instructions, identify the consumer, and settle
-   whether the 6 large containers are title/cutscene/static graphics. Highest-value
-   unknown here.
-3. **Font glyph bank** RE: bound `0x087548DC`'s glyph tiles and metrics table at
-   the font metrics base; then a glyph-sheet export is feasible.
-4. **UI/HUD descriptor table** RE: bound the table around `0x08071700` and resolve
-   the damage-number and HUD asset format before any UI exporter.
-5. **Portrait completeness** RE: enumerate the 297 appearance-defs' `+0x08` field
-   to confirm 155 is complete vs a run.
+Ordered after PORTRAIT-COMPLETENESS-001. The next substantive graphics-coverage
+task is **`UI-HUD-GRAPHICS-001`**; the rest stay later.
+
+1. **`UI-HUD-GRAPHICS-001` - UI / HUD / menu graphics ownership and enumeration
+   (NEXT).** Determine the deterministic ownership/enumeration model for UI, HUD
+   and menu graphics: bound the descriptor system around `0x08071700`, resolve the
+   damage-number descriptors (`0x0806E050` normal / `0x0806F150` crit, selected by
+   branch `0x0800E94E`) as records rather than bare containers, and establish
+   whether a bounded, proven-complete population exists before any UI exporter.
+   This is the largest family still marked PARTIAL / UNRESOLVED.
+2. **Residual `0x087B5B64` load-descriptor** RE (**`STATIC-GRAPHICS-001`**): walk
+   the single reference at `0x080123CC`/`0x080123xx` as instructions, identify the
+   consumer, and settle whether the 6 large containers are title/cutscene/static
+   graphics.
+3. **Font glyph bank** RE (**`FONT-GLYPH-COVERAGE-001`**): bound `0x087548DC`'s
+   glyph tiles and the metrics table at the font metrics base; then a glyph-sheet
+   export is feasible.
+4. **`LOGX-PORTRAIT-FORMAT-001`** (portrait import/replacement: pixel format,
+   dimensions and rendering claim): **only when portrait rendering/export is
+   actually scheduled.** The reference population is now proven complete for the
+   appearance-definition side, but render identity remains UNKNOWN.
+5. **Portrait completeness** RE: **DONE in PORTRAIT-COMPLETENESS-001.** The
+   population is the **232-record appearance-definition table** at `0x0874D380`
+   (its `+0x08` is what `0x08011F20` is fed), not the 297-entry `+0x04` run; all
+   134 references resolve inside the 155-entry run, 0 outside, 45 run entries
+   unreferenced. Evidence: [`PORTRAIT_COMPLETENESS_PROVENANCE.md`](PORTRAIT_COMPLETENESS_PROVENANCE.md).

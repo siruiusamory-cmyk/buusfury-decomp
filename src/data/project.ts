@@ -77,22 +77,43 @@ export const project: ProjectStatus = {
   subtitle: "Legacy of Goku authoring toolkit",
   tagline: "Building a real authoring toolkit for the Legacy of Goku engine.",
   description:
-    "Core semantic authoring is mature: playable scenes have been built and run in the retail engine, the owner has visually edited a sprite palette through the desktop tool, and DragonByte Z now renders retail maps directly from immutable ROM data and supports direct visual placement editing on the actual game map.",
+    "The broad engine-archaeology phase is complete and that research queue is closed." +
+    " The SDK now extracts a complete resource library from the user's own copy of the" +
+    " game - every known map layer, tile, chunk, sprite, animation and frame - and" +
+    " DragonByte Z renders retail maps directly from immutable ROM data and supports" +
+    " direct visual placement editing on the actual game map. The next step is turning" +
+    " that extracted corpus into a clean, organised resource library before the editor" +
+    " grows feature by feature.",
   overallProgress: 97,
   overallProgressLabel: "≈ 97% COMPLETE",
   progressCaveat:
     "Progress is a directional project estimate. The milestones below are the authoritative measure of capability.",
-  currentPhase: "AUTHOR_NEW",
+  currentPhase: "DRAGONBYTE Z BUILDOUT",
   currentFrontierLabel: "CURRENT FRONTIER",
   existingContentState: "MATURE",
-  blockerCode: "MAP-LAYOUT WRITING",
-  blockerTitle: "Author verified map-layout data",
+  blockerCode: "RESOURCE LIBRARY CURATION",
+  blockerTitle: "Organise the complete extracted resource corpus",
   blockerShort:
-    "DragonByte Z now makes the retail map the direct placement-authoring surface: an author can select, inspect, add, and move supported objects with exact map-pixel coordinates, then validate, build, and run the result. The next product gap is the reverse authoring path for map-layout data; tile painting itself is not implemented.",
+    "The SDK can now export a complete resource library from the user's own ROM: every" +
+    " known map layer is classified, every known graphical layer is exported, and the" +
+    " full tile, chunk, sprite, animation, frame and graphics populations come out as" +
+    " reusable files. The next step is not another research question - it is curation:" +
+    " organising and de-duplicating that corpus into a clean, human-usable library" +
+    " without losing any structural metadata.",
   blockerParagraphs: [
-    "The map workspace uses the production ROM-only renderer and the proven signed X/Y placement transform. Its neutral markers deliberately do not pretend to know placement-to-sprite identity. Direct movement is a semantic project mutation with Undo/Redo, and the ordinary validation and build path produces the generated ROM.",
-    "The remaining blocker is distinct: the SDK has not yet proven a safe reverse authoring path for the map layout itself. Tile painting, resizing, collision, warps, connections, map creation, and map-layout mutation remain out of scope for the completed visual placement workspace.",
-    "The overall estimate remains 97% after product review: direct visual placement work is complete, while the larger remaining authoring surface and the ultimate playable-LOG1 target are not mechanically reduced to a ticket count.",
+    "Engine archaeology is finished for the known visual resource graph. The complete" +
+    " exporter now walks the game's own structures rather than guessing at them: 452" +
+    " maps, every map-layer reference classified, every known graphical layer exported," +
+    " and complete sprite, animation, frame and tile populations. This runs against the" +
+    " user's own copy of the game; no extracted game content is published here.",
+    "What remains is organisation, not discovery. The extracted library is complete but" +
+    " raw, and the immediate work is making it clean, de-duplicated and easy to navigate" +
+    " while preserving every structural fact the exporter recorded.",
+    "After that, DragonByte Z grows one feature at a time against the verified corpus -" +
+    " browsing maps, tiles and sprites, then editing features - instead of waiting for" +
+    " full arbitrary-content authoring to be solved first. Authoring entirely new" +
+    " content remains the project's final acceptance target and is no longer the" +
+    " organising priority for current tool work. The overall estimate stays at 97%.",
   ],
   acceptanceTarget:
     "Author playable Legacy of Goku content inside the real LOGII/Buu engine.",
@@ -357,19 +378,56 @@ export const project: ProjectStatus = {
       status: "complete",
     },
     {
-      id: "map-layout-authoring",
-      title: "Author verified map-layout data",
+      id: "complete-resource-extraction",
+      title: "Extract the complete resource library",
       plainEnglish:
-        "Give authors a safe way to change a map's layout itself, after the reverse write path has been proved.",
+        "Pull every map, tile, sprite, animation and frame the game uses out of your own" +
+        " copy of the game and into ordinary reusable files.",
       technical:
-        "Retail map rendering and direct placement editing are complete. No reversible tile-layout mutation contract has been established yet, so tile painting, layout writing, collision, warps, connections, resizing, and map creation are intentionally not claimed or started.",
+        "The exporter walks the accepted engine graphs rather than scanning heuristically." +
+        " 452 maps and 1,808 map-layer references are classified, 1,559 known graphical" +
+        " layers are exported with zero unresolved, and the complete tile, chunk, sprite," +
+        " animation, frame and graphics populations are written deterministically." +
+        " Generation is exactly reproducible and the user's game file is never modified.",
+      status: "complete",
+    },
+    {
+      id: "resource-library-curation",
+      title: "Organise the extracted resource library",
+      plainEnglish:
+        "Turn the complete but raw extraction into a clean, de-duplicated library that a" +
+        " person can actually browse and navigate.",
+      technical:
+        "The exporter output is complete and deterministic, but it is not yet organised:" +
+        " the work is measuring and reducing redundancy and improving navigation while" +
+        " proving that every structural fact the exporter recorded still resolves. No" +
+        " extraction, classification or rendering behaviour changes.",
       status: "current",
+    },
+    {
+      id: "dragonbyte-z-buildout",
+      title: "Build DragonByte Z out feature by feature",
+      plainEnglish:
+        "Grow the desktop editor one feature at a time against the verified resource" +
+        " corpus instead of waiting for everything to be solved first.",
+      technical:
+        "The map canvas itself is already proven: DragonByte Z renders supported retail" +
+        " maps from ROM and lets an author select, add and move objects directly on them." +
+        " The intended direction is incremental from here - browse and view maps, then" +
+        " tiles and resources, then sprites, animations and frames, followed by editing" +
+        " features such as warp editing and graphics replacement, with map-layout" +
+        " authoring in that sequence. This is a direction rather than a committed" +
+        " engineering order.",
+      status: "next",
     },
     {
       id: "playable-log1",
       title: "Playable LOG1 content in the real engine",
       plainEnglish: "Build and play newly authored Legacy of Goku content using the original Webfoot game engine.",
-      technical: "This is the mandatory acceptance target for Webfoot SDK.",
+      technical:
+        "This is the mandatory acceptance target for Webfoot SDK. Authoring entirely new" +
+        " content remains the goal; it is simply no longer the organising priority for" +
+        " current tool development.",
       status: "target",
     },
   ],
@@ -401,10 +459,63 @@ export const project: ProjectStatus = {
     { label: "VISUAL GRAPHICS + PALETTE EDITING", state: "done" },
     { label: "ROM-ONLY MAP RENDERING", state: "done" },
     { label: "VISUAL MAP EDITOR", state: "done" },
-    { label: "MAP-LAYOUT AUTHORING", state: "current", marker: "↑ YOU ARE HERE" },
+    { label: "COMPLETE RESOURCE EXTRACTION", state: "done" },
+    { label: "RESOURCE LIBRARY CURATION", state: "current", marker: "↑ YOU ARE HERE" },
+    { label: "DRAGONBYTE Z FEATURES", state: "next" },
+    { label: "ADVANCED AUTHORING / AUTHOR_NEW", state: "target" },
     { label: "PLAYABLE LOG1 CONTENT", state: "target" },
   ],
   breakthroughs: [
+    {
+      id: "complete-resource-extraction",
+      title: "Complete resource extraction",
+      summary:
+        "Maps, map layers, tiles, chunks, sprites, animations, frames and their underlying" +
+        " graphics can now be exported out of your own copy of the game into reusable" +
+        " files.",
+      technical:
+        "The exporter walks the game's own structures instead of scanning heuristically:" +
+        " 452 maps and 1,808 map-layer references classified, 1,559 known graphical layers" +
+        " exported with zero unresolved, and complete tile, chunk, sprite, animation, frame" +
+        " and graphics populations. Output is deterministic between runs, and the game" +
+        " file is never modified. The single special-case terrain-field layer is" +
+        " extracted too.",
+    },
+    {
+      id: "all-map-layers-classified",
+      title: "Every known map layer classified",
+      summary:
+        "No map layer is left unexplained. All 1,808 map-layer references are structurally" +
+        " classified, and every graphical layer among them is exported as an image.",
+      technical:
+        "Each layer reference is classified from the engine's own handler code and the" +
+        " paths that reach its records, not from appearance. 1,559 graphical layers are" +
+        " exported, 249 references are proven to draw nothing, and zero graphical layers" +
+        " remain unresolved or silently omitted.",
+    },
+    {
+      id: "sprite-pipeline-reconstructed",
+      title: "Sprite pipeline reconstructed",
+      summary:
+        "Sprite definitions, animation slots, directional frames, multipart pieces and" +
+        " their graphics can all be exported and re-associated.",
+      technical:
+        "The exporter reads the count-bounded animation arrays and the frame/piece records" +
+        " directly: 297 sprite definitions, 4,070 animation slots, 1,721 non-null animation" +
+        " references, 10,980 frame records, 11,005 pieces, 21 multipart frames and 7,390" +
+        " structured graphics containers.",
+    },
+    {
+      id: "research-freeze-complete",
+      title: "Engine archaeology and final synthesis complete",
+      summary:
+        "The broad reverse-engineering programme that underpinned the toolkit is finished," +
+        " and its results are consolidated into canonical schemas.",
+      technical:
+        "The ten-ticket archaeology queue and its consolidation close out, each read through" +
+        " its own accepted review, closeout and provenance record. Further work is targeted" +
+        " and capability-driven rather than a new archaeology queue.",
+    },
     {
       id: "visual-map-placement-authoring",
       title: "Direct visual placement editing on retail maps",
@@ -576,6 +687,18 @@ export const project: ProjectStatus = {
     },
   ],
   metrics: [
+    { label: "Maps extracted", value: "452" },
+    { label: "Map layer references classified", value: "1,808 / 1,808" },
+    { label: "Graphical map layers exported", value: "1,559" },
+    { label: "Unresolved graphical layers", value: "0" },
+    { label: "Tile banks extracted", value: "187" },
+    { label: "Individual tiles extracted", value: "47,857" },
+    { label: "Map chunks extracted", value: "3,745" },
+    { label: "Sprite definitions extracted", value: "297" },
+    { label: "Animation slots extracted", value: "4,070" },
+    { label: "Frame records extracted", value: "10,980" },
+    { label: "Sprite pieces extracted", value: "11,005" },
+    { label: "Structured sprite graphics extracted", value: "7,390" },
     { label: "Map-owned object slots", value: "1,898" },
     { label: "Placement-family objects", value: "1,559" },
     { label: "Sibling-family objects", value: "339" },

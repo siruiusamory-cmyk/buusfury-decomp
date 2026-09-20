@@ -279,6 +279,10 @@ def _verify_edits_against_canonical(
     """
     rom = canon.Rom(canonical_image)
     entries = canon.read_map_entries(rom)
+    # One writer for the whole check: its constructor verifies the image by SHA-256
+    # and each offset query re-reads the map table, so constructing it per edit would
+    # cost a full-image hash per declared change.
+    writer = MapLayoutWriter(canonical_image)
     for edit in edits:
         entry = entries[edit.map_index]
         layer = canon.read_layer(rom, entry.root_address, edit.layer_slot)
@@ -295,7 +299,7 @@ def _verify_edits_against_canonical(
         try:
             # The writer owns this arithmetic; re-deriving it here would be a second
             # copy of a format rule free to drift.
-            expected_offset = MapLayoutWriter(canonical_image).chunk_pointer_offset(
+            expected_offset = writer.chunk_pointer_offset(
                 edit.map_index, edit.layer_slot, edit.cell
             )
         except MapLayoutWriteError as exc:

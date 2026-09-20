@@ -666,6 +666,24 @@ def test_a_failed_emit_or_verification_preserves_an_existing_destination(
     editor.reset()
 
 
+def test_a_failed_publish_leaves_no_temporary_file(
+    canonical_rom: tuple[Path, bytes], editor: MapLayoutEditor, tmp_path: Path
+) -> None:
+    """The last step can fail too; nothing may be left behind when it does."""
+    path, _source = canonical_rom
+    editor.reset()
+    editor.set_cell(GRAND_KAI, GRAND_KAI_LAYER, GRAND_KAI_CELL, GRAND_KAI_REPLACEMENT)
+    # A directory at the destination makes the final os.replace fail.
+    destination = tmp_path / "blocked.gba"
+    destination.mkdir()
+    with pytest.raises(OSError):
+        editor.save(destination, source_path=path, profile_id=PROFILE_ID)
+    assert destination.is_dir()
+    leftovers = sorted(part.name for part in tmp_path.iterdir() if "webfoot-partial" in part.name)
+    assert leftovers == []
+    editor.reset()
+
+
 def test_save_as_writes_a_new_rom_that_reopens_with_the_requested_cells(
     canonical_rom: tuple[Path, bytes], editor: MapLayoutEditor, tmp_path: Path
 ) -> None:

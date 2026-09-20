@@ -708,17 +708,18 @@ class MapLayoutEditor:
         # Publish the image first and its provenance second: the artifact the user
         # asked for is the ROM. Two renames cannot be one atomic step, so the failure
         # of the second is reported as what it is - an image written without its
-        # provenance, which therefore refuses to reopen until it is saved again.
-        os.replace(staging_output, output)
+        # provenance, which therefore refuses to reopen until it is saved again. The
+        # staging paths are cleaned on every outcome, including a failed publish.
         try:
-            os.replace(staging_manifest, manifest_path)
-        except OSError as exc:
-            staging_manifest.unlink(missing_ok=True)
-            raise MapLayoutEditError(
-                f"the new ROM was written to {output}, but its provenance could not be "
-                f"published to {manifest_path}: {exc}. Save again to a writable "
-                "destination to give it provenance."
-            ) from exc
+            os.replace(staging_output, output)
+            try:
+                os.replace(staging_manifest, manifest_path)
+            except OSError as exc:
+                raise MapLayoutEditError(
+                    f"the new ROM was written to {output}, but its provenance could not "
+                    f"be published to {manifest_path}: {exc}. Save again to a writable "
+                    "destination to give it provenance."
+                ) from exc
         finally:
             staging_output.unlink(missing_ok=True)
             staging_manifest.unlink(missing_ok=True)

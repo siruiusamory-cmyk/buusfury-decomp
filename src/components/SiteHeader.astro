@@ -1,21 +1,30 @@
 ---
 import { project } from "../data/project";
 const base = import.meta.env.BASE_URL;
+const repo = project.links.find((link) => link.url);
 ---
 
-<header class="site-header">
-  <div class="shell header-inner">
-    <a class="brand" href={`${base}#top`}>
+<header class="topbar">
+  <div class="shell topbar-inner">
+    <a class="brand" href={`${base}#status`}>
       <span class="brand-mark" aria-hidden="true">WF</span>
-      <span>
+      <span class="brand-text">
         <strong>{project.name}</strong>
-        <small>{project.subtitle}</small>
+        <small>DragonByte Z</small>
       </span>
     </a>
-    <nav aria-label="Primary navigation">
+    <nav class="topnav" aria-label="Primary">
       <ul>
         {project.nav.map((item) => <li><a href={`${base}#${item.href}`}>{item.label}</a></li>)}
       </ul>
     </nav>
+    <p class="topbar-right">
+      {repo && (
+        <a class="repo-link" href={repo.url} rel="noopener">
+          {repo.label} <span aria-hidden="true">↗</span>
+        </a>
+      )}
+      <span class="topbar-status"><span class="dot" aria-hidden="true"></span>{project.developmentStatus}</span>
+    </p>
   </div>
 </header>

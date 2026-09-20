@@ -1,5 +1,13 @@
 export type MilestoneStatus = "complete" | "current" | "next" | "target";
 
+/**
+ * State of one DragonByte Z buildout capability. Deliberately binary: a
+ * capability is either shipped and reachable from the desktop application, or
+ * it is not. "The binary structure is known" is not a state this track can
+ * express, because a reverse-engineering result is not a product capability.
+ */
+export type CapabilityState = "shipped" | "missing";
+
 export interface Milestone {
   id: string;
   title: string;
@@ -16,20 +24,19 @@ export interface Breakthrough {
   date?: string;
   badge?: string;
   commit?: string;
+  /** Part of the current frontier period, shown in the recent log. */
+  recent?: boolean;
 }
 
 export interface ProjectMetric {
   label: string;
   value: string;
   explanation?: string;
-}
-
-export interface Capability {
-  label: string;
-  title: string;
-  description: string;
-  state: string;
-  status: MilestoneStatus;
+  /** Which proof group the metric belongs to. */
+  group: string;
+  /** Headline figures shown in the compact proof strip; the rest sit in the
+      full-ledger disclosure, so no figure is duplicated on the page. */
+  strip?: boolean;
 }
 
 export interface ProjectLink {
@@ -43,63 +50,103 @@ export interface DependencyStep {
   marker?: string;
 }
 
+/** One capability in the active DragonByte Z buildout track. */
+export interface BuildoutItem {
+  key: string;
+  title: string;
+  detail: string;
+  state: CapabilityState;
+}
+
+export interface BuildoutFamily {
+  key: string;
+  label: string;
+  title: string;
+  items: BuildoutItem[];
+}
+
+/** The active product-development track. */
+export interface Buildout {
+  label: string;
+  title: string;
+  blurb: string;
+  families: BuildoutFamily[];
+}
+
+export interface FrontierStep {
+  kind: "near" | "gated" | "horizon";
+  title: string;
+  detail: string;
+}
+
+/** A single measured figure shown in the masthead readout. */
+export interface StateFact {
+  label: string;
+  value: string;
+}
+
+/** A real product capture, shipped unaltered except for cropping. */
+export interface Figure {
+  src: string;
+  width: number;
+  height: number;
+  alt: string;
+  title: string;
+  caption: string;
+  facts: string[];
+}
+
 export interface ProjectStatus {
   name: string;
-  subtitle: string;
   tagline: string;
   description: string;
-  overallProgress: number;
-  overallProgressLabel: string;
   progressCaveat: string;
   currentPhase: string;
-  currentFrontierLabel: string;
-  existingContentState: string;
-  blockerCode: string;
   blockerTitle: string;
   blockerShort: string;
   blockerParagraphs: string[];
   acceptanceTarget: string;
   definitionOfDone: string[];
-  capabilities: Capability[];
   milestones: Milestone[];
   dependencyLadder: DependencyStep[];
+  buildout: Buildout;
+  frontier: FrontierStep[];
+  /** Measured product figures for the masthead readout. */
+  stateFacts: StateFact[];
   breakthroughs: Breakthrough[];
   metrics: ProjectMetric[];
+  figures: Figure[];
   nav: { label: string; href: string }[];
   links: ProjectLink[];
   footerTagline: string;
   developmentStatus: string;
   disclaimer: string;
+  /** Waiver of the proprietary-artifact rule for real product captures. */
+  assetPolicy: string;
 }
 
 export const project: ProjectStatus = {
   name: "WEBFOOT SDK",
-  subtitle: "Legacy of Goku authoring toolkit",
-  tagline: "Building a real authoring toolkit for the Legacy of Goku engine.",
+  tagline: "A modding SDK and desktop editor for the Webfoot Dragon Ball Z GBA games.",
   description:
-    "The broad engine-archaeology phase is complete and that research queue is closed." +
-    " The SDK extracts a complete resource library from the user's own copy of the game" +
-    " and curates it into a clean, human-browsable resource pack with ROM-derived names" +
-    " and a full source map. DragonByte Z renders retail maps directly from immutable" +
-    " ROM data and supports direct visual placement editing on the actual game map, and" +
-    " the editor now grows one feature at a time against the curated corpus.",
-  overallProgress: 97,
-  overallProgressLabel: "≈ 97% COMPLETE",
+    "A modding toolkit and desktop editor for the three Webfoot Dragon Ball Z GBA" +
+    " games. The engine-archaeology programme that built it is finished, and product" +
+    " development continues one editor capability at a time against the verified" +
+    " resource corpus.",
   progressCaveat:
-    "Progress is a directional project estimate. The milestones below are the authoritative measure of capability.",
+    "The percentage above is counted from the capability list below, so it moves when a" +
+    " capability does. It is a count of editor capabilities, not a ticket count and not" +
+    " an estimate.",
   currentPhase: "DRAGONBYTE Z BUILDOUT",
-  currentFrontierLabel: "CURRENT FRONTIER",
-  existingContentState: "MATURE",
-  blockerCode: "DRAGONBYTE Z FEATURES",
-  blockerTitle: "Build DragonByte Z out feature by feature",
+  blockerTitle: "Grow DragonByte Z one editor surface at a time",
   blockerShort:
-    "The resource pipeline is complete and curated: the SDK extracts every known map" +
-    " layer, tile, chunk, sprite, animation and frame from the user's own ROM, and a" +
-    " second pass organises that corpus into a clean, human-browsable resource pack" +
-    " with ROM-derived names and a complete source map. The next step is growing the" +
-    " desktop editor one feature at a time against that corpus - browsing and viewing," +
-    " then editing - instead of waiting for full arbitrary-content authoring to be" +
-    " solved first.",
+    "The resource pipeline is complete and curated, and the map surfaces are the" +
+    " proven working example: DragonByte Z renders all 452 maps from ROM, edits" +
+    " object placement on the real map, and reassigns a dominant-layer chunk cell in" +
+    " 341 of those maps. What remains is the rest of the editor vocabulary - tile" +
+    " painting, chunk creation, resizing, graphics replacement and warp editing -" +
+    " each of which needs a verified way to place new bytes in the ROM before it can" +
+    " be offered safely.",
   blockerParagraphs: [
     "The resource pipeline is finished. The exporter walks the game's own structures -" +
     " 452 maps, every map-layer reference classified, complete tile, chunk, sprite," +
@@ -107,45 +154,22 @@ export const project: ProjectStatus = {
     " into a clean, human-navigable library: ROM-derived and neutral names, no generated" +
     " prose, a deterministic rebuild, and a complete curated-to-raw source map. The" +
     " canonical raw library stays byte-for-byte untouched.",
-    "What remains is building the desktop editor, not re-extracting the game. DragonByte" +
-    " Z already renders retail maps and supports direct visual placement editing. A" +
-    " fixed-size map-layout pointer edit is now a usable feature there: pick a 256x256" +
-    " chunk cell, swap in another chunk the same layer already uses, preview it, and" +
-    " save a new ROM. The editor grows one feature at a time - browsing and viewing," +
-    " then editing surfaces such as this one, then tiles, sprites, animations and" +
-    " frames, and later warp editing and graphics replacement.",
+    "DragonByte Z is the second client of the same SDK, and the map surfaces are" +
+    " where the product frontier actually sits. The Map Browser renders a retail map" +
+    " from immutable ROM bytes, layer by layer. Its Edit Layout mode reassigns one" +
+    " 256x256 chunk cell of a map's dominant layer to another chunk that layer already" +
+    " contains, previews the swap in memory, and saves the pending edits to a new ROM" +
+    " - which the application will reopen only when a provenance manifest proves the" +
+    " image is the canonical ROM plus exactly those declared edits.",
     "Authoring entirely new content remains the project's final acceptance target and is" +
-    " no longer the organising priority for current tool work. The overall estimate stays" +
-    " at 97%.",
+    " no longer the organising priority for current tool work: the buildout proceeds one" +
+    " editor surface at a time against the verified corpus.",
   ],
   acceptanceTarget:
     "Author playable Legacy of Goku content inside the real LOGII/Buu engine.",
   definitionOfDone: [
     "Webfoot SDK is the product, not a collection of reverse-engineering notes. Understanding the game only matters when it unlocks something an author can actually create.",
     "The acceptance test is straightforward: create newly authored Legacy of Goku content with the SDK, build the game, and successfully play it in the original engine.",
-  ],
-  capabilities: [
-    {
-      label: "EDIT",
-      title: "Edit",
-      description: "Change things that already exist.",
-      state: "MATURE",
-      status: "complete",
-    },
-    {
-      label: "AUTHOR",
-      title: "Author",
-      description: "Create things that did not exist before.",
-      state: "IN PROGRESS",
-      status: "current",
-    },
-    {
-      label: "PLAY",
-      title: "Play",
-      description: "Build newly authored LOG1 content and run it in the original engine.",
-      state: "ACCEPTANCE TARGET",
-      status: "target",
-    },
   ],
   milestones: [
     {
@@ -274,7 +298,7 @@ export const project: ProjectStatus = {
     },
     {
       id: "authored-text-display-width",
-      title: "Fit authored text to the screen",
+      title: "Identify the remaining display-width limit",
       plainEnglish:
         "A message can be any length in storage, and a long line runs past the edges of the screen when the game draws it centred without wrapping.",
       technical:
@@ -332,7 +356,7 @@ export const project: ProjectStatus = {
       plainEnglish:
         "Bring entity, placement, script, and dialogue authoring together in the desktop tool so a whole playable scene can be built without hand-operating the SDK.",
       technical:
-        "Confirmed and runtime-proven. The owner personally authored a complete playable NPC scene entirely through the Workbench GUI: select map:0040, clone a type_0086 enemy-linked placement, configure the entity, assign an on_defeat behavior plus an authored show_centered_sprite_text script, then Validate, Build, and Launch. Defeating the NPC in the retail Buu's Fury engine displayed the authored banner in-game. No new reverse engineering was required; every capability was surfaced through the existing SDK. Independent review approved.",
+        "Confirmed and runtime-proven. The owner personally authored a complete playable NPC scene entirely through the desktop GUI: select map:0040, clone a type_0086 enemy-linked placement, configure the entity, assign an on_defeat behavior plus an authored show_centered_sprite_text script, then Validate, Build, and Launch. Defeating the NPC in the retail Buu's Fury engine displayed the authored banner in-game. No new reverse engineering was required; every capability was surfaced through the existing SDK. Independent review approved.",
       status: "complete",
     },
     {
@@ -401,33 +425,27 @@ export const project: ProjectStatus = {
         "Turn the complete but raw extraction into a clean, de-duplicated library that a" +
         " person can actually browse and navigate.",
       technical:
-        "The exporter output is complete and deterministic, but it is not yet organised:" +
-        " the work is measuring and reducing redundancy and improving navigation while" +
-        " proving that every structural fact the exporter recorded still resolves. No" +
-        " extraction, classification or rendering behaviour changes.",
+        "Complete. The exporter output was measured for redundancy and its navigation" +
+        " improved while every structural fact it recorded was proved to still resolve:" +
+        " the raw extraction is de-duplicated into a curated pack with ROM-derived and" +
+        " neutral names and a complete curated-to-raw source map, and the canonical raw" +
+        " library remains byte-for-byte untouched. No extraction, classification or" +
+        " rendering behaviour changed.",
       status: "complete",
     },
     {
-      id: "dragonbyte-z-buildout",
-      title: "Build DragonByte Z out feature by feature",
+      id: "map-browser",
+      title: "Browse every map from ROM in the desktop application",
       plainEnglish:
-        "Grow the desktop editor one feature at a time against the verified resource" +
-        " corpus instead of waiting for everything to be solved first.",
+        "Open any of the game's maps in the editor and see its real layered layout, at" +
+        " zoom, without a running emulator.",
       technical:
-        "The map canvas itself is already proven: DragonByte Z renders supported retail" +
-        " maps from ROM and lets an author select, add and move objects directly on them." +
-        " Map Browser's Edit Layout mode now turns a fixed-size chunk-pointer" +
-        " replacement into a usable feature: it draws a map's 256x256 chunk cells," +
-        " offers only chunks that same layer already uses, previews the swap" +
-        " immediately, and saves the pending edits to a new ROM. It can reopen that" +
-        " ROM too: a modified image is accepted only when the provenance written" +
-        " beside it proves it is the canonical image plus those edits. 341 of the 452" +
-        " maps" +
-        " expose an editable layer and the rest stay read-only, and the source game" +
-        " file is never modified. Tile painting, new chunks, resizing, warp editing" +
-        " and graphics replacement remain future work. This is a direction rather" +
-        " than a committed engineering order.",
-      status: "current",
+        "Complete. The Map Browser is a read-only tab over the production ROM-only" +
+        " renderer: all 452 maps are listed and filterable by name or map id, each map's" +
+        " graphical layers render from immutable ROM bytes, and a map-information panel" +
+        " reports its id, dimensions, layer count and per-layer type. Maps and layers" +
+        " outside the proven render form are shown read-only with the reason stated.",
+      status: "complete",
     },
     {
       id: "playable-log1",
@@ -435,8 +453,8 @@ export const project: ProjectStatus = {
       plainEnglish: "Build and play newly authored Legacy of Goku content using the original Webfoot game engine.",
       technical:
         "This is the mandatory acceptance target for Webfoot SDK. Authoring entirely new" +
-        " content remains the goal; it is simply no longer the organising priority for" +
-        " current tool development.",
+        " content remains the goal; it is now reached through the desktop editor rather" +
+        " than being the organising priority for current tool development.",
       status: "target",
     },
   ],
@@ -470,14 +488,301 @@ export const project: ProjectStatus = {
     { label: "VISUAL MAP EDITOR", state: "done" },
     { label: "COMPLETE RESOURCE EXTRACTION", state: "done" },
     { label: "RESOURCE LIBRARY CURATION", state: "done" },
+    { label: "MAP BROWSER", state: "done" },
     { label: "DRAGONBYTE Z FEATURES", state: "current", marker: "↑ YOU ARE HERE" },
     { label: "ADVANCED AUTHORING / AUTHOR_NEW", state: "target" },
     { label: "PLAYABLE LOG1 CONTENT", state: "target" },
   ],
+  // The active track. The percentage on the site is computed from `items`, so
+  // it cannot drift from this list: add a capability and the number moves.
+  buildout: {
+    label: "ACTIVE TRACK",
+    title: "DRAGONBYTE Z BUILDOUT",
+    blurb:
+      "Every capability below is a user-facing editor surface or an authoring" +
+      " operation reachable from DragonByte Z itself. A reverse-engineering result is" +
+      " not counted here, however complete it is: knowing a binary structure is not the" +
+      " same as an author being able to use it.",
+    families: [
+      {
+        key: "see",
+        label: "READ",
+        title: "Inspect what the game already contains",
+        items: [
+          {
+            key: "shell",
+            title: "Desktop application shell",
+            detail:
+              "Eight tabs in contract order - Atlas, Inspector, Maps, Map, Map Browser," +
+              " Graphics, Build, Launch. Only Atlas opens until a ROM is loaded, and the" +
+              " loaded image must match a configured profile identity.",
+            state: "shipped",
+          },
+          {
+            key: "atlas",
+            title: "Full-ROM atlas search",
+            detail:
+              "Search the whole game by name, map or id, including text the game keeps" +
+              " compressed, without knowing a ROM address.",
+            state: "shipped",
+          },
+          {
+            key: "inspector",
+            title: "Recovered-record inspector",
+            detail:
+              "Read the fields the SDK has actually recovered for a search result, shown" +
+              " under the names the evidence supports rather than a plausible guess.",
+            state: "shipped",
+          },
+          {
+            key: "graphics",
+            title: "Sprite, animation and palette browsing",
+            detail:
+              "See the game's decoded sprites, step their animations, and read which" +
+              " records refer to each one.",
+            state: "shipped",
+          },
+          {
+            key: "map-browser",
+            title: "Map Browser: every map and layer",
+            detail:
+              "All 452 maps render from immutable ROM bytes, layer by layer, at zoom, with" +
+              " a panel reporting the map's id, dimensions and per-layer type.",
+            state: "shipped",
+          },
+        ],
+      },
+      {
+        key: "edit",
+        label: "EDIT",
+        title: "Change what already exists",
+        items: [
+          {
+            key: "dialogue",
+            title: "Dialogue line editing",
+            detail:
+              "Resolve a supported line, edit it, validate and build. A rewritten ordinary" +
+              " NPC line has been displayed by the retail engine in its own dialogue box.",
+            state: "shipped",
+          },
+          {
+            key: "palette",
+            title: "Shared palette recolour",
+            detail:
+              "Recolour a shared object palette entry through the project; the SDK owns" +
+              " RGB-to-GBA-word packing and applies it at build.",
+            state: "shipped",
+          },
+          {
+            key: "placement",
+            title: "Object placement on the rendered map",
+            detail:
+              "Select, add and move supported objects directly on the real map, then build" +
+              " and play the result in the original engine.",
+            state: "shipped",
+          },
+          {
+            key: "layout",
+            title: "Map layout editing: chunk-cell replacement",
+            detail:
+              "Reassign one 256x256 chunk cell of a map's dominant layer to another chunk" +
+              " that layer already uses. 341 of the 452 maps expose an editable layer; the" +
+              " remaining 111 are read-only, with the reason stated.",
+            state: "shipped",
+          },
+          {
+            key: "tiles",
+            title: "Tile-level painting",
+            detail:
+              "Not implemented. Every shipped write is fixed-size and in place; painting" +
+              " tiles needs a verified packed-container encoder and safe allocation first.",
+            state: "missing",
+          },
+          {
+            key: "chunks",
+            title: "Chunk creation and editing",
+            detail:
+              "Not implemented. The editor can only point a cell at a chunk the layer" +
+              " already contains; it cannot build a new chunk.",
+            state: "missing",
+          },
+          {
+            key: "resize",
+            title: "Map resizing and layer changes",
+            detail:
+              "Not implemented. Layer count, layer dimensions and chunk-grid size are" +
+              " fixed, and no layer can be added or moved.",
+            state: "missing",
+          },
+          {
+            key: "warps",
+            title: "Warp and connection editing",
+            detail:
+              "Not implemented. The 735 transition records are read with no anomalies and" +
+              " the record layout is confirmed, so this needs an editor rather than more" +
+              " research.",
+            state: "missing",
+          },
+        ],
+      },
+      {
+        key: "author",
+        label: "AUTHOR",
+        title: "Create what did not exist before",
+        items: [
+          {
+            key: "entity",
+            title: "Authored entities and placements",
+            detail:
+              "Clone and configure an entity that is not present in the original map data;" +
+              " the map's newly created object slot resolves to the authored body.",
+            state: "shipped",
+          },
+          {
+            key: "behavior",
+            title: "Authored behavior and scripts",
+            detail:
+              "Give an authored entity an author-written script and tie it to a deliberate" +
+              " gameplay trigger; the original engine has executed the authored bytes and" +
+              " rendered the result on screen.",
+            state: "shipped",
+          },
+          {
+            key: "text",
+            title: "Authored text beyond the retail slot",
+            detail:
+              "A line longer than the one it replaces is placed in verified writable space" +
+              " and the owning table entry is repointed, so the engine renders the whole" +
+              " authored message. New text-table ids are not claimed.",
+            state: "shipped",
+          },
+          {
+            key: "gfx-import",
+            title: "Graphics replacement and import",
+            detail:
+              "Not implemented. An import path exists but has no production caller, so no" +
+              " editor surface offers it.",
+            state: "missing",
+          },
+          {
+            key: "sprite-new",
+            title: "New sprite, animation and frame authoring",
+            detail:
+              "Not implemented. Needs allocation plus same-count in-place replacement of" +
+              " animation cell pointers and frame piece records.",
+            state: "missing",
+          },
+          {
+            key: "appearance",
+            title: "New appearance definitions",
+            detail:
+              "Not implemented. The record count appears as compiled-in bounds in the" +
+              " engine and there is no terminator, so whether the table can be grown at all" +
+              " is still an open question rather than a task.",
+            state: "missing",
+          },
+          {
+            key: "map-new",
+            title: "New map and scene materialisation",
+            detail:
+              "Not implemented. The terminal authoring frontier: it needs an authored warp" +
+              " and several map-root fields that are still unresolved.",
+            state: "missing",
+          },
+        ],
+      },
+      {
+        key: "deliver",
+        label: "DELIVER",
+        title: "Build it, save it, keep it safe",
+        items: [
+          {
+            key: "validate",
+            title: "Deterministic validate and build",
+            detail:
+              "A project validates before it builds, repeated builds are byte-identical," +
+              " and the build panel refuses to write over the source image.",
+            state: "shipped",
+          },
+          {
+            key: "save-as",
+            title: "Safe Save As to a new file",
+            detail:
+              "The output image and its provenance document are built at temporary sibling" +
+              " paths and verified there, so a failed emit or verification leaves an" +
+              " existing destination byte-for-byte intact.",
+            state: "shipped",
+          },
+          {
+            key: "provenance",
+            title: "Derivative provenance and reopen",
+            detail:
+              "Save As writes a manifest beside the ROM, and the application reopens its" +
+              " own emitted ROM only when that manifest proves the image is the canonical" +
+              " ROM plus exactly the declared, legal edits. Everything else is refused with" +
+              " the reason stated.",
+            state: "shipped",
+          },
+          {
+            key: "launch",
+            title: "Launch the build in an emulator",
+            detail:
+              "Run the generated ROM from the same window to check the change in context," +
+              " without leaving the editor.",
+            state: "shipped",
+          },
+        ],
+      },
+    ],
+  },
+  stateFacts: [
+    { label: "TARGET HARDWARE", value: "GBA · 240 × 160" },
+    { label: "GAMES IN SCOPE", value: "Legacy of Goku · LoG II · Buu's Fury" },
+  ],
+  frontier: [
+    {
+      kind: "near",
+      title: "A verified way to place new bytes",
+      detail:
+        "Strict decoded-size enforcement in the container decoder, then a packed encoder" +
+        " and allocator integration. Every missing editing and authoring capability below" +
+        " depends on this, and the decoder's current behaviour - silently clipping a" +
+        " truncated payload and reporting success - is the reason it comes first.",
+    },
+    {
+      kind: "near",
+      title: "Correct the sprite and animation reader",
+      detail:
+        "The accepted frame layout is an 8-byte header with 12-byte pieces. The reader" +
+        " and codec still assume 16-byte pieces, so multipart frames cannot be shown or" +
+        " replaced until they move together.",
+    },
+    {
+      kind: "near",
+      title: "Warp destination editing",
+      detail:
+        "All 735 transition records already read with no anomalies and the record layout" +
+        " is confirmed, so this needs an editor surface rather than research.",
+    },
+    {
+      kind: "gated",
+      title: "Graphics replacement and import",
+      detail:
+        "Gated on the corrected sprite codec plus allocation for payloads that change" +
+        " size. The pixel round-trip is already proved for the accepted corpus.",
+    },
+    {
+      kind: "horizon",
+      title: "Authored maps and new content",
+      detail:
+        "The terminal frontier. It needs warp authoring, a verified allocator for every" +
+        " new structure, and several map-root fields that are unresolved today.",
+    },
+  ],
   breakthroughs: [
     {
       id: "fixed-size-map-layout-write",
-      title: "First reversible map-layout write",
+      title: "Map layout editing is a usable feature",
       summary:
         "A retail map's layout can now be edited from DragonByte Z: swap one chunk cell" +
         " for another chunk the same layer already uses, preview it, and save a new" +
@@ -486,11 +791,14 @@ export const project: ProjectStatus = {
         "On Buu's Fury map:0040, dominant layer 1 cell 0 was redirected to another" +
         " chunk already used by that layer. Exactly two ROM bytes changed within its" +
         " four-byte pointer; the changed 256-by-256-pixel region re-rendered through" +
-        " the accepted map pipeline. No-op and inverse builds matched all 8,388,608" +
-        " canonical bytes. The source ROM was not modified. DragonByte Z's Map Browser" +
-        " now drives exactly this operation in its Edit Layout mode, over 341 of the" +
-        " 452 maps. This proves only fixed-size in-place layout replacement; emulator" +
-        " validation was not performed.",
+        " the accepted map pipeline with 29,208 changed pixels, all inside that cell," +
+        " while the layer's other three regions stayed pixel-identical. No-op and" +
+        " inverse builds matched all 8,388,608 canonical bytes. The source ROM was not" +
+        " modified. The Map Browser drives this over 341 of the 452 maps. Emulator" +
+        " validation of the layout write itself was not performed; the application" +
+        " round-trip was, by reopening its own emitted ROM through the provenance" +
+        " manifest it wrote beside it.",
+      recent: true,
     },
     {
       id: "complete-resource-extraction",
@@ -506,6 +814,7 @@ export const project: ProjectStatus = {
         " and graphics populations. Output is deterministic between runs, and the game" +
         " file is never modified. The single special-case terrain-field layer is" +
         " extracted too.",
+      recent: true,
     },
     {
       id: "all-map-layers-classified",
@@ -518,6 +827,22 @@ export const project: ProjectStatus = {
         " paths that reach its records, not from appearance. 1,559 graphical layers are" +
         " exported, 249 references are proven to draw nothing, and zero graphical layers" +
         " remain unresolved or silently omitted.",
+      recent: true,
+    },
+    {
+      id: "resource-library-curated",
+      title: "The extracted library is organised and browsable",
+      summary:
+        "The complete but raw extraction is now a clean, de-duplicated, human-navigable" +
+        " resource pack with ROM-derived and neutral names, and every structural fact it" +
+        " records still resolves.",
+      technical:
+        "The curated pack is rebuilt deterministically from the raw extraction and" +
+        " carries a complete curated-to-raw source map, so any curated entry can be" +
+        " traced back to the structure it came from. The canonical raw library is left" +
+        " byte-for-byte untouched. No extraction, classification or rendering behaviour" +
+        " changed.",
+      recent: true,
     },
     {
       id: "sprite-pipeline-reconstructed",
@@ -529,7 +854,9 @@ export const project: ProjectStatus = {
         "The exporter reads the count-bounded animation arrays and the frame/piece records" +
         " directly: 297 sprite definitions, 4,070 animation slots, 1,721 non-null animation" +
         " references, 10,980 frame records, 11,005 pieces, 21 multipart frames and 7,390" +
-        " structured graphics containers.",
+        " structured graphics containers. The accepted frame layout is an 8-byte header" +
+        " with 12-byte pieces; the shipped reader still holds the earlier single-piece" +
+        " layout, which is why multipart frames are not yet shown in the editor.",
     },
     {
       id: "research-freeze-complete",
@@ -713,60 +1040,222 @@ export const project: ProjectStatus = {
     },
   ],
   metrics: [
-    { label: "Maps extracted", value: "452" },
-    { label: "Map layer references classified", value: "1,808 / 1,808" },
-    { label: "Graphical map layers exported", value: "1,559" },
-    { label: "Unresolved graphical layers", value: "0" },
-    { label: "Tile banks extracted", value: "187" },
-    { label: "Individual tiles extracted", value: "47,857" },
-    { label: "Map chunks extracted", value: "3,745" },
-    { label: "Sprite definitions extracted", value: "297" },
-    { label: "Animation slots extracted", value: "4,070" },
-    { label: "Frame records extracted", value: "10,980" },
-    { label: "Sprite pieces extracted", value: "11,005" },
-    { label: "Structured sprite graphics extracted", value: "7,390" },
-    { label: "Map-owned object slots", value: "1,898" },
-    { label: "Placement-family objects", value: "1,559" },
-    { label: "Sibling-family objects", value: "339" },
-    { label: "Maps with placements", value: "268" },
-    { label: "Historical placement IDs preserved", value: "1,442" },
-    { label: "Canonical no-op rebuild", value: "BYTE-IDENTICAL" },
-    { label: "Canonical ROM during builds", value: "IMMUTABLE" },
+    { group: "Map editing", strip: true, label: "Maps viewable in the Map Browser", value: "452 / 452" },
+    { group: "Map editing", strip: true, label: "Maps exposing an editable layer", value: "341 / 452" },
+    { group: "Map editing", strip: true, label: "Maps read-only, with the reason stated", value: "111 / 452" },
+    {
+      group: "Map editing",
+      strip: true,
+      label: "Bytes changed by the proved layout write",
+      value: "2",
+      explanation: "Within one four-byte chunk pointer field, at file 0x00292CA0.",
+    },
+    {
+      group: "Map editing",
+      strip: true,
+      label: "Pixels re-rendered in the changed cell",
+      value: "29,208",
+      explanation: "All inside the edited 256x256 region; the layer's other three regions were identical.",
+    },
+    {
+      group: "Map editing",
+      strip: true,
+      label: "Reopening a ROM this feature wrote",
+      value: "PROVENANCE-GATED",
+      explanation: "Accepted only when a manifest proves the image is the canonical one plus declared, legal edits.",
+    },
+    {
+      group: "Map editing",
+      label: "Dominant-layer slots offering a second chunk",
+      value: "1,093 / 1,516",
+    },
+    { group: "Corpus", strip: true, label: "Map layer references classified", value: "1,808 / 1,808" },
+    { group: "Corpus", strip: true, label: "Unresolved graphical layers", value: "0" },
+    {
+      group: "Corpus",
+      strip: true,
+      label: "Curated resource library",
+      value: "DETERMINISTIC",
+      explanation: "Rebuilt from the raw extraction with a complete curated-to-raw source map; the raw library stays untouched.",
+    },
+    { group: "Corpus", label: "Maps extracted", value: "452" },
+    { group: "Corpus", label: "Graphical map layers exported", value: "1,559" },
+    { group: "Corpus", label: "Tile banks extracted", value: "187" },
+    { group: "Corpus", label: "Individual tiles extracted", value: "47,857" },
+    { group: "Corpus", label: "Map chunks extracted", value: "3,745" },
+    { group: "Corpus", label: "Sprite definitions extracted", value: "297" },
+    { group: "Corpus", label: "Animation slots extracted", value: "4,070" },
+    { group: "Corpus", label: "Frame records extracted", value: "10,980" },
+    { group: "Corpus", label: "Sprite pieces extracted", value: "11,005" },
+    { group: "Corpus", label: "Structured sprite graphics extracted", value: "7,390" },
+    { group: "Map objects", label: "Map-owned object slots", value: "1,898" },
+    { group: "Map objects", label: "Placement-family objects", value: "1,559" },
+    { group: "Map objects", label: "Sibling-family objects", value: "339" },
+    { group: "Map objects", label: "Maps with placements", value: "268" },
+    { group: "Map objects", label: "Historical placement IDs preserved", value: "1,442" },
+    { group: "Integrity", strip: true, label: "Canonical no-op rebuild", value: "BYTE-IDENTICAL" },
+    { group: "Integrity", strip: true, label: "Canonical image during builds", value: "IMMUTABLE" },
+    {
+      group: "Integrity",
+      label: "Transition records read, anomalies",
+      value: "735 / 0",
+      explanation: "Warp and connection records, which no editor surface reads yet.",
+    },
+  ],
+  figures: [
+    {
+      src: "dbz-map-browser.png",
+      width: 1700,
+      height: 1264,
+      alt:
+        "The DragonByte Z Map Browser showing Buu's Fury map:0040, Grand Kai's Planet: a map list of retail map names on the left, the fully rendered layered map in the middle, and a map-information panel on the right listing the map id, dimensions, layer count and per-layer type.",
+      title: "Map Browser",
+      caption:
+        "Map:0040 rendered from immutable ROM bytes, layer by layer. Every one of the" +
+        " 452 maps opens here without a running emulator.",
+      facts: [
+        "452 maps viewable",
+        "Rendered from ROM, not captured from memory",
+        "Read-only until Edit Layout is switched on",
+      ],
+    },
+    {
+      src: "dbz-layout-editor.png",
+      width: 390,
+      height: 800,
+      alt:
+        "The DragonByte Z layout editor panel for map:0040, layer BG1, showing the selected chunk cell, one unsaved layout change, the four-byte pointer field being changed in place, a chooser listing the four chunks the layer already uses with chunk 3 marked current, and a map-information block.",
+      title: "Layout editor",
+      caption:
+        "Edit Layout on map:0040, one 256x256 cell of dominant layer BG1. The chooser" +
+        " offers only chunks that layer already contains, and the change is written in" +
+        " place to a new ROM.",
+      facts: [
+        "341 of 452 maps expose an editable layer",
+        "Replacement drawn from the same layer only",
+        "Saved as a new ROM, with provenance",
+      ],
+    },
   ],
   nav: [
     { label: "STATUS", href: "status" },
-    { label: "QUESTLINE", href: "questline" },
-    { label: "BREAKTHROUGHS", href: "breakthroughs" },
-    { label: "ABOUT", href: "about" },
+    { label: "PROGRESS", href: "progress" },
+    { label: "ROADMAP", href: "roadmap" },
+    { label: "PROOF", href: "proof" },
   ],
   links: [
-    { label: "GitHub" },
-    { label: "Documentation" },
-    { label: "Project notes" },
+    { label: "GitLab", url: "https://gitlab.com/siruiusamory/log1-remake/" },
   ],
   footerTagline:
     "A toolkit for authoring Legacy of Goku content against the actual LOGII/Buu engine.",
   developmentStatus: "ACTIVE DEVELOPMENT",
   disclaimer:
     "Independent fan development project. Not affiliated with Webfoot Technologies or the relevant game/IP rights holders.",
+  assetPolicy:
+    "The product captures on this page are unaltered screenshots of the real DragonByte" +
+    " Z application, cropped only. They are not mockups, renders or generated images," +
+    " and this site ships no generated imagery of any kind.",
 };
 
+/* ---------------------------------------------------------------------------
+ * Derived progress
+ *
+ * The DragonByte Z percentage is computed from the buildout capability list, so
+ * it cannot drift from the milestones it claims to summarise. Reclassify one
+ * capability and the number moves; there is no second place to edit.
+ * ------------------------------------------------------------------------- */
+
+const buildoutItems = project.buildout.families.flatMap((family) => family.items);
+
+export const buildoutDone = buildoutItems.filter((item) => item.state === "shipped").length;
+export const buildoutTotal = buildoutItems.length;
+export const buildoutPercent = Math.round((buildoutDone / buildoutTotal) * 100);
+
+/**
+ * The completed authoring programme. It is presented as history at 100%, and it
+ * is measured from the milestones the rail already renders rather than from a
+ * separate hand-written number. The acceptance-target milestone is the horizon
+ * beyond this track, not a part of it, so it is excluded from the count.
+ */
+const programmeMilestones = project.milestones.filter((m) => m.status !== "target");
+export const programmeTotal = programmeMilestones.length;
+export const programmeDone = programmeMilestones.filter((m) => m.status === "complete").length;
+export const programmePercent = Math.round((programmeDone / programmeTotal) * 100);
+
+export const recentBreakthroughs = project.breakthroughs.filter((b) => b.recent);
+export const archivedBreakthroughs = project.breakthroughs.filter((b) => !b.recent);
+
+/** Headline measured facts for the compact proof strip. */
+export const proofStrip = project.metrics.filter((metric) => metric.strip);
+/** Everything else, behind one disclosure so no figure is duplicated. */
+export const ledgerMetrics = project.metrics.filter((metric) => !metric.strip);
+
+/** Shipped/total per buildout family, for the roadmap header and group labels. */
+export const familyTallies = project.buildout.families.map((family) => ({
+  key: family.key,
+  label: family.label,
+  title: family.title,
+  done: family.items.filter((item) => item.state === "shipped").length,
+  total: family.items.length,
+}));
+
+/** Flat, numbered roadmap rows in family order. */
+export const roadmapRows = project.buildout.families.flatMap((family) =>
+  family.items.map((item) => ({ ...item, family: family.label })),
+);
+
+function groupMetrics(metrics: ProjectMetric[]): { group: string; metrics: ProjectMetric[] }[] {
+  return metrics.reduce(
+    (groups, metric) => {
+      const existing = groups.find((g) => g.group === metric.group);
+      if (existing) existing.metrics.push(metric);
+      else groups.push({ group: metric.group, metrics: [metric] });
+      return groups;
+    },
+    [] as { group: string; metrics: ProjectMetric[] }[],
+  );
+}
+
+export const ledgerGroups = groupMetrics(ledgerMetrics);
+
 function validateProjectStatus(value: ProjectStatus): void {
-  if (!Number.isFinite(value.overallProgress) || value.overallProgress < 0 || value.overallProgress > 100) {
-    throw new Error("Project progress must be a finite number from 0 through 100.");
-  }
-
-  const currentMilestones = value.milestones.filter(({ status }) => status === "current");
-  if (currentMilestones.length !== 1) {
-    throw new Error(`Project questline must have exactly one current milestone; found ${currentMilestones.length}.`);
-  }
-
   if (!value.blockerTitle.trim()) {
     throw new Error("Project status must include a current blocker title.");
   }
 
   if (!value.acceptanceTarget.trim() || !value.milestones.some(({ status }) => status === "target")) {
     throw new Error("Project status must include an acceptance target and a target milestone.");
+  }
+
+  // The buildout is the active track, so this is where "exactly one frontier"
+  // is now enforced. The historical programme has no current milestone.
+  const currentMilestones = value.milestones.filter(({ status }) => status === "current");
+  if (currentMilestones.length !== 0) {
+    throw new Error(
+      `The completed authoring programme may not contain a current milestone; found ${currentMilestones.length}.`,
+    );
+  }
+
+  const keys = buildoutItems.map((item) => item.key);
+  const duplicate = keys.find((key, index) => keys.indexOf(key) !== index);
+  if (duplicate) {
+    throw new Error(`Buildout capability keys must be unique; "${duplicate}" appears twice.`);
+  }
+
+  if (!buildoutTotal || !buildoutDone || buildoutDone === buildoutTotal) {
+    throw new Error("The buildout must report at least one shipped and one missing capability.");
+  }
+
+  if (buildoutPercent < 0 || buildoutPercent > 100) {
+    throw new Error("Derived buildout progress must fall between 0 and 100.");
+  }
+
+  if (!value.figures.length || value.figures.some(({ src }) => !src.trim())) {
+    throw new Error("Project status must include the real product captures it ships.");
+  }
+
+  if (!value.assetPolicy.trim()) {
+    throw new Error("Project status must state its shipped-asset policy.");
   }
 }
 

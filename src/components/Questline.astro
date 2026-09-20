@@ -6,10 +6,10 @@ import { project, statusMeta } from "../data/project";
 // fixed percentages before, and had drifted badly: 9 of 12 milestones complete
 // still rendered a rail filled to 52%.
 //
-// The rail is inset to the first and last node centres (top/bottom: 1.2rem), so
-// node k sits at k / (n - 1). The rail is a CONNECTOR: the segment for
-// milestone k runs from node k to node k+1, so a band that ends after the last
-// complete milestone ends at that milestone's own node, not one past it.
+// The rail is inset to the first and last node centres, so node k sits at
+// k / (n - 1). The rail is a CONNECTOR: the segment for milestone k runs from
+// node k to node k+1, so a band that ends after the last complete milestone
+// ends at that milestone's own node, not one past it.
 const milestones = project.milestones;
 const spans = Math.max(milestones.length - 1, 1);
 const at = (nodeIndex: number) =>
@@ -32,28 +32,16 @@ const railStyle = [
 ].join("; ");
 ---
 
-<section class="quest-panel panel" id="questline" aria-labelledby="questline-title">
-  <header class="section-header">
-    <p class="eyebrow">CORE AUTHORING PATH</p>
-    <h2 id="questline-title">AUTHOR_NEW QUESTLINE</h2>
-    <p>The path from “I can edit an object” to “I can create one.”</p>
-  </header>
-  <ol class="questline" style={railStyle}>
-    {milestones.map((milestone) => (
-      <li class:list={["quest", `is-${milestone.status}`]}>
-        <span class="quest-node" aria-hidden="true">{statusMeta[milestone.status].icon}</span>
-        <article>
-          <p class="quest-status">{statusMeta[milestone.status].icon} {statusMeta[milestone.status].label}</p>
-          <h3>{milestone.title}</h3>
-          <p>{milestone.plainEnglish}</p>
-          {milestone.technical && (
-            <details>
-              <summary>Technical detail</summary>
-              <p>{milestone.technical}</p>
-            </details>
-          )}
-        </article>
-      </li>
-    ))}
-  </ol>
-</section>
+<ol class="questline" style={railStyle}>
+  {milestones.map((milestone) => (
+    <li class:list={["quest", `is-${milestone.status}`]}>
+      <span class="quest-node" aria-hidden="true">{statusMeta[milestone.status].icon}</span>
+      <article>
+        <p class="quest-status">{statusMeta[milestone.status].label}</p>
+        <h4>{milestone.title}</h4>
+        <p>{milestone.plainEnglish}</p>
+        {milestone.technical && <p class="quest-tech">{milestone.technical}</p>}
+      </article>
+    </li>
+  ))}
+</ol>

@@ -226,9 +226,100 @@ feature, and the blocker paragraph naming what the editor does next was correcte
 says not to publish during isolated implementation, and the repository/site step
 belongs to the closure pass that pushes this branch.
 
+## Product-safety correction (post-approval)
+
+Human acceptance accepted the implementation except for two product-level issues,
+fixed in `c3ae867` and `2dfcf87` and `f3ff76f` on the same branch:
+
+1. **DragonByte Z could not reopen its own output.** The Map Browser renders the
+   canonical image only, so an emitted derivative was refused. Save As now writes a
+   provenance manifest beside the image (the project's existing write-manifest
+   document shape), and the Atlas open accepts a modified image only when that
+   provenance proves it is the canonical image plus declared, policy-legal layout
+   edits: canonical base SHA-256 and the profile *of that image*, the file matching
+   the declared output digest and byte count, every declared change being a
+   four-byte dominant-layer field named by its own `map:NNNN layer S cell C` owner
+   whose replacement the layer already uses elsewhere, and - the decisive check -
+   restoring the declared old values reproducing the canonical image by SHA-256,
+   which bounds an accepted derivative to the canonical image plus exactly its
+   declared fields and needs no copy of the canonical file. An accepted derivative
+   renders its edited layout from the reconstructed canonical bytes with the
+   verified edits applied through the same override path the editor previews with,
+   and stays read-only. The canonical image is still accepted by identity before any
+   manifest is consulted; an image with no manifest, a mismatching manifest, or a
+   manifest declaring anything outside those rules is refused with the reason
+   stated.
+2. **Save As could destroy an existing destination.** The image and its manifest are
+   now built at temporary sibling paths, verified there, and only then moved onto
+   the requested destinations, so a failed emit, a failed verification or a failed
+   publish leaves whatever existed at that path byte-for-byte intact and no
+   temporary file behind. Every path a save touches - the requested output, the
+   manifest, and both staging names - is resolved and refused against the source
+   before anything is deleted or emitted.
+
+### Correction review
+
+A fresh reviewer inspected only the correction: provenance-aware reopening,
+arbitrary-modified-ROM rejection, existing-destination failure safety, canonical-path
+regression and the exact changed surface.
+
+- **First pass: BLOCK**, one HIGH finding - `save()` guarded only the requested
+  output against the source, so a source file named after a derived path (the
+  manifest name, or either staging name) could be replaced or deleted by a save.
+  Reproduced with two concrete collisions. Fixed in `2dfcf87`; the reviewer then
+  reproduced both collisions as refused with the source byte-identical, and added
+  its own symlink and directory-junction alias attempts, all refused.
+- Its six non-blocking notes were also cleared in `2dfcf87`: the manifest's base
+  profile must now be the profile of the canonical image (a canonical base naming
+  Legacy of Goku's profile was previously accepted and relabelled the image in the
+  Atlas tab); the schema version must be an integer; the declared changed-byte count
+  must match the manifest's own changes; the field offset comes from
+  `MapLayoutWriter` rather than a second copy of the format arithmetic; a failed
+  manifest publish is reported as an image written without provenance; a refused
+  open states the identification reason before the provenance reason.
+- **Second pass: APPROVE WITH NON-BLOCKING NOTES**, with two new LOW items from the
+  fix delta itself, both cleared in `f3ff76f`: a failed final publish left the
+  staging files behind, and the verifier hashed the whole image once per declared
+  edit (now one writer per check: verification of a 20-edit derivative measured at
+  175 ms instead of about 1.4 s).
+- **Final delta confirmation: APPROVE WITH NON-BLOCKING NOTES**, no blockers, and
+  the reviewer's own re-runs (85/0 and 38/0 harness checks, focused set 107 passed,
+  remaining ROM-gated set 81 passed/3 skipped, `pytest tests/unit` at the same six
+  environmental failures as before and none new).
+
+### End-to-end QA (real application, real platform plugin)
+
+`build/research/qa_closeout.py` drove the required user flow on the real Windows
+platform plugin and its captures were opened and inspected: open the canonical ROM,
+map:0040, Edit Layout, change the proven cell, Save As, leave the source image, open
+the emitted ROM through the normal Atlas open flow, select map:0040 and see the
+edited layout (confirmed programmatically as differing from the canonical render),
+with the source ROM hash unchanged throughout. The refusals were driven through the
+same open flow and each captured: a one-byte-mutated canonical image with no
+provenance, a derivative whose bytes no longer match its manifest, a manifest
+claiming a terrain-field edit, an untouched canonical image accepted again
+afterwards, and a failed Save As over an existing destination with the destination
+preserved and no staging file left behind.
+
+### Carried non-blocking notes (not fixed, none blocking)
+
+- `verify_authored_rom` returns an `AuthoredRom` whose `profile_id` could contradict
+  its `canonical_sha256`; the binding is enforced in `Session`, its single consumer,
+  and documented by the field. Enforcing it in the verifier too would be defence in
+  depth.
+- No committed test drives the manifest-rename failure specifically; the
+  image-rename case is covered by a test and the manifest case was verified by
+  probe.
+- The editor can hold two semantic pending edits for one physical field when two map
+  indices share one dominant layer record; Save As then refuses through its
+  byte-plan cross-check. The provenance format cannot express that state, so it
+  fails closed rather than writing.
+- A derivative has no scene or text domain of its own, so the Maps, Map and Scene
+  tabs show nothing for it; the Map Browser renders it, which is what this ticket
+  requires.
+
 ## Stop
 
-This record covers only the isolated implementation pass. It does not replace
-`docs/PROJECT_<local-state-name>`, does not archive the ticket, and does not update
-`docs/PROJECT_<local-state-name>`; those belong to the human's closure pass once a baseline
-commit exists.
+This record covers the isolated implementation pass and the two post-approval
+corrections. The ticket ledger (`PROJECT_<local-state-name>`), the archive closeout and
+`PROJECT_STATE` are updated by the closure pass once the merge SHA exists.

@@ -108,7 +108,8 @@ export const project: ProjectStatus = {
     " prose, a deterministic rebuild, and a complete curated-to-raw source map. The" +
     " canonical raw library stays byte-for-byte untouched.",
     "What remains is building the desktop editor, not re-extracting the game. DragonByte" +
-    " Z already renders retail maps and supports direct visual placement editing; it now" +
+    " Z already renders retail maps and supports direct visual placement editing. A" +
+    " fixed-size map-layout pointer edit now rebuilds and re-renders reversibly; it now" +
     " grows one feature at a time - first graphical coverage and browsing, then tiles," +
     " sprites, animations and frames, then editing features such as warp editing and" +
     " graphics replacement.",
@@ -414,10 +415,10 @@ export const project: ProjectStatus = {
       technical:
         "The map canvas itself is already proven: DragonByte Z renders supported retail" +
         " maps from ROM and lets an author select, add and move objects directly on them." +
-        " The intended direction is incremental from here - browse and view maps, then" +
-        " tiles and resources, then sprites, animations and frames, followed by editing" +
-        " features such as warp editing and graphics replacement, with map-layout" +
-        " authoring in that sequence. This is a direction rather than a committed" +
+        " A fixed-size chunk-pointer replacement has now been built and re-rendered" +
+        " reversibly on one ordinary map. Broader layout editing, tile painting, warp" +
+        " editing and graphics replacement remain future work. This is a direction" +
+        " rather than a committed" +
         " engineering order.",
       status: "current",
     },
@@ -467,6 +468,20 @@ export const project: ProjectStatus = {
     { label: "PLAYABLE LOG1 CONTENT", state: "target" },
   ],
   breakthroughs: [
+    {
+      id: "fixed-size-map-layout-write",
+      title: "First reversible map-layout write",
+      summary:
+        "A single existing chunk reference in a retail map layer can now be changed in" +
+        " a generated ROM, re-rendered, and reversed to the original game bytes.",
+      technical:
+        "On Buu's Fury map:0040, dominant layer 1 cell 0 was redirected to another" +
+        " chunk already used by that layer. Exactly two ROM bytes changed within its" +
+        " four-byte pointer; the changed 256-by-256-pixel region re-rendered through" +
+        " the accepted map pipeline. No-op and inverse builds matched all 8,388,608" +
+        " canonical bytes. The source ROM was not modified. This proves only fixed-size" +
+        " in-place layout replacement; emulator validation was not performed.",
+    },
     {
       id: "complete-resource-extraction",
       title: "Complete resource extraction",

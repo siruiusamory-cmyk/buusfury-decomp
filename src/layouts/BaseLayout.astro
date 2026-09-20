@@ -1,6 +1,6 @@
 ---
 import "../styles/global.css";
-import { project } from "../data/project";
+import { project, buildoutDone, buildoutTotal, buildoutPercent } from "../data/project";
 
 interface Props {
   title?: string;
@@ -8,8 +8,11 @@ interface Props {
 }
 
 const {
-  title = "Webfoot SDK — Legacy of Goku Modding Progress",
-  description = "Progress toward authoring playable Legacy of Goku content inside the original LOGII/Buu engine with Webfoot SDK.",
+  title = `${project.name} — ${project.currentPhase} progress`,
+  description =
+    `Webfoot SDK is a modding toolkit and desktop editor for the Webfoot Dragon Ball Z GBA games.` +
+    ` DragonByte Z Buildout: ${buildoutDone} of ${buildoutTotal} editor capabilities shipped (${buildoutPercent}%).` +
+    ` The authoring programme that built the toolkit is complete.`,
 } = Astro.props;
 ---
 
@@ -19,7 +22,7 @@ const {
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="description" content={description} />
-    <meta name="theme-color" content="#0b1018" />
+    <meta name="theme-color" content="#0a1017" />
     <meta property="og:type" content="website" />
     <meta property="og:title" content={title} />
     <meta property="og:description" content={description} />

@@ -1,0 +1,51 @@
+---
+import { project, buildoutDone, buildoutTotal, buildoutPercent } from "../data/project";
+const base = import.meta.env.BASE_URL;
+const shot = project.figures[0];
+---
+
+<section class="hero" id="status" aria-labelledby="hero-title">
+  <div class="shell hero-grid">
+    <div class="hero-copy">
+      <p class="kicker">WEBFOOT SDK <span aria-hidden="true">/</span> PUBLIC STATUS</p>
+      <h1 class="hero-title" id="hero-title">
+        <span class="hero-title-a">DRAGONBYTE Z</span>
+        <span class="hero-title-b">BUILDOUT</span>
+      </h1>
+      <p class="hero-lede">{project.tagline}</p>
+      <p class="hero-desc">{project.description}</p>
+
+      <dl class="hero-meta">
+        <div>
+          <dt>ACTIVE TRACK</dt>
+          <dd>{project.currentPhase} <span aria-hidden="true">·</span> {buildoutDone}/{buildoutTotal} <span aria-hidden="true">·</span> {buildoutPercent}%</dd>
+        </div>
+        {project.stateFacts.map((fact) => (
+          <div>
+            <dt>{fact.label}</dt>
+            <dd>{fact.value}</dd>
+          </div>
+        ))}
+        <div>
+          <dt>ACCEPTANCE TARGET</dt>
+          <dd>{project.acceptanceTarget}</dd>
+        </div>
+      </dl>
+    </div>
+
+    <figure class="hero-shot">
+      <img
+        src={`${base}${shot.src}`}
+        width={shot.width}
+        height={shot.height}
+        alt={shot.alt}
+        loading="eager"
+        decoding="async"
+      />
+      <figcaption>
+        <b>{shot.title}</b>
+        <span>{shot.caption}</span>
+      </figcaption>
+    </figure>
+  </div>
+</section>

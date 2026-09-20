@@ -1,0 +1,89 @@
+---
+import {
+  project,
+  programmeDone,
+  programmeTotal,
+  programmePercent,
+  buildoutDone,
+  buildoutTotal,
+  buildoutPercent,
+} from "../data/project";
+
+// The three programme stages. Stage percentages are derived, never written:
+// stage 01 is the completed authoring programme, stage 02 is the active
+// capability track, and stage 03 is the acceptance target beyond both, which
+// nothing has been started on.
+const stages = [
+  {
+    n: "01",
+    title: "Foundation, research and authoring",
+    state: "COMPLETE",
+    pct: programmePercent,
+    note: `${programmeDone} of ${programmeTotal} milestones`,
+    tone: "complete",
+  },
+  {
+    n: "02",
+    title: "DragonByte Z buildout",
+    state: "IN PROGRESS",
+    pct: buildoutPercent,
+    note: `${buildoutDone} of ${buildoutTotal} capabilities`,
+    tone: "active",
+  },
+  {
+    n: "03",
+    title: "Authored content and release",
+    state: "NOT STARTED",
+    pct: 0,
+    note: project.acceptanceTarget,
+    tone: "future",
+  },
+];
+---
+
+<section class="progress" id="progress" aria-labelledby="progress-title">
+  <div class="shell">
+    <div class="panel progress-panel">
+      <div class="panel-head progress-head">
+        <div>
+          <p class="kicker">OVERALL PROGRESS</p>
+          <h2 id="progress-title">From engine research to a complete authoring toolkit</h2>
+        </div>
+        <p class="progress-figure">
+          <span class="progress-ratio">{buildoutDone} of {buildoutTotal} capabilities complete</span>
+          <span class="progress-pct">{buildoutPercent}%</span>
+        </p>
+      </div>
+
+      <div
+        class="bar"
+        role="progressbar"
+        aria-valuemin="0"
+        aria-valuemax="100"
+        aria-valuenow={buildoutPercent}
+        aria-valuetext={`${buildoutPercent} percent of editor capabilities shipped`}
+        aria-label="DragonByte Z buildout"
+      >
+        <span style={`--pct: ${buildoutPercent}%`}></span>
+      </div>
+
+      <ol class="stages">
+        {stages.map((stage) => (
+          <li class:list={["stage", `is-${stage.tone}`]}>
+            <span class="stage-n" aria-hidden="true">{stage.n}</span>
+            <span class="stage-body">
+              <b class="stage-title">{stage.title}</b>
+              <small class="stage-note">{stage.note}</small>
+            </span>
+            <span class="stage-right">
+              <b class="stage-pct">{stage.pct}%</b>
+              <span class="stage-state">{stage.state}</span>
+            </span>
+          </li>
+        ))}
+      </ol>
+
+      <p class="fine">{project.progressCaveat}</p>
+    </div>
+  </div>
+</section>

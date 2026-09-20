@@ -1,0 +1,49 @@
+---
+import { project, proofStrip, ledgerGroups, ledgerMetrics } from "../data/project";
+---
+
+<section class="proof" id="proof" aria-labelledby="proof-title">
+  <div class="shell">
+    <div class="panel proof-panel">
+      <div class="panel-head">
+        <h2 id="proof-title">PROOF, NOT PROMISES</h2>
+        <p class="kicker">MEASURED AGAINST CANONICAL BUU'S FURY USA REV0</p>
+      </div>
+
+      <ul class="proof-strip">
+        {proofStrip.map((metric) => (
+          <li>
+            <span class="proof-label">{metric.label}</span>
+            <b class="proof-value">{metric.value}</b>
+          </li>
+        ))}
+      </ul>
+
+      <div class="dod">
+        <p class="kicker">DEFINITION OF DONE</p>
+        <p class="dod-target">{project.acceptanceTarget}</p>
+        {project.definitionOfDone.map((paragraph) => <p class="dod-note">{paragraph}</p>)}
+      </div>
+
+      <details>
+        <summary>All {ledgerMetrics.length + proofStrip.length} measured figures</summary>
+        <div class="disclosure-body ledger">
+          {ledgerGroups.map((group) => (
+            <div class="ledger-group">
+              <h3>{group.group}</h3>
+              <dl>
+                {group.metrics.map((metric) => (
+                  <div class="ledger-row">
+                    <dt>{metric.label}</dt>
+                    <dd>{metric.value}</dd>
+                    {metric.explanation && <p>{metric.explanation}</p>}
+                  </div>
+                ))}
+              </dl>
+            </div>
+          ))}
+        </div>
+      </details>
+    </div>
+  </div>
+</section>

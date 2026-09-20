@@ -3,14 +3,14 @@ import { project } from "../data/project";
 const links = project.links.filter((link) => link.url);
 ---
 
-<footer class="site-footer">
+<footer class="footer">
   <div class="shell footer-grid">
     <div>
-      <p class="footer-brand">{project.name}</p>
-      <p>{project.footerTagline}</p>
+      <p class="footer-brand"><span class="brand-mark" aria-hidden="true">WF</span> {project.name}</p>
+      <p class="footer-tagline">{project.footerTagline}</p>
     </div>
     <div>
-      <p class="active-status"><span aria-hidden="true"></span> STATUS: {project.developmentStatus}</p>
+      <p class="topbar-status"><span class="dot" aria-hidden="true"></span>{project.developmentStatus}</p>
       {links.length > 0 && (
         <nav aria-label="Project links">
           <ul>{links.map((link) => <li><a href={link.url}>{link.label}</a></li>)}</ul>
@@ -18,5 +18,8 @@ const links = project.links.filter((link) => link.url);
       )}
     </div>
   </div>
-  <div class="shell disclaimer">{project.disclaimer}</div>
+  <div class="shell footer-fine">
+    <p>{project.disclaimer}</p>
+    <p>{project.assetPolicy}</p>
+  </div>
 </footer>

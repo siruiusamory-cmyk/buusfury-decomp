@@ -40,6 +40,8 @@ import re
 from tools.export import canonical as canon
 from tools.export import map_browser as mb
 
+from .map_layout_write import MapLayoutWriteError, MapLayoutWriter
+
 #: The sibling manifest a DragonByte Z-authored ROM ships with, appended to the
 #: ROM's own file name so one image maps to exactly one provenance document.
 MANIFEST_SUFFIX = ".dragonbyte.json"
@@ -81,6 +83,9 @@ class AuthoredRom:
     path: Path
     manifest_path: Path
     profile_id: str
+    #: The canonical image this derivative derives from, by SHA-256. The profile
+    #: identity the manifest names must be the profile *of this image*.
+    canonical_sha256: str
     output_sha256: str
     edits: tuple[AuthoredEdit, ...]
     #: The reconstructed canonical image, proven equal to the supported ROM by
@@ -139,6 +144,7 @@ def _declared_edits(document: dict) -> tuple[AuthoredEdit, ...]:
         raise ProvenanceError("the manifest declares no layout changes")
     edits: list[AuthoredEdit] = []
     seen: set[int] = set()
+    changed_bytes = 0
     for change in changes:
         if not isinstance(change, dict):
             raise ProvenanceError("malformed provenance manifest: a change is not an object")
@@ -166,6 +172,7 @@ def _declared_edits(document: dict) -> tuple[AuthoredEdit, ...]:
         new = _field(change.get("new"), "new", offset)
         if old == new:
             raise ProvenanceError(f"a layout change at 0x{offset:08X} changes nothing")
+        changed_bytes += sum(1 for before, after in zip(old, new) if before != after)
         edits.append(
             AuthoredEdit(
                 map_index=int(match.group(1)),
@@ -181,6 +188,12 @@ def _declared_edits(document: dict) -> tuple[AuthoredEdit, ...]:
             raise ProvenanceError(
                 f"the manifest names map:{cell.map_index:04d}, which is out of range"
             )
+    declared = document.get("changed_byte_count")
+    if declared != changed_bytes:
+        raise ProvenanceError(
+            f"the manifest declares {declared!r} changed byte(s) but its own changes "
+            f"account for {changed_bytes}"
+        )
     return tuple(edits)
 
 
@@ -279,10 +292,17 @@ def _verify_edits_against_canonical(
                 f"the manifest edits cell {edit.cell} of map:{edit.map_index:04d} "
                 f"BG{edit.layer_slot}, which does not exist"
             )
-        expected_offset = rom.span(
-            layer.address + canon.LAYER_CHUNK_WINDOW_OFFSET + FIELD_BYTES * edit.cell,
-            FIELD_BYTES,
-        )
+        try:
+            # The writer owns this arithmetic; re-deriving it here would be a second
+            # copy of a format rule free to drift.
+            expected_offset = MapLayoutWriter(canonical_image).chunk_pointer_offset(
+                edit.map_index, edit.layer_slot, edit.cell
+            )
+        except MapLayoutWriteError as exc:
+            raise ProvenanceError(
+                f"the manifest's change at 0x{edit.offset:08X} is not a dominant-layer "
+                f"field of map:{edit.map_index:04d} BG{edit.layer_slot}: {exc}"
+            ) from exc
         if expected_offset != edit.offset:
             raise ProvenanceError(
                 f"the manifest's change at 0x{edit.offset:08X} is not "
@@ -336,12 +356,14 @@ def verify_authored_rom(
         raise ProvenanceError(f"cannot read {path}: {exc}") from exc
 
     document = _load_manifest(document_path)
-    if document.get("schema_version") != SUPPORTED_SCHEMA_VERSION:
+    if type(document.get("schema_version")) is not int or (
+        document["schema_version"] != SUPPORTED_SCHEMA_VERSION
+    ):
         raise ProvenanceError(
             f"unsupported provenance schema {document.get('schema_version')!r}; "
             f"this build understands {SUPPORTED_SCHEMA_VERSION}"
         )
-    _canonical_base(document)
+    canonical_sha256, profile_id = _canonical_base(document)
     output_sha256 = _output_identity(document, data)
     edits = _declared_edits(document)
     canonical_image = _reconstruct_canonical(data, edits)
@@ -349,7 +371,8 @@ def verify_authored_rom(
     return AuthoredRom(
         path=path,
         manifest_path=document_path,
-        profile_id=document["base"]["profile_id"],
+        profile_id=profile_id,
+        canonical_sha256=canonical_sha256,
         output_sha256=output_sha256,
         edits=edits,
         canonical_image=canonical_image,

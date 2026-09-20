@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import glob
 import hashlib
+import json
 import os
 from pathlib import Path
 
@@ -110,6 +111,32 @@ def test_open_rom_accepts_a_verified_derivative_with_the_canonical_bytes(
     assert session.text_strings is None
     assert session.identification is None
     assert saved.manifest_path.is_file()
+
+
+def test_open_rom_refuses_a_derivative_whose_profile_is_not_its_base(
+    catalog: RomProfileCatalog, tmp_path: Path
+) -> None:
+    """The manifest must name the profile *of* the image it derives from."""
+    from tools.webfoot.map_layout_edit import MapLayoutEditor
+    from tools.webfoot.map_layout_provenance import manifest_path_for
+
+    rom = _rom_path()
+    source = Path(rom).read_bytes()
+    editor = MapLayoutEditor(source)
+    editor.set_cell(40, 1, 0, 0x08292A54)
+    output = tmp_path / "derived.gba"
+    editor.save(output, source_path=Path(rom), profile_id="buus_fury_usa_rev0_01c1707f")
+
+    document = json.loads(manifest_path_for(output).read_text(encoding="utf-8"))
+    document["base"]["profile_id"] = "legacy_of_goku_usa_a3c8c767"
+    manifest_path_for(output).write_text(json.dumps(document), encoding="utf-8")
+
+    session = Session()
+    with pytest.raises(RomNotRecognizedError) as excinfo:
+        session.open_rom(output, catalog)
+    assert "not the profile of the canonical image" in str(excinfo.value)
+    assert session.authored is None
+    assert session.profile is None
 
 
 def test_open_rom_refuses_a_mutated_rom_without_provenance(

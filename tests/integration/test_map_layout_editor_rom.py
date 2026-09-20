@@ -738,10 +738,10 @@ def test_save_as_writes_a_new_rom_that_reopens_with_the_requested_cells(
     editor.reset()
 
 
-def test_save_refuses_the_source_path_and_an_existing_output(
+def test_save_refuses_the_source_path_and_replaces_an_existing_output(
     canonical_rom: tuple[Path, bytes], editor: MapLayoutEditor, tmp_path: Path
 ) -> None:
-    path, _source = canonical_rom
+    path, source = canonical_rom
     editor.reset()
     editor.set_cell(GRAND_KAI, GRAND_KAI_LAYER, GRAND_KAI_CELL, GRAND_KAI_REPLACEMENT)
     with pytest.raises(MapLayoutEditError):
@@ -758,6 +758,114 @@ def test_save_refuses_the_source_path_and_an_existing_output(
     assert existing.read_bytes() == editor.build()
     assert hashlib.sha256(existing.read_bytes()).hexdigest() == saved.output_sha256
     assert saved.manifest_path.is_file()
+    editor.reset()
+
+
+def test_save_refuses_every_derived_path_that_is_the_source(canonical_rom, editor, tmp_path):
+    """The source may not be any of the four paths a save touches.
+
+    `manifest_path_for` and the staging names are derived from the destination, so a
+    source file named after one of them would otherwise be replaced or deleted.
+    """
+    _path, source = canonical_rom
+    editor.reset()
+    editor.set_cell(GRAND_KAI, GRAND_KAI_LAYER, GRAND_KAI_CELL, GRAND_KAI_REPLACEMENT)
+    for destination_name, reason_path in (
+        ("weird.gba", "weird.gba.dragonbyte.json"),
+        ("weird2.gba", ".weird2.gba.webfoot-partial"),
+    ):
+        destination = tmp_path / destination_name
+        # The source is a canonical copy whose *name* collides with a derived path.
+        collision = tmp_path / reason_path
+        collision.write_bytes(source)
+        with pytest.raises(MapLayoutEditError) as excinfo:
+            editor.save(destination, source_path=collision, profile_id=PROFILE_ID)
+        assert "is the source ROM" in str(excinfo.value)
+        assert collision.read_bytes() == source, "the source was touched by the refusal"
+        assert hashlib.sha256(collision.read_bytes()).hexdigest() == CANONICAL_SHA256
+        assert not destination.exists()
+        collision.unlink()
+    editor.reset()
+
+
+def test_the_same_layer_policy_is_what_refuses_an_illegal_declared_change(
+    canonical_rom: tuple[Path, bytes], editor: MapLayoutEditor, tmp_path: Path
+) -> None:
+    """Identity, output hash and reconstruction can pass while the edit is illegal.
+
+    A file that really carries a foreign-layer pointer, with a manifest that declares
+    exactly that change, satisfies every other check; only the same-layer rule
+    stands between it and acceptance.
+    """
+    _path, source = canonical_rom
+    editor.reset()
+    cross_layer = editor.target(GRAND_KAI).slots[2].choices[0]
+    assert cross_layer not in editor.target(GRAND_KAI).slots[GRAND_KAI_LAYER].choices
+    claim = tmp_path / "cross-layer.gba"
+    payload = bytearray(source)
+    payload[GRAND_KAI_FIELD_OFFSET : GRAND_KAI_FIELD_OFFSET + 4] = cross_layer.to_bytes(
+        4, "little"
+    )
+    claim.write_bytes(bytes(payload))
+    prov.manifest_path_for(claim).write_text(
+        json.dumps(
+            {
+                "schema_version": prov.SUPPORTED_SCHEMA_VERSION,
+                "base": {"profile_id": PROFILE_ID, "sha256": CANONICAL_SHA256},
+                "output": {
+                    "sha256": hashlib.sha256(claim.read_bytes()).hexdigest(),
+                    "size": claim.stat().st_size,
+                },
+                "changed_byte_count": sum(
+                    1
+                    for before, after in zip(
+                        GRAND_KAI_ORIGINAL.to_bytes(4, "little"),
+                        cross_layer.to_bytes(4, "little"),
+                    )
+                    if before != after
+                ),
+                "changes": [
+                    {
+                        "offset": GRAND_KAI_FIELD_OFFSET,
+                        "offset_hex": f"0x{GRAND_KAI_FIELD_OFFSET:08X}",
+                        "size": 4,
+                        "old": GRAND_KAI_ORIGINAL.to_bytes(4, "little").hex(),
+                        "new": cross_layer.to_bytes(4, "little").hex(),
+                        "owner": f"map:{GRAND_KAI:04d} layer {GRAND_KAI_LAYER} cell {GRAND_KAI_CELL}",
+                        "reason": prov.REASON,
+                    }
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+    with pytest.raises(prov.ProvenanceError) as excinfo:
+        prov.verify_authored_rom(claim)
+    assert "not a supported replacement" in str(excinfo.value)
+    assert "same dominant layer" in str(excinfo.value)
+
+    # A pointer the layer does use elsewhere is the legal control: accepted.
+    legal = tmp_path / "legal.gba"
+    payload = bytearray(source)
+    payload[GRAND_KAI_FIELD_OFFSET : GRAND_KAI_FIELD_OFFSET + 4] = (
+        GRAND_KAI_REPLACEMENT.to_bytes(4, "little")
+    )
+    legal.write_bytes(bytes(payload))
+    document = json.loads(prov.manifest_path_for(claim).read_text(encoding="utf-8"))
+    document["output"]["sha256"] = hashlib.sha256(legal.read_bytes()).hexdigest()
+    document["changes"][0]["new"] = GRAND_KAI_REPLACEMENT.to_bytes(4, "little").hex()
+    document["changed_byte_count"] = sum(
+        1
+        for before, after in zip(
+            GRAND_KAI_ORIGINAL.to_bytes(4, "little"),
+            GRAND_KAI_REPLACEMENT.to_bytes(4, "little"),
+        )
+        if before != after
+    )
+    prov.manifest_path_for(legal).write_text(json.dumps(document), encoding="utf-8")
+    authored = prov.verify_authored_rom(legal)
+    assert authored.edits[0].new == GRAND_KAI_REPLACEMENT
+    assert authored.canonical_image == source
     editor.reset()
 
 

@@ -189,8 +189,13 @@ class Session:
             # profile it derives from must be one this catalog verifies.
             authored = self._verify_derivative(path)
             if authored is None:
-                reason = self.provenance_error or match.reason
+                reason = match.reason
+                if self.provenance_error:
+                    reason = f"{match.reason}; {self.provenance_error}"
                 raise RomNotRecognizedError(f"{path} was not recognized: {reason}")
+            # The manifest must name the profile *of the canonical image it derives
+            # from*, not merely a profile this installation happens to configure: a
+            # canonical base with some other game's profile id is a contradiction.
             match_profile = next(
                 (
                     profile
@@ -199,10 +204,10 @@ class Session:
                 ),
                 None,
             )
-            if match_profile is None:
+            if match_profile is None or match_profile.sha256 != authored.canonical_sha256:
                 self.provenance_error = (
-                    f"the manifest names base profile {authored.profile_id!r}, "
-                    "which this installation does not configure"
+                    f"the manifest names base profile {authored.profile_id!r}, which is "
+                    "not the profile of the canonical image it claims to derive from"
                 )
                 raise RomNotRecognizedError(
                     f"{path} was not recognized: {self.provenance_error}"

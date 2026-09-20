@@ -821,6 +821,7 @@ def test_a_verified_derivative_renders_its_edits_and_stays_read_only(
         path=tmp_path / "derived.gba",
         manifest_path=tmp_path / "derived.gba.dragonbyte.json",
         profile_id="buus_fury_usa_rev0_01c1707f",
+        canonical_sha256="cd" * 32,
         output_sha256="ab" * 32,
         edits=(
             prov.AuthoredEdit(

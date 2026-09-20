@@ -276,6 +276,25 @@ def _staging_path(destination: Path) -> Path:
     return destination.with_name(f".{destination.name}.webfoot-partial")
 
 
+def _refuse_source_alias(source: Path, candidates: tuple[tuple[str, Path], ...]) -> None:
+    """Refuse a save whose every path - derived ones included - touches the source.
+
+    ``output`` is only the first of four paths this session writes or deletes:
+    the manifest name is derived from it (``<output>.dragonbyte.json``) and both
+    are staged at siblings (``.<name>.webfoot-partial``). A source file named
+    after any of those would otherwise be replaced or removed by this save, since
+    ``write.emit_image``'s own alias guard only ever sees the *staging* manifest.
+    Every path is resolved, so a symlink or junction alias is caught too.
+    """
+    source_resolved = source.resolve()
+    for label, path in candidates:
+        if path.resolve() == source_resolved:
+            raise MapLayoutEditError(
+                f"refusing to save: the {label} path is the source ROM ({path}); "
+                "choose another name"
+            )
+
+
 class MapLayoutEditor:
     """The edit session for one canonical image; holds pending edits in memory."""
 
@@ -620,10 +639,20 @@ class MapLayoutEditor:
             raise MapLayoutEditError("an identified ROM profile is required to save")
         source = Path(source_path)
         output = Path(output_path)
-        if source.resolve() == output.resolve():
-            raise MapLayoutEditError(
-                "refusing to write the new ROM over the source ROM; choose another name"
-            )
+        manifest_path = manifest_path_for(output)
+        staging_output = _staging_path(output)
+        staging_manifest = _staging_path(manifest_path)
+        # The source is an input on every path and an output on none: refuse before
+        # anything is deleted or emitted, including the derived and staging names.
+        _refuse_source_alias(
+            source,
+            (
+                ("requested output", output),
+                ("provenance manifest", manifest_path),
+                ("temporary image", staging_output),
+                ("temporary manifest", staging_manifest),
+            ),
+        )
         if not source.is_file():
             raise MapLayoutEditError(f"the source ROM is not readable: {source}")
         if hashlib.sha256(source.read_bytes()).hexdigest() != mb.SUPPORTED_ROM_SHA256:
@@ -659,9 +688,6 @@ class MapLayoutEditor:
         except write_sdk.WriteError as exc:
             raise MapLayoutEditError(f"the edit set is not applicable: {exc}") from exc
 
-        manifest_path = manifest_path_for(output)
-        staging_output = _staging_path(output)
-        staging_manifest = _staging_path(manifest_path)
         staging_output.unlink(missing_ok=True)
         staging_manifest.unlink(missing_ok=True)
         try:
@@ -680,11 +706,19 @@ class MapLayoutEditor:
             staging_manifest.unlink(missing_ok=True)
             raise MapLayoutEditError("the source ROM changed while it was being saved")
         # Publish the image first and its provenance second: the artifact the user
-        # asked for is the ROM, and a ROM without a manifest is still refused on
-        # open rather than misread.
+        # asked for is the ROM. Two renames cannot be one atomic step, so the failure
+        # of the second is reported as what it is - an image written without its
+        # provenance, which therefore refuses to reopen until it is saved again.
+        os.replace(staging_output, output)
         try:
-            os.replace(staging_output, output)
             os.replace(staging_manifest, manifest_path)
+        except OSError as exc:
+            staging_manifest.unlink(missing_ok=True)
+            raise MapLayoutEditError(
+                f"the new ROM was written to {output}, but its provenance could not be "
+                f"published to {manifest_path}: {exc}. Save again to a writable "
+                "destination to give it provenance."
+            ) from exc
         finally:
             staging_output.unlink(missing_ok=True)
             staging_manifest.unlink(missing_ok=True)

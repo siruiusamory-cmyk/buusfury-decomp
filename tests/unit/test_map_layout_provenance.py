@@ -154,15 +154,24 @@ def test_a_missing_or_malformed_manifest_is_refused(tmp_path: Path) -> None:
 def test_an_unsupported_schema_is_refused(tmp_path: Path) -> None:
     rom = tmp_path / "edited.gba"
     rom.write_bytes(b"not a canonical rom")
-    manifest = _document(schema_version=2)
-    manifest["output"] = {
-        "sha256": hashlib.sha256(b"not a canonical rom").hexdigest(),
-        "size": len(b"not a canonical rom"),
-    }
-    prov.manifest_path_for(rom).write_text(json.dumps(manifest), encoding="utf-8")
+    for schema in (2, "1", True, None):
+        manifest = _document(schema_version=schema)
+        manifest["output"] = {
+            "sha256": hashlib.sha256(b"not a canonical rom").hexdigest(),
+            "size": len(b"not a canonical rom"),
+        }
+        prov.manifest_path_for(rom).write_text(json.dumps(manifest), encoding="utf-8")
+        with pytest.raises(prov.ProvenanceError) as excinfo:
+            prov.verify_authored_rom(rom)
+        assert "schema" in str(excinfo.value)
+
+
+def test_the_declared_changed_byte_count_must_match_the_changes() -> None:
+    """The reused manifest shape states a byte count; it may not contradict itself."""
+    assert len(prov._declared_edits(_document())) == 1
     with pytest.raises(prov.ProvenanceError) as excinfo:
-        prov.verify_authored_rom(rom)
-    assert "schema" in str(excinfo.value)
+        prov._declared_edits(_document(changed_byte_count=999))
+    assert "changed byte" in str(excinfo.value)
 
 
 def test_an_explicit_manifest_path_is_honoured(tmp_path: Path) -> None:

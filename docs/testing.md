@@ -1,0 +1,155 @@
+# Testing: focused validation gates
+
+`docs/DEVELOPMENT.md` already states the policy: the full suite is an expensive
+integration gate (about 90 minutes here), never an iterative loop and never a
+reflex after a fix. This file is the operational half of that rule: how to run
+the *small* scope that validates a change, by name, without reconstructing a
+path list from memory.
+
+Every test carries at least one gate. The gates are assigned from a single
+registry, [`tests/gates.py`](../tests/gates.py), applied to the collection by
+[`tests/conftest.py`](../tests/conftest.py), and checked against the pytest
+marker registry by `tests/unit/test_test_gates.py`.
+
+## The gates
+
+| gate | selects | collected | needs |
+|---|---|---|---|
+| `fast` | `tests/unit`, the portable suite | 2,066 | nothing beyond the dev extra |
+| `rom` | `tests/integration`, the ROM-gated suite | 985 | a canonical local ROM image |
+| `workbench` | DragonByte Z UI, session and editor regressions | 137 | PySide6 (skips without it) |
+| `writer` | authored images, provenance, allocation and output safety | 638 | nothing extra |
+| `map` | map reading, placement, rendering and layout | 508 | a ROM for its integration members |
+| `research` | research and runtime tooling (atlas, mGBA, logx, disassembly) | 919 | a ROM for its integration members |
+
+`fast` and `rom` are the axis: every test is in exactly one of them, decided by
+which directory it lives in. The four subsystem gates cut across that axis, so
+a map-layout write test is `rom`, `map` *and* `writer` at once. Counts above
+are what the collection reported on 2026-09-20 in this worktree; they move as
+tests are added, and they are not a maintained fact.
+
+## Running a gate
+
+The whole of each gate, on its own:
+
+```bash
+python -m pytest -m fast          # the portable suite, ~2.5 minutes
+python -m pytest -m workbench     # DragonByte Z UI and editor regressions
+python -m pytest -m writer        # write-path safety
+python -m pytest -m map           # map reading, placement, rendering, layout
+python -m pytest -m research      # research and runtime tooling
+python -m pytest -m rom           # ROM-gated; skips without a ROM
+```
+
+Compose them when the change crosses a boundary:
+
+```bash
+python -m pytest -m "fast and writer"     # one subsystem, portable only
+python -m pytest -m "writer or map"       # what a ticket usually asks for
+python -m pytest -m "fast and research"
+```
+
+Add the directory when you already know which one it is: `pytest -m` still
+collects the whole tree first (a few seconds here) before deselecting, so
+`python -m pytest tests/unit -m "fast and writer"` finishes sooner.
+
+A gate is a *selection*, not a promise: `-m rom` on a machine with no ROM
+reports skips, and `-m fast` includes a few members that skip when a local
+artifact (the assembled atlas, a built site, a VRAM oracle) is absent. Read the
+summary line, not just the exit code.
+
+`tests/unit/test_write_invariants_property.py` is property-based: it explores
+generated edit sets and images with Hypothesis, derandomized so the gate is
+reproducible run to run. Raise the search depth for a deeper sweep with
+`WEBFOOT_PROPERTY_EXAMPLES=500`; a failure always prints the falsifying example
+and the seed that produced it.
+
+## What a normal ticket runs
+
+The smallest scope that bounds the change, then the portable gate if the
+change is shared:
+
+- changed surface: the test files next to the code you touched;
+- relevant domain: `python -m pytest -m <gate>` for the subsystem;
+- cross-domain safety: `python -m pytest -m fast` before freezing.
+
+The full-suite rules in `docs/DEVELOPMENT.md` still govern when a broad integration run
+is genuinely warranted.
+
+## Environment requirements
+
+- **Run from the repository root.** Tests read `config/`, `upstreams.lock` and
+  `roms/` relatively. The session header says so when the working directory is
+  not the root.
+- **The temporary root must be outside the work tree.** The output-safety
+  tests that expect an accepted output fail by design when `tmp_path` resolves
+  inside the repository, because the generated-output guards refuse paths
+  inside version control. Measured 2026-09-20 with the temp root at
+  `<worktree>/build/`: exactly five tests, four in
+  `test_asset_export_output_safety.py` plus
+  `test_mgba_capture.py::test_capture_output_is_restricted_to_ignored_build_tree`.
+  The mGBA check is location-dependent because `build/` is an accepted capture
+  tree, so an in-repository root elsewhere costs four rather than five; the
+  four output-safety failures happen wherever the root sits inside the work
+  tree.
+  Pass `--basetemp` outside the work tree, or rely on the default: when
+  pytest's own temp root cannot be read, the conftest redirects the process
+  temp root to an isolated one under the system temp directory and says so in
+  the header. Redirecting rather than pinning `--basetemp` keeps pytest's own
+  numbered basetemps, its `tmp_path_retention_count` pruning and its
+  cleanup-after-a-green-run, and keeps two concurrent runs in one worktree from
+  deleting each other's temporary directories. A `--basetemp` inside the
+  repository is honoured, with a warning.
+- **PySide6** is needed for the `workbench` gate. Without it those modules
+  skip cleanly rather than erroring; install `.[workbench]` to run them.
+- **A canonical ROM** is needed for the `rom` gate. It is read only; the
+  canonical image is never written. The header reports which image, if any,
+  the session found. The default location is
+  `roms/Dragon Ball Z - Buu's Fury (U).gba`; `WEBFOOT_BUU_ROM` and
+  `LOGX_CANONICAL_ROM` override it. Keep any local `roms/` a real ignored
+  directory: a directory junction there is covered by `.gitignore` only
+  because of the bare `roms` rule, and `git check-ignore` refuses to answer
+  about a path *beyond* a link.
+
+## How a test gets its gates
+
+Gates come from the file's path and name, through the rules in
+`tests/gates.py`:
+
+- `tests/unit/...` is `fast`; `tests/integration/...` is `rom`;
+- a name that states a concern joins that subsystem's gate, so
+  `test_stat_write_rom.py` is `writer` and `test_logx_codec_rom.py` is
+  `research`.
+
+Those domain rules are filename heuristics, not a semantic analysis: a file
+whose name does not state its concern carries only its axis gate, and a
+concern spelled a new way needs a new rule. That is deliberate - the mapping
+stays readable and reviewable - but it means a domain gate is "everything
+named like this subsystem", not "everything that touches this subsystem". When
+a change spans subsystems, run the axis gate (`-m fast`) rather than trusting
+one domain name.
+
+Adding an ordinary test file needs no registry edit: a new
+`tests/unit/test_thing.py` is `fast`, and a new
+`tests/integration/test_thing_rom.py` is `rom`. A genuinely new *concern*
+gets a new rule in `tests/gates.py`, a marker in `pyproject.toml`, a row in
+the table above, and a line in the doc. `test_test_gates.py` fails until all
+of those agree, and it also fails if a rule stops matching any test file.
+
+## Measured baseline, 2026-09-20
+
+`pytest 8.4.2` on Windows from the repository root, with PySide6, capstone and
+hypothesis installed, and a local `roms/` link present:
+
+| command | result |
+|---|---|
+| `-m fast` | 2,057 passed, 9 skipped, 0 failed, ~138 s |
+| `-m "fast and workbench"` | 129 passed, 3 skipped, ~22 s |
+| `-m "fast and writer"` | 443 passed, ~24 s |
+| `-m "fast and map"` | 297 passed, 1 skipped, ~13 s |
+| `-m "fast and research"` | 648 passed, 1 skipped, ~73 s |
+| `tests/integration/test_map_render_rom.py` | 3 passed, 2 skipped, ~5 s |
+
+The full `rom` gate was not run: it is the expensive integration gate the
+policy forbids running by reflex. The single ROM-gated file above is a
+representative sample that the axis works end to end.

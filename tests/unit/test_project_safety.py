@@ -97,6 +97,28 @@ def test_built_wheel_uses_packaged_profile_catalog(tmp_path):
     assert smoke.stdout.strip() == "WHEEL_SMOKE_OK"
 
 
+def _ignored_ancestor(probe: str) -> str | None:
+    """The shallowest path component of ``probe`` git reports as ignored.
+
+    Only consulted when git refuses to answer about ``probe`` itself, which it
+    does when the path traverses a symlink or directory junction ("pathspec is
+    beyond a symbolic link"). Git will not stage anything under an ignored
+    directory, so an ignored ancestor is the same guarantee for this probe.
+    """
+    parts = Path(probe).parts
+    for index in range(1, len(parts)):
+        ancestor = Path(*parts[:index]).as_posix()
+        result = subprocess.run(
+            ["git", "check-ignore", "--quiet", "--", ancestor],
+            check=False,
+            capture_output=True,
+            text=True,
+        )
+        if result.returncode == 0:
+            return ancestor
+    return None
+
+
 def test_proprietary_and_generated_paths_are_git_ignored():
     probes = [
         "roms/safety-probe.gba",
@@ -111,7 +133,23 @@ def test_proprietary_and_generated_paths_are_git_ignored():
         result = subprocess.run(
             ["git", "check-ignore", "--quiet", "--", probe],
             check=False,
+            capture_output=True,
+            text=True,
         )
+        if result.returncode == 128 and "beyond a symbolic link" in result.stderr:
+            # A local convenience link in the path - the `roms` directory
+            # junction several ROM-gated families expect - makes git refuse
+            # the pathspec rather than answer it. The probe is still decidable
+            # one level up, and it is decidable strictly: the enclosing path
+            # must itself be ignored, or its contents could be staged.
+            ancestor = _ignored_ancestor(probe)
+            assert ancestor is not None, (
+                f"{probe} cannot be checked ({result.stderr.strip()}) and no "
+                "ancestor of it is ignored either: a link in this path is not "
+                "covered by any ignore rule, so what it points at could be "
+                "staged. Prefer a real ignored directory over a link."
+            )
+            continue
         assert result.returncode == 0, f"path is not ignored: {probe}"
 
 

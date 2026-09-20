@@ -83,17 +83,27 @@ class MapLayoutWriter:
     def set_chunk_pointer(
         self, map_index: int, layer_slot: int, cell: int, replacement: int
     ) -> None:
-        """Replace one pointer with another existing non-null pointer in its layer."""
+        """Replace one pointer, or restore the cell's own stored pointer.
+
+        Restoring a cell's current value is how a revert works, so that case is
+        accepted *before* the replacement policy runs: a cell that is currently
+        null must be put back to null by the same call the editor uses to undo
+        filling it, and the null pointer is never a legal *replacement*.
+        """
         layer = self._layer(map_index, layer_slot)
         cell = self._cell_index(layer, cell)
         original = layer.chunk_addresses[cell]
-        validate_chunk_replacement(layer.chunk_addresses, replacement)
-        canon.read_chunk_entries(self._rom, replacement)
         offset = self.chunk_pointer_offset(map_index, layer_slot, cell)
+        if type(replacement) is not int:
+            # The policy states this too; it is repeated here so the early-out
+            # below cannot mistake a boolean for a pointer that is already stored.
+            raise MapLayoutWriteError("a chunk pointer must be an integer address")
         if replacement == original:
             self._edits.pop(offset, None)
-        else:
-            self._edits[offset] = replacement
+            return
+        validate_chunk_replacement(layer.chunk_addresses, replacement)
+        canon.read_chunk_entries(self._rom, replacement)
+        self._edits[offset] = replacement
 
     @property
     def pending_offsets(self) -> tuple[int, ...]:

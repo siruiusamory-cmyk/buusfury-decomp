@@ -29,6 +29,7 @@ from tools.webfoot.map_layout_edit import (  # noqa: E402
     LayoutTarget,
     MapLayoutEditError,
 )
+from tools.webfoot.map_layout_write import MapLayoutWriteError  # noqa: E402
 from tools.webfoot.workbench import map_browser_tab as mbt  # noqa: E402
 from tools.webfoot.workbench.map_browser_tab import MapBrowserTab  # noqa: E402
 from tools.webfoot.workbench.session import Session  # noqa: E402
@@ -249,9 +250,13 @@ class _FakeEditor:
         self._edits: dict[tuple[int, int, int], object] = {}
         self.preview_calls: list[tuple[int, tuple | None]] = []
         self.save_calls: list[tuple[str, str, str]] = []
+        self.character_block_calls: list[int] = []
         self.reset_calls = 0
-        #: When set, set_cell raises this message: the tab must show, not crash.
-        self.reject: str | None = None
+        #: When set, set_cell raises it: the tab must show, not crash. It is set to
+        #: whichever SDK failure family the test wants the slot to survive.
+        self.reject: Exception | None = None
+        #: Same, for the revert paths.
+        self.reject_revert: Exception | None = None
 
     # -- reads the tab performs ------------------------------------------
     def target(self, map_index: int) -> LayoutTarget:
@@ -286,9 +291,14 @@ class _FakeEditor:
         return self._preview
 
     # -- edits the tab requests ------------------------------------------
+    def character_block(self, map_index: int) -> bytes:
+        """The session's cached character block; the chooser renders through it."""
+        self.character_block_calls.append(map_index)
+        return b"synthetic-block"
+
     def set_cell(self, map_index: int, layer_slot: int, cell: int, replacement: int):
         if self.reject:
-            raise MapLayoutEditError(self.reject)
+            raise self.reject
         slot = self._target.slots[layer_slot]
         original = slot.cells[cell].pointer
         key = (map_index, layer_slot, cell)
@@ -300,6 +310,8 @@ class _FakeEditor:
         return edit
 
     def revert_cell(self, map_index: int, layer_slot: int, cell: int) -> bool:
+        if self.reject_revert:
+            raise self.reject_revert
         return self._edits.pop((map_index, layer_slot, cell), None) is not None
 
     def reset(self) -> int:
@@ -378,16 +390,15 @@ def edit_tab(qapp, monkeypatch, tmp_path):
 
     monkeypatch.setattr(mbt.mb, "read_map_index", lambda rom: entries)
     monkeypatch.setattr(mbt.mb, "render_map", lambda rom, index, **kwargs: base)
-    monkeypatch.setattr(
-        mbt.mb,
-        "render_chunk_images",
-        lambda rom, index, addresses: tuple(
+    def _chunk_images(rom, index, addresses, *, char_data=None):
+        return tuple(
             mb.ChunkImage(
                 address=address, width=256, height=256, pixels=bytes([7]) * (256 * 256)
             )
             for address in addresses
-        ),
-    )
+        )
+
+    monkeypatch.setattr(mbt.mb, "render_chunk_images", _chunk_images)
     monkeypatch.setattr(mbt, "MapLayoutEditor", lambda rom_image: fake)
 
     value = MapBrowserTab(session)
@@ -438,7 +449,7 @@ def test_clicking_a_cell_selects_it_and_shows_its_chunk(edit_tab):
     assert "column 1, row 1" in edit_tab._cell_label.text()
     assert "cell 4 of 4" in edit_tab._cell_label.text()
     assert "Chunk 4" in edit_tab._chunk_label.text()
-    assert f"{CHUNKS[3]:#010X}" in edit_tab._detail.text()
+    assert f"{CHUNKS[3]:#010x}" in edit_tab._detail.text()
 
 
 def test_grid_click_selects_the_cell(edit_tab):
@@ -603,13 +614,88 @@ def test_a_rejected_replacement_is_a_message_not_a_crash(edit_tab, monkeypatch):
     edit_tab._edit_toggle.setChecked(True)
     edit_tab._on_cell_clicked(0)
     _choose(edit_tab, 1)
-    edit_tab.editor.reject = "a replacement chunk must already be used by the same dominant layer"
+    edit_tab.editor.reject = MapLayoutEditError(
+        "a replacement chunk must already be used by the same dominant layer"
+    )
     edit_tab._apply_draft()
     assert errors == [
         "a replacement chunk must already be used by the same dominant layer"
     ]
     assert edit_tab.editor.edits_for(MAP) == ()
     assert edit_tab._draft is not None  # the pick is kept so the user can retry
+
+
+def test_a_writer_family_rejection_is_also_a_message_not_a_crash(edit_tab, monkeypatch):
+    """MapLayoutWriteError is a sibling of MapLayoutEditError, not a child."""
+    errors: list[str] = []
+    monkeypatch.setattr(mbt.QMessageBox, "warning", lambda *args: errors.append(args[-1]))
+    edit_tab._edit_toggle.setChecked(True)
+    edit_tab._on_cell_clicked(0)
+    _choose(edit_tab, 1)
+    edit_tab.editor.reject = MapLayoutWriteError("the null chunk pointer is not a replacement")
+    edit_tab._apply_draft()
+    assert errors == ["the null chunk pointer is not a replacement"]
+
+    edit_tab.editor.reject = None
+    edit_tab._apply_draft()
+    edit_tab.editor.reject_revert = MapLayoutWriteError("boom")
+    edit_tab._revert_cell()
+    assert errors[-1] == "boom"
+
+
+def test_chooser_renders_through_the_sessions_cached_character_block(edit_tab, monkeypatch):
+    calls: list[dict] = []
+    monkeypatch.setattr(
+        mbt.mb,
+        "render_chunk_images",
+        lambda rom, index, addresses, **kwargs: calls.append(kwargs)
+        or tuple(
+            mb.ChunkImage(address=a, width=256, height=256, pixels=bytes([7]) * (256 * 256))
+            for a in addresses
+        ),
+    )
+    edit_tab._edit_toggle.setChecked(True)
+    edit_tab._populate_chooser()
+    assert calls == [{"char_data": b"synthetic-block"}]
+    assert MAP in edit_tab.editor.character_block_calls
+
+
+def test_pending_edits_reappear_when_a_map_is_re_selected(edit_tab):
+    edit_tab._edit_toggle.setChecked(True)
+    edit_tab._on_cell_clicked(0)
+    _choose(edit_tab, 1)
+    edit_tab._apply_draft()
+    edit_tab.editor.preview_calls.clear()
+    # Re-selecting the map must re-render from the session, not the cached base.
+    edit_tab._render_map(MAP)
+    assert edit_tab.editor.preview_calls == [(MAP, None)]
+    assert edit_tab._current is edit_tab.preview_result
+    assert "1 unsaved change(s)" in edit_tab._status.text()
+
+
+def test_a_render_error_forgets_the_map_selection_and_cannot_crash_edit_mode(
+    edit_tab, monkeypatch
+):
+    edit_tab._edit_toggle.setChecked(True)
+    assert edit_tab._slot is not None
+    monkeypatch.setattr(mbt.QMessageBox, "warning", lambda *args: None)
+
+    def boom(rom, index, **kwargs):
+        raise mb.MapBrowserError("boom")
+
+    monkeypatch.setattr(mbt.mb, "render_map", boom)
+    # The fixture already rendered this map, so force the render path itself.
+    edit_tab._render_cache.clear()
+    edit_tab._render_map(MAP)
+    assert edit_tab._current is None
+    assert edit_tab._slot is None and edit_tab._target is None
+    assert edit_tab._grid_item is None
+    assert edit_tab._chooser.count() == 0
+    # Toggling edit mode on an empty tab must be a no-op, not an AttributeError.
+    edit_tab._edit_toggle.setChecked(False)
+    edit_tab._edit_toggle.setChecked(True)
+    assert edit_tab._grid_item is None
+    assert not edit_tab._save_button.isEnabled()
 
 
 def test_save_as_writes_a_new_rom_and_reports_it(edit_tab, monkeypatch, tmp_path):

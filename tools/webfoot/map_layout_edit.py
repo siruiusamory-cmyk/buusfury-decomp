@@ -450,7 +450,10 @@ class MapLayoutEditor:
         edit = self._edits.get(key)
         if edit is None:
             return False
-        self._writer.set_chunk_pointer(map_index, layer_slot, cell, edit.original)
+        try:
+            self._writer.set_chunk_pointer(map_index, layer_slot, cell, edit.original)
+        except (MapLayoutWriteError, *_READ_ERRORS) as exc:
+            raise MapLayoutEditError(str(exc)) from exc
         del self._edits[key]
         return True
 
@@ -459,7 +462,10 @@ class MapLayoutEditor:
         keys = [key for key in self._edits if key[0] == map_index]
         for key in keys:
             edit = self._edits[key]
-            self._writer.set_chunk_pointer(*key, edit.original)
+            try:
+                self._writer.set_chunk_pointer(*key, edit.original)
+            except (MapLayoutWriteError, *_READ_ERRORS) as exc:
+                raise MapLayoutEditError(str(exc)) from exc
             del self._edits[key]
         return len(keys)
 
@@ -525,13 +531,19 @@ class MapLayoutEditor:
                 self._base,
                 map_index,
                 chunk_overrides=overrides or None,
-                char_data=self._character_block(map_index),
+                char_data=self.character_block(map_index),
             )
         except _READ_ERRORS as exc:
             raise MapLayoutEditError(str(exc)) from exc
 
-    def _character_block(self, map_index: int) -> bytes:
-        """This map's assembled character block, decoded once per session."""
+    def character_block(self, map_index: int) -> bytes:
+        """This map's assembled character block, decoded once per session.
+
+        Public because the chunk chooser renders through the same block: re-decoding
+        it per preview *and* per chooser refill is what makes a cold chunk pick slow.
+        A block for a different map would render wrong pixels rather than raise, so
+        callers must ask the session that owns the map.
+        """
         cached = self._char_data.get(map_index)
         if cached is None:
             try:
@@ -678,7 +690,7 @@ class MapLayoutEditor:
                 if found != edit.replacement:
                     raise MapLayoutEditError(
                         f"map:{edit.map_index:04d} layer {edit.layer_slot} cell {edit.cell} "
-                        f"reads back {found:#010X}, not {edit.replacement:#010X}"
+                        f"reads back {found:#010x}, not {edit.replacement:#010x}"
                     )
                 verified.append(edit)
         except _READ_ERRORS as exc:

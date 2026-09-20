@@ -438,6 +438,8 @@ def render_chunk_images(
     rom: "canon.Rom | bytes | bytearray",
     map_index: int,
     addresses: Iterable[int],
+    *,
+    char_data: bytes | None = None,
 ) -> tuple[ChunkImage, ...]:
     """Render chunks of one map's character block as 256x256 index images.
 
@@ -445,6 +447,10 @@ def render_chunk_images(
     through the assembled character block of the map that uses them, so the map
     identity is part of the call. This is what a chunk chooser displays; the
     pointers come from the layer the caller is editing.
+
+    ``char_data`` is this map's already-assembled character block, exactly as
+    :func:`render_map` takes it, so a chooser refill does not re-decode a block the
+    caller already holds. As there, it must be the block for *this* map.
     """
     rom = _coerce(rom)
     if type(map_index) is not int or not 0 <= map_index < canon.MAP_ENTRY_COUNT:
@@ -454,9 +460,13 @@ def render_chunk_images(
     _verify_supported_rom(rom)
     try:
         entry = canon.read_map_entries(rom)[map_index]
-        block, _selectors, _animated = canon.assemble_map_char_block(
-            rom, entry.root_address
-        )
+        if char_data is None:
+            block, _selectors, _animated = canon.assemble_map_char_block(
+                rom, entry.root_address
+            )
+            char_data = block.data
+        elif not isinstance(char_data, bytes) or not char_data:
+            raise MapBrowserError("char_data must be this map's assembled character block")
         images: list[ChunkImage] = []
         for address in addresses:
             if type(address) is not int or address == 0:
@@ -467,7 +477,7 @@ def render_chunk_images(
                     address=address,
                     width=canon.CHUNK_PIXELS,
                     height=canon.CHUNK_PIXELS,
-                    pixels=render_sdk.render_chunk(entries, block.data),
+                    pixels=render_sdk.render_chunk(entries, char_data),
                 )
             )
     except _ACCEPTED_ERRORS as exc:

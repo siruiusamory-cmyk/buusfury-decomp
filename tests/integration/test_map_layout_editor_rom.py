@@ -30,6 +30,7 @@ from tools.export import map_browser as mb
 from tools.export import render as render_sdk
 from tools.webfoot import write as write_sdk
 from tools.webfoot.map_layout_edit import MapLayoutEditError, MapLayoutEditor
+from tools.webfoot.map_layout_write import MapLayoutWriteError, MapLayoutWriter
 
 #: The accepted canonical Buu's Fury USA rev0 image.
 CANONICAL_SHA256 = "940ad5f01db4465b8877dfe739510cbf34f4ea3d390f3df13519808bc36f059e"
@@ -115,6 +116,16 @@ def _render_dominant_layer(data: bytes, map_index: int, slot: int) -> bytes:
         layer.chunk_x * canon.CHUNK_SIDE_TILES,
         layer.chunk_y * canon.CHUNK_SIDE_TILES,
     )
+
+
+def _first_null_cell(editor: MapLayoutEditor) -> tuple[int, int, int]:
+    """One editable cell whose stored pointer is null, as ``(map, slot, cell)``."""
+    for index in range(canon.MAP_ENTRY_COUNT):
+        for slot in editor.target(index).editable_slots:
+            for cell in slot.cells:
+                if cell.pointer == 0 and slot.choices:
+                    return index, slot.slot, cell.cell
+    raise AssertionError("the corpus no longer contains a fillable null dominant cell")
 
 
 # --- what the editor declares editable ---------------------------------------
@@ -374,7 +385,7 @@ def test_unsupported_replacements_and_targets_fail_closed(
 def test_null_cells_accept_only_an_existing_layer_chunk(
     editor: MapLayoutEditor,
 ) -> None:
-    """A layer with a null cell may fill it - from that layer's own chunks only."""
+    """A layer with a null cell may fill it - and revert it - from its own chunks."""
     found = None
     for index in range(canon.MAP_ENTRY_COUNT):
         for slot in editor.target(index).editable_slots:
@@ -386,11 +397,41 @@ def test_null_cells_accept_only_an_existing_layer_chunk(
             break
     assert found is not None, "the corpus no longer contains a fillable null dominant cell"
     index, slot, cell = found
+    source = _rom_path().read_bytes()
     edit = editor.set_cell(index, slot.slot, cell.cell, slot.choices[0])
     assert edit is not None and edit.original == 0
     built = editor.build()
     assert built[edit.offset : edit.offset + 4] == edit.replacement.to_bytes(4, "little")
+    # The cell's own stored value was null, so reverting puts null back. Restoring
+    # a stored value is not a replacement and must not be held to the replacement
+    # policy.
+    assert editor.revert_cell(index, slot.slot, cell.cell)
+    assert editor.build() == source
+    assert editor.set_cell(index, slot.slot, cell.cell, slot.choices[0]) is not None
+    assert editor.revert_map(index) == 1
+    assert editor.build() == source
     editor.reset()
+
+
+def test_writer_restores_a_null_cell_and_still_refuses_a_null_replacement(
+    canonical_rom: tuple[Path, bytes], editor: MapLayoutEditor
+) -> None:
+    """The writer's early-out covers a revert; the policy still guards a write."""
+    _path, source = canonical_rom
+    writer = MapLayoutWriter(source)
+    index, slot, cell = _first_null_cell(editor)
+    pointer = editor.choices(index, slot)[0]
+    writer.set_chunk_pointer(index, slot, cell, pointer)
+    assert writer.pending_offsets == (editor.set_cell(index, slot, cell, pointer).offset,)
+    writer.set_chunk_pointer(index, slot, cell, 0)
+    assert writer.pending_offsets == ()
+    assert writer.build() == source
+    # A null value is still refused when it is not the cell's stored value:
+    # setting a *non-null* cell back to null would erase a reference.
+    editor.reset()
+    with pytest.raises(MapLayoutWriteError):
+        writer.set_chunk_pointer(GRAND_KAI, GRAND_KAI_LAYER, GRAND_KAI_CELL, 0)
+    assert writer.pending_offsets == ()
 
 
 # --- Save As -----------------------------------------------------------------

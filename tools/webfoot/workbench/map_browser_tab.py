@@ -66,6 +66,7 @@ from tools.webfoot.map_layout_edit import (
     MapLayoutEditError,
     MapLayoutEditor,
 )
+from tools.webfoot.map_layout_write import MapLayoutWriteError
 from tools.webfoot.write import WriteError
 
 from .build_panel import is_safe_output_path
@@ -101,6 +102,20 @@ _READ_ONLY_BADGES = {
     "no_alternative": "no alternative chunk in this grid",
     "mixed": "unsupported layout type or no alternative chunk",
 }
+
+#: Every failure family a layout-edit slot can see, so no leaf catch can let a
+#: sibling escape to a console the user does not have:
+#: ``MapLayoutEditError`` (the edit session's own failures),
+#: ``MapLayoutWriteError`` (the writer, an unrelated ``ValueError`` subclass the
+#: session translates in most paths but which a defensive catch must still cover),
+#: ``MapBrowserError`` (the render facade the chooser and preview call) and
+#: ``WriteError`` (the ROM emit path, also unrelated to the other three).
+_EDIT_ERRORS = (
+    MapLayoutEditError,
+    MapLayoutWriteError,
+    mb.MapBrowserError,
+    WriteError,
+)
 
 
 def _checkerboard() -> QBrush:
@@ -669,7 +684,9 @@ class MapBrowserTab(QWidget):
         self._current = result
         self._populate_layer_checks()
         self._sync_editor_for_map(index)
-        self._show_composite()
+        # Pending edits made on an earlier visit must reappear with the map, or the
+        # canvas would contradict the change list (and the ROM Save As writes).
+        self._refresh_preview()
         self._populate_info()
         # The tab is visible by the time a user selects a map, so the viewport
         # already has its final geometry; fitting synchronously avoids a deferred
@@ -769,6 +786,7 @@ class MapBrowserTab(QWidget):
     def _show_placeholder(self, message: str) -> None:
         self._current = None
         self._clear_layer_checks()
+        self._forget_map_selection()
         self._scene.clear()
         self._pixmap_item = None
         self._grid_item = None
@@ -783,8 +801,30 @@ class MapBrowserTab(QWidget):
         self._layer_count.setText("—")
         self._layer_types.setText("—")
         self._notes.setText("—")
+        # Nothing is selected any more, so the editor must say so rather than
+        # keep a stale layer/cell that no map backs.
+        self._refresh_editor_state()
 
     # -- layout editing: mode, target and cell selection ----------------------
+
+    def _forget_map_selection(self) -> None:
+        """Drop the per-map selection state (the session and images stay)."""
+        self._target = None
+        self._slot = None
+        self._selected_cell = None
+        self._draft = None
+        self._thumbnails = {}
+        self._clear_grid_item()
+        self._chooser.blockSignals(True)
+        self._chooser.clear()
+        self._chooser.blockSignals(False)
+        self._chooser_hint.setText("No editable layer is selected on this map.")
+        self._layer_combo.blockSignals(True)
+        self._layer_combo.clear()
+        self._layer_combo.blockSignals(False)
+        self._cell_label.setText("—")
+        self._chunk_label.setText("—")
+        self._detail.setText("—")
 
     def _reset_editor(self) -> None:
         """Drop all edit-session state; the ROM, and so the base, has changed."""
@@ -825,11 +865,7 @@ class MapBrowserTab(QWidget):
 
     def _sync_editor_for_map(self, index: int) -> None:
         """Re-point the edit surface at the newly selected map."""
-        self._draft = None
-        self._selected_cell = None
-        self._target = None
-        self._slot = None
-        self._thumbnails = {}
+        self._forget_map_selection()
         editor = self._editor_session()
         if editor is None:
             self._editor_box.setToolTip(self._editor_error or "")
@@ -986,24 +1022,33 @@ class MapBrowserTab(QWidget):
             "Only these can replace a cell's chunk."
         )
         try:
+            # The session's cached character block, so a refill does not re-decode
+            # what the preview already decoded. Thumbnail expansion stays inside
+            # this guard: it is the same facade error family.
             images = mb.render_chunk_images(
-                self._session.rom_image, self._current.index, slot.choices
+                self._session.rom_image,
+                self._current.index,
+                slot.choices,
+                char_data=(
+                    self._editor.character_block(self._current.index)
+                    if self._editor is not None
+                    else None
+                ),
             )
-        except mb.MapBrowserError as exc:
+            for ordinal, image in enumerate(images, start=1):
+                item = QListWidgetItem(QIcon(self._thumbnail(image)), f"Chunk {ordinal}")
+                item.setData(_CHUNK_ROLE, image.address)
+                item.setTextAlignment(Qt.AlignmentFlag.AlignHCenter)
+                item.setSizeHint(self._chooser_cell)
+                item.setToolTip(
+                    f"Chunk {ordinal} · {len(slot.cells_using(image.address))} cell(s) in "
+                    f"BG{slot.slot}\npointer {image.address:#010x}"
+                )
+                self._chooser.addItem(item)
+        except _EDIT_ERRORS as exc:
             QMessageBox.warning(self, "Map Browser", str(exc))
+        finally:
             self._chooser.blockSignals(False)
-            return
-        for ordinal, image in enumerate(images, start=1):
-            item = QListWidgetItem(QIcon(self._thumbnail(image)), f"Chunk {ordinal}")
-            item.setData(_CHUNK_ROLE, image.address)
-            item.setTextAlignment(Qt.AlignmentFlag.AlignHCenter)
-            item.setSizeHint(self._chooser_cell)
-            item.setToolTip(
-                f"Chunk {ordinal} · {len(slot.cells_using(image.address))} cell(s) in "
-                f"BG{slot.slot}\npointer {image.address:#010X}"
-            )
-            self._chooser.addItem(item)
-        self._chooser.blockSignals(False)
 
     def _thumbnail(self, image: mb.ChunkImage) -> QPixmap:
         """A small chunk image on the canvas checkerboard, cached per address."""
@@ -1049,8 +1094,6 @@ class MapBrowserTab(QWidget):
             font = item.font()
             font.setBold(working is not None and pointer == working)
             item.setFont(font)
-            if working is not None and pointer == working:
-                item.setIcon(item.icon())
         if working is not None:
             row = self._chooser_row_for(working)
             if row is not None:
@@ -1085,7 +1128,7 @@ class MapBrowserTab(QWidget):
             return 0
         try:
             return self._editor.working_pointer(self._current.index, layer_slot, cell)
-        except MapLayoutEditError:
+        except _EDIT_ERRORS:
             return 0
 
     def _apply_draft(self) -> None:
@@ -1095,7 +1138,7 @@ class MapBrowserTab(QWidget):
         layer_slot, cell, replacement = self._draft
         try:
             self._editor.set_cell(self._current.index, layer_slot, cell, replacement)
-        except MapLayoutEditError as exc:
+        except _EDIT_ERRORS as exc:
             QMessageBox.warning(self, "Layout edit", str(exc))
             return
         self._draft = None
@@ -1112,7 +1155,7 @@ class MapBrowserTab(QWidget):
         self._draft = None
         try:
             self._editor.revert_cell(self._current.index, self._slot.slot, self._selected_cell)
-        except MapLayoutEditError as exc:
+        except _EDIT_ERRORS as exc:
             QMessageBox.warning(self, "Layout edit", str(exc))
             return
         self._sync_chooser_selection()
@@ -1140,7 +1183,7 @@ class MapBrowserTab(QWidget):
             return {}
         try:
             return self._editor.overrides(self._current.index, self._draft)
-        except MapLayoutEditError as exc:
+        except _EDIT_ERRORS as exc:
             QMessageBox.warning(self, "Layout edit", str(exc))
             self._draft = None
             return {}
@@ -1160,7 +1203,7 @@ class MapBrowserTab(QWidget):
         QApplication.setOverrideCursor(Qt.CursorShape.WaitCursor)
         try:
             self._current = self._editor.preview(index, self._draft)
-        except MapLayoutEditError as exc:
+        except _EDIT_ERRORS as exc:
             QMessageBox.warning(self, "Layout edit", str(exc))
         finally:
             QApplication.restoreOverrideCursor()
@@ -1231,7 +1274,7 @@ class MapBrowserTab(QWidget):
                 )
             else:
                 self._detail.setText(
-                    f"pointer {working:#010X}\n"
+                    f"pointer {working:#010x}\n"
                     f"field 0x{cell.offset:08X} (4 bytes, in place)"
                 )
         else:
@@ -1253,14 +1296,16 @@ class MapBrowserTab(QWidget):
             self._change_label.setStyleSheet("color: #7FC98B;")
 
         self._apply_button.setEnabled(editing and self._draft is not None)
+        index = result.index if result is not None else None
         self._revert_button.setEnabled(
             editing
+            and index is not None
             and slot is not None
             and self._selected_cell is not None
             and (
                 self._draft is not None
                 or self._editor is not None
-                and self._editor.edit(result.index, slot.slot, self._selected_cell) is not None
+                and self._editor.edit(index, slot.slot, self._selected_cell) is not None
             )
         )
         self._reset_button.setEnabled(editing and bool(edits))
@@ -1374,12 +1419,9 @@ class MapBrowserTab(QWidget):
                 source_path=self._session.rom_path,
                 profile_id=self._session.profile.id,
             )
-        except (MapLayoutEditError, WriteError) as exc:
+        except (_EDIT_ERRORS + (OSError,)) as exc:
             QMessageBox.critical(self, "Save As", str(exc))
             self._status.setText(f"Save As failed: {exc}")
-            return
-        except OSError as exc:
-            QMessageBox.critical(self, "Save As", f"Could not write {chosen}: {exc}")
             return
         self._saved = {
             (edit.map_index, edit.layer_slot, edit.cell): edit.replacement

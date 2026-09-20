@@ -21,6 +21,7 @@ QtCore = pytest.importorskip("PySide6.QtCore")
 QtGui = pytest.importorskip("PySide6.QtGui")
 
 from tools.export import map_browser as mb  # noqa: E402
+from tools.webfoot import map_layout_edit as mle  # noqa: E402
 from tools.webfoot.map_layout_edit import (  # noqa: E402
     LayoutCell,
     LayoutGrid,
@@ -223,7 +224,7 @@ def _read_only_map_slots() -> tuple[LayoutSlot, ...]:
         _read_only_slot(0, "a grid of 1 cell(s) using a single chunk", "dominant"),
         _read_only_slot(1, "a screen-entry layer, not the dominant chunk grid"),
         _read_only_slot(2, "a terrain-field layer, the special graphical form Map 19 uses"),
-        _read_only_slot(3, "the slot holds no layer"),
+        _read_only_slot(3, mle._READ_ONLY_FORMS["absent_placeholder"]),
     )
 
 
@@ -569,9 +570,30 @@ def test_a_map_without_an_editable_layer_stays_read_only(edit_tab, monkeypatch):
     detail = edit_tab._read_only_detail.text()
     assert "terrain-field" in detail and "Map 19" in detail
     assert "single chunk" in detail and "screen-entry" in detail
+    # Each reason completes the sentence the target composes.
+    assert "BG3 is an empty slot holding no layer" in detail
+    # The status line must not claim an editing state the badge calls read-only.
+    assert "no editable layer on this map" in edit_tab._status.text()
+    assert "no changes yet" not in edit_tab._status.text()
     # Read-only is a state, not an error: the toggle stays usable and no dialog
     # is raised.
     assert edit_tab._edit_toggle.isEnabled()
+
+
+def test_a_session_change_leaves_edit_mode(qapp, monkeypatch, tmp_path):
+    entries = (_entry(MAP, "Synthetic Map"),)
+    monkeypatch.setattr(mbt.mb, "read_map_index", lambda rom: entries)
+    monkeypatch.setattr(mbt.mb, "render_map", lambda rom, index, **kwargs: _result(index))
+    monkeypatch.setattr(mbt, "MapLayoutEditor", lambda rom_image: None)
+    tab = MapBrowserTab(Session(rom_image=b"synthetic", rom_path=tmp_path / "s.gba"))
+    tab.on_session_changed()
+    tab._list.setCurrentRow(0)
+    tab._edit_toggle.setChecked(True)
+    assert tab._edit_mode
+    tab.on_session_changed()
+    assert not tab._edit_mode
+    assert not tab._edit_toggle.isChecked()
+    assert tab._editor_box.isHidden() and tab._chooser_box.isHidden()
 
 
 def test_an_editable_map_shows_the_layer_row(edit_tab):

@@ -56,8 +56,9 @@ _READ_ERRORS = (
 
 #: The only layer form this ticket may edit, and the human names for the forms it
 #: may not. Those stay read-only rather than forced into a grid they do not have.
+#: Every phrase completes "BGn is ..." in :attr:`LayoutTarget.read_only_reason`.
 _READ_ONLY_FORMS = {
-    "absent_placeholder": "the slot holds no layer",
+    "absent_placeholder": "an empty slot holding no layer",
     "static_graphical_screenblock": "a screen-entry layer, not the dominant chunk grid",
     "static_graphical_terrain_field": (
         "a terrain-field layer, the special graphical form Map 19 uses"

@@ -234,6 +234,24 @@ def test_every_documented_non_dominant_form_has_a_reason() -> None:
         assert mle._READ_ONLY_FORMS[classification]
 
 
+def test_read_only_reasons_read_as_a_sentence_after_the_slot_name() -> None:
+    """`LayoutTarget.read_only_reason` composes "BGn is <reason>"; so must they."""
+    for classification, reason in mle._READ_ONLY_FORMS.items():
+        assert not reason.startswith("the slot"), classification
+        assert reason.endswith(tuple("abcdefghijklmnopqrstuvwxyz)")), reason
+    slot = LayoutSlot(
+        slot=3,
+        classification="absent_placeholder",
+        handler=0x08007A41,
+        grid=LayoutGrid(0, 0),
+        cells=(),
+        choices=(),
+        read_only_reason=mle._READ_ONLY_FORMS["absent_placeholder"],
+    )
+    reason = LayoutTarget(19, None, (slot,)).read_only_reason
+    assert "BG3 is an empty slot holding no layer" in reason
+
+
 def test_dominant_reason_explains_a_single_chunk_layer() -> None:
     reason = MapLayoutEditor._dominant_read_only_reason(LayoutGrid(1, 1), (0x082928DC,))
     assert "single chunk" in reason

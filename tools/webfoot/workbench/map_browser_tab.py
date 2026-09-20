@@ -836,6 +836,13 @@ class MapBrowserTab(QWidget):
         self._draft = None
         self._saved = {}
         self._thumbnails = {}
+        # A new ROM starts in view mode: leaving the toggle checked would claim an
+        # editing mode for an image the tab has not judged yet.
+        self._edit_mode = False
+        self._edit_toggle.blockSignals(True)
+        self._edit_toggle.setChecked(False)
+        self._edit_toggle.blockSignals(False)
+        self._show_edit_groups(False)
         self._clear_grid_item()
         self._chooser.clear()
         self._chooser_hint.setText("Select a map to see its chunks.")
@@ -1327,7 +1334,11 @@ class MapBrowserTab(QWidget):
             f"{result.width}×{result.height}",
             f"{result.graphical_layer_count} graphical layer(s)",
         ]
-        if self._edit_mode:
+        if self._edit_mode and self._slot is None:
+            # Edit mode is on but this map has nothing to edit: say that, rather
+            # than reporting an editing state the badge already calls read-only.
+            parts.append("EDIT LAYOUT · no editable layer on this map")
+        elif self._edit_mode:
             parts.append("EDIT LAYOUT")
             if self._draft is not None:
                 parts.append("previewing an unapplied choice")

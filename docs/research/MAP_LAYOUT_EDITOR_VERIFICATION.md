@@ -1,0 +1,206 @@
+# DRAGONBYTE-Z-MAP-LAYOUT-EDITOR-001 - independent review record
+
+Ticket: **DRAGONBYTE-Z-MAP-LAYOUT-EDITOR-001** - edit existing map chunk layouts in
+the DragonByte Z Map Browser.
+
+Isolated implementation pass. Base `fbd48b60408e1189cc1806fbe29fd9330179f1e8`
+(`origin/master` at the start of the pass). Branch `dbz-map-layout-editor-001` in
+the worktree `<checkout>-dbz-map-layout-editor-001`.
+
+| Revision | Meaning |
+| --- | --- |
+| `fbd48b60` | reviewed base (`origin/master`) |
+| `b51aa82` | frozen implementation, first review artifact (`feat: edit map chunk layouts in the Map Browser`) |
+| `2224e5e` | review fixes (`fix: restore a null layout cell and keep edit state honest`) |
+
+## Second review verdict: APPROVE WITH NON-BLOCKING NOTES
+
+The same reviewer re-inspected `b51aa82..2224e5e` and reproduced each fix
+independently: the null-cell revert at SDK level, through the real tab's Revert
+slot, and through a full apply / leave-the-map / return / revert cycle ending in
+`build() == source`; the render-failure state reset; and the re-selected map's
+canvas matching the edited preview. It re-ran its Grand Kai proof, the no-op
+identity check, the save-over-source refusals, the writer's cross-layer refusal
+and every restriction-defeat attempt, and reported the focused set at 83 passed
+with `tests/unit` at the same failure set as the base commit (six, all
+environmental: five reproduced on pristine `fbd48b6`, plus one caused by `roms/`
+being a directory junction in this worktree). **No blocking findings remain.**
+
+Its six remaining notes and their dispositions:
+
+| Note | Disposition |
+| --- | --- |
+| Review record untracked; its capture table listed a `10-*` screenshot that did not exist yet | **Fixed**: the record is committed and the re-selection capture now exists (`10-reselected-map-keeps-pending-edit.png`). |
+| Read-only reason read "BG3 is the slot holds no layer" | **Fixed**: the absent-slot phrase is now "an empty slot holding no layer", and a test asserts every read-only phrase reads as a sentence after "BGn is". |
+| The status bar said "EDIT LAYOUT … no changes yet" on a map the badge calls read-only | **Fixed**: the status now reads "EDIT LAYOUT · no editable layer on this map". |
+| A session change left Edit Layout switched on with an empty explanation | **Fixed**: a new ROM resets to view mode and unchecks the toggle. |
+| The worst-layer chunk pick is ~2.2 s because a pending edit re-renders the whole map | **Accepted as a limit.** Measured: typical editable maps preview in ~0.23 s (map:0040, after the character-block cache); the largest editable layer (map:0102 BG3, 20 chunks, 1280x1024) takes ~1.0-2.2 s. Removing it means a second, delta-based render path in the session, which this ticket's scope explicitly avoids. The public text says the swap "previews … immediately"; the measured spread is recorded here rather than smoothed over. |
+| Unlink-before-emit on a user-confirmed target; `char_data` remains a trust-the-caller fast path; the ticket ledger is left to the closure pass | **Accepted deliberately**, with the reasons given above. |
+
+## First review verdict: BLOCK
+
+An independent reviewer with fresh context, no part in the implementation, read the
+whole `fbd48b60..b51aa82` diff and its surroundings and re-derived the evidence
+independently (its own raw four-byte patch and its own accepted-reader render for
+the Grand Kai proof; its own census; its own defeat attempts). It returned **BLOCK**
+with three blocking findings and six non-blocking notes.
+
+### Blocking findings and resolutions
+
+1. **[HIGH] A null-original revert raised, so "Revert cell" was dead on click.**
+   `MapLayoutWriter.set_chunk_pointer` validated the replacement before noticing it
+   equalled the cell's stored value, so restoring a cell whose canonical pointer is
+   null raised `MapLayoutWriteError`. 104 of the 341 editable maps contain such a
+   cell, and the GUI slot caught only `MapLayoutEditError`, so the exception escaped
+   the slot.
+   **Fixed in `2224e5e`:** the writer refuses a non-int, then accepts
+   `replacement == original` (a restore) before the replacement policy runs; the
+   editor's revert paths translate writer and reader failures into
+   `MapLayoutEditError`; the GUI's edit slots catch a named `_EDIT_ERRORS` tuple
+   (`MapLayoutEditError`, `MapLayoutWriteError`, `MapBrowserError`, `WriteError`)
+   with `OSError` on the save path. Tests added for a null-cell fill-then-revert at
+   both the writer and the editor level, and for the sibling error family through
+   Apply and Revert in the tab.
+
+2. **[MEDIUM] `AttributeError` in a Qt slot after a render failure.**
+   `_show_placeholder` left the previous map's layer/cell selection behind, so
+   toggling Edit Layout on the emptied tab dereferenced a missing map.
+   **Fixed in `2224e5e`:** `_show_placeholder` forgets the per-map selection
+   (target, slot, cell, draft, grid overlay, chooser) and re-syncs the panel, and
+   the revert-button gate no longer dereferences a missing map. Regression test
+   added.
+
+3. **[MEDIUM] Re-selecting a map lost its pending edits on the canvas.**
+   The selection path restored the cached unedited render while the change list,
+   the chooser tags and the saved ROM all carried the edits, contradicting the
+   public claim that the swap previews immediately.
+   **Fixed in `2224e5e`:** the selection path ends in `_refresh_preview()`, so a
+   map with pending edits re-renders from the session. Regression test added, and a
+   re-selection step was added to the visual QA walkthrough.
+
+### Non-blocking notes and dispositions
+
+- The chooser's error guard did not cover thumbnail expansion (`mb.rgba`).
+  **Fixed**: thumbnail expansion is inside the same guarded block.
+- `char_data` is a public parameter trusted on `isinstance(bytes)` alone.
+  **Kept, documented**: it is the preview/chooser fast path, the editor is its only
+  supplier, and the docstrings now state that it must be the block for the same map.
+- `render_chunk_images` re-decoded the character block on every call (measured
+  1.26 s to refill a 20-chunk layer, cold pick ~2.5 s).
+  **Fixed**: `MapLayoutEditor.character_block` is public and the chooser passes the
+  session's cached block through `render_chunk_images(..., char_data=...)`.
+- `#010X` versus the repository's `#010x`.
+  **Fixed** in the three sites.
+- An existing output is unlinked before the emit, so a failed emit leaves neither
+  file. **Kept, accepted as a limit**: this is the established
+  `build_panel.py` convention (its overwrite flow deletes then rebuilds), and
+  `emit_image`'s refuse-to-overwrite property is what makes a second save fail
+  closed at SDK level.
+- No ticket-ledger update and no UI-QA record in the frozen tree.
+  **Partly addressed**: this record carries the UI-QA result. `docs/PROJECT_<local-state-name>`
+  and the archive closeout are deliberately left to the human's closure pass, which
+  owns the ticket lifecycle in this repository.
+
+## What the reviewer confirmed independently (not taken on trust)
+
+- Census: 452 maps readable, 341 with an editable layer, 111 read-only.
+- The Grand Kai proof case: `map:0040` dominant layer 1 cell 0
+  `0x082928DC` -> `0x08292A54` at file `0x00292CA0`; only bytes `0x292CA0-1`
+  changed; 29,208 changed pixels, all inside that cell's 256x256 region, 0 in the
+  other three chunk regions of the layer, and BG0/BG2/BG3 pixel-identical.
+- No-op save byte-identical (bytes and SHA-256) and structurally guaranteed.
+- Save over the source ROM refused via absolute path, relative path and a file
+  symlink; a second save to one output refused with the first file intact;
+  hard-linking the source cannot modify it.
+- All restriction-defeat attempts refused: cross-layer, null, boolean, negative,
+  over-32-bit, out-of-range cell, non-editable layer, Map 19 (both its dominant and
+  its terrain slots), map index 452, a non-canonical image, and an override aimed at
+  a terrain layer.
+- Canonical ROM unchanged (8,388,608 bytes, SHA-256 `940ad5f0…f059e`, size and
+  mtime identical before and after).
+- `git diff --check` clean; added lines bare-LF; no ROM, save, state, generated ROM
+  or generated PNG in the diff; no CLI path exposes the write.
+
+## Visual and interaction QA (dragonbyte-ui-qa)
+
+Run on the real windows platform plugin (the offscreen plugin has no font database
+here, so every label renders as tofu boxes and its screenshots are worthless for
+judging text). The harness drives the real `MainWindow`, opens the real canonical
+ROM through the real Atlas tab, and walks the workflow with real clicks
+(`QTest.mouseClick` on the chunk grid). Screenshots are captured under the ignored
+`build/qa/map-layout-editor/` and were opened and inspected:
+
+| Capture | State |
+| --- | --- |
+| `00-empty-no-rom.png` | no ROM open (empty state) |
+| `01-normal-read-only-browser.png` | normal read-only browser |
+| `02-layout-edit-mode.png` | edit mode with the chunk grid over the map |
+| `03-selected-chunk-cell.png` | a chunk cell selected by a real click |
+| `04-chunk-chooser.png`, `04-chunk-chooser-panel.png` | chunk chooser with thumbnails |
+| `05-live-replacement-preview.png` | live in-memory replacement preview |
+| `06-unsaved-change-state.png`, `06b-unsaved-two-changes.png` | unsaved-change state |
+| `06c-narrow-window.png` | resized narrow |
+| `07-map19-read-only.png` | Map 19 read-only state |
+| `08-save-as-result.png`, `08b-save-as-dialog.png` | successful Save As |
+| `09a`/`09b` | the emitted file's own bytes re-rendered, canonical versus edited |
+| `10-reselected-map-keeps-pending-edit.png` | a map re-selected with pending edits still shows them |
+
+Defects the pass found and fixed before the freeze:
+
+1. The chooser elided the `current`/`original` state tag: a `QListWidget` in IconMode
+   with uniform item sizes is sized from the first item, so an item whose text grew a
+   second line was clipped. Fixed with per-item size hints derived from the real font
+   and non-uniform item sizes.
+2. A long `READ ONLY` reason clipped instead of wrapping in the badge. Fixed by
+   keeping the badge to a short state and moving the explanation into a separate
+   wrapped, recessive label.
+3. An empty layer combo box was shown for a map with nothing editable. Fixed by
+   hiding the row.
+4. Ghost layer checkboxes from the previous map painted over the new ones: removing a
+   widget from a layout does not unparent it, so a `deleteLater` widget still paints
+   at its stale geometry until the deferred delete runs. Fixed with `setParent(None)`.
+5. The status line did not mention an unapplied chooser pick. Fixed: it now reads
+   "previewing an unapplied choice".
+
+Known UI limits, not fixed because they are pre-existing shell behaviour or outside
+this ticket's scope: the window's minimum height is 1264 px on this machine, which is
+identical on the reviewed base commit (it comes from other tabs, not this feature);
+at very narrow widths the map list is squeezed by the canvas toolbar; only the
+accepted renderer's transparency (index 0) is shown as canvas checkerboard.
+
+Interaction QA is the automated suite in `tests/unit/test_workbench_map_browser.py`
+(real widget tree, duck-typed edit session) plus the ROM-gated
+`tests/integration/test_map_layout_editor_rom.py`.
+
+## Validation on the fixed revision `2224e5e`
+
+- Focused map and workbench set: **90 passed, 2 skipped** (both skips are the
+  MAP-VIS-001 VRAM oracle, unconfigured locally).
+- Full `pytest tests` on `2224e5e`: recorded in the ticket's final report.
+- Pre-existing environment failures, reproduced on the pristine base commit
+  `fbd48b6` in a separate worktree, are unrelated to this change:
+  `tests/unit/test_asset_export_output_safety.py` (4) and
+  `tests/unit/test_mgba_capture.py::test_capture_output_is_restricted_to_ignored_build_tree`.
+  A sixth failure appears only in a worktree where `roms/` is a directory junction
+  (`git check-ignore` refuses a path beyond a link), so it is a worktree artefact,
+  not a code defect.
+- `npm run check`: 0 errors, 0 warnings, 0 hints. `npm run build`: passed, and the
+  built page carries the new capability text.
+
+## Public progress
+
+`public progress impact: UPDATED` - the current frontier milestone
+("Build DragonByte Z out feature by feature") and the completed
+"First reversible map-layout write" breakthrough now describe a usable editing
+feature, and the blocker paragraph naming what the editor does next was corrected.
+`src/data/project.ts` is in the frozen diff and was reviewed with it. Publishing
+(deploy plus live verification) is **not** done in this isolated pass; the ticket
+says not to publish during isolated implementation, and the repository/site step
+belongs to the closure pass that pushes this branch.
+
+## Stop
+
+This record covers only the isolated implementation pass. It does not replace
+`docs/PROJECT_<local-state-name>`, does not archive the ticket, and does not update
+`docs/PROJECT_<local-state-name>`; those belong to the human's closure pass once a baseline
+commit exists.

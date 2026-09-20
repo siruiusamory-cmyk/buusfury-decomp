@@ -6,6 +6,12 @@ stages:
 # unit suite is synthetic-fixture only: no commercial ROM is required, and the
 # ROM-gated integration tests are not collected here at all.
 #
+# This job is the `fast` gate of docs/testing.md (`python -m pytest -m fast`).
+# It is the whole portable suite and finishes in a couple of minutes, so it is
+# deliberately not split into parallel jobs: the fan-out would cost more in
+# runner setup than it saves, and more jobs would make one failing gate harder
+# to read, not easier.
+#
 # The whole unit suite runs unmodified, including the git-backed
 # repository-safety tests, hence the git install below.
 test-sdk:
@@ -21,7 +27,13 @@ test-sdk:
     - python -m pip install --quiet --upgrade pip
     - python -m pip install --quiet -e ".[dev]"
   script:
-    - python -m pytest tests/unit -q
+    # The JUnit report is what makes a failure legible in the merge request
+    # without downloading the raw job log.
+    - python -m pytest tests/unit -q --junitxml=report.xml
+  artifacts:
+    when: always
+    reports:
+      junit: report.xml
   rules:
     # Run on merge requests, and on branch pushes that have no open merge
     # request. The second condition suppresses the duplicate branch pipeline

@@ -18,6 +18,12 @@ from pathlib import Path
 
 import pytest
 
+# `tools.webfoot.workbench.build_panel` imports PySide6 at module scope, so
+# without the workbench extra this module must skip the way its unit siblings
+# do. A bare ImportError here aborts collection of the whole
+# `tests/integration` directory, which hides every other integration test.
+pytest.importorskip("PySide6")
+
 from tools.webfoot import build as build_sdk
 from tools.webfoot.profile import RomProfileCatalog
 from tools.webfoot.workbench.build_panel import (is_safe_output_path,

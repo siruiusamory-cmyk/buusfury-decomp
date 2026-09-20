@@ -19,6 +19,9 @@ dev = [
     "pip==26.2.1",
     "pytest==8.4.2",
     "setuptools==84.0.0",
+    # Property tests for the pure binary invariants of the write path. Pure
+    # Python, no build step, imported only by the modules that use it.
+    "hypothesis==6.143.0",
 ]
 workbench = [
     "PySide6",
@@ -41,6 +44,17 @@ include = ["tools*"]
 [tool.pytest.ini_options]
 addopts = "-ra"
 testpaths = ["tests"]
+# Focused validation gates, assigned to every test from tests/gates.py and
+# documented in docs/testing.md. `-m fast` is the portable gate; `-m rom` is
+# the ROM-gated one; the rest cut across by subsystem.
+markers = [
+    "fast: portable, deterministic tests under tests/unit; the default gate",
+    "workbench: DragonByte Z Workbench UI, session and editor regressions",
+    "writer: authored-image, provenance, allocation and output-safety tests",
+    "map: map reading, placement, rendering and layout regressions",
+    "research: research and runtime tooling tests",
+    "rom: tests that need a canonical local ROM image (tests/integration)",
+]
 # Build and extract tests write whole 8 MB ROMs and thousands of sprite PNGs
 # into `tmp_path`. pytest's defaults (policy "all", count 3) keep those for
 # three *basetemp roots*, so a run under a fresh TEMP never collects the

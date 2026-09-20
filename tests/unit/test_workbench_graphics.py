@@ -693,9 +693,15 @@ def _rom_path() -> str:
 
 
 def test_real_rom_thumbnail_is_non_empty(qapp):
+    from tools.webfoot.cli import _default_atlas_directory
     from tools.webfoot.profile import RomProfileCatalog
 
     rom = _rom_path()
+    # `open_rom` reads the assembled atlas artifact, which is derived from the
+    # ROM rather than shipped with it. Without it the test is unrunnable, not
+    # failing: the same condition `test_workbench_session` skips on.
+    if not (_default_atlas_directory() / "atlas.jsonl").is_file():
+        pytest.skip("assembled atlas.jsonl not present locally")
     catalog = RomProfileCatalog.load(os.path.join("config", "roms.yaml"))
     session = Session()
     session.open_rom(rom, catalog)

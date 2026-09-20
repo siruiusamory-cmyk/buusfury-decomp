@@ -46,7 +46,7 @@ Reproduction), not by the portrait probe, which only self-checks portrait extent
 
 | Category | STATUS | OWNER (table / code, file:line or ROM addr) | FORMAT | COUNT (only if proven) | EXPORT COVERAGE | EVIDENCE |
 |---|---|---|---|---|---|---|
-| UI / HUD / MENUS | PARTIAL / UNRESOLVED | code-referenced UI-asset descriptors near `0x08071700`; damage-number assets `0x0806E050` (normal, 11 refs) & `0x0806F150` (crit) selected by branch `0x0800E94E` (P-009 runtime) | descriptor record `{ptr, small int}`, not a bare container; underlying graphics format not established | UNKNOWN (no complete table bound) | NONE | **INFERRED** system exists; population **UNKNOWN** |
+| UI / HUD / MENUS | **LITERAL-NAMED POPULATION ENUMERABLE** (UI-HUD-GRAPHICS-001); completeness not proven; role observed for 10 of 34 | engine code literal pool, decoded by the container decoder `0x0803D940`. **CORRECTED:** `0x08071700` is a word in a subsystem data table, and `0x0806E050`/`0x0806F150` are text/format records whose `+0x00` is a kind 0 / declared 0 word, not graphics descriptors | accepted Webfoot container `{u32 kind, u32 declared_size}`; 23 stored, 11 packed; all decode exactly | **34** literal-named, word-aligned, corpus-disjoint (25 whole-tile, 9 not tile-aligned) | NONE | **CONFIRMED** for the rule, the count, and 0 overlap measured on the pre-filter set against the 11,715-container corpus; **CONFIRMED_RENDER** for 7 assets (title, legal screen, 3 publisher logos, a 240x16 strip, a 16x16 burst). See [`UI_HUD_GRAPHICS.md`](UI_HUD_GRAPHICS.md) |
 | KI BLASTS / EFFECTS | UNRESOLVED (no separate system found) | none found outside the actor pipeline; ki-blast observed as an actor object (P-003/P-004 runtime) | n/a | n/a | ALREADY COVERED if actor sprites; else UNKNOWN | **INFERRED**: rides the sprite pipeline or is runtime-composited; **no dedicated effects graphics table located** |
 | PORTRAITS | **ENUMERABLE; REFERENCE COVERAGE PROVEN** (PORTRAIT-COMPLETENESS-001) | portrait pointer array `0x086F393C`, indexed by **appearance-definition-table** field `+0x08` via accessor `0x08011F20`; array base read from pool word `0x08012194` (LOGX-CHAR-001 section 11); the field's record base is `0x0874D380 + 16*index` (`0x08025086`/`0x08025088`/`0x0802508A`), i.e. the **232-record** table, not the 297-entry `+0x04` run | Webfoot container, form 1, 4,096 B decoded (whole-tile block; INFERRED 64x64 @ 8bpp, no dimension field in the container header) | **155** | NONE | **CONFIRMED_SHAPE**: 155 pointers, all form 1, all decode to exactly 4,096 B, 0 failures, disjoint from the 11,715 known corpus. **Completeness:** all **134** portrait references of the 232 appearance definitions (**110** distinct slots) resolve inside the run, **0** outside, **0** in the reserved slots 1..7; **45** run entries carry no appearance-definition reference. See [`PORTRAIT_COMPLETENESS_PROVENANCE.md`](PORTRAIT_COMPLETENESS_PROVENANCE.md) |
 | FONTS / GLYPHS | PARTIAL | font descriptor `0x08753A18` (`+0x00` RAM glyph buffer `0x03001C4C`, `+0x04` ROM glyph source `0x087548DC`); measurer `0x0803FFE8` (font metrics table, per-glyph advance, `0xFF` wide/narrow split); blitter `0x0802BF8E` -> OBJ VRAM `0x06010000` (BUU_DIALOG_RUNTIME.md) | glyph tiles blitted per code unit (32 B/glyph step); metrics table = per-glyph u16 advances | UNKNOWN (glyph-bank extent/count not bound) | NONE | **CONFIRMED** a font system is engine-owned and located; **UNKNOWN** glyph-tile population/format |
@@ -70,21 +70,26 @@ known-corpus containers:
   **already inside** the accepted pipeline. Not independently proven here.
 - **FONTS: no container overlap.** Glyphs are blitted from a font glyph source
   (`0x087548DC` region), not from a piece-graphics container.
-- **UI/HUD: no overlap.** The damage-number descriptors (`0x0806E050`,
-  `0x0806F150`) are records, not corpus containers, and are not in the known set.
+- **UI/HUD: no overlap.** 0 of the 34 literal-named UI/HUD containers are in the
+  known corpus (UI-HUD-GRAPHICS-001). The damage-number records (`0x0806E050`,
+  `0x0806F150`) are text/format records, not corpus containers and not graphics.
 
 ---
 
 ## The two human-named categories: explicit verdicts (SC3)
 
-**UI / HUD:** *A deterministic source system was NOT fully identified.* Evidence
-of a UI-graphics descriptor system exists and is engine-referenced: the
-damage-number assets `0x0806E050` / `0x0806F150` selected by the crit branch
-`0x0800E94E`, and a cluster of references around `0x08071700`, but no bounded
-table with a proven complete population was established. `0x0806E050` is a
-descriptor record (`{ROM ptr 0x0806D4E0, 7}`), not a bare container, so its
-graphics format is one hop further and was not resolved. Marked **UNRESOLVED**
-with the exact leads recorded; not fabricated into a count.
+**UI / HUD:** *A deterministic catalogue of the literal-named UI graphics was
+established; completeness is NOT proven (UI-HUD-GRAPHICS-001).* The three
+recorded leads were measured: `0x08071700` is a word inside a subsystem data
+table, and `0x0806E050` / `0x0806F150` are text/format records whose `+0x00` is a
+kind 0 / declared 0 word - so neither is a graphics descriptor. The real family is
+named the way every other engine-reachable container is: a Thumb literal-pool load
+names the address, and the code hands it to `0x0803D940` where the consumer is
+visible (**10 of the 34**). That rule enumerates **34** containers, 0 of them in
+the accepted corpus, all decoding exactly; 7 render correctly (title screen, legal
+screen, three publisher logos, a 240x16 strip, a 16x16 burst). The probe's own
+`scan_gap` names what the rule cannot see, so the count is a count *for that
+rule*, not "all UI graphics". See [`UI_HUD_GRAPHICS.md`](UI_HUD_GRAPHICS.md).
 
 **KI BLASTS / EFFECTS:** *A separate deterministic source system was NOT found,
 because the evidence points to there not being one.* No effects-only graphics
@@ -129,7 +134,12 @@ that damage numbers and criticals are the visible UI-graphics surface).
 - Font glyph-tile *population*: the font descriptor and glyph source are located
   (`0x08753A18` -> `0x087548DC`), but the glyph-bank extent, glyph count and exact
   tile format were not bound.
-- UI/HUD *population*: descriptor system referenced but no complete table.
+- UI/HUD *population*: **a literal-named population of 34 containers is now
+  enumerated and disjoint from the corpus (UI-HUD-GRAPHICS-001)**, and 7 assets
+  render correctly. What stays open is **completeness**: 9 of the 34 are not
+  tile-shaped, the graphics identity of 27 is UNKNOWN, the role of 24 is INFERRED
+  rather than observed, and no UI pointer table exists whose length could bound
+  the family. See [`UI_HUD_GRAPHICS.md`](UI_HUD_GRAPHICS.md) §6.
 - Residual `0x087B5B64` *semantics*: 6 ~65 KB containers + 6 RAM destinations look
   like a full-screen/static-image load list, but no rendering consumer was traced;
   graphics identity UNKNOWN. This is the single largest referenced-residual lead
@@ -178,6 +188,13 @@ task is **`UI-HUD-GRAPHICS-001`**; the rest stay later.
    branch `0x0800E94E`) as records rather than bare containers, and establish
    whether a bounded, proven-complete population exists before any UI exporter.
    This is the largest family still marked PARTIAL / UNRESOLVED.
+   **STATUS: PARTIAL / RECORDED.** The three leads above were measured and two
+   were **corrected** (`0x08071700` is a subsystem data-table word; the two
+   records are text/format records, not graphics), and a **deterministic,
+   literal-named, corpus-disjoint population of 34 containers** was established
+   with 7 assets rendered. Completeness is **not** proven. See
+   [`UI_HUD_GRAPHICS.md`](UI_HUD_GRAPHICS.md) and
+   [`../tickets/archive/UI-HUD-GRAPHICS-001-COMPLETE.md`](../tickets/archive/UI-HUD-GRAPHICS-001-COMPLETE.md).
 2. **Residual `0x087B5B64` load-descriptor** RE (**`STATIC-GRAPHICS-001`**): walk
    the single reference at `0x080123CC`/`0x080123xx` as instructions, identify the
    consumer, and settle whether the 6 large containers are title/cutscene/static

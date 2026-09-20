@@ -12,6 +12,7 @@ the worktree `<checkout>-dbz-map-layout-editor-001`.
 | `fbd48b60` | reviewed base (`origin/master`) |
 | `b51aa82` | frozen implementation, first review artifact (`feat: edit map chunk layouts in the Map Browser`) |
 | `2224e5e` | review fixes (`fix: restore a null layout cell and keep edit state honest`) |
+| `f735433` | re-review polish, and the revision that carries this record (`polish: state the read-only reason and reset edit mode honestly`) |
 
 ## Second review verdict: APPROVE WITH NON-BLOCKING NOTES
 
@@ -176,7 +177,34 @@ Interaction QA is the automated suite in `tests/unit/test_workbench_map_browser.
 
 - Focused map and workbench set: **90 passed, 2 skipped** (both skips are the
   MAP-VIS-001 VRAM oracle, unconfigured locally).
-- Full `pytest tests` on `2224e5e`: recorded in the ticket's final report.
+- Full `pytest tests` gate on `2224e5e` (the state this run imported; measured, not
+  derived): **6 failed, 2953 passed, 19 skipped in 5126 s (1:25:26)**. The six
+  failures are all environmental and are not caused by this change: five
+  (`test_asset_export_output_safety.py` x4 and
+  `test_mgba_capture.py::test_capture_output_is_restricted_to_ignored_build_tree`)
+  reproduce identically on the pristine base commit `fbd48b6` in a separate
+  worktree, and the sixth
+  (`test_project_safety.py::test_proprietary_and_generated_paths_are_git_ignored`)
+  fails only because `roms/` is a directory junction in this worktree, so
+  `git check-ignore` exits 128 with "pathspec is beyond a symbolic link";
+  `.gitignore` and `roms/` are untouched by the diff. The 19 skips are the
+  documented ROM-oracle, capstone-presence and curation-basetemp conditions,
+  including the two MAP-VIS-001 VRAM oracle skips.
+
+## Validation on the final revision `f735433`
+
+The polish delta is three local state changes, each covered by its own test:
+**63 passed** across the four unit files `tests/unit/test_map_layout_edit.py`,
+`tests/unit/test_workbench_map_browser.py`, `tests/unit/test_map_browser.py` and
+`tests/unit/test_workbench_smoke.py`; and **89 passed** across those four plus
+`tests/unit/test_workbench_session.py` and the three ROM-gated files
+`tests/integration/test_map_layout_editor_rom.py`,
+`tests/integration/test_map_layout_write_rom.py` and
+`tests/integration/test_map_browser_rom.py`. The reviewer reproduced both numbers
+itself and bounded the blast radius independently (`_READ_ONLY_FORMS` is referenced
+only by the session module and the two unit test files; `_reset_editor` has one call
+site; `_update_status` and `_show_edit_groups` are tab-internal), which is why the
+long suite gate was not rerun for that delta. The gate below ran against `2224e5e`.
 - Pre-existing environment failures, reproduced on the pristine base commit
   `fbd48b6` in a separate worktree, are unrelated to this change:
   `tests/unit/test_asset_export_output_safety.py` (4) and

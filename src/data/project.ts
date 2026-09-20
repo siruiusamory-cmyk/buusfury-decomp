@@ -109,10 +109,11 @@ export const project: ProjectStatus = {
     " canonical raw library stays byte-for-byte untouched.",
     "What remains is building the desktop editor, not re-extracting the game. DragonByte" +
     " Z already renders retail maps and supports direct visual placement editing. A" +
-    " fixed-size map-layout pointer edit now rebuilds and re-renders reversibly; it now" +
-    " grows one feature at a time - first graphical coverage and browsing, then tiles," +
-    " sprites, animations and frames, then editing features such as warp editing and" +
-    " graphics replacement.",
+    " fixed-size map-layout pointer edit is now a usable feature there: pick a 256x256" +
+    " chunk cell, swap in another chunk the same layer already uses, preview it, and" +
+    " save a new ROM. The editor grows one feature at a time - browsing and viewing," +
+    " then editing surfaces such as this one, then tiles, sprites, animations and" +
+    " frames, and later warp editing and graphics replacement.",
     "Authoring entirely new content remains the project's final acceptance target and is" +
     " no longer the organising priority for current tool work. The overall estimate stays" +
     " at 97%.",
@@ -415,11 +416,17 @@ export const project: ProjectStatus = {
       technical:
         "The map canvas itself is already proven: DragonByte Z renders supported retail" +
         " maps from ROM and lets an author select, add and move objects directly on them." +
-        " A fixed-size chunk-pointer replacement has now been built and re-rendered" +
-        " reversibly on one ordinary map. Broader layout editing, tile painting, warp" +
-        " editing and graphics replacement remain future work. This is a direction" +
-        " rather than a committed" +
-        " engineering order.",
+        " Map Browser's Edit Layout mode now turns a fixed-size chunk-pointer" +
+        " replacement into a usable feature: it draws a map's 256x256 chunk cells," +
+        " offers only chunks that same layer already uses, previews the swap" +
+        " immediately, and saves the pending edits to a new ROM. It can reopen that" +
+        " ROM too: a modified image is accepted only when the provenance written" +
+        " beside it proves it is the canonical image plus those edits. 341 of the 452" +
+        " maps" +
+        " expose an editable layer and the rest stay read-only, and the source game" +
+        " file is never modified. Tile painting, new chunks, resizing, warp editing" +
+        " and graphics replacement remain future work. This is a direction rather" +
+        " than a committed engineering order.",
       status: "current",
     },
     {
@@ -472,15 +479,18 @@ export const project: ProjectStatus = {
       id: "fixed-size-map-layout-write",
       title: "First reversible map-layout write",
       summary:
-        "A single existing chunk reference in a retail map layer can now be changed in" +
-        " a generated ROM, re-rendered, and reversed to the original game bytes.",
+        "A retail map's layout can now be edited from DragonByte Z: swap one chunk cell" +
+        " for another chunk the same layer already uses, preview it, and save a new" +
+        " game file that re-renders with the change.",
       technical:
         "On Buu's Fury map:0040, dominant layer 1 cell 0 was redirected to another" +
         " chunk already used by that layer. Exactly two ROM bytes changed within its" +
         " four-byte pointer; the changed 256-by-256-pixel region re-rendered through" +
         " the accepted map pipeline. No-op and inverse builds matched all 8,388,608" +
-        " canonical bytes. The source ROM was not modified. This proves only fixed-size" +
-        " in-place layout replacement; emulator validation was not performed.",
+        " canonical bytes. The source ROM was not modified. DragonByte Z's Map Browser" +
+        " now drives exactly this operation in its Edit Layout mode, over 341 of the" +
+        " 452 maps. This proves only fixed-size in-place layout replacement; emulator" +
+        " validation was not performed.",
     },
     {
       id: "complete-resource-extraction",

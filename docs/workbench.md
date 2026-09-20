@@ -42,7 +42,11 @@ image reopened and every requested cell re-read before the save is reported. The
 image and the provenance document that describes it are built at temporary sibling
 paths and only then moved onto the chosen destinations, so an existing file at
 that path survives a failed save byte-for-byte. With no pending edits the output is
-byte-identical to the source.
+byte-identical to the source. Everything in that paragraph except the cell re-read
+is the shared authored-image transaction in `tools/webfoot/authored_image.py`,
+which is the path any future authored-image editor uses; only the domain half -
+which replacements are legal, and what an emitted image must read back - stays
+with the layout editor.
 
 ## Reopening a ROM this feature wrote
 

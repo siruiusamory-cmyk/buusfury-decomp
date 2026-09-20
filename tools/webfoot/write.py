@@ -375,6 +375,11 @@ def plan_changes(
     2. its `old` bytes match what the base actually holds there, so a change
        computed against a different image cannot be applied to this one;
     3. it does not overlap another change.
+
+    A caller that can be handed one physical field twice may collapse exact
+    duplicates before planning (see
+    :func:`tools.webfoot.authored_image.normalize_changes`); a plan that still
+    overlaps is refused here.
     """
     if generated_allocations and generated_image is None:
         raise ChangeValidationError(

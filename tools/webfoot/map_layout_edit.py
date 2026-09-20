@@ -17,17 +17,16 @@ dominant layer. This module adds no capability beyond that: no new chunks, no
 relocation, no resizing, no tile painting, no other layer form.
 
 Saving follows the project's ROM-safety flow - verified base, generated output,
-never the input - and adds post-write verification: the emitted image is reopened,
-every requested cell is re-read, and the diff against the canonical base must lie
-entirely inside the requested four-byte fields or the output is removed and the
-save fails closed.
+never the input - through the shared authored-image transaction in
+:mod:`tools.webfoot.authored_image`, which owns the staging paths, the source-alias
+refusals, the publication order and the byte-level verification. What this module
+adds to it is the one domain question the shared layer cannot answer: whether the
+emitted image carries the requested cell replacements, re-read from the output.
 """
 
 from __future__ import annotations
 
-from dataclasses import dataclass, replace
-import hashlib
-import os
+from dataclasses import dataclass
 from pathlib import Path
 
 from tools.export import canonical as canon
@@ -36,7 +35,7 @@ from tools.export import render as render_sdk
 from tools.export import webfoot_strict as ws
 
 from . import write as write_sdk
-from .map_layout_provenance import manifest_path_for
+from .authored_image import AuthoredImageError, save_authored_image
 from .map_layout_write import MapLayoutWriteError, MapLayoutWriter
 
 
@@ -264,35 +263,6 @@ class LayoutSave:
     changed_offsets: tuple[int, ...]
     #: The changes re-read out of the reopened output image.
     verified: tuple[LayoutEdit, ...]
-
-
-def _staging_path(destination: Path) -> Path:
-    """A temporary sibling of a destination: same directory, same filesystem.
-
-    A sibling keeps the final move atomic (one rename within one directory) and
-    guarantees that nothing is ever written at the destination until the finished,
-    verified artifact is ready to replace it.
-    """
-    return destination.with_name(f".{destination.name}.webfoot-partial")
-
-
-def _refuse_source_alias(source: Path, candidates: tuple[tuple[str, Path], ...]) -> None:
-    """Refuse a save whose every path - derived ones included - touches the source.
-
-    ``output`` is only the first of four paths this session writes or deletes:
-    the manifest name is derived from it (``<output>.dragonbyte.json``) and both
-    are staged at siblings (``.<name>.webfoot-partial``). A source file named
-    after any of those would otherwise be replaced or removed by this save, since
-    ``write.emit_image``'s own alias guard only ever sees the *staging* manifest.
-    Every path is resolved, so a symlink or junction alias is caught too.
-    """
-    source_resolved = source.resolve()
-    for label, path in candidates:
-        if path.resolve() == source_resolved:
-            raise MapLayoutEditError(
-                f"refusing to save: the {label} path is the source ROM ({path}); "
-                "choose another name"
-            )
 
 
 class MapLayoutEditor:
@@ -633,41 +603,20 @@ class MapLayoutEditor:
         The image and its provenance manifest are built at temporary sibling paths,
         verified there, and only then moved onto the requested destinations, so a
         failed emit or a failed verification leaves whatever already existed at the
-        destination byte-for-byte intact.
+        destination byte-for-byte intact. The shared transaction in
+        :mod:`tools.webfoot.authored_image` owns all of that; this method supplies
+        the bounded byte plan and the domain's own re-read of the emitted image.
         """
-        if not isinstance(profile_id, str) or not profile_id.strip():
-            raise MapLayoutEditError("an identified ROM profile is required to save")
-        source = Path(source_path)
-        output = Path(output_path)
-        manifest_path = manifest_path_for(output)
-        staging_output = _staging_path(output)
-        staging_manifest = _staging_path(manifest_path)
-        # The source is an input on every path and an output on none: refuse before
-        # anything is deleted or emitted, including the derived and staging names.
-        _refuse_source_alias(
-            source,
-            (
-                ("requested output", output),
-                ("provenance manifest", manifest_path),
-                ("temporary image", staging_output),
-                ("temporary manifest", staging_manifest),
-            ),
-        )
-        if not source.is_file():
-            raise MapLayoutEditError(f"the source ROM is not readable: {source}")
-        if hashlib.sha256(source.read_bytes()).hexdigest() != mb.SUPPORTED_ROM_SHA256:
-            raise MapLayoutEditError(
-                "the source ROM is not the canonical Buu's Fury USA rev0 image"
-            )
         # The session keeps a semantic record per change and the writer keeps the
         # byte plan; refuse to emit if the two ever disagree, rather than write a
         # plan that is not the edit set the user approved. Both sides are compared
         # as address sets - the records are ordered by map/cell, the plan by offset.
+        # Physical-write conflicts *within* the plan are the shared layer's job
+        # (write.plan_changes refuses any overlap).
         if sorted(edit.offset for edit in self.edits()) != list(self._writer.pending_offsets):
             raise MapLayoutEditError(
                 "the pending layout changes and their byte plan disagree; nothing was written"
             )
-
         changes = tuple(
             write_sdk.ByteChange(
                 offset=edit.offset,
@@ -679,80 +628,42 @@ class MapLayoutEditor:
             for edit in self.edits()
         )
         try:
-            plan = write_sdk.plan_changes(
+            saved = save_authored_image(
                 self._base,
-                changes,
+                source_path=source_path,
+                output_path=output_path,
                 profile_id=profile_id,
-                base_sha256=mb.SUPPORTED_ROM_SHA256,
+                changes=changes,
+                canonical_sha256=mb.SUPPORTED_ROM_SHA256,
+                verify=self._verify_output,
             )
-        except write_sdk.WriteError as exc:
-            raise MapLayoutEditError(f"the edit set is not applicable: {exc}") from exc
-
-        staging_output.unlink(missing_ok=True)
-        staging_manifest.unlink(missing_ok=True)
-        try:
-            manifest = write_sdk.emit_image(
-                source, staging_output, plan, manifest_path=staging_manifest
-            )
-            saved = self._verify_output(staging_output, manifest, changes)
-        except BaseException:
-            # Nothing at the destination was touched, and a file this session just
-            # created at a temporary path is not left behind.
-            staging_output.unlink(missing_ok=True)
-            staging_manifest.unlink(missing_ok=True)
-            raise
-        if hashlib.sha256(source.read_bytes()).hexdigest() != mb.SUPPORTED_ROM_SHA256:
-            staging_output.unlink(missing_ok=True)
-            staging_manifest.unlink(missing_ok=True)
-            raise MapLayoutEditError("the source ROM changed while it was being saved")
-        # Publish the image first and its provenance second: the artifact the user
-        # asked for is the ROM. Two renames cannot be one atomic step, so the failure
-        # of the second is reported as what it is - an image written without its
-        # provenance, which therefore refuses to reopen until it is saved again. The
-        # staging paths are cleaned on every outcome, including a failed publish.
-        try:
-            os.replace(staging_output, output)
-            try:
-                os.replace(staging_manifest, manifest_path)
-            except OSError as exc:
-                raise MapLayoutEditError(
-                    f"the new ROM was written to {output}, but its provenance could not "
-                    f"be published to {manifest_path}: {exc}. Save again to a writable "
-                    "destination to give it provenance."
-                ) from exc
-        finally:
-            staging_output.unlink(missing_ok=True)
-            staging_manifest.unlink(missing_ok=True)
-        return replace(saved, output_path=output, manifest_path=manifest_path)
-
-    def _verify_output(self, output: Path, manifest, changes) -> LayoutSave:
-        """Reopen the emitted image and prove it holds exactly what was requested."""
-        data = output.read_bytes()
-        if len(data) != len(self._base):
-            raise MapLayoutEditError(
-                f"the written ROM is {len(data)} bytes, not {len(self._base)}"
-            )
-        digest = hashlib.sha256(data).hexdigest()
-        if digest != manifest.output_sha256:
-            raise MapLayoutEditError("the written ROM does not match its own digest")
-        changed = tuple(
-            index
-            for index, (before, after) in enumerate(zip(self._base, data))
-            if before != after
+        except AuthoredImageError as exc:
+            # One public failure type for this session, whatever refused the save.
+            raise MapLayoutEditError(str(exc)) from exc
+        return LayoutSave(
+            output_path=saved.output_path,
+            manifest_path=saved.manifest_path,
+            output_sha256=saved.output_sha256,
+            output_size=saved.output_size,
+            no_op=saved.no_op,
+            # The session's own record order (map, layer, cell), not the
+            # transaction's offset order: the two carry the same set of changes
+            # here, because the byte plan and the pending records are already
+            # required to agree above, and this is the order the caller asked in.
+            changes=changes,
+            changed_offsets=saved.changed_offsets,
+            verified=saved.verified,
         )
-        allowed = {
-            index
-            for change in changes
-            for index in range(change.offset, change.end)
-        }
-        unexpected = tuple(index for index in changed if index not in allowed)
-        if unexpected:
-            raise MapLayoutEditError(
-                "the written ROM changed bytes outside the requested fields: "
-                + ", ".join(f"0x{index:08X}" for index in unexpected[:8])
-            )
-        if manifest.output_size != len(data):
-            raise MapLayoutEditError("the written ROM's recorded size is wrong")
+
+    def _verify_output(self, data: bytes, changes) -> tuple[LayoutEdit, ...]:
+        """Re-prove one emitted image carries exactly the requested cell changes.
+
+        The byte-level questions - length, digest, and that nothing outside a
+        requested field changed - have already been answered by the shared
+        transaction. What is left is the domain's own: every pending cell must read
+        back its replacement through the accepted layer reader, and every requested
+        change must be accounted for.
+        """
         verified: list[LayoutEdit] = []
         try:
             rom = canon.Rom(data)
@@ -772,13 +683,4 @@ class MapLayoutEditor:
             raise MapLayoutEditError(f"the written ROM could not be re-read: {exc}") from exc
         if len(verified) != len(changes):
             raise MapLayoutEditError("the written ROM does not carry every requested change")
-        return LayoutSave(
-            output_path=output,
-            manifest_path=manifest_path_for(output),
-            output_sha256=digest,
-            output_size=len(data),
-            no_op=not changes,
-            changes=changes,
-            changed_offsets=changed,
-            verified=tuple(verified),
-        )
+        return tuple(verified)

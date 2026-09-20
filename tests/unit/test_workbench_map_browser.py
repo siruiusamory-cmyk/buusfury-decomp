@@ -22,6 +22,7 @@ QtGui = pytest.importorskip("PySide6.QtGui")
 
 from tools.export import map_browser as mb  # noqa: E402
 from tools.webfoot import map_layout_edit as mle  # noqa: E402
+from tools.webfoot import map_layout_provenance as prov  # noqa: E402
 from tools.webfoot.map_layout_edit import (  # noqa: E402
     LayoutCell,
     LayoutGrid,
@@ -73,7 +74,7 @@ def tab(qapp, monkeypatch):
     calls: list[int] = []
     monkeypatch.setattr(mbt.mb, "read_map_index", lambda rom: entries)
 
-    def render(rom, index):
+    def render(rom, index, **kwargs):
         calls.append(index)
         return _result(index)
 
@@ -136,7 +137,7 @@ def test_layer_toggle_recomposes_visible_layers(tab, monkeypatch):
 
 
 def test_render_error_is_a_message_not_a_crash(tab, monkeypatch):
-    def boom(rom, index):
+    def boom(rom, index, **kwargs):
         raise mb.MapBrowserError("boom")
 
     monkeypatch.setattr(mbt.mb, "render_map", boom)
@@ -326,6 +327,7 @@ class _FakeEditor:
         changes = self.edits()
         return LayoutSave(
             output_path=Path(output_path),
+            manifest_path=Path(str(output_path) + ".dragonbyte.json"),
             output_sha256="ab" * 32,
             output_size=8,
             no_op=not changes,
@@ -779,9 +781,8 @@ def test_save_as_no_op_is_allowed_and_reported(edit_tab, monkeypatch, tmp_path):
     assert "byte-identical" in edit_tab._status.text()
 
 
-def test_save_as_replaces_an_existing_output_only_when_confirmed(
-    edit_tab, monkeypatch, tmp_path
-):
+def test_save_as_leaves_an_existing_destination_to_the_emit(edit_tab, monkeypatch, tmp_path):
+    """The tab must not delete the destination: the emit publishes atomically."""
     target = tmp_path / "existing.gba"
     target.write_bytes(b"old")
     monkeypatch.setattr(
@@ -793,7 +794,62 @@ def test_save_as_replaces_an_existing_output_only_when_confirmed(
     assert edit_tab.editor.save_calls == [
         (str(target), str(edit_tab._session.rom_path), "buus_fury_usa_rev0_01c1707f")
     ]
-    assert not target.exists()  # the session's fake save writes nothing
+    # This fake save writes nothing; the destination is untouched because the tab
+    # never removes it, and the real emit replaces it only after verification.
+    assert target.read_bytes() == b"old"
+
+
+def test_a_verified_derivative_renders_its_edits_and_stays_read_only(
+    qapp, monkeypatch, tmp_path
+):
+    """Opening a tool-authored ROM shows its layout, from the canonical bytes."""
+    entries = (_entry(MAP, "Synthetic Map"),)
+    base = _result(MAP)
+    seen: dict = {}
+
+    def render(rom, index, **kwargs):
+        seen["rom"] = rom
+        seen["overrides"] = kwargs.get("chunk_overrides")
+        return base
+
+    monkeypatch.setattr(mbt.mb, "read_map_index", lambda rom: entries)
+    monkeypatch.setattr(mbt.mb, "render_map", render)
+
+    session = Session(rom_image=b"derivative-bytes", rom_path=tmp_path / "derived.gba")
+    session.profile = SimpleNamespace(id="buus_fury_usa_rev0_01c1707f")
+    session.authored = prov.AuthoredRom(
+        path=tmp_path / "derived.gba",
+        manifest_path=tmp_path / "derived.gba.dragonbyte.json",
+        profile_id="buus_fury_usa_rev0_01c1707f",
+        output_sha256="ab" * 32,
+        edits=(
+            prov.AuthoredEdit(
+                map_index=MAP,
+                layer_slot=SLOT,
+                cell=1,
+                offset=0x00292CA4,
+                old=CHUNKS[0],
+                new=CHUNKS[1],
+            ),
+        ),
+        canonical_image=b"canonical-bytes",
+    )
+    tab = MapBrowserTab(session)
+    tab.on_session_changed()
+    tab._list.setCurrentRow(0)
+
+    assert seen["rom"] == b"canonical-bytes"
+    assert seen["overrides"] == {(SLOT, 1): CHUNKS[1]}
+    assert "DragonByte Z layout derivative" in tab._notes.text()
+    assert "DragonByte Z derivative" in tab._status.text()
+
+    # Editing belongs to the canonical image; the derivative says so.
+    tab._edit_toggle.setChecked(True)
+    assert tab._editor is None
+    assert "READ ONLY" in tab._mode_badge.text()
+    assert "derivative" in tab._read_only_detail.text()
+    assert not tab._save_button.isEnabled()
+    assert tab._grid_item is None
 
 
 def test_switching_maps_drops_the_selection_and_draft(edit_tab):

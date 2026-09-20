@@ -23,6 +23,7 @@ from ..build import BuildResult
 from ..cli import _default_atlas_directory
 from ..formats.map_entry import MapEntryProfileError
 from ..graphics import ActorSprites, GraphicsError, load_actor_sprites
+from ..map_layout_provenance import AuthoredRom, ProvenanceError, verify_authored_rom
 from ..maps import Maps, load_maps
 from ..profile import RomProfile, RomProfileCatalog, VerificationStatus
 from ..rom import RomIdentification, identify_rom
@@ -37,7 +38,8 @@ class SessionError(Exception):
 
 
 class RomNotRecognizedError(SessionError):
-    """The ROM's SHA-256 matched no profile in the catalog."""
+    """The ROM's SHA-256 matched no profile in the catalog, and it is not a
+    verified DragonByte Z-authored layout derivative either."""
 
 
 @dataclass
@@ -66,6 +68,14 @@ class Session:
     # Full identification kept so the actor-sprite corpus can be loaded lazily
     # (it needs the RomIdentification, not just the matched profile).
     identification: RomIdentification | None = None
+    #: Set when the open image is a verified DragonByte Z-authored layout
+    #: derivative rather than the canonical ROM. It carries the reconstructed
+    #: canonical bytes (which every accepted reader runs against) and the verified
+    #: layout edits (which the Map Browser applies as preview overrides), so a
+    #: derivative is never interpreted as if it were the canonical image.
+    authored: AuthoredRom | None = None
+    #: Why a non-canonical image was refused, for a message that names the reason.
+    provenance_error: str | None = None
     # Cached decoded actor-sprite corpus for the open ROM. Lazy because building
     # it walks all ~7k graphics once; None when unbuilt or the profile declares
     # no actor_sprites. Reached only through `sprites`.
@@ -93,6 +103,28 @@ class Session:
         except GraphicsError:
             self._sprites = None
         return self._sprites
+
+    @property
+    def map_image(self) -> bytes | None:
+        """The bytes the accepted map readers run against.
+
+        The canonical image for a verified canonical ROM; the reconstructed
+        canonical bytes for a verified DragonByte Z-authored derivative. Every
+        reader that resolves profile-specific addresses uses this, never the
+        derivative's own bytes.
+        """
+        if self.authored is not None:
+            return self.authored.canonical_image
+        return self.rom_image
+
+    def layout_overrides(self, map_index: int) -> dict[tuple[int, int], int]:
+        """The verified layout edits a derivative carries for one map.
+
+        Empty for the canonical ROM, whose layout is already its own.
+        """
+        if self.authored is None:
+            return {}
+        return self.authored.overrides_for(map_index)
 
     @property
     def validation_current(self) -> bool:
@@ -147,10 +179,34 @@ class Session:
         # Same SHA-256 identify path the CLI uses (cli.py identify -> identify_rom).
         identification = identify_rom(path, catalog)
         match = identification.profile_match
+        authored: AuthoredRom | None = None
+        match_profile = match.profile
+        self.provenance_error = None
         if match.status is not VerificationStatus.VERIFIED or match.profile is None:
-            raise RomNotRecognizedError(
-                f"{path} was not recognized: {match.reason}"
+            # A DragonByte Z-authored layout derivative is the one supported
+            # non-canonical image: it is accepted only once it has been proved to be
+            # the canonical ROM plus declared, policy-legal layout edits, and the
+            # profile it derives from must be one this catalog verifies.
+            authored = self._verify_derivative(path)
+            if authored is None:
+                reason = self.provenance_error or match.reason
+                raise RomNotRecognizedError(f"{path} was not recognized: {reason}")
+            match_profile = next(
+                (
+                    profile
+                    for profile in catalog.profiles
+                    if profile.id == authored.profile_id
+                ),
+                None,
             )
+            if match_profile is None:
+                self.provenance_error = (
+                    f"the manifest names base profile {authored.profile_id!r}, "
+                    "which this installation does not configure"
+                )
+                raise RomNotRecognizedError(
+                    f"{path} was not recognized: {self.provenance_error}"
+                )
 
         # The atlas is a single assembled artifact, located the way the CLI's
         # atlas commands locate it by default (cli._default_atlas_directory).
@@ -170,20 +226,27 @@ class Session:
         # Maps are loaded the same way the atlas is: through the public SDK read,
         # from the same path/catalog the identify used. A profile that declares no
         # readable map table (`MapEntryProfileError`) is a supported state - that
-        # ROM simply has no scene to author - not a failure.
-        try:
-            maps: Maps | None = load_maps(path, catalog)
-        except MapEntryProfileError:
-            maps = None
-        try:
-            text_strings: TextStrings | None = load_text_strings(path, catalog)
-        except TextProfileError:
-            text_strings = None
-        except TextTableError as exc:
-            raise SessionError(f"could not load semantic text content: {exc}") from exc
+        # ROM simply has no scene to author - not a failure. A derivative's scene
+        # and text readers identify the file by SHA-256, so it simply has none of
+        # these domains here; the Map Browser renders it from the reconstructed
+        # canonical bytes instead.
+        maps: Maps | None = None
+        text_strings: TextStrings | None = None
+        if authored is None:
+            try:
+                maps = load_maps(path, catalog)
+            except MapEntryProfileError:
+                maps = None
+            try:
+                text_strings = load_text_strings(path, catalog)
+            except TextProfileError:
+                text_strings = None
+            except TextTableError as exc:
+                raise SessionError(f"could not load semantic text content: {exc}") from exc
 
-        self.profile = match.profile
-        self.identification = identification
+        self.profile = match_profile
+        self.identification = identification if authored is None else None
+        self.authored = authored
         self.atlas = atlas
         self.decoded_text = decoded_text
         self.maps = maps
@@ -198,3 +261,11 @@ class Session:
         self.validation_revision = None
         self.build_revision = None
         self.last_build = None
+
+    def _verify_derivative(self, path: Path) -> AuthoredRom | None:
+        """Prove a non-canonical image is a DragonByte Z derivative, or say why not."""
+        try:
+            return verify_authored_rom(path)
+        except ProvenanceError as exc:
+            self.provenance_error = str(exc)
+            return None

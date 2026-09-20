@@ -25,8 +25,9 @@ save fails closed.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 import hashlib
+import os
 from pathlib import Path
 
 from tools.export import canonical as canon
@@ -35,6 +36,7 @@ from tools.export import render as render_sdk
 from tools.export import webfoot_strict as ws
 
 from . import write as write_sdk
+from .map_layout_provenance import manifest_path_for
 from .map_layout_write import MapLayoutWriteError, MapLayoutWriter
 
 
@@ -250,6 +252,9 @@ class LayoutSave:
     """The verified result of writing a new ROM from a pending edit set."""
 
     output_path: Path
+    #: The provenance document published beside the image; it is what lets
+    #: DragonByte Z reopen this derivative later.
+    manifest_path: Path
     output_sha256: str
     output_size: int
     #: True when the edit set was empty; the output is then byte-identical.
@@ -259,6 +264,16 @@ class LayoutSave:
     changed_offsets: tuple[int, ...]
     #: The changes re-read out of the reopened output image.
     verified: tuple[LayoutEdit, ...]
+
+
+def _staging_path(destination: Path) -> Path:
+    """A temporary sibling of a destination: same directory, same filesystem.
+
+    A sibling keeps the final move atomic (one rename within one directory) and
+    guarantees that nothing is ever written at the destination until the finished,
+    verified artifact is ready to replace it.
+    """
+    return destination.with_name(f".{destination.name}.webfoot-partial")
 
 
 class MapLayoutEditor:
@@ -589,12 +604,17 @@ class MapLayoutEditor:
     def save(
         self, output_path, *, source_path, profile_id: str
     ) -> LayoutSave:
-        """Write a NEW ROM from the pending edit set, then verify it.
+        """Write a NEW ROM from the pending edit set, then publish it.
 
         Never writes the source: the output path is refused when it resolves to the
         source, and the canonical image is only ever read. With no pending edits the
         output is byte-identical to the source, because the edit plan is empty and
         every emitted byte comes from the verified base.
+
+        The image and its provenance manifest are built at temporary sibling paths,
+        verified there, and only then moved onto the requested destinations, so a
+        failed emit or a failed verification leaves whatever already existed at the
+        destination byte-for-byte intact.
         """
         if not isinstance(profile_id, str) or not profile_id.strip():
             raise MapLayoutEditError("an identified ROM profile is required to save")
@@ -639,17 +659,36 @@ class MapLayoutEditor:
         except write_sdk.WriteError as exc:
             raise MapLayoutEditError(f"the edit set is not applicable: {exc}") from exc
 
-        manifest = write_sdk.emit_image(source, output, plan)
+        manifest_path = manifest_path_for(output)
+        staging_output = _staging_path(output)
+        staging_manifest = _staging_path(manifest_path)
+        staging_output.unlink(missing_ok=True)
+        staging_manifest.unlink(missing_ok=True)
         try:
-            saved = self._verify_output(output, manifest, changes)
-        except MapLayoutEditError:
-            # A file this session just created that does not verify is not left
-            # behind; nothing else is ever deleted.
-            output.unlink(missing_ok=True)
+            manifest = write_sdk.emit_image(
+                source, staging_output, plan, manifest_path=staging_manifest
+            )
+            saved = self._verify_output(staging_output, manifest, changes)
+        except BaseException:
+            # Nothing at the destination was touched, and a file this session just
+            # created at a temporary path is not left behind.
+            staging_output.unlink(missing_ok=True)
+            staging_manifest.unlink(missing_ok=True)
             raise
         if hashlib.sha256(source.read_bytes()).hexdigest() != mb.SUPPORTED_ROM_SHA256:
+            staging_output.unlink(missing_ok=True)
+            staging_manifest.unlink(missing_ok=True)
             raise MapLayoutEditError("the source ROM changed while it was being saved")
-        return saved
+        # Publish the image first and its provenance second: the artifact the user
+        # asked for is the ROM, and a ROM without a manifest is still refused on
+        # open rather than misread.
+        try:
+            os.replace(staging_output, output)
+            os.replace(staging_manifest, manifest_path)
+        finally:
+            staging_output.unlink(missing_ok=True)
+            staging_manifest.unlink(missing_ok=True)
+        return replace(saved, output_path=output, manifest_path=manifest_path)
 
     def _verify_output(self, output: Path, manifest, changes) -> LayoutSave:
         """Reopen the emitted image and prove it holds exactly what was requested."""
@@ -700,6 +739,7 @@ class MapLayoutEditor:
             raise MapLayoutEditError("the written ROM does not carry every requested change")
         return LayoutSave(
             output_path=output,
+            manifest_path=manifest_path_for(output),
             output_sha256=digest,
             output_size=len(data),
             no_op=not changes,

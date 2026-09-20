@@ -609,7 +609,7 @@ class MapBrowserTab(QWidget):
             self._show_placeholder("Open a supported ROM to browse its maps.")
             return
         try:
-            index = mb.read_map_index(self._session.rom_image)
+            index = mb.read_map_index(self._session.map_image)
         except mb.MapBrowserError as exc:
             self._edit_toggle.setEnabled(False)
             self._show_placeholder(f"Cannot read the map index: {exc}")
@@ -668,7 +668,11 @@ class MapBrowserTab(QWidget):
             # selection change or window close re-enter this slot or delete the
             # tab, leaving stale state or a deleted C++ object.
             try:
-                result = mb.render_map(self._session.rom_image, index)
+                result = mb.render_map(
+                    self._session.map_image,
+                    index,
+                    chunk_overrides=self._session.layout_overrides(index) or None,
+                )
             except mb.MapBrowserError as exc:
                 self._show_placeholder(f"map:{index:04d} could not be rendered: {exc}")
                 QMessageBox.warning(self, "Map Browser", str(exc))
@@ -781,7 +785,12 @@ class MapBrowserTab(QWidget):
             else:
                 lines.append(f"BG{layer.slot} · {layer.classification}")
         self._layer_types.setText("\n".join(lines))
-        self._notes.setText("\n".join(result.warnings) if result.warnings else "—")
+        notes = list(result.warnings)
+        if self._session.authored is not None:
+            # A derivative says what it is, so a rendered layout is never mistaken
+            # for the canonical one.
+            notes.insert(0, self._session.authored.summary())
+        self._notes.setText("\n".join(notes) if notes else "—")
 
     def _show_placeholder(self, message: str) -> None:
         self._current = None
@@ -862,6 +871,15 @@ class MapBrowserTab(QWidget):
             return self._editor
         if self._session.rom_image is None:
             self._editor_error = "no ROM is open"
+            return None
+        if self._session.authored is not None:
+            # Its layout is shown by rendering the reconstructed canonical bytes with
+            # the derivative's verified edits applied; further editing belongs to the
+            # canonical image this was derived from.
+            self._editor_error = (
+                "this image is a verified DragonByte Z layout derivative of the "
+                "canonical ROM; open the canonical ROM to make further layout edits"
+            )
             return None
         try:
             self._editor = MapLayoutEditor(self._session.rom_image)
@@ -1033,7 +1051,7 @@ class MapBrowserTab(QWidget):
             # what the preview already decoded. Thumbnail expansion stays inside
             # this guard: it is the same facade error family.
             images = mb.render_chunk_images(
-                self._session.rom_image,
+                self._session.map_image,
                 self._current.index,
                 slot.choices,
                 char_data=(
@@ -1334,7 +1352,16 @@ class MapBrowserTab(QWidget):
             f"{result.width}×{result.height}",
             f"{result.graphical_layer_count} graphical layer(s)",
         ]
-        if self._edit_mode and self._slot is None:
+        if self._session.authored is not None:
+            parts.append(
+                f"DragonByte Z derivative · {len(self._session.authored.edits)} "
+                "verified layout change(s)"
+            )
+        if self._edit_mode and self._session.authored is not None:
+            # This image is a derivative: its map may be editable in the canonical
+            # ROM, but editing here belongs to that canonical image.
+            parts.append("EDIT LAYOUT · not available on a derivative")
+        elif self._edit_mode and self._slot is None:
             # Edit mode is on but this map has nothing to edit: say that, rather
             # than reporting an editing state the badge already calls read-only.
             parts.append("EDIT LAYOUT · no editable layer on this map")
@@ -1413,17 +1440,10 @@ class MapBrowserTab(QWidget):
             )
             return
         # Save As writes what the preview shows, so an unapplied chooser pick is
-        # committed rather than silently dropped.
+        # committed rather than silently dropped. The emit builds at a temporary
+        # sibling and only then replaces the destination, so an existing file at the
+        # chosen path survives a failed save untouched - hence no delete here.
         self._apply_draft()
-        if Path(chosen).exists():
-            # The file dialog already asked the user whether to replace it. The
-            # emit path creates a new file, so remove the old one first - after
-            # re-asserting it is not the source ROM.
-            try:
-                Path(chosen).unlink()
-            except OSError as exc:
-                QMessageBox.critical(self, "Save As", f"Could not replace {chosen}: {exc}")
-                return
         try:
             saved = self._editor.save(
                 chosen,
@@ -1452,5 +1472,7 @@ class MapBrowserTab(QWidget):
             "Save As",
             f"Wrote a new ROM:\n{saved.output_path}\n\n{detail}.\n"
             f"SHA-256 {saved.output_sha256}\n\n"
+            f"Its provenance manifest was written beside it:\n{saved.manifest_path.name}\n"
+            "DragonByte Z can reopen this ROM from that manifest.\n\n"
             "The source ROM was not modified.",
         )

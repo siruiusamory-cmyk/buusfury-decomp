@@ -77,6 +77,61 @@ def test_open_rom_rejects_unrecognized_bytes(
     assert session.rom_image is None
 
 
+def test_open_rom_accepts_a_verified_derivative_with_the_canonical_bytes(
+    catalog: RomProfileCatalog, tmp_path: Path
+) -> None:
+    """A DragonByte Z-authored ROM opens, and readers get the canonical bytes."""
+    from tools.webfoot.map_layout_edit import MapLayoutEditor
+
+    rom = _rom_path()
+    if not (_default_atlas_directory() / "atlas.jsonl").is_file():
+        pytest.skip("assembled atlas.jsonl not present locally")
+    source = Path(rom).read_bytes()
+    editor = MapLayoutEditor(source)
+    editor.set_cell(40, 1, 0, 0x08292A54)
+    output = tmp_path / "derived.gba"
+    saved = editor.save(output, source_path=Path(rom), profile_id="buus_fury_usa_rev0_01c1707f")
+
+    session = Session()
+    session.open_rom(output, catalog)
+
+    assert session.authored is not None
+    assert session.profile is not None
+    assert session.profile.id == "buus_fury_usa_rev0_01c1707f"
+    # The accepted readers run against the reconstructed canonical image, never the
+    # derivative's own bytes.
+    assert session.map_image == source
+    assert session.rom_image == output.read_bytes()
+    assert session.layout_overrides(40) == {(1, 0): 0x08292A54}
+    assert session.layout_overrides(41) == {}
+    # A derivative declares no scene/text domain of its own, and no canonical
+    # identification is claimed for it.
+    assert session.maps is None
+    assert session.text_strings is None
+    assert session.identification is None
+    assert saved.manifest_path.is_file()
+
+
+def test_open_rom_refuses_a_mutated_rom_without_provenance(
+    catalog: RomProfileCatalog, tmp_path: Path
+) -> None:
+    rom = _rom_path()
+    data = bytearray(Path(rom).read_bytes())
+    data[0x00292CA0] ^= 0x01
+    mutated = tmp_path / "mutated.gba"
+    mutated.write_bytes(bytes(data))
+
+    session = Session()
+    with pytest.raises(RomNotRecognizedError) as excinfo:
+        session.open_rom(mutated, catalog)
+
+    assert "provenance manifest" in str(excinfo.value)
+    assert session.profile is None
+    assert session.rom_image is None
+    assert session.authored is None
+    assert session.provenance_error
+
+
 def test_project_revision_invalidates_validation_and_build() -> None:
     session = Session()
     session.set_project(Path("project"))

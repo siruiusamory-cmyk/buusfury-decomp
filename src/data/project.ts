@@ -419,7 +419,10 @@ export const project: ProjectStatus = {
         " Map Browser's Edit Layout mode now turns a fixed-size chunk-pointer" +
         " replacement into a usable feature: it draws a map's 256x256 chunk cells," +
         " offers only chunks that same layer already uses, previews the swap" +
-        " immediately, and saves the pending edits to a new ROM. 341 of the 452 maps" +
+        " immediately, and saves the pending edits to a new ROM. It can reopen that" +
+        " ROM too: a modified image is accepted only when the provenance written" +
+        " beside it proves it is the canonical image plus those edits. 341 of the 452" +
+        " maps" +
         " expose an editable layer and the rest stay read-only, and the source game" +
         " file is never modified. Tile painting, new chunks, resizing, warp editing" +
         " and graphics replacement remain future work. This is a direction rather" +

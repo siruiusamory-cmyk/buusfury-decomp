@@ -20,14 +20,17 @@ It pins, in order:
 from __future__ import annotations
 
 import hashlib
+import json
 import os
 from pathlib import Path
+import shutil
 
 import pytest
 
 from tools.export import canonical as canon
 from tools.export import map_browser as mb
 from tools.export import render as render_sdk
+from tools.webfoot import map_layout_provenance as prov
 from tools.webfoot import write as write_sdk
 from tools.webfoot.map_layout_edit import MapLayoutEditError, MapLayoutEditor
 from tools.webfoot.map_layout_write import MapLayoutWriteError, MapLayoutWriter
@@ -453,6 +456,216 @@ def test_no_op_save_is_byte_identical(
     assert saved.output_size == len(source)
 
 
+def test_save_publishes_a_provenance_manifest_beside_the_image(
+    canonical_rom: tuple[Path, bytes], editor: MapLayoutEditor, tmp_path: Path
+) -> None:
+    """Save As emits the ROM *and* the manifest that lets DragonByte Z reopen it."""
+    path, source = canonical_rom
+    editor.reset()
+    editor.set_cell(GRAND_KAI, GRAND_KAI_LAYER, GRAND_KAI_CELL, GRAND_KAI_REPLACEMENT)
+    output = tmp_path / "derived.gba"
+    saved = editor.save(output, source_path=path, profile_id=PROFILE_ID)
+    assert saved.manifest_path == prov.manifest_path_for(output)
+    assert saved.manifest_path.is_file()
+    document = json.loads(saved.manifest_path.read_text(encoding="utf-8"))
+    assert document["schema_version"] == prov.SUPPORTED_SCHEMA_VERSION
+    assert document["base"] == {
+        "profile_id": PROFILE_ID,
+        "sha256": CANONICAL_SHA256,
+    }
+    assert document["output"]["sha256"] == saved.output_sha256
+    assert len(document["changes"]) == 1
+
+    # The published pair verifies, and the verifier reconstructs the canonical
+    # image from the derivative alone.
+    authored = prov.verify_authored_rom(output)
+    assert authored.profile_id == PROFILE_ID
+    assert authored.output_sha256 == saved.output_sha256
+    assert authored.canonical_image == source
+    assert [(e.map_index, e.layer_slot, e.cell) for e in authored.edits] == [
+        (GRAND_KAI, GRAND_KAI_LAYER, GRAND_KAI_CELL)
+    ]
+    assert authored.edits[0].new == GRAND_KAI_REPLACEMENT
+    assert authored.overrides_for(GRAND_KAI) == {
+        (GRAND_KAI_LAYER, GRAND_KAI_CELL): GRAND_KAI_REPLACEMENT
+    }
+    assert authored.overrides_for(41) == {}
+    assert "map:0040" in authored.summary()
+    # And the derivative's declared layout is what the accepted renderer shows.
+    plain = mb.render_map(source, GRAND_KAI)
+    derived = mb.render_map(
+        authored.canonical_image,
+        GRAND_KAI,
+        chunk_overrides=authored.overrides_for(GRAND_KAI),
+    )
+    _w, _h, plain_pixels = _layer_pixels(plain, GRAND_KAI_LAYER)
+    _w2, _h2, derived_pixels = _layer_pixels(derived, GRAND_KAI_LAYER)
+    assert _count_differing(plain_pixels, derived_pixels) == GRAND_KAI_CHANGED_PIXELS
+    editor.reset()
+
+
+def test_a_no_op_save_still_publishes_a_manifest_and_stays_byte_identical(
+    canonical_rom: tuple[Path, bytes], editor: MapLayoutEditor, tmp_path: Path
+) -> None:
+    path, source = canonical_rom
+    editor.reset()
+    output = tmp_path / "copy.gba"
+    saved = editor.save(output, source_path=path, profile_id=PROFILE_ID)
+    assert saved.no_op
+    assert output.read_bytes() == source
+    assert saved.manifest_path.is_file()
+    # A copy is the canonical image, so it needs no provenance: the accepted
+    # readers take it by identity, and the derivative path refuses it explicitly.
+    assert prov.manifest_path_for(output).is_file()
+    with pytest.raises(prov.ProvenanceError):
+        prov.verify_authored_rom(output)
+
+
+def test_arbitrary_modified_roms_are_refused(
+    canonical_rom: tuple[Path, bytes], editor: MapLayoutEditor, tmp_path: Path
+) -> None:
+    """No manifest, a mutated image, or a foreign base all fail closed."""
+    path, source = canonical_rom
+    editor.reset()
+
+    # 1. A one-byte mutation of the canonical image, with no provenance at all.
+    mutated = tmp_path / "mutated.gba"
+    data = bytearray(source)
+    data[0x00292CA0] ^= 0x01
+    mutated.write_bytes(bytes(data))
+    with pytest.raises(prov.ProvenanceError) as excinfo:
+        prov.verify_authored_rom(mutated)
+    assert "provenance manifest" in str(excinfo.value)
+
+    # 2. The same mutation carrying the canonical image's *derivative* manifest:
+    #    the image no longer matches the declared output.
+    editor.set_cell(GRAND_KAI, GRAND_KAI_LAYER, GRAND_KAI_CELL, GRAND_KAI_REPLACEMENT)
+    derived = tmp_path / "derived.gba"
+    editor.save(derived, source_path=path, profile_id=PROFILE_ID)
+    tampered = tmp_path / "tampered.gba"
+    payload = bytearray(derived.read_bytes())
+    payload[0x100] ^= 0xFF  # outside every declared field
+    tampered.write_bytes(bytes(payload))
+    shutil.copyfile(prov.manifest_path_for(derived), prov.manifest_path_for(tampered))
+    with pytest.raises(prov.ProvenanceError) as excinfo:
+        prov.verify_authored_rom(tampered)
+    assert "does not match its provenance" in str(excinfo.value)
+
+    # 3. A byte flipped *inside* a declared field, with a manifest that still
+    #    matches by hash: the reconstruction then fails, which is what bounds an
+    #    accepted derivative to canonical-plus-declared-edits.
+    inside = tmp_path / "inside.gba"
+    payload = bytearray(derived.read_bytes())
+    payload[GRAND_KAI_FIELD_OFFSET + 3] ^= 0x40
+    inside.write_bytes(bytes(payload))
+    document = json.loads(prov.manifest_path_for(derived).read_text(encoding="utf-8"))
+    document["output"]["sha256"] = hashlib.sha256(bytes(payload)).hexdigest()
+    prov.manifest_path_for(inside).write_text(json.dumps(document), encoding="utf-8")
+    with pytest.raises(prov.ProvenanceError):
+        prov.verify_authored_rom(inside)
+
+    # 4. A manifest whose base is a different image is refused outright.
+    foreign = json.loads(prov.manifest_path_for(derived).read_text(encoding="utf-8"))
+    foreign["base"]["sha256"] = "ab" * 32
+    prov.manifest_path_for(inside).write_text(json.dumps(foreign), encoding="utf-8")
+    with pytest.raises(prov.ProvenanceError) as excinfo:
+        prov.verify_authored_rom(inside)
+    assert "canonical base" in str(excinfo.value)
+    editor.reset()
+
+
+def test_a_manifest_claiming_an_unsupported_edit_is_refused(
+    canonical_rom: tuple[Path, bytes], editor: MapLayoutEditor, tmp_path: Path
+) -> None:
+    """The declared edits must be the one operation the writer is allowed."""
+    path, source = canonical_rom
+    editor.reset()
+    editor.set_cell(GRAND_KAI, GRAND_KAI_LAYER, GRAND_KAI_CELL, GRAND_KAI_REPLACEMENT)
+    derived = tmp_path / "derived.gba"
+    editor.save(derived, source_path=path, profile_id=PROFILE_ID)
+    document = json.loads(prov.manifest_path_for(derived).read_text(encoding="utf-8"))
+
+    def reissue(change: dict) -> None:
+        tampered = tmp_path / "claim.gba"
+        tampered.write_bytes(derived.read_bytes())
+        claim = json.loads(json.dumps(document))
+        claim["changes"][0].update(change)
+        claim["output"]["sha256"] = hashlib.sha256(tampered.read_bytes()).hexdigest()
+        prov.manifest_path_for(tampered).write_text(json.dumps(claim), encoding="utf-8")
+        with pytest.raises(prov.ProvenanceError):
+            prov.verify_authored_rom(tampered)
+
+    # A layer that is not a dominant chunk grid (map:0040 BG0 is 1x1 dominant and
+    # map:0019 BG2 is a terrain field): use the terrain-field slot.
+    reissue({"owner": "map:0019 layer 2 cell 0"})
+    # A map index that does not exist.
+    reissue({"owner": "map:0452 layer 1 cell 0"})
+    # A change reason this tool never writes.
+    reissue({"reason": "something else"})
+    # A replacement that is not an existing non-null chunk of that layer: a null
+    # pointer, and a pointer the layer does not use.
+    reissue({"new": (0).to_bytes(4, "little").hex()})
+    reissue({"new": 0x08292884 .to_bytes(4, "little").hex()})
+    # A field width that is not the proven four bytes.
+    reissue({"size": 2})
+    editor.reset()
+
+
+def test_a_failed_emit_or_verification_preserves_an_existing_destination(
+    canonical_rom: tuple[Path, bytes], editor: MapLayoutEditor, tmp_path: Path
+) -> None:
+    """The destination is only ever replaced after a verified emission."""
+    path, source = canonical_rom
+    editor.reset()
+    editor.set_cell(GRAND_KAI, GRAND_KAI_LAYER, GRAND_KAI_CELL, GRAND_KAI_REPLACEMENT)
+    destination = tmp_path / "existing.gba"
+    destination.write_bytes(b"the user's previous build")
+    manifest_destination = prov.manifest_path_for(destination)
+    manifest_destination.write_bytes(b"the user's previous provenance")
+
+    # 1. The emit itself fails.
+    def failing_emit(*args, **kwargs):
+        raise write_sdk.WriteError("emit refused")
+
+    original_emit = write_sdk.emit_image
+    try:
+        write_sdk.emit_image = failing_emit
+        with pytest.raises(write_sdk.WriteError):
+            editor.save(destination, source_path=path, profile_id=PROFILE_ID)
+    finally:
+        write_sdk.emit_image = original_emit
+    assert destination.read_bytes() == b"the user's previous build"
+    assert manifest_destination.read_bytes() == b"the user's previous provenance"
+
+    # 2. The emit succeeds but verification fails.
+    def failing_verify(*args, **kwargs):
+        raise MapLayoutEditError("verification refused")
+
+    original_verify = MapLayoutEditor._verify_output
+    try:
+        MapLayoutEditor._verify_output = failing_verify
+        with pytest.raises(MapLayoutEditError):
+            editor.save(destination, source_path=path, profile_id=PROFILE_ID)
+    finally:
+        MapLayoutEditor._verify_output = original_verify
+    assert destination.read_bytes() == b"the user's previous build"
+    assert manifest_destination.read_bytes() == b"the user's previous provenance"
+
+    # No temporary sibling is left behind by either failure.
+    leftovers = sorted(
+        part.name for part in tmp_path.iterdir() if "webfoot-partial" in part.name
+    )
+    assert leftovers == []
+
+    # 3. A successful save does replace both, and verifies.
+    saved = editor.save(destination, source_path=path, profile_id=PROFILE_ID)
+    assert destination.read_bytes() != b"the user's previous build"
+    assert destination.read_bytes() == editor.build()
+    assert prov.verify_authored_rom(destination).edits
+    assert saved.manifest_path == manifest_destination
+    editor.reset()
+
+
 def test_save_as_writes_a_new_rom_that_reopens_with_the_requested_cells(
     canonical_rom: tuple[Path, bytes], editor: MapLayoutEditor, tmp_path: Path
 ) -> None:
@@ -535,12 +748,16 @@ def test_save_refuses_the_source_path_and_an_existing_output(
         editor.save(path, source_path=path, profile_id=PROFILE_ID)
     with pytest.raises(MapLayoutEditError):
         editor.save(path, source_path=path, profile_id="")
+    assert hashlib.sha256(path.read_bytes()).hexdigest() == CANONICAL_SHA256
+
+    # An existing destination is replaced only by a verified emission: the
+    # placeholder is gone afterwards, and the file that lands is the emitted image.
     existing = tmp_path / "already-there.gba"
     existing.write_bytes(b"previous build")
-    with pytest.raises(write_sdk.WriteError):
-        editor.save(existing, source_path=path, profile_id=PROFILE_ID)
-    assert existing.read_bytes() == b"previous build"
-    assert hashlib.sha256(path.read_bytes()).hexdigest() == CANONICAL_SHA256
+    saved = editor.save(existing, source_path=path, profile_id=PROFILE_ID)
+    assert existing.read_bytes() == editor.build()
+    assert hashlib.sha256(existing.read_bytes()).hexdigest() == saved.output_sha256
+    assert saved.manifest_path.is_file()
     editor.reset()
 
 

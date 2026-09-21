@@ -581,6 +581,66 @@ ticket's lead is those two inbound references plus runtime tracing of which
 character index a spawned enemy resolves to - **not** more static scanning of the
 enemy record, which is now exhausted.
 
+### Addendum 2026-09-21 - the resolver answers §12 for spawned actors; the `Human 4` bound
+
+Source: HUMAN-4-SPAWN-LOOKUP-001 and HUMAN-4-USAGE-CLOSURE-001 (recorded by
+HUMAN-4-RESEARCH-CAPTURE-001). Read-only static work on the canonical image; no
+runtime capture, no code change.
+
+**What is answered, and what is not.** The *enemy record* still holds no graphics
+pointer of any kind, so the enemy -> graphics link stays **UNKNOWN** exactly as
+above. What is now proven is the other half of §12's lead: which character a
+**spawned actor** resolves to. It resolves from the record's **own sprite-id
+field**, through code, not from a data table an enemy record reaches - which is
+why the two inbound table references could not have answered it.
+
+**Resolver `0x08000158` (CONFIRMED by disassembly).**
+
+```
+argument < 10  -> player / party path  (0x0800016A..0x0800019C: the party
+                  record's appearance byte, then table 0x086B82EC)
+otherwise      -> ldr r1,=0x086B6BDC    (0x0800015E)
+                  lsls r0,r0,#2 ; adds ; subs #0x40 ; ldr r0,[r0,#0x18]
+                  => character-table index = argument - 10
+```
+
+Because a curated sprite id is `run index + 10` (table entry 0 = `0x086A89D0` =
+sprite 10; entry 91 = `0x086AC930` = sprite 101), **the argument is exactly the
+curated sprite id**. Independent sanity check from the census itself: the map-object
+sprite values land on the right characters - 304/305 (Yemma's Assistant 1/2) on maps
+35/36 (Yemma's Office), and 206 (Olibu) + 209/211/213/215 (Fighter 1-4) on maps
+39-42 (Grand Kai's Planet).
+
+**Where a sprite id enters.** Three map-object families (field offsets tabled in
+`BUU_MAP_OBJECT_ARRAYS.md`), native **slot 53** actor spawning (226 sites), native
+**slot 78** attached-actor construction -> vtable `0x0804B2C8` slot 1 -> method
+`0x08018394` -> `[r0+0x08]` (details in `BUU_SCRIPT_VM.md`), and **55 distinct
+compile-time constants** passed to the resolver from code.
+
+**`Human 4` - bounded status.** Curated chain: `Sprites/Human 4` -> sprite **101**
+(character-table entry 91) -> appearance **88**, record `0x0874D900` in the
+appearance table at `0x0874D380` (stride `0x10`, 232 entries; portrait 33, text 986
+"Human", description 987, stat index -1) -> definition `0x086AC930`. Measured:
+
+* **0** of the 1,898 map-object slots;
+* **0** of the 55 code constants passed to `0x08000158`;
+* **0** literal sprite-101 operands anywhere in the 377 decoded script blocks. The
+  literal `101` occurs exactly three times in that corpus: once as a spawn **X
+  coordinate** (`event_resource:0342`, `push_many(3, 73, 101, 131)`) and twice
+  feeding slots 0 and 134 of `event_resource:0496`, neither of which reaches the
+  resolver;
+* **0** literal attached-actor operands (25 uses; literals
+  `1, 2, 3, 4, 5, 11, 12, 200, 252, 260, 303`).
+
+**Classification: NO STATICALLY PROVEN SHIPPED SPAWN.** This is deliberately
+**not** a global unused claim. **32** sites (29 slot-53 actor spawns + 3
+attached-actor uses) take their sprite operand from the twelve runtime interpreter
+variables, whose writers are not statically enumerable, so their values are
+engine-supplied and were **not** inferred. A runtime watchpoint on `0x08000158`
+logging `r0 == 101` is the way to close that residual; none was run here. For
+scale: 13 of the 14 `Human` sprites **do** have placements, and `Human 10` (sprite
+248) has exactly one.
+
 ---
 
 ## 12a. The common reference graph

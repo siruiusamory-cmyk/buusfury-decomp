@@ -183,3 +183,104 @@ statements above are narrowed by it; everything else on this page still holds.
 
 `static40`'s own measurements are unchanged: 40 records, 120 roots, 328
 instructions, 548 bytes, 5 opcodes, no attachment.
+
+## Addendum 2026-09-21 - a second script-controlled sprite channel, and the interpreter variables
+
+Source: HUMAN-4-USAGE-CLOSURE-001 (recorded by HUMAN-4-RESEARCH-CAPTURE-001).
+Read-only static work on the canonical image; no runtime capture, no code change.
+
+### Native slot 78 - attached-actor construction (CONFIRMED_ROM)
+
+Handler **`0x080013F4`**, pop 2:
+
+```
+pop1 (top)          -> r4
+pop2                -> r5
+alloc(0x0C) 0x0803D5B8
+  obj +0x00 = 0x0804B2C8        ; relative class vtable   (0x08001418..0x0800141C)
+  obj +0x04 = 0
+  obj +0x08 = pop1              ; the sprite id           (0x0800141E)
+r0 = r5; bl 0x080001C6
+bl 0x0801936A                   ; register / queue
+```
+
+The class vtable `0x0804B2C8` is a **32-bit base-relative** table: each entry is
+`method - table_base`, not an absolute pointer. Slot 1's entry at `0x0804B2CC` is
+`0xFFFCD0CD`, and `0x0804B2C8 + 0xFFFCD0CD = 0x08018395`, i.e. the method at
+**`0x08018394`**. Control for the convention: the map-object vtable TOOLKIT-025
+recorded (`0x0804C484`) has `0xFFFC32EB` in slot 0, and
+`0x0804C484 + 0xFFFC32EB = 0x0800F76F`. Absolute-pointer searches find neither,
+which is why this table shape reads as "unreferenced" until the offset convention
+is applied.
+
+Method `0x08018394` reads the stored value back from **`[r0 + 0x08]`**, resolves it
+through the sprite-id resolver **`0x08000158`** (`bl` at `0x080183FE`) and creates
+the actor through **`0x0801111C`** (`bl` at `0x08018408`) - the same factory native
+slot 53 uses. Its measured call list is
+`0x08046AA2, 0x08011944, 0x08000158, 0x0801111C, 0x0801191A`.
+
+**This is a second script-controlled sprite-id channel, distinct from slot 53
+actor spawning, and a handler-body resolver scan does not see it**: slot 78's own
+handler never calls `0x08000158`; the call happens later, in a vtable method.
+Anything censusing sprite ids from handlers alone will under-count by this channel.
+
+### Native slots 79 and 80 - recorded at their real verification level
+
+* **Slot 79** (`0x08001440`) builds the **same 12-byte object with the top operand
+  at `+0x08`** (`0x0800144C`, `0x0800146A`) but installs vtable **`0x0804DEA0`**.
+  That class's slot 1 is method **`0x08018432`**, whose measured call list is
+  `0x08046AA2, 0x08011944, 0x08009124, 0x080192BA, 0x0801142A` - it does **not**
+  call `0x08000158`. Whether a slot-79 operand is a sprite id is therefore
+  **NOT ESTABLISHED**, and is not claimed here.
+* **Slot 80** (`0x0800148C`) does **not** perform that construction at all: it pops
+  four operands and forwards the top one to `0x0805082C` (`r3`) while the deepest
+  goes to `0x080001C6`, then registers through `0x0801936A`. Its object layout and
+  any sprite role are **unverified**.
+* **Correction to the two source reports.** HUMAN-4-USAGE-CLOSURE-001 described
+  slots 79 and 80 as storing "their popped value at `+0x08` the same way". That is
+  true of slot 79's *layout* only, and false of slot 80. The end-to-end verified
+  channel is **slot 78**; the census below is an operand-level count over all
+  three slots.
+
+### Attached-actor census (operand level, complete 377-block corpus)
+
+| Measure | Value |
+|---|---|
+| Uses of slots 78/79/80 | **25** |
+| Top-popped operand literals | `1, 2, 3, 4, 5, 11, 12, 200, 252, 260, 303` |
+| - from slots 78/79 | `1, 2, 3, 4, 5, 11, 12, 252, 260, 303` |
+| - from slot 80 (role unverified) | `200` only |
+| Variable-supplied, unresolved | 3 (`event_resource:0502` blocks 19/21/22) |
+| Sprite **101** among the literals | **absent** |
+
+### The twelve interpreter variables (indices 0..11)
+
+The native getter slots read, and the paired table `0x08055478` above **writes**,
+twelve interpreter variables. `0x08055478 = 0x08055098 + 0x3E0` = **slot 248**, so
+`setter[index] = slot 248 + index`:
+
+| Indices | Getter slots | Storage |
+|---|---|---|
+| 0..3 | 0..3 | `0x03001058[+0x00, +0x04, +0x08, +0x0C]` |
+| 4..7 | 4..7 | the interpreter event object `[0x03001030]`, fields `+0x00, +0x04, +0x08, +0x0C` |
+| 8..11 | 8..11 | `0x03001020[+0x00, +0x04, +0x08, +0x0C]` |
+| 0..11 | setters | slots **248..259** |
+
+The opcode table's rows `15..1A` ("one secondary-dispatch byte") read that byte as
+the **variable index**: each handler calls `getter[index]`, mutates the top of
+stack, and calls `setter[index]` - the increment/decrement variants.
+
+Measured over the complete decoded script corpus:
+
+* **Slots 248..259 have 0 uses.** No script assigns any of the twelve variables.
+* The only variable-mutating opcode uses are **5**, all opcode **`0x15`**, on
+  indices **1, 3, 6, 7** (index 1 twice).
+* Fields `+0x00/+0x04/+0x08` of `[0x03001030]` are instead filled by the
+  event-resource consumer family (`0x080030F8`, `0x08003126`, `0x08003164` storing
+  popped operands), documented in `BUU_EVENT_RESOURCE.md`.
+
+**Consequence, stated as a bound and not as a value:** the sprite operands of
+**32** computed sites (29 native-slot-53 actor spawns + 3 attached-actor uses) are
+reads of these variables, so they are engine/runtime supplied. Their runtime values
+are **not inferred** and cannot currently be closed statically. No gameplay meaning
+is assigned to any variable here.

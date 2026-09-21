@@ -281,3 +281,24 @@ are existing enemy-stat records (1,284 placements); six targets (11 placements)
 remain reference-only. Earlier UNKNOWN labels above are historical; see
 [placement type evidence](PLACEMENT_TYPES.md) for the new evidence and limits.
 No coordinate-axis or NPC/item/friendly taxonomy claim was added.
+
+## HUMAN-4 follow-up correction (2026-09-21)
+
+Source: HUMAN-4-SPAWN-LOOKUP-001 and HUMAN-4-USAGE-CLOSURE-001 (recorded by
+HUMAN-4-RESEARCH-CAPTURE-001); read-only static work on the canonical image.
+
+`+0x10 id_raw` now has a proven consumer contract, so its UNKNOWN label above is
+historical. Constructor `0x0800F68C` loads it (`0x0800F6AE ldr r0,[r5,#0x10]`) and
+passes it to resolver `0x08000158` (`0x0800F6B0`), which indexes the actor
+character pointer table `0x086B6BDC` at `argument - 10`; an argument below 10 takes
+the player/party path instead. A curated sprite id is `run index + 10`, so
+**`id_raw` is a sprite id** - which is also why the field table above measures it
+as `5..306`.
+
+Scope: that refines `id_raw` only. `flags_raw` and `type_raw` keep their recorded
+status (`type_raw` having its own correction above), the 32-byte codec is
+unchanged, and no NPC/enemy/item classification is introduced. The two sibling
+families carry a sprite id the same way (`0x08017DA3` at `+0x10`, `0x080111A9` at
+`+0x0C`). Full statement, the resolver arithmetic and the map-object census result:
+[actor sprite graphics](GRAPHICS_FORMAT.md) §12 and
+[map object arrays](BUU_MAP_OBJECT_ARRAYS.md).

@@ -15,16 +15,35 @@ distance-biased length ladder, `0 0 0` seven-bit field / end marker, `0 0 1`
 four-bit code.
 
 **Why this module exists rather than a call to `tools.webfoot.formats.webfoot_lz`.**
-The shipping decoder carries a known defect, inventoried as §11.1 of
-`docs/research/LOGX_SYNTHESIS.md`: its `copy_match` stops appending once the
-output reaches the declared size, so an **over-long final match is silently
-clipped** and the decode is reported as successful. A malformed or truncated
-stream can likewise be reported as success. On the 4,322 reachable canonical
-packed containers that never fires, but an asset exporter must not build its
-completeness claims on a decoder whose success flag does not mean "produced
-exactly the declared size". Repairing the shared decoder is the separately
-authorized ticket `FIX-1`; this module is the export-side strict reader the
-ASSET-EXPORT-001 ticket asks for, and it never clips.
+It was written when the shipping decoder carried a real defect, inventoried as
+§11.1 of `docs/research/LOGX_SYNTHESIS.md`: its `copy_match` stopped appending once
+the output reached the declared size, so an **over-long final match was silently
+clipped** and the decode reported as successful. An asset exporter must not build
+its completeness claims on a decoder whose success flag did not mean "produced
+exactly the declared size", so this module was the export-side strict reader the
+ASSET-EXPORT-001 ticket asked for.
+
+**EVIDENCE-RISK-DEBT-001 repaired that decoder** (the `FIX-1` the paragraph above
+used to forward to). `webfoot_lz.unpack` now refuses an over-long match, a run of
+raw literals that would pass the declared size, a stream that stops short, and a
+truncated stream, and the two modules agree on every malformed case in
+`tests/unit/test_asset_export_strict_lz.py`. What this module still adds over the
+shipping reader is therefore narrower and worth stating: the **end-marker
+postcondition** below, and `MAX_INPUT_BYTES` - a bound on the packed input
+consumed, so a stream that never terminates cannot make a caller spin. It is kept
+rather than deleted because the end-marker check is a genuine independent
+postcondition on the canonical corpus, and because rewriting the exporter's reader
+is not this ticket's change.
+
+**The two readers agree on decoded bytes, not on `packed_end`.** With
+`require_end_marker=True` - which is what the export path uses - the decode does
+not stop when the declared size is reached but runs on to the stream's own marker,
+so the reader's final word position is up to one word *larger* than the extent an
+in-place edit is bounded by. Measured over the 7,390 canonical sprite containers
+that difference is 0 bytes for 4,662 of them and 4 bytes for the other 2,728, with
+no overlap into the next container either way. `webfoot_lz.packed_end` remains the
+extent a write is measured against; this module's position is the
+marker-terminated extent and is a different quantity.
 
 **What "strict" means here, stated exactly.**
 

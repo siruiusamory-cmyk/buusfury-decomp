@@ -61,9 +61,12 @@ EXPECTED_PIECE_REFERENCES = 11005
 EXPECTED_MULTI_PIECE_FRAMES = 21
 EXPECTED_MAXIMUM_PIECE_COUNT = 4
 
-#: Section N: the graphics-container relationship.  Every piece resolves; the
-#: figure the accepted ROM bible publishes (7,355) counts *containers*, while this
-#: ticket's population is *distinct container offsets reached by a piece*.
+#: Section N: the graphics-container relationship.  Every piece resolves.  This
+#: ticket's population is *distinct container offsets reached by a piece*, which is
+#: **7,390**; the figure the ROM bible used to publish, **7,355**, is exactly the
+#: single-piece-frame subset of it.  EVIDENCE-RISK-DEBT-001 corrected the bible and
+#: the shipping reader, so the two now state the same population; this constant was
+#: already the accepted one and did not move.
 EXPECTED_RESOLVED_PIECES = 11005
 EXPECTED_UNRESOLVED_PIECES = 0
 EXPECTED_UNIQUE_GRAPHICS_TARGETS = 7390

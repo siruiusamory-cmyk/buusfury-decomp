@@ -147,17 +147,20 @@ ANIM_FRAME_COUNT = 0x00  # u32
 ANIM_DIRECTIONS = 4  # pointers per frame
 ANIM_POINTERS = 0x04
 
-#: Physical layout of a *frame record*: ``u32 piece_count`` then that many
-#: 16-byte piece records (``tools/webfoot/formats/sprite_graphics.py``).  This
-#: ticket records only the record's extent and the four bytes the character
-#: constructor reads; LOGX-FRAME-001 owns everything below the count.
+#: Physical layout of a *frame record*: ``u32 piece_count``, the frame's own
+#: bounding box (the four bytes below), then that many **12-byte** piece records
+#: beginning at ``+0x08``.  LOGX-FRAME-001 established the accepted layout; this
+#: module was corrected to it by EVIDENCE-RISK-DEBT-001, having previously read a
+#: 4-byte header and a 16-byte stride.  Only the record's extent and the four
+#: bounding-box bytes are recorded here; everything below the count is
+#: LOGX-FRAME-001's.
 FRAME_PIECE_COUNT = 0x00  # u32
-FRAME_FIRST_PIECE = 0x04
-PIECE_RECORD_SIZE = 0x10
-FRAME_FIELD_04 = 0x04  # s8, read with ldrsb
-FRAME_FIELD_05 = 0x05  # s8, read with ldrsb
-FRAME_FIELD_06 = 0x06  # u8, read with ldrb
-FRAME_FIELD_07 = 0x07  # u8, read with ldrb
+FRAME_FIRST_PIECE = 0x08
+PIECE_RECORD_SIZE = 0x0C
+FRAME_FIELD_04 = 0x04  # s8, the minimum piece x, read with ldrsb
+FRAME_FIELD_05 = 0x05  # s8, the minimum piece y, read with ldrsb
+FRAME_FIELD_06 = 0x06  # u8, the width of the pieces' union, read with ldrb
+FRAME_FIELD_07 = 0x07  # u8, the height of the pieces' union, read with ldrb
 
 #: The translation table that maps a *state* number to an animation index.  It
 #: is read by ``0x0800ECF0`` and ``0x0800ED3E`` as ``ldrb rX,[base+0x88+r1]``
@@ -636,12 +639,14 @@ def read_animation(data: bytes, address: int) -> Animation:
 
 @dataclass(frozen=True, slots=True)
 class FrameRecord:
-    """One frame record: a piece count and the bytes the constructor reads.
+    """One frame record: a piece count, a bounding box and the pieces.
 
     ``piece_count`` is the leading word; the record's extent is therefore
-    ``4 + 16 * piece_count``.  Only the first piece's four leading bytes are
-    surfaced, because those are the four the character constructor reads with
-    ``ldrsb``/``ldrb``; everything below the count belongs to LOGX-FRAME-001.
+    ``8 + 12 * piece_count``.  The four bytes at ``+0x04..+0x07`` - the ones the
+    character constructor reads with ``ldrsb``/``ldrb`` - are the frame's own
+    bounding box over its pieces: signed minimum x and y, then unsigned width and
+    height.  Everything below the count belongs to LOGX-FRAME-001; this module
+    records the extent and those four bytes.
     """
 
     address: int
@@ -1085,14 +1090,32 @@ def count_guard_report(data: bytes) -> list[dict[str, Any]]:
 def selector_argument_census(data: bytes, *, lookback: int = 20) -> dict[str, Any]:
     """Census of the arguments the image passes to :data:`ANIMATION_SELECTOR`.
 
-    Requires capstone (see the module docstring).  The argument is classified by
-    looking back for the nearest write to ``r1``: a ``movs r1, #imm`` is a
-    compile-time index, anything else is a runtime index.  The lookback is
-    reported so the heuristic is visible.
-    """
-    from tools.research.thumb_disasm import iter_thumb_wide, scan_thumb_bl_callers
+    Requires capstone (see the module docstring).  The *site count* is
+    authoritative and is taken from :func:`tools.research.thumb_disasm.scan_thumb_calls`,
+    which decodes every halfword-aligned site in the image and accepts only a real
+    four-byte ``bl``/``blx``.  It replaced the raw halfword predicate that used to
+    stand here, whose result this census once published as fact: that predicate
+    invented 1,552 sites across the image, recognised one J1/J2 combination of each
+    encoding, and resolved every non-word-aligned ``BLX`` two bytes high, so
+    ``const_*``/``runtime_index_sites`` here were derived from an incomplete and
+    partly fabricated caller set.  The counts in this report change with that fix;
+    they are measurements, not constants, and the ROM-gated suite pins them.
 
-    sites = sorted(scan_thumb_bl_callers(data, {ANIMATION_SELECTOR})[ANIMATION_SELECTOR])
+    The census remains a **static site** count: it cannot tell code from data, so a
+    valid encoding standing in a data table is still a site.  The argument
+    classification is explicitly a *heuristic*: the argument is the nearest write to
+    ``r1`` within ``lookback`` instructions, so it is bounded by a window rather
+    than by a data-flow proof.  ``lookback`` and ``unresolved_sites`` are reported
+    so the heuristic's reach is visible rather than implied.
+    """
+    from tools.research.thumb_disasm import iter_thumb_wide, scan_thumb_calls
+
+    wanted = ANIMATION_SELECTOR & ~1
+    calls = [site for site in scan_thumb_calls(data) if site.cleared_target == wanted]
+    sites = sorted(site.address for site in calls)
+    kinds: dict[str, int] = {}
+    for site in calls:
+        kinds[site.kind] = kinds.get(site.kind, 0) + 1
     items = [
         item
         for item in iter_thumb_wide(data, ROM_BASE, ROM_BASE + 0x60000)
@@ -1126,6 +1149,9 @@ def selector_argument_census(data: bytes, *, lookback: int = 20) -> dict[str, An
     return {
         "selector": f"{ANIMATION_SELECTOR:#010x}",
         "call_sites": len(sites),
+        "call_kinds": dict(sorted(kinds.items())),
+        "census_method": "decoded halfword-aligned sites, BL and BLX",
+        "argument_classification": "heuristic: nearest r1 write within lookback",
         "lookback_instructions": lookback,
         "constant_index_histogram": dict(sorted(constants.items())),
         "constant_index_count": sum(constants.values()),

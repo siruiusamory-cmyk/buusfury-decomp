@@ -542,8 +542,9 @@ def build_parser() -> argparse.ArgumentParser:
         "--no-graphics",
         action="store_true",
         help=(
-            "skip sprite assets. They are the bulk of an extraction (7,355 "
-            "indexed PNGs against a few dozen TOML files); a build from such a "
+            "skip sprite assets. They are the bulk of an extraction (7,390 "
+            "indexed PNGs, one per distinct container offset reachable by a "
+            "piece, against a few dozen TOML files); a build from such a "
             "project is still byte-exact, because unchanged graphics come from "
             "the base image"
         ),
@@ -1489,12 +1490,23 @@ def _run_graphics(args) -> int:
         command = args.graphics_command
         if command == "summary":
             assets = sprites.graphics()
+            # ``frames`` is the distinct frame records the corpus reaches, NOT the
+            # sum of the consumer lists: a consumer list is deduplicated per
+            # graphic, so a 2-piece frame that reaches two containers appears in
+            # both and would be counted twice. Those two numbers agreed only under
+            # the refuted one-piece-per-frame model, where every frame reached
+            # exactly one container. ``piece_references`` is the other population
+            # and is reported separately rather than folded into ``frames``.
+            frame_offsets = {
+                reference.frame_offset for a in assets for reference in a.consumers
+            }
             result = {
                 "profile": sprites.profile.id,
                 "characters": len(sprites.characters()),
                 "character_table_entries": sprites.layout.character_count,
                 "graphics": len(assets),
-                "frames": sum(len(a.consumers) for a in assets),
+                "frames": len(frame_offsets),
+                "piece_references": sum(len(a.consumers) for a in assets),
                 "shared_by_frame": sum(1 for a in assets if a.shared),
                 "shared_by_character": sum(1 for a in assets if len(a.characters) > 1),
                 "packed_bytes": sum(a.packed_size for a in assets),

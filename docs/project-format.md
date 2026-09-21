@@ -23,7 +23,7 @@ project/
   characters/characters.toml   9 playable-character base-stat records
   text/strings.toml       1,534 strings                      (TOOLKIT-004)
   graphics/graphics.toml  sprite asset manifest + object palette (TOOLKIT-010)
-  graphics/assets/        7,355 indexed PNGs, one per payload (TOOLKIT-010)
+  graphics/assets/        7,390 indexed PNGs, one per distinct payload (TOOLKIT-010)
 ```
 
 One file per table rather than per record: 141 single-record files would be a
@@ -35,8 +35,9 @@ table, and a project without it simply authors no text. All 1,534 strings share
 one file rather than being split per scene, because nothing yet knows which
 scene a string belongs to and inventing a grouping would mean inventing facts.
 
-Graphics are the bulk of an extraction - 7,355 PNGs against a few dozen TOML
-files, measured at 44.0s versus 1.8s on the canonical image - so
+Graphics are the bulk of an extraction - 7,390 PNGs, one per distinct container
+offset reachable by a piece, against a few dozen TOML files, measured at 44.0s
+versus 1.8s on the canonical image - so
 `extract_project(..., graphics=False)` (CLI: `extract --no-graphics`) omits them
 for anyone editing stats or text. A build from such a project is **still
 byte-identical**, because unchanged graphics are re-emitted from the base image
@@ -49,7 +50,7 @@ The manifest carries what a PNG cannot - the dimensions the *piece* record
 declares, the bit depth, the packed extent an edit is bounded by, and the list of
 characters a change would affect - so none of that has to be inferred from the
 image. A shared payload appears **once**: writing a private copy per consumer
-would turn 7,355 real assets into 10,959 fictional ones and would make a global
+would turn 7,390 real payloads into 11,005 fictional ones and would make a global
 edit look local. The object palette travels as raw GBA 15-bit words, never as
 RGB, because an 8-bit triple cannot round-trip to a unique word.
 

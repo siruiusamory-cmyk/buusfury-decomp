@@ -440,4 +440,9 @@ screen composition are different claims, and this document keeps them apart.
   `ASSET_EXPORT_MAP_HANDLERS_PROVENANCE.md` §7.
 * `tools/research/thumb_disasm.py::scan_thumb_bl_callers` was not used for any
   claim here. Its defects are recorded in
-  `ASSET_EXPORT_MAP_HANDLERS_PROVENANCE.md` §7 and still need their own ticket.
+  `ASSET_EXPORT_MAP_HANDLERS_PROVENANCE.md` §7. **CORRECTED LATER
+  (EVIDENCE-RISK-DEBT-001, 2026-09-20):** the separate ticket that repair needed
+  was raised and closed; `scan_thumb_bl_callers` now decodes every halfword-aligned
+  site and `resolve_thumb_bl` applies the `BLX` word alignment, so the exclusion
+  recorded here is no longer a reason to avoid the helper. Nothing in this
+  document's evidence came from it and no claim here changed.

@@ -139,8 +139,10 @@ def test_animation_and_frame_geometry_is_internally_consistent() -> None:
     assert probe.ANIM_POINTERS + 16 * 1 + 4 * 3 == 0x20
     assert probe.ANIM_POINTERS + 16 * 0 + 4 * 0 == 0x04
     assert probe.FRAME_PIECE_COUNT == 0x00
-    assert probe.FRAME_FIRST_PIECE == 0x04
-    assert probe.PIECE_RECORD_SIZE == 0x10
+    # Corrected to the accepted layout by EVIDENCE-RISK-DEBT-001: an 8-byte frame
+    # header, then 12-byte pieces. This assertion used to pin 0x04/0x10.
+    assert probe.FRAME_FIRST_PIECE == 0x08
+    assert probe.PIECE_RECORD_SIZE == 0x0C
 
 
 def test_run_index_arithmetic_and_refusals() -> None:
@@ -261,7 +263,10 @@ def _synthetic_image() -> bytes:
                animation + 8 + 4 * index] = pointer.to_bytes(4, "little")
     frame = 0x100
     buffer[frame:frame + 4] = (1).to_bytes(4, "little")  # piece count
+    # The four bytes the constructor reads are the frame's bounding box, at
+    # +0x04..+0x07; the record's first 12-byte piece then begins at +0x08.
     buffer[frame + 4:frame + 8] = bytes((0xF8, 0xE8, 0x20, 0x20))
+    buffer[frame + 8:frame + 12] = bytes((0x00, 0x00, 0x20, 0x20))
     return bytes(buffer)
 
 
@@ -303,7 +308,7 @@ def test_frame_record_reader_and_extent() -> None:
     )
     assert record.signed_04 == -8
     assert record.signed_05 == -24
-    assert record.end_address == ROM_BASE + 0x100 + 4 + 16
+    assert record.end_address == ROM_BASE + 0x100 + 8 + 12
     with pytest.raises(probe.SpriteProbeError, match="not in ROM"):
         probe.read_frame_record(data, ROM_BASE + 0x1000)
 

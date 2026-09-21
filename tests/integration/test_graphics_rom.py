@@ -7,7 +7,15 @@ written; no ROM-derived fixture is committed.
 Where a cheaper spot-check would do, these deliberately enumerate the **whole**
 corpus instead. A tile-swizzle or container bug that only shows up on one
 unusual shape is exactly what a sample misses, and the corpus is small enough
-(7,355 payloads) to check exhaustively.
+(7,390 payloads) to check exhaustively.
+
+**Corrected by EVIDENCE-RISK-DEBT-001.** Every count in this file moved when the
+sprite reader stopped modelling a 4-byte frame header and a 16-byte piece stride,
+because that reader could not see the 21 multi-piece frames. The numbers below are
+re-measured on the canonical image with the accepted layout, not carried over:
+297 characters with art, 1,017 unique animations, 10,980 frames, 7,390 containers,
+2,994 containers shared by more than one frame record, 4,034 exactly adjacent
+container pairs.
 """
 
 from __future__ import annotations
@@ -34,14 +42,17 @@ CANONICAL_SHA1 = "f1c4b07554d2a3b1ad2f325307051e775ce68087"
 # --- Counts established by the TOOLKIT-010 corpus census. A change to any of
 # these is a change to the ROM reading, not a test that needs relaxing. ---
 CHARACTER_TABLE_ENTRIES = 297
-CHARACTERS_WITH_ART = 295
-UNIQUE_ANIMATIONS = 1013
-UNIQUE_FRAMES = 10959
-UNIQUE_GRAPHICS = 7355
-GRAPHICS_SHARED_BY_FRAME = 2986
+CHARACTERS_WITH_ART = 297
+UNIQUE_ANIMATIONS = 1017
+UNIQUE_FRAMES = 10980
+UNIQUE_GRAPHICS = 7390
+GRAPHICS_SHARED_BY_FRAME = 2994
 GRAPHICS_SHARED_BY_CHARACTER = 2644
-TOTAL_PACKED_BYTES = 2_724_940
-TOTAL_TILE_BYTES = 9_131_136
+TOTAL_PACKED_BYTES = 2_742_544
+TOTAL_TILE_BYTES = 9_197_696
+#: Piece records over those frames: 19 frames hold two pieces and 2 hold four, so
+#: the piece population is 21 larger than the frame population.
+PIECE_REFERENCES = 11005
 
 
 def _rom_path() -> str:
@@ -91,22 +102,49 @@ def test_sharing_is_measured_not_assumed(sprites: graphics.ActorSprites) -> None
     all_graphics = sprites.graphics()
     assert sum(1 for g in all_graphics if g.shared) == GRAPHICS_SHARED_BY_FRAME
     assert sum(1 for g in all_graphics if len(g.characters) > 1) == GRAPHICS_SHARED_BY_CHARACTER
-    # Consumers are distinct frames, so they can never exceed the frame count.
-    assert sum(len(g.consumers) for g in all_graphics) == UNIQUE_FRAMES
+    # A consumer is a distinct *piece record*, so the total is the piece
+    # population, not the frame population: a 2-piece frame is a consumer of two
+    # graphics and appears in both lists. Consumers are deduplicated within one
+    # graphic, so the total can never exceed the piece count.
+    assert sum(len(g.consumers) for g in all_graphics) == PIECE_REFERENCES
+    assert len({r.frame_offset for g in all_graphics for r in g.consumers}) == UNIQUE_FRAMES
 
 
-def test_every_frame_in_this_corpus_holds_exactly_one_piece(
-    sprites: graphics.ActorSprites,
-) -> None:
-    """Measured, and the codec still handles the general case."""
-    seen = set()
+def test_the_corpus_contains_multipart_frames(sprites: graphics.ActorSprites) -> None:
+    """21 frames hold more than one piece, and the reader decodes all of them.
+
+    This test used to assert the opposite - that every frame in this corpus holds
+    exactly one piece - which was true only of the refuted 4+16 layout, whose
+    size/geometry test rejected every multipart frame. The distribution is the
+    accepted one: 19 frames with two pieces and 2 with four.
+    """
+    distribution: dict[int, int] = {}
+    seen: set[int] = set()
     for graphic in sprites.graphics():
         for reference in graphic.consumers:
             if reference.frame_offset in seen:
                 continue
             seen.add(reference.frame_offset)
             frame = sg.decode_frame(sprites.base_bytes, reference.frame_offset)
-            assert len(frame.pieces) == 1
+            distribution[frame.piece_count] = distribution.get(frame.piece_count, 0) + 1
+    assert len(seen) == UNIQUE_FRAMES
+    assert distribution == {1: 10959, 2: 19, 4: 2}
+    assert sum(count for pieces, count in distribution.items() if pieces > 1) == 21
+    assert sum(pieces * count for pieces, count in distribution.items()) == PIECE_REFERENCES
+
+
+def test_every_frame_header_is_the_frames_own_bounding_box(
+    sprites: graphics.ActorSprites,
+) -> None:
+    """The 8-byte header's four bytes are the pieces' union, on all 10,980 frames."""
+    seen: set[int] = set()
+    for graphic in sprites.graphics():
+        for reference in graphic.consumers:
+            if reference.frame_offset in seen:
+                continue
+            seen.add(reference.frame_offset)
+            frame = sg.decode_frame(sprites.base_bytes, reference.frame_offset)
+            assert frame.header_bounds == frame.piece_bounds
     assert len(seen) == UNIQUE_FRAMES
 
 
@@ -122,8 +160,8 @@ def test_every_container_decodes_and_agrees_with_its_piece(
     """The structural cross-check: two independent ROM facts must agree.
 
     The container declares a decoded length; the piece that points at it
-    declares OAM dimensions. Nothing links them in the file, so their agreeing
-    on all 7,355 payloads is what makes the format reading verified rather than
+    declares pixel extents. Nothing links them in the file, so their agreeing
+    on all 7,390 payloads is what makes the format reading verified rather than
     merely plausible.
     """
     packed = 0
@@ -144,7 +182,7 @@ def test_containers_are_packed_with_no_slack(sprites: graphics.ActorSprites) -> 
     overlaps = sum(1 for a, b in zip(spans, spans[1:]) if a[1] > b[0])
     adjacent = sum(1 for a, b in zip(spans, spans[1:]) if a[1] == b[0])
     assert overlaps == 0
-    assert adjacent == 4014
+    assert adjacent == 4034
 
 
 # --- exact round trips -------------------------------------------------------
@@ -403,11 +441,19 @@ def test_verified_graphics_pointers_join_the_common_reference_graph(
     overlapping anchor fails here rather than reaching a relocation plan. Counts
     are asserted exactly: an off-by-one would mean a pointer was invented or one
     was dropped.
+
+    **The graphics-reference count is the piece population, not the frame
+    population.** One reference is published per distinct (graphic, piece record)
+    pair, because a container word lives in a specific 12-byte piece: 21 canonical
+    frames hold more than one piece, so 10,980 frames carry 11,005 container words.
+    This expectation was `UNIQUE_FRAMES + CHARACTERS_WITH_ART` while the published
+    offset was derived from the frame offset alone, which was correct only for the
+    first piece of a frame.
     """
     document = sprites.reference_document()
 
     expected_anchors = UNIQUE_GRAPHICS + CHARACTERS_WITH_ART + 2  # palette + table
-    expected_references = UNIQUE_FRAMES + CHARACTERS_WITH_ART
+    expected_references = PIECE_REFERENCES + CHARACTERS_WITH_ART
     assert len(document.anchors) == expected_anchors
     assert len(document.references) == expected_references
 
@@ -472,7 +518,7 @@ def test_no_enemy_record_points_at_any_graphics_structure(
 def extracted(tmp_path_factory) -> Path:
     """One extraction, shared by every test below that only reads it.
 
-    Extraction writes 7,355 PNGs. Doing that once per assertion would mean
+    Extraction writes 7,390 PNGs. Doing that once per assertion would mean
     ~29,000 file writes to check four properties of one deterministic output -
     and determinism is exactly what makes sharing safe here: the same ROM
     always produces the same bytes, so a second extraction could only produce
@@ -491,7 +537,7 @@ def extracted(tmp_path_factory) -> Path:
 def test_extraction_writes_one_png_per_distinct_payload(extracted: Path) -> None:
     """Shared payloads are extracted once, so the file count matches the corpus.
 
-    A private copy per consumer would produce 10,959 files for 7,355 real
+    A private copy per piece would produce 11,005 files for 7,390 real
     assets, and would make an edit look local when the ROM makes it global.
     """
     pngs = sorted((extracted / "graphics" / "assets").glob("*.png"))
@@ -556,8 +602,9 @@ def test_the_project_never_contains_a_copy_of_the_rom(
 def test_skipping_graphics_still_rebuilds_the_rom_byte_identically(tmp_path) -> None:
     """`graphics=False` costs authoring reach, never correctness.
 
-    The flag exists because sprite assets are the bulk of an extraction - 7,355
-    PNGs against a few dozen TOML files, measured at 44.0s versus 1.8s - and
+    The flag exists because sprite assets are the bulk of an extraction - 7,390
+    PNGs against a few dozen TOML files, measured at 44.0s versus 1.8s on the
+    pre-correction corpus - and
     someone editing stats has no use for them. What must not change is the
     build: unchanged graphics are re-emitted from the base image rather than
     from the project, so a graphics-less project still reproduces the ROM

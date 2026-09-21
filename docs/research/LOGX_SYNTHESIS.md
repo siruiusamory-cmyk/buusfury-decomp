@@ -1204,6 +1204,10 @@ future behaviour and the risk if it is not fixed.
 | **Required future behaviour** | strict decoded-size completion: require the decode to produce exactly the declared size and **reject** a stream that does not; report truncation as an error |
 | **Risk if unfixed** | a future authoring path can read a corrupted payload as valid and re-emit it, producing a ROM that is wrong in a way no test catches |
 
+> **EXECUTED (EVIDENCE-RISK-DEBT-001, 2026-09-20).** Repaired; see §11.9. The
+> reproduction below is now a refusal in both implementations, and the pinned test
+> was inverted rather than deleted.
+
 ### 11.2 `graphics.py::_animations_in` walks past the count-bounded array
 
 | | |
@@ -1217,6 +1221,15 @@ future behaviour and the risk if it is not fixed.
 | **Accepted canonical graphics totals** | **unchanged** by the correction. Every published figure reproduces exactly (`1017 - 4 = 1013`, `13660 - 64 = 13596`, `10964 - 5 = 10959`, `1562` deduplicated), and the reader produces the same animation set for all 297 structures under both models. The regression suite must be updated to prove that rather than to preserve the old count |
 | **Risk if unfixed** | a latent unbounded walk in the shipping reader; any later filter change silently corrupts the sprite corpus |
 
+> **Note added later (EVIDENCE-RISK-DEBT-001, 2026-09-20).** This defect is
+> **not** repaired and remains roadmap `FIX-3`'s. The row's "accepted canonical
+> graphics totals" claim describes the reader *before* FIX-2: reparsing the frame
+> record in §11.3 removed the 5-frame `_frame_offset` rejection, so the shipping
+> reader now reaches 297 characters and 1,017 animations instead of 295 and 1,013.
+> The animation objects themselves are unchanged, exactly as the row says; the
+> reader simply no longer discards four structures. See §11.9 for the re-measured
+> figures.
+
 ### 11.3 `sprite_graphics.py` still models the refuted 4+16 frame record
 
 | | |
@@ -1229,6 +1242,11 @@ future behaviour and the risk if it is not fixed.
 | **Risk if unfixed** | multipart sprites (21 frames, 35 graphics containers) cannot be rendered, edited or re-encoded correctly, and any write path built on the current offsets would corrupt every piece record |
 | **Recorded disagreement, not a defect** | LOGX-GFXSCAN-001's follow-up list also names `decode_animation`'s `maximum_frames = 64` as a "known-bad unbounded animation walk". This synthesis does **not** classify it as a defect: `64` is a *bound*, the canonical `frame_count` range is `1..16`, and the same ticker records the animation walk itself as correct (only the definition-side traversal is unbounded). Removing the cap would remove a sanity check with no demonstrated benefit, so the honest disposition is to record the disagreement rather than act on it |
 
+> **EXECUTED (EVIDENCE-RISK-DEBT-001, 2026-09-20).** Repaired exactly as this
+> section's "Required future behaviour" states: `FRAME_HEADER_SIZE = 8`,
+> `PIECE_SIZE = 12`, attributes at `+0x04`, container word at `+0x08`, and the
+> `+0x02`/`+0x03` extents named. See §11.9.
+
 ### 11.4 Stale `7,355` figure across shipping code and documentation
 
 | | |
@@ -1238,6 +1256,10 @@ future behaviour and the risk if it is not fixed.
 | **Problem** | `7,355` is presented as the corpus total in several places (module docstrings, CLI help text, the profile's own comment, the document's headline table). It is the **single-piece-frame subset**; the canonical corpus reaches **7,390**. Separately, the module docstrings' "13,588 reachable pieces" and "all frames are single-piece" statements belong to the same refuted layout |
 | **Required future behaviour** | restate each figure with its population: "7,390 distinct container offsets are reachable by a piece; 7,355 of them by single-piece frames, which is what the current reader accepts". Do **not** simply replace 7,355 with 7,390 while the reader still cannot see the 21 multipart frames |
 | **Risk if unfixed** | users read a subset as the corpus total, and the reader's own blind spot becomes invisible |
+
+> **EXECUTED (EVIDENCE-RISK-DEBT-001, 2026-09-20).** Swept with the
+> population-qualified wording this section prescribes, in every file it names
+> except `GRAPHICS_FORMAT.md` (exempt under its banner). See §11.9.
 
 ### 11.5 Tests that pin the refuted layout
 
@@ -1255,6 +1277,12 @@ alone will fail its own regression suite:
 are to be re-pointed at the accepted layout, so the correction is pinned by the
 same tests that currently pin the defect. That is the acceptance condition
 `FIX-2` carries.
+
+> **EXECUTED (EVIDENCE-RISK-DEBT-001, 2026-09-20).** Re-pointed rather than
+> deleted, as required: `test_sprite_graphics.py`'s fixtures are now an 8-byte
+> header and a 12-byte stride, `test_graphics_rom.py`'s `UNIQUE_GRAPHICS` is 7,390
+> with its counts re-measured, and `test_logx_sprite_reference.py` pins
+> `FRAME_FIRST_PIECE == 0x08` / `PIECE_RECORD_SIZE == 0x0C`. See §11.9.
 
 ### 11.6 `atlas_producers/scan.py::_compression_rows` is a noisy heuristic sweep
 
@@ -1304,11 +1332,19 @@ already inventoried above** in §11.1-§11.6 - the instrument's purpose is to ma
 new one visible, not to reach zero. It exits `1` while any finding remains, which
 is why the test asserts the finding *set*, not the exit code.
 
+> **RE-MEASURED LATER (EVIDENCE-RISK-DEBT-001, 2026-09-20).** After §11.9's
+> repairs the same command reports **one** surviving hit, in
+> `tools/webfoot/graphics.py` - the §11.2 `unbounded-animation-walk` wording, which
+> `FIX-4` owns. The layout keys `four-byte-frame-header` and `sixteen-byte-piece`
+> have no surviving occurrence in scope, and the audit test now asserts that
+> absence, so a reappearance fails as a regression. The audit still exits `1`
+> while that one finding remains; the number was never the target.
+
 The audit is reviewed by `tests/unit/test_logx_synthesis_audit.py`, which asserts
 that (a) **no superseded hit exists anywhere in the scan scope outside the
 recorded defect files**, (b) inside `tools/webfoot/**` every surviving hit uses a
-pattern the synthesis already classifies, and (c) the five production hits are
-exactly the recorded ones, so neither a new defect nor a silent disappearance
+pattern the synthesis already classifies, and (c) the production hits are exactly
+the recorded ones, so neither a new defect nor a silent disappearance
 passes. Hits that are inside a dated correction note ("superseded", "refuted",
 "added later", "corrected") are history and are filtered out by design.
 
@@ -1321,6 +1357,38 @@ those files are named in §11.4 and in `FIX-5` so the next pass does not have to
 rediscover them. And `docs/research/GRAPHICS_FORMAT.md` is exempt while its
 `SUPERSEDED STATEMENTS` banner stands - the exemption is conditional on the
 banner markers being present, so deleting the banner re-arms the scan.
+
+### 11.9 EXECUTED - EVIDENCE-RISK-DEBT-001 (2026-09-20)
+
+**This section is a later addition. Everything above it is the record of what this
+synthesis found at its own revision and is left as it stands.** Four of the
+inventoried defects have since been repaired by `EVIDENCE-RISK-DEBT-001`, and the
+audit's expected finding set moved with them.
+
+| § | Defect | Disposition |
+| --- | --- | --- |
+| 11.1 | `webfoot_lz` did not enforce exact declared-size completion | **FIXED, both clipping paths.** `copy_match` refuses a match that would pass the declared size, and the raw-literal-run branch refuses a run that would - the second was found still open by an independent review of the first fix, and closed in the same ticket. The success contract is stated in the module docstring and pinned by `tests/unit/test_webfoot_lz.py` plus a ROM-gated parity proof over all 7,390 reachable containers (`tests/integration/test_webfoot_lz_strict_rom.py`). `tools/export/webfoot_strict.py` keeps only its end-marker postcondition and its input bound; note that with `require_end_marker=True` its consumed extent runs to the stream's own marker and is therefore up to one word **larger** than the `packed_end` an edit is bounded by, on 2,728 of the 7,390 containers. The two readers agree on decoded bytes, not on that extent. |
+| 11.3 | `sprite_graphics.py` modelled the refuted 4+16 frame record | **FIXED.** `FRAME_HEADER_SIZE = 8`, `PIECE_SIZE = 12`, the attribute pair at `+0x04`, the container word at `+0x08`, and the `+0x02`/`+0x03` extent bytes named instead of carried as an "unknown" span. `graphics.py` publishes the container word from the specific piece that carries it, so `FrameRef` now records `piece_offset` rather than assuming the frame's first piece. |
+| 11.4 | Stale `7,355` figure across shipping code and documentation | **FIXED by the population-qualified sweep §11.4 prescribes** - not by blanket substitution. Every surviving figure states its population: **7,390** distinct container offsets are reachable by a piece, and **7,355** is exactly the single-piece-frame subset. |
+| 11.5 | Tests that pinned the refuted layout | **RE-POINTED, not deleted**, as §11.5 requires. The 4-byte-header and 16-byte-stride fixtures became 8-byte-header and 12-byte-stride fixtures; `test_graphics_rom.py`'s counts were re-measured rather than shifted. |
+
+**Re-measured on the canonical image under the accepted layout** (these replace
+the figures §11.4 and the ROM bible carried): 297 characters with art, 1,017
+unique animations, 10,980 frame records holding 11,005 pieces, 21 multi-piece
+frames (19 with two pieces, 2 with four), 7,390 distinct container offsets, 2,994
+containers reached by more than one frame record, 2,644 used by more than one
+character, 4,034 of 7,389 consecutive container pairs exactly adjacent, and 2,742,544
+bytes of packed extent against 9,197,696 tile bytes.
+
+**Audit state after the repair.** The scan reports hits only in
+`tools/webfoot/graphics.py` (the §11.2 `unbounded-animation-walk` wording, which
+roadmap `FIX-3` owns and this ticket deliberately did not touch). The layout keys
+`four-byte-frame-header` and `sixteen-byte-piece` now have no surviving occurrence
+anywhere in scope, and the audit test asserts that they stay absent - a
+reappearance is a regression, not a recorded state. The `stale-7355` pattern gained
+an `allow_if_line_matches` clause for the population-qualified form, because §11.4
+requires the corrected sentence to *name* 7,355 and the scan would otherwise report
+the correction itself.
 
 ---
 

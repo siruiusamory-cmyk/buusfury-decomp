@@ -424,22 +424,26 @@ def _rows() -> list[dict]:
         conf="CONFIRMED",
         source="config/roms.yaml:16",
         evidence="TOOLKIT-010 GRAPHICS_FORMAT.md, verified against the canonical image. All 297 table entries "
-                 "are ROM pointers, strictly ascending, and the last structure ends immediately before the table "
-                 "itself. Walking animation pointers from structure+0x54 reaches 295 characters, 1,013 unique "
-                 "animations, 10,959 unique frames and 7,355 unique compressed graphics containers; every "
-                 "container decodes and every decoded length equals its declared width by height.",
+                 "are ROM pointers for logical ids 10..306, strictly ascending, and the last structure ends "
+                 "immediately before the table itself. Their animation-pointer array at +0x54 is bounded by "
+                 "the count at +0x00: 4,070 slots, 1,721 non-null, reaching 297 character-table slots with "
+                 "art, 1,017 unique animation objects, 10,980 distinct frame records (11,005 piece records) "
+                 "and 7,390 distinct container offsets reachable by a piece; every container decodes and "
+                 "every decoded length equals its declared width by height.",
         notes="Size = 297 * 4 = 1,188 bytes, derived from the declared count. NOT a free-space declaration: "
               "containers are packed with no slack.")
 
     add(addr=0x086A89D0, size=0x086B6BDC - 0x086A89D0, kind="graphics",
         identity="actor_sprites.character_structures",
         conf="CONFIRMED",
-        source="docs/research/GRAPHICS_FORMAT.md:74",
-        evidence="The last structure (0x086B6B60) ends immediately before the table itself, so the character "
-                 "structures tile one contiguous region 0x006A89D0..0x006B6BDC.",
-        notes="Size derived from the stated exhaustive tiling bounds. This region is the sprite/animation "
-              "structure area; the compressed graphics containers it reaches live elsewhere and are not "
-              "enumerated here.")
+        source="docs/research/GRAPHICS_FORMAT.md:146",
+        evidence="The last structure (0x086B6B60) ends immediately before the table itself, but the structures "
+                 "do not tile one contiguous region 0x006A89D0..0x006B6BDC: each of the 297 carries an "
+                 "animation count at +0x00 and a count-bounded sparse inline animation-pointer array at "
+                 "+0x54, 4,070 slots of which 1,721 are non-null.",
+        notes="Size is the declared 0x006A89D0..0x006B6BDC span, not an exhaustive-tiling or free-space "
+              "declaration. This region is the sprite/animation structure area; the compressed graphics "
+              "containers it reaches live elsewhere and are not enumerated here.")
 
     ASSERT_START = 0x086B7400
     ASSERT_END = 0x086B758E

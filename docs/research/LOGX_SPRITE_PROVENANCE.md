@@ -709,6 +709,14 @@ halfword pass of the whole image finds **121** `BL` sites resolving to
 a class method is not counted; §12.3's method reading covers that gap for the
 two classes.
 
+**CORRECTED LATER (EVIDENCE-RISK-DEBT-001, 2026-09-20).** The raw-halfword
+predicate this census was taken with was defective - it admitted one J1/J2
+encoding combination of four and invented a bit-0-set `BLX` pair - and it has been
+replaced by a decoder-based enumeration. The counts above are unchanged under the
+corrected method, which re-derives **121** `BL` callers of `0x08000158` and **19**
+of `0x0801713C`, and finds no `BLX` caller of either; the claim now rests on a
+method that sees both encodings.
+
 ---
 
 ## 13. ANOMALIES

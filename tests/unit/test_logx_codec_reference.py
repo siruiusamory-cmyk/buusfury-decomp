@@ -326,10 +326,10 @@ def test_missing_end_marker_with_declared_size_reached_is_accepted() -> None:
 def test_output_never_exceeds_the_declared_size() -> None:
     """The declared size is a hard host-side ceiling on the output.
 
-    A stream built to produce far more than its header declares is still capped:
-    the reference stops at the declared size (or clips, as the project decoder
-    does) and never writes past it. A declared size over the host guard is
-    refused before any allocation.
+    A stream built to produce far more than its header declares is capped by the
+    declared size on the reference's stop-by-length path, and refused outright by
+    the project decoder when a single token would pass it. A declared size over
+    the host guard is refused before any allocation.
     """
     bits = _opening() + "".join(_literal7(0x41) for _ in range(4096))
     blob = struct.pack("<II", 1, 64) + _bits_to_words(bits)
@@ -341,23 +341,19 @@ def test_output_never_exceeds_the_declared_size() -> None:
         codec.decode_packed(over, 8, declared_size=codec.MAX_OUTPUT + 1)
 
 
-def test_project_decoder_clips_an_over_long_final_match() -> None:
-    """PINS A REAL BEHAVIOUR, and it is not a good one.
+def test_both_decoders_refuse_an_over_long_final_match() -> None:
+    """PINNED IN BOTH DIRECTIONS, and the project side was inverted by a fix.
 
-    Declared size 4, but the stream produces 15 bytes: the project decoder stops
-    writing at the declared length and reports success, so the caller receives a
-    truncated payload with no error. The second implementation refuses the same
-    input. This is host-side policy, not an engine contract - the engine has no
-    length comparison either - but it is the partial-payload failure mode
-    ``_unpack_stream``'s docstring says the function exists to prevent.
-
-    If a follow-up implementation ticket changes this, this test is the one that
-    should change with it.
+    Declared size 4, but the stream's final match produces 15 bytes. The project
+    decoder used to stop writing at the declared length and report success, so a
+    caller received a truncated payload with no error; the second implementation
+    refused the same input. **EVIDENCE-RISK-DEBT-001 repaired the project
+    decoder**, and this test - which used to assert the clipping - now asserts the
+    refusal, so the regression cannot come back in either implementation.
     """
     blob = bytes.fromhex("01000000040000000558d020000000c0")
-    project = wl.unpack(blob, 0)
-    assert len(project.data) == 4
-    assert project.data == b"\x41" * 4
+    with pytest.raises(wl.ContainerError, match="declared 4"):
+        wl.unpack(blob, 0)
     with pytest.raises(codec.CodecError):
         codec.decode_packed(blob, 8, declared_size=4)
 

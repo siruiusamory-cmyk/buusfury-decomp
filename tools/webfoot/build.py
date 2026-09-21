@@ -174,7 +174,8 @@ def extract_project(
     rather than a useful one.
 
     `graphics=False` skips the sprite assets. They are by far the most expensive
-    part of an extraction - 7,355 indexed PNGs against a few dozen TOML files -
+    part of an extraction - 7,390 distinct container offsets reachable by a
+    piece, one indexed PNG each, against a few dozen TOML files -
     and someone editing stats or text has no use for them. Everything else is
     unaffected, and a build from such a project is still exact, because
     unchanged graphics are re-emitted from the base image rather than from the
@@ -281,9 +282,9 @@ def _extract_graphics(
     """Write the graphics manifest and one indexed PNG per distinct payload.
 
     Shared payloads are extracted **once**. Writing a private copy per consumer
-    would turn 7,355 real assets into 10,959 fictional ones and make an edit look
-    local when the ROM makes it global, so the manifest records each asset's
-    consumers instead and the file count matches the corpus.
+    would turn 7,390 real payloads into 11,005 fictional piece references and
+    make an edit look local when the ROM makes it global, so the manifest
+    records each asset's consumers instead and the file count matches the corpus.
 
     PNGs are ROM-derived and therefore project *output*, never committed here;
     the deterministic part - the same ROM always producing the same bytes - is

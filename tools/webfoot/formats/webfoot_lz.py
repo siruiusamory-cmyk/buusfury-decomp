@@ -9,10 +9,14 @@ it ``bytes`` and an offset, exactly as `webfoot.formats` requires.
 (`src/compression.cpp`, MIT licensed, pinned in `upstreams.lock`), so this is
 VERIFIED_UPSTREAM rather than a fresh derivation. It was not taken on trust: see
 `docs/research/GRAPHICS_FORMAT.md` for the independent check against the
-canonical image, in which all 7,355 sprite containers decode with zero failures
-*and* every decoded length equals the width times height that the referring
-piece record independently declares. Two unrelated structures agreeing on all
-7,355 samples is what promoted this from plausible to CONFIRMED_ROM.
+canonical image, in which all **7,390** container offsets reachable by a sprite
+piece decode with zero failures *and* every decoded length equals the width times
+height that the referring piece record independently declares - 11,005 of 11,005
+piece references. Two unrelated structures agreeing on all 7,390 samples is what
+promoted this from plausible to CONFIRMED_ROM. (The earlier published figure was
+7,355, from the refuted reading that modelled a 16-byte piece stride and could not
+see the 21 multi-piece frames; it is exactly the single-piece subset, so it is a
+*population*, not the corpus total.)
 
 **Header.** Two little-endian words:
 
@@ -44,6 +48,48 @@ it lands at a median 1.06x the original packed size, which matters because the
 corpus has no slack: roughly one payload in two hundred re-encodes small enough
 to fit its own allocation. That is a stated limit, not a defect to be worked
 around by writing past a container's end.
+
+**Strictness: what "decoded successfully" means here.** The decoder returns a
+container only when it produced *exactly* the declared number of bytes under the
+whole format contract, and it raises :class:`ContainerError` otherwise. Stated
+exactly, a stream succeeds only when all of these hold:
+
+* the header is inside the image and the declared size is within the caller's
+  safety limit, checked before any allocation;
+* the bit reader never has to read a word past the end of the image, so a
+  truncated control, literal or match field is a failure rather than a short read;
+* every back-reference names an offset strictly inside the output produced so
+  far - distance 0 and a distance greater than the output so far are both
+  malformed, never a wrap-around;
+* no token carries the output *past* the declared size. A match that would
+  produce more bytes than the header declares is malformed, and so is a
+  raw-literal run that would: both carry their own extent, so the decoder refuses
+  them rather than writing what fits and reporting success;
+* the token stream reaches the declared size exactly. A stream that stops early -
+  by its end marker or by exhaustion - is refused.
+
+The one thing it does not require is the stream's own end marker, because this
+project's :func:`pack` terminates by output length and never emits one. The engine
+has no output counter either - it writes until the stream's own escape and performs
+no size comparison at all, as `tools/research/webfoot_codec_reference.py` records
+from the `strb`/`ldr` reads and the dispatcher's two-argument call. In this corpus
+that escape falls at exactly the declared length: the export-side reader requires
+it there and all 7,390 containers pass that stronger check, which is why the marker
+is an additional canonical-corpus observation rather than a requirement here.
+
+**The defect this replaced (EVIDENCE-RISK-DEBT-001).** Two token classes used to
+stop appending once the output reached the declared size, so a stream whose final
+match - or whose raw-literal run - overran was *clipped* and reported as a
+success. The match path (``copy_match``) was repaired first; an independent review
+of that fix found the raw-literal-run path still open, and it was closed in the
+same ticket. Measured on the canonical image, refusing instead of clipping changes
+no accepted decode, and the two paths are provably inert there for different
+reasons: no container's match reaches the bound (all 7,390 already produce exactly
+their declared size, checked with the reference's end-marker mode), and **no
+canonical container uses the raw-literal-run token at all**, so the run-path rule
+cannot fire. The negative tests that pin both refusals are
+in `tests/unit/test_webfoot_lz.py`; the previously documented reproduction is
+`test_a_final_match_overrunning_the_declared_size_is_refused`.
 """
 
 from __future__ import annotations
@@ -148,6 +194,23 @@ def _gamma(reader: _WordBitReader) -> int:
             return value
 
 
+def _emit_raw(out: bytearray, value: int, expected: int) -> None:
+    """Append one byte of a raw-literal run, refusing to pass the declared size.
+
+    The run is delimited by its own terminator bit, so a run that would write
+    past the declared size is a malformed stream - not a run to shorten. The
+    export-side reader states the same rule in its own ``_emit_raw``; the two
+    are deliberately separate implementations rather than one shared helper,
+    because the export reader exists to be an independent check on this one.
+    """
+    if len(out) >= expected:
+        raise ContainerError(
+            f"raw literal run at output offset {len(out)} overruns the declared "
+            f"{expected}"
+        )
+    out.append(value)
+
+
 def _unpack_stream(
     data: bytes,
     payload: int,
@@ -156,10 +219,13 @@ def _unpack_stream(
 ) -> tuple[bytes, int]:
     """Decode ``expected`` bytes starting at ``payload``.
 
-    Returns the bytes and the reader's final word position. Raises rather than
-    returning short output: a stream that ends early is corrupt or
-    misidentified, and silently yielding a partial tile would put wrong pixels
-    into a sprite without anything downstream noticing.
+    Returns the bytes and the reader's final word position. The module docstring
+    states the full success contract; the short version is that a token which
+    would carry the output past ``expected`` is refused rather than clipped, so a
+    returned container always means "exactly this many bytes were produced
+    honestly". A stream that ends early is refused for the same reason: silently
+    yielding a partial tile would put wrong pixels into a sprite without anything
+    downstream noticing.
     """
     reader = _WordBitReader(data, payload)
     out = bytearray()
@@ -174,9 +240,12 @@ def _unpack_stream(
                 f"back-reference distance {distance} at output offset {len(out)} "
                 "points outside the decoded output"
             )
+        if len(out) + count > expected:
+            raise ContainerError(
+                f"match at output offset {len(out)} would produce "
+                f"{len(out) + count} bytes against a declared {expected}"
+            )
         for _ in range(count):
-            if len(out) >= expected:
-                break
             out.append(out[-distance])
 
     while len(out) < expected:
@@ -225,12 +294,16 @@ def _unpack_stream(
         elif short_distance > 0:
             copy_match(short_distance, 1)
         elif reader.bit():
+            # A run of raw 8-bit literals, ended by a clear bit. It is emitted
+            # whole or refused: the run carries its own terminator, so stopping
+            # once the output reached the declared size would discard literals
+            # the stream actually encodes - the same silent clip the match path
+            # no longer performs. EVIDENCE-RISK-DEBT-001 closed both paths; an
+            # independent review found this one still open in the first pass.
             while True:
-                out.append(reader.get(8))
-                if len(out) >= expected:
-                    break
-                out.append(reader.get(8))
-                if len(out) >= expected or reader.bit() == 0:
+                _emit_raw(out, reader.get(8), expected)
+                _emit_raw(out, reader.get(8), expected)
+                if reader.bit() == 0:
                     break
         else:
             literal_bits = 7 + reader.bit()
@@ -351,12 +424,12 @@ def build_stored(payload: bytes) -> bytes:
 
     Correct by construction - a stored container is the identity transform
     behind a header this project has verified - but almost never *usable* for an
-    in-place edit in this corpus. Measured over all 7,355 sprite containers the
-    packed form is between 1.6% and 78.1% of the raw size (median 32.8%), so a
-    stored rewrite exceeds the original allocation in every single case: 0 of
-    7,355 would fit. It is kept because the header defines the kind and a profile
-    that one day declares free space could use it. Nothing in the current write
-    path does.
+    in-place edit in this corpus. Measured over all 7,390 sprite containers the
+    packed form is between 1.6% and 73.5% of the header-plus-raw size (median
+    32.6%), so a stored rewrite exceeds the original allocation in every single
+    case: 0 of 7,390 would fit. It is kept because the header defines the kind and
+    a profile that one day declares free space could use it. Nothing in the
+    current write path does.
     """
     return struct.pack("<II", STORED, len(payload)) + payload
 

@@ -14,12 +14,13 @@ build. Assets are named by *what they are* within a verified profile:
 The numeric part is a position in a deterministic enumeration of the corpus, so
 the same ROM always yields the same names, and the name survives a rebuild.
 
-**Sharing is represented, not flattened.** Of the 7,355 graphics in the
-canonical corpus, 2,986 are reached by more than one frame record and 2,644 are
-used by more than one character; one is used by eight. Extracting a private copy
-per consumer would turn 7,355 real payloads into 10,959 fictional ones and make
-"edit this character" quietly rewrite others. So a graphic is one asset carrying
-its consumers, and :meth:`consumers_of` and :meth:`characters_using` are not
+**Sharing is represented, not flattened.** Of the 7,390 graphics in the
+canonical corpus, 2,994 are reached by more than one frame record and 2,644 are
+used by more than one character; one is used by eight. The 10,980 frame records
+hold 11,005 piece records between them, so extracting a private copy per piece
+would turn 7,390 real payloads into 11,005 fictional ones and make "edit this
+character" quietly rewrite others. So a graphic is one asset carrying its
+consumers, and :meth:`consumers_of` and :meth:`characters_using` are not
 diagnostic conveniences: they are what a caller must read before editing.
 
 **What is deliberately absent.** There is no `Sprite` class, no direction names,
@@ -97,13 +98,17 @@ class FrameRef:
     A frame is identified by its file offset because - unlike a graphic - it is
     an interior structural node the project does not export as an asset. The
     offset is provenance for a consumer list, never a project-visible name.
+    ``piece_offset`` is the file offset of the specific 12-byte piece record that
+    carries the container word, which is what makes the published reference point
+    at the right bytes: a frame may hold several pieces, and only one of them need
+    name this payload.
 
     **A consumer is a distinct frame record, not a traversal path.** The same
-    frame is reachable by several routes, because 333 animations are shared
-    between characters: the canonical image has 10,959 distinct frames but
-    20,760 routes to them. Counting routes would overstate sharing, so the
-    consumer list is deduplicated by ``frame_offset`` and the remaining fields
-    record the first route that reached it in deterministic order.
+    frame is reachable by several routes, because animations are shared between
+    characters: the canonical image has 10,980 distinct frames but far more routes
+    to them. Counting routes would overstate sharing, so the consumer list is
+    deduplicated by ``frame_offset`` and the remaining fields record the first
+    route that reached it in deterministic order.
     :meth:`ActorSprites.characters_using` reports the affected characters, which
     is the question an editor actually needs answered.
     """
@@ -113,6 +118,7 @@ class FrameRef:
     animation_index: int
     frame_index: int
     direction: int
+    piece_offset: int
 
 
 @dataclass(frozen=True)
@@ -273,6 +279,7 @@ class ActorSprites:
                                     animation_index=animation_index,
                                     frame_index=frame_index,
                                     direction=direction,
+                                    piece_offset=piece.offset,
                                 ),
                             )
                             users.setdefault(graphic_offset, set()).add(slot)
@@ -376,7 +383,7 @@ class ActorSprites:
         pointer *shape* - a scanner is not allowed to grow the graph, per the
         rule TOOLKIT-003 established.
 
-        Frame pointers are deliberately left out. Publishing all 13,596 slots
+        Frame pointers are deliberately left out. Publishing all 13,660 slots
         would triple the graph to restate what the animation records already say,
         and none of them is an edit target.
         """
@@ -444,11 +451,13 @@ class ActorSprites:
             anchor(key, graphic.file_offset, graphic.packed_size,
                    "graphics_container", alignment=4)
             for reference in graphic.consumers:
-                # The piece record's +0x0C word. One reference per distinct
-                # frame, so a shared payload shows every route into it.
+                # The container word of the specific piece that names this
+                # payload: piece +0x08, at frame + 8 + 12 * index. Deriving it
+                # from `frame_offset` alone would be right only for the first
+                # piece of a frame, and 21 canonical frames hold more than one.
                 references.append(
                     Reference(
-                        FileOffset(reference.frame_offset + 4 + 0x0C),
+                        FileOffset(reference.piece_offset + sg.PIECE_GRAPHICS),
                         AnchorId(key),
                         0,
                         ReferenceEncoding.ABSOLUTE_ROM_U32_LE,

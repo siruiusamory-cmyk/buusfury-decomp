@@ -147,32 +147,43 @@ def test_roadmap_exists_and_is_grouped_into_phases():
 #: LOGX-SYNTHESIS-001 §11. Each maps to the bounded fix that owns it. A new
 #: production hit outside this map fails the audit, which is the point: the
 #: synthesis is not allowed to discover a defect and leave it unclassified.
+#:
+#: **FIX-2 and FIX-5 were executed by EVIDENCE-RISK-DEBT-001**, so
+#: `sprite_graphics.py` no longer appears here at all: its four recorded
+#: production defects (the 4-byte frame header, the 16-byte piece stride, the
+#: stale 7,355 headline and the `+0x0C` graphics word) are gone from live code,
+#: and a reappearance is now a regression rather than a known state. What remains
+#: is `unbounded-animation-walk`, which is a recorded defect owned by roadmap
+#: FIX-3 (the count-bounded animation traversal) and is deliberately not part of
+#: this ticket's scope.
 KNOWN_PRODUCTION_DEFECTS: dict[str, frozenset[str]] = {
-    "tools/webfoot/formats/sprite_graphics.py": frozenset(
-        {"four-byte-frame-header", "sixteen-byte-piece", "stale-7355"}
-    ),
-    "tools/webfoot/graphics.py": frozenset(
-        {"stale-7355", "unbounded-animation-walk"}
-    ),
+    "tools/webfoot/graphics.py": frozenset({"unbounded-animation-walk"}),
 }
 
-#: Documents and modules whose surviving hits are stale *wording* rather than a
-#: wrong result, all scheduled under FIX-5 or FIX-3. This is the audit's complete
-#: expected finding set: a hit anywhere else is a new defect.
-KNOWN_STALE_TEXT: frozenset[str] = frozenset(
+#: Files the corrected layout and figures must have left clean. A hit here is a
+#: regression of FIX-2 or FIX-5 rather than a recorded state.
+FIXED_BY_EVIDENCE_RISK_DEBT_001: frozenset[str] = frozenset(
     {
         "tools/webfoot/formats/sprite_graphics.py",
         "tools/webfoot/formats/webfoot_lz.py",
-        "tools/webfoot/build.py",
-        "tools/webfoot/cli.py",
-        "tools/webfoot/graphics.py",
-        "tools/webfoot/atlas_producers/seed.py",
         "tools/webfoot/data/roms.yaml",
         "config/roms.yaml",
         "docs/architecture.md",
         "docs/project-format.md",
         "docs/research/SUBSYSTEM_MAP.md",
         "THIRD-PARTY-NOTICES.md",
+    }
+)
+
+#: Documents and modules whose surviving hits are stale *wording* rather than a
+#: wrong result. This is the audit's complete expected finding set, and
+#: :func:`test_the_recorded_stale_text_set_is_exactly_what_remains` holds it to
+#: exactly that: after EVIDENCE-RISK-DEBT-001 executed FIX-2 and FIX-5, the only
+#: file left is `graphics.py`, whose single hit is the FIX-3-owned
+#: `unbounded-animation-walk` wording.
+KNOWN_STALE_TEXT: frozenset[str] = frozenset(
+    {
+        "tools/webfoot/graphics.py",
     }
 )
 
@@ -190,6 +201,18 @@ def test_no_superseded_assumption_survives_outside_the_recorded_defects():
     assert unexpected == [], unexpected
 
 
+def test_the_recorded_stale_text_set_is_exactly_what_remains():
+    """The map must not drift in either direction.
+
+    An unexpected file is a new defect; a recorded file with no hit left is a map
+    that has stopped describing the tree, which is how a fixed defect stays
+    "known" long after it was repaired.
+    """
+    assert set(_hits_by_file()) == KNOWN_STALE_TEXT, sorted(
+        set(_hits_by_file()) ^ KNOWN_STALE_TEXT
+    )
+
+
 def test_recorded_production_defects_are_exactly_the_ones_the_synthesis_names():
     for relative, allowed in KNOWN_PRODUCTION_DEFECTS.items():
         keys = {
@@ -199,6 +222,43 @@ def test_recorded_production_defects_are_exactly_the_ones_the_synthesis_names():
         }
         assert keys, f"{relative} no longer shows the recorded defect - update the synthesis"
         assert keys <= allowed, (relative, sorted(keys - allowed))
+
+
+def test_the_corrected_files_no_longer_carry_a_superseded_assumption():
+    """FIX-2 and FIX-5 are executed, so these files' hits must be gone.
+
+    This asserts the *negative* proof mechanically: the refuted 4-byte/16-byte
+    layout and the stale 7,355 headline must not be readable as current anywhere
+    the correction touched. Reintroducing one is a regression, and the audit
+    reports it as a new defect rather than as a recorded state.
+    """
+    regressed = sorted(set(_hits_by_file()) & FIXED_BY_EVIDENCE_RISK_DEBT_001)
+    assert regressed == [], regressed
+
+
+def test_a_population_qualified_7355_line_is_not_reported_as_stale(tmp_path):
+    """FIX-5's own prescribed wording must survive the scan.
+
+    The replacement rule is "state the population", so a line that names the
+    accepted total, the subset or the population alongside 7,355 is the corrected
+    form. Without this the sweep could never reach zero. Both planted files sit at
+    paths the scan's own globs reach, so the test exercises the pattern rather
+    than the file list.
+    """
+    (tmp_path / "docs").mkdir(parents=True)
+    (tmp_path / "config").mkdir(parents=True)
+    (tmp_path / "docs" / "architecture.md").write_text(
+        "7,390 distinct container offsets are reachable by a piece; 7,355 of them\n"
+        "by single-piece frames.\n",
+        encoding="utf-8",
+    )
+    (tmp_path / "config" / "roms.yaml").write_text(
+        "The corpus holds 7,355 graphics containers in total.\n", encoding="utf-8"
+    )
+    findings = audit.superseded_hits(tmp_path)
+    locations = {finding.location for finding in findings}
+    assert "docs/architecture.md:1" not in locations
+    assert "config/roms.yaml:1" in locations
 
 
 def test_live_code_carries_no_superseded_assumption_of_an_unrecorded_kind():
@@ -265,10 +325,17 @@ def test_a_new_stale_claim_in_a_banner_exempt_document_is_still_reported(tmp_pat
     ), "a new stale claim in an exempt document was not reported"
 
 
-def test_the_four_patterns_with_no_surviving_occurrence_stay_absent():
-    """These four were refuted and have no hit anywhere; a regression is news."""
+def test_the_patterns_with_no_surviving_occurrence_stay_absent():
+    """These six were refuted and have no hit anywhere; a regression is news.
+
+    Four were already absent when the synthesis closed. The two layout keys joined
+    them when EVIDENCE-RISK-DEBT-001 executed FIX-2, which is why this test grew:
+    the correction is only complete while nothing reads the 4-byte frame header or
+    the 16-byte piece stride as current.
+    """
     keys = {"sixty-four-kib-engine-limit", "zero-first-word-means-empty",
-            "layer-0x00-numeric-type", "connector-destination-be-u16"}
+            "layer-0x00-numeric-type", "connector-destination-be-u16",
+            "four-byte-frame-header", "sixteen-byte-piece"}
     present = {finding.detail.split(":", 1)[0] for finding in audit.superseded_hits()}
     assert keys & present == set(), sorted(keys & present)
 

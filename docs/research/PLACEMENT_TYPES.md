@@ -190,5 +190,29 @@ now established for the supported Buu placement constructor: signed raw low/high
 halfwords are map/world X/Y pixels (`PLACEMENT_POSITION_PROVENANCE.md`, Phase 3).
 None warrants expanding TOOLKIT-009 into gameplay RE.
 
+## Addendum 2026-09-21 - `+0x10 id_raw` is a sprite id
+
+Source: HUMAN-4-SPAWN-LOOKUP-001 and HUMAN-4-USAGE-CLOSURE-001 (recorded by
+HUMAN-4-RESEARCH-CAPTURE-001); read-only static work on the canonical image.
+
+Two statements above are refined, not overturned:
+
+* the field-audit row `+10 id_raw | CONFIRMED load, semantics UNKNOWN` - the load
+  is `0x0800F6AE ldr r0,[r5,#0x10]` followed by `0x0800F6B0 bl 0x08000158`, so the
+  field is a **sprite id**: the resolver indexes the actor character pointer table
+  `0x086B6BDC` at `argument - 10`, and a curated sprite id is `run index + 10`.
+  Arguments below 10 take the player/party path instead;
+* the capability row `Graphics/resource attachment | UNKNOWN` - graphics identity
+  is now decodable from the record itself through that field.
+
+Still standing: `NPC/friendly actor linkage | UNKNOWN`, `Item/pickup linkage |
+UNKNOWN` and `Script/event attachment | UNKNOWN`. Nothing here classifies a
+placement as an NPC, friendly, item or enemy, and no `+0x10` **write** is
+authorised - the constructor's remaining arguments and type-swap compatibility are
+untouched. The same field contract holds for the two sibling families
+(`0x08017DA3` at `+0x10`, `0x080111A9` at `+0x0C`). Full statement and the
+map-object census result: [actor sprite graphics](GRAPHICS_FORMAT.md) §12 and
+[map object arrays](BUU_MAP_OBJECT_ARRAYS.md).
+
 Validation and independent final review results are recorded in
 `../tickets/TOOLKIT-009-review.md` after completion.

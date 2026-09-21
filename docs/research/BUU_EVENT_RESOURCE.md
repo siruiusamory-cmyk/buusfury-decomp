@@ -232,3 +232,73 @@ defect in a hand-rolled instruction walker, not a property of the data.
 - TOOLKIT-014 does not establish generic script-operand → text
 - `0x0800421F` is a handler, not a factory tag
 - operand identity resolves by physical position, not decoded value
+
+## Addendum 2026-09-21 - type-4 packed payload recovery, and corpus completeness
+
+Source: HUMAN-4-USAGE-CLOSURE-001 (recorded by HUMAN-4-RESEARCH-CAPTURE-001).
+Read-only static work on the canonical image; no runtime capture, no code change.
+
+### The failure was the acceptance rule, not the data
+
+Ten type-4 records sat outside every decode performed before that ticket:
+`event_resource` **0, 171, 185, 193, 199, 208, 239, 256, 347, 450**. They are valid
+**headerless Webfoot bitstreams beginning at `dialog + 0x04`**. The earlier rule
+demanded a size whose decode round-tripped as a VM script with **no** opaque byte
+and a packed end inside the record; these blocks legitimately contain
+unreachable-but-exact bytes, which this page already tolerates for a dialog (the
+branch-over-terminate precedent at `event_resource:0393` above). Refusing them was
+a property of the rule, not of the bytes.
+
+### Accepted bounded recovery rule
+
+`_unpack_stream` raises when a stream terminates before the requested size, so the
+**natural decoded length is the maximal valid decode boundary** - the largest size
+that still decodes. Control: `event_resource:0342` peaks at exactly **103**, the
+length the strict rule independently established, so the two rules agree on a block
+they can both read. Applying the natural-length rule to the ten:
+
+| `event_resource` | natural size | packed end | opaque bytes | round-trip |
+|---|---|---|---|---|
+| 0 | 46 | `0x77C538` | 3 | exact |
+| 171 | 96 | `0x7852B0` | 1 | exact |
+| 185 | 253 | `0x7857E0` | 20 | exact |
+| 193 | 78 | `0x786688` | 5 | exact |
+| 199 | 107 | `0x786A00` | 6 | exact |
+| 208 | 50 | `0x786EB0` | 2 | exact |
+| 239 | 82 | `0x78A4DC` | 3 | exact |
+| 256 | 63 | `0x78A730` | 3 | exact |
+| 347 | 185 | `0x790F30` | 12 | exact |
+| 450 | 196 | `0x7938F0` | 1 | exact |
+
+**All ten recovered, all round-trip.** Their native-slot vocabulary matches the
+accepted corpus (the slot 27/28 dialog and flag primitives, 43, 48, 55, 77, 93,
+113, 114, 120, 127, 146, 149, 186); **none of the ten contains an actor-spawn site
+(native slot 53) and none contains the literal `101`**. The remaining 145 records
+(139 type 5, 2 each of types 3, 6, 7) yield **no** recoverable bitstream at any size
+4..2048 or literal width 1..8, so the script-bearing corpus is now **complete:
+377 / 377 decoded** (236 type-0 + 141 type-4).
+
+### Scope of this result
+
+Measured for the **522-record event-resource population only**. It is not
+generalised to other script families (their own pages hold their own counts) and it
+does not decode `0x08049120`, the runtime expansion routine this page already
+records. The engine-side statement above is unchanged: the runtime path reaches
+`0x08049120`, an ARM veneer to IWRAM `0x03000040`, and that routine was not
+disassembled here.
+
+The decoder identity is therefore **INFERRED**, carried by three independent
+cross-checks rather than by the expansion routine: (1) the maximal-length rule
+yields one unique boundary per record and agrees with the strict rule on the
+control; (2) type-4 `event_resource:0293` decodes to `push_many(3, 1528, 120, ..)`
+→ `"Match 5 Fight!"`, continuing the 1525..1532 series whose other members are
+type-0 and already CONFIRMED in TOOLKIT-020 - a check that could have failed; and
+(3) the actor-spawn operand invariant (first pushed value ≤ 305 or a party slot
+1..5, the other two being coordinates up to 600) reproduces independently across
+**201 type-4 spawn sites**, exactly as in the 25 type-0 sites.
+
+**Capability boundary, refined not overturned.** "Type 4 is UNSUPPORTED" above
+remains true of the *runtime expansion*; what changes is that the packed payload
+**is present in ROM and reads**, with the project's existing headerless bitstream
+grammar, to a byte-exact round-tripping VM instruction stream. Nothing here
+authorises a type-4 WRITE, and no gameplay meaning is claimed.

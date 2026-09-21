@@ -747,3 +747,30 @@ Not investigated, per the ticket: free space (including the TOOLKIT-011 tail and
 516 candidate references), scripts, sibling object semantics, collision, and unrelated
 map structures. No engine behaviour is claimed for a materialized body - this ticket
 proves the SDK can construct and place one, not that the game runs it.
+
+## Addendum 2026-09-21 - one decoded field per family: the sprite id
+
+Source: HUMAN-4-SPAWN-LOOKUP-001 and HUMAN-4-USAGE-CLOSURE-001 (recorded by
+HUMAN-4-RESEARCH-CAPTURE-001). Read-only static work on the canonical image.
+
+The sibling families above are recorded as classified-but-undecoded, and that stays
+true of their payloads **except for one field each**: all three families load a
+**sprite id** and hand it to the sprite resolver `0x08000158`.
+
+| Family | Target | Sprite-id field | Evidence |
+| --- | --- | --- | --- |
+| Placement `0x0800FD55` | constructor `0x0800F68C` | `+0x10` | `0x0800F6AE ldr r0,[r5,#0x10]` → `0x0800F6B0 bl 0x08000158` |
+| Sibling `0x08017DA3` | fetch `0x08017DA2` | `+0x10` | `0x08017DA6 ldr r0,[r0,#0x10]` → `0x08017DAC bl 0x08000158` |
+| Sibling `0x080111A9` | fetch `0x080111A8` | `+0x0C` | `0x080111AC ldr r0,[r0,#0x0C]` → `0x080111B0 bl 0x08000158` |
+
+The resolver's argument is the **curated sprite id**: `0x08000158` indexes the
+character pointer table `0x086B6BDC` at `argument - 10`, and a value below 10 takes
+the player/party path. Full statement, including why that arithmetic makes the
+argument the sprite id, is in `GRAPHICS_FORMAT.md` §12.
+
+**First per-sprite query over this census (measured).** The 1,898 slots reference
+**199 distinct sprite ids**. Curated sprite **`Human 4` (id 101, definition
+`0x086AC930`) is referenced by none of them**, so it has **NO STATICALLY PROVEN
+SHIPPED SPAWN** through the map-object census. That is a bounded negative, not a
+global unused claim: 32 sites elsewhere take their sprite operand from runtime
+interpreter variables. Evidence chain and the residual: `GRAPHICS_FORMAT.md` §12.

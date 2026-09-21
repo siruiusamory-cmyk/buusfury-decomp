@@ -1,3 +1,5 @@
+import capabilityRegistry from "./capabilities.json";
+
 export type MilestoneStatus = "complete" | "current" | "next" | "target";
 
 /**
@@ -124,6 +126,203 @@ export interface ProjectStatus {
   /** Waiver of the proprietary-artifact rule for real product captures. */
   assetPolicy: string;
 }
+
+/* ---------------------------------------------------------------------------
+ * The capability registry
+ *
+ * `capabilities.json` is the one current list of DragonByte Z product
+ * capabilities. The buildout list below, its per-family tallies and the
+ * percentage on the site are all derived from it, so there is no second place
+ * to record a capability's state.
+ *
+ * The registry keeps product capability and research knowledge apart on
+ * purpose. Knowing a binary structure is not a shipped capability, so a
+ * capability that is counted as shipped must name the editor surface a user
+ * reaches it through, how its result was proven, and the evidence behind it;
+ * everything else lives in `researchOnly`, which is never counted.
+ * ------------------------------------------------------------------------- */
+
+/** How a shipped capability's result was proven. */
+export type CapabilityProof = "runtime" | "application";
+
+const PROOF_LEVELS: readonly CapabilityProof[] = ["runtime", "application"];
+
+interface RegistryFamily {
+  id: string;
+  label: string;
+  title: string;
+}
+
+interface RegistryCapability {
+  id: string;
+  family: string;
+  title: string;
+  state: CapabilityState;
+  detail: string;
+  /** Bounded scope: what the capability does NOT do, or why it is missing. */
+  limits: string[];
+  /** Where in DragonByte Z it is reachable. Shipped capabilities only. */
+  surface?: string;
+  /** How its result was proven. Shipped capabilities only. */
+  proof?: CapabilityProof;
+  evidence: string;
+  /** Counts this capability owns, so a quoted figure has exactly one owner. */
+  measurements?: Record<string, number>;
+}
+
+/** A proven fact about the binary that is deliberately not a product capability. */
+interface RegistryResearchNote {
+  id: string;
+  statement: string;
+  contributesTo: string[];
+  doesNotConfer: string;
+}
+
+interface CapabilityRegistry {
+  schemaVersion: number;
+  track: {
+    label: string;
+    title: string;
+    capabilityTotal: number;
+    blurb: string;
+  };
+  families: RegistryFamily[];
+  capabilities: RegistryCapability[];
+  researchOnly: RegistryResearchNote[];
+}
+
+const registry = capabilityRegistry as unknown as CapabilityRegistry;
+
+/**
+ * The structural half of the registry contract, enforced when the site builds.
+ *
+ * It is deliberately a SUBSET of what `tests/unit/test_capability_registry.py`
+ * checks: it exists so a malformed registry fails `npm run check` and
+ * `npm run build` instead of publishing a wrong page, while CI - which runs the
+ * suite without Node - enforces the whole contract, including the fields a page
+ * never reads (limitations, evidence and research separation).
+ */
+function validateCapabilityRegistry(value: CapabilityRegistry): void {
+  if (value.schemaVersion !== 1) {
+    throw new Error(`Unsupported capability registry schema version: ${value.schemaVersion}.`);
+  }
+
+  const familyIds = value.families.map((family) => family.id);
+  const duplicateFamily = familyIds.find((id, index) => familyIds.indexOf(id) !== index);
+  if (duplicateFamily) {
+    throw new Error(`Capability family ids must be unique; "${duplicateFamily}" appears twice.`);
+  }
+
+  const capabilityIds = value.capabilities.map((capability) => capability.id);
+  const duplicateCapability = capabilityIds.find(
+    (id, index) => capabilityIds.indexOf(id) !== index,
+  );
+  if (duplicateCapability) {
+    throw new Error(`Capability ids must be unique; "${duplicateCapability}" appears twice.`);
+  }
+
+  // The declared denominator is deliberately redundant with the list: changing
+  // the total is a product decision, not a side effect of editing one record.
+  if (value.capabilities.length !== value.track.capabilityTotal) {
+    throw new Error(
+      `The registry declares ${value.track.capabilityTotal} capabilities but lists ` +
+        `${value.capabilities.length}; update the denominator with the list.`,
+    );
+  }
+
+  for (const family of value.families) {
+    if (!value.capabilities.some((c) => c.family === family.id)) {
+      throw new Error(`Capability family "${family.id}" lists no capabilities.`);
+    }
+  }
+
+  for (const capability of value.capabilities) {
+    const where = `capability "${capability.id}"`;
+
+    if (!familyIds.includes(capability.family)) {
+      throw new Error(`${where} names undeclared family "${capability.family}".`);
+    }
+    if (!/^[a-z][a-z0-9-]*$/.test(capability.id)) {
+      throw new Error(`${where} has a malformed stable id.`);
+    }
+    if (capability.state !== "shipped" && capability.state !== "missing") {
+      throw new Error(`${where} has state "${capability.state}", not "shipped" or "missing".`);
+    }
+
+    // A research result is not a product capability: a counted capability names
+    // the editor surface a user reaches it through and how its result was
+    // proven, and one that is not shipped claims neither.
+    if (capability.state === "shipped") {
+      if (!capability.surface?.trim() || !capability.proof || !PROOF_LEVELS.includes(capability.proof)) {
+        throw new Error(
+          `${where} is counted as shipped without the editor surface and a known proof level ` +
+            `that separate a product capability from a research result.`,
+        );
+      }
+    } else if (capability.surface || capability.proof) {
+      throw new Error(
+        `${where} is not shipped and must not claim an editor surface or a proof level.`,
+      );
+    }
+  }
+
+  for (const note of value.researchOnly) {
+    if (capabilityIds.includes(note.id)) {
+      throw new Error(`Research note "${note.id}" collides with a product capability id.`);
+    }
+    if (!note.statement.trim() || !note.doesNotConfer.trim()) {
+      throw new Error(`Research note "${note.id}" must state its fact and what it does not confer.`);
+    }
+    for (const target of note.contributesTo) {
+      if (!capabilityIds.includes(target)) {
+        throw new Error(`Research note "${note.id}" contributes to unknown capability "${target}".`);
+      }
+    }
+  }
+}
+
+validateCapabilityRegistry(registry);
+
+/**
+ * A count one capability owns, read from the registry.
+ *
+ * The page states a few of these figures outside the roadmap - in the measured
+ * strip and in the product-capture captions - so they are read here instead of
+ * being written twice. A missing or misspelled measurement throws rather than
+ * publishing a blank or stale number.
+ */
+function capabilityCount(capabilityId: string, name: string): number {
+  const declared = registry.capabilities
+    .find((capability) => capability.id === capabilityId)?.measurements?.[name];
+  if (typeof declared !== "number") {
+    throw new Error(`Capability "${capabilityId}" does not declare the ${name} measurement.`);
+  }
+  return declared;
+}
+
+const mapsViewable = capabilityCount("map-browser", "mapsViewable");
+const layoutEditableMaps = capabilityCount("layout", "editableMaps");
+const layoutReadOnlyMaps = capabilityCount("layout", "readOnlyMaps");
+const transitionRecords = capabilityCount("warps", "transitionRecords");
+
+const buildout: Buildout = {
+  label: registry.track.label,
+  title: registry.track.title,
+  blurb: registry.track.blurb,
+  families: registry.families.map((family) => ({
+    key: family.id,
+    label: family.label,
+    title: family.title,
+    items: registry.capabilities
+      .filter((capability) => capability.family === family.id)
+      .map((capability) => ({
+        key: capability.id,
+        title: capability.title,
+        detail: capability.detail,
+        state: capability.state,
+      })),
+  })),
+};
 
 export const project: ProjectStatus = {
   name: "WEBFOOT SDK",
@@ -401,7 +600,7 @@ export const project: ProjectStatus = {
       plainEnglish:
         "See the game's actual sprites, frames, animations, and palettes, select them by sight, edit a colour, and watch the change appear in the running game.",
       technical:
-        "Sprite browsing and palette editing are runtime-proven. DragonByte Z renders supported retail maps through the SDK's ROM-only renderer and overlays neutral placement markers at the proven signed map-pixel coordinates. The owner used the map itself to select, add, and move an object, then built and confirmed the generated ROM in the retail Buu's Fury engine. The GUI stays a thin client over semantic scene and project APIs; it contains no map-format or direct-ROM-write logic.",
+        "Sprite browsing and palette recolouring are proven by the emitted image rather than an emulator run: the recolour was confirmed by rendering the built image. DragonByte Z renders supported retail maps through the SDK's ROM-only renderer and overlays neutral placement markers at the proven signed map-pixel coordinates. The owner used the map itself to select, add, and move an object, then built and confirmed the generated ROM in the retail Buu's Fury engine. The GUI stays a thin client over semantic scene and project APIs; it contains no map-format or direct-ROM-write logic.",
       status: "complete",
     },
     {
@@ -493,248 +692,10 @@ export const project: ProjectStatus = {
     { label: "ADVANCED AUTHORING / AUTHOR_NEW", state: "target" },
     { label: "PLAYABLE LOG1 CONTENT", state: "target" },
   ],
-  // The active track. The percentage on the site is computed from `items`, so
-  // it cannot drift from this list: add a capability and the number moves.
-  buildout: {
-    label: "ACTIVE TRACK",
-    title: "DRAGONBYTE Z BUILDOUT",
-    blurb:
-      "Every capability below is a user-facing editor surface or an authoring" +
-      " operation reachable from DragonByte Z itself. A reverse-engineering result is" +
-      " not counted here, however complete it is: knowing a binary structure is not the" +
-      " same as an author being able to use it.",
-    families: [
-      {
-        key: "see",
-        label: "READ",
-        title: "Inspect what the game already contains",
-        items: [
-          {
-            key: "shell",
-            title: "Desktop application shell",
-            detail:
-              "Eight tabs in contract order - Atlas, Inspector, Maps, Map, Map Browser," +
-              " Graphics, Build, Launch. Only Atlas opens until a ROM is loaded, and the" +
-              " loaded image must match a configured profile identity.",
-            state: "shipped",
-          },
-          {
-            key: "atlas",
-            title: "Full-ROM atlas search",
-            detail:
-              "Search the whole game by name, map or id, including text the game keeps" +
-              " compressed, without knowing a ROM address.",
-            state: "shipped",
-          },
-          {
-            key: "inspector",
-            title: "Recovered-record inspector",
-            detail:
-              "Read the fields the SDK has actually recovered for a search result, shown" +
-              " under the names the evidence supports rather than a plausible guess.",
-            state: "shipped",
-          },
-          {
-            key: "graphics",
-            title: "Sprite, animation and palette browsing",
-            detail:
-              "See the game's decoded sprites, step their animations, and read which" +
-              " records refer to each one.",
-            state: "shipped",
-          },
-          {
-            key: "map-browser",
-            title: "Map Browser: every map and layer",
-            detail:
-              "All 452 maps render from immutable ROM bytes, layer by layer, at zoom, with" +
-              " a panel reporting the map's id, dimensions and per-layer type.",
-            state: "shipped",
-          },
-        ],
-      },
-      {
-        key: "edit",
-        label: "EDIT",
-        title: "Change what already exists",
-        items: [
-          {
-            key: "dialogue",
-            title: "Dialogue line editing",
-            detail:
-              "Resolve a supported line, edit it, validate and build. A rewritten ordinary" +
-              " NPC line has been displayed by the retail engine in its own dialogue box.",
-            state: "shipped",
-          },
-          {
-            key: "palette",
-            title: "Shared palette recolour",
-            detail:
-              "Recolour a shared object palette entry through the project; the SDK owns" +
-              " RGB-to-GBA-word packing and applies it at build.",
-            state: "shipped",
-          },
-          {
-            key: "placement",
-            title: "Object placement on the rendered map",
-            detail:
-              "Select, add and move supported objects directly on the real map, then build" +
-              " and play the result in the original engine.",
-            state: "shipped",
-          },
-          {
-            key: "layout",
-            title: "Map layout editing: chunk-cell replacement",
-            detail:
-              "Reassign one 256x256 chunk cell of a map's dominant layer to another chunk" +
-              " that layer already uses. 341 of the 452 maps expose an editable layer; the" +
-              " remaining 111 are read-only, with the reason stated.",
-            state: "shipped",
-          },
-          {
-            key: "tiles",
-            title: "Tile-level painting",
-            detail:
-              "Not implemented. Every shipped write is fixed-size and in place; painting" +
-              " tiles needs a verified packed-container encoder and safe allocation first.",
-            state: "missing",
-          },
-          {
-            key: "chunks",
-            title: "Chunk creation and editing",
-            detail:
-              "Not implemented. The editor can only point a cell at a chunk the layer" +
-              " already contains; it cannot build a new chunk.",
-            state: "missing",
-          },
-          {
-            key: "resize",
-            title: "Map resizing and layer changes",
-            detail:
-              "Not implemented. Layer count, layer dimensions and chunk-grid size are" +
-              " fixed, and no layer can be added or moved.",
-            state: "missing",
-          },
-          {
-            key: "warps",
-            title: "Warp and connection editing",
-            detail:
-              "Not implemented. The 735 transition records are read with no anomalies and" +
-              " the record layout is confirmed, so this needs an editor rather than more" +
-              " research.",
-            state: "missing",
-          },
-        ],
-      },
-      {
-        key: "author",
-        label: "AUTHOR",
-        title: "Create what did not exist before",
-        items: [
-          {
-            key: "entity",
-            title: "Authored entities and placements",
-            detail:
-              "Clone and configure an entity that is not present in the original map data;" +
-              " the map's newly created object slot resolves to the authored body.",
-            state: "shipped",
-          },
-          {
-            key: "behavior",
-            title: "Authored behavior and scripts",
-            detail:
-              "Give an authored entity an author-written script and tie it to a deliberate" +
-              " gameplay trigger; the original engine has executed the authored bytes and" +
-              " rendered the result on screen.",
-            state: "shipped",
-          },
-          {
-            key: "text",
-            title: "Authored text beyond the retail slot",
-            detail:
-              "A line longer than the one it replaces is placed in verified writable space" +
-              " and the owning table entry is repointed, so the engine renders the whole" +
-              " authored message. New text-table ids are not claimed.",
-            state: "shipped",
-          },
-          {
-            key: "gfx-import",
-            title: "Graphics replacement and import",
-            detail:
-              "Not implemented. An import path exists but has no production caller, so no" +
-              " editor surface offers it.",
-            state: "missing",
-          },
-          {
-            key: "sprite-new",
-            title: "New sprite, animation and frame authoring",
-            detail:
-              "Not implemented. Needs allocation plus same-count in-place replacement of" +
-              " animation cell pointers and frame piece records.",
-            state: "missing",
-          },
-          {
-            key: "appearance",
-            title: "New appearance definitions",
-            detail:
-              "Not implemented. The record count appears as compiled-in bounds in the" +
-              " engine and there is no terminator, so whether the table can be grown at all" +
-              " is still an open question rather than a task.",
-            state: "missing",
-          },
-          {
-            key: "map-new",
-            title: "New map and scene materialisation",
-            detail:
-              "Not implemented. The terminal authoring frontier: it needs an authored warp" +
-              " and several map-root fields that are still unresolved.",
-            state: "missing",
-          },
-        ],
-      },
-      {
-        key: "deliver",
-        label: "DELIVER",
-        title: "Build it, save it, keep it safe",
-        items: [
-          {
-            key: "validate",
-            title: "Deterministic validate and build",
-            detail:
-              "A project validates before it builds, repeated builds are byte-identical," +
-              " and the build panel refuses to write over the source image.",
-            state: "shipped",
-          },
-          {
-            key: "save-as",
-            title: "Safe Save As to a new file",
-            detail:
-              "The output image and its provenance document are built at temporary sibling" +
-              " paths and verified there, so a failed emit or verification leaves an" +
-              " existing destination byte-for-byte intact.",
-            state: "shipped",
-          },
-          {
-            key: "provenance",
-            title: "Derivative provenance and reopen",
-            detail:
-              "Save As writes a manifest beside the ROM, and the application reopens its" +
-              " own emitted ROM only when that manifest proves the image is the canonical" +
-              " ROM plus exactly the declared, legal edits. Everything else is refused with" +
-              " the reason stated.",
-            state: "shipped",
-          },
-          {
-            key: "launch",
-            title: "Launch the build in an emulator",
-            detail:
-              "Run the generated ROM from the same window to check the change in context," +
-              " without leaving the editor.",
-            state: "shipped",
-          },
-        ],
-      },
-    ],
-  },
+  // The active track, derived from the capability registry above: the capability
+  // list, the per-family tallies and the percentage all come from that one
+  // source, so a capability cannot be shipped in one place and planned in another.
+  buildout,
   stateFacts: [
     { label: "TARGET HARDWARE", value: "GBA · 240 × 160" },
     { label: "GAMES IN SCOPE", value: "Legacy of Goku · LoG II · Buu's Fury" },
@@ -1042,9 +1003,9 @@ export const project: ProjectStatus = {
     },
   ],
   metrics: [
-    { group: "Map editing", strip: true, label: "Maps viewable in the Map Browser", value: "452 / 452" },
-    { group: "Map editing", strip: true, label: "Maps exposing an editable layer", value: "341 / 452" },
-    { group: "Map editing", strip: true, label: "Maps read-only, with the reason stated", value: "111 / 452" },
+    { group: "Map editing", strip: true, label: "Maps viewable in the Map Browser", value: `${mapsViewable} / ${mapsViewable}` },
+    { group: "Map editing", strip: true, label: "Maps exposing an editable layer", value: `${layoutEditableMaps} / ${mapsViewable}` },
+    { group: "Map editing", strip: true, label: "Maps read-only, with the reason stated", value: `${layoutReadOnlyMaps} / ${mapsViewable}` },
     {
       group: "Map editing",
       strip: true,
@@ -1100,7 +1061,7 @@ export const project: ProjectStatus = {
     {
       group: "Integrity",
       label: "Transition records read, anomalies",
-      value: "735 / 0",
+      value: `${transitionRecords} / 0`,
       explanation: "Warp and connection records, which no editor surface reads yet.",
     },
   ],
@@ -1114,9 +1075,9 @@ export const project: ProjectStatus = {
       title: "Map Browser",
       caption:
         "Map:0040 rendered from immutable ROM bytes, layer by layer. Every one of the" +
-        " 452 maps opens here without a running emulator.",
+        ` ${mapsViewable} maps opens here without a running emulator.`,
       facts: [
-        "452 maps viewable",
+        `${mapsViewable} maps viewable`,
         "Rendered from ROM, not captured from memory",
         "Read-only until Edit Layout is switched on",
       ],
@@ -1133,7 +1094,7 @@ export const project: ProjectStatus = {
         " offers only chunks that layer already contains, and the change is written in" +
         " place to a new ROM.",
       facts: [
-        "341 of 452 maps expose an editable layer",
+        `${layoutEditableMaps} of ${mapsViewable} maps expose an editable layer`,
         "Replacement drawn from the same layer only",
         "Saved as a new ROM, with provenance",
       ],

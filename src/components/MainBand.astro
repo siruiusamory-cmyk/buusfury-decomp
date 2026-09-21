@@ -43,7 +43,7 @@ const ladderMark: Record<DependencyStep["state"], string> = {
 
       <ol class="rows">
         {roadmapRows.map((row, index) => (
-          <li class:list={["row", row.state === "shipped" ? "is-done" : "is-todo"]}>
+          <li class:list={["row", row.state === "shipped" ? "is-done" : "is-todo"]} data-capability={row.key}>
             <span class="row-n" aria-hidden="true">{pad(index + 1)}</span>
             <span class="row-name">{row.title}</span>
             <span class="chip">{row.state === "shipped" ? "DONE" : "PLANNED"}</span>

@@ -10,30 +10,51 @@ that turns these records into named project assets is `webfoot.graphics`.
     character pointer table   297 entries, all valid, strictly ascending
       -> character structure  variable size; animation pointers follow a header
         -> animation record   u32 frame_count, then frame_count * 4 pointers
-          -> frame record     u32 piece_count, then 16-byte piece records
-            -> piece record   OAM-style attributes + a graphics container pointer
+          -> frame record     8-byte header, then 12-byte piece records
+            -> piece record   x at +0x00, y at +0x01, two pixel extents at
+                              +0x02/+0x03, a packed OBJ attribute pair at +0x04
+                              and a graphics-container pointer at +0x08
               -> container    `webfoot.formats.webfoot_lz`, decoding to raw tiles
+
+Frame record fields, at the engine's own widths: `u32 piece_count` then the
+frame's bounding box over its pieces - `s8 min_x`, `s8 min_y`, `u8 width`,
+`u8 height`. The render loop computes `frame + 8 + 12 * index`, and the header's
+four bytes reproduce the pieces' bounding box on all 10,980 canonical frames.
 
 **The layers are kept apart on purpose.** A packed payload, the tile bytes it
 decodes to, the pixel indices those tiles unswizzle into, the palette that gives
 them colour, the piece that places them, the frame that groups pieces and the
-animation that orders frames are six different things. The ROM does not collapse
+animation that orders frames are seven different things. The ROM does not collapse
 them and neither does this module: there is no ``Sprite`` class here, because
 the corpus does not contain one.
 
-**Sharing is the normal case, not an edge case.** 10,959 distinct frame records
-reference only 7,355 distinct containers: 2,986 payloads are reached by more
-than one frame and 2,644 are used by more than one character. Anything that
-treats a piece as *owning* its pixels will silently edit several characters at
-once. Callers get container offsets and resolve ownership themselves;
-`webfoot.graphics` exposes the consumer and character lists.
+**Populations, and which of them is a total.** The canonical corpus reaches
+**7,390** distinct graphics-container offsets through pieces. **7,355** is exactly
+the subset reached by single-piece frames - a population, never the total. The
+frame population is 10,980 distinct frame records holding 11,005 pieces, of which
+21 frames are multi-piece (19 hold two pieces and 2 hold four).
 
-**One piece per frame, measured - not assumed.** Across all 10,959 distinct
-frames in the canonical image, every single one declares exactly one piece. The
-record format clearly permits more (the count is a full word, and the plausibility
-bound accepts up to 16), so the decoder handles the general case; but no
-multi-piece frame exists in this corpus, and no code here may assume that a frame
-and its single piece are interchangeable.
+**The layout this module used to model, and why it changed.** Until
+EVIDENCE-RISK-DEBT-001 it read the refuted 4-byte frame header and 16-byte piece
+records, with the attribute pair at `+0x08`, the graphics pointer at `+0x0C` and a
+six-byte "unknown" span at `+0x02..+0x07`. LOGX-FRAME-001 refuted that reading: the
+piece stride is `0x0C`, the attribute pair is at `+0x04`, the container pointer is
+at `+0x08`, and the two bytes the old model buried in `unknown_raw` are the piece's
+own pixel extents. The old walk rejected every multi-piece frame on its
+size/geometry test, which is exactly why the corpus appeared to hold 10,959
+single-piece frames and 7,355 containers.
+
+**Sharing is the normal case, not an edge case.** 10,980 distinct frame records
+reference only 7,390 distinct containers. Anything that treats a piece as *owning*
+its pixels will silently edit several characters at once. Callers get container
+offsets and resolve ownership themselves; `webfoot.graphics` exposes the measured
+consumer and character lists.
+
+**Multi-piece frames exist, and the decoder is exercised on them.** 21 of the
+10,980 canonical frames hold more than one piece - 19 hold two and 2 hold four -
+so the general case is the one the corpus actually contains, not a hypothetical.
+The count is a full word and the plausibility bound accepts up to 16; nothing here
+may assume a frame and its single piece are interchangeable.
 
 **Depth is uniformly 8bpp, measured.** Every piece in the corpus sets attribute0
 bit 13. The 4bpp path is implemented because the attribute defines it and the
@@ -58,7 +79,7 @@ palette's 1, and decodes as a plain ramp - black, black, white, red, orange,
 yellow, green, cyan.
 
 **Capacity, and the honest limit of pixel editing.** The containers are packed
-end to end: zero overlaps, and 4,014 of 7,354 consecutive pairs are exactly
+end to end: zero overlaps, and 4,034 of 7,389 consecutive pairs are exactly
 adjacent. There is no slack anywhere and no profile declares free space, so
 :func:`plan_graphic_payload` refuses any re-encoding that does not fit the
 original packed extent rather than trusting that the bytes after a container are
@@ -104,8 +125,34 @@ ATTR1_VERTICAL_FLIP = 0x2000
 #: Tiles are 8x8 on this hardware, always.
 TILE_SIDE = 8
 
-#: One piece record. CONFIRMED as a stride across all 13,588 reachable pieces.
-PIECE_SIZE = 16
+#: One piece record: ``s8 x``, ``s8 y``, two pixel-extent bytes, a packed OBJ
+#: attribute pair and the graphics-container word. CONFIRMED as a stride across
+#: all 11,005 reachable pieces, and fixed by the engine's own render-loop
+#: arithmetic ``frame + 8 + 12 * index`` (`0x0800F3C0..0x0800F3CA`).
+PIECE_SIZE = 12
+
+#: Bytes of a frame record before its first piece: ``u32 piece_count`` then the
+#: frame's bounding box, ``s8 min_x``, ``s8 min_y``, ``u8 width``, ``u8 height``.
+FRAME_HEADER_SIZE = 8
+
+#: Fields inside a frame record's 8-byte header.
+FRAME_HEADER_MIN_X = 0x04   # s8, the minimum piece x
+FRAME_HEADER_MIN_Y = 0x05   # s8, the minimum piece y
+FRAME_HEADER_WIDTH = 0x06   # u8, the width of the pieces' union
+FRAME_HEADER_HEIGHT = 0x07  # u8, the height of the pieces' union
+
+#: Fields inside a piece record, relative to the piece's own start. Every offset
+#: is an engine read site: ``x`` is the ``ldrsb`` at ``0x0800F204``, ``y`` the
+#: ``ldrb`` at ``0x0800F22A``, the extents the ``ldrb`` pair at ``0x0800F206``
+#: and ``0x0800F22E``, the attribute word the ``ldr`` at ``0x0800F1C2`` and
+#: ``0x0800F24C``, and the container word the ``ldr r0, [r7, #8]`` at
+#: ``0x0800F3CE``.
+PIECE_X = 0x00           # s8
+PIECE_Y = 0x01           # s8
+PIECE_DIM_0 = 0x02       # u8, the piece's horizontal pixel extent
+PIECE_DIM_1 = 0x03       # u8, the piece's vertical pixel extent
+PIECE_ATTRIBUTES = 0x04  # u32 packed OBJ attribute pair
+PIECE_GRAPHICS = 0x08    # u32 container pointer
 
 #: A frame's four direction slots. The animation record stores frame_count * 4
 #: pointers and the corpus never departs from that, but note what is NOT claimed:
@@ -250,7 +297,7 @@ def swizzle_tiles(pixels: bytes, width: int, height: int, *, colour_256: bool) -
     """The exact inverse of :func:`unswizzle_tiles`.
 
     Round-tripping through this pair must be the identity on every payload in
-    the corpus; the ROM-gated suite asserts that over all 7,355 containers
+    the corpus; the ROM-gated suite asserts that over all 7,390 containers
     rather than over a sample, because a swizzle bug that only affects unusual
     dimensions is precisely the kind that a sample would miss.
     """
@@ -297,19 +344,22 @@ def _check_dimensions(width: int, height: int) -> None:
 
 @dataclass(frozen=True)
 class Piece:
-    """One 16-byte OBJ placement record.
+    """One 12-byte piece record, read only at offsets the engine is seen to use.
 
-    Only the fields whose meaning is established get names. ``unknown_raw``
-    carries bytes +0x02..+0x07 verbatim and is re-emitted unchanged on write,
-    following the same rule as every other codec in this project: a field that
-    has not been explained is preserved, not dropped and not guessed at. Those
-    six bytes are non-zero in the corpus and their purpose is UNKNOWN.
+    ``x`` and ``y`` are signed placement offsets. ``dim_0``/``dim_1`` are the
+    piece's own stored pixel extents, and they are *stored fields*, not a guess:
+    the engine halves ``dim_0`` to centre an OBJ horizontally and multiplies the
+    pair to size the composite buffer. ``attributes`` is the packed OBJ attribute
+    pair ``(attribute_1 << 16) | attribute_0`` the engine loads and merges into the
+    outgoing OAM word, and whose decoded shape/size reproduces the stored extents
+    on every canonical piece. ``graphics_pointer`` is the container word.
     """
 
     offset: int
     x: int
     y: int
-    unknown_raw: bytes
+    dim_0: int
+    dim_1: int
     attributes: int
     graphics_pointer: int
 
@@ -341,30 +391,37 @@ class Piece:
             )
         return OBJECT_DIMENSIONS[self.shape][self.size]
 
+    @property
+    def stored_dimensions(self) -> tuple[int, int]:
+        """The extents the record stores, independent of the attribute decode.
+
+        The two agree on all 11,005 canonical pieces, which is what makes the
+        attribute reading evidence rather than a restatement.
+        """
+        return self.dim_0, self.dim_1
+
 
 def decode_piece(data: bytes, offset: int) -> Piece:
-    """Read the 16-byte piece record at ``offset``."""
+    """Read the 12-byte piece record at ``offset``."""
     if offset < 0 or offset + PIECE_SIZE > len(data):
         raise SpriteFormatError(f"piece record at {offset:#x} is outside the image")
-    x, y = struct.unpack_from("<bb", data, offset)
-    attributes, pointer = struct.unpack_from("<II", data, offset + 8)
+    x, y, dim_0, dim_1 = struct.unpack_from("<bbBB", data, offset)
+    attributes, pointer = struct.unpack_from("<II", data, offset + PIECE_ATTRIBUTES)
     return Piece(
         offset=offset,
         x=x,
         y=y,
-        unknown_raw=data[offset + 2 : offset + 8],
+        dim_0=dim_0,
+        dim_1=dim_1,
         attributes=attributes,
         graphics_pointer=pointer,
     )
 
 
 def encode_piece(piece: Piece) -> bytes:
-    """Serialise a piece back to its exact 16 bytes, unknowns included."""
-    if len(piece.unknown_raw) != 6:
-        raise SpriteFormatError("piece unknown_raw must be exactly 6 bytes")
+    """Serialise a piece back to its exact 12 bytes."""
     return (
-        struct.pack("<bb", piece.x, piece.y)
-        + piece.unknown_raw
+        struct.pack("<bbBB", piece.x, piece.y, piece.dim_0, piece.dim_1)
         + struct.pack("<II", piece.attributes, piece.graphics_pointer)
     )
 
@@ -373,10 +430,38 @@ def encode_piece(piece: Piece) -> bytes:
 
 @dataclass(frozen=True)
 class Frame:
-    """A frame: a piece count followed by that many piece records."""
+    """A frame: an 8-byte header and ``piece_count`` 12-byte piece records.
+
+    The header holds the piece count and the frame's own bounding box over those
+    pieces - signed minimum x and y, then unsigned width and height. On all 10,980
+    canonical frames that box equals the pieces' own union, which is what makes it
+    a bounding box rather than four raw bytes; this module records it and does not
+    require the equality, so a future profile that disagrees still reads.
+    """
 
     offset: int
     pieces: tuple[Piece, ...]
+    min_x: int
+    min_y: int
+    width: int
+    height: int
+
+    @property
+    def piece_count(self) -> int:
+        return len(self.pieces)
+
+    @property
+    def piece_bounds(self) -> tuple[int, int, int, int]:
+        """``(min_x, min_y, width, height)`` computed from the pieces themselves."""
+        min_x = min(piece.x for piece in self.pieces)
+        min_y = min(piece.y for piece in self.pieces)
+        max_x = max(piece.x + piece.dim_0 for piece in self.pieces)
+        max_y = max(piece.y + piece.dim_1 for piece in self.pieces)
+        return min_x, min_y, max_x - min_x, max_y - min_y
+
+    @property
+    def header_bounds(self) -> tuple[int, int, int, int]:
+        return self.min_x, self.min_y, self.width, self.height
 
 
 @dataclass(frozen=True)
@@ -407,20 +492,31 @@ class Animation:
 
 
 def decode_frame(data: bytes, offset: int, *, maximum_pieces: int = 16) -> Frame:
-    """Read the frame record at ``offset``."""
-    if offset < 0 or offset + 4 > len(data):
+    """Read the frame record at ``offset``: an 8-byte header, then 12-byte pieces."""
+    if offset < 0 or offset + FRAME_HEADER_SIZE > len(data):
         raise SpriteFormatError(f"frame record at {offset:#x} is outside the image")
     count = struct.unpack_from("<I", data, offset)[0]
     if count == 0 or count > maximum_pieces:
         raise SpriteFormatError(
             f"frame at {offset:#x} declares {count} pieces, outside 1..{maximum_pieces}"
         )
-    if offset + 4 + count * PIECE_SIZE > len(data):
+    if offset + FRAME_HEADER_SIZE + count * PIECE_SIZE > len(data):
         raise SpriteFormatError(f"frame at {offset:#x} runs past the image")
     pieces = tuple(
-        decode_piece(data, offset + 4 + index * PIECE_SIZE) for index in range(count)
+        decode_piece(data, offset + FRAME_HEADER_SIZE + index * PIECE_SIZE)
+        for index in range(count)
     )
-    return Frame(offset=offset, pieces=pieces)
+    min_x, min_y, width, height = struct.unpack_from(
+        "<bbBB", data, offset + FRAME_HEADER_MIN_X
+    )
+    return Frame(
+        offset=offset,
+        pieces=pieces,
+        min_x=min_x,
+        min_y=min_y,
+        width=width,
+        height=height,
+    )
 
 
 def decode_animation(data: bytes, offset: int, *, maximum_frames: int = 64) -> Animation:
@@ -469,10 +565,11 @@ def decode_graphic(data: bytes, offset: int, width: int, height: int, *,
     """Decode the container at ``offset`` into linear palette indices.
 
     The size check is the load-bearing line. The container's declared size and
-    the piece's OAM dimensions are recorded independently in the ROM, so
+    the piece's stored extents are recorded independently in the ROM, so
     requiring them to agree turns a decode from "produced plausible bytes" into
     a structural verification. Across the canonical corpus it holds for all
-    7,355 containers.
+    7,390 containers - and for all 11,005 piece references, because a container
+    several frames share is checked by each of them.
     """
     container = webfoot_lz.unpack(data, offset)
     expected = tile_byte_count(width, height, colour_256=colour_256)
@@ -509,7 +606,7 @@ def plan_graphic_payload(data: bytes, graphic: Graphic, pixels: bytes) -> Payloa
     """Re-encode ``pixels`` into the space the original payload occupied.
 
     This is where the capacity rule lives, and it fails closed. The corpus has
-    no slack - containers sit end to end, 4,014 pairs of them exactly adjacent -
+    no slack - containers sit end to end, 4,034 pairs of them exactly adjacent -
     so a payload that does not fit its original extent has nowhere to go that is
     not another asset's bytes. No profile declares free space, and this function
     will not go looking for any.

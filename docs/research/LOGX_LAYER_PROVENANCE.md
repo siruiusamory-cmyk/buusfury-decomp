@@ -148,6 +148,15 @@ decoding): `0x08007B78` has exactly **one** `bl` caller, `0x0800808E`.
 `0x08008086` has **no** `bl` caller: it is reached only through the `+0x00`
 word of a record, i.e. it is invoked indirectly.
 
+**CORRECTED LATER (EVIDENCE-RISK-DEBT-001, 2026-09-20).** The helper this census
+was taken with was defective and has since been replaced. The paragraph above is
+kept as the record of what was believed at this revision; it is no longer a
+citation of live code. Re-derived with the corrected enumeration - every
+halfword-aligned site decoded, `BL` and `BLX` both counted -
+`0x08007B78` still has exactly one caller, `0x0800808E`, and `0x08008086` still
+has none, so the claim itself is unchanged and now rests on a method that can
+find both encodings and resolves `BLX` targets correctly.
+
 ### 3.2 `0x08007B78` reads
 
 | Instruction | Read or write | Width |

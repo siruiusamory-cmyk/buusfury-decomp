@@ -1,9 +1,12 @@
 """Portable tests for the strict export-side Webfoot container decoder.
 
-The strict decoder exists because the shipping decoder clips an over-long final
-match and reports success. These tests pin the refusal, the agreement with the
-independent research reference on well-formed streams, and the structural checks
-the export path relies on. No ROM is required.
+The strict decoder was written because the shipping decoder used to clip an
+over-long final match and report success. **EVIDENCE-RISK-DEBT-001 removed that
+defect from the shipping decoder**, so this module is no longer the only reader
+that refuses a malformed stream: what it still adds is the *end-marker*
+postcondition and a bound on the input consumed. These tests pin the refusal, the
+agreement between the two decoders on both well-formed and malformed streams, and
+the structural checks the export path relies on. No ROM is required.
 """
 
 from __future__ import annotations
@@ -26,11 +29,17 @@ def _header(kind: int, declared: int) -> bytes:
 CLIPPING_CASE = bytes.fromhex("01000000040000000558d020000000c0")
 
 
-def test_the_shipping_decoder_still_clips_the_reproduction_case():
-    """The defect this module exists to avoid is real at this revision."""
-    container = project.unpack(CLIPPING_CASE, 0)
-    assert container.declared_size == 4
-    assert len(container.data) == 4
+def test_the_shipping_decoder_now_refuses_the_reproduction_case():
+    """The defect this module was written around has been repaired.
+
+    This test used to assert the opposite - that the shipping decoder returned
+    four clipped bytes - and was inverted by EVIDENCE-RISK-DEBT-001 together with
+    the decoder. It is kept inverted rather than deleted so the regression is
+    pinned in both directions.
+    """
+    with pytest.raises(project.ContainerError, match="declared 4"):
+        project.unpack(CLIPPING_CASE, 0)
+    assert len(CLIPPING_CASE) == ws.HEADER_SIZE + 8
 
 
 def test_the_strict_decoder_refuses_the_over_long_final_match():
@@ -42,6 +51,50 @@ def test_the_strict_decoder_refuses_the_over_long_final_match():
 def test_the_independent_reference_agrees_the_case_is_malformed():
     with pytest.raises(reference.CodecError):
         reference.decode_packed(CLIPPING_CASE, ws.HEADER_SIZE, declared_size=4)
+
+
+def test_both_shipping_decoders_refuse_every_malformed_case():
+    """The repaired decoder and the export reader agree on rejection.
+
+    Before EVIDENCE-RISK-DEBT-001 the first entry of this list was *accepted* by
+    the shipping decoder and refused only here, which is why this module had to
+    exist as a separate reader.
+    """
+    malformed = [
+        CLIPPING_CASE,                                    # final match overrun
+        _raw_run_overrun(),                               # raw literal run overrun
+        _header(1, 4),                                    # no payload at all
+        _header(0, 64) + b"short",                         # stored past the image
+        _header(2, 4) + b"\x00\x00",                       # stream ends in a word
+        _header(7, 4) + b"\x00" * 8,                       # unknown kind
+    ]
+    for blob in malformed:
+        with pytest.raises(project.ContainerError):
+            project.unpack(blob, 0)
+        with pytest.raises(ws.ContainerError):
+            ws.unpack(blob, 0)
+    # The repaired decoder no longer needs the end-marker rule to refuse this one.
+    with pytest.raises(project.ContainerError):
+        project.unpack(CLIPPING_CASE, 0)
+
+
+def _raw_run_overrun() -> bytes:
+    """A raw literal run of four bytes behind a header that declares three.
+
+    Built with the project module's own bit writer so the fixture is the format
+    rather than a captured blob: prefix ``0 0 1``, a zero four-bit field, a set
+    run bit, then two literal pairs with a continuation bit after each.
+    """
+    writer = project._WordBitWriter()
+    for bit in (0, 0, 1):
+        writer.bit(bit)
+    writer.put(0, 4)
+    writer.bit(1)
+    for index, value in enumerate((0x58, 0xAC, 0xAD, 0x41)):
+        writer.put(value, 8)
+        if index % 2 == 1:
+            writer.bit(0 if index == 3 else 1)
+    return _header(1, 3) + writer.finish()
 
 
 def test_stored_container_is_returned_verbatim():

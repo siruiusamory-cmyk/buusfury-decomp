@@ -32,9 +32,24 @@ The engine performs no bounds checks: it stores with ``strb`` without comparing
 against a destination limit and loads with ``ldr`` without comparing against the
 end of the image. This module keeps the grammar and the output exactly and adds
 host-side guards that raise :class:`CodecError` instead of reading or writing
-outside the buffers it was given. A :class:`CodecError` means "the engine's
-instructions would have left the buffers", never "the engine refuses this
-input".
+outside the buffers it was given. A :class:`CodecError` from a **grammar guard**
+- a back-reference before the start of the output, or a bit read past the end of
+the image - means "the engine's instructions would have left the buffers", never
+"the engine refuses this input".
+
+The module's other raises are **host-side checks of different kinds**, and none of
+them is an engine behaviour claim: argument validation (a payload offset outside
+the image, a literal width outside 1..9, a declared size over ``MAX_OUTPUT``, an
+unknown ``stop_on`` rule, an unrepresentable bit read), the ``MAX_OUTPUT`` output
+guard that stands in for the destination buffer the engine does not check, and the
+**declared-size postcondition** below - with the default
+``stop_on="declared_size"`` the module raises when the output does not reach
+exactly the declared size. That last one is a *policy* postcondition rather than a
+grammar rule: an over-long match or raw-literal run is a stream the engine would
+happily execute, writing past the declared length into whatever follows, and the
+postcondition exists so a truncated or over-long payload cannot be reported as a
+success. The same rule is what the shipping decoder enforces and what the export
+reader's end-marker rule is layered on.
 """
 
 from __future__ import annotations
@@ -264,13 +279,22 @@ def decode_packed(
         elif short_distance > 0:
             copy_match(short_distance, 1)
         elif reader.bit():
-            # A run of raw 8-bit literals, terminated by a clear bit.
+            # A run of raw 8-bit literals, terminated by a clear bit. The run is
+            # emitted whole and the declared-size decision is left to the
+            # post-loop check, exactly as the match path leaves it: stopping here
+            # at ``declared_size`` would silently drop literals, which is the
+            # class of clip this reference exists to detect. An earlier revision
+            # stopped at the declared size on this path while the match path did
+            # not, so this module accepted a stream that both the repaired
+            # shipping decoder and the export reader refuse.
             while True:
-                out.append(reader.get(8))
-                if len(out) >= declared_size:
-                    break
-                out.append(reader.get(8))
-                if len(out) >= declared_size or reader.bit() == 0:
+                for _ in range(2):
+                    if len(out) >= MAX_OUTPUT:
+                        raise CodecError(
+                            f"output exceeded the {MAX_OUTPUT}-byte guard"
+                        )
+                    out.append(reader.get(8))
+                if reader.bit() == 0:
                     break
         else:
             literal_bits = 7 + reader.bit()

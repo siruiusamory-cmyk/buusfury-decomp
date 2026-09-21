@@ -578,9 +578,22 @@ def test_state_table_is_a_translation_not_an_identity(canonical_bytes: bytes) ->
 
 
 def test_selector_argument_census(canonical_bytes: bytes) -> None:
-    """The direct selector takes a compile-time index at almost every call site."""
+    """The direct selector takes a compile-time index at almost every call site.
+
+    **Re-measured by EVIDENCE-RISK-DEBT-001** under the corrected caller census,
+    which decodes every halfword-aligned site instead of matching raw halfword
+    pairs.  The census is unchanged - 162 sites, all ``bl``, the same argument
+    histogram - and that is a real result rather than an assumption: the refuted
+    predicate admitted only the J1=J2=1 encoding combination, and every caller of
+    this selector is a backward branch whose displacement is under 4 MiB
+    (|offset| < 2^22), which is the range that has that combination.  The counts
+    are pinned here because the census method changed, not because they were
+    expected to move.
+    """
     census = probe.selector_argument_census(canonical_bytes)
     assert census["call_sites"] == EXPECTED_SELECTOR_SITES
+    assert census["call_kinds"] == {"bl": EXPECTED_SELECTOR_SITES}
+    assert census["census_method"] == "decoded halfword-aligned sites, BL and BLX"
     assert census["constant_index_histogram"] == EXPECTED_SELECTOR_CONSTANT_HISTOGRAM
     assert census["constant_index_count"] == sum(
         EXPECTED_SELECTOR_CONSTANT_HISTOGRAM.values()
@@ -677,7 +690,10 @@ def test_frame_records_and_the_constructor_boundary(canonical_bytes: bytes) -> N
     ) == REPRESENTATIVE_FRAME_BYTES
     assert record.signed_04 == -8
     assert record.signed_05 == -24
-    assert record.end_address == REPRESENTATIVE_FRAME + 4 + 16
+    # The accepted layout: an 8-byte frame header, then 12-byte pieces. This
+    # expectation was `REPRESENTATIVE_FRAME + 4 + 16` until EVIDENCE-RISK-DEBT-001
+    # corrected the probe's own frame stride.
+    assert record.end_address == REPRESENTATIVE_FRAME + 8 + 12
     assert probe.instruction_at(canonical_bytes, 0x080273F0)[0] == "ldrsb"
     assert probe.instruction_at(canonical_bytes, 0x080273F4)[0] == "ldrsb"
     assert "#6" in probe.instruction_at(canonical_bytes, 0x0802740C)[1]

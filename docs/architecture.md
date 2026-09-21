@@ -59,12 +59,12 @@ detection spans subsystems instead of only within one.
 
 `webfoot.graphics` sits in the same row for the same reason, and adds one thing
 the earlier subsystems did not need: **shared ownership**. A stat record belongs
-to one enemy, but 2,986 of the 7,355 sprite payloads are reached by more than one
-frame and 2,644 by more than one character, so "edit this asset" is often a
-global change. The semantic layer therefore exposes consumers as a first-class
-answer rather than as a diagnostic - see
-[`research/GRAPHICS_FORMAT.md`](research/GRAPHICS_FORMAT.md), which also records
-why pixel writes stop at EDIT while palette writes reach WRITE.
+to one enemy, but 2,994 of the 7,390 distinct container offsets reachable by a
+piece are reached by more than one frame record and 2,644 by more than one
+character, so "edit this asset" is often a global change. The semantic layer
+therefore exposes consumers as a first-class answer rather than as a diagnostic
+- see [`research/GRAPHICS_FORMAT.md`](research/GRAPHICS_FORMAT.md), which also
+records why pixel writes stop at EDIT while palette writes reach WRITE.
 
 Two rules are load-bearing and are enforced by tests rather than by convention:
 codecs never perform I/O, so the byte source is swappable; and the project format

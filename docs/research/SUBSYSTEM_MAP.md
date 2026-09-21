@@ -150,14 +150,15 @@ leaves the other accepting - the observed persistence.
 | Item | Address | Evidence | Notes |
 |---|---|---|---|
 | Sprite-definition pointer run | `0x006B6BDC`, 297 x 4 | CONFIRMED_ROM | All valid, strictly ascending; last structure ends at the table. This is the `+0x04` target run, **not** the appearance-definition table (232 records at `0x0874D380`) |
-| Character structures | `0x006A89D0..0x006B6BDC` | CONFIRMED_ROM | 0x50 header, then animation pointers; 295 reach art |
-| Graphics containers | `0x03C34D0..0x06A88AC` | CONFIRMED_ROM | 7,355 payloads, packed with **no slack** (4,014 gap-0 pairs) |
+| Character structures | `0x006A89D0..0x006B6BDC` | CONFIRMED_ROM | 0x54 header, then animation pointers; 297 reach art |
+| Graphics containers | `0x03C34D0..0x06A88AC` | CONFIRMED_ROM | 7,390 distinct container offsets reachable by a piece, packed with **no slack** (4,034 gap-0 pairs) |
 | Object palette | `0x0005652C`, 512 bytes | CONFIRMED_ROM | 16 inbound refs; uncompressed and fixed-size |
 | Background palette | `0x0005632C` | DISCOVERED | 1 inbound ref; not the sprite palette |
 
 The chain is mapped end to end: table -> structure -> animation -> frame -> OBJ
-piece -> compressed container -> 8x8 tiles. Every container decodes, and its
-declared size agrees with the referring piece's OAM dimensions on all 7,355.
+piece -> compressed container -> 8x8 tiles. Every one of the 7,390 distinct
+container offsets reachable by a piece decodes, and its declared size agrees
+with the referring piece's stored pixel extents on all 11,005 piece records.
 Full evidence, corpus counts and the capability matrix:
 [`GRAPHICS_FORMAT.md`](GRAPHICS_FORMAT.md).
 

@@ -3,6 +3,14 @@
 Synthetic fixtures only - no ROM graphics are embedded. The tile fixtures are
 built from arithmetic patterns so a swizzle bug shows up as a specific wrong
 byte rather than as a vaguely wrong picture.
+
+The frame and piece fixtures pin the **accepted** record layout: an 8-byte frame
+header (piece count plus the frame's bounding box) followed by 12-byte pieces at
+``frame + 8 + 12 * index``, with the stored pixel extents at piece ``+0x02``/
+``+0x03``, the packed OBJ attribute pair at ``+0x04`` and the container word at
+``+0x08``. Until EVIDENCE-RISK-DEBT-001 they pinned the refuted 4-byte header and
+16-byte stride, which is why they were rewritten rather than deleted: the
+correction has to stay pinned, not merely applied.
 """
 
 from __future__ import annotations
@@ -123,8 +131,12 @@ def test_index_above_the_4bpp_range_is_refused_on_swizzle() -> None:
 # --- pieces ------------------------------------------------------------------
 
 def _piece_bytes(x: int, y: int, attributes: int, pointer: int,
-                 unknown: bytes = b"\x11\x22\x33\x44\x55\x66") -> bytes:
-    return struct.pack("<bb", x, y) + unknown + struct.pack("<II", attributes, pointer)
+                 dims: tuple[int, int] = (32, 32)) -> bytes:
+    """One 12-byte piece record: x, y, two extents, attributes, container word."""
+    return (
+        struct.pack("<bbBB", x, y, dims[0], dims[1])
+        + struct.pack("<II", attributes, pointer)
+    )
 
 
 def test_piece_decodes_its_attribute_fields() -> None:
@@ -138,6 +150,25 @@ def test_piece_decodes_its_attribute_fields() -> None:
     assert piece.graphics_pointer == 0x08123456
 
 
+def test_piece_stored_extents_are_the_bytes_the_engine_reads() -> None:
+    """``+0x02``/``+0x03`` are the piece's own pixel extents, not an unknown span.
+
+    The old reader carried them inside a six-byte ``unknown_raw`` field. They are
+    stored fields the engine uses - ``+0x02`` is halved to centre the OBJ and the
+    pair is multiplied to size the composite buffer - and the attribute decode
+    must agree with them, which is what makes the attribute reading evidence.
+    """
+    attributes = (0x2000) | (0x8000 << 16)          # shape 0, size 2 -> 32x32
+    piece = sg.decode_piece(_piece_bytes(1, 2, attributes, 0, dims=(32, 32)), 0)
+    assert piece.stored_dimensions == (32, 32)
+    assert piece.dimensions == piece.stored_dimensions
+    # A record whose stored extents disagree with its attribute word still reads;
+    # the disagreement is visible rather than hidden.
+    disagreeing = sg.decode_piece(_piece_bytes(1, 2, attributes, 0, dims=(8, 8)), 0)
+    assert disagreeing.stored_dimensions == (8, 8)
+    assert disagreeing.dimensions == (32, 32)
+
+
 def test_piece_flip_bits_are_read_from_attribute_one() -> None:
     horizontal = sg.decode_piece(_piece_bytes(0, 0, 0x1000 << 16, 0), 0)
     vertical = sg.decode_piece(_piece_bytes(0, 0, 0x2000 << 16, 0), 0)
@@ -145,12 +176,18 @@ def test_piece_flip_bits_are_read_from_attribute_one() -> None:
     assert vertical.vertical_flip and not vertical.horizontal_flip
 
 
-def test_piece_round_trips_including_its_unknown_bytes() -> None:
-    """The six unexplained bytes must survive a write untouched."""
-    raw = _piece_bytes(3, -4, 0x2000, 0x08000100, unknown=b"\xDE\xAD\xBE\xEF\x01\x02")
-    piece = sg.decode_piece(raw, 0)
-    assert piece.unknown_raw == b"\xDE\xAD\xBE\xEF\x01\x02"
-    assert sg.encode_piece(piece) == raw
+@pytest.mark.parametrize(
+    "piece_bytes",
+    [
+        _piece_bytes(3, -4, 0x2000, 0x08000100, dims=(16, 16)),
+        _piece_bytes(-128, 127, 0x80002000, 0x086A87A8, dims=(64, 64)),
+    ],
+)
+def test_piece_round_trips_all_twelve_bytes(piece_bytes: bytes) -> None:
+    """``encode_piece`` is the exact inverse of ``decode_piece``."""
+    assert len(piece_bytes) == sg.PIECE_SIZE == 12
+    piece = sg.decode_piece(piece_bytes, 0)
+    assert sg.encode_piece(piece) == piece_bytes
 
 
 def test_reserved_oam_shape_is_refused_rather_than_guessed() -> None:
@@ -168,11 +205,41 @@ def test_every_shape_and_size_maps_to_the_gbatek_table() -> None:
 
 # --- frames and animations ---------------------------------------------------
 
-def test_frame_decodes_its_piece_list() -> None:
-    body = struct.pack("<I", 2) + _piece_bytes(0, 0, 0x2000, 1) + _piece_bytes(8, 0, 0x2000, 2)
+def _frame_bytes(count: int, pieces: list[bytes], bounds=(0, 0, 32, 32)) -> bytes:
+    """An 8-byte frame header - count plus the frame's own bounding box - then pieces."""
+    return struct.pack("<IbbBB", count, *bounds) + b"".join(pieces)
+
+
+def test_frame_header_is_eight_bytes_then_pieces_at_a_twelve_byte_stride() -> None:
+    body = _frame_bytes(
+        2,
+        [
+            _piece_bytes(0, 0, 0x2000 | (0x8000 << 16), 0x08000100, dims=(32, 32)),
+            _piece_bytes(8, 0, 0x2000 | (0x8000 << 16), 0x08000200, dims=(16, 32)),
+        ],
+        bounds=(0, 0, 32, 32),
+    )
     frame = sg.decode_frame(body, 0)
+    assert sg.FRAME_HEADER_SIZE == 8 and sg.PIECE_SIZE == 12
+    assert frame.piece_count == 2
     assert len(frame.pieces) == 2
     assert frame.pieces[1].x == 8
+    assert frame.pieces[1].offset - frame.pieces[0].offset == sg.PIECE_SIZE
+    assert frame.header_bounds == (0, 0, 32, 32)
+    # The header's box is the union over the pieces: the second piece reaches
+    # x = 8 + 16 = 24, so the union stays 32 wide because the first one is 32.
+    assert frame.piece_bounds == (0, 0, 32, 32)
+
+
+def test_the_frame_header_records_the_pieces_bounding_box() -> None:
+    """Recorded, not enforced: the corpus agrees, and the four bytes are still fields."""
+    body = _frame_bytes(
+        1,
+        [_piece_bytes(-8, -4, 0x2000 | (0x8000 << 16), 0x08000100, dims=(32, 32))],
+        bounds=(-8, -4, 32, 32),
+    )
+    frame = sg.decode_frame(body, 0)
+    assert frame.header_bounds == frame.piece_bounds == (-8, -4, 32, 32)
 
 
 def test_frame_with_an_absurd_piece_count_is_refused() -> None:

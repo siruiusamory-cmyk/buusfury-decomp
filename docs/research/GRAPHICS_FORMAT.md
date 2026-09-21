@@ -28,16 +28,21 @@ Evidence labels follow the project convention: **CONFIRMED_ROM** (measured here)
 > | the animation-pointer array is bounded by walking to the next structure, because "no header field bounds the list" | **REFUTED.** `structure + 0x00` (low byte) bounds the array: **4,070** slots, **1,721** non-null, **2,349** null. The header is **`0x54`** bytes, not `0x50`, and the structures do not tile one contiguous region (65 gaps of exactly `0x100`). Correcting the walk is a **numerical no-op** for every figure in this document | LOGX-SPRITE-001 |
 > | LOGExtractor's fixed **23-slot** animation table | **REFUTED as a physical model.** Positional slots are comparable across definitions; the array is count-bounded, variable-length and sparse. No engine instruction names an animation and the 23 slot names are **not** adopted | LOGX-SPRITE-001 |
 >
-> Two consequences that are **not** documentation edits and remain open: the
-> shipping reader `tools/webfoot/formats/sprite_graphics.py` still implements the
-> 4+16 layout, and `tools/webfoot/graphics.py::_animations_in` still walks to the
-> next structure. Both are listed as deferred production defects in
-> [`LOGX_SYNTHESIS.md`](LOGX_SYNTHESIS.md) §11 and scheduled in
-> [`POST_LOGX_IMPLEMENTATION_ROADMAP.md`](POST_LOGX_IMPLEMENTATION_ROADMAP.md).
+> Two consequences that are **not** documentation edits: the shipping reader
+> `tools/webfoot/formats/sprite_graphics.py` implemented the 4+16 layout, and
+> `tools/webfoot/graphics.py::_animations_in` walks to the next structure. The
+> first is **no longer open** - `EVIDENCE-RISK-DEBT-001` (2026-09-20) moved the
+> reader to the 8-byte header and 12-byte piece records this banner states, so
+> every population below is now reachable by the shipping code and is a subset
+> rather than a blind spot; see §11.9 of
+> [`LOGX_SYNTHESIS.md`](LOGX_SYNTHESIS.md). The second remains a deferred
+> production defect, owned by roadmap `FIX-3` and listed in that same synthesis
+> section.
 >
-> Reported populations in this document were produced by that reader. They stay
-> internally consistent with each other and remain reproducible; they are
-> **subsets of the canonical corpus**, not the canonical totals.
+> Reported populations in this document were produced by the pre-correction
+> reader. They stay internally consistent with each other and remain reproducible;
+> they are **subsets of the canonical corpus**, not the canonical totals, and the
+> figures the corrected reader reaches are recorded in §11.9 of the synthesis.
 
 ---
 

@@ -580,6 +580,19 @@ replacing a composite that had silently omitted a real layer.
   (`0x08008AC2`). Fixing the helper needs its own ticket and its own
   re-validation of the censuses that cite it.
 
+  **CORRECTED LATER (EVIDENCE-RISK-DEBT-001, 2026-09-20).** That ticket exists and
+  is the one that repaired the helper, so the paragraph above is the record of what
+  was believed at this revision and no longer describes live code.
+  `scan_thumb_bl_callers` now enumerates sites by decoding every halfword-aligned
+  window and accepts only a real four-byte `bl`/`blx`, and `resolve_thumb_bl`
+  applies `Align(PC, 4)` to `BLX`. Re-measured on the canonical image, this
+  document's own figures are unchanged: 17,748 predicate pairs, 16,196 genuine
+  sites, 1,552 false positives, 54.9 % of 29,509, 868 matched unaligned `BLX`
+  sites at 2 (mod 4), and 57 callers of `0x0803D940`. The dependency this section
+  records - that nothing here may take a census from the helper - is now satisfied
+  by the helper itself, and the tests that pin it live in
+  `tests/integration/test_thumb_caller_census_rom.py`.
+
 ---
 
 ## 8. Artefacts and tests

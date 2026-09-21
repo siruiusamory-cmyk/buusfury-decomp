@@ -64,6 +64,7 @@ research.
 | **Risk** | **medium.** The decoder is shared by map chunks, selector streams, banks, sprite graphics and the atlas path. A stricter failure policy can turn previously "successful" decodes into errors. Blast radius is the whole graphics/tile pipeline, which is why this is first: everything later trusts it |
 | **`AUTHOR_NEW`** | no - but it is a hard prerequisite for every insertion capability |
 | **Public** | no direct capability change; it can only make an existing path fail loudly instead of silently |
+| **Status** | **EXECUTED** by `EVIDENCE-RISK-DEBT-001` (2026-09-20). `copy_match` refuses a match that would pass the declared size; the reproduction is rejected in both implementations; every reachable canonical packed container still decodes to exactly its declared size, proved byte-for-byte against the independent non-clipping reference over all **7,390** sprite containers. The clipping regression test was inverted, not deleted. `tools/export/webfoot_strict.py` now adds only the end-marker postcondition and its input bound |
 
 ---
 
@@ -79,6 +80,7 @@ research.
 | **Risk** | **high, but well-bounded.** This is the single most load-bearing parser defect in the queue. The blast radius is the sprite-graphics reader, the atlas producer, the build's PNG extraction and the Workbench graphics surface - all of which currently depend on `decode_frame` rejecting multipart frames. The mitigation is that the corrected layout is already proved by an independent test (declared size equals `dim_0 * dim_1` on 11,005 of 11,005) |
 | **`AUTHOR_NEW`** | partial - it is the prerequisite for multipart sprite rendering, replacement and authoring |
 | **Public** | yes, eventually: it makes 21 multipart frames and 35 graphics containers visible, so a user-visible asset inventory grows |
+| **Status** | **EXECUTED** by `EVIDENCE-RISK-DEBT-001` (2026-09-20), and the user-visible inventory did grow: the reader now reaches 297 characters, 1,017 animations, 10,980 frames, 11,005 pieces and 7,390 containers. `FrameRef` gained `piece_offset`, so the published reference is the container word of the piece that actually carries it rather than `frame + 4 + 0x0C` |
 
 ---
 
@@ -94,6 +96,7 @@ research.
 | **Risk** | **low.** `LOGX-SPRITE-001` measured the correction to be a numerical no-op for the accepted corpus: the 4,160 extra slots are all nonzero non-ROM-pointer words discarded by the existing filter. The risk is a profile-contract change, whose blast radius is the profile loader and its tests |
 | **`AUTHOR_NEW`** | no |
 | **Public** | no |
+| **Status** | **NOT STARTED, and its acceptance figures need re-measuring first.** `FIX-2` landed under `EVIDENCE-RISK-DEBT-001` (2026-09-20), so the reader no longer drops the 5 frames that the old `_frame_offset` rejection discarded: the accepted totals are now **1,017** admitted animations and **10,980** frames, not `1017 - 4` and `10964 - 5`. The defect itself - the unbounded `_animations_in` walk and its refuted justification - is untouched and is the one surviving production hit of the stale-assumption audit |
 
 ---
 
@@ -124,6 +127,7 @@ research.
 | **Risk** | **low.** Text and profile evidence only; `tools/research/logx_synthesis_audit.py` now detects a regression of the headline form |
 | **`AUTHOR_NEW`** | no |
 | **Public** | marginal - corrected CLI help and documentation |
+| **Status** | **EXECUTED** by `EVIDENCE-RISK-DEBT-001` (2026-09-20) with the population-qualified wording this row prescribes, in every file it names except `docs/research/GRAPHICS_FORMAT.md`, which stays exempt under its banner. The audit's `stale-7355` pattern gained an `allow_if_line_matches` clause for the qualified form so the prescribed correction is not itself reported |
 
 ---
 

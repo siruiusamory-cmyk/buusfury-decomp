@@ -38,10 +38,10 @@ are intentionally preserved. Do not remove them.
 
 The Python implementation, its container/header handling, its encoder, its error
 model, and its tests are this project's own work. Correctness was independently
-verified against the canonical ROM before promotion: all 7,355 sprite containers
-decode without failure, and every decoded length matches the width times height
-that the referring piece record independently declares
-(`docs/research/GRAPHICS_FORMAT.md`).
+verified against the canonical ROM before promotion: all 7,390 distinct
+container offsets reachable by a piece decode without failure, and every
+decoded length matches the width times height that the referring piece record
+independently declares (`docs/research/GRAPHICS_FORMAT.md`).
 
 ### Required notice
 

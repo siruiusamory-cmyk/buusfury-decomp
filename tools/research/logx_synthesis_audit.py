@@ -271,7 +271,13 @@ SUPERSEDED_PATTERNS: tuple[SupersededPattern, ...] = (
     ),
     SupersededPattern(
         key="four-byte-frame-header",
-        regex=r"4-byte frame header|frame header is (?:four|4) bytes|"
+        # The ``4+16`` form is included because an independent review of
+        # EVIDENCE-RISK-DEBT-001 found a live "still implements the 4+16 layout"
+        # sentence that none of the other spellings matched. Only
+        # ``docs/research/GRAPHICS_FORMAT.md`` uses that shorthand inside the scan
+        # scope, and it is banner-exempt for this key, so widening the pattern adds
+        # detection without adding noise.
+        regex=r"4-byte frame header|frame header is (?:four|4) bytes|4\s*\+\s*16|"
               r"u32 piece_count\b[^\n]*16-byte",
         summary="the frame header is 0x08 bytes, not 4",
         globs=SCAN_GLOBS,
@@ -295,6 +301,12 @@ SUPERSEDED_PATTERNS: tuple[SupersededPattern, ...] = (
             "single-piece-frame subset and must not be the headline figure"
         ),
         globs=SCAN_GLOBS,
+        # FIX-5's own acceptance rule is that a surviving mention of 7,355 must
+        # state its population, so a line that qualifies it - by naming the
+        # accepted total, the subset or the population - is the corrected form
+        # rather than the stale claim. Without this the prescribed correction
+        # would itself be reported, which would make the sweep unachievable.
+        allow_if_line_matches=r"7,?390|single-piece|subset|population",
     ),
     SupersededPattern(
         key="unknown-header-as-container",

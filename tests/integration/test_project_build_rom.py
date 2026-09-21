@@ -74,7 +74,7 @@ def project(tmp_path: Path, rom: str, catalog: RomProfileCatalog) -> Path:
 
     Nothing in this file asserts anything about sprite assets - these tests are
     about project identity, stat records, validation and the whole-ROM build -
-    and graphics extraction writes 7,355 indexed PNGs against this project's few
+    and graphics extraction writes 7,390 indexed PNGs against this project's few
     dozen TOML files. Measured on the canonical image: 44.0s with graphics
     against 1.8s without, and this fixture runs for 18 tests.
 

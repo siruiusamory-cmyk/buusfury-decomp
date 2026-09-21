@@ -21,11 +21,12 @@ profiles:
           TOOLKIT-010 GRAPHICS_FORMAT.md, verified against the canonical image.
           All 297 table entries are ROM pointers, strictly ascending, and the
           last structure ends immediately before the table itself. Walking
-          animation pointers from structure+0x54 reaches 295 characters, 1,013
-          unique animations, 10,959 unique single-piece frames and 7,355 unique
-          compressed graphics containers; every container decodes and every
-          decoded length equals the width by height its own piece record
-          independently declares. The object palette has 16 inbound word-aligned
+          animation pointers from structure+0x54 reaches 297 character-table
+          slots with art, 1,017 unique animation objects, 10,980 distinct frame
+          records (11,005 piece records) and 7,390 distinct container offsets
+          reachable by a piece, 7,355 of them by single-piece frames; every
+          container decodes and every decoded length equals the width by height
+          its own piece record independently declares. The object palette has 16
           references against the background palette's 1. NOT a free-space
           declaration: the containers are packed with no slack, so edits are
           bounded by each container's measured extent.

@@ -744,18 +744,19 @@ export const project: ProjectStatus = {
       kind: "near",
       title: "A verified way to place new bytes",
       detail:
-        "Strict decoded-size enforcement in the container decoder, then a packed encoder" +
-        " and allocator integration. Every missing editing and authoring capability below" +
-        " depends on this, and the decoder's current behaviour - silently clipping a" +
-        " truncated payload and reporting success - is the reason it comes first.",
+        "A packed encoder and allocator integration, on top of a container decoder that" +
+        " now enforces exact decoded-size completion rather than clipping an over-long" +
+        " payload and reporting success. Every missing editing and authoring capability" +
+        " below depends on placing new bytes safely.",
     },
     {
       kind: "near",
       title: "Correct the sprite and animation reader",
       detail:
-        "The accepted frame layout is an 8-byte header with 12-byte pieces. The reader" +
-        " and codec still assume 16-byte pieces, so multipart frames cannot be shown or" +
-        " replaced until they move together.",
+        "The accepted frame layout is an 8-byte header with 12-byte pieces, and the" +
+        " reader and codec now read exactly that, so multipart frames are decoded and" +
+        " exported. Compositing one frame's pieces into a single displayed image, and" +
+        " replacing them, is the step that remains.",
     },
     {
       kind: "near",
@@ -855,8 +856,9 @@ export const project: ProjectStatus = {
         " directly: 297 sprite definitions, 4,070 animation slots, 1,721 non-null animation" +
         " references, 10,980 frame records, 11,005 pieces, 21 multipart frames and 7,390" +
         " structured graphics containers. The accepted frame layout is an 8-byte header" +
-        " with 12-byte pieces; the shipped reader still holds the earlier single-piece" +
-        " layout, which is why multipart frames are not yet shown in the editor.",
+        " with 12-byte pieces, and the shipped reader now reads it: multipart frames are" +
+        " decoded and exported, though the editor still draws one piece per direction" +
+        " slot because the composite path is not built yet.",
     },
     {
       id: "research-freeze-complete",

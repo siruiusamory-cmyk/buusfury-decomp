@@ -1,7 +1,8 @@
 # CQA-01-OUTPUT-SAFETY-001 - shared output-safety authority and graphics export data-loss fix
 
-STATUS: **IMPLEMENTATION COMPLETE, FOCUSED VALIDATION GREEN, FROZEN FOR
-INDEPENDENT REVIEW.** Not merged.
+STATUS: **IMPLEMENTATION COMPLETE, FOCUSED VALIDATION GREEN, INDEPENDENT REVIEW
+`APPROVE` (no blocking findings), FROZEN CANDIDATE UNCHANGED.** Not merged.
+Frozen SHA `f9cfefb55d7e1469e106702574b51ccf7bd08ac9`.
 
 Ticket class: CRITICAL REMEDIATION. Primary finding **CQA-01 [CRITICAL]**, with
 only the output-safety ownership needed to close it durably from **CQA-10
@@ -248,7 +249,18 @@ Still open, and **not** addressed here:
 - **Atomic publication for the atlas** (`atlas_build.write_atlas` truncates in
   place) - CQA-13.
 - `.gitignore` coverage for stray exported `*.png` / provenance manifests.
-- The remaining unguarded write sites across the wider repository.
+- The remaining unguarded write sites across the wider repository, including two
+  the independent reviewer confirmed are **not** CQA-01 regressions but are still
+  this finding's debt:
+  - `authored_image.refuse_source_alias` (`authored_image.py:118-120`) is a third
+    implementation of the alias rule and is **hard-link-blind** (it compares
+    `resolve()` only). It is a defence-in-depth gap, not a silent-destruction
+    path: that transaction re-verifies the source's canonical SHA-256 before any
+    emit and writes only to staging siblings. It should delegate to
+    `write.paths_are_the_same_file` when it is next touched.
+  - `build.py:312`'s bulk PNG extraction has no output-path policy, and is safe
+    today only because its destinations are *derived*
+    (`project_dir/graphics/assets/graphic_NNNN.png`) rather than caller-selected.
 
 ## 10. Scope boundaries observed
 
@@ -309,7 +321,38 @@ creation.
 
 ## 12. Independent review
 
-See the final report for the reviewer verdict and any findings.
+**Verdict: `APPROVE`. BLOCKING findings: none.** the reviewer (the local review tool),
+fresh context, read-only, given the repository, worktree, START SHA, FROZEN SHA,
+ticket requirements and the verbatim CQA-01/CQA-10 audit text - **without** the
+implementer's conclusions. It did not modify the frozen commit, and its full
+output is preserved at `<temp>\cqa01-probe\the reviewer model`. The record is
+[`CQA-01-OUTPUT-SAFETY-001-review.md`](CQA-01-OUTPUT-SAFETY-001-review.md).
+
+What the reviewer verified independently, rather than accepting:
+
+- Ran the focused files (`test_output_safety`, `test_graphics_cli`,
+  `test_workbench_graphics`, `test_graphics_rom`): **107 passed, 1 skipped**. The
+  skip is a missing local `atlas.jsonl`, **not** an alias-feature skip: the
+  hard-link, file-symlink and directory-symlink tests all ran on this host.
+- **Reproduced the mutation check itself** in its own scratch worktree: bypassing
+  `GraphicsTab._refuse_source_alias` failed 3 GUI refusal tests, including the
+  hard-link case and a real "ROM not byte-identical" failure.
+- Hashed the canonical ROM before and after every run: unchanged.
+- Traced the CLI statement order and confirmed the guard precedes `encode`,
+  `mkdir` and `write_bytes`.
+- Confirmed no under-refusal and no over-refusal of path aliases, and that the
+  sibling-in-the-same-directory positive control still passes.
+
+Two `NOTE`-severity findings, both explicitly deferred CQA-10 scope rather than
+CQA-01 regressions, are carried into section 9 above:
+`authored_image.refuse_source_alias` is still a third, hard-link-blind
+implementation of the alias rule; and `build.py`'s bulk PNG extraction has no
+output-path policy, which is safe today only because its destinations are derived
+rather than caller-selected.
+
+No correction commit was required: the frozen candidate
+`f9cfefb55d7e1469e106702574b51ccf7bd08ac9` stands as reviewed and **unamended**.
+The CQA-02 "fix if BLOCKING" step was not entered, so no review loop was created.
 
 ## Stop
 

@@ -7,7 +7,18 @@ nothing ROM-derived is committed.
 The pairing that matters: `pack` is checked by `unpack`, never against captured
 bytes. That is the only claim the encoder makes - it emits a stream the verified
 decoder accepts - and testing it against a golden blob would assert a stronger
-property than the module is willing to state.
+property than the module is willing to state. The single frozen blob in this file
+is the opposite kind of fixture: the pre-fix encoding of a known payload, kept as
+the *negative* half of the CQA-02 termination regression so the discriminator can
+never silently become vacuous.
+
+**Stream termination (CQA-02-PACKED-STREAM-TERMINATION-001).** The retail decoder
+has no output counter and stops only on the stream's own escape - twelve zero bits
+at a token boundary. `pack` writes that escape before the final word is padded, and
+`validate_retail_termination` re-decodes a payload to the escape and requires it at
+exactly the declared length. The `_marker_` and `_retail_termination_` tests below
+pin the marker's exact bits, its position, the corpus-wide postcondition, and the
+pre-fix streams that must still be refused.
 
 **Strict success (EVIDENCE-RISK-DEBT-001).** The decoder used to stop appending
 when a match reached the declared size, so a stream whose final match overran was
@@ -20,6 +31,8 @@ boundary now sits - exactly the declared size, and not one byte more.
 
 from __future__ import annotations
 
+import hashlib
+import random
 import struct
 
 import pytest
@@ -476,10 +489,13 @@ def test_an_unreachable_distance_is_refused() -> None:
 
 
 def test_a_stream_that_stops_at_its_declared_size_is_still_accepted() -> None:
-    """The engine's own rule, kept: reaching the declared size ends the decode.
+    """Host policy, kept: reaching the declared size ends the default decode.
 
-    The stream past that point is not examined, which is what makes
-    `webfoot_lz.pack`'s output - which never emits an end marker - decodable.
+    The stream past that point is not examined. This is the host-side rule and
+    deliberately NOT the engine's - the retail decoder carries no output counter
+    and would keep reading - so this test describes what `unpack` does by default,
+    not what the write path accepts. `validate_retail_termination` is the check
+    that speaks for the engine.
     """
     def build(writer: "wl._WordBitWriter") -> None:
         _widen_to_eight_bit_literals(writer)
@@ -501,3 +517,230 @@ def test_pack_output_still_decodes_exactly_after_the_strictness_change(size: int
     assert container.data == payload
     assert container.declared_size == size
     assert len(container.data) == size
+
+
+# --- stream termination: the retail escape (CQA-02) ---------------------------
+#
+# The retail packed decoder takes `(source, destination)`, keeps no output count
+# and compares nothing against its destination cursor, so it stops only on the
+# stream's own escape: twelve zero bits - prefix `000`, seven-bit field `0000000`,
+# two-bit selector `00` - read where a token would begin. `pack` emits that escape
+# itself, before the final word is padded, and `validate_retail_termination`
+# re-decodes to the escape and requires it at exactly the declared length.
+
+#: `pack(b"A" * 64)` **before** CQA-02-PACKED-STREAM-TERMINATION-001, byte for
+#: byte, from the ticket's own pre-fix worktree (`git show 659db0e:...`). Its
+#: final token ends flush on the 32-bit boundary, so it emits exactly zero padding
+#: bits and its packed stream contains no escape at all - the case the audit
+#: described as "only appears valid because of what happens to follow it". Frozen
+#: here so the discriminator below cannot decay into a test that passes for the
+#: wrong reason.
+_A_TIMES_64_BEFORE_CQA_02 = bytes.fromhex("0200000040000000fe53d020")
+
+#: The same payload after remediation: the identical token stream, then the
+#: escape. Because the pre-fix token stream ended flush, the marker begins a fresh
+#: word, so the whole added word is zero.
+_A_TIMES_64_AFTER_CQA_02 = bytes.fromhex("0200000040000000fe53d02000000000")
+
+
+def test_the_a64_flush_payload_is_the_pinned_cqa_02_discriminator() -> None:
+    """The named regression, in both directions.
+
+    Before the fix this payload's stream ended flush against a word boundary with
+    no escape, so the host decoder accepted it and the retail termination rule
+    refused it. After the fix the token stream is unchanged, the escape follows it,
+    and both accept. A regression that dropped the marker would make the second
+    half fail on `_A_TIMES_64_BEFORE_CQA_02` and the first half fail on the
+    mismatch against `_A_TIMES_64_AFTER_CQA_02`.
+    """
+    payload = b"A" * 64
+    assert wl.pack(payload) == _A_TIMES_64_AFTER_CQA_02
+    assert wl.pack(payload)[: len(_A_TIMES_64_BEFORE_CQA_02)] == _A_TIMES_64_BEFORE_CQA_02
+
+    # Host-side rule: the pre-fix stream decodes fine, which is why the defect was
+    # invisible to every caller that only decoded it.
+    assert wl.unpack(_A_TIMES_64_BEFORE_CQA_02, 0).data == payload
+    # Retail rule: it does not terminate inside its own bytes.
+    with pytest.raises(wl.ContainerError):
+        wl.validate_retail_termination(_A_TIMES_64_BEFORE_CQA_02)
+
+    # The corrected stream satisfies both, and its escape is inside it.
+    assert wl.unpack(_A_TIMES_64_AFTER_CQA_02, 0).data == payload
+    assert wl.validate_retail_termination(_A_TIMES_64_AFTER_CQA_02).data == payload
+
+
+def test_the_end_marker_is_twelve_zero_bits_written_at_the_token_boundary() -> None:
+    """The marker's width and value, asserted at the bit level.
+
+    Built through the module's own writer so this is a statement about bit
+    positions rather than about which bytes happen to differ: the twelve bits that
+    follow the final token are zero, the token bits before them are untouched, and
+    the writer consumed exactly twelve more bits. Those twelve are the decoder's
+    ``000`` + ``0000000`` + ``00``.
+    """
+    def body(writer: "wl._WordBitWriter") -> None:
+        _widen_to_eight_bit_literals(writer)
+        _literal(writer, 0x5A)
+
+    counting = wl._WordBitWriter()
+    body(counting)
+    assert counting._count == 18
+    counting.write_end_marker()
+    assert counting._count == 30
+
+    marked = wl._WordBitWriter()
+    body(marked)
+    marked.write_end_marker()
+    bits = f"{int.from_bytes(marked.finish(), 'little'):032b}"
+    tokens_only = wl._WordBitWriter()
+    body(tokens_only)
+    token_bits = f"{int.from_bytes(tokens_only.finish(), 'little'):032b}"
+    assert bits[:18] == token_bits[:18]
+    assert bits[18:30] == "0" * 12
+    assert bits[30:] == "0" * 2
+
+
+@pytest.mark.parametrize("flipped", range(12))
+def test_altering_any_bit_of_the_marker_defeats_retail_validation(flipped: int) -> None:
+    """Every one of the twelve bits is load-bearing.
+
+    A stream whose escape differs in a single bit is still well formed enough for
+    the host decoder if the declared size is reached first, but it no longer
+    terminates on the engine's rule - so the stricter consumer must refuse it. This
+    is the automated form of the ticket's M3 mutation, kept as a permanent test
+    rather than run once by hand.
+    """
+    writer = wl._WordBitWriter()
+    _widen_to_eight_bit_literals(writer)
+    _literal(writer, 0x5A)
+    for index in range(12):
+        writer.bit(1 if index == flipped else 0)
+    blob = _header(2, 1) + writer.finish()
+
+    assert wl.unpack(blob, 0).data == b"\x5A"
+    with pytest.raises(wl.ContainerError):
+        wl.validate_retail_termination(blob)
+
+
+def test_a_marker_less_stream_is_refused_however_it_is_padded() -> None:
+    """Termination must be inside the payload, not borrowed from what follows it.
+
+    The pre-fix stream is refused on its own, refused with `0xFF` expansion fill
+    after it, and only "accepted" when a caller happens to append enough zero bytes
+    - which is precisely the accident the fix removes. The corrected stream does not
+    care what follows it.
+    """
+    pre_fix = _A_TIMES_64_BEFORE_CQA_02
+    with pytest.raises(wl.ContainerError):
+        wl.validate_retail_termination(pre_fix)
+    with pytest.raises(wl.ContainerError):
+        wl.validate_retail_termination(pre_fix + b"\xFF" * 64)
+    # A run of zero bytes supplies the missing bits - the pre-fix stream's success
+    # was conditional on its neighbours, which is the defect.
+    assert wl.validate_retail_termination(pre_fix + b"\x00" * 4).data == b"A" * 64
+
+    fixed = _A_TIMES_64_AFTER_CQA_02
+    for tail in (b"", b"\xFF" * 64, b"\x00" * 64, bytes(range(64))):
+        assert wl.validate_retail_termination(fixed + tail).data == b"A" * 64
+
+
+def _termination_corpus() -> list[tuple[str, bytes]]:
+    """Deterministic payloads covering the alignment and content cases that matter.
+
+    Names are carried so a failure says which shape broke. Every payload is
+    synthetic; nothing here is ROM-derived.
+    """
+    rng = random.Random(20260924)
+    cases: list[tuple[str, bytes]] = [
+        ("empty", b""),
+        ("one-byte", b"\x41"),
+        ("two-byte", b"\x41\x41"),
+        ("shortest-repeating", b"\x41\x41\x41"),
+        ("all-zero-3", b"\x00" * 3),
+        ("repeat-255", b"\xFF" * 255),
+        ("repeat-256", b"\x00" * 256),
+        ("repeat-4096", b"A" * 4096),
+        ("alternating-256", (b"\xAA\x55" * 128)),
+        ("pattern-1024", (bytes(range(16)) * 64)),
+        ("incompressible-256", bytes(rng.randrange(256) for _ in range(256))),
+        ("incompressible-4096", bytes(rng.randrange(256) for _ in range(4096))),
+        ("ramp-1000", bytes((index * 37) % 256 for index in range(1000))),
+    ]
+    # Powers of two, and the 31/32/33-style boundaries where the final token is most
+    # likely to land flush against a word (the pre-fix defect's case).
+    for size in (4, 8, 16, 32, 64, 128, 512, 1024):
+        cases.append((f"incompressible-{size}", bytes(rng.randrange(256) for _ in range(size))))
+    for size in (15, 30, 31, 32, 33, 62, 63, 64, 65, 127, 128, 129):
+        cases.append((f"repeat-{size}", b"Q" * size))
+        cases.append((f"incompressible-{size}", bytes(rng.randrange(256) for _ in range(size))))
+    return cases
+
+
+def test_every_packed_payload_is_self_terminating() -> None:
+    """The universal postcondition, over a generated corpus.
+
+    For every supported input:
+
+    * A - the ordinary host decode returns the source exactly;
+    * B - the retail termination validator accepts;
+    * C - the escape falls at the declared decompressed boundary, which is what the
+      validator requires;
+    * D - no *earlier* boundary escape exists. This follows from the validator's
+      own construction rather than from a second scan: it consumes tokens in order
+      and stops at the first escape, so an earlier one would end the decode short
+      and fail the length comparison. `tests/unit/test_logx_codec_reference.py`
+      corroborates it with an independently written reader;
+    * E - the payload terminates on its own. The validator is run on the payload
+      with nothing after it, so no following byte can be supplying the escape.
+    """
+    cases = _termination_corpus()
+    assert len(cases) >= 35
+    for name, payload in cases:
+        encoded = wl.pack(payload)
+        assert wl.unpack(encoded, 0).data == payload, f"A: {name}"
+        verified = wl.validate_retail_termination(encoded)
+        assert verified.data == payload, f"B: {name}"
+        assert verified.declared_size == len(payload), f"C: {name}"
+        # The whole payload is whole words, header included: nothing here leans on
+        # a byte outside the encoded stream.
+        assert (len(encoded) - wl.HEADER_SIZE) % 4 == 0, f"E: {name}"
+
+
+def test_a_payload_whose_packed_form_exceeds_64kib_still_validates() -> None:
+    """The escape scan is bounded by the declared size, not by a fixed ceiling.
+
+    A legitimate packed stream can be larger than the bytes it produces - this
+    encoder's literal-only worst case is nine bits per byte - so a fixed ceiling
+    around 64 KiB refuses a valid incompressible payload near the top of the
+    supported range. That was a real false refusal while the bound was a constant,
+    and this case pins it.
+    """
+    payload = b"".join(
+        hashlib.sha256(index.to_bytes(4, "little")).digest()
+        for index in range(60 * 1024 // 32)
+    )
+    encoded = wl.pack(payload)
+    assert len(encoded) - wl.HEADER_SIZE > 64 * 1024, "premise: packed over 64 KiB"
+    assert wl.validate_retail_termination(encoded).data == payload
+
+
+def test_the_marker_costs_nothing_or_one_packed_word_and_never_more(monkeypatch) -> None:
+    """Marker emission is bounded, and the bound is measured rather than assumed.
+
+    The escape is twelve bits written immediately after the final token, so it fits
+    inside the final partial word whenever at least twelve bits of it are free and
+    costs exactly one more packed word otherwise. The ticket is explicit that the
+    increase is not always four bytes; both cases occur in this corpus, and the
+    token stream itself is unchanged either way.
+    """
+    deltas: set[int] = set()
+    for name, payload in _termination_corpus():
+        with_marker = wl.pack(payload)
+        monkeypatch.setattr(wl._WordBitWriter, "write_end_marker", lambda self: None)
+        try:
+            without_marker = wl.pack(payload)
+        finally:
+            monkeypatch.undo()
+        assert with_marker[: len(without_marker)] == without_marker, f"tokens: {name}"
+        deltas.add(len(with_marker) - len(without_marker))
+    assert deltas == {0, 4}, f"unexpected marker cost: {sorted(deltas)}"

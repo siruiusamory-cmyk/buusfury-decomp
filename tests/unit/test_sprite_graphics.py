@@ -284,6 +284,21 @@ def _graphic_blob(width: int, height: int, fill: int = 3) -> tuple[bytes, bytes]
     return wl.pack(tiles), pixels
 
 
+def _fitting_graphic(width: int, height: int, salt: int = 0) -> tuple[bytes, bytes]:
+    """A container whose own marker lands inside its measured packed extent.
+
+    ``Graphic.packed_size`` is the declared-size-terminated extent and deliberately
+    does not grow to cover an escape that begins a fresh word: the bytes after the
+    container may belong to the next one, so the bound stays conservative. A
+    re-encode is therefore only guaranteed to fit when the escape falls inside the
+    final word, which is the case this fixture selects - and the tests that use it
+    assert that premise rather than assuming it.
+    """
+    pixels = bytes((index * 37 + salt) % 256 for index in range(width * height))
+    tiles = sg.swizzle_tiles(pixels, width, height, colour_256=True)
+    return wl.pack(tiles), pixels
+
+
 def test_decode_graphic_cross_checks_the_declared_size_against_the_piece() -> None:
     blob, pixels = _graphic_blob(16, 16)
     graphic = sg.decode_graphic(blob, 0, 16, 16, colour_256=True)
@@ -322,8 +337,9 @@ def test_payload_that_would_grow_past_its_allocation_is_refused() -> None:
 
 
 def test_a_payload_that_fits_is_planned_with_its_original_extent() -> None:
-    blob, pixels = _graphic_blob(32, 32, fill=7)
-    graphic = sg.decode_graphic(blob, 0, 32, 32, colour_256=True)
+    blob, pixels = _fitting_graphic(8, 8)
+    graphic = sg.decode_graphic(blob, 0, 8, 8, colour_256=True)
+    assert graphic.packed_size == len(blob), "premise: the marker sits inside the extent"
     plan = sg.plan_graphic_payload(blob, graphic, pixels)
     assert plan.offset == 0
     assert plan.original_size == graphic.packed_size
@@ -331,5 +347,76 @@ def test_a_payload_that_fits_is_planned_with_its_original_extent() -> None:
     assert plan.padding >= 0
     # The planned payload must itself decode to the pixels asked for.
     assert sg.unswizzle_tiles(
-        wl.unpack(plan.payload, 0).data, 32, 32, colour_256=True
+        wl.unpack(plan.payload, 0).data, 8, 8, colour_256=True
     ) == pixels
+
+
+# --- payload planning carries the retail termination postcondition (CQA-02) ---
+
+
+def _pack_without_marker(monkeypatch, payload: bytes) -> bytes:
+    """The pre-fix encoder's output: `pack` with the escape emission removed."""
+    monkeypatch.setattr(wl._WordBitWriter, "write_end_marker", lambda self: None)
+    try:
+        return wl.pack(payload)
+    finally:
+        monkeypatch.undo()
+
+
+def test_the_planned_payload_is_self_terminating() -> None:
+    """The sprite planner emits a payload retail can stop on its own.
+
+    The payload authored here is not yet reachable from a GUI or CLI caller, but it
+    is production planning code and a future authoring dependency, so it carries
+    the same postcondition the shipped dialogue path does.
+    """
+    blob, pixels = _fitting_graphic(8, 8)
+    graphic = sg.decode_graphic(blob, 0, 8, 8, colour_256=True)
+    plan = sg.plan_graphic_payload(blob, graphic, pixels)
+    verified = wl.validate_retail_termination(plan.payload)
+    decoded = wl.unpack(plan.payload, 0)
+    assert verified.declared_size == len(decoded.data)
+    assert verified.data == decoded.data
+
+
+def test_the_sprite_planner_refuses_a_payload_without_an_in_stream_escape(
+    monkeypatch,
+) -> None:
+    """Bypassing marker emission must stop the planner, not merely change its size.
+
+    The container here is the pre-fix encoding of the very pixels being re-planned,
+    so the payload the planner is handed does decode to the right tile bytes and
+    does reach the declared size - it simply never reaches the engine's escape.
+    Without the guard this would be accepted; the assertion is a named refusal.
+    """
+    pixels = bytes([7]) * (32 * 32)
+    tiles = sg.swizzle_tiles(pixels, 32, 32, colour_256=True)
+    before_marker = _pack_without_marker(monkeypatch, tiles)
+    assert wl.unpack(before_marker, 0).data == tiles
+    with pytest.raises(wl.ContainerError):
+        wl.validate_retail_termination(before_marker)
+
+    monkeypatch.setattr(sg.webfoot_lz, "pack", lambda payload: before_marker)
+    graphic = sg.decode_graphic(before_marker, 0, 32, 32, colour_256=True)
+    with pytest.raises(sg.SpriteFormatError, match="retail termination contract"):
+        sg.plan_graphic_payload(before_marker, graphic, pixels)
+
+
+def test_the_marker_is_charged_to_the_sprite_capacity_rule(monkeypatch) -> None:
+    """An extent that fits the pre-marker length alone must not be used.
+
+    The container in this fixture is the pre-fix encoding, so the payload's
+    original extent is exactly the pre-marker length. Re-planning the same pixels
+    produces the same token stream plus the escape - four bytes over - and the
+    capacity rule must refuse rather than write past the container's end.
+    """
+    pixels = bytes([7]) * (32 * 32)
+    tiles = sg.swizzle_tiles(pixels, 32, 32, colour_256=True)
+    before_marker = _pack_without_marker(monkeypatch, tiles)
+    after_marker = wl.pack(tiles)
+    assert len(after_marker) > len(before_marker), "this case must be marker-costing"
+
+    graphic = sg.decode_graphic(before_marker, 0, 32, 32, colour_256=True)
+    assert graphic.packed_size == len(before_marker)
+    with pytest.raises(sg.SpriteFormatError, match="growth is refused"):
+        sg.plan_graphic_payload(before_marker, graphic, pixels)

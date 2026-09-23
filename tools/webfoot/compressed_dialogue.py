@@ -7,7 +7,8 @@ from typing import Iterable
 
 from .allocation import Allocation, AllocationRequest, allocate
 from .binary import FileOffset
-from .formats.webfoot_lz import pack, unpack
+from .formats.webfoot_lz import (ContainerError, pack, unpack,
+                                 validate_retail_termination)
 from .layout import AnchorId, OwnedRegion, RomRange
 from .profile import RomProfile
 from .write import (ByteChange, GeneratedAllocationProvenance, GeneratedImage,
@@ -109,6 +110,18 @@ def _prepare_replacement(canonical: bytes, profile: RomProfile,
     if end > len(container.data):
         raise CompressedDialogueError("durable handle range lies outside decoded container")
     payload = pack(container.data[:target.decoded_start] + encoded + container.data[end:])
+    # Fail closed before the payload can reach a size decision or a plan. The
+    # engine terminates on the stream's own escape and on nothing else, so a
+    # payload that merely happens to decode to the declared length is not
+    # evidence that retail reads it correctly; it is refused here rather than
+    # validated again in every caller.
+    try:
+        validate_retail_termination(payload)
+    except ContainerError as exc:
+        raise CompressedDialogueError(
+            f"{target.name}: re-encoded dialogue payload does not satisfy the "
+            f"retail termination contract: {exc}"
+        ) from exc
     next_pointer = int.from_bytes(canonical[table_slot + 4:table_slot + 8], "little")
     if next_pointer < 0x08000000:
         raise CompressedDialogueError("following container table entry is not a ROM pointer")

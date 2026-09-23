@@ -213,9 +213,10 @@ def indexed_pixmap(pixels: bytes, width: int, height: int, rgb) -> QPixmap:
     # The mask is built in ONE bulk byte translation and handed to
     # `setAlphaChannel`, which is a native operation over the whole scanline buffer.
     # The obvious alternative - walking `pixelIndex(x, y)` in Python - costs a Qt
-    # call per pixel: measured at 1.2 s for a 9.2 Mpx composite against 0.06 s here,
-    # roughly 20x slower, and it blocks the UI thread because the Objects canvas
-    # shares this helper.
+    # call per pixel and measured roughly 60x slower on a 9.2 Mpx composite (tens of
+    # times slower at every size tried), which matters because it runs on the UI
+    # thread: the Objects canvas shares this helper. See
+    # `docs/research/UI_FUNCTIONAL_DIFF.md` for the recorded figures.
     mask_bytes = bytes(pixels).translate(_OPAQUE_BY_INDEX)
     mask = QImage(mask_bytes, width, height, width, QImage.Format.Format_Grayscale8)
     converted = image.convertToFormat(QImage.Format.Format_ARGB32)

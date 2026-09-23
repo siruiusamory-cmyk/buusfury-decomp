@@ -343,12 +343,21 @@ class SceneTab(QWidget):
         self._refresh_pending()
 
     def _set_disabled(self, message: str) -> None:
+        """Nothing is authorable: publish the reason once, to the shell's bar.
+
+        The message used to be written to BOTH `_map_support` (a label drawn in this
+        editor's own body) and `_status` (the holder the shell mirrors), so the same
+        sentence rendered twice on one screen. `_status` is this editor's status
+        holder and the bar is the only place a status line is drawn, so the body
+        label is cleared instead. That is the same arrangement the Atlas, Graphics,
+        Maps and Inspector editors use.
+        """
         self._placements.setRowCount(0)
         self._source_select.clear()
         self._trigger_select.clear()
         self._add.setEnabled(False)
         self._session.selected_map = None
-        self._map_support.setText(message)
+        self._map_support.setText("")
         self._status.setText(message)
 
     def _on_map_changed(self, *_) -> None:
@@ -385,10 +394,10 @@ class SceneTab(QWidget):
                 row, 1, QTableWidgetItem(f"{p['position_low']}, {p['position_high']}")
             )
             self._placements.setItem(
-                row, 2, QTableWidgetItem(str(p["placement_type"] or "—"))
+                row, 2, QTableWidgetItem(str(p["placement_type"] or "-"))
             )
             self._placements.setItem(
-                row, 3, QTableWidgetItem(str(p["classification"] or "—"))
+                row, 3, QTableWidgetItem(str(p["classification"] or "-"))
             )
 
             self._placements.setItem(row, 4, QTableWidgetItem(p["provenance"]))
@@ -402,7 +411,7 @@ class SceneTab(QWidget):
                 candidate["placement_type"].split("/")[-1]
                 if candidate["placement_type"] else "no type"
             )
-            classification = candidate["classification"] or "—"
+            classification = candidate["classification"] or "-"
             self._source_select.addItem(
                 f"{candidate['identity']}  [{type_label} / {classification}]",
                 candidate["identity"],
@@ -418,7 +427,7 @@ class SceneTab(QWidget):
         self._behavior_select.clear()
         self._behavior_select.addItem("(none)", None)
         for descriptor in scene_sdk.assignable_descriptors(self._session.maps):
-            event = descriptor.get("event") or "—"
+            event = descriptor.get("event") or "-"
             self._behavior_select.addItem(
                 f"{descriptor['identity']}  ({event})", descriptor["identity"]
             )

@@ -122,20 +122,32 @@ def test_build_controls_are_still_connected(window, monkeypatch) -> None:
     panel's own business and depends on session state; what this asserts is the
     *wiring*, which the re-parenting could have broken. A disabled button emits no
     signal, so without this the test would pass for the wrong reason.
+
+    All five buttons are covered. An earlier version checked only the three that act
+    on the current project, and an independent reviewer showed by mutation that
+    severing Open Project or Extract left every test passing.
     """
     surface = window._build
     called: list[str] = []
-    monkeypatch.setattr(surface, "_on_validate", lambda: called.append("validate"))
-    monkeypatch.setattr(surface, "_on_build", lambda: called.append("build"))
-    monkeypatch.setattr(surface, "_on_choose_output", lambda: called.append("output"))
+    handlers = {
+        "_on_open_project": "open_project",
+        "_on_extract": "extract",
+        "_on_choose_output": "choose_output",
+        "_on_validate": "validate",
+        "_on_build": "build",
+    }
+    for name, label in handlers.items():
+        monkeypatch.setattr(surface, name, lambda label=label: called.append(label))
     for button in (
+        surface._open_button,
+        surface._extract_button,
+        surface._output_button,
         surface._validate_button,
         surface._build_button,
-        surface._output_button,
     ):
         button.setEnabled(True)
         button.click()
-    assert called == ["validate", "build", "output"]
+    assert called == ["open_project", "extract", "choose_output", "validate", "build"]
 
 
 def test_build_dialog_reopens(window) -> None:

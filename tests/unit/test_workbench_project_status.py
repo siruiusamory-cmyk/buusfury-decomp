@@ -143,7 +143,7 @@ def test_stale_requires_an_invalidated_result(window) -> None:
 
 
 @pytest.mark.parametrize("width,height", [(1440, 900), (1100, 720)])
-@pytest.mark.parametrize("editor", ["Atlas", "Inspector", "Maps", "Graphics"])
+@pytest.mark.parametrize("editor", ["Atlas", "Inspector", "Maps", "Graphics", "Scene"])
 def test_status_is_identical_in_every_editor_and_width(
     window, editor, width, height, rom_only_session
 ) -> None:
@@ -182,7 +182,7 @@ def visible_status_texts(window) -> list[str]:
     return texts
 
 
-@pytest.mark.parametrize("editor", ["Atlas", "Inspector", "Maps", "Graphics"])
+@pytest.mark.parametrize("editor", ["Atlas", "Inspector", "Maps", "Graphics", "Scene"])
 def test_exactly_one_status_bar_and_no_editor_draws_its_own(window, editor) -> None:
     """The shell owns the status bar; an editor only publishes text into it.
 
@@ -192,6 +192,11 @@ def test_exactly_one_status_bar_and_no_editor_draws_its_own(window, editor) -> N
     and the project state on the right - must render exactly once each. Checking the
     bar's own text is what makes the guard independent of which sentence the shell
     happens to be showing.
+
+    The Scene editor is included because it is reached from a placement rather than
+    from the strip, so a parametrization over the four primary editors would miss
+    it, which is exactly how its own duplicate sentence outlived the first three
+    fixes of this defect.
     """
     window.show()
     window.show_editor(editor)
@@ -213,7 +218,7 @@ def test_no_editor_status_holder_is_drawn(window, rom_only_session) -> None:
     """
     window._session = rom_only_session
     window.show()
-    for editor in ("Atlas", "Inspector", "Maps", "Graphics"):
+    for editor in ("Atlas", "Inspector", "Maps", "Graphics", "Scene"):
         window.show_editor(editor)
         window._refresh_identity()
         for host in window._hosts.values():

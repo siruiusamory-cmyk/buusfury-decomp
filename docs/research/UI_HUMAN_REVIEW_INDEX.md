@@ -5,7 +5,9 @@
 generated artwork: every image is a real screenshot of the running PySide6
 application against the canonical Buu's Fury USA rev0 image.
 
-The captures are 1440x900 except the three narrow states, which are 1100x720.
+Most captures are 1440x900. Four are 1100x720 (the narrow states plus
+`g8-graphics-narrow`), and the two project-action dialogues are their own
+content-sized dimensions, 542x350 for Build and 480x326 for Run.
 
 ## Look at these first
 
@@ -17,7 +19,7 @@ The captures are 1440x900 except the three narrow states, which are 1100x720.
 
 ## A. Reference matrix (what the real tools do)
 
-`docs/research/UI_REFERENCE_MATRIX.md`, a 13-row x 9-column matrix over GB Studio,
+`docs/research/UI_REFERENCE_MATRIX.md`, a 14-row x 9-column matrix over GB Studio,
 Porymap, Tiled, LDtk, Godot, Aseprite, RPG Maker MZ and HexManiacAdvance, with the
 verified findings that changed a decision and the confirmed anti-AI constraints.
 
@@ -27,12 +29,17 @@ verified findings that changed a decision and the confirmed anti-AI constraints.
 
 ## C. AFTER captures (accepted candidate)
 
-`<temp>\dbz-visual-pass\light\`, 24 PNGs:
+`<temp>\dbz-visual-pass\light\`, 25 PNGs:
 
 - the 18 review states, `01-shell-no-rom` through `18-narrow-shell-atlas`;
 - six Graphics states: `g2-graphics-static-sprite`, `g3-graphics-animated-sprite`,
   `g5-graphics-playing`, `g6-graphics-swatch-selected`,
-  `g7-graphics-pending-recolour`, `g8-graphics-narrow`.
+  `g7-graphics-pending-recolour`, `g8-graphics-narrow`;
+- `19-scene-editor-empty`, the Scene editor. It is reached from a placement rather
+  than from the strip, and View -> Detailed Editor is disabled until a project is
+  open, so this is the defensive no-project state, captured by enabling the action
+  explicitly. It is included because it is the state that drew a status sentence
+  twice before the correction.
 
 Two of the 18 are captured as the **modal dialogues** they are, not as pages:
 `14-build-action` (Build) and `15-run-configuration` (Run). Because `14-build-surface`
@@ -70,7 +77,7 @@ than 18; the only missing pair is `compare-14`.
 
 ## F. Reference-fidelity matrix
 
-`docs/research/UI_REFERENCE_FIDELITY_MATRIX.md`, 23 rows including the nine the
+`docs/research/UI_REFERENCE_FIDELITY_MATRIX.md`, 24 rows including the nine the
 correction required: ROM-editor top-bar structure, primary editor taxonomy, map
 workspace consolidation, global action duplication, Graphics empty state,
 contextual inspector behaviour, status-bar density, shell visual coherence, and
@@ -96,7 +103,8 @@ banner-marked as such.
 | Check | Command | Result |
 |---|---|---|
 | Overlap / clipping / elision, 16 states | `python -m tools.qa.overlap_probe` | 0 problems |
-| Status parity across editor and width | `pytest tests/unit/test_workbench_project_status.py` | 14 passed |
+| Status parity across editor and width | `pytest tests/unit/test_workbench_project_status.py` | 22 passed |
+| Duplicated status sentences, 9 screens | `python -m tools.qa.status_duplication_probe` | 0 duplicated |
 | Build / Run dialogue behaviour | `pytest tests/unit/test_workbench_build_run_dialogs.py` | see the module |
 | Sprite palette reproduction | `python -m tools.qa.buu_sprite_palette` | graphic:903 top-ranked |
 

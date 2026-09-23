@@ -624,6 +624,25 @@ def capture_all(harness: Harness, workspace: Path) -> None:
     harness.window.resize(DESKTOP)
     harness.pump()
 
+    # 19. the Scene editor. It is not a strip destination, so the review set can
+    # only reach it through a placement, and without a capture of its own the
+    # shared-language claim had no evidence. Driven the way a user reaches it:
+    # Objects mode enables View -> Detailed Editor, which opens this editor.
+    #
+    # The capture name says "empty" on purpose. View -> Detailed Editor is DISABLED
+    # until a project is open, so this is the defensive no-project state, reached
+    # here by enabling the action explicitly. It is the state that drew a status
+    # sentence twice before the correction, which is why it is worth a capture.
+    print("[19] scene editor (empty state)")
+    harness.show_editor("Maps")
+    harness.maps.set_mode("objects")
+    harness.select_map(PROOF_MAP)
+    harness.pump(6)
+    harness.window._scene_action.setEnabled(True)
+    harness.window._scene_action.trigger()
+    harness.pump(8)
+    harness.grab("19-scene-editor-empty")
+
     print(f"\nwrote {len(list(out.glob('*.png')))} PNG(s) to {out}")
 
 

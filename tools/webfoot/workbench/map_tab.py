@@ -719,6 +719,14 @@ class MapWorkspaceTab(QWidget):
         self.statusChanged.emit(self._status.text())
 
     def _show_placeholder(self, message: str) -> None:
+        """Nothing to render: state it on the canvas and publish it once.
+
+        The message is drawn on the canvas itself, where the missing map would be,
+        and published to the shell's status bar through `_set_status`. It is
+        deliberately NOT also written to `_map_support`: that wrote the same
+        sentence into a second body label, so one fact rendered twice on one screen.
+        See `tools/qa/status_duplication_probe.py`.
+        """
         self._current_render = None
         self._current_map = None
         self._markers.clear()
@@ -727,7 +735,7 @@ class MapWorkspaceTab(QWidget):
         text.setBrush(theme.color("text_primary"))
         self._scene.addItem(text)
         self._scene.setSceneRect(0, 0, 640, 360)
-        self._map_support.setText(message)
+        self._map_support.setText("")
         self._set_status(message)
         self._clear_inspector()
         self._update_controls()

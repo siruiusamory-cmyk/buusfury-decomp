@@ -104,13 +104,37 @@ class EditorHost(QWidget):
         return self._content if self._content is not None else self
 
     def add_surface(self, widget: QWidget) -> None:
+        """Adopt `widget` as this host's editor.
+
+        A surface that publishes status on demand is handed this host, so it can
+        reach the one status holder without knowing how the shell is wired. The
+        attribute is set only when the surface declares it, so a surface with no
+        status of its own is unaffected.
+        """
         if self._content is None:
             self._content = widget
+        if hasattr(widget, "_host"):
+            widget._host = self
         self._layout.addWidget(widget, 1)
+
+    #: A host may publish its status line on demand, for an editor that keeps a
+    #: status holder the shell mirrors rather than a label it renders itself.
+    statusChanged = Signal(str)
 
     def set_status_label(self, label: QLabel | None) -> None:
         """Record the label this editor maintains as its own status line."""
         self._status_label = label
+
+    def set_status_text(self, text: str) -> None:
+        """Set this editor's status holder and publish it for the shell.
+
+        An editor whose holder is not drawn (Atlas) must still reach the bar, or a
+        message written while that editor is already on screen never arrives: the
+        shell copies the holder at mount time and thereafter only on a signal.
+        """
+        if self._status_label is not None:
+            self._status_label.setText(text)
+        self.statusChanged.emit(text)
 
     def status_label(self) -> QLabel | None:
         return self._status_label
@@ -151,8 +175,10 @@ class MapsEditor(EditorHost):
     buildRunRequested = Signal()
     #: Any of the three modes changed the project.
     projectChanged = Signal()
-    #: The active mode's own status line, republished for the shell.
-    statusChanged = Signal(str)
+    #: The active mode's own status line, republished for the shell. This is the
+    #: base host's `statusChanged`, inherited rather than redeclared: shadowing it
+    #: would create a second signal that callers connected to the base one would
+    #: never receive.
     #: The pending layout-edit count changed; the shell shows it too.
     dirtyChanged = Signal()
 

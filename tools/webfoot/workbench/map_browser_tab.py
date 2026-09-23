@@ -119,9 +119,9 @@ _READ_ONLY_BADGES = {
 #: session translates in most paths but which a defensive catch must still cover),
 #: ``MapBrowserError`` (the render facade the chooser and preview call) and
 #: ``WriteError`` (the ROM emit path, also unrelated to the other three).
-#: The mode-badge role colours. Gold is spent on the editing state only so the
-#: badge cannot compete with the map; a read-only state is a bare glyph plus
-#: text, which is why it stays legible without hue.
+#: The mode-badge role colours. The identity magenta is spent on the editing state
+#: only, so the badge cannot compete with the map; a read-only state is a bare glyph
+#: plus text, which is why it stays legible without hue.
 _MODE_COLORS = {
     "edit": "accent",
     "readonly": "text_muted",
@@ -1778,10 +1778,10 @@ class MapBrowserTab(QWidget):
         a symbol in front of a sentence that already says the same thing is
         decoration, and the ticket's ban on ornament applies to glyphs as much as
         to gradients. The non-colour channels are therefore the wording itself and
-        the brightness of the role: gold and bright for the editing state,
-        recessive for a read-only one. The role drives the colour, so no caller can
-        express a state with colour alone, and the accessible name states the role
-        in words.
+        the brightness of the role: the identity magenta for the editing state,
+        recessive grey for a read-only one. The role drives the colour, so no caller
+        can express a state with colour alone, and the accessible name states the
+        role in words.
         """
         self._mode_badge.setText(text)
         self._mode_badge.setStyleSheet(

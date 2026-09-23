@@ -107,27 +107,38 @@ saturation only; hue relationships are preserved.
 | technical text | `text_muted` | `#7b7b7b` | `#756970` | recessive, darkened to clear AA on white |
 | disabled | `text_disabled` | `#a5a5a5` | `#938990` | clearly disabled, still legible |
 | **primary interaction** | `accent` | `#de5294` / `#9c185a` | `#a81560` | Buu's skin, deepened so it separates from the pink shell *and* carries white text on white |
-| accent hover / pressed | `accent_hover` / `accent_pressed` | `#ff73b5` / `#9c185a` | `#930f53` / `#7d0f41` | the skin ramp, pressed toward the shadow end |
+| accent hover / pressed | `accent_hover` / `accent_pressed` | `#ff73b5` / `#9c185a` | `#930f53` / `#6d0c3c` | the skin ramp, pressed to the deepest ramp step |
 | accent ground | `accent_ground` | `#ffd6e7` | `#f7dbe8` | the specular pink, muted into a control fill |
 | **secondary accent** | `accent_secondary` | `#ad4a00` / `#ffad00` | `#9a5300` | Buu's belt, deepened for legibility; authored content and brand detail only |
 | selection | `selection` / `selection_edge` | `#de5294` / `#8c0052` | `#f2b3d0` / `#8f1350` | ramp steps 3 and 4: selection must beat the chrome, not blend into it |
 | focus | `focus` | `#de5294` | `#c9186a` | the skin, at full strength: focus must not be mistakable |
 | pending / unsaved | `pending` | `#ad4a00` | `#8a5a00` | the belt, so "waiting on you" is the authored-change colour |
 | danger | `danger` | `#c60000` | `#b3261e` | the eye red, darkened for a light surface |
-| research | `research` | `#8c0052` + violet | `#6b3fa0` | the cape/skin shadow family, kept separable from the accent |
+| research | `research` | none (see exceptions) | `#6b3fa0` | a violet the sprite does not carry; the second documented exception |
 | checkerboard | `checker_dark` / `checker_light` | `#c6c6c6` / `#dedede` | `#cdbcc6` / `#ded1d8` | the grey ramp, warmed |
 | preview canvas | `preview` | `#dedede` | `#e8dae1` | a light technical ground; black was replaced (see below) |
-| grid / retail marker | `grid` / `marker_retail` | `#de5294` | `#a81560` | the identity colour, so map selection belongs to the same family |
+| grid / retail marker | `grid` / `marker_retail` | `#de5294` | `#b81f6b` | the identity colour at full skin strength, so map selection belongs to the same family |
 | authored marker | `marker_authored` | `#ad4a00` | `#9a5300` | authored content uses the belt gold |
 
 ## Semantic exceptions
 
-**One.** Buu's sprite contains no green. `success` (`#1f7a3d`) is therefore a
-conventional editor green, darkened for a light surface. Everything else -
-including `danger` (his eye) and `research` (his cape/skin shadow family), comes
-from the sprite. The exception exists because "valid / safe / confirmed" is a
-domain fact the product must communicate unambiguously, and a green that is
-recognisably green beats a hue that merely happens to be in the sprite.
+**Two**, and both are recorded here rather than hidden behind a claim of source
+purity.
+
+1. **`success` (`#1f7a3d`) is a conventional editor green.** Buu's sprite contains
+   no green at all. "Valid / safe / confirmed" is a domain fact the product must
+   communicate unambiguously, and a green that is recognisably green beats a hue
+   that merely happens to sit in the sprite.
+2. **`research` (`#6b3fa0`) is a violet the sprite does not carry.** It was
+   originally documented as coming from the sprite's cape; the reproduced 24-entry
+   palette has no violet, and the value sits about 55 degrees from the nearest
+   sprite hue. The research role needs to be separable from both the pink accent
+   and the blue-free neutral ramp, so a violet earns its place on distinctness
+   rather than on provenance. Nothing in the accepted visual direction changes as
+   a result: this is a correction to the provenance record, not to the palette.
+
+Everything else, including `danger` (his eye) and `pending` (his belt), comes from
+the sprite.
 
 ## Measured contrast
 
@@ -147,7 +158,7 @@ WCAG relative-luminance ratios for the shipped tokens:
 | `text_disabled` on `surface` | 3.28:1 | intentionally below AA: disabled, still legible |
 | `accent` on `surface` | 6.93:1 | AA |
 | `accent` on `background` | 4.92:1 | AA |
-| `accent_ink` on `accent` | 6.09:1 | AA |
+| `accent_ink` on `accent` | 7.14:1 | AAA |
 | `selection_edge` on `selection` | 5.11:1 | AA, so a selected row has a real outline, not a colour-only cue |
 | `selection_edge` on `surface` | 8.57:1 | AAA |
 | `success` / `pending` / `danger` / `research` on `surface` | 5.21 / 5.75 / 6.34 / 7.17:1 | AA |
@@ -165,7 +176,7 @@ No state is carried by hue alone: every status role also has a glyph from
 The selected-sprite preview was a large black field. On a light editor that read
 as a hole punched in the pane, and it was never load-bearing: a sprite's edge is
 carried by its own outline (Buu's is `#000000`), not by the backdrop. The preview
-now uses `preview` (`#e2dce0`), a light technical ground from the sprite's own
+now uses `preview` (`#e8dae1`), a light technical ground from the sprite's own
 neutral ramp, so the artwork stays the subject.
 
 ## What this palette deliberately is not

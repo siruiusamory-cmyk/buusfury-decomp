@@ -1,25 +1,23 @@
 # DragonByte Z, human visual review index
 
-`DRAGONBYTE-Z-VISUAL-DIRECTION-PASS-001`, corrected candidate. **Not frozen, not
-staged, not committed.** Nothing here is generated artwork: every image is a real
-screenshot of the running PySide6 application against the canonical Buu's Fury
-USA rev0 image.
+`DRAGONBYTE-Z-VISUAL-DIRECTION-PASS-001`, final accepted candidate: frozen at
+`13d2ab2`, with the post-review corrections committed on top. Nothing here is
+generated artwork: every image is a real screenshot of the running PySide6
+application against the canonical Buu's Fury USA rev0 image.
 
-Start with the contact sheet, then open whichever full-resolution capture you want
-to judge. Every capture is 1440x900 except the three narrow states, which are
-1100x720.
+The captures are 1440x900 except the three narrow states, which are 1100x720.
 
 ## Look at these first
 
 | | Path |
 |---|---|
-| **Contact sheet, all 18 candidate states, one image** | `<temp>\dbz-visual-pass\after-contact-sheet.png` |
-| **Before/after sheets, 18 side-by-side pairs with captions** | `<temp>\dbz-visual-pass\comparison\compare-*.png` |
-| Comparison index (markdown, embeds every sheet) | `<temp>\dbz-visual-pass\comparison\index.md` |
+| **Contact sheet, all 24 candidate states in one image** | `<temp>\dbz-visual-pass\light-contact-sheet.png` |
+| **Palette comparison, dark interim theme vs the accepted pink theme** | `<temp>\dbz-visual-pass\palette-comparison-buu.png` |
+| **Before/after sheets, 17 pairs with captions** | `<temp>\dbz-visual-pass\comparison-light\` |
 
 ## A. Reference matrix (what the real tools do)
 
-`docs/research/UI_REFERENCE_MATRIX.md`, 13-row × 9-column matrix over GB Studio,
+`docs/research/UI_REFERENCE_MATRIX.md`, a 13-row x 9-column matrix over GB Studio,
 Porymap, Tiled, LDtk, Godot, Aseprite, RPG Maker MZ and HexManiacAdvance, with the
 verified findings that changed a decision and the confirmed anti-AI constraints.
 
@@ -27,15 +25,25 @@ verified findings that changed a decision and the confirmed anti-AI constraints.
 
 `<temp>\dbz-visual-pass\before\`, 18 PNGs.
 
-## C. AFTER captures (this candidate)
+## C. AFTER captures (accepted candidate)
 
-`<temp>\dbz-visual-pass\after\`, 18 PNGs.
+`<temp>\dbz-visual-pass\light\`, 24 PNGs:
+
+- the 18 review states, `01-shell-no-rom` through `18-narrow-shell-atlas`;
+- six Graphics states: `g2-graphics-static-sprite`, `g3-graphics-animated-sprite`,
+  `g5-graphics-playing`, `g6-graphics-swatch-selected`,
+  `g7-graphics-pending-recolour`, `g8-graphics-narrow`.
+
+Two of the 18 are captured as the **modal dialogues** they are, not as pages:
+`14-build-action` (Build) and `15-run-configuration` (Run). Because those file
+names differ from the earlier `14-build-surface`, the comparison directory holds
+17 sheets rather than 18; there is no `compare-14` or `compare-15`.
 
 ## D. Comparison sheets
 
-`<temp>\dbz-visual-pass\comparison\`, 18 PNGs plus `index.md`.
+`<temp>\dbz-visual-pass\comparison-light\`, 17 PNGs plus `index.md`.
 
-## E. Per-sheet visual verdicts
+## E. Per-state verdicts
 
 | # | Capture | Verdict |
 |---|---|---|
@@ -52,16 +60,13 @@ verified findings that changed a decision and the confirmed anti-AI constraints.
 | 11 | `11-graphics-empty` | PASS |
 | 12 | `12-graphics-selected` | PASS |
 | 13 | `13-atlas-rom-open` | PASS |
-| 14 | `14-build-surface` | PASS WITH NOTE |
-| 15 | `15-run-configuration` | PASS WITH NOTE |
+| 14 | `14-build-action` | PASS |
+| 15 | `15-run-configuration` | PASS |
 | 16 | `16-narrow-shell` | PASS |
 | 17 | `17-narrow-maps-browse` | PASS |
 | 18 | `18-narrow-shell-atlas` | PASS |
 
-**PASS: 14. PASS WITH NOTE: 4. FIX REQUIRED: 0.**
-
-The four notes are recorded under "Known visual deviations" below and are all
-consequences of the corrected information architecture rather than defects.
+**PASS: 16. PASS WITH NOTE: 2. FIX REQUIRED: 0.**
 
 ## F. Reference-fidelity matrix
 
@@ -69,85 +74,67 @@ consequences of the corrected information architecture rather than defects.
 correction required: ROM-editor top-bar structure, primary editor taxonomy, map
 workspace consolidation, global action duplication, Graphics empty state,
 contextual inspector behaviour, status-bar density, shell visual coherence, and
-data/content dominance. **No row is MISSING.**
+data/content dominance. No row is MISSING.
 
 ## G. Functional diff
 
 `docs/research/UI_FUNCTIONAL_DIFF.md`, presentation changes versus behaviour
 changes, with the unchanged list verified rather than assumed.
 
-## H. Overlap / clipping / elision probe
+## H. Palette provenance
 
-`tools/qa/overlap_probe.py` walks the live widget tree in the same 16 states and
-reports overlap, elision, clipping, squeezed controls and missing gutters.
+`docs/research/UI_BUU_SPRITE_COLOR_SOURCE.md`, the sampling record for the
+accepted palette: canonical sprite, raw indices, the pink ramp, the UI role
+mapping and the two documented semantic exceptions. Reproduce it with
+`python -m tools.qa.buu_sprite_palette`.
 
-**Result: 0 problems across 16 states**, after fixing four real defects it found
-(see "Defects found and fixed" below).
+`docs/research/UI_GAME_COLOR_SOURCE.md` is the superseded earlier study and is
+banner-marked as such.
 
-## I. Focused test results
+## I. Automated probes
 
-| Gate | Result |
-|---|---|
-| `tests/unit` (portable) | **2179 passed, 10 skipped** (skips are environmental: no canonical ROM, no built site) |
-| Re-pointed shell tests | `test_workbench_smoke.py` 6 passed; the Graphics shell-mount and preview-size tests re-pointed, not deleted |
-| Compile / import | clean |
-| `git diff --check` | clean |
+| Check | Command | Result |
+|---|---|---|
+| Overlap / clipping / elision, 16 states | `python -m tools.qa.overlap_probe` | 0 problems |
+| Status parity across editor and width | `pytest tests/unit/test_workbench_project_status.py` | 14 passed |
+| Build / Run dialogue behaviour | `pytest tests/unit/test_workbench_build_run_dialogs.py` | see the module |
+| Sprite palette reproduction | `python -m tools.qa.buu_sprite_palette` | graphic:903 top-ranked |
+
+The overlap probe lays the Build and Run surfaces out as editor pages for its
+states 14 and 15, so it does not cover the shipped dialogue geometry.
 
 ## J. Known visual deviations
 
-1. **`03-maps-layout`, the map is framed by a faint gold chunk grid.** Intentional:
-   the grid is the cell hit-target and the mode's only affordance. It is drawn
-   cosmetic (one device pixel at any zoom) and does not obscure the artwork.
-2. **`09-maps-objects`, the canvas shows a black band beside a 256px-wide map.**
-   The retail map for `map:0040` is narrower than the placements its scene can hold,
-   so the scrollable scene is wider than the image. That is truthful: the band is
-   the reachable area the editor is showing, not padding.
-3. **`14-build-surface` / `15-run-configuration`, sparse by design.** Neither is a
-   workspace any more; each is a short configuration dialogue. They carry a stated
-   purpose and no decorative chrome. `15` additionally states what the surface does
-   *not* do, which is the one prose line either surface carries.
-4. **The inspector's empty state leaves the lower pane empty.** With nothing
-   selected there is nothing to say; the alternative the correction rejected was
-   reserving rectangles for every possible relation.
+1. **`03-maps-layout`, the map is framed by a thin magenta cell grid.**
+   Intentional: the grid is the cell hit-target and the mode's only affordance. It
+   is drawn cosmetic, one device pixel at any zoom, and does not obscure artwork.
+2. **`09-maps-objects`, the canvas shows a mauve field beside a 256px-wide map.**
+   The retail map for `map:0040` is narrower than the placements its scene can
+   hold, so the scrollable scene is wider than the image. That is truthful: the
+   band is the reachable area the editor is showing, not padding.
 
-## Defects found by this self-review and fixed
+## K. Closed since the first review
 
-1. **The application theme was never applied in the capture path**, every earlier
-   "after" capture was stock light Qt with dark strips pasted on, which is exactly
-   the "black header pasted onto stock Qt panels" defect the correction named. The
-   harness now applies the same theme the real entry point does.
-2. **Panel headers painted over their own children** (a `paintEvent` fill running
-   after the child label), making every section header nearly invisible. The fill
-   moved into the widget palette.
-3. **A stale status label was never hidden**, so a previous editor's status line
-   stayed on screen beside the current editor's. The shell now owns one status
-   label and copies the active editor's text into it.
-4. **The Maps editor's status line was one host too deep to find**, so the wrong
-   line was mounted. The Maps editor is now its own host.
-5. **The chunk palette clipped its own selection tag** and, on a read-only map,
-   stayed open and empty. Its height is now derived from its content, and it
-   collapses to its header when there is nothing to choose.
-6. **The Graphics inspector rendered empty scaffolding**, an empty preview box,
-   rows reading `-`, a disabled Export button and an empty animation pane. It is
-   now one sentence when nothing is selected and a populated contextual inspector
-   when something is.
-7. **Two status labels sat 7px apart**, reading as one run-on string. There is now
-   an explicit gutter.
-8. **The Graphics editor's own minimum was 1475px tall** (two stacked 320px
-   previews), which forced the window floor above a laptop screen. The previews now
-   sit side by side and the editor's minimum is 324px.
+The independent review of the frozen candidate found no blocking issues and eight
+non-blocking ones. The post-review correction closed the two material items and
+the documentation items:
+
+1. **Atlas drew its own status row** beside the shell's. The Atlas surface now
+   publishes its status through its host instead of rendering it, so the shell bar
+   is the only place the line appears.
+2. **The index-0 transparency pass cost a Qt call per pixel** (3.3 s for a 9.2 Mpx
+   composite). It is now one bulk byte translation feeding `setAlphaChannel`,
+   byte-for-byte identical output, 0.042 s on the same input.
+3. The palette provenance document's four stale values and one stale contrast
+   ratio were corrected, and the second palette exception is now documented.
+4. This index and `UI_FUNCTIONAL_DIFF.md` were reconciled with the final history.
 
 ## What to check for yourself
 
-- Does the shell read as a ROM editor: **menu bar -> one strip -> workspace**?
-- Are there exactly four editor destinations, with no project action duplicated as
-  a workspace?
-- Is the map the dominant object in the Maps editor in all three modes?
-- Is each mode's palette/tooling adjacent to the map rather than in a dialogue?
-- Does the Graphics inspector feel populated by the selected sprite and empty when
-  nothing is selected?
-- Is `11-graphics-empty` genuinely free of scaffolding?
-- Does the one status line say one thing on the left and project state on the
-  right, without repeating itself?
-- Does `01-shell-no-rom` look like one designed application rather than stock Qt
-  with dark bars?
+- Does the shell read as a ROM editor: **menu bar, one strip, workspace**?
+- Are exactly four editors named, with no project action duplicated as a workspace?
+- Is the map the dominant object in all three Maps modes?
+- Does the Graphics inspector follow the selection, with one preview only?
+- Does the one status bar say one thing on the left and project state on the right,
+  with no second row anywhere?
+- Does the pink read as Buu-derived rather than as arbitrary branding?

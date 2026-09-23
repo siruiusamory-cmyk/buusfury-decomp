@@ -49,6 +49,10 @@ class AtlasBrowserTab(QWidget):
         super().__init__()
         self._session = session
         self._catalog = catalog
+        #: Set by `EditorHost.add_surface`. This surface publishes its status
+        #: through the host rather than drawing it, so the shell's one status bar
+        #: is the only place the line is rendered.
+        self._host = None
 
         # -- one identity row: this surface owns NO project action -------------
         #
@@ -58,12 +62,17 @@ class AtlasBrowserTab(QWidget):
         # project action with exactly one owner (the shell's Open ROM action, which
         # calls this module's dialog). From here the row states identity only, and
         # reacts to the session.
+        #
+        # `_load_status` is this editor's status HOLDER, not a second status row.
+        # It is deliberately absent from the layout below: the shell owns the one
+        # physical status bar and mirrors this text into it, which is the same
+        # arrangement the Graphics, Maps, Scene and Inspector editors use. It used
+        # to be drawn here as well, so "No ROM loaded." and the profile identity
+        # appeared at both the top and the foot of the same screen.
         self._load_status = QLabel("No ROM loaded.")
         self._load_status.setProperty("dbzRole", "status")
         self._load_status.setWordWrap(True)
-        self._load_status.setTextInteractionFlags(
-            self._load_status.textInteractionFlags()
-        )
+        self._load_status.setVisible(False)
         self._identity_chip = StateChip("No image open", "neutral")
         actions = ToolStrip()
         actions.add(self._identity_chip)
@@ -128,7 +137,6 @@ class AtlasBrowserTab(QWidget):
         layout.setSpacing(0)
         layout.addWidget(actions)
         layout.addWidget(head)
-        layout.addWidget(self._load_status)
         layout.addLayout(search_row)
         layout.addWidget(self._results_header)
         layout.addWidget(self._results, 1)
@@ -151,12 +159,14 @@ class AtlasBrowserTab(QWidget):
         try:
             self._session.open_rom(path, self._catalog)
         except SessionError as exc:
-            self._load_status.setText(f"Load failed: {exc}")
+            self._host.set_status_text(f"Load failed: {exc}")
             self._identity_chip.set_state("No image open", "invalid")
             QMessageBox.critical(self, "Open ROM", str(exc))
             return
         profile_id = getattr(self._session.profile, "id", "?")
-        self._load_status.setText(f"Loaded: {self._session.rom_path}  (profile {profile_id})")
+        self._host.set_status_text(
+            f"Loaded: {self._session.rom_path}  (profile {profile_id})"
+        )
         self.on_session_changed()
         self.romOpened.emit()
 
@@ -174,17 +184,16 @@ class AtlasBrowserTab(QWidget):
         if rom is None:
             self._identity_chip.set_state("No image open", "neutral")
             self._identity_chip.setToolTip("")
-            self._load_status.setText("No ROM loaded.")
+            self._host.set_status_text("No ROM loaded.")
             return
         profile_id = getattr(profile, "id", "?")
         kind = " \u00b7 derivative" if self._session.authored is not None else ""
         self._identity_chip.set_state(f"Open: {rom.name}{kind}", "valid")
         self._identity_chip.setToolTip(f"{rom}\nprofile {profile_id}")
         # The chip above already names the open image, and the shell's status bar
-        # states it too. A third copy - the full path and profile - printed the same
-        # fact three times on one screen, so this line carries only what the chip
-        # does not: the resolved profile identity.
-        self._load_status.setText(f"profile {profile_id}")
+        # states it too. The line this editor publishes therefore carries only what
+        # the chip does not: the resolved profile identity.
+        self._host.set_status_text(f"profile {profile_id}")
 
     # -- Search --------------------------------------------------------------
 

@@ -145,18 +145,27 @@ def tab(qapp) -> GraphicsTab:
     return t
 
 
-# --- SC1: mounts in the shell before a ROM, disabled -------------------------
+# --- SC1: mounts in the shell as a primary editor -----------------------------
+#
+# Re-pointed by DRAGONBYTE-Z-VISUAL-DIRECTION-PASS-001's human correction: the
+# shell is a menu bar + one editor strip, not a global tab strip. Graphics is a
+# primary editor destination and is shown on request; it reports its own state
+# ("Open a ROM to load its sprites.") rather than being disabled, which is what
+# an editor with a real empty state does.
 
 
-def test_shell_mounts_graphics_tab_disabled_pre_rom(qapp):
+def test_shell_mounts_graphics_as_a_primary_editor(qapp):
     from tools.webfoot.profile import RomProfileCatalog
+    from tools.webfoot.workbench.app import _EDITORS
 
     catalog = RomProfileCatalog.load(os.path.join("config", "roms.yaml"))
     window = MainWindow(Session(), catalog)
-    titles = [window._tabs.tabText(i) for i in range(window._tabs.count())]
-    assert "Graphics" in titles
-    gi = titles.index("Graphics")
-    assert not window._tabs.isTabEnabled(gi)  # post-ROM tab, off until ROM open
+    assert "Graphics" in _EDITORS
+    assert "Graphics" in window._editor_buttons
+    window.show_editor("Graphics")
+    assert window.current_editor_name() == "Graphics"
+    # With no ROM open the editor says so rather than showing nothing.
+    assert "ROM" in window._graphics._status.text()
 
 
 # --- SC2: indexed pixels + palette -> a non-empty, non-uniform pixmap --------
@@ -259,11 +268,20 @@ def test_icon_drain_finishes_on_undecodable_item(tab, monkeypatch):
 
 
 def test_preview_min_size_increased(tab):
-    # SC4: preview minimums bumped materially above the old 160/120.
-    assert tab._preview.minimumWidth() >= 320
-    assert tab._preview.minimumHeight() >= 320
-    assert tab._anim_preview.minimumWidth() >= 320
-    assert tab._anim_preview.minimumHeight() >= 320
+    """There is ONE preview, and it asks for a 320px box in both axes.
+
+    SC4 bumped the preview materially above the old 160/120 and that stands.
+
+    `DRAGONBYTE-Z-VISUAL-DIRECTION-PASS-001`'s human correction then removed the
+    *second* preview altogether: `_anim_preview` had been showing the same sprite
+    again in a pane of its own, which was duplication and cost a second 320px band
+    of height. The animation is now played and stepped in the one preview, so this
+    asserts the property where it now lives rather than on a widget that is gone.
+    """
+    preview = tab._preview
+    assert preview.minimumWidth() >= 320
+    assert preview.minimumSizeHint().height() >= 320
+    assert preview.minimumSizeHint().width() >= 320
 
 
 def test_selected_preview_scales_small_sprite_up(tab):
@@ -297,12 +315,18 @@ def test_scaled_for_preview_never_shrinks_large_sprite(tab):
     assert tab._scaled_for_preview(big, box=320) is big
 
 
-def test_animation_preview_scales_up(tab):
-    # SC5: the animation frame preview scales the same way as the selected preview.
+def test_animation_frame_renders_in_the_single_preview(tab):
+    """SC5, re-pointed: an animated frame scales up in the ONE preview.
+
+    When the selected sprite reaches an animation, the single preview shows that
+    animation's current frame instead of the static sprite - the same surface at a
+    different level of detail, not a second pane.
+    """
     tab._grid.setCurrentRow(0)  # loads character 0's animation (frame -> g0 2x2)
-    shown = tab._anim_preview.pixmap()
+    shown = tab._preview.pixmap()
     assert not shown.isNull()
     assert max(shown.width(), shown.height()) >= 320  # scaled up, not tiny
+    assert "Frame 1 /" in tab._frame_label.text()
 
 
 # --- SC3/SC4/E: palette apply records an override, discloses consumers --------

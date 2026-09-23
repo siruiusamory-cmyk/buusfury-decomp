@@ -27,7 +27,9 @@ from PySide6.QtWidgets import (QFileDialog, QHBoxLayout, QLabel, QMessageBox,
 from .. import build as build_sdk
 from ..project import ProjectError
 from ..write import WriteError
+from . import theme
 from .session import Session
+from .widgets import PanelHeader, StateChip
 
 #: The generated ROM filename convention (reviewed-solution, RESOLVED): the
 #: output FILE is the profile id plus `_modified.gba`, inside the chosen output
@@ -71,28 +73,63 @@ class BuildPanelTab(QWidget):
         self._rom_label = QLabel()
         self._rom_label.setTextInteractionFlags(self._rom_label.textInteractionFlags())
 
-        self._output_button = QPushButton("Choose Output Directory")
+        self._output_button = QPushButton("Choose Output Directory\u2026")
+        self._output_button.setToolTip("Where a built ROM is written")
         self._output_button.clicked.connect(self._on_choose_output)
 
         self._validate_button = QPushButton("Validate")
+        self._validate_button.setToolTip(
+            "Check the open project against the open ROM (Ctrl+Shift+V)"
+        )
         self._validate_button.clicked.connect(self._on_validate)
 
         self._build_button = QPushButton("Build")
+        self._build_button.setProperty("dbzRole", "primary")
+        self._build_button.setToolTip(
+            "Build a NEW ROM from the validated project (Ctrl+B); the base ROM is "
+            "never modified"
+        )
         self._build_button.clicked.connect(self._on_build)
 
         self._status = QPlainTextEdit()
         self._status.setReadOnly(True)
+        self._status.setFont(theme.mono_font())
+        self._status.setAccessibleName("Validate and build output")
 
+        self._stage_chip = StateChip("No ROM open", "readonly", plain=True)
         buttons = QHBoxLayout()
+        buttons.setContentsMargins(0, 0, 0, 0)
+        buttons.setSpacing(theme.SPACE_SM)
         buttons.addWidget(self._open_button)
         buttons.addWidget(self._extract_button)
         buttons.addWidget(self._output_button)
+        buttons.addStretch(1)
         buttons.addWidget(self._validate_button)
         buttons.addWidget(self._build_button)
 
+        actions = QWidget()
+        actions_layout = QVBoxLayout(actions)
+        actions_layout.setContentsMargins(
+            theme.SPACE_SM, theme.SPACE_SM, theme.SPACE_SM, theme.SPACE_SM
+        )
+        actions_layout.setSpacing(theme.SPACE_SM)
+        actions_layout.addWidget(self._stage_chip)
+        actions_layout.addLayout(buttons)
+
+        self._rom_label_widget = self._rom_label
+        history_header = PanelHeader("Output")
+        self._log = self._status
+        self._status.setPlaceholderText(
+            "Validate and build output appears here: the validation report, any "
+            "problem it names, and the path of the ROM a build writes."
+        )
+
         layout = QVBoxLayout(self)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(0)
         layout.addWidget(self._rom_label)
-        layout.addLayout(buttons)
+        layout.addWidget(actions)
+        layout.addWidget(history_header)
         layout.addWidget(self._status, 1)
 
         self._refresh()
@@ -114,12 +151,24 @@ class BuildPanelTab(QWidget):
             f"Base ROM: {self._session.rom_path}" if rom_open
             else "No ROM open - open the required base ROM in the Atlas tab."
         )
+        self._rom_label.setProperty("dbzRole", "technical" if rom_open else "hint")
         # Extract: only when a ROM is open AND no project is loaded.
         self._extract_button.setEnabled(rom_open and not has_project)
         # Validate: once a project is set AND a compatible ROM is open.
         self._validate_button.setEnabled(rom_open and has_project)
         # Build: only when the last ValidationReport passed.
         self._build_button.setEnabled(self._session.validation_current)
+        # The one line that says what stage the deliverable is at. Words rather
+        # than colour: the chip is plain because it already names the stage.
+        if not has_project:
+            stage = "No project open"
+        elif self._session.build_current:
+            stage = "Built; a new ROM exists"
+        elif self._session.validation_current:
+            stage = "Validated; ready to build"
+        else:
+            stage = "Not validated"
+        self._stage_chip.set_state(stage, "valid" if self._session.validation_current else "readonly")
 
     def _output_dir(self) -> Path | None:
         return self._session.output_dir
@@ -127,6 +176,15 @@ class BuildPanelTab(QWidget):
     # -- Open Project --------------------------------------------------------
 
     def _on_open_project(self) -> None:
+        self.open_project_dialog()
+
+    def open_project_dialog(self) -> None:
+        """Choose an extracted project directory.
+
+        One implementation, shared by the tab's button and the shell toolbar, so
+        the global action and the panel cannot disagree about what opening a
+        project does.
+        """
         chosen = QFileDialog.getExistingDirectory(self, "Open Project")
         if not chosen:
             return
@@ -148,6 +206,11 @@ class BuildPanelTab(QWidget):
     # -- Extract -------------------------------------------------------------
 
     def _on_extract(self) -> None:
+        self.extract_project_dialog()
+
+    def extract_project_dialog(self) -> None:
+        """Write a project from the open ROM. One implementation, shared by the
+        panel's own button and the shell's File menu."""
         if not self._rom_open():
             QMessageBox.information(self, "Extract", "Open a ROM first.")
             return
@@ -167,6 +230,10 @@ class BuildPanelTab(QWidget):
     # -- Output directory ----------------------------------------------------
 
     def _on_choose_output(self) -> None:
+        self.choose_output_dialog()
+
+    def choose_output_dialog(self) -> None:
+        """Choose where a built ROM is written. One implementation, two callers."""
         chosen = QFileDialog.getExistingDirectory(self, "Choose Output Directory")
         if not chosen:
             return

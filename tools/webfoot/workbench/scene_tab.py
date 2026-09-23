@@ -25,8 +25,8 @@ from PySide6.QtWidgets import (
     QAbstractItemView,
     QComboBox,
     QFormLayout,
-    QGroupBox,
     QHBoxLayout,
+    QHeaderView,
     QLabel,
     QLineEdit,
     QListWidget,
@@ -34,6 +34,7 @@ from PySide6.QtWidgets import (
     QMessageBox,
     QPushButton,
     QSpinBox,
+    QSplitter,
     QTableWidget,
     QTableWidgetItem,
     QVBoxLayout,
@@ -42,10 +43,44 @@ from PySide6.QtWidgets import (
 
 from .. import scene as scene_sdk
 from ..project import ProjectError
+from . import theme
 from .session import Session
+from .widgets import PanelHeader
 
 #: Sentinel tag for an SDK-provided authored-script editor choice.
 _AUTHORED_SCRIPT = "authored-script"
+
+
+def stacked(*widgets: QWidget) -> QWidget:
+    """The listed widgets as one zero-margin column.
+
+    The Scene tab is a task surface rather than a panel set, so its blocks are
+    separated by whitespace and the shared spacing step instead of by a titled
+    frame each. That is the same call Tiled makes in its tileset dock
+    (``setContentsMargins(0, 0, 0, 0)``, ``setSpacing(0)``) and LDtk makes in its
+    side panel: square regions and 1 px rules, not a stack of rounded boxes.
+    """
+    holder = QWidget()
+    layout = QVBoxLayout(holder)
+    layout.setContentsMargins(0, 0, 0, 0)
+    layout.setSpacing(theme.SPACE_XS)
+    for widget in widgets:
+        layout.addWidget(widget)
+    return holder
+
+
+def layout_body(layout) -> QWidget:
+    """A widget whose whole body is one layout (so it can join :func:`stacked`)."""
+    holder = QWidget()
+    holder.setLayout(layout)
+    return holder
+
+
+def field_label(caption: str) -> QLabel:
+    """A form-caption label in the shared secondary-label treatment."""
+    label = QLabel(caption)
+    label.setProperty("dbzRole", "fieldLabel")
+    return label
 
 
 class SceneTab(QWidget):
@@ -59,13 +94,12 @@ class SceneTab(QWidget):
 
         # -- Map selector -----------------------------------------------------
         self._map_select = QComboBox()
+        self._map_select.setAccessibleName("Map")
         self._map_select.currentIndexChanged.connect(self._on_map_changed)
         self._map_support = QLabel()
+        self._map_support.setProperty("dbzRole", "hint")
         self._map_support.setWordWrap(True)
-        map_box = QGroupBox("Maps")
-        map_layout = QVBoxLayout(map_box)
-        map_layout.addWidget(self._map_select)
-        map_layout.addWidget(self._map_support)
+        map_box = stacked(self._map_select, self._map_support)
 
         # -- Placements table (read-only) -------------------------------------
         self._placements = QTableWidget(0, 5)
@@ -75,10 +109,15 @@ class SceneTab(QWidget):
         self._placements.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
         self._placements.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
         self._placements.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
+        self._placements.verticalHeader().setVisible(False)
+        self._placements.verticalHeader().setDefaultSectionSize(theme.ROW_HEIGHT)
+        self._placements.setAlternatingRowColors(True)
+        self._placements.setShowGrid(False)
+        self._placements.horizontalHeader().setSectionResizeMode(
+            QHeaderView.ResizeMode.Stretch
+        )
         self._placements.itemSelectionChanged.connect(self._on_placement_selected)
-        placements_box = QGroupBox("Placements")
-        placements_layout = QVBoxLayout(placements_box)
-        placements_layout.addWidget(self._placements)
+        placements_box = stacked(self._placements)
 
         # -- Add NPC form -----------------------------------------------------
         self._source_select = QComboBox()
@@ -121,19 +160,31 @@ class SceneTab(QWidget):
         self._script_widget.setLayout(script_row)
 
         self._trigger_select = QComboBox()
+        self._trigger_select.setAccessibleName("Trigger")
 
         self._add = QPushButton("Add / Apply")
+        self._add.setProperty("dbzRole", "primary")
+        self._add.setToolTip(
+            "Commit this authored NPC into the project; typing and selecting alone "
+            "never change the project"
+        )
         self._add.clicked.connect(self._on_apply)
 
         form = QFormLayout()
-        form.addRow("Clone source", self._source_select)
-        form.addRow("Name", self._name)
-        form.addRow("Position", position_widget)
-        form.addRow("Behavior", self._behavior_select)
-        form.addRow("Visible response", self._script_widget)
-        form.addRow("Trigger", self._trigger_select)
+        form.setContentsMargins(
+            theme.SPACE_SM, theme.SPACE_SM, theme.SPACE_SM, theme.SPACE_SM
+        )
+        form.setHorizontalSpacing(theme.SPACE_MD)
+        form.setVerticalSpacing(theme.SPACE_XS)
+        form.setFieldGrowthPolicy(QFormLayout.FieldGrowthPolicy.AllNonFixedFieldsGrow)
+        form.addRow(field_label("Clone source"), self._source_select)
+        form.addRow(field_label("Name"), self._name)
+        form.addRow(field_label("Position"), position_widget)
+        form.addRow(field_label("Behavior"), self._behavior_select)
+        form.addRow(field_label("Visible response"), self._script_widget)
+        form.addRow(field_label("Trigger"), self._trigger_select)
         form.addRow(self._add)
-        form_box = QGroupBox("Add NPC")
+        form_box = QWidget()
         form_box.setLayout(form)
 
         # -- Semantic relationship navigator --------------------------------
@@ -152,22 +203,34 @@ class SceneTab(QWidget):
         self._open_script.clicked.connect(lambda: self._open_related("script"))
         self._back.clicked.connect(self._navigate_back)
         relationship_actions = QHBoxLayout()
+        relationship_actions.setContentsMargins(0, 0, 0, 0)
+        relationship_actions.setSpacing(theme.SPACE_SM)
         for button in (self._open_entity, self._open_behavior, self._open_script, self._back):
             relationship_actions.addWidget(button)
+        relationship_actions.addStretch(1)
         relationship_layout = QFormLayout()
-        relationship_layout.addRow("Entity", self._relationship_labels["entity"])
-        relationship_layout.addRow("Behavior", self._relationship_labels["behavior"])
-        relationship_layout.addRow("Script", self._relationship_labels["script"])
-        relationship_layout.addRow("Dialogue", self._relationship_labels["dialogue"])
-        relationship_layout.addRow("Used by", self._relationship_labels["used_by"])
+        relationship_layout.setContentsMargins(
+            theme.SPACE_SM, theme.SPACE_SM, theme.SPACE_SM, theme.SPACE_SM
+        )
+        relationship_layout.setHorizontalSpacing(theme.SPACE_MD)
+        relationship_layout.setVerticalSpacing(theme.SPACE_XS)
+        for caption, key in (
+            ("Entity", "entity"),
+            ("Behavior", "behavior"),
+            ("Script", "script"),
+            ("Dialogue", "dialogue"),
+            ("Used by", "used_by"),
+        ):
+            self._relationship_labels[key].setProperty("dbzRole", "hint")
+            relationship_layout.addRow(field_label(caption), self._relationship_labels[key])
         relationship_layout.addRow(relationship_actions)
-        relationship_box = QGroupBox("Selected placement")
-        relationship_box.setLayout(relationship_layout)
+        relationship_box = stacked(
+            PanelHeader("Selected placement"), layout_body(relationship_layout)
+        )
         self._editor = QLabel("Select a placement to inspect its relationships.")
         self._editor.setWordWrap(True)
-        editor_box = QGroupBox("Specialized editor")
-        editor_layout = QVBoxLayout(editor_box)
-        editor_layout.addWidget(self._editor)
+        self._editor.setProperty("dbzRole", "hint")
+        editor_box = stacked(PanelHeader("Specialized editor"), self._editor)
         self._relationships = {}
         self._navigation = []
         self._editor_kind = None
@@ -175,25 +238,53 @@ class SceneTab(QWidget):
 
         # -- Pending semantic project changes --------------------------------
         self._pending = QListWidget()
+        self._pending.setToolTip(
+            "Semantic project changes this session has committed but not yet built"
+        )
         self._pending.itemSelectionChanged.connect(self._on_pending_selected)
         self._revert = QPushButton("Revert")
         self._revert.clicked.connect(self._on_revert)
         self._revert.setEnabled(False)
-        pending_box = QGroupBox("Pending Changes")
-        pending_layout = QVBoxLayout(pending_box)
-        pending_layout.addWidget(self._pending)
-        pending_layout.addWidget(self._revert)
+        pending_box = stacked(
+            PanelHeader("Pending changes"), self._pending, self._revert
+        )
 
         self._status = QLabel()
+        self._status.setProperty("dbzRole", "status")
+        self._status.setWordWrap(True)
+
+        # The authoring form leads, because "add an NPC" is the tab's primary
+        # task; the read-only tables that feed it follow. A splitter lets a user
+        # who is picking a clone source give that table the room instead.
+        right = QWidget()
+        right_layout = QVBoxLayout(right)
+        right_layout.setContentsMargins(0, 0, 0, 0)
+        right_layout.setSpacing(theme.SPACE_MD)
+        right_layout.addWidget(form_box)
+        right_layout.addWidget(relationship_box)
+        right_layout.addWidget(editor_box)
+        right_layout.addWidget(pending_box)
+        right_layout.addStretch(1)
+
+        splitter = QSplitter(Qt.Orientation.Horizontal)
+        splitter.addWidget(map_box)
+        splitter.addWidget(placements_box)
+        splitter.addWidget(right)
+        splitter.setStretchFactor(0, 0)
+        splitter.setStretchFactor(1, 1)
+        splitter.setStretchFactor(2, 0)
+        splitter.setCollapsible(1, False)
+        splitter.setSizes([200, 620, 320])
+        self._splitter = splitter
 
         layout = QVBoxLayout(self)
-        layout.addWidget(map_box)
-        layout.addWidget(placements_box, 1)
-        layout.addWidget(relationship_box)
-        layout.addWidget(editor_box)
-        layout.addWidget(form_box)
-        layout.addWidget(pending_box)
-        layout.addWidget(self._status)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(theme.SPACE_XS)
+        layout.addWidget(splitter, 1)
+        # `_status` holds this editor's one status line and is deliberately NOT in
+        # this layout: the shell owns the single physical status bar and mirrors
+        # this text into it, so drawing it here too would state the same fact twice.
+        self._status.setVisible(False)
 
         self._populate_maps()
 

@@ -16,13 +16,13 @@ from PySide6.QtGui import QAction, QColor, QKeySequence, QPainter, QPen, QUndoCo
 from PySide6.QtWidgets import (
     QApplication,
     QComboBox,
-    QFormLayout,
+    QGridLayout,
     QGraphicsItem,
     QGraphicsPixmapItem,
     QGraphicsScene,
     QGraphicsSimpleTextItem,
     QGraphicsView,
-    QGroupBox,
+    QFrame,
     QHBoxLayout,
     QInputDialog,
     QLabel,
@@ -30,6 +30,7 @@ from PySide6.QtWidgets import (
     QListWidgetItem,
     QMessageBox,
     QPushButton,
+    QSizePolicy,
     QSplitter,
     QVBoxLayout,
     QWidget,
@@ -37,8 +38,10 @@ from PySide6.QtWidgets import (
 
 from .. import map_render, scene as scene_sdk
 from ..project import ProjectError
+from . import theme
 from .graphics_tab import indexed_pixmap
 from .session import Session
+from .widgets import PanelHeader, ToolStrip
 
 
 class PlacementMarker(QGraphicsItem):
@@ -65,7 +68,7 @@ class PlacementMarker(QGraphicsItem):
         # keeps a dense retail map readable while never substituting a guessed
         # sprite/name for the placement identity.
         self._label = QGraphicsSimpleTextItem(placement["identity"].split("/")[-1], self)
-        self._label.setBrush(QColor("#F5F7FA"))
+        self._label.setBrush(theme.color("text_primary"))
         self._label.setPos(10, -18)
         self._label.setVisible(False)
 
@@ -76,19 +79,24 @@ class PlacementMarker(QGraphicsItem):
         painter.save()
         selected = self.isSelected()
         project_authored = self.placement.get("provenance") == "Project"
-        # A light halo plus a dark edge remains visible over any palette and
-        # distinguishes selection by shape/ring as well as colour.
-        painter.setPen(QPen(QColor("#F5F7FA"), 4 if selected else 3))
+        # A light halo plus a dark edge remains visible over any palette: the map
+        # is the most saturated object on screen, so a marker is separated from it
+        # by value rather than by adding another bright hue.
+        painter.setPen(QPen(theme.color("marker_halo"), 4 if selected else 3))
         painter.setBrush(Qt.BrushStyle.NoBrush)
         painter.drawEllipse(QRectF(-7, -7, 14, 14))
-        painter.setPen(QPen(QColor("#101722"), 2))
-        painter.setBrush(QColor("#47C9FF") if project_authored else QColor("#F3C94B"))
+        painter.setPen(QPen(theme.color("marker_outline"), 2))
+        painter.setBrush(
+            theme.color("marker_authored" if project_authored else "marker_retail")
+        )
         if project_authored:
             painter.drawPolygon((QPointF(0, -6), QPointF(6, 0), QPointF(0, 6), QPointF(-6, 0)))
         else:
             painter.drawEllipse(QRectF(-5, -5, 10, 10))
         if selected:
-            painter.setPen(QPen(QColor("#FFFFFF"), 2))
+            # Selection is a *shape* change too - four ticks around the marker - so
+            # it survives without hue.
+            painter.setPen(QPen(theme.color("marker_halo"), 2))
             painter.drawLine(-11, 0, -8, 0)
             painter.drawLine(8, 0, 11, 0)
             painter.drawLine(0, -11, 0, -8)
@@ -131,12 +139,15 @@ class MapCanvasView(QGraphicsView):
         self._panning = False
         self._pan_position: QPointF | None = None
         self._fit_rect = QRectF()
+        #: True while the view is in its fitted state; a manual zoom clears it, so
+        #: a resize refits a fitted map and never overrides a chosen zoom.
+        self._fitted = False
         self.setRenderHint(QPainter.RenderHint.SmoothPixmapTransform, False)
         self.setTransformationAnchor(QGraphicsView.ViewportAnchor.AnchorUnderMouse)
         self.setResizeAnchor(QGraphicsView.ViewportAnchor.AnchorUnderMouse)
         self.setDragMode(QGraphicsView.DragMode.NoDrag)
         self.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
-        self.setBackgroundBrush(QColor("#18202B"))
+        self.setBackgroundBrush(theme.color("canvas"))
 
     def zoom_in(self) -> None:
         self._change_zoom(1.25)
@@ -152,7 +163,21 @@ class MapCanvasView(QGraphicsView):
         if rect.isEmpty():
             return
         self.fitInView(rect, Qt.AspectRatioMode.KeepAspectRatio)
+        self._fitted = True
         self.zoomChanged.emit(self.transform().m11())
+
+    def resizeEvent(self, event) -> None:  # noqa: N802 - Qt naming
+        """Keep a fitted map fitted while the window or a splitter is resized.
+
+        A fit computed before the viewport reached its final size is stale the
+        moment anything resizes, and the map then sits in a corner at a zoom
+        nobody asked for. Refitting while the view is in its fitted state - and
+        only then, so a manual zoom is never overridden - is what Porymap and
+        Tiled both do.
+        """
+        super().resizeEvent(event)
+        if self._fitted:
+            self.fit_map()
 
     def set_fit_rect(self, rect: QRectF) -> None:
         """Set the retail-background rectangle used by the Fit control."""
@@ -164,6 +189,8 @@ class MapCanvasView(QGraphicsView):
         if not 0.125 <= target <= 16:
             return
         self.scale(factor, factor)
+        # A manual zoom ends the fitted state's claim on the view.
+        self._fitted = False
         self.zoomChanged.emit(self.transform().m11())
 
     def wheelEvent(self, event) -> None:
@@ -259,6 +286,8 @@ class MapWorkspaceTab(QWidget):
     projectChanged = Signal()
     openSceneRequested = Signal(str, str)
     buildRunRequested = Signal()
+    #: The compact one-line status this editor maintains, republished for the shell.
+    statusChanged = Signal(str)
 
     def __init__(self, session: Session) -> None:
         super().__init__()
@@ -280,51 +309,117 @@ class MapWorkspaceTab(QWidget):
         self._scene.selectionChanged.connect(self._on_scene_selection_changed)
 
         self._maps = QListWidget()
+        self._maps.setUniformItemSizes(True)
+        # A list of long labels must not demand the width its longest row would
+        # need: it has its own scrollbar, and a pane that insists on full text
+        # makes the splitter wider than the window (and the canvas then scrolls).
+        self._maps.setMinimumWidth(0)
+        self._maps.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         self._maps.currentItemChanged.connect(self._on_map_changed)
         self._map_support = QLabel("Open a supported ROM to view maps.")
         self._map_support.setWordWrap(True)
-        maps_box = QGroupBox("Maps")
+        self._map_support.setProperty("dbzRole", "hint")
+        self._maps_count = QLabel("")
+        self._maps_count.setProperty("dbzRole", "count")
+        maps_header = PanelHeader("Placements by map", trailing=self._maps_count)
+        # The map's support state is shown ONCE, under the header, where the map
+        # itself is. It used to be repeated at the foot of the list as well, which
+        # printed the same sentence twice in one pane and wrapped into the row
+        # beneath it.
+        self._map_support = QLabel("Open a supported ROM to view maps.")
+        self._map_support.setWordWrap(True)
+        self._map_support.setProperty("dbzRole", "hint")
+        maps_box = QWidget()
         maps_layout = QVBoxLayout(maps_box)
-        maps_layout.addWidget(self._maps, 1)
+        maps_layout.setContentsMargins(0, 0, 0, 0)
+        maps_layout.setSpacing(0)
+        maps_layout.addWidget(maps_header)
         maps_layout.addWidget(self._map_support)
+        maps_layout.addWidget(self._maps, 1)
 
         self._layers = QComboBox()
+        self._layers.setAccessibleName("View layer")
+        self._layers.setMinimumWidth(0)
+        self._layers.setToolTip(
+            "Which graphical layer of the retail map to draw: the composite the "
+            "engine builds, or one layer on its own"
+        )
         self._layers.currentIndexChanged.connect(self._on_layer_changed)
-        self._zoom_out = QPushButton("−")
+        self._zoom_out = QPushButton("\u2212")
         self._zoom_out.setToolTip("Zoom out")
+        self._zoom_out.setMinimumWidth(30)
         self._zoom_out.clicked.connect(self._canvas.zoom_out)
         self._zoom_in = QPushButton("+")
         self._zoom_in.setToolTip("Zoom in")
+        self._zoom_in.setMinimumWidth(30)
         self._zoom_in.clicked.connect(self._canvas.zoom_in)
         self._fit = QPushButton("Fit")
+        self._fit.setToolTip("Fit the map to the window")
         self._fit.clicked.connect(self._canvas.fit_map)
         self._add = QPushButton("Add Object")
         self._add.setToolTip("Clone the selected placement into the project")
         self._add.clicked.connect(self._on_add_object)
+        # Build & Run is NOT duplicated here. Validate, Build and Run are project
+        # actions and the shell's strip owns them; a second, locally-styled button
+        # for the same three operations made it look like this editor had its own
+        # build system. The `buildRunRequested` signal is kept because it is the
+        # command path the shell's actions drive, and it is what a future
+        # selection-scoped build would attach to.
         self._build_run = QPushButton("Build & Run")
+        self._build_run.setProperty("dbzRole", "primary")
+        self._build_run.setToolTip(
+            "Validate, build and launch the project (Validate \u2192 Build \u2192 Run)"
+        )
         self._build_run.clicked.connect(self.buildRunRequested)
-        toolbar = QHBoxLayout()
-        toolbar.addWidget(QLabel("View"))
-        toolbar.addWidget(self._layers)
-        toolbar.addStretch(1)
-        toolbar.addWidget(self._zoom_out)
-        toolbar.addWidget(self._zoom_in)
-        toolbar.addWidget(self._fit)
-        toolbar.addWidget(self._add)
-        toolbar.addWidget(self._build_run)
-        canvas_box = QGroupBox("Retail Map")
+        self._build_run.setVisible(False)
+        # One contextual strip directly above the canvas (Porymap's row 0), so the
+        # canvas is the only undecorated region on this tab.
+        toolbar_widget = ToolStrip()
+        toolbar_widget.add_label("View")
+        toolbar_widget.add(self._layers)
+        toolbar_widget.add_stretch()
+        toolbar_widget.add(self._zoom_out)
+        toolbar_widget.add(self._zoom_in)
+        toolbar_widget.add(self._fit)
+        toolbar_widget.add_separator()
+        toolbar_widget.add(self._add)
+        toolbar_widget.add(self._build_run)
+        self._tool_strip = toolbar_widget
+        # The strip's content must not set the canvas width, so it is given the
+        # same ignored width policy the Map Browser's strip uses.
+        toolbar_widget.setSizePolicy(
+            QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Fixed
+        )
+        canvas_box = QFrame()
+        canvas_box.setObjectName("dbzRetailMapFrame")
         canvas_layout = QVBoxLayout(canvas_box)
-        canvas_layout.addLayout(toolbar)
+        canvas_layout.setContentsMargins(0, 0, 0, 0)
+        canvas_layout.setSpacing(0)
+        canvas_layout.addWidget(toolbar_widget)
         canvas_layout.addWidget(self._canvas, 1)
 
-        self._identity = QLabel("No placement selected")
+        # The placement detail lives in ONE two-column grid, and the whole grid is
+        # revealed only when a placement is selected: with nothing selected there is
+        # nothing to say, so the pane shows one sentence instead of a column of
+        # dashes and "Unknown" scaffolding. That is the same defect the Graphics
+        # editor had, and it is fixed the same way.
+        self._placement_empty = QLabel(
+            "Select a placement on the canvas to inspect it. Its position, entity, "
+            "behaviour and text relationship appear here."
+        )
+        self._placement_empty.setProperty("dbzRole", "hint")
+        self._placement_empty.setWordWrap(True)
+        self._placement_empty.setAlignment(
+            Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignTop
+        )
+        self._identity = QLabel("")
         self._identity.setWordWrap(True)
-        self._position = QLabel("—")
-        self._entity = QLabel("Unknown")
-        self._behavior = QLabel("Unknown")
-        self._script = QLabel("Unknown")
-        self._dialogue = QLabel("No proven dialogue relationship")
-        self._references = QLabel("—")
+        self._position = QLabel("")
+        self._entity = QLabel("")
+        self._behavior = QLabel("")
+        self._script = QLabel("")
+        self._dialogue = QLabel("")
+        self._references = QLabel("")
         for label in (
             self._entity,
             self._behavior,
@@ -333,36 +428,85 @@ class MapWorkspaceTab(QWidget):
             self._references,
         ):
             label.setWordWrap(True)
+            label.setProperty("dbzRole", "hint")
         self._open_scene = QPushButton("Open detailed editor")
+        self._open_scene.setToolTip(
+            "Open this placement in the Scene editor, where its entity, behavior "
+            "and script are authored"
+        )
         self._open_scene.clicked.connect(self._open_detailed_editor)
         self._open_scene.setEnabled(False)
-        inspector_form = QFormLayout()
-        inspector_form.addRow("Identity", self._identity)
-        inspector_form.addRow("Position", self._position)
-        inspector_form.addRow("Entity", self._entity)
-        inspector_form.addRow("Behavior", self._behavior)
-        inspector_form.addRow("Script", self._script)
-        inspector_form.addRow("Text / dialogue", self._dialogue)
-        inspector_form.addRow("References", self._references)
-        inspector_form.addRow(self._open_scene)
-        inspector_box = QGroupBox("Selected Object")
-        inspector_box.setLayout(inspector_form)
+
+        # An explicit two-column grid rather than a form layout, for the same
+        # reason as the Graphics inspector: a form stacks a caption and its value on
+        # consecutive lines here, which reads as unlabelled values.
+        self._detail_rows: list[tuple[QLabel, QLabel]] = []
+        self._placement_body = QWidget()
+        body = QGridLayout(self._placement_body)
+        body.setContentsMargins(
+            theme.SPACE_SM, theme.SPACE_SM, theme.SPACE_SM, theme.SPACE_SM
+        )
+        body.setHorizontalSpacing(theme.SPACE_MD)
+        body.setVerticalSpacing(theme.SPACE_XS)
+        body.setColumnStretch(1, 1)
+        for row, (caption, value) in enumerate(
+            (
+                ("Identity", self._identity),
+                ("Position", self._position),
+                ("Entity", self._entity),
+                ("Behavior", self._behavior),
+                ("Script", self._script),
+                ("Text / dialogue", self._dialogue),
+                ("References", self._references),
+            )
+        ):
+            label = QLabel(caption)
+            label.setProperty("dbzRole", "fieldLabel")
+            label.setAlignment(
+                Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignTop
+            )
+            body.addWidget(label, row, 0)
+            body.addWidget(value, row, 1)
+            self._detail_rows.append((label, value))
+        body.addWidget(self._open_scene, len(self._detail_rows), 1)
+        inspector_box = QWidget()
+        inspector_layout = QVBoxLayout(inspector_box)
+        inspector_layout.setContentsMargins(0, 0, 0, 0)
+        inspector_layout.setSpacing(0)
+        self._inspector_header = PanelHeader("Placement")
+        inspector_layout.addWidget(self._inspector_header)
+        inspector_layout.addWidget(self._placement_empty, 1)
+        inspector_layout.addWidget(self._placement_body, 1)
+        self._inspector_box = inspector_box
+        self._show_placement_detail(False)
 
         center_splitter = QSplitter(Qt.Orientation.Horizontal)
         center_splitter.addWidget(canvas_box)
         center_splitter.addWidget(inspector_box)
         center_splitter.setStretchFactor(0, 1)
+        center_splitter.setCollapsible(0, False)
         center_splitter.setSizes([900, 310])
+        self._center_splitter = center_splitter
         workspace = QSplitter(Qt.Orientation.Horizontal)
         workspace.addWidget(maps_box)
         workspace.addWidget(center_splitter)
+        workspace.setStretchFactor(0, 0)
         workspace.setStretchFactor(1, 1)
-        workspace.setSizes([240, 1120])
+        workspace.setCollapsible(0, True)
+        workspace.setCollapsible(1, False)
+        workspace.setSizes([240, 1180])
+        self._workspace_split = workspace
 
         self._status = QLabel()
+        self._status.setProperty("dbzRole", "status")
         layout = QVBoxLayout(self)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(theme.SPACE_XS)
         layout.addWidget(workspace, 1)
-        layout.addWidget(self._status)
+        # `_status` is NOT added to this layout: the shell owns the one status bar
+        # and copies this editor's line into it. Drawing it here as well is what put
+        # a second status strip above the real one.
+        self._status.setVisible(False)
 
         self._undo_stack = QUndoStack(self)
         self._undo_action = self._undo_stack.createUndoAction(self, "Undo")
@@ -375,8 +519,10 @@ class MapWorkspaceTab(QWidget):
         self._redo_button.clicked.connect(self._redo_action.trigger)
         self._undo_stack.canUndoChanged.connect(lambda _available: self._sync_undo_controls())
         self._undo_stack.canRedoChanged.connect(lambda _available: self._sync_undo_controls())
-        toolbar.insertWidget(7, self._undo_button)
-        toolbar.insertWidget(8, self._redo_button)
+        # Undo/Redo join the one canvas strip rather than a second toolbar.
+        row = toolbar_widget.layout_row()
+        row.insertWidget(row.count() - 2, self._undo_button)
+        row.insertWidget(row.count() - 2, self._redo_button)
         self.addAction(self._undo_action)
         self.addAction(self._redo_action)
         self._sync_undo_controls()
@@ -399,6 +545,7 @@ class MapWorkspaceTab(QWidget):
         self._maps.clear()
         if self._session.maps is None or self._session.rom_image is None:
             self._maps.blockSignals(False)
+            self._maps_count.setText("")
             self._show_placeholder("Open a supported ROM to view the map workspace.")
             return
         entries = scene_sdk.list_maps(self._session.maps)
@@ -418,6 +565,7 @@ class MapWorkspaceTab(QWidget):
             ):
                 selected_row = row
         self._maps.blockSignals(False)
+        self._maps_count.setText(f"{len(entries)}")
         if not entries:
             self._show_placeholder("The open ROM has no readable map entries.")
             return
@@ -440,7 +588,7 @@ class MapWorkspaceTab(QWidget):
         try:
             result = self._render_cache.get(map_id)
             if result is None:
-                self._status.setText(f"Rendering {map_id} from the verified base ROM…")
+                self._set_status(f"Rendering {map_id} from the verified base ROM…")
                 QApplication.setOverrideCursor(Qt.CursorShape.WaitCursor)
                 QApplication.processEvents()
                 try:
@@ -468,7 +616,7 @@ class MapWorkspaceTab(QWidget):
         # current layout pass; pan/zoom still only change the view transform.
         QTimer.singleShot(0, self._canvas.fit_map)
         self._update_controls()
-        self._status.setText(f"{map_id} rendered from the verified base ROM")
+        self._set_status(f"{map_id} rendered from the verified base ROM")
 
     def _on_layer_changed(self, _index: int) -> None:
         self._show_layer(self._layers.currentData())
@@ -552,17 +700,35 @@ class MapWorkspaceTab(QWidget):
         else:
             self._clear_inspector()
 
+    def _set_status(self, text: str) -> None:
+        """Set this editor's own status line and republish it for the shell.
+
+        One implementation, one place it is drawn: the shell owns the one status
+        label and copies this line into it, so the two can never disagree.
+        """
+        self._status.setText(text)
+        self.statusChanged.emit(text)
+
+    def restate_status(self) -> None:
+        """Republish the current line without changing it.
+
+        The Maps editor calls this when this mode becomes visible again, so a
+        readout that was last set while a different mode was on screen is not the
+        one the user is shown.
+        """
+        self.statusChanged.emit(self._status.text())
+
     def _show_placeholder(self, message: str) -> None:
         self._current_render = None
         self._current_map = None
         self._markers.clear()
         self._scene.clear()
         text = QGraphicsSimpleTextItem(message)
-        text.setBrush(QColor("#F5F7FA"))
+        text.setBrush(theme.color("text_primary"))
         self._scene.addItem(text)
         self._scene.setSceneRect(0, 0, 640, 360)
         self._map_support.setText(message)
-        self._status.setText(message)
+        self._set_status(message)
         self._clear_inspector()
         self._update_controls()
 
@@ -583,6 +749,11 @@ class MapWorkspaceTab(QWidget):
         marker.setSelected(True)
         self._canvas.centerOn(marker)
 
+    def _show_placement_detail(self, visible: bool) -> None:
+        """Reveal the detail grid only when there is a placement to detail."""
+        self._placement_body.setVisible(visible)
+        self._placement_empty.setVisible(not visible)
+
     def _show_selected(self, marker: PlacementMarker) -> None:
         self._selected_identity = marker.placement["identity"]
         placement = marker.placement
@@ -593,13 +764,22 @@ class MapWorkspaceTab(QWidget):
                 self._session.maps, placement["identity"], self._session.project_dir
             )
         except (ProjectError, OSError) as exc:
-            self._status.setText(str(exc))
+            self._set_status(str(exc))
             self._clear_inspector()
             return
-        self._entity.setText(relationships["entity"] or relationships["entity_type"] or "Unknown")
+        # "Unknown" is only ever shown where UNKNOWN is itself the proven answer:
+        # a relationship the project genuinely does not record. Every field here is
+        # one the facade answered for THIS placement, so nothing is a placeholder.
+        self._entity.setText(
+            relationships["entity"]
+            or relationships["entity_type"]
+            or "Not recorded for this placement"
+        )
         self._behavior.setText(relationships["behavior"] or "No proven behavior")
         self._script.setText(relationships["script"] or "No proven script")
-        self._dialogue.setText(relationships["dialogue"] or "No proven dialogue relationship")
+        self._dialogue.setText(
+            relationships["dialogue"] or "No proven dialogue relationship"
+        )
         references = relationships["used_by"]
         # One descriptor can serve hundreds of placements.  Rendering every
         # semantic ID here buries the selected object's primary fields and the
@@ -610,18 +790,16 @@ class MapWorkspaceTab(QWidget):
             if references else "No known placement references"
         )
         self._open_scene.setEnabled(True)
+        self._show_placement_detail(True)
         self._update_controls()
 
     def _clear_inspector(self) -> None:
+        """No placement selected: one sentence, no dash or Unknown scaffolding."""
         self._selected_identity = None
-        self._identity.setText("No placement selected")
-        self._position.setText("—")
-        self._entity.setText("Unknown")
-        self._behavior.setText("Unknown")
-        self._script.setText("Unknown")
-        self._dialogue.setText("No proven dialogue relationship")
-        self._references.setText("—")
+        for _caption, value in self._detail_rows:
+            value.clear()
         self._open_scene.setEnabled(False)
+        self._show_placement_detail(False)
         self._update_controls()
 
     def _open_detailed_editor(self) -> None:
@@ -664,7 +842,7 @@ class MapWorkspaceTab(QWidget):
             return
         self._history_failed = True
         self._sync_undo_controls()
-        self._status.setText("Undo/redo history cleared because the project position could not be saved.")
+        self._set_status("Undo/redo history cleared because the project position could not be saved.")
         QTimer.singleShot(0, self._clear_failed_history)
 
     def _clear_failed_history(self) -> None:
@@ -689,7 +867,7 @@ class MapWorkspaceTab(QWidget):
         self.projectChanged.emit()
         self._populate_markers()
         self._select_marker(identity)
-        self._status.setText(f"Moved {identity} to X {position[0]}, Y {position[1]}")
+        self._set_status(f"Moved {identity} to X {position[0]}, Y {position[1]}")
         return True
 
     def _on_add_object(self) -> None:
@@ -730,19 +908,19 @@ class MapWorkspaceTab(QWidget):
         self.projectChanged.emit()
         self._populate_markers()
         self._select_marker(identity)
-        self._status.setText(f"Added {identity} at X {position[0]}, Y {position[1]}")
+        self._set_status(f"Added {identity} at X {position[0]}, Y {position[1]}")
 
     # -- visual status / controls -------------------------------------------
 
     def _on_cursor_moved(self, x: int, y: int) -> None:
         if self._current_map is not None:
-            self._status.setText(
+            self._set_status(
                 f"{self._current_map}  ·  X {x}  Y {y}  ·  zoom {self._canvas.transform().m11() * 100:.0f}%"
             )
 
     def _on_zoom_changed(self, scale: float) -> None:
         if self._current_map is not None:
-            self._status.setText(f"{self._current_map}  ·  zoom {scale * 100:.0f}%")
+            self._set_status(f"{self._current_map}  ·  zoom {scale * 100:.0f}%")
 
     def _update_controls(self) -> None:
         renderable = self._current_render is not None

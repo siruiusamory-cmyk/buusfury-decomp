@@ -1,12 +1,23 @@
 # CQA-01-OUTPUT-SAFETY-001 - shared output-safety authority and graphics export data-loss fix
 
-STATUS: **IMPLEMENTATION COMPLETE, FOCUSED VALIDATION GREEN, INDEPENDENT REVIEW
-`APPROVE` (no blocking findings), FROZEN CANDIDATE UNCHANGED.** Not merged.
-Frozen SHA `f9cfefb55d7e1469e106702574b51ccf7bd08ac9`.
+STATUS: **CLOSED AND INTEGRATED.** Human acceptance YES (2026-09-23). Frozen
+implementation SHA `f9cfefb55d7e1469e106702574b51ccf7bd08ac9` (unamended),
+review/status record `31df38308c93fd02ebd0d4bce2bd56772d06b80d`, both integrated
+to `origin/master`. Independent review `APPROVE` with no blocking findings.
 
-Ticket class: CRITICAL REMEDIATION. Primary finding **CQA-01 [CRITICAL]**, with
-only the output-safety ownership needed to close it durably from **CQA-10
-[MEDIUM]**.
+This is the ticket's implementation and evidence record. The project-level
+closeout is
+[`archive/CQA-01-OUTPUT-SAFETY-001-COMPLETE.md`](archive/CQA-01-OUTPUT-SAFETY-001-COMPLETE.md)
+and the reviewer verdict is
+[`CQA-01-OUTPUT-SAFETY-001-review.md`](CQA-01-OUTPUT-SAFETY-001-review.md).
+
+| Fact | Value |
+| --- | --- |
+| START SHA | `d96796eb8c59f2fce664afce387f96893059c6aa` |
+| FROZEN SHA (unamended) | `f9cfefb55d7e1469e106702574b51ccf7bd08ac9` |
+| REVIEW / STATUS RECORD SHA | `31df38308c93fd02ebd0d4bce2bd56772d06b80d` |
+| CQA-01 | **CLOSED** |
+| CQA-10 | **PARTIAL / IMPROVED** |
 
 ## Baseline
 

@@ -279,6 +279,30 @@ caps scanner output at `CANDIDATE`/`OBSERVED` by type.
 
 #### CQA-02 [CRITICAL] The packed encoder's output is not provably self-terminating, and the repository asserts two mutually exclusive engine termination rules while the write path depends on the uncited one
 
+> **REMEDIATED: CQA-02-PACKED-STREAM-TERMINATION-001 (2026-09-23).** The evidence
+> question was resolved by two independent investigations plus an adjudication as
+> **CASE A**: the retail decoder (`0x087B79E4` = IWRAM `0x03000040`) takes
+> `(source, destination)`, keeps no output counter and compares nothing against its
+> destination cursor, so it terminates on the bitstream's own escape - twelve zero
+> bits at a token boundary - and on nothing else. The declared size is a host-side
+> bound, not the engine's rule. `pack` now emits that escape through its bit writer
+> after the final token and before the final word is padded, so every output is
+> self-terminating by construction; `webfoot_lz.validate_retail_termination` is the
+> one production implementation of the postcondition, and the shipped
+> compressed-dialogue path and the sprite payload planner both invoke it and fail
+> closed before any size decision or plan. Final encoded length drives fit and
+> allocation. The contradictory claims this finding names were corrected **with
+> their evidence, not deleted**. Finding **CLOSED**; CQA-10 is unchanged
+> (**PARTIAL / IMPROVED**). Frozen implementation `2138635`, independent review
+> `PASS` with no blocking findings, canonical ROM unchanged, no capability change.
+> Record, mutation table, corpus counts, and the explicitly recorded Phase-1
+> measurement correction:
+> [`../tickets/CQA-02-PACKED-STREAM-TERMINATION-001.md`](../tickets/CQA-02-PACKED-STREAM-TERMINATION-001.md);
+> closure:
+> [`../tickets/archive/CQA-02-PACKED-STREAM-TERMINATION-001-COMPLETE.md`](../tickets/archive/CQA-02-PACKED-STREAM-TERMINATION-001-COMPLETE.md).
+> The text below is the finding **as originally recorded** and is not restated. Its
+> "not yet confirmed" list is now answered by Phase 1 of the closing ticket.
+
 - **Subsystem:** PRODUCTION - compression (`tools/webfoot/formats/webfoot_lz.py`) and its write-path consumers.
 - **Location:** `formats/webfoot_lz.py:490-495` (`_WordBitWriter.finish`), `:515-626` (`pack`), `:251` (shipping decoder loop); accepted by `formats/sprite_graphics.py:640-653`; shipped caller `compressed_dialogue.py:111`; contradicting claims at `tools/export/webfoot_strict.py:48-75`, `tests/unit/test_asset_export_strict_lz.py:153-171`, and `tools/research/webfoot_codec_reference.py:14-17,31-33,179-182`.
 - **Observed (owner-verified in source):**

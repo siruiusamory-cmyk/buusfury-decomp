@@ -23,11 +23,10 @@ from __future__ import annotations
 from collections import OrderedDict
 from pathlib import Path
 
-from PySide6.QtCore import QRectF, QSize, Qt
+from PySide6.QtCore import QRectF, QSize, Qt, Signal
 from PySide6.QtGui import (
     QBrush,
     QColor,
-    QFontDatabase,
     QIcon,
     QImage,
     QPainter,
@@ -40,23 +39,29 @@ from PySide6.QtWidgets import (
     QComboBox,
     QFileDialog,
     QFormLayout,
+    QFrame,
     QGraphicsItem,
     QGraphicsPixmapItem,
     QGraphicsScene,
     QGraphicsSimpleTextItem,
     QGraphicsView,
-    QGroupBox,
     QHBoxLayout,
     QLabel,
     QLineEdit,
     QListWidget,
     QListWidgetItem,
+    QMenu,
     QMessageBox,
     QPushButton,
     QScrollArea,
+    QSizePolicy,
     QSplitter,
+    QStackedWidget,
+    QTabWidget,
+    QToolButton,
     QVBoxLayout,
     QWidget,
+    QWidgetAction,
 )
 
 from tools.export import map_browser as mb
@@ -69,8 +74,10 @@ from tools.webfoot.map_layout_edit import (
 from tools.webfoot.map_layout_write import MapLayoutWriteError
 from tools.webfoot.write import WriteError
 
+from . import theme
 from .build_panel import is_safe_output_path
 from .session import Session
+from .widgets import PanelHeader, TechnicalLabel, ToolStrip
 
 #: Cosmetic, honest labels for the accepted structural classifications. The
 #: verbatim classification stays in the info panel; these shorten the checkbox.
@@ -85,15 +92,17 @@ _LAYER_LABELS = {
 #: corpus and a session of clicking through maps stays within a modest footprint.
 _MAX_RENDER_CACHE = 32
 
-#: The shell's gold accent, reused for the layout states so the editing surface
-#: belongs to the tab's existing visual language.
-_ACCENT = QColor("#F3C94B")
-_WARNING = QColor("#F0A93B")
-_SUCCESS = QColor("#7FC98B")
-_MUTED = QColor("#8A97A6")
+#: The zoom cluster's step buttons. One common width for the two glyph buttons, so
+#: the +/- pair reads as one control and the readout between them sits centred.
+_ZOOM_BUTTON_W = 34
 
+#: The editable chunk-cell grid is drawn in the accent hue at a cosmetic width, so
+#: it reads as a rule over the artwork rather than as a highlight competing with it.
 _IDENTITY_ROLE = Qt.ItemDataRole.UserRole
 _CHUNK_ROLE = Qt.ItemDataRole.UserRole + 1
+#: The row's label without its pending-edit glyph, so the glyph can be added and
+#: removed without accumulating dots.
+_BASE_TEXT_ROLE = Qt.ItemDataRole.UserRole + 2
 
 #: One-line states for a map with nothing editable, keyed by
 #: :attr:`LayoutTarget.read_only_kind`. Read-only is a state, not an error.
@@ -110,6 +119,26 @@ _READ_ONLY_BADGES = {
 #: session translates in most paths but which a defensive catch must still cover),
 #: ``MapBrowserError`` (the render facade the chooser and preview call) and
 #: ``WriteError`` (the ROM emit path, also unrelated to the other three).
+#: The mode-badge role colours. The identity magenta is spent on the editing state
+#: only, so the badge cannot compete with the map; a read-only state is a bare glyph
+#: plus text, which is why it stays legible without hue.
+_MODE_COLORS = {
+    "edit": "accent",
+    "readonly": "text_muted",
+    "neutral": "text_muted",
+}
+_CHANGE_COLORS = {
+    "pending": "pending",
+    "saved": "success",
+    "neutral": "text_muted",
+}
+#: Spoken role, so the badge's state survives without any colour at all.
+_MODE_ROLE_WORDS = {
+    "edit": "Editing state:",
+    "readonly": "Read-only state:",
+    "neutral": "Browsing state:",
+}
+
 _EDIT_ERRORS = (
     MapLayoutEditError,
     MapLayoutWriteError,
@@ -119,13 +148,18 @@ _EDIT_ERRORS = (
 
 
 def _checkerboard() -> QBrush:
-    """A navy checkerboard for the canvas: unpainted (index 0) pixels show it."""
+    """A navy checkerboard for the canvas: unpainted (index 0) pixels show it.
+
+    Two close values of the same navy as every panel, so it marks transparency
+    without becoming a black field that makes the map look like it is floating in
+    a terminal window.
+    """
     cell = 12
     pixmap = QPixmap(cell * 2, cell * 2)
-    pixmap.fill(QColor("#1B2129"))
+    pixmap.fill(theme.color("checker_dark"))
     painter = QPainter(pixmap)
-    painter.fillRect(0, 0, cell, cell, QColor("#232B36"))
-    painter.fillRect(cell, cell, cell, cell, QColor("#232B36"))
+    painter.fillRect(0, 0, cell, cell, theme.color("checker_light"))
+    painter.fillRect(cell, cell, cell, cell, theme.color("checker_light"))
     painter.end()
     return QBrush(pixmap)
 
@@ -175,20 +209,32 @@ class ChunkGridOverlay(QGraphicsItem):
         return QRectF(0, 0, self._grid.width, self._grid.height)
 
     def paint(self, painter: QPainter, option, widget=None) -> None:
+        """Draw the cell grid and its three cell states.
+
+        Every colour comes from the theme, and the fills are translucent so the map
+        artwork stays readable underneath: the review's rule is that game content is
+        the most saturated object on screen, so the overlay may only tint it. The
+        edited cells carry a corner marker as well as a tint, so "this cell has a
+        pending change" is never carried by hue alone.
+        """
         painter.setRenderHint(QPainter.RenderHint.Antialiasing, False)
+        grid_line = theme.qcolor("grid", 130)
+        edited_fill = theme.qcolor("pending", 46)
+        edited_mark = theme.qcolor("pending", 220)
+        hover_fill = theme.qcolor("text_primary", 26)
+        hover_edge = theme.qcolor("text_primary", 180)
+        selected_fill = theme.qcolor("accent", 60)
         for cell in range(self._grid.cell_count):
             x, y, width, height = self._grid.cell_rect(cell)
             rect = QRectF(x, y, width, height)
             if cell in self._edited:
-                painter.fillRect(rect, QColor(243, 201, 75, 40))
+                painter.fillRect(rect, edited_fill)
                 marker = 10
-                painter.fillRect(
-                    QRectF(x + 3, y + 3, marker, marker), QColor(243, 201, 75, 210)
-                )
+                painter.fillRect(QRectF(x + 3, y + 3, marker, marker), edited_mark)
             if cell == self._hovered and cell != self._selected:
-                painter.fillRect(rect, QColor(255, 255, 255, 26))
+                painter.fillRect(rect, hover_fill)
         # Grid lines: cosmetic, so they stay one device pixel at any zoom.
-        grid_pen = QPen(QColor(243, 201, 75, 120))
+        grid_pen = QPen(grid_line)
         grid_pen.setCosmetic(True)
         grid_pen.setWidthF(1.0)
         painter.setPen(grid_pen)
@@ -200,18 +246,18 @@ class ChunkGridOverlay(QGraphicsItem):
             painter.drawLine(0, y, self._grid.width, y)
         if self._hovered is not None and self._hovered != self._selected:
             x, y, width, height = self._grid.cell_rect(self._hovered)
-            hover_pen = QPen(QColor(255, 255, 255, 170))
+            hover_pen = QPen(hover_edge)
             hover_pen.setCosmetic(True)
             hover_pen.setWidthF(2.0)
             painter.setPen(hover_pen)
             painter.drawRect(QRectF(x, y, width, height).adjusted(1, 1, -1, -1))
         if self._selected is not None:
             x, y, width, height = self._grid.cell_rect(self._selected)
-            selected_pen = QPen(_ACCENT)
+            selected_pen = QPen(theme.color("accent"))
             selected_pen.setCosmetic(True)
             selected_pen.setWidthF(3.0)
             painter.setPen(selected_pen)
-            painter.fillRect(QRectF(x, y, width, height), QColor(243, 201, 75, 64))
+            painter.fillRect(QRectF(x, y, width, height), selected_fill)
             painter.drawRect(QRectF(x, y, width, height).adjusted(1, 1, -2, -2))
 
     def hoverMoveEvent(self, event) -> None:
@@ -244,11 +290,16 @@ class MapBrowserCanvas(QGraphicsView):
     cell selection and Enter applies the pending chunk change.
     """
 
+    #: Current scale, so the status bar and tool strip can show a real zoom
+    #: readout instead of the user having to guess (Tiled's zoom combo).
+    zoomChanged = Signal(float)
+
     def __init__(self, scene: QGraphicsScene) -> None:
         super().__init__(scene)
         self._panning = False
         self._pan_position = None
         self._key_handler = None
+        self._hover_handler = None
         self.setRenderHint(QPainter.RenderHint.SmoothPixmapTransform, False)
         self.setTransformationAnchor(QGraphicsView.ViewportAnchor.AnchorUnderMouse)
         self.setResizeAnchor(QGraphicsView.ViewportAnchor.AnchorUnderMouse)
@@ -259,6 +310,18 @@ class MapBrowserCanvas(QGraphicsView):
     def set_key_handler(self, handler) -> None:
         """Install (or clear) the edit-mode key handler: it returns True if used."""
         self._key_handler = handler
+
+    def set_hover_handler(self, handler) -> None:
+        """Install the hover readout handler: ``handler(x, y)`` in map pixels.
+
+        ``handler(None, None)`` is delivered when the pointer leaves the canvas,
+        so the readout can clear instead of freezing on a stale coordinate.
+        """
+        self._hover_handler = handler
+
+    def scale_factor(self) -> float:
+        """The current view scale, 1.0 meaning one map pixel per screen pixel."""
+        return float(self.transform().m11())
 
     def zoom_in(self) -> None:
         self._change_zoom(1.25)
@@ -271,9 +334,11 @@ class MapBrowserCanvas(QGraphicsView):
         if rect.isEmpty():
             return
         self.fitInView(rect, Qt.AspectRatioMode.KeepAspectRatio)
+        self.zoomChanged.emit(self.scale_factor())
 
     def reset_zoom(self) -> None:
         self.resetTransform()
+        self.zoomChanged.emit(self.scale_factor())
 
     def _change_zoom(self, factor: float) -> None:
         current = self.transform().m11()
@@ -281,6 +346,7 @@ class MapBrowserCanvas(QGraphicsView):
         if not 0.0625 <= target <= 32:
             return
         self.scale(factor, factor)
+        self.zoomChanged.emit(self.scale_factor())
 
     def keyPressEvent(self, event) -> None:
         if self._key_handler is not None and self._key_handler(event):
@@ -316,7 +382,17 @@ class MapBrowserCanvas(QGraphicsView):
             self._pan_position = event.position()
             event.accept()
             return
+        if self._hover_handler is not None:
+            # Porymap's status bar is a live hover instrument rather than a fixed
+            # ticker; the tab turns this point into map pixels, cell and chunk.
+            scene_pos = self.mapToScene(event.position().toPoint())
+            self._hover_handler(int(scene_pos.x()), int(scene_pos.y()))
         super().mouseMoveEvent(event)
+
+    def leaveEvent(self, event) -> None:  # noqa: N802 - Qt naming
+        if self._hover_handler is not None:
+            self._hover_handler(None, None)
+        super().leaveEvent(event)
 
     def mouseReleaseEvent(self, event) -> None:
         if self._panning and event.button() == Qt.MouseButton.MiddleButton:
@@ -329,7 +405,34 @@ class MapBrowserCanvas(QGraphicsView):
 
 
 class MapBrowserTab(QWidget):
-    """Map browser: list + search | viewer | inspector, plus an Edit Layout mode."""
+    """Map browser: list + search | viewer | inspector, plus an Edit Layout mode.
+
+    Geometry, and the reference each pane comes from
+    (``docs/research/UI_REFERENCE_MATRIX.md``):
+
+    - **left** - search field over the map collection (Porymap's filter-then-list
+      pane; LDtk's fixed-height scroll region).
+    - **centre** - one contextual tool strip directly above the canvas, then the
+      canvas itself, then the chunk palette below it. Porymap puts its paint
+      tools, view toggles and a structural action on one line at grid row 0 with
+      the canvas at row 1; Tiled makes the canvas the *only* undecorated region;
+      LDtk's palette is regenerated per active layer. DragonByte Z therefore has
+      exactly one tool strip, one undecorated canvas, and one palette that is
+      present only while editing.
+    - **right** - one inspector pane whose contents the mode swaps, the way
+      Porymap's ``stackedWidget_MapEvents`` swaps the whole right pane per mode.
+    - **bottom** - one compact status line (Porymap's mode-aware instrument
+      readout and Tiled's status-bar contract).
+
+    The tab owns no ROM format, no pointer arithmetic and no write of its own.
+    """
+
+    #: Pending layout edits appeared or disappeared; the shell shows this too.
+    dirtyChanged = Signal()
+    #: The compact one-line tab status, forwarded to the shell's status bar.
+    statusChanged = Signal(str)
+    #: Save As wrote a new ROM, which changes what the Shell's project state means.
+    projectChanged = Signal()
 
     def __init__(self, session: Session) -> None:
         super().__init__()
@@ -352,29 +455,56 @@ class MapBrowserTab(QWidget):
         self._saved: dict[tuple[int, int, int], int] = {}
         self._thumbnails: dict[int, QPixmap] = {}
         self._suppress_chooser = False
+        self._last_dirty = 0
+        #: The palette's full height, measured from its own content in
+        #: `_size_chunk_chooser`; the palette collapses to its header without it.
+        self._palette_height = 0
+        #: True while a parent editor (the Maps editor) owns mode selection, so
+        #: this tab does not render its own Edit Layout toggle a second time.
+        self._modes_owned_by_host = False
 
         self._scene = QGraphicsScene(self)
         self._canvas = MapBrowserCanvas(self._scene)
         self._canvas.set_key_handler(self._on_canvas_key)
+        self._canvas.set_hover_handler(self._on_canvas_hover)
+        self._hover_text = ""
         self._pixmap_item: QGraphicsPixmapItem | None = None
         self._grid_item: ChunkGridOverlay | None = None
 
-        # -- LEFT: search + map list -----------------------------------------
+        # -- LEFT: search + map collection ------------------------------------
         self._search = QLineEdit()
         self._search.setPlaceholderText("Search by name or map id (e.g. West City, map:0017)")
+        self._search.setClearButtonEnabled(True)
+        self._search.setAccessibleName("Filter maps")
         self._search.textChanged.connect(self._apply_filter)
         self._list = QListWidget()
+        self._list.setUniformItemSizes(True)
+        self._list.setAlternatingRowColors(False)
+        # Long map labels must not force the collection pane wider than its
+        # share: it elides and scrolls instead, which is what keeps the canvas
+        # from being pushed into a horizontal scrollbar.
+        self._list.setMinimumWidth(0)
+        self._list.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        self._list.setTextElideMode(Qt.TextElideMode.ElideRight)
         self._list.currentItemChanged.connect(self._on_selection)
+        self._list_count = QLabel("")
+        self._list_count.setProperty("dbzRole", "count")
+        left_header = PanelHeader("Maps")
+        left_header.add_trailing(self._list_count)
+
         left = QWidget()
         left_layout = QVBoxLayout(left)
         left_layout.setContentsMargins(0, 0, 0, 0)
+        left_layout.setSpacing(0)
+        left_layout.addWidget(left_header)
         left_layout.addWidget(self._search)
         left_layout.addWidget(self._list, 1)
 
-        # -- CENTER: edit mode + layer toggles + zoom + canvas ---------------
+        # -- CENTRE: one contextual strip over the canvas, then the palette ----
         self._edit_toggle = QPushButton("Edit Layout")
         self._edit_toggle.setCheckable(True)
         self._edit_toggle.setEnabled(False)
+        self._edit_toggle.setProperty("dbzRole", "primary")
         self._edit_toggle.setToolTip(
             "Edit a supported map's dominant-layer chunk layout. Browsing stays "
             "read-only until this is on."
@@ -382,58 +512,158 @@ class MapBrowserTab(QWidget):
         self._edit_toggle.toggled.connect(self._on_edit_mode_toggled)
 
         self._layers_box = QWidget()
+        self._layers_box.setObjectName("dbzLayerToggleHost")
         self._layers_layout = QHBoxLayout(self._layers_box)
         self._layers_layout.setContentsMargins(0, 0, 0, 0)
-        self._layers_layout.addWidget(QLabel("Layers:"))
-        self._zoom_out = QPushButton("−")
+        self._layers_layout.setSpacing(theme.SPACE_MD)
+        # One button per graphical layer, each carrying a menu with the layer's
+        # own classification. The wording lives in the menu rather than on the
+        # button face, so a narrow window shortens *which* layers are offered
+        # without ever making a layer's meaning unreadable - the failure a row of
+        # labelled check boxes has, and the reason LDtk keeps its context in a
+        # single-line strip and its detail in a pop-out.
+        self._layers_menu = QMenu(self)
+        self._layers_button = QToolButton()
+        self._layers_button.setText("Layers")
+        self._layers_button.setPopupMode(QToolButton.ToolButtonPopupMode.InstantPopup)
+        self._layers_button.setMenu(self._layers_menu)
+        self._layers_button.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextOnly)
+        self._layers_button.setToolTip("Which graphical layers of this map to draw")
+        self._layers_button.setAccessibleName("Layers")
+
+        # -- the zoom cluster --------------------------------------------------
+        #
+        # A conventional compact zoom group, in the order every desktop editor
+        # uses: decrease, the CURRENT zoom readout, increase, then the two reset
+        # commands. The readout used to be right-aligned *before* the buttons and
+        # sat beside a "100%" button, so two percentages appeared together with
+        # nothing to say which was state and which was a command. Now the state is
+        # a readout between the two buttons that change it, the reset reads "1:1"
+        # because that is literally what it does (one image pixel per screen pixel,
+        # `reset_zoom`), and both reset commands are buttons rather than labels.
+        self._zoom_out = QPushButton("\u2212")
         self._zoom_out.setToolTip("Zoom out")
+        self._zoom_out.setFixedWidth(_ZOOM_BUTTON_W)
+        self._zoom_out.setAccessibleName("Zoom out")
         self._zoom_out.clicked.connect(self._canvas.zoom_out)
+        self._zoom_label = QLabel("Fit")
+        self._zoom_label.setProperty("dbzRole", "technical")
+        self._zoom_label.setToolTip("Current zoom")
+        self._zoom_label.setMinimumWidth(56)
+        self._zoom_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self._zoom_in = QPushButton("+")
         self._zoom_in.setToolTip("Zoom in")
+        self._zoom_in.setFixedWidth(_ZOOM_BUTTON_W)
+        self._zoom_in.setAccessibleName("Zoom in")
         self._zoom_in.clicked.connect(self._canvas.zoom_in)
+        self._actual = QPushButton("1:1")
+        self._actual.setToolTip("Reset to 1:1 pixels")
+        self._actual.setAccessibleName("Reset zoom to 1:1")
+        self._actual.clicked.connect(self._canvas.reset_zoom)
         self._fit = QPushButton("Fit")
         self._fit.setToolTip("Fit the map to the window")
+        self._fit.setAccessibleName("Fit map to window")
         self._fit.clicked.connect(self._canvas.fit_map)
-        self._actual = QPushButton("100%")
-        self._actual.setToolTip("Reset to 1:1 pixels")
-        self._actual.clicked.connect(self._canvas.reset_zoom)
-        toolbar = QHBoxLayout()
-        toolbar.addWidget(self._edit_toggle)
-        toolbar.addSpacing(12)
-        toolbar.addWidget(self._layers_box, 1)
-        toolbar.addWidget(self._zoom_out)
-        toolbar.addWidget(self._zoom_in)
-        toolbar.addWidget(self._actual)
-        toolbar.addWidget(self._fit)
-        canvas_box = QGroupBox("Map")
-        canvas_layout = QVBoxLayout(canvas_box)
-        canvas_layout.addLayout(toolbar)
-        canvas_layout.addWidget(self._canvas, 1)
 
-        # -- RIGHT: layout editor, chunk chooser, map information -------------
-        self._mode_badge = QLabel("VIEW MODE · read-only")
+        self._strip = ToolStrip()
+        self._strip.add(self._edit_toggle)
+        self._strip.add_separator()
+        self._strip.add(self._layers_box)
+        self._strip.add_stretch()
+        self._strip.add(self._zoom_out)
+        self._strip.add(self._zoom_label)
+        self._strip.add(self._zoom_in)
+        self._strip.add_separator()
+        self._strip.add(self._actual)
+        self._strip.add(self._fit)
+        self._canvas.zoomChanged.connect(self._on_zoom_changed)
+
+        canvas_frame = QFrame()
+        canvas_frame.setObjectName("dbzMapCanvasFrame")
+        canvas_layout = QVBoxLayout(canvas_frame)
+        canvas_layout.setContentsMargins(0, 0, 0, 0)
+        canvas_layout.setSpacing(0)
+        canvas_layout.addWidget(self._strip)
+        canvas_layout.addWidget(self._canvas, 1)
+        #: Retained for callers and tests that referenced the old titled box.
+        self._canvas_box = canvas_frame
+
+        # -- CENTRE-BOTTOM: the chunk palette --------------------------------
+        self._chooser_hint = QLabel("Select a map to see its chunks.")
+        self._chooser_hint.setProperty("dbzRole", "hint")
+        self._chooser_hint.setWordWrap(True)
+        self._chooser = QListWidget()
+        self._chooser.setViewMode(QListWidget.ViewMode.IconMode)
+        self._chooser.setIconSize(QSize(48, 48))
+        self._chooser.setResizeMode(QListWidget.ResizeMode.Adjust)
+        self._chooser.setMovement(QListWidget.Movement.Static)
+        self._chooser.setUniformItemSizes(False)
+        self._chooser.setWordWrap(True)
+        self._chooser.setFlow(QListWidget.Flow.LeftToRight)
+        self._chooser.setWrapping(False)
+        self._chooser.setSelectionMode(QListWidget.SelectionMode.SingleSelection)
+        self._chooser.setAccessibleName("Chunks this layer already uses")
+        self._chooser.setToolTip(
+            "Only chunks this layer already uses can replace a cell's chunk."
+        )
+        self._chooser.currentItemChanged.connect(self._on_chunk_selected)
+        self._chooser_header = PanelHeader("Cell chunks", collapsible=True)
+        self._chooser_header.toggled.connect(self._on_chooser_toggled)
+        chooser_body = QWidget()
+        chooser_layout = QVBoxLayout(chooser_body)
+        chooser_layout.setContentsMargins(
+            theme.SPACE_SM, theme.SPACE_XS, theme.SPACE_SM, theme.SPACE_XS
+        )
+        chooser_layout.setSpacing(theme.SPACE_XS)
+        chooser_layout.addWidget(self._chooser_hint)
+        chooser_layout.addWidget(self._chooser, 1)
+        self._chooser_box = QWidget()
+        self._chooser_box.setObjectName("dbzChunkPalette")
+        chooser_box_layout = QVBoxLayout(self._chooser_box)
+        chooser_box_layout.setContentsMargins(0, 0, 0, 0)
+        chooser_box_layout.setSpacing(0)
+        chooser_box_layout.addWidget(self._chooser_header)
+        chooser_box_layout.addWidget(chooser_body, 1)
+
+        centre_split = QSplitter(Qt.Orientation.Vertical)
+        centre_split.addWidget(canvas_frame)
+        centre_split.addWidget(self._chooser_box)
+        centre_split.setStretchFactor(0, 1)
+        centre_split.setStretchFactor(1, 0)
+        centre_split.setCollapsible(0, False)
+        centre_split.setCollapsible(1, False)
+        # The palette is a fixed-height instrument, not a second canvas: giving
+        # it a stretch factor is what let the canvas eat it entirely. Its height
+        # comes from its own content in `_size_chunk_chooser`, so nothing clips.
+        centre_split.setSizes([700, 150])
+        self._centre_split = centre_split
+
+        # -- RIGHT: one inspector pane, contents swapped by mode --------------
+        self._mode_badge = QLabel("VIEW MODE \u00b7 read-only")
         mode_font = self._mode_badge.font()
         mode_font.setBold(True)
         self._mode_badge.setFont(mode_font)
         self._mode_badge.setWordWrap(True)
-        #: The full explanation behind a READ ONLY badge, kept quiet and separate
-        #: so the badge itself stays a one-line state a user can read at a glance.
+        #: The full explanation behind a READ ONLY state, kept quiet and separate
+        #: so the state itself stays a one-line thing a user can read at a glance.
         self._read_only_detail = QLabel("")
         self._read_only_detail.setWordWrap(True)
-        self._read_only_detail.setStyleSheet("color: #8A97A6;")
+        self._read_only_detail.setProperty("dbzRole", "hint")
 
         self._layer_combo = QComboBox()
         self._layer_combo.setToolTip("Which dominant layer of this map to edit")
+        self._layer_combo.setAccessibleName("Layer")
         self._layer_combo.currentIndexChanged.connect(self._on_layer_changed)
 
-        self._cell_label = QLabel("—")
+        self._cell_label = QLabel("\u2014")
         self._cell_label.setWordWrap(True)
-        self._chunk_label = QLabel("—")
+        self._chunk_label = QLabel("\u2014")
         self._chunk_label.setWordWrap(True)
         self._change_label = QLabel("No layout changes")
         self._change_label.setWordWrap(True)
 
         self._apply_button = QPushButton("Apply")
+        self._apply_button.setProperty("dbzRole", "primary")
         self._apply_button.setToolTip("Commit the chosen chunk to the selected cell (Enter)")
         self._apply_button.clicked.connect(self._apply_draft)
         self._revert_button = QPushButton("Revert cell")
@@ -441,10 +671,11 @@ class MapBrowserTab(QWidget):
             "Put the selected cell back to the chunk the source ROM holds (Esc)"
         )
         self._revert_button.clicked.connect(self._revert_cell)
-        self._reset_button = QPushButton("Reset pending edits")
+        self._reset_button = QPushButton("Reset all")
         self._reset_button.setToolTip("Discard every pending layout change in this session")
         self._reset_button.clicked.connect(self._reset_edits)
-        self._save_button = QPushButton("Save As New ROM…")
+        self._save_button = QPushButton("Save As New ROM\u2026")
+        self._save_button.setProperty("dbzRole", "primary")
         self._save_button.setToolTip(
             "Write the pending edits to a new ROM file; the source ROM is never "
             "modified. With no pending edits this writes a byte-identical copy."
@@ -452,105 +683,169 @@ class MapBrowserTab(QWidget):
         self._save_button.clicked.connect(self._on_save_as)
 
         editor_form = QFormLayout()
+        editor_form.setContentsMargins(theme.SPACE_SM, theme.SPACE_SM, theme.SPACE_SM, 0)
+        editor_form.setHorizontalSpacing(theme.SPACE_MD)
+        editor_form.setVerticalSpacing(theme.SPACE_XS)
+        editor_form.setFieldGrowthPolicy(QFormLayout.FieldGrowthPolicy.AllNonFixedFieldsGrow)
         editor_form.addRow("Layer", self._layer_combo)
         editor_form.addRow("Selected cell", self._cell_label)
         editor_form.addRow("Chunk", self._chunk_label)
         editor_form.addRow("Changes", self._change_label)
         self._editor_form = editor_form
         buttons = QHBoxLayout()
+        buttons.setContentsMargins(theme.SPACE_SM, 0, theme.SPACE_SM, 0)
         buttons.addWidget(self._apply_button)
         buttons.addWidget(self._revert_button)
         buttons.addWidget(self._reset_button)
-        self._detail = QLabel("—")
-        self._detail.setWordWrap(True)
-        self._detail.setFont(QFontDatabase.systemFont(QFontDatabase.SystemFont.FixedFont))
-        self._detail.setStyleSheet("color: #8A97A6;")
+        # Advanced technical detail sits behind a disclosure (Godot's Advanced
+        # Settings idiom), so the default surface speaks cells and chunks.
+        self._detail = TechnicalLabel("\u2014")
+        self._detail_row = QWidget()
+        detail_layout = QVBoxLayout(self._detail_row)
+        detail_layout.setContentsMargins(theme.SPACE_SM, 0, theme.SPACE_SM, theme.SPACE_SM)
+        detail_layout.setSpacing(0)
+        detail_layout.addWidget(QLabel("Selected cell details"))
+        detail_layout.addWidget(self._detail)
 
         editor_layout = QVBoxLayout()
+        editor_layout.setContentsMargins(0, 0, 0, 0)
+        editor_layout.setSpacing(theme.SPACE_SM)
         editor_layout.addWidget(self._mode_badge)
         editor_layout.addWidget(self._read_only_detail)
         editor_layout.addLayout(editor_form)
         editor_layout.addLayout(buttons)
+        editor_layout.addWidget(self._detail_row)
         editor_layout.addWidget(self._save_button)
-        editor_layout.addWidget(self._detail)
-        self._editor_box = QGroupBox("Layout editor")
+        editor_layout.addStretch(1)
+        self._editor_box = QWidget()
+        self._editor_box.setObjectName("dbzLayoutEditor")
         self._editor_box.setLayout(editor_layout)
 
-        self._chooser_hint = QLabel("Select a map to see its chunks.")
-        self._chooser_hint.setWordWrap(True)
-        self._chooser_hint.setStyleSheet("color: #8A97A6;")
-        self._chooser = QListWidget()
-        self._chooser.setViewMode(QListWidget.ViewMode.IconMode)
-        self._chooser.setIconSize(QSize(64, 64))
-        self._chooser.setResizeMode(QListWidget.ResizeMode.Adjust)
-        self._chooser.setMovement(QListWidget.Movement.Static)
-        self._chooser.setUniformItemSizes(False)
-        self._chooser.setWordWrap(True)
-        self._chooser.setSelectionMode(QListWidget.SelectionMode.SingleSelection)
-        self._chooser.setToolTip(
-            "Only chunks this layer already uses can replace a cell's chunk."
-        )
-        self._chooser.currentItemChanged.connect(self._on_chunk_selected)
-        chooser_layout = QVBoxLayout()
-        chooser_layout.addWidget(self._chooser_hint)
-        chooser_layout.addWidget(self._chooser, 1)
-        self._chooser_box = QGroupBox("Replace chunk")
-        self._chooser_box.setLayout(chooser_layout)
-
-        self._name = QLabel("—")
+        self._name = QLabel("\u2014")
         self._name.setWordWrap(True)
-        self._identity = QLabel("—")
-        self._dimensions = QLabel("—")
-        self._layer_count = QLabel("—")
-        self._layer_types = QLabel("—")
-        self._layer_types.setWordWrap(True)
-        self._notes = QLabel("—")
+        self._identity = QLabel("\u2014")
+        self._dimensions = QLabel("\u2014")
+        self._layer_count = QLabel("\u2014")
+        self._layer_types = TechnicalLabel("\u2014")
+        self._notes = QLabel("\u2014")
         self._notes.setWordWrap(True)
+        self._notes.setProperty("dbzRole", "hint")
         info_form = QFormLayout()
+        info_form.setContentsMargins(theme.SPACE_SM, theme.SPACE_SM, theme.SPACE_SM, theme.SPACE_SM)
+        info_form.setHorizontalSpacing(theme.SPACE_MD)
+        info_form.setVerticalSpacing(theme.SPACE_XS)
+        info_form.setFieldGrowthPolicy(QFormLayout.FieldGrowthPolicy.AllNonFixedFieldsGrow)
         info_form.addRow("Name", self._name)
         info_form.addRow("Map ID", self._identity)
         info_form.addRow("Dimensions", self._dimensions)
         info_form.addRow("Layers", self._layer_count)
         info_form.addRow("Layer types", self._layer_types)
         info_form.addRow("Notes", self._notes)
-        info_box = QGroupBox("Map information")
+        info_box = QWidget()
         info_box.setLayout(info_form)
+        self._info_box = info_box
 
-        right_body = QWidget()
-        right_layout = QVBoxLayout(right_body)
+        # Porymap keeps a named empty state (`label_NoEvents`) rather than a
+        # blank pane; this is the browse-mode equivalent.
+        self._empty_box = QWidget()
+        empty_layout = QVBoxLayout(self._empty_box)
+        empty_layout.setContentsMargins(
+            theme.SPACE_MD, theme.SPACE_MD, theme.SPACE_MD, theme.SPACE_MD
+        )
+        empty_layout.setSpacing(theme.SPACE_SM)
+        empty_state = QLabel("Browse mode")
+        empty_state.setProperty("dbzRole", "fieldLabel")
+        empty_layout.addWidget(empty_state)
+        self._empty_explanation = QLabel(
+            "This map is read-only. Switch Edit Layout on to reassign one "
+            "256\u00d7256 chunk cell to another chunk the same layer already uses."
+        )
+        self._empty_explanation.setProperty("dbzRole", "hint")
+        self._empty_explanation.setWordWrap(True)
+        # A wrapped label still reports the width of its longest word as its
+        # minimum, and `256x256` is one long word: without releasing the floor the
+        # label can be wider than the pane and its last line is clipped rather than
+        # wrapped.
+        self._empty_explanation.setMinimumWidth(0)
+        empty_layout.addWidget(self._empty_explanation)
+        empty_layout.addStretch(1)
+
+        # The inspector reacts to the workspace mode; it does NOT offer a second
+        # mode selector. It used to be a QTabWidget labelled "Layout | Browse |
+        # Map", which repeated the Maps editor's own Browse/Layout/Objects strip and
+        # left it genuinely unclear whether clicking a tab changed the editor mode,
+        # an inspector section, or both. The workspace strip is authoritative, and
+        # `_show_edit_groups` swaps this stack in response to it.
+        self._inspector_stack = QStackedWidget()
+        self._inspector_stack.addWidget(self._editor_box)
+        self._inspector_stack.addWidget(self._empty_box)
+        # `info_box` is deliberately NOT a page: it was the old "Map" tab. Its
+        # contents are the map-support sentence, which the left pane's header now
+        # states once, so adding it here would put the same fact back on screen as a
+        # second, differently-labelled section.
+        self._inspector_stack.setCurrentWidget(self._empty_box)
+        self._inspector_tabs = self._inspector_stack
+
+        right = QWidget()
+        # A floor on the pane, so its wrapped explanatory text has room to wrap. A
+        # QStackedWidget reports no minimum of its own, so without this the splitter
+        # can squeeze the inspector until its prose is clipped.
+        right.setMinimumWidth(240)
+        right_layout = QVBoxLayout(right)
         right_layout.setContentsMargins(0, 0, 0, 0)
-        right_layout.addWidget(self._editor_box)
-        right_layout.addWidget(self._chooser_box)
-        right_layout.addWidget(info_box)
-        right_layout.addStretch(1)
-        right_scroll = QScrollArea()
-        right_scroll.setWidget(right_body)
-        right_scroll.setWidgetResizable(True)
-        right_scroll.setMinimumWidth(340)
+        right_layout.setSpacing(0)
+        self._inspector_header = PanelHeader("Inspector")
+        right_layout.addWidget(self._inspector_header)
+        right_layout.addWidget(self._inspector_stack, 1)
+        self._right_pane = right
 
-        center_split = QSplitter(Qt.Orientation.Horizontal)
-        center_split.addWidget(canvas_box)
-        center_split.addWidget(right_scroll)
-        center_split.setStretchFactor(0, 1)
-        center_split.setSizes([860, 360])
+        # -- assembly ----------------------------------------------------------
+        # Both side panes sit in their own scroll areas, as Porymap's do, so a
+        # narrow window shortens what they can show instead of forcing the split
+        # wider (which is what would squeeze the canvas beside them).
+        left_scroll = QScrollArea()
+        left_scroll.setWidget(left)
+        left_scroll.setWidgetResizable(True)
+        left_scroll.setMinimumWidth(200)
+        left_scroll.setFrameShape(QFrame.Shape.NoFrame)
+
+        right_scroll = QScrollArea()
+        right_scroll.setWidget(right)
+        right_scroll.setWidgetResizable(True)
+        right_scroll.setMinimumWidth(250)
+        right_scroll.setFrameShape(QFrame.Shape.NoFrame)
 
         workspace = QSplitter(Qt.Orientation.Horizontal)
-        workspace.addWidget(left)
-        workspace.addWidget(center_split)
+        workspace.addWidget(left_scroll)
+        workspace.addWidget(centre_split)
+        workspace.addWidget(right_scroll)
+        workspace.setStretchFactor(0, 0)
         workspace.setStretchFactor(1, 1)
-        workspace.setSizes([260, 1120])
+        workspace.setStretchFactor(2, 0)
+        workspace.setCollapsible(0, True)
+        workspace.setCollapsible(1, False)
+        workspace.setCollapsible(2, True)
+        workspace.setSizes([250, 890, 300])
+        self._workspace_split = workspace
 
         self._status = QLabel("Open a supported ROM to browse maps.")
+        self._status.setProperty("dbzRole", "status")
+        self._status.setWordWrap(True)
+        self._status.setMinimumWidth(0)
         root = QVBoxLayout(self)
+        root.setContentsMargins(0, 0, 0, 0)
+        root.setSpacing(0)
         root.addWidget(workspace, 1)
-        root.addWidget(self._status)
+        # `_status` holds this editor's one status line and is deliberately NOT in
+        # this layout: the shell owns the single physical status bar and mirrors
+        # this text into it, so drawing it here too would state the same fact twice.
+        self._status.setVisible(False)
 
-        self._apply_style()
         self._size_chunk_chooser()
         self._show_edit_groups(False)
 
     def _size_chunk_chooser(self) -> None:
-        """Size the chooser's cells for a thumbnail *and* two text lines.
+        """Size the palette cells for a thumbnail *and* two text lines.
 
         Each item carries an explicit size hint rather than relying on the view's
         grid: with a grid, a two-line item is clipped to the grid cell that the
@@ -560,38 +855,75 @@ class MapBrowserTab(QWidget):
         font grows the cell instead of eating the tag.
         """
         line = self._chooser.fontMetrics().lineSpacing()
-        self._chooser_cell = QSize(100, 64 + 2 * line + 16)
-        self._chooser.setMinimumHeight(2 * self._chooser_cell.height() + 8)
-
-    def _apply_style(self) -> None:
-        """Restrained navy/blue-gray shell with a gold selection accent.
-
-        Scoped to this tab so the existing tabs keep their current look; the hex
-        values match the palette the other visual tabs already use.
-        """
-        self.setStyleSheet(
-            """
-            QWidget { background-color: #141A22; color: #F5F7FA; }
-            QGroupBox { border: 1px solid #2A3340; margin-top: 10px; padding-top: 8px; }
-            QGroupBox::title { color: #F3C94B; subcontrol-origin: margin; left: 8px; }
-            QLineEdit, QListWidget, QComboBox { background-color: #1B2129;
-                                      border: 1px solid #2A3340;
-                                      border-radius: 3px; padding: 4px; }
-            QComboBox QAbstractItemView { background-color: #1B2129; color: #F5F7FA; }
-            QListWidget::item { padding: 4px; }
-            QListWidget::item:selected { background-color: #3A3220; color: #F3C94B; }
-            QListWidget::item:hover { background-color: #20262F; }
-            QCheckBox { background: transparent; }
-            QPushButton { background-color: #232B36; border: 1px solid #2A3340;
-                          border-radius: 3px; padding: 3px 10px; }
-            QPushButton:hover { background-color: #2A3340; }
-            QPushButton:checked { background-color: #3A3220; color: #F3C94B;
-                                  border: 1px solid #F3C94B; }
-            QPushButton:disabled { color: #5A6675; background-color: #1B2129; }
-            QLabel { background: transparent; }
-            QScrollArea { border: none; }
-            """
+        self._chooser_cell = QSize(84, 48 + 2 * line + 10)
+        # The palette's height is derived from one row of cells plus its header and
+        # hint rather than guessed: a fixed height a few pixels short clipped the
+        # second text line ("current") off the selected chunk, which is exactly the
+        # tag the cell exists to show. The view is told to be exactly one cell tall
+        # so the panel has no empty band under the row.
+        chrome = (
+            theme.PANEL_HEADER_HEIGHT
+            + self._chooser_hint.sizeHint().height()
+            + 3 * theme.SPACE_SM
         )
+        self._chooser.setFixedHeight(self._chooser_cell.height())
+        self._chooser.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        self._palette_height = chrome + self._chooser_cell.height()
+        self._chooser_box.setFixedHeight(self._palette_height)
+
+    def _on_zoom_changed(self, scale: float) -> None:
+        self._zoom_label.setText(f"{scale * 100:.0f}%")
+
+    def _on_canvas_hover(self, x: int | None, y: int | None) -> None:
+        """Turn a canvas point into the readout Porymap and Tiled both carry.
+
+        Porymap's status bar reports ``X: %1, Y: %2`` plus the named element under
+        the cursor and the scale; Tiled's reports ``%1, %2 [%3]`` plus the active
+        layer in its permanent zone. This is the same information expressed in
+        DragonByte Z's own nouns: map pixels, the chunk cell, and the chunk.
+        """
+        if x is None or y is None:
+            text = ""
+        else:
+            parts = [f"{x}, {y} px"]
+            slot = self._slot
+            if self._edit_mode and slot is not None:
+                cell = slot.grid.cell_at(x, y)
+                if cell is not None:
+                    parts.append(
+                        f"cell {cell + 1} of {slot.grid.cell_count} "
+                        f"(col {slot.grid.column_of(cell)}, row {slot.grid.row_of(cell)})"
+                    )
+                    pointer = slot.cells[cell].pointer
+                    parts.append(self._chunk_name(slot.ordinal_of(pointer)))
+            text = "  \u00b7  ".join(parts)
+        if text != self._hover_text:
+            self._hover_text = text
+            self._update_status()
+
+    def _on_chooser_toggled(self, expanded: bool) -> None:
+        self._chooser.setVisible(bool(expanded))
+
+    def _sync_chooser_presence(self) -> None:
+        """Collapse the palette when there is nothing to choose.
+
+        LDtk's palette only exists for a layer type that can use it. A read-only
+        map has no layer to pick from, so leaving a full-height empty palette open
+        under the canvas is dead space that also repeats the inspector's own
+        explanation. The header stays, so the palette is still discoverable and the
+        disclosure control does not move; everything below it is hidden, so the
+        collapsed palette is *only* its header rather than a header with squeezed
+        emptiness under it.
+        """
+        usable = self._edit_mode and self._slot is not None
+        if usable:
+            self._chooser_box.setFixedHeight(self._palette_height)
+            self._chooser_hint.setVisible(True)
+            self._chooser.setVisible(self._chooser_header.is_expanded())
+        else:
+            self._chooser_hint.setVisible(False)
+            self._chooser.setVisible(False)
+            self._chooser_box.setFixedHeight(theme.PANEL_HEADER_HEIGHT)
 
     # -- session wiring -------------------------------------------------------
 
@@ -618,20 +950,53 @@ class MapBrowserTab(QWidget):
         self._entries = {entry.index: entry for entry in index}
         self._populate_list()
         self._edit_toggle.setEnabled(True)
+        # Restate the line for the session that just arrived. The label was created
+        # carrying "Open a supported ROM to browse maps." and nothing overwrote it
+        # until the user happened to select a map, so a loaded image still read as
+        # though no image were open.
+        self._update_status()
 
     def _populate_list(self) -> None:
+        """Fill the map collection, with a per-map pending-edit glyph.
+
+        Porymap shows unsaved state *per map, in the navigator*, so a user can see
+        which of dozens of maps is dirty without opening any of them. The glyph
+        trails the label so the leading name/identity text stays exactly as it
+        reads today. Which maps are editable is deliberately not enumerated here:
+        classifying all 452 maps up front would render the list slowly, and the
+        inspector already states the state of the map that is actually open.
+        """
         self._list.blockSignals(True)
         self._list.clear()
         for entry in sorted(self._entries.values(), key=lambda item: item.index):
             name = entry.name or ""
-            text = f"{name}  ·  map:{entry.index:04d}" if name else f"map:{entry.index:04d}"
+            text = f"{name}  \u00b7  map:{entry.index:04d}" if name else f"map:{entry.index:04d}"
             item = QListWidgetItem(text)
             item.setData(_IDENTITY_ROLE, entry.index)
             if name:
                 item.setToolTip(name)
             self._list.addItem(item)
         self._list.blockSignals(False)
+        self._list_count.setText(f"{len(self._entries)}")
+        self._mark_pending_rows()
         self._apply_filter(self._search.text())
+
+    def _mark_pending_rows(self) -> None:
+        """Append a pending glyph to the rows whose maps carry unsaved edits."""
+        pending: set[int] = set()
+        if self._editor is not None:
+            pending = {edit.map_index for edit in self._editor.edits()}
+        for row in range(self._list.count()):
+            item = self._list.item(row)
+            base = item.data(_BASE_TEXT_ROLE)
+            if base is None:
+                base = item.text()
+                item.setData(_BASE_TEXT_ROLE, base)
+            item.setText(
+                f"{base}  {theme.TITLE_DIRTY}"
+                if item.data(_IDENTITY_ROLE) in pending
+                else base
+            )
 
     def _apply_filter(self, text: str) -> None:
         needle = text.strip().lower()
@@ -699,16 +1064,33 @@ class MapBrowserTab(QWidget):
         self._update_status()
 
     def _clear_layer_checks(self) -> None:
+        # Drop the menu's actions first: a QWidgetAction owns the widget it is
+        # given, so clearing the menu would delete a check box that the layout
+        # still holds a Python reference to.
+        for action in list(self._layers_menu.actions()):
+            widget = action.defaultWidget()
+            if widget is not None:
+                action.setDefaultWidget(None)
+                widget.setParent(self._layers_box)
+            self._layers_menu.removeAction(action)
         for check in self._layer_checks.values():
             self._layers_layout.removeWidget(check)
             # Removing from a layout does not unparent: until the deferred delete
             # runs, an orphan would still paint at its stale geometry and overlap
-            # the next map's own checkboxes.
+            # the next map's own controls.
             check.setParent(None)
             check.deleteLater()
         self._layer_checks = {}
+        self._layers_button.setEnabled(False)
 
     def _populate_layer_checks(self) -> None:
+        """One checkable menu entry per graphical layer.
+
+        The check box itself stays the control (so the visibility contract is
+        unchanged and testable), but it lives inside a menu: the button face says
+        only "Layers", so no amount of narrowing can turn "BG2 - Terrain field"
+        into an unreadable stub.
+        """
         self._clear_layer_checks()
         result = self._current
         if result is None:
@@ -716,12 +1098,17 @@ class MapBrowserTab(QWidget):
         for layer in result.layers:
             if not layer.graphical:
                 continue
-            check = QCheckBox(f"BG{layer.slot} · {_LAYER_LABELS.get(layer.classification, layer.classification)}")
+            label = _LAYER_LABELS.get(layer.classification, layer.classification)
+            check = QCheckBox(f"BG{layer.slot} \u00b7 {label}")
             check.setChecked(True)
             check.setToolTip(layer.classification)
             check.toggled.connect(self._show_composite)
             self._layer_checks[layer.slot] = check
             self._layers_layout.addWidget(check)
+            action = QWidgetAction(self._layers_menu)
+            action.setDefaultWidget(check)
+            self._layers_menu.addAction(action)
+        self._layers_button.setEnabled(bool(self._layer_checks))
 
     def _visible_layers(self) -> tuple[mb.MapBrowserLayer, ...]:
         result = self._current
@@ -800,7 +1187,7 @@ class MapBrowserTab(QWidget):
         self._pixmap_item = None
         self._grid_item = None
         text = QGraphicsSimpleTextItem(message)
-        text.setBrush(QColor("#F5F7FA"))
+        text.setBrush(theme.color("text_primary"))
         self._scene.addItem(text)
         self._scene.setSceneRect(QRectF(0, 0, 640, 360))
         self._status.setText(message)
@@ -831,9 +1218,9 @@ class MapBrowserTab(QWidget):
         self._layer_combo.blockSignals(True)
         self._layer_combo.clear()
         self._layer_combo.blockSignals(False)
-        self._cell_label.setText("—")
-        self._chunk_label.setText("—")
-        self._detail.setText("—")
+        self._cell_label.setText("No cell selected")
+        self._chunk_label.setText("")
+        self._detail.setText("")
 
     def _reset_editor(self) -> None:
         """Drop all edit-session state; the ROM, and so the base, has changed."""
@@ -857,10 +1244,10 @@ class MapBrowserTab(QWidget):
         self._chooser_hint.setText("Select a map to see its chunks.")
         self._mode_badge.setText("VIEW MODE · read-only")
         self._mode_badge.setStyleSheet("")
-        self._cell_label.setText("—")
-        self._chunk_label.setText("—")
+        self._cell_label.setText("No cell selected")
+        self._chunk_label.setText("")
         self._change_label.setText("No layout changes")
-        self._detail.setText("—")
+        self._detail.setText("")
         self._layer_combo.blockSignals(True)
         self._layer_combo.clear()
         self._layer_combo.blockSignals(False)
@@ -953,6 +1340,19 @@ class MapBrowserTab(QWidget):
             self._scene.removeItem(self._grid_item)
         self._grid_item = None
 
+    def enter_edit_layout(self) -> None:
+        """Switch this browser into its Layout mode.
+
+        The Maps editor's mode switch calls this rather than flipping the check box
+        directly, so the toggle, the grid overlay and the inspector page all move
+        together exactly as they do when a user clicks the toggle.
+        """
+        self._edit_toggle.setChecked(True)
+
+    def leave_edit_layout(self) -> None:
+        """Switch this browser back to read-only browsing."""
+        self._edit_toggle.setChecked(False)
+
     def _on_edit_mode_toggled(self, checked: bool) -> None:
         self._edit_mode = bool(checked)
         self._draft = None
@@ -967,8 +1367,32 @@ class MapBrowserTab(QWidget):
         self._refresh_editor_state()
 
     def _show_edit_groups(self, visible: bool) -> None:
+        """Swap the inspector pane's page and show or hide the chunk palette.
+
+        This is the one place the mode changes which surfaces exist, and it is
+        deliberately a *swap* rather than a stack of greyed panels: Porymap swaps
+        its whole right-hand page per tool context, and LDtk's palette only
+        exists for a layer type that can use it. The hidden-by-default empty
+        state stands in until something is selected.
+        """
+        visible = bool(visible)
         self._editor_box.setVisible(visible)
         self._chooser_box.setVisible(visible)
+        self._empty_box.setVisible(not visible)
+        # While the Maps editor owns mode selection, the browser's own Edit Layout
+        # toggle is hidden rather than repeated: the mode strip already says which
+        # mode is on, and the same action must not be represented twice on one
+        # screen. The toggle stays the single implementation both callers drive.
+        self._edit_toggle.setVisible(not self._modes_owned_by_host)
+        if visible:
+            self._inspector_stack.setCurrentWidget(self._editor_box)
+        else:
+            self._inspector_stack.setCurrentWidget(self._empty_box)
+
+    def set_modes_owned_by_host(self, owned: bool) -> None:
+        """Let the Maps editor own mode selection, so this tab stops showing it."""
+        self._modes_owned_by_host = bool(owned)
+        self._edit_toggle.setVisible(not self._modes_owned_by_host)
 
     def _on_layer_changed(self, _row: int) -> None:
         self._select_layer(self._layer_combo.currentData())
@@ -1087,7 +1511,7 @@ class MapBrowserTab(QWidget):
             Qt.TransformationMode.FastTransformation,
         )
         backed = QPixmap(scaled.size())
-        backed.fill(QColor("#1B2129"))
+        backed.fill(theme.color("checker_dark"))
         painter = QPainter(backed)
         painter.fillRect(backed.rect(), _checkerboard())
         painter.drawPixmap(0, 0, scaled)
@@ -1248,17 +1672,16 @@ class MapBrowserTab(QWidget):
         elif self._grid_item is not None:
             self._grid_item.set_edited(())
 
-        # Mode badge: the tab says what state it is in and why, in words. The
-        # badge is a one-line state; its explanation sits in the quiet label under
-        # it, so a long reason cannot clip the state itself.
+        # Mode badge: the tab says what state it is in and why, in words, with a
+        # glyph so the state never depends on hue. The badge is a one-line state;
+        # its explanation sits in the quiet label under it, so a long reason
+        # cannot clip the state itself.
         self._read_only_detail.setText("")
         self._set_layer_row_visible(True)
         if not editing:
-            self._mode_badge.setText("VIEW MODE · read-only until Edit Layout is on")
-            self._mode_badge.setStyleSheet("color: #8A97A6;")
+            self._set_mode_badge("VIEW MODE \u00b7 read-only until Edit Layout is on", "neutral")
         elif self._editor is None:
-            self._mode_badge.setText("READ ONLY · layout editing is unavailable")
-            self._mode_badge.setStyleSheet("color: #8A97A6;")
+            self._set_mode_badge("READ ONLY \u00b7 layout editing is unavailable", "readonly")
             self._read_only_detail.setText(self._editor_error or "")
             self._set_layer_row_visible(False)
         elif target is None or not target.editable:
@@ -1266,17 +1689,17 @@ class MapBrowserTab(QWidget):
                 target.read_only_reason if target is not None else "this map could not be read"
             )
             kind = target.read_only_kind if target is not None else ""
-            self._mode_badge.setText(
-                f"READ ONLY · {_READ_ONLY_BADGES.get(kind, 'unsupported layout type')}"
+            self._set_mode_badge(
+                f"READ ONLY \u00b7 {_READ_ONLY_BADGES.get(kind, 'unsupported layout type')}",
+                "readonly",
             )
-            self._mode_badge.setStyleSheet("color: #F0A93B;")
             self._read_only_detail.setText(reason)
             self._set_layer_row_visible(False)
         else:
-            self._mode_badge.setText(
-                "EDIT LAYOUT · click a 256×256 cell, then choose a chunk"
+            self._set_mode_badge(
+                "EDIT LAYOUT \u00b7 click a 256\u00d7256 cell, then choose a chunk", "edit"
             )
-            self._mode_badge.setStyleSheet("color: #F3C94B;")
+        self._sync_chooser_presence()
 
         # Selected cell and current chunk.
         if slot is not None and self._selected_cell is not None:
@@ -1303,22 +1726,22 @@ class MapBrowserTab(QWidget):
                     f"field 0x{cell.offset:08X} (4 bytes, in place)"
                 )
         else:
-            self._cell_label.setText("—")
-            self._chunk_label.setText("—")
-            self._detail.setText("—")
+            # No cell picked yet: say what to do, rather than three dash rows.
+            self._cell_label.setText("No cell selected")
+            self._chunk_label.setText("")
+            self._detail.setText("")
 
         unsaved = self._unsaved_count()
         if not edits:
-            self._change_label.setText("No layout changes")
-            self._change_label.setStyleSheet("color: #8A97A6;")
+            self._set_change_label("No layout changes", "neutral")
         elif unsaved:
-            self._change_label.setText(
-                f"● {unsaved} unsaved layout change(s) · {len(edits)} pending"
+            self._set_change_label(
+                f"{unsaved} unsaved layout change(s) \u00b7 {len(edits)} pending", "pending"
             )
-            self._change_label.setStyleSheet("color: #F0A93B;")
         else:
-            self._change_label.setText(f"✔ {len(edits)} layout change(s) saved to a new ROM")
-            self._change_label.setStyleSheet("color: #7FC98B;")
+            self._set_change_label(
+                f"{len(edits)} layout change(s) saved to a new ROM", "saved"
+            )
 
         self._apply_button.setEnabled(editing and self._draft is not None)
         index = result.index if result is not None else None
@@ -1341,46 +1764,131 @@ class MapBrowserTab(QWidget):
         )
         self._layer_combo.setEnabled(editing and self._layer_combo.count() > 0)
         self._chooser.setEnabled(editing and slot is not None)
+        self._mark_pending_rows()
+        self._announce_dirty()
         self._update_status()
 
+    # -- state rendering ------------------------------------------------------
+
+    def _set_mode_badge(self, text: str, role: str) -> None:
+        """Set the mode badge's wording, colour and accessible name together.
+
+        The badge is a *sentence*, and its wording already names the state
+        ("EDIT LAYOUT", "READ ONLY", "VIEW MODE"), so no glyph is added to it -
+        a symbol in front of a sentence that already says the same thing is
+        decoration, and the ticket's ban on ornament applies to glyphs as much as
+        to gradients. The non-colour channels are therefore the wording itself and
+        the brightness of the role: the identity magenta for the editing state,
+        recessive grey for a read-only one. The role drives the colour, so no caller
+        can express a state with colour alone, and the accessible name states the
+        role in words.
+        """
+        self._mode_badge.setText(text)
+        self._mode_badge.setStyleSheet(
+            f"color: {theme.color(_MODE_COLORS.get(role, 'text_secondary')).name()};"
+            " background: transparent;"
+        )
+        self._mode_badge.setAccessibleName(f"{_MODE_ROLE_WORDS.get(role, '')} {text}".strip())
+
+    def _set_change_label(self, text: str, role: str) -> None:
+        """Set the change summary's glyph, wording and colour together.
+
+        The glyph leads here, because the change count is a state the user scans
+        for rather than reads.
+        """
+        glyph = theme.status_glyph(role)
+        self._change_label.setText(f"{glyph} {text}")
+        self._change_label.setStyleSheet(
+            f"color: {theme.color(_CHANGE_COLORS.get(role, 'text_secondary')).name()};"
+            " background: transparent;"
+        )
+        self._change_label.setAccessibleName(text)
+
+    def _announce_dirty(self) -> None:
+        """Tell the shell when the pending-edit count changes."""
+        count = self.unsaved_edit_count()
+        if count != self._last_dirty:
+            self._last_dirty = count
+            self.dirtyChanged.emit()
+
+    def unsaved_edit_count(self) -> int:
+        """Pending layout changes no Save As has written yet.
+
+        Public because the shell shows the same number in the window title and
+        the status bar, and two authorities on "is there unsaved work" would drift.
+        """
+        return self._unsaved_count()
+
+    def status_text(self) -> str:
+        """The compact one-line status this tab currently reports."""
+        return self._status.text()
+
+    def _publish_status(self, text: str) -> None:
+        """Set the tab's own status line and tell the shell to show it.
+
+        One implementation, one place it is drawn: the shell re-parents this very
+        label into its status bar, so the two can never disagree.
+        """
+        self._status.setText(text)
+        self.statusChanged.emit(text)
+
     def _update_status(self) -> None:
+        """The active tab's own line, with nothing the rest of the screen states.
+
+        Deliberately absent, because another surface already states it:
+
+        - the image and project identity - the window title and the shell's status
+          bar carry those;
+        - the map's pixel dimensions and its graphical-layer count - the Map
+          inspector states both, in more detail;
+        - the layer names and their classifications - the tool strip's own
+          checkboxes state those.
+
+        What is left is what only this line knows: which map is open, the live
+        hover readout, the edit state, and how much work is unsaved.
+        """
         result = self._current
         if result is None:
+            # A loaded image with no map chosen yet. Say so, rather than leaving
+            # this label at the text it was created with, which read as though no
+            # image were open at all.
+            self._publish_status(
+                f"{len(self._entries)} maps \u00b7 no map selected"
+                if self._entries
+                else "Open a supported ROM to browse its maps."
+            )
             return
-        parts = [
-            f"map:{result.index:04d}",
-            f"{result.width}×{result.height}",
-            f"{result.graphical_layer_count} graphical layer(s)",
-        ]
+        parts = [f"map:{result.index:04d}"]
+        if result.name:
+            parts.append(result.name)
         if self._session.authored is not None:
             parts.append(
-                f"DragonByte Z derivative · {len(self._session.authored.edits)} "
+                f"DragonByte Z derivative \u00b7 {len(self._session.authored.edits)} "
                 "verified layout change(s)"
             )
-        if self._edit_mode and self._session.authored is not None:
-            # This image is a derivative: its map may be editable in the canonical
-            # ROM, but editing here belongs to that canonical image.
-            parts.append("EDIT LAYOUT · not available on a derivative")
-        elif self._edit_mode and self._slot is None:
-            # Edit mode is on but this map has nothing to edit: say that, rather
-            # than reporting an editing state the badge already calls read-only.
-            parts.append("EDIT LAYOUT · no editable layer on this map")
-        elif self._edit_mode:
+        # The edit *mode* is named once here and once on the tool strip's badge;
+        # what this line adds is the working detail no other surface carries -
+        # whether a choice is previewed but uncommitted, and how much is unsaved.
+        if self._edit_mode:
             parts.append("EDIT LAYOUT")
             if self._draft is not None:
                 parts.append("previewing an unapplied choice")
-            if self._editor is not None:
+            elif self._slot is None:
+                parts.append("no editable layer on this map")
+            elif self._editor is not None:
                 edits = self._editor.edits_for(result.index)
                 unsaved = self._unsaved_count()
                 if edits and unsaved:
                     parts.append(f"{unsaved} unsaved change(s)")
                 elif edits:
                     parts.append(f"{len(edits)} change(s) saved")
-                elif self._draft is None:
+                else:
                     parts.append("no changes yet")
         else:
             parts.append("read-only")
-        self._status.setText("  ·  ".join(parts))
+        if self._hover_text:
+            parts.append(self._hover_text)
+        self._publish_status("  \u00b7  ".join(parts))
 
     def _unsaved_count(self) -> int:
         """Pending changes that no Save As has written yet."""

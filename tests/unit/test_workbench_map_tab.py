@@ -79,7 +79,13 @@ def test_overlay_selection_and_layer_controls_use_sdk_rows(tab):
     assert tab._position.text() == "X 100   Y 100"
     assert tab._open_scene.isEnabled()
     tab._scene.clearSelection()
-    assert tab._identity.text() == "No placement selected"
+    # With nothing selected the detail grid is gone entirely and one sentence
+    # stands in for it: no dash rows, no "Unknown" scaffolding. `_identity` is
+    # therefore cleared rather than set to a placeholder string. `isHidden` rather
+    # than `isVisible`, because an unmapped parent reports every child invisible.
+    assert tab._identity.text() == ""
+    assert tab._placement_body.isHidden()
+    assert not tab._placement_empty.isHidden()
 
 
 def test_direct_drag_is_semantic_and_undoable(tab, project):

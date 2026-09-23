@@ -25,8 +25,9 @@ from PySide6.QtCore import QTimer
 from PySide6.QtWidgets import (QFileDialog, QHBoxLayout, QLabel, QLineEdit,
                                QMessageBox, QPushButton, QVBoxLayout, QWidget)
 
-from . import settings
+from . import settings, theme
 from .session import Session
+from .widgets import PanelHeader
 
 # mGBA's PATH names (README executable-name conventions); which() adds .exe on Windows.
 _MGBA_NAMES = ("mgba-qt", "mgba")
@@ -63,33 +64,74 @@ class LauncherTab(QWidget):
 
         self._rom_field = QLineEdit()
         self._rom_field.setPlaceholderText("Built ROM (.gba)")
+        self._rom_field.setAccessibleName("Built ROM path")
         self._sync_rom_from_session()
-        rom_browse = QPushButton("Browse...")
+        rom_browse = QPushButton("Browse\u2026")
         rom_browse.clicked.connect(self._pick_rom)
 
         self._mgba_field = QLineEdit(_initial_mgba())
         self._mgba_field.setPlaceholderText("mGBA executable")
-        mgba_browse = QPushButton("Browse...")
+        self._mgba_field.setAccessibleName("mGBA executable path")
+        mgba_browse = QPushButton("Browse\u2026")
         mgba_browse.clicked.connect(self._pick_mgba)
 
         self._launch_button = QPushButton("Launch in mGBA")
+        self._launch_button.setProperty("dbzRole", "primary")
+        self._launch_button.setToolTip(
+            "Run the built ROM in mGBA (Ctrl+R); this never writes a ROM"
+        )
         self._launch_button.clicked.connect(self._launch)
 
         rom_row = QHBoxLayout()
-        rom_row.addWidget(QLabel("ROM:"))
+        self._rom_caption = QLabel("ROM:")
+        self._rom_caption.setProperty("dbzRole", "fieldLabel")
+        rom_row.addWidget(self._rom_caption)
         rom_row.addWidget(self._rom_field, 1)
         rom_row.addWidget(rom_browse)
 
         mgba_row = QHBoxLayout()
-        mgba_row.addWidget(QLabel("mGBA:"))
+        self._mgba_caption = QLabel("mGBA:")
+        self._mgba_caption.setProperty("dbzRole", "fieldLabel")
+        mgba_row.addWidget(self._mgba_caption)
         mgba_row.addWidget(self._mgba_field, 1)
         mgba_row.addWidget(mgba_browse)
 
+        self._launcher_state = QLabel(
+            "Run the Validate \u2192 Build chain first; this tab only launches what "
+            "already exists."
+        )
+        self._launcher_state.setProperty("dbzRole", "hint")
+        self._launcher_state.setWordWrap(True)
+
+        # What this tab does NOT do, said once, so an empty pane is information
+        # rather than dead space. It is a statement about the product's design, not
+        # a slogan: launching never writes, and Save As lives where the edit is.
+        self._launcher_note = QLabel(
+            "DragonByte Z never writes a ROM from this tab. A layout edit is saved "
+            "through Save As New ROM in the Map Browser; a project is built on the "
+            "Build tab. This tab only starts mGBA on a file that already exists."
+        )
+        self._launcher_note.setProperty("dbzRole", "hint")
+        self._launcher_note.setWordWrap(True)
+
+        body = QWidget()
+        body_layout = QVBoxLayout(body)
+        body_layout.setContentsMargins(
+            theme.SPACE_SM, theme.SPACE_SM, theme.SPACE_SM, theme.SPACE_SM
+        )
+        body_layout.setSpacing(theme.SPACE_SM)
+        body_layout.addLayout(rom_row)
+        body_layout.addLayout(mgba_row)
+        body_layout.addWidget(self._launch_button)
+        body_layout.addWidget(self._launcher_state)
+        body_layout.addWidget(self._launcher_note)
+        body_layout.addStretch(1)
+
         layout = QVBoxLayout(self)
-        layout.addLayout(rom_row)
-        layout.addLayout(mgba_row)
-        layout.addWidget(self._launch_button)
-        layout.addStretch(1)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(0)
+        layout.addWidget(PanelHeader("Launch"))
+        layout.addWidget(body, 1)
 
     def _sync_rom_from_session(self) -> None:
         """Populate the ROM field from the last build, if any."""
@@ -102,6 +144,18 @@ class LauncherTab(QWidget):
     def on_session_changed(self) -> None:
         """Re-read session state (e.g. after a build sets last_build)."""
         self._sync_rom_from_session()
+        built = getattr(self._session.last_build, "output_path", None)
+        if built is not None:
+            self._launcher_state.setText(
+                f"Ready to launch the last build: {Path(built).name}"
+            )
+            self._launch_button.setEnabled(True)
+        else:
+            self._launcher_state.setText(
+                "No built ROM yet. Run Validate then Build; this tab only launches "
+                "what already exists."
+            )
+        self._launch_button.setEnabled(self._rom_field.text().strip() != "")
 
     def _pick_rom(self) -> None:
         path, _ = QFileDialog.getOpenFileName(

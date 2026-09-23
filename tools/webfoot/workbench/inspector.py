@@ -3,6 +3,24 @@
 The tab displays recovered Atlas fields as opaque labels. Dialogue resolution,
 validation, project persistence, and retail decoding stay behind the public
 dialogue-authoring API; this module contains no ROM-format knowledge.
+
+Visual direction (DRAGONBYTE-Z-VISUAL-DIRECTION-PASS-001). This is the surface
+that most needed progressive disclosure: it used to lead with eleven recovered
+`container_file_offset` / `packed_handle` rows before the game text and the
+editing field, which is the HexManiacAdvance failure mode inverted - a hex
+editor's worth of raw structure on top of a domain editor. The order is now the
+one the design language prescribes:
+
+1. the game content (the text the record actually shows),
+2. the editing context (target, original, replacement, validation, Apply/Revert),
+3. the editing state (the authoring status, as a state chip),
+4. the technical detail (handles, offsets, provenance) behind a `Detail`
+   disclosure.
+
+HexManiacAdvance's own mechanism for this is a row/column header that shows the
+*name* where an address would go, with the address kept in the footer; the
+DragonByte Z equivalent is that the default surface names the target and the
+text, and every raw field is one disclosure away and copyable when it is wanted.
 """
 
 from __future__ import annotations
@@ -12,8 +30,8 @@ from PySide6.QtGui import QGuiApplication
 from PySide6.QtWidgets import (
     QAbstractItemView,
     QFormLayout,
-    QGroupBox,
     QHBoxLayout,
+    QHeaderView,
     QLabel,
     QLineEdit,
     QMessageBox,
@@ -27,7 +45,9 @@ from PySide6.QtWidgets import (
 
 from .. import dialogue as dialogue_sdk
 from ..project import ProjectError
+from . import theme
 from .session import Session
+from .widgets import DisclosureRow, PanelHeader, StateChip
 
 
 class InspectorTab(QWidget):
@@ -43,33 +63,31 @@ class InspectorTab(QWidget):
         self._project_replacement: str | None = None
         self._loading_editor = False
 
+        # -- 1. the game content: the record's own text, read first ------------
         self._text = QPlainTextEdit()
         self._text.setReadOnly(True)
+        self._text.setFont(theme.mono_font())
+        self._text.setAccessibleName("Record text")
+        self._text.setMaximumHeight(110)
+        text_header = PanelHeader("Record text")
 
-        self._handle_form = QFormLayout()
-        self._handle_rows: dict[str, QLineEdit] = {}
-        handle_box = QGroupBox("Handle / Identity")
-        handle_box.setLayout(self._handle_form)
-
-        self._refs = QTableWidget(0, 1)
-        self._refs.setHorizontalHeaderLabels(("Reference Site",))
-        self._refs.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
-        self._copy_refs = QPushButton("Copy all references")
-        self._copy_refs.clicked.connect(self._on_copy_refs)
-        refs_box = QGroupBox("References")
-        refs_layout = QVBoxLayout(refs_box)
-        refs_layout.addWidget(self._refs)
-        refs_layout.addWidget(self._copy_refs)
-
-        self._authoring_status = QLabel("Editing not available for this record yet.")
-        self._target_label = QLabel("Target: —")
-        self._original_label = QLabel("Original: —")
-        self._replacement_label = QLabel("Current project replacement: —")
+        # -- 2. the editing context: the only authoring this tab performs -------
+        self._authoring_status = StateChip(
+            "Editing not available for this record yet.", "readonly", plain=True
+        )
+        self._authoring_status.setObjectName("dbzAuthoringStatus")
+        self._target_label = QLabel("Target: \u2014")
+        self._original_label = QLabel("Original: \u2014")
+        self._original_label.setWordWrap(True)
+        self._replacement_label = QLabel("Current project replacement: \u2014")
+        self._replacement_label.setWordWrap(True)
         self._edit = QLineEdit()
         self._edit.setEnabled(False)
+        self._edit.setAccessibleName("Dialogue replacement text")
         self._edit.textChanged.connect(self._on_editor_changed)
         self._validation_label = QLabel("")
         self._apply = QPushButton("Apply")
+        self._apply.setProperty("dbzRole", "primary")
         self._apply.setEnabled(False)
         self._apply.clicked.connect(self._on_apply)
         self._revert = QPushButton("Revert to Original")
@@ -77,24 +95,83 @@ class InspectorTab(QWidget):
         self._revert.clicked.connect(self._on_revert)
 
         author_buttons = QHBoxLayout()
+        author_buttons.setContentsMargins(0, 0, 0, 0)
+        author_buttons.setSpacing(theme.SPACE_SM)
         author_buttons.addWidget(self._apply)
         author_buttons.addWidget(self._revert)
-        author_box = QGroupBox("Compressed Dialogue")
+        author_buttons.addStretch(1)
+
+        edit_form = QFormLayout()
+        edit_form.setContentsMargins(0, 0, 0, 0)
+        edit_form.setHorizontalSpacing(theme.SPACE_MD)
+        edit_form.setVerticalSpacing(theme.SPACE_XS)
+        edit_form.setFieldGrowthPolicy(QFormLayout.FieldGrowthPolicy.AllNonFixedFieldsGrow)
+        # `_target_label`, `_original_label` and `_replacement_label` each already
+        # begin with their own caption ("Target: ...", "Original: ..."), so they go
+        # in full-width: giving them a form caption as well would print the same
+        # word twice on one row.
+        replace_caption = QLabel("Replacement")
+        replace_caption.setProperty("dbzRole", "fieldLabel")
+        edit_form.addRow(self._target_label)
+        edit_form.addRow(replace_caption, self._edit)
+        edit_form.addRow(self._original_label)
+        edit_form.addRow(self._replacement_label)
+
+        author_box = QWidget()
         author_layout = QVBoxLayout(author_box)
+        author_layout.setContentsMargins(
+            theme.SPACE_SM, theme.SPACE_SM, theme.SPACE_SM, theme.SPACE_SM
+        )
+        author_layout.setSpacing(theme.SPACE_SM)
         author_layout.addWidget(self._authoring_status)
-        author_layout.addWidget(self._target_label)
-        author_layout.addWidget(self._original_label)
-        author_layout.addWidget(self._replacement_label)
-        author_layout.addWidget(QLabel("Replacement"))
-        author_layout.addWidget(self._edit)
+        author_layout.addLayout(edit_form)
         author_layout.addWidget(self._validation_label)
         author_layout.addLayout(author_buttons)
+        author_layout.addStretch(1)
+        author_header = PanelHeader("Compressed dialogue")
 
+        # -- 3. technical detail, behind one disclosure (Godot's Advanced) ------
+        self._handle_form = QFormLayout()
+        self._handle_rows: dict[str, QLineEdit] = {}
+        handle_body = QWidget()
+        handle_body.setLayout(self._handle_form)
+
+        # Citations: the reference sites that make a text record addressable.
+        self._refs = QTableWidget(0, 1)
+        self._refs.setHorizontalHeaderLabels(("Reference site",))
+        self._refs.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
+        self._refs.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
+        self._refs.verticalHeader().setVisible(False)
+        self._refs.verticalHeader().setDefaultSectionSize(theme.ROW_HEIGHT)
+        self._refs.setShowGrid(False)
+        self._refs.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
+        self._copy_refs = QPushButton("Copy all references")
+        self._copy_refs.clicked.connect(self._on_copy_refs)
+        refs_rows = QWidget()
+        refs_layout = QVBoxLayout(refs_rows)
+        refs_layout.setContentsMargins(0, 0, 0, 0)
+        refs_layout.setSpacing(theme.SPACE_XS)
+        refs_layout.addWidget(self._refs)
+        refs_layout.addWidget(self._copy_refs)
+
+        self._detail = DisclosureRow("Provenance", expanded=False)
+        self._detail.add_widget(handle_body)
+        refs_caption = QLabel("References")
+        refs_caption.setProperty("dbzRole", "fieldLabel")
+        self._detail.add_widget(refs_caption)
+        self._detail.add_widget(refs_rows)
+        detail_header = PanelHeader("Provenance")
+
+        # -- assembly ----------------------------------------------------------
         layout = QVBoxLayout(self)
-        layout.addWidget(self._text, 1)
-        layout.addWidget(handle_box)
-        layout.addWidget(refs_box, 1)
-        layout.addWidget(author_box)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(0)
+        layout.addWidget(text_header)
+        layout.addWidget(self._text)
+        layout.addWidget(author_header)
+        layout.addWidget(author_box, 1)
+        layout.addWidget(detail_header)
+        layout.addWidget(self._detail)
 
     def show_result(self, result: dict) -> None:
         self._session.selected_result = result
@@ -154,11 +231,12 @@ class InspectorTab(QWidget):
         self._target = None
         self._original = ""
         self._project_replacement = None
-        self._authoring_status.setText(message)
-        self._target_label.setText("Target: —")
-        self._original_label.setText("Original: —")
-        self._replacement_label.setText("Current project replacement: —")
+        self._authoring_status.set_state(message, "readonly")
+        self._target_label.setText("Target: \u2014")
+        self._original_label.setText("Original: \u2014")
+        self._replacement_label.setText("Current project replacement: \u2014")
         self._validation_label.clear()
+        self._validation_label.setStyleSheet("")
         self._set_editor_text("")
         self._edit.setEnabled(False)
         self._apply.setEnabled(False)
@@ -187,7 +265,9 @@ class InspectorTab(QWidget):
         self._original_label.setText(f"Original: {original}")
         if self._session.project_dir is None:
             self._set_editor_text(original)
-            self._authoring_status.setText("Editing requires an open Webfoot project.")
+            self._authoring_status.set_state(
+                "Editing requires an open Webfoot project.", "readonly"
+            )
             self._replacement_label.setText("Current project replacement: none")
             self._edit.setEnabled(False)
             self._apply.setEnabled(False)
@@ -202,7 +282,7 @@ class InspectorTab(QWidget):
             self._set_authoring_unavailable(f"Cannot read project: {exc}")
             return
         self._project_replacement = replacement
-        self._authoring_status.setText("Editing available")
+        self._authoring_status.set_state("Editing available", "edit")
         self._replacement_label.setText(
             "Current project replacement: "
             + (replacement if replacement is not None else "none")
@@ -224,10 +304,19 @@ class InspectorTab(QWidget):
             self._target, text, self._session.profile
         )
         if validation.valid:
-            self._validation_label.setText("✓ Valid")
+            # The existing `✓ Valid` wording already carries the glyph, so the
+            # role only has to add the brightness half of the signal.
+            self._validation_label.setText(f"{theme.status_glyph('valid')} Valid")
+            self._validation_label.setStyleSheet(
+                f"color: {theme.color('success').name()}; background: transparent;"
+            )
         else:
             self._validation_label.setText(
-                "✗ " + "; ".join(problem.message for problem in validation.problems)
+                f"{theme.status_glyph('invalid')} "
+                + "; ".join(problem.message for problem in validation.problems)
+            )
+            self._validation_label.setStyleSheet(
+                f"color: {theme.color('danger').name()}; background: transparent;"
             )
         current = (
             self._project_replacement

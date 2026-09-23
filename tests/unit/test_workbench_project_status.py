@@ -29,7 +29,13 @@ import pytest
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
-from PySide6.QtWidgets import QLabel, QStatusBar  # noqa: E402
+# Skip the module if PySide6 or the offscreen platform plugin cannot init. This is
+# the convention every other Workbench test module follows, and it is load-bearing:
+# the CI image has no Qt, so a direct import here would abort collection for the
+# whole suite rather than skipping these cases.
+QtWidgets = pytest.importorskip("PySide6.QtWidgets")
+QLabel = QtWidgets.QLabel
+QStatusBar = QtWidgets.QStatusBar
 
 from tools.webfoot.workbench.app import MainWindow  # noqa: E402
 from tools.webfoot.workbench.session import Session  # noqa: E402

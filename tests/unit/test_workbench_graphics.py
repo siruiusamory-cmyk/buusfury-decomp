@@ -171,6 +171,43 @@ def test_shell_mounts_graphics_as_a_primary_editor(qapp):
 # --- SC2: indexed pixels + palette -> a non-empty, non-uniform pixmap --------
 
 
+def test_index_0_is_transparent_and_everything_else_is_opaque(qapp):
+    """Index 0 is the transparent slot; every other index is fully opaque.
+
+    This is the one behaviour the preview depends on: unset pixels must not paint
+    an opaque block behind and around a sprite. It went unguarded when it was
+    introduced, so deleting the alpha step would have broken the preview silently.
+
+    `qapp` is required, not cosmetic: `QPixmap` cannot be constructed without a
+    running `QGuiApplication`, and its absence aborts the process rather than
+    failing the test.
+    """
+    palette = _FakePalette().rgb
+    # A 4x1 row: index 0, then three real indices.
+    pixmap = indexed_pixmap(bytes([0, 5, 40, 200]), 4, 1, palette).toImage()
+    alphas = [pixmap.pixelColor(x, 0).alpha() for x in range(4)]
+    assert alphas[0] == 0, "index 0 must be transparent"
+    assert alphas[1:] == [255, 255, 255], "real indices must be opaque"
+
+
+def test_index_0_transparency_does_not_touch_the_rgb_of_other_pixels(qapp):
+    """The palette's own colours reach the image; only alpha is changed.
+
+    A sprite whose pixels reference no index 0 at all must come out untouched, and
+    a fully transparent image must still be a valid pixmap of the right size.
+    """
+    palette = _FakePalette().rgb
+    opaque = indexed_pixmap(bytes([5, 5, 5, 5]), 2, 2, palette).toImage()
+    for y in range(2):
+        for x in range(2):
+            colour = opaque.pixelColor(x, y)
+            assert colour.alpha() == 255
+            assert (colour.red(), colour.green(), colour.blue()) == tuple(palette[5])
+    blank = indexed_pixmap(bytes([0, 0, 0, 0]), 2, 2, palette).toImage()
+    assert (blank.width(), blank.height()) == (2, 2)
+    assert blank.pixelColor(0, 0).alpha() == 0
+
+
 def test_indexed_pixmap_matches_size_and_is_not_uniform():
     palette = _FakePalette().rgb
     pixmap = indexed_pixmap(bytes([0, 5, 40, 200]), 2, 2, palette)

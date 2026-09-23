@@ -110,9 +110,14 @@ layer. Each is listed with what it does and why.
    *Cost:* the transparency is applied as one bulk byte translation feeding
    `QImage.setAlphaChannel`, not a per-pixel loop. On a 3584x2560 composite
    (9.18 Mpx) the helper takes 0.042 s; the per-pixel version first written for
-   this change took 3.317 s, a 78.5x difference, and both produce byte-identical
-   `ARGB32` output (verified by SHA-256 over five sizes plus the all-index-0 and
-   no-index-0 edge cases).
+   this change took 3.317 s. An independent reviewer reproduced the same nominal
+   input at 0.058 s against 3.925 s for the old body, so the gap is two orders of
+   magnitude either way. The rendered result is unchanged: `QPixmap` bytes, PNG
+   bytes and scaled bytes match the accepted version in every case tested,
+   including no index-0 pixel, entirely index 0, a single index-0 pixel, 1x1,
+   width 1, 512x512 and an empty palette. The helper also converts back to
+   explicit `ARGB32`, because `setAlphaChannel` promotes the image to the
+   premultiplied format, so its return type is unchanged as well.
 
 ## NOT CHANGED, verified, not assumed
 
@@ -120,7 +125,7 @@ layer. Each is listed with what it does and why.
 |---|---|
 | ROM source selection | `Session.open_rom` untouched. `identify_rom`, the SHA-256 catalog match, the atlas load and the derivative path are byte-for-byte the baseline. |
 | Map selection | `_on_selection` / `_load_map` / `_on_map_changed` bodies untouched. |
-| Map rendering | `mb.render_map`, `mb.compose`, `mb.rgba`, `mb.render_chunk_images` call sites and their arguments untouched, including `chunk_overrides` and `char_data`. The render cache and its bound are untouched. `indexed_pixmap` changed only in how it applies index-0 transparency (see behaviour change 7); its output for every input tested is byte-identical to the accepted version. |
+| Map rendering | `mb.render_map`, `mb.compose`, `mb.rgba`, `mb.render_chunk_images` call sites and their arguments untouched, including `chunk_overrides` and `char_data`. The render cache and its bound are untouched. `indexed_pixmap` changed only in how it applies index-0 transparency (see behaviour change 7); its rendered and exported pixels are identical to the accepted version for every input tested. |
 | Edit-layout entry/exit | `_on_edit_mode_toggled`, `_show_edit_groups`, `_install_grid_item` logic untouched; the mode still starts off and a session change still leaves it. |
 | Chunk-cell selection | `_on_cell_clicked`, `_move_cell_selection`, `_on_canvas_key` untouched; arrow-key navigation, Enter and Escape behave identically. |
 | Chunk replacement | `_apply_draft`, `_working_pointer`, `_preview_overrides`, `_refresh_preview` untouched; `MapLayoutEditor.set_cell` is called with the same arguments. |

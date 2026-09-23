@@ -29,6 +29,8 @@ import pytest
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
+from PySide6.QtWidgets import QLabel, QStatusBar  # noqa: E402
+
 from tools.webfoot.workbench.app import MainWindow  # noqa: E402
 from tools.webfoot.workbench.session import Session  # noqa: E402
 
@@ -157,6 +159,69 @@ def test_status_is_identical_in_every_editor_and_width(
     window.show_editor(editor)
     window._refresh_identity()
     assert window._status_project.text() == "no project"
+
+
+# -- there is ONE physical status row ---------------------------------------
+
+
+def visible_status_texts(window) -> list[str]:
+    """Every status sentence actually rendered anywhere in the window.
+
+    A label counts only if it is genuinely on screen: a label with no parent, or one
+    its parents have hidden, is not drawn and is not a second status row. That
+    distinction is the whole point of this guard, because the way an editor keeps a
+    status HOLDER without drawing it is precisely to leave it out of every layout.
+    """
+    texts: list[str] = []
+    for label in window.findChildren(QLabel):
+        if not label.isVisible() or label.parentWidget() is None:
+            continue
+        text = label.text().strip()
+        if text:
+            texts.append(text)
+    return texts
+
+
+@pytest.mark.parametrize("editor", ["Atlas", "Inspector", "Maps", "Graphics"])
+def test_exactly_one_status_bar_and_no_editor_draws_its_own(window, editor) -> None:
+    """The shell owns the status bar; an editor only publishes text into it.
+
+    The independent review found the Atlas editor rendering its own copy of the
+    sentence the bar was showing, and proved by mutation that nothing caught it.
+    This catches it: BOTH halves of the bar - the active editor's line on the left
+    and the project state on the right - must render exactly once each. Checking the
+    bar's own text is what makes the guard independent of which sentence the shell
+    happens to be showing.
+    """
+    window.show()
+    window.show_editor(editor)
+    window._refresh_identity()
+    assert len(window.findChildren(QStatusBar)) == 1, "there is exactly one status bar"
+    drawn = visible_status_texts(window)
+    for part in (window._status_context.text().strip(), window._status_project.text().strip()):
+        assert part, "both halves of the status bar carry text"
+        assert drawn.count(part) == 1, (
+            f"{editor}: {part!r} is rendered {drawn.count(part)} times"
+        )
+
+
+def test_no_editor_status_holder_is_drawn(window, rom_only_session) -> None:
+    """Each editor's own status holder exists but is never rendered.
+
+    One holder per editor is how the text reaches the bar; drawing one as well is
+    the duplicate the review found on Atlas.
+    """
+    window._session = rom_only_session
+    window.show()
+    for editor in ("Atlas", "Inspector", "Maps", "Graphics"):
+        window.show_editor(editor)
+        window._refresh_identity()
+        for host in window._hosts.values():
+            label = host.status_label()
+            if label is not None:
+                assert label.isHidden() or label.parentWidget() is None, (
+                    f"{editor}: an editor is drawing its own status row"
+                )
 
 
 @pytest.fixture(scope="module")

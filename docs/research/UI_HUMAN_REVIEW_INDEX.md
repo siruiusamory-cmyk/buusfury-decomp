@@ -35,9 +35,9 @@ verified findings that changed a decision and the confirmed anti-AI constraints.
   `g7-graphics-pending-recolour`, `g8-graphics-narrow`.
 
 Two of the 18 are captured as the **modal dialogues** they are, not as pages:
-`14-build-action` (Build) and `15-run-configuration` (Run). Because those file
-names differ from the earlier `14-build-surface`, the comparison directory holds
-17 sheets rather than 18; there is no `compare-14` or `compare-15`.
+`14-build-action` (Build) and `15-run-configuration` (Run). Because `14-build-surface`
+was renamed to `14-build-action`, the comparison directory holds 17 sheets rather
+than 18; the only missing pair is `compare-14`.
 
 ## D. Comparison sheets
 

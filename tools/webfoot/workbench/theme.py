@@ -173,8 +173,11 @@ class Palette:
     #: the alarm colour the character already carries and stays separable from
     #: `pending`.
     danger: str = "#b3261e"
-    #: Specialized / research: the sprite's cape violet, so this role needs no
-    #: exception either.
+    #: Specialized / research: a violet. This is the palette's SECOND documented
+    #: exception, beside `success`: the canonical sprite carries no violet, so the
+    #: role earns its place on distinctness from the pink accent and the neutral
+    #: ramp rather than on provenance. See
+    #: `docs/research/UI_BUU_SPRITE_COLOR_SOURCE.md`.
     research: str = "#6b3fa0"
 
     # -- canvas instrumentation -------------------------------------------

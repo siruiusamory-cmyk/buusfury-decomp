@@ -13,7 +13,7 @@ content-sized dimensions, 542x350 for Build and 480x326 for Run.
 
 | | Path |
 |---|---|
-| **Contact sheet, all 24 candidate states in one image** | `<temp>\dbz-visual-pass\light-contact-sheet.png` |
+| **Contact sheet, all 25 candidate states in one image** | `<temp>\dbz-visual-pass\light-contact-sheet.png` |
 | **Palette comparison, dark interim theme vs the accepted pink theme** | `<temp>\dbz-visual-pass\palette-comparison-buu.png` |
 | **Before/after sheets, 17 pairs with captions** | `<temp>\dbz-visual-pass\comparison-light\` |
 
@@ -35,11 +35,10 @@ verified findings that changed a decision and the confirmed anti-AI constraints.
 - six Graphics states: `g2-graphics-static-sprite`, `g3-graphics-animated-sprite`,
   `g5-graphics-playing`, `g6-graphics-swatch-selected`,
   `g7-graphics-pending-recolour`, `g8-graphics-narrow`;
-- `19-scene-editor-empty`, the Scene editor. It is reached from a placement rather
-  than from the strip, and View -> Detailed Editor is disabled until a project is
-  open, so this is the defensive no-project state, captured by enabling the action
-  explicitly. It is included because it is the state that drew a status sentence
-  twice before the correction.
+- `19-scene-editor-empty`, the Scene editor. It is not a strip destination: it is
+  reached from a placement through View -> Detailed Editor, which the Maps editor's
+  Objects mode enables. It is captured here because that editor had no evidence of
+  its own, and because it is where one of the duplicated status sentences was found.
 
 Two of the 18 are captured as the **modal dialogues** they are, not as pages:
 `14-build-action` (Build) and `15-run-configuration` (Run). Because `14-build-surface`
@@ -104,7 +103,8 @@ banner-marked as such.
 |---|---|---|
 | Overlap / clipping / elision, 16 states | `python -m tools.qa.overlap_probe` | 0 problems |
 | Status parity across editor and width | `pytest tests/unit/test_workbench_project_status.py` | 22 passed |
-| Duplicated status sentences, 9 screens | `python -m tools.qa.status_duplication_probe` | 0 duplicated |
+| Duplicated status sentences, 9 screens | `python -m tools.qa.status_duplication_probe` | 0 duplicated labels |
+
 | Build / Run dialogue behaviour | `pytest tests/unit/test_workbench_build_run_dialogs.py` | see the module |
 | Sprite palette reproduction | `python -m tools.qa.buu_sprite_palette` | graphic:903 top-ranked |
 

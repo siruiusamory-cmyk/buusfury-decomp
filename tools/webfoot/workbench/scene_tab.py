@@ -394,10 +394,10 @@ class SceneTab(QWidget):
                 row, 1, QTableWidgetItem(f"{p['position_low']}, {p['position_high']}")
             )
             self._placements.setItem(
-                row, 2, QTableWidgetItem(str(p["placement_type"] or "-"))
+                row, 2, QTableWidgetItem(str(p["placement_type"] or "\u2014"))
             )
             self._placements.setItem(
-                row, 3, QTableWidgetItem(str(p["classification"] or "-"))
+                row, 3, QTableWidgetItem(str(p["classification"] or "\u2014"))
             )
 
             self._placements.setItem(row, 4, QTableWidgetItem(p["provenance"]))
@@ -411,7 +411,7 @@ class SceneTab(QWidget):
                 candidate["placement_type"].split("/")[-1]
                 if candidate["placement_type"] else "no type"
             )
-            classification = candidate["classification"] or "-"
+            classification = candidate["classification"] or "\u2014"
             self._source_select.addItem(
                 f"{candidate['identity']}  [{type_label} / {classification}]",
                 candidate["identity"],
@@ -427,7 +427,7 @@ class SceneTab(QWidget):
         self._behavior_select.clear()
         self._behavior_select.addItem("(none)", None)
         for descriptor in scene_sdk.assignable_descriptors(self._session.maps):
-            event = descriptor.get("event") or "-"
+            event = descriptor.get("event") or "\u2014"
             self._behavior_select.addItem(
                 f"{descriptor['identity']}  ({event})", descriptor["identity"]
             )

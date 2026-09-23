@@ -210,6 +210,34 @@ def test_exactly_one_status_bar_and_no_editor_draws_its_own(window, editor) -> N
         )
 
 
+@pytest.mark.parametrize("mode", ["browse", "layout", "objects"])
+def test_no_duplicate_status_sentence_in_any_maps_mode(
+    window, rom_only_session, mode
+) -> None:
+    """Every Maps mode is its own screen, and each must show its status once.
+
+    This exists because the parametrization above walks EDITORS, and selecting the
+    Maps editor leaves it in browse mode. The Objects-mode workspace writes its own
+    placeholder line, and an independent reviewer proved by mutation that restoring
+    that duplicate broke no test in the suite. A mode is a screen, so a mode needs
+    its own case.
+    """
+    window._session = rom_only_session
+    window.show()
+    window.show_editor("Maps")
+    window._maps.set_mode(mode)
+    window._refresh_identity()
+    drawn = visible_status_texts(window)
+    for part in (
+        window._status_context.text().strip(),
+        window._status_project.text().strip(),
+    ):
+        assert part, "both halves of the status bar carry text"
+        assert drawn.count(part) == 1, (
+            f"Maps/{mode}: {part!r} is rendered {drawn.count(part)} times"
+        )
+
+
 def test_no_editor_status_holder_is_drawn(window, rom_only_session) -> None:
     """Each editor's own status holder exists but is never rendered.
 

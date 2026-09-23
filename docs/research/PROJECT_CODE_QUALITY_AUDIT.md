@@ -216,6 +216,18 @@ caps scanner output at `CANDIDATE`/`OBSERVED` by type.
 
 #### CQA-01 [CRITICAL] PNG export writes a caller-supplied path with no alias guard, so the verified ROM can be destroyed
 
+> **REMEDIATED: CQA-01-OUTPUT-SAFETY-001 (2026-09-23).** Both destructive call
+> paths now apply one shared SDK source-alias policy
+> (`write.ensure_not_source_alias`, owned by `tools/webfoot/write.py`) before any
+> destination write, and both refuse with the source byte-identical.
+> `build_panel.is_safe_output_path` no longer re-derives the rule. Finding
+> **CLOSED**; CQA-10 is **PARTIAL / IMPROVED** (overwrite-policy divergence,
+> repository-output policy, atlas atomic publication and the remaining
+> unguarded writers are still open). Reproduction, mutation check, canonical-ROM
+> hash and focused validation:
+> [`../tickets/CQA-01-OUTPUT-SAFETY-001.md`](../tickets/CQA-01-OUTPUT-SAFETY-001.md).
+> The text below is the finding **as originally recorded** and is not restated.
+
 - **Subsystem:** PRODUCTION - `tools/webfoot/cli.py`, `tools/webfoot/workbench/graphics_tab.py`.
 - **Location:** `cli.py:1543-1555` (`_run_graphics`, `elif command == "export":`, write at `:1554`); `workbench/graphics_tab.py:930-956` (`GraphicsTab._on_export`, write at `:952`).
 - **Observed:**
@@ -666,6 +678,19 @@ attributed to an independent review probe.
 - **Before ROM-capacity/allocation work?** **yes (same ticket that extends it).**
 
 #### CQA-10 [MEDIUM] Output-path safety has no single owner: four divergent policies and two writers with none
+
+> **PARTIALLY REMEDIATED: CQA-01-OUTPUT-SAFETY-001 (2026-09-23).** The
+> **source-alias invariant** now has one SDK owner (`tools/webfoot/write.py`:
+> `paths_are_the_same_file`, `ensure_not_source_alias`, `ensure_new_destination`),
+> `emit_image` and the two previously unguarded writers apply it, and
+> `build_panel.is_safe_output_path` is a thin GUI wrapper over it rather than a
+> second comparison. Still open: the **overwrite-policy** divergence
+> (CQA-11), the **repository/raw-input-root** output policy and the eight copied
+> helpers in `tools/export/`, **atlas atomic publication** (CQA-13),
+> `.gitignore` coverage for stray exported artefacts, and the remaining
+> unguarded write sites across the wider repository. Details:
+> [`../tickets/CQA-01-OUTPUT-SAFETY-001.md`](../tickets/CQA-01-OUTPUT-SAFETY-001.md).
+> The text below is the finding **as originally recorded** and is not restated.
 
 - **Location:** `write.py:508-516` (file equality + existence);
   `authored_image.py:108-124,273-281` (four-path alias set);

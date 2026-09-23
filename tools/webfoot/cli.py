@@ -47,7 +47,7 @@ from .maps import (
     PlacementIdentity,
     load_maps,
 )
-from .write import WriteError, emit_image
+from .write import WriteError, emit_image, ensure_not_source_alias
 # Compatibility exports for the atlas text-search interface. The implementation
 # lives in ``handles`` so dialogue authoring and CLI lookup share one decoder.
 from .handles import (
@@ -1541,6 +1541,15 @@ def _run_graphics(args) -> int:
         elif command == "references":
             result = sprites.reference_document().to_json()
         elif command == "export":
+            # The destination is free-form and this branch is the one writer here
+            # that emits a non-ROM artefact. Ask the write module's shared
+            # source-alias policy BEFORE creating a parent directory or opening
+            # the destination, so `--out` naming the input ROM is refused with the
+            # ROM byte-identical rather than truncated to a PNG. `WriteError` is a
+            # `ValueError`, so the handler below already reports it and exits
+            # non-zero.
+            out = Path(args.out)
+            ensure_not_source_alias(args.rom, out)
             asset = sprites.graphic(_parse_graphic_identity(args.identity))
             blob = indexed_png.encode(
                 asset.pixels,
@@ -1549,7 +1558,6 @@ def _run_graphics(args) -> int:
                 sprites.palette.rgb,
                 transparent_index=sprite_graphics.TRANSPARENT_INDEX,
             )
-            out = Path(args.out)
             out.parent.mkdir(parents=True, exist_ok=True)
             out.write_bytes(blob)
             result = {"id": str(asset.identity), "path": str(out), "bytes": len(blob)}

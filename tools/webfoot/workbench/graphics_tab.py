@@ -64,14 +64,17 @@ from ..formats.indexed_png import PngError
 from ..formats.sprite_graphics import SpriteFormatError
 from ..graphics import CharacterIdentity, GraphicIdentity, GraphicsError
 from ..project import ProjectError
+from ..write import OutputPathError, ensure_not_source_alias
 from . import theme
 from .session import Session
 from .widgets import PanelHeader, StateChip, ToolStrip
 
-#: The SDK exception families a Graphics slot must catch at its boundary. All
-#: three are `ValueError` subclasses but sit in different families, so a lone
-#: leaf leaves siblings uncaught (references/error-handling.md).
-_SDK_ERRORS = (GraphicsError, SpriteFormatError, PngError)
+#: The SDK exception families a Graphics slot must catch at its boundary. The
+#: first three are `ValueError` subclasses in different families, so a lone leaf
+#: leaves siblings uncaught (references/error-handling.md); `OutputPathError` is
+#: the write module's own family, raised by the shared source-alias policy the
+#: export slot applies before it lets a byte reach the destination.
+_SDK_ERRORS = (GraphicsError, SpriteFormatError, PngError, OutputPathError)
 
 _THUMB = 64  # icon-grid thumbnail edge, px
 _PREVIEW_MIN = 320  # selected/animation preview min edge, px (was 160/120)
@@ -935,6 +938,12 @@ class GraphicsTab(QWidget):
         call AND the file write share one guard catching the SDK family + OSError,
         so a bad encode or an unwritable path becomes a QMessageBox, never a
         dead-looking click or a terminal traceback (the WB failure mode).
+
+        The destination is checked against the open ROM through the write
+        module's shared source-alias policy BEFORE any byte is written: a
+        file dialog can be pointed at the ROM that is open, and a save dialog
+        happily confirms overwriting it. The GUI owns only this wrapper - the
+        rule itself is the SDK's, so it cannot drift from the CLI's.
         """
         if self._selected is None:
             return
@@ -948,12 +957,25 @@ class GraphicsTab(QWidget):
         if not path:  # user cancelled
             return
         try:
+            self._refuse_source_alias(path)
             blob = sprites.export_graphic_png(self._selected, self._effective_rgb(sprites))
             Path(path).write_bytes(blob)
         except (*_SDK_ERRORS, OSError) as exc:
             QMessageBox.critical(self, "Export PNG", str(exc))
             return
         self._status.setText(f"Exported sprite {self._selected.index} to {path}")
+
+    def _refuse_source_alias(self, path) -> None:
+        """Refuse an export destination that is the open ROM or an alias of it.
+
+        A no-op when no ROM is open, which is the state the tab is mounted in
+        before one is chosen. The rule is the SDK's ``ensure_not_source_alias``;
+        this method only supplies the source the widget knows about, so the
+        Workbench carries no filesystem-identity logic of its own.
+        """
+        if self._session.rom_path is None:
+            return
+        ensure_not_source_alias(self._session.rom_path, path)
 
     # -- C. animation frame viewer --------------------------------------------
 

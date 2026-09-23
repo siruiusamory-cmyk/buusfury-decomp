@@ -9,10 +9,12 @@ this widget carries paths and renders the structured `ValidationReport` /
 
 THE SAFETY INVARIANT: the Workbench must NEVER overwrite the canonical source
 ROM. The generated output ROM FILE path is compared against `session.rom_path`
-BEFORE `build_project` is called, and a match is refused here in the GUI - the
-check is never delegated to the SDK. The output DIRECTORY being the source ROM's
-parent is allowed; only the final FILE path is compared. `is_safe_output_path`
-is a module-level, Qt-free function so that guard is unit-testable without a GUI.
+BEFORE `build_project` is called, and a match is refused here in the GUI. The
+output DIRECTORY being the source ROM's parent is allowed; only the final FILE
+path is compared. `is_safe_output_path` is a module-level, Qt-free function so
+that guard is unit-testable without a GUI, and it delegates the comparison
+itself to the SDK's one ownership of path identity
+(`write.paths_are_the_same_file`) rather than deriving a second, weaker one.
 """
 
 from __future__ import annotations
@@ -26,7 +28,7 @@ from PySide6.QtWidgets import (QFileDialog, QHBoxLayout, QLabel, QMessageBox,
 
 from .. import build as build_sdk
 from ..project import ProjectError
-from ..write import WriteError
+from ..write import WriteError, paths_are_the_same_file
 from . import theme
 from .session import Session
 from .widgets import PanelHeader, StateChip
@@ -46,12 +48,15 @@ def output_file_for(output_dir: Path, profile_id: str) -> Path:
 def is_safe_output_path(output_path, rom_path) -> bool:
     """True iff the generated ROM file would NOT overwrite the source ROM.
 
-    Compares the resolved final FILE paths. Same parent directory with a
-    different filename is safe; identical file path is not. This is the #1
-    safety invariant of WORKBENCH-001, kept Qt-free so it is testable without a
-    GUI (critical-path test 4).
+    Compares the resolved final FILE paths, so the same parent directory with a
+    different filename is safe and an identical file path is not. The comparison
+    is the SDK's (`write.paths_are_the_same_file`), which also recognises a
+    hard-link or junction alias of the source - the GUI keeps only this named
+    wrapper, so the invariant has one implementation and the Build tab and the
+    Map Browser share it. Kept Qt-free so it is testable without a GUI
+    (critical-path test 4).
     """
-    return Path(output_path).resolve() != Path(rom_path).resolve()
+    return not paths_are_the_same_file(output_path, rom_path)
 
 
 class BuildPanelTab(QWidget):

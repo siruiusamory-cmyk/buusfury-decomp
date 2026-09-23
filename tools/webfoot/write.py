@@ -27,6 +27,17 @@ unless `_check()` ran after the last edit.
 input exactly, verified by SHA-256. That is the first reproducible-build
 invariant this project has, and every future build step inherits it.
 
+**This module owns output-path safety, and its policies stay separate.** The one
+question every writer must answer - "may this path be written?" - is answered by
+two explicit primitives rather than one predicate with hidden semantics:
+:func:`ensure_not_source_alias` refuses a destination that *is* the verified
+input (by filesystem identity, not string spelling) and
+:func:`ensure_new_destination` refuses a destination that already exists. They
+are deliberately not collapsed: a caller can be allowed to replace an existing
+artefact while never being allowed to touch its own source. PNG and other
+artefact exporters call the same primitives `emit_image` does, so no writer
+re-derives filesystem logic or loses the invariant by asking nobody.
+
 Allocation and graph rewriting live above this module in TOOLKIT-003. They
 compile into fixed-length overwrites of the original image; this layer still
 owns no content format or allocation policy. Publication stages complete files
@@ -49,6 +60,124 @@ from .layout import Reference, RomRange
 
 class WriteError(ValueError):
     """Base error for planning or emitting a ROM modification."""
+
+
+class OutputPathError(WriteError):
+    """A destination path is refused by the shared output-path policies.
+
+    Distinct from `ChangeValidationError` because nothing about the plan or the
+    image content is wrong: the caller named a place to write that the toolkit
+    will not write to. It still derives from `WriteError`, so a caller that
+    already refuses a write with one `except WriteError` keeps refusing this one.
+    """
+
+
+# --- output-path safety ------------------------------------------------------
+#
+# One owner for "may this destination be written?". Before these lived here, the
+# same question was answered independently - and differently - by `emit_image`
+# (resolved-path comparison), `authored_image.refuse_source_alias` (resolved-path
+# set) and, for the PNG export path, by nobody at all, which let
+# `webfoot graphics export --out <the same file as the ROM>` replace the verified
+# input with a PNG and report success. Every writer now asks this module.
+
+
+def _same_existing_file(left: Path, right: Path) -> bool:
+    """Whether two paths name one existing file, by filesystem identity.
+
+    `os.path.samefile` compares the operating system's own identity for the file
+    (device plus inode on POSIX, volume serial plus file index on Windows), which
+    is the only comparison that catches a **hard link**: two directory entries
+    with unrelated names that share one inode, where no amount of path
+    normalisation can help because the names really are different names.
+
+    Returns False when either path cannot be stat'd - most importantly when the
+    destination does not exist yet, which is the ordinary case for an export.
+    """
+    try:
+        return os.path.samefile(left, right)
+    except OSError:
+        return False
+
+
+def _same_path_spelling(left: Path, right: Path) -> bool:
+    """Whether two path strings denote the same location once resolved.
+
+    `resolve()` makes a relative spelling absolute, folds `.` and `..`, expands
+    the 8.3 short form, and follows junctions and symlinks in every component
+    that exists on disk - so `/tmp/./a.png`, `../tmp/a.png` and a path through a
+    junction all compare equal. `normcase` then folds case and separators on
+    Windows (`C:\\A\\B.PNG` equals `c:/a/b.png`), where the filesystem is
+    case-insensitive, and is the identity on POSIX, where it is not.
+
+    This is the half of the comparison that still works when the destination
+    does not exist, since `samefile` then has no file to compare.
+    """
+    return os.path.normcase(str(left.resolve())) == os.path.normcase(
+        str(right.resolve())
+    )
+
+
+def paths_are_the_same_file(left: str | Path, right: str | Path) -> bool:
+    """Whether two paths denote the same file on this filesystem.
+
+    True for the identical path, for two spellings of one path (relative or
+    absolute, case- or separator-varied on Windows, through a junction or
+    symlink), and for a **hard-link alias** - two names sharing one file - which
+    requires the operating system's file identity rather than any comparison of
+    the path strings.
+
+    The public predicate behind the refusal policies below; exposed so a caller
+    that needs the answer rather than the refusal (a GUI enabling a button, a
+    report) reads the same rule instead of re-deriving it.
+    """
+    left, right = Path(left), Path(right)
+    if _same_path_spelling(left, right):
+        return True
+    return _same_existing_file(left, right)
+
+
+def ensure_not_source_alias(source: str | Path, destination: str | Path) -> None:
+    """Refuse a `destination` that is the `source` file, or any filesystem alias of it.
+
+    The invariant: **a source is an input on every path and an output on none.**
+    The check is deliberately first and total - it runs before the caller creates
+    a parent directory, opens the destination, or truncates anything - so a
+    refused export leaves the source byte-identical and reports why.
+
+    The message carries both halves deliberately: it names the rule ("refusing to
+    write the output over the input image"), the reason ("the canonical ROM is
+    read-only", which `docs/DEVELOPMENT.md` states as the permanent rule) and the
+    consequence ("the source is an input on every path and can never be an output
+    destination"). Callers keyed on the older wording keep matching rather than
+    silently losing a regression assertion.
+
+    Raises `OutputPathError`, which is a `WriteError` and therefore a
+    `ValueError`: existing CLI call sites already turn it into a non-zero exit
+    with the message on stderr, and a GUI boundary already catches the family.
+    """
+    if paths_are_the_same_file(source, destination):
+        raise OutputPathError(
+            f"refusing to write the output over the input image: {destination} is "
+            f"the same file as the source {source}, and the canonical ROM is "
+            "read-only; the source is an input on every path and can never be an "
+            "output destination"
+        )
+
+
+def ensure_new_destination(destination: str | Path) -> None:
+    """Refuse a destination that already exists.
+
+    Separate from :func:`ensure_not_source_alias` on purpose: this is the
+    overwrite policy, not the source-safety invariant. `emit_image` applies both,
+    because a build that clobbers its own previous artefact makes "did this run
+    produce that file" unanswerable. A caller with a legitimately different
+    overwrite policy can take the source-alias invariant on its own.
+    """
+    if Path(destination).exists():
+        raise OutputPathError(
+            f"refusing to overwrite an existing output: {destination}"
+        )
 
 
 class ChangeValidationError(WriteError):
@@ -502,22 +631,18 @@ def emit_image(
     source = Path(base_path)
     destination = Path(output_path)
 
-    # Order matters: the input path also exists, so the same-path check has to
-    # run first or writing over the input would be reported as an ordinary
-    # overwrite and would name the wrong rule to the caller.
-    if source.resolve() == destination.resolve():
-        raise WriteError(
-            "refusing to write the output over the input image; the canonical "
-            "ROM is read-only"
-        )
-    if destination.exists():
-        raise WriteError(
-            f"refusing to overwrite an existing output image: {destination}"
-        )
+    # Order matters: the input path also exists, so the alias check has to run
+    # first or writing over the input would be reported as an ordinary overwrite
+    # and would name the wrong rule to the caller. Both policies are this
+    # module's, shared with every other writer - see `ensure_not_source_alias`.
+    ensure_not_source_alias(source, destination)
+    ensure_new_destination(destination)
 
     manifest_destination = Path(manifest_path) if manifest_path is not None else None
     if manifest_destination is not None:
-        if manifest_destination.resolve() in (source.resolve(), destination.resolve()):
+        if paths_are_the_same_file(manifest_destination, source) or (
+            paths_are_the_same_file(manifest_destination, destination)
+        ):
             raise WriteError("manifest must not alias the input or output image")
         if manifest_destination.exists():
             raise WriteError("refusing to overwrite an existing manifest")

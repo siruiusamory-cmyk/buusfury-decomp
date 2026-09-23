@@ -230,6 +230,77 @@ def test_palette_encodes_back_to_its_exact_source_words(
     assert sg.encode_palette(sprites.palette) == original
 
 
+# --- CQA-01 against the real image: the end-to-end export proof --------------
+#
+# The portable regression in `tests/unit/test_graphics_cli.py` stubs the corpus
+# load, because a synthetic profile can never pass the packaged-catalogue check.
+# These run the whole path - the real `load_actor_sprites`, the real identity
+# parse, the real encoder - so the guard is proven where it will actually run.
+# Read-only against the canonical image: the refusal case never writes, and the
+# safe case writes a PNG into `tmp_path`.
+
+
+def test_export_refuses_the_canonical_rom_as_its_own_destination(
+    sprites: graphics.ActorSprites, capsys
+) -> None:
+    from tools.webfoot.cli import main
+
+    rom = _rom_path()
+    before = hashlib.sha256(open(rom, "rb").read()).hexdigest()
+    identity = str(sprites.graphics()[0].identity)
+
+    exit_code = main(
+        [
+            "--profiles",
+            os.path.join("config", "roms.yaml"),
+            "graphics",
+            "export",
+            rom,
+            identity,
+            "--out",
+            rom,
+        ]
+    )
+
+    captured = capsys.readouterr()
+    assert exit_code != 0, captured.out
+    assert "read-only" in captured.err
+    assert hashlib.sha256(open(rom, "rb").read()).hexdigest() == before
+
+
+def test_export_writes_a_real_png_for_a_safe_destination(
+    sprites: graphics.ActorSprites, tmp_path: Path, capsys
+) -> None:
+    """Positive control on the real image: encoding and writing still work."""
+    from tools.webfoot.cli import main
+
+    rom = _rom_path()
+    before = hashlib.sha256(open(rom, "rb").read()).hexdigest()
+    graphic = sprites.graphics()[0]
+    out = tmp_path / "sprite.png"
+
+    exit_code = main(
+        [
+            "--profiles",
+            os.path.join("config", "roms.yaml"),
+            "graphics",
+            "export",
+            rom,
+            str(graphic.identity),
+            "--out",
+            str(out),
+        ]
+    )
+
+    captured = capsys.readouterr()
+    assert exit_code == 0, captured.err
+    assert out.read_bytes().startswith(b"\x89PNG\r\n\x1a\n")
+    pixels, width, height, _palette, _transparent = ip.decode(out.read_bytes())
+    assert (width, height) == (graphic.width, graphic.height)
+    assert pixels == graphic.pixels
+    assert hashlib.sha256(open(rom, "rb").read()).hexdigest() == before
+
+
 # --- identity and determinism ------------------------------------------------
 
 def test_identities_are_stable_and_carry_no_address(

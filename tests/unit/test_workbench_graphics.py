@@ -741,6 +741,127 @@ def test_export_slot_surfaces_oserror_without_escaping(tab, monkeypatch):
     assert len(warnings) == 1
 
 
+# --- CQA-01: the export destination may never be the open ROM -----------------
+#
+# The defect: a save dialog is free-form and happily confirms overwriting the
+# very ROM the tab has open, after which the slot wrote a PNG over it and
+# reported success in the status line (audit CQA-01, reproduced). These drive
+# the real `_on_export` slot through the real QFileDialog seam, so a guard that
+# the slot never reaches would not pass them.
+
+
+def _tab_with_open_rom(tmp_path, rom_bytes: bytes = b"open rom bytes" * 32):
+    """A GraphicsTab whose session has a real file at `rom_path`."""
+    rom = tmp_path / "open_rom.gba"
+    rom.write_bytes(rom_bytes)
+    session = Session()
+    session.rom_path = rom
+    session._sprites = _FakeSprites()
+    session._sprites_loaded = True
+    session.profile = type("P", (), {"id": _PROFILE})()
+    tab = GraphicsTab(session)
+    tab.on_session_changed()
+    tab._grid.setCurrentRow(0)
+    return tab, rom
+
+
+def _seam(tab_export_path, monkeypatch):
+    """Choose `tab_export_path` in the dialog and capture the refusal message."""
+    monkeypatch.setattr(
+        "tools.webfoot.workbench.graphics_tab.QFileDialog.getSaveFileName",
+        lambda *a, **k: (str(tab_export_path), "PNG image (*.png)"),
+    )
+    warnings = []
+    monkeypatch.setattr(
+        "tools.webfoot.workbench.graphics_tab.QMessageBox.critical",
+        lambda *a, **k: warnings.append(a[-1]),
+    )
+    return warnings
+
+
+def test_export_slot_refuses_the_open_rom_as_the_destination(tmp_path, qapp, monkeypatch):
+    tab, rom = _tab_with_open_rom(tmp_path)
+    before = rom.read_bytes()
+    warnings = _seam(rom, monkeypatch)
+
+    tab._on_export()  # must not raise, must not write
+
+    assert len(warnings) == 1, "the refusal must be visible, not a dead click"
+    assert "source" in warnings[0]
+    assert rom.read_bytes() == before, "the open ROM must stay byte-identical"
+    assert not rom.read_bytes().startswith(_PNG_MAGIC)
+
+
+def test_export_slot_refuses_an_equivalent_spelling_of_the_open_rom(
+    tmp_path, qapp, monkeypatch
+):
+    """`sub/../open_rom.gba` is the same file, not a new destination."""
+    tab, rom = _tab_with_open_rom(tmp_path)
+    before = rom.read_bytes()
+    warnings = _seam(tmp_path / "unused" / ".." / rom.name, monkeypatch)
+
+    tab._on_export()
+
+    assert len(warnings) == 1
+    assert rom.read_bytes() == before
+
+
+def test_export_slot_refuses_a_hard_link_alias_of_the_open_rom(
+    tmp_path, qapp, monkeypatch
+):
+    """A second name for the open ROM's bytes is still the open ROM."""
+    tab, rom = _tab_with_open_rom(tmp_path)
+    alias = tmp_path / "another_name.bin"
+    try:
+        os.link(rom, alias)
+    except (OSError, NotImplementedError, AttributeError) as exc:  # pragma: no cover
+        pytest.skip(f"hard links unavailable here: {exc}")
+    before = rom.read_bytes()
+    warnings = _seam(alias, monkeypatch)
+
+    tab._on_export()
+
+    assert len(warnings) == 1
+    assert rom.read_bytes() == before
+
+
+def test_export_slot_still_writes_a_safe_distinct_destination(
+    tmp_path, qapp, monkeypatch
+):
+    """Positive control: the source-alias guard must not break a normal export."""
+    tab, rom = _tab_with_open_rom(tmp_path)
+    before = rom.read_bytes()
+    out = tmp_path / "sprite_export.png"
+    warnings = _seam(out, monkeypatch)
+
+    tab._on_export()
+
+    assert warnings == []
+    blob = out.read_bytes()
+    assert blob.startswith(_PNG_MAGIC)
+    assert rom.read_bytes() == before
+    assert str(out) in tab._status.text()
+
+
+def test_export_slot_writes_with_no_rom_open(tab, tmp_path, monkeypatch):
+    """The guard is a no-op before a ROM is chosen; export still works."""
+    tab._grid.setCurrentRow(0)
+    out = tmp_path / "sprite.png"
+    monkeypatch.setattr(
+        "tools.webfoot.workbench.graphics_tab.QFileDialog.getSaveFileName",
+        lambda *a, **k: (str(out), ""),
+    )
+    warnings = []
+    monkeypatch.setattr(
+        "tools.webfoot.workbench.graphics_tab.QMessageBox.critical",
+        lambda *a, **k: warnings.append(a[-1]),
+    )
+    tab._on_export()
+    assert warnings == []
+    assert out.read_bytes().startswith(_PNG_MAGIC)
+
+
+
 # --- ROM-gated: a real decoded thumbnail renders (SC2 against real data) ------
 
 

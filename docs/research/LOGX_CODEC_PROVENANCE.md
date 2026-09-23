@@ -535,8 +535,15 @@ Prefix `0 0 0`, then a seven-bit distance field at `b3..b9`:
   form's `distance_bits` as `get(field + 3)`; because the 3 already carried by
   the long form is added back, a field of `1` gives 4 bits, `2` gives 5, `3`
   gives 6;
-- **zero after a zero control field**, the end marker, seventeen bits of prefix
-  and zeroes with no payload.
+- **zero after a zero control field**, the end marker: **twelve** zero bits - this
+  three-bit prefix, the seven-bit field and the two-bit selector - with no payload.
+  This line said "seventeen bits" until
+  CQA-02-PACKED-STREAM-TERMINATION-001; the instruction trace gives
+  `3 + 7 + 2 = 12`, both host readers implement twelve, and the twelve-zero-bit
+  model predicted the strict reader's accept/refuse outcome on 30/30 controlled
+  trials. Corrected here rather than deleted; the correction is recorded in
+  [`CQA_02_PACKED_TERMINATION_RESOLUTION.md`](CQA_02_PACKED_TERMINATION_RESOLUTION.md)
+  §3.8.
 
 **CONFIRMED** by the differential.
 
@@ -627,6 +634,17 @@ stream to produce exactly the declared size, it clips an over-long final match
 and reports success (see section 15). Which rule the hardware would obey on a
 stream where the two disagree is **UNRESOLVED** and is a stated encoder
 obligation below.
+
+> **UPDATE, CQA-02-PACKED-STREAM-TERMINATION-001 (2026-09-23).** The last sentence
+> above is now settled for the engine, from the engine's own instructions rather
+> than from this corpus: the retail packed decoder takes `(source, destination)`,
+> and none of the thirteen comparisons in its body names the destination cursor,
+> so there is no length rule for a precedence question to be about. The engine
+> stops on the escape and on nothing else - `CONFIRMED`, from two independent
+> disassemblies plus a positive census that found no destination comparison. See
+> [`CQA_02_PACKED_TERMINATION_RESOLUTION.md`](CQA_02_PACKED_TERMINATION_RESOLUTION.md)
+> §2.1 and §3.6. The corpus statements in this section remain true as *corpus*
+> statements and are not restated.
 
 ---
 
@@ -1111,6 +1129,10 @@ Two statements are kept deliberately apart throughout:
    escape that sets it.
 3. Which termination rule the hardware obeys when a stream's end marker and the
    declared size disagree. No canonical container exercises the case.
+   **RESOLVED as moot (CQA-02-PACKED-STREAM-TERMINATION-001, 2026-09-23):** the
+   engine has no declared-size comparison to obey, so precedence never arises -
+   see [`CQA_02_PACKED_TERMINATION_RESOLUTION.md`](CQA_02_PACKED_TERMINATION_RESOLUTION.md)
+   §3.6.
 4. Whether the engine's codec is byte-compatible with any specific JCALG1
    reference implementation.
 5. Which selector reaches the 3,819 non-root dominant element targets

@@ -85,14 +85,20 @@ adjacent. There is no slack anywhere and no profile declares free space, so
 original packed extent rather than trusting that the bytes after a container are
 spare.
 
-That refusal is the common case, not the exception. `webfoot_lz.pack` emits
-valid streams but averages 1.06x the size Webfoot's own compressor achieved, so
-roughly one payload in two hundred re-encodes small enough to fit. Pixel editing
-therefore reaches EDIT but not WRITE for most assets. **Palette editing is the
-supported route to a visible change**: the object palette is uncompressed and
-fixed-size, so a recolour is an exact in-place write with no capacity question
-at all. Both are reported separately in the capability matrix; neither is
-described as the other.
+That refusal is the common case, not the exception. `webfoot_lz.pack` emits valid,
+self-terminating streams - it writes the retail decoder's own escape after the
+final token - but averages 1.06x the size Webfoot's own compressor achieved, so
+roughly one payload in two hundred re-encodes small enough to fit. The size the
+fit rule compares is the **final** encoded length, escape and final padding
+included; there is no pre-marker figure to fall back on. The bound it is compared
+against stays the conservative one - the original container's declared-size
+extent, which does not credit it with an escape word that may belong to the next
+container - so a correct payload can be refused for being one word larger than
+that, and :func:`plan_graphic_payload` says so. Pixel editing therefore reaches
+EDIT but not WRITE for most assets. **Palette editing is the supported route to a
+visible change**: the object palette is uncompressed and fixed-size, so a recolour
+is an exact in-place write with no capacity question at all. Both are reported
+separately in the capability matrix; neither is described as the other.
 """
 
 from __future__ import annotations
@@ -612,12 +618,29 @@ def plan_graphic_payload(data: bytes, graphic: Graphic, pixels: bytes) -> Payloa
     will not go looking for any.
 
     **Expect this to refuse.** The replacement is re-encoded with
-    `webfoot_lz.pack`, which produces a valid stream but not a competitive one -
-    a median 1.06x the original packed size, so about one payload in two hundred
-    fits. That is a measured property of the encoder, stated rather than papered
-    over, and it is why palette editing is this subsystem's supported route to a
-    visible change. Refusal is the honest answer; writing past a container's end
-    is not an alternative.
+    `webfoot_lz.pack`, which produces a valid, self-terminating stream but not a
+    competitive one - a median 1.06x the original packed size, so about one
+    payload in two hundred fits. That is a measured property of the encoder,
+    stated rather than papered over, and it is why palette editing is this
+    subsystem's supported route to a visible change. Refusal is the honest
+    answer; writing past a container's end is not an alternative.
+
+    The fit comparison uses the final encoded length, which already includes the
+    retail decoder's escape and the final word's padding; nothing here subtracts
+    the terminator to make an old allocation appear to fit. The payload is also
+    re-decoded to the retail engine's own termination rule before the comparison
+    is made, so a stream that is not provably self-terminating never reaches a
+    plan.
+
+    One asymmetry is deliberate and worth stating. The bound is the *original*
+    container's declared-size-terminated extent (``Graphic.packed_size``), which
+    does not credit that container with an escape beginning a fresh word: the
+    following bytes may be the next container's, and this module already refuses
+    to assume otherwise. For a container whose own escape did begin a fresh word,
+    a corrected payload carrying its own escape is one word larger than that bound
+    and is refused. The refusal is the honest answer - the alternative is a write
+    that reaches into a neighbour - and it is why a re-encode is only guaranteed to
+    fit when its escape lands inside the final word.
 
     Bytes between the new payload and the end of the original extent are left
     for the caller to preserve verbatim; see `webfoot.graphics`. They are not
@@ -641,6 +664,18 @@ def plan_graphic_payload(data: bytes, graphic: Graphic, pixels: bytes) -> Payloa
         pixels, graphic.width, graphic.height, colour_256=graphic.colour_256
     )
     payload = webfoot_lz.pack(tiles)
+    # The same production postcondition the dialogue write path applies, and the
+    # same one place that owns it: a planned payload must reach the retail
+    # decoder's own escape at its declared length rather than depending on the
+    # bytes that follow it. Refusing here keeps an invalid stream out of the plan
+    # before the allocation question is even asked.
+    try:
+        webfoot_lz.validate_retail_termination(payload)
+    except webfoot_lz.ContainerError as exc:
+        raise SpriteFormatError(
+            f"re-encoded graphic at {graphic.offset:#x} does not satisfy the "
+            f"retail termination contract: {exc}"
+        ) from exc
     original = graphic.packed_size
     if len(payload) > original:
         raise SpriteFormatError(

@@ -137,9 +137,8 @@ def test_a_stream_that_ends_inside_a_bit_word_is_refused():
 
 
 def test_the_project_encoder_output_decodes_strictly_at_the_declared_size():
-    """`webfoot_lz.pack` terminates by output length and never emits the
-    end-marker escape, so the default strict rule - exact declared size, no
-    clipping - accepts it, exactly as the engine and the shipping decoder do."""
+    """The default strict rule - exact declared size, no clipping - accepts every
+    `webfoot_lz.pack` output, exactly as it accepts the canonical corpus."""
     for size in (1, 2, 3, 7, 64, 300, 1024):
         payload = bytes((index * 37 + size) % 256 for index in range(size))
         encoded = project.pack(payload)
@@ -150,25 +149,28 @@ def test_the_project_encoder_output_decodes_strictly_at_the_declared_size():
         assert ws.unpack(encoded, 0).data == payload
 
 
-def test_requiring_the_end_marker_is_strictly_stronger_than_length_termination():
-    """The stronger check the export path uses is genuinely stronger.
+def test_the_project_encoder_output_satisfies_the_end_marker_rule():
+    """The stronger check the export path uses now accepts the project encoder.
 
-    `webfoot_lz.pack` never writes the end-marker escape. Its stream stops being
-    self-terminating whenever the final token lands flush against a word boundary,
-    so the end-marker rule refuses it there while the size rule accepts it. Both
-    readings are recorded, because neither is a defect in the other: the engine
-    stops at the declared size, and the canonical corpus - measured over all
-    11,712 reachable packed containers - carries a marker at that size as well.
+    **Inverted by CQA-02-PACKED-STREAM-TERMINATION-001.** This test used to assert
+    the opposite - that `webfoot_lz.pack` never wrote the end-marker escape, so a
+    two-byte payload's encoding was refused by the marker rule while the size rule
+    accepted it - and it is kept inverted rather than deleted so the regression is
+    pinned in both directions. The pre-fix byte fixture that the marker rule still
+    refuses is pinned in `tests/unit/test_webfoot_lz.py`.
+
+    The engine's rule is the marker rule: it carries no output counter and stops
+    only on the stream's own escape. The canonical corpus carries a marker at the
+    declared size for every one of the 11,712 packed containers this exporter
+    reaches, and `pack` now does the same by construction rather than by luck.
     """
-    refused_payload = bytes((index * 7 + 2) % 256 for index in range(2))
-    encoded = project.pack(refused_payload)
-    assert ws.unpack(encoded, 0).data == refused_payload
-    with pytest.raises(ws.ContainerError):
-        ws.unpack(encoded, 0, require_end_marker=True)
-
-    accepted_payload = bytes((index * 7 + 1) % 256 for index in range(1))
-    encoded = project.pack(accepted_payload)
-    assert ws.unpack(encoded, 0, require_end_marker=True).data == accepted_payload
+    for size in (1, 2, 3, 7, 64, 300, 1024):
+        payload = bytes((index * 7 + size) % 256 for index in range(size))
+        encoded = project.pack(payload)
+        assert ws.unpack(encoded, 0).data == payload
+        strict = ws.unpack(encoded, 0, require_end_marker=True)
+        assert strict.data == payload
+        assert strict.declared_size == size
 
 
 def test_strict_reading_agrees_with_the_research_reference():

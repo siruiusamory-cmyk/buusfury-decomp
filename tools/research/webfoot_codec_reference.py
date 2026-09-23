@@ -176,12 +176,18 @@ def decode_packed(
 
     ``stop_on`` selects which termination is modelled:
 
-    * ``"declared_size"`` - stop once ``declared_size`` bytes are written. This
-      is the project decoder's rule and, per the ticket's measurement, also the
-      engine's: the engine carries no output counter, and the packed streams'
-      own escape fires consistently at or after this point.
+    * ``"declared_size"`` - stop once ``declared_size`` bytes are written. This is
+      the project decoder's rule and a **host-side** convenience; it is NOT the
+      engine's. The engine carries no output counter and performs no size
+      comparison at all, so it stops only on the stream's own escape. That is
+      `CONFIRMED` and adjudicated in
+      `docs/research/CQA_02_PACKED_TERMINATION_RESOLUTION.md` §2.1; the sentence
+      that used to stand here called the declared-size stop "also the engine's",
+      which CQA-02-PACKED-STREAM-TERMINATION-001 corrected.
     * ``"end_marker"`` - ignore ``declared_size`` and run to the stream's own
-      control escape. Used to measure where that escape actually falls.
+      control escape, which is the engine's actual rule. Used to measure where
+      that escape falls, and by the focused tests that assert ``webfoot_lz.pack``
+      now emits it at exactly the declared size.
     """
     if not 0 <= payload_offset <= len(data):
         raise CodecError(f"payload offset {payload_offset:#x} is outside the image")

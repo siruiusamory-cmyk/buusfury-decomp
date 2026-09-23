@@ -66,13 +66,18 @@ the engine carries no output counter and performs no size comparison - so this
 module treats the observation as a checkable postcondition rather than as an
 assumption.
 
-**Why the end-marker check is opt-in.** The project's own `webfoot_lz.pack`
-terminates by output length: it never emits the end-marker escape, and only
-happens to look self-terminating when its final zero-padded word leaves spare
-bits. Requiring the marker by default would refuse that encoder's output, which
-the engine and the shipping decoder both accept. The default is therefore the
-accepted behaviour - exact declared size, no clipping - and the export path
-turns the stronger check on, because every canonical container passes it.
+**Why the end-marker check is opt-in.** It is a check on the *stream*, not a
+policy of the project decoder, and the two readers serve different callers. It
+used to be opt-in for a second reason as well - the project's own
+`webfoot_lz.pack` terminated by output length and never emitted the escape, so
+requiring the marker would have refused that encoder's output. **That is no longer
+true**: CQA-02-PACKED-STREAM-TERMINATION-001 had `pack` write the retail decoder's
+own escape after the final token, before the final word is padded, so every current
+`pack` output reaches a marker at exactly its declared size. The default here is
+unchanged all the same: the marker rule is a strictly stronger postcondition, and
+the default decode - exact declared size, no clipping - is the behaviour every
+other reader and synthetic fixture in this project relies on. The export path
+keeps asking for the stronger check, because every canonical container passes it.
 """
 
 from __future__ import annotations
@@ -209,9 +214,17 @@ def decode_packed(
     and says nothing about the packed one.
 
     With ``require_end_marker`` the stream must consume its own end-marker escape
-    and that escape must fall at exactly the declared size; without it the decode
-    stops as soon as the declared size is produced, which is the engine's and the
-    shipping decoder's rule.
+    and that escape must fall at exactly the declared size. Without it the decode
+    stops as soon as the declared size is produced, which is a **host-side
+    convenience, not the engine's rule**: the retail packed decoder keeps no output
+    counter, compares nothing against its destination cursor, and stops only on
+    that escape (`CONFIRMED`;
+    `docs/research/CQA_02_PACKED_TERMINATION_RESOLUTION.md` §2.1, adjudicated in
+    Phase 1 of CQA-02-PACKED-STREAM-TERMINATION-001). The sentence that used to
+    stand here called the declared-size stop "the engine's and the shipping
+    decoder's rule"; it was wrong about the engine, and it contradicted this same
+    module's docstring, which had the engine's behaviour right. Corrected rather
+    than deleted so the superseded claim stays visible.
     """
     if declared_size < 0 or declared_size > MAX_OUTPUT:
         raise ContainerError(

@@ -42,12 +42,35 @@ the format that cannot be guessed from first principles and the strongest single
 reason to promote a verified implementation rather than invent one.
 
 **On re-encoding.** :func:`pack` produces a *valid* stream - one this module's
-own decoder reads back exactly - and nothing more. It is not Webfoot's original
-compressor and does not reproduce its bytes. Measured over the canonical corpus
-it lands at a median 1.06x the original packed size, which matters because the
-corpus has no slack: roughly one payload in two hundred re-encodes small enough
-to fit its own allocation. That is a stated limit, not a defect to be worked
-around by writing past a container's end.
+own decoder reads back exactly - and it writes the retail decoder's own escape
+after the final token, so its output is self-terminating instead of depending on
+whatever bytes happen to follow it. It is not Webfoot's original compressor and
+does not reproduce its bytes. Measured over the canonical corpus it lands at a
+median 1.06x the original packed size, which matters because the corpus has no
+slack: roughly one payload in two hundred re-encodes small enough to fit its own
+allocation. That is a stated limit, not a defect to be worked around by writing
+past a container's end.
+
+**Termination: the engine's rule and this module's rule are not the same rule.**
+The retail packed decoder (`0x087B79E4`, executed from IWRAM `0x03000040` through
+the Thumb to ARM veneer `0x08049120`) takes exactly `(source, destination)` and
+carries no output counter: of the thirteen comparisons in its body, **none names
+the destination cursor**, so it writes until the bitstream's own escape and
+performs no size comparison at all. That escape is twelve zero bits - prefix
+`000`, seven-bit field `0000000`, two-bit selector `00` - read where a token
+would begin. `CONFIRMED`; the two independent disassemblies and the positive
+census that found no destination comparison are recorded in
+`docs/research/CQA_02_PACKED_TERMINATION_RESOLUTION.md` §2.1.
+
+The **default decode here is deliberately not that rule**: it stops at the
+declared size, which is a host-side convenience that bounds the work a malformed
+header can ask for. The engine's rule is available and is what the write path
+proves: :func:`pack` emits the escape as part of the stream
+(:meth:`_WordBitWriter.write_end_marker`, before the final word is padded), and
+:func:`validate_retail_termination` re-decodes a payload to the stream's own
+escape and requires that escape to fall at exactly the declared length. A stream
+that only *appears* to terminate because trailing zero padding or a following
+object supplied the missing bits fails that check.
 
 **Strictness: what "decoded successfully" means here.** The decoder returns a
 container only when it produced *exactly* the declared number of bytes under the
@@ -68,14 +91,11 @@ exactly, a stream succeeds only when all of these hold:
 * the token stream reaches the declared size exactly. A stream that stops early -
   by its end marker or by exhaustion - is refused.
 
-The one thing it does not require is the stream's own end marker, because this
-project's :func:`pack` terminates by output length and never emits one. The engine
-has no output counter either - it writes until the stream's own escape and performs
-no size comparison at all, as `tools/research/webfoot_codec_reference.py` records
-from the `strb`/`ldr` reads and the dispatcher's two-argument call. In this corpus
-that escape falls at exactly the declared length: the export-side reader requires
-it there and all 7,390 containers pass that stronger check, which is why the marker
-is an additional canonical-corpus observation rather than a requirement here.
+The default decode does not additionally require the stream's own escape, because
+reaching the declared size is a sufficient host-side bound and because the escape
+is a separate contract with the engine rather than with this decoder. That
+contract is enforced where it matters, at the write path, by
+:func:`validate_retail_termination`.
 
 **The defect this replaced (EVIDENCE-RISK-DEBT-001).** Two token classes used to
 stop appending once the output reached the declared size, so a stream whose final
@@ -112,6 +132,10 @@ HEADER_SIZE = 8
 #: corrupt or misread header cannot make the decoder allocate without bound; it
 #: is a safety limit, not a format fact.
 DEFAULT_MAX_OUTPUT = 64 * 1024
+
+#: Slack, in bytes, added to the derived end-marker scan limit below. It covers
+#: the opening token, the escape itself and the final word's padding.
+_MARKER_SCAN_SLACK = 4 * 1024
 
 
 class ContainerError(ValueError):
@@ -194,6 +218,22 @@ def _gamma(reader: _WordBitReader) -> int:
             return value
 
 
+def _marker_scan_limit(expected: int) -> int:
+    """Packed input an end-marker check may read for a declared ``expected`` output.
+
+    A stream that has not escaped by then is not one any caller should plan, and the
+    limit keeps a hostile header from making the check walk a whole image. It is
+    **derived from the declared size rather than fixed**, because a legitimate
+    packed stream can be larger than the bytes it produces: this encoder's
+    literal-only worst case is nine bits per byte, so a fixed ceiling would refuse a
+    valid incompressible payload at the top of the supported range. A quarter more
+    than the declared size, plus a few KiB of framing, covers that worst case. It is
+    a host safety limit, not a format fact - the retail decoder carries no bound and
+    would keep consuming words.
+    """
+    return expected + expected // 4 + _MARKER_SCAN_SLACK
+
+
 def _emit_raw(out: bytearray, value: int, expected: int) -> None:
     """Append one byte of a raw-literal run, refusing to pass the declared size.
 
@@ -216,6 +256,8 @@ def _unpack_stream(
     payload: int,
     expected: int,
     initial_literal_bits: int,
+    *,
+    require_end_marker: bool = False,
 ) -> tuple[bytes, int]:
     """Decode ``expected`` bytes starting at ``payload``.
 
@@ -226,6 +268,14 @@ def _unpack_stream(
     honestly". A stream that ends early is refused for the same reason: silently
     yielding a partial tile would put wrong pixels into a sprite without anything
     downstream noticing.
+
+    With ``require_end_marker`` the loop does not stop when ``expected`` is
+    reached: it runs the retail engine's rule instead, consuming tokens until the
+    stream's own escape, and the comparison below then requires that escape to
+    have fallen at exactly ``expected``. The two consequences that matter are
+    stated here because they are the whole reason the flag exists - the engine
+    cannot stop early and truncate the resource, and the stream cannot terminate
+    by borrowing bits from whatever follows the payload.
     """
     reader = _WordBitReader(data, payload)
     out = bytearray()
@@ -248,8 +298,23 @@ def _unpack_stream(
         for _ in range(count):
             out.append(out[-distance])
 
-    while len(out) < expected:
+    while len(out) < expected or require_end_marker:
+        if (
+            require_end_marker
+            and reader.position - payload > _marker_scan_limit(expected)
+        ):
+            raise ContainerError(
+                f"packed stream consumed over {_marker_scan_limit(expected)} "
+                f"input bytes for a declared {expected} without reaching its escape"
+            )
         if reader.bit():
+            if len(out) >= expected:
+                # Only reachable under ``require_end_marker``: without it the loop
+                # condition above has already stopped the decode.
+                raise ContainerError(
+                    f"literal at output offset {len(out)} overruns the declared "
+                    f"{expected}"
+                )
             out.append((literal_base + reader.get(literal_bits)) & 0xFF)
             continue
 
@@ -284,12 +349,21 @@ def _unpack_stream(
                 continue
             width = reader.get(2)
             if width == 0:
+                # The stream's own escape, and the retail decoder's only exit:
+                # prefix 000, a seven-bit field of zero, a two-bit selector of
+                # zero, read where a token would begin.
                 break
             distance_bits = reader.get(width + 3)
             continue
 
         short_distance = reader.get(4) - 1
         if short_distance == 0:
+            if len(out) >= expected:
+                # Only reachable under ``require_end_marker``, as above.
+                raise ContainerError(
+                    f"base-literal at output offset {len(out)} overruns the "
+                    f"declared {expected}"
+                )
             out.append(literal_base & 0xFF)
         elif short_distance > 0:
             copy_match(short_distance, 1)
@@ -349,11 +423,21 @@ def unpack(
     offset: int,
     *,
     maximum_output: int = DEFAULT_MAX_OUTPUT,
+    require_end_marker: bool = False,
 ) -> Container:
     """Decode the container at ``offset``.
 
     ``maximum_output`` is checked against the *declared* size before any
     allocation, so a wild header is refused rather than honoured.
+
+    With ``require_end_marker`` the packed decode does not stop when the declared
+    size is reached but runs on to the stream's own escape, which must then fall
+    at exactly that size. :func:`validate_retail_termination` is the named entry
+    point for that check; it is what proves the engine's termination contract
+    rather than a host convention. As on the export-side reader, a
+    marker-terminated decode reports a ``packed_end`` up to one word larger than
+    the extent an in-place edit is bounded by, because consuming the escape can
+    finish the word it sits in.
     """
     kind, declared = read_header(data, offset)
     if declared > maximum_output:
@@ -374,7 +458,9 @@ def unpack(
             data=data[payload : payload + declared],
         )
     if kind in PACKED_KINDS:
-        decoded, end = _unpack_stream(data, payload, declared, kind)
+        decoded, end = _unpack_stream(
+            data, payload, declared, kind, require_end_marker=require_end_marker
+        )
         return Container(
             offset=offset,
             kind=kind,
@@ -383,6 +469,47 @@ def unpack(
             data=decoded,
         )
     raise ContainerError(f"unsupported Webfoot container kind {kind} at {offset:#x}")
+
+
+def validate_retail_termination(
+    data: bytes,
+    offset: int = 0,
+    *,
+    maximum_output: int = DEFAULT_MAX_OUTPUT,
+) -> Container:
+    """Prove one packed payload satisfies the retail engine's termination contract.
+
+    This is the production-owned postcondition for a packed payload that is about
+    to be planned into a ROM write, and it is the *only* implementation of that
+    rule here: callers invoke it instead of re-deriving it, so one codec rule has
+    several callers rather than one copy per caller. In a single decode it
+    requires all four of:
+
+    * **exactly the declared output** - the ordinary host contract, so a broken,
+      short or clipped stream is refused;
+    * **a reachable explicit escape** - twelve zero bits at a token boundary - so
+      the stream terminates on the engine's own condition and not on trailing
+      padding, a following object's bytes, or zero-filled space;
+    * **that escape at the declared boundary** - so the engine cannot stop early
+      and truncate the resource;
+    * **no malformed or truncated token** before it - a bad back-reference
+      distance, a token that would carry the output past the declared size, or a
+      read past the end of the image all raise rather than pass.
+
+    The retail decoder stops on this escape and on nothing else: it is called with
+    `(source, destination)`, keeps no output counter and compares nothing against
+    its destination cursor (`CONFIRMED`;
+    `docs/research/CQA_02_PACKED_TERMINATION_RESOLUTION.md` §2.1). A stored
+    container (kind 0) needs no escape - the dispatcher copies exactly its
+    declared length - so it is returned after the usual bounds check.
+
+    Raises :class:`ContainerError` when any requirement fails. Callers on a write
+    path must translate that into their own refusal; nothing here returns a
+    partially valid payload.
+    """
+    return unpack(
+        data, offset, maximum_output=maximum_output, require_end_marker=True
+    )
 
 
 def unpack_raw_stream(
@@ -487,9 +614,26 @@ class _WordBitWriter:
             self.bit((value >> shift) & 1)
             self.bit(0 if shift == 0 else 1)
 
+    def write_end_marker(self) -> None:
+        """Emit the retail decoder's own escape at the current token boundary.
+
+        The grammar, read out of the decoder (`_unpack_stream`'s ``width == 0``
+        branch and the retail decoder behind it), is a ``000`` prefix, a seven-bit
+        field of ``0000000`` and a two-bit selector of ``00``: twelve zero bits
+        where a token would begin. That is the engine's termination condition and
+        its only one - it carries no output counter - so a stream that never
+        writes this terminates wherever the following bytes happen to stop it.
+
+        It is written through the bit writer rather than appended as bytes because
+        it is a bit-level token like any other: it has to land on the token
+        boundary the decoder checks, not on a byte or word boundary.
+        """
+        self.put(0, 12)
+
     def finish(self) -> bytes:
-        # Trailing bits are padded with zeroes to a whole word. The decoder
-        # stops on the declared output length, so the padding is never read.
+        # Trailing bits are padded with zeroes to a whole word. This padding is
+        # NOT what terminates the stream - the escape was already written by
+        # write_end_marker - so it is never read as a token by either decoder.
         while self._count:
             self.bit(0)
         return b"".join(struct.pack("<I", word) for word in self._words)
@@ -518,6 +662,16 @@ def pack(payload: bytes) -> bytes:
     Greedy: at each position the cheapest token by bits-per-byte wins. An
     optimal parse was tried and did not pay for itself, so the simpler one
     stands.
+
+    The token stream is followed by the retail decoder's own escape, written at
+    the bit level and *before* the final word is padded, so the emitted order is
+    data tokens, escape, padding. Every output is therefore self-terminating: it
+    does not depend on where the final token happened to land within its word, on
+    the allocation's padding, or on whatever bytes follow it in the image. The
+    cost is bounded and measurable rather than a fixed four bytes - the escape
+    fits inside the final partial word when twelve or more bits of it are free,
+    and costs one more packed word when the final token ends flush or leaves fewer
+    than twelve.
     """
     writer = _WordBitWriter()
     # Kind 2 begins with 2-bit literals, which are useless for tile data. The
@@ -623,4 +777,9 @@ def pack(payload: bytes) -> bytes:
             positions.setdefault(payload[index : index + 3], []).append(index)
         cursor += best_length
 
+    # The order is load-bearing: the escape is a token, so it goes after the last
+    # data token and before finish() pads the word. Appending zero bytes after
+    # finalization would put it on a word boundary instead of the token boundary
+    # the decoder checks, and would not be expressible in the grammar.
+    writer.write_end_marker()
     return struct.pack("<II", PACKED_KINDS[1], total) + writer.finish()

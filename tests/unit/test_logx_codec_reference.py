@@ -25,6 +25,7 @@ whole-corpus differential with real containers lives in
 
 from __future__ import annotations
 
+import random
 import struct
 
 import pytest
@@ -273,26 +274,58 @@ def test_reference_reproduces_the_project_decoder(payload: bytes) -> None:
     [b"A" * 64, bytes(range(64)), b"abcabcabcabcabcabcabcabc"],
 )
 def test_reference_runs_to_the_stream_terminator(payload: bytes) -> None:
-    """Running past the declared size reproduces the payload exactly.
+    """The independent reader stops on the escape, and that escape is the first one.
 
-    The decode either stops on the stream's own terminator, on the input bound,
-    or at the end of the packed bytes - ``webfoot_lz.pack`` is a valid-stream
-    generator, not Webfoot's compressor, so it does not always emit a terminator
-    where the canonical encoder would. In every case the bytes produced match.
+    ``stop_on="end_marker"`` is the engine's rule rather than the host's: the
+    reference ignores the declared size and runs to the stream's own control
+    escape. This is the second-implementation half of the CQA-02 postcondition -
+    it was written from the decoder's instructions, not from the project decoder -
+    so it corroborates both that ``pack`` emits the escape and that no *earlier*
+    boundary escape exists to stop the engine short: the reference returns at the
+    first one it finds, and that one is at exactly the declared length.
+
+    This test used to tolerate a stream with no escape at all (the decoder could
+    run past its input bound instead), because ``webfoot_lz.pack`` did not write
+    one. It does now, so the tolerance is gone and a missing marker fails here.
     """
     blob = wl.pack(payload)
-    try:
+    got = codec.decode_packed(
+        blob,
+        8,
+        declared_size=len(payload),
+        stop_on="end_marker",
+        max_input_bytes=1 << 20,
+    )
+    assert got.terminator == "end_marker"
+    assert got.data == payload
+    assert got.actual_size == len(payload) == got.declared_size
+
+
+def test_the_reference_finds_the_first_escape_at_the_declared_size_for_a_corpus() -> None:
+    """Corpus-wide corroboration of the retail termination postcondition.
+
+    ``tests/unit/test_webfoot_lz.py`` asserts the same property with the production
+    validator. This is the independent half: a reader written from the decoder's
+    instructions, not from the project decoder, is pointed at the same generated
+    shapes and must stop at its *first* token-boundary escape with exactly the
+    declared number of bytes produced. A premature escape anywhere in the stream
+    would make ``actual_size`` smaller; an absent escape would make the terminator
+    something other than ``end_marker``.
+    """
+    rng = random.Random(20260924)
+    payloads = [b"", b"\x41", b"A" * 64, b"Q" * 31, b"Q" * 32, b"Q" * 33,
+                b"\xAA\x55" * 128, b"\x00" * 256]
+    payloads += [bytes(rng.randrange(256) for _ in range(size))
+                 for size in (1, 2, 31, 33, 64, 129, 512, 1024)]
+    for payload in payloads:
+        blob = wl.pack(payload)
         got = codec.decode_packed(
-            blob,
-            8,
-            declared_size=len(payload),
-            stop_on="end_marker",
+            blob, 8, declared_size=len(payload), stop_on="end_marker",
             max_input_bytes=1 << 20,
         )
-    except codec.CodecError:
-        return
-    assert got.data == payload
-    assert got.terminator in ("end_marker", "ran_past_input")
+        assert got.terminator == "end_marker", len(payload)
+        assert got.data == payload, len(payload)
+        assert got.actual_size == len(payload), len(payload)
 
 
 # --- malformed ---------------------------------------------------------------

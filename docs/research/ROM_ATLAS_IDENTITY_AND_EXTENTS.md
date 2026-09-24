@@ -494,8 +494,19 @@ gap was closed rather than accepted:
   path). This is pre-existing path logic, not introduced here, and
   `test_stat_write_rom.py` was edited by this ticket without aligning it; a
   follow-up should make every ROM-gated file read the same variables so a ticket
-  can state one command. The workbench gate is discovery-dependent for the same
-  reason.
+  can state one command.
+
+  Measured on the two workbench files that gate this way, run singly:
+
+  | image discoverable at `roms/`? | `test_workbench_graphics.py` + `test_workbench_session.py` |
+  | --- | --- |
+  | no | **46 passed, 5 skipped** (1 + 4) |
+  | yes | **51 passed, 0 skipped** |
+
+  So the workbench-gate total moves by exactly those 5 tests depending on
+  discovery, which is why an earlier draft's figure of 178 (no image at `roms/`)
+  and the round-2 reviewer's 181 differ by a bounded, now-observed amount rather
+  than an unexplained one.
 - Running the gates that had always skipped **found five real defects that this
   ticket had introduced and that no previous run could have caught**:
   - `render_map` gained a `profile=` keyword and two Workbench test stubs still

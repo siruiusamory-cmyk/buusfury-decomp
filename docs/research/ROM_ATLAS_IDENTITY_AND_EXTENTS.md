@@ -225,7 +225,7 @@ load-bearing duplicate.
 | `ENEMY_TABLE_START`/`LAST`/`COUNT`, `BASE_STAT_TABLE_START`/`COUNT` | `formats/stat_tables.py` | the **measured extent**, kept as the evidence a ticket verified; their only readers are `iter_enemy_records` / `iter_base_stat_records`, which have **no production caller**. A test asserts they still describe a whole number of records and that the profile's GBA address equals their file offset plus the sanctioned base |
 | `BASE_STAT_NAMES` | `formats/stat_tables.py` | **the one remaining per-game literal in this layer, and the reviewer was right to name it.** An INFERRED Buu display roster, live in production via `stats.character_alias` for `CharacterEntry.alias`. It is not a duplicate authority (nothing else declares it), but it is not format data either. Now guarded rather than silently reused: `character_alias(index, count)` refuses a profile whose declared roster is not this one, and refuses an index past the verified names. Owning it as profile data is recorded debt (section 8) |
 | `PROFILE_ID` keys in `data/placement_contracts.py`, `data/script_effects.py`, `data/behavior_triggers.py`, `data/script_specs.py` | `webfoot/data/` | these dicts are **selected by** profile id; the id is the selector. Their per-game **counts** were removed and are read from the profile. Their `sha256` fields were **live gates** and are now compared against `profile.sha256` (review finding 1) |
-| `940ad5f0…f059e` in production | **none left** | the reviewer's finding 1 named the last two (`data/behavior_triggers.py`, `data/placement_contracts.py`); both are now cross-checks against the profile, asserted for every catalogued profile |
+| `940ad5f0…f059e` in production | **two sites, both cross-checks, no gate** | the literal survives as data at `data/behavior_triggers.py:12` and `data/placement_contracts.py:518`; it is no longer an authority and no longer gates, because all four comparisons that read it compare it against `profile.sha256` (`maps.py:830`, `authored_placements.py:120`, `authored_placements.py:245`, `placement_events.py:44`), and `test_the_data_contract_hashes_agree_with_the_profile` pins each value to its catalog declaration. An earlier draft of this row said "none left", which was false as written: the literals are still present, they simply no longer decide anything |
 | `tools/research/*_probe.py`, `tools/runtime/*.lua`, `tools/ghidra/*.java`, `tools/mgba_probe/`, `tools/qa/` literals | research / probe / runtime tooling | independent measurements used to *check* production. CQA-15 is about production behaviour-driving authorities; a probe that imported its expectations from the code under test could not detect that code drifting. Two probes were updated from the deleted codec constants to their own measured literals for exactly this reason |
 | provenance strings inside atlas producers (`seed.py` prose, `evidence` fields) | atlas producers | reported into the atlas artifact, never branched on |
 
@@ -405,13 +405,22 @@ authority and the contract value is a cross-check.
 for **every** catalogued profile, so a contract that drifts from the catalog
 fails loudly.
 
-**The first correction was incomplete, and that is worth recording.** `03779c2`
-migrated the two sites the reviewer named; a follow-up sweep for
-`identification.hashes.sha256` found a third and fourth that neither the reviewer
-nor the implementer had listed: the behavior-trigger gate inside
-`_require_trigger_contract` and the placement-contract gate inside `load_maps`.
-Both are fixed in `7d7c16d`. The reviewer named two of four; the fix is now
-proved exhaustive by grep rather than by the original finding's wording.
+**The first correction was incomplete, and that is worth recording precisely.**
+There were **four** gates in this class, not the two the finding's summary
+implied. The round-1 reviewer named **three** of them (`authored_placements.py`
+two sites, `placement_events.py` one). `03779c2` migrated **two** of those three
+and skipped the behavior-trigger gate inside `_require_trigger_contract`. A
+follow-up grep for `identification.hashes.sha256` then found that skipped site and
+one genuinely unlisted fourth, the placement-contract gate inside `load_maps`.
+Both landed in `7d7c16d`.
+
+An earlier draft of this section said the follow-up "found a third and fourth that
+neither the reviewer nor the implementer had listed", which is wrong on the
+attribution: the reviewer did list the `_require_trigger_contract` site, and
+`03779c2` simply failed to migrate it. What is true, and was the real cause, is
+that the correction was driven by the finding's *summary* rather than by an
+exhaustive search for the pattern. The fix is now proved exhaustive by grep: four
+gates, four profile comparisons, no fifth.
 
 **And `7d7c16d` itself cost a regression, found by a delta review.** Widening
 that gate's attribute contract to read `maps.profile.sha256` broke four tests in
@@ -472,6 +481,21 @@ gap was closed rather than accepted:
   Then run **named files only**, never a broad suite (`docs/testing.md`, and the
   human test policy in force for this ticket). The exact focused commands and
   their results are listed below.
+
+  **ROM discovery is not uniform, and this bites the exact command an earlier
+  draft quoted.** Some ROM-gated files honour `WEBFOOT_BUU_ROM` /
+  `LOGX_CANONICAL_ROM`; others locate the image by a hard-coded relative path and
+  ignore both. Measured by the reviewer: with only the two environment variables
+  set, the four-file selection returns **5 passed, 46 skipped**;
+  `49 passed, 2 skipped` appears only once the image is also discoverable at
+  `roms/Dragon Ball Z - Buu's Fury (U).gba`. The two files that bypass the
+  variables are `tests/integration/test_stat_write_rom.py:47` (a `roms/*Buu*.gba`
+  glob) and `tests/integration/test_buu_dialog_runtime_rom.py:31` (a literal
+  path). This is pre-existing path logic, not introduced here, and
+  `test_stat_write_rom.py` was edited by this ticket without aligning it; a
+  follow-up should make every ROM-gated file read the same variables so a ticket
+  can state one command. The workbench gate is discovery-dependent for the same
+  reason.
 - Running the gates that had always skipped **found five real defects that this
   ticket had introduced and that no previous run could have caught**:
   - `render_map` gained a `profile=` keyword and two Workbench test stubs still
@@ -492,6 +516,37 @@ gap was closed rather than accepted:
 This is the honest reading: the frozen revision was **not** closure-ready, and
 the reviewer was right on both counts. The corrected revision is materially
 better tested than the frozen one because the gates now actually execute.
+
+### Second review round
+
+A fresh round-2 reviewer examined the corrected revision, and a separate delta
+reviewer examined the follow-up. Verdict at the tip: **BLOCKING = NONE**. Between
+them they found three things that the round-1 report and this record had wrong,
+all now fixed:
+
+| finding | disposition |
+| --- | --- |
+| The round-1 correction migrated only 2 of the 4 contract-hash gates; `authored_placements.py:117` and `maps.py:826` still compared the data literal against the loaded image's hash | fixed in `7d7c16d`; all four read `profile.sha256` |
+| `7d7c16d` broke four cases in `tests/unit/test_authored_behavior_trigger.py` and the record's `tests/unit` total was stale for it | fixed in `5bf25be`; that file is 15 passed |
+| This record claimed "none left" for the canonical literal in production, and misattributed which gate had been unlisted | both corrected above (the literals survive as pinned cross-checks; the reviewer *did* list the `_require_trigger_contract` site) |
+
+Round-2 also downgraded two of the round-1 notes and one of its own:
+
+- The ROM-hash comparison restated in several consumers is **restated code
+  against one authority, not a duplicate authority** (NOTE, not blocking); the
+  docstring in `export/map_browser.py` claiming "one statement of it rather than
+  one per reader stack" slightly overstates, since the comparisons are per-reader
+  even though the value has one owner.
+- A meta line missing keys still raises a bare `KeyError` from
+  `tools/webfoot/atlas.py:511`. It fails closed (no atlas is accepted) and that
+  file is untouched by this ticket, so it is out of scope; recorded as debt.
+- The `map_layout_write` count guard was caught only by a **source-text**
+  assertion. Strengthened: `MapLayoutWriter` now accepts an injected profile, and
+  `test_the_map_layout_writer_bound_is_the_profiles` drives a profile declaring
+  only 3 maps through the writer and asserts its own gate refuses index 3 and 452.
+  Re-running the reviewer's exact mutation (`count = 452`) against that single
+  test fails it. The writer's identity gate is still satisfied by a declared
+  identity rather than by stubbing.
 
 ### Test policy and what was actually run
 

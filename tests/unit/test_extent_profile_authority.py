@@ -19,6 +19,7 @@ has.
 from __future__ import annotations
 
 from dataclasses import replace
+import hashlib
 from pathlib import Path
 
 import pytest
@@ -422,22 +423,51 @@ def test_the_map_renderer_refuses_a_profile_with_no_palette(image, buu):
 
 
 def test_the_map_layout_writer_gate_is_the_profile_identity():
-    """The writer's identity gate names the profile, and owns no hash of its own.
-
-    The writer verifies real canonical bytes, so this asserts the *owner* rather
-    than driving it with a synthetic image: it must read identity from
-    `profile_authority`, not from a literal. The count bound it applies is the
-    reader's profile count, exercised with real bytes by the ROM-gated writer
-    tests.
-    """
+    """The writer owns no hash of its own; its identity comes from the profile."""
     from tools.webfoot import map_layout_write
 
     assert not hasattr(map_layout_write, "SUPPORTED_ROM_SHA256"), (
         "the writer must not own a second copy of the canonical hash"
     )
-    source = Path(map_layout_write.__file__).read_text(encoding="utf-8")
-    assert "profile_authority" in source, (
-        "the writer must resolve its identity through the profile authority"
+
+
+def test_the_map_layout_writer_bound_is_the_profiles(buu):
+    """`MapLayoutWriter` bounds a map index by the SUPPLIED profile's count.
+
+    Behavioural, not textual: the writer is given a profile declaring a smaller
+    map table than the canonical one, and its own gate must refuse an index that
+    profile does not have. A reintroduced literal would either admit that index
+    (if the literal is larger) or refuse a valid one, so this fails on both.
+    """
+    from tests.unit.test_map_render import (
+        _SYNTHETIC_MAP_TABLE_ADDRESS,
+        _synthetic_rom,
     )
-    # The bound it enforces is read from the reader's profile, not a constant.
-    assert "map_entry_count()" in source
+    from tools.webfoot.map_layout_write import MapLayoutWriteError, MapLayoutWriter
+
+    rom_bytes, _descriptor = _synthetic_rom()
+    table = MapEntryTableProfile(
+        address=GbaRomAddress(_SYNTHETIC_MAP_TABLE_ADDRESS),
+        count=SYNTHETIC_MAP_COUNT,
+        record_size=me.MAP_ENTRY_SIZE,
+    )
+    # The image's own digest, so the writer's identity gate is satisfied by the
+    # supplied declaration rather than by stubbing the packaged profile.
+    synthetic = replace(
+        buu,
+        id="synthetic_writer_profile",
+        sha256=hashlib.sha256(rom_bytes).hexdigest(),
+        map_entries=table,
+    )
+    writer = MapLayoutWriter(rom_bytes, profile=synthetic)
+    assert writer._rom.map_entry_count() == SYNTHETIC_MAP_COUNT
+    assert writer._rom.map_entry_table_address() == _SYNTHETIC_MAP_TABLE_ADDRESS
+
+    # One past the declared count is refused by the writer's own bound. The
+    # canonical profile declares far more maps, so a literal bound of 452 or the
+    # canonical count would NOT refuse this index.
+    assert SYNTHETIC_MAP_COUNT != 452
+    with pytest.raises(MapLayoutWriteError, match="declared range"):
+        writer._layer(SYNTHETIC_MAP_COUNT, 0)
+    with pytest.raises(MapLayoutWriteError, match="declared range"):
+        writer._layer(452, 0)

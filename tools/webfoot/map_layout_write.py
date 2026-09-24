@@ -38,17 +38,25 @@ def validate_chunk_replacement(layer_addresses: tuple[int, ...], replacement: ob
 
 
 class MapLayoutWriter:
-    def __init__(self, canonical_bytes: bytes) -> None:
+    def __init__(self, canonical_bytes: bytes, *, profile=None) -> None:
+        """Bind the writer to one image and the profile that describes it.
+
+        `profile` defaults to the packaged canonical profile, which is what every
+        production caller means. It is injectable so the writer's profile-derived
+        bounds can be exercised against a declaration that differs from the
+        canonical one, rather than only asserted about the source.
+        """
         self._base = bytes(canonical_bytes)
         # The one identity contract, not this module's own copy of the hash: the
         # export readers this writer drives resolve the profile's declared table
         # addresses, so the bytes it accepts must be that same profile's image.
-        expected = profile_authority.canonical_export_identity()
+        resolved = profile if profile is not None else profile_authority.canonical_export_profile()
+        expected = resolved.identity
         if hashlib.sha256(self._base).hexdigest() != expected.sha256:
             raise MapLayoutWriteError(
                 f"expected the image described by profile {expected.profile_id!r}"
             )
-        self._rom = canon.Rom(self._base)
+        self._rom = canon.Rom(self._base, profile=resolved)
         self._edits: dict[int, int] = {}
 
     def _layer(self, map_index: int, layer_slot: int) -> canon.LayerRecord:

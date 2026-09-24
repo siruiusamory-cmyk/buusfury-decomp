@@ -353,6 +353,162 @@ callback = callbacks:add("frame", function()
     end
 
     gameplay = gameplay + 1
+    if MODE == "route" then
+        -- A configurable input schedule, so reaching the NPC is an experiment
+        -- rather than a probe edit. `VARLEN001_ROUTE` is a comma-separated list of
+        -- `KEY:FRAMES` steps (or `SCREEN` / `WAIT:FRAMES`); every step starts by
+        -- releasing every key, so a step cannot inherit the previous hold. Each
+        -- step is photographed at its midpoint.
+        --
+        -- Reaching the NPC is needed because the fixture resumes beside it but the
+        -- greeting is an interaction: measured, the player CAN walk (RIGHT, UP and
+        -- DOWN scroll the camera) while LEFT is blocked at this spot.
+        local MASK = { A = 0x01, B = 0x02, SELECT = 0x04, START = 0x08,
+                       RIGHT = 0x10, LEFT = 0x20, UP = 0x40, DOWN = 0x80 }
+        local ORDER = { "A", "B", "SELECT", "START", "RIGHT", "LEFT", "UP", "DOWN" }
+        local route = {}
+        if os.getenv("VARLEN001_ROUTE") then
+            for token in os.getenv("VARLEN001_ROUTE"):gmatch("[^,]+") do
+                route[#route + 1] = token
+            end
+        end
+        local span = 60
+        local base = 30
+        local total = span * #route
+        if gameplay >= base and gameplay < base + total then
+            local index = math.floor((gameplay - base) / span) + 1
+            local token = route[index]
+            local phase = (gameplay - base) % span
+            if phase == 0 then
+                for _, name in ipairs(ORDER) do release(name, MASK[name]) end
+                local kind, count = token:match("^(%u+):(%d+)$")
+                if kind and MASK[kind] then
+                    press(kind, MASK[kind])
+                end
+                row("INPUT", nil, nil, nil, nil,
+                    string.format("step %d/%d token=%s", index, #route, token))
+            end
+            if phase == span // 2 then
+                -- `token` carries a colon (`LEFT:40`), which a Windows filename
+                -- cannot, so the first attempt silently wrote no file for those
+                -- steps. The index is what identifies the step anyway.
+                local path = exp_dir .. string.format("varlen001-route-%02d.png",
+                    index)
+                emu:screenshot(path)
+                row("SCREENSHOT", nil, nil, nil, nil, path)
+            end
+        elseif gameplay >= base + total then
+            for _, name in ipairs(ORDER) do release(name, MASK[name]) end
+            finish(target_seen and "target-seen" or "route-done")
+        end
+        return
+    end
+    if MODE == "keytest" then
+        -- POSITIVE CONTROL inside the fixture: START opens the pause menu in this
+        -- game, so if the screen does not change, no input is reaching the core
+        -- in the loaded state - which is a different finding from "the player
+        -- cannot walk", and the two need separating before any more trigger
+        -- attempts are worth making.
+        --
+        -- `VARLEN001_PRESTART` presses START from gameplay 1, i.e. as soon as the
+        -- state-load signal appears, and `VARLEN001_PRELATCH` holds A from before
+        -- that, to test whether a key set BEFORE the fixture lands survives the
+        -- load.
+        if os.getenv("VARLEN001_PRELATCH") then
+            press("A", A)
+        end
+        -- Log what each name resolves to. `emu:addKey` takes a GBA_KEY INDEX, not
+        -- a mask, so a name that does not exist in `C.GBA_KEY` silently falls back
+        -- to the mask value and becomes a different (or invalid) key.
+        if gameplay == 5 then
+            row("KEYCODE", nil, nil, nil, nil, string.format(
+                "A=%s START=%s LEFT=%s RIGHT=%s UP=%s DOWN=%s",
+                tostring(key_code("A", A)), tostring(key_code("START", 0x08)),
+                tostring(key_code("LEFT", LEFT)), tostring(key_code("RIGHT", 0x10)),
+                tostring(key_code("UP", 0x40)), tostring(key_code("DOWN", 0x80))))
+        end
+        -- Sweep the four directions one at a time, photographing after each, so a
+        -- direction that moves the player is visible by comparing frames.
+        if gameplay == 30 then
+            emu:screenshot(exp_dir .. "varlen001-key-030-before.png")
+            row("SCREENSHOT", nil, nil, nil, nil, "before any direction")
+        elseif gameplay == 40 then
+            press("LEFT", LEFT)
+        elseif gameplay == 100 then
+            release("LEFT", LEFT)
+        elseif gameplay == 110 then
+            emu:screenshot(exp_dir .. "varlen001-key-110-left.png")
+            row("SCREENSHOT", nil, nil, nil, nil, "after LEFT")
+        elseif gameplay == 120 then
+            press("RIGHT", 0x10)
+        elseif gameplay == 180 then
+            release("RIGHT", 0x10)
+        elseif gameplay == 190 then
+            emu:screenshot(exp_dir .. "varlen001-key-190-right.png")
+            row("SCREENSHOT", nil, nil, nil, nil, "after RIGHT")
+        elseif gameplay == 200 then
+            press("UP", 0x40)
+        elseif gameplay == 260 then
+            release("UP", 0x40)
+        elseif gameplay == 270 then
+            emu:screenshot(exp_dir .. "varlen001-key-270-up.png")
+            row("SCREENSHOT", nil, nil, nil, nil, "after UP")
+        elseif gameplay == 280 then
+            press("DOWN", 0x80)
+        elseif gameplay == 340 then
+            release("DOWN", 0x80)
+        elseif gameplay == 350 then
+            emu:screenshot(exp_dir .. "varlen001-key-350-down.png")
+            row("SCREENSHOT", nil, nil, nil, nil, "after DOWN")
+        elseif gameplay == 400 then
+            finish(target_seen and "target-seen" or "keytest-done")
+        end
+        return
+    end
+    if MODE == "boot" then
+        -- POSITIVE CONTROL for the key API, and the reason it is needed: three
+        -- probe-side key channels left the player exactly where it was and two
+        -- runs rendered byte-identical frames, which is consistent with BOTH "no
+        -- input reaches the core" and "the fixture's state inhibits input". A
+        -- fresh boot separates them: a title screen always accepts input, so if A
+        -- there changes nothing, no key reaches the core in this vehicle at all.
+        --
+        -- The reset is deliberately LATE (frame 1200). The tracked runner loads the
+        -- fixture state through the Scripting console a few hundred frames in, and
+        -- resetting after that wipes it, so the boot this control watches is the
+        -- only thing running.
+        if gameplay == 1200 then
+            emu:reset()
+            row("RESET", nil, nil, nil, nil,
+                "core reset at frame 1200 for the input positive control")
+            if os.getenv("VARLEN001_HOLD") then
+                press("LEFT", LEFT)
+                row("INPUT", nil, nil, nil, nil, "holding LEFT from frame 1200")
+            end
+        elseif gameplay > 1200 and not os.getenv("VARLEN001_HOLD")
+                and (gameplay - 1200) % 40 == 0 then
+            press("A", A)
+        elseif gameplay > 1200 and not os.getenv("VARLEN001_HOLD")
+                and (gameplay - 1200) % 40 == 8 then
+            release("A", A)
+        end
+        -- Measured: from a fresh boot the game AUTO-PLAYS its intro narration
+        -- through the very consumer under test, with no input at all, so the core
+        -- of this ticket's runtime question can be observed deterministically.
+        -- The observation therefore runs long enough for the intro to reach the
+        -- tournament scene, and tags every shot with its frame number.
+        if gameplay > 1200 and (gameplay - 1200) % 1000 == 0 then
+            local path = exp_dir .. "varlen001-boot-" .. tostring(gameplay) .. ".png"
+            emu:screenshot(path)
+            row("SCREENSHOT", nil, nil, nil, nil, path)
+        end
+        if gameplay == 21200 then
+            release("A", A)
+            release("LEFT", LEFT)
+            finish(target_seen and "target-seen" or "boot-done")
+        end
+        return
+    end
     if MODE == "hold" then
         -- DIAGNOSTIC, not the proof: hold LEFT for 300 frames and photograph the
         -- start and the end. If the player has moved, the emulator's key API

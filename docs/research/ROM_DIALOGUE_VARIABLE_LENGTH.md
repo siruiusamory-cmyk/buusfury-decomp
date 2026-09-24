@@ -350,53 +350,91 @@ both are stronger negatives than the runs above:
   zero liveness rows**. Across twenty loads of the fixture the script interpreter
   at `0x08004038` never ran once, so the fixture's world state is script-idle and
   the automatic trigger is not a function of load timing.
-* **It is not the operator's keypress either - on any of six channels.** The probe
-  was given a switch between mGBA's two key APIs, because this repository uses
-  both (`rom006_bootstrap.lua` presses with `emu:addKey(C.GBA_KEY.A)`;
-  `p008_mash_driver.lua` uses the plural `emu:addKeys(mask)`). Measured, with 300
-  frames of held LEFT and a screenshot at +10 and +300 in each case:
+* **It is not the operator's keypress - but the first version of this section said
+  the opposite, and that was WRONG.** The correction matters, because acting on it
+  would have abandoned a trigger that works. This repository uses mGBA's two key
+  APIs: `rom006_bootstrap.lua` presses with `emu:addKey(C.GBA_KEY.A)` and
+  `emu:clearKey`, while `p008_mash_driver.lua` uses the plural mask form
+  `emu:addKeys(1 << index)`. Both were measured in the fixture state and at a
+  fresh boot:
 
   | Channel | Run | Result |
   |---|---|---|
-  | `emu:setKeys(mask)` | `run4`, `script2` | player did not move |
-  | `emu:addKeys(mask)` / `clearKeys` | `varlen-001-hold` | player did not move |
-  | `emu:addKey(C.GBA_KEY.LEFT)` / `clearKey` | `varlen-001-keyapi` | player did not move |
+  | `emu:setKeys(mask)` / `emu:addKeys(mask)` | `run4`, `script2`, `run6` | no input: the player never leaves the resume position |
+  | **`emu:addKey(C.GBA_KEY.START)`** | `varlen-001-keytest1` | **the STATUS menu opens** - input lands |
+  | **`emu:addKey(C.GBA_KEY.RIGHT / UP / DOWN)`** held 60 frames | `varlen-001-dirsweep` | **27,199 / 32,509 / 28,681 pixels change and the camera scrolls** - the player walks |
+  | `emu:addKey(C.GBA_KEY.LEFT)` held 60 frames | `varlen-001-dirsweep` | 350 pixels change: this spot blocks LEFT |
+  | `emu:addKey(C.GBA_KEY.LEFT)` held from a fresh boot | `varlen-001-boot-walk` | **the intro narration is skipped** (0 consumer rows against 21) |
+  | `emu:addKey(C.GBA_KEY.A)` pulsed from a fresh boot | `varlen-001-boot-long1` | **presses START at the title**; the game reaches gameplay (Other World, HUD up) by frame 21200, where the run with no A pulses is still on the title screen |
   | `AppActivate` + `SendKeys` | `varlen-001-keys2` | `AppActivate` returned false; nothing sent |
   | `PostMessage` `WM_KEYDOWN`/`WM_KEYUP` | `varlen-001-keys3` | 18 A presses, no dialogue |
   | `SendInput` after raising every visible window | `varlen-001-input1` | 20 A presses, no dialogue |
 
-  The three probe-side holds are not merely "no visible change": their +300 frames
-  are **byte-identical** across the runs (`sha256 3066f4f6…`). That is also the
-  direct evidence that the emulation here is deterministic and that nothing
-  reached the core's input register.
+  The single-key API is the one that works. The earlier "no key reaches the core"
+  claim came from a **flawed comparison**: the `hold` runs ended on byte-identical
+  `+300` frames, but both held the same key for the same frames, so identical
+  frames were equally consistent with *both* having walked; the `scripted` runs
+  were compared against each other rather than against a no-input baseline.
+  `varlen-001-dirsweep` replaced that with a per-direction sweep measured against
+  the frame taken before any input.
 
-So the one successful observation stands alone and unexplained by any variable
-this work could control: with the same derivative, the same savestate, the same
-probe and the same runner, the fixture's greeting was consumed once and never
-again in twenty attempts.
+  The probe now logs what each key name resolves to, because `emu:addKey` takes a
+  `GBA_KEY` index rather than a mask and a name missing from `C.GBA_KEY` would
+  silently fall back to the mask value: measured, `A=0 START=3 LEFT=5 RIGHT=4
+  UP=6 DOWN=7`.
+
+  **What does remain true**: at the fixture's resume position the player cannot
+  walk LEFT, and A alone does nothing there - the greeting is an interaction that
+  needs the player to reach the NPC. `varlen-001-route1` (UP, then LEFT, then A)
+  moved the player and fired the liveness channel but consumed no record, so the
+  route was wrong rather than the input.
+
+So the one *automatic* observation stands alone: with the same derivative, the
+same savestate, the same probe and the same runner, the fixture's greeting was
+consumed once in twenty attempts with no input. The trigger is an **operator
+interaction**, which is what the tracked `human` mode exists for, and which is now
+known to be performable rather than impossible.
 
 ### 7.3 What is therefore needed, and who can do it
 
 The tracked procedure's `human` mode is a **human-in-the-loop** workflow: the
-probe observes and a person triggers the conversation. This session cannot supply
-that step - not because input is hard to script, but because every delivery
-channel was measured inert (above) - so the remaining step belongs to the owner:
+probe observes and a person triggers the conversation. The probe now settles the
+question on the first hit it gets, so one occurrence is enough - and the owner has
+offered to drive the session, which is the step this harness cannot perform
+(the emulator window is on the owner's desktop, not in this session's).
+The two-step **human session** is the right vehicle, not the bounded runner: the
+runner stops the emulator once its `RunSeconds` backstop expires, which would cut a
+played session short, while the `start` script arms the probe, loads the state and
+returns, leaving the session to the operator. Run both from the worktree root with
+a **fresh** label (an existing run directory is refused), and make sure no `mGBA`
+process is already running:
 
 ```powershell
+# 1. arm the probe and load the fixture - the probe is in `human` mode by default,
+#    so no CAPACITY001_* / VARLEN001_* variable may be set in this shell
 powershell.exe -NoProfile -ExecutionPolicy Bypass `
-  -File tools/runtime/run_capacity001_expansion.ps1 `
+  -File tools/runtime/start_capacity001_expansion_session.ps1 `
   -RomPath "build\varlen-001\derivative.gba" `
   -RomSha256 dbeba9abc58db5343bd4a7c004207636c8fa6932b0f9527a866fe09ee2aba036 `
   -RomSize 16777216 `
   -StatePath "<checkout>\roms\Dragon Ball Z - Buu's Fury (U).ss1" `
-  -Label <fresh-label> -ExpectedPointer 0x08800000 `
+  -Label varlen-001-human1 -ExpectedPointer 0x08800000 `
   -LuaPath "tools\runtime\varlen001_dialogue_variable_length_probe.lua" `
-  -MGBPath "build\tools\mgba-dev\extracted\mGBA-build-2026-08-27-win64-9128-c65e8a3d4666b0ea68a01578232452f31b185332\mGBA.exe" `
-  -RunSeconds 120
+  -MGBPath "build\tools\mgba-dev\extracted\mGBA-build-2026-08-27-win64-9128-c65e8a3d4666b0ea68a01578232452f31b185332\mGBA.exe"
+
+# 2. PLAY. The fixture resumes beside the two NPCs just left of Goku. Walk to them
+#    (LEFT is blocked at the resume spot - measured - so go around) and talk with
+#    A until the dialogue box shows the greeting, then close the mGBA window.
+#
+# 3. collect
+powershell.exe -NoProfile -ExecutionPolicy Bypass `
+  -File tools/runtime/finish_capacity001_expansion_session.ps1 -Label varlen-001-human1
 ```
 
-The probe is now built to settle the question on the **first** hit it gets, so one
-occurrence is enough:
+The run directory then holds `capacity001-dialogue.csv` (with the `CONSUMER` and
+`STRING` rows) and `varlen001-consumer-<hit>-early|dialogue-box|settled.png`.
+
+What the probe will capture on that hit:
 
 * screenshots at +8, +45 **and +120 frames** after the target record is consumed,
   the last of which is past the box's progressive reveal;
@@ -410,6 +448,19 @@ occurrence is enough:
 A `STRING` row reading `decoded_bytes=72` with the acceptance line's hex would
 establish acceptance criterion 14 directly; a settled +120 screenshot would
 establish it visually. Until one of those exists, the criterion stands unmet.
+
+For reference, one already-captured `STRING` row shows the mechanism working on a
+record nobody was editing - the intro narration, read back from the engine's own
+buffer on a fresh boot:
+
+```text
+STRING,...,decoded_bytes=206,hex=002100460069006E0061006C006C0079002C00...,
+ascii=!Finally; after years of turmoil caused by Dr. Gero's Androids; the Earth
+was brought back to normal...
+```
+
+`ascii=` replaces commas with semicolons because the row is CSV; `hex=` is the
+exact UTF-16LE the engine materialised.
 
 
 **Conclusion.** The engine-side claim - the retail consumer reads the re-authored

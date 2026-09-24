@@ -442,8 +442,11 @@ could not be reproduced in the environment the ticket says they must run in.
 **Resolved**: the three files now derive the identity from
 `profile_authority.canonical_export_identity()` / `mr.canonical_profile()` and
 pass the profile's character count. Verified with the ROM configured: the same
-four-file selection the reviewer used gives **49 passed, 2 skipped, 0 failed** at
-both base `170dc815` and the corrected revision.
+four-file selection the reviewer used
+(`test_stat_write_rom.py`, `test_map_render_rom.py`,
+`test_map_layout_write_rom.py`, `test_buu_dialog_runtime_rom.py`) gives
+**49 passed, 2 skipped, 0 failed** at both base `170dc815` and the corrected
+revision, measured before the test-policy correction.
 
 ### What the reviewer could not verify, and what that exposed
 
@@ -523,16 +526,18 @@ Each command names explicit files that exercise a code path this ticket changed.
 | --- | --- |
 | `pytest tests/unit/test_authored_behavior_trigger.py -q` | **15 passed** (the file `7d7c16d` broke; all four failures fixed) |
 | `pytest tests/unit/test_authored_placements.py tests/unit/test_map_placements.py tests/unit/test_scene_authoring.py -q` | **112 passed** (the other consumers of the migrated trigger gate) |
-| `pytest tests/unit/test_atlas_identity.py tests/unit/test_extent_profile_authority.py tests/unit/test_profile_authority_contract.py tests/unit/test_profile.py tests/unit/test_capability.py tests/unit/test_atlas_build.py -q` | **108 passed** (identity contract, profile/catalog parsing, synthetic profile, absence assertions) |
-| `pytest tests/unit/test_map_render.py tests/unit/test_map_layout_provenance.py tests/unit/test_workbench_session.py -q` | **116 passed, 4 skipped** (map renderer, derivative provenance, Workbench session identity) |
+| `pytest tests/unit/test_atlas_identity.py tests/unit/test_extent_profile_authority.py tests/unit/test_profile_authority_contract.py tests/unit/test_profile.py tests/unit/test_capability.py tests/unit/test_atlas_build.py -q` | **114 passed** (identity contract, profile/catalog parsing, synthetic profile, absence assertions) |
+| `pytest tests/unit/test_map_render.py tests/unit/test_map_layout_provenance.py tests/unit/test_workbench_session.py -q` (ROM configured) | **41 passed, 1 skipped** (map renderer, derivative provenance, Workbench session identity) |
 | `pytest tests/unit/test_text_tables.py tests/unit/test_text_growth.py tests/unit/test_text_project.py -q` | **81 passed** (text codec extents, the live index bound) |
-| `pytest tests/unit/test_stat_tables.py tests/unit/test_stat_write.py tests/unit/test_project_format.py tests/unit/test_gameplay_effect_native.py -q` | **128 passed** (stat extents and the text-bound gate) |
+| `pytest tests/unit/test_stat_tables.py tests/unit/test_stat_write.py tests/unit/test_project_format.py tests/unit/test_gameplay_effect_native.py -q` | **71 passed** (stat extents and the text-bound gate) |
 | `pytest tests/unit/test_workbench_map_tab.py tests/unit/test_workbench_map_browser.py -q` | **44 passed** (the GUI paths PySide6 exposed) |
-| `pytest tests/integration/test_map_render_rom.py tests/integration/test_map_layout_write_rom.py tests/integration/test_stat_write_rom.py -q` | **49 passed, 2 skipped** with the canonical ROM configured, identical to base `170dc815` |
+| `pytest tests/integration/test_map_render_rom.py tests/integration/test_map_layout_write_rom.py tests/integration/test_stat_write_rom.py -q` (ROM configured) | **25 passed, 2 skipped** |
 | `git diff --check` | clean, exit 0 |
 
 ROM-backed runs above are named by file and read the canonical image read-only;
-the ROM's SHA-256 was verified unchanged before and after.
+the ROM's SHA-256 was verified unchanged before and after. The single remaining
+skip in `test_map_render.py` needs the map-40 VRAM dump, which is not part of this
+ticket.
 
 **BROAD / FULL SUITE: NOT MANUALLY RUN, HUMAN POLICY.** A broad `tests/unit` run
 started after the `7d7c16d` fix was **terminated on instruction** and restarted

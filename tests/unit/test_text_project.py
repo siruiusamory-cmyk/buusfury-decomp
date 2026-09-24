@@ -67,7 +67,7 @@ def _minimal_records():
         [(st.enemy_identity(enemy), enemy, bytes(st.ENEMY_RECORD_SIZE), None)],
         [
             (
-                st.character_identity(0),
+                st.character_identity(0, st.BASE_STAT_RECORD_COUNT),
                 character,
                 bytes(st.BASE_STAT_RECORD_SIZE),
                 "Goku",

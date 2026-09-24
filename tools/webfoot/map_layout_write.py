@@ -17,7 +17,7 @@ import struct
 
 from tools.export import canonical as canon
 from tools.export import map_browser as mb
-from tools.export.map_browser import SUPPORTED_ROM_SHA256
+from tools.export import profile_authority
 
 
 class MapLayoutWriteError(ValueError):
@@ -38,17 +38,34 @@ def validate_chunk_replacement(layer_addresses: tuple[int, ...], replacement: ob
 
 
 class MapLayoutWriter:
-    def __init__(self, canonical_bytes: bytes) -> None:
+    def __init__(self, canonical_bytes: bytes, *, profile=None) -> None:
+        """Bind the writer to one image and the profile that describes it.
+
+        `profile` defaults to the packaged canonical profile, which is what every
+        production caller means. It is injectable so the writer's profile-derived
+        bounds can be exercised against a declaration that differs from the
+        canonical one, rather than only asserted about the source.
+        """
         self._base = bytes(canonical_bytes)
-        if hashlib.sha256(self._base).hexdigest() != SUPPORTED_ROM_SHA256:
-            raise MapLayoutWriteError("expected the canonical Buu rev0 image")
-        self._rom = canon.Rom(self._base)
+        # The one identity contract, not this module's own copy of the hash: the
+        # export readers this writer drives resolve the profile's declared table
+        # addresses, so the bytes it accepts must be that same profile's image.
+        resolved = profile if profile is not None else profile_authority.canonical_export_profile()
+        expected = resolved.identity
+        if hashlib.sha256(self._base).hexdigest() != expected.sha256:
+            raise MapLayoutWriteError(
+                f"expected the image described by profile {expected.profile_id!r}"
+            )
+        self._rom = canon.Rom(self._base, profile=resolved)
         self._edits: dict[int, int] = {}
 
     def _layer(self, map_index: int, layer_slot: int) -> canon.LayerRecord:
         """The dominant layer record both the read and write paths address."""
-        if type(map_index) is not int or not 0 <= map_index < canon.MAP_ENTRY_COUNT:
-            raise MapLayoutWriteError("map index is out of range")
+        count = self._rom.map_entry_count()
+        if type(map_index) is not int or not 0 <= map_index < count:
+            raise MapLayoutWriteError(
+                f"map index is out of this profile's 0..{count - 1} declared range"
+            )
         if type(layer_slot) is not int or not 0 <= layer_slot < 4:
             raise MapLayoutWriteError("layer slot is out of range")
         entry = canon.read_map_entries(self._rom)[map_index]

@@ -70,6 +70,85 @@ class AmbiguousProfileError(ProfileConfigError):
     """Raised when multiple profiles exactly identify one ROM."""
 
 
+class AtlasIdentityMismatch(ValueError):
+    """An atlas describes a different base image than the one it was paired with.
+
+    Raised by the ONE identity comparison every atlas consumer shares. It is a
+    `ValueError` so a caller whose subsystem already refuses configuration
+    failures keeps its existing error family, and it carries the expected and
+    actual identity so the diagnostic names both rather than only saying no.
+    """
+
+    def __init__(self, subject: str, expected, actual, reasons: tuple[str, ...]):
+        self.subject = subject
+        self.expected = expected
+        self.actual = actual
+        self.reasons = reasons
+        detail = "; ".join(reasons) if reasons else "identities differ"
+        super().__init__(
+            f"{subject} does not describe this ROM: {detail}. "
+            f"expected {expected.describe()}, atlas declares {actual.describe()}"
+        )
+
+
+@dataclass(frozen=True, slots=True)
+class AtlasIdentity:
+    """The base image an atlas describes, in one place.
+
+    `profile_id` names the profile, `base_sha256` the exact bytes, and
+    `image_size` the extent every offset in the atlas is bounded by. The three
+    travel together because an atlas that matches on one and not the others is
+    still an atlas of a different image: the profile alone cannot rule out a
+    differently-revised dump of the same game, and the hash alone cannot name
+    which profile's table addresses its offsets were resolved against.
+    """
+
+    profile_id: str
+    base_sha256: str
+    image_size: int
+
+    def __post_init__(self) -> None:
+        for value in (self.profile_id, self.base_sha256):
+            if not isinstance(value, str) or not value.strip():
+                raise ProfileConfigError(
+                    "atlas identity profile_id and base_sha256 must be non-empty strings"
+                )
+        if type(self.image_size) is not int or self.image_size <= 0:
+            raise ProfileConfigError("atlas identity image_size must be a positive integer")
+
+    @property
+    def sha256(self) -> str:
+        """The base hash in the catalog's normalised lowercase spelling."""
+        return self.base_sha256.strip().lower()
+
+    def describe(self) -> str:
+        return f"profile {self.profile_id!r} base sha256 {self.sha256} size {self.image_size}"
+
+
+def _atlas_identity_of(atlas: object) -> AtlasIdentity:
+    """Read the identity triple an atlas declares, or refuse to guess it.
+
+    Structural rather than a type annotation on purpose: `webfoot.atlas` is a
+    consumer of this contract, so it imports `profile`, not the reverse. A value
+    that does not carry the triple is refused by name instead of being
+    defaulted, because a defaulted identity is exactly the hole this closes.
+    """
+    missing = [
+        name
+        for name in ("profile_id", "base_sha256", "image_size")
+        if getattr(atlas, name, None) is None
+    ]
+    if missing:
+        unknown = AtlasIdentity("<unknown>", "<unknown>", 1)
+        raise AtlasIdentityMismatch(
+            "atlas", unknown, unknown,
+            (f"the atlas artifact does not declare {', '.join(missing)}",),
+        )
+    return AtlasIdentity(
+        atlas.profile_id, atlas.base_sha256, atlas.image_size  # type: ignore[attr-defined]
+    )
+
+
 class VerificationStatus(str, Enum):
     VERIFIED = "VERIFIED"
     UNKNOWN = "UNKNOWN"
@@ -78,6 +157,8 @@ class VerificationStatus(str, Enum):
 
 @dataclass(frozen=True, slots=True)
 class MapEntryTableProfile:
+    """A profile's MapEntry table: where it starts, how many, and its stride."""
+
     address: GbaRomAddress
     count: int
     record_size: int
@@ -455,12 +536,18 @@ class ActorSpriteProfile:
     animation pointers begin; it is declared rather than hard-coded because the
     header layout is a per-game fact, and the one place a wrong value could
     silently produce plausible-but-wrong assets.
+
+    ``bg_palette_address`` is the engine-global background palette the map
+    renderer requantises. It is declared here rather than held as a renderer
+    constant because it is a per-game ROM address of the same kind as the object
+    palette beside it (CQA-15).
     """
 
     character_table_address: GbaRomAddress
     character_count: int
     animation_pointer_offset: int
     object_palette_address: GbaRomAddress
+    bg_palette_address: GbaRomAddress
     evidence: str
 
 
@@ -470,6 +557,7 @@ def _optional_actor_sprites(tables, size):
         return None
     keys = {"character_table_address", "character_count",
             "animation_pointer_offset", "object_palette_address", "evidence"}
+    keys |= {"bg_palette_address"}
     if not isinstance(value, Mapping) or set(value) != keys:
         raise ProfileConfigError("actor_sprites requires exact contract fields")
     if type(value["character_count"]) is not int or value["character_count"] <= 0:
@@ -484,8 +572,14 @@ def _optional_actor_sprites(tables, size):
     try:
         table = GbaRomAddress(value["character_table_address"])
         palette = GbaRomAddress(value["object_palette_address"])
+        bg_palette = GbaRomAddress(value["bg_palette_address"])
+        if bg_palette.raw % 2:
+            raise ProfileConfigError(
+                "actor_sprites background palette is not halfword aligned"
+            )
         start = table.to_file_offset(size)
         palette_start = palette.to_file_offset(size)
+        bg_palette_start = bg_palette.to_file_offset(size)
         if table.raw % 4 or palette.raw % 2:
             raise ProfileConfigError("actor_sprites address alignment mismatch")
         if start + value["character_count"] * 4 > size:
@@ -494,10 +588,14 @@ def _optional_actor_sprites(tables, size):
         # would run off the end is refused here rather than truncated later.
         if palette_start + 512 > size:
             raise ProfileConfigError("actor_sprites object palette runs past the ROM")
+        if bg_palette_start + 768 > size:
+            raise ProfileConfigError(
+                "actor_sprites background palette runs past the ROM"
+            )
     except BinaryAddressError as exc:
         raise ProfileConfigError(str(exc)) from exc
     return ActorSpriteProfile(table, value["character_count"], offset, palette,
-                              value["evidence"])
+                              bg_palette, value["evidence"])
 
 
 def _optional_placement_types(tables, size):
@@ -552,6 +650,49 @@ class RomProfile:
     placement_types: PlacementTypeProfile | None = None
     actor_sprites: ActorSpriteProfile | None = None
     generated_expansion: GeneratedExpansionProfile | None = None
+
+    @property
+    def identity(self) -> AtlasIdentity:
+        """The base image this profile describes: id, hash and size together.
+
+        The ONE statement of this profile's canonical identity. Every consumer
+        that needs to ask "is this atlas of the image I am holding?" compares
+        against this, rather than restating the hash or the size beside it.
+        """
+        assert self.sha256 is not None  # enforced at construction
+        return AtlasIdentity(self.id, self.sha256, self.size)
+
+    def require_identity(self, atlas: object, *, subject: str = "atlas") -> AtlasIdentity:
+        """The atlas's declared identity, or raise if it is not this profile's.
+
+        The single comparison rule for the whole product. It answers the only
+        question that matters before any atlas byte is read: does this atlas
+        describe the canonical base this profile names?
+
+        Both halves are checked because each alone is insufficient. The profile
+        id alone would accept a differently-revised dump of the same game; the
+        base hash alone would accept an atlas whose offsets were resolved
+        against another profile that happens to share the image. The size is
+        checked with them because an atlas bounded by a different image size
+        cannot describe this one even when both named values agree.
+        """
+        actual = _atlas_identity_of(atlas)
+        reasons: list[str] = []
+        if actual.profile_id != self.id:
+            reasons.append(
+                f"profile id: expected {self.id!r}, atlas declares {actual.profile_id!r}"
+            )
+        if actual.sha256 != self.sha256:
+            reasons.append(
+                f"base sha256: expected {self.sha256}, atlas declares {actual.sha256}"
+            )
+        if actual.image_size != self.size:
+            reasons.append(
+                f"image size: expected {self.size}, atlas declares {actual.image_size}"
+            )
+        if reasons:
+            raise AtlasIdentityMismatch(subject, self.identity, actual, tuple(reasons))
+        return actual
 
     @classmethod
     def from_mapping(cls, data: Mapping[str, Any]) -> "RomProfile":

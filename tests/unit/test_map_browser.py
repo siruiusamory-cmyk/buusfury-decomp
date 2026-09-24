@@ -9,6 +9,7 @@ from __future__ import annotations
 import pytest
 
 from tools.export import map_browser as mb
+from tools.export import profile_authority
 
 PALETTE = tuple((i, i, i) for i in range(256))
 
@@ -56,10 +57,25 @@ def test_render_map_rejects_an_out_of_range_index() -> None:
 
 
 def test_read_map_index_rejects_a_non_canonical_rom() -> None:
-    with pytest.raises(mb.MapBrowserError, match="canonical Buu's Fury"):
+    """The refusal names the profile whose identity the reader resolves against."""
+    with pytest.raises(mb.MapBrowserError, match="profile 'buus_fury_usa_rev0_01c1707f'"):
         mb.read_map_index(b"\x00" * 8_388_608)
 
 
 def test_render_map_rejects_a_non_canonical_rom() -> None:
-    with pytest.raises(mb.MapBrowserError, match="canonical Buu's Fury"):
+    with pytest.raises(mb.MapBrowserError, match="profile 'buus_fury_usa_rev0_01c1707f'"):
         mb.render_map(b"\x00" * 8_388_608, 0)
+
+
+def test_the_reader_bound_is_the_profiles_declared_map_count() -> None:
+    """The map-index bound is the profile declaration, not a literal.
+
+    `render_map(b"", 452)` is refused for the empty image as well as the index,
+    so this asserts the specific bound by comparing against the resolved
+    profile rather than against the number 452.
+    """
+    profile = profile_authority.canonical_export_profile()
+    assert profile.map_entries is not None
+    just_past = profile.map_entries.count
+    with pytest.raises(mb.MapBrowserError, match=f"0\\.\\.{just_past - 1}"):
+        mb.map_label(b"\x00" * 8_388_608, just_past)

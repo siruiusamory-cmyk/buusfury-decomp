@@ -123,7 +123,7 @@ def _render_dominant_layer(data: bytes, map_index: int, slot: int) -> bytes:
 
 def _first_null_cell(editor: MapLayoutEditor) -> tuple[int, int, int]:
     """One editable cell whose stored pointer is null, as ``(map, slot, cell)``."""
-    for index in range(canon.MAP_ENTRY_COUNT):
+    for index in range(editor.map_entry_count):
         for slot in editor.target(index).editable_slots:
             for cell in slot.cells:
                 if cell.pointer == 0 and slot.choices:
@@ -138,7 +138,7 @@ def test_corpus_census_and_editable_detection(editor: MapLayoutEditor) -> None:
     editable: list[int] = []
     read_only: list[int] = []
     dominating: set[int] = set()
-    for index in range(canon.MAP_ENTRY_COUNT):
+    for index in range(editor.map_entry_count):
         target = editor.target(index)
         (editable if target.editable else read_only).append(index)
         for slot in target.slots:
@@ -390,7 +390,7 @@ def test_null_cells_accept_only_an_existing_layer_chunk(
 ) -> None:
     """A layer with a null cell may fill it - and revert it - from its own chunks."""
     found = None
-    for index in range(canon.MAP_ENTRY_COUNT):
+    for index in range(editor.map_entry_count):
         for slot in editor.target(index).editable_slots:
             nulls = [cell for cell in slot.cells if cell.pointer == 0]
             if nulls and slot.choices:

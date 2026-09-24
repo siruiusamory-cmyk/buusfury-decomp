@@ -51,7 +51,8 @@ def render_result():
 def tab(qapp, project, types, render_result, monkeypatch):
     calls = []
 
-    def render(_rom, map_id):
+    def render(_rom, map_id, **_kwargs):
+        """Stub matching the real signature, which now takes `profile=`."""
         calls.append(map_id)
         return render_result
 
@@ -139,7 +140,7 @@ def test_map_switch_zoom_and_layer_toggle_use_cached_render(tab):
 
 
 def test_read_only_project_state_refuses_direct_mutation(qapp, types, render_result, monkeypatch):
-    monkeypatch.setattr(mt.map_render, "render_map", lambda *_: render_result)
+    monkeypatch.setattr(mt.map_render, "render_map", lambda *_, **__: render_result)
     tab = MapWorkspaceTab(Session(maps=types.maps, rom_image=b"synthetic"))
     marker = tab._markers["map:0000/placement:0000"]
 

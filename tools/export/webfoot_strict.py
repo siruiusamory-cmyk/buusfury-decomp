@@ -85,9 +85,12 @@ from __future__ import annotations
 from dataclasses import dataclass
 import struct
 
-#: GBA ROM base; every address in the accepted graph is a GBA address.
-GBA_ROM_BASE = 0x08000000
+from tools.webfoot.binary import GBA_ROM_BASE
 
+#: GBA ROM base; every address in the accepted graph is a GBA address. Taken
+#: from `webfoot.binary`, the one owner of address-window semantics, rather
+#: than restated here - the conversion must have a single authority.
+#:
 #: Header is two little-endian words.
 HEADER_SIZE = 8
 

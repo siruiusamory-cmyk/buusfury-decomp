@@ -18,8 +18,9 @@ from dataclasses import dataclass, field
 from ..analysis.thumb import (RomReader, addr_to_offset, b_short_target, decode_bl,
                               is_b_short, is_pop_with_pc, is_push_with_lr,
                               ldr_literal_address, offset_to_addr)
+from ..binary import GBA_ROM_BASE as BASE
 
-BASE = 0x08000000
+#: The address window the walk runs in, from `binary`'s single owner.
 MAX_DEPTH = 10
 #: Halt a runaway walk; the function is then recorded as having no end evidence.
 MAX_FUNC_SCAN = 0x1000

@@ -25,7 +25,12 @@ from ..formats.map_entry import MapEntryProfileError
 from ..graphics import ActorSprites, GraphicsError, load_actor_sprites
 from ..map_layout_provenance import AuthoredRom, ProvenanceError, verify_authored_rom
 from ..maps import Maps, load_maps
-from ..profile import RomProfile, RomProfileCatalog, VerificationStatus
+from ..profile import (
+    AtlasIdentityMismatch,
+    RomProfile,
+    RomProfileCatalog,
+    VerificationStatus,
+)
 from ..rom import RomIdentification, identify_rom
 from ..text import TextProfileError, TextStrings, TextTableError, load_text_strings
 
@@ -223,6 +228,23 @@ class Session:
                 f"`python -m tools.webfoot atlas build` (or `atlas regenerate`)."
             )
         atlas = load_atlas(atlas_path)
+        # The atlas records the base image it was built for. Pairing it with a
+        # different image - another catalogued profile, or the same profile's
+        # bytes at another revision - would make every offset, coverage class
+        # and VERIFIED_FREE span a claim about bytes that are not here, which is
+        # the evidence the capacity work would read. One comparison, owned by
+        # the profile, refuses before the atlas becomes session state and before
+        # any atlas-backed surface can read it. The manifest already required a
+        # derivative's profile to be the profile *of* its canonical base, so
+        # this covers that path too.
+        #
+        # Never regenerated here: an atlas is evidence-producing work and stays
+        # explicit. A mismatch is a refusal with both identities named, not a
+        # silent rebuild and not a silent accept.
+        try:
+            match_profile.require_identity(atlas, subject=f"atlas {atlas_path}")
+        except AtlasIdentityMismatch as exc:
+            raise SessionError(str(exc)) from exc
         # load_decoded_text treats a missing index as empty, not an error.
         decoded_text = load_decoded_text(atlas_dir)
 

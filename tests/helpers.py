@@ -76,6 +76,7 @@ def profile_for(data: bytes, **overrides: object) -> RomProfile:
 SPRITE_TABLE_OFFSET = 0x1000
 SPRITE_STRUCTURE_OFFSET = 0x0400
 SPRITE_PALETTE_OFFSET = 0x0200
+SPRITE_BG_PALETTE_OFFSET = 0x0400
 SPRITE_ROM_SIZE = 0x2000
 
 #: The profile id the synthetic sprite ROM is catalogued under.
@@ -90,6 +91,9 @@ def actor_sprite_tables() -> dict[str, object]:
             "character_count": 1,
             "animation_pointer_offset": 0,
             "object_palette_address": 0x08000000 + SPRITE_PALETTE_OFFSET,
+            # The background palette is a declared per-game address like the
+            # object palette beside it; the map renderer reads it from here.
+            "bg_palette_address": 0x08000000 + SPRITE_BG_PALETTE_OFFSET,
             "evidence": "synthetic fixture for graphics-export safety tests",
         }
     }

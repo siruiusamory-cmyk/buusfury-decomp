@@ -37,7 +37,11 @@ class PlacementEvents:
     def __init__(self, maps):
         self.maps = maps
         contract = CONTRACTS.get(maps.profile.id)
-        if contract is None or contract['sha256'] != maps.identification.hashes.sha256:
+        # Compared against the profile's declared identity, which is the
+        # authority, rather than against the loaded image's hash: the image is
+        # already verified, so the meaningful check is that this contract entry
+        # has not drifted from the catalog for this profile.
+        if contract is None or contract['sha256'] != maps.profile.sha256:
             raise ScriptError('no verified placement descriptor contract for this profile')
         self.contract = contract
         image = maps.base_bytes
@@ -165,6 +169,12 @@ class PlacementEvents:
         contract = self.contract.get('dialog_text')
         if contract is None:
             return ()
+        text_strings = self.maps.profile.text_strings
+        if text_strings is None:
+            raise ScriptError(
+                f"profile {self.maps.profile.id!r} declares no text table; the "
+                "dialog text index cannot be bounded"
+            )
         spec = OPCODE_SETS[self.contract['encoding']]
         records = self.resource_records()
         if index is not None:
@@ -174,7 +184,7 @@ class PlacementEvents:
         found = []
         for record in records:
             found.extend(links.dialog_text_references(
-                self.maps.base_bytes, record, spec, contract))
+                self.maps.base_bytes, record, spec, contract, text_strings.count))
         return tuple(found)
 
     def dialogs_for_text(self, index):

@@ -397,6 +397,34 @@ caps scanner output at `CANDIDATE`/`OBSERVED` by type.
 
 #### CQA-03 [HIGH] The Workbench pairs the open ROM with an atlas built for a different profile, with no identity comparison
 
+> **REMEDIATED: CQA-03-15-IDENTITY-AND-EXTENTS-001 (2026-09-23).** One identity
+> contract now owns the rule, in the profile domain rather than in the Workbench,
+> the CLI or an editor: `tools/webfoot/profile.py` carries `AtlasIdentity`,
+> `AtlasIdentityMismatch`, `RomProfile.identity` and
+> `RomProfile.require_identity`. It is called from exactly one production site,
+> `workbench/session.py:245`, **before** `self.atlas = atlas` and before maps or
+> text load, so a refusal publishes no atlas-backed state. Both the profile id and
+> the canonical base hash are checked, plus image size, because each alone is
+> insufficient; the comparison reads the atlas's identity structurally, so
+> `profile` does not import `atlas` and a value lacking the triple is refused by
+> name rather than defaulted. The failure arrives as the existing `SessionError`
+> naming both identities, with **no silent rebuild and no automatic regeneration**.
+> The derivative path is covered because the session has already required a
+> derivative's manifest to name the profile *of* its canonical base, so the atlas
+> is compared against the reconstructed canonical identity - not the derivative's
+> output digest - and a derivative is not made to need a rebuilt atlas. A focused
+> regression proves a `VERIFIED_FREE` span from another profile cannot reach the
+> session while the same span under the right identity is accepted. Finding
+> **CLOSED**; CQA-04 remains **OPEN** and CQA-10 is unchanged
+> (**PARTIAL / IMPROVED**). Frozen implementation `1067a539` (unamended, corrected
+> through separate commits), independent review `PASS` with **no blocking
+> findings** at the final correction head, canonical ROM unchanged, no capability
+> change. Record, retained-literal classification and mutation table:
+> [`../tickets/CQA-03-15-IDENTITY-AND-EXTENTS-001.md`](../tickets/CQA-03-15-IDENTITY-AND-EXTENTS-001.md);
+> closure:
+> [`../tickets/archive/CQA-03-15-IDENTITY-AND-EXTENTS-001-COMPLETE.md`](../tickets/archive/CQA-03-15-IDENTITY-AND-EXTENTS-001-COMPLETE.md).
+> The text below is the finding **as originally recorded** and is not restated.
+
 - **Subsystem:** PRODUCTION - `workbench/session.py` (atlas ownership).
 - **Location:** `workbench/session.py:216-258` (`open_rom`); `atlas.py:410-421`
   (`Atlas.profile_id` / `base_sha256` and `Atlas.validate`); atlas directory at
@@ -861,6 +889,39 @@ attributed to an independent review probe.
   adds spans to this same verification step.
 
 #### CQA-15 [MEDIUM] Load-bearing constants and verified extents have multiple owners, and one copy is a live index bound
+
+> **REMEDIATED: CQA-03-15-IDENTITY-AND-EXTENTS-001 (2026-09-23).** The inventory
+> was re-run by measurement and found **more** owners than this finding records:
+> **13** production GBA-base definitions under **four** spellings rather than eight
+> under three, and **three live index bounds** it had missed
+> (`data/placement_contracts.py` dialog text count, `data/script_effects.py` text
+> count, and the character-roster bound). Migrated onto the profile/catalog
+> authority: the canonical identity (six owners), the map-entry table address,
+> count and stride, the text pointer-table address and count, the stat extents,
+> both palette addresses, and the GBA base. The export stack resolves identity and
+> extents through a thin `tools/export/profile_authority.py` over the **packaged**
+> catalog, and the reader object carries accessors rather than module constants;
+> the text codec lost the game extents it could not own and takes them from its
+> caller. All four **live index bounds** now read the profile, including the
+> `export/canonical.py` text index bound this finding names. The four contract-hash
+> gates compare against `profile.sha256`, with each contract literal retained as a
+> **pinned cross-check** asserted against the catalog for every profile. The GBA
+> base has one authority, `webfoot/binary.GBA_ROM_BASE`.
+>
+> **The closure claim is precise:** *independent behavioural authorities* were
+> removed or migrated. It is **not** that every canonical literal vanished: two
+> pinned cross-checks survive in production data and no longer gate, format
+> constants stay in the format layer, evidence/provenance labels stay as labels,
+> and test oracles and research tooling keep independent measurements on purpose.
+> The classification of every retained literal is in the record. Synthetic-profile
+> tests replace every load-bearing extent with a different value and drive the
+> production readers through it, so a reintroduced Buu literal fails; mutations
+> confirm each guard is load-bearing. Finding **CLOSED**; CQA-04 remains **OPEN**
+> and CQA-10 is unchanged (**PARTIAL / IMPROVED**). Record:
+> [`../tickets/CQA-03-15-IDENTITY-AND-EXTENTS-001.md`](../tickets/CQA-03-15-IDENTITY-AND-EXTENTS-001.md);
+> closure:
+> [`../tickets/archive/CQA-03-15-IDENTITY-AND-EXTENTS-001-COMPLETE.md`](../tickets/archive/CQA-03-15-IDENTITY-AND-EXTENTS-001-COMPLETE.md).
+> The text below is the finding **as originally recorded** and is not restated.
 
 - **Location:** canonical ROM identity `940ad5f0...f059e` written three times in
   production (`map_render.py:72-74`, `export/map_browser.py:53-55`,
@@ -1351,6 +1412,35 @@ Then, dependency-aware grouping for the remaining must-fix set:
 
 The MEDIUM set is **not** automatically promoted into mandatory work, and the LOW
 findings are **not** to be batch-fixed.
+
+### REMEDIATION STATUS
+
+Added at the CQA-03-15 closeout (2026-09-23). This is the running state of the
+must-fix set above; a finding's text is never edited, only annotated in place.
+
+| finding | severity | status |
+| --- | --- | --- |
+| CQA-01 | CRITICAL | **CLOSED** - CQA-01-OUTPUT-SAFETY-001 |
+| CQA-02 | CRITICAL | **CLOSED** - CQA-02-PACKED-STREAM-TERMINATION-001 |
+| CQA-03 | HIGH | **CLOSED** - CQA-03-15-IDENTITY-AND-EXTENTS-001 |
+| CQA-15 | MEDIUM | **CLOSED** - CQA-03-15-IDENTITY-AND-EXTENTS-001 |
+| CQA-04 | HIGH | **OPEN** - the duplicated map/graphics decode stacks still exist and are not consolidated; only their profile identity/extents moved |
+| CQA-05 | HIGH | OPEN |
+| CQA-06 | HIGH | OPEN |
+| CQA-07 | HIGH | OPEN |
+| CQA-08 | HIGH | OPEN |
+| CQA-09 | HIGH | OPEN |
+| CQA-12 | HIGH | OPEN |
+| CQA-10 | MEDIUM | **PARTIAL / IMPROVED** (not closed; output-safety ownership is done, overwrite-policy divergence remains) |
+
+Remaining pre-capacity blockers, in the dependency-aware groups above:
+**CQA-04**, **CQA-05 + CQA-06**, **CQA-07**, **CQA-08**, **CQA-09**, **CQA-12**, and
+**CQA-10**. `ROM-CAPACITY-AND-ALLOCATION-001` therefore stays **BLOCKED**.
+
+Next active ticket: **CQA-04-DECODE-STACK-AUTHORITY-001**, the group D work: decide
+one reader of record per binary concept so the future capacity/allocation work and
+the production map-layout writer do not depend on two unverified interpretations of
+the same binary structures.
 
 ### SHOULD FIX BEFORE MAJOR NEW AUTHORING FEATURES
 

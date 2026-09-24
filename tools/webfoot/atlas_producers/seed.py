@@ -15,9 +15,12 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from ..binary import GBA_ROM_BASE as BASE
 from ._io import write_jsonl
 
-BASE = 0x08000000
+#: Every address in this seed table is a GBA address. `BASE` is the sanctioned
+#: `binary.GBA_ROM_BASE` rather than a second literal of it, so the address
+#: window this table is checked against has one owner.
 
 
 def _rows() -> list[dict]:
@@ -48,7 +51,7 @@ def _rows() -> list[dict]:
         })
 
     # ---------------------------------------------------------------- header
-    add(off=0x000000, addr=0x08000000, size=0x100, kind="other",
+    add(off=0x000000, addr=BASE, size=0x100, kind="other",
         identity="gba_header",
         conf="CONFIRMED",
         source="docs/research/BUU_VERIFIED_CAPACITY.md:116",

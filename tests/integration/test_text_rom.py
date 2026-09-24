@@ -121,7 +121,10 @@ def test_the_pointer_table_tiles_the_pool_exhaustively(image: bytes):
     pool base, and the last ends at the pool end - so the 1,534 enumerated
     strings account for every one of the pool's bytes with no gap or overlap.
     """
-    assert tt.pool_is_exhaustively_tiled(image)
+    assert tt.pool_is_exhaustively_tiled(
+        image, table_start=TABLE_START, count=ENTRY_COUNT,
+        pool_start=POOL_START, pool_end=POOL_END,
+    )
 
 
 def test_every_pointer_is_distinct_and_strictly_ascending(image: bytes):
@@ -131,7 +134,7 @@ def test_every_pointer_is_distinct_and_strictly_ascending(image: bytes):
     change another - and what makes a no-op build unable to split or duplicate
     a shared string.
     """
-    targets = [tt.read_pointer(image, i) for i in range(ENTRY_COUNT)]
+    targets = [tt.read_pointer(image, i, TABLE_START) for i in range(ENTRY_COUNT)]
     assert len(set(targets)) == ENTRY_COUNT
     assert targets == sorted(targets)
     assert all(a < b for a, b in zip(targets, targets[1:]))
@@ -160,7 +163,7 @@ def test_only_five_words_coincidentally_match_a_string_address(image: bytes):
     data. They are CANDIDATE, not CONFIRMED, and the relocation machinery fails
     closed on them - proved portably in `tests/unit/test_text_relocation.py`.
     """
-    starts = {tt.read_pointer(image, i) for i in range(ENTRY_COUNT)}
+    starts = {tt.read_pointer(image, i, TABLE_START) for i in range(ENTRY_COUNT)}
     table_end = TABLE_START + ENTRY_COUNT * 4
     coincidences = []
     for offset in range(0, len(image) - 3, 4):

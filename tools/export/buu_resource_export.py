@@ -55,13 +55,23 @@ from . import canonical as canon
 from . import metadata as meta
 from . import naming
 from . import png
+from . import profile_authority
 from . import render
 from . import webfoot_strict as ws
 
-#: The only image this exporter is authorized to read.
-CANONICAL_ROM_SHA256 = (
-    "940ad5f01db4465b8877dfe739510cbf34f4ea3d390f3df13519808bc36f059e"
-)
+#: The image this exporter is authorized to read. Both halves come from the
+#: packaged profile, which is the one owner of this identity; the exporter's
+#: census below compares against the same declaration rather than a literal.
+CANONICAL_ROM_SHA256 = profile_authority.canonical_export_identity().sha256
+
+
+def canonical_map_entry_count() -> int:
+    """The profile's declared MapEntry count, for the census below."""
+    table = profile_authority.canonical_export_profile().map_entries
+    if table is None:
+        raise ExportError("packaged canonical profile declares no map_entries table")
+    return table.count
+
 
 TOOL_NAME = "buu_resource_export"
 TOOL_VERSION = "1"
@@ -91,11 +101,13 @@ BACKDROP_PALETTE_INDEX = 0
 #: written with `composite_runtime_status` saying which of the two they are.
 COMPOSITE_PLACEMENT_MODEL = "origin_aligned_descending_addend_bg"
 
-#: The accepted populations this export must account for exactly.
+#: The accepted populations this export must account for exactly. The MapEntry
+#: population is the profile's declaration, not a second literal: this census is
+#: what fails loudly if the readers stop accounting for the whole table.
 EXPECTED_POPULATIONS = {
-    "map_entries": 452,
-    "maps_exported": 452,
-    "map_directories_written": 452,
+    "map_entries": canonical_map_entry_count(),
+    "maps_exported": canonical_map_entry_count(),
+    "map_directories_written": canonical_map_entry_count(),
     "map_layers_classified": 1808,
     "sprite_definitions": 297,
     "animation_slots": 4070,
@@ -745,7 +757,7 @@ class Exporter:
                 PALETTE_OBJECT_ID,
                 "object",
                 self.object_palette,
-                canon.OBJECT_PALETTE_ADDRESS,
+                self.rom.object_palette_address(),
                 "bgr555_le_u16",
                 canon.OBJECT_PALETTE_ENTRIES,
             ),
@@ -753,7 +765,7 @@ class Exporter:
                 PALETTE_BACKGROUND_ID,
                 "background",
                 self.bg_palette,
-                canon.BG_PALETTE_ADDRESS,
+                self.rom.bg_palette_address(),
                 "rgb888",
                 canon.BG_PALETTE_ENTRIES,
             ),

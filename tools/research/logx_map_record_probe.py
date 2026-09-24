@@ -12,11 +12,7 @@ import json
 from collections import Counter
 from pathlib import Path
 
-from tools.webfoot.formats.text_tables import (
-    TEXT_ENTRY_COUNT,
-    decode_string,
-    read_pointer,
-)
+from tools.webfoot.formats.text_tables import decode_string, read_pointer
 
 
 ROM_SIZE = 0x800000
@@ -25,6 +21,13 @@ TABLE_OFFSET = 0x08E2E0
 RECORD_SIZE = 0x38
 RECORD_COUNT = 0x1C4
 TABLE_END = TABLE_OFFSET + RECORD_SIZE * RECORD_COUNT
+
+#: The accepted UTF-16LE text pointer table, as this probe independently
+#: measured it. Kept as the probe's own literal rather than imported from the
+#: codec: a probe that read the extent from the code it checks could not detect
+#: that code drifting.
+TEXT_TABLE_FILE_OFFSET = 0x0006BCE8
+TEXT_ENTRY_COUNT = 1534
 
 
 def _u16le(data: bytes, offset: int) -> int:
@@ -53,7 +56,7 @@ def analyze(data: bytes) -> dict[str, object]:
         key_le = _u16le(data, offset)
         text_word = _u32le(data, offset + 0x0C)
         text_index = text_word & 0xFFFF
-        text_offset = read_pointer(data, text_index)
+        text_offset = read_pointer(data, text_index, TEXT_TABLE_FILE_OFFSET)
         text, _ = decode_string(data, text_offset)
         first_raw = _u32le(data, offset + 0x2C)
         second_raw = _u32le(data, first_raw - ROM_BASE) if _in_rom_word(first_raw, len(data)) else None

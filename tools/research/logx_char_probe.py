@@ -83,10 +83,17 @@ FIELD_08 = 0x08
 FIELD_0C = 0x0C
 
 #: GBA address of the accepted UTF-16LE text pointer table (TOOLKIT-004).
-TEXT_TABLE_ADDRESS = text_tables.TEXT_TABLE_START + ROM_BASE
+#: The offset and count are this probe's OWN independent measurements, kept as
+#: literals on purpose: a probe that read them from the codec it is checking
+#: could not detect the codec drifting. The candidate table address and the
+#: engine's own loop bound are what the probe tests, so they stay here.
+TEXT_TABLE_FILE_OFFSET = 0x0006BCE8
 
 #: Entries in that table; an index at or above this is out of range.
-TEXT_TABLE_ENTRIES = text_tables.TEXT_ENTRY_COUNT
+TEXT_TABLE_ENTRIES = 1534
+
+#: GBA address of the accepted UTF-16LE text pointer table.
+TEXT_TABLE_ADDRESS = TEXT_TABLE_FILE_OFFSET + ROM_BASE
 
 # --- engine consumers --------------------------------------------------------
 
@@ -322,7 +329,7 @@ def resolve_text(data: bytes, index: int) -> str:
     """The string a u16 text index selects, through the accepted text codec."""
     if not 0 <= index < TEXT_TABLE_ENTRIES:
         raise CharProbeError(f"text index {index} is outside 0..{TEXT_TABLE_ENTRIES - 1}")
-    offset = text_tables.read_pointer(data, index)
+    offset = text_tables.read_pointer(data, index, TEXT_TABLE_FILE_OFFSET)
     text, _ = text_tables.decode_string(data, offset)
     return text
 
@@ -331,7 +338,7 @@ def text_target(data: bytes, index: int) -> int:
     """The GBA address a text index selects, through the accepted text table."""
     if not 0 <= index < TEXT_TABLE_ENTRIES:
         raise CharProbeError(f"text index {index} is outside 0..{TEXT_TABLE_ENTRIES - 1}")
-    return text_tables.read_pointer(data, index) + ROM_BASE
+    return text_tables.read_pointer(data, index, TEXT_TABLE_FILE_OFFSET) + ROM_BASE
 
 
 def field_04_target(data: bytes, identifier: int) -> int:

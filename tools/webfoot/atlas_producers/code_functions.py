@@ -27,10 +27,17 @@ from collections import Counter
 from pathlib import Path
 
 from ..analysis.thumb import addr_to_offset, offset_to_addr
+from ..capability import Capability, packaged_contract
 from ._io import read_jsonl, write_jsonl
 from .traversal import BASE, MAX_DEPTH, MAX_FUNC_SCAN, Traversal
 
-EXPECTED_SHA = "940ad5f01db4465b8877dfe739510cbf34f4ea3d390f3df13519808bc36f059e"
+#: The image this pass was measured against. Read from the packaged profile -
+#: the one authority for that identity - rather than restated as a literal that
+#: could drift from it (CQA-15).
+_CANONICAL_PROFILE_ID = "buus_fury_usa_rev0_01c1707f"
+EXPECTED_SHA = packaged_contract(
+    _CANONICAL_PROFILE_ID, Capability.MAP_ENTRIES
+).identity.sha256
 #: The ticket's dark code region, in file offsets. Reporting only.
 REGION_LO, REGION_HI = 0x0012846, 0x00554C0
 #: trace.py scanned this window for jump tables (trace.py:248-249).

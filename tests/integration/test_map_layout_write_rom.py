@@ -10,6 +10,7 @@ import pytest
 
 from tools.export import canonical as canon
 from tools.export import map_browser
+from tools.export import profile_authority
 from tools.export import render
 from tools.webfoot.map_layout_write import MapLayoutWriter, MapLayoutWriteError
 
@@ -21,6 +22,10 @@ ORIGINAL = 0x082928DC
 REPLACEMENT = 0x08292A54
 FILE_OFFSET = 0x00292CA0
 
+#: The identity every address in this writer's stack is resolved against. Read
+#: from the packaged profile, which owns it, rather than from a literal here.
+SUPPORTED_ROM_SHA256 = profile_authority.canonical_export_identity().sha256
+
 
 @pytest.fixture(scope="module")
 def canonical_input() -> tuple[Path, bytes]:
@@ -28,7 +33,7 @@ def canonical_input() -> tuple[Path, bytes]:
     if not path.is_file():
         pytest.skip("canonical Buu ROM not configured locally")
     data = path.read_bytes()
-    assert hashlib.sha256(data).hexdigest() == map_browser.SUPPORTED_ROM_SHA256
+    assert hashlib.sha256(data).hexdigest() == SUPPORTED_ROM_SHA256
     return path, data
 
 
@@ -88,10 +93,10 @@ def test_fixed_width_edit_noop_inverse_and_render(
     writer.set_chunk_pointer(MAP, LAYER, CELL, ORIGINAL)
     inverse = writer.build()
     assert inverse == source
-    assert hashlib.sha256(inverse).hexdigest() == map_browser.SUPPORTED_ROM_SHA256
+    assert hashlib.sha256(inverse).hexdigest() == SUPPORTED_ROM_SHA256
     assert source_path.stat().st_size == source_stat.st_size
     assert source_path.stat().st_mtime_ns == source_stat.st_mtime_ns
-    assert hashlib.sha256(source_path.read_bytes()).hexdigest() == map_browser.SUPPORTED_ROM_SHA256
+    assert hashlib.sha256(source_path.read_bytes()).hexdigest() == SUPPORTED_ROM_SHA256
 
 
 def test_invalid_replacements_fail_closed(canonical_input: tuple[Path, bytes]) -> None:

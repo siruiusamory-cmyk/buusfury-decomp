@@ -7,6 +7,7 @@ private inputs and retain the older renderer as an independent code-path oracle.
 
 from __future__ import annotations
 
+from dataclasses import replace
 import hashlib
 from pathlib import Path
 import struct
@@ -14,7 +15,45 @@ import struct
 import pytest
 
 from tools.webfoot import map_render as mr
+from tools.webfoot.binary import GBA_ROM_BASE, GbaRomAddress
 from tools.webfoot.formats import bg_tilemap, webfoot_lz
+from tools.webfoot.profile import MapEntryTableProfile, RomProfile
+
+
+# --- a deliberately non-Buu map table ----------------------------------------
+#
+# The fixture ROM's MapEntry table lives somewhere the canonical profile does
+# NOT declare, so every test that resolves a descriptor proves the address and
+# the record stride came from the supplied profile. Reintroducing a Buu literal
+# into `resolve_descriptor` breaks these tests; that is the point of the offset.
+
+_SYNTHETIC_MAP_TABLE_ADDRESS = 0x080A0000
+_SYNTHETIC_MAP_TABLE_COUNT = 8
+_SYNTHETIC_MAP_INDEX = 3
+#: Set once the fixture bytes exist: the profile's own hash for this image, so
+#: `render_map`'s identity gate is satisfied by a declared identity rather than
+#: by a monkeypatched module constant.
+_SYNTHETIC_SHA256 = ""
+
+
+def synthetic_profile(*, sha256: str | None = None) -> RomProfile:
+    """The packaged canonical profile with a different map table and identity.
+
+    Only the two facts these tests must observe are changed; every other
+    declaration is the canonical profile's, so the fixture cannot pass by
+    accidentally matching a second, independently invented profile.
+    """
+    base = mr.canonical_profile()
+    return replace(
+        base,
+        id="synthetic_map_render_profile",
+        sha256=sha256 if sha256 is not None else _SYNTHETIC_SHA256,
+        map_entries=MapEntryTableProfile(
+            address=GbaRomAddress(_SYNTHETIC_MAP_TABLE_ADDRESS),
+            count=_SYNTHETIC_MAP_TABLE_COUNT,
+            record_size=base.map_entries.record_size,
+        ),
+    )
 
 
 # --- synthetic ROM (identity + palette only) ---------------------------------
@@ -23,7 +62,7 @@ _ROM_SIZE = 0x800000  # 8 MiB, matching the canonical image size.
 
 
 def _place(rom: bytearray, address: int, data: bytes) -> None:
-    offset = address - mr.GBA_ROM_BASE
+    offset = address - GBA_ROM_BASE
     rom[offset : offset + len(data)] = data
 
 
@@ -31,8 +70,11 @@ def _synthetic_rom() -> tuple[bytes, int]:
     """A fake ROM wired for one complete ROM-only map assembly."""
     rom = bytearray(_ROM_SIZE)
 
-    map_index = 3
-    map_entry = mr.MAP_ENTRY_TABLE_ADDRESS + map_index * mr.MAP_ENTRY_STRIDE
+    profile = synthetic_profile()
+    map_index = _SYNTHETIC_MAP_INDEX
+    table = profile.map_entries
+    assert table is not None
+    map_entry = table.address.raw + map_index * table.record_size
     descriptor = 0x08300000
     scene_pointer_target = 0x08310000
     _place(rom, map_entry + mr.MAP_ENTRY_SCENE_POINTER_OFFSET,
@@ -64,7 +106,7 @@ def _synthetic_rom() -> tuple[bytes, int]:
     palette = bytearray()
     for i in range(mr.BG_PALETTE_ENTRIES):
         palette += bytes((i, (i * 2) & 0xFF, (i * 3) & 0xFF))
-    _place(rom, mr.BG_PALETTE_ADDRESS, bytes(palette))
+    _place(rom, mr.canonical_profile().actor_sprites.bg_palette_address.raw, bytes(palette))
     return bytes(rom), descriptor
 
 
@@ -97,6 +139,21 @@ def synthetic_rom():
     return rom
 
 
+@pytest.fixture
+def profile() -> RomProfile:
+    return synthetic_profile()
+
+
+def _rendering_profile(rom: bytes) -> RomProfile:
+    """The synthetic profile, hashed to the fixture bytes it describes.
+
+    `render_map` compares the image against the profile's declared identity, so
+    a profile that describes *these* bytes is what makes the positive path
+    reachable without stubbing a module constant.
+    """
+    return synthetic_profile(sha256=hashlib.sha256(rom).hexdigest())
+
+
 # --- T1: identity + palette (ROM-proven) -------------------------------------
 
 def test_parse_map_id_is_decimal():
@@ -111,10 +168,35 @@ def test_parse_map_id_fails_closed(bad):
         mr.parse_map_id(bad)
 
 
-def test_resolve_descriptor_walks_map_entry(synthetic_rom):
-    entry, _pointer, descriptor = mr.resolve_descriptor(synthetic_rom, 3)
-    assert entry == mr.MAP_ENTRY_TABLE_ADDRESS + 3 * mr.MAP_ENTRY_STRIDE
+def test_resolve_descriptor_walks_map_entry(synthetic_rom, profile):
+    """The descriptor is reached through the row the SUPPLIED profile declares."""
+    entry, _pointer, descriptor = mr.resolve_descriptor(
+        synthetic_rom, _SYNTHETIC_MAP_INDEX, profile=profile
+    )
+    table = profile.map_entries
+    assert table is not None
+    assert entry == table.address.raw + _SYNTHETIC_MAP_INDEX * table.record_size
     assert descriptor == 0x08300000
+
+
+def test_resolve_descriptor_uses_the_profile_address_not_a_buu_literal(synthetic_rom, profile):
+    """A relocated table is found; Buu's address would resolve nothing.
+
+    This is the parameterization proof: the fixture's table is NOT at the
+    canonical profile's address, so a reintroduced Buu constant fails here.
+    """
+    canonical = mr.canonical_profile()
+    assert profile.map_entries.address != canonical.map_entries.address
+    assert profile.map_entries.address.raw == _SYNTHETIC_MAP_TABLE_ADDRESS
+    # The canonical address holds no wired entry in this image, so resolving
+    # against the canonical profile cannot produce the fixture's descriptor.
+    with pytest.raises(mr.MapRenderError):
+        mr.resolve_descriptor(synthetic_rom, _SYNTHETIC_MAP_INDEX, profile=canonical)
+
+
+def test_map_index_beyond_the_profile_count_is_refused(synthetic_rom, profile):
+    with pytest.raises(mr.MapRenderError, match="declared map-entry range"):
+        mr.resolve_descriptor(synthetic_rom, _SYNTHETIC_MAP_TABLE_COUNT, profile=profile)
 
 
 def test_bg_palette_requantises_to_five_bits(synthetic_rom):
@@ -198,28 +280,35 @@ def test_multiple_atlases_duplicate_selectors_and_unused_tiles():
     assert chars[:192] == bytes([5]) * 64 + bytes([7]) * 128
 
 
-def test_render_map_is_rom_only_and_deterministic(synthetic_rom, monkeypatch):
-    monkeypatch.setattr(mr, "SUPPORTED_ROM_SHA256", hashlib.sha256(synthetic_rom).hexdigest())
-    first = mr.render_map(synthetic_rom, "map:0003")
-    second = mr.render_map(synthetic_rom, "map:0003")
+def test_render_map_is_rom_only_and_deterministic(synthetic_rom):
+    """`render_map` renders against the supplied profile, not the packaged one."""
+    profile = _rendering_profile(synthetic_rom)
+    first = mr.render_map(synthetic_rom, "map:0003", profile=profile)
+    second = mr.render_map(synthetic_rom, "map:0003", profile=profile)
     assert first == second
     assert first.width == first.height == 256
     assert set(first.composite) == {9}
     assert first.provenance["tile_selector_address"] == "0x08320000"
+    # The provenance names the row this profile declares, so a Buu literal in
+    # the renderer would show up here as well as in the descriptor address.
+    assert first.provenance["map_entry_address"] == (
+        f"{_SYNTHETIC_MAP_TABLE_ADDRESS + _SYNTHETIC_MAP_INDEX * profile.map_entries.record_size:#010x}"
+    )
 
 
 def test_unsupported_layer_variant_fails_closed():
     rom, descriptor = _synthetic_rom()
     changed = bytearray(rom)
-    record = struct.unpack_from("<I", changed, descriptor - mr.GBA_ROM_BASE + 0x14)[0]
+    record = struct.unpack_from("<I", changed, descriptor - GBA_ROM_BASE + 0x14)[0]
     _place(changed, record, struct.pack("<I", 0x08001235))
     with pytest.raises(mr.UnsupportedMapAssemblyVariant, match="layer handler"):
         mr.reconstruct_map_assembly(bytes(changed), descriptor)
 
 
 def test_render_map_refuses_unverified_rom_bytes(synthetic_rom):
+    """A profile whose declared identity is not these bytes is refused."""
     with pytest.raises(mr.MapRenderError, match="SHA-256"):
-        mr.render_map(synthetic_rom, "map:0003")
+        mr.render_map(synthetic_rom, "map:0003", profile=synthetic_profile())
 
 
 def test_tileset_atlas_must_match_the_proven_0x4000_extent():

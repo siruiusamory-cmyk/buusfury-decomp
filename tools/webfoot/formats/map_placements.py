@@ -12,7 +12,8 @@ from __future__ import annotations
 from dataclasses import dataclass, replace
 import struct
 
-ROM_BASE = 0x08000000
+from ..binary import GBA_ROM_BASE as ROM_BASE
+
 FACTORY_RAW = 0x0800FD55
 PREFIX_SIZE = 0x1C
 PLACEMENT_SIZE = 32  # Legacy size only; never a production stride.

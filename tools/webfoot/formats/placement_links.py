@@ -267,7 +267,7 @@ class DialogTextReference:
     y: int
 
 
-def dialog_text_references(image, record, spec, dialog_text):
+def dialog_text_references(image, record, spec, dialog_text, text_count):
     """Text-table indices a type-0 dialog proves it renders, or ().
 
     The consumer slot is named by the contract, never inferred. Native handler
@@ -275,6 +275,11 @@ def dialog_text_references(image, record, spec, dialog_text):
     indexes the verified text pointer table and measures the result as a
     UTF-16LE NUL-terminated string before drawing it. So the index is the value
     pushed *first*, which is exactly what `_producer` resolves at that depth.
+
+    `text_count` is the profile's declared text-table count, supplied by the
+    caller. It is the live bound this refuses an out-of-range index against, so
+    it is the profile's declaration rather than a second copy of the number in
+    the contract: a stale copy would reject a valid index or admit a wrong one.
 
     A call whose index is left by an earlier instruction rather than a literal
     push is computed at runtime and yields nothing. Refusing it is the point:
@@ -302,7 +307,7 @@ def dialog_text_references(image, record, spec, dialog_text):
             if where != 1 or len(producer.operands) != depth + 1:
                 continue
             operand = producer.operands[where]
-            if not 0 <= operand.value < dialog_text['count']:
+            if not 0 <= operand.value < text_count:
                 raise ValueError('dialog text index outside declared table')
             offset = start + producer.source_offset + 1
             for earlier in producer.operands[:where]:

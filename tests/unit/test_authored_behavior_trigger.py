@@ -40,8 +40,16 @@ def placement(*, trigger="on_defeat", behavior=BEHAVIOR):
 
 
 def maps(profile=PROFILE, sha256=SHA256):
+    """A stand-in `Maps` carrying the two facts the trigger gate reads.
+
+    `profile.sha256` is the profile's declared identity, which is what the gate
+    compares a contract against; `identification.hashes.sha256` is the loaded
+    image's hash, which is what the stand-in previously carried. Both are set to
+    the same value here so the fixture models a matched profile, and a case that
+    wants to model a mismatched one overrides `sha256`.
+    """
     return SimpleNamespace(
-        profile=SimpleNamespace(id=profile),
+        profile=SimpleNamespace(id=profile, sha256=sha256),
         identification=SimpleNamespace(hashes=SimpleNamespace(sha256=sha256)),
     )
 

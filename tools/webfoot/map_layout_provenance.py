@@ -40,6 +40,7 @@ import re
 
 from tools.export import canonical as canon
 from tools.export import map_browser as mb
+from tools.export import profile_authority
 
 from .authored_image import (
     AUTHORED_MANIFEST_SUFFIX,
@@ -143,6 +144,11 @@ def _check_layout_changes(
     """
     # The owner vocabulary is checked first, over the whole document: a manifest
     # this editor did not write is refused without reading the image at all.
+    # The one reader is built up front because the profile's declared MapEntry
+    # count is the bound the owner string is checked against, and that bound is
+    # read from the profile through the reader rather than from a constant.
+    rom = canon.Rom(canonical_image)
+    map_entry_count = rom.map_entry_count()
     targets: list[tuple[int, int, int]] = []
     for change in declared:
         match = _OWNER.match(change.owner)
@@ -154,13 +160,12 @@ def _check_layout_changes(
         map_index = int(match.group(1))
         layer_slot = int(match.group(2))
         cell = int(match.group(3))
-        if map_index >= canon.MAP_ENTRY_COUNT:
+        if map_index >= map_entry_count:
             raise ProvenanceError(
                 f"the manifest names map:{map_index:04d}, which is out of range"
             )
         targets.append((map_index, layer_slot, cell))
 
-    rom = canon.Rom(canonical_image)
     entries = canon.read_map_entries(rom)
     writer = MapLayoutWriter(canonical_image)
     for change, (map_index, layer_slot, cell) in zip(declared, targets):
@@ -230,7 +235,7 @@ def verify_authored_rom(
         verified = verify_authored_image(
             rom_path,
             manifest_path=manifest_path,
-            canonical_sha256=mb.SUPPORTED_ROM_SHA256,
+            canonical_sha256=profile_authority.canonical_export_identity().sha256,
             field_bytes=FIELD_BYTES,
             expected_reason=REASON,
             check_changes=_check_layout_changes,

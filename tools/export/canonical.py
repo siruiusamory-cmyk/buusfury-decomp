@@ -30,15 +30,33 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 import struct
+from typing import TYPE_CHECKING
 
+from tools.webfoot.formats import map_entry as _me
+from tools.webfoot.formats import text_tables as _tt
+
+from . import profile_authority
 from . import webfoot_strict as ws
+
+if TYPE_CHECKING:  # pragma: no cover - typing only
+    from tools.webfoot.profile import (
+        AtlasIdentity,
+        RomProfile,
+        TextTableProfile,
+    )
 
 # --- accepted constants ------------------------------------------------------
 
-#: MapEntry table: 452 fixed records, stride 0x38, no terminator.
-MAP_ENTRY_TABLE_ADDRESS = 0x0808E2E0
-MAP_ENTRY_STRIDE = 0x38
-MAP_ENTRY_COUNT = 452
+#: The MapEntry record shape is the format's, owned by `webfoot.formats.map_entry`
+#: and re-exported here so this module's callers keep one import site. The TABLE
+#: address and its record COUNT are the profile's declarations and are read
+#: through `Rom.map_entry_table_address()` / `Rom.map_entry_count()`; they are
+#: deliberately not restated as module constants (CQA-15).
+MAP_ENTRY_STRIDE = _me.MAP_ENTRY_SIZE
+
+#: One pointer-table entry is one little-endian GBA address. The width is a
+#: format fact and comes from the codec, so this module does not spell it "4".
+TEXT_POINTER_SIZE = _tt.TEXT_POINTER_SIZE
 
 #: MapEntry fields the accepted discovery route uses.
 MAP_ENTRY_KEY_OFFSET = 0x00        # two ordered key bytes
@@ -150,8 +168,10 @@ BANK_TILE_BYTES = 64
 #: declaring zero bytes, so substituting it and skipping it both write no pixels.
 DEFAULT_CHUNK_CONTAINER = 0x08070808
 
-#: Engine-global background palette: 256 RGB888 triples, uncompressed.
-BG_PALETTE_ADDRESS = 0x080701B0
+#: Engine-global background palette: 256 RGB888 triples, uncompressed. The
+#: ENTRY COUNT and byte size are format facts; the ADDRESS is the profile's
+#: (`tables.actor_sprites.bg_palette_address`), read through
+#: `Rom.bg_palette_address()`, not restated here (CQA-15).
 BG_PALETTE_ENTRIES = 256
 BG_PALETTE_BYTES = BG_PALETTE_ENTRIES * 3
 
@@ -212,15 +232,11 @@ OBJECT_DIMENSIONS = (
     ((8, 16), (8, 32), (16, 32), (32, 64)),
 )
 
-#: Object palette: 256 little-endian BGR555 words at the profile-declared
-#: address. Declared by `config/roms.yaml` as `object_palette_address`.
-OBJECT_PALETTE_ADDRESS = 0x0805652C
+#: Object palette entries: one 256-word palette is the OAM palette size, a
+#: format fact. Its address is the profile's (`tables.actor_sprites.
+#: object_palette_address`) and is read through `_profile()`, not restated.
 OBJECT_PALETTE_ENTRIES = 256
 OBJECT_PALETTE_BYTES = OBJECT_PALETTE_ENTRIES * 2
-
-#: Text pointer table the MapEntry `+0x0C` low half resolves through.
-TEXT_POINTER_TABLE_ADDRESS = 0x0806BCE8
-TEXT_POINTER_COUNT = 1534
 
 #: Appearance-definition table: 232 fixed records, stride 0x10. Each record
 #: carries two text-table relationships and a sprite-definition selection.
@@ -412,15 +428,87 @@ def to_file_offset(address: int, size: int) -> int:
 
 
 class Rom:
-    """Bounds-checked little-endian reader over the immutable ROM bytes."""
+    """Bounds-checked little-endian reader over the immutable ROM bytes.
 
-    __slots__ = ("data", "size")
+    The reader also carries the profile whose extents it resolves, so no table
+    address or count is a module constant here. `profile_authority` supplies the
+    packaged catalog's entry for the image this stack was verified against;
+    every address and bound below is read from it, which is what makes the
+    declaration the single owner of these facts instead of a literal beside it.
+    """
 
-    def __init__(self, data: bytes) -> None:
+    __slots__ = ("data", "size", "_profile")
+
+    def __init__(self, data: bytes, *, profile: "RomProfile | None" = None) -> None:
         if not isinstance(data, (bytes, bytearray)):
             raise CanonicalError("ROM must be bytes")
         self.data = bytes(data)
         self.size = len(self.data)
+        self._profile = profile
+
+    @property
+    def profile(self) -> "RomProfile":
+        """The profile this reader resolves addresses against."""
+        if self._profile is None:
+            self._profile = profile_authority.canonical_export_profile()
+        return self._profile
+
+    @property
+    def identity(self) -> "AtlasIdentity":
+        """The base image this reader's extents describe."""
+        return self.profile.identity
+
+    def map_entry_count(self) -> int:
+        """This profile's declared MapEntry count: the live index bound."""
+        table = self.profile.map_entries
+        if table is None:
+            raise CanonicalError(
+                f"profile {self.profile.id!r} declares no map_entries table"
+            )
+        return table.count
+
+    def map_entry_table_address(self) -> int:
+        table = self.profile.map_entries
+        if table is None:
+            raise CanonicalError(
+                f"profile {self.profile.id!r} declares no map_entries table"
+            )
+        return table.address.raw
+
+    def map_entry_stride(self) -> int:
+        table = self.profile.map_entries
+        if table is None:
+            raise CanonicalError(
+                f"profile {self.profile.id!r} declares no map_entries table"
+            )
+        return table.record_size
+
+    def text_table(self) -> "TextTableProfile":
+        """This profile's declared text pointer table: address, count and pool."""
+        table = self.profile.text_strings
+        if table is None:
+            raise CanonicalError(
+                f"profile {self.profile.id!r} declares no text_strings table"
+            )
+        return table
+
+    def object_palette_address(self) -> int:
+        """The profile-declared OAM palette address."""
+        sprites = self.profile.actor_sprites
+        if sprites is None:
+            raise CanonicalError(
+                f"profile {self.profile.id!r} declares no actor_sprites palette"
+            )
+        return sprites.object_palette_address.raw
+
+    def bg_palette_address(self) -> int:
+        """The profile-declared engine-global background palette address."""
+        sprites = self.profile.actor_sprites
+        if sprites is None:
+            raise CanonicalError(
+                f"profile {self.profile.id!r} declares no actor_sprites palette"
+            )
+        return sprites.bg_palette_address.raw
 
     def offset(self, address: int) -> int:
         return to_file_offset(address, self.size)
@@ -474,10 +562,16 @@ class Rom:
         The pointer table and its UTF-16LE NUL-terminated pool are the accepted
         text structures; only the resolution is performed here, and an index
         that does not resolve returns ``None`` rather than being guessed at.
+
+        The index bound and the table address are the profile's declaration,
+        read here rather than held as a module constant: this bound decides
+        which indices a MapEntry label resolves through, so a stale copy of it
+        would silently read the wrong slot or refuse a valid one.
         """
-        if not 0 <= index < TEXT_POINTER_COUNT:
+        table = self.text_table()
+        if not 0 <= index < table.count:
             return None
-        pointer_address = TEXT_POINTER_TABLE_ADDRESS + index * 4
+        pointer_address = table.pointer_table_address.raw + index * TEXT_POINTER_SIZE
         try:
             address = self.u32(pointer_address)
         except CanonicalError:
@@ -668,11 +762,18 @@ class LayerRecord:
 
 
 def read_map_entries(rom: Rom) -> tuple[MapEntry, ...]:
-    """Read all 452 MapEntry records and resolve each one's selector-1 root."""
+    """Read every MapEntry record this profile declares and resolve its root.
+
+    The count, base address and stride all come from the profile through the
+    reader, so a profile that declares a different table is enumerated at its
+    own extent rather than at Buu's.
+    """
     entries: list[MapEntry] = []
-    for index in range(MAP_ENTRY_COUNT):
-        address = MAP_ENTRY_TABLE_ADDRESS + index * MAP_ENTRY_STRIDE
-        rom.span(address, MAP_ENTRY_STRIDE)
+    table_address = rom.map_entry_table_address()
+    stride = rom.map_entry_stride()
+    for index in range(rom.map_entry_count()):
+        address = table_address + index * stride
+        rom.span(address, stride)
         key_high = rom.u8(address + MAP_ENTRY_KEY_OFFSET)
         key_low = rom.u8(address + MAP_ENTRY_KEY_OFFSET + 1)
         text_word = rom.u32(address + MAP_ENTRY_TEXT_OFFSET)

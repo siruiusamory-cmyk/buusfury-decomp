@@ -54,7 +54,16 @@ def types(monkeypatch):
         'placement_types': {'table_address': 0x08000800, 'stride': 28, 'max_selector': 3,
                             'factory_raw': FACTORY_RAW, 'constructor_address': 0x08000320,
                             'evidence': 'synthetic indexed constructor'},
-        'enemy_stats': {'address': 0x08000800, 'count': 3, 'record_size': 28}})
+        'enemy_stats': {'address': 0x08000800, 'count': 3, 'record_size': 28},
+        # A declared text table, so a caller that bounds a text index by the
+        # profile's declaration (rather than by a literal) has a number to read.
+        # The scene tests stub SCRIPT_EFFECTS against this profile, so without it
+        # the profile would declare no text domain to bound against.
+        'text_strings': {'pointer_table_address': 0x08000600, 'count': 1534,
+                         'pool_address': 0x08000400, 'pool_size': 512,
+                         'encoding': 'utf16le_nul_terminated', 'alignment': 2,
+                         'relocatable': False,
+                         'evidence': 'synthetic text table for profile-bound tests'}})
     catalog = RomProfileCatalog([profile])
     monkeypatch.setattr(capability, '_packaged_catalog', lambda: catalog)
     hashes = hashes_for(data)

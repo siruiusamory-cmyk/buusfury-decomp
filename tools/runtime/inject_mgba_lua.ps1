@@ -191,6 +191,9 @@ $allowedLua = @(
         (Join-Path $workspaceRoot 'tools\runtime\rom_expand_001_snapshot.lua')
     )
     [System.IO.Path]::GetFullPath(
+        (Join-Path $workspaceRoot 'tools\runtime\capacity001_expanded_dialogue_probe.lua')
+    )
+    [System.IO.Path]::GetFullPath(
         (Join-Path $workspaceRoot 'tools\runtime\toolkit038_scenario_watch.lua')
     )
     [System.IO.Path]::GetFullPath(

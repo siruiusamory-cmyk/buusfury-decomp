@@ -678,3 +678,130 @@ The machine-readable independent verdict above is the **local** review, which th
 ticket permits as a secondary reviewer, and it is labelled local throughout. It is
 not presented as a cloud review.
 
+
+---
+
+## 12. Domain reachable-capacity map (Checkpoint D addendum)
+
+Checkpoint A answered *what each pointer domain can address* qualitatively. This
+section answers it **quantitatively**, and it keeps three reachability levels
+apart because collapsing them is exactly how a 32-bit field becomes a capacity
+claim:
+
+| Level | Meaning | Domains |
+|---|---|---|
+| **ENCODING** | the field's wire form can represent the address. A property of the format and of nothing else. | 13 of 16 |
+| **ENGINE-STATIC** | static analysis of the consuming code found **no** truncation, masking, sign extension, fixed high bits or comparison that would reject the address. | **0 of 16** |
+| **RUNTIME** | a real derivative actually caused the engine to dereference bytes in that range. | **1 of 16** |
+
+`ENGINE-STATIC` is empty on purpose. The addendum's rule - *do not promote a
+theoretical maximum* - cuts both ways: **not finding a bound is not the same as
+proving there is none**, and this project has already lost time to a claim that
+rested on absence of evidence. Where no bound was found the cell says UNKNOWN, and
+the honest statement is "each untested domain has one byte of proof (none) and a
+32-bit field", not "13 domains can use 8 MiB".
+
+The one runtime-proven domain is proven over **the extent the engine actually
+read** - the 17,932-byte relocated container at `0x08800000..0x0880460B` - and
+deliberately **not** over the whole expansion. This is the distinction the
+addendum asks for: *a pointer at `0x08800000` works* is not *every address
+through `0x08FFFFFF` is proven*.
+
+The tables below are generated from `tools/research/domain_reachability.py`; a
+test compares this document against that module's output, so a figure cannot
+drift between the data and the prose.
+<!-- BEGIN GENERATED: domain reachable-capacity map -->
+
+#### Reachable bytes by domain
+
+| Domain | Pointer / reference form | Canonical VERIFIED_FREE reachable | Expanded ENCODABLE bytes | Expanded ENGINE-JUSTIFIED bytes | Expanded RUNTIME-PROVEN bytes | Proof level |
+|---|---|---:|---:|---:|---:|---|
+| Generic ROM pointers | absolute GBA u32 LE; no relative form | 256 | 25,165,823 | UNKNOWN | UNKNOWN | ENCODING |
+| Compressed-dialogue selector table | absolute GBA u32 LE at 0x7B5B64 + selector*4 | 256 | 25,165,823 | UNKNOWN | 17,932 | RUNTIME |
+| MapEntry +0x14 object array pointer | absolute GBA u32 LE; count is +0x04 (u8) | 256 | 25,165,823 | UNKNOWN | UNKNOWN | ENCODING |
+| MapEntry +0x2C scene selector array | base of a u32 selector array; descriptor = base + 4*(selector-1) | 256 | 25,165,823 | UNKNOWN | UNKNOWN | ENCODING |
+| MapEntry +0x10/+0x18/+0x1C/+0x20/+0x28/+0x30/+0x34 | absolute GBA u32 LE (shape only; no consumer decoded) | UNKNOWN | 25,165,823 | UNKNOWN | UNKNOWN | ENCODING |
+| Placement-run pointer array (engine object array) | array of absolute GBA u32 LE; exactly count*4, no sentinel | 256 | 25,165,823 | UNKNOWN | UNKNOWN | ENCODING |
+| Eight-byte slot arrays (MapEntry +0x10) | two u32 LE per slot; second word treated as a reference | 256 | 25,165,823 | UNKNOWN | UNKNOWN | ENCODING |
+| Placement and descriptor records | u32 LE words at fixed record offsets; child_count 1..4 | 256 | 25,165,823 | UNKNOWN | UNKNOWN | ENCODING |
+| Text pointer table and string pool | absolute LE GBA addresses; access is by index | 256 | 25,165,823 | UNKNOWN | UNKNOWN | ENCODING |
+| Script record slots and bodies | absolute u32 LE in the record slot; body offset is pool-relative | 256 | 25,165,823 | UNKNOWN | UNKNOWN | ENCODING |
+| Actor sprite chain (character/animation/frame/piece/container) | absolute u32 LE at every hop | 256 | 25,165,823 | UNKNOWN | UNKNOWN | ENCODING |
+| Map scene descriptor and map graphics | absolute u32 LE at fixed descriptor offsets | 256 | 25,165,823 | UNKNOWN | UNKNOWN | ENCODING |
+| Object and background palettes | NO indirection: a fixed absolute address, entry is the colour | 0 | 0 | 0 | 0 | NONE |
+| Stat tables and the placement-type selector | fixed table + stride; the selector is an INDEX, not a pointer | 0 | 0 | 0 | 0 | NONE |
+| Relocation and indirect pointer families | ABSOLUTE_ROM_U32_LE, RELATIVE_I32_LE, INDEX_U32_LE, INDEX_U8 | 256 | 25,165,823 | UNKNOWN | UNKNOWN | ENCODING |
+| Packed text handle | 32-bit handle: selector 0-5, decoded start 6-20, length 21-31 | UNKNOWN | UNKNOWN | UNKNOWN | UNKNOWN | NONE |
+
+#### Address ranges, limits and policy by domain
+
+| Domain | Max ENCODABLE address | Max ENGINE-JUSTIFIED address | RUNTIME-PROVEN address | Structural / table limit | Structural class | Alignment / format | Allocator range policy | Primary bottleneck | Notes / UNKNOWN |
+|---|---|---|---|---|---|---|---|---|
+| Generic ROM pointers | 0x09FFFFFF | UNKNOWN | UNKNOWN | none (a helper, not a table) | THEORETICALLY_WIDENABLE | none imposed by the helper | per kind: only PACKED_STREAM defaults expanded-permitted | no bound found is not a bound found: the consumer decides | Representation is CONFIRMED; engine acceptance above EOF is UNKNOWN for every consumer that has not been tested. |
+| Compressed-dialogue selector table | 0x09FFFFFF | UNKNOWN | 0x08800000..0x0880460B | exactly 7 selectors; the gate must NOT be widened | FIXED | 4 (word-indexed table) | PACKED_STREAM, EXPANDED_PERMITTED | the 7-entry selector table, not bytes: 8 MiB of expansion cannot add an eighth container | The one domain with runtime proof above EOF. Proven over the extent the engine actually read - the relocated container - NOT over the whole expansion. |
+| MapEntry +0x14 object array pointer | 0x09FFFFFF | UNKNOWN | UNKNOWN | object count is one byte: 255 per map | RELOCATABLE | 4 | PLACEMENT_REFERENCE_ARRAY, canonical-only | the count byte, then the relocation-eligible array kind | Relocatable as an anchor kind; expansion above EOF is UNKNOWN. |
+| MapEntry +0x2C scene selector array | 0x09FFFFFF | UNKNOWN | UNKNOWN | selector width UNKNOWN; longest observed run is 12 words | UNKNOWN | 4 | canonical-only (no kind allocates it) | selector resolution proven only for selector 1 | Resolution mechanism CONFIRMED at LEVEL 3; expansion UNKNOWN. |
+| MapEntry +0x10/+0x18/+0x1C/+0x20/+0x28/+0x30/+0x34 | 0x09FFFFFF | UNKNOWN | UNKNOWN | +0x10 count field is UNIDENTIFIED | UNKNOWN | 4 | canonical-only | no consumer decoded, so no bound and no capacity claim | The toolkit still sizes the +0x10 extent with +0x04, a pairing the project has since shown bounds +0x14 instead. |
+| Placement-run pointer array (engine object array) | 0x09FFFFFF | UNKNOWN | UNKNOWN | 255 slots per map (MapEntry+0x04, one ldrb) | RELOCATABLE | 4 | PLACEMENT_REFERENCE_ARRAY, canonical-only | the count byte | Traversal contract CONFIRMED; address range above EOF UNKNOWN. |
+| Eight-byte slot arrays (MapEntry +0x10) | 0x09FFFFFF | UNKNOWN | UNKNOWN | array shape by measurement; no engine count decoded | UNKNOWN | 4 (required by the classifier) | canonical-only | the typed rung is a heuristic, not a decoded consumer | Round-trip is proven for the bytes; semantics are not. |
+| Placement and descriptor records | 0x09FFFFFF | UNKNOWN | UNKNOWN | child_count clamped 1..4 (corpus bound, not an engine max) | UNKNOWN | 4 | canonical-only | the descriptor pointer's own validation window | The only production pointer bound using the nominal 32 MiB window (map_placements.py:166); that is a TOOLKIT bound, not engine evidence. |
+| Text pointer table and string pool | 0x09FFFFFF | UNKNOWN | UNKNOWN | 1,534 entries; index widths u16 at consumers (65,535 max) | THEORETICALLY_WIDENABLE | pool alignment 2 | TEXT_STRING, canonical-only | the table has no growth path: a 1,535th string needs the table grown and 51 code references rewritten | Per-ENTRY relocation is proven on synthetic fixtures only. |
+| Script record slots and bodies | 0x09FFFFFF | UNKNOWN | UNKNOWN | static40: exactly 40 records (engine bound); item_use: 83 | FIXED | 4 | canonical-only | the walker's immediate: retail is exactly at the 40-record bound | 28 execute from a runtime cursor, so a static pool cannot enumerate every reachable body. |
+| Actor sprite chain (character/animation/frame/piece/container) | 0x09FFFFFF | UNKNOWN | UNKNOWN | 297 sprite definitions, terminated by a non-ROM word | FIXED | 4 on the table; no alignment test on a container pointer | canonical-only | the 297-entry run and its literal terminator | Containers are packed with zero slack: pixel edits do not relocate. |
+| Map scene descriptor and map graphics | 0x09FFFFFF | UNKNOWN | UNKNOWN | 187 tile banks declared 0x4000 each | UNKNOWN | 4 | canonical-only | VRAM character extent, not ROM bytes (see runtime ceilings) | Rendering is proven only for maps 39/40, within the canonical image. |
+| Object and background palettes | UNKNOWN | UNKNOWN | UNKNOWN | 256 object entries; 256 background entries | FIXED | 2 | no kind allocates a palette; edits are in place | the address is a code literal, so a palette cannot be moved without an executable patch | The one authoring class with no capacity question at all. |
+| Stat tables and the placement-type selector | UNKNOWN | UNKNOWN | UNKNOWN | enemy_stats 141 x 0x1C; character_base_stats 9 x 0x12 | FIXED | 4 | no kind allocates a stat table | the table address is a code literal; six selectors already point past the verified extent | Index encodings are read-only: reassignment is not verified. |
+| Relocation and indirect pointer families | 0x09FFFFFF | UNKNOWN | UNKNOWN | two anchor kinds are relocation-eligible | THEORETICALLY_WIDENABLE | 4 (1 for INDEX_U8) | depends on the anchor kind's semantic class | RELATIVE_I32_LE has no ROM user; index encodings are read-only | There is no relocation table in the ROM; relocation is a codec phase over anchors and typed references. |
+| Packed text handle | UNKNOWN | UNKNOWN | UNKNOWN | selector 6 bits (64) but only 7 containers exist; record length 0..4,094 bytes | FIXED | no address; the extent is even by construction | not an address carrier; the selector slot carries the pointer | the handle never moves, which is why relocation works at all | Proven address-INDEPENDENT: the handle was unchanged while its container moved to 0x08800000. It is not itself an above-EOF carrier. |
+
+<!-- END GENERATED: domain reachable-capacity map -->
+
+
+### 12.3 Plain-English usable-capacity verdict
+
+**Raw physical expansion.** The canonical 8 MiB image has 8,388,608 bytes of
+authorized expanded storage behind it, and a 16 MiB generated image is
+engine-proven to exist. That number is real and it is not usable by everything.
+
+**Currently runtime-proven usable expansion.** **17,932 bytes, for one domain.**
+The compressed-dialogue selector path placed a rebuilt container at file
+`0x00800000` / address `0x08800000` through the production allocator, and the
+retail engine read it and displayed the authored line. That is the whole of what
+is *proven*, and it is small because it is the first thing proven rather than the
+last thing possible.
+
+**Statically addressable but not runtime-proven.** Thirteen domains can *encode*
+an address above EOF - maps, scripts, text, sprites, map graphics, placements -
+and **none** of them has a consumer whose acceptance above EOF has been
+established either statically or at runtime. For those domains the practical
+expanded capacity today is **zero**, not 8 MiB.
+
+**Table-limited systems.** Several domains have bytes to spare and no way to use
+them, and this is where the real ceiling sits for most authoring:
+
+| System | Byte capacity | Structural capacity | Binds first |
+|---|---|---|---|
+| Dialogue | 8 MiB of expansion | **7 containers**, gate must not widen | the table |
+| Text | 8 MiB (if proven) | 1,534 entries; table has no growth path | the table |
+| Maps | 8 MiB (if proven) | **452** MapEntry records, a code constant | the constant |
+| Objects per map | 8 MiB (if proven) | **255** (one `ldrb` count byte) | the count byte |
+| Static scripts | 8 MiB (if proven) | **40** records, exactly at the engine bound | the engine bound |
+| Sprites | 8 MiB (if proven) | **297** definitions plus a literal terminator | the run |
+| Appearances | 8 MiB (if proven) | **232**, a 232-bit runtime bitmap | the bitmap |
+| Palettes | none | 256 + 256 entries, fixed addresses in code | the address |
+
+**Runtime memory.** Unchanged from Checkpoint A: the engine's decoder has no
+output bound, every load path reserved a fixed buffer, and no live-object or OAM
+cap has ever been measured. Reachable ROM bytes do not imply a usable working
+set, and this section makes no claim about one.
+
+**Where the limit actually is.** For dialogue the limit is a **7-entry table**.
+For most other authoring it is **pointer reachability** - the bytes exist and
+nothing has shown the engine will read them there. For maps, objects, scripts,
+sprites and appearances it is a **count or index**, not bytes. Raw ROM size is the
+binding constraint for almost nothing.
+
+**In one sentence:** the ROM can grow by 8 MiB, exactly one subsystem is proven
+able to use storage there and it is table-limited to seven containers, and for
+everything else the limit is not ROM size but whether a domain's pointers reach
+above 8 MiB at all.

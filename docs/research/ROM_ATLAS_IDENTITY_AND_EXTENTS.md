@@ -316,9 +316,15 @@ A green `tests/unit` total with 23 skips was **not** adequate evidence, and the
 claim in an earlier draft of this record that the ROM-gated call sites "were
 updated for the new signatures" was false for three files.
 
-### Stage 2, corrected revision (`9a463f6`), PySide6 + canonical ROM + atlas configured
+### Stage 2, corrected revision, PySide6 + canonical ROM + atlas configured
 
-See section 9 for the totals and for the five Workbench defects this exposed.
+Running the previously-skipping gates exposed five further ticket-caused defects
+(section 9). Section 9 also holds the full focused-command list, the historical
+broad measurements with their commits, and the test-policy statement.
+
+**BROAD / FULL SUITE: NOT MANUALLY RUN, HUMAN POLICY.** A broad `tests/unit` run
+was started once after the `7d7c16d` fix and **terminated on instruction**; it was
+not restarted, and the focused files listed in section 9 replace it.
 
 ### Mutation results
 
@@ -407,6 +413,17 @@ nor the implementer had listed: the behavior-trigger gate inside
 Both are fixed in `7d7c16d`. The reviewer named two of four; the fix is now
 proved exhaustive by grep rather than by the original finding's wording.
 
+**And `7d7c16d` itself cost a regression, found by a delta review.** Widening
+that gate's attribute contract to read `maps.profile.sha256` broke four tests in
+`tests/unit/test_authored_behavior_trigger.py`, whose stand-in supplied only
+`profile.id`. The commit was made without re-running those tests. Fixed by giving
+the stand-in a declared hash (`tests/unit/test_authored_behavior_trigger.py:42`),
+which is also the more faithful fixture: a case that overrides it now genuinely
+exercises the profile-authority comparison rather than the old image-hash one.
+All 15 tests in that file pass. The wider lesson is recorded below: a commit that
+changes an attribute contract must re-run the files that stub it, and the
+ticket's test totals must be re-measured whenever a commit lands after them.
+
 The reviewer's related point, that two further behaviour-driving literals were
 unnamed in the classification, is also fixed: `BG_PALETTE_ADDRESS` is now
 profile-declared (below), and `BASE_STAT_NAMES` is documented as the one
@@ -440,21 +457,18 @@ gap was closed rather than accepted:
   regenerated from it (`atlas regenerate`, ROM SHA-256 identical before and
   after).
 
-  Reproduction, from the worktree root:
+  Reproduction of the **environment** (the ROM and GUI gates need these present):
 
   ```text
   python -m pip install "PySide6"                       # the `workbench` extra
   set WEBFOOT_BUU_ROM=<path to the canonical Buu's Fury image>
   set LOGX_CANONICAL_ROM=%WEBFOOT_BUU_ROM%
   python -m tools.webfoot atlas regenerate "%WEBFOOT_BUU_ROM%" --out build/atlas
-  python -m pytest tests/unit -q
-  python -m pytest tests/integration -q
   ```
 
-  The ROM is opened read-only by every step and its SHA-256 was verified
-  identical before and after. `roms/` and `build/` are gitignored, so none of
-  this local state can be committed; the ROM copy used for the fixed relative
-  path was deleted again after the runs.
+  Then run **named files only**, never a broad suite (`docs/testing.md`, and the
+  human test policy in force for this ticket). The exact focused commands and
+  their results are listed below.
 - Running the gates that had always skipped **found five real defects that this
   ticket had introduced and that no previous run could have caught**:
   - `render_map` gained a `profile=` keyword and two Workbench test stubs still
@@ -476,34 +490,77 @@ This is the honest reading: the frozen revision was **not** closure-ready, and
 the reviewer was right on both counts. The corrected revision is materially
 better tested than the frozen one because the gates now actually execute.
 
-### Focused validation on the corrected revision
+### Test policy and what was actually run
 
-| suite | result |
+**MANUAL TEST POLICY: FOCUSED FILE/NODE TESTS ONLY.** Broad manual runs
+(`pytest`, `pytest tests/unit`, `pytest tests/integration`, any broad marker gate)
+are forbidden on this project. Broad validation belongs to CI, after the candidate
+is pushed and an MR exists; the record keeps manual and CI evidence distinct.
+
+That policy is why the earlier broader runs appear below with a commit attached:
+they happened before the policy correction and are reported as **historical
+measurements at named commits**, not as a claim about the current tip.
+
+#### Historical broad measurements (each at the named commit)
+
+| command | commit | result |
+| --- | --- | --- |
+| `pytest tests/unit` | `03779c2` | **2141 passed, 23 skipped, 0 failed** |
+| `pytest tests/unit` | `9a463f6` | **2327 passed, 7 skipped, 0 failed** |
+| `pytest tests/integration` | `9a463f6` | **956 passed, 45 skipped, 0 failed** (71 min) |
+| `pytest tests/unit -m "fast and workbench"` | `9a463f6` | **178 passed, 0 failed** |
+
+The `9a463f6` figures are **stale at the tip**: `7d7c16d` landed after them and
+turned four `tests/unit/test_authored_behavior_trigger.py` cases into failures
+(a delta review caught it). Those four now pass again, and the affected files were
+re-run in isolation. No broad re-measurement was taken, by policy.
+
+#### Focused manual runs on the current tip
+
+Each command names explicit files that exercise a code path this ticket changed.
+
+| command | result |
 | --- | --- |
-| `tests/unit` (whole directory, PySide6 + ROM + atlas configured) | **2327 passed, 7 skipped, 0 failed** |
-| `tests/integration` (whole directory, ROM configured) | **956 passed, 45 skipped, 0 failed** (71 min) |
-| `tests/unit -m "fast and workbench"` | **178 passed, 0 failed** |
-| previously-skipped ROM-gated selection (the reviewer's four files) | **49 passed, 2 skipped, 0 failed**, identical to base `170dc815` |
+| `pytest tests/unit/test_authored_behavior_trigger.py -q` | **15 passed** (the file `7d7c16d` broke; all four failures fixed) |
+| `pytest tests/unit/test_authored_placements.py tests/unit/test_map_placements.py tests/unit/test_scene_authoring.py -q` | **112 passed** (the other consumers of the migrated trigger gate) |
+| `pytest tests/unit/test_atlas_identity.py tests/unit/test_extent_profile_authority.py tests/unit/test_profile_authority_contract.py tests/unit/test_profile.py tests/unit/test_capability.py tests/unit/test_atlas_build.py -q` | **108 passed** (identity contract, profile/catalog parsing, synthetic profile, absence assertions) |
+| `pytest tests/unit/test_map_render.py tests/unit/test_map_layout_provenance.py tests/unit/test_workbench_session.py -q` | **116 passed, 4 skipped** (map renderer, derivative provenance, Workbench session identity) |
+| `pytest tests/unit/test_text_tables.py tests/unit/test_text_growth.py tests/unit/test_text_project.py -q` | **81 passed** (text codec extents, the live index bound) |
+| `pytest tests/unit/test_stat_tables.py tests/unit/test_stat_write.py tests/unit/test_project_format.py tests/unit/test_gameplay_effect_native.py -q` | **128 passed** (stat extents and the text-bound gate) |
+| `pytest tests/unit/test_workbench_map_tab.py tests/unit/test_workbench_map_browser.py -q` | **44 passed** (the GUI paths PySide6 exposed) |
+| `pytest tests/integration/test_map_render_rom.py tests/integration/test_map_layout_write_rom.py tests/integration/test_stat_write_rom.py -q` | **49 passed, 2 skipped** with the canonical ROM configured, identical to base `170dc815` |
 | `git diff --check` | clean, exit 0 |
 
-Both whole-directory totals were directly observed, not derived. The 45
-integration skips and 7 unit skips are all environment-dependent and unrelated
-to this ticket: they need a second or third commercial ROM (Legacy of Goku /
-LoG II), a built website (`npm run build`), the map-39/40 VRAM dumps, or assert
-the absence of capstone (which is installed).
+ROM-backed runs above are named by file and read the canonical image read-only;
+the ROM's SHA-256 was verified unchanged before and after.
+
+**BROAD / FULL SUITE: NOT MANUALLY RUN, HUMAN POLICY.** A broad `tests/unit` run
+started after the `7d7c16d` fix was **terminated on instruction** and restarted
+nowhere; the focused files above replace it.
 
 ### Additional mutations, on the corrected revision
 
-The reviewer's three escaped mutations were re-run against the corrected
-revision and are now **caught**:
+Mutations were validated by running **only the specific test expected to detect
+each one**, not a suite:
 
-| mutation | location | caught by |
-| --- | --- | --- |
-| object palette address -> literal `0x0805652C` | `export/render.py` | `test_the_object_palette_address_is_the_profiles` |
-| background palette address -> literal `0x080701B0` | `webfoot/map_render.py` | `test_the_map_renderer_palette_address_is_the_profiles`, `test_the_map_renderer_refuses_a_profile_with_no_palette` |
-| text bound -> literal `1534` | `webfoot/authored_placements.py` | `test_a_shorter_declared_text_table_moves_the_bound` (a profile declaring 1,000, so a reintroduced Buu literal is no longer indistinguishable) |
+| mutation | location | test run (that file only) | outcome |
+| --- | --- | --- | --- |
+| object palette address -> literal `0x0805652C` | `export/render.py` | `test_extent_profile_authority.py` | 1 failed (detected) |
+| background palette address -> literal `0x080701B0` | `webfoot/map_render.py` | `test_extent_profile_authority.py` | 2 failed (detected) |
+| map-entry count -> literal `452` | `export/map_browser.py` (round 1) | `test_extent_profile_authority.py` | 1 failed (detected) |
+| profile-id comparison bypassed (M1) | `webfoot/profile.py` | `test_atlas_identity.py` | 3 failed (detected) |
+| base-SHA comparison bypassed (M2) | `webfoot/profile.py` | `test_atlas_identity.py` | 3 failed (detected) |
+| text bound -> literal `1534` | `webfoot/authored_placements.py` | `test_gameplay_effect_native.py` | detected by the discriminating 1,000-entry profile |
 
 `test_a_shorter_declared_text_table_moves_the_bound` exists specifically because
 of the reviewer's observation that the canonical profile's own count is 1,534, so
 the original test could not distinguish "reads the profile" from "hard-codes
-Buu's number".
+Buu's number". Every mutation was reverted immediately and the tree verified
+clean (`git status` empty, no `MUTATION` marker).
+
+### CI
+
+**CI BROAD SUITE: not yet run.** The candidate has not been pushed and no merge
+request exists, so no CI result is available. Broad validation is CI's job on this
+project; when the MR is opened, its result belongs in this section and must not be
+duplicated by hand.

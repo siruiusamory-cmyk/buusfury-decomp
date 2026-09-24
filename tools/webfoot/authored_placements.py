@@ -113,8 +113,11 @@ def _require_trigger_contract(clone, maps, source_id, placement_types=None):
     from .entities import PlacementTypes
 
     profile_contract = BEHAVIOR_TRIGGER_CONTRACTS.get(maps.profile.id)
+    # The profile's declared identity is the authority; the contract's own hash
+    # is a cross-check against it, so a contract entry that has drifted from the
+    # catalog is refused rather than silently trusted.
     if (profile_contract is None or
-            profile_contract.get("sha256") != maps.identification.hashes.sha256):
+            profile_contract.get("sha256") != maps.profile.sha256):
         raise AuthoredTriggerError(
             f"{clone.identity}: trigger {clone.trigger.value} has no evidence contract "
             f"for verified profile {maps.profile.id}")

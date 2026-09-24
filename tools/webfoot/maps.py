@@ -823,7 +823,11 @@ def load_maps(path: str | Path, catalog: RomProfileCatalog) -> Maps:
     claimed_placements: dict[int, int] = {}
     from .data.placement_contracts import CONTRACTS
     contract = CONTRACTS.get(profile.id)
-    if contract is not None and contract['sha256'] != identification.hashes.sha256:
+    # Compared against the profile's declared identity, which is the authority,
+    # rather than against the loaded image's hash: `identify_rom` already
+    # verified the image, so the meaningful check is that this contract entry has
+    # not drifted from the catalog for this profile.
+    if contract is not None and contract['sha256'] != profile.sha256:
         raise MapError('placement contract provenance mismatch')
 
     #: Placements are resolved for EVERY map before any slot extent, because a

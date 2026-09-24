@@ -131,6 +131,52 @@ def test_shared_allocator_uses_expansion_without_relabeling_retail_free_space():
     assert allocation[0].range.end == 15
 
 
+def test_a_change_straddling_canonical_eof_is_refused_even_when_it_is_authorized():
+    """CQA-09: the guard nothing else backs.
+
+    A change that begins in the last canonical byte and ends in the appended
+    padding has `offset >= len(base)` FALSE, so the allocator-authorization branch
+    never runs and the free-region/overlap checks see nothing wrong. This guard is
+    the ONLY thing that refuses it, which is why its removal is invisible without
+    this case: `test_a_change_inside_the_authorized_span_is_accepted` below is the
+    positive control that shows the same authorized span does accept a change that
+    does not straddle.
+
+    The ticket's exact shape: 10-byte base, 16-byte generated output, one
+    authorized byte in the expanded region, and a 2-byte change at offset 9.
+    """
+    base = b"base-image"
+    expansion = profile().generated_expansion
+    assert expansion is not None
+    span = RomRange(FileOffset(10), 1)
+    generated = expansion.generated_image(len(base), (span,))
+    straddle = ByteChange(9, base[9:10] + b"\xff", b"XY", "synthetic:payload",
+                          "canonical-EOF straddle")
+    with pytest.raises(ChangeValidationError, match="straddles canonical EOF"):
+        plan_changes(base, [straddle], profile_id="synthetic",
+                     base_sha256=hashlib.sha256(base).hexdigest(),
+                     generated_image=generated, generated_allocations=provenance(span))
+
+
+def test_a_change_inside_the_authorized_span_is_accepted():
+    """The positive control for the straddle guard.
+
+    Without this, the refusal above could be explained by any of the other checks
+    on that plan rather than by the straddle guard itself.
+    """
+    base = b"base-image"
+    expansion = profile().generated_expansion
+    assert expansion is not None
+    span = RomRange(FileOffset(10), 1)
+    generated = expansion.generated_image(len(base), (span,))
+    plan = plan_changes(base, [ByteChange(10, b"\xff", b"X", "synthetic:payload",
+                                          "inside the authorized span")],
+                        profile_id="synthetic", base_sha256=hashlib.sha256(base).hexdigest(),
+                        generated_image=generated, generated_allocations=provenance(span))
+    assert [change.offset for change in plan.effective_changes] == [10]
+    assert apply_plan(base, plan) == base + b"X" + b"\xff" * 5
+
+
 @pytest.mark.parametrize("size", [9, 33, 0x02000001])
 def test_profile_refuses_unsupported_generated_image_sizes(size):
     base = b"base-image"

@@ -25,6 +25,7 @@ from .formats.map_entry import (
     validate_map_entry_round_trips,
 )
 from .build import (
+    MANIFEST_BESIDE_OUTPUT,
     BuildError,
     BuildResult,
     ValidationReport,
@@ -566,8 +567,17 @@ def build_parser() -> argparse.ArgumentParser:
     build.add_argument(
         "--output", type=Path, required=True, help="output ROM path (must not exist)"
     )
-    build.add_argument(
-        "--manifest", type=Path, default=None, help="write the build manifest here"
+    # CQA-12: a normal build publishes its provenance manifest beside the image.
+    # Redirecting and disabling are both explicit and mutually exclusive, so no
+    # caller loses provenance by omission.
+    build_manifest = build.add_mutually_exclusive_group()
+    build_manifest.add_argument(
+        "--manifest", type=Path, default=MANIFEST_BESIDE_OUTPUT,
+        help="write the build manifest here instead of beside the output image",
+    )
+    build_manifest.add_argument(
+        "--no-manifest", action="store_true",
+        help="write no provenance manifest for this build",
     )
     return parser
 
@@ -1806,7 +1816,7 @@ def main(argv: list[str] | None = None) -> int:
                     args.rom,
                     args.output,
                     catalog,
-                    manifest_path=args.manifest,
+                    manifest_path=(None if args.no_manifest else args.manifest),
                 )
             )
             return 0

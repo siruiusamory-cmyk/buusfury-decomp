@@ -1429,13 +1429,36 @@ must-fix set above; a finding's text is never edited, only annotated in place.
 | CQA-06 | HIGH | **ACTIVE** - CQA-05-06-WORKBENCH-STATE-AND-ERRORS-001 |
 | CQA-07 | HIGH | OPEN |
 | CQA-08 | HIGH | OPEN |
-| CQA-09 | HIGH | OPEN |
-| CQA-12 | HIGH | OPEN |
-| CQA-10 | MEDIUM | **PARTIAL / IMPROVED** (not closed; output-safety ownership is done, overwrite-policy divergence remains) |
+| CQA-09 | HIGH | **ALLOCATION-CRITICAL SLICE CLOSED** - ROM-CAPACITY-AND-ALLOCATION-001 Checkpoint B. The canonical-EOF straddle guard now has the regression this finding asked for, at exactly the shape it specified (10-byte base, 16-byte generated output, a one-byte authorized allocator span, and a 2-byte change at offset 9 expecting `ChangeValidationError` matching `straddles canonical EOF`), plus the positive control that the same authorized span accepts a non-straddling change. Mutation M4 - deleting the guard - fails that case and nothing else (`tests/unit/test_rom_expansion.py`; 12 tests, 1 failed, 11 passed under the mutation), which is the invisibility this finding measured. Broader CQA-09 documentation/debt, if any remains, is untouched. |
+| CQA-12 | HIGH | **ALLOCATION-CRITICAL SLICE CLOSED** - ROM-CAPACITY-AND-ALLOCATION-001 Checkpoint B. `build_project` now publishes its provenance manifest beside the emitted image by default, through the existing `authored_image.manifest_path_for` sibling convention rather than a second spelling; `None` disables it and a path redirects it, both explicitly, and the Workbench Build tab inherits the default by passing no path at all. `.gitignore` gains `*.dragonbyte.json`, which `*.gba` did not match. `WriteManifest` and the provenance architecture are unchanged. Mutation M6 - disabling the default - fails both the portable and the ROM-gated default-build regressions. Any remainder of CQA-12 is untouched. |
+| CQA-10 | MEDIUM | **PARTIAL** - **ALLOCATION-RELEVANT PORTION: CLOSED**; **REMAINDER: OPEN**. The portion that gates capacity/allocation is satisfied by CQA-01's single output-path-safety owner and the shared `emit_image` transaction, and Checkpoint B confirmed it rather than extending it: a default build publishes through that transaction, so it inherits the source-alias refusal, the new-destination refusal, staged publication, rollback and manifest association, and a pre-existing sibling manifest is refused before anything is written. The remaining CQA-10 work - the overwrite-policy divergence, the repository/raw-input-root output policy and the eight copied helpers in `tools/export/`, atlas atomic publication, and the remaining unguarded write sites - is exporter/output-policy hygiene and does not block this milestone. **No code change was made for this item.** |
 
 Remaining pre-capacity blockers, in the dependency-aware groups above:
 **CQA-05 + CQA-06**, **CQA-07**, **CQA-08**, **CQA-09**, **CQA-12**, and
 **CQA-10**. `ROM-CAPACITY-AND-ALLOCATION-001` therefore stays **BLOCKED**.
+
+> **ANNOTATED at the ROM-CAPACITY-AND-ALLOCATION-001 Checkpoint B closeout
+> (2026-09-24).** The paragraph above is the state as at CQA-04's closeout and is
+> not restated. It was superseded by
+> **ROADMAP-ALLOCATION-GATE-REVIEW-001**, which established that the number of
+> implementation tickets required before capacity research is **0**: CQA-09 and
+> CQA-12 each carry exactly one bounded Gate-B requirement, both now discharged
+> above, and **CQA-05/CQA-06/CQA-07/CQA-08 remain deferred** - they must precede
+> allocator-backed *GUI authoring*, not capacity research or the headless
+> allocator. CQA-10's allocation-relevant portion is closed. So the ticket is no
+> longer blocked by this list; the CQA-09 and CQA-12 rows above record which
+> parts of it were consumed by it and which parts remain open.
+
+**New debt recorded at the same closeout, deliberately NOT fixed there:**
+`ROM-CAPACITY-ATLAS-SEED-OVERLAY-001` - the atlas seed
+(`tools/webfoot/atlas_producers/seed.py:530-566`) declares four SDK-authored
+derivative structures inside the canonical free window `[0x7EA400,0x7EA500)`,
+whose canonical bytes are `FF` fill: 32 + 8 + 11 + 20 = 71 of the window's 256
+bytes. The rows are explicit that the content "does not exist in the canonical
+image", but a canonical atlas built from them disagrees with the canonical free
+declaration. Found during ROM-CAPACITY-AND-ALLOCATION-001 Phase A; the capacity
+model deliberately does not consume the atlas. Defined in full at
+[`ROM_CAPACITY_AND_ALLOCATION.md`](ROM_CAPACITY_AND_ALLOCATION.md) §8.1.
 
 Next active ticket: **CQA-05-06-WORKBENCH-STATE-AND-ERRORS-001**, the group E work:
 CQA-05 (a project mutation must not silently destroy staged map/layout edits) and

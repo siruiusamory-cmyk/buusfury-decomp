@@ -31,6 +31,7 @@ from pathlib import Path
 
 from tools.export import canonical as canon
 from tools.export import map_browser as mb
+from tools.export import profile_authority
 from tools.export import render as render_sdk
 from tools.export import webfoot_strict as ws
 
@@ -284,13 +285,24 @@ class MapLayoutEditor:
         #: one immutable image.
         self._char_data: dict[int, bytes] = {}
 
+    @property
+    def map_entry_count(self) -> int:
+        """The profile's declared MapEntry count: the live index bound.
+
+        Exposed rather than restated so a caller enumerating the corpus uses
+        the same bound the editor itself refuses against.
+        """
+        return self._rom.map_entry_count()
+
     # -- what may be edited ------------------------------------------------
 
     def target(self, map_index: int) -> LayoutTarget:
         """Read (and cache) one map's layer slots, classified for editing."""
-        if type(map_index) is not int or not 0 <= map_index < canon.MAP_ENTRY_COUNT:
+        count = self._rom.map_entry_count()
+        if type(map_index) is not int or not 0 <= map_index < count:
             raise MapLayoutEditError(
-                f"map index {map_index!r} is outside 0..{canon.MAP_ENTRY_COUNT - 1}"
+                f"map index {map_index!r} is outside this profile's 0..{count - 1} "
+                "declared map-entry range"
             )
         cached = self._targets.get(map_index)
         if cached is None:
@@ -634,7 +646,7 @@ class MapLayoutEditor:
                 output_path=output_path,
                 profile_id=profile_id,
                 changes=changes,
-                canonical_sha256=mb.SUPPORTED_ROM_SHA256,
+                canonical_sha256=profile_authority.canonical_export_identity().sha256,
                 verify=self._verify_output,
             )
         except AuthoredImageError as exc:

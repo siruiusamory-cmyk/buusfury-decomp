@@ -38,7 +38,7 @@ def object_palette_rgb(rom: "canon.Rom") -> tuple[tuple[int, int, int], ...]:
     the high bits replicated into the low ones (`v << 3 | v >> 2`), so 31 maps to
     255 rather than 248.
     """
-    offset = rom.span(canon.OBJECT_PALETTE_ADDRESS, canon.OBJECT_PALETTE_BYTES)
+    offset = rom.span(rom.object_palette_address(), canon.OBJECT_PALETTE_BYTES)
     words = rom.data[offset : offset + canon.OBJECT_PALETTE_BYTES]
     out: list[tuple[int, int, int]] = []
     for index in range(canon.OBJECT_PALETTE_ENTRIES):

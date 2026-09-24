@@ -173,7 +173,8 @@ def test_identity_accepts_an_index_beyond_this_games_table():
     more; `webfoot.text` checks the index against the loaded profile's count,
     which is the only place that number is actually known.
     """
-    assert tt.TextIdentity(tt.TEXT_ENTRY_COUNT).index == tt.TEXT_ENTRY_COUNT
+    assert tt.TextIdentity(1534).index == 1534
+    assert tt.TextIdentity(0).index == 0
 
 
 def test_identity_is_hashable_and_compares_by_value():
@@ -189,22 +190,29 @@ def test_pointer_encoding_is_the_gba_address_form():
 
 
 def test_pointer_round_trips_through_a_synthetic_table():
-    """A table entry decodes back to the offset it was built from."""
-    image = bytearray(tt.TEXT_TABLE_START + 8)
-    image[tt.TEXT_TABLE_START : tt.TEXT_TABLE_START + 4] = tt.encode_pointer(0x1234)
-    assert tt.read_pointer(bytes(image), 0) == 0x1234
+    """A table entry decodes back to the offset it was built from.
+
+    The table base is supplied by the caller, never defaulted: the extent is the
+    profile's declaration, so this codec has no table address of its own to
+    drift. Any base works here, which is why the test uses an arbitrary one.
+    """
+    table_start = 0x00100000
+    image = bytearray(table_start + 8)
+    image[table_start : table_start + 4] = tt.encode_pointer(0x1234)
+    assert tt.read_pointer(bytes(image), 0, table_start) == 0x1234
 
 
 def test_pointer_outside_the_rom_window_is_refused():
-    image = bytearray(tt.TEXT_TABLE_START + 8)
-    image[tt.TEXT_TABLE_START : tt.TEXT_TABLE_START + 4] = (0x02000000).to_bytes(4, "little")
+    table_start = 0x00100000
+    image = bytearray(table_start + 8)
+    image[table_start : table_start + 4] = (0x02000000).to_bytes(4, "little")
     with pytest.raises(tt.TextCodecError, match="not a GBA ROM address"):
-        tt.read_pointer(bytes(image), 0)
+        tt.read_pointer(bytes(image), 0, table_start)
 
 
 def test_pointer_past_the_end_of_the_image_is_refused():
     with pytest.raises(tt.TextCodecError, match="out of bounds"):
-        tt.read_pointer(b"\x00" * 16, 0)
+        tt.read_pointer(b"\x00" * 16, 0, 0x00100000)
 
 
 # --- round trip over a constructed pool ----------------------------------

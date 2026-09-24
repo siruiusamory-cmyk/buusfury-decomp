@@ -19,11 +19,15 @@ from pathlib import Path
 import pytest
 
 from tools.export import map_browser as mb
+from tools.export import profile_authority
 from tools.webfoot import map_layout_provenance as prov
 from tools.webfoot.authored_image import DeclaredChange
 
 CHUNKS = (0x082928DC, 0x08292A54)
 OFFSET = 0x00292CA0
+
+#: The one profile-backed identity, which the manifest must name as its base.
+CANONICAL_SHA256 = profile_authority.canonical_export_identity().sha256
 
 
 def _change(**overrides) -> dict:
@@ -43,7 +47,7 @@ def _change(**overrides) -> dict:
 def _document(changes: list[dict] | None = None, **overrides) -> dict:
     document = {
         "schema_version": 1,
-        "base": {"profile_id": "buus_fury_usa_rev0_01c1707f", "sha256": mb.SUPPORTED_ROM_SHA256},
+        "base": {"profile_id": "buus_fury_usa_rev0_01c1707f", "sha256": CANONICAL_SHA256},
         "output": {"sha256": "00" * 32, "size": 8},
         "changed_byte_count": 2,
         "changes": [_change()] if changes is None else changes,

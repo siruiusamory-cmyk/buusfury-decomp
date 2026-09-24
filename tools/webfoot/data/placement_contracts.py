@@ -57,8 +57,6 @@ CONTRACTS = {'buus_fury_usa_rev0_01c1707f': {'encoding': 'stack_be16_buu_v1',
                                          'dialog_text': {
                                              'consumer_slot': 178,
                                              'pops': 3,
-                                             'count': 1534,
-                                             'text_table': 0x0806BCE8,
                                              'native': 0x08003031,
                                              'evidence': 'docs/research/BUU_DIALOG_RUNTIME.md; '
                                                          'handler 0x08003030 pops three at '

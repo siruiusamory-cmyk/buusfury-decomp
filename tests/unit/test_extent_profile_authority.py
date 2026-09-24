@@ -1,0 +1,335 @@
+"""CQA-15: the load-bearing extents come from the profile, not from literals.
+
+The defect these cover: the canonical identity and the map/text/stat extents
+were restated in three to eight independent places, several of them live, and
+nothing asserted they agreed. A test that pins one copy to the local file is not
+the same check - it cannot fail when a *second* copy drifts.
+
+So these do not compare a constant to a constant. Each supplies a profile whose
+declared values deliberately DIFFER from Buu's and asserts the production reader
+follows the profile. Reintroducing a Buu literal into any migrated consumer
+breaks the corresponding test, which is what makes the migration real rather
+than cosmetic.
+
+No commercial ROM is read: the export-side readers run on synthetic bytes sized
+to the declared extent, and the map renderer on the synthetic fixture it already
+has.
+"""
+
+from __future__ import annotations
+
+from dataclasses import replace
+from pathlib import Path
+
+import pytest
+
+from tools.export import canonical as canon
+from tools.export import map_browser as mb
+from tools.export import profile_authority
+from tools.webfoot import map_render as mr
+from tools.webfoot.binary import GbaRomAddress
+from tools.webfoot.formats import map_entry as me
+from tools.webfoot.profile import (
+    MapEntryTableProfile,
+    RecordTableProfile,
+    RomProfile,
+    RomProfileCatalog,
+    TextTableProfile,
+)
+
+BUU = "buus_fury_usa_rev0_01c1707f"
+IMAGE_SIZE = 8_388_608
+
+#: Where the synthetic profile's tables live. Deliberately NOT Buu's addresses,
+#: and inside the ROM window so the profile's own validation accepts them.
+SYNTHETIC_MAP_TABLE = 0x08400000
+SYNTHETIC_MAP_COUNT = 3
+SYNTHETIC_TEXT_TABLE = 0x08410000
+SYNTHETIC_TEXT_COUNT = 2
+SYNTHETIC_TEXT_POOL = 0x08420000
+SYNTHETIC_POOL_SIZE = 64
+
+
+def _synthetic_bytes() -> bytes:
+    """An image the synthetic profile's TEXT extents describe, and nothing else.
+
+    The map-table half of the parameterization proof uses the complete synthetic
+    ROM in `test_map_render`, which is already wired for a readable map
+    assembly; this image is only for the text-index bound.
+    """
+    image = bytearray(IMAGE_SIZE)
+
+    def put(address: int, data: bytes) -> None:
+        offset = address - 0x08000000
+        image[offset : offset + len(data)] = data
+
+    # Text pool: two NUL-terminated UTF-16LE strings, tiling the declared size.
+    put(SYNTHETIC_TEXT_POOL, "AB\x00".encode("utf-16-le") + "CD\x00".encode("utf-16-le"))
+    # Pointer table: two entries pointing at those two strings.
+    put(
+        SYNTHETIC_TEXT_TABLE,
+        (SYNTHETIC_TEXT_POOL).to_bytes(4, "little")
+        + (SYNTHETIC_TEXT_POOL + 6).to_bytes(4, "little"),
+    )
+    return bytes(image)
+
+
+def _synthetic_profile(buu: RomProfile, *, text_count: int = SYNTHETIC_TEXT_COUNT) -> RomProfile:
+    """Buu's profile with every load-bearing extent moved to a different value."""
+    return replace(
+        buu,
+        id="synthetic_extents_profile",
+        sha256="cd" * 32,
+        map_entries=MapEntryTableProfile(
+            address=GbaRomAddress(SYNTHETIC_MAP_TABLE),
+            count=SYNTHETIC_MAP_COUNT,
+            record_size=me.MAP_ENTRY_SIZE,
+        ),
+        text_strings=TextTableProfile(
+            pointer_table_address=GbaRomAddress(SYNTHETIC_TEXT_TABLE),
+            count=text_count,
+            pool_address=GbaRomAddress(SYNTHETIC_TEXT_POOL),
+            pool_size=SYNTHETIC_POOL_SIZE,
+            encoding="utf16le_nul_terminated",
+            alignment=2,
+            relocatable=False,
+            evidence="CQA-03-15 synthetic parameterization fixture",
+        ),
+    )
+
+
+@pytest.fixture(scope="module")
+def buu() -> RomProfile:
+    catalog = RomProfileCatalog.load("config/roms.yaml")
+    return next(p for p in catalog.profiles if p.id == BUU)
+
+
+@pytest.fixture(scope="module")
+def image() -> bytes:
+    return _synthetic_bytes()
+
+
+# --- the profile authority itself ---------------------------------------------
+
+
+def test_the_export_identity_is_the_profiles_declaration(buu):
+    """One owner: the hash is read from the catalog, not restated beside it."""
+    expected = profile_authority.canonical_export_identity()
+    assert expected.sha256 == buu.sha256
+    assert expected.profile_id == buu.id
+    assert expected.image_size == buu.size
+    # And there is no second literal to drift.
+    from tools.export import buu_resource_export
+
+    assert buu_resource_export.CANONICAL_ROM_SHA256 == buu.sha256
+    assert buu_resource_export.canonical_map_entry_count() == buu.map_entries.count
+
+
+# --- map table address and count ----------------------------------------------
+
+
+def test_the_map_entry_count_bound_is_the_profiles(buu, image):
+    """`Rom.map_entry_count` follows the supplied profile, not Buu's table."""
+    synthetic = _synthetic_profile(buu)
+    rom = canon.Rom(image, profile=synthetic)
+    assert rom.map_entry_count() == SYNTHETIC_MAP_COUNT
+    assert rom.map_entry_table_address() == SYNTHETIC_MAP_TABLE
+    assert rom.map_entry_count() != buu.map_entries.count
+
+
+def _map_table_bytes(count: int) -> bytes:
+    """An image where records 0..count-1 of ONE table all have a readable root.
+
+    Every record's `+0x2C` points at a word that points at a shared root
+    definition, which is all `read_map_entries` needs to resolve an entry. The
+    assembly behind that root is not needed to prove the bound, the address and
+    the stride, and building one would only obscure what is being tested.
+    """
+    image = bytearray(IMAGE_SIZE)
+
+    def put(address: int, data: bytes) -> None:
+        offset = address - 0x08000000
+        image[offset : offset + len(data)] = data
+
+    root = 0x08500000
+    for index in range(count):
+        record = SYNTHETIC_MAP_TABLE + index * me.MAP_ENTRY_SIZE
+        # The record's own selector source, then the root definition it holds.
+        put(record + 0x2C, (0x08510000 + index * 0x100).to_bytes(4, "little"))
+        put(0x08510000 + index * 0x100, (root).to_bytes(4, "little"))
+    return bytes(image)
+
+
+def test_read_map_entries_walks_the_profiles_extent(buu):
+    """The enumerator reads exactly `count` records at `address`, stride `size`."""
+    synthetic = replace(
+        buu,
+        id="synthetic_map_extent_profile",
+        map_entries=MapEntryTableProfile(
+            address=GbaRomAddress(SYNTHETIC_MAP_TABLE),
+            count=SYNTHETIC_MAP_COUNT,
+            record_size=me.MAP_ENTRY_SIZE,
+        ),
+    )
+    entries = canon.read_map_entries(
+        canon.Rom(_map_table_bytes(SYNTHETIC_MAP_COUNT), profile=synthetic)
+    )
+    assert len(entries) == SYNTHETIC_MAP_COUNT
+    assert [entry.index for entry in entries] == list(range(SYNTHETIC_MAP_COUNT))
+    assert entries[1].address == SYNTHETIC_MAP_TABLE + me.MAP_ENTRY_SIZE
+    # A larger declared count reads further into this image - the loop bound is
+    # the declaration, so a Buu literal would enumerate 452 records instead.
+    larger = canon.read_map_entries(
+        canon.Rom(
+            _map_table_bytes(SYNTHETIC_MAP_COUNT + 2),
+            profile=replace(
+                synthetic,
+                map_entries=MapEntryTableProfile(
+                    address=GbaRomAddress(SYNTHETIC_MAP_TABLE),
+                    count=SYNTHETIC_MAP_COUNT + 2,
+                    record_size=me.MAP_ENTRY_SIZE,
+                ),
+            ),
+        )
+    )
+    assert len(larger) == SYNTHETIC_MAP_COUNT + 2
+
+
+def test_the_map_browser_index_bound_is_the_profiles(buu, image):
+    """A map index past the declared count is refused by the profile's bound."""
+    synthetic = _synthetic_profile(buu)
+    assert SYNTHETIC_MAP_COUNT < buu.map_entries.count
+    rom = canon.Rom(image, profile=synthetic)
+    from tools.export.map_browser import _check_map_index
+
+    _check_map_index(rom, SYNTHETIC_MAP_COUNT - 1)
+    with pytest.raises(mb.MapBrowserError, match=f"0\\.\\.{SYNTHETIC_MAP_COUNT - 1}"):
+        _check_map_index(rom, SYNTHETIC_MAP_COUNT)
+
+
+# --- the live text index bound ------------------------------------------------
+
+
+def test_the_text_index_bound_is_the_profiles(buu, image):
+    """`Rom.text` bounds by the profile's count, not by a module constant.
+
+    This is the copy the audit called out as a LIVE index bound. With the
+    synthetic profile declaring 2 entries, index 2 must resolve to None even
+    though Buu's table has 1,534 slots at a different address.
+    """
+    synthetic = _synthetic_profile(buu)
+    rom = canon.Rom(image, profile=synthetic)
+    assert rom.text_table().count == SYNTHETIC_TEXT_COUNT
+    assert rom.text(0) == "AB"
+    assert rom.text(1) == "CD"
+    assert rom.text(SYNTHETIC_TEXT_COUNT) is None
+    assert rom.text(-1) is None
+
+    # The default (canonical) profile does not find these strings at all: its
+    # table address is Buu's, which this image leaves zeroed.
+    default_rom = canon.Rom(image)
+    assert default_rom.text_table().count == buu.text_strings.count
+    assert default_rom.text(0) is None
+
+
+def test_a_profile_declaring_a_different_text_count_bounds_differently(buu, image):
+    """Moving only the declared count moves only the bound."""
+    three = _synthetic_profile(buu, text_count=3)
+    rom = canon.Rom(image, profile=three)
+    # Index 2 is inside the declared count but the table has no third pointer,
+    # so it resolves to nothing rather than raising.
+    assert rom.text(2) is None
+    assert rom.text_table().count == 3
+
+
+# --- the map renderer ---------------------------------------------------------
+
+
+def test_the_map_renderer_address_is_the_profiles():
+    """`resolve_descriptor` uses the profile's table address and stride.
+
+    The fixture ROM from `test_map_render` wires its table at a non-Buu address;
+    the canonical profile's address holds nothing there, so resolving against it
+    cannot produce the fixture's descriptor.
+    """
+    from tests.unit.test_map_render import (
+        _SYNTHETIC_MAP_INDEX,
+        _SYNTHETIC_MAP_TABLE_ADDRESS,
+        _synthetic_rom,
+        synthetic_profile,
+    )
+
+    rom_bytes, descriptor = _synthetic_rom()
+    synthetic = synthetic_profile()
+    entry, _pointer, resolved = mr.resolve_descriptor(
+        rom_bytes, _SYNTHETIC_MAP_INDEX, profile=synthetic
+    )
+    assert entry == (
+        _SYNTHETIC_MAP_TABLE_ADDRESS + _SYNTHETIC_MAP_INDEX * me.MAP_ENTRY_SIZE
+    )
+    assert resolved == descriptor
+
+
+def test_the_map_renderer_refuses_a_profile_with_no_map_table(buu, image):
+    """A profile declaring no map table is refused by name, not defaulted."""
+    without = replace(buu, id="no_map_table_profile", map_entries=None)
+    with pytest.raises(mr.MapRenderError, match="declares no map_entries"):
+        mr.resolve_entry_table(without)
+
+
+# --- GBA base -----------------------------------------------------------------
+
+
+def test_the_gba_base_has_one_owner():
+    """Address-window semantics live in `binary`; the copies are aliases of it."""
+    from tools.webfoot import binary
+    from tools.webfoot.formats import ascii_text_tables as att
+    from tools.webfoot.formats import map_placements, map_slots, text_tables
+
+    assert att.GBA_ROM_BASE == binary.GBA_ROM_BASE
+    assert text_tables.GBA_ROM_BASE == binary.GBA_ROM_BASE
+    assert map_placements.ROM_BASE == binary.GBA_ROM_BASE
+    assert map_slots.ROM_BASE == binary.GBA_ROM_BASE
+
+    # The aliases are the same object's value, and the export stack agrees.
+    from tools.export import webfoot_strict as ws
+
+    assert ws.GBA_ROM_BASE == binary.GBA_ROM_BASE
+
+
+def test_the_gba_base_round_trips_through_the_sanctioned_helpers():
+    """`FileOffset`/`GbaRomAddress` are the conversion, not ad hoc arithmetic."""
+    from tools.webfoot.binary import GBA_ROM_BASE, FileOffset, GbaRomAddress
+
+    assert FileOffset(0).to_gba_address(IMAGE_SIZE) == GbaRomAddress(GBA_ROM_BASE)
+    assert GbaRomAddress(GBA_ROM_BASE + 0x1234).to_file_offset(IMAGE_SIZE) == 0x1234
+
+
+# --- stat extents -------------------------------------------------------------
+
+
+def test_the_stat_extents_come_from_the_profile(buu):
+    """The stat readers take address, count and stride from the declaration."""
+    from tools.webfoot.formats import stat_tables as st
+
+    enemy = buu.enemy_stats
+    characters = buu.character_base_stats
+    assert isinstance(enemy, RecordTableProfile)
+    assert isinstance(characters, RecordTableProfile)
+    # The format layer's strides describe the record shapes and must agree with
+    # what the profile declares, or one of the two is wrong.
+    assert enemy.record_size == st.ENEMY_RECORD_SIZE
+    assert characters.record_size == st.BASE_STAT_RECORD_SIZE
+    # The address is the profile's, and it is a GBA address, not a file offset.
+    assert enemy.address.raw >= 0x08000000
+    assert enemy.address.raw != st.ENEMY_TABLE_START
+
+
+def test_the_character_identity_bound_is_the_callers(buu):
+    """A profile declaring a shorter roster refuses an index it cannot have."""
+    from tools.webfoot.formats import stat_tables as st
+
+    count = buu.character_base_stats.count
+    assert st.character_identity(count - 1, count).key == count - 1
+    with pytest.raises(ValueError):
+        st.character_identity(count, count)

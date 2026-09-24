@@ -37,18 +37,32 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Iterator
 
+from ..binary import GBA_ROM_BASE as _GBA_ROM_BASE
+
 # --- Enemy records -------------------------------------------------------
+#
+# The RECORD SIZE below is format structure the codec enforces. The table
+# START/LAST/COUNT that follow are one game's measured extent, kept as the
+# EVIDENCE that extent was verified against - the iterators that use them have
+# no production caller. `webfoot.stats` and `webfoot.entities` take address,
+# count and stride from `profile.enemy_stats` / `profile.character_base_stats`,
+# which is the authority for a live read (CQA-15). Relocating a live reader onto
+# these constants would reintroduce the duplicate authority this comment exists
+# to prevent.
 
 #: CONFIRMED. Bytes per enemy record.
 ENEMY_RECORD_SIZE = 0x1C
 
-#: CONFIRMED. File offset of the first enemy record in the contiguous table.
+#: CONFIRMED, EVIDENCE ORACLE. File offset of the first enemy record in the
+#: contiguous table. Not a runtime authority: read only by `iter_enemy_records`,
+#: whose callers are tests and the `logx_char_probe` research probe.
 ENEMY_TABLE_START = 0x00711274
 
-#: CONFIRMED. File offset of the *last* enemy record (inclusive).
+#: CONFIRMED, EVIDENCE ORACLE. File offset of the *last* enemy record
+#: (inclusive).
 ENEMY_TABLE_LAST = 0x007121C4
 
-#: CONFIRMED. Records in the contiguous table.
+#: CONFIRMED, EVIDENCE ORACLE. Records in the contiguous table.
 ENEMY_RECORD_COUNT = 141
 
 # --- Character base stats ------------------------------------------------
@@ -56,11 +70,11 @@ ENEMY_RECORD_COUNT = 141
 #: CONFIRMED. Bytes per character base-stat record.
 BASE_STAT_RECORD_SIZE = 0x12
 
-#: CONFIRMED. File offset of Goku's base-stat record; the 9 records are
-#: contiguous from here.
+#: CONFIRMED, EVIDENCE ORACLE. File offset of Goku's base-stat record; the 9
+#: records are contiguous from here.
 BASE_STAT_TABLE_START = 0x006FDA4C
 
-#: CONFIRMED. Playable characters in the base-stat table.
+#: CONFIRMED, EVIDENCE ORACLE. Playable characters in the base-stat table.
 BASE_STAT_RECORD_COUNT = 9
 
 #: INFERRED. Order per BuusFuryToolkit `Base Stats.txt`.
@@ -83,8 +97,9 @@ BASE_STAT_NAMES = (
 )
 
 #: GBA cartridge base. A file offset plus this is the address the game sees.
-#: Convention documented by BuusFuryToolkit's README ("ROM offset + 0x08000000").
-GBA_ROM_BASE = 0x08000000
+#: The convention is BuusFuryToolkit's README ("ROM offset + 0x08000000"); the
+#: value itself is `binary.GBA_ROM_BASE`, the one owner of window semantics.
+GBA_ROM_BASE = _GBA_ROM_BASE
 
 
 @dataclass(frozen=True)
@@ -226,7 +241,13 @@ def looks_like_enemy_record(data: bytes, offset: int) -> bool:
 
 
 def iter_enemy_records(data: bytes) -> Iterator[EnemyRecord]:
-    """Yield every enemy record in the verified contiguous table."""
+    """Yield every enemy record in the verified contiguous table.
+
+    EVIDENCE ORACLE, not a production reader: the offsets are this module's
+    record of the extent a ticket verified, and the callers are tests and the
+    `logx_char_probe` research probe. A production read takes the address, count
+    and stride from the profile (`webfoot.stats`).
+    """
     for offset in range(
         ENEMY_TABLE_START,
         ENEMY_TABLE_LAST + 1,
@@ -236,7 +257,7 @@ def iter_enemy_records(data: bytes) -> Iterator[EnemyRecord]:
 
 
 def iter_base_stat_records(data: bytes) -> Iterator[BaseStatRecord]:
-    """Yield the 9 playable-character base-stat records."""
+    """Yield the 9 playable-character base-stat records. EVIDENCE ORACLE."""
     for index in range(BASE_STAT_RECORD_COUNT):
         offset = BASE_STAT_TABLE_START + index * BASE_STAT_RECORD_SIZE
         yield decode_base_stat_record(data, offset)
@@ -364,7 +385,7 @@ def enemy_identity(record: EnemyRecord) -> StatIdentity:
     return StatIdentity(kind="enemy", key=record.type_id)
 
 
-def character_identity(index: int) -> StatIdentity:
+def character_identity(index: int, count: int) -> StatIdentity:
     """Identity of a character record, keyed on roster position.
 
     UNLIKE the enemy key this is positional, because the base-stat records
@@ -373,8 +394,13 @@ def character_identity(index: int) -> StatIdentity:
     It is a stable key only so long as the roster does not get reordered,
     which nothing in this ticket does. Recorded here so a future ticket
     replaces it deliberately rather than inheriting it by accident.
+
+    `count` is the profile's declared `character_base_stats.count`, supplied by
+    the caller. This is a live index bound, so it is the profile's declaration
+    rather than one game's roster size: a copy here would silently accept or
+    refuse an index against the wrong table.
     """
-    if type(index) is not int or not 0 <= index < BASE_STAT_RECORD_COUNT:
+    if type(index) is not int or not 0 <= index < count:
         raise ValueError(f"character index out of range: {index}")
     return StatIdentity(kind="character", key=index)
 
@@ -383,8 +409,16 @@ def character_alias(index: int) -> str:
     """Human-readable name for a character record.
 
     A display alias, never an identity: these names are INFERRED from
-    BuusFuryToolkit and could be renamed without the record changing.
+    BuusFuryToolkit and could be renamed without the record changing. The roster
+    itself is a Buu declaration with no profile field yet; `stats` gates a
+    caller on the profile's declared count before this is reached, so an index
+    past this tuple cannot arrive from production.
     """
+    if not 0 <= index < len(BASE_STAT_NAMES):
+        raise ValueError(
+            f"no verified display alias for character index {index}; the verified "
+            f"roster is 0..{len(BASE_STAT_NAMES) - 1}"
+        )
     return BASE_STAT_NAMES[index]
 
 

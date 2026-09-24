@@ -19,11 +19,12 @@ import hashlib
 from pathlib import Path
 import struct
 
+from .binary import GBA_ROM_BASE
 from .formats import bg_tilemap
 from .formats import map_entry as me
 from .formats import sprite_graphics
 from .formats import webfoot_lz
-from .profile import RomProfileCatalog
+from .profile import MapEntryTableProfile, RomProfile, RomProfileCatalog
 from .rom import identify_rom
 
 
@@ -39,13 +40,9 @@ class UnsupportedMapAssemblyVariant(MapRenderError):
     """The descriptor uses a map assembly variant not yet proven."""
 
 
-#: GBA ROM addresses map to file offsets by subtracting this base.
-GBA_ROM_BASE = 0x08000000
-
-#: MapEntry table: base address and record stride. CONFIRMED - the same values
-#: `formats.map_entry` uses, restated as the arithmetic this module performs
-#: directly (index -> record -> +0x2C) without loading the whole table.
-MAP_ENTRY_TABLE_ADDRESS = 0x0808E2E0
+#: MapEntry record stride is the format's: `formats.map_entry` owns it and this
+#: module imports it rather than restating the number. The scene pointer's
+#: offset within a record is likewise format structure.
 MAP_ENTRY_STRIDE = me.MAP_ENTRY_SIZE  # 0x38
 MAP_ENTRY_SCENE_POINTER_OFFSET = 0x2C  # variation_array_pointer_raw
 
@@ -66,12 +63,47 @@ SCREEN_CHUNK_SIDE = 32
 SUPPORTED_LAYER_HANDLER = 0x08008087
 MAX_TILE_INDEX = 0x3FF
 
-#: Only the canonical Buu's Fury USA image is supported. The map-entry table
-#: address and BG-palette address are specific to it; a different image would
-#: resolve different bytes and must be refused.
-SUPPORTED_ROM_SHA256 = (
-    "940ad5f01db4465b8877dfe739510cbf34f4ea3d390f3df13519808bc36f059e"
-)
+
+def canonical_profile() -> RomProfile:
+    """The packaged profile this renderer's address scheme was verified against.
+
+    The renderer is Buu-only for proven reasons - it accepts one layer handler
+    form and one palette address - so a caller that has not resolved a profile
+    of its own gets this one. It is read from the packaged catalog, the same
+    authority `capability.require` gates on, so the map-entry table address,
+    count, stride and image identity below are the profile's declaration and
+    not a second copy of them.
+    """
+    from .capability import Capability, packaged_contract
+    return packaged_contract(_CANONICAL_PROFILE_ID, Capability.MAP_ENTRIES)
+
+
+_CANONICAL_PROFILE_ID = "buus_fury_usa_rev0_01c1707f"
+
+
+def resolve_entry_table(profile: RomProfile | None = None) -> MapEntryTableProfile:
+    """The MapEntry table to index, from `profile` or the packaged canonical one.
+
+    One lookup point, so no caller restates the table address and no caller can
+    silently fall back to a table belonging to another image.
+    """
+    return _entry_table(profile if profile is not None else canonical_profile())
+
+
+def _entry_table(profile: RomProfile) -> MapEntryTableProfile:
+    """The profile's MapEntry table, or a refusal naming what is missing.
+
+    A profile that declares no map table cannot be rendered at all: this
+    renderer's first act is to index that table, and defaulting to some other
+    image's address is exactly the mis-description CQA-03 closed.
+    """
+    table = profile.map_entries
+    if table is None:
+        raise MapRenderError(
+            f"profile {profile.id!r} declares no map_entries table; "
+            "this renderer indexes that table first and cannot default it"
+        )
+    return table
 
 
 @dataclass(frozen=True, slots=True)
@@ -175,13 +207,20 @@ def _u32(rom: bytes, address: int) -> int:
     return struct.unpack_from("<I", rom, offset)[0]
 
 
-def _verify_supported_rom(rom: bytes) -> None:
-    """Refuse profile-specific rendering against any unverified byte image."""
+def _verify_supported_rom(rom: bytes, profile: RomProfile) -> None:
+    """Refuse profile-specific rendering against any other byte image.
+
+    Compared against the resolved profile's declared identity, which is the one
+    authority for this image's hash; the BG-palette address and the accepted
+    layer handler form are what make this renderer Buu-only for now, and that
+    limitation is stated by the profile gate rather than by a second hash
+    literal that could drift from the catalog.
+    """
     actual = hashlib.sha256(rom).hexdigest()
-    if actual != SUPPORTED_ROM_SHA256:
+    if actual != profile.sha256:
         raise MapRenderError(
-            "render_map requires canonical Buu's Fury USA rev0 ROM bytes; "
-            f"got SHA-256 {actual}"
+            f"render_map requires the image described by profile {profile.id!r} "
+            f"(sha256 {profile.sha256}); got SHA-256 {actual}"
         )
 
 
@@ -203,21 +242,41 @@ def parse_map_id(map_id: str) -> int:
     return index
 
 
-def resolve_descriptor(rom: bytes, map_index: int) -> tuple[int, int, int]:
+def resolve_descriptor(
+    rom: bytes, map_index: int, *, profile: RomProfile | None = None
+) -> tuple[int, int, int]:
     """``map_index`` -> ``(map_entry_address, scene_pointer, descriptor_address)``.
 
     Pure ROM arithmetic, general for every map: MapEntry[N] + 0x2C is a pointer
     into the content stream whose target is the scene descriptor. This is the
     ROM-proven identity chain.
+
+    The table address and its record stride come from the resolved profile, not
+    from module constants: the stride is the format's (`formats.map_entry`) and
+    the address is the profile's declaration, so a profile that moves its table
+    is served correctly instead of being read at Buu's address.
     """
-    map_entry_address = MAP_ENTRY_TABLE_ADDRESS + map_index * MAP_ENTRY_STRIDE
+    table = resolve_entry_table(profile)
+    table_address = table.address.raw
+    stride = table.record_size
+    _check_map_index(map_index, table.count)
+    map_entry_address = table_address + map_index * stride
     scene_pointer = map_entry_address + MAP_ENTRY_SCENE_POINTER_OFFSET
     # Bounds the record itself before dereferencing.
-    _file_offset(map_entry_address + MAP_ENTRY_STRIDE - 1, len(rom))
+    _file_offset(map_entry_address + stride - 1, len(rom))
     indirect = _u32(rom, scene_pointer)
     descriptor = _u32(rom, indirect)
     _file_offset(descriptor, len(rom))
     return map_entry_address, indirect, descriptor
+
+
+def _check_map_index(map_index: int, count: int) -> None:
+    """Bind a map index by the profile's declared entry count."""
+    if type(map_index) is not int or not 0 <= map_index < count:
+        raise MapRenderError(
+            f"map index {map_index!r} is outside this profile's 0..{count - 1} "
+            "declared map-entry range"
+        )
 
 
 # --- palette (ROM-proven) ----------------------------------------------------
@@ -558,15 +617,26 @@ def render_map_from_vram(
 def render_map(
     rom: bytes,
     map_id: str,
+    *,
+    profile: RomProfile | None = None,
 ) -> MapRenderResult:
-    """Render the complete static logical map from immutable ROM bytes only."""
+    """Render the complete static logical map from immutable ROM bytes only.
+
+    `profile` supplies the image identity every offset is resolved against and
+    the MapEntry table this renderer indexes first. Omitted, the packaged
+    canonical profile is used and its identity is still compared against the
+    bytes, so an unverified image is refused rather than rendered.
+    """
     if not isinstance(rom, (bytes, bytearray)):
         raise MapRenderError("rom must be bytes")
     rom = bytes(rom)
-    _verify_supported_rom(rom)
+    resolved = profile if profile is not None else canonical_profile()
+    _verify_supported_rom(rom, resolved)
 
     map_index = parse_map_id(map_id)
-    map_entry_address, scene_pointer, descriptor = resolve_descriptor(rom, map_index)
+    map_entry_address, scene_pointer, descriptor = resolve_descriptor(
+        rom, map_index, profile=resolved
+    )
     assembly = reconstruct_map_assembly(rom, descriptor)
     palette = decode_bg_palette(rom)
 
@@ -689,12 +759,14 @@ def load_canonical_rom(path: str | Path, catalog: RomProfileCatalog) -> bytes:
     """Read and identity-check the canonical ROM, returning its bytes.
 
     A convenience for scripts and ROM-gated tests: it refuses any image whose
-    SHA-256 is not the canonical one, because every address in this module is
-    specific to that image.
+    SHA-256 is not the canonical profile's, because every address this module
+    resolves is specific to that image.
     """
     identification = identify_rom(path, catalog)
-    if identification.hashes.sha256.lower() != SUPPORTED_ROM_SHA256:
+    expected = canonical_profile()
+    if identification.hashes.sha256.lower() != expected.sha256:
         raise MapRenderError(
-            f"{path} is not the canonical Buu's Fury image this renderer supports"
+            f"{path} is not the image described by profile {expected.id!r} "
+            "that this renderer supports"
         )
     return Path(path).read_bytes()

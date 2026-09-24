@@ -13,6 +13,7 @@ from dataclasses import dataclass, replace
 import re
 
 from .allocation import AllocationRequest
+from .binary import GBA_ROM_BASE
 from .formats.map_entry import MAP_ENTRY_SIZE
 from .layout import AnchorId, LayoutError
 from .maps import MapIdentity, PlacementIdentity
@@ -167,14 +168,25 @@ def _resolve_behavior(clone, maps):
             f"{clone.identity}: declared behavior {clone.behavior} resolved to "
             f"{descriptor.identity}; a behavior must name a descriptor by its own "
             "published identity, not by a sharing consumer")
-    return 0x08000000 + descriptor.file_offset
+    return GBA_ROM_BASE + descriptor.file_offset
 
 
-def _expand_semantic_source(source, profile_id, identity):
-    """Resolve the profile's narrow proven effects to ordinary VM mnemonics."""
+def _expand_semantic_source(source, profile, identity):
+    """Resolve the profile's narrow proven effects to ordinary VM mnemonics.
+
+    The text bound is the profile's own declared `text_strings.count`: this
+    rejects an authored text identity that names no slot in the table the ROM
+    actually has, so it must be the declaration and not a copy of it.
+    """
     from .data.script_effects import SCRIPT_EFFECTS
+    text_strings = profile.text_strings
+    if text_strings is None:
+        raise AuthoredBehaviorError(
+            f"{identity}: profile {profile.id!r} declares no text table, so an "
+            "authored text identity cannot be bounded")
+    text_count = text_strings.count
     expanded = []
-    effects = SCRIPT_EFFECTS.get(profile_id, {})
+    effects = SCRIPT_EFFECTS.get(profile.id, {})
     for line in source:
         parts = line.split()
         effect = effects.get(parts[0]) if parts else None
@@ -194,9 +206,10 @@ def _expand_semantic_source(source, profile_id, identity):
         except ValueError:
             raise AuthoredBehaviorError(
                 f"{identity}: show_centered_sprite_text coordinates must be integers") from None
-        if not 0 <= text_index < effect['text_count']:
+        if not 0 <= text_index < text_count:
             raise AuthoredBehaviorError(
-                f"{identity}: text identity is outside the verified table")
+                f"{identity}: text identity is outside the profile's declared "
+                f"0..{text_count - 1} text range")
         if not (0 <= x < 240 and 0 <= y < 160):
             raise AuthoredBehaviorError(
                 f"{identity}: show_centered_sprite_text coordinates must be on screen")
@@ -228,7 +241,7 @@ def _assemble_script(clone, maps):
     if maps.profile.id not in spec.profiles:
         raise AuthoredBehaviorError(
             f"{clone.identity}: the {spec.name} VM is not verified for this profile")
-    source = _expand_semantic_source(clone.script, maps.profile.id, clone.identity)
+    source = _expand_semantic_source(clone.script, maps.profile, clone.identity)
     try:
         return assemble_source(source, spec)
     except ScriptError as exc:

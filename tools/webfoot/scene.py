@@ -387,13 +387,22 @@ def placement_relationships(
 
 
 def script_effect_options(maps: Maps) -> list[dict]:
-    """Specialized authored-script choices from the profile's SDK contract."""
+    """Specialized authored-script choices from the profile's SDK contract.
+
+    `text_count` is reported from the profile's declared text table, which is
+    the bound the effect's `text` argument is actually checked against. It is
+    reported rather than re-declared so the editor's range and the guard that
+    enforces it can never disagree.
+    """
+    text_strings = maps.profile.text_strings
+    if text_strings is None:
+        return []
     result = []
     for identity, effect in sorted(SCRIPT_EFFECTS.get(maps.profile.id, {}).items()):
         result.append({
             "identity": identity,
             "label": identity.replace("_", " "),
-            "text_count": effect["text_count"],
+            "text_count": text_strings.count,
             "coordinate_ranges": dict(effect["coordinate_ranges"]),
         })
     return result
@@ -408,7 +417,11 @@ def placement_editor_constraints() -> dict:
 
 
 def visible_text_options(text_strings, effect_identity: str) -> list[dict]:
-    """Text identities and previews accepted by one authored script effect."""
+    """Text identities and previews accepted by one authored script effect.
+
+    Bounded by the loaded table's own entry count, so the options offered and
+    the slots that exist are the same set by construction.
+    """
     effects = SCRIPT_EFFECTS.get(text_strings.profile.id, {})
     effect = effects.get(effect_identity)
     if effect is None:
@@ -416,7 +429,6 @@ def visible_text_options(text_strings, effect_identity: str) -> list[dict]:
     return [
         {"identity": str(entry.identity), "text": entry.text}
         for entry in text_strings.entries()
-        if entry.identity.index < effect["text_count"]
     ]
 
 

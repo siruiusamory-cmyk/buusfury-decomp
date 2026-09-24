@@ -165,6 +165,12 @@ class PlacementEvents:
         contract = self.contract.get('dialog_text')
         if contract is None:
             return ()
+        text_strings = self.maps.profile.text_strings
+        if text_strings is None:
+            raise ScriptError(
+                f"profile {self.maps.profile.id!r} declares no text table; the "
+                "dialog text index cannot be bounded"
+            )
         spec = OPCODE_SETS[self.contract['encoding']]
         records = self.resource_records()
         if index is not None:
@@ -174,7 +180,7 @@ class PlacementEvents:
         found = []
         for record in records:
             found.extend(links.dialog_text_references(
-                self.maps.base_bytes, record, spec, contract))
+                self.maps.base_bytes, record, spec, contract, text_strings.count))
         return tuple(found)
 
     def dialogs_for_text(self, index):

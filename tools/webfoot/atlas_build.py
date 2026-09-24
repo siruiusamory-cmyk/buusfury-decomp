@@ -30,11 +30,26 @@ from .binary import FileOffset, GBA_ROM_BASE
 from .layout import LayoutError, Provenance, ReferenceEncoding, RomRange
 
 
-#: The canonical Buu's Fury image the artifacts were measured against. The
-#: assembler refuses to stamp any other identity onto their provenance.
+#: The canonical image the artifacts were measured against. The assembler
+#: refuses to stamp any other identity onto their provenance.
+#:
+#: The id below is the one provenance label this module chooses; the hash and
+#: the image size are taken from that profile's declaration rather than
+#: restated, because the atlas identity is one of the load-bearing duplicates
+#: CQA-15 found and a second literal here would be free to drift from the
+#: profile the session compares an opened atlas against.
 PROFILE_ID = "buus_fury_usa_rev0_01c1707f"
-BASE_SHA256 = "940ad5f01db4465b8877dfe739510cbf34f4ea3d390f3df13519808bc36f059e"
-IMAGE_SIZE = 8_388_608
+
+
+def _canonical_identity():
+    """The packaged profile's identity for `PROFILE_ID`, as one object."""
+    from .capability import Capability, packaged_contract
+    return packaged_contract(PROFILE_ID, Capability.MAP_ENTRIES).identity
+
+
+_BASE_IMAGE = _canonical_identity()
+BASE_SHA256 = _BASE_IMAGE.sha256
+IMAGE_SIZE = _BASE_IMAGE.image_size
 
 #: The ONE region a ticket has proven free (config/roms.yaml, TOOLKIT-028).
 #: Anything else claiming VERIFIED_FREE is demoted, because "looks like fill" is

@@ -61,6 +61,8 @@ from dataclasses import dataclass
 from enum import Enum
 import struct
 
+from ..binary import GBA_ROM_BASE as ROM_BASE
+
 
 #: One slot is two little-endian 32-bit words. CONFIRMED as a stride by the
 #: static decode; nothing here depends on what the words mean.
@@ -70,7 +72,8 @@ _SLOT_STRUCT = struct.Struct("<II")
 
 #: GBA cartridge window. A slot's second word is only a reference when it lands
 #: inside the image actually being read, which is checked against its real size.
-ROM_BASE = 0x08000000
+#: `ROM_BASE` is an alias of the sanctioned `binary.GBA_ROM_BASE`, not a second
+#: literal, so address-window semantics have one owner.
 
 #: An explicit classifier HEURISTIC, and nothing more. Upper bound on a typed
 #: slot's `type_raw` high halfword: every slot in the confirmed MapEntry 39

@@ -31,11 +31,15 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 import hashlib
-from typing import Iterable, Mapping
+from typing import TYPE_CHECKING, Iterable, Mapping
 
+from . import profile_authority
 from . import canonical as canon
 from . import render as render_sdk
 from . import webfoot_strict as ws
+
+if TYPE_CHECKING:  # pragma: no cover - typing only
+    from tools.webfoot.profile import AtlasIdentity
 
 #: Layer classifications that establish a slot draws pixels.
 _GRAPHICAL_CLASSES = (
@@ -44,15 +48,16 @@ _GRAPHICAL_CLASSES = (
     "static_graphical_terrain_field",
 )
 
-#: Only the canonical Buu's Fury USA image is supported. Every address the
-#: accepted readers use (the MapEntry table, the text pointer table, the bank
-#: table, the BG palette) is specific to that image; a different image - even one
-#: of the same 8 MiB size - would resolve different bytes and must be refused
-#: rather than enumerated as garbage. This is the same image
-#: `tools.webfoot.map_render` gates on.
-SUPPORTED_ROM_SHA256 = (
-    "940ad5f01db4465b8877dfe739510cbf34f4ea3d390f3df13519808bc36f059e"
-)
+
+def canonical_identity() -> "AtlasIdentity":
+    """The base image the accepted readers below describe.
+
+    Read from the packaged profile through `profile_authority` rather than held
+    as a literal here: this stack's readers resolve table addresses that are the
+    profile's declarations, so the identity that authorises them must be the
+    same declaration and not a second copy of the hash.
+    """
+    return profile_authority.canonical_export_identity()
 
 
 class MapBrowserError(ValueError):
@@ -159,18 +164,36 @@ def _coerce(rom: "canon.Rom | bytes | bytearray") -> canon.Rom:
     return canon.Rom(rom)
 
 
-def _verify_supported_rom(rom: canon.Rom) -> None:
-    """Fail closed on any image that is not the canonical Buu's Fury ROM.
+def _check_map_index(rom: canon.Rom, map_index: int) -> None:
+    """Bind a map index by the profile's declared MapEntry count.
 
-    The accepted readers resolve profile-specific addresses; applying them to any
-    other image (even another verified 8 MiB profile) would silently enumerate
-    garbage. This mirrors `tools.webfoot.map_render._verify_supported_rom`.
+    Read from the reader's profile rather than a module constant: the count
+    decides which maps exist and which map a render targets, so a stale copy
+    would refuse a valid map or accept one past the table.
+    """
+    count = rom.map_entry_count()
+    if type(map_index) is not int or not 0 <= map_index < count:
+        raise MapBrowserError(
+            f"map index {map_index!r} is outside this profile's 0..{count - 1} "
+            "declared map-entry range"
+        )
+
+
+def _verify_supported_rom(rom: canon.Rom) -> None:
+    """Fail closed on any image the resolved profile does not describe.
+
+    The accepted readers resolve profile-specific addresses; applying them to
+    any other image (even another verified 8 MiB profile) would silently
+    enumerate garbage. The comparison is the shared profile identity contract -
+    the same rule `tools.webfoot.map_render` and the Workbench session use - so
+    there is one statement of it rather than one per reader stack.
     """
     actual = hashlib.sha256(rom.data).hexdigest()
-    if actual != SUPPORTED_ROM_SHA256:
+    expected = canonical_identity()
+    if actual != expected.sha256:
         raise MapBrowserError(
-            "the Map Browser supports the canonical Buu's Fury USA rev0 ROM only; "
-            f"got SHA-256 {actual}"
+            f"the Map Browser supports the image described by profile "
+            f"{expected.profile_id!r} only; got SHA-256 {actual}"
         )
 
 
@@ -206,13 +229,10 @@ def map_label(rom: "canon.Rom | bytes | bytearray", map_index: int) -> str | Non
     """The ROM-derived label of one map, or None when it publishes no text.
 
     The same value :func:`read_map_index` puts in :attr:`MapIndexEntry.name`, for a
-    caller that needs one map's label without enumerating all 452.
+    caller that needs one map's label without enumerating the whole table.
     """
-    if type(map_index) is not int or not 0 <= map_index < canon.MAP_ENTRY_COUNT:
-        raise MapBrowserError(
-            f"map index {map_index!r} is outside 0..{canon.MAP_ENTRY_COUNT - 1}"
-        )
     rom = _coerce(rom)
+    _check_map_index(rom, map_index)
     _verify_supported_rom(rom)
     try:
         entry = canon.read_map_entries(rom)[map_index]
@@ -329,10 +349,7 @@ def render_map(
     *this* map; the default re-decodes it on every call.
     """
     rom = _coerce(rom)
-    if type(map_index) is not int or not 0 <= map_index < canon.MAP_ENTRY_COUNT:
-        raise MapBrowserError(
-            f"map index {map_index!r} is outside 0..{canon.MAP_ENTRY_COUNT - 1}"
-        )
+    _check_map_index(rom, map_index)
     _verify_supported_rom(rom)
     try:
         entry = canon.read_map_entries(rom)[map_index]
@@ -453,10 +470,7 @@ def render_chunk_images(
     caller already holds. As there, it must be the block for *this* map.
     """
     rom = _coerce(rom)
-    if type(map_index) is not int or not 0 <= map_index < canon.MAP_ENTRY_COUNT:
-        raise MapBrowserError(
-            f"map index {map_index!r} is outside 0..{canon.MAP_ENTRY_COUNT - 1}"
-        )
+    _check_map_index(rom, map_index)
     _verify_supported_rom(rom)
     try:
         entry = canon.read_map_entries(rom)[map_index]

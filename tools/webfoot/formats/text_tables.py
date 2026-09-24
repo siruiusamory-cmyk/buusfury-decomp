@@ -50,25 +50,25 @@ from dataclasses import dataclass
 import re
 from typing import Iterator
 
-# --- verified extents ----------------------------------------------------
+from ..binary import GBA_ROM_BASE as _GBA_ROM_BASE
 
-#: CONFIRMED. File offset of the first string in the contiguous pool.
-TEXT_POOL_START = 0x0005792C
-
-#: CONFIRMED. File offset one past the pool's last byte (its final terminator).
-TEXT_POOL_END = 0x0006BCE6
-
-#: CONFIRMED. File offset of the pointer table's first entry.
-TEXT_TABLE_START = 0x0006BCE8
-
-#: CONFIRMED. Entries in the pointer table.
-TEXT_ENTRY_COUNT = 1534
+# --- verified format facts -----------------------------------------------
+#
+# The string POOL and POINTER TABLE extents that used to live here were one
+# game's measurements, not format structure: a count and an address are facts
+# about a specific image, and the profile catalog already declares them
+# (`tables.text_strings`). Holding a second copy in the codec made the codec a
+# runtime authority for them, which is what CQA-15 closed. What remains is the
+# format: how wide a pointer is, how a string terminates, what the base of the
+# ROM window is, and how control units are spelled.
 
 #: CONFIRMED. Bytes per pointer table entry: one little-endian GBA address.
 TEXT_POINTER_SIZE = 4
 
 #: GBA cartridge base. A file offset plus this is the address the game sees.
-GBA_ROM_BASE = 0x08000000
+#: Imported from `webfoot.binary`, the one owner of address-window semantics,
+#: rather than restated as a second literal.
+GBA_ROM_BASE = _GBA_ROM_BASE
 
 #: CONFIRMED. The 16-bit unit that ends a string.
 TERMINATOR = 0x0000
@@ -256,20 +256,15 @@ class TextEntry:
     def gba_address(self) -> int:
         return self.offset + GBA_ROM_BASE
 
-    @property
-    def pointer_offset(self) -> int:
-        """File offset of this entry's slot in the pointer table."""
-        return TEXT_TABLE_START + self.identity.index * TEXT_POINTER_SIZE
 
-
-def read_pointer(data: bytes, index: int, table_start: int = TEXT_TABLE_START) -> int:
+def read_pointer(data: bytes, index: int, table_start: int) -> int:
     """File offset the table's ``index`` entry points at.
 
-    ``table_start`` defaults to this profile's verified table base, which is what
-    every caller predating TOOLKIT-036 meant. A caller reading a table the ROM
-    profile locates - the enumerator in `webfoot.text` - passes that address
-    instead, so the codec reads the table it was actually pointed at rather than
-    the one constant this module happens to carry.
+    ``table_start`` is required, not defaulted: the table's address is the
+    profile's declaration, and a default here would be a second, silently
+    authoritative copy of one image's extent. Callers that hold a profile pass
+    its `text_strings.pointer_table_address`; callers built from earlier
+    measurements pass the address they measured.
     """
     slot = table_start + index * TEXT_POINTER_SIZE
     if slot + TEXT_POINTER_SIZE > len(data):
@@ -290,15 +285,21 @@ def encode_pointer(offset: int) -> bytes:
     return (offset + GBA_ROM_BASE).to_bytes(TEXT_POINTER_SIZE, "little")
 
 
-def iter_text_entries(data: bytes) -> Iterator[TextEntry]:
+def iter_text_entries(
+    data: bytes, *, table_start: int, count: int
+) -> Iterator[TextEntry]:
     """Yield every string the pointer table enumerates, in table order.
+
+    The table address and its entry count are the caller's profile
+    declarations, so the codec walks the extent it was handed rather than one
+    game's measured bound.
 
     Table order is also address order in the canonical image, but the two are
     kept conceptually separate: order is a fact about the current layout, and
     identity is the index.
     """
-    for index in range(TEXT_ENTRY_COUNT):
-        offset = read_pointer(data, index)
+    for index in range(count):
+        offset = read_pointer(data, index, table_start)
         text, end = decode_string(data, offset)
         yield TextEntry(
             identity=TextIdentity(index),
@@ -308,17 +309,22 @@ def iter_text_entries(data: bytes) -> Iterator[TextEntry]:
         )
 
 
-def pool_is_exhaustively_tiled(data: bytes) -> bool:
+def pool_is_exhaustively_tiled(
+    data: bytes, *, table_start: int, count: int, pool_start: int, pool_end: int
+) -> bool:
     """True when the table's strings tile the pool with no gap or overlap.
 
     This is the structural invariant that makes a *complete* round trip provable
     rather than sampled: if every string ends exactly where the next begins, and
     the first starts at the pool base while the last ends at the pool end, then
     the enumeration accounts for every byte in the extent.
+
+    Every extent is supplied by the caller from its profile, so the invariant is
+    checked against the declared table rather than against a codec constant.
     """
-    expected = TEXT_POOL_START
-    for entry in iter_text_entries(data):
+    expected = pool_start
+    for entry in iter_text_entries(data, table_start=table_start, count=count):
         if entry.offset != expected:
             return False
         expected = entry.offset + entry.size
-    return expected == TEXT_POOL_END
+    return expected == pool_end

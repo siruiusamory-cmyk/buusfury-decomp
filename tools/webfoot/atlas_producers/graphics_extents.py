@@ -22,12 +22,18 @@ import hashlib
 from pathlib import Path
 
 from .. import graphics
-from ..profile import RomProfileCatalog
+from ..binary import GBA_ROM_BASE as GBA_BASE
+from ..profile import RomProfileCatalog, VerificationStatus
 from ..rom import identify_rom
 from ._io import write_jsonl
 
-GBA_BASE = 0x08000000
-EXPECTED_SHA = "940ad5f01db4465b8877dfe739510cbf34f4ea3d390f3df13519808bc36f059e"
+#: `GBA_BASE` is `binary.GBA_ROM_BASE`, the one owner of address-window
+#: semantics, rather than a second literal of it.
+#:
+#: The image identity this pass requires is NOT restated here: it is read from
+#: the profile the catalog matches, which is the one authority for it (CQA-15).
+#: A second literal would be free to drift from the catalog the pass itself
+#: loads, so the check below compares the bytes against the matched profile.
 
 
 def build(rom_path: Path, out_dir: Path, config_path: Path) -> Path:
@@ -35,10 +41,19 @@ def build(rom_path: Path, out_dir: Path, config_path: Path) -> Path:
     rom_path = Path(rom_path)
     image = rom_path.read_bytes()
     before = hashlib.sha256(image).hexdigest()
-    assert before == EXPECTED_SHA, f"ROM identity mismatch before: {before}"
 
     catalog = RomProfileCatalog.load(Path(config_path))
-    sprites = graphics.load_actor_sprites(image, identify_rom(rom_path, catalog))
+    identification = identify_rom(rom_path, catalog)
+    match = identification.profile_match
+    if match.status is not VerificationStatus.VERIFIED or match.profile is None:
+        raise ValueError(
+            f"{rom_path} is not an exactly verified profile image: {match.reason}"
+        )
+    expected = match.profile.identity
+    assert before == expected.sha256, (
+        f"ROM identity mismatch before: {before} is not {expected.describe()}"
+    )
+    sprites = graphics.load_actor_sprites(image, identification)
 
     rows = []
     for graphic in sprites.graphics():
@@ -88,5 +103,7 @@ def build(rom_path: Path, out_dir: Path, config_path: Path) -> Path:
     write_jsonl(path, rows)
 
     after = hashlib.sha256(rom_path.read_bytes()).hexdigest()
-    assert after == EXPECTED_SHA, f"ROM changed during the run: {after}"
+    assert after == expected.sha256, (
+        f"ROM changed during the run: {after} is not {expected.describe()}"
+    )
     return path

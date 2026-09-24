@@ -592,7 +592,9 @@ class MapWorkspaceTab(QWidget):
                 QApplication.setOverrideCursor(Qt.CursorShape.WaitCursor)
                 QApplication.processEvents()
                 try:
-                    result = map_render.render_map(self._session.rom_image, map_id)
+                    result = map_render.render_map(
+                        self._session.rom_image, map_id, profile=self._session.profile
+                    )
                 finally:
                     QApplication.restoreOverrideCursor()
                 self._render_cache[map_id] = result

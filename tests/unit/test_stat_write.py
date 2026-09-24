@@ -85,15 +85,25 @@ def test_identity_rejects_unknown_kinds_and_negative_keys() -> None:
 
 def test_character_alias_is_separate_from_identity() -> None:
     """A rename must not change identity; they are different concepts."""
-    identity = st.character_identity(0)
+    identity = st.character_identity(0, st.BASE_STAT_RECORD_COUNT)
     assert identity == st.StatIdentity(kind="character", key=0)
     assert st.character_alias(0) == "Goku"
     assert str(identity) != st.character_alias(0)
 
 
 def test_character_identity_rejects_out_of_range_index() -> None:
+    """The bound is the caller's declared count, not this module's constant."""
     with pytest.raises(ValueError):
-        st.character_identity(st.BASE_STAT_RECORD_COUNT)
+        st.character_identity(st.BASE_STAT_RECORD_COUNT, st.BASE_STAT_RECORD_COUNT)
+    # A profile declaring a shorter roster refuses an index it cannot have.
+    with pytest.raises(ValueError):
+        st.character_identity(9, 5)
+
+
+def test_character_alias_refuses_an_index_it_has_no_name_for() -> None:
+    """A roster index past the verified names fails loudly, never wraps."""
+    with pytest.raises(ValueError, match="no verified display alias"):
+        st.character_alias(len(st.BASE_STAT_NAMES))
 
 
 # --- round-trip and unknown-byte preservation ----------------------------

@@ -6,7 +6,7 @@ from dataclasses import dataclass, replace
 from typing import Iterable
 
 from .allocation import Allocation, AllocationRequest, allocate
-from .binary import FileOffset
+from .binary import FileOffset, GBA_ROM_BASE
 from .formats.webfoot_lz import (ContainerError, pack, unpack,
                                  validate_retail_termination)
 from .layout import AnchorId, OwnedRegion, RomRange
@@ -69,9 +69,9 @@ def _retail_container(canonical: bytes, profile: RomProfile,
     if not 0 <= table_slot <= len(canonical) - 8:
         raise CompressedDialogueError("container-table slot lies outside canonical ROM")
     old_pointer = int.from_bytes(canonical[table_slot:table_slot + 4], "little")
-    if old_pointer < 0x08000000:
+    if old_pointer < GBA_ROM_BASE:
         raise CompressedDialogueError("container-table slot is not a ROM pointer")
-    old_offset = FileOffset(old_pointer - 0x08000000).value
+    old_offset = FileOffset(old_pointer - GBA_ROM_BASE).value
     if old_offset >= len(canonical):
         raise CompressedDialogueError("container-table slot is not a canonical ROM pointer")
     return table_slot, old_offset, unpack(canonical, old_offset)
@@ -123,9 +123,9 @@ def _prepare_replacement(canonical: bytes, profile: RomProfile,
             f"retail termination contract: {exc}"
         ) from exc
     next_pointer = int.from_bytes(canonical[table_slot + 4:table_slot + 8], "little")
-    if next_pointer < 0x08000000:
+    if next_pointer < GBA_ROM_BASE:
         raise CompressedDialogueError("following container table entry is not a ROM pointer")
-    next_offset = FileOffset(next_pointer - 0x08000000).value
+    next_offset = FileOffset(next_pointer - GBA_ROM_BASE).value
     old_allocation = next_offset - old_offset
     if next_offset <= old_offset or container.packed_end > next_offset:
         raise CompressedDialogueError("container table does not bound a valid retail allocation")

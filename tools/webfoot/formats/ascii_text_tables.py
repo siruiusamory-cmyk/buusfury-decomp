@@ -52,16 +52,16 @@ from __future__ import annotations
 
 import re
 
-from .text_tables import TextCodecError
-
-#: GBA cartridge base. A file offset plus this is the address the game sees.
-GBA_ROM_BASE = 0x08000000
+from ..binary import GBA_ROM_BASE
+from .text_tables import TextCodecError, TEXT_POINTER_SIZE
 
 #: CONFIRMED. The byte that ends a string.
 TERMINATOR = 0x00
 
 #: CONFIRMED. Bytes per pointer table entry: one little-endian GBA address.
-POINTER_SIZE = 4
+#: The width is a property of the pointer-table format, so it is read from the
+#: sibling codec that owns it rather than restated here.
+POINTER_SIZE = TEXT_POINTER_SIZE
 
 #: CONFIRMED. The only non-printable byte the pool contains, and it is a real
 #: newline inside a label rather than a control code with an operand.

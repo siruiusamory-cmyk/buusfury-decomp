@@ -408,7 +408,7 @@ def load_stat_tables(path: str | Path, catalog: RomProfileCatalog) -> StatTables
         record = st.decode_base_stat_record(data, offset)
         characters.append(
             CharacterEntry(
-                identity=st.character_identity(index),
+                identity=st.character_identity(index, character_table.count),
                 alias=st.character_alias(index),
                 record=record,
                 location=StatLocation(index=index, file_offset=offset),

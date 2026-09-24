@@ -410,7 +410,7 @@ def test_every_text_index_resolves_and_the_two_fields_are_adjacent(
     canonical_bytes: bytes,
 ) -> None:
     for record in probe.iter_records(canonical_bytes):
-        assert record.text_index < text_tables.TEXT_ENTRY_COUNT
+        assert record.text_index < probe.TEXT_TABLE_ENTRIES
         assert record.text_index_2 == record.text_index + 1
         assert probe.resolve_text(canonical_bytes, record.text_index)
 

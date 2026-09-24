@@ -35,12 +35,14 @@ from collections import Counter
 from pathlib import Path
 
 from .. import atlas
+from ..binary import GBA_ROM_BASE as BASE
 from ..analysis import thumb
 from ..formats import webfoot_lz as lz
 from ..formats.text_tables import CONTROL_NEWLINE, CONTROL_PREFIX
 from ._io import read_jsonl, write_jsonl
 
-BASE = 0x08000000
+#: The address window this pass scans. `BASE` is `binary.GBA_ROM_BASE`, the one
+#: owner of address-window semantics, not a second literal of it.
 IMAGE_SIZE = 8388608
 PRINT_MIN, PRINT_MAX = 0x20, 0x7E
 

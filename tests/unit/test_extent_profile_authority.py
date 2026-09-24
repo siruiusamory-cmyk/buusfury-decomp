@@ -30,6 +30,7 @@ from tools.export import profile_authority
 from tools.webfoot import map_render as mr
 from tools.webfoot.binary import GbaRomAddress
 from tools.webfoot.formats import map_entry as me
+from tools.webfoot.formats import map_graphics
 from tools.webfoot.profile import (
     MapEntryTableProfile,
     RecordTableProfile,
@@ -216,15 +217,19 @@ def test_read_map_entries_walks_the_profiles_extent(buu):
 
 
 def test_the_map_browser_index_bound_is_the_profiles(buu, image):
-    """A map index past the declared count is refused by the profile's bound."""
+    """A map index past the declared count is refused by the profile's bound.
+
+    The bound is the SDK map view's, which is where the browser's index check now
+    lives (CQA-04); the export facade calls into it rather than keeping a copy.
+    """
     synthetic = _synthetic_profile(buu)
     assert SYNTHETIC_MAP_COUNT < buu.map_entries.count
-    rom = canon.Rom(image, profile=synthetic)
-    from tools.export.map_browser import _check_map_index
+    reader = map_graphics.MapGraphicsReader(image, synthetic)
+    from tools.webfoot.map_view import _check_map_index
 
-    _check_map_index(rom, SYNTHETIC_MAP_COUNT - 1)
+    _check_map_index(reader, SYNTHETIC_MAP_COUNT - 1)
     with pytest.raises(mb.MapBrowserError, match=f"0\\.\\.{SYNTHETIC_MAP_COUNT - 1}"):
-        _check_map_index(rom, SYNTHETIC_MAP_COUNT)
+        _check_map_index(reader, SYNTHETIC_MAP_COUNT)
 
 
 # --- the live text index bound ------------------------------------------------
@@ -460,8 +465,8 @@ def test_the_map_layout_writer_bound_is_the_profiles(buu):
         map_entries=table,
     )
     writer = MapLayoutWriter(rom_bytes, profile=synthetic)
-    assert writer._rom.map_entry_count() == SYNTHETIC_MAP_COUNT
-    assert writer._rom.map_entry_table_address() == _SYNTHETIC_MAP_TABLE_ADDRESS
+    assert writer._reader.map_entry_count() == SYNTHETIC_MAP_COUNT
+    assert writer._reader.map_entry_table_address() == _SYNTHETIC_MAP_TABLE_ADDRESS
 
     # One past the declared count is refused by the writer's own bound. The
     # canonical profile declares far more maps, so a literal bound of 452 or the

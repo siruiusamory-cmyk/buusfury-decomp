@@ -72,13 +72,13 @@ def _result(index: int, *, width: int = 512, height: int = 512) -> mb.MapBrowser
 def tab(qapp, monkeypatch):
     entries = (_entry(0, "West City"), _entry(1, None), _entry(2, "Buu's House"))
     calls: list[int] = []
-    monkeypatch.setattr(mbt.mb, "read_map_index", lambda rom: entries)
+    monkeypatch.setattr(mbt.mv, "read_map_index", lambda rom: entries)
 
     def render(rom, index, **kwargs):
         calls.append(index)
         return _result(index)
 
-    monkeypatch.setattr(mbt.mb, "render_map", render)
+    monkeypatch.setattr(mbt.mv, "render_map", render)
     value = MapBrowserTab(Session(rom_image=b"synthetic"))
     value.on_session_changed()
     value._render_calls = calls
@@ -123,8 +123,8 @@ def test_render_cache_skips_redundant_work(tab):
 
 def test_layer_toggle_recomposes_visible_layers(tab, monkeypatch):
     composed: list[list] = []
-    monkeypatch.setattr(mbt.mb, "compose", lambda visible, w, h: composed.append(list(visible)) or b"")
-    monkeypatch.setattr(mbt.mb, "rgba", lambda indices, palette: b"\x00" * (512 * 512 * 4))
+    monkeypatch.setattr(mbt.mv, "compose", lambda visible, w, h: composed.append(list(visible)) or b"")
+    monkeypatch.setattr(mbt.mv, "rgba", lambda indices, palette: b"\x00" * (512 * 512 * 4))
     tab._list.setCurrentRow(0)
     composed.clear()
 
@@ -140,7 +140,7 @@ def test_render_error_is_a_message_not_a_crash(tab, monkeypatch):
     def boom(rom, index, **kwargs):
         raise mb.MapBrowserError("boom")
 
-    monkeypatch.setattr(mbt.mb, "render_map", boom)
+    monkeypatch.setattr(mbt.mv, "render_map", boom)
     errors: list[str] = []
     monkeypatch.setattr(mbt.QMessageBox, "warning", lambda *args: errors.append(args[-1]))
 
@@ -153,7 +153,7 @@ def test_index_error_is_a_message_not_a_crash(tab, monkeypatch):
     def boom(rom):
         raise mb.MapBrowserError("cannot enumerate maps")
 
-    monkeypatch.setattr(mbt.mb, "read_map_index", boom)
+    monkeypatch.setattr(mbt.mv, "read_map_index", boom)
     errors: list[str] = []
     monkeypatch.setattr(mbt.QMessageBox, "critical", lambda *args: errors.append(args[-1]))
 
@@ -391,8 +391,8 @@ def edit_tab(qapp, monkeypatch, tmp_path):
     session = Session(rom_image=b"synthetic", rom_path=rom_path)
     session.profile = SimpleNamespace(id="buus_fury_usa_rev0_01c1707f")
 
-    monkeypatch.setattr(mbt.mb, "read_map_index", lambda rom: entries)
-    monkeypatch.setattr(mbt.mb, "render_map", lambda rom, index, **kwargs: base)
+    monkeypatch.setattr(mbt.mv, "read_map_index", lambda rom: entries)
+    monkeypatch.setattr(mbt.mv, "render_map", lambda rom, index, **kwargs: base)
     def _chunk_images(rom, index, addresses, *, char_data=None):
         return tuple(
             mb.ChunkImage(
@@ -401,7 +401,7 @@ def edit_tab(qapp, monkeypatch, tmp_path):
             for address in addresses
         )
 
-    monkeypatch.setattr(mbt.mb, "render_chunk_images", _chunk_images)
+    monkeypatch.setattr(mbt.mv, "render_chunk_images", _chunk_images)
     monkeypatch.setattr(mbt, "MapLayoutEditor", lambda rom_image: fake)
 
     value = MapBrowserTab(session)
@@ -584,8 +584,8 @@ def test_a_map_without_an_editable_layer_stays_read_only(edit_tab, monkeypatch):
 
 def test_a_session_change_leaves_edit_mode(qapp, monkeypatch, tmp_path):
     entries = (_entry(MAP, "Synthetic Map"),)
-    monkeypatch.setattr(mbt.mb, "read_map_index", lambda rom: entries)
-    monkeypatch.setattr(mbt.mb, "render_map", lambda rom, index, **kwargs: _result(index))
+    monkeypatch.setattr(mbt.mv, "read_map_index", lambda rom: entries)
+    monkeypatch.setattr(mbt.mv, "render_map", lambda rom, index, **kwargs: _result(index))
     monkeypatch.setattr(mbt, "MapLayoutEditor", lambda rom_image: None)
     tab = MapBrowserTab(Session(rom_image=b"synthetic", rom_path=tmp_path / "s.gba"))
     tab.on_session_changed()
@@ -620,8 +620,8 @@ def test_map_19_style_layer_is_described_not_called_an_error(edit_tab, monkeypat
 
 def test_an_unsupported_rom_keeps_browsing_read_only(qapp, monkeypatch, tmp_path):
     entries = (_entry(MAP, "Synthetic Map"),)
-    monkeypatch.setattr(mbt.mb, "read_map_index", lambda rom: entries)
-    monkeypatch.setattr(mbt.mb, "render_map", lambda rom, index, **kwargs: _result(index))
+    monkeypatch.setattr(mbt.mv, "read_map_index", lambda rom: entries)
+    monkeypatch.setattr(mbt.mv, "render_map", lambda rom, index, **kwargs: _result(index))
     tab = MapBrowserTab(Session(rom_image=b"synthetic", rom_path=tmp_path / "s.gba"))
     tab.on_session_changed()
     tab._list.setCurrentRow(0)
@@ -672,7 +672,7 @@ def test_a_writer_family_rejection_is_also_a_message_not_a_crash(edit_tab, monke
 def test_chooser_renders_through_the_sessions_cached_character_block(edit_tab, monkeypatch):
     calls: list[dict] = []
     monkeypatch.setattr(
-        mbt.mb,
+        mbt.mv,
         "render_chunk_images",
         lambda rom, index, addresses, **kwargs: calls.append(kwargs)
         or tuple(
@@ -709,7 +709,7 @@ def test_a_render_error_forgets_the_map_selection_and_cannot_crash_edit_mode(
     def boom(rom, index, **kwargs):
         raise mb.MapBrowserError("boom")
 
-    monkeypatch.setattr(mbt.mb, "render_map", boom)
+    monkeypatch.setattr(mbt.mv, "render_map", boom)
     # The fixture already rendered this map, so force the render path itself.
     edit_tab._render_cache.clear()
     edit_tab._render_map(MAP)
@@ -814,8 +814,8 @@ def test_a_verified_derivative_renders_its_edits_and_stays_read_only(
         seen["overrides"] = kwargs.get("chunk_overrides")
         return base
 
-    monkeypatch.setattr(mbt.mb, "read_map_index", lambda rom: entries)
-    monkeypatch.setattr(mbt.mb, "render_map", render)
+    monkeypatch.setattr(mbt.mv, "read_map_index", lambda rom: entries)
+    monkeypatch.setattr(mbt.mv, "render_map", render)
 
     session = Session(rom_image=b"derivative-bytes", rom_path=tmp_path / "derived.gba")
     session.profile = SimpleNamespace(id="buus_fury_usa_rev0_01c1707f")

@@ -29,15 +29,17 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 
-from tools.export import canonical as canon
-from tools.export import map_browser as mb
-from tools.export import profile_authority
-from tools.export import render as render_sdk
-from tools.export import webfoot_strict as ws
+from . import map_view as mv
+from .formats import map_graphics as mg
+from .map_layout_write import (
+    MapLayoutWriteError,
+    MapLayoutWriter,
+    validate_chunk_replacement,
+)
+from .packaged import packaged_profile
 
 from . import write as write_sdk
 from .authored_image import AuthoredImageError, save_authored_image
-from .map_layout_write import MapLayoutWriteError, MapLayoutWriter
 
 
 class MapLayoutEditError(ValueError):
@@ -49,10 +51,8 @@ class MapLayoutEditError(ValueError):
 #: the terminal - where this session's only client has no console. The editor
 #: translates all of them into its own single public failure type.
 _READ_ERRORS = (
-    canon.CanonicalError,
-    ws.ContainerError,
-    render_sdk.RenderError,
-    mb.MapBrowserError,
+    mg.MapGraphicsError,
+    mv.MapBrowserError,
 )
 
 
@@ -80,7 +80,7 @@ class LayoutGrid:
     """Pure chunk-cell geometry of one dominant layer.
 
     A dominant layer's chunk grid is ``columns`` x ``rows`` cells of
-    :data:`tools.export.canonical.CHUNK_PIXELS` square pixels each, laid out from
+    :data:`tools.webfoot.map_view.CHUNK_PIXELS` square pixels each, laid out from
     the layer image's origin - the same origin-aligned placement the accepted
     renderer uses. Keys are row-major cell indices, exactly the order the layer's
     chunk-pointer window stores them in.
@@ -95,11 +95,11 @@ class LayoutGrid:
 
     @property
     def width(self) -> int:
-        return self.columns * canon.CHUNK_PIXELS
+        return self.columns * mv.CHUNK_PIXELS
 
     @property
     def height(self) -> int:
-        return self.rows * canon.CHUNK_PIXELS
+        return self.rows * mv.CHUNK_PIXELS
 
     def contains(self, cell: object) -> bool:
         return type(cell) is int and 0 <= cell < self.cell_count
@@ -118,16 +118,16 @@ class LayoutGrid:
         """The cell covering one pixel of this layer, or None outside it."""
         if not 0 <= x < self.width or not 0 <= y < self.height:
             return None
-        return (y // canon.CHUNK_PIXELS) * self.columns + (x // canon.CHUNK_PIXELS)
+        return (y // mv.CHUNK_PIXELS) * self.columns + (x // mv.CHUNK_PIXELS)
 
     def cell_rect(self, cell: int) -> tuple[int, int, int, int]:
         """``(x, y, width, height)`` of one cell in this layer's own pixels."""
         column, row = self.column_of(cell), self.row_of(cell)
         return (
-            column * canon.CHUNK_PIXELS,
-            row * canon.CHUNK_PIXELS,
-            canon.CHUNK_PIXELS,
-            canon.CHUNK_PIXELS,
+            column * mv.CHUNK_PIXELS,
+            row * mv.CHUNK_PIXELS,
+            mv.CHUNK_PIXELS,
+            mv.CHUNK_PIXELS,
         )
 
 
@@ -269,13 +269,19 @@ class LayoutSave:
 class MapLayoutEditor:
     """The edit session for one canonical image; holds pending edits in memory."""
 
-    def __init__(self, canonical_bytes: bytes) -> None:
+    def __init__(self, canonical_bytes: bytes, *, profile=None) -> None:
         self._base = bytes(canonical_bytes)
         try:
             # The hash gate and the only write primitive, in one place.
-            self._writer = MapLayoutWriter(self._base)
-            self._rom = canon.Rom(self._base)
-            self._entries = canon.read_map_entries(self._rom)
+            self._writer = MapLayoutWriter(self._base, profile=profile)
+            # The SDK's own map/graphics reader, under the same profile the
+            # writer validated the image against, so the read path and the write
+            # path cannot resolve different tables.
+            self._rom = mg.MapGraphicsReader(
+                self._base,
+                profile if profile is not None else packaged_profile(),
+            )
+            self._entries = mg.read_map_entries(self._rom)
         except (MapLayoutWriteError, *_READ_ERRORS) as exc:
             raise MapLayoutEditError(str(exc)) from exc
         self._targets: dict[int, LayoutTarget] = {}
@@ -318,7 +324,7 @@ class MapLayoutEditor:
     def _build_target(self, map_index: int) -> LayoutTarget:
         entry = self._entries[map_index]
         slots: list[LayoutSlot] = []
-        for record in canon.read_layers(self._rom, entry.root_address):
+        for record in mg.read_layers(self._rom, entry.root_address):
             if record.classification == _EDITABLE_CLASSIFICATION:
                 grid = LayoutGrid(record.chunk_x, record.chunk_y)
                 cells = tuple(
@@ -357,7 +363,7 @@ class MapLayoutEditor:
             )
         return LayoutTarget(
             map_index=map_index,
-            name=mb.map_label(self._base, map_index),
+            name=mv.map_label(self._base, map_index),
             slots=tuple(slots),
         )
 
@@ -524,8 +530,8 @@ class MapLayoutEditor:
                     f"chunk cell {cell!r} is outside BG{layer_slot}'s grid"
                 )
             try:
-                mb.validate_cell_replacement(slot.choices, replacement)
-            except mb.MapBrowserError as exc:
+                validate_chunk_replacement(slot.choices, replacement)
+            except MapLayoutWriteError as exc:
                 raise MapLayoutEditError(str(exc)) from exc
             overrides[(layer_slot, cell)] = replacement
         return overrides
@@ -534,17 +540,17 @@ class MapLayoutEditor:
         self,
         map_index: int,
         draft: tuple[int, int, int] | None = None,
-    ) -> "mb.MapBrowserResult":
+    ) -> "mv.MapBrowserResult":
         """Render one map through the accepted pipeline with pending edits applied.
 
-        The render reads the canonical image held by this session. No ROM file is
-        opened and no byte is written merely to preview. The map's character block
-        is decoded once per session, so answering a chooser click does not re-pay
-        the exporter's container decoding.
+        The render reads the canonical image held by this session through the
+        SDK's own map view. No ROM file is opened and no byte is written merely to
+        preview. The map's character block is decoded once per session, so
+        answering a chooser click does not re-pay the container decoding.
         """
         overrides = self.overrides(map_index, draft)
         try:
-            return mb.render_map(
+            return mv.render_map(
                 self._base,
                 map_index,
                 chunk_overrides=overrides or None,
@@ -565,7 +571,7 @@ class MapLayoutEditor:
         if cached is None:
             try:
                 entry = self._entries[map_index]
-                block, _selectors, _animated = canon.assemble_map_char_block(
+                block, _stream, _animated = mg.assemble_map_char_block(
                     self._rom, entry.root_address
                 )
             except _READ_ERRORS as exc:
@@ -646,7 +652,7 @@ class MapLayoutEditor:
                 output_path=output_path,
                 profile_id=profile_id,
                 changes=changes,
-                canonical_sha256=profile_authority.canonical_export_identity().sha256,
+                canonical_sha256=packaged_profile().identity.sha256,
                 verify=self._verify_output,
             )
         except AuthoredImageError as exc:
@@ -678,10 +684,10 @@ class MapLayoutEditor:
         """
         verified: list[LayoutEdit] = []
         try:
-            rom = canon.Rom(data)
-            entries = canon.read_map_entries(rom)
+            rom = mg.MapGraphicsReader(data, packaged_profile())
+            entries = mg.read_map_entries(rom)
             for edit in self.edits():
-                layer = canon.read_layer(
+                layer = mg.read_layer(
                     rom, entries[edit.map_index].root_address, edit.layer_slot
                 )
                 found = layer.chunk_addresses[edit.cell]

@@ -119,7 +119,11 @@ def test_a_plane_of_the_wrong_declared_size_is_refused():
     rom = _image(handler=0x0800897B, field=0x1C, declared=0x400)
     with pytest.raises(canon.CanonicalError) as excinfo:
         canon.read_screenblock_entries(rom, RECORD_ADDRESS)
-    assert "expected 2048" in str(excinfo.value)
+    # The refusal is the shared reader's: it names the size it decoded and the
+    # 0x800 bytes a screen-entry plane declares, which is the same comparison the
+    # SDK's map view performs.
+    assert "expected 0x800" in str(excinfo.value)
+    assert "decoded 0x400" in str(excinfo.value)
 
 
 # --- the terrain-field record form -------------------------------------------

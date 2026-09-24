@@ -104,21 +104,27 @@ def _count_differing_in_rect(
 def _render_dominant_layer(data: bytes, map_index: int, slot: int) -> bytes:
     """Render one dominant layer of any image through the accepted readers.
 
-    The Map Browser facade refuses anything but the canonical image on purpose, so
-    reopening an emitted ROM is checked here with the same accepted readers it
-    composes (the approach MAP-LAYOUT-WRITE-001 used for its own proof).
+    The map view refuses anything but the canonical image on purpose, so reopening
+    an emitted ROM is checked here with the same accepted readers it composes (the
+    approach MAP-LAYOUT-WRITE-001 used for its own proof).
     """
-    rom = canon.Rom(data)
-    entry = canon.read_map_entries(rom)[map_index]
-    layer = canon.read_layer(rom, entry.root_address, slot)
-    block, _selectors, _animated = canon.assemble_map_char_block(rom, entry.root_address)
-    entries = mb._stitch_dominant(rom, layer, {})
-    return render_sdk.render_entries(
-        entries,
+    from tools.webfoot.formats import bg_tilemap
+    from tools.webfoot.formats import map_graphics as mg
+    from tools.webfoot.packaged import packaged_profile
+
+    reader = mg.MapGraphicsReader(data, packaged_profile())
+    entry = mg.read_map_entries(reader)[map_index]
+    layer = mg.read_layer(reader, entry.root_address, slot)
+    block = mg.assemble_map_char_block(reader, entry.root_address)[0]
+    entries = mg.stitch_dominant_entries(reader, layer)
+    pixels, _w, _h = bg_tilemap.render_entry_words(
         block.data,
-        layer.chunk_x * canon.CHUNK_SIDE_TILES,
-        layer.chunk_y * canon.CHUNK_SIDE_TILES,
+        entries,
+        map_width_tiles=layer.chunk_tiles_x,
+        map_height_tiles=layer.chunk_tiles_y,
+        color_256=True,
     )
+    return pixels
 
 
 def _first_null_cell(editor: MapLayoutEditor) -> tuple[int, int, int]:

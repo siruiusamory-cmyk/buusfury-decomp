@@ -64,7 +64,7 @@ from PySide6.QtWidgets import (
     QWidgetAction,
 )
 
-from tools.export import map_browser as mb
+from tools.webfoot import map_view as mv
 from tools.webfoot.map_layout_edit import (
     LayoutGrid,
     LayoutTarget,
@@ -142,7 +142,7 @@ _MODE_ROLE_WORDS = {
 _EDIT_ERRORS = (
     MapLayoutEditError,
     MapLayoutWriteError,
-    mb.MapBrowserError,
+    mv.MapBrowserError,
     WriteError,
 )
 
@@ -437,9 +437,9 @@ class MapBrowserTab(QWidget):
     def __init__(self, session: Session) -> None:
         super().__init__()
         self._session = session
-        self._entries: dict[int, mb.MapIndexEntry] = {}
-        self._render_cache: "OrderedDict[int, mb.MapBrowserResult]" = OrderedDict()
-        self._current: mb.MapBrowserResult | None = None
+        self._entries: dict[int, mv.MapIndexEntry] = {}
+        self._render_cache: "OrderedDict[int, mv.MapBrowserResult]" = OrderedDict()
+        self._current: mv.MapBrowserResult | None = None
         self._layer_checks: dict[int, QCheckBox] = {}
 
         # -- layout editing state, all in-memory -----------------------------
@@ -941,8 +941,8 @@ class MapBrowserTab(QWidget):
             self._show_placeholder("Open a supported ROM to browse its maps.")
             return
         try:
-            index = mb.read_map_index(self._session.map_image)
-        except mb.MapBrowserError as exc:
+            index = mv.read_map_index(self._session.map_image)
+        except mv.MapBrowserError as exc:
             self._edit_toggle.setEnabled(False)
             self._show_placeholder(f"Cannot read the map index: {exc}")
             QMessageBox.critical(self, "Map Browser", str(exc))
@@ -1033,12 +1033,12 @@ class MapBrowserTab(QWidget):
             # selection change or window close re-enter this slot or delete the
             # tab, leaving stale state or a deleted C++ object.
             try:
-                result = mb.render_map(
+                result = mv.render_map(
                     self._session.map_image,
                     index,
                     chunk_overrides=self._session.layout_overrides(index) or None,
                 )
-            except mb.MapBrowserError as exc:
+            except mv.MapBrowserError as exc:
                 self._show_placeholder(f"map:{index:04d} could not be rendered: {exc}")
                 QMessageBox.warning(self, "Map Browser", str(exc))
                 return
@@ -1110,7 +1110,7 @@ class MapBrowserTab(QWidget):
             self._layers_menu.addAction(action)
         self._layers_button.setEnabled(bool(self._layer_checks))
 
-    def _visible_layers(self) -> tuple[mb.MapBrowserLayer, ...]:
+    def _visible_layers(self) -> tuple[mv.MapBrowserLayer, ...]:
         result = self._current
         if result is None:
             return ()
@@ -1129,15 +1129,15 @@ class MapBrowserTab(QWidget):
             self._set_map_pixmap(QPixmap(), result.width, result.height)
             return
         try:
-            indices = mb.compose(visible, result.width, result.height)
+            indices = mv.compose(visible, result.width, result.height)
             pixmap = self._pixmap_from_indices(indices, result.width, result.height, result.palette)
-        except mb.MapBrowserError as exc:
+        except mv.MapBrowserError as exc:
             QMessageBox.warning(self, "Map Browser", str(exc))
             return
         self._set_map_pixmap(pixmap, result.width, result.height)
 
     def _pixmap_from_indices(self, indices: bytes, width: int, height: int, palette) -> QPixmap:
-        rgba = mb.rgba(indices, palette)
+        rgba = mv.rgba(indices, palette)
         image = QImage(rgba, width, height, width * 4, QImage.Format.Format_RGBA8888)
         return QPixmap.fromImage(image)
 
@@ -1474,7 +1474,7 @@ class MapBrowserTab(QWidget):
             # The session's cached character block, so a refill does not re-decode
             # what the preview already decoded. Thumbnail expansion stays inside
             # this guard: it is the same facade error family.
-            images = mb.render_chunk_images(
+            images = mv.render_chunk_images(
                 self._session.map_image,
                 self._current.index,
                 slot.choices,
@@ -1499,7 +1499,7 @@ class MapBrowserTab(QWidget):
         finally:
             self._chooser.blockSignals(False)
 
-    def _thumbnail(self, image: mb.ChunkImage) -> QPixmap:
+    def _thumbnail(self, image: mv.ChunkImage) -> QPixmap:
         """A small chunk image on the canvas checkerboard, cached per address."""
         cached = self._thumbnails.get(image.address)
         if cached is not None:

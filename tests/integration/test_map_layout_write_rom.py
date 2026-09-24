@@ -9,9 +9,9 @@ from pathlib import Path
 import pytest
 
 from tools.export import canonical as canon
-from tools.export import map_browser
 from tools.export import profile_authority
 from tools.export import render
+from tools.webfoot import map_view as mv
 from tools.webfoot.map_layout_write import MapLayoutWriter, MapLayoutWriteError
 
 
@@ -38,16 +38,23 @@ def canonical_input() -> tuple[Path, bytes]:
 
 
 def _render_target_layer(data: bytes) -> bytes:
-    rom = canon.Rom(data)
-    entry = canon.read_map_entries(rom)[MAP]
-    layer = canon.read_layer(rom, entry.root_address, LAYER)
-    block, _, _ = canon.assemble_map_char_block(rom, entry.root_address)
-    entries = map_browser._stitch_dominant(rom, layer, {})
-    return render.render_entries(
-        entries, block.data,
-        layer.chunk_x * canon.CHUNK_SIDE_TILES,
-        layer.chunk_y * canon.CHUNK_SIDE_TILES,
+    from tools.webfoot.formats import bg_tilemap
+    from tools.webfoot.formats import map_graphics as mg
+    from tools.webfoot.packaged import packaged_profile
+
+    reader = mg.MapGraphicsReader(data, packaged_profile())
+    entry = mg.read_map_entries(reader)[MAP]
+    layer = mg.read_layer(reader, entry.root_address, LAYER)
+    block = mg.assemble_map_char_block(reader, entry.root_address)[0]
+    entries = mg.stitch_dominant_entries(reader, layer)
+    pixels, _w, _h = bg_tilemap.render_entry_words(
+        block.data,
+        entries,
+        map_width_tiles=layer.chunk_tiles_x,
+        map_height_tiles=layer.chunk_tiles_y,
+        color_256=True,
     )
+    return pixels
 
 
 def test_fixed_width_edit_noop_inverse_and_render(

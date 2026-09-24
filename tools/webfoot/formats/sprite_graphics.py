@@ -209,13 +209,41 @@ class Palette:
         (``v << 3 | v >> 2``) so that 31 maps to 255 rather than 248; a plain
         shift would make white slightly grey.
         """
-        def expand(part: int) -> int:
-            return (part << 3) | (part >> 2)
+        return tuple(expand_bgr555(word) for word in self.raw)
 
-        return tuple(
-            (expand(word & 31), expand((word >> 5) & 31), expand((word >> 10) & 31))
-            for word in self.raw
-        )
+
+def expand_bgr555(word: int) -> tuple[int, int, int]:
+    """One little-endian GBA palette halfword as 8-bit display RGB.
+
+    The ONE implementation of the hardware's 5-to-8 bit expansion: the object
+    palette's :attr:`Palette.rgb`, the exporter's object-palette decode and the
+    engine-global background palette's RGB888 requantisation all reduce to it, so
+    a fixed channel cannot be expanded two different ways by two readers.
+    """
+    if not 0 <= word <= 0xFFFF or type(word) is not int:
+        raise SpriteFormatError(f"palette word {word!r} is not a 16-bit word")
+
+    def expand(part: int) -> int:
+        return (part << 3) | (part >> 2)
+
+    return (
+        expand(word & 31),
+        expand((word >> 5) & 31),
+        expand((word >> 10) & 31),
+    )
+
+
+def expand_rgb888_channel(byte: int) -> int:
+    """One 8-bit RGB channel requantised to the hardware's 5 bits and back.
+
+    The background palette is stored as RGB888 but the display keeps 5 bits per
+    channel, so the faithful value is the 5-bit quantisation re-expanded. One
+    implementation, for the same reason as :func:`expand_bgr555`.
+    """
+    if type(byte) is not int or not 0 <= byte <= 0xFF:
+        raise SpriteFormatError(f"colour channel {byte!r} is not an 8-bit value")
+    five = byte >> 3
+    return (five << 3) | (five >> 2)
 
 
 def _to5(channel: int) -> int:
@@ -329,6 +357,28 @@ def swizzle_tiles(pixels: bytes, width: int, height: int, *, colour_256: bool) -
                             )
                         out.append((high << 4) | low)
     return bytes(out)
+
+
+def flip_tile(tile: bytes, horizontal: bool, vertical: bool) -> bytes:
+    """Apply the horizontal and vertical flip to a linear square 8x8 tile.
+
+    H-flip mirrors the 8 columns of each row; V-flip mirrors the 8 rows. This is
+    the ONE implementation of that transform: the 8x8 tiled-background renderer
+    (`bg_tilemap`) and the exporter both call it rather than each carrying a copy
+    that could disagree about which axis is which.
+    """
+    if len(tile) != TILE_SIDE * TILE_SIDE:
+        raise SpriteFormatError(
+            f"a tile is {TILE_SIDE * TILE_SIDE} pixels, got {len(tile)}"
+        )
+    if not horizontal and not vertical:
+        return tile
+    rows = [tile[y * TILE_SIDE : (y + 1) * TILE_SIDE] for y in range(TILE_SIDE)]
+    if horizontal:
+        rows = [row[::-1] for row in rows]
+    if vertical:
+        rows = rows[::-1]
+    return b"".join(rows)
 
 
 def tile_byte_count(width: int, height: int, *, colour_256: bool) -> int:

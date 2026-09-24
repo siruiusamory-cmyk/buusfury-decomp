@@ -5,7 +5,8 @@ from __future__ import annotations
 from dataclasses import dataclass, replace
 from typing import Iterable
 
-from .allocation import Allocation, AllocationRequest, allocate
+from .allocation import (Addressability, Allocation, AllocationKind, AllocationRequest,
+                         allocate)
 from .binary import FileOffset, GBA_ROM_BASE
 from .formats.webfoot_lz import (ContainerError, pack, unpack,
                                  validate_retail_termination)
@@ -139,11 +140,16 @@ def _prepare_replacement(canonical: bytes, profile: RomProfile,
         )
 
     expansion = profile.generated_expansion
-    request = AllocationRequest(AnchorId(owner), owner, len(payload), 4)
+    request = AllocationRequest(
+        AnchorId(owner), owner, len(payload), 4,
+        kind=AllocationKind.PACKED_STREAM,
+        addressability=Addressability.EXPANDED_PERMITTED,
+        evidence="compressed-dialogue selector pointers are engine-proven above "
+                 "canonical EOF (ROM-EXPAND-001, LEVEL 4)",
+    )
     allocation = allocate(
         profile, [request],
         occupied=tuple(OwnedRegion(span, "build reservation") for span in reserved),
-        capacity_regions=(expansion.free_region(profile.size),), image_size=expansion.output_size,
     )[0]
     destination = allocation.range.start.value
     old = (canonical[destination:destination + len(payload)]

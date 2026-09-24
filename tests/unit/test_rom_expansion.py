@@ -2,11 +2,13 @@
 
 from __future__ import annotations
 
+from dataclasses import replace
 import hashlib
 
 import pytest
 
-from tools.webfoot.allocation import AllocationRequest, InsufficientSpaceError, allocate
+from tools.webfoot.allocation import (Addressability, AllocationKind, AllocationRequest,
+                                      InsufficientSpaceError, RegionClass, allocate)
 from tools.webfoot.binary import FileOffset
 from tools.webfoot.layout import AnchorId, RomRange
 from tools.webfoot.profile import RomProfile
@@ -119,16 +121,39 @@ def test_generated_image_refuses_write_owned_by_another_domain():
 
 
 def test_shared_allocator_uses_expansion_without_relabeling_retail_free_space():
+    """The expanded region is authorized storage, NOT canonical free space.
+
+    Two claims, and the request model keeps them apart: a request whose domain is
+    not proven above canonical EOF is refused, and an expanded-permitted request
+    gets the appended bytes and is *recorded* as expanded - the profile still
+    declares zero canonical free regions throughout.
+    """
     item = profile()
     expansion = item.generated_expansion
     assert expansion is not None and item.free_regions == ()
-    request = AllocationRequest(AnchorId("payload"), "payload", 3, 4)
+
+    canonical_only = AllocationRequest(AnchorId("payload"), "payload", 3, 4,
+                                       kind=AllocationKind.PLACEMENT_BODY)
+    assert canonical_only.addressability is Addressability.CANONICAL_ONLY
     with pytest.raises(InsufficientSpaceError):
-        allocate(item, [request])
-    allocation = allocate(item, [request], capacity_regions=(expansion.free_region(item.size),),
-                          image_size=expansion.output_size)
-    assert allocation[0].range.start.value == 12
-    assert allocation[0].range.end == 15
+        allocate(item, [canonical_only])
+
+    expanded = AllocationRequest(AnchorId("payload"), "payload", 3, 4,
+                                 kind=AllocationKind.PACKED_STREAM)
+    assert expanded.addressability is Addressability.EXPANDED_PERMITTED
+    allocation = allocate(item, [expanded])[0]
+    assert allocation.range.start.value == 12
+    assert allocation.range.end == 15
+    assert allocation.storage_class is RegionClass.PADDING_EXPANDED
+    assert allocation.is_expanded is True
+    assert allocation.source_region == expansion.free_region(item.size).range
+    assert item.free_regions == (), "retail free space was not relabeled"
+
+    # A larger file is not authorization on its own: strip the declaration and
+    # the same expanded-permitted request is refused.
+    undeclared = replace(item, generated_expansion=None)
+    with pytest.raises(InsufficientSpaceError):
+        allocate(undeclared, [expanded])
 
 
 def test_a_change_straddling_canonical_eof_is_refused_even_when_it_is_authorized():

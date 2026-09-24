@@ -224,6 +224,63 @@ M3 note recorded for honesty: the profile-bound test
 that mutation changes which cell is read, not the index bound. The cell-value test
 is the one that detects it.
 
+## 8a. Independent review
+
+Reviewer: a fresh-context the review tool session (`the reviewer -p`), read-only tool policy,
+given the ticket, the START SHA, the frozen SHA and the audit finding - and
+deliberately **not** given the implementation's own conclusions, so it inspected
+the diff and ran its own probes first.
+
+**Verdict: PASS - no blocking findings, no non-blocking findings.**
+
+It re-derived rather than accepted:
+
+- the reader of record, by calling the export and SDK names and checking object
+  identity (`canon.MapEntry is mg.MapEntry`, and the same for `LayerRecord`,
+  `CharBlock`, `AnimatedTileSource`, `Bank`, the view types and the constants);
+- the import direction itself, by AST-walking `tools/webfoot` for `tools.export`
+  imports (including in-function ones) rather than trusting the new test;
+- that the equivalence test is discriminating, by reading the raw-bytes oracle and
+  confirming it reads the ROM at the offsets `formats.map_entry` declares,
+  independently of the shared reader;
+- that the removal is real, counting ~1,500 deleted lines of duplicated decode and
+  finding no third implementation;
+- that the remaining differences are injected policy rather than second readings;
+- that no scope creep leaked in: `tools/webfoot/profile.py` and
+  `tools/webfoot/workbench/session.py` (the CQA-05/CQA-06 surfaces) are
+  byte-identical to the baseline.
+
+Tests it ran itself, by explicit file name only:
+
+| File | Result |
+|---|---|
+| `tests/integration/test_map_decode_equivalence_rom.py` | 8 passed (476 s) |
+| `tests/integration/test_asset_export_rom.py` | 81 passed (594 s) |
+| `tests/integration/test_map_layout_write_rom.py` + `..._editor_rom.py` | 27 passed |
+| `tests/unit/test_map_decode_authority.py` + the map/graphics unit set | 10 + 237 passed |
+
+Its conclusion in its own words: the refactor "single-sources it in
+`map_graphics.py`, with both surfaces consuming the same reader - the Map 19
+terrain field and screen-entry planes now decode through `mg` for both, so the
+audit's 'one surface draws what the other rejects' is proved to be a *presentation*
+policy difference over one decode, not two readers drifting"; and "CQA-04 may
+close."
+
+**Corrections required by the review: none.** The frozen candidate `5c96bac` stands
+unamended; no correction commit was needed beyond recording this verdict.
+
+## 8b. Freeze record
+
+- **START SHA:** `66a75651a9b30659ce2cdb9d84b42cc24b333796`
+- **FROZEN SHA:** `5c96bac0d6886243b8bee11821f9677c9101e74c`
+  (`Give the shared map/graphics decode one reader of record`) - amended **never**.
+- **FINAL REVIEWED CORRECTION HEAD:** the frozen SHA plus the verdict-record commit
+  that follows it; the code is unamended.
+- Files changed: 24 (17 modified, 5 added, `PROJECT_<local-state-name>` and the state entry).
+- Focused results, ROM-gated results and mutations: sections 7 and 8.
+- Canonical ROM SHA-256 before and after: `940ad5f0...f059e`, unchanged.
+- `WORKBENCH-006` at `b4b13c9c418910d77c7916644aa881d25dd52f3b`: untouched.
+
 ## 9. What this ticket did **not** do
 
 - No rendering rewrite: `map_render` still renders dominant grids only, and

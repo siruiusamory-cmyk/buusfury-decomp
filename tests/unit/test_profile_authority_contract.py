@@ -157,6 +157,35 @@ def test_the_atlas_producers_identity_matches_the_profile(buu):
     assert not hasattr(graphics_extents, "EXPECTED_SHA")
 
 
+def test_the_data_contract_hashes_agree_with_the_profile(development):
+    """Each `data/*` contract's `sha256` must match its profile's declaration.
+
+    Those hashes are no longer the runtime authority, they are compared against
+    the profile by `authored_placements` and `placement_events`. This asserts the
+    relationship for every catalogued profile, so a contract entry that drifts
+    from the catalog fails here as well as at the gate.
+    """
+    from tools.webfoot.data.behavior_triggers import BEHAVIOR_TRIGGER_CONTRACTS
+    from tools.webfoot.data.placement_contracts import CONTRACTS
+
+    by_id = {profile.id: profile for profile in development.profiles}
+    for label, contracts in (
+        ("placement_contracts", CONTRACTS),
+        ("behavior_triggers", BEHAVIOR_TRIGGER_CONTRACTS),
+    ):
+        assert contracts, f"{label} is empty"
+        for profile_id, contract in contracts.items():
+            profile = by_id.get(profile_id)
+            assert profile is not None, (
+                f"{label} names profile {profile_id!r}, which the catalog does not "
+                "configure"
+            )
+            assert contract["sha256"] == profile.sha256, (
+                f"{label}[{profile_id!r}]['sha256'] disagrees with the profile; the "
+                "profile is the authority"
+            )
+
+
 def test_the_retained_stat_oracles_are_geometrically_consistent():
     """The evidence extents describe a whole number of records.
 

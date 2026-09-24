@@ -233,7 +233,13 @@ def _assemble_script(clone, maps):
     from .data.script_specs import OPCODE_SETS
     from .formats.script_vm import ScriptError, assemble_source
     contract = CONTRACTS.get(maps.profile.id)
-    if contract is None or contract['sha256'] != maps.identification.hashes.sha256:
+    # The profile's declared identity is the authority; the contract's own
+    # `sha256` is compared against it, so a contract entry that has drifted from
+    # the catalog for this profile is refused rather than silently trusted. It
+    # is not the ROM check (identify_rom already did that) and it is not a
+    # second authority: if the two ever disagree, the profile wins and this
+    # refuses.
+    if contract is None or contract['sha256'] != maps.profile.sha256:
         raise AuthoredBehaviorError(
             f"{clone.identity}: no verified script contract for this profile, so an "
             "authored behavior body cannot be encoded")

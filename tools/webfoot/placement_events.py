@@ -37,7 +37,11 @@ class PlacementEvents:
     def __init__(self, maps):
         self.maps = maps
         contract = CONTRACTS.get(maps.profile.id)
-        if contract is None or contract['sha256'] != maps.identification.hashes.sha256:
+        # Compared against the profile's declared identity, which is the
+        # authority, rather than against the loaded image's hash: the image is
+        # already verified, so the meaningful check is that this contract entry
+        # has not drifted from the catalog for this profile.
+        if contract is None or contract['sha256'] != maps.profile.sha256:
             raise ScriptError('no verified placement descriptor contract for this profile')
         self.contract = contract
         image = maps.base_bytes

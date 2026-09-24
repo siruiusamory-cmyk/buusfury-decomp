@@ -38,9 +38,13 @@ from dataclasses import dataclass
 from pathlib import Path
 import re
 
-from tools.export import canonical as canon
-from tools.export import map_browser as mb
-from tools.export import profile_authority
+from .formats import map_graphics as mg
+from .map_layout_write import (
+    MapLayoutWriteError,
+    MapLayoutWriter,
+    validate_chunk_replacement,
+)
+from .packaged import packaged_profile
 
 from .authored_image import (
     AUTHORED_MANIFEST_SUFFIX,
@@ -50,7 +54,6 @@ from .authored_image import (
     manifest_path_for,
     verify_authored_image,
 )
-from .map_layout_write import MapLayoutWriteError, MapLayoutWriter
 
 #: ``MANIFEST_SUFFIX``, ``SUPPORTED_SCHEMA_VERSION`` and ``manifest_path_for`` are
 #: re-exported from the shared layer on purpose: this module stays the place a
@@ -147,7 +150,7 @@ def _check_layout_changes(
     # The one reader is built up front because the profile's declared MapEntry
     # count is the bound the owner string is checked against, and that bound is
     # read from the profile through the reader rather than from a constant.
-    rom = canon.Rom(canonical_image)
+    rom = mg.MapGraphicsReader(canonical_image, packaged_profile())
     map_entry_count = rom.map_entry_count()
     targets: list[tuple[int, int, int]] = []
     for change in declared:
@@ -166,12 +169,12 @@ def _check_layout_changes(
             )
         targets.append((map_index, layer_slot, cell))
 
-    entries = canon.read_map_entries(rom)
+    entries = mg.read_map_entries(rom)
     writer = MapLayoutWriter(canonical_image)
     for change, (map_index, layer_slot, cell) in zip(declared, targets):
         entry = entries[map_index]
-        layer = canon.read_layer(rom, entry.root_address, layer_slot)
-        if layer.handler != canon.DOMINANT_LAYER_HANDLER:
+        layer = mg.read_layer(rom, entry.root_address, layer_slot)
+        if layer.handler != mg.DOMINANT_LAYER_HANDLER:
             raise ProvenanceError(
                 f"the manifest edits BG{layer_slot} of map:{map_index:04d}, "
                 "which is not a dominant chunk grid"
@@ -200,8 +203,8 @@ def _check_layout_changes(
         # check, not a second copy here.
         replacement = int.from_bytes(change.new, "little")
         try:
-            mb.validate_cell_replacement(layer.chunk_addresses, replacement)
-        except mb.MapBrowserError as exc:
+            validate_chunk_replacement(layer.chunk_addresses, replacement)
+        except MapLayoutWriteError as exc:
             raise ProvenanceError(
                 f"the manifest's change at 0x{change.offset:08X} is not a supported "
                 f"replacement: {exc}"
@@ -235,7 +238,7 @@ def verify_authored_rom(
         verified = verify_authored_image(
             rom_path,
             manifest_path=manifest_path,
-            canonical_sha256=profile_authority.canonical_export_identity().sha256,
+            canonical_sha256=packaged_profile().identity.sha256,
             field_bytes=FIELD_BYTES,
             expected_reason=REASON,
             check_changes=_check_layout_changes,

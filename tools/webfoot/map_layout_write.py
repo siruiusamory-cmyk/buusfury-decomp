@@ -6,8 +6,18 @@ already occur in the same layer, so this surface cannot allocate or relocate.
 DRAGONBYTE-Z-MAP-LAYOUT-EDITOR-001 adds no capability here. It exposes the
 four-byte field's file offset (so an edit session can record and display what one
 change touches) and routes the replacement policy through
-:func:`tools.export.map_browser.validate_cell_replacement`, which the preview path
-uses too, so "what may be written" and "what may be previewed" cannot drift apart.
+:func:`validate_cell_replacement`, which the preview path uses too, so "what may
+be written" and "what may be previewed" cannot drift apart.
+
+**CQA-04: this module no longer reads through ``tools.export``.** It used to take
+its map-entry rows, its layer records and its replacement policy from
+``tools.export.canonical`` and ``tools.export.map_browser`` - an export/research
+reader standing underneath a shipped write path. Both are now the SDK's: the
+records come from :mod:`tools.webfoot.formats.map_graphics`, the record shape
+from :mod:`tools.webfoot.formats.map_entry`, and the profile from
+:func:`tools.webfoot.packaged.packaged_profile`. The dependency now points
+SDK authority -> export consumer, never the reverse, and
+``tests/unit/test_map_decode_authority.py`` fails if it is turned back.
 """
 
 from __future__ import annotations
@@ -15,30 +25,48 @@ from __future__ import annotations
 import hashlib
 import struct
 
-from tools.export import canonical as canon
-from tools.export import map_browser as mb
-from tools.export import profile_authority
+from .formats import map_entry as me
+from .formats import map_graphics as mg
+from .packaged import packaged_profile
+from .profile import RomProfile
 
 
 class MapLayoutWriteError(ValueError):
     """The requested fixed-size map-layout replacement is unsupported."""
 
 
-def validate_chunk_replacement(layer_addresses: tuple[int, ...], replacement: object) -> int:
-    """Apply the shared replacement policy, in this module's error family.
+def validate_chunk_replacement(
+    layer_addresses: tuple[int, ...], replacement: object
+) -> int:
+    """Whether a value may occupy a dominant-layer chunk-pointer cell.
 
-    The rule itself lives in :func:`tools.export.map_browser.validate_cell_replacement`
-    because a reader's preview must enforce exactly the same thing; re-raising it
-    here keeps this writer's public error type for its own callers.
+    The whole policy, in one place: a cell of the accepted dominant form may only
+    reference an existing, non-null chunk pointer **the same layer already uses**.
+    Nothing else is established - not the null pointer (which the engine's own
+    occupancy test reads as unoccupied), not a chunk from another layer, not a
+    fresh address the layer does not contain (which would be allocation, not a
+    fixed-size replacement), and not a boolean that merely equals an integer.
+
+    This is the SDK-side owner of that rule. The export-side preview facade
+    (``tools.export.map_browser.validate_cell_replacement``) and
+    :func:`tools.webfoot.map_view.render_map`'s override check both call it, so
+    the preview path and the write path cannot disagree about what is legal.
+
+    Returns the accepted pointer so a caller can use the result directly.
     """
-    try:
-        return mb.validate_cell_replacement(layer_addresses, replacement)
-    except mb.MapBrowserError as exc:
-        raise MapLayoutWriteError(str(exc)) from exc
+    if type(replacement) is not int:
+        raise MapLayoutWriteError("a chunk pointer must be an integer address")
+    if replacement == 0:
+        raise MapLayoutWriteError("the null chunk pointer is not a replacement")
+    if replacement not in layer_addresses:
+        raise MapLayoutWriteError(
+            "a replacement chunk must already be used by the same dominant layer"
+        )
+    return replacement
 
 
 class MapLayoutWriter:
-    def __init__(self, canonical_bytes: bytes, *, profile=None) -> None:
+    def __init__(self, canonical_bytes: bytes, *, profile: RomProfile | None = None) -> None:
         """Bind the writer to one image and the profile that describes it.
 
         `profile` defaults to the packaged canonical profile, which is what every
@@ -48,34 +76,43 @@ class MapLayoutWriter:
         """
         self._base = bytes(canonical_bytes)
         # The one identity contract, not this module's own copy of the hash: the
-        # export readers this writer drives resolve the profile's declared table
+        # readers this writer drives resolve the profile's declared table
         # addresses, so the bytes it accepts must be that same profile's image.
-        resolved = profile if profile is not None else profile_authority.canonical_export_profile()
+        resolved = profile if profile is not None else packaged_profile()
         expected = resolved.identity
         if hashlib.sha256(self._base).hexdigest() != expected.sha256:
             raise MapLayoutWriteError(
                 f"expected the image described by profile {expected.profile_id!r}"
             )
-        self._rom = canon.Rom(self._base, profile=resolved)
+        self._profile = resolved
+        self._reader = mg.MapGraphicsReader(self._base, resolved)
         self._edits: dict[int, int] = {}
 
-    def _layer(self, map_index: int, layer_slot: int) -> canon.LayerRecord:
+    @property
+    def profile(self) -> RomProfile:
+        """The profile this writer's addresses and bounds are resolved through."""
+        return self._profile
+
+    def _layer(self, map_index: int, layer_slot: int) -> mg.LayerRecord:
         """The dominant layer record both the read and write paths address."""
-        count = self._rom.map_entry_count()
+        count = self._reader.map_entry_count()
         if type(map_index) is not int or not 0 <= map_index < count:
             raise MapLayoutWriteError(
                 f"map index is out of this profile's 0..{count - 1} declared range"
             )
-        if type(layer_slot) is not int or not 0 <= layer_slot < 4:
+        if type(layer_slot) is not int or not 0 <= layer_slot < len(mg.ROOT_LAYER_SLOTS):
             raise MapLayoutWriteError("layer slot is out of range")
-        entry = canon.read_map_entries(self._rom)[map_index]
-        layer = canon.read_layer(self._rom, entry.root_address, layer_slot)
-        if layer.handler != canon.DOMINANT_LAYER_HANDLER:
+        try:
+            entry = mg.read_map_entries(self._reader)[map_index]
+            layer = mg.read_layer(self._reader, entry.root_address, layer_slot)
+        except mg.MapGraphicsError as exc:
+            raise MapLayoutWriteError(str(exc)) from exc
+        if layer.handler != mg.DOMINANT_LAYER_HANDLER:
             raise MapLayoutWriteError("layer is not the dominant chunk form")
         return layer
 
     @staticmethod
-    def _cell_index(layer: canon.LayerRecord, cell: object) -> int:
+    def _cell_index(layer: mg.LayerRecord, cell: object) -> int:
         if type(cell) is not int or not 0 <= cell < len(layer.chunk_addresses):
             raise MapLayoutWriteError("chunk cell is out of range")
         return cell
@@ -94,8 +131,8 @@ class MapLayoutWriter:
         """
         layer = self._layer(map_index, layer_slot)
         self._cell_index(layer, cell)
-        address = layer.address + canon.LAYER_CHUNK_WINDOW_OFFSET + 4 * cell
-        return self._rom.span(address, 4)
+        address = layer.address + mg.LAYER_CHUNK_WINDOW_OFFSET + 4 * cell
+        return self._reader.span(address, 4)
 
     def set_chunk_pointer(
         self, map_index: int, layer_slot: int, cell: int, replacement: int
@@ -119,8 +156,15 @@ class MapLayoutWriter:
             self._edits.pop(offset, None)
             return
         validate_chunk_replacement(layer.chunk_addresses, replacement)
-        canon.read_chunk_entries(self._rom, replacement)
+        try:
+            mg.dominant_chunk_words(self._reader, replacement)
+        except mg.MapGraphicsError as exc:
+            raise MapLayoutWriteError(str(exc)) from exc
         self._edits[offset] = replacement
+
+    def read_layer(self, map_index: int, layer_slot: int) -> mg.LayerRecord:
+        """One map's dominant layer record, through this writer's reader."""
+        return self._layer(map_index, layer_slot)
 
     @property
     def pending_offsets(self) -> tuple[int, ...]:
@@ -133,3 +177,9 @@ class MapLayoutWriter:
         for offset, replacement in sorted(self._edits.items()):
             struct.pack_into("<I", result, offset, replacement)
         return bytes(result)
+
+
+#: The record shape this writer's reader must declare. Kept as a re-export so a
+#: caller asking "what stride does this writer assume?" reads the format codec's
+#: answer rather than a second number.
+MAP_ENTRY_STRIDE = me.MAP_ENTRY_SIZE

@@ -9,6 +9,17 @@ map-format property and is intentionally not emulated.
 
 The older VRAM-backed core remains as an independent regression oracle through
 :func:`render_map_from_vram` and :func:`render_map_vram_reference`.
+
+**What this module owns, after CQA-04.** It used to decode the MapEntry row, the
+layer records, the selector stream, the animated-tile records and the character
+block itself, in parallel with an independent copy on the export side. Those
+reads are now
+:mod:`tools.webfoot.formats.map_graphics`, whose single implementation both
+stacks consume; what stays here is the *renderer*, which is a presentation policy
+rather than a format reading - which layer handlers this surface is willing to
+draw, whether a layer's pixels may be composed, and what the resulting image and
+provenance are. That split is the point of the ticket: one binary interpretation,
+two presentation policies.
 """
 
 from __future__ import annotations
@@ -22,8 +33,8 @@ import struct
 from .binary import GBA_ROM_BASE
 from .formats import bg_tilemap
 from .formats import map_entry as me
+from .formats import map_graphics as mg
 from .formats import sprite_graphics
-from .formats import webfoot_lz
 from .profile import MapEntryTableProfile, RomProfile, RomProfileCatalog
 from .rom import identify_rom
 
@@ -204,6 +215,32 @@ _VRAM_RENDER_WARNINGS = (
 
 
 # --- resolution --------------------------------------------------------------
+#
+# The record reads below belong to `formats.map_graphics`; what stays here is the
+# renderer's own policy - which handler forms this surface will draw, what it
+# refuses, and how a refusal is phrased. `_shared` runs a shared read and reports
+# a reader refusal in this module's own error family, so the public contract
+# (`MapRenderError` and its documented subclasses) is unchanged by the migration.
+
+def _shared(operation):
+    """Run a shared map/graphics read, re-raising a refusal in this family."""
+    try:
+        return operation()
+    except mg.MapGraphicsError as exc:
+        raise UnsupportedMapAssemblyVariant(str(exc)) from exc
+
+
+def _reader(rom: bytes, profile: RomProfile | None) -> mg.MapGraphicsReader:
+    """The shared reader over these bytes and this profile.
+
+    The SDK's own container contract is used, not the exporter's stricter one:
+    that stricter stream postcondition is an export-path policy, and this
+    renderer already decoded under exactly this contract.
+    """
+    return mg.MapGraphicsReader(
+        rom, profile if profile is not None else canonical_profile()
+    )
+
 
 def _file_offset(address: int, rom_size: int) -> int:
     offset = address - GBA_ROM_BASE
@@ -266,23 +303,33 @@ def resolve_descriptor(
     into the content stream whose target is the scene descriptor. This is the
     ROM-proven identity chain.
 
-    The table address and its record stride come from the resolved profile, not
-    from module constants: the stride is the format's (`formats.map_entry`) and
-    the address is the profile's declaration, so a profile that moves its table
-    is served correctly instead of being read at Buu's address.
+    The table address, its record stride and the `+0x2C` field's position are all
+    read through :mod:`tools.webfoot.formats.map_entry` - the module that owns the
+    record's physical shape, and the one the layout writer serializes through - so
+    this surface cannot address a row differently from the exporter or the writer.
+    A resolver that read the word by its own offset would be the same duplication
+    one level down.
     """
     table = resolve_entry_table(profile)
+    _check_map_index(map_index, table.count)
     table_address = table.address.raw
     stride = table.record_size
-    _check_map_index(map_index, table.count)
     map_entry_address = table_address + map_index * stride
+    # Bounds the record itself before dereferencing, through the same reader the
+    # map/graphics path uses.
+    reader = _reader(rom, profile)
+    try:
+        record = me.MapEntry.from_bytes(
+            reader.bytes_at(map_entry_address, stride)
+        )
+    except (mg.MapGraphicsError, me.MapEntryError) as exc:
+        raise MapRenderError(f"map:{map_index:04d} could not be resolved: {exc}") from exc
     scene_pointer = map_entry_address + MAP_ENTRY_SCENE_POINTER_OFFSET
-    # Bounds the record itself before dereferencing.
-    _file_offset(map_entry_address + stride - 1, len(rom))
-    indirect = _u32(rom, scene_pointer)
-    descriptor = _u32(rom, indirect)
-    _file_offset(descriptor, len(rom))
-    return map_entry_address, indirect, descriptor
+    try:
+        descriptor = reader.u32(record.variation_array_pointer_raw)
+    except mg.MapGraphicsError as exc:
+        raise MapRenderError(f"map:{map_index:04d} could not be resolved: {exc}") from exc
+    return map_entry_address, scene_pointer, descriptor
 
 
 def _check_map_index(map_index: int, count: int) -> None:
@@ -310,112 +357,87 @@ def decode_bg_palette(
     palette is read at its own address instead of at Buu's.
     """
     resolved = profile if profile is not None else canonical_profile()
-    address = _bg_palette_address(resolved)
-    offset = _file_offset(address, len(rom))
-    if offset + BG_PALETTE_BYTES > len(rom):
-        raise MapRenderError(f"BG palette at {address:#010x} runs past the image")
-
-    def display(byte: int) -> int:
-        five = byte >> 3
-        return (five << 3) | (five >> 2)
-
-    return tuple(
-        (display(rom[offset + i * 3]), display(rom[offset + i * 3 + 1]), display(rom[offset + i * 3 + 2]))
-        for i in range(BG_PALETTE_ENTRIES)
-    )
+    return _shared(lambda: mg.decode_bg_palette(_reader(rom, resolved)))
 
 
 # --- ROM-resident assembly ---------------------------------------------------
 
-def _unpack_at(rom: bytes, address: int, *, expected: int | None = None) -> bytes:
-    try:
-        container = webfoot_lz.unpack(rom, _file_offset(address, len(rom)))
-    except webfoot_lz.ContainerError as exc:
-        raise UnsupportedMapAssemblyVariant(
-            f"container at {address:#010x} did not decode: {exc}"
-        ) from exc
-    if expected is not None and len(container.data) != expected:
-        raise UnsupportedMapAssemblyVariant(
-            f"container at {address:#010x} decoded {len(container.data):#x} "
-            f"bytes, expected {expected:#x}"
-        )
-    return container.data
+def _unpack_at(
+    reader: mg.MapGraphicsReader, address: int, *, expected: int | None = None
+) -> bytes:
+    """Decode the container at ``address``, refusing anything but ``expected``."""
+    return _shared(lambda: reader.container_payload(address, expected=expected))
 
 
-def decode_tile_selectors(rom: bytes, descriptor_address: int) -> tuple[int, ...]:
-    """Decode descriptor ``+0x48`` into absolute ``bank:tile`` selectors.
+def decode_tile_selectors(
+    rom: bytes, root_address: int, *, profile: RomProfile | None = None
+) -> tuple[int, ...]:
+    """Decode root ``+0x48`` into absolute ``bank:tile`` selectors.
 
     Entry zero is absolute.  Every later little-endian u16 is a delta from the
     preceding absolute selector, biased by one; arithmetic wraps to u16 exactly
     like the engine's ``ldrh/add/strh`` loop at ``0x08009C02..0x08009C12``.
+
+    The delta rule itself is `formats.map_graphics.selectors_from_payload`; this
+    function is the renderer's spelling of it over raw bytes.
     """
-    remap_address = _u32(rom, descriptor_address + 0x48)
-    raw = _unpack_at(rom, remap_address)
-    if not raw or len(raw) % 2:
-        raise UnsupportedMapAssemblyVariant(
-            f"tile selector container at {remap_address:#010x} has "
-            f"non-even decoded size {len(raw)}"
-        )
-    selectors = list(struct.unpack(f"<{len(raw) // 2}H", raw))
-    for index in range(1, len(selectors)):
-        selectors[index] = (selectors[index] + selectors[index - 1] + 1) & 0xFFFF
-    return tuple(selectors)
+    reader = _reader(rom, profile)
+    stream = _shared(lambda: mg.decode_selector_stream(reader, root_address))
+    return stream.selectors
 
 
-def _decode_layers(rom: bytes, descriptor_address: int) -> tuple[LogicalLayer, ...]:
+def _decode_layers(
+    reader: mg.MapGraphicsReader, descriptor_address: int
+) -> tuple[LogicalLayer, ...]:
+    """Read the root's layer slots and apply this renderer's layer policy.
+
+    The record read is shared; the *decisions* are this surface's. It draws only
+    the dominant chunk grid, which is the form it was proven against, and it
+    refuses rather than guesses for a form it cannot account for. A record with
+    both grid dimensions zero carries no layer and is skipped, which is how an
+    unused slot is represented.
+    """
     layers: list[LogicalLayer] = []
     for bg in range(4):
-        record = _u32(rom, descriptor_address + 0x14 + bg * 4)
+        record = _shared(
+            lambda bg=bg: reader.u32(
+                descriptor_address + mg.ROOT_LAYER_SLOTS[bg]
+            )
+        )
         if record == 0:
             continue
-        record_offset = _file_offset(record, len(rom))
-        _file_offset(record + 0x17, len(rom))
-        width_blocks = rom[record_offset + 0x14]
-        height_blocks = rom[record_offset + 0x15]
-        if width_blocks == 0 and height_blocks == 0:
+        layer = _shared(lambda bg=bg: mg.read_layer(reader, descriptor_address, bg))
+        if layer.chunk_x == 0 and layer.chunk_y == 0:
             continue
-        if not width_blocks or not height_blocks:
+        if not layer.chunk_x or not layer.chunk_y:
             raise UnsupportedMapAssemblyVariant(
                 f"BG{bg} layer at {record:#010x} has partial zero dimensions "
-                f"{width_blocks}x{height_blocks}"
+                f"{layer.chunk_x}x{layer.chunk_y}"
             )
-        handler = _u32(rom, record)
-        if handler != SUPPORTED_LAYER_HANDLER:
+        if layer.handler != SUPPORTED_LAYER_HANDLER:
             raise UnsupportedMapAssemblyVariant(
-                f"BG{bg} layer handler {handler:#010x} is not the proven "
+                f"BG{bg} layer handler {layer.handler:#010x} is not the proven "
                 f"{SUPPORTED_LAYER_HANDLER:#010x} variant"
             )
-        chunks: list[tuple[bg_tilemap.ScreenEntry, ...]] = []
-        chunk_addresses: list[int] = []
-        for chunk_index in range(width_blocks * height_blocks):
-            address = _u32(rom, record + 0x18 + chunk_index * 4)
-            raw = _unpack_at(rom, address, expected=SCREEN_CHUNK_BYTES)
-            words = struct.unpack("<1024H", raw)
-            chunks.append(tuple(bg_tilemap.ScreenEntry.decode(word) for word in words))
-            chunk_addresses.append(address)
-
-        width_tiles = width_blocks * SCREEN_CHUNK_SIDE
-        height_tiles = height_blocks * SCREEN_CHUNK_SIDE
-        entries: list[bg_tilemap.ScreenEntry] = []
-        # The loader indexes chunks as y * width_blocks + x at
-        # 0x08007C82..0x08007C90. Stitch each row of each 32x32 chunk into the
-        # corresponding complete logical row.
-        for block_y in range(height_blocks):
-            for local_y in range(SCREEN_CHUNK_SIDE):
-                for block_x in range(width_blocks):
-                    chunk = chunks[block_y * width_blocks + block_x]
-                    start = local_y * SCREEN_CHUNK_SIDE
-                    entries.extend(chunk[start:start + SCREEN_CHUNK_SIDE])
+        # The renderer's own tile-bank extent check, kept because it is a
+        # renderer-side refusal about a bank whose size the map format does not
+        # fix: `expected=0x4000` is the extent this surface's maps were verified
+        # with, and a bank that differs is a variant it has not proven.
+        for address in layer.chunk_addresses:
+            _unpack_at(reader, address, expected=SCREEN_CHUNK_BYTES)
+        entries = _shared(
+            lambda layer=layer: mg.stitch_dominant_entries(reader, layer)
+        )
 
         layers.append(
             LogicalLayer(
                 bg=bg,
-                priority=rom[_file_offset(descriptor_address + 4 + bg, len(rom))],
-                width_tiles=width_tiles,
-                height_tiles=height_tiles,
-                entries=tuple(entries),
+                priority=reader.u8(descriptor_address + 4 + bg),
+                width_tiles=layer.chunk_tiles_x,
+                height_tiles=layer.chunk_tiles_y,
+                entries=entries,
                 record_address=record,
-                chunk_addresses=tuple(chunk_addresses),
+                chunk_addresses=layer.chunk_addresses,
             )
         )
     if not layers:
@@ -423,18 +445,35 @@ def _decode_layers(rom: bytes, descriptor_address: int) -> tuple[LogicalLayer, .
     return tuple(layers)
 
 
-def reconstruct_map_assembly(rom: bytes, descriptor_address: int) -> MapAssembly:
-    """Reconstruct static-frame character bytes and complete logical layers."""
-    selectors = decode_tile_selectors(rom, descriptor_address)
-    atlas_array = _u32(rom, descriptor_address + 0x4C)
+def reconstruct_map_assembly(
+    rom: bytes,
+    descriptor_address: int,
+    *,
+    profile: RomProfile | None = None,
+) -> MapAssembly:
+    """Reconstruct static-frame character bytes and complete logical layers.
+
+    ``profile`` is the declaration every table address and extent is resolved
+    through; omitted, the packaged canonical profile is used. It is the same
+    parameter the ``render_map`` entry point takes, so a caller with a profile of
+    its own gets one reader rather than two.
+    """
+    reader = _reader(rom, profile)
+    stream = _shared(lambda: mg.decode_selector_stream(reader, descriptor_address))
+    selectors = stream.selectors
+
+    # Tileset containers: this renderer addresses banks through the array at
+    # descriptor + 0x4C and refuses a bank whose declared extent is not 0x4000,
+    # because that is the extent its maps were verified with.
+    atlas_array = reader.u32(descriptor_address + mg.ROOT_BANK_TABLE_OFFSET)
     atlas_cache: dict[int, bytes] = {}
     atlas_addresses: dict[int, int] = {}
     selected_tiles: list[bytes] = []
     for selector in selectors:
         bank, source_tile = selector >> 8, selector & 0xFF
         if bank not in atlas_cache:
-            address = _u32(rom, atlas_array + bank * 4)
-            atlas_cache[bank] = _unpack_at(rom, address, expected=0x4000)
+            address = reader.u32(atlas_array + bank * 4)
+            atlas_cache[bank] = _unpack_at(reader, address, expected=0x4000)
             atlas_addresses[bank] = address
         atlas = atlas_cache[bank]
         start = source_tile * TILE_BYTES
@@ -445,75 +484,51 @@ def reconstruct_map_assembly(rom: bytes, descriptor_address: int) -> MapAssembly
             )
         selected_tiles.append(atlas[start:start + TILE_BYTES])
 
-    layers = _decode_layers(rom, descriptor_address)
-    referenced = {entry.tile_index for layer in layers for entry in layer.entries}
-    animation_count = _u32(rom, descriptor_address + 0x0C)
-    animation_array = _u32(rom, descriptor_address + 0x10)
-    animations: list[tuple[int, int, bytes, int]] = []
-    animation_addresses: list[int] = []
-    for index in range(animation_count):
-        animation = _u32(rom, animation_array + index * 4)
-        offset = _file_offset(animation, len(rom))
-        frame_count = rom[offset]
-        tile_count = rom[offset + 1]
-        destination_tile = struct.unpack_from("<H", rom, offset + 2)[0]
-        if not frame_count or not tile_count:
-            raise UnsupportedMapAssemblyVariant(
-                f"animated-tile record at {animation:#010x} has zero extent"
-            )
-        first_frame = _u32(rom, animation + 4)
-        _file_offset(first_frame + 4, len(rom))
-        try:
-            frame_data = webfoot_lz.unpack_raw_stream(
-                rom,
-                first_frame - GBA_ROM_BASE + 4,
-                tile_count * TILE_BYTES,
-                initial_literal_bits=8,
-            )
-        except webfoot_lz.ContainerError as exc:
-            raise UnsupportedMapAssemblyVariant(
-                f"animated-tile frame at {first_frame:#010x} did not decode: {exc}"
-            ) from exc
-        animations.append((destination_tile, tile_count, frame_data, animation))
-        animation_addresses.append(animation)
-
-    covered = set(range(len(selected_tiles)))
-    for destination, count, _data, _address in animations:
-        covered.update(range(destination, destination + count))
-    missing = sorted(referenced - covered)
-    if missing:
-        sample = ", ".join(str(value) for value in missing[:8])
+    layers = _decode_layers(reader, descriptor_address)
+    referenced = tuple(
+        sorted({word & MAX_TILE_INDEX for layer in layers for word in layer.entries})
+    )
+    animated = _shared(lambda: mg.read_animated_tiles(reader, descriptor_address))
+    block = _shared(
+        lambda: mg.assemble_char_block(
+            reader,
+            selectors,
+            animated,
+            atlas_array,
+            require_referenced=referenced,
+        )
+    )
+    if block.missing_tile_indices:
+        sample = ", ".join(str(value) for value in block.missing_tile_indices[:8])
         raise UnsupportedMapAssemblyVariant(
             f"logical layers reference tiles not supplied by selectors or "
             f"animations: {sample}"
         )
-
-    highest = max(covered | referenced)
+    highest = max(block.tile_count - 1, max(referenced, default=0))
     if highest > MAX_TILE_INDEX:
         raise UnsupportedMapAssemblyVariant(
             f"tile index {highest} exceeds the regular-BG 10-bit range"
         )
-    char_data = bytearray((highest + 1) * TILE_BYTES)
-    for destination, tile in enumerate(selected_tiles):
-        start = destination * TILE_BYTES
-        char_data[start:start + TILE_BYTES] = tile
-    for destination, count, data, _address in animations:
-        start = destination * TILE_BYTES
-        char_data[start:start + count * TILE_BYTES] = data
 
     return MapAssembly(
         descriptor_address=descriptor_address,
-        char_data=bytes(char_data),
+        char_data=block.data,
         selectors=selectors,
         layers=layers,
-        tileset_addresses=tuple(atlas_addresses[key] for key in sorted(atlas_addresses)),
-        animation_addresses=tuple(animation_addresses),
+        tileset_addresses=tuple(
+            atlas_addresses[key] for key in sorted(atlas_addresses)
+        ),
+        animation_addresses=tuple(source.address for source in animated),
     )
 
 
-def reconstruct_charblock_from_rom(rom: bytes, descriptor_address: int) -> bytes:
+def reconstruct_charblock_from_rom(
+    rom: bytes, descriptor_address: int, *, profile: RomProfile | None = None
+) -> bytes:
     """Return the static-frame character bytes assembled by the descriptor."""
-    return reconstruct_map_assembly(rom, descriptor_address).char_data
+    return reconstruct_map_assembly(
+        rom, descriptor_address, profile=profile
+    ).char_data
 
 
 # --- VRAM-oracle dump loading (for scripts/tests) ----------------------------
@@ -659,14 +674,18 @@ def render_map(
     map_entry_address, scene_pointer, descriptor = resolve_descriptor(
         rom, map_index, profile=resolved
     )
-    assembly = reconstruct_map_assembly(rom, descriptor)
+    assembly = reconstruct_map_assembly(rom, descriptor, profile=resolved)
     palette = decode_bg_palette(rom, profile=resolved)
     palette_address = _bg_palette_address(resolved)
+    reader = _reader(rom, resolved)
+    tile_selector_address = reader.u32(
+        descriptor + mg.ROOT_SELECTOR_STREAM_OFFSET
+    )
 
     rendered: list[RenderedLayer] = []
     for layer in assembly.layers:
         try:
-            pixels, width, height = bg_tilemap.render_entries(
+            pixels, width, height = bg_tilemap.render_entry_words(
                 assembly.char_data,
                 layer.entries,
                 map_width_tiles=layer.width_tiles,
@@ -706,7 +725,7 @@ def render_map(
         "descriptor_address": f"{descriptor:#010x}",
         "bg_palette_address": f"{palette_address:#010x}",
         "palette_source": f"ROM {palette_address:#010x} (full brightness)",
-        "tile_selector_address": f"{_u32(rom, descriptor + 0x48):#010x}",
+        "tile_selector_address": f"{tile_selector_address:#010x}",
         "tileset_addresses": [f"{address:#010x}" for address in assembly.tileset_addresses],
         "animation_addresses": [f"{address:#010x}" for address in assembly.animation_addresses],
         "layers": [

@@ -4,15 +4,28 @@ ASSET-EXPORT-001. Pure functions over ``bytes``: no filesystem, no addresses.
 Everything here works in linear 8bpp palette indices and converts to RGBA only
 at the last step.
 
+**Where the binary primitives live, after CQA-04.** This module used to carry its
+own tile unswizzle, tile flip, tile-entry decode and background-palette
+requantisation, in parallel with independent copies in the SDK's format layer.
+Those are single-sourced now:
+
+* the tile geometry, the screen-entry bit fields and the entry-to-pixels render
+  are ``tools.webfoot.formats.bg_tilemap``;
+* the tile unswizzle, the tile flip and the GBA colour expansion are
+  ``tools.webfoot.formats.sprite_graphics``;
+* the engine-global background palette decode is
+  ``tools.webfoot.formats.map_graphics``.
+
+What stays here is what is genuinely the exporter's: sprite-frame assembly, the
+terrain-field extraction, sheet layout and the RGBA conversion. Each shared
+primitive below is a thin delegation that keeps this module's public names and
+its own error family, so no caller changes and no second implementation survives.
+
 **Transparency is index 0.** The accepted reading is that a zero palette index
 is transparent: it is the platform norm for OBJ pixels, and the accepted map
 renderer composes layers with exactly that rule. The exporter therefore writes
 alpha 0 wherever the index is 0 and alpha 255 everywhere else. No checkerboard,
 no background fill and no padding colour is ever written into an artifact.
-
-**GBA tiling.** Graphics payloads are stored one 8x8 tile at a time, left to
-right then top to bottom. :func:`unswizzle_tiles` is the only function here that
-knows it; everything above it works in linear pixel order.
 
 **Scaling.** There is none. Every function writes one source pixel to one
 destination pixel, so output dimensions are the native dimensions of the
@@ -22,6 +35,9 @@ accepted structure.
 from __future__ import annotations
 
 from . import canonical as canon
+from tools.webfoot.formats import bg_tilemap as _bg
+from tools.webfoot.formats import map_graphics as _mg
+from tools.webfoot.formats import sprite_graphics as _sg
 
 #: One RGBA quadruple per palette index, as a flat lookup table.
 _RGBA_TABLE_SIZE = 256
@@ -36,50 +52,38 @@ def object_palette_rgb(rom: "canon.Rom") -> tuple[tuple[int, int, int], ...]:
 
     Entries are little-endian BGR555 words expanded to 8 bits per channel with
     the high bits replicated into the low ones (`v << 3 | v >> 2`), so 31 maps to
-    255 rather than 248.
+    255 rather than 248. The decode itself is the format layer's
+    (``sprite_graphics.decode_palette``), so this module cannot expand a channel
+    differently from the sprite readers that share the same palette.
     """
     offset = rom.span(rom.object_palette_address(), canon.OBJECT_PALETTE_BYTES)
-    words = rom.data[offset : offset + canon.OBJECT_PALETTE_BYTES]
-    out: list[tuple[int, int, int]] = []
-    for index in range(canon.OBJECT_PALETTE_ENTRIES):
-        word = words[index * 2] | (words[index * 2 + 1] << 8)
-        out.append(_expand_bgr555(word))
-    return tuple(out)
+    try:
+        palette = _sg.decode_palette(rom.data, offset)
+    except _sg.SpriteFormatError as exc:
+        raise RenderError(str(exc)) from exc
+    return palette.rgb
 
 
 def _expand_bgr555(word: int) -> tuple[int, int, int]:
-    def expand(part: int) -> int:
-        return (part << 3) | (part >> 2)
-
-    return (
-        expand(word & 31),
-        expand((word >> 5) & 31),
-        expand((word >> 10) & 31),
-    )
+    """One palette halfword as display RGB, through the format layer's expansion."""
+    try:
+        return _sg.expand_bgr555(word)
+    except _sg.SpriteFormatError as exc:
+        raise RenderError(str(exc)) from exc
 
 
 def bg_palette_rgb(rom: "canon.Rom") -> tuple[tuple[int, int, int], ...]:
-    """The engine-global 256-entry background palette from ROM `0x080701B0`.
+    """The engine-global 256-entry background palette, as display RGB.
 
-    Stored as RGB888 but the hardware keeps 5 bits per channel, so each channel
-    is requantised to 5 bits and expanded back. That reproduces the live VRAM
-    palette at full brightness rather than the raw ROM bytes.
+    Delegates to the one map/graphics reader
+    (:func:`tools.webfoot.formats.map_graphics.decode_bg_palette`), which resolves
+    the profile-declared address and requantises each RGB888 channel to the
+    hardware's 5 bits.
     """
-    offset = rom.span(rom.bg_palette_address(), canon.BG_PALETTE_BYTES)
-    raw = rom.data[offset : offset + canon.BG_PALETTE_BYTES]
-
-    def display(byte: int) -> int:
-        five = byte >> 3
-        return (five << 3) | (five >> 2)
-
-    return tuple(
-        (
-            display(raw[index * 3]),
-            display(raw[index * 3 + 1]),
-            display(raw[index * 3 + 2]),
-        )
-        for index in range(canon.BG_PALETTE_ENTRIES)
-    )
+    try:
+        return _mg.decode_bg_palette(rom.graphics_reader())
+    except _mg.MapGraphicsError as exc:
+        raise RenderError(str(exc)) from exc
 
 
 def rgba_table(palette: tuple[tuple[int, int, int], ...]) -> bytes:
@@ -140,35 +144,16 @@ def to_rgba(
 
 
 def unswizzle_tiles(tiles: bytes, width: int, height: int, *, colour_256: bool) -> bytes:
-    """Tiled 8x8 blocks -> a linear ``width * height`` block of palette indices."""
-    if width <= 0 or height <= 0:
-        raise RenderError(f"dimensions must be positive, got {width}x{height}")
-    if width % canon.TILE_PIXELS or height % canon.TILE_PIXELS:
-        raise RenderError(f"dimensions must be whole tiles, got {width}x{height}")
-    expected = width * height if colour_256 else (width * height) // 2
-    if len(tiles) != expected:
-        raise RenderError(
-            f"{width}x{height} at {8 if colour_256 else 4}bpp needs {expected} "
-            f"bytes of tile data, got {len(tiles)}"
-        )
-    out = bytearray(width * height)
-    source = 0
-    for tile_y in range(0, height, canon.TILE_PIXELS):
-        for tile_x in range(0, width, canon.TILE_PIXELS):
-            for row in range(canon.TILE_PIXELS):
-                start = (tile_y + row) * width + tile_x
-                if colour_256:
-                    out[start : start + canon.TILE_PIXELS] = tiles[
-                        source : source + canon.TILE_PIXELS
-                    ]
-                    source += canon.TILE_PIXELS
-                else:
-                    for column in range(0, canon.TILE_PIXELS, 2):
-                        packed = tiles[source]
-                        source += 1
-                        out[start + column] = packed & 0x0F
-                        out[start + column + 1] = packed >> 4
-    return bytes(out)
+    """Tiled 8x8 blocks -> a linear ``width * height`` block of palette indices.
+
+    Delegates to ``sprite_graphics.unswizzle_tiles``, the format layer's one
+    implementation of GBA tile order; this module used to carry a byte-identical
+    second copy.
+    """
+    try:
+        return _sg.unswizzle_tiles(tiles, width, height, colour_256=colour_256)
+    except _sg.SpriteFormatError as exc:
+        raise RenderError(str(exc)) from exc
 
 
 def flip_horizontal(indices: bytes, width: int, height: int) -> bytes:
@@ -241,21 +226,16 @@ def blit_masked(
 
 
 def flip_tile(tile: bytes, horizontal: bool, vertical: bool) -> bytes:
-    """Apply the horizontal and vertical flip to a linear square tile."""
-    if len(tile) != canon.TILE_PIXELS * canon.TILE_PIXELS:
-        raise RenderError(
-            f"a tile is {canon.TILE_PIXELS * canon.TILE_PIXELS} pixels, "
-            f"got {len(tile)}"
-        )
-    if not horizontal and not vertical:
-        return tile
-    side = canon.TILE_PIXELS
-    rows = [tile[row * side : (row + 1) * side] for row in range(side)]
-    if horizontal:
-        rows = [row[::-1] for row in rows]
-    if vertical:
-        rows = rows[::-1]
-    return b"".join(rows)
+    """Apply the horizontal and vertical flip to a linear square tile.
+
+    Delegates to ``sprite_graphics.flip_tile``. The geometry is the format
+    layer's; this module used to state the 8x8 side and the two mirror axes
+    again.
+    """
+    try:
+        return _sg.flip_tile(tile, horizontal, vertical)
+    except _sg.SpriteFormatError as exc:
+        raise RenderError(str(exc)) from exc
 
 
 def entry_tile(char_data: bytes, word: int) -> bytes:
@@ -267,19 +247,14 @@ def entry_tile(char_data: bytes, word: int) -> bytes:
     records that no payload consumer reads them, but the hardware flips the tile
     and the project's own BG renderer does the same, so the exporter applies them
     rather than dropping them. Bits 12..15 are never interpreted.
+
+    Delegates to ``bg_tilemap.entry_tile``, so the exporter and the SDK's BG
+    renderer resolve an entry through the same code.
     """
-    ordinal = word & canon.TILE_ENTRY_ORDINAL_MASK
-    start = ordinal * canon.BANK_TILE_BYTES
-    if start + canon.BANK_TILE_BYTES > len(char_data):
-        raise RenderError(
-            f"tile ordinal {ordinal} is not present in the assembled "
-            f"character block ({len(char_data)} bytes)"
-        )
-    return flip_tile(
-        char_data[start : start + canon.BANK_TILE_BYTES],
-        bool(word & canon.TILE_ENTRY_BIT_10),
-        bool(word & canon.TILE_ENTRY_BIT_11),
-    )
+    try:
+        return _bg.entry_tile(char_data, word, colour_256=True)
+    except _bg.BgTilemapError as exc:
+        raise RenderError(str(exc)) from exc
 
 
 def render_entries(
@@ -288,37 +263,25 @@ def render_entries(
     width_tiles: int,
     height_tiles: int,
 ) -> bytes:
-    """Render stitched logical screen entries into a linear index image.
+    """Render stitched logical screen-entry words into a linear index image.
 
     Entries are row-major, ``width_tiles`` columns by ``height_tiles`` rows, which
     is exactly the order a dominant chunk stores its 32x32 grid in - so a chunk is
-    this function at 32x32.
+    this function at 32x32. Delegates to the one tile renderer in
+    ``bg_tilemap.render_entry_words``.
     """
-    if width_tiles <= 0 or height_tiles <= 0:
-        raise RenderError(
-            f"dimensions must be positive, got {width_tiles}x{height_tiles}"
+    try:
+        pixels, _width, _height = _bg.render_entry_words(
+            char_data,
+            entries,
+            map_width_tiles=width_tiles,
+            map_height_tiles=height_tiles,
+            color_256=True,
         )
-    if len(entries) != width_tiles * height_tiles:
-        raise RenderError(
-            f"expected {width_tiles * height_tiles} screen entries, got {len(entries)}"
-        )
-    width = width_tiles * canon.TILE_PIXELS
-    height = height_tiles * canon.TILE_PIXELS
-    out = bytearray(width * height)
-    cache: dict[int, bytes] = {}
-    for index, word in enumerate(entries):
-        tile = cache.get(word)
-        if tile is None:
-            tile = entry_tile(char_data, word)
-            cache[word] = tile
-        tile_x = (index % width_tiles) * canon.TILE_PIXELS
-        tile_y = (index // width_tiles) * canon.TILE_PIXELS
-        for row in range(canon.TILE_PIXELS):
-            target = (tile_y + row) * width + tile_x
-            out[target : target + canon.TILE_PIXELS] = tile[
-                row * canon.TILE_PIXELS : row * canon.TILE_PIXELS + canon.TILE_PIXELS
-            ]
-    return bytes(out)
+    except _bg.BgTilemapError as exc:
+        # Preserve this API's established diagnostic wording.
+        raise RenderError(str(exc).replace("character data", "the assembled character block")) from exc
+    return pixels
 
 
 def render_chunk(

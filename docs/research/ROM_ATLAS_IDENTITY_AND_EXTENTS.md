@@ -387,20 +387,31 @@ are resolved.
 ### Finding 1 (H/N), BLOCKING: two data-module SHA literals still gated behaviour
 
 `data/behavior_triggers.py` and `data/placement_contracts.py` carried their own
-copy of the canonical SHA-256, compared against the **loaded image's** hash at
-`authored_placements.py` (two sites) and `placement_events.py` (one site). They
+copy of the canonical SHA-256, compared against the **loaded image's** hash. They
 were live gates and appeared in the record's classification only as profile-id
 selectors.
 
-**Resolved** (`03779c2`): all three comparisons read `maps.profile.sha256`, so
-the catalog declaration is the authority and the contract value is a cross-check.
-`test_the_data_contract_hashes_agree_with_the_profile` now asserts the
-relationship for **every** catalogued profile, so a contract that drifts from
-the catalog fails loudly. The reviewer's related point, that two further
-behaviour-driving literals were unnamed in the classification, is also fixed:
-`BG_PALETTE_ADDRESS` is now profile-declared (below), and `BASE_STAT_NAMES` is
-documented as the one remaining per-game literal in that layer, now guarded
-against a foreign roster rather than silently reused.
+**Resolved** (`03779c2`, completed in `7d7c16d`): all **four** comparisons now
+read the profile's declared identity (`authored_placements.py` two sites,
+`placement_events.py` one, `maps.py` one), so the catalog declaration is the
+authority and the contract value is a cross-check.
+`test_the_data_contract_hashes_agree_with_the_profile` asserts the relationship
+for **every** catalogued profile, so a contract that drifts from the catalog
+fails loudly.
+
+**The first correction was incomplete, and that is worth recording.** `03779c2`
+migrated the two sites the reviewer named; a follow-up sweep for
+`identification.hashes.sha256` found a third and fourth that neither the reviewer
+nor the implementer had listed: the behavior-trigger gate inside
+`_require_trigger_contract` and the placement-contract gate inside `load_maps`.
+Both are fixed in `7d7c16d`. The reviewer named two of four; the fix is now
+proved exhaustive by grep rather than by the original finding's wording.
+
+The reviewer's related point, that two further behaviour-driving literals were
+unnamed in the classification, is also fixed: `BG_PALETTE_ADDRESS` is now
+profile-declared (below), and `BASE_STAT_NAMES` is documented as the one
+remaining per-game literal in that layer, now guarded against a foreign roster
+rather than silently reused.
 
 ### Finding 2, BLOCKING: ticket-caused ROM-gated test failures
 

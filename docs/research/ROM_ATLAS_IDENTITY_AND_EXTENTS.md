@@ -7,8 +7,8 @@ sections C.2 (CQA-03, CQA-15) and the section F group table.
 | --- | --- |
 | Start SHA | `170dc8151b6cf0b7dba9cf2454708ff67d6522fd` (`origin/master`) |
 | Frozen SHA | `1067a539a0e1215043812be3d80e39bdd9272e06` |
-| Correction commits | `03779c2` data-contract hash authority, then the review-correction commit below. The frozen SHA was never amended. |
-| Independent review | **2 BLOCKING findings**, both resolved in the review-correction commit (section 9) |
+| Correction commits | `03779c2` data-contract hash authority; `9a463f6` resolution of both blocking review findings. The frozen SHA was never amended. |
+| Independent review | **BLOCKING = 2**, both resolved in `9a463f6` and re-verified (section 9) |
 | Ticket | CQA-03 [HIGH] + CQA-15 [MEDIUM], audit group C |
 | Scope | identity refusal, one atlas/ROM identity contract, single-source profile extents |
 | Product capability | none: `READ 5/5`, `EDIT 4/8`, `AUTHOR 3/7`, `DELIVER 4/4`, 16/24, 67% |
@@ -291,27 +291,34 @@ hash, positive image size) and the length/alignment checks the codec gets from
 
 ## 6. Focused validation
 
+Two stages are reported, because the second is what the independent review
+prompted and it found real defects the first could not.
+
+### Stage 1, frozen candidate (`1067a539`), no ROM and no PySide6 in the worktree
+
 | suite | result |
 | --- | --- |
-| `tests/unit` (portable, whole directory) | **2141 passed, 23 skipped, 0 failed** (at `03779c2`; `2140` at the frozen SHA, before the extra contract-equality test) |
-| `tests/integration` (whole directory; ROM-gated families skip, no ROM in this worktree) | **28 passed, 973 skipped, 0 failed** |
+| `tests/unit` (portable, whole directory) | **2140 passed, 23 skipped, 0 failed** |
+| `tests/integration` (whole directory) | **28 passed, 973 skipped, 0 failed** |
 | `tests/unit/test_atlas_identity.py` (new) | 17 passed |
 | `tests/unit/test_extent_profile_authority.py` (new) | 12 passed |
 | `tests/unit/test_profile_authority_contract.py` (new) | 11 passed |
 | `git diff --check` | clean, exit 0 |
 | canonical ROM | **absent from this worktree**; never read, hashed or written |
-| full suite | **NOT MANUALLY RUN**, human policy; focused validation only |
 
-Measured and derived are kept separate above: the unit/integration totals were
-directly observed by running each directory; nothing here is an expected
-aggregate.
+**The weakness of stage 1, stated plainly:** the ROM-gated families
+(`test_map_layout_editor_rom`, `test_map_layout_write_rom`, `test_map_browser_rom`,
+`test_text_rom`, `test_stat_tables_rom`, the Workbench ROM tests) **skipped**
+because no canonical image was configured, and every Workbench GUI test skipped
+because PySide6 was not installed. Three of the ROM-gated files were in fact
+broken by this ticket (review finding 2), and five Workbench defects were hidden.
+A green `tests/unit` total with 23 skips was **not** adequate evidence, and the
+claim in an earlier draft of this record that the ROM-gated call sites "were
+updated for the new signatures" was false for three files.
 
-The ROM-gated families (`test_map_layout_editor_rom`, `test_map_layout_write_rom`,
-`test_map_browser_rom`, `test_text_rom`, `test_stat_tables_rom`, the Workbench
-ROM tests) **skipped** here because no canonical image is configured in this
-worktree. Their call sites were updated for the new signatures; they must be run
-where the canonical ROM is available, and this record should not be read as
-evidence that they passed.
+### Stage 2, corrected revision (`9a463f6`), PySide6 + canonical ROM + atlas configured
+
+See section 9 for the totals and for the five Workbench defects this exposed.
 
 ### Mutation results
 
@@ -447,14 +454,16 @@ better tested than the frozen one because the gates now actually execute.
 | suite | result |
 | --- | --- |
 | `tests/unit` (whole directory, PySide6 + ROM + atlas configured) | **2327 passed, 7 skipped, 0 failed** |
+| `tests/integration` (whole directory, ROM configured) | **956 passed, 45 skipped, 0 failed** (71 min) |
 | `tests/unit -m "fast and workbench"` | **178 passed, 0 failed** |
-| previously-skipped ROM-gated selection (the reviewer's four files) | **49 passed, 2 skipped, 0 failed** |
-| `tests/integration` (whole directory, ROM configured) | see `FROZEN.txt` section 9 note, below |
+| previously-skipped ROM-gated selection (the reviewer's four files) | **49 passed, 2 skipped, 0 failed**, identical to base `170dc815` |
 | `git diff --check` | clean, exit 0 |
 
-The 7 remaining skips are all environment-dependent and unrelated to this
-ticket: five need a built website (`npm run build`), one asserts the absence of
-capstone (which is installed), and one needs a map-40 VRAM dump.
+Both whole-directory totals were directly observed, not derived. The 45
+integration skips and 7 unit skips are all environment-dependent and unrelated
+to this ticket: they need a second or third commercial ROM (Legacy of Goku /
+LoG II), a built website (`npm run build`), the map-39/40 VRAM dumps, or assert
+the absence of capstone (which is installed).
 
 ### Additional mutations, on the corrected revision
 

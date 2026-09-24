@@ -374,6 +374,76 @@ class RelocationProvenance:
 
 
 @dataclass(frozen=True, slots=True)
+class DialogueEditProvenance:
+    """Why one durable dialogue handle changed, and everything that moved with it.
+
+    DIALOGUE-VARIABLE-LENGTH-001. A compressed-dialogue replacement used to be a
+    fixed-length overwrite, so the record's durable identity never moved and the
+    bytes said everything there was to say. Once a replacement may change the
+    record's decoded length, the *identity* changes too - the handle is
+    re-authored and every record the growth displaces is re-authored with it -
+    and that is a fact no byte diff can recover after the fact.
+
+    This record is deliberately part of the existing manifest document rather
+    than a third sidecar: `WriteManifest` already answers "which base, which
+    output, which bytes, because of which semantic edit", and this answers the
+    same question one level down, where the semantic edit is a dialogue record.
+    """
+
+    #: The project's semantic identity for the record (`goku-greeting`).
+    resource: str
+    #: The build-domain owner, as every other change attributes it.
+    owner: str
+    #: The container/selector the record lives in.
+    selector: int
+    old_handle: int
+    new_handle: int
+    old_decoded_start: int
+    new_decoded_start: int
+    old_decoded_length: int
+    new_decoded_length: int
+    #: How many OTHER records the growth displaced inside the container.
+    affected_record_count: int
+    #: How many distinct durable handles those displaced records carried.
+    affected_handle_count: int
+    #: How many ROM words were repointed to a re-authored handle.
+    reference_site_count: int
+    #: Packed bytes the container occupied before and after the rebuild.
+    old_packed_size: int
+    new_packed_size: int
+    #: The container-table word the engine reads for this selector, and its value
+    #: after the edit. `pointer_moved` says whether the payload was relocated.
+    container_pointer_offset: int
+    container_pointer_address: int
+    pointer_moved: bool
+
+    def to_json(self) -> dict:
+        return {
+            "resource": self.resource,
+            "owner": self.owner,
+            "selector": self.selector,
+            "old_handle": f"0x{self.old_handle:08X}",
+            "new_handle": f"0x{self.new_handle:08X}",
+            "old_decoded_start": self.old_decoded_start,
+            "new_decoded_start": self.new_decoded_start,
+            "old_decoded_length": self.old_decoded_length,
+            "new_decoded_length": self.new_decoded_length,
+            "decoded_length_delta": self.new_decoded_length - self.old_decoded_length,
+            "affected_record_count": self.affected_record_count,
+            "affected_handle_count": self.affected_handle_count,
+            "reference_site_count": self.reference_site_count,
+            "old_packed_size": self.old_packed_size,
+            "new_packed_size": self.new_packed_size,
+            "packed_size_delta": self.new_packed_size - self.old_packed_size,
+            "container_pointer_offset": self.container_pointer_offset,
+            "container_pointer_offset_hex": f"0x{self.container_pointer_offset:06X}",
+            "container_pointer_address": self.container_pointer_address,
+            "container_pointer_address_hex": f"0x{self.container_pointer_address:08X}",
+            "pointer_moved": self.pointer_moved,
+        }
+
+
+@dataclass(frozen=True, slots=True)
 class WritePlan:
     """A validated set of changes against one identified base image.
 
@@ -389,6 +459,9 @@ class WritePlan:
     relocations: tuple[RelocationProvenance, ...] = ()
     generated_image: GeneratedImage | None = None
     generated_allocations: tuple[GeneratedAllocationProvenance, ...] = ()
+    #: DIALOGUE-VARIABLE-LENGTH-001. Empty for a build that authored no
+    #: dialogue record whose durable identity changed.
+    dialogue_edits: tuple[DialogueEditProvenance, ...] = ()
 
     @property
     def effective_changes(self) -> tuple[ByteChange, ...]:
@@ -443,6 +516,9 @@ class WriteManifest:
     relocations: tuple[RelocationProvenance, ...] = ()
     generated_image: GeneratedImage | None = None
     generated_allocations: tuple[GeneratedAllocationProvenance, ...] = ()
+    #: DIALOGUE-VARIABLE-LENGTH-001. Present only when a dialogue record's
+    #: durable handle or decoded span changed in this build.
+    dialogue_edits: tuple[DialogueEditProvenance, ...] = ()
 
     def to_json(self) -> dict:
         document = {
@@ -470,6 +546,10 @@ class WriteManifest:
             document["generated_allocations"] = [
                 allocation.to_json() for allocation in self.generated_allocations
             ]
+        if self.dialogue_edits:
+            document["dialogue_edits"] = [
+                edit.to_json() for edit in self.dialogue_edits
+            ]
         return document
 
     def dumps(self) -> str:
@@ -494,6 +574,7 @@ def plan_changes(
     relocations: tuple[RelocationProvenance, ...] = (),
     generated_image: GeneratedImage | None = None,
     generated_allocations: tuple[GeneratedAllocationProvenance, ...] = (),
+    dialogue_edits: tuple[DialogueEditProvenance, ...] = (),
 ) -> WritePlan:
     """Validate `changes` against `base` and return an applicable plan.
 
@@ -573,6 +654,7 @@ def plan_changes(
         relocations=relocations,
         generated_image=generated_image,
         generated_allocations=generated_allocations,
+        dialogue_edits=tuple(dialogue_edits),
     )
 
 
@@ -676,6 +758,7 @@ def emit_image(
         relocations=plan.relocations,
         generated_image=plan.generated_image,
         generated_allocations=plan.generated_allocations,
+        dialogue_edits=plan.dialogue_edits,
     )
     # Stage complete files first. Publish using exclusive links: never replace
     # a raced destination. Publish image last; roll back our links on failure.

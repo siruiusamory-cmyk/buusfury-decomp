@@ -220,6 +220,14 @@ $allowedLua = @(
     [System.IO.Path]::GetFullPath(
         (Join-Path $workspaceRoot 'tools\runtime\map19_bg_placement.lua')
     )
+    # Added by DIALOGUE-VARIABLE-LENGTH-001: the same read-only consumer
+    # observation and screenshot schedule as the Checkpoint D probe, retargeted
+    # at a RE-AUTHORED handle and widened decoded length. It writes input only in
+    # its `scripted` mode, which the tracked runner does not select, and never
+    # writes emulated memory.
+    [System.IO.Path]::GetFullPath(
+        (Join-Path $workspaceRoot 'tools\runtime\varlen001_dialogue_variable_length_probe.lua')
+    )
 )
 $resolvedLua = [System.IO.Path]::GetFullPath($LuaPath)
 if ($resolvedLua -notin $allowedLua) {

@@ -127,10 +127,34 @@ def test_profile_mismatched_project_remains_read_only(
 
 def test_invalid_apply_does_not_mutate_project(inspector, project):
     inspector.show_result(SUPPORTED)
-    inspector._edit.setText("bad")
+    # 4096 encoded bytes: one past what a durable handle's 11-bit halfword length
+    # field can describe. Shorter-than-retail text is VALID since
+    # DIALOGUE-VARIABLE-LENGTH-001, so the input has to exceed the field to be
+    # invalid at all.
+    inspector._edit.setText("a" * 2048)
     inspector._on_apply()
     assert read_project(project).dialogues == {}
     assert not inspector._apply.isEnabled()
+
+
+def test_a_longer_than_retail_line_is_editable_through_the_existing_path(
+    inspector, project
+):
+    """Section 28: the new capability reaches the editor with no new surface.
+
+    The Inspector calls the same validation and apply entry points it always did.
+    What changed is the production contract behind them, so a line that does not
+    encode to the retail record's 32 bytes is now valid, applies, and persists as
+    the one semantic entry - not a second one keyed on the new handle.
+    """
+    inspector.show_result(SUPPORTED)
+    longer = "Hot take: SSJ3 is the worst form imo"
+    inspector._edit.setText(longer)
+    assert inspector._validation_label.text() == "✓ Valid"
+    assert inspector._apply.isEnabled()
+
+    inspector._on_apply()
+    assert read_project(project).dialogues == {"goku-greeting": longer}
 
 
 def test_apply_invalidates_validation_and_build_and_reopens_override(

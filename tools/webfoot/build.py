@@ -718,17 +718,27 @@ def _check_maps(project: StatProject, maps: Maps | None) -> list[str]:
     return problems
 
 
-def _check_dialogues(project: StatProject, profile: RomProfile) -> list[str]:
-    """Validate semantic dialogue identities before any build writes exist."""
+def _check_dialogues(project: StatProject, profile: RomProfile,
+                     rom_path: str | Path) -> list[str]:
+    """Validate semantic dialogue identities before any build writes exist.
+
+    The base image is supplied so the *layout* half of DIALOGUE-VARIABLE-LENGTH-001
+    runs here: a replacement the owning container cannot hold - because another
+    record crosses the edited span, because the rebuilt container would exceed
+    the toolkit's decoded size limit, or because a displaced record's start
+    would overflow the handle's field - is reported as a project problem rather
+    than surfacing mid-build. Nothing is written or allocated on this path.
+    """
     if not project.dialogues:
         return []
     from .compressed_dialogue import CompressedDialogueError, target_named
     from .dialogue import validate_dialogue_replacement
+    canonical = Path(rom_path).read_bytes()
     problems = []
     for name, text in sorted(project.dialogues.items()):
         try:
             target = target_named(name)
-            validation = validate_dialogue_replacement(target, text, profile)
+            validation = validate_dialogue_replacement(target, text, profile, canonical)
             if not validation.valid:
                 raise CompressedDialogueError(
                     "; ".join(problem.message for problem in validation.problems)
@@ -800,7 +810,7 @@ def validate_project(
             _check_records(project, tables)
             + _check_strings(project, strings)
             + _check_maps(project, maps)
-            + _check_dialogues(project, profile)
+            + _check_dialogues(project, profile, rom_path)
         )
 
     return ValidationReport(
@@ -900,7 +910,7 @@ def build_project(
         _check_records(project, tables)
         + _check_strings(project, strings)
         + _check_maps(project, maps)
-        + _check_dialogues(project, profile)
+        + _check_dialogues(project, profile, rom_path)
     )
     if problems:
         raise ProjectValidationError(
@@ -1003,15 +1013,17 @@ def build_project(
     # own span to the same build-scoped set before the one final plan is formed.
     dialogue_image = None
     dialogue_provenance: tuple = ()
+    dialogue_edits: tuple = ()
     if project.dialogues:
         if base_bytes is None:
             raise BuildError("compressed dialogue requires a canonical build image")
-        from .compressed_dialogue import materialize_dialogues
+        from .compressed_dialogue import dialogue_edits_for, materialize_dialogues
         dialogue_runs, dialogue_reserved, dialogue_image, dialogue_provenance = materialize_dialogues(
             base_bytes, profile, project.dialogues, reserved
         )
         for run in dialogue_runs:
             changes += run.changes
+        dialogue_edits = dialogue_edits_for(dialogue_runs)
         reserved += dialogue_reserved
 
     if base_bytes is None:
@@ -1030,6 +1042,7 @@ def build_project(
         base_sha256=identification.hashes.sha256,
         generated_image=dialogue_image,
         generated_allocations=dialogue_provenance,
+        dialogue_edits=dialogue_edits,
     )
 
     resolved_manifest = manifest_path_for_build(manifest_path, output_path)

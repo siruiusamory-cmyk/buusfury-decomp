@@ -340,6 +340,66 @@ Deleting the generated `derivative.sav` (restoring the first-run save state) did
 not reproduce it either, and mGBA's portable `qt.ini` holds only geometry, key
 binds and the recent-file list.
 
+Two further mechanisms were ruled out after that first draft of this section, and
+both are stronger negatives than the runs above:
+
+* **It is not where in the game's tick stream the state lands.** A sweep mode
+  re-loaded the same hash-verified state **20 times in one run**, at frames 180,
+  360, 540, ... 4200, so the load sampled twenty different points in the tick
+  stream rather than one. Result: `varlen-001-sweep1`, **zero consumer rows and
+  zero liveness rows**. Across twenty loads of the fixture the script interpreter
+  at `0x08004038` never ran once, so the fixture's world state is script-idle and
+  the automatic trigger is not a function of load timing.
+* **It is not the operator's keypress either.** Real OS-level input was injected
+  with `SendInput` after raising the emulator's visible windows
+  (`varlen_trigger_input.ps1`: 11 windows enumerated, 2 visible, 20 A presses with
+  the d-pad nudged first). Result: `varlen-001-input1`, **zero consumer rows and
+  zero liveness rows**. That is in addition to the probe-side `emu:addKeys`
+  (provably inert: 300 frames of held LEFT moved the player nowhere) and
+  `PostMessage` `WM_KEYDOWN`/`WM_KEYUP`.
+
+So the one successful observation stands alone and unexplained by any variable
+this work could control: with the same derivative, the same savestate, the same
+probe and the same runner, the fixture's greeting was consumed once and never
+again in sixteen attempts.
+
+### 7.3 What is therefore needed, and who can do it
+
+The tracked procedure's `human` mode is a **human-in-the-loop** workflow: the
+probe observes and a person triggers the conversation. This session cannot supply
+that step - not because input is hard to script, but because every delivery
+channel was measured inert (above) - so the remaining step belongs to the owner:
+
+```powershell
+powershell.exe -NoProfile -ExecutionPolicy Bypass `
+  -File tools/runtime/run_capacity001_expansion.ps1 `
+  -RomPath "build\varlen-001\derivative.gba" `
+  -RomSha256 dbeba9abc58db5343bd4a7c004207636c8fa6932b0f9527a866fe09ee2aba036 `
+  -RomSize 16777216 `
+  -StatePath "<checkout>\roms\Dragon Ball Z - Buu's Fury (U).ss1" `
+  -Label <fresh-label> -ExpectedPointer 0x08800000 `
+  -LuaPath "tools\runtime\varlen001_dialogue_variable_length_probe.lua" `
+  -MGBPath "build\tools\mgba-dev\extracted\mGBA-build-2026-08-27-win64-9128-c65e8a3d4666b0ea68a01578232452f31b185332\mGBA.exe" `
+  -RunSeconds 120
+```
+
+The probe is now built to settle the question on the **first** hit it gets, so one
+occurrence is enough:
+
+* screenshots at +8, +45 **and +120 frames** after the target record is consumed,
+  the last of which is past the box's progressive reveal;
+* a `STRING` row carrying `decoded_bytes=<n> hex=<UTF-16LE bytes> ascii=<text>`,
+  read from the consumer's own `object + 8` two frames after the hit. That is the
+  **machine-readable statement of exactly what the engine materialised for
+  display**, and it does not depend on a screenshot landing on the right frame;
+* a `HEARTBEAT` row every 300 frames, so a run that records nothing still says
+  whether the core was executing.
+
+A `STRING` row reading `decoded_bytes=72` with the acceptance line's hex would
+establish acceptance criterion 14 directly; a settled +120 screenshot would
+establish it visually. Until one of those exists, the criterion stands unmet.
+
+
 **Conclusion.** The engine-side claim - the retail consumer reads the re-authored
 handle and its widened decoded length, from the container the production
 allocator placed above canonical EOF - is **runtime-proven**. The complementary

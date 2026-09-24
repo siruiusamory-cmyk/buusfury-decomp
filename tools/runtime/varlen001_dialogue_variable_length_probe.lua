@@ -240,6 +240,16 @@ local SELF_LOAD_FRAME = tonumber(os.getenv("VARLEN001_LOAD_FRAME") or "") or 600
 --: assumed equivalent.
 local QUIET = os.getenv("VARLEN001_QUIET")
 local self_loaded = false
+--: Sweep mode. `VARLEN001_SWEEP` re-loads the same state repeatedly at a fixed
+--: frame interval, so ONE run samples many points in the game's own tick stream
+--: instead of the single point an ordinary run gets. Measured: the fixture's
+--: automatic greeting fired on one run in sixteen and the UI-automation load
+--: lands at a different frame every time, so the discriminating variable - if
+--: there is one - is where in the tick stream the load lands. This samples it.
+local SWEEP = os.getenv("VARLEN001_SWEEP")
+local sweep_next = tonumber(os.getenv("VARLEN001_LOAD_FRAME") or "") or 180
+local sweep_step = tonumber(os.getenv("VARLEN001_LOAD_STEP") or "") or 180
+local sweep_last = tonumber(os.getenv("VARLEN001_LOAD_LAST") or "") or 4200
 
 -- The frame callback below runs in BOTH modes. The screenshot scheduling is
 -- deliberately outside the mode branch: a human session is exactly when the
@@ -252,6 +262,14 @@ callback = callbacks:add("frame", function()
         row("STATE", nil, nil, nil, nil,
             string.format("probe self-loaded frame=%d ok=%s result=%s path=%s",
                 frames, tostring(ok), tostring(loaded_ok), SELF_STATE))
+    end
+    if SELF_STATE and SWEEP and frames >= sweep_next and sweep_next <= sweep_last then
+        local at = sweep_next
+        sweep_next = sweep_next + sweep_step
+        local ok, loaded_ok = pcall(function() return emu:loadStateFile(SELF_STATE) end)
+        row("STATE", nil, nil, nil, nil,
+            string.format("sweep self-load frame=%d ok=%s result=%s path=%s",
+                at, tostring(ok), tostring(loaded_ok), SELF_STATE))
     end
     -- Heartbeat: a run that records no consumer row and no liveness row is only
     -- evidence of anything if the core was executing at all. One row every 300

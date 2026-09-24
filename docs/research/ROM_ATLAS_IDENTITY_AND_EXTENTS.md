@@ -6,7 +6,8 @@ sections C.2 (CQA-03, CQA-15) and the section F group table.
 | | |
 | --- | --- |
 | Start SHA | `170dc8151b6cf0b7dba9cf2454708ff67d6522fd` (`origin/master`) |
-| Frozen SHA | *(recorded in `FROZEN.txt` beside this file after freeze)* |
+| Frozen SHA | `1067a539a0e1215043812be3d80e39bdd9272e06` |
+| Correction commit | `03779c2`, data-contract hash authority (made before review began; the frozen candidate was not amended) |
 | Ticket | CQA-03 [HIGH] + CQA-15 [MEDIUM], audit group C |
 | Scope | identity refusal, one atlas/ROM identity contract, single-source profile extents |
 | Product capability | none: `READ 5/5`, `EDIT 4/8`, `AUTHOR 3/7`, `DELIVER 4/4`, 16/24, 67% |
@@ -150,6 +151,7 @@ measurement (owner + an independent read-only delegate), the corrections are:
 | value | was owned by | now owned by |
 | --- | --- | --- |
 | canonical SHA-256 | `map_render.SUPPORTED_ROM_SHA256`, `export/map_browser.SUPPORTED_ROM_SHA256`, `export/buu_resource_export.CANONICAL_ROM_SHA256`, `atlas_build.BASE_SHA256`, `atlas_producers/graphics_extents.EXPECTED_SHA`, `atlas_producers/code_functions.EXPECTED_SHA` | `profile.py` via the packaged catalog; `tools/export/profile_authority.py` for the export stack |
+| canonical SHA-256 (**2 live gates**) | `data/placement_contracts.py` `CONTRACTS[id]['sha256']`, `data/behavior_triggers.py` `BEHAVIOR_TRIGGER_CONTRACTS[id]['sha256']`, compared at `authored_placements.py:236` and `placement_events.py:40` | compared against `profile.sha256`; the contract value stays as a cross-check asserted for every catalogued profile |
 | atlas profile id / image size | `atlas_build.PROFILE_ID` + `IMAGE_SIZE` literals | same profile's `identity` |
 | MapEntry table address | `export/canonical.MAP_ENTRY_TABLE_ADDRESS`, `map_render.MAP_ENTRY_TABLE_ADDRESS` | `RomProfile.map_entries.address` (through `Rom.map_entry_table_address()`, `map_render.resolve_entry_table`, `MapLayoutEditor.map_entry_count`) |
 | MapEntry count (**4 live bounds**) | `export/canonical.MAP_ENTRY_COUNT` (+ its 6 readers) | `RomProfile.map_entries.count` |
@@ -258,6 +260,7 @@ driven through it:
 | the four `GBA_ROM_BASE` spellings all equal `binary.GBA_ROM_BASE` | a base is redefined |
 | the stat strides equal the profile's `record_size`; `character_identity(n, n)` refuses | a stat bound is a literal |
 | `config/roms.yaml` and the packaged catalog are byte-identical | the two catalog copies drift |
+| every `data/*` contract's `sha256` equals its profile's declaration, for every catalogued profile | a contract hash drifts from the catalog |
 
 `test_profile_authority_contract.py` additionally asserts the **absence** of
 every removed symbol (`map_render.SUPPORTED_ROM_SHA256`,
@@ -283,14 +286,18 @@ hash, positive image size) and the length/alignment checks the codec gets from
 
 | suite | result |
 | --- | --- |
-| `tests/unit` (portable, whole directory) | **2140 passed, 23 skipped, 0 failed** |
+| `tests/unit` (portable, whole directory) | **2141 passed, 23 skipped, 0 failed** (at `03779c2`; `2140` at the frozen SHA, before the extra contract-equality test) |
 | `tests/integration` (whole directory; ROM-gated families skip, no ROM in this worktree) | **28 passed, 973 skipped, 0 failed** |
 | `tests/unit/test_atlas_identity.py` (new) | 17 passed |
 | `tests/unit/test_extent_profile_authority.py` (new) | 12 passed |
-| `tests/unit/test_profile_authority_contract.py` (new) | 10 passed |
+| `tests/unit/test_profile_authority_contract.py` (new) | 11 passed |
 | `git diff --check` | clean, exit 0 |
 | canonical ROM | **absent from this worktree**; never read, hashed or written |
 | full suite | **NOT MANUALLY RUN**, human policy; focused validation only |
+
+Measured and derived are kept separate above: the unit/integration totals were
+directly observed by running each directory; nothing here is an expected
+aggregate.
 
 The ROM-gated families (`test_map_layout_editor_rom`, `test_map_layout_write_rom`,
 `test_map_browser_rom`, `test_text_rom`, `test_stat_tables_rom`, the Workbench

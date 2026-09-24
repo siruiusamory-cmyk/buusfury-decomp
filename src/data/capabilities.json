@@ -112,12 +112,13 @@
       "family": "edit",
       "title": "Dialogue line editing",
       "state": "shipped",
-      "detail": "Resolve a supported line, edit it, validate and build. A rewritten ordinary NPC line has been displayed by the retail engine in its own dialogue box, including a line longer than the one it replaces.",
+      "detail": "Resolve a supported line, edit it, validate and build. A rewritten ordinary NPC line has been displayed by the retail engine in its own dialogue box, and the engine has rendered an authored line longer than the one it replaced from a re-authored durable handle.",
       "limits": [
         "Only a line the SDK can resolve as a mapped target is editable; other search results stay read-only.",
         "A line longer than the record it replaces re-authors that record's durable handle and re-lays out its decoded container, so every record after it moves inside the container; a container whose records cross the edited one is refused rather than reinterpreted.",
         "The rebuilt container must stay inside the toolkit's 64 KiB decoded-container limit, which a retail dialogue container nearly fills: this target's ceiling is a 94-byte line, well below the 4,094 bytes the handle's length field can encode.",
-        "One record at a time. The SDK's registered dialogue targets hold a single record, and two records in one container would need an explicit batch re-layout."
+        "One record at a time. The SDK's registered dialogue targets hold a single record, and two records in one container would need an explicit batch re-layout.",
+        "The longer line is runtime-observed MID-REVEAL: the engine rendered the first 31 characters of a 36-character authored line, which already exceeds the 16 characters its retail record's length could yield, but a settled capture of the complete line is not recorded."
       ],
       "surface": "Inspector tab: mapped dialogue line editing, emitted through the Build tab",
       "proof": "runtime",

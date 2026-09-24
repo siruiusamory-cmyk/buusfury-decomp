@@ -765,7 +765,7 @@ class Exporter:
                 PALETTE_BACKGROUND_ID,
                 "background",
                 self.bg_palette,
-                canon.BG_PALETTE_ADDRESS,
+                self.rom.bg_palette_address(),
                 "rgb888",
                 canon.BG_PALETTE_ENTRIES,
             ),

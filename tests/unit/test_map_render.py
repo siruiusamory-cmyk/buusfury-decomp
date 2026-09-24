@@ -106,7 +106,7 @@ def _synthetic_rom() -> tuple[bytes, int]:
     palette = bytearray()
     for i in range(mr.BG_PALETTE_ENTRIES):
         palette += bytes((i, (i * 2) & 0xFF, (i * 3) & 0xFF))
-    _place(rom, mr.BG_PALETTE_ADDRESS, bytes(palette))
+    _place(rom, mr.canonical_profile().actor_sprites.bg_palette_address.raw, bytes(palette))
     return bytes(rom), descriptor
 
 

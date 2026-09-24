@@ -68,6 +68,32 @@ def test_the_text_bound_is_the_profiles_declared_count(profile):
         f'push_many 3 {limit - 1} 120 105', 'native_stack 178', 'terminate')
 
 
+def test_a_shorter_declared_text_table_moves_the_bound(profile):
+    """A profile declaring a SMALLER table refuses an index Buu's table allows.
+
+    This is the discriminating form: with the canonical profile's count (1,534)
+    a reintroduced Buu literal is indistinguishable, so the check needs a
+    declaration that differs. Index 1,525 is inside Buu's table and outside a
+    table declaring 1,000. The profile id is kept, so the effect lookup still
+    succeeds and the refusal can only come from the text bound.
+    """
+    from dataclasses import replace
+
+    shorter = replace(
+        profile,
+        text_strings=replace(profile.text_strings, count=1000),
+    )
+    line = ('show_centered_sprite_text text:1525 120 105', 'terminate')
+    # Inside the canonical declaration, outside the shorter one.
+    assert _expand_semantic_source(line, profile, 'owner') == VM_SOURCE
+    with pytest.raises(AuthoredBehaviorError, match='declared'):
+        _expand_semantic_source(line, shorter, 'owner')
+    # And an index inside the shorter table still expands.
+    assert _expand_semantic_source(
+        ('show_centered_sprite_text text:999 120 105', 'terminate'), shorter, 'owner'
+    ) == ('push_many 3 999 120 105', 'native_stack 178', 'terminate')
+
+
 def test_production_codec_encodes_the_exact_native_invocation():
     assert assemble_source(VM_SOURCE, BUU) == BODY
     ir = disassemble(BODY, (Entry('authored', 0),), BUU)

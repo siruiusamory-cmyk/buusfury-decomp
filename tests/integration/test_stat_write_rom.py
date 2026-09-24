@@ -197,7 +197,10 @@ def test_edited_output_decodes_back_to_the_new_value(rom, tables) -> None:
 
 
 def test_character_edit_is_attributed_with_its_alias(rom, tables) -> None:
-    goku = tables.character(st.character_identity(0))
+    # The bound is the profile's declared character count, which is the same
+    # number `load_stat_tables` used to build this table.
+    count = tables.profile.character_base_stats.count
+    goku = tables.character(st.character_identity(0, count))
     assert goku.alias == "Goku"
     tables.set_character_field(goku.identity, "hp", 200)
     plan = tables.plan()

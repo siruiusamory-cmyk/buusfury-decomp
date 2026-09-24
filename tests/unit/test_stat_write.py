@@ -85,10 +85,11 @@ def test_identity_rejects_unknown_kinds_and_negative_keys() -> None:
 
 def test_character_alias_is_separate_from_identity() -> None:
     """A rename must not change identity; they are different concepts."""
-    identity = st.character_identity(0, st.BASE_STAT_RECORD_COUNT)
+    count = st.BASE_STAT_RECORD_COUNT
+    identity = st.character_identity(0, count)
     assert identity == st.StatIdentity(kind="character", key=0)
-    assert st.character_alias(0) == "Goku"
-    assert str(identity) != st.character_alias(0)
+    assert st.character_alias(0, count) == "Goku"
+    assert str(identity) != st.character_alias(0, count)
 
 
 def test_character_identity_rejects_out_of_range_index() -> None:
@@ -103,7 +104,18 @@ def test_character_identity_rejects_out_of_range_index() -> None:
 def test_character_alias_refuses_an_index_it_has_no_name_for() -> None:
     """A roster index past the verified names fails loudly, never wraps."""
     with pytest.raises(ValueError, match="no verified display alias"):
-        st.character_alias(len(st.BASE_STAT_NAMES))
+        st.character_alias(len(st.BASE_STAT_NAMES), st.BASE_STAT_RECORD_COUNT)
+
+
+def test_character_alias_refuses_another_profiles_roster() -> None:
+    """A profile whose roster size is not the verified one gets no names.
+
+    The names are Buu's and no profile field declares them, so displaying them
+    against another game's records would be exactly the silent wrong-profile
+    read this ticket is about. It refuses by name instead.
+    """
+    with pytest.raises(ValueError, match="no verified display roster"):
+        st.character_alias(0, st.BASE_STAT_RECORD_COUNT + 1)
 
 
 # --- round-trip and unknown-byte preservation ----------------------------

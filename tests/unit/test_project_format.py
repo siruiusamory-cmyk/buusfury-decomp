@@ -76,7 +76,7 @@ def _character(index: int = 0):
         st.StatIdentity(kind="character", key=index),
         record,
         st.encode_base_stat_record(record, original),
-        st.character_alias(index),
+        st.character_alias(index, st.BASE_STAT_RECORD_COUNT),
     )
 
 

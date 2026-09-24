@@ -168,8 +168,10 @@ BANK_TILE_BYTES = 64
 #: declaring zero bytes, so substituting it and skipping it both write no pixels.
 DEFAULT_CHUNK_CONTAINER = 0x08070808
 
-#: Engine-global background palette: 256 RGB888 triples, uncompressed.
-BG_PALETTE_ADDRESS = 0x080701B0
+#: Engine-global background palette: 256 RGB888 triples, uncompressed. The
+#: ENTRY COUNT and byte size are format facts; the ADDRESS is the profile's
+#: (`tables.actor_sprites.bg_palette_address`), read through
+#: `Rom.bg_palette_address()`, not restated here (CQA-15).
 BG_PALETTE_ENTRIES = 256
 BG_PALETTE_BYTES = BG_PALETTE_ENTRIES * 3
 
@@ -498,6 +500,15 @@ class Rom:
                 f"profile {self.profile.id!r} declares no actor_sprites palette"
             )
         return sprites.object_palette_address.raw
+
+    def bg_palette_address(self) -> int:
+        """The profile-declared engine-global background palette address."""
+        sprites = self.profile.actor_sprites
+        if sprites is None:
+            raise CanonicalError(
+                f"profile {self.profile.id!r} declares no actor_sprites palette"
+            )
+        return sprites.bg_palette_address.raw
 
     def offset(self, address: int) -> int:
         return to_file_offset(address, self.size)

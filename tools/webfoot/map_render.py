@@ -46,11 +46,10 @@ class UnsupportedMapAssemblyVariant(MapRenderError):
 MAP_ENTRY_STRIDE = me.MAP_ENTRY_SIZE  # 0x38
 MAP_ENTRY_SCENE_POINTER_OFFSET = 0x2C  # variation_array_pointer_raw
 
-#: Engine-global background palette: 256 RGB888 triples, uncompressed. A CONSTANT
-#: for every map. Each channel byte is 8-bit but the hardware only keeps 5 bits,
-#: so the display value is ``v>>3`` requantised then expanded - which reproduces
-#: the live VRAM palette (an oracle's ``palette.bin``) verbatim at full brightness.
-BG_PALETTE_ADDRESS = 0x080701B0
+#: Engine-global background palette: 256 RGB888 triples, uncompressed. One
+#: palette every map shares, so the ENTRY COUNT and byte size are format facts;
+#: the ADDRESS is the profile's (`tables.actor_sprites.bg_palette_address`), read
+#: through `_bg_palette_address`, not a renderer constant (CQA-15).
 BG_PALETTE_ENTRIES = 256
 BG_PALETTE_BYTES = BG_PALETTE_ENTRIES * 3
 
@@ -62,6 +61,22 @@ SCREEN_CHUNK_BYTES = bg_tilemap.SCREEN_BLOCK_BYTES
 SCREEN_CHUNK_SIDE = 32
 SUPPORTED_LAYER_HANDLER = 0x08008087
 MAX_TILE_INDEX = 0x3FF
+
+
+def _bg_palette_address(profile: RomProfile) -> int:
+    """The profile's declared engine-global background palette address.
+
+    A profile that declares no palette cannot be rendered: every map's colours
+    come from it, and defaulting to some other image's address would requantise
+    unrelated bytes into a plausible-looking palette.
+    """
+    sprites = profile.actor_sprites
+    if sprites is None:
+        raise MapRenderError(
+            f"profile {profile.id!r} declares no actor_sprites palette; this "
+            "renderer cannot default a background palette address"
+        )
+    return sprites.bg_palette_address.raw
 
 
 def canonical_profile() -> RomProfile:
@@ -281,17 +296,24 @@ def _check_map_index(map_index: int, count: int) -> None:
 
 # --- palette (ROM-proven) ----------------------------------------------------
 
-def decode_bg_palette(rom: bytes) -> tuple[tuple[int, int, int], ...]:
-    """The 256-colour global BG palette from ROM 0x080701B0 as display RGB.
+def decode_bg_palette(
+    rom: bytes, *, profile: RomProfile | None = None
+) -> tuple[tuple[int, int, int], ...]:
+    """The profile's 256-colour global BG palette, as display RGB.
 
     Each RGB888 channel is requantised to the hardware's 5 bits and expanded
     back, so the result matches live VRAM (5-bit-per-channel) at full brightness
     rather than the raw 8-bit ROM bytes. This is the proven full-brightness
     palette; using it renders a mid-fade capture (e.g. map 39) at correct colour.
+
+    The address comes from the resolved profile, so a profile that moves its BG
+    palette is read at its own address instead of at Buu's.
     """
-    offset = _file_offset(BG_PALETTE_ADDRESS, len(rom))
+    resolved = profile if profile is not None else canonical_profile()
+    address = _bg_palette_address(resolved)
+    offset = _file_offset(address, len(rom))
     if offset + BG_PALETTE_BYTES > len(rom):
-        raise MapRenderError(f"BG palette at {BG_PALETTE_ADDRESS:#010x} runs past the image")
+        raise MapRenderError(f"BG palette at {address:#010x} runs past the image")
 
     def display(byte: int) -> int:
         five = byte >> 3
@@ -638,7 +660,8 @@ def render_map(
         rom, map_index, profile=resolved
     )
     assembly = reconstruct_map_assembly(rom, descriptor)
-    palette = decode_bg_palette(rom)
+    palette = decode_bg_palette(rom, profile=resolved)
+    palette_address = _bg_palette_address(resolved)
 
     rendered: list[RenderedLayer] = []
     for layer in assembly.layers:
@@ -681,8 +704,8 @@ def render_map(
         "map_entry_address": f"{map_entry_address:#010x}",
         "scene_pointer": f"{scene_pointer:#010x}",
         "descriptor_address": f"{descriptor:#010x}",
-        "bg_palette_address": f"{BG_PALETTE_ADDRESS:#010x}",
-        "palette_source": f"ROM {BG_PALETTE_ADDRESS:#010x} (full brightness)",
+        "bg_palette_address": f"{palette_address:#010x}",
+        "palette_source": f"ROM {palette_address:#010x} (full brightness)",
         "tile_selector_address": f"{_u32(rom, descriptor + 0x48):#010x}",
         "tileset_addresses": [f"{address:#010x}" for address in assembly.tileset_addresses],
         "animation_addresses": [f"{address:#010x}" for address in assembly.animation_addresses],
@@ -736,8 +759,9 @@ def render_map_vram_reference(
         palette = capture_palette_rgb
         palette_source = "VRAM capture palette.bin"
     else:
-        palette = decode_bg_palette(rom)
-        palette_source = f"ROM {BG_PALETTE_ADDRESS:#010x} (full brightness)"
+        canonical = canonical_profile()
+        palette = decode_bg_palette(rom, profile=canonical)
+        palette_source = f"ROM {_bg_palette_address(canonical):#010x} (full brightness)"
     return render_map_from_vram(
         bytes(vram),
         layers_spec,

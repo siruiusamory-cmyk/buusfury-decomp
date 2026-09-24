@@ -18,6 +18,11 @@ ROM = Path(os.environ.get(
     "WEBFOOT_BUU_ROM", "roms/Dragon Ball Z - Buu's Fury (U).gba"
 ))
 
+#: The identity this renderer is allowed to describe. Read from the packaged
+#: profile, which owns it; `map_render` carries no hash of its own, so a
+#: hard-coded copy here would be a second authority for the same fact.
+SUPPORTED_ROM_SHA256 = mr.canonical_profile().sha256
+
 EXPECTED = {
     "map:0039": {
         "descriptor": "0x08294968",
@@ -42,7 +47,7 @@ pytestmark = pytest.mark.skipif(not ROM.exists(), reason="canonical Buu ROM not 
 @pytest.fixture(scope="module")
 def canonical_rom() -> bytes:
     data = ROM.read_bytes()
-    assert hashlib.sha256(data).hexdigest() == mr.SUPPORTED_ROM_SHA256
+    assert hashlib.sha256(data).hexdigest() == SUPPORTED_ROM_SHA256
     return data
 
 
@@ -74,7 +79,7 @@ def test_canonical_rom_file_is_unchanged_after_both_renders(canonical_rom: bytes
     before = hashlib.sha256(ROM.read_bytes()).hexdigest()
     mr.render_map(canonical_rom, "map:0039")
     mr.render_map(canonical_rom, "map:0040")
-    assert hashlib.sha256(ROM.read_bytes()).hexdigest() == before == mr.SUPPORTED_ROM_SHA256
+    assert hashlib.sha256(ROM.read_bytes()).hexdigest() == before == SUPPORTED_ROM_SHA256
 
 
 ORACLES = {

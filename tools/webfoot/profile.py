@@ -536,12 +536,18 @@ class ActorSpriteProfile:
     animation pointers begin; it is declared rather than hard-coded because the
     header layout is a per-game fact, and the one place a wrong value could
     silently produce plausible-but-wrong assets.
+
+    ``bg_palette_address`` is the engine-global background palette the map
+    renderer requantises. It is declared here rather than held as a renderer
+    constant because it is a per-game ROM address of the same kind as the object
+    palette beside it (CQA-15).
     """
 
     character_table_address: GbaRomAddress
     character_count: int
     animation_pointer_offset: int
     object_palette_address: GbaRomAddress
+    bg_palette_address: GbaRomAddress
     evidence: str
 
 
@@ -551,6 +557,7 @@ def _optional_actor_sprites(tables, size):
         return None
     keys = {"character_table_address", "character_count",
             "animation_pointer_offset", "object_palette_address", "evidence"}
+    keys |= {"bg_palette_address"}
     if not isinstance(value, Mapping) or set(value) != keys:
         raise ProfileConfigError("actor_sprites requires exact contract fields")
     if type(value["character_count"]) is not int or value["character_count"] <= 0:
@@ -565,8 +572,14 @@ def _optional_actor_sprites(tables, size):
     try:
         table = GbaRomAddress(value["character_table_address"])
         palette = GbaRomAddress(value["object_palette_address"])
+        bg_palette = GbaRomAddress(value["bg_palette_address"])
+        if bg_palette.raw % 2:
+            raise ProfileConfigError(
+                "actor_sprites background palette is not halfword aligned"
+            )
         start = table.to_file_offset(size)
         palette_start = palette.to_file_offset(size)
+        bg_palette_start = bg_palette.to_file_offset(size)
         if table.raw % 4 or palette.raw % 2:
             raise ProfileConfigError("actor_sprites address alignment mismatch")
         if start + value["character_count"] * 4 > size:
@@ -575,10 +588,14 @@ def _optional_actor_sprites(tables, size):
         # would run off the end is refused here rather than truncated later.
         if palette_start + 512 > size:
             raise ProfileConfigError("actor_sprites object palette runs past the ROM")
+        if bg_palette_start + 768 > size:
+            raise ProfileConfigError(
+                "actor_sprites background palette runs past the ROM"
+            )
     except BinaryAddressError as exc:
         raise ProfileConfigError(str(exc)) from exc
     return ActorSpriteProfile(table, value["character_count"], offset, palette,
-                              value["evidence"])
+                              bg_palette, value["evidence"])
 
 
 def _optional_placement_types(tables, size):

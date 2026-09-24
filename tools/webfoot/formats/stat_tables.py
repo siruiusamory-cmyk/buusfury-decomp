@@ -405,15 +405,23 @@ def character_identity(index: int, count: int) -> StatIdentity:
     return StatIdentity(kind="character", key=index)
 
 
-def character_alias(index: int) -> str:
+def character_alias(index: int, count: int) -> str:
     """Human-readable name for a character record.
 
     A display alias, never an identity: these names are INFERRED from
-    BuusFuryToolkit and could be renamed without the record changing. The roster
-    itself is a Buu declaration with no profile field yet; `stats` gates a
-    caller on the profile's declared count before this is reached, so an index
-    past this tuple cannot arrive from production.
+    BuusFuryToolkit and could be renamed without the record changing.
+
+    The names are one game's roster and no profile field declares them yet, so
+    this is the one place in this layer that is still per-game data. It refuses
+    rather than guessing: `count` is the caller's profile-declared roster size,
+    and a profile whose roster is not this one gets a named refusal instead of
+    another game's names against its records.
     """
+    if count != len(BASE_STAT_NAMES):
+        raise ValueError(
+            f"no verified display roster for a profile declaring {count} character "
+            f"records; the verified roster names are Buu's {len(BASE_STAT_NAMES)}"
+        )
     if not 0 <= index < len(BASE_STAT_NAMES):
         raise ValueError(
             f"no verified display alias for character index {index}; the verified "

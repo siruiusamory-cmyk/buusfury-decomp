@@ -48,14 +48,19 @@ SYNTHETIC_TEXT_TABLE = 0x08410000
 SYNTHETIC_TEXT_COUNT = 2
 SYNTHETIC_TEXT_POOL = 0x08420000
 SYNTHETIC_POOL_SIZE = 64
+#: Palette addresses that are NOT the canonical profile's, so a read that finds
+#: the fixture's palette proves the address came from the profile.
+SYNTHETIC_OBJECT_PALETTE = 0x08430000
+SYNTHETIC_BG_PALETTE = 0x08440000
 
 
 def _synthetic_bytes() -> bytes:
-    """An image the synthetic profile's TEXT extents describe, and nothing else.
+    """An image the synthetic profile's TEXT and PALETTE extents describe.
 
     The map-table half of the parameterization proof uses the complete synthetic
     ROM in `test_map_render`, which is already wired for a readable map
-    assembly; this image is only for the text-index bound.
+    assembly. The palettes are filled with distinguishable constants so a read
+    that lands at the profile's address is recognisable at the byte level.
     """
     image = bytearray(IMAGE_SIZE)
 
@@ -71,11 +76,20 @@ def _synthetic_bytes() -> bytes:
         (SYNTHETIC_TEXT_POOL).to_bytes(4, "little")
         + (SYNTHETIC_TEXT_POOL + 6).to_bytes(4, "little"),
     )
+    # Object palette: 256 BGR555 words, an easily recognisable ramp.
+    object_palette = b"".join(
+        (index & 0x7FFF).to_bytes(2, "little") for index in range(256)
+    )
+    put(SYNTHETIC_OBJECT_PALETTE, object_palette)
+    # Background palette: 256 RGB888 triples, a distinguishable ramp.
+    put(SYNTHETIC_BG_PALETTE, bytes(b for index in range(256) for b in (index, 0, 255 - index)))
     return bytes(image)
 
 
 def _synthetic_profile(buu: RomProfile, *, text_count: int = SYNTHETIC_TEXT_COUNT) -> RomProfile:
     """Buu's profile with every load-bearing extent moved to a different value."""
+    sprites = buu.actor_sprites
+    assert sprites is not None
     return replace(
         buu,
         id="synthetic_extents_profile",
@@ -94,6 +108,11 @@ def _synthetic_profile(buu: RomProfile, *, text_count: int = SYNTHETIC_TEXT_COUN
             alignment=2,
             relocatable=False,
             evidence="CQA-03-15 synthetic parameterization fixture",
+        ),
+        actor_sprites=replace(
+            sprites,
+            object_palette_address=GbaRomAddress(SYNTHETIC_OBJECT_PALETTE),
+            bg_palette_address=GbaRomAddress(SYNTHETIC_BG_PALETTE),
         ),
     )
 
@@ -333,3 +352,92 @@ def test_the_character_identity_bound_is_the_callers(buu):
     assert st.character_identity(count - 1, count).key == count - 1
     with pytest.raises(ValueError):
         st.character_identity(count, count)
+
+
+# --- the palette addresses ----------------------------------------------------
+
+
+def test_the_object_palette_address_is_the_profiles(buu, image):
+    """`render.object_palette_rgb` reads the profile's declared address.
+
+    The fixture palette is a ramp that exists only at the synthetic address, so
+    a read pinned to Buu's address cannot produce it.
+    """
+    from tools.export import render as render_sdk
+
+    synthetic = _synthetic_profile(buu)
+    rom = canon.Rom(image, profile=synthetic)
+    assert rom.object_palette_address() == SYNTHETIC_OBJECT_PALETTE
+    assert rom.object_palette_address() != buu.actor_sprites.object_palette_address.raw
+
+    palette = render_sdk.object_palette_rgb(rom)
+    assert len(palette) == canon.OBJECT_PALETTE_ENTRIES
+    # Entry 1 is BGR555 word 1, which expands to (8, 0, 0) at red 5 bits.
+    assert palette[1] == (8, 0, 0)
+
+
+def test_the_background_palette_address_is_the_profiles(buu, image):
+    """Both palette readers use the profile's declared address."""
+    from tools.export import render as render_sdk
+
+    synthetic = _synthetic_profile(buu)
+    rom = canon.Rom(image, profile=synthetic)
+    assert rom.bg_palette_address() == SYNTHETIC_BG_PALETTE
+    assert rom.bg_palette_address() != buu.actor_sprites.bg_palette_address.raw
+
+    palette = render_sdk.bg_palette_rgb(rom)
+    assert len(palette) == 256
+    # RGB888 triple for index 1 is (1, 0, 254); each channel is requantised to
+    # 5 bits and expanded back, so 1 -> 0 and 254 -> 255.
+    assert palette[1] == (0, 0, 255)
+
+
+def test_the_map_renderer_palette_address_is_the_profiles(image):
+    """`map_render.decode_bg_palette` reads the profile's declared address.
+
+    Driven through `map_render`, not the export stack, so a Buu literal left in
+    the renderer fails here.
+    """
+    synthetic_buu = mr.canonical_profile()
+    synthetic = replace(
+        synthetic_buu,
+        actor_sprites=replace(
+            synthetic_buu.actor_sprites,
+            bg_palette_address=GbaRomAddress(SYNTHETIC_BG_PALETTE),
+        ),
+    )
+    palette = mr.decode_bg_palette(image, profile=synthetic)
+    assert len(palette) == mr.BG_PALETTE_ENTRIES
+    assert palette[1] == (0, 0, 255)
+    # The canonical profile's address holds nothing in this image, so the two
+    # profiles cannot produce the same palette.
+    assert mr.decode_bg_palette(image, profile=synthetic_buu) != palette
+
+
+def test_the_map_renderer_refuses_a_profile_with_no_palette(image, buu):
+    """A profile declaring no palette is refused by name, not defaulted."""
+    without = replace(buu, id="no_palette_profile", actor_sprites=None)
+    with pytest.raises(mr.MapRenderError, match="declares no actor_sprites palette"):
+        mr.decode_bg_palette(image, profile=without)
+
+
+def test_the_map_layout_writer_gate_is_the_profile_identity():
+    """The writer's identity gate names the profile, and owns no hash of its own.
+
+    The writer verifies real canonical bytes, so this asserts the *owner* rather
+    than driving it with a synthetic image: it must read identity from
+    `profile_authority`, not from a literal. The count bound it applies is the
+    reader's profile count, exercised with real bytes by the ROM-gated writer
+    tests.
+    """
+    from tools.webfoot import map_layout_write
+
+    assert not hasattr(map_layout_write, "SUPPORTED_ROM_SHA256"), (
+        "the writer must not own a second copy of the canonical hash"
+    )
+    source = Path(map_layout_write.__file__).read_text(encoding="utf-8")
+    assert "profile_authority" in source, (
+        "the writer must resolve its identity through the profile authority"
+    )
+    # The bound it enforces is read from the reader's profile, not a constant.
+    assert "map_entry_count()" in source

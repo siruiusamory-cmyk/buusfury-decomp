@@ -628,7 +628,9 @@ def test_an_unsupported_rom_keeps_browsing_read_only(qapp, monkeypatch, tmp_path
     tab._edit_toggle.setChecked(True)
     assert tab._editor is None
     assert tab._mode_badge.text() == "READ ONLY · layout editing is unavailable"
-    assert "canonical" in tab._read_only_detail.text()
+    # The refusal names the profile whose extents the writer would resolve
+    # against, which is the profile authority rather than a bare hash literal.
+    assert "profile 'buus_fury_usa_rev0_01c1707f'" in tab._read_only_detail.text()
     assert not tab._save_button.isEnabled()
 
 

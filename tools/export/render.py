@@ -65,7 +65,7 @@ def bg_palette_rgb(rom: "canon.Rom") -> tuple[tuple[int, int, int], ...]:
     is requantised to 5 bits and expanded back. That reproduces the live VRAM
     palette at full brightness rather than the raw ROM bytes.
     """
-    offset = rom.span(canon.BG_PALETTE_ADDRESS, canon.BG_PALETTE_BYTES)
+    offset = rom.span(rom.bg_palette_address(), canon.BG_PALETTE_BYTES)
     raw = rom.data[offset : offset + canon.BG_PALETTE_BYTES]
 
     def display(byte: int) -> int:

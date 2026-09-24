@@ -7,7 +7,8 @@ sections C.2 (CQA-03, CQA-15) and the section F group table.
 | --- | --- |
 | Start SHA | `170dc8151b6cf0b7dba9cf2454708ff67d6522fd` (`origin/master`) |
 | Frozen SHA | `1067a539a0e1215043812be3d80e39bdd9272e06` |
-| Correction commit | `03779c2`, data-contract hash authority (made before review began; the frozen candidate was not amended) |
+| Correction commits | `03779c2` data-contract hash authority, then the review-correction commit below. The frozen SHA was never amended. |
+| Independent review | **2 BLOCKING findings**, both resolved in the review-correction commit (section 9) |
 | Ticket | CQA-03 [HIGH] + CQA-15 [MEDIUM], audit group C |
 | Scope | identity refusal, one atlas/ROM identity contract, single-source profile extents |
 | Product capability | none: `READ 5/5`, `EDIT 4/8`, `AUTHOR 3/7`, `DELIVER 4/4`, 16/24, 67% |
@@ -211,7 +212,7 @@ load-bearing duplicate.
 | `0x2C` MapEntry scene-pointer offset | `webfoot/formats/map_entry`, `map_render.MAP_ENTRY_SCENE_POINTER_OFFSET` | field position inside the record |
 | `1024`, `0x800`, `256`, `32` | `export/canonical`, `map_render`, `formats/bg_tilemap` | GBA screenblock / chunk geometry |
 | handler addresses `0x08008087` etc. | `export/canonical`, `map_render.SUPPORTED_LAYER_HANDLER` | the accepted layer forms this renderer implements, a **capability** limit, stated as a gate, not an identity literal |
-| `256` palette entries | `canonical.OBJECT_PALETTE_ENTRIES`, `map_render.BG_PALETTE_ENTRIES` | OAM/BG palette size |
+| `256` palette entries, `768` background-palette bytes | `canonical.OBJECT_PALETTE_ENTRIES` / `BG_PALETTE_ENTRIES` / `BG_PALETTE_BYTES`, `map_render` | palette sizes: OAM is 256 halfwords, the global BG palette 256 RGB888 triples. The **addresses** are the profile's (`tables.actor_sprites.object_palette_address` / `bg_palette_address`), read through `Rom.object_palette_address()` / `Rom.bg_palette_address()` and `map_render._bg_palette_address` |
 
 ### Evidence / provenance labels (EVID)
 
@@ -222,8 +223,9 @@ load-bearing duplicate.
 | `map_render._CANONICAL_PROFILE_ID` | `webfoot/map_render.py` | the Buu-only default profile for callers that supply none; identity is still compared against the bytes |
 | `EXPECTED_SHA` in `code_functions.py` | atlas producer | read from the packaged profile, so it is a view of A, not a rival copy |
 | `ENEMY_TABLE_START`/`LAST`/`COUNT`, `BASE_STAT_TABLE_START`/`COUNT` | `formats/stat_tables.py` | the **measured extent**, kept as the evidence a ticket verified; their only readers are `iter_enemy_records` / `iter_base_stat_records`, which have **no production caller**. A test asserts they still describe a whole number of records and that the profile's GBA address equals their file offset plus the sanctioned base |
-| `BASE_STAT_NAMES` | `formats/stat_tables.py` | the INFERRED Buu display roster (not an identity). Now guarded: `character_alias` refuses an index past the verified names instead of wrapping, and `stats` is gated on the profile's declared count |
-| `PROFILE_ID` keys in `data/placement_contracts.py`, `data/script_effects.py`, `data/behavior_triggers.py`, `data/script_specs.py` | `webfoot/data/` | these dicts are **selected by** profile id; the id is the selector. Their per-game **counts** were removed and are read from the profile |
+| `BASE_STAT_NAMES` | `formats/stat_tables.py` | **the one remaining per-game literal in this layer, and the reviewer was right to name it.** An INFERRED Buu display roster, live in production via `stats.character_alias` for `CharacterEntry.alias`. It is not a duplicate authority (nothing else declares it), but it is not format data either. Now guarded rather than silently reused: `character_alias(index, count)` refuses a profile whose declared roster is not this one, and refuses an index past the verified names. Owning it as profile data is recorded debt (section 8) |
+| `PROFILE_ID` keys in `data/placement_contracts.py`, `data/script_effects.py`, `data/behavior_triggers.py`, `data/script_specs.py` | `webfoot/data/` | these dicts are **selected by** profile id; the id is the selector. Their per-game **counts** were removed and are read from the profile. Their `sha256` fields were **live gates** and are now compared against `profile.sha256` (review finding 1) |
+| `940ad5f0…f059e` in production | **none left** | the reviewer's finding 1 named the last two (`data/behavior_triggers.py`, `data/placement_contracts.py`); both are now cross-checks against the profile, asserted for every catalogued profile |
 | `tools/research/*_probe.py`, `tools/runtime/*.lua`, `tools/ghidra/*.java`, `tools/mgba_probe/`, `tools/qa/` literals | research / probe / runtime tooling | independent measurements used to *check* production. CQA-15 is about production behaviour-driving authorities; a probe that imported its expectations from the code under test could not detect that code drifting. Two probes were updated from the deleted codec constants to their own measured literals for exactly this reason |
 | provenance strings inside atlas producers (`seed.py` prose, `evidence` fields) | atlas producers | reported into the atlas artifact, never branched on |
 
@@ -245,8 +247,9 @@ load-bearing duplicate.
 constant-to-constant comparison. A profile is built from the canonical one by
 replacing **every** load-bearing extent with a different value (different id,
 different SHA, map table at `0x08400000` with count 3, text table at
-`0x08410000` with count 2, pool at `0x08420000`), and the production readers are
-driven through it:
+`0x08410000` with count 2, pool at `0x08420000`, object palette at `0x08430000`,
+background palette at `0x08440000`), and the production readers are driven
+through it:
 
 | assertion | fails if |
 | --- | --- |
@@ -261,6 +264,10 @@ driven through it:
 | the stat strides equal the profile's `record_size`; `character_identity(n, n)` refuses | a stat bound is a literal |
 | `config/roms.yaml` and the packaged catalog are byte-identical | the two catalog copies drift |
 | every `data/*` contract's `sha256` equals its profile's declaration, for every catalogued profile | a contract hash drifts from the catalog |
+| `render.object_palette_rgb` returns the palette that exists only at the synthetic address | the object palette address is a literal |
+| `render.bg_palette_rgb` and `map_render.decode_bg_palette` return the palette that exists only at the synthetic address | the background palette address is a literal |
+| `MapLayoutWriter`'s identity gate reads `profile_authority`, owns no hash, and bounds by `map_entry_count()` | the writer restates the hash or the count |
+| a profile declaring a 1,000-entry text table refuses index 1,525 that the canonical profile accepts | the text bound is a literal (the canonical count is 1,534, so a same-count check proves nothing) |
 
 `test_profile_authority_contract.py` additionally asserts the **absence** of
 every removed symbol (`map_render.SUPPORTED_ROM_SHA256`,
@@ -353,6 +360,114 @@ After all three: files restored byte-identically (hash-compared), no
 - The export stack still reads through `tools/export/canonical.py` rather than
   the SDK's `formats` layer (that dependency *is* CQA-04).
 - Line endings: `tools/webfoot/profile.py` is one of the nine documented
-  mixed-ending files; the edit to it was applied with the byte-safe line-indexed
-  recipe in `../line-endings.md` after an editor round-trip was detected and
-  reverted. Its CRLF count is unchanged at 732.
+  mixed-ending files. Its edits were applied with the byte-safe line-indexed
+  recipe in `../line-endings.md` after editor round-trips were detected and
+  reverted. `git diff --check` is clean. The CRLF total moves from 732 to 731:
+  exactly one line changed content (the `ActorSpriteProfile` argument line that
+  gained `bg_palette`), and `git diff --check` reads a CR before the newline of
+  an *added* line as trailing whitespace, so a changed line must end with a bare
+  LF. Every other pre-existing line is byte-identical.
+
+---
+
+## 9. Independent review and its resolution
+
+A fresh-context read-only reviewer examined the frozen revision `1067a539`
+(a pristine `git archive` export, so the later commits could not contaminate it)
+with the owner's canonical ROMs configured, and returned **BLOCKING = 2**. Both
+are resolved.
+
+### Finding 1 (H/N), BLOCKING: two data-module SHA literals still gated behaviour
+
+`data/behavior_triggers.py` and `data/placement_contracts.py` carried their own
+copy of the canonical SHA-256, compared against the **loaded image's** hash at
+`authored_placements.py` (two sites) and `placement_events.py` (one site). They
+were live gates and appeared in the record's classification only as profile-id
+selectors.
+
+**Resolved** (`03779c2`): all three comparisons read `maps.profile.sha256`, so
+the catalog declaration is the authority and the contract value is a cross-check.
+`test_the_data_contract_hashes_agree_with_the_profile` now asserts the
+relationship for **every** catalogued profile, so a contract that drifts from
+the catalog fails loudly. The reviewer's related point, that two further
+behaviour-driving literals were unnamed in the classification, is also fixed:
+`BG_PALETTE_ADDRESS` is now profile-declared (below), and `BASE_STAT_NAMES` is
+documented as the one remaining per-game literal in that layer, now guarded
+against a foreign roster rather than silently reused.
+
+### Finding 2, BLOCKING: ticket-caused ROM-gated test failures
+
+With the canonical ROM configured, the frozen revision failed where `170dc815`
+passed: `1 failed + 7 errors`, because three test files were left calling removed
+API (`st.character_identity(0)`; `mr.SUPPORTED_ROM_SHA256`;
+`map_browser.SUPPORTED_ROM_SHA256`). The record's claim that their call sites
+were updated was **false for those three files**, and its integration evidence
+could not be reproduced in the environment the ticket says they must run in.
+
+**Resolved**: the three files now derive the identity from
+`profile_authority.canonical_export_identity()` / `mr.canonical_profile()` and
+pass the profile's character count. Verified with the ROM configured: the same
+four-file selection the reviewer used gives **49 passed, 2 skipped, 0 failed** at
+both base `170dc815` and the corrected revision.
+
+### What the reviewer could not verify, and what that exposed
+
+The reviewer recorded that PySide6 was absent, so **every Workbench GUI test
+skipped in both revisions** and the Workbench claims were code-level only. That
+gap was closed rather than accepted:
+
+- PySide6 6.11.2 was installed into the environment pytest runs in (the project
+  already declares it under the `workbench` extra; only the install was missing),
+  the canonical ROM was configured for the ROM gate, and the atlas artifact was
+  regenerated from it (`atlas regenerate`, ROM SHA-256 identical before and
+  after).
+- Running the gates that had always skipped **found five real defects that this
+  ticket had introduced and that no previous run could have caught**:
+  - `render_map` gained a `profile=` keyword and two Workbench test stubs still
+    had the old signature, so the map tab never loaded its map: two failures and
+    one **hang**. All three pass at base, so all three were ticket-caused.
+  - `map_browser_tab`'s read-only detail text assertion still expected the word
+    "canonical".
+  - `scene.script_effect_options` reads the declared text count, which the shared
+    synthetic profile fixture did not declare.
+  - `test_graphics_cli`'s synthetic `actor_sprites` declaration lacked the new
+    `bg_palette_address` field.
+- `map_render`'s `BG_PALETTE_ADDRESS` was the reviewer's own escaped mutation
+  (`export/render.py` object palette, `map_layout_write` count and
+  `authored_placements` text bound were the others). `BG_PALETTE_ADDRESS` is now
+  the profile's `tables.actor_sprites.bg_palette_address`, and new tests catch
+  every one of those three mutations (section 6, below).
+
+This is the honest reading: the frozen revision was **not** closure-ready, and
+the reviewer was right on both counts. The corrected revision is materially
+better tested than the frozen one because the gates now actually execute.
+
+### Focused validation on the corrected revision
+
+| suite | result |
+| --- | --- |
+| `tests/unit` (whole directory, PySide6 + ROM + atlas configured) | **2327 passed, 7 skipped, 0 failed** |
+| `tests/unit -m "fast and workbench"` | **178 passed, 0 failed** |
+| previously-skipped ROM-gated selection (the reviewer's four files) | **49 passed, 2 skipped, 0 failed** |
+| `tests/integration` (whole directory, ROM configured) | see `FROZEN.txt` section 9 note, below |
+| `git diff --check` | clean, exit 0 |
+
+The 7 remaining skips are all environment-dependent and unrelated to this
+ticket: five need a built website (`npm run build`), one asserts the absence of
+capstone (which is installed), and one needs a map-40 VRAM dump.
+
+### Additional mutations, on the corrected revision
+
+The reviewer's three escaped mutations were re-run against the corrected
+revision and are now **caught**:
+
+| mutation | location | caught by |
+| --- | --- | --- |
+| object palette address -> literal `0x0805652C` | `export/render.py` | `test_the_object_palette_address_is_the_profiles` |
+| background palette address -> literal `0x080701B0` | `webfoot/map_render.py` | `test_the_map_renderer_palette_address_is_the_profiles`, `test_the_map_renderer_refuses_a_profile_with_no_palette` |
+| text bound -> literal `1534` | `webfoot/authored_placements.py` | `test_a_shorter_declared_text_table_moves_the_bound` (a profile declaring 1,000, so a reintroduced Buu literal is no longer indistinguishable) |
+
+`test_a_shorter_declared_text_table_moves_the_bound` exists specifically because
+of the reviewer's observation that the canonical profile's own count is 1,534, so
+the original test could not distinguish "reads the profile" from "hard-codes
+Buu's number".

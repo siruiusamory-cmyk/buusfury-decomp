@@ -1424,9 +1424,9 @@ must-fix set above; a finding's text is never edited, only annotated in place.
 | CQA-02 | CRITICAL | **CLOSED** - CQA-02-PACKED-STREAM-TERMINATION-001 |
 | CQA-03 | HIGH | **CLOSED** - CQA-03-15-IDENTITY-AND-EXTENTS-001 |
 | CQA-15 | MEDIUM | **CLOSED** - CQA-03-15-IDENTITY-AND-EXTENTS-001 |
-| CQA-04 | HIGH | **OPEN** - the duplicated map/graphics decode stacks still exist and are not consolidated; only their profile identity/extents moved |
-| CQA-05 | HIGH | OPEN |
-| CQA-06 | HIGH | OPEN |
+| CQA-04 | HIGH | **CLOSED** - CQA-04-DECODE-STACK-AUTHORITY-001. Shared binary interpretation has one production authority (`tools/webfoot/formats/map_graphics.py`), the production map-layout writer no longer reads through `tools.export`, common-corpus equivalence was proved before the duplicate implementation was removed, and the two genuine historical divergences (layer-handler support; tile-bank decoded-extent policy) are reconciled or documented as deliberate outer policy. Independent review APPROVE, no findings. |
+| CQA-05 | HIGH | **ACTIVE** - CQA-05-06-WORKBENCH-STATE-AND-ERRORS-001 |
+| CQA-06 | HIGH | **ACTIVE** - CQA-05-06-WORKBENCH-STATE-AND-ERRORS-001 |
 | CQA-07 | HIGH | OPEN |
 | CQA-08 | HIGH | OPEN |
 | CQA-09 | HIGH | OPEN |
@@ -1434,13 +1434,14 @@ must-fix set above; a finding's text is never edited, only annotated in place.
 | CQA-10 | MEDIUM | **PARTIAL / IMPROVED** (not closed; output-safety ownership is done, overwrite-policy divergence remains) |
 
 Remaining pre-capacity blockers, in the dependency-aware groups above:
-**CQA-04**, **CQA-05 + CQA-06**, **CQA-07**, **CQA-08**, **CQA-09**, **CQA-12**, and
+**CQA-05 + CQA-06**, **CQA-07**, **CQA-08**, **CQA-09**, **CQA-12**, and
 **CQA-10**. `ROM-CAPACITY-AND-ALLOCATION-001` therefore stays **BLOCKED**.
 
-Next active ticket: **CQA-04-DECODE-STACK-AUTHORITY-001**, the group D work: decide
-one reader of record per binary concept so the future capacity/allocation work and
-the production map-layout writer do not depend on two unverified interpretations of
-the same binary structures.
+Next active ticket: **CQA-05-06-WORKBENCH-STATE-AND-ERRORS-001**, the group E work:
+CQA-05 (a project mutation must not silently destroy staged map/layout edits) and
+CQA-06 (`Session.open_rom` must not let sibling SDK error families escape the Open
+ROM slot as a dead click). CQA-07's refresh-cost work is **not** folded in; its
+dependency on these two is not established.
 
 ### SHOULD FIX BEFORE MAJOR NEW AUTHORING FEATURES
 

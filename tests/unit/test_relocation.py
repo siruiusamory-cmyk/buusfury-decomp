@@ -7,7 +7,8 @@ from itertools import permutations
 
 import pytest
 
-from tools.webfoot.allocation import AllocationRequest, InsufficientSpaceError, allocate
+from tools.webfoot.allocation import (AllocationKind, AllocationRequest,
+                                      InsufficientSpaceError, allocate)
 from tools.webfoot.binary import BinaryAddressError, FileOffset, GbaRomAddress
 from tools.webfoot.document import RomDocument, scan_pointer_candidates
 from tools.webfoot.layout import (Anchor, AnchorId, LayoutError, OwnedRegion, Provenance,
@@ -17,6 +18,12 @@ from tools.webfoot.profile import ProfileConfigError, RomProfile
 from tools.webfoot.relocation import (CandidateReferenceError, RelocationRequest,
                                       emit_relocation, plan_relocation)
 from tools.webfoot import write
+
+#: The allocator now requires a semantic kind on every request. These cases drive
+#: it through the relocation document, whose only relocatable anchor kind is the
+#: placement reference array, so that is the kind they state. Nothing else about
+#: the cases changed.
+KIND = AllocationKind.PLACEMENT_REFERENCE_ARRAY
 
 
 ID = AnchorId("fixture:payload")
@@ -100,7 +107,7 @@ def test_reverse_inbound_lookup_includes_interior_targets(document):
 
 
 def test_allocation_determinism_across_request_and_free_region_order(document):
-    requests = [AllocationRequest(AnchorId(name), name, size, alignment)
+    requests = [AllocationRequest(AnchorId(name), name, size, alignment, kind=KIND)
                 for name, size, alignment in [("z", 17, 16), ("a", 9, 8), ("m", 4, 4)]]
     second_free = replace(document.profile.free_regions[0], range=span(0x310, 32))
     profiles = [replace(document.profile, free_regions=free) for free in permutations(
@@ -122,7 +129,7 @@ def test_insufficient_space_is_explicit(document):
 @pytest.mark.parametrize("alignment", [0, -1, 3, True])
 def test_invalid_alignment_rejected(alignment):
     with pytest.raises(LayoutError, match="alignment"):
-        AllocationRequest(ID, "owner", 4, alignment)
+        AllocationRequest(ID, "owner", 4, alignment, kind=KIND)
 
 
 def test_unaligned_anchor_rejected(document):
@@ -133,23 +140,23 @@ def test_unaligned_anchor_rejected(document):
 def test_alignment_padding_can_exhaust_free_space(document):
     profile = replace(document.profile, free_regions=(replace(document.profile.free_regions[0], range=span(0x201, 7)),))
     with pytest.raises(InsufficientSpaceError):
-        allocate(profile, [AllocationRequest(ID, "owner", 1, 8)])
+        allocate(profile, [AllocationRequest(ID, "owner", 1, 8, kind=KIND)])
 
 
 def test_no_allocation_from_undeclared_zero_or_ff_runs(document):
     with pytest.raises(InsufficientSpaceError):
-        allocate(replace(document.profile, free_regions=()), [AllocationRequest(ID, "owner", 1, 1)])
+        allocate(replace(document.profile, free_regions=()), [AllocationRequest(ID, "owner", 1, 1, kind=KIND)])
 
 
 def test_allocation_skips_existing_owned_ranges(document):
-    result = allocate(document.profile, [AllocationRequest(ID, "new", 8, 8)],
+    result = allocate(document.profile, [AllocationRequest(ID, "new", 8, 8, kind=KIND)],
                       occupied=[OwnedRegion(span(0x208, 16), "existing")])
     assert result[0].range == span(0x218, 8)
 
 
 def test_overlapping_ownership_rejected(document):
     with pytest.raises(LayoutError, match="overlapping"):
-        allocate(document.profile, [AllocationRequest(ID, "new", 8, 8)],
+        allocate(document.profile, [AllocationRequest(ID, "new", 8, 8, kind=KIND)],
                  occupied=[OwnedRegion(span(0x210, 8), "one"), OwnedRegion(span(0x214, 8), "two")])
 
 
@@ -397,8 +404,8 @@ def test_emit_rejects_wrong_actual_base(document, tmp_path):
 
 def test_overlapping_profile_free_regions_rejected(document):
     profile = replace(document.profile, free_regions=document.profile.free_regions * 2)
-    with pytest.raises(LayoutError, match="overlapping profile"):
-        allocate(profile, [AllocationRequest(ID, "owner", 8, 8)])
+    with pytest.raises(LayoutError, match="overlapping"):
+        allocate(profile, [AllocationRequest(ID, "owner", 8, 8, kind=KIND)])
 
 
 def test_relative_encoding_signed_backwards_and_bounds():

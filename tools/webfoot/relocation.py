@@ -4,12 +4,28 @@ from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Iterable
 
-from .allocation import Allocation, AllocationRequest, allocate
+from .allocation import Allocation, AllocationKind, AllocationRequest, allocate
 from .binary import FileOffset
 from .document import RomDocument
 from .layout import AnchorId, LayoutError, OwnedRegion, ReferenceClass
 from .write import (ByteChange, ReferenceRewrite, RelocationProvenance, WriteManifest,
                     WritePlan, apply_plan, emit_image, plan_changes)
+
+
+#: Which semantic allocation kind a relocatable anchor kind asks for. The two
+#: production eligible kinds are named; anything else that `plan_relocation` may
+#: legitimately move - a synthetic fixture anchor, or a kind a later ticket
+#: publishes before it names a class here - is recorded as the conservative
+#: generic relocation kind. The fallback is canonical-only, so an unmodelled kind
+#: can never acquire expanded storage by being unmodelled.
+_ALLOCATION_KIND = {
+    "placement_reference_array": AllocationKind.PLACEMENT_REFERENCE_ARRAY,
+    "text-string": AllocationKind.TEXT_STRING,
+}
+
+
+def _allocation_kind(anchor) -> AllocationKind:
+    return _ALLOCATION_KIND.get(anchor.kind, AllocationKind.RELOCATED_ANCHOR_PAYLOAD)
 
 
 class CandidateReferenceError(LayoutError):
@@ -75,7 +91,10 @@ def plan_relocation(document: RomDocument, requests: Iterable[RelocationRequest]
         if not any(a.range.contains(ref.source) for a in document.anchors):
             occupied.append(OwnedRegion(ref.source_range, f"reference:{ref.target.value}"))
     allocations = allocate(document.profile,
-        [AllocationRequest(r.anchor, moving[r.anchor].owner, len(r.payload), moving[r.anchor].alignment)
+        [AllocationRequest(r.anchor, moving[r.anchor].owner, len(r.payload),
+                           moving[r.anchor].alignment,
+                           kind=_allocation_kind(moving[r.anchor]),
+                           evidence=f"relocated {moving[r.anchor].kind} anchor")
          for r in ordered], occupied=occupied)
     destinations = {a.request.anchor: a for a in allocations}
     buffers = {r.anchor: bytearray(r.payload) for r in ordered}

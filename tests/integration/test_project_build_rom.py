@@ -25,6 +25,7 @@ from pathlib import Path
 
 import pytest
 
+from tools.webfoot.authored_image import manifest_path_for
 from tools.webfoot.build import (
     ProjectRomMismatchError,
     build_project,
@@ -185,6 +186,64 @@ def test_unchanged_project_rebuilds_the_entire_rom_byte_identically(
     assert hashlib.sha256(output_bytes).hexdigest() == CANONICAL_SHA256
     assert result.manifest.output_sha256 == CANONICAL_SHA256
     assert result.manifest.changes == ()
+
+
+# --- CQA-12: provenance is published by default ---------------------------
+
+
+def test_a_default_build_publishes_its_manifest_beside_the_output(
+    tmp_path: Path, project: Path, rom: str, catalog: RomProfileCatalog
+):
+    """The allocation-critical slice of CQA-12, on the real build path.
+
+    A normal `build_project` call - no manifest argument, exactly what the
+    Workbench Build tab makes - must leave a provenance document beside the image
+    it describes, and that document must be the one for THIS output. The CLI and
+    GUI used to pass no path and get no manifest, so an 8 MiB derivative carried
+    its provenance only in memory.
+    """
+    output = tmp_path / "default.gba"
+    result = build_project(project, rom, output, catalog)
+
+    sibling = manifest_path_for(output)
+    assert sibling.name == output.name + ".dragonbyte.json"
+    assert sibling.is_file()
+    assert result.manifest_path == sibling
+
+    document = json.loads(sibling.read_text(encoding="utf-8"))
+    assert document["output"]["sha256"] == result.manifest.output_sha256
+    assert document["output"]["sha256"] == hashlib.sha256(output.read_bytes()).hexdigest()
+    assert document["base"]["sha256"] == CANONICAL_SHA256
+
+    # The same build with publication explicitly disabled writes no document, and
+    # that is the ONLY way to get no document.
+    silent = tmp_path / "silent.gba"
+    silent_result = build_project(project, rom, silent, catalog, manifest_path=None)
+    assert silent_result.manifest_path is None
+    assert not manifest_path_for(silent).exists()
+    # The image is identical either way: provenance never changes the bytes.
+    assert silent.read_bytes() == output.read_bytes()
+
+
+def test_a_default_build_refuses_to_clobber_an_existing_manifest(
+    tmp_path: Path, project: Path, rom: str, catalog: RomProfileCatalog
+):
+    """Publication is fail-closed, exactly as the output image is.
+
+    A build that silently replaced a previous derivative's provenance would make
+    "which run produced this manifest" unanswerable, and a manifest for one image
+    sitting beside another is worse than no manifest. The refusal must also land
+    BEFORE anything is published, so no image is left behind.
+    """
+    output = tmp_path / "fresh.gba"
+    sibling = manifest_path_for(output)
+    sibling.write_text("{}", encoding="utf-8")
+
+    with pytest.raises(WriteError, match="refusing to overwrite an existing manifest"):
+        build_project(project, rom, output, catalog)
+
+    assert sibling.read_text(encoding="utf-8") == "{}"
+    assert not output.exists(), "a refused manifest must not leave an image behind"
 
 
 # --- exit criteria 6, 7, 8: the edit proof -------------------------------

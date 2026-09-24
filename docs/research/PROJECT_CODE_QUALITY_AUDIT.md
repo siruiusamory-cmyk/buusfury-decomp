@@ -1429,13 +1429,36 @@ must-fix set above; a finding's text is never edited, only annotated in place.
 | CQA-06 | HIGH | **ACTIVE** - CQA-05-06-WORKBENCH-STATE-AND-ERRORS-001 |
 | CQA-07 | HIGH | OPEN |
 | CQA-08 | HIGH | OPEN |
-| CQA-09 | HIGH | OPEN |
-| CQA-12 | HIGH | OPEN |
-| CQA-10 | MEDIUM | **PARTIAL / IMPROVED** (not closed; output-safety ownership is done, overwrite-policy divergence remains) |
+| CQA-09 | HIGH | **CLOSED** - ROM-CAPACITY-AND-ALLOCATION-001 Checkpoint B, re-read against the original finding at the milestone closeout. The finding was "the canonical-EOF straddle guard is load-bearing and has zero test coverage", whose remediation was one synthetic case: 10-byte base, 16-byte generated output, a 1-byte allocator span, and a 2-byte change at offset 9 expecting `ChangeValidationError` matching `straddles canonical EOF`. That case is in `tests/unit/test_rom_expansion.py` verbatim, with its positive control (the same authorized span accepts a non-straddling change) and mutation M4 (deleting the guard fails that case and leaves the other eleven tests passing, reproducing the invisibility the finding measured). The finding contains no other requirement, so it is **CLOSED**, not partial. |
+| CQA-12 | HIGH | **CLOSED** - ROM-CAPACITY-AND-ALLOCATION-001 Checkpoint B, re-read against the original finding at the milestone closeout. The finding was that the Build path emits no provenance document; its remediation was two parts: "have `_run_build` write the manifest beside the image by default (or have `build_project` do so unless told otherwise), **and add a reopen/`identify` assertion for the produced file**". Part one is Checkpoint B (default sibling publication through `authored_image.manifest_path_for`, CLI default with explicit `--manifest`/`--no-manifest`, Workbench inheritance, `*.dragonbyte.json` gitignore coverage, mutation M6). Part two is satisfied by the assertions that read the produced document back and check `base.sha256`, `base.profile_id` and `output.sha256`, and by Checkpoint D's reopen proof. The finding's own owner correction excluded "the Workbench cannot reopen its own output" as documented accepted behaviour, and that is not reopened. **CLOSED**. |
+| CQA-10 | MEDIUM | **PARTIAL** - **ALLOCATION-RELEVANT PORTION: CLOSED**; **REMAINDER: OPEN**. Confirmed rather than extended at Checkpoint B: a default build publishes through the shared `emit_image` transaction, so it inherits the source-alias refusal, the new-destination refusal, staged publication, rollback and manifest association, and a pre-existing sibling manifest is refused before anything is written. Confirmed again at Checkpoint D, whose derivative was emitted through that transaction. The remainder - the overwrite-policy divergence, the repository/raw-input-root output policy and the eight copied helpers in `tools/export/`, atlas atomic publication, and the remaining unguarded write sites - is exporter/output-policy hygiene and does not block the milestone. **No code change was made for this item.** |
 
 Remaining pre-capacity blockers, in the dependency-aware groups above:
 **CQA-05 + CQA-06**, **CQA-07**, **CQA-08**, **CQA-09**, **CQA-12**, and
 **CQA-10**. `ROM-CAPACITY-AND-ALLOCATION-001` therefore stays **BLOCKED**.
+
+> **ANNOTATED at the ROM-CAPACITY-AND-ALLOCATION-001 Checkpoint B closeout
+> (2026-09-24).** The paragraph above is the state as at CQA-04's closeout and is
+> not restated. It was superseded by
+> **ROADMAP-ALLOCATION-GATE-REVIEW-001**, which established that the number of
+> implementation tickets required before capacity research is **0**: CQA-09 and
+> CQA-12 each carry exactly one bounded Gate-B requirement, both now discharged
+> above, and **CQA-05/CQA-06/CQA-07/CQA-08 remain deferred** - they must precede
+> allocator-backed *GUI authoring*, not capacity research or the headless
+> allocator. CQA-10's allocation-relevant portion is closed. So the ticket is no
+> longer blocked by this list; the CQA-09 and CQA-12 rows above record which
+> parts of it were consumed by it and which parts remain open.
+
+**New debt recorded at the same closeout, deliberately NOT fixed there:**
+`ROM-CAPACITY-ATLAS-SEED-OVERLAY-001` - the atlas seed
+(`tools/webfoot/atlas_producers/seed.py:530-566`) declares four SDK-authored
+derivative structures inside the canonical free window `[0x7EA400,0x7EA500)`,
+whose canonical bytes are `FF` fill: 32 + 8 + 11 + 20 = 71 of the window's 256
+bytes. The rows are explicit that the content "does not exist in the canonical
+image", but a canonical atlas built from them disagrees with the canonical free
+declaration. Found during ROM-CAPACITY-AND-ALLOCATION-001 Phase A; the capacity
+model deliberately does not consume the atlas. Defined in full at
+[`ROM_CAPACITY_AND_ALLOCATION.md`](ROM_CAPACITY_AND_ALLOCATION.md) §8.1.
 
 Next active ticket: **CQA-05-06-WORKBENCH-STATE-AND-ERRORS-001**, the group E work:
 CQA-05 (a project mutation must not silently destroy staged map/layout edits) and

@@ -312,8 +312,18 @@ class AuthoredRun:
         # No guessed engine count/sentinel or suffix is added to this request.
         # TOOLKIT-025: pointer slots are counted over the full heterogeneous array,
         # because the engine consumes `count * 4` bytes regardless of family.
+        #
+        # This is a PROPOSAL for sizing, and the production transaction does not
+        # issue it: the build allocates the bodies and the array as two separate
+        # calls, in that order, so the array can carry the bodies' finished
+        # addresses. It is retained and pinned by test so it cannot quietly become
+        # the sizing rule (BUU_VERIFIED_CAPACITY.md section 1).
+        from .allocation import AllocationKind
         return AllocationRequest(self.identity, f"map:{self.map_index:04d}",
-                                 4 * self.target_slot_count + len(self.serialized_records), 4)
+                                 4 * self.target_slot_count + len(self.serialized_records), 4,
+                                 kind=AllocationKind.AUTHORED_MAP_EXPANSION,
+                                 evidence="contiguous whole-map proposal; not issued by the "
+                                          "production transaction")
 
     def derive_count_change(self, image):
         """The exact `MapEntry+0x04` byte change this authored expansion requires.
@@ -670,7 +680,7 @@ def plan_authored_materialization(document, run, reserved=()):
     can never be handed bytes an earlier one took. Empty means "nothing allocated
     before me", which is what a single-domain build passes.
     """
-    from .allocation import allocate, withhold
+    from .allocation import AllocationKind, allocate, withhold
     from .binary import FileOffset
     from .layout import Anchor, OwnedRegion, Reference, ReferenceClass, ReferenceEncoding
     from .relocation import RelocationRequest, plan_relocation
@@ -693,7 +703,10 @@ def plan_authored_materialization(document, run, reserved=()):
         if not any(a.range.contains(ref.source) for a in document.anchors):
             occupied.append(OwnedRegion(ref.source_range, f"reference:{ref.target.value}"))
     placements = allocate(document.profile,
-                          [AllocationRequest(b.identity, b.owner, len(b.payload), 4) for b in bodies],
+                          [AllocationRequest(b.identity, b.owner, len(b.payload), 4,
+                                             kind=AllocationKind.PLACEMENT_BODY,
+                                             evidence="authored placement body")
+                           for b in bodies],
                           occupied=occupied)
     allocations = {a.request.anchor: a for a in placements}
 

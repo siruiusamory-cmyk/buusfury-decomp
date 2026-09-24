@@ -114,6 +114,53 @@ class BuildResult:
     project_name: str
 
 
+class _ManifestBesideOutput:
+    """Sentinel for :func:`build_project`'s ``manifest_path`` argument.
+
+    The three behaviours are genuinely different and a caller must not receive one
+    by omission, so the default is a distinct sentinel rather than ``None``:
+
+    * :data:`MANIFEST_BESIDE_OUTPUT` (the DEFAULT) - publish the provenance
+      manifest beside the emitted image, at the same sibling path the
+      authored-image transaction already owns;
+    * ``None`` - write no manifest at all, for a caller that genuinely has no
+      provenance to publish. This has to be asked for explicitly;
+    * a path - redirect the manifest there.
+
+    CQA-12 measured the defect this closes: the GUI never supplied a manifest path
+    and the CLI only recorded one when asked, so the primary authoring surface
+    emitted an 8 MiB derivative whose only provenance was in memory.
+    """
+
+    __slots__ = ()
+
+    def __repr__(self) -> str:  # pragma: no cover - diagnostics only
+        return "MANIFEST_BESIDE_OUTPUT"
+
+
+#: The default ``manifest_path``: derive it from the output image.
+MANIFEST_BESIDE_OUTPUT = _ManifestBesideOutput()
+
+
+def manifest_path_for_build(manifest_path, output_path: str | Path) -> Path | None:
+    """Resolve ``build_project``'s ``manifest_path`` argument to a real path.
+
+    Exposed as its own function because the default is the whole of CQA-12's
+    allocation-critical slice and it has to be testable without extracting a
+    project or holding a ROM.
+
+    The sibling convention is NOT restated here: it is
+    `authored_image.manifest_path_for`, which already owns it, so a build output
+    and an authored-image save put their manifest beside their image the same way
+    and nothing has to reconcile two spellings.
+    """
+    from .authored_image import manifest_path_for
+
+    if manifest_path is MANIFEST_BESIDE_OUTPUT:
+        return manifest_path_for(output_path)
+    return None if manifest_path is None else Path(manifest_path)
+
+
 # --- extract -------------------------------------------------------------
 
 
@@ -826,7 +873,7 @@ def build_project(
     output_path: str | Path,
     catalog: RomProfileCatalog,
     *,
-    manifest_path: str | Path | None = None,
+    manifest_path: str | Path | None | _ManifestBesideOutput = MANIFEST_BESIDE_OUTPUT,
 ) -> BuildResult:
     """Build a project into a NEW ROM image. The base is never modified.
 
@@ -834,6 +881,10 @@ def build_project(
     error and no output file. That ordering is the reason `validate_project`
     exists as its own step rather than as a flag - the check has to be usable
     without the build, and the build has to run it regardless.
+
+    ``manifest_path`` defaults to :data:`MANIFEST_BESIDE_OUTPUT`, so a normal
+    build publishes its provenance document beside the image it describes
+    (CQA-12). Pass ``None`` to write no manifest, or a path to redirect it.
     """
     project, identification, profile, tables, strings, maps = _load_for_project(
         project_dir, rom_path, catalog
@@ -981,11 +1032,13 @@ def build_project(
         generated_allocations=dialogue_provenance,
     )
 
+    resolved_manifest = manifest_path_for_build(manifest_path, output_path)
+
     manifest = emit_image(
         rom_path,
         output_path,
         plan,
-        manifest_path=manifest_path,
+        manifest_path=resolved_manifest,
         project=ProjectProvenance(
             name=project.meta.name,
             format_version=project.meta.format_version,
@@ -995,7 +1048,7 @@ def build_project(
     return BuildResult(
         manifest=manifest,
         output_path=Path(output_path),
-        manifest_path=Path(manifest_path) if manifest_path is not None else None,
+        manifest_path=resolved_manifest,
         project_name=project.meta.name,
     )
 

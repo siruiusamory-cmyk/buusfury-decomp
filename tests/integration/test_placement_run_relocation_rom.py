@@ -19,7 +19,12 @@ import struct
 
 import pytest
 
-from tools.webfoot.allocation import AllocationRequest, InsufficientSpaceError, allocate
+from tools.webfoot.allocation import (AllocationKind, AllocationRequest,
+                                      InsufficientSpaceError, allocate)
+
+#: The allocator now requires a semantic kind on every request. This file drives it
+#: through the placement reference array, so that is the kind it states.
+KIND = AllocationKind.PLACEMENT_REFERENCE_ARRAY
 from tools.webfoot.analysis.thumb import RomReader, find_aligned_words, scan_bl
 from tools.webfoot.binary import FileOffset
 from tools.webfoot.data.placement_contracts import CONTRACTS
@@ -486,12 +491,12 @@ def test_capacity_is_still_necessary_and_relocation_now_reaches_the_allocator(ty
     capacity boundary - rather than being refused on authority.
     """
     array = AnchorId(f"map:{SELECTED_MAP:04d}/placement_references")
-    request = AllocationRequest(array, f"map:{SELECTED_MAP:04d}", 108, 4)
+    request = AllocationRequest(array, f"map:{SELECTED_MAP:04d}", 108, 4, kind=KIND)
     declared = sum(f.range.size for f in types.profile.free_regions)
     beyond = 4 * ((declared + 4 + 3) // 4)
     with pytest.raises(InsufficientSpaceError):
         allocate(types.profile,
-                 [AllocationRequest(array, f"map:{SELECTED_MAP:04d}", beyond, 4)])
+                 [AllocationRequest(array, f"map:{SELECTED_MAP:04d}", beyond, 4, kind=KIND)])
     with pytest.raises(InsufficientSpaceError):
         plan_relocation(types.reference_document(),
                         [RelocationRequest(array, b"\x00" * beyond)])

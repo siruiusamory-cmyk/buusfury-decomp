@@ -428,6 +428,22 @@ gap was closed rather than accepted:
   the canonical ROM was configured for the ROM gate, and the atlas artifact was
   regenerated from it (`atlas regenerate`, ROM SHA-256 identical before and
   after).
+
+  Reproduction, from the worktree root:
+
+  ```text
+  python -m pip install "PySide6"                       # the `workbench` extra
+  set WEBFOOT_BUU_ROM=<path to the canonical Buu's Fury image>
+  set LOGX_CANONICAL_ROM=%WEBFOOT_BUU_ROM%
+  python -m tools.webfoot atlas regenerate "%WEBFOOT_BUU_ROM%" --out build/atlas
+  python -m pytest tests/unit -q
+  python -m pytest tests/integration -q
+  ```
+
+  The ROM is opened read-only by every step and its SHA-256 was verified
+  identical before and after. `roms/` and `build/` are gitignored, so none of
+  this local state can be committed; the ROM copy used for the fixed relative
+  path was deleted again after the runs.
 - Running the gates that had always skipped **found five real defects that this
   ticket had introduced and that no previous run could have caught**:
   - `render_map` gained a `profile=` keyword and two Workbench test stubs still

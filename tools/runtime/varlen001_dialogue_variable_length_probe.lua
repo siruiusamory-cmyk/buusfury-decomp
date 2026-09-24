@@ -193,6 +193,38 @@ end, LIVE)
 local MODE = os.getenv("CAPACITY001_MODE") or "human"
 local LEFT = 0x20
 local A = 0x01
+
+-- mGBA exposes two key APIs and this repository uses BOTH: the tracked
+-- `rom006_bootstrap.lua` presses keys with `emu:addKey(C.GBA_KEY.A)` and
+-- `emu:clearKey`, while `p008_mash_driver.lua` uses the plural mask form
+-- `emu:addKeys(1 << index)`. Measured: the plural mask form produced no input at
+-- all in this vehicle - 300 frames of held LEFT moved the player nowhere and two
+-- runs rendered byte-identical frames - so the single-key form is selected with
+-- `VARLEN001_KEYAPI=single`. The default stays the plural mask the capacity
+-- probe shipped with.
+local KEYAPI = os.getenv("VARLEN001_KEYAPI") or "mask"
+
+local function key_code(name, mask)
+    if C and C.GBA_KEY and C.GBA_KEY[name] ~= nil then return C.GBA_KEY[name] end
+    return mask
+end
+
+local function press(name, mask)
+    if KEYAPI == "single" and emu.addKey then
+        emu:addKey(key_code(name, mask))
+    else
+        emu:addKeys(mask)
+    end
+end
+
+local function release(name, mask)
+    if KEYAPI == "single" and emu.clearKey then
+        emu:clearKey(key_code(name, mask))
+    else
+        emu:clearKeys(mask)
+    end
+end
+
 local loaded_path = exp_dir .. "state-loaded.txt"
 local loaded = false
 local gameplay = 0
@@ -327,7 +359,7 @@ callback = callbacks:add("frame", function()
         -- reaches the core; if the two frames are identical, no Lua-side input is
         -- delivered in this vehicle and the operator step cannot be scripted.
         if gameplay == 1 then
-            emu:addKeys(LEFT)
+            press("LEFT", LEFT)
         elseif gameplay == 10 then
             emu:screenshot(exp_dir .. "varlen001-hold-010.png")
             row("SCREENSHOT", nil, nil, nil, nil, exp_dir .. "varlen001-hold-010.png")
@@ -335,7 +367,7 @@ callback = callbacks:add("frame", function()
             emu:screenshot(exp_dir .. "varlen001-hold-300.png")
             row("SCREENSHOT", nil, nil, nil, nil, exp_dir .. "varlen001-hold-300.png")
         elseif gameplay == 310 then
-            emu:clearKeys(LEFT)
+            release("LEFT", LEFT)
             finish(target_seen and "target-seen" or "hold-done")
         end
         return
@@ -353,26 +385,26 @@ callback = callbacks:add("frame", function()
         -- movement and no menu, so every scripted trigger silently did nothing.
         local phase = gameplay % 45
         if phase == 0 then
-            emu:addKeys(A)
+            press("A", A)
         elseif phase == 4 then
-            emu:clearKeys(A)
+            release("A", A)
         end
         return
     end
     if gameplay == 1 then
-        emu:addKeys(LEFT)
+        press("LEFT", LEFT)
     elseif gameplay == 52 then
-        emu:clearKeys(LEFT)
+        release("LEFT", LEFT)
     elseif gameplay == 58 then
-        emu:addKeys(A)
+        press("A", A)
     elseif gameplay == 61 then
-        emu:clearKeys(A)
+        release("A", A)
     elseif gameplay == 190 then
         emu:screenshot(exp_dir .. "varlen001-dialogue.png")
         row("SCREENSHOT", nil, nil, nil, nil, exp_dir .. "varlen001-dialogue.png")
     elseif gameplay == 260 then
-        emu:clearKeys(A)
-        emu:clearKeys(LEFT)
+        release("A", A)
+        release("LEFT", LEFT)
         finish(target_seen and "target-seen" or "target-not-seen")
     end
 end)

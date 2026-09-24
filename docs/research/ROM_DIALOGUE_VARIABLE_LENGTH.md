@@ -350,18 +350,30 @@ both are stronger negatives than the runs above:
   zero liveness rows**. Across twenty loads of the fixture the script interpreter
   at `0x08004038` never ran once, so the fixture's world state is script-idle and
   the automatic trigger is not a function of load timing.
-* **It is not the operator's keypress either.** Real OS-level input was injected
-  with `SendInput` after raising the emulator's visible windows
-  (`varlen_trigger_input.ps1`: 11 windows enumerated, 2 visible, 20 A presses with
-  the d-pad nudged first). Result: `varlen-001-input1`, **zero consumer rows and
-  zero liveness rows**. That is in addition to the probe-side `emu:addKeys`
-  (provably inert: 300 frames of held LEFT moved the player nowhere) and
-  `PostMessage` `WM_KEYDOWN`/`WM_KEYUP`.
+* **It is not the operator's keypress either - on any of six channels.** The probe
+  was given a switch between mGBA's two key APIs, because this repository uses
+  both (`rom006_bootstrap.lua` presses with `emu:addKey(C.GBA_KEY.A)`;
+  `p008_mash_driver.lua` uses the plural `emu:addKeys(mask)`). Measured, with 300
+  frames of held LEFT and a screenshot at +10 and +300 in each case:
+
+  | Channel | Run | Result |
+  |---|---|---|
+  | `emu:setKeys(mask)` | `run4`, `script2` | player did not move |
+  | `emu:addKeys(mask)` / `clearKeys` | `varlen-001-hold` | player did not move |
+  | `emu:addKey(C.GBA_KEY.LEFT)` / `clearKey` | `varlen-001-keyapi` | player did not move |
+  | `AppActivate` + `SendKeys` | `varlen-001-keys2` | `AppActivate` returned false; nothing sent |
+  | `PostMessage` `WM_KEYDOWN`/`WM_KEYUP` | `varlen-001-keys3` | 18 A presses, no dialogue |
+  | `SendInput` after raising every visible window | `varlen-001-input1` | 20 A presses, no dialogue |
+
+  The three probe-side holds are not merely "no visible change": their +300 frames
+  are **byte-identical** across the runs (`sha256 3066f4f6…`). That is also the
+  direct evidence that the emulation here is deterministic and that nothing
+  reached the core's input register.
 
 So the one successful observation stands alone and unexplained by any variable
 this work could control: with the same derivative, the same savestate, the same
 probe and the same runner, the fixture's greeting was consumed once and never
-again in sixteen attempts.
+again in twenty attempts.
 
 ### 7.3 What is therefore needed, and who can do it
 

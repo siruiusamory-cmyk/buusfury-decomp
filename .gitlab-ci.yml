@@ -12,6 +12,14 @@ stages:
 # runner setup than it saves, and more jobs would make one failing gate harder
 # to read, not easier.
 #
+# CQA-08 added the shipping GUI dependency set to *this* job rather than to a
+# second, PySide6-only job, for the same reason: the portable suite is one job,
+# a second job would repeat the runner setup and split one gate across two logs,
+# and the audit's bounded remediation for CQA-08 is to install the extras the
+# shipping tests import in the existing test job. What it must not be is a job
+# that installs only `.[dev]` and reports green over a Workbench surface that
+# collapsed to skips, which is what it did before.
+#
 # The whole unit suite runs unmodified, including the git-backed
 # repository-safety tests, hence the git install below.
 test-sdk:
@@ -20,12 +28,72 @@ test-sdk:
   variables:
     # Do not inherit the deployment credential into a test job.
     CLOUDFLARE_API_TOKEN: ""
+    # The runner has no display. Twelve of the fifteen PySide6 modules the job
+    # must execute set this themselves; tests/unit/test_build_panel_guard.py,
+    # tests/unit/test_build_panel_overwrite.py and
+    # tests/unit/test_workbench_build_manifest.py do not. The last two build a
+    # real QApplication in a module-scoped fixture, so the job-level setting is
+    # what makes them run headlessly instead of aborting in the Qt platform
+    # plugin; the first only imports a module that imports PySide6 at module
+    # scope, so it needs the dependency but constructs no widget.
+    QT_QPA_PLATFORM: "offscreen"
   before_script:
     # test_project_safety.py shells out to git to prove no proprietary path is
     # tracked and that the ignore rules hold. The slim image has no git.
-    - apt-get update -qq && apt-get install -y -qq --no-install-recommends git
+    #
+    # PySide6 ships Qt's own shared libraries inside the wheel but not the system
+    # sonames Qt links against, so the [workbench] extra imports on this image
+    # only when those runtime libraries are present. THIS LIST IS THE ONE PLACE
+    # TO CORRECT: if a Workbench module fails in CI with "libFoo.so.N: cannot
+    # open shared object file", add the Debian package that provides that soname
+    # here, with the soname in the comment. Each entry below names the DT_NEEDED
+    # soname that requires it:
+    #   libglib2.0-0t64   <- libglib-2.0.so.0   (libQt6Core)
+    #   libgl1            <- libGL.so.1         (libQt6Gui, libQt6OpenGL)
+    #   libegl1           <- libEGL.so.1        (libQt6Gui)
+    #   libx11-6          <- libX11.so.6       (libQt6Gui, and libqoffscreen.so itself)
+    #   libxkbcommon0     <- libxkbcommon.so.0  (libQt6Gui)
+    #   libfontconfig1    <- libfontconfig.so.1 (libQt6Gui; pulls libfreetype6)
+    #   libfreetype6      <- libfreetype.so.6  (libQt6Gui, libqminimal; libfontconfig1 hard-depends it, named here so the soname is explicit)
+    #   libdbus-1-3       <- libdbus-1.so.3     (libQt6DBus/libQt6Core)
+    # Evidence for the list above, so that it is not read as a guess. The three
+    # Linux PySide6 wheels were downloaded and inspected:
+    # `pyside6-6.9.3-cp39-abi3-manylinux_2_28_x86_64.whl`,
+    # `pyside6_essentials-6.9.3-cp39-abi3-manylinux_2_28_x86_64.whl` (93 MiB -
+    # this is the one that ships Qt) and
+    # `shiboken6-6.9.3-cp39-abi3-manylinux_2_28_x86_64.whl`. Every entry above
+    # was derived by parsing the ELF `DT_NEEDED` entries of
+    # `PySide6/Qt/lib/libQt6Core.so.6`, `libQt6Gui.so.6`, `libQt6Widgets.so.6`,
+    # `libQt6DBus.so.6`, the platform plugins
+    # `plugins/platforms/libqoffscreen.so` and `libqminimal.so`, and the
+    # `QtCore/QtGui/QtWidgets.abi3.so` extension modules, verified three
+    # independent ways - program headers, section headers, and a raw dynstr
+    # dump - with identical results.
+    # The wheels bundle `libQt6*`, `libicu*`, `libpyside6*` and `libshiboken6*`
+    # only. Everything listed here is a system soname they link against and the
+    # image does not already provide. `libc6`, `libstdc++6`, `libgcc-s1`,
+    # `zlib1g` and `libzstd1` are already in `python:3.12-slim` and are
+    # deliberately not listed.
+    # Notably `libqoffscreen.so` itself links `libX11.so.6`, `libGL.so.1` and
+    # `libxkbcommon.so.0`: the offscreen platform avoids the **xcb plugin** and
+    # its fifteen `libxcb-*` sonames, not libX11 or libxkbcommon.
+    # Fonts, `xkb-data`, `libglvnd0`/`libglx0` and `libexpat1`/`libpng16-16` are
+    # deliberately NOT listed: they arrive as apt hard dependencies.
+    # `libglib2.0-0t64` is the Debian trixie name: `python:3.12-slim` currently
+    # resolves to trixie (verified 2026-09-25 by digest identity with
+    # `3.12-slim-trixie`), where the t64 transition renamed `libglib2.0-0`, and
+    # installing the old name fails the job. The base image tag is deliberately
+    # not pinned to a digest, like `node:22` below: if the tag later moves to a
+    # suite with different package names, the job fails loudly instead of
+    # silently skipping the surface it is here to execute.
+    # `ca-certificates` is not added: the official python slim image already
+    # installs it, and pip verifies HTTPS against its own bundled CA store.
+    - apt-get update -qq && apt-get install -y -qq --no-install-recommends
+      git libglib2.0-0t64 libegl1 libgl1 libx11-6 libxkbcommon0 libfontconfig1 libfreetype6 libdbus-1-3
     - python -m pip install --quiet --upgrade pip
-    - python -m pip install --quiet -e ".[dev]"
+    # `workbench` is the shipping GUI surface and `research` is capstone: without
+    # them fifteen modules under tests/unit skip as a whole (CQA-08).
+    - python -m pip install --quiet -e ".[dev,workbench,research]"
   script:
     # The JUnit report is what makes a failure legible in the merge request
     # without downloading the raw job log.

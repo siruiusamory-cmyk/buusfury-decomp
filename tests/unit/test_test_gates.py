@@ -17,6 +17,7 @@ from tests.gates import (
     GATE_DESCRIPTIONS,
     GATE_RULES,
     REPOSITORY_ROOT,
+    REQUIRED_GUI_MODULES,
     gate_files,
     gates_for,
     relative_test_path,
@@ -155,3 +156,24 @@ def test_the_gate_markers_reach_the_collected_tests(request):
 
     assert "fast" in carried
     assert "rom" not in carried
+
+
+def test_the_required_gui_surface_is_a_list_of_gated_workbench_modules():
+    """CQA-08: the required-GUI list may only name `tests/unit` Workbench files.
+
+    ``tests/conftest.py`` fails a CI session when an entry of
+    ``REQUIRED_GUI_MODULES`` is collected but contributes no test, so an entry
+    that is not a portable Workbench test file would fail the pipeline for the
+    wrong reason. Path-based on purpose: the list names modules another
+    contributor may still be landing, and whether a file exists is checked where
+    the list is used (`tests/unit/test_ci_gui_surface.py`), not here. This keeps
+    the registry honest without becoming a second policy system.
+    """
+    assert REQUIRED_GUI_MODULES, "the required GUI surface cannot be empty"
+    assert len(set(REQUIRED_GUI_MODULES)) == len(REQUIRED_GUI_MODULES)
+
+    for relative in REQUIRED_GUI_MODULES:
+        assert relative.startswith("unit/"), relative
+        assert relative.endswith(".py"), relative
+        assert "workbench" in gates_for(relative), (relative, gates_for(relative))
+        assert "rom" not in gates_for(relative), (relative, gates_for(relative))

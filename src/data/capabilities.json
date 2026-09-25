@@ -178,14 +178,19 @@
     {
       "id": "tiles",
       "family": "edit",
-      "title": "Tile-level painting",
-      "state": "missing",
-      "detail": "Not implemented. Every shipped write is fixed-size and in place; painting tiles needs a verified packed-container encoder and safe allocation first.",
+      "title": "Tile painting",
+      "state": "shipped",
+      "surface": "Map Browser tab, Layout mode: pick an existing chunk of the layer, then click or drag it onto 256x256 chunk cells",
+      "proof": "runtime",
+      "detail": "Paint the visible layout of an existing supported map: choose one of the chunks a dominant layer already uses, then click or drag to place it in a 256x256 chunk cell. Painting runs through the project as semantic cell edits, so a painted map is saved and reopened like any other authored content, and a build merges the edits into the one write plan. Undo, redo and eyedropper are on one history, a stroke is one undoable gesture, and a paint that changes nothing leaves no history. Proven in the retail engine: after walking out of the area and back in, the authored chunk is what Buu's Fury draws.",
       "limits": [
-        "Not implemented, and no editor surface offers it.",
-        "Blocked on a packed-container encoder plus allocation for payloads that change size."
+        "The editable unit is the engine's own: one four-byte chunk-cell reference to an existing 256x256 chunk. It is not an individual 8x8 hardware tile, and no surface pretends otherwise.",
+        "A cell may only be given a chunk the same layer already uses at another of its cells, so a layer that uses a single chunk has nothing to paint with and is read-only.",
+        "No new chunks, no map resizing, no new layers, no new maps, no warp or connection editing, no graphics import, and no collision editing.",
+        "Screen-entry layers, terrain-field layers (Map 19), absent slots and zero-dimension grids are refused with a stated reason rather than forced into a grid they do not have.",
+        "Painting does not allocate or relocate: the replacement is a fixed four-byte in-place write, so a build changes only the painted cells."
       ],
-      "evidence": "DRAGONBYTE-Z-MAP-LAYOUT-EDITOR-001; docs/research/POST_LOGX_IMPLEMENTATION_ROADMAP.md"
+      "evidence": "MAP-TILE-PAINT-001; docs/research/MAP-TILE-PAINT-001.md"
     },
     {
       "id": "chunks",

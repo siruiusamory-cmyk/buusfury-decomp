@@ -1,28 +1,37 @@
 <#
 .SYNOPSIS
-Capture the SAME frame from the retail ROM and the authored derivative, so the
-only variable is the ROM.
+Capture the SAME frame from the retail ROM and the authored derivative.
+
+.WARNING - THIS INSTRUMENT IS NOT VALID CAPABILITY EVIDENCE.
+It captures straight after a state load, and a state restores the
+ALREADY-ASSEMBLED background, so the engine never re-reads the map from ROM. Two
+different ROMs captured this way produce byte-identical VRAM and screenblocks -
+measured. Retained only as the negative that established the rule and as a
+demonstration of that failure.
+
+For a valid proof use tools/runtime/capture_tilepaint001_afterrebuild.ps1, which
+refuses to capture unless it has observed a real leave-and-return rebuild.
 
 .DESCRIPTION
-MAP-TILE-PAINT-001's remaining question is whether the authored chunk cell is
-what the engine displays. Comparing two screenshots taken after a human moved
-around cannot answer it, because the camera moves too - measured: the change
-covered 76% of the viewport and was dominated by scrolling.
+MAP-TILE-PAINT-001's question was whether the authored chunk cell is what the
+engine displays. Comparing two screenshots taken after a human moved around
+cannot answer it, because the camera moves too - measured: the change covered 76%
+of the viewport and was dominated by scrolling.
 
-This script removes that variable. It uses one savestate, which restores the same
-camera and player position every time:
+This script attempted to remove the camera variable by using one savestate, which
+restores the same camera and player position every time:
 
   1. launch mGBA on the RETAIL image, load the state, let it settle, capture;
   2. close it, launch mGBA on the DERIVATIVE image, load the SAME state, let it
      settle, capture.
 
-Both captures are then the same frame of the same map with only the ROM
-differing. It launches and exits; it owns no wait loop beyond the settle, and it
-kills only the emulator process it started itself.
+That failed for the reason above: both captures are the same frame of the same map
+with only the ROM differing, and they come out identical because the STATE, not
+the ROM, supplied the background. See the evidence record.
 
-Read-only with respect to the ROMs: both images are opened by mGBA, never
-written. The state is copied into the run directory and the copy is what mGBA
-loads.
+It launches and exits; it owns no wait loop beyond the settle. Read-only with
+respect to the ROMs: both are opened by mGBA, never written; the state is copied
+into the run directory and the copy is what mGBA loads.
 #>
 [CmdletBinding()]
 param(

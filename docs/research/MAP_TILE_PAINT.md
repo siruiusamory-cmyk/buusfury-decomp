@@ -90,6 +90,26 @@ change is byte-exactly the intended one, but **this ticket does not demonstrate
 that the authored cell is what the engine displayed**. Reporting otherwise would
 be claiming a runtime proof from an instrument that did not resolve it.
 
+Attempt 3 controlled the camera, which attempts 1 and 2 did not. A savestate
+taken by the operator AFTER walking out and back in (so its assembled map came
+from the authored ROM) was loaded with the retail image and again with the
+derivative. Both runs landed in map 40 with BG1's screenblock at `0x0600E800`,
+and VRAM, palette, all four screenblocks and the IO registers were again
+**byte-identical**. That is the cleanest form of the negative: the state supplies
+the assembled background regardless of which ROM is running, so this instrument
+cannot distinguish the two ROMs at all.
+
+The remaining honest statement is narrow and it is the one the evidence record
+stands on: **the authored layout is proven at the ROM, project and build level,
+and is NOT proven to reach the engine display.**
+
+The operator reports the area looked different after re-entering, and the naive
+screenshot pair (retail before, derivative after) differs in 18,179 of 38,400
+normalised pixels across all 240 columns. That observation is recorded as
+firsthand-report evidence and is **not** promoted to a runtime proof, because the
+camera moved between those two captures, so the difference is not attributable to
+the authored cell.
+
 ## What would settle it
 
 One of:

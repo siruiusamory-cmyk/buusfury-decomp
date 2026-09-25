@@ -267,7 +267,7 @@ unless new evidence proves a dependency wrong.
 | Phase | Focus | Exit condition | Progress |
 | --- | --- | --- | --- |
 | 0 - Land current work | Completed | Variable-length dialogue merged, CI green, deployed, live wording verified. | 16/24 |
-| 1 - Authoring-safety baseline | Next | CQA-05/06 together; CQA-07/08 together. Preserve staged edits/undo, totalize GUI errors, remove pathological palette work, ensure CI actually executes GUI dependencies. | 16/24 |
+| 1 - Authoring-safety baseline | Next | CQA-05/06 together (**CLOSED** 2026-09-24); CQA-07/08 together. Preserve staged edits/undo, totalize GUI errors, remove pathological palette work, ensure CI actually executes GUI dependencies. | 16/24 |
 | 2A - Tile painting | Map editing | Brush/pick/erase/fill/selection + undo/redo using existing tile vocabulary. | 17/24 |
 | 2B - Chunk creation | Map editing | Create/materialize new chunk data; allocate/relocate safely; prove the map/chunk pointer domain the feature needs. | 18/24 |
 | 2C - Resize + layers | Map editing | Resize grids, create/relocate layer resources, preserve handler semantics, validate boundaries and reopen. | 19/24 |
@@ -293,7 +293,8 @@ Ticket boundaries are proposals for a human to authorize, not commitments. The
 dependency order, not the naming, is what must be honoured.
 
 - `CQA-05-06-WORKBENCH-STATE-AND-ERRORS-001` - staged-state preservation + total
-  GUI error boundary.
+  GUI error boundary. **COMPLETE** 2026-09-24:
+  [`tickets/archive/CQA-05-06-WORKBENCH-STATE-AND-ERRORS-001-COMPLETE.md`](tickets/archive/CQA-05-06-WORKBENCH-STATE-AND-ERRORS-001-COMPLETE.md).
 - `CQA-07-08-WORKBENCH-PERF-AND-CI-001` - eliminate pathological palette
   recomputation + make CI execute the shipping GUI dependencies.
 - `MAP-TILE-PAINT-001` - complete tile painting UX on existing map resources.
@@ -319,6 +320,11 @@ state-loss, error-boundary, performance and CI blind spots. **These are
 product-risk gates, not the roadmap itself.**
 
 ### 6.1 CQA-05 + CQA-06: state and errors
+
+**COMPLETE (2026-09-24):**
+[`tickets/archive/CQA-05-06-WORKBENCH-STATE-AND-ERRORS-001-COMPLETE.md`](tickets/archive/CQA-05-06-WORKBENCH-STATE-AND-ERRORS-001-COMPLETE.md).
+The four requirements below were the exit condition and are now met; they are kept
+here as the record of what that exit required.
 
 - Project mutation must not silently destroy staged map/layout state or undo
   history.

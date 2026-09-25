@@ -12,8 +12,11 @@ import type { DependencyStep } from "../data/project";
 import Questline from "./Questline.astro";
 
 const pad = (n: number) => String(n).padStart(2, "0");
+// The four newest wins lead; everything else stays reachable behind the one
+// disclosure. Recent entries past the fourth are carried into the archive
+// rather than dropped, so adding a win can never silently remove an older one.
 const focus = recentBreakthroughs.slice(0, 4);
-const rest = archivedBreakthroughs;
+const rest = [...recentBreakthroughs.slice(4), ...archivedBreakthroughs];
 const shot = project.figures[1];
 
 const ladderMark: Record<DependencyStep["state"], string> = {

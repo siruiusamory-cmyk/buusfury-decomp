@@ -9,7 +9,11 @@ in agreement.
 
 It is not a ticket ledger, a roadmap, a metrics store or a project-management
 tool. It records current product state only, and only the fields that prevent
-that state from being restated wrongly somewhere else.
+that state from being restated wrongly somewhere else. The build order for the
+capabilities still `missing` here - and the release gate that follows once all 24
+ship - lives in [`ROADMAP_TO_1_0.md`](ROADMAP_TO_1_0.md); the open technical risks
+live in
+[`research/PROJECT_CODE_QUALITY_AUDIT.md`](research/PROJECT_CODE_QUALITY_AUDIT.md).
 
 ## What belongs
 

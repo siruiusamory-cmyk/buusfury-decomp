@@ -10,6 +10,11 @@
 - **Product capability:** unchanged. DragonByte Z remains 16 / 24 (67%).
 - **No remediation was performed.** This document is the ticket's output; the
   next phase is the remediation set in section F.
+- **This is a risk register, not the roadmap.** A finding blocks a roadmap
+  feature only when repository evidence shows that feature exercises the unsafe
+  path; the remaining debt stays tracked without being automatically sequenced.
+  The product route lives in [`../ROADMAP_TO_1_0.md`](../ROADMAP_TO_1_0.md), and
+  the disposition policy is its section 14.2.
 
 ## Method
 

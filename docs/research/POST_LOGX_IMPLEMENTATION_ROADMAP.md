@@ -10,6 +10,12 @@ tickets' own provenance documents; this file does not repeat it.
 defects), §14 (read support), §15 (authoring readiness), §16 (portrait decision),
 §17 (recommended follow-up research) and §18 (`AUTHOR_NEW` gap analysis).
 
+> **This is not the product roadmap.** It is the LOGX research line's
+> engineering queue, and parts of it are already executed. Phase order, capability
+> exits and public progress belong to
+> [`../ROADMAP_TO_1_0.md`](../ROADMAP_TO_1_0.md); where the two name the same
+> work, that document owns the roadmap and this one owns the engineering detail.
+
 > **This roadmap creates no work by itself.** Every ticket below is a proposal
 > for a human to authorize. Tickets are sized to be independent; the dependency
 > column, not the ordering, is what must be honoured.

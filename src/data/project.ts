@@ -532,6 +532,15 @@ export const project: ProjectStatus = {
       status: "complete",
     },
     {
+      id: "variable-length-dialogue",
+      title: "Change how long an existing line is",
+      plainEnglish:
+        "Replace a line the game already contains with a longer or a shorter one. The tool reworks that line's own storage and every line stored after it, so the rest of the conversation still reads exactly as it did.",
+      technical:
+        "Confirmed. Replacing the goku-greeting record's 32 decoded bytes with a 72-byte line re-authored its durable handle from 0x02002641 to 0x04802641 — same decoded start, new length — grew the decoded container from 65,474 to 65,514 bytes, shifted the 443 records that follow it, and repointed all 470 ROM words the engine reads as handles, while the 15 occurrences of superseded values that are not handles were left untouched. The container repacked from 16,856 to 17,952 bytes and was placed in generated expansion by the production allocator. The retail engine displayed the complete 36-character line in its normal dialogue box, and the canonical 8 MiB ROM is unchanged.",
+      status: "complete",
+    },
+    {
       id: "graphical-workbench",
       title: "Drive the SDK from a desktop tool",
       plainEnglish:

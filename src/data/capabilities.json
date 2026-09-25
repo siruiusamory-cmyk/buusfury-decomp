@@ -185,8 +185,8 @@
       "detail": "Paint the visible layout of an existing supported map: choose one of the chunks a dominant layer already uses, then click or drag to place it in a 256x256 chunk cell. Painting runs through the project as semantic cell edits, so a painted map is saved and reopened like any other authored content, and a build merges the edits into the one write plan. Undo, redo and eyedropper are on one history, a stroke is one undoable gesture, and a paint that changes nothing leaves no history. Proven in the retail engine: after walking out of the area and back in, the authored chunk is what Buu's Fury draws.",
       "limits": [
         "The editable unit is the engine's own: one four-byte chunk-cell reference to an existing 256x256 chunk. It is not an individual 8x8 hardware tile, and no surface pretends otherwise.",
-        "A cell may only be given a chunk the same layer already uses at another of its cells, so a layer that uses a single chunk has nothing to paint with and is read-only.",
-        "No new chunks, no map resizing, no new layers, no new maps, no warp or connection editing, no graphics import, and no collision editing.",
+        "A cell may only be given a chunk the same layer already uses at another of its cells, so a layer that uses a single chunk has nothing to paint with and is read-only. Creating a chunk the layer does not already use is the separate Chunk creation capability.",
+        "No map resizing, no new layers, no new maps, no warp or connection editing, no graphics import, and no collision editing.",
         "Screen-entry layers, terrain-field layers (Map 19), absent slots and zero-dimension grids are refused with a stated reason rather than forced into a grid they do not have.",
         "Painting does not allocate or relocate: the replacement is a fixed four-byte in-place write, so a build changes only the painted cells."
       ],
@@ -196,13 +196,19 @@
       "id": "chunks",
       "family": "edit",
       "title": "Chunk creation and editing",
-      "state": "missing",
-      "detail": "Not implemented. The editor can only point a cell at a chunk the layer already contains; it cannot build a new chunk.",
+      "state": "shipped",
+      "surface": "Map Browser tab, Layout mode: Create Chunk from a layer's existing chunk, then paint the new chunk's 32x32 screen-entry plane and use it as a map brush",
+      "proof": "runtime",
+      "detail": "Create a map chunk that did not exist before. Duplicate one of the chunks a dominant layer already draws, rearrange its 32x32 plane of screen entries using only entries that same layer already displays, and save it as a project-owned resource with its own identity. The new chunk then appears in the layer's brush vocabulary, so a map cell can be painted with it, and a build materializes it through the production allocator and resolves the cell to that address. Proven in the retail engine: after walking out of the area and back in, the engine's own loaded BG1 tilemap carries the authored arrangement while BG0, BG2 and BG3 stay byte-identical, and the new body is read from above the original ROM's end.",
       "limits": [
-        "Not implemented: a cell can only be pointed at a chunk the layer already contains.",
-        "Creating or editing a chunk needs a verified chunk encoder and safe allocation."
+        "An authored chunk is a new arrangement of graphics the layer already draws. It adds no tiles, no palettes and no imported artwork; an entry outside the layer's own vocabulary is refused. The chunk editor offers exactly the screen entries the template's layer already displays, which for Grand Kai's BG1 is 104 of them.",
+        "A chunk is map-scoped. Its plane holds tile ordinals, which only resolve through the assembled character block of the map it was composed against, so it is composed against one map and placed only in that map's layers, which may be any of them.",
+        "The chunk container is emitted in the one kind every canonical chunk uses, so this is not an engine-format experiment, but the format is not re-opened either: a chunk is still a 32x32 plane of 16-bit screen entries and nothing else.",
+        "No map resizing, no new layers, no new maps, no warp or connection editing, no graphics import, no collision editing.",
+        "The authored body must go above the original ROM end: the canonical image's only declared free region is 256 bytes and a chunk container is larger, so this capability depends on generated expansion rather than fitting in place.",
+        "A 16 MiB derivative is not reopened by the authoring tool's derivative verifier, which reconstructs and hashes the canonical image from the whole file. That limit is shared with compressed dialogue and predates this capability; the project itself reopens fully."
       ],
-      "evidence": "DRAGONBYTE-Z-MAP-LAYOUT-EDITOR-001; docs/workbench.md"
+      "evidence": "MAP-CHUNK-AUTHORING-001; docs/research/MAP-CHUNK-AUTHORING-001.md"
     },
     {
       "id": "resize",

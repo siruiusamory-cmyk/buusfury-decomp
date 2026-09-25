@@ -656,6 +656,27 @@ export const project: ProjectStatus = {
       status: "complete",
     },
     {
+      id: "chunk-authoring",
+      title: "Create a new reusable map chunk",
+      plainEnglish:
+        "Create a new reusable map chunk, edit it from existing game tiles, place it in a" +
+        " map, and have the retail engine load it from newly allocated ROM space.",
+      technical:
+        "Complete. A project-authored chunk is a new packed 32x32 screen-entry body with" +
+        " its own durable identity, composed from the screen entries the template's layer" +
+        " already draws and stored as a sparse delta over that template. It is independent" +
+        " of its source, survives save and reopen, is materialized by the one production" +
+        " allocator above the canonical image's end because no canonical region can hold" +
+        " it, is selectable as a map paint brush, and resolves from semantic identity to a" +
+        " physical address at build time. The retail engine was observed reading it there:" +
+        " its own loaded layer record held the new address and its uploaded BG1 tilemap" +
+        " carried the authored arrangement while the other three layers stayed" +
+        " byte-identical. An authored chunk rearranges existing graphics only - no new" +
+        " tiles, palettes or imported artwork - and is map-scoped. Map resizing, layer" +
+        " creation and warp editing are separate capabilities and are not begun.",
+      status: "complete",
+    },
+    {
       id: "playable-log1",
       title: "Playable LOG1 content in the real engine",
       plainEnglish: "Build and play newly authored Legacy of Goku content using the original Webfoot game engine.",
@@ -797,6 +818,44 @@ export const project: ProjectStatus = {
         " feature has actually proven are claimed: the original 8 MiB image still" +
         " carries 256 bytes of verified free space, and expanded storage is not yet" +
         " proven for every resource family.",
+      recent: true,
+    },
+    {
+      id: "runtime-proven-chunk-creation",
+      title: "Create a new map chunk and see the real game load it",
+      summary:
+        "You can now create a map chunk that did not exist before: duplicate one of the"
+        + " chunks a map layer already draws, rearrange its tiles inside DragonByte Z,"
+        + " save it, then paint a map cell with it. The change survives closing and"
+        + " reopening, builds into a new game file, and the actual game draws it - from"
+        + " space added beyond the end of the original game file.",
+      technical:
+        "A dominant chunk is a packed container declaring 0x800 bytes: 1,024"
+        + " little-endian 16-bit screen entries, one 32x32 plane, with bits 0-9 the tile"
+        + " ordinal, 10 and 11 the flips and 12-15 the palette bank. Every one of the"
+        + " 3,745 chunk bodies the canonical image references is container kind 1, so an"
+        + " authored body is emitted in that same kind rather than in the encoder's own."
+        + " The authoring vocabulary is exactly the screen entries the template's own"
+        + " layer already displays, so a new chunk rearranges the game's graphics and"
+        + " adds none; the template is named by the layer's own 1-based chunk ordinal and"
+        + " resolved against the canonical image only, so painting a cell can never"
+        + " re-point a template. Project state is address-free: maps/chunks.toml holds"
+        + " each chunk as an identity plus a sparse delta with the entry it replaced, and"
+        + " a layout cell may hold either a canonical ordinal or a chunk identity - the"
+        + " build allocates the body, resolves the identity to that address and writes"
+        + " the cell reference. The canonical image's only declared free region is 256"
+        + " bytes and a container is larger, so expansion above the 8 MiB end is required"
+        + " rather than optional: the body was placed at file 0x00800000 / ROM address"
+        + " 0x08800000 on a generated 16 MiB image, and in the canonical region exactly"
+        + " three bytes changed, at the painted cell's pointer. Proven in the retail"
+        + " engine, matched A/B with a real leave-and-re-enter rebuild in each run: the"
+        + " engine's own loaded layer record was observed holding 0x08800000 where the"
+        + " retail image holds the old chunk's address, and the engine's uploaded BG1"
+        + " tilemap carried the authored arrangement in 593 of its 1,024 entries while"
+        + " BG0, BG2 and BG3 stayed byte-identical. No new tiles, no new palettes, no"
+        + " imported artwork, no resizing and no new layers; an authored chunk is"
+        + " map-scoped, because its tile ordinals only mean anything through the map it"
+        + " was composed against.",
       recent: true,
     },
     {

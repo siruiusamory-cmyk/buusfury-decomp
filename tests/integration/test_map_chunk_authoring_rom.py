@@ -793,7 +793,12 @@ def test_the_paint_authority_skips_authored_identities_and_resolves_ordinals(ima
     resolved = painter.pointer_edits(edits)
     assert (GRAND_KAI, GRAND_KAI_LAYER, 1) in resolved
     assert (GRAND_KAI, GRAND_KAI_LAYER, GRAND_KAI_CELL) not in resolved
-    assert painter.overrides(edits)[GRAND_KAI][1] == resolved[(GRAND_KAI, GRAND_KAI_LAYER, 1)]
+    # `overrides` is {map: {layer slot: {cell: pointer}}}; the authored cell is absent
+    # there too, and the ordinal cell carries the same pointer `pointer_edits` gave.
+    overrides = painter.overrides(edits)[GRAND_KAI]
+    assert GRAND_KAI_LAYER in overrides
+    assert GRAND_KAI_CELL not in overrides[GRAND_KAI_LAYER]
+    assert overrides[GRAND_KAI_LAYER][1] == resolved[(GRAND_KAI, GRAND_KAI_LAYER, 1)]
 
 
 def test_a_project_cannot_name_an_undeclared_chunk_across_documents(project):

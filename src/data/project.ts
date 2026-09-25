@@ -1112,7 +1112,8 @@ export const project: ProjectStatus = {
   nav: [
     { label: "STATUS", href: "status" },
     { label: "PROGRESS", href: "progress" },
-    { label: "ROADMAP", href: "roadmap" },
+    { label: "ROADMAP", href: "roadmap-to-1-0" },
+    { label: "CAPABILITIES", href: "roadmap" },
     { label: "PROOF", href: "proof" },
   ],
   links: [
@@ -1175,6 +1176,355 @@ export const familyTallies = project.buildout.families.map((family) => ({
 export const roadmapRows = project.buildout.families.flatMap((family) =>
   family.items.map((item) => ({ ...item, family: family.label })),
 );
+
+/* ---------------------------------------------------------------------------
+ * The roadmap to 1.0
+ *
+ * This is the public build ORDER, not a second capability registry. The order
+ * and the visitor-facing wording live here; every COUNT is accumulated from the
+ * registry, and `validateRoadmapTo1` below refuses to build if the capabilities
+ * this roadmap promises to ship are not exactly the ones the registry still
+ * reports as missing. Adding a capability to this list without changing the
+ * registry fails `npm run check` and `npm run build` rather than publishing a
+ * roadmap that disagrees with the product.
+ *
+ * Nothing here is a new capability claim: the roadmap is a plan, so a phase that
+ * has not shipped says so on the page.
+ * ------------------------------------------------------------------------- */
+
+/**
+ * Public position of a phase. `next` is deliberately distinct from `current`:
+ * the next phase has been chosen but NOT started, and the page must not imply
+ * otherwise.
+ */
+export type RoadmapPhaseState = "complete" | "next" | "planned";
+
+export interface RoadmapOutcome {
+  /** The registry capability this step ships. Never a new capability. */
+  capabilityId: string;
+  title: string;
+  detail: string;
+}
+
+export interface RoadmapPhase {
+  id: string;
+  ordinal: string;
+  title: string;
+  summary: string;
+  /** Capabilities this phase ships, in build order. May be empty. */
+  outcomes: RoadmapOutcome[];
+  /** Work in the phase that ships no capability. May be empty. */
+  work: string[];
+  state: RoadmapPhaseState;
+}
+
+export interface RoadmapTo1 {
+  title: string;
+  lede: string;
+  position: string;
+  phases: RoadmapPhase[];
+  /** Why 24/24 is not the same milestone as v1.0. */
+  featureCompleteTitle: string;
+  featureComplete: string;
+  releaseTitle: string;
+  releaseGate: string;
+  goldenTitle: string;
+  goldenProject: string;
+}
+
+const roadmapTo1: RoadmapTo1 = {
+  title: "The remaining work, in the order it will happen",
+  lede:
+    "Every step below is an editor capability a mod author will be able to use,"
+    + " not an internal milestone. The count is a count of authoring capabilities,"
+    + " so it only moves when the product genuinely gains one.",
+  position:
+    "The foundation is complete and 16 of the 24 authoring capabilities are"
+    + " shipped. The next phase has been chosen but not started.",
+  phases: [
+    {
+      id: "foundation",
+      ordinal: "0",
+      title: "Foundation",
+      summary:
+        "The groundwork the remaining capabilities build on, already proven"
+        + " against a real copy of the game.",
+      outcomes: [],
+      work: [
+        "Editing content that already exists in the game",
+        "Building safe derivatives without ever modifying the source file",
+        "Authoring proven by running the result in the original engine",
+        "ROM expansion to a proven 16 MiB image",
+        "A production allocator that places new data and records its provenance",
+        "Changing how long an existing line of dialogue is",
+        "Map and object authoring foundation",
+        "Script and behaviour authoring foundation",
+        "Provenance-checked saving, reopening and rebuilding",
+      ],
+      state: "complete",
+    },
+    {
+      id: "authoring-safety",
+      ordinal: "1",
+      title: "Authoring safety",
+      summary:
+        "Make the editor resilient before adding the remaining major creation"
+        + " tools, so new surfaces are not built on known state loss or silent"
+        + " failures.",
+      outcomes: [],
+      work: [
+        "Preserve unsaved and staged edits when something else changes",
+        "Clear, actionable failure messages instead of a dead click",
+        "Responsive editing on large projects",
+        "Continuous integration that actually exercises the desktop application",
+      ],
+      state: "next",
+    },
+    {
+      id: "map-editing",
+      ordinal: "2",
+      title: "Complete map editing",
+      summary:
+        "Finish the map editor, building each step on the same view, undo"
+        + " history, allocator and safety rules as the last.",
+      outcomes: [
+        {
+          capabilityId: "tiles",
+          title: "Tile painting",
+          detail: "Paint and replace map tiles directly in the editor.",
+        },
+        {
+          capabilityId: "chunks",
+          title: "Chunk creation",
+          detail: "Create new map chunks instead of being limited to retail ones.",
+        },
+        {
+          capabilityId: "resize",
+          title: "Resize and layers",
+          detail: "Change a map's dimensions and its layer structure.",
+        },
+        {
+          capabilityId: "warps",
+          title: "Warps and connections",
+          detail: "Create and edit transitions between areas visually.",
+        },
+      ],
+      work: [],
+      state: "planned",
+    },
+    {
+      id: "graphics-authoring",
+      ordinal: "3",
+      title: "Graphics and actor authoring",
+      summary:
+        "Let an author bring their own art in and build new actors around it,"
+        + " with the tool absorbing the format and engine constraints.",
+      outcomes: [
+        {
+          capabilityId: "gfx-import",
+          title: "Graphics import",
+          detail: "Bring original artwork into the game.",
+        },
+        {
+          capabilityId: "sprite-new",
+          title: "Sprites and animation",
+          detail:
+            "Create new animated game graphics rather than only modifying existing ones.",
+        },
+        {
+          capabilityId: "appearance",
+          title: "Appearances",
+          detail: "Bind newly authored graphics into game-visible actors.",
+        },
+      ],
+      work: [],
+      state: "planned",
+    },
+    {
+      id: "new-map",
+      ordinal: "4",
+      title: "New map authoring",
+      summary:
+        "The final missing capability, and deliberately last: it is the point"
+        + " where every system above is composed into one new playable area.",
+      outcomes: [
+        {
+          capabilityId: "map-new",
+          title: "New map and scene authoring",
+          detail:
+            "Create a genuinely new playable area — its layout, graphics,"
+            + " actors, events, dialogue and transitions — and run it in the game.",
+        },
+      ],
+      work: [],
+      state: "planned",
+    },
+    {
+      id: "creator-experience",
+      ordinal: "5",
+      title: "Creator experience",
+      summary:
+        "No new capabilities are added here. This phase makes the 24 that exist"
+        + " coherent, recoverable and pleasant to use.",
+      outcomes: [],
+      work: [
+        "Engine limits and resource budgets shown before a build fails",
+        "Clear validation and error messages",
+        "Consistent undo and redo across every editor",
+        "Recovery from interrupted or invalid work",
+        "Navigation between related resources",
+        "Run and Run From Here workflows",
+        "Project and schema migration for older projects",
+        "Deterministic reopen and rebuild",
+        "Documentation and tutorial polish",
+      ],
+      state: "planned",
+    },
+    {
+      id: "release",
+      ordinal: "6",
+      title: "DragonByte Z 1.0",
+      summary:
+        "The release gate. A feature-complete product still has to be"
+        + " installable, documented, distributable and verified on real hardware.",
+      outcomes: [],
+      work: [
+        "Packaged Windows release",
+        "Clean first-run and setup",
+        "Supported-ROM verification",
+        "Safe build and provenance",
+        "Distributable patch output",
+        "Complete guide and tutorial",
+        "Emulator validation",
+        "Real-hardware and flashcart smoke test",
+        "Final end-to-end authored project",
+      ],
+      state: "planned",
+    },
+  ],
+  featureCompleteTitle: "100% is not the same milestone as 1.0",
+  featureComplete:
+    "Reaching 24 of 24 means every planned authoring capability exists. Before"
+    + " the tool can be called 1.0, the remaining work is polish, reliability,"
+    + " packaging, documentation and release validation — so a complete feature"
+    + " list is not an automatic release.",
+  releaseTitle: "The 1.0 release gate",
+  releaseGate:
+    "Nothing in the release phase adds an authoring capability. It makes the"
+    + " finished tool something a normal person can install, learn, trust and"
+    + " distribute.",
+  goldenTitle: "The final acceptance project",
+  goldenProject:
+    "Before 1.0, DragonByte Z must be able to create a completely new playable"
+    + " area — from map art and graphics through NPCs, behaviour and dialogue —"
+    + " build it into the real Buu's Fury engine, reopen the project, modify it"
+    + " again and produce a distributable patch, without a hex editor or any"
+    + " manually entered ROM offset.",
+};
+
+/** A phase with its counts already accumulated from the registry. */
+export interface RoadmapPhaseView extends RoadmapPhase {
+  /** Capabilities shipped once this phase is done. */
+  done: number;
+  /** Shipped-per-step running total, aligned with `outcomes`. */
+  outcomeTotals: number[];
+}
+
+/**
+ * The phases with running totals accumulated, never written down.
+ *
+ * Totals start from the shipped count the registry reports and increase by one
+ * per promised capability, so the visible progression (17, 18, ... 24) is a
+ * consequence of the registry's state rather than a number anyone types.
+ */
+function accumulateRoadmap(base: number): RoadmapPhaseView[] {
+  let running = base;
+  return roadmapTo1.phases.map((phase) => {
+    const outcomeTotals = phase.outcomes.map((_outcome) => (running += 1));
+    return { ...phase, done: running, outcomeTotals };
+  });
+}
+
+export const roadmapBase = buildoutDone;
+export const roadmapPhases = accumulateRoadmap(roadmapBase);
+export const roadmap = { ...roadmapTo1, phases: roadmapPhases };
+
+/** The single phase the project is currently pointed at, if any. */
+export const roadmapNextPhase = roadmapPhases.find((phase) => phase.state === "next");
+
+export const roadmapStateLabel: Record<RoadmapPhaseState, string> = {
+  complete: "COMPLETE",
+  next: "NEXT — NOT STARTED",
+  planned: "PLANNED",
+};
+
+export const roadmapStateGlyph: Record<RoadmapPhaseState, string> = {
+  complete: "✓",
+  next: "◆",
+  planned: "○",
+};
+
+function validateRoadmapTo1(): void {
+  const promised = roadmapTo1.phases.flatMap((phase) =>
+    phase.outcomes.map((outcome) => outcome.capabilityId),
+  );
+
+  const duplicate = promised.find((id, index) => promised.indexOf(id) !== index);
+  if (duplicate) {
+    throw new Error(`The roadmap to 1.0 ships capability "${duplicate}" more than once.`);
+  }
+
+  // The roadmap may only promise capabilities the registry says are missing, and
+  // it must promise every one of them - otherwise it is a competing registry.
+  const outstanding = registry.capabilities
+    .filter((capability) => capability.state !== "shipped")
+    .map((capability) => capability.id);
+  const unknown = promised.filter((id) => !outstanding.includes(id));
+  if (unknown.length) {
+    throw new Error(
+      `The roadmap to 1.0 ships ${unknown.join(", ")}, which the registry does not report as missing.`,
+    );
+  }
+  const unplanned = outstanding.filter((id) => !promised.includes(id));
+  if (unplanned.length) {
+    throw new Error(
+      `The registry reports ${unplanned.join(", ")} missing, but the roadmap to 1.0 never ships it.`,
+    );
+  }
+
+  // The phases are read top to bottom, so the states must be in order.
+  const order: RoadmapPhaseState[] = roadmapTo1.phases.map((phase) => phase.state);
+  const rank: Record<RoadmapPhaseState, number> = { complete: 0, next: 1, planned: 2 };
+  for (let index = 1; index < order.length; index += 1) {
+    if (rank[order[index]] < rank[order[index - 1]]) {
+      throw new Error("The roadmap to 1.0 lists a phase out of order.");
+    }
+  }
+
+  const nextCount = order.filter((state) => state === "next").length;
+  if (nextCount > 1) {
+    throw new Error("The roadmap to 1.0 names more than one next phase.");
+  }
+
+  for (const phase of roadmapTo1.phases) {
+    if (!phase.title.trim() || !phase.summary.trim()) {
+      throw new Error(`Roadmap phase "${phase.id}" is missing its title or summary.`);
+    }
+    if (!phase.outcomes.length && !phase.work.length) {
+      throw new Error(`Roadmap phase "${phase.id}" describes no work at all.`);
+    }
+  }
+
+  // The publishable progression must reach the full denominator exactly.
+  const finalDone = roadmapPhases[roadmapPhases.length - 1].done;
+  if (finalDone !== buildoutTotal) {
+    throw new Error(
+      `The roadmap to 1.0 finishes at ${finalDone} of ${buildoutTotal}; the phases must reach the whole denominator.`,
+    );
+  }
+}
+
+validateRoadmapTo1();
 
 function groupMetrics(metrics: ProjectMetric[]): { group: string; metrics: ProjectMetric[] }[] {
   return metrics.reduce(

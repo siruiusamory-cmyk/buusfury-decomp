@@ -180,6 +180,7 @@ Start with:
 
 - [architecture](docs/architecture.md)
 - [verified project state](docs/PROJECT_<local-state-name>)
+- [roadmap to 1.0](docs/ROADMAP_TO_1_0.md)
 - [current ticket](docs/PROJECT_<local-state-name>)
 - [ticket workflow](docs/README.md)
 - [reverse-engineering evidence](docs/reverse-engineering.md)

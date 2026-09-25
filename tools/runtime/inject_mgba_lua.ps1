@@ -236,6 +236,12 @@ $allowedLua = @(
     [System.IO.Path]::GetFullPath(
         (Join-Path $workspaceRoot 'tools\runtime\tilepaint001_live_screenblock.lua')
     )
+    # The leave-and-re-enter watcher: same read-only guarantees, but it latches a
+    # numbered snapshot whenever the engine's screenblock content changes, which
+    # is how an area rebuild is captured without timing a keypress.
+    [System.IO.Path]::GetFullPath(
+        (Join-Path $workspaceRoot 'tools\runtime\tilepaint001_watch_rebuild.lua')
+    )
 )
 $resolvedLua = [System.IO.Path]::GetFullPath($LuaPath)
 if ($resolvedLua -notin $allowedLua) {

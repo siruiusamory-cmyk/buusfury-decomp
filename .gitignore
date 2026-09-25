@@ -55,6 +55,22 @@ __pycache__/
 .coverage
 htmlcov/
 
+# Local environment secrets. Tooling credentials (for example DEEPSEEK_API_KEY)
+# live in a local .env read by the shell or by the tool itself; nothing in this
+# repository loads it at runtime, so it is local configuration, never project
+# content. `.env.example` is deliberately NOT ignored: a template carrying only
+# variable NAMES is the trackable way to document what a local .env needs.
+#
+# The scope is the conventional `.env` / `.env.local` / `.env.<mode>.local`
+# delimiter set, not every name containing "env". Two variants are therefore
+# still stageable, named here so the gap stays deliberate rather than assumed:
+# `.envrc` (direnv) and `.env.<mode>` with no `.local` suffix, such as
+# `.env.production`. A `.local` suffix always means local configuration, so
+# `.env.example.local` is ignored as well.
+.env
+.env.local
+.env.*.local
+
 # Local workflow-hook state
 <tool-state>/
 

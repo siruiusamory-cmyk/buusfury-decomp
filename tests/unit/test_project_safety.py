@@ -153,6 +153,63 @@ def test_proprietary_and_generated_paths_are_git_ignored():
         assert result.returncode == 0, f"path is not ignored: {probe}"
 
 
+def test_local_environment_secrets_are_git_ignored():
+    """A local .env must never be stageable, and its template must stay trackable.
+
+    A live API key was found in an untracked `.env` in a stale checkout. The
+    key itself was preserved outside the repository; this contract is what keeps
+    the next one from being committed by an unthinking `git add -A`.
+
+    Every probe passes ``--no-index``. Without it, ``git check-ignore`` consults
+    the index and reports a *tracked* path as not ignored even when a pattern
+    matches it, so the template assertion below would quietly stop testing the
+    patterns the moment a template was committed - exactly the change it exists
+    to catch. ``--no-index`` makes the answer depend on the ignore rules alone.
+    """
+    ignored = [
+        ".env",
+        ".env.local",
+        ".env.production.local",
+        ".env.development.local",
+        ".env.example.local",
+        "tools/.env",
+        "src/data/.env.local",
+    ]
+    trackable = [
+        ".env.example",
+        ".env.sample",
+        ".env.template",
+        "docs/.env.example",
+    ]
+
+    for probe in ignored:
+        result = subprocess.run(
+            ["git", "check-ignore", "--no-index", "-v", "--", probe],
+            check=False,
+            capture_output=True,
+            text=True,
+        )
+        assert result.returncode == 0, f"local secret file is not ignored: {probe}"
+        # Pin the source: an ambient excludes file must not be able to satisfy
+        # this contract if the repository patterns are ever deleted.
+        assert ".gitignore:" in result.stdout, (
+            f"{probe} is ignored by something other than a repository rule: "
+            f"{result.stdout.strip()}"
+        )
+
+    for probe in trackable:
+        result = subprocess.run(
+            ["git", "check-ignore", "--no-index", "--quiet", "--", probe],
+            check=False,
+            capture_output=True,
+            text=True,
+        )
+        assert result.returncode == 1, (
+            f"{probe} is ignored, so a documentation template could not be "
+            "committed; the local-secret patterns are too broad"
+        )
+
+
 def test_no_rom_or_proprietary_directory_is_tracked():
     result = subprocess.run(
         [

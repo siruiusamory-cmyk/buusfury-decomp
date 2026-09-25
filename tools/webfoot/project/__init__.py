@@ -12,8 +12,10 @@ from .format import (
     load_toml,
 )
 from .model import (
+    LAYOUT_FILE,
     PROJECT_FORMAT_VERSION,
     GraphicsOverrides,
+    LayoutEdits,
     ProjectError,
     ProjectLoadError,
     ProjectMeta,
@@ -22,13 +24,16 @@ from .model import (
     read_project,
     write_dialogue_replacements,
     write_graphics_overrides,
+    write_layout_edits,
     write_project,
 )
 from .placements import remove_authored_placement
 
 __all__ = [
+    "LAYOUT_FILE",
     "PROJECT_FORMAT_VERSION",
     "GraphicsOverrides",
+    "LayoutEdits",
     "ProjectError",
     "ProjectFormatError",
     "ProjectLoadError",
@@ -41,5 +46,6 @@ __all__ = [
     "remove_authored_placement",
     "write_dialogue_replacements",
     "write_graphics_overrides",
+    "write_layout_edits",
     "write_project",
 ]

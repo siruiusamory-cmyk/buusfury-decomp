@@ -172,7 +172,12 @@ def test_index_error_is_a_message_not_a_crash(tab, monkeypatch):
 
 MAP = 0
 SLOT = 0
-CHUNKS = (0x082928DC, 0x08292A54, 0x08292AFC, 0x08292BD8)
+#: Four chunks plus one, laid out so that no cell holds CHUNKS[4]: a brush of
+#: C5 is therefore an effective paint in EVERY cell, which is what the exact
+#: undo/redo test needs, while C2/C3/C4 each already occupy a cell (so the no-op
+#: and "different earlier value" cases are expressible too).
+CHUNKS = (0x082928DC, 0x08292A54, 0x08292AFC, 0x08292BD8, 0x08292C50)
+EMPTY_BRUSH = 4
 
 
 def _edit_slot(
@@ -180,7 +185,7 @@ def _edit_slot(
     *,
     columns: int = 2,
     rows: int = 2,
-    pointers: tuple[int, ...] = CHUNKS,
+    pointers: tuple[int, ...] = CHUNKS[:4],
     classification: str = "dominant",
     reason: str = "",
 ) -> LayoutSlot:
@@ -195,7 +200,14 @@ def _edit_slot(
         )
         for index, pointer in enumerate(pointers)
     )
+    # The vocabulary is every chunk the layer USES, in first-appearance order;
+    # the extra brush value is a chunk the layer uses at no cell, which is the
+    # state a paint always moves toward. It is appended here so this synthetic
+    # layer's vocabulary is CHUNKS, in order.
     choices = tuple(dict.fromkeys(pointer for pointer in pointers if pointer))
+    for pointer in CHUNKS:
+        if pointer not in choices:
+            choices = choices + (pointer,)
     return LayoutSlot(
         slot=slot,
         classification=classification,
@@ -250,19 +262,29 @@ class _FakeEditor:
         self._target = target
         self._preview = preview
         self._edits: dict[tuple[int, int, int], object] = {}
+        #: MAP-TILE-PAINT-001. The committed project layer, keyed
+        #: ``(map, layer, cell) -> pointer``, exactly as the real session holds it.
+        self._floor: dict[tuple[int, int, int], int] = {}
         self.preview_calls: list[tuple[int, tuple | None]] = []
         self.save_calls: list[tuple[str, str, str]] = []
         self.character_block_calls: list[int] = []
         self.reset_calls = 0
+        self.floor_calls = 0
+        self.committed_pointer_calls: list[tuple[int, int, int]] = []
         #: When set, set_cell raises it: the tab must show, not crash. It is set to
         #: whichever SDK failure family the test wants the slot to survive.
         self.reject: Exception | None = None
         #: Same, for the revert paths.
         self.reject_revert: Exception | None = None
+        #: Same, for the un-stage path (the revert button's own operation).
+        self.reject_clear: Exception | None = None
 
     # -- reads the tab performs ------------------------------------------
     def target(self, map_index: int) -> LayoutTarget:
         return self._target
+
+    def slot(self, map_index: int, layer_slot: int) -> LayoutSlot:
+        return self._target.slots[layer_slot]
 
     def edit(self, map_index: int, layer_slot: int, cell: int):
         return self._edits.get((map_index, layer_slot, cell))
@@ -273,17 +295,45 @@ class _FakeEditor:
     def edits_for(self, map_index: int) -> tuple:
         return tuple(edit for edit in self.edits() if edit.map_index == map_index)
 
+    def pointer(self, map_index: int, layer_slot: int, cell: int) -> int:
+        return self._target.slots[layer_slot].cells[cell].pointer
+
+    def committed_pointer(self, map_index: int, layer_slot: int, cell: int) -> int:
+        self.committed_pointer_calls.append((map_index, layer_slot, cell))
+        return self._floor.get(
+            (map_index, layer_slot, cell), self.pointer(map_index, layer_slot, cell)
+        )
+
+    def set_floor(self, floor) -> None:
+        self.floor_calls += 1
+        self._floor = dict(floor or {})
+
+    @property
+    def floor_cell_count(self) -> int:
+        return len(self._floor)
+
+    def committed_overrides(self, map_index: int) -> dict:
+        return {
+            (layer_slot, cell): pointer
+            for (floor_map, layer_slot, cell), pointer in self._floor.items()
+            if floor_map == map_index
+            and pointer != self.pointer(map_index, layer_slot, cell)
+        }
+
     def working_pointer(self, map_index: int, layer_slot: int, cell: int) -> int:
         edit = self.edit(map_index, layer_slot, cell)
         if edit is not None:
             return edit.replacement
-        return self._target.slots[layer_slot].cells[cell].pointer
+        return self.committed_pointer(map_index, layer_slot, cell)
 
     def overrides(self, map_index: int, draft=None) -> dict:
-        overrides = {
-            (edit.layer_slot, edit.cell): edit.replacement
-            for edit in self.edits_for(map_index)
-        }
+        overrides = self.committed_overrides(map_index)
+        overrides.update(
+            {
+                (edit.layer_slot, edit.cell): edit.replacement
+                for edit in self.edits_for(map_index)
+            }
+        )
         if draft is not None:
             overrides[(draft[0], draft[1])] = draft[2]
         return overrides
@@ -299,17 +349,50 @@ class _FakeEditor:
         return b"synthetic-block"
 
     def set_cell(self, map_index: int, layer_slot: int, cell: int, replacement: int):
+        """The real session's contract: a paint, not an un-stage.
+
+        A replacement equal to what the cell ALREADY shows is not a change; so is
+        one equal to the BASE value, because staging it would record work that
+        changes nothing. A replacement equal to the RETAIL value while the project
+        paints the cell differently is a real paint, which is why un-staging has
+        its own method.
+        """
         if self.reject:
             raise self.reject
         slot = self._target.slots[layer_slot]
-        original = slot.cells[cell].pointer
+        current = self.working_pointer(map_index, layer_slot, cell)
+        committed = self.committed_pointer(map_index, layer_slot, cell)
         key = (map_index, layer_slot, cell)
-        if replacement == original:
+        if replacement == current or replacement == committed:
             self._edits.pop(key, None)
             return None
-        edit = mle_edit(map_index, layer_slot, cell, original, replacement, slot.cells[cell].offset)
+        existing = self._edits.get(key)
+        edit = mle_edit(
+            map_index,
+            layer_slot,
+            cell,
+            existing.original if existing is not None else current,
+            replacement,
+            slot.cells[cell].offset,
+        )
         self._edits[key] = edit
         return edit
+
+    def clear_cell(self, map_index: int, layer_slot: int, cell: int) -> bool:
+        """Remove one cell's staged edit, restoring the base value."""
+        if self.reject_clear:
+            raise self.reject_clear
+        key = (map_index, layer_slot, cell)
+        if key not in self._edits:
+            return False
+        self._edits.pop(key, None)
+        return True
+
+    def committed_pointer(self, map_index: int, layer_slot: int, cell: int) -> int:
+        self.committed_pointer_calls.append((map_index, layer_slot, cell))
+        return self._floor.get(
+            (map_index, layer_slot, cell), self.pointer(map_index, layer_slot, cell)
+        )
 
     def revert_cell(self, map_index: int, layer_slot: int, cell: int) -> bool:
         if self.reject_revert:
@@ -390,6 +473,9 @@ def edit_tab(qapp, monkeypatch, tmp_path):
     rom_path.write_bytes(b"synthetic")
     session = Session(rom_image=b"synthetic", rom_path=rom_path)
     session.profile = SimpleNamespace(id="buus_fury_usa_rev0_01c1707f")
+    # No project is open by default: a paint is staged in the session and the
+    # project commit is refused with a sentence. The tests that exercise the
+    # commit point `project_dir` at a real temporary project.
 
     monkeypatch.setattr(mbt.mv, "read_map_index", lambda rom: entries)
     monkeypatch.setattr(mbt.mv, "render_map", lambda rom, index, **kwargs: base)
@@ -413,7 +499,37 @@ def edit_tab(qapp, monkeypatch, tmp_path):
 
 
 def _choose(tab, row: int) -> None:
+    """Pick a palette entry: this selects the BRUSH and paints nothing.
+
+    The tab's own re-sync follows the brush and therefore re-selects this row;
+    the signals are blocked for the programmatic selection exactly as the tab
+    blocks them for its own, so picking a value is never mistaken for a paint.
+    """
+    tab._chooser.blockSignals(True)
     tab._chooser.setCurrentRow(row)
+    tab._chooser.blockSignals(False)
+    tab._on_chunk_selected(tab._chooser.item(row))
+
+
+def _paint_cells(tab, *cells: int) -> None:
+    """One press-drag-release over the given cells, as the overlay delivers it.
+
+    `paint_cell` is exactly what the overlay's press and move handlers call, so
+    this drives the real gesture path rather than a shortcut: the stroke record is
+    opened, the cells are visited in order, and the gesture is closed and raised
+    on the undo stack.
+    """
+    tab.begin_paint_stroke()
+    for cell in cells:
+        tab.paint_cell(cell)
+    tab.end_paint_stroke()
+
+
+def _stage_paint(tab, cell: int, palette_row: int) -> None:
+    """The whole user gesture: choose a value, then paint one cell with it."""
+    tab._edit_toggle.setChecked(True)
+    _choose(tab, palette_row)
+    _paint_cells(tab, cell)
 
 
 def test_edit_mode_is_off_by_default(edit_tab):
@@ -434,34 +550,179 @@ def test_entering_edit_mode_installs_the_chunk_grid_and_chooser(edit_tab):
     # Only the editable slot is offered.
     assert edit_tab._layer_combo.count() == 1
     assert edit_tab._layer_combo.currentData() == SLOT
-    # The chooser offers the layer's own chunks, and marks the cell's current one.
+    # The chooser offers the layer's own chunks, marks the cell's current one,
+    # and shows which value is the brush.
     assert edit_tab._chooser.count() == len(CHUNKS)
     current = [edit_tab._chooser.item(i).text() for i in range(edit_tab._chooser.count())]
-    assert "current" in current[0]
-    assert "current" not in current[1]
+    assert "cell" in current[0]
+    assert "cell" not in current[1]
+    assert "brush" in current[1]
     assert edit_tab._selected_cell == 0
     assert "EDIT LAYOUT" in edit_tab._mode_badge.text()
     assert "EDIT LAYOUT" in edit_tab._status.text()
 
 
-def test_clicking_a_cell_selects_it_and_shows_its_chunk(edit_tab):
+def test_clicking_a_cell_paints_it_and_shows_its_chunk(edit_tab):
+    """A click is a paint: the brush goes into the cell, and it is undoable."""
     edit_tab._edit_toggle.setChecked(True)
-    edit_tab._on_cell_clicked(3)
+    _choose(edit_tab, 1)
+    _paint_cells(edit_tab, 3)
     assert edit_tab._selected_cell == 3
     assert edit_tab._grid_item._selected == 3
     assert "column 1, row 1" in edit_tab._cell_label.text()
     assert "cell 4 of 4" in edit_tab._cell_label.text()
-    assert "Chunk 4" in edit_tab._chunk_label.text()
-    assert f"{CHUNKS[3]:#010x}" in edit_tab._detail.text()
+    assert "Chunk 2" in edit_tab._chunk_label.text()
+    assert edit_tab.editor.edits_for(MAP)[0].replacement == CHUNKS[1]
+    assert edit_tab.editor.edits_for(MAP)[0].original == CHUNKS[3]
+    assert edit_tab._undo_stack.count() == 1
+    assert "Chunk 2" in edit_tab._mode_badge.text()
 
 
-def test_grid_click_selects_the_cell(edit_tab):
+def test_a_no_op_paint_creates_no_edit_and_no_history(edit_tab):
+    """Painting a cell with the value it already holds is not an edit."""
+    edit_tab._edit_toggle.setChecked(True)
+    _choose(edit_tab, 0)  # cell 0 already holds CHUNKS[0]
+    _paint_cells(edit_tab, 0)
+    assert edit_tab.editor.edits_for(MAP) == ()
+    assert edit_tab._undo_stack.count() == 0
+    assert not edit_tab._reset_button.isEnabled()
+    assert not edit_tab._commit_button.isEnabled()
+
+
+def test_a_paint_uses_the_whole_layer_vocabulary(edit_tab):
+    """Every chunk the layer uses elsewhere is offered as a paint value.
+
+    The fifth entry is the value no cell holds yet: that is the normal state a
+    paint moves TOWARD, and it must be selectable.
+    """
+    edit_tab._edit_toggle.setChecked(True)
+    assert edit_tab._chooser.count() == len(CHUNKS)
+    _choose(edit_tab, EMPTY_BRUSH)
+    assert edit_tab._brush_pointer == CHUNKS[EMPTY_BRUSH]
+    _paint_cells(edit_tab, 0)
+    assert edit_tab.editor.edits_for(MAP)[0].replacement == CHUNKS[EMPTY_BRUSH]
+
+
+def test_a_drag_paints_every_changed_cell_as_one_gesture(edit_tab):
+    """A press-drag-release over N cells stages them and adds ONE history entry.
+
+    Cell 2 is swept but already holds the brush value, so it is not a change and
+    is deliberately absent from the command's own record.
+    """
+    edit_tab._edit_toggle.setChecked(True)
+    _choose(edit_tab, 2)
+    _paint_cells(edit_tab, 0, 1, 2, 3)
+    assert [edit.cell for edit in edit_tab.editor.edits_for(MAP)] == [0, 1, 3]
+    assert all(
+        edit.replacement == CHUNKS[2] for edit in edit_tab.editor.edits_for(MAP)
+    )
+    assert edit_tab._undo_stack.count() == 1
+    assert "3 cells" in edit_tab._undo_stack.undoText()
+    # ...and one undo puts all three back.
+    edit_tab._undo_stack.undo()
+    assert edit_tab.editor.edits_for(MAP) == ()
+
+
+def test_undo_and_redo_restore_exact_previous_values(edit_tab):
+    """Undo restores each cell's OWN earlier value, not one assumed original."""
+    edit_tab._edit_toggle.setChecked(True)
+    # No cell holds CHUNKS[4], so one gesture paints all four; each cell's
+    # earlier value is different, so a capture that recorded a single "original"
+    # cannot restore them.
+    _choose(edit_tab, EMPTY_BRUSH)
+    _paint_cells(edit_tab, 0, 1, 2, 3)
+    assert [edit.replacement for edit in edit_tab.editor.edits_for(MAP)] == [
+        CHUNKS[EMPTY_BRUSH]
+    ] * 4
+    assert [edit.original for edit in edit_tab.editor.edits_for(MAP)] == list(CHUNKS[:4])
+
+    edit_tab._undo_stack.undo()
+    assert edit_tab.editor.edits_for(MAP) == ()
+    assert edit_tab._grid_item._edited == frozenset()
+    assert edit_tab._undo_stack.canRedo()
+
+    edit_tab._undo_stack.redo()
+    assert [edit.replacement for edit in edit_tab.editor.edits_for(MAP)] == [
+        CHUNKS[EMPTY_BRUSH]
+    ] * 4
+    assert edit_tab._grid_item._edited == frozenset({0, 1, 2, 3})
+
+
+def test_consecutive_strokes_of_one_brush_merge_into_one_undo(edit_tab):
+    """A drag delivered as two presses merges into one sensible command.
+
+    The second stroke starts on the cell the first ended on and carries the same
+    brush, which is what makes it a continuation of one gesture.
+    """
+    edit_tab._edit_toggle.setChecked(True)
+    _choose(edit_tab, EMPTY_BRUSH)
+    _paint_cells(edit_tab, 0, 1)
+    _paint_cells(edit_tab, 1, 2, 3)
+    assert edit_tab._undo_stack.count() == 1
+    assert [edit.cell for edit in edit_tab.editor.edits_for(MAP)] == [0, 1, 2, 3]
+    edit_tab._undo_stack.undo()
+    assert edit_tab.editor.edits_for(MAP) == ()
+
+
+def test_a_stroke_with_a_different_brush_does_not_merge(edit_tab):
+    edit_tab._edit_toggle.setChecked(True)
+    _choose(edit_tab, EMPTY_BRUSH)
+    _paint_cells(edit_tab, 0)
+    _choose(edit_tab, 3)
+    _paint_cells(edit_tab, 0)
+    assert edit_tab._undo_stack.count() == 2
+
+
+def test_a_disjoint_stroke_does_not_merge(edit_tab):
+    """Two strokes that are not continuous are two history entries."""
+    edit_tab._edit_toggle.setChecked(True)
+    _choose(edit_tab, EMPTY_BRUSH)
+    _paint_cells(edit_tab, 0)
+    _paint_cells(edit_tab, 2)
+    assert edit_tab._undo_stack.count() == 2
+
+
+def test_the_eyedropper_takes_a_cell_value_without_editing(edit_tab):
+    """Picking a value from the map changes the brush and nothing else."""
+    edit_tab._edit_toggle.setChecked(True)
+    _choose(edit_tab, 1)
+    assert edit_tab._brush_ordinal == 2
+    edit_tab._set_tool(mbt._TOOL_PICK)
+    edit_tab._on_cell_clicked(2)  # cell 2 holds CHUNKS[2]
+    assert edit_tab._brush_ordinal == 3
+    assert edit_tab._brush_pointer == CHUNKS[2]
+    assert edit_tab.editor.edits_for(MAP) == ()
+    assert edit_tab._undo_stack.count() == 0
+    # The mode badge is where the current value is stated, because the tab's own
+    # status line is a live readout that every refresh rewrites.
+    assert "Chunk 3" in edit_tab._mode_badge.text()
+    # ...and the tool is a state the strip shows.
+    assert edit_tab._pick_tool.isChecked() and not edit_tab._paint_tool.isChecked()
+
+
+def test_picking_from_a_cell_then_painting_reproduces_the_picked_value(edit_tab):
+    edit_tab._edit_toggle.setChecked(True)
+    edit_tab.pick_brush_from_cell(2)
+    assert edit_tab._brush_pointer == CHUNKS[2]
+    _paint_cells(edit_tab, 3)
+    assert edit_tab.editor.edits_for(MAP)[0].replacement == CHUNKS[2]
+
+
+def test_grid_click_paints_the_cell_the_pointer_is_over(edit_tab):
     edit_tab._edit_toggle.setChecked(True)
     overlay = edit_tab._grid_item
-    event = _FakeMouseEvent(300, 20)  # second column, first row
+    event = _FakeMouseEvent(300, 300)  # second column, second row -> cell 3
     overlay.mousePressEvent(event)
     assert event.accepted
-    assert edit_tab._selected_cell == 1
+    assert edit_tab._selected_cell == 3
+    assert [edit.cell for edit in edit_tab.editor.edits_for(MAP)] == [3]
+    # The brush reaches the palette's selected paint value on entering the mode,
+    # so a click is a real paint rather than a no-op: cell 3 holds CHUNKS[3] and
+    # the default brush is CHUNKS[1].
+    assert edit_tab.editor.edits_for(MAP)[0].replacement == CHUNKS[1]
+    # The gesture is delivered by the release, exactly as Qt delivers it.
+    overlay.mouseReleaseEvent(event)
+    assert edit_tab._undo_stack.count() == 1
 
 
 def test_arrow_keys_move_the_cell_selection(edit_tab):
@@ -482,75 +743,98 @@ def test_arrow_keys_move_the_cell_selection(edit_tab):
     assert edit_tab._selected_cell == 3
 
 
-def test_choosing_a_chunk_previews_in_memory_only(edit_tab):
+def test_choosing_a_chunk_selects_the_brush_and_renders_nothing(edit_tab):
     edit_tab._edit_toggle.setChecked(True)
-    edit_tab._on_cell_clicked(0)
     before = edit_tab._session.rom_image
-    _choose(edit_tab, 1)
-    assert edit_tab.editor.preview_calls == [(MAP, (SLOT, 0, CHUNKS[1]))]
-    assert edit_tab._current is edit_tab.preview_result
-    # The source bytes are the same object: previewing never touches the ROM.
+    draws_before = len(edit_tab.editor.preview_calls)
+    # Row 2 is not the brush the editor opened with, so this is a real change.
+    _choose(edit_tab, 2)
+    # The palette pick changed the BRUSH; it painted nothing.
+    assert edit_tab._brush_ordinal == 3
+    assert edit_tab._brush_pointer == CHUNKS[2]
+    assert edit_tab.editor.edits_for(MAP) == ()
+    assert edit_tab._undo_stack.count() == 0
+    # ...and it re-rendered nothing, because the brush is a value the next click
+    # will place, not something drawn on the map: the pixels cannot have changed.
+    assert len(edit_tab.editor.preview_calls) == draws_before
+    # The source bytes are the same object: nothing touched the ROM.
     assert edit_tab._session.rom_image is before
-    assert "preview" in edit_tab._detail.text()
-    assert "unapplied choice" in edit_tab._status.text()
-    assert edit_tab._apply_button.isEnabled()
+    assert "Chunk 3" in edit_tab._mode_badge.text()
+    assert not edit_tab._commit_button.isEnabled()
+
+    # Re-choosing the value that is already the brush does no work at all: the
+    # tab's own re-sync re-selects this row after every refresh.
+    draws = len(edit_tab.editor.preview_calls)
+    _choose(edit_tab, 2)
+    assert len(edit_tab.editor.preview_calls) == draws
 
 
-def test_apply_commits_the_change_and_reports_it_as_unsaved(edit_tab):
+def test_apply_button_paints_the_selected_cell_as_one_gesture(edit_tab, tmp_path):
+    edit_tab._session.project_dir = tmp_path
     edit_tab._edit_toggle.setChecked(True)
-    edit_tab._on_cell_clicked(0)
     _choose(edit_tab, 1)
+    edit_tab._on_cell_clicked(0)
     edit_tab._apply_draft()
+    assert [edit.cell for edit in edit_tab.editor.edits_for(MAP)] == [0]
     assert edit_tab.editor.edits_for(MAP)[0].replacement == CHUNKS[1]
-    assert "unsaved" in edit_tab._change_label.text()
+    assert edit_tab._undo_stack.count() == 1
+    assert edit_tab._commit_button.isEnabled()
+
+
+def test_a_painted_map_reports_staged_work(edit_tab):
+    _stage_paint(edit_tab, 0, 1)
+    # The tab's own count and the shell's title both read this number.
+    assert edit_tab.unsaved_edit_count() == 1
+    assert "staged" in edit_tab._change_label.text()
     assert edit_tab._grid_item._edited == frozenset({0})
     assert edit_tab._reset_button.isEnabled()
     assert edit_tab._save_button.isEnabled()
-    assert not edit_tab._apply_button.isEnabled()
 
 
-def test_revert_returns_the_cell_to_the_source_rom_chunk(edit_tab):
+def test_revert_returns_the_cell_to_the_value_the_base_holds(edit_tab):
     edit_tab._edit_toggle.setChecked(True)
-    edit_tab._on_cell_clicked(0)
     _choose(edit_tab, 1)
-    edit_tab._apply_draft()
+    _paint_cells(edit_tab, 0)
+    assert edit_tab.editor.edits_for(MAP) != ()
     edit_tab._revert_cell()
     assert edit_tab.editor.edits_for(MAP) == ()
     assert "No layout changes" in edit_tab._change_label.text()
     assert edit_tab._grid_item._edited == frozenset()
     assert not edit_tab._reset_button.isEnabled()
+    # Reverting is itself undoable: the undo re-stages the paint it removed.
+    assert edit_tab._undo_stack.count() == 2
+    assert "Revert" in edit_tab._undo_stack.undoText()
+    edit_tab._undo_stack.undo()
+    assert edit_tab.editor.edits_for(MAP)[0].replacement == CHUNKS[1]
 
 
-def test_escape_drops_an_unapplied_choice(edit_tab):
-    edit_tab._edit_toggle.setChecked(True)
-    edit_tab._on_cell_clicked(0)
-    _choose(edit_tab, 1)
-    assert edit_tab._draft == (SLOT, 0, CHUNKS[1])
+def test_escape_puts_the_brush_back_on_the_palette_selection(edit_tab):
+    _stage_paint(edit_tab, 0, 1)
     escape = QtGui.QKeyEvent(
         QtCore.QEvent.Type.KeyPress, QtCore.Qt.Key.Key_Escape, QtCore.Qt.KeyboardModifier.NoModifier
     )
     assert edit_tab._on_canvas_key(escape)
-    assert edit_tab._draft is None
-    assert edit_tab.editor.edits_for(MAP) == ()
-    assert edit_tab._chooser.currentItem().data(mbt._CHUNK_ROLE) == CHUNKS[0]
+    # Escape abandons the current stroke (nothing is open here) and re-syncs the
+    # palette with the brush, which is where the selection lives now.
+    assert edit_tab._chooser.currentItem().data(mbt._CHUNK_ROLE) == CHUNKS[1]
 
 
-def test_reset_drops_every_pending_edit(edit_tab, monkeypatch):
+def test_reset_drops_every_staged_paint_and_the_history(edit_tab, monkeypatch):
     monkeypatch.setattr(
         mbt.QMessageBox, "information", lambda *args, **kwargs: None
     )
     edit_tab._edit_toggle.setChecked(True)
-    edit_tab._on_cell_clicked(0)
     _choose(edit_tab, 1)
-    edit_tab._apply_draft()
-    edit_tab._on_cell_clicked(3)
+    _paint_cells(edit_tab, 0)
     _choose(edit_tab, 0)
-    edit_tab._apply_draft()
+    _paint_cells(edit_tab, 3)
     assert len(edit_tab.editor.edits_for(MAP)) == 2
+    assert edit_tab._undo_stack.count() == 2
     edit_tab._reset_edits()
     assert edit_tab.editor.reset_calls == 1
     assert edit_tab.editor.edits_for(MAP) == ()
-    assert "Discarded 2 pending layout change(s)" in edit_tab._status.text()
+    assert edit_tab._undo_stack.count() == 0
+    assert "Discarded 2 staged paint(s)" in edit_tab._status.text()
 
 
 def test_a_map_without_an_editable_layer_stays_read_only(edit_tab, monkeypatch):
@@ -575,8 +859,7 @@ def test_a_map_without_an_editable_layer_stays_read_only(edit_tab, monkeypatch):
     # Each reason completes the sentence the target composes.
     assert "BG3 is an empty slot holding no layer" in detail
     # The status line must not claim an editing state the badge calls read-only.
-    assert "no editable layer on this map" in edit_tab._status.text()
-    assert "no changes yet" not in edit_tab._status.text()
+    assert "no paintable layer on this map" in edit_tab._status.text()
     # Read-only is a state, not an error: the toggle stays usable and no dialog
     # is raised.
     assert edit_tab._edit_toggle.isEnabled()
@@ -638,17 +921,16 @@ def test_a_rejected_replacement_is_a_message_not_a_crash(edit_tab, monkeypatch):
     errors: list[str] = []
     monkeypatch.setattr(mbt.QMessageBox, "warning", lambda *args: errors.append(args[-1]))
     edit_tab._edit_toggle.setChecked(True)
-    edit_tab._on_cell_clicked(0)
-    _choose(edit_tab, 1)
+    _choose(edit_tab, 2)
     edit_tab.editor.reject = MapLayoutEditError(
         "a replacement chunk must already be used by the same dominant layer"
     )
-    edit_tab._apply_draft()
+    _paint_cells(edit_tab, 0)
     assert errors == [
         "a replacement chunk must already be used by the same dominant layer"
     ]
     assert edit_tab.editor.edits_for(MAP) == ()
-    assert edit_tab._draft is not None  # the pick is kept so the user can retry
+    assert edit_tab._undo_stack.count() == 0
 
 
 def test_a_writer_family_rejection_is_also_a_message_not_a_crash(edit_tab, monkeypatch):
@@ -656,15 +938,18 @@ def test_a_writer_family_rejection_is_also_a_message_not_a_crash(edit_tab, monke
     errors: list[str] = []
     monkeypatch.setattr(mbt.QMessageBox, "warning", lambda *args: errors.append(args[-1]))
     edit_tab._edit_toggle.setChecked(True)
-    edit_tab._on_cell_clicked(0)
-    _choose(edit_tab, 1)
+    _choose(edit_tab, 2)
     edit_tab.editor.reject = MapLayoutWriteError("the null chunk pointer is not a replacement")
-    edit_tab._apply_draft()
+    _paint_cells(edit_tab, 0)
     assert errors == ["the null chunk pointer is not a replacement"]
 
+    # The same containment on the revert path. The revert is reached through the
+    # session's un-stage operation, so its own failure family is the one tested
+    # here (`reject` would have refused the paint that precedes it).
     edit_tab.editor.reject = None
-    edit_tab._apply_draft()
-    edit_tab.editor.reject_revert = MapLayoutWriteError("boom")
+    _paint_cells(edit_tab, 0)
+    assert edit_tab.editor.edits_for(MAP) != ()
+    edit_tab.editor.reject_clear = MapLayoutWriteError("boom")
     edit_tab._revert_cell()
     assert errors[-1] == "boom"
 
@@ -688,15 +973,15 @@ def test_chooser_renders_through_the_sessions_cached_character_block(edit_tab, m
 
 def test_pending_edits_reappear_when_a_map_is_re_selected(edit_tab):
     edit_tab._edit_toggle.setChecked(True)
-    edit_tab._on_cell_clicked(0)
     _choose(edit_tab, 1)
-    edit_tab._apply_draft()
+    _paint_cells(edit_tab, 0)
     edit_tab.editor.preview_calls.clear()
     # Re-selecting the map must re-render from the session, not the cached base.
     edit_tab._render_map(MAP)
     assert edit_tab.editor.preview_calls == [(MAP, None)]
     assert edit_tab._current is edit_tab.preview_result
-    assert "1 unsaved change(s)" in edit_tab._status.text()
+    assert "1 staged paint" in edit_tab._status.text()
+    assert edit_tab.unsaved_edit_count() == 1
 
 
 def test_a_render_error_forgets_the_map_selection_and_cannot_crash_edit_mode(
@@ -733,15 +1018,15 @@ def test_save_as_writes_a_new_rom_and_reports_it(edit_tab, monkeypatch, tmp_path
     monkeypatch.setattr(mbt.QMessageBox, "information", lambda *args: shown.append(args[-1]))
 
     edit_tab._edit_toggle.setChecked(True)
-    edit_tab._on_cell_clicked(0)
-    _choose(edit_tab, 1)
+    _choose(edit_tab, 2)
+    _paint_cells(edit_tab, 0)
     edit_tab._on_save_as()
 
     assert edit_tab.editor.save_calls == [
         (str(target), str(edit_tab._session.rom_path), "buus_fury_usa_rev0_01c1707f")
     ]
-    # Save As writes what the preview showed: the unapplied pick was committed.
-    assert edit_tab.editor.edits_for(MAP)[0].replacement == CHUNKS[1]
+    # Save As writes exactly what was staged, and nothing else.
+    assert edit_tab.editor.edits_for(MAP)[0].replacement == CHUNKS[2]
     assert "✔" in edit_tab._change_label.text()
     assert str(target) in edit_tab._status.text()
     assert shown and "SHA-256" in shown[0]
@@ -855,11 +1140,16 @@ def test_a_verified_derivative_renders_its_edits_and_stays_read_only(
     assert tab._grid_item is None
 
 
-def test_switching_maps_drops_the_selection_and_draft(edit_tab):
+def test_switching_maps_drops_the_selection_and_brush(edit_tab):
     edit_tab._edit_toggle.setChecked(True)
-    edit_tab._on_cell_clicked(2)
-    _choose(edit_tab, 1)
-    assert edit_tab._draft is not None
+    _choose(edit_tab, 2)
+    _paint_cells(edit_tab, 3)
+    assert edit_tab.editor.edits_for(MAP) != ()
+    edit_tab._render_map(MAP)
+    assert edit_tab._selected_cell == 0
+    # The brush is re-derived for whichever layer is now active, never carried
+    # over from the layer the edit belonged to.
+    assert edit_tab._brush_ordinal == 2
     edit_tab._sync_editor_for_map(MAP)
     assert edit_tab._draft is None
     assert edit_tab._selected_cell == 0

@@ -61,6 +61,8 @@ from .maps import (
     load_maps,
 )
 from .formats.map_entry import MapEntryProfileError
+from .map_paint import MapPaintError, plan_layout_cells
+from .packaged import packaged_profile
 from .write import (
     ByteChange,
     ProjectProvenance,
@@ -591,6 +593,39 @@ def _check_strings(project: StatProject, strings: TextStrings | None) -> list[st
     return problems
 
 
+def _check_layout(
+    project: StatProject, profile: RomProfile, canonical_image: bytes | None
+) -> list[str]:
+    """Check every authored layout paint against the base image.
+
+    MAP-TILE-PAINT-001. Every authored cell edit is resolved through the same
+    :class:`tools.webfoot.map_paint.MapPainter` a build uses, BEFORE anything is
+    emitted, so an illegal paint is a named validation problem rather than a
+    build that half-applies a project.
+
+    The check is gated on the profile's own identity, because layout painting is
+    a canonical-image capability: an image that is not the profile's image cannot
+    be painted at all, so a profile that declares no layout domain reports no
+    layout problems. That is the same "unsupported, not broken" state
+    `_check_maps` uses for a ROM whose profile declares no map table - and the
+    build refuses the authored edit separately, where it can name the reason.
+    """
+    edits = project.layout.cells()
+    if not edits:
+        return []
+    canonical = packaged_profile()
+    if canonical.identity.sha256 != profile.identity.sha256:
+        return [
+            "project paints a map layout, but this ROM's profile is not the "
+            "canonical layout domain; a build would silently drop every painted cell"
+        ]
+    try:
+        plan_layout_cells(canonical_image, edits, profile=canonical)
+    except MapPaintError as exc:
+        return [f"authored map layout: {exc}"]
+    return []
+
+
 def _check_maps(project: StatProject, maps: Maps | None) -> list[str]:
     """Check every authored map against the loaded table.
 
@@ -806,10 +841,18 @@ def validate_project(
     # Record checks are meaningful only against the right image; running them
     # after an identity failure would bury the real cause under 150 mismatches.
     if not problems:
+        # The canonical image is read once for the domains that have to resolve
+        # an authored address against it, rather than once per domain.
+        canonical_image = (
+            Path(rom_path).read_bytes()
+            if (project.layout.cells() or project.dialogues)
+            else None
+        )
         problems = (
             _check_records(project, tables)
             + _check_strings(project, strings)
             + _check_maps(project, maps)
+            + _check_layout(project, profile, canonical_image)
             + _check_dialogues(project, profile, rom_path)
         )
 
@@ -1006,6 +1049,31 @@ def build_project(
                     reason=f"WORKBENCH-005 palette recolour to rgb({red},{green},{blue})",
                 )
             )
+        base_bytes = image if base_bytes is None else base_bytes
+
+    # MAP-TILE-PAINT-001: authored chunk-cell paints contribute ByteChanges the
+    # same way every other subsystem does. Each painted cell is a four-byte
+    # in-place replacement of a dominant layer's chunk pointer with a chunk that
+    # same layer already uses, planned through the ONE paint authority
+    # (`map_paint.MapPainter`), so it merges into the single plan below where an
+    # overlap with another owner is a hard error rather than a silent
+    # last-writer-wins. A non-canonical profile cannot be painted at all, and
+    # that is refused here rather than silently dropping the authored cells.
+    layout_edits = project.layout.cells()
+    if layout_edits:
+        canonical = packaged_profile()
+        if canonical.identity.sha256 != profile.identity.sha256:
+            raise ProjectValidationError(
+                "project paints a map layout, but this ROM's profile is not the "
+                "canonical layout domain; a build would silently drop every "
+                "painted cell"
+            )
+        image = Path(rom_path).read_bytes()
+        try:
+            changes += plan_layout_cells(image, layout_edits, profile=canonical)
+        except MapPaintError as exc:
+            # One validation family at the build boundary, naming the edit.
+            raise ProjectValidationError(f"authored map layout: {exc}") from exc
         base_bytes = image if base_bytes is None else base_bytes
 
     # ROM-EXPAND-001: compressed dialogue is a normal third allocating build

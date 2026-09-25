@@ -539,6 +539,25 @@ class MapWorkspaceTab(QWidget):
         self._undo_stack.clear()
         self._populate_maps()
 
+    def on_project_mutated(self) -> None:
+        """A project mutation elsewhere: re-read placements, keep the history.
+
+        CQA-05. The placement corpus is project state, so a mutation made in
+        another editor - a Scene NPC added, a dialogue applied, a palette
+        recolour committed - must become visible here. ``_populate_markers``
+        re-reads it and re-selects the placement that was selected, so an
+        unrelated write refreshes the overlays without moving the user.
+
+        The undo stack is deliberately NOT cleared. Its commands are semantic
+        positions on placements the project still holds, so an unrelated write
+        cannot make them wrong. ``on_session_changed`` clears them because there
+        the *base* image, and with it the whole map corpus those positions were
+        read from, has been replaced - a different event with a different
+        consequence, which is exactly why the two are no longer one callback.
+        """
+        self._populate_markers()
+        self._update_controls()
+
     def _populate_maps(self) -> None:
         self._maps.blockSignals(True)
         previous = self._current_map or self._session.selected_map

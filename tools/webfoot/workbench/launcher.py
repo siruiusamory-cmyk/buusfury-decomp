@@ -141,6 +141,18 @@ class LauncherTab(QWidget):
         else:
             self._rom_field.clear()
 
+    def on_project_mutated(self) -> None:
+        """A project mutation: re-arm from the session, as a session change does.
+
+        Recorded explicitly rather than left implicit, because this surface is
+        the one editor-shaped surface that stages no authoring content: the ROM
+        field names a file to launch and the state text describes the session's
+        last build. ``Session.project_mutated()`` has just invalidated that
+        build, so re-reading the session is the whole correct response - there
+        is no staged value here for CQA-05 to preserve.
+        """
+        self.on_session_changed()
+
     def on_session_changed(self) -> None:
         """Re-read session state (e.g. after a build sets last_build)."""
         self._sync_rom_from_session()

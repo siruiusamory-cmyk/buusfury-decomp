@@ -227,6 +227,70 @@ class InspectorTab(QWidget):
         if self._session.selected_result is not None:
             self._refresh_authoring(self._session.selected_result)
 
+    def on_project_mutated(self) -> None:
+        """A project mutation elsewhere: keep text the user typed but did not apply.
+
+        CQA-05. This editor holds exactly one staged value - the replacement the
+        user has typed and not applied - so re-reading the project here would
+        silently discard it. A dirty editor is therefore left as the user typed
+        it: its committed-value labels are refreshed and its validation re-run
+        against the current target, but its text is not replaced. A clean editor
+        is re-read, which is also how this tab's own Apply and Revert come to
+        show their result: both write first and then emit ``projectChanged``
+        with the editor already equal to the committed text.
+        """
+        if self._editor_is_dirty():
+            self._refresh_committed_state()
+            self._on_editor_changed(self._edit.text())
+            return
+        if self._session.selected_result is not None:
+            self._refresh_authoring(self._session.selected_result)
+
+    def _editor_is_dirty(self) -> bool:
+        """Whether the editor holds a value the project does not.
+
+        False whenever there is no editable target, so an unavailable or
+        read-only record is never treated as staged work.
+        """
+        if self._target is None or not self._edit.isEnabled():
+            return False
+        committed = (
+            self._project_replacement
+            if self._project_replacement is not None
+            else self._original
+        )
+        return self._edit.text() != committed
+
+    def _refresh_committed_state(self) -> None:
+        """Re-read the committed replacement for the current target.
+
+        Leaves the editor's own text alone: the staged value belongs to the
+        user. Only the facts *about* the project are updated, so the
+        "current replacement" label and the Revert action cannot go stale while
+        a staged edit is being protected.
+
+        A failure here does NOT call `_set_authoring_unavailable`, because that
+        clears the editor - which would destroy the very staged text this method
+        exists to protect. It reports the reason on the state chip and leaves the
+        editor exactly as typed.
+        """
+        profile = self._session.profile
+        if self._target is None or profile is None or self._session.project_dir is None:
+            return
+        try:
+            replacement = dialogue_sdk.get_dialogue_replacement(
+                self._session.project_dir, profile, self._target
+            )
+        except (dialogue_sdk.DialogueAuthoringError, ProjectError, OSError) as exc:
+            self._authoring_status.set_state(f"Cannot re-read the project: {exc}", "readonly")
+            return
+        self._project_replacement = replacement
+        self._replacement_label.setText(
+            "Current project replacement: "
+            + (replacement if replacement is not None else "none")
+        )
+        self._revert.setEnabled(replacement is not None)
+
     def _set_authoring_unavailable(self, message: str) -> None:
         self._target = None
         self._original = ""

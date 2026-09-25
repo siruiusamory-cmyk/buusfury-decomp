@@ -655,10 +655,32 @@ class GraphicsTab(QWidget):
     # -- session wiring -------------------------------------------------------
 
     def on_session_changed(self) -> None:
-        """Re-populate from the session (ROM open, project change, edit)."""
+        """Re-populate from the session (ROM open; a different image's palette)."""
         self._pixmap_cache.clear()
         self._populate_grid()
         self._populate_palette(clear_pending=True)
+        self._update_status()
+
+    def on_project_mutated(self) -> None:
+        """A project mutation elsewhere: repaint committed colours, keep pending.
+
+        CQA-05. ``_palette_pending`` is authoring intent the user has chosen on
+        the swatches but not applied; an unrelated project write must not
+        discard it, so ``clear_pending`` is left False here. A session change
+        clears it because a different image's palette is not the palette those
+        indices describe, which is a genuinely different event.
+
+        Committed overrides *are* project state and do change, so the decode
+        cache is dropped and the grid, palette and selection are repainted from
+        the new effective colours - the same refresh ``_after_undo_redo``
+        performs, and no more work than the session-change path it replaces.
+        """
+        self._pixmap_cache.clear()
+        selected = self._selected
+        self._populate_grid()  # clears _selected; repaints every thumbnail
+        if selected is not None:
+            self._show_selected(selected)
+        self._populate_palette()
         self._update_status()
 
     def _sprites(self):

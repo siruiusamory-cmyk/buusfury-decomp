@@ -956,6 +956,27 @@ class MapBrowserTab(QWidget):
         # though no image were open.
         self._update_status()
 
+    def on_project_mutated(self) -> None:
+        """A project mutation elsewhere: keep this session's staged layout edits.
+
+        CQA-05. The layout session is built from the open image's own bytes
+        (``MapLayoutEditor(self._session.rom_image)``) and the map records it
+        edits come from those same bytes, so nothing a *project* write changes
+        can invalidate it: ``_editor``, ``_saved``, ``_edit_mode``, ``_target``,
+        ``_slot``, the selected cell and the uncommitted draft all survive an
+        unrelated dialogue Apply, palette Apply, Scene NPC add or placement drag.
+
+        Resetting the session belongs to ``on_session_changed`` alone, because
+        only there is the base image - and with it the map records every pending
+        edit points into - actually replaced. What a project write can still
+        change on screen is bookkeeping *about* those edits: the per-map pending
+        glyphs, the panel's own controls and the mode line. That is what is
+        re-read here, from the live state rather than rebuilt.
+        """
+        self._mark_pending_rows()
+        self._refresh_editor_state()
+        self._update_status()
+
     def _populate_list(self) -> None:
         """Fill the map collection, with a per-map pending-edit glyph.
 

@@ -294,6 +294,18 @@ class SceneTab(QWidget):
         """Re-populate from the session (e.g. after a ROM opens)."""
         self._populate_maps()
 
+    def on_project_mutated(self) -> None:
+        """A project mutation: re-read the placements it can change.
+
+        CQA-05. The maps and placements this editor lists are project state, so
+        an unrelated mutation - a placement dragged in the visual workspace, a
+        dialogue applied - has to become visible here. The one thing the user
+        stages between gestures is the Add NPC form itself (name, position,
+        behaviour, script, trigger); ``_populate_maps`` does not touch those
+        fields, so re-reading the project keeps them exactly as typed.
+        """
+        self._populate_maps()
+
     def select_placement(self, map_id: str, placement_identity: str) -> None:
         """Focus one semantic placement from the visual Map workspace."""
         map_index = next(

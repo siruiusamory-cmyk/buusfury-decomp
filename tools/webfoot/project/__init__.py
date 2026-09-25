@@ -12,8 +12,12 @@ from .format import (
     load_toml,
 )
 from .model import (
+    CHUNK_FILE,
     LAYOUT_FILE,
     PROJECT_FORMAT_VERSION,
+    AuthoredChunk,
+    AuthoredChunkEntry,
+    AuthoredChunks,
     GraphicsOverrides,
     LayoutEdits,
     ProjectError,
@@ -22,6 +26,7 @@ from .model import (
     ProjectValidationError,
     StatProject,
     read_project,
+    write_authored_chunks,
     write_dialogue_replacements,
     write_graphics_overrides,
     write_layout_edits,
@@ -30,8 +35,12 @@ from .model import (
 from .placements import remove_authored_placement
 
 __all__ = [
+    "CHUNK_FILE",
     "LAYOUT_FILE",
     "PROJECT_FORMAT_VERSION",
+    "AuthoredChunk",
+    "AuthoredChunkEntry",
+    "AuthoredChunks",
     "GraphicsOverrides",
     "LayoutEdits",
     "ProjectError",
@@ -44,6 +53,7 @@ __all__ = [
     "load_toml",
     "read_project",
     "remove_authored_placement",
+    "write_authored_chunks",
     "write_dialogue_replacements",
     "write_graphics_overrides",
     "write_layout_edits",

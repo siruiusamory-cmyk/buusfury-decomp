@@ -91,6 +91,35 @@ class ChunkImage:
 
 
 @dataclass(frozen=True, slots=True)
+class ChunkSubstitution:
+    """A pending cell replacement that is a screen-entry plane, not a pointer.
+
+    MAP-CHUNK-AUTHORING-001. A project-authored chunk has no address in the
+    canonical image - a build has not run yet, and choosing the address is the
+    build's job - so the ordinary ``chunk_overrides`` form, which names an address
+    the layer already uses, cannot express it. This carries the authored 32x32
+    plane instead, so a preview draws exactly the entries a build would
+    materialize, through the same stitch and the same renderer the retail layout
+    uses rather than through a second rendering path.
+    """
+
+    entries: tuple[int, ...]
+
+    def __post_init__(self) -> None:
+        if len(self.entries) != mg.CHUNK_ENTRY_COUNT:
+            raise MapBrowserError(
+                f"an authored chunk plane holds {mg.CHUNK_ENTRY_COUNT} entries, "
+                f"not {len(self.entries)}"
+            )
+        for index, value in enumerate(self.entries):
+            if type(value) is not int or not 0 <= value <= 0xFFFF:
+                raise MapBrowserError(
+                    f"authored chunk entry {index} is {value!r}, which is not a "
+                    "16-bit screen entry"
+                )
+
+
+@dataclass(frozen=True, slots=True)
 class MapIndexEntry:
     """One flat row for a map list."""
 
@@ -257,24 +286,27 @@ def map_label(
 
 def _resolve_chunk_overrides(
     records: tuple[mg.LayerRecord, ...],
-    overrides: Mapping[tuple[int, int], int] | None,
-) -> dict[int, tuple[int, ...]]:
+    overrides: Mapping[tuple[int, int], int | "ChunkSubstitution"] | None,
+) -> tuple[dict[int, tuple[int, ...]], dict[int, dict[int, tuple[int, ...]]]]:
     """Apply requested cell replacements to copies of layer pointer windows.
 
-    Keys are ``(layer slot, row-major cell)`` and values are replacement chunk
-    pointers. Every request is re-validated here - the slot must exist, its record
-    must be the accepted dominant form, the cell must be inside that record's own
-    grid, and the pointer must satisfy the shared replacement policy - so a
-    preview can never be driven with a reference the proven writer would refuse.
-    Nothing is written and no ROM byte is touched; the result is a substituted
-    address tuple per slot.
+    Keys are ``(layer slot, row-major cell)``. A value is either a replacement
+    chunk pointer - re-validated here against the shared replacement policy, so a
+    preview can never be driven with a reference the proven writer would refuse -
+    or a :class:`ChunkSubstitution` carrying a project-authored plane, which has
+    no address to validate because a build has not chosen one yet.
+
+    Returns the substituted address windows, plus the authored planes keyed by
+    layer slot and then by cell, which the stitch substitutes for a pointer
+    lookup. Nothing is written and no ROM byte is touched.
     """
     from .map_layout_write import MapLayoutWriteError, validate_chunk_replacement
 
     if not overrides:
-        return {}
+        return {}, {}
     by_slot = {record.slot: record for record in records}
-    resolved: dict[int, dict[int, int]] = {}
+    addresses: dict[int, dict[int, int]] = {}
+    planes: dict[int, dict[int, tuple[int, ...]]] = {}
     for key, replacement in overrides.items():
         if not isinstance(key, tuple) or len(key) != 2:
             raise MapBrowserError("a chunk override key is a (layer slot, cell) pair")
@@ -288,18 +320,25 @@ def _resolve_chunk_overrides(
             )
         if type(cell) is not int or not 0 <= cell < len(record.chunk_addresses):
             raise MapBrowserError(f"chunk cell {cell!r} is outside layer slot {slot}")
+        if isinstance(replacement, ChunkSubstitution):
+            planes.setdefault(slot, {})[cell] = replacement.entries
+            addresses.setdefault(slot, {})[cell] = 0
+            continue
         try:
             validate_chunk_replacement(record.chunk_addresses, replacement)
         except MapLayoutWriteError as exc:
             raise MapBrowserError(str(exc)) from exc
-        resolved.setdefault(slot, {})[cell] = replacement
-    return {
-        slot: tuple(
-            cells.get(index, address)
-            for index, address in enumerate(by_slot[slot].chunk_addresses)
-        )
-        for slot, cells in resolved.items()
-    }
+        addresses.setdefault(slot, {})[cell] = replacement
+    return (
+        {
+            slot: tuple(
+                cells.get(index, address)
+                for index, address in enumerate(by_slot[slot].chunk_addresses)
+            )
+            for slot, cells in addresses.items()
+        },
+        {slot: dict(cells) for slot, cells in planes.items()},
+    )
 
 
 def render_map(
@@ -307,7 +346,7 @@ def render_map(
     map_index: int,
     *,
     profile: RomProfile | None = None,
-    chunk_overrides: Mapping[tuple[int, int], int] | None = None,
+    chunk_overrides: Mapping[tuple[int, int], int | ChunkSubstitution] | None = None,
     char_data: bytes | None = None,
 ) -> MapBrowserResult:
     """Render one map to per-layer indexed pixels, on demand.
@@ -341,7 +380,7 @@ def render_map(
     except _ACCEPTED_ERRORS as exc:
         raise MapBrowserError(f"map:{map_index:04d} could not be read: {exc}") from exc
 
-    overridden = _resolve_chunk_overrides(records, chunk_overrides)
+    overridden, authored_planes = _resolve_chunk_overrides(records, chunk_overrides)
     chunk_cache: dict[int, tuple[int, ...]] = {}
     rendered: list[MapBrowserLayer] = []
     warnings: list[str] = []
@@ -379,7 +418,11 @@ def render_map(
             else:  # dominant
                 width, height = record.chunk_pixels_x, record.chunk_pixels_y
                 grid = mg.stitch_dominant_entries(
-                    reader, record, overridden.get(record.slot), cache=chunk_cache
+                    reader,
+                    record,
+                    overridden.get(record.slot),
+                    cache=chunk_cache,
+                    entries_by_cell=authored_planes.get(record.slot),
                 )
                 pixels, _w, _h = _bg.render_entry_words(
                     char_data,
@@ -492,6 +535,73 @@ def render_chunk_images(
             f"map:{map_index:04d} chunks could not be rendered: {exc}"
         ) from exc
     return tuple(images)
+
+
+def render_chunk_entries(
+    char_data: bytes,
+    entries: object,
+    *,
+    width: int = mg.CHUNK_PIXELS,
+    height: int = mg.CHUNK_PIXELS,
+) -> ChunkImage:
+    """Render a 32x32 screen-entry plane through a map's character block.
+
+    MAP-CHUNK-AUTHORING-001. :func:`render_chunk_images` renders chunks that
+    already exist, by address; this renders a plane the caller holds, which is what
+    a chunk *editor* needs: the author's in-progress plane has no container and no
+    address until a build writes one.
+
+    ``width``/``height`` exist so the same entry vocabulary can be drawn at one
+    tile per pixel as a compact tile picker - the shape a chooser needs when it has
+    to show every entry of a layer's vocabulary at once - rather than only at the
+    full 256x256 an author edits.
+    """
+    if not isinstance(char_data, bytes) or not char_data:
+        raise MapBrowserError("a chunk render requires the map's character block")
+    plane = tuple(entries)
+    if len(plane) != mg.CHUNK_ENTRY_COUNT:
+        raise MapBrowserError(
+            f"a chunk plane holds {mg.CHUNK_ENTRY_COUNT} screen entries, "
+            f"not {len(plane)}"
+        )
+    for index, value in enumerate(plane):
+        if type(value) is not int or not 0 <= value <= 0xFFFF:
+            raise MapBrowserError(
+                f"chunk entry {index} is {value!r}, which is not a 16-bit screen entry"
+            )
+    if type(width) is not int or type(height) is not int or width <= 0 or height <= 0:
+        raise MapBrowserError("a chunk render needs positive pixel dimensions")
+    pixels, _w, _h = _bg.render_entry_words(
+        char_data,
+        plane,
+        map_width_tiles=mg.CHUNK_SIDE_TILES,
+        map_height_tiles=mg.CHUNK_SIDE_TILES,
+        color_256=True,
+    )
+    if width != mg.CHUNK_PIXELS or height != mg.CHUNK_PIXELS:
+        pixels = _scale_nearest(pixels, mg.CHUNK_PIXELS, mg.CHUNK_PIXELS, width, height)
+    return ChunkImage(
+        address=0, width=width, height=height, pixels=pixels
+    )
+
+
+def _scale_nearest(
+    pixels: bytes, src_width: int, src_height: int, dst_width: int, dst_height: int
+) -> bytes:
+    """Nearest-neighbour down/up-scale of one 8bpp index plane.
+
+    Nearest neighbour on purpose: a palette index is not a colour, so blending two
+    of them would invent an index that means a third colour. A preview that has to
+    shrink must drop samples, never average them.
+    """
+    out = bytearray(dst_width * dst_height)
+    for y in range(dst_height):
+        sy = min(src_height - 1, y * src_height // dst_height)
+        row = sy * src_width
+        base = y * dst_width
+        for x in range(dst_width):
+            out[base + x] = pixels[row + min(src_width - 1, x * src_width // dst_width)]
+    return bytes(out)
 
 
 def render_terrain_field(

@@ -58,7 +58,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 import struct
-from typing import Protocol
+from typing import Mapping, Protocol
 
 from ..binary import GBA_ROM_BASE
 from ..profile import MapEntryTableProfile, RomProfile
@@ -137,6 +137,23 @@ CHUNK_DECODED_BYTES = CHUNK_ENTRY_COUNT * CHUNK_ENTRY_BYTES
 
 #: A chunk covers 256x256 pixels.
 CHUNK_PIXELS = CHUNK_SIDE_TILES * TILE_PIXELS
+
+#: The encoded width of the four-byte chunk reference a dominant layer's window
+#: stores per cell. The field is a full little-endian GBA address, so nothing here
+#: masks or truncates it; MAP-CHUNK-AUTHORING-001 established the width by reading
+#: the window, and the addressability that follows from a full u32 is recorded
+#: beside :data:`CHUNK_CONTAINER_KIND`.
+CHUNK_POINTER_BYTES = 4
+
+#: The container kind every canonical dominant chunk uses.
+#:
+#: CONFIRMED by measurement over the canonical image: all 3,745 distinct chunk
+#: bodies reachable from the 1,516 dominant layers are `kind 1`, and every one
+#: declares exactly :data:`CHUNK_DECODED_BYTES`. Kinds 0 (stored) and 2 appear
+#: nowhere in the chunk corpus, which is why an authored chunk is emitted as
+#: kind 1 rather than in the encoder's own default kind - see
+#: :func:`pack_dominant_chunk`.
+CHUNK_CONTAINER_KIND = 1
 
 #: A screen-entry layer's plane has the same shape as a dominant chunk's: 1024
 #: little-endian screen entries = 0x800 decoded bytes = 32x32 tiles.
@@ -887,12 +904,55 @@ def dominant_chunk_words(
     return struct.unpack("<1024H", container.data)
 
 
+def chunk_body_bytes(entries: object) -> bytes:
+    """Encode one dominant chunk's screen-entry plane as its 0x800-byte payload.
+
+    This is the exact inverse of the payload :func:`dominant_chunk_words`
+    decodes: 1,024 little-endian 16-bit screen entries. It validates the shape
+    and every value rather than masking, so a caller cannot hand it a plane that
+    would silently lose bits - a truncated tile ordinal would otherwise render as
+    a plausible but wrong tile instead of refusing.
+
+    What an entry may *hold* is the hardware's own 16 bits; what an author may
+    place is the narrower question the authoring surface answers.
+    """
+    if isinstance(entries, (str, bytes, bytearray)) or not hasattr(entries, "__len__"):
+        raise MapGraphicsError(
+            "a dominant chunk plane must be a sequence of screen entries"
+        )
+    values = tuple(entries)
+    if len(values) != CHUNK_ENTRY_COUNT:
+        raise MapGraphicsError(
+            f"a dominant chunk plane holds {CHUNK_ENTRY_COUNT} screen entries, "
+            f"not {len(values)}"
+        )
+    for index, value in enumerate(values):
+        if type(value) is not int or not 0 <= value <= 0xFFFF:
+            raise MapGraphicsError(
+                f"screen entry {index} is {value!r}, which is not a 16-bit entry"
+            )
+    return struct.pack(f"<{CHUNK_ENTRY_COUNT}H", *values)
+
+
+def pack_dominant_chunk(entries: object) -> bytes:
+    """Encode a screen-entry plane as the packed container a chunk lives in.
+
+    Emitted as :data:`CHUNK_CONTAINER_KIND` - the kind every canonical chunk
+    uses - so an authored chunk is the same *kind of object* the retail engine
+    already reads 3,745 times, and the only genuinely new property of an authored
+    chunk is the address it is placed at. See :func:`webfoot_lz.pack` for why the
+    two packed kinds share one token stream.
+    """
+    return _lz.pack(chunk_body_bytes(entries), kind=CHUNK_CONTAINER_KIND)
+
+
 def stitch_dominant_entries(
     reader: MapGraphicsReader,
     layer: LayerRecord,
     addresses: tuple[int, ...] | None = None,
     *,
     cache: dict[int, tuple[int, ...]] | None = None,
+    entries_by_cell: Mapping[int, tuple[int, ...]] | None = None,
 ) -> tuple[int, ...]:
     """Stitch a dominant layer's chunk grid into one logical entry array.
 
@@ -906,6 +966,13 @@ def stitch_dominant_entries(
     editor's in-memory replacement set - and must stay exactly as long as the grid
     the record states. ``cache`` lets a caller decode a chunk once across calls,
     which is what keeps a repeated preview from re-decoding the same container.
+
+    ``entries_by_cell`` substitutes a whole *plane* for a named cell, keyed by
+    row-major cell index. It exists for the one case a chunk pointer cannot
+    express: a project-authored chunk, which has no address in the canonical
+    image and therefore nothing for ``addresses`` to name. The plane is used
+    verbatim and is checked against the chunk shape, so a preview of authored
+    content goes through this same stitch rather than through a second renderer.
     """
     side = CHUNK_SIDE_TILES
     if addresses is None:
@@ -919,9 +986,23 @@ def stitch_dominant_entries(
             f"layer states a {layer.chunk_x}x{layer.chunk_y} grid "
             f"({layer.chunk_cells} cells) but holds {len(addresses)} pointers"
         )
+    if entries_by_cell:
+        for cell, plane in entries_by_cell.items():
+            if type(cell) is not int or not 0 <= cell < layer.chunk_cells:
+                raise MapGraphicsError(
+                    f"substituted chunk cell {cell!r} is outside this layer's grid"
+                )
+            if len(plane) != side * side:
+                raise MapGraphicsError(
+                    f"substituted chunk cell {cell} holds {len(plane)} entries, "
+                    f"not {side * side}"
+                )
     blanks = (0,) * (side * side)
     chunks: list[tuple[int, ...]] = []
-    for address in addresses:
+    for cell, address in enumerate(addresses):
+        if entries_by_cell and cell in entries_by_cell:
+            chunks.append(entries_by_cell[cell])
+            continue
         if address == 0:
             chunks.append(blanks)
             continue

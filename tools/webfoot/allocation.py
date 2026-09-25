@@ -123,6 +123,9 @@ class AllocationKind(str, Enum):
     #: allocates the bodies and the array separately so the array can carry the
     #: bodies' finished addresses.
     AUTHORED_MAP_EXPANSION = "authored_map_expansion"
+    #: MAP-CHUNK-AUTHORING-001. One project-authored dominant chunk body: the
+    #: packed container a map cell's four-byte reference points at.
+    CHUNK_BODY = "chunk_body"
 
 
 class Addressability(str, Enum):
@@ -144,6 +147,21 @@ class Addressability(str, Enum):
 #: The addressability each kind defaults to, from the Phase A addressability
 #: matrix. Only the compressed-dialogue selector domain is proven above EOF; the
 #: other kinds are canonical-only until a bounded experiment says otherwise.
+#:
+#: MAP-CHUNK-AUTHORING-001 adds one entry, and states its standing precisely
+#: because the roadmap's rule is that *encoding-capable* is not *engine-proven*
+#: and *engine-proven* is not *runtime-proven*. The dominant layer's chunk window
+#: is a full 32-bit little-endian GBA address per cell - measured over all 4,274
+#: cells of the canonical image, nothing masks or truncates it - so the field can
+#: ENCODE an address above canonical EOF; the profile's declared expansion maps
+#: file offset 0x00800000 to 0x08800000 inside the 0x08000000..0x09FFFFFF Game
+#: Pak window. The domain is REQUIRED to use expansion rather than merely
+#: permitted to: the canonical image declares a single 256-byte VERIFIED_FREE
+#: region and a chunk container is at least 0x808 bytes, so no canonical
+#: placement exists and a canonical-only request would fail closed with
+#: `InsufficientSpaceError` every time. Whether the retail engine actually READS
+#: a chunk above EOF is the runtime proof this ticket owns; until that proof
+#: lands, capability must not be advanced on the strength of this constant.
 DEFAULT_ADDRESSABILITY = {
     AllocationKind.PACKED_STREAM: Addressability.EXPANDED_PERMITTED,
     AllocationKind.PLACEMENT_BODY: Addressability.CANONICAL_ONLY,
@@ -151,6 +169,7 @@ DEFAULT_ADDRESSABILITY = {
     AllocationKind.TEXT_STRING: Addressability.CANONICAL_ONLY,
     AllocationKind.RELOCATED_ANCHOR_PAYLOAD: Addressability.CANONICAL_ONLY,
     AllocationKind.AUTHORED_MAP_EXPANSION: Addressability.CANONICAL_ONLY,
+    AllocationKind.CHUNK_BODY: Addressability.EXPANDED_PERMITTED,
 }
 
 

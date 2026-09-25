@@ -25,6 +25,7 @@ from pathlib import Path
 
 from PySide6.QtCore import QRectF, QSize, Qt, Signal
 from PySide6.QtGui import (
+    QAction,
     QBrush,
     QColor,
     QIcon,
@@ -50,6 +51,7 @@ from PySide6.QtWidgets import (
     QGraphicsSimpleTextItem,
     QGraphicsView,
     QHBoxLayout,
+    QInputDialog,
     QLabel,
     QLineEdit,
     QListWidget,
@@ -69,6 +71,16 @@ from PySide6.QtWidgets import (
 )
 
 from tools.webfoot import map_view as mv
+from tools.webfoot.formats.map_graphics import MapGraphicsError
+from tools.webfoot.map_chunk import (
+    ChunkAuthor,
+    ChunkAuthoringError,
+    ChunkTemplate,
+    chunk_identity,
+    read_authored_chunks,
+    set_authored_chunk,
+    set_layout_authored_cells,
+)
 from tools.webfoot.map_layout_edit import (
     LayoutGrid,
     LayoutTarget,
@@ -81,7 +93,7 @@ from tools.webfoot.map_paint import (
     read_layout_edits,
     set_layout_cells,
 )
-from tools.webfoot.project import ProjectError
+from tools.webfoot.project import AuthoredChunk, ProjectError
 from tools.webfoot.write import WriteError
 
 from . import theme
@@ -113,12 +125,29 @@ _CHUNK_ROLE = Qt.ItemDataRole.UserRole + 1
 #: The row's label without its pending-edit glyph, so the glyph can be added and
 #: removed without accumulating dots.
 _BASE_TEXT_ROLE = Qt.ItemDataRole.UserRole + 2
+#: MAP-CHUNK-AUTHORING-001. The authored chunk identity a palette row names, for
+#: the rows that are not canonical chunks. A canonical row leaves it None, so one
+#: role carries "which authored chunk" without a second item class.
+_AUTHORED_ROLE = Qt.ItemDataRole.UserRole + 3
+#: The 16-bit screen entry a chunk editor palette row carries.
+_ENTRY_ROLE = Qt.ItemDataRole.UserRole + 4
 
 #: The two editing tools the map surface offers. A tool is a state, not a mode:
 #: switching tools never changes what is staged, and the tool strip always shows
-#: which one is selected.
+#: which one is selected. The chunk editor offers the same two tools over its
+#: screen-entry plane.
 _TOOL_PAINT = "paint"
 _TOOL_PICK = "pick"
+
+#: MAP-CHUNK-AUTHORING-001. The chunk editor's own geometry. A chunk is a 32x32
+#: plane of 16-bit screen entries, so one editor cell is one screen entry and the
+#: plane is drawn at the format's own 8x8 pixels per tile.
+_CHUNK_SIDE = mv.CHUNK_SIDE_TILES
+_CHUNK_CELL_PIXELS = mv.CHUNK_PIXELS // _CHUNK_SIDE
+#: One screen-entry swatch in the vocabulary palette. 20x20 is small enough that
+#: a layer's whole permitted vocabulary is browsable and large enough that a tile
+#: is recognisable.
+_SWATCH_PIXELS = 20
 
 #: One-line states for a map with nothing editable, keyed by
 #: :attr:`LayoutTarget.read_only_kind`. Read-only is a state, not an error.
@@ -133,8 +162,11 @@ _READ_ONLY_BADGES = {
 #: ``MapLayoutEditError`` (the edit session's own failures),
 #: ``MapLayoutWriteError`` (the writer, an unrelated ``ValueError`` subclass the
 #: session translates in most paths but which a defensive catch must still cover),
-#: ``MapBrowserError`` (the render facade the chooser and preview call) and
-#: ``WriteError`` (the ROM emit path, also unrelated to the other three).
+#: ``MapBrowserError`` (the render facade the chooser and preview call),
+#: ``ChunkAuthoringError`` (MAP-CHUNK-AUTHORING-001's one public authoring
+#: failure: the chunk template, vocabulary, composition and persistence paths all
+#: refuse through it, and it is a sibling of every other family here) and
+#: ``WriteError`` (the ROM emit path, also unrelated to the other four).
 #: The mode-badge role colours. The identity magenta is spent on the editing state
 #: only, so the badge cannot compete with the map; a read-only state is a bare glyph
 #: plus text, which is why it stays legible without hue.
@@ -159,8 +191,32 @@ _EDIT_ERRORS = (
     MapLayoutEditError,
     MapLayoutWriteError,
     MapPaintError,
+    ChunkAuthoringError,
     mv.MapBrowserError,
     WriteError,
+)
+
+#: The families a *project* read can fail with. `ProjectError` is the project
+#: package's own parent (`ProjectLoadError` / `ProjectValidationError`) and
+#: `OSError` covers the file read behind it; neither is under `_EDIT_ERRORS`, so a
+#: slot that re-reads the project has to name them - the documented "a sibling
+#: family needs its own except" rule.
+_PROJECT_READ_ERRORS = (ProjectError, ChunkAuthoringError, OSError)
+
+#: The families a project *write* can fail with: the edit families the SDK
+#: authoring calls raise, plus the project and filesystem families underneath them.
+_EDIT_AND_PROJECT_ERRORS = _EDIT_ERRORS + (ProjectError, OSError)
+
+#: The families the canonical-image chunk facade can fail with. `ChunkAuthor`
+#: reads the map table and the layer records underneath it, so the format layer's
+#: own error is part of the boundary even though every *authoring* refusal is
+#: re-framed as `ChunkAuthoringError`.
+_CHUNK_READ_ERRORS = (
+    ChunkAuthoringError,
+    MapGraphicsError,
+    mv.MapBrowserError,
+    ProjectError,
+    OSError,
 )
 
 
@@ -279,6 +335,214 @@ class PaintCellsCommand(QUndoCommand):
         count = len(self._cells)
         where = f"map:{self._map_index:04d} BG{self._layer_slot}"
         verb = "Revert" if self._tab._naming_revert else "Paint"
+        return f"{verb} {count} cell{'s' if count != 1 else ''} on {where}"
+
+
+class ChunkCellCommand(QUndoCommand):
+    """One undoable edit gesture inside the chunk editor's screen-entry plane.
+
+    MAP-CHUNK-AUTHORING-001. The same shape `PaintCellsCommand` uses, for the
+    same reasons and on the SAME history: the plane is staged in the tab before
+    the command is pushed, so a refusal inside the SDK surfaces in the tab's own
+    guard and nothing is pushed; ``previous`` is each cell's entry from before
+    the stroke, captured at stage time, so one undo restores the distinct entry
+    every cell held rather than one assumed original.
+
+    Its ``id()`` is deliberately NOT the paint command's: two commands merge only
+    when both return the same id, so a chunk-plane stroke can never merge into a
+    map-cell stroke even though both live on one stack.
+    """
+
+    def __init__(self, tab, identity: str, cells, previous, applied):
+        super().__init__()
+        self._tab = tab
+        self._identity = identity
+        #: Row-major plane cells in stroke order, first-appearance only.
+        self._cells = tuple(cells)
+        #: cell -> the screen entry it held before the stroke.
+        self._previous = dict(previous)
+        #: cell -> the screen entry the stroke staged.
+        self._applied = dict(applied)
+        self._brush_key = None
+        self._start_key = None
+        self._end_key = None
+        self._first_run = True
+        self.setText(self._describe())
+
+    # -- merging -------------------------------------------------------------
+
+    def keys(self):
+        return (self._brush_key, self._start_key, self._end_key)
+
+    def set_keys(self, brush_key, start_key, end_key) -> None:
+        self._brush_key = brush_key
+        self._start_key = start_key
+        self._end_key = end_key
+
+    def id(self) -> int:  # noqa: A003 - QUndoCommand's own name
+        """Merge class id, distinct from the map paint command's ``0x4D50``."""
+        return 0x4348  # "CH"
+
+    def mergeWith(self, other: QUndoCommand) -> bool:
+        if not isinstance(other, ChunkCellCommand):
+            return False
+        if self._brush_key is None or other._brush_key != self._brush_key:
+            return False
+        if other._identity != self._identity:
+            return False
+        if not self._cells or not other._cells:
+            return False
+        # Continuity: the second stroke must start where the first ended.
+        if other._start_key != self._end_key:
+            return False
+        # A cell the merged command would visit twice cannot be merged, because
+        # undoing it would have to restore two different earlier entries.
+        if set(other._cells) & set(self._cells):
+            return False
+        self._cells = self._cells + other._cells
+        self._previous.update(other._previous)
+        self._applied.update(other._applied)
+        self._end_key = other._end_key
+        self.setText(self._describe())
+        return True
+
+    # -- QUndoCommand --------------------------------------------------------
+
+    def redo(self) -> None:
+        if self._first_run:
+            # Pushed AFTER the tab staged the stroke; re-applying it here would
+            # make this command's first activation a duplicate edit.
+            self._first_run = False
+            return
+        self._tab._reapply_chunk_cells(self)
+
+    def undo(self) -> None:
+        self._tab._reverse_chunk_cells(self)
+
+    # -- reporting -----------------------------------------------------------
+
+    @property
+    def identity(self) -> str:
+        return self._identity
+
+    @property
+    def cells(self) -> tuple[int, ...]:
+        return self._cells
+
+    @property
+    def previous(self) -> dict[int, int]:
+        return dict(self._previous)
+
+    @property
+    def applied(self) -> dict[int, int]:
+        return dict(self._applied)
+
+    def _describe(self) -> str:
+        count = len(self._cells)
+        verb = "Revert" if self._tab._naming_chunk_revert else "Edit"
+        return (
+            f"{verb} {count} chunk cell{'s' if count != 1 else ''} of "
+            f"{self._identity}"
+        )
+
+
+class AuthoredPlaceCommand(QUndoCommand):
+    """One undoable gesture that paints an authored chunk into map cells.
+
+    MAP-CHUNK-AUTHORING-001. The map layout editor's own path is pointer-based
+    and cannot express a chunk that has no address yet, so an authored placement
+    is staged in the tab's own map (``(map, layer, cell) -> chunk identity``) and
+    this command records the gesture over it. ``previous`` is the identity each
+    cell carried before the stroke - the staged value, else the project's
+    committed placement, else ``None`` for "no authored placement here" - so an
+    undo restores the exact earlier state of each cell rather than clearing it.
+
+    It shares the tab's ONE history with the paint and chunk commands, and merges
+    only with a continuation of the same authored brush, on the same continuity +
+    no-repeat-cell rule.
+    """
+
+    def __init__(self, tab, map_index: int, layer_slot: int, cells, previous, applied):
+        super().__init__()
+        self._tab = tab
+        self._map_index = map_index
+        self._layer_slot = layer_slot
+        self._cells = tuple(cells)
+        #: cell -> the authored identity the cell carried before, or None.
+        self._previous = dict(previous)
+        #: cell -> the authored identity the stroke staged.
+        self._applied = dict(applied)
+        self._brush_key = None
+        self._start_key = None
+        self._end_key = None
+        self._first_run = True
+        self.setText(self._describe())
+
+    def keys(self):
+        return (self._brush_key, self._start_key, self._end_key)
+
+    def set_keys(self, brush_key, start_key, end_key) -> None:
+        self._brush_key = brush_key
+        self._start_key = start_key
+        self._end_key = end_key
+
+    def id(self) -> int:  # noqa: A003 - QUndoCommand's own name
+        """Merge class id, distinct from both the paint and chunk commands."""
+        return 0x4150  # "AP"
+
+    def mergeWith(self, other: QUndoCommand) -> bool:
+        if not isinstance(other, AuthoredPlaceCommand):
+            return False
+        if self._brush_key is None or other._brush_key != self._brush_key:
+            return False
+        if other._layer_slot != self._layer_slot or other._map_index != self._map_index:
+            return False
+        if not self._cells or not other._cells:
+            return False
+        if other._start_key != self._end_key:
+            return False
+        if set(other._cells) & set(self._cells):
+            return False
+        self._cells = self._cells + other._cells
+        self._previous.update(other._previous)
+        self._applied.update(other._applied)
+        self._end_key = other._end_key
+        self.setText(self._describe())
+        return True
+
+    def redo(self) -> None:
+        if self._first_run:
+            self._first_run = False
+            return
+        self._tab._reapply_authored_place(self)
+
+    def undo(self) -> None:
+        self._tab._reverse_authored_place(self)
+
+    @property
+    def map_index(self) -> int:
+        return self._map_index
+
+    @property
+    def layer_slot(self) -> int:
+        return self._layer_slot
+
+    @property
+    def cells(self) -> tuple[int, ...]:
+        return self._cells
+
+    @property
+    def previous(self) -> dict[int, str | None]:
+        return dict(self._previous)
+
+    @property
+    def applied(self) -> dict[int, str]:
+        return dict(self._applied)
+
+    def _describe(self) -> str:
+        count = len(self._cells)
+        where = f"map:{self._map_index:04d} BG{self._layer_slot}"
+        verb = "Revert" if self._tab._naming_revert else "Place"
         return f"{verb} {count} cell{'s' if count != 1 else ''} on {where}"
 
 
@@ -450,6 +714,194 @@ class ChunkGridOverlay(QGraphicsItem):
             cell = self._grid.cell_at(int(event.pos().x()), int(event.pos().y()))
             if cell is not None and cell != self._selected:
                 self._on_cell_clicked(cell)
+        super().mouseMoveEvent(event)
+
+    def mouseReleaseEvent(self, event) -> None:
+        if self._painting and event.button() == Qt.MouseButton.LeftButton:
+            self._painting = False
+            if self._on_stroke_end is not None:
+                self._on_stroke_end()
+            event.accept()
+            return
+        super().mouseReleaseEvent(event)
+
+
+class ChunkPlaneOverlay(QGraphicsItem):
+    """The chunk editor's 32x32 screen-entry grid, drawn over the chunk's pixels.
+
+    MAP-CHUNK-AUTHORING-001. The same contract `ChunkGridOverlay` gives the map:
+    one cell is one screen entry, cells are paint targets, and the overlay owns no
+    editing - it reports which cell the pointer is over on press, on drag and on
+    release, and only when that cell *changed*, so a drag costs one callback per
+    cell the pointer actually enters rather than one per mouse-move event.
+
+    It differs in two ways the plane needs: the cell is one 8x8 tile rather than a
+    256x256 chunk, and a press carries whether Alt was held, which is the
+    eyedropper's second spelling beside the Pick tool.
+    """
+
+    def __init__(
+        self,
+        side: int,
+        on_cell_clicked,
+        *,
+        cell_pixels: int = _CHUNK_CELL_PIXELS,
+        on_stroke_begin=None,
+        on_stroke_end=None,
+        on_cell_hover=None,
+    ) -> None:
+        super().__init__()
+        self._side = side
+        self._cell_pixels = cell_pixels
+        self._on_cell_clicked = on_cell_clicked
+        self._on_stroke_begin = on_stroke_begin
+        self._on_stroke_end = on_stroke_end
+        self._on_cell_hover = on_cell_hover
+        self._selected: int | None = None
+        self._hovered: int | None = None
+        self._edited: frozenset[int] = frozenset()
+        self._painting = False
+        self.setAcceptHoverEvents(True)
+        self.setZValue(1)
+        self.setToolTip(
+            "Each cell is one screen entry (one 8\u00d78 tile) of this chunk. Click "
+            "or drag to paint the selected entry; Alt-click picks the entry under "
+            "the pointer."
+        )
+
+    # -- geometry ------------------------------------------------------------
+
+    @property
+    def side(self) -> int:
+        return self._side
+
+    @property
+    def cell_count(self) -> int:
+        return self._side * self._side
+
+    def contains(self, cell: int) -> bool:
+        return type(cell) is int and 0 <= cell < self.cell_count
+
+    def cell_at(self, x: int, y: int) -> int | None:
+        if x < 0 or y < 0:
+            return None
+        column = x // self._cell_pixels
+        row = y // self._cell_pixels
+        if column >= self._side or row >= self._side:
+            return None
+        return row * self._side + column
+
+    def cell_rect(self, cell: int) -> tuple[int, int, int, int]:
+        column = cell % self._side
+        row = cell // self._side
+        return (
+            column * self._cell_pixels,
+            row * self._cell_pixels,
+            self._cell_pixels,
+            self._cell_pixels,
+        )
+
+    # -- state ---------------------------------------------------------------
+
+    def set_selected(self, cell: int | None) -> None:
+        if cell != self._selected:
+            self._selected = cell
+            self.update()
+
+    def set_edited(self, cells) -> None:
+        edited = frozenset(cells)
+        if edited != self._edited:
+            self._edited = edited
+            self.update()
+
+    # -- QGraphicsItem -------------------------------------------------------
+
+    def boundingRect(self) -> QRectF:
+        extent = self._side * self._cell_pixels
+        return QRectF(0, 0, extent, extent)
+
+    def paint(self, painter: QPainter, option, widget=None) -> None:
+        """Draw the entry grid and its three cell states.
+
+        The plane's own pixels are the content, so the overlay may only tint them:
+        the fills are translucent, and an edited cell carries a corner marker as
+        well as a tint, so "this entry was changed" is never carried by hue alone.
+        """
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing, False)
+        grid_line = theme.qcolor("grid", 90)
+        edited_fill = theme.qcolor("pending", 70)
+        edited_mark = theme.qcolor("pending", 230)
+        hover_fill = theme.qcolor("text_primary", 30)
+        hover_edge = theme.qcolor("text_primary", 180)
+        selected_fill = theme.qcolor("accent", 70)
+        for cell in self._edited:
+            x, y, width, height = self.cell_rect(cell)
+            painter.fillRect(QRectF(x, y, width, height), edited_fill)
+            painter.fillRect(QRectF(x + 1, y + 1, 3, 3), edited_mark)
+        if self._hovered is not None and self._hovered != self._selected:
+            x, y, width, height = self.cell_rect(self._hovered)
+            painter.fillRect(QRectF(x, y, width, height), hover_fill)
+        grid_pen = QPen(grid_line)
+        grid_pen.setCosmetic(True)
+        grid_pen.setWidthF(1.0)
+        painter.setPen(grid_pen)
+        extent = self._side * self._cell_pixels
+        for index in range(1, self._side):
+            offset = index * self._cell_pixels
+            painter.drawLine(offset, 0, offset, extent)
+            painter.drawLine(0, offset, extent, offset)
+        if self._hovered is not None and self._hovered != self._selected:
+            x, y, width, height = self.cell_rect(self._hovered)
+            hover_pen = QPen(hover_edge)
+            hover_pen.setCosmetic(True)
+            hover_pen.setWidthF(2.0)
+            painter.setPen(hover_pen)
+            painter.drawRect(QRectF(x, y, width, height).adjusted(1, 1, -1, -1))
+        if self._selected is not None:
+            x, y, width, height = self.cell_rect(self._selected)
+            selected_pen = QPen(theme.color("accent"))
+            selected_pen.setCosmetic(True)
+            selected_pen.setWidthF(3.0)
+            painter.setPen(selected_pen)
+            painter.fillRect(QRectF(x, y, width, height), selected_fill)
+            painter.drawRect(QRectF(x, y, width, height).adjusted(1, 1, -2, -2))
+
+    def hoverMoveEvent(self, event) -> None:
+        cell = self.cell_at(int(event.pos().x()), int(event.pos().y()))
+        if cell != self._hovered:
+            self._hovered = cell
+            self.update()
+            if self._on_cell_hover is not None:
+                self._on_cell_hover(cell)
+        super().hoverMoveEvent(event)
+
+    def hoverLeaveEvent(self, event) -> None:
+        if self._hovered is not None:
+            self._hovered = None
+            self.update()
+            if self._on_cell_hover is not None:
+                self._on_cell_hover(None)
+        super().hoverLeaveEvent(event)
+
+    def mousePressEvent(self, event) -> None:
+        if event.button() == Qt.MouseButton.LeftButton:
+            cell = self.cell_at(int(event.pos().x()), int(event.pos().y()))
+            if cell is not None:
+                alt = bool(event.modifiers() & Qt.KeyboardModifier.AltModifier)
+                self._painting = True
+                if self._on_stroke_begin is not None:
+                    self._on_stroke_begin()
+                self._on_cell_clicked(cell, alt)
+                event.accept()
+                return
+        super().mousePressEvent(event)
+
+    def mouseMoveEvent(self, event) -> None:
+        """Extend a press-drag over the cells the pointer actually enters."""
+        if self._painting:
+            cell = self.cell_at(int(event.pos().x()), int(event.pos().y()))
+            if cell is not None and cell != self._selected:
+                self._on_cell_clicked(cell, False)
         super().mouseMoveEvent(event)
 
     def mouseReleaseEvent(self, event) -> None:
@@ -671,6 +1123,67 @@ class MapBrowserTab(QWidget):
         #: ``Paint 1 cell on map:0000 BG0`` versus ``Revert 1 cell ...``.
         self._naming_revert = False
 
+        # -- MAP-CHUNK-AUTHORING-001 state, all in-memory ---------------------
+        #
+        # The map paint path is pointer-based - `MapLayoutEditor.set_cell` takes a
+        # 4-byte chunk address and `LayoutSlot.choices` only holds chunks the
+        # layer already uses - so an authored chunk, which has no address until a
+        # build allocates one, cannot travel through it. It is staged here instead
+        # and persisted by its own SDK authority.
+        #: Staged authored placements: ``(map, layer, cell) -> chunk identity``.
+        self._authored_cells: dict[tuple[int, int, int], str] = {}
+        #: The authored chunk the map painter will place, or None for a canonical
+        #: brush. Exactly one of `_brush_authored` and `_brush_pointer` is set.
+        self._brush_authored: str | None = None
+        #: The project's committed authored chunks and placements, re-read from the
+        #: project on a mutation or a session change - never per repaint (CQA-07).
+        self._project_chunks: dict[str, AuthoredChunk] = {}
+        self._authored_committed: dict[tuple[int, int, int], str] = {}
+        #: identity -> the resolved 1,024-entry plane, cached per session. Resolving
+        #: a chunk re-reads its template and re-validates every edit, so doing it
+        #: per repaint would be the CQA-07 regression in a different costume.
+        self._resolved_planes: dict[str, tuple[int, ...]] = {}
+        #: Chunk documents composed but not yet written to the project, keyed by
+        #: identity. A chunk is created in the editor before it is persisted, so
+        #: this is what "the chunk counts as unsaved work" means.
+        self._staged_chunks: dict[str, AuthoredChunk] = {}
+        #: The cached read/compose facade over the open image's canonical bytes.
+        self._chunk_author_cache: ChunkAuthor | None = None
+        self._chunk_author_error: str | None = None
+
+        # -- the chunk editor's own state -------------------------------------
+        #: True while the chunk editor page is the centre surface.
+        self._chunk_editor_open = False
+        self._chunk_identity: str | None = None
+        self._chunk_template: ChunkTemplate | None = None
+        #: The template's own plane: what an authored cell is a delta against.
+        self._chunk_template_plane: tuple[int, ...] = ()
+        #: The plane as the project holds it (the last applied/template state).
+        self._chunk_applied_plane: tuple[int, ...] = ()
+        #: The staged plane: a mutable list, one 16-bit entry per cell.
+        self._chunk_plane: list[int] = []
+        self._chunk_brush: int | None = None
+        self._chunk_selected: int | None = None
+        self._chunk_tool = _TOOL_PAINT
+        self._chunk_hover: str = ""
+        self._chunk_stroke: list[int] = []
+        self._chunk_stroke_previous: dict[int, int] = {}
+        self._chunk_stroke_applied: dict[int, int] = {}
+        self._chunk_stroke_first: int | None = None
+        self._chunk_stroke_last: int | None = None
+        self._chunk_stroke_active = False
+        self._chunk_thumbnails: dict[tuple[int, int, int], QPixmap] = {}
+        #: Set while the chunk editor's revert is building its history entry.
+        self._naming_chunk_revert = False
+        self._suppress_chunk_palette = False
+        #: The template map's assembled character block, taken from the session's
+        #: own cached block when the editor opens, so a plane repaint does not
+        #: re-decode it.
+        self._chunk_char_data: bytes | None = None
+        #: Authored chunks whose plane could not be resolved, so the refusal is
+        #: reported once rather than on every repaint of the palette.
+        self._plane_error_reported: set[str] = set()
+
         self._scene = QGraphicsScene(self)
         self._canvas = MapBrowserCanvas(self._scene)
         self._canvas.set_key_handler(self._on_canvas_key)
@@ -794,6 +1307,33 @@ class MapBrowserTab(QWidget):
         self.addAction(self._undo_action)
         self.addAction(self._redo_action)
 
+        # -- MAP-CHUNK-AUTHORING-001: create a chunk ---------------------------
+        #
+        # ONE action with two spellings, so the button and the menu entry cannot
+        # drift: the inspector's button triggers it, and the tool strip's "Chunk"
+        # menu holds it as the menu action. The template is whatever chunk the
+        # layer's own chooser has selected, which is the surface requirement 2
+        # names - there is no second template picker.
+        self._create_chunk_action = QAction("Create Chunk\u2026", self)
+        self._create_chunk_action.setToolTip(
+            "Create a new 256\u00d7256 chunk from the selected chunk of this layer, "
+            "then arrange its screen entries"
+        )
+        self._create_chunk_action.triggered.connect(self.create_chunk)
+        self._chunk_menu = QMenu(self)
+        self._chunk_menu.addAction(self._create_chunk_action)
+        self._chunk_menu_button = QToolButton()
+        self._chunk_menu_button.setText("Chunk")
+        self._chunk_menu_button.setPopupMode(QToolButton.ToolButtonPopupMode.InstantPopup)
+        self._chunk_menu_button.setMenu(self._chunk_menu)
+        self._chunk_menu_button.setToolButtonStyle(
+            Qt.ToolButtonStyle.ToolButtonTextOnly
+        )
+        self._chunk_menu_button.setToolTip(
+            "Chunk authoring: create a new chunk from this layer's chunks"
+        )
+        self._chunk_menu_button.setAccessibleName("Chunk")
+
 
         # -- the zoom cluster --------------------------------------------------
         #
@@ -836,6 +1376,8 @@ class MapBrowserTab(QWidget):
         self._strip.add(self._pick_tool)
         self._strip.add(self._undo_button)
         self._strip.add(self._redo_button)
+        self._strip.add_separator()
+        self._strip.add(self._chunk_menu_button)
         self._strip.add_separator()
         self._strip.add(self._layers_box)
         self._strip.add_stretch()
@@ -894,6 +1436,205 @@ class MapBrowserTab(QWidget):
         chooser_box_layout.addWidget(self._chooser_header)
         chooser_box_layout.addWidget(chooser_body, 1)
 
+        # -- THE CHUNK EDITOR: a second centre surface, not a second editor tab --
+        #
+        # MAP-CHUNK-AUTHORING-001. A chunk is a 32x32 screen-entry plane, so it
+        # needs its own canvas and its own vocabulary palette; the ticket forbids
+        # a new top-level tab and one surface keeps one undo history, so the
+        # centre column swaps between the map and this page instead. Nothing about
+        # the map editor changes when the page is not current.
+        self._chunk_scene = QGraphicsScene(self)
+        self._chunk_canvas = MapBrowserCanvas(self._chunk_scene)
+        self._chunk_canvas.set_key_handler(self._on_chunk_canvas_key)
+        self._chunk_canvas.set_hover_handler(self._on_chunk_canvas_hover)
+        self._chunk_pixmap_item: QGraphicsPixmapItem | None = None
+        self._chunk_overlay: ChunkPlaneOverlay | None = None
+
+        self._chunk_title = QLabel("\u2014")
+        self._chunk_title.setProperty("dbzRole", "fieldLabel")
+        self._chunk_title.setWordWrap(True)
+        self._chunk_state_label = QLabel("No chunk is open")
+        self._chunk_state_label.setWordWrap(True)
+        self._chunk_hover_label = QLabel("")
+        self._chunk_hover_label.setProperty("dbzRole", "technical")
+        self._chunk_hover_label.setWordWrap(True)
+        #: The entry the next plane click will paint, stated in words. The map's own
+        #: brush readout lives in the inspector, which describes the MAP brush while
+        #: this page is on screen, so the chunk editor states its own.
+        self._chunk_entry_readout = QLabel("\u2014")
+        self._chunk_entry_readout.setProperty("dbzRole", "technical")
+        self._chunk_entry_readout.setWordWrap(True)
+        self._chunk_entry_readout.setMinimumWidth(0)
+        self._chunk_entry_readout.setToolTip("The screen entry the next click will paint")
+
+        # The chunk editor's tool pair is its own selection, so switching to the
+        # pick tool here cannot silently change what a map click does.
+        self._chunk_tool_group = QButtonGroup(self)
+        self._chunk_tool_group.setExclusive(True)
+        self._chunk_paint_tool = QPushButton("Paint")
+        self._chunk_paint_tool.setCheckable(True)
+        self._chunk_paint_tool.setChecked(True)
+        self._chunk_paint_tool.setToolTip(
+            "Paint the selected screen entry: click a cell, or drag along a run of them"
+        )
+        self._chunk_paint_tool.setAccessibleName("Paint entry tool")
+        self._chunk_pick_tool = QPushButton("Pick")
+        self._chunk_pick_tool.setCheckable(True)
+        self._chunk_pick_tool.setToolTip(
+            "Eyedropper: take the entry under the pointer as the brush "
+            "(Alt-click does the same)"
+        )
+        self._chunk_pick_tool.setAccessibleName("Pick entry tool")
+        self._chunk_tool_group.addButton(self._chunk_paint_tool)
+        self._chunk_tool_group.addButton(self._chunk_pick_tool)
+        self._chunk_paint_tool.clicked.connect(lambda: self.set_chunk_tool(_TOOL_PAINT))
+        self._chunk_pick_tool.clicked.connect(lambda: self.set_chunk_tool(_TOOL_PICK))
+
+        # Undo/redo here are the SAME QUndoStack's actions the map strip uses, so
+        # the keyboard shortcut, the map buttons and these buttons can never
+        # disagree about the history.
+        self._chunk_undo_button = QPushButton("Undo")
+        self._chunk_undo_button.setToolTip("Undo the last edit gesture (Ctrl+Z)")
+        self._chunk_undo_button.clicked.connect(self._undo_action.trigger)
+        self._chunk_undo_button.setEnabled(False)
+        self._chunk_redo_button = QPushButton("Redo")
+        self._chunk_redo_button.setToolTip("Redo the last undone gesture (Ctrl+Y)")
+        self._chunk_redo_button.clicked.connect(self._redo_action.trigger)
+        self._chunk_redo_button.setEnabled(False)
+        self._undo_stack.canUndoChanged.connect(self._chunk_undo_button.setEnabled)
+        self._undo_stack.canRedoChanged.connect(self._chunk_redo_button.setEnabled)
+
+        self._chunk_apply_button = QPushButton("Apply chunk")
+        self._chunk_apply_button.setProperty("dbzRole", "primary")
+        self._chunk_apply_button.setToolTip(
+            "Write this chunk into the project's maps/chunks.toml, so a cell can "
+            "reference it and a build can materialize it"
+        )
+        self._chunk_apply_button.clicked.connect(self.apply_chunk)
+        self._chunk_revert_button = QPushButton("Revert edits")
+        self._chunk_revert_button.setToolTip(
+            "Put every edited cell back to the entry the last applied chunk holds "
+            "(this is itself undoable)"
+        )
+        self._chunk_revert_button.clicked.connect(self.revert_chunk_edits)
+        self._chunk_brush_button = QPushButton("Use as paint brush")
+        self._chunk_brush_button.setProperty("dbzRole", "primary")
+        self._chunk_brush_button.setToolTip(
+            "Return to the map with this chunk selected, then click map cells to "
+            "place it"
+        )
+        self._chunk_brush_button.clicked.connect(self.use_chunk_as_brush)
+        self._chunk_back_button = QPushButton("Back to map")
+        self._chunk_back_button.setToolTip(
+            "Leave the chunk editor. An unapplied chunk stays staged, so it still "
+            "counts as unsaved work and still appears in the map's chunk palette."
+        )
+        self._chunk_back_button.clicked.connect(self.close_chunk_editor)
+
+        self._chunk_fit = QPushButton("Fit")
+        self._chunk_fit.setToolTip("Fit the chunk to the window")
+        self._chunk_fit.setAccessibleName("Fit chunk to window")
+        self._chunk_fit.clicked.connect(self._chunk_canvas.fit_map)
+        self._chunk_actual = QPushButton("1:1")
+        self._chunk_actual.setToolTip("Reset to one chunk pixel per screen pixel")
+        self._chunk_actual.setAccessibleName("Reset chunk zoom to 1:1")
+        self._chunk_actual.clicked.connect(self._chunk_canvas.reset_zoom)
+
+        self._chunk_strip = ToolStrip()
+        self._chunk_strip.add(self._chunk_paint_tool)
+        self._chunk_strip.add(self._chunk_pick_tool)
+        self._chunk_strip.add(self._chunk_undo_button)
+        self._chunk_strip.add(self._chunk_redo_button)
+        self._chunk_strip.add_separator()
+        self._chunk_strip.add(self._chunk_back_button)
+        self._chunk_strip.add_stretch()
+        self._chunk_strip.add(self._chunk_fit)
+        self._chunk_strip.add(self._chunk_actual)
+
+        # The screen-entry vocabulary: one swatch per entry the layer's own chunks
+        # already display, which is the whole permitted authoring vocabulary.
+        self._chunk_palette = QListWidget()
+        self._chunk_palette.setViewMode(QListWidget.ViewMode.IconMode)
+        self._chunk_palette.setIconSize(QSize(_SWATCH_PIXELS, _SWATCH_PIXELS))
+        self._chunk_palette.setResizeMode(QListWidget.ResizeMode.Adjust)
+        self._chunk_palette.setMovement(QListWidget.Movement.Static)
+        self._chunk_palette.setFlow(QListWidget.Flow.LeftToRight)
+        self._chunk_palette.setWrapping(True)
+        self._chunk_palette.setUniformItemSizes(True)
+        # The SDK's own entry label ("tile 3 · flip H") is longer than one line, and
+        # two entries that share a tile ordinal differ exactly in that suffix: a
+        # label clipped to "tile 3" would offer two identical-looking swatches with
+        # different artwork, so the text wraps instead.
+        self._chunk_palette.setWordWrap(True)
+        self._chunk_palette.setSelectionMode(QListWidget.SelectionMode.SingleSelection)
+        self._chunk_palette.setAccessibleName("Screen entries this layer already draws")
+        self._chunk_palette.setToolTip(
+            "Every screen entry this layer's own chunks draw. An authored chunk may "
+            "only rearrange graphics the layer already uses, so these are the only "
+            "values an entry can hold."
+        )
+        self._chunk_palette.currentItemChanged.connect(self._on_entry_selected)
+        palette_header = PanelHeader("Screen entries", collapsible=True)
+        palette_header.set_expanded(True)
+        palette_body = QWidget()
+        palette_layout = QVBoxLayout(palette_body)
+        palette_layout.setContentsMargins(
+            theme.SPACE_SM, theme.SPACE_XS, theme.SPACE_SM, theme.SPACE_XS
+        )
+        palette_layout.setSpacing(theme.SPACE_XS)
+        self._chunk_palette_hint = QLabel("No chunk is open.")
+        self._chunk_palette_hint.setProperty("dbzRole", "hint")
+        self._chunk_palette_hint.setWordWrap(True)
+        self._chunk_palette_hint.setMinimumWidth(0)
+        palette_layout.addWidget(self._chunk_palette_hint)
+        palette_layout.addWidget(self._chunk_palette, 1)
+        palette_box = QWidget()
+        palette_box.setObjectName("dbzEntryPalette")
+        palette_box_layout = QVBoxLayout(palette_box)
+        palette_box_layout.setContentsMargins(0, 0, 0, 0)
+        palette_box_layout.setSpacing(0)
+        palette_box_layout.addWidget(palette_header)
+        palette_box_layout.addWidget(palette_body, 1)
+        # Two 94px swatch cells plus the list's own border and scrollbar, so a row
+        # is never clipped at the pane's edge and no partial column can appear.
+        palette_box.setFixedWidth(216)
+
+        chunk_body = QHBoxLayout()
+        chunk_body.setContentsMargins(0, 0, 0, 0)
+        chunk_body.setSpacing(0)
+        chunk_body.addWidget(self._chunk_canvas, 1)
+        chunk_body.addWidget(palette_box)
+
+        chunk_header = QWidget()
+        chunk_header_layout = QVBoxLayout(chunk_header)
+        chunk_header_layout.setContentsMargins(
+            theme.SPACE_SM, theme.SPACE_SM, theme.SPACE_SM, theme.SPACE_XS
+        )
+        chunk_header_layout.setSpacing(theme.SPACE_XS)
+        chunk_header_layout.addWidget(self._chunk_title)
+        chunk_header_layout.addWidget(self._chunk_entry_readout)
+        chunk_header_layout.addWidget(self._chunk_state_label)
+        chunk_header_layout.addWidget(self._chunk_hover_label)
+
+        chunk_actions = QHBoxLayout()
+        chunk_actions.setContentsMargins(
+            theme.SPACE_SM, 0, theme.SPACE_SM, theme.SPACE_SM
+        )
+        chunk_actions.addWidget(self._chunk_apply_button)
+        chunk_actions.addWidget(self._chunk_revert_button)
+        chunk_actions.addWidget(self._chunk_brush_button)
+        chunk_actions.addStretch(1)
+
+        self._chunk_page = QWidget()
+        self._chunk_page.setObjectName("dbzChunkEditor")
+        chunk_page_layout = QVBoxLayout(self._chunk_page)
+        chunk_page_layout.setContentsMargins(0, 0, 0, 0)
+        chunk_page_layout.setSpacing(0)
+        chunk_page_layout.addWidget(self._chunk_strip)
+        chunk_page_layout.addWidget(chunk_header)
+        chunk_page_layout.addLayout(chunk_body, 1)
+        chunk_page_layout.addLayout(chunk_actions)
+
         centre_split = QSplitter(Qt.Orientation.Vertical)
         centre_split.addWidget(canvas_frame)
         centre_split.addWidget(self._chooser_box)
@@ -906,6 +1647,15 @@ class MapBrowserTab(QWidget):
         # comes from its own content in `_size_chunk_chooser`, so nothing clips.
         centre_split.setSizes([700, 150])
         self._centre_split = centre_split
+
+        # The centre column is ONE surface with two pages: the map layout, and the
+        # chunk editor. Swapping pages keeps the surrounding shell, the inspector
+        # pages and the undo history exactly where they were.
+        self._centre_stack = QStackedWidget()
+        self._centre_stack.addWidget(centre_split)
+        self._centre_stack.addWidget(self._chunk_page)
+        self._centre_stack.setCurrentWidget(centre_split)
+        self._chunk_page.setVisible(False)
 
         # -- RIGHT: one inspector pane, contents swapped by mode --------------
         self._mode_badge = QLabel("VIEW MODE \u00b7 read-only")
@@ -961,6 +1711,21 @@ class MapBrowserTab(QWidget):
         )
         self._save_button.clicked.connect(self._on_save_as)
 
+        # MAP-CHUNK-AUTHORING-001. The chunk inspector's own action: the template
+        # is the chunk selected in the palette below the canvas, and this opens the
+        # chunk editor page on a new chunk built from it.
+        self._create_chunk_button = QPushButton("Create Chunk\u2026")
+        self._create_chunk_button.setToolTip(
+            "Create a new 256\u00d7256 chunk from the chunk selected in the palette, "
+            "then arrange its screen entries"
+        )
+        self._create_chunk_button.clicked.connect(self._create_chunk_action.trigger)
+        self._edit_chunk_button = QPushButton("Edit chunk\u2026")
+        self._edit_chunk_button.setToolTip(
+            "Reopen the authored chunk currently selected in the palette"
+        )
+        self._edit_chunk_button.clicked.connect(self.edit_selected_authored_chunk)
+
         editor_form = QFormLayout()
         editor_form.setContentsMargins(theme.SPACE_SM, theme.SPACE_SM, theme.SPACE_SM, 0)
         editor_form.setHorizontalSpacing(theme.SPACE_MD)
@@ -1003,6 +1768,8 @@ class MapBrowserTab(QWidget):
         editor_layout.addLayout(history)
         editor_layout.addLayout(buttons)
         editor_layout.addWidget(self._detail_row)
+        editor_layout.addWidget(self._create_chunk_button)
+        editor_layout.addWidget(self._edit_chunk_button)
         editor_layout.addWidget(self._commit_button)
         editor_layout.addWidget(self._save_button)
         editor_layout.addStretch(1)
@@ -1106,7 +1873,7 @@ class MapBrowserTab(QWidget):
 
         workspace = QSplitter(Qt.Orientation.Horizontal)
         workspace.addWidget(left_scroll)
-        workspace.addWidget(centre_split)
+        workspace.addWidget(self._centre_stack)
         workspace.addWidget(right_scroll)
         workspace.setStretchFactor(0, 0)
         workspace.setStretchFactor(1, 1)
@@ -1221,6 +1988,12 @@ class MapBrowserTab(QWidget):
         self._entries = {}
         self._current = None
         self._clear_layer_checks()
+        # MAP-CHUNK-AUTHORING-001. Everything authored is derived from the image
+        # that is being replaced - the chunk facade reads the canonical bytes, the
+        # cached planes and chunk documents were resolved against them, and an
+        # authored placement names a chunk this project may not even declare on the
+        # other side of the change - so this is the event that clears it (CQA-05).
+        self._clear_authored_state()
         self._reset_editor()
         # A new image is a new base: every history command's captured values came
         # from the image that is being replaced, so the stack cannot survive it.
@@ -1271,6 +2044,13 @@ class MapBrowserTab(QWidget):
         by an undo that rewrote the project) is reflected without discarding the
         staged gesture on top of it. The undo history is untouched - a project
         mutation is not a session change.
+
+        MAP-CHUNK-AUTHORING-001 adds the same rule for the authored half: the
+        project's chunk table and committed authored placements are re-read *only*
+        here and in the reload below, never per repaint or per cell (CQA-07), and
+        nothing the user staged - the staged authored placements, the staged chunk
+        documents and the open chunk editor with its in-progress plane - is
+        touched.
         """
         self.reload_project_layout()
         self._mark_pending_rows()
@@ -1307,6 +2087,16 @@ class MapBrowserTab(QWidget):
         pending: set[int] = set()
         if self._editor is not None:
             pending = {edit.map_index for edit in self._editor.edits()}
+        # An authored placement is a staged map edit like any other, so the map it
+        # belongs to is marked exactly the way a staged pointer paint marks it; a
+        # chunk composed for a map is unsaved work for that map even before it is
+        # placed, so its template's map is marked too.
+        pending |= {key[0] for key in self._authored_cells}
+        staged_chunks = self._pending_chunk_documents()
+        for identity in staged_chunks:
+            template = self._chunk_template_of(staged_chunks[identity])
+            if template is not None:
+                pending.add(template.map_index)
         for row in range(self._list.count()):
             item = self._list.item(row)
             base = item.data(_BASE_TEXT_ROLE)
@@ -1531,6 +2321,12 @@ class MapBrowserTab(QWidget):
         self._selected_cell = None
         self._draft = None
         self._thumbnails = {}
+        # The chunk editor belongs to one map's layer: its plane, its vocabulary and
+        # its character block are all that map's, so a different map closes it and
+        # clears the page. A staged chunk survives in `_staged_chunks` and comes
+        # back from the palette of the map it was composed against.
+        self._close_chunk_editor_page()
+        self._clear_chunk_editor_state()
         self._clear_grid_item()
         self._chooser.blockSignals(True)
         self._chooser.clear()
@@ -1571,6 +2367,7 @@ class MapBrowserTab(QWidget):
         self._edit_toggle.setChecked(False)
         self._edit_toggle.blockSignals(False)
         self._show_edit_groups(False)
+        self._close_chunk_editor_page()
         self._clear_grid_item()
         self._chooser.clear()
         self._chooser_hint.setText("Select a map to see its chunks.")
@@ -1615,18 +2412,28 @@ class MapBrowserTab(QWidget):
         return self._editor
 
     def _project_floor(self, image: bytes) -> dict[tuple[int, int, int], int]:
-        """The committed project paints for the open project, as pointers.
+        """The committed project *pointer* paints for the open project.
 
         Empty when no project is open or the project paints no layout. A project
         that cannot be read is reported and treated as empty here; the surface
         then says so in its status line rather than presenting an unreadable
         project as an unpainted one.
+
+        MAP-CHUNK-AUTHORING-001: a layout cell may now hold an authored chunk
+        *identity* instead of an ordinal. Those cells are deliberately excluded
+        here - the layout session's floor is a pointer map, and an identity has no
+        pointer - and travel through the render overrides instead
+        (:meth:`_committed_authored_overrides`), where a plane can express them.
         """
         if self._session.project_dir is None:
             return {}
         try:
-            ordered = read_layout_edits(self._session.project_dir).cells()
-        except (ProjectError, OSError) as exc:
+            ordered = {
+                key: value
+                for key, value in read_layout_edits(self._session.project_dir).cells().items()
+                if type(value) is int
+            }
+        except _PROJECT_READ_ERRORS as exc:
             self._publish_status(f"Project layout could not be read: {exc}")
             return {}
         if not ordered:
@@ -1684,6 +2491,7 @@ class MapBrowserTab(QWidget):
         self._thumbnails = {}
         self._brush_ordinal = None
         self._brush_pointer = None
+        self._brush_authored = None
         if self._target is None or layer_slot is None:
             self._clear_grid_item()
             self._populate_chooser()
@@ -1730,8 +2538,12 @@ class MapBrowserTab(QWidget):
         if not self._edit_mode or self._slot is None or cell is None:
             self._hover_cell = None
             return
-        chunk = self._slot.ordinal_of(self._working_pointer(self._slot.slot, cell))
-        name = f"Chunk {chunk}" if chunk else "an empty cell"
+        authored = self._authored_value_at(self._current.index, self._slot.slot, cell)
+        if authored is not None:
+            name = self._authored_name(authored)
+        else:
+            chunk = self._slot.ordinal_of(self._working_pointer(self._slot.slot, cell))
+            name = f"Chunk {chunk}" if chunk else "an empty cell"
         self._hover_cell = (
             f"BG{self._slot.slot} cell {cell + 1}/{self._slot.grid.cell_count} · {name}"
         )
@@ -1875,8 +2687,38 @@ class MapBrowserTab(QWidget):
         else:
             self._brush_ordinal = ordinal
             self._brush_pointer = self._lookup_pointer(ordinal)
+        self._brush_authored = None
         self._sync_chooser_selection()
         self._refresh_editor_state()
+
+    def set_authored_brush(self, identity: str) -> bool:
+        """Choose a project-authored chunk as the paint value.
+
+        The authored counterpart of :meth:`set_brush_ordinal`, and the call the
+        chunk editor's "Use as paint brush" makes. False when the identity is not
+        a chunk this session can place, in which case nothing changes.
+        """
+        return self._set_authored_brush(identity)
+
+    def _set_authored_brush(self, identity: str, *, publish: bool = True) -> bool:
+        if identity not in self.placeable_authored(None):
+            if publish:
+                self._publish_status(
+                    f"{identity!r} is not an authored chunk this session can place."
+                )
+            return False
+        self._brush_authored = identity
+        self._brush_pointer = None
+        self._brush_ordinal = None
+        # An authored chunk that has never been placed has no palette row yet, so
+        # the chooser is refilled to show which value is now the brush rather than
+        # leaving the selection on a retail chunk the user is no longer painting.
+        if self._chooser_row_for_authored(identity) is None:
+            self._populate_chooser()
+        self._sync_chooser_selection()
+        if publish:
+            self._refresh_editor_state()
+        return True
 
     def pick_brush_from_cell(self, cell: int) -> None:
         """Eyedropper, as one call: take a cell's chunk as the brush."""
@@ -1890,8 +2732,21 @@ class MapBrowserTab(QWidget):
         self._refresh_editor_state()
 
     def _pick_cell(self, cell: int) -> None:
-        """Take one cell's current chunk as the brush, without editing it."""
+        """Take one cell's current chunk as the brush, without editing it.
+
+        MAP-CHUNK-AUTHORING-001: a cell may hold an authored placement rather than
+        a pointer, and picking it must give the authored chunk back - otherwise the
+        eyedropper would report "no chunk this layer uses" over a cell the author
+        can plainly see holds one.
+        """
         if self._slot is None:
+            return
+        authored = self._authored_value_at(self._current.index, self._slot.slot, cell)
+        if authored is not None:
+            self._set_authored_brush(authored, publish=False)
+            self._publish_status(
+                f"Picked {self._authored_name(authored)} as the paint value."
+            )
             return
         pointer = self._working_pointer(self._slot.slot, cell)
         ordinal = self._slot.ordinal_of(pointer)
@@ -1900,6 +2755,7 @@ class MapBrowserTab(QWidget):
                 "That cell holds no chunk this layer uses, so it is not a brush value."
             )
             return
+        self._brush_authored = None
         self._brush_pointer = pointer
         self._brush_ordinal = ordinal
         self._publish_status(f"Picked Chunk {ordinal} as the paint value.")
@@ -1917,10 +2773,18 @@ class MapBrowserTab(QWidget):
         already painted would otherwise record the stroke's own earlier value as
         that cell's original, and one undo would leave the map mid-stroke rather
         than restoring it.
+
+        MAP-CHUNK-AUTHORING-001: when the brush is an authored chunk the cell is
+        staged in the tab's own authored placement map instead of the pointer-based
+        layout session, because that session cannot express a chunk with no
+        address. Nothing else about the gesture changes: the same stroke record,
+        the same changed-cell rule, the same one-command-per-drag history.
         """
         slot = self._slot
         if slot is None or self._editor is None or self._current is None:
             return False
+        if self._brush_authored is not None:
+            return self._stage_authored_placement(cell)
         pointer = self._brush_pointer
         if pointer is None:
             self._publish_status("Choose a chunk in the palette first.")
@@ -1948,6 +2812,32 @@ class MapBrowserTab(QWidget):
         if cell not in self._stroke:
             self._stroke.append(cell)
             self._stroke_applied[cell] = pointer
+        return True
+
+    def _stage_authored_placement(self, cell: int) -> bool:
+        """Stage the authored brush into one cell; True when the cell changed.
+
+        The staged record is the cell's authored value before the gesture - the
+        staged identity, else the project's committed one, else None - so an undo
+        restores exactly what the author had rather than clearing the cell.
+        """
+        slot = self._slot
+        identity = self._brush_authored
+        if slot is None or identity is None:
+            return False
+        key = (self._current.index, slot.slot, cell)
+        before = self._authored_value_at(*key)
+        if cell not in self._stroke_previous:
+            self._stroke_previous[cell] = before
+        if self._stroke_first is None:
+            self._stroke_first = cell
+        self._stroke_last = cell
+        if before == identity:
+            return False
+        self._authored_cells[key] = identity
+        if cell not in self._stroke:
+            self._stroke.append(cell)
+            self._stroke_applied[cell] = identity
         return True
 
     def _begin_stroke(self) -> None:
@@ -2005,17 +2895,33 @@ class MapBrowserTab(QWidget):
         if not changed or self._slot is None or self._current is None:
             self._refresh_editor_state()
             return
-        command = PaintCellsCommand(
-            self,
-            map_index=self._current.index,
-            layer_slot=self._slot.slot,
-            cells=changed,
-            previous=previous,
-            applied=applied,
-        )
-        # The gesture identity: one brush, and the cells the pointer started and
-        # ended on, so only a continuation of THIS drag merges into this command.
-        command.set_keys(self._brush_pointer, first, last)
+        if self._brush_authored is not None:
+            # An authored brush travels through the tab's own placement map, not
+            # the pointer-based session, so it raises its own command on the same
+            # stack. The merge key is the authored identity, which can never equal
+            # a pointer, so a placement stroke cannot merge into a paint stroke.
+            command = AuthoredPlaceCommand(
+                self,
+                map_index=self._current.index,
+                layer_slot=self._slot.slot,
+                cells=changed,
+                previous=previous,
+                applied=applied,
+            )
+            command.set_keys(self._brush_authored, first, last)
+        else:
+            command = PaintCellsCommand(
+                self,
+                map_index=self._current.index,
+                layer_slot=self._slot.slot,
+                cells=changed,
+                previous=previous,
+                applied=applied,
+            )
+            # The gesture identity: one brush, and the cells the pointer started
+            # and ended on, so only a continuation of THIS drag merges into this
+            # command.
+            command.set_keys(self._brush_pointer, first, last)
         self._undo_stack.push(command)
         self._refresh_editor_state()
 
@@ -2055,6 +2961,27 @@ class MapBrowserTab(QWidget):
             except _EDIT_ERRORS as exc:
                 QMessageBox.warning(self, "Map paint", str(exc))
                 return
+        self._after_paint_change(command.map_index)
+
+    def _reapply_authored_place(self, command: "AuthoredPlaceCommand") -> None:
+        """Re-apply one staged authored placement gesture (redo / merged stroke)."""
+        for cell, identity in command.applied.items():
+            self._authored_cells[(command.map_index, command.layer_slot, cell)] = identity
+        self._after_paint_change(command.map_index)
+
+    def _reverse_authored_place(self, command: "AuthoredPlaceCommand") -> None:
+        """Undo one authored placement gesture, cell by cell.
+
+        A cell whose previous value was itself a staged placement gets it back; a
+        cell that had none has the staged placement removed, so the project's own
+        committed value (authored or retail) is what the cell shows again.
+        """
+        for cell, identity in command.previous.items():
+            key = (command.map_index, command.layer_slot, cell)
+            if identity is None:
+                self._authored_cells.pop(key, None)
+            else:
+                self._authored_cells[key] = identity
         self._after_paint_change(command.map_index)
 
     def _after_paint_change(self, map_index: int) -> None:
@@ -2110,7 +3037,17 @@ class MapBrowserTab(QWidget):
     # -- layout editing: chunk chooser ---------------------------------------
 
     def _populate_chooser(self) -> None:
-        """Fill the chooser with this layer's own existing chunks, as artwork."""
+        """Fill the chooser with the layer's own chunks and this map's authored ones.
+
+        MAP-CHUNK-AUTHORING-001. The canonical rows are unchanged: the chunks the
+        layer already uses, in its own 1-based order. The authored rows follow
+        them, labelled ``Authored: <name>`` so a person can tell a project-authored
+        chunk from a retail one at a glance, and drawn from the *resolved* authored
+        plane - the arrangement the build would materialize - through the same
+        renderer the retail chunks use. Only chunks composed against this map are
+        offered: an authored plane holds tile ordinals, which resolve only through
+        the character block of the map it was composed against.
+        """
         self._chooser.blockSignals(True)
         self._chooser.clear()
         slot = self._slot
@@ -2120,9 +3057,17 @@ class MapBrowserTab(QWidget):
                 "No editable layer is selected on this map."
             )
             return
+        authored = self.placeable_authored(self._current.index)
         self._chooser_hint.setText(
-            f"Chunks BG{slot.slot} already uses ({len(slot.choices)}). "
-            "Only these can replace a cell's chunk."
+            f"Chunks BG{slot.slot} already uses ({len(slot.choices)})"
+            + (f", plus {len(authored)} authored here. " if authored else ". ")
+            + "Pick the one a click should paint; Create Chunk\u2026 starts from the "
+            "selected one."
+        )
+        char_data = (
+            self._editor.character_block(self._current.index)
+            if self._editor is not None
+            else None
         )
         try:
             # The session's cached character block, so a refill does not re-decode
@@ -2132,11 +3077,7 @@ class MapBrowserTab(QWidget):
                 self._session.map_image,
                 self._current.index,
                 slot.choices,
-                char_data=(
-                    self._editor.character_block(self._current.index)
-                    if self._editor is not None
-                    else None
-                ),
+                char_data=char_data,
             )
             for ordinal, image in enumerate(images, start=1):
                 item = QListWidgetItem(QIcon(self._thumbnail(image)), f"Chunk {ordinal}")
@@ -2150,12 +3091,48 @@ class MapBrowserTab(QWidget):
                 self._chooser.addItem(item)
         except _EDIT_ERRORS as exc:
             QMessageBox.warning(self, "Map Browser", str(exc))
-        finally:
             self._chooser.blockSignals(False)
+            return
+        self._add_authored_chooser_rows(authored, char_data)
+        self._chooser.blockSignals(False)
 
-    def _thumbnail(self, image: mv.ChunkImage) -> QPixmap:
-        """A small chunk image on the canvas checkerboard, cached per address."""
-        cached = self._thumbnails.get(image.address)
+    def _add_authored_chooser_rows(self, identities, char_data) -> None:
+        """Append one palette row per authored chunk placeable in this map."""
+        for identity in identities:
+            plane = self._resolved_plane(identity)
+            if plane is None:
+                continue
+            try:
+                image = mv.render_chunk_entries(char_data, plane)
+            except _EDIT_ERRORS as exc:
+                QMessageBox.warning(self, "Map Browser", str(exc))
+                continue
+            name = self._authored_name(identity)
+            item = QListWidgetItem(
+                QIcon(self._thumbnail(image, key=identity)), f"Authored:\n{name}"
+            )
+            # A canonical row carries its pointer here and an authored row leaves
+            # it None, so "which pointer" and "which authored chunk" never have to
+            # be told apart by guessing at the value's type.
+            item.setData(_CHUNK_ROLE, None)
+            item.setData(_AUTHORED_ROLE, identity)
+            item.setTextAlignment(Qt.AlignmentFlag.AlignHCenter)
+            item.setSizeHint(self._chooser_cell)
+            item.setToolTip(
+                f"Authored chunk {name}\n{self._authored_template_text(identity)}"
+            )
+            self._chooser.addItem(item)
+
+    def _thumbnail(self, image: mv.ChunkImage, *, key=None) -> QPixmap:
+        """A small chunk image on the canvas checkerboard, cached per key.
+
+        The key is the chunk's address for a retail chunk and its authored
+        identity for an authored one: an authored plane has no address (its
+        rendered image is reported at address 0), so keying by address alone would
+        make every authored swatch display whichever one was drawn first.
+        """
+        cache_key = image.address if key is None else key
+        cached = self._thumbnails.get(cache_key)
         if cached is not None:
             return cached
         pixmap = self._pixmap_from_indices(image.pixels, image.width, image.height, self._current.palette)
@@ -2170,7 +3147,7 @@ class MapBrowserTab(QWidget):
         painter.fillRect(backed.rect(), _checkerboard())
         painter.drawPixmap(0, 0, scaled)
         painter.end()
-        self._thumbnails[image.address] = backed
+        self._thumbnails[cache_key] = backed
         return backed
 
     def _sync_chooser_selection(self) -> None:
@@ -2180,23 +3157,47 @@ class MapBrowserTab(QWidget):
         value a click will paint (bold, and the one the palette's selection
         follows), ``cell`` is what the selected cell currently holds, and
         ``source`` is the chunk the canonical image stores there - so a painted
-        cell is visibly different from a retail one in the palette itself.
+        cell is visibly different from a retail one in the palette itself. An
+        authored row carries the same two states over authored identities instead
+        of pointers.
         """
         slot = self._slot
         if slot is None or self._current is None:
             return
         working = None
         original = None
+        staged_authored = None
         if self._selected_cell is not None:
             working = self._working_pointer(slot.slot, self._selected_cell)
             original = slot.cells[self._selected_cell].pointer
+            staged_authored = self._authored_value_at(
+                self._current.index, slot.slot, self._selected_cell
+            )
         self._suppress_chooser = True
         for row in range(self._chooser.count()):
             item = self._chooser.item(row)
+            # The same tag vocabulary as the retail-canonical chunks, and the same
+            # rule as `_chunk_name`: a chunk the project authored is
+            # "Authored: <name>" everywhere the surface names it.
             pointer = item.data(_CHUNK_ROLE)
+            authored = item.data(_AUTHORED_ROLE)
+            if authored is not None:
+                tags = []
+                if authored == self._brush_authored:
+                    tags.append("brush")
+                if staged_authored == authored:
+                    tags.append("cell")
+                item.setText(
+                    f"Authored:\n{self._authored_name(authored)}"
+                    + (f"\n{' · '.join(tags)}" if tags else "")
+                )
+                font = item.font()
+                font.setBold(authored == self._brush_authored)
+                item.setFont(font)
+                continue
             ordinal = slot.ordinal_of(pointer) or row + 1
             tags = []
-            if pointer == self._brush_pointer:
+            if self._brush_authored is None and pointer == self._brush_pointer:
                 tags.append("brush")
             if working is not None and pointer == working:
                 tags.append("cell")
@@ -2204,17 +3205,31 @@ class MapBrowserTab(QWidget):
                 tags.append("source")
             item.setText(f"Chunk {ordinal}" + (f"\n{' · '.join(tags)}" if tags else ""))
             font = item.font()
-            font.setBold(pointer == self._brush_pointer)
+            font.setBold(self._brush_authored is None and pointer == self._brush_pointer)
             item.setFont(font)
         # The palette's own selection follows the brush, so the visible selection
         # and the value a click paints are the same fact.
-        row = None if self._brush_pointer is None else self._chooser_row_for(self._brush_pointer)
+        if self._brush_authored is not None:
+            row = self._chooser_row_for_authored(self._brush_authored)
+        else:
+            row = (
+                None
+                if self._brush_pointer is None
+                else self._chooser_row_for(self._brush_pointer)
+            )
         self._chooser.setCurrentRow(-1 if row is None else row)
         self._suppress_chooser = False
 
     def _chooser_row_for(self, pointer: int) -> int | None:
         for row in range(self._chooser.count()):
-            if self._chooser.item(row).data(_CHUNK_ROLE) == pointer:
+            item = self._chooser.item(row)
+            if item.data(_AUTHORED_ROLE) is None and item.data(_CHUNK_ROLE) == pointer:
+                return row
+        return None
+
+    def _chooser_row_for_authored(self, identity: str) -> int | None:
+        for row in range(self._chooser.count()):
+            if self._chooser.item(row).data(_AUTHORED_ROLE) == identity:
                 return row
         return None
 
@@ -2238,10 +3253,24 @@ class MapBrowserTab(QWidget):
         """
         if self._suppress_chooser or current is None or self._slot is None:
             return
+        identity = current.data(_AUTHORED_ROLE)
+        if identity is not None:
+            if identity == self._brush_authored:
+                return
+            self._set_authored_brush(identity, publish=False)
+            self._publish_status(
+                f"{self._brush_label()} is the paint value; click or drag cells to "
+                "place it."
+            )
+            self._refresh_editor_state()
+            return
         pointer = current.data(_CHUNK_ROLE)
         ordinal = self._slot.ordinal_of(pointer)
-        if ordinal is None or pointer == self._brush_pointer:
+        if ordinal is None:
             return
+        if pointer == self._brush_pointer and self._brush_authored is None:
+            return
+        self._brush_authored = None
         self._brush_pointer = pointer
         self._brush_ordinal = ordinal
         self._publish_status(
@@ -2314,6 +3343,20 @@ class MapBrowserTab(QWidget):
             )
         return batch
 
+    def _staged_authored_placements(self) -> dict[tuple[int, int, int], str]:
+        """Every staged authored placement that would actually change the project.
+
+        A cell the project already authors with this same chunk is not a change
+        and is left out, exactly as the ordinal batch leaves out a cell whose
+        staged value the project already holds: re-writing it would make a no-op
+        apply rewrite an identical document.
+        """
+        return {
+            key: identity
+            for key, identity in self._authored_cells.items()
+            if self._authored_committed.get(key) != identity
+        }
+
     def apply_to_project(self) -> bool:
         """Commit every staged paint into the project, then re-read it back.
 
@@ -2323,6 +3366,24 @@ class MapBrowserTab(QWidget):
         WHOLE batch against the canonical image before writing anything. The
         session then re-reads the project so what is on screen is what is on
         disk, and reports whether project source actually changed.
+
+        MAP-CHUNK-AUTHORING-001 adds two more writes to the same gesture, and the
+        ORDER is load-bearing:
+
+        1. every staged chunk body is written first, through
+           :func:`tools.webfoot.map_chunk.set_authored_chunk`. A layout cell that
+           names an authored chunk is only a valid project once the chunk document
+           declares it (`read_project` refuses the pair otherwise), so the bodies
+           have to land before anything references them;
+        2. the staged canonical ordinals, through ``set_layout_cells`` - unchanged
+           for that path, and it also clears an ordinal's cell of any committed
+           authored identity, because the cell now holds an ordinal;
+        3. the staged authored placements last, through
+           :func:`tools.webfoot.map_chunk.set_layout_authored_cells`, so the two
+           documents cannot fight over a cell.
+
+        It stays ONE project write per document and one `projectChanged`, and the
+        history is cleared only after everything succeeded.
         """
         if self._editor is None or self._session.map_image is None:
             return False
@@ -2337,56 +3398,111 @@ class MapBrowserTab(QWidget):
         except _EDIT_ERRORS as exc:
             QMessageBox.warning(self, "Map paint", str(exc))
             return False
-        if not batch:
+        placements = self._staged_authored_placements()
+        chunks = self._pending_chunk_documents()
+        if not batch and not placements and not chunks:
             self._publish_status("There is no staged paint to apply.")
             return False
         try:
-            changed = set_layout_cells(
-                self._session.project_dir,
-                self._session.profile,
-                self._session.map_image,
-                batch,
-            )
-        except _EDIT_ERRORS as exc:
+            changed = False
+            for identity in sorted(chunks):
+                if set_authored_chunk(
+                    self._session.project_dir,
+                    self._session.map_image,
+                    chunks[identity],
+                    profile=self._session.profile,
+                ):
+                    changed = True
+            if batch:
+                if set_layout_cells(
+                    self._session.project_dir,
+                    self._session.profile,
+                    self._session.map_image,
+                    batch,
+                ):
+                    changed = True
+            if placements:
+                if set_layout_authored_cells(
+                    self._session.project_dir,
+                    self._session.map_image,
+                    placements,
+                    profile=self._session.profile,
+                ):
+                    changed = True
+        except _EDIT_AND_PROJECT_ERRORS as exc:
             QMessageBox.warning(self, "Map paint", str(exc))
             return False
-        # Re-read the project so the session's floor is what was just written.
+        # Re-read the project so the session's floor, its chunk table and its
+        # authored placements are what was just written.
+        self._staged_chunks.clear()
+        self._chunk_applied_plane = tuple(self._chunk_plane)
         self.reload_project_layout()
+        # A placement the project now holds unchanged is no longer staged work: the
+        # same rule the ordinal batch uses for a cell whose value the project
+        # already had, so the pending count and the pending glyphs go clean without
+        # touching a placement a write did not land.
+        self._authored_cells = self._staged_authored_placements()
         self._undo_stack.clear()
         self._draft = None
         if changed:
-            self._publish_status(
-                f"Applied {len(batch)} painted cell(s) to the project. "
+            parts = []
+            if chunks:
+                parts.append(f"{len(chunks)} authored chunk(s)")
+            if batch:
+                parts.append(f"{len(batch)} painted cell(s)")
+            if placements:
+                parts.append(f"{len(placements)} authored placement(s)")
+            message = (
+                f"Applied {' and '.join(parts)} to the project. "
                 "Validate and build to run them."
             )
-            self.projectChanged.emit()
         else:
-            self._publish_status("The project already held exactly this layout.")
+            message = "The project already held exactly this layout."
+        self._populate_chooser()
         self._sync_chooser_selection()
         self._refresh_preview()
         self._refresh_editor_state()
+        # The confirmation is the LAST word on the status line: the refreshes above
+        # each restate the working state, and the author's answer to "what did my
+        # Apply do" is what the line has to leave behind.
+        self._publish_status(message)
+        if changed:
+            self.projectChanged.emit()
         return changed
 
     def reload_project_layout(self) -> None:
-        """Re-read the committed layout from the project into the session's floor.
+        """Re-read the committed project into the session's floor and this tab.
 
         The one place a project change reaches the layout session. It does not
         rebuild the session (which would discard staged work, the CQA-05
         regression) and it does not touch the base image; the floor is simply
         replaced and the writer re-derived from it.
+
+        MAP-CHUNK-AUTHORING-001: the authored facts - the project's chunk table
+        and its committed authored placements - are re-read here too, once per
+        call rather than once per cell or per repaint (CQA-07). The identities the
+        session's pointer floor deliberately cannot carry travel into the preview
+        as resolved planes instead.
         """
+        self._reload_project_authored()
         if self._editor is None or self._session.map_image is None:
             return
         floor: dict[tuple[int, int, int], int] = {}
         if self._session.project_dir is not None:
             try:
                 authored = read_layout_edits(self._session.project_dir)
-                ordered = authored.cells()
+                # Only the ordinal form belongs in a pointer floor; a cell holding
+                # an authored identity is rendered through a plane override.
+                ordered = {
+                    key: value
+                    for key, value in authored.cells().items()
+                    if type(value) is int
+                }
                 if ordered:
                     from tools.webfoot.map_paint import MapPainter
 
                     floor = MapPainter(self._session.map_image).pointer_edits(ordered)
-            except (ProjectError, MapPaintError, OSError) as exc:
+            except _PROJECT_READ_ERRORS + (MapPaintError,) as exc:
                 # An unreadable project is reported where the user can see it and
                 # leaves the session's staged work alone; it does not silently
                 # present an unpainted layout as if the project were empty.
@@ -2450,10 +3566,21 @@ class MapBrowserTab(QWidget):
         that has not been applied, not the authored layout. The history is cleared
         with it, because every command in it describes a staged value that no
         longer exists.
+
+        MAP-CHUNK-AUTHORING-001: staged work now includes the authored placements
+        and the chunk documents composed but not yet written, so this discards
+        those too - an author who says "discard pending" does not expect a staged
+        chunk to survive it.
         """
         if self._editor is None:
             return
         dropped = self._editor.reset()
+        dropped_authored = len(self._authored_cells)
+        self._authored_cells = {}
+        dropped_chunks = len(self._staged_chunks)
+        self._staged_chunks = {}
+        self._resolved_planes = {}
+        self._close_chunk_editor_page()
         self._undo_stack.clear()
         self._draft = None
         self._stroke = []
@@ -2462,37 +3589,108 @@ class MapBrowserTab(QWidget):
         self._sync_chooser_selection()
         self._refresh_preview()
         self._refresh_editor_state()
-        if dropped:
+        if dropped or dropped_authored or dropped_chunks:
+            extra = ""
+            if dropped_authored:
+                extra += f" and {dropped_authored} authored placement(s)"
+            if dropped_chunks:
+                extra += f" and {dropped_chunks} unapplied chunk(s)"
             self._publish_status(
-                f"Discarded {dropped} staged paint(s); the preview shows what the "
-                "project holds."
+                f"Discarded {dropped} staged paint(s){extra}; the preview shows what "
+                "the project holds."
             )
 
-    def _preview_overrides(self) -> dict[tuple[int, int], int]:
+    def _committed_authored_overrides(self, map_index: int) -> dict:
+        """The project's committed authored placements for one map, as planes.
+
+        Built from the cached project facts and the cached resolved planes, so a
+        repaint costs a dict walk and no project or template read (CQA-07).
+        """
+        overrides: dict[tuple[int, int], mv.ChunkSubstitution] = {}
+        for (cell_map, layer_slot, cell), identity in self._authored_committed.items():
+            if cell_map != map_index:
+                continue
+            plane = self._resolved_plane(identity)
+            if plane is None:
+                continue
+            overrides[(layer_slot, cell)] = mv.ChunkSubstitution(plane)
+        return overrides
+
+    def _preview_overrides(self) -> dict[tuple[int, int], int | mv.ChunkSubstitution]:
+        """The cell substitutions this preview must apply, in precedence order.
+
+        Three layers, as the layout session's own ``overrides`` documents them,
+        plus the authored planes a pointer cannot express:
+
+        1. the project's committed authored placements, as :class:`ChunkSubstitution`
+           planes - the reason an authored cell still renders after a project
+           reload, when the cell's canonical pointer names the template rather than
+           the authored body;
+        2. the session's committed project paints and staged edits, as pointers -
+           a canonical paint over an authored cell therefore replaces the authored
+           plane, which is exactly what the ordinal write does on disk;
+        3. the tab's staged authored placements, as planes, which is the value a
+           click has already put on screen.
+
+        Nothing here reads the project, and the resolved planes are cached per
+        identity, so this is cheap enough to run on every repaint.
+        """
         if self._editor is None or self._current is None:
             return {}
+        index = self._current.index
         try:
-            return self._editor.overrides(self._current.index, self._draft)
+            overrides: dict[tuple[int, int], int | mv.ChunkSubstitution] = dict(
+                self._committed_authored_overrides(index)
+            )
+            overrides.update(self._editor.overrides(index, self._draft))
         except _EDIT_ERRORS as exc:
             QMessageBox.warning(self, "Layout edit", str(exc))
             self._draft = None
             return {}
+        for (cell_map, layer_slot, cell), identity in self._authored_cells.items():
+            if cell_map != index:
+                continue
+            plane = self._resolved_plane(identity)
+            if plane is None:
+                continue
+            overrides[(layer_slot, cell)] = mv.ChunkSubstitution(plane)
+        return overrides
 
     def _refresh_preview(self) -> None:
-        """Re-render the map with the pending edits applied, in memory only."""
+        """Re-render the map with the pending edits applied, in memory only.
+
+        The map is re-rendered through the layout session's own preview while the
+        substitutions are all pointers, which is the accepted path and keeps the
+        character block decoded once per session. An authored plane is not a
+        pointer, so that case goes through :func:`tools.webfoot.map_view.render_map`
+        directly - the same facade, the same character block, the same stitch -
+        with the merged substitution set.
+        """
         if self._editor is None or self._current is None:
             return
         index = self._current.index
-        if not self._preview_overrides():
+        overrides = self._preview_overrides()
+        if not overrides:
             cached = self._render_cache.get(index)
             if cached is not None:
                 self._current = cached
             self._show_composite()
             return
+        authored = any(
+            isinstance(value, mv.ChunkSubstitution) for value in overrides.values()
+        )
         self._status.setText(f"Updating the map:{index:04d} preview…")
         QApplication.setOverrideCursor(Qt.CursorShape.WaitCursor)
         try:
-            self._current = self._editor.preview(index, self._draft)
+            if authored:
+                self._current = mv.render_map(
+                    self._session.map_image,
+                    index,
+                    chunk_overrides=overrides,
+                    char_data=self._editor.character_block(index),
+                )
+            else:
+                self._current = self._editor.preview(index, self._draft)
         except _EDIT_ERRORS as exc:
             QMessageBox.warning(self, "Layout edit", str(exc))
         finally:
@@ -2508,8 +3706,17 @@ class MapBrowserTab(QWidget):
         target = self._target
         slot = self._slot
         edits = self._editor.edits_for(result.index) if (self._editor and result) else ()
+        staged_cells = {edit.cell for edit in edits if slot is not None and edit.layer_slot == slot.slot}
+        if editing and slot is not None and result is not None:
+            # A staged authored placement is a staged map edit, so the cell carries
+            # the same "something is pending here" mark a staged paint does.
+            staged_cells |= {
+                cell
+                for (cell_map, layer_slot, cell) in self._authored_cells
+                if cell_map == result.index and layer_slot == slot.slot
+            }
         if editing and slot is not None:
-            self._grid_item.set_edited({edit.cell for edit in edits if edit.layer_slot == slot.slot})
+            self._grid_item.set_edited(staged_cells)
         elif self._grid_item is not None:
             self._grid_item.set_edited(())
 
@@ -2538,7 +3745,7 @@ class MapBrowserTab(QWidget):
             self._set_layer_row_visible(False)
         else:
             tool = "Paint" if self._tool == _TOOL_PAINT else "Pick"
-            brush = self._chunk_name(self._brush_ordinal)
+            brush = self._brush_label()
             self._set_mode_badge(
                 f"EDIT LAYOUT \u00b7 {tool} tool \u00b7 {brush} \u00b7 click or drag a "
                 "256\u00d7256 cell",
@@ -2553,39 +3760,68 @@ class MapBrowserTab(QWidget):
                 f"column {cell.column}, row {cell.row} · cell {cell.cell + 1} of "
                 f"{slot.grid.cell_count}"
             )
-            working = self._working_pointer(slot.slot, cell.cell)
-            ordinal = slot.ordinal_of(working)
-            used = len(slot.cells_using(working))
-            self._chunk_label.setText(
-                f"{self._chunk_name(ordinal)} · used by {used} cell(s) of BG{slot.slot}"
+            staged_authored = (
+                self._authored_value_at(result.index, slot.slot, cell.cell)
+                if result is not None
+                else None
             )
-            source = slot.ordinal_of(cell.pointer)
-            painted = self._editor.committed_pointer(
-                result.index, slot.slot, cell.cell
-            ) != cell.pointer if (self._editor and result) else False
-            self._detail.setText(
-                f"source ROM holds {self._chunk_name(source)}\n"
-                + ("project paints this cell\n" if painted else "")
-                + f"pointer {working:#010x}\n"
-                f"field 0x{cell.offset:08X} (4 bytes, in place)"
-            )
+            if staged_authored is not None:
+                # The cell holds an authored chunk, so the pointer readout below it
+                # would describe the template the cell no longer shows. What the
+                # surface states instead is the authored identity and its body,
+                # which is what a build will materialize there.
+                self._chunk_label.setText(
+                    f"{self._authored_name(staged_authored)} · authored chunk, "
+                    f"placed in BG{slot.slot}"
+                )
+                self._detail.setText(
+                    f"source ROM holds {self._chunk_name(slot.ordinal_of(cell.pointer))}\n"
+                    "project authors this cell\n"
+                    f"chunk {staged_authored}\n"
+                    f"field 0x{cell.offset:08X} (4 bytes, in place)"
+                )
+            else:
+                working = self._working_pointer(slot.slot, cell.cell)
+                ordinal = slot.ordinal_of(working)
+                used = len(slot.cells_using(working))
+                self._chunk_label.setText(
+                    f"{self._chunk_name(ordinal)} · used by {used} cell(s) of BG{slot.slot}"
+                )
+                source = slot.ordinal_of(cell.pointer)
+                painted = self._editor.committed_pointer(
+                    result.index, slot.slot, cell.cell
+                ) != cell.pointer if (self._editor and result) else False
+                self._detail.setText(
+                    f"source ROM holds {self._chunk_name(source)}\n"
+                    + ("project paints this cell\n" if painted else "")
+                    + f"pointer {working:#010x}\n"
+                    f"field 0x{cell.offset:08X} (4 bytes, in place)"
+                )
         else:
             # No cell picked yet: say what to do, rather than three dash rows.
             self._cell_label.setText("No cell selected")
             self._chunk_label.setText("")
             self._detail.setText("")
 
+        # The change summary counts BOTH kinds of staged map edit and the chunk
+        # documents waiting to be written, because the shell's window title reads
+        # the same number: one authority on "is there unsaved work".
         unsaved = self._unsaved_count()
         committed = self._editor.floor_cell_count if self._editor is not None else 0
-        if not edits and not committed:
+        authored_committed = len(
+            [key for key in self._authored_committed if result is not None and key[0] == result.index]
+        )
+        if not edits and not committed and self.unsaved_edit_count() == 0:
             self._set_change_label("No layout changes", "neutral")
         elif unsaved:
-            self._set_change_label(
-                f"{unsaved} staged paint(s) \u00b7 {committed} in the project", "pending"
-            )
+            parts = [f"{unsaved} staged {self._staged_noun()}(s)"]
+            if committed or authored_committed:
+                parts.append(f"{committed + authored_committed} in the project")
+            self._set_change_label(" \u00b7 ".join(parts), "pending")
         else:
             self._set_change_label(
-                f"{committed} painted cell(s) in the project", "saved"
+                f"{committed + authored_committed} authored cell(s) in the project",
+                "saved",
             )
 
         self._apply_button.setEnabled(editing and slot is not None)
@@ -2599,15 +3835,23 @@ class MapBrowserTab(QWidget):
             and slot is not None
             and self._selected_cell is not None
             and (
-                self._working_pointer(slot.slot, self._selected_cell)
-                != self._editor.committed_pointer(index, slot.slot, self._selected_cell)
-                if self._editor is not None
-                else False
+                self._authored_cells.get((index, slot.slot, self._selected_cell))
+                is not None
+                or (
+                    self._working_pointer(slot.slot, self._selected_cell)
+                    != self._editor.committed_pointer(index, slot.slot, self._selected_cell)
+                    if self._editor is not None
+                    else False
+                )
             )
         )
-        self._reset_button.setEnabled(editing and bool(edits))
+        # A staged authored placement or an unapplied chunk is staged work, so the
+        # reset and commit buttons answer to them exactly as they do to a paint.
+        pending_chunks = bool(self._pending_chunk_documents())
+        staged_any = bool(edits) or bool(self._authored_cells) or pending_chunks
+        self._reset_button.setEnabled(editing and staged_any)
         self._commit_button.setEnabled(
-            editing and self._editor is not None and bool(edits)
+            editing and self._editor is not None and staged_any
             and self._session.project_dir is not None
         )
         self._commit_button.setToolTip(
@@ -2623,6 +3867,25 @@ class MapBrowserTab(QWidget):
         )
         self._layer_combo.setEnabled(editing and self._layer_combo.count() > 0)
         self._chooser.setEnabled(editing and slot is not None)
+        # The chunk-authoring actions need an editable layer AND an image whose
+        # chunks the SDK can read; `chunk_author()` answers once per session and
+        # records its refusal, so this never becomes a per-refresh read.
+        author_ready = bool(editing and slot is not None and self.chunk_author() is not None)
+        self._create_chunk_button.setEnabled(author_ready)
+        self._create_chunk_button.setToolTip(
+            "Create a new 256\u00d7256 chunk from the chunk selected in the palette, "
+            "then arrange its screen entries"
+            if author_ready
+            else self._chunk_author_error
+            or "Turn Edit Layout on and pick a paintable layer first."
+        )
+        self._edit_chunk_button.setEnabled(author_ready and self._brush_authored is not None)
+        self._edit_chunk_button.setToolTip(
+            "Reopen the authored chunk currently selected in the palette"
+            if self._brush_authored is not None
+            else "Select an authored chunk in the palette to revise it."
+        )
+        self._create_chunk_action.setEnabled(author_ready)
         self._paint_tool.setEnabled(editing and slot is not None)
         self._pick_tool.setEnabled(editing and slot is not None)
         self._mark_pending_rows()
@@ -2736,15 +3999,19 @@ class MapBrowserTab(QWidget):
                 parts.append("no paintable layer on this map")
             elif self._editor is not None:
                 committed = self._editor.floor_cell_count
+                committed += len(
+                    [key for key in self._authored_committed if key[0] == result.index]
+                )
                 unsaved = self._unsaved_count()
                 if unsaved:
-                    parts.append(f"{unsaved} staged paint(s) to apply")
+                    parts.append(
+                        f"{unsaved} staged {self._staged_noun()}(s) to apply"
+                    )
                 elif committed:
-                    parts.append(f"{committed} painted cell(s) in the project")
+                    parts.append(f"{committed} authored cell(s) in the project")
                 else:
                     parts.append("nothing painted yet")
-                brush = self._chunk_name(self._brush_ordinal)
-                parts.append(f"brush {brush}")
+                parts.append(f"brush {self._brush_label()}")
         else:
             parts.append("read-only")
         if self._hover_text:
@@ -2754,15 +4021,53 @@ class MapBrowserTab(QWidget):
         self._publish_status("  \u00b7  ".join(parts))
 
     def _unsaved_count(self) -> int:
-        """Pending changes that no Save As has written yet."""
-        if self._editor is None:
-            return 0
-        return sum(
-            1
-            for edit in self._editor.edits()
-            if self._saved.get((edit.map_index, edit.layer_slot, edit.cell))
-            != edit.replacement
+        """Pending changes that no Save As or project apply has written yet.
+
+        MAP-CHUNK-AUTHORING-001 extends the count by exactly the two forms of
+        unpublished chunk work: an authored placement the project does not already
+        hold, and a chunk document composed but not yet written. Both are work the
+        user has done and would lose, so a shell that showed only painted cells in
+        its title would understate the unsaved state.
+        """
+        painted = 0
+        if self._editor is not None:
+            painted = sum(
+                1
+                for edit in self._editor.edits()
+                if self._saved.get((edit.map_index, edit.layer_slot, edit.cell))
+                != edit.replacement
+            )
+        return painted + len(self._staged_authored_placements()) + len(
+            self._pending_chunk_documents()
         )
+
+    def _staged_noun(self) -> str:
+        """What to call the staged work: a paint when that is all there is.
+
+        The authored half is real work but not a *paint* - a chunk body and a
+        placement are not cell paints - so the wording only widens when authored
+        work is actually staged, and a surface that staged only paints keeps
+        saying so.
+        """
+        if self._staged_authored_placements() or self._pending_chunk_documents():
+            return "change"
+        return "paint"
+
+    def _brush_label(self) -> str:
+        """The paint value in words: an authored chunk names itself."""
+        if self._brush_authored is not None:
+            return self._authored_name(self._brush_authored)
+        return self._chunk_name(self._brush_ordinal)
+
+    def _authored_name(self, identity: str) -> str:
+        """The display name of an authored chunk identity.
+
+        ``chunk:name`` -> ``Authored: name``: the same distinct spelling the
+        palette row uses, so a person can tell an authored chunk from a retail one
+        wherever either is named.
+        """
+        name = identity.split(":", 1)[1] if ":" in identity else identity
+        return f"Authored: {name}"
 
     @staticmethod
     def _chunk_name(ordinal: int | None) -> str:
@@ -2774,6 +4079,1168 @@ class MapBrowserTab(QWidget):
         label = self._editor_form.labelForField(self._layer_combo)
         if label is not None:
             label.setVisible(visible)
+
+    # -- MAP-CHUNK-AUTHORING-001: the chunk author and the project's chunks ----
+    #
+    # Everything below is the authored half of this surface. The SDK authority is
+    # `tools.webfoot.map_chunk`: this tab composes a chunk through `ChunkAuthor`,
+    # persists it through `set_authored_chunk`, and places it through
+    # `set_layout_authored_cells`. No widget here knows the entry bitfield, the
+    # container layout or the vocabulary rule; the labels and refusals are the
+    # SDK's own.
+
+    def chunk_author(self) -> ChunkAuthor | None:
+        """The cached read/compose facade for the open image, or None with a reason.
+
+        Built once per session: it memoizes the layer vocabularies and pointer
+        windows it reads, and re-building it per chooser refill would re-read the
+        map table every time (CQA-07).
+        """
+        if self._chunk_author_cache is not None or self._chunk_author_error is not None:
+            return self._chunk_author_cache
+        if not self.chunk_authoring_supported():
+            self._chunk_author_error = (
+                "this image was not identified against the ROM catalog, so its "
+                "chunks cannot be read"
+            )
+            return None
+        if self._session.map_image is None:
+            self._chunk_author_error = "no ROM is open"
+            return None
+        try:
+            self._chunk_author_cache = ChunkAuthor(
+                self._session.map_image, profile=self._session.profile
+            )
+        except _CHUNK_READ_ERRORS as exc:
+            self._chunk_author_error = (
+                f"this image's chunks cannot be read: {exc}"
+            )
+        return self._chunk_author_cache
+
+    def chunk_authoring_supported(self) -> bool:
+        """Whether this session names an image whose chunks may be read at all.
+
+        The chunk facade resolves addresses through the ROM profile, so it is only
+        meaningful for an image ``Session.open_rom`` identified against the
+        catalog. A session that was never opened carries neither an identification
+        nor a verified derivative, and building the facade over it would resolve a
+        profile that does not describe the bytes - so the surface refuses on that
+        checkable condition rather than on whatever the reader happened to raise.
+        """
+        return (
+            self._session.identification is not None
+            or self._session.authored is not None
+        )
+
+    def _reload_project_authored(self) -> None:
+        """Re-read the project's chunk table and committed authored placements.
+
+        The ONE read of the authored half of a project, called from a project
+        mutation, an apply, a map selection and a session change - never from a
+        repaint or a paint (CQA-07). Nothing the user staged is touched: the staged
+        placements, the staged chunk documents and the open chunk editor all
+        survive it, which is the CQA-05 rule for this surface.
+        """
+        # The documents behind the cached planes may have changed, so the planes
+        # are recomputed lazily on the next read rather than stored stale.
+        self._resolved_planes = {}
+        if self._session.project_dir is None:
+            self._project_chunks = {}
+            self._authored_committed = {}
+            return
+        try:
+            chunks = read_authored_chunks(self._session.project_dir)
+        except _PROJECT_READ_ERRORS as exc:
+            self._publish_status(f"Project chunks could not be read: {exc}")
+            return
+        try:
+            cells = read_layout_edits(self._session.project_dir).cells()
+        except _PROJECT_READ_ERRORS as exc:
+            self._publish_status(f"Project layout could not be read: {exc}")
+            return
+        self._project_chunks = dict(chunks.chunks)
+        self._authored_committed = {
+            key: value for key, value in cells.items() if isinstance(value, str)
+        }
+
+    def _clear_authored_state(self) -> None:
+        """Drop every authored fact; the session's base image has changed.
+
+        CQA-05. A chunk body, a resolved plane and a placement identity are all
+        claims about one image's map and character data, so a new image invalidates
+        all of them at once - which is why this is called from
+        ``on_session_changed`` alone.
+        """
+        self._authored_cells = {}
+        self._brush_authored = None
+        self._project_chunks = {}
+        self._authored_committed = {}
+        self._resolved_planes = {}
+        self._staged_chunks = {}
+        self._chunk_author_cache = None
+        self._chunk_author_error = None
+        self._chunk_thumbnails = {}
+        self._plane_error_reported = set()
+        self._close_chunk_editor_page()
+        self._clear_chunk_editor_state()
+
+    def _clear_chunk_editor_state(self) -> None:
+        self._chunk_identity = None
+        self._chunk_template = None
+        self._chunk_template_plane = ()
+        self._chunk_applied_plane = ()
+        self._chunk_plane = []
+        self._chunk_brush = None
+        self._chunk_selected = None
+        self._chunk_char_data = None
+        self._chunk_hover = ""
+        self._chunk_stroke = []
+        self._chunk_stroke_previous = {}
+        self._chunk_stroke_applied = {}
+        self._chunk_stroke_first = None
+        self._chunk_stroke_last = None
+        self._chunk_stroke_active = False
+        self._suppress_chunk_palette = False
+
+    def _chunk_template_of(self, chunk: AuthoredChunk) -> ChunkTemplate | None:
+        try:
+            return ChunkTemplate.parse(chunk.template)
+        except ChunkAuthoringError:
+            # A hand-edited project can hold a template this build would refuse;
+            # `resolve` names it, this only keeps the palette from offering it.
+            return None
+
+    def placeable_authored(self, map_index: int | None = None) -> tuple[str, ...]:
+        """Authored chunk identities this session can place, in identity order.
+
+        The project's declared chunks plus any chunk composed here but not yet
+        written, filtered - when a map is named - to the chunks composed against
+        that map, because a chunk plane holds tile ordinals that only resolve
+        through the character block of the map it was made for.
+        """
+        documents: dict[str, AuthoredChunk] = dict(self._project_chunks)
+        documents.update(self._pending_chunk_documents())
+        identities: list[str] = []
+        for identity in sorted(documents):
+            template = self._chunk_template_of(documents[identity])
+            if template is None:
+                continue
+            if map_index is not None and template.map_index != map_index:
+                continue
+            identities.append(identity)
+        return tuple(identities)
+
+    def _authored_template_text(self, identity: str) -> str:
+        chunk = self._project_chunks.get(identity) or self._staged_chunks.get(identity)
+        return "template unknown" if chunk is None else f"from {chunk.template}"
+
+    def _resolved_plane(self, identity: str) -> tuple[int, ...] | None:
+        """The authored body's 1,024 screen entries, resolved once and cached.
+
+        Resolving re-reads the template and re-validates every authored cell, so
+        the result is cached per identity for the session and invalidated when the
+        document behind it changes - which is what keeps a repaint from paying a
+        resolution per cell (CQA-07).
+        """
+        cached = self._resolved_planes.get(identity)
+        if cached is not None:
+            return cached
+        chunk = self._project_chunks.get(identity) or self._staged_chunks.get(identity)
+        if chunk is None:
+            return None
+        author = self.chunk_author()
+        if author is None:
+            return None
+        try:
+            entries = author.resolve(chunk).entries
+        except _CHUNK_READ_ERRORS as exc:
+            if identity not in self._plane_error_reported:
+                self._plane_error_reported.add(identity)
+                QMessageBox.warning(
+                    self, "Authored chunk", f"{self._authored_name(identity)}: {exc}"
+                )
+            return None
+        self._resolved_planes[identity] = entries
+        return entries
+
+    def _pending_chunk_documents(self) -> dict[str, AuthoredChunk]:
+        """Chunk documents composed here and not yet written to the project.
+
+        Maintained by :meth:`_sync_staged_chunk` on every plane change, so this is
+        a read of the current state and never a re-composition (the unsaved count
+        and the palette ask it on paths that must stay cheap).
+        """
+        return dict(self._staged_chunks)
+
+    def _compose_staged_chunk(self) -> AuthoredChunk | None:
+        """The open editor's plane as the authored chunk a project would store.
+
+        The SDK's own `ChunkAuthor.create` fills in every cell's prior value from
+        the template, so there is no way for this surface to state a prior the
+        template does not hold. None means "not yet different from the template",
+        which is not an error: a chunk with no authored cell would be a
+        byte-identical copy, and the SDK refuses to persist one.
+        """
+        identity = self._chunk_identity
+        template = self._chunk_template
+        if identity is None or template is None or not self._chunk_plane:
+            return None
+        changed = {
+            divmod(cell, _CHUNK_SIDE): entry
+            for cell, entry in enumerate(self._chunk_plane)
+            if entry != self._chunk_template_plane[cell]
+        }
+        if not changed:
+            return None
+        author = self.chunk_author()
+        if author is None:
+            return None
+        try:
+            return author.create(identity, template, changed)
+        except _CHUNK_READ_ERRORS as exc:
+            if identity not in self._plane_error_reported:
+                self._plane_error_reported.add(identity)
+                QMessageBox.warning(self, "Chunk editor", str(exc))
+            return None
+
+    def _authored_value_at(
+        self, map_index: int, layer_slot: int, cell: int
+    ) -> str | None:
+        """The authored identity a map cell holds right now: staged, else committed."""
+        key = (map_index, layer_slot, cell)
+        staged = self._authored_cells.get(key)
+        if staged is not None:
+            return staged
+        return self._authored_committed.get(key)
+
+    # -- the chunk editor: opening and closing --------------------------------
+    def create_chunk(self, _checked: bool = False) -> None:
+        """The Create Chunk action: name a new chunk built from the selected template.
+
+        The template is the chunk the layer's palette has selected - the same
+        "Chunk N" the project stores - because there is no chunk catalog to pick
+        from: a chunk is named by the layer that uses it.
+        """
+        if not self._edit_mode or self._slot is None or self._current is None:
+            self._publish_status(
+                "Turn Edit Layout on and pick a paintable layer before creating a "
+                "chunk."
+            )
+            return
+        if self._brush_authored is not None:
+            self._publish_status(
+                "Pick one of this layer's own chunks in the palette first: a new "
+                "chunk is created from an existing one."
+            )
+            return
+        ordinal = self._brush_ordinal
+        if ordinal is None and self._selected_cell is not None:
+            ordinal = self._slot.ordinal_of(
+                self._working_pointer(self._slot.slot, self._selected_cell)
+            )
+        if not ordinal:
+            self._publish_status(
+                "Pick one of this layer's own chunks in the palette first: a new "
+                "chunk is created from an existing one."
+            )
+            return
+        author = self.chunk_author()
+        if author is None:
+            QMessageBox.warning(
+                self,
+                "Create chunk",
+                self._chunk_author_error or "chunk authoring is unavailable for this image",
+            )
+            return
+        name, accepted = QInputDialog.getText(
+            self,
+            "Create chunk",
+            "New chunk name (a-z, 0-9, '_' and '-'; a leading 'chunk:' is optional):",
+        )
+        if not accepted:
+            return
+        try:
+            identity = chunk_identity(name)
+        except ChunkAuthoringError as exc:
+            QMessageBox.warning(self, "Create chunk", str(exc))
+            return
+        if identity in self._project_chunks or identity in self._staged_chunks:
+            QMessageBox.warning(
+                self,
+                "Create chunk",
+                f"{identity} already exists in this project. Select it in the chunk "
+                "palette and use Edit chunk\u2026 to revise it.",
+            )
+            return
+        try:
+            template = ChunkTemplate(self._current.index, self._slot.slot, ordinal)
+            # The vocabulary is read before the editor opens, so a layer whose
+            # permitted entries cannot be read refuses here - with the reason -
+            # rather than opening an editor whose palette is empty.
+            author.vocabulary(template.map_index, template.layer_slot)
+            plane = author.plane(template)
+        except _CHUNK_READ_ERRORS as exc:
+            QMessageBox.warning(self, "Create chunk", str(exc))
+            return
+        self.open_chunk_editor(identity, template, plane, plane)
+        self._publish_status(
+            f"Created {self._authored_name(identity)} from Chunk {ordinal}. Paint its "
+            "screen entries, then Apply chunk."
+        )
+
+    def open_chunk_editor(
+        self,
+        identity: str,
+        template: ChunkTemplate,
+        template_plane,
+        applied_plane,
+        *,
+        staged_plane=None,
+    ) -> None:
+        """Open the chunk editor on a chunk's plane.
+
+        ``template_plane`` is what an authored cell is a delta against;
+        ``applied_plane`` is the state Apply/Revert return to; ``staged_plane``
+        (defaulting to ``applied_plane``) is the in-progress state, which is how a
+        chunk whose editor was closed comes back with the work it still holds.
+        """
+        self._chunk_identity = identity
+        self._chunk_template = template
+        self._chunk_template_plane = tuple(template_plane)
+        self._chunk_applied_plane = tuple(applied_plane)
+        self._chunk_plane = list(
+            self._chunk_applied_plane if staged_plane is None else staged_plane
+        )
+        self._chunk_brush = self._chunk_plane[0] if self._chunk_plane else None
+        self._chunk_selected = 0
+        self._chunk_hover = ""
+        self._chunk_stroke = []
+        self._chunk_stroke_previous = {}
+        self._chunk_stroke_applied = {}
+        self._chunk_stroke_first = None
+        self._chunk_stroke_last = None
+        self._chunk_stroke_active = False
+        self._chunk_tool = _TOOL_PAINT
+        self._chunk_char_data = (
+            self._editor.character_block(template.map_index)
+            if self._editor is not None
+            else None
+        )
+        self._chunk_editor_open = True
+        self._centre_stack.setCurrentWidget(self._chunk_page)
+        self._chunk_page.setVisible(True)
+        self._populate_chunk_palette()
+        self._install_chunk_overlay()
+        self._sync_staged_chunk()
+        self._refresh_chunk_editor_state()
+        self._chunk_canvas.setFocus()
+
+    def open_authored_chunk(self, identity: str) -> bool:
+        """Reopen the chunk editor on a chunk this project or session holds.
+
+        The revision path the ticket requires: a chunk already created is
+        observable and revisable. The three planes are resolved explicitly:
+
+        * ``template_plane`` - the canonical body the chunk was composed from, so
+          every authored cell is a delta against it;
+        * ``applied_plane`` - the project's own resolved body when the chunk has
+          been written, and the template when it has not, so "dirty" keeps meaning
+          "differs from what the project holds";
+        * ``staged_plane`` - the staged document's body when there is unpublished
+          work, so reopening brings that work back rather than dropping it.
+        """
+        project_doc = self._project_chunks.get(identity)
+        staged_doc = self._staged_chunks.get(identity)
+        document = project_doc or staged_doc
+        if document is None:
+            self._publish_status(f"{identity!r} is not a chunk this project declares.")
+            return False
+        template = self._chunk_template_of(document)
+        if template is None:
+            QMessageBox.warning(
+                self,
+                "Chunk editor",
+                f"{identity} names template {document.template!r}, which is not a "
+                "valid template.",
+            )
+            return False
+        author = self.chunk_author()
+        if author is None:
+            QMessageBox.warning(
+                self,
+                "Chunk editor",
+                self._chunk_author_error or "chunk authoring is unavailable for this image",
+            )
+            return False
+        try:
+            template_plane = author.plane(template)
+            applied_plane = (
+                author.resolve(project_doc).entries
+                if project_doc is not None
+                else template_plane
+            )
+            staged_plane = (
+                author.resolve(staged_doc).entries if staged_doc is not None else None
+            )
+        except _CHUNK_READ_ERRORS as exc:
+            QMessageBox.warning(self, "Chunk editor", str(exc))
+            return False
+        self.open_chunk_editor(
+            identity,
+            template,
+            template_plane,
+            applied_plane,
+            staged_plane=applied_plane if staged_plane is None else staged_plane,
+        )
+        return True
+
+    def edit_selected_authored_chunk(self) -> bool:
+        """The inspector's Edit chunk action: reopen the brush when it is authored."""
+        identity = self._brush_authored
+        if identity is None:
+            self._publish_status(
+                "Select an authored chunk in the palette first; a retail chunk has no "
+                "editable body in this project."
+            )
+            return False
+        return self.open_authored_chunk(identity)
+
+    def close_chunk_editor(self) -> None:
+        """Leave the chunk editor page, keeping the staged chunk.
+
+        Staged chunk work is NOT discarded here: it stays in the project-pending
+        set, so it still counts as unsaved work, still appears in the map's
+        palette and is still written by "Apply to project".
+        """
+        identity = self._chunk_identity
+        staged = identity is not None and identity in self._pending_chunk_documents()
+        self._close_chunk_editor_page()
+        if identity is not None:
+            self._publish_status(
+                f"{self._authored_name(identity)} is closed"
+                + (
+                    f"; its {self._authored_edit_count()} staged cell(s) are still "
+                    "unsaved and Apply to project will write them."
+                    if staged
+                    else "."
+                )
+            )
+        self._refresh_editor_state()
+
+    def _close_chunk_editor_page(self) -> None:
+        self._chunk_editor_open = False
+        self._clear_chunk_overlay()
+        page = getattr(self, "_chunk_page", None)
+        stack = getattr(self, "_centre_stack", None)
+        if page is not None and stack is not None:
+            page.setVisible(False)
+            stack.setCurrentWidget(self._centre_split)
+
+    def _authored_edit_count(self) -> int:
+        if not self._chunk_plane:
+            return 0
+        return sum(
+            1
+            for cell, entry in enumerate(self._chunk_plane)
+            if entry != self._chunk_template_plane[cell]
+        )
+
+    # -- the chunk editor: the plane, its palette and its gestures ------------
+
+    def chunk_plane_entries(self) -> tuple[int, ...]:
+        """The staged 32x32 plane, row-major, for a caller or a test."""
+        return tuple(self._chunk_plane)
+
+    def chunk_is_open(self) -> bool:
+        return self._chunk_editor_open
+
+    def chunk_is_dirty(self) -> bool:
+        """Whether the staged plane differs from the last applied/template state."""
+        return bool(self._chunk_plane) and tuple(self._chunk_plane) != self._chunk_applied_plane
+
+    def set_chunk_tool(self, tool: str) -> None:
+        """Select the chunk editor's paint or eyedropper tool."""
+        self._chunk_tool = tool
+        self._chunk_paint_tool.setChecked(tool == _TOOL_PAINT)
+        self._chunk_pick_tool.setChecked(tool == _TOOL_PICK)
+        self._refresh_chunk_editor_state()
+
+    def set_chunk_brush(self, entry: int | None) -> None:
+        """Choose the screen entry the chunk-plane paint gesture will place."""
+        self._chunk_brush = entry
+        self._refresh_chunk_editor_state()
+
+    def _populate_chunk_palette(self) -> None:
+        """One swatch per screen entry this layer's own chunks already display.
+
+        The permitted authoring vocabulary, straight from the SDK: an authored
+        chunk may only rearrange graphics the map already uses, so this palette is
+        the whole set of values a cell may hold and there is no free-entry field.
+        """
+        self._suppress_chunk_palette = True
+        self._chunk_palette.clear()
+        try:
+            template = self._chunk_template
+            author = self.chunk_author()
+            if template is None or author is None:
+                self._chunk_palette_hint.setText("No chunk is open.")
+                return
+            try:
+                vocabulary = author.vocabulary(template.map_index, template.layer_slot)
+            except _CHUNK_READ_ERRORS as exc:
+                self._chunk_palette_hint.setText(f"This layer's entries could not be read: {exc}")
+                QMessageBox.warning(self, "Chunk editor", str(exc))
+                return
+            if self._chunk_char_data is None:
+                self._chunk_palette_hint.setText(
+                    "This chunk's graphics are unavailable, so its entries cannot be "
+                    "shown."
+                )
+                return
+            self._chunk_palette_hint.setText(
+                f"{len(vocabulary)} screen entr"
+                f"{'y' if len(vocabulary) == 1 else 'ies'} this layer already draws. "
+                "An authored chunk may only rearrange these."
+            )
+            # Rendering every swatch is the one real cost of opening the editor
+            # (measured ~13 ms per entry through the SDK's own renderer), so the
+            # palette is filled inside a wait cursor and each swatch is cached per
+            # (map, layer, entry).
+            QApplication.setOverrideCursor(Qt.CursorShape.WaitCursor)
+            try:
+                for entry in vocabulary:
+                    pixmap = self._entry_swatch(template, entry)
+                    label = author.entry_label(entry)
+                    item = QListWidgetItem(QIcon(pixmap), label)
+                    item.setData(_ENTRY_ROLE, entry)
+                    item.setTextAlignment(Qt.AlignmentFlag.AlignHCenter)
+                    # Two columns, each wide enough for the SDK's whole label
+                    # ("tile 30 · flip H") to wrap onto two lines rather than be
+                    # elided: a label clipped to "tile 3…" would hide the flip that
+                    # distinguishes two entries sharing a tile ordinal.
+                    item.setSizeHint(QSize(94, 52))
+                    item.setToolTip(f"{label}\nscreen entry {entry:#06x}")
+                    self._chunk_palette.addItem(item)
+            finally:
+                QApplication.restoreOverrideCursor()
+            self._select_chunk_palette_row()
+        finally:
+            self._suppress_chunk_palette = False
+
+    def _entry_swatch(self, template: ChunkTemplate, entry: int) -> QPixmap:
+        """A 20x20 swatch of one screen entry, rendered through the SDK.
+
+        The entry is drawn as a plane of itself and downscaled by
+        :func:`tools.webfoot.map_view.render_chunk_entries`, so the swatch is the
+        graphics the map really shows for that value - including a tile's flip
+        bits - rather than a second, invented preview path.
+        """
+        key = (template.map_index, template.layer_slot, entry)
+        cached = self._chunk_thumbnails.get(key)
+        if cached is not None:
+            return cached
+        plane = (entry,) * mv.CHUNK_ENTRY_COUNT
+        image = mv.render_chunk_entries(
+            self._chunk_char_data, plane, width=_SWATCH_PIXELS, height=_SWATCH_PIXELS
+        )
+        pixmap = self._pixmap_from_indices(
+            image.pixels, image.width, image.height, self._current.palette
+        )
+        backed = QPixmap(_SWATCH_PIXELS, _SWATCH_PIXELS)
+        backed.fill(theme.color("checker_dark"))
+        painter = QPainter(backed)
+        painter.fillRect(backed.rect(), _checkerboard())
+        painter.drawPixmap(0, 0, pixmap)
+        painter.end()
+        self._chunk_thumbnails[key] = backed
+        return backed
+
+    def _on_entry_selected(self, current: QListWidgetItem | None, _previous=None) -> None:
+        """A swatch pick becomes the entry the next plane click paints."""
+        if self._suppress_chunk_palette or current is None:
+            return
+        entry = current.data(_ENTRY_ROLE)
+        if entry is None or entry == self._chunk_brush:
+            return
+        self.set_chunk_brush(entry)
+        self._publish_status(
+            f"{self._entry_label(entry)} is the entry to paint; click or drag plane "
+            "cells."
+        )
+
+    def _entry_label(self, entry: int) -> str:
+        author = self.chunk_author()
+        if author is None:
+            return f"screen entry {entry:#06x}"
+        try:
+            return author.entry_label(entry)
+        except _CHUNK_READ_ERRORS:
+            return f"screen entry {entry:#06x}"
+
+    def _select_chunk_palette_row(self) -> None:
+        """Point the palette's own selection at the brush entry."""
+        was = self._suppress_chunk_palette
+        self._suppress_chunk_palette = True
+        try:
+            row = None
+            for index in range(self._chunk_palette.count()):
+                if self._chunk_palette.item(index).data(_ENTRY_ROLE) == self._chunk_brush:
+                    row = index
+                    break
+            self._chunk_palette.setCurrentRow(-1 if row is None else row)
+        finally:
+            self._suppress_chunk_palette = was
+
+    def _install_chunk_overlay(self) -> None:
+        """Install the plane grid overlay and draw the chunk's pixels under it.
+
+        The overlay is installed even when the artwork cannot be drawn: the grid,
+        the hover readout and the gestures are still the surface's structure, and a
+        missing character block is reported by the render path rather than by a
+        silently dead page.
+        """
+        self._clear_chunk_overlay()
+        if not self._chunk_editor_open or not self._chunk_plane:
+            return
+        self._render_chunk_plane()
+        self._chunk_scene.setSceneRect(QRectF(0, 0, mv.CHUNK_PIXELS, mv.CHUNK_PIXELS))
+        self._chunk_overlay = ChunkPlaneOverlay(
+            _CHUNK_SIDE,
+            self._on_chunk_cell_clicked,
+            on_stroke_begin=self._begin_chunk_stroke,
+            on_stroke_end=self._end_chunk_stroke,
+            on_cell_hover=self._on_chunk_cell_hover,
+        )
+        self._chunk_scene.addItem(self._chunk_overlay)
+        self._chunk_overlay.set_selected(self._chunk_selected)
+        self._chunk_overlay.set_edited(self._edited_chunk_cells())
+        self._chunk_canvas.fit_map()
+
+    def _clear_chunk_overlay(self) -> None:
+        if self._chunk_overlay is not None and self._chunk_overlay.scene() is self._chunk_scene:
+            self._chunk_scene.removeItem(self._chunk_overlay)
+        self._chunk_overlay = None
+        if (
+            self._chunk_pixmap_item is not None
+            and self._chunk_pixmap_item.scene() is self._chunk_scene
+        ):
+            self._chunk_scene.removeItem(self._chunk_pixmap_item)
+        self._chunk_pixmap_item = None
+
+    def _edited_chunk_cells(self) -> frozenset[int]:
+        """The cells whose entry differs from the last applied state."""
+        if not self._chunk_plane or not self._chunk_applied_plane:
+            return frozenset()
+        return frozenset(
+            cell
+            for cell, entry in enumerate(self._chunk_plane)
+            if entry != self._chunk_applied_plane[cell]
+        )
+
+    def _render_chunk_plane(self) -> bool:
+        """Draw the staged plane as a 256x256 image through the map's char block."""
+        if not self._chunk_plane or self._chunk_char_data is None:
+            return False
+        if self._current is None:
+            return False
+        try:
+            image = mv.render_chunk_entries(self._chunk_char_data, tuple(self._chunk_plane))
+        except _CHUNK_READ_ERRORS as exc:
+            QMessageBox.warning(self, "Chunk editor", str(exc))
+            return False
+        pixmap = self._pixmap_from_indices(
+            image.pixels, image.width, image.height, self._current.palette
+        )
+        if (
+            self._chunk_pixmap_item is not None
+            and self._chunk_pixmap_item.scene() is self._chunk_scene
+        ):
+            self._chunk_scene.removeItem(self._chunk_pixmap_item)
+        self._chunk_pixmap_item = self._chunk_scene.addPixmap(pixmap)
+        self._chunk_pixmap_item.setTransformationMode(
+            Qt.TransformationMode.FastTransformation
+        )
+        self._chunk_pixmap_item.setZValue(0)
+        self._chunk_scene.setSceneRect(QRectF(0, 0, mv.CHUNK_PIXELS, mv.CHUNK_PIXELS))
+        return True
+
+    def _on_chunk_cell_clicked(self, cell: int, alt: bool = False) -> None:
+        """One plane cell was pressed or entered during a gesture.
+
+        The tool decides what that means, exactly as it does on the map: the
+        eyedropper takes the cell's entry as the brush and changes nothing, the
+        paint tool stages the brush into the cell. Alt is the eyedropper's second
+        spelling, and the overlay brackets the gesture so a drag is ONE history
+        entry.
+        """
+        if not self._chunk_editor_open or self._chunk_overlay is None:
+            return
+        if not self._chunk_overlay.contains(cell):
+            return
+        own_gesture = not self._chunk_stroke_active
+        if own_gesture:
+            self._begin_chunk_stroke()
+        self._chunk_selected = cell
+        self._chunk_overlay.set_selected(cell)
+        if self._chunk_tool == _TOOL_PICK or alt:
+            self._pick_chunk_entry(cell)
+            self._refresh_chunk_editor_state()
+            if own_gesture:
+                self._end_chunk_stroke()
+            return
+        self._paint_chunk_cell(cell)
+        if own_gesture:
+            self._end_chunk_stroke()
+        self._refresh_chunk_editor_state()
+
+    def _on_chunk_cell_hover(self, cell: int | None) -> None:
+        """Report the cell under the pointer on the chunk editor's own readout."""
+        if cell is None or not self._chunk_plane:
+            self._chunk_hover = ""
+            self._update_chunk_hover_label()
+            return
+        column = cell % _CHUNK_SIDE
+        row = cell // _CHUNK_SIDE
+        self._chunk_hover = (
+            f"row {row}, column {column} \u00b7 cell {cell + 1} of "
+            f"{_CHUNK_SIDE * _CHUNK_SIDE} \u00b7 {self._entry_label(self._chunk_plane[cell])}"
+        )
+        self._update_chunk_hover_label()
+
+    def _on_chunk_canvas_hover(self, x: int | None, y: int | None) -> None:
+        """The plane's pixel readout, derived from the cell the pointer is in."""
+        if x is None or y is None or self._chunk_overlay is None:
+            if self._chunk_hover:
+                self._chunk_hover = ""
+                self._update_chunk_hover_label()
+            return
+        self._on_chunk_cell_hover(self._chunk_overlay.cell_at(x, y))
+
+    def _update_chunk_hover_label(self) -> None:
+        self._chunk_hover_label.setText(self._chunk_hover or "")
+
+    def _paint_chunk_cell(self, cell: int) -> bool:
+        """Stage the brush entry into one plane cell; True when it changed.
+
+        The same two rules the map painter obeys: a cell already holding the brush
+        entry is not a change (no history, no dirty state), and the cell's
+        pre-gesture entry is captured once per gesture, so a drag that re-crosses a
+        cell still undoes to what it held before the whole stroke.
+        """
+        if not self._chunk_plane or not self._chunk_editor_open:
+            return False
+        entry = self._chunk_brush
+        if entry is None:
+            self._publish_status("Choose a screen entry in the palette first.")
+            return False
+        before = self._chunk_plane[cell]
+        if cell not in self._chunk_stroke_previous:
+            self._chunk_stroke_previous[cell] = before
+        if self._chunk_stroke_first is None:
+            self._chunk_stroke_first = cell
+        self._chunk_stroke_last = cell
+        if before == entry:
+            return False
+        self._chunk_plane[cell] = entry
+        if cell not in self._chunk_stroke:
+            self._chunk_stroke.append(cell)
+            self._chunk_stroke_applied[cell] = entry
+        self._after_chunk_edit()
+        return True
+
+    def _pick_chunk_entry(self, cell: int) -> None:
+        """Take one plane cell's entry as the brush, without editing it."""
+        if not self._chunk_plane:
+            return
+        entry = self._chunk_plane[cell]
+        self.set_chunk_brush(entry)
+        self._publish_status(
+            f"Picked {self._entry_label(entry)} as the entry to paint."
+        )
+
+    def paint_chunk_cell(self, cell: int) -> bool:
+        """Paint one plane cell as part of the current gesture; True when it changed."""
+        changed = self._paint_chunk_cell(cell)
+        if changed and self._chunk_overlay is not None:
+            self._chunk_selected = cell
+            self._chunk_overlay.set_selected(cell)
+        return changed
+
+    def pick_entry_from_chunk_cell(self, cell: int) -> None:
+        """Eyedropper over the plane, as one call: take a cell's entry as the brush."""
+        if not self._chunk_plane or not self._chunk_editor_open:
+            return
+        if not 0 <= cell < len(self._chunk_plane):
+            return
+        self._chunk_selected = cell
+        if self._chunk_overlay is not None:
+            self._chunk_overlay.set_selected(cell)
+        self._pick_chunk_entry(cell)
+        self._refresh_chunk_editor_state()
+
+    def _begin_chunk_stroke(self) -> None:
+        """Open a plane gesture record; called by the overlay on press."""
+        self._chunk_stroke = []
+        self._chunk_stroke_previous = {}
+        self._chunk_stroke_applied = {}
+        self._chunk_stroke_first = None
+        self._chunk_stroke_last = None
+        self._chunk_stroke_active = True
+
+    def begin_chunk_stroke(self) -> None:
+        """Open a plane gesture explicitly, for a caller driving the surface."""
+        self._begin_chunk_stroke()
+
+    def _end_chunk_stroke(self) -> None:
+        """Close the plane gesture and raise it on the SAME undo stack.
+
+        The changed-cell rule is the map painter's: only cells whose entry actually
+        changed enter the command, and an empty gesture pushes nothing at all.
+        """
+        self._chunk_stroke_active = False
+        changed = [
+            cell
+            for cell in self._chunk_stroke
+            if self._chunk_stroke_previous.get(cell)
+            != self._chunk_stroke_applied.get(cell)
+        ]
+        first, last = self._chunk_stroke_first, self._chunk_stroke_last
+        previous = {cell: self._chunk_stroke_previous[cell] for cell in changed}
+        applied = {cell: self._chunk_stroke_applied[cell] for cell in changed}
+        self._chunk_stroke = []
+        self._chunk_stroke_previous = {}
+        self._chunk_stroke_applied = {}
+        self._chunk_stroke_first = None
+        self._chunk_stroke_last = None
+        identity = self._chunk_identity
+        if not changed or identity is None:
+            self._sync_staged_chunk()
+            self._refresh_chunk_editor_state()
+            self._refresh_editor_state()
+            return
+        command = ChunkCellCommand(
+            self, identity=identity, cells=changed, previous=previous, applied=applied
+        )
+        command.set_keys(self._chunk_brush, first, last)
+        self._undo_stack.push(command)
+        self._sync_staged_chunk()
+        self._refresh_chunk_editor_state()
+        # The map inspector's own "Changes" row and its Apply to project button
+        # count the staged chunk too, so they are re-synced at the gesture's end
+        # (once per drag, not once per cell).
+        self._refresh_editor_state()
+
+    def end_chunk_stroke(self) -> None:
+        """Close the current plane gesture and raise it on the history."""
+        self._end_chunk_stroke()
+
+    def _reapply_chunk_cells(self, command: "ChunkCellCommand") -> None:
+        """Re-apply one already-recorded plane gesture (redo or a merged stroke)."""
+        if not self._focus_chunk_for(command):
+            return
+        for cell, entry in command.applied.items():
+            self._chunk_plane[cell] = entry
+        self._after_chunk_edit()
+
+    def _reverse_chunk_cells(self, command: "ChunkCellCommand") -> None:
+        """Undo one plane gesture: every cell back to the entry it held before."""
+        if not self._focus_chunk_for(command):
+            return
+        for cell, entry in command.previous.items():
+            self._chunk_plane[cell] = entry
+        self._after_chunk_edit()
+
+    def _focus_chunk_for(self, command: "ChunkCellCommand") -> bool:
+        """Make the command's chunk the open one, reopening the page when needed.
+
+        A history entry outlives the editor page, so an undo after "Back to map"
+        has to show the chunk it reverses - silently changing a plane nobody can
+        see would be a change the author has no way to verify.
+        """
+        if self._chunk_identity != command.identity:
+            if not self.open_authored_chunk(command.identity):
+                return False
+            return self._chunk_identity == command.identity
+        if not self._chunk_plane:
+            return False
+        if not self._chunk_editor_open:
+            self._reopen_chunk_page()
+        return True
+
+    def _reopen_chunk_page(self) -> None:
+        """Show the chunk editor page again for the chunk that is already loaded."""
+        self._chunk_editor_open = True
+        self._centre_stack.setCurrentWidget(self._chunk_page)
+        self._chunk_page.setVisible(True)
+        self._populate_chunk_palette()
+        self._install_chunk_overlay()
+        self._refresh_chunk_editor_state()
+        self._chunk_canvas.setFocus()
+
+    def _after_chunk_edit(self) -> None:
+        """Repaint the plane, its markers and the dirty state after a change.
+
+        The project-pending document is recomposed at a GESTURE BOUNDARY, not per
+        cell: composing re-reads the template and re-validates every authored cell
+        (measured 4.35 ms on the canonical image), which is wasted work for a cell
+        in the middle of a drag when the gesture's own end will compose the whole
+        set once. A caller that paints outside a gesture (`paint_chunk_cell` on its
+        own) is not in a stroke, so it composes immediately and behaves as before.
+        """
+        self._render_chunk_plane()
+        if self._chunk_overlay is not None:
+            self._chunk_overlay.set_edited(self._edited_chunk_cells())
+        if not self._chunk_stroke_active:
+            self._sync_staged_chunk()
+        else:
+            self._announce_dirty()
+        self._refresh_chunk_editor_state()
+
+    def _sync_staged_chunk(self) -> None:
+        """Re-derive the open chunk's project-pending document and dirty state.
+
+        One place decides whether the open chunk is "composed but not written", so
+        the unsaved count, the map palette and the apply batch cannot disagree. A
+        chunk the project already holds exactly is NOT pending, which is what makes
+        an applied chunk stop counting as unsaved work. The identity's cached
+        resolved plane is dropped because the document behind it just changed.
+        """
+        identity = self._chunk_identity
+        if identity is None:
+            return
+        self._resolved_planes.pop(identity, None)
+        document = self._compose_staged_chunk()
+        if document is None or self._project_chunks.get(identity) == document:
+            self._staged_chunks.pop(identity, None)
+        else:
+            self._staged_chunks[identity] = document
+        self._announce_dirty()
+
+    def _refresh_chunk_editor_state(self) -> None:
+        """Re-sync the chunk editor's page with the chunk it is showing."""
+        if self._chunk_identity is None:
+            self._chunk_title.setText("\u2014")
+            self._chunk_state_label.setText("No chunk is open.")
+            self._chunk_entry_readout.setText("\u2014")
+            self._chunk_apply_button.setEnabled(False)
+            self._chunk_revert_button.setEnabled(False)
+            self._chunk_brush_button.setEnabled(False)
+            self._chunk_palette.setEnabled(False)
+            self._chunk_paint_tool.setEnabled(False)
+            self._chunk_pick_tool.setEnabled(False)
+            return
+        template = self._chunk_template
+        self._chunk_title.setText(
+            f"{self._authored_name(self._chunk_identity)}"
+            + (f" \u00b7 {template.text}" if template is not None else "")
+        )
+        edited = self._edited_chunk_cells()
+        edited_total = self._authored_edit_count()
+        applied = self._chunk_identity in self._project_chunks
+        if edited:
+            self._chunk_state_label.setText(
+                f"{theme.status_glyph('pending')} {len(edited)} cell(s) differ from the "
+                f"applied chunk \u00b7 {edited_total} authored cell(s) vs the template"
+                + ("" if applied else " \u00b7 not written to the project yet")
+            )
+        elif edited_total:
+            self._chunk_state_label.setText(
+                f"{theme.status_glyph('saved')} applied \u00b7 {edited_total} authored "
+                "cell(s) vs the template"
+            )
+        else:
+            self._chunk_state_label.setText(
+                "Unchanged from its template. Paint at least one screen entry, because "
+                "a chunk identical to its template is a copy rather than a new chunk."
+            )
+        can_apply = self._session.project_dir is not None
+        self._chunk_apply_button.setEnabled(can_apply and bool(edited))
+        self._chunk_apply_button.setToolTip(
+            "Write this chunk into the project's maps/chunks.toml"
+            if can_apply
+            else "Open or extract a project first: an authored chunk is stored in the "
+            "project, not in a ROM."
+        )
+        self._chunk_revert_button.setEnabled(bool(edited))
+        self._chunk_brush_button.setEnabled(
+            self._chunk_identity in self.placeable_authored(None)
+        )
+        self._chunk_palette.setEnabled(bool(self._chunk_palette.count()))
+        self._chunk_paint_tool.setEnabled(True)
+        self._chunk_pick_tool.setEnabled(True)
+        self._chunk_paint_tool.setChecked(self._chunk_tool == _TOOL_PAINT)
+        self._chunk_pick_tool.setChecked(self._chunk_tool == _TOOL_PICK)
+        self._chunk_entry_readout.setText(
+            f"Painting {self._entry_label(self._chunk_brush)}"
+            if self._chunk_brush is not None
+            else "No entry selected"
+        )
+        self._select_chunk_palette_row()
+        self._update_chunk_hover_label()
+
+    def _on_chunk_canvas_key(self, event) -> bool:
+        """Chunk-editor keys on the plane canvas; True when the key was used."""
+        if not self._chunk_editor_open:
+            return False
+        key = event.key()
+        if key == Qt.Key.Key_Escape:
+            self.close_chunk_editor()
+            return True
+        deltas = {
+            Qt.Key.Key_Left: (-1, 0),
+            Qt.Key.Key_Right: (1, 0),
+            Qt.Key.Key_Up: (0, -1),
+            Qt.Key.Key_Down: (0, 1),
+        }
+        if key in deltas:
+            self._move_chunk_selection(*deltas[key])
+            return True
+        return False
+
+    def _move_chunk_selection(self, delta_column: int, delta_row: int) -> None:
+        """Move the plane selection without painting, the way the map canvas does."""
+        if not self._chunk_plane:
+            return
+        if self._chunk_selected is None:
+            self._chunk_selected = 0
+            if self._chunk_overlay is not None:
+                self._chunk_overlay.set_selected(0)
+            return
+        column = self._chunk_selected % _CHUNK_SIDE + delta_column
+        row = self._chunk_selected // _CHUNK_SIDE + delta_row
+        if not 0 <= column < _CHUNK_SIDE or not 0 <= row < _CHUNK_SIDE:
+            return
+        self._chunk_selected = row * _CHUNK_SIDE + column
+        if self._chunk_overlay is not None:
+            self._chunk_overlay.set_selected(self._chunk_selected)
+        self._on_chunk_cell_hover(self._chunk_selected)
+
+    # -- the chunk editor: apply, revert, and hand the chunk to the map -------
+
+    def apply_chunk(self) -> bool:
+        """Persist the open chunk into the project through the SDK authority.
+
+        ONE write, one project document: `set_authored_chunk` validates the chunk
+        against the canonical image - template, priors and every authored entry -
+        before anything is written, so a chunk that cannot be built cannot be saved
+        either. Applying does not clear the history: the chunk's own edits are still
+        reversible through it, and the applied state becomes the new revert floor.
+        """
+        identity = self._chunk_identity
+        if not self._chunk_editor_open or identity is None:
+            return False
+        if self._session.project_dir is None:
+            message = (
+                "Open or extract a project first: an authored chunk is stored in the "
+                "project, not in a ROM."
+            )
+            self._publish_status(message)
+            QMessageBox.warning(self, "Chunk editor", message)
+            return False
+        document = self._pending_chunk_documents().get(identity)
+        if document is None:
+            QMessageBox.warning(
+                self,
+                "Chunk editor",
+                "This chunk does not differ from its template yet. Paint at least one "
+                "screen entry first: a chunk identical to its template is a copy "
+                "rather than a new chunk.",
+            )
+            return False
+        try:
+            changed = set_authored_chunk(
+                self._session.project_dir,
+                self._session.map_image,
+                document,
+                profile=self._session.profile,
+            )
+        except _EDIT_AND_PROJECT_ERRORS as exc:
+            QMessageBox.warning(self, "Chunk editor", str(exc))
+            return False
+        self._staged_chunks.pop(identity, None)
+        self._resolved_planes.pop(identity, None)
+        self._chunk_applied_plane = tuple(self._chunk_plane)
+        self._plane_error_reported.discard(identity)
+        self._reload_project_authored()
+        self._after_chunk_edit()
+        self._refresh_editor_state()
+        if changed:
+            self._publish_status(
+                f"Wrote {self._authored_name(identity)} into the project "
+                f"({self._authored_edit_count()} authored cell(s)). Select it in the "
+                "palette and place it on map cells."
+            )
+            self.projectChanged.emit()
+        else:
+            self._publish_status(
+                f"The project already held {self._authored_name(identity)} exactly."
+            )
+        return changed
+
+    def revert_chunk_edits(self) -> bool:
+        """Discard the staged plane back to the last applied/template state.
+
+        Reverting is a gesture like any other: it is staged and then recorded as
+        ONE history entry whose redo re-applies the edits it removed, so a revert
+        is itself undoable rather than a silent loss.
+        """
+        if not self._chunk_editor_open or not self._chunk_plane:
+            return False
+        changed = {
+            cell: self._chunk_plane[cell]
+            for cell in range(len(self._chunk_plane))
+            if self._chunk_plane[cell] != self._chunk_applied_plane[cell]
+        }
+        if not changed:
+            self._publish_status("This chunk already matches its applied state.")
+            return False
+        applied = {
+            cell: self._chunk_applied_plane[cell] for cell in changed
+        }
+        for cell in changed:
+            self._chunk_plane[cell] = self._chunk_applied_plane[cell]
+        self._naming_chunk_revert = True
+        try:
+            command = ChunkCellCommand(
+                self,
+                identity=self._chunk_identity,
+                cells=sorted(changed),
+                previous=changed,
+                applied=applied,
+            )
+        finally:
+            self._naming_chunk_revert = False
+        # No brush key: a revert must never merge into a paint gesture.
+        command.set_keys(None, min(changed), max(changed))
+        self._undo_stack.push(command)
+        self._after_chunk_edit()
+        self._refresh_editor_state()
+        self._publish_status(
+            f"Reverted {len(changed)} cell(s) of "
+            f"{self._authored_name(self._chunk_identity)} to the applied chunk."
+        )
+        return True
+
+    def use_chunk_as_brush(self) -> bool:
+        """Leave the editor with this chunk selected as the map's paint value."""
+        identity = self._chunk_identity
+        if identity is None:
+            return False
+        if identity not in self.placeable_authored(None):
+            self._publish_status(
+                f"{self._authored_name(identity)} is not placeable yet; paint at "
+                "least one screen entry so it differs from its template."
+            )
+            return False
+        self.close_chunk_editor()
+        if not self._set_authored_brush(identity, publish=False):
+            return False
+        self._publish_status(
+            f"{self._authored_name(identity)} is the paint value; click or drag map "
+            "cells to place it, then Apply to project."
+        )
+        self._refresh_editor_state()
+        return True
 
     # -- layout editing: save as ---------------------------------------------
 

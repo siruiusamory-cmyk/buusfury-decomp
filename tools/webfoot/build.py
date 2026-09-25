@@ -62,6 +62,7 @@ from .maps import (
 )
 from .formats.map_entry import MapEntryProfileError
 from .map_paint import MapPaintError, plan_layout_cells
+from .map_chunk import ChunkAuthoringError, materialize_authored_chunks
 from .packaged import packaged_profile
 from .write import (
     ByteChange,
@@ -609,9 +610,16 @@ def _check_layout(
     layout problems. That is the same "unsupported, not broken" state
     `_check_maps` uses for a ROM whose profile declares no map table - and the
     build refuses the authored edit separately, where it can name the reason.
+
+    MAP-CHUNK-AUTHORING-001 adds the other value form a cell may now hold. An
+    integer is resolved by `map_paint`; a ``chunk:name`` reference is resolved by
+    `map_chunk`, which also resolves the chunk's own body against its declared
+    template. Both are checked here so an unresolved identity or a body that
+    cannot be composed is a named validation problem before anything is planned.
     """
     edits = project.layout.cells()
-    if not edits:
+    chunks = project.chunks
+    if not edits and (chunks is None or chunks.is_empty()):
         return []
     canonical = packaged_profile()
     if canonical.identity.sha256 != profile.identity.sha256:
@@ -619,11 +627,31 @@ def _check_layout(
             "project paints a map layout, but this ROM's profile is not the "
             "canonical layout domain; a build would silently drop every painted cell"
         ]
-    try:
-        plan_layout_cells(canonical_image, edits, profile=canonical)
-    except MapPaintError as exc:
-        return [f"authored map layout: {exc}"]
-    return []
+    ordinal_edits = {
+        key: value for key, value in edits.items() if type(value) is int
+    }
+    authored_edits = {
+        key: value for key, value in edits.items() if type(value) is str
+    }
+    problems: list[str] = []
+    if ordinal_edits:
+        try:
+            plan_layout_cells(canonical_image, ordinal_edits, profile=canonical)
+        except MapPaintError as exc:
+            problems.append(f"authored map layout: {exc}")
+    if authored_edits or (chunks is not None and not chunks.is_empty()):
+        from .map_chunk import materialize_authored_chunks
+
+        try:
+            materialize_authored_chunks(
+                canonical_image,
+                chunks.chunks if chunks is not None else {},
+                authored_edits,
+                profile=canonical,
+            )
+        except ChunkAuthoringError as exc:
+            problems.append(f"authored map chunk: {exc}")
+    return problems
 
 
 def _check_maps(project: StatProject, maps: Maps | None) -> list[str]:
@@ -1060,7 +1088,21 @@ def build_project(
     # last-writer-wins. A non-canonical profile cannot be painted at all, and
     # that is refused here rather than silently dropping the authored cells.
     layout_edits = project.layout.cells()
-    if layout_edits:
+    # MAP-CHUNK-AUTHORING-001 splits the one authored layout document by the two
+    # value forms a cell may hold. An integer is the canonical-chunk ordinal
+    # `map_paint` has always resolved in place; a string is the identity of a
+    # chunk this project authored, which has no address until the allocator below
+    # gives it one. Both merge into the same single plan, so a cell can never be
+    # written by two domains.
+    ordinal_edits = {
+        key: value for key, value in layout_edits.items() if type(value) is int
+    }
+    authored_edits = {
+        key: value for key, value in layout_edits.items() if type(value) is str
+    }
+    chunk_edits: tuple = ()
+    generated_allocations: list = []
+    if ordinal_edits:
         canonical = packaged_profile()
         if canonical.identity.sha256 != profile.identity.sha256:
             raise ProjectValidationError(
@@ -1070,15 +1112,46 @@ def build_project(
             )
         image = Path(rom_path).read_bytes()
         try:
-            changes += plan_layout_cells(image, layout_edits, profile=canonical)
+            changes += plan_layout_cells(image, ordinal_edits, profile=canonical)
         except MapPaintError as exc:
             # One validation family at the build boundary, naming the edit.
             raise ProjectValidationError(f"authored map layout: {exc}") from exc
         base_bytes = image if base_bytes is None else base_bytes
 
-    # ROM-EXPAND-001: compressed dialogue is a normal third allocating build
-    # domain. It receives every span reserved by earlier domains and returns its
-    # own span to the same build-scoped set before the one final plan is formed.
+    # MAP-CHUNK-AUTHORING-001's domain: the third allocating domain, and the
+    # first whose pointer is neither a selector nor an array index but a full
+    # 32-bit address in a dominant layer's own window. It runs against the same
+    # reservation set as every other domain, so an authored chunk body cannot be
+    # handed bytes an earlier domain already took, and it extends that set in
+    # turn for the domains after it.
+    if authored_edits or (project.chunks and not project.chunks.is_empty()):
+        canonical = packaged_profile()
+        if canonical.identity.sha256 != profile.identity.sha256:
+            raise ProjectValidationError(
+                "project authors map chunks, but this ROM's profile is not the "
+                "canonical chunk domain; a build would silently drop them"
+            )
+        image = Path(rom_path).read_bytes()
+        try:
+            chunk_materialization = materialize_authored_chunks(
+                image,
+                project.chunks.chunks,
+                authored_edits,
+                profile=canonical,
+                reserved=reserved,
+            )
+        except ChunkAuthoringError as exc:
+            # One validation family at the build boundary, naming the chunk.
+            raise ProjectValidationError(f"authored map chunk: {exc}") from exc
+        changes += chunk_materialization.changes
+        reserved += chunk_materialization.reserved
+        generated_allocations += list(chunk_materialization.generated_allocations)
+        chunk_edits = chunk_materialization.provenance
+        base_bytes = image if base_bytes is None else base_bytes
+
+    # ROM-EXPAND-001: compressed dialogue is a normal allocating build domain. It
+    # receives every span reserved by earlier domains and returns its own span to
+    # the same build-scoped set before the one final plan is formed.
     dialogue_image = None
     dialogue_provenance: tuple = ()
     dialogue_edits: tuple = ()
@@ -1093,6 +1166,7 @@ def build_project(
             changes += run.changes
         dialogue_edits = dialogue_edits_for(dialogue_runs)
         reserved += dialogue_reserved
+        generated_allocations += list(dialogue_provenance)
 
     if base_bytes is None:
         # Unreachable: `_require_extractable_profile` refuses a profile that
@@ -1103,14 +1177,35 @@ def build_project(
             f"profile {profile.id!r} declares no buildable content"
         )
 
+    # One expansion policy for the whole plan, not one per domain. `plan_changes`
+    # requires the generated image's allocated spans to equal the allocation
+    # provenance exactly, so two domains that each expanded above canonical EOF
+    # could not both be described by either domain's own image document. Deriving
+    # the single image from the union of every domain's allocations states the
+    # same thing when only one domain expands - the same size, the same padding,
+    # the same spans - and states something true when more than one does.
+    generated_image = dialogue_image
+    if generated_allocations:
+        expansion = profile.generated_expansion
+        if expansion is None:
+            raise ProjectValidationError(
+                "a build domain allocated storage above canonical EOF, but this "
+                "ROM's profile declares no generated expansion to authorize it"
+            )
+        generated_image = expansion.generated_image(
+            profile.size,
+            tuple(item.allocated_range for item in generated_allocations),
+        )
+
     plan = plan_changes(
         base_bytes,
         changes,
         profile_id=profile.id,
         base_sha256=identification.hashes.sha256,
-        generated_image=dialogue_image,
-        generated_allocations=dialogue_provenance,
+        generated_image=generated_image,
+        generated_allocations=tuple(generated_allocations),
         dialogue_edits=dialogue_edits,
+        chunk_edits=chunk_edits,
     )
 
     resolved_manifest = manifest_path_for_build(manifest_path, output_path)

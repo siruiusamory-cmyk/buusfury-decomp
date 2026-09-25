@@ -697,7 +697,7 @@ export const project: ProjectStatus = {
     { label: "COMPLETE RESOURCE EXTRACTION", state: "done" },
     { label: "RESOURCE LIBRARY CURATION", state: "done" },
     { label: "MAP BROWSER", state: "done" },
-    { label: "DRAGONBYTE Z FEATURES", state: "current", marker: "↑ YOU ARE HERE" },
+    { label: "DRAGONBYTE Z FEATURES", state: "current" },
     { label: "ADVANCED AUTHORING / AUTHOR_NEW", state: "target" },
     { label: "PLAYABLE LOG1 CONTENT", state: "target" },
   ],
@@ -751,6 +751,54 @@ export const project: ProjectStatus = {
     },
   ],
   breakthroughs: [
+    {
+      id: "roadmap-to-1-0-published",
+      title: "The complete roadmap to 1.0 is published",
+      summary:
+        "The remaining path is public: the phases that lead to 100% feature" +
+        " completeness, what each one adds, and the separate release gate that" +
+        " follows it.",
+      technical:
+        "The tracked roadmap orders the eight remaining authoring capabilities and" +
+        " states its dependencies, its addressability strategy and its acceptance" +
+        " project. The site derives every phase count from the same capability" +
+        " registry the capability list uses, so the published plan cannot drift" +
+        " from what the product can actually do.",
+      recent: true,
+    },
+    {
+      id: "variable-length-dialogue-authoring",
+      title: "An existing line of dialogue can change length",
+      summary:
+        "Replace a line the game already contains with a longer or a shorter one." +
+        " The tool reworks that line's own storage and every line stored after it," +
+        " so the rest of the conversation still reads exactly as it did.",
+      technical:
+        "A 32-byte line was replaced by a 72-byte one: the tool re-authored the" +
+        " record's durable handle, grew the decoded container, shifted the 443" +
+        " records that follow it and repointed the 470 ROM words the engine reads" +
+        " as handles, leaving 15 equal-valued words that are not handles untouched." +
+        " The retail engine displayed the complete longer line, and the original" +
+        " game file is unchanged.",
+      recent: true,
+    },
+    {
+      id: "production-allocator-expanded-space",
+      title: "A production allocator, and authored data proven above 8 MiB",
+      summary:
+        "New content can be placed beyond the original image by an allocator that" +
+        " records where it went and refuses to reuse it, and the original engine" +
+        " has been observed consuming authored data from that expanded space.",
+      technical:
+        "A deterministic allocator reserves authorised spans in a generated 16 MiB" +
+        " image, records their provenance, reopens them and prevents reuse; a real" +
+        " compressed dialogue resource was placed at file offset 0x00800000 / ROM" +
+        " address 0x08800000 and consumed by the retail engine. Only the domains a" +
+        " feature has actually proven are claimed: the original 8 MiB image still" +
+        " carries 256 bytes of verified free space, and expanded storage is not yet" +
+        " proven for every resource family.",
+      recent: true,
+    },
     {
       id: "fixed-size-map-layout-write",
       title: "Map layout editing is a usable feature",
@@ -1254,7 +1302,8 @@ const roadmapTo1: RoadmapTo1 = {
         "Editing content that already exists in the game",
         "Building safe derivatives without ever modifying the source file",
         "Authoring proven by running the result in the original engine",
-        "ROM expansion to a proven 16 MiB image",
+        "ROM expansion to a proven 16 MiB image — expanded space is proven one"
+        + " resource family at a time, not for all content at once",
         "A production allocator that places new data and records its provenance",
         "Changing how long an existing line of dialogue is",
         "Map and object authoring foundation",

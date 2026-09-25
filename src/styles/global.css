@@ -2,30 +2,64 @@
    Webfoot SDK — public status dashboard
    Composition contract: the approved DragonByte Z mockup. One hero band with
    the real application window on the right, a three-stage programme rail
-   beneath it, a roadmap/current-focus content band, a compact proof strip and a
-   restrained footer. Flat navy panels with hairline borders; no glass, no glow,
-   no decorative gradients. Density is the point.
+   beneath it, a roadmap/current-focus content band, the roadmap to 1.0, a
+   compact proof strip and a restrained footer. Flat panels with hairline
+   borders; no glass, no glow, no decorative gradients. Density is the point.
+
+   Colour is DragonByte Z's product identity: Buu's own palette, sampled from
+   the character sprite rather than from the game at large. Pink does the work a
+   grey ramp would do in a conventional editor — large areas take the lightest
+   step and small interaction details take the deepest — the work surfaces are
+   the sprite's white mantle, and the belt gold is a rare secondary accent.
+   Source and measured contrast: docs/research/UI_BUU_SPRITE_COLOR_SOURCE.md.
    =========================================================================== */
 
 :root {
-  color-scheme: dark;
+  color-scheme: light;
 
-  --bg: #0a1017;
-  --bg-2: #0d141d;
-  --panel: #111a25;
-  --panel-2: #16212e;
+  /* The pink ramp: the product identity, Buu's skin. */
+  --pink-soft: #f2ccdf;
+  --pink-mid: #eebfd6;
+  --pink-strong: #a81560;
+  --pink-deep: #6d0c3c;
 
-  --rule: #22303f;
-  --rule-2: #2f4256;
+  /* Semantic roles. New rules should use these rather than the aliases. */
+  --background: var(--pink-soft);
+  --chrome: var(--pink-mid);
+  --surface: #fdfbfc;
+  --surface-raised: #ffffff;
+  --border: #e4d2db;
+  --border-strong: #cbadbc;
+  --text-primary: #2a2229;
+  --text-secondary: #5c525a;
+  --text-muted: #756970;
+  --accent: var(--pink-strong);
+  --accent-hover: #930f53;
+  --accent-ground: #f7dbe8;
+  --accent-ink: #ffffff;
+  --accent-secondary: #9a5300;
+  --selection: #f2b3d0;
+  --selection-edge: #8f1350;
+  --focus: #c9186a;
+  --success: #1f7a3d;
+  --research: #6b3fa0;
 
-  --ink: #ece7d8;
-  --ink-2: #a4b0ba;
-  --ink-3: #7e8d9a;
-
-  --amber: #f0c46d;
-  --amber-2: #c99a45;
-  --green: #93c67c;
-  --violet: #c39bc6;
+  /* Legacy aliases: the existing component rules were written against these
+     names, so they now resolve to the product palette and the layout language
+     stays as it was. */
+  --bg: var(--background);
+  --bg-2: var(--chrome);
+  --panel: var(--surface-raised);
+  --panel-2: var(--surface);
+  --rule: var(--border);
+  --rule-2: var(--border-strong);
+  --ink: var(--text-primary);
+  --ink-2: var(--text-secondary);
+  --ink-3: var(--text-muted);
+  --amber: var(--accent);
+  --amber-2: var(--accent-hover);
+  --green: var(--success);
+  --violet: var(--research);
 
   --sans: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", sans-serif;
   --mono: ui-monospace, "Cascadia Mono", Consolas, "SFMono-Regular", "Liberation Mono", monospace;
@@ -55,7 +89,7 @@ body {
 
 a { color: inherit; text-underline-offset: 0.2em; text-decoration-color: var(--rule-2); }
 a:hover { color: var(--amber); text-decoration-color: var(--amber); }
-:focus-visible { outline: 2px solid var(--amber); outline-offset: 2px; }
+:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
 
 h1, h2, h3 { margin: 0; line-height: 1.2; text-wrap: balance; font-weight: 700; }
 p { margin: 0; text-wrap: pretty; }
@@ -69,7 +103,7 @@ b, strong { font-weight: 700; }
   position: fixed; top: 0.5rem; left: 0.5rem; z-index: 100;
   transform: translateY(-200%);
   padding: 0.5rem 0.75rem;
-  background: var(--amber); color: #16120a;
+  background: var(--amber); color: var(--accent-ink);
   font: 700 0.75rem/1 var(--mono); text-decoration: none;
 }
 .skip-link:focus { transform: translateY(0); }
@@ -103,7 +137,7 @@ b, strong { font-weight: 700; }
   font: 800 0.6rem/1 var(--mono);
 }
 .brand-text strong { display: block; font: 800 0.85rem/1.15 var(--mono); letter-spacing: 0.1em; }
-.brand-text small { display: block; color: var(--ink-3); font-size: 0.7rem; }
+.brand-text small { display: block; color: var(--ink-2); font-size: 0.7rem; }
 .topnav ul { display: flex; flex-wrap: wrap; gap: var(--s2) var(--s5); }
 .topnav a {
   font: 700 0.68rem/1 var(--mono); letter-spacing: 0.12em;
@@ -183,7 +217,7 @@ b, strong { font-weight: 700; }
   padding: 0.32rem 0;
   border-bottom: 1px solid var(--rule);
 }
-.hero-meta dt { color: var(--ink-3); font: 700 0.62rem/1.5 var(--mono); letter-spacing: 0.1em; }
+.hero-meta dt { color: var(--ink-2); font: 700 0.62rem/1.5 var(--mono); letter-spacing: 0.1em; }
 .hero-meta dd { color: var(--ink-2); font: 700 0.74rem/1.4 var(--mono); }
 
 .hero-shot {
@@ -238,25 +272,25 @@ b, strong { font-weight: 700; }
   border: 1px solid var(--rule);
   border-radius: var(--radius);
 }
-.stage-n { color: var(--rule-2); font: 800 0.95rem/1 var(--mono); }
+.stage-n { color: var(--ink-3); font: 800 0.95rem/1 var(--mono); }
 .stage-body { min-width: 0; }
 .stage-title { display: block; font-size: 0.82rem; line-height: 1.25; }
 .stage-note {
   display: -webkit-box; -webkit-line-clamp: 1; -webkit-box-orient: vertical;
   overflow: hidden;
-  margin-top: 0.1rem; color: var(--ink-3); font-size: 0.72rem;
+  margin-top: 0.1rem; color: var(--ink-2); font-size: 0.72rem;
 }
 .stage-right { text-align: right; }
 .stage-pct { display: block; font: 800 1.15rem/1 var(--mono); }
 .stage-state { display: block; margin-top: 0.12rem; font: 700 0.56rem/1.3 var(--mono); letter-spacing: 0.1em; }
 
-.stage.is-complete { border-color: #2f4a34; }
+.stage.is-complete { border-color: var(--success); }
 .stage.is-complete .stage-pct, .stage.is-complete .stage-state { color: var(--green); }
 .stage.is-active { border-color: var(--amber-2); background: var(--panel-2); }
 .stage.is-active .stage-pct, .stage.is-active .stage-state { color: var(--amber); }
 .stage.is-active .stage-n { color: var(--amber-2); }
 .stage.is-future { opacity: 0.7; }
-.stage.is-future .stage-pct, .stage.is-future .stage-state { color: var(--ink-3); }
+.stage.is-future .stage-pct, .stage.is-future .stage-state { color: var(--ink-2); }
 
 /* --- content band ------------------------------------------------------- */
 
@@ -299,7 +333,7 @@ b, strong { font-weight: 700; }
 .row-n { color: var(--rule-2); font: 700 0.6rem/1.5 var(--mono); }
 .row-name { min-width: 0; font-size: 0.75rem; line-height: 1.3; }
 .row.is-todo .chip { border-color: var(--rule-2); color: var(--ink-3); }
-.row.is-done .chip { border-color: #2f4a34; color: var(--green); }
+.row.is-done .chip { border-color: var(--success); color: var(--green); }
 .row.is-todo .row-name { color: var(--ink-2); }
 
 .defs { border-top: 1px solid var(--rule-2); }
@@ -386,7 +420,7 @@ summary:hover { color: var(--ink); }
   overflow: hidden;
 }
 .proof-strip li { padding: var(--s3) var(--s4); background: var(--bg-2); }
-.proof-label { display: block; color: var(--ink-3); font-size: 0.76rem; line-height: 1.35; }
+.proof-label { display: block; color: var(--ink-2); font-size: 0.76rem; line-height: 1.35; }
 .proof-value { display: block; margin-top: 0.25rem; color: var(--ink); font: 800 0.9rem/1.2 var(--mono); overflow-wrap: anywhere; }
 
 .dod { margin-top: var(--s5); padding-top: var(--s4); border-top: 1px solid var(--rule); }
@@ -443,6 +477,106 @@ summary:hover { color: var(--ink); }
 .ladder .is-current .mark, .ladder .is-current .label { color: var(--amber); }
 .ladder .is-target .mark, .ladder .is-target .label { color: var(--violet); }
 
+/* --- roadmap to 1.0 ----------------------------------------------------- */
+
+.to-one { padding-bottom: var(--s6); }
+
+.to-one-position { text-align: right; }
+.to-one-count { display: block; margin-top: 0.15rem; font: 800 1.15rem/1.15 var(--mono); }
+.to-one-pct { display: block; color: var(--amber); font: 800 1.6rem/1 var(--mono); letter-spacing: -0.03em; }
+
+.to-one-lede { color: var(--ink-2); font-size: 0.88rem; max-width: 92ch; }
+.to-one-where {
+  margin-top: var(--s4);
+  padding: var(--s3) var(--s4);
+  background: var(--accent-ground);
+  border-left: 3px solid var(--amber);
+  color: var(--ink);
+  font-size: 0.84rem;
+  line-height: 1.5;
+}
+
+.phases { margin-top: var(--s5); border-top: 1px solid var(--rule-2); }
+.phase { padding: var(--s4) 0; border-bottom: 1px solid var(--rule); }
+
+.phase-head {
+  display: grid;
+  grid-template-columns: auto 1.5rem minmax(0, 1fr) auto;
+  gap: var(--s3);
+  align-items: center;
+}
+.phase-glyph { font: 700 0.95rem/1 var(--mono); color: var(--rule-2); }
+.phase-n { color: var(--rule-2); font: 800 1.5rem/1 var(--mono); }
+.phase-heading { min-width: 0; }
+.phase-kicker { display: block; color: var(--ink-3); font: 700 0.6rem/1.4 var(--mono); letter-spacing: 0.12em; }
+.phase-title { display: block; font-size: 1rem; line-height: 1.25; }
+.phase-right { text-align: right; white-space: nowrap; }
+.phase-state { display: block; color: var(--ink-3); font: 700 0.6rem/1.4 var(--mono); letter-spacing: 0.1em; }
+.phase-count { display: block; margin-top: 0.12rem; color: var(--ink-2); font: 800 0.88rem/1.2 var(--mono); }
+
+.phase-summary { margin-top: var(--s3); color: var(--ink-2); font-size: 0.85rem; max-width: 92ch; }
+
+/* State is carried by the glyph and the written label as well as the colour. */
+.phase.is-complete .phase-glyph, .phase.is-complete .phase-state { color: var(--green); }
+.phase.is-next {
+  padding-inline: var(--s4);
+  background: var(--accent-ground);
+  border-left: 3px solid var(--amber);
+}
+.phase.is-next .phase-glyph, .phase.is-next .phase-state { color: var(--amber); }
+.phase.is-next .phase-kicker { color: var(--ink-2); }
+.phase.is-next .outcome-body small { color: var(--ink-2); }
+
+.outcomes { margin-top: var(--s3); border-top: 1px solid var(--rule); }
+.outcome {
+  display: grid;
+  grid-template-columns: 1.2rem minmax(0, 1fr) auto;
+  gap: var(--s3);
+  align-items: baseline;
+  padding: 0.4rem 0;
+  border-bottom: 1px solid var(--rule);
+}
+.outcome-mark { color: var(--amber); font: 700 0.8rem/1.5 var(--mono); }
+.outcome-body b { display: block; font-size: 0.86rem; }
+.outcome-body small { display: block; margin-top: 0.1rem; color: var(--ink-3); font-size: 0.78rem; line-height: 1.42; }
+.outcome-count { color: var(--ink-2); font: 800 0.78rem/1.4 var(--mono); white-space: nowrap; }
+
+.phase-work { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0 var(--s5); margin-top: var(--s3); }
+.phase-work li {
+  position: relative;
+  padding: 0.24rem 0 0.24rem 0.9rem;
+  border-bottom: 1px solid var(--rule);
+  color: var(--ink-2);
+  font-size: 0.8rem;
+}
+.phase-work li::before { content: "·"; position: absolute; left: 0.2rem; color: var(--amber); font-weight: 700; }
+
+.phase-flag {
+  width: fit-content;
+  margin-top: var(--s3);
+  padding: 0.2rem 0.5rem;
+  background: var(--amber);
+  color: var(--accent-ink);
+  font: 800 0.62rem/1.5 var(--mono);
+  letter-spacing: 0.1em;
+  border-radius: 2px;
+}
+.phase-marker { margin-top: var(--s3); color: var(--amber); font: 800 0.62rem/1.6 var(--mono); letter-spacing: 0.1em; }
+
+.to-one-notes {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(16rem, 1fr));
+  gap: var(--s4);
+  margin-top: var(--s5);
+  padding-top: var(--s4);
+  border-top: 1px solid var(--rule-2);
+}
+.to-one-note { padding: var(--s4); background: var(--surface); border: 1px solid var(--rule-2); border-radius: var(--radius); }
+.to-one-note h3 { margin-top: 0.3rem; font-size: 0.92rem; }
+.to-one-note p:not(.kicker) { margin-top: var(--s2); color: var(--ink-2); font-size: 0.82rem; line-height: 1.5; }
+.to-one-note.is-golden { border-color: var(--accent-secondary); }
+.to-one-note.is-golden .kicker { color: var(--accent-secondary); }
+
 /* --- footer ------------------------------------------------------------- */
 
 .footer {
@@ -454,7 +588,7 @@ summary:hover { color: var(--ink); }
 .footer-brand { display: inline-flex; align-items: center; gap: var(--s2); font: 800 0.8rem/1.3 var(--mono); letter-spacing: 0.1em; }
 .footer-tagline { margin-top: 0.3rem; color: var(--ink-2); font-size: 0.84rem; max-width: 46rem; }
 .footer-fine { margin-top: var(--s4); padding-top: var(--s4); border-top: 1px solid var(--rule); }
-.footer-fine p { color: var(--ink-3); font-size: 0.74rem; max-width: 100ch; }
+.footer-fine p { color: var(--ink-2); font-size: 0.74rem; max-width: 100ch; }
 .footer-fine p + p { margin-top: 0.3rem; }
 .footer nav ul { display: flex; gap: var(--s4); margin-top: 0.3rem; flex-wrap: wrap; }
 
@@ -496,6 +630,20 @@ summary:hover { color: var(--ink); }
   .proof-strip { grid-template-columns: repeat(auto-fill, minmax(8rem, 1fr)); }
   .proof-label { font-size: 0.72rem; }
   .ledger { grid-template-columns: minmax(0, 1fr); }
+}
+
+@media (max-width: 820px) {
+  .phase-work { grid-template-columns: minmax(0, 1fr); }
+}
+
+@media (max-width: 700px) {
+  /* The roadmap stacks rather than truncates: phase order and the current
+     position stay obvious at phone width. */
+  .phase-head { grid-template-columns: auto 1.2rem minmax(0, 1fr); }
+  .phase-right { grid-column: 1 / -1; display: flex; align-items: baseline; gap: var(--s3); text-align: left; }
+  .outcome { grid-template-columns: 1rem minmax(0, 1fr); }
+  .outcome-count { grid-column: 2; }
+  .to-one-position { text-align: left; }
 }
 
 @media (prefers-reduced-motion: reduce) {

@@ -6,8 +6,11 @@ Ticket: tile painting on existing map resources. Baseline
 `ticket/map-tile-paint-001`.
 
 This file records what was measured, what was not, and why. It is deliberately
-specific about the runtime result, because that is the one acceptance criterion
-this ticket does **not** satisfy.
+specific about the runtime result, because reaching it took three rejected
+attempts and the rule those attempts established is the reusable part of this
+ticket. The three failures are retained below rather than deleted: a savestate
+restores the already-assembled background, so a capture taken straight after a
+state load is decided by the state and not by the ROM.
 
 ## The editable unit, established from the production format
 
@@ -54,6 +57,40 @@ handler, and a dominant grid that uses a single chunk (nothing to paint *with*).
 - Workbench: brush, drag, eyedropper, undo, redo, no-op paint, Apply to project,
   CQA-05 state preservation, CQA-06 error boundary, CQA-07 redraw discipline.
 - Canonical ROM and savestate unchanged by every run (hashes recorded below).
+
+## Workbench capability, recorded as the shipped surface
+
+The capability is a shipping Workbench feature, not merely a Python API. No
+manual ROM offset entry and no hex editor is involved anywhere in the flow, and
+no research script substitutes for the authoring workflow.
+
+| Delivered operation | Result |
+|---|---|
+| PAINTING API (`MapPainter`, `PaintLayer`, `resolve`/`changes`) | PASS |
+| SINGLE-CELL PAINT | PASS |
+| DRAG PAINT (one stroke = one undoable gesture) | PASS |
+| EYEDROPPER / PICK (brush takes an existing cell's chunk) | PASS |
+| UNDO | PASS |
+| REDO | PASS |
+| NO-OP HANDLING (repainting the same chunk stages nothing, returns `is_effective=False`) | PASS |
+| APPLY / REVERT | PASS |
+| PROJECT SAVE / REOPEN | PASS |
+
+## Serialization, build and continuity record
+
+| Check | Result | Basis |
+|---|---|---|
+| UNCHANGED ROUND TRIP | PASS | A project with no layout edit rebuilds byte-identically over the whole 8 MiB. |
+| CHANGED SERIALIZATION | PASS | One painted cell produces `maps/layout.toml` keyed `map:NNNN -> BGn -> cell -> 1-based ordinal`, and the built image changes exactly two bytes at `0x00292CA0`. |
+| NEIGHBOUR RESOURCE SAFETY | PASS | The write is a fixed four-byte in-place cell reference; no other cell, layer, chunk or record is touched, verified over the whole image. |
+| PROJECT SAVE / REOPEN | PASS | A rebuilt session from the reopened project renders the authored cells with nothing staged, and the rebuild is byte-identical. |
+| PROVENANCE | PASS | The paint is a `ByteChange` with its own owner and reason inside the single merged write plan; the canonical input is still refused as a write target. |
+| RELOCATION REQUIRED | NO | The replacement fits the existing record in place. |
+| PRODUCTION ALLOCATOR | N/A | No growth was needed, so no allocation path was exercised. |
+| EXPANDED MAP ADDRESSABILITY | NOT REQUIRED | This proof did not need it and no claim is made for it. |
+| CQA-05 STATE PRESERVATION | PASS | Staged tile-paint state survives an unrelated project mutation; session changes keep their distinct lifecycle behaviour. |
+| CQA-06 ERROR BOUNDARY | PASS | Expected unsupported/invalid map authoring conditions cross the typed product boundary; programmer errors are not broadly swallowed. |
+| CQA-07 PERFORMANCE CONTINUITY | PASS | Preview renders once per gesture, not per cell, so the closed palette/editor pathology is not reintroduced. |
 
 ## The runtime result, stated exactly
 
@@ -147,8 +184,9 @@ the authored cell.
 
 ## What would settle it
 
-The blocking requirement is now known exactly, and it is a **test-ordering**
-requirement rather than a technical unknown.
+The blocking requirement, as it stood before the matched pair, is known exactly,
+and it was a **test-ordering** requirement rather than a technical unknown. It is
+recorded in the past tense because the matched pair above satisfies it.
 
 **The engine rebuilds a map only when the player enters the area.** A capture
 taken straight after a state load is decided by the state's own assembled
@@ -167,6 +205,20 @@ target map has been observed to be left and re-entered, waits for the rebuild to
 settle, confirms the engine is still in the target map at capture time, and
 refuses to capture on timeout rather than saving a frame that proves nothing.
 **Both runs of the matched pair above were taken through it and both passed.**
+
+## Focused validation record
+
+The legitimate validation, kept separate from the prohibited broad run below.
+Every command named explicit files or nodes.
+
+| Scope | Result |
+|---|---|
+| Portable focused coverage - the paint path, the authored document, the Workbench tab, the CQA-05/06/07 continuity nodes and the capture guard | **171 passed** |
+| ROM-gated paint coverage - `tests/integration/test_map_tile_paint_rom.py` | **37 passed** |
+| Capture-guard coverage - `tests/unit/test_mgba_capture.py` | **74 passed** |
+
+The counts are the recorded results of the focused runs, not a rerun performed
+for this record.
 
 ## Mutation campaign (the ticket's M1-M6)
 
@@ -208,13 +260,57 @@ The emulator was mGBA `0.11-9128-c65e8a3d4` (verified from the binary's
 re-hashed after every run and are unchanged. The derivative, every snapshot and
 every capture live under ignored `build/`; nothing proprietary is committed.
 
+## Independent review
+
+A fresh-context headless CLI review through the `the local reviewer` backend, model
+`the reviewer model`, CLI session `17f46b0e-b9eb-4bfa-b6e1-7f7dda92130f`, 37 turns,
+on the reviewed cumulative candidate
+`512c9eff4dea3d03b380862a50c88cc23ac20465`:
+
+**VERDICT: PASS** - 0 blocking findings, 0 non-blocking findings, 3 NOTEs, none
+requiring a product correction. The reviewer re-derived the editable unit, the
+fail-closed layer scope, the row-major geometry, the undo/redo and
+previous-value semantics, the persistence and reopen refusals, the CQA-05/06/07
+continuity and the runtime-proof methodology from the source itself, and it
+confirmed there is no overclaim beyond existing-chunk cell replacement. It could
+not re-run the captures (private ROM and emulator) and stated that limitation
+instead of glossing it. The NOTEs are the retained invalid capture helper, the
+whole-file line-ending flip in `build.py`/`model.py`, and the `git diff --check`
+CRLF artifact; the record, the transcript and the resolutions are in
+[`MAP-TILE-PAINT-001-review.md`](MAP-TILE-PAINT-001-review.md).
+
+**the reviewer CLOUD: NOT RUN - readable verdict unavailable.** Cloud attach is refused
+for this account, so a cloud review could not have produced a readable verdict
+and none was launched.
+
 ## Capability
 
-**CAPABILITY: SHIPPED**, subject to the independent review returning no blocking
-finding. EDIT / TILE PAINTING moves to **5 / 8** and DragonByte Z to **17 / 24**,
-per section 11 of the closeout instruction. Every acceptance criterion is met:
-production semantic authoring path; Workbench painting UI; single-cell and drag
-painting; pick/select an existing value; undo/redo; project state surviving
+**CAPABILITY: SHIPPED.** EDIT / TILE PAINTING moves to **5 / 8** and DragonByte Z
+to **17 / 24 (71%)**, the count and the percentage taken from the capability
+registry, which is the sole authority for both. Every acceptance criterion is
+met: production semantic authoring path; Workbench painting UI; single-cell and
+drag painting; pick/select an existing value; undo/redo; project state surviving
 unrelated mutation; save/reopen; build; canonical ROM immutable; the authored
-layout displayed by the actual retail engine after a genuine rebuild; and no
-manual offsets or hex editing anywhere in the flow.
+layout displayed by the actual retail engine after a genuine per-run rebuild; and
+no manual offsets or hex editing anywhere in the flow.
+
+`public progress impact: UPDATED` - the capability count moves **16 / 24 (67%)**
+to **17 / 24 (71%)**, `tiles` becomes `shipped` in the registry, and the Phase 2
+roadmap state moves from NEXT to **IN PROGRESS** with tile painting complete and
+chunk creation next. The registry entry
+(`src/data/capabilities.json`) states the shipped surface, the runtime proof and
+the limits explicitly, including that the editable unit is one four-byte
+chunk-cell reference to an existing 256x256 chunk and not an individual 8x8 tile.
+
+## Deliberately not done
+
+No new chunk, no map resize, no new layer, no warp or connection editing, no
+graphics import, no sprite or appearance authoring and no new map. **Chunk
+creation was not begun**; it is the next capability (`MAP-CHUNK-AUTHORING-001`,
+Phase 2B, expected 18 / 24) and is not part of this ticket.
+
+One technical observation is retained as debt rather than solved here: the live
+screenblock is not the chunk plane verbatim, so a VRAM dump cannot yet be decoded
+back to a chunk identity. It belongs to MAP-VIS-001's ROM ->
+charblock/screenblock blocker, it does not block this capability, and reverse
+engineering it was out of scope for this ticket.

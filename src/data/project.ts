@@ -1426,11 +1426,6 @@ const roadmapTo1: RoadmapTo1 = {
         + " history, allocator and safety rules as the last.",
       outcomes: [
         {
-          capabilityId: "chunks",
-          title: "Chunk creation",
-          detail: "Create new map chunks instead of being limited to retail ones.",
-        },
-        {
           capabilityId: "resize",
           title: "Resize and layers",
           detail: "Change a map's dimensions and its layer structure.",
@@ -1442,9 +1437,14 @@ const roadmapTo1: RoadmapTo1 = {
         },
       ],
       work: [
-        "Tile painting — SHIPPED: pick a chunk a layer already uses and paint"
+        "Tile painting - SHIPPED: pick a chunk a layer already uses and paint"
         + " 256x256 map cells with it, saved through the project and proven on screen"
         + " in the retail engine",
+        "Chunk creation - SHIPPED: duplicate a chunk a layer already draws, rearrange"
+        + " its 32x32 plane of screen entries using only entries that layer already"
+        + " displays, save it as a project-owned chunk with its own identity, place it"
+        + " on a map cell, and have the retail engine read the new body from above the"
+        + " original ROM's end. Authored chunks are map-scoped",
       ],
       state: "in-progress",
     },

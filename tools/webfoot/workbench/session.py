@@ -17,21 +17,22 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from ..atlas import Atlas
-from ..atlas_build import load_atlas, load_decoded_text
+from ..atlas import Atlas, AtlasError
+from ..atlas_build import AtlasBuildError, load_atlas, load_decoded_text
 from ..build import BuildResult
+from ..capability import CapabilityError
 from ..cli import _default_atlas_directory
 from ..formats.map_entry import MapEntryProfileError
 from ..graphics import ActorSprites, GraphicsError, load_actor_sprites
 from ..map_layout_provenance import AuthoredRom, ProvenanceError, verify_authored_rom
-from ..maps import Maps, load_maps
+from ..maps import MapError, Maps, load_maps
 from ..profile import (
     AtlasIdentityMismatch,
     RomProfile,
     RomProfileCatalog,
     VerificationStatus,
 )
-from ..rom import RomIdentification, identify_rom
+from ..rom import RomIdentification, RomReadError, identify_rom
 from ..text import TextProfileError, TextStrings, TextTableError, load_text_strings
 
 
@@ -45,6 +46,35 @@ class SessionError(Exception):
 class RomNotRecognizedError(SessionError):
     """The ROM's SHA-256 matched no profile in the catalog, and it is not a
     verified DragonByte Z-authored layout derivative either."""
+
+
+#: The SDK families `Session.open_rom` converts into `SessionError`.
+#:
+#: They share no parent narrower than `ValueError` - `MapError`, `AtlasError`,
+#: `AtlasBuildError`, `TextTableError` and `CapabilityError` are independent
+#: roots - so each is named explicitly. `ValueError` itself is deliberately NOT
+#: caught, because that would report a programmer error in this module to the
+#: user as "your ROM could not be opened", which the CQA-06 taxonomy forbids.
+#: `RomReadError` is a subclass of `OSError`, and `OSError` is listed too because
+#: the image read and the artifact reads raise it directly.
+_OPEN_ROM_ERRORS = (
+    RomReadError,
+    OSError,
+    MapError,
+    CapabilityError,
+    AtlasError,
+    AtlasBuildError,
+    TextTableError,
+)
+
+#: Everything an open can fail with, for a GUI slot to catch in one `except`.
+#:
+#: `Session.open_rom` already converts the SDK families into `SessionError`, so
+#: this is the boundary a surface catches rather than a list it has to keep in
+#: step by hand: if `open_rom` ever stops being total, the families are still
+#: contained at the click instead of reaching stderr, where the GUI has no
+#: console to show them (the WORKBENCH-001 dead-click failure).
+OPEN_ROM_FAILURES = (SessionError, *_OPEN_ROM_ERRORS)
 
 
 @dataclass
@@ -175,12 +205,43 @@ class Session:
     def open_rom(self, path: Path, catalog: RomProfileCatalog) -> None:
         """Identify `path` against `catalog`, load its atlas, and cache its bytes.
 
-        Raises `RomNotRecognizedError` when no profile matches by SHA-256, and
-        `SessionError` when the atlas artifact the CLI would read is missing.
+        TOTAL over the SDK's declared failure families. Every expected failure -
+        an image that cannot be read or identified, a derivative whose manifest
+        does not prove it, a missing, mismatched or malformed atlas, an image
+        whose map or text domain cannot be read - leaves as `SessionError` (or
+        `RomNotRecognizedError`, its subclass), whose message names the reason.
+        A caller therefore catches ONE type at the surface.
+
+        That totality is the fix for CQA-06. `identify_rom`, `path.read_bytes()`
+        and `load_maps` each raised their own family, and the Open ROM slot
+        caught `SessionError` alone, so those families escaped to stderr - where
+        the GUI has no console - and the click simply looked dead.
+
+        Programmer errors are NOT converted. Only the families named in
+        `_OPEN_ROM_ERRORS` are wrapped, so a defect in this module still raises
+        as itself instead of being reported to the user as a bad ROM.
+
         On success, populates `profile`, `atlas`, `decoded_text`, `rom_path`,
         `rom_image`.
         """
         path = Path(path)
+        try:
+            self._open_rom(path, catalog)
+        except SessionError:
+            # Already the boundary type, including `RomNotRecognizedError` and
+            # every `SessionError` raised inside with its own precise wording.
+            raise
+        except _OPEN_ROM_ERRORS as exc:
+            # The reason alone, not re-framed with the path: every family names
+            # its own subject (`ROM does not exist: <path>`, `[Errno 2] ... :
+            # '<path>'`), and prefixing the path printed it twice in the one
+            # dialog the user reads. The surface supplies the operation - the
+            # dialogue is titled "Open ROM" and the status line says
+            # "Load failed: ..." - so the message stays the concise reason.
+            raise SessionError(str(exc)) from exc
+
+    def _open_rom(self, path: Path, catalog: RomProfileCatalog) -> None:
+        """The open itself; `open_rom` owns the failure boundary around it."""
         # Same SHA-256 identify path the CLI uses (cli.py identify -> identify_rom).
         identification = identify_rom(path, catalog)
         match = identification.profile_match

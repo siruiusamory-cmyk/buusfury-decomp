@@ -292,8 +292,35 @@ class MapsEditor(EditorHost):
     # -- capabilities the shell needs ----------------------------------------
 
     def on_session_changed(self) -> None:
+        """A different image: reset both modes, then follow them to a true mode.
+
+        The browser deliberately returns to view mode for an image it has not
+        judged, and the workspace drops a history that described the replaced map
+        corpus. The strip is the one statement of which mode is active, so it
+        cannot be left checked on Layout - a mode the editor is no longer in.
+        Browse is the mode that matches what is on screen. Objects is kept: its
+        corpus is re-read from the new image and the mode is still honoured.
+        """
         self.browser.on_session_changed()
         self.workspace.on_session_changed()
+        self.set_mode("browse" if self._mode == "layout" else self._mode)
+
+    def on_project_mutated(self) -> None:
+        """A project mutation: keep both modes' staged state, re-assert the mode.
+
+        CQA-05. Neither staged surface is project-derived - the layout session
+        is built from the open image's bytes and the placement history holds
+        semantic positions the project still has - so this event must refresh
+        what the project *can* change without discarding what the user staged.
+
+        The mode is re-asserted afterwards so the strip and the editor it names
+        cannot disagree. The strip is the one statement of which mode is active,
+        so it is re-applied to the editor from ``self._mode`` rather than the
+        editor being allowed to drift into a state the strip would misdescribe.
+        """
+        self.browser.on_project_mutated()
+        self.workspace.on_project_mutated()
+        self.set_mode(self._mode)
 
     def build_run_requested(self) -> None:
         self.buildRunRequested.emit()

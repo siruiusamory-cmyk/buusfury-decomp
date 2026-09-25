@@ -131,10 +131,28 @@ class BuildReport:
 
 
 def _read_jsonl(path: Path) -> list[dict]:
+    """Read an artifact, reporting a malformed one as this module's own error.
+
+    The decode failure is converted rather than left as a bare
+    `json.JSONDecodeError`, which is what `Atlas.from_jsonl_lines` already does
+    for the assembled atlas. An artifact read through here is consumed by the
+    Workbench's Open ROM path (`load_decoded_text`), and an unwrapped
+    `JSONDecodeError` is a `ValueError` that belongs to no SDK family, so it
+    escaped both the session's conversion and the slot's catch list and reached
+    stderr - where the GUI has no console (audit finding CQA-06).
+    """
     if not path.is_file():
         raise AtlasBuildError(f"missing artifact {path}")
     with path.open(encoding="utf-8") as handle:
-        return [json.loads(line) for line in handle if line.strip()]
+        rows: list[dict] = []
+        for line in handle:
+            if not line.strip():
+                continue
+            try:
+                rows.append(json.loads(line))
+            except json.JSONDecodeError as exc:
+                raise AtlasBuildError(f"malformed artifact {path}: {exc}") from exc
+        return rows
 
 
 #: Delta artifacts, folded into the base artifact they extend. A later traversal

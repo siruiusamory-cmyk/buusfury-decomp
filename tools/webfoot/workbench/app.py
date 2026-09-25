@@ -46,6 +46,7 @@ from PySide6.QtWidgets import (
     QHBoxLayout,
     QLabel,
     QMainWindow,
+    QMessageBox,
     QSizePolicy,
     QToolBar,
     QToolButton,
@@ -62,7 +63,7 @@ from .graphics_tab import GraphicsTab
 from .inspector import InspectorTab
 from .launcher import LauncherTab
 from .scene_tab import SceneTab
-from .session import Session
+from .session import OPEN_ROM_FAILURES, Session
 
 #: The primary editor destinations, in the order the strip shows them. Only these
 #: are editors: a place where a user works on content.
@@ -168,21 +169,84 @@ class MainWindow(QMainWindow):
         self._build.buildFinished.connect(self._on_build_finished)
 
     def _on_rom_opened(self) -> None:
-        self._atlas.on_session_changed()
-        for editor in (self._scene, self._graphics, self._inspector, self._maps):
-            editor.on_session_changed()
-        self._build.on_session_changed()
-        self._launcher.on_session_changed()
+        """A new image is open: EVERY surface re-reads it, one failure contained.
+
+        CQA-06, second half. This is a session transition, so a single expected
+        SDK failure while one panel re-reads the image must not stop the panels
+        after it: a half-refreshed window shows the previous image's content
+        beside the new one, which is exactly the session inconsistency the
+        finding is about. Each peer is therefore refreshed through
+        `_refresh_after_open`, which contains an expected failure and lets the
+        rest proceed.
+
+        Containment has to be here rather than only around `romOpened.emit()`:
+        an exception raised inside a slot reached through a signal is printed by
+        PySide and swallowed, so the emitting `try` never sees it and the window
+        is left half-refreshed with no message. This is the observed behaviour,
+        not a guess - it is what the CQA-06 slot test proved when it drove a peer
+        failure through the signal.
+        """
+        failures: list[tuple[str, Exception]] = []
+        for name, editor in (
+            ("Atlas", self._atlas),
+            ("Scene", self._scene),
+            ("Graphics", self._graphics),
+            ("Inspector", self._inspector),
+            ("Maps", self._maps),
+            ("Build", self._build),
+            ("Launch", self._launcher),
+        ):
+            self._refresh_after_open(name, editor, failures)
         self._refresh_identity()
         self._refresh_action_state()
+        if failures:
+            self._report_refresh_failures(failures)
+
+    def _refresh_after_open(self, name: str, editor, failures: list) -> None:
+        """Re-read the open image into one peer, containing an expected failure."""
+        try:
+            editor.on_session_changed()
+        except OPEN_ROM_FAILURES as exc:
+            failures.append((name, exc))
+
+    def _report_refresh_failures(self, failures: list) -> None:
+        """Say which panels could not re-read an image that DID open.
+
+        The image is open and the session holds it, so claiming a failed open
+        would be false; the message names the panels, the reason, and what is
+        still true.
+        """
+        names = ", ".join(name for name, _ in failures)
+        first = failures[0][1]
+        self._status_context.setText(f"Opened, but {names} could not refresh: {first}")
+        QMessageBox.warning(
+            self,
+            "Open ROM",
+            f"The image opened, but these panels could not re-read it: {names}.\n\n"
+            f"{first}\n\nThe image is open and the session holds it. Open it again "
+            "to retry the re-read.",
+        )
 
     def _on_project_changed(self) -> None:
-        """Any editor mutated the project: re-arm the shell and every peer."""
-        self._inspector.on_session_changed()
-        self._launcher.on_session_changed()
-        self._scene.on_session_changed()
-        self._maps.on_session_changed()
-        self._graphics.on_session_changed()
+        """Any editor mutated the project: re-arm the shell and every peer.
+
+        This is NOT the ROM/session event. Every editor's `projectChanged`
+        arrives here - a dialogue Apply, a palette Apply or Undo, a Scene NPC
+        add, a placement drag, a Save As - and none of them replaces the open
+        image. So each peer is asked to re-read what a project can change
+        (`on_project_mutated`) rather than to re-read a *session*
+        (`on_session_changed`), because the session entry point is where staged
+        in-memory authoring state is legitimately dropped. CQA-05 was exactly
+        this conflation: one callback answering two different events, so a
+        mutation in any editor silently discarded the Map Browser's staged
+        layout edits, the placement undo history and the mode strip's
+        truthfulness.
+        """
+        self._inspector.on_project_mutated()
+        self._launcher.on_project_mutated()
+        self._scene.on_project_mutated()
+        self._maps.on_project_mutated()
+        self._graphics.on_project_mutated()
         self._build.on_project_mutated()
         self._refresh_identity()
         self._refresh_action_state()
@@ -213,7 +277,7 @@ class MainWindow(QMainWindow):
         self._action_open_rom = QAction("Open ROM\u2026", self)
         self._action_open_rom.setShortcut(QKeySequence("Ctrl+O"))
         self._action_open_rom.setStatusTip("Identify and open a game image")
-        self._action_open_rom.triggered.connect(self._atlas.open_rom_dialog)
+        self._action_open_rom.triggered.connect(self._open_rom)
 
         self._action_open_project = QAction("Open Project\u2026", self)
         self._action_open_project.setShortcut(QKeySequence("Ctrl+Shift+O"))
@@ -693,6 +757,61 @@ class MainWindow(QMainWindow):
             "The original commercial ROM is never modified. Every write produces a "
             "new file beside a provenance record.",
         )
+
+    # -- staged-work guard ----------------------------------------------------
+
+    def _open_rom(self) -> None:
+        """Open a game image, confirming first when staged edits would be lost.
+
+        The open image is the base every pending layout edit points into, so
+        replacing it cannot preserve them. That makes this the "reload" case the
+        dirty-state contract requires to ASK rather than discard, and it is
+        asked before the file dialog is shown, so cancelling changes nothing.
+        The dialog itself stays the one implementation of "load an image"
+        (`AtlasBrowserTab.open_rom_dialog`); this only decides whether it opens.
+        """
+        if not self._confirm_discard_staged_edits("Opening another image"):
+            return
+        self._atlas.open_rom_dialog()
+
+    def _confirm_discard_staged_edits(self, action: str) -> bool:
+        """Ask before an operation that cannot preserve staged layout edits.
+
+        The count is `MapsEditor.unsaved_edit_count()`, the same authority the
+        window title and the status bar already report as unsaved work, so the
+        prompt can never disagree with the number on screen.
+
+        Other editors also stage values - unapplied palette colours, unapplied
+        dialogue text - but those describe the *outgoing* image and have no
+        meaning across it, so a session change clears them by design. Only
+        layout edits are authored work that a ROM change would silently destroy,
+        which is why the guard is derived from that one count.
+        """
+        pending = self._maps.unsaved_edit_count()
+        if not pending:
+            return True
+        answer = QMessageBox.question(
+            self,
+            action,
+            f"{pending} unsaved layout edit(s) have not been written to a ROM.\n\n"
+            f"{action} discards them; the Map Browser's Save As writes them to a "
+            "new ROM first.\n\nDiscard them and continue?",
+            QMessageBox.StandardButton.Discard | QMessageBox.StandardButton.Cancel,
+            QMessageBox.StandardButton.Cancel,
+        )
+        return answer == QMessageBox.StandardButton.Discard
+
+    def closeEvent(self, event) -> None:
+        """Refuse to close silently while layout edits are unwritten.
+
+        Closing is the other irreversible case: the process ends, so nothing
+        staged can be recovered afterwards. Cancelling leaves the window open
+        with its staged work exactly as it was.
+        """
+        if self._confirm_discard_staged_edits("Closing DragonByte Z"):
+            event.accept()
+        else:
+            event.ignore()
 
     # -- shell state ----------------------------------------------------------
 

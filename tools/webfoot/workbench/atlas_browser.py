@@ -31,7 +31,7 @@ from PySide6.QtWidgets import (QAbstractItemView, QComboBox, QFileDialog,
 from .. import atlas as atlas_sdk
 from .. import atlas_build
 from . import theme
-from .session import Session, SessionError
+from .session import OPEN_ROM_FAILURES, Session
 from .widgets import PanelHeader, StateChip, ToolStrip
 
 _COLUMNS = ("Offset", "Identity", "Match", "Preview")
@@ -152,23 +152,72 @@ class AtlasBrowserTab(QWidget):
         The ONE implementation of "load an image". The shell's global Open ROM
         action calls exactly this, which is why Atlas itself carries no Open ROM
         button: one command, one owner, one place it can drift from.
+
+        The slot is TOTAL over everything an open can fail with (CQA-06).
+        `Session.open_rom` already converts the SDK families into `SessionError`,
+        and `OPEN_ROM_FAILURES` names those same families here so that a family
+        which ever stops being converted is still contained at the click instead
+        of escaping to stderr - where this GUI has no console - and leaving the
+        click looking dead (the WORKBENCH-001 lesson).
+
+        The re-read that follows a successful open is guarded separately and
+        reported in its own terms: by then the image IS open and the session
+        holds it, so calling that a failed open would be untrue.
         """
         path, _ = QFileDialog.getOpenFileName(self, "Open ROM", "", "ROM files (*.gba);;All files (*)")
         if not path:
             return
         try:
             self._session.open_rom(path, self._catalog)
-        except SessionError as exc:
-            self._host.set_status_text(f"Load failed: {exc}")
-            self._identity_chip.set_state("No image open", "invalid")
-            QMessageBox.critical(self, "Open ROM", str(exc))
+        except OPEN_ROM_FAILURES as exc:
+            self._report_open_failure(str(exc))
             return
         profile_id = getattr(self._session.profile, "id", "?")
         self._host.set_status_text(
             f"Loaded: {self._session.rom_path}  (profile {profile_id})"
         )
-        self.on_session_changed()
+        # This surface's OWN re-read is called directly, so a failure here is
+        # caught. The peers reached through `romOpened` are not covered by this
+        # `try`: an exception raised inside a slot driven by a signal is printed
+        # and swallowed by PySide, and never reaches the emitter. The shell's
+        # `_on_rom_opened` contains those, one peer at a time.
+        try:
+            self.on_session_changed()
+        except OPEN_ROM_FAILURES as exc:
+            self._report_open_refresh_failure(exc)
+            return
         self.romOpened.emit()
+
+    def _report_open_failure(self, reason: str) -> None:
+        """One place a failed open becomes status text and one dialogue.
+
+        The reason is the SDK's own message; it already names what could not be
+        read or identified, so nothing is re-worded or re-derived here.
+        """
+        self._host.set_status_text(f"Load failed: {reason}")
+        self._identity_chip.set_state("No image open", "invalid")
+        QMessageBox.critical(self, "Open ROM", reason)
+
+    def _report_open_refresh_failure(self, exc: Exception) -> None:
+        """Report a surface that could not re-read an image that DID open.
+
+        Identity is restated from the session, because the chip is the one thing
+        here that says which image is open and the failed refresh may have left
+        it stale. The message names the operation that failed, the reason, and
+        what the user can still do.
+        """
+        rom = self._session.rom_path
+        if rom is not None:
+            kind = " \u00b7 derivative" if self._session.authored is not None else ""
+            self._identity_chip.set_state(f"Open: {rom.name}{kind}", "valid")
+        self._host.set_status_text(f"Opened, but a panel could not refresh: {exc}")
+        QMessageBox.warning(
+            self,
+            "Open ROM",
+            f"The image opened ({rom}), but a panel could not re-read it:\n{exc}\n\n"
+            "The image is open and the session holds it. Open it again, or use "
+            "the panel's own action, to retry the re-read.",
+        )
 
     def on_session_changed(self) -> None:
         """Re-read the open image into the identity chip.

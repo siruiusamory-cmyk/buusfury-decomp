@@ -76,11 +76,63 @@ def test_visible_source_text_is_not_an_authoring_identity(profile):
 
 
 def test_replacement_validation_is_structured(profile):
+    """The length rule became a CAPACITY rule, not an equality rule.
+
+    DIALOGUE-VARIABLE-LENGTH-001. Until this ticket the only way a replacement
+    could fail here was by not encoding to exactly the record's 32 retail bytes.
+    The durable handle is now authored for whatever the replacement encodes to,
+    so a different length is valid; what remains invalid is text no handle can
+    describe, and the two structured failures below are the ones the field
+    actually imposes.
+    """
     target = resolve_dialogue_target(result(), profile)
     assert validate_dialogue_replacement(target, "Nice work, Goku!", profile).valid
-    invalid = validate_dialogue_replacement(target, "too short", profile)
-    assert not invalid.valid
-    assert invalid.problems[0].code == "decoded_length"
+    # Shorter and longer are both ordinary edits now.
+    assert validate_dialogue_replacement(target, "Hi!", profile).valid
+    assert validate_dialogue_replacement(
+        target, "Hot take: SSJ3 is the worst form imo", profile).valid
+    # One past what the handle's 11-bit halfword length field can encode.
+    too_long = validate_dialogue_replacement(target, "a" * 2048, profile)
+    assert not too_long.valid
+    assert too_long.problems[0].code == "decoded_length"
+    assert "4094" in too_long.problems[0].message
+    # Text UTF-16LE cannot represent at all.
+    unsupported = validate_dialogue_replacement(target, "\ud800", profile)
+    assert not unsupported.valid
+    assert unsupported.problems[0].code == "unsupported_character"
+    # And the empty case keeps its own code.
+    empty = validate_dialogue_replacement(target, "", profile)
+    assert not empty.valid
+    assert empty.problems[0].code == "empty_replacement"
+
+
+def test_a_record_still_resolves_after_its_retail_handle_is_superseded(profile):
+    """Reopen: the semantic record is identified by its own anchor, not the handle.
+
+    A derivative this toolkit built carries a re-authored handle, so resolution
+    by the retail value alone would answer "not found" and the record would look
+    like a different message. The record's decoded start is invariant under the
+    authoring operation, so it names the same record in both images.
+    """
+    superseded = "0x04802641"          # what `Hot take: SSJ3 ...` authors
+    # The raw handle is one of the record's compiled properties, not its
+    # identity: the new value alone ties to nothing registered.
+    assert resolve_dialogue_target(result(superseded), profile) is None
+    reopened = {
+        "source": "decoded-container-text",
+        "text": "Hot take: SSJ3 is the worst form imo",
+        "identity": {"packed_handle": superseded,
+                     "handle_selector": 1,
+                     "handle_decoded_start": "0x132",
+                     "handle_decoded_length": "0x48"},
+    }
+    assert resolve_dialogue_target(reopened, profile).name == "goku-greeting"
+    # A different record's anchor is still not the target.
+    other = dict(reopened, identity={"packed_handle": superseded,
+                                     "handle_selector": 1,
+                                     "handle_decoded_start": "0x17A",
+                                     "handle_decoded_length": "0xA0"})
+    assert resolve_dialogue_target(other, profile) is None
 
 
 def test_set_and_remove_use_canonical_project_representation(project, profile):
@@ -103,7 +155,7 @@ def test_invalid_set_does_not_mutate_project(project, profile):
     target = resolve_dialogue_target(result(), profile)
     before = tuple(project.rglob("*"))
     with pytest.raises(DialogueAuthoringError):
-        set_dialogue_replacement(project, profile, target, "too short")
+        set_dialogue_replacement(project, profile, target, "")
     assert tuple(project.rglob("*")) == before
     assert read_project(project).dialogues == {}
 

@@ -52,6 +52,17 @@ ORIGINAL_TEXT = "Good luck, Goku!"
 REPLACEMENT_TEXT = "Nice work, Goku!"             # exactly DECODED_LENGTH bytes
 TARGET_NAME = "goku-greeting"
 
+#: DIALOGUE-VARIABLE-LENGTH-001. The target handle is not a free-floating word:
+#: the engine reads it from ``+0x04`` of a record whose byte ``+0x02`` is the
+#: dispatch key ``0x05`` (TEXT-HANDLE-002, runtime-proven), and the production
+#: reference inventory is a query for exactly that structure. A fixture without
+#: one describes a container no engine could have referenced, so the synthetic
+#: layout plants one where the real image keeps its carriers.
+RECORD_POOL = 0x77C5A4
+CARRIER_SITE = RECORD_POOL + 0x40
+TARGET_HANDLE = 0x02002641
+RECORD_WORD = bytes((0x01, 0x00, 0x05, 0x68))
+
 #: Chooses a decoded body whose pre-fix encoding ends with fewer than twelve bits
 #: of padding, i.e. one of the 140/406 measured dialogue cases whose escape had to
 #: come from the bytes after the payload rather than from the payload itself.
@@ -93,6 +104,9 @@ def _image(container: bytes, *, allocation: int) -> bytes:
     image[CONTAINER_OFFSET:CONTAINER_OFFSET + len(container)] = container
     image[TABLE_SLOT:TABLE_SLOT + 4] = _pointer(CONTAINER_OFFSET)
     image[NEXT_SLOT:NEXT_SLOT + 4] = _pointer(CONTAINER_OFFSET + allocation)
+    # The one record the engine reads the target handle out of.
+    image[CARRIER_SITE - 4:CARRIER_SITE] = RECORD_WORD
+    image[CARRIER_SITE:CARRIER_SITE + 4] = TARGET_HANDLE.to_bytes(4, "little")
     return bytes(image)
 
 
@@ -228,11 +242,34 @@ def test_the_guard_runs_before_the_allocation_branch(profile, monkeypatch):
         _plan(profile, before_marker, allocation=len(before_marker))
 
 
-def test_a_short_replacement_is_still_refused_by_the_pre_existing_rule(profile):
-    """Termination validation did not replace, and did not loosen, the length rule."""
+def test_a_different_length_replacement_authors_a_new_handle(profile):
+    """DIALOGUE-VARIABLE-LENGTH-001 retired the exact-length rule.
+
+    Termination validation used to sit beside a length rule that refused any
+    replacement whose encoded size differed from the record's retail 32 bytes,
+    because the durable handle carried the length and was treated as immutable.
+    The handle is now authored instead: this asserts the replacement is planned,
+    that the record keeps its anchor, and that its new handle really encodes the
+    new length - which is the property the old rule existed to avoid changing.
+    """
+    longer = "Hot take: SSJ3 is the worst form imo"
     payload = wl.pack(_replaced_decoded())
-    with pytest.raises(CompressedDialogueError, match="durable handle requires"):
-        _plan(profile, payload, allocation=len(payload), replacement="too short")
+    build, _reserved, _image_bytes, _provenance = _plan(
+        profile, payload, allocation=len(payload) + 4096, replacement=longer)
+
+    assert build.relayout.edited.raw_handle == TARGET_HANDLE
+    assert build.relayout.new_handle.encode() != TARGET_HANDLE
+    assert build.relayout.new_handle.decoded_length == len(longer.encode("utf-16le"))
+    assert build.relayout.new_handle.decoded_start == DECODED_START
+    assert build.payload != payload
+    rebuilt = wl.unpack(build.payload, 0).data
+    assert rebuilt[DECODED_START:DECODED_START + len(longer.encode("utf-16le"))] \
+        == longer.encode("utf-16le")
+    # The fixture carries exactly one record for this container, and it is the
+    # one that must be repointed.
+    assert len(build.relayout.reference_changes) == 1
+    assert build.relayout.reference_changes[0].offset == CARRIER_SITE
+    assert wl.validate_retail_termination(build.payload).data == rebuilt
 
 
 def test_an_unallocatable_payload_still_fails_cleanly(profile, monkeypatch):

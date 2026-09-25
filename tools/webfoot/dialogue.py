@@ -4,6 +4,30 @@ Callers supply a recovered Atlas result, a verified profile, and project paths.
 This module owns the mapping from storage identity to semantic identity and the
 production replacement rules.  Callers never inspect handles, compression,
 container offsets, or project TOML.
+
+The contract DIALOGUE-VARIABLE-LENGTH-001 changed
+-------------------------------------------------
+
+The user-facing operation is now exactly **"replace this existing dialogue
+record with this text"**. It used to be "...provided the text encodes to exactly
+the record's retail length", because the durable handle - which carries the
+decoded length as a field - was treated as immutable identity. It is not: the
+handle is *authored*, and a replacement of any encodable length is spliced into
+the record's own span, with every record the growth displaces re-authored and
+repointed. Re-layout, handle authoring, repacking, relocation and reference
+updating are implementation details the caller does not manage.
+
+What survives from the old contract, deliberately:
+
+* **The semantic key is the identity.** ``goku-greeting`` names the record; the
+  raw handle value is one of its compiled properties. A record stays editable
+  after its handle has changed, which is what a derivative reopen exercises.
+* **Visible text is not identity.** Resolution still refuses to key on the
+  displayed string, and a search result the SDK cannot map stays read-only.
+* **Anchoring is by the record's own position.** A record's decoded start is
+  invariant under this authoring operation - the splice happens at the record's
+  end - so ``(selector, decoded_start)`` names the same record in the canonical
+  ROM and in every derivative built from it.
 """
 
 from __future__ import annotations
@@ -19,6 +43,7 @@ from .compressed_dialogue import (
     read_original_text,
     target_named,
 )
+from .handles import HANDLE_LENGTH_MAX_BYTES
 from .profile import RomProfile
 from .project import (
     ProjectValidationError,
@@ -63,14 +88,40 @@ def _require_registered_target(
     return registered
 
 
+def _anchor(identity: Mapping[str, object]) -> tuple[int, int] | None:
+    """``(selector, decoded start)`` from a recovered identity, or None.
+
+    Both halves are required: a selector without a start names a container, not
+    a record, and a start without a selector is not comparable to a target.
+    """
+    selector = identity.get("handle_selector")
+    start = identity.get("handle_decoded_start")
+    if type(selector) is not int or not isinstance(start, str):
+        return None
+    try:
+        return selector, int(start, 16)
+    except ValueError:
+        return None
+
+
 def resolve_dialogue_target(
     search_result: Mapping[str, object], profile: RomProfile
 ) -> CompressedDialogueTarget | None:
     """Resolve one decoded Atlas result to a supported semantic target.
 
+    Two acceptances, and the second is the one that survives an authored edit:
+
+    * the result's recovered packed handle is the registry's measured retail
+      handle - the canonical case;
+    * the result's recovered ``(selector, decoded start)`` is the registry
+      record's own anchor. This is what lets a derivative built by this toolkit
+      resolve ``goku-greeting`` after the edit re-authored its handle: the
+      authoring operation splices at the record's END, so the record's start is
+      invariant even though its length and handle are not.
+
     Only SDK-produced decoded-container results participate.  Visible text,
-    addresses, decoded offsets, and raw/address search results are never fallback
-    identities.
+    addresses, decoded offsets of a phrase, and raw/address search results are
+    never fallback identities.
     """
     if search_result.get("source") != "decoded-container-text":
         return None
@@ -78,9 +129,13 @@ def resolve_dialogue_target(
     if not isinstance(identity, Mapping):
         return None
     packed = identity.get("packed_handle")
+    anchor = _anchor(identity)
     for target in AUTHORED_DIALOGUE_TARGETS.values():
-        expected = f"0x{target.packed_handle:08X}"
-        if packed == expected and _supported_target(target, profile):
+        if not _supported_target(target, profile):
+            continue
+        if packed == f"0x{target.packed_handle:08X}":
+            return target
+        if anchor == (target.selector, target.decoded_start):
             return target
     return None
 
@@ -88,8 +143,21 @@ def resolve_dialogue_target(
 def validate_dialogue_replacement(
     target: CompressedDialogueTarget, replacement: object,
     profile: RomProfile | None = None,
+    canonical: bytes | None = None,
 ) -> DialogueValidation:
-    """Perform the production target's lightweight, write-free candidate checks."""
+    """The production target's write-free candidate checks.
+
+    Two layers, deliberately separated by what they can know:
+
+    * **without an image** - the text is non-empty, encodes to UTF-16LE, and
+      fits the durable handle's length field (4094 bytes). This is what an
+      editor can answer per keystroke.
+    * **with the base image** - the whole production re-layout is planned and
+      discarded, so a replacement this container cannot hold is refused here
+      rather than at the build. That includes the toolkit's own 64 KiB decoded
+      container limit, which binds far earlier than the field's arithmetic
+      maximum.
+    """
     problems: list[DialogueProblem] = []
     try:
         _require_registered_target(target, profile)
@@ -104,19 +172,49 @@ def validate_dialogue_replacement(
     except UnicodeEncodeError:
         problems.append(DialogueProblem("unsupported_character", "Replacement contains an unsupported character."))
         return DialogueValidation(tuple(problems))
-    if len(encoded) != target.decoded_length:
+    if len(encoded) > HANDLE_LENGTH_MAX_BYTES:
         problems.append(DialogueProblem(
             "decoded_length",
-            f"Replacement encodes to {len(encoded)} bytes; this target requires exactly "
-            f"{target.decoded_length} bytes.",
+            f"Replacement encodes to {len(encoded)} bytes; a durable dialogue "
+            f"handle holds at most {HANDLE_LENGTH_MAX_BYTES}.",
         ))
+        return DialogueValidation(tuple(problems))
+    if canonical is not None:
+        problem = _layout_problem(target, encoded, canonical, profile)
+        if problem is not None:
+            problems.append(problem)
     return DialogueValidation(tuple(problems))
+
+
+def _layout_problem(
+    target: CompressedDialogueTarget, encoded: bytes, canonical: bytes,
+    profile: RomProfile | None,
+) -> DialogueProblem | None:
+    """Plan the real re-layout and report its refusal, or None. Writes nothing."""
+    from .compressed_dialogue import read_container_layout, relayout_for_length, validate_relayout
+
+    if profile is None:
+        return None
+    try:
+        layout = read_container_layout(canonical, profile, target)
+        relayout = relayout_for_length(
+            layout, target, encoded, f"compressed-dialogue:{target.name}", canonical
+        )
+        validate_relayout(relayout, canonical)
+    except CompressedDialogueError as exc:
+        return DialogueProblem("replacement_layout", str(exc))
+    return None
 
 
 def get_dialogue_original(
     canonical: bytes, profile: RomProfile, target: CompressedDialogueTarget
 ) -> str:
-    """Return the retail/original text for a supported target."""
+    """Return the text this record's current durable handle names in this image.
+
+    The registry supplies the record's position and the image supplies its
+    current length, so the same call answers for the canonical ROM and for a
+    derivative this toolkit already authored.
+    """
     registered = _require_registered_target(target, profile)
     try:
         return read_original_text(canonical, profile, registered)
@@ -148,9 +246,10 @@ def set_dialogue_replacement(
     profile: RomProfile,
     target: CompressedDialogueTarget,
     replacement: str,
+    canonical: bytes | None = None,
 ) -> None:
     """Validate and persist one replacement in the normal project representation."""
-    validation = validate_dialogue_replacement(target, replacement, profile)
+    validation = validate_dialogue_replacement(target, replacement, profile, canonical)
     if not validation.valid:
         raise DialogueAuthoringError("; ".join(problem.message for problem in validation.problems))
     project = _load_compatible_project(project_dir, profile)

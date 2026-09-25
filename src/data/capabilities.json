@@ -112,14 +112,17 @@
       "family": "edit",
       "title": "Dialogue line editing",
       "state": "shipped",
-      "detail": "Resolve a supported line, edit it, validate and build. A rewritten ordinary NPC line has been displayed by the retail engine in its own dialogue box.",
+      "detail": "Resolve a supported line, edit it, validate and build. A rewritten ordinary NPC line has been displayed by the retail engine in its own dialogue box, and a line may now change decoded length instead of having to match the one it replaces: a longer replacement has been displayed in full, from a record whose durable handle the build re-authored.",
       "limits": [
         "Only a line the SDK can resolve as a mapped target is editable; other search results stay read-only.",
-        "The rewritten line is bounded by the owning record's storage unless it is relocated into verified writable space."
+        "A line longer than the record it replaces re-authors that record's durable handle and re-lays out its decoded container, so every record after it moves inside the container; a container whose records cross the edited one is refused rather than reinterpreted.",
+        "The rebuilt container must stay inside the toolkit's 64 KiB decoded-container limit, which a retail dialogue container nearly fills: this target's ceiling is a 94-byte line, well below the 4,094 bytes the handle's length field can encode.",
+        "One record at a time. The SDK's registered dialogue targets hold a single record, and two records in one container would need an explicit batch re-layout.",
+        "The longer line is runtime-observed: the retail dialogue box displays the complete authored line, wrapped across two lines by the engine, from a record whose durable handle and decoded length were re-authored at build time."
       ],
       "surface": "Inspector tab: mapped dialogue line editing, emitted through the Build tab",
       "proof": "runtime",
-      "evidence": "WORKBENCH-002; TOOLKIT-037; ROM-EXPAND-001"
+      "evidence": "WORKBENCH-002; TOOLKIT-037; ROM-EXPAND-001; DIALOGUE-VARIABLE-LENGTH-001"
     },
     {
       "id": "palette",

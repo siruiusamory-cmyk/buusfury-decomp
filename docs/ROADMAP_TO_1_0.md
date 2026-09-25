@@ -267,7 +267,7 @@ unless new evidence proves a dependency wrong.
 | Phase | Focus | Exit condition | Progress |
 | --- | --- | --- | --- |
 | 0 - Land current work | Completed | Variable-length dialogue merged, CI green, deployed, live wording verified. | 16/24 |
-| 1 - Authoring-safety baseline | Next | CQA-05/06 together (**CLOSED** 2026-09-24); CQA-07/08 together. Preserve staged edits/undo, totalize GUI errors, remove pathological palette work, ensure CI actually executes GUI dependencies. | 16/24 |
+| 1 - Authoring-safety baseline | Completed | CQA-05/06 together (**CLOSED** 2026-09-24); CQA-07/08 together (**CLOSED** 2026-09-25); Phase 1 complete. Preserve staged edits/undo, totalize GUI errors, remove pathological palette work, ensure CI actually executes GUI dependencies. | 16/24 |
 | 2A - Tile painting | Map editing | Brush/pick/erase/fill/selection + undo/redo using existing tile vocabulary. | 17/24 |
 | 2B - Chunk creation | Map editing | Create/materialize new chunk data; allocate/relocate safely; prove the map/chunk pointer domain the feature needs. | 18/24 |
 | 2C - Resize + layers | Map editing | Resize grids, create/relocate layer resources, preserve handler semantics, validate boundaries and reopen. | 19/24 |
@@ -296,8 +296,11 @@ dependency order, not the naming, is what must be honoured.
   GUI error boundary. **COMPLETE** 2026-09-24:
   [`tickets/archive/CQA-05-06-WORKBENCH-STATE-AND-ERRORS-001-COMPLETE.md`](tickets/archive/CQA-05-06-WORKBENCH-STATE-AND-ERRORS-001-COMPLETE.md).
 - `CQA-07-08-WORKBENCH-PERF-AND-CI-001` - eliminate pathological palette
-  recomputation + make CI execute the shipping GUI dependencies.
+  recomputation + make CI execute the shipping GUI dependencies. **COMPLETE**
+  2026-09-25:
+  [`tickets/archive/CQA-07-08-WORKBENCH-PERF-AND-CI-001-COMPLETE.md`](tickets/archive/CQA-07-08-WORKBENCH-PERF-AND-CI-001-COMPLETE.md).
 - `MAP-TILE-PAINT-001` - complete tile painting UX on existing map resources.
+  **NEXT** (not started).
 - `MAP-CHUNK-AUTHORING-001` - create, allocate, reference, reopen and
   runtime-prove new chunks.
 - `MAP-RESIZE-AND-LAYERS-001` - structural grid/layer editing.
@@ -337,20 +340,33 @@ here as the record of what that exit required.
 
 ### 6.2 CQA-07 + CQA-08: responsiveness and honest CI
 
+**COMPLETE (2026-09-25):**
+[`tickets/archive/CQA-07-08-WORKBENCH-PERF-AND-CI-001-COMPLETE.md`](tickets/archive/CQA-07-08-WORKBENCH-PERF-AND-CI-001-COMPLETE.md).
+The four requirements below were the exit condition and are now met; they are kept
+here as the record of what that exit required.
+
 - Palette/editor repaint must not reread or reparse an entire project, nor rescan
   the whole graphics corpus, per UI element.
 - Cache/index only what is needed; keep behavior deterministic and invalidate on
   actual relevant changes.
 - CI must install the GUI/research dependencies required by shipping tests, and
   should fail when entire shipping files are skipped unexpectedly.
-- This is the point to prevent another situation where PySide6 absence makes green
-  CI hide real Workbench regressions. Today `CI` installs only `.[dev]`, so whole
-  portable test families - including the entire Workbench suite - are skipped at
-  import.
+- This is the point to prevent another situation where PySide6 absence makes
+  green CI hide real Workbench regressions. At baseline `CI` installed only
+  `.[dev]`, so whole portable test families were skipped at import, including
+  the entire Workbench suite.
 
-**Not part of Phase 1:** general CQA-10 cleanup, atlas-seed overlay cleanup, or
-unrelated low/medium audit debt. Those remain attached to the paths that actually
-need them, or to release hardening.
+**Not part of the Phase 1 exit:** general CQA-10 cleanup, atlas-seed overlay
+cleanup, or unrelated low/medium audit debt. Those remain attached to the paths
+that actually need them, or to release hardening.
+
+**PHASE 1 - AUTHORING-SAFETY BASELINE: COMPLETE.** All four findings are
+**CLOSED**: CQA-05 and CQA-06 by `CQA-05-06-WORKBENCH-STATE-AND-ERRORS-001`
+(2026-09-24), and CQA-07 and CQA-08 by
+`CQA-07-08-WORKBENCH-PERF-AND-CI-001` (2026-09-25). The product capability count
+is unchanged at **16 / 24 (67%)**, because this phase is safety infrastructure
+and ships no capability. Audit finding CQA-10 remains **PARTIAL / IMPROVED** and
+is not closed by this work.
 
 ## 7. Phase 2 - Complete map editing (4 capabilities)
 
@@ -591,7 +607,7 @@ This keeps reverse engineering attached to visible product progress.
 > *engine-proven* is not the same as *runtime-proven*. The resource budget panel
 > should make that distinction visible to users.
 
-**Explicitly not a Phase 1-4 prerequisite:** opening one giant campaign to prove
+**Explicitly not a Phase 1 exit requirement:** opening one giant campaign to prove
 every resource domain can use expanded ROM space. Prove each resource family when
 the feature that needs it is implemented:
 
@@ -645,8 +661,8 @@ Each finding receives one of three dispositions:
 
 Current examples:
 
-- CQA-05, CQA-06, CQA-07 and CQA-08 are **feature-blocking** for continued heavy
-  Workbench expansion.
+- CQA-05, CQA-06, CQA-07 and CQA-08 were **feature-blocking** for continued
+  heavy Workbench expansion, and are now **CLOSED** (2026-09-24 and 2026-09-25).
 - CQA-10 remains **PARTIAL / IMPROVED**, but its allocation-relevant portion is
   already closed.
 - `ROM-CAPACITY-ATLAS-SEED-OVERLAY-001` remains open, because the allocator does
@@ -820,15 +836,16 @@ Buu's Fury's retail binary engine and this repository's evidence discipline.
   [series index](tickets/archive/CQA-004.md)).
 - Current capability registry: 24 total, 16 shipped (READ 5/5, EDIT 4/8,
   AUTHOR 3/7, DELIVER 4/4).
-- Known open/deferred items: CQA-05, CQA-06, CQA-07, CQA-08, CQA-10 (partial), and
-  `ROM-CAPACITY-ATLAS-SEED-OVERLAY-001`.
+- Known open/deferred items: CQA-10 (partial) and
+  `ROM-CAPACITY-ATLAS-SEED-OVERLAY-001`. CQA-05, CQA-06, CQA-07 and CQA-08 are
+  **CLOSED** (2026-09-24 and 2026-09-25).
 
 ## Final planning snapshot
 
 | | |
 | --- | --- |
 | **Now** | 16/24 (67%); variable-length dialogue merged and live |
-| **Next** | Workbench state/error + performance/CI baseline |
+| **Next** | Phase 2A tile painting (`MAP-TILE-PAINT-001`, not started) |
 | **Then** | Four map-editing capabilities -> 20/24 |
 | **Then** | Three graphics-authoring capabilities -> 23/24 |
 | **Feature-complete finish** | New-map authoring -> 24/24 (100%) |

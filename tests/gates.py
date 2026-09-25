@@ -105,6 +105,45 @@ GATE_RULES: tuple[tuple[str, tuple[str, ...]], ...] = (
     ("*/test_decoded_text_*.py", ("research",)),
 )
 
+#: The shipping GUI test surface that must never collapse to a whole-module
+#: skip (CQA-08). Paths are relative to ``tests/`` with forward slashes.
+#:
+#: Every entry is a Workbench module whose PySide6 import sits behind a
+#: module-level ``pytest.importorskip`` guard, so on a machine without Qt the
+#: whole file collapses to one ``SKIPPED`` line instead of erroring. That is the
+#: right behaviour for a developer, and the wrong behaviour for CI: CQA-08 was
+#: exactly that failure - CI installed only ``.[dev]``, fourteen PySide6 modules
+#: and three capstone modules collapsed to one ``SKIPPED`` line each, and the job
+#: still exited 0 while claiming a green Workbench suite. ``tests/conftest.py``
+#: therefore fails the session when one of these files is collected but
+#: contributes no test, and ``tests/unit/test_ci_gui_surface.py`` checks the CI
+#: environment that must make them run (the extras, the headless Qt platform,
+#: the guards, and the ticket's explicitly named regressions).
+#:
+#: The list is deliberately explicit rather than "every ``workbench``-gated
+#: file", so that adding a shipping GUI module is a visible decision instead of
+#: a silent one, and so the guard can name what it protects.
+REQUIRED_GUI_MODULES: tuple[str, ...] = (
+    "unit/test_build_panel_guard.py",
+    "unit/test_build_panel_overwrite.py",
+    "unit/test_workbench_build_manifest.py",
+    "unit/test_workbench_build_run_dialogs.py",
+    "unit/test_workbench_dialogue.py",
+    "unit/test_workbench_graphics.py",
+    "unit/test_workbench_graphics_undo.py",
+    "unit/test_workbench_launcher_settings.py",
+    "unit/test_workbench_map_browser.py",
+    "unit/test_workbench_map_tab.py",
+    # CQA-07's palette-cost regression; it lives in the same shipping surface as
+    # the other Workbench editor modules and must execute in CI with them.
+    "unit/test_workbench_palette_cost.py",
+    "unit/test_workbench_project_status.py",
+    "unit/test_workbench_scene.py",
+    "unit/test_workbench_smoke.py",
+    # The CQA-05/CQA-06 state and error-surface regression.
+    "unit/test_workbench_state_and_errors.py",
+)
+
 #: The repository root, derived from this file's location.
 REPOSITORY_ROOT = Path(__file__).resolve().parents[1]
 

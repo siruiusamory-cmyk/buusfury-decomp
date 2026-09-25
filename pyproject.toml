@@ -26,6 +26,14 @@ dev = [
 workbench = [
     "PySide6",
 ]
+research = [
+    # The Thumb decoder the disassembly helpers and the UI/HUD graphics probe
+    # sweep with. It is research tooling rather than a runtime dependency of the
+    # shipping toolkit, so it lives in its own extra instead of the base
+    # install - but the three capstone modules under tests/unit skip as a whole
+    # without it, so the CI test job installs this extra by name.
+    "capstone>=5",
+]
 packaging = [
     "PySide6",
     "pyinstaller>=6",

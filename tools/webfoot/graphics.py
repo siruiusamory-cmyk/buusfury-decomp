@@ -37,7 +37,9 @@ independently addressable, which is why the pipeline is useful without it.
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import dataclass
+from functools import cached_property
 
 from . import capability
 from .binary import GBA_ROM_BASE
@@ -505,23 +507,46 @@ class ActorSprites:
         offset = self.layout.object_palette_address.to_file_offset(len(self.base_bytes))
         return offset + index * 2, colour.to_bytes(2, "little")
 
+    @cached_property
+    def _palette_user_index(self) -> dict[int, tuple[GraphicIdentity, ...]]:
+        """The inverse of :meth:`palette_users`: index -> the graphics using it.
+
+        Built at most ONCE per corpus, on first use, and reused for the object's
+        whole lifetime. That is safe because the corpus is immutable after
+        `__init__` finishes: `_graphics` is never added to or reassigned and
+        every `Graphic` is a frozen dataclass whose `pixels` bytes value cannot
+        change, so a derived index cannot go stale. (Nothing in this module
+        mutates either; a caller holding a private reference to `_graphics`
+        could, which is why this is a private memo of a private mapping.)
+
+        The retained contract of :meth:`palette_users` is unchanged: the same
+        index validation, the same `GraphicsError` message, ascending identity
+        order, and the same result set - only the work moved from per-call to
+        once. The GUI discloses consumers for up to 256 indices per pending
+        edit, which was a full corpus rescan each time (CQA-07).
+        """
+        users: dict[int, list[GraphicIdentity]] = {}
+        # `graphics()` is already in ascending identity order, so appending in
+        # that order yields ascending tuples without a second sort.
+        for graphic in self.graphics():
+            for index in sorted(set(graphic.pixels)):
+                users.setdefault(index, []).append(graphic.identity)
+        return {index: tuple(identities) for index, identities in users.items()}
+
     def palette_users(self, index: int) -> tuple[GraphicIdentity, ...]:
         """Every graphic whose pixels reference this palette index.
 
         The honest answer to "what does recolouring entry N affect". Computed by
         scanning decoded pixels rather than assumed, because a palette entry that
-        looks unused may still be reached by an asset this walk did decode.
+        looks unused may still be reached by an asset this walk did decode. The
+        scan itself is done once per corpus and memoized in
+        :attr:`_palette_user_index`; this reads it.
         """
         if type(index) is not int or not 0 <= index < sg.PALETTE_ENTRIES:
             raise GraphicsError(
                 f"palette index {index} is outside 0..{sg.PALETTE_ENTRIES - 1}"
             )
-        needle = bytes((index,))
-        return tuple(
-            graphic.identity
-            for graphic in self.graphics()
-            if needle in graphic.pixels
-        )
+        return self._palette_user_index.get(index, ())
 
     def plan_pixels(self, identity: GraphicIdentity, pixels: bytes) -> sg.PayloadPlan:
         """Validate and re-encode new pixels for one graphic.
@@ -765,12 +790,19 @@ def load_actor_sprites(image: bytes, identification: RomIdentification) -> Actor
 
 # --- project-level palette authoring (GUI-facing) ---------------------------
 #
-# The trio below mirrors `dialogue.set/get/remove_dialogue_replacement`: a
+# The functions below mirror `dialogue.set/get/remove_dialogue_replacement`: a
 # caller (the Graphics workspace) hands a project directory, a verified profile,
 # a palette index and an 8-bit RGB triple, and this layer validates and persists
 # the edit into the Layer-1 `GraphicsOverrides` model. The GUI never touches
 # project TOML and never packs colour; the RGB->word packing stays in the build
 # via `plan_palette_entry_rgb`. Only RGB is stored, per `GraphicsOverrides`.
+#
+# Writes go through ONE authority, `set_palette_overrides`, which takes a whole
+# batch. A batch is what an Apply, an Undo or a Redo actually is - one gesture
+# over N indices - and expressing it as N single-index calls meant N
+# whole-project reads and N whole-project writes inside one click handler, on
+# the UI thread (CQA-07). The single-index setters remain as the readable
+# one-entry spelling of the same batch.
 
 
 def _load_compatible_project(project_dir, profile: RomProfile):
@@ -785,6 +817,19 @@ def _load_compatible_project(project_dir, profile: RomProfile):
     return project
 
 
+def _validate_palette_index(index: int) -> None:
+    """Range-check one palette index against the palette's own extent.
+
+    Split out so a batch entry that REMOVES an index (no channels to check) is
+    validated by exactly the same rule, and with exactly the same message, as an
+    entry that writes one.
+    """
+    if type(index) is not int or not 0 <= index < sg.PALETTE_ENTRIES:
+        raise GraphicsError(
+            f"palette index {index} is outside 0..{sg.PALETTE_ENTRIES - 1}"
+        )
+
+
 def _validate_palette_edit(index: int, red: int, green: int, blue: int) -> None:
     """Range-check one recolour the same way the model's loader does.
 
@@ -792,10 +837,7 @@ def _validate_palette_edit(index: int, red: int, green: int, blue: int) -> None:
     GUI catches one family at its boundary. The authoritative index bound is the
     palette's own `PALETTE_ENTRIES`; channels are 8-bit 0..255.
     """
-    if type(index) is not int or not 0 <= index < sg.PALETTE_ENTRIES:
-        raise GraphicsError(
-            f"palette index {index} is outside 0..{sg.PALETTE_ENTRIES - 1}"
-        )
+    _validate_palette_index(index)
     for name, value in (("red", red), ("green", green), ("blue", blue)):
         if type(value) is not int or not 0 <= value <= 255:
             raise GraphicsError(f"palette {name} channel {value} is outside 0..255")
@@ -822,27 +864,84 @@ def get_palette_overrides(
     return dict(_load_compatible_project(project_dir, profile).graphics_overrides.palette)
 
 
+def set_palette_overrides(
+    project_dir,
+    profile: RomProfile,
+    colours: Mapping[int, tuple[int, int, int] | None],
+) -> bool:
+    """Validate and persist a whole batch of palette recolours in ONE write.
+
+    The authority for every palette write. ``colours`` maps a palette index to
+    its new 8-bit RGB triple, or to ``None`` meaning "remove this index's
+    override" (which is how an undo of an index that was never authored
+    reverses). Semantics, in order:
+
+    * EVERY index and channel is validated first, with the same
+      `_validate_palette_edit` the single-index setter used, so a batch
+      containing one bad entry writes nothing at all rather than half of itself.
+      An entry that is not ``None`` must be an actual 3-element tuple/list, and
+      an entry that is not is a `GraphicsError` like any other bad edit: a
+      2-tuple, a 4-tuple or a non-sequence would otherwise raise `TypeError` out
+      of argument unpacking, which is outside the SDK error family the GUI
+      catches at its boundary, and an escaping sibling is the documented
+      Workbench failure mode (the click looks dead);
+    * then the project is loaded ONCE, the batch is applied in ascending index
+      order on top of the committed map, and the document is written only when
+      the resulting map differs from the one that was loaded;
+    * the return value says whether the project source actually changed, which
+      is what `remove_palette_override` promised and what an undo stack needs to
+      know.
+
+    Applying "on top of" the committed map, rather than from empty, is what
+    makes a batch of writes and removals safe to interleave: an index the batch
+    does not name keeps whatever it had.
+    """
+    from .project import write_graphics_overrides
+
+    # Validate the whole batch before touching the project: a bad edit must not
+    # leave some of its siblings written.
+    for index in sorted(colours):
+        colour = colours[index]
+        if colour is None:
+            _validate_palette_index(index)
+            continue
+        if type(colour) not in (tuple, list) or len(colour) != 3:
+            raise GraphicsError(
+                f"palette entry {index} is not an RGB triple: {colour!r}"
+            )
+        _validate_palette_edit(index, *colour)
+
+    project = _load_compatible_project(project_dir, profile)
+    palette = dict(project.graphics_overrides.palette)
+    for index in sorted(colours):
+        colour = colours[index]
+        if colour is None:
+            palette.pop(index, None)
+        else:
+            palette[index] = colour
+    if palette == project.graphics_overrides.palette:
+        return False
+    write_graphics_overrides(project_dir, palette)
+    return True
+
+
 def set_palette_override(
     project_dir, profile: RomProfile, index: int, red: int, green: int, blue: int
 ) -> None:
-    """Validate and persist one palette recolour in the normal project form."""
-    from .project import write_graphics_overrides
+    """Validate and persist one palette recolour in the normal project form.
 
-    _validate_palette_edit(index, red, green, blue)
-    project = _load_compatible_project(project_dir, profile)
-    palette = dict(project.graphics_overrides.palette)
-    palette[index] = (red, green, blue)
-    write_graphics_overrides(project_dir, palette)
+    The one-entry spelling of :func:`set_palette_overrides`. It still raises
+    `GraphicsError` on a bad edit, and its observable promise is that the
+    override now holds that value: the batch writes only when the resulting map
+    differs from what is on disk, and no caller can distinguish a skipped
+    identical write from a rewritten identical document.
+    """
+    set_palette_overrides(project_dir, profile, {index: (red, green, blue)})
 
 
 def remove_palette_override(project_dir, profile: RomProfile, index: int) -> bool:
-    """Remove one authored recolour; return whether project source changed."""
-    from .project import write_graphics_overrides
+    """Remove one authored recolour; return whether project source changed.
 
-    project = _load_compatible_project(project_dir, profile)
-    if index not in project.graphics_overrides.palette:
-        return False
-    palette = dict(project.graphics_overrides.palette)
-    del palette[index]
-    write_graphics_overrides(project_dir, palette)
-    return True
+    False when the index had no override, which is the case an undo cares about.
+    """
+    return set_palette_overrides(project_dir, profile, {index: None})

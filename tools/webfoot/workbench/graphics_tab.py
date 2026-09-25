@@ -118,11 +118,13 @@ class PaletteRecolourCommand(QUndoCommand):
 
     Undo is SEMANTIC, never a byte write. For each index the command captures
     the NEW rgb and the PRIOR project state read from
-    `graphics_sdk.get_palette_override` at construction time: either the prior
-    override rgb, or None meaning "unauthored, so undo must REMOVE the override"
-    (`remove_palette_override`). `redo()` runs on the first `stack.push()` too,
-    so the SDK write and the tab refresh both live in `redo()`; `undo()` reverses
-    each index to its captured prior state and refreshes the same way.
+    `graphics_sdk.get_palette_overrides` at construction time: either the prior
+    override rgb, or None meaning "unauthored, so undo must REMOVE the override".
+    `redo()` runs on the first `stack.push()` too, so the SDK write and the tab
+    refresh both live in `redo()`; `undo()` reverses each index to its captured
+    prior state and refreshes the same way. Both commit their whole index set in
+    ONE `set_palette_overrides` call - one index set is one project write, not
+    one whole-project read+write per index (CQA-07).
 
     Merging (see `mergeWith`): consecutive commands whose index-set is IDENTICAL
     collapse into one history entry, keeping the ORIGINAL prior-state and
@@ -163,18 +165,13 @@ class PaletteRecolourCommand(QUndoCommand):
             # _on_apply, which also refreshed. Consume the flag, do nothing.
             self._applied = False
             return
-        for index in sorted(self._new):
-            r, g, b = self._new[index]
-            self._tab._write_override(index, r, g, b)
+        self._tab._write_overrides(dict(self._new))
         self._tab._after_undo_redo()
 
     def undo(self) -> None:
-        for index in sorted(self._prior):
-            prior = self._prior[index]
-            if prior is None:
-                self._tab._clear_override(index)
-            else:
-                self._tab._write_override(index, *prior)
+        # None means "remove": an index with no prior override must go back to
+        # unauthored, and the batch write path expresses that as a removal.
+        self._tab._write_overrides(dict(self._prior))
         self._tab._after_undo_redo()
 
     def mergeWith(self, other: QUndoCommand) -> bool:
@@ -313,6 +310,15 @@ class GraphicsTab(QWidget):
         # WB-005 Layer 3: one undo history for the visual palette mutations this
         # tab commits. Established here; other editors migrate in later tickets.
         self._undo_stack = QUndoStack(self)
+        #: True only while this tab is the EMITTER of `projectChanged`. The shell
+        #: answers that signal by calling `on_project_mutated()` on every peer,
+        #: this tab included (`app.py:166` + `app.py:249`), so without this guard
+        #: one logical edit repaints twice: once from the emitting method's own
+        #: refresh and once from the shell's re-entrant call back into it. The
+        #: guard suppresses nothing on the wire - the signal still reaches every
+        #: peer - it only stops this tab from answering its own emission, because
+        #: the emitting method already repainted. CQA-07.
+        self._emitting_project_change = False
 
         # -- A. Asset browser (thumbnail grid) --------------------------------
         self._search = QLineEdit()
@@ -656,10 +662,7 @@ class GraphicsTab(QWidget):
 
     def on_session_changed(self) -> None:
         """Re-populate from the session (ROM open; a different image's palette)."""
-        self._pixmap_cache.clear()
-        self._populate_grid()
-        self._populate_palette(clear_pending=True)
-        self._update_status()
+        self._repaint_project_state(clear_pending=True, keep_selection=False)
 
     def on_project_mutated(self) -> None:
         """A project mutation elsewhere: repaint committed colours, keep pending.
@@ -675,12 +678,63 @@ class GraphicsTab(QWidget):
         the new effective colours - the same refresh ``_after_undo_redo``
         performs, and no more work than the session-change path it replaces.
         """
+        if self._emitting_project_change:
+            # We are the emitter: this call is the shell answering our own
+            # `projectChanged`, and the emitting method has already repainted
+            # with this same state. See `_emitting_project_change`.
+            return
+        self._repaint_project_state(clear_pending=False, keep_selection=True)
+
+    def _repaint_project_state(
+        self, *, clear_pending: bool, keep_selection: bool
+    ) -> None:
+        """The ONE repaint path for every logical edit.
+
+        An Apply, an Undo, a Redo, an unrelated project mutation and a session
+        change all need the same thing: the decode cache is stale because the
+        effective palette moved, so drop it, rebuild the grid, put the selection
+        back, and repaint the palette from the new effective colours. Before
+        CQA-07 each caller had its own near-copy of this sequence, and the
+        emitters' copy plus the shell's re-entrant copy made every logical edit
+        repaint twice. The two flags are the whole difference between the
+        callers: a session change drops staged colours and cannot keep a
+        selection (a different image's palette is not what those indices
+        describe), while a project mutation keeps both.
+
+        The effective palette is read ONCE for the whole repaint, here, and
+        threaded to every surface that needs it: the preview render and the
+        palette repaint through ``rgb``, and the staged-colour disclosure, which
+        only computes its own when it is not handed one. It is computed after
+        ``_populate_grid`` and before ``_show_selected`` because that is where
+        it becomes available: the palette does not depend on the selection, and
+        ``_show_selected`` is what restores the selection and the used-index set
+        that the palette repaint then reads. ``None`` (no corpus) flows through
+        unchanged, which every callee already handles.
+        """
         self._pixmap_cache.clear()
         selected = self._selected
         self._populate_grid()  # clears _selected; repaints every thumbnail
-        if selected is not None:
-            self._show_selected(selected)
-        self._populate_palette()
+        sprites = self._sprites()
+        # ONE effective-palette read for this whole repaint: the grid rebuild
+        # above nulled the selection but did not change the palette, so the map
+        # is computed here and handed to the preview render and the palette
+        # repaint rather than re-read by each of them. None when there is no
+        # corpus, in which case every callee already handles it.
+        rgb = self._effective_rgb(sprites) if sprites is not None else None
+        if keep_selection and selected is not None:
+            # refresh_palette=False: the palette is populated once, below, with
+            # the effective colours this repaint computes once.
+            self._show_selected(selected, refresh_palette=False, rgb=rgb)
+        self._populate_palette(clear_pending=clear_pending, rgb=rgb)
+        # Re-state the staged-change disclosure from the pending map as it NOW
+        # stands, so the panel cannot keep a sentence about a staged colour that
+        # has just been applied, undone, redone or dropped. Found in CQA-07's GUI
+        # QA: without this the pending line and the enabled Apply/Revert buttons
+        # outlived the staged edit they described (pre-existing, not a cost fix).
+        # It costs no project read on that path: `_refresh_pending_ui` returns
+        # before reading when nothing is staged, and it is handed this repaint's
+        # one effective-palette map when something is.
+        self._refresh_pending_ui(rgb)
         self._update_status()
 
     def _sprites(self):
@@ -895,7 +949,21 @@ class GraphicsTab(QWidget):
         self._asset_body.setVisible(visible)
         self._asset_empty.setVisible(not visible)
 
-    def _show_selected(self, identity: GraphicIdentity) -> None:
+    def _show_selected(
+        self,
+        identity: GraphicIdentity,
+        refresh_palette: bool = True,
+        rgb: list[tuple[int, int, int]] | None = None,
+    ) -> None:
+        """Show one sprite in the inspector.
+
+        ``refresh_palette`` is False on the repaint path, which populates the
+        palette itself and must not do it twice. ``rgb`` is the already-computed
+        effective palette, threaded to the preview render and to that palette
+        repaint so a selection costs ONE project read rather than one per
+        surface - the caller has it in hand, so recomputing it here would be a
+        whole-project parse spent to obtain a value this call was handed.
+        """
         sprites = self._sprites()
         if sprites is None:
             return
@@ -910,7 +978,8 @@ class GraphicsTab(QWidget):
         self._selected = identity
         self._set_asset_body_visible(True)
         self._export.setEnabled(True)  # a sprite is selected: export is now valid
-        rgb = self._effective_rgb(sprites)
+        if rgb is None:
+            rgb = self._effective_rgb(sprites)
         self._preview.setPixmap(
             self._scaled_for_preview(self._pixmap_for(identity, graphic, rgb))
         )
@@ -929,12 +998,15 @@ class GraphicsTab(QWidget):
         # SDK-provided linear indices, not a decoded ROM structure, so reading
         # them is not ROM-format math and claims no hardware palette bank.
         self._used_indices = set(graphic.pixels)
-        self._populate_palette()
+        if refresh_palette:
+            # Hand the palette the map we already hold: one effective-palette
+            # read per selection, not one per selection-plus-repaint.
+            self._populate_palette(rgb=rgb)
         # Load the first using character's animations, if any. The animation pane
         # only exists when the selection actually reaches a character: it is a
         # relation of the selected sprite, not a permanent empty rectangle.
         character = graphic.characters[0] if graphic.characters else None
-        self._load_character_animations(character)
+        self._load_character_animations(character, rgb)
         self._update_status()
 
     def _clear_selection(self) -> None:
@@ -1001,7 +1073,18 @@ class GraphicsTab(QWidget):
 
     # -- C. animation frame viewer --------------------------------------------
 
-    def _load_character_animations(self, character: CharacterIdentity | None) -> None:
+    def _load_character_animations(
+        self, character: CharacterIdentity | None, rgb=None
+    ) -> None:
+        """Load the selected character's animations into the stepper.
+
+        ``rgb`` is the caller's already-computed effective palette, handed to the
+        render below. Selecting row 0 is the initial state rather than a user
+        choice, so it is done with the combo's signal blocked and the frame
+        rendered once, explicitly - otherwise the row change would drive a
+        second render that re-read the whole project for a palette this call
+        already has.
+        """
         self._stop_playback()
         self._anim_select.blockSignals(True)
         self._anim_select.clear()
@@ -1020,7 +1103,7 @@ class GraphicsTab(QWidget):
             self._anim_select.blockSignals(False)
             self._frame_label.setText("\u2014")
             # No character: the one preview stays on the sprite itself.
-            self._render_selected_sprite()
+            self._render_selected_sprite(rgb)
             return
         sprites = self._sprites()
         if sprites is None:
@@ -1036,15 +1119,21 @@ class GraphicsTab(QWidget):
             self._anim_select.addItem(
                 f"Animation {animation.index} ({len(animation.frames)} frames)"
             )
-        self._anim_select.blockSignals(False)
         if self._animations:
-            self._anim_select.setCurrentRow(0)
+            self._anim_select.setCurrentRow(0)  # still blocked: see the docstring
+            self._anim_select.blockSignals(False)
+            self._render_frame(rgb)
         else:
+            self._anim_select.blockSignals(False)
             self._frame_label.setText("\u2014")
-            self._render_selected_sprite()
+            self._render_selected_sprite(rgb)
 
-    def _render_selected_sprite(self) -> None:
-        """Put the selected sprite itself in the one preview."""
+    def _render_selected_sprite(self, rgb=None) -> None:
+        """Put the selected sprite itself in the one preview.
+
+        ``rgb`` is the caller's already-computed effective palette; only a call
+        that has none (a frame-step back to the sprite) computes it here.
+        """
         if self._selected is None:
             return
         sprites = self._sprites()
@@ -1054,10 +1143,10 @@ class GraphicsTab(QWidget):
             graphic = sprites.graphic(self._selected)
         except _SDK_ERRORS:
             return
+        if rgb is None:
+            rgb = self._effective_rgb(sprites)
         self._preview.setPixmap(
-            self._scaled_for_preview(
-                self._pixmap_for(self._selected, graphic, self._effective_rgb(sprites))
-            )
+            self._scaled_for_preview(self._pixmap_for(self._selected, graphic, rgb))
         )
 
     def _on_play_toggled(self, playing: bool) -> None:
@@ -1095,21 +1184,24 @@ class GraphicsTab(QWidget):
         self._frame_index = (self._frame_index + delta) % len(frames)
         self._render_frame()
 
-    def _render_frame(self) -> None:
+    def _render_frame(self, rgb=None) -> None:
         """Draw the current animation frame in the ONE preview.
 
         There is no second preview: when the selection reaches an animation, this
         is what the single preview shows, and stepping back to the sprite is what
         happens when the selection has no animation at all.
+
+        ``rgb`` is the caller's already-computed effective palette when it has
+        one (the selection path); a genuine user frame-step computes it here.
         """
         if not self._animations:
-            self._render_selected_sprite()
+            self._render_selected_sprite(rgb)
             return
         animation = self._animations[self._anim_index]
         frames = animation.frames
         if not frames:
             self._frame_label.setText("\u2014")
-            self._render_selected_sprite()
+            self._render_selected_sprite(rgb)
             return
         frame = frames[self._frame_index]
         # timing_unknown is always True; the label carries no fabricated ms.
@@ -1117,13 +1209,14 @@ class GraphicsTab(QWidget):
         sprites = self._sprites()
         if sprites is None:
             return
-        rgb = self._effective_rgb(sprites)
+        if rgb is None:
+            rgb = self._effective_rgb(sprites)
         # First direction slot that decoded to a graphic is the shown frame.
         identity = next((g for g in frame.graphics if g is not None), None)
         if identity is None:
             # No art decoded for this frame: fall back to the sprite itself rather
             # than blanking the one preview.
-            self._render_selected_sprite()
+            self._render_selected_sprite(rgb)
             return
         try:
             graphic = sprites.graphic(identity)
@@ -1131,7 +1224,7 @@ class GraphicsTab(QWidget):
                 self._scaled_for_preview(self._pixmap_for(identity, graphic, rgb))
             )
         except _SDK_ERRORS:
-            self._render_selected_sprite()
+            self._render_selected_sprite(rgb)
 
     # -- D/E. palette editor + pending change ---------------------------------
 
@@ -1149,7 +1242,7 @@ class GraphicsTab(QWidget):
                 widget.setParent(None)
                 widget.deleteLater()
 
-    def _populate_palette(self, clear_pending: bool = False) -> None:
+    def _populate_palette(self, clear_pending: bool = False, rgb=None) -> None:
         """Lay the object palette out as compact 16-index banks.
 
         The palette is sixteen 16-index rows by its own structure, so it is drawn
@@ -1162,6 +1255,12 @@ class GraphicsTab(QWidget):
         index, the scope toggle still switches between the sprite's own colours and
         the whole shared palette, and a pending recolour still previews on top of
         the effective colour.
+
+        ``rgb`` is an already-computed effective palette from a caller that has
+        one (`_show_selected`). One repaint reads the committed override map ONCE
+        and hands the result to every swatch and to the detail line; before
+        CQA-07 each of the 256 swatches re-read and re-parsed the whole project to
+        find the map this method had computed one line earlier.
         """
         if clear_pending:
             self._palette_pending.clear()
@@ -1171,7 +1270,8 @@ class GraphicsTab(QWidget):
             self._scope_header.setText("Open a ROM to load its palette.")
             self._palette_detail.setText("")
             return
-        rgb = self._effective_rgb(sprites)
+        if rgb is None:
+            rgb = self._effective_rgb(sprites)
 
         scoped = self._scope_used.isChecked() and self._used_indices is not None
         if scoped:
@@ -1207,7 +1307,7 @@ class GraphicsTab(QWidget):
 
         for position, (bank_start, members) in enumerate(banks):
             block_row, block_column = divmod(position, _PALETTE_BANK_COLUMNS)
-            block = self._palette_bank(bank_start, members, scoped)
+            block = self._palette_bank(bank_start, members, scoped, rgb)
             # Aligned left and top in its cell, and the columns take no stretch, so
             # the banks pack together instead of spreading across the pane. A bank
             # is a dense block; spacing it out would make it read as a chart again.
@@ -1220,9 +1320,11 @@ class GraphicsTab(QWidget):
         for column in range(_PALETTE_BANK_COLUMNS):
             self._palette_grid.setColumnStretch(column, 0)
         self._palette_grid.setColumnStretch(_PALETTE_BANK_COLUMNS, 1)
-        self._refresh_palette_detail()
+        self._refresh_palette_detail(rgb)
 
-    def _palette_bank(self, bank_start: int, members: list[int], scoped: bool) -> QWidget:
+    def _palette_bank(
+        self, bank_start: int, members: list[int], scoped: bool, rgb
+    ) -> QWidget:
         """One labelled bank: a 4x4 block of the 16 indices it holds."""
         bank = QWidget()
         layout = QVBoxLayout(bank)
@@ -1240,15 +1342,17 @@ class GraphicsTab(QWidget):
         layout.addLayout(grid)
         for position, index in enumerate(members):
             row, column = divmod(position, _BANK_EDGE)
-            swatch = self._palette_swatch(index, scoped)
+            swatch = self._palette_swatch(index, scoped, rgb)
             # Keyed by the TRUE global index, so a pending recolour and the
             # repaint path address the real palette entry even in scoped view.
             self._swatches[index] = swatch
             grid.addWidget(swatch, row, column)
         return bank
 
-    def _palette_swatch(self, index: int, scoped: bool) -> QFrame:
-        r, g, b = self._effective_rgb(self._sprites())[index]
+    def _palette_swatch(self, index: int, scoped: bool, rgb) -> QFrame:
+        # The effective palette comes from the caller's single read per repaint:
+        # 256 swatches must not each re-read and re-parse the whole project.
+        r, g, b = rgb[index]
         # Pending (uncommitted) edits preview on top of the effective colour.
         if index in self._palette_pending:
             r, g, b = self._palette_pending[index]
@@ -1266,14 +1370,20 @@ class GraphicsTab(QWidget):
         swatch.mousePressEvent = self._swatch_click(index)
         return swatch
 
-    def _refresh_palette_detail(self) -> None:
-        """The one line of detail for the selected swatch, or nothing."""
+    def _refresh_palette_detail(self, rgb=None) -> None:
+        """The one line of detail for the selected swatch, or nothing.
+
+        ``rgb`` is the caller's already-computed effective palette when it has
+        one, so the detail line costs no extra project read on the repaint path
+        or on a colour pick; a caller with none (the direct QA seam) computes it.
+        """
         index = self._selected_palette_index
         sprites = self._sprites()
         if index is None or sprites is None:
             self._palette_detail.setText("")
             return
-        rgb = self._effective_rgb(sprites)
+        if rgb is None:
+            rgb = self._effective_rgb(sprites)
         r, g, b = rgb[index]
         parts = [f"Selected index {index}", f"#{r:02X}{g:02X}{b:02X}"]
         if index in self._palette_pending:
@@ -1294,29 +1404,41 @@ class GraphicsTab(QWidget):
         if sprites is None:
             return
         self._selected_palette_index = index
-        current = self._palette_pending.get(index) or self._effective_rgb(sprites)[index]
+        # ONE effective-palette read for the whole click: it seeds the dialog's
+        # current colour, the detail line and the pending "from" colour. Reading
+        # it once per surface was three whole-project parses inside one handler.
+        rgb = self._effective_rgb(sprites)
+        current = self._palette_pending.get(index) or rgb[index]
         chosen = QColorDialog.getColor(
             QColor(*current), self, f"Recolour palette index {index}"
         )
         if not chosen.isValid():
-            self._refresh_palette_detail()
+            self._refresh_palette_detail(rgb)
             return
         self._palette_pending[index] = (chosen.red(), chosen.green(), chosen.blue())
         swatch = self._swatches.get(index)
         if swatch is not None:
             self._paint_swatch(swatch, chosen.red(), chosen.green(), chosen.blue())
-        self._refresh_pending_ui()
+        self._refresh_pending_ui(rgb)
 
-    def _refresh_pending_ui(self) -> None:
+    def _refresh_pending_ui(self, rgb=None) -> None:
+        """Re-state every staged recolour, and disclose its known consumers.
+
+        ``rgb`` is the caller's already-computed effective palette when it has
+        one; the "from" colour is the effective colour before this pending edit
+        (committed override if any, else canonical), never the raw ROM word.
+        """
         pending = bool(self._palette_pending)
         self._revert.setEnabled(pending)
         self._apply.setEnabled(pending and self._session.project_dir is not None)
-        self._refresh_palette_detail()
+        self._refresh_palette_detail(rgb)
         if not pending:
             self._pending_label.setText("No pending palette change.")
             return
         sprites = self._sprites()
-        effective = self._effective_rgb(sprites) if sprites is not None else None
+        effective = rgb
+        if effective is None and sprites is not None:
+            effective = self._effective_rgb(sprites)
         lines = []
         for index in sorted(self._palette_pending):
             r, g, b = self._palette_pending[index]
@@ -1371,10 +1493,10 @@ class GraphicsTab(QWidget):
         # swallowed by Qt yet still leave the failed command on the stack.
         pending = dict(self._palette_pending)
         try:
-            prior = {i: self._read_override(i) for i in pending}
-            for index in sorted(pending):
-                r, g, b = pending[index]
-                self._write_override(index, r, g, b)
+            prior = self._prior_overrides(pending)
+            # ONE batch write for the whole gesture, not one whole-project
+            # read+write per staged index.
+            self._write_overrides(pending)
         except (*_SDK_ERRORS, ProjectError, OSError) as exc:
             QMessageBox.critical(self, "Apply recolour", str(exc))
             return
@@ -1388,33 +1510,36 @@ class GraphicsTab(QWidget):
 
     # -- WB-005 Layer 3: undo/redo support ------------------------------------
 
-    def _read_override(self, index: int) -> tuple[int, int, int] | None:
-        """The prior authored rgb for one index, or None if unauthored.
+    def _prior_overrides(self, indices) -> dict[int, tuple[int, int, int] | None]:
+        """The prior authored rgb for each index, or None where unauthored.
 
         Read in `_on_apply` before the write and handed to the command, so undo
-        can reverse to it (None -> remove the override). Raises the SDK family /
-        ProjectError / OSError on failure, caught by `_on_apply`'s guard before
-        anything is pushed onto the stack.
+        can reverse to it (None -> remove the override). ONE project load for the
+        whole batch, because the SDK already returns the committed map in one
+        read; a per-index read reloaded the project once per staged colour.
+        Raises the SDK family / ProjectError / OSError on failure, caught by
+        `_on_apply`'s guard before anything is pushed onto the stack.
         """
         profile = self._session.profile
         if self._session.project_dir is None or profile is None:
-            return None
-        return graphics_sdk.get_palette_override(
-            self._session.project_dir, profile, index
+            return {index: None for index in indices}
+        committed = graphics_sdk.get_palette_overrides(
+            self._session.project_dir, profile
         )
+        return {index: committed.get(index) for index in indices}
 
-    def _write_override(self, index: int, r: int, g: int, b: int) -> None:
-        """Persist one recolour through the SDK (redo, or undo-to-prior-rgb)."""
-        profile = self._session.profile
-        graphics_sdk.set_palette_override(
-            self._session.project_dir, profile, index, r, g, b
-        )
+    def _write_overrides(
+        self, colours: dict[int, tuple[int, int, int] | None]
+    ) -> bool:
+        """Persist a whole batch of recolours through the SDK.
 
-    def _clear_override(self, index: int) -> None:
-        """Remove one authored recolour (undo of an index with no prior override)."""
+        The one write path for an Apply, an Undo and a Redo: `None` in the batch
+        means "remove this index", which is how an undo of a never-authored index
+        reverses. Returns whether the project source changed.
+        """
         profile = self._session.profile
-        graphics_sdk.remove_palette_override(
-            self._session.project_dir, profile, index
+        return graphics_sdk.set_palette_overrides(
+            self._session.project_dir, profile, colours
         )
 
     def _after_undo_redo(self) -> None:
@@ -1427,24 +1552,34 @@ class GraphicsTab(QWidget):
         `project_revision` (validation/build compared against it), and an
         undo/redo is a fresh mutation there rather than a return to a clean
         point, so `setClean` would fight that model (qt-patterns.md).
+
+        The pending map is cleared FIRST: the edit is durable now - `_on_apply`
+        wrote it before the push, and a redo/undo wrote it just above - so any
+        staged intent for those indices is superseded, and the repaint below must
+        not paint it back on top of the durable colour.
         """
-        # The effective palette changed, so every cached thumbnail using an
-        # affected index is stale - drop the whole decode cache so grid/preview
-        # repaint against the new effective colours.
-        self._pixmap_cache.clear()
+        self._palette_pending.clear()
         self._session.project_mutated()
-        self.projectChanged.emit()
-        selected = self._selected
-        self._populate_grid()  # clears _selected; repaints every thumbnail
-        if selected is not None:
-            self._show_selected(selected)  # repaint the inspector preview too
-        self._populate_palette(clear_pending=True)
-        self._update_status()
+        # The emitting method repaints itself at the end of this call, so the
+        # shell's re-entrant `on_project_mutated()` on THIS tab is suppressed for
+        # exactly the duration of the emission. The signal is not suppressed at
+        # all: every other peer still receives it.
+        self._emitting_project_change = True
+        try:
+            self.projectChanged.emit()
+        finally:
+            self._emitting_project_change = False
+        self._repaint_project_state(clear_pending=True, keep_selection=True)
 
     def _on_revert(self) -> None:
         """Discard unapplied swatch edits and repaint from the ROM palette."""
         self._palette_pending.clear()
         self._populate_palette()
+        # The staged set is now empty, so re-state the disclosure from it: the
+        # same QA-found staleness the repaint path resets (the pending sentence
+        # and the enabled Apply/Revert outliving the edit they described). Costs
+        # no project read, because nothing is staged.
+        self._refresh_pending_ui()
 
     # -- status line ----------------------------------------------------------
 

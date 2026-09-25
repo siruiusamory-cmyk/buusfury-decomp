@@ -17,7 +17,7 @@ marker registry by `tests/unit/test_test_gates.py`.
 |---|---|---|---|
 | `fast` | `tests/unit`, the portable suite | 2,066 | nothing beyond the dev extra |
 | `rom` | `tests/integration`, the ROM-gated suite | 985 | a canonical local ROM image |
-| `workbench` | DragonByte Z UI, session and editor regressions | 137 | PySide6 (skips without it) |
+| `workbench` | DragonByte Z UI, session and editor regressions | 137 | PySide6 (skips without it; must not skip in CI) |
 | `writer` | authored images, provenance, allocation and output safety | 638 | nothing extra |
 | `map` | map reading, placement, rendering and layout | 508 | a ROM for its integration members |
 | `research` | research and runtime tooling (atlas, mGBA, logx, disassembly) | 919 | a ROM for its integration members |
@@ -101,7 +101,28 @@ is genuinely warranted.
   deleting each other's temporary directories. A `--basetemp` inside the
   repository is honoured, with a warning.
 - **PySide6** is needed for the `workbench` gate. Without it those modules
-  skip cleanly rather than erroring; install `.[workbench]` to run them.
+  skip cleanly rather than erroring; install `.[workbench]` to run them. CI
+  installs `.[dev,workbench,research]` and sets `QT_QPA_PLATFORM=offscreen`,
+  because the runner has no display while several of those modules construct a
+  real `QApplication` and real widgets.
+- **capstone** is needed by the three `research` modules that sweep the Thumb
+  decoder with it (`test_thumb_caller_census.py`,
+  `test_thumb_disasm_field_extraction.py`, `test_ui_graphics_probe.py`); without
+  it they skip as a whole file. It is research tooling rather than a shipping
+  dependency, so it is the separate `research` extra: install `.[research]`.
+- **A required GUI module must not collapse to a whole-file skip in CI.** The
+  shipping Workbench modules are named in `REQUIRED_GUI_MODULES` in
+  `tests/gates.py`. When a run collects one of them and it contributes no test,
+  `tests/conftest.py` names it and its skip reason at session end, and under CI
+  (`GITLAB_CI` or `CI`) that report is a session FAILURE rather than a skip
+  count. Locally it is a warning only, so a developer without PySide6 can still
+  run the portable suite; set `WEBFOOT_REQUIRE_GUI_TESTS=1` to make it fail
+  locally as well, which is how the guard is mutation-tested. A targeted run is
+  unaffected - a module the run never collected is never reported, so
+  `pytest tests/unit/test_map_render.py` stays quiet.
+  `tests/unit/test_ci_gui_surface.py` checks the CI half of the contract: the
+  installed extras, the headless Qt platform, the module-level dependency guards
+  and the regressions the ticket names.
 - **A canonical ROM** is needed for the `rom` gate. It is read only; the
   canonical image is never written. The header reports which image, if any,
   the session found. The default location is
@@ -135,6 +156,11 @@ Adding an ordinary test file needs no registry edit: a new
 gets a new rule in `tests/gates.py`, a marker in `pyproject.toml`, a row in
 the table above, and a line in the doc. `test_test_gates.py` fails until all
 of those agree, and it also fails if a rule stops matching any test file.
+
+One further registry edit is not about gates: a new *shipping GUI* module also
+belongs in `REQUIRED_GUI_MODULES` in `tests/gates.py`, the list CI fails over
+when a whole Workbench module skips (see "Environment requirements"). A GUI
+module left out of that list still runs; its silent collapse is just not caught.
 
 ## Measured baseline, 2026-09-20
 

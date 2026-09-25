@@ -1287,8 +1287,9 @@ const roadmapTo1: RoadmapTo1 = {
     + " not an internal milestone. The count is a count of authoring capabilities,"
     + " so it only moves when the product genuinely gains one.",
   position:
-    "The foundation is complete and 16 of the 24 authoring capabilities are"
-    + " shipped. The next phase has been chosen but not started.",
+    "The foundation and the authoring-safety baseline are complete, and 16 of the"
+    + " 24 authoring capabilities are shipped. The next phase has been chosen but"
+    + " not started.",
   phases: [
     {
       id: "foundation",
@@ -1327,7 +1328,7 @@ const roadmapTo1: RoadmapTo1 = {
         "Responsive editing on large projects",
         "Continuous integration that actually exercises the desktop application",
       ],
-      state: "next",
+      state: "complete",
     },
     {
       id: "map-editing",
@@ -1359,7 +1360,7 @@ const roadmapTo1: RoadmapTo1 = {
         },
       ],
       work: [],
-      state: "planned",
+      state: "next",
     },
     {
       id: "graphics-authoring",

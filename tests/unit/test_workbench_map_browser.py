@@ -371,6 +371,10 @@ class _FakeEditor:
             map_index,
             layer_slot,
             cell,
+            # Re-painting a cell that is already staged keeps the ORIGINAL the
+            # first paint captured, exactly as the real session does: the record
+            # describes the change from the base, so one undo returns the cell to
+            # that base in one step.
             existing.original if existing is not None else current,
             replacement,
             slot.cells[cell].offset,
@@ -646,6 +650,64 @@ def test_undo_and_redo_restore_exact_previous_values(edit_tab):
         CHUNKS[EMPTY_BRUSH]
     ] * 4
     assert edit_tab._grid_item._edited == frozenset({0, 1, 2, 3})
+
+    # ...and a second undo restores the exact per-cell values again, which is the
+    # property a broken previous-value capture loses.
+    edit_tab._undo_stack.undo()
+    assert edit_tab.editor.edits_for(MAP) == ()
+    for cell, pointer in enumerate(CHUNKS[:4]):
+        assert edit_tab._working_pointer(0, cell) == pointer
+    assert edit_tab._undo_stack.count() >= 1
+
+
+def test_undo_restores_the_retail_value_after_the_cell_was_repainted(edit_tab):
+    """The double-undo case, which is what a previous-value capture is FOR.
+
+    A single stroke's undo is also undone by un-staging, so it cannot
+    discriminate. Repainting one cell twice makes the middle state a real edit
+    that undo has to restore as a value, and only a correct capture can.
+    """
+    edit_tab._edit_toggle.setChecked(True)
+    _choose(edit_tab, 1)
+    _paint_cells(edit_tab, 0)
+    _choose(edit_tab, 2)
+    _paint_cells(edit_tab, 0)
+    edits = edit_tab.editor.edits_for(MAP)
+    assert edits[-1].replacement == CHUNKS[2]
+    assert edits[-1].original == CHUNKS[0]
+    assert edit_tab._undo_stack.count() == 2
+
+    edit_tab._undo_stack.undo()
+    mid = edit_tab.editor.edits_for(MAP)
+    assert [edit.replacement for edit in mid] == [CHUNKS[1]]
+    assert [edit.original for edit in mid] == [CHUNKS[0]]
+
+    edit_tab._undo_stack.undo()
+    assert edit_tab.editor.edits_for(MAP) == ()
+    assert edit_tab._working_pointer(0, 0) == CHUNKS[0]
+
+
+def test_a_command_records_each_cells_own_previous_value(edit_tab):
+    """The command's capture is per cell and is the BASE, not the painted value.
+
+    This is the structural statement of the undo contract: `previous` maps every
+    painted cell to the value it held before the gesture. A capture that recorded
+    the painted value instead would still undo a single stroke correctly (the
+    un-stage path covers it) and would silently corrupt a gesture over a cell
+    that was already staged - which is why the assertion is on the mapping.
+    """
+    edit_tab._edit_toggle.setChecked(True)
+    _choose(edit_tab, EMPTY_BRUSH)
+    _paint_cells(edit_tab, 0, 1, 2, 3)
+    command = edit_tab._undo_stack.command(0)
+    assert command.previous == {
+        0: CHUNKS[0],
+        1: CHUNKS[1],
+        2: CHUNKS[2],
+        3: CHUNKS[3],
+    }
+    assert command.applied == {cell: CHUNKS[EMPTY_BRUSH] for cell in range(4)}
+    assert command.previous != command.applied
 
 
 def test_consecutive_strokes_of_one_brush_merge_into_one_undo(edit_tab):
@@ -1138,6 +1200,116 @@ def test_a_verified_derivative_renders_its_edits_and_stays_read_only(
     assert "derivative" in tab._read_only_detail.text()
     assert not tab._save_button.isEnabled()
     assert tab._grid_item is None
+
+
+def test_the_tab_geometry_matches_the_production_paint_authority():
+    """MAP-TILE-PAINT-001: the surface's cell geometry is the engine's.
+
+    `LayoutGrid` (what the Workbench draws and hit-tests) and
+    `map_paint.PaintLayer` (what the build resolves against) must agree on which
+    cell a point is in and on the rectangle a cell covers. `bg_tilemap`'s
+    `render_entry_words` indexes its output row-major in `map_width_tiles`, so a
+    5x3 grid whose column count were confused with its row count would map every
+    cell to a different place - which is exactly the coordinate defect this test
+    catches.
+    """
+    from tools.webfoot import map_paint as mp
+
+    columns, rows = 5, 3
+    grid = LayoutGrid(columns, rows)
+    assert (grid.columns, grid.rows) == (columns, rows)
+    assert grid.width == columns * mbt.mv.CHUNK_PIXELS
+    assert grid.height == rows * mbt.mv.CHUNK_PIXELS
+
+    # Row-major: cell index -> (row, column) and back, with a NON-square grid so
+    # a swapped pair cannot coincide.
+    for cell in range(columns * rows):
+        row, column = divmod(cell, columns)
+        assert grid.column_of(cell) == column
+        assert grid.row_of(cell) == row
+        rect = grid.cell_rect(cell)
+        assert rect == (
+            column * mbt.mv.CHUNK_PIXELS,
+            row * mbt.mv.CHUNK_PIXELS,
+            mbt.mv.CHUNK_PIXELS,
+            mbt.mv.CHUNK_PIXELS,
+        )
+        # The centre of every cell hit-tests back to that same cell.
+        assert grid.cell_at(rect[0] + rect[2] // 2, rect[1] + rect[3] // 2) == cell
+
+    # ...and the production authority states the same geometry for a layer of
+    # that shape, so a surface built from one and a plan built from the other
+    # cannot disagree about where a cell is.
+    layer = mp.PaintLayer(
+        slot=1,
+        classification="dominant",
+        handler=0,
+        columns=columns,
+        rows=rows,
+        cells=tuple(
+            mp.PaintCell(
+                cell=index,
+                column=index % columns,
+                row=index // columns,
+                pointer=0,
+                offset=0,
+            )
+            for index in range(columns * rows)
+        ),
+        vocabulary=(),
+        read_only_reason="",
+    )
+    assert layer.cell_count == grid.cell_count
+    assert (layer.width, layer.height) == (grid.width, grid.height)
+    for cell in range(columns * rows):
+        assert layer.column_of(cell) == grid.column_of(cell)
+        assert layer.row_of(cell) == grid.row_of(cell)
+        assert layer.cell_rect(cell) == grid.cell_rect(cell)
+        rect = layer.cell_rect(cell)
+        assert layer.cell_at(rect[0] + 1, rect[1] + 1) == grid.cell_at(
+            rect[0] + 1, rect[1] + 1
+        )
+    # Outside the layer is outside both.
+    assert layer.cell_at(layer.width, 0) is None
+    assert grid.cell_at(grid.width, 0) is None
+    assert layer.cell_at(-1, 0) is None
+    assert layer.cell_at(0, layer.height) is None
+
+
+def test_a_stroke_costs_one_edit_per_changed_cell_and_nothing_else(edit_tab):
+    """CQA-07 continuity, measured structurally rather than by timing.
+
+    A drag over four cells must cost four `set_cell` calls - one per cell whose
+    value changed - and ONE undo entry. The counts are the point: a drag that
+    re-entered a cell, re-resolved the layer per cell, or re-read the project per
+    cell would show up here as a number that no longer matches the cells painted.
+    """
+    edit_tab._edit_toggle.setChecked(True)
+    _choose(edit_tab, EMPTY_BRUSH)
+    calls: list[tuple[int, int, int]] = []
+    original = edit_tab.editor.set_cell
+
+    def counting(map_index, layer_slot, cell, replacement):
+        calls.append((map_index, layer_slot, cell))
+        return original(map_index, layer_slot, cell, replacement)
+
+    edit_tab.editor.set_cell = counting
+    try:
+        edit_tab.begin_paint_stroke()
+        # The same cell twice, then two new ones: a real drag re-enters cells.
+        for cell in (0, 0, 1, 2, 3):
+            edit_tab.paint_cell(cell)
+        edit_tab.end_paint_stroke()
+    finally:
+        edit_tab.editor.set_cell = original
+
+    assert calls == [(MAP, SLOT, cell) for cell in (0, 1, 2, 3)]
+    assert edit_tab._undo_stack.count() == 1
+    assert len(edit_tab.editor.edits_for(MAP)) == 4
+    # The committed-project layer was read, but the project document was not
+    # re-read per cell: `set_floor` is called by the session lifecycle and by an
+    # explicit reload, never by a paint.
+    assert edit_tab.editor.floor_calls <= 2
 
 
 def test_switching_maps_drops_the_selection_and_brush(edit_tab):

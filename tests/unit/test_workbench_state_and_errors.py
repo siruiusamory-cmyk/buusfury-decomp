@@ -132,9 +132,15 @@ def stage_layout_edit(shell) -> mbt.MapBrowserTab:
     shell.window.show_editor("Maps")
     browser = shell.window._maps.browser
     browser._list.setCurrentRow(0)
-    browser._on_cell_clicked(0)
+    # MAP-TILE-PAINT-001: the palette selects the BRUSH and a click paints, so
+    # the edit is made by choosing a value and then painting a cell with it.
+    browser._chooser.blockSignals(True)
     browser._chooser.setCurrentRow(1)
-    browser._apply_draft()
+    browser._chooser.blockSignals(False)
+    browser._on_chunk_selected(browser._chooser.item(1))
+    browser.begin_paint_stroke()
+    browser.paint_cell(0)
+    browser.end_paint_stroke()
     return browser
 
 
@@ -147,6 +153,11 @@ def staged_state(browser: mbt.MapBrowserTab) -> tuple:
         browser._selected_cell,
         browser._draft,
         tuple(browser._saved),
+        browser._brush_ordinal,
+        tuple((edit.map_index, edit.layer_slot, edit.cell) for edit in browser._editor.edits())
+        if browser._editor is not None
+        else (),
+        browser._undo_stack.count(),
     )
 
 
@@ -194,7 +205,52 @@ def test_a_rom_change_still_resets_the_layout_session(shell):
     assert shell.window._maps.mode() != "layout"
 
 
-def test_a_project_mutation_preserves_the_placement_undo_history(qapp, monkeypatch):
+def test_a_project_mutation_preserves_the_paint_undo_history_and_the_gesture(shell):
+    """MAP-TILE-PAINT-001's own CQA-05 case, on the paint surface.
+
+    The audit path, exactly: stage painted cells, perform an unrelated supported
+    project mutation, and require that the staged cells, their exact previous
+    values and the undo/redo history are all still valid - then that undo still
+    restores the values the stroke captured.
+    """
+    browser = stage_layout_edit(shell)
+    command = browser._undo_stack.command(0)
+    staged = staged_state(browser)
+    assert staged[2] == 1, "one staged paint"
+    assert staged[8] == 1, "one undo entry for the gesture"
+    captured = command.previous
+
+    # An unrelated project mutation, through the real shell entry point.
+    shell.window._on_project_changed()
+
+    assert staged_state(browser) == staged
+    assert browser._undo_stack.command(0).previous == captured
+    assert browser._undo_stack.canUndo() and not browser._undo_stack.canRedo()
+    assert shell.window._maps.unsaved_edit_count() == 1
+
+    # The history is still VALID, not merely present: undo un-stages the cell,
+    # and redo puts the gesture's own value back.
+    browser._undo_stack.undo()
+    assert browser._editor.edits_for(MAP) == ()
+    assert browser._undo_stack.canRedo()
+    browser._undo_stack.redo()
+    redone = browser._editor.edits_for(MAP)
+    assert [edit.cell for edit in redone] == [0]
+    assert redone[0].replacement == CHUNKS[1]
+    assert redone[0].original == CHUNKS[0]
+
+
+def test_a_session_change_still_clears_the_paint_history(shell):
+    """The control: the paint history is not simply immortal."""
+    browser = stage_layout_edit(shell)
+    assert browser._undo_stack.count() == 1
+    shell.window._on_rom_opened()
+    assert browser._editor is None
+    assert browser._undo_stack.count() == 0
+    assert browser.unsaved_edit_count() == 0
+
+
+
     """CQA-05's second surface: the placement history must survive.
 
     A real `QUndoStack` is used rather than a stub stack, because the claim is

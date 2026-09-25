@@ -438,6 +438,10 @@ class MapPainter:
         is planned: an unsupported layer, a cell outside the layer's own grid, a
         non-integer or out-of-range ordinal, and a pointer the same layer does
         not already use elsewhere.
+
+        A replacement that resolves to the value the cell already holds is NOT a
+        refusal - see the note at the end of the method - so callers that need
+        "did anything actually change?" read :attr:`PaintEdit.is_effective`.
         """
         layer = self.layer(map_index, layer_slot)
         if not layer.editable:
@@ -466,10 +470,14 @@ class MapPainter:
             mg.dominant_chunk_words(self._reader, entry.pointer)
         except _READ_ERRORS as exc:
             raise MapPaintError(str(exc)) from exc
-        if entry.pointer == original:
-            raise MapPaintError(
-                f"BG{layer_slot} cell {cell} already holds chunk {ordinal}"
-            )
+        # A paint of the value the cell already holds is NOT an error. It is
+        # frequently unavoidable rather than accidental: a drag re-enters cells
+        # it has already painted, a merged gesture replays its own work, and an
+        # author may re-issue the same gesture at any time. The resolved edit is
+        # returned with `is_effective` false, and the planner and the project
+        # writer both treat that as "nothing to do" rather than as a refusal -
+        # which is what keeps a no-op paint from creating project mutation or a
+        # meaningless byte change.
         return PaintEdit(
             map_index=map_index,
             layer_slot=layer_slot,
@@ -499,7 +507,6 @@ class MapPainter:
             if edit.is_effective:
                 resolved.append(edit)
         return tuple(edit.to_change(self._base) for edit in resolved)
-
     def overrides(self, edits: Mapping[tuple[int, int, int], int]) -> dict[int, dict[int, int]]:
         """Authored edits for one map as ``{layer slot: {cell: pointer}}``.
 

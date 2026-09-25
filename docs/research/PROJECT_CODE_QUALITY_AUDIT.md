@@ -661,6 +661,46 @@ caps scanner output at `CANDIDATE`/`OBSERVED` by type.
 
 #### CQA-07 [HIGH] The palette editor and `palette_users` do full-project and full-corpus work per UI element, on the UI thread
 
+> **REMEDIATED: CQA-07-08-WORKBENCH-PERF-AND-CI-001 (2026-09-25).** The accepted
+> root cause is one shared cause behind four redundancies: the palette editor
+> reparsed the whole project once per swatch, `palette_users` rescanned the whole
+> decoded corpus once per staged colour, each index read and wrote the project on
+> its own, and the shell and the tab both refreshed the same edit so one Apply
+> repainted twice. The fix computes one effective palette per repaint and threads
+> it to every surface that needs it, memoizes the index-to-consumer inverse in
+> `ActorSprites` so `palette_users` does not rescan, serves every logical edit
+> from one `_repaint_project_state` refresh path with a re-entrancy guard so the
+> tab cannot answer its own `projectChanged` emission, and makes
+> `set_palette_overrides` the single batch-write authority, validating the whole
+> batch before mutating, loading the project once and writing only when the
+> override map actually changed. **No tab-level cache was introduced**,
+> deliberately, so no new stale-cache surface exists. Measured on the canonical
+> image plus a real 1.33 MB extracted project: one 256-swatch palette repaint
+> went from **257 whole-project parses to 1**, **104.896 s to 0.433 s**; one
+> Apply went from about **1040 whole-project parses to 3**, identical for 4 and
+> for 8 staged colours; and the consumer disclosure for all 256 indices went from
+> repeatedly rescanning the whole corpus (about 2.93 s) to a single **0.171 s**
+> computation with no repeated rescan afterwards. The primary evidence is
+> structural and call-count based; wall clock is a supporting measurement, never
+> a test assertion. Displayed colours, the pending overlay, committed overrides,
+> Apply, Undo, Redo, merge-by-identical-index-set, the consumer disclosure, the
+> staged palette colours preserved across an unrelated project mutation and the
+> session-change reset are all preserved, pinned by controls that passed before
+> and after the change. Nine captures were produced through the tracked visual QA
+> harness and inspected; that walkthrough also found and corrected two
+> pre-existing defects on the affected path (a staged-change sentence and the
+> enabled Apply/Revert buttons outliving the edit they described, and a malformed
+> batch entry raising `TypeError` instead of the SDK's own `GraphicsError`). All
+> eight mutations pass, with the named node failing and every file restored
+> byte-exactly: M1, M1b, M1c, M1d, M2, M2b, M5 and M6. **M2** is the load-bearing
+> one, because breaking the displayed colour fails the correctness controls while
+> every cost-only test still passes, which proves the performance tests
+> did not replace the semantic ones. The frozen reviewed candidate `52c6314`
+> received an independent **PASS** with 0 blocking and 0 non-blocking findings
+> and 3 notes, none requiring a correction. Finding **CLOSED**. Closure record:
+> [`../tickets/archive/CQA-07-08-WORKBENCH-PERF-AND-CI-001-COMPLETE.md`](../tickets/archive/CQA-07-08-WORKBENCH-PERF-AND-CI-001-COMPLETE.md).
+> The text below is the finding **as originally recorded** and is not restated.
+
 - **Subsystem:** PRODUCTION - Graphics editor refresh cost.
 - **Location:** `workbench/graphics_tab.py:1206-1207` (`_palette_swatch` →
   `_effective_rgb`), `:669-691` (`_effective_rgb` →
@@ -705,6 +745,42 @@ caps scanner output at `CANDIDATE`/`OBSERVED` by type.
   surface is modelled on this code.
 
 #### CQA-08 [HIGH] CI installs only `.[dev]`, so 258 collected portable tests are skipped whole at import - including the entire Workbench suite
+
+> **REMEDIATED: CQA-07-08-WORKBENCH-PERF-AND-CI-001 (2026-09-25).** CI installed
+> only the `dev` extra, so the whole PySide6 and capstone test modules collapsed
+> to one skip line each while the job stayed green. The measured baseline is
+> **14 PySide6 modules**, which **supersedes the earlier estimate of 13** that
+> the ticket narrative and the CQA-05/06 closeout record both carried, plus **3
+> capstone modules**; those 14 modules held **215 collected tests** and the 3
+> research modules held **88**, so **303 portable tests** were collected as
+> nothing and never executed (the `test-sdk` job trace reported **2227 passed, 27
+> skipped**, of which **17 skips were whole-module collapses**). The fix keeps
+> the one existing `test-sdk` job, deliberately not split, and has it install
+> `-e ".[dev,workbench,research]"`, gains a declared `research = ["capstone>=5"]`
+> extra so capstone is a declared dependency rather than an ad-hoc pip argument,
+> sets `QT_QPA_PLATFORM=offscreen` at job level because three modules construct
+> real widgets and do not set it themselves, and installs the Qt runtime package
+> list derived from the ELF `DT_NEEDED` entries of the real manylinux PySide6
+> wheels, including `libx11-6` (the offscreen platform plugin itself links
+> `libX11.so.6`) and `libglib2.0-0t64`, the Debian trixie spelling that
+> `python:3.12-slim` currently requires. The guard is independent of the
+> dependency: `REQUIRED_GUI_MODULES` in `tests/gates.py` holds **15** shipping GUI
+> modules, and `tests/conftest.py` fails the session in CI when a required module
+> is collected but contributes no test, naming the module and its skip reason,
+> while outside CI it only warns so a developer without Qt can still run the
+> portable suite; a targeted run is never reported.
+> `tests/unit/test_ci_gui_surface.py` is an independent second net that never
+> imports PySide6 at module scope, so it cannot vanish behind the same missing
+> dependency. Result: invalid environment skips **17 to 0**, stale or incorrect
+> skips **0**, and **12 legitimate conditional skips** remain; **15 required GUI
+> modules and 230 tests** execute plus 5 CI-contract tests, and the CQA-05/06 and
+> CQA-07 regressions execute in CI at **38 tests** and **15 tests** with none
+> skipped. Final CI: **2549 passed, 12 skipped, 0 failed, 0 errors**, zero
+> whole-module collapses and the guard silent, against the **2227 passed, 27
+> skipped** baseline. Mutations **M3** and **M4** pass. Finding **CLOSED**.
+> Closure record:
+> [`../tickets/archive/CQA-07-08-WORKBENCH-PERF-AND-CI-001-COMPLETE.md`](../tickets/archive/CQA-07-08-WORKBENCH-PERF-AND-CI-001-COMPLETE.md).
+> The text below is the finding **as originally recorded** and is not restated.
 
 - **Subsystem:** TOOLING (CI) / TEST.
 - **Location:** `.gitlab-ci.yml:28` (`-e ".[dev]"`) and `:32`
@@ -1477,8 +1553,8 @@ must-fix set above; a finding's text is never edited, only annotated in place.
 | CQA-04 | HIGH | **CLOSED** - CQA-04-DECODE-STACK-AUTHORITY-001. Shared binary interpretation has one production authority (`tools/webfoot/formats/map_graphics.py`), the production map-layout writer no longer reads through `tools.export`, common-corpus equivalence was proved before the duplicate implementation was removed, and the two genuine historical divergences (layer-handler support; tile-bank decoded-extent policy) are reconciled or documented as deliberate outer policy. Independent review APPROVE, no findings. |
 | CQA-05 | HIGH | **CLOSED** - CQA-05-06-WORKBENCH-STATE-AND-ERRORS-001. One shell callback no longer answers two events: `MainWindow._on_project_changed` routes every peer to `on_project_mutated()`, which re-reads only what a project can change, and `on_session_changed()` is reached only by a genuine ROM/session replacement. Staged layout edits, the placement undo history, unapplied palette colours and typed dialogue text therefore survive an unrelated project mutation, the Maps mode strip can no longer disagree with the editor it names, and opening another image or closing the window with unwritten layout edits asks first, gated on `unsaved_edit_count()`. Frozen candidate `3de2b69`, independent review PASS with no blocking findings, mutations M1/M3 PASS. Closeout: [`../tickets/archive/CQA-05-06-WORKBENCH-STATE-AND-ERRORS-001-COMPLETE.md`](../tickets/archive/CQA-05-06-WORKBENCH-STATE-AND-ERRORS-001-COMPLETE.md). |
 | CQA-06 | HIGH | **CLOSED** - CQA-05-06-WORKBENCH-STATE-AND-ERRORS-001. `Session.open_rom` is total over the SDK's declared failure families (`RomReadError`/`RomChangedError`, the `OSError` of the image and artifact reads, `MapError`/`UnknownMapError`, the capability family, `AtlasError`, `AtlasBuildError` and the text table family), which leave it as `SessionError`; the Open ROM slot catches the session's single `OPEN_ROM_FAILURES` tuple, and a session transition contains an expected failure per peer because PySide prints and swallows an exception raised in a slot reached through a signal. The families are named rather than caught as `ValueError`, so a `RuntimeError` still leaves both boundaries, and `atlas_build._read_jsonl` converts a malformed decoded-text artifact into `AtlasBuildError` instead of leaking a bare `JSONDecodeError`. Frozen candidate `3de2b69`, independent review PASS with no blocking findings, mutations M2/M4 PASS. Closeout: [`../tickets/archive/CQA-05-06-WORKBENCH-STATE-AND-ERRORS-001-COMPLETE.md`](../tickets/archive/CQA-05-06-WORKBENCH-STATE-AND-ERRORS-001-COMPLETE.md). |
-| CQA-07 | HIGH | OPEN |
-| CQA-08 | HIGH | OPEN |
+| CQA-07 | HIGH | **CLOSED** - CQA-07-08-WORKBENCH-PERF-AND-CI-001. One shared root cause behind four redundancies: a per-swatch whole-project reparse, a per-staged-colour whole-corpus rescan, a per-index whole-project read and write, and a duplicate repaint from the shell and the tab both refreshing the same edit. The palette editor now computes one effective palette per repaint and threads it to every surface, `ActorSprites` memoizes the index-to-consumer inverse so `palette_users` does not rescan, every logical edit is served by one `_repaint_project_state` path with a re-entrancy guard, and `set_palette_overrides` is the single batch-write authority that validates the whole batch first, loads the project once and writes only on a real change; no tab-level cache was introduced. Measured on the canonical image plus a real 1.33 MB extracted project: a 256-swatch repaint went from 257 whole-project parses to 1 (104.896 s to 0.433 s), one Apply from about 1040 parses to 3 for 4 and for 8 staged colours, and the 256-index consumer disclosure from 2.93 s to 0.171 s with no repeated rescan; the primary evidence is structural and call-count based, and wall clock is a supporting measurement rather than a test assertion. Mutations M1/M1b/M1c/M1d/M2/M2b/M5/M6 PASS, with M2 the load-bearing one. Frozen candidate `52c6314`, independent review PASS with 0 blocking and 0 non-blocking findings and 3 notes, none requiring a correction. Closeout: [`../tickets/archive/CQA-07-08-WORKBENCH-PERF-AND-CI-001-COMPLETE.md`](../tickets/archive/CQA-07-08-WORKBENCH-PERF-AND-CI-001-COMPLETE.md). |
+| CQA-08 | HIGH | **CLOSED** - CQA-07-08-WORKBENCH-PERF-AND-CI-001. CI installed only the `dev` extra, so whole PySide6 and capstone test modules collapsed to one skip line each while the job stayed green. Measured baseline: **14 PySide6 modules** (superseding the earlier estimate of 13 carried by the ticket narrative and the CQA-05/06 record) plus 3 capstone modules, holding 215 and 88 collected tests, so 303 portable tests never executed. The existing `test-sdk` job now installs `-e ".[dev,workbench,research]"`, carries a declared `research = ["capstone>=5"]` extra, sets `QT_QPA_PLATFORM=offscreen` at job level and installs the Qt runtime package list derived from the PySide6 wheels' own ELF dependencies. The guard is `REQUIRED_GUI_MODULES` in `tests/gates.py` plus the `tests/conftest.py` session guard that fails CI when a required module contributes no test, warning rather than failing outside CI, with `tests/unit/test_ci_gui_surface.py` as an independent second net. Result: invalid environment skips 17 to 0, 0 stale skips, 12 legitimate conditional skips remaining, and final CI 2549 passed / 12 skipped / 0 failed / 0 errors with zero whole-module collapses, against a 2227/27 baseline; the CQA-05/06 and CQA-07 regressions execute at 38 and 15 tests with none skipped. Mutations M3/M4 PASS. Frozen candidate `52c6314`, independent review PASS with 0 blocking findings. Closeout: [`../tickets/archive/CQA-07-08-WORKBENCH-PERF-AND-CI-001-COMPLETE.md`](../tickets/archive/CQA-07-08-WORKBENCH-PERF-AND-CI-001-COMPLETE.md). |
 | CQA-09 | HIGH | **CLOSED** - ROM-CAPACITY-AND-ALLOCATION-001 Checkpoint B, re-read against the original finding at the milestone closeout. The finding was "the canonical-EOF straddle guard is load-bearing and has zero test coverage", whose remediation was one synthetic case: 10-byte base, 16-byte generated output, a 1-byte allocator span, and a 2-byte change at offset 9 expecting `ChangeValidationError` matching `straddles canonical EOF`. That case is in `tests/unit/test_rom_expansion.py` verbatim, with its positive control (the same authorized span accepts a non-straddling change) and mutation M4 (deleting the guard fails that case and leaves the other eleven tests passing, reproducing the invisibility the finding measured). The finding contains no other requirement, so it is **CLOSED**, not partial. |
 | CQA-12 | HIGH | **CLOSED** - ROM-CAPACITY-AND-ALLOCATION-001 Checkpoint B, re-read against the original finding at the milestone closeout. The finding was that the Build path emits no provenance document; its remediation was two parts: "have `_run_build` write the manifest beside the image by default (or have `build_project` do so unless told otherwise), **and add a reopen/`identify` assertion for the produced file**". Part one is Checkpoint B (default sibling publication through `authored_image.manifest_path_for`, CLI default with explicit `--manifest`/`--no-manifest`, Workbench inheritance, `*.dragonbyte.json` gitignore coverage, mutation M6). Part two is satisfied by the assertions that read the produced document back and check `base.sha256`, `base.profile_id` and `output.sha256`, and by Checkpoint D's reopen proof. The finding's own owner correction excluded "the Workbench cannot reopen its own output" as documented accepted behaviour, and that is not reopened. **CLOSED**. |
 | CQA-10 | MEDIUM | **PARTIAL** - **ALLOCATION-RELEVANT PORTION: CLOSED**; **REMAINDER: OPEN**. Confirmed rather than extended at Checkpoint B: a default build publishes through the shared `emit_image` transaction, so it inherits the source-alias refusal, the new-destination refusal, staged publication, rollback and manifest association, and a pre-existing sibling manifest is refused before anything is written. Confirmed again at Checkpoint D, whose derivative was emitted through that transaction. The remainder - the overwrite-policy divergence, the repository/raw-input-root output policy and the eight copied helpers in `tools/export/`, atlas atomic publication, and the remaining unguarded write sites - is exporter/output-policy hygiene and does not block the milestone. **No code change was made for this item.** |
@@ -1507,6 +1583,15 @@ Remaining pre-capacity blockers, in the dependency-aware groups above:
 > CQA-01, CQA-02, CQA-03, CQA-04, CQA-09, CQA-12 and CQA-15 remain closed and are
 > not reopened. Every statement above that CQA-05 or CQA-06 is active, deferred or
 > still to be done describes an earlier moment and is not restated.
+
+> **ANNOTATED at the CQA-07-08-WORKBENCH-PERF-AND-CI-001 closeout
+> (2026-09-25).** CQA-07 and CQA-08 are now **CLOSED**; see their rows above and
+> their in-place annotations. The must-fix set of this audit is therefore
+> **EMPTY**. Phase 1, the authoring-safety baseline, is **COMPLETE**. **CQA-10
+> remains PARTIAL / IMPROVED** and is the only remaining partially-remediated
+> item; CQA-01, CQA-02, CQA-03, CQA-04, CQA-05, CQA-06, CQA-09, CQA-12 and CQA-15
+> remain closed and are not reopened. The next capability-bearing work is Phase
+> 2A tile painting (`MAP-TILE-PAINT-001`), which this ticket did not begin.
 
 **New debt recorded at the same closeout, deliberately NOT fixed there:**
 `ROM-CAPACITY-ATLAS-SEED-OVERLAY-001` - the atlas seed

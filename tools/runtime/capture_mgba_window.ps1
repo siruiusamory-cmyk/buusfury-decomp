@@ -24,6 +24,14 @@ param(
     [string]$ProcessName = 'mGBA',
     [string]$TitleMatch = 'mGBA',
     [int]$SettleSeconds = 2,
+    # MAP-CHUNK-AUTHORING-001. Raise the emulator window to the foreground before
+    # copying the screen. A plain CopyFromScreen copies whatever is on the desktop
+    # inside the emulator's rectangle, so ANY overlapping window is captured in its
+    # place - measured once: a browser window covering the right two thirds of the
+    # emulator produced a matched pair whose two frames were not even crops of the
+    # same region, because the two runs' windows sat at different screen positions.
+    # Off by default so every existing caller's behaviour is unchanged.
+    [switch]$BringToFront,
     [switch]$ListOnly
 )
 
@@ -44,6 +52,8 @@ public class WinEnum {
     [DllImport("user32.dll")] public static extern bool IsWindowVisible(IntPtr hWnd);
     [DllImport("user32.dll")] public static extern bool GetWindowRect(IntPtr hWnd, out RECT rect);
     [DllImport("user32.dll")] public static extern bool PrintWindow(IntPtr hWnd, IntPtr hdc, uint flags);
+    [DllImport("user32.dll")] public static extern bool SetForegroundWindow(IntPtr hWnd);
+    [DllImport("user32.dll")] public static extern bool ShowWindow(IntPtr hWnd, int cmd);
     [StructLayout(LayoutKind.Sequential)] public struct RECT { public int Left; public int Top; public int Right; public int Bottom; }
 
     public static List<string> WindowsFor(uint target) {
@@ -90,6 +100,26 @@ if ($ListOnly) { return }
 $target = $rows | Where-Object { $_.Title -match $TitleMatch -and $_.Width -gt 0 } |
     Sort-Object { $_.Width * $_.Height } -Descending | Select-Object -First 1
 if (-not $target) { throw "no $ProcessName window matched '$TitleMatch'" }
+
+if ($BringToFront) {
+    # Restore (in case it is minimised), raise and activate, then let the
+    # compositor settle before the copy. The re-read of the window rectangle
+    # afterwards matters: restoring can move the window, and copying the stale
+    # rectangle would capture whatever is now there instead.
+    [WinEnum]::ShowWindow([IntPtr]$target.Handle, 9) | Out-Null   # SW_RESTORE
+    [WinEnum]::SetForegroundWindow([IntPtr]$target.Handle) | Out-Null
+    Start-Sleep -Seconds 2
+    $again = [WinEnum]::WindowsFor([uint32]$process.Id) | ForEach-Object {
+        $parts = $_ -split '\|'
+        if ([int64]$parts[0] -eq $target.Handle) {
+            [pscustomobject]@{ Handle = [int64]$parts[0]
+                               Left = [int]$parts[2]; Top = [int]$parts[3]
+                               Width = [int]$parts[4]; Height = [int]$parts[5] }
+        }
+    } | Select-Object -First 1
+    if ($again -and $again.Width -gt 0) { $target = $again }
+    Write-Output "raised to foreground: $($target.Width)x$($target.Height) at ($($target.Left),$($target.Top))"
+}
 
 $width = $target.Width
 $height = $target.Height

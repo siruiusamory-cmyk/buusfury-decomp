@@ -13,6 +13,12 @@ genuine provenance acceptance rather than a mock.
 Run:
 
     python -m tools.qa.visual_pass_capture --out <dir> [--states 1,2,3]
+    python -m tools.qa.visual_pass_capture --list
+
+`--list` prints the numbered states. `--states 20,21` captures only those.
+States 1-19 are ONE chained suite - each builds on the session the previous one
+left - so they are captured together or not at all; states 20+ are self-contained
+and may be requested alone.
 
 `--list` prints the state names. Offscreen Qt is set before PySide6 is imported,
 so each capture is deterministic and does not steal the desktop.
@@ -39,6 +45,7 @@ from PySide6.QtWidgets import QApplication, QLabel, QWidget  # noqa: E402
 from tools.webfoot.cli import load_catalog  # noqa: E402
 from tools.webfoot import atlas as atlas_sdk  # noqa: E402
 from tools.webfoot import dialogue as dialogue_sdk  # noqa: E402
+from tools.webfoot.map_chunk import ChunkTemplate  # noqa: E402
 from tools.webfoot.workbench.app import MainWindow  # noqa: E402
 from tools.webfoot.workbench.session import Session  # noqa: E402
 from tools.webfoot.workbench.graphics_tab import _IDENTITY_ROLE  # noqa: E402
@@ -75,6 +82,39 @@ READ_ONLY_MAP = 19
 #: Legacy tab indices are gone; navigation is by editor name. These remain for
 #: the probes that still speak in indices.
 TAB_ATLAS, TAB_INSPECTOR, TAB_MAPS, TAB_MAP, TAB_BROWSER, TAB_GRAPHICS, TAB_BUILD, TAB_LAUNCH = range(8)
+
+#: Every state this harness can capture, numbered. The numbers are the contract
+#: `--states` speaks; the names are the PNGs written. 1-19 are one chained suite
+#: (see the module docstring); 20-23 are MAP-CHUNK-AUTHORING-001's own states and
+#: each builds its own session, project and map from scratch.
+STATES: tuple[tuple[int, str], ...] = (
+    (1, "01-shell-no-rom"),
+    (2, "02-maps-browse"),
+    (3, "03-maps-layout"),
+    (4, "04-maps-layout-cell"),
+    (5, "05-maps-pending-pick"),
+    (6, "06-maps-unsaved"),
+    (7, "07-maps-derivative-read-only"),
+    (8, "08-maps-read-only-map19"),
+    (9, "09-maps-objects"),
+    (10, "10-inspector-dialogue"),
+    (11, "11-graphics-empty"),
+    (12, "12-graphics-selected (+ g1-g8 graphics states)"),
+    (13, "13-atlas-rom-open"),
+    (14, "14-build-action (dialogue)"),
+    (15, "15-run-configuration (dialogue)"),
+    (16, "16-narrow-shell"),
+    (17, "17-narrow-maps-browse"),
+    (18, "18-narrow-shell-atlas"),
+    (19, "19-scene-editor-empty"),
+    (20, "20-chunk-editor-new"),
+    (21, "21-chunk-editor-painted"),
+    (22, "22-chunk-editor-narrow"),
+    (23, "23-chunk-authored-placement-on-map"),
+)
+
+#: The last chained state; anything above it is self-contained.
+LAST_CHAINED_STATE = 19
 
 
 class _NullHost:
@@ -473,8 +513,8 @@ def make_derivative(workspace: Path) -> Path:
     return saved.output_path
 
 
-def _dialogue_project(harness: Harness, workspace: Path) -> Path:
-    """Extract a real project from the canonical ROM so dialogue editing is live."""
+def _extracted_project(harness: Harness, workspace: Path) -> Path:
+    """Extract a real project from the canonical ROM, so every write is real."""
     from tools.webfoot.build import extract_project
 
     project = workspace / "workbench-capture-project"
@@ -484,7 +524,32 @@ def _dialogue_project(harness: Harness, workspace: Path) -> Path:
     return project
 
 
-def capture_all(harness: Harness, workspace: Path) -> None:
+def _dialogue_project(harness: Harness, workspace: Path) -> Path:
+    """The same extracted project; kept as the name the dialogue state calls."""
+    return _extracted_project(harness, workspace)
+
+
+def capture_all(harness: Harness, workspace: Path, states: set[int] | None = None) -> None:
+    """Capture the requested states, or the whole set when none is named.
+
+    States 1-19 are one chained suite: each leaves the session, the project or the
+    window geometry the next one reads, so they are captured as a unit. States 20+
+    are self-contained and may be requested on their own, which is what makes a
+    focused re-capture of one surface cheap.
+    """
+    chain = states is None or any(1 <= number <= LAST_CHAINED_STATE for number in states)
+    chunk = states is None or any(number > LAST_CHAINED_STATE for number in states)
+    if chain:
+        if states is not None:
+            print("note: states 1-19 are one chained suite; capturing all of them")
+        _capture_chain(harness, workspace)
+    if chunk:
+        chunk_authoring_qa(harness, workspace, states)
+    total = len(list(harness.out.glob("*.png")))
+    print(f"\nwrote {total} PNG(s) to {harness.out}")
+
+
+def _capture_chain(harness: Harness, workspace: Path) -> None:
     """Drive every required BEFORE/AFTER state through the real widgets.
 
     The correction's own required list is covered explicitly: the application
@@ -492,8 +557,6 @@ def capture_all(harness: Harness, workspace: Path) -> None:
     and layout modes, the Maps editor's Objects mode, the shell and the Maps
     editor at a narrow width, and the Build action's report surface.
     """
-    out = harness.out
-
     # 1. the shell itself, before a ROM. This is the capture that answers the
     #    "menu bar -> one strip -> workspace" requirement.
     print("[1] shell")
@@ -643,7 +706,81 @@ def capture_all(harness: Harness, workspace: Path) -> None:
     harness.pump(8)
     harness.grab("19-scene-editor-empty")
 
-    print(f"\nwrote {len(list(out.glob('*.png')))} PNG(s) to {out}")
+
+def chunk_authoring_qa(
+    harness: Harness, workspace: Path, states: set[int] | None = None
+) -> list[Path]:
+    """MAP-CHUNK-AUTHORING-001's states: create, paint, apply and place a chunk.
+
+    Every step goes through the SHIPPED surface and the SHIPPED SDK: the real
+    `ChunkAuthor` over the canonical image, the real `set_authored_chunk` write
+    into a real extracted project in a temporary directory, and the real map
+    preview that renders the authored plane through the layer's own character
+    block. Nothing is mocked; the only thing the harness supplies is the chunk's
+    NAME, because a `QInputDialog` cannot be typed into offscreen.
+    """
+    from PySide6.QtWidgets import QInputDialog
+
+    written: list[Path] = []
+
+    def shot(number: int, name: str, size: QSize | None = None) -> None:
+        if states is None or number in states:
+            written.append(harness.grab(name, size=size))
+
+    project = _extracted_project(harness, workspace)
+    harness.open_canonical()
+    harness.session.set_project(project)
+    harness.editor("Atlas").romOpened.emit()
+    harness.show_editor("Maps")
+    harness.maps.set_mode("layout")
+    harness.select_map(PROOF_MAP)
+    tab = harness.browser
+    harness.choose_chunk_row(0)
+    template = ChunkTemplate(PROOF_MAP, tab._slot.slot, tab._brush_ordinal)
+    print(
+        f"  template: {template.text}  vocabulary: "
+        f"{len(tab.chunk_author().vocabulary(PROOF_MAP, tab._slot.slot))} entries"
+    )
+
+    # The action itself, with the name the harness supplies for the dialog.
+    QInputDialog.getText = staticmethod(lambda *a, **k: ("qa-cave-floor", True))
+    tab.create_chunk()
+    harness.pump(12)
+    print(f"  opened the chunk editor on {tab._chunk_identity}")
+    shot(20, "20-chunk-editor-new")
+
+    # A drag along a run of screen entries: the same gesture shape the map paint
+    # surface uses, staging every changed cell as one history entry.
+    vocabulary = tab.chunk_author().vocabulary(PROOF_MAP, tab._slot.slot)
+    tab.set_chunk_brush(next(entry for entry in vocabulary if entry != tab.chunk_plane_entries()[0]))
+    tab.begin_chunk_stroke()
+    for row, column in ((4, 4), (4, 5), (4, 6), (5, 4), (5, 5), (5, 6), (6, 6)):
+        tab.paint_chunk_cell(row * 32 + column)
+    tab.end_chunk_stroke()
+    harness.pump(8)
+    print(
+        f"  staged {len(tab._edited_chunk_cells())} cell(s); "
+        f"unsaved {tab.unsaved_edit_count()}"
+    )
+    shot(21, "21-chunk-editor-painted")
+    shot(22, "22-chunk-editor-narrow", size=NARROW)
+    harness.window.resize(DESKTOP)
+    harness.pump()
+
+    # Apply the chunk to the project (a real write into the extracted project),
+    # then take it back to the map as the paint value and place one cell.
+    print(f"  apply chunk -> {tab.apply_chunk()}")
+    harness.pump(8)
+    tab.use_chunk_as_brush()
+    harness.pump(8)
+    tab._on_cell_clicked(0)
+    harness.pump(12)
+    print(
+        f"  brush: {tab._brush_authored}  staged placement: {tab._authored_cells}  "
+        f"unsaved {tab.unsaved_edit_count()}"
+    )
+    shot(23, "23-chunk-authored-placement-on-map")
+    return written
 
 
 def graphics_qa(harness: Harness, out: Path | None = None) -> list[Path]:
@@ -806,15 +943,48 @@ def _show_dialogue(harness: Harness) -> None:
     print("  (no resoluble dialogue result; Inspector stays in its empty state)")
 
 
+def _parse_states(text: str) -> set[int]:
+    """Parse `--states` into the set of state numbers it names."""
+    wanted: set[int] = set()
+    for chunk in text.replace(" ", "").split(","):
+        if not chunk:
+            continue
+        if "-" in chunk:
+            first, _, last = chunk.partition("-")
+            wanted.update(range(int(first), int(last) + 1))
+            continue
+        wanted.add(int(chunk))
+    known = {number for number, _name in STATES}
+    unknown = sorted(wanted - known)
+    if unknown:
+        raise SystemExit(
+            f"unknown state number(s) {unknown}; known states are "
+            f"{sorted(known)}"
+        )
+    return wanted
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--out", type=Path, help="directory to write PNGs into")
     parser.add_argument("--probe", action="store_true", help="print real map facts")
+    parser.add_argument(
+        "--list", action="store_true", help="list the numbered capture states"
+    )
+    parser.add_argument(
+        "--states",
+        help="comma/range list of state numbers to capture (e.g. 20,21 or 1-6)",
+    )
     args = parser.parse_args(argv)
+    if args.list:
+        for number, name in STATES:
+            print(f"{number:>3}  {name}")
+        return 0
     if args.probe:
         return _probe()
     if args.out is None:
         parser.error("--out is required")
+    states = _parse_states(args.states) if args.states else None
     args.out.mkdir(parents=True, exist_ok=True)
     workspace = Path(tempfile.mkdtemp(prefix="dbz-visual-qa-"))
     app = QApplication.instance() or QApplication([])
@@ -828,7 +998,7 @@ def main(argv: list[str] | None = None) -> int:
         app_theme.apply_app_theme(app)
     harness = Harness(args.out, workspace)
     try:
-        capture_all(harness, workspace)
+        capture_all(harness, workspace, states)
     finally:
         harness.window.close()
         shutil.rmtree(workspace, ignore_errors=True)

@@ -111,6 +111,50 @@ GRAPHICS_OVERRIDES_FILE = Path("graphics") / "overrides.toml"
 #: no layout, matching every other optional subsystem.
 LAYOUT_FILE = Path("maps") / "layout.toml"
 
+#: MAP-CHUNK-AUTHORING-001. Project-authored dominant chunks: chunk bodies the
+#: author created that the canonical image does not contain.
+#:
+#: A third `maps/` document rather than a field of `layout.toml`, because the two
+#: have different lifetimes and different owners. A layout cell is a *reference*;
+#: an authored chunk is a *resource* that outlives any single cell and may be
+#: referenced by several. Keeping them apart means deleting every reference to a
+#: chunk leaves the chunk intact and re-placeable, and a chunk's own body diff
+#: stays readable instead of being buried in a cell table.
+#:
+#: A missing file means the project authors no chunks, matching every other
+#: optional subsystem, so a project extracted before this capability stays
+#: loadable.
+CHUNK_FILE = Path("maps") / "chunks.toml"
+
+#: The side of a dominant chunk's screen-entry plane. As with `_LAYER_SLOT_COUNT`
+#: this is the hardware's number stated locally rather than imported - this
+#: package owns the authored surface and must not reach into a module that opens
+#: ROMs - and a test pins it against `formats.map_graphics.CHUNK_SIDE_TILES`.
+_CHUNK_SIDE = 32
+
+#: The screen-entry width a chunk cell holds. Sixteen bits is the GBA's screen
+#: entry, so this is the hardware's number too.
+_CHUNK_ENTRY_MAX = 0xFFFF
+
+#: The two authored-chunk identity forms, matched rather than trusted.
+#:
+#: ``chunk:name`` is the chunk's own durable identity, following the authored
+#: placement precedent (`map:NNNN/authored:name`): lowercase, stable, and
+#: independent of any address, so a chunk can be authored before a build has
+#: chosen where it will live.
+#:
+#: ``map:NNNN/layer:N/chunk:N`` names the CANONICAL chunk a body started from, by
+#: the layer's own 1-based vocabulary ordinal - the same "Chunk N" a person reads
+#: in the map editor, and the same vocabulary `layout.toml` stores. A template is
+#: resolved against the canonical image and never against the authored one, so
+#: painting a cell can never silently re-point a template that names it.
+_CHUNK_IDENTITY = re.compile(r"^chunk:([a-z][a-z0-9_-]{0,63})$")
+_CHUNK_TEMPLATE = re.compile(r"^map:(\d{4})/layer:([0-3])/chunk:(\d+)$")
+
+#: The chunk-cell key inside `chunks.toml`: a zero-padded ``row,column`` pair, so
+#: lexical order is row-major order and a diff reads top-to-bottom.
+_CHUNK_CELL = re.compile(r"^(\d{2}),(\d{2})$")
+
 #: The BG slot count an authored layout may name. Four is the GBA's regular-BG
 #: count, so this is the hardware's number rather than a per-game extent. It is
 #: stated here rather than imported because this package owns the authored
@@ -266,6 +310,197 @@ class StatProject:
     #: MAP-TILE-PAINT-001. Authored layout-cell edits. Empty for a project that
     #: paints no layout, which stays loadable on the same reasoning as `strings`.
     layout: "LayoutEdits" = field(default_factory=lambda: LayoutEdits())
+    #: MAP-CHUNK-AUTHORING-001. Chunk bodies this project authored. Empty for a
+    #: project that authors none, which stays loadable on the same reasoning.
+    chunks: "AuthoredChunks" = field(default_factory=lambda: AuthoredChunks())
+
+
+@dataclass(frozen=True, slots=True)
+class AuthoredChunkEntry:
+    """One screen-entry cell an author changed inside an authored chunk.
+
+    ``prior`` is stored, not merely derivable: it is the entry the template held
+    at this cell, so the document itself proves the body was authored against the
+    template it names. A template that resolved to different bytes would make
+    every stored ``prior`` disagree, and the build refuses rather than composing a
+    chunk from a source nobody agreed on - the same fail-closed shape a
+    :class:`tools.webfoot.write.ByteChange` uses for in-place edits.
+    """
+
+    row: int
+    column: int
+    prior: int
+    entry: int
+
+    @property
+    def cell(self) -> int:
+        """Row-major index of this cell inside the chunk's own plane."""
+        return self.row * _CHUNK_SIDE + self.column
+
+    @property
+    def key(self) -> str:
+        """The zero-padded ``row,column`` key this cell is stored under."""
+        return f"{self.row:02d},{self.column:02d}"
+
+
+@dataclass(frozen=True, slots=True)
+class AuthoredChunk:
+    """One project-authored chunk: a new body plus the template it came from.
+
+    Deliberately a sparse delta over a named canonical chunk rather than a
+    copied-out plane. Three reasons, and they are the same three that make a
+    project directory a usable mod source:
+
+    * a delta is what a reviewer reads - "these nine cells changed" - while 1,024
+      copied integers bury the authored intent in unchanged content;
+    * a delta diffs, so a Git-tracked project shows a authored change as a small
+      hunk rather than a rewritten blob;
+    * the template keeps the author honest about the *vocabulary*: the body is
+      composed from entries that a real map already displays, which is exactly
+      the "existing graphics only" boundary this capability ships under.
+
+    The chunk's own identity is independent of every address, so it exists before
+    a build has decided where the body will live.
+    """
+
+    identity: str
+    #: ``map:NNNN/layer:N/chunk:N`` - the canonical source body's location.
+    template: str
+    #: The authored cells, sorted by (row, column). Never empty: a chunk with no
+    #: authored cell would be a byte-identical copy of its template, and the
+    #: capability is creation, not aliasing.
+    entries: tuple[AuthoredChunkEntry, ...] = ()
+
+    def __post_init__(self) -> None:
+        match = _CHUNK_IDENTITY.match(self.identity or "")
+        if match is None:
+            raise ProjectValidationError(
+                f"authored chunk identity {self.identity!r} must be "
+                "'chunk:<name>' with a lowercase name"
+            )
+        template = _CHUNK_TEMPLATE.match(self.template or "")
+        if template is None:
+            raise ProjectValidationError(
+                f"authored chunk {self.identity!r} names template "
+                f"{self.template!r}, which is not 'map:NNNN/layer:N/chunk:N'"
+            )
+        slots = {entry.row * _CHUNK_SIDE + entry.column for entry in self.entries}
+        if len(slots) != len(self.entries):
+            raise ProjectValidationError(
+                f"authored chunk {self.identity!r} edits one cell twice"
+            )
+        for entry in self.entries:
+            if not 0 <= entry.row < _CHUNK_SIDE or not 0 <= entry.column < _CHUNK_SIDE:
+                raise ProjectValidationError(
+                    f"authored chunk {self.identity!r} edits cell "
+                    f"({entry.row}, {entry.column}), which is outside the "
+                    f"{_CHUNK_SIDE}x{_CHUNK_SIDE} plane"
+                )
+            for name, value in (("prior", entry.prior), ("entry", entry.entry)):
+                if type(value) is not int or not 0 <= value <= _CHUNK_ENTRY_MAX:
+                    raise ProjectValidationError(
+                        f"authored chunk {self.identity!r} cell {entry.key} has a "
+                        f"{name} of {value!r}, which is not a 16-bit screen entry"
+                    )
+
+    def to_document(self) -> dict:
+        return {
+            "template": self.template,
+            "entries": {
+                entry.key: [entry.prior, entry.entry]
+                for entry in sorted(self.entries, key=lambda e: (e.row, e.column))
+            },
+        }
+
+    @classmethod
+    def from_document(cls, identity: object, document: object, where: object) -> "AuthoredChunk":
+        if not isinstance(document, dict):
+            raise ProjectLoadError(f"{where}: authored chunk {identity!r} is not a table")
+        unknown = set(document) - {"template", "entries"}
+        if unknown:
+            raise ProjectLoadError(
+                f"{where}: authored chunk {identity!r} declares unknown key(s) "
+                f"{sorted(unknown)}"
+            )
+        template = document.get("template")
+        if not isinstance(template, str):
+            raise ProjectLoadError(
+                f"{where}: authored chunk {identity!r} declares no template"
+            )
+        raw = document.get("entries")
+        if not isinstance(raw, dict) or not raw:
+            raise ProjectLoadError(
+                f"{where}: authored chunk {identity!r} declares no entries"
+            )
+        entries: list[AuthoredChunkEntry] = []
+        for key, value in raw.items():
+            match = _CHUNK_CELL.match(str(key))
+            if match is None:
+                raise ProjectLoadError(
+                    f"{where}: authored chunk {identity!r} names cell {key!r}, "
+                    "which is not a 'row,column' pair"
+                )
+            if not isinstance(value, (list, tuple)) or len(value) != 2:
+                raise ProjectLoadError(
+                    f"{where}: authored chunk {identity!r} cell {key} must be "
+                    "[prior, entry]"
+                )
+            row, column = int(match.group(1)), int(match.group(2))
+            entries.append(
+                AuthoredChunkEntry(
+                    row=row, column=column, prior=value[0], entry=value[1]
+                )
+            )
+        return cls(
+            identity=str(identity),
+            template=template,
+            entries=tuple(sorted(entries, key=lambda e: (e.row, e.column))),
+        )
+
+
+@dataclass(frozen=True)
+class AuthoredChunks:
+    """Every chunk a project authors, keyed by its own durable identity."""
+
+    chunks: dict[str, AuthoredChunk] = field(default_factory=dict)
+
+    def is_empty(self) -> bool:
+        return not self.chunks
+
+    def get(self, identity: str) -> AuthoredChunk | None:
+        return self.chunks.get(identity)
+
+    def identities(self) -> tuple[str, ...]:
+        return tuple(sorted(self.chunks))
+
+    def to_document(self) -> dict:
+        return {
+            "chunk": {
+                identity: chunk.to_document()
+                for identity, chunk in sorted(self.chunks.items())
+            }
+        }
+
+    @classmethod
+    def from_document(cls, document: object, where: object) -> "AuthoredChunks":
+        table = document.get("chunk") if isinstance(document, dict) else None
+        if not isinstance(table, dict) or not table:
+            raise ProjectLoadError(f"{where}: declares no authored chunks")
+        unknown = set(document) - {"chunk"}
+        if unknown:
+            raise ProjectLoadError(
+                f"{where}: unknown top-level key(s) {sorted(unknown)}"
+            )
+        chunks: dict[str, AuthoredChunk] = {}
+        for identity, value in table.items():
+            if not isinstance(identity, str) or _CHUNK_IDENTITY.match(identity) is None:
+                raise ProjectLoadError(
+                    f"{where}: {identity!r} is not a 'chunk:<name>' identity"
+                )
+            if identity in chunks:
+                raise ProjectLoadError(f"{where}: duplicate chunk {identity!r}")
+            chunks[identity] = AuthoredChunk.from_document(identity, value, where)
+        return cls(chunks=dict(sorted(chunks.items())))
 
 
 @dataclass(frozen=True)
@@ -293,10 +528,20 @@ class LayoutEdits:
     is "a chunk this same layer already uses", and an ordinal states exactly
     that; a stored address would additionally pin the edit to one image's layout
     of the bank data, and would be unreadable in a project file.
+
+    MAP-CHUNK-AUTHORING-001 widens the value by exactly one form and no more: a
+    cell may also hold the **identity** of a project-authored chunk
+    (``chunk:name``, declared in :class:`AuthoredChunks`). A cell still carries
+    one value and one meaning; what changed is that "which chunk" is no longer
+    only answerable from the canonical image. The identity is deliberately what is
+    stored rather than the address the build will choose, because before a build
+    there IS no address - the map cell knows its chunk, and the build resolves
+    identity to address, in that order, exactly once.
     """
 
-    #: ``"map:NNNN"`` -> BG slot -> row-major cell -> 1-based chunk ordinal.
-    maps: dict[str, dict[int, dict[int, int]]] = field(default_factory=dict)
+    #: ``"map:NNNN"`` -> BG slot -> row-major cell -> 1-based chunk ordinal, or
+    #: the ``chunk:name`` identity of a project-authored chunk.
+    maps: dict[str, dict[int, dict[int, int | str]]] = field(default_factory=dict)
 
     @staticmethod
     def key_for(index: int) -> str:
@@ -306,23 +551,27 @@ class LayoutEdits:
     def is_empty(self) -> bool:
         return not any(layers for layers in self.maps.values())
 
-    def cells(self) -> dict[tuple[int, int, int], int]:
-        """Flatten to ``{(map index, layer slot, cell): ordinal}``.
+    def cells(self) -> dict[tuple[int, int, int], int | str]:
+        """Flatten to ``{(map index, layer slot, cell): value}``.
 
         The one place the ``map:NNNN`` key is turned back into an index, so
         every caller reads the identity form the same way. A key that is not
         that form cannot occur: `from_document` refuses anything else.
+
+        A value is an ``int`` (the layer's 1-based canonical chunk ordinal) or a
+        ``str`` (a project-authored chunk identity); the two are never mixed
+        within one cell and a caller that needs only one form filters on ``type``.
         """
-        flat: dict[tuple[int, int, int], int] = {}
+        flat: dict[tuple[int, int, int], int | str] = {}
         for key, layers in self.maps.items():
             index = int(key[4:], 10)
             for slot, cells in layers.items():
-                for cell, ordinal in cells.items():
-                    flat[(index, slot, cell)] = ordinal
+                for cell, value in cells.items():
+                    flat[(index, slot, cell)] = value
         return flat
 
-    def for_map(self, index: int) -> dict[int, dict[int, int]]:
-        """BG slot -> cell -> ordinal for one map, empty when it paints none."""
+    def for_map(self, index: int) -> dict[int, dict[int, int | str]]:
+        """BG slot -> cell -> value for one map, empty when it paints none."""
         return dict(self.maps.get(LayoutEdits.key_for(index), {}))
 
     def to_document(self) -> dict[str, Any]:
@@ -352,7 +601,7 @@ class LayoutEdits:
             raise ProjectLoadError(f"{where}: missing required [layout] table")
         if not isinstance(table, Mapping):
             raise ProjectLoadError(f"{where}: [layout] must be a table")
-        maps: dict[str, dict[int, dict[int, int]]] = {}
+        maps: dict[str, dict[int, dict[int, int | str]]] = {}
         for map_key, layers in table.items():
             label = f"layout.{map_key}"
             if not _MAP_KEY.match(str(map_key)):
@@ -362,7 +611,7 @@ class LayoutEdits:
                 )
             if not isinstance(layers, Mapping):
                 raise ProjectLoadError(f"{where}: {label} must be a table")
-            by_slot: dict[int, dict[int, int]] = {}
+            by_slot: dict[int, dict[int, int | str]] = {}
             for slot_key, cells in layers.items():
                 slot_label = f"{label}.{slot_key}"
                 match = _BG_KEY.match(str(slot_key))
@@ -381,7 +630,7 @@ class LayoutEdits:
                     )
                 if not isinstance(cells, Mapping):
                     raise ProjectLoadError(f"{where}: {slot_label} must be a table")
-                by_cell: dict[int, int] = {}
+                by_cell: dict[int, int | str] = {}
                 for cell_key, ordinal in cells.items():
                     cell_label = f"{slot_label}.{cell_key}"
                     if not str(cell_key).isdigit():
@@ -392,10 +641,24 @@ class LayoutEdits:
                     cell = int(cell_key, 10)
                     if cell in by_cell:
                         raise ProjectLoadError(f"{where}: duplicate cell {cell} in {slot_label}")
+                    # MAP-CHUNK-AUTHORING-001: the value is an integer chunk
+                    # ordinal, or the identity of a project-authored chunk. The
+                    # identity is matched here; whether it EXISTS is checked
+                    # across documents in `read_project`, because this class
+                    # cannot see the chunk table.
+                    if isinstance(ordinal, str):
+                        if _CHUNK_IDENTITY.match(ordinal) is None:
+                            raise ProjectValidationError(
+                                f"{where}: {cell_label} names {ordinal!r}, which is "
+                                "neither an integer chunk ordinal nor a "
+                                "'chunk:<name>' authored chunk"
+                            )
+                        by_cell[cell] = ordinal
+                        continue
                     if type(ordinal) is not int:
                         raise ProjectValidationError(
-                            f"{where}: {cell_label} must be an integer chunk ordinal, "
-                            f"got {ordinal!r}"
+                            f"{where}: {cell_label} must be an integer chunk ordinal "
+                            f"or an authored chunk identity, got {ordinal!r}"
                         )
                     if ordinal < 1:
                         raise ProjectValidationError(
@@ -673,6 +936,7 @@ def write_project(
     maps: list[dict[str, Any]] | None = None,
     graphics_overrides: "GraphicsOverrides | None" = None,
     layout: "LayoutEdits | None" = None,
+    chunks: "AuthoredChunks | None" = None,
 ) -> list[Path]:
     """Write the whole authored tree. Returns the files written, in order.
 
@@ -709,6 +973,8 @@ def write_project(
         documents.append((GRAPHICS_OVERRIDES_FILE, graphics_overrides.to_document()))
     if layout and not layout.is_empty():
         documents.append((LAYOUT_FILE, layout.to_document()))
+    if chunks and not chunks.is_empty():
+        documents.append((CHUNK_FILE, chunks.to_document()))
 
     for relative, document in documents:
         path = root / relative
@@ -1130,6 +1396,36 @@ def _read_graphics_overrides(path: Path) -> "GraphicsOverrides":
     return GraphicsOverrides.from_document(_read_document(path), path)
 
 
+def write_authored_chunks(directory: str | Path, chunks: "AuthoredChunks") -> Path:
+    """Persist only the authored-chunk document for a loaded project.
+
+    MAP-CHUNK-AUTHORING-001. The mirror of `write_layout_edits`: the chunk
+    authoring API validates before calling it, and it is the ONE place an authored
+    chunk reaches disk. An empty set means the project authors no chunk, so the
+    optional document is removed rather than written as an invalid empty table
+    (which `read_project` would then refuse).
+    """
+    path = Path(directory) / CHUNK_FILE
+    if chunks is None or chunks.is_empty():
+        path.unlink(missing_ok=True)
+        return path
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(dump_toml(chunks.to_document()), encoding="utf-8", newline="\n")
+    return path
+
+
+def _read_chunks(path: Path) -> "AuthoredChunks":
+    """Load `maps/chunks.toml`, or nothing at all if it is absent.
+
+    Absence is legal and means the project authors no chunks. A file that exists
+    but is malformed is still an error; "missing" and "wrong" are different
+    answers, matching `_read_layout` and `_read_strings`.
+    """
+    if not path.is_file():
+        return AuthoredChunks()
+    return AuthoredChunks.from_document(_read_document(path), path)
+
+
 def _read_layout(path: Path) -> "LayoutEdits":
     """Load `maps/layout.toml`, or nothing at all if it is absent.
 
@@ -1196,6 +1492,26 @@ def read_project(directory: str | Path) -> StatProject:
         if not isinstance(events, dict):
             raise ProjectLoadError(f'{events_path}: descriptor/event catalog must be an object')
 
+    layout = _read_layout(root / LAYOUT_FILE)
+    chunks = _read_chunks(root / CHUNK_FILE)
+
+    # MAP-CHUNK-AUTHORING-001. A layout cell that names an authored chunk must
+    # name one this project declares. Checked here because it is the one place
+    # both documents are in hand: `LayoutEdits` cannot see the chunk table, and a
+    # project whose cell pointed at a chunk nobody declares would otherwise fail
+    # at build time with a message about an image rather than about the file the
+    # author has to fix.
+    missing = sorted({
+        value
+        for value in layout.cells().values()
+        if isinstance(value, str) and value not in chunks.chunks
+    })
+    if missing:
+        raise ProjectValidationError(
+            f"{root / LAYOUT_FILE}: names authored chunk(s) {missing}, which "
+            f"{CHUNK_FILE} does not declare"
+        )
+
     return StatProject(
         meta=meta,
         enemies=enemies,
@@ -1204,7 +1520,8 @@ def read_project(directory: str | Path) -> StatProject:
         dialogues=dialogues,
         maps=maps,
         graphics_overrides=_read_graphics_overrides(root / GRAPHICS_OVERRIDES_FILE),
-        layout=_read_layout(root / LAYOUT_FILE),
+        layout=layout,
+        chunks=chunks,
         placement_events=events,
         placement_types=(_read_document(root / PLACEMENT_TYPES_FILE)
                          if (root / PLACEMENT_TYPES_FILE).exists() else None),

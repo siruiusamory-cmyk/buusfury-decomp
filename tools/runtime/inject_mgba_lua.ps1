@@ -242,6 +242,15 @@ $allowedLua = @(
     [System.IO.Path]::GetFullPath(
         (Join-Path $workspaceRoot 'tools\runtime\tilepaint001_watch_rebuild.lua')
     )
+    # The same watcher for MAP-CHUNK-AUTHORING-001. It additionally accepts the
+    # profile's generated 16 MiB image size - the authored chunk body lives above
+    # the canonical EOF, so the parent observer's 8 MiB assert refuses the image
+    # under test - records the observed ROM size on every row, and records the
+    # address the engine's own loaded layer record holds for the watched chunk
+    # cell. Read-only in exactly the same sense.
+    [System.IO.Path]::GetFullPath(
+        (Join-Path $workspaceRoot 'tools\runtime\chunkauth001_watch_rebuild.lua')
+    )
 )
 $resolvedLua = [System.IO.Path]::GetFullPath($LuaPath)
 if ($resolvedLua -notin $allowedLua) {

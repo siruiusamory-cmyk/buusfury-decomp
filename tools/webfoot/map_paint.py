@@ -507,15 +507,25 @@ class MapPainter:
             if edit.is_effective:
                 resolved.append(edit)
         return tuple(edit.to_change(self._base) for edit in resolved)
-    def overrides(self, edits: Mapping[tuple[int, int, int], int]) -> dict[int, dict[int, int]]:
+    def overrides(self, edits: Mapping[tuple[int, int, int], int | str]) -> dict[int, dict[int, int]]:
         """Authored edits for one map as ``{layer slot: {cell: pointer}}``.
 
         The form the accepted renderer's ``chunk_overrides`` takes, so a preview
         of authored content goes through the same pipeline that draws the retail
         layout rather than through a second renderer.
+
+        A value that is a ``str`` is a project-authored chunk identity
+        (MAP-CHUNK-AUTHORING-001) - the *other* value form an authored layout cell
+        may hold. It is not an ordinal and this module cannot resolve one, so it is
+        skipped here and resolved by :mod:`tools.webfoot.map_chunk`; a caller that
+        wants both merges the two. Skipping is deliberate rather than refusing:
+        this method is what a map surface calls to build a preview, and a project
+        that places an authored chunk must not make that preview unreadable.
         """
         result: dict[int, dict[int, int]] = {}
         for (map_index, layer_slot, cell), ordinal in sorted(edits.items()):
+            if type(ordinal) is not int:
+                continue
             edit = self.resolve(map_index, layer_slot, cell, ordinal)
             result.setdefault(edit.map_index, {}).setdefault(edit.layer_slot, {})[
                 edit.cell
@@ -523,7 +533,7 @@ class MapPainter:
         return result
 
     def overrides_for(
-        self, map_index: int, edits: Mapping[tuple[int, int, int], int]
+        self, map_index: int, edits: Mapping[tuple[int, int, int], int | str]
     ) -> dict[tuple[int, int], int]:
         """:meth:`overrides` for one map, keyed ``(layer slot, cell)``."""
         return {
@@ -533,7 +543,7 @@ class MapPainter:
         }
 
     def pointer_edits(
-        self, edits: Mapping[tuple[int, int, int], int]
+        self, edits: Mapping[tuple[int, int, int], int | str]
     ) -> dict[tuple[int, int, int], int]:
         """Authored ordinals resolved to pointers, keyed by the full triple.
 
@@ -541,9 +551,15 @@ class MapPainter:
         well as the layer and cell, because one session covers every map of the
         image. Every ordinal is resolved through the same authority a build uses,
         so a session can never hold a pointer the build would refuse.
+
+        An authored-chunk identity is skipped for the reason :meth:`overrides`
+        gives; ``MapLayoutEditor.set_floor`` is the caller, and its floor is the
+        canonical-ordinal layer.
         """
         resolved: dict[tuple[int, int, int], int] = {}
         for (map_index, layer_slot, cell), ordinal in sorted(edits.items()):
+            if type(ordinal) is not int:
+                continue
             edit = self.resolve(map_index, layer_slot, cell, ordinal)
             resolved[(edit.map_index, edit.layer_slot, edit.cell)] = edit.replacement
         return resolved

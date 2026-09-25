@@ -656,8 +656,8 @@ def _gamma_cost(value: int) -> int:
     return 2 * (value.bit_length() - 1)
 
 
-def pack(payload: bytes) -> bytes:
-    """Encode ``payload`` into a ``kind 2`` container the decoder accepts.
+def pack(payload: bytes, *, kind: int = PACKED_KINDS[1]) -> bytes:
+    """Encode ``payload`` into a packed container of the requested ``kind``.
 
     Greedy: at each position the cheapest token by bits-per-byte wins. An
     optimal parse was tried and did not pay for itself, so the simpler one
@@ -672,12 +672,29 @@ def pack(payload: bytes) -> bytes:
     fits inside the final partial word when twelve or more bits of it are free,
     and costs one more packed word when the final token ends flush or leaves fewer
     than twelve.
+
+    ``kind`` selects only the header word. Both packed kinds share one decoder
+    and differ solely in their *initial* literal width (``kind`` is passed
+    straight through as ``initial_literal_bits``), and the opening escape below
+    sets that width to 8 explicitly, so it does not depend on the starting value.
+    The token stream is therefore identical for either kind and the payload
+    decodes the same way; MAP-CHUNK-AUTHORING-001 measured that a canonical
+    kind-1 container begins with this same escape, which is why an authored
+    container can be emitted in the kind the retail corpus actually uses rather
+    than only in the encoder's own kind 2. The default stays kind 2 so every
+    existing caller's output is unchanged.
     """
+    if kind not in PACKED_KINDS:
+        raise ContainerError(
+            f"pack emits a packed container; kind {kind!r} is not one of "
+            f"{PACKED_KINDS}"
+        )
     writer = _WordBitWriter()
-    # Kind 2 begins with 2-bit literals, which are useless for tile data. The
-    # opening tokens take the control escape that widens literals to 8 bits:
+    # The opening tokens take the control escape that widens literals to 8 bits:
     # prefix 0,0,1 reaches the short-distance branch, a zero 4-bit field makes
     # it -1, then 0,1 selects "literal_bits = 7 + 1" with no base byte to read.
+    # Both packed kinds begin below 8-bit literals - kind 2 at 2 bits, kind 1 at
+    # 1 - so both need this escape and both produce the same stream.
     writer.bit(0)
     writer.bit(0)
     writer.bit(1)
@@ -744,23 +761,23 @@ def pack(payload: bytes) -> bytes:
                         best_cost, best_length = cost, length
                         best_token = ("long", distance, count)
 
-        kind, distance, argument = best_token
-        if kind == "literal":
+        token_kind, distance, argument = best_token
+        if token_kind == "literal":
             writer.bit(1)
             writer.put(payload[cursor], 8)
-        elif kind == "one":
+        elif token_kind == "one":
             writer.bit(0)
             writer.bit(0)
             writer.bit(1)
             writer.put(distance + 1, 4)
-        elif kind == "short":
+        elif token_kind == "short":
             writer.bit(0)
             writer.bit(0)
             writer.bit(0)
             writer.put(distance, 7)
             writer.put(argument - 2, 2)
             previous_distance = distance
-        elif kind == "previous":
+        elif token_kind == "previous":
             writer.bit(0)
             writer.bit(1)
             writer.gamma(2)
@@ -782,4 +799,4 @@ def pack(payload: bytes) -> bytes:
     # finalization would put it on a word boundary instead of the token boundary
     # the decoder checks, and would not be expressible in the grammar.
     writer.write_end_marker()
-    return struct.pack("<II", PACKED_KINDS[1], total) + writer.finish()
+    return struct.pack("<II", kind, total) + writer.finish()

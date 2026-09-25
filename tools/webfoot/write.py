@@ -444,6 +444,119 @@ class DialogueEditProvenance:
 
 
 @dataclass(frozen=True, slots=True)
+class ChunkEditProvenance:
+    """MAP-CHUNK-AUTHORING-001. One authored chunk, and everything it moved.
+
+    A chunk this project authored is a resource the canonical image does not
+    contain, so no byte diff of the output can recover what it *was*: the
+    identity the author gave it, the canonical chunk it started from, the
+    screen-entry edits that made it differ, the span the allocator gave it, and
+    the map cells that were repointed at it. This record is part of the existing
+    manifest document rather than a second manifest family, for the same reason
+    :class:`DialogueEditProvenance` is: `WriteManifest` already answers "which
+    base, which output, which bytes, because of which semantic edit", and this
+    answers it one level down, where the edit is a chunk.
+
+    A build that authored no chunk writes no `chunk_edits` key at all.
+    """
+
+    #: The project's semantic identity for the chunk (`chunk:grass-sign`).
+    resource: str
+    #: The build-domain owner, as every other change attributes it.
+    owner: str
+    #: Where the body started: the canonical layer cell the template was read
+    #: from, as ``map:NNNN/layer:N/chunk:N``.
+    template: str
+    #: The canonical container address the template resolved to.
+    template_address: int
+    #: SHA-256 of the 0x800 decoded screen-entry body that was materialized.
+    body_sha256: str
+    #: The encoded container's size, and the span the allocator reserved.
+    container_size: int
+    allocation_file_offset: int
+    allocation_size: int
+    #: The GBA address the map cells were repointed at.
+    rom_address: int
+    #: Whether that address lies above the canonical image, and the evidence the
+    #: allocator used to authorize the expansion.
+    expanded: bool
+    expansion_evidence: str
+    #: Every screen-entry cell the author changed, row-major.
+    edits: tuple["ChunkEntryProvenance", ...]
+    #: Every map cell repointed at this chunk, row-major by map then layer then
+    #: cell, with the pointer each held before.
+    placements: tuple["ChunkPlacementProvenance", ...]
+
+    def to_json(self) -> dict:
+        return {
+            "resource": self.resource,
+            "owner": self.owner,
+            "template": self.template,
+            "template_address": self.template_address,
+            "template_address_hex": f"0x{self.template_address:08X}",
+            "body_sha256": self.body_sha256,
+            "container_size": self.container_size,
+            "allocation_file_offset": self.allocation_file_offset,
+            "allocation_file_offset_hex": f"0x{self.allocation_file_offset:08X}",
+            "allocation_size": self.allocation_size,
+            "rom_address": self.rom_address,
+            "rom_address_hex": f"0x{self.rom_address:08X}",
+            "expanded": self.expanded,
+            "expansion_evidence": self.expansion_evidence,
+            "edit_count": len(self.edits),
+            "edits": [edit.to_json() for edit in self.edits],
+            "placement_count": len(self.placements),
+            "placements": [placement.to_json() for placement in self.placements],
+        }
+
+
+@dataclass(frozen=True, slots=True)
+class ChunkEntryProvenance:
+    """One screen-entry cell the author changed inside an authored chunk."""
+
+    row: int
+    column: int
+    #: The entry the template held, and the entry the author put there.
+    prior: int
+    entry: int
+
+    def to_json(self) -> dict:
+        return {
+            "row": self.row,
+            "column": self.column,
+            "prior": f"0x{self.prior:04X}",
+            "entry": f"0x{self.entry:04X}",
+        }
+
+
+@dataclass(frozen=True, slots=True)
+class ChunkPlacementProvenance:
+    """One map cell repointed from a canonical chunk to an authored one."""
+
+    map_index: int
+    layer_slot: int
+    cell: int
+    #: The pointer the canonical image held at this cell.
+    previous: int
+    #: File offset of the four-byte pointer field that was rewritten.
+    offset: int
+    #: The authored chunk the cell now names.
+    chunk: str
+
+    def to_json(self) -> dict:
+        return {
+            "map_index": self.map_index,
+            "layer_slot": self.layer_slot,
+            "cell": self.cell,
+            "owner": f"map:{self.map_index:04d} layer {self.layer_slot} cell {self.cell}",
+            "previous": f"0x{self.previous:08X}",
+            "offset": self.offset,
+            "offset_hex": f"0x{self.offset:08X}",
+            "chunk": self.chunk,
+        }
+
+
+@dataclass(frozen=True, slots=True)
 class WritePlan:
     """A validated set of changes against one identified base image.
 
@@ -462,6 +575,8 @@ class WritePlan:
     #: DIALOGUE-VARIABLE-LENGTH-001. Empty for a build that authored no
     #: dialogue record whose durable identity changed.
     dialogue_edits: tuple[DialogueEditProvenance, ...] = ()
+    #: MAP-CHUNK-AUTHORING-001. Empty for a build that authored no chunk.
+    chunk_edits: tuple[ChunkEditProvenance, ...] = ()
 
     @property
     def effective_changes(self) -> tuple[ByteChange, ...]:
@@ -519,6 +634,9 @@ class WriteManifest:
     #: DIALOGUE-VARIABLE-LENGTH-001. Present only when a dialogue record's
     #: durable handle or decoded span changed in this build.
     dialogue_edits: tuple[DialogueEditProvenance, ...] = ()
+    #: MAP-CHUNK-AUTHORING-001. Present only when a project-authored chunk was
+    #: materialized in this build.
+    chunk_edits: tuple[ChunkEditProvenance, ...] = ()
 
     def to_json(self) -> dict:
         document = {
@@ -550,6 +668,8 @@ class WriteManifest:
             document["dialogue_edits"] = [
                 edit.to_json() for edit in self.dialogue_edits
             ]
+        if self.chunk_edits:
+            document["chunk_edits"] = [edit.to_json() for edit in self.chunk_edits]
         return document
 
     def dumps(self) -> str:
@@ -575,6 +695,7 @@ def plan_changes(
     generated_image: GeneratedImage | None = None,
     generated_allocations: tuple[GeneratedAllocationProvenance, ...] = (),
     dialogue_edits: tuple[DialogueEditProvenance, ...] = (),
+    chunk_edits: tuple[ChunkEditProvenance, ...] = (),
 ) -> WritePlan:
     """Validate `changes` against `base` and return an applicable plan.
 
@@ -655,6 +776,7 @@ def plan_changes(
         generated_image=generated_image,
         generated_allocations=generated_allocations,
         dialogue_edits=tuple(dialogue_edits),
+        chunk_edits=tuple(chunk_edits),
     )
 
 
@@ -759,6 +881,7 @@ def emit_image(
         generated_image=plan.generated_image,
         generated_allocations=plan.generated_allocations,
         dialogue_edits=plan.dialogue_edits,
+        chunk_edits=plan.chunk_edits,
     )
     # Stage complete files first. Publish using exclusive links: never replace
     # a raced destination. Publish image last; roll back our links on failure.

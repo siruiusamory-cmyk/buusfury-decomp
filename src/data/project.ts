@@ -800,6 +800,35 @@ export const project: ProjectStatus = {
       recent: true,
     },
     {
+      id: "runtime-proven-tile-painting",
+      title: "Paint a map's layout and see it in the real game",
+      summary:
+        "You can now repaint the visible layout of an existing map in DragonByte Z -"
+        + " choose a chunk the layer already uses, then click or drag it onto the map."
+        + " The change is stored in the project, survives closing and reopening, builds"
+        + " into a new game file, and shows up in the actual game.",
+      technical:
+        "The editable unit is the engine's own: one four-byte chunk-cell reference on a"
+        + " dominant layer, pointing at an existing 256x256 chunk. No new chunk, no map"
+        + " resizing, no layer creation. Painting is a semantic project edit"
+        + " (maps/layout.toml, keyed map -> layer -> row-major cell -> 1-based chunk"
+        + " ordinal) and joins the same single write plan as every other authored"
+        + " content, so a build changes only the painted cells - on map:0040 that was"
+        + " exactly two bytes at file 0x00292CA0, with the other 8,388,606 unchanged."
+        + " Proven in the retail engine, matched A/B: the same savestate was loaded with"
+        + " the retail image and with the authored derivative, and in EACH run the player"
+        + " walked out of the area and back so the engine rebuilt the map from ROM - a"
+        + " savestate alone restores the already-assembled background, so a capture taken"
+        + " without a rebuild cannot tell the two ROMs apart, and the capture tool now"
+        + " refuses to fire unless it has watched that leave-and-return and the rebuild"
+        + " settle. 7,013 of 38,400 screen pixels differed, every one inside the painted"
+        + " cell's own region, with a hard texture seam at that cell's boundary that the"
+        + " retail frame does not have. Undo, redo, eyedropper and drag painting share one"
+        + " history. Groundwork for this was the map-layout writer; what remains for the"
+        + " rest of the map editor is chunk creation, resizing and warps.",
+      recent: true,
+    },
+    {
       id: "fixed-size-map-layout-write",
       title: "Map layout editing is a usable feature",
       summary:
@@ -1245,7 +1274,7 @@ export const roadmapRows = project.buildout.families.flatMap((family) =>
  * the next phase has been chosen but NOT started, and the page must not imply
  * otherwise.
  */
-export type RoadmapPhaseState = "complete" | "next" | "planned";
+export type RoadmapPhaseState = "complete" | "in-progress" | "next" | "planned";
 
 export interface RoadmapOutcome {
   /** The registry capability this step ships. Never a new capability. */
@@ -1287,9 +1316,8 @@ const roadmapTo1: RoadmapTo1 = {
     + " not an internal milestone. The count is a count of authoring capabilities,"
     + " so it only moves when the product genuinely gains one.",
   position:
-    "The foundation and the authoring-safety baseline are complete, and 16 of the"
-    + " 24 authoring capabilities are shipped. The next phase has been chosen but"
-    + " not started.",
+    "The foundation and the authoring-safety baseline are complete, Phase 2 is under"
+    + " way: tile painting has shipped and the rest of the map editor is next.",
   phases: [
     {
       id: "foundation",
@@ -1339,11 +1367,6 @@ const roadmapTo1: RoadmapTo1 = {
         + " history, allocator and safety rules as the last.",
       outcomes: [
         {
-          capabilityId: "tiles",
-          title: "Tile painting",
-          detail: "Paint and replace map tiles directly in the editor.",
-        },
-        {
           capabilityId: "chunks",
           title: "Chunk creation",
           detail: "Create new map chunks instead of being limited to retail ones.",
@@ -1359,8 +1382,12 @@ const roadmapTo1: RoadmapTo1 = {
           detail: "Create and edit transitions between areas visually.",
         },
       ],
-      work: [],
-      state: "next",
+      work: [
+        "Tile painting — SHIPPED: pick a chunk a layer already uses and paint"
+        + " 256x256 map cells with it, saved through the project and proven on screen"
+        + " in the retail engine",
+      ],
+      state: "in-progress",
     },
     {
       id: "graphics-authoring",
@@ -1504,12 +1531,14 @@ export const roadmapNextPhase = roadmapPhases.find((phase) => phase.state === "n
 
 export const roadmapStateLabel: Record<RoadmapPhaseState, string> = {
   complete: "COMPLETE",
+  "in-progress": "IN PROGRESS",
   next: "NEXT — NOT STARTED",
   planned: "PLANNED",
 };
 
 export const roadmapStateGlyph: Record<RoadmapPhaseState, string> = {
   complete: "✓",
+  "in-progress": "▶",
   next: "◆",
   planned: "○",
 };
@@ -1544,7 +1573,12 @@ function validateRoadmapTo1(): void {
 
   // The phases are read top to bottom, so the states must be in order.
   const order: RoadmapPhaseState[] = roadmapTo1.phases.map((phase) => phase.state);
-  const rank: Record<RoadmapPhaseState, number> = { complete: 0, next: 1, planned: 2 };
+  const rank: Record<RoadmapPhaseState, number> = {
+    complete: 0,
+    "in-progress": 1,
+    next: 2,
+    planned: 3,
+  };
   for (let index = 1; index < order.length; index += 1) {
     if (rank[order[index]] < rank[order[index - 1]]) {
       throw new Error("The roadmap to 1.0 lists a phase out of order.");

@@ -29,12 +29,16 @@ from PySide6.QtGui import (
     QColor,
     QIcon,
     QImage,
+    QKeySequence,
     QPainter,
     QPen,
     QPixmap,
+    QUndoCommand,
+    QUndoStack,
 )
 from PySide6.QtWidgets import (
     QApplication,
+    QButtonGroup,
     QCheckBox,
     QComboBox,
     QFileDialog,
@@ -72,6 +76,12 @@ from tools.webfoot.map_layout_edit import (
     MapLayoutEditor,
 )
 from tools.webfoot.map_layout_write import MapLayoutWriteError
+from tools.webfoot.map_paint import (
+    MapPaintError,
+    read_layout_edits,
+    set_layout_cells,
+)
+from tools.webfoot.project import ProjectError
 from tools.webfoot.write import WriteError
 
 from . import theme
@@ -103,6 +113,12 @@ _CHUNK_ROLE = Qt.ItemDataRole.UserRole + 1
 #: The row's label without its pending-edit glyph, so the glyph can be added and
 #: removed without accumulating dots.
 _BASE_TEXT_ROLE = Qt.ItemDataRole.UserRole + 2
+
+#: The two editing tools the map surface offers. A tool is a state, not a mode:
+#: switching tools never changes what is staged, and the tool strip always shows
+#: which one is selected.
+_TOOL_PAINT = "paint"
+_TOOL_PICK = "pick"
 
 #: One-line states for a map with nothing editable, keyed by
 #: :attr:`LayoutTarget.read_only_kind`. Read-only is a state, not an error.
@@ -142,9 +158,128 @@ _MODE_ROLE_WORDS = {
 _EDIT_ERRORS = (
     MapLayoutEditError,
     MapLayoutWriteError,
+    MapPaintError,
     mv.MapBrowserError,
     WriteError,
 )
+
+
+class PaintCellsCommand(QUndoCommand):
+    """One undoable paint gesture: a whole click or drag, not one cell.
+
+    MAP-TILE-PAINT-001. The stroke is staged in the layout session before the
+    command is pushed - the same "the edit already happened, the push only
+    records it" shape the palette command uses - so a failure inside the SDK
+    surfaces in the tab's own guard and NOTHING is pushed.
+
+    `previous` is the value each cell held *before* the stroke, captured from the
+    session at stage time. That is what makes undo exact: it restores the
+    distinct value each cell had, rather than a single assumed original, and it
+    is what the M3 mutation (break previous-value capture) is designed to break.
+
+    Two strokes merge into one command when they are the same layer, the same
+    brush, and the second starts on the cell the first ended on - i.e. they are
+    one continuous gesture. Then the merged command keeps the FIRST stroke's
+    values and the LAST stroke's end cell, so one undo reverses the whole drag.
+    """
+
+    def __init__(self, tab, map_index: int, layer_slot: int, cells, previous, applied):
+        super().__init__()
+        self._tab = tab
+        self._map_index = map_index
+        self._layer_slot = layer_slot
+        #: Row-major cells in stroke order, first-appearance only.
+        self._cells = tuple(cells)
+        #: cell -> the pointer it held before the stroke.
+        self._previous = dict(previous)
+        #: cell -> the pointer the stroke staged.
+        self._applied = dict(applied)
+        #: The gesture identity: the value it painted, the cell it started on and
+        #: the cell it ended on. Two gestures merge only when all three agree, so
+        #: a continuation of one drag merges while a separate stroke does not.
+        self._brush_key = None
+        self._start_key = None
+        self._end_key = None
+        self._first_run = True
+        self.setText(self._describe())
+
+    # -- merging -------------------------------------------------------------
+
+    def keys(self):
+        return (self._brush_key, self._start_key, self._end_key)
+
+    def set_keys(self, brush_key, start_key, end_key) -> None:
+        self._brush_key = brush_key
+        self._start_key = start_key
+        self._end_key = end_key
+
+    def id(self) -> int:  # noqa: A003 - QUndoCommand's own name
+        """Merge class id. Two commands merge only when both return the same id."""
+        return 0x4D50  # "MP"
+
+    def mergeWith(self, other: QUndoCommand) -> bool:
+        if not isinstance(other, PaintCellsCommand):
+            return False
+        if self._brush_key is None or other._brush_key != self._brush_key:
+            return False
+        if other._layer_slot != self._layer_slot or other._map_index != self._map_index:
+            return False
+        if not self._cells or not other._cells:
+            return False
+        # Continuity: the second stroke must start where the first ended.
+        if other._start_key != self._end_key:
+            return False
+        # A cell the merged command would visit twice cannot be merged, because
+        # undoing it would have to restore two different earlier values.
+        if set(other._cells) & set(self._cells):
+            return False
+        self._cells = self._cells + other._cells
+        self._previous.update(other._previous)
+        self._applied.update(other._applied)
+        self._end_key = other._end_key
+        self.setText(self._describe())
+        return True
+
+    # -- QUndoCommand --------------------------------------------------------
+
+    def redo(self) -> None:
+        if self._first_run:
+            # Pushed AFTER the tab staged the stroke; re-applying it here would
+            # make this command's first activation a duplicate write.
+            self._first_run = False
+            return
+        self._tab._reapply_paint(self)
+
+    def undo(self) -> None:
+        self._tab._reverse_paint(self)
+
+    # -- reporting -----------------------------------------------------------
+
+    @property
+    def map_index(self) -> int:
+        return self._map_index
+
+    @property
+    def layer_slot(self) -> int:
+        return self._layer_slot
+
+    @property
+    def cells(self) -> tuple[int, ...]:
+        return self._cells
+
+    @property
+    def previous(self) -> dict[int, int]:
+        return dict(self._previous)
+
+    @property
+    def applied(self) -> dict[int, int]:
+        return dict(self._applied)
+
+    def _describe(self) -> str:
+        count = len(self._cells)
+        where = f"map:{self._map_index:04d} BG{self._layer_slot}"
+        verb = "Revert" if self._tab._naming_revert else "Paint"
+        return f"{verb} {count} cell{'s' if count != 1 else ''} on {where}"
 
 
 def _checkerboard() -> QBrush:
@@ -168,23 +303,40 @@ class ChunkGridOverlay(QGraphicsItem):
     """The editable chunk-cell grid drawn over one dominant layer of the map.
 
     One cell is one 256x256 chunk region, so the grid is the layer's own chunk
-    count in both directions. Cells are click targets; the selected cell, the
-    hovered cell and cells that already carry a pending edit are each marked
+    count in both directions. Cells are paint targets: the selected cell, the
+    hovered cell and cells that already carry a staged edit are each marked
     distinctly - by fill, border style and corner marker, never by hue alone.
+
+    The overlay owns no editing. It reports which cell the pointer is over, on
+    press, on drag and on release, and the tab decides what a gesture means; a
+    gesture therefore costs one callback per cell the pointer enters rather than
+    one per mouse-move event.
     """
 
-    def __init__(self, grid: LayoutGrid, on_cell_clicked) -> None:
+    def __init__(
+        self,
+        grid: LayoutGrid,
+        on_cell_clicked,
+        *,
+        on_stroke_begin=None,
+        on_stroke_end=None,
+        on_hover=None,
+    ) -> None:
         super().__init__()
         self._grid = grid
         self._on_cell_clicked = on_cell_clicked
+        self._on_stroke_begin = on_stroke_begin
+        self._on_stroke_end = on_stroke_end
+        self._on_hover = on_hover
         self._selected: int | None = None
         self._hovered: int | None = None
         self._edited: frozenset[int] = frozenset()
+        self._painting = False
         self.setAcceptHoverEvents(True)
         self.setZValue(1)
         self.setToolTip(
-            "Each cell is one 256×256 chunk region. Click a cell to choose a "
-            "different chunk for it."
+            "Each cell is one 256×256 chunk region. Click or drag a cell to paint "
+            "it with the selected chunk."
         )
 
     # -- state ---------------------------------------------------------------
@@ -265,6 +417,8 @@ class ChunkGridOverlay(QGraphicsItem):
         if cell != self._hovered:
             self._hovered = cell
             self.update()
+            if cell is not None and self._on_hover is not None:
+                self._on_hover(cell)
         super().hoverMoveEvent(event)
 
     def hoverLeaveEvent(self, event) -> None:
@@ -277,10 +431,35 @@ class ChunkGridOverlay(QGraphicsItem):
         if event.button() == Qt.MouseButton.LeftButton:
             cell = self._grid.cell_at(int(event.pos().x()), int(event.pos().y()))
             if cell is not None:
+                self._painting = True
+                if self._on_stroke_begin is not None:
+                    self._on_stroke_begin()
                 self._on_cell_clicked(cell)
                 event.accept()
                 return
         super().mousePressEvent(event)
+
+    def mouseMoveEvent(self, event) -> None:
+        """Extend a press-drag over the cells the pointer actually enters.
+
+        Only a *changed* cell is reported, so dragging within one 256x256 cell
+        costs nothing after the first event. That is what keeps a drag from
+        turning into one edit per mouse-move sample.
+        """
+        if self._painting:
+            cell = self._grid.cell_at(int(event.pos().x()), int(event.pos().y()))
+            if cell is not None and cell != self._selected:
+                self._on_cell_clicked(cell)
+        super().mouseMoveEvent(event)
+
+    def mouseReleaseEvent(self, event) -> None:
+        if self._painting and event.button() == Qt.MouseButton.LeftButton:
+            self._painting = False
+            if self._on_stroke_end is not None:
+                self._on_stroke_end()
+            event.accept()
+            return
+        super().mouseReleaseEvent(event)
 
 
 class MapBrowserCanvas(QGraphicsView):
@@ -451,23 +630,58 @@ class MapBrowserTab(QWidget):
         self._selected_cell: int | None = None
         #: One uncommitted chooser pick: (layer slot, cell, replacement).
         self._draft: tuple[int, int, int] | None = None
-        #: The edit set as last written to a ROM, so "saved" and "unsaved" differ.
-        self._saved: dict[tuple[int, int, int], int] = {}
+        #: The brush value, held as BOTH the 1-based ordinal a project persists
+        #: and the pointer the render and edit paths take. They are one fact in
+        #: two forms, resolved through the session's own layer vocabulary, so a
+        #: paint can never stage a value the build would refuse.
+        self._brush_ordinal: int | None = None
+        self._brush_pointer: int | None = None
+        #: The cells the current drag gesture has already staged, what each held
+        #: before and after - the raw material of its one undo command - and the
+        #: first and last cells the pointer VISITED, which is what makes two
+        #: consecutive presses recognisably one continuous drag even when the
+        #: shared cell needed no change.
+        self._stroke: list[int] = []
+        self._stroke_previous: dict[int, int] = {}
+        self._stroke_applied: dict[int, int] = {}
+        self._stroke_first: int | None = None
+        self._stroke_last: int | None = None
+        self._stroke_active = False
         self._thumbnails: dict[int, QPixmap] = {}
         self._suppress_chooser = False
         self._last_dirty = 0
+        #: The session's tool selection and its committed-project layer, both
+        #: read by the status line.
+        self._tool = _TOOL_PAINT
+        self._alt_pick = False
+        #: WB-005 Layer 3's rule, applied here: the paint history is ONE stack for
+        #: the whole map surface, raised by a stroke at gesture end so a drag is a
+        #: single undoable gesture. It survives an unrelated project mutation
+        #: (CQA-05) and is cleared only by a session change, when the base image
+        #: every command's captured values came from is actually replaced.
+        self._undo_stack = QUndoStack(self)
         #: The palette's full height, measured from its own content in
         #: `_size_chunk_chooser`; the palette collapses to its header without it.
         self._palette_height = 0
         #: True while a parent editor (the Maps editor) owns mode selection, so
         #: this tab does not render its own Edit Layout toggle a second time.
         self._modes_owned_by_host = False
+        #: Set while the revert button is building its own history entry, so the
+        #: command names the operation the user performed:
+        #: ``Paint 1 cell on map:0000 BG0`` versus ``Revert 1 cell ...``.
+        self._naming_revert = False
 
         self._scene = QGraphicsScene(self)
         self._canvas = MapBrowserCanvas(self._scene)
         self._canvas.set_key_handler(self._on_canvas_key)
         self._canvas.set_hover_handler(self._on_canvas_hover)
         self._hover_text = ""
+        #: The cell-under-pointer readout, set by the grid overlay's hover and
+        #: cleared when the pointer leaves it. Kept apart from `_hover_text`
+        #: (map pixels) so the canvas can show both without either erasing the
+        #: other.
+        self._hover_cell: str | None = None
+        self._tool = _TOOL_PAINT
         self._pixmap_item: QGraphicsPixmapItem | None = None
         self._grid_item: ChunkGridOverlay | None = None
 
@@ -531,6 +745,56 @@ class MapBrowserTab(QWidget):
         self._layers_button.setToolTip("Which graphical layers of this map to draw")
         self._layers_button.setAccessibleName("Layers")
 
+        # -- the paint tool group ---------------------------------------------
+        #
+        # Three mutually exclusive tools, the way Porymap's tool strip offers its
+        # pencil/picker pair: the paint tool is the default and what a click
+        # means depends on it, so the tool strip carries one selected tool rather
+        # than a mode the user has to infer from the cursor.
+        self._tool_group = QButtonGroup(self)
+        self._tool_group.setExclusive(True)
+        self._paint_tool = QPushButton("Paint")
+        self._paint_tool.setCheckable(True)
+        self._paint_tool.setChecked(True)
+        self._paint_tool.setToolTip(
+            "Paint the selected chunk: click a cell, or drag to paint a run of them"
+        )
+        self._paint_tool.setAccessibleName("Paint tool")
+        self._pick_tool = QPushButton("Pick")
+        self._pick_tool.setCheckable(True)
+        self._pick_tool.setToolTip(
+            "Eyedropper: take the chunk under the pointer as the brush, without "
+            "changing the map (P)"
+        )
+        self._pick_tool.setAccessibleName("Eyedropper tool")
+        self._tool_group.addButton(self._paint_tool)
+        self._tool_group.addButton(self._pick_tool)
+        self._paint_tool.clicked.connect(lambda: self._set_tool(_TOOL_PAINT))
+        self._pick_tool.clicked.connect(lambda: self._set_tool(_TOOL_PICK))
+
+        # -- undo/redo ---------------------------------------------------------
+        #
+        # The stack's own actions, so the keyboard shortcuts (Ctrl+Z / Ctrl+Y or
+        # Ctrl+Shift+Z) come from Qt rather than from a hand-rolled key map, and
+        # the buttons stay enabled in step with the history.
+        self._undo_action = self._undo_stack.createUndoAction(self, "Undo paint")
+        self._undo_action.setShortcut(QKeySequence.StandardKey.Undo)
+        self._redo_action = self._undo_stack.createRedoAction(self, "Redo paint")
+        self._redo_action.setShortcut(QKeySequence.StandardKey.Redo)
+        self._undo_button = QPushButton("Undo")
+        self._undo_button.setToolTip("Undo the last paint gesture (Ctrl+Z)")
+        self._undo_button.clicked.connect(self._undo_action.trigger)
+        self._undo_button.setEnabled(False)
+        self._redo_button = QPushButton("Redo")
+        self._redo_button.setToolTip("Redo the last undone paint gesture (Ctrl+Y)")
+        self._redo_button.clicked.connect(self._redo_action.trigger)
+        self._redo_button.setEnabled(False)
+        self._undo_stack.canUndoChanged.connect(self._undo_button.setEnabled)
+        self._undo_stack.canRedoChanged.connect(self._redo_button.setEnabled)
+        self.addAction(self._undo_action)
+        self.addAction(self._redo_action)
+
+
         # -- the zoom cluster --------------------------------------------------
         #
         # A conventional compact zoom group, in the order every desktop editor
@@ -567,6 +831,11 @@ class MapBrowserTab(QWidget):
 
         self._strip = ToolStrip()
         self._strip.add(self._edit_toggle)
+        self._strip.add_separator()
+        self._strip.add(self._paint_tool)
+        self._strip.add(self._pick_tool)
+        self._strip.add(self._undo_button)
+        self._strip.add(self._redo_button)
         self._strip.add_separator()
         self._strip.add(self._layers_box)
         self._strip.add_stretch()
@@ -671,9 +940,19 @@ class MapBrowserTab(QWidget):
             "Put the selected cell back to the chunk the source ROM holds (Esc)"
         )
         self._revert_button.clicked.connect(self._revert_cell)
-        self._reset_button = QPushButton("Reset all")
-        self._reset_button.setToolTip("Discard every pending layout change in this session")
+        self._reset_button = QPushButton("Discard pending")
+        self._reset_button.setToolTip(
+            "Discard every staged paint in this session; the project keeps what it "
+            "already has"
+        )
         self._reset_button.clicked.connect(self._reset_edits)
+        self._commit_button = QPushButton("Apply to project")
+        self._commit_button.setProperty("dbzRole", "primary")
+        self._commit_button.setToolTip(
+            "Write every staged paint into the project's layout source. The project "
+            "is then validated and built like any other authored content."
+        )
+        self._commit_button.clicked.connect(self.apply_to_project)
         self._save_button = QPushButton("Save As New ROM\u2026")
         self._save_button.setProperty("dbzRole", "primary")
         self._save_button.setToolTip(
@@ -697,6 +976,14 @@ class MapBrowserTab(QWidget):
         buttons.addWidget(self._apply_button)
         buttons.addWidget(self._revert_button)
         buttons.addWidget(self._reset_button)
+        # Undo/redo sit next to the gesture buttons as a second, discoverable
+        # spelling of the strip's pair; both drive the SAME QUndoStack, so the
+        # keyboard shortcut and the button can never disagree about the history.
+        history = QHBoxLayout()
+        history.setContentsMargins(theme.SPACE_SM, 0, theme.SPACE_SM, 0)
+        history.addWidget(self._undo_button)
+        history.addWidget(self._redo_button)
+        history.addStretch(1)
         # Advanced technical detail sits behind a disclosure (Godot's Advanced
         # Settings idiom), so the default surface speaks cells and chunks.
         self._detail = TechnicalLabel("\u2014")
@@ -713,8 +1000,10 @@ class MapBrowserTab(QWidget):
         editor_layout.addWidget(self._mode_badge)
         editor_layout.addWidget(self._read_only_detail)
         editor_layout.addLayout(editor_form)
+        editor_layout.addLayout(history)
         editor_layout.addLayout(buttons)
         editor_layout.addWidget(self._detail_row)
+        editor_layout.addWidget(self._commit_button)
         editor_layout.addWidget(self._save_button)
         editor_layout.addStretch(1)
         self._editor_box = QWidget()
@@ -933,6 +1222,10 @@ class MapBrowserTab(QWidget):
         self._current = None
         self._clear_layer_checks()
         self._reset_editor()
+        # A new image is a new base: every history command's captured values came
+        # from the image that is being replaced, so the stack cannot survive it.
+        # This is the ONE event that clears the paint history (CQA-05).
+        self._undo_stack.clear()
         self._list.blockSignals(True)
         self._list.clear()
         self._list.blockSignals(False)
@@ -972,7 +1265,14 @@ class MapBrowserTab(QWidget):
         change on screen is bookkeeping *about* those edits: the per-map pending
         glyphs, the panel's own controls and the mode line. That is what is
         re-read here, from the live state rather than rebuilt.
+
+        MAP-TILE-PAINT-001 adds one thing this must do: the committed project
+        layer is re-read from the project, so a paint applied in another tab (or
+        by an undo that rewrote the project) is reflected without discarding the
+        staged gesture on top of it. The undo history is untouched - a project
+        mutation is not a session change.
         """
+        self.reload_project_layout()
         self._mark_pending_rows()
         self._refresh_editor_state()
         self._update_status()
@@ -1253,6 +1553,17 @@ class MapBrowserTab(QWidget):
         self._draft = None
         self._saved = {}
         self._thumbnails = {}
+        self._brush_ordinal = None
+        self._brush_pointer = None
+        self._stroke = []
+        self._stroke_previous = {}
+        self._stroke_applied = {}
+        self._stroke_first = None
+        self._stroke_last = None
+        self._stroke_active = False
+        self._thumbnails = {}
+        self._brush_ordinal = None
+        self._brush_pointer = None
         # A new ROM starts in view mode: leaving the toggle checked would claim an
         # editing mode for an image the tab has not judged yet.
         self._edit_mode = False
@@ -1290,11 +1601,46 @@ class MapBrowserTab(QWidget):
             )
             return None
         try:
+            # The project's committed layout is read FIRST and handed to the
+            # session as its floor, so a project that was closed and reopened
+            # shows its painted layout immediately rather than only after the
+            # first project mutation. The base image is still the canonical one.
             self._editor = MapLayoutEditor(self._session.rom_image)
+            set_floor = getattr(self._editor, "set_floor", None)
+            if set_floor is not None:
+                set_floor(self._project_floor(self._session.rom_image))
         except MapLayoutEditError as exc:
             # Unsupported image: the browser keeps working, read-only.
             self._editor_error = str(exc)
         return self._editor
+
+    def _project_floor(self, image: bytes) -> dict[tuple[int, int, int], int]:
+        """The committed project paints for the open project, as pointers.
+
+        Empty when no project is open or the project paints no layout. A project
+        that cannot be read is reported and treated as empty here; the surface
+        then says so in its status line rather than presenting an unreadable
+        project as an unpainted one.
+        """
+        if self._session.project_dir is None:
+            return {}
+        try:
+            ordered = read_layout_edits(self._session.project_dir).cells()
+        except (ProjectError, OSError) as exc:
+            self._publish_status(f"Project layout could not be read: {exc}")
+            return {}
+        if not ordered:
+            return {}
+        from tools.webfoot.map_paint import MapPainter
+
+        try:
+            return MapPainter(image).pointer_edits(ordered)
+        except MapPaintError as exc:
+            # A project that names a cell this image cannot carry is a real
+            # problem, and it is named rather than dropped: the build refuses it
+            # too, so a silent empty floor here would hide it until build time.
+            self._publish_status(f"Project layout does not apply to this ROM: {exc}")
+            return {}
 
     def _sync_editor_for_map(self, index: int) -> None:
         """Re-point the edit surface at the newly selected map."""
@@ -1304,6 +1650,11 @@ class MapBrowserTab(QWidget):
             self._editor_box.setToolTip(self._editor_error or "")
             self._refresh_editor_state()
             return
+        # The base image has not changed but the project may have: re-read the
+        # committed layout before the layer is resolved, so a project painted
+        # since the last look is what the user sees. This does not touch staged
+        # work.
+        self.reload_project_layout()
         try:
             self._target = editor.target(index)
         except MapLayoutEditError as exc:
@@ -1331,6 +1682,8 @@ class MapBrowserTab(QWidget):
         self._slot = None
         self._selected_cell = None
         self._thumbnails = {}
+        self._brush_ordinal = None
+        self._brush_pointer = None
         if self._target is None or layer_slot is None:
             self._clear_grid_item()
             self._populate_chooser()
@@ -1344,6 +1697,11 @@ class MapBrowserTab(QWidget):
             if check is not None and not check.isChecked():
                 check.setChecked(True)
             self._selected_cell = 0
+            # A sensible default brush: the second value this layer uses, because
+            # the first is usually the one already filling the cells a user wants
+            # to change. The palette shows it as the selected paint value.
+            self._brush_ordinal = 2 if len(self._slot.choices) > 1 else None
+            self._brush_pointer = self._lookup_pointer(self._brush_ordinal or 0)
         self._install_grid_item()
         self._populate_chooser()
         self._sync_chooser_selection()
@@ -1352,9 +1710,31 @@ class MapBrowserTab(QWidget):
         self._clear_grid_item()
         if not self._edit_mode or self._slot is None:
             return
-        self._grid_item = ChunkGridOverlay(self._slot.grid, self._on_cell_clicked)
+        self._grid_item = ChunkGridOverlay(
+            self._slot.grid,
+            self._on_cell_clicked,
+            on_stroke_begin=self._begin_stroke,
+            on_stroke_end=self._end_stroke,
+        )
         self._scene.addItem(self._grid_item)
         self._grid_item.set_selected(self._selected_cell)
+
+    def _on_grid_hover(self, cell: int | None) -> None:
+        """Report the cell under the pointer, for the canvas status readout.
+
+        The canvas already reports map pixels; this is the one thing a painter
+        needs and pixels cannot give - which cell, and which chunk is in it.
+        Cached and published through the same line the canvas hover uses, so the
+        two never fight over it.
+        """
+        if not self._edit_mode or self._slot is None or cell is None:
+            self._hover_cell = None
+            return
+        chunk = self._slot.ordinal_of(self._working_pointer(self._slot.slot, cell))
+        name = f"Chunk {chunk}" if chunk else "an empty cell"
+        self._hover_cell = (
+            f"BG{self._slot.slot} cell {cell + 1}/{self._slot.grid.cell_count} · {name}"
+        )
 
     def _clear_grid_item(self) -> None:
         if self._grid_item is not None and self._grid_item.scene() is self._scene:
@@ -1419,18 +1799,271 @@ class MapBrowserTab(QWidget):
         self._select_layer(self._layer_combo.currentData())
         self._refresh_editor_state()
 
+    def _set_tool(self, tool: str) -> None:
+        """Select the paint or eyedropper tool."""
+        self._tool = tool
+        self._paint_tool.setChecked(tool == _TOOL_PAINT)
+        self._pick_tool.setChecked(tool == _TOOL_PICK)
+        self._update_status()
+
     def _on_cell_clicked(self, cell: int) -> None:
-        """A chunk cell was clicked on the map."""
+        """One cell was pressed or entered during a gesture.
+
+        The tool decides what that means: the eyedropper takes the cell's chunk
+        as the brush and changes nothing, and the paint tool stages the brush
+        into the cell.
+
+        The grid overlay brackets a gesture - it calls :meth:`_begin_stroke` on
+        press, this method once per cell the pointer enters, and
+        :meth:`_end_stroke` on release - so a drag stages every cell it crosses
+        and raises ONE undo command for the gesture. A caller that reaches this
+        path without an open gesture (a test driving the cell callback directly,
+        or an accessory button) gets a complete single-cell gesture rather than a
+        half-open one; that is decided by `_stroke_active`, not by guessing.
+        """
         if self._slot is None or not self._slot.grid.contains(cell):
             return
+        own_gesture = not self._stroke_active
+        if own_gesture:
+            self._begin_stroke()
         self._selected_cell = cell
-        self._draft = None
         if self._grid_item is not None:
             self._grid_item.set_selected(cell)
+        if self._tool == _TOOL_PICK or self._alt_pick:
+            self._pick_cell(cell)
+            self._sync_chooser_selection()
+            self._refresh_editor_state()
+            if own_gesture:
+                self._end_stroke()
+            return
+        self._paint_cell(cell)
+        self._draft = None
+        if own_gesture:
+            self._end_stroke()
         self._sync_chooser_selection()
         self._refresh_preview()
         self._refresh_editor_state()
-        self._canvas.setFocus()
+
+    def _lookup_pointer(self, ordinal: int) -> int | None:
+        """The chunk pointer a 1-based ordinal names, in the current layer.
+
+        The single translation between the ordinal a project persists and the
+        pointer the session's render and edit paths take; both come from the
+        session's own ``LayoutSlot`` vocabulary, so a painted value resolves
+        exactly the way the write path would resolve it.
+        """
+        slot = self._slot
+        if slot is None or type(ordinal) is not int:
+            return None
+        if not 1 <= ordinal <= len(slot.choices):
+            return None
+        return slot.choices[ordinal - 1]
+
+    def _ordinal_of_pointer(self, pointer: int) -> int | None:
+        slot = self._slot
+        return None if slot is None else slot.ordinal_of(pointer)
+
+    def _brush_key(self) -> int | None:
+        """The brush as the stored ordinal a project persists, or None."""
+        return self._brush_ordinal
+
+    def set_brush_ordinal(self, ordinal: int | None) -> None:
+        """Choose the paint value by its stored ordinal (1-based)."""
+        if ordinal is None:
+            self._brush_ordinal = None
+            self._brush_pointer = None
+        else:
+            self._brush_ordinal = ordinal
+            self._brush_pointer = self._lookup_pointer(ordinal)
+        self._sync_chooser_selection()
+        self._refresh_editor_state()
+
+    def pick_brush_from_cell(self, cell: int) -> None:
+        """Eyedropper, as one call: take a cell's chunk as the brush."""
+        if self._slot is None or not self._slot.grid.contains(cell):
+            return
+        self._selected_cell = cell
+        if self._grid_item is not None:
+            self._grid_item.set_selected(cell)
+        self._pick_cell(cell)
+        self._sync_chooser_selection()
+        self._refresh_editor_state()
+
+    def _pick_cell(self, cell: int) -> None:
+        """Take one cell's current chunk as the brush, without editing it."""
+        if self._slot is None:
+            return
+        pointer = self._working_pointer(self._slot.slot, cell)
+        ordinal = self._slot.ordinal_of(pointer)
+        if ordinal is None:
+            self._publish_status(
+                "That cell holds no chunk this layer uses, so it is not a brush value."
+            )
+            return
+        self._brush_pointer = pointer
+        self._brush_ordinal = ordinal
+        self._publish_status(f"Picked Chunk {ordinal} as the paint value.")
+
+    def _paint_cell(self, cell: int) -> bool:
+        """Stage the brush into one cell; True when the cell's value changed.
+
+        A cell already showing the brush value stages nothing and reports False:
+        painting a cell the brush already matches is not a change, so it must not
+        enter the history or mark the map dirty.
+
+        The cell's PRE-GESTURE value is recorded before anything is staged, and
+        only once per gesture. It has to be the value from before the whole
+        stroke, not from before this call: a drag that re-crosses a cell it has
+        already painted would otherwise record the stroke's own earlier value as
+        that cell's original, and one undo would leave the map mid-stroke rather
+        than restoring it.
+        """
+        slot = self._slot
+        if slot is None or self._editor is None or self._current is None:
+            return False
+        pointer = self._brush_pointer
+        if pointer is None:
+            self._publish_status("Choose a chunk in the palette first.")
+            return False
+        before = self._working_pointer(slot.slot, cell)
+        if cell not in self._stroke_previous:
+            self._stroke_previous[cell] = before
+        # The gesture's span is where the pointer WENT, not only where it changed
+        # something: a drag that starts on a cell already holding the brush is
+        # still the same gesture, and the next press on that cell must merge with
+        # it rather than start a second history entry.
+        if self._stroke_first is None:
+            self._stroke_first = cell
+        self._stroke_last = cell
+        if pointer == before:
+            return False
+        try:
+            edit = self._editor.set_cell(self._current.index, slot.slot, cell, pointer)
+        except _EDIT_ERRORS as exc:
+            QMessageBox.warning(self, "Map paint", str(exc))
+            return False
+        if edit is None:
+            # The session already agreed with this cell: nothing staged.
+            return False
+        if cell not in self._stroke:
+            self._stroke.append(cell)
+            self._stroke_applied[cell] = pointer
+        return True
+
+    def _begin_stroke(self) -> None:
+        """Open a gesture record; called by the grid overlay on press."""
+        self._stroke = []
+        self._stroke_previous = {}
+        self._stroke_applied = {}
+        self._stroke_first = None
+        self._stroke_last = None
+        self._stroke_active = True
+
+    def begin_paint_stroke(self) -> None:
+        """Open a gesture explicitly, for a caller driving the surface without a mouse."""
+        self._begin_stroke()
+
+    def paint_cell(self, cell: int) -> bool:
+        """Paint one cell as part of the current gesture; True when it changed."""
+        changed = self._paint_cell(cell)
+        if changed:
+            self._selected_cell = cell
+            if self._grid_item is not None:
+                self._grid_item.set_selected(cell)
+        return changed
+
+    def end_paint_stroke(self) -> None:
+        """Close the current gesture and raise it on the undo stack."""
+        self._end_stroke()
+
+    def _end_stroke(self) -> None:
+        """Close the current gesture and raise it on the undo stack.
+
+        The command records only the cells whose value actually changed, so a
+        drag that re-crosses a cell it already painted, or that sweeps cells it
+        leaves at their current value, produces one tightly-scoped history entry.
+        An empty gesture - every cell already showing the brush - pushes nothing
+        at all, which is the "painting the same effective value creates no
+        history" rule.
+        """
+        self._stroke_active = False
+        changed = [
+            cell
+            for cell in self._stroke
+            if self._stroke_previous.get(cell) != self._stroke_applied.get(cell)
+        ]
+        first, last = self._stroke_first, self._stroke_last
+        # Captured before the gesture record is cleared: the command needs the
+        # values, and the record is about to be reused by the next gesture.
+        previous = {cell: self._stroke_previous[cell] for cell in changed}
+        applied = {cell: self._stroke_applied[cell] for cell in changed}
+        self._stroke = []
+        self._stroke_previous = {}
+        self._stroke_applied = {}
+        self._stroke_first = None
+        self._stroke_last = None
+        if not changed or self._slot is None or self._current is None:
+            self._refresh_editor_state()
+            return
+        command = PaintCellsCommand(
+            self,
+            map_index=self._current.index,
+            layer_slot=self._slot.slot,
+            cells=changed,
+            previous=previous,
+            applied=applied,
+        )
+        # The gesture identity: one brush, and the cells the pointer started and
+        # ended on, so only a continuation of THIS drag merges into this command.
+        command.set_keys(self._brush_pointer, first, last)
+        self._undo_stack.push(command)
+        self._refresh_editor_state()
+
+    def _reapply_paint(self, command: "PaintCellsCommand") -> None:
+        """Re-apply one already-recorded gesture (redo, or a merged stroke)."""
+        if self._editor is None:
+            return
+        for cell, pointer in command.applied.items():
+            try:
+                self._editor.set_cell(command.map_index, command.layer_slot, cell, pointer)
+            except _EDIT_ERRORS as exc:
+                QMessageBox.warning(self, "Map paint", str(exc))
+                return
+        self._after_paint_change(command.map_index)
+
+    def _reverse_paint(self, command: "PaintCellsCommand") -> None:
+        """Undo one gesture: put every cell back to the value it held before.
+
+        A cell whose pre-gesture value IS the value the cell's base holds is
+        un-staged - the staged work is removed, which is what an undo of a paint
+        means - and a cell whose pre-gesture value was itself a paint is staged
+        back to it. Both go through the session; the tab owns no edit state.
+        """
+        if self._editor is None:
+            return
+        for cell, pointer in command.previous.items():
+            try:
+                base = self._editor.committed_pointer(
+                    command.map_index, command.layer_slot, cell
+                )
+                if pointer == base:
+                    self._editor.clear_cell(command.map_index, command.layer_slot, cell)
+                else:
+                    self._editor.set_cell(
+                        command.map_index, command.layer_slot, cell, pointer
+                    )
+            except _EDIT_ERRORS as exc:
+                QMessageBox.warning(self, "Map paint", str(exc))
+                return
+        self._after_paint_change(command.map_index)
+
+    def _after_paint_change(self, map_index: int) -> None:
+        """Re-render and re-sync after history moved the staged edit set."""
+        if self._current is not None and self._current.index == map_index:
+            self._refresh_preview()
+        else:
+            self._mark_pending_rows()
+        self._refresh_editor_state()
 
     def _move_cell_selection(self, delta_column: int, delta_row: int) -> None:
         slot = self._slot
@@ -1541,7 +2174,14 @@ class MapBrowserTab(QWidget):
         return backed
 
     def _sync_chooser_selection(self) -> None:
-        """Show the selected cell's current chunk, and tag the chooser's items."""
+        """Tag the palette with what each chunk means right now.
+
+        Three tags, and they are states rather than decoration: ``brush`` is the
+        value a click will paint (bold, and the one the palette's selection
+        follows), ``cell`` is what the selected cell currently holds, and
+        ``source`` is the chunk the canonical image stores there - so a painted
+        cell is visibly different from a retail one in the palette itself.
+        """
         slot = self._slot
         if slot is None or self._current is None:
             return
@@ -1556,20 +2196,20 @@ class MapBrowserTab(QWidget):
             pointer = item.data(_CHUNK_ROLE)
             ordinal = slot.ordinal_of(pointer) or row + 1
             tags = []
+            if pointer == self._brush_pointer:
+                tags.append("brush")
             if working is not None and pointer == working:
-                tags.append("current")
+                tags.append("cell")
             elif original is not None and pointer == original:
-                tags.append("original")
+                tags.append("source")
             item.setText(f"Chunk {ordinal}" + (f"\n{' · '.join(tags)}" if tags else ""))
             font = item.font()
-            font.setBold(working is not None and pointer == working)
+            font.setBold(pointer == self._brush_pointer)
             item.setFont(font)
-        if working is not None:
-            row = self._chooser_row_for(working)
-            if row is not None:
-                self._chooser.setCurrentRow(row)
-        else:
-            self._chooser.setCurrentRow(-1)
+        # The palette's own selection follows the brush, so the visible selection
+        # and the value a click paints are the same fact.
+        row = None if self._brush_pointer is None else self._chooser_row_for(self._brush_pointer)
+        self._chooser.setCurrentRow(-1 if row is None else row)
         self._suppress_chooser = False
 
     def _chooser_row_for(self, pointer: int) -> int | None:
@@ -1579,15 +2219,34 @@ class MapBrowserTab(QWidget):
         return None
 
     def _on_chunk_selected(self, current: QListWidgetItem | None, _previous=None) -> None:
-        """A chooser pick previews immediately; Apply commits it."""
+        """A palette pick becomes the brush. It paints nothing on its own.
+
+        This is the whole difference between choosing a tool and using it: the
+        old surface staged the picked chunk into whichever cell happened to be
+        selected, so merely browsing the palette edited the map. The brush is now
+        a value that a click or a drag applies, and the toolbar's status line says
+        which value it is.
+
+        Choosing the value that is ALREADY the brush changes nothing, and does no
+        work at all - not a status line, not a render. The tab's own re-sync
+        re-selects this row after every refresh, so needless work here would run
+        once per painted cell (CQA-07's pathological-redraw rule).
+
+        The map is deliberately NOT re-rendered either: the brush is a value the
+        next click will place, not something drawn on the map, so the pixels on
+        screen cannot have changed and re-rendering them would be pure cost.
+        """
         if self._suppress_chooser or current is None or self._slot is None:
             return
-        if self._selected_cell is None:
-            self._status.setText("Select a chunk cell on the map first.")
+        pointer = current.data(_CHUNK_ROLE)
+        ordinal = self._slot.ordinal_of(pointer)
+        if ordinal is None or pointer == self._brush_pointer:
             return
-        replacement = current.data(_CHUNK_ROLE)
-        self._draft = (self._slot.slot, self._selected_cell, replacement)
-        self._refresh_preview()
+        self._brush_pointer = pointer
+        self._brush_ordinal = ordinal
+        self._publish_status(
+            f"Chunk {ordinal} is the paint value; click or drag cells to paint it."
+        )
         self._refresh_editor_state()
 
     # -- layout editing: apply, revert, reset, preview ------------------------
@@ -1602,50 +2261,211 @@ class MapBrowserTab(QWidget):
             return 0
 
     def _apply_draft(self) -> None:
-        """Commit the chooser's pick for the selected cell into the edit set."""
-        if self._editor is None or self._current is None or self._draft is None:
+        """Apply the brush to the selected cell, as one undoable gesture.
+
+        The keyboard/menu spelling of a single-cell paint (Enter, and the
+        inspector's Apply button): it opens a gesture, paints one cell and closes
+        it, which is exactly what a click does. It goes through
+        :meth:`paint_cell` and therefore through the same history, so the two
+        spellings cannot diverge.
+        """
+        if self._slot is None or self._selected_cell is None:
             return
-        layer_slot, cell, replacement = self._draft
-        try:
-            self._editor.set_cell(self._current.index, layer_slot, cell, replacement)
-        except _EDIT_ERRORS as exc:
-            QMessageBox.warning(self, "Layout edit", str(exc))
-            return
+        self._begin_stroke()
+        changed = self.paint_cell(self._selected_cell)
+        self._end_stroke()
         self._draft = None
         self._sync_chooser_selection()
         self._refresh_preview()
         self._refresh_editor_state()
+        if not changed:
+            self._publish_status(
+                "That cell already holds the paint value; nothing was staged."
+            )
+
+    # -- project commit -------------------------------------------------------
+
+    def _staged_layout_edits(self) -> dict[tuple[int, int, int], int | None]:
+        """Every staged cell as the ``(map, layer, cell) -> ordinal | None`` batch.
+
+        A cell whose staged value equals what the project already holds is
+        spelled ``None`` (remove the authored paint) rather than re-written,
+        because re-writing it would make an undo that returns a cell to its
+        committed value rewrite an identical document. A cell whose value
+        differs is spelled with its ordinal, resolved through the layer's own
+        vocabulary so the persisted form is the one a build resolves.
+        """
+        if self._editor is None:
+            return {}
+        batch: dict[tuple[int, int, int], int | None] = {}
+        for edit in self._editor.edits():
+            slot = self._editor.slot(edit.map_index, edit.layer_slot)
+            ordinal = slot.ordinal_of(edit.replacement)
+            if ordinal is None:
+                raise MapPaintError(
+                    f"BG{edit.layer_slot} of map:{edit.map_index:04d} cannot store "
+                    f"{edit.replacement:#010x}: it is not a chunk this layer uses"
+                )
+            committed = self._editor.committed_pointer(
+                edit.map_index, edit.layer_slot, edit.cell
+            )
+            batch[(edit.map_index, edit.layer_slot, edit.cell)] = (
+                None if edit.replacement == committed else ordinal
+            )
+        return batch
+
+    def apply_to_project(self) -> bool:
+        """Commit every staged paint into the project, then re-read it back.
+
+        The authoring path, in one call: the staged gesture set becomes the
+        project's semantic layout document through the one SDK authority
+        (:func:`tools.webfoot.map_paint.set_layout_cells`), which validates the
+        WHOLE batch against the canonical image before writing anything. The
+        session then re-reads the project so what is on screen is what is on
+        disk, and reports whether project source actually changed.
+        """
+        if self._editor is None or self._session.map_image is None:
+            return False
+        if self._session.project_dir is None:
+            self._publish_status(
+                "Open or extract a project first; a paint is stored in the project, "
+                "not in a ROM."
+            )
+            return False
+        try:
+            batch = self._staged_layout_edits()
+        except _EDIT_ERRORS as exc:
+            QMessageBox.warning(self, "Map paint", str(exc))
+            return False
+        if not batch:
+            self._publish_status("There is no staged paint to apply.")
+            return False
+        try:
+            changed = set_layout_cells(
+                self._session.project_dir,
+                self._session.profile,
+                self._session.map_image,
+                batch,
+            )
+        except _EDIT_ERRORS as exc:
+            QMessageBox.warning(self, "Map paint", str(exc))
+            return False
+        # Re-read the project so the session's floor is what was just written.
+        self.reload_project_layout()
+        self._undo_stack.clear()
+        self._draft = None
+        if changed:
+            self._publish_status(
+                f"Applied {len(batch)} painted cell(s) to the project. "
+                "Validate and build to run them."
+            )
+            self.projectChanged.emit()
+        else:
+            self._publish_status("The project already held exactly this layout.")
+        self._sync_chooser_selection()
+        self._refresh_preview()
+        self._refresh_editor_state()
+        return changed
+
+    def reload_project_layout(self) -> None:
+        """Re-read the committed layout from the project into the session's floor.
+
+        The one place a project change reaches the layout session. It does not
+        rebuild the session (which would discard staged work, the CQA-05
+        regression) and it does not touch the base image; the floor is simply
+        replaced and the writer re-derived from it.
+        """
+        if self._editor is None or self._session.map_image is None:
+            return
+        floor: dict[tuple[int, int, int], int] = {}
+        if self._session.project_dir is not None:
+            try:
+                authored = read_layout_edits(self._session.project_dir)
+                ordered = authored.cells()
+                if ordered:
+                    from tools.webfoot.map_paint import MapPainter
+
+                    floor = MapPainter(self._session.map_image).pointer_edits(ordered)
+            except (ProjectError, MapPaintError, OSError) as exc:
+                # An unreadable project is reported where the user can see it and
+                # leaves the session's staged work alone; it does not silently
+                # present an unpainted layout as if the project were empty.
+                self._publish_status(f"Project layout could not be read: {exc}")
+                return
+        self._editor.set_floor(floor)
+        self._refresh_editor_state()
 
     def _revert_cell(self) -> None:
-        """Put the selected cell back to the chunk the source ROM holds."""
+        """Put the selected cell back to the value the base holds for it.
+
+        "Back" means the canonical image plus the committed project: a cell the
+        project paints reverts to that authored value, and a cell it does not
+        paint reverts to the source ROM's own chunk. It is the session's
+        un-stage operation, so it removes the staged paint rather than recording
+        a new one, and it is itself undoable because it is a gesture like any
+        other.
+        """
         if self._editor is None or self._current is None or self._slot is None:
             return
         if self._selected_cell is None:
             return
+        index = self._current.index
+        slot = self._slot.slot
+        cell = self._selected_cell
+        if self._editor.edit(index, slot, cell) is None:
+            self._publish_status("That cell has no staged paint to revert.")
+            return
+        before = self._working_pointer(slot, cell)
+        base = self._editor.committed_pointer(index, slot, cell)
         self._draft = None
         try:
-            self._editor.revert_cell(self._current.index, self._slot.slot, self._selected_cell)
+            self._editor.clear_cell(index, slot, cell)
         except _EDIT_ERRORS as exc:
-            QMessageBox.warning(self, "Layout edit", str(exc))
+            QMessageBox.warning(self, "Map paint", str(exc))
             return
+        # One history entry, whose "previous" value is the staged one and whose
+        # redo re-stages it: reverting is a paint of the base value.
+        self._naming_revert = True
+        try:
+            command = PaintCellsCommand(
+                self,
+                map_index=index,
+                layer_slot=slot,
+                cells=(cell,),
+                previous={cell: before},
+                applied={cell: base},
+            )
+        finally:
+            self._naming_revert = False
+        command.set_keys(self._brush_pointer, cell, cell)
+        self._undo_stack.push(command)
         self._sync_chooser_selection()
         self._refresh_preview()
         self._refresh_editor_state()
 
     def _reset_edits(self) -> None:
-        """Discard every pending layout change in this session."""
+        """Discard every *staged* paint in this session, and clear the history.
+
+        The project keeps what it already holds: "discard pending" means the work
+        that has not been applied, not the authored layout. The history is cleared
+        with it, because every command in it describes a staged value that no
+        longer exists.
+        """
         if self._editor is None:
             return
         dropped = self._editor.reset()
+        self._undo_stack.clear()
         self._draft = None
-        self._saved = {}
+        self._stroke = []
+        self._stroke_previous = {}
+        self._stroke_applied = {}
         self._sync_chooser_selection()
         self._refresh_preview()
         self._refresh_editor_state()
         if dropped:
-            self._status.setText(
-                f"Discarded {dropped} pending layout change(s); the preview is back to "
-                "the source ROM's layout."
+            self._publish_status(
+                f"Discarded {dropped} staged paint(s); the preview shows what the "
+                "project holds."
             )
 
     def _preview_overrides(self) -> dict[tuple[int, int], int]:
@@ -1717,8 +2537,12 @@ class MapBrowserTab(QWidget):
             self._read_only_detail.setText(reason)
             self._set_layer_row_visible(False)
         else:
+            tool = "Paint" if self._tool == _TOOL_PAINT else "Pick"
+            brush = self._chunk_name(self._brush_ordinal)
             self._set_mode_badge(
-                "EDIT LAYOUT \u00b7 click a 256\u00d7256 cell, then choose a chunk", "edit"
+                f"EDIT LAYOUT \u00b7 {tool} tool \u00b7 {brush} \u00b7 click or drag a "
+                "256\u00d7256 cell",
+                "edit",
             )
         self._sync_chooser_presence()
 
@@ -1735,17 +2559,16 @@ class MapBrowserTab(QWidget):
             self._chunk_label.setText(
                 f"{self._chunk_name(ordinal)} · used by {used} cell(s) of BG{slot.slot}"
             )
-            if self._draft is not None:
-                self._detail.setText(
-                    f"pending preview: {self._chunk_name(slot.ordinal_of(cell.pointer))} → "
-                    f"{self._chunk_name(slot.ordinal_of(self._draft[2]))}\n"
-                    f"field 0x{cell.offset:08X} (4 bytes, in place)"
-                )
-            else:
-                self._detail.setText(
-                    f"pointer {working:#010x}\n"
-                    f"field 0x{cell.offset:08X} (4 bytes, in place)"
-                )
+            source = slot.ordinal_of(cell.pointer)
+            painted = self._editor.committed_pointer(
+                result.index, slot.slot, cell.cell
+            ) != cell.pointer if (self._editor and result) else False
+            self._detail.setText(
+                f"source ROM holds {self._chunk_name(source)}\n"
+                + ("project paints this cell\n" if painted else "")
+                + f"pointer {working:#010x}\n"
+                f"field 0x{cell.offset:08X} (4 bytes, in place)"
+            )
         else:
             # No cell picked yet: say what to do, rather than three dash rows.
             self._cell_label.setText("No cell selected")
@@ -1753,18 +2576,22 @@ class MapBrowserTab(QWidget):
             self._detail.setText("")
 
         unsaved = self._unsaved_count()
-        if not edits:
+        committed = self._editor.floor_cell_count if self._editor is not None else 0
+        if not edits and not committed:
             self._set_change_label("No layout changes", "neutral")
         elif unsaved:
             self._set_change_label(
-                f"{unsaved} unsaved layout change(s) \u00b7 {len(edits)} pending", "pending"
+                f"{unsaved} staged paint(s) \u00b7 {committed} in the project", "pending"
             )
         else:
             self._set_change_label(
-                f"{len(edits)} layout change(s) saved to a new ROM", "saved"
+                f"{committed} painted cell(s) in the project", "saved"
             )
 
-        self._apply_button.setEnabled(editing and self._draft is not None)
+        self._apply_button.setEnabled(editing and slot is not None)
+        self._apply_button.setToolTip(
+            "Paint the selected cell with the current value (Enter)"
+        )
         index = result.index if result is not None else None
         self._revert_button.setEnabled(
             editing
@@ -1772,12 +2599,23 @@ class MapBrowserTab(QWidget):
             and slot is not None
             and self._selected_cell is not None
             and (
-                self._draft is not None
-                or self._editor is not None
-                and self._editor.edit(index, slot.slot, self._selected_cell) is not None
+                self._working_pointer(slot.slot, self._selected_cell)
+                != self._editor.committed_pointer(index, slot.slot, self._selected_cell)
+                if self._editor is not None
+                else False
             )
         )
         self._reset_button.setEnabled(editing and bool(edits))
+        self._commit_button.setEnabled(
+            editing and self._editor is not None and bool(edits)
+            and self._session.project_dir is not None
+        )
+        self._commit_button.setToolTip(
+            "Write every staged paint into the project's layout source. The project "
+            "is then validated and built like any other authored content."
+            if self._session.project_dir is not None
+            else "Open or extract a project first: a paint is stored in the project."
+        )
         # Save As needs something to save: an editable layer on this map, the
         # no-op copy included, or pending changes made on another map.
         self._save_button.setEnabled(
@@ -1785,6 +2623,8 @@ class MapBrowserTab(QWidget):
         )
         self._layer_combo.setEnabled(editing and self._layer_combo.count() > 0)
         self._chooser.setEnabled(editing and slot is not None)
+        self._paint_tool.setEnabled(editing and slot is not None)
+        self._pick_tool.setEnabled(editing and slot is not None)
         self._mark_pending_rows()
         self._announce_dirty()
         self._update_status()
@@ -1892,23 +2732,25 @@ class MapBrowserTab(QWidget):
         # whether a choice is previewed but uncommitted, and how much is unsaved.
         if self._edit_mode:
             parts.append("EDIT LAYOUT")
-            if self._draft is not None:
-                parts.append("previewing an unapplied choice")
-            elif self._slot is None:
-                parts.append("no editable layer on this map")
+            if self._slot is None:
+                parts.append("no paintable layer on this map")
             elif self._editor is not None:
-                edits = self._editor.edits_for(result.index)
+                committed = self._editor.floor_cell_count
                 unsaved = self._unsaved_count()
-                if edits and unsaved:
-                    parts.append(f"{unsaved} unsaved change(s)")
-                elif edits:
-                    parts.append(f"{len(edits)} change(s) saved")
+                if unsaved:
+                    parts.append(f"{unsaved} staged paint(s) to apply")
+                elif committed:
+                    parts.append(f"{committed} painted cell(s) in the project")
                 else:
-                    parts.append("no changes yet")
+                    parts.append("nothing painted yet")
+                brush = self._chunk_name(self._brush_ordinal)
+                parts.append(f"brush {brush}")
         else:
             parts.append("read-only")
         if self._hover_text:
             parts.append(self._hover_text)
+        if self._hover_cell:
+            parts.append(self._hover_cell)
         self._publish_status("  \u00b7  ".join(parts))
 
     def _unsaved_count(self) -> int:
@@ -1968,11 +2810,10 @@ class MapBrowserTab(QWidget):
                 "Choose another file name; the source ROM is never modified.",
             )
             return
-        # Save As writes what the preview shows, so an unapplied chooser pick is
-        # committed rather than silently dropped. The emit builds at a temporary
-        # sibling and only then replaces the destination, so an existing file at the
-        # chosen path survives a failed save untouched - hence no delete here.
-        self._apply_draft()
+        # Save As writes exactly what is STAGED. It deliberately does not paint
+        # anything on its own: a paint is a user gesture, and a save that
+        # silently edited the cell that happened to be selected would write
+        # content the user never saw themselves place.
         try:
             saved = self._editor.save(
                 chosen,

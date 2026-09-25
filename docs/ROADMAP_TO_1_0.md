@@ -12,16 +12,20 @@ Buu's Fury authoring environment.
 
 ## Current product status
 
-**16 / 24 capabilities - 67%**
+**17 / 24 capabilities - 71%**
 
 | Family | Progress |
 | --- | --- |
 | READ | 5 / 5 |
-| EDIT | 4 / 8 |
+| EDIT | 5 / 8 |
 | AUTHOR | 3 / 7 |
 | DELIVER | 4 / 4 |
 
 Variable-length dialogue authoring: **merged, deployed, runtime-proven.**
+
+Map tile painting: **shipped and runtime-proven** (`MAP-TILE-PAINT-001`,
+2026-09-25), delivered at the engine's own editable unit - one four-byte chunk-cell
+reference to an existing 256x256 chunk - not as individual 8x8 tile authoring.
 
 > **North star.** An author should be able to create a genuinely new playable
 > piece of Buu's Fury content without manually editing a ROM offset.
@@ -99,16 +103,18 @@ Two supporting documents are deliberately **not** planning authority:
 
 ## 1. Current state and what has already been proven
 
-The current public product remains **16/24 capabilities (67%)**. The denominator
-is intentionally unchanged: variable-length dialogue strengthens an existing
-capability rather than inventing a new one. The important point is that the
-infrastructure under those 16 shipped capabilities is now substantially stronger
-than the percentage alone suggests.
+The current public product is **17/24 capabilities (71%)**. The denominator is
+intentionally unchanged, and tile painting moved the count because it is a new
+capability an author can use, delivered at the engine's own unit rather than as a
+finer one the format does not have. Variable-length dialogue strengthened an
+existing capability rather than inventing one, which is why it did not move the
+count. The important point is that the infrastructure under those 17 shipped
+capabilities is substantially stronger than the percentage alone suggests.
 
 | Area | Current | Status | Shipped today |
 | --- | --- | --- | --- |
 | READ | 5 / 5 | Complete | Shell; atlas/search; record inspection; sprite/animation/palette browsing; Map Browser |
-| EDIT | 4 / 8 | 4 missing | Dialogue; palette recolor; object placement; map layout chunk-cell replacement |
+| EDIT | 5 / 8 | 3 missing | Dialogue; palette recolor; object placement; map layout chunk-cell replacement; tile painting (chunk-cell, 2026-09-25) |
 | AUTHOR | 3 / 7 | 4 missing | Authored entities; behavior/scripts; text beyond retail slot |
 | DELIVER | 4 / 4 | Complete | Validate/build; safe Save As; derivative provenance/reopen; launch |
 
@@ -166,12 +172,11 @@ it now would make progress percentages historically meaningless. "100%" means
 all 24 currently-defined product capabilities are shipped and independently
 validated.
 
-The eight missing capabilities are the only items that move the score from 67%
+The seven missing capabilities are the only items that move the score from 71%
 to 100%:
 
 | Family | Missing capability |
 | --- | --- |
-| EDIT | tile painting |
 | EDIT | chunk creation |
 | EDIT | map resizing / layer authoring |
 | EDIT | warp / connection editing |
@@ -268,7 +273,7 @@ unless new evidence proves a dependency wrong.
 | --- | --- | --- | --- |
 | 0 - Land current work | Completed | Variable-length dialogue merged, CI green, deployed, live wording verified. | 16/24 |
 | 1 - Authoring-safety baseline | Completed | CQA-05/06 together (**CLOSED** 2026-09-24); CQA-07/08 together (**CLOSED** 2026-09-25); Phase 1 complete. Preserve staged edits/undo, totalize GUI errors, remove pathological palette work, ensure CI actually executes GUI dependencies. | 16/24 |
-| 2A - Tile painting | Map editing | Brush/pick/erase/fill/selection + undo/redo using existing tile vocabulary. | 17/24 |
+| 2A - Tile painting | Map editing | Brush/pick/erase/fill/selection + undo/redo using existing tile vocabulary. **COMPLETE** 2026-09-25: delivered at the engine's own unit, one four-byte chunk-cell reference to an existing chunk; retail-engine display runtime-proven after a genuine map rebuild. | 17/24 |
 | 2B - Chunk creation | Map editing | Create/materialize new chunk data; allocate/relocate safely; prove the map/chunk pointer domain the feature needs. | 18/24 |
 | 2C - Resize + layers | Map editing | Resize grids, create/relocate layer resources, preserve handler semantics, validate boundaries and reopen. | 19/24 |
 | 2D - Warps / connections | Map editing | Visual destination editing, connection/warp consistency, runtime transition proof. | 20/24 |
@@ -300,9 +305,10 @@ dependency order, not the naming, is what must be honoured.
   2026-09-25:
   [`tickets/archive/CQA-07-08-WORKBENCH-PERF-AND-CI-001-COMPLETE.md`](tickets/archive/CQA-07-08-WORKBENCH-PERF-AND-CI-001-COMPLETE.md).
 - `MAP-TILE-PAINT-001` - complete tile painting UX on existing map resources.
-  **NEXT** (not started).
+  **COMPLETE** 2026-09-25:
+  [`tickets/archive/MAP-TILE-PAINT-001-COMPLETE.md`](tickets/archive/MAP-TILE-PAINT-001-COMPLETE.md).
 - `MAP-CHUNK-AUTHORING-001` - create, allocate, reference, reopen and
-  runtime-prove new chunks.
+  runtime-prove new chunks. **NEXT** (not started).
 - `MAP-RESIZE-AND-LAYERS-001` - structural grid/layer editing.
 - `MAP-WARP-CONNECTION-EDITOR-001` - author and validate transitions/connections.
 - `GRAPHICS-IMPORT-001` - import original artwork into the retail graphics
@@ -377,11 +383,24 @@ workflow.
 
 ### 7.1 Tile painting -> 17/24
 
+**COMPLETE (2026-09-25):**
+[`tickets/archive/MAP-TILE-PAINT-001-COMPLETE.md`](tickets/archive/MAP-TILE-PAINT-001-COMPLETE.md).
+The requirements below were the exit condition and are now met; they are kept here
+as the record of what that exit required.
+
 Deliver brush, picker, eraser, fill, rectangular selection/copy/paste,
 palette/tile-bank awareness and undo/redo. The first version may be constrained to
 the currently addressable tile/chunk vocabulary; it does not need imported
 artwork yet. The UX target is that editing a map feels like a map editor, not a
 cell-replacement dialog.
+
+Delivered: painting, drag painting, eyedropper/pick, undo, redo and Apply/Revert on
+one history, scoped to the currently addressable vocabulary exactly as allowed. The
+constraint resolved to the engine's own unit, so the shipped brush selects an
+existing chunk and paints a 256x256 chunk cell; an eraser, fill and rectangular
+selection/copy/paste were **not** delivered, and the capability ships without them
+because the format's editable unit is the cell reference, not an individual 8x8
+tile.
 
 ### 7.2 Chunk creation -> 18/24
 
@@ -568,7 +587,7 @@ which is authoritative; the roadmap note column is this document's.
 | EDIT | Shared palette recolour | Shipped | |
 | EDIT | Object placement on the rendered map | Shipped | |
 | EDIT | Map layout editing: chunk-cell replacement | Shipped | |
-| EDIT | Tile-level painting | Missing | Phase 2A -> 17/24 |
+| EDIT | Tile-level painting | Shipped | Phase 2A, delivered 2026-09-25 at the engine's own unit: one four-byte chunk-cell reference to an existing chunk, not an individual 8x8 tile |
 | EDIT | Chunk creation and editing | Missing | Phase 2B -> 18/24 |
 | EDIT | Map resizing and layer changes | Missing | Phase 2C -> 19/24 |
 | EDIT | Warp and connection editing | Missing | Phase 2D -> 20/24 |
@@ -844,9 +863,9 @@ Buu's Fury's retail binary engine and this repository's evidence discipline.
 
 | | |
 | --- | --- |
-| **Now** | 16/24 (67%); variable-length dialogue merged and live |
-| **Next** | Phase 2A tile painting (`MAP-TILE-PAINT-001`, not started) |
-| **Then** | Four map-editing capabilities -> 20/24 |
+| **Now** | 17/24 (71%); Phase 2A tile painting shipped and runtime-proven |
+| **Next** | Phase 2B chunk creation (`MAP-CHUNK-AUTHORING-001`, not started) |
+| **Then** | Three more map-editing capabilities -> 20/24 |
 | **Then** | Three graphics-authoring capabilities -> 23/24 |
 | **Feature-complete finish** | New-map authoring -> 24/24 (100%) |
 | **Ship finish** | Creator UX/RC -> golden dogfood -> BPS distribution -> hardware smoke -> v1.0 |

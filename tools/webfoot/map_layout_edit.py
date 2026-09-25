@@ -28,6 +28,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Mapping
 
 from . import map_view as mv
 from .formats import map_graphics as mg
@@ -267,9 +268,33 @@ class LayoutSave:
 
 
 class MapLayoutEditor:
-    """The edit session for one canonical image; holds pending edits in memory."""
+    """The edit session for one canonical image; holds pending edits in memory.
 
-    def __init__(self, canonical_bytes: bytes, *, profile=None) -> None:
+    ``floor`` is the set of chunk-cell replacements the **project** has already
+    committed, keyed ``(map index, layer slot, cell) -> pointer``. It is not a
+    second edit set: it is what the canonical image becomes once the authored
+    project is applied, so a project that was closed and reopened shows its
+    painted layout while the session's own ``_edits`` stay the unsaved work on
+    top of it. It is keyed by map like ``_edits`` is, because one session covers
+    every map of the image - a floor without a map would paint whichever map was
+    looked at first.
+
+    Keeping it beside the session rather than replacing the session's base bytes
+    is deliberate. The base image is the only thing the proven writer and the
+    accepted readers validate against, and a session whose base had been
+    pre-painted would make "revert to what the source ROM holds" ambiguous. With
+    a floor, canonical + committed + staged is explicit at every step, and a
+    revert can restore a cell to its committed value rather than to the retail
+    one.
+    """
+
+    def __init__(
+        self,
+        canonical_bytes: bytes,
+        *,
+        profile=None,
+        floor: Mapping[tuple[int, int, int], int] | None = None,
+    ) -> None:
         self._base = bytes(canonical_bytes)
         try:
             # The hash gate and the only write primitive, in one place.
@@ -284,12 +309,26 @@ class MapLayoutEditor:
             self._entries = mg.read_map_entries(self._rom)
         except (MapLayoutWriteError, *_READ_ERRORS) as exc:
             raise MapLayoutEditError(str(exc)) from exc
+        self._floor: dict[tuple[int, int, int], int] = {}
+        for key, pointer in (floor or {}).items():
+            if (
+                isinstance(key, tuple)
+                and len(key) == 3
+                and all(type(part) is int for part in key)
+                and type(pointer) is int
+            ):
+                self._floor[key] = pointer
         self._targets: dict[int, LayoutTarget] = {}
         self._edits: dict[tuple[int, int, int], LayoutEdit] = {}
         #: Assembled character blocks, decoded once per map: re-decoding one is the
         #: dominant cost of a repeated preview render, and it is deterministic for
         #: one immutable image.
         self._char_data: dict[int, bytes] = {}
+        # The committed layer joins the writer's byte plan once, so `build` and
+        # `save` emit canonical + committed + staged. A session with no floor -
+        # every session before this capability existed - is unaffected.
+        for floor_map in {key[0] for key in self._floor}:
+            self._apply_floor_to_writer(floor_map)
 
     @property
     def map_entry_count(self) -> int:
@@ -398,15 +437,125 @@ class MapLayoutEditor:
         return self.slot(map_index, layer_slot).choices
 
     def pointer(self, map_index: int, layer_slot: int, cell: int) -> int:
-        """The chunk pointer the canonical image stores in one cell."""
+        """The chunk pointer the canonical image stores in one cell.
+
+        The *retail* value, unaffected by the project or by this session. It is
+        what a save-as derivative validates a cell against, and what "revert to
+        the source ROM's own layout" means.
+        """
         return self._writer.chunk_pointer(map_index, layer_slot, cell)
+
+    def committed_pointer(self, map_index: int, layer_slot: int, cell: int) -> int:
+        """The pointer one cell holds once the committed project is applied.
+
+        Equal to :meth:`pointer` when the project paints nothing here. This is
+        the value an undo of a staged paint must restore, and the value the
+        session's own edit set is compared against so that re-staging a cell's
+        committed value is not recorded as a change.
+        """
+        return self._floor.get(
+            (map_index, layer_slot, cell),
+            self.pointer(map_index, layer_slot, cell),
+        )
 
     def working_pointer(self, map_index: int, layer_slot: int, cell: int) -> int:
         """The pointer one cell holds once pending edits are applied."""
         edit = self._edits.get((map_index, layer_slot, cell))
         if edit is not None:
             return edit.replacement
-        return self.pointer(map_index, layer_slot, cell)
+        return self.committed_pointer(map_index, layer_slot, cell)
+
+    def committed_overrides(self, map_index: int) -> dict[tuple[int, int], int]:
+        """The committed project paints that land on one map, as render overrides.
+
+        The keys are the same ``(layer slot, cell)`` pairs the accepted renderer
+        takes, and only cells whose committed value actually differs from the
+        canonical image are returned: a project edit the image already agrees
+        with is not a rendered difference, and reporting it as one would make a
+        preview claim a change that is not there.
+
+        Coordinates are resolved against this map's own layer records, so a floor
+        entry that does not exist here is dropped rather than rendered somewhere
+        it does not belong. A layer this map does not have as a dominant grid
+        cannot carry a floor entry at all - the map authoring authority refuses
+        to create one.
+        """
+        overrides: dict[tuple[int, int], int] = {}
+        for (floor_map, layer_slot, cell), pointer in self._floor.items():
+            if floor_map != map_index:
+                continue
+            if not 0 <= layer_slot < len(mg.ROOT_LAYER_SLOTS):
+                continue
+            slot = self._target_slot(map_index, layer_slot)
+            if slot is None or not slot.grid.contains(cell):
+                continue
+            if pointer != slot.cells[cell].pointer:
+                overrides[(layer_slot, cell)] = pointer
+        return overrides
+
+    def _target_slot(self, map_index: int, layer_slot: int) -> LayoutSlot | None:
+        target = self.target(map_index)
+        if not 0 <= layer_slot < len(target.slots):
+            return None
+        return target.slots[layer_slot]
+
+    def set_floor(self, floor: Mapping[tuple[int, int, int], int] | None) -> None:
+        """Replace the committed project layer and re-derive the writer's plan.
+
+        The one supported way to react to a project change after construction:
+        the caller does not rebuild the session (which would discard staged
+        work), and it does not poke `_floor` directly. The writer is rebuilt from
+        the canonical image and the new floor is applied to it, so the byte plan
+        always describes canonical + committed - never a mixture of two floors.
+        """
+        self._floor = {}
+        for key, pointer in (floor or {}).items():
+            if (
+                isinstance(key, tuple)
+                and len(key) == 3
+                and all(type(part) is int for part in key)
+                and type(pointer) is int
+            ):
+                self._floor[key] = pointer
+        self._writer = MapLayoutWriter(self._base)
+        for floor_map in {key[0] for key in self._floor}:
+            self._apply_floor_to_writer(floor_map)
+
+    def _apply_floor_to_writer(self, map_index: int) -> None:
+        """Push one map's committed paints into the writer's byte plan.
+
+        The writer is the session's only byte plan, so the committed project
+        layer has to reach it for :meth:`build` and :meth:`save` to emit
+        canonical + committed + staged rather than canonical + staged. Most
+        calls are no-ops: a floor entry whose value the layer's vocabulary no
+        longer accepts (a stale project against a different image) is skipped
+        rather than forced, because the writer is the authority on what may be
+        written and this method must not become a second one.
+        """
+        for key, pointer in sorted(self._floor.items()):
+            floor_map, layer_slot, cell = key
+            if floor_map != map_index:
+                continue
+            try:
+                slot = self._target_slot(map_index, layer_slot)
+                if slot is None or not slot.editable or not slot.grid.contains(cell):
+                    continue
+                self._writer.set_chunk_pointer(map_index, layer_slot, cell, pointer)
+            except (MapLayoutWriteError, *_READ_ERRORS):
+                continue
+
+    def floor_pointers(self) -> tuple[tuple[int, int, int], ...]:
+        """The committed paints this session carries, ordered for display.
+
+        Returned as ``(map index, layer slot, cell)`` triples, so a caller can
+        see what the project paints without re-reading the project document.
+        """
+        return tuple(sorted(self._floor))
+
+    @property
+    def floor_cell_count(self) -> int:
+        """How many cells the committed project paints across the whole image."""
+        return len(self._floor)
 
     # -- pending edits ------------------------------------------------------
 
@@ -431,11 +580,24 @@ class MapLayoutEditor:
     def set_cell(
         self, map_index: int, layer_slot: int, cell: int, replacement: int
     ) -> LayoutEdit | None:
-        """Record one cell replacement; return None when it restores the original.
+        """Record one cell replacement; None when the cell already holds it.
 
         Validation is the writer's, not a copy of it: an unsupported layer, an
         out-of-range cell, a null pointer, a chunk from another layer or a boolean
         all fail here, before anything is remembered.
+
+        "Already holds it" means the value the cell would show with the staged
+        edits applied: re-issuing the same replacement is not a change and must
+        not create a second record. The comparison is deliberately against
+        :meth:`working_pointer`, NOT against the committed value, so that painting
+        a cell the project already paints is still a no-op rather than a staged
+        re-write.
+
+        Restoring a cell to its **base** value is a different operation with a
+        different meaning - it removes the staged work rather than staging work -
+        and it is spelled :meth:`clear_cell`, not this method. Comparing against
+        the base here instead would silently drop the record of a legitimate
+        paint whenever a project edit happened to agree with it.
         """
         slot = self.slot(map_index, layer_slot)
         if not slot.editable:
@@ -447,38 +609,78 @@ class MapLayoutEditor:
                 f"chunk cell {cell!r} is outside BG{layer_slot}'s "
                 f"{slot.grid.columns}×{slot.grid.rows} grid"
             )
+        key = (map_index, layer_slot, cell)
+        current = self.working_pointer(map_index, layer_slot, cell)
+        existing = self._edits.get(key)
+        committed = self.committed_pointer(map_index, layer_slot, cell)
         try:
             self._writer.set_chunk_pointer(map_index, layer_slot, cell, replacement)
         except (MapLayoutWriteError, *_READ_ERRORS) as exc:
             raise MapLayoutEditError(str(exc)) from exc
-        key = (map_index, layer_slot, cell)
-        original = slot.cells[cell].pointer
-        if replacement == original:
+        if replacement == current:
+            # Nothing to record: the cell already shows this value. The writer's
+            # own early-out has already left its byte plan alone.
+            return None
+        if replacement == committed:
+            # The replacement IS the value the base holds for this cell, so
+            # staging it would record work that changes nothing. This is also the
+            # pre-existing contract ("setting a cell back to its original is not
+            # a change") still holding for the canonical image, where the base
+            # and the original are the same chunk.
+            #
+            # It is deliberately NOT the whole story once a project paints this
+            # cell: there `committed != original`, and painting the cell back to
+            # the RETAIL chunk is a real authoring intent, not a removal. That
+            # case is spelled `clear_cell` by callers, and its absence here is
+            # what keeps "restore this cell" and "paint this cell with the value
+            # the project already used" distinguishable operations.
             self._edits.pop(key, None)
             return None
         edit = LayoutEdit(
             map_index=map_index,
             layer_slot=layer_slot,
             cell=cell,
-            original=original,
+            # Re-painting a cell that is ALREADY staged keeps the original value
+            # the first paint captured; the record describes the change from the
+            # base, and one undo must return the cell to that base in one step.
+            original=existing.original if existing is not None else current,
             replacement=replacement,
             offset=slot.cells[cell].offset,
         )
         self._edits[key] = edit
         return edit
 
-    def revert_cell(self, map_index: int, layer_slot: int, cell: int) -> bool:
-        """Drop one cell's pending edit, restoring the canonical pointer."""
+    def clear_cell(self, map_index: int, layer_slot: int, cell: int) -> bool:
+        """Remove one cell's staged edit, restoring what the base holds for it.
+
+        The base is the canonical image plus the committed project: a cell the
+        project paints goes back to that authored value, and a cell it does not
+        paint goes back to the source ROM's own chunk. Returns whether anything
+        was staged here.
+
+        This is the one operation that *un-stages* work, which is why it is its
+        own method rather than a value :meth:`set_cell` might be handed: "put this
+        cell back" and "paint this cell with X" are different intents, and an
+        undo has to be able to express the first without knowing X.
+        """
         key = (map_index, layer_slot, cell)
-        edit = self._edits.get(key)
-        if edit is None:
+        if key not in self._edits:
             return False
+        base = self.committed_pointer(map_index, layer_slot, cell)
         try:
-            self._writer.set_chunk_pointer(map_index, layer_slot, cell, edit.original)
+            self._writer.set_chunk_pointer(map_index, layer_slot, cell, base)
         except (MapLayoutWriteError, *_READ_ERRORS) as exc:
             raise MapLayoutEditError(str(exc)) from exc
         del self._edits[key]
         return True
+
+    def revert_cell(self, map_index: int, layer_slot: int, cell: int) -> bool:
+        """Drop one cell's pending edit, restoring the base pointer.
+
+        The one-entry spelling of :meth:`clear_cell`: "revert this cell" and
+        "undo this cell" are the same operation, and the session states it once.
+        """
+        return self.clear_cell(map_index, layer_slot, cell)
 
     def revert_map(self, map_index: int) -> int:
         """Drop every pending edit of one map; return how many were dropped."""
@@ -493,12 +695,19 @@ class MapLayoutEditor:
         return len(keys)
 
     def reset(self) -> int:
-        """Drop every pending edit in the session, whichever map it belongs to."""
+        """Drop every *staged* edit in the session, whichever map it belongs to.
+
+        The committed project layer survives: "reset" means "discard the work I
+        have not saved", not "un-author the project". Rebuilding the writer from
+        the canonical image rather than trusting an unwind keeps a stale byte
+        plan from surviving, and the floor is re-applied to the fresh writer for
+        the same reason it is applied at construction.
+        """
         dropped = len(self._edits)
         self._edits.clear()
-        # Rebuild from the canonical image rather than trusting an unwind, so no
-        # stale byte plan can survive a reset.
         self._writer = MapLayoutWriter(self._base)
+        for floor_map in {key[0] for key in self._floor}:
+            self._apply_floor_to_writer(floor_map)
         return dropped
 
     # -- preview ------------------------------------------------------------
@@ -510,14 +719,19 @@ class MapLayoutEditor:
     ) -> dict[tuple[int, int], int]:
         """The cell substitutions a preview must apply, keyed ``(slot, cell)``.
 
-        ``draft`` is one uncommitted ``(layer slot, cell, replacement)`` selection,
-        so the map preview can answer a chooser click before the user applies it.
-        Nothing is written: the result only drives an in-memory render.
+        Three layers, in increasing precedence: the committed project paints, the
+        session's staged edits, and ``draft`` - one uncommitted
+        ``(layer slot, cell, replacement)`` selection, so the map preview can
+        answer a chooser click before the user applies it. Nothing is written:
+        the result only drives an in-memory render.
         """
-        overrides = {
-            (edit.layer_slot, edit.cell): edit.replacement
-            for edit in self.edits_for(map_index)
-        }
+        overrides = self.committed_overrides(map_index)
+        overrides.update(
+            {
+                (edit.layer_slot, edit.cell): edit.replacement
+                for edit in self.edits_for(map_index)
+            }
+        )
         if draft is not None:
             layer_slot, cell, replacement = draft
             slot = self.slot(map_index, layer_slot)

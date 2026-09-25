@@ -57,6 +57,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from pathlib import Path
+import re
 from typing import Any, Mapping
 
 from ..formats import stat_tables as st
@@ -100,6 +101,29 @@ GRAPHICS_ASSET_DIR = Path("graphics") / "assets"
 #: other subsystem; only RGB is stored, because the SDK owns the RGB->GBA-word
 #: packing and a project that stored the word would leak that format upward.
 GRAPHICS_OVERRIDES_FILE = Path("graphics") / "overrides.toml"
+
+#: MAP-TILE-PAINT-001. Authored dominant-layer chunk-cell edits. A sibling of
+#: `maps/maps.toml` rather than a field inside it, because the two describe
+#: different things and are edited by different surfaces: `maps.toml` is the map
+#: *record* (zone, area, music, placements), while this is the map's **layout** -
+#: which existing chunk occupies which cell of which layer. Keeping them apart
+#: leaves a layout edit's diff readable. A missing file means the project paints
+#: no layout, matching every other optional subsystem.
+LAYOUT_FILE = Path("maps") / "layout.toml"
+
+#: The BG slot count an authored layout may name. Four is the GBA's regular-BG
+#: count, so this is the hardware's number rather than a per-game extent. It is
+#: stated here rather than imported because this package owns the authored
+#: surface and must not reach into a module that opens ROMs (the same boundary
+#: `_MAP_FIELD_ORDER` respects); `test_map_layout_project` asserts it against
+#: `formats.map_graphics.ROOT_LAYER_SLOTS`, so the two cannot drift.
+_LAYER_SLOT_COUNT = 4
+
+#: The two identity forms an authored layout key may take. Both are matched
+#: rather than trusted: a file naming `zone:0001` or `BG9` must be refused at
+#: load, not silently dropped from the build.
+_MAP_KEY = re.compile(r"^map:\d{4}$")
+_BG_KEY = re.compile(r"^BG(\d+)$")
 
 #: Authored field order within a record. Fixed, so output is deterministic;
 #: chosen for reading rather than sorted, because a human edits these.
@@ -239,6 +263,159 @@ class StatProject:
     #: authors no graphics edits, which stays loadable on the same reasoning as
     #: `strings`: absence means "no graphics edits", not "broken".
     graphics_overrides: "GraphicsOverrides" = field(default_factory=lambda: GraphicsOverrides())
+    #: MAP-TILE-PAINT-001. Authored layout-cell edits. Empty for a project that
+    #: paints no layout, which stays loadable on the same reasoning as `strings`.
+    layout: "LayoutEdits" = field(default_factory=lambda: LayoutEdits())
+
+
+@dataclass(frozen=True)
+class LayoutEdits:
+    """Authored dominant-layer chunk-cell edits, keyed by map and layer.
+
+    ``layout["map:0040"][1][0] = 2`` reads "cell 0 of map 40's BG1 becomes the
+    layer's 2nd existing chunk". Three properties make that a semantic authoring
+    value rather than a disguised offset:
+
+    * the map is named by its durable identity (``map:NNNN``, the same key
+      ``maps/maps.toml`` uses), and the layer by BG slot, so nothing points at a
+      file offset or a raw address;
+    * the replacement is the chunk's **1-based ordinal inside that layer's own
+      existing chunk vocabulary** - the same "Chunk N" a person reads in the map
+      editor - not the pointer address. The ordinal is resolved against the base
+      image at build time, and because the vocabulary is the first-appearance
+      order of the layer's own non-null pointers it is a deterministic property
+      of that image, so the same project file resolves identically on every
+      machine and after any reopen;
+    * the cell is a row-major index into the layer's own chunk window, which is
+      the index the engine's loader uses.
+
+    A pointer address is deliberately NOT storable. The proven replacement rule
+    is "a chunk this same layer already uses", and an ordinal states exactly
+    that; a stored address would additionally pin the edit to one image's layout
+    of the bank data, and would be unreadable in a project file.
+    """
+
+    #: ``"map:NNNN"`` -> BG slot -> row-major cell -> 1-based chunk ordinal.
+    maps: dict[str, dict[int, dict[int, int]]] = field(default_factory=dict)
+
+    @staticmethod
+    def key_for(index: int) -> str:
+        """The durable identity key for a map table index."""
+        return f"map:{index:04d}"
+
+    def is_empty(self) -> bool:
+        return not any(layers for layers in self.maps.values())
+
+    def cells(self) -> dict[tuple[int, int, int], int]:
+        """Flatten to ``{(map index, layer slot, cell): ordinal}``.
+
+        The one place the ``map:NNNN`` key is turned back into an index, so
+        every caller reads the identity form the same way. A key that is not
+        that form cannot occur: `from_document` refuses anything else.
+        """
+        flat: dict[tuple[int, int, int], int] = {}
+        for key, layers in self.maps.items():
+            index = int(key[4:], 10)
+            for slot, cells in layers.items():
+                for cell, ordinal in cells.items():
+                    flat[(index, slot, cell)] = ordinal
+        return flat
+
+    def for_map(self, index: int) -> dict[int, dict[int, int]]:
+        """BG slot -> cell -> ordinal for one map, empty when it paints none."""
+        return dict(self.maps.get(LayoutEdits.key_for(index), {}))
+
+    def to_document(self) -> dict[str, Any]:
+        """The `[layout]` table: map, then BG slot, then row-major cell.
+
+        Every level is keyed by a zero-padded or fixed-width integer, so lexical
+        order is numeric order and the file is deterministic without the writer
+        having to sort anything. Each level is emitted sorted for that reason.
+        """
+        return {
+            "layout": {
+                key: {
+                    f"BG{slot}": {
+                        f"{cell:03d}": ordinal
+                        for cell, ordinal in sorted(cells.items())
+                    }
+                    for slot, cells in sorted(layers.items())
+                }
+                for key, layers in sorted(self.maps.items())
+            }
+        }
+
+    @classmethod
+    def from_document(cls, document: Mapping[str, Any], where: object) -> "LayoutEdits":
+        table = document.get("layout")
+        if table is None:
+            raise ProjectLoadError(f"{where}: missing required [layout] table")
+        if not isinstance(table, Mapping):
+            raise ProjectLoadError(f"{where}: [layout] must be a table")
+        maps: dict[str, dict[int, dict[int, int]]] = {}
+        for map_key, layers in table.items():
+            label = f"layout.{map_key}"
+            if not _MAP_KEY.match(str(map_key)):
+                raise ProjectLoadError(
+                    f"{where}: {label} is not a valid map identity; expected "
+                    "'map:NNNN' with four digits"
+                )
+            if not isinstance(layers, Mapping):
+                raise ProjectLoadError(f"{where}: {label} must be a table")
+            by_slot: dict[int, dict[int, int]] = {}
+            for slot_key, cells in layers.items():
+                slot_label = f"{label}.{slot_key}"
+                match = _BG_KEY.match(str(slot_key))
+                if match is None:
+                    raise ProjectLoadError(
+                        f"{where}: {slot_label} is not a layer slot; expected "
+                        "'BG0'..'BG3'"
+                    )
+                slot = int(match.group(1), 10)
+                # A file naming BG4 would otherwise be silently dropped from the
+                # build - the exact "authored but not applied" failure this
+                # format exists to prevent.
+                if slot >= _LAYER_SLOT_COUNT:
+                    raise ProjectValidationError(
+                        f"{where}: {slot_label} is outside BG0..BG{_LAYER_SLOT_COUNT - 1}"
+                    )
+                if not isinstance(cells, Mapping):
+                    raise ProjectLoadError(f"{where}: {slot_label} must be a table")
+                by_cell: dict[int, int] = {}
+                for cell_key, ordinal in cells.items():
+                    cell_label = f"{slot_label}.{cell_key}"
+                    if not str(cell_key).isdigit():
+                        raise ProjectLoadError(
+                            f"{where}: {cell_label} is not a valid cell index; "
+                            "expected a zero-padded integer key"
+                        )
+                    cell = int(cell_key, 10)
+                    if cell in by_cell:
+                        raise ProjectLoadError(f"{where}: duplicate cell {cell} in {slot_label}")
+                    if type(ordinal) is not int:
+                        raise ProjectValidationError(
+                            f"{where}: {cell_label} must be an integer chunk ordinal, "
+                            f"got {ordinal!r}"
+                        )
+                    if ordinal < 1:
+                        raise ProjectValidationError(
+                            f"{where}: {cell_label} names chunk {ordinal}; ordinals are "
+                            "1-based, so 0 is not a chunk this layer uses"
+                        )
+                    by_cell[cell] = ordinal
+                if not by_cell:
+                    raise ProjectLoadError(f"{where}: {slot_label} declares no cells")
+                if slot in by_slot:
+                    raise ProjectLoadError(f"{where}: duplicate layer BG{slot} in {label}")
+                by_slot[slot] = by_cell
+            if not by_slot:
+                raise ProjectLoadError(f"{where}: {label} declares no layers")
+            if map_key in maps:
+                raise ProjectLoadError(f"{where}: duplicate map {map_key}")
+            maps[map_key] = by_slot
+        if not maps:
+            raise ProjectLoadError(f"{where}: [layout] declares no edits")
+        return cls(maps=maps)
 
 
 @dataclass(frozen=True)
@@ -495,6 +672,7 @@ def write_project(
     dialogues: Mapping[str, str] | None = None,
     maps: list[dict[str, Any]] | None = None,
     graphics_overrides: "GraphicsOverrides | None" = None,
+    layout: "LayoutEdits | None" = None,
 ) -> list[Path]:
     """Write the whole authored tree. Returns the files written, in order.
 
@@ -529,6 +707,8 @@ def write_project(
         documents.append((_MAP_FILE, _map_document(maps)))
     if graphics_overrides and graphics_overrides.palette:
         documents.append((GRAPHICS_OVERRIDES_FILE, graphics_overrides.to_document()))
+    if layout and not layout.is_empty():
+        documents.append((LAYOUT_FILE, layout.to_document()))
 
     for relative, document in documents:
         path = root / relative
@@ -920,6 +1100,24 @@ def _read_maps(path: Path) -> dict[int, dict[str, Any]]:
     return records
 
 
+def write_layout_edits(directory: str | Path, layout: "LayoutEdits") -> Path:
+    """Persist only the layout document for a loaded project.
+
+    The narrow writer that mirrors `write_graphics_overrides`: the map authoring
+    API validates before calling it, and it is the ONE place an authored layout
+    reaches disk. An empty edit set means the project paints no layout, so the
+    optional document is removed rather than written as an invalid empty table
+    (which `read_project` would then refuse).
+    """
+    path = Path(directory) / LAYOUT_FILE
+    if layout is None or layout.is_empty():
+        path.unlink(missing_ok=True)
+        return path
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(dump_toml(layout.to_document()), encoding="utf-8", newline="\n")
+    return path
+
+
 def _read_graphics_overrides(path: Path) -> "GraphicsOverrides":
     """Load `graphics/overrides.toml`, or nothing at all if it is absent.
 
@@ -930,6 +1128,18 @@ def _read_graphics_overrides(path: Path) -> "GraphicsOverrides":
     if not path.is_file():
         return GraphicsOverrides()
     return GraphicsOverrides.from_document(_read_document(path), path)
+
+
+def _read_layout(path: Path) -> "LayoutEdits":
+    """Load `maps/layout.toml`, or nothing at all if it is absent.
+
+    Same three-state rule as every other optional subsystem: absent means the
+    project paints no layout, present-and-valid means it does, and
+    present-and-malformed is an error rather than an empty edit set.
+    """
+    if not path.is_file():
+        return LayoutEdits()
+    return LayoutEdits.from_document(_read_document(path), path)
 
 
 def read_project(directory: str | Path) -> StatProject:
@@ -994,6 +1204,7 @@ def read_project(directory: str | Path) -> StatProject:
         dialogues=dialogues,
         maps=maps,
         graphics_overrides=_read_graphics_overrides(root / GRAPHICS_OVERRIDES_FILE),
+        layout=_read_layout(root / LAYOUT_FILE),
         placement_events=events,
         placement_types=(_read_document(root / PLACEMENT_TYPES_FILE)
                          if (root / PLACEMENT_TYPES_FILE).exists() else None),

@@ -112,16 +112,33 @@ the authored cell.
 
 ## What would settle it
 
-One of:
+The blocking requirement is now known exactly, and it is a **test-ordering**
+requirement rather than a technical unknown.
 
-1. A save file that boots into Grand Kai (so the engine builds the map from ROM
-   on its own), plus a paired retail capture from the same player position; or
-2. A savestate taken *before* the map is assembled, so the load itself is the
-   build; or
-3. The engine's map-upload transformation, so a live screenblock dump can be
+**The engine rebuilds a map only when the player enters the area.** A capture
+taken straight after a state load is decided by the state's own assembled
+background, not by the ROM - measured twice, with two different ROMs producing
+byte-identical VRAM and screenblocks under one state. So a valid comparison is
+two runs of the same re-entry, one per ROM:
+
+1. launch the RETAIL image, load any state in Grand Kai, **leave and re-enter**,
+   capture at a fixed spot;
+2. launch the DERIVATIVE image, load the same state, **leave and re-enter**,
+   capture at the same spot.
+
+`tools/runtime/capture_tilepaint001_afterrebuild.ps1` implements exactly that: it
+watches the rebuild observer's own map-index transitions and captures only once
+the target map has been observed to be left and re-entered, and it refuses to
+capture on timeout rather than saving a frame that proves nothing. The
+outstanding input is two human re-entries at a matched position; the engineering
+is done.
+
+Alternatives, in decreasing order of convenience:
+
+1. A save file that boots into Grand Kai - the engine builds from ROM with no
+   savestate in play at all, which is the cleanest instrument of the three;
+2. the engine's map-upload transformation, so a live screenblock dump could be
    decoded back to the chunk that produced it.
-
-The first is the cheapest and is a human input, not an engineering task.
 
 ## Mutation campaign (the ticket's M1-M6)
 

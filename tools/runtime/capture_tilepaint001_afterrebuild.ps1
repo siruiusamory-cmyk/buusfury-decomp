@@ -32,7 +32,10 @@ param(
     [string]$MGBVersion = '0.11',
     [int]$UiSettleSeconds = 12,
     [int]$TimeoutSeconds = 900,
-    [int]$PollSeconds = 5
+    [int]$PollSeconds = 5,
+    # Seconds of no screenblock change required after the observed return, so the
+    # capture cannot land on a half-rebuilt map.
+    [int]$SettleSeconds = 12
 )
 
 $ErrorActionPreference = 'Stop'
@@ -133,13 +136,39 @@ if (-not $rebuiltAt) {
     exit 2
 }
 
-Start-Sleep -Seconds 2
+# Settle: the rebuild must have FINISHED, not merely started. The observer only
+# writes a new row when the engine's screenblock content changes, so "no new
+# snapshot for SettleSeconds after the return" is the engine having stopped
+# changing the background. Capturing on the return frame alone could photograph a
+# half-built map, which would be no better evidence than the invalid attempts.
+Write-Output "rebuild observed at snapshot $rebuiltAt; waiting for it to settle"
+$settleDeadline = (Get-Date).AddSeconds($SettleSeconds)
+$lastCount = -1
+while ((Get-Date) -lt $settleDeadline) {
+    Start-Sleep -Seconds 3
+    $now = (Import-Csv -LiteralPath $indexPath -ErrorAction SilentlyContinue | Measure-Object).Count
+    if ($now -ne $lastCount) {
+        $lastCount = $now
+        $settleDeadline = (Get-Date).AddSeconds($SettleSeconds)
+    }
+}
+Write-Output "settled with $lastCount snapshot rows"
+
+# The engine must still be in the target map at the moment of capture, or the
+# frame is not the rebuilt map at all.
+$finalRows = Import-Csv -LiteralPath $indexPath
+$lastIndex = ($finalRows | Where-Object { $_.map_index } | Select-Object -Last 1).map_index
+if ([int]$lastIndex -ne $TargetMapIndex) {
+    Write-Output "REFUSED: engine is in map $lastIndex at capture time, not $TargetMapIndex"
+    exit 3
+}
+
 & powershell -NoProfile -ExecutionPolicy Bypass `
     -File (Join-Path $PSScriptRoot 'capture_mgba_window.ps1') `
     -OutPath (Join-Path $runDir "$Label.png") -TitleMatch 'mGBA -'
 if ($LASTEXITCODE -ne 0) { throw 'capture failed' }
 
 Copy-Item -LiteralPath $indexPath -Destination (Join-Path $runDir 'snapshots-at-capture.csv') -Force
-Write-Output "CAPTURED after rebuild (return snapshot $rebuiltAt)"
+Write-Output "CAPTURED after rebuild (return snapshot $rebuiltAt, settled, map $lastIndex)"
 Write-Output "  image : $(Join-Path $runDir "$Label.png")"
 Get-Content -LiteralPath $indexPath

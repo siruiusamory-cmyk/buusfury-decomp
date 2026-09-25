@@ -535,6 +535,28 @@ caps scanner output at `CANDIDATE`/`OBSERVED` by type.
 
 #### CQA-05 [HIGH] A project mutation in any editor silently destroys the Map Browser's staged layout edits and the placement undo history, and the mode strip then lies
 
+> **REMEDIATED: CQA-05-06-WORKBENCH-STATE-AND-ERRORS-001 (2026-09-24).** One
+> callback no longer answers two events. `MainWindow._on_project_changed` calls
+> each peer's `on_project_mutated()`, which re-reads only what a project can
+> change; `on_session_changed()` is reached only by a ROM/session change, which
+> is the one event that may legitimately drop staged in-memory state. The Map
+> Browser therefore keeps `_editor`, `_saved`, `_edit_mode`, `_target`,
+> `_slot`, the selected cell and any uncommitted draft, and the placement
+> workspace keeps its undo stack. `MapsEditor` re-asserts its own mode
+> afterwards, so the strip and the editor it names cannot disagree - and on a
+> session change the strip now follows the editor into Browse rather than
+> staying checked on Layout. The same root cause is fixed on the two sibling
+> surfaces that stage authoring input through that fan-out: the Graphics
+> editor's unapplied palette colours and the Inspector's typed-but-unapplied
+> dialogue text. An operation that cannot preserve a dirty layout edit - opening
+> another image, or closing the window - now stops and asks, gated on
+> `unsaved_edit_count()`, instead of discarding silently. Finding **CLOSED**;
+> CQA-27 (an SDK session facade for layout authoring) remains the durable
+> follow-up and is unchanged. Reproduction, mutation checks M1/M3, test list and
+> the GUI QA record:
+> [`../tickets/CQA-05-06-WORKBENCH-STATE-AND-ERRORS-001.md`](../tickets/CQA-05-06-WORKBENCH-STATE-AND-ERRORS-001.md).
+> The text below is the finding **as originally recorded** and is not restated.
+
 - **Subsystem:** PRODUCTION - Workbench shell / Maps editor state ownership.
 - **Location:** `workbench/app.py:179-188` (`MainWindow._on_project_changed`);
   `workbench/editors.py:294-296`; `workbench/map_browser_tab.py:930-935` →
@@ -578,6 +600,29 @@ caps scanner output at `CANDIDATE`/`OBSERVED` by type.
 - **Before ROM-capacity/allocation work?** **yes.**
 
 #### CQA-06 [HIGH] `Session.open_rom` lets sibling SDK error families escape the Open ROM slot, reproducing the project's documented dead-click failure mode
+
+> **REMEDIATED: CQA-05-06-WORKBENCH-STATE-AND-ERRORS-001 (2026-09-24).**
+> `Session.open_rom` is now total over the SDK's declared failure families:
+> `rom.RomReadError`/`RomChangedError`, the `OSError` of the byte and artifact
+> reads, `maps.MapError`/`UnknownMapError`, `capability.CapabilityError`,
+> `atlas.AtlasError`, `atlas_build.AtlasBuildError` and text's
+> `TextTableError` all leave it as `SessionError` (or `RomNotRecognizedError`,
+> its subclass), whose message is the SDK's own reason. Those families are named
+> individually rather than caught as `ValueError`, so a programmer error is not
+> dressed up as a user-facing "could not open" - a distinction pinned by a
+> control test that fails under an indiscriminate catch. The Open ROM slot
+> catches `session.OPEN_ROM_FAILURES`, one tuple the session owns, and a session
+> transition is contained per peer in `MainWindow._on_rom_opened`: an exception
+> raised inside a slot reached through a Qt signal is printed and swallowed by
+> PySide and never reaches the emitter, so containment has to sit where the peer
+> is called or one panel's failure leaves the rest reading the previous image.
+> One artifact reader that leaked a bare `JSONDecodeError`
+> (`atlas_build._read_jsonl`, reached through `load_decoded_text`) now reports
+> its own error type. Finding **CLOSED**; CQA-07 and CQA-08 are unstarted and
+> unchanged. Reproduction, mutation checks M2/M4, test list and the GUI QA
+> record:
+> [`../tickets/CQA-05-06-WORKBENCH-STATE-AND-ERRORS-001.md`](../tickets/CQA-05-06-WORKBENCH-STATE-AND-ERRORS-001.md).
+> The text below is the finding **as originally recorded** and is not restated.
 
 - **Subsystem:** PRODUCTION - Workbench error handling at the SDK boundary.
 - **Location:** `workbench/session.py:170-250` (notably `:180` `identify_rom`

@@ -169,9 +169,14 @@ def test_apply_redo_failure_surfaces_and_does_not_corrupt(project, monkeypatch):
     monkeypatch.setattr(
         gt.QMessageBox, "critical", lambda *a, **k: warnings.append(a[-1])
     )
+    # CQA-07 assertion change: the apply path now commits its whole batch through
+    # `set_palette_overrides` - one whole-project write per gesture instead of one
+    # per staged index - so the SDK write whose failure this test drives is the
+    # batch function. The intent and every assertion below are unchanged: an SDK
+    # write failure is surfaced and leaves the undo stack and the revision intact.
     monkeypatch.setattr(
         gt.graphics_sdk,
-        "set_palette_override",
+        "set_palette_overrides",
         lambda *a, **k: (_ for _ in ()).throw(graphics_sdk.GraphicsError("boom")),
     )
     before = tab._session.project_revision

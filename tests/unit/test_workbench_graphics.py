@@ -450,8 +450,11 @@ def test_apply_surfaces_sdk_error_without_escaping(qapp, project, monkeypatch):
         ).QMessageBox.StandardButton.Yes,
     )
     # A GraphicsError from the SDK set path must become a QMessageBox, not escape.
+    # CQA-07: the apply path now commits its whole batch through
+    # `set_palette_overrides`, so that is the function whose failure must be
+    # surfaced. The assertions below are unchanged.
     monkeypatch.setattr(
-        "tools.webfoot.workbench.graphics_tab.graphics_sdk.set_palette_override",
+        "tools.webfoot.workbench.graphics_tab.graphics_sdk.set_palette_overrides",
         lambda *a, **k: (_ for _ in ()).throw(graphics_sdk.GraphicsError("bad index")),
     )
     emitted = []
@@ -483,8 +486,10 @@ def test_apply_surfaces_project_error_without_escaping(qapp, project, monkeypatc
             "tools.webfoot.workbench.graphics_tab", fromlist=["QMessageBox"]
         ).QMessageBox.StandardButton.Yes,
     )
+    # CQA-07: the apply path's one write is the batch authority, as in the
+    # sibling test above. The message and the containment assertion are unchanged.
     monkeypatch.setattr(
-        "tools.webfoot.workbench.graphics_tab.graphics_sdk.set_palette_override",
+        "tools.webfoot.workbench.graphics_tab.graphics_sdk.set_palette_overrides",
         lambda *a, **k: (_ for _ in ()).throw(ProjectError("profile mismatch")),
     )
     t._palette_pending[40] = (1, 2, 3)

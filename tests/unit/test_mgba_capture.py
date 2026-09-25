@@ -518,6 +518,38 @@ def test_p008_clip_observer_stays_read_only():
     assert "local CLIP = 0x04C" in probe
 
 
+def test_tilepaint001_observer_is_read_only_and_allowlisted():
+    """MAP-TILE-PAINT-001's runtime observer must only READ emulated state.
+
+    It exists to answer "did the retail engine load the authored map cell?", so
+    a script that could also write memory or drive input would make that answer
+    unfalsifiable. The runtime addresses it uses are the ones TOOLKIT-029
+    proved; re-deriving them would be a second, drifting copy.
+    """
+    root = Path(__file__).resolve().parents[2]
+    observer = (root / "tools/runtime/tilepaint001_live_screenblock.lua").read_text(
+        encoding="utf-8"
+    )
+    injector = (root / "tools/runtime/inject_mgba_lua.ps1").read_text(
+        encoding="utf-8"
+    )
+
+    assert "setKeys" not in observer
+    assert "addKeys" not in observer
+    assert "clearKeys" not in observer
+    assert "emu:write" not in observer
+    # The runtime-proven live MapEntry pointer and table geometry.
+    assert "local ACTIVE_MAP_PTR = 0x03001980" in observer
+    assert "local MAP_ENTRY_BASE = 0x0808E2E0" in observer
+    assert "local MAP_ENTRY_SIZE = 0x38" in observer
+    # It accepts both game-code spellings: the 0.11 dev build returns the bare
+    # code, and asserting only the prefixed form has broken an observer before.
+    assert '"AGB-BG3E"' in observer
+    # It reads each BG's screen base from LIVE BGxCNT rather than hardcoding one.
+    assert "bg%d_screen_base" in observer
+    assert "tilepaint001_live_screenblock.lua" in injector
+
+
 def test_p008_mash_driver_is_separate_and_varies_its_interval():
     """the maintainer asked that repetitive mashing be scripted. The driver is a
     deliberately separate tool: a fixed period could alias against an internal

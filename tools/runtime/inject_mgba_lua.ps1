@@ -228,6 +228,14 @@ $allowedLua = @(
     [System.IO.Path]::GetFullPath(
         (Join-Path $workspaceRoot 'tools\runtime\varlen001_dialogue_variable_length_probe.lua')
     )
+    # Added by MAP-TILE-PAINT-001: the read-only live-screenblock observer. It
+    # reads emulated memory and its own latched registers and writes host files
+    # under the run directory; it contains none of the input- or memory-writing
+    # API names the read-only guard in tests/unit/test_mgba_capture.py greps for,
+    # so the observer guarantee holds, and that test names this file explicitly.
+    [System.IO.Path]::GetFullPath(
+        (Join-Path $workspaceRoot 'tools\runtime\tilepaint001_live_screenblock.lua')
+    )
 )
 $resolvedLua = [System.IO.Path]::GetFullPath($LuaPath)
 if ($resolvedLua -notin $allowedLua) {

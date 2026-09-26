@@ -1,5 +1,10 @@
 # WARPRAND-APP-001 - the standalone Buu's Fury Warp Randomizer application
 
+STATUS: **CLOSED** (2026-09-26). v0.1.0 is built, packaged, independently
+reviewed, and integrated. **The v0.1.0 executable was already shared publicly
+before this integration completed** - that is recorded as history below, not
+backdated.
+
 **This is not a roadmap ticket.** It occupies no phase and advances no
 capability. It wraps the already-closed side hack recorded in
 [`ROMHACK-WARP-RANDOMIZER-001.md`](ROMHACK-WARP-RANDOMIZER-001.md) as a small
@@ -156,10 +161,18 @@ still hold.
 ### The portable gate
 
 `python -m pytest -m fast` on the final tip: **3,239 passed, 1 failed, 3 skipped**
-(1,230 deselected - the `rom` axis). An earlier revision of this section said
-3,229, which was the figure before the review corrections added their tests; it is
-stated here because a stale aggregate is exactly the error the third review round
-found elsewhere in this document.
+(1,230 deselected - the `rom` axis).
+
+**Recorded as: RUN ONCE, AGAINST THIS TICKET'S STANDING POLICY, NOT REPEATED.**
+It was run once during implementation, before the closeout policy was stated, and
+it is reported here because a run that happened is not made untrue by being
+discouraged. Closeout itself ran no marker gate and no directory-wide selection;
+the only test commands run during closeout were exact named files, and only where
+a correction required them.
+
+An earlier revision of this section said 3,229, the figure before the review
+corrections added their tests; the stale-aggregate habit is why the number is
+stated with its context rather than alone.
 
 The one failure is `test_capability_registry.py::test_the_built_page_renders_the_registry_list`,
 and it is **pre-existing and environmental, not caused by this ticket**. It
@@ -493,9 +506,92 @@ cosmetic site edit was made to say otherwise.
   bundled anywhere, which is an owner decision before any public distribution.
   What is not in the archive cannot be read by whoever downloads it.
 
+## Closeout
+
+### The product, as shipped
+
+| | |
+| --- | --- |
+| App | Buu's Fury Warp Randomizer |
+| Version | 0.1.0 |
+| Policy | `reciprocal-door-pairs/3` |
+| Default seed | `Goku` |
+| Golden Goku output | `ed167ca17944e4782cf19bf31245f772e5b7b9f5c66af317ddbedc8906c5abdc` |
+| Core counts | 735 supported / 496 randomized / 492 destinations moved / 239 skipped |
+| Form | standalone Windows x64 executable - **no Python, no install, no terminal** |
+| Progression guarantee | **NO** |
+| Canonical ROM | **immutable and unchanged** - `940ad5f0…f059e` before and after every run |
+| DragonByte Z | **19 / 24 - 79%, unchanged**; `capabilities.json` untouched |
+
+### First public distribution - recorded as history, not backdated
+
+**v0.1.0 was shared publicly before this repository integration completed.** The
+repository did not produce that distribution, does not date it, and does not
+claim the merge preceded it; `git log` on this branch shows the integration
+commits, and the public share came first.
+
+This matters for one honest reason: the artifact shared publicly was built from
+the same application code but **before** the packaging was cut to a single file,
+so its *archive* differs from the one recorded below. What did **not** differ is
+what the tool produces: the randomized image is decided by the image, the seed,
+the policy and the tool version, all of which are unchanged, so any v0.1.0 build
+yields the same `Goku` output hash. The published artifact's own digest is not
+recorded here because the repository never held it.
+
+### Release evidence (current artifact, measured locally)
+
+```text
+Buu-Fury-Warp-Randomizer.exe
+  bytes  37109070
+  sha256 c9bd61258a1a9ec13252c506e0e79450a8d4b0c7df37ccce837ec619aed3fb23
+
+Buu-Fury-Warp-Randomizer-v0.1.0-win64.zip   (contains only the .exe and README.txt)
+  bytes  36765976
+  sha256 38c6730686f97749cdc4d8e80bfed84126e04a262bbeca818573168cc09565e4
+```
+
+Both live in the ignored `dist/` tree, so they are release artifacts and not
+source history - rebuilding from the frozen source reproduces them by procedure,
+not byte-for-byte (PyInstaller embeds build metadata).
+
+### What was verified at closeout, by inspection rather than by another test run
+
+- **Scope:** the branch is **17 additions and zero modifications** against
+  `origin/master`; the core algorithm, the capability registry,
+  `src/data/project.ts`, `PROJECT_<local-state-name>`, `PROJECT_<local-state-name>` and the whole Workbench
+  tree are untouched, and no ROM, save, savestate, runtime capture, image or
+  archive is tracked anywhere in the diff.
+- **Thin client:** no shuffle, pairing, arrival, facing or policy decision exists
+  in `tools/webfoot/warprand/`; it imports `POLICY_ID` and calls
+  `plan_warp_randomization`, `emit_image`, `normalize_seed` and
+  `packaged_profile`. The only `reciprocal-door-pairs` text in the app layer is a
+  docstring.
+- **Product surface:** one `QMainWindow` with no tab or stacked-page widget, and
+  the ROM picker, canonical verification, `Goku` default, Random Seed, output
+  path, Randomize, progress, status, success summary, source immutability,
+  deterministic manifest and progression disclaimer all present in source.
+
+### Why `docs/PROJECT_<local-state-name>` was not edited
+
+The predecessor side ticket (`ROMHACK-WARP-RANDOMIZER-001`) was likewise never
+`PROJECT_<local-state-name>` and is likewise **not** recorded in `docs/PROJECT_<local-state-name>`; it sits
+at the tickets root, as this one does. `docs/README.md`'s archive step is
+part of the *replace `PROJECT_<local-state-name>`* workflow, which never applied here, and this
+ticket advances no capability to record. Keeping the closeout in this document
+therefore follows the convention its predecessor set and leaves the roadmap,
+`PROJECT_<local-state-name>` and the capability registry untouched, as instructed. If the owner
+wants a side-tool line in the project state anyway, that is a deliberate addition
+rather than a closeout omission.
+
 ## Stop
 
 Stop when the application exists, is packaged, is proved by the packaged smoke,
 and has been independently reviewed. Do not resume the Workbench warp editor, do
 not open a new research line, and do not begin `MAP-WARPS-AND-CONNECTIONS-001`'s
 Required Work 3 or 4 from here.
+
+**Reached.** The application exists and is packaged; the packaged-executable
+smoke passes on the real binary with the pinned golden hash; the independent
+review gate returned PASS with no blocking findings outstanding. The ticket is
+CLOSED. Do not begin v0.1.1 work, do not redesign the packaging, and do not change
+the randomizer algorithm under this ticket.

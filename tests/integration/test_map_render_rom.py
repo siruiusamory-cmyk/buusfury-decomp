@@ -11,7 +11,7 @@ import time
 import pytest
 
 from tools.webfoot import map_render as mr
-from tools.webfoot.formats import bg_tilemap, webfoot_lz
+from tools.webfoot.formats import bg_tilemap, map_graphics as mg, webfoot_lz
 
 
 ROM = Path(os.environ.get(
@@ -28,15 +28,15 @@ EXPECTED = {
         "descriptor": "0x08294968",
         "selectors": 259,
         "layers": ((1, 768, 512), (2, 768, 512), (3, 1024, 512)),
-        "char_sha256": "e0d049253bee77fa39c8fdee10f3db25115f420a4ef2b6bd7ecd4b6f6a75839e",
-        "composite_sha256": "35d3b51f0929a9d1d408786b651b314f1458028f4a5d9ae1440d8ba78388ed2b",
+        "char_sha256": "4c7167a33b78c3f256593d0b3a5dfbc3328ade0c65a0375a7634b6d4b57c2c46",
+        "composite_sha256": "0de70425d9ea178245c1b7bc489ea566096fff2aac2d76bd54c211965f59bc04",
     },
     "map:0040": {
         "descriptor": "0x08293474",
         "selectors": 239,
         "layers": ((0, 256, 256), (1, 512, 512), (2, 512, 512), (3, 512, 512)),
-        "char_sha256": "486012304609d7552b3390e3fffaf6e19f8d2d802c94794398424046224f14a7",
-        "composite_sha256": "21985e5c58150499b13c29696cabadd84956708e7f901b2b6ceb2c9bd6c70f9d",
+        "char_sha256": "0d17922ef3b002c19d580af7282f9523d169396edb38255159960fb627267b0d",
+        "composite_sha256": "d15197930f476d97293066cb1c4e0659acfd49bc0edc12d4806af19d112d6642",
     },
 }
 
@@ -49,6 +49,48 @@ def canonical_rom() -> bytes:
     data = ROM.read_bytes()
     assert hashlib.sha256(data).hexdigest() == SUPPORTED_ROM_SHA256
     return data
+
+
+def test_the_atlas_and_chunk_containers_decode_to_their_declared_size(
+    canonical_rom: bytes,
+) -> None:
+    """The decode stack's bounds, pinned before MAP-GFX-DIAG-001's correction.
+
+    A decompression change reaches every consumer, so the shape of the corpus is
+    part of the evidence: every map resolves one shared bank table, every bank
+    decodes to exactly the size its own header declares, and every distinct
+    dominant chunk decodes to one 32x32-entry plane. The one bank that is not
+    ``0x4000`` is bank 186 (``0x3C40``, 241 tiles), whose packed data ends where
+    the bank table begins - so it is a short bank and not a truncated read.
+    """
+    reader = mg.MapGraphicsReader(canonical_rom, mr.canonical_profile())
+    table = reader.u32(
+        reader.map_entry(0).root_address + mg.ROOT_BANK_TABLE_OFFSET
+    )
+    for index in range(reader.map_entry_count()):
+        entry = reader.map_entry(index)
+        assert reader.u32(entry.root_address + mg.ROOT_BANK_TABLE_OFFSET) == table
+
+    sizes = {}
+    for bank in range(mg.BANK_COUNT):
+        container = reader.container(reader.u32(table + bank * 4))
+        assert len(container.data) == container.declared_size
+        sizes[bank] = container.declared_size
+    assert sizes[186] == 0x3C40
+    assert sorted(set(sizes.values())) == [0x3C40, 0x4000]
+
+    chunks: dict[int, int] = {}
+    for index in range(reader.map_entry_count()):
+        entry = reader.map_entry(index)
+        for layer in mg.read_layers(reader, entry.root_address):
+            if layer.classification != "dominant":
+                continue
+            for address in layer.chunk_addresses:
+                if address and address not in chunks:
+                    container = reader.container(address)
+                    chunks[address] = len(container.data)
+    assert len(chunks) > 3000
+    assert set(chunks.values()) == {mg.CHUNK_DECODED_BYTES}
 
 
 @pytest.mark.parametrize("map_id", tuple(EXPECTED))
@@ -87,10 +129,12 @@ ORACLES = {
         "path": Path(os.environ.get("WEBFOOT_MAP39_VRAM", "")),
         "origins": {1: (54, 8), 2: (62, 8), 3: (70, 8)},
         "screen_holes": {1: (), 2: (), 3: ()},
+        # Re-baselined by WEBFOOT-LZ-LITERAL-BASE-001. The 32 entries this list
+        # used to carry in 201..258 were not post-load mutation at all: they were
+        # the retained literal base, cleared by the correction, and the corrected
+        # decode reproduces every one of them (MAP-GFX-DIAG-001 section 3.8
+        # measured 32 of 70 differing tiles inside these ranges, and 0 after).
         "char_mutations": (
-            201, 205, 206, 207, 218, 220, 227, 228, 229, 230, 231, 232,
-            233, 234, 235, 237, 238, 239, 240, 241, 242, 243, 249, 250,
-            251, 252, 253, 254, 255, 256, 257, 258,
             879, 880, 881, 882, 883, 884, 885, 886, 887, 888, 889, 890,
             891, 892, 893, 894, 895,
         ),
@@ -105,12 +149,25 @@ ORACLES = {
             2: tuple(y * 32 + 31 for y in range(29, 32)),
             3: tuple(y * 32 + 31 for y in range(32)),
         },
-        "char_mutations": tuple(range(234, 259)) + tuple(range(879, 892)),
+        # Re-baselined by WEBFOOT-LZ-LITERAL-BASE-001: 234..238 were the five
+        # decode-error tiles of MAP-GFX-DIAG-001 section 3.8, and 239..258 are
+        # genuine post-load mutation.
+        "char_mutations": tuple(range(239, 259)) + tuple(range(879, 892)),
     },
 }
 
 
-def _word(entry: bg_tilemap.ScreenEntry) -> int:
+def _word(entry) -> int:
+    """The 16-bit entry word, from whatever the shared reader hands back.
+
+    ``formats.map_graphics`` owns the entry decoder (CQA-04), and
+    ``stitch_dominant_entries`` returns the raw words; this helper accepted only
+    decoded ``ScreenEntry`` objects, which made this env-gated oracle fail with an
+    ``AttributeError`` on the machine where the dumps are configured. Accept both,
+    so the oracle can run rather than only skip.
+    """
+    if isinstance(entry, int):
+        return entry
     return (entry.tile_index | (entry.h_flip << 10) | (entry.v_flip << 11)
             | (entry.palette_bank << 12))
 
@@ -146,8 +203,10 @@ def test_vram_oracle_matches_after_enumerated_runtime_state_is_normalized(
 
     # The selector assembler initially writes every selected tile in sequential
     # destination order. This later gameplay capture differs only at this exact,
-    # pinned set of post-load mutable tile destinations (including animation
-    # ranges); normalize those bytes to the renderer's static frame-zero view.
+    # pinned set of post-load mutable tile destinations (animations); the tiles
+    # that used to sit in these lists and are no longer here were the literal-base
+    # decode error corrected by WEBFOOT-LZ-LITERAL-BASE-001, not mutation.
+    # Normalize the remaining ones to the renderer's static frame-zero view.
     actual_char_mutations = tuple(
         tile for tile in range(len(assembly.char_data) // 64)
         if assembly.char_data[tile * 64:(tile + 1) * 64]

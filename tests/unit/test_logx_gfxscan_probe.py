@@ -245,9 +245,12 @@ def test_external_four_bit_arm_one_writes_a_literal_zero() -> None:
     """The ``value == 0`` arm writes ``0``, not the literal base.
 
     The external source is ``if (value == 0) { destination[w++] = 0; }``; the
-    project decoder writes its literal base there instead.  This is the one arm
-    where the two grammars genuinely differ, and it is what makes them disagree on
-    78 of 11,712 known kind-1 containers rather than 77.
+    project decoder writes its literal base there instead.  This is now the **only**
+    arm where the two grammars differ: WEBFOOT-LZ-LITERAL-BASE-001 corrected the
+    project decoder's second difference (the 7-bit literal base was retained across
+    a return to 8-bit literals), and with the engine's rule in place the two models
+    disagree on exactly one canonical kind-1 container - this arm's
+    ``0x0829B308`` - rather than on 78.
 
     Bit string: the escape ``0 0 1 | 0000 | 0 | 0`` selects 7-bit literals with a
     base byte of ``0x50``, which the *next* arm must not use.

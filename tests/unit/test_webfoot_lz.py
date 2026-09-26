@@ -744,3 +744,86 @@ def test_the_marker_costs_nothing_or_one_packed_word_and_never_more(monkeypatch)
         assert with_marker[: len(without_marker)] == without_marker, f"tokens: {name}"
         deltas.add(len(with_marker) - len(without_marker))
     assert deltas == {0, 4}, f"unexpected marker cost: {sorted(deltas)}"
+
+
+def _narrow_to_seven_bit_literals(writer: "wl._WordBitWriter", base: int) -> None:
+    """The other half of the literal-width control escape: 7 bits plus a base.
+
+    Prefix ``0 0 1`` reaches the four-bit code, a zero field makes it -1, the next
+    bit is clear (not a raw run), and the final ``0`` selects ``literal_bits = 7``,
+    which the format then follows with an 8-bit base.
+    """
+    writer.bit(0)
+    writer.bit(0)
+    writer.bit(1)
+    writer.put(0, 4)
+    writer.bit(0)
+    writer.bit(0)
+    writer.put(base, 8)
+
+
+def _base_switch_stream(writer: "wl._WordBitWriter") -> None:
+    """One container that narrows to 7-bit literals and widens back to 8.
+
+    Tokens, in order: an initial 1-bit literal (``0x00``), the narrowing control
+    with base ``0x40``, a 7-bit literal ``0x40 + 3``, the widening control, and a
+    final 8-bit literal of ``0x11``. Only the last byte can tell the two grammars
+    apart, and only because it is a literal rather than a match.
+    """
+    writer.bit(1)          # a literal at the initial width: kind 1 -> 1 bit
+    writer.put(0, 1)
+    _narrow_to_seven_bit_literals(writer, 0x40)
+    writer.bit(1)          # 7-bit literal: 0x40 + 3
+    writer.put(3, 7)
+    _widen_to_eight_bit_literals(writer)
+    writer.bit(1)          # 8-bit literal: the engine emits 0x11 itself
+    writer.put(0x11, 8)
+    _end_marker(writer)
+
+
+def test_widening_back_to_eight_bit_literals_clears_the_literal_base() -> None:
+    """The engine's rule for the literal-base control, on a synthetic stream.
+
+    A corpus cannot settle this one: a base only survives if a 7-bit run is
+    followed by a return to 8-bit literals *inside one container*, and the byte
+    that exposes it must be a literal rather than a match. It was found instead by
+    comparing the SDK's decode against the retail engine's own character memory,
+    where bank 141 differs at 1,762 of its bytes, every one by exactly the
+    retained base (`docs/research/BUU_MAP_GRAPHICS_DIAG.md` §3.6-3.7).
+
+    The stream below makes the difference visible in one byte: with the base
+    cleared the final literal is the engine's ``0x11``; with the base retained it
+    decodes as ``0x11 + 0x40 == 0x51``. This test carried a strict ``xfail``
+    while the defect shipped, and MAP-GFX-DIAG-001's correction removed it.
+    """
+    assert wl.unpack(_container(1, 3, _base_switch_stream), 0).data == bytes(
+        [0x00, 0x43, 0x11]
+    )
+
+
+def test_a_retained_literal_base_would_decode_the_engine_s_byte_wrong() -> None:
+    """The mutation control for the rule above: the old behaviour is not silent.
+
+    Replays the same stream under the pre-correction grammar - the one line this
+    ticket changed - and requires the third byte to come out ``0x51``. If a future
+    change restores the retained base, this test still passes and the one above
+    fails, which is what makes the pair a regression rather than a restatement.
+    """
+    data = _container(1, 3, _base_switch_stream)
+    reader = wl._WordBitReader(data, wl.HEADER_SIZE)
+    out = bytearray()
+    literal_base = 0
+    literal_bits = 1
+    while len(out) < 3:
+        if reader.bit():
+            out.append((literal_base + reader.get(literal_bits)) & 0xFF)
+            continue
+        assert reader.bit() == 0, "the fixture uses no match tokens"
+        assert reader.bit() == 1, "the fixture uses no 000-prefix tokens"
+        short_distance = reader.get(4) - 1
+        assert short_distance < 0, "the fixture uses no short-distance tokens"
+        assert reader.bit() == 0, "the fixture uses no raw-literal-run tokens"
+        literal_bits = 7 + reader.bit()
+        if literal_bits != 8:  # the pre-correction grammar
+            literal_base = reader.get(8)
+    assert bytes(out) == bytes([0x00, 0x43, 0x51])

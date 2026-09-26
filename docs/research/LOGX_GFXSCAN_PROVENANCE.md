@@ -253,9 +253,12 @@ else { state.literalBits = 7 + source.GetBit();
 
 which differs from the project decoder in two places: the `value == 0` arm writes
 a literal **0** rather than the literal base, and the escape **resets** the
-literal offset where the project leaves its base alone. Both are reproduced as
-written, and the first is **load-bearing**: it is the one arm where the two
-grammars genuinely disagree, and §6.3 measures its cost.
+literal offset where the project left its base alone. Both are reproduced as
+written. **The second of those is no longer a difference**: WEBFOOT-LZ-LITERAL-BASE-001
+(2026-09-26) corrected the project decoder to reset, because that is the rule the
+retail engine follows - proven against its own character memory in
+`docs/research/BUU_MAP_GRAPHICS_DIAG.md`. The first remains the one genuine
+grammar difference, and §6.3 measures its cost.
 
 **PROJECT OBSERVATION (the declared-size bound).** The token loop tests
 `w < decompressedSize` at the top of every iteration, and every write arm is
@@ -432,26 +435,35 @@ kind-1 containers:
 
 | Result | Count |
 | --- | ---: |
-| decodes, payload digest equals the project decoder's | **11,634** |
-| decodes, payload digest **differs** | **78** |
+| decodes, payload digest equals the project decoder's | **11,711** (was 11,634) |
+| decodes, payload digest **differs** | **1** (was 78) |
 | raises | **0** |
 
-77 of the differing containers are `root_4c_graphics_banks` declaring exactly
-`16,384` bytes; both models produce exactly 16,384 bytes and the bytes differ.
-The 78th is `0x0829B308`, a `map_dominant_layer_chunks` container declaring
-`2,048` bytes, and it is the one container the external `value == 0` arm moves
-(§3.3): the external grammar writes a literal **0** there, the project grammar
-writes its literal base.
+**CORRECTED 2026-09-26 by WEBFOOT-LZ-LITERAL-BASE-001.** The 78 divergences this
+section originally measured were **the project decoder's fault, not the external
+model's**. The project decoder retained a 7-bit run's literal base across a
+return to 8-bit literals; the engine clears it, the external JCALG1 model clears
+it, and `docs/research/BUU_MAP_GRAPHICS_DIAG.md` proves the engine's rule against
+its own character memory. With that rule in the project decoder the two models
+disagree on exactly **one** container, the `value == 0` arm's `0x0829B308` below,
+and all **77** `root_4c_graphics_banks` now agree. The original figures are kept
+above because they are what was observed then, and because the external model's
+independent agreement on those 77 containers is now corroboration for the
+correction rather than a discrepancy.
 
-**PROJECT CONCLUSION.** The external grammar and the project grammar agree
-byte-for-byte on 99.33% of the reachable corpus. Where they differ, the cause is
-the literal-base handling in §3.3, not the token dispatch: the escaped
-`value == 0` arm and the escape's offset reset move a literal on some streams.
-Both models reproduce the *container structure*; only the external one shifts a
-few literals on streams that re-tune the literal width mid-stream. This matters
-for digest-based coverage claims and not for address-based ones. It also means a
-digest-based map-chunk claim is 3,744 rather than 3,745 - the one miss is this
-container, and it is a decode difference, not a discovery miss.
+The one remaining divergence is `0x0829B308`, a `map_dominant_layer_chunks`
+container declaring `2,048` bytes, and it is the container the external
+`value == 0` arm moves (§3.3): the external grammar writes a literal **0** there,
+the project grammar writes its literal base. That arm is a genuine, unresolved
+grammar difference and this correction does not touch it.
+
+**PROJECT CONCLUSION (restated after the correction).** The external grammar and
+the project grammar agree byte-for-byte on the whole reachable corpus except that
+one container. The former "literal-base handling in §3.3" explanation was half
+right: the escape's *offset reset* was the project's defect and is fixed; the
+escaped `value == 0` arm remains a real difference. A digest-based map-chunk
+claim is still 3,744 rather than 3,745, and the one miss is still a decode
+difference rather than a discovery miss.
 
 ### 6.4 Recall against the known corpus
 
@@ -459,11 +471,11 @@ container, and it is a decode difference, not a discovery miss.
 | --- | ---: | ---: | ---: | ---: | ---: | --- |
 | `sprite_piece_graphics` | 7,390 | **7,390** | 0 | **100.0%** | 7,390 | - |
 | `map_dominant_layer_chunks` | 3,745 | **3,745** | 0 | **100.0%** | 3,744 | one container's bytes differ (§6.3) |
-| `root_4c_graphics_banks` | 187 | **187** | 0 | **100.0%** | 110 | found by address; 77 decode differently (§6.3) |
+| `root_4c_graphics_banks` | 187 | **187** | 0 | **100.0%** | 187 (was 110) | found by address; the 77 former decode differences were the project decoder's, corrected 2026-09-26 (§6.3) |
 | `root_48_selector_streams` | 392 | 191 | **201** | 48.7% | 191 | 199 rejected by `declared % 4 == 0`; 2 are form 0 |
 | `zero_header_form0_containers` | 2 | 0 | 2 | 0.0% | 0 | `kind == 1` test excludes the stored form |
 | `engine_installed_default_container` | 1 | 0 | 1 | 0.0% | 0 | `kind == 1` test, and declared size 0 fails `length > 0` |
-| **all classes** | **11,715** | **11,513** | **202** | **98.3%** | 11,435 | - |
+| **all classes** | **11,715** | **11,513** | **202** | **98.3%** | 11,512 (was 11,435) | - |
 
 **PROJECT CONCLUSION.** Two structural blind spots, both of them the external
 model's own filters rather than a decoding weakness:
@@ -696,10 +708,10 @@ The engine-aligned model's candidates minus every accepted known container:
 | ... with a payload nothing else has | 5,479 |
 | ... named by a word in the image | **414** |
 | ... no reference found within the stated coverage | **5,065** |
-| ... confirmed by the external model too (same address, same digest) | **381** |
+| ... confirmed by the external model too (same address, same digest) | **384** (was 381) |
 | residual by form | form 0: 5,092; form 1: 387 |
 | residual that are packed **and** engine-referenced | 387 |
-| residual that are packed, whole-tile **and** engine-referenced | 381 |
+| residual that are packed, whole-tile **and** engine-referenced | 384 (was 381) |
 | residual that are packed, whole-tile, engine-referenced **and** >= 8 KiB | 21 |
 
 **Reference-search coverage, stated with the claim.** A complete sweep of every
@@ -726,16 +738,19 @@ the distribution is dominated by small streams, not by tile banks:
 | other | 33 |
 | **= 8 KiB or larger** | **26** |
 
-381 of the 387 have whole-tile decoded lengths; 381 of the 387 are byte-for-byte
-confirmed by the external model; the conjunction *packed and whole-tile and at
-least 8 KiB* is **21**. The largest referenced residual is `0x087A04F0`
-(65,474 bytes) and it is **not** external-confirmed. An earlier revision of this
+384 of the 387 have whole-tile decoded lengths; 384 of the 387 are byte-for-byte
+confirmed by the external model (381 before WEBFOOT-LZ-LITERAL-BASE-001, whose
+three additions are `0x086B9A9C`, `0x086BC6A0` and `0x086D8C78`); the conjunction
+*packed and whole-tile and at least 8 KiB* is **21**. The largest referenced
+residual is `0x087A04F0` (65,474 bytes) and it is **not** external-confirmed: the
+external sweep never submits a declared size that is not a multiple of four, and
+this container declares `4k + 2`. An earlier revision of this
 document described the population as "all 8 KiB or larger, largest 38,400, all
 confirmed by the external model", which was wrong in every clause.
 
 **PROJECT CONCLUSION (deliberately weak).** These are **engine-referenced
 containers that no accepted resource graph enumerates**. Their shape is
-*consistent with* tile data - packed and, for 381 of 387, whole-tile - and that is
+*consistent with* tile data - packed and, for 384 of 387, whole-tile - and that is
 **all this ticket claims**. It does not claim they are graphics, because no
 rendering consumer was established for any of them, and it does not claim they are
 new to the project, because LOGX-CODEC-001's reach census already recorded
@@ -799,8 +814,8 @@ re-derive the choice.
 | it runs no visual plausibility test | **CONFIRMED** (source) |
 | `DecompressUnknownHeader` exists and is never called by the scan | **CONFIRMED** (source) |
 | external bit framing is little-endian words consumed MSB-first | **CONFIRMED** (source + bit-level cross-check) |
-| external grammar reproduces the project decoder on the canonical corpus | **CONFIRMED** for 11,634 of 11,712 kind-1 known containers |
-| the two grammars diverge on 78 containers | **CONFIRMED**, cause identified: the `value == 0` arm writes a literal 0 where the project writes its base, plus literal-base persistence on 77 large banks |
+| external grammar reproduces the project decoder on the canonical corpus | **CONFIRMED** for 11,711 of 11,712 kind-1 known containers (11,634 before WEBFOOT-LZ-LITERAL-BASE-001) |
+| the two grammars diverge on one container | **CONFIRMED**, cause identified: the `value == 0` arm writes a literal 0 where the project writes its base. The 77-bank component of the former 78 was the project decoder's retained literal base, corrected 2026-09-26 (§6.3) |
 | the `GetInteger` continuation test differs between the two sources | **REFUTED**: `!= 0` continue and `== 0` exit are the same loop |
 | the initial literal state distinguishes the models on the canonical corpus | **REFUTED / UNKNOWN from the corpus**: no known container emits a literal before its first escape, so the state is inert; the source sets it to 0 |
 | an accepted decode can overrun its declared size | **REFUTED**: 0 of 12,990 accepted decodes reach a write offset above the declared size |
@@ -864,9 +879,9 @@ authoritative.*
 | `UnknownHeader` decodes headerless streams | **PARTIALLY CONFIRMED** as a decoder; **REFUTED** as an engine container form (LOGX-CODEC-001) |
 | a ~64 KiB temporary buffer | **REFUTED** as a format maximum (LOGX-CODEC-001); it is the host tool's buffer |
 | the codec is JCALG1 | **PARTIALLY CONFIRMED** as JCALG1-like/derived; the name is not promoted (LOGX-CODEC-001) |
-| `GetInteger` continues while its continuation bit is set, as written | **CONFIRMED as written, and reproduced as written.** The reproduction exits when the bit is clear, which is the same loop; the source's reading decodes all 11,712 kind-1 known containers and reproduces the project decoder on 11,634 of them |
+| `GetInteger` continues while its continuation bit is set, as written | **CONFIRMED as written, and reproduced as written.** The reproduction exits when the bit is clear, which is the same loop; the source's reading decodes all 11,712 kind-1 known containers and reproduces the project decoder on 11,711 of them (11,634 before WEBFOOT-LZ-LITERAL-BASE-001) |
 | the declared-size word seeds the literal base | **REFUTED**, from the source: `CompressionState` leaves both fields at the C# default 0. The corpus cannot discriminate this - no known container emits a literal before its first escape - and an earlier revision wrongly claimed it could |
-| the `value == 0` arm writes the literal base | **REFUTED**: the source writes a literal 0, and that is the arm that makes the two grammars disagree on 78 rather than 77 containers |
+| the `value == 0` arm writes the literal base | **REFUTED**: the source writes a literal 0. It is now the **only** arm where the two grammars differ, and it costs exactly one container, `0x0829B308` - the "78 rather than 77" this row used to state counted the project decoder's retained literal base as well, corrected 2026-09-26 by WEBFOOT-LZ-LITERAL-BASE-001 (§6.3) |
 | `declared % 4 == 0` is a valid container test | **REFUTED**: 199 real selector streams declare `4k + 2` bytes |
 | a form-0 header means "the declared bytes are stored raw" | **CONFIRMED** (LOGX-CODEC-001), with the correction that this makes form 0 non-discriminating as a discovery signal |
 
@@ -883,9 +898,12 @@ authoritative.*
 2. **Do the residual containers overlap LOGX-CODEC-001's non-root reach?** That
    ticket recorded 3,819 dominant-handler element targets outside the selector-1
    root set. A set comparison was not performed here.
-3. **Is the divergence in §6.3 one mechanism or two?** Two are identified - the
+3. **Is the divergence in §6.3 one mechanism or two?** Two were identified - the
    external `value == 0` arm (one map chunk) and the escape's offset reset (77
-   banks) - but the 77 were not individually traced token by token.
+   banks). **RESOLVED 2026-09-26 by WEBFOOT-LZ-LITERAL-BASE-001**: the offset-reset
+   component was the project decoder's defect and is corrected, and every changed
+   byte in those 77 banks was traced to a stale-base literal emission and its
+   match copies (77/77 banks). Only the `value == 0` arm remains a divergence.
 4. **What does the initial literal state change on the *scan population*?** It is
    inert on the known corpus (no literal precedes the first escape), but a reviewer
    measured that a scan-population re-run with the field at the kind word rather

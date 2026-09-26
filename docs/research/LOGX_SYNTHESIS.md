@@ -1093,8 +1093,16 @@ semantics. It also reads from `container + 4`, not `container + 8`.
 **Two decode divergences between the external grammar and the project decoder,
 both identified:** the four-bit code's `value == 0` arm (the external source
 writes a plain `0`; the project decoder writes `literal_offset & 0xFF`), which
-moves one map chunk, and the escape's offset reset, which moves 77 banks. The two
-grammars therefore disagree on **78** of 11,712 known kind-1 containers.
+moves one map chunk, and the escape's offset reset, which moved 77 banks. The two
+grammars therefore disagreed on **78** of 11,712 known kind-1 containers.
+
+**Corrected 2026-09-26 by WEBFOOT-LZ-LITERAL-BASE-001:** the second of those was
+the **project decoder's defect**. The engine clears the literal base when a stream
+returns to 8-bit literals (proven against its own character memory in
+`docs/research/BUU_MAP_GRAPHICS_DIAG.md`), the external model already did, and the
+project decoder now does too. The grammars therefore disagree on exactly **one**
+container, `0x0829B308`, which the `value == 0` arm moves. The 77 banks went from
+disagreeing to agreeing, which is independent corroboration of the correction.
 
 ### 9.1 The 387 referenced, packed residuals
 
@@ -1180,7 +1188,7 @@ production code or current canonical docs as the whole story.**
 | 35 | `decoded length == 256` identifies graphics | `REFUTED`: it is a **sort priority**; 244 of 12,990 candidates carry it | GFXSCAN |
 | 36 | a decoded non-empty payload is a scan result | `CONFIRMED` as **behaviour**, `REFUTED` as a **container test** | GFXSCAN |
 | 37 | the declared-size word seeds the literal base | `REFUTED` from the external source itself (`CompressionState` leaves both fields at 0). An earlier revision claimed the corpus proved it; the corpus **cannot discriminate** it (0 of 11,712 kind-1 containers emit a literal before their first escape) | GFXSCAN |
-| 38 | the four-bit code's `value == 0` arm writes the literal base | `REFUTED`: the external source writes a plain literal `0`. This arm is the one that moves a map chunk | GFXSCAN |
+| 38 | the four-bit code's `value == 0` arm writes the literal base | `REFUTED`: the external source writes a plain literal `0`. This arm is the one that moves a map chunk - and, since WEBFOOT-LZ-LITERAL-BASE-001 corrected the project decoder's literal-base reset (2026-09-26), the **only** one that moves anything | GFXSCAN |
 | 39 | `GetInteger` "continues while its continuation bit is set" needed arbitration | the probe **is** that reading written from the other side; the claimed refutation was a transposition no source contains | GFXSCAN |
 
 ---
@@ -1389,6 +1397,27 @@ reappearance is a regression, not a recorded state. The `stale-7355` pattern gai
 an `allow_if_line_matches` clause for the population-qualified form, because §11.4
 requires the corrected sentence to *name* 7,355 and the scan would otherwise report
 the correction itself.
+
+---
+
+### 11.10 EXECUTED - WEBFOOT-LZ-LITERAL-BASE-001 (2026-09-26)
+
+**A decoder defect this synthesis did not inventory**, because it read the
+external model's offset reset as an external-model difference rather than as the
+project's error: `webfoot_lz._unpack_stream` kept a 7-bit literal run's **literal
+base** after the stream widened back to 8-bit literals. The retail engine clears
+it, and so does the external JCALG1 model. The project decoder now clears it.
+
+| | |
+| --- | --- |
+| **Files** | `tools/webfoot/formats/webfoot_lz.py::_unpack_stream`, `tools/export/webfoot_strict.py::decode_packed`, and `tools/research/webfoot_codec_reference.py::decode_packed` (the differential's second implementation, which had transcribed the same rule) |
+| **Class** | `PRODUCTION BUG` (decoded bytes did not match the engine's) |
+| **Evidence** | `docs/research/BUU_MAP_GRAPHICS_DIAG.md` (MAP-GFX-DIAG-001): the corrected rule reproduces a complete 16,384-byte bank of the engine's own character memory byte-for-byte, both runtime-validated map captures at 0 differing tiles, and the emulator framebuffer at the engine's own ceiling (0.9390) |
+| **Blast radius** | 77 of 187 banks, 369 of 452 assembled map character blocks; **0** of 3,745 map chunk containers, **0** of 7,390 sprite graphics containers, **0** of 452 selector streams, **0** of 2,721 animated-tile frames |
+| **Attribution** | every changed byte in all 77 banks is a literal emitted while the stale base was in force, or a match copy of one (77/77 banks, exact set equality) |
+| **Independent corroboration** | the external JCALG1 model already reset the base; the 77 banks moved from disagreeing with it to agreeing, leaving this ticket's one genuine grammar difference (`value == 0`, one map chunk) |
+| **Rebaselined** | the map 39/40 `char_sha256` and `composite_sha256` pins and their post-load mutation lists; the ASSET-EXPORT-001 map, screenblock, chunk and composite pixel pins whose source map is one of the 369; `tests/integration/test_logx_gfxscan_rom.py`'s external divergence (78 -> 1), bank recall (110 -> 187) and residual external agreement (381 -> 384) |
+| **Not changed** | chunk-container identities (0/3,745), palette, screen entries, flips, layer records, stacking, the canonical ROM and the retained captures |
 
 ---
 

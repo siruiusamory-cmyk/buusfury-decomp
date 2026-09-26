@@ -228,6 +228,13 @@ def decode_packed(
     decoder's rule"; it was wrong about the engine, and it contradicted this same
     module's docstring, which had the engine's behaviour right. Corrected rather
     than deleted so the superseded claim stays visible.
+
+    **The literal base resets.** The literal-width escape installs a base only for
+    the 7-bit form; a stream that widens back to 8-bit literals clears it rather
+    than leaving the previous run's base in force. This is the engine's rule,
+    proven byte-exactly against the retail engine's own character memory in
+    `docs/research/BUU_MAP_GRAPHICS_DIAG.md` (MAP-GFX-DIAG-001), and it is the one
+    place this reader's grammar differs from the pre-correction shipping decoder.
     """
     if declared_size < 0 or declared_size > MAX_OUTPUT:
         raise ContainerError(
@@ -320,7 +327,15 @@ def decode_packed(
                     break
         else:
             literal_bits = 7 + reader.bit()
-            if literal_bits != 8:
+            if literal_bits == 8:
+                # Returning to 8-bit literals clears the literal base; the base
+                # an earlier 7-bit run installed does not stay in force. The same
+                # rule as `webfoot_lz._unpack_stream`, kept here deliberately as
+                # a second implementation rather than a shared helper; see
+                # `docs/research/BUU_MAP_GRAPHICS_DIAG.md` (MAP-GFX-DIAG-001) for
+                # the byte-exact runtime proof of the engine's rule.
+                literal_base = 0
+            else:
                 literal_base = reader.get(8)
 
     if len(out) != declared_size:

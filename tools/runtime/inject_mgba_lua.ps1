@@ -251,6 +251,14 @@ $allowedLua = @(
     [System.IO.Path]::GetFullPath(
         (Join-Path $workspaceRoot 'tools\runtime\chunkauth001_watch_rebuild.lua')
     )
+    # Added by MAP-GFX-DIAG-001: the read-only assembled-background observer. It
+    # dumps the engine's own VRAM, palette and IO once a target map has been
+    # departed and re-entered, and records the root, layer records and extent the
+    # LIVE image holds. Read-only in exactly the same sense as the observers
+    # above; tests/unit/test_mgba_capture.py names this file explicitly.
+    [System.IO.Path]::GetFullPath(
+        (Join-Path $workspaceRoot 'tools\runtime\mapgfxdiag001_map_layer_dump.lua')
+    )
 )
 $resolvedLua = [System.IO.Path]::GetFullPath($LuaPath)
 if ($resolvedLua -notin $allowedLua) {

@@ -351,3 +351,10 @@ It raised three notes, all of which are resolved rather than banked:
 | **NOTE-1 (MEDIUM)** the module's determinism claim was absolute but the occurrence digest follows the supplied plane order | Docstrings in the module and `census_planes` now state the scope exactly; `test_determinism_is_pinned_to_the_supplied_plane_order` asserts both the order-invariant half and the order-dependent half |
 | **NOTE-2 (LOW)** the four "mutation" tests were positive controls; their `pytest.fail` guards could not fire | rewritten as genuine mutations: each defines the check, shows it accepts the correct artefact, **injects the break** (a direction-blind adjacency table, an ordinal-only identity key, six forged provenance records, a merged bank partition) and requires rejection |
 | **NOTE-3 (LOW)** the observed sheet's chunk placement was verified only by dimensions | `test_observed_sheet_places_each_chunk_at_its_own_offset` now asserts each of two different chunks lands at its own offset with its own pixels and that the gutter between them stays transparent |
+
+The resolutions were re-frozen (`6faccc3`) and re-reviewed on `c1bd86a`, which
+returned **APPROVE** - *"All three prior notes are fully resolved; nothing new
+blocks."* The reviewer confirmed each resolution individually, verified by diff
+that the resolution commit changed no production logic (two docstring insertions,
+zero code lines), re-ran the portable suite (39 passed), and independently
+re-checked the six probe areas with no findings:

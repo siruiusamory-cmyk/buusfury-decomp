@@ -1674,15 +1674,6 @@ def _resolve_creation(
             f"holds {template_record.byte_0x13_raw:#04x}; refusing a creation "
             "computed against a different image"
         )
-    sharers = corpus.shared_root_maps(identity.source)
-    if sharers:
-        raise TransitionFieldError(
-            f"{identity} cannot be created: {identity.source}'s selector-1 root is "
-            f"shared with "
-            + ", ".join(str(other) for other in sharers)
-            + "; the count at root+0x40 and the array pointer at root+0x44 belong to "
-            "the root, so appending here would change those maps' connections too"
-        )
     root = corpus.root_for(identity.source)
     if root.count + offset >= MAX_TRANSITION_COUNT:
         raise TransitionFieldError(

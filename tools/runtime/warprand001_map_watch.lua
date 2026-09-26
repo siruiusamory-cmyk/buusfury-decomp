@@ -6,15 +6,16 @@
 -- in tests/unit/test_mgba_capture.py greps for, and deliberately does not spell
 -- them out here either, comments included.
 --
--- WHY IT EXISTS. The randomized derivative changes where 559 of the 735
--- selector-1 transition records lead, and the ticket's runtime smoke is a
--- HUMAN-OPERATED playthrough: no scripted route, no automated input, no required
--- map. What the operator cannot supply by hand is the map IDENTITY on each side
--- of a warp - the game never displays it - and this project's rule is that the
--- active MapEntry is identified from runtime rather than guessed from a map name.
--- So this observer latches, once per map change, the map identity the engine
--- itself keeps and the identity it came from, which turns the playthrough into
--- the (source map -> destination map) list the ticket asks for.
+-- WHY IT EXISTS. The randomized derivative changes where 496 of the 735
+-- selector-1 transition records lead - 248 reciprocal door pairs moved as whole
+-- pairs - and the ticket's runtime smoke is a HUMAN-OPERATED playthrough: no
+-- scripted route, no automated input, no required map. What the operator cannot
+-- supply by hand is the map IDENTITY on each side of a warp - the game never
+-- displays it - and this project's rule is that the active MapEntry is identified
+-- from runtime rather than guessed from a map name. So this observer latches, once
+-- per map change, the map identity the engine itself keeps and the identity it
+-- came from, which turns the playthrough into the (source map -> destination map)
+-- list the ticket asks for.
 --
 -- It records no judgement. Whether the arrival was usable, and whether the facing
 -- or the placement caused an immediate softlock, are the operator's observations

@@ -318,31 +318,59 @@ def guarded_matching(
     2-cycle between two dead ends.
 
     Returns the chosen target per pair and how many pairs had to take a target the
-    guard would have refused. The second number is 0 whenever the guard is
-    satisfiable, and reporting it is what stops a silent fallback from looking like
-    a satisfied rule. Pure, so the rule is proved without a ROM.
+    guard would have refused. That count is exact rather than a greedy accident: the
+    greedy pass is followed by an augmenting-path search over the allowed links, so
+    a non-zero count means no guard-honouring matching of this pair set exists, not
+    merely that the first pass failed to find one. The search is complete for this
+    bipartite graph and every pass is over a list in a fixed order, so the result
+    depends on ``order`` alone.
+
+    Pure, so the rule is proved without a ROM.
     """
     count = len(order)
-    taken = [False] * count
-    targets: list[int] = [-1] * count
-    forced = 0
+    forward_single_door = tuple(forward_single_door)
+    return_single_door = tuple(return_single_door)
+
+    def allowed(index: int, candidate: int) -> bool:
+        return not (forward_single_door[index] and return_single_door[candidate])
+
+    # Pass 1 - the greedy choice, allowed links only, in the seeded order.
+    holder: dict[int, int] = {}
+    unmatched: list[int] = []
     for index in range(count):
-        choice = -1
-        for candidate in order:
-            if taken[candidate]:
-                continue
-            if forward_single_door[index] and return_single_door[candidate]:
-                continue
-            choice = candidate
-            break
+        choice = next(
+            (c for c in order if c not in holder and allowed(index, c)), -1
+        )
         if choice < 0:
-            # The guard cannot be honoured for this pair without leaving another
-            # unassigned; the matching stays complete and the cost is reported.
-            choice = next(candidate for candidate in order if not taken[candidate])
-            forced += 1
-        taken[choice] = True
-        targets[index] = choice
-    return tuple(targets), forced
+            unmatched.append(index)
+        else:
+            holder[choice] = index
+
+    # Pass 2 - augmenting paths. A pair the greedy pass could not place may still
+    # be placeable by moving an earlier pair, and this finds it if it exists.
+    def augment(index: int, seen: set[int]) -> bool:
+        for candidate in order:
+            if candidate in seen or not allowed(index, candidate):
+                continue
+            seen.add(candidate)
+            displaced = holder.get(candidate)
+            if displaced is None or augment(displaced, seen):
+                holder[candidate] = index
+                return True
+        return False
+
+    still_unmatched = [index for index in unmatched if not augment(index, set())]
+
+    # Pass 3 - whatever is left has no allowed target, so the rule is relaxed for
+    # it and counted. The matching stays complete: every pair still gets a target.
+    for index in still_unmatched:
+        free = next(candidate for candidate in order if candidate not in holder)
+        holder[free] = index
+
+    targets = [-1] * count
+    for candidate in sorted(holder):
+        targets[holder[candidate]] = candidate
+    return tuple(targets), len(still_unmatched)
 
 
 # --- the manifest: pure data -------------------------------------------------
@@ -553,11 +581,13 @@ class WarpRandomizerManifest:
                 "randomized_offsets": [f"0x{v:02X}" for v in RANDOMIZED_RECORD_OFFSETS],
                 "preserved_offsets": [f"0x{v:02X}" for v in PRESERVED_RECORD_OFFSETS],
                 "grouping": (
-                    "one group per source map of a pair's FORWARD record; the "
-                    "group's reciprocal pairs are permuted among themselves, so "
-                    "every arrival lands on a door that leads back to the map the "
-                    "player came from. A pair is only moved when both halves are "
-                    "arrival-authorable and each is the other's single door back"
+                    "one compatibility class - the clean mutual door pairs - "
+                    "permuted as a single seeded bijection. Grouping the pairs by "
+                    "the forward record's source map was measured and rejected: "
+                    "175 of 207 such groups hold a single pair, so the draw could "
+                    "only be the identity and just 46 of 496 destinations moved. "
+                    "A pair is only moved when both halves are arrival-authorable "
+                    "and each is the other's single door back"
                 ),
                 "eligibility": (
                     "a record whose +0x14/+0x16 pair is an absolute arrival AND "

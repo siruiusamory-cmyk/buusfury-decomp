@@ -2,9 +2,9 @@
 
 Two layers are covered without a ROM:
 
-* the seeded permutation itself - :func:`shuffled_indices`,
-  :func:`assignment_slots` and :func:`normalize_seed`, which are pure functions of
-  a seed and a group index and reach no image;
+* the seeded permutation and the dead-end guard - :func:`shuffled_indices`,
+  :func:`guarded_matching` and :func:`normalize_seed`, which are pure functions of
+  a seed, a group index and a pair shape and reach no image;
 * the manifest's shape and its byte determinism, built here from hand-made
   decisions rather than from a corpus.
 
@@ -140,6 +140,22 @@ def test_the_dead_end_guard_never_links_two_single_door_maps() -> None:
     assert targets[0] == 2 and targets[1] == 3
     for index, target in enumerate(targets):
         assert not (forward[index] and returning[target]), (index, target)
+
+
+def test_the_guard_finds_a_matching_the_greedy_pass_would_miss() -> None:
+    """The count is exact, not a greedy accident.
+
+    Pair 0 may take only target 1 and pair 1 only target 0, while the greedy pass
+    in seeded order hands pair 0 the only target it can see and leaves pair 1
+    stuck. The augmenting search must move the earlier pair rather than relax the
+    rule, so the reported count stays 0.
+    """
+    targets, forced = guarded_matching(
+        (0, 1), (False, True), (False, True)
+    )
+    assert forced == 0
+    assert sorted(targets) == [0, 1]
+    assert targets[0] == 1 and targets[1] == 0
 
 
 def test_an_unsatisfiable_guard_is_reported_rather_than_hidden() -> None:

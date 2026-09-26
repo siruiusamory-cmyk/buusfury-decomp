@@ -71,7 +71,7 @@ LOCAL_ROM = Path(
 CATALOG = "config/roms.yaml"
 
 #: Measured from the canonical image. The first four are the transition family's
-#: own census (LOGX-CONNECTOR-001); the rest are policy /2's arithmetic over it,
+#: own census (LOGX-CONNECTOR-001); the rest are policy /3's arithmetic over it,
 #: pinned so a change to the pairing rule cannot pass silently.
 TRANSITION_COUNT = 735
 CLASS_A_COUNT = 566
@@ -147,7 +147,7 @@ def test_the_canonical_corpus_enumerates_the_measured_family(environment: dict) 
     assert manifest.class_counts == {"A": CLASS_A_COUNT, "B": CLASS_B_COUNT}
     assert manifest.randomized and len(manifest.randomized) == RANDOMIZED_COUNT
     assert len(manifest.skipped) == SKIPPED_COUNT
-    assert len(manifest.groups) == 1, "policy /2 has one compatibility class"
+    assert len(manifest.groups) == 1, "policy /3 has one compatibility class"
     assert manifest.groups[0].pairs == PAIR_COUNT
     assert manifest.groups[0].members == 2 * PAIR_COUNT
     assert [d.identity for d in manifest.decisions] == [
@@ -340,7 +340,7 @@ def test_every_randomized_bundle_is_internally_consistent(environment: dict) -> 
 
 
 def test_every_randomized_destination_keeps_its_return_door(environment: dict) -> None:
-    """The invariant policy /2 exists for: the mapping stays bidirectional.
+    """The invariant the reciprocal-pair policy exists for: the mapping stays bidirectional.
 
     For every randomized record, the destination image must hold a record leading
     back to the source map, and the arrival must sit inside THAT door's trigger

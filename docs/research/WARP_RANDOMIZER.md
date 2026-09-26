@@ -29,26 +29,36 @@ recorded:
   `set_arrival` refuses the 169 class, which is what makes "randomize the
   destination alone" impossible to do safely there.
 
-The one policy decision this hack adds is the **compatibility group**: for a
-transition whose source map is `M`, the destinations it may be pointed at are the
-maps that canonically route back to `M` - exactly the set the authority can derive
-an arrival for, because it derives that arrival from the destination's own door
-back to the source map. That set depends on the source map alone, so a group is
-one source map.
+The one policy decision this hack adds is the **permutation unit**: a clean mutual
+door pair - two records, `f: X -> Y` and `r: Y -> X`, each the other's only door
+back, both able to carry an arrival. 248 such pairs exist and cover 496 of the 735
+records. The pair is moved as a whole, so the door a player arrives on is always
+the door that leads back; the compatibility class is the whole pair set, because
+the structure itself is the compatibility. A third rule, the **dead-end guard**,
+refuses to link two maps that each hold exactly one door record, since that closes
+an isolated 2-cycle with no way on. It is a rule about the door graph's topology,
+not progression logic, and it does not guarantee a route.
+
+The two rules after the first one came from runtime, not from review, and the
+evidence is kept below: a per-record permutation let an arrival land inside a door
+the permutation had pointed elsewhere, and a player who arrives inside a trigger
+never crosses its edge; permuting pairs fixed that but closed 2-cycles between
+dead-end maps.
 
 ## Required Work
 
-1. A seeded, deterministic permutation of destination bundles within those groups:
-   `tools/webfoot/warp_randomizer.py`.
-2. Stage each accepted bundle through the transition authority's own
-   `set_destination` / `set_arrival` / `set_facing`, deriving the arrival from the
-   **retail** link graph and validating it against the destination's walkable
-   extent.
+1. A seeded, deterministic permutation of whole reciprocal door pairs, with the
+   dead-end guard, in `tools/webfoot/warp_randomizer.py`.
+2. Stage each accepted pair through the transition authority's own
+   `set_destination` / `set_arrival` / `set_facing`, arriving each half on the
+   partner's own trigger rectangle and validating the point against the
+   destination's walkable extent.
 3. Leave every record the policy cannot safely randomize byte-identical and
-   record its reason.
-4. A deterministic JSON manifest: source transition, retail destination,
-   randomized destination, arrival, facing, class, disposition and reason, plus
-   the group table and the byte-offset policy.
+   record its reason: the 169 class, and a record that is not half of a clean pair.
+4. A deterministic JSON manifest: source transition, retail destination and
+   arrival, randomized destination and arrival, facing, class, disposition, reason,
+   the counterpart that makes each row's return door checkable, the pair labels and
+   the byte-offset policy.
 5. Build the derivative ROM through `webfoot.write.emit_image` only - the one
    writer, which refuses to overwrite and re-checks the base identity.
 
@@ -109,8 +119,12 @@ now covered by a test:
   `paths_are_the_same_file` against the output, the canonical image and the
   provenance manifest, with a test that reproduces the collision;
 - `assert retail is not None` was control flow over a value the same module
-  treats as possibly absent - the record is now decided unrandomizable before any
-  assignment, and the rollback path raises a named error instead of asserting;
+  treats as possibly absent. A record whose retail destination does not resolve is
+  now excluded from the pair search before any assignment, so that branch is gone
+  rather than asserted past, and the per-record staging path it belonged to no
+  longer exists: each pair is carried through the authority's own `set_arrival` on
+  a third view of the image before a byte is staged, so a refusal leaves nothing
+  half-written;
 - the CLI's `--provenance` help promised a default that did not exist - the CLI
   now writes the provenance manifest beside the output by default;
 - the manifest claimed "the retail bundle" while carrying no retail arrival - rows
@@ -236,21 +250,29 @@ Proved on the delivered image, in
 
 Counts move from 559 randomized / 176 skipped to **496 randomized / 239 skipped**
 (169 class B + 70 records with no clean mutual pair, each reported with its own
-reason). The runtime smoke has to be re-run by the operator against the `/2`
-image; the softlock above is the `/1` result and is kept as the evidence for why
-the policy changed.
+reason). The softlock described above is the `/1` result and is kept as the
+evidence for why the policy changed.
 
 ### Policy `/3` - the dead-end link guard
 
 The first `/2` playthrough found the next failure mode within minutes, and it is
 the one reciprocity cannot fix. 86 maps hold exactly one door record; such a map is
-a dead end on its own. `/2` closed a 2-cycle between two of them - the door out of
-map 33 landed on map 390 and map 390's only door came straight back - so a player
-who entered map 33 from Snakeway's scripted transition had exactly one way on, and
-it was Broly. **12 such links (6 closed 2-cycles)** existed in the `/2` mapping:
-`33<->390`, `144<->289`, `154<->334`, `227<->299`, `47<->402`, `115<->422`. Retail
-never produces that shape: of its canonical single-door pairs, 67 lead to a hub and
-only 2 are dead-end-to-dead-end.
+a dead end on its own. `/2` closed a 2-cycle between two of them: its matching sent
+the door out of map 33 to map 390 and map 390's record to map 33, so map 33 - which
+the operator reaches from Snakeway's scripted transition and which holds exactly
+one door - had a single way on, and it was Broly. **12 such links (6 closed
+2-cycles)** existed in the `/2` mapping: `33<->390`, `144<->289`, `154<->334`,
+`227<->299`, `47<->402`, `115<->422`. Retail never produces that shape: of its
+canonical single-door pairs, 67 lead to a hub and only 2 are dead-end-to-dead-end.
+
+Stated precisely, because the retained log is thinner than the policy claim: the
+`/2` run shows `33 -> 390` and then a scripted move of `390 -> 1`, not a door back
+to 33 (map 1 holds no transition record at all). So what the operator experienced
+was a pocket whose only progression was the Broly fight and, on losing it, the
+return to Snakeway that leads back to 33 - a loop through a boss, which is why the
+report came back as "the only direction to go leads to Broly". The policy fact
+that produced it - the `/2` matching pairs 33 with 390 - was reproduced from the
+code itself, and the guard is what removes it.
 
 `/3` refuses to link two single-door maps when building the matching. It is a rule
 about the door graph's **topology**, not progression logic: it knows nothing about

@@ -126,6 +126,12 @@ class AllocationKind(str, Enum):
     #: MAP-CHUNK-AUTHORING-001. One project-authored dominant chunk body: the
     #: packed container a map cell's four-byte reference points at.
     CHUNK_BODY = "chunk_body"
+    #: MAP-RESIZE-AND-LAYERS-001. One relocated or project-authored dominant layer
+    #: record: the header plus the chunk-pointer window a map root's layer slot
+    #: points at. A dominant record carries its window inline and the bytes
+    #: immediately after the window belong to the next structure, so a grid that
+    #: grows cannot stay where it was and the whole record is re-emitted.
+    LAYER_RECORD = "layer_record"
 
 
 class Addressability(str, Enum):
@@ -142,6 +148,20 @@ class Addressability(str, Enum):
     CANONICAL_ONLY = "canonical_only"
     #: The domain's pointers are proven able to reach generated expanded storage.
     EXPANDED_PERMITTED = "expanded_permitted"
+    #: The domain's pointers are proven above canonical EOF **and** the domain is
+    #: placed there by policy rather than by first fit.
+    #:
+    #: MAP-RESIZE-AND-LAYERS-001 introduces it for the layer-record domain, and the
+    #: reason is a property of the domain rather than a preference: a dominant layer
+    #: record is ``0x18 + 4 * columns * rows`` bytes, so it grows with the authored
+    #: grid, and the canonical image declares exactly one 256-byte VERIFIED_FREE
+    #: region. A project may author one record per resize and per authored layer, so
+    #: the domain's aggregate demand is unbounded and a policy that spent the single
+    #: canonical free region on it would both exhaust it and take a resource other
+    #: domains depend on. Placing the domain above EOF is additionally exactly the
+    #: addressability this capability has to prove, so the policy and the proof are
+    #: the same decision.
+    EXPANDED_ONLY = "expanded_only"
 
 
 #: The addressability each kind defaults to, from the Phase A addressability
@@ -170,6 +190,7 @@ DEFAULT_ADDRESSABILITY = {
     AllocationKind.RELOCATED_ANCHOR_PAYLOAD: Addressability.CANONICAL_ONLY,
     AllocationKind.AUTHORED_MAP_EXPANSION: Addressability.CANONICAL_ONLY,
     AllocationKind.CHUNK_BODY: Addressability.EXPANDED_PERMITTED,
+    AllocationKind.LAYER_RECORD: Addressability.EXPANDED_ONLY,
 }
 
 
@@ -504,6 +525,9 @@ def _candidate_regions(storage: StorageModel,
     been proven able to reach.
     """
     allowed = storage.allocatable_regions()
+    if request.addressability is Addressability.EXPANDED_ONLY:
+        return tuple(region for region in allowed
+                     if region.classification is RegionClass.PADDING_EXPANDED)
     if request.expanded_permitted:
         return allowed
     return tuple(region for region in allowed

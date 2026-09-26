@@ -58,7 +58,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from pathlib import Path
 import re
-from typing import Any, Mapping
+from typing import Any, Iterable, Mapping
 
 from ..formats import stat_tables as st
 from ..formats import text_tables as tt
@@ -313,6 +313,10 @@ class StatProject:
     #: MAP-CHUNK-AUTHORING-001. Chunk bodies this project authored. Empty for a
     #: project that authors none, which stays loadable on the same reasoning.
     chunks: "AuthoredChunks" = field(default_factory=lambda: AuthoredChunks())
+    #: MAP-RESIZE-AND-LAYERS-001. Authored map structure: resized layer grids and
+    #: project-authored layer records. Empty for a project that authors none, which
+    #: stays loadable on the same reasoning.
+    structure: "MapStructure" = field(default_factory=lambda: MapStructure())
 
 
 @dataclass(frozen=True, slots=True)
@@ -501,6 +505,447 @@ class AuthoredChunks:
                 raise ProjectLoadError(f"{where}: duplicate chunk {identity!r}")
             chunks[identity] = AuthoredChunk.from_document(identity, value, where)
         return cls(chunks=dict(sorted(chunks.items())))
+
+
+#: MAP-RESIZE-AND-LAYERS-001. Project-authored **map structure**: the grid a
+#: supported dominant layer's cells sit in, and the layer slots a project
+#: activated with a new supported layer record.
+#:
+#: A fourth `maps/` document rather than fields of `layout.toml`, for the reason
+#: `chunks.toml` is separate from it: a layout cell is a *reference* into a grid,
+#: while a resize or an authored layer is the *grid and the record that holds it*.
+#: The two have different lifetimes - a resize survives every cell being repainted
+#: - and the reader refuses unknown keys, so folding a structural field into a
+#: layout cell would make every existing project file ambiguous.
+#:
+#: A missing file means the project authors no structure, matching every other
+#: optional subsystem, so a project extracted before this capability stays
+#: loadable.
+STRUCTURE_FILE = Path("maps") / "structure.toml"
+
+#: The two authored structure identity forms, matched rather than trusted.
+#:
+#: ``map:NNNN/BGn`` names the **slot being resized** - the map by its durable
+#: identity and the layer by BG slot, the same key `layout.toml` uses, so nothing
+#: in the file is a file offset or a raw address. ``layer:name`` is a
+#: project-authored layer's own durable identity, following the authored-chunk
+#: precedent: lowercase, stable, and independent of any address, so a layer can be
+#: created before a build has chosen where its record will live.
+_STRUCTURE_MAP_LAYER = re.compile(r"^map:(\d{4})/BG([0-3])$")
+_LAYER_IDENTITY = re.compile(r"^layer:([a-z][a-z0-9_-]{0,63})$")
+
+#: The supported authored grid range, per axis.
+#:
+#: A dominant record states each axis in one unsigned byte, so 255 is the
+#: encoding ceiling. This is a **policy** limit well below it and is stated here as
+#: one: the canonical corpus's largest dominant grid is 5x5, and nothing has
+#: established how large a grid the engine's own per-layer upload loop tolerates.
+#: `test_map_structure_project` pins it against
+#: `formats.map_graphics.MAX_LAYER_GRID_SIDE` so the two cannot drift.
+_MAX_GRID_SIDE = 8
+
+
+@dataclass(frozen=True)
+class LayerResize:
+    """One authored change to a supported dominant layer's chunk grid.
+
+    Semantic and address-free: the map is named by ``map:NNNN``, the layer by BG
+    slot, the new grid in whole chunks, and the initialization for the cells the
+    growth adds by **the same value form a layout cell uses** - a 1-based ordinal
+    into the layer's own existing chunk vocabulary, or the identity of a
+    project-authored chunk. Nothing here is an offset, an address or a byte.
+
+    Growth only: ``columns`` and ``rows`` are each at least the retail grid's, so
+    the transform is fully determined (top-left anchored, old cell ``(x, y)`` at
+    new cell ``(x, y)``) and no authored cell is ever dropped.
+    """
+
+    map_index: int
+    layer_slot: int
+    columns: int
+    rows: int
+    #: The chunk every cell the growth adds is initialized to. A layout cell and
+    #: this field accept exactly the same two forms, so the author's vocabulary is
+    #: one thing rather than two.
+    fill: int | str
+
+    @staticmethod
+    def key_for(map_index: int, layer_slot: int) -> str:
+        """The durable identity key for one resized layer."""
+        return f"map:{map_index:04d}/BG{layer_slot}"
+
+    @property
+    def key(self) -> str:
+        return LayerResize.key_for(self.map_index, self.layer_slot)
+
+    @property
+    def slots(self) -> str:
+        return f"BG{self.layer_slot}"
+
+    @property
+    def owner(self) -> str:
+        return self.key
+
+    def to_document(self) -> dict[str, Any]:
+        return {"columns": self.columns, "rows": self.rows, "fill": self.fill}
+
+    @classmethod
+    def from_document(
+        cls, key: object, document: object, where: object
+    ) -> "LayerResize":
+        match = _STRUCTURE_MAP_LAYER.match(key if isinstance(key, str) else "")
+        if match is None:
+            raise ProjectLoadError(
+                f"{where}: resize.{key} is not a layer identity; expected "
+                "'map:NNNN/BGn' with four digits and a 0..3 slot"
+            )
+        unknown = set(document) - {"columns", "rows", "fill"} if isinstance(document, dict) else None
+        if unknown is None:
+            raise ProjectLoadError(f"{where}: resize.{key} must be a table")
+        if unknown:
+            raise ProjectLoadError(
+                f"{where}: resize.{key} declares unknown key(s) {sorted(unknown)}"
+            )
+        return cls(
+            map_index=int(match.group(1), 10),
+            layer_slot=int(match.group(2), 10),
+            columns=_require_grid_side(document.get("columns"), f"resize.{key}", where),
+            rows=_require_grid_side(document.get("rows"), f"resize.{key}", where),
+            fill=_require_fill(document.get("fill"), f"resize.{key}", where),
+        )
+
+
+@dataclass(frozen=True)
+class AuthoredLayer:
+    """One project-authored supported layer, activating a map's unused slot.
+
+    The engine's layer count is **fixed at four**: a map root carries exactly four
+    layer-slot pointers, all non-null on all 452 canonical roots, and an unused
+    slot points at one shared zero-dimension placeholder record. "Create a new
+    layer" therefore means exactly what the engine can actually do - point an
+    unused slot at a new dominant record - and this class models that rather than
+    inventing a dynamic layer list the engine does not possess.
+
+    ``template`` names the canonical layer the new record's header is copied from,
+    as ``map:NNNN/BGn``. It is resolved against the **canonical** image only, so
+    editing the authored layer can never re-point the template that named it.
+    """
+
+    identity: str
+    map_index: int
+    layer_slot: int
+    template: str
+    columns: int
+    rows: int
+    fill: int | str
+
+    def __post_init__(self) -> None:
+        # Typed refusals, not the TypeErrors a regex would raise on a non-string: a
+        # malformed document is a project error, and CQA-06 requires an expected
+        # refusal to cross a caller's boundary as the declared family.
+        if not isinstance(self.identity, str) or _LAYER_IDENTITY.match(self.identity) is None:
+            raise ProjectValidationError(
+                f"authored layer identity {self.identity!r} is not 'layer:<name>'"
+            )
+        match = (
+            _STRUCTURE_MAP_LAYER.match(self.template)
+            if isinstance(self.template, str)
+            else None
+        )
+        if match is None:
+            raise ProjectValidationError(
+                f"{self.identity}: template {self.template!r} is not "
+                "'map:NNNN/BGn'"
+            )
+        if int(match.group(1), 10) != self.map_index:
+            raise ProjectValidationError(
+                f"{self.identity}: template {self.template!r} names another map; "
+                "an authored layer's screen-entry ordinals resolve through its own "
+                "map's assembled character block, so it is map-scoped"
+            )
+        if int(match.group(2), 10) == self.layer_slot:
+            raise ProjectValidationError(
+                f"{self.identity}: template {self.template!r} is the slot it would "
+                "activate"
+            )
+        if not 0 <= self.layer_slot < _LAYER_SLOT_COUNT:
+            raise ProjectValidationError(
+                f"{self.identity}: slot {self.layer_slot} is outside "
+                f"BG0..BG{_LAYER_SLOT_COUNT - 1}"
+            )
+
+    @property
+    def owner(self) -> str:
+        return self.identity
+
+    @property
+    def template_map(self) -> int:
+        return int(_STRUCTURE_MAP_LAYER.match(self.template).group(1), 10)
+
+    @property
+    def template_slot(self) -> int:
+        return int(_STRUCTURE_MAP_LAYER.match(self.template).group(2), 10)
+
+    def to_document(self) -> dict[str, Any]:
+        return {
+            "map": f"map:{self.map_index:04d}",
+            "slot": self.layer_slot,
+            "template": self.template,
+            "columns": self.columns,
+            "rows": self.rows,
+            "fill": self.fill,
+        }
+
+    @classmethod
+    def from_document(
+        cls, identity: object, document: object, where: object
+    ) -> "AuthoredLayer":
+        if not isinstance(identity, str) or _LAYER_IDENTITY.match(identity) is None:
+            raise ProjectLoadError(
+                f"{where}: {identity!r} is not a 'layer:<name>' identity"
+            )
+        if not isinstance(document, dict):
+            raise ProjectLoadError(f"{where}: layer.{identity} must be a table")
+        required = {"map", "slot", "template", "columns", "rows", "fill"}
+        unknown = set(document) - required
+        if unknown:
+            raise ProjectLoadError(
+                f"{where}: layer.{identity} declares unknown key(s) {sorted(unknown)}"
+            )
+        missing = required - set(document)
+        if missing:
+            raise ProjectLoadError(
+                f"{where}: layer.{identity} is missing key(s) {sorted(missing)}"
+            )
+        map_key = document["map"]
+        match = _MAP_KEY.match(str(map_key))
+        if match is None:
+            raise ProjectLoadError(
+                f"{where}: layer.{identity}.map is not 'map:NNNN'"
+            )
+        slot = document["slot"]
+        if type(slot) is not int or not 0 <= slot < _LAYER_SLOT_COUNT:
+            raise ProjectValidationError(
+                f"{where}: layer.{identity}.slot is not a BG slot"
+            )
+        return cls(
+            identity=identity,
+            map_index=int(str(map_key)[4:], 10),
+            layer_slot=slot,
+            template=str(document["template"]),
+            columns=_require_grid_side(document["columns"], f"layer.{identity}", where),
+            rows=_require_grid_side(document["rows"], f"layer.{identity}", where),
+            fill=_require_fill(document["fill"], f"layer.{identity}", where),
+        )
+
+
+def _require_grid_side(value: object, label: str, where: object) -> int:
+    if type(value) is not int:
+        raise ProjectValidationError(f"{where}: {label} needs a whole chunk count")
+    if not 1 <= value <= _MAX_GRID_SIDE:
+        raise ProjectValidationError(
+            f"{where}: {label} states {value} chunks on one axis; the supported "
+            f"range is 1..{_MAX_GRID_SIDE}"
+        )
+    return value
+
+
+def _require_fill(value: object, label: str, where: object) -> int | str:
+    """The initialization form a structural edit shares with a layout cell."""
+    if isinstance(value, str):
+        if _CHUNK_IDENTITY.match(value) is None:
+            raise ProjectValidationError(
+                f"{where}: {label}.fill names {value!r}, which is neither a chunk "
+                "ordinal nor a 'chunk:<name>' authored chunk"
+            )
+        return value
+    if type(value) is not int:
+        raise ProjectValidationError(
+            f"{where}: {label}.fill must be a chunk ordinal or an authored chunk "
+            f"identity, got {value!r}"
+        )
+    if value < 1:
+        raise ProjectValidationError(
+            f"{where}: {label}.fill names chunk {value}; ordinals are 1-based"
+        )
+    return value
+
+
+def _validate_slot_claims(
+    resizes: Iterable["LayerResize"],
+    layers: Iterable["AuthoredLayer"],
+    where: object,
+) -> None:
+    """One slot, one owner - except a created layer and the resize that grows it.
+
+    ``layers`` CREATES a layer record in a slot the canonical image leaves unused
+    and declares the grid it is created at; ``resizes`` changes the grid of a
+    layer that already exists. Two records claiming one slot would each look valid
+    alone and one would silently win at build time - the "authored but not
+    applied" failure this format exists to prevent - so two ``[layer]`` entries on
+    one slot and two ``[resize]`` entries on one slot are each refused.
+
+    A ``[layer]`` and a ``[resize]`` on ONE slot are the single exception, and
+    only in one direction: the layer was created at the grid the ``[layer]`` entry
+    declares and then grew to the grid the ``[resize]`` entry declares. That is
+    one slot's worth of authored structure rather than two claims to it, and it is
+    the only way the format can express "grow a layer the project itself created".
+    A resize that does not in fact grow the layer - smaller on either axis, or
+    unchanged - is refused here rather than left to a build that would silently
+    drop the authored cells the smaller grid cannot hold.
+    """
+    resized: dict[tuple[int, int], LayerResize] = {}
+    for resize in resizes:
+        slot = (resize.map_index, resize.layer_slot)
+        previous = resized.get(slot)
+        if previous is not None:
+            raise ProjectValidationError(
+                f"{where}: map:{resize.map_index:04d}/BG{resize.layer_slot} is "
+                f"claimed by both {previous.owner} and {resize.owner}"
+            )
+        resized[slot] = resize
+
+    authored: dict[tuple[int, int], AuthoredLayer] = {}
+    for layer in layers:
+        slot = (layer.map_index, layer.layer_slot)
+        previous = authored.get(slot)
+        if previous is not None:
+            raise ProjectValidationError(
+                f"{where}: map:{layer.map_index:04d}/BG{layer.layer_slot} is "
+                f"claimed by both {previous.owner} and {layer.owner}"
+            )
+        authored[slot] = layer
+
+    for slot, layer in authored.items():
+        resize = resized.get(slot)
+        if resize is None:
+            continue
+        if (
+            resize.columns < layer.columns
+            or resize.rows < layer.rows
+            or (resize.columns, resize.rows) == (layer.columns, layer.rows)
+        ):
+            raise ProjectValidationError(
+                f"{where}: map:{layer.map_index:04d}/BG{layer.layer_slot} declares "
+                f"the project-authored layer {layer.owner} at {layer.columns}x"
+                f"{layer.rows} and a resize to {resize.columns}x{resize.rows}; a "
+                "resize on an authored layer states the grid it is GROWN to, so it "
+                "must be larger on at least one axis and smaller on neither"
+            )
+
+
+@dataclass(frozen=True)
+class MapStructure:
+    """A project's authored map structure: resized grids and authored layers.
+
+    Two tables with one job each. ``layers`` creates a layer record in a slot the
+    canonical image leaves unused and declares the grid it is created at;
+    ``resizes`` changes the grid of a layer that already exists - a retail
+    layer's, or the project's own. A slot carries one claim: two ``[layer]``
+    entries or two ``[resize]`` entries for one slot are refused, and so is a
+    resize that does not in fact grow the authored layer it names.
+
+    ``[layer]`` and ``[resize]`` together on one slot mean **one** thing: the
+    layer was created at the grid the ``[layer]`` entry declares and then grown to
+    the grid the ``[resize]`` entry declares. The two are kept rather than the
+    pair being collapsed into one grown layer, because they are different facts -
+    the grid the project created the layer at and the grid it is emitted in - and
+    a reviewer has to be able to tell an authored layer's resize from a retail
+    layer's.
+    """
+
+    #: ``"map:NNNN/BGn"`` -> the resize of that layer.
+    resizes: dict[str, LayerResize] = field(default_factory=dict)
+    #: ``"layer:name"`` -> a project-authored layer record.
+    layers: dict[str, AuthoredLayer] = field(default_factory=dict)
+
+    def __post_init__(self) -> None:
+        # The invariant is checked on construction as well as on load, so a caller
+        # cannot assemble a document its own reader would refuse and hand it to
+        # `write_map_structure` - the same reason `AuthoredLayer` validates its own
+        # fields in `__post_init__`. It is also what makes "two `[resize]` entries
+        # for one slot" a refusal at all: the two resize keys of one slot are the
+        # same string, so a duplicated claim can only be built as a dict whose two
+        # values name one slot.
+        _validate_slot_claims(
+            self.resizes.values(), self.layers.values(), STRUCTURE_FILE
+        )
+
+    def is_empty(self) -> bool:
+        return not self.resizes and not self.layers
+
+    def resize_for(self, map_index: int, layer_slot: int) -> LayerResize | None:
+        return self.resizes.get(LayerResize.key_for(map_index, layer_slot))
+
+    def layer_at(self, map_index: int, layer_slot: int) -> AuthoredLayer | None:
+        for layer in self.layers.values():
+            if layer.map_index == map_index and layer.layer_slot == layer_slot:
+                return layer
+        return None
+
+    def layer(self, identity: str) -> AuthoredLayer | None:
+        return self.layers.get(identity)
+
+    def structural_slots(self) -> frozenset[tuple[int, int]]:
+        """Every ``(map index, layer slot)`` whose content this document owns."""
+        return frozenset(
+            [(item.map_index, item.layer_slot) for item in self.resizes.values()]
+            + [(item.map_index, item.layer_slot) for item in self.layers.values()]
+        )
+
+    def to_document(self) -> dict[str, Any]:
+        document: dict[str, Any] = {}
+        if self.resizes:
+            document["resize"] = {
+                key: item.to_document() for key, item in sorted(self.resizes.items())
+            }
+        if self.layers:
+            document["layer"] = {
+                key: item.to_document() for key, item in sorted(self.layers.items())
+            }
+        return document
+
+    @classmethod
+    def from_document(cls, document: object, where: object) -> "MapStructure":
+        if not isinstance(document, dict):
+            raise ProjectLoadError(f"{where}: must be a table")
+        unknown = set(document) - {"resize", "layer"}
+        if unknown:
+            raise ProjectLoadError(
+                f"{where}: unknown top-level key(s) {sorted(unknown)}"
+            )
+        if not document:
+            raise ProjectLoadError(f"{where}: declares no structural edits")
+
+        resizes: dict[str, LayerResize] = {}
+        table = document.get("resize")
+        if table is not None:
+            if not isinstance(table, dict) or not table:
+                raise ProjectLoadError(f"{where}: [resize] declares no edits")
+            for key, value in table.items():
+                if key in resizes:
+                    raise ProjectLoadError(f"{where}: duplicate resize {key!r}")
+                resizes[key] = LayerResize.from_document(key, value, where)
+
+        layers: dict[str, AuthoredLayer] = {}
+        table = document.get("layer")
+        if table is not None:
+            if not isinstance(table, dict) or not table:
+                raise ProjectLoadError(f"{where}: [layer] declares no edits")
+            for identity, value in table.items():
+                if identity in layers:
+                    raise ProjectLoadError(f"{where}: duplicate layer {identity!r}")
+                layers[identity] = AuthoredLayer.from_document(identity, value, where)
+
+        # One slot, one owner - except a project-authored layer and the resize that
+        # grows it, which are one slot's worth of authored structure and not two
+        # claims to it. Checked here, before construction, so the refusal names the
+        # document the author has to fix.
+        _validate_slot_claims(resizes.values(), layers.values(), where)
+        return cls(
+            resizes=dict(sorted(resizes.items())),
+            layers=dict(sorted(layers.items())),
+        )
 
 
 @dataclass(frozen=True)
@@ -937,6 +1382,7 @@ def write_project(
     graphics_overrides: "GraphicsOverrides | None" = None,
     layout: "LayoutEdits | None" = None,
     chunks: "AuthoredChunks | None" = None,
+    structure: "MapStructure | None" = None,
 ) -> list[Path]:
     """Write the whole authored tree. Returns the files written, in order.
 
@@ -975,6 +1421,8 @@ def write_project(
         documents.append((LAYOUT_FILE, layout.to_document()))
     if chunks and not chunks.is_empty():
         documents.append((CHUNK_FILE, chunks.to_document()))
+    if structure and not structure.is_empty():
+        documents.append((STRUCTURE_FILE, structure.to_document()))
 
     for relative, document in documents:
         path = root / relative
@@ -1414,6 +1862,36 @@ def write_authored_chunks(directory: str | Path, chunks: "AuthoredChunks") -> Pa
     return path
 
 
+def write_map_structure(directory: str | Path, structure: "MapStructure") -> Path:
+    """Persist only the structural document for a loaded project.
+
+    MAP-RESIZE-AND-LAYERS-001. The mirror of `write_authored_chunks`: the
+    structural authoring API validates before calling it, and it is the ONE place
+    an authored resize or authored layer reaches disk. An empty document means the
+    project authors no structure, so the optional file is removed rather than
+    written as an invalid empty table (which `read_project` would then refuse).
+    """
+    path = Path(directory) / STRUCTURE_FILE
+    if structure is None or structure.is_empty():
+        path.unlink(missing_ok=True)
+        return path
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(dump_toml(structure.to_document()), encoding="utf-8", newline="\n")
+    return path
+
+
+def _read_structure(path: Path) -> "MapStructure":
+    """Load `maps/structure.toml`, or nothing at all if it is absent.
+
+    Absence is legal and means the project authors no structure. A file that
+    exists but is malformed is still an error; "missing" and "wrong" are different
+    answers, matching `_read_chunks` and `_read_layout`.
+    """
+    if not path.is_file():
+        return MapStructure()
+    return MapStructure.from_document(_read_document(path), path)
+
+
 def _read_chunks(path: Path) -> "AuthoredChunks":
     """Load `maps/chunks.toml`, or nothing at all if it is absent.
 
@@ -1494,6 +1972,7 @@ def read_project(directory: str | Path) -> StatProject:
 
     layout = _read_layout(root / LAYOUT_FILE)
     chunks = _read_chunks(root / CHUNK_FILE)
+    structure = _read_structure(root / STRUCTURE_FILE)
 
     # MAP-CHUNK-AUTHORING-001. A layout cell that names an authored chunk must
     # name one this project declares. Checked here because it is the one place
@@ -1506,11 +1985,36 @@ def read_project(directory: str | Path) -> StatProject:
         for value in layout.cells().values()
         if isinstance(value, str) and value not in chunks.chunks
     })
+    # MAP-RESIZE-AND-LAYERS-001. A structural edit's initialization chunk is the
+    # same authored value form, so it is resolved the same way and reported with
+    # the file the author has to fix.
+    missing += sorted({
+        item.fill
+        for item in list(structure.resizes.values()) + list(structure.layers.values())
+        if isinstance(item.fill, str) and item.fill not in chunks.chunks
+    })
     if missing:
         raise ProjectValidationError(
-            f"{root / LAYOUT_FILE}: names authored chunk(s) {missing}, which "
-            f"{CHUNK_FILE} does not declare"
+            f"{root / LAYOUT_FILE}: names authored chunk(s) {sorted(set(missing))}, "
+            f"which {CHUNK_FILE} does not declare"
         )
+
+    # MAP-RESIZE-AND-LAYERS-001. A layout cell on a structurally authored layer
+    # must fall inside the grid that structure declares. Checkable from the text
+    # alone, and the alternative is an edit the author made that the build would
+    # silently drop because the record's window has no such cell.
+    for (map_index, slot, cell), _value in sorted(layout.cells().items()):
+        structural = structure.resize_for(map_index, slot) or structure.layer_at(
+            map_index, slot
+        )
+        if structural is None:
+            continue
+        if not 0 <= cell < structural.columns * structural.rows:
+            raise ProjectValidationError(
+                f"{root / LAYOUT_FILE}: map:{map_index:04d}/BG{slot} cell {cell} is "
+                f"outside the {structural.columns}x{structural.rows} grid "
+                f"{STRUCTURE_FILE} declares for it"
+            )
 
     return StatProject(
         meta=meta,
@@ -1522,6 +2026,7 @@ def read_project(directory: str | Path) -> StatProject:
         graphics_overrides=_read_graphics_overrides(root / GRAPHICS_OVERRIDES_FILE),
         layout=layout,
         chunks=chunks,
+        structure=structure,
         placement_events=events,
         placement_types=(_read_document(root / PLACEMENT_TYPES_FILE)
                          if (root / PLACEMENT_TYPES_FILE).exists() else None),

@@ -47,6 +47,7 @@ from .write import ByteChange
 
 if TYPE_CHECKING:
     from .profile import RomProfile
+    from .project.model import MapStructure
 
 
 class MapPaintError(ValueError):
@@ -101,7 +102,9 @@ class PaintCell:
     #: The chunk pointer the canonical image stores here; 0 is the null pointer
     #: the engine's own occupancy test reads as unoccupied.
     pointer: int
-    #: File offset of the four-byte field a paint of this cell rewrites.
+    #: File offset of the four-byte field a paint of this cell rewrites, or -1 for
+    #: a cell that exists only in an authored grid: the record holding it is
+    #: materialized by the build, so there is no canonical field to rewrite.
     offset: int
 
 
@@ -120,10 +123,21 @@ class PaintLayer:
     #: Non-empty when the slot cannot be painted, and why. A read-only state,
     #: not an error.
     read_only_reason: str
+    #: MAP-RESIZE-AND-LAYERS-001. Set when this grid is the project's own - a
+    #: resized layer or an authored layer - rather than the canonical record's.
+    #: Its cells are still paintable and its vocabulary is still the accepted
+    #: brush set, but a paint of it is a **semantic** edit the build materializes,
+    #: not a four-byte in-place write, so no cell carries a canonical offset.
+    structural: bool = False
 
     @property
     def editable(self) -> bool:
         return not self.read_only_reason
+
+    @property
+    def paintable(self) -> bool:
+        """Whether a brush may be applied at all."""
+        return self.editable
 
     @property
     def cell_count(self) -> int:
@@ -269,6 +283,12 @@ class PaintEdit:
         return f"map:{self.map_index:04d} layer {self.layer_slot} cell {self.cell}"
 
     def to_change(self, image: bytes) -> ByteChange:
+        if self.offset < 0:
+            raise MapPaintError(
+                f"{self.owner} exists only in a grid the build materializes, so it "
+                "has no canonical four-byte field to rewrite; a structural paint is "
+                "persisted semantically and emitted by the structure domain"
+            )
         return ByteChange(
             offset=self.offset,
             old=image[self.offset : self.offset + 4],
@@ -308,7 +328,13 @@ class MapPainter:
     image against the profile, so nothing here re-implements the identity gate.
     """
 
-    def __init__(self, canonical_bytes: bytes, *, profile: "RomProfile | None" = None) -> None:
+    def __init__(
+        self,
+        canonical_bytes: bytes,
+        *,
+        profile: "RomProfile | None" = None,
+        structure: "MapStructure | None" = None,
+    ) -> None:
         self._base = bytes(canonical_bytes)
         resolved = profile if profile is not None else packaged_profile()
         try:
@@ -318,6 +344,15 @@ class MapPainter:
         except _READ_ERRORS as exc:
             raise MapPaintError(str(exc)) from exc
         self._targets: dict[int, PaintTarget] = {}
+        # MAP-RESIZE-AND-LAYERS-001. A project that authored a resize or an
+        # authored layer has a grid the canonical record does not state, so the
+        # paint surface must read it from the project and not from the ROM. The
+        # document is optional and a canonical session passes none, which leaves
+        # every existing behaviour byte-identical.
+        self._structure = structure
+        self._structural_slots = (
+            structure.structural_slots() if structure is not None else frozenset()
+        )
 
     @property
     def map_entry_count(self) -> int:
@@ -358,6 +393,8 @@ class MapPainter:
         return PaintTarget(map_index=map_index, name=name, slots=tuple(slots))
 
     def _build_layer(self, map_index: int, record: mg.LayerRecord) -> PaintLayer:
+        if (map_index, record.slot) in self._structural_slots:
+            return self._structural_layer(map_index, record)
         if record.classification != _EDITABLE_CLASSIFICATION:
             return PaintLayer(
                 slot=record.slot,
@@ -404,6 +441,77 @@ class MapPainter:
             read_only_reason=self._read_only_reason(
                 record.chunk_x, record.chunk_y, vocabulary
             ),
+        )
+
+    def _structural_layer(self, map_index: int, record: mg.LayerRecord) -> PaintLayer:
+        """A grid the project authored, read through the structural authority.
+
+        The geometry, the effective cell pointers and the vocabulary all come from
+        ``map_resize``, so a resize and a paint of it cannot disagree about how many
+        cells the layer has or which chunks it may be composed from. Only cells that
+        also exist in the canonical record carry an offset; the rest exist solely in
+        the record the build materializes, and a paint of them is persisted
+        semantically rather than written in place.
+        """
+        from .map_resize import MapStructureError, MapResizer
+
+        try:
+            resizer = MapResizer(
+                self._base, structure=self._structure, profile=self._writer.profile
+            )
+            layer = resizer.target(map_index).layer(record.slot)
+        except MapStructureError as exc:
+            raise MapPaintError(f"map:{map_index:04d} BG{record.slot}: {exc}") from exc
+        retail_cells = len(record.chunk_addresses)
+        cell_offsets: list[int] = []
+        for index in range(layer.cell_count):
+            column, row = index % layer.columns, index // layer.columns
+            # A new cell has a canonical four-byte field only when its own
+            # coordinate is inside the retail grid, and then it is the RETAIL
+            # cell's field: the transform is top-left anchored, so a new index
+            # does not address a canonical cell while the column count differs.
+            if (
+                retail_cells
+                and column < record.chunk_x
+                and row < record.chunk_y
+            ):
+                cell_offsets.append(
+                    self._writer.chunk_pointer_offset(
+                        map_index, record.slot, row * record.chunk_x + column
+                    )
+                )
+            else:
+                cell_offsets.append(-1)
+        cells = tuple(
+            PaintCell(
+                cell=index,
+                column=index % layer.columns,
+                row=index // layer.columns,
+                pointer=layer.cells[index],
+                offset=cell_offsets[index],
+            )
+            for index in range(layer.cell_count)
+        )
+        vocabulary = tuple(
+            PaintChunk(
+                ordinal=choice.ordinal,
+                pointer=choice.address,
+                cell_count=sum(1 for cell in cells if cell.pointer == choice.address),
+            )
+            for choice in layer.vocabulary
+        )
+        return PaintLayer(
+            slot=record.slot,
+            classification=_DOMINANT,
+            handler=record.handler,
+            columns=layer.columns,
+            rows=layer.rows,
+            cells=cells,
+            vocabulary=vocabulary,
+            read_only_reason=self._read_only_reason(
+                layer.columns, layer.rows, vocabulary
+            ),
+            structural=True,
         )
 
     @staticmethod
@@ -464,9 +572,18 @@ class MapPainter:
             )
         original = layer.cells[cell].pointer
         try:
-            validate_chunk_replacement(
-                tuple(cell.pointer for cell in layer.cells), entry.pointer
-            )
+            # The accepted replacement rule is "a chunk this same layer already
+            # uses", and for a canonical layer that is the set of pointers its own
+            # cells currently hold. A structural layer's cells are mostly one
+            # initialization value, so the layer does not yet *hold* the rest of
+            # its vocabulary - but the vocabulary is exactly the set of chunks the
+            # template layer draws, and `layer.chunk(ordinal)` has already refused
+            # anything outside it. Checking the vocabulary is therefore the same
+            # rule stated against the set that actually authorizes the brush.
+            if not layer.structural:
+                validate_chunk_replacement(
+                    tuple(cell.pointer for cell in layer.cells), entry.pointer
+                )
             mg.dominant_chunk_words(self._reader, entry.pointer)
         except _READ_ERRORS as exc:
             raise MapPaintError(str(exc)) from exc
@@ -641,7 +758,18 @@ def set_layout_cells(
     """
     from .project import LayoutEdits, write_layout_edits
 
-    painter = MapPainter(canonical_bytes, profile=profile)
+    # 2. Load once, so both the painter and the merge see the same committed
+    # state. MAP-RESIZE-AND-LAYERS-001: the painter is given the project's own
+    # structural document, so a cell of a resized layer - or of a project-authored
+    # layer - is validated against the grid the project declares rather than
+    # against the canonical record it replaced, and the paint surface and the
+    # build cannot disagree about how many cells the layer has.
+    from .project import read_project
+
+    project = read_project(project_dir)
+    painter = MapPainter(
+        canonical_bytes, profile=profile, structure=project.structure
+    )
 
     # 1. Validate the whole batch before touching the project.
     for key, ordinal in edits.items():
@@ -656,10 +784,8 @@ def set_layout_cells(
             continue
         painter.resolve(map_index, layer_slot, cell, ordinal)
 
-    # 2. Load once and apply on top of what is committed.
-    from .project import read_project
-
-    committed = read_project(project_dir).layout
+    # 2. Apply on top of what is committed.
+    committed = project.layout
     document: dict[str, dict[int, dict[int, int]]] = {
         key: {slot: dict(cells) for slot, cells in layers.items()}
         for key, layers in committed.maps.items()

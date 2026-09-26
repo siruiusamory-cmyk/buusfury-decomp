@@ -113,18 +113,31 @@ appears in `gui.py`'s executable code.
 | `tests/unit/test_warp_randomizer_gui.py` | `fast` | 50 passed |
 | `tests/integration/test_warp_randomizer_app_rom.py` | `rom` | 16 passed |
 
-Each row was measured per file with `pytest <file> -q`, no marker gate, no skips
-(the GUI row really runs the symlink case). This table has been wrong twice: an
-earlier revision said 39/43, and the revision after that said 48/51. Both were
-arithmetic guessed from a combined total instead of measured, and the independent
-reviewer caught both. It now carries the measured values, and the combined figure
-below is the sum of the three rows exactly (42 + 50 + 16 = 108 - the last
-correction round added the GUI test for the cleared-field case).
+Each row was measured per file with `pytest <file> -q`, no marker gate, no skips.
+This table has been wrong twice: an earlier revision said 39/43, and the revision
+after that said 48/51. Both were arithmetic guessed from a combined total instead
+of measured, and the independent reviewer caught both. It now carries measured
+values, and the five-file figure below is the measured sum, not a guess.
 
 The whole randomizer surface - the predecessor's two files included - was run on
-the frozen commit in one pass: **163 passed** across
-`tests/unit/test_warp_randomizer.py`, the two new `unit` files, and both
-`tests/integration` ROM files.
+the frozen commit, each file on its own:
+
+| File | Passed |
+| --- | --- |
+| `tests/unit/test_warp_randomizer.py` | 38 |
+| `tests/unit/test_warp_randomizer_app.py` | 42 |
+| `tests/unit/test_warp_randomizer_gui.py` | 50 |
+| `tests/integration/test_warp_randomizer_rom.py` | 19 |
+| `tests/integration/test_warp_randomizer_app_rom.py` | 16 |
+| **total** | **165** |
+
+(38 + 42 + 50 + 19 + 16 = 165. An earlier revision of this paragraph said 163;
+a third review round measured 165 and was right - the aggregate had not been
+re-measured when the per-file counts changed.)
+
+The symlink refusal case lives in `tests/unit/test_warp_randomizer_app.py`
+(`test_the_output_may_not_be_a_symlink_to_the_input`), not in the GUI file; both
+files nevertheless run with zero skips on this machine.
 
 The two new `unit` files use synthetic fixtures (a 4 KB image with a parseable
 GBA header and its own profile), so the portable gate proves the boundary's
@@ -225,7 +238,9 @@ Two earlier defects in this probe were found and fixed, both by measurement:
 * its second version claimed to sample "across the whole image" while actually
   covering the **first 197 KB** - 2.35% of the bytes, none of the graphics or
   text it was meant to catch. The independent reviewer measured that; the needle
-  selection now walks the whole image and prints its measured coverage.
+  selection now walks the whole image and takes 48 evenly spaced across it, and
+  the script prints the **spanned-offset** figure (96.5% of offsets) - not a
+  byte-coverage figure, which is 0.027%.
 
 **What the probe still does not catch** is recorded in the script's header rather
 than left implied, and a second review round measured the real numbers so the
@@ -352,6 +367,31 @@ worth having, and all seven were addressed:
 cannot be arranged honestly in a portable test and it is recorded in the known
 limits below.
 
+### Round 3 - narrow verification of the corrections, PASS
+
+Two of the round-2 fixes changed **production code** after a PASS, so a third,
+narrow round verified that correction diff. It re-measured every test file on its
+own, then verified the fixes **by measurement rather than by reading**:
+
+* it clicked the ROM field's real clear button on the real window and confirmed
+  no verdict and no enabled Randomize survive, then loaded the **pre-fix** `gui.py`
+  side by side and reproduced the defect on the same click - proving the fix is
+  operative and the new test genuinely fails on the old code (three of its five
+  assertions fail there);
+* it fuzzed **200 mutation sequences** over the ROM/output/seed controls against
+  the invariants "a cached OK verdict must belong to the current text" and "no
+  `None` verdict beside a Verified label", and found **zero** violations;
+* it reimplemented the release script's needle selection read-only and confirmed
+  both header numbers exactly, including that a 1 MB carve at offset 4,000,000 is
+  caught while a 48-byte carve at offset 1,000 is not.
+
+Its three findings were all documentation residuals of the same class round 2 had
+raised, surviving in sentences round 2's own fix had added - the five-file
+aggregate said 163 (measured **165**), the known-limits bullet still said the probe
+"spans all of it" with "four" blind spots, and the brief still counted commits.
+All three are fixed above. Full record:
+[`WARPRAND-APP-001-review.md`](WARPRAND-APP-001-review.md).
+
 **One gap the implementer found while the review ran and fixed in the same
 correction commit:** the release bundle ships Qt and CPython with no notices for
 them. A `THIRD-PARTY-NOTICES.txt` naming every bundled component and licence now
@@ -378,7 +418,14 @@ what it does catch is now stated exactly.
   the README repeats it.
 - **No ROM distribution, and no ROM committed.** No `.gba`, save, state or
   runtime capture is staged; `dist/` and `build/` stay ignored.
-- `public progress impact: NONE` - a side utility adds no published capability.
+
+### public progress impact: NONE
+
+A side utility that ships an offline artefact adds no DragonByte Z capability and
+moves no capability count, so the public capability story is unchanged:
+`src/data/capabilities.json`, `src/data/project.ts` and the published site are all
+untouched by this diff, warp/connection *editing* is not marked shipped, and no
+cosmetic site edit was made to say otherwise.
 
 ## Known limits, stated rather than implied
 
@@ -392,8 +439,10 @@ what it does catch is now stated exactly.
   unchanged.
 - Windows x64 only. Nothing was verified on another platform, and the release
   artifact is built by the repository's own `DragonByte Z.spec` conventions.
-- The ROM-content probe samples the image and now spans all of it, but it is a
-  strong check, not a proof of absence; its four known blind spots are listed in
+- The ROM-content probe samples the image and its needle offsets span 96.5% of it,
+  but it is a strong check, not a proof of absence: **48 needles of 48 bytes search
+  2,304 bytes of 8,388,608 (0.027%)**, so a carve is only caught if it contains one
+  of those 48 exact windows. Its five known blind spots are listed in
   `scripts/package-warprand.ps1`'s header.
 - **`SourceChangedError` is implemented but pinned by no test.** It fires only when
   the input image changes between the pre-run and post-run identification, which a

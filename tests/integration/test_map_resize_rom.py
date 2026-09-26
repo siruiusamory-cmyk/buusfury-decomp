@@ -293,10 +293,20 @@ def test_the_authored_layer_never_writes_over_its_template(image: bytes, resizer
                 and change.offset + len(change.old) > template_record - 0x08000000
             )
     assert image[template_record - 0x08000000:][:0x28] == template_bytes
-    # every canonical chunk body the template layer draws is untouched
+    # The authored record is a DIFFERENT record at a different address: the
+    # template is read and named, never rewritten. (An earlier version of this
+    # node compared the canonical image against itself in a loop, which asserted
+    # nothing - caught by the independent review and replaced with the two facts
+    # the copy-independence claim actually rests on.)
+    assert materialization.builds[0].record_address != template_record
+    assert materialization.builds[0].resolved.template_address == template_record
+    # and every chunk body the template layer draws is still readable, with the
+    # container header it had: the build did not scribble over the template's art.
     for choice in resizer.vocabulary(OVERLAY_MAP, 1):
-        offset = choice.address - 0x08000000
-        assert image[offset:offset + 8] == image[offset:offset + 8]
+        container = mg.MapGraphicsReader(image, packaged_profile()).container(
+            choice.address, expected=mg.CHUNK_DECODED_BYTES
+        )
+        assert len(container.data) == mg.CHUNK_DECODED_BYTES
 
 
 def _template_address(image: bytes) -> int:

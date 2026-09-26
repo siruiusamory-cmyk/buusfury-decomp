@@ -29,9 +29,15 @@ appear current:
 
 | Commits | Ticket |
 | --- | --- |
-| `13e9e11` | `MAP-GFX-DIAG-001`, diagnose the map graphics corruption |
-| `8506a4b`, `5c452ed`, `5d22982`, `4f8febe`, `a3681b0` | `WEBFOOT-LZ-LITERAL-BASE-001`, literal-base reset correction, merged and closed |
+| `13e9e11`, `8506a4b` | `MAP-GFX-DIAG-001`, diagnose the map graphics corruption, plus its documentation-note commit |
+| `5c452ed`, `5d22982`, `4f8febe`, `a3681b0` | `WEBFOOT-LZ-LITERAL-BASE-001`, literal-base reset correction, merged and closed |
 | `f5e8292`, `b63a289`, `6faccc3`, `c1bd86a`, `72341bb`, `f639b39`, `82835a0` | `TILESET-COMPOSITOR-001`, inferred authoring atlas, merged and closed |
+
+`8506a4b` is attributed to `MAP-GFX-DIAG-001` and not to
+`WEBFOOT-LZ-LITERAL-BASE-001`: it touches only
+`docs/research/BUU_MAP_GRAPHICS_DIAG.md`, and that ticket's own closure record
+names `13e9e11` plus its documentation-note commit `8506a4b` as its baseline. The
+two landed interleaved, which is why the commit order alone is misleading.
 
 ## Goal
 

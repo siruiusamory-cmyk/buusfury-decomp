@@ -60,6 +60,22 @@ SUPPORTED_CLASS_RAW = frozenset({TRANSITION_CLASS_A_RAW, TRANSITION_CLASS_B_RAW}
 BOUND_MINIMUM = 0x0000
 BOUND_MAXIMUM = 0xFFFF
 
+#: MAP-WARP-RUNTIME-EDIT-001. The record's arrival point, measured.
+#:
+#: ``x`` is the ``u16`` at ``+0x14``; ``y`` is the ``u16`` at ``+0x16`` (low byte)
+#: with ``+0x17`` (high byte). The reading is **INFERRED**, not confirmed: no
+#: instruction trace yet shows the pair being consumed as a coordinate. What
+#: establishes it is a corpus regularity measured over all 735 canonical records -
+#: the point lies at the destination map's *reciprocal door* (the record in the
+#: destination that leads back to the source) for **670 of 735**, within 16 pixels
+#: of that door's rectangle: 325 inside it and the rest just outside it, by a few
+#: pixels on exactly one axis, which is where a player stands after stepping
+#: through rather than on the trigger that would send them straight back.
+#: Supporting engine evidence: the record's ``+0x16``/``+0x17`` are read by the
+#: object builder at ``0x0800CEF4``, so those bytes are engine-read data and not
+#: padding.
+ARRIVAL_UNSET_MINIMUM = 0xFFF8
+
 
 class MapTransitionError(ValueError):
     """Base error for the selector-1-root connection record."""
@@ -320,3 +336,273 @@ class TransitionRecord:
             bound_c_raw=first_high,
             bound_d_raw=second_high,
         )
+
+    # --- the measured arrival point --------------------------------------
+
+    @property
+    def arrival(self) -> "TransitionArrival | None":
+        """Where the player is placed in the destination, or None when unset.
+
+        ``None`` is not "the origin": the corpus stores ``0xFFF8``..``0xFFFF`` in
+        these fields for the records whose arrival is not at the destination's
+        return door, so a sentinel and a real ``(0, 0)`` are different answers and
+        are reported differently.
+        """
+        x = self.word_0x14_raw
+        # y is the halfword at +0x16, so its high byte is +0x17; the sentinel
+        # test belongs on the COMPOSED value, not on either byte.
+        y = self.byte_0x16_raw | (self.byte_0x17_raw << 8)
+        if x >= ARRIVAL_UNSET_MINIMUM or y >= ARRIVAL_UNSET_MINIMUM:
+            return None
+        return TransitionArrival(x=x, y=y)
+
+    def with_arrival(self, arrival: "TransitionArrival | None") -> "TransitionRecord":
+        """Return this record placing the player at ``arrival``.
+
+        ``None`` writes the measured sentinel, which is how a record says "no
+        authored arrival" rather than "arrive at the map's origin".
+        """
+        if arrival is None:
+            return replace(
+                self,
+                word_0x14_raw=0xFFFF,
+                byte_0x16_raw=0xFF,
+                byte_0x17_raw=0xFF,
+            )
+        if not isinstance(arrival, TransitionArrival):
+            raise MapTransitionValueError(
+                f"an arrival must be a TransitionArrival or None, got {arrival!r}"
+            )
+        return replace(
+            self,
+            word_0x14_raw=arrival.x,
+            byte_0x16_raw=arrival.y & 0xFF,
+            byte_0x17_raw=(arrival.y >> 8) & 0xFF,
+        )
+
+    # --- the class split: only one family passes the pair raw ------------
+
+    @property
+    def has_raw_arrival_pair(self) -> bool:
+        """Whether ``+0x14``/``+0x16`` is the arrival **as stored**.
+
+        Measured at instruction level, and the two classes are NOT the same:
+
+        * the **566 class** (``0x08007675``) passes the pair itself -
+          ``08007600 adds r3,#0x14`` then ``0800760A bl 0x08008d44`` - so the
+          stored pair IS the coordinate handed to the warp routine, and
+          :attr:`arrival` is that value;
+        * the **169 class** (``0x080072CD``) does not. It reads both halves and
+          builds ``(scene_x + rec[+0x14] - rec[+0x08], scene_y + rec[+0x16] -
+          rec[+0x0A])`` before handing that over, so the stored pair is a
+          **scene-relative delta**, not an arrival. See
+          :meth:`arrival_relative`.
+
+        Anything that treats the pair as an arrival without asking this first is
+        wrong for 169 of the 735 canonical records.
+        """
+        return self.class_raw == TRANSITION_CLASS_A_RAW
+
+    def arrival_relative(self, scene_x: int, scene_y: int) -> "TransitionArrival":
+        """The 169 class's arrival, given the scene origin that produces it.
+
+        The transform is the one the engine performs, recorded here rather than
+        approximated: the stored pair is a delta from the region's low corner, and
+        the scene's own origin is added to it::
+
+            08007234 ldrsh r0,[r4,r3]   r3 = 0x14   ; delta x
+            08007238 ldrsh r1,[r4,r3]   r3 = 0x08   ; region low x
+            0800723C subs  r0, r0, r1
+            08007240 adds  r0, r0, r1   r1 = [scene+0x1A0] >> 8
+            ... the same for y against +0x16 and +0x0A with [scene+0x1A4] >> 8
+            08007256/08007258 strh     ; truncated to 16 bits, twice
+
+        Both halves are read as SIGNED halfwords and the results are written with
+        ``strh``, so this reproduces the truncation rather than widening it. It is
+        only valid for the 169 class; asking a 566-class record for it is refused,
+        because there the stored pair is already absolute.
+        """
+        if self.has_raw_arrival_pair:
+            raise MapTransitionValueError(
+                "a 566-class record's pair is already an absolute arrival; "
+                "arrival_relative applies only to the 169 class"
+            )
+        for value, name in ((scene_x, "scene_x"), (scene_y, "scene_y")):
+            if type(value) is not int:
+                raise MapTransitionValueError(f"{name} must be an integer, got {value!r}")
+
+        def signed16(value: int) -> int:
+            value &= 0xFFFF
+            return value - 0x10000 if value & 0x8000 else value
+
+        x = (scene_x + signed16(self.word_0x14_raw) - signed16(self.bound_a_raw)) & 0xFFFF
+        y = (scene_y + signed16(self.byte_0x16_raw | (self.byte_0x17_raw << 8))
+             - signed16(self.bound_b_raw)) & 0xFFFF
+        if x >= ARRIVAL_UNSET_MINIMUM or y >= ARRIVAL_UNSET_MINIMUM:
+            raise MapTransitionValueError(
+                f"the scene-relative arrival for this record is ({x}, {y}), which "
+                "lands in the measured sentinel range and is therefore not a point"
+            )
+        return TransitionArrival(x=x, y=y)
+
+    # --- the arrival facing ---------------------------------------------
+
+    @property
+    def facing(self) -> "TransitionFacing":
+        """The ``+0x10`` byte, split the way the engine splits it.
+
+        CONFIRMED at instruction level, and NOT the naive "direction plus unknown
+        flags" reading an earlier revision of this file carried:
+
+        * the **low two bits are the door gate**, not the arrival facing. The 566
+          constructor masks them - ``08007696 ldrb r0,[r5,#0x10]``,
+          ``08007698 lsls r0,r0,#0x1c``, ``0800769A lsrs r0,r0,#0x1c`` - and uses
+          them to index the four-byte table ``80 40 20 10`` at ``0x080707D8``,
+          storing ``1 << (7 - (v & 3))`` at object ``+0x11``. That bit is compared
+          against the door gate word at ``*(u16*)0x03003302``
+          (``080075C2``/``080075C6``/``080075C8``).
+        * the **high nibble is an arrival-facing override**:
+          ``08007638 ldrb r0,[r4,#0x10]``, ``0800763A``/``0800763C`` test
+          ``v & 0xF0``, and ``08007642 adds r0,#0xff`` computes ``(v >> 4) - 1``,
+          which ``08007644``/``08007648`` store into the player at ``+0x10``.
+        * the engine **never derives a direction from geometry**, so "face away
+          from the nearest edge" is an authoring convention and not engine law.
+        """
+        return TransitionFacing(raw=self.byte_0x10_raw)
+
+    def with_gate_direction(self, direction: int) -> "TransitionRecord":
+        """Return this record gating on ``direction``, preserving the override.
+
+        Only the low two bits are written. The high nibble is carried through
+        because it is the arrival-facing override, and clearing it would silently
+        turn an override off.
+        """
+        if type(direction) is not int or not 0 <= direction <= FACING_MASK:
+            raise MapTransitionValueError(
+                f"a gate direction is 0..{FACING_MASK}, got {direction!r}"
+            )
+        return replace(
+            self,
+            byte_0x10_raw=(self.byte_0x10_raw & ~FACING_MASK) | direction,
+        )
+
+    def with_arrival_facing(self, direction: "int | None") -> "TransitionRecord":
+        """Return this record arriving facing ``direction``, or None to not say.
+
+        ``None`` clears the override, which is the engine's own "leave the actor
+        facing the way it was walking" state - the behaviour a runtime observation
+        caught when a retarget left the sprite walking West out of a south door.
+        """
+        if direction is None:
+            return replace(self, byte_0x10_raw=self.byte_0x10_raw & FACING_MASK)
+        if type(direction) is not int or not 0 <= direction <= FACING_MASK:
+            raise MapTransitionValueError(
+                f"an arrival facing is 0..{FACING_MASK} or None, got {direction!r}"
+            )
+        return replace(
+            self,
+            byte_0x10_raw=((direction + 1) << 4) | (self.byte_0x10_raw & FACING_MASK),
+        )
+
+    def with_facing_raw(self, raw: int) -> "TransitionRecord":
+        """Return this record with the whole ``+0x10`` byte replaced verbatim."""
+        _require_uint(raw, 8, "facing byte")
+        return replace(self, byte_0x10_raw=raw)
+
+
+@dataclass(frozen=True, slots=True)
+class TransitionFacing:
+    """The ``+0x10`` byte: a door gate direction and an arrival-facing override.
+
+    ``raw`` is carried whole. Derived, without interpreting anything else:
+
+    * :attr:`gate_direction` - the low two bits, which select the gate bit the
+      door must have set. The engine masks these even in the class that does not
+      mask the override, so they are a genuine two-bit field.
+    * :attr:`override_raw` - the high nibble, exactly as stored.
+    * :attr:`arrival_direction` - ``override_raw - 1`` when the high nibble is
+      non-zero, and ``None`` when it is zero.
+
+    ``None`` is not "face South": a zero high nibble means the record does not
+    state an arrival facing at all, so the actor keeps the direction it was
+    already walking. Conflating that with a direction is what made an earlier
+    revision of this module wrong.
+
+    The direction order is ``0 = South, 1 = North, 2 = West, 3 = East``: the axis
+    split (``{0,1}`` vertical by the sign of ``dy`` at actor ``+0x1A4``, ``{2,3}``
+    horizontal by ``dx`` at ``+0x1A0``) is CONFIRMED at ``0x080159B0`` and
+    ``0x0800A890``; the South/North/West/East labelling is INFERRED, not
+    independently observed.
+    """
+
+    raw: int
+
+    def __post_init__(self) -> None:
+        _require_uint(self.raw, 8, "facing byte")
+
+    @property
+    def gate_direction(self) -> int:
+        return self.raw & FACING_MASK
+
+    @property
+    def override_raw(self) -> int:
+        return self.raw >> 4
+
+    @property
+    def arrival_direction(self) -> int | None:
+        """The direction the record forces on arrival, or None when it is silent."""
+        if self.override_raw == 0:
+            return None
+        return self.override_raw - 1
+
+    @property
+    def states_arrival_facing(self) -> bool:
+        return self.override_raw != 0
+
+    @property
+    def direction(self) -> int | None:
+        """Alias for :attr:`arrival_direction`; None means "not stated"."""
+        return self.arrival_direction
+
+
+#: ``+0x10``'s gate-direction bits. The direction order is the engine's axis
+#: split (CONFIRMED) with an INFERRED South/North/West/East labelling.
+FACING_MASK = 0x03
+FACING_SOUTH = 0
+FACING_NORTH = 1
+FACING_WEST = 2
+FACING_EAST = 3
+
+#: Human names for the direction order, for reports and error messages.
+FACING_NAMES = {
+    FACING_SOUTH: "South",
+    FACING_NORTH: "North",
+    FACING_WEST: "West",
+    FACING_EAST: "East",
+}
+
+
+@dataclass(frozen=True, slots=True)
+class TransitionArrival:
+    """The point a transition places the player at, in the destination's pixels.
+
+    Read from ``+0x14`` (x) and ``+0x16``/``+0x17`` (y). Both endpoints are
+    ``u16`` by their physical width, and neither is clamped against a map extent
+    here: whether a point is *on* a map is a question about that map, which the
+    authority answers, not a property of the record.
+
+    The reading is INFERRED; see :data:`ARRIVAL_UNSET_MINIMUM`.
+    """
+
+    x: int
+    y: int
+
+    def __post_init__(self) -> None:
+        _require_uint(self.x, 16, "arrival x")
+        _require_uint(self.y, 16, "arrival y")
+        if self.x >= ARRIVAL_UNSET_MINIMUM or self.y >= ARRIVAL_UNSET_MINIMUM:
+            raise MapTransitionValueError(
+                f"arrival ({self.x}, {self.y}) overlaps the measured sentinel "
+                f"range at or above {ARRIVAL_UNSET_MINIMUM:#06x}, which means "
+                "'no authored arrival'; use None for that"
+            )

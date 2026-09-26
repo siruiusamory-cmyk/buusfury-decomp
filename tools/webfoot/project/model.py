@@ -62,7 +62,11 @@ from typing import Any, Iterable, Mapping
 
 from ..formats import stat_tables as st
 from ..formats import text_tables as tt
-from ..formats.map_transitions import MapTransitionError, TransitionRegion
+from ..formats.map_transitions import (
+    ARRIVAL_UNSET_MINIMUM,
+    MapTransitionError,
+    TransitionRegion,
+)
 from .format import ProjectFormatError, dump_toml, load_toml
 
 #: TOOLKIT-007. Authored map field order, mirroring `_ENEMY_FIELD_ORDER`:
@@ -1242,6 +1246,20 @@ class AuthoredTransition:
     destination: str | None = None
     prior_region: TransitionRegion | None = None
     region: TransitionRegion | None = None
+    #: MAP-WARP-RUNTIME-EDIT-001. The measured arrival point, as ``[x, y]``.
+    #: ``arrival_authored`` separates "the project sets no arrival" from "the
+    #: author did not touch the arrival", because both values are None in the
+    #: first case and only that flag says so.
+    prior_arrival: tuple[int, int] | None = None
+    arrival: tuple[int, int] | None = None
+    arrival_authored: bool = False
+    #: MAP-WARP-ARRIVAL-SEMANTICS-001. The ``+0x10`` byte, stored WHOLE rather
+    #: than as a direction: its low two bits are the candidate facing decode and
+    #: its high bits are UNRESOLVED, so a record carrying them must round-trip
+    #: verbatim instead of losing them to a direction-only field.
+    prior_facing_raw: int | None = None
+    facing_raw: int | None = None
+    facing_authored: bool = False
 
     def __post_init__(self) -> None:
         for prior, authored, label in (
@@ -1254,6 +1272,47 @@ class AuthoredTransition:
                     f"and the {label} it authors together; got {prior!r} and {authored!r}"
                 )
         for value, label in (
+            (self.prior_arrival, "prior_arrival"),
+            (self.arrival, "arrival"),
+        ):
+            if value is None:
+                continue
+            if (
+                not isinstance(value, (list, tuple))
+                or len(value) != 2
+                or any(type(part) is not int or not 0 <= part < ARRIVAL_UNSET_MINIMUM
+                       for part in value)
+            ):
+                raise ProjectValidationError(
+                    f"an authored transition's {label} is {value!r}, which is not an "
+                    "[x, y] pair below the measured unset sentinel"
+                )
+        if not self.arrival_authored and (
+            self.prior_arrival is not None or self.arrival is not None
+        ):
+            raise ProjectValidationError(
+                "an authored transition states an arrival without marking the "
+                "arrival group as authored"
+            )
+        for value, label in (
+            (self.prior_facing_raw, "prior_facing_raw"),
+            (self.facing_raw, "facing_raw"),
+        ):
+            if value is None:
+                continue
+            if type(value) is not int or not 0 <= value <= 0xFF:
+                raise ProjectValidationError(
+                    f"an authored transition's {label} is {value!r}, which is not a "
+                    "single byte"
+                )
+        if not self.facing_authored and (
+            self.prior_facing_raw is not None or self.facing_raw is not None
+        ):
+            raise ProjectValidationError(
+                "an authored transition states a facing without marking the facing "
+                "group as authored"
+            )
+        for value, label in (
             (self.prior_destination, "prior_destination"),
             (self.destination, "destination"),
         ):
@@ -1262,9 +1321,15 @@ class AuthoredTransition:
                     f"an authored transition's {label} is {value!r}, which is not a "
                     "'map:NNNN' map identity"
                 )
-        if self.destination is None and self.region is None:
+        if (
+            self.destination is None
+            and self.region is None
+            and not self.arrival_authored
+            and not self.facing_authored
+        ):
             raise ProjectValidationError(
-                "an authored transition must author a destination, a region, or both"
+                "an authored transition must author a destination, a region, an "
+                "arrival, a facing, or a combination"
             )
 
     def is_noop(self) -> bool:
@@ -1275,8 +1340,14 @@ class AuthoredTransition:
         not an edit, and the build emits nothing for it.
         """
         return (
-            self.destination is None or self.destination == self.prior_destination
-        ) and (self.region is None or self.region == self.prior_region)
+            (self.destination is None or self.destination == self.prior_destination)
+            and (self.region is None or self.region == self.prior_region)
+            and (
+                not self.arrival_authored
+                or tuple(self.arrival or ()) == tuple(self.prior_arrival or ())
+            )
+            and (not self.facing_authored or self.facing_raw == self.prior_facing_raw)
+        )
 
     def to_document(self) -> dict[str, Any]:
         document: dict[str, Any] = {}
@@ -1286,6 +1357,18 @@ class AuthoredTransition:
         if self.region is not None:
             document["prior_region"] = _region_document(self.prior_region)
             document["region"] = _region_document(self.region)
+        if self.arrival_authored:
+            document["arrival_authored"] = True
+            document["prior_arrival"] = (
+                list(self.prior_arrival) if self.prior_arrival is not None else None
+            )
+            document["arrival"] = (
+                list(self.arrival) if self.arrival is not None else None
+            )
+        if self.facing_authored:
+            document["facing_authored"] = True
+            document["prior_facing_raw"] = self.prior_facing_raw
+            document["facing_raw"] = self.facing_raw
         return document
 
     @classmethod
@@ -1297,11 +1380,18 @@ class AuthoredTransition:
             "destination",
             "prior_region",
             "region",
+            "prior_arrival",
+            "arrival",
+            "arrival_authored",
+            "prior_facing_raw",
+            "facing_raw",
+            "facing_authored",
         }
         if unknown:
             raise ProjectLoadError(
                 f"{where}: unknown key(s) {sorted(unknown)}; an authored transition "
-                "authors a destination, a region, or both, each as a prior/authored pair"
+                "authors a destination, a region, an arrival and/or a facing, each "
+                "as a prior/authored pair"
             )
         try:
             return cls(
@@ -1309,9 +1399,44 @@ class AuthoredTransition:
                 destination=_optional_map_key(document, "destination", where),
                 prior_region=_optional_region(document, "prior_region", where),
                 region=_optional_region(document, "region", where),
+                prior_arrival=_optional_point(document.get("prior_arrival"), where, "prior_arrival"),
+                arrival=_optional_point(document.get("arrival"), where, "arrival"),
+                arrival_authored=bool(document.get("arrival_authored", False)),
+                prior_facing_raw=_optional_byte(
+                    document.get("prior_facing_raw"), where, "prior_facing_raw"
+                ),
+                facing_raw=_optional_byte(document.get("facing_raw"), where, "facing_raw"),
+                facing_authored=bool(document.get("facing_authored", False)),
             )
         except ProjectValidationError as exc:
             raise ProjectValidationError(f"{where}: {exc}") from exc
+
+
+def _optional_byte(value: object, where: object, name: str) -> int | None:
+    """One stored byte, or None when the key is absent or null."""
+    if value is None:
+        return None
+    if type(value) is not int or not 0 <= value <= 0xFF:
+        raise ProjectValidationError(
+            f"{where}: {name} must be a byte or absent, got {value!r}"
+        )
+    return value
+
+
+def _optional_point(value: object, where: object, name: str) -> tuple[int, int] | None:
+    """One stored ``[x, y]`` arrival, or None when the key is absent/None."""
+    if value is None:
+        return None
+    if not isinstance(value, (list, tuple)) or len(value) != 2:
+        raise ProjectLoadError(
+            f"{where}: {name} must be an [x, y] pair or absent, got {value!r}"
+        )
+    x, y = value
+    if type(x) is not int or type(y) is not int:
+        raise ProjectValidationError(
+            f"{where}: {name} endpoints must be integers, got {x!r} and {y!r}"
+        )
+    return (x, y)
 
 
 @dataclass(frozen=True)

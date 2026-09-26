@@ -63,7 +63,7 @@ from .maps import (
 from .formats.map_entry import MapEntryProfileError
 from .map_paint import MapPaintError, plan_layout_cells
 from .map_chunk import ChunkAuthoringError, materialize_authored_chunks
-from .formats.map_transitions import MapTransitionError
+from .formats.map_transitions import MapTransitionError, TransitionArrival
 from .map_transitions import (
     AuthoredTransitionEdit,
     MapTransitionsError,
@@ -728,6 +728,20 @@ def _transition_requests(project: StatProject) -> dict[TransitionIdentity, Autho
                 ),
                 prior_region=entry.prior_region,
                 region=entry.region,
+                prior_arrival=(
+                    TransitionArrival(*entry.prior_arrival)
+                    if entry.prior_arrival is not None
+                    else None
+                ),
+                arrival=(
+                    TransitionArrival(*entry.arrival)
+                    if entry.arrival is not None
+                    else None
+                ),
+                arrival_authored=entry.arrival_authored,
+                prior_facing_raw=entry.prior_facing_raw,
+                facing_raw=entry.facing_raw,
+                facing_authored=entry.facing_authored,
             )
         )
     return requests

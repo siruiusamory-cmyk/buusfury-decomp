@@ -736,6 +736,20 @@ class TransitionEditProvenance:
     #: The positional region before and after, or None when it was not edited.
     prior_region: tuple[tuple[int, int], tuple[int, int]] | None = None
     region: tuple[tuple[int, int], tuple[int, int]] | None = None
+    #: MAP-WARP-RUNTIME-EDIT-001. The measured arrival point before and after, as
+    #: ``(x, y)``, or None when that side has no authored arrival. Whether the
+    #: group was touched at all is ``arrival_changed``, because "no authored
+    #: arrival" is itself a value a project can set.
+    prior_arrival: tuple[int, int] | None = None
+    arrival: tuple[int, int] | None = None
+    arrival_changed: bool = False
+    #: MAP-WARP-ARRIVAL-SEMANTICS-001. The ``+0x10`` byte before and after, whole.
+    #: The low two bits are the candidate facing decode; the high bits are
+    #: UNRESOLVED and are carried verbatim, which is why this is the byte and not
+    #: a direction.
+    prior_facing_raw: int | None = None
+    facing_raw: int | None = None
+    facing_changed: bool = False
 
     @property
     def destination_changed(self) -> bool:
@@ -764,6 +778,25 @@ class TransitionEditProvenance:
             "region": (
                 [list(pair) for pair in self.region]
                 if self.region is not None
+                else None
+            ),
+            "arrival_changed": self.arrival_changed,
+            "prior_arrival": (
+                list(self.prior_arrival) if self.prior_arrival is not None else None
+            ),
+            "arrival": list(self.arrival) if self.arrival is not None else None,
+            "facing_changed": self.facing_changed,
+            "prior_facing_raw": self.prior_facing_raw,
+            "facing_raw": self.facing_raw,
+            # The low two bits gate the door; the high nibble overrides the
+            # arrival facing. None means "the record does not state one", which
+            # leaves the actor walking the way it already was.
+            "facing_gate_direction": (
+                self.facing_raw & 0x03 if self.facing_raw is not None else None
+            ),
+            "facing_arrival_direction": (
+                ((self.facing_raw >> 4) - 1)
+                if self.facing_raw is not None and (self.facing_raw >> 4)
                 else None
             ),
         }

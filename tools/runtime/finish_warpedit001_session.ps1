@@ -96,13 +96,19 @@ if ($target.Count -eq 0) {
 Say ''
 Say 'MAP TIMELINE:'
 $departures = New-Object System.Collections.Generic.List[object]
+# The rebuild marker lands on the ARRIVAL row (entering the target map after
+# having been elsewhere); a departure from the target map is labelled `from=N`.
+# So the flag has to be carried FORWARD from the arrival to the departures that
+# follow it - reading it off the departure row itself finds nothing, which is
+# what an earlier revision of this script got wrong.
+$sawRebuild = $false
 foreach ($row in $maps) {
-    Say ("  frame {0,8}  map {1}{2}" -f $row.frame, $row.map_index, $(if ($row.note) { "  ($($row.note))" } else { '' }))
-    if ($row.note -match '^from=(\d+)$' -and [int]$Matches[1] -eq $ExpectTargetMap) {
-        $departures.Add([pscustomobject]@{ frame = [int]$row.frame; to = [int]$row.map_index; rebuilt = $false })
-    }
-    if ($row.note -match '^from=(\d+);rebuilt-after-leaving$' -and [int]$Matches[1] -eq $ExpectTargetMap) {
-        $departures.Add([pscustomobject]@{ frame = [int]$row.frame; to = [int]$row.map_index; rebuilt = $true })
+    if ($row.note -like '*rebuilt-after-leaving*') { $sawRebuild = $true }
+    $isDeparture = ($row.note -match '^from=(\d+)$' -and [int]$Matches[1] -eq $ExpectTargetMap)
+    $marker = if ($isDeparture -and $sawRebuild) { '   <== after rebuild' } else { '' }
+    Say ("  frame {0,8}  map {1}{2}{3}" -f $row.frame, $row.map_index, $(if ($row.note) { "  ($($row.note))" } else { '' }), $marker)
+    if ($isDeparture) {
+        $departures.Add([pscustomobject]@{ frame = [int]$row.frame; to = [int]$row.map_index; rebuilt = $sawRebuild })
     }
 }
 

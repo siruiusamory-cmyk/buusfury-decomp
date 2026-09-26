@@ -79,6 +79,7 @@ from .formats.map_transitions import (
     FACING_MASK,
     FACING_NAMES,
     FACING_NORTH,
+    FACING_PRESERVED_MASK,
     FACING_SOUTH,
     FACING_WEST,
     SUPPORTED_CLASS_RAW,
@@ -300,12 +301,19 @@ def _read_corpus(
     table_count: int,
     profile_id: str,
     base_sha256: str,
+    profile: "RomProfile | None" = None,
 ) -> "MapTransitions":
     """Resolve every transition in ``image``, failing closed on an unknown form.
 
     Private by design: it takes the map table's physical location, which is the
     profile's business and not a caller's. `load_map_transitions` is the public
     way in; this is the seam a synthetic image is tested through.
+
+    ``profile`` is carried on the corpus because two of its own answers - the
+    destination's walkable extent and the arrival bounds check - read the *map
+    table* again, and they must read the table of the profile this corpus was
+    resolved for. Left out (a synthetic image read directly through this seam) the
+    packaged profile is used, which is the canonical case.
     """
     entries_by_map: list[MapEntry] = []
     keys: list[bytes] = []
@@ -401,6 +409,7 @@ def _read_corpus(
         keys=tuple(keys),
         key_owner=key_owner,
         entries=tuple(entries),
+        profile=profile,
     )
 
 
@@ -421,6 +430,7 @@ class MapTransitions:
         keys: tuple[bytes, ...],
         key_owner: dict[bytes, int],
         entries: tuple[TransitionEntry, ...],
+        profile: "RomProfile | None" = None,
     ) -> None:
         self.profile_id = profile_id
         self.base_sha256 = base_sha256
@@ -429,6 +439,10 @@ class MapTransitions:
         self._key_owner = dict(key_owner)
         self._entries = {entry.identity: entry for entry in entries}
         self._order = tuple(entry.identity for entry in entries)
+        #: The profile whose map table this corpus was resolved against, so the
+        #: answers that read that table again (`destination_bounds`) cannot fall
+        #: back to a different one. None means the packaged canonical profile.
+        self._profile = profile
         self._edits: dict[TransitionIdentity, TransitionRecord] = {}
 
     # --- reading -------------------------------------------------------
@@ -551,6 +565,41 @@ class MapTransitions:
         record = self.entry(identity).record.with_region(region)
         record.validate()
         self._edits[identity] = record
+
+    def check_edit(
+        self, identity: TransitionIdentity, request: "TransitionEdit"
+    ) -> None:
+        """Validate one request against this corpus, recording nothing.
+
+        MAP-WARP-WORKBENCH-001. A surface that lets a human stage an edit needs to
+        answer "would the authority accept this?" *before* the edit is staged, and
+        the answer has to come from the same code that would apply it - otherwise
+        the GUI and the build can disagree about what is authorable. This stages the
+        request through the ordinary :meth:`set_destination`, :meth:`set_arrival`
+        and :meth:`set_facing` path, in the order the build uses (destination first,
+        so the arrival's bounds answer for the map the player will actually arrive
+        in), and then restores the pending set exactly as it was.
+
+        Nothing is serialized here and no second rule is stated: every refusal is
+        the one the corresponding `set_*` raises, with its own message.
+        """
+        if not isinstance(request, TransitionEdit):
+            raise TransitionFieldError(
+                f"a checked edit must be a TransitionEdit, got {request!r}"
+            )
+        self.entry(identity)
+        recorded = dict(self._edits)
+        try:
+            if request.destination is not None:
+                self.set_destination(identity, request.destination)
+            if request.region is not None:
+                self.set_region(identity, request.region)
+            if request.arrival is not None:
+                self.set_arrival(identity, request.arrival)
+            if request.facing is not None:
+                self.set_facing(identity, request.facing)
+        finally:
+            self._edits = recorded
 
     # --- the arrival point: safe exit, relative to the direction of travel ---
     #
@@ -780,10 +829,17 @@ class MapTransitions:
         return min(distances, key=lambda direction: distances[direction])
 
     def _map_entries(self):
-        """The profile's MapEntry table, resolved once per corpus."""
+        """The profile's MapEntry table, resolved once per corpus.
+
+        The profile this corpus was resolved for, not the packaged one: a corpus
+        read for another profile that fell back to the canonical table would
+        answer `destination_bounds` from a table describing different maps.
+        """
         cached = getattr(self, "_map_entry_table", None)
         if cached is None:
-            reader = mg.MapGraphicsReader(self._base_bytes, packaged_profile())
+            reader = mg.MapGraphicsReader(
+                self._base_bytes, self._profile or packaged_profile()
+            )
             cached = mg.read_map_entries(reader)
             self._map_entry_table = cached
         return cached
@@ -1118,12 +1174,13 @@ def plan_transition_edits(
             # The whole byte is restored, high bits included, so an unresolved
             # flag cannot be lost by an edit that only meant to turn the player.
             # A null authored value means "state no override" - which must KEEP
-            # the canonical gate bits rather than zero the whole byte, because
-            # the gate is the other half of this field.
+            # the canonical low nibble rather than zero the whole byte, because
+            # the gate is the other half of this field and bits 2-3 are unread
+            # (FACING_PRESERVED_MASK).
             corpus._edits[identity] = corpus.entry(identity).record.with_facing_raw(
                 edit.facing_raw
                 if edit.facing_raw is not None
-                else (before_facing_raw & FACING_MASK)
+                else (before_facing_raw & FACING_PRESERVED_MASK)
             )
 
         after_destination = corpus.destination(identity)
@@ -1204,6 +1261,78 @@ def read_transition_edits(project_dir) -> "TransitionEdits":
     from .project import read_project
 
     return read_project(project_dir).transitions
+
+
+def _map_identity(key: "str | None") -> "MapIdentity | None":
+    """A project's durable ``map:NNNN`` key as the SDK's own identity.
+
+    The authored layer already refuses any other shape at load (`_MAP_KEY`), so
+    this only has to be the one place the two representations meet - and it says so
+    loudly rather than indexing a string that was never checked.
+    """
+    if key is None:
+        return None
+    if not isinstance(key, str) or not key.startswith("map:"):
+        raise TransitionFieldError(
+            f"{key!r} is not a 'map:NNNN' map identity"
+        )
+    try:
+        return MapIdentity(int(key[4:], 10))
+    except ValueError:
+        raise TransitionFieldError(
+            f"{key!r} is not a 'map:NNNN' map identity"
+        ) from None
+
+
+def transition_edits_to_requests(edits) -> dict[TransitionIdentity, AuthoredTransitionEdit]:
+    """A project's stored edits as the authority's own request type.
+
+    MAP-WARP-WORKBENCH-001. `AuthoredTransitionEdit` is what
+    :func:`plan_transition_edits` applies and what the build passes it, so this is
+    the single conversion from the project document's durable keys, point pairs and
+    facing bytes into the SDK's identities and values. A surface that shows an
+    author what the project currently authors therefore reads the same values the
+    build will write, rather than parsing the document a second way.
+
+    It is deliberately mechanical: nothing is inferred, and a value the authored
+    layer already refused cannot reach here.
+    """
+    requests: dict[TransitionIdentity, AuthoredTransitionEdit] = {}
+    for (map_index, position), entry in sorted(edits.edits().items()):
+        requests[TransitionIdentity(MapIdentity(map_index), position)] = (
+            AuthoredTransitionEdit(
+                prior_destination=_map_identity(entry.prior_destination),
+                destination=_map_identity(entry.destination),
+                prior_region=entry.prior_region,
+                region=entry.region,
+                prior_arrival=(
+                    TransitionArrival(*entry.prior_arrival)
+                    if entry.prior_arrival is not None
+                    else None
+                ),
+                arrival=(
+                    TransitionArrival(*entry.arrival)
+                    if entry.arrival is not None
+                    else None
+                ),
+                arrival_authored=entry.arrival_authored,
+                prior_facing_raw=entry.prior_facing_raw,
+                facing_raw=entry.facing_raw,
+                facing_authored=entry.facing_authored,
+            )
+        )
+    return requests
+
+
+def read_project_transition_requests(
+    project_dir,
+) -> dict[TransitionIdentity, AuthoredTransitionEdit]:
+    """A project's authored transition edits, in one read, as build requests.
+
+    The read a surface that displays the project's current connections uses: one
+    project load, no image, no offset and no document parsing of its own.
+    """
+    return transition_edits_to_requests(read_transition_edits(project_dir))
 
 
 def set_transition_edits(
@@ -1330,7 +1459,9 @@ def set_transition_edits(
             # override the 566 update path turns into (v >> 4) - 1 - because that
             # is the half that forces the sprite. The low two bits are the door
             # gate and are carried through untouched.
-            authored_raw = ((request.facing + 1) << 4) | (before_facing_raw & FACING_MASK)
+            authored_raw = ((request.facing + 1) << 4) | (
+                before_facing_raw & FACING_PRESERVED_MASK
+            )
             if authored_raw == before_facing_raw:
                 prior_facing_raw = facing_raw = None
                 facing_authored = False
@@ -1410,6 +1541,7 @@ def read_map_transitions(image: bytes, profile: RomProfile) -> MapTransitions:
         table_count=table_profile.count,
         profile_id=profile.id,
         base_sha256=profile.identity.sha256,
+        profile=profile,
     )
 
 
@@ -1473,7 +1605,9 @@ __all__ = [
     "load_map_transitions",
     "plan_transition_edits",
     "read_map_transitions",
+    "read_project_transition_requests",
     "read_transition_edits",
     "remove_transition_edit",
     "set_transition_edits",
+    "transition_edits_to_requests",
 ]

@@ -530,16 +530,26 @@ class TransitionRecord:
         ``None`` clears the override, which is the engine's own "leave the actor
         facing the way it was walking" state - the behaviour a runtime observation
         caught when a retarget left the sprite walking West out of a south door.
+
+        Only the high nibble is written. The whole LOW nibble is carried through -
+        not merely the two gate bits - so a write that only means to turn the player
+        cannot clear one of the bits at 2-3 that the engine is not shown to read.
+        ``.2`` is the asymmetry this rule exists for: a record stored as ``0x02``
+        states NO facing, and a naive "preserve the gate" edit would keep the low
+        bits while a naive direction-plus-flags edit would report West.
         """
         if direction is None:
-            return replace(self, byte_0x10_raw=self.byte_0x10_raw & FACING_MASK)
+            return replace(
+                self, byte_0x10_raw=self.byte_0x10_raw & FACING_PRESERVED_MASK
+            )
         if type(direction) is not int or not 0 <= direction <= FACING_MASK:
             raise MapTransitionValueError(
                 f"an arrival facing is 0..{FACING_MASK} or None, got {direction!r}"
             )
         return replace(
             self,
-            byte_0x10_raw=((direction + 1) << 4) | (self.byte_0x10_raw & FACING_MASK),
+            byte_0x10_raw=((direction + 1) << 4)
+            | (self.byte_0x10_raw & FACING_PRESERVED_MASK),
         )
 
     def with_facing_raw(self, raw: int) -> "TransitionRecord":
@@ -612,6 +622,16 @@ class TransitionFacing:
 #: ``+0x10``'s gate-direction bits. The direction order is the engine's axis
 #: split (CONFIRMED) with an INFERRED South/North/West/East labelling.
 FACING_MASK = 0x03
+
+#: The low nibble of ``+0x10``, which an arrival-facing write must carry through
+#: untouched. Bits 0-1 are the door gate and bits 2-3 are read by nothing this
+#: project has traced, so the whole nibble is preserved rather than the gate alone:
+#: an edit that only means to turn the player must not clear a bit whose meaning is
+#: UNRESOLVED. Every low nibble in the canonical corpus is ``0..3`` (the ``+0x10``
+#: census is 0, 1, 2, 3 plus ten outliers above 3), so this is byte-identical to
+#: masking the gate for all 735 measured records and strictly more conservative
+#: for any other image.
+FACING_PRESERVED_MASK = 0x0F
 FACING_SOUTH = 0
 FACING_NORTH = 1
 FACING_WEST = 2

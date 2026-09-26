@@ -11,7 +11,7 @@ import time
 import pytest
 
 from tools.webfoot import map_render as mr
-from tools.webfoot.formats import bg_tilemap, webfoot_lz
+from tools.webfoot.formats import bg_tilemap, map_graphics as mg, webfoot_lz
 
 
 ROM = Path(os.environ.get(
@@ -49,6 +49,48 @@ def canonical_rom() -> bytes:
     data = ROM.read_bytes()
     assert hashlib.sha256(data).hexdigest() == SUPPORTED_ROM_SHA256
     return data
+
+
+def test_the_atlas_and_chunk_containers_decode_to_their_declared_size(
+    canonical_rom: bytes,
+) -> None:
+    """The decode stack's bounds, pinned before MAP-GFX-DIAG-001's correction.
+
+    A decompression change reaches every consumer, so the shape of the corpus is
+    part of the evidence: every map resolves one shared bank table, every bank
+    decodes to exactly the size its own header declares, and every distinct
+    dominant chunk decodes to one 32x32-entry plane. The one bank that is not
+    ``0x4000`` is bank 186 (``0x3C40``, 241 tiles), whose packed data ends where
+    the bank table begins - so it is a short bank and not a truncated read.
+    """
+    reader = mg.MapGraphicsReader(canonical_rom, mr.canonical_profile())
+    table = reader.u32(
+        reader.map_entry(0).root_address + mg.ROOT_BANK_TABLE_OFFSET
+    )
+    for index in range(reader.map_entry_count()):
+        entry = reader.map_entry(index)
+        assert reader.u32(entry.root_address + mg.ROOT_BANK_TABLE_OFFSET) == table
+
+    sizes = {}
+    for bank in range(mg.BANK_COUNT):
+        container = reader.container(reader.u32(table + bank * 4))
+        assert len(container.data) == container.declared_size
+        sizes[bank] = container.declared_size
+    assert sizes[186] == 0x3C40
+    assert sorted(set(sizes.values())) == [0x3C40, 0x4000]
+
+    chunks: dict[int, int] = {}
+    for index in range(reader.map_entry_count()):
+        entry = reader.map_entry(index)
+        for layer in mg.read_layers(reader, entry.root_address):
+            if layer.classification != "dominant":
+                continue
+            for address in layer.chunk_addresses:
+                if address and address not in chunks:
+                    container = reader.container(address)
+                    chunks[address] = len(container.data)
+    assert len(chunks) > 3000
+    assert set(chunks.values()) == {mg.CHUNK_DECODED_BYTES}
 
 
 @pytest.mark.parametrize("map_id", tuple(EXPECTED))
@@ -110,7 +152,17 @@ ORACLES = {
 }
 
 
-def _word(entry: bg_tilemap.ScreenEntry) -> int:
+def _word(entry) -> int:
+    """The 16-bit entry word, from whatever the shared reader hands back.
+
+    ``formats.map_graphics`` owns the entry decoder (CQA-04), and
+    ``stitch_dominant_entries`` returns the raw words; this helper accepted only
+    decoded ``ScreenEntry`` objects, which made this env-gated oracle fail with an
+    ``AttributeError`` on the machine where the dumps are configured. Accept both,
+    so the oracle can run rather than only skip.
+    """
+    if isinstance(entry, int):
+        return entry
     return (entry.tile_index | (entry.h_flip << 10) | (entry.v_flip << 11)
             | (entry.palette_bank << 12))
 

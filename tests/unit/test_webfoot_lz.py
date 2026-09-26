@@ -744,3 +744,53 @@ def test_the_marker_costs_nothing_or_one_packed_word_and_never_more(monkeypatch)
         assert with_marker[: len(without_marker)] == without_marker, f"tokens: {name}"
         deltas.add(len(with_marker) - len(without_marker))
     assert deltas == {0, 4}, f"unexpected marker cost: {sorted(deltas)}"
+
+
+def _narrow_to_seven_bit_literals(writer: "wl._WordBitWriter", base: int) -> None:
+    """The other half of the literal-width control escape: 7 bits plus a base.
+
+    Prefix ``0 0 1`` reaches the four-bit code, a zero field makes it -1, the next
+    bit is clear (not a raw run), and the final ``0`` selects ``literal_bits = 7``,
+    which the format then follows with an 8-bit base.
+    """
+    writer.bit(0)
+    writer.bit(0)
+    writer.bit(1)
+    writer.put(0, 4)
+    writer.bit(0)
+    writer.bit(0)
+    writer.put(base, 8)
+
+
+@pytest.mark.xfail(
+    strict=True,
+    reason=(
+        "KNOWN DEFECT, MAP-GFX-DIAG-001: the decoder keeps the 7-bit run's "
+        "literal base after the stream widens back to 8-bit literals, so the "
+        "third byte decodes as 0x51 rather than the engine's 0x11. This test "
+        "states the engine's rule; the correction ticket makes it pass and then "
+        "deletes this marker."
+    ),
+)
+def test_widening_back_to_eight_bit_literals_clears_the_literal_base() -> None:
+    """The engine's rule for the literal-base control, on a synthetic stream.
+
+    A corpus cannot settle this one: a base only survives if a 7-bit run is
+    followed by a return to 8-bit literals *inside one container*, and the byte
+    that exposes it must be a literal rather than a match. It was found instead by
+    comparing the SDK's decode against the retail engine's own character memory,
+    where bank 141 differs at 1,762 of its bytes, every one by exactly the
+    retained base.
+    """
+    def build(writer: "wl._WordBitWriter") -> None:
+        writer.bit(1)          # a literal at the initial width: kind 1 -> 1 bit
+        writer.put(0, 1)
+        _narrow_to_seven_bit_literals(writer, 0x40)
+        writer.bit(1)          # 7-bit literal: 0x40 + 3
+        writer.put(3, 7)
+        _widen_to_eight_bit_literals(writer)
+        writer.bit(1)          # 8-bit literal: the engine emits 0x11 itself
+        writer.put(0x11, 8)
+        _end_marker(writer)
+
+    assert wl.unpack(_container(1, 3, build), 0).data == bytes([0x00, 0x43, 0x11])

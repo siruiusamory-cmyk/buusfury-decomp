@@ -648,6 +648,54 @@ def test_p010_death_timeline_observer_is_read_only_and_discovers_targets():
     assert "p010_death_timeline.lua" in injector
 
 
+def test_mapgfxdiag001_observer_is_read_only_and_requires_a_real_area_entry():
+    """MAP-GFX-DIAG-001 compares the SDK's ROM render with the engine's own.
+
+    Two properties make that comparison evidence rather than assertion. The
+    observer must only read emulated state - a script that could also write
+    memory or drive input would make "the engine drew this" unfalsifiable - and
+    it must refuse to dump a background that a savestate merely restored, which
+    is why it waits for an observed departure from the target map before it
+    latches anything.
+    """
+    root = Path(__file__).resolve().parents[2]
+    observer = (root / "tools/runtime/mapgfxdiag001_map_layer_dump.lua").read_text(
+        encoding="utf-8"
+    )
+    injector = (root / "tools/runtime/inject_mgba_lua.ps1").read_text(
+        encoding="utf-8"
+    )
+
+    assert "setKeys" not in observer
+    assert "addKeys" not in observer
+    assert "clearKeys" not in observer
+    assert "emu:write" not in observer
+
+    # The runtime-proven live MapEntry pointer and table geometry.
+    assert "local ACTIVE_MAP_PTR = 0x03001980" in observer
+    assert "local MAP_ENTRY_BASE = 0x0808E2E0" in observer
+    assert "local MAP_ENTRY_SIZE = 0x38" in observer
+    # It accepts both game-code spellings: the 0.11 dev build returns the bare
+    # code, and asserting only the prefixed form has broken an observer before.
+    assert '"AGB-BG3E"' in observer
+    # Each displayed BG's screenblock is read at the base LIVE BGxCNT names.
+    assert "bg%d_screen_base_block" in observer
+    # A savestate restore is not an area build, so a departure must be observed;
+    # and an area entry fades in, so the dump also waits for the background
+    # palette to stop changing before it latches anything.
+    assert "saw_departure" in observer
+    assert "local DWELL_FRAMES = 90" in observer
+    assert "local SETTLE_FRAMES = 45" in observer
+    assert "palette_signature" in observer
+    # The display is captured from the emulator's own framebuffer rather than
+    # from a host window rectangle, which can hold whatever is stacked on top.
+    assert "emu:screenshot" in observer
+    # The camera state address is a recorded candidate, never a conclusion.
+    assert "camera_candidate_corroborated" in observer
+
+    assert "mapgfxdiag001_map_layer_dump.lua" in injector
+
+
 def test_p010_timeline_reports_the_lethal_edge_distinctly():
     """A death is the HP crossing to <= 0, which is a different row from an
     ordinary damage tick. Collapsing them would lose T_LETHAL, the anchor the

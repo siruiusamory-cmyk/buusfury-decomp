@@ -1115,3 +1115,103 @@ def test_rom_expand_observer_and_session_gate_bind_exact_generated_size():
     assert "emu:screenshot" in observer
     assert "emu:write" not in observer
     assert "emu:setKey" not in observer
+
+
+def test_warpedit001_observer_is_read_only_and_uses_the_engine_route():
+    """MAP-WARP-RUNTIME-EDIT-001's observer must only READ emulated state.
+
+    The ticket's claim is that the retail engine itself arrives at a different map
+    after one transition record is retargeted. A script that could also write
+    memory or drive input would make that unfalsifiable, and a scripted run could
+    not be told apart from the human-played one the ticket requires.
+    """
+    root = Path(__file__).resolve().parents[2]
+    observer = (
+        root / "tools/runtime/warpedit001_transition_watch.lua"
+    ).read_text(encoding="utf-8")
+    injector = (root / "tools/runtime/inject_mgba_lua.ps1").read_text(
+        encoding="utf-8"
+    )
+
+    assert "setKeys" not in observer
+    assert "addKeys" not in observer
+    assert "clearKeys" not in observer
+    assert "emu:write" not in observer
+
+    # The runtime-proven live MapEntry pointer and table geometry.
+    assert "local ACTIVE_MAP_PTR = 0x03001980" in observer
+    assert "local MAP_ENTRY_BASE = 0x0808E2E0" in observer
+    assert "local MAP_ENTRY_SIZE = 0x38" in observer
+    # Both game-code spellings: the 0.11 dev build returns the bare code, and
+    # asserting only the prefixed form has broken an observer before.
+    assert '"AGB-BG3E"' in observer
+    assert "emu:romSize() == 8388608" in observer
+
+    # The record must be reached by the SAME route the engine walks, not by a
+    # pinned address: MapEntry + 0x2C -> word[0] -> root + 0x44 -> element.
+    assert "local MAP_ENTRY_SOURCE_OFFSET = 0x2C" in observer
+    assert "local ROOT_ARRAY_OFFSET = 0x44" in observer
+    assert "route_to_record" in observer
+    # The target record's own address is derived, never written down. If it ever
+    # appears here, the observer stopped proving it reads the engine's record.
+    assert "0x0829343C" not in observer
+    assert "0x829343C" not in observer
+
+    # The two destination key bytes are read from the running image, and the map
+    # they name is resolved by the same two-byte scan the engine's lookup does.
+    assert "local RECORD_KEY_HIGH_OFFSET = 0x11" in observer
+    assert "local RECORD_KEY_LOW_OFFSET = 0x12" in observer
+    assert "resolve_key" in observer
+    # The region is read in the same rows, so "the position was not touched" is
+    # visible beside the key that was.
+    assert "local RECORD_REGION_OFFSET = 0x08" in observer
+
+    # Liveness: a silent observer must be distinguishable from a quiet one, and
+    # an unresolved route must be said out loud rather than omitted.
+    assert "HEARTBEAT" in observer
+    assert "TARGET_UNRESOLVED" in observer
+
+    assert "warpedit001_transition_watch.lua" in injector
+
+
+def test_warpedit001_launcher_verifies_identity_and_owns_no_session_lifetime():
+    """The session launcher must pin the exact ROM and then get out of the way.
+
+    Two separate bugs killed a live session part-way through: a deadline that
+    counted setup and force-killed mGBA mid-play, and a background job whose
+    teardown took the emulator with it. So the launcher may hold no wait loop,
+    start no job, and clean up nothing - and it must refuse a run directory that
+    already exists rather than deleting a prior session's evidence.
+    """
+    root = Path(__file__).resolve().parents[2]
+    launcher = (root / "tools/runtime/start_warpedit001_live.ps1").read_text(
+        encoding="utf-8"
+    )
+    finisher = (root / "tools/runtime/finish_warpedit001_session.ps1").read_text(
+        encoding="utf-8"
+    )
+
+    # Exact ROM digest, and the version read from the binary rather than trusted
+    # from its path.
+    assert "^[0-9A-F]{64}$" in launcher
+    assert "ROM identity mismatch; run refused" in launcher
+    assert "VersionInfo.FileVersion" in launcher
+    assert "mGBA version mismatch" in launcher
+    # The savestate is copied and the copy verified, so the private original is
+    # never what the emulator loads.
+    assert "Savestate copy hash mismatch" in launcher
+    # The state is loaded after the observer is injected.
+    assert launcher.index("inject_mgba_lua.ps1") < launcher.index("toolkit031_load_state.ps1")
+
+    # No ownership of the session.
+    assert "Start-Job" not in launcher
+    assert "Wait-Process" not in launcher
+    assert "Stop-Process" not in launcher
+    assert "Remove-Item" not in launcher
+    assert "RunSeconds" not in launcher
+
+    # The finisher re-verifies the ROM and refuses to read a silent observer as a
+    # negative.
+    assert "CHANGED - INVESTIGATE" in finisher
+    assert "a silent" in finisher
+    assert "NOT evidence of absence" in finisher

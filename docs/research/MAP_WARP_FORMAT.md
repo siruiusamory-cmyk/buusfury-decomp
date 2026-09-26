@@ -1,14 +1,18 @@
 # MAP-WARP-FORMAT-001 - proving and productionizing the map-transition data model
 
-STATUS: **COMPLETE, UNCOMMITTED, AWAITING REVIEW (2026-09-26).** Class: scoped
-format and SDK authority pass. This is a **sub-pass of the parent capability
-`MAP-WARPS-AND-CONNECTIONS-001`**, which stays active in
-[`PROJECT_<local-state-name>`](PROJECT_<local-state-name>); the parent's Workbench surface, runtime proof and
-capability advance are explicitly **not** in scope here and were not begun.
+STATUS: **CLOSED (2026-09-26).** Class: scoped format and SDK authority pass. This
+is a **sub-pass of the parent capability `MAP-WARPS-AND-CONNECTIONS-001`**, which
+stays active and unshipped in [`PROJECT_<local-state-name>`](PROJECT_<local-state-name>); the parent's Workbench
+surface, project persistence, runtime proof and capability advance are explicitly
+**not** in scope here and were not begun.
 
-Baseline as given by the ticket: `fc8ba48b184a06fcff79dcbf3fc1d215e5af2046`
-(which is 13 commits behind the checkout). Actual start SHA:
-`82835a09c155f82f4af675f41e297fff0c365522`.
+Baseline as given by the ticket: `fc8ba48b184a06fcff79dcbf3fc1d215e5af2046`.
+Actual start SHA: `82835a09c155f82f4af675f41e297fff0c365522` (**13 commits later** -
+see the drift record in the closure
+[`archive/MAP-WARP-FORMAT-001.md`](archive/MAP-WARP-FORMAT-001.md)). Implementation
+and frozen reviewed candidate:
+`b4ca0612341b9b50b60073ce4e77cebd82b4ad29`. Independent review: **APPROVE**, no
+blocking findings.
 
 **public progress impact: NONE.** No capability ships, the registry stays at
 **19 / 24 (79%)**, `src/data/capabilities.json` is untouched and `warps` remains
@@ -241,8 +245,10 @@ detected rather than silently followed - which is what M3 above demonstrates.
   launched.
 - No ROM-derived fixture is committed. No ROM, commercial content, extracted
   blob or generated artefact is staged.
-- The four new files are **untracked and uncommitted**, as this pass requires.
-  Nothing existing was modified.
+- The four new files were untracked and uncommitted while this pass was in
+  review; they are committed only as the frozen candidate above, on
+  `ticket/map-warp-format-001`. Nothing that already existed was modified except
+  the `PROJECT_<local-state-name>` lifecycle note.
 
 ## 10. What this pass did not do, and the handoffs
 
@@ -262,7 +268,39 @@ detected rather than silently followed - which is what M3 above demonstrates.
 - **Still UNRESOLVED, and now carried rather than guessed:** the meaning of the
   two class words; which region interval is horizontal and in what unit; the
   semantics of `+0x10`, `+0x13`, `+0x14`, `+0x16`, `+0x17`; the invariant word at
-  `+0x04`; the LOGExtractor `+8` adjustment's origin.
+  `+0x04`; the destination-position source; the LOGExtractor `+8` adjustment's
+  origin. None of these may be renamed to X/Y, given a unit or given a meaning
+  until engine evidence establishes it.
 
-**Next:** return for review. Do not begin the Workbench warp editor from this
-pass.
+## 11. Independent review and closure
+
+Frozen reviewed candidate
+`b4ca0612341b9b50b60073ce4e77cebd82b4ad29`, reviewed in a clean detached worktree
+`<ticket-worktrees>\map-warp-format-001` at exactly that SHA
+(`82835a0..b4ca061`, one commit).
+
+- **Backend:** `the local reviewer` (headless, fresh context), job
+  `cl-20260926-074757-494761`, local session
+  `2a8c3964-c141-4522-b3c0-e32e935e27cc`, exit code 0, 308 s, cost $2.52, verdict
+  read back from `local_headless` (4,147 characters).
+- **Verdict: `APPROVE`** - **zero blocking findings and zero non-blocking notes.**
+- The reviewer ran the named tests itself against the canonical image via
+  `LOGX_CANONICAL_ROM` (**69 passed**, 54 unit + 15 ROM) and re-checked the image
+  hash before and after.
+- **Cloud review: NOT RUN.** `the reviewer readback probe` reports `cloud_attach`
+  **UNAVAILABLE** on this account - attaching to an existing cloud session is not
+  enabled, so a cloud session's transcript would never be readable here. A cloud
+  launch was therefore refused as unreadable rather than paid for, and
+  `require_readable_verdict` was set on the local launch.
+- The reviewer's own probe conclusions are recorded in the closure record
+  [`archive/MAP-WARP-FORMAT-001.md`](archive/MAP-WARP-FORMAT-001.md), including the
+  three places it probed hardest and the one bypass it confirmed but judged out of
+  the authoring model.
+
+No production behavior changed after the freeze, so there is **no review
+correction commit**. The only post-freeze change is documentation: this status
+block, the closure record and the `PROJECT_<local-state-name>` note - committed separately, so the
+frozen tree is not misrepresented as having always contained them.
+
+**Next:** do not begin the Workbench warp editor from this pass. The parent
+capability `MAP-WARPS-AND-CONNECTIONS-001` remains active and unshipped.

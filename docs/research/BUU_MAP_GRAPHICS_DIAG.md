@@ -303,3 +303,24 @@ identical, the stacking order is the engine's, and the one defect between the RO
 and the screen is a decoder rule. A compositor becomes worth proposing only if
 corrected rendering still disagrees with a runtime capture - which, at the
 engine's own 0.9390 ceiling, it currently does not.
+
+## 10. Reproducing this document
+
+Every probe named above is a read-only script under the ignored
+`build/gfxdiag/`, and every runtime artifact under the ignored
+`build/toolkit031/`. **The probes hardcode `ROOT = <checkout>`,** the
+checkout they were written in; a reviewer working from a clone or a ticket
+worktree must point that constant at their own tree first (the review of this
+ticket ran them from the main checkout for that reason, with the candidate's
+`tools/` and `tests/` on the path).
+
+The runtime comparison is carried by `probe_final_proof.py`, which reports the
+shipping decode, the corrected decode and the engine's own ceiling from one dump.
+An earlier `probe_display_model.py` produced the same A/B numbers but crashes on
+the SDK-plane case, and was removed rather than repaired;
+`probe_display_compare.py` covers the SDK-plane projection properly.
+
+The candidate was frozen and reviewed in the ticket worktree
+`<ticket-worktrees>\map-gfx-diag-001` at
+`13e9e11955762dc4f61255e65a8fc9fd85500948`. The main checkout carries the same
+content uncommitted, which is this ticket's normal pattern.

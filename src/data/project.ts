@@ -672,8 +672,8 @@ export const project: ProjectStatus = {
         " its own loaded layer record held the new address and its uploaded BG1 tilemap" +
         " carried the authored arrangement while the other three layers stayed" +
         " byte-identical. An authored chunk rearranges existing graphics only - no new" +
-        " tiles, palettes or imported artwork - and is map-scoped. Map resizing, layer" +
-        " creation and warp editing are separate capabilities and are not begun.",
+        " tiles, palettes or imported artwork - and is map-scoped. Map resizing and layer" +
+        " creation shipped later as their own capability; warp editing is not begun.",
       status: "complete",
     },
     {
@@ -859,6 +859,32 @@ export const project: ProjectStatus = {
       recent: true,
     },
     {
+      id: "runtime-proven-map-growth",
+      title: "Grow a map and see the new ground in the real game",
+      summary:
+        "You can now make a supported existing map bigger in DragonByte Z, or add a"
+        + " supported visual layer to it, and see the result in the running game. The"
+        + " added ground is initialized from graphics the map already uses, stored in"
+        + " the project, and displayed by the retail engine - which previously could"
+        + " not even reach that part of the map.",
+      technical:
+        "A supported dominant layer's chunk grid can be grown. The resize is top-left"
+        + " anchored, so every existing cell keeps its coordinate and only the added"
+        + " cells are initialized. A dominant layer record is exactly its 0x18-byte"
+        + " header plus its 4-byte-per-cell chunk window and nothing else - measured"
+        + " over all 1,516 canonical records, with live data immediately after the"
+        + " window - so a grown grid cannot stay where it was: the record is re-emitted"
+        + " whole above the original ROM's end and the map root's own layer-slot field"
+        + " is repointed at it. The engine clamps its camera to the map's declared"
+        + " extent, so a grow also raises that word; without it the added ground is"
+        + " unreachable. Proven in the retail engine after a genuine leave-and-re-enter:"
+        + " the engine's live layer record held the grown 2x1 grid and pointed the added"
+        + " cell at the authored chunk, its camera reached 70 pixels past the retail"
+        + " clamp, and at a matched camera the only pixels that differed from retail were"
+        + " inside the added cell's band, with the layer underneath byte-identical.",
+      recent: true,
+    },
+    {
       id: "runtime-proven-tile-painting",
       title: "Paint a map's layout and see it in the real game",
       summary:
@@ -884,7 +910,7 @@ export const project: ProjectStatus = {
         + " cell's own region, with a hard texture seam at that cell's boundary that the"
         + " retail frame does not have. Undo, redo, eyedropper and drag painting share one"
         + " history. Groundwork for this was the map-layout writer; what remains for the"
-        + " rest of the map editor is chunk creation, resizing and warps.",
+        + " rest of the map editor is warp and connection editing.",
       recent: true,
     },
     {
@@ -1376,7 +1402,8 @@ const roadmapTo1: RoadmapTo1 = {
     + " so it only moves when the product genuinely gains one.",
   position:
     "The foundation and the authoring-safety baseline are complete, Phase 2 is under"
-    + " way: tile painting has shipped and the rest of the map editor is next.",
+    + " way: tile painting, chunk creation, and map resizing with layer authoring have"
+    + " shipped, and warp and connection editing is next.",
   phases: [
     {
       id: "foundation",
@@ -1426,11 +1453,6 @@ const roadmapTo1: RoadmapTo1 = {
         + " history, allocator and safety rules as the last.",
       outcomes: [
         {
-          capabilityId: "resize",
-          title: "Resize and layers",
-          detail: "Change a map's dimensions and its layer structure.",
-        },
-        {
           capabilityId: "warps",
           title: "Warps and connections",
           detail: "Create and edit transitions between areas visually.",
@@ -1445,6 +1467,9 @@ const roadmapTo1: RoadmapTo1 = {
         + " displays, save it as a project-owned chunk with its own identity, place it"
         + " on a map cell, and have the retail engine read the new body from above the"
         + " original ROM's end. Authored chunks are map-scoped",
+        "Map resizing and layer authoring - SHIPPED: grow a supported existing map, add"
+        + " a supported visual layer, paint the new structure, and have the retail engine"
+        + " load the relocated map data. This is growth only - shrinking is not supported",
       ],
       state: "in-progress",
     },

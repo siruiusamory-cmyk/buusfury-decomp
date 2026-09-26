@@ -214,13 +214,20 @@
       "id": "resize",
       "family": "edit",
       "title": "Map resizing and layer changes",
-      "state": "missing",
-      "detail": "Not implemented. Layer count, layer dimensions and chunk-grid size are fixed, and no layer can be added or moved.",
+      "state": "shipped",
+      "surface": "Map Browser tab, structural section: grow a supported layer's chunk grid from the resize form, and create a supported layer into an unused layer slot from the layer list",
+      "proof": "runtime",
+      "detail": "Change the structure of an existing supported map rather than the cells inside it. Grow a supported dominant layer's chunk grid - the resize is top-left anchored, so every existing cell keeps its coordinate and only the cells the growth adds are initialized, from a chunk that same layer already draws or from one the project itself authored. The layer record is re-emitted whole above the original ROM's end and the map's own layer-slot pointer is repointed at it. The engine clamps its camera to the map's declared extent, so a grow also raises that word; the added area is unreachable otherwise. Separately, activate one of a map's four fixed layer slots with a new supported visual layer, then paint its cells with the same brush vocabulary. Proven in the retail engine: after leaving and re-entering the map, the engine's own loaded layer record holds the grown grid and the authored cell, and the added region is displayed at a camera position the retail clamp cannot reach.",
       "limits": [
-        "Not implemented: layer count, layer dimensions and chunk-grid size are all fixed.",
-        "No layer can be added, removed or moved."
+        "Supported layers are the ordinary dominant chunk-grid form, the form 1,516 of the canonical image's 1,808 layer slots use. Screen-entry layers, the terrain-field form Map 19 uses, unused slots and zero-dimension records are refused with their own reason rather than forced into a grid they do not have.",
+        "This is controlled growth. A resize may only make a supported layer's grid larger; shrinking is refused, because the references of the cells it would remove have not been shown to be safe to drop. The capability is map growth plus supported layer authoring, not arbitrary bidirectional resizing.",
+        "The engine's layer count is fixed at four, because a map root carries exactly four layer-slot pointers. Creating a layer therefore means activating a slot the game leaves unused, which is what the engine actually does; there is no dynamic layer list.",
+        "A new layer is a supported visual dominant layer composed from graphics a layer on that same map already draws. It adds no tiles, palettes or imported artwork, and an entry outside that vocabulary is refused. Authored layers and authored chunks are map-scoped.",
+        "A map whose definition is shared with another map is refused outright: the root holds the layer-slot pointers and the extent, so editing one would silently change every map that shares it.",
+        "No collision authoring, no warp or connection editing, no new-map creation, no graphics import. A grown area does not have to be connected to anything, and this capability does not connect it.",
+        "The authored record must go above the original ROM's end: the canonical image declares one 256-byte free region and a record grows with the authored grid, so this depends on generated expansion rather than fitting in place."
       ],
-      "evidence": "DRAGONBYTE-Z-MAP-LAYOUT-EDITOR-001; docs/workbench.md"
+      "evidence": "MAP-RESIZE-AND-LAYERS-001; docs/research/MAP-RESIZE-AND-LAYERS-001.md"
     },
     {
       "id": "warps",

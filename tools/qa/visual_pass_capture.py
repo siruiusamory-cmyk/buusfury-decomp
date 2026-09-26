@@ -128,6 +128,16 @@ STATES: tuple[tuple[int, str], ...] = (
     (54, "54-structural-surface-narrow"),
     (55, "55-resize-form-refuses-a-shrink"),
     (56, "56-validation-error-dialog"),
+    (60, "60-warps-list-retail"),
+    (61, "61-warps-selected-connection"),
+    (62, "62-warps-staged-retarget"),
+    (63, "63-warps-undo-retail"),
+    (64, "64-warps-applied-saved"),
+    (65, "65-warps-reverted-retail"),
+    (66, "66-warps-class-169-read-only"),
+    (67, "67-warps-retarget-refusal-status"),
+    (68, "68-warps-narrow"),
+    (69, "69-warps-map-with-no-connections"),
 )
 
 #: The last chained state; anything above it is self-contained.
@@ -135,6 +145,9 @@ LAST_CHAINED_STATE = 19
 
 #: The first MAP-RESIZE-AND-LAYERS-001 state; 20..THIS-1 are chunk authoring's.
 FIRST_STRUCTURAL_STATE = 40
+
+#: The first MAP-WARP-WORKBENCH-001 state: the Maps editor's Warps mode.
+FIRST_WARP_STATE = 60
 
 
 class _NullHost:
@@ -562,8 +575,9 @@ def capture_all(harness: Harness, workspace: Path, states: set[int] | None = Non
         LAST_CHAINED_STATE < number < FIRST_STRUCTURAL_STATE for number in states
     )
     structural = states is None or any(
-        number >= FIRST_STRUCTURAL_STATE for number in states
+        FIRST_STRUCTURAL_STATE <= number < FIRST_WARP_STATE for number in states
     )
+    warp = states is None or any(number >= FIRST_WARP_STATE for number in states)
     if chain:
         if states is not None:
             print("note: states 1-19 are one chained suite; capturing all of them")
@@ -572,6 +586,8 @@ def capture_all(harness: Harness, workspace: Path, states: set[int] | None = Non
         chunk_authoring_qa(harness, workspace, states)
     if structural:
         structural_qa(harness, workspace, states)
+    if warp:
+        warp_qa(harness, workspace, states)
     total = len(list(harness.out.glob("*.png")))
     print(f"\nwrote {total} PNG(s) to {harness.out}")
 
@@ -1175,6 +1191,191 @@ def structural_qa(
     print(f"  apply_resize refused -> {refused}")
     if out is not None and out.is_file():
         written.append(out)
+    return written
+
+
+def warp_qa(
+    harness: Harness, workspace: Path, states: set[int] | None = None
+) -> list[Path]:
+    """MAP-WARP-WORKBENCH-001's states: the Maps editor's Warps mode.
+
+    Every step goes through the SHIPPED surface and the SHIPPED SDK: the real
+    transition authority over the canonical image, the real
+    `set_transition_edits`/`remove_transition_edit` writes into a real extracted
+    project in a temporary directory, and the mode's own widgets. The map with a
+    retargetable connection, the map with a 169-class connection and the
+    destination with no connection back are all *found* through the authority, not
+    hard-coded, so the capture follows whatever the open image actually holds.
+    """
+    from tools.webfoot import map_transitions as map_transitions_sdk
+    from tools.webfoot.maps import MapIdentity
+
+    written: list[Path] = []
+
+    def shot(number: int, name: str, size: QSize | None = None) -> None:
+        if states is None or number in states:
+            written.append(harness.grab(name, size=size))
+
+    project = _extracted_project(harness, workspace)
+    harness.open_canonical()
+    harness.session.set_project(project)
+    harness.editor("Atlas").romOpened.emit()
+    harness.show_editor("Maps")
+    harness.maps.set_mode("warps")
+    harness.pump(10)
+    tab = harness.maps.warps
+
+    corpus = map_transitions_sdk.read_map_transitions(
+        harness.session.map_image, harness.session.profile
+    )
+    retargetable = next(
+        entry for entry in corpus.entries() if entry.record.has_raw_arrival_pair
+    )
+    refused = next(
+        entry for entry in corpus.entries() if not entry.record.has_raw_arrival_pair
+    )
+    source = retargetable.identity.source
+    # A connection whose retarget the surface ACCEPTS and which is a real change:
+    # a destination other than the one the record already leads to, that has its
+    # own connection back to the source (so an arrival can be derived), and whose
+    # derived point lands inside that destination's walkable extent. All of that
+    # is the surface's own judgement, so the harness asks the product and takes
+    # the first pair it agrees to - it does not decide any of it itself.
+    #
+    # `doors_back[source][destination]` is the number of records in `destination`
+    # that lead to `source`, computed in ONE pass over the corpus rather than one
+    # `reciprocal_doors` call per candidate (which would be 452 rescans per
+    # connection).
+    doors_back: dict[int, dict[int, int]] = {}
+    for other in corpus.entries():
+        try:
+            towards = corpus.destination(other.identity)
+        except map_transitions_sdk.MapTransitionsError:
+            continue
+        doors_back.setdefault(towards.index, {})
+        from_source = other.identity.source.index
+        doors_back[towards.index][from_source] = (
+            doors_back[towards.index].get(from_source, 0) + 1
+        )
+
+    target = None
+    chosen = None
+    tried = 0
+    for entry in corpus.entries():
+        if not entry.record.has_raw_arrival_pair:
+            continue
+        source_index = entry.identity.source.index
+        try:
+            retail_destination = corpus.destination(entry.identity)
+        except map_transitions_sdk.MapTransitionsError:
+            continue
+        candidates = [
+            index
+            for index in sorted(doors_back.get(source_index, {}))
+            if index != source_index and index != retail_destination.index
+        ]
+        if not candidates:
+            continue
+        mark = tab.undo_stack().index()
+        tab.select_source_map(source_index)
+        tab.select_row(entry.identity.index)
+        harness.pump(2)
+        for index in candidates:
+            tried += 1
+            if tab.stage_destination(index):
+                target = MapIdentity(index)
+                chosen = entry
+                break
+        if chosen is None:
+            continue
+        retargetable = chosen
+        source = chosen.identity.source
+        # `index()`, not `count()`: count() is the stack's depth and does not fall
+        # as commands are undone, so a count-based loop never ends.
+        while tab.undo_stack().index() > mark:
+            tab.undo_stack().undo()  # back to retail for the first captures
+        harness.pump(6)
+        break
+    if chosen is None:
+        raise SystemExit(
+            f"no destination this surface accepts was found ({tried} tried)"
+        )
+    # A destination with NO connection back: the retarget the toolkit refuses.
+    underivable = None
+    for index in range(corpus.map_count):
+        candidate = MapIdentity(index)
+        if candidate in (source, target):
+            continue
+        if not corpus.reciprocal_doors(source, candidate):
+            underivable = candidate
+            break
+
+    print(
+        f"  connections: {retargetable.identity} -> map:{target.index:04d}; "
+        f"169-class {refused.identity}; underivable "
+        + (f"map:{underivable.index:04d}" if underivable is not None else "none")
+    )
+    tab.select_source_map(source.index)
+    tab.select_row(retargetable.identity.index)
+    harness.pump(8)
+
+    shot(60, "60-warps-list-retail")
+    shot(61, "61-warps-selected-connection")
+
+    print(f"  stage retarget -> map:{target.index:04d}: {tab.stage_destination(target.index)}")
+    harness.pump(8)
+    shot(62, "62-warps-staged-retarget")
+
+    print(f"  undo -> {tab.undo_stack().count()} command(s)")
+    tab.undo_stack().undo()
+    harness.pump(8)
+    shot(63, "63-warps-undo-retail")
+    tab.undo_stack().redo()
+    harness.pump(8)
+
+    print(f"  apply -> {tab.apply_to_project()}")
+    harness.pump(10)
+    shot(64, "64-warps-applied-saved")
+
+    print(f"  revert -> {tab.revert_selected()}")
+    harness.pump(10)
+    shot(65, "65-warps-reverted-retail")
+
+    print(f"  169-class read-only: {refused.identity}")
+    tab.select_source_map(refused.identity.source.index)
+    tab.select_row(refused.identity.index)
+    harness.pump(8)
+    print(
+        f"    editable={tab.selected_editable()} reason={tab.edit_refusal()!r}"
+    )
+    shot(66, "66-warps-class-169-read-only")
+
+    if underivable is not None:
+        print(f"  retarget with no connection back -> map:{underivable.index:04d}")
+        tab.select_source_map(source.index)
+        tab.select_row(0)
+        harness.pump(6)
+        print(f"    staged={tab.stage_destination(underivable.index)}")
+        harness.pump(8)
+    shot(67, "67-warps-retarget-refusal-status")
+
+    shot(68, "68-warps-narrow", size=NARROW)
+    harness.window.resize(DESKTOP)
+    harness.pump(6)
+
+    # The empty state: a map this image gives no connections at all.
+    connections_per_map: dict[int, int] = {}
+    for other in corpus.entries():
+        index = other.identity.source.index
+        connections_per_map[index] = connections_per_map.get(index, 0) + 1
+    empty = next(
+        (index for index in range(corpus.map_count) if not connections_per_map.get(index)),
+        0,
+    )
+    print(f"  map with no connections: map:{empty:04d}")
+    tab.select_source_map(empty)
+    harness.pump(8)
+    shot(69, "69-warps-map-with-no-connections")
     return written
 
 

@@ -82,6 +82,11 @@ __all__ = [
     "read_map_entry_table",
     "read_layer",
     "read_layers",
+    "layer_record_size",
+    "layer_record_header",
+    "compose_layer_record",
+    "root_layer_slot_address",
+    "declared_extent_raw",
     "dominant_layer_geometry",
     "dominant_chunk_words",
     "stitch_dominant_entries",
@@ -226,6 +231,32 @@ LAYER_HANDLER_OFFSET = 0x00
 LAYER_CHUNK_X_OFFSET = 0x14        # unsigned chunk-grid X count
 LAYER_CHUNK_Y_OFFSET = 0x15        # unsigned chunk-grid Y count
 LAYER_CHUNK_WINDOW_OFFSET = 0x18   # chunk-pointer window, 4-byte elements
+
+#: The bytes of a dominant layer record that precede its chunk window. The record
+#: is `header + window` and nothing else: measured over all 1,516 canonical
+#: dominant records, the record's size is exactly `0x18 + 4 * chunk_x * chunk_y`
+#: with no trailing field, and the bytes immediately after the window belong to the
+#: next structure (on map 40 the word after slot 0's single-cell window is the
+#: kind-1 container header slot 1's cell 0 points at). That is why a grid that
+#: grows needs the record relocated rather than extended in place, and why every
+#: header byte must be copied verbatim - the header's `+0x04`, `+0x08`, `+0x0C`,
+#: `+0x10` and `+0x16` fields have no established semantics (LOGX-SYNTHESIS
+#: section 2.1 records them as UNKNOWN/UNRESOLVED), so they are carried, never
+#: derived.
+LAYER_RECORD_HEADER_BYTES = LAYER_CHUNK_WINDOW_OFFSET
+
+#: The GBA's visible viewport, the unit a map root's declared extent is stated
+#: against. Platform geometry, like the tile size above, so it carries no profile
+#: declaration.
+VIEWPORT_PIXELS_X = 240
+VIEWPORT_PIXELS_Y = 160
+#: A dominant record's own field is one unsigned byte per axis, so 255 is the
+#: encoding ceiling. The supported authoring range is deliberately far below it and
+#: is a policy limit, not an engine measurement: the canonical corpus's largest
+#: dominant grid is 5x5 (measured over all 1,516 dominant records), and nobody has
+#: established how large a grid the engine's own per-layer upload loop tolerates.
+#: A request above this is refused with its reason rather than attempted.
+MAX_LAYER_GRID_SIDE = 8
 
 #: The five accepted layer `+0x00` handler values. A handler value is ROM content
 #: - the address of the engine routine that consumes the record - so it is stated
@@ -860,6 +891,111 @@ def read_layer(
 
 def read_layers(reader: MapGraphicsReader, root_address: int) -> tuple[LayerRecord, ...]:
     return tuple(read_layer(reader, root_address, slot) for slot in range(4))
+
+
+def layer_record_size(columns: int, rows: int) -> int:
+    """A dominant layer record's exact byte size: ``0x18 + 4 * columns * rows``.
+
+    Measured, not derived from a stride guess: over all 1,516 canonical dominant
+    records the record length is exactly this for every grid shape in the corpus
+    (28 bytes for 1x1 through 104 for 5x4), and the word after it is never a
+    pointer of the record's own.
+    """
+    if not isinstance(columns, int) or not isinstance(rows, int):
+        raise MapGraphicsError("a layer grid is stated in whole columns and rows")
+    if columns <= 0 or rows <= 0:
+        raise MapGraphicsError(
+            f"a layer grid must be positive on both axes; got {columns}x{rows}"
+        )
+    return LAYER_RECORD_HEADER_BYTES + CHUNK_POINTER_BYTES * columns * rows
+
+
+def layer_record_header(reader: MapGraphicsReader, layer: LayerRecord) -> bytes:
+    """The dominant record's own ``0x18``-byte header, byte for byte.
+
+    The header's ``+0x04``, ``+0x08``, ``+0x0C``, ``+0x10`` and ``+0x16`` fields
+    have no established semantics, so a relocated record carries them rather than
+    reconstructing them. Copying is the only operation that cannot invent a value.
+    """
+    if layer.classification not in ("dominant", "dominant_zero_grid",
+                                    "dominant_partial_zero_grid"):
+        raise MapGraphicsError(
+            f"layer at {layer.address:#010x} is {layer.classification}, not a "
+            "dominant record, so it has no chunk-grid header"
+        )
+    return reader.bytes_at(layer.address, LAYER_RECORD_HEADER_BYTES)
+
+
+def compose_layer_record(
+    header: bytes, columns: int, rows: int, window: Sequence[int]
+) -> bytes:
+    """Emit a dominant layer record: the header copied, then the chunk window.
+
+    ``header`` must be a canonical record's own leading bytes; ``columns`` and
+    ``rows`` are written over its two grid bytes, so a resize states its new grid
+    in the record rather than inheriting the old one. ``window`` is
+    ``columns * rows`` four-byte little-endian addresses in row-major order. A
+    null address is refused: the window is the record's whole reason to exist and a
+    cell the author did not choose must be filled from a chunk the layer already
+    uses, never left pointing at nothing.
+    """
+    if len(header) != LAYER_RECORD_HEADER_BYTES:
+        raise MapGraphicsError(
+            f"a dominant layer header is {LAYER_RECORD_HEADER_BYTES} bytes; got "
+            f"{len(header)}"
+        )
+    if not isinstance(columns, int) or not isinstance(rows, int):
+        raise MapGraphicsError("a layer grid is stated in whole columns and rows")
+    if not 0 < columns <= MAX_LAYER_GRID_SIDE or not 0 < rows <= MAX_LAYER_GRID_SIDE:
+        raise MapGraphicsError(
+            f"layer grid {columns}x{rows} is outside the supported 1.."
+            f"{MAX_LAYER_GRID_SIDE} per axis"
+        )
+    cells = columns * rows
+    if len(window) != cells:
+        raise MapGraphicsError(
+            f"a {columns}x{rows} grid holds {cells} cells; got {len(window)} addresses"
+        )
+    record = bytearray(header)
+    record.extend(bytes(CHUNK_POINTER_BYTES * cells))
+    record[LAYER_CHUNK_X_OFFSET] = columns
+    record[LAYER_CHUNK_Y_OFFSET] = rows
+    for index, address in enumerate(window):
+        if not isinstance(address, int) or address == 0:
+            raise MapGraphicsError(
+                f"chunk cell {index} of a {columns}x{rows} grid names no chunk"
+            )
+        struct.pack_into("<I", record, LAYER_CHUNK_WINDOW_OFFSET + 4 * index, address)
+    return bytes(record)
+
+
+def root_layer_slot_address(root_address: int, slot: int) -> int:
+    """The address of a map root's layer-slot pointer for ``slot``."""
+    if not 0 <= slot < len(ROOT_LAYER_SLOTS):
+        raise MapGraphicsError(f"layer slot {slot!r} is outside 0..3")
+    return root_address + ROOT_LAYER_SLOTS[slot]
+
+
+def declared_extent_raw(pixels: int, viewport: int) -> int:
+    """The root extent field's stored value that makes ``pixels`` reachable.
+
+    The engine loads the selector-1 root into its per-map camera state as
+    ``dest+0x9C = (root + 0x08) - 1`` and ``dest+0x9E = (root + 0x0A) - 1``
+    (``ldrh`` at ``0x0800958A``/``0x08009592``, ``subs #1``, stored at
+    ``0x0800958E``/``0x08009596``), and the camera clamp at ``0x080094F0``
+    saturates the requested view origin to ``[0, dest+0x9C]`` per axis - the same
+    pair is re-read by the in-play camera clamp at ``0x08009744``. So the stored
+    value is the map's **maximum camera scroll**, and the camera can show a plane
+    ``P`` pixels wide only when ``stored + viewport >= P``.
+
+    The floor is 1: all 452 canonical values are non-zero, and 1 (extent 2) is the
+    single-screen declaration retail uses for a map that does not scroll at all.
+    """
+    if not isinstance(pixels, int) or not isinstance(viewport, int):
+        raise MapGraphicsError("an extent is stated in whole pixels")
+    if pixels <= 0 or viewport <= 0:
+        raise MapGraphicsError(f"extent {pixels} px at viewport {viewport} px")
+    return max(1, pixels - viewport)
 
 
 def dominant_layer_geometry(

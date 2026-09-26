@@ -230,20 +230,42 @@ class ResolvedAuthoredChunk:
 
 @dataclass(frozen=True, slots=True)
 class ChunkPlacement:
-    """One map cell an author repointed at an authored chunk."""
+    """One map cell - or one build-materialized structure - an author pointed a
+    chunk at.
+
+    ``offset`` is the file offset of the four-byte pointer field this placement
+    rewrites, and ``previous`` is what the canonical image holds there. A
+    **structural** placement (MAP-RESIZE-AND-LAYERS-001) has neither: the field
+    that will name the chunk lives inside a layer record the build materializes
+    above canonical EOF, so there is no canonical site to rewrite and no previous
+    value. Such a placement carries ``offset = -1`` and ``cell = -1``, exists so
+    the chunk is materialized at all, and emits no cell write of its own - the
+    structure's own record write is what carries the address, and it is owned by
+    the structure's allocation.
+    """
 
     map_index: int
     layer_slot: int
     cell: int
-    #: File offset of the four-byte pointer field this placement rewrites.
+    #: File offset of the four-byte pointer field this placement rewrites, or -1
+    #: for a structure-resident reference that has no canonical site.
     offset: int
-    #: The pointer the canonical image holds at that cell.
+    #: The pointer the canonical image holds at that cell; 0 when there is no site.
     previous: int
     identity: str
+    #: ``"cell"`` for a canonical chunk-window cell, ``"structure"`` for a
+    #: reference that only a build-materialized layer record carries.
+    kind: str = "cell"
 
     @property
     def owner(self) -> str:
+        if self.kind == "structure":
+            return f"map:{self.map_index:04d} layer {self.layer_slot} structure"
         return f"map:{self.map_index:04d} layer {self.layer_slot} cell {self.cell}"
+
+    @property
+    def is_structural(self) -> bool:
+        return self.kind == "structure"
 
 
 @dataclass(frozen=True, slots=True)
@@ -670,6 +692,7 @@ def materialize_authored_chunks(
     *,
     profile: "RomProfile | None" = None,
     reserved: Iterable[RomRange] = (),
+    structural: Iterable[ChunkPlacement] = (),
 ) -> ChunkMaterialization:
     """Allocate, encode and reference every authored chunk a build must place.
 
@@ -681,6 +704,13 @@ def materialize_authored_chunks(
     identity, its body and its edits across a reopen - and materializes as soon as
     a cell names it.
 
+    ``structural`` carries references a layer record the build itself materializes
+    will hold - a structural edit's initialization chunk, or a cell of a
+    project-authored layer. They have no canonical site to rewrite (the record
+    does not exist in the canonical image), so they materialize the body and emit
+    no write of their own: the structure domain's own record write carries the
+    address, and that write is owned by the structure domain's allocation.
+
     The bodies are placed by the production allocator, one request per chunk,
     against the caller's reservation set, in the order of the chunks' own
     identities, so the same project produces the same addresses on every machine.
@@ -690,8 +720,35 @@ def materialize_authored_chunks(
     placements = placements_for(
         canonical, chunks, edits, profile=resolved_profile, view=view
     )
+    placements = placements + tuple(structural)
     if not placements:
         return ChunkMaterialization((), (), (), (), ())
+    for placement in placements:
+        if placement.identity not in chunks:
+            raise ChunkAuthoringError(
+                f"map:{placement.map_index:04d} BG{placement.layer_slot} names "
+                f"authored chunk {placement.identity!r}, which this project does "
+                "not declare"
+            )
+    # A structural reference carries no cell of its own (cell = -1): the field that
+    # will name it lives inside a record the build materializes, and one slot's
+    # record may name more than one authored body - a created layer that was then
+    # grown initializes some cells from its own initialization and the rest from
+    # the resize's. What distinguishes those is the chunk each one names, so the
+    # identity joins the key for structural placements only; a canonical cell is
+    # still one cell and still claimed once.
+    site_keys = [
+        (
+            p.map_index,
+            p.layer_slot,
+            p.cell,
+            p.kind,
+            p.identity if p.is_structural else "",
+        )
+        for p in placements
+    ]
+    if len(set(site_keys)) != len(site_keys):
+        raise ChunkAuthoringError("an authored placement names one cell twice")
 
     by_identity: dict[str, list[ChunkPlacement]] = {}
     for placement in placements:
@@ -758,6 +815,10 @@ def materialize_authored_chunks(
             )
         )
         for site in sites:
+            if site.is_structural:
+                # The field that will name this chunk lives inside a record the
+                # build materializes; there is nothing canonical to rewrite.
+                continue
             changes.append(
                 ByteChange(
                     offset=site.offset,
@@ -767,12 +828,15 @@ def materialize_authored_chunks(
                     reason=f"map cell references authored chunk {identity}",
                 )
             )
+        cell_sites = tuple(site for site in sites if not site.is_structural)
         if allocation.is_expanded:
             generated.append(
                 allocation.generated_allocation_provenance(
                     domain=DOMAIN,
                     resource=identity,
-                    pointer_offset=sites[0].offset,
+                    pointer_offset=(
+                        cell_sites[0].offset if cell_sites else None
+                    ),
                     source_range=RomRange(
                         FileOffset(resolved.template_address - 0x08000000),
                         len(resolved.container),
@@ -813,7 +877,7 @@ def materialize_authored_chunks(
                         offset=site.offset,
                         chunk=identity,
                     )
-                    for site in sites
+                    for site in cell_sites
                 ),
             )
         )

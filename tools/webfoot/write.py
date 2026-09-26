@@ -203,7 +203,12 @@ class GeneratedAllocationProvenance:
     source_range: RomRange
     allocated_range: RomRange
     allocated_rom_address: int
-    pointer_offset: int
+    #: The field that references the allocated span, when there is one. A span
+    #: referenced only from a structure the same build materializes - an authored
+    #: layer record above canonical EOF, whose address the allocator chooses - has
+    #: no field to name yet at the moment of allocation, and records ``None``
+    #: rather than a fabricated offset. MAP-RESIZE-AND-LAYERS-001.
+    pointer_offset: int | None
     expansion_evidence: str
 
     def owns(self, change: "ByteChange") -> bool:
@@ -225,7 +230,11 @@ class GeneratedAllocationProvenance:
             "allocated_rom_address_hex": f"0x{self.allocated_rom_address:08X}",
             "allocation_class": "generated_expansion",
             "pointer_offset": self.pointer_offset,
-            "pointer_offset_hex": f"0x{self.pointer_offset:08X}",
+            "pointer_offset_hex": (
+                f"0x{self.pointer_offset:08X}"
+                if self.pointer_offset is not None
+                else None
+            ),
             "expansion_evidence": self.expansion_evidence,
         }
 
@@ -557,6 +566,138 @@ class ChunkPlacementProvenance:
 
 
 @dataclass(frozen=True, slots=True)
+class StructureExtentProvenance:
+    """One map-root extent word a structural edit rewrote."""
+
+    axis: str
+    offset: int
+    previous: int
+    authored: int
+
+    def to_json(self) -> dict:
+        return {
+            "axis": self.axis,
+            "offset": self.offset,
+            "offset_hex": f"0x{self.offset:08X}",
+            "previous": self.previous,
+            "authored": self.authored,
+        }
+
+
+@dataclass(frozen=True, slots=True)
+class StructureFillProvenance:
+    """The chunk a structural record's window initializes a region to.
+
+    ``offsets`` names the window cells that hold the address. A cell offset is
+    above canonical EOF - it lies inside the record this same build materializes -
+    so it is stated as a field of the allocated span rather than as a canonical
+    pointer holder.
+    """
+
+    chunk: str
+    ordinal: int | None
+    address: int
+    offsets: tuple[int, ...]
+
+    def to_json(self) -> dict:
+        return {
+            "chunk": self.chunk,
+            "ordinal": self.ordinal,
+            "address": self.address,
+            "address_hex": f"0x{self.address:08X}",
+            "cell_count": len(self.offsets),
+            "offsets": list(self.offsets),
+        }
+
+
+@dataclass(frozen=True, slots=True)
+class StructureEditProvenance:
+    """One authored structural edit as the manifest records it.
+
+    MAP-RESIZE-AND-LAYERS-001. Enough to answer, from the manifest alone, which
+    map and layer slot changed, from which grid to which, where the record landed,
+    what the map root's own slot field now holds, and which extent words moved. The
+    ``authored_*`` fields are additive and answer whether the record is a
+    project-authored layer's or a retail layer's, which a resize can be either of.
+    """
+
+    #: ``"resize"`` or ``"layer"``.
+    kind: str
+    #: The durable owner: ``map:NNNN/BGn`` for a resize, ``layer:name`` for an
+    #: authored layer.
+    owner: str
+    map_index: int
+    layer_slot: int
+    #: The canonical record the header was copied from.
+    template_address: int
+    retail_columns: int
+    retail_rows: int
+    columns: int
+    rows: int
+    #: The root's own layer-slot pointer field and what it held before.
+    slot_offset: int
+    previous_record_address: int
+    record_address: int
+    record_size: int
+    allocation_file_offset: int
+    allocation_size: int
+    expanded: bool
+    expansion_evidence: str
+    record_sha256: str
+    fills: tuple[StructureFillProvenance, ...] = ()
+    extents: tuple[StructureExtentProvenance, ...] = ()
+    #: ``map:NNNN/BGn`` values whose cell content this record carries.
+    cell_entries: int = 0
+    #: MAP-RESIZE-AND-LAYERS-001. The ``layer:name`` identity when the record is a
+    #: PROJECT-AUTHORED layer's - created by this project, or that layer grown by a
+    #: resize - and "" when the record is a retail layer's own resize. This is what
+    #: tells a reviewer which of the two a resize is, without reading the project.
+    authored_layer: str = ""
+    #: The grid the authored layer was CREATED at, which is the grid a resize of it
+    #: grows from. 0/0 when the record is a retail layer's.
+    authored_columns: int = 0
+    authored_rows: int = 0
+
+    @property
+    def authored(self) -> bool:
+        """Whether the record belongs to a project-authored layer."""
+        return bool(self.authored_layer)
+
+    def to_json(self) -> dict:
+        return {
+            "kind": self.kind,
+            "owner": self.owner,
+            "map_index": self.map_index,
+            "layer_slot": self.layer_slot,
+            "template_address": self.template_address,
+            "template_address_hex": f"0x{self.template_address:08X}",
+            "retail_columns": self.retail_columns,
+            "retail_rows": self.retail_rows,
+            "columns": self.columns,
+            "rows": self.rows,
+            "slot_offset": self.slot_offset,
+            "slot_offset_hex": f"0x{self.slot_offset:08X}",
+            "previous_record_address": self.previous_record_address,
+            "previous_record_address_hex": f"0x{self.previous_record_address:08X}",
+            "record_address": self.record_address,
+            "record_address_hex": f"0x{self.record_address:08X}",
+            "record_size": self.record_size,
+            "allocation_file_offset": self.allocation_file_offset,
+            "allocation_size": self.allocation_size,
+            "expanded": self.expanded,
+            "expansion_evidence": self.expansion_evidence,
+            "record_sha256": self.record_sha256,
+            "cell_entries": self.cell_entries,
+            "authored": self.authored,
+            "authored_layer": self.authored_layer,
+            "authored_columns": self.authored_columns,
+            "authored_rows": self.authored_rows,
+            "fills": [fill.to_json() for fill in self.fills],
+            "extents": [extent.to_json() for extent in self.extents],
+        }
+
+
+@dataclass(frozen=True, slots=True)
 class WritePlan:
     """A validated set of changes against one identified base image.
 
@@ -577,6 +718,8 @@ class WritePlan:
     dialogue_edits: tuple[DialogueEditProvenance, ...] = ()
     #: MAP-CHUNK-AUTHORING-001. Empty for a build that authored no chunk.
     chunk_edits: tuple[ChunkEditProvenance, ...] = ()
+    #: MAP-RESIZE-AND-LAYERS-001. Empty for a build that authored no structure.
+    structure_edits: tuple[StructureEditProvenance, ...] = ()
 
     @property
     def effective_changes(self) -> tuple[ByteChange, ...]:
@@ -637,6 +780,9 @@ class WriteManifest:
     #: MAP-CHUNK-AUTHORING-001. Present only when a project-authored chunk was
     #: materialized in this build.
     chunk_edits: tuple[ChunkEditProvenance, ...] = ()
+    #: MAP-RESIZE-AND-LAYERS-001. Present only when a project-authored resize or
+    #: authored layer was materialized in this build.
+    structure_edits: tuple[StructureEditProvenance, ...] = ()
 
     def to_json(self) -> dict:
         document = {
@@ -670,6 +816,10 @@ class WriteManifest:
             ]
         if self.chunk_edits:
             document["chunk_edits"] = [edit.to_json() for edit in self.chunk_edits]
+        if self.structure_edits:
+            document["structure_edits"] = [
+                edit.to_json() for edit in self.structure_edits
+            ]
         return document
 
     def dumps(self) -> str:
@@ -696,6 +846,7 @@ def plan_changes(
     generated_allocations: tuple[GeneratedAllocationProvenance, ...] = (),
     dialogue_edits: tuple[DialogueEditProvenance, ...] = (),
     chunk_edits: tuple[ChunkEditProvenance, ...] = (),
+    structure_edits: tuple[StructureEditProvenance, ...] = (),
 ) -> WritePlan:
     """Validate `changes` against `base` and return an applicable plan.
 
@@ -777,6 +928,7 @@ def plan_changes(
         generated_allocations=generated_allocations,
         dialogue_edits=tuple(dialogue_edits),
         chunk_edits=tuple(chunk_edits),
+        structure_edits=tuple(structure_edits),
     )
 
 
@@ -882,6 +1034,7 @@ def emit_image(
         generated_allocations=plan.generated_allocations,
         dialogue_edits=plan.dialogue_edits,
         chunk_edits=plan.chunk_edits,
+        structure_edits=plan.structure_edits,
     )
     # Stage complete files first. Publish using exclusive links: never replace
     # a raced destination. Publish image last; roll back our links on failure.

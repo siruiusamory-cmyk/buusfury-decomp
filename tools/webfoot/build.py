@@ -63,6 +63,11 @@ from .maps import (
 from .formats.map_entry import MapEntryProfileError
 from .map_paint import MapPaintError, plan_layout_cells
 from .map_chunk import ChunkAuthoringError, materialize_authored_chunks
+from .map_resize import (
+    MapStructureError,
+    materialize_map_structure,
+    structural_placements,
+)
 from .packaged import packaged_profile
 from .write import (
     ByteChange,
@@ -619,7 +624,15 @@ def _check_layout(
     """
     edits = project.layout.cells()
     chunks = project.chunks
-    if not edits and (chunks is None or chunks.is_empty()):
+    structure = project.structure
+    structural_slots = structure.structural_slots()
+    if structural_slots:
+        edits = {
+            key: value
+            for key, value in edits.items()
+            if (key[0], key[1]) not in structural_slots
+        }
+    if not edits and (chunks is None or chunks.is_empty()) and structure.is_empty():
         return []
     canonical = packaged_profile()
     if canonical.identity.sha256 != profile.identity.sha256:
@@ -639,7 +652,25 @@ def _check_layout(
             plan_layout_cells(canonical_image, ordinal_edits, profile=canonical)
         except MapPaintError as exc:
             problems.append(f"authored map layout: {exc}")
-    if authored_edits or (chunks is not None and not chunks.is_empty()):
+    structural_refs: tuple = ()
+    if not structure.is_empty():
+        # MAP-RESIZE-AND-LAYERS-001. A resize and an authored layer are checked by
+        # the same authority a build uses, so an unsupported slot, an impossible
+        # dimension, an unresolved authored layer or an out-of-vocabulary
+        # initialization is a named problem before anything is planned.
+        try:
+            materialize_map_structure(
+                canonical_image, structure, project.layout, profile=canonical
+            )
+        except MapStructureError as exc:
+            problems.append(f"authored map structure: {exc}")
+        try:
+            structural_refs = structural_placements(
+                canonical_image, structure, project.layout, profile=canonical
+            )
+        except MapStructureError as exc:
+            problems.append(f"authored map structure: {exc}")
+    if authored_edits or (chunks is not None and not chunks.is_empty()) or structural_refs:
         from .map_chunk import materialize_authored_chunks
 
         try:
@@ -648,6 +679,7 @@ def _check_layout(
                 chunks.chunks if chunks is not None else {},
                 authored_edits,
                 profile=canonical,
+                structural=structural_refs,
             )
         except ChunkAuthoringError as exc:
             problems.append(f"authored map chunk: {exc}")
@@ -873,7 +905,8 @@ def validate_project(
         # an authored address against it, rather than once per domain.
         canonical_image = (
             Path(rom_path).read_bytes()
-            if (project.layout.cells() or project.dialogues)
+            if (project.layout.cells() or project.dialogues
+                or not project.structure.is_empty())
             else None
         )
         problems = (
@@ -1088,6 +1121,18 @@ def build_project(
     # last-writer-wins. A non-canonical profile cannot be painted at all, and
     # that is refused here rather than silently dropping the authored cells.
     layout_edits = project.layout.cells()
+    # MAP-RESIZE-AND-LAYERS-001. A layout cell on a slot the project's structural
+    # document owns is not an in-place edit at all: the record that would hold it
+    # does not exist in the canonical image, so the whole window is emitted by the
+    # structure domain below. Splitting here is what keeps one cell from being
+    # written by two domains.
+    structural_slots = project.structure.structural_slots()
+    if structural_slots:
+        layout_edits = {
+            key: value
+            for key, value in layout_edits.items()
+            if (key[0], key[1]) not in structural_slots
+        }
     # MAP-CHUNK-AUTHORING-001 splits the one authored layout document by the two
     # value forms a cell may hold. An integer is the canonical-chunk ordinal
     # `map_paint` has always resolved in place; a string is the identity of a
@@ -1101,6 +1146,7 @@ def build_project(
         key: value for key, value in layout_edits.items() if type(value) is str
     }
     chunk_edits: tuple = ()
+    chunk_materialization = None
     generated_allocations: list = []
     if ordinal_edits:
         canonical = packaged_profile()
@@ -1124,7 +1170,7 @@ def build_project(
     # reservation set as every other domain, so an authored chunk body cannot be
     # handed bytes an earlier domain already took, and it extends that set in
     # turn for the domains after it.
-    if authored_edits or (project.chunks and not project.chunks.is_empty()):
+    if authored_edits or (project.chunks and not project.chunks.is_empty()) or not project.structure.is_empty():
         canonical = packaged_profile()
         if canonical.identity.sha256 != profile.identity.sha256:
             raise ProjectValidationError(
@@ -1132,6 +1178,18 @@ def build_project(
                 "canonical chunk domain; a build would silently drop them"
             )
         image = Path(rom_path).read_bytes()
+        # A structural edit's initialization chunk, and any authored cell content
+        # on a structurally authored layer, are references a build-materialized
+        # record will hold. They are site-less placements: they materialize the
+        # body, and the structure domain's own record write carries the address.
+        structural_refs: tuple = ()
+        if not project.structure.is_empty():
+            try:
+                structural_refs = structural_placements(
+                    image, project.structure, project.layout, profile=canonical
+                )
+            except MapStructureError as exc:
+                raise ProjectValidationError(f"authored map structure: {exc}") from exc
         try:
             chunk_materialization = materialize_authored_chunks(
                 image,
@@ -1139,6 +1197,7 @@ def build_project(
                 authored_edits,
                 profile=canonical,
                 reserved=reserved,
+                structural=structural_refs,
             )
         except ChunkAuthoringError as exc:
             # One validation family at the build boundary, naming the chunk.
@@ -1147,6 +1206,44 @@ def build_project(
         reserved += chunk_materialization.reserved
         generated_allocations += list(chunk_materialization.generated_allocations)
         chunk_edits = chunk_materialization.provenance
+        base_bytes = image if base_bytes is None else base_bytes
+
+    # MAP-RESIZE-AND-LAYERS-001's domain: the fourth allocating domain, and the
+    # first whose pointer holder is a **map root's own layer-slot field** rather
+    # than a chunk window cell. It runs after the chunk domain because a record's
+    # window may name a project-authored chunk body, whose address only exists once
+    # that domain has placed it. Every record is EXPANDED_ONLY: a dominant record
+    # grows with the authored grid and the canonical image declares one 256-byte
+    # free region, so the domain's aggregate demand cannot be served canonically.
+    structure_edits: tuple = ()
+    if not project.structure.is_empty():
+        canonical = packaged_profile()
+        if canonical.identity.sha256 != profile.identity.sha256:
+            raise ProjectValidationError(
+                "project authors map structure, but this ROM's profile is not the "
+                "canonical map domain; a build would silently drop it"
+            )
+        image = Path(rom_path).read_bytes()
+        placed_chunks = (
+            {build.identity: build.rom_address for build in chunk_materialization.builds}
+            if chunk_materialization is not None
+            else {}
+        )
+        try:
+            structure_materialization = materialize_map_structure(
+                image,
+                project.structure,
+                project.layout,
+                profile=canonical,
+                reserved=reserved,
+                chunk_addresses=placed_chunks,
+            )
+        except MapStructureError as exc:
+            raise ProjectValidationError(f"authored map structure: {exc}") from exc
+        changes += structure_materialization.changes
+        reserved += structure_materialization.reserved
+        generated_allocations += list(structure_materialization.generated_allocations)
+        structure_edits = structure_materialization.provenance
         base_bytes = image if base_bytes is None else base_bytes
 
     # ROM-EXPAND-001: compressed dialogue is a normal allocating build domain. It
@@ -1206,6 +1303,7 @@ def build_project(
         generated_allocations=tuple(generated_allocations),
         dialogue_edits=dialogue_edits,
         chunk_edits=chunk_edits,
+        structure_edits=structure_edits,
     )
 
     resolved_manifest = manifest_path_for_build(manifest_path, output_path)

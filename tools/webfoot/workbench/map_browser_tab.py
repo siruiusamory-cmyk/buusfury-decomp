@@ -42,6 +42,8 @@ from PySide6.QtWidgets import (
     QButtonGroup,
     QCheckBox,
     QComboBox,
+    QDialog,
+    QDialogButtonBox,
     QFileDialog,
     QFormLayout,
     QFrame,
@@ -61,6 +63,7 @@ from PySide6.QtWidgets import (
     QPushButton,
     QScrollArea,
     QSizePolicy,
+    QSpinBox,
     QSplitter,
     QStackedWidget,
     QTabWidget,
@@ -71,7 +74,7 @@ from PySide6.QtWidgets import (
 )
 
 from tools.webfoot import map_view as mv
-from tools.webfoot.formats.map_graphics import MapGraphicsError
+from tools.webfoot.formats.map_graphics import MAX_LAYER_GRID_SIDE, MapGraphicsError
 from tools.webfoot.map_chunk import (
     ChunkAuthor,
     ChunkAuthoringError,
@@ -82,7 +85,9 @@ from tools.webfoot.map_chunk import (
     set_layout_authored_cells,
 )
 from tools.webfoot.map_layout_edit import (
+    LayoutCell,
     LayoutGrid,
+    LayoutSlot,
     LayoutTarget,
     MapLayoutEditError,
     MapLayoutEditor,
@@ -90,10 +95,31 @@ from tools.webfoot.map_layout_edit import (
 from tools.webfoot.map_layout_write import MapLayoutWriteError
 from tools.webfoot.map_paint import (
     MapPaintError,
+    MapPainter,
     read_layout_edits,
     set_layout_cells,
 )
-from tools.webfoot.project import AuthoredChunk, ProjectError
+from tools.webfoot.map_resize import (
+    ChunkChoice,
+    MapResizer,
+    MapStructureError,
+    StructuralLayer,
+    StructureTarget,
+    clear_layer_resize,
+    layer_identity,
+    read_map_structure,
+    remove_authored_layer,
+    resolve_layer_record,
+    set_authored_layer,
+    set_layer_resize,
+)
+from tools.webfoot.project import (
+    AuthoredChunk,
+    AuthoredLayer,
+    LayerResize,
+    MapStructure,
+    ProjectError,
+)
 from tools.webfoot.write import WriteError
 
 from . import theme
@@ -218,6 +244,25 @@ _CHUNK_READ_ERRORS = (
     ProjectError,
     OSError,
 )
+
+#: MAP-RESIZE-AND-LAYERS-001. Every family a *structural* slot can meet:
+#: ``MapStructureError`` (this capability's one public authoring failure, a
+#: ``ValueError`` sibling of every other family here) and ``MapGraphicsError`` (the
+#: format layer underneath the structural readers, also a ``ValueError`` sibling),
+#: plus the edit, project and filesystem families the surface already declares - the
+#: structural readers sit on the same project document, the same write layer and the
+#: same format layer the rest of this tab reaches. Naming only ``MapStructureError``
+#: would let ``ProjectError`` or ``WriteError`` escape a click to a console the user
+#: does not have, which is the documented dead-click failure mode.
+_STRUCTURE_ERRORS = (MapStructureError, MapGraphicsError) + _EDIT_AND_PROJECT_ERRORS
+
+#: What building the structural *view* can add on top of that. The reader resolves
+#: the profile's own tables by attribute, so a profile object that is not a
+#: `RomProfile` surfaces as `AttributeError`/`TypeError` rather than as a refusal. At
+#: a session boundary that is a refusal like any other and is reported on screen;
+#: a command slot keeps the narrower tuple above, so a programming error in a slot is
+#: still loud rather than being dressed up as an SDK refusal.
+_STRUCTURE_VIEW_ERRORS = _STRUCTURE_ERRORS + (AttributeError, TypeError)
 
 
 class PaintCellsCommand(QUndoCommand):
@@ -544,6 +589,635 @@ class AuthoredPlaceCommand(QUndoCommand):
         where = f"map:{self._map_index:04d} BG{self._layer_slot}"
         verb = "Revert" if self._tab._naming_revert else "Place"
         return f"{verb} {count} cell{'s' if count != 1 else ''} on {where}"
+
+
+class StructuralPaintCommand(QUndoCommand):
+    """One undoable paint gesture inside a project-authored layer grid.
+
+    MAP-RESIZE-AND-LAYERS-001. A resized layer's grown cells - and every cell of a
+    project-authored layer - have no four-byte field in the canonical image for the
+    layout session to rewrite, so their paints are staged in the tab's own
+    ``(map, layer, cell) -> ordinal`` table and written by the SDK's structural-aware
+    ``set_layout_cells``. Everything else is the shape `PaintCellsCommand` uses and
+    for the same reasons: ``previous`` is each cell's *staged* ordinal from before
+    the stroke (``None`` for "no authored paint"), which is what makes one undo
+    restore the distinct earlier state of every cell, and its ``id()`` is its own so
+    a structural stroke can never merge into a pointer stroke.
+    """
+
+    def __init__(self, tab, map_index: int, layer_slot: int, cells, previous, applied):
+        super().__init__()
+        self._tab = tab
+        self._map_index = map_index
+        self._layer_slot = layer_slot
+        self._cells = tuple(cells)
+        #: cell -> the staged ordinal it carried before, or None.
+        self._previous = dict(previous)
+        #: cell -> the staged ordinal the stroke wrote.
+        self._applied = dict(applied)
+        self._brush_key = None
+        self._start_key = None
+        self._end_key = None
+        self._first_run = True
+        self.setText(self._describe())
+
+    def keys(self):
+        return (self._brush_key, self._start_key, self._end_key)
+
+    def set_keys(self, brush_key, start_key, end_key) -> None:
+        self._brush_key = brush_key
+        self._start_key = start_key
+        self._end_key = end_key
+
+    def id(self) -> int:  # noqa: A003 - QUndoCommand's own name
+        """Merge class id, distinct from the paint, chunk and placement commands."""
+        return 0x5350  # "SP"
+
+    def mergeWith(self, other: QUndoCommand) -> bool:
+        if not isinstance(other, StructuralPaintCommand):
+            return False
+        if self._brush_key is None or other._brush_key != self._brush_key:
+            return False
+        if other._layer_slot != self._layer_slot or other._map_index != self._map_index:
+            return False
+        if not self._cells or not other._cells:
+            return False
+        if other._start_key != self._end_key:
+            return False
+        if set(other._cells) & set(self._cells):
+            return False
+        self._cells = self._cells + other._cells
+        self._previous.update(other._previous)
+        self._applied.update(other._applied)
+        self._end_key = other._end_key
+        self.setText(self._describe())
+        return True
+
+    def redo(self) -> None:
+        if self._first_run:
+            self._first_run = False
+            return
+        self._tab._reapply_structural_paint(self)
+
+    def undo(self) -> None:
+        self._tab._reverse_structural_paint(self)
+
+    @property
+    def map_index(self) -> int:
+        return self._map_index
+
+    @property
+    def layer_slot(self) -> int:
+        return self._layer_slot
+
+    @property
+    def cells(self) -> tuple[int, ...]:
+        return self._cells
+
+    @property
+    def previous(self) -> dict[int, int | None]:
+        return dict(self._previous)
+
+    @property
+    def applied(self) -> dict[int, int]:
+        return dict(self._applied)
+
+    def _describe(self) -> str:
+        count = len(self._cells)
+        where = f"map:{self._map_index:04d} BG{self._layer_slot}"
+        verb = "Revert" if self._tab._naming_revert else "Paint"
+        return f"{verb} {count} cell{'s' if count != 1 else ''} on {where}"
+
+
+# --- MAP-RESIZE-AND-LAYERS-001: the structural surface ------------------------
+#
+# Everything below is the structural half of this tab. The authority is
+# `tools.webfoot.map_resize`: this surface asks `MapResizer` what a map's slots are
+# and what a requested resize or authored layer would mean, and persists through
+# `set_layer_resize` / `set_authored_layer` / `clear_layer_resize` /
+# `remove_authored_layer`. No widget here knows the record layout, the grid bytes,
+# the extent arithmetic or the allocator: the labels, the preview line and every
+# refusal are the SDK's own.
+
+
+def _grid_text(columns: int, rows: int) -> str:
+    """A chunk grid as the rest of this surface spells one."""
+    return f"{columns}\u00d7{rows}"
+
+
+def _template_text(map_index: int, layer_slot: int) -> str:
+    """The project's own spelling of a layer that a new layer copies: ``map:NNNN/BGn``.
+
+    This is the identity `AuthoredLayer.template` stores and
+    `MapResizer.template_layer` parses. Spelling it is a *document* matter - no
+    offset, address or byte is involved, which is why it belongs to the surface
+    that renders the project's own vocabulary rather than to the SDK.
+    """
+    return f"map:{map_index:04d}/BG{layer_slot}"
+
+
+def resize_summary(
+    label: str,
+    previous: tuple[int, int],
+    columns: int,
+    rows: int,
+    fill_label: str,
+    extent: tuple[int, int],
+    new_extent: tuple[int, int],
+) -> str:
+    """One readable line for a requested resize: what changes, and to what.
+
+    The shape the ticket names: ``BG0 2x2 -> 3x2; cells 5-6 initialize to Chunk 2;
+    map extent x 89 -> 528``. The cell span is stated in the **1-based** numbering
+    the grid overlay and the inspector already use ("cell 5 of 6"), so a preview
+    and the grid beside it cannot disagree about which cell is which; the extent is
+    stated in pixels because that is what the engine's own camera clamp reads, and
+    only the axes that actually change are stated.
+    """
+    parts = [f"{label} {_grid_text(*previous)} \u2192 {_grid_text(columns, rows)}"]
+    added = columns * rows - previous[0] * previous[1]
+    if added > 0:
+        # The SDK refuses a shrink and a no-op, so a validated resize always adds
+        # cells; the span is stated in the 1-based numbering the grid overlay uses.
+        first = previous[0] * previous[1] + 1
+        last = columns * rows
+        span = f"cell {first}" if first == last else f"cells {first}-{last}"
+        parts.append(f"{span} initialize to {fill_label}")
+    for axis, position in (("x", 0), ("y", 1)):
+        if new_extent[position] != extent[position]:
+            parts.append(
+                f"map extent {axis} {extent[position]} \u2192 {new_extent[position]} px"
+            )
+    return " \u00b7 ".join(parts)
+
+
+class ResizePreview:
+    """What a requested resize would do, stated before anything is written.
+
+    ``edit`` is the value the project would persist; ``summary`` is the one-line
+    change statement; ``extent`` is the map's declared pixel extent after the
+    resize, per axis, as the build's own resolution computes it.
+    """
+
+    __slots__ = ("edit", "summary", "extent")
+
+    def __init__(self, edit: "LayerResize", summary: str, extent: tuple[int, int]) -> None:
+        self.edit = edit
+        self.summary = summary
+        self.extent = extent
+
+
+class ResizeCommand(QUndoCommand):
+    """One undoable resize gesture: the whole grid change, never a cell of it.
+
+    MAP-RESIZE-AND-LAYERS-001. The same shape the paint commands use, and for the
+    same reason: the edit is *staged in the tab* before the command is pushed, so a
+    refusal inside the SDK surfaces in the tab's own guard and nothing is pushed at
+    all. ``previous`` and ``applied`` are the resize the layer carried before and
+    after the gesture, ``None`` meaning "no project-authored resize" - which is how
+    un-staging a resize, and reverting one, both reverse.
+
+    It deliberately never merges: two resizes are two gestures even when they are
+    typed one after the other, because collapsing them would hide an intermediate
+    grid the author asked for and one undo would then skip a shape.
+    """
+
+    def __init__(self, tab, map_index: int, layer_slot: int, previous, applied) -> None:
+        super().__init__()
+        self._tab = tab
+        self._map_index = map_index
+        self._layer_slot = layer_slot
+        self._previous = previous
+        self._applied = applied
+        self._first_run = True
+        self.setText(self._describe())
+
+    def id(self) -> int:  # noqa: A003 - QUndoCommand's own name
+        """Merge class id, distinct from every cell gesture's."""
+        return 0x5253  # "RS"
+
+    def mergeWith(self, other: QUndoCommand) -> bool:
+        return False
+
+    def redo(self) -> None:
+        if self._first_run:
+            # Pushed AFTER the tab staged the resize; re-applying it here would
+            # make this command's first activation a duplicate edit.
+            self._first_run = False
+            return
+        self._tab._reapply_resize(self)
+
+    def undo(self) -> None:
+        self._tab._reverse_resize(self)
+
+    @property
+    def map_index(self) -> int:
+        return self._map_index
+
+    @property
+    def layer_slot(self) -> int:
+        return self._layer_slot
+
+    @property
+    def previous(self):
+        return self._previous
+
+    @property
+    def applied(self):
+        return self._applied
+
+    def _describe(self) -> str:
+        where = f"map:{self._map_index:04d} BG{self._layer_slot}"
+        verb = "Revert" if self._tab._naming_structure_revert else "Resize"
+        if self._applied is None:
+            return f"{verb} {where} to the retail grid"
+        return f"{verb} {where} to {_grid_text(self._applied.columns, self._applied.rows)}"
+
+
+class NewLayerCommand(QUndoCommand):
+    """One undoable layer-authoring gesture: create, or un-create, one layer.
+
+    MAP-RESIZE-AND-LAYERS-001. ``previous`` and ``applied`` are the authored layer
+    identity carried before and after the gesture, ``None`` meaning "this project
+    declares no such layer" - so undoing a creation un-stages it and redo stages it
+    again, on the same one history the paint and chunk gestures use.
+    """
+
+    def __init__(self, tab, identity: str, previous, applied) -> None:
+        super().__init__()
+        self._tab = tab
+        self._identity = identity
+        self._previous = previous
+        self._applied = applied
+        self._first_run = True
+        self.setText(self._describe())
+
+    def id(self) -> int:  # noqa: A003 - QUndoCommand's own name
+        """Merge class id, distinct from every other gesture family's."""
+        return 0x4C41  # "LA"
+
+    def mergeWith(self, other: QUndoCommand) -> bool:
+        return False
+
+    def redo(self) -> None:
+        if self._first_run:
+            self._first_run = False
+            return
+        self._tab._reapply_layer(self)
+
+    def undo(self) -> None:
+        self._tab._reverse_layer(self)
+
+    @property
+    def identity(self) -> str:
+        return self._identity
+
+    @property
+    def previous(self):
+        return self._previous
+
+    @property
+    def applied(self):
+        return self._applied
+
+    def _describe(self) -> str:
+        verb = "Revert" if self._tab._naming_structure_revert else "Create"
+        layer = self._applied if self._applied is not None else self._previous
+        where = f"map:{layer.map_index:04d} BG{layer.layer_slot}"
+        return f"{verb} {self._identity} on {where} \u00b7 {_grid_text(layer.columns, layer.rows)}"
+
+
+class _StructureDialog(QDialog):
+    """Shared scaffolding for the two structural forms.
+
+    Both forms are the same shape: a few SDK-named fields, one live line that
+    states EXACTLY what the change would do (or the SDK's reason it cannot), and
+    OK/Cancel. Validation is not duplicated here - the tab hands in a ``preview``
+    callable that runs the SDK and raises ``MapStructureError``, so the refusal a
+    person reads is the one the SDK would raise, word for word.
+    """
+
+    def __init__(self, parent, title: str, preview, apply_command) -> None:
+        super().__init__(parent)
+        self.setWindowTitle(title)
+        self.setModal(True)
+        self._preview = preview
+        self._apply = apply_command
+        self._edit = None
+        self._ok = None
+
+    # -- the live line -------------------------------------------------------
+
+    def _set_summary(self, text: str, role: str) -> None:
+        colour = {
+            "ok": "accent",
+            "refused": "danger",
+            "neutral": "text_secondary",
+        }.get(role, "text_secondary")
+        self._summary.setText(text)
+        self._summary.setStyleSheet(
+            f"color: {theme.color(colour).name()}; background: transparent;"
+        )
+        self._summary.setAccessibleName(text)
+
+    def _run_preview(self, produce) -> None:
+        """Run the SDK's own validation and state its verdict, or its refusal.
+
+        A refusal is a *state of the form*, not an error dialog: the line says what
+        the SDK said and OK is left to raise it as a `QMessageBox` when pressed, so
+        the refusal can never be inferred from a disabled button alone and never
+        reaches a console the user does not have.
+        """
+        try:
+            preview = produce()
+        except MapStructureError as exc:
+            self._edit = None
+            self._set_summary(f"Not supported \u00b7 {exc}", "refused")
+            return
+        self._edit = preview.edit
+        self._set_summary(preview.summary, "ok")
+
+    # -- the command ---------------------------------------------------------
+
+    def request(self):
+        """The form's current request, in the order the tab's guard takes it."""
+        raise NotImplementedError
+
+    def _accept(self) -> None:
+        """Run the tab's own SDK guard; stay open when it refuses."""
+        if self._apply(*self.request()):
+            self.accept()
+
+    def edit(self):
+        """The validated value the last preview produced, or None."""
+        return self._edit
+
+    def summary_text(self) -> str:
+        """The live line's current text, for tests and for the QA harness."""
+        return self._summary.text()
+
+
+class ResizeLayerDialog(_StructureDialog):
+    """The resize command: new grid size in chunks, initialization chunk, preview.
+
+    The dialog *shows* the layer's current dimensions and the map's declared pixel
+    extent beside the controls, because a grow is only meaningful against what the
+    map is now. Shrinking is offered as a value a person can type and is refused
+    with the SDK's own reason - never implied to be supported.
+    """
+
+    def __init__(self, parent, *, layer, extent, preview, apply_command, current) -> None:
+        super().__init__(parent, "Resize layer", preview, apply_command)
+        self._layer = layer
+        self._extent = extent
+        self._current = current
+
+        self._columns = QSpinBox()
+        self._columns.setRange(1, MAX_LAYER_GRID_SIDE)
+        self._columns.setValue(current[0])
+        self._columns.setSuffix(" chunks")
+        self._columns.setAccessibleName("New width in chunks")
+        self._rows = QSpinBox()
+        self._rows.setRange(1, MAX_LAYER_GRID_SIDE)
+        self._rows.setValue(current[1])
+        self._rows.setSuffix(" chunks")
+        self._rows.setAccessibleName("New height in chunks")
+        self._fill = QComboBox()
+        self._fill.setAccessibleName("Initialization chunk for the new cells")
+        for choice in layer.vocabulary:
+            self._fill.addItem(choice.label, choice.ordinal)
+        self._fill.setToolTip(
+            "The chunk every cell the growth adds starts as. Only chunks this "
+            "layer already draws are offered."
+        )
+        self._now = QLabel(
+            f"{layer.label} now \u00b7 map extent {extent[0]} \u00d7 {extent[1]} px"
+        )
+        self._now.setProperty("dbzRole", "hint")
+        self._now.setWordWrap(True)
+        self._now.setMinimumWidth(0)
+        self._summary = QLabel("")
+        self._summary.setWordWrap(True)
+        self._summary.setMinimumWidth(0)
+
+        form = QFormLayout()
+        form.setHorizontalSpacing(theme.SPACE_MD)
+        form.setVerticalSpacing(theme.SPACE_XS)
+        form.setFieldGrowthPolicy(QFormLayout.FieldGrowthPolicy.AllNonFixedFieldsGrow)
+        form.addRow("Width", self._columns)
+        form.addRow("Height", self._rows)
+        form.addRow("Initialize new cells", self._fill)
+
+        buttons = QDialogButtonBox(
+            QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel
+        )
+        self._ok = buttons.button(QDialogButtonBox.StandardButton.Ok)
+        self._ok.setText("Resize")
+        self._ok.setProperty("dbzRole", "primary")
+        buttons.accepted.connect(self._accept)
+        buttons.rejected.connect(self.reject)
+
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(
+            theme.SPACE_MD, theme.SPACE_MD, theme.SPACE_MD, theme.SPACE_MD
+        )
+        layout.setSpacing(theme.SPACE_SM)
+        layout.addWidget(self._now)
+        layout.addLayout(form)
+        layout.addWidget(self._summary)
+        layout.addWidget(buttons)
+        self.setMinimumWidth(380)
+
+        self._columns.valueChanged.connect(self._refresh)
+        self._rows.valueChanged.connect(self._refresh)
+        self._fill.currentIndexChanged.connect(self._refresh)
+        self._refresh()
+
+    def request(self) -> tuple[int, int, int]:
+        """The requested grid and initialization, as the SDK takes them."""
+        return self._columns.value(), self._rows.value(), self._fill.currentData()
+
+    def _refresh(self, *_args) -> None:
+        columns, rows = self._columns.value(), self._rows.value()
+        if (columns, rows) == self._current:
+            # A no-op is a *checkable* condition, not a message the tab has to
+            # match: saying so here keeps the first thing a person sees from being
+            # a refusal about the shape the layer already has.
+            self._edit = None
+            self._set_summary(
+                f"{self._layer.label} is already {_grid_text(columns, rows)}; a "
+                "resize must change the grid.",
+                "neutral",
+            )
+            return
+        self._run_preview(
+            lambda: self._preview(columns, rows, self._fill.currentData())
+        )
+
+    def _accept(self) -> None:
+        columns, rows = self._columns.value(), self._rows.value()
+        if (columns, rows) == self._current:
+            self._set_summary(
+                f"{self._layer.label} is already {_grid_text(columns, rows)}; a "
+                "resize must change the grid.",
+                "neutral",
+            )
+            return
+        super()._accept()
+
+
+class NewLayerDialog(_StructureDialog):
+    """The layer-authoring command: which unused slot, copied from what, how big.
+
+    Only slots the canonical image leaves unused are offered - the engine's layer
+    count is fixed at four, so "a new layer" means activating one - and the
+    template is a layer of the same map, which is what makes the new record's screen
+    entries resolve. The permitted initialization chunks are the template's own, as
+    the SDK resolves them, so the form cannot offer a value the build would refuse.
+    """
+
+    def __init__(
+        self,
+        parent,
+        *,
+        map_index: int,
+        free_slots,
+        templates,
+        vocabulary_for,
+        preview,
+        apply_command,
+        default_name: str,
+    ) -> None:
+        super().__init__(parent, "New layer", preview, apply_command)
+        self._map_index = map_index
+        self._vocabulary_for = vocabulary_for
+
+        self._slot = QComboBox()
+        self._slot.setAccessibleName("Layer slot to activate")
+        for slot in free_slots:
+            self._slot.addItem(f"BG{slot} \u00b7 unused by the source image", slot)
+        self._template = QComboBox()
+        self._template.setAccessibleName("Template layer to copy")
+        for layer in templates:
+            self._template.addItem(layer.label, layer.slot)
+        self._template.setToolTip(
+            "The new layer's record header and permitted chunk vocabulary come from "
+            "this layer of the same map."
+        )
+        self._name = QLineEdit(default_name)
+        self._name.setAccessibleName("New layer name")
+        self._name.setToolTip(
+            "A stable project identity: a lowercase letter followed by a-z, 0-9, "
+            "'_' or '-'."
+        )
+        self._columns = QSpinBox()
+        self._columns.setRange(1, MAX_LAYER_GRID_SIDE)
+        self._columns.setValue(1)
+        self._columns.setSuffix(" chunks")
+        self._columns.setAccessibleName("New width in chunks")
+        self._rows = QSpinBox()
+        self._rows.setRange(1, MAX_LAYER_GRID_SIDE)
+        self._rows.setValue(1)
+        self._rows.setSuffix(" chunks")
+        self._rows.setAccessibleName("New height in chunks")
+        self._fill = QComboBox()
+        self._fill.setAccessibleName("Initialization chunk for the new layer")
+        self._note = QLabel(
+            "The source image leaves this slot unused, so the new layer is a whole "
+            "grid of one chunk until its cells are painted. It does not change the "
+            "map's own pixel extent."
+        )
+        self._note.setProperty("dbzRole", "hint")
+        self._note.setWordWrap(True)
+        self._note.setMinimumWidth(0)
+        self._summary = QLabel("")
+        self._summary.setWordWrap(True)
+        self._summary.setMinimumWidth(0)
+
+        form = QFormLayout()
+        form.setHorizontalSpacing(theme.SPACE_MD)
+        form.setVerticalSpacing(theme.SPACE_XS)
+        form.setFieldGrowthPolicy(QFormLayout.FieldGrowthPolicy.AllNonFixedFieldsGrow)
+        form.addRow("Slot", self._slot)
+        form.addRow("Template", self._template)
+        form.addRow("Name", self._name)
+        form.addRow("Width", self._columns)
+        form.addRow("Height", self._rows)
+        form.addRow("Initialize cells", self._fill)
+
+        buttons = QDialogButtonBox(
+            QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel
+        )
+        self._ok = buttons.button(QDialogButtonBox.StandardButton.Ok)
+        self._ok.setText("Create layer")
+        self._ok.setProperty("dbzRole", "primary")
+        buttons.accepted.connect(self._accept)
+        buttons.rejected.connect(self.reject)
+
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(
+            theme.SPACE_MD, theme.SPACE_MD, theme.SPACE_MD, theme.SPACE_MD
+        )
+        layout.setSpacing(theme.SPACE_SM)
+        layout.addWidget(self._note)
+        layout.addLayout(form)
+        layout.addWidget(self._summary)
+        layout.addWidget(buttons)
+        self.setMinimumWidth(400)
+
+        self._template.currentIndexChanged.connect(self._reload_vocabulary)
+        self._slot.currentIndexChanged.connect(self._refresh)
+        self._columns.valueChanged.connect(self._refresh)
+        self._rows.valueChanged.connect(self._refresh)
+        self._fill.currentIndexChanged.connect(self._refresh)
+        self._name.textChanged.connect(self._refresh)
+        self._reload_vocabulary()
+
+    # -- the form's own state ------------------------------------------------
+
+    def template_slot(self) -> int | None:
+        return self._template.currentData()
+
+    def slot(self) -> int | None:
+        return self._slot.currentData()
+
+    def name(self) -> str:
+        return self._name.text().strip()
+
+    def request(self) -> tuple:
+        return (
+            self.name(),
+            self.slot(),
+            self.template_slot(),
+            self._columns.value(),
+            self._rows.value(),
+            self._fill.currentData(),
+        )
+
+    def _reload_vocabulary(self, *_args) -> None:
+        """Re-offer the initialization chunks of the TEMPLATE the form now names."""
+        template = self.template_slot()
+        self._fill.blockSignals(True)
+        self._fill.clear()
+        if template is not None:
+            for choice in self._vocabulary_for(template):
+                self._fill.addItem(choice.label, choice.ordinal)
+        self._fill.blockSignals(False)
+        self._refresh()
+
+    def _refresh(self, *_args) -> None:
+        identity, slot, template, columns, rows, fill = self.request()
+        if slot is None or template is None or not identity:
+            self._edit = None
+            self._set_summary(
+                "Name the layer, choose the slot to activate and the template to "
+                "copy.",
+                "neutral",
+            )
+            return
+        self._run_preview(
+            lambda: self._preview(identity, slot, template, columns, rows, fill)
+        )
 
 
 def _checkerboard() -> QBrush:
@@ -1184,6 +1858,59 @@ class MapBrowserTab(QWidget):
         #: reported once rather than on every repaint of the palette.
         self._plane_error_reported: set[str] = set()
 
+        # -- MAP-RESIZE-AND-LAYERS-001 state, all in-memory -------------------
+        #
+        # The project's own `maps/structure.toml` is read ONCE per session and per
+        # project mutation (CQA-07) into `_structure`; everything on screen is
+        # derived from that document merged with the two staged tables below, which
+        # is what makes an undoable staged resize cost no project read at all.
+        #: The project's committed structural document.
+        self._structure: MapStructure | None = None
+        #: Why structure editing is unavailable, empty when it is.
+        self._structure_unavailable: str = ""
+        #: The project's structural document could not be read, in the sentence the
+        #: status line states; empty while it reads. A project mutation is a
+        #: background event, so this is the channel that reports it where a user is
+        #: looking - the same rule the layout and chunk readers already follow.
+        self._structure_read_error: str = ""
+        #: The merged document (committed + staged), rebuilt without any I/O.
+        self._staged_document: MapStructure | None = None
+        #: Staged resizes and layers: the value, or None meaning "remove the
+        #: project's own". Keyed exactly as the project keys them.
+        self._staged_resizes: dict[tuple[int, int], "LayerResize | None"] = {}
+        self._staged_layers: dict[str, "AuthoredLayer | None"] = {}
+        #: The one structural facade over the merged document, and the one paint
+        #: authority over the same, both rebuilt only by `_rebuild_structure_view`.
+        self._resizer: MapResizer | None = None
+        self._painter: MapPainter | None = None
+        #: Per-map `StructureTarget`, memoized for the life of one merged document.
+        self._structure_targets: dict[int, StructureTarget] = {}
+        #: What the Layer row last listed: `(slot, label, project layer or None)`.
+        #: `None` means "the combo was cleared by something other than a fill", so
+        #: the next fill happens whatever the rows are. A project mutation compares
+        #: against this instead of rebuilding the editor selection, which would
+        #: discard the user's brush, picked cell and draft (CQA-05).
+        self._layer_rows_signature: tuple | None = None
+        #: The structural layer the map editor is pointed at, when the selected
+        #: slot's grid is the project's rather than the canonical record's.
+        self._structure_slot: StructuralLayer | None = None
+        #: Staged paints on project-authored grids: `(map, slot, cell) -> ordinal`,
+        #: and the same cells as the project holds them, re-read with the project.
+        self._structural_cells: dict[tuple[int, int, int], int] = {}
+        self._structural_committed: dict[tuple[int, int, int], int] = {}
+        #: Chunk images for structural cells, keyed by canonical chunk address, so a
+        #: repaint of a grown grid re-renders no chunk body more than once.
+        self._structural_images: dict[int, mv.ChunkImage] = {}
+        #: Set while the structure section is rebuilding its own list, so selecting
+        #: a row programmatically cannot re-enter the selection slot.
+        self._suppress_structure_list = False
+        #: The structure list's current content, so a repaint that changes nothing
+        #: allocates no item and touches no widget.
+        self._structure_row_signature: tuple = ()
+        #: Set while a structural gesture is building its history entry, so the
+        #: command names the operation the user performed.
+        self._naming_structure_revert = False
+
         self._scene = QGraphicsScene(self)
         self._canvas = MapBrowserCanvas(self._scene)
         self._canvas.set_key_handler(self._on_canvas_key)
@@ -1726,6 +2453,104 @@ class MapBrowserTab(QWidget):
         )
         self._edit_chunk_button.clicked.connect(self.edit_selected_authored_chunk)
 
+        # -- MAP-RESIZE-AND-LAYERS-001: the map's own structure ----------------
+        #
+        # One inspector section, in the same place the surface already keeps its
+        # technical detail: the layer list (canonical and project-authored, which is
+        # what makes a new layer identifiable), the selected layer's grid and the
+        # map's declared extent, whether that slot is supported or refused with the
+        # SDK's reason, and the two commands that change the structure. Both
+        # commands open a form; the entry controls live there rather than here, so
+        # the inspector stays a readout of state and the writing surface stays one
+        # thing at a time.
+        self._structure_list = QListWidget()
+        self._structure_list.setUniformItemSizes(True)
+        self._structure_list.setSelectionMode(QListWidget.SelectionMode.SingleSelection)
+        self._structure_list.setHorizontalScrollBarPolicy(
+            Qt.ScrollBarPolicy.ScrollBarAlwaysOff
+        )
+        self._structure_list.setTextElideMode(Qt.TextElideMode.ElideRight)
+        self._structure_list.setAccessibleName("Layer slots of this map")
+        self._structure_list.setToolTip(
+            "Every layer slot of this map: the canonical record it holds, whether "
+            "the project resized it or authored it, and why a slot cannot be edited."
+        )
+        self._structure_list.currentRowChanged.connect(self._on_structure_row_selected)
+        self._structure_state = QLabel("No map is selected.")
+        self._structure_state.setWordWrap(True)
+        self._structure_state.setMinimumWidth(0)
+        self._structure_extent = QLabel("")
+        self._structure_extent.setProperty("dbzRole", "hint")
+        self._structure_extent.setWordWrap(True)
+        self._structure_extent.setMinimumWidth(0)
+        self._structure_support = QLabel("")
+        self._structure_support.setProperty("dbzRole", "hint")
+        self._structure_support.setWordWrap(True)
+        self._structure_support.setMinimumWidth(0)
+        self._structure_staged = QLabel("")
+        self._structure_staged.setProperty("dbzRole", "hint")
+        self._structure_staged.setWordWrap(True)
+        self._structure_staged.setMinimumWidth(0)
+
+        self._resize_button = QPushButton("Resize layer\u2026")
+        self._resize_button.setToolTip(
+            "Grow the selected layer's chunk grid. A resize redistributes nothing: "
+            "the cells the source image holds stay exactly where they are."
+        )
+        self._resize_button.clicked.connect(self.open_resize_dialog)
+        self._new_layer_button = QPushButton("New layer\u2026")
+        self._new_layer_button.setToolTip(
+            "Activate a layer slot the source image leaves unused, copied from one of "
+            "this map's own layers"
+        )
+        self._new_layer_button.clicked.connect(self.open_new_layer_dialog)
+        self._revert_structure_button = QPushButton("Revert structure")
+        self._revert_structure_button.setToolTip(
+            "Un-stage the selected layer's structural change; the project keeps what "
+            "it already holds (this is itself undoable)"
+        )
+        self._revert_structure_button.clicked.connect(self.revert_selected_structure)
+
+        structure_form = QFormLayout()
+        structure_form.setContentsMargins(theme.SPACE_SM, theme.SPACE_XS, theme.SPACE_SM, 0)
+        structure_form.setHorizontalSpacing(theme.SPACE_MD)
+        structure_form.setVerticalSpacing(theme.SPACE_XS)
+        structure_form.setFieldGrowthPolicy(
+            QFormLayout.FieldGrowthPolicy.AllNonFixedFieldsGrow
+        )
+        structure_form.addRow("Selected layer", self._structure_state)
+        structure_form.addRow("Map extent", self._structure_extent)
+        structure_form.addRow("Supported", self._structure_support)
+        structure_form.addRow("Staged change", self._structure_staged)
+        structure_buttons = QHBoxLayout()
+        structure_buttons.setContentsMargins(theme.SPACE_SM, 0, theme.SPACE_SM, 0)
+        structure_buttons.addWidget(self._resize_button, 1)
+        structure_buttons.addWidget(self._new_layer_button, 1)
+        # The third command gets its own row. The inspector's action column is
+        # 290 px at the default window size, and "Resize layer…" + "New layer…" +
+        # "Revert structure" need 339: Qt clipped two of the three labels down to
+        # "ssize layer" and "ert struct" (found by looking at the QA captures).
+        # Two rows keep every command's own SDK wording readable, which matters
+        # more than one row of height in a panel that scrolls.
+        structure_revert = QHBoxLayout()
+        structure_revert.setContentsMargins(theme.SPACE_SM, 0, theme.SPACE_SM, 0)
+        structure_revert.addWidget(self._revert_structure_button, 1)
+        structure_body = QWidget()
+        structure_body_layout = QVBoxLayout(structure_body)
+        structure_body_layout.setContentsMargins(0, 0, 0, 0)
+        structure_body_layout.setSpacing(theme.SPACE_XS)
+        structure_body_layout.addWidget(self._structure_list)
+        structure_body_layout.addLayout(structure_form)
+        structure_body_layout.addLayout(structure_buttons)
+        structure_body_layout.addLayout(structure_revert)
+        self._structure_box = QWidget()
+        self._structure_box.setObjectName("dbzMapStructure")
+        structure_box_layout = QVBoxLayout(self._structure_box)
+        structure_box_layout.setContentsMargins(0, 0, 0, 0)
+        structure_box_layout.setSpacing(0)
+        structure_box_layout.addWidget(PanelHeader("Map structure"))
+        structure_box_layout.addWidget(structure_body)
+
         editor_form = QFormLayout()
         editor_form.setContentsMargins(theme.SPACE_SM, theme.SPACE_SM, theme.SPACE_SM, 0)
         editor_form.setHorizontalSpacing(theme.SPACE_MD)
@@ -1738,9 +2563,14 @@ class MapBrowserTab(QWidget):
         self._editor_form = editor_form
         buttons = QHBoxLayout()
         buttons.setContentsMargins(theme.SPACE_SM, 0, theme.SPACE_SM, 0)
-        buttons.addWidget(self._apply_button)
-        buttons.addWidget(self._revert_button)
-        buttons.addWidget(self._reset_button)
+        buttons.addWidget(self._apply_button, 1)
+        buttons.addWidget(self._revert_button, 1)
+        # "Discard pending" needs 127 px and the row has 274 for three commands:
+        # the label was clipped to "iscard pendin" (seen in the QA captures). It
+        # gets its own row for the same reason the structural row does.
+        reset_row = QHBoxLayout()
+        reset_row.setContentsMargins(theme.SPACE_SM, 0, theme.SPACE_SM, 0)
+        reset_row.addWidget(self._reset_button, 1)
         # Undo/redo sit next to the gesture buttons as a second, discoverable
         # spelling of the strip's pair; both drive the SAME QUndoStack, so the
         # keyboard shortcut and the button can never disagree about the history.
@@ -1767,7 +2597,9 @@ class MapBrowserTab(QWidget):
         editor_layout.addLayout(editor_form)
         editor_layout.addLayout(history)
         editor_layout.addLayout(buttons)
+        editor_layout.addLayout(reset_row)
         editor_layout.addWidget(self._detail_row)
+        editor_layout.addWidget(self._structure_box)
         editor_layout.addWidget(self._create_chunk_button)
         editor_layout.addWidget(self._edit_chunk_button)
         editor_layout.addWidget(self._commit_button)
@@ -1994,6 +2826,12 @@ class MapBrowserTab(QWidget):
         # authored placement names a chunk this project may not even declare on the
         # other side of the change - so this is the event that clears it (CQA-05).
         self._clear_authored_state()
+        # MAP-RESIZE-AND-LAYERS-001. The same rule for the structural half: a layer
+        # record, a grid and a staged resize are claims about the image that is being
+        # replaced, so a session change is the ONE event that clears them, and the
+        # project's structural document is then read once for the new session.
+        self._clear_structure_state()
+        self._refresh_structure()
         self._reset_editor()
         # A new image is a new base: every history command's captured values came
         # from the image that is being replaced, so the stack cannot survive it.
@@ -2051,8 +2889,15 @@ class MapBrowserTab(QWidget):
         nothing the user staged - the staged authored placements, the staged chunk
         documents and the open chunk editor with its in-progress plane - is
         touched.
+
+        MAP-RESIZE-AND-LAYERS-001 adds the structural half to that list: the
+        project's structural document is re-read here, the staged structural edits
+        (a staged resize, a staged new layer, a staged removal) survive untouched on
+        top of it, and the one `MapResizer`/`MapPainter` over the merged document is
+        rebuilt once - so an unrelated project write never costs a staged resize.
         """
         self.reload_project_layout()
+        self._reselect_layer()
         self._mark_pending_rows()
         self._refresh_editor_state()
         self._update_status()
@@ -2213,7 +3058,30 @@ class MapBrowserTab(QWidget):
             check = QCheckBox(f"BG{layer.slot} \u00b7 {label}")
             check.setChecked(True)
             check.setToolTip(layer.classification)
-            check.toggled.connect(self._show_composite)
+            check.toggled.connect(self._on_layer_toggled)
+            self._layer_checks[layer.slot] = check
+            self._layers_layout.addWidget(check)
+            action = QWidgetAction(self._layers_menu)
+            action.setDefaultWidget(check)
+            self._layers_menu.addAction(action)
+        # MAP-RESIZE-AND-LAYERS-001. A layer the project authored sits on a slot the
+        # canonical image leaves unused, so the render reports no graphical layer for
+        # it and it would have no way to be hidden or shown - and the structural
+        # preview draws it as a normal dominant layer, which means it needs the same
+        # control as one. A *resized* layer already has its check box above.
+        drawn = set(self._layer_checks)
+        for layer in self.structural_layers(result.index):
+            if layer.slot in drawn or layer.identity is None:
+                continue
+            check = QCheckBox(
+                f"BG{layer.slot} \u00b7 {self._structural_marker(layer)}"
+            )
+            check.setChecked(True)
+            check.setToolTip(
+                f"{layer.label} \u00b7 a layer this project authors; a build "
+                "materializes it"
+            )
+            check.toggled.connect(self._on_layer_toggled)
             self._layer_checks[layer.slot] = check
             self._layers_layout.addWidget(check)
             action = QWidgetAction(self._layers_menu)
@@ -2247,6 +3115,19 @@ class MapBrowserTab(QWidget):
             return
         self._set_map_pixmap(pixmap, result.width, result.height)
 
+    def _on_layer_toggled(self, _checked: bool = False) -> None:
+        """Re-draw after a layer's visibility changed.
+
+        MAP-RESIZE-AND-LAYERS-001: when the map has a project-authored grid the
+        canvas is not the canonical composite, so hiding a layer has to rebuild the
+        structural preview rather than the retail one - otherwise the toggled layer
+        would keep painting exactly as before.
+        """
+        if self._current is not None and self.structural_layers(self._current.index):
+            self._refresh_preview()
+            return
+        self._show_composite()
+
     def _pixmap_from_indices(self, indices: bytes, width: int, height: int, palette) -> QPixmap:
         rgba = mv.rgba(indices, palette)
         image = QImage(rgba, width, height, width * 4, QImage.Format.Format_RGBA8888)
@@ -2272,7 +3153,21 @@ class MapBrowserTab(QWidget):
         index = result.index
         self._name.setText(result.name or "(unnamed)")
         self._identity.setText(f"map:{index:04d}")
-        self._dimensions.setText(f"{result.width} × {result.height} px")
+        structural = self.structural_layers(index)
+        if structural:
+            # MAP-RESIZE-AND-LAYERS-001. A project-authored grid is not the record
+            # the canonical image holds, so stating only the rendered retail size
+            # would describe a map the project no longer builds. The extent is the
+            # camera's reach, which is what a resize actually raises.
+            target = self._structure_target_for(index)
+            extent = (
+                f"{target.extent_x} × {target.extent_y} px map extent"
+                if target is not None
+                else f"{result.width} × {result.height} px"
+            )
+            self._dimensions.setText(extent)
+        else:
+            self._dimensions.setText(f"{result.width} × {result.height} px")
         self._layer_count.setText(
             f"{result.graphical_layer_count} graphical · {len(result.layers)} slot(s)"
         )
@@ -2282,6 +3177,11 @@ class MapBrowserTab(QWidget):
                 lines.append(f"BG{layer.slot} · {layer.classification} ({layer.width}×{layer.height})")
             else:
                 lines.append(f"BG{layer.slot} · {layer.classification}")
+        for layer in structural:
+            lines.append(
+                f"BG{layer.slot} · {self._structural_marker(layer)} "
+                f"({layer.columns}×{layer.rows} chunks · {layer.width}×{layer.height} px)"
+            )
         self._layer_types.setText("\n".join(lines))
         notes = list(result.warnings)
         if self._session.authored is not None:
@@ -2318,6 +3218,7 @@ class MapBrowserTab(QWidget):
         """Drop the per-map selection state (the session and images stay)."""
         self._target = None
         self._slot = None
+        self._structure_slot = None
         self._selected_cell = None
         self._draft = None
         self._thumbnails = {}
@@ -2335,6 +3236,7 @@ class MapBrowserTab(QWidget):
         self._layer_combo.blockSignals(True)
         self._layer_combo.clear()
         self._layer_combo.blockSignals(False)
+        self._layer_rows_signature = None
         self._cell_label.setText("No cell selected")
         self._chunk_label.setText("")
         self._detail.setText("")
@@ -2345,6 +3247,7 @@ class MapBrowserTab(QWidget):
         self._editor_error = None
         self._target = None
         self._slot = None
+        self._structure_slot = None
         self._selected_cell = None
         self._draft = None
         self._saved = {}
@@ -2380,6 +3283,7 @@ class MapBrowserTab(QWidget):
         self._layer_combo.blockSignals(True)
         self._layer_combo.clear()
         self._layer_combo.blockSignals(False)
+        self._layer_rows_signature = None
 
     def _editor_session(self) -> MapLayoutEditor | None:
         """The edit session for the open ROM, or None with the reason recorded."""
@@ -2427,21 +3331,26 @@ class MapBrowserTab(QWidget):
         """
         if self._session.project_dir is None:
             return {}
+        structural = self.structural_pairs()
         try:
             ordered = {
                 key: value
                 for key, value in read_layout_edits(self._session.project_dir).cells().items()
-                if type(value) is int
+                if type(value) is int and (key[0], key[1]) not in structural
             }
         except _PROJECT_READ_ERRORS as exc:
             self._publish_status(f"Project layout could not be read: {exc}")
             return {}
         if not ordered:
             return {}
-        from tools.webfoot.map_paint import MapPainter
-
         try:
-            return MapPainter(image).pointer_edits(ordered)
+            # The structural session's own painter when there is one, so resolving
+            # the floor costs no second read of the map table; the document it was
+            # built over is the one just read (CQA-07).
+            painter = self._painter or MapPainter(
+                image, structure=self.structure_document()
+            )
+            return painter.pointer_edits(ordered)
         except MapPaintError as exc:
             # A project that names a cell this image cannot carry is a real
             # problem, and it is named rather than dropped: the build refuses it
@@ -2470,23 +3379,105 @@ class MapBrowserTab(QWidget):
             self._refresh_editor_state()
             return
         self._editor_box.setToolTip("")
-        self._layer_combo.blockSignals(True)
-        self._layer_combo.clear()
-        for slot in self._target.editable_slots:
-            self._layer_combo.addItem(slot.label, slot.slot)
-        self._layer_combo.blockSignals(False)
-        if self._layer_combo.count():
-            self._layer_combo.setCurrentIndex(0)
-            self._select_layer(self._layer_combo.itemData(0))
-        else:
-            self._slot = None
-            self._populate_chooser()
+        self._populate_layer_combo()
         self._refresh_editor_state()
 
+    def _layer_rows(self) -> tuple[tuple[int, str, "StructuralLayer | None"], ...]:
+        """The Layer row's own rows - ``(slot, label, project layer)`` - with no I/O.
+
+        One computation behind both the combo and the "has anything actually
+        changed?" question a project mutation asks, so the two cannot disagree
+        about what this map offers. The project layer is part of the row and not
+        only its label: a resize whose dimensions are unchanged but whose
+        initialization chunk is not carries the same label and a different grid.
+        """
+        if self._target is None or self._current is None:
+            return ()
+        index = self._current.index
+        structural = {layer.slot: layer for layer in self.structural_layers(index)}
+        rows: list[tuple[int, str, "StructuralLayer | None"]] = []
+        for slot in self._target.editable_slots:
+            layer = structural.get(slot.slot)
+            label = (
+                slot.label
+                if layer is None
+                else f"{layer.label} \u00b7 {self._structural_marker(layer)}"
+            )
+            rows.append((slot.slot, label, layer))
+        listed = [row[0] for row in rows]
+        for slot, layer in sorted(structural.items()):
+            if not layer.editable or slot in listed:
+                continue
+            if self._structural_layout_slot(layer) is None:
+                continue
+            rows.append(
+                (slot, f"{layer.label} \u00b7 {self._structural_marker(layer)}", layer)
+            )
+        return tuple(rows)
+
+    def _populate_layer_combo(
+        self, select: int | None = None, *, preserve: bool = False
+    ) -> None:
+        """Fill the Layer row from the canonical slots AND the project's own grids.
+
+        MAP-RESIZE-AND-LAYERS-001: a slot the project resized, or one whose layer the
+        project authored, is a paintable layer of this map like any other - the
+        requirement that a new layer be selectable in the existing map editor - so it
+        is offered here, marked so a person can tell a project-authored grid from a
+        retail one. Nothing here reads a file: the structural rows come from the
+        cached merged document.
+
+        ``preserve`` is for `_reselect_layer` alone, which runs on every project
+        mutation: if the rows are exactly the ones already listed the editor is left
+        untouched, because rebuilding it resets the brush, the picked cell and the
+        uncommitted draft - the user's state, not the document's. Rebuilding on a
+        mutation is what lost a staged authored-chunk brush (the tracked
+        MAP-CHUNK-AUTHORING-001 CQA-05 node) and it is the same rule this ticket's
+        own staged structural edits answer to. When a row really has changed the
+        combo is refilled and the selection re-pointed exactly as before.
+        """
+        rows = self._layer_rows()
+        if preserve and rows == self._layer_rows_signature:
+            return
+        self._layer_combo.blockSignals(True)
+        self._layer_combo.clear()
+        for slot, label, _layer in rows:
+            self._layer_combo.addItem(label, slot)
+        self._layer_combo.blockSignals(False)
+        self._layer_rows_signature = rows
+        wanted = select
+        if wanted is None and self._layer_combo.count():
+            wanted = self._layer_combo.itemData(0)
+        if wanted is not None:
+            row = self._layer_combo.findData(wanted)
+            if row >= 0:
+                self._layer_combo.blockSignals(True)
+                self._layer_combo.setCurrentIndex(row)
+                self._layer_combo.blockSignals(False)
+        # The selection is applied explicitly rather than through the combo's own
+        # signal: refilling a combo whose index does not change emits nothing, and a
+        # structural change must re-point the editor at the new grid even when the
+        # slot number is the same.
+        if self._layer_combo.count():
+            self._select_layer(self._layer_combo.itemData(self._layer_combo.currentIndex()))
+        else:
+            self._slot = None
+            self._structure_slot = None
+            self._populate_chooser()
+
     def _select_layer(self, layer_slot: int | None) -> None:
-        """Point the editor and the grid overlay at one dominant layer slot."""
+        """Point the editor and the grid overlay at one dominant layer slot.
+
+        MAP-RESIZE-AND-LAYERS-001: a slot whose grid the project owns - a resized
+        layer, or one the project authored - is resolved through the structural
+        authority into the same slot type the canonical path uses, so the grid
+        overlay, the cell readout and the palette all state the *project's* geometry
+        and its own permitted chunks rather than a retail record that is not what a
+        build will emit.
+        """
         self._draft = None
         self._slot = None
+        self._structure_slot = None
         self._selected_cell = None
         self._thumbnails = {}
         self._brush_ordinal = None
@@ -2496,8 +3487,17 @@ class MapBrowserTab(QWidget):
             self._clear_grid_item()
             self._populate_chooser()
             return
-        slot = self._target.slots[layer_slot]
-        self._slot = slot if slot.editable else None
+        project_layer = (
+            self.structural_layer(self._current.index, layer_slot)
+            if self._current is not None
+            else None
+        )
+        if project_layer is not None:
+            slot = self._structural_layout_slot(project_layer)
+            self._structure_slot = project_layer if slot is not None else None
+        else:
+            slot = self._target.slots[layer_slot]
+        self._slot = slot if slot is not None and slot.editable else None
         if self._slot is not None:
             # An edited layer must stay visible: a hidden layer would silently
             # swallow the preview the user is judging.
@@ -2783,6 +3783,13 @@ class MapBrowserTab(QWidget):
         slot = self._slot
         if slot is None or self._editor is None or self._current is None:
             return False
+        if self._structure_slot is not None and self._brush_authored is None:
+            # A project-authored grid travels through the structural staging table:
+            # only its retail cells have a four-byte field, and a cell that exists
+            # only in the authored grid has none at all - so the whole layer is
+            # staged semantically and written by `set_layout_cells`, which reads the
+            # project's own structure.
+            return self._stage_structural_paint(cell)
         if self._brush_authored is not None:
             return self._stage_authored_placement(cell)
         pointer = self._brush_pointer
@@ -2838,6 +3845,38 @@ class MapBrowserTab(QWidget):
         if cell not in self._stroke:
             self._stroke.append(cell)
             self._stroke_applied[cell] = identity
+        return True
+
+    def _stage_structural_paint(self, cell: int) -> bool:
+        """Stage the brush ordinal into one cell of a project-authored grid.
+
+        The same shape the authored-chunk placement uses, for the same reason: the
+        staged value is the cell's *staged* ordinal before the gesture - ``None``
+        meaning "this cell carries no authored paint and shows the grid's own
+        default" - so one undo restores exactly what the author had rather than
+        rewriting a cell that was never painted.
+        """
+        layer = self._structure_slot
+        ordinal = self._brush_ordinal
+        if layer is None or ordinal is None:
+            self._publish_status("Choose a chunk in the palette first.")
+            return False
+        key = (self._current.index, layer.slot, cell)
+        before = self._structural_staged_value(layer, cell)
+        if cell not in self._stroke_previous:
+            self._stroke_previous[cell] = before
+        if self._stroke_first is None:
+            self._stroke_first = cell
+        self._stroke_last = cell
+        # The cell's effective value is the staged one, else the project's, else the
+        # grid's own default - and painting the value a cell already shows is not a
+        # change, so it stages nothing and enters no history.
+        if self._structural_ordinal(layer, cell) == ordinal:
+            return False
+        self._structural_cells[key] = ordinal
+        if cell not in self._stroke:
+            self._stroke.append(cell)
+            self._stroke_applied[cell] = ordinal
         return True
 
     def _begin_stroke(self) -> None:
@@ -2909,6 +3948,19 @@ class MapBrowserTab(QWidget):
                 applied=applied,
             )
             command.set_keys(self._brush_authored, first, last)
+        elif self._structure_slot is not None:
+            # A project-authored grid raises the structural command: same stack,
+            # same one-gesture shape, its own merge class id, and a merge key that
+            # names the ordinal it painted.
+            command = StructuralPaintCommand(
+                self,
+                map_index=self._current.index,
+                layer_slot=self._slot.slot,
+                cells=changed,
+                previous=previous,
+                applied=applied,
+            )
+            command.set_keys(self._brush_ordinal, first, last)
         else:
             command = PaintCellsCommand(
                 self,
@@ -2991,6 +4043,28 @@ class MapBrowserTab(QWidget):
         else:
             self._mark_pending_rows()
         self._refresh_editor_state()
+
+    def _reapply_structural_paint(self, command: "StructuralPaintCommand") -> None:
+        """Re-apply one staged structural-grid gesture (redo / merged stroke)."""
+        for cell, ordinal in command.applied.items():
+            self._structural_cells[(command.map_index, command.layer_slot, cell)] = ordinal
+        self._after_paint_change(command.map_index)
+
+    def _reverse_structural_paint(self, command: "StructuralPaintCommand") -> None:
+        """Undo one structural-grid gesture, cell by cell.
+
+        A cell whose previous value was itself a staged paint gets it back; a cell
+        that had none has the staged paint removed, so the grid's own default - the
+        retail chunk on a retail cell, the initialization chunk on a grown one - is
+        what the cell shows again.
+        """
+        for cell, ordinal in command.previous.items():
+            key = (command.map_index, command.layer_slot, cell)
+            if ordinal is None:
+                self._structural_cells.pop(key, None)
+            else:
+                self._structural_cells[key] = ordinal
+        self._after_paint_change(command.map_index)
 
     def _move_cell_selection(self, delta_column: int, delta_row: int) -> None:
         slot = self._slot
@@ -3281,7 +4355,14 @@ class MapBrowserTab(QWidget):
     # -- layout editing: apply, revert, reset, preview ------------------------
 
     def _working_pointer(self, layer_slot: int, cell: int) -> int:
-        """The pointer a cell holds once pending edits (not the draft) are applied."""
+        """The pointer a cell holds once pending edits (not the draft) are applied.
+
+        MAP-RESIZE-AND-LAYERS-001: a project-authored grid's cells are resolved
+        through the structural staging table first, because the layout session has no
+        cell to ask about for a grid the canonical record does not state.
+        """
+        if self._structure_slot is not None:
+            return self._structural_pointer(self._structure_slot, cell)
         if self._editor is None or self._current is None:
             return 0
         try:
@@ -3400,11 +4481,29 @@ class MapBrowserTab(QWidget):
             return False
         placements = self._staged_authored_placements()
         chunks = self._pending_chunk_documents()
-        if not batch and not placements and not chunks:
+        resizes = self._staged_resize_edits()
+        layers = self._staged_layer_edits()
+        structural_cells = self._staged_structural_cells()
+        if (
+            not batch
+            and not placements
+            and not chunks
+            and not resizes
+            and not layers
+            and not structural_cells
+        ):
             self._publish_status("There is no staged paint to apply.")
             return False
         try:
             changed = False
+            # MAP-RESIZE-AND-LAYERS-001: the structural order is load-bearing. A
+            # grown grid and a new layer are written FIRST, because a cell the author
+            # painted in that grid is only a legal layout cell once the grid exists;
+            # the cells follow; and a staged *removal* goes last, when nothing names
+            # the slot any more.
+            if resizes or layers:
+                if self._write_staged_structure(removals=False):
+                    changed = True
             for identity in sorted(chunks):
                 if set_authored_chunk(
                     self._session.project_dir,
@@ -3413,12 +4512,14 @@ class MapBrowserTab(QWidget):
                     profile=self._session.profile,
                 ):
                     changed = True
-            if batch:
+            if batch or structural_cells:
+                merged = dict(batch)
+                merged.update(structural_cells)
                 if set_layout_cells(
                     self._session.project_dir,
                     self._session.profile,
                     self._session.map_image,
-                    batch,
+                    merged,
                 ):
                     changed = True
             if placements:
@@ -3429,14 +4530,21 @@ class MapBrowserTab(QWidget):
                     profile=self._session.profile,
                 ):
                     changed = True
-        except _EDIT_AND_PROJECT_ERRORS as exc:
+            if resizes or layers:
+                if self._write_staged_structure(removals=True):
+                    changed = True
+        except _STRUCTURE_ERRORS as exc:
             QMessageBox.warning(self, "Map paint", str(exc))
             return False
-        # Re-read the project so the session's floor, its chunk table and its
-        # authored placements are what was just written.
+        # Re-read the project so the session's floor, its chunk table, its authored
+        # placements and its structural document are what was just written.
         self._staged_chunks.clear()
         self._chunk_applied_plane = tuple(self._chunk_plane)
+        self._staged_resizes = {}
+        self._staged_layers = {}
+        self._structural_cells = {}
         self.reload_project_layout()
+        self._reselect_layer()
         # A placement the project now holds unchanged is no longer staged work: the
         # same rule the ordinal batch uses for a cell whose value the project
         # already had, so the pending count and the pending glyphs go clean without
@@ -3448,8 +4556,14 @@ class MapBrowserTab(QWidget):
             parts = []
             if chunks:
                 parts.append(f"{len(chunks)} authored chunk(s)")
+            if resizes:
+                parts.append(f"{len(resizes)} layer resize(s)")
+            if layers:
+                parts.append(f"{len(layers)} authored layer(s)")
             if batch:
                 parts.append(f"{len(batch)} painted cell(s)")
+            if structural_cells:
+                parts.append(f"{len(structural_cells)} painted cell(s) of a project grid")
             if placements:
                 parts.append(f"{len(placements)} authored placement(s)")
             message = (
@@ -3483,25 +4597,36 @@ class MapBrowserTab(QWidget):
         call rather than once per cell or per repaint (CQA-07). The identities the
         session's pointer floor deliberately cannot carry travel into the preview
         as resolved planes instead.
+
+        MAP-RESIZE-AND-LAYERS-001: the project's structural document is read FIRST,
+        once, and the merged view rebuilt from it - so the layout read below can tell
+        a project-authored grid's cells from a canonical layer's, and the painter
+        that resolves the pointer floor is handed the document that makes a grown
+        cell resolvable at all. Nothing the user staged structurally is dropped.
         """
+        self._refresh_structure()
         self._reload_project_authored()
         if self._editor is None or self._session.map_image is None:
             return
         floor: dict[tuple[int, int, int], int] = {}
         if self._session.project_dir is not None:
+            structural = self.structural_pairs()
             try:
                 authored = read_layout_edits(self._session.project_dir)
                 # Only the ordinal form belongs in a pointer floor; a cell holding
-                # an authored identity is rendered through a plane override.
+                # an authored identity is rendered through a plane override, and a
+                # cell of a project-authored grid is rendered by the structural
+                # preview from its own geometry - the canonical session has no cell
+                # for it to point at.
                 ordered = {
                     key: value
                     for key, value in authored.cells().items()
-                    if type(value) is int
+                    if type(value) is int and (key[0], key[1]) not in structural
                 }
                 if ordered:
-                    from tools.webfoot.map_paint import MapPainter
-
-                    floor = MapPainter(self._session.map_image).pointer_edits(ordered)
+                    floor = MapPainter(
+                        self._session.map_image, structure=self.structure_document()
+                    ).pointer_edits(ordered)
             except _PROJECT_READ_ERRORS + (MapPaintError,) as exc:
                 # An unreadable project is reported where the user can see it and
                 # leaves the session's staged work alone; it does not silently
@@ -3528,6 +4653,9 @@ class MapBrowserTab(QWidget):
         index = self._current.index
         slot = self._slot.slot
         cell = self._selected_cell
+        if self._structure_slot is not None:
+            self._revert_structural_cell(index, slot, cell)
+            return
         if self._editor.edit(index, slot, cell) is None:
             self._publish_status("That cell has no staged paint to revert.")
             return
@@ -3559,6 +4687,41 @@ class MapBrowserTab(QWidget):
         self._refresh_preview()
         self._refresh_editor_state()
 
+    def _revert_structural_cell(self, index: int, layer_slot: int, cell: int) -> None:
+        """Put one cell of a project-authored grid back to the grid's own default.
+
+        "Back" means the value the project's structure puts there - the retail chunk
+        on a retail cell, the initialization chunk on a grown one - so this removes
+        the staged paint rather than recording a new one, and it is itself undoable
+        because it is a gesture like any other.
+        """
+        layer = self._structure_slot
+        key = (index, layer_slot, cell)
+        if layer is None or key not in self._structural_cells:
+            self._publish_status("That cell has no staged paint to revert.")
+            return
+        before = self._structural_cells[key]
+        after = self._structural_committed.get(key)
+        self._draft = None
+        self._naming_revert = True
+        try:
+            command = StructuralPaintCommand(
+                self,
+                map_index=index,
+                layer_slot=layer_slot,
+                cells=(cell,),
+                previous={cell: before},
+                applied={} if after is None else {cell: after},
+            )
+        finally:
+            self._naming_revert = False
+        command.set_keys(self._brush_ordinal, cell, cell)
+        self._structural_cells.pop(key, None)
+        self._undo_stack.push(command)
+        self._sync_chooser_selection()
+        self._refresh_preview()
+        self._refresh_editor_state()
+
     def _reset_edits(self) -> None:
         """Discard every *staged* paint in this session, and clear the history.
 
@@ -3580,6 +4743,21 @@ class MapBrowserTab(QWidget):
         dropped_chunks = len(self._staged_chunks)
         self._staged_chunks = {}
         self._resolved_planes = {}
+        # MAP-RESIZE-AND-LAYERS-001: staged structural work is staged work too, so
+        # "discard pending" drops a staged resize, a staged new layer and a staged
+        # removal exactly as it drops a staged paint - and rebuilds the merged view
+        # from the project, which is what the preview then shows.
+        dropped_structural = len(self._staged_resize_edits()) + len(
+            self._staged_layer_edits()
+        )
+        dropped_structural_cells = len(self._staged_structural_cells())
+        self._staged_resizes = {}
+        self._staged_layers = {}
+        self._structural_cells = {}
+        self._rebuild_structure_view()
+        self._populate_layer_combo(
+            self._slot.slot if self._slot is not None else None
+        )
         self._close_chunk_editor_page()
         self._undo_stack.clear()
         self._draft = None
@@ -3589,12 +4767,16 @@ class MapBrowserTab(QWidget):
         self._sync_chooser_selection()
         self._refresh_preview()
         self._refresh_editor_state()
-        if dropped or dropped_authored or dropped_chunks:
+        if dropped or dropped_authored or dropped_chunks or dropped_structural:
             extra = ""
             if dropped_authored:
                 extra += f" and {dropped_authored} authored placement(s)"
             if dropped_chunks:
                 extra += f" and {dropped_chunks} unapplied chunk(s)"
+            if dropped_structural:
+                extra += f" and {dropped_structural} structural change(s)"
+            if dropped_structural_cells:
+                extra += f" and {dropped_structural_cells} painted cell(s) of one"
             self._publish_status(
                 f"Discarded {dropped} staged paint(s){extra}; the preview shows what "
                 "the project holds."
@@ -3669,6 +4851,11 @@ class MapBrowserTab(QWidget):
         if self._editor is None or self._current is None:
             return
         index = self._current.index
+        # A project-authored grid is drawn from the project's own geometry: the
+        # canonical renderer has no record for it, because the record the build will
+        # emit does not exist before the build (MAP-RESIZE-AND-LAYERS-001).
+        if self.structural_layers(index) and self._structural_preview():
+            return
         overrides = self._preview_overrides()
         if not overrides:
             cached = self._render_cache.get(index)
@@ -3709,10 +4896,16 @@ class MapBrowserTab(QWidget):
         staged_cells = {edit.cell for edit in edits if slot is not None and edit.layer_slot == slot.slot}
         if editing and slot is not None and result is not None:
             # A staged authored placement is a staged map edit, so the cell carries
-            # the same "something is pending here" mark a staged paint does.
+            # the same "something is pending here" mark a staged paint does - and so
+            # does a staged paint of a project-authored grid.
             staged_cells |= {
                 cell
                 for (cell_map, layer_slot, cell) in self._authored_cells
+                if cell_map == result.index and layer_slot == slot.slot
+            }
+            staged_cells |= {
+                cell
+                for (cell_map, layer_slot, cell) in self._structural_cells
                 if cell_map == result.index and layer_slot == slot.slot
             }
         if editing and slot is not None:
@@ -3778,7 +4971,11 @@ class MapBrowserTab(QWidget):
                     f"source ROM holds {self._chunk_name(slot.ordinal_of(cell.pointer))}\n"
                     "project authors this cell\n"
                     f"chunk {staged_authored}\n"
-                    f"field 0x{cell.offset:08X} (4 bytes, in place)"
+                    + (
+                        "no canonical field; the build materializes this cell"
+                        if cell.offset < 0
+                        else f"field 0x{cell.offset:08X} (4 bytes, in place)"
+                    )
                 )
             else:
                 working = self._working_pointer(slot.slot, cell.cell)
@@ -3788,14 +4985,34 @@ class MapBrowserTab(QWidget):
                     f"{self._chunk_name(ordinal)} · used by {used} cell(s) of BG{slot.slot}"
                 )
                 source = slot.ordinal_of(cell.pointer)
-                painted = self._editor.committed_pointer(
-                    result.index, slot.slot, cell.cell
-                ) != cell.pointer if (self._editor and result) else False
+                painted = (
+                    self._structural_staged_value(self._structure_slot, cell.cell)
+                    is not None
+                    if self._structure_slot is not None
+                    else (
+                        self._editor.committed_pointer(
+                            result.index, slot.slot, cell.cell
+                        )
+                        != cell.pointer
+                        if (self._editor and result)
+                        else False
+                    )
+                )
+                # A cell that exists only in a project-authored grid has no
+                # four-byte field in the canonical image to rewrite: saying "field
+                # 0x-0000001" would be a lie about how the paint is stored, so the
+                # detail states what actually happens instead.
+                field = (
+                    "no canonical field; the build materializes this cell"
+                    if cell.offset < 0
+                    else f"field 0x{cell.offset:08X} (4 bytes, in place)"
+                )
                 self._detail.setText(
                     f"source ROM holds {self._chunk_name(source)}\n"
                     + ("project paints this cell\n" if painted else "")
+                    + (f"{self._structural_marker(self._structure_slot)}\n" if self._structure_slot is not None else "")
                     + f"pointer {working:#010x}\n"
-                    f"field 0x{cell.offset:08X} (4 bytes, in place)"
+                    + field
                 )
         else:
             # No cell picked yet: say what to do, rather than three dash rows.
@@ -3834,21 +5051,21 @@ class MapBrowserTab(QWidget):
             and index is not None
             and slot is not None
             and self._selected_cell is not None
-            and (
-                self._authored_cells.get((index, slot.slot, self._selected_cell))
-                is not None
-                or (
-                    self._working_pointer(slot.slot, self._selected_cell)
-                    != self._editor.committed_pointer(index, slot.slot, self._selected_cell)
-                    if self._editor is not None
-                    else False
-                )
-            )
+            and self._cell_has_staged_paint(index, slot.slot, self._selected_cell)
         )
         # A staged authored placement or an unapplied chunk is staged work, so the
-        # reset and commit buttons answer to them exactly as they do to a paint.
+        # reset and commit buttons answer to them exactly as they do to a paint -
+        # and so is a staged structural edit (a resize, a new layer, a removal) or a
+        # paint of a project-authored grid.
         pending_chunks = bool(self._pending_chunk_documents())
-        staged_any = bool(edits) or bool(self._authored_cells) or pending_chunks
+        staged_any = (
+            bool(edits)
+            or bool(self._authored_cells)
+            or pending_chunks
+            or bool(self._staged_resize_edits())
+            or bool(self._staged_layer_edits())
+            or bool(self._staged_structural_cells())
+        )
         self._reset_button.setEnabled(editing and staged_any)
         self._commit_button.setEnabled(
             editing and self._editor is not None and staged_any
@@ -3888,6 +5105,7 @@ class MapBrowserTab(QWidget):
         self._create_chunk_action.setEnabled(author_ready)
         self._paint_tool.setEnabled(editing and slot is not None)
         self._pick_tool.setEnabled(editing and slot is not None)
+        self._sync_structure_controls()
         self._mark_pending_rows()
         self._announce_dirty()
         self._update_status()
@@ -3970,7 +5188,18 @@ class MapBrowserTab(QWidget):
 
         What is left is what only this line knows: which map is open, the live
         hover readout, the edit state, and how much work is unsaved.
+
+        One thing outranks all of that: when the project's structural document
+        could not be read, this line says so instead. Every structural readout is
+        derived from that document, so a working line drawn over the failure would
+        be stating facts the surface does not have - and the failure arrives from a
+        background project mutation, where the Structure section's own label is
+        usually not in view. It is republished from here on every refresh, so the
+        refresh at the end of the mutation cannot bury it.
         """
+        if self._structure_read_error:
+            self._publish_status(self._structure_read_error)
+            return
         result = self._current
         if result is None:
             # A loaded image with no map chosen yet. Say so, rather than leaving
@@ -4037,8 +5266,17 @@ class MapBrowserTab(QWidget):
                 if self._saved.get((edit.map_index, edit.layer_slot, edit.cell))
                 != edit.replacement
             )
-        return painted + len(self._staged_authored_placements()) + len(
-            self._pending_chunk_documents()
+        return (
+            painted
+            + len(self._staged_authored_placements())
+            + len(self._pending_chunk_documents())
+            # MAP-RESIZE-AND-LAYERS-001: a staged resize, a staged new layer or a
+            # staged removal is work the user has done and would lose, exactly as a
+            # staged cell paint is; a paint of a project-authored grid joins the
+            # count for the same reason.
+            + len(self._staged_resize_edits())
+            + len(self._staged_layer_edits())
+            + len(self._staged_structural_cells())
         )
 
     def _staged_noun(self) -> str:
@@ -4047,9 +5285,15 @@ class MapBrowserTab(QWidget):
         The authored half is real work but not a *paint* - a chunk body and a
         placement are not cell paints - so the wording only widens when authored
         work is actually staged, and a surface that staged only paints keeps
-        saying so.
+        saying so. A structural change widens it too, for the same reason: a resize
+        is not a paint.
         """
-        if self._staged_authored_placements() or self._pending_chunk_documents():
+        if (
+            self._staged_authored_placements()
+            or self._pending_chunk_documents()
+            or self._staged_resize_edits()
+            or self._staged_layer_edits()
+        ):
             return "change"
         return "paint"
 
@@ -4079,6 +5323,1286 @@ class MapBrowserTab(QWidget):
         label = self._editor_form.labelForField(self._layer_combo)
         if label is not None:
             label.setVisible(visible)
+
+    # -- MAP-RESIZE-AND-LAYERS-001: reading the project's structure -----------
+    #
+    # The SDK authority is `tools.webfoot.map_resize`. This surface reads the
+    # project's structural document ONCE per session and per project mutation
+    # (CQA-07), merges the staged structural edits over it IN MEMORY, and builds one
+    # `MapResizer`/`MapPainter` pair over the result. Every readout, every preview
+    # and every repaint reads those caches; nothing below this heading opens a file.
+
+    def structure_document(self) -> MapStructure:
+        """The committed + staged structural document this session is showing."""
+        if self._staged_document is not None:
+            return self._staged_document
+        return MapStructure()
+
+    def structural_pairs(self) -> frozenset[tuple[int, int]]:
+        """Every ``(map, slot)`` the structural document owns."""
+        return self.structure_document().structural_slots()
+
+    def structure_target(self) -> StructureTarget | None:
+        """The structural view of the map on screen, or None with a recorded reason."""
+        if self._current is None:
+            return None
+        return self._structure_target_for(self._current.index)
+
+    def structural_layers(self, map_index: int) -> tuple[StructuralLayer, ...]:
+        """The layers of one map whose grid the project owns, in slot order."""
+        target = self._structure_target_for(map_index)
+        if target is None:
+            return ()
+        return tuple(layer for layer in target.slots if layer.structural)
+
+    def structural_layer(self, map_index: int, layer_slot: int) -> StructuralLayer | None:
+        """One project-owned layer, or None when the canonical record is the grid."""
+        for layer in self.structural_layers(map_index):
+            if layer.slot == layer_slot:
+                return layer
+        return None
+
+    def free_slots(self, map_index: int) -> tuple[int, ...]:
+        """Slots the canonical image leaves unused and this project may activate."""
+        target = self._structure_target_for(map_index)
+        return () if target is None else target.free_slots
+
+    def layer_templates(self, map_index: int) -> tuple[StructuralLayer, ...]:
+        """The canonical layers of this map a new layer may be copied from.
+
+        Only the supported dominant form may template a new record: its header and
+        its own chunk vocabulary are what the new layer inherits, and the engine has
+        no other form this capability has established.
+        """
+        target = self._structure_target_for(map_index)
+        if target is None:
+            return ()
+        return tuple(
+            layer
+            for layer in target.slots
+            if layer.absent is False
+            and layer.classification == "dominant"
+            and layer.columns * layer.rows > 0
+        )
+
+    def template_vocabulary(
+        self, map_index: int, layer_slot: int
+    ) -> tuple[ChunkChoice, ...]:
+        """The initialization chunks a new layer copied from `layer_slot` may use."""
+        if self._resizer is None:
+            raise MapStructureError(self._structure_refusal())
+        return self._resizer.vocabulary(map_index, layer_slot)
+
+    def _structure_refusal(self) -> str:
+        """Why no structural command can run, in words."""
+        return self._structure_unavailable or (
+            "turn Edit Layout on and select a layer of a map whose structure can be read"
+        )
+
+    def _clear_structure_state(self) -> None:
+        """Drop every structural fact; the session's base image has changed.
+
+        CQA-05. A layer record, a grid, a resolved rendering and a staged grid change
+        are all claims about one image's map table, so a new image invalidates them
+        at once - which is why this is called from ``on_session_changed`` alone.
+        """
+        self._structure = None
+        self._structure_unavailable = ""
+        self._structure_read_error = ""
+        self._staged_document = None
+        self._staged_resizes = {}
+        self._staged_layers = {}
+        self._resizer = None
+        self._painter = None
+        self._structure_targets = {}
+        self._structure_slot = None
+        self._structural_cells = {}
+        self._structural_committed = {}
+        self._structural_images = {}
+        self._structure_row_signature = ()
+        self._structure_list.blockSignals(True)
+        self._structure_list.clear()
+        self._structure_list.blockSignals(False)
+
+    def _cell_has_staged_paint(self, map_index: int, layer_slot: int, cell: int) -> bool:
+        """Whether one cell carries a staged paint, of either kind.
+
+        A project-authored grid is asked through its own staging table: its grown
+        cells have no canonical field and no canonical cell index, so asking the
+        layout session about them would be a question it cannot answer - and, for a
+        slot the canonical image leaves unused, one it answers with an error.
+        """
+        if self._structure_slot is not None and self._structure_slot.slot == layer_slot:
+            return (map_index, layer_slot, cell) in self._structural_cells
+        if self._authored_cells.get((map_index, layer_slot, cell)) is not None:
+            return True
+        if self._editor is None:
+            return False
+        try:
+            return self._working_pointer(layer_slot, cell) != self._editor.committed_pointer(
+                map_index, layer_slot, cell
+            )
+        except _EDIT_ERRORS:
+            return False
+
+    def _reselect_layer(self) -> None:
+        """Re-point the editor at the selected slot after the structure changed.
+
+        A project mutation can add, resize or remove a layer another tab authored, and
+        a slot that was the canonical record a moment ago can be the project's own
+        grid now (or the other way round), so the slot adapter is rebuilt from the
+        cached merged document. One rebuild, and no extra project read (CQA-07).
+        """
+        if self._current is None or self._target is None:
+            return
+        if self._slot is not None:
+            selected = self._slot.slot
+        elif self._structure_slot is not None:
+            selected = self._structure_slot.slot
+        else:
+            selected = None
+        self._populate_layer_combo(selected, preserve=True)
+
+    def _refresh_structure(self) -> None:
+        """Read the project's structural document ONCE, then rebuild the view.
+
+        The one read of ``maps/structure.toml``: called from a session change and a
+        project mutation, never from a paint, a repaint or a form refresh (CQA-07).
+        """
+        self._structure = None
+        self._structure_unavailable = ""
+        self._structure_read_error = ""
+        if self._session.project_dir is not None:
+            try:
+                self._structure = read_map_structure(self._session.project_dir)
+            except _STRUCTURE_VIEW_ERRORS as exc:
+                # Reported twice on purpose, and neither is a duplicate: the
+                # structure section states why *editing* is unavailable, and the
+                # status line states that the project could not be read at all.
+                # Only the second survives a refresh later in the same slot - the
+                # panel is a passive label a mutation may not have in view, and a
+                # project mutation is exactly when nobody is looking at the panel.
+                # `_update_status` re-publishes this sentence on every refresh, so
+                # it is not overwritten by the working readout a moment later.
+                self._structure_read_error = (
+                    f"Project structure could not be read: {exc}"
+                )
+                self._structure_unavailable = (
+                    f"the project's map structure could not be read: {exc}"
+                )
+        self._rebuild_structure_view()
+
+    def _rebuild_structure_view(self) -> None:
+        """Merge the staged structural edits over the committed document.
+
+        No I/O at all: this is what a staging gesture, an undo and a redo call, so a
+        staged grid change never costs a project read (CQA-07). It invalidates the
+        per-map targets and the rendered chunk bodies, because both are derived from
+        the grid that just changed.
+        """
+        self._staged_document = None
+        self._resizer = None
+        self._painter = None
+        if not self._structure_unavailable:
+            committed = self._structure if self._structure is not None else MapStructure()
+            resizes = dict(committed.resizes)
+            layers = dict(committed.layers)
+            for (map_index, layer_slot), edit in self._staged_resizes.items():
+                key = LayerResize.key_for(map_index, layer_slot)
+                if edit is None:
+                    resizes.pop(key, None)
+                else:
+                    resizes[edit.key] = edit
+            for identity, layer in self._staged_layers.items():
+                if layer is None:
+                    layers.pop(identity, None)
+                else:
+                    layers[identity] = layer
+            document = MapStructure(
+                resizes=dict(sorted(resizes.items())),
+                layers=dict(sorted(layers.items())),
+            )
+            self._staged_document = document
+            self._build_structure_facades(document)
+        self._structure_targets = {}
+        self._structural_images = {}
+
+    def structure_supported(self) -> bool:
+        """Whether this session names an image whose map structure may be read.
+
+        The canonical image only. A verified derivative is browseable and read-only -
+        its layout is reconstructed from the canonical bytes plus its manifest, and
+        further authored structure belongs to the image it derives from - which is the
+        same rule `_editor_session` applies to a cell edit. Failing closed here keeps
+        one answer to "may this image be authored" instead of two.
+        """
+        return (
+            self._session.identification is not None
+            and self._session.authored is None
+        )
+
+    def _build_structure_facades(self, document: MapStructure) -> None:
+        """The one structural resolver and the one painter over the merged document."""
+        image = self._session.map_image
+        if image is None or not self.structure_supported():
+            self._structure_unavailable = (
+                "this image is a verified DragonByte Z derivative of the canonical "
+                "ROM; open the canonical ROM to change a map's structure"
+                if self._session.authored is not None
+                else "this image was not identified against the ROM catalog, so its "
+                "map structure cannot be read"
+            )
+            return
+        try:
+            self._resizer = MapResizer(
+                image, structure=document, profile=self._session.profile
+            )
+            self._painter = MapPainter(
+                image, profile=self._session.profile, structure=document
+            )
+        except _STRUCTURE_VIEW_ERRORS as exc:
+            self._resizer = None
+            self._painter = None
+            self._structure_unavailable = (
+                f"this image's map structure cannot be read: {exc}"
+            )
+
+    def _structure_target_for(self, map_index: int) -> StructureTarget | None:
+        """One map's structural view, memoized for the life of one merged document."""
+        if self._resizer is None:
+            return None
+        cached = self._structure_targets.get(map_index)
+        if cached is None:
+            try:
+                cached = self._resizer.target(map_index)
+            except _STRUCTURE_VIEW_ERRORS as exc:
+                self._structure_unavailable = str(exc)
+                return None
+            self._structure_targets[map_index] = cached
+        return cached
+
+    # -- structural layers in the existing editor ----------------------------
+
+    def _structural_layout_slot(self, layer: StructuralLayer) -> LayoutSlot | None:
+        """One project-authored grid, as the map editor's own slot type.
+
+        The geometry, the effective cell pointers and the permitted brush values all
+        come from `MapPainter`'s structural resolution - the same authority the build
+        and the project writer use - so this adapter cannot offer a cell the grid does
+        not have or a chunk the layer may not place. Only the *write* path differs
+        from a canonical layer's, because a cell that exists only in the authored
+        grid has no four-byte field to rewrite.
+        """
+        index = self._current.index if self._current is not None else None
+        if index is None or self._painter is None:
+            return None
+        try:
+            paint = self._painter.layer(index, layer.slot)
+        except _STRUCTURE_VIEW_ERRORS:
+            return None
+        grid = LayoutGrid(paint.columns, paint.rows)
+        cells = tuple(
+            LayoutCell(
+                cell=cell.cell,
+                column=cell.column,
+                row=cell.row,
+                pointer=cell.pointer,
+                offset=cell.offset,
+            )
+            for cell in paint.cells
+        )
+        return LayoutSlot(
+            slot=paint.slot,
+            classification=paint.classification,
+            handler=paint.handler,
+            grid=grid,
+            cells=cells,
+            choices=tuple(chunk.pointer for chunk in paint.vocabulary),
+            read_only_reason=paint.read_only_reason,
+        )
+
+    def _structural_layer_selected(self) -> bool:
+        return self._structure_slot is not None
+
+    def _structural_ordinal(self, layer: StructuralLayer, cell: int) -> int | None:
+        """The ordinal one cell of a project-authored grid currently holds."""
+        index = self._current.index if self._current is not None else None
+        if index is None:
+            return None
+        key = (index, layer.slot, cell)
+        staged = self._structural_cells.get(key)
+        if staged is not None:
+            return staged
+        committed = self._structural_committed.get(key)
+        if committed is not None:
+            return committed
+        if layer.contains(cell) and layer.cells[cell]:
+            return layer.ordinal_of(layer.cells[cell])
+        return None
+
+    def _structural_staged_value(self, layer: StructuralLayer, cell: int) -> int | None:
+        """The *staged* value one cell carries, or None for "no staged paint"."""
+        index = self._current.index if self._current is not None else None
+        if index is None:
+            return None
+        return self._structural_cells.get((index, layer.slot, cell))
+
+    def _structural_pointer(self, layer: StructuralLayer, cell: int) -> int:
+        """The chunk pointer one cell of a project-authored grid shows."""
+        ordinal = self._structural_ordinal(layer, cell)
+        if ordinal is not None:
+            choice = layer.chunk(ordinal)
+            if choice is not None:
+                return choice.address
+        if layer.contains(cell):
+            return layer.cells[cell]
+        return 0
+
+    def _structural_marker(self, layer: StructuralLayer) -> str:
+        """How a project-authored grid is named wherever a layer is listed."""
+        if layer.identity is not None:
+            return f"authored {self._authored_name(layer.identity)}"
+        return "resized"
+
+    def _structural_edit_for(
+        self, map_index: int, layer_slot: int
+    ) -> tuple["LayerResize | None", object]:
+        """The staged resize and authored layer one slot carries, either possibly None."""
+        resize = self._staged_resizes.get(
+            (map_index, layer_slot),
+            None
+            if self._structure is None
+            else self._structure.resize_for(map_index, layer_slot),
+        )
+        authored = None
+        for identity, layer in self._staged_layers.items():
+            if layer is not None and (layer.map_index, layer.layer_slot) == (
+                map_index,
+                layer_slot,
+            ):
+                authored = layer
+                break
+        if authored is None and self._structure is not None:
+            authored = self._structure.layer_at(map_index, layer_slot)
+        return resize, authored
+
+    # -- structural commands: validation, staging and history ----------------
+
+    def preview_resize(self, columns: int, rows: int, fill) -> ResizePreview:
+        """Validate a resize through the SDK and state what it would do. No write.
+
+        Every refusal this surface can give is the SDK's own reason, raised as
+        ``MapStructureError``: a shrink, a no-op, an unsupported slot, a grid outside
+        the supported 1..8 per axis, and an initialization chunk outside the layer's
+        vocabulary. The new extent is read from the same resolution the build uses,
+        so the preview cannot promise a camera reach the build would not write.
+        """
+        index = self._current.index if self._current is not None else None
+        if self._resizer is None or index is None or self._slot is None:
+            raise MapStructureError(self._structure_refusal())
+        target = self._structure_target_for(index)
+        if target is None:
+            raise MapStructureError(self._structure_refusal())
+        layer = target.layer(self._slot.slot)
+        edit = self._resizer.resize(index, layer.slot, columns, rows, fill)
+        extent = (target.extent_x, target.extent_y)
+        new_extent = [extent[0], extent[1]]
+        resolved = resolve_layer_record(
+            self._session.map_image, edit, profile=self._session.profile
+        )
+        for axis, _field, required in resolved.extent_changes:
+            # The stored word is `extent - 1`, which is exactly the arithmetic the
+            # engine's own camera clamp performs; the surface states pixels.
+            new_extent[0 if axis == "x" else 1] = required + 1
+        choice = layer.chunk(fill) if type(fill) is int else None
+        fill_label = choice.label if choice is not None else str(fill)
+        summary = resize_summary(
+            f"BG{layer.slot}",
+            (layer.columns, layer.rows),
+            edit.columns,
+            edit.rows,
+            fill_label,
+            extent,
+            (new_extent[0], new_extent[1]),
+        )
+        return ResizePreview(edit, summary, (new_extent[0], new_extent[1]))
+
+    def apply_resize(self, columns: int, rows: int, fill) -> bool:
+        """Validate and stage ONE resize as ONE undoable command.
+
+        Validation happens BEFORE anything is staged, through the SDK, and every
+        refusal is the SDK's own reason in a `QMessageBox` - which is what keeps a
+        shrink, a no-op or an unsupported slot from ever reaching the project.
+        """
+        if self._current is None or self._slot is None or self._resizer is None:
+            QMessageBox.warning(self, "Resize layer", self._structure_refusal())
+            return False
+        try:
+            preview = self.preview_resize(columns, rows, fill)
+        except _STRUCTURE_ERRORS as exc:
+            QMessageBox.warning(self, "Resize layer", str(exc))
+            return False
+        index, layer_slot = self._current.index, self._slot.slot
+        previous, _authored = self._structural_edit_for(index, layer_slot)
+        if previous == preview.edit:
+            self._publish_status(
+                "That resize is already staged for this layer; nothing changed."
+            )
+            return False
+        self._stage_resize_value(index, layer_slot, preview.edit)
+        self._rebuild_structure_view()
+        command = ResizeCommand(self, index, layer_slot, previous, preview.edit)
+        self._undo_stack.push(command)
+        self._after_structure_change(index)
+        self._publish_status(
+            f"Staged {preview.summary}. Apply to project to write it."
+        )
+        return True
+
+    def _stage_resize_value(
+        self, map_index: int, layer_slot: int, edit: "LayerResize | None"
+    ) -> None:
+        """Record one staged resize, or forget it when it matches the project.
+
+        A staged value that equals the project's own is not staged work: keeping it
+        would make an undo of a resize look like a staged *removal*, and the pending
+        count and the "staged change" line would both claim work that does not exist.
+        """
+        committed = (
+            None if self._structure is None else self._structure.resize_for(map_index, layer_slot)
+        )
+        key = (map_index, layer_slot)
+        if edit == committed:
+            self._staged_resizes.pop(key, None)
+        else:
+            self._staged_resizes[key] = edit
+
+    def _stage_layer_value(
+        self, identity: str, layer: "AuthoredLayer | None"
+    ) -> None:
+        """Record one staged authored layer, or forget it when it matches the project."""
+        committed = (
+            None if self._structure is None else self._structure.layers.get(identity)
+        )
+        if layer == committed:
+            self._staged_layers.pop(identity, None)
+        else:
+            self._staged_layers[identity] = layer
+
+    def _after_structure_change(self, map_index: int) -> None:
+        """Re-point the editor at the new grids, without re-reading the project."""
+        selected = self._slot.slot if self._slot is not None else None
+        self._populate_layer_combo(selected)
+        if self._current is not None and self._current.index == map_index:
+            self._repopulate_structural_checks()
+            self._refresh_preview()
+        self._refresh_editor_state()
+
+    def _repopulate_structural_checks(self) -> None:
+        """Re-offer the layer-visibility check boxes, keeping the current selection."""
+        checked = {slot: box.isChecked() for slot, box in self._layer_checks.items()}
+        self._populate_layer_checks()
+        for slot, box in self._layer_checks.items():
+            if slot in checked:
+                box.blockSignals(True)
+                box.setChecked(checked[slot])
+                box.blockSignals(False)
+
+    def _reapply_resize(self, command: "ResizeCommand") -> None:
+        self._stage_resize_value(command.map_index, command.layer_slot, command.applied)
+        self._rebuild_structure_view()
+        self._after_structure_change(command.map_index)
+
+    def _reverse_resize(self, command: "ResizeCommand") -> None:
+        self._stage_resize_value(command.map_index, command.layer_slot, command.previous)
+        self._rebuild_structure_view()
+        self._after_structure_change(command.map_index)
+
+    # -- structural commands: the two forms ----------------------------------
+
+    def build_resize_dialog(self) -> "ResizeLayerDialog | None":
+        """The resize form, built but not shown. None when it cannot be offered.
+
+        A Qt slot, so every SDK family it can meet is caught here: the refusal is
+        reported where the user can see it, never left to stderr. Building and
+        showing are separate calls because a caller that drives the surface without a
+        mouse (a test, the QA harness) needs the form without its modal loop.
+        """
+        if self._current is None or self._slot is None or self._resizer is None:
+            QMessageBox.warning(self, "Resize layer", self._structure_refusal())
+            return None
+        index = self._current.index
+        try:
+            target = self._structure_target_for(index)
+            if target is None:
+                raise MapStructureError(self._structure_refusal())
+            layer = target.layer(self._slot.slot)
+        except _STRUCTURE_VIEW_ERRORS as exc:
+            QMessageBox.warning(self, "Resize layer", str(exc))
+            return None
+        return ResizeLayerDialog(
+            self,
+            layer=layer,
+            extent=(target.extent_x, target.extent_y),
+            preview=self.preview_resize,
+            apply_command=self.apply_resize,
+            current=(layer.columns, layer.rows),
+        )
+
+    def open_resize_dialog(self) -> "ResizeLayerDialog | None":
+        """The resize command's form, shown modally."""
+        dialog = self.build_resize_dialog()
+        if dialog is None:
+            return None
+        dialog.exec()
+        return dialog
+
+    def preview_new_layer(
+        self, name: str, layer_slot: int, template_slot: int, columns: int, rows: int, fill
+    ) -> ResizePreview:
+        """Validate a new layer through the SDK and state what it would do.
+
+        ``ResizePreview`` carries the ``AuthoredLayer`` here rather than a
+        ``LayerResize``; the shape is the same because both are "a validated value
+        plus the line that says what it means".
+        """
+        index = self._current.index if self._current is not None else None
+        if self._resizer is None or index is None:
+            raise MapStructureError(self._structure_refusal())
+        edit = self._resizer.authored_layer(
+            name,
+            index,
+            layer_slot,
+            _template_text(index, template_slot),
+            columns,
+            rows,
+            fill,
+        )
+        template = self._structure_target_for(index)
+        template_label = (
+            template.layer(template_slot).label if template is not None else "the template"
+        )
+        choice = None
+        for candidate in self.template_vocabulary(index, template_slot):
+            if candidate.ordinal == fill:
+                choice = candidate
+        summary = (
+            f"{edit.identity} \u00b7 new BG{layer_slot} on map:{index:04d} \u00b7 "
+            f"{_grid_text(columns, rows)} from {template_label} \u00b7 initialized to "
+            f"{choice.label if choice is not None else fill}"
+        )
+        return ResizePreview(edit, summary, (0, 0))
+
+    def apply_new_layer(
+        self, name: str, layer_slot: int, template_slot: int, columns: int, rows: int, fill
+    ) -> bool:
+        """Validate and stage ONE new layer as ONE undoable command."""
+        if self._current is None or self._resizer is None:
+            QMessageBox.warning(self, "New layer", self._structure_refusal())
+            return False
+        try:
+            preview = self.preview_new_layer(
+                name, layer_slot, template_slot, columns, rows, fill
+            )
+        except _STRUCTURE_ERRORS as exc:
+            QMessageBox.warning(self, "New layer", str(exc))
+            return False
+        edit = preview.edit
+        committed = None if self._structure is None else self._structure.layers.get(edit.identity)
+        if committed is not None or self._staged_layers.get(edit.identity) is not None:
+            QMessageBox.warning(
+                self,
+                "New layer",
+                f"{edit.identity} already exists in this project.",
+            )
+            return False
+        index = self._current.index
+        self._stage_layer_value(edit.identity, edit)
+        self._rebuild_structure_view()
+        command = NewLayerCommand(self, edit.identity, None, edit)
+        self._undo_stack.push(command)
+        self._after_structure_change(index)
+        self._publish_status(f"Staged {preview.summary}. Apply to project to write it.")
+        return True
+
+    def build_new_layer_dialog(self) -> "NewLayerDialog | None":
+        """The layer-authoring form, built but not shown. None when it cannot be offered."""
+        index = self._current.index if self._current is not None else None
+        if index is None or self._resizer is None:
+            QMessageBox.warning(self, "New layer", self._structure_refusal())
+            return None
+        try:
+            target = self._structure_target_for(index)
+            if target is None:
+                raise MapStructureError(self._structure_refusal())
+            free = target.free_slots
+            templates = self.layer_templates(index)
+        except _STRUCTURE_VIEW_ERRORS as exc:
+            QMessageBox.warning(self, "New layer", str(exc))
+            return None
+        if not free:
+            QMessageBox.warning(
+                self,
+                "New layer",
+                f"map:{index:04d} leaves no layer slot unused"
+                + (
+                    f": {target.read_only_reason}"
+                    if target.read_only_reason
+                    else ""
+                ),
+            )
+            return None
+        if not templates:
+            QMessageBox.warning(
+                self,
+                "New layer",
+                f"map:{index:04d} has no supported dominant layer to copy a new "
+                "layer from",
+            )
+            return None
+        return NewLayerDialog(
+            self,
+            map_index=index,
+            free_slots=free,
+            templates=templates,
+            vocabulary_for=lambda slot: self.template_vocabulary(index, slot),
+            preview=self.preview_new_layer,
+            apply_command=self.apply_new_layer,
+            default_name=f"map{index:04d}-bg{free[0]}",
+        )
+
+    def open_new_layer_dialog(self) -> "NewLayerDialog | None":
+        """The layer-authoring form, shown modally."""
+        dialog = self.build_new_layer_dialog()
+        if dialog is None:
+            return None
+        dialog.exec()
+        return dialog
+
+    def _reapply_layer(self, command: "NewLayerCommand") -> None:
+        self._stage_layer_value(command.identity, command.applied)
+        self._rebuild_structure_view()
+        self._after_structure_change(
+            command.applied.map_index
+            if command.applied is not None
+            else command.previous.map_index
+        )
+
+    def _reverse_layer(self, command: "NewLayerCommand") -> None:
+        self._stage_layer_value(command.identity, command.previous)
+        self._rebuild_structure_view()
+        self._after_structure_change(
+            command.applied.map_index
+            if command.applied is not None
+            else command.previous.map_index
+        )
+
+    # -- structural commands: reverting --------------------------------------
+
+    def _slot_cell_holders(self, map_index: int, layer_slot: int) -> int:
+        """How many layout cells name this slot, committed or staged.
+
+        The same rule `remove_authored_layer` enforces on the project side, stated
+        against what the surface can see so the user is told before the write rather
+        than by it.
+        """
+        committed = sum(
+            1
+            for key in list(self._structural_committed) + list(self._authored_committed)
+            if (key[0], key[1]) == (map_index, layer_slot)
+        )
+        staged = sum(
+            1
+            for key in list(self._structural_cells) + list(self._authored_cells)
+            if (key[0], key[1]) == (map_index, layer_slot)
+        )
+        return committed + staged
+
+    def revert_selected_structure(self) -> bool:
+        """Un-stage the selected layer's structural change, or stage its removal.
+
+        Two states, one command. A slot with a *staged* change returns to what the
+        project holds - the same "revert means un-stage" rule the cell revert uses -
+        and a slot the *project* authored is staged for removal, which the next Apply
+        writes through the SDK's own `clear_layer_resize`/`remove_authored_layer`. A
+        layer that still holds authored cell content is refused with the reason,
+        because removing it would leave those cells naming a slot the project no
+        longer declares.
+        """
+        index = self._current.index if self._current is not None else None
+        if index is None or self._slot is None:
+            return False
+        layer_slot = self._slot.slot
+        staged_resize, staged_layer = self._structural_edit_for(index, layer_slot)
+        committed_resize = (
+            None if self._structure is None else self._structure.resize_for(index, layer_slot)
+        )
+        committed_layer = (
+            None if self._structure is None else self._structure.layer_at(index, layer_slot)
+        )
+        staged_key = (index, layer_slot)
+        if staged_key in self._staged_resizes or (
+            staged_layer is not None and staged_layer.identity in self._staged_layers
+        ):
+            before_resize = self._staged_resizes.get(staged_key)
+            before_layer = (
+                None
+                if staged_layer is None
+                else self._staged_layers.get(staged_layer.identity)
+            )
+            self._naming_structure_revert = True
+            try:
+                if staged_layer is not None:
+                    command = NewLayerCommand(
+                        self, staged_layer.identity, before_layer, committed_layer
+                    )
+                else:
+                    command = ResizeCommand(
+                        self, index, layer_slot, before_resize, committed_resize
+                    )
+            finally:
+                self._naming_structure_revert = False
+            # Un-staging returns the slot to what the PROJECT holds, which is what
+            # makes an undo of this gesture restore the staged value again.
+            if staged_layer is not None:
+                self._stage_layer_value(staged_layer.identity, committed_layer)
+            else:
+                self._stage_resize_value(index, layer_slot, committed_resize)
+            self._rebuild_structure_view()
+            self._undo_stack.push(command)
+            self._after_structure_change(index)
+            self._publish_status(
+                "Un-staged the structural change on "
+                f"map:{index:04d} BG{layer_slot}; the project keeps what it holds."
+            )
+            return True
+        if committed_resize is None and committed_layer is None:
+            self._publish_status(
+                "This layer carries no structural change to revert."
+            )
+            return False
+        holders = self._slot_cell_holders(index, layer_slot)
+        if holders:
+            QMessageBox.warning(
+                self,
+                "Revert structure",
+                f"map:{index:04d} BG{layer_slot} still holds {holders} authored "
+                "cell(s); clear those cells before reverting the layer",
+            )
+            return False
+        if committed_layer is not None:
+            self._naming_structure_revert = True
+            try:
+                command = NewLayerCommand(
+                    self, committed_layer.identity, committed_layer, None
+                )
+            finally:
+                self._naming_structure_revert = False
+            self._stage_layer_value(committed_layer.identity, None)
+        else:
+            self._naming_structure_revert = True
+            try:
+                command = ResizeCommand(self, index, layer_slot, committed_resize, None)
+            finally:
+                self._naming_structure_revert = False
+            self._stage_resize_value(index, layer_slot, None)
+        self._rebuild_structure_view()
+        self._undo_stack.push(command)
+        self._after_structure_change(index)
+        self._publish_status(
+            f"Staged the removal of the project's own structural change on "
+            f"map:{index:04d} BG{layer_slot}. Apply to project to write it."
+        )
+        return True
+
+    # -- structural staging: what Apply writes -------------------------------
+
+    def _staged_resize_edits(self) -> dict[tuple[int, int], "LayerResize | None"]:
+        """Staged resizes that would actually change the project."""
+        structure = self._structure if self._structure is not None else MapStructure()
+        return {
+            key: edit
+            for key, edit in self._staged_resizes.items()
+            if structure.resize_for(*key) != edit
+        }
+
+    def _staged_layer_edits(self) -> dict[str, "AuthoredLayer | None"]:
+        """Staged authored layers that would actually change the project."""
+        structure = self._structure if self._structure is not None else MapStructure()
+        return {
+            identity: layer
+            for identity, layer in self._staged_layers.items()
+            if structure.layers.get(identity) != layer
+        }
+
+    def _staged_structural_cells(self) -> dict[tuple[int, int, int], int | None]:
+        """Staged paints on project-authored grids, as the layout batch spells them."""
+        return {
+            key: value
+            for key, value in self._structural_cells.items()
+            if self._structural_committed.get(key) != value
+        }
+
+    def _write_staged_structure(self, *, removals: bool) -> bool:
+        """Write the staged structural edits through the SDK, in the safe order.
+
+        Creations and resizes are written BEFORE the cells they carry (a cell in a
+        grown grid is only a legal layout cell once the grid exists) and removals
+        AFTER them (a removed layer must not still be named). One SDK call per
+        staged edit, and each returns whether project source actually changed.
+        """
+        if self._session.project_dir is None or self._session.map_image is None:
+            return False
+        changed = False
+        resizes = self._staged_resize_edits()
+        layers = self._staged_layer_edits()
+        if removals:
+            for (map_index, layer_slot), edit in sorted(resizes.items()):
+                if edit is not None:
+                    continue
+                if clear_layer_resize(
+                    self._session.project_dir,
+                    self._session.map_image,
+                    map_index,
+                    layer_slot,
+                    profile=self._session.profile,
+                ):
+                    changed = True
+            for identity, layer in sorted(layers.items()):
+                if layer is not None:
+                    continue
+                if remove_authored_layer(self._session.project_dir, identity):
+                    changed = True
+            return changed
+        for (map_index, layer_slot), edit in sorted(resizes.items()):
+            if edit is None:
+                continue
+            if set_layer_resize(
+                self._session.project_dir,
+                self._session.map_image,
+                edit,
+                profile=self._session.profile,
+            ):
+                changed = True
+        for identity, layer in sorted(layers.items()):
+            if layer is None:
+                continue
+            if set_authored_layer(
+                self._session.project_dir,
+                self._session.map_image,
+                layer,
+                profile=self._session.profile,
+            ):
+                changed = True
+        return changed
+
+    # -- the structure section ------------------------------------------------
+
+    def _structure_rows(self) -> tuple[tuple, ...]:
+        """One row per layer slot: identity, size, form and whether it is editable."""
+        result = self._current
+        if result is None:
+            return ()
+        target = self._structure_target_for(result.index)
+        if target is None:
+            return ()
+        rows = []
+        for layer in target.slots:
+            where = (
+                f"authored {self._authored_name(layer.identity)}"
+                if layer.identity is not None
+                else ("project resize" if layer.resized else "source image")
+            )
+            size = (
+                _grid_text(layer.columns, layer.rows)
+                if layer.columns and layer.rows
+                else "no grid"
+            )
+            handler = f"handler {layer.handler:#010x}"
+            detail = layer.read_only_reason or (
+                f"{size} chunks \u00b7 {layer.width}\u00d7{layer.height} px \u00b7 "
+                f"{layer.classification} \u00b7 {where} \u00b7 {handler}"
+            )
+            rows.append(
+                (
+                    layer.slot,
+                    f"BG{layer.slot} \u00b7 {size} \u00b7 {layer.classification} \u00b7 {where}",
+                    detail,
+                    layer.editable,
+                )
+            )
+        return tuple(rows)
+
+    def _sync_structure_controls(self) -> None:
+        """Bring the structure section up to date from cached state.
+
+        Called from every editor refresh, so it reads no file and allocates no
+        widget unless a row's text actually changed (CQA-07's rule that a repaint
+        never rebuilds what it can reuse).
+        """
+        rows = self._structure_rows()
+        signature = tuple((slot, text) for slot, text, _detail, _ok in rows)
+        if signature != self._structure_row_signature:
+            self._structure_row_signature = signature
+            self._suppress_structure_list = True
+            self._structure_list.blockSignals(True)
+            self._structure_list.clear()
+            for slot, text, detail, editable in rows:
+                item = QListWidgetItem(text)
+                item.setData(_IDENTITY_ROLE, slot)
+                item.setToolTip(detail)
+                if not editable:
+                    item.setForeground(theme.color("text_muted"))
+                self._structure_list.addItem(item)
+            self._structure_list.blockSignals(False)
+            self._suppress_structure_list = False
+            self._fit_structure_list()
+        selected = self._slot.slot if self._slot is not None else None
+        self._suppress_structure_list = True
+        if selected is None:
+            self._structure_list.setCurrentRow(-1)
+        else:
+            for row in range(self._structure_list.count()):
+                if self._structure_list.item(row).data(_IDENTITY_ROLE) == selected:
+                    self._structure_list.setCurrentRow(row)
+                    break
+        self._suppress_structure_list = False
+        self._update_structure_labels()
+
+    def _fit_structure_list(self) -> None:
+        """Make the layer list exactly as tall as the slot rows it holds.
+
+        The engine's layer count is fixed at four, so this list never scrolls and
+        never needs slack - but a `QListWidget`'s own size hint reserves far more
+        than its rows (measured: 192 px for four 20 px rows), and that dead space
+        was what the panel spent instead of showing its own Apply and Save As
+        buttons at the default window size.
+        """
+        rows = self._structure_list.count()
+        if not rows:
+            return
+        self._structure_list.setFixedHeight(
+            rows * self._structure_list.sizeHintForRow(0)
+            + 2 * self._structure_list.frameWidth()
+        )
+
+    def _update_structure_labels(self) -> None:
+        result = self._current
+        if result is None:
+            self._structure_state.setText("No map is selected.")
+            self._structure_extent.setText("")
+            self._structure_support.setText("")
+            self._structure_staged.setText("")
+            self._set_structure_buttons(False, False, False)
+            return
+        index = result.index
+        target = self._structure_target_for(index)
+        if target is None:
+            self._structure_state.setText(f"map:{index:04d} \u00b7 no structural view")
+            self._structure_extent.setText("")
+            self._structure_support.setText(
+                self._structure_unavailable or "this map's structure could not be read"
+            )
+            self._structure_staged.setText("")
+            self._set_structure_buttons(False, False, False)
+            return
+        self._structure_extent.setText(
+            f"map extent {target.extent_x} \u00d7 {target.extent_y} px \u00b7 "
+            f"{len(target.free_slots)} unused slot(s)"
+        )
+        slot = self._slot.slot if self._slot is not None else None
+        if slot is None or not any(row[0] == slot for row in self._structure_rows()):
+            self._structure_state.setText("No layer selected.")
+            self._structure_support.setText(
+                "Select a layer to see whether it can be resized."
+            )
+        else:
+            layer = target.layer(slot)
+            source = (
+                f"authored layer {self._authored_name(layer.identity)}"
+                if layer.identity is not None
+                else ("project resized grid" if layer.resized else "source image grid")
+            )
+            self._structure_state.setText(
+                f"{layer.label} \u00b7 {layer.classification} \u00b7 {source}"
+            )
+            if target.shared_with:
+                self._structure_support.setText(f"Read only \u00b7 {target.read_only_reason}")
+            elif layer.editable:
+                self._structure_support.setText(
+                    "Supported \u00b7 a supported dominant chunk grid; a resize may "
+                    "grow it and never shrink it"
+                )
+            else:
+                self._structure_support.setText(f"Read only \u00b7 {layer.read_only_reason}")
+        staged = self._staged_structure_lines(index)
+        self._structure_staged.setText(
+            " \u00b7 ".join(staged) if staged else "no staged structural change on this map"
+        )
+        resizable = (
+            slot is not None
+            and self._resizer is not None
+            and not target.shared_with
+            and target.layer(slot).editable
+        )
+        creatable = self._resizer is not None and bool(target.free_slots)
+        revertible = slot is not None and (
+            (index, slot) in self._staged_resizes
+            or any(
+                layer is not None and (layer.map_index, layer.layer_slot) == (index, slot)
+                for layer in self._staged_layers.values()
+            )
+            or (
+                self._structure is not None
+                and (
+                    self._structure.resize_for(index, slot) is not None
+                    or self._structure.layer_at(index, slot) is not None
+                )
+            )
+        )
+        self._set_structure_buttons(resizable, creatable, revertible)
+
+    def _set_structure_buttons(
+        self, resizable: bool, creatable: bool, revertible: bool
+    ) -> None:
+        editing = self._edit_mode
+        project = self._session.project_dir is not None
+        self._resize_button.setEnabled(editing and resizable)
+        self._resize_button.setToolTip(
+            "Grow the selected layer's chunk grid; the source cells stay where they are"
+            if editing and resizable
+            else self._structure_refusal()
+        )
+        self._new_layer_button.setEnabled(editing and creatable and project)
+        self._new_layer_button.setToolTip(
+            "Activate a layer slot the source image leaves unused"
+            if editing and creatable and project
+            else (
+                "Open or extract a project first: a layer is stored in the project."
+                if not project
+                else "No slot on this map is unused."
+            )
+        )
+        self._revert_structure_button.setEnabled(editing and revertible)
+        self._revert_structure_button.setToolTip(
+            "Un-stage this layer's structural change, or stage the removal of the "
+            "project's own"
+            if editing and revertible
+            else "This layer carries no structural change to revert."
+        )
+
+    def _staged_structure_lines(self, map_index: int) -> list[str]:
+        """One line per staged structural change on one map, in durable order."""
+        lines = []
+        for (index, slot), edit in sorted(self._staged_resizes.items()):
+            if index != map_index:
+                continue
+            if edit is None:
+                lines.append(f"BG{slot} \u2192 source grid (removal staged)")
+            else:
+                lines.append(
+                    f"BG{slot} \u2192 {_grid_text(edit.columns, edit.rows)} (resize staged)"
+                )
+        for identity, layer in sorted(self._staged_layers.items()):
+            if layer is None:
+                committed = (
+                    None
+                    if self._structure is None
+                    else self._structure.layers.get(identity)
+                )
+                if committed is not None and committed.map_index == map_index:
+                    lines.append(f"BG{committed.layer_slot} \u2192 removed (staged)")
+                continue
+            if layer.map_index != map_index:
+                continue
+            lines.append(
+                f"BG{layer.layer_slot} \u2192 {identity} "
+                f"{_grid_text(layer.columns, layer.rows)} (new layer staged)"
+            )
+        return lines
+
+    def _on_structure_row_selected(self, row: int) -> None:
+        """Selecting a slot row selects that layer in the editor, when it can be."""
+        if self._suppress_structure_list or row < 0:
+            return
+        item = self._structure_list.item(row)
+        if item is None:
+            return
+        slot = item.data(_IDENTITY_ROLE)
+        combo_row = self._layer_combo.findData(slot)
+        if combo_row < 0:
+            self._publish_status(
+                f"BG{slot} cannot be edited here: {item.toolTip()}"
+            )
+            return
+        self._layer_combo.setCurrentIndex(combo_row)
+
+    # -- structural rendering -------------------------------------------------
+
+    def _structural_plane(self, layer: StructuralLayer, map_index: int):
+        """One project-authored grid as indexed pixels, or None when nothing draws.
+
+        The canonical renderer draws the record the canonical image holds, and a
+        resized or authored grid is by definition not in that record - the record a
+        build materializes does not exist before the build. So the accepted
+        primitives are fed the project's own geometry: chunk bodies come from
+        `mv.render_chunk_images` (retail chunks) and `mv.render_chunk_entries`
+        (authored planes) - the same two calls the palette draws its swatches with -
+        and the composite still comes from `mv.compose`. Nothing is decoded,
+        arranged or stitched a second way.
+        """
+        width = layer.columns * mv.CHUNK_PIXELS
+        height = layer.rows * mv.CHUNK_PIXELS
+        if not width or not height:
+            return None
+        plane = bytearray(width * height)
+        drew = False
+        for cell in range(layer.cell_count):
+            image = self._structural_cell_image(layer, map_index, cell)
+            if image is None:
+                continue
+            column, row = cell % layer.columns, cell // layer.columns
+            for y in range(image.height):
+                source = y * image.width
+                target = (row * mv.CHUNK_PIXELS + y) * width + column * mv.CHUNK_PIXELS
+                plane[target : target + image.width] = image.pixels[
+                    source : source + image.width
+                ]
+            drew = True
+        return (width, height, bytes(plane)) if drew else None
+
+    def _structural_cell_image(self, layer: StructuralLayer, map_index: int, cell: int):
+        """The chunk image one cell of a project-authored grid shows, or None."""
+        ordinal = self._structural_ordinal(layer, cell)
+        identity = None
+        address = 0
+        if ordinal is not None:
+            choice = layer.chunk(ordinal)
+            if choice is None:
+                return None
+            address = choice.address
+        elif layer.contains(cell):
+            address = layer.cells[cell]
+            if layer.authored_cells:
+                identity = layer.authored_cells[cell]
+        if identity:
+            entries = self._resolved_plane(identity)
+            if entries is None:
+                return None
+            char_data = (
+                self._editor.character_block(map_index)
+                if self._editor is not None
+                else None
+            )
+            try:
+                return mv.render_chunk_entries(char_data, entries)
+            except _EDIT_ERRORS as exc:
+                self._report_plane_error(identity, str(exc))
+                return None
+        if not address:
+            return None
+        return self._structural_chunk_image(map_index, address)
+
+    def _structural_chunk_image(self, map_index: int, address: int):
+        """One retail chunk's pixels, rendered once per session and cached."""
+        cached = self._structural_images.get(address)
+        if cached is not None:
+            return cached
+        char_data = (
+            self._editor.character_block(map_index) if self._editor is not None else None
+        )
+        try:
+            images = mv.render_chunk_images(
+                self._session.map_image, map_index, (address,), char_data=char_data
+            )
+        except _EDIT_ERRORS as exc:
+            self._report_plane_error(f"chunk {address:#010x}", str(exc))
+            return None
+        if not images:
+            return None
+        self._structural_images[address] = images[0]
+        return images[0]
+
+    def _structural_preview(self) -> bool:
+        """Draw this map with the project's own layer grids; False when none apply.
+
+        The retail layers are kept exactly as `mv.render_map` produced them and only
+        the layers whose grid the project owns are replaced - so a map with one
+        resized layer still shows every other layer through the accepted renderer.
+        """
+        result = self._current
+        if result is None:
+            return False
+        structural = {layer.slot: layer for layer in self.structural_layers(result.index)}
+        if not structural:
+            return False
+        rendered: list[mv.MapBrowserLayer] = []
+        for layer in result.layers:
+            project_layer = structural.pop(layer.slot, None)
+            if project_layer is None:
+                rendered.append(layer)
+                continue
+            plane = self._structural_plane(project_layer, result.index)
+            if plane is None:
+                continue
+            width, height, pixels = plane
+            rendered.append(
+                mv.MapBrowserLayer(
+                    slot=layer.slot,
+                    classification="dominant",
+                    handler=layer.handler,
+                    addend=layer.addend,
+                    width=width,
+                    height=height,
+                    pixels=pixels,
+                )
+            )
+        for slot, project_layer in sorted(structural.items()):
+            plane = self._structural_plane(project_layer, result.index)
+            if plane is None:
+                continue
+            width, height, pixels = plane
+            rendered.append(
+                mv.MapBrowserLayer(
+                    slot=slot,
+                    classification="dominant",
+                    handler=project_layer.handler,
+                    addend=0,
+                    width=width,
+                    height=height,
+                    pixels=pixels,
+                )
+            )
+        visible = tuple(
+            layer
+            for layer in rendered
+            if layer.graphical
+            and (
+                self._layer_checks.get(layer.slot) is None
+                or self._layer_checks[layer.slot].isChecked()
+            )
+        )
+        if not visible:
+            self._set_map_pixmap(QPixmap(), result.width, result.height)
+            return True
+        width = max(layer.width for layer in visible)
+        height = max(layer.height for layer in visible)
+        try:
+            indices = mv.compose(visible, width, height)
+        except _EDIT_ERRORS as exc:
+            QMessageBox.warning(self, "Map structure", str(exc))
+            return False
+        pixmap = self._pixmap_from_indices(indices, width, height, result.palette)
+        self._set_map_pixmap(pixmap, width, height)
+        return True
+
+    def _report_plane_error(self, key: str, message: str) -> None:
+        """Report one structural render refusal once, not once per repaint."""
+        if key in self._plane_error_reported:
+            return
+        self._plane_error_reported.add(key)
+        QMessageBox.warning(self, "Map structure", f"{key}: {message}")
+
 
     # -- MAP-CHUNK-AUTHORING-001: the chunk author and the project's chunks ----
     #
@@ -4147,6 +6671,7 @@ class MapBrowserTab(QWidget):
         if self._session.project_dir is None:
             self._project_chunks = {}
             self._authored_committed = {}
+            self._structural_committed = {}
             return
         try:
             chunks = read_authored_chunks(self._session.project_dir)
@@ -4161,6 +6686,17 @@ class MapBrowserTab(QWidget):
         self._project_chunks = dict(chunks.chunks)
         self._authored_committed = {
             key: value for key, value in cells.items() if isinstance(value, str)
+        }
+        # MAP-RESIZE-AND-LAYERS-001. An ordinal cell on a slot whose grid the
+        # project owns is a paint of that grid, not of the canonical record, and it
+        # is cached here so a repaint resolves it without re-reading the project
+        # (CQA-07). The classification uses the structural document just read, not a
+        # second lookup.
+        structural = self.structural_pairs()
+        self._structural_committed = {
+            key: value
+            for key, value in cells.items()
+            if type(value) is int and (key[0], key[1]) in structural
         }
 
     def _clear_authored_state(self) -> None:

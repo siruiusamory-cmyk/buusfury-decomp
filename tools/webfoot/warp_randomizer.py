@@ -42,36 +42,56 @@ authored only on the 566 class, and ``set_arrival`` refuses the other class
 outright. A 169-class record is left unchanged and reported, because randomizing
 its destination alone is the half-edit this ticket forbids.
 
-Compatibility groups
-====================
+The policy: reciprocal door pairs
+================================
 
-For a transition whose source map is ``M``, the authority can derive a safe
-arrival for a candidate destination ``D`` only when ``D`` carries a canonical
-record leading **back to ``M``** - the door the player would have used to return.
-That set depends on the source map alone, so a group is one source map and its
-candidate pool is the set of maps that canonically route back to it. Within a
-group the assignment is a seeded Fisher-Yates shuffle of the pool: injective when
-the pool is at least as large as the group, and a seeded cycle when it is smaller,
-because this ticket's invariant is that each eligible transition receives exactly
-one compatible bundle - not that the corpus is a global bijection.
+The permutation unit is a **clean mutual door pair**: two records, ``f: X -> Y``
+and ``r: Y -> X``, where each is the other's only door back and both can carry an
+arrival. The canonical corpus holds 248 of them, covering 496 of the 735 records.
+A seeded Fisher-Yates draw over the pair set chooses which pair's maps each pair
+moves to, and the two halves of a pair always move together: ``f`` arrives on
+``r``'s own trigger rectangle and ``r`` on ``f``'s. So the door a player arrives on
+is always the door that leads back - retail's own shape, and the rule the external
+practice states outright (the OoT Entrance Randomizer keeps "all entrances
+bidirectional").
+
+An earlier revision permuted one record's destination at a time. That let an
+arrival land inside a door the permutation had pointed somewhere else, and a player
+who arrives inside a trigger never crosses its edge, so it never fires: 168 of 559
+arrivals did that and a human playthrough was trapped in a loop. Reciprocity is
+what removes that class.
+
+A **dead-end guard** then refuses to link two maps that each hold exactly one door
+record: such a link is an isolated 2-cycle with no way on, which a player entering
+from a scripted transition cannot leave, and the second playthrough hit exactly
+that. The guard is a rule about the door graph's topology, not progression logic -
+it does not guarantee a route, a hub can still lead into a pocket, and
+:attr:`WarpRandomizerManifest.forced_leaf_links` reports how often it had to be
+relaxed so a bypassed rule cannot pass as a satisfied one.
+
+A record that is not half of a clean pair is left byte-identical with its own
+stated reason: 169 are the 169-class, and 70 have no clean mutual pair.
 
 Determinism
 ===========
 
 The permutation is drawn from SHA-256, not from a library PRNG, so the mapping
 does not depend on an implementation detail of ``random``: group ``g``'s shuffle
-draws ``sha256(domain | seed | g | i)`` for each Fisher-Yates step ``i``. The same
-seed and the same image therefore produce the same mapping, the same manifest
-bytes and the same output bytes, on any machine.
+draws ``sha256(domain | seed | g | i)`` for each Fisher-Yates step ``i``, and the
+guard consumes that order rather than a second source. The same seed and the same
+image therefore produce the same mapping, the same manifest bytes and the same
+output bytes, on any machine.
 
-Two views of one image
-======================
+Three views of one image
+========================
 
-The arrival must be derived from the **retail** link graph, while the edits have
-to accumulate somewhere. Those are deliberately two readers of one image: if the
-derivation read the object the edits were staged on, the arrival a record received
-would depend on which other records had already been retargeted. ``canonical`` is
-read-only; ``staged`` receives the edits and produces the byte plan.
+They are deliberate, and each exists for a reason the other two cannot serve.
+``canonical`` is read-only and supplies the retail graph, the door pairs and the
+arrival points. ``staged`` receives the edits and produces the byte plan. And
+``validator`` carries each planned pair through the authority's own ``set_arrival``
+before a byte is staged, because deriving from the edited object would make an
+arrival depend on which other records had already moved, while validating on
+``staged`` would leave a half-written record behind when the authority refuses.
 
 Safety
 ======

@@ -163,6 +163,9 @@ class MainWindow(QMainWindow):
         self._maps.openSceneRequested.connect(self._open_scene_placement)
         self._maps.buildRunRequested.connect(self._build_and_run)
         self._maps.dirtyChanged.connect(self._refresh_identity)
+        # A mode switch changes WHICH surface's history Edit -> Undo reaches, so the
+        # two actions are re-enabled from the newly active stack.
+        self._maps.modeChanged.connect(lambda _mode: self._refresh_undo_actions())
         self._graphics.projectChanged.connect(self._on_project_changed)
         self._scene.projectChanged.connect(self._on_project_changed)
         self._build.projectChanged.connect(self._on_project_changed)
@@ -638,12 +641,34 @@ class MainWindow(QMainWindow):
 
     def _refresh_undo_actions(self) -> None:
         stack = self._active_undo_stack()
-        self._action_undo.setEnabled(stack is not None and stack.canUndo())
-        self._action_redo.setEnabled(stack is not None and stack.canRedo())
-        if stack is not None and not getattr(self, "_undo_wired", False):
-            stack.canUndoChanged.connect(lambda _ok: self._refresh_undo_actions())
-            stack.canRedoChanged.connect(lambda _ok: self._refresh_undo_actions())
-            self._undo_wired = True
+        try:
+            can_undo = stack is not None and stack.canUndo()
+            can_redo = stack is not None and stack.canRedo()
+        except RuntimeError:
+            # The stack's C++ object is already gone. That happens when a stack
+            # emits its last canUndo/canRedo change while its window is being torn
+            # down, which a headless suite does between tests. "There is no history
+            # to offer" is the honest answer there, and it is not a user-visible
+            # failure, so the two actions are simply disabled.
+            self._action_undo.setEnabled(False)
+            self._action_redo.setEnabled(False)
+            return
+        self._action_undo.setEnabled(can_undo)
+        self._action_redo.setEnabled(can_redo)
+        if stack is None:
+            return
+        # Every stack the active editor has offered is wired once and kept wired,
+        # because switching modes switches stacks: a single "already wired" flag
+        # would leave the second and later stacks unable to update these actions.
+        wired = getattr(self, "_undo_wired", None)
+        if wired is None:
+            wired = self._undo_wired = set()
+        key = id(stack)
+        if key in wired:
+            return
+        wired.add(key)
+        stack.canUndoChanged.connect(lambda _ok: self._refresh_undo_actions())
+        stack.canRedoChanged.connect(lambda _ok: self._refresh_undo_actions())
 
     def _validate_project(self) -> None:
         self._build.validate_project()

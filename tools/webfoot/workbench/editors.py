@@ -10,11 +10,11 @@ Two consequences live here:
   reach it (show it, ask for its undo stack, ask for its status line) without
   knowing which class it is.
 - :class:`MapsEditor` is the **one** Maps destination. Browsing a map's layout,
-  editing that layout's chunk cells, and authoring a map's placements are three
-  modes of one editor, exactly as Porymap keeps Map / Events / Header /
-  Connections inside one window with a tab bar rather than opening four windows.
-  Every pre-existing map widget is mounted unchanged; only the mode switch that
-  chooses between them is new.
+  editing that layout's chunk cells, authoring a map's placements and retargeting
+  the map's own connections are four modes of one editor, exactly as Porymap keeps
+  Map / Events / Header / Connections inside one window with a tab bar rather than
+  opening four windows. Every pre-existing map widget is mounted unchanged; only
+  the mode switch that chooses between them is new.
 """
 
 from __future__ import annotations
@@ -33,6 +33,7 @@ from PySide6.QtWidgets import (
 from . import theme
 from .map_browser_tab import MapBrowserTab
 from .map_tab import MapWorkspaceTab
+from .warp_tab import WarpTab
 from .widgets import ToolStrip
 
 #: Maps mode name -> one line saying what that mode is for. The wording uses the
@@ -54,6 +55,12 @@ _MAP_MODES = (
         "Objects",
         "Inspect and author the placements a map contains: move them, clone one into "
         "a named authored NPC, and open its detailed editor.",
+    ),
+    (
+        "warps",
+        "Warps",
+        "Retarget this map's existing connections: where each one leads, where the "
+        "player arrives and which way they face, written to maps/transitions.toml.",
     ),
 )
 
@@ -167,13 +174,13 @@ class EditorHost(QWidget):
 
 
 class MapsEditor(EditorHost):
-    """The one Maps editor: Browse, Layout and Objects as internal modes."""
+    """The one Maps editor: Browse, Layout, Objects and Warps as internal modes."""
 
     #: Forwarded from the placement workspace when a user asks for the Scene editor.
     openSceneRequested = Signal(str, str)
     #: Forwarded from the placement workspace's Build & Run button.
     buildRunRequested = Signal()
-    #: Any of the three modes changed the project.
+    #: Any of the four modes changed the project.
     projectChanged = Signal()
     #: The active mode's own status line, republished for the shell. This is the
     #: base host's `statusChanged`, inherited rather than redeclared: shadowing it
@@ -181,6 +188,8 @@ class MapsEditor(EditorHost):
     #: never receive.
     #: The pending layout-edit count changed; the shell shows it too.
     dirtyChanged = Signal()
+    #: The mode changed, which changes whose undo stack the shell should route to.
+    modeChanged = Signal(str)
 
     def unsaved_edit_count(self) -> int:
         """Pending layout edits no Save As has written yet, across every mode."""
@@ -194,6 +203,7 @@ class MapsEditor(EditorHost):
         # drawing its own Edit Layout toggle: one action, one control.
         self.browser.set_modes_owned_by_host(True)
         self.workspace = MapWorkspaceTab(session)
+        self.warps = WarpTab(session)
 
         self._buttons: dict[str, QToolButton] = {}
         strip = ToolStrip()
@@ -215,6 +225,7 @@ class MapsEditor(EditorHost):
         self._stack = QStackedWidget()
         self._stack.addWidget(self.browser)
         self._stack.addWidget(self.workspace)
+        self._stack.addWidget(self.warps)
 
         self._layout.addWidget(strip)
         self._layout.addWidget(self._stack, 1)
@@ -224,11 +235,16 @@ class MapsEditor(EditorHost):
         self.workspace.projectChanged.connect(self.projectChanged)
         self.workspace.openSceneRequested.connect(self.openSceneRequested)
         self.workspace.buildRunRequested.connect(self.buildRunRequested)
+        self.warps.projectChanged.connect(self.projectChanged)
+        self.warps.dirtyChanged.connect(self._on_warps_dirty)
 
         self.set_status_label(self.browser._status)
-        self.browser.statusChanged.connect(self._on_mode_status)
+        self.browser.statusChanged.connect(self._on_browser_status)
         self.workspace.statusChanged.connect(self._on_workspace_status)
-        self._reporting_workspace = False
+        self.warps.statusChanged.connect(self._on_warps_status)
+        #: Which surface publishes this editor's line right now. The three surfaces
+        #: share one signal, so the label that counts is the active one's.
+        self._status_source = "browser"
 
         self._mode = "browse"
         self.set_mode("browse")
@@ -243,27 +259,42 @@ class MapsEditor(EditorHost):
         for name, button in self._buttons.items():
             button.setChecked(name == key)
         self._stack.setCurrentWidget(
-            self.workspace if key == "objects" else self.browser
+            self.workspace
+            if key == "objects"
+            else self.warps
+            if key == "warps"
+            else self.browser
         )
         if key == "layout":
             self.browser.enter_edit_layout()
         elif key == "browse":
             self.browser.leave_edit_layout()
+        elif key == "warps":
+            self.warps.refresh()
         # The status line belongs to whichever mode is on screen.
         label = (
-            self.workspace._status if key == "objects" else self.browser._status
+            self.workspace._status
+            if key == "objects"
+            else self.warps._status
+            if key == "warps"
+            else self.browser._status
         )
         self.set_status_label(label)
-        self._reporting_workspace = key == "objects"
+        self._status_source = (
+            "workspace" if key == "objects" else "warps" if key == "warps" else "browser"
+        )
         # Ask the mode that just became visible to restate itself. Without this the
         # label kept whatever it said the last time that same mode was active, so
         # switching Layout -> Objects -> Browse could show the placement editor's
         # readout while the map browser was on screen.
         if key == "objects":
             self.workspace.restate_status()
+        elif key == "warps":
+            self.warps.restate_status()
         else:
             self.browser._refresh_editor_state()
         self.statusChanged.emit(label.text())
+        self.modeChanged.emit(key)
 
     def mode(self) -> str:
         return self._mode
@@ -277,41 +308,53 @@ class MapsEditor(EditorHost):
             "browse": "Read-only: every map renders, nothing is edited.",
             "layout": "",
             "objects": "",
+            "warps": "",
         }.get(key, "")
 
     # -- status forwarding ----------------------------------------------------
 
-    def _on_mode_status(self, text: str) -> None:
-        if not self._reporting_workspace:
+    def _on_browser_status(self, text: str) -> None:
+        if self._status_source == "browser":
             self.statusChanged.emit(text)
 
     def _on_workspace_status(self, text: str) -> None:
-        if self._reporting_workspace:
+        if self._status_source == "workspace":
             self.statusChanged.emit(text)
+
+    def _on_warps_status(self, text: str) -> None:
+        if self._status_source == "warps":
+            self.statusChanged.emit(text)
+
+    def _on_warps_dirty(self) -> None:
+        self.dirtyChanged.emit()
 
     # -- capabilities the shell needs ----------------------------------------
 
     def on_session_changed(self) -> None:
-        """A different image: reset both modes, then follow them to a true mode.
+        """A different image: reset every mode, then follow them to a true mode.
 
         The browser deliberately returns to view mode for an image it has not
-        judged, and the workspace drops a history that described the replaced map
-        corpus. The strip is the one statement of which mode is active, so it
-        cannot be left checked on Layout - a mode the editor is no longer in.
-        Browse is the mode that matches what is on screen. Objects is kept: its
-        corpus is re-read from the new image and the mode is still honoured.
+        judged, the workspace drops a history that described the replaced map
+        corpus, and the Warps surface drops its staged connection edits - they name
+        records of the image that is gone. The strip is the one statement of which
+        mode is active, so it cannot be left checked on Layout - a mode the editor
+        is no longer in. Browse is the mode that matches what is on screen.
+        Objects and Warps are kept: their corpora are re-read from the new image and
+        the mode is still honoured.
         """
         self.browser.on_session_changed()
         self.workspace.on_session_changed()
+        self.warps.on_session_changed()
         self.set_mode("browse" if self._mode == "layout" else self._mode)
 
     def on_project_mutated(self) -> None:
-        """A project mutation: keep both modes' staged state, re-assert the mode.
+        """A project mutation: keep every mode's staged state, re-assert the mode.
 
-        CQA-05. Neither staged surface is project-derived - the layout session
-        is built from the open image's bytes and the placement history holds
-        semantic positions the project still has - so this event must refresh
-        what the project *can* change without discarding what the user staged.
+        CQA-05. None of the staged surfaces is project-derived - the layout session
+        is built from the open image's bytes, the placement history holds semantic
+        positions the project still has, and the Warps drafts name transitions the
+        project still has a place for - so this event must refresh what the project
+        *can* change without discarding what the user staged.
 
         The mode is re-asserted afterwards so the strip and the editor it names
         cannot disagree. The strip is the one statement of which mode is active,
@@ -320,6 +363,7 @@ class MapsEditor(EditorHost):
         """
         self.browser.on_project_mutated()
         self.workspace.on_project_mutated()
+        self.warps.on_project_mutated()
         self.set_mode(self._mode)
 
     def build_run_requested(self) -> None:
@@ -330,4 +374,14 @@ class MapsEditor(EditorHost):
         self.workspace.select_placement(map_id, placement_identity)
 
     def undo_stack(self):
-        return self.workspace._undo_stack
+        """The ACTIVE mode's history, so Edit -> Undo answers what is on screen.
+
+        Browse and Layout stage into the browser's own stack, Objects into the
+        placement workspace's, and Warps into the new connection editor's; routing
+        by mode is what keeps one Ctrl+Z from reaching a hidden surface's history.
+        """
+        if self._mode == "warps":
+            return self.warps.undo_stack()
+        if self._mode == "objects":
+            return self.workspace._undo_stack
+        return self.browser._undo_stack

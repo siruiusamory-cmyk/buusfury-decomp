@@ -132,6 +132,49 @@ if ($departures.Count -eq 0) {
     }
 }
 
+# --- MAP-WARP-FACING-TRACE-001: the facing correlation ------------------------
+#
+# The arrival-facing claim is a CORRELATION of four things and this reports all
+# four together, because none of them is sufficient alone: the authored byte in
+# the record, the selector that can veto the write, the facing byte the engine
+# actually wrote on the player, and the operator's own observation. The record
+# byte alone proves nothing - that is the whole point of the ticket.
+$facingPath = Join-Path $runDir 'facing.csv'
+if (Test-Path -LiteralPath $facingPath) {
+    $face = Import-Csv -LiteralPath $facingPath
+    $changes = @($face | Where-Object { $_.kind -eq 'CHANGE' })
+    $recordBytes = @($face | Where-Object { $_.record_facing_raw } |
+        Select-Object -ExpandProperty record_facing_raw -Unique)
+    $selectors = @($face | Where-Object { $_.selector_raw } |
+        Select-Object -ExpandProperty selector_raw -Unique)
+
+    Say ''
+    Say 'FACING CORRELATION:'
+    Say ("  record +0x10 (live): {0}" -f ($recordBytes -join ', '))
+    Say ("  selector 0x03001A34: {0}  ({1})" -f ($selectors -join ', '), `
+        $(if ($selectors.Count -eq 1 -and $selectors[0] -eq '0x00000000') {
+            'ZERO throughout - the 566 arrival-facing write was ELIGIBLE'
+          } else { 'non-zero seen - the traced path SKIPS the arrival write' }))
+    Say ("  facing CHANGES: {0}" -f $changes.Count)
+    foreach ($row in $changes) {
+        Say ("    frame {0,8}  map {1}  facing {2}  [{3}]" -f `
+            $row.frame, $row.map_index, $row.player_facing_raw, $row.note)
+    }
+    # The load-bearing value: the facing byte first written on the player object
+    # the WARP created - i.e. the first such row in a map other than the source.
+    # Selecting the first match outright picks up the pre-warp object swap in the
+    # source map, which says nothing about the arrival.
+    $newPlayer = ($changes |
+        Where-Object { $_.note -match 'player 0->' -and [int]$_.map_index -ne $ExpectTargetMap } |
+        Select-Object -First 1)
+    if ($newPlayer) {
+        Say ("  the player object the warp created first carries facing byte {0} in map {1} (frame {2})" -f `
+            $newPlayer.player_facing_raw, $newPlayer.map_index, $newPlayer.frame)
+    } else {
+        Say '  no post-warp player object was observed on this channel.'
+    }
+}
+
 Say ''
 Say ("  total rows: {0}" -f $rows.Count)
 $lines -join "`r`n" | Set-Content -LiteralPath (Join-Path $runDir 'summary.txt') -Encoding utf8

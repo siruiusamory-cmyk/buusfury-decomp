@@ -1173,6 +1173,21 @@ def test_warpedit001_observer_is_read_only_and_uses_the_engine_route():
 
     assert "warpedit001_transition_watch.lua" in injector
 
+    # MAP-WARP-FACING-TRACE-001. The facing claim is a CORRELATION, so the
+    # observer latches the authored record byte, the selector that can veto the
+    # write, and the live player's own facing together, on one frame clock - and
+    # writes a change timeline rather than a single sample.
+    assert "local RECORD_FACING_OFFSET = 0x10" in observer
+    assert "local SUBCLASS_SELECTOR = 0x03001A34" in observer
+    assert "local PLAYER_SLOT = 0x03001C34" in observer
+    assert "local PLAYER_FACING_OFFSET = 0x10" in observer
+    assert 'in_run("facing.csv")' in observer
+    assert '"CHANGE"' in observer and '"LIVENESS"' in observer
+    # A null or implausible player slot is reported, never dereferenced blind.
+    assert "player < 0x02000000 or player >= 0x03008000" in observer
+    # The separate file exists so the session.csv contract is untouched.
+    assert 'in_run("session.csv")' in observer
+
 
 def test_warpedit001_launcher_verifies_identity_and_owns_no_session_lifetime():
     """The session launcher must pin the exact ROM and then get out of the way.

@@ -189,6 +189,81 @@ local function target_facts()
     }
 end
 
+-- --- MAP-WARP-FACING-TRACE-001: the facing channel --------------------------
+--
+-- Written to its own file so the session.csv contract above is untouched.
+--
+-- Three things are latched together on one frame clock, because the claim under
+-- test is a CORRELATION and not any one value:
+--
+--   * record +0x10 - the authored byte, read through the same engine route as the
+--     key, so the record being read is proved to be the engine's;
+--   * 0x03001A34 - the selector the traced 566 update path tests before it writes
+--     an arrival facing; a non-zero value means the write is skipped, so the
+--     record's override would not be applied at all;
+--   * the live player object at 0x03001C34 and its own +0x10, which is the
+--     facing byte the engine actually writes and the closest thing to the value
+--     that reaches the screen.
+--
+-- Only a CHANGE is written, plus a liveness heartbeat, so the file is a timeline
+-- of the transition rather than a single sample.
+--
+-- RUNTIME-PROVEN ADDRESSES (do NOT re-derive):
+--   0x03001C34 = the player slot, stored by 0x080109AA (080109E6 str r4,[r0]).
+--   0x03001A34 = the player-subclass selector, read at 08008DA6..08008DB0.
+local RECORD_FACING_OFFSET = 0x10
+local PLAYER_SLOT = 0x03001C34
+local PLAYER_FACING_OFFSET = 0x10
+local SUBCLASS_SELECTOR = 0x03001A34
+local FACING_HEARTBEAT_EVERY = 120
+
+local facing_path = in_run("facing.csv")
+local facing_file = assert(io.open(facing_path, "w"), "cannot open facing.csv")
+facing_file:write(
+    "frame,kind,map_index,record_facing_raw,selector_raw,player_ptr,player_facing_raw,note\n")
+facing_file:flush()
+
+local facing_rows = 0
+local function emit_facing(frame, kind, map_index, record_facing, selector, player,
+                           player_facing, note)
+    if facing_rows >= MAX_ROWS then return end
+    facing_file:write(string.format(
+        "%d,%s,%s,%s,%s,%s,%s,%s\n",
+        frame, kind,
+        map_index and tostring(map_index) or "",
+        hex8(record_facing), hex32(selector), hex32(player), hex8(player_facing),
+        note or ""))
+    facing_file:flush()
+    facing_rows = facing_rows + 1
+end
+
+-- The live player's own facing byte, or nil when the slot does not hold a
+-- pointer into work RAM. A null or implausible slot is reported as such rather
+-- than dereferenced into noise.
+local function live_player_facing()
+    local player = safe32(PLAYER_SLOT)
+    if player == nil or player < 0x02000000 or player >= 0x03008000 then
+        return player, nil
+    end
+    return player, safe8(player + PLAYER_FACING_OFFSET)
+end
+
+-- The target record's address never changes during a run, so the route is
+-- resolved once and reused.
+local cached_route = nil
+local function record_facing_byte()
+    if cached_route == nil then
+        cached_route = route_to_record(TARGET_MAP, TARGET_ELEMENT)
+    end
+    if cached_route == nil then return nil end
+    return safe8(cached_route.record + RECORD_FACING_OFFSET)
+end
+
+local facing_started = false
+local last_selector = nil
+local last_player = nil
+local last_player_facing = nil
+
 local frame = 0
 local last_map = nil
 local seen_other_map = false
@@ -200,6 +275,36 @@ callbacks:add("frame", function()
 
     local map_index, entry = live_map_index()
     local changed = (map_index ~= nil and map_index ~= last_map)
+
+    -- The facing channel runs on EVERY frame, not only on map changes: the
+    -- selector and the player object can both change during the transition
+    -- itself, which is the moment the claim is about.
+    do
+        local selector = safe32(SUBCLASS_SELECTOR)
+        local player, player_facing = live_player_facing()
+        local rec_facing = record_facing_byte()
+        if not facing_started then
+            emit_facing(frame, "START", map_index, rec_facing, selector, player,
+                player_facing, "first sample")
+            facing_started = true
+            last_selector, last_player, last_player_facing =
+                selector, player, player_facing
+        elseif selector ~= last_selector or player ~= last_player
+            or player_facing ~= last_player_facing then
+            local note = string.format(
+                "selector %s->%s player %s->%s facing %s->%s",
+                tostring(last_selector), tostring(selector),
+                tostring(last_player), tostring(player),
+                tostring(last_player_facing), tostring(player_facing))
+            emit_facing(frame, "CHANGE", map_index, rec_facing, selector, player,
+                player_facing, note)
+            last_selector, last_player, last_player_facing =
+                selector, player, player_facing
+        elseif frame % FACING_HEARTBEAT_EVERY == 0 then
+            emit_facing(frame, "LIVENESS", map_index, rec_facing, selector, player,
+                player_facing, "")
+        end
+    end
 
     -- The route is re-read whenever the map changes, and once more as soon as it
     -- first resolves: the state is loaded AFTER this observer is injected, so

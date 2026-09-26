@@ -1,19 +1,30 @@
 # MAP-WARP-WORKBENCH-001 - the Maps editor's Warps surface
 
-STATUS: **IMPLEMENTED, AWAITING INDEPENDENT REVIEW (2026-09-26).** Class: GUI and
-project-surface pass. This is a **sub-pass of the parent capability
+STATUS: **IMPLEMENTED AND INDEPENDENTLY REVIEWED - APPROVE (2026-09-26).** Class:
+GUI and project-surface pass. This is a **sub-pass of the parent capability
 `MAP-WARPS-AND-CONNECTIONS-001`**, which stays active and **unshipped** in
 [`PROJECT_<local-state-name>`](PROJECT_<local-state-name>). Nothing here ships the parent: the capability count is
-unchanged, the registry is untouched and a review verdict has not yet been
-returned.
+unchanged and the registry is untouched.
 
 Baseline: `d9f7e6db2014c8d0b5919edf5c923169b3b1f57a` (verified with
-`git fetch origin --prune` + `git rev-parse origin/master` at ticket start).
+`git fetch origin --prune` + `git rev-parse origin/master` at ticket start). Master
+had moved by the sync step: the branch merged
+`5e01f5fec177e4d3413a6ff2c19b9b46265739a6` (WARPRAND-APP-001) conflict-free, and
+that merge's only effect is 17 additive files under `tools/webfoot/warprand/`,
+`scripts/`, `docs/warprand/` and `tests/` - `git diff d0773fc bd14032` is 5736
+insertions and 0 deletions, and it touches none of this ticket's files. The
+original `d9f7e6d` baseline is preserved in the branch history and in the review
+range.
+
 Worktree: `<ticket-worktrees>\map-warp-workbench-001` on
-`ticket/map-warp-workbench-001`, created from that SHA. The WARPRAND app worktree
-was not touched. The implementation is **uncommitted**: this record is the
-evidence bundle for the review, and freezing a candidate SHA belongs to the
-review step.
+`ticket/map-warp-workbench-001`. The WARPRAND app worktree was not touched.
+
+**FROZEN REVIEWED CANDIDATE:
+`a0d9cab12379e8692fef5cfe32f0baca4394734b`** - independent review **APPROVE**, zero
+blocking findings, two NOTE-level observations, no production correction. Review
+job `cl-20260926-204738-c1cab6` (`the local reviewer`, verdict read back in full);
+verdict and findings: [`MAP-WARP-WORKBENCH-001-review.md`](MAP-WARP-WORKBENCH-001-review.md).
+The candidate was not amended; the commits after it are documentation only.
 
 **public progress impact: NONE.** No capability ships, the registry stays at
 **19 / 24 (79%)**, `EDIT` stays **7 / 8**, `src/data/capabilities.json` is
@@ -106,7 +117,22 @@ WORKTREE:
 <ticket-worktrees>\map-warp-workbench-001 (ticket/map-warp-workbench-001)
 
 IMPLEMENTATION COMMITS:
-uncommitted (review candidate to be frozen after review)
+19202ba map_transitions: bind the corpus to its profile, preserve the facing
+        low nibble, add check_edit
+3e378d2 workbench: add the Maps editor's Warps mode
+11a6fcf tests: cover the Warps surface, its refusals and the authority corrections
+af1264e qa: capture the Warps surface from the real application
+d0773fc docs: record MAP-WARP-WORKBENCH-001 and its progress note
+bd14032 merge origin/master (5e01f5f, WARPRAND-APP-001) - conflict-free, additive
+a0d9cab docs: add the independent review brief  <-- FROZEN REVIEWED CANDIDATE
+
+FROZEN REVIEWED CANDIDATE:
+a0d9cab12379e8692fef5cfe32f0baca4394734b
+
+INDEPENDENT REVIEW:
+APPROVE - zero blocking findings, two NOTE-level observations, no production
+correction. Job cl-20260926-204738-c1cab6 (the local reviewer); record:
+MAP-WARP-WORKBENCH-001-review.md
 
 TRANSITION LIST:
 PASS - one row per record of the chosen map; index, destination label,

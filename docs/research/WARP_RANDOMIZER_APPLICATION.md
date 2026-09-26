@@ -225,10 +225,10 @@ path, minimum width, and both dialogs. Three defects were found and fixed:
 
 ### Release package
 
-`scripts/package-warprand.ps1` stages the build, adds `README.txt`,
-`THIRD-PARTY-NOTICES.txt` and `LICENSE`, and **fails closed** on proprietary
+`scripts/package-warprand.ps1` stages **exactly two files** - the executable and
+`README.txt` - and **fails closed** on proprietary
 content: forbidden ROM/save/state extensions, the canonical image's exact hash,
-and a byte-run probe that searches every packaged file for 48 informative 48-byte
+and a byte-run probe that searches every staged file for 48 informative 48-byte
 runs whose offsets span the image. The probe enforces a **positive
 control** - a file containing a needle at a non-zero offset, among unrelated
 bytes, is pushed through the same per-file scan the real pass uses, because a
@@ -315,10 +315,13 @@ python -m tools.webfoot.warprand
 
 ## Independent review
 
-Two rounds, both recorded in full in
-[`WARPRAND-APP-001-review.md`](WARPRAND-APP-001-review.md).
+Every review round is recorded in full in
+[`WARPRAND-APP-001-review.md`](WARPRAND-APP-001-review.md), including each
+round's verdict, findings and dispositions. The number is deliberately not
+stated here: an earlier revision said "two rounds" while the file already held
+three, which is the same stale-count mistake the rounds themselves kept catching.
 
-**The mandated channel was attempted first, on both rounds, and failed on both.**
+**The mandated channel was attempted on every round, and failed every time.**
 `the local reviewer` returned
 `You've hit your session limit · resets 10:40am (America/Los_Angeles)` - jobs
 `cl-20260926-151346-c84856` and `cl-20260926-153558-0ebd29`, both recorded
@@ -328,7 +331,7 @@ candidate defect. Cloud was **not** run: `the reviewer readback probe` reports
 for this account"), so a cloud verdict would not be readable here - the ticket's
 own stated condition.
 
-Both rounds then ran through a **fresh-context reviewer** that did not implement
+Every round then ran through a **fresh-context reviewer** that did not implement
 the work, so the repository's independent-review gate was satisfied rather than
 skipped.
 
@@ -461,13 +464,18 @@ cosmetic site edit was made to say otherwise.
 - `--smoke` is a **release-verification hook**, not product configuration: it
   cannot change what the randomizer does, and with no arguments the window is
   unchanged.
-- Windows x64 only. Nothing was verified on another platform, and the release
-  artifact is built by the repository's own `DragonByte Z.spec` conventions.
+- Windows x64 only. Nothing was verified on another platform. The build follows
+  this repository's PyInstaller conventions in every respect **except** the
+  packaging mode: `DragonByte Z.spec` is an onedir `COLLECT` build, and this
+  artifact is one file, at the owner's direction - the trade is measured in the
+  spec's own docstring and above in this document.
 - The ROM-content probe samples the image and its needle offsets span 96.5% of it,
   but it is a strong check, not a proof of absence: **48 needles of 48 bytes search
   2,304 bytes of 8,388,608 (0.027%)**, so a carve is only caught if it contains one
-  of those 48 exact windows. Its five known blind spots are listed in
-  `scripts/package-warprand.ps1`'s header.
+  of those 48 exact windows. Its known blind spots are listed in
+  `scripts/package-warprand.ps1`'s header, which is the single place that states
+  them - no count is repeated here, because switching to one-file packaging
+  changed the list and left this sentence quoting the old length.
 - **`SourceChangedError` is implemented but pinned by no test.** It fires only when
   the input image changes between the pre-run and post-run identification, which a
   portable test cannot arrange honestly. If the source becomes unparseable during

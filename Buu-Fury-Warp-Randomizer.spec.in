@@ -1,12 +1,29 @@
 # -*- mode: python ; coding: utf-8 -*-
 """WARPRAND-APP-001 - the standalone Windows build of the warp randomizer.
 
-Same shape as ``DragonByte Z.spec``, deliberately: a **onedir** ``COLLECT``
-build rather than a one-file archive. The ticket allows either, and one-file is
-rejected here on measured grounds - PySide6 unpacks its Qt libraries to a
-temporary directory on every launch, which costs seconds of startup and is the
-mode most likely to be quarantined by an anti-virus heuristic. One directory
-extracted from a zip starts in the time a normal application does.
+**One file**, at the owner's direction: the release is a single executable the
+user double-clicks, and the zip holds nothing else but a brief README. That is
+the form the ticket allows ("single ``.exe``"), and it is why there is no
+``COLLECT`` below - an onedir build cannot be reduced to a lone executable,
+because the ``.exe`` needs its runtime directory beside it.
+
+This departs from ``DragonByte Z.spec``, which is an onedir ``COLLECT`` build.
+The trade is measured and stated rather than hidden:
+
+* **startup costs about four seconds.** A one-file build unpacks its bundled
+  runtime to a temporary directory on every launch. Measured on the author's
+  machine: 4.44 s from ``dist/``, 3.93 s from the extracted release archive -
+  against well under a second for the onedir build this replaced. The window
+  appears and is responsive; it is simply slower to appear.
+* a self-extracting executable draws an anti-virus heuristic more readily than a
+  plain directory of DLLs, which is why the shipped README explains the
+  "unknown publisher" prompt.
+
+If startup or AV friction ever outweighs the single-file convenience, restore
+the onedir shape by giving ``EXE`` ``exclude_binaries=True`` and adding back the
+``COLLECT`` step; nothing else in this file depends on the mode, and the three
+release scripts would need their artifact path changed from
+``dist/<name>.exe`` back to ``dist/<name>/<name>.exe``.
 
 The single data file is the ROM profile catalog. ``webfoot.cli.load_catalog``
 prefers a checkout's ``config/roms.yaml`` and otherwise falls back to
@@ -21,9 +38,13 @@ Trimmed payload
 
 PySide6's PyInstaller hook collects the whole Qt SDK, so a QtWidgets-only
 application otherwise ships QtQml, QtQuick, QtPdf, QtVirtualKeyboard and every
-Qt translation - about 35 MB of libraries that are never loaded by a single
-window with three text fields, a button and a progress bar. Dropping them takes
-the release from ~45 MB to ~20 MB.
+Qt translation - libraries a single window with three text fields, a button and
+a progress bar never loads. The excluded set is named in ``_UNUSED_QT_PREFIXES``
+below.
+
+The released artifact measures **35.4 MB** as a one-file executable - one
+compressed archive of the runtime plus a README - which is the only size figure
+this file states, because it is the one that was measured.
 
 Two things are deliberately NOT dropped:
 
@@ -89,13 +110,9 @@ pyz = PYZ(a.pure)
 
 # ONE FILE, at the owner's direction: the release is a single executable the user
 # double-clicks, and the archive holds nothing else but a README. That is the form
-# the ticket allows ("single .exe"), and it is why there is no COLLECT below.
-#
-# The trade is stated rather than hidden: a one-file build extracts its bundled
-# runtime to a temporary directory on every launch, so startup costs a few seconds
-# (~3s measured, see the ticket) and a heuristic anti-virus is more likely to
-# scrutinise a self-extracting executable than a plain directory of DLLs. Neither
-# is a correctness problem, and the owner preferred one file over a folder.
+# the ticket allows ("single .exe"), and it is why there is no COLLECT here - an
+# onedir build cannot be reduced to a lone executable, because the .exe needs its
+# runtime directory beside it. The cost is stated in the module docstring above.
 exe = EXE(
     pyz,
     a.scripts,

@@ -25,7 +25,7 @@ Python 3.12 (python312.dll, python3.dll, the standard-library extension modules)
     https://docs.python.org/3/license.html
 
 Qt 6 (the Qt6*.dll libraries and the platform, image-format, icon-engine,
-style and TLS plugins under _internal/PySide6/)
+style and TLS plugins PyInstaller bundles into the executable)
     Licence: GNU Lesser General Public License v3
     https://www.gnu.org/licenses/lgpl-3.0.html
     Qt is used unmodified and is dynamically linked. It is not part of this

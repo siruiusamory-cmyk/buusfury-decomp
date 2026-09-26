@@ -13,6 +13,10 @@ HOW TO USE
    Windows may warn about an unknown publisher the first time. Choose
    "More info", then "Run anyway".
 
+   The first launch takes a few seconds to show the window - the executable
+   unpacks itself before it can start. Later launches are the same; this is
+   normal for a single-file build.
+
 2. Click Browse... and pick your clean US Buu's Fury ROM.
 
    The window tells you immediately whether the ROM is supported.
@@ -52,5 +56,5 @@ GOOD TO KNOW
 
 No game data is included. You supply your own clean ROM.
 
-Licence: MPL-2.0. Built with Python and Qt; see THIRD-PARTY-NOTICES.txt in the
-project repository.
+Licence: MPL-2.0. Project home and third-party notices:
+https://webfoot-sdk.siruiusamory.workers.dev/

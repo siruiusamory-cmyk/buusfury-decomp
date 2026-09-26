@@ -2,39 +2,29 @@
 #
 #   pwsh scripts/package-warprand.ps1
 #
-# Stages dist/Buu-Fury-Warp-Randomizer, adds the user-facing README and the
-# licence, PROVES the package carries no game data, and writes
-# dist/Buu-Fury-Warp-Randomizer-v<version>-win64.zip.
+# The release is deliberately minimal, at the owner's direction: the archive
+# contains the single executable and a brief README, and nothing else. Download,
+# extract, run.
 #
-# The ownership rule this script exists to enforce: the tool is shipped to
-# people who own the game, and the archive must never contain any part of it.
-# The check is not a filename filter - a ROM renamed to .dat would pass one -
-# so it also searches every packaged file for byte runs drawn from across the
-# canonical image, and for the image's own identity. The build fails closed.
+# That shape is why the build is ONE FILE (`Buu-Fury-Warp-Randomizer.spec.in`
+# has no COLLECT): an onedir build cannot be reduced to a lone executable - the
+# .exe needs its `_internal/` runtime directory beside it - so shipping just the
+# executable required switching to one-file packaging.
 #
-# WHAT THIS CHECK DOES NOT CATCH, stated so the claim is not read as stronger
-# than it is. Round two of the independent review measured the real coverage and
-# asked for this list: 48 needles of 48 bytes search 2,304 bytes out of
-# 8,388,608 - 0.027% of the image, even though the needle OFFSETS span 96.5% of
-# it. A carve is caught only if it happens to contain one of those 48 exact
-# windows, so "from anywhere in the image" would be false.
+# The ownership rule this script still enforces: the tool is shipped to people
+# who own the game, and the archive must never contain any part of it. The build
+# fails closed.
 #
-#   * a carve from an UNSAMPLED REGION - only 48 windows of the image are
-#     actually searched for, however evenly they are spread;
-#   * an excerpt SHORTER than the needle length (48 bytes);
-#   * a TRANSFORMED copy - compressed, base64, XORed, or as a patch/delta - which
-#     is the most likely way ROM-derived content would actually travel;
-#   * content inside a NESTED container (the forbidden-extension list has no
-#     archive extensions, and the probe cannot see inside one);
-#   * a header-stripped, trimmed or "trained" copy, because the exact-hash check
-#     only hashes files whose length is exactly the canonical 8,388,608 bytes.
-#
-# What it does catch, and why that is still worth having: the whole ROM under any
-# name, a renamed copy that keeps its size, and a large carve (the probe was
-# measured to catch a 1 MB carve at offset 4,000,000 and to miss a 48-byte carve
-# at offset 1,000). Those are the shapes a mistake in this build would actually
-# take. The gaps above would need a different technique - entropy analysis,
-# archive walking, or a re-encode - and are recorded rather than implied away.
+# WHAT THE CONTENT CHECK DOES AND DOES NOT CATCH. The single executable is a
+# compressed PyInstaller archive, so a byte-run probe against it can only see
+# what is NOT compressed: a whole ROM appended to the file, or an uncompressed
+# blob. The compressed payload is not searchable this way, so the probe's real
+# guarantee here is narrower than it was for a directory of loose DLLs. What
+# carries the weight instead is that the build has no ROM as an input at all -
+# the only data file bundled is the profile catalog, a table of addresses and
+# hashes - and the extension and exact-hash checks still run. Blind spots, stated:
+# a carve inside the compressed payload, a transformed copy, content in a nested
+# container, and a header-stripped or trimmed copy.
 
 [CmdletBinding()]
 param(
@@ -49,11 +39,9 @@ $ErrorActionPreference = 'Stop'
 
 # Byte-run search over a byte[]. ISO-8859-1 (code page 28591) maps each byte to
 # the identical code point, so round-tripping both sides through it is lossless
-# and lets the runtime's own optimized ordinal string search do the scanning -
-# which matters, because this probes every packaged file for runs taken from an
-# 8 MB image. `[System.Text.Encoding]::Latin1` is the PowerShell 7 spelling and
-# does not exist on Windows PowerShell 5.1, which is what ships with Windows, so
-# the encoding is named by code page instead.
+# and lets the runtime's own optimized ordinal string search do the scanning.
+# `[System.Text.Encoding]::Latin1` is the PowerShell 7 spelling and does not
+# exist on Windows PowerShell 5.1, which ships with Windows.
 $Latin1 = [System.Text.Encoding]::GetEncoding(28591)
 
 function Test-ContainsBytes {
@@ -66,7 +54,7 @@ function Test-ContainsBytes {
 # Whether a window is worth using as a needle: enough distinct byte values, and
 # no long run of one value. Padding and any other degenerate run is rejected,
 # because a 48-byte run of 0x00 occurs in every large binary and would flag the
-# Python and Qt DLLs as "ROM data".
+# runtime as "ROM data".
 function Test-IsInformative {
     param([byte[]] $Window, [int] $MinimumDistinct, [int] $MaximumRun)
     $seen = New-Object 'bool[]' 256
@@ -98,25 +86,26 @@ function Test-FileForRomData {
 $repo = Split-Path -Parent $PSScriptRoot
 Push-Location $repo
 try {
-    $appDir = Join-Path $DistDir $BuildName
-    $exe = Join-Path $appDir "$BuildName.exe"
+    $exe = Join-Path $DistDir "$BuildName.exe"
     if (-not (Test-Path $exe)) {
-        throw "no packaged build at $exe - run: python -m PyInstaller --noconfirm --clean `"$BuildName.spec`""
+        throw "no packaged build at $exe - run: pwsh scripts/build-warprand.ps1 -Clean"
     }
 
-    # --- 1. the files a user needs ---------------------------------------
-    Copy-Item 'docs/warprand/README.txt' (Join-Path $appDir 'README.txt') -Force
-    Copy-Item 'docs/warprand/THIRD-PARTY-NOTICES.txt' (Join-Path $appDir 'THIRD-PARTY-NOTICES.txt') -Force
-    Copy-Item 'LICENSE' (Join-Path $appDir 'LICENSE') -Force
-    Write-Host "staged README.txt, THIRD-PARTY-NOTICES.txt and LICENSE into $appDir"
+    # --- 1. the two files the user gets ----------------------------------
+    $stage = Join-Path $DistDir "$BuildName-release"
+    if (Test-Path $stage) { Remove-Item $stage -Recurse -Force }
+    New-Item -ItemType Directory -Force -Path $stage | Out-Null
+    Copy-Item $exe (Join-Path $stage "$BuildName.exe")
+    Copy-Item 'docs/warprand/README.txt' (Join-Path $stage 'README.txt')
+    $staged = Get-ChildItem -Path $stage -File
+    Write-Host ("staged {0} file(s): {1}" -f $staged.Count, (($staged | ForEach-Object { $_.Name }) -join ', '))
 
     # --- 2. no proprietary content ---------------------------------------
     $forbidden = @('.gba', '.agb', '.sav', '.ss0', '.ss1', '.ss2', '.ss3',
                    '.ss4', '.ss5', '.ss6', '.ss7', '.ss8', '.ss9', '.sps',
                    '.state', '.srm')
-    $files = Get-ChildItem -Path $appDir -Recurse -File
     $offenders = @()
-    foreach ($file in $files) {
+    foreach ($file in $staged) {
         if ($forbidden -contains $file.Extension.ToLowerInvariant()) {
             $offenders += "forbidden extension: $($file.FullName)"
         }
@@ -124,7 +113,7 @@ try {
 
     $canonicalSha = '940AD5F01DB4465B8877DFE739510CBF34F4EA3D390F3DF13519808BC36F059E'
     $canonicalSize = 8388608
-    foreach ($file in $files) {
+    foreach ($file in $staged) {
         if ($file.Length -ne $canonicalSize) { continue }
         if ((Get-FileHash $file.FullName -Algorithm SHA256).Hash -eq $canonicalSha) {
             $offenders += "the canonical ROM itself: $($file.FullName)"
@@ -140,26 +129,10 @@ try {
             throw "the canonical ROM probe needs the $canonicalSize-byte image"
         }
 
-        # --- pick the needles ---------------------------------------------
-        #
-        # Two properties matter, and an earlier version of this probe had
-        # neither:
-        #
-        # 1. They must be INFORMATIVE. An 8 MB cartridge is largely 0x00/0xFF
-        #    padding, and a 48-byte run of one value occurs in essentially every
-        #    large binary on the machine - the first version "found ROM data" in
-        #    python312.dll for exactly that reason.
-        # 2. They must be drawn from ACROSS THE WHOLE IMAGE. The first version
-        #    used a small stride and stopped once it had enough needles, so its
-        #    sample covered the first 197 KB of an 8 MB cartridge - 2.35% of the
-        #    bytes, and none of the graphics or text it was meant to catch -
-        #    while its comment claimed the opposite. An independent review
-        #    measured that.
-        #
-        # So: walk the whole image, keep every informative window, then take the
-        # target count evenly spaced across that list. Cost stays bounded because
-        # only the target count is ever scanned for, and coverage is measured and
-        # printed rather than asserted.
+        # Needles must be INFORMATIVE (a run of one value occurs in every large
+        # binary, which is how an earlier version "found ROM data" in a DLL) and
+        # drawn from across the whole image (an earlier version covered the first
+        # 2.35% while claiming the whole thing).
         $needleLength = 48
         $needleTarget = 48
         $minimumDistinctBytes = 24
@@ -196,13 +169,7 @@ try {
         $coverageFrom = ($needleOffsets | Measure-Object -Minimum).Minimum
         $coverageTo = ($needleOffsets | Measure-Object -Maximum).Maximum
 
-        # --- positive control ---------------------------------------------
-        #
-        # A probe that never fires proves nothing, so a file that CONTAINS a
-        # needle at a non-zero offset, among unrelated bytes, is pushed through
-        # the very same per-file scan the real pass uses. The previous control
-        # searched a file that *was* needles[0] for needles[0], which exercised
-        # neither the enumeration nor the file loop.
+        # Positive control through the real per-file scan.
         $control = Join-Path ([System.IO.Path]::GetTempPath()) ("warprand-control-" + [guid]::NewGuid().ToString('N') + ".bin")
         $filler = New-Object byte[] 4096
         (New-Object System.Random 1234).NextBytes($filler)
@@ -213,14 +180,14 @@ try {
             throw "the ROM-content probe failed its own positive control and cannot be trusted"
         }
 
-        # --- the real scan ------------------------------------------------
-        foreach ($file in $files) {
+        foreach ($file in $staged) {
             if (Test-FileForRomData -Path $file.FullName -Needles $needles) {
                 $offenders += "ROM data found in $($file.FullName)"
             }
         }
-        Write-Host ("scanned {0} file(s) against {1} informative needle(s), offsets {2:N0}..{3:N0} of {4:N0} ({5:P1} of the image spanned)" -f `
-            $files.Count, $needles.Count, $coverageFrom, $coverageTo, $rom.Length, (($coverageTo - $coverageFrom) / $rom.Length))
+        Write-Host ("scanned {0} file(s) against {1} informative needle(s), offsets {2:N0}..{3:N0} of {4:N0} ({5:P1} of the image spanned; {6:N0} of {4:N0} bytes actually searched)" -f `
+            $staged.Count, $needles.Count, $coverageFrom, $coverageTo, $rom.Length, `
+            (($coverageTo - $coverageFrom) / $rom.Length), ($needles.Count * $needleLength))
         Write-Host ("  candidates kept {0} of {1} sampled window(s); positive control PASSED" -f $candidates.Count, [int][math]::Floor($rom.Length / $stride))
     }
     else {
@@ -238,11 +205,18 @@ try {
     }
 
     # --- 3. the archive ---------------------------------------------------
+    # Only the exe and the README, at the archive root, so "extract and run" is
+    # the whole procedure.
     $zip = Join-Path $DistDir "$BuildName-v$Version-win64.zip"
     if (Test-Path $zip) { Remove-Item $zip -Force }
-    Compress-Archive -Path $appDir -DestinationPath $zip -CompressionLevel Optimal
+    Compress-Archive -Path (Join-Path $stage '*') -DestinationPath $zip -CompressionLevel Optimal
     $zipInfo = Get-Item $zip
     Write-Host ("release {0} ({1:N1} MB)" -f $zipInfo.FullName, ($zipInfo.Length / 1MB))
+
+    Add-Type -AssemblyName System.IO.Compression.FileSystem
+    $archive = [System.IO.Compression.ZipFile]::OpenRead($zip)
+    Write-Host ("archive contents: {0}" -f (($archive.Entries | ForEach-Object { $_.FullName }) -join ', '))
+    $archive.Dispose()
 }
 finally {
     Pop-Location

@@ -260,15 +260,31 @@ nested container, and a header-stripped or trimmed copy. What it does catch - a
 whole ROM under any name, a renamed copy that keeps its size, and a large carve -
 is the shape a mistake in this build would actually take.
 
-Result: `Buu-Fury-Warp-Randomizer-v0.1.0-win64.zip`, 35.4 MB -
-`Buu-Fury-Warp-Randomizer.exe`, `README.txt`, `THIRD-PARTY-NOTICES.txt`,
-`LICENSE` and the PyInstaller runtime directory (`_internal/`, including
-`tools/webfoot/data/roms.yaml`, the profile catalog the frozen build reads).
-**Proprietary content: NONE.**
+Result: `Buu-Fury-Warp-Randomizer-v0.1.0-win64.zip`, 35.1 MB, containing
+**exactly two files** - `Buu-Fury-Warp-Randomizer.exe` and `README.txt` - so
+"extract and run" is the whole procedure. **Proprietary content: NONE.**
 
-The build is **onedir**, not one-file: one-file unpacks Qt to a temporary
-directory on every launch, which costs seconds of startup and is the shape most
-likely to be quarantined by an anti-virus heuristic. The ticket allows either.
+The build is a **single file**, at the owner's direction. That is the form the
+ticket allows ("single `.exe`"), and it is why the spec has no `COLLECT`: an
+onedir build cannot be reduced to a lone executable, because the `.exe` needs its
+runtime directory beside it, so a two-file archive required switching to one-file
+packaging. The trade is stated rather than hidden:
+
+* **startup costs ~4 s** - a one-file build unpacks its bundled runtime to a
+  temporary directory on every launch. Measured on this machine: 4.44 s from
+  `dist/`, 3.93 s from the extracted archive, against well under a second for the
+  onedir build it replaced. The window appears and is responsive; it is simply
+  slower to appear;
+* a self-extracting executable is more likely to draw an anti-virus heuristic
+  than a plain directory of DLLs, so the README tells the user what the
+  "unknown publisher" prompt means;
+* the byte-run content probe is **narrower** than it was for a directory of loose
+  files, because the payload is now a compressed archive and only uncompressed
+  content is searchable. What carries the weight instead is that the build has no
+  ROM as an input at all - the only data file bundled is the profile catalog, a
+  table of addresses and hashes - and the extension and exact-hash checks still
+  run. Recorded in the script's header.
+
 ~35 MB of QtQml/QtQuick/QtPdf/QtVirtualKeyboard/translations that a QtWidgets
 application never loads were excluded; `opengl32sw.dll` was deliberately **kept**
 because it is what renders the window on a machine with no usable GL driver.
@@ -286,7 +302,7 @@ python -m pytest tests/unit/test_warp_randomizer.py `
 python -m pytest tests/integration/test_warp_randomizer_rom.py `
     tests/integration/test_warp_randomizer_app_rom.py -q
 
-pwsh scripts/build-warprand.ps1 -Clean        # dist/Buu-Fury-Warp-Randomizer/
+pwsh scripts/build-warprand.ps1 -Clean        # dist/Buu-Fury-Warp-Randomizer.exe
 pwsh scripts/smoke-warprand-packaged.ps1      # the golden hash gate
 pwsh scripts/package-warprand.ps1             # the release zip + content gate
 ```
@@ -399,12 +415,13 @@ aggregate said 163 (measured **165**), the known-limits bullet still said the pr
 All three are fixed above. Full record:
 [`WARPRAND-APP-001-review.md`](WARPRAND-APP-001-review.md).
 
-**One gap the implementer found while the review ran and fixed in the same
-correction commit:** the release bundle ships Qt and CPython with no notices for
-them. A `THIRD-PARTY-NOTICES.txt` naming every bundled component and licence now
-travels in the package, and its own "Known gap" section states plainly that the
-LGPL licence *texts* are still not bundled and that this needs the owner's
-decision before any public distribution - reported rather than papered over.
+**One gap the implementer found while the review ran:** the bundle ships Qt and
+CPython with no notices for them. `docs/warprand/THIRD-PARTY-NOTICES.txt` now
+names every bundled component and licence and states plainly that the LGPL
+licence *texts* are still not bundled. At the owner's later direction the release
+archive was cut back to the executable plus a brief README, so that notice no
+longer ships either - which makes the gap larger, not smaller, and it is recorded
+as an owner decision before any public distribution rather than glossed over.
 
 Two things are worth stating plainly rather than burying: **two round-1 entries
 marked "Fixed" were not actually fixed**, and only the second round caught it -
@@ -461,9 +478,12 @@ cosmetic site edit was made to say otherwise.
   remaining window - the write itself, or the source changing underneath the run -
   can still leave the user without the previous file. That is the irreducible cost
   of `emit_image` refusing to write over an existing destination.
-- The shipped archive does not yet contain the LGPL licence *texts* for Qt; see
-  `docs/warprand/THIRD-PARTY-NOTICES.txt`, "Known gap". Owner decision required
-  before any public distribution.
+- **The release archive ships no licence or third-party-notice files**, at the
+  owner's direction: it holds the executable and a brief README and nothing else.
+  `docs/warprand/THIRD-PARTY-NOTICES.txt` still exists in the repository and its
+  "Known gap" section still stands - the LGPL licence *texts* for Qt are not
+  bundled anywhere, which is an owner decision before any public distribution.
+  What is not in the archive cannot be read by whoever downloads it.
 
 ## Stop
 

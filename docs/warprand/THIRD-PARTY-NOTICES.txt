@@ -3,14 +3,18 @@ THIRD-PARTY COMPONENTS IN THIS APPLICATION
 
 Buu's Fury Warp Randomizer v0.1.0
 
-This application is built with, and redistributes, software written by other
-people. The list below names the components that are actually present in the
-packaged application directory and the licence each is distributed under. The
-application's own code is MPL-2.0; see LICENSE.
+NOTE ON WHERE THIS FILE LIVES: it is kept in the project repository as the record
+of what the application is built from. It is **not** shipped inside the release
+archive, which at the owner's direction contains only the executable and a brief
+README. That means a person who downloads the release does not receive this
+notice - see "Known gap" at the end, which is now a larger gap than it was.
 
-This file is a notice, not a licence text. Where a licence requires its full
-text to travel with a binary, that text is NOT bundled here - see "Known gap"
-at the end.
+This application is built with, and redistributes, software written by other
+people. The list below names the components that are present in the application
+and the licence each is distributed under. The application's own code is
+MPL-2.0; see LICENSE.
+
+This file is a notice, not a licence text.
 
 
 COMPONENTS BUNDLED IN THIS APPLICATION
@@ -65,12 +69,14 @@ KNOWN GAP - OWNER DECISION REQUIRED
 -----------------------------------
 
 Full licence TEXTS for the LGPL-licensed components (Qt, PySide6, shiboken6) are
-NOT bundled in this archive. Redistributing an LGPL library is normally expected
-to carry a copy of the LGPL text and a written offer of the corresponding
-source, and this notice does not substitute for either.
+NOT bundled, and since the release archive now contains only the executable and a
+README, not even this notice reaches the person who downloads it. Redistributing
+an LGPL library is normally expected to carry a copy of the LGPL text and a
+written offer of the corresponding source, and nothing here substitutes for
+either.
 
 This gap is recorded rather than papered over. The application is currently a
-private, unlisted build; if it is to be distributed publicly, add the Qt/PySide6
-licence texts and the corresponding-source offer to this file's directory in
-`scripts/package-warprand.ps1`, or link Qt statically and comply with the LGPL
-instead.
+private, unlisted build. If it is to be distributed publicly, either add the
+notice and the Qt/PySide6 licence texts back into
+`scripts/package-warprand.ps1`'s staged files, or link Qt statically and comply
+with the LGPL that way.

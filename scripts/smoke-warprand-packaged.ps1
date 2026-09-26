@@ -26,8 +26,9 @@ $ErrorActionPreference = 'Stop'
 $repo = Split-Path -Parent $PSScriptRoot
 Push-Location $repo
 try {
-    $exe = Join-Path $DistDir "$BuildName/$BuildName.exe"
-    if (-not (Test-Path $exe)) { throw "no packaged executable at $exe" }
+    # One file: the release is the executable itself, with nothing beside it.
+    $exe = Join-Path $DistDir "$BuildName.exe"
+    if (-not (Test-Path $exe)) { throw "no packaged executable at $exe - run: pwsh scripts/build-warprand.ps1 -Clean" }
     if (-not (Test-Path $CanonicalRom)) { throw "canonical ROM not found at $CanonicalRom" }
 
     $exe = (Resolve-Path $exe).Path

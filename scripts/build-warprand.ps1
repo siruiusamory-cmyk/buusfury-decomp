@@ -44,16 +44,16 @@ try {
     $ErrorActionPreference = $previous
     if ($exitCode -ne 0) { throw "PyInstaller exited $exitCode" }
 
-    $exe = Join-Path 'dist' "$BuildName/$BuildName.exe"
+    # One file: the release IS the executable, so there is no build directory to
+    # measure and nothing has to sit beside it for it to run.
+    $exe = Join-Path 'dist' "$BuildName.exe"
     if (-not (Test-Path $exe)) { throw "PyInstaller reported success but no executable is at $exe" }
 
-    $files = Get-ChildItem (Join-Path 'dist' $BuildName) -Recurse -File
-    $totalMb = [math]::Round((($files | Measure-Object -Property Length -Sum).Sum / 1MB), 1)
+    $item = Get-Item $exe
     Write-Host ''
     Write-Host "BUILD OK"
-    Write-Host "  executable : $((Resolve-Path $exe).Path)"
-    Write-Host "  files      : $($files.Count)"
-    Write-Host "  size       : $totalMb MB"
+    Write-Host "  executable : $($item.FullName)"
+    Write-Host "  size       : $([math]::Round($item.Length / 1MB, 1)) MB (single file)"
 }
 finally {
     Pop-Location

@@ -528,6 +528,12 @@ class TransitionFacing:
     already walking. Conflating that with a direction is what made an earlier
     revision of this module wrong.
 
+    **Do NOT read the low two bits as a facing.** A record whose ``+0x10`` is
+    ``0x02`` does **not** mean "face West" - it requests no override at all, and
+    its low bits gate the door. Several of the canonical records that a
+    nearest-edge heuristic "confirmed" as facing are exactly this case, and the
+    agreement was the level design, not the field.
+
     The direction order is ``0 = South, 1 = North, 2 = West, 3 = East``: the axis
     split (``{0,1}`` vertical by the sign of ``dy`` at actor ``+0x1A4``, ``{2,3}``
     horizontal by ``dx`` at ``+0x1A0``) is CONFIRMED at ``0x080159B0`` and

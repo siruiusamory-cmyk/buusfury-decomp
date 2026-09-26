@@ -664,6 +664,31 @@ data**, and it is why section 5.2 stops at "a pair of ordered intervals".
 > 5. The `+0x10` corpus census in the ticket brief (217/224/140/137) was wrong;
 >    the correct counts are 0 -> 219, 1 -> 224, 2 -> 140, 3 -> 142, plus ten
 >    records above 3 forming five reciprocal pairs.
+> 6. **A record whose `+0x10` is `0x02` does NOT mean "face West".** Its high
+>    nibble is zero, so on the traced arrival-facing path it requests **no
+>    override** and the actor keeps the direction it was already walking; its low
+>    two bits gate the door. An earlier reading in this project took the low bits
+>    for a facing and "confirmed" it against the level geometry - that agreement
+>    was the level design, not the field. The resolved encoding is
+>    `((arrival_direction + 1) << 4) | gate_direction`, and only a **non-zero**
+>    high nibble states a facing, as `(high_nibble - 1)`.
+>
+> **RUNTIME-CONFIRMED (MAP-WARP-FACING-TRACE-001, 2026-09-26).** In a human-played
+> run on a derivative whose record carried `+0x10 = 0x42`, the engine replaced the
+> player object on the warp (`0x0203CEB4` -> the slot null during the load ->
+> `0x0202CCDC`) and the new player's own `+0x10` first read `03` = East, from a
+> westward approach - matching `(0x42 >> 4) - 1 = 3`. The gate word `0x03001A34`
+> read `0` on every sample including across the load, so the traced skip did not
+> apply. **What `0x03001A34` selects remains UNRESOLVED and its non-zero case is
+> UNTESTED.**
+>
+> **TRANSITION-PROOF RULE (a correction to practice, not to the format).** A
+> transition edit is consumed **when the trigger fires**, so the first trigger
+> after a load is valid evidence: there is **no leave-and-re-enter prerequisite
+> for warp proof**. The re-entry rule MAP-TILE-PAINT-001 established is scoped to
+> **map and background assembly**, where a savestate restores the already-built
+> background. It does not generalise to transitions.
+
 
 
 

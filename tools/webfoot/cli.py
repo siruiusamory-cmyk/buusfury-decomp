@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 from importlib import resources
 from pathlib import Path
@@ -578,6 +579,77 @@ def build_parser() -> argparse.ArgumentParser:
     build_manifest.add_argument(
         "--no-manifest", action="store_true",
         help="write no provenance manifest for this build",
+    )
+
+    # TILESET-COMPOSITOR-001. A derived-resource view: it reads the ROM, learns
+    # tile relationships from how maps actually use the banks, and writes an
+    # authoring atlas. Nothing here edits or writes an image; the write commands
+    # require an output directory under the ignored build/ tree.
+    tileset_parser = subparsers.add_parser(
+        "tileset",
+        help="infer a human-readable authoring atlas from proven map usage",
+    )
+    tileset_commands = tileset_parser.add_subparsers(
+        dest="tileset_command", required=True
+    )
+
+    tileset_census = tileset_commands.add_parser(
+        "census", help="census every screen-entry occurrence and print the summary"
+    )
+    tileset_census.add_argument("rom", type=Path)
+    tileset_census.add_argument(
+        "--maps", type=int, default=None,
+        help="census only the first N maps (default: every map the profile declares)",
+    )
+    tileset_census.add_argument(
+        "--occurrences", type=Path, default=None,
+        help="also write the complete per-occurrence JSONL for the named banks here",
+    )
+    tileset_census.add_argument(
+        "--bank", type=int, action="append", default=None,
+        help="a bank whose complete occurrences to retain; repeatable",
+    )
+
+    tileset_atlas = tileset_commands.add_parser(
+        "atlas", help="write the Raw, Observed and Inferred set for chosen banks"
+    )
+    tileset_atlas.add_argument("rom", type=Path)
+    tileset_atlas.add_argument(
+        "--out", type=Path, required=True,
+        help="output directory; must be absent or empty, and inside the "
+             "repository it must stay under build/",
+    )
+    tileset_atlas.add_argument(
+        "--bank", type=int, action="append", default=None,
+        help="a bank to render; repeatable (default: bank 0)",
+    )
+    tileset_atlas.add_argument(
+        "--all", action="store_true",
+        help="render every bank the profile declares (187 sheets)",
+    )
+    tileset_atlas.add_argument(
+        "--maps", type=int, default=None,
+        help="census only the first N maps before inferring",
+    )
+    tileset_atlas.add_argument(
+        "--observed-limit", type=int, default=64,
+        help="how many observed chunks to compose into the reference view",
+    )
+    tileset_atlas.add_argument(
+        "--no-observed", action="store_true",
+        help="skip the observed reference view (it decodes a chunk per map)",
+    )
+    tileset_atlas.add_argument(
+        "--min-confidence-ppm", type=int, default=None,
+        help="override the adjacency confidence floor, in parts per million",
+    )
+    tileset_atlas.add_argument(
+        "--max-instances", type=int, default=None,
+        help="override how many times one ROM tile may be presented",
+    )
+    tileset_atlas.add_argument(
+        "--pack-start-width", type=int, default=None,
+        help="override the atlas canvas' starting width in tiles",
     )
     return parser
 
@@ -1718,6 +1790,133 @@ def _run_event(args) -> int:
         return 2
 
 
+def _run_tileset(args) -> int:
+    """TILESET-COMPOSITOR-001. Derived-resource views over the ROM's tile banks.
+
+    Self-contained like the `graphics` block: it owns its ROM load, its census
+    and its error handling, so adding it cannot change how any existing command
+    behaves. It writes nothing outside the output directory the caller names,
+    and never writes to an image.
+    """
+    from . import tileset_compositor as compositor
+    from .formats import map_graphics as map_graphics
+    from .map_render import canonical_profile, load_canonical_rom
+    from .formats.map_graphics import MapGraphicsError
+    from .profile import ProfileConfigError
+    from .rom import RomReadError
+
+    try:
+        catalog = load_catalog(args.profiles)
+        image = load_canonical_rom(args.rom, catalog)
+        reader = map_graphics.MapGraphicsReader(image, canonical_profile())
+        command = args.tileset_command
+
+        if command == "census":
+            retained = args.bank if args.occurrences is not None else None
+            parameters = compositor.CensusParameters()
+            census = compositor.census_image(
+                reader,
+                parameters=parameters,
+                maps=None if args.maps is None else range(args.maps),
+                retain_occurrences_for=retained,
+            )
+            document = census.to_document()
+            if args.occurrences is not None:
+                if not retained:
+                    raise ValueError(
+                        "--occurrences needs at least one --bank to retain"
+                    )
+                written = _write_occurrences(args.occurrences, census, retained)
+                document["occurrences"] = written
+            print(json.dumps(document, sort_keys=True, indent=2))
+            return 0
+
+        parameters = compositor.InferenceParameters()
+        overrides = {}
+        if args.min_confidence_ppm is not None:
+            overrides["min_adjacency_confidence_ppm"] = args.min_confidence_ppm
+        if args.max_instances is not None:
+            overrides["max_instances_per_tile"] = args.max_instances
+        if args.pack_start_width is not None:
+            overrides["pack_start_width"] = args.pack_start_width
+        if overrides:
+            parameters = compositor.InferenceParameters(**overrides)
+
+        if args.all and args.bank:
+            raise ValueError("--all renders every bank; do not also name --bank")
+        if args.all:
+            banks = list(range(len(map_graphics.read_banks(
+                reader, compositor.read_bank_table(reader)[0]
+            ))))
+        else:
+            banks = args.bank if args.bank else [0]
+        for bank in banks:
+            if not 0 <= bank < map_graphics.BANK_COUNT:
+                raise ValueError(
+                    f"bank {bank} is outside this image's 0.."
+                    f"{map_graphics.BANK_COUNT - 1} bank table"
+                )
+
+        census = compositor.census_image(
+            reader,
+            parameters=compositor.CensusParameters(),
+            maps=None if args.maps is None else range(args.maps),
+        )
+        result = compositor.write_bundle(
+            reader,
+            census,
+            banks,
+            args.out,
+            inference=parameters,
+            observed_limit=args.observed_limit,
+            write_observed=not args.no_observed,
+        )
+        print(json.dumps(
+            {
+                "root": result["root"],
+                "banks": banks,
+                "artifacts": [
+                    {
+                        "path": artifact["path"],
+                        "bytes": artifact["bytes"],
+                        "sha256": artifact["sha256"],
+                    }
+                    for artifact in result["artifacts"]
+                ],
+            },
+            sort_keys=True,
+            indent=2,
+        ))
+        return 0
+    except (
+        compositor.TilesetCompositorError,
+        MapGraphicsError,
+        ProfileConfigError,
+        RomReadError,
+        OSError,
+        ValueError,
+    ) as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 2
+
+
+def _write_occurrences(path: Path, census, banks) -> dict:
+    """Write the complete per-occurrence record for the retained banks."""
+    lines = []
+    for bank in sorted(set(banks)):
+        for occurrence in census.occurrences.get(bank, ()):
+            lines.append(json.dumps(occurrence.to_document(), sort_keys=True))
+    data = ("\n".join(lines) + ("\n" if lines else "")).encode("utf-8")
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_bytes(data)
+    return {
+        "path": str(path),
+        "records": len(lines),
+        "bytes": len(data),
+        "sha256": hashlib.sha256(data).hexdigest(),
+    }
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = build_parser()
     args = parser.parse_args(argv)
@@ -1760,6 +1959,9 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.command == "graphics":
         return _run_graphics(args)
+
+    if args.command == "tileset":
+        return _run_tileset(args)
 
     if args.command == "atlas":
         return _run_atlas(args)

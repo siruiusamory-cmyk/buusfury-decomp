@@ -134,6 +134,9 @@ REQUIRED_GUI_MODULES: tuple[str, ...] = (
     "unit/test_workbench_launcher_settings.py",
     "unit/test_workbench_map_browser.py",
     "unit/test_workbench_map_tab.py",
+    # MAP-WARP-WORKBENCH-001: the Maps editor's Warps mode, whose refusal and
+    # no-op regressions must execute in CI rather than collapse to a skip.
+    "unit/test_workbench_warp_transitions.py",
     # CQA-07's palette-cost regression; it lives in the same shipping surface as
     # the other Workbench editor modules and must execute in CI with them.
     "unit/test_workbench_palette_cost.py",

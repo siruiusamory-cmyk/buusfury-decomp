@@ -62,6 +62,11 @@ from typing import Any, Iterable, Mapping
 
 from ..formats import stat_tables as st
 from ..formats import text_tables as tt
+from ..formats.map_transitions import (
+    ARRIVAL_UNSET_MINIMUM,
+    MapTransitionError,
+    TransitionRegion,
+)
 from .format import ProjectFormatError, dump_toml, load_toml
 
 #: TOOLKIT-007. Authored map field order, mirroring `_ENEMY_FIELD_ORDER`:
@@ -317,6 +322,10 @@ class StatProject:
     #: project-authored layer records. Empty for a project that authors none, which
     #: stays loadable on the same reasoning.
     structure: "MapStructure" = field(default_factory=lambda: MapStructure())
+    #: MAP-WARP-PROJECT-AUTHORING-001. Authored map transitions: the destination and
+    #: positional region of an existing selector-1 connection record. Empty for a
+    #: project that authors none, which stays loadable on the same reasoning.
+    transitions: "TransitionEdits" = field(default_factory=lambda: TransitionEdits())
 
 
 @dataclass(frozen=True, slots=True)
@@ -1126,6 +1135,436 @@ class LayoutEdits:
         return cls(maps=maps)
 
 
+#: MAP-WARP-PROJECT-AUTHORING-001. Authored **map transitions**: the destination
+#: and the positional region of an existing selector-1 connection record.
+#:
+#: A fifth `maps/` document rather than fields of `layout.toml`, for the reason
+#: `structure.toml` is separate from it: a transition is not a map's layout but one
+#: of the map's *connections*, named by the source map plus the index of the record
+#: in that map's own array, and it is authored with a different vocabulary from a
+#: chunk cell. A missing file means the project authors no transitions, matching
+#: every other optional subsystem, so a project extracted before this capability
+#: stays loadable.
+TRANSITION_FILE = Path("maps") / "transitions.toml"
+
+
+def _region_document(region: TransitionRegion) -> list[list[int]]:
+    """One stored region: two ordered ``[low, high]`` intervals, positionally."""
+    return [list(region.first), list(region.second)]
+
+
+def _region_from_document(value: object, where: object) -> TransitionRegion:
+    """Parse one stored region, validating it through the record codec itself.
+
+    The rule "two ordered, non-degenerate ``u16`` intervals" is stated once, in
+    `formats.map_transitions.TransitionRegion`, and this constructs that type - so a
+    project file cannot carry a region the build would refuse, and the project
+    format does not restate a format rule it does not own.
+    """
+    if not isinstance(value, (list, tuple)) or len(value) != 2:
+        raise ProjectLoadError(
+            f"{where}: a region must be two [low, high] intervals, got {value!r}"
+        )
+    pairs: list[tuple[int, int]] = []
+    for position, pair in enumerate(value):
+        if not isinstance(pair, (list, tuple)) or len(pair) != 2:
+            raise ProjectLoadError(
+                f"{where}: region interval {position} must be a [low, high] pair, "
+                f"got {pair!r}"
+            )
+        low, high = pair
+        if type(low) is not int or type(high) is not int:
+            raise ProjectValidationError(
+                f"{where}: region interval {position} endpoints must be integers, "
+                f"got {low!r} and {high!r}"
+            )
+        pairs.append((low, high))
+    try:
+        return TransitionRegion(first=pairs[0], second=pairs[1])
+    except MapTransitionError as exc:
+        raise ProjectValidationError(f"{where}: {exc}") from exc
+
+
+def _optional_map_key(document: Mapping[str, Any], name: str, where: object) -> str | None:
+    """One stored map identity, or None when the field is absent.
+
+    A present value that is not a map identity is a *value* error, not a document
+    structure error: the file is well-formed TOML that names something this format
+    does not have, and the author has to fix the value rather than the shape.
+    """
+    if name not in document:
+        return None
+    value = document[name]
+    if not isinstance(value, str) or _MAP_KEY.match(value) is None:
+        raise ProjectValidationError(
+            f"{where}: {name} is {value!r}, which is not a 'map:NNNN' map identity"
+        )
+    return value
+
+
+def _optional_region(
+    document: Mapping[str, Any], name: str, where: object
+) -> TransitionRegion | None:
+    """One stored region, or None when the field is absent."""
+    if name not in document:
+        return None
+    return _region_from_document(document[name], f"{where}.{name}")
+
+
+@dataclass(frozen=True, slots=True)
+class AuthoredTransition:
+    """One transition a project authors, and what each edited field started from.
+
+    The identity is the document's own position, not a field:
+    ``[transition."map:0039"."0001"]`` names the source map by the durable key
+    `maps/maps.toml` uses, and the transition by its index in that map's own
+    ``root + 0x44`` array - the position the engine's own walk assigns. Nothing here
+    is a file offset or a raw address.
+
+    Each editable field group is stored as a prior/authored pair, and either group
+    may be absent:
+
+    * the **destination** is the durable ``map:NNNN`` key of the map the transition
+      leads to - exactly the value the engine's own two-byte lookup resolves, not
+      the two record bytes and not an address;
+    * the **region** is the record's four ``u16`` endpoints as two ordered
+      intervals. Which interval is horizontal, and what the endpoints' unit is, are
+      UNRESOLVED, so the file stores them positionally and invents no axis name;
+    * the ``prior_*`` values are what the canonical record held. The build checks
+      every one of them before it writes, so a project authored against a different
+      image is refused rather than reinterpreted, and the document itself proves the
+      base it was authored against - the same role `AuthoredChunkEntry.prior` plays.
+
+    **No record bytes are stored, deliberately.** The unresolved bytes of the 24-byte
+    record - the class word, the invariant word and the five engine-read fields whose
+    meaning is UNRESOLVED - are preserved by coming from the canonical transition
+    authority at build time and never from this file. Storing them would be a second
+    copy of the ROM that could disagree with the first.
+    """
+
+    prior_destination: str | None = None
+    destination: str | None = None
+    prior_region: TransitionRegion | None = None
+    region: TransitionRegion | None = None
+    #: MAP-WARP-RUNTIME-EDIT-001. The measured arrival point, as ``[x, y]``.
+    #: ``arrival_authored`` separates "the project sets no arrival" from "the
+    #: author did not touch the arrival", because both values are None in the
+    #: first case and only that flag says so.
+    prior_arrival: tuple[int, int] | None = None
+    arrival: tuple[int, int] | None = None
+    arrival_authored: bool = False
+    #: MAP-WARP-ARRIVAL-SEMANTICS-001. The ``+0x10`` byte, stored WHOLE rather
+    #: than as a direction: its low two bits are the candidate facing decode and
+    #: its high bits are UNRESOLVED, so a record carrying them must round-trip
+    #: verbatim instead of losing them to a direction-only field.
+    prior_facing_raw: int | None = None
+    facing_raw: int | None = None
+    facing_authored: bool = False
+
+    def __post_init__(self) -> None:
+        for prior, authored, label in (
+            (self.prior_destination, self.destination, "destination"),
+            (self.prior_region, self.region, "region"),
+        ):
+            if (prior is None) != (authored is None):
+                raise ProjectValidationError(
+                    f"an authored transition must state the {label} it started from "
+                    f"and the {label} it authors together; got {prior!r} and {authored!r}"
+                )
+        for value, label in (
+            (self.prior_arrival, "prior_arrival"),
+            (self.arrival, "arrival"),
+        ):
+            if value is None:
+                continue
+            if (
+                not isinstance(value, (list, tuple))
+                or len(value) != 2
+                or any(type(part) is not int or not 0 <= part < ARRIVAL_UNSET_MINIMUM
+                       for part in value)
+            ):
+                raise ProjectValidationError(
+                    f"an authored transition's {label} is {value!r}, which is not an "
+                    "[x, y] pair below the measured unset sentinel"
+                )
+        if not self.arrival_authored and (
+            self.prior_arrival is not None or self.arrival is not None
+        ):
+            raise ProjectValidationError(
+                "an authored transition states an arrival without marking the "
+                "arrival group as authored"
+            )
+        for value, label in (
+            (self.prior_facing_raw, "prior_facing_raw"),
+            (self.facing_raw, "facing_raw"),
+        ):
+            if value is None:
+                continue
+            if type(value) is not int or not 0 <= value <= 0xFF:
+                raise ProjectValidationError(
+                    f"an authored transition's {label} is {value!r}, which is not a "
+                    "single byte"
+                )
+        if not self.facing_authored and (
+            self.prior_facing_raw is not None or self.facing_raw is not None
+        ):
+            raise ProjectValidationError(
+                "an authored transition states a facing without marking the facing "
+                "group as authored"
+            )
+        for value, label in (
+            (self.prior_destination, "prior_destination"),
+            (self.destination, "destination"),
+        ):
+            if value is not None and _MAP_KEY.match(value) is None:
+                raise ProjectValidationError(
+                    f"an authored transition's {label} is {value!r}, which is not a "
+                    "'map:NNNN' map identity"
+                )
+        if (
+            self.destination is None
+            and self.region is None
+            and not self.arrival_authored
+            and not self.facing_authored
+        ):
+            raise ProjectValidationError(
+                "an authored transition must author a destination, a region, an "
+                "arrival, a facing, or a combination"
+            )
+
+    def is_noop(self) -> bool:
+        """Whether every stored pair authors the value it started from.
+
+        A stored pair that authors its own prior is legal and meaningful - it is how
+        a project states "leave this field exactly as the base has it" - but it is
+        not an edit, and the build emits nothing for it.
+        """
+        return (
+            (self.destination is None or self.destination == self.prior_destination)
+            and (self.region is None or self.region == self.prior_region)
+            and (
+                not self.arrival_authored
+                or tuple(self.arrival or ()) == tuple(self.prior_arrival or ())
+            )
+            and (not self.facing_authored or self.facing_raw == self.prior_facing_raw)
+        )
+
+    def to_document(self) -> dict[str, Any]:
+        document: dict[str, Any] = {}
+        if self.destination is not None:
+            document["prior_destination"] = self.prior_destination
+            document["destination"] = self.destination
+        if self.region is not None:
+            document["prior_region"] = _region_document(self.prior_region)
+            document["region"] = _region_document(self.region)
+        if self.arrival_authored:
+            document["arrival_authored"] = True
+            document["prior_arrival"] = (
+                list(self.prior_arrival) if self.prior_arrival is not None else None
+            )
+            document["arrival"] = (
+                list(self.arrival) if self.arrival is not None else None
+            )
+        if self.facing_authored:
+            document["facing_authored"] = True
+            document["prior_facing_raw"] = self.prior_facing_raw
+            document["facing_raw"] = self.facing_raw
+        return document
+
+    @classmethod
+    def from_document(cls, document: object, where: object) -> "AuthoredTransition":
+        if not isinstance(document, Mapping):
+            raise ProjectLoadError(f"{where}: an authored transition must be a table")
+        unknown = set(document) - {
+            "prior_destination",
+            "destination",
+            "prior_region",
+            "region",
+            "prior_arrival",
+            "arrival",
+            "arrival_authored",
+            "prior_facing_raw",
+            "facing_raw",
+            "facing_authored",
+        }
+        if unknown:
+            raise ProjectLoadError(
+                f"{where}: unknown key(s) {sorted(unknown)}; an authored transition "
+                "authors a destination, a region, an arrival and/or a facing, each "
+                "as a prior/authored pair"
+            )
+        try:
+            return cls(
+                prior_destination=_optional_map_key(document, "prior_destination", where),
+                destination=_optional_map_key(document, "destination", where),
+                prior_region=_optional_region(document, "prior_region", where),
+                region=_optional_region(document, "region", where),
+                prior_arrival=_optional_point(document.get("prior_arrival"), where, "prior_arrival"),
+                arrival=_optional_point(document.get("arrival"), where, "arrival"),
+                arrival_authored=bool(document.get("arrival_authored", False)),
+                prior_facing_raw=_optional_byte(
+                    document.get("prior_facing_raw"), where, "prior_facing_raw"
+                ),
+                facing_raw=_optional_byte(document.get("facing_raw"), where, "facing_raw"),
+                facing_authored=bool(document.get("facing_authored", False)),
+            )
+        except ProjectValidationError as exc:
+            raise ProjectValidationError(f"{where}: {exc}") from exc
+
+
+def _optional_byte(value: object, where: object, name: str) -> int | None:
+    """One stored byte, or None when the key is absent or null."""
+    if value is None:
+        return None
+    if type(value) is not int or not 0 <= value <= 0xFF:
+        raise ProjectValidationError(
+            f"{where}: {name} must be a byte or absent, got {value!r}"
+        )
+    return value
+
+
+def _optional_point(value: object, where: object, name: str) -> tuple[int, int] | None:
+    """One stored ``[x, y]`` arrival, or None when the key is absent/None."""
+    if value is None:
+        return None
+    if not isinstance(value, (list, tuple)) or len(value) != 2:
+        raise ProjectLoadError(
+            f"{where}: {name} must be an [x, y] pair or absent, got {value!r}"
+        )
+    x, y = value
+    if type(x) is not int or type(y) is not int:
+        raise ProjectValidationError(
+            f"{where}: {name} endpoints must be integers, got {x!r} and {y!r}"
+        )
+    return (x, y)
+
+
+@dataclass(frozen=True)
+class TransitionEdits:
+    """Authored map transitions, keyed by source map and index in that map's array.
+
+    ``transitions["map:0039"][1]`` reads "map 39's second transition". Two
+    properties make that a semantic authoring value rather than a disguised offset:
+
+    * the map is named by its durable identity (``map:NNNN``, the same key
+      ``maps/maps.toml`` uses) and the transition by its index in the map's own
+      array - never by the record's ROM address;
+    * the destination is the destination map's own durable key and the region is
+      four positional endpoints, so the same project file resolves identically on
+      every machine and after any reopen.
+
+    A record address is deliberately NOT storable. An address names where one record
+    sits in one image; the source map plus the array index names *which transition
+    it is*, and survives any rebuild that keeps the array in order - the same choice
+    `LayoutEdits` and `PlacementIdentity` make.
+    """
+
+    #: ``"map:NNNN"`` -> index in that map's own transition array -> the entry.
+    maps: dict[str, dict[int, AuthoredTransition]] = field(default_factory=dict)
+
+    @staticmethod
+    def key_for(index: int) -> str:
+        """The durable identity key for a map table index."""
+        return f"map:{index:04d}"
+
+    def is_empty(self) -> bool:
+        return not any(entries for entries in self.maps.values())
+
+    def edits(self) -> dict[tuple[int, int], AuthoredTransition]:
+        """Flatten to ``{(source map index, transition index): entry}``.
+
+        The one place the ``map:NNNN`` key is turned back into an index, so every
+        caller reads the identity form the same way. A key that is not that form
+        cannot occur: `from_document` refuses anything else.
+        """
+        flat: dict[tuple[int, int], AuthoredTransition] = {}
+        for key, entries in self.maps.items():
+            index = int(key[4:], 10)
+            for position, entry in entries.items():
+                flat[(index, position)] = entry
+        return flat
+
+    @classmethod
+    def from_edits(
+        cls, edits: Mapping[tuple[int, int], AuthoredTransition]
+    ) -> "TransitionEdits":
+        """Build the document form from ``{(map index, transition index): entry}``.
+
+        The inverse of :meth:`edits` and the only way an authored set reaches this
+        type from the authoring API, so the two directions cannot disagree about
+        what a key means.
+        """
+        maps: dict[str, dict[int, AuthoredTransition]] = {}
+        for (map_index, position), entry in sorted(edits.items()):
+            maps.setdefault(cls.key_for(map_index), {})[position] = entry
+        return cls(maps=maps)
+
+    def for_map(self, index: int) -> dict[int, AuthoredTransition]:
+        """Transition index -> entry for one map, empty when it authors none."""
+        return dict(self.maps.get(TransitionEdits.key_for(index), {}))
+
+    def to_document(self) -> dict[str, Any]:
+        """The `[transition]` table: map, then transition index.
+
+        Both levels are keyed by a zero-padded integer, so lexical order is numeric
+        order and the file is deterministic without the writer having to sort
+        anything. Each level is emitted sorted for that reason.
+        """
+        return {
+            "transition": {
+                key: {
+                    f"{position:04d}": entry.to_document()
+                    for position, entry in sorted(entries.items())
+                }
+                for key, entries in sorted(self.maps.items())
+            }
+        }
+
+    @classmethod
+    def from_document(cls, document: Mapping[str, Any], where: object) -> "TransitionEdits":
+        table = document.get("transition")
+        if table is None:
+            raise ProjectLoadError(f"{where}: missing required [transition] table")
+        if not isinstance(table, Mapping):
+            raise ProjectLoadError(f"{where}: [transition] must be a table")
+        maps: dict[str, dict[int, AuthoredTransition]] = {}
+        for map_key, entries in table.items():
+            label = f"transition.{map_key}"
+            if not _MAP_KEY.match(str(map_key)):
+                raise ProjectLoadError(
+                    f"{where}: {label} is not a valid map identity; expected "
+                    "'map:NNNN' with four digits"
+                )
+            if not isinstance(entries, Mapping):
+                raise ProjectLoadError(f"{where}: {label} must be a table")
+            by_position: dict[int, AuthoredTransition] = {}
+            for position_key, entry in entries.items():
+                # A key that is not an index would otherwise be silently dropped
+                # from the build - the "authored but not applied" failure this
+                # format exists to prevent.
+                if not str(position_key).isdigit():
+                    raise ProjectLoadError(
+                        f"{where}: {label}.{position_key} is not a transition index; "
+                        "expected a zero-padded integer key"
+                    )
+                position = int(position_key, 10)
+                if position in by_position:
+                    raise ProjectLoadError(
+                        f"{where}: {label} declares transition {position} twice"
+                    )
+                by_position[position] = AuthoredTransition.from_document(
+                    entry, f"{where}: {label}.{position_key}"
+                )
+            if not by_position:
+                raise ProjectLoadError(f"{where}: {label} declares no transitions")
+            if map_key in maps:
+                raise ProjectLoadError(f"{where}: duplicate map {map_key}")
+            maps[map_key] = by_position
+        if not maps:
+            raise ProjectLoadError(f"{where}: [transition] declares no edits")
+        return cls(maps=maps)
+
+
 @dataclass(frozen=True)
 class GraphicsOverrides:
     """Authored graphics edits: palette-index -> 8-bit RGB recolour.
@@ -1383,6 +1822,7 @@ def write_project(
     layout: "LayoutEdits | None" = None,
     chunks: "AuthoredChunks | None" = None,
     structure: "MapStructure | None" = None,
+    transitions: "TransitionEdits | None" = None,
 ) -> list[Path]:
     """Write the whole authored tree. Returns the files written, in order.
 
@@ -1423,6 +1863,8 @@ def write_project(
         documents.append((CHUNK_FILE, chunks.to_document()))
     if structure and not structure.is_empty():
         documents.append((STRUCTURE_FILE, structure.to_document()))
+    if transitions and not transitions.is_empty():
+        documents.append((TRANSITION_FILE, transitions.to_document()))
 
     for relative, document in documents:
         path = root / relative
@@ -1916,6 +2358,37 @@ def _read_layout(path: Path) -> "LayoutEdits":
     return LayoutEdits.from_document(_read_document(path), path)
 
 
+def write_transition_edits(directory: str | Path, transitions: "TransitionEdits") -> Path:
+    """Persist only the transition document for a loaded project.
+
+    MAP-WARP-PROJECT-AUTHORING-001. The mirror of `write_layout_edits`: the
+    transition authoring API validates against the canonical image before calling
+    it, and it is the ONE place an authored transition reaches disk. An empty edit
+    set means the project authors no transition, so the optional document is removed
+    rather than written as an invalid empty table (which `read_project` would then
+    refuse).
+    """
+    path = Path(directory) / TRANSITION_FILE
+    if transitions is None or transitions.is_empty():
+        path.unlink(missing_ok=True)
+        return path
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(dump_toml(transitions.to_document()), encoding="utf-8", newline="\n")
+    return path
+
+
+def _read_transitions(path: Path) -> "TransitionEdits":
+    """Load `maps/transitions.toml`, or nothing at all if it is absent.
+
+    Same three-state rule as every other optional subsystem: absent means the
+    project authors no transition, present-and-valid means it does, and
+    present-and-malformed is an error rather than an empty edit set.
+    """
+    if not path.is_file():
+        return TransitionEdits()
+    return TransitionEdits.from_document(_read_document(path), path)
+
+
 def read_project(directory: str | Path) -> StatProject:
     """Load and structurally validate a project. Opens no ROM.
 
@@ -1973,6 +2446,7 @@ def read_project(directory: str | Path) -> StatProject:
     layout = _read_layout(root / LAYOUT_FILE)
     chunks = _read_chunks(root / CHUNK_FILE)
     structure = _read_structure(root / STRUCTURE_FILE)
+    transitions = _read_transitions(root / TRANSITION_FILE)
 
     # MAP-CHUNK-AUTHORING-001. A layout cell that names an authored chunk must
     # name one this project declares. Checked here because it is the one place
@@ -2027,6 +2501,7 @@ def read_project(directory: str | Path) -> StatProject:
         layout=layout,
         chunks=chunks,
         structure=structure,
+        transitions=transitions,
         placement_events=events,
         placement_types=(_read_document(root / PLACEMENT_TYPES_FILE)
                          if (root / PLACEMENT_TYPES_FILE).exists() else None),

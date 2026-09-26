@@ -94,6 +94,29 @@ the generic `-DecreaseRegister` plus `-CompareDumpOffset/-CompareLength`.
 Filters reduce recorded evidence only; mGBA still halts at the underlying
 breakpoint, so use Lua-only mode when stop frequency distorts gameplay speed.
 
+## A transition needs no leave-and-re-enter
+
+**A transition edit is consumed when its trigger fires**, so the first trigger
+after a load is valid evidence. A leave-and-re-enter cycle is **not** a generic
+prerequisite for warp proof.
+
+The re-entry rule that `MAP-TILE-PAINT-001` established is scoped to **map and
+background assembly**: a savestate restores the already-built background, so a
+ROM-side *map* edit cannot appear until the engine rebuilds the area. A
+*transition* is not assembled that way - its destination and facing are read when
+the door fires - and asking an operator for a rebuild loop on a transition run is
+wasted effort and, when the savestate loads them on the doorway, impossible.
+
+Confirmed 2026-09-26 by `MAP-WARP-RUNTIME-EDIT-001` and
+`MAP-WARP-FACING-TRACE-001`: on the first trigger from a savestate-restored map
+the engine entered the authored destination and wrote the authored facing, which
+a cached retail destination could not explain.
+
+This rule lives here rather than in `docs/DEVELOPMENT.md` or `docs/DEVELOPMENT.md` because both are
+line-bounded context budgets (300 and 240 lines), and each states that a new
+permanent rule earns its place by being condensed to fit rather than by moving the
+bound. This file is the authoritative runtime procedure those two point at.
+
 ## Standard command
 
 From the repository root, a HURT-entry capture matching the old P-004 shape is:

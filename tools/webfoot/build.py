@@ -63,6 +63,13 @@ from .maps import (
 from .formats.map_entry import MapEntryProfileError
 from .map_paint import MapPaintError, plan_layout_cells
 from .map_chunk import ChunkAuthoringError, materialize_authored_chunks
+from .formats.map_transitions import MapTransitionError, TransitionArrival
+from .map_transitions import (
+    AuthoredTransitionEdit,
+    MapTransitionsError,
+    TransitionIdentity,
+    plan_transition_edits,
+)
 from .map_resize import (
     MapStructureError,
     materialize_map_structure,
@@ -686,6 +693,93 @@ def _check_layout(
     return problems
 
 
+#: Every error family the transition authority and its codec raise. The authority's
+#: own errors are one tree; the codec's are a second, because a *record* that is an
+#: unmeasured form is refused by `formats.map_transitions` while an *edit* is refused
+#: by `map_transitions`. A build boundary reports both as one authored-transition
+#: problem rather than letting either escape as an unhandled ValueError.
+_TRANSITION_ERRORS = (MapTransitionsError, MapTransitionError)
+
+
+def _transition_requests(project: StatProject) -> dict[TransitionIdentity, AuthoredTransitionEdit]:
+    """The project's stored transition edits, resolved to SDK identities.
+
+    `project.transitions` stores map identities as their durable ``map:NNNN`` keys
+    and regions as the record codec's own positional pairs, because the authored
+    layer must not reach into a module that opens ROMs. This is the one place those
+    values cross into the SDK's identities, and it is deliberately mechanical:
+    nothing is inferred, and a value the authored layer already refused cannot
+    reach here. Every map key was matched against ``map:NNNN`` at load, so the
+    conversion cannot fail on a malformed one.
+    """
+    requests: dict[TransitionIdentity, AuthoredTransitionEdit] = {}
+    for (map_index, position), entry in sorted(project.transitions.edits().items()):
+        requests[TransitionIdentity(MapIdentity(map_index), position)] = (
+            AuthoredTransitionEdit(
+                prior_destination=(
+                    MapIdentity(int(entry.prior_destination[4:], 10))
+                    if entry.prior_destination is not None
+                    else None
+                ),
+                destination=(
+                    MapIdentity(int(entry.destination[4:], 10))
+                    if entry.destination is not None
+                    else None
+                ),
+                prior_region=entry.prior_region,
+                region=entry.region,
+                prior_arrival=(
+                    TransitionArrival(*entry.prior_arrival)
+                    if entry.prior_arrival is not None
+                    else None
+                ),
+                arrival=(
+                    TransitionArrival(*entry.arrival)
+                    if entry.arrival is not None
+                    else None
+                ),
+                arrival_authored=entry.arrival_authored,
+                prior_facing_raw=entry.prior_facing_raw,
+                facing_raw=entry.facing_raw,
+                facing_authored=entry.facing_authored,
+            )
+        )
+    return requests
+
+
+def _check_transitions(
+    project: StatProject, profile: RomProfile, canonical_image: bytes | None
+) -> list[str]:
+    """Check every authored transition edit against the base image.
+
+    MAP-WARP-PROJECT-AUTHORING-001. Every stored prior and every authored value is
+    resolved through the same authority a build uses, before anything is emitted, so
+    a stale project (one authored against a different image), an unsupported record,
+    an invalid identity, an invalid destination and an invalid region are all named
+    validation problems rather than a build that half-applies a project.
+
+    Gated on the profile's own identity for the reason `_check_layout` is: a
+    transition edit is a canonical-image capability, so an image that is not this
+    profile's image cannot be authored at all, and the build refuses it separately
+    where it can name the reason.
+    """
+    requests = _transition_requests(project)
+    if not requests:
+        return []
+    canonical = packaged_profile()
+    if canonical.identity.sha256 != profile.identity.sha256:
+        return [
+            "project authors map transitions, but this ROM's profile is not the "
+            "canonical transition domain; a build would silently drop every "
+            "authored transition"
+        ]
+    try:
+        plan_transition_edits(canonical_image, requests, profile=canonical)
+    except _TRANSITION_ERRORS as exc:
+        return [f"authored map transition: {exc}"]
+    return []
+
+
 def _check_maps(project: StatProject, maps: Maps | None) -> list[str]:
     """Check every authored map against the loaded table.
 
@@ -906,7 +1000,8 @@ def validate_project(
         canonical_image = (
             Path(rom_path).read_bytes()
             if (project.layout.cells() or project.dialogues
-                or not project.structure.is_empty())
+                or not project.structure.is_empty()
+                or not project.transitions.is_empty())
             else None
         )
         problems = (
@@ -914,6 +1009,7 @@ def validate_project(
             + _check_strings(project, strings)
             + _check_maps(project, maps)
             + _check_layout(project, profile, canonical_image)
+            + _check_transitions(project, profile, canonical_image)
             + _check_dialogues(project, profile, rom_path)
         )
 
@@ -1246,6 +1342,34 @@ def build_project(
         structure_edits = structure_materialization.provenance
         base_bytes = image if base_bytes is None else base_bytes
 
+    # MAP-WARP-PROJECT-AUTHORING-001's domain: the one domain that allocates
+    # nothing and relocates nothing. A transition edit is a fixed-width overwrite of
+    # exactly one 24-byte record the canonical image already contains, so it takes
+    # no bytes from the reservation set and returns none to it - the ordering
+    # against every allocating domain above is therefore irrelevant, and the
+    # authority's own `changes()` is the only thing that serializes a record. A
+    # project whose authored values all equal the base contributes no change here.
+    transition_edits: tuple = ()
+    if not project.transitions.is_empty():
+        canonical = packaged_profile()
+        if canonical.identity.sha256 != profile.identity.sha256:
+            raise ProjectValidationError(
+                "project authors map transitions, but this ROM's profile is not the "
+                "canonical transition domain; a build would silently drop every "
+                "authored transition"
+            )
+        image = Path(rom_path).read_bytes()
+        try:
+            transition_application = plan_transition_edits(
+                image, _transition_requests(project), profile=canonical
+            )
+        except _TRANSITION_ERRORS as exc:
+            # One validation family at the build boundary, naming the transition.
+            raise ProjectValidationError(f"authored map transition: {exc}") from exc
+        changes += transition_application.changes
+        transition_edits = transition_application.provenance
+        base_bytes = image if base_bytes is None else base_bytes
+
     # ROM-EXPAND-001: compressed dialogue is a normal allocating build domain. It
     # receives every span reserved by earlier domains and returns its own span to
     # the same build-scoped set before the one final plan is formed.
@@ -1304,6 +1428,7 @@ def build_project(
         dialogue_edits=dialogue_edits,
         chunk_edits=chunk_edits,
         structure_edits=structure_edits,
+        transition_edits=transition_edits,
     )
 
     resolved_manifest = manifest_path_for_build(manifest_path, output_path)

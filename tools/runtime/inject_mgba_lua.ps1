@@ -10,6 +10,13 @@ param(
 $ErrorActionPreference = 'Stop'
 $workspaceRoot = [System.IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..\..'))
 $allowedLua = @(
+    # Added by MAP-WARP-RUNTIME-EDIT-001: the read-only transition observer. It
+    # reads the live map identity each frame plus the target record's destination
+    # key through the engine's own MapEntry+0x2C -> root+0x44 route, and writes
+    # only host files inside the run directory.
+    [System.IO.Path]::GetFullPath(
+        (Join-Path $workspaceRoot 'tools\runtime\warpedit001_transition_watch.lua')
+    )
     [System.IO.Path]::GetFullPath(
         (Join-Path $workspaceRoot 'tools\runtime\rom007_move_south.lua')
     )

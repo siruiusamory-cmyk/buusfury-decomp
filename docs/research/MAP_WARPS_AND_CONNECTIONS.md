@@ -44,10 +44,13 @@ capability in the registry is the only authority for that count.
   pointer fields are full 32-bit GBA addresses the retail engine follows above the
   canonical EOF, and a map whose root is **shared** with another map cannot be
   edited in place - 11 canonical roots serve more than one map.
-- The runtime methodology is unchanged and mandatory: a savestate restores the
-  already-assembled background, so a capture is valid only after an observed
-  leave-and-re-enter. **Runtime proof is human-operated** - no scripted player
+- The runtime methodology is human-operated and mandatory - no scripted player
   input, which is a permanent rule after Phase 2C's recorded process violation.
+  The savestate leave-and-re-enter requirement is scoped to **map and background
+  assembly**, where a savestate restores an already-built area;
+  `MAP-WARP-RUNTIME-EDIT-001` corrected the earlier over-general reading, because
+  a transition is read when its trigger fires - see
+  [`../runtime-capture.md`](../runtime-capture.md).
 - Reuse the existing map view and model, the existing undo system, the identity and
   provenance rules, the production allocator and the one write plan. Do not add a
   second rendering, editing or allocation path.

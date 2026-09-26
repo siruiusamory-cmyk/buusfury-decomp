@@ -606,6 +606,92 @@ strongest engine-side evidence that the record's leading bytes are **region
 data**, and it is why section 5.2 stops at "a pair of ordered intervals".
 **CONFIRMED** (instruction access).
 
+> **CORRECTION - MAP-WARP-ARRIVAL-SEMANTICS-001 (2026-09-26). This subsection's
+> base is wrong, and so are claims 20 and 21 and the section 5.3 reading that
+> rest on it. The text above is left as written rather than rewritten.**
+>
+> `0x0800CEF4`'s record argument is **not** a transition record. It is an element
+> of the scene's *separate* 24-byte array reached from `scene+0x28`, with its
+> count at `scene+0x24` and a stride of 24 - proven by the indexing arithmetic at
+> `08009452 lsls r1,r5,#1`, `08009454 adds r1,r1,r5`, `08009458 lsls r1,r1,#3`,
+> `08009456 ldr r0,[r4,#0x28]` and `0800D176 ldr r1,[r5,#0x28]`. On root
+> `0x081DAD0C` that array is `+0x24 = 6`, `+0x28 = 0x081DA7B0`, and its elements
+> begin `48000000 60000000 88000000 80000000` - four `u32` coordinates, not the
+> transition class word `0x08007675`.
+>
+> Consequently:
+>
+> * `0x0800CDC6`, `0x0800CF28`, `0x0800CF30` and the interval comparison at
+>   `0x0800CF42` describe an **effect record**, not the transition record, and
+>   they are **not** evidence about the transition record's `+0x08` block;
+> * `+0x17` is stored as a **boolean at object `+0x1C`** on that path
+>   (`0800CF30 ldrb r1,[r1,#0x17]`; `0800CF34 cmp r1,#0`; `0800CF3A str r2,[r0,#0x1c]`),
+>   not at object `+0x09`;
+> * the sentence "the record's first sixteen bytes flow into an engine object
+>   whose own fields are then compared as ordered intervals" is therefore **not
+>   established for the transition record by this evidence**, and the
+>   **CONFIRMED** label above is withdrawn for that sentence.
+>
+> The two-ordered-intervals reading of `+0x08` still stands on its own corpus and
+> access-width evidence; what fails is this subsection's support for it.
+>
+> **What replaced it** for the fields this ticket needed: the record's
+> `+0x14`/`+0x16` pair is passed to the warp routine as a coordinate pair -
+> `08007600 adds r3,#0x14` then `0800760A bl 0x08008d44` in the 566-class method
+> `0x080075AC` - and `-112`/`-76` is applied to that pair at `08008D52`/`08008D5C`.
+> See [`../tickets/MAP-WARP-ARRIVAL-SEMANTICS-001.md`](../tickets/MAP-WARP-ARRIVAL-SEMANTICS-001.md).
+>
+> **CORRECTION - `+0x10` is now resolved, so three more places above are stale.**
+> All instruction evidence is in the same ticket record.
+>
+> 1. **The section 5.1 table and claim 26 are false.** `+0x10`'s semantics are no
+>    longer UNRESOLVED and the facing *is* identified. The byte is
+>    `((arrival_direction + 1) << 4) | gate_direction`.
+> 2. **Section 8.1's "`r6`/`r5` are scene objects" is wrong.** `r6` is the
+>    transition **object** (its record is at `r6+0x14` - `080072EC` and `08007694`
+>    both `str r5,[r4,#0x14]`), and `r5` is the **player actor**. Section 8.1 also
+>    omits both 566-class reads of record `+0x10` (`08007696` in the constructor,
+>    `08007638` in the update).
+> 3. **Record `+0x10` has exactly four readers in the whole image**:
+>    `080072EE` (169 constructor), `0800729C` (169 update), `08007696` (566
+>    constructor), `08007638` (566 update). No bit of it gates anything; the gate
+>    is external, at `*(u16*)0x03003302` bits 7..4 compared at `080075C2`/
+>    `080075C6`/`080075C8`, and the low two bits only *select* which of those bits
+>    must be set, via the four-byte table `80 40 20 10` at `0x080707D8`.
+> 4. **The engine never derives a direction from map geometry.** "Face away from
+>    the nearest arrival edge" is a level-design convention measured at about
+>    84% of the 566 class, not an engine rule, and it must not be stated as one.
+> 5. The `+0x10` corpus census in the ticket brief (217/224/140/137) was wrong;
+>    the correct counts are 0 -> 219, 1 -> 224, 2 -> 140, 3 -> 142, plus ten
+>    records above 3 forming five reciprocal pairs.
+> 6. **A record whose `+0x10` is `0x02` does NOT mean "face West".** Its high
+>    nibble is zero, so on the traced arrival-facing path it requests **no
+>    override** and the actor keeps the direction it was already walking; its low
+>    two bits gate the door. An earlier reading in this project took the low bits
+>    for a facing and "confirmed" it against the level geometry - that agreement
+>    was the level design, not the field. The resolved encoding is
+>    `((arrival_direction + 1) << 4) | gate_direction`, and only a **non-zero**
+>    high nibble states a facing, as `(high_nibble - 1)`.
+>
+> **RUNTIME-CONFIRMED (MAP-WARP-FACING-TRACE-001, 2026-09-26).** In a human-played
+> run on a derivative whose record carried `+0x10 = 0x42`, the engine replaced the
+> player object on the warp (`0x0203CEB4` -> the slot null during the load ->
+> `0x0202CCDC`) and the new player's own `+0x10` first read `03` = East, from a
+> westward approach - matching `(0x42 >> 4) - 1 = 3`. The gate word `0x03001A34`
+> read `0` on every sample including across the load, so the traced skip did not
+> apply. **What `0x03001A34` selects remains UNRESOLVED and its non-zero case is
+> UNTESTED.**
+>
+> **TRANSITION-PROOF RULE (a correction to practice, not to the format).** A
+> transition edit is consumed **when the trigger fires**, so the first trigger
+> after a load is valid evidence: there is **no leave-and-re-enter prerequisite
+> for warp proof**. The re-entry rule MAP-TILE-PAINT-001 established is scoped to
+> **map and background assembly**, where a savestate restores the already-built
+> background. It does not generalise to transitions.
+
+
+
+
 ### 8.3 The consumer
 
 **PROJECT OBSERVATION.** The selector-1 root's `+0x40`/`+0x44` pair is consumed

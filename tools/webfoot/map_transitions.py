@@ -47,6 +47,18 @@ semantics is UNRESOLVED, and `+0x10`, `+0x13`, `+0x14`, `+0x16` and `+0x17` are
 engine-read fields whose semantics are UNRESOLVED. A pointer or count is refused
 for the reason `webfoot.maps` refuses them: editing one moves a structure this
 toolkit does not own.
+
+**MAP-WARP-PROJECT-AUTHORING-001 stores that edit in a project and builds it.**
+A project names a transition by `TransitionIdentity` and stores the fields it
+sets, each beside the value the canonical record held - so the authored file
+proves what it was authored against. :func:`plan_transition_edits` is the build's
+one entry point: it loads the canonical corpus from the image, checks every stored
+prior against the record the image actually holds, stages the authored fields
+through the same `set_destination`/`set_region` this module always used, and
+returns this authority's own byte plan. Nothing outside this module serializes a
+transition: the only encoder is `TransitionRecord.to_bytes`, reached through
+:meth:`MapTransitions.changes`. The edit is fixed-width, so it allocates nothing,
+relocates nothing and rewrites exactly one 24-byte record.
 """
 
 from __future__ import annotations
@@ -54,7 +66,7 @@ from __future__ import annotations
 from dataclasses import dataclass, replace
 import os
 from pathlib import Path
-from typing import Iterator
+from typing import Iterator, Mapping
 
 from . import capability
 from .binary import BinaryAddressError, GBA_ROM_BASE, GbaRomAddress
@@ -62,6 +74,13 @@ from .formats import map_graphics as mg
 from .formats import map_entry as me
 from .formats.map_entry import MAP_ENTRY_SIZE, MapEntry
 from .formats.map_transitions import (
+    ARRIVAL_UNSET_MINIMUM,
+    FACING_EAST,
+    FACING_MASK,
+    FACING_NAMES,
+    FACING_NORTH,
+    FACING_SOUTH,
+    FACING_WEST,
     SUPPORTED_CLASS_RAW,
     TRANSITION_LAYOUT,
     TRANSITION_SIZE,
@@ -70,13 +89,15 @@ from .formats.map_transitions import (
     MapTransitionLengthError,
     MapTransitionRegionError,
     MapTransitionValueError,
+    TransitionArrival,
     TransitionRecord,
     TransitionRegion,
 )
 from .hashing import hash_stream
-from .profile import RomProfileCatalog
+from .packaged import packaged_profile
+from .profile import RomProfile, RomProfileCatalog
 from .rom import RomChangedError, identify_rom
-from .write import ByteChange, WritePlan, plan_changes
+from .write import ByteChange, TransitionEditProvenance, WritePlan, plan_changes
 from .maps import MapIdentity
 
 #: `root + 0x40`, the count the engine reads with `+0x44` in one `ldm`.
@@ -110,6 +131,30 @@ if _KEY_FIELD_NAMES != ("output_raw", "zone_raw"):
 
 #: Every transition record is 4-byte aligned in the canonical corpus.
 RECORD_ALIGNMENT = 4
+
+#: The GBA's visible viewport. The engine stores a map's camera clamp as
+#: ``world - screen``, so the walkable extent is the clamp word plus these.
+SCREEN_WIDTH = 240
+SCREEN_HEIGHT = 160
+
+#: How near an arrival may be to the destination's door and still count as "at"
+#: it. The measured corpus puts 670 of 735 inside the door rectangle or within a
+#: few pixels outside it, with 16 px covering all but a handful of the rest.
+ARRIVAL_DOOR_TOLERANCE = 16
+
+
+def _arrival_is_near(
+    arrival: "TransitionArrival", region: "TransitionRegion"
+) -> bool:
+    """Whether an arrival point sits at a door, inside it or just outside it."""
+    (low_x, high_x), (low_y, high_y) = region.first, region.second
+    gap_x = 0 if low_x <= arrival.x <= high_x else min(
+        abs(arrival.x - low_x), abs(arrival.x - high_x)
+    )
+    gap_y = 0 if low_y <= arrival.y <= high_y else min(
+        abs(arrival.y - low_y), abs(arrival.y - high_y)
+    )
+    return max(gap_x, gap_y) <= ARRIVAL_DOOR_TOLERANCE
 
 
 class MapTransitionsError(ValueError):
@@ -507,6 +552,242 @@ class MapTransitions:
         record.validate()
         self._edits[identity] = record
 
+    # --- the arrival point: safe exit, relative to the direction of travel ---
+    #
+    # MAP-WARP-RUNTIME-EDIT-001. A destination edit alone is not enough to move a
+    # door somewhere else safely: the record also carries the point the player is
+    # placed at in the destination, and that point belongs to the OLD destination's
+    # geometry. Measured on the canonical image, retail already implements "exit
+    # onto the map from the direction you left": of 735 records, 670 place the
+    # player within 16 px of the destination's reciprocal door - the record in the
+    # destination that leads back to the source - and 8 of the 12 that do not are
+    # the 0xFFFx "no authored arrival" sentinel.
+    #
+    # So a retarget derives the arrival from the destination's own door back. Where
+    # there is no such door (a one-way link, or an arbitrary destination), nothing
+    # can be derived and the author must state a point, which is then checked
+    # against the destination's own walkable extent.
+
+    def reciprocal_doors(
+        self, source: MapIdentity, destination: MapIdentity
+    ) -> tuple[TransitionEntry, ...]:
+        """The destination's own records that lead back to ``source``."""
+        return tuple(
+            entry
+            for entry in self.for_map(destination)
+            if self.destination(entry.identity) == source
+        )
+
+    def destination_bounds(self, destination: MapIdentity) -> tuple[int, int]:
+        """The destination's walkable extent, in pixels, from the engine's own word.
+
+        ``root + 0x08``/``+0x0A`` hold the camera's maximum scroll as ``extent - 1``
+        (MAP-RESIZE-AND-LAYERS-001), and the GBA screen is 240x160, so the world is
+        ``extent + screen``. This is the engine's statement of how big the map is,
+        which is what an arrival has to fit inside; it is not a collision test, and
+        a point inside this box can still be inside scenery.
+        """
+        index = self._require_map(destination)
+        table = self._map_entries()
+        root = table[index].root_address
+        offset = GbaRomAddress(root + 0x08).to_file_offset(len(self._base_bytes))
+        extent_x = int.from_bytes(self._base_bytes[offset : offset + 2], "little") + 1
+        extent_y = int.from_bytes(self._base_bytes[offset + 2 : offset + 4], "little") + 1
+        return extent_x + SCREEN_WIDTH, extent_y + SCREEN_HEIGHT
+
+    def arrival(self, identity: TransitionIdentity) -> "TransitionArrival | None":
+        """Where this transition places the player, or None when unset."""
+        return self.entry(identity).record.arrival
+
+    def set_arrival(
+        self, identity: TransitionIdentity, arrival: "TransitionArrival | None"
+    ) -> None:
+        """Stage the point this transition places the player at.
+
+        The point is checked against the destination's walkable extent before it is
+        recorded, so an arrival that would drop the player off the map is refused
+        here rather than discovered as a softlock at runtime.
+        """
+        self.entry(identity)
+        if not self.entry(identity).record.has_raw_arrival_pair:
+            # Fail closed rather than write a delta into a field the engine reads
+            # as a point. The 169 class's pair needs the scene origin, which no
+            # project value supplies, so an authored arrival is refused outright.
+            raise TransitionFieldError(
+                f"{identity} is a 169-class record whose +0x14/+0x16 pair is a "
+                "scene-relative delta, not an arrival point; authoring an arrival "
+                "on this class is refused rather than written as a position"
+            )
+        if arrival is not None and not isinstance(arrival, TransitionArrival):
+            raise TransitionFieldError(
+                f"{identity}.arrival must be a TransitionArrival or None, "
+                f"got {arrival!r}"
+            )
+        record = self.entry(identity).record.with_arrival(arrival)
+        record.validate()
+        if arrival is not None:
+            target = self.destination(identity)
+            width, height = self.destination_bounds(target)
+            if not (0 <= arrival.x < width and 0 <= arrival.y < height):
+                raise TransitionFieldError(
+                    f"{identity} would place the player at ({arrival.x}, {arrival.y}) "
+                    f"in {target}, whose walkable extent is {width}x{height}; that "
+                    "point is off the map"
+                )
+        self._edits[identity] = record
+
+    def derive_arrival(
+        self, identity: TransitionIdentity, destination: MapIdentity
+    ) -> "TransitionArrival":
+        """The safe arrival for pointing ``identity`` at ``destination``.
+
+        Preference order, and the reason for it:
+
+        1. **A point the game already uses for this exact link.** If another record
+           in the same source map already reaches ``destination`` and its stored
+           arrival lies at one of the destination's doors back, that value is the
+           engine's own answer for this connection and is used verbatim.
+        2. **The destination's door back: its centre.** A point inside the door
+           rectangle is on the map by construction, and it is the door the player
+           would use to return, which is what "the direction you warped out of"
+           means.
+
+        With no door back there is nothing to derive from - the relative direction
+        does not exist - so this refuses rather than inventing one.
+        """
+        doors = self.reciprocal_doors(identity.source, destination)
+        if not doors:
+            raise TransitionFieldError(
+                f"{destination} has no record leading back to {identity.source}, so "
+                "no arrival can be derived from the direction of travel; state one "
+                "explicitly (see set_arrival) instead of inheriting the previous "
+                "destination's point"
+            )
+        if not self.entry(identity).record.has_raw_arrival_pair:
+            raise TransitionFieldError(
+                f"{identity} is a 169-class record whose stored pair is a "
+                "scene-relative delta; no arrival can be derived for it"
+            )
+        for sibling in self.for_map(identity.source):
+            if sibling.identity == identity:
+                continue
+            if self.destination(sibling.identity) != destination:
+                continue
+            # Only a sibling whose pair IS a point can answer for this link.
+            if not sibling.record.has_raw_arrival_pair:
+                continue
+            point = sibling.record.arrival
+            if point is not None and any(
+                _arrival_is_near(point, door.record.region) for door in doors
+            ):
+                return point
+        (low_x, high_x), (low_y, high_y) = doors[0].record.region.first, doors[0].record.region.second
+        return TransitionArrival(x=(low_x + high_x) // 2, y=(low_y + high_y) // 2)
+
+    def retarget(
+        self,
+        identity: TransitionIdentity,
+        destination: MapIdentity,
+        *,
+        arrival: "TransitionArrival | None" = None,
+        facing: "int | None" = None,
+    ) -> tuple["TransitionArrival", int]:
+        """Point one transition at ``destination``, and place and face the player.
+
+        One operation on purpose. Changing the destination without changing the
+        arrival leaves the arrival pointing into the previous destination's
+        geometry - measured at runtime as a softlock when the new map is smaller -
+        and without changing the facing it leaves the player walking the way they
+        were before the warp, which a runtime observation caught walking West out
+        of a south door.
+
+        ``arrival`` and ``facing`` are explicit overrides. When ``facing`` is not
+        given the :meth:`default_facing` heuristic is used, and that heuristic is
+        labelled a default rather than engine law. Returns the pair that was
+        staged.
+        """
+        self.set_destination(identity, destination)
+        if arrival is None:
+            arrival = self.derive_arrival(identity, destination)
+        self.set_arrival(identity, arrival)
+        if facing is None:
+            facing = self.default_facing(destination, arrival)
+        self.set_facing(identity, facing)
+        return arrival, facing
+
+    def set_facing(self, identity: TransitionIdentity, direction: int) -> None:
+        """Stage the direction the player is forced to face on arrival.
+
+        This writes the **high-nibble override** (``((direction + 1) << 4)``), not
+        the low bits. That is deliberate and it is the whole point: with no
+        override the engine leaves the actor facing whatever it was already
+        walking, which is what a runtime observation caught walking West out of a
+        south door. The low two bits are the door gate and are preserved here.
+        """
+        self.entry(identity)
+        if type(direction) is not int or not 0 <= direction <= FACING_MASK:
+            raise TransitionFieldError(
+                f"{identity}.facing must be an integer 0..{FACING_MASK}, "
+                f"got {direction!r}"
+            )
+        record = self.entry(identity).record.with_arrival_facing(direction)
+        record.validate()
+        self._edits[identity] = record
+
+    def set_gate_direction(self, identity: TransitionIdentity, direction: int) -> None:
+        """Stage the low two gate bits, preserving the arrival-facing override."""
+        self.entry(identity)
+        if type(direction) is not int or not 0 <= direction <= FACING_MASK:
+            raise TransitionFieldError(
+                f"{identity} gate direction must be 0..{FACING_MASK}, got {direction!r}"
+            )
+        record = self.entry(identity).record.with_gate_direction(direction)
+        record.validate()
+        self._edits[identity] = record
+
+    def facing(self, identity: TransitionIdentity) -> "int | None":
+        """The staged or canonical arrival facing, or None when the record is silent.
+
+        ``None`` is the engine's "keep the actor's own facing" state and is a real
+        answer, not a missing one.
+        """
+        return self.entry(identity).record.facing.arrival_direction
+
+    def gate_direction(self, identity: TransitionIdentity) -> int:
+        """The staged or canonical door gate bits (the low two of ``+0x10``)."""
+        return self.entry(identity).record.facing.gate_direction
+
+    def default_facing(
+        self, destination: MapIdentity, arrival: "TransitionArrival"
+    ) -> int:
+        """The DEFAULT direction to face on arrival: away from the nearest edge.
+
+        **This is an authoring default, not engine law.** It reproduces what the
+        canonical corpus overwhelmingly does - the player leaves the door walking
+        into the map - and it matched 498 of 559 records of the 566-class in a
+        corpus check. It is a heuristic over the arrival point and the
+        destination's walkable box; no instruction consuming ``+0x10`` had been
+        traced when it was written, so it must not be quoted as the engine's rule.
+        Callers who know the answer pass ``facing`` explicitly.
+        """
+        width, height = self.destination_bounds(destination)
+        distances = {
+            FACING_NORTH: height - arrival.y,   # door on the south edge -> walk north
+            FACING_SOUTH: arrival.y,            # door on the north edge -> walk south
+            FACING_WEST: width - arrival.x,     # door on the east edge -> walk west
+            FACING_EAST: arrival.x,             # door on the west edge -> walk east
+        }
+        return min(distances, key=lambda direction: distances[direction])
+
+    def _map_entries(self):
+        """The profile's MapEntry table, resolved once per corpus."""
+        cached = getattr(self, "_map_entry_table", None)
+        if cached is None:
+            reader = mg.MapGraphicsReader(self._base_bytes, packaged_profile())
+            cached = mg.read_map_entries(reader)
+            self._map_entry_table = cached
+        return cached
+
     def _require_map(self, identity: MapIdentity) -> int:
         if not isinstance(identity, MapIdentity):
             raise TransitionFieldError(
@@ -571,6 +852,567 @@ def _reason(loaded: TransitionRecord, current: TransitionRecord) -> str:
     return f"transition edit: {', '.join(changed)}"
 
 
+# --- authoring: the semantic edit a project stores ---------------------------
+#
+# MAP-WARP-PROJECT-AUTHORING-001. Two shapes meet here and they are deliberately
+# not the same one:
+#
+# * `TransitionEdit` is what an author asks for - "this transition now leads to
+#   map 41" - and carries no prior values, because a caller stating a prior is a
+#   caller asserting what the base holds rather than measuring it;
+# * `AuthoredTransitionEdit` is what a project file stores: that request PLUS the
+#   value each edited field started from. The build checks those priors against
+#   the record the image actually holds, so a project authored against a different
+#   image is refused rather than silently reinterpreted - the same fail-closed
+#   shape `ByteChange.old` gives every other in-place edit.
+#
+# Both are shaped so a field left as `None` is not authored at all. That is what
+# makes "the author did not edit this" become "the build cannot have changed
+# this": an untouched field's bytes come from the canonical record and are never
+# re-serialized from a project value.
+
+
+@dataclass(frozen=True, slots=True)
+class TransitionEdit:
+    """The fields an author is setting on one transition.
+
+    Every field is optional and at least one is required. A field left as `None` is
+    not authored: the build preserves the canonical record's own bytes for it and
+    never derives them from the project.
+
+    ``arrival`` is MAP-WARP-RUNTIME-EDIT-001. It is the point the player is placed
+    at in the destination, and a retarget that does not set it will drop the player
+    wherever the previous destination's arrival pointed - which is how a retarget
+    to a smaller map puts them off the map entirely. Prefer
+    :meth:`MapTransitions.retarget`, which derives it.
+    """
+
+    destination: "MapIdentity | None" = None
+    region: "TransitionRegion | None" = None
+    arrival: "TransitionArrival | None" = None
+    #: The direction the player walks out of the door, 0..3. ``None`` is "the
+    #: author did not say", which is what lets a caller ask for the derived default
+    #: instead of silently inheriting the previous destination's facing.
+    facing: int | None = None
+
+    def __post_init__(self) -> None:
+        if (
+            self.destination is None
+            and self.region is None
+            and self.arrival is None
+            and self.facing is None
+        ):
+            raise TransitionFieldError(
+                "a transition edit must author a destination, a region, an "
+                "arrival, a facing, or a combination"
+            )
+        if self.destination is not None and not isinstance(self.destination, MapIdentity):
+            raise TransitionFieldError(
+                f"a transition destination must be a MapIdentity, got {self.destination!r}"
+            )
+        if self.region is not None and not isinstance(self.region, TransitionRegion):
+            raise TransitionFieldError(
+                f"a transition region must be a TransitionRegion, got {self.region!r}"
+            )
+        if self.arrival is not None and not isinstance(self.arrival, TransitionArrival):
+            raise TransitionFieldError(
+                f"a transition arrival must be a TransitionArrival, got {self.arrival!r}"
+            )
+        if self.facing is not None and (
+            type(self.facing) is not int or not 0 <= self.facing <= FACING_MASK
+        ):
+            raise TransitionFieldError(
+                f"a transition facing must be an integer 0..{FACING_MASK} "
+                f"({', '.join(f'{k}={v}' for k, v in sorted(FACING_NAMES.items()))}), "
+                f"got {self.facing!r}"
+            )
+
+
+@dataclass(frozen=True, slots=True)
+class AuthoredTransitionEdit:
+    """One project's stored edit to one transition, and what it started from.
+
+    Each editable field group is a `(prior, authored)` pair and either group may be
+    absent, because an author who retargets a door is not also authoring its region.
+    A group that is absent is not authored at all, so the canonical record's bytes
+    for it survive the build untouched.
+
+    ``prior_*`` is what the project records the canonical record as holding. It is
+    stored rather than merely derivable for the reason
+    `AuthoredChunkEntry.prior` is: the document itself then proves the edit was
+    authored against the record it names, and an image that holds a different value
+    makes the build refuse instead of reinterpreting the edit.
+
+    ``prior_arrival``/``arrival`` are the same shape for the measured arrival point,
+    with ``None`` meaning "no authored arrival" on both sides. A destination edit
+    and an arrival edit are deliberately separate groups: the destination names
+    which map, and the arrival names where in it, and an author may move one without
+    the other.
+    """
+
+    prior_destination: "MapIdentity | None" = None
+    destination: "MapIdentity | None" = None
+    prior_region: "TransitionRegion | None" = None
+    region: "TransitionRegion | None" = None
+    prior_arrival: "TransitionArrival | None" = None
+    arrival: "TransitionArrival | None" = None
+    #: Whether an arrival group is present at all. ``True`` with both values
+    #: ``None`` is how a project states "this record has no authored arrival",
+    #: which is a different statement from "the author did not touch the arrival".
+    arrival_authored: bool = False
+    #: The ``+0x10`` facing, prior and authored, with the same present/absent rule.
+    #: The stored value is the WHOLE byte, not just the direction, so a record
+    #: carrying unresolved high bits round-trips them verbatim.
+    prior_facing_raw: int | None = None
+    facing_raw: int | None = None
+    facing_authored: bool = False
+
+    def __post_init__(self) -> None:
+        for prior, authored, label, expected in (
+            (self.prior_destination, self.destination, "destination", MapIdentity),
+            (self.prior_region, self.region, "region", TransitionRegion),
+        ):
+            if (prior is None) != (authored is None):
+                raise TransitionFieldError(
+                    f"a transition edit must state the {label} it started from and "
+                    f"the {label} it authors together; got {prior!r} and {authored!r}"
+                )
+            for value, name in ((prior, f"prior_{label}"), (authored, label)):
+                if value is not None and not isinstance(value, expected):
+                    raise TransitionFieldError(
+                        f"{name} must be a {expected.__name__}, got {value!r}"
+                    )
+        if not self.arrival_authored and (
+            self.prior_arrival is not None or self.arrival is not None
+        ):
+            raise TransitionFieldError(
+                "a transition edit states an arrival value without marking the "
+                "arrival group as authored"
+            )
+        for value, name in (
+            (self.prior_arrival, "prior_arrival"),
+            (self.arrival, "arrival"),
+        ):
+            if value is not None and not isinstance(value, TransitionArrival):
+                raise TransitionFieldError(
+                    f"{name} must be a TransitionArrival or None, got {value!r}"
+                )
+        if not self.facing_authored and (
+            self.prior_facing_raw is not None or self.facing_raw is not None
+        ):
+            raise TransitionFieldError(
+                "a transition edit states a facing byte without marking the facing "
+                "group as authored"
+            )
+        for value, name in (
+            (self.prior_facing_raw, "prior_facing_raw"),
+            (self.facing_raw, "facing_raw"),
+        ):
+            if value is not None and (type(value) is not int or not 0 <= value <= 0xFF):
+                raise TransitionFieldError(
+                    f"{name} must be a byte or None, got {value!r}"
+                )
+        if (
+            self.destination is None
+            and self.region is None
+            and not self.arrival_authored
+            and not self.facing_authored
+        ):
+            raise TransitionFieldError(
+                "a transition edit must author a destination, a region, an "
+                "arrival, a facing, or a combination"
+            )
+
+
+@dataclass(frozen=True, slots=True)
+class TransitionApplication:
+    """What applying a project's transition edits to one image produced.
+
+    ``changes`` is the authority's own byte plan over *every* transition record, not
+    only the edited one: an untouched record must re-encode to exactly its original
+    bytes, and emitting all of them is what proves that round trip rather than
+    assuming it. `plan_changes` then drops every no-op, so a build whose transition
+    edits changed nothing contributes no effective change.
+
+    ``provenance`` names only the edits that actually changed a field, so a stored
+    pair whose authored value equals its prior is absent from it.
+    """
+
+    changes: tuple[ByteChange, ...] = ()
+    provenance: tuple[TransitionEditProvenance, ...] = ()
+
+
+def _require_prior(identity: TransitionIdentity, label: str, actual: object,
+                   stored: object) -> None:
+    """Refuse an edit whose stored prior is not what the image holds."""
+    if stored is not None and stored != actual:
+        raise TransitionFieldError(
+            f"{identity} was authored against {label} {stored}, but this image's "
+            f"record holds {actual}; refusing an edit computed against a different image"
+        )
+
+
+def plan_transition_edits(
+    image: bytes,
+    edits: Mapping[TransitionIdentity, AuthoredTransitionEdit],
+    *,
+    profile: RomProfile | None = None,
+) -> TransitionApplication:
+    """Apply a project's stored transition edits to a canonical image.
+
+    In order:
+
+    1. load the canonical corpus through :func:`read_map_transitions`, so a record
+       is reached by `TransitionIdentity` and by nothing else - no address is
+       accepted from the project and none is computed by it;
+    2. check each stored prior against the record the image actually holds;
+    3. stage the authored fields through :meth:`MapTransitions.set_destination`
+       and :meth:`MapTransitions.set_region`, which refuse an unknown transition,
+       an unknown destination map, and an unordered or degenerate region before
+       anything is recorded;
+    4. re-validate the corpus and return its own byte plan.
+
+    Nothing here serializes a record: the one encoder is the codec's
+    `TransitionRecord.to_bytes`, reached through :meth:`MapTransitions.changes`.
+    The edit is a fixed-width overwrite of one 24-byte record, so it allocates
+    nothing, relocates nothing and touches no other record.
+
+    An edit whose authored values all equal what the image already holds is a no-op:
+    it contributes no provenance and, when nothing else changed, no changes at all.
+    That is deliberate - a project that stores a value equal to the base must not
+    make the build claim an edit.
+    """
+    if not edits:
+        return TransitionApplication()
+    canonical = packaged_profile() if profile is None else profile
+    corpus = read_map_transitions(image, canonical)
+    provenance: list[TransitionEditProvenance] = []
+    for identity in sorted(edits):
+        edit = edits[identity]
+        if not isinstance(edit, AuthoredTransitionEdit):
+            raise TransitionFieldError(
+                f"{identity} must be authored as an AuthoredTransitionEdit, "
+                f"got {edit!r}"
+            )
+        entry = corpus.entry(identity)
+        before_destination = corpus.destination(identity)
+        before_region = entry.record.region
+        before_arrival = (
+            entry.record.arrival if entry.record.has_raw_arrival_pair else None
+        )
+        before_facing_raw = entry.record.byte_0x10_raw
+        _require_prior(identity, "destination", before_destination, edit.prior_destination)
+        _require_prior(identity, "region", before_region, edit.prior_region)
+        _require_prior(identity, "arrival", before_arrival, edit.prior_arrival)
+        _require_prior(identity, "facing", before_facing_raw, edit.prior_facing_raw)
+
+        if edit.destination is not None:
+            corpus.set_destination(identity, edit.destination)
+        if edit.region is not None:
+            corpus.set_region(identity, edit.region)
+        if edit.arrival_authored:
+            # After the destination, so the bounds check answers for the map the
+            # player will actually arrive in.
+            corpus.set_arrival(identity, edit.arrival)
+        if edit.facing_authored:
+            # The whole byte is restored, high bits included, so an unresolved
+            # flag cannot be lost by an edit that only meant to turn the player.
+            # A null authored value means "state no override" - which must KEEP
+            # the canonical gate bits rather than zero the whole byte, because
+            # the gate is the other half of this field.
+            corpus._edits[identity] = corpus.entry(identity).record.with_facing_raw(
+                edit.facing_raw
+                if edit.facing_raw is not None
+                else (before_facing_raw & FACING_MASK)
+            )
+
+        after_destination = corpus.destination(identity)
+        after_region = corpus.entry(identity).record.region
+        after_arrival = (
+            corpus.entry(identity).record.arrival
+            if corpus.entry(identity).record.has_raw_arrival_pair
+            else None
+        )
+        after_facing_raw = corpus.entry(identity).record.byte_0x10_raw
+        destination_changed = after_destination != before_destination
+        region_changed = after_region != before_region
+        arrival_changed = after_arrival != before_arrival
+        facing_changed = after_facing_raw != before_facing_raw
+        if not (
+            destination_changed or region_changed or arrival_changed or facing_changed
+        ):
+            continue
+        provenance.append(
+            TransitionEditProvenance(
+                identity=identity.key,
+                source_map=identity.source.index,
+                index=identity.index,
+                file_offset=entry.file_offset,
+                prior_destination=str(before_destination) if destination_changed else "",
+                destination=str(after_destination) if destination_changed else "",
+                prior_region=(
+                    (before_region.first, before_region.second)
+                    if region_changed
+                    else None
+                ),
+                region=(
+                    (after_region.first, after_region.second) if region_changed else None
+                ),
+                prior_arrival=(
+                    (before_arrival.x, before_arrival.y)
+                    if arrival_changed and before_arrival is not None
+                    else None
+                ),
+                arrival=(
+                    (after_arrival.x, after_arrival.y)
+                    if arrival_changed and after_arrival is not None
+                    else None
+                ),
+                arrival_changed=arrival_changed,
+                prior_facing_raw=before_facing_raw if facing_changed else None,
+                facing_raw=after_facing_raw if facing_changed else None,
+                facing_changed=facing_changed,
+            )
+        )
+    if not provenance:
+        return TransitionApplication()
+    # `validate()` re-reads every record - edited and untouched - and returns them;
+    # reading it is the corpus-wide check, and `changes()` is the one serializer.
+    corpus.validate()
+    return TransitionApplication(
+        changes=corpus.changes(),
+        provenance=tuple(provenance),
+    )
+
+
+# --- authoring: project persistence ------------------------------------------
+#
+# The one authority through which a transition edit reaches the project. It is
+# shaped like `map_paint.set_layout_cells` on purpose: validate the WHOLE batch
+# against the canonical image, load the project ONCE, apply the batch on top of
+# what is committed, and write only when the result actually differs. That is what
+# makes a batch one write, an undo of a transition that was never authored a
+# removal, and a re-issue of the value already committed a no-op.
+
+
+def read_transition_edits(project_dir) -> "TransitionEdits":
+    """The committed authored transition edits for a project, in one load.
+
+    Reads the project's own document only. It consults no image, so a caller that
+    only wants to know what is authored can ask without one.
+    """
+    from .project import read_project
+
+    return read_project(project_dir).transitions
+
+
+def set_transition_edits(
+    project_dir,
+    profile: RomProfile,
+    canonical_bytes: bytes,
+    edits: Mapping[TransitionIdentity, "TransitionEdit | None"],
+) -> bool:
+    """Validate and persist a batch of transition edits in ONE write.
+
+    ``edits`` maps a transition identity to the fields the author is setting, or to
+    ``None`` meaning "this transition carries no authored edit" - which is how an
+    undo of a transition that was never edited reverses.
+
+    The WHOLE batch is validated against the canonical image first, through the same
+    authority a build uses, so a batch containing one illegal entry writes nothing
+    at all rather than half of itself, and "what may be authored" and "what may be
+    built" cannot drift apart. The project is then loaded ONCE, the batch is applied
+    on top of what is already committed, and the document is rewritten only when the
+    resulting set differs from the one that was loaded.
+
+    The stored prior values are read from the canonical record HERE, not taken from
+    the caller: the project file's proof-of-base is then something this SDK measured
+    rather than something a caller asserted.
+
+    Setting a field back to the value the canonical record already holds removes
+    that field's stored pair rather than recording a pretend edit, so a project
+    cannot claim an authority it does not have. Returns whether the project changed.
+    """
+    from .project import (
+        AuthoredTransition,
+        TransitionEdits,
+        read_project,
+        write_transition_edits,
+    )
+
+    corpus = read_map_transitions(canonical_bytes, profile)
+    # Pass 1 - resolve and refuse the whole batch before any document is touched.
+    requests: dict[TransitionIdentity, TransitionEdit] = {}
+    for identity, request in sorted(edits.items()):
+        if request is None:
+            continue
+        if not isinstance(request, TransitionEdit):
+            raise TransitionFieldError(
+                f"{identity} must be authored as a TransitionEdit, got {request!r}"
+            )
+        corpus.entry(identity)
+        if request.destination is not None:
+            corpus.key_for(request.destination)
+        requests[identity] = request
+
+    committed = read_project(project_dir).transitions.edits()
+    updated = dict(committed)
+    for identity, request in requests.items():
+        key = (identity.source.index, identity.index)
+        existing = updated.get(key)
+        prior_destination = existing.prior_destination if existing else None
+        destination = existing.destination if existing else None
+        prior_region = existing.prior_region if existing else None
+        region = existing.region if existing else None
+        prior_arrival = existing.prior_arrival if existing and existing.arrival_authored else None
+        arrival = existing.arrival if existing and existing.arrival_authored else None
+        arrival_authored = bool(existing and existing.arrival_authored)
+        before_destination = corpus.destination(identity)
+        before_region = corpus.entry(identity).record.region
+        before_arrival = (
+            corpus.entry(identity).record.arrival
+            if corpus.entry(identity).record.has_raw_arrival_pair
+            else None
+        )
+        if request.arrival is not None and not corpus.entry(identity).record.has_raw_arrival_pair:
+            raise TransitionFieldError(
+                f"{identity} is a 169-class record whose +0x14/+0x16 pair is a "
+                "scene-relative delta, not an arrival point; authoring an arrival "
+                "on this class is refused rather than written as a position"
+            )
+        before_facing_raw = corpus.entry(identity).record.byte_0x10_raw
+        prior_facing_raw = (
+            existing.prior_facing_raw if existing and existing.facing_authored else None
+        )
+        facing_raw = existing.facing_raw if existing and existing.facing_authored else None
+        facing_authored = bool(existing and existing.facing_authored)
+        if request.destination is not None:
+            if request.destination == before_destination:
+                # Set back to what the base holds: an authored pair that changes
+                # nothing would be a claim this project does not have.
+                prior_destination = destination = None
+            else:
+                prior_destination = before_destination.key
+                destination = request.destination.key
+        if request.region is not None:
+            if request.region == before_region:
+                prior_region = region = None
+            else:
+                prior_region, region = before_region, request.region
+        if request.arrival is not None:
+            # Validate the point against the map it will be used in, after the
+            # destination has been resolved, so an off-map arrival is refused at
+            # authoring time rather than discovered as a runtime softlock.
+            staged = corpus.entry(identity).record
+            if request.destination is not None:
+                staged = staged.with_destination_key(corpus.key_for(request.destination))
+            target = corpus.map_for_key(staged.destination_key)
+            width, height = corpus.destination_bounds(target)
+            if not (0 <= request.arrival.x < width and 0 <= request.arrival.y < height):
+                raise TransitionFieldError(
+                    f"{identity} would place the player at "
+                    f"({request.arrival.x}, {request.arrival.y}) in {target}, whose "
+                    f"walkable extent is {width}x{height}; that point is off the map"
+                )
+            point = (request.arrival.x, request.arrival.y)
+            prior_point = (
+                (before_arrival.x, before_arrival.y) if before_arrival is not None else None
+            )
+            arrival_authored = True
+            if point == prior_point:
+                # Stated back to the base value: no authored arrival.
+                prior_arrival = arrival = None
+                arrival_authored = False
+            else:
+                prior_arrival, arrival = prior_point, point
+        if request.facing is not None:
+            # `TransitionEdit.facing` is the ARRIVAL facing - the high-nibble
+            # override the 566 update path turns into (v >> 4) - 1 - because that
+            # is the half that forces the sprite. The low two bits are the door
+            # gate and are carried through untouched.
+            authored_raw = ((request.facing + 1) << 4) | (before_facing_raw & FACING_MASK)
+            if authored_raw == before_facing_raw:
+                prior_facing_raw = facing_raw = None
+                facing_authored = False
+            else:
+                prior_facing_raw, facing_raw = before_facing_raw, authored_raw
+                facing_authored = True
+        if (
+            destination is None
+            and region is None
+            and not arrival_authored
+            and not facing_authored
+        ):
+            updated.pop(key, None)
+        else:
+            updated[key] = AuthoredTransition(
+                prior_destination=prior_destination,
+                destination=destination,
+                prior_region=prior_region,
+                region=region,
+                prior_arrival=prior_arrival,
+                arrival=arrival,
+                arrival_authored=arrival_authored,
+                prior_facing_raw=prior_facing_raw,
+                facing_raw=facing_raw,
+                facing_authored=facing_authored,
+            )
+    for identity, request in sorted(edits.items()):
+        if request is None:
+            updated.pop((identity.source.index, identity.index), None)
+
+    if updated == committed:
+        return False
+    write_transition_edits(project_dir, TransitionEdits.from_edits(updated))
+    return True
+
+
+def remove_transition_edit(project_dir, identity: TransitionIdentity) -> bool:
+    """Drop one transition's authored edit. Returns whether anything was removed."""
+    from .project import TransitionEdits, read_project, write_transition_edits
+
+    project = read_project(project_dir)
+    committed = project.transitions.edits()
+    key = (identity.source.index, identity.index)
+    if key not in committed:
+        return False
+    updated = dict(committed)
+    del updated[key]
+    write_transition_edits(project_dir, TransitionEdits.from_edits(updated))
+    return True
+
+
+def read_map_transitions(image: bytes, profile: RomProfile) -> MapTransitions:
+    """Resolve a transition corpus from an in-memory image and its profile.
+
+    The bytes seam `load_map_transitions` uses once identification is done, exposed
+    so a caller that already holds the canonical image - the project build and its
+    validation step - does not re-open and re-hash an 8 MiB file per domain. The
+    profile is the authority for where the map table is, exactly as it is on the
+    file path; the image is not checked against it here, because
+    `apply_plan`/`identify_rom` already own that, and duplicating it would mean two
+    identity rules that could disagree.
+
+    A profile that declares no map-entry table has no transition corpus to read,
+    and that is refused by name rather than answered with an empty corpus.
+    """
+    if not capability.declared(profile, capability.Capability.MAP_ENTRIES):
+        raise TransitionProfileError(
+            f"profile {profile.id!r} does not declare map_entries; map transition "
+            "access is unavailable for this ROM"
+        )
+    table_profile = profile.map_entries
+    assert table_profile is not None
+    table_offset, _ = me.resolve_map_entry_table_range(table_profile, len(image))
+    return _read_corpus(
+        image,
+        table_offset=table_offset,
+        table_count=table_profile.count,
+        profile_id=profile.id,
+        base_sha256=profile.identity.sha256,
+    )
+
+
 def load_map_transitions(
     path: str | Path, catalog: RomProfileCatalog
 ) -> MapTransitions:
@@ -588,8 +1430,6 @@ def load_map_transitions(
         error_type=TransitionProfileError,
         check_header=True,
     )
-    table_profile = profile.map_entries
-    assert table_profile is not None
 
     with source.open("rb") as stream:
         before = os.fstat(stream.fileno())
@@ -608,14 +1448,7 @@ def load_map_transitions(
     ):
         raise RomChangedError(f"ROM changed while transitions were read: {source}")
 
-    table_offset, _ = me.resolve_map_entry_table_range(table_profile, len(image))
-    return _read_corpus(
-        image,
-        table_offset=table_offset,
-        table_count=table_profile.count,
-        profile_id=profile.id,
-        base_sha256=identification.hashes.sha256,
-    )
+    return read_map_transitions(image, profile)
 
 
 __all__ = [
@@ -625,9 +1458,12 @@ __all__ = [
     "ROOT_COUNT_OFFSET",
     "SUPPORTED_CLASS_RAW",
     "TRANSITION_SIZE",
+    "AuthoredTransitionEdit",
     "MapTransitionError",
     "MapTransitions",
     "MapTransitionsError",
+    "TransitionApplication",
+    "TransitionEdit",
     "TransitionEntry",
     "TransitionFieldError",
     "TransitionIdentity",
@@ -635,4 +1471,9 @@ __all__ = [
     "TransitionRegion",
     "UnknownTransitionError",
     "load_map_transitions",
+    "plan_transition_edits",
+    "read_map_transitions",
+    "read_transition_edits",
+    "remove_transition_edit",
+    "set_transition_edits",
 ]

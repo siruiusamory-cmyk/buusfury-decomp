@@ -1,9 +1,11 @@
 # WEBFOOT-LZ-LITERAL-BASE-001 - correcting the packed-container literal-base reset
 
-STATUS: **implemented, validated, frozen for independent review.**
-Class: targeted decoder correction. Baseline: the frozen, accepted
-`MAP-GFX-DIAG-001` candidate `13e9e11` (`docs/research/BUU_MAP_GRAPHICS_DIAG.md`),
-whose content also sits uncommitted in the main checkout.
+STATUS: **COMPLETE AND MERGED (2026-09-26).** Class: targeted decoder correction.
+Baseline: the frozen, accepted `MAP-GFX-DIAG-001` candidate `13e9e11`
+(`docs/research/BUU_MAP_GRAPHICS_DIAG.md`). Implementation `5c452ed`, closure
+documentation fix `5d22982`, merge `4f8febe`; frozen reviewed candidate
+`5d229821da42609c8c3d9222b580f96e1b7281f4`, independent review with no blocking
+findings, CI green (`test-sdk`, pipeline `2884791492`).
 
 **public progress impact: NONE.** The correction changes decoded bytes and fixes
 rendered map art, but no published capability, capability count, blocker,
@@ -179,7 +181,12 @@ Measured in this checkout, on the canonical image:
 | `pytest tests/integration/test_logx_gfxscan_rom.py tests/unit/test_logx_gfxscan_probe.py` | 70 passed |
 | `pytest tests/integration/test_asset_export_rom.py` | 81 passed |
 | `pytest -m fast` (the portable gate, all of `tests/unit`) | 2,931 passed, 3 skipped, **1 failed** - a pre-existing stale build artifact, see below |
+| CI `test-sdk` on the frozen candidate (`5d22982`) | **passed**, pipeline `2884791492` |
 | `git diff --check` | clean |
+
+The CI job runs the whole portable suite (all of `tests/unit`) on the frozen
+candidate and passed; the local single failure below does not reproduce there
+because it reads a git-ignored build artifact that CI does not have.
 
 **The one `-m fast` failure is not ticket-caused.**
 `tests/unit/test_capability_registry.py::test_the_built_page_renders_the_registry_list`
@@ -212,3 +219,35 @@ diagnostic ticket left behind, not part of this correction.
 - **The 369 / 77 populations are measured by the corrected decoder**, not
   independently runtime-checked per map; the direction is fixed by bank 141 and
   by maps 39/40, which are.
+
+## 8. Independent review and integration
+
+Two fresh-context reviews ran on the frozen worktree
+`<ticket-worktrees>\webfoot-lz-literal-base-001`, both readable
+(`the local reviewer`, `local_headless`):
+
+1. Candidate `5c452ed`: **no blocking findings**; the reviewer verified the three
+   decoder paths, the unit regression and its mutation control, every re-baselined
+   pin and control, and the document corrections, and answered all five questions
+   in the ticket's favour. Two non-blocking notes: the preserved MAP-WARPS planning
+   doc bundled into the correction commit (judged legitimate lifecycle
+   bookkeeping), and a `git show --check` false positive on the diagnostic commit's
+   blockquote lines with no actual trailing whitespace.
+2. Candidate `5d22982`: re-freeze after CI, on `5c452ed`, failed two
+   `tests/unit/test_workflow_migration.py` assertions about `PROJECT_<local-state-name>`. The fix
+   was documentation-only (`PROJECT_<local-state-name>`'s stopping point on one line plus a link to
+   the last archived closure); it is committed separately (`5d22982`) so the
+   reviewed `5c452ed` remains in history. The second review returned
+   **PASS / CLOSE-READY** with the same two non-blocking notes and no new finding.
+
+Integration: pushed as `ticket/webfoot-lz-literal-base-001`, merge request
+[!86](https://gitlab.com/siruiusamory/log1-remake/-/merge_requests/86), CI
+`test-sdk` green on `5d22982` (pipeline `2884791492`), merged as `4f8febe`. The
+main checkout was then fast-forwarded to the merge; its uncommitted copies were
+byte-identical to the merged content, and the one file that differed (the
+diagnostic evidence document, which the branch's follow-up commit had extended)
+was backed up before the sync.
+
+The reviewer did not re-run the ROM-gated suites - no canonical ROM exists in the
+review worktree - so those measured results are the implementer's, reported above
+as such.

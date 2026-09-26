@@ -245,6 +245,10 @@ def test_the_manifest_is_created_beside_the_output(service, tmp_path):
         "skipped": SKIPPED,
     }
     assert sum(document["skipped_reasons"].values()) == SKIPPED
+    # The limitation travels with the artefact, not only with the window that
+    # made it. The reviewer noted this was asserted nowhere.
+    assert document["progression"] == warprand.PROGRESSION_DISCLAIMER
+    assert "impossible to complete" in document["progression"]
 
 
 def test_the_manifest_carries_the_per_transition_mapping(service, tmp_path):

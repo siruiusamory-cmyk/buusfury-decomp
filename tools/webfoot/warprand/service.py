@@ -67,6 +67,7 @@ from typing import Callable, Mapping
 
 from .. import capability
 from ..cli import load_catalog
+from ..gba_header import GbaHeaderError
 from ..profile import RomProfile, RomProfileCatalog, VerificationStatus
 from ..rom import RomIdentification, RomReadError, identify_rom
 from ..warp_randomizer import (
@@ -433,9 +434,31 @@ class WarpRandomizerService:
     # --- verification ----------------------------------------------------
 
     def _identify(self, path: str | Path) -> tuple[RomIdentification | None, str]:
-        """Identify ``path``, or return ``(None, problem)`` for a user error."""
+        """Identify ``path``, or return ``(None, problem)`` for a user error.
+
+        Three distinct failure families, and all three are ordinary user input
+        rather than defects, so all three are turned into a sentence here:
+
+        * ``RomReadError`` - the file is missing, is a directory, or changed
+          while it was being read;
+        * ``GbaHeaderError`` - the file is too short to carry a GBA header, or
+          its header text fields are not ASCII. A user who picks a text file, a
+          save, a savestate or an empty file out of the dialog's "All files"
+          filter lands here, and it is the *common* case for a wrong pick;
+        * ``OSError`` - a permission denial or a vanished drive.
+
+        ``GbaHeaderError`` is a ``ValueError`` raised out of
+        :func:`tools.webfoot.rom.identify_rom`, and it was initially uncaught,
+        which broke this module's "never raises" contract: the window then kept
+        the *previous* file's "Verified supported ROM" verdict on screen for a
+        file that is not a ROM at all, with Randomize enabled. It is caught
+        explicitly rather than as a bare ``ValueError`` so a genuine programmer
+        error still escapes to the crash surface.
+        """
         try:
             identification = identify_rom(Path(path), self.catalog)
+        except GbaHeaderError as exc:
+            return None, f"The selected file is not a Game Boy Advance ROM: {exc}"
         except RomReadError as exc:
             return None, f"The selected file could not be read: {exc}"
         except OSError as exc:  # a permission denial, a vanished drive
@@ -559,25 +582,32 @@ class WarpRandomizerService:
 
         The signature the ticket names, and the whole surface the window uses.
 
-        Two phases, in this order. First the *write request* - seed, output name,
-        whether the output is the input or one of its aliases, whether the folder
-        is writable, whether an existing file needs confirmation. Only then the
-        *input image*: is it the supported one, and what does it randomize to?
-        The cheap, total, path-level rules come first on purpose, which is the
-        same ordering ``webfoot.write.emit_image`` uses and for the same reason -
-        the input path also exists, so the alias check has to run before the
-        overwrite policy or writing over the input would raise the wrong rule and
-        name the wrong fix.
+        Ordering is a safety property here, not a style choice. The path-level
+        rules run first - is the output the input under some spelling, is the
+        folder writable - because they are cheap, total, and the same ordering
+        ``webfoot.write.emit_image`` uses: the input path also exists, so the
+        alias check has to run before the overwrite policy or writing over the
+        input would raise the wrong rule and name the wrong fix.
+
+        The destructive step is deliberately **last**. Confirming an overwrite
+        deletes the previous output and its manifest, and that must not happen
+        until the run is certain to produce a replacement - so the input is
+        verified, the image is read, and the whole mapping is planned *before*
+        anything is removed. An earlier ordering cleared the destination in the
+        path phase and could therefore destroy a user's previous randomized ROM
+        and then refuse the run on account of a bad input.
 
         ``policy`` is validated and refused when unknown - it is not a knob.
         Only :data:`SUPPORTED_POLICIES` may be passed, and the window offers no
         control for it.
 
-        ``on_progress`` is optional and called with ``(step, total, label)`` at
-        each entry of :data:`PROGRESS_STEPS`, from whatever thread is running
-        this call. It exists so a window can show real progress without the core
-        growing a callback it does not need; a caller that passes nothing pays
-        nothing.
+        ``on_progress`` is optional and called with ``(step, total, label)`` as
+        each entry of :data:`PROGRESS_STEPS` is **entered**, from whatever thread
+        is running this call. ``step`` is therefore the phase now beginning and
+        ``step - 1`` phases are complete: a bar fed from these reports shows
+        ``step - 1`` and can never claim work that has not finished. It exists so
+        a window can show real progress without the core growing a callback it
+        does not need; a caller that passes nothing pays nothing.
         """
         total_steps = len(PROGRESS_STEPS)
 
@@ -598,7 +628,7 @@ class WarpRandomizerService:
         if not str(output).strip():
             raise OutputPathRefusedError("Choose an output file name.")
 
-        # --- phase A: is this write request legal? (no input image read) ---
+        # --- phase A: is this write request legal? (nothing is written yet) ---
 
         # The input is read-only on every path, including a hard-link or
         # symlink alias of it, which only a filesystem identity check catches.
@@ -626,17 +656,29 @@ class WarpRandomizerService:
         if not os.access(parent, os.W_OK):
             raise OutputPathRefusedError(f"The output folder is not writable: {parent}")
 
-        if not self._clear_existing(
-            output,
-            manifest_path,
-            expected_sha256=expected.sha256 or "",
-            expected_size=expected.size,
-            overwrite=overwrite,
-        ):
-            raise OutputAlreadyExistsError(
-                f"{output.name} already exists in {parent}. Choose another name, "
-                "or confirm that you want to replace it."
-            )
+        # A collision is *detected and refused* here so the cheapest answer wins,
+        # but nothing is destroyed yet: the unlink waits until the replacement is
+        # known to be producible (see the point of no return below).
+        occupied = [path for path in (output, manifest_path) if path.exists()]
+        if occupied:
+            if not overwrite:
+                raise OutputAlreadyExistsError(
+                    f"{output.name} already exists in {parent}. Choose another name, "
+                    "or confirm that you want to replace it."
+                )
+            # Refused even with the overwrite confirmed: replacing a copy of the
+            # verified image would destroy a clean ROM, the one file this tool
+            # exists to protect. Checked here, early, so the refusal is cheap.
+            for path in occupied:
+                if self._is_canonical_copy(
+                    path,
+                    expected_sha256=expected.sha256 or "",
+                    expected_size=expected.size,
+                ):
+                    raise OutputPathRefusedError(
+                        f"{path} is a copy of the verified ROM, so it is not "
+                        "replaced. Choose a different output name."
+                    )
 
         # --- phase B: is the input the supported image? ---
 
@@ -660,6 +702,13 @@ class WarpRandomizerService:
             raise WarpRandomizerAppError(
                 f"The randomizer refused this run: {exc}"
             ) from exc
+
+        # --- the point of no return: the run is known to be producible ---
+
+        # Only now may a confirmed overwrite remove the previous artefacts. The
+        # canonical-copy guard already ran in the path phase; what is left is the
+        # deletion, which must not happen a moment before a replacement exists.
+        self._remove_existing(output, manifest_path, overwrite=overwrite)
 
         report(3)
         try:
@@ -754,45 +803,31 @@ class WarpRandomizerService:
             raise UnsupportedRomError(str(exc)) from exc
         return profile
 
-    def _clear_existing(
-        self,
-        output: Path,
-        manifest_path: Path,
-        *,
-        expected_sha256: str,
-        expected_size: int,
-        overwrite: bool,
-    ) -> bool:
-        """Make room for the output, or report that confirmation is needed.
+    @staticmethod
+    def _remove_existing(output: Path, manifest_path: Path, *, overwrite: bool) -> None:
+        """Delete the artefacts a confirmed overwrite replaces.
 
-        Returns ``False`` when an existing file is present and ``overwrite`` is
-        not set, which the caller turns into
-        :class:`OutputAlreadyExistsError`. With ``overwrite`` set, an existing
-        file that *is a copy of the canonical image* is still refused: replacing
-        it would destroy a clean ROM, which is the one file this tool exists to
-        protect.
+        The only destructive step in this module, and it is called at the point of
+        no return - after the input has been verified, the image read and the whole
+        mapping planned - so it can only run when a replacement is certain to be
+        producible. An earlier ordering deleted here *before* validating the input
+        and could therefore destroy a user's previous randomized ROM and then
+        refuse the run.
+
+        Detection and refusal of the collision, including the canonical-copy
+        guard, happens earlier in the path phase where it is cheap.
         """
-        existing = [path for path in (output, manifest_path) if path.exists()]
-        if not existing:
-            return True
         if not overwrite:
-            return False
-        for path in existing:
-            if self._is_canonical_copy(
-                path, expected_sha256=expected_sha256, expected_size=expected_size
-            ):
-                raise OutputPathRefusedError(
-                    f"{path} is a copy of the verified ROM, so it is not replaced. "
-                    "Choose a different output name."
-                )
-        for path in existing:
+            return
+        for path in (output, manifest_path):
+            if not path.exists():
+                continue
             try:
                 path.unlink()
             except OSError as exc:
                 raise OutputPathRefusedError(
                     f"The existing file {path} could not be replaced: {exc}"
                 ) from exc
-        return True
 
     @staticmethod
     def _is_canonical_copy(path: Path, *, expected_sha256: str, expected_size: int) -> bool:

@@ -138,3 +138,9 @@ LICENSE
 -------
 
 Mozilla Public License 2.0. See LICENSE.
+
+This application is built with, and ships, other people's software, including
+Python and Qt. THIRD-PARTY-NOTICES.txt lists what is bundled and under which
+licences. Read the "Known gap" section at the end of that file: the full LGPL
+licence texts for Qt are not bundled yet, which matters if this build is ever
+distributed publicly.

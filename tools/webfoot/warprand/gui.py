@@ -489,19 +489,52 @@ class MainWindow(QMainWindow):
             self._derive_output_path()
 
     def verify_selected_rom(self) -> warprand.RomVerification | None:
-        """Verify whatever is in the ROM field and reflect it in the window."""
+        """Verify whatever is in the ROM field and reflect it in the window.
+
+        The cached verdict is cleared *first*, before anything can go wrong. If
+        this method could ever exit with the previous file's verdict still cached,
+        the window would show "Verified supported ROM" for a file that is not a
+        ROM and leave Randomize enabled - which is exactly the defect an
+        independent review found here, when the boundary raised on a file it
+        could not parse instead of returning a verdict.
+        """
         text = self.rom_edit.text().strip()
+        self._verification = None
         if not text:
-            self._verification = None
             self._paint_verdict(None)
             self._refresh_randomize_enabled()
             return None
 
-        verification = self._service.verify_rom(text)
+        try:
+            verification = self._service.verify_rom(text)
+        except Exception as exc:  # the boundary promised never to raise
+            self._paint_unreadable(exc)
+            self._refresh_randomize_enabled()
+            self.show_details(
+                f"{type(exc).__name__}: {exc}",
+                traceback.format_exc(),
+            )
+            return None
+
         self._verification = verification
         self._paint_verdict(verification)
         self._refresh_randomize_enabled()
         return verification
+
+    def _paint_unreadable(self, exc: BaseException) -> None:
+        """Report a file the boundary could not even return a verdict for.
+
+        Randomize stays disabled, because there is no verdict saying the image is
+        supported. This state exists only for a defect in the boundary; ordinary
+        unreadable files come back as an UNSUPPORTED verdict with a sentence.
+        """
+        self.rom_status_label.setText(
+            f"Unsupported ROM \u2717  This file could not be checked "
+            f"({type(exc).__name__})."
+        )
+        self.rom_status_label.setStyleSheet(
+            f"color: {theme.color('danger').name()}; background: transparent;"
+        )
 
     def _paint_verdict(self, verification: warprand.RomVerification | None) -> None:
         """Show the verdict as the theme's state role, glyph included.
@@ -704,8 +737,14 @@ class MainWindow(QMainWindow):
         self.progress_caption.setText("")
 
     def _on_progress(self, step: int, total: int, label: str) -> None:
+        """Show the phase now beginning, and the phases already finished.
+
+        The boundary reports ``step`` as the phase being *entered*, so the bar
+        shows ``step - 1``: it can lag the truth but can never claim work that
+        has not completed.
+        """
         self.progress_bar.setRange(0, total)
-        self.progress_bar.setValue(step)
+        self.progress_bar.setValue(max(0, step - 1))
         self.progress_caption.setText(label + "\u2026")
 
     def _refuse(self, message: str) -> None:

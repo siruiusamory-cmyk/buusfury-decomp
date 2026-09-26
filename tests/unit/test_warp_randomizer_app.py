@@ -219,6 +219,56 @@ def test_an_empty_path_is_refused(canonical):
     assert verification.problem == "Choose a ROM file first."
 
 
+@pytest.mark.parametrize(
+    ("name", "size"),
+    (("empty.bin", 0), ("tiny.bin", 24), ("short.bin", 191)),
+)
+def test_a_file_too_short_for_a_gba_header_is_refused_not_raised(
+    canonical, tmp_path, name, size
+):
+    """The blocking defect an independent review found, pinned.
+
+    ``identify_rom`` raises ``GbaHeaderError`` - a ``ValueError`` - for any file
+    under 192 bytes, and this method's contract is that it *returns* a verdict.
+    Left uncaught, the raise escaped into the window, which then kept the previous
+    file's "Verified supported ROM" verdict on screen with Randomize enabled: a
+    false verified state for a file that is not a ROM at all. Anything a user can
+    pick out of the dialog's "All files" filter must come back as a refusal.
+    """
+    candidate = tmp_path / name
+    candidate.write_bytes(bytes(size))
+
+    verification = canonical.verify_rom(candidate)
+
+    assert not verification.ok
+    assert verification.status == warprand.UNSUPPORTED
+    assert verification.problem
+    assert verification.headline == "Unsupported ROM \u2717"
+
+
+def test_a_file_with_a_non_ascii_header_is_refused_not_raised(canonical, tmp_path):
+    """The other route into ``GbaHeaderError``: an undecodable header field."""
+    candidate = tmp_path / "bytes.bin"
+    candidate.write_bytes(bytes(range(256)) * 8)
+
+    verification = canonical.verify_rom(candidate)
+
+    assert not verification.ok
+    assert verification.problem
+
+
+def test_an_unparseable_input_is_refused_by_the_run_too(boundary, tmp_path):
+    """The same file must not reach the randomizer as an unexpected crash."""
+    service, _, _ = boundary
+    candidate = tmp_path / "tiny.bin"
+    candidate.write_bytes(b"\x00" * 24)
+
+    with pytest.raises(warprand.UnsupportedRomError) as caught:
+        service.randomize_warps(candidate, tmp_path / "out.gba", "Goku")
+
+    assert "not a Game Boy Advance ROM" in str(caught.value)
+
+
 def test_shorten_hash_is_the_form_the_ticket_shows():
     assert (
         warprand.shorten_hash(CANONICAL_SHA256) == "940AD5F0...F059E"
@@ -249,6 +299,26 @@ def test_the_output_may_not_be_a_hard_link_to_the_input(boundary, tmp_path):
         alias.hardlink_to(source)
     except OSError:  # pragma: no cover - a filesystem without hard links
         pytest.skip("this filesystem does not support hard links")
+
+    with pytest.raises(warprand.OutputPathRefusedError):
+        service.randomize_warps(alias, source, "Goku")
+
+    assert source.read_bytes() == synthetic_image()
+
+
+def test_the_output_may_not_be_a_symlink_to_the_input(boundary, tmp_path):
+    """The other alias shape. A symlink is not a hard link and needs its own case.
+
+    ``paths_are_the_same_file`` resolves the spelling before comparing, so a
+    symlink is caught by the path half rather than the inode half - which means
+    the hard-link test does not cover it. The reviewer noted this was unpinned.
+    """
+    service, source, _ = boundary
+    alias = tmp_path / "link.gba"
+    try:
+        alias.symlink_to(source)
+    except (OSError, NotImplementedError):  # pragma: no cover - needs a privilege
+        pytest.skip("this machine cannot create symlinks without elevation")
 
     with pytest.raises(warprand.OutputPathRefusedError):
         service.randomize_warps(alias, source, "Goku")
@@ -427,28 +497,57 @@ def test_an_existing_manifest_is_refused_until_overwrite_is_confirmed(boundary, 
     assert manifest.read_text(encoding="utf-8") == "{}"
 
 
-def test_confirmed_overwrite_clears_the_previous_artifacts(boundary, tmp_path, monkeypatch):
+def test_confirmed_overwrite_keeps_the_old_artifacts_until_a_replacement_exists(
+    boundary, tmp_path, monkeypatch
+):
+    """A confirmed overwrite must not destroy anything before it can replace it.
+
+    Regression from the independent review. The previous ordering unlinked the old
+    output and manifest in the *path* phase, so a run that then failed left the
+    user with neither the old artefact nor a new one. The deletion now happens
+    only after the whole mapping is planned, so a refusal at the planner leaves the
+    previous files exactly where they were.
+    """
     service, source, profile = boundary
     output = tmp_path / "out.gba"
-    output.write_bytes(b"stale")
-    service.manifest_path_for(output).write_text("{}", encoding="utf-8")
+    output.write_bytes(b"the previous randomized ROM")
+    manifest = service.manifest_path_for(output)
+    manifest.write_text("{}", encoding="utf-8")
+
+    def refusing_planner(image, matched_profile, seed):
+        raise WarpRandomizerError("stop at the planner")
 
     monkeypatch.setattr(
         warprand.WarpRandomizerService, "_profile_for", lambda self, ident: profile
     )
-
-    def recorder(image, matched_profile, seed):
-        raise WarpRandomizerError("recorder stops the run here")
-
-    monkeypatch.setattr(warprand, "plan_warp_randomization", recorder)
+    monkeypatch.setattr(warprand, "plan_warp_randomization", refusing_planner)
 
     with pytest.raises(warprand.WarpRandomizerAppError):
         service.randomize_warps(source, output, "Goku", overwrite=True)
 
-    # Confirmation means the confirmed overwrite really did make room - the run
-    # got past the collision and failed later, in the planner.
-    assert not output.exists()
-    assert not service.manifest_path_for(output).exists()
+    assert output.read_bytes() == b"the previous randomized ROM"
+    assert manifest.read_text(encoding="utf-8") == "{}"
+
+
+def test_a_bad_input_never_destroys_a_previous_output(boundary, tmp_path):
+    """The same guarantee for the review's own probe: a wrong input image.
+
+    A confirmed overwrite of an existing output, refused because the input is not
+    a ROM. The existing output and its manifest must both survive.
+    """
+    service, _, _ = boundary
+    bad_source = tmp_path / "not-a-rom.bin"
+    bad_source.write_bytes(b"this is not a game boy advance image at all")
+    output = tmp_path / "victim.gba"
+    output.write_bytes(b"a previous randomized ROM")
+    manifest = service.manifest_path_for(output)
+    manifest.write_text("{}", encoding="utf-8")
+
+    with pytest.raises(warprand.UnsupportedRomError):
+        service.randomize_warps(bad_source, output, "Goku", overwrite=True)
+
+    assert output.read_bytes() == b"a previous randomized ROM"
+    assert manifest.read_text(encoding="utf-8") == "{}"
 
 
 def test_a_copy_of_the_canonical_image_is_never_replaced(boundary, tmp_path):

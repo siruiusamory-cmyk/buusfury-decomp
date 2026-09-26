@@ -68,7 +68,12 @@ a = Analysis(
     pathex=['.'],
     binaries=[],
     datas=[('tools/webfoot/data/roms.yaml', 'tools/webfoot/data')],
-    hiddenimports=[],
+    # The profile catalog is reached through a *string*
+    # `importlib.resources.files("tools.webfoot.data")`, which PyInstaller cannot
+    # follow, and in one place through a function-local import it follows only
+    # incidentally. Naming the package makes its inclusion a declaration rather
+    # than a coincidence; an independent review flagged the earlier reliance.
+    hiddenimports=['tools.webfoot.data'],
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],

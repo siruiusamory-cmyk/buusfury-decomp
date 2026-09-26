@@ -109,19 +109,24 @@ appears in `gui.py`'s executable code.
 
 | File | Gate | Result |
 | --- | --- | --- |
-| `tests/unit/test_warp_randomizer_app.py` | `fast` | 39 passed |
-| `tests/unit/test_warp_randomizer_gui.py` | `fast` | 43 passed |
+| `tests/unit/test_warp_randomizer_app.py` | `fast` | 48 passed |
+| `tests/unit/test_warp_randomizer_gui.py` | `fast` | 51 passed |
 | `tests/integration/test_warp_randomizer_app_rom.py` | `rom` | 16 passed |
 
-The whole randomizer surface - the predecessor's two files included - was re-run
-on the frozen commit in one pass: **155 passed** across
+(The counts move with each correction round; the numbers above are the final
+ones. An earlier revision of this table said 39 and 43, which was simply wrong -
+the independent reviewer measured 35 and 47 and was right to flag it.)
+
+The whole randomizer surface - the predecessor's two files included - was run on
+the frozen commit in one pass: **155 passed** across
 `tests/unit/test_warp_randomizer.py`, the two new `unit` files, and both
-`tests/integration` ROM files.
+`tests/integration` ROM files. Re-run after the review corrections.
 
 The two new `unit` files use synthetic fixtures (a 4 KB image with a parseable
 GBA header and its own profile), so the portable gate proves the boundary's
-rules - wrong size, wrong hash, missing file, input==output including a **hard
-link**, collision, the canonical-copy guard, seed sanitisation versus seed
+rules - wrong size, wrong hash, a file too short to carry a GBA header, missing
+file, input==output including a **hard link**, collision, the canonical-copy
+guard, "a refused overwrite destroys nothing", seed sanitisation versus seed
 pass-through, policy refusal, friendly core errors - **without a commercial ROM
 on the machine**. The new `rom` file proves what needs the real image: the
 canonical counts, the golden hash, manifest content and byte-determinism across
@@ -156,9 +161,14 @@ GOLDEN v0.1.0 OUTPUT SHA-256: ed167ca17944e4782cf19bf31245f772e5b7b9f5c66af317dd
 supported 735 / randomized 496 / destinations moved 492 / skipped 239
 ```
 
-Recorded from the **packaged executable**, and independently reproduced by the
-source window, by the boundary test, and by the ROM-gated test. The ticket's
-warning was honoured: this is *not* the older `0ff__white` hash.
+Recorded from the **packaged executable**, and reproduced independently by the
+ROM-gated test (which recomputes the 8 MB output and compares its digest) and by
+the packaged `--smoke` run. An earlier revision of this document said "four
+independent ways"; that was an overclaim the reviewer correctly measured - the GUI
+test only carries the constant as a stand-in fixture's field and never computes
+it, and the portable boundary test works on a 4 KB synthetic image and cannot
+produce this digest at all. The ticket's warning was honoured: this is *not* the
+older `0ff__white` hash.
 
 ### Packaged executable smoke
 
@@ -194,20 +204,37 @@ path, minimum width, and both dialogs. Three defects were found and fixed:
 
 ### Release package
 
-`scripts/package-warprand.ps1` stages the build, adds `README.txt` and
-`LICENSE`, and **fails closed** on proprietary content: forbidden ROM/save/state
-extensions, the canonical image's exact hash, and a byte-run probe that searches
-every packaged file for 48 informative 48-byte runs taken from across the
-canonical image. The probe enforces a **positive control** (a file built from a
-needle must be flagged) because a probe that never fires proves nothing - and its
-first version did exactly that, reporting "ROM data" in `python312.dll` because
-its needles were runs of `0x00`/`0xFF` padding. Bucketing by byte diversity
-fixed it.
+`scripts/package-warprand.ps1` stages the build, adds `README.txt`,
+`THIRD-PARTY-NOTICES.txt` and `LICENSE`, and **fails closed** on proprietary
+content: forbidden ROM/save/state extensions, the canonical image's exact hash,
+and a byte-run probe that searches every packaged file for 48 informative 48-byte
+runs drawn from **across the whole image**. The probe enforces a **positive
+control** - a file containing a needle at a non-zero offset, among unrelated
+bytes, is pushed through the same per-file scan the real pass uses, because a
+probe that never fires proves nothing.
 
-Result: `Buu-Fury-Warp-Randomizer-v0.1.0-win64.zip`, 35.4 MB, 105 files -
-`Buu-Fury-Warp-Randomizer.exe`, `README.txt`, `LICENSE` and the PyInstaller
-runtime directory (`_internal/`, including `tools/webfoot/data/roms.yaml`, the
-profile catalog the frozen build reads). **Proprietary content: NONE.**
+Two earlier defects in this probe were found and fixed, both by measurement:
+
+* its first version reported "ROM data" in `python312.dll`, because its needles
+  were runs of `0x00`/`0xFF` padding that occur in every large binary. Bucketing
+  by byte diversity fixed it;
+* its second version claimed to sample "across the whole image" while actually
+  covering the **first 197 KB** - 2.35% of the bytes, none of the graphics or
+  text it was meant to catch. The independent reviewer measured that; the needle
+  selection now walks the whole image and prints its measured coverage.
+
+**What the probe still does not catch** is recorded in the script's header rather
+than left implied: an excerpt shorter than 48 bytes, a *transformed* copy
+(compressed, base64, XORed, or a patch/delta), content inside a nested container,
+and a header-stripped or trimmed copy. It catches a whole ROM, a carved blob of
+48+ contiguous bytes from anywhere in the image, and a renamed ROM - which is the
+threat this release actually faces.
+
+Result: `Buu-Fury-Warp-Randomizer-v0.1.0-win64.zip`, 35.4 MB -
+`Buu-Fury-Warp-Randomizer.exe`, `README.txt`, `THIRD-PARTY-NOTICES.txt`,
+`LICENSE` and the PyInstaller runtime directory (`_internal/`, including
+`tools/webfoot/data/roms.yaml`, the profile catalog the frozen build reads).
+**Proprietary content: NONE.**
 
 The build is **onedir**, not one-file: one-file unpacks Qt to a temporary
 directory on every launch, which costs seconds of startup and is the shape most
@@ -240,6 +267,80 @@ To run the utility from a checkout instead of the executable:
 python -m tools.webfoot.warprand
 ```
 
+## Independent review
+
+**Attempted first through the mandated channel.** `the local reviewer` on the frozen
+candidate: the the review tool CLI returned
+`You've hit your session limit · resets 10:40am (America/Los_Angeles)` and the job
+is recorded `status: failed, session: (none)`. That is an **account usage limit**,
+not a candidate defect. Cloud was **not** run: `the reviewer readback probe`
+reports `cloud_attach UNAVAILABLE` ("attaching to an existing cloud session is not
+enabled for this account"), so a cloud verdict would not be readable here - the
+ticket's own stated condition. The attempt and its exact failure are recorded in
+`<home>\.dsh\the reviewer model\sessions.json` as
+`cl-20260926-151346-c84856`.
+
+**Then through a fresh-context reviewer**, so the gate was actually satisfied. It
+confirmed scope independently (`git diff --diff-filter=M --name-only` empty: 15
+added files, 0 modified; `capabilities.json`, `project.ts`, `PROJECT_<local-state-name>`,
+`PROJECT_<local-state-name>` untouched; no ROM/save/state artefact), re-ran the three
+permitted test files, reproduced the golden hash from source, and verified the
+canonical ROM was unchanged before and after.
+
+**Verdict: BLOCKED**, one blocking finding. Its full report is
+[`WARPRAND-APP-001-review.md`](WARPRAND-APP-001-review.md).
+
+### The blocking finding, and the fix
+
+**B1.** `verify_rom` documented "Never raises" and did not honour it.
+`tools.webfoot.rom.identify_rom` raises `GbaHeaderError` - a `ValueError` - for
+any file under 192 bytes or with a non-ASCII header field, and `_identify` caught
+only `RomReadError`/`OSError`. The consequence was worse than an ugly traceback:
+`verify_selected_rom` assigned the cached verdict only *after* the call returned,
+so selecting a good ROM and then a 24-byte file left the **good ROM's** "Verified
+supported ROM ✓" on screen with **Randomize enabled** - a false verified state for
+a file that is not a ROM - and pressing it produced the "unexpected problem"
+defect dialog. Reachable through the file dialog's own "All files" filter.
+
+Reproduced here before fixing (`24-byte file -> RAISED GbaHeaderError`). Fixed by
+catching `GbaHeaderError` explicitly - not as a bare `ValueError`, so a real
+programmer error still escapes - and reporting it as
+`The selected file is not a Game Boy Advance ROM: …`; and by clearing the cached
+verdict *before* anything can go wrong, with a defensive red "could not be
+checked" state that keeps Randomize disabled if the boundary ever breaks its
+contract again. Both halves are pinned by new tests, including one driven through
+the real window.
+
+### The non-blocking findings, and what happened to each
+
+| | Finding | Resolution |
+| --- | --- | --- |
+| N1 | A confirmed overwrite deleted the previous output *and* manifest before the input was validated, so a bad input destroyed the old artefact | **Fixed.** The collision is still detected early, but the unlink now happens at the point of no return - after the input is verified, the image read and the whole mapping planned. Two tests pin it, including the reviewer's own probe |
+| N2 | The evidence table misreported per-file test counts (39/43 vs 35/47) | **Fixed**; the table now carries the final counts and says the earlier ones were wrong |
+| N3 | "Golden hash reproduced four independent ways" was stronger than the evidence | **Fixed**; the claim now names the two genuine reproductions and says why the other two are not |
+| N4 | The ROM-content probe sampled only the first 2.35% of the image while its comment claimed the whole image | **Fixed.** Needle selection now walks the whole image, keeps every informative window and takes 48 evenly spaced across them; coverage is measured and printed. The positive control now pushes a file containing a needle at a non-zero offset through the same per-file scan the real pass uses |
+| NOTE | The brief inside the artefact named the previous SHA | **Fixed**; it now reads the SHA it is committed at |
+| NOTE | `SourceChangedError` untested; symlink alias refusal unpinned; the manifest's disclaimer unasserted | **Partly fixed.** The manifest disclaimer is now asserted in the ROM-gated test. The symlink refusal is exercised by the existing hard-link test's sibling; `SourceChangedError` remains unpinned and is recorded below |
+| NOTE | `-SkipRomProbe` still printed "proprietary-content check: NONE" | **Fixed**; it now says the ROM byte probe was skipped and that this is not the full check |
+| NOTE | The packaged build's catalog load rested on PyInstaller incidentally collecting `tools.webfoot.data` | **Fixed**; `hiddenimports=['tools.webfoot.data']` makes it a declaration |
+| NOTE | `report(4)` put the bar at 4/4 before the final verify and manifest write | **Fixed.** `step` is documented as the phase being *entered* and the bar now shows `step - 1`, so it can never claim an unfinished phase |
+| NOTE | The canonical size/hash is restated in five places besides the catalog | **Accepted.** The *application* reads the packaged profile and restates nothing; the restatements are in a release gate, a release script, the shipped README and tests, where pinning the contract is the point. Recorded as a known drift risk |
+
+### What this round changed, and what it did not
+
+Every correction is in the files this ticket adds. **No file the predecessor
+shipped was modified**, the public status is unchanged, and the golden hash is
+unchanged - the corrections are safety, reporting and honesty fixes around an
+algorithm that still produces the same bytes for `Goku`.
+
+One gap was found by the implementer while the review ran and is **not** fixed
+here, because fixing it would have invalidated the running review: the release
+bundle ships Qt and CPython with no notices for them. A
+`THIRD-PARTY-NOTICES.txt` naming every bundled component and licence is now added
+to the package, and its own "Known gap" section states plainly that the LGPL
+licence *texts* are still not bundled and that this needs the owner's decision
+before any public distribution. It is reported rather than papered over.
+
 ## Scope boundaries observed
 
 - **No capability count change.** `src/data/capabilities.json` untouched;
@@ -266,8 +367,22 @@ python -m tools.webfoot.warprand
   unchanged.
 - Windows x64 only. Nothing was verified on another platform, and the release
   artifact is built by the repository's own `DragonByte Z.spec` conventions.
-- The ROM-content probe samples the image; it is a strong check, not a proof of
-  absence for every possible byte sequence.
+- The ROM-content probe samples the image and now spans all of it, but it is a
+  strong check, not a proof of absence; its four known blind spots are listed in
+  `scripts/package-warprand.ps1`'s header.
+- **`SourceChangedError` is implemented but pinned by no test.** It fires only when
+  the input image changes between the pre-run and post-run identification, which a
+  portable test cannot arrange honestly. If the source becomes unparseable during
+  a run, `_identify` now returns no identification and the same error is raised
+  rather than a `GbaHeaderError`. Recorded as a test gap, not as a known defect.
+- A confirmed overwrite deletes the old output only once the mapping is planned,
+  so a bad input or an unplannable image can no longer destroy it. A failure in the
+  remaining window - the write itself, or the source changing underneath the run -
+  can still leave the user without the previous file. That is the irreducible cost
+  of `emit_image` refusing to write over an existing destination.
+- The shipped archive does not yet contain the LGPL licence *texts* for Qt; see
+  `docs/warprand/THIRD-PARTY-NOTICES.txt`, "Known gap". Owner decision required
+  before any public distribution.
 
 ## Stop
 

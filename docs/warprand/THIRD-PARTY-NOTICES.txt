@@ -1,0 +1,76 @@
+THIRD-PARTY COMPONENTS IN THIS APPLICATION
+==========================================
+
+Buu's Fury Warp Randomizer v0.1.0
+
+This application is built with, and redistributes, software written by other
+people. The list below names the components that are actually present in the
+packaged application directory and the licence each is distributed under. The
+application's own code is MPL-2.0; see LICENSE.
+
+This file is a notice, not a licence text. Where a licence requires its full
+text to travel with a binary, that text is NOT bundled here - see "Known gap"
+at the end.
+
+
+COMPONENTS BUNDLED IN THIS APPLICATION
+--------------------------------------
+
+Python 3.12 (python312.dll, python3.dll, the standard-library extension modules)
+    Licence: Python Software Foundation License Version 2
+    https://docs.python.org/3/license.html
+
+Qt 6 (the Qt6*.dll libraries and the platform, image-format, icon-engine,
+style and TLS plugins under _internal/PySide6/)
+    Licence: GNU Lesser General Public License v3
+    https://www.gnu.org/licenses/lgpl-3.0.html
+    Qt is used unmodified and is dynamically linked. It is not part of this
+    application's own source, and it may be replaced by the user.
+
+PySide6 and shiboken6 (PySide6/*.pyd, pyside6.abi3.dll, shiboken6/)
+    Licence: GNU Lesser General Public License v3
+    https://www.qt.io/licensing/
+
+PyYAML (the bundled `yaml` package and _yaml extension)
+    Licence: MIT
+    https://github.com/yaml/pyyaml/blob/main/LICENSE
+
+Mesa / llvmpipe (opengl32sw.dll)
+    Licence: MIT
+    https://docs.mesa3d.org/license.html
+
+OpenSSL (libcrypto-3.dll)
+    Licence: Apache License 2.0
+    https://www.openssl.org/source/license.html
+
+zlib, bzip2 and liblzma (compiled into the Python extension modules)
+    Licences: zlib licence; bzip2 BSD-style licence; liblzma public domain
+    https://www.zlib.net/zlib_license.html
+    https://sourceware.org/bzip2/
+    https://tukaani.org/xz/
+
+libjpeg-turbo, libtiff and libwebp (the qjpeg, qtiff and qwebp image plugins)
+    Licences: IJG / BSD-style; libtiff BSD-style; BSD-style
+    https://libjpeg-turbo.org/
+    https://libtiff.gitlab.io/libtiff/
+    https://developers.google.com/speed/webp/
+
+Microsoft Visual C++ runtime (VCRUNTIME140.dll, MSVCP140.dll, ucrtbase.dll,
+api-ms-win-*.dll)
+    Licence: Microsoft Software Licence Terms, redistributable as part of an
+    application built with the Microsoft toolchain.
+
+
+KNOWN GAP - OWNER DECISION REQUIRED
+-----------------------------------
+
+Full licence TEXTS for the LGPL-licensed components (Qt, PySide6, shiboken6) are
+NOT bundled in this archive. Redistributing an LGPL library is normally expected
+to carry a copy of the LGPL text and a written offer of the corresponding
+source, and this notice does not substitute for either.
+
+This gap is recorded rather than papered over. The application is currently a
+private, unlisted build; if it is to be distributed publicly, add the Qt/PySide6
+licence texts and the corresponding-source offer to this file's directory in
+`scripts/package-warprand.ps1`, or link Qt statically and comply with the LGPL
+instead.

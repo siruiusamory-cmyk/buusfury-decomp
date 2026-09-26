@@ -298,6 +298,58 @@ def test_changing_the_seed_updates_a_derived_output_name(window):
 # --- the seed ----------------------------------------------------------------
 
 
+def test_selecting_a_non_rom_never_leaves_the_previous_verdict_on_screen(
+    window, qapp, boundary, tmp_path
+):
+    """The blocking defect an independent review found, pinned through the window.
+
+    Selecting a good ROM and then a 24-byte file used to leave the *good* ROM's
+    "Verified supported ROM" verdict cached and on screen, with Randomize still
+    enabled, and pressing it produced the "unexpected problem" bug dialog. The
+    cached verdict is now cleared before anything can go wrong, and anything the
+    boundary cannot parse comes back as an ordinary refusal.
+    """
+    window.set_rom_path(VALID_ROM)
+    assert window.verification is not None and window.verification.ok
+    assert window.randomize_button.isEnabled()
+
+    # The boundary refuses a file it cannot parse rather than raising.
+    boundary.verification = unsupported(path=tmp_path / "tiny.bin")
+    window.set_rom_path(tmp_path / "tiny.bin")
+
+    assert window.verification is not None
+    assert not window.verification.ok
+    assert "Unsupported ROM \u2717" in window.rom_status_label.text()
+    assert not window.randomize_button.isEnabled()
+    # ... and the run is refused up front rather than becoming a crash.
+    assert window.start_randomization() is None
+    assert boundary.randomize_calls == []
+
+
+def test_a_boundary_that_raises_is_not_shown_as_verified(window, boundary, tmp_path):
+    """Belt and braces: even a boundary that breaks its own contract is safe.
+
+    The window must not present a raised exception as a verified verdict, and must
+    not leave Randomize enabled on a file it could not check. The programmer error
+    is still surfaced through the details channel rather than swallowed.
+    """
+    captured: list[tuple[str, str]] = []
+    window.show_details = lambda message, details: captured.append((message, details))
+    window.set_rom_path(VALID_ROM)
+    assert window.randomize_button.isEnabled()
+
+    def exploding_verify(path):
+        raise ValueError("the boundary broke its contract")
+
+    window._service.verify_rom = exploding_verify
+    window.set_rom_path(tmp_path / "anything.gba")
+
+    assert window.verification is None
+    assert "could not be checked" in window.rom_status_label.text()
+    assert not window.randomize_button.isEnabled()
+    assert captured and "the boundary broke its contract" in captured[0][0]
+
+
 def test_the_random_seed_button_produces_a_shareable_seed(window, boundary):
     boundary.seed_to_generate = "Capsule-1735"
 
@@ -625,12 +677,21 @@ def test_the_progress_panel_is_visible_for_the_whole_run(window, qapp, boundary)
 
 
 def test_progress_reports_move_the_bar_and_name_the_phase(window):
-    """The window's slot is exercised directly, so the claim is about mapping."""
+    """The bar shows completed phases; the caption names the one now starting.
+
+    The boundary reports the phase being *entered*, so the bar shows ``step - 1``
+    and can lag the truth but never overstate it. Regression from the independent
+    review, which noted the old bar read 4/4 before the final verify and manifest
+    write had actually happened.
+    """
     window._on_progress(3, 4, "Writing the randomized ROM")
 
     assert window.progress_bar.maximum() == 4
-    assert window.progress_bar.value() == 3
+    assert window.progress_bar.value() == 2
     assert window.progress_caption.text() == "Writing the randomized ROM\u2026"
+
+    window._on_progress(1, 4, "Verifying the ROM")
+    assert window.progress_bar.value() == 0
 
 
 def test_a_failed_run_also_clears_the_progress_panel(window, qapp, boundary):

@@ -86,7 +86,8 @@ TAB_ATLAS, TAB_INSPECTOR, TAB_MAPS, TAB_MAP, TAB_BROWSER, TAB_GRAPHICS, TAB_BUIL
 #: Every state this harness can capture, numbered. The numbers are the contract
 #: `--states` speaks; the names are the PNGs written. 1-19 are one chained suite
 #: (see the module docstring); 20-23 are MAP-CHUNK-AUTHORING-001's own states and
-#: each builds its own session, project and map from scratch.
+#: 40+ are MAP-RESIZE-AND-LAYERS-001's. Each of those builds its own session,
+#: project and map from scratch.
 STATES: tuple[tuple[int, str], ...] = (
     (1, "01-shell-no-rom"),
     (2, "02-maps-browse"),
@@ -111,10 +112,29 @@ STATES: tuple[tuple[int, str], ...] = (
     (21, "21-chunk-editor-painted"),
     (22, "22-chunk-editor-narrow"),
     (23, "23-chunk-authored-placement-on-map"),
+    (40, "40-retail-map-before-resize"),
+    (41, "41-resize-form-opened"),
+    (42, "42-resize-form-grown-dimensions"),
+    (43, "43-resize-staged-initialized-cells"),
+    (44, "44-resize-undo-retail-grid"),
+    (45, "45-resize-redo-grown-grid"),
+    (46, "46-resize-applied-project-grid (layer list before creation)"),
+    (48, "48-new-layer-form"),
+    (49, "49-layer-list-after-creation"),
+    (50, "50-authored-layer-selected"),
+    (51, "51-authored-layer-painted"),
+    (52, "52-unrelated-mutation-keeps-staged-structure"),
+    (53, "53-session-replacement-clears-staged-structure"),
+    (54, "54-structural-surface-narrow"),
+    (55, "55-resize-form-refuses-a-shrink"),
+    (56, "56-validation-error-dialog"),
 )
 
 #: The last chained state; anything above it is self-contained.
 LAST_CHAINED_STATE = 19
+
+#: The first MAP-RESIZE-AND-LAYERS-001 state; 20..THIS-1 are chunk authoring's.
+FIRST_STRUCTURAL_STATE = 40
 
 
 class _NullHost:
@@ -538,13 +558,20 @@ def capture_all(harness: Harness, workspace: Path, states: set[int] | None = Non
     focused re-capture of one surface cheap.
     """
     chain = states is None or any(1 <= number <= LAST_CHAINED_STATE for number in states)
-    chunk = states is None or any(number > LAST_CHAINED_STATE for number in states)
+    chunk = states is None or any(
+        LAST_CHAINED_STATE < number < FIRST_STRUCTURAL_STATE for number in states
+    )
+    structural = states is None or any(
+        number >= FIRST_STRUCTURAL_STATE for number in states
+    )
     if chain:
         if states is not None:
             print("note: states 1-19 are one chained suite; capturing all of them")
         _capture_chain(harness, workspace)
     if chunk:
         chunk_authoring_qa(harness, workspace, states)
+    if structural:
+        structural_qa(harness, workspace, states)
     total = len(list(harness.out.glob("*.png")))
     print(f"\nwrote {total} PNG(s) to {harness.out}")
 
@@ -783,6 +810,374 @@ def chunk_authoring_qa(
     return written
 
 
+def _find_structural_map(harness: Harness) -> tuple[int, int, int, tuple | None]:
+    """A map that gives a resizable dominant grid AND an unused slot, via the SDK.
+
+    ``(map_index, layer_slot, free_slot, writer)`` where ``writer`` is a
+    ``(map, layer, cell, ordinal)`` a *canonical* layer can legally take, for the
+    unrelated project mutation the CQA-05 state needs. Read through
+    `MapResizer` rather than by walking the browser list: selecting a map renders
+    it, so probing 452 maps through the widget would be minutes of drawing for one
+    answer.
+
+    The resizable layer must be one the LAYOUT EDITOR offers (`MapLayoutEditor`
+    marks a dominant grid of a single chunk read-only, because there is no legal
+    substitute for it), or the Layer row would not list it and the states below
+    could not be driven.
+    """
+    from tools.webfoot.formats.map_graphics import MapGraphicsError
+    from tools.webfoot.map_resize import MapResizer, MapStructureError, read_map_structure
+
+    def substitute(map_index: int, layers, excluded: int | None) -> tuple | None:
+        """A canonical cell a real layout write can change, on another layer."""
+        for other in layers:
+            if other.slot == excluded or len(other.vocabulary) < 2:
+                continue
+            target_address = other.vocabulary[1].address
+            cell = next(
+                (
+                    index
+                    for index in range(other.cell_count)
+                    if other.cells[index] != target_address
+                ),
+                0,
+            )
+            return (map_index, other.slot, cell, other.vocabulary[1].ordinal)
+        return None
+
+    project = harness.session.project_dir
+    resizer = MapResizer(
+        harness.session.map_image,
+        structure=read_map_structure(project) if project is not None else None,
+        profile=harness.session.profile,
+    )
+    fallback: tuple | None = None
+    for index in range(resizer.map_entry_count):
+        try:
+            target = resizer.target(index)
+        except (MapStructureError, MapGraphicsError, OSError):
+            # A map whose structure cannot be read is a state, not a stop: the
+            # search is for one that can be, and every other map is skipped.
+            continue
+        if target.shared_with:
+            continue
+        if fallback is None:
+            fallback = substitute(index, target.editable_layers, None)
+        if not target.free_slots:
+            continue
+        for layer in target.editable_layers:
+            if layer.columns and layer.rows and layer.columns < 8 and len(
+                layer.vocabulary
+            ) >= 2:
+                return (
+                    index,
+                    layer.slot,
+                    target.free_slots[0],
+                    substitute(index, target.editable_layers, layer.slot) or fallback,
+                )
+    raise SystemExit("no map gives both a resizable dominant grid and an unused slot")
+
+
+def _shot_widget(harness: Harness, widget, path: Path) -> Path:
+    """Grab one non-modal widget (a form) after its layout has settled."""
+    widget.show()
+    harness.pump(12)
+    widget.grab().save(str(path), "PNG")
+    print(f"  captured {path.name}  ({widget.width()}x{widget.height()})")
+    return path
+
+
+def _close_active_dialog(harness: Harness, out: Path | None) -> None:
+    """Grab the modal dialogue an action opened, then close it.
+
+    A refused resize opens the REAL `QMessageBox`, which runs a nested event loop:
+    a zero-delay timer inside that loop is the only place a capture can be taken.
+    The dialogue is always closed, whether or not its picture was wanted, or the
+    action would never return.
+    """
+    from PySide6.QtWidgets import QApplication, QDialog
+
+    dialog = QApplication.activeModalWidget()
+    if not isinstance(dialog, QDialog):
+        print("  (no modal dialogue appeared)")
+        return
+    harness.pump(16)
+    if out is not None:
+        dialog.grab().save(str(out), "PNG")
+        print(f"  captured {out.name}  ({dialog.width()}x{dialog.height()})")
+    dialog.close()
+
+
+def structural_qa(
+    harness: Harness, workspace: Path, states: set[int] | None = None
+) -> list[Path]:
+    """MAP-RESIZE-AND-LAYERS-001's states: resize a map, author a layer, paint it.
+
+    Every step goes through the SHIPPED surface and the SHIPPED SDK: the real
+    `MapResizer`/`MapPainter` over the canonical image, the real
+    `set_layer_resize`/`set_authored_layer`/`set_layout_cells` writes into a real
+    extracted project in a temporary directory, and the real map editor's own
+    widgets and forms. Nothing is mocked; the harness supplies only what a mouse
+    and a keyboard would.
+    """
+    from PySide6.QtCore import QTimer
+
+    from tools.webfoot.map_paint import set_layout_cells
+
+    written: list[Path] = []
+
+    def shot(number: int, name: str, size: QSize | None = None) -> None:
+        if states is None or number in states:
+            written.append(harness.grab(name, size=size))
+
+    def form(number: int, name: str, widget) -> None:
+        if states is None or number in states:
+            written.append(_shot_widget(harness, widget, harness.out / f"{name}.png"))
+
+    project = _extracted_project(harness, workspace)
+    harness.open_canonical()
+    harness.session.set_project(project)
+    harness.editor("Atlas").romOpened.emit()
+    harness.show_editor("Maps")
+
+    index, slot, free_slot, writer = _find_structural_map(harness)
+    print(
+        f"  structural target: map:{index:04d} BG{slot} resizable, BG{free_slot} "
+        f"unused, unrelated writer {writer}"
+    )
+    harness.select_map(index)
+    harness.pump(8)
+    harness.maps.set_mode("layout")
+    harness.pump(8)
+    tab = harness.browser
+    target = tab.structure_target()
+    if target is None:
+        raise SystemExit(f"map:{index:04d} has no structural view in the surface")
+    layer = target.layer(slot)
+    row = tab._layer_combo.findData(slot)
+    if row < 0:
+        raise SystemExit(f"BG{slot} is not offered in the Layer row")
+    tab._layer_combo.setCurrentIndex(row)
+    harness.pump(8)
+    if tab._slot is None or tab._slot.slot != slot:
+        raise SystemExit(f"the editor did not select BG{slot}")
+
+    # 40. the retail map, before anything is staged.
+    print("[40] retail map, before the resize")
+    shot(40, "40-retail-map-before-resize")
+
+    # 41. the resize form as it opens: the current grid, and a no-op rather than
+    #     a refusal.
+    print("[41] resize form, opened")
+    dialog = tab.build_resize_dialog()
+    if dialog is None:
+        raise SystemExit("the resize form could not be offered")
+    form(41, "41-resize-form-opened", dialog)
+
+    # 42. the dimensions changed, and the preview naming the new cells' chunk.
+    grown_columns = min(8, layer.columns + 1)
+    grown_rows = layer.rows
+    dialog._columns.setValue(grown_columns)
+    dialog._rows.setValue(grown_rows)
+    harness.pump(8)
+    fill = dialog._fill.currentData()
+    print(f"  resize form: {grown_columns}x{grown_rows} fill {fill} -> {dialog.summary_text()}")
+    form(42, "42-resize-form-grown-dimensions", dialog)
+    dialog.reject()
+    harness.pump(6)
+
+    # 43. the staged resize: the canvas draws the grown plane and the cells the
+    #     growth added, initialized to the chosen chunk.
+    print(f"[43] stage the resize -> {tab.apply_resize(grown_columns, grown_rows, fill)}")
+    harness.pump(12)
+    print(
+        f"  staged: {sorted(tab._staged_resizes)}  dirty {tab.unsaved_edit_count()}  "
+        f"grid {tab.structure_target().layer(slot).columns}x"
+        f"{tab.structure_target().layer(slot).rows}"
+    )
+    shot(43, "43-resize-staged-initialized-cells")
+
+    # 44/45. undo restores the retail grid; redo the authored one.
+    print("[44] undo the resize")
+    tab._undo_stack.undo()
+    harness.pump(12)
+    print(
+        f"  after undo: staged {sorted(tab._staged_resizes)}  grid "
+        f"{tab.structure_target().layer(slot).columns}x"
+        f"{tab.structure_target().layer(slot).rows}"
+    )
+    shot(44, "44-resize-undo-retail-grid")
+
+    print("[45] redo the resize")
+    tab._undo_stack.redo()
+    harness.pump(12)
+    print(
+        f"  after redo: staged {sorted(tab._staged_resizes)}  grid "
+        f"{tab.structure_target().layer(slot).columns}x"
+        f"{tab.structure_target().layer(slot).rows}"
+    )
+    shot(45, "45-resize-redo-grown-grid")
+
+    # 46. Apply: the one SDK write, and the surface now reads the project's grid.
+    #     This is also the "layer list before creation" state: nothing between here
+    #     and the new-layer form changes a pixel, so a capture of its own would be
+    #     the same picture under a second name.
+    print(f"[46] apply the resize -> {tab.apply_to_project()}")
+    harness.pump(12)
+    committed = tab.structural_layer(index, slot)
+    print(f"  project grid: {committed.columns}x{committed.rows} resized {committed.resized}")
+    shot(46, "46-resize-applied-project-grid")
+
+    # 48. the new-layer form: the unused slot, the template, the dimensions.
+    print("[48] new-layer form")
+    new_form = tab.build_new_layer_dialog()
+    if new_form is None:
+        raise SystemExit("the new-layer form could not be offered")
+    # The template is named explicitly: the form defaults to the first supported
+    # dominant layer, which on some maps is a grid of a single chunk - and an
+    # authored layer copied from one would be read-only, so the painting states
+    # below could not be driven. `slot` is a layer this harness measured as using
+    # more than one chunk.
+    template_row = new_form._template.findData(slot)
+    if template_row < 0:
+        raise SystemExit(f"BG{slot} is not offered as a template")
+    new_form._template.setCurrentIndex(template_row)
+    new_form._columns.setValue(2)
+    new_form._rows.setValue(2)
+    harness.pump(8)
+    request = new_form.request()
+    print(f"  new-layer form: {request} -> {new_form.summary_text()}")
+    form(48, "48-new-layer-form", new_form)
+    new_form.reject()
+    harness.pump(6)
+
+    # 49. created: the layer list and the Layer row both carry the authored layer.
+    print(f"[49] create the layer -> {tab.apply_new_layer(*request)}")
+    harness.pump(12)
+    authored = tab.structural_layer(index, request[1])
+    print(
+        f"  authored {authored.identity} {authored.columns}x{authored.rows}  "
+        f"dirty {tab.unsaved_edit_count()}"
+    )
+    shot(49, "49-layer-list-after-creation")
+
+    # 50. the authored layer selected in the existing map editor.
+    print("[50] select the authored layer")
+    tab._layer_combo.setCurrentIndex(tab._layer_combo.findData(request[1]))
+    harness.pump(12)
+    slot_view = tab._slot
+    print(
+        f"  editor slot BG{slot_view.slot} grid "
+        f"{slot_view.grid.columns}x{slot_view.grid.rows} choices "
+        f"{len(slot_view.choices)} offsets "
+        f"{sorted({cell.offset for cell in slot_view.cells})}"
+    )
+    shot(50, "50-authored-layer-selected")
+
+    # 51. painted: a stroke over the authored grid, one command per gesture.
+    print("[51] paint the authored layer")
+    vocabulary = tab.structural_layer(index, request[1]).vocabulary
+    brush = next(
+        (choice.ordinal for choice in vocabulary if choice.ordinal != request[5]), None
+    )
+    if brush is not None:
+        tab.set_brush_ordinal(brush)
+    cells = [
+        cell
+        for cell in (0, 1, slot_view.grid.columns, slot_view.grid.columns + 1)
+        if cell < slot_view.grid.cell_count
+    ]
+    tab.begin_paint_stroke()
+    for cell in cells:
+        tab.paint_cell(cell)
+    tab.end_paint_stroke()
+    harness.pump(12)
+    print(
+        f"  brush {brush} staged cells {tab._structural_cells}  "
+        f"commands {tab._undo_stack.count()}  dirty {tab.unsaved_edit_count()}"
+    )
+    shot(51, "51-authored-layer-painted")
+
+    # 52. an unrelated project mutation, made through the SDK and broadcast by the
+    #     shell exactly as another editor's write would be.
+    print("[52] unrelated project mutation with a staged structural edit")
+    mutated = False
+    if writer is not None:
+        write_map, write_slot, write_cell, write_ordinal = writer
+        mutated = set_layout_cells(
+            project,
+            harness.session.profile,
+            harness.session.map_image,
+            {(write_map, write_slot, write_cell): write_ordinal},
+        )
+        print(
+            f"  unrelated SDK write map:{write_map:04d} BG{write_slot} cell "
+            f"{write_cell} -> ordinal {write_ordinal}: {mutated}"
+        )
+    harness.window._on_project_changed()
+    harness.pump(12)
+    print(
+        f"  after the mutation: staged layer {list(tab._staged_layers)} "
+        f"staged cells {len(tab._structural_cells)} "
+        f"dirty {tab.unsaved_edit_count()}"
+    )
+    shot(52, "52-unrelated-mutation-keeps-staged-structure")
+
+    # 53. a genuine session/image replacement, through the shell's own open path.
+    print("[53] session replacement")
+    harness.session.open_rom(ROM, harness.catalog)
+    harness.editor("Atlas").romOpened.emit()
+    harness.show_editor("Maps")
+    harness.pump(10)
+    print(
+        f"  after the replacement: staged resizes {len(tab._staged_resizes)} "
+        f"staged layers {len(tab._staged_layers)} "
+        f"staged cells {len(tab._structural_cells)} "
+        f"dirty {tab.unsaved_edit_count()}"
+    )
+    harness.select_map(index)
+    harness.pump(8)
+    # A session change drops the edit mode with the staging (a new ROM starts in
+    # view mode), so the surface is put back into Layout the way a person would,
+    # or the capture would be of the browse text rather than of the structural
+    # section stating what survived.
+    harness.maps.set_mode("layout")
+    harness.pump(10)
+    shot(53, "53-session-replacement-clears-staged-structure")
+
+    # 54. the structural surface at the narrow width.
+    print("[54] narrow window")
+    shot(54, "54-structural-surface-narrow", size=NARROW)
+    harness.window.resize(DESKTOP)
+    harness.pump(8)
+
+    # 55/56. the validation states: a shrink refused in the form, and the same
+    #        refusal as the SDK's own error dialogue.
+    print("[55] the resize form refuses a shrink")
+    tab._layer_combo.setCurrentIndex(tab._layer_combo.findData(slot))
+    harness.pump(8)
+    shrink = tab.build_resize_dialog()
+    if shrink is None:
+        raise SystemExit("the resize form could not be offered for the refusal")
+    shrink._columns.setValue(max(1, committed.columns - 1))
+    harness.pump(8)
+    print(f"  refusal: {shrink.summary_text()}")
+    form(55, "55-resize-form-refuses-a-shrink", shrink)
+    shrink.reject()
+    harness.pump(6)
+
+    print("[56] the refusal as the SDK's own error dialogue")
+    wanted = states is None or 56 in states
+    out = harness.out / "56-validation-error-dialog.png" if wanted else None
+    QTimer.singleShot(250, lambda: _close_active_dialog(harness, out))
+    refused = tab.apply_resize(max(1, committed.columns - 1), committed.rows, fill)
+    harness.pump(10)
+    print(f"  apply_resize refused -> {refused}")
+    if out is not None and out.is_file():
+        written.append(out)
+    return written
+
+
 def graphics_qa(harness: Harness, out: Path | None = None) -> list[Path]:
     """The Graphics-workspace states the human correction asked for by name.
 
@@ -986,6 +1381,9 @@ def main(argv: list[str] | None = None) -> int:
         parser.error("--out is required")
     states = _parse_states(args.states) if args.states else None
     args.out.mkdir(parents=True, exist_ok=True)
+    # The product's own wording carries "·", "×" and "→"; a cp1252 console would
+    # otherwise end the run on the first one a state prints.
+    sys.stdout.reconfigure(errors="replace")
     workspace = Path(tempfile.mkdtemp(prefix="dbz-visual-qa-"))
     app = QApplication.instance() or QApplication([])
     app.setOrganizationName("Webfoot")

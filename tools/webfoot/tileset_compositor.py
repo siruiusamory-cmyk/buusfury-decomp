@@ -49,6 +49,16 @@ explicit key, every ratio is an exact integer (parts per million, never a float)
 and every digest is taken over a fixed-width encoding. Same bytes in, byte-identical
 manifest and pixel-identical images out.
 
+One scope qualifier, measured rather than assumed: the ordering that reaches
+output is the order of the **plane sequence the caller supplies**. Every derived
+structure - components, cells, the canvas, and the adjacency and motif tables'
+use - is order-invariant, but a per-tile occurrence *digest* and its quoted
+samples follow the order occurrences were walked in, so reordering ``planes``
+reorders them. The ROM entry point supplies a fixed order (maps by index, then
+layer slots, then cells in raster order), which is what makes that path
+reproducible; a caller assembling planes itself must fix its own order to get
+the same digests.
+
 **No machine learning, no image similarity.** Frequency, adjacency and layout are
 the whole algorithm, and every placement states the evidence that produced it.
 """
@@ -681,6 +691,11 @@ def census_planes(
     filesystem. :func:`census_image` decodes the map/graphics records into
     :class:`PlaneInput` records and calls this, and a test can build the planes
     it wants to reason about directly.
+
+    ``planes`` is consumed **in the order given**. The aggregate tables this
+    builds do not depend on that order, but a tile's `occurrences_sha256` and
+    its quoted samples do, so a caller that wants two runs to agree must supply
+    its planes in a fixed order. :func:`census_image` does.
 
     Cells that cannot be attributed are never silently dropped: an ordinal past
     the selector stream, an ordinal an animated-tile record overlays, and a tile

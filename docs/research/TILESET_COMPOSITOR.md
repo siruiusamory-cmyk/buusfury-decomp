@@ -240,6 +240,16 @@ an exact integer in parts per million, and every digest is taken over a
 fixed-width encoding. An intermediate refactor of the census module was verified
 to reproduce **every artifact hash unchanged** before and after.
 
+**One scope qualifier, found by the independent review and now pinned by test.**
+The claim holds for the ROM entry point, which supplies a fixed plane order
+(maps by index, then layer slots, then cells in raster order). It does *not* hold
+for the public `census_planes` API in the absolute: every derived structure -
+components, cells, the canvas, the conflict digest - is order-invariant, but a
+tile's `occurrences_sha256` and its quoted samples follow the order occurrences
+were walked in, so reordering the supplied `planes` reorders them. That is now
+stated in the module and `census_planes` docstrings and asserted from both sides
+by `test_determinism_is_pinned_to_the_supplied_plane_order`.
+
 ## 6. Cross-check against the supplied resource library
 
 `<resource-library>\Tilesets\` holds 187 tilesets, each a 16x16 raw
@@ -320,6 +330,24 @@ The coherence table and the selection rule live in the evidence generator that
 produced `evidence.json`; it is a read-only probe and is not part of the shipped
 module.
 
-Portable tests: `pytest tests/unit/test_tileset_compositor.py` (37 tests, no ROM).
+Portable tests: `pytest tests/unit/test_tileset_compositor.py` (39 tests, no ROM).
 ROM-gated tests: `pytest tests/integration/test_tileset_compositor_rom.py`
 (9 tests, ~3 minutes, needs the canonical image).
+
+## 10. Independent review
+
+A fresh-context reviewer, given the frozen candidate, the diff and this brief,
+returned **APPROVE WITH NON-BLOCKING NOTES** after running its own synthetic
+probes against the real code rather than arguing from the diff. It confirmed, by
+probe: the conflict policy does not force a constraint (motif merges only land on
+an empty cell or the same tile); `out_degree` including unattributed neighbours
+makes confidence conservative, not inflated; the observed-view equivalence is not
+circular because both sides delegate the tile path to one function.
+
+It raised three notes, all of which are resolved rather than banked:
+
+| Note | Disposition |
+| --- | --- |
+| **NOTE-1 (MEDIUM)** the module's determinism claim was absolute but the occurrence digest follows the supplied plane order | Docstrings in the module and `census_planes` now state the scope exactly; `test_determinism_is_pinned_to_the_supplied_plane_order` asserts both the order-invariant half and the order-dependent half |
+| **NOTE-2 (LOW)** the four "mutation" tests were positive controls; their `pytest.fail` guards could not fire | rewritten as genuine mutations: each defines the check, shows it accepts the correct artefact, **injects the break** (a direction-blind adjacency table, an ordinal-only identity key, six forged provenance records, a merged bank partition) and requires rejection |
+| **NOTE-3 (LOW)** the observed sheet's chunk placement was verified only by dimensions | `test_observed_sheet_places_each_chunk_at_its_own_offset` now asserts each of two different chunks lands at its own offset with its own pixels and that the gutter between them stays transparent |

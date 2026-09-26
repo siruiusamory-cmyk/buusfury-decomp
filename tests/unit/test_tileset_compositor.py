@@ -20,6 +20,7 @@ from tools.webfoot import map_view
 from tools.webfoot import tileset_compositor as tc
 from tools.webfoot.formats import bg_tilemap as bg
 from tools.webfoot.formats import indexed_png
+from tools.webfoot.formats import map_graphics as mg
 
 
 # --- synthetic corpus builders ------------------------------------------------
@@ -632,6 +633,108 @@ def test_cli_refuses_a_missing_rom_and_writes_nothing(tmp_path, capsys):
 # "the assertion that should hold now does not", so weakening the property
 # cannot leave them green.
 
+def test_observed_sheet_places_each_chunk_at_its_own_offset():
+    """A positioning bug between chunks must not survive on dimensions alone."""
+    char_data = bytes([0x11] * 64) + bytes([0x22] * 64)
+    first = tuple(entry(0) for _ in range(CELLS))
+    second = tuple(entry(1) for _ in range(CELLS))
+    reference = tc.ObservedChunk(
+        0, 0, tc.LAYER_KIND_DOMINANT, 0x08001000, 0, BLANK_CHUNK
+    )
+    sheet = tc.render_observed_view(
+        [(reference, char_data, first), (reference, char_data, second)],
+        columns=2,
+        gutter=1,
+    )
+    step = mg.CHUNK_PIXELS + 8
+    assert (sheet.width, sheet.height) == (2 * step - 8, mg.CHUNK_PIXELS)
+    for row in (0, 7, 128, 255):
+        base = row * sheet.width
+        assert set(sheet.pixels[base:base + 8]) == {0x11}
+        assert set(sheet.pixels[base + step:base + step + 8]) == {0x22}
+        # ...and the gutter between them stayed transparent.
+        assert set(sheet.pixels[base + mg.CHUNK_PIXELS:base + step]) == {0}
+
+
+def test_determinism_is_pinned_to_the_supplied_plane_order():
+    """What is order-invariant, and what is not, stated as a test.
+
+    Every derived structure is order-invariant. The per-tile occurrence digest
+    and its samples follow the plane walk, which the ROM entry point fixes. This
+    test holds both halves so the module docstring cannot drift from the code.
+    """
+    one = plane(fill(0), stream({0: (0, 0)}), map_index=0)
+    two = plane(fill(0), stream({0: (0, 0)}), map_index=1)
+
+    def build(planes):
+        result = census(planes, banks=bank_specs(1))
+        atlas = tc.infer_bank(result, 0)
+        return result, atlas
+
+    forward_result, forward_atlas = build([one, two])
+    reverse_result, reverse_atlas = build([two, one])
+
+    # Order-invariant: the layout the atlas actually places.
+    assert [
+        (cell.column, cell.row, cell.tile.tile) for cell in forward_atlas.cells
+    ] == [
+        (cell.column, cell.row, cell.tile.tile) for cell in reverse_atlas.cells
+    ]
+    assert forward_atlas.canvas == reverse_atlas.canvas
+    assert forward_atlas.conflicts_sha256 == reverse_atlas.conflicts_sha256
+    assert forward_result.cells_censused == reverse_result.cells_censused
+
+    # Order-dependent, by design and now by assertion: the occurrence stream.
+    # The two plans hold the same tile, so only the walk order can differ.
+    assert (
+        forward_result.bank_usage(0).tile_usage(0).digest.hexdigest()
+        != reverse_result.bank_usage(0).tile_usage(0).digest.hexdigest()
+    ), "the occurrence digest was expected to follow the supplied plane order"
+    forward_samples = [
+        item.map_index
+        for item in forward_result.bank_usage(0).tile_usage(0).samples
+    ]
+    reverse_samples = [
+        item.map_index
+        for item in reverse_result.bank_usage(0).tile_usage(0).samples
+    ]
+    # The quoted samples follow the same walk: the first plane supplies them.
+    assert forward_samples and set(forward_samples) == {0}
+    assert reverse_samples and set(reverse_samples) == {1}
+
+
+# --- mutation tests -----------------------------------------------------------
+#
+# Each test defines the check the acceptance criterion names, shows it accepts a
+# correct artefact, then **injects the break** and requires the same check to
+# reject it. A test that only asserted the correct property would stay green if
+# the property stopped being load-bearing, which is what these guard against.
+
+def directional_count(adjacency: dict, source: int, direction: int, target: int) -> int:
+    """The neighbour count the adjacency table records for one directed pair."""
+    return adjacency.get((source, direction), {}).get(target, 0)
+
+
+def _direction_blind(table: dict) -> dict:
+    """The table a walker that ignored the axis would have produced.
+
+    Every direction's bucket is folded together and then published under both
+    RIGHT and DOWN, so a right neighbour and a down neighbour become
+    indistinguishable - the exact defect the directional table exists to
+    prevent.
+    """
+    blind: dict = {}
+    for (source, _direction), bucket in table.items():
+        merged = blind.setdefault(source, {})
+        for target, count in bucket.items():
+            merged[target] = merged.get(target, 0) + count
+    return {
+        (source, direction): dict(merged)
+        for source, merged in blind.items()
+        for direction in (RIGHT, DOWN, LEFT, UP)
+    }
+
+
 def test_mutation_breaking_adjacency_direction_fails_the_check():
     horizontal = alternating_plane()
     vertical = plane(
@@ -639,35 +742,58 @@ def test_mutation_breaking_adjacency_direction_fails_the_check():
          for _x in range(CHUNK_SIDE)],
         stream({0: (0, 1), 1: (0, 2)}),
     )
+    a_packed, b_packed = (0 << 8) | 1, (0 << 8) | 2
+
+    def direction_is_recorded(table: dict) -> bool:
+        """Right and down must be different facts for a horizontal run."""
+        return (
+            directional_count(table, a_packed, RIGHT, b_packed)
+            != directional_count(table, a_packed, DOWN, b_packed)
+        )
+
     across = census([horizontal], banks=bank_specs(3))
     down = census([vertical], banks=bank_specs(3))
-    a_packed, b_packed = (0 << 8) | 1, (0 << 8) | 2
-    assert across.adjacency[(a_packed, RIGHT)][b_packed] == 16 * CHUNK_SIDE
-    assert down.adjacency[(a_packed, RIGHT)].get(b_packed, 0) == 0
-    assert down.adjacency[(a_packed, DOWN)][b_packed] == 16 * CHUNK_SIDE
-    if down.adjacency[(a_packed, RIGHT)].get(b_packed, 0) != 0:
-        pytest.fail("adjacency direction is not being distinguished")
+    assert direction_is_recorded(across.adjacency), "the correct table must pass"
+    assert direction_is_recorded(down.adjacency), "the transposed case must pass"
+
+    # Inject the break: fold every direction onto one axis.
+    assert not direction_is_recorded(_direction_blind(across.adjacency)), (
+        "a direction-blind table passed the directional check"
+    )
 
 
 def test_mutation_breaking_palette_or_flip_identity_fails_the_check():
-    single = census(
-        [plane(fill(0, hflip=True, palette_bank=3), stream({0: (0, 1)}))],
-        banks=bank_specs(2),
-    )
-    (identity,) = list(single.bank_usage(0).tile_usage(1).display)
-    if not (identity.hflip and identity.palette_bank == 3):
-        pytest.fail("the display identity dropped the flip or the palette bank")
+    words = [entry(0), entry(0, hflip=True), entry(0, vflip=True),
+             entry(0, palette_bank=5)]
 
-    # Losing the flip would merge these two presentations into one key.
-    both = census(
-        [plane([entry(0), entry(0, hflip=True)] * 512, stream({0: (0, 1)}))],
-        banks=bank_specs(2),
+    def count_presentations(key) -> int:
+        return len({key(word) for word in words})
+
+    def ordinal_only(word: int) -> int:
+        """The identity a reader that dropped the presentation bits would use."""
+        return word & bg.TILE_ENTRY_ORDINAL_MASK
+
+    result = census(
+        [plane([word] * CELLS, stream({0: (0, 9)})) for word in words],
+        banks=bank_specs(16),
     )
-    usage = both.bank_usage(0).tile_usage(1)
-    assert usage.occurrences == 1024
-    assert len(usage.display) == 2
-    if len(usage.display) == 1:
-        pytest.fail("flip state was not part of the display identity")
+    usage = result.bank_usage(0).tile_usage(9)
+    assert usage.occurrences == 4 * CELLS
+    assert len(usage.display) == 4, "the census must separate all four"
+    assert count_presentations(_presentation_key) == 4, (
+        "a presentation-aware key must separate all four"
+    )
+
+    # Inject the break: drop the flip and palette bits.
+    assert count_presentations(ordinal_only) == 1, (
+        "an ordinal-only key did not collapse the four presentations"
+    )
+
+
+def _presentation_key(word: int) -> tuple:
+    """``(palette_bank, hflip, vflip)`` for one raw screen entry."""
+    decoded = bg.ScreenEntry.decode(word)
+    return (decoded.palette_bank, decoded.h_flip, decoded.v_flip)
 
 
 def test_mutation_breaking_provenance_fails_the_check():
@@ -682,26 +808,51 @@ def test_mutation_breaking_provenance_fails_the_check():
     )
     document = tc.atlas_document(result, tc.infer_bank(result, 0))
     row = next(item for item in document["tiles"] if item["tile"] == 5)
-    sample = row["occurrence_samples"][0]
+    honest = row["occurrence_samples"][0]
 
-    # The honest record: the raw word re-decodes to the identity claimed.
-    decoded = bg.ScreenEntry.decode(int(sample["raw_word"], 16))
-    assert decoded.tile_index == sample["ordinal"]
-    assert sample["map_index"] == 7
-    assert sample["chunk_address"] == "0x0801a000"
+    def verify(record: dict) -> bool:
+        """The provenance check: the raw word must re-decode to what is claimed."""
+        decoded = bg.ScreenEntry.decode(int(record["raw_word"], 16))
+        return (
+            decoded.tile_index == record["ordinal"]
+            and decoded.h_flip == record["display"]["hflip"]
+            and decoded.v_flip == record["display"]["vflip"]
+            and decoded.palette_bank == record["display"]["palette_bank"]
+            and record["chunk_address"] == "0x0801a000"
+            and record["map_index"] == 7
+        )
 
-    # Mutate the claim; the same check must reject it.
-    if str(sample["chunk_address"]).lower() == "0x0801b000":
-        pytest.fail("provenance check did not compare the chunk it recorded")
-    if bg.ScreenEntry.decode(entry(1)).tile_index == sample["ordinal"]:
-        pytest.fail("provenance check did not compare the ordinal it recorded")
+    assert verify(honest), "the honest record must pass"
+
+    # Inject breaks, one field at a time. Each must be rejected.
+    mutations = [
+        {**honest, "ordinal": honest["ordinal"] + 1},
+        {**honest, "raw_word": f"{entry(1):#06x}"},
+        {**honest, "chunk_address": "0x0801b000"},
+        {**honest, "map_index": 8},
+        {**honest, "display": {**honest["display"], "hflip": True}},
+        {**honest, "display": {**honest["display"], "palette_bank": 2}},
+    ]
+    for mutated in mutations:
+        assert not verify(mutated), f"a forged record passed: {mutated}"
 
 
 def test_mutation_removing_the_bank_partition_changes_the_result():
     first = plane(fill(0), stream({0: (0, 1)}), map_index=0)
     second = plane(fill(0), stream({0: (1, 2)}), map_index=1)
     result = census([first, second], banks=bank_specs(4, 4))
-    assert set(result.bank_usage(0).used_tiles) == {1}
-    assert set(result.bank_usage(1).used_tiles) == {2}
-    if result.bank_usage(0).used_tiles == result.bank_usage(1).used_tiles:
-        pytest.fail("usage was not partitioned by bank")
+
+    def banks_are_separate(census_result) -> bool:
+        return (
+            set(census_result.bank_usage(0).used_tiles)
+            .isdisjoint(census_result.bank_usage(1).used_tiles)
+        )
+
+    assert banks_are_separate(result), "the correct census must keep banks apart"
+
+    # Inject the break: fold bank 1's usage into bank 0, as a census that keyed
+    # by tile alone would.
+    result.bank_usage(0).tiles.update(result.bank_usage(1).tiles)
+    assert not banks_are_separate(result), (
+        "a census that merged the banks still read as partitioned"
+    )

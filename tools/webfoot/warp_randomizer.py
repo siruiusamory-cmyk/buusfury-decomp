@@ -155,12 +155,16 @@ TICKET = "ROMHACK-WARP-RANDOMIZER-001"
 #: keeps "all entrances bidirectional", and the ALttP Door Randomizer ships the
 #: same discipline for 2D doors.
 #: ``/3`` adds the **leaf-link guard**. A map with exactly one door record is a
-#: dead end on its own: if the permutation links two of them, the pair becomes an
+#: dead end on its own: if the matching links two of them, the pair becomes an
 #: isolated 2-cycle and a player who entered from a scripted transition has no way
-#: on - which is what happened on the first `/2` playthrough, where a door out of
-#: map 33 landed on map 390 and map 390's only door came straight back. Retail never
-#: does this: of its canonical single-door pairs, 67 lead to a hub and only 2 are
-#: dead-end-to-dead-end. The guard refuses that one shape.
+#: on. The first `/2` playthrough hit that shape at map 33 - one door, reached from
+#: Snakeway's scripted transition - which the matching sent to map 390, whose own
+#: single door leads back to 33, so the only way on was the boss standing in it.
+#: The retained run log shows `33 -> 390` and then a scripted move out rather than a
+#: door walk back, so the mapping is the documented fact and the trap is the
+#: operator's report, not a reading of that log. Retail never produces the shape: of
+#: its canonical single-door pairs, 67 lead to a hub and only 2 are
+#: dead-end-to-dead-end. The guard refuses it.
 #:
 #: It is a rule about the door graph's topology, NOT progression logic: it knows
 #: nothing about items, flags or story order, and it does **not** guarantee a route

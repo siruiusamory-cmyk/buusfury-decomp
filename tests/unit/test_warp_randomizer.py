@@ -145,10 +145,11 @@ def test_the_dead_end_guard_never_links_two_single_door_maps() -> None:
 def test_the_guard_finds_a_matching_the_greedy_pass_would_miss() -> None:
     """The count is exact, not a greedy accident.
 
-    Pair 0 may take only target 1 and pair 1 only target 0, while the greedy pass
-    in seeded order hands pair 0 the only target it can see and leaves pair 1
-    stuck. The augmenting search must move the earlier pair rather than relax the
-    rule, so the reported count stays 0.
+    Pair 1 may take neither target - both would link two single-door maps - while
+    pair 0 may take either. The greedy pass in seeded order gives pair 0 the first
+    target it sees, which leaves pair 1 nothing allowed, so a greedy-only guard
+    would relax the rule for pair 1 and report 1. The augmenting search moves the
+    earlier pair onto the other target instead, and the count stays 0.
     """
     targets, forced = guarded_matching(
         (0, 1), (False, True), (False, True)

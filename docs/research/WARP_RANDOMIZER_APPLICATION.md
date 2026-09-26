@@ -155,7 +155,11 @@ still hold.
 
 ### The portable gate
 
-`python -m pytest -m fast`: **3,229 passed, 1 failed, 3 skipped**.
+`python -m pytest -m fast` on the final tip: **3,239 passed, 1 failed, 3 skipped**
+(1,230 deselected - the `rom` axis). An earlier revision of this section said
+3,229, which was the figure before the review corrections added their tests; it is
+stated here because a stale aggregate is exactly the error the third review round
+found elsewhere in this document.
 
 The one failure is `test_capability_registry.py::test_the_built_page_renders_the_registry_list`,
 and it is **pre-existing and environmental, not caused by this ticket**. It
@@ -243,9 +247,12 @@ Two earlier defects in this probe were found and fixed, both by measurement:
   byte-coverage figure, which is 0.027%.
 
 **What the probe still does not catch** is recorded in the script's header rather
-than left implied, and a second review round measured the real numbers so the
-claim is not read as stronger than it is: the 48 needles search **2,304 bytes of
-8,388,608 - 0.027% of the image** - even though their *offsets* span 96.5% of it.
+than left implied, and the reviewer measured the real numbers so the claim is not
+read as stronger than it is: the 48 needles search **2,304 bytes of 8,388,608 -
+0.027% of the image** - even though their *offsets* span 96.5% of it. Round two
+measured that; round three re-measured it and confirmed the corrected header,
+including that a 1 MB carve at offset 4,000,000 **is** caught while a 48-byte
+carve at offset 1,000 is not.
 A carve is caught only if it contains one of those 48 exact windows. Blind spots,
 stated: a carve from an unsampled region, an excerpt shorter than 48 bytes, a
 *transformed* copy (compressed, base64, XORed, or a patch/delta), content inside a

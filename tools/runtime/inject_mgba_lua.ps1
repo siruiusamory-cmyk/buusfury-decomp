@@ -266,6 +266,15 @@ $allowedLua = @(
     [System.IO.Path]::GetFullPath(
         (Join-Path $workspaceRoot 'tools\runtime\mapgfxdiag001_map_layer_dump.lua')
     )
+    # Added by ROMHACK-WARP-RANDOMIZER-001: the read-only map-arrival observer for
+    # the human-operated randomized playthrough. It latches the live map identity
+    # on every map change, and the identity it came from, so each naturally
+    # encountered warp has a source and a destination that came out of the
+    # running engine rather than a map-name guess. It reads emulated memory and
+    # writes only host files inside the run directory.
+    [System.IO.Path]::GetFullPath(
+        (Join-Path $workspaceRoot 'tools\runtime\warprand001_map_watch.lua')
+    )
 )
 $resolvedLua = [System.IO.Path]::GetFullPath($LuaPath)
 if ($resolvedLua -notin $allowedLua) {

@@ -646,6 +646,114 @@ FACING_NAMES = {
 }
 
 
+#: MAP-WARP-CREATE-PROJECT-001. The ONE class word a *created* transition may
+#: carry: the 566 class (:data:`TRANSITION_CLASS_A_RAW`).
+#:
+#: Creation does not support the 169 class, and the reason is measured rather than
+#: stylistic: the 169 record's ``+0x14``/``+0x16`` pair is a **scene-relative
+#: delta** - the engine builds ``(scene + delta - region_low)`` before handing the
+#: point over (``0x08007234``..``0x08007258``, see
+#: :meth:`TransitionRecord.arrival_relative`) - so "where the player arrives" is not
+#: a value a project can state for that class without also measuring the scene
+#: origin. The 566 class passes the pair through unchanged, which is what makes an
+#: authored arrival a statement about the record alone.
+CREATED_CLASS_RAW = TRANSITION_CLASS_A_RAW
+
+
+#: The bits of each physical field a CREATED record takes from its project.
+#:
+#: ``0`` means the field is copied from the template **verbatim**; an all-ones mask
+#: means the project authored the whole field; anything between is a split, and
+#: exactly one field is:
+#:
+#: * ``byte_0x10_raw`` - the high nibble is the authored arrival-facing override
+#:   (``(direction + 1) << 4``, or ``0`` for "the record states none"), and the low
+#:   nibble - the door gate bits and the two bits nothing was traced reading - is
+#:   the template's, because no measured authoring vocabulary for the gate exists;
+#: * ``class_raw`` and ``constant_raw`` are ``0`` because their meaning is
+#:   UNRESOLVED: the created record carries the template's own class/constructor word
+#:   and the corpus's invariant word rather than a value this project would be
+#:   inventing;
+#: * ``byte_0x13_raw`` is ``0`` for the same reason - an engine-read field
+#:   (``0x08007282``) whose census is ``{0: 561, 1: 174}`` and whose meaning is
+#:   UNRESOLVED.
+#:
+#: This table is the whole statement of "which bytes are authored, which are copied
+#: invariant bytes and which are preserved unresolved bytes"; the build publishes it
+#: per created record so the answer is auditable from the manifest alone.
+CREATED_FIELD_AUTHORED_MASKS: dict[str, int] = {
+    "class_raw": 0x00000000,
+    "constant_raw": 0x00000000,
+    "bound_a_raw": 0xFFFF,
+    "bound_b_raw": 0xFFFF,
+    "bound_c_raw": 0xFFFF,
+    "bound_d_raw": 0xFFFF,
+    "byte_0x10_raw": 0xFF & ~FACING_PRESERVED_MASK,
+    "destination_key_high": 0xFF,
+    "destination_key_low": 0xFF,
+    "byte_0x13_raw": 0x00,
+    "word_0x14_raw": 0xFFFF,
+    "byte_0x16_raw": 0xFF,
+    "byte_0x17_raw": 0xFF,
+}
+
+if set(CREATED_FIELD_AUTHORED_MASKS) != {item.name for item in TRANSITION_LAYOUT}:
+    raise AssertionError(
+        "internal error: the created-record field table does not name every "
+        "physical field of the record"
+    )
+
+
+def compose_created_record(
+    template: "TransitionRecord",
+    *,
+    destination_key: bytes | bytearray | memoryview,
+    region: "TransitionRegion",
+    arrival: "TransitionArrival | None",
+    facing: int | None,
+) -> "TransitionRecord":
+    """The record a project's *creation* authors, over its structural ``template``.
+
+    A new transition has no canonical bytes to edit, so its initialization has to
+    come from a record the engine already consumes. This function states that
+    mapping once, from :data:`CREATED_FIELD_AUTHORED_MASKS`:
+
+    * the four region ``u16``, the two destination-key bytes and the arrival pair
+      are the project's;
+    * ``+0x00``, ``+0x04`` and ``+0x13`` are the template's, verbatim;
+    * ``+0x10``'s high nibble is the project's arrival facing (``None`` writes no
+      override, which is the engine's own "keep walking" state) and its low nibble
+      is the template's, preserved so an unresolved bit is never cleared.
+
+    Every field is written through the same controlled-edit methods an in-place edit
+    uses (:meth:`TransitionRecord.with_destination_key`, :meth:`with_region`,
+    :meth:`with_arrival`), so the record's byte layout is stated in one place and a
+    created record cannot drift from an edited one.
+
+    **The class is not a parameter.** A creation composes over whatever template it
+    is handed; the policy that the template must be the 566 class, and that its
+    ``+0x13`` and ``+0x10`` are the values the project recorded, belongs to the
+    authority that owns the project format.
+    """
+    _require_uint(
+        facing if facing is not None else 0, 8, "created arrival facing"
+    )
+    if facing is not None and not 0 <= facing <= FACING_MASK:
+        raise MapTransitionValueError(
+            f"a created arrival facing is 0..{FACING_MASK} or None, got {facing!r}"
+        )
+    record = (
+        template.with_destination_key(destination_key)
+        .with_region(region)
+        .with_arrival(arrival)
+    )
+    override = ((facing + 1) << 4) if facing is not None else 0
+    return replace(
+        record,
+        byte_0x10_raw=override | (template.byte_0x10_raw & FACING_PRESERVED_MASK),
+    )
+
+
 @dataclass(frozen=True, slots=True)
 class TransitionArrival:
     """The point a transition places the player at, in the destination's pixels.

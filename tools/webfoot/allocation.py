@@ -132,6 +132,17 @@ class AllocationKind(str, Enum):
     #: immediately after the window belong to the next structure, so a grid that
     #: grows cannot stay where it was and the whole record is re-emitted.
     LAYER_RECORD = "layer_record"
+    #: MAP-WARP-CREATE-PROJECT-001. One project-authored selector-1 transition
+    #: record: the 24 bytes a map's expanded pointer array element names. The
+    #: canonical corpus's arrays are packed against their own root and against
+    #: neighbouring records - map 40's three-element growth would land on its own
+    #: root - so a created record has nowhere canonical to go.
+    TRANSITION_RECORD = "transition_record"
+    #: MAP-WARP-CREATE-PROJECT-001. The expanded ``root + 0x44`` array: the
+    #: canonical element pointers plus one 4-byte pointer per created transition. A
+    #: count can only grow by re-emitting the whole array, because the canonical
+    #: array's following bytes are the root itself.
+    TRANSITION_POINTER_ARRAY = "transition_pointer_array"
 
 
 class Addressability(str, Enum):
@@ -161,6 +172,12 @@ class Addressability(str, Enum):
     #: domains depend on. Placing the domain above EOF is additionally exactly the
     #: addressability this capability has to prove, so the policy and the proof are
     #: the same decision.
+    #:
+    #: MAP-WARP-CREATE-PROJECT-001 reuses it for the transition record and pointer
+    #: array on that same argument. "Proven" here is the ENCODING claim, not the
+    #: runtime one: the domain's pointer field can carry an above-EOF value, which is
+    #: what the entry asserts. Whether the retail engine follows it is a separate,
+    #: runtime claim that no entry in :data:`DEFAULT_ADDRESSABILITY` makes.
     EXPANDED_ONLY = "expanded_only"
 
 
@@ -182,6 +199,25 @@ class Addressability(str, Enum):
 #: `InsufficientSpaceError` every time. Whether the retail engine actually READS
 #: a chunk above EOF is the runtime proof this ticket owns; until that proof
 #: lands, capability must not be advanced on the strength of this constant.
+#:
+#: MAP-WARP-CREATE-PROJECT-001 adds the two transition-creation entries, both
+#: `EXPANDED_ONLY`, and states their standing with the same split the two entries
+#: above use. What is measured: a map root's ``+0x44`` word and every array element
+#: are full 32-bit little-endian GBA addresses over all 452 roots and all 735
+#: elements of the canonical image, nothing masks or truncates them, and the
+#: profile's expansion maps file offset 0x00800000 to 0x08800000 inside the
+#: 0x08000000..0x09FFFFFF Game Pak window - so both fields can ENCODE a record and
+#: an array above canonical EOF. What is NOT measured here: whether the retail
+#: engine actually follows ``+0x44`` and an array element above EOF at runtime;
+#: a human-operated emulator run is the proof that owns that claim, and the
+#: capability must not be advanced on the strength of these constants.
+#:
+#: The policy is `EXPANDED_ONLY` rather than first fit for a reason of the domain:
+#: the aggregate demand is one 24-byte record plus a 4*(N+1)-byte array per authored
+#: transition, so it grows with the project, while the canonical image declares a
+#: single 256-byte VERIFIED_FREE region that other domains already draw on. It is
+#: also exactly the addressability this capability has to prove, so the policy and
+#: the proof are the same decision - the same argument `LAYER_RECORD` records.
 DEFAULT_ADDRESSABILITY = {
     AllocationKind.PACKED_STREAM: Addressability.EXPANDED_PERMITTED,
     AllocationKind.PLACEMENT_BODY: Addressability.CANONICAL_ONLY,
@@ -191,6 +227,8 @@ DEFAULT_ADDRESSABILITY = {
     AllocationKind.AUTHORED_MAP_EXPANSION: Addressability.CANONICAL_ONLY,
     AllocationKind.CHUNK_BODY: Addressability.EXPANDED_PERMITTED,
     AllocationKind.LAYER_RECORD: Addressability.EXPANDED_ONLY,
+    AllocationKind.TRANSITION_RECORD: Addressability.EXPANDED_ONLY,
+    AllocationKind.TRANSITION_POINTER_ARRAY: Addressability.EXPANDED_ONLY,
 }
 
 

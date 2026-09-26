@@ -803,6 +803,156 @@ class TransitionEditProvenance:
 
 
 @dataclass(frozen=True, slots=True)
+class TransitionRecordFieldProvenance:
+    """Where one physical field's bits of a CREATED transition record came from.
+
+    MAP-WARP-CREATE-PROJECT-001. A created record has no canonical bytes, so its
+    24 bytes are a composition of three kinds of material, and the ticket requires
+    the build to say which is which rather than leaving it to be inferred:
+
+    * **authored** - the project states the value (the region, the destination key,
+      the arrival pair, and the high nibble of ``+0x10``);
+    * **copied invariant/template** - ``+0x00``'s class/constructor word and
+      ``+0x04``'s corpus-invariant word, carried from the template because their
+      meanings are UNRESOLVED;
+    * **preserved unresolved** - ``+0x13``, an engine-read field whose meaning is
+      UNRESOLVED, copied from the template verbatim.
+
+    ``authored_mask`` states the *bits* the project authored, because exactly one
+    field is split: ``+0x10``'s high nibble is the authored arrival facing and its
+    low nibble (the door gate and two untraced bits) is the template's. A mask of
+    ``0`` means the field was copied whole; an all-ones mask means it was authored
+    whole. ``source`` names which of the three kinds the entry is, for a reader that
+    should not have to decode the mask to know.
+    """
+
+    offset: int
+    width: int
+    field: str
+    source: str
+    authored_mask: int
+
+    @property
+    def authored_bits(self) -> int:
+        return bin(self.authored_mask).count("1")
+
+    def to_json(self) -> dict:
+        return {
+            "offset": self.offset,
+            "offset_hex": f"0x{self.offset:02X}",
+            "width": self.width,
+            "field": self.field,
+            "source": self.source,
+            "authored_mask": self.authored_mask,
+            "authored_mask_hex": f"0x{self.authored_mask:X}",
+        }
+
+
+@dataclass(frozen=True, slots=True)
+class TransitionCreationProvenance:
+    """One CREATED transition as the manifest records it.
+
+    MAP-WARP-CREATE-PROJECT-001. A created record is the one transition this build
+    emits that has no canonical bytes, so its provenance owes more than an edit's:
+    which semantic transition was created and where it landed, which canonical record
+    it was initialized from, which field of the canonical enumeration it took, and
+    what happened to the root and the pointer array that make it reachable.
+
+    Every address here is provenance and never identity: ``identity`` is
+    ``map:NNNN/transition:<name>``, the authored name, and it survives any rebuild
+    that re-allocates the record somewhere else.
+    """
+
+    #: ``map:NNNN/transition:<name>`` - the durable authored identity.
+    identity: str
+    source_map: int
+    #: The element index in the EXPANDED array the created record occupies. A
+    #: build-time fact, deliberately not part of the identity.
+    index: int
+    #: ``map:NNNN/transition:IIII`` - the canonical record this one was composed over.
+    template: str
+    template_address: int
+    destination: str
+    region: tuple[tuple[int, int], tuple[int, int]]
+    arrival: tuple[int, int]
+    #: The created record's ``+0x10`` byte, whole: the authored high nibble over the
+    #: template's own low nibble.
+    facing_raw: int
+    #: The arrival-facing direction the project stated, or None for "no override".
+    facing: int | None
+    record_address: int
+    record_file_offset: int
+    record_size: int
+    array_address: int
+    array_file_offset: int
+    array_size: int
+    #: ``root + 0x40``: where the count lives, and what it was and became.
+    count_offset: int
+    prior_count: int
+    count: int
+    #: ``root + 0x44``: where the array pointer lives, and what it was and became.
+    #: Before the creation it named the CANONICAL array, which is left byte-identical
+    #: in place; the expanded array is a new span that carries the same elements plus
+    #: the created one.
+    array_pointer_offset: int
+    prior_array_address: int
+    #: The engine-encoded bytes of the two pointer fields, so a manifest reader can
+    #: answer "what encoding did this build use" without re-deriving it.
+    count_bytes: str
+    array_pointer_bytes: str
+    record_pointer_bytes: str
+    expanded: bool
+    expansion_evidence: str
+    #: The template's own preserved bytes as the project pinned them, and the live
+    #: template's values they were checked against.
+    prior_facing_raw: int
+    prior_unresolved_raw: int
+    #: Every physical field of the 24-byte record and where its bits came from.
+    fields: tuple[TransitionRecordFieldProvenance, ...] = ()
+
+    def to_json(self) -> dict:
+        return {
+            "identity": self.identity,
+            "source_map": self.source_map,
+            "index": self.index,
+            "template": self.template,
+            "template_address": self.template_address,
+            "template_address_hex": f"0x{self.template_address:08X}",
+            "destination": self.destination,
+            "region": [list(pair) for pair in self.region],
+            "arrival": list(self.arrival),
+            "facing_raw": self.facing_raw,
+            "facing": self.facing,
+            "record_address": self.record_address,
+            "record_address_hex": f"0x{self.record_address:08X}",
+            "record_file_offset": self.record_file_offset,
+            "record_file_offset_hex": f"0x{self.record_file_offset:08X}",
+            "record_size": self.record_size,
+            "array_address": self.array_address,
+            "array_address_hex": f"0x{self.array_address:08X}",
+            "array_file_offset": self.array_file_offset,
+            "array_file_offset_hex": f"0x{self.array_file_offset:08X}",
+            "array_size": self.array_size,
+            "count_offset": self.count_offset,
+            "count_offset_hex": f"0x{self.count_offset:08X}",
+            "prior_count": self.prior_count,
+            "count": self.count,
+            "array_pointer_offset": self.array_pointer_offset,
+            "array_pointer_offset_hex": f"0x{self.array_pointer_offset:08X}",
+            "prior_array_address": self.prior_array_address,
+            "prior_array_address_hex": f"0x{self.prior_array_address:08X}",
+            "count_bytes": self.count_bytes,
+            "array_pointer_bytes": self.array_pointer_bytes,
+            "record_pointer_bytes": self.record_pointer_bytes,
+            "expanded": self.expanded,
+            "expansion_evidence": self.expansion_evidence,
+            "prior_facing_raw": self.prior_facing_raw,
+            "prior_unresolved_raw": self.prior_unresolved_raw,
+            "record_fields": [field.to_json() for field in self.fields],
+        }
+
+
+@dataclass(frozen=True, slots=True)
 class WritePlan:
     """A validated set of changes against one identified base image.
 
@@ -829,6 +979,8 @@ class WritePlan:
     #: transition, and also for one whose authored transition values all equal the
     #: canonical record's own - a no-op edit is not an edit.
     transition_edits: tuple[TransitionEditProvenance, ...] = ()
+    #: MAP-WARP-CREATE-PROJECT-001. Empty for a build that created no transition.
+    transition_creations: tuple[TransitionCreationProvenance, ...] = ()
 
     @property
     def effective_changes(self) -> tuple[ByteChange, ...]:
@@ -895,6 +1047,10 @@ class WriteManifest:
     #: MAP-WARP-PROJECT-AUTHORING-001. Present only when a project's semantic
     #: transition edit actually changed a record's destination or region.
     transition_edits: tuple[TransitionEditProvenance, ...] = ()
+    #: MAP-WARP-CREATE-PROJECT-001. Present only when a build materialized a
+    #: project-created transition record and the expanded pointer array that
+    #: reaches it.
+    transition_creations: tuple[TransitionCreationProvenance, ...] = ()
 
     def to_json(self) -> dict:
         document = {
@@ -936,6 +1092,10 @@ class WriteManifest:
             document["transition_edits"] = [
                 edit.to_json() for edit in self.transition_edits
             ]
+        if self.transition_creations:
+            document["transition_creations"] = [
+                creation.to_json() for creation in self.transition_creations
+            ]
         return document
 
     def dumps(self) -> str:
@@ -964,6 +1124,7 @@ def plan_changes(
     chunk_edits: tuple[ChunkEditProvenance, ...] = (),
     structure_edits: tuple[StructureEditProvenance, ...] = (),
     transition_edits: tuple[TransitionEditProvenance, ...] = (),
+    transition_creations: tuple[TransitionCreationProvenance, ...] = (),
 ) -> WritePlan:
     """Validate `changes` against `base` and return an applicable plan.
 
@@ -1047,6 +1208,7 @@ def plan_changes(
         chunk_edits=tuple(chunk_edits),
         structure_edits=tuple(structure_edits),
         transition_edits=tuple(transition_edits),
+        transition_creations=tuple(transition_creations),
     )
 
 
@@ -1154,6 +1316,7 @@ def emit_image(
         chunk_edits=plan.chunk_edits,
         structure_edits=plan.structure_edits,
         transition_edits=plan.transition_edits,
+        transition_creations=plan.transition_creations,
     )
     # Stage complete files first. Publish using exclusive links: never replace
     # a raced destination. Publish image last; roll back our links on failure.

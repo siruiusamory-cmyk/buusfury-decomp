@@ -131,13 +131,28 @@ def test_the_169_class_scene_relative_transform_is_reproduced() -> None:
     assert negative.arrival_relative(0, 0).x == 0xFFF0 - 0x10000 + 0x10000 & 0xFFFF
 
 
-def test_the_transform_is_refused_for_a_566_record_and_the_pair_for_a_169() -> None:
-    """Each accessor answers only for the class it is true of."""
-    raw = record(class_raw=TRANSITION_CLASS_A_RAW)
+def test_each_accessor_refuses_the_class_it_is_not_true_of() -> None:
+    """BOTH directions, which is the half an earlier revision of this file missed.
+
+    A 169 record's pair is a delta, and a delta is a small number that every
+    bounds check downstream accepts - so returning it as a point is a silent
+    wrong answer rather than a loud failure. The arrival accessor must refuse that
+    class, and a test that only inspected ``has_raw_arrival_pair`` would pass
+    with exactly that defect present.
+    """
+    point = record(class_raw=TRANSITION_CLASS_A_RAW, arrival=(100, 200))
+    assert point.arrival == TransitionArrival(x=100, y=200)
+    assert point.raw_coordinate_pair == point.arrival
     with pytest.raises(MapTransitionValueError):
-        raw.arrival_relative(0, 0)
-    other = record(class_raw=TRANSITION_CLASS_B_RAW)
-    assert not other.has_raw_arrival_pair
+        point.arrival_relative(0, 0)
+
+    delta = record(class_raw=TRANSITION_CLASS_B_RAW, arrival=(100, 200))
+    assert not delta.has_raw_arrival_pair
+    # The bytes stay readable - the round trip and the prior checks need them -
+    # but they are not offered under a name that claims to be a position.
+    assert delta.raw_coordinate_pair == TransitionArrival(x=100, y=200)
+    with pytest.raises(MapTransitionValueError):
+        delta.arrival
 
 
 def test_an_unset_arrival_is_a_sentinel_and_not_the_origin() -> None:

@@ -83,6 +83,20 @@ UNRESOLVED_OFFSETS = (0x00, 0x04, 0x10, 0x13, 0x14, 0x16, 0x17)
 
 
 def _rom_path() -> str:
+    """The canonical image, or a skip. ``LOGX_CANONICAL_ROM`` overrides the path.
+
+    A ticket worktree never carries the ignored image, so without the override
+    this whole file skips there - which is how its locality, prior, determinism
+    and safety claims went unexercised in a review worktree once already.
+    """
+    override = os.environ.get("LOGX_CANONICAL_ROM")
+    if override:
+        path = Path(override)
+        if not path.is_file():
+            pytest.skip(f"LOGX_CANONICAL_ROM is not a file: {path}")
+        if hashlib.sha256(path.read_bytes()).hexdigest() != CANONICAL_SHA256:
+            pytest.skip("LOGX_CANONICAL_ROM is not the canonical image")
+        return str(path)
     matches = sorted(glob.glob(os.path.join("roms", "*Buu*.gba")))
     if not matches:
         pytest.skip("canonical Buu's Fury ROM not present locally")

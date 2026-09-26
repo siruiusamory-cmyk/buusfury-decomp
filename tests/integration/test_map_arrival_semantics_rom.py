@@ -134,7 +134,8 @@ def test_the_169_class_pair_is_not_an_arrival_on_its_own(authority) -> None:
     entry = authority.entry(TransitionIdentity(MapIdentity(39), 0))
     assert entry.record.class_raw == TRANSITION_CLASS_B_RAW
     assert not entry.record.has_raw_arrival_pair
-    stored = entry.record.arrival
+    # The stored bytes are readable; asking for them as an arrival is not.
+    stored = entry.record.raw_coordinate_pair
     assert stored is not None
     # The scene origin is an input, so two origins give two different arrivals.
     first = entry.record.arrival_relative(0, 0)
@@ -145,6 +146,29 @@ def test_the_169_class_pair_is_not_an_arrival_on_its_own(authority) -> None:
         # And a 566 record refuses the transform, because its pair is already a
         # point - the two families are never treated as interchangeable.
         authority.entry(TARGET).record.arrival_relative(0, 0)
+
+
+def test_a_169_class_record_refuses_to_be_an_arrival(authority, fresh) -> None:
+    """The real corpus's second class must not answer as a point anywhere.
+
+    This is the fail-closed half: a 169 record's pair is a delta, and a delta is
+    inside every map's bounds, so an accessor that returned it as an arrival
+    would be accepted by the bound check and written by a build.
+    """
+    entry = authority.entry(TransitionIdentity(MapIdentity(39), 0))
+    assert entry.record.class_raw == TRANSITION_CLASS_B_RAW
+    stored = entry.record.raw_coordinate_pair
+    assert stored is not None
+    with pytest.raises(MapTransitionValueError):
+        entry.record.arrival
+    with pytest.raises(MapTransitionValueError):
+        authority.arrival(entry.identity)
+    with pytest.raises(TransitionFieldError):
+        authority.set_arrival(entry.identity, TransitionArrival(x=1, y=1))
+    with pytest.raises(TransitionFieldError):
+        fresh.derive_arrival(entry.identity, MapIdentity(38))
+    # The delta is still readable as bytes, which is what the round trip needs.
+    assert fresh.entry(entry.identity).record.raw_coordinate_pair == stored
 
 
 # --- deriving a safe arrival -------------------------------------------------

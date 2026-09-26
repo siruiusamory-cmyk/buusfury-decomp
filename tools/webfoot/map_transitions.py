@@ -609,6 +609,15 @@ class MapTransitions:
         here rather than discovered as a softlock at runtime.
         """
         self.entry(identity)
+        if not self.entry(identity).record.has_raw_arrival_pair:
+            # Fail closed rather than write a delta into a field the engine reads
+            # as a point. The 169 class's pair needs the scene origin, which no
+            # project value supplies, so an authored arrival is refused outright.
+            raise TransitionFieldError(
+                f"{identity} is a 169-class record whose +0x14/+0x16 pair is a "
+                "scene-relative delta, not an arrival point; authoring an arrival "
+                "on this class is refused rather than written as a position"
+            )
         if arrival is not None and not isinstance(arrival, TransitionArrival):
             raise TransitionFieldError(
                 f"{identity}.arrival must be a TransitionArrival or None, "
@@ -654,10 +663,18 @@ class MapTransitions:
                 "explicitly (see set_arrival) instead of inheriting the previous "
                 "destination's point"
             )
+        if not self.entry(identity).record.has_raw_arrival_pair:
+            raise TransitionFieldError(
+                f"{identity} is a 169-class record whose stored pair is a "
+                "scene-relative delta; no arrival can be derived for it"
+            )
         for sibling in self.for_map(identity.source):
             if sibling.identity == identity:
                 continue
             if self.destination(sibling.identity) != destination:
+                continue
+            # Only a sibling whose pair IS a point can answer for this link.
+            if not sibling.record.has_raw_arrival_pair:
                 continue
             point = sibling.record.arrival
             if point is not None and any(
@@ -1080,7 +1097,9 @@ def plan_transition_edits(
         entry = corpus.entry(identity)
         before_destination = corpus.destination(identity)
         before_region = entry.record.region
-        before_arrival = entry.record.arrival
+        before_arrival = (
+            entry.record.arrival if entry.record.has_raw_arrival_pair else None
+        )
         before_facing_raw = entry.record.byte_0x10_raw
         _require_prior(identity, "destination", before_destination, edit.prior_destination)
         _require_prior(identity, "region", before_region, edit.prior_region)
@@ -1098,13 +1117,22 @@ def plan_transition_edits(
         if edit.facing_authored:
             # The whole byte is restored, high bits included, so an unresolved
             # flag cannot be lost by an edit that only meant to turn the player.
+            # A null authored value means "state no override" - which must KEEP
+            # the canonical gate bits rather than zero the whole byte, because
+            # the gate is the other half of this field.
             corpus._edits[identity] = corpus.entry(identity).record.with_facing_raw(
-                edit.facing_raw if edit.facing_raw is not None else 0
+                edit.facing_raw
+                if edit.facing_raw is not None
+                else (before_facing_raw & FACING_MASK)
             )
 
         after_destination = corpus.destination(identity)
         after_region = corpus.entry(identity).record.region
-        after_arrival = corpus.entry(identity).record.arrival
+        after_arrival = (
+            corpus.entry(identity).record.arrival
+            if corpus.entry(identity).record.has_raw_arrival_pair
+            else None
+        )
         after_facing_raw = corpus.entry(identity).record.byte_0x10_raw
         destination_changed = after_destination != before_destination
         region_changed = after_region != before_region
@@ -1241,7 +1269,17 @@ def set_transition_edits(
         arrival_authored = bool(existing and existing.arrival_authored)
         before_destination = corpus.destination(identity)
         before_region = corpus.entry(identity).record.region
-        before_arrival = corpus.entry(identity).record.arrival
+        before_arrival = (
+            corpus.entry(identity).record.arrival
+            if corpus.entry(identity).record.has_raw_arrival_pair
+            else None
+        )
+        if request.arrival is not None and not corpus.entry(identity).record.has_raw_arrival_pair:
+            raise TransitionFieldError(
+                f"{identity} is a 169-class record whose +0x14/+0x16 pair is a "
+                "scene-relative delta, not an arrival point; authoring an arrival "
+                "on this class is refused rather than written as a position"
+            )
         before_facing_raw = corpus.entry(identity).record.byte_0x10_raw
         prior_facing_raw = (
             existing.prior_facing_raw if existing and existing.facing_authored else None

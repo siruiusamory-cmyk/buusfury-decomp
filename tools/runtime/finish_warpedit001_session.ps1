@@ -123,8 +123,11 @@ if ($departures.Count -eq 0) {
         $r = $afterRebuild[0]
         Say ("  after an observed leave-and-re-enter: map {0} -> map {1} at frame {2}" -f $ExpectTargetMap, $r.to, $r.frame)
     } else {
-        Say '  NOTE: no departure was seen after an observed leave-and-re-enter, so'
-        Say '  this run does not by itself prove the engine re-read the record from ROM.'
+        Say '  (No leave-and-re-enter was observed before this departure. For a'
+        Say '  TRANSITION that is not a defect and not a weaker result: the record'
+        Say '  is read when the trigger fires, so the first departure after a load'
+        Say '  is valid evidence. The re-entry rule belongs to map and background'
+        Say '  assembly, where a savestate restores the built background.)'
     }
     if ($ExpectedDestination -ne 0) {
         $hit = @($departures | Where-Object { $_.to -eq $ExpectedDestination })

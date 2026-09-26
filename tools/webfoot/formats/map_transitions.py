@@ -25,9 +25,14 @@ fields and gets 24 bytes.
   the engine loads them with two separate ``ldrb`` on the producer and two on
   the consumer (claim 16), and resolves them through the ``MapEntry +0x00``
   two-byte key scan (claim 17). It is not a halfword-typed field (claim 22);
-* ``+0x10``, ``+0x13``, ``+0x14``, ``+0x16`` and ``+0x17`` are engine-read
-  fields whose semantics are UNRESOLVED (claims 19, 21), so they are preserved
-  byte-for-byte and are not editable;
+* ``+0x13`` remains an engine-read field whose semantics are UNRESOLVED (claim
+  19), so it is preserved byte-for-byte and is not editable. ``+0x10``,
+  ``+0x14``, ``+0x16`` and ``+0x17`` are no longer in that list: the arrival pair
+  (:attr:`TransitionRecord.arrival`) and the arrival facing
+  (:attr:`TransitionRecord.facing`) are decoded and authorable, with the parts
+  that remain unresolved - the low-nibble gate's meaning, and which of the two
+  record classes shares the pair's semantics - stated as unresolved in their own
+  docstrings rather than implied here;
 * ``+0x04`` is one invariant word on all 735 canonical records, and no evidence
   establishes what it is. It is preserved and deliberately **not** validated:
   enforcing a constant read off one image would turn a corpus coincidence into
@@ -71,9 +76,13 @@ BOUND_MAXIMUM = 0xFFFF
 #: of that door's rectangle: 325 inside it and the rest just outside it, by a few
 #: pixels on exactly one axis, which is where a player stands after stepping
 #: through rather than on the trigger that would send them straight back.
-#: Supporting engine evidence: the record's ``+0x16``/``+0x17`` are read by the
-#: object builder at ``0x0800CEF4``, so those bytes are engine-read data and not
-#: padding.
+#: Supporting engine evidence: the 566-class method ``0x080075AC`` passes
+#: ``record + 0x14`` itself to the warp routine (``08007600 adds r3,#0x14`` then
+#: ``0800760A bl 0x08008d44``), and the 169-class method ``0x080071F8`` reads
+#: ``+0x14`` and ``+0x16`` with ``ldrsh`` before building its own pair. **The
+#: earlier citation of ``0x0800CEF4`` here was withdrawn** - that routine's
+#: argument is an element of the scene's separate 24-byte array at ``scene+0x28``,
+#: not a transition record, so it is not evidence about this one.
 ARRIVAL_UNSET_MINIMUM = 0xFFF8
 
 
@@ -340,13 +349,15 @@ class TransitionRecord:
     # --- the measured arrival point --------------------------------------
 
     @property
-    def arrival(self) -> "TransitionArrival | None":
-        """Where the player is placed in the destination, or None when unset.
+    def raw_coordinate_pair(self) -> "TransitionArrival | None":
+        """The stored ``+0x14``/``+0x16`` pair verbatim, with NO semantics.
 
-        ``None`` is not "the origin": the corpus stores ``0xFFF8``..``0xFFFF`` in
-        these fields for the records whose arrival is not at the destination's
-        return door, so a sentinel and a real ``(0, 0)`` are different answers and
-        are reported differently.
+        Sentinel-aware and nothing else. For the 566 class this pair *is* the
+        arrival, so :attr:`arrival` returns it; for the 169 class it is a
+        scene-relative delta, and only :meth:`arrival_relative` turns it into a
+        point. This accessor exists so the literal field can still be read for a
+        169 record - the project round trip and the prior checks need the bytes -
+        without claiming the value is a position.
         """
         x = self.word_0x14_raw
         # y is the halfword at +0x16, so its high byte is +0x17; the sentinel
@@ -355,6 +366,26 @@ class TransitionRecord:
         if x >= ARRIVAL_UNSET_MINIMUM or y >= ARRIVAL_UNSET_MINIMUM:
             return None
         return TransitionArrival(x=x, y=y)
+
+    @property
+    def arrival(self) -> "TransitionArrival | None":
+        """Where the player is placed in the destination, or None when unset.
+
+        **Refuses the 169 class**, loudly. Its stored pair is a delta that has no
+        meaning without the scene origin, and this accessor previously returned
+        that delta as a point - which every downstream check then accepted, since
+        a delta is a small number well inside any map's bounds. A caller that
+        wants a point for a 169 record must supply the origin through
+        :meth:`arrival_relative`; a caller that only wants the bytes wants
+        :attr:`raw_coordinate_pair`.
+        """
+        if not self.has_raw_arrival_pair:
+            raise MapTransitionValueError(
+                "a 169-class record's +0x14/+0x16 pair is a scene-relative delta, "
+                "not an arrival point; use arrival_relative(scene_x, scene_y) for a "
+                "point, or raw_coordinate_pair for the stored bytes"
+            )
+        return self.raw_coordinate_pair
 
     def with_arrival(self, arrival: "TransitionArrival | None") -> "TransitionRecord":
         """Return this record placing the player at ``arrival``.
@@ -467,6 +498,13 @@ class TransitionRecord:
           which ``08007644``/``08007648`` store into the player at ``+0x10``.
         * the engine **never derives a direction from geometry**, so "face away
           from the nearest edge" is an authoring convention and not engine law.
+
+        **Two different gate words, and they are not interchangeable.** This
+        field's low bits select a bit of the door gate word at ``*(u16*)0x03003302``
+        (compared at ``080075C6``). The word ``0x03001A34`` used by the runtime
+        observer and by the tickets is a different address - the selector read at
+        ``08008DA6``..``08008DB0`` - and what it selects is UNRESOLVED. Do not
+        treat one as the other.
         """
         return TransitionFacing(raw=self.byte_0x10_raw)
 

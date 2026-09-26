@@ -1,6 +1,6 @@
 # MAP-WARP-PROJECT-AUTHORING-001 - persisting a semantic transition edit
 
-STATUS: **RETURNED FOR REVIEW.** Class: scoped project-format, SDK-authority and
+STATUS: **CLOSED (2026-09-26).** Class: scoped project-format, SDK-authority and
 build-integration pass. This is a **sub-pass of the parent capability
 `MAP-WARPS-AND-CONNECTIONS-001`**, which stays active and unshipped in
 [`PROJECT_<local-state-name>`](PROJECT_<local-state-name>); the parent's Workbench surface, runtime proof,
@@ -9,16 +9,21 @@ were not begun.
 
 Baseline: `05870f1e9c90fc5ef83ddfd1fa69fdedb06f926a` (the ticket's stated baseline
 and the actual start SHA - verified with `git rev-parse HEAD` on a clean tree, no
-drift). This pass is **uncommitted and unstaged**; the frozen reviewed candidate is
-recorded after the independent review gate.
+drift). Implementation and frozen reviewed candidate:
+`b9d8fd68673989d6197ad3f4669af82dc07e87bb` on
+`ticket/map-warp-project-authoring-001`. Independent local review: **PASS**, zero
+blocking findings, no correction commit. Verdict:
+[`MAP-WARP-PROJECT-AUTHORING-001-review.md`](MAP-WARP-PROJECT-AUTHORING-001-review.md);
+closure:
+[`archive/MAP-WARP-PROJECT-AUTHORING-001.md`](archive/MAP-WARP-PROJECT-AUTHORING-001.md).
 
 **public progress impact: NONE.** No capability ships, the registry stays at
 **19 / 24 (79%)**, `EDIT` stays **7 / 8**, `src/data/capabilities.json` is
 untouched, `warps` remains missing, and no published claim, blocker or questline
-entry changes wording. `docs/PROJECT_<local-state-name>` is deliberately **not** touched: no
-baseline commit exists for this pass, the parent capability has not shipped, and the
-closed predecessor sub-pass `MAP-WARP-FORMAT-001` recorded its state in its own
-ticket record rather than in project state.
+entry changes wording. `docs/PROJECT_<local-state-name>` is deliberately **not** touched: the
+parent capability has not shipped, and the closed predecessor sub-pass
+`MAP-WARP-FORMAT-001` recorded its state in its own ticket record rather than in
+project state.
 
 Scope boundaries honoured: no Workbench UI, no new transition creation, no
 runtime/emulator proof, no capability count change, no public-site change, no
@@ -89,9 +94,10 @@ tests/integration/test_map_transition_project_rom.py (15 passed, canonical ROM
 read-only)
 
 BROAD SUITE:
-RUN ONCE as the deliberate integration gate - see the validation section. Measured
-4261 passed, 2 failed, 6 skipped in 1:26:11. Both failures are pre-existing at
-05870f1 and not ticket-caused.
+RUN ONCE IN ERROR AGAINST STANDING POLICY - recorded as history, NOT repeated.
+Measured 4261 passed, 2 failed, 6 skipped in 1:26:11. Both failures are pre-existing
+at 05870f1 and not ticket-caused. The focused files named above are this ticket's
+evidence.
 
 CANONICAL ROM:
 UNCHANGED - SHA-256 940ad5f01db4465b8877dfe739510cbf34f4ea3d390f3df13519808bc36f059e
@@ -307,12 +313,12 @@ preservation, canonical-ROM safety, no-op, deterministic rebuild, manifest
 provenance, stale prior, invalid identity, invalid destination, invalid region on
 disk, and the staging refusal.
 
-### The full-suite gate
+### The full-suite gate - run once in error, not repeated
 
-This pass changes shared production code - `write.py`'s plan/manifest plumbing,
-`build.py`'s domain sequencing, the project format, a semantic identity and the
-build boundary - so the expensive gate is warranted rather than skipped, and it was
-run **once**, deliberately, after the focused files were green:
+**This command was run ONCE IN ERROR AGAINST STANDING POLICY and is NOT repeated.**
+The number below is kept as history and is deliberately not offered as this
+ticket's evidence: the focused files above are. No further broad run was made for
+confidence, and none may be inferred from anything here.
 
 ```text
 python -m pytest tests -q -p no:cacheprovider
@@ -417,11 +423,11 @@ python -m pytest tests/unit/test_map_transition_project.py -q
 
 # focused, canonical ROM required (read-only); skips cleanly without it
 python -m pytest tests/integration/test_map_transition_project_rom.py -q
-
-# the deliberate full-suite gate (about 90 minutes); expect the two pre-existing
-# failures named above and nothing else
-python -m pytest tests -q -p no:cacheprovider
 ```
+
+**Do not run the full suite for this ticket.** It was run once in error against
+standing policy (see the section above); repeating it for confidence is explicitly
+not wanted, and CI owns broad validation.
 
 The integration file resolves the image from `roms/*Buu*.gba` and skips unless its
 SHA-256 is the canonical

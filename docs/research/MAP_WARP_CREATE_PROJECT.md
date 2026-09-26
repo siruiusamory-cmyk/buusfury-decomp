@@ -10,12 +10,14 @@ begun.
 
 Baseline: `df81e7ab9bcffc99c526b7e9bffe768d8420214d` (the repository's `HEAD` at the
 start of the pass, verified with `git rev-parse HEAD` on a clean tree, no drift).
-Implementation: `5c0f6e4df77697031b92800dabb812a9ba5543bb`; frozen reviewed tip:
-`7a0abc57fea6c20799bbc9079d3544809fea41b8` (the correction commit), both on
+Implementation: `5c0f6e4df77697031b92800dabb812a9ba5543bb`; frozen reviewed tip (the
+correction commit): `7a0abc57fea6c20799bbc9079d3544809fea41b8`; commits after it are
+**documentation only** and add this review record. All of them are on
 `ticket/map-warp-create-project-001` in the ticket worktree
 `<ticket-worktrees>\map-warp-create-project-001`. The primary checkout stays on
-`master` at the baseline and was not committed, branched, pushed or archived; the
-twelve changed files there are byte-identical to the frozen tip (verified by SHA-256).
+`master` at the baseline and was not committed, branched, pushed or archived; its
+twelve changed files are byte-identical to the ticket branch's tip (verified by
+SHA-256).
 
 **public progress impact: NONE.** No capability ships, the registry stays at
 **19 / 24 (79%)**, `EDIT` stays **7 / 8**, `src/data/capabilities.json` is untouched,

@@ -23,7 +23,16 @@ the traced `0x03001A34` selector suppressed the engine's arrival-facing write.
 | `tools/runtime/finish_warpedit001_session.ps1` | reports the facing correlation; a first revision selected the pre-warp player-object swap and was corrected to select the first swap outside the source map |
 | `tests/unit/test_mgba_capture.py` | pins the new channel's addresses, its separate output file, and that its player slot is never dereferenced blind |
 | `docs/research/LOGX_CONNECTOR_PROVENANCE.md` | correction 6: `+0x10 = 0x02` does **not** mean "face West"; plus the runtime confirmation and the transition-proof rule |
-| `docs/DEVELOPMENT.md` | the transition-proof rule, in the runtime-evidence section |
+| `docs/DEVELOPMENT.md` | the transition-proof rule, in the runtime-evidence section - **later relocated**: see the note below |
+
+The `docs/DEVELOPMENT.md` edit above did not survive `MAP-WARP-STACK-REVIEW-AND-INTEGRATE-001`.
+It took that file to 308 lines against the 300-line budget that
+`test_workflow_migration.py` and `test_code_review_workflow.py` both enforce, so CI
+failed on the candidate. `docs/DEVELOPMENT.md` and `docs/DEVELOPMENT.md` are bounded context budgets
+and each says a new rule earns its place by being condensed to fit rather than by
+moving the bound, so `docs/DEVELOPMENT.md` is restored byte-for-byte to its committed state
+and the rule now lives in [`../../runtime-capture.md`](../../runtime-capture.md),
+the authoritative runtime procedure those files point at. No code changed.
 
 The channel latches three things on one frame clock, because the claim is a
 **correlation** and no single value settles it: the record's `+0x10` read through

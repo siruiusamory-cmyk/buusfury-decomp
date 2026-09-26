@@ -1,9 +1,9 @@
 # MAP-WARP-CREATE-PROJECT-001 - creating a transition through the project and the build
 
-STATUS: **IMPLEMENTED, VALIDATED AND INDEPENDENTLY REVIEWED - RETURNED FOR
-REVIEW (2026-09-26).** Class: scoped project-format, SDK-authority, allocator and
-build-integration pass. This is a **sub-pass of the parent capability
-`MAP-WARPS-AND-CONNECTIONS-001`**, which stays active and unshipped in
+STATUS: **MERGED AND INTEGRATED (2026-09-26).** Class: scoped project-format,
+SDK-authority, allocator and build-integration pass, followed by a final-integration
+pass that pushed, reviewed-in-CI and merged it. This is a **sub-pass of the parent
+capability `MAP-WARPS-AND-CONNECTIONS-001`**, which stays active and unshipped in
 [`PROJECT_<local-state-name>`](PROJECT_<local-state-name>); the parent's Workbench creation surface, human-operated
 runtime proof and capability advance are explicitly **not** in scope here and were not
 begun.
@@ -12,12 +12,17 @@ Baseline: `df81e7ab9bcffc99c526b7e9bffe768d8420214d` (the repository's `HEAD` at
 start of the pass, verified with `git rev-parse HEAD` on a clean tree, no drift).
 Implementation: `5c0f6e4df77697031b92800dabb812a9ba5543bb`; frozen reviewed tip (the
 correction commit): `7a0abc57fea6c20799bbc9079d3544809fea41b8`; commits after it are
-**documentation only** and add this review record. All of them are on
-`ticket/map-warp-create-project-001` in the ticket worktree
-`<ticket-worktrees>\map-warp-create-project-001`. The primary checkout stays on
-`master` at the baseline and was not committed, branched, pushed or archived; its
-twelve changed files are byte-identical to the ticket branch's tip (verified by
-SHA-256).
+**documentation only**. All of them are on `ticket/map-warp-create-project-001`, whose
+checkout is kept in the ticket worktree
+`<ticket-worktrees>\map-warp-create-project-001`; the branch was pushed, opened
+as **MR !94**, passed CI and was **merged** as
+`b39e5fe2291b6fdbf46d095db87e40b895eb2def` (no squash, no amend of any reviewed
+commit). The primary checkout was returned to its pre-ticket `master` state during the
+integration pass - its twelve duplicate ticket-owned files were each proved
+byte-identical to the branch tip first, and nothing else was touched - and then
+fast-forwarded to the merge commit, where it reports `master == origin/master`,
+**0 ahead / 0 behind**. The merged content is byte-identical to the reviewed tip over
+all twelve paths.
 
 **public progress impact: NONE.** No capability ships, the registry stays at
 **19 / 24 (79%)**, `EDIT` stays **7 / 8**, `src/data/capabilities.json` is untouched,
@@ -226,6 +231,86 @@ MAP-WARPS-AND-CONNECTIONS-001 - NOT SHIPPED
 NEXT:
 RETURN FOR REVIEW
 ```
+
+## Final integration (2026-09-26)
+
+```text
+MAP-WARP-CREATE-PROJECT-001 - FINAL INTEGRATION
+
+ORIGINAL BASELINE:
+df81e7ab9bcffc99c526b7e9bffe768d8420214d
+
+PRE-MERGE origin/master:
+df81e7ab9bcffc99c526b7e9bffe768d8420214d (unchanged; the branch was a clean
+fast-forward base)
+
+FINAL TICKET TIP:
+5a9abe003bc5295d25dcfcdad0718db9616c8a95 (pushed; remote tip verified equal)
+
+MR:
+!94 - https://gitlab.com/siruiusamory/log1-remake/-/merge_requests/94
+
+PIPELINE:
+2885987621 (refs/merge-requests/94/head) - SUCCESS
+test-sdk: 3329 passed, 12 skipped in 49.57s
+
+MERGE SHA:
+b39e5fe2291b6fdbf46d095db87e40b895eb2def (merge commit; no squash, no reviewed
+commit amended)
+
+FINAL PROJECT HEAD:
+b39e5fe2291b6fdbf46d095db87e40b895eb2def - primary checkout master, verified
+master == origin/master, 0 ahead / 0 behind
+
+INDEPENDENT REVIEW:
+APPROVE / 0 blocking
+
+MANUAL BROAD SUITE:
+RUN ONCE IN ERROR / NOT REPEATED / NOT ACCEPTANCE EVIDENCE
+(3332 passed, 8 skipped, 1 pre-existing stale-dist failure)
+
+CANONICAL ROM:
+UNCHANGED (940ad5f0...f059e)
+
+WORKBENCH CREATE UI:
+NOT IMPLEMENTED
+
+RUNTIME PROOF:
+NOT RUN
+
+PRODUCT CAPABILITY IMPACT:
+NONE
+
+DRAGONBYTE Z:
+19 / 24 - 79%
+
+PARENT:
+MAP-WARPS-AND-CONNECTIONS-001 - NOT SHIPPED
+
+PRIMARY CHECKOUT:
+clean; master at the merge SHA; 0 ahead / 0 behind origin/master; no ticket-owned
+duplicate modifications and no untracked files remaining
+
+NEXT:
+MAP-WARP-CREATE-WORKBENCH-001
+```
+
+**How the primary checkout was cleaned.** All twelve modified/untracked paths were
+enumerated and each was proved to be (a) present in the implementation commit, and
+(b) byte-identical to the ticket branch tip by git object id - eleven also identical
+to the cited tip `37ad6ac3`, the twelfth being the evidence record that this
+integration pass was asked to correct. Only then were the eight tracked paths restored
+with a path-scoped `git checkout master -- <path>` and the four untracked ticket-only
+files removed by explicit path. No whole-tree restore, reset, clean or `git add -A`
+was used, and nothing unrelated was touched: the primary checkout reported exactly
+those twelve paths before the cleanup and nothing afterwards. The inventory is kept in
+the ignored `build/research/warpcreate_primary_inventory.json`.
+
+**Post-merge verification.** Every cited SHA (`df81e7a`, `5c0f6e4`, `7a0abc5`,
+`37ad6ac`, `a4a4325`, `4d29a08`, `5a9abe0`, `b39e5fe`) is an ancestor of
+`origin/master`; the local topic branch holds 0 commits and 0 objects not reachable
+from `origin/master`; and `git diff` between the reviewed tip and merged `master` over
+all twelve paths is empty, so the accepted content survived integration byte-for-byte.
 
 ---
 

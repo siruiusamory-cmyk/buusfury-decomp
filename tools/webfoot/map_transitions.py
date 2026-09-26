@@ -47,6 +47,18 @@ semantics is UNRESOLVED, and `+0x10`, `+0x13`, `+0x14`, `+0x16` and `+0x17` are
 engine-read fields whose semantics are UNRESOLVED. A pointer or count is refused
 for the reason `webfoot.maps` refuses them: editing one moves a structure this
 toolkit does not own.
+
+**MAP-WARP-PROJECT-AUTHORING-001 stores that edit in a project and builds it.**
+A project names a transition by `TransitionIdentity` and stores the fields it
+sets, each beside the value the canonical record held - so the authored file
+proves what it was authored against. :func:`plan_transition_edits` is the build's
+one entry point: it loads the canonical corpus from the image, checks every stored
+prior against the record the image actually holds, stages the authored fields
+through the same `set_destination`/`set_region` this module always used, and
+returns this authority's own byte plan. Nothing outside this module serializes a
+transition: the only encoder is `TransitionRecord.to_bytes`, reached through
+:meth:`MapTransitions.changes`. The edit is fixed-width, so it allocates nothing,
+relocates nothing and rewrites exactly one 24-byte record.
 """
 
 from __future__ import annotations
@@ -54,7 +66,7 @@ from __future__ import annotations
 from dataclasses import dataclass, replace
 import os
 from pathlib import Path
-from typing import Iterator
+from typing import Iterator, Mapping
 
 from . import capability
 from .binary import BinaryAddressError, GBA_ROM_BASE, GbaRomAddress
@@ -74,9 +86,10 @@ from .formats.map_transitions import (
     TransitionRegion,
 )
 from .hashing import hash_stream
-from .profile import RomProfileCatalog
+from .packaged import packaged_profile
+from .profile import RomProfile, RomProfileCatalog
 from .rom import RomChangedError, identify_rom
-from .write import ByteChange, WritePlan, plan_changes
+from .write import ByteChange, TransitionEditProvenance, WritePlan, plan_changes
 from .maps import MapIdentity
 
 #: `root + 0x40`, the count the engine reads with `+0x44` in one `ldm`.
@@ -571,6 +584,370 @@ def _reason(loaded: TransitionRecord, current: TransitionRecord) -> str:
     return f"transition edit: {', '.join(changed)}"
 
 
+# --- authoring: the semantic edit a project stores ---------------------------
+#
+# MAP-WARP-PROJECT-AUTHORING-001. Two shapes meet here and they are deliberately
+# not the same one:
+#
+# * `TransitionEdit` is what an author asks for - "this transition now leads to
+#   map 41" - and carries no prior values, because a caller stating a prior is a
+#   caller asserting what the base holds rather than measuring it;
+# * `AuthoredTransitionEdit` is what a project file stores: that request PLUS the
+#   value each edited field started from. The build checks those priors against
+#   the record the image actually holds, so a project authored against a different
+#   image is refused rather than silently reinterpreted - the same fail-closed
+#   shape `ByteChange.old` gives every other in-place edit.
+#
+# Both are shaped so a field left as `None` is not authored at all. That is what
+# makes "the author did not edit this" become "the build cannot have changed
+# this": an untouched field's bytes come from the canonical record and are never
+# re-serialized from a project value.
+
+
+@dataclass(frozen=True, slots=True)
+class TransitionEdit:
+    """The fields an author is setting on one transition.
+
+    Both fields are optional and at least one is required. A field left as `None`
+    is not authored: the build preserves the canonical record's own bytes for it
+    and never derives them from the project.
+    """
+
+    destination: "MapIdentity | None" = None
+    region: "TransitionRegion | None" = None
+
+    def __post_init__(self) -> None:
+        if self.destination is None and self.region is None:
+            raise TransitionFieldError(
+                "a transition edit must author a destination, a region, or both"
+            )
+        if self.destination is not None and not isinstance(self.destination, MapIdentity):
+            raise TransitionFieldError(
+                f"a transition destination must be a MapIdentity, got {self.destination!r}"
+            )
+        if self.region is not None and not isinstance(self.region, TransitionRegion):
+            raise TransitionFieldError(
+                f"a transition region must be a TransitionRegion, got {self.region!r}"
+            )
+
+
+@dataclass(frozen=True, slots=True)
+class AuthoredTransitionEdit:
+    """One project's stored edit to one transition, and what it started from.
+
+    Each editable field group is a `(prior, authored)` pair and either group may be
+    absent, because an author who retargets a door is not also authoring its region.
+    A group that is absent is not authored at all, so the canonical record's bytes
+    for it survive the build untouched.
+
+    ``prior_*`` is what the project records the canonical record as holding. It is
+    stored rather than merely derivable for the reason
+    `AuthoredChunkEntry.prior` is: the document itself then proves the edit was
+    authored against the record it names, and an image that holds a different value
+    makes the build refuse instead of reinterpreting the edit.
+    """
+
+    prior_destination: "MapIdentity | None" = None
+    destination: "MapIdentity | None" = None
+    prior_region: "TransitionRegion | None" = None
+    region: "TransitionRegion | None" = None
+
+    def __post_init__(self) -> None:
+        for prior, authored, label, expected in (
+            (self.prior_destination, self.destination, "destination", MapIdentity),
+            (self.prior_region, self.region, "region", TransitionRegion),
+        ):
+            if (prior is None) != (authored is None):
+                raise TransitionFieldError(
+                    f"a transition edit must state the {label} it started from and "
+                    f"the {label} it authors together; got {prior!r} and {authored!r}"
+                )
+            for value, name in ((prior, f"prior_{label}"), (authored, label)):
+                if value is not None and not isinstance(value, expected):
+                    raise TransitionFieldError(
+                        f"{name} must be a {expected.__name__}, got {value!r}"
+                    )
+        if self.destination is None and self.region is None:
+            raise TransitionFieldError(
+                "a transition edit must author a destination, a region, or both"
+            )
+
+
+@dataclass(frozen=True, slots=True)
+class TransitionApplication:
+    """What applying a project's transition edits to one image produced.
+
+    ``changes`` is the authority's own byte plan over *every* transition record, not
+    only the edited one: an untouched record must re-encode to exactly its original
+    bytes, and emitting all of them is what proves that round trip rather than
+    assuming it. `plan_changes` then drops every no-op, so a build whose transition
+    edits changed nothing contributes no effective change.
+
+    ``provenance`` names only the edits that actually changed a field, so a stored
+    pair whose authored value equals its prior is absent from it.
+    """
+
+    changes: tuple[ByteChange, ...] = ()
+    provenance: tuple[TransitionEditProvenance, ...] = ()
+
+
+def _require_prior(identity: TransitionIdentity, label: str, actual: object,
+                   stored: object) -> None:
+    """Refuse an edit whose stored prior is not what the image holds."""
+    if stored is not None and stored != actual:
+        raise TransitionFieldError(
+            f"{identity} was authored against {label} {stored}, but this image's "
+            f"record holds {actual}; refusing an edit computed against a different image"
+        )
+
+
+def plan_transition_edits(
+    image: bytes,
+    edits: Mapping[TransitionIdentity, AuthoredTransitionEdit],
+    *,
+    profile: RomProfile | None = None,
+) -> TransitionApplication:
+    """Apply a project's stored transition edits to a canonical image.
+
+    In order:
+
+    1. load the canonical corpus through :func:`read_map_transitions`, so a record
+       is reached by `TransitionIdentity` and by nothing else - no address is
+       accepted from the project and none is computed by it;
+    2. check each stored prior against the record the image actually holds;
+    3. stage the authored fields through :meth:`MapTransitions.set_destination`
+       and :meth:`MapTransitions.set_region`, which refuse an unknown transition,
+       an unknown destination map, and an unordered or degenerate region before
+       anything is recorded;
+    4. re-validate the corpus and return its own byte plan.
+
+    Nothing here serializes a record: the one encoder is the codec's
+    `TransitionRecord.to_bytes`, reached through :meth:`MapTransitions.changes`.
+    The edit is a fixed-width overwrite of one 24-byte record, so it allocates
+    nothing, relocates nothing and touches no other record.
+
+    An edit whose authored values all equal what the image already holds is a no-op:
+    it contributes no provenance and, when nothing else changed, no changes at all.
+    That is deliberate - a project that stores a value equal to the base must not
+    make the build claim an edit.
+    """
+    if not edits:
+        return TransitionApplication()
+    canonical = packaged_profile() if profile is None else profile
+    corpus = read_map_transitions(image, canonical)
+    provenance: list[TransitionEditProvenance] = []
+    for identity in sorted(edits):
+        edit = edits[identity]
+        if not isinstance(edit, AuthoredTransitionEdit):
+            raise TransitionFieldError(
+                f"{identity} must be authored as an AuthoredTransitionEdit, "
+                f"got {edit!r}"
+            )
+        entry = corpus.entry(identity)
+        before_destination = corpus.destination(identity)
+        before_region = entry.record.region
+        _require_prior(identity, "destination", before_destination, edit.prior_destination)
+        _require_prior(identity, "region", before_region, edit.prior_region)
+
+        if edit.destination is not None:
+            corpus.set_destination(identity, edit.destination)
+        if edit.region is not None:
+            corpus.set_region(identity, edit.region)
+
+        after_destination = corpus.destination(identity)
+        after_region = corpus.entry(identity).record.region
+        destination_changed = after_destination != before_destination
+        region_changed = after_region != before_region
+        if not (destination_changed or region_changed):
+            continue
+        provenance.append(
+            TransitionEditProvenance(
+                identity=identity.key,
+                source_map=identity.source.index,
+                index=identity.index,
+                file_offset=entry.file_offset,
+                prior_destination=str(before_destination) if destination_changed else "",
+                destination=str(after_destination) if destination_changed else "",
+                prior_region=(
+                    (before_region.first, before_region.second)
+                    if region_changed
+                    else None
+                ),
+                region=(
+                    (after_region.first, after_region.second) if region_changed else None
+                ),
+            )
+        )
+    if not provenance:
+        return TransitionApplication()
+    # `validate()` re-reads every record - edited and untouched - and returns them;
+    # reading it is the corpus-wide check, and `changes()` is the one serializer.
+    corpus.validate()
+    return TransitionApplication(
+        changes=corpus.changes(),
+        provenance=tuple(provenance),
+    )
+
+
+# --- authoring: project persistence ------------------------------------------
+#
+# The one authority through which a transition edit reaches the project. It is
+# shaped like `map_paint.set_layout_cells` on purpose: validate the WHOLE batch
+# against the canonical image, load the project ONCE, apply the batch on top of
+# what is committed, and write only when the result actually differs. That is what
+# makes a batch one write, an undo of a transition that was never authored a
+# removal, and a re-issue of the value already committed a no-op.
+
+
+def read_transition_edits(project_dir) -> "TransitionEdits":
+    """The committed authored transition edits for a project, in one load.
+
+    Reads the project's own document only. It consults no image, so a caller that
+    only wants to know what is authored can ask without one.
+    """
+    from .project import read_project
+
+    return read_project(project_dir).transitions
+
+
+def set_transition_edits(
+    project_dir,
+    profile: RomProfile,
+    canonical_bytes: bytes,
+    edits: Mapping[TransitionIdentity, "TransitionEdit | None"],
+) -> bool:
+    """Validate and persist a batch of transition edits in ONE write.
+
+    ``edits`` maps a transition identity to the fields the author is setting, or to
+    ``None`` meaning "this transition carries no authored edit" - which is how an
+    undo of a transition that was never edited reverses.
+
+    The WHOLE batch is validated against the canonical image first, through the same
+    authority a build uses, so a batch containing one illegal entry writes nothing
+    at all rather than half of itself, and "what may be authored" and "what may be
+    built" cannot drift apart. The project is then loaded ONCE, the batch is applied
+    on top of what is already committed, and the document is rewritten only when the
+    resulting set differs from the one that was loaded.
+
+    The stored prior values are read from the canonical record HERE, not taken from
+    the caller: the project file's proof-of-base is then something this SDK measured
+    rather than something a caller asserted.
+
+    Setting a field back to the value the canonical record already holds removes
+    that field's stored pair rather than recording a pretend edit, so a project
+    cannot claim an authority it does not have. Returns whether the project changed.
+    """
+    from .project import (
+        AuthoredTransition,
+        TransitionEdits,
+        read_project,
+        write_transition_edits,
+    )
+
+    corpus = read_map_transitions(canonical_bytes, profile)
+    # Pass 1 - resolve and refuse the whole batch before any document is touched.
+    requests: dict[TransitionIdentity, TransitionEdit] = {}
+    for identity, request in sorted(edits.items()):
+        if request is None:
+            continue
+        if not isinstance(request, TransitionEdit):
+            raise TransitionFieldError(
+                f"{identity} must be authored as a TransitionEdit, got {request!r}"
+            )
+        corpus.entry(identity)
+        if request.destination is not None:
+            corpus.key_for(request.destination)
+        requests[identity] = request
+
+    committed = read_project(project_dir).transitions.edits()
+    updated = dict(committed)
+    for identity, request in requests.items():
+        key = (identity.source.index, identity.index)
+        existing = updated.get(key)
+        prior_destination = existing.prior_destination if existing else None
+        destination = existing.destination if existing else None
+        prior_region = existing.prior_region if existing else None
+        region = existing.region if existing else None
+        before_destination = corpus.destination(identity)
+        before_region = corpus.entry(identity).record.region
+        if request.destination is not None:
+            if request.destination == before_destination:
+                # Set back to what the base holds: an authored pair that changes
+                # nothing would be a claim this project does not have.
+                prior_destination = destination = None
+            else:
+                prior_destination = before_destination.key
+                destination = request.destination.key
+        if request.region is not None:
+            if request.region == before_region:
+                prior_region = region = None
+            else:
+                prior_region, region = before_region, request.region
+        if destination is None and region is None:
+            updated.pop(key, None)
+        else:
+            updated[key] = AuthoredTransition(
+                prior_destination=prior_destination,
+                destination=destination,
+                prior_region=prior_region,
+                region=region,
+            )
+    for identity, request in sorted(edits.items()):
+        if request is None:
+            updated.pop((identity.source.index, identity.index), None)
+
+    if updated == committed:
+        return False
+    write_transition_edits(project_dir, TransitionEdits.from_edits(updated))
+    return True
+
+
+def remove_transition_edit(project_dir, identity: TransitionIdentity) -> bool:
+    """Drop one transition's authored edit. Returns whether anything was removed."""
+    from .project import TransitionEdits, read_project, write_transition_edits
+
+    project = read_project(project_dir)
+    committed = project.transitions.edits()
+    key = (identity.source.index, identity.index)
+    if key not in committed:
+        return False
+    updated = dict(committed)
+    del updated[key]
+    write_transition_edits(project_dir, TransitionEdits.from_edits(updated))
+    return True
+
+
+def read_map_transitions(image: bytes, profile: RomProfile) -> MapTransitions:
+    """Resolve a transition corpus from an in-memory image and its profile.
+
+    The bytes seam `load_map_transitions` uses once identification is done, exposed
+    so a caller that already holds the canonical image - the project build and its
+    validation step - does not re-open and re-hash an 8 MiB file per domain. The
+    profile is the authority for where the map table is, exactly as it is on the
+    file path; the image is not checked against it here, because
+    `apply_plan`/`identify_rom` already own that, and duplicating it would mean two
+    identity rules that could disagree.
+
+    A profile that declares no map-entry table has no transition corpus to read,
+    and that is refused by name rather than answered with an empty corpus.
+    """
+    if not capability.declared(profile, capability.Capability.MAP_ENTRIES):
+        raise TransitionProfileError(
+            f"profile {profile.id!r} does not declare map_entries; map transition "
+            "access is unavailable for this ROM"
+        )
+    table_profile = profile.map_entries
+    assert table_profile is not None
+    table_offset, _ = me.resolve_map_entry_table_range(table_profile, len(image))
+    return _read_corpus(
+        image,
+        table_offset=table_offset,
+        table_count=table_profile.count,
+        profile_id=profile.id,
+        base_sha256=profile.identity.sha256,
+    )
+
+
 def load_map_transitions(
     path: str | Path, catalog: RomProfileCatalog
 ) -> MapTransitions:
@@ -588,8 +965,6 @@ def load_map_transitions(
         error_type=TransitionProfileError,
         check_header=True,
     )
-    table_profile = profile.map_entries
-    assert table_profile is not None
 
     with source.open("rb") as stream:
         before = os.fstat(stream.fileno())
@@ -608,14 +983,7 @@ def load_map_transitions(
     ):
         raise RomChangedError(f"ROM changed while transitions were read: {source}")
 
-    table_offset, _ = me.resolve_map_entry_table_range(table_profile, len(image))
-    return _read_corpus(
-        image,
-        table_offset=table_offset,
-        table_count=table_profile.count,
-        profile_id=profile.id,
-        base_sha256=identification.hashes.sha256,
-    )
+    return read_map_transitions(image, profile)
 
 
 __all__ = [
@@ -625,9 +993,12 @@ __all__ = [
     "ROOT_COUNT_OFFSET",
     "SUPPORTED_CLASS_RAW",
     "TRANSITION_SIZE",
+    "AuthoredTransitionEdit",
     "MapTransitionError",
     "MapTransitions",
     "MapTransitionsError",
+    "TransitionApplication",
+    "TransitionEdit",
     "TransitionEntry",
     "TransitionFieldError",
     "TransitionIdentity",
@@ -635,4 +1006,9 @@ __all__ = [
     "TransitionRegion",
     "UnknownTransitionError",
     "load_map_transitions",
+    "plan_transition_edits",
+    "read_map_transitions",
+    "read_transition_edits",
+    "remove_transition_edit",
+    "set_transition_edits",
 ]

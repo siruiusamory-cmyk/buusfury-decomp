@@ -698,6 +698,78 @@ class StructureEditProvenance:
 
 
 @dataclass(frozen=True, slots=True)
+class TransitionEditProvenance:
+    """One authored transition edit as the manifest records it.
+
+    MAP-WARP-PROJECT-AUTHORING-001. Enough, from the manifest alone, to answer
+    the three questions this capability's provenance owes: *which* semantic
+    transition changed, which destination it carried and now carries, and which
+    positional region it carried and now carries.
+
+    The author-facing identity is ``identity`` - ``map:NNNN/transition:NNNN``,
+    the source map plus the array index the engine's own walk assigns. The record's
+    file offset is carried beside it as ``file_offset`` for the same reason
+    :class:`ChunkEditProvenance` carries ``template_address``: it says which bytes
+    moved, and it is deliberately not the identity.
+
+    A field group the author did not edit is reported as ``None``/``""`` rather
+    than restated, so the record names the real edit instead of the whole editable
+    surface. Only a group that actually differs from the canonical record produces
+    a provenance entry at all: a stored pair whose authored value equals its prior
+    is a no-op and contributes nothing here.
+
+    ``region`` is the two positional intervals, low/high each, in the record's own
+    stored order - ``((first_low, first_high), (second_low, second_high))``. Which
+    interval is horizontal, and what the endpoints' unit is, are UNRESOLVED, so no
+    axis name is invented here either.
+    """
+
+    #: ``map:NNNN/transition:NNNN`` - the semantic identity, never an address.
+    identity: str
+    source_map: int
+    index: int
+    #: File offset of the 24-byte record this edit rewrote. Provenance, not identity.
+    file_offset: int
+    #: ``map:NNNN`` before and after, or "" when the destination was not edited.
+    prior_destination: str = ""
+    destination: str = ""
+    #: The positional region before and after, or None when it was not edited.
+    prior_region: tuple[tuple[int, int], tuple[int, int]] | None = None
+    region: tuple[tuple[int, int], tuple[int, int]] | None = None
+
+    @property
+    def destination_changed(self) -> bool:
+        return self.destination != ""
+
+    @property
+    def region_changed(self) -> bool:
+        return self.region is not None
+
+    def to_json(self) -> dict:
+        return {
+            "identity": self.identity,
+            "source_map": self.source_map,
+            "index": self.index,
+            "file_offset": self.file_offset,
+            "file_offset_hex": f"0x{self.file_offset:08X}",
+            "destination_changed": self.destination_changed,
+            "prior_destination": self.prior_destination,
+            "destination": self.destination,
+            "region_changed": self.region_changed,
+            "prior_region": (
+                [list(pair) for pair in self.prior_region]
+                if self.prior_region is not None
+                else None
+            ),
+            "region": (
+                [list(pair) for pair in self.region]
+                if self.region is not None
+                else None
+            ),
+        }
+
+
+@dataclass(frozen=True, slots=True)
 class WritePlan:
     """A validated set of changes against one identified base image.
 
@@ -720,6 +792,10 @@ class WritePlan:
     chunk_edits: tuple[ChunkEditProvenance, ...] = ()
     #: MAP-RESIZE-AND-LAYERS-001. Empty for a build that authored no structure.
     structure_edits: tuple[StructureEditProvenance, ...] = ()
+    #: MAP-WARP-PROJECT-AUTHORING-001. Empty for a build that authored no
+    #: transition, and also for one whose authored transition values all equal the
+    #: canonical record's own - a no-op edit is not an edit.
+    transition_edits: tuple[TransitionEditProvenance, ...] = ()
 
     @property
     def effective_changes(self) -> tuple[ByteChange, ...]:
@@ -783,6 +859,9 @@ class WriteManifest:
     #: MAP-RESIZE-AND-LAYERS-001. Present only when a project-authored resize or
     #: authored layer was materialized in this build.
     structure_edits: tuple[StructureEditProvenance, ...] = ()
+    #: MAP-WARP-PROJECT-AUTHORING-001. Present only when a project's semantic
+    #: transition edit actually changed a record's destination or region.
+    transition_edits: tuple[TransitionEditProvenance, ...] = ()
 
     def to_json(self) -> dict:
         document = {
@@ -820,6 +899,10 @@ class WriteManifest:
             document["structure_edits"] = [
                 edit.to_json() for edit in self.structure_edits
             ]
+        if self.transition_edits:
+            document["transition_edits"] = [
+                edit.to_json() for edit in self.transition_edits
+            ]
         return document
 
     def dumps(self) -> str:
@@ -847,6 +930,7 @@ def plan_changes(
     dialogue_edits: tuple[DialogueEditProvenance, ...] = (),
     chunk_edits: tuple[ChunkEditProvenance, ...] = (),
     structure_edits: tuple[StructureEditProvenance, ...] = (),
+    transition_edits: tuple[TransitionEditProvenance, ...] = (),
 ) -> WritePlan:
     """Validate `changes` against `base` and return an applicable plan.
 
@@ -929,6 +1013,7 @@ def plan_changes(
         dialogue_edits=tuple(dialogue_edits),
         chunk_edits=tuple(chunk_edits),
         structure_edits=tuple(structure_edits),
+        transition_edits=tuple(transition_edits),
     )
 
 
@@ -1035,6 +1120,7 @@ def emit_image(
         dialogue_edits=plan.dialogue_edits,
         chunk_edits=plan.chunk_edits,
         structure_edits=plan.structure_edits,
+        transition_edits=plan.transition_edits,
     )
     # Stage complete files first. Publish using exclusive links: never replace
     # a raced destination. Publish image last; roll back our links on failure.

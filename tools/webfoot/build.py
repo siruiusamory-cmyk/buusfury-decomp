@@ -65,10 +65,14 @@ from .map_paint import MapPaintError, plan_layout_cells
 from .map_chunk import ChunkAuthoringError, materialize_authored_chunks
 from .formats.map_transitions import MapTransitionError, TransitionArrival
 from .map_transitions import (
+    AuthoredTransitionCreation,
     AuthoredTransitionEdit,
+    CreatedTransitionIdentity,
     MapTransitionsError,
     TransitionIdentity,
+    materialize_transition_creations,
     plan_transition_edits,
+    transition_creations_to_requests,
     transition_edits_to_requests,
 )
 from .map_resize import (
@@ -749,6 +753,51 @@ def _check_transitions(
     return []
 
 
+def _creation_requests(
+    project: StatProject,
+) -> dict[CreatedTransitionIdentity, AuthoredTransitionCreation]:
+    """The project's stored created transitions, resolved to SDK identities.
+
+    MAP-WARP-CREATE-PROJECT-001. The creation-side mirror of
+    :func:`_transition_requests`, and the same single conversion the authoring API
+    uses, so a surface and the build cannot disagree about what a document means.
+    """
+    return transition_creations_to_requests(project.transition_creations)
+
+
+def _check_transition_creations(
+    project: StatProject, profile: RomProfile, canonical_image: bytes | None
+) -> list[str]:
+    """Check every created transition against the base image.
+
+    MAP-WARP-CREATE-PROJECT-001. `materialize_transition_creations` *is* the check:
+    it resolves every creation - source map, template, class, root sharing, template
+    priors, destination, region, arrival bounds, composed record and count overflow -
+    before it allocates anything, so running it here reports the same refusals a
+    build would raise, as validation problems rather than as a half-applied build.
+
+    Nothing here reads the plan it produces. The allocation is deterministic and
+    side-effect free, so validating by materializing is the same work the build then
+    repeats; that is deliberate, because a second, lighter check is exactly how
+    "what may be authored" and "what may be built" drift apart.
+    """
+    requests = _creation_requests(project)
+    if not requests:
+        return []
+    canonical = packaged_profile()
+    if canonical.identity.sha256 != profile.identity.sha256:
+        return [
+            "project creates map transitions, but this ROM's profile is not the "
+            "canonical transition domain; a build would silently drop every created "
+            "transition"
+        ]
+    try:
+        materialize_transition_creations(canonical_image, requests, profile=canonical)
+    except _TRANSITION_ERRORS as exc:
+        return [f"created map transition: {exc}"]
+    return []
+
+
 def _check_maps(project: StatProject, maps: Maps | None) -> list[str]:
     """Check every authored map against the loaded table.
 
@@ -970,7 +1019,8 @@ def validate_project(
             Path(rom_path).read_bytes()
             if (project.layout.cells() or project.dialogues
                 or not project.structure.is_empty()
-                or not project.transitions.is_empty())
+                or not project.transitions.is_empty()
+                or not project.transition_creations.is_empty())
             else None
         )
         problems = (
@@ -979,6 +1029,7 @@ def validate_project(
             + _check_maps(project, maps)
             + _check_layout(project, profile, canonical_image)
             + _check_transitions(project, profile, canonical_image)
+            + _check_transition_creations(project, profile, canonical_image)
             + _check_dialogues(project, profile, rom_path)
         )
 
@@ -1339,6 +1390,36 @@ def build_project(
         transition_edits = transition_application.provenance
         base_bytes = image if base_bytes is None else base_bytes
 
+    # MAP-WARP-CREATE-PROJECT-001's domain: the first transition domain that
+    # allocates. It runs after the edit domain because the two are independent - an
+    # edit rewrites a canonical record in place, a creation appends a new one - and
+    # after every other allocating domain so its record and expanded array are placed
+    # clear of the spans those domains already reserved. It returns its own spans to
+    # that same build-scoped set, and it is the only writer of `root + 0x40` and
+    # `root + 0x44` in the whole toolkit.
+    transition_creations: tuple = ()
+    if not project.transition_creations.is_empty():
+        canonical = packaged_profile()
+        if canonical.identity.sha256 != profile.identity.sha256:
+            raise ProjectValidationError(
+                "project creates map transitions, but this ROM's profile is not the "
+                "canonical transition domain; a build would silently drop every "
+                "created transition"
+            )
+        image = Path(rom_path).read_bytes()
+        try:
+            creation_materialization = materialize_transition_creations(
+                image, _creation_requests(project), profile=canonical, reserved=reserved
+            )
+        except _TRANSITION_ERRORS as exc:
+            # One validation family at the build boundary, naming the creation.
+            raise ProjectValidationError(f"created map transition: {exc}") from exc
+        changes += creation_materialization.changes
+        reserved += creation_materialization.reserved
+        generated_allocations += list(creation_materialization.generated_allocations)
+        transition_creations = creation_materialization.provenance
+        base_bytes = image if base_bytes is None else base_bytes
+
     # ROM-EXPAND-001: compressed dialogue is a normal allocating build domain. It
     # receives every span reserved by earlier domains and returns its own span to
     # the same build-scoped set before the one final plan is formed.
@@ -1398,6 +1479,7 @@ def build_project(
         chunk_edits=chunk_edits,
         structure_edits=structure_edits,
         transition_edits=transition_edits,
+        transition_creations=transition_creations,
     )
 
     resolved_manifest = manifest_path_for_build(manifest_path, output_path)

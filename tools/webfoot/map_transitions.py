@@ -59,6 +59,27 @@ returns this authority's own byte plan. Nothing outside this module serializes a
 transition: the only encoder is `TransitionRecord.to_bytes`, reached through
 :meth:`MapTransitions.changes`. The edit is fixed-width, so it allocates nothing,
 relocates nothing and rewrites exactly one 24-byte record.
+
+**MAP-WARP-CREATE-PROJECT-001 creates a transition that does not exist.**
+:func:`materialize_transition_creations` is the build's one entry point for that,
+and it is the first domain in this module that allocates. A created transition has
+no canonical bytes to edit, so:
+
+* it is named ``map:NNNN/transition:<name>`` - a durable authored identity with no
+  address and no array index in it, because the index it will occupy does not exist
+  until a build appends it;
+* it is composed over a **template**: an existing 566-class record of the *same*
+  source map, whose UNRESOLVED bytes (``+0x00``, ``+0x04``, ``+0x13`` and
+  ``+0x10``'s low nibble) the created record carries rather than invents;
+* its region, destination key, arrival pair and arrival-facing override are
+  authored, and a creation that would come out byte-identical to its template is
+  refused - the capability is creation, not aliasing;
+* the storage it needs - a 24-byte record and the expanded ``root + 0x44`` array
+  that reaches it - is placed by the production allocator above canonical EOF, and
+  the root's count and array pointer are rewritten in place.
+
+The two fields it rewrites are exactly the two the edit path is forbidden to
+touch, so the two capabilities meet only in this module and only here.
 """
 
 from __future__ import annotations
@@ -66,15 +87,25 @@ from __future__ import annotations
 from dataclasses import dataclass, replace
 import os
 from pathlib import Path
-from typing import Iterator, Mapping
+import re
+from typing import Iterable, Iterator, Mapping
 
 from . import capability
-from .binary import BinaryAddressError, GBA_ROM_BASE, GbaRomAddress
+from .allocation import (
+    Addressability,
+    Allocation,
+    AllocationKind,
+    AllocationRequest,
+    allocate,
+)
+from .binary import BinaryAddressError, FileOffset, GBA_ROM_BASE, GbaRomAddress
 from .formats import map_graphics as mg
 from .formats import map_entry as me
 from .formats.map_entry import MAP_ENTRY_SIZE, MapEntry
 from .formats.map_transitions import (
     ARRIVAL_UNSET_MINIMUM,
+    CREATED_CLASS_RAW,
+    CREATED_FIELD_AUTHORED_MASKS,
     FACING_EAST,
     FACING_MASK,
     FACING_NAMES,
@@ -93,12 +124,23 @@ from .formats.map_transitions import (
     TransitionArrival,
     TransitionRecord,
     TransitionRegion,
+    compose_created_record,
 )
 from .hashing import hash_stream
+from .layout import AnchorId, OwnedRegion, RomRange
 from .packaged import packaged_profile
 from .profile import RomProfile, RomProfileCatalog
 from .rom import RomChangedError, identify_rom
-from .write import ByteChange, TransitionEditProvenance, WritePlan, plan_changes
+from .write import (
+    ByteChange,
+    GeneratedAllocationProvenance,
+    GeneratedImage,
+    TransitionCreationProvenance,
+    TransitionEditProvenance,
+    TransitionRecordFieldProvenance,
+    WritePlan,
+    plan_changes,
+)
 from .maps import MapIdentity
 
 #: `root + 0x40`, the count the engine reads with `+0x44` in one `ldm`.
@@ -142,6 +184,24 @@ SCREEN_HEIGHT = 160
 #: it. The measured corpus puts 670 of 735 inside the door rectangle or within a
 #: few pixels outside it, with 16 px covering all but a handful of the rest.
 ARRIVAL_DOOR_TOLERANCE = 16
+
+#: The domain name a created transition's allocation provenance carries.
+CREATION_DOMAIN = "map_transition_creation"
+
+#: Allocation owner/anchor prefixes. One array per source map, one record per
+#: created transition, so the two never collide and each generated write has an
+#: owner that :meth:`GeneratedAllocationProvenance.owns` can match.
+CREATION_ARRAY_PREFIX = "transition-array:"
+CREATION_RECORD_PREFIX = "transition-record:"
+
+#: An authored transition name. Mirrors the project document's own rule
+#: (`project.model._TRANSITION_NAME`) so the authority refuses a name the file
+#: format would refuse, rather than depending on the parser having done it.
+_TRANSITION_NAME = re.compile(r"[a-z][a-z0-9_-]{0,63}$")
+
+#: The largest value `root + 0x40` can hold. It is a 4-byte field, so a count that
+#: would not fit is refused rather than truncated.
+MAX_TRANSITION_COUNT = 0xFFFFFFFF
 
 
 def _arrival_is_near(
@@ -338,10 +398,18 @@ def _read_corpus(
     # raised from an address that was never a record boundary.
     located: list[tuple[TransitionIdentity, int, int]] = []
     claimed: dict[int, TransitionIdentity] = {}
+    #: The `+0x40`/`+0x44` pair of every map that declares a selector-1 root, kept
+    #: because creation has to name and rewrite those two fields. Taken from the same
+    #: resolution the enumeration uses, so a creation can never disagree with the
+    #: enumeration about where a map's array is.
+    roots: dict[int, "TransitionRoot"] = {}
     for index, entry in enumerate(entries_by_map):
         source = MapIdentity(index)
         root = _resolve_root(image, entry, index)
         count, array = _resolve_pair(image, root, index)
+        roots[index] = TransitionRoot(
+            source=source, root_address=root, count=count, array_address=array
+        )
         for element in range(count):
             element_address = array + element * ARRAY_ELEMENT_WIDTH
             if not _in_rom(element_address, len(image)):
@@ -409,6 +477,7 @@ def _read_corpus(
         keys=tuple(keys),
         key_owner=key_owner,
         entries=tuple(entries),
+        roots=roots,
         profile=profile,
     )
 
@@ -430,6 +499,7 @@ class MapTransitions:
         keys: tuple[bytes, ...],
         key_owner: dict[bytes, int],
         entries: tuple[TransitionEntry, ...],
+        roots: "Mapping[int, TransitionRoot] | None" = None,
         profile: "RomProfile | None" = None,
     ) -> None:
         self.profile_id = profile_id
@@ -439,6 +509,9 @@ class MapTransitions:
         self._key_owner = dict(key_owner)
         self._entries = {entry.identity: entry for entry in entries}
         self._order = tuple(entry.identity for entry in entries)
+        #: map index -> the `+0x40`/`+0x44` pair, resolved once at load. Empty for a
+        #: corpus constructed directly by a caller that does not need creation.
+        self._roots: dict[int, TransitionRoot] = dict(roots or {})
         #: The profile whose map table this corpus was resolved against, so the
         #: answers that read that table again (`destination_bounds`) cannot fall
         #: back to a different one. None means the packaged canonical profile.
@@ -844,6 +917,42 @@ class MapTransitions:
             self._map_entry_table = cached
         return cached
 
+    def root_for(self, source: MapIdentity) -> "TransitionRoot":
+        """One map's ``+0x40``/``+0x44`` count/array pair, with the root it hangs on.
+
+        MAP-WARP-CREATE-PROJECT-001 needs the pair for a reason the read path never
+        did: a created transition changes the count and re-points the array, so the
+        two fields have to be nameable. Nothing else is exposed - the root address is
+        provenance here, exactly as a record address is.
+        """
+        index = self._require_map(source)
+        try:
+            return self._roots[index]
+        except KeyError:
+            raise MapTransitionsError(
+                f"{source} has no resolved selector-1 root in this corpus"
+            ) from None
+
+    def shared_root_maps(self, source: MapIdentity) -> tuple[MapIdentity, ...]:
+        """Every OTHER map whose selector-1 root is the same root as ``source``'s.
+
+        Measured over the canonical image: 421 distinct roots serve 452 maps, and 11
+        roots are shared by 2..10 maps each - every one of them with a zero count.
+
+        It matters for creation and not for editing. The count and the array pointer
+        live on the ROOT, so appending a transition to a shared root would silently
+        give every map sharing it the same new connection, including maps the project
+        never named. That is the "unrelated maps unchanged" property, so a shared root
+        is refused rather than written.
+        """
+        index = self._require_map(source)
+        mine = self.root_for(source).root_address
+        return tuple(
+            MapIdentity(other)
+            for other, root in sorted(self._roots.items())
+            if other != index and root.root_address == mine
+        )
+
     def _require_map(self, identity: MapIdentity) -> int:
         if not isinstance(identity, MapIdentity):
             raise TransitionFieldError(
@@ -1242,6 +1351,727 @@ def plan_transition_edits(
     )
 
 
+# --- creation: a transition the canonical image does not contain --------------
+#
+# MAP-WARP-CREATE-PROJECT-001. Everything below is the second half of the
+# transition capability, and it is deliberately shaped like `map_chunk`'s
+# materializer rather than like the edit path above:
+#
+# * a created transition is named by its own durable identity, never by an address
+#   and never by an array index, because the index does not exist until the build
+#   appends it;
+# * its bytes are composed over a canonical TEMPLATE of the same map, so the
+#   UNRESOLVED fields are carried from a record the engine already consumes rather
+#   than invented;
+# * it needs storage, so this is the first transition domain that allocates - the
+#   24-byte record and the expanded `root + 0x44` array - and the only one that
+#   writes the root's count and array pointer.
+#
+# Validating a creation and materializing one are the same code path, so "what may
+# be authored" and "what may be built" cannot drift: `_resolve_creation` refuses
+# everything a build would refuse, and the authoring API runs it too.
+
+
+@dataclass(frozen=True, slots=True)
+class TransitionRoot:
+    """One map's ``root + 0x40`` count and ``root + 0x44`` array pointer."""
+
+    source: MapIdentity
+    #: GBA address of the selector-1 root. Provenance only; never an identity.
+    root_address: int
+    count: int
+    #: GBA address of the 4-byte-per-element record pointer array, or 0 with count 0.
+    array_address: int
+
+    @property
+    def count_offset(self) -> int:
+        return self.root_address + ROOT_COUNT_OFFSET
+
+    @property
+    def array_pointer_offset(self) -> int:
+        return self.root_address + ROOT_ARRAY_OFFSET
+
+
+@dataclass(frozen=True, slots=True, order=True)
+class CreatedTransitionIdentity:
+    """A created transition's durable identity: ``map:NNNN/transition:<name>``.
+
+    It contains **no** ROM address, **no** allocated address and **no** array index.
+    The index a created record occupies is a build-time fact produced by appending
+    it to that map's array, so a project that outlives the build cannot be keyed by
+    it - which is exactly why the authored name exists.
+    """
+
+    source: MapIdentity
+    name: str
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.source, MapIdentity):
+            raise MapTransitionsError(
+                f"a created transition's source must be a MapIdentity, got {self.source!r}"
+            )
+        if not isinstance(self.name, str) or _TRANSITION_NAME.match(self.name) is None:
+            raise MapTransitionsError(
+                f"a created transition's name is {self.name!r}; it must be lowercase, "
+                "start with a letter, and use only letters, digits, '_' and '-' "
+                "(at most 64 characters)"
+            )
+
+    @property
+    def key(self) -> str:
+        return f"{self.source.key}/transition:{self.name}"
+
+    def __str__(self) -> str:
+        return self.key
+
+
+@dataclass(frozen=True, slots=True)
+class TransitionCreation:
+    """The fields an author is setting on a transition that does not yet exist.
+
+    Unlike :class:`TransitionEdit` every one of these is required except
+    ``facing``, and that is the point: an edit preserves whatever it does not name,
+    while a creation has nothing to preserve. A field a project does not state here
+    would have to be invented, so there is no optional field to leave out.
+
+    ``template`` names an existing canonical record of the same source map. It is
+    not a default and not a copy of the record: it is the source of the bytes this
+    creation does not author, and the build refuses a template whose unresolved
+    bytes are not the ones the project recorded.
+    """
+
+    identity: CreatedTransitionIdentity
+    template: TransitionIdentity
+    destination: MapIdentity
+    region: TransitionRegion
+    arrival: TransitionArrival
+    #: The direction the player is forced to face on arrival, 0..3, or ``None`` for
+    #: "this record states no override" - the engine's own "keep the actor's facing"
+    #: state. Deliberately not inherited from the template: the template's override
+    #: was a decision about a different door.
+    facing: int | None = None
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.identity, CreatedTransitionIdentity):
+            raise TransitionFieldError(
+                f"a created transition needs a CreatedTransitionIdentity, got "
+                f"{self.identity!r}"
+            )
+        if not isinstance(self.template, TransitionIdentity):
+            raise TransitionFieldError(
+                f"{self.identity}.template must be a TransitionIdentity, got "
+                f"{self.template!r}"
+            )
+        if not isinstance(self.destination, MapIdentity):
+            raise TransitionFieldError(
+                f"{self.identity}.destination must be a MapIdentity, got "
+                f"{self.destination!r}"
+            )
+        if not isinstance(self.region, TransitionRegion):
+            raise TransitionFieldError(
+                f"{self.identity}.region must be a TransitionRegion, got {self.region!r}"
+            )
+        if not isinstance(self.arrival, TransitionArrival):
+            raise TransitionFieldError(
+                f"{self.identity}.arrival must be a TransitionArrival, got "
+                f"{self.arrival!r}"
+            )
+        if self.facing is not None and (
+            type(self.facing) is not int or not 0 <= self.facing <= FACING_MASK
+        ):
+            raise TransitionFieldError(
+                f"{self.identity}.facing must be an integer 0..{FACING_MASK} or None, "
+                f"got {self.facing!r}"
+            )
+
+
+@dataclass(frozen=True, slots=True)
+class AuthoredTransitionCreation:
+    """One project's stored creation, plus the template bytes it was authored against.
+
+    The same split :class:`AuthoredTransitionEdit` makes, for the same reason: a
+    caller states what it wants created, and the values that merely *pin the base*
+    are measured from the canonical image here rather than asserted by the caller.
+
+    ``prior_facing_raw`` and ``prior_unresolved_raw`` are those pins. They are the
+    template record's own ``+0x10`` and ``+0x13`` bytes as the canonical image held
+    them when the creation was authored, and the build refuses an image whose
+    template no longer matches - otherwise the created record's UNRESOLVED bytes
+    would silently change under a project nobody re-authored.
+    """
+
+    creation: TransitionCreation
+    prior_facing_raw: int
+    prior_unresolved_raw: int
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.creation, TransitionCreation):
+            raise TransitionFieldError(
+                f"an authored creation must carry a TransitionCreation, got "
+                f"{self.creation!r}"
+            )
+        for value, label in (
+            (self.prior_facing_raw, "prior_facing_raw"),
+            (self.prior_unresolved_raw, "prior_unresolved_raw"),
+        ):
+            if type(value) is not int or not 0 <= value <= 0xFF:
+                raise TransitionFieldError(
+                    f"{self.creation.identity}.{label} must be a byte, got {value!r}"
+                )
+
+
+@dataclass(frozen=True, slots=True)
+class TransitionCreationPlan:
+    """One creation resolved against an image, before anything is allocated.
+
+    Private in spirit: it is what :func:`_resolve_creation` proves and what
+    :func:`materialize_transition_creations` then spends storage on.
+    """
+
+    identity: CreatedTransitionIdentity
+    request: TransitionCreation
+    template_entry: TransitionEntry
+    #: The canonical array position the created record is appended at.
+    index: int
+    record: TransitionRecord
+
+
+@dataclass(frozen=True, slots=True)
+class TransitionCreationMaterialization:
+    """What materializing a project's creations produced for one build.
+
+    The same shape every allocating domain returns: the attributed byte changes, the
+    allocator-issued authorization for the spans above canonical EOF, the spans the
+    next domain must avoid, the provenance the manifest publishes, and (when this
+    domain allocates) the generated-image policy derived from its own allocations.
+    """
+
+    changes: tuple[ByteChange, ...] = ()
+    generated_allocations: tuple[GeneratedAllocationProvenance, ...] = ()
+    reserved: tuple[RomRange, ...] = ()
+    provenance: tuple[TransitionCreationProvenance, ...] = ()
+    generated_image: GeneratedImage | None = None
+
+
+def created_record_fields() -> tuple[TransitionRecordFieldProvenance, ...]:
+    """The 24-byte record's field list with each field's authored-bit mask.
+
+    One entry per physical field, in byte order, covering ``+0x00..+0x17`` exactly
+    once. ``source`` is derived from the mask the codec states, so the provenance a
+    manifest carries and the composition the build performs cannot disagree about
+    which bytes were authored.
+    """
+    fields: list[TransitionRecordFieldProvenance] = []
+    for item in TRANSITION_LAYOUT:
+        mask = CREATED_FIELD_AUTHORED_MASKS[item.name]
+        whole = (1 << (item.width * 8)) - 1
+        if mask == 0:
+            source = "template"
+        elif mask == whole:
+            source = "authored"
+        else:
+            source = "authored+template"
+        fields.append(
+            TransitionRecordFieldProvenance(
+                offset=item.offset,
+                width=item.width,
+                field=item.name,
+                source=source,
+                authored_mask=mask,
+            )
+        )
+    return tuple(fields)
+
+
+def _resolve_creation(
+    corpus: MapTransitions,
+    identity: CreatedTransitionIdentity,
+    authored: AuthoredTransitionCreation,
+    *,
+    offset: int = 0,
+) -> TransitionCreationPlan:
+    """Validate one creation against a corpus, or refuse it by name.
+
+    Everything a created transition must satisfy, in one place, so the authoring API
+    and the build refuse the same forms with the same words:
+
+    1. the source map exists in this profile's table;
+    2. the source map's selector-1 root is **not shared** with another map, because
+       the count and the array pointer live on the root and a shared root would give
+       every map sharing it the same new connection;
+    3. the template identity exists, belongs to the **same** source map, and is a
+       supported **566-class** record - the only class whose ``+0x14``/``+0x16`` pair
+       is an absolute arrival, which is what makes an authored arrival a statement
+       about the record alone;
+    4. the template's ``+0x10`` and ``+0x13`` are the bytes the project recorded;
+    5. the destination resolves to a map, and the arrival lies inside that map's own
+       walkable extent;
+    6. the composed record is a valid record of the supported family, and is **not**
+       byte-identical to its template - a creation, not an alias;
+    7. the map's count can hold one more element.
+
+    ``offset`` is the position of this creation within its map's own batch of
+    creations, so the plan's ``index`` is the array position the record will occupy
+    once the whole batch is appended. A caller validating a single creation in
+    isolation (the authoring API) leaves it at 0: it checks the same forms, and the
+    index it reports is the one the creation would take if it were the only one.
+    """
+    creation = authored.creation
+    if creation.identity != identity:
+        raise TransitionFieldError(
+            f"the request for {identity} carries the identity "
+            f"{creation.identity}; the two must agree"
+        )
+    corpus._require_map(identity.source)
+    # Sharing is checked before the template, and the order is deliberate: every one
+    # of the canonical image's 11 shared roots carries a count of 0, and a corpus in
+    # which two maps reached one non-empty array would already be refused as a
+    # shared record - so a map on a shared root has no 566-class record of its own to
+    # use as a template anyway. Reporting the sharing first names the real reason the
+    # map cannot gain a connection, instead of reporting the symptom.
+    sharers = corpus.shared_root_maps(identity.source)
+    if sharers:
+        raise TransitionFieldError(
+            f"{identity} cannot be created: {identity.source}'s selector-1 root is "
+            f"shared with "
+            + ", ".join(str(other) for other in sharers)
+            + "; the count at root+0x40 and the array pointer at root+0x44 belong to "
+            "the root, so appending here would change those maps' connections too"
+        )
+    if creation.template.source != identity.source:
+        raise TransitionFieldError(
+            f"{identity} names template {creation.template}, which belongs to "
+            f"{creation.template.source}; a template must be a record of the same "
+            "source map, because the bytes the creation does not author are copied "
+            "from it"
+        )
+    try:
+        template_entry = corpus.entry(creation.template)
+    except UnknownTransitionError:
+        raise TransitionFieldError(
+            f"{identity} names template {creation.template}, which this image does "
+            "not contain"
+        ) from None
+    template_record = template_entry.record
+    if template_record.class_raw != CREATED_CLASS_RAW:
+        raise TransitionFieldError(
+            f"{identity} names template {creation.template}, whose class word is "
+            f"{template_record.class_raw:#010x}; a created transition is supported "
+            f"only over the measured {CREATED_CLASS_RAW:#010x} class, because the "
+            "other class's arrival pair is a scene-relative delta rather than a point"
+        )
+    if template_record.byte_0x10_raw != authored.prior_facing_raw:
+        raise TransitionFieldError(
+            f"{identity} was authored against template {creation.template} with "
+            f"+0x10 = {authored.prior_facing_raw:#04x}, but this image's record holds "
+            f"{template_record.byte_0x10_raw:#04x}; refusing a creation computed "
+            "against a different image"
+        )
+    if template_record.byte_0x13_raw != authored.prior_unresolved_raw:
+        raise TransitionFieldError(
+            f"{identity} was authored against template {creation.template} with "
+            f"+0x13 = {authored.prior_unresolved_raw:#04x}, but this image's record "
+            f"holds {template_record.byte_0x13_raw:#04x}; refusing a creation "
+            "computed against a different image"
+        )
+    sharers = corpus.shared_root_maps(identity.source)
+    if sharers:
+        raise TransitionFieldError(
+            f"{identity} cannot be created: {identity.source}'s selector-1 root is "
+            f"shared with "
+            + ", ".join(str(other) for other in sharers)
+            + "; the count at root+0x40 and the array pointer at root+0x44 belong to "
+            "the root, so appending here would change those maps' connections too"
+        )
+    root = corpus.root_for(identity.source)
+    if root.count + offset >= MAX_TRANSITION_COUNT:
+        raise TransitionFieldError(
+            f"{identity} cannot be created: {identity.source}'s transition count is "
+            f"{root.count} and this is creation {offset + 1} of the batch, so the "
+            "count would overflow the 4-byte field at root+0x40"
+        )
+    destination_key = corpus.key_for(creation.destination)
+    width, height = corpus.destination_bounds(creation.destination)
+    if not (0 <= creation.arrival.x < width and 0 <= creation.arrival.y < height):
+        raise TransitionFieldError(
+            f"{identity} would place the player at "
+            f"({creation.arrival.x}, {creation.arrival.y}) in {creation.destination}, "
+            f"whose walkable extent is {width}x{height}; that point is off the map"
+        )
+    record = compose_created_record(
+        template_record,
+        destination_key=destination_key,
+        region=creation.region,
+        arrival=creation.arrival,
+        facing=creation.facing,
+    )
+    record.validate()
+    if record.class_raw != CREATED_CLASS_RAW:  # pragma: no cover - composition copies it
+        raise TransitionFieldError(
+            f"{identity} composed to class {record.class_raw:#010x}, which is not the "
+            f"supported created class {CREATED_CLASS_RAW:#010x}"
+        )
+    if record == template_record:
+        raise TransitionFieldError(
+            f"{identity} is byte-identical to its template {creation.template}; every "
+            "field a created transition authors is the template's own value, which is "
+            "a copy rather than a creation"
+        )
+    return TransitionCreationPlan(
+        identity=identity,
+        request=creation,
+        template_entry=template_entry,
+        index=root.count + offset,
+        record=record,
+    )
+
+
+def _creation_requests(
+    creations: Mapping[CreatedTransitionIdentity, AuthoredTransitionCreation],
+) -> dict[int, list[tuple[CreatedTransitionIdentity, AuthoredTransitionCreation]]]:
+    """Group authored creations by source map, each list sorted by authored name."""
+    by_map: dict[
+        int, list[tuple[CreatedTransitionIdentity, AuthoredTransitionCreation]]
+    ] = {}
+    for identity, authored in sorted(creations.items()):
+        by_map.setdefault(identity.source.index, []).append((identity, authored))
+    for entries in by_map.values():
+        entries.sort(key=lambda item: item[0].name)
+    return by_map
+
+
+def materialize_transition_creations(
+    image: bytes,
+    creations: Mapping[CreatedTransitionIdentity, AuthoredTransitionCreation],
+    *,
+    profile: RomProfile | None = None,
+    reserved: Iterable[RomRange] = (),
+) -> TransitionCreationMaterialization:
+    """Allocate, emit and reference every transition a project creates.
+
+    **One array request per source map and one record request per creation**, each
+    against the caller's reservation set, ordered by the requests' own anchor
+    identities - so the same project produces the same addresses on every machine.
+    Both kinds are ``EXPANDED_ONLY``: the canonical image declares one 256-byte
+    VERIFIED_FREE region that other domains already draw on, this domain's demand
+    grows with the project, and above-EOF placement is the addressability this
+    capability exists to prove.
+
+    Per map, in the order the ticket's build sequence states it:
+
+    1. resolve and refuse the whole map's creations (see :func:`_resolve_creation`);
+    2. allocate the new record and the expanded array;
+    3. materialize the record above EOF;
+    4. materialize the array: the canonical element pointers, byte for byte, followed
+       by one pointer per created record - which is why the canonical array's
+       neighbourhood is never touched;
+    5. update ``root + 0x40`` from ``N`` to ``N + k``;
+    6. update ``root + 0x44`` to the expanded array's address;
+    7. record provenance, one entry per created transition, including the field-level
+       accounting of the 24 bytes.
+
+    The canonical array is **not** rewritten and the canonical records are not moved:
+    the expanded array is a new span that carries the same elements plus the created
+    ones, so every existing transition keeps its record, its address and its order,
+    and the created record is appended at ``index = N`` - the position the engine's
+    own descending walk consumes first.
+    """
+    if not creations:
+        return TransitionCreationMaterialization()
+    resolved_profile = profile if profile is not None else packaged_profile()
+    corpus = read_map_transitions(image, resolved_profile)
+    expansion = resolved_profile.generated_expansion
+    prior_reservations = tuple(reserved)
+    taken: list[OwnedRegion] = [
+        OwnedRegion(span, "build reservation") for span in prior_reservations
+    ]
+
+    changes: list[ByteChange] = []
+    generated: list[GeneratedAllocationProvenance] = []
+    provenance: list[TransitionCreationProvenance] = []
+    by_map = _creation_requests(creations)
+
+    for map_index in sorted(by_map):
+        entries = by_map[map_index]
+        plans = [
+            _resolve_creation(corpus, identity, authored, offset=offset)
+            for offset, (identity, authored) in enumerate(entries)
+        ]
+        root = corpus.root_for(MapIdentity(map_index))
+        count = root.count
+        new_count = count + len(plans)
+        if new_count > MAX_TRANSITION_COUNT:
+            raise TransitionFieldError(
+                f"map:{map_index:04d} would hold {new_count} transitions, which does "
+                "not fit the 4-byte count at root+0x40"
+            )
+        array_owner = f"{CREATION_ARRAY_PREFIX}{MapIdentity(map_index).key}"
+        record_owners = [
+            f"{CREATION_RECORD_PREFIX}{plan.identity.key}" for plan in plans
+        ]
+        # One batch per map, so the array and its records are placed clear of each
+        # other and of every earlier domain's spans, in one deterministic order.
+        # The array request sorts before the record requests, so the array takes the
+        # lower address of the two; nothing depends on that beyond determinism.
+        requests = [
+            AllocationRequest(
+                AnchorId(array_owner),
+                array_owner,
+                ARRAY_ELEMENT_WIDTH * new_count,
+                RECORD_ALIGNMENT,
+                kind=AllocationKind.TRANSITION_POINTER_ARRAY,
+                addressability=Addressability.EXPANDED_ONLY,
+                evidence=(
+                    "root+0x44 is a full 32-bit little-endian GBA address on 452 of "
+                    "452 canonical roots and every array element is one on 735 of "
+                    "735; the canonical array is packed against its own root and "
+                    "against neighbouring records, so a count that grows needs a new "
+                    "span, and the canonical image declares one 256-byte "
+                    "VERIFIED_FREE region this domain must not exhaust"
+                ),
+            )
+        ] + [
+            AllocationRequest(
+                AnchorId(owner),
+                owner,
+                TRANSITION_SIZE,
+                RECORD_ALIGNMENT,
+                kind=AllocationKind.TRANSITION_RECORD,
+                addressability=Addressability.EXPANDED_ONLY,
+                evidence=(
+                    "an array element is a full 32-bit little-endian GBA pointer, and "
+                    "a created record cannot overwrite the bytes that follow the "
+                    "canonical array - for map 40 those bytes are its own root"
+                ),
+            )
+            for owner in record_owners
+        ]
+        allocations = allocate(resolved_profile, requests, occupied=taken)
+        by_owner = {item.request.owner: item for item in allocations}
+        array_allocation = by_owner[array_owner]
+        for owner in record_owners:
+            taken.append(OwnedRegion(by_owner[owner].range, owner))
+        taken.append(OwnedRegion(array_allocation.range, array_owner))
+
+        if expansion is None:  # pragma: no cover - EXPANDED_ONLY cannot place otherwise
+            raise TransitionFieldError(
+                f"map:{map_index:04d}: the allocator placed a created transition "
+                "above canonical EOF, but this ROM's profile declares no generated "
+                "expansion to authorize that"
+            )
+        padding = bytes([expansion.padding_byte])
+
+        # 3. the records.
+        for plan, owner in zip(plans, record_owners):
+            allocation = by_owner[owner]
+            offset = allocation.range.start.value
+            body = plan.record.to_bytes()
+            changes.append(
+                ByteChange(
+                    offset=offset,
+                    old=padding * len(body),
+                    new=body,
+                    owner=owner,
+                    reason=(
+                        f"created transition record {plan.identity} over template "
+                        f"{plan.request.template}"
+                    ),
+                )
+            )
+            generated.append(
+                allocation.generated_allocation_provenance(
+                    domain=CREATION_DOMAIN,
+                    resource=plan.identity.key,
+                    # The field that names this record: the expanded array's own
+                    # element, which this same batch places, so its offset is known
+                    # here. It is a generated span's address rather than a canonical
+                    # one, which is exactly the case the write layer's `pointer_offset`
+                    # documents as "no canonical field to name".
+                    pointer_offset=(
+                        array_allocation.range.start.value
+                        + ARRAY_ELEMENT_WIDTH * plan.index
+                    ),
+                    source_range=RomRange(
+                        FileOffset(
+                            GbaRomAddress(
+                                plan.template_entry.record_address
+                            ).to_file_offset(len(image))
+                        ),
+                        TRANSITION_SIZE,
+                    ),
+                )
+            )
+
+        # 4. the expanded array: the canonical pointers verbatim, then the new ones.
+        prior_bytes = (
+            bytes(image[
+                GbaRomAddress(root.array_address).to_file_offset(len(image)):
+                GbaRomAddress(root.array_address).to_file_offset(len(image))
+                + ARRAY_ELEMENT_WIDTH * count
+            ])
+            if count
+            else b""
+        )
+        if len(prior_bytes) != ARRAY_ELEMENT_WIDTH * count:  # pragma: no cover
+            raise TransitionFieldError(
+                f"map:{map_index:04d}: the canonical pointer array at "
+                f"0x{root.array_address:08X} does not fit inside the image"
+            )
+        appended = b"".join(
+            by_owner[owner].rom_address.to_bytes(ARRAY_ELEMENT_WIDTH, "little")
+            for owner in record_owners
+        )
+        array_body = prior_bytes + appended
+        array_offset = array_allocation.range.start.value
+        changes.append(
+            ByteChange(
+                offset=array_offset,
+                old=padding * len(array_body),
+                new=array_body,
+                owner=array_owner,
+                reason=(
+                    f"expanded transition pointer array: {count} canonical element(s) "
+                    f"plus {len(plans)} created"
+                ),
+            )
+        )
+        generated.append(
+            array_allocation.generated_allocation_provenance(
+                domain=CREATION_DOMAIN,
+                resource=MapIdentity(map_index).key,
+                pointer_offset=GbaRomAddress(root.array_pointer_offset).to_file_offset(
+                    len(image)
+                ),
+                source_range=(
+                    RomRange(
+                        FileOffset(
+                            GbaRomAddress(root.array_address).to_file_offset(len(image))
+                        ),
+                        ARRAY_ELEMENT_WIDTH * count,
+                    )
+                    if count
+                    else RomRange(
+                        FileOffset(
+                            GbaRomAddress(root.array_pointer_offset).to_file_offset(
+                                len(image)
+                            )
+                        ),
+                        ARRAY_ELEMENT_WIDTH,
+                    )
+                ),
+            )
+        )
+
+        # 5 and 6. the root's count and array pointer.
+        count_offset = GbaRomAddress(root.count_offset).to_file_offset(len(image))
+        array_pointer_offset = GbaRomAddress(root.array_pointer_offset).to_file_offset(
+            len(image)
+        )
+        prior_count_bytes = image[count_offset:count_offset + 4]
+        prior_pointer_bytes = image[array_pointer_offset:array_pointer_offset + 4]
+        if len(prior_count_bytes) != 4 or len(prior_pointer_bytes) != 4:
+            # The corpus resolved both fields from this image, so a short read means
+            # the root sits too close to EOF for the write this creation needs.
+            raise TransitionFieldError(
+                f"map:{map_index:04d}: root+0x40/+0x44 are not fully inside the image, "
+                "so the count and array pointer cannot be rewritten"
+            )
+        if int.from_bytes(prior_count_bytes, "little") != count:  # pragma: no cover
+            raise TransitionFieldError(
+                f"map:{map_index:04d}: root+0x40 read as {count} through the corpus "
+                "but holds different bytes; refusing to overwrite an unexplained field"
+            )
+        if int.from_bytes(prior_pointer_bytes, "little") != root.array_address:
+            # pragma: no cover - the corpus read both from this image
+            raise TransitionFieldError(
+                f"map:{map_index:04d}: root+0x44 read as 0x{root.array_address:08X} "
+                "through the corpus but holds different bytes; refusing to overwrite "
+                "an unexplained field"
+            )
+        changes.append(
+            ByteChange(
+                offset=count_offset,
+                old=prior_count_bytes,
+                new=new_count.to_bytes(4, "little"),
+                owner=array_owner,
+                reason=(
+                    f"map:{map_index:04d} root+0x40 transition count {count} -> "
+                    f"{new_count}"
+                ),
+            )
+        )
+        changes.append(
+            ByteChange(
+                offset=array_pointer_offset,
+                old=prior_pointer_bytes,
+                new=array_allocation.rom_address.to_bytes(4, "little"),
+                owner=array_owner,
+                reason=(
+                    f"map:{map_index:04d} root+0x44 references the expanded transition "
+                    f"pointer array 0x{array_allocation.rom_address:08X}"
+                ),
+            )
+        )
+
+        # 7. provenance, one entry per created transition.
+        fields = created_record_fields()
+        for plan, owner in zip(plans, record_owners):
+            record_allocation = by_owner[owner]
+            creation = plan.request
+            provenance.append(
+                TransitionCreationProvenance(
+                    identity=plan.identity.key,
+                    source_map=map_index,
+                    index=plan.index,
+                    template=str(creation.template),
+                    template_address=plan.template_entry.record_address,
+                    destination=str(creation.destination),
+                    region=(creation.region.first, creation.region.second),
+                    arrival=(creation.arrival.x, creation.arrival.y),
+                    facing_raw=plan.record.byte_0x10_raw,
+                    facing=creation.facing,
+                    record_address=record_allocation.rom_address,
+                    record_file_offset=record_allocation.range.start.value,
+                    record_size=TRANSITION_SIZE,
+                    array_address=array_allocation.rom_address,
+                    array_file_offset=array_offset,
+                    array_size=len(array_body),
+                    count_offset=count_offset,
+                    prior_count=count,
+                    count=new_count,
+                    array_pointer_offset=array_pointer_offset,
+                    prior_array_address=root.array_address,
+                    count_bytes=new_count.to_bytes(4, "little").hex(),
+                    array_pointer_bytes=array_allocation.rom_address.to_bytes(
+                        4, "little"
+                    ).hex(),
+                    record_pointer_bytes=record_allocation.rom_address.to_bytes(
+                        ARRAY_ELEMENT_WIDTH, "little"
+                    ).hex(),
+                    expanded=record_allocation.is_expanded,
+                    expansion_evidence=record_allocation.free_region_evidence,
+                    prior_facing_raw=plan.template_entry.record.byte_0x10_raw,
+                    prior_unresolved_raw=plan.template_entry.record.byte_0x13_raw,
+                    fields=fields,
+                )
+            )
+
+    spans = tuple(region.range for region in taken[len(prior_reservations):])
+    generated_image: GeneratedImage | None = None
+    if generated and expansion is not None:
+        generated_image = expansion.generated_image(
+            resolved_profile.size,
+            tuple(item.allocated_range for item in generated),
+        )
+    return TransitionCreationMaterialization(
+        changes=tuple(changes),
+        generated_allocations=tuple(generated),
+        reserved=spans,
+        provenance=tuple(provenance),
+        generated_image=generated_image,
+    )
+
+
 # --- authoring: project persistence ------------------------------------------
 #
 # The one authority through which a transition edit reaches the project. It is
@@ -1333,6 +2163,169 @@ def read_project_transition_requests(
     project load, no image, no offset and no document parsing of its own.
     """
     return transition_edits_to_requests(read_transition_edits(project_dir))
+
+
+def transition_creations_to_requests(
+    creations,
+) -> dict[CreatedTransitionIdentity, AuthoredTransitionCreation]:
+    """A project's stored creations as the authority's own request type.
+
+    The single conversion from the created-transition document's durable keys into
+    the SDK's identities and values, matching
+    :func:`transition_edits_to_requests`. Nothing is inferred: the document already
+    refused any other shape, and the template bytes the creation preserves are
+    carried through as the priors :func:`_resolve_creation` checks.
+    """
+    requests: dict[CreatedTransitionIdentity, AuthoredTransitionCreation] = {}
+    for (map_index, name), entry in sorted(creations.edits().items()):
+        identity = CreatedTransitionIdentity(MapIdentity(map_index), name)
+        requests[identity] = AuthoredTransitionCreation(
+            creation=TransitionCreation(
+                identity=identity,
+                template=_transition_identity(entry.template),
+                destination=_map_identity(entry.destination),
+                region=entry.region,
+                arrival=TransitionArrival(*entry.arrival),
+                facing=entry.facing,
+            ),
+            prior_facing_raw=entry.prior_facing_raw,
+            prior_unresolved_raw=entry.prior_unresolved_raw,
+        )
+    return requests
+
+
+def read_transition_creations(project_dir):
+    """The committed created transitions for a project, in one load.
+
+    Reads the project's own document only. It consults no image, so a caller that
+    only wants to know what the project creates can ask without one.
+    """
+    from .project import read_project
+
+    return read_project(project_dir).transition_creations
+
+
+def read_project_transition_creations(
+    project_dir,
+) -> dict[CreatedTransitionIdentity, AuthoredTransitionCreation]:
+    """A project's created transitions, in one read, as build requests."""
+    return transition_creations_to_requests(read_transition_creations(project_dir))
+
+
+def _transition_identity(key: object) -> TransitionIdentity:
+    """A project's durable ``map:NNNN/transition:IIII`` key as an SDK identity.
+
+    The document layer already refused any other shape (`_TRANSITION_TEMPLATE_KEY`),
+    so this is the one place the two representations meet - and it raises rather
+    than indexing a string that was never checked.
+    """
+    if not isinstance(key, str):
+        raise TransitionFieldError(
+            f"a transition template identity must be a string, got {key!r}"
+        )
+    match = re.match(r"map:(\d{4})/transition:(\d{4})$", key)
+    if match is None:
+        raise TransitionFieldError(
+            f"{key!r} is not a 'map:NNNN/transition:IIII' transition identity"
+        )
+    return TransitionIdentity(MapIdentity(int(match.group(1), 10)), int(match.group(2), 10))
+
+
+def set_transition_creations(
+    project_dir,
+    profile: RomProfile,
+    canonical_bytes: bytes,
+    creations: Mapping[CreatedTransitionIdentity, "TransitionCreation | None"],
+) -> bool:
+    """Validate and persist a batch of created transitions in ONE write.
+
+    The creation-side mirror of :func:`set_transition_edits`, with the same three
+    properties: the WHOLE batch is validated against the canonical image through the
+    same :func:`_resolve_creation` a build uses before any document is touched; the
+    project is loaded once and the batch applied on top of what is committed; and
+    the document is rewritten only when the result differs.
+
+    ``None`` means "this project does not create this transition", which is how an
+    undo reverses. The stored template priors are **measured from the canonical
+    image here**, never taken from the caller, so the document's proof-of-base is
+    something this SDK read rather than something a caller asserted.
+    """
+    from .project import (
+        AuthoredTransitionCreation as StoredCreation,
+        TransitionCreations,
+        read_project,
+        write_transition_creations,
+    )
+
+    corpus = read_map_transitions(canonical_bytes, profile)
+    requested: dict[CreatedTransitionIdentity, TransitionCreation] = {}
+    for identity, request in sorted(creations.items()):
+        if request is None:
+            continue
+        if not isinstance(request, TransitionCreation):
+            raise TransitionFieldError(
+                f"{identity} must be authored as a TransitionCreation, got {request!r}"
+            )
+        if request.identity != identity:
+            raise TransitionFieldError(
+                f"the request for {identity} carries the identity {request.identity}; "
+                "the two must agree"
+            )
+        requested[identity] = request
+
+    # Pass 1 - resolve and refuse the whole batch before any document is touched.
+    # The priors are measured here, so this is the same check the build performs.
+    measured: dict[CreatedTransitionIdentity, AuthoredTransitionCreation] = {}
+    for identity, request in requested.items():
+        template = corpus.entry(request.template)
+        authored = AuthoredTransitionCreation(
+            creation=request,
+            prior_facing_raw=template.record.byte_0x10_raw,
+            prior_unresolved_raw=template.record.byte_0x13_raw,
+        )
+        _resolve_creation(corpus, identity, authored)
+        measured[identity] = authored
+
+    committed = read_project(project_dir).transition_creations.edits()
+    updated = dict(committed)
+    for identity, authored in measured.items():
+        key = (identity.source.index, identity.name)
+        updated[key] = StoredCreation(
+            source=identity.source.key,
+            name=identity.name,
+            template=str(authored.creation.template),
+            destination=str(authored.creation.destination),
+            region=authored.creation.region,
+            arrival=(authored.creation.arrival.x, authored.creation.arrival.y),
+            prior_facing_raw=authored.prior_facing_raw,
+            prior_unresolved_raw=authored.prior_unresolved_raw,
+            facing=authored.creation.facing,
+        )
+    for identity, request in sorted(creations.items()):
+        if request is None:
+            updated.pop((identity.source.index, identity.name), None)
+
+    if updated == committed:
+        return False
+    write_transition_creations(project_dir, TransitionCreations.from_edits(updated))
+    return True
+
+
+def remove_transition_creation(
+    project_dir, identity: CreatedTransitionIdentity
+) -> bool:
+    """Drop one created transition. Returns whether anything was removed."""
+    from .project import TransitionCreations, read_project, write_transition_creations
+
+    project = read_project(project_dir)
+    committed = project.transition_creations.edits()
+    key = (identity.source.index, identity.name)
+    if key not in committed:
+        return False
+    updated = dict(committed)
+    del updated[key]
+    write_transition_creations(project_dir, TransitionCreations.from_edits(updated))
+    return True
 
 
 def set_transition_edits(
@@ -1585,29 +2578,47 @@ def load_map_transitions(
 
 __all__ = [
     "ARRAY_ELEMENT_WIDTH",
+    "CREATION_ARRAY_PREFIX",
+    "CREATION_DOMAIN",
+    "CREATION_RECORD_PREFIX",
+    "CREATED_CLASS_RAW",
     "MAP_ENTRY_SOURCE_OFFSET",
+    "MAX_TRANSITION_COUNT",
     "ROOT_ARRAY_OFFSET",
     "ROOT_COUNT_OFFSET",
     "SUPPORTED_CLASS_RAW",
     "TRANSITION_SIZE",
+    "AuthoredTransitionCreation",
     "AuthoredTransitionEdit",
+    "CreatedTransitionIdentity",
     "MapTransitionError",
     "MapTransitions",
     "MapTransitionsError",
     "TransitionApplication",
+    "TransitionCreation",
+    "TransitionCreationMaterialization",
+    "TransitionCreationPlan",
     "TransitionEdit",
     "TransitionEntry",
     "TransitionFieldError",
     "TransitionIdentity",
     "TransitionProfileError",
     "TransitionRegion",
+    "TransitionRoot",
     "UnknownTransitionError",
+    "created_record_fields",
     "load_map_transitions",
+    "materialize_transition_creations",
     "plan_transition_edits",
     "read_map_transitions",
+    "read_project_transition_creations",
     "read_project_transition_requests",
+    "read_transition_creations",
     "read_transition_edits",
+    "remove_transition_creation",
     "remove_transition_edit",
+    "set_transition_creations",
     "set_transition_edits",
+    "transition_creations_to_requests",
     "transition_edits_to_requests",
 ]

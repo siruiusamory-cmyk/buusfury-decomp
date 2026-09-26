@@ -64,6 +64,7 @@ from ..formats import stat_tables as st
 from ..formats import text_tables as tt
 from ..formats.map_transitions import (
     ARRIVAL_UNSET_MINIMUM,
+    FACING_MASK,
     MapTransitionError,
     TransitionRegion,
 )
@@ -326,6 +327,14 @@ class StatProject:
     #: positional region of an existing selector-1 connection record. Empty for a
     #: project that authors none, which stays loadable on the same reasoning.
     transitions: "TransitionEdits" = field(default_factory=lambda: TransitionEdits())
+    #: MAP-WARP-CREATE-PROJECT-001. Transitions this project CREATES - records the
+    #: canonical image does not contain. A separate field rather than a second table
+    #: of `transitions`, because a created record has no canonical index to key an
+    #: edit by and the two documents have different writers. Empty for a project that
+    #: creates none, which stays loadable on the same reasoning.
+    transition_creations: "TransitionCreations" = field(
+        default_factory=lambda: TransitionCreations()
+    )
 
 
 @dataclass(frozen=True, slots=True)
@@ -1565,6 +1574,384 @@ class TransitionEdits:
         return cls(maps=maps)
 
 
+#: MAP-WARP-CREATE-PROJECT-001. Authored **created** map transitions: a selector-1
+#: connection record the canonical image does not contain.
+#:
+#: A sixth `maps/` document rather than a second table of `transitions.toml`, for a
+#: reason of write semantics rather than taste: `write_transition_edits` *deletes*
+#: that document when the last edit is removed, so a creation stored beside an edit
+#: would be destroyed by an author undoing an unrelated retarget. One document, one
+#: authoring concern - the same reasoning that keeps `structure.toml` separate from
+#: `layout.toml`.
+#:
+#: The durable identity is ``map:NNNN/transition:<name>``: the source map's own key
+#: plus an authored name. It deliberately contains **no** address and **no** array
+#: index, because the index a created record ends up at does not exist until the
+#: build appends it. A missing file means the project creates no transition,
+#: matching every other optional subsystem.
+TRANSITION_CREATION_FILE = Path("maps") / "transition_creations.toml"
+
+#: The document's one table: ``[creation."map:NNNN"."<name>"]``.
+TRANSITION_CREATION_TABLE = "creation"
+
+#: An authored transition name. The same shape a chunk name takes, for the same
+#: reason: it becomes part of a durable identity a project file and a manifest both
+#: carry, so it stays lowercase, bounded and free of path or separator characters.
+_TRANSITION_NAME = re.compile(r"[a-z][a-z0-9_-]{0,63}$")
+
+#: ``map:NNNN/transition:<name>`` - a created transition's durable identity.
+_CREATED_TRANSITION_IDENTITY = re.compile(
+    r"map:(\d{4})/transition:([a-z][a-z0-9_-]{0,63})$"
+)
+
+#: ``map:NNNN/transition:IIII`` - the canonical transition a creation copies.
+_TRANSITION_TEMPLATE_KEY = re.compile(r"map:(\d{4})/transition:(\d{4})$")
+
+
+def transition_creation_identity(map_index: int, name: str) -> str:
+    """A created transition's durable identity: ``map:NNNN/transition:<name>``."""
+    return f"map:{map_index:04d}/transition:{name}"
+
+
+def parse_transition_creation_identity(value: object, where: object) -> tuple[int, str]:
+    """Split a ``map:NNNN/transition:<name>`` identity into its two parts."""
+    if not isinstance(value, str):
+        raise ProjectValidationError(
+            f"{where}: a created-transition identity must be a string, got {value!r}"
+        )
+    match = _CREATED_TRANSITION_IDENTITY.match(value)
+    if match is None:
+        raise ProjectValidationError(
+            f"{where}: {value!r} is not a 'map:NNNN/transition:<name>' identity; the "
+            "name is lowercase, starts with a letter, and uses only letters, digits, "
+            "'_' and '-'"
+        )
+    return int(match.group(1), 10), match.group(2)
+
+
+@dataclass(frozen=True, slots=True)
+class AuthoredTransitionCreation:
+    """One transition a project creates, and the canonical record it starts from.
+
+    A created record has no canonical bytes, so its *initialization* has to come
+    from somewhere the engine already trusts. It comes from ``template``: a
+    ``map:NNNN/transition:IIII`` identity naming an existing **566-class** record of
+    the SAME source map. The build copies three things from it and authors the rest:
+
+    * **authored by the project** - the region, the destination map and the arrival
+      pair;
+    * **copied from the template** - the class/constructor word at ``+0x00`` and the
+      invariant word at ``+0x04``, whose meanings are UNRESOLVED, so they are carried
+      rather than invented;
+    * **preserved from the template** - the engine-read byte at ``+0x13`` and the
+      low nibble of ``+0x10`` (the door gate bits and the two bits nothing was traced
+      reading). These are pinned in the document as ``prior_unresolved_raw`` and
+      ``prior_facing_raw`` so an image whose template changed is refused instead of
+      silently initializing the new record from different unresolved bytes.
+    ``facing`` is the authored arrival-facing override, or ``None`` for "this record
+    states none" - the engine's own "keep walking the way you were" state, which is a
+    value and not a missing one. The template's own override is deliberately NOT
+    inherited: it was a decision about a different door.
+
+    No record bytes are stored, for the reason `AuthoredTransition` gives: the
+    document names the template and the fields it authors, and the build resolves
+    everything else from the canonical image.
+    """
+
+    #: ``map:NNNN`` - the map the created transition belongs to.
+    source: str
+    name: str
+    #: ``map:NNNN/transition:IIII`` - the canonical 566-class record copied.
+    template: str
+    #: ``map:NNNN`` - the map the created transition leads to.
+    destination: str
+    region: TransitionRegion
+    #: The arrival point in the destination, as ``[x, y]``.
+    arrival: tuple[int, int]
+    #: The template's own ``+0x10`` byte, whole. The created record keeps its low
+    #: nibble and takes the high nibble from :attr:`facing`.
+    prior_facing_raw: int
+    #: The template's own ``+0x13`` byte, which the created record carries verbatim.
+    #: Named for its STATUS rather than for a guessed meaning: it is an engine-read
+    #: byte (``0x08007282``) whose semantics are UNRESOLVED, so the document records
+    #: the value it inherits without claiming to know what it is - and deliberately
+    #: without putting the field's offset in a project's key name.
+    prior_unresolved_raw: int
+    #: The direction the player is forced to face on arrival (0..3), or None for "no
+    #: override stated". Never the template's own override.
+    facing: int | None = None
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.source, str) or _MAP_KEY.match(self.source) is None:
+            raise ProjectValidationError(
+                f"a created transition's source is {self.source!r}, which is not a "
+                "'map:NNNN' map identity"
+            )
+        if _TRANSITION_NAME.match(self.name or "") is None:
+            raise ProjectValidationError(
+                f"a created transition's name is {self.name!r}; it must be lowercase, "
+                "start with a letter, and use only letters, digits, '_' and '-' "
+                "(at most 64 characters)"
+            )
+        match = _TRANSITION_TEMPLATE_KEY.match(self.template or "")
+        if match is None:
+            raise ProjectValidationError(
+                f"a created transition's template is {self.template!r}, which is not "
+                "a 'map:NNNN/transition:IIII' canonical transition identity"
+            )
+        if f"map:{match.group(1)}" != self.source:
+            # The template supplies the created record's UNRESOLVED bytes. Borrowing
+            # them from another map's record would be a claim about that map's
+            # geometry that nothing measures, so it is refused here - the narrowest
+            # rule this project can state, and the reason a map with no supported
+            # 566-class record of its own cannot be given a created transition.
+            raise ProjectValidationError(
+                f"a created transition for {self.source} names template "
+                f"{self.template}, which belongs to map:{match.group(1)}; a template "
+                "must be a record of the same source map, because the bytes the "
+                "creation does not author are copied from it"
+            )
+        if not isinstance(self.destination, str) or _MAP_KEY.match(self.destination) is None:
+            raise ProjectValidationError(
+                f"a created transition's destination is {self.destination!r}, which is "
+                "not a 'map:NNNN' map identity"
+            )
+        if not isinstance(self.region, TransitionRegion):
+            raise ProjectValidationError(
+                f"a created transition's region must be a TransitionRegion, "
+                f"got {self.region!r}"
+            )
+        if (
+            not isinstance(self.arrival, (list, tuple))
+            or len(self.arrival) != 2
+            or any(type(part) is not int or not 0 <= part < ARRIVAL_UNSET_MINIMUM
+                   for part in self.arrival)
+        ):
+            raise ProjectValidationError(
+                f"a created transition's arrival is {self.arrival!r}, which is not an "
+                "[x, y] pair below the measured unset sentinel"
+            )
+        for value, label in (
+            (self.prior_facing_raw, "prior_facing_raw"),
+            (self.prior_unresolved_raw, "prior_unresolved_raw"),
+        ):
+            if type(value) is not int or not 0 <= value <= 0xFF:
+                raise ProjectValidationError(
+                    f"a created transition's {label} is {value!r}, which is not a "
+                    "single byte"
+                )
+        if self.facing is not None and (
+            type(self.facing) is not int or not 0 <= self.facing <= FACING_MASK
+        ):
+            raise ProjectValidationError(
+                f"a created transition's facing is {self.facing!r}, which is not an "
+                f"integer 0..{FACING_MASK} or absent"
+            )
+
+    @property
+    def identity(self) -> str:
+        return transition_creation_identity(int(self.source[4:], 10), self.name)
+
+    def to_document(self) -> dict[str, Any]:
+        # `prior_facing_raw` and `prior_unresolved_raw` are written unconditionally:
+        # they are what pins the created record's unresolved bytes to the template,
+        # so unlike an edit's optional priors a creation without them is incomplete.
+        document: dict[str, Any] = {
+            "template": self.template,
+            "destination": self.destination,
+            "region": _region_document(self.region),
+            "arrival": list(self.arrival),
+            "prior_facing_raw": self.prior_facing_raw,
+            "prior_unresolved_raw": self.prior_unresolved_raw,
+        }
+        if self.facing is not None:
+            document["facing"] = self.facing
+        return document
+
+    @classmethod
+    def from_document(
+        cls, source_key: str, name: str, document: object, where: object
+    ) -> "AuthoredTransitionCreation":
+        if not isinstance(document, Mapping):
+            raise ProjectLoadError(f"{where}: a created transition must be a table")
+        unknown = set(document) - {
+            "template",
+            "destination",
+            "region",
+            "arrival",
+            "facing",
+            "prior_facing_raw",
+            "prior_unresolved_raw",
+        }
+        if unknown:
+            raise ProjectLoadError(
+                f"{where}: unknown key(s) {sorted(unknown)}; a created transition "
+                "names a template, a destination, a region, an arrival and the "
+                "template bytes it preserves"
+            )
+        for required in ("template", "destination", "region", "arrival",
+                         "prior_facing_raw", "prior_unresolved_raw"):
+            if required not in document:
+                raise ProjectLoadError(
+                    f"{where}: a created transition must declare {required}; it is "
+                    "what pins the new record to the canonical bytes it starts from"
+                )
+        template = document["template"]
+        if not isinstance(template, str):
+            raise ProjectValidationError(
+                f"{where}: template must be a 'map:NNNN/transition:IIII' string, "
+                f"got {template!r}"
+            )
+        destination = document["destination"]
+        if not isinstance(destination, str):
+            raise ProjectValidationError(
+                f"{where}: destination must be a 'map:NNNN' string, got {destination!r}"
+            )
+        region = _region_from_document(document["region"], f"{where}.region")
+        arrival = _optional_point(document["arrival"], where, "arrival")
+        if arrival is None:
+            raise ProjectValidationError(
+                f"{where}: arrival must be an [x, y] pair; a created transition always "
+                "states where the player lands"
+            )
+        try:
+            return cls(
+                source=source_key,
+                name=name,
+                template=template,
+                destination=destination,
+                region=region,
+                arrival=arrival,
+                prior_facing_raw=_optional_byte(
+                    document["prior_facing_raw"], where, "prior_facing_raw"
+                ),
+                prior_unresolved_raw=_optional_byte(
+                    document["prior_unresolved_raw"], where, "prior_unresolved_raw"
+                ),
+                facing=_optional_byte(document.get("facing"), where, "facing"),
+            )
+        except ProjectValidationError as exc:
+            raise ProjectValidationError(f"{where}: {exc}") from exc
+
+
+@dataclass(frozen=True)
+class TransitionCreations:
+    """Every transition a project creates, keyed by source map and authored name.
+
+    ``creations["map:0040"]["kai-shop"]`` reads "map 40's created transition named
+    kai-shop". Both levels are durable keys: the map is the same ``map:NNNN``
+    identity every other document uses, and the name is the authored name, never an
+    array index - the index does not exist until a build appends the record, and the
+    project outlives that build.
+    """
+
+    #: ``"map:NNNN"`` -> authored name -> the entry.
+    creations: dict[str, dict[str, AuthoredTransitionCreation]] = field(
+        default_factory=dict
+    )
+
+    @staticmethod
+    def key_for(index: int) -> str:
+        return f"map:{index:04d}"
+
+    def is_empty(self) -> bool:
+        return not any(entries for entries in self.creations.values())
+
+    def edits(self) -> dict[tuple[int, str], AuthoredTransitionCreation]:
+        """Flatten to ``{(source map index, name): entry}``."""
+        flat: dict[tuple[int, str], AuthoredTransitionCreation] = {}
+        for key, entries in self.creations.items():
+            index = int(key[4:], 10)
+            for name, entry in entries.items():
+                flat[(index, name)] = entry
+        return flat
+
+    @classmethod
+    def from_edits(
+        cls, creations: Mapping[tuple[int, str], AuthoredTransitionCreation]
+    ) -> "TransitionCreations":
+        maps: dict[str, dict[str, AuthoredTransitionCreation]] = {}
+        for (map_index, name), entry in sorted(creations.items()):
+            maps.setdefault(cls.key_for(map_index), {})[name] = entry
+        return cls(creations=maps)
+
+    def for_map(self, index: int) -> dict[str, AuthoredTransitionCreation]:
+        return dict(self.creations.get(self.key_for(index), {}))
+
+    def names_for_map(self, index: int) -> tuple[str, ...]:
+        """This map's created transitions in the order a build appends them.
+
+        Sorted by name, which is the only order the project defines: the *array*
+        index of a created transition is a build-time fact, and nothing durable may
+        depend on it. The order is stated here once so the build and any surface
+        that displays "the order these will be appended in" cannot disagree.
+        """
+        return tuple(sorted(self.for_map(index)))
+
+    def to_document(self) -> dict[str, Any]:
+        return {
+            TRANSITION_CREATION_TABLE: {
+                key: {
+                    name: entry.to_document()
+                    for name, entry in sorted(entries.items())
+                }
+                for key, entries in sorted(self.creations.items())
+            }
+        }
+
+    @classmethod
+    def from_document(
+        cls, document: Mapping[str, Any], where: object
+    ) -> "TransitionCreations":
+        table = document.get(TRANSITION_CREATION_TABLE)
+        if table is None:
+            raise ProjectLoadError(
+                f"{where}: missing required [{TRANSITION_CREATION_TABLE}] table"
+            )
+        if not isinstance(table, Mapping):
+            raise ProjectLoadError(
+                f"{where}: [{TRANSITION_CREATION_TABLE}] must be a table"
+            )
+        maps: dict[str, dict[str, AuthoredTransitionCreation]] = {}
+        for map_key, entries in table.items():
+            label = f"{TRANSITION_CREATION_TABLE}.{map_key}"
+            if not _MAP_KEY.match(str(map_key)):
+                raise ProjectLoadError(
+                    f"{where}: {label} is not a valid map identity; expected "
+                    "'map:NNNN' with four digits"
+                )
+            if not isinstance(entries, Mapping):
+                raise ProjectLoadError(f"{where}: {label} must be a table")
+            by_name: dict[str, AuthoredTransitionCreation] = {}
+            for name, entry in entries.items():
+                name = str(name)
+                if _TRANSITION_NAME.match(name) is None:
+                    raise ProjectLoadError(
+                        f"{where}: {label}.{name} is not a transition name; it must be "
+                        "lowercase, start with a letter, and use only letters, digits, "
+                        "'_' and '-'"
+                    )
+                if name in by_name:
+                    raise ProjectLoadError(
+                        f"{where}: {label} declares transition {name} twice"
+                    )
+                by_name[name] = AuthoredTransitionCreation.from_document(
+                    str(map_key), name, entry, f"{where}: {label}.{name}"
+                )
+            if not by_name:
+                raise ProjectLoadError(
+                    f"{where}: {label} declares no created transitions"
+                )
+            if map_key in maps:
+                raise ProjectLoadError(f"{where}: duplicate map {map_key}")
+            maps[map_key] = by_name
+        if not maps:
+            raise ProjectLoadError(
+                f"{where}: [{TRANSITION_CREATION_TABLE}] declares no creations"
+            )
+        return cls(creations=maps)
+
+
 @dataclass(frozen=True)
 class GraphicsOverrides:
     """Authored graphics edits: palette-index -> 8-bit RGB recolour.
@@ -1823,6 +2210,7 @@ def write_project(
     chunks: "AuthoredChunks | None" = None,
     structure: "MapStructure | None" = None,
     transitions: "TransitionEdits | None" = None,
+    transition_creations: "TransitionCreations | None" = None,
 ) -> list[Path]:
     """Write the whole authored tree. Returns the files written, in order.
 
@@ -1865,6 +2253,10 @@ def write_project(
         documents.append((STRUCTURE_FILE, structure.to_document()))
     if transitions and not transitions.is_empty():
         documents.append((TRANSITION_FILE, transitions.to_document()))
+    if transition_creations and not transition_creations.is_empty():
+        documents.append(
+            (TRANSITION_CREATION_FILE, transition_creations.to_document())
+        )
 
     for relative, document in documents:
         path = root / relative
@@ -2389,6 +2781,33 @@ def _read_transitions(path: Path) -> "TransitionEdits":
     return TransitionEdits.from_document(_read_document(path), path)
 
 
+def write_transition_creations(
+    directory: str | Path, creations: "TransitionCreations"
+) -> Path:
+    """Persist only the created-transition document for a loaded project.
+
+    MAP-WARP-CREATE-PROJECT-001, and the mirror of `write_transition_edits` with one
+    deliberate difference: it writes a document of its own, so removing the last
+    *edit* cannot delete a *creation*. An empty creation set means the project
+    creates no transition, so the optional document is removed rather than written
+    as an invalid empty table (which `read_project` would then refuse).
+    """
+    path = Path(directory) / TRANSITION_CREATION_FILE
+    if creations is None or creations.is_empty():
+        path.unlink(missing_ok=True)
+        return path
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(dump_toml(creations.to_document()), encoding="utf-8", newline="\n")
+    return path
+
+
+def _read_transition_creations(path: Path) -> "TransitionCreations":
+    """Load `maps/transition_creations.toml`, or nothing at all if it is absent."""
+    if not path.is_file():
+        return TransitionCreations()
+    return TransitionCreations.from_document(_read_document(path), path)
+
+
 def read_project(directory: str | Path) -> StatProject:
     """Load and structurally validate a project. Opens no ROM.
 
@@ -2447,6 +2866,7 @@ def read_project(directory: str | Path) -> StatProject:
     chunks = _read_chunks(root / CHUNK_FILE)
     structure = _read_structure(root / STRUCTURE_FILE)
     transitions = _read_transitions(root / TRANSITION_FILE)
+    transition_creations = _read_transition_creations(root / TRANSITION_CREATION_FILE)
 
     # MAP-CHUNK-AUTHORING-001. A layout cell that names an authored chunk must
     # name one this project declares. Checked here because it is the one place
@@ -2502,6 +2922,7 @@ def read_project(directory: str | Path) -> StatProject:
         chunks=chunks,
         structure=structure,
         transitions=transitions,
+        transition_creations=transition_creations,
         placement_events=events,
         placement_types=(_read_document(root / PLACEMENT_TYPES_FILE)
                          if (root / PLACEMENT_TYPES_FILE).exists() else None),

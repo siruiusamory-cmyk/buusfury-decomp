@@ -69,6 +69,7 @@ from .map_transitions import (
     MapTransitionsError,
     TransitionIdentity,
     plan_transition_edits,
+    transition_edits_to_requests,
 )
 from .map_resize import (
     MapStructureError,
@@ -704,47 +705,15 @@ _TRANSITION_ERRORS = (MapTransitionsError, MapTransitionError)
 def _transition_requests(project: StatProject) -> dict[TransitionIdentity, AuthoredTransitionEdit]:
     """The project's stored transition edits, resolved to SDK identities.
 
-    `project.transitions` stores map identities as their durable ``map:NNNN`` keys
-    and regions as the record codec's own positional pairs, because the authored
-    layer must not reach into a module that opens ROMs. This is the one place those
-    values cross into the SDK's identities, and it is deliberately mechanical:
-    nothing is inferred, and a value the authored layer already refused cannot
-    reach here. Every map key was matched against ``map:NNNN`` at load, so the
-    conversion cannot fail on a malformed one.
+    MAP-WARP-PROJECT-AUTHORING-001 introduced this conversion; MAP-WARP-WORKBENCH-001
+    moved it to the transition authority (`transition_edits_to_requests`) so the
+    Workbench surface that displays an author their current connections and this
+    build that writes them read one implementation rather than two that could
+    disagree. The behaviour is unchanged: the document stores map identities as
+    their durable ``map:NNNN`` keys and regions as the record codec's own positional
+    pairs, and nothing here is inferred.
     """
-    requests: dict[TransitionIdentity, AuthoredTransitionEdit] = {}
-    for (map_index, position), entry in sorted(project.transitions.edits().items()):
-        requests[TransitionIdentity(MapIdentity(map_index), position)] = (
-            AuthoredTransitionEdit(
-                prior_destination=(
-                    MapIdentity(int(entry.prior_destination[4:], 10))
-                    if entry.prior_destination is not None
-                    else None
-                ),
-                destination=(
-                    MapIdentity(int(entry.destination[4:], 10))
-                    if entry.destination is not None
-                    else None
-                ),
-                prior_region=entry.prior_region,
-                region=entry.region,
-                prior_arrival=(
-                    TransitionArrival(*entry.prior_arrival)
-                    if entry.prior_arrival is not None
-                    else None
-                ),
-                arrival=(
-                    TransitionArrival(*entry.arrival)
-                    if entry.arrival is not None
-                    else None
-                ),
-                arrival_authored=entry.arrival_authored,
-                prior_facing_raw=entry.prior_facing_raw,
-                facing_raw=entry.facing_raw,
-                facing_authored=entry.facing_authored,
-            )
-        )
-    return requests
+    return transition_edits_to_requests(project.transitions)
 
 
 def _check_transitions(

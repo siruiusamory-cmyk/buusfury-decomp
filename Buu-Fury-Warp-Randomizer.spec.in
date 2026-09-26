@@ -1,0 +1,110 @@
+# -*- mode: python ; coding: utf-8 -*-
+"""WARPRAND-APP-001 - the standalone Windows build of the warp randomizer.
+
+Same shape as ``DragonByte Z.spec``, deliberately: a **onedir** ``COLLECT``
+build rather than a one-file archive. The ticket allows either, and one-file is
+rejected here on measured grounds - PySide6 unpacks its Qt libraries to a
+temporary directory on every launch, which costs seconds of startup and is the
+mode most likely to be quarantined by an anti-virus heuristic. One directory
+extracted from a zip starts in the time a normal application does.
+
+The single data file is the ROM profile catalog. ``webfoot.cli.load_catalog``
+prefers a checkout's ``config/roms.yaml`` and otherwise falls back to
+``tools.webfoot.data/roms.yaml``, which is the branch a frozen build takes - so
+that file must travel or every ROM selection is refused.
+
+Nothing from the commercial ROM is bundled, and nothing can be: the profile
+catalog is a table of addresses and hashes, not game content.
+
+Trimmed payload
+---------------
+
+PySide6's PyInstaller hook collects the whole Qt SDK, so a QtWidgets-only
+application otherwise ships QtQml, QtQuick, QtPdf, QtVirtualKeyboard and every
+Qt translation - about 35 MB of libraries that are never loaded by a single
+window with three text fields, a button and a progress bar. Dropping them takes
+the release from ~45 MB to ~20 MB.
+
+Two things are deliberately NOT dropped:
+
+* ``opengl32sw.dll``, the software OpenGL fallback. It is the largest remaining
+  binary and it is kept on purpose: it is what makes the window render on a
+  machine with no usable GL driver, and the ticket puts reliability above size.
+* ``Qt6Network`` and the TLS plugins, which Qt's platform layer may reach for
+  through QDesktopServices ("Open Folder").
+
+The exclusions are asserted by the packaged smoke run, which drives the real
+frozen executable.
+"""
+
+#: Python modules nothing here imports.
+_UNUSED_QT_MODULES = [
+    'PySide6.QtQml',
+    'PySide6.QtQuick',
+    'PySide6.QtQuickWidgets',
+    'PySide6.QtPdf',
+    'PySide6.QtPdfWidgets',
+    'PySide6.QtVirtualKeyboard',
+]
+
+#: Native libraries and data belonging to those modules, matched on their
+#: bundle-relative path with forward slashes.
+_UNUSED_QT_PREFIXES = (
+    'PySide6/Qt6Qml',
+    'PySide6/Qt6Quick',
+    'PySide6/Qt6Pdf',
+    'PySide6/Qt6VirtualKeyboard',
+    'PySide6/translations/',
+)
+
+
+def _is_unused_qt(relative: str) -> bool:
+    normalised = relative.replace('\\', '/')
+    return normalised.startswith(_UNUSED_QT_PREFIXES)
+
+
+a = Analysis(
+    ['tools/webfoot/warprand/_pyinstaller_entry.py'],
+    pathex=['.'],
+    binaries=[],
+    datas=[('tools/webfoot/data/roms.yaml', 'tools/webfoot/data')],
+    hiddenimports=[],
+    hookspath=[],
+    hooksconfig={},
+    runtime_hooks=[],
+    excludes=_UNUSED_QT_MODULES,
+    noarchive=False,
+    optimize=0,
+)
+
+a.binaries = [item for item in a.binaries if not _is_unused_qt(item[0])]
+a.datas = [item for item in a.datas if not _is_unused_qt(item[0])]
+
+pyz = PYZ(a.pure)
+
+exe = EXE(
+    pyz,
+    a.scripts,
+    [],
+    exclude_binaries=True,
+    name='Buu-Fury-Warp-Randomizer',
+    debug=False,
+    bootloader_ignore_signals=False,
+    strip=False,
+    upx=True,
+    console=False,
+    disable_windowed_traceback=False,
+    argv_emulation=False,
+    target_arch=None,
+    codesign_identity=None,
+    entitlements_file=None,
+)
+coll = COLLECT(
+    exe,
+    a.binaries,
+    a.datas,
+    strip=False,
+    upx=True,
+    upx_exclude=[],
+    name='Buu-Fury-Warp-Randomizer',
+)

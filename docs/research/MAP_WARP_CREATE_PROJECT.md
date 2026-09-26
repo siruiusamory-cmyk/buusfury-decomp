@@ -1,17 +1,21 @@
 # MAP-WARP-CREATE-PROJECT-001 - creating a transition through the project and the build
 
-STATUS: **IMPLEMENTED, VALIDATED, RETURNED FOR REVIEW (2026-09-26).** Class: scoped
-project-format, SDK-authority, allocator and build-integration pass. This is a
-**sub-pass of the parent capability `MAP-WARPS-AND-CONNECTIONS-001`**, which stays
-active and unshipped in [`PROJECT_<local-state-name>`](PROJECT_<local-state-name>); the parent's Workbench creation
-surface, human-operated runtime proof and capability advance are explicitly **not**
-in scope here and were not begun.
+STATUS: **IMPLEMENTED, VALIDATED AND INDEPENDENTLY REVIEWED - RETURNED FOR
+REVIEW (2026-09-26).** Class: scoped project-format, SDK-authority, allocator and
+build-integration pass. This is a **sub-pass of the parent capability
+`MAP-WARPS-AND-CONNECTIONS-001`**, which stays active and unshipped in
+[`PROJECT_<local-state-name>`](PROJECT_<local-state-name>); the parent's Workbench creation surface, human-operated
+runtime proof and capability advance are explicitly **not** in scope here and were not
+begun.
 
 Baseline: `df81e7ab9bcffc99c526b7e9bffe768d8420214d` (the repository's `HEAD` at the
 start of the pass, verified with `git rev-parse HEAD` on a clean tree, no drift).
-The work is uncommitted and unstaged; the pass did not commit, branch, push or
-archive anything, and the parent's `PROJECT_<local-state-name>` was updated in place rather than
-replaced.
+Implementation: `5c0f6e4df77697031b92800dabb812a9ba5543bb`; frozen reviewed tip:
+`7a0abc57fea6c20799bbc9079d3544809fea41b8` (the correction commit), both on
+`ticket/map-warp-create-project-001` in the ticket worktree
+`<ticket-worktrees>\map-warp-create-project-001`. The primary checkout stays on
+`master` at the baseline and was not committed, branched, pushed or archived; the
+twelve changed files there are byte-identical to the frozen tip (verified by SHA-256).
 
 **public progress impact: NONE.** No capability ships, the registry stays at
 **19 / 24 (79%)**, `EDIT` stays **7 / 8**, `src/data/capabilities.json` is untouched,
@@ -166,6 +170,15 @@ tests/unit/test_map_transitions.py + test_map_transition_project.py +
   test_allocation_authority.py + test_allocation_provenance.py + test_map_resize.py +
   test_project_format.py (265 passed)
 tests/unit (whole suite, 3332 passed, 8 skipped, 1 pre-existing failure - see below)
+After the review-prescribed correction: the 66 portable tests and the 114 predecessor
+  transition tests (180 passed), the 30 ROM-gated tests (passed), and git diff --check
+  clean.
+
+INDEPENDENT REVIEW:
+APPROVE - candidate 5c0f6e4, range df81e7a..5c0f6e4, job cl-20260926-221253-299abe.
+One non-blocking finding (a duplicated, unreachable shared-root guard), resolved by
+correction 7a0abc5 and confirmed by follow-up job cl-20260926-222936-818c6b:
+"APPROVE - verdict stands for the corrected tip". No blocking finding outstanding.
 
 BROAD SUITE:
 NOT RUN
@@ -260,6 +273,48 @@ load-bearing path (`TransitionCreations.edits`, `transition_creations_to_request
 changes the **key** the document is written under, which is what the table records. The
 redundancy itself matches the established shape of `AuthoredChunk`/`AuthoredChunks` and
 is kept for consistency; it is not load-bearing and no path can make the two disagree.
+
+---
+
+## Independent review
+
+Required by [`../../docs/DEVELOPMENT.md`](../../docs/DEVELOPMENT.md)'s independent code-review gate: a
+nontrivial code-bearing ticket cannot report readiness on the implementer's own
+verdict. The reviewer was a fresh-context local the review tool session with no part in the
+implementation, given the frozen worktree, the start SHA, the frozen SHA and
+[`MAP-WARP-CREATE-PROJECT-001-review-request.md`](MAP-WARP-CREATE-PROJECT-001-review-request.md).
+
+| | |
+| --- | --- |
+| Range reviewed | `df81e7a..5c0f6e4` (implementation) |
+| Verdict | **APPROVE**, no blocking or major findings, one trivial non-blocking finding |
+| Job | `cl-20260926-221253-299abe` (the local reviewer, local headless) |
+| Range reviewed after the correction | `5c0f6e4..7a0abc5` |
+| Follow-up verdict | **APPROVE** - "verdict stands for the corrected tip" |
+| Job | `cl-20260926-222936-818c6b` (the local reviewer, local headless) |
+
+The reviewer reproduced both focused suites green at the candidate, re-verified the
+canonical ROM hash, and probed the questions the brief listed rather than summarising
+the implementation. Its own probes: a null `facing` writes a zero high nibble and
+`South` writes one, so the two outcomes really are distinct; and
+`CREATED_FIELD_AUTHORED_MASKS` matches what `compose_created_record` produces for every
+non-facing field, so the published provenance is not a drifted table. It also confirmed
+independently that the aliasing refusal cannot be bypassed (the `+0x10` low nibble is
+copied, not authored), that the count and the array pointer cannot disagree about `N`,
+that no canonical element address is recomputed, and that the addressability claim is
+labelled **encoding/build-proven** and never runtime-proven.
+
+**The one finding, and its resolution.** `_resolve_creation` ran the shared-root guard
+twice - the second copy byte-identical to the first and unreachable, because the first
+always raises. The reviewer marked it trivial and explicitly "not a gate". It is
+resolved anyway, by a correction commit whose only change is the deletion of those nine
+lines: `7a0abc57fea6c20799bbc9079d3544809fea41b8`, confirmed by the follow-up review
+above. The deletion cannot change behaviour - the removed block could not execute - and
+the focused files were re-run on the corrected tip (180 portable tests and the 30
+ROM-gated tests, all green).
+
+The reviewer made no edit to the candidate; the implementer made the prescribed
+deletion, and the reviewer inspected it.
 
 ---
 

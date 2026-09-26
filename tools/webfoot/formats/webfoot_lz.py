@@ -41,6 +41,19 @@ length of a long match is biased by its own distance, which is the one part of
 the format that cannot be guessed from first principles and the strongest single
 reason to promote a verified implementation rather than invent one.
 
+**The literal-base escape resets, it does not persist.** One of the two control
+escapes selects a literal width of 7 or 8 bits and, for the 7-bit form only,
+installs an 8-bit base that the following 7-bit literals are added to. A return to
+8-bit literals **clears** that base; the previous 7-bit run's base does not stay in
+force. This is the retail engine's rule, `CONFIRMED_RUNTIME` against the engine's
+own character memory - byte-exact over a complete 16,384-byte bank and reproduced
+on the engine's own screen at its ceiling - in
+`docs/research/BUU_MAP_GRAPHICS_DIAG.md` (MAP-GFX-DIAG-001). Retaining the base
+leaves a container's geometry intact and shifts its palette indices, which is why
+the defect presented as correctly shaped tiles in the wrong colours. The
+export-side reader in `tools/export/webfoot_strict.py` states the same rule in its
+own words so the two implementations stay independently checkable.
+
 **On re-encoding.** :func:`pack` produces a *valid* stream - one this module's
 own decoder reads back exactly - and it writes the retail decoder's own escape
 after the final token, so its output is self-terminating instead of depending on
@@ -381,7 +394,17 @@ def _unpack_stream(
                     break
         else:
             literal_bits = 7 + reader.bit()
-            if literal_bits != 8:
+            if literal_bits == 8:
+                # The literal-base escape only carries a base for the 7-bit form.
+                # Returning to 8-bit literals clears it, so the base installed by
+                # an earlier 7-bit run does not stay in force - the rule the
+                # retail engine follows, proven byte-exactly against its own
+                # character memory in `docs/research/BUU_MAP_GRAPHICS_DIAG.md`
+                # (MAP-GFX-DIAG-001). Retaining it decodes some atlas tiles with
+                # every palette index shifted by the stale base: correct tile
+                # geometry, wrong colours.
+                literal_base = 0
+            else:
                 literal_base = reader.get(8)
 
     if len(out) != expected:

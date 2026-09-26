@@ -11,6 +11,14 @@ observation) and **LEVEL 4** (meaningful runtime subsystem confirmed).
 The candidate rule below is carried as an injectable decoder under the ignored
 `build/gfxdiag/` tree so that the shipping decoder is untouched.
 
+> **EXECUTED (2026-09-26, WEBFOOT-LZ-LITERAL-BASE-001).** The correction §9
+> specifies has since shipped: the rule is now in
+> `tools/webfoot/formats/webfoot_lz.py::_unpack_stream`, in the export reader and
+> in the research reference, and every pin this document predicted would move has
+> been re-baselined with per-pin attribution. The evidence record is
+> [`../tickets/WEBFOOT-LZ-LITERAL-BASE-001.md`](../tickets/WEBFOOT-LZ-LITERAL-BASE-001.md).
+> Every number below is the **pre-correction** measurement and is left as it stood.
+
 ## 1. Result
 
 **The corruption is a decompression defect, not a layout, palette or bit-depth

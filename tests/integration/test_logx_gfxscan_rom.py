@@ -85,11 +85,14 @@ EXPECTED_EXTERNAL_FALSE_POSITIVES = {
 }
 
 #: Recall per class.  Only the sprite class is a graphics denominator.
+#: The bank row's agreeing digests moved 110 -> 187 with
+#: WEBFOOT-LZ-LITERAL-BASE-001: every root-bank container now reproduces the
+#: external JCALG1 model, which had the engine's literal-base rule all along.
 EXPECTED_EXTERNAL_RECALL = {
     scan.CLASS_SPRITE_PIECES: (7390, 0, 7390),
     scan.CLASS_MAP_CHUNKS: (3745, 0, 3744),
     scan.CLASS_SELECTOR_STREAMS: (191, 201, 191),
-    scan.CLASS_BANK_CONTAINERS: (187, 0, 110),
+    scan.CLASS_BANK_CONTAINERS: (187, 0, 187),
     scan.CLASS_ENGINE_DEFAULT: (0, 1, 0),
     scan.CLASS_ZERO_HEADER: (0, 2, 0),
 }
@@ -119,12 +122,19 @@ EXPECTED_ENGINE_UNCONSTRAINED_NESTED = 21610
 #: The one arm where the external grammar and the project decoder genuinely
 #: differ: the external ``value == 0`` arm writes a literal zero, the project
 #: writes its literal base.  Correcting that arm moves one known container's
-#: payload, so the two grammars disagree on 78 of the 11,712 known kind-1
-#: containers rather than 77.
+#: payload, so the two grammars disagree on exactly that container.
+#:
+#: Re-baselined by WEBFOOT-LZ-LITERAL-BASE-001: the count used to be **78**,
+#: because the project decoder also retained the 7-bit literal base across a
+#: return to 8-bit literals and the external model clears it - 77 root-bank
+#: containers plus this one.  With the engine's rule in place (proven against the
+#: engine's own character memory in ``docs/research/BUU_MAP_GRAPHICS_DIAG.md``)
+#: those 77 now agree with the external model, which is the independent
+#: corroboration that the rule is right; only the literal-zero arm remains.
 EXPECTED_EXTERNAL_VS_CANONICAL_DECODES = 11712
-EXPECTED_EXTERNAL_VS_CANONICAL_DIFFERING = 78
-#: The divergent container that is *not* a bank: it is the one the literal-zero
-#: arm moves (`0x0829B308`, a map chunk declaring 2,048 bytes).
+EXPECTED_EXTERNAL_VS_CANONICAL_DIFFERING = 1
+#: The one container the literal-zero arm moves: a map chunk declaring 2,048
+#: bytes.
 EXPECTED_DIVERGENT_MAP_CHUNK = 0x0829B308
 
 #: Representative containers, one per class, whose decode both models must
@@ -277,10 +287,12 @@ def test_external_model_decodes_every_known_kind_one_container(
 ) -> None:
     """No canonical kind-1 container raises inside the external model.
 
-    The divergences are asserted by *shape* - every one is a bank declaring
-    16,384 bytes, plus the single map chunk the external literal-zero arm moves -
-    rather than by count alone, so a future change that moves the divergence to a
-    different class cannot pass by keeping the total.
+    The divergence is asserted by *shape* rather than by count alone, so a future
+    change that moves it to a different class cannot pass by keeping the total.
+    Since WEBFOOT-LZ-LITERAL-BASE-001 the only one left is the literal-zero arm;
+    the 77 root-bank containers that used to appear here were the project
+    decoder's retained literal base, and they are the independent corroboration
+    that the correction is the engine's rule.
     """
     same = 0
     differing: list[tuple[int, str, int]] = []
@@ -297,8 +309,7 @@ def test_external_model_decodes_every_known_kind_one_container(
     assert same + len(differing) == EXPECTED_EXTERNAL_VS_CANONICAL_DECODES
     assert len(differing) == EXPECTED_EXTERNAL_VS_CANONICAL_DIFFERING
     banks = [row for row in differing if row[1] == scan.CLASS_BANK_CONTAINERS]
-    assert len(banks) == 77
-    assert all(row[2] == 16384 for row in banks)
+    assert banks == []
     others = [row for row in differing if row[1] != scan.CLASS_BANK_CONTAINERS]
     assert others == [(EXPECTED_DIVERGENT_MAP_CHUNK, scan.CLASS_MAP_CHUNKS, 2048)]
 
@@ -655,8 +666,14 @@ def test_residual_size_characterisation_is_measured(full: dict) -> None:
         == 21
     )
     external_confirmed = [row for row in rows if row["external_model_agrees"]]
-    assert len(external_confirmed) == 381
-    assert sum(1 for row in external_confirmed if row["decoded_length"] % 32 == 0) == 378
+    # Re-baselined by WEBFOOT-LZ-LITERAL-BASE-001: 384, not 381. The three
+    # additions are 0x086B9A9C, 0x086BC6A0 and 0x086D8C78 - engine-referenced
+    # 4,096-byte containers whose engine-aligned decode now reproduces the
+    # external model. Nothing moved out: the external sweep never submits a
+    # declared size that is not a multiple of four, so the large containers whose
+    # size is 2 mod 4 stay outside its population on both sides of the change.
+    assert len(external_confirmed) == 384
+    assert sum(1 for row in external_confirmed if row["decoded_length"] % 32 == 0) == 381
     assert sum(1 for row in external_confirmed if row["declared_size"] >= 8192) == 23
 
 

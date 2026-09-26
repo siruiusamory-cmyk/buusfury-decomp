@@ -25,6 +25,15 @@ measured separately. It is *not* a second claim about the format: the
 authoritative statement is the project decoder plus the engine wrapper above.
 Agreement is asserted by ``tests/integration/test_logx_codec_rom.py``.
 
+One grammar rule was corrected here after MAP-GFX-DIAG-001 proved it against the
+retail engine's own character memory: the literal-width escape **clears** the
+literal base when the stream widens back to 8-bit literals
+(`docs/research/BUU_MAP_GRAPHICS_DIAG.md`). This module had transcribed the
+pre-correction project decoder, which retained it; the external JCALG1 model in
+``tools/research/logx_gfxscan_probe.py`` already reset it. The remaining
+deliberate difference between this reference and the project decoder is the
+four-bit ``value == 0`` arm, which the external source writes as a literal ``0``.
+
 Departure from the engine, stated explicitly
 --------------------------------------------
 
@@ -304,7 +313,18 @@ def decode_packed(
                     break
         else:
             literal_bits = 7 + reader.bit()
-            if literal_bits != 8:
+            if literal_bits == 8:
+                # The escape installs a base only for the 7-bit form; widening
+                # back to 8-bit literals clears it. This reference transcribed the
+                # pre-correction project decoder here, and the engine's rule -
+                # proven byte-exactly against its own character memory in
+                # `docs/research/BUU_MAP_GRAPHICS_DIAG.md` (MAP-GFX-DIAG-001) - is
+                # to reset. The external JCALG1 model in
+                # `tools/research/logx_gfxscan_probe.py` already resets it, so the
+                # differential now agrees with both the engine and that model on
+                # this arm.
+                literal_base = 0
+            else:
                 literal_base = reader.get(8)
 
     if len(out) != declared_size and stop_on == "declared_size":

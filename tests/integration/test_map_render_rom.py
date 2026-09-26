@@ -28,15 +28,15 @@ EXPECTED = {
         "descriptor": "0x08294968",
         "selectors": 259,
         "layers": ((1, 768, 512), (2, 768, 512), (3, 1024, 512)),
-        "char_sha256": "e0d049253bee77fa39c8fdee10f3db25115f420a4ef2b6bd7ecd4b6f6a75839e",
-        "composite_sha256": "35d3b51f0929a9d1d408786b651b314f1458028f4a5d9ae1440d8ba78388ed2b",
+        "char_sha256": "4c7167a33b78c3f256593d0b3a5dfbc3328ade0c65a0375a7634b6d4b57c2c46",
+        "composite_sha256": "0de70425d9ea178245c1b7bc489ea566096fff2aac2d76bd54c211965f59bc04",
     },
     "map:0040": {
         "descriptor": "0x08293474",
         "selectors": 239,
         "layers": ((0, 256, 256), (1, 512, 512), (2, 512, 512), (3, 512, 512)),
-        "char_sha256": "486012304609d7552b3390e3fffaf6e19f8d2d802c94794398424046224f14a7",
-        "composite_sha256": "21985e5c58150499b13c29696cabadd84956708e7f901b2b6ceb2c9bd6c70f9d",
+        "char_sha256": "0d17922ef3b002c19d580af7282f9523d169396edb38255159960fb627267b0d",
+        "composite_sha256": "d15197930f476d97293066cb1c4e0659acfd49bc0edc12d4806af19d112d6642",
     },
 }
 
@@ -129,10 +129,12 @@ ORACLES = {
         "path": Path(os.environ.get("WEBFOOT_MAP39_VRAM", "")),
         "origins": {1: (54, 8), 2: (62, 8), 3: (70, 8)},
         "screen_holes": {1: (), 2: (), 3: ()},
+        # Re-baselined by WEBFOOT-LZ-LITERAL-BASE-001. The 32 entries this list
+        # used to carry in 201..258 were not post-load mutation at all: they were
+        # the retained literal base, cleared by the correction, and the corrected
+        # decode reproduces every one of them (MAP-GFX-DIAG-001 section 3.8
+        # measured 32 of 70 differing tiles inside these ranges, and 0 after).
         "char_mutations": (
-            201, 205, 206, 207, 218, 220, 227, 228, 229, 230, 231, 232,
-            233, 234, 235, 237, 238, 239, 240, 241, 242, 243, 249, 250,
-            251, 252, 253, 254, 255, 256, 257, 258,
             879, 880, 881, 882, 883, 884, 885, 886, 887, 888, 889, 890,
             891, 892, 893, 894, 895,
         ),
@@ -147,7 +149,10 @@ ORACLES = {
             2: tuple(y * 32 + 31 for y in range(29, 32)),
             3: tuple(y * 32 + 31 for y in range(32)),
         },
-        "char_mutations": tuple(range(234, 259)) + tuple(range(879, 892)),
+        # Re-baselined by WEBFOOT-LZ-LITERAL-BASE-001: 234..238 were the five
+        # decode-error tiles of MAP-GFX-DIAG-001 section 3.8, and 239..258 are
+        # genuine post-load mutation.
+        "char_mutations": tuple(range(239, 259)) + tuple(range(879, 892)),
     },
 }
 
@@ -198,8 +203,10 @@ def test_vram_oracle_matches_after_enumerated_runtime_state_is_normalized(
 
     # The selector assembler initially writes every selected tile in sequential
     # destination order. This later gameplay capture differs only at this exact,
-    # pinned set of post-load mutable tile destinations (including animation
-    # ranges); normalize those bytes to the renderer's static frame-zero view.
+    # pinned set of post-load mutable tile destinations (animations); the tiles
+    # that used to sit in these lists and are no longer here were the literal-base
+    # decode error corrected by WEBFOOT-LZ-LITERAL-BASE-001, not mutation.
+    # Normalize the remaining ones to the renderer's static frame-zero view.
     actual_char_mutations = tuple(
         tile for tile in range(len(assembly.char_data) // 64)
         if assembly.char_data[tile * 64:(tile + 1) * 64]

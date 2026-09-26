@@ -131,24 +131,33 @@ EXPECTED_UPLOADED_SCREENBLOCK_REFERENCES = 41
 #: that contain them, measured once from the corrected classification and pinned.
 #: The map 19 digest is the self-buffered `0x08007B63` plane; the rest are
 #: `0x0800897B` planes uploaded from `record + 0x1C`.
+#:
+#: **Re-baselined by WEBFOOT-LZ-LITERAL-BASE-001** (the packed-container
+#: literal-base correction, `docs/research/BUU_MAP_GRAPHICS_DIAG.md`). These
+#: digests are over pixels rendered *through a map's assembled character block*,
+#: so they move wherever that block moves: map 19's by 117 tiles, map 7's by 79,
+#: map 8's by 79, map 14's by 38, map 17's by 224 and map 22's by 25. The two
+#: entries that did **not** move are the control that this was not a blind
+#: regeneration: `(8, 0)` and `(8, 1)` render planes whose ordinals select no
+#: changed tile, and map 390 is not among the 369 changed maps at all.
 EXPECTED_SCREENBLOCK_SHA256 = (
-    "a9e283ba2fa92ff9661a80cd51fe777021a7a41bb72dbe88b0ba6b7c334d914a"
+    "ee5b7bef84dcc4748694a968b8020b3fb00f807c9776c1abd8ce7b703f77d4c0"
 )
 EXPECTED_UPLOADED_SCREENBLOCK_SHA256 = {
-    (7, 3): "af95115b48108dbe8355ebb462d34c3cfe334cf63b8c2b8ba9b49bdb4d4d144f",
+    (7, 3): "66b73dea72587d4a91372c7d2407dce11fdf00a8a36492be6fe54935d07d8d21",
     (8, 0): "b94d4994fe45a052971868b5be695882672b0eeed3f043c98d081a356aa74372",
     (8, 1): "0f963f1b3c3af941c17fdb6e5bce6b78ae3a5518a7387c7e3cf06c7d79eb3d59",
-    (8, 2): "f4ee401463352c6a2994ad411696f9b74e2769da68486dc8083a0c8741ca79a4",
-    (8, 3): "63d4131228c6ee8f3d6f77f7ba6a4c3c62e2016cab37fe2af7e1abbebedc0382",
+    (8, 2): "28f3a987eb28b8cc445a26e535d48434b5d04d2bab26922bc7bdb3ca92fc9e82",
+    (8, 3): "cc492eb61c1c922a0bc540d51ff2ec74ae63965e787c07661b8cb026cf0648b3",
     (20, 3): "6c03e2ee1ce01fe369d8fc40cd268a674f9b2045e8a7b2177562bfdce6eeeea8",
     (390, 3): "3610094b699c1bb83d624a93c373e8e8802dab401850758f9704c8a7766aea4b",
 }
 EXPECTED_SCREENBLOCK_COMPOSITE_SHA256 = {
-    7: "2a72e45888f99a620870fd64e02e28e559fab24e08d56e78710eccebfe60f55e",
-    8: "137705240c04ed86fa9a63305eeabe324fdbd6d7c8be247197507a998c71ce90",
-    14: "cae11e6743e27d36dbe54318045f9769c52d58ce2f7fb990a5a623c981bc4ff7",
-    17: "b716ca1665e8427f6232b6820ba5af47ed946540970506162fb0f073dfd462fb",
-    22: "b1e677ac13601e2f661673bfd10b80f001a2c16597d2b44da9028933804d2c83",
+    7: "a8f0790f8dd89b6a720b08c5ee7fd49d6cb02051fc83c530a9975b4335a270b5",
+    8: "6e9fae598a0ae6996f658ed4a049dd6d21481aa5a367b7bed958752c7cf7f780",
+    14: "96dd13c16b3a1291f4158839a4f0a0cad33c52c733a0092b8e88a077a17b5cf5",
+    17: "5a5733170a0eff4557a379a8cc415e815da1a3e72c0933d5acce9ea1a4c83039",
+    22: "7516041bc2ebd7fe60dfc1afb9c2d30c77e3e68fd32dd131809eec6d44be1373",
     390: "9956105585618937cea2ff3efe7807eab65b4f93dd43b9791a944c2b47750292",
 }
 EXPECTED_SCREENBLOCK_COMPOSITE_SIZE = {
@@ -194,33 +203,43 @@ EXPECTED_MAP_DIRECTORIES = 452
 EXPECTED_SPRITE_DIRECTORIES = 297
 
 #: Representative rendered digests, measured once and pinned.
+#:
+#: **Re-baselined by WEBFOOT-LZ-LITERAL-BASE-001.** Every changed entry here is a
+#: render through a map whose assembled character block the literal-base
+#: correction moves: map 0 (231 tiles), map 39 (32), map 40 (5), map 125 (3),
+#: map 19 (117). The entries that did **not** move are the discriminating control:
+#: `(0, 2)`, `(19, 0)`, `(39, 1)` and `(40, 0)` are layers of changed maps whose
+#: own ordinals never select a changed tile, and their digests are byte-identical
+#: to the pre-correction pins.
 EXPECTED_MAP_LAYER_SHA256 = {
-    (0, 0): "07a1c9616e9fadb503aee299e2c5054ae25c1ea5e53c75850b5f4c243364eb7c",
-    (0, 1): "01360477dcd4530cc9ca69449261db8f9f48ae358e4360cb52753ad3645d5577",
+    (0, 0): "74490baea22c01c6a20e6bc8c6c358a76ddec2b8807a62964912c73e6c3b8d3f",
+    (0, 1): "78d51298a765a4f64c80940f474a6035a2a278a567e5af9658684658aef30917",
     (0, 2): "e49f1e7fd9e42d7a3a6340273709df9d14e398b34e2d31ebba9b110c4263d5eb",
-    (0, 3): "161388eb64884f8bef7547a4baee26b458fd2d328cbb59e7ee11562db068e279",
+    (0, 3): "a76a9c794931499bf83d0c9f98f0d80eb18eb01127304110214ba2ca16f9b572",
     (19, 0): "ce51515046b02d78f845b39d73f01105de23bb2f6a59f47d34f2bab7afe23fa7",
     (39, 1): "feff3ae66958421fdb5c948f7c5c7ef3c235a216f22f4d2ea66f38e44b41e00c",
-    (39, 2): "7694f6b6b219a5c9c29652b725b6364091bbb1fb569fe537c42ff84497a63178",
-    (39, 3): "1af2467839193b4d903b3eb425fae4ca192a6b9828de18700c9660c60360c465",
+    (39, 2): "b40878f432b768252f0e672ae7b262ac96da542600e3c52a406095edef24f7db",
+    (39, 3): "9ad0b6dc91f1a0c669817f56563982e2d3cb93dffcd505ee4cd54d1aa7701100",
     (40, 0): "89647c416d9a63366719324fe824c5088a39b9a296a41845643c1abad8e5e079",
     (40, 1): "943271572aba1594cc19d49ccb6b5ab7066f1c69979b3d4470a68b0e044e80c1",
-    (40, 2): "4ca99ca8824e4eebab30de100a7ca3610a2e5b7b5beac096189e0428504fef98",
-    (40, 3): "812d808704ddbf122c704fa45ac8c9d8b8bd8cf24813700b9d95b68cf01d9dbd",
-    (125, 3): "718fdc0c8c44f340ec1ee5b16186067a6cdbf64b6a8519d925b353368ad15cbf",
+    (40, 2): "e6d2323c057f98cfbfa65ec35d4d35ede49649e41cd7a5e6fb538cc1229b743b",
+    (40, 3): "6c5e689ff4be67cfe03cef849fcc9f509814d07690e3e999082e87c754992ddb",
+    (125, 3): "955abc789f9a803a0d6d347bc535a9160b096e14caa90c8e6a66f951787609b5",
 }
 
 EXPECTED_MAP_COMPOSITE_SHA256 = {
-    0: "ff02d371c5f49035701c3a8d7e5bc178ae7ddd6433c066b5053e6cbcc5117407",
-    19: "2ece490ffb793be9a15e4a176ab70fad1a45526793a9a39a85827429af4cfeec",
-    39: "35d3b51f0929a9d1d408786b651b314f1458028f4a5d9ae1440d8ba78388ed2b",
-    40: "21985e5c58150499b13c29696cabadd84956708e7f901b2b6ceb2c9bd6c70f9d",
-    125: "718fdc0c8c44f340ec1ee5b16186067a6cdbf64b6a8519d925b353368ad15cbf",
+    0: "3a09553e4f5bba744a82eba399f3e5bcf24dedf2b9692cd208560dc3c3b02642",
+    19: "1b386a509aadb667f6349b41deb3e7c4252aa0c488c480ea8846907e4ab9fc57",
+    39: "0de70425d9ea178245c1b7bc489ea566096fff2aac2d76bd54c211965f59bc04",
+    40: "d15197930f476d97293066cb1c4e0659acfd49bc0edc12d4806af19d112d6642",
+    125: "955abc789f9a803a0d6d347bc535a9160b096e14caa90c8e6a66f951787609b5",
 }
 
 #: PNG file digests for the same composites, as written to disk.
+#: Map 19's composite contains its changed character block; its terrain-field
+#: layer image (the ordinal plane, not a character block) is unchanged.
 EXPECTED_MAP_COMPOSITE_FILE_SHA256 = {
-    19: "827fd0688ff90da36471aa302aa7b6de9c6017bf12368c8c7dc4c668b42c5c66",
+    19: "60450abd95130ac4f15dffbc75e35ebc5c5be45d27eb8df5f2739661970fe2af",
 }
 
 EXPECTED_MAP_COMPOSITE_SIZE = {
@@ -253,7 +272,13 @@ WATER_PALETTE_INDICES = (83, 177)
 EXPECTED_TERRAIN_FIELD_WATER_ORDINALS = 33
 
 EXPECTED_CHUNK_SHA256 = {
-    0x08179A50: "aacfe538786cf8140fc69280a0db4986a15c26f5dce83d7f433c06e14340f6af",
+    # Re-baselined by WEBFOOT-LZ-LITERAL-BASE-001: the chunk's own entries are
+    # untouched (0 of 3,745 chunk containers decode differently), but this digest
+    # is over pixels rendered through map 451's changed character block. The other
+    # four entries render through maps 451 and 0 as well and did not move, because
+    # their ordinals select no changed tile - the control that keeps this from
+    # being a blind regeneration.
+    0x08179A50: "5b055d21040c294dffc9c528307b114df6be7e498df16018ffa52d165dc3ee19",
     0x08179C38: "7464272d44c59b3b5d5c1f80737bd8b1f937571ec1426477c47114e432a8ecf7",
     0x08179C54: "75a62dcf5a6468a53cf59c4d0b37a1daa9e0d76f30bedfb9a28bf775ca71eb46",
     0x082B8B94: "05f6909629840842ae89888d79594dd69beccb5fa3c13152e8647892dec13fe5",

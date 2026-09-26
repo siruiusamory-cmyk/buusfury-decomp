@@ -216,6 +216,7 @@ class MainWindow(QMainWindow):
         self.rom_edit = QLineEdit()
         self.rom_edit.setPlaceholderText("Select your clean US Buu's Fury ROM")
         self.rom_edit.setClearButtonEnabled(True)
+        self.rom_edit.textChanged.connect(self._on_rom_text_changed)
         self.rom_edit.editingFinished.connect(self._on_rom_path_edited)
         self.browse_rom_button = QPushButton("Browse...")
         self.browse_rom_button.clicked.connect(self.browse_for_rom)
@@ -472,21 +473,53 @@ class MainWindow(QMainWindow):
 
     # --- the ROM ---------------------------------------------------------
 
-    def set_rom_path(self, path: str | Path, *, verify: bool = True) -> None:
+    def set_rom_path(self, path: str | Path) -> None:
         """Set the selected image, verify it, and re-derive the output name.
 
         Verification happens here rather than at Randomize time so the user is
         told immediately that they picked the wrong file, which is the whole
         point of validating on selection.
+
+        There is deliberately no ``verify=False`` escape: a caller could use one to
+        leave the *previous* file's verdict cached against a new path, which is the
+        same class of stale-state defect an independent review found in this file.
+        An earlier revision had that parameter; it was dead in production and is
+        gone.
         """
         self.rom_edit.setText(str(path))
         self._after_rom_change()
-        if verify:
-            self.verify_selected_rom()
+        self.verify_selected_rom()
 
     def _after_rom_change(self) -> None:
         if self._output_is_derived or not self.output_edit.text().strip():
             self._derive_output_path()
+
+    def _on_rom_text_changed(self, text: str) -> None:
+        """Any change to the path invalidates the verdict *immediately*.
+
+        Invalidated rather than re-verified, because verifying here would hash the
+        image on every keystroke. The point is that no intermediate state may keep
+        showing the previous file's "Verified supported ROM" while the field holds
+        something else - which is how clearing the field with its own clear button
+        (or retyping it) used to leave a verified verdict and an enabled Randomize
+        button over an empty path. A round-2 review measured exactly that.
+
+        Verification itself still happens on browse and on Enter/focus-out.
+        """
+        if self._verification is None:
+            return
+        self._verification = None
+        self._paint_unchecked(text)
+        self._refresh_randomize_enabled()
+
+    def _paint_unchecked(self, text: str) -> None:
+        """The neutral state between "nothing chosen" and "checked"."""
+        self.rom_status_label.setText(
+            "Not checked yet." if text.strip() else NO_ROM_TEXT
+        )
+        self.rom_status_label.setStyleSheet(
+            f"color: {theme.color('text_secondary').name()}; background: transparent;"
+        )
 
     def verify_selected_rom(self) -> warprand.RomVerification | None:
         """Verify whatever is in the ROM field and reflect it in the window.
@@ -646,7 +679,14 @@ class MainWindow(QMainWindow):
                     self._service.default_output_path(rom, self.seed_edit.text())
                 )
             else:
-                current = str(Path.home() / "Buu's Fury - Warp Randomized.gba")
+                # Named from the same template and the same seed rule the service
+                # uses, rather than from a second literal that could drift.
+                current = str(
+                    Path.home()
+                    / warprand.OUTPUT_TEMPLATE.format(
+                        seed=warprand.sanitize_seed_for_filename(self.seed_edit.text())
+                    )
+                )
         path, _ = QFileDialog.getSaveFileName(
             self, "Choose the randomized ROM to create", current, ROM_FILTER
         )

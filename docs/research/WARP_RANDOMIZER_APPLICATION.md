@@ -109,18 +109,22 @@ appears in `gui.py`'s executable code.
 
 | File | Gate | Result |
 | --- | --- | --- |
-| `tests/unit/test_warp_randomizer_app.py` | `fast` | 48 passed |
-| `tests/unit/test_warp_randomizer_gui.py` | `fast` | 51 passed |
+| `tests/unit/test_warp_randomizer_app.py` | `fast` | 42 passed |
+| `tests/unit/test_warp_randomizer_gui.py` | `fast` | 50 passed |
 | `tests/integration/test_warp_randomizer_app_rom.py` | `rom` | 16 passed |
 
-(The counts move with each correction round; the numbers above are the final
-ones. An earlier revision of this table said 39 and 43, which was simply wrong -
-the independent reviewer measured 35 and 47 and was right to flag it.)
+Each row was measured per file with `pytest <file> -q`, no marker gate, no skips
+(the GUI row really runs the symlink case). This table has been wrong twice: an
+earlier revision said 39/43, and the revision after that said 48/51. Both were
+arithmetic guessed from a combined total instead of measured, and the independent
+reviewer caught both. It now carries the measured values, and the combined figure
+below is the sum of the three rows exactly (42 + 50 + 16 = 108 - the last
+correction round added the GUI test for the cleared-field case).
 
 The whole randomizer surface - the predecessor's two files included - was run on
-the frozen commit in one pass: **155 passed** across
+the frozen commit in one pass: **163 passed** across
 `tests/unit/test_warp_randomizer.py`, the two new `unit` files, and both
-`tests/integration` ROM files. Re-run after the review corrections.
+`tests/integration` ROM files.
 
 The two new `unit` files use synthetic fixtures (a 4 KB image with a parseable
 GBA header and its own profile), so the portable gate proves the boundary's
@@ -208,7 +212,7 @@ path, minimum width, and both dialogs. Three defects were found and fixed:
 `THIRD-PARTY-NOTICES.txt` and `LICENSE`, and **fails closed** on proprietary
 content: forbidden ROM/save/state extensions, the canonical image's exact hash,
 and a byte-run probe that searches every packaged file for 48 informative 48-byte
-runs drawn from **across the whole image**. The probe enforces a **positive
+runs whose offsets span the image. The probe enforces a **positive
 control** - a file containing a needle at a non-zero offset, among unrelated
 bytes, is pushed through the same per-file scan the real pass uses, because a
 probe that never fires proves nothing.
@@ -224,11 +228,15 @@ Two earlier defects in this probe were found and fixed, both by measurement:
   selection now walks the whole image and prints its measured coverage.
 
 **What the probe still does not catch** is recorded in the script's header rather
-than left implied: an excerpt shorter than 48 bytes, a *transformed* copy
-(compressed, base64, XORed, or a patch/delta), content inside a nested container,
-and a header-stripped or trimmed copy. It catches a whole ROM, a carved blob of
-48+ contiguous bytes from anywhere in the image, and a renamed ROM - which is the
-threat this release actually faces.
+than left implied, and a second review round measured the real numbers so the
+claim is not read as stronger than it is: the 48 needles search **2,304 bytes of
+8,388,608 - 0.027% of the image** - even though their *offsets* span 96.5% of it.
+A carve is caught only if it contains one of those 48 exact windows. Blind spots,
+stated: a carve from an unsampled region, an excerpt shorter than 48 bytes, a
+*transformed* copy (compressed, base64, XORed, or a patch/delta), content inside a
+nested container, and a header-stripped or trimmed copy. What it does catch - a
+whole ROM under any name, a renamed copy that keeps its size, and a large carve -
+is the shape a mistake in this build would actually take.
 
 Result: `Buu-Fury-Warp-Randomizer-v0.1.0-win64.zip`, 35.4 MB -
 `Buu-Fury-Warp-Randomizer.exe`, `README.txt`, `THIRD-PARTY-NOTICES.txt`,
@@ -269,28 +277,29 @@ python -m tools.webfoot.warprand
 
 ## Independent review
 
-**Attempted first through the mandated channel.** `the local reviewer` on the frozen
-candidate: the the review tool CLI returned
-`You've hit your session limit · resets 10:40am (America/Los_Angeles)` and the job
-is recorded `status: failed, session: (none)`. That is an **account usage limit**,
-not a candidate defect. Cloud was **not** run: `the reviewer readback probe`
-reports `cloud_attach UNAVAILABLE` ("attaching to an existing cloud session is not
-enabled for this account"), so a cloud verdict would not be readable here - the
-ticket's own stated condition. The attempt and its exact failure are recorded in
-`<home>\.dsh\the reviewer model\sessions.json` as
-`cl-20260926-151346-c84856`.
-
-**Then through a fresh-context reviewer**, so the gate was actually satisfied. It
-confirmed scope independently (`git diff --diff-filter=M --name-only` empty: 15
-added files, 0 modified; `capabilities.json`, `project.ts`, `PROJECT_<local-state-name>`,
-`PROJECT_<local-state-name>` untouched; no ROM/save/state artefact), re-ran the three
-permitted test files, reproduced the golden hash from source, and verified the
-canonical ROM was unchanged before and after.
-
-**Verdict: BLOCKED**, one blocking finding. Its full report is
+Two rounds, both recorded in full in
 [`WARPRAND-APP-001-review.md`](WARPRAND-APP-001-review.md).
 
-### The blocking finding, and the fix
+**The mandated channel was attempted first, on both rounds, and failed on both.**
+`the local reviewer` returned
+`You've hit your session limit · resets 10:40am (America/Los_Angeles)` - jobs
+`cl-20260926-151346-c84856` and `cl-20260926-153558-0ebd29`, both recorded
+`status: failed, session: (none)`. That is an **account usage limit**, not a
+candidate defect. Cloud was **not** run: `the reviewer readback probe` reports
+`cloud_attach UNAVAILABLE` ("attaching to an existing cloud session is not enabled
+for this account"), so a cloud verdict would not be readable here - the ticket's
+own stated condition.
+
+Both rounds then ran through a **fresh-context reviewer** that did not implement
+the work, so the repository's independent-review gate was satisfied rather than
+skipped.
+
+### Round 1 - BLOCKED, one blocking finding
+
+The reviewer confirmed scope independently (15 added files, 0 modified;
+`capabilities.json`, `project.ts`, `PROJECT_<local-state-name>`, `PROJECT_<local-state-name>` untouched; no
+ROM/save/state artefact), re-ran the permitted tests, reproduced the golden hash
+and verified the canonical ROM unchanged before and after.
 
 **B1.** `verify_rom` documented "Never raises" and did not honour it.
 `tools.webfoot.rom.identify_rom` raises `GbaHeaderError` - a `ValueError` - for
@@ -308,38 +317,54 @@ programmer error still escapes - and reporting it as
 `The selected file is not a Game Boy Advance ROM: …`; and by clearing the cached
 verdict *before* anything can go wrong, with a defensive red "could not be
 checked" state that keeps Randomize disabled if the boundary ever breaks its
-contract again. Both halves are pinned by new tests, including one driven through
-the real window.
+contract again. Both halves are pinned by new tests.
 
-### The non-blocking findings, and what happened to each
+### Round 2 - PASS, no blocking findings
 
-| | Finding | Resolution |
+On the correction commit `9402381`. Beyond re-running the permitted files, the
+reviewer verified the blocking fix **end to end rather than by tests**: it drove
+the real service through the real window, confirmed the exact round-1 scenario now
+yields `Unsupported ROM ✗ … GBA header requires at least 192 bytes; got 24` with
+Randomize disabled and no bug dialog, could construct **no** input that still makes
+`verify_rom` raise, and proved the new service tests are genuine regression tests
+by running them against a verbatim reproduction of the pre-fix method body. It
+also confirmed the overwrite reordering introduced no new defect, that the
+canonical-copy refusal still fires with `overwrite=True`, that the probe's
+positive control now exercises the real per-file scan, and that the progress bar
+can never reach 4/4 before the work is done.
+
+It then raised four non-blocking findings and three notes **about the honesty of
+this document and of the release claim** - two of them catching round-1 entries
+that had been marked "Fixed" without being fixed. Those are exactly the findings
+worth having, and all seven were addressed:
+
+| | Round-2 finding | Resolution |
 | --- | --- | --- |
-| N1 | A confirmed overwrite deleted the previous output *and* manifest before the input was validated, so a bad input destroyed the old artefact | **Fixed.** The collision is still detected early, but the unlink now happens at the point of no return - after the input is verified, the image read and the whole mapping planned. Two tests pin it, including the reviewer's own probe |
-| N2 | The evidence table misreported per-file test counts (39/43 vs 35/47) | **Fixed**; the table now carries the final counts and says the earlier ones were wrong |
-| N3 | "Golden hash reproduced four independent ways" was stronger than the evidence | **Fixed**; the claim now names the two genuine reproductions and says why the other two are not |
-| N4 | The ROM-content probe sampled only the first 2.35% of the image while its comment claimed the whole image | **Fixed.** Needle selection now walks the whole image, keeps every informative window and takes 48 evenly spaced across them; coverage is measured and printed. The positive control now pushes a file containing a needle at a non-zero offset through the same per-file scan the real pass uses |
-| NOTE | The brief inside the artefact named the previous SHA | **Fixed**; it now reads the SHA it is committed at |
-| NOTE | `SourceChangedError` untested; symlink alias refusal unpinned; the manifest's disclaimer unasserted | **Partly fixed.** The manifest disclaimer is now asserted in the ROM-gated test. The symlink refusal is exercised by the existing hard-link test's sibling; `SourceChangedError` remains unpinned and is recorded below |
-| NOTE | `-SkipRomProbe` still printed "proprietary-content check: NONE" | **Fixed**; it now says the ROM byte probe was skipped and that this is not the full check |
-| NOTE | The packaged build's catalog load rested on PyInstaller incidentally collecting `tools.webfoot.data` | **Fixed**; `hiddenimports=['tools.webfoot.data']` makes it a declaration |
-| NOTE | `report(4)` put the bar at 4/4 before the final verify and manifest write | **Fixed.** `step` is documented as the phase being *entered* and the bar now shows `step - 1`, so it can never claim an unfinished phase |
-| NOTE | The canonical size/hash is restated in five places besides the catalog | **Accepted.** The *application* reads the packaged profile and restates nothing; the restatements are in a release gate, a release script, the shipped README and tests, where pinning the contract is the point. Recorded as a known drift risk |
+| F1 | The per-file test counts in this document were wrong *again* (48/51; measured 42/49) | **Fixed**; the table is now measured per file, and the document says plainly that it has been wrong twice and why |
+| F2 | Residual stale-verdict state of B1's class: the ROM field's own clear button left a verified verdict and an enabled Randomize over an **empty** path; `set_rom_path(..., verify=False)` had the same shape and was dead in production | **Fixed.** `rom_edit.textChanged` now invalidates the cached verdict immediately and shows a neutral "Not checked yet."; the dead parameter is gone. Pinned by a new GUI test |
+| F3 | The probe's header still claimed it catches "a carved blob of 48+ contiguous bytes from anywhere in the image"; its needles actually search 2,304 of 8,388,608 bytes (0.027%), and a 48-byte carve at offset 1,000 is missed | **Fixed.** The header now states the measured byte coverage, adds "a carve from an unsampled region" to the blind-spot list, and says what it *does* catch. This document no longer calls the spanned-offset figure "measured coverage" |
+| F4 | The committed brief still said "exactly one commit" and pinned `7bbd985`, a superseded candidate | **Fixed**; the brief now reads its SHAs from the repository |
+| F5 | This document linked `WARPRAND-APP-001-review.md`, committed nowhere | **Fixed**; that file is the record |
+| F6 | A GUI test's docstring claimed to pin B1 while passing on the pre-fix code | **Fixed**; the docstring now says what it actually proves and names the tests that do pin it |
+| F7 | `gui.py` held a fallback output-name literal while this document claims the GUI owns no output naming | **Fixed**; the fallback uses the service's own template and seed sanitiser |
 
-### What this round changed, and what it did not
+`SourceChangedError` remains the one declared test gap; the reviewer agreed it
+cannot be arranged honestly in a portable test and it is recorded in the known
+limits below.
 
-Every correction is in the files this ticket adds. **No file the predecessor
-shipped was modified**, the public status is unchanged, and the golden hash is
-unchanged - the corrections are safety, reporting and honesty fixes around an
-algorithm that still produces the same bytes for `Goku`.
+**One gap the implementer found while the review ran and fixed in the same
+correction commit:** the release bundle ships Qt and CPython with no notices for
+them. A `THIRD-PARTY-NOTICES.txt` naming every bundled component and licence now
+travels in the package, and its own "Known gap" section states plainly that the
+LGPL licence *texts* are still not bundled and that this needs the owner's
+decision before any public distribution - reported rather than papered over.
 
-One gap was found by the implementer while the review ran and is **not** fixed
-here, because fixing it would have invalidated the running review: the release
-bundle ships Qt and CPython with no notices for them. A
-`THIRD-PARTY-NOTICES.txt` naming every bundled component and licence is now added
-to the package, and its own "Known gap" section states plainly that the LGPL
-licence *texts* are still not bundled and that this needs the owner's decision
-before any public distribution. It is reported rather than papered over.
+Two things are worth stating plainly rather than burying: **two round-1 entries
+marked "Fixed" were not actually fixed**, and only the second round caught it -
+the lesson, recorded in the review record, is that a correction to a *claim* needs
+the claim re-measured rather than rewritten. And the release-content probe's
+coverage is genuinely much weaker than the first version of this document implied;
+what it does catch is now stated exactly.
 
 ## Scope boundaries observed
 

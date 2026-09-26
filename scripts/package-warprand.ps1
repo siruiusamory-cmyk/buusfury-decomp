@@ -13,8 +13,14 @@
 # canonical image, and for the image's own identity. The build fails closed.
 #
 # WHAT THIS CHECK DOES NOT CATCH, stated so the claim is not read as stronger
-# than it is (an independent review asked for exactly this list):
+# than it is. Round two of the independent review measured the real coverage and
+# asked for this list: 48 needles of 48 bytes search 2,304 bytes out of
+# 8,388,608 - 0.027% of the image, even though the needle OFFSETS span 96.5% of
+# it. A carve is caught only if it happens to contain one of those 48 exact
+# windows, so "from anywhere in the image" would be false.
 #
+#   * a carve from an UNSAMPLED REGION - only 48 windows of the image are
+#     actually searched for, however evenly they are spread;
 #   * an excerpt SHORTER than the needle length (48 bytes);
 #   * a TRANSFORMED copy - compressed, base64, XORed, or as a patch/delta - which
 #     is the most likely way ROM-derived content would actually travel;
@@ -23,10 +29,12 @@
 #   * a header-stripped, trimmed or "trained" copy, because the exact-hash check
 #     only hashes files whose length is exactly the canonical 8,388,608 bytes.
 #
-# It catches a whole ROM, a carved blob of 48+ contiguous bytes from anywhere in
-# the image, and a renamed ROM. That is the threat this release actually faces;
-# the four gaps above would need a different technique (entropy analysis, archive
-# walking, or a re-encode) and are recorded rather than implied to be covered.
+# What it does catch, and why that is still worth having: the whole ROM under any
+# name, a renamed copy that keeps its size, and a large carve (the probe was
+# measured to catch a 1 MB carve at offset 4,000,000 and to miss a 48-byte carve
+# at offset 1,000). Those are the shapes a mistake in this build would actually
+# take. The gaps above would need a different technique - entropy analysis,
+# archive walking, or a re-encode - and are recorded rather than implied away.
 
 [CmdletBinding()]
 param(

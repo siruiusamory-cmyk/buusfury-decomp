@@ -301,19 +301,21 @@ def test_changing_the_seed_updates_a_derived_output_name(window):
 def test_selecting_a_non_rom_never_leaves_the_previous_verdict_on_screen(
     window, qapp, boundary, tmp_path
 ):
-    """The blocking defect an independent review found, pinned through the window.
+    """The window's half of the blocking defect: a refusal is never a stale pass.
 
-    Selecting a good ROM and then a 24-byte file used to leave the *good* ROM's
-    "Verified supported ROM" verdict cached and on screen, with Randomize still
-    enabled, and pressing it produced the "unexpected problem" bug dialog. The
-    cached verdict is now cleared before anything can go wrong, and anything the
-    boundary cannot parse comes back as an ordinary refusal.
+    Honest about what this pins, because a round-2 review checked: this test uses
+    a *stand-in* boundary that RETURNS a refusal, so on its own it does **not**
+    reproduce the original defect - it passes against the pre-fix window too.
+    What it proves is the window's rendering and gating for an unsupported verdict.
+    The defect itself is pinned by the service tests
+    (`test_a_file_too_short_for_a_gba_header_is_refused_not_raised` and friends)
+    plus `test_a_boundary_that_raises_is_not_shown_as_verified` below, which does
+    fail on the pre-fix code.
     """
     window.set_rom_path(VALID_ROM)
     assert window.verification is not None and window.verification.ok
     assert window.randomize_button.isEnabled()
 
-    # The boundary refuses a file it cannot parse rather than raising.
     boundary.verification = unsupported(path=tmp_path / "tiny.bin")
     window.set_rom_path(tmp_path / "tiny.bin")
 
@@ -324,6 +326,34 @@ def test_selecting_a_non_rom_never_leaves_the_previous_verdict_on_screen(
     # ... and the run is refused up front rather than becoming a crash.
     assert window.start_randomization() is None
     assert boundary.randomize_calls == []
+
+
+def test_clearing_the_rom_field_invalidates_the_verdict_at_once(window):
+    """Round-2 finding: the field's own clear button kept a verified verdict.
+
+    Selecting the canonical ROM and then clearing the path left
+    "Verified supported ROM ✓" on screen with an empty field and Randomize still
+    enabled. The cached verdict is now invalidated the moment the text changes, so
+    no intermediate state can claim a file that is no longer selected.
+    """
+    window.set_rom_path(VALID_ROM)
+    assert window.verification is not None and window.verification.ok
+
+    window.rom_edit.clear()
+
+    assert window.rom_path() == ""
+    assert window.verification is None
+    assert "Verified supported ROM" not in window.rom_status_label.text()
+    assert window.rom_status_label.text() == gui.NO_ROM_TEXT
+    assert not window.randomize_button.isEnabled()
+
+    # Retyping a path is the same class of change, and shows the neutral state
+    # rather than a verdict about a file that is no longer named.
+    window.set_rom_path(VALID_ROM)
+    window.rom_edit.setText("C:/somewhere/else.gba")
+    assert window.verification is None
+    assert window.rom_status_label.text() == "Not checked yet."
+    assert not window.randomize_button.isEnabled()
 
 
 def test_a_boundary_that_raises_is_not_shown_as_verified(window, boundary, tmp_path):

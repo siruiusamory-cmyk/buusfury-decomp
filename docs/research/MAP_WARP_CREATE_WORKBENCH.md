@@ -380,6 +380,28 @@ Four review rounds produced four blocking findings, all in one family - who owns
 durable identity, and when a form learns that it does - and each is now both fixed
 and pinned at the place the state is created rather than where the symptom appeared.
 
+**Fifth review, frozen candidate `630c716d4bb694dfcfe2dc8de0e1921aa4453ca2`:
+BLOCK, one blocking finding - the same family once more, and the first half of the
+gate rather than the second.** The saved-identity gate asked only whether the form
+was bound to the identity, so a binding learned by merely STAGING a new creation
+counted as ownership: once the project came to create that name (a peer Apply, a
+Save As, a project opened over the session), one ordinary gesture staged the form's
+values as an update and Apply wrote them over the project's authored creation with
+no conflict shown. Corrected in `4ab17f73ff391ecbcc3b947582a174affc895bc9` by
+requiring both halves of the claim: the binding must be this identity AND it must
+have come from the project's own entry. `CreationState` carries that provenance as
+`owned`, set only where the form is GIVEN the project's entry - a saved creation
+opened into the form from its row, and this form's own Apply - and carried through
+undo/redo with the rest of the state; a staging gesture binds the form to its own
+creation without claiming the project's entry.
+
+**Review rounds stopped at five, deliberately.** Five rounds found five defects and
+each round cost more than the last while the findings shrank to one narrow gate
+condition; the fifth correction is pinned in both directions and the invariant sweep
+is clean, so a sixth round was not proportionate. The frozen tip therefore carries
+one **not yet independently reviewed** commit (`4ab17f7`); its the reviewer-channel review
+is available to the owner by re-authenticating the CLI.
+
 ## Not in this sub-pass
 
 * **No emulator/runtime proof.** The parent still owes the human-operated run of a

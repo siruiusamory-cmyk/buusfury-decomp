@@ -159,6 +159,33 @@ map 40's area is built from the derivative - which is what re-entering the map d
 The run sheet keeps the direct attempt first and records the re-entry attempt
 second, so which of the two the engine needs is itself evidence.
 
+### What the observer must report, derived before the run
+
+The observer's derivation was repeated independently over both images (same offsets,
+same route) so the expected rows are known in advance. The observer samples the live
+emulated memory, so these are the values it must print; anything else is a finding,
+not a detail:
+
+| | canonical | derivative |
+| --- | --- | --- |
+| `MapEntry + 0x2C` -> source | `0x0807561C` | `0x0807561C` |
+| root | `0x08293474` | `0x08293474` |
+| root `+0x40` count | **2** | **3** |
+| root `+0x44` array | `0x0829346C` | **`0x08800000`** |
+| element 0 | file `0x29346C` -> record `0x0829343C`, key `0x01,0x0b` -> map 39 | file `0x800000` -> same record, same key -> map 39 |
+| element 1 | file `0x293470` -> record `0x08293454`, key `0x01,0x0d` -> map 41 | file `0x800004` -> same record, same key -> map 41 |
+| element 2 | **`absent`** (the count does not admit it) | file `0x800008` -> record **`0x0880000C`**, key `0x15,0x0b` -> **map 435**, region bytes `0a0070003c00a900`, `+0x10 = 0x42`, arrival `(16, 360)` |
+
+The region bytes decode positionally as `a,b,c,d` little-endian halfwords:
+`a=10, b=112, c=60, d=169`, i.e. first interval `10..60` and second `112..169`, which
+is exactly what the Workbench authored. The same decode on the canonical element 0
+gives `0,112,9,169` - the row the Warps mode displays as `first 0-9 - second
+112-169` - which is a second, independent confirmation of the field order.
+
+The cartridge header is byte-identical in both images (`0x80 = 0xBB`, header checksum
+`0xBD = 0x84`): the build changed only the root's count and `+0x44` pointer below the
+original EOF and appended the new array and record above it.
+
 ## 6. Retail control and human runtime runs
 
 **PENDING - these are human-operated and no automated input is used or possible.**

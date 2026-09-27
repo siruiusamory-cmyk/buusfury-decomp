@@ -134,7 +134,7 @@ authoring and the codec's degenerate/unordered refusals; the semantic destinatio
 selector and an out-of-range map; the required, never-derived arrival and an off-map
 point; the five facing choices, an invalid direction, and Unchanged; low-nibble
 preservation end to end; the staged row appearing immediately and its
-New (staged) → New (saved) states; Apply writing only the creation document, Apply
+New (staged) â†’ New (saved) states; Apply writing only the creation document, Apply
 with nothing staged, Apply of an already-held creation; the refused-Apply dialog;
 Revert without residue and Revert of a saved creation; Close and map-change behaviour;
 undo/redo of every gesture and of a rename; the no-op rule; CQA-05 (mutation keeps the
@@ -151,7 +151,7 @@ documents (the previous run measured one parse of the edits document).
 
 | file | result |
 | --- | --- |
-| `tests/unit/test_workbench_warp_creation.py` | 58 passed (67 at the frozen tip) |
+| `tests/unit/test_workbench_warp_creation.py` | 58 passed (76 at the frozen tip) |
 | `tests/unit/test_workbench_warp_transitions.py` | 32 passed |
 | `tests/unit/test_map_transition_create.py` | passed |
 | `tests/unit/test_map_transition_project.py` | passed |
@@ -183,11 +183,12 @@ exactly for every changed file, and every line this pass added is bare LF per
 
 In the clean ticket worktree, over the corrected tip:
 
-- `tests/unit/test_workbench_warp_creation.py` (67) and
-  `tests/unit/test_workbench_warp_transitions.py` (32) - **99 passed**.
+- `tests/unit/test_workbench_warp_creation.py` (76) and
+  `tests/unit/test_workbench_warp_transitions.py` (32) - **108 passed**.
 - Both workflow-budget nodes - **2 passed**.
 - `tests/unit/test_workbench_smoke.py`, `test_workbench_state_and_errors.py`,
-  `test_workbench_map_tab.py` - **55 passed**.
+  `test_workbench_map_tab.py` - **55 passed** (57 with the two budget nodes).
+- The full focused total at the frozen tip: **165 passed**.
 - `git diff --check` - **clean**; `docs/DEVELOPMENT.md` **300** lines; `git diff --numstat`
   equals `git diff --ignore-cr-at-eol --numstat` for every file (no ending churn).
 - The adversarial invariant sweep above - **0 findings**.
@@ -401,6 +402,47 @@ condition; the fifth correction is pinned in both directions and the invariant s
 is clean, so a sixth round was not proportionate. The frozen tip therefore carries
 one **not yet independently reviewed** commit (`4ab17f7`); its the reviewer-channel review
 is available to the owner by re-authenticating the CLI.
+
+**Sixth review, frozen candidate `2657120fc77fea3771485158e6c6249928e86f03`:
+BLOCK, two blocking findings - and both were real authored-data loss.** The
+ownership rule was stated in one place (`_resolve_creation_state`, i.e. only for an
+OPEN form) and the round before had left two holes in it:
+
+1. **A staged row click claimed the project's entry.** `_open_creation_row` set
+   `owned` unconditionally, so clicking the row of the author's own STAGED creation
+   made the form the owner of an identity it did not own - one Apply later the
+   project's authored creation was overwritten with no conflict shown.
+2. **The gate was not at the write.** Three routes reached `apply_creations` with
+   stale staged state: the form was closed, the form had never been given the entry,
+   or undo reinstated a captured staged state. Each ended in the same silent
+   overwrite.
+
+Both are corrected in `4d6fceefe0636db29b8e71ec7907d7e2ffb80070`:
+
+* ownership follows the **SOURCE** of the values, not the click - a row owns its
+  entry only when `identity in self._committed_creations`;
+* the rule is enforced **at the write boundary** in `apply_creations`, which every
+  write crosses, reading the project's own document rather than trusting the last
+  broadcast (so a second instance, a hand edit or a CLI write cannot be overwritten
+  either);
+* a conflicting batch is refused **atomically**: nothing written, nothing partially
+  written, nothing silently adopted, and the conflict is stated through the normal
+  refused-Apply surface;
+* a legitimate owned edit - a committed creation opened from its own row, or one this
+  form applied - still writes, which is pinned;
+* `_open_creation_owned` is cleared wherever its binding is dropped, and the form
+  reports it through `creation_form_state()`.
+
+**The ownership matrix was then swept deliberately, not one case at a time:** 1,372
+checked states over source state (none / staged / committed) x form (open / closed) x
+row (clicked / never) x project mutation (none / unrelated / same identity introduced)
+x history (none / undo / redo) x action (Apply / Revert / Cancel), plus ten random
+40-step sequences, checking after every step that (I1) no staged creation overwrites
+a project creation that appeared after staging unless the editor has an explicit
+legitimate owned binding, and (I2) no refusal or conflict path writes project data.
+I1 and I2 hold in every state. The nine states where Apply does change a held value
+are the intended owned re-authoring - verified directly: the editor owns the entry,
+`_creation_conflicts()` is empty, and its own value is written.
 
 ## Not in this sub-pass
 

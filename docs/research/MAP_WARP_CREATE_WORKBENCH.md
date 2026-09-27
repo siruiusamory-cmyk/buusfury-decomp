@@ -1,0 +1,253 @@
+# MAP-WARP-CREATE-WORKBENCH-001 - the Warps surface's Create Transition action
+
+STATUS: **IMPLEMENTED AND VISUALLY QA'd (2026-09-26).** Class: GUI and
+project-surface pass. This is a **sub-pass of the parent capability
+`MAP-WARPS-AND-CONNECTIONS-001`**, which stays active and **unshipped** in
+[`PROJECT_<local-state-name>`](PROJECT_<local-state-name>). Nothing here ships the parent: the capability count is
+unchanged and the registry is untouched.
+
+Baseline: `87a47ff721896a1d99632e78ff7cf6032cf9f8ae` (the commit that recorded
+`MAP-WARP-CREATE-PROJECT-001` as merged; verified with `git rev-parse HEAD` at
+ticket start).
+
+Worktree: `<checkout>` - the main checkout, **not** a ticket worktree.
+`docs/DEVELOPMENT.md` already carried one unrelated uncommitted change at ticket start (an
+8-line permanent-rule paragraph); it was preserved and is reported below.
+
+Implementation: **uncommitted** in the working tree, per the normal ticket pattern.
+No commit was created for this pass.
+
+**public progress impact: NONE.** No capability ships: the `warps` capability is
+still `missing`, `src/data/capabilities.json` and the public site are untouched,
+`EDIT` stays **7 / 8**, DragonByte Z stays **19 / 24 - 79%**, and
+`docs/PROJECT_<local-state-name>` is deliberately not touched because the parent has not
+shipped.
+
+Scope boundaries honoured: **no emulator run**, **no capability-count change**,
+**no registry or site change**, **no GUI ROM write**, **no new serializer**, **no
+new transition-format research**, **no direct pointer/count manipulation in Qt
+code**, and **no transition deletion**. Every write goes through
+`map_transitions.set_transition_creations` and the production build.
+
+---
+
+## What it adds
+
+`Maps -> Warps` gains a **Create Transition** action beside the map selector. It
+opens a compact form on the right-hand pane that authors a transition the image
+does not contain, and stages it as one semantic project creation.
+
+| field | what it is |
+| --- | --- |
+| Connection | `map:NNNN/transition:<name>` - the durable identity, previewed live. Only the name is typed; the map half comes from the map bar |
+| Name | the authored name, validated by `CreatedTransitionIdentity` - the production model's own rule and wording |
+| Based on | the existing same-map connection the new one starts from, listed from the authority's own `creation_templates` |
+| Trigger region | `first` / `second`, the codec's positional intervals, authored as four bounded integers |
+| Leads to | the existing semantic destination selector - no key byte, no address |
+| Arrival | the authored X/Y pair. **Required and never derived**: a new transition has no existing link to derive one from |
+| Facing | Unchanged / South / North / West / East. Unchanged authors no override |
+
+* **The base list is the measured 566 class only** - `creation_templates` filters on
+  `CREATED_CLASS_RAW`, so a 169-class record cannot appear, and the authority refuses
+  one anyway ("scene-relative delta"). A map with no 566-class base **fails closed**
+  with the reason on screen, and so does a map whose selector-1 root is shared with
+  another map (its count and array pointer are not this map's to grow).
+* **Every gesture is validated by the authority before it is staged**
+  (`check_transition_creation`, the creation-side mirror of `check_edit`), so the
+  class rule, the same-map rule, the template priors, the destination's walkable
+  extent and the "not an alias of its base" rule are the build's rules, stated in the
+  build's words.
+* **Staging is derived from the form** and rendered in the list immediately: the new
+  row carries the authored name in the identity column and a **New (staged)** state,
+  becoming **New (saved)** once Apply writes it. Selecting it reopens the form.
+* **Apply / Revert.** Apply is one `set_transition_creations` write into
+  `maps/transition_creations.toml` - never `transitions.toml` - that validates the
+  whole batch first and writes nothing when the project already holds it. Revert
+  returns the form to the last saved state and writes nothing: a staged creation is
+  discarded with no project residue, and the gesture is itself undoable.
+* **Undo / Redo** are real: one history entry per gesture (name, base, region,
+  destination, arrival, facing), each entry carrying the whole resolved creation
+  state, so undo returns the exact authored values. A no-op gesture enters no history.
+
+## SDK additions (facades over existing authority, no new logic)
+
+1. **`check_transition_creation(corpus, creation)`** - validates one creation
+   through the same `_resolve_creation` a build uses, recording nothing and reading
+   nothing: the corpus is already loaded, and the template's `+0x10`/`+0x13` priors
+   are measured from it. The form's second gate, so a widget never restates a class,
+   root-sharing or bounds rule.
+2. **`creation_templates(corpus, source)`** - the one statement of which records may
+   be a creation's base (`CREATED_CLASS_RAW`), used by the surface and by nothing
+   else.
+3. **`authored_transition_creation(corpus, creation)`** - measures the template
+   priors once, for both the check and `set_transition_creations`, which now share it
+   instead of each measuring them.
+
+No serializer was added: `TransitionRecord.to_bytes` remains the only encoder, and
+`materialize_transition_creations` remains the only creator.
+
+## A real defect this pass found and fixed
+
+The creation form's first implementation let a Python exception escape
+`QUndoCommand::redo()` when the authority raised inside a gesture. Under the new
+focused test file that corrupted the heap (`Windows fatal exception: code 0xc0000374`
+during garbage collection, ~40% of runs, localised by collecting before each test to
+the test that threw through Qt). The fix is structural and stays:
+
+* **every gesture resolves BOTH of its states - the draft and the staged entry, with
+  the authority's answer - before the command is pushed**, and `undo()`/`redo()` only
+  install an already-resolved :class:`CreationState`;
+* a programmer error from the authority therefore surfaces at the call site, loudly,
+  with no history entry, instead of unwinding through Qt's C++ undo stack.
+
+The heap corruption disappeared with that change (3 consecutive clean runs of the
+full file, and 3 more after the visual fixes), and the property is pinned by
+`test_cqa06_a_programmer_error_in_a_slot_is_loud`.
+
+---
+
+## Focused validation, in detail
+
+### Named test file
+
+`tests/unit/test_workbench_warp_creation.py` - **58 passed**. The synthetic image is
+the one `test_map_transitions` assembles from the measured format, extended with the
+two root words the destination's walkable extent comes from; the project is a real
+on-disk project written by the real `write_project`; every creation goes through the
+real authority and the real build.
+
+Covered by name: the Create action's availability and its fail-closed refusals
+(no project, no image, no 566-class base, shared root); the valid-template filter and
+the 169-class exclusion at the surface *and* at the authority; the durable authored
+name validated by the production model, with its wording; duplicate identity refused
+both against the project document and against another staged draft, while a row
+opened from the saved creation stays re-authorable; the trigger region's positional
+authoring and the codec's degenerate/unordered refusals; the semantic destination
+selector and an out-of-range map; the required, never-derived arrival and an off-map
+point; the five facing choices, an invalid direction, and Unchanged; low-nibble
+preservation end to end; the staged row appearing immediately and its
+New (staged) → New (saved) states; Apply writing only the creation document, Apply
+with nothing staged, Apply of an already-held creation; the refused-Apply dialog;
+Revert without residue and Revert of a saved creation; Close and map-change behaviour;
+undo/redo of every gesture and of a rename; the no-op rule; CQA-05 (mutation keeps the
+staged creation, including with the form closed, and a session replacement resets it);
+CQA-06 (every expected failure, plus the loud programmer error); CQA-07 (exact read
+counts); save/reopen; the materialized record against the composed values; and the
+four state defects the visual pass found.
+
+`tests/unit/test_workbench_warp_transitions.py` - **32 passed**, unchanged except for
+the CQA-07 counters, which now measure ONE project parse supplying both transition
+documents (the previous run measured one parse of the edits document).
+
+### Focused run, by named file
+
+| file | result |
+| --- | --- |
+| `tests/unit/test_workbench_warp_creation.py` | 58 passed |
+| `tests/unit/test_workbench_warp_transitions.py` | 32 passed |
+| `tests/unit/test_map_transition_create.py` | passed |
+| `tests/unit/test_map_transition_project.py` | passed |
+| `tests/unit/test_map_transitions.py` | passed |
+| `tests/unit/test_workflow_migration.py` | 13 passed, 1 failed (see below) |
+| `tests/unit/test_code_review_workflow.py` | passed except the same budget bound |
+| `tests/unit/test_workbench_smoke.py` | passed |
+| `tests/unit/test_workbench_state_and_errors.py` | passed |
+| `tests/unit/test_workbench_map_tab.py` | passed |
+| **total** | **345 passed, 2 failed** |
+
+The two failures are **pre-existing and not caused by this pass**: both are the
+`docs/DEVELOPMENT.md <= 300` line budget, and the working tree already carried **+8 uncommitted
+lines** (the unrelated permanent-rule paragraph present at ticket start). This pass's
+own docs/DEVELOPMENT.md change is **net zero** - 21 lines added, 21 removed, inside a file diff
+of `29 21` (`git diff --numstat`) where the other 8 insertions and 0 deletions are
+that paragraph - because the new rule was condensed into the existing Full-Suite
+Policy rather than moved into new lines. HEAD's `docs/DEVELOPMENT.md` is 300 lines; the tree is
+308 with or without this pass's hunk. The unrelated paragraph was preserved
+untouched, and so was the budget failure it causes.
+
+`git diff --check` is **clean for every line this pass added** (the added lines are
+bare LF, per [`../line-endings.md`](../line-endings.md)) and reports only the eight
+lines 81-88 of that pre-existing paragraph, whose endings this pass did not touch.
+No file shows ending churn: `git diff --numstat` and
+`git diff --ignore-cr-at-eol --numstat` agree exactly for every changed file.
+
+### ROM integration, one named file
+
+`tests/integration/test_map_transition_create_rom.py` - **30 passed** (95 s), against
+the real 8 MiB canonical image. It is the strongest bound on the SDK refactor: the
+refactored template lookup, priors measurement and `set_transition_creations` are
+exercised over the real corpus and the real build.
+
+No other integration file was run: the refactor is confined to the creation-side
+facade and the edit path is byte-unchanged, so the focused files plus the one ROM file
+bound the blast radius.
+
+### Mutations, each observed and restored
+
+| id | mutation | regression that failed |
+| --- | --- | --- |
+| M1 | a 169-class transition appears as a valid creation base | `test_only_566_class_transitions_are_offered_as_a_base` |
+| M2 | duplicate authored identity is accepted | `test_a_duplicate_authored_identity_is_refused` |
+| M3 | Apply writes to `transitions.toml` instead of `transition_creations.toml` | `test_apply_writes_only_the_creation_document` |
+| M4 | a project mutation discards the staged creation | `test_a_project_mutation_keeps_a_staged_creation_whose_form_is_closed` |
+| M4b | a project mutation rebuilds the creation surface from the project | `test_a_project_mutation_keeps_the_staged_creation` |
+| M5 | the low nibble is replaced instead of preserved | `test_the_created_record_preserves_the_bases_low_nibble` |
+| M6 | save/reopen loses the authored identity | `test_save_and_reopen_reproduces_the_created_transition` |
+
+Each mutation was a local edit, observed failing, then restored **byte-for-byte**
+(the harness asserts the restored hash before re-running the regression, which then
+passed). No mutation framework was added.
+
+### Visual QA
+
+States **70-81** of `tools/qa/visual_pass_capture.py` (`warp_create_qa`), captured
+from the real `MainWindow` against the canonical image and a real extracted project,
+then **opened and inspected** over three rounds:
+
+| state | subject |
+| --- | --- |
+| 70 | the Create form opened on a map with a usable base |
+| 71 | the authored name and its identity preview |
+| 72 | the `Based on` selection with the base's own description |
+| 73 | region, destination, arrival and facing authored; the staged row appears |
+| 74 | the created row selected, its form re-derived |
+| 75 | after Apply: the row and the form both say New (saved) |
+| 76 | after Revert: the staged row is gone with no project write |
+| 77 | undo/redo of the revert |
+| 78 | a duplicate name refused, with the name field still editable |
+| 79 | a map with no 566-class base: the fail-closed explanation |
+| 80 | a map on a shared connection root: the refusal, naming the other map |
+| 81 | the narrow window (1100x720) with the form open and staged |
+
+The capture found and fixed six defects:
+
+1. after Apply the chip read **"Not staged"** while the row beside it read
+   **"New (saved)"** - the staged/bound distinction is now read from the staged set;
+2. a form whose name **collided** with a saved creation **locked the name field**,
+   while its refusal told the author to author a different name;
+3. a refused Create action stated its reason only in the one-line status bar, which
+   elides it - the map bar beside the button, and the pane, now carry it;
+4. **Revert was offered with nothing to revert** - it is now disabled unless a draft
+   is staged or the form departs from what the project holds;
+5. a fresh form kept the **stale created-row selection** highlighted, so the list
+   named a row the form was not editing;
+6. Revert's status line reported "back at the values the project holds" when a staged
+   creation had in fact been discarded - it now says so, including that Undo restores it.
+
+Post-fix captures were re-opened and inspected (`build/qa/warp-create-1` for the
+first round, `-2` for the fixes, `-3` for the last two). The shell's 813x450 minimum
+holds at 1100x720 with the form open; nothing clips. Captures are local, ignored QA
+artifacts; nothing ROM-derived is committed.
+
+## Not in this sub-pass
+
+* **No emulator/runtime proof.** The parent still owes the human-operated run of a
+  Workbench-authored transition; this sub-pass produced project, GUI and build
+  evidence only. `RUNTIME NEW-TRANSITION PROOF: NOT YET DONE`.
+* **No transition deletion**, canonical or created: Revert discards a staged creation
+  or restores a saved one's values, and never removes a project entry.
+* **No capability advance.** 20 / 24 happens only when the parent ships.
+* **No registry or public-site change**, and no `docs/PROJECT_<local-state-name>` update.
+* **The shell's unsaved-work guard is unchanged**, for the same reason
+  `MAP-WARP-WORKBENCH-001` recorded: a staged transition is project-bound like an
+  unapplied palette value, and the surface states its own staged count.

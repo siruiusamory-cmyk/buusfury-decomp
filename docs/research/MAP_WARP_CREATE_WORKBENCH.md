@@ -117,7 +117,8 @@ full file, and 3 more after the visual fixes), and the property is pinned by
 
 ### Named test file
 
-`tests/unit/test_workbench_warp_creation.py` - **58 passed**. The synthetic image is
+`tests/unit/test_workbench_warp_creation.py` - **58 passed as first written, 67 at
+the frozen tip** (the review corrections added nine pins). The synthetic image is
 the one `test_map_transitions` assembles from the measured format, extended with the
 two root words the destination's walkable extent comes from; the project is a real
 on-disk project written by the real `write_project`; every creation goes through the
@@ -150,7 +151,7 @@ documents (the previous run measured one parse of the edits document).
 
 | file | result |
 | --- | --- |
-| `tests/unit/test_workbench_warp_creation.py` | 58 passed |
+| `tests/unit/test_workbench_warp_creation.py` | 58 passed (67 at the frozen tip) |
 | `tests/unit/test_workbench_warp_transitions.py` | 32 passed |
 | `tests/unit/test_map_transition_create.py` | passed |
 | `tests/unit/test_map_transition_project.py` | passed |
@@ -182,12 +183,14 @@ exactly for every changed file, and every line this pass added is bare LF per
 
 In the clean ticket worktree, over the corrected tip:
 
-- `tests/unit/test_workbench_warp_creation.py` (61) and
-  `tests/unit/test_workbench_warp_transitions.py` (32) - **93 passed**.
+- `tests/unit/test_workbench_warp_creation.py` (67) and
+  `tests/unit/test_workbench_warp_transitions.py` (32) - **99 passed**.
 - Both workflow-budget nodes - **2 passed**.
 - `tests/unit/test_workbench_smoke.py`, `test_workbench_state_and_errors.py`,
   `test_workbench_map_tab.py` - **55 passed**.
-- `git diff --check` - **clean**; `docs/DEVELOPMENT.md` **300** lines.
+- `git diff --check` - **clean**; `docs/DEVELOPMENT.md` **300** lines; `git diff --numstat`
+  equals `git diff --ignore-cr-at-eol --numstat` for every file (no ending churn).
+- The adversarial invariant sweep above - **0 findings**.
 
 ### ROM integration, one named file
 
@@ -329,6 +332,53 @@ The reviewer also stated plainly what its retail pin does and does not prove: it
 drives `_retail`/`_base`/`_effective` directly, so it pins the guard rather than a
 UI path to it, and a `CreatedTransitionIdentity` never reaches `_retail` through the
 widgets. That is recorded as the pin's actual scope.
+
+**Third review, frozen candidate `150970d9d569c04d829a59fca3a3ef32d376790c`:
+BLOCK, one blocking finding - also right.** `_reapply_creation` inferred the form's
+binding from the draft's own identity when none was recorded. That made a form the
+surface had just REFUSED into the owner of the identity it was refused for, so a
+project mutation would either stage the refused duplicate (enabling Apply to
+overwrite the project's saved creation) or pop another draft's staged entry for the
+same name and replace it with the refused form's values. Corrected in
+`eb81fc2eda8bbe06b4a6e42c1599634535e543af`: the binding is only ever the recorded
+one, recorded where the form learns it - a staging gesture, a saved row opened into
+it, its own Apply - and `_staged_creation_key()` is the single answer to "is this
+form's creation staged", read from the staged set.
+
+**Fourth review, frozen candidate `eb81fc2eda8bbe06b4a6e42c1599634535e543af`:
+BLOCK, one blocking finding - right again, and the same family one step earlier.**
+The authority-REFUSAL branch also recorded a binding, which is not a place a form
+learns one. A refused form therefore owned an identity it did not stage, so once the
+project came to create that name (a peer Apply, a Save As, a project opened over the
+session) the next ordinary gesture skipped the saved-identity conflict gate and
+staged an overwrite that Apply then wrote - with no conflict shown. Corrected in
+`ed8b1d412dde152fa69c947b7a7341a77e8400d4` by stating the rule at its root: a
+binding is recorded only when the form stages its own creation, and a refusal can
+only KEEP a binding the form already had. The form now reports its binding through
+`creation_form_state()` so provenance is checkable, not just its effects.
+
+That review also found two docs/DEVELOPMENT.md lines whose text this pass never changed but
+whose line ending it had rewritten; they are back to the baseline ending, checked by
+requiring `git diff --numstat` and `git diff --ignore-cr-at-eol --numstat` to agree
+for every file, and it found `selected_editable()` claiming the connections pane
+could edit a created row that only the creation form edits.
+
+**The state machine was then swept adversarially by the implementer**, before
+spending a fifth review: 12 seeds x 60 random operations plus four targeted
+scenarios, checking after every step that (I2) every staged creation is one the
+authority accepts, (I3) the binding names only something the form owns, (I4) the
+chip, the staged flag, Apply and the list row agree, and (I5) a mutation never
+replaces another draft's entry. It found one real defect the reviews had not: a
+CLOSED form kept its last chip text, so it reported `New (staged)` with an empty
+staged set. Corrected in `dae9b0feea32f4d125df69008f50303b423b9fbc` - the chip is
+written whether or not a form is open - with the sweep then clean at 0 findings over
+the same run. Two mutations pin the rule that produced the third and fourth
+findings: reintroducing the inference, and reintroducing the refusal-recorded
+binding, each make the named regressions fail.
+
+Four review rounds produced four blocking findings, all in one family - who owns a
+durable identity, and when a form learns that it does - and each is now both fixed
+and pinned at the place the state is created rather than where the symptom appeared.
 
 ## Not in this sub-pass
 

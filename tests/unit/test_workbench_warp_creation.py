@@ -1084,6 +1084,24 @@ def test_a_saved_row_opened_into_the_form_keeps_its_binding(tab):
     assert tab.saved_creation(NEW_DOOR.key).arrival == TransitionArrival(60, 70)
 
 
+def test_a_closed_form_reports_no_stale_state(tab):
+    """The chip states the form's condition whether or not a form is open.
+
+    A closed form that kept the last "New (staged)" would report a state the staged
+    set does not have - to a probe, a capture, or the next reader of the record.
+    """
+    assert author_one(tab)
+    assert tab.creation_form_state()["state"] == "New (staged)"
+    assert tab.close_creation() is True
+    state = tab.creation_form_state()
+    assert state["open"] is False
+    assert state["staged"] is False
+    assert state["binding"] is None
+    assert state["state"] == "Not staged"
+    assert state["apply_enabled"] is False
+    assert tab.row_values(2)[5] == "New (staged)"  # the ROW still says so
+
+
 def test_a_retail_read_of_an_identity_the_corpus_lacks_is_state_not_an_exception(tab):
     """The install path is callable from undo()/redo(), so it must not raise.
 

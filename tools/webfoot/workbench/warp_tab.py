@@ -1970,10 +1970,13 @@ class WarpTab(QWidget):
             and (self._open_creation_key == identity or saved_equal)
         )
         name_editable = refusal is None and draft is not None and not bound_to_saved
+        # The chip states the form's condition WHETHER OR NOT a form is open: a
+        # closed form that kept its last "New (staged)" would report a state the
+        # staged set does not have, to a probe or a capture reading it.
+        self._creation_chip.set_state(state, role)
         if draft is None:
             self._creation_reason.setText("")
         else:
-            self._creation_chip.set_state(state, role)
             self._creation_reason.setText(
                 self._creation_refusal_text
                 or ("" if staged else f"{identity} is saved in the project.")

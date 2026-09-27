@@ -871,6 +871,57 @@ def test_a_source_map_change_closes_the_form_and_keeps_the_staged_creation(tab):
     assert tab.creation_form_state()["identity"] == NEW_DOOR.key
 
 
+def test_undo_after_a_source_map_change_does_not_reopen_the_form(tab):
+    """A creation belongs to one map, so a gesture cannot be undone onto another.
+
+    The creation state rides the shared undo stack, and the map bar is a context
+    switch: undoing a gesture while a different map is shown must leave the form
+    closed and the staged creation staged, exactly as undoing an existing
+    connection's edit does not select a row of the map that is no longer shown.
+    """
+    assert author_one(tab)
+    assert tab.select_source_map(1) is True
+    assert tab.creation_open() is False
+    assert tab.undo_stack().canUndo() is True
+    tab.undo_stack().undo()
+    assert tab.creation_open() is False
+    assert tab.source_map_index() == 1
+    assert tab.staged_creation_count() == 1
+    tab.undo_stack().redo()
+    assert tab.creation_open() is False
+    # The staged creation is intact on its own map.
+    assert tab.select_source_map(0) is True
+    assert tab.row_values(2)[5] == "New (staged)"
+
+
+def test_closing_the_form_leaves_no_row_highlighted(tab):
+    """The pane and the list agree: nothing selected means nothing highlighted."""
+    assert author_one(tab)
+    assert tab.select_row(2) is True
+    assert tab.creation_open() is True
+    assert tab.close_creation() is True
+    assert tab.creation_open() is False
+    assert tab.selected_identity() is None
+    assert tab._table.currentRow() == -1
+    assert "Select a connection" in tab._identity.text()
+
+
+def test_a_retail_read_of_an_identity_the_corpus_lacks_is_state_not_an_exception(tab):
+    """The install path is callable from undo()/redo(), so it must not raise.
+
+    `_retail` is reached through `_install_creation_state` -> `_populate_rows` ->
+    `_fill_row` -> `_effective` -> `_base`, and every corpus call on that path is
+    guarded, so a record the corpus does not hold reads as the on-screen state
+    ("unresolved", "not stated") instead of an exception unwinding through Qt's
+    undo stack.
+    """
+    created = mt.CreatedTransitionIdentity(MapIdentity(0), NAME)
+    assert tab._retail(created) == (None, None, None)
+    assert tab._base(created) == (None, None, None)
+    assert tab._effective(created) == (None, None, None)
+    assert tab._refusal_for(created) is not None
+
+
 # --- undo / redo -------------------------------------------------------------
 
 

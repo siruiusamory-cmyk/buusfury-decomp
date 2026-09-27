@@ -1108,12 +1108,28 @@ class WarpTab(QWidget):
         return True
 
     def close_creation(self) -> bool:
-        """Leave the creation form. Anything staged stays staged and stays listed."""
+        """Leave the creation form. Anything staged stays staged and stays listed.
+
+        The row the form was editing is left in the list but is no longer selected:
+        the pane beside it states that nothing is selected, and a highlight that
+        stayed on a created row would contradict it.
+        """
         if self._creation is None:
             return False
         self._creation = None
         self._open_creation_key = None
         self._creation_refusal_text = None
+        # Clearing the selection emits Qt's selection signal, and its handler would
+        # reopen this very form off the row that is still current - so the clearing
+        # is done under `_suppress`, and the current item goes too, not just the
+        # selection, or the highlight would outlive the pane's "nothing selected".
+        self._suppress = True
+        try:
+            self._selected = None
+            self._table.clearSelection()
+            self._table.setCurrentItem(None)
+        finally:
+            self._suppress = False
         self._pages.setCurrentIndex(0)
         self._refresh_pages()
         self._publish_status(self._summary_text())
@@ -1768,8 +1784,21 @@ class WarpTab(QWidget):
         Nothing is read and nothing is validated here: this is what `redo()` and
         `undo()` call, so it must be total. Callers that need a state derived from
         the current project or corpus resolve one and install it.
+
+        A draft that belongs to another source map is NOT reinstated: a creation
+        belongs to one map, the map bar is what says which, and undoing a gesture
+        after the map bar moved must not reopen a form against a map the author is
+        not looking at - the same way an undo of an existing connection's edit does
+        not select a row of the map that is no longer shown.
         """
-        self._creation = state.draft
+        draft = state.draft
+        if (
+            draft is not None
+            and self._source_index is not None
+            and draft.source.index != self._source_index
+        ):
+            draft = None
+        self._creation = draft
         self._staged_creations = dict(state.staged)
         self._open_creation_key = state.open_key
         self._creation_refusal_text = state.reason
@@ -2289,10 +2318,20 @@ class WarpTab(QWidget):
     # -- the values a row and the form show -----------------------------------
 
     def _retail(self, identity) -> tuple:
-        """``(destination, arrival, facing)`` exactly as the record stores them."""
+        """``(destination, arrival, facing)`` exactly as the record stores them.
+
+        Every corpus call on this path is guarded, this one included: it is reachable
+        from `_install_creation_state`, which `QUndoCommand.undo()`/`redo()` call, and
+        nothing on that path may raise. A record the corpus does not hold therefore
+        reads as state the surface states on screen ("unresolved", "not stated")
+        rather than as an exception unwinding through Qt's undo stack.
+        """
         if self._corpus is None:
             return (None, None, None)
-        entry = self._corpus.entry(identity)
+        try:
+            entry = self._corpus.entry(identity)
+        except _WARP_ERRORS:
+            return (None, None, None)
         try:
             destination = self._corpus.destination(identity)
         except _WARP_ERRORS:

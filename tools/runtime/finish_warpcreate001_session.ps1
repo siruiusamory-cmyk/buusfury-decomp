@@ -73,9 +73,14 @@ foreach ($element in $elements) {
     Say ('  element {0}: status={1} root={2} count={3} array={4} element_ptr={5} record={6}' -f `
         $element, $last.status, $last.root, $last.root_count, $last.array, $last.element_ptr, $last.record)
     if ($last.status -eq 'present') {
-        Say ('             key={0}/{1} -> map {2}  region={3}  +0x10={4}  arrival=({5}, 0x{6}{7})' -f `
+        # The arrival is a word at +0x14 and a byte pair at +0x16/+0x17; both are
+        # printed as decimal values and as the raw bytes, so the reader never has
+        # to guess a base. An empty cell prints as 0 rather than throwing.
+        $arrivalX = if ($last.arrival_14) { [Convert]::ToInt32($last.arrival_14, 16) } else { 0 }
+        $arrivalY = if ($last.arrival_16 -and $last.arrival_17) { [Convert]::ToInt32($last.arrival_17 + $last.arrival_16, 16) } else { 0 }
+        Say ('             key={0}/{1} -> map {2}  region={3}  +0x10={4}  arrival=({5}, {6})  raw {7}/{8}/{9}' -f `
             $last.key_hi, $last.key_lo, $last.key_resolves_to, $last.region_hex, `
-            $last.byte_0x10, [Convert]::ToInt32($last.arrival_14, 16), $last.arrival_17, $last.arrival_16)
+            $last.byte_0x10, $arrivalX, $arrivalY, $last.arrival_14, $last.arrival_16, $last.arrival_17)
         Say ('             frame {0}  note: {1}' -f $last.frame, $last.note)
     }
 }

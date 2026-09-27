@@ -332,6 +332,10 @@ local frame = 0
 local last_map = nil
 local last_signature = nil
 local unresolved_reported = false
+-- Whether a frame that actually sampled the route ever resolved it. The
+-- warning below is about a route that does not resolve, not about a frame
+-- that skipped sampling, and those two are different states.
+local route_resolved = false
 
 callbacks:add("frame", function()
     frame = frame + 1
@@ -359,6 +363,7 @@ callbacks:add("frame", function()
             parts[#parts + 1] = sample.status .. ":" .. cell(hex32(sample.record))
         end
         if root_route ~= nil then
+            route_resolved = true
             signature = cell(hex32(root_route.root)) .. "/" ..
                 tostring(root_route.count) .. "/" ..
                 cell(hex32(root_route.array)) .. "/" .. table.concat(parts, "|")
@@ -378,7 +383,8 @@ callbacks:add("frame", function()
             emit_element(frame, map_index, entry, root_route, samples[index], note)
         end
         last_signature = signature
-    elseif root_route == nil and (not unresolved_reported) and frame >= 600 then
+    elseif sample_due and root_route == nil and (not route_resolved)
+        and (not unresolved_reported) and frame >= 600 then
         -- Ten seconds in and the route still does not resolve: say so once, so a
         -- silent channel is distinguishable from a resolved one.
         emit("ROUTE_UNRESOLVED", frame, map_index, entry, nil, nil, nil, nil,

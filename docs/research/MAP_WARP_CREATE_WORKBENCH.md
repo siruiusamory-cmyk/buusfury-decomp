@@ -572,6 +572,15 @@ regression above exercises directly. A per-row "discard this stale staged creati
 action would be new surface area, and adding surface area at closeout without review
 is what this pass was told not to do.
 
+### Closeout labels
+
+* **FINAL OWNERSHIP FIX:** `1420754` - the single correction commit, production and
+  tests, no amend.
+* **FINAL CANDIDATE:** `88a83f1ec253a113e5306b881f626c09f652cfc8` - the branch tip
+  that carries that correction and this record, and the tree every number above was
+  measured on. The commit that adds these two labels is documentation only, on top
+  of it.
+
 ## Not in this sub-pass
 
 * **No emulator/runtime proof.** The parent still owes the human-operated run of a

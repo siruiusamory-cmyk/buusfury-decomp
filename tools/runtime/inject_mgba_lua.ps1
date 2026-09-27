@@ -275,6 +275,17 @@ $allowedLua = @(
     [System.IO.Path]::GetFullPath(
         (Join-Path $workspaceRoot 'tools\runtime\warprand001_map_watch.lua')
     )
+    # Added by MAP-WARP-CREATE-RUNTIME-001: the read-only observer for a CREATED
+    # transition. Where the warp observers above follow an array element that
+    # already existed, this one follows the element the build APPENDED (index 2 on
+    # map 40) and records the whole engine route to it, so the run proves the
+    # engine reached the NEW element and the NEW record rather than a record that
+    # was already there. It reads emulated memory and writes only host files inside
+    # the run directory, and it accepts both the canonical 8 MiB image and the
+    # 16 MiB derivative that carries the new structure above the original EOF.
+    [System.IO.Path]::GetFullPath(
+        (Join-Path $workspaceRoot 'tools\runtime\warpcreate001_transition_watch.lua')
+    )
 )
 $resolvedLua = [System.IO.Path]::GetFullPath($LuaPath)
 if ($resolvedLua -notin $allowedLua) {

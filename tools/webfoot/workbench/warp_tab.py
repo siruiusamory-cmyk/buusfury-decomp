@@ -1106,6 +1106,7 @@ class WarpTab(QWidget):
             # at states why nothing happened.
             self._creation = None
             self._open_creation_key = None
+            self._open_creation_owned = False
             self._creation_refusal_text = None
             self._creation_action_refusal = refusal
             self._pages.setCurrentIndex(0)
@@ -1339,12 +1340,22 @@ class WarpTab(QWidget):
             self._report_error("Apply new transition", _NO_IMAGE)
             return False
         # The FINAL authority reads the project's own document rather than trusting
-        # the last broadcast: a second instance, a hand edit or a CLI write must
-        # not be overwritten by a staged creation that predates it.
+        # the last broadcast, so a second instance, a hand edit or a CLI write is
+        # not overwritten by a staged creation that predates it. The guarantee is
+        # scoped to creations this form does NOT legitimately own: a form editing
+        # the project's own entry is that entry's author, and its Apply updates it
+        # (last writer wins), exactly as an edit of an existing connection does.
         try:
             committed = dict(mt.read_project_transition_creations(project))
-        except _WARP_ERRORS:
-            committed = dict(self._committed_creations)
+        except _WARP_ERRORS as exc:
+            # Ambiguous ownership FAILS CLOSED: a document this surface cannot read
+            # is not permission to write over it.
+            self._report_error(
+                "Apply new transition",
+                "The project's created transitions could not be read, so nothing "
+                f"was written: {exc}",
+            )
+            return False
         conflicts = self._creation_conflicts(committed)
         if conflicts:
             identity = sorted(conflicts)[0]
@@ -1979,15 +1990,20 @@ class WarpTab(QWidget):
         if creation is None:
             return False
         self._creation = _draft_from_creation(creation)
-        # The draft IS the entry this row shows, so it is re-derived rather than
-        # treated as a second creation of the same identity. Ownership follows the
-        # SOURCE of the values, not the click: only the project's own committed
-        # entry may be re-authored, never the author's staged creation that happens
-        # to share the identity.
-        owned = identity in self._committed_creations
+        # Ownership follows the SOURCE of the values this form is now editing, not
+        # the identity's presence in the committed map. A row whose values come from
+        # the staged set is SHADOWED by them: even when the project also creates
+        # that identity, this form is not editing the project's entry, so it claims
+        # no ownership, keeps the staged creation staged, and states the conflict
+        # instead of adopting the committed entry. `previous=None` is what keeps the
+        # staged entry intact while the conflict is represented.
+        shadowed = identity in self._staged_creations
+        owned = identity in self._committed_creations and not shadowed
         self._open_creation_owned = owned
         self._install_creation_state(
-            self._resolve_creation_state(self._creation, identity, owned)
+            self._resolve_creation_state(
+                self._creation, None if shadowed else identity, owned
+            )
         )
         return True
 

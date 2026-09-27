@@ -1190,6 +1190,62 @@ def test_clicking_a_staged_row_does_not_claim_the_project_entry(tab, project, im
     assert tab.saved_creation(NEW_DOOR.key).arrival == held.arrival
 
 
+def test_cqa06_a_shadowed_row_cannot_write_over_the_project_creation(
+    tab, project, image, quiet_dialogs
+):
+    """THE EXACT ORDER: author, stage, close, the project gains it, click the row.
+
+    This is the order that produced the last ownership defect. Once the project
+    comes to create the SAME identity the author staged - with different values -
+    the row this tab lists is SHADOWED: its values come from the staged set, so the
+    form is not editing the project's entry and must claim no ownership of it.
+    Clicking that row must not adopt the project's creation, Apply must refuse, no
+    file may be written, the project's own authored values must be exactly what they
+    were, and the author's staged creation must still be there: stale, not destroyed.
+    """
+    assert author_one(tab)
+    assert tab.close_creation() is True
+    held = the_project_gains(project, image, arrival=(11, 12))
+    tab.on_project_mutated()
+    assert tab.staged_creation_count() == 1
+
+    # The row still shows the STAGED creation, not the project's: the mutation did
+    # not quietly adopt the project's entry as the values this form is editing.
+    assert tab.select_row(2) is True
+    state = tab.creation_form_state()
+    assert state["arrival"] == ARRIVAL
+    assert state["destination"] == DESTINATION.index
+    assert state["owned"] is False
+    # The refused form stages nothing of its own, but the author's staged creation
+    # is still in the set: it is this row's source, and a form that was never given
+    # it may not remove it. It is discarded only by the form that staged it, by a
+    # successful Apply, or by the session boundary the end of this test exercises.
+    assert state["staged"] is False
+    assert state["binding"] is None
+    assert tab.staged_creation_count() == 1
+    assert "already a transition this project creates" in (state["reason"] or "")
+
+    # The write boundary refuses, states why, and writes NOTHING: the project's
+    # document is byte-for-byte what the project itself wrote.
+    before = (project / TRANSITION_CREATION_FILE).read_bytes()
+    assert tab.apply_creations() is False
+    assert quiet_dialogs and "does not own it" in quiet_dialogs[0]
+    assert (project / TRANSITION_CREATION_FILE).read_bytes() == before
+    stored = stored_in(project)
+    assert stored is not None and stored.arrival == held.arrival
+    assert stored.destination == held.destination
+    assert stored.region == held.region
+
+    # ...and the author's staged creation survived the refusal: it is stale, not
+    # lost. Staged work is scoped to the session, so the session boundary is the
+    # exit from this conflict - and the project's creation is untouched by it.
+    staged = tab.staged_creation(NEW_DOOR.key)
+    assert staged is not None and staged.arrival == TransitionArrival(*ARRIVAL)
+    tab.on_session_changed()
+    assert tab.staged_creation_count() == 0
+    assert stored_in(project).arrival == held.arrival
+
+
 def test_a_conflicting_batch_is_refused_atomically(tab, project, image, quiet_dialogs):
     """ONE conflicting member refuses the WHOLE batch: nothing is written."""
     second = mt.CreatedTransitionIdentity(MapIdentity(0), "second-door")
@@ -1219,7 +1275,33 @@ def test_a_conflicting_batch_is_refused_atomically(tab, project, image, quiet_di
     assert tab.staged_creation_count() == 2
 
 
-def test_ownership_clears_when_the_binding_goes(tab, project):
+def test_an_unreadable_project_document_fails_closed_and_writes_nothing(
+    tab, project, image, quiet_dialogs, monkeypatch
+):
+    """AMBIGUOUS OWNERSHIP: a document this surface cannot read is not permission.
+
+    The write boundary re-reads the project's own created transitions instead of
+    trusting the last broadcast. When that read FAILS, falling back to the cached
+    copy would turn "this surface does not know what the project holds" into "the
+    project holds nothing" - exactly the state that permits an overwrite of authored
+    data. So the whole Apply fails closed, states why, and writes no file.
+    """
+    assert author_one(tab)
+    assert not (project / TRANSITION_CREATION_FILE).exists()
+
+    def unreadable(_project):
+        raise mt.MapTransitionsError("the created transitions document is damaged")
+
+    monkeypatch.setattr(mt, "read_project_transition_creations", unreadable)
+    assert tab.apply_creations() is False
+    assert quiet_dialogs and "could not be read" in quiet_dialogs[0]
+    # Nothing was written, and the author's staged creation is untouched.
+    assert not (project / TRANSITION_CREATION_FILE).exists()
+    assert tab.staged_creation_count() == 1
+    assert tab.staged_creation(NEW_DOOR.key) is not None
+
+
+def test_ownership_clears_when_the_binding_goes(tab, project, monkeypatch):
     """No stale ``owned`` may survive the binding it describes."""
     assert author_one(tab)
     assert tab.apply_creations() is True
@@ -1237,6 +1319,17 @@ def test_ownership_clears_when_the_binding_goes(tab, project):
     assert state["binding"] is None and state["owned"] is False
     assert tab.select_row(2) is True
     assert tab.select_source_map(1) is True
+    state = tab.creation_form_state()
+    assert state["binding"] is None and state["owned"] is False
+    # The sixth reset site: a REFUSED Create action is a reset too. The refusal
+    # itself is forced here - the six real ones are covered one by one elsewhere -
+    # because what this pins is the reset behind it: a form that used to own a
+    # saved creation must not leave that authority behind for the next form.
+    assert tab.select_source_map(0) is True
+    assert tab.select_row(2) is True
+    assert tab.creation_form_state()["owned"] is True
+    monkeypatch.setattr(tab, "creation_refusal", lambda: "no 566-class base here")
+    assert tab.open_creation() is False
     state = tab.creation_form_state()
     assert state["binding"] is None and state["owned"] is False
 

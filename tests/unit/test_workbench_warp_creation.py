@@ -924,6 +924,78 @@ def test_closing_the_form_leaves_no_row_highlighted(tab):
     assert "Select a connection" in tab._identity.text()
 
 
+def test_a_project_mutation_does_not_install_a_refused_form(tab, project, image):
+    """A refusal must not become a staged creation because the project moved.
+
+    A form whose name the project already creates is refused, and it is NOT bound to
+    that identity. A mutation that inferred a binding from the draft's own identity
+    would stage the refusal, enable Apply, and let one click overwrite the saved
+    creation - a new value the author never asked to apply.
+    """
+    assert author_one(tab)
+    assert tab.apply_creations() is True
+    saved = tab.saved_creation(NEW_DOOR.key)
+
+    assert tab.close_creation() is True
+    assert tab.open_creation() is True
+    tab.stage_creation_destination(3)
+    tab.stage_creation_arrival(11, 22)
+    tab.stage_creation_name(NAME)
+    assert tab.staged_creation_count() == 0
+    assert "durable" in (tab.creation_reason() or "")
+
+    tab.on_project_mutated()
+    assert tab.staged_creation_count() == 0
+    assert "durable" in (tab.creation_reason() or "")
+    assert tab.creation_form_state()["apply_enabled"] is False
+    assert tab.apply_creations() is False
+    after = tab.saved_creation(NEW_DOOR.key)
+    assert after.destination == saved.destination
+    assert after.arrival == saved.arrival
+    assert after.region == saved.region
+
+
+def test_a_project_mutation_does_not_replace_another_drafts_staged_creation(tab):
+    """A second form may not take over an identity another draft already stages."""
+    assert author_one(tab)
+    staged = tab.staged_creation(NEW_DOOR.key)
+    assert staged is not None
+
+    assert tab.close_creation() is True
+    assert tab.open_creation() is True
+    tab.stage_creation_destination(3)
+    tab.stage_creation_arrival(200, 200)
+    tab.stage_creation_name(NAME)
+    assert "already staged" in (tab.creation_reason() or "")
+    assert tab.staged_creation(NEW_DOOR.key) == staged
+
+    tab.on_project_mutated()
+    assert tab.staged_creation_count() == 1
+    assert tab.staged_creation(NEW_DOOR.key) == staged
+    assert tab.row_values(2)[3] == "16, 24"
+
+
+def test_a_project_mutation_keeps_a_bound_forms_staged_creation(tab, project, image):
+    """The form that DOES own the staged entry keeps it across a mutation."""
+    assert author_one(tab)
+    staged = tab.staged_creation(NEW_DOOR.key)
+    mt.set_transition_edits(
+        project,
+        profile_for(image),
+        image,
+        {
+            mt.TransitionIdentity(MapIdentity(0), 1): mt.TransitionEdit(
+                destination=MapIdentity(3)
+            )
+        },
+    )
+    tab.on_project_mutated()
+    assert tab.staged_creation(NEW_DOOR.key) == staged
+    assert tab.creation_open() is True
+    assert tab.creation_form_state()["staged"] is True
+    assert tab.creation_form_state()["state"] == "New (staged)"
+
+
 def test_a_retail_read_of_an_identity_the_corpus_lacks_is_state_not_an_exception(tab):
     """The install path is callable from undo()/redo(), so it must not raise.
 

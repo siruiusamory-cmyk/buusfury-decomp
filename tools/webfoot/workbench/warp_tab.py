@@ -1094,8 +1094,9 @@ class WarpTab(QWidget):
         source = MapIdentity(self._source_index)
         if self._creation is None or self._creation.source != source:
             # A fresh form is derived and installed, not pushed: opening it is not a
-            # gesture, so it enters no history. The list selection is dropped with
-            # it, so the highlight cannot name a row this form is not editing.
+            # gesture, so it enters no history. The list selection is dropped with it
+            # and the list falls back to its own first row, so no CREATED row stays
+            # highlighted while a new form is being authored.
             self._selected = None
             draft = self._fresh_creation_draft(source)
             self._creation = draft
@@ -1168,7 +1169,10 @@ class WarpTab(QWidget):
             ),
             "arrival": self._creation.arrival if self._creation else None,
             "facing": self._creation.facing if self._creation else None,
-            "staged": self._open_creation_key is not None,
+            # Whether a creation is STAGED is a fact about the staged set, not about
+            # the form's binding: a form that states what the project already holds
+            # is bound to it and has nothing staged.
+            "staged": self._staged_creation_key() is not None,
             "state": self._creation_chip.accessibleName(),
             "reason": self._creation_refusal_text,
             "refusal": self.creation_refusal(),
@@ -1287,9 +1291,14 @@ class WarpTab(QWidget):
             self._report_error("Apply new transition", str(exc))
             return False
         # The write is committed, so what was staged is now the project's; the
-        # authority is re-read once and the form re-derived against it.
+        # authority is re-read once and the form re-derived against it. The form
+        # stays bound to the creation it just applied - and to nothing else - so it
+        # can be re-authored in place instead of reading as a second transition
+        # claiming a name the project already creates.
+        applied = dict(self._staged_creations)
+        applied_key = self._open_creation_key
         self._staged_creations.clear()
-        self._open_creation_key = None
+        self._open_creation_key = applied_key if applied_key in applied else None
         self._undo_stack.clear()
         self._reload_committed()
         self._reapply_creation()
@@ -1811,7 +1820,10 @@ class WarpTab(QWidget):
         self._staged_creations = dict(state.staged)
         self._open_creation_key = open_key
         self._creation_refusal_text = state.reason
-        self._creation_action_refusal = None
+        # The refused-Create reason is NOT cleared here: a project mutation or an
+        # unrelated Apply is not the author changing what they asked about. It goes
+        # when the map bar moves or another row is selected, which is where the
+        # question it answers stops being the one on screen.
         self._populate_rows()
         self._populate_source_labels()
         # A refusal is what the author needs to read; the summary is what they need
@@ -1824,15 +1836,20 @@ class WarpTab(QWidget):
 
         A project mutation or a successful Apply changes what is committed, so the
         staged entry the form asks for can change with it - without disturbing the
-        undo history, which describes the author's gestures rather than the file. The
-        form stays bound to the identity it already states, which is what lets an
-        applied creation be re-authored in place after Apply instead of reading as a
-        second transition claiming a taken name.
+        undo history, which describes the author's gestures rather than the file.
+
+        Only the RECORDED binding is passed on. Inferring one from the draft's own
+        identity looks harmless and is not: it turns a form the surface has just
+        refused - a name the project already creates, or one another draft already
+        stages - into the owner of that identity, so a mutation would silently stage
+        the refusal, replace the other draft's entry, and let the next Apply
+        overwrite a saved creation. A form's binding is set where the form learns it
+        (a gesture that stages it, a saved row opened into it, its own Apply) and
+        nowhere else.
         """
-        bound = self._open_creation_key
-        if bound is None and self._creation is not None:
-            bound = self._creation.identity()
-        self._install_creation_state(self._resolve_creation_state(self._creation, bound))
+        self._install_creation_state(
+            self._resolve_creation_state(self._creation, self._open_creation_key)
+        )
 
     def _creation_values(self, identity) -> "mt.TransitionCreation | None":
         """What a created row shows: this session's draft, else the project's."""
@@ -1915,10 +1932,7 @@ class WarpTab(QWidget):
         # The STAGED dict decides whether there is anything pending, not the binding:
         # a form that states exactly what the project holds is bound to that identity
         # and has nothing staged.
-        staged = (
-            self._open_creation_key is not None
-            and self._open_creation_key in self._staged_creations
-        )
+        staged = self._staged_creation_key() is not None
         state, role = self._creation_display_state()
         saved_equal = state == _STATE_NEW_SAVED
         identity = draft.identity() if draft is not None else None
@@ -1967,10 +1981,7 @@ class WarpTab(QWidget):
         draft = self._creation
         if draft is None:
             return "Not staged", "neutral"
-        if (
-            self._open_creation_key is not None
-            and self._open_creation_key in self._staged_creations
-        ):
+        if self._staged_creation_key() is not None:
             return _STATE_NEW_STAGED, "pending"
         identity = draft.identity()
         if identity is not None:
@@ -1981,6 +1992,15 @@ class WarpTab(QWidget):
         if self._creation_refusal_text is not None:
             return "Not staged", "readonly"
         return "Not staged", "neutral"
+
+    def _staged_creation_key(self):
+        """The identity this form's own creation is staged under, or None.
+
+        One statement of "does this form have a staged creation": the staged SET is
+        the fact, and the binding only says which entry belongs to this form.
+        """
+        key = self._open_creation_key
+        return key if key is not None and key in self._staged_creations else None
 
     def _creation_revertible(self) -> bool:
         """Whether Revert has anything to do: a staged draft, or a saved departure."""
@@ -2548,6 +2568,9 @@ class WarpTab(QWidget):
     def _on_row_selected(self) -> None:
         if self._suppress:
             return
+        # Selecting a row is the author moving on from the Create question, so the
+        # refusal it produced stops being the thing on screen.
+        self._creation_action_refusal = None
         row = self._table.currentRow()
         keys = self._row_keys()
         if 0 <= row < len(keys):

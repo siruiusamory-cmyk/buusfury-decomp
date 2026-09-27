@@ -138,6 +138,18 @@ STATES: tuple[tuple[int, str], ...] = (
     (67, "67-warps-retarget-refusal-status"),
     (68, "68-warps-narrow"),
     (69, "69-warps-map-with-no-connections"),
+    (70, "70-warps-create-form-opened"),
+    (71, "71-warps-create-name-authored"),
+    (72, "72-warps-create-base-selected"),
+    (73, "73-warps-create-staged-values"),
+    (74, "74-warps-create-staged-row"),
+    (75, "75-warps-create-applied-saved"),
+    (76, "76-warps-create-reverted"),
+    (77, "77-warps-create-undo-redo"),
+    (78, "78-warps-create-duplicate-name-refused"),
+    (79, "79-warps-create-no-base-on-this-map"),
+    (80, "80-warps-create-shared-root-refused"),
+    (81, "81-warps-create-narrow"),
 )
 
 #: The last chained state; anything above it is self-contained.
@@ -148,6 +160,9 @@ FIRST_STRUCTURAL_STATE = 40
 
 #: The first MAP-WARP-WORKBENCH-001 state: the Maps editor's Warps mode.
 FIRST_WARP_STATE = 60
+
+#: The first MAP-WARP-CREATE-WORKBENCH-001 state: the Warps mode's Create action.
+FIRST_WARP_CREATE_STATE = 70
 
 
 class _NullHost:
@@ -577,7 +592,12 @@ def capture_all(harness: Harness, workspace: Path, states: set[int] | None = Non
     structural = states is None or any(
         FIRST_STRUCTURAL_STATE <= number < FIRST_WARP_STATE for number in states
     )
-    warp = states is None or any(number >= FIRST_WARP_STATE for number in states)
+    warp = states is None or any(
+        FIRST_WARP_STATE <= number < FIRST_WARP_CREATE_STATE for number in states
+    )
+    warp_create = states is None or any(
+        number >= FIRST_WARP_CREATE_STATE for number in states
+    )
     if chain:
         if states is not None:
             print("note: states 1-19 are one chained suite; capturing all of them")
@@ -588,6 +608,8 @@ def capture_all(harness: Harness, workspace: Path, states: set[int] | None = Non
         structural_qa(harness, workspace, states)
     if warp:
         warp_qa(harness, workspace, states)
+    if warp_create:
+        warp_create_qa(harness, workspace, states)
     total = len(list(harness.out.glob("*.png")))
     print(f"\nwrote {total} PNG(s) to {harness.out}")
 
@@ -1376,6 +1398,195 @@ def warp_qa(
     tab.select_source_map(empty)
     harness.pump(8)
     shot(69, "69-warps-map-with-no-connections")
+    return written
+
+
+def warp_create_qa(
+    harness: Harness, workspace: Path, states: set[int] | None = None
+) -> list[Path]:
+    """MAP-WARP-CREATE-WORKBENCH-001's states: the Warps mode's Create action.
+
+    Every step goes through the SHIPPED surface and the SHIPPED SDK: the real
+    transition authority over the canonical image, the real
+    `check_transition_creation` validation on each gesture, the real
+    `set_transition_creations` write into a real extracted project in a temporary
+    directory, and the mode's own widgets. The map with a usable base, the map with
+    none and the map on a shared connection root are all FOUND through the
+    authority, not hard-coded, so the capture follows whatever the open image holds.
+    """
+    from tools.webfoot import map_transitions as map_transitions_sdk
+    from tools.webfoot.maps import MapIdentity
+
+    written: list[Path] = []
+
+    def shot(number: int, name: str, size: QSize | None = None) -> None:
+        if states is None or number in states:
+            written.append(harness.grab(name, size=size))
+
+    project = _extracted_project(harness, workspace)
+    harness.open_canonical()
+    harness.session.set_project(project)
+    harness.editor("Atlas").romOpened.emit()
+    harness.show_editor("Maps")
+    harness.maps.set_mode("warps")
+    harness.pump(10)
+    tab = harness.maps.warps
+
+    corpus = map_transitions_sdk.read_map_transitions(
+        harness.session.map_image, harness.session.profile
+    )
+    bases: dict[int, tuple] = {}
+    for entry in corpus.entries():
+        if entry.record.class_raw == map_transitions_sdk.CREATED_CLASS_RAW:
+            bases.setdefault(entry.identity.source.index, []).append(entry)
+
+    # A map with a usable base AND at least one existing connection, so the list has
+    # context beside the new row.
+    connections: dict[int, int] = {}
+    for entry in corpus.entries():
+        index = entry.identity.source.index
+        connections[index] = connections.get(index, 0) + 1
+
+    source_index = next(
+        (
+            index
+            for index, entries in sorted(bases.items())
+            if connections.get(index) and not corpus.shared_root_maps(MapIdentity(index))
+        ),
+        None,
+    )
+    if source_index is None:
+        raise SystemExit("no map with a usable 566-class base was found")
+    base = bases[source_index][0]
+    base_record = base.record
+    print(
+        f"  base map: map:{source_index:04d} ({len(bases[source_index])} usable "
+        f"base(s) of {connections.get(source_index, 0)} connection(s)); base "
+        f"{base.identity}"
+    )
+
+    # A map whose only records are 169-class, or which has none at all.
+    no_base = next(
+        (
+            index
+            for index in range(corpus.map_count)
+            if not bases.get(index) and not corpus.shared_root_maps(MapIdentity(index))
+        ),
+        None,
+    )
+    # A map whose selector-1 root another map shares.
+    shared = next(
+        (
+            index
+            for index in range(corpus.map_count)
+            if corpus.shared_root_maps(MapIdentity(index))
+        ),
+        None,
+    )
+
+    tab.select_source_map(source_index)
+    harness.pump(8)
+
+    print(f"  create action: enabled={tab.create_action_enabled()} refusal={tab.creation_refusal()!r}")
+    print(f"  open create form: {tab.open_creation()}")
+    harness.pump(8)
+    shot(70, "70-warps-create-form-opened")
+
+    print(f"  author name: {tab.stage_creation_name('qa-new-door')}")
+    harness.pump(8)
+    print(f"    identity={tab.creation_identity()} reason={tab.creation_reason()!r}")
+    shot(71, "71-warps-create-name-authored")
+
+    offered = tab.creation_templates()
+    print(f"  bases offered: {[label for label, _identity in offered]}")
+    harness.pump(6)
+    shot(72, "72-warps-create-base-selected")
+
+    # A region that differs from the base's, stated positionally, plus a facing:
+    # both are authored through the surface, so the staged creation is the author's.
+    region = (
+        (base_record.region.first[0], min(0xFFFF, base_record.region.first[1] + 16)),
+        base_record.region.second,
+    )
+    print(f"  author region {region}: {tab.stage_creation_region(*region)}")
+    print(f"  author facing East: {tab.stage_creation_facing(3)}")
+    harness.pump(8)
+    print(
+        f"    staged={tab.staged_creation_count()} state="
+        f"{tab.creation_form_state()['state']!r} reason={tab.creation_reason()!r}"
+    )
+    shot(73, "73-warps-create-staged-values")
+
+    print(f"  select the created row: {tab.select_row(tab.row_count() - 1)}")
+    harness.pump(8)
+    shot(74, "74-warps-create-staged-row")
+
+    print(f"  apply: {tab.apply_creations()}")
+    harness.pump(10)
+    print(f"    rows: {[tab.row_values(row) for row in range(tab.row_count())]}")
+    shot(75, "75-warps-create-applied-saved")
+
+    # Revert: a second, never-saved creation is discarded with no project residue.
+    name = "qa-reverted-door"
+    print(f"  author a second creation {name!r}")
+    print(f"    close={tab.close_creation()} open={tab.open_creation()}")
+    tab.stage_creation_name(name)
+    tab.stage_creation_region(*region)
+    tab.stage_creation_facing(3)
+    harness.pump(8)
+    print(f"    staged={tab.staged_creation_count()}")
+    print(f"  revert: {tab.revert_creation()}")
+    harness.pump(10)
+    print(
+        f"    staged={tab.staged_creation_count()} "
+        f"file={(project / 'maps' / 'transition_creations.toml').is_file()}"
+    )
+    shot(76, "76-warps-create-reverted")
+
+    print(f"  undo the revert: {tab.undo_stack().canUndo()}")
+    tab.undo_stack().undo()
+    harness.pump(8)
+    print(f"    staged={tab.staged_creation_count()}")
+    tab.undo_stack().redo()
+    harness.pump(8)
+    shot(77, "77-warps-create-undo-redo")
+
+    # A duplicate of a name the project already creates.
+    print(f"  duplicate name: close={tab.close_creation()} open={tab.open_creation()}")
+    tab.stage_creation_name("qa-new-door")
+    harness.pump(8)
+    print(f"    reason={tab.creation_reason()!r} staged={tab.staged_creation_count()}")
+    shot(78, "78-warps-create-duplicate-name-refused")
+
+    if no_base is not None:
+        print(f"  map with no usable base: map:{no_base:04d}")
+        tab.select_source_map(no_base)
+        harness.pump(8)
+        print(f"    refusal={tab.creation_refusal()!r} open={tab.open_creation()}")
+        harness.pump(8)
+        # Inside the guard: a capture named for a refusal must not be written when
+        # the corpus offered no map to refuse.
+        shot(79, "79-warps-create-no-base-on-this-map")
+
+    if shared is not None:
+        print(f"  map on a shared connection root: map:{shared:04d}")
+        tab.select_source_map(shared)
+        harness.pump(8)
+        print(f"    refusal={tab.creation_refusal()!r} open={tab.open_creation()}")
+        harness.pump(8)
+        shot(80, "80-warps-create-shared-root-refused")
+
+    # The narrow window, with a form open and its values authored.
+    print(f"  narrow: back to map:{source_index:04d} with the form open")
+    tab.select_source_map(source_index)
+    tab.open_creation()
+    tab.stage_creation_name("qa-narrow-door")
+    tab.stage_creation_region(*region)
+    tab.stage_creation_facing(2)
+    harness.pump(10)
+    shot(81, "81-warps-create-narrow", size=NARROW)
+    harness.window.resize(DESKTOP)
+    harness.pump(6)
     return written
 
 

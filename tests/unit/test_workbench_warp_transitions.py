@@ -673,14 +673,30 @@ def test_apply_without_a_project_is_refused_with_a_reason(tab, image, monkeypatc
 
 @pytest.fixture
 def reads(monkeypatch):
-    """Count the whole-image and whole-project reads, and the project writes."""
+    """Count the whole-image and whole-project reads, and the project writes.
+
+    ``project`` is the parse that matters: ONE `read_project` supplies BOTH of the
+    project's transition documents, and the two counters next to it are the SDK's
+    own conversions of what that one parse produced
+    (`transition_edits_to_requests`, `transition_creations_to_requests`) - so the
+    surface cannot read the same project twice per mutation as it grows.
+    MAP-WARP-CREATE-WORKBENCH-001 added the second document; the parse count is
+    unchanged.
+    """
     import tools.webfoot.project as project_module
 
-    counts = {"corpus": 0, "project": 0, "labels": 0, "requests": 0, "writes": 0}
+    counts = {
+        "corpus": 0,
+        "project": 0,
+        "labels": 0,
+        "conversions": 0,
+        "writes": 0,
+    }
     real_corpus = mt.read_map_transitions
     real_project = project_module.read_project
     real_labels = mv.read_map_index
-    real_requests = mt.read_project_transition_requests
+    real_edits_to_requests = mt.transition_edits_to_requests
+    real_creations_to_requests = mt.transition_creations_to_requests
     real_writes = mt.set_transition_edits
 
     def corpus(*a, **k):
@@ -695,9 +711,13 @@ def reads(monkeypatch):
         counts["labels"] += 1
         return real_labels(*a, **k)
 
-    def requests(*a, **k):
-        counts["requests"] += 1
-        return real_requests(*a, **k)
+    def edits_to_requests(*a, **k):
+        counts["conversions"] += 1
+        return real_edits_to_requests(*a, **k)
+
+    def creations_to_requests(*a, **k):
+        counts["conversions"] += 1
+        return real_creations_to_requests(*a, **k)
 
     def writes(*a, **k):
         counts["writes"] += 1
@@ -706,7 +726,10 @@ def reads(monkeypatch):
     monkeypatch.setattr(mt, "read_map_transitions", corpus)
     monkeypatch.setattr(project_module, "read_project", project)
     monkeypatch.setattr(mv, "read_map_index", labels)
-    monkeypatch.setattr(mt, "read_project_transition_requests", requests)
+    monkeypatch.setattr(mt, "transition_edits_to_requests", edits_to_requests)
+    monkeypatch.setattr(
+        mt, "transition_creations_to_requests", creations_to_requests
+    )
     monkeypatch.setattr(mt, "set_transition_edits", writes)
     return counts
 
@@ -717,7 +740,7 @@ def test_loading_the_surface_reads_each_domain_once(qapp, reads, image, project)
         "corpus": 1,
         "project": 1,
         "labels": 1,
-        "requests": 1,
+        "conversions": 2,
         "writes": 0,
     }
 
@@ -739,7 +762,7 @@ def test_selecting_and_editing_read_nothing(tab, reads):
         "corpus": 0,
         "project": 0,
         "labels": 0,
-        "requests": 0,
+        "conversions": 0,
         "writes": 0,
     }
 
@@ -751,13 +774,13 @@ def test_one_apply_is_one_write_and_one_reproject_read(tab, reads):
     assert tab.apply_to_project() is True
     # Exact counts, not a bound: the authority reads the canonical corpus once and
     # parses the project once itself, and the surface re-reads the project once to
-    # show what was just written. Nothing here grows with the number of controls,
-    # rows or staged fields.
+    # show what was just written - from which both transition documents are derived.
+    # Nothing here grows with the number of controls, rows or staged fields.
     assert reads == {
         "corpus": 1,
         "project": 2,
         "labels": 0,
-        "requests": 1,
+        "conversions": 2,
         "writes": 1,
     }
 

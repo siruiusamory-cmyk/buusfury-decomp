@@ -1085,10 +1085,12 @@ def test_a_saved_row_opened_into_the_form_keeps_its_binding(tab):
 
 
 def test_a_closed_form_reports_no_stale_state(tab):
-    """The chip states the form's condition whether or not a form is open.
+    """The chip states the FORM's condition whether or not a form is open.
 
-    A closed form that kept the last "New (staged)" would report a state the staged
-    set does not have - to a probe, a capture, or the next reader of the record.
+    A closed form that kept the last "New (staged)" would report a state the form
+    does not have - to a probe, a capture, or the next reader of the record. What is
+    staged is still staged, and Apply still writes it: closing a form is not a
+    gesture, so the row and the enabled Apply are the other half of the same fact.
     """
     assert author_one(tab)
     assert tab.creation_form_state()["state"] == "New (staged)"
@@ -1098,8 +1100,11 @@ def test_a_closed_form_reports_no_stale_state(tab):
     assert state["staged"] is False
     assert state["binding"] is None
     assert state["state"] == "Not staged"
-    assert state["apply_enabled"] is False
-    assert tab.row_values(2)[5] == "New (staged)"  # the ROW still says so
+    # The staged set is untouched by closing, so the row and Apply still say so.
+    assert tab.staged_creation_count() == 1
+    assert state["apply_enabled"] is True
+    assert tab.row_values(2)[5] == "New (staged)"
+    assert tab.apply_creations() is True
 
 
 def test_a_retail_read_of_an_identity_the_corpus_lacks_is_state_not_an_exception(tab):

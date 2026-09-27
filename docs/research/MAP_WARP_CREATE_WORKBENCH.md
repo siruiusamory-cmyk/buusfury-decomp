@@ -444,6 +444,134 @@ I1 and I2 hold in every state. The nine states where Apply does change a held va
 are the intended owned re-authoring - verified directly: the editor owns the entry,
 `_creation_conflicts()` is empty, and its own value is written.
 
+## Final engineering closeout
+
+**Seventh review, frozen candidate
+`21f8473ff3e97fe3c5c1887bbdf3c0fcdf2f8259`: BLOCK, one blocking finding.** The
+reviewer's probe reproduced the last member of the ownership family. A row whose
+identity was BOTH staged and committed showed the author's STAGED values, and
+`_open_creation_row` then set `owned` from the identity's presence in the committed
+map. The form claimed the project's entry while editing something else, the
+write-time exemption read that claim, and one Apply replaced the project's authored
+creation with the stale staged values with no conflict shown. Both halves are one
+rule: ownership must follow the SOURCE of the values on screen.
+
+The owner then closed the review loop for this ticket. `INDEPENDENT REVIEW: NOT
+REPEATED`, for the reason recorded verbatim: *the ticket already underwent repeated
+independent review rounds; later findings converged on permutations of the same
+ownership-state family rather than new architectural areas; the final known failure
+is now addressed by an explicit ownership invariant, exact order-sensitive
+regression, write-time gate, and state-space sweep.*
+
+### The final ownership correction
+
+One correction commit, `1420754`, on top of the reviewed candidate:
+
+* **Ownership follows the displayed value source.** `_open_creation_row` computes
+  `shadowed = identity in self._staged_creations`; a shadowed row claims no ownership
+  and passes `previous=None`, so the staged entry stays staged, the conflict is
+  represented on the form, and the form is bound to nothing. A row whose source IS
+  the project's own entry is unchanged, and still owns it.
+* **The write-time gate stays authoritative.** `apply_creations` still re-reads the
+  project's own document at the boundary and still refuses the whole batch on any
+  conflict; the exemption it applies is now the corrected claim.
+* **The sixth reset site.** A refused Create action clears `_open_creation_owned`
+  with the binding it drops. All eight binding-clearing sites were audited and each
+  pairs the two, as do the two derived writers (`apply_creations`,
+  `_install_creation_state`).
+* **An unreadable project document fails closed.** The boundary no longer falls back
+  to the cached copy: it reports the normal user-visible refusal and writes nothing,
+  because "this surface cannot read the project" must not mean "the project holds
+  nothing".
+* **The gate's comment is scoped to what it guarantees.** The overwrite protection
+  covers creations the form does NOT legitimately own; an entry the form was given is
+  re-authored by its author (last writer wins), which is the behaviour the fifth and
+  sixth rounds fixed and this pass keeps.
+
+### The invariant, redefined off the flag
+
+The earlier sweep trusted `_open_creation_owned`, so a form that set the flag wrongly
+passed it. Every invariant now measures **displayed-source truth** and none of them
+reads the flag:
+
+* **W1** a successful Apply writes exactly what the form DISPLAYED, and may replace an
+  identity the document already held only when the form had been GIVEN that entry (a
+  row opened whose source was the project's own entry, or this form's own earlier
+  Apply), or the identity was not in the document at all;
+* **W2** a refused Apply is a total no-op: document bytes, staged set, undo count,
+  binding and ownership are exactly what they were, and the user was told;
+* **W3** opening a row whose source is the staged set never claims ownership, and
+  opening one whose source is the project's entry does;
+* **W4** a created row shows the staged entry when one exists, else the project's;
+* **W5** a closed form holds no binding and no ownership;
+* **W6** no action other than a successful Apply changes the creation document bytes.
+
+Matrix: source (staged-only / committed-only / staged and committed collision) x form
+(open / closed) x row (clicked before the mutation / clicked after it / never) x
+mutation (none / unrelated connection edit / the same identity introduced) x history
+(none / undo / redo) x action (Apply / Revert / Cancel) = **486 cases**, plus ten
+40-step random sequences, checked after every step. **Result: 2,528 checked states, 0
+findings.**
+
+### Pins and mutations at the final candidate
+
+* `test_cqa06_a_shadowed_row_cannot_write_over_the_project_creation` is the exact
+  order-sensitive regression: author, stage, CLOSE, the project gains the same
+  identity with different values, broadcast, then click that row. It asserts the row
+  still shows the staged values, `owned` is False, there is no binding, the conflict
+  is stated on the form, Apply refuses and the document is byte-for-byte unchanged,
+  the project's own arrival, destination and region survive, the staged creation is
+  still present, and the session boundary is its exit.
+* `test_an_unreadable_project_document_fails_closed_and_writes_nothing` pins the
+  fail-closed read.
+* `test_ownership_clears_when_the_binding_goes` gains the reset-site pin: with the
+  form owning a saved creation, a refused Create action leaves neither binding nor
+  ownership behind.
+
+| id | mutation | regression that failed |
+| --- | --- | --- |
+| M9 | the pre-fix ownership rule restored (identity test plus `previous=identity`) | `test_cqa06_a_shadowed_row_cannot_write_over_the_project_creation` |
+| M10 | an unreadable document falls back to the cached copy | `test_an_unreadable_project_document_fails_closed_and_writes_nothing` |
+| M11 | the refused Create action leaves a stale owned flag | `test_ownership_clears_when_the_binding_goes` |
+
+All three were **CAUGHT**, and `warp_tab.py` was restored **byte-for-byte**:
+SHA-256 `504435d3986ff919a13c3ae2d863a9e05c3564a229380cf0ef5bf63b1ae3a6e8` before and
+after, with no change left behind. One negative result is recorded rather than
+hidden: reverting ONLY the `owned` half of the fix is not observable, because
+`_install_creation_state` overwrites the flag from the resolved state. The defect
+needs both halves, and the combined reversion above is caught.
+
+### Focused validation at the final candidate
+
+* `tests/unit/test_workbench_warp_creation.py` - **78 passed** (76 at the reviewed
+  candidate, plus the two new pins; the reset-site pin extends an existing test).
+* `tests/unit/test_workbench_warp_transitions.py` - **32 passed**.
+* `tests/unit/test_workbench_smoke.py`, `test_workbench_state_and_errors.py` and
+  `test_workbench_map_tab.py` - **55 passed**.
+* Both workflow-budget nodes - **2 passed**.
+* **Focused total: 167 passed**, superseding the 165 recorded above.
+* The creation file was run **three further times** for the QUndo safety claim:
+  **78 passed each time, with no heap corruption** (`0xc0000374`) in any run.
+* `git diff --check` - **clean**; `git diff --numstat` equals
+  `git diff --ignore-cr-at-eol --numstat` for both changed files, and every added
+  line is bare LF.
+* **Not run in this pass, stated rather than implied:** no broad suite, no ROM
+  integration rerun (the correction changes `tools/webfoot/workbench/warp_tab.py`
+  only, and this ticket touched `tools/webfoot/map_transitions.py`, the file that
+  integration file exercises, in **one** commit - the implementation `5bae7e6`), no
+  visual re-capture and no emulator run.
+
+### Known limitation, recorded
+
+A staged creation that the project has come to hold has **no in-surface removal
+path**: a form that did not stage it may not discard it, so Revert restores the form
+to the project's values without removing the entry. This is safe - it writes nothing,
+loses nothing, and always refuses Apply with the reason stated - and its exit is the
+**session boundary**: a project or image reload clears staged work, which the
+regression above exercises directly. A per-row "discard this stale staged creation"
+action would be new surface area, and adding surface area at closeout without review
+is what this pass was told not to do.
+
 ## Not in this sub-pass
 
 * **No emulator/runtime proof.** The parent still owes the human-operated run of a

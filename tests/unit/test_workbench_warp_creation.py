@@ -878,6 +878,12 @@ def test_undo_after_a_source_map_change_does_not_reopen_the_form(tab):
     switch: undoing a gesture while a different map is shown must leave the form
     closed and the staged creation staged, exactly as undoing an existing
     connection's edit does not select a row of the map that is no longer shown.
+
+    The staged creation must then SURVIVE the transition that follows - an
+    unrelated project mutation, which re-derives the form against what the project
+    now holds. A form that is not installed must not be treated as a binding whose
+    entry is to be dropped, or the author's staged work disappears with no message
+    and no undo entry.
     """
     assert author_one(tab)
     assert tab.select_source_map(1) is True
@@ -887,11 +893,23 @@ def test_undo_after_a_source_map_change_does_not_reopen_the_form(tab):
     assert tab.creation_open() is False
     assert tab.source_map_index() == 1
     assert tab.staged_creation_count() == 1
+    # The state the surface reports is coherent: no form, and a staged creation.
+    state = tab.creation_form_state()
+    assert state["open"] is False and state["staged"] is False
+    assert tab.unsaved_edit_count() == 1
+
+    tab.on_project_mutated()
+    assert tab.staged_creation_count() == 1
+    assert tab.creation_open() is False
+
     tab.undo_stack().redo()
     assert tab.creation_open() is False
-    # The staged creation is intact on its own map.
+    assert tab.staged_creation_count() == 1
+    # The staged creation is intact on its own map, staged and applicable.
     assert tab.select_source_map(0) is True
     assert tab.row_values(2)[5] == "New (staged)"
+    assert tab.apply_creations() is True
+    assert tab.saved_creation(NEW_DOOR.key) is not None
 
 
 def test_closing_the_form_leaves_no_row_highlighted(tab):

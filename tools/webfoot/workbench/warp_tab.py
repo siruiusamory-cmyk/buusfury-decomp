@@ -1726,17 +1726,22 @@ class WarpTab(QWidget):
         `previous != identity` - because "author a second transition with this name"
         and "re-author the one that exists" are different intentions and only the
         second may overwrite a document entry.
+
+        A NONE draft states nothing about the staged set, so it drops nothing: the
+        pop below happens only for a draft that is actually being replaced. (Dropping
+        the binding's entry here was how a closed form plus a project mutation lost an
+        author's staged creation.)
         """
-        staged = dict(self._staged_creations)
-        if previous is not None:
-            staged.pop(previous, None)
         if draft is None:
             return CreationState(
                 draft=None,
-                staged=_staged_snapshot(staged),
+                staged=_staged_snapshot(self._staged_creations),
                 open_key=None,
                 reason=None,
             )
+        staged = dict(self._staged_creations)
+        if previous is not None:
+            staged.pop(previous, None)
         creation, reason = self._creation_from_draft(draft)
         if creation is None:
             return CreationState(draft, _staged_snapshot(staged), None, reason)
@@ -1789,18 +1794,22 @@ class WarpTab(QWidget):
         belongs to one map, the map bar is what says which, and undoing a gesture
         after the map bar moved must not reopen a form against a map the author is
         not looking at - the same way an undo of an existing connection's edit does
-        not select a row of the map that is no longer shown.
+        not select a row of the map that is no longer shown. Its BINDING goes with
+        it: a draft that is not installed cannot be the thing a staged entry belongs
+        to, and the staged set itself is carried through untouched.
         """
         draft = state.draft
+        open_key = state.open_key
         if (
             draft is not None
             and self._source_index is not None
             and draft.source.index != self._source_index
         ):
             draft = None
+            open_key = None
         self._creation = draft
         self._staged_creations = dict(state.staged)
-        self._open_creation_key = state.open_key
+        self._open_creation_key = open_key
         self._creation_refusal_text = state.reason
         self._creation_action_refusal = None
         self._populate_rows()

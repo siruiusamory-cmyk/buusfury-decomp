@@ -1205,6 +1205,7 @@ class WarpTab(QWidget):
                 if self._open_creation_key is not None
                 else None
             ),
+            "owned": self._open_creation_owned,
             "state": self._creation_chip.accessibleName(),
             "reason": self._creation_refusal_text,
             "refusal": self.creation_refusal(),
@@ -1295,6 +1296,28 @@ class WarpTab(QWidget):
             lambda draft: draft.replaced(facing=direction)
         )
 
+    def _creation_conflicts(self, committed: dict | None = None) -> dict:
+        """Staged creations this project now holds and this form may not write.
+
+        The resolve-time gate can only be trusted for an OPEN form, and every
+        write crosses `apply_creations`, so the rule is stated once more at that
+        boundary: a staged creation whose identity the project already creates is
+        writable only by a form that legitimately owns that entry - one opened
+        from the project's own row, or one that applied it. Anything else is a
+        stale staged creation colliding with authored data, and the whole batch is
+        refused rather than partially written or silently adopted.
+        """
+        if committed is None:
+            committed = self._committed_creations
+        conflicts: dict = {}
+        for identity, _creation in self._staged_creations.items():
+            if identity not in committed:
+                continue
+            if self._open_creation_owned and self._open_creation_key == identity:
+                continue
+            conflicts[identity] = committed[identity]
+        return conflicts
+
     def apply_creations(self) -> bool:
         """Commit every staged creation in ONE semantic project write.
 
@@ -1314,6 +1337,24 @@ class WarpTab(QWidget):
             return False
         if image is None or profile is None:
             self._report_error("Apply new transition", _NO_IMAGE)
+            return False
+        # The FINAL authority reads the project's own document rather than trusting
+        # the last broadcast: a second instance, a hand edit or a CLI write must
+        # not be overwritten by a staged creation that predates it.
+        try:
+            committed = dict(mt.read_project_transition_creations(project))
+        except _WARP_ERRORS:
+            committed = dict(self._committed_creations)
+        conflicts = self._creation_conflicts(committed)
+        if conflicts:
+            identity = sorted(conflicts)[0]
+            self._report_error(
+                "Apply new transition",
+                f"{identity} is already a transition this project creates, and "
+                "this staged creation does not own it, so nothing was written. "
+                "Revert that staged creation, or open the project's own row to "
+                "re-author it.",
+            )
             return False
         try:
             changed = mt.set_transition_creations(
@@ -1939,10 +1980,14 @@ class WarpTab(QWidget):
             return False
         self._creation = _draft_from_creation(creation)
         # The draft IS the entry this row shows, so it is re-derived rather than
-        # treated as a second creation of the same identity.
-        self._open_creation_owned = True
+        # treated as a second creation of the same identity. Ownership follows the
+        # SOURCE of the values, not the click: only the project's own committed
+        # entry may be re-authored, never the author's staged creation that happens
+        # to share the identity.
+        owned = identity in self._committed_creations
+        self._open_creation_owned = owned
         self._install_creation_state(
-            self._resolve_creation_state(self._creation, identity, True)
+            self._resolve_creation_state(self._creation, identity, owned)
         )
         return True
 
@@ -2627,6 +2672,7 @@ class WarpTab(QWidget):
             # is discarded, exactly as selecting another connection discards it.
             self._creation = None
             self._open_creation_key = None
+            self._open_creation_owned = False
             self._creation_refusal_text = None
         self._populate_creation_templates()
         self._populate_rows()
@@ -2648,6 +2694,7 @@ class WarpTab(QWidget):
         else:
             self._creation = None
             self._open_creation_key = None
+            self._open_creation_owned = False
             self._creation_refusal_text = None
         self._refresh_pages()
 

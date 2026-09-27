@@ -382,7 +382,7 @@ def test_the_authored_name_becomes_a_durable_identity(tab):
     assert NEW_DOOR.key.count(":") == 2
 
 
-@pytest.mark.parametrize("name", ["", "Door", "1door", "-door", "door name", "døor"])
+@pytest.mark.parametrize("name", ["", "Door", "1door", "-door", "door name", "dÃ¸or"])
 def test_an_invalid_name_is_refused_with_the_production_wording(tab, name):
     """The name rule is the production model's, and its message is what is shown."""
     assert tab.open_creation()
@@ -1084,6 +1084,163 @@ def test_a_saved_row_opened_into_the_form_keeps_its_binding(tab):
     assert tab.saved_creation(NEW_DOOR.key).arrival == TransitionArrival(60, 70)
 
 
+@pytest.fixture
+def quiet_dialogs(monkeypatch):
+    """A refused Apply raises a warning dialog; the tests record it instead."""
+    shown: list[str] = []
+    monkeypatch.setattr(
+        wt.QMessageBox, "warning", staticmethod(lambda *a, **k: shown.append(a[2]))
+    )
+    return shown
+
+
+def project_creation(*, arrival=ARRIVAL, destination=None, facing=FACING_EAST):
+    """A creation the PROJECT holds, for the conflict shapes."""
+    return mt.TransitionCreation(
+        identity=NEW_DOOR,
+        template=TEMPLATE,
+        destination=destination if destination is not None else MapIdentity(2),
+        region=TransitionRegion(first=(1, 2), second=(3, 4)),
+        arrival=TransitionArrival(*arrival),
+        facing=facing,
+    )
+
+
+def the_project_gains(project, image, *, arrival=ARRIVAL):
+    """The project comes to create NEW_DOOR itself: a peer Apply, a Save As, a CLI."""
+    request = project_creation(arrival=arrival)
+    assert mt.set_transition_creations(
+        project, profile_for(image), image, {NEW_DOOR: request}
+    ) is True
+    return request
+
+
+def stored_in(project, identity=NEW_DOOR):
+    """What the project's own DOCUMENT holds: the surface's cache may be stale."""
+    authored = mt.read_project_transition_creations(project).get(identity)
+    return None if authored is None else authored.creation
+
+
+def test_a_closed_form_cannot_write_a_staged_creation_the_project_now_holds(
+    tab, project, image, quiet_dialogs
+):
+    """CLOSED FORM: the write boundary must refuse a stale staged creation.
+
+    A form that is not open cannot own anything, so a staged creation it left behind
+    is refused if the project has come to hold that identity - even when no
+    broadcast has reached this tab, because the boundary reads the project's own
+    document rather than trusting cached state.
+    """
+    assert author_one(tab)
+    assert tab.close_creation() is True
+    held = the_project_gains(project, image, arrival=(11, 12))
+    # No on_project_mutated(): the staged entry is stale and the surface cannot know.
+    assert tab.apply_creations() is False
+    assert quiet_dialogs and "already a transition this project creates" in quiet_dialogs[0]
+    stored = stored_in(project)
+    assert stored is not None and stored.arrival == held.arrival
+    assert stored.destination == held.destination
+    assert stored.region == held.region
+
+
+def test_a_project_mutation_conflict_is_refused_and_writes_nothing(
+    tab, project, image, quiet_dialogs
+):
+    """A broadcast plus Apply must refuse too, and write nothing at all."""
+    assert author_one(tab)
+    assert tab.close_creation() is True
+    held = the_project_gains(project, image, arrival=(11, 12))
+    tab.on_project_mutated()
+    assert tab.apply_creations() is False
+    assert quiet_dialogs
+    assert stored_in(project).arrival == held.arrival
+    text = (project / TRANSITION_CREATION_FILE).read_text(encoding="utf-8")
+    assert "arrival = [11, 12]" in text
+
+
+def test_an_undone_stale_binding_cannot_write_over_the_project_creation(
+    tab, project, image, quiet_dialogs
+):
+    """UNDO: reinstating a captured staged state must not reopen the write."""
+    assert author_one(tab)
+    held = the_project_gains(project, image, arrival=(11, 12))
+    tab.on_project_mutated()
+    assert tab.staged_creation_count() == 0
+    tab.undo_stack().undo()
+    assert tab.staged_creation_count() == 1
+    assert tab.creation_form_state()["owned"] is False
+    assert tab.apply_creations() is False
+    assert quiet_dialogs
+    assert tab.saved_creation(NEW_DOOR.key).arrival == held.arrival
+
+
+def test_clicking_a_staged_row_does_not_claim_the_project_entry(tab, project, image):
+    """STAGED ROW: ownership follows the source of the values, not the click."""
+    assert author_one(tab)
+    assert tab.close_creation() is True
+    assert tab.select_row(2) is True
+    # The row's values are the author's STAGED creation, not the project's entry.
+    assert tab.creation_form_state()["owned"] is False
+    assert tab.creation_form_state()["binding"] == NEW_DOOR.key
+    # The project then comes to create the name, with different values.
+    held = the_project_gains(project, image, arrival=(11, 12))
+    tab.on_project_mutated()
+    assert tab.creation_form_state()["owned"] is False
+    assert tab.apply_creations() is False
+    assert tab.saved_creation(NEW_DOOR.key).arrival == held.arrival
+
+
+def test_a_conflicting_batch_is_refused_atomically(tab, project, image, quiet_dialogs):
+    """ONE conflicting member refuses the WHOLE batch: nothing is written."""
+    second = mt.CreatedTransitionIdentity(MapIdentity(0), "second-door")
+    assert author_one(tab)
+    assert tab._staged_creations.get(NEW_DOOR) is not None
+    # A second, perfectly valid staged creation alongside the one that will conflict.
+    other = project_creation(arrival=(21, 22))
+    other = mt.TransitionCreation(
+        identity=second,
+        template=TEMPLATE,
+        destination=MapIdentity(3),
+        region=TransitionRegion(first=(5, 6), second=(7, 8)),
+        arrival=TransitionArrival(21, 22),
+        facing=None,
+    )
+    tab._staged_creations[second] = other
+    assert tab.staged_creation_count() == 2
+
+    held = the_project_gains(project, image, arrival=(11, 12))
+    assert tab.apply_creations() is False
+    assert quiet_dialogs
+    # Neither member was written, and the project's own values are untouched.
+    assert stored_in(project).arrival == held.arrival
+    assert stored_in(project, second) is None
+    text = (project / TRANSITION_CREATION_FILE).read_text(encoding="utf-8")
+    assert "second-door" not in text
+    assert tab.staged_creation_count() == 2
+
+
+def test_ownership_clears_when_the_binding_goes(tab, project):
+    """No stale ``owned`` may survive the binding it describes."""
+    assert author_one(tab)
+    assert tab.apply_creations() is True
+    assert tab.close_creation() is True
+    assert tab.select_row(2) is True
+    assert tab.creation_form_state()["owned"] is True  # the project's own entry
+    assert tab.close_creation() is True
+    state = tab.creation_form_state()
+    assert state["binding"] is None and state["owned"] is False
+    # Selecting a canonical row clears both, and so does a source-map change.
+    assert tab.select_row(2) is True
+    assert tab.creation_form_state()["owned"] is True
+    assert tab.select_row(0) is True
+    state = tab.creation_form_state()
+    assert state["binding"] is None and state["owned"] is False
+    assert tab.select_row(2) is True
+    assert tab.select_source_map(1) is True
+    state = tab.creation_form_state()
+    assert state["binding"] is None and state["owned"] is False
+
+
 def test_staging_a_name_does_not_claim_a_creation_the_project_later_gains(
     tab, project, image
 ):
@@ -1474,13 +1631,15 @@ def test_one_creation_apply_is_one_write_and_one_reproject_read(tab, reads):
     for key in reads:
         reads[key] = 0
     assert tab.apply_creations() is True
-    # Exact counts, not a bound: the authority reads the canonical corpus once and
-    # parses the project once itself, and the surface re-reads the project once to
-    # show what was just written. Nothing grows with the number of controls, rows or
+    # Exact counts, not a bound: the authority reads the canonical corpus once, the
+    # surface reads the project's own document once at the write boundary so the
+    # ownership gate is authoritative rather than trusting cached state, and the
+    # authority parses the project once itself; the surface then re-reads it to show
+    # what was just written. Nothing grows with the number of controls, rows or
     # staged creations.
     assert reads == {
         "corpus": 1,
-        "project": 2,
+        "project": 3,
         "labels": 0,
         "checks": 0,
         "writes": 1,

@@ -1,21 +1,28 @@
 # MAP-WARP-CREATE-WORKBENCH-001 - the Warps surface's Create Transition action
 
-STATUS: **IMPLEMENTED AND VISUALLY QA'd (2026-09-26).** Class: GUI and
-project-surface pass. This is a **sub-pass of the parent capability
+STATUS: **IMPLEMENTED, ISOLATED AND INDEPENDENTLY REVIEWED (2026-09-27).** Class:
+GUI and project-surface pass. This is a **sub-pass of the parent capability
 `MAP-WARPS-AND-CONNECTIONS-001`**, which stays active and **unshipped** in
 [`PROJECT_<local-state-name>`](PROJECT_<local-state-name>). Nothing here ships the parent: the capability count is
 unchanged and the registry is untouched.
 
 Baseline: `87a47ff721896a1d99632e78ff7cf6032cf9f8ae` (the commit that recorded
-`MAP-WARP-CREATE-PROJECT-001` as merged; verified with `git rev-parse HEAD` at
-ticket start).
+`MAP-WARP-CREATE-PROJECT-001` as merged; verified with `git fetch origin --prune`
+and `git rev-parse origin/master` at isolation time). **No drift:** origin/master,
+the primary checkout's HEAD and the ticket baseline were all that one commit.
 
-Worktree: `<checkout>` - the main checkout, **not** a ticket worktree.
-`docs/DEVELOPMENT.md` already carried one unrelated uncommitted change at ticket start (an
-8-line permanent-rule paragraph); it was preserved and is reported below.
+Worktree: `<ticket-worktrees>\map-warp-create-workbench-001` on
+`ticket/map-warp-create-workbench-001`, created from the clean baseline. The work
+was first implemented in the primary checkout, which was **dirty with an unrelated
+uncommitted `docs/DEVELOPMENT.md` change** (an 8-line permanent-rule paragraph belonging to
+other work). That paragraph was **not** carried into this ticket: the primary
+checkout was left untouched as source material, and only this ticket's own hunks
+were transplanted. The primary checkout is still dirty with it, by design.
 
-Implementation: **uncommitted** in the working tree, per the normal ticket pattern.
-No commit was created for this pass.
+Implementation: **committed** on the ticket branch. This document is committed at
+the frozen candidate below; the earlier status of this record, which described an
+uncommitted implementation and the primary checkout's pre-isolation test totals, is
+superseded.
 
 **public progress impact: NONE.** No capability ships: the `warps` capability is
 still `missing`, `src/data/capabilities.json` and the public site are untouched,
@@ -148,28 +155,39 @@ documents (the previous run measured one parse of the edits document).
 | `tests/unit/test_map_transition_create.py` | passed |
 | `tests/unit/test_map_transition_project.py` | passed |
 | `tests/unit/test_map_transitions.py` | passed |
-| `tests/unit/test_workflow_migration.py` | 13 passed, 1 failed (see below) |
+| `tests/unit/test_workflow_migration.py` | 13 passed, 1 failed |
 | `tests/unit/test_code_review_workflow.py` | passed except the same budget bound |
 | `tests/unit/test_workbench_smoke.py` | passed |
 | `tests/unit/test_workbench_state_and_errors.py` | passed |
 | `tests/unit/test_workbench_map_tab.py` | passed |
 | **total** | **345 passed, 2 failed** |
 
-The two failures are **pre-existing and not caused by this pass**: both are the
-`docs/DEVELOPMENT.md <= 300` line budget, and the working tree already carried **+8 uncommitted
-lines** (the unrelated permanent-rule paragraph present at ticket start). This pass's
-own docs/DEVELOPMENT.md change is **net zero** - 21 lines added, 21 removed, inside a file diff
-of `29 21` (`git diff --numstat`) where the other 8 insertions and 0 deletions are
-that paragraph - because the new rule was condensed into the existing Full-Suite
-Policy rather than moved into new lines. HEAD's `docs/DEVELOPMENT.md` is 300 lines; the tree is
-308 with or without this pass's hunk. The unrelated paragraph was preserved
-untouched, and so was the budget failure it causes.
+That run was taken in the **primary checkout**, whose `docs/DEVELOPMENT.md` carries the
+unrelated **+8 uncommitted lines** described above. Both failures were the
+`docs/DEVELOPMENT.md <= 300` budget, caused by those 8 lines and not by this pass: this pass's
+own docs/DEVELOPMENT.md change is a **21-for-21 line replacement** inside the Full-Suite
+Policy section. `git diff --check` there reported only the eight lines of that
+paragraph.
 
-`git diff --check` is **clean for every line this pass added** (the added lines are
-bare LF, per [`../line-endings.md`](../line-endings.md)) and reports only the eight
-lines 81-88 of that pre-existing paragraph, whose endings this pass did not touch.
-No file shows ending churn: `git diff --numstat` and
-`git diff --ignore-cr-at-eol --numstat` agree exactly for every changed file.
+**On the isolated candidate all of this is resolved.** The unrelated paragraph is
+absent, so `docs/DEVELOPMENT.md` is **300 lines** and both budget nodes **pass**
+(`test_required_workflow_files_exist_and_are_bounded`,
+`test_instruction_continuations_remain_within_established_bounds`), and
+`git diff --check` is **clean, with no findings at all**. No file shows ending
+churn: `git diff --numstat` and `git diff --ignore-cr-at-eol --numstat` agree
+exactly for every changed file, and every line this pass added is bare LF per
+[`../line-endings.md`](../line-endings.md).
+
+### Isolated candidate validation
+
+In the clean ticket worktree, over the corrected tip:
+
+- `tests/unit/test_workbench_warp_creation.py` (61) and
+  `tests/unit/test_workbench_warp_transitions.py` (32) - **93 passed**.
+- Both workflow-budget nodes - **2 passed**.
+- `tests/unit/test_workbench_smoke.py`, `test_workbench_state_and_errors.py`,
+  `test_workbench_map_tab.py` - **55 passed**.
+- `git diff --check` - **clean**; `docs/DEVELOPMENT.md` **300** lines.
 
 ### ROM integration, one named file
 
@@ -178,9 +196,12 @@ the real 8 MiB canonical image. It is the strongest bound on the SDK refactor: t
 refactored template lookup, priors measurement and `set_transition_creations` are
 exercised over the real corpus and the real build.
 
-No other integration file was run: the refactor is confined to the creation-side
-facade and the edit path is byte-unchanged, so the focused files plus the one ROM file
-bound the blast radius.
+The candidate's production files are **byte-identical** to the versions that run
+tested (`tools/webfoot/map_transitions.py` and, at that time,
+`tools/webfoot/workbench/warp_tab.py`, verified by SHA-256), so the result
+transfers. The worktree's later `warp_tab.py` corrections are GUI-only and are
+covered by the focused files above; the ROM file was **not** re-run, and that is
+recorded here rather than implied.
 
 ### Mutations, each observed and restored
 
@@ -238,6 +259,43 @@ Post-fix captures were re-opened and inspected (`build/qa/warp-create-1` for the
 first round, `-2` for the fixes, `-3` for the last two). The shell's 813x450 minimum
 holds at 1100x720 with the form open; nothing clips. Captures are local, ignored QA
 artifacts; nothing ROM-derived is committed.
+
+## Independent review
+
+`the local reviewer`, the instrument the previous sub-passes used, **could not run in this
+environment**: the harness's local launch planned a `the reviewer --cloud` invocation and
+its job (`cl-20260927-054453-0068e4`) failed with no session, cloud-session attach
+is not enabled for this account, and a direct local headless run of the installed
+CLI (2.1.280) returned `Failed to authenticate: OAuth session expired and could not
+be refreshed`. The review was therefore performed by the harness's **fresh-context
+reviewer** (a separate agent with no implementer context), which is what the gate in
+[`../../docs/DEVELOPMENT.md`](../../docs/DEVELOPMENT.md) requires of any instrument. A the reviewer verdict
+remains available to the owner by re-authenticating the CLI.
+
+**First review, frozen candidate `7d5e4a950ba19f4c3a4c723c3d65e79a56d2cec4`:
+APPROVE WITH NON-BLOCKING NOTES, zero blocking findings.** It confirmed all 22
+required judgements by reading the whole of `warp_tab.py` and the authority, and
+reproduced the focused counts (90 passed), both budget nodes and the clean
+`--diff --check` itself. It also confirmed `test_cqa06_a_programmer_error_in_a_slot_is_loud`
+does pin the undo correction, having verified by experiment that a raising
+`redo()` leaves the command on the stack (count 1) - which is what the regression's
+`undo_stack().count() == 0` assertion discriminates.
+
+Six non-blocking notes were raised. Three were corrected in the candidate the
+reviewer reviewed plus one correction commit, and three are recorded as accepted:
+
+| # | note | disposition |
+| --- | --- | --- |
+| 1 | `_retail` called the corpus unguarded, a latent raise on the path `undo()`/`redo()` reach through `_install_creation_state` | **CORRECTED** - the call is guarded, so nothing on that path can raise; pinned by `test_a_retail_read_of_an_identity_the_corpus_lacks_is_state_not_an_exception` |
+| 2 | undo after a source-map change reinstated a creation form for a different map | **CORRECTED** - an install that belongs to another source map no longer reinstates the draft; pinned by `test_undo_after_a_source_map_change_does_not_reopen_the_form` |
+| 3 | with a saved creation open and its draft refused, the chip reads "Not staged" while the row reads "New (saved)" | accepted: wording, not correctness - the row describes the project and the reason line states the refusal |
+| 4 | `close_creation` left the created row highlighted while the pane said nothing was selected | **CORRECTED** - the current item and the selection are both cleared, so the highlight does not outlive the pane; pinned by `test_closing_the_form_leaves_no_row_highlighted` |
+| 5 | this record described the primary checkout's uncommitted state and its pre-isolation totals | **CORRECTED** - this document |
+| 6 | the docs/DEVELOPMENT.md hunk narrowed the full-suite trigger list and dropped two triggers | **CORRECTED** - the enumerated triggers ("VM assembler/decoder", "build/extract", "transaction logic", "dependencies", a fix affecting unrelated systems, a prior failure signalling broader risk) are restored, with the speed rule condensed so the file stays at 300 lines |
+
+The correction is a **production change**, so per the ticket's own rule the corrected
+tip is a **new frozen candidate** and takes a **fresh review**; that verdict is
+recorded below with its commit. No reviewed commit was amended.
 
 ## Not in this sub-pass
 

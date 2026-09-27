@@ -356,6 +356,13 @@ class CreationState:
     open_key: object = None
     #: Why the draft is not staged, in the authority's own words where it refused.
     reason: str | None = None
+    #: Whether ``open_key`` was learned from the PROJECT's own entry - a saved
+    #: creation opened into this form from its row, or this form's own Apply -
+    #: rather than from a gesture that merely staged a new one. It is what
+    #: separates "re-authoring the creation the project holds" from "a second
+    #: creation asking for a durable name", and only the first may pass the
+    #: saved-identity gate.
+    owned: bool = False
 
 
 def _staged_snapshot(staged) -> tuple:
@@ -661,6 +668,10 @@ class WarpTab(QWidget):
         #: not staged. It is what lets a rename or a revert drop the entry the form
         #: held without touching a creation another draft staged.
         self._open_creation_key = None
+        #: Whether that binding came from the PROJECT's own entry (a saved row
+        #: opened into this form, or this form's Apply) rather than from a gesture
+        #: that merely staged a new one.
+        self._open_creation_owned = False
         #: Why the open creation is not staged right now, in the authority's own
         #: words where the authority refused it. Rendered beside the form.
         self._creation_refusal_text: str | None = None
@@ -885,6 +896,7 @@ class WarpTab(QWidget):
         self._staged_creations = {}
         self._creation = None
         self._open_creation_key = None
+        self._open_creation_owned = False
         self._labels = {}
         self._selected = None
         self._source_index = None
@@ -1112,6 +1124,7 @@ class WarpTab(QWidget):
             draft = self._fresh_creation_draft(source)
             self._creation = draft
             self._open_creation_key = None
+            self._open_creation_owned = False
             self._install_creation_state(self._resolve_creation_state(draft, None))
             return True
         self._pages.setCurrentIndex(1)
@@ -1130,6 +1143,7 @@ class WarpTab(QWidget):
             return False
         self._creation = None
         self._open_creation_key = None
+        self._open_creation_owned = False
         self._creation_refusal_text = None
         # Clearing the selection emits Qt's selection signal, and its handler would
         # reopen this very form off the row that is still current - so the clearing
@@ -1317,6 +1331,9 @@ class WarpTab(QWidget):
         applied_key = self._open_creation_key
         self._staged_creations.clear()
         self._open_creation_key = applied_key if applied_key in applied else None
+        # The form applied this creation, so it now owns the PROJECT's entry: that is
+        # what lets it be re-authored in place without re-claiming the name.
+        self._open_creation_owned = applied_key in applied
         self._undo_stack.clear()
         self._reload_committed()
         self._reapply_creation()
@@ -1359,7 +1376,7 @@ class WarpTab(QWidget):
             )
             self._refresh_pages()
             return False
-        after = self._resolve_creation_state(target, before.open_key)
+        after = self._resolve_creation_state(target, before.open_key, before.owned)
         # Whether anything was staged is read from the state captured BEFORE the
         # command ran: `redo()` has already replaced the live staged set.
         was_staged = before.open_key is not None and before.open_key in dict(before.staged)
@@ -1723,7 +1740,9 @@ class WarpTab(QWidget):
             self._publish_status("The new transition already holds these values.")
             self._refresh_pages()
             return False
-        after = self._resolve_creation_state(after_draft, self._open_creation_key)
+        after = self._resolve_creation_state(
+            after_draft, self._open_creation_key, self._open_creation_owned
+        )
         self._undo_stack.push(StageCreationCommand(self, before, after))
         return True
 
@@ -1734,10 +1753,11 @@ class WarpTab(QWidget):
             staged=_staged_snapshot(self._staged_creations),
             open_key=self._open_creation_key,
             reason=self._creation_refusal_text,
+            owned=self._open_creation_owned,
         )
 
     def _resolve_creation_state(
-        self, draft: "CreationDraft | None", previous
+        self, draft: "CreationDraft | None", previous, owned: bool = False
     ) -> "CreationState":
         """The state a draft produces: compose it, consult the authority, stage it.
 
@@ -1748,11 +1768,14 @@ class WarpTab(QWidget):
         first and re-derived below, while a creation ANOTHER draft staged under the
         same identity survives and is reported as the conflict it is.
 
-        A durable identity may be claimed by ONE creation. A name the project
-        already creates is therefore refused for a form that is not bound to it -
-        `previous != identity` - because "author a second transition with this name"
-        and "re-author the one that exists" are different intentions and only the
-        second may overwrite a document entry.
+        A durable identity may be claimed by ONE creation, and the saved-identity
+        gate needs BOTH halves of that claim: the binding must be this identity AND
+        it must have come from the project's own entry (``owned`` - a saved row
+        opened into this form, or this form's Apply). A form that merely STAGED the
+        name has not been given the project's entry, so when the project comes to
+        create that name - a peer Apply, a Save As, a project opened over the
+        session - its next gesture states the conflict instead of staging an
+        overwrite of authored data.
 
         A NONE draft states nothing about the staged set, so it drops nothing: the
         pop below happens only for a draft that is actually being replaced. (Dropping
@@ -1773,8 +1796,9 @@ class WarpTab(QWidget):
         if creation is None:
             return CreationState(draft, _staged_snapshot(staged), None, reason)
         identity = creation.identity
+        reauthoring = previous == identity and owned
         saved = self._committed_creations.get(identity)
-        if saved is not None and previous != identity:
+        if saved is not None and not reauthoring:
             return CreationState(
                 draft,
                 _staged_snapshot(staged),
@@ -1796,10 +1820,10 @@ class WarpTab(QWidget):
             )
         # A binding is recorded ONLY where the form learns one: here, when it stages
         # its own creation (the last branch), or a binding it already held. A refusal
-        # must never CREATE one - a form refused over an identity the project creates
-        # would otherwise become that identity's owner, and the next gesture would
-        # stage an overwrite of the saved creation with no conflict ever shown.
-        bound = identity if previous == identity else None
+        # must never CREATE one. `owned` is carried through unchanged, because a form
+        # re-authoring the project's entry stays that entry's author while it edits.
+        bound = previous if reauthoring else None
+        bound_owned = owned if reauthoring else False
         if saved is not None and saved.creation == creation:
             staged.pop(identity, None)
             return CreationState(
@@ -1808,13 +1832,21 @@ class WarpTab(QWidget):
                 bound,
                 f"The project already holds exactly this transition ({identity}); "
                 "nothing is staged.",
+                bound_owned,
             )
         refusal = self._check_creation(creation)
         if refusal is not None:
             staged.pop(identity, None)
-            return CreationState(draft, _staged_snapshot(staged), bound, refusal)
+            return CreationState(
+                draft, _staged_snapshot(staged), bound, refusal, bound_owned
+            )
         staged[identity] = creation
-        return CreationState(draft, _staged_snapshot(staged), identity, None)
+        # The form just staged its own creation, so the binding is its; whether it
+        # is authoring the PROJECT's entry is what `owned` records, carried from the
+        # form's previous state.
+        return CreationState(
+            draft, _staged_snapshot(staged), identity, None, bound_owned
+        )
 
     def _install_creation_state(self, state: "CreationState") -> None:
         """Install a resolved state. The one place the creation surface changes.
@@ -1833,6 +1865,7 @@ class WarpTab(QWidget):
         """
         draft = state.draft
         open_key = state.open_key
+        owned = state.owned
         if (
             draft is not None
             and self._source_index is not None
@@ -1840,9 +1873,11 @@ class WarpTab(QWidget):
         ):
             draft = None
             open_key = None
+            owned = False
         self._creation = draft
         self._staged_creations = dict(state.staged)
         self._open_creation_key = open_key
+        self._open_creation_owned = owned
         self._creation_refusal_text = state.reason
         # The refused-Create reason is NOT cleared here: a project mutation or an
         # unrelated Apply is not the author changing what they asked about. It goes
@@ -1872,7 +1907,9 @@ class WarpTab(QWidget):
         nowhere else.
         """
         self._install_creation_state(
-            self._resolve_creation_state(self._creation, self._open_creation_key)
+            self._resolve_creation_state(
+                self._creation, self._open_creation_key, self._open_creation_owned
+            )
         )
 
     def _creation_values(self, identity) -> "mt.TransitionCreation | None":
@@ -1903,7 +1940,10 @@ class WarpTab(QWidget):
         self._creation = _draft_from_creation(creation)
         # The draft IS the entry this row shows, so it is re-derived rather than
         # treated as a second creation of the same identity.
-        self._install_creation_state(self._resolve_creation_state(self._creation, identity))
+        self._open_creation_owned = True
+        self._install_creation_state(
+            self._resolve_creation_state(self._creation, identity, True)
+        )
         return True
 
     def _sync_creation_widgets(self) -> None:
@@ -2100,6 +2140,7 @@ class WarpTab(QWidget):
         self._populate_destination_maps()
         self._creation = None
         self._open_creation_key = None
+        self._open_creation_owned = False
         self._creation_refusal_text = None
         self._creation_action_refusal = None
         self._populate_rows()

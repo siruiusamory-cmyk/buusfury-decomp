@@ -1084,6 +1084,65 @@ def test_a_saved_row_opened_into_the_form_keeps_its_binding(tab):
     assert tab.saved_creation(NEW_DOOR.key).arrival == TransitionArrival(60, 70)
 
 
+def test_staging_a_name_does_not_claim_a_creation_the_project_later_gains(
+    tab, project, image
+):
+    """Staging a name is not the same as being given the project's entry for it.
+
+    The saved-identity gate needs both halves: the binding must be this identity AND
+    it must have come from the project - a saved row opened into this form, or this
+    form's Apply. A form that merely STAGED the name has not been given the project's
+    entry, so when the project comes to create that name (a peer Apply, a Save As, a
+    project opened over this session) its next gesture must state the conflict
+    instead of staging an overwrite of authored data.
+    """
+    assert author_one(tab)
+    staged = tab.staged_creation(NEW_DOOR.key)
+    assert staged is not None
+    assert tab.creation_form_state()["binding"] == NEW_DOOR.key
+
+    # The project gains that identity with DIFFERENT values.
+    other = mt.TransitionCreation(
+        identity=NEW_DOOR,
+        template=TEMPLATE,
+        destination=MapIdentity(2),
+        region=TransitionRegion(first=(1, 2), second=(3, 4)),
+        arrival=TransitionArrival(11, 12),
+        facing=None,
+    )
+    assert mt.set_transition_creations(
+        project, profile_for(image), image, {NEW_DOOR: other}
+    ) is True
+    tab.on_project_mutated()
+    assert tab.saved_creation(NEW_DOOR.key).arrival == TransitionArrival(11, 12)
+
+    # One ordinary gesture must state the conflict, not stage an overwrite.
+    tab.stage_creation_arrival(60, 70)
+    assert tab.staged_creation_count() == 0
+    assert "durable" in (tab.creation_reason() or "")
+    assert tab.creation_form_state()["apply_enabled"] is False
+    assert tab.apply_creations() is False
+    stored = tab.saved_creation(NEW_DOOR.key)
+    assert stored.arrival == TransitionArrival(11, 12)
+    assert stored.destination == MapIdentity(2)
+    assert stored.region == TransitionRegion(first=(1, 2), second=(3, 4))
+
+
+def test_the_project_s_own_entry_may_still_be_re_authored(tab, project, image):
+    """The other half of the rule: a form GIVEN the project's entry may update it."""
+    assert author_one(tab)
+    assert tab.apply_creations() is True
+    assert tab.close_creation() is True
+    assert tab.select_row(2) is True
+    assert tab.creation_form_state()["binding"] == NEW_DOOR.key
+    # Opened from the project's own row, so a value change is an update, not a claim.
+    tab.stage_creation_arrival(60, 70)
+    assert tab.staged_creation_count() == 1
+    assert tab.creation_reason() is None
+    assert tab.apply_creations() is True
+    assert tab.saved_creation(NEW_DOOR.key).arrival == TransitionArrival(60, 70)
+
+
 def test_a_closed_form_reports_no_stale_state(tab):
     """The chip states the FORM's condition whether or not a form is open.
 

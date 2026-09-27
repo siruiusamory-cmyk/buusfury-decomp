@@ -80,6 +80,15 @@ no canonical bytes to edit, so:
 
 The two fields it rewrites are exactly the two the edit path is forbidden to
 touch, so the two capabilities meet only in this module and only here.
+
+**MAP-WARP-CREATE-WORKBENCH-001 makes that creation authorable from a surface.**
+:func:`check_transition_creation` is the creation-side mirror of
+:meth:`MapTransitions.check_edit` - it resolves one creation through the same
+:func:`_resolve_creation` a build uses, recording nothing - and
+:func:`creation_templates` is the one statement of which records may be a creation's
+base. Both exist so a Workbench form answers "may this be created?" with this
+module's rules and this module's words, instead of restating a class rule or a
+bounds check in a widget.
 """
 
 from __future__ import annotations
@@ -1583,6 +1592,80 @@ def created_record_fields() -> tuple[TransitionRecordFieldProvenance, ...]:
     return tuple(fields)
 
 
+def _template_entry(
+    corpus: MapTransitions,
+    identity: CreatedTransitionIdentity,
+    template: TransitionIdentity,
+) -> TransitionEntry:
+    """One creation's named template, or the refusal the authority states for it.
+
+    One place, so the resolver a build uses and the check an authoring surface
+    calls cannot disagree about what "this image does not contain it" reads like.
+    """
+    try:
+        return corpus.entry(template)
+    except UnknownTransitionError:
+        raise TransitionFieldError(
+            f"{identity} names template {template}, which this image does not contain"
+        ) from None
+
+
+def authored_transition_creation(
+    corpus: MapTransitions, creation: TransitionCreation
+) -> AuthoredTransitionCreation:
+    """One creation in the form a project stores it, against a loaded corpus.
+
+    The template's ``+0x10`` and ``+0x13`` are **measured from the corpus here**,
+    never taken from a caller, so what a project records as its proof-of-base is
+    something this SDK read rather than something a caller asserted.
+    :func:`set_transition_creations` and :func:`check_transition_creation` both come
+    through here, so the priors a check validates against are the priors a write
+    stores.
+    """
+    template = _template_entry(corpus, creation.identity, creation.template)
+    return AuthoredTransitionCreation(
+        creation=creation,
+        prior_facing_raw=template.record.byte_0x10_raw,
+        prior_unresolved_raw=template.record.byte_0x13_raw,
+    )
+
+
+def check_transition_creation(
+    corpus: MapTransitions, creation: TransitionCreation
+) -> TransitionCreationPlan:
+    """Validate one creation through the same resolver a build uses, recording nothing.
+
+    The creation-side mirror of :meth:`MapTransitions.check_edit`, and it exists for
+    the same reason: a surface asks "would the authority accept this?" with the
+    authority's own rules and its own message, instead of restating the class rule,
+    the root-sharing rule, the template priors or the destination's walkable extent
+    in a widget. It reads nothing beyond the corpus it is handed - the template's
+    priors are measured from that corpus - so a surface that already holds one can
+    check a form on every gesture without touching the image again.
+    """
+    authored = authored_transition_creation(corpus, creation)
+    return _resolve_creation(corpus, creation.identity, authored)
+
+
+def creation_templates(
+    corpus: MapTransitions, source: MapIdentity
+) -> tuple[TransitionEntry, ...]:
+    """Every canonical record of ``source`` a created transition may be based on.
+
+    The one statement of the rule :data:`CREATED_CLASS_RAW` carries, so a surface
+    that offers a "Based on" list and a build that reads a project's template cannot
+    disagree: only the 566 class passes ``+0x14``/``+0x16`` through as an absolute
+    arrival, so only it can supply the bytes a creation does not author. A 169-class
+    record's pair is a scene-relative delta, and a creation over one would author an
+    arrival that means something else.
+    """
+    return tuple(
+        entry
+        for entry in corpus.for_map(source)
+        if entry.record.class_raw == CREATED_CLASS_RAW
+    )
+
+
 def _resolve_creation(
     corpus: MapTransitions,
     identity: CreatedTransitionIdentity,
@@ -1645,13 +1728,7 @@ def _resolve_creation(
             "source map, because the bytes the creation does not author are copied "
             "from it"
         )
-    try:
-        template_entry = corpus.entry(creation.template)
-    except UnknownTransitionError:
-        raise TransitionFieldError(
-            f"{identity} names template {creation.template}, which this image does "
-            "not contain"
-        ) from None
+    template_entry = _template_entry(corpus, identity, creation.template)
     template_record = template_entry.record
     if template_record.class_raw != CREATED_CLASS_RAW:
         raise TransitionFieldError(
@@ -2268,12 +2345,7 @@ def set_transition_creations(
     # The priors are measured here, so this is the same check the build performs.
     measured: dict[CreatedTransitionIdentity, AuthoredTransitionCreation] = {}
     for identity, request in requested.items():
-        template = corpus.entry(request.template)
-        authored = AuthoredTransitionCreation(
-            creation=request,
-            prior_facing_raw=template.record.byte_0x10_raw,
-            prior_unresolved_raw=template.record.byte_0x13_raw,
-        )
+        authored = authored_transition_creation(corpus, request)
         _resolve_creation(corpus, identity, authored)
         measured[identity] = authored
 
@@ -2597,7 +2669,10 @@ __all__ = [
     "TransitionRegion",
     "TransitionRoot",
     "UnknownTransitionError",
+    "authored_transition_creation",
+    "check_transition_creation",
     "created_record_fields",
+    "creation_templates",
     "load_map_transitions",
     "materialize_transition_creations",
     "plan_transition_edits",

@@ -297,6 +297,39 @@ The correction is a **production change**, so per the ticket's own rule the corr
 tip is a **new frozen candidate** and takes a **fresh review**; that verdict is
 recorded below with its commit. No reviewed commit was amended.
 
+**Second review, frozen candidate `9b90659489b2339f4cb09fdd1db7717c5e1060a0`:
+BLOCK, one blocking finding - and it was right.** Correcting note 2 introduced a
+worse defect than the one it fixed: `_install_creation_state` dropped a draft that
+belonged to another source map but kept its binding, so the next project mutation
+ran `_reapply_creation` with `bound` set and `draft` None, popped that binding's
+staged entry, and **silently discarded the author's staged creation** - no message,
+no undo entry, reachable by Ctrl+Z after a map-bar change followed by any Apply or
+Save As elsewhere. The existing pin covered the form-closed path (`close_creation`
+clears the binding) and therefore missed it.
+
+Corrected at both root causes, in `8cad1e4a2ab705b6cf462cdfe5bd59fe40333505`:
+
+* `_resolve_creation_state` no longer drops the binding's entry when it is handed no
+  draft: a None draft states nothing about the staged set, so it changes nothing, and
+  the drop happens only for a draft that is actually being replaced;
+* `_install_creation_state` drops the binding together with a draft it refuses to
+  reinstate, so "no form, but bound to an identity" is no longer a state the surface
+  can hold.
+
+The regression that should have caught it - undo after a source-map change - now
+continues through the transitions that follow it: the staged creation must survive
+an unrelated project mutation, a redo, and a change back to its own map, and must
+still be applicable there. Three further notes from that review were also acted on:
+the `close_creation` suppression is confirmed non-stranding, the docs/DEVELOPMENT.md wording
+drifts were restored (the measured/derived restriction "allowed only where trivial
+arithmetic permits", the "iterative debugging loop" and the trigger phrases), and
+`docs/PROJECT_<local-state-name>` was corrected from "uncommitted" to the branch commits.
+
+The reviewer also stated plainly what its retail pin does and does not prove: it
+drives `_retail`/`_base`/`_effective` directly, so it pins the guard rather than a
+UI path to it, and a `CreatedTransitionIdentity` never reaches `_retail` through the
+widgets. That is recorded as the pin's actual scope.
+
 ## Not in this sub-pass
 
 * **No emulator/runtime proof.** The parent still owes the human-operated run of a

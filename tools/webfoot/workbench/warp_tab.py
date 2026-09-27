@@ -972,7 +972,18 @@ class WarpTab(QWidget):
         return self._selected.key if self._selected is not None else None
 
     def selected_editable(self) -> bool:
-        return self._selected is not None and self.edit_refusal() is None
+        """Whether the CONNECTIONS pane can edit the selected row.
+
+        A created transition is edited in the creation form, so the connections pane
+        - which is not even on screen for one - reports it as not editable, the same
+        way it reports "Select a connection to edit it." The refusal it returns stays
+        None, because nothing prevents editing it there.
+        """
+        if self._selected is None:
+            return False
+        if isinstance(self._selected, mt.CreatedTransitionIdentity):
+            return False
+        return self.edit_refusal() is None
 
     def edit_refusal(self) -> str | None:
         """Why the selected connection cannot be edited, or None."""
@@ -1171,8 +1182,15 @@ class WarpTab(QWidget):
             "facing": self._creation.facing if self._creation else None,
             # Whether a creation is STAGED is a fact about the staged set, not about
             # the form's binding: a form that states what the project already holds
-            # is bound to it and has nothing staged.
+            # is bound to it and has nothing staged. The binding is reported too, so
+            # a test or a QA probe can check WHERE it was learned rather than only
+            # what it produces.
             "staged": self._staged_creation_key() is not None,
+            "binding": (
+                str(self._open_creation_key)
+                if self._open_creation_key is not None
+                else None
+            ),
             "state": self._creation_chip.accessibleName(),
             "reason": self._creation_refusal_text,
             "refusal": self.creation_refusal(),
@@ -1776,19 +1794,25 @@ class WarpTab(QWidget):
                 f"{identity} is already staged as a new transition with different "
                 "values. Apply it, revert it, or author a different name.",
             )
+        # A binding is recorded ONLY where the form learns one: here, when it stages
+        # its own creation (the last branch), or a binding it already held. A refusal
+        # must never CREATE one - a form refused over an identity the project creates
+        # would otherwise become that identity's owner, and the next gesture would
+        # stage an overwrite of the saved creation with no conflict ever shown.
+        bound = identity if previous == identity else None
         if saved is not None and saved.creation == creation:
             staged.pop(identity, None)
             return CreationState(
                 draft,
                 _staged_snapshot(staged),
-                identity,
+                bound,
                 f"The project already holds exactly this transition ({identity}); "
                 "nothing is staged.",
             )
         refusal = self._check_creation(creation)
         if refusal is not None:
             staged.pop(identity, None)
-            return CreationState(draft, _staged_snapshot(staged), identity, refusal)
+            return CreationState(draft, _staged_snapshot(staged), bound, refusal)
         staged[identity] = creation
         return CreationState(draft, _staged_snapshot(staged), identity, None)
 

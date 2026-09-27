@@ -996,6 +996,94 @@ def test_a_project_mutation_keeps_a_bound_forms_staged_creation(tab, project, im
     assert tab.creation_form_state()["state"] == "New (staged)"
 
 
+def test_a_refused_creation_records_no_binding(tab):
+    """A refusal must not make the form the owner of the identity it was refused for.
+
+    The binding is what lets a later gesture treat this form as re-authoring an
+    existing creation. Recording one on a refusal meant that - once the project came
+    to create that name - one ordinary gesture staged an overwrite of the saved
+    creation, with no conflict ever shown.
+    """
+    assert tab.open_creation() is True
+    assert tab.stage_creation_name(NAME) is True
+    # The seeded draft is byte-identical to its base, so the authority refuses it.
+    assert "byte-identical" in (tab.creation_reason() or "")
+    state = tab.creation_form_state()
+    assert state["staged"] is False
+    assert state["binding"] is None
+
+
+def test_a_refusal_cannot_become_an_overwrite_of_a_saved_creation(tab, project, image):
+    """The end-to-end hazard: refuse, the project gains the name, next gesture stages.
+
+    Every assertion the earlier pin made still holds in the harmful state, which is
+    why this one continues: after the project holds the identity, a corrective
+    gesture must state the conflict and stage nothing, not turn the form into that
+    identity's owner.
+    """
+    assert tab.open_creation() is True
+    assert tab.stage_creation_name(NAME) is True
+    assert "byte-identical" in (tab.creation_reason() or "")
+    assert tab.creation_form_state()["binding"] is None
+
+    # The project comes to create that identity: another tab's Apply, a Save As, or
+    # a project opened over this session.
+    assert mt.set_transition_creations(
+        project,
+        profile_for(image),
+        image,
+        {
+            NEW_DOOR: mt.TransitionCreation(
+                identity=NEW_DOOR,
+                template=TEMPLATE,
+                destination=DESTINATION,
+                region=TransitionRegion(first=REGION[0], second=REGION[1]),
+                arrival=TransitionArrival(*ARRIVAL),
+                facing=FACING_EAST,
+            )
+        },
+    ) is True
+    tab.on_project_mutated()
+    assert tab.staged_creation_count() == 0
+    assert tab.creation_form_state()["binding"] is None
+
+    # A corrective gesture must NOT stage an overwrite of the saved creation.
+    tab.stage_creation_arrival(16, 24)
+    assert tab.staged_creation_count() == 0
+    assert "durable" in (tab.creation_reason() or "")
+    assert tab.creation_form_state()["apply_enabled"] is False
+    assert tab.apply_creations() is False
+    saved = tab.saved_creation(NEW_DOOR.key)
+    assert saved.destination == DESTINATION
+    assert saved.arrival == TransitionArrival(*ARRIVAL)
+    assert saved.facing == FACING_EAST
+
+
+def test_a_saved_row_opened_into_the_form_keeps_its_binding(tab):
+    """A form that LEARNED the binding keeps it, refusal or not.
+
+    The rule is about provenance, not about refusals: a saved creation opened from
+    its row owns that identity, so a value the authority refuses leaves it bound -
+    and a corrected value then stages the update it was always authoring.
+    """
+    assert author_one(tab)
+    assert tab.apply_creations() is True
+    assert tab.close_creation() is True
+    assert tab.select_row(2) is True
+    assert tab.creation_form_state()["binding"] == NEW_DOOR.key
+
+    tab.stage_creation_arrival(5000, 5000)  # off map:0001, the seeded destination
+    assert "off the map" in (tab.creation_reason() or "")
+    assert tab.creation_form_state()["binding"] == NEW_DOOR.key
+    assert tab.staged_creation_count() == 0
+
+    tab.stage_creation_arrival(60, 70)
+    assert tab.staged_creation_count() == 1
+    assert tab.creation_reason() is None
+    assert tab.apply_creations() is True
+    assert tab.saved_creation(NEW_DOOR.key).arrival == TransitionArrival(60, 70)
+
+
 def test_a_retail_read_of_an_identity_the_corpus_lacks_is_state_not_an_exception(tab):
     """The install path is callable from undo()/redo(), so it must not raise.
 

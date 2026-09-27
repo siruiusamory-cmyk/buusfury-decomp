@@ -1564,7 +1564,9 @@ def warp_create_qa(
         harness.pump(8)
         print(f"    refusal={tab.creation_refusal()!r} open={tab.open_creation()}")
         harness.pump(8)
-    shot(79, "79-warps-create-no-base-on-this-map")
+        # Inside the guard: a capture named for a refusal must not be written when
+        # the corpus offered no map to refuse.
+        shot(79, "79-warps-create-no-base-on-this-map")
 
     if shared is not None:
         print(f"  map on a shared connection root: map:{shared:04d}")
@@ -1572,7 +1574,7 @@ def warp_create_qa(
         harness.pump(8)
         print(f"    refusal={tab.creation_refusal()!r} open={tab.open_creation()}")
         harness.pump(8)
-    shot(80, "80-warps-create-shared-root-refused")
+        shot(80, "80-warps-create-shared-root-refused")
 
     # The narrow window, with a form open and its values authored.
     print(f"  narrow: back to map:{source_index:04d} with the form open")

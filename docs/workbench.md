@@ -16,19 +16,22 @@ Atlas search
 For mapped dialogue records, the Inspector keeps retail text, the saved project
 override, and unsaved editor contents separate. Typing performs lightweight SDK
 validation only. Apply or Revert persists the normal project representation and
-makes earlier project validation and build results stale; the Build tab then
+makes earlier project validation and build results stale; the Build action then
 requires Validate before Build again. Unsupported search results remain
 read-only and have no address- or text-based fallback.
 
-The shipped window is titled DragonByte Z and has eight tabs, in contract order:
-Atlas, Inspector, Maps, Map, Map Browser, Graphics, Build, Launch. Only Atlas is
-enabled until a ROM is opened; the read-only Map Browser sits between the Map
-authoring workspace and Graphics.
+The shipped window is titled DragonByte Z and names four primary editors on one
+compact strip, in contract order: Atlas, Inspector, Maps, Graphics. Open ROM,
+Open Project, Validate, Build and Run sit beside them; the Maps editor holds its
+own Browse, Layout, Objects and Warps modes, the Scene editor is opened from the
+placement it belongs to, and Build and Run open as dialogs. The editors are
+always selectable and show their own empty state until a ROM is loaded.
 
-## Map Browser: Edit Layout
+## Maps editor: Layout mode
 
-`DRAGONBYTE-Z-MAP-LAYOUT-EDITOR-001`. The Map Browser stays read-only until its
-**Edit Layout** mode is switched on. That mode edits exactly one thing, through
+`DRAGONBYTE-Z-MAP-LAYOUT-EDITOR-001`. The Maps editor's **Browse** mode is
+read-only; switching to **Layout** mode enables editing. That mode edits exactly
+one thing, through
 `tools/webfoot/map_layout_edit.py` and the proven writer in
 `tools/webfoot/map_layout_write.py`: one 256x256 chunk cell of a map's dominant
 layer may be reassigned to another chunk **that same layer already uses**. The
@@ -55,7 +58,7 @@ Save As writes the ROM **and a small provenance manifest beside it**
 shape: schema version, canonical base SHA-256 and profile id, emitted SHA-256 and
 size, and every change with its offset and both byte values).
 
-The Atlas tab's ROM open accepts a modified image only through that provenance. A
+The Atlas editor's ROM open accepts a modified image only through that provenance. A
 derivative is accepted when - and only when - the manifest names the supported
 canonical image and a configured profile, the file's own SHA-256 matches the
 manifest's declared output, every declared change is a four-byte field of a
@@ -65,8 +68,8 @@ and restoring the declared old values reproduces the canonical image exactly by
 SHA-256. That last check bounds an accepted derivative to the canonical image plus
 exactly its declared fields, and it needs no copy of the canonical file.
 
-An accepted derivative is browseable and renders its edited layout, because the Map
-Browser renders the *reconstructed canonical bytes* with the verified edits applied
+An accepted derivative is browseable and renders its edited layout, because the Maps
+editor renders the *reconstructed canonical bytes* with the verified edits applied
 as overrides - the same preview path the editor uses - and never parses the
 derivative as if it were canonical. It is read-only: further layout editing belongs
 to the canonical image it derives from. A modified image without a manifest, with a

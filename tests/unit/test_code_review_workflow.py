@@ -176,7 +176,7 @@ def test_removed_godot_prototype_stays_out_of_the_product_repository():
     assert "do not recreate it" in agents
     assert "owner selected `remove`" in detail
     assert "must not ship or be reintroduced" in detail
-    assert readme.startswith("# webfoot sdk")
+    assert readme.startswith("# dragonbyte z / webfoot sdk")
     assert "the product goal is not a standalone remake" in readme
     assert "legacy of goku content running inside the actual legacy of goku ii/buu's fury engine" in readme
     assert "remake/" not in readme

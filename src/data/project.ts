@@ -1242,31 +1242,38 @@ export const project: ProjectStatus = {
       width: 1700,
       height: 1264,
       alt:
-        "The DragonByte Z Map Browser showing Buu's Fury map:0040, Grand Kai's Planet: a map list of retail map names on the left, the fully rendered layered map in the middle, and a map-information panel on the right listing the map id, dimensions, layer count and per-layer type.",
-      title: "Map Browser",
+        "The DragonByte Z Maps editor in Browse mode showing Buu's Fury map:0040," +
+        " Grand Kai's Planet: a searchable list of retail map names on the left, the" +
+        " map rendered from ROM bytes in the middle, and the Inspector on the right" +
+        " stating that the map is read-only until Layout mode is switched on.",
+      title: "Maps editor",
       caption:
         "Map:0040 rendered from immutable ROM bytes, layer by layer. Every one of the" +
         ` ${mapsViewable} maps opens here without a running emulator.`,
       facts: [
         `${mapsViewable} maps viewable`,
         "Rendered from ROM, not captured from memory",
-        "Read-only until Edit Layout is switched on",
+        "Read-only until Layout mode is switched on",
       ],
     },
     {
       src: "dbz-layout-editor.png",
-      width: 390,
-      height: 800,
+      width: 301,
+      height: 746,
       alt:
-        "The DragonByte Z layout editor panel for map:0040, layer BG1, showing the selected chunk cell, one unsaved layout change, the four-byte pointer field being changed in place, a chooser listing the four chunks the layer already uses with chunk 3 marked current, and a map-information block.",
-      title: "Layout editor",
+        "The DragonByte Z Inspector pane in the Maps editor's Layout mode for" +
+        " map:0040, layer BG1, showing one staged paint on a 256x256 chunk cell, the" +
+        " layer's 2x2 chunk grid, the cell's four-byte pointer field being changed in" +
+        " place, and the map-structure list naming every layer's form beside the" +
+        " resize, Create Chunk and Save As New ROM controls.",
+      title: "Layout editing",
       caption:
-        "Edit Layout on map:0040, one 256x256 cell of dominant layer BG1. The chooser" +
-        " offers only chunks that layer already contains, and the change is written in" +
-        " place to a new ROM.",
+        "Layout mode on map:0040, one 256x256 cell of dominant layer BG1. The staged" +
+        " paint is a four-byte in-place cell write, and the map-structure list states" +
+        " which layers may be changed and which stay read-only.",
       facts: [
         `${layoutEditableMaps} of ${mapsViewable} maps expose an editable layer`,
-        "Replacement drawn from the same layer only",
+        "Brush drawn from the layer's own chunks",
         "Saved as a new ROM, with provenance",
       ],
     },

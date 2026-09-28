@@ -1,12 +1,13 @@
 # MAP-WARP-CREATE-PROJECT-001 - creating a transition through the project and the build
 
-STATUS: **MERGED AND INTEGRATED (2026-09-26).** Class: scoped project-format,
+STATUS: **CLOSED (2026-09-26).** Class: scoped project-format,
 SDK-authority, allocator and build-integration pass, followed by a final-integration
 pass that pushed, reviewed-in-CI and merged it. This is a **sub-pass of the parent
-capability `MAP-WARPS-AND-CONNECTIONS-001`**, which stays active and unshipped in
-[`PROJECT_<local-state-name>`](PROJECT_<local-state-name>); the parent's Workbench creation surface, human-operated
-runtime proof and capability advance are explicitly **not** in scope here and were not
-begun.
+capability `MAP-WARPS-AND-CONNECTIONS-001`**, which ships as of the parent's closeout
+(2026-09-28); archived at closure in
+[`archive/MAP-WARP-CREATE-PROJECT-001.md`](archive/MAP-WARP-CREATE-PROJECT-001.md).
+The parent's Workbench creation surface, human-operated runtime proof and capability
+advance were explicitly **not** in scope here and were not begun.
 
 Baseline: `df81e7ab9bcffc99c526b7e9bffe768d8420214d` (the repository's `HEAD` at the
 start of the pass, verified with `git rev-parse HEAD` on a clean tree, no drift).

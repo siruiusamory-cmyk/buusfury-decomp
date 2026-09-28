@@ -1,11 +1,12 @@
 # MAP-WARP-CREATE-RUNTIME-001 - a created transition at runtime
 
-STATUS: **RUNTIME PROOF COMPLETE (2026-09-27).** A transition the canonical image
-does not contain, created through the real DragonByte Z Workbench and built by the
-normal production path, was found and consumed by the retail engine from an array
+STATUS: **CLOSED (2026-09-27).** Runtime proof complete. A transition the canonical
+image does not contain, created through the real DragonByte Z Workbench and built by
+the normal production path, was found and consumed by the retail engine from an array
 and a record placed above the original 8 MiB EOF. Scoped sub-pass of
-`MAP-WARPS-AND-CONNECTIONS-001`, which stays **NOT SHIPPED** in
-[`PROJECT_<local-state-name>`](PROJECT_<local-state-name>).
+`MAP-WARPS-AND-CONNECTIONS-001`, which ships as of the parent's closeout
+(2026-09-28); archived at closure in
+[`archive/MAP-WARP-CREATE-RUNTIME-001.md`](archive/MAP-WARP-CREATE-RUNTIME-001.md).
 
 Baseline: `5224c7376660c5e35f2063e9e59699911a1a4750` on branch
 `ticket/map-warp-create-runtime-001`, worktree

@@ -337,32 +337,36 @@ export const project: ProjectStatus = {
     " capability does. It is a count of editor capabilities, not a ticket count and not" +
     " an estimate.",
   currentPhase: "DRAGONBYTE Z BUILDOUT",
-  blockerTitle: "Grow DragonByte Z one editor surface at a time",
+  blockerTitle: "Bring an author's own graphics into the game",
   blockerShort:
-    "The resource pipeline is complete and curated, and the map surfaces are the" +
-    " proven working example: DragonByte Z renders all 452 maps from ROM, edits" +
-    " object placement on the real map, and reassigns a dominant-layer chunk cell in" +
-    " 341 of those maps. What remains is the rest of the editor vocabulary - tile" +
-    " painting, chunk creation, resizing, graphics replacement and warp editing -" +
-    " each of which needs a verified way to place new bytes in the ROM before it can" +
-    " be offered safely.",
+    "The resource pipeline is complete and curated, and map editing is finished:" +
+    " DragonByte Z renders all 452 maps from ROM, paints tiles, creates chunks, grows" +
+    " a map, adds a layer, and lists, retargets and creates the transitions between" +
+    " areas - including on the map itself, where every supported transition is drawn" +
+    " as the region that triggers it. What remains is graphics import, the next" +
+    " capability: replacing a game graphic with an author's own artwork. It is blocked" +
+    " on allocation for payloads that change size and on a write path that can put a" +
+    " changed graphic back, so no editor surface offers it yet.",
   blockerParagraphs: [
-    "The resource pipeline is finished. The exporter walks the game's own structures -" +
-    " 452 maps, every map-layer reference classified, complete tile, chunk, sprite," +
-    " animation, frame and graphics populations - and the curator turns that raw output" +
-    " into a clean, human-navigable library: ROM-derived and neutral names, no generated" +
-    " prose, a deterministic rebuild, and a complete curated-to-raw source map. The" +
-    " canonical raw library stays byte-for-byte untouched.",
-    "DragonByte Z is the second client of the same SDK, and the map surfaces are" +
-    " where the product frontier actually sits. The Map Browser renders a retail map" +
-    " from immutable ROM bytes, layer by layer. Its Edit Layout mode reassigns one" +
-    " 256x256 chunk cell of a map's dominant layer to another chunk that layer already" +
-    " contains, previews the swap in memory, and saves the pending edits to a new ROM" +
-    " - which the application will reopen only when a provenance manifest proves the" +
-    " image is the canonical ROM plus exactly those declared edits.",
-    "Authoring entirely new content remains the project's final acceptance target and is" +
-    " no longer the organising priority for current tool work: the buildout proceeds one" +
-    " editor surface at a time against the verified corpus.",
+    "Map editing is complete, and the capability list says so. Phase 2 covered the four" +
+    " map capabilities in order: tile painting, chunk creation, map resizing with layer" +
+    " authoring, and finally warps and connections. A transition can now be retargeted" +
+    " through the project, a transition the image does not contain can be authored" +
+    " under its own durable identity and built above the end of the original image, and" +
+    " every supported transition is drawn on the map as the region that triggers it," +
+    " where a click selects it and a drag moves it as one undoable gesture. A" +
+    " human-operated run confirmed that the retail engine consumes an authored" +
+    " transition, so the map surfaces are proven rather than planned.",
+    "The blocker is graphics import, the next capability in the published order and the" +
+    " first step of the graphics phase. An import path exists inside the SDK, but it has" +
+    " no production caller, so no editor surface offers it. It needs two things the" +
+    " toolkit does not have yet: allocation for payloads that change size, and a write" +
+    " path that can put a changed graphic back into the image so the retail engine loads" +
+    " it. It is the next capability, not a started one.",
+    "Authoring entirely new content remains the project's final acceptance target: the" +
+    " buildout proceeds one editor capability at a time against the verified corpus, and" +
+    " the four steps left are graphics import, new sprites and animations, appearances," +
+    " and finally new maps.",
   ],
   acceptanceTarget:
     "Author playable Legacy of Goku content inside the real LOGII/Buu engine.",
@@ -673,7 +677,8 @@ export const project: ProjectStatus = {
         " carried the authored arrangement while the other three layers stayed" +
         " byte-identical. An authored chunk rearranges existing graphics only - no new" +
         " tiles, palettes or imported artwork - and is map-scoped. Map resizing and layer" +
-        " creation shipped later as their own capability; warp editing is not begun.",
+        " creation shipped later as their own capability, and warp and connection editing"
+        + " shipped after that as the final map-editing capability.",
       status: "complete",
     },
     {
@@ -733,16 +738,17 @@ export const project: ProjectStatus = {
   frontier: [
     {
       kind: "near",
-      title: "A verified way to place new bytes",
+      title: "Bring an author's own graphics back into the image",
       detail:
-        "A packed encoder and allocator integration, on top of a container decoder that" +
-        " now enforces exact decoded-size completion rather than clipping an over-long" +
-        " payload and reporting success. Every missing editing and authoring capability" +
-        " below depends on placing new bytes safely.",
+        "Graphics import is the next capability. The SDK can already read the game's" +
+        " graphics, and an import path exists inside it, but no editor surface offers" +
+        " that path. It needs allocation for payloads that change size and a write path" +
+        " that can put a changed graphic back, so the retail engine loads the authored" +
+        " artwork.",
     },
     {
       kind: "near",
-      title: "Correct the sprite and animation reader",
+      title: "Compose a frame's pieces into one displayed image",
       detail:
         "The accepted frame layout is an 8-byte header with 12-byte pieces, and the" +
         " reader and codec now read exactly that, so multipart frames are decoded and" +
@@ -750,25 +756,11 @@ export const project: ProjectStatus = {
         " replacing them, is the step that remains.",
     },
     {
-      kind: "near",
-      title: "Warp destination editing",
-      detail:
-        "All 735 transition records already read with no anomalies and the record layout" +
-        " is confirmed, so this needs an editor surface rather than research.",
-    },
-    {
-      kind: "gated",
-      title: "Graphics replacement and import",
-      detail:
-        "Gated on the corrected sprite codec plus allocation for payloads that change" +
-        " size. The pixel round-trip is already proved for the accepted corpus.",
-    },
-    {
       kind: "horizon",
       title: "Authored maps and new content",
       detail:
-        "The terminal frontier. It needs warp authoring, a verified allocator for every" +
-        " new structure, and several map-root fields that are unresolved today.",
+        "The terminal frontier. It needs a verified allocator for every new structure," +
+        " authored map roots, and several map-root fields that are unresolved today.",
     },
   ],
   breakthroughs: [
@@ -909,8 +901,8 @@ export const project: ProjectStatus = {
         + " settle. 7,013 of 38,400 screen pixels differed, every one inside the painted"
         + " cell's own region, with a hard texture seam at that cell's boundary that the"
         + " retail frame does not have. Undo, redo, eyedropper and drag painting share one"
-        + " history. Groundwork for this was the map-layout writer; what remains for the"
-        + " rest of the map editor is warp and connection editing.",
+        + " history. Groundwork for this was the map-layout writer; warp and connection"
+        + " editing shipped later as the fourth and final map-editing capability.",
       recent: true,
     },
     {
@@ -1233,7 +1225,7 @@ export const project: ProjectStatus = {
       group: "Integrity",
       label: "Transition records read, anomalies",
       value: `${transitionRecords} / 0`,
-      explanation: "Warp and connection records, which no editor surface reads yet.",
+      explanation: "Warp and connection records; the Warps mode lists and retargets them, and the map canvas draws each one's trigger region.",
     },
   ],
   figures: [
@@ -1408,9 +1400,10 @@ const roadmapTo1: RoadmapTo1 = {
     + " not an internal milestone. The count is a count of authoring capabilities,"
     + " so it only moves when the product genuinely gains one.",
   position:
-    "The foundation and the authoring-safety baseline are complete, Phase 2 is under"
-    + " way: tile painting, chunk creation, and map resizing with layer authoring have"
-    + " shipped, and warp and connection editing is next.",
+    "The foundation and the authoring-safety baseline are complete, and Phase 2 is"
+    + " complete: tile painting, chunk creation, map resizing with layer authoring, and"
+    + " warp and connection editing have all shipped. Phase 3, graphics and actor"
+    + " authoring, is next and has not started.",
   phases: [
     {
       id: "foundation",
@@ -1458,13 +1451,7 @@ const roadmapTo1: RoadmapTo1 = {
       summary:
         "Finish the map editor, building each step on the same view, undo"
         + " history, allocator and safety rules as the last.",
-      outcomes: [
-        {
-          capabilityId: "warps",
-          title: "Warps and connections",
-          detail: "Create and edit transitions between areas visually.",
-        },
-      ],
+      outcomes: [],
       work: [
         "Tile painting - SHIPPED: pick a chunk a layer already uses and paint"
         + " 256x256 map cells with it, saved through the project and proven on screen"
@@ -1477,8 +1464,15 @@ const roadmapTo1: RoadmapTo1 = {
         "Map resizing and layer authoring - SHIPPED: grow a supported existing map, add"
         + " a supported visual layer, paint the new structure, and have the retail engine"
         + " load the relocated map data. This is growth only - shrinking is not supported",
+        "Warps and connections - SHIPPED: retarget an existing transition's destination,"
+        + " arrival and facing through the project, or author a transition the image does"
+        + " not contain under its own durable identity and build it above the original"
+        + " ROM's end. On the map itself, every supported transition is drawn as the"
+        + " region that triggers it: a click selects it and a drag moves it as one"
+        + " undoable gesture. A human-operated run proved the retail engine consumes an"
+        + " authored transition",
       ],
-      state: "in-progress",
+      state: "complete",
     },
     {
       id: "graphics-authoring",
@@ -1506,7 +1500,7 @@ const roadmapTo1: RoadmapTo1 = {
         },
       ],
       work: [],
-      state: "planned",
+      state: "next",
     },
     {
       id: "new-map",

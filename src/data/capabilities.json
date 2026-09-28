@@ -233,13 +233,22 @@
       "id": "warps",
       "family": "edit",
       "title": "Warp and connection editing",
-      "state": "missing",
-      "detail": "Not counted as shipped yet. All 735 transition records read with no anomalies and the record layout is confirmed. The Maps editor's Warps mode lists and retargets an existing connection and authors one the image does not contain; the capability is counted when its remaining work is done and reviewed.",
+      "state": "shipped",
+      "surface": "Maps editor: the Warps mode lists a map's connections and retargets a selected transition's destination, arrival and facing, with Apply and Revert on the editor's own undo history, and the Create transition form authors a transition the image does not contain; on the map itself every supported transition is drawn as its trigger region, a click selects that connection and a drag moves the region as one undoable gesture",
+      "proof": "runtime",
+      "detail": "Read, retarget and create the transitions that carry a player from one area to another. The Warps mode lists the connections of the displayed map as rows and retargets a selected one's destination, arrival position and facing, staged through the project and written by Apply or discarded by Revert, one edit per undo entry. The Create transition form authors a transition the image does not contain: it takes a durable authored identity of the form map:NNNN/transition:<name>, composes the new 24-byte record over a same-map template from the 566-class family - the class 566 of the 735 records use - and the build emits it with an expanded record-pointer array above the original ROM's end, deterministically. All 735 transition records read with no anomalies and round-trip byte-exactly. The map canvas draws every supported transition of the displayed map as its trigger region, a click selects that connection in the Warps list, and dragging the region moves it as a single undoable gesture. Proven in the retail engine: a human-operated mGBA run consumed an authored transition, and the engine's own loaded record array held the authored entry above the original image's end.",
       "limits": [
-        "Not counted as shipped yet, so this entry claims no shipped editor surface and no proof level.",
-        "The remaining half is the map surface: a transition is listed, retargeted and created through the Warps mode's own list and form rather than drawn on the rendered map."
+        "The 169-class transition family is refused for retargeting and for creation: its stored arrival is a scene-relative delta the engine composes at run time, not a point, so no safe arrival can be stated for it.",
+        "A map whose connection root is shared with another map is refused, because the record array is shared and editing it would change the other map's transitions as well.",
+        "An unsupported transition form fails closed with its reason stated rather than being forced into a form the engine does not read.",
+        "Record bytes whose meaning is unresolved are preserved and are not editable: +0x13, and the low nibble of +0x10, whose semantics remain unresolved.",
+        "The arrival-facing selector 0x03001A34 read zero on every sample of the runtime run, so what it selects is unresolved and its non-zero case is untested.",
+        "There is no transition deletion: Revert discards a staged creation, but a saved transition cannot be removed from the project or from the image.",
+        "A stale staged creation that a project change has shadowed has no per-row discard action. Apply refuses, nothing is written, both values survive, the conflict is visible, and replacing the session clears it.",
+        "A transition the project creates has no record in the image, so its region is drawn read-only on the map canvas and its drag refuses with the reason stated.",
+        "This is the supported, proven authoring surface, not every engine transition form."
       ],
-      "evidence": "LOGX-CONNECTOR-001; docs/research/LOGX_CONNECTOR_PROVENANCE.md",
+      "evidence": "MAP-WARPS-AND-CONNECTIONS-001; MAP-WARP-FORMAT-001; MAP-WARP-WORKBENCH-001; MAP-WARP-WORKBENCH-RUNTIME-001; MAP-WARP-CREATE-PROJECT-001; MAP-WARP-CREATE-RUNTIME-001; MAP-WARP-CANVAS-001; docs/research/MAP-WARPS-AND-CONNECTIONS-001.md",
       "measurements": {
         "transitionRecords": 735
       }
@@ -328,10 +337,10 @@
       "family": "author",
       "title": "New map and scene materialisation",
       "state": "missing",
-      "detail": "Not implemented. The terminal authoring frontier: it needs an authored warp and several map-root fields that are still unresolved.",
+      "detail": "Not implemented. The terminal authoring frontier. Warps and connections now ship, so the authored warp it needs is available; what remains are the map-root fields that are still unresolved.",
       "limits": [
         "Not implemented: no editor surface materialises a new map or scene.",
-        "The terminal frontier, blocked on an authored warp and on map-root fields that are still unresolved."
+        "The terminal frontier. The authored warp it depends on now ships with warps and connections; the remaining blockers are map-root fields that are still unresolved."
       ],
       "evidence": "DRAGONBYTE-Z-MAP-LAYOUT-EDITOR-001; docs/research/POST_LOGX_IMPLEMENTATION_ROADMAP.md"
     },
@@ -417,13 +426,13 @@
       "id": "placement-coordinate-transform",
       "statement": "A placement's stored signed position halfwords copy exactly into the actor's Q8 coordinate fields, making signed low-halfword X and high-halfword Y map pixels the reversible authoring contract.",
       "contributesTo": ["placement"],
-      "doesNotConfer": "It does not ship new maps, warp authoring or map-root authoring."
+      "doesNotConfer": "It does not ship new maps or map-root authoring."
     },
     {
       "id": "warp-record-layout",
       "statement": "All 735 transition records read with no anomalies and the record layout is confirmed.",
       "contributesTo": ["warps"],
-      "doesNotConfer": "Knowing the record layout does not ship warp editing: no editor surface writes a transition record."
+      "doesNotConfer": "Knowing the record layout does not ship warp editing by itself: the shipped capability also needed the project write path, an editor surface and a runtime proof of an authored transition."
     }
   ]
 }

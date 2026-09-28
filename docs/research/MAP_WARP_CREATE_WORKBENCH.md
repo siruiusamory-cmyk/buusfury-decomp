@@ -1,10 +1,13 @@
 # MAP-WARP-CREATE-WORKBENCH-001 - the Warps surface's Create Transition action
 
-STATUS: **IMPLEMENTED, ISOLATED AND INDEPENDENTLY REVIEWED (2026-09-27).** Class:
+STATUS: **CLOSED (2026-09-27).** Class:
 GUI and project-surface pass. This is a **sub-pass of the parent capability
-`MAP-WARPS-AND-CONNECTIONS-001`**, which stays active and **unshipped** in
-[`PROJECT_<local-state-name>`](PROJECT_<local-state-name>). Nothing here ships the parent: the capability count is
-unchanged and the registry is untouched.
+`MAP-WARPS-AND-CONNECTIONS-001`**, which ships as of the parent's closeout
+(2026-09-28); archived at closure in
+[`archive/MAP-WARP-CREATE-WORKBENCH-001.md`](archive/MAP-WARP-CREATE-WORKBENCH-001.md),
+which carries the multi-round review history and the final ownership closeout.
+Nothing here shipped the parent: the capability count was unchanged and the registry
+was untouched.
 
 Baseline: `87a47ff721896a1d99632e78ff7cf6032cf9f8ae` (the commit that recorded
 `MAP-WARP-CREATE-PROJECT-001` as merged; verified with `git fetch origin --prune`

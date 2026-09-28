@@ -1,10 +1,12 @@
 # MAP-WARP-WORKBENCH-001 - the Maps editor's Warps surface
 
-STATUS: **IMPLEMENTED AND INDEPENDENTLY REVIEWED - APPROVE (2026-09-26).** Class:
+STATUS: **CLOSED (2026-09-26).** Independent review **APPROVE**. Class:
 GUI and project-surface pass. This is a **sub-pass of the parent capability
-`MAP-WARPS-AND-CONNECTIONS-001`**, which stays active and **unshipped** in
-[`PROJECT_<local-state-name>`](PROJECT_<local-state-name>). Nothing here ships the parent: the capability count is
-unchanged and the registry is untouched.
+`MAP-WARPS-AND-CONNECTIONS-001`**, which ships as of the parent's closeout
+(2026-09-28); archived at closure in
+[`archive/MAP-WARP-WORKBENCH-001.md`](archive/MAP-WARP-WORKBENCH-001.md). Nothing
+here shipped the parent: the capability count was unchanged and the registry was
+untouched.
 
 Baseline: `d9f7e6db2014c8d0b5919edf5c923169b3b1f57a` (verified with
 `git fetch origin --prune` + `git rev-parse origin/master` at ticket start). Master

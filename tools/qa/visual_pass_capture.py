@@ -79,10 +79,6 @@ PROOF_CELL = 0
 #: A map whose layout form is not the proven dominant chunk grid (terrain field).
 READ_ONLY_MAP = 19
 
-#: Legacy tab indices are gone; navigation is by editor name. These remain for
-#: the probes that still speak in indices.
-TAB_ATLAS, TAB_INSPECTOR, TAB_MAPS, TAB_MAP, TAB_BROWSER, TAB_GRAPHICS, TAB_BUILD, TAB_LAUNCH = range(8)
-
 #: Every state this harness can capture, numbered. The numbers are the contract
 #: `--states` speaks; the names are the PNGs written. 1-19 are one chained suite
 #: (see the module docstring); 20-23 are MAP-CHUNK-AUTHORING-001's own states and
@@ -183,50 +179,52 @@ class _NullHost:
         return None
 
 
-class _LegacyMaps:
-    """Drives the three map tabs of the pre-correction shell as one editor.
+class _MapsAccessor:
+    """Drives the current shell's Maps editor modes and reports its pending work.
 
-    The baseline had `Maps` (Scene), `Map` (placements) and `Map Browser` as three
-    destinations. This presents the same three workflows through the mode names the
-    corrected shell uses, so one harness can capture both revisions and the pair is
-    a real comparison rather than two different tools' output.
+    `MapsEditor.set_mode` returns silently for a mode it does not have, so this
+    checks the landing state instead of trusting the call: a capture that asked
+    for one mode and photographed another is worse than a failed capture.
     """
 
-    def __init__(self, harness: "Harness") -> None:
-        self._harness = harness
-        self._mode = "browse"
+    def __init__(self, editor) -> None:
+        self._editor = editor
+
+    def set_mode(self, key: str) -> None:
+        buttons = self._editor.mode_buttons()
+        if key not in buttons:
+            raise SystemExit(
+                f"unknown Maps mode {key!r}; this shell has {sorted(buttons)}"
+            )
+        self._editor.set_mode(key)
+        landed = self._editor.mode()
+        if landed != key or not buttons[key].isChecked():
+            raise SystemExit(
+                f"Maps mode {key!r} did not become the shown mode "
+                f"(editor reports {landed!r})"
+            )
+
+    def mode(self) -> str:
+        return self._editor.mode()
+
+    def unsaved_edit_count(self) -> int:
+        counter = getattr(self._editor, "unsaved_edit_count", None)
+        return counter() if callable(counter) else 0
 
     @property
     def browser(self):
-        return self._harness.editor("Maps")
+        """The Maps editor's layout browser, which owns the map list and paints."""
+        return self._editor.browser
+
+    @property
+    def warps(self):
+        """The Maps editor's Warps surface."""
+        return self._editor.warps
 
     @property
     def workspace(self):
-        return self._harness.tab(self._LEGACY_MAP_INDEX)
-
-    _LEGACY_MAP_INDEX = 3  # the pre-correction "Map" tab
-
-    def set_mode(self, key: str) -> None:
-        """Show the baseline destination that performed this mode's workflow."""
-        self._mode = key
-        if key == "objects":
-            self._harness.show_editor("Map")
-            return
-        self._harness.show_editor("Maps")
-        toggle = getattr(self.browser, "_edit_toggle", None)
-        if toggle is not None:
-            toggle.setChecked(key == "layout")
-        self._harness.pump(4)
-
-    def mode(self) -> str:
-        return self._mode
-
-    def unsaved_edit_count(self) -> int:
-        counter = getattr(self.browser, "unsaved_edit_count", None)
-        if callable(counter):
-            return counter()
-        unsaved = getattr(self.browser, "_unsaved_count", None)
-        return unsaved() if callable(unsaved) else 0
+        """The Maps editor's Objects canvas."""
+        return self._editor.workspace
 
 #: Desktop and narrow window sizes. 1440x900 is the size the accepted public
 #: captures use; 1100x720 is the narrow state.
@@ -315,56 +313,46 @@ class Harness:
         )
         return path
 
-    @property
-    def tabs(self):
-        """Kept for older probes: the shell no longer has a tab strip."""
-        return None
-
-    def tab(self, index: int):
-        """Kept for older probes: resolve a legacy tab index to its editor."""
-        legacy = {
-            0: "Atlas", 1: "Inspector", 2: "Scene", 3: "Maps", 4: "Maps",
-            5: "Graphics", 6: "Build", 7: "Launch",
-        }
-        return self.editor(legacy[index])
+    def editors(self) -> tuple[str, ...]:
+        """Every editor this shell actually has, in strip order."""
+        return tuple(self.window._hosts)
 
     def editor(self, name: str):
-        """The live editor widget for an editor name.
+        """The live editor widget for an editor name, or a refusal.
 
-        Resolves against the current editor-strip shell, and falls back to the
-        pre-correction tab shell so the same harness can capture the baseline and
-        the candidate: a before/after pair must be taken by the same tool or it is
-        not a comparison.
+        Resolution goes through the shell's own host registry, the authority the
+        product navigates with. An unknown name is an error here rather than a
+        silently substituted surface: this harness exists to photograph one named
+        editor, and capturing a different one would misrepresent the shell.
         """
         hosts = getattr(self.window, "_hosts", None)
-        if hosts and name in hosts:
-            return hosts[name].signal_source()
-        legacy = {
-            "Atlas": 0, "Inspector": 1, "Scene": 2, "Map": 3, "Maps": 4,
-            "Graphics": 5, "Build": 6, "Launch": 7,
-        }
-        tabs = getattr(self.window, "_tabs", None)
-        if tabs is not None and name in legacy:
-            widget = tabs.widget(legacy[name])
-            unwrap = getattr(widget, "content", None)
-            return unwrap() if callable(unwrap) else widget
-        if name == "Build":
-            return self.window._build
-        if name == "Launch":
-            return self.window._launcher
-        raise SystemExit(f"unknown editor {name!r}")
+        if not hosts:
+            raise SystemExit(
+                "this window has no editor host registry; the capture harness "
+                "targets the current editor-strip shell only"
+            )
+        if name not in hosts:
+            raise SystemExit(
+                f"unknown editor {name!r}; this shell has {sorted(hosts)}"
+            )
+        return hosts[name].signal_source()
 
     # -- navigation ---------------------------------------------------------
 
     def show_editor(self, name: str) -> None:
-        """Show one editor, on either the current or the pre-correction shell."""
+        """Show one editor through the shell's own selection API, or refuse.
+
+        `MainWindow.show_editor` returns silently for a name it does not have, so
+        the name is checked here first: a silent no-op would leave the previous
+        editor on screen and the capture would be of the wrong surface.
+        """
         if name in ("Build", "Launch"):
             # These are project-action surfaces now, not destinations. They are
             # shown as the shell's stage for the capture, exactly the widget the
             # action's dialog re-parents. The shell's status line is cleared rather
             # than pointed at one of them: they own no status of their own and the
             # permanent zone still carries the project state.
-            for host in getattr(self.window, "_hosts", {}).values():
+            for host in self.window._hosts.values():
                 host.setVisible(False)
             self.window._build.setVisible(name == "Build")
             self.window._launcher.setVisible(name == "Launch")
@@ -373,14 +361,11 @@ class Harness:
                 self.window._status_context.setText("")
             self.pump()
             return
-        if hasattr(self.window, "show_editor"):
-            self.window.show_editor(name)
-            self.pump()
-            return
-        legacy = {"Atlas": 0, "Inspector": 1, "Scene": 2, "Map": 3, "Maps": 4,
-                  "Graphics": 5}[name]
-        self.window._tabs.setCurrentIndex(legacy)
+        self.editor(name)  # refuses an editor this shell does not have
+        self.window.show_editor(name)
         self.pump()
+        if not self.window._hosts[name].isVisible():
+            raise SystemExit(f"editor {name!r} did not become the shown editor")
 
     def show_project_action(self, name: str, shot_name: str):
         """Capture a project-action surface AS A DIALOGUE.
@@ -431,11 +416,6 @@ class Harness:
             window.open_run_configuration()
         return captured[0] if captured else None
 
-    @property
-    def maps(self):
-        """The Maps editor, or the layout browser on the pre-correction shell."""
-        return getattr(self.window, "_maps", None) or self.editor("Maps")
-
     def close_project(self) -> None:
         """Return the session to ROM-only: no project open.
 
@@ -450,17 +430,6 @@ class Harness:
         self.window._refresh_identity()
         self.window._refresh_action_state()
         self.pump(4)
-
-    def show_tab(self, index: int) -> None:
-        """Kept for older probes: a legacy tab index names an editor."""
-        self.show_editor(self.tab_name(index))
-
-    @staticmethod
-    def tab_name(index: int) -> str:
-        return {
-            0: "Atlas", 1: "Inspector", 2: "Scene", 3: "Maps", 4: "Maps",
-            5: "Graphics", 6: "Build", 7: "Launch",
-        }[index]
 
     # -- session ------------------------------------------------------------
     def open_canonical(self) -> None:
@@ -479,12 +448,12 @@ class Harness:
 
     @property
     def maps(self):
-        """The Maps editor, or a stub on the pre-correction shell.
+        """The current shell's Maps editor, driven by mode.
 
-        On the baseline the three map destinations are three separate tabs, so
-        "switch mode" is "select the tab" and there is no mode strip to drive.
+        Resolution goes through `editor`, so a shell without a Maps editor is a
+        refusal rather than a substituted surface.
         """
-        return getattr(self.window, "_maps", None) or _LegacyMaps(self)
+        return _MapsAccessor(self.editor("Maps"))
 
     @property
     def browser(self):
@@ -516,7 +485,7 @@ def _probe() -> int:
     app = QApplication.instance() or QApplication([])
     harness = Harness(Path(tempfile.mkdtemp()), Path(tempfile.mkdtemp()))
     harness.open_canonical()
-    harness.show_tab(TAB_BROWSER)
+    harness.show_editor("Maps")
     tab = harness.browser
     for row in range(tab._list.count()):
         item = tab._list.item(row)

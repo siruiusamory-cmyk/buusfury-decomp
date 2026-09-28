@@ -29,8 +29,6 @@ from tools.qa.visual_pass_capture import (  # noqa: E402
     NARROW,
     PROOF_MAP,
     READ_ONLY_MAP,
-    TAB_BROWSER,
-    TAB_MAP,
     Harness,
 )
 
@@ -76,7 +74,8 @@ def main() -> int:
         harness.open_canonical()
         harness.pump(6)
 
-        harness.show_tab(TAB_BROWSER)
+        harness.show_editor("Maps")
+        harness.maps.set_mode("browse")
         harness.select_map(PROOF_MAP)
         harness.pump(8)
         harness.window.resize(size)
@@ -86,11 +85,11 @@ def main() -> int:
         harness.pump(8)
         _report("browser / read-only map", harness.browser._canvas)
 
-        harness.show_tab(TAB_MAP)
+        harness.maps.set_mode("objects")
         harness.pump(10)
         harness.window.resize(size)
         harness.pump(10)
-        _report("map workspace       ", harness.tab(TAB_MAP)._canvas)
+        _report("map workspace       ", harness.maps.workspace._canvas)
         print()
 
     harness.window.close()

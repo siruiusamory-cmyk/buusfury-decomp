@@ -44,11 +44,11 @@ with a stated reason.
 All 735 transition records are read with no anomalies. A map's existing
 connections can be listed and retargeted - destination, arrival position and
 facing - and a transition the canonical image does not contain can be created,
-both through the normal project and build path. The retail engine has consumed an
-authored destination, and a transition created in DragonByte Z and placed above
-the original end of the ROM was found and consumed by the retail engine on
-2026-09-27. This is the capability currently being finished: it is in final
-integration and is **not yet counted as shipped** in the list below.
+both through the normal project and build path. Every supported transition is
+drawn on the map as the region that triggers it, where a click selects it and a
+drag moves it. The retail engine has consumed an authored destination, and a
+transition created in DragonByte Z and placed above the original end of the ROM
+was found and consumed by the retail engine on 2026-09-27.
 
 **Entities, behavior and scripts.**
 An entity that is not present in the original map data can be cloned and
@@ -80,16 +80,17 @@ in a configured emulator.
 
 ## Current status
 
-**19 / 24 capabilities (79%).** That is the exact count reported by the
+**20 / 24 capabilities (83%).** That is the exact count reported by the
 repository's capability registry,
 [`src/data/capabilities.json`](src/data/capabilities.json), which is the single
-authority for what is shipped: READ 5 / 5, EDIT 7 / 8, AUTHOR 3 / 7,
+authority for what is shipped: READ 5 / 5, EDIT 8 / 8, AUTHOR 3 / 7,
 DELIVER 4 / 4.
 
-The current phase is **Phase 2 - complete map editing**. Tile painting, chunk
-creation, and map resizing and layer authoring have shipped. The **next major
-capability is warp and connection editing**, the last step of that phase; shipping
-it takes the project to 20 / 24. The full route to 1.0 is in the
+**Phase 2 - complete map editing - is complete.** Tile painting, chunk creation,
+map resizing and layer authoring, and warp and connection editing have all
+shipped, the last of them runtime-proven in the retail engine. The **next major
+capability is graphics import**, the first step of Phase 3, which is chosen and
+not started. The full route to 1.0 is in the
 [roadmap](docs/ROADMAP_TO_1_0.md).
 
 ## What makes this different

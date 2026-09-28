@@ -1,9 +1,18 @@
 # MAP-WARP-RUNTIME-EDIT-001 - runtime-prove an existing transition edit
 
-STATUS: **IN PROGRESS - instrument and derivative ready; the human-operated A/B is
-pending.** This is a sub-ticket of the still-active
-`MAP-WARPS-AND-CONNECTIONS-001`. Nothing was merged: the integration of both
-tickets is deliberately on hold until both are done.
+STATUS: **CLOSED (2026-09-26).** Sub-ticket of
+`MAP-WARPS-AND-CONNECTIONS-001`, which has since shipped the `warps` capability.
+The instrument and derivative this record prepared were carried forward by the
+parent's runtime sub-passes: a project edit to `map:0040/transition:0000` was
+built through the production path and driven by a human, and the retail engine
+consumed the authored destination (map 40 -> map 378, then map 435), with the
+arrival coordinate pair and arrival facing resolved and the facing proved by
+instrument. The standing A/B framing below was therefore not completed as
+written; the runtime proof obligation it existed to discharge is recorded in
+[`MAP-WARPS-AND-CONNECTIONS-001.md`](MAP-WARPS-AND-CONNECTIONS-001.md) and
+[`archive/MAP-WARP-FACING-TRACE-001.md`](archive/MAP-WARP-FACING-TRACE-001.md).
+Nothing was merged as its own branch, and the sections below are the record as it
+stood while the work was in progress.
 
 Scope boundaries honoured so far: no Workbench UI, no new transition creation, no
 capability count change, and **no automated gameplay input** - the observer reads

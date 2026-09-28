@@ -24,7 +24,6 @@ from PySide6.QtWidgets import QApplication  # noqa: E402
 from tools.qa.visual_pass_capture import (  # noqa: E402
     DESKTOP,
     NARROW,
-    TAB_GRAPHICS,
     Harness,
 )
 
@@ -35,11 +34,11 @@ def main() -> int:
     for label, size in (("desktop", DESKTOP), ("narrow", NARROW)):
         harness.window.resize(size)
         harness.open_canonical()
-        harness.show_tab(TAB_GRAPHICS)
+        harness.show_editor("Graphics")
         harness.pump(20)
         harness.window.resize(size)
         harness.pump(20)
-        tab = harness.tab(TAB_GRAPHICS)
+        tab = harness.editor("Graphics")
         print(f"[{label} {size.width()}x{size.height()}] content pane:")
         node = tab
         while node is not None:

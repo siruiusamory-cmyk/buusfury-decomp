@@ -4581,6 +4581,19 @@ class MapBrowserTab(QWidget):
         # Apply do" is what the line has to leave behind.
         self._publish_status(message)
         if changed:
+            # WORKBENCH-MUTATION-CURRENCY-001. A real project write invalidates
+            # validation and any current build, exactly as the Inspector's Apply,
+            # the Graphics palette Apply and the Warps Apply already do. This tab
+            # used to emit `projectChanged` alone, which re-read every peer but
+            # left `Session.project_revision` untouched - so `validation_current`
+            # stayed True, the shell kept the status bar reading "validation
+            # current", Build stayed enabled, and a build could run against a
+            # project that was never validated in its current state.
+            #
+            # One call, in the one branch that a real write reaches: `changed` is
+            # True only when the SDK reports project source actually moved, so a
+            # no-op or refused apply never advances the revision.
+            self._session.project_mutated()
             self.projectChanged.emit()
         return changed
 
@@ -7706,6 +7719,12 @@ class MapBrowserTab(QWidget):
                 f"({self._authored_edit_count()} authored cell(s)). Select it in the "
                 "palette and place it on map cells."
             )
+            # WORKBENCH-MUTATION-CURRENCY-001: the chunk editor is the tab's
+            # second project write, so it owes the same currency contract as
+            # `apply_to_project` - one revision, validation and build stale.
+            # `changed` is False for a chunk the project already holds exactly,
+            # and that no-op must leave validation and build alone.
+            self._session.project_mutated()
             self.projectChanged.emit()
         else:
             self._publish_status(

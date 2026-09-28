@@ -1676,3 +1676,86 @@ def test_one_structural_apply_broadcast_back_costs_one_more_read_not_a_cascade(t
     assert broadcasts == [1], "one apply, one broadcast"
     assert [entry[0] for entry in tab.world.writes] == ["resize"]
     assert tab.world.reads == reads + 2, "the apply's own re-read plus the broadcast's"
+
+
+# --- 9.4 project currency (WORKBENCH-MUTATION-CURRENCY-001) ------------------
+#
+# Resize and layer authoring reach the project through the same
+# `apply_to_project`, so they owe the same one-revision contract as a paint. The
+# first test below reuses the existing full-write path (resize, then authored
+# layer, then a four-cell paint on the authored grid) and records the currency
+# after each; the second pins that a re-apply of what the project already holds
+# is not a mutation.
+
+
+def _arm_currency(session) -> int:
+    """A session that has validated and built, so staleness is observable."""
+    session.record_validation(True)
+    session.last_build = object()
+    session.build_revision = session.project_revision
+    assert session.validation_current
+    assert session.build_current
+    return session.project_revision
+
+
+def _assert_currency_spent(session, before: int) -> None:
+    """One real mutation: exactly one revision, validation and build stale."""
+    assert session.project_revision == before + 1
+    assert not session.validation_current
+    assert not session.build_current
+    assert session.last_build is None
+
+
+def test_a_structural_apply_then_a_paint_advances_revision_once_each(tab):
+    """Each real write invalidates; a no-op structural re-apply does not."""
+    session = tab._session
+    before = _arm_currency(session)
+
+    assert tab.apply_resize(3, 2, 2) is True
+    assert tab.apply_to_project() is True
+    _assert_currency_spent(session, before)
+
+    before = _arm_currency(session)
+    assert tab.apply_new_layer("qa-bg3", 3, SLOT, 4, 4, 1) is True
+    assert tab.apply_to_project() is True
+    _assert_currency_spent(session, before)
+
+    before = _arm_currency(session)
+    tab._layer_combo.setCurrentIndex(tab._layer_combo.findData(3))
+    tab.set_brush_ordinal(2)
+    _stroke(tab, 0, 1, 2, 3)
+    assert tab.apply_to_project() is True
+    _assert_currency_spent(session, before)
+
+
+def test_a_no_op_structural_apply_leaves_currency_alone(tab):
+    """Re-applying a resize the project already holds is not a mutation."""
+    session = tab._session
+    assert tab.apply_resize(3, 2, 2) is True
+    assert tab.apply_to_project() is True
+
+    # The same structural edit again: the project already holds exactly this, so
+    # the writer reports no change and nothing is staged.
+    before = _arm_currency(session)
+    assert tab._staged_resize_edits() == {}, "re-applying stages nothing new"
+    assert tab.apply_to_project() is False
+    assert session.project_revision == before
+    assert session.validation_current
+    assert session.build_current
+    assert session.last_build is not None
+
+
+def test_one_apply_is_one_revision_even_when_the_tab_hears_its_own_broadcast(tab):
+    """The shell's fan-out must not charge a second revision for one Apply."""
+    session = tab._session
+    assert tab.apply_resize(3, 2, 2) is True
+    before = _arm_currency(session)
+    # The shell wires a surface's own `projectChanged` to every other surface's
+    # `on_project_mutated`; connecting this tab to itself is the worst case.
+    tab.projectChanged.connect(tab.on_project_mutated)
+
+    assert tab.apply_to_project() is True
+
+    assert session.project_revision == before + 1, "one Apply, one revision"
+    assert not session.validation_current
+    assert not session.build_current

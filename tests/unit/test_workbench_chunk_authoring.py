@@ -25,6 +25,7 @@ contract rather than a convenient shape:
 from __future__ import annotations
 
 import os
+from pathlib import Path
 
 import pytest
 
@@ -768,6 +769,173 @@ def test_a_session_change_clears_every_staged_authored_fact(chunk_tab):
     assert chunk_tab._undo_stack.count() == 0
     assert chunk_tab.unsaved_edit_count() == 0
     assert chunk_tab._centre_stack.currentWidget() is chunk_tab._centre_split
+
+
+# --- project currency (WORKBENCH-MUTATION-CURRENCY-001) ----------------------
+#
+# `Session.project_revision` is the one authority for "is validation/build still
+# about this project": `validation_current` is `validation_revision ==
+# project_revision`, and `app._refresh_action_state` gates the Build action on
+# `validation_current`. The Inspector, Graphics and Warps applies all advance it
+# through `Session.project_mutated()`; the Map Browser's own writes did not, so a
+# layout apply left the status bar reading "validation current" and Build enabled
+# over a project that was never validated in that state. These tests pin the
+# contract for both of the tab's project writes, and its absence for a no-op.
+
+
+def _arm_currency(session) -> int:
+    """A session that has validated and built, so staleness is observable."""
+    session.record_validation(True)
+    session.last_build = object()
+    session.build_revision = session.project_revision
+    assert session.validation_current
+    assert session.build_current
+    return session.project_revision
+
+
+def _assert_invalidated(session, before: int) -> None:
+    """One real mutation: exactly one revision, validation and build stale."""
+    assert session.project_revision == before + 1
+    assert not session.validation_current
+    assert not session.build_current
+    assert session.last_build is None
+
+
+def test_layout_apply_advances_revision_and_invalidates(chunk_tab):
+    """A real `apply_to_project` write invalidates validation and build."""
+    session = chunk_tab._session
+    emitted: list[int] = []
+    chunk_tab.projectChanged.connect(lambda: emitted.append(1))
+
+    _open_new_chunk(chunk_tab)
+    _select_entry(chunk_tab, VOCAB[1])
+    _chunk_stroke(chunk_tab, 0)
+    before = _arm_currency(session)
+
+    assert chunk_tab.apply_to_project() is True
+
+    _assert_invalidated(session, before)
+    assert emitted, "a real write still notifies every peer"
+
+
+def test_chunk_write_advances_revision_and_invalidates(chunk_tab):
+    """The chunk editor's own write owes the same contract as a layout apply."""
+    session = chunk_tab._session
+
+    _open_new_chunk(chunk_tab)
+    _select_entry(chunk_tab, VOCAB[1])
+    _chunk_stroke(chunk_tab, 0)
+    before = _arm_currency(session)
+
+    assert chunk_tab.apply_chunk() is True
+
+    _assert_invalidated(session, before)
+
+
+def test_a_no_op_apply_leaves_validation_and_build_current(chunk_tab, monkeypatch):
+    """Nothing moved, so no revision: currency survives a no-op.
+
+    Every SDK writer reports whether project source actually changed, and each
+    already has its own idempotence test. This pins the currency half: when they
+    all report no change, `changed` is False and the revision must not move.
+    """
+    session = chunk_tab._session
+
+    _open_new_chunk(chunk_tab)
+    _select_entry(chunk_tab, VOCAB[1])
+    _chunk_stroke(chunk_tab, 0)
+    # The SDK's own answers: this project already holds exactly this content.
+    monkeypatch.setattr(mbt, "set_authored_chunk", lambda *a, **k: False)
+    monkeypatch.setattr(mbt, "set_layout_cells", lambda *a, **k: False)
+    monkeypatch.setattr(mbt, "set_layout_authored_cells", lambda *a, **k: False)
+
+    before = _arm_currency(session)
+    assert chunk_tab.apply_to_project() is False
+
+    assert session.project_revision == before
+    assert session.validation_current
+    assert session.build_current
+    assert session.last_build is not None
+
+
+def test_a_no_op_chunk_write_leaves_validation_and_build_current(chunk_tab, monkeypatch):
+    """A chunk the project already holds exactly is not a mutation."""
+    session = chunk_tab._session
+
+    _open_new_chunk(chunk_tab)
+    _select_entry(chunk_tab, VOCAB[1])
+    _chunk_stroke(chunk_tab, 0)
+    monkeypatch.setattr(mbt, "set_authored_chunk", lambda *a, **k: False)
+
+    before = _arm_currency(session)
+    assert chunk_tab.apply_chunk() is False
+
+    assert session.project_revision == before
+    assert session.validation_current
+    assert session.build_current
+    assert session.last_build is not None
+
+
+def test_a_real_write_preserves_unrelated_staged_work(chunk_tab):
+    """Currency advances; the surrounding authoring session is not collateral.
+
+    The write re-reads the project, which is what makes the applied chunk clean.
+    Everything the author staged that this write did not land has to survive it:
+    advancing the revision must not quietly reset the surface or drop the history
+    the author built.
+    """
+    session = chunk_tab._session
+
+    _open_new_chunk(chunk_tab)
+    _select_entry(chunk_tab, VOCAB[1])
+    _chunk_stroke(chunk_tab, 0)
+    # The chunk's own plane edit is still open and still undoable.
+    plane = chunk_tab.chunk_plane_entries()
+    history = chunk_tab._undo_stack.count()
+    assert history > 0, "the plane edit is on the history"
+    assert chunk_tab._staged_chunks.get(CHUNK_IDENTITY) is not None
+
+    before = _arm_currency(session)
+    assert chunk_tab.apply_chunk() is True
+
+    _assert_invalidated(session, before)
+    # The write committed the chunk and left the author's session coherent: the
+    # plane, the open editor and its history are exactly what they were.
+    assert chunk_tab.chunk_plane_entries() == plane
+    assert chunk_tab.chunk_is_open()
+    assert chunk_tab._chunk_identity == CHUNK_IDENTITY
+    assert chunk_tab._undo_stack.count() == history, "the history was not discarded"
+
+
+def test_a_real_write_disables_build_through_the_shells_own_gate(chunk_tab):
+    """The consequence the ticket exists for: Build is disabled until Validate.
+
+    The shell's chain is `MapsEditor.projectChanged` -> `MainWindow`
+    `_on_project_changed` -> `_refresh_action_state`, which hands each action the
+    session's own predicate. This pins the two halves that make the disable
+    real - the wiring, and the predicate's value after a write - without
+    constructing the window inside a tab's unit test.
+    """
+    app_source = (
+        Path(mbt.__file__).resolve().parent / "app.py"
+    ).read_text(encoding="utf-8")
+    assert "self._maps.projectChanged.connect(self._on_project_changed)" in app_source
+    assert "self._refresh_action_state()" in app_source
+    # The gate the shell evaluates, read straight off the source.
+    assert "self._action_build.setEnabled(self._session.validation_current)" in app_source
+
+    session = chunk_tab._session
+    _open_new_chunk(chunk_tab)
+    _select_entry(chunk_tab, VOCAB[1])
+    _chunk_stroke(chunk_tab, 0)
+    before = _arm_currency(session)
+    assert session.validation_current, "a validated project can build"
+
+    assert chunk_tab.apply_to_project() is True
+
+    _assert_invalidated(session, before)
+    # What `_action_build.setEnabled(...)` now receives.
+    assert not session.validation_current
 
 
 def test_a_project_mutation_keeps_every_staged_authored_fact(chunk_tab):

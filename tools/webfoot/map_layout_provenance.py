@@ -235,10 +235,12 @@ def verify_authored_rom(
     canonical image plus exactly its declared changes.
     """
     try:
+        identity = packaged_profile().identity
         verified = verify_authored_image(
             rom_path,
             manifest_path=manifest_path,
-            canonical_sha256=packaged_profile().identity.sha256,
+            canonical_sha256=identity.sha256,
+            canonical_size=identity.image_size,
             field_bytes=FIELD_BYTES,
             expected_reason=REASON,
             check_changes=_check_layout_changes,

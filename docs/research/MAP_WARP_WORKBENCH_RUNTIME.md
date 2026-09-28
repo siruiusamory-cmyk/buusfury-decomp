@@ -1,9 +1,11 @@
 # MAP-WARP-WORKBENCH-RUNTIME-001 - end-to-end proof of a Workbench-authored transition
 
-STATUS: **RUNTIME PROOF COMPLETE (2026-09-26).** Scoped sub-pass of
-`MAP-WARPS-AND-CONNECTIONS-001`, which remains **ACTIVE / NOT SHIPPED** in
-[`PROJECT_<local-state-name>`](PROJECT_<local-state-name>). No product code changed, so no review gate applies to
-a diff; this record is the evidence.
+STATUS: **CLOSED (2026-09-26).** Runtime proof complete. Scoped sub-pass of
+`MAP-WARPS-AND-CONNECTIONS-001`, which ships as of the parent's closeout
+(2026-09-28); archived at closure in
+[`archive/MAP-WARP-WORKBENCH-RUNTIME-001.md`](archive/MAP-WARP-WORKBENCH-RUNTIME-001.md).
+No product code changed, so no review gate applies to a diff; this record is the
+evidence.
 
 Baseline: `7efbb9c1f83169f42c548557fb3bab1fb73f8804` (`master`, the merge that
 integrated `MAP-WARP-WORKBENCH-001`).

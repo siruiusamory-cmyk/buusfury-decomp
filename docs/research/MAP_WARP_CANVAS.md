@@ -1,10 +1,13 @@
 # MAP-WARP-CANVAS-001 - connections on the Maps canvas
 
-STATUS: **IMPLEMENTED, VALIDATED, VISUALLY QA'd, LEFT UNCOMMITTED (2026-09-27).**
+STATUS: **CLOSED (2026-09-28).** Independent review **PASS**; the phantom-undo
+correction and the merge are recorded in the closure record linked below.
 Class: GUI and project-surface pass. This is a **sub-pass of the parent capability
-`MAP-WARPS-AND-CONNECTIONS-001`**, which stays active and **unshipped**. Nothing
-here ships the parent: the capability count is unchanged, the registry is
-untouched and the site is untouched.
+`MAP-WARPS-AND-CONNECTIONS-001`**, which ships as of the parent's closeout; archived
+at closure in
+[`archive/MAP-WARP-CANVAS-001.md`](archive/MAP-WARP-CANVAS-001.md). Nothing here
+shipped the parent: the capability count was unchanged, the registry was untouched
+and the site was untouched.
 
 Baseline: `fc5d1b86ce4f5ba34a0598e15de61a73db0261af` (the merge of
 `ticket/map-warp-create-runtime-001`; verified as `origin/master` at isolation

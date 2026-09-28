@@ -12,20 +12,29 @@ Buu's Fury authoring environment.
 
 ## Current product status
 
-**17 / 24 capabilities - 71%**
+**20 / 24 capabilities - 83%**
 
 | Family | Progress |
 | --- | --- |
 | READ | 5 / 5 |
-| EDIT | 5 / 8 |
+| EDIT | 8 / 8 |
 | AUTHOR | 3 / 7 |
 | DELIVER | 4 / 4 |
 
 Variable-length dialogue authoring: **merged, deployed, runtime-proven.**
 
-Map tile painting: **shipped and runtime-proven** (`MAP-TILE-PAINT-001`,
-2026-09-25), delivered at the engine's own editable unit - one four-byte chunk-cell
-reference to an existing 256x256 chunk - not as individual 8x8 tile authoring.
+Map editing (Phase 2): **complete.** Tile painting (`MAP-TILE-PAINT-001`,
+2026-09-25), chunk creation (`MAP-CHUNK-AUTHORING-001`, 2026-09-25), map resizing
+and layer authoring (`MAP-RESIZE-AND-LAYERS-001`, 2026-09-26) and warp and
+connection editing (`MAP-WARPS-AND-CONNECTIONS-001`, 2026-09-28) have all shipped,
+each with its own runtime proof. Tile painting was delivered at the engine's own
+editable unit - one four-byte chunk-cell reference to an existing 256x256 chunk -
+not as individual 8x8 tile authoring. Warp and connection editing shipped together
+with its map surface: every supported transition is drawn on the map as the region
+that triggers it, where a click selects it and a drag moves it as one undoable
+gesture.
+
+Next: **Phase 3 - graphics and actor authoring. NEXT, not started.**
 
 > **North star.** An author should be able to create a genuinely new playable
 > piece of Buu's Fury content without manually editing a ROM offset.
@@ -49,10 +58,11 @@ paths that need them. This prevents foundational quality work from silently
 becoming an endless roadmap of its own.
 
 The recommended path to 24/24 is: stabilize the Workbench; finish map editing
-(tile painting -> chunk creation -> resize/layers -> warps); finish graphics
-authoring (graphics import -> sprites/animations/frames -> appearances); then make
-new-map creation the final composition capability. After 24/24, run a
-creator-UX/release-candidate phase and a final v1.0 ship phase.
+(tile painting -> chunk creation -> resize/layers -> warps) - **now complete**;
+finish graphics authoring (graphics import -> sprites/animations/frames ->
+appearances) - **next, not started**; then make new-map creation the final
+composition capability. After 24/24, run a creator-UX/release-candidate phase and a
+final v1.0 ship phase.
 
 ## What this document is, and what it is not
 
@@ -103,18 +113,19 @@ Two supporting documents are deliberately **not** planning authority:
 
 ## 1. Current state and what has already been proven
 
-The current public product is **17/24 capabilities (71%)**. The denominator is
-intentionally unchanged, and tile painting moved the count because it is a new
-capability an author can use, delivered at the engine's own unit rather than as a
-finer one the format does not have. Variable-length dialogue strengthened an
+The current public product is **20/24 capabilities (83%)**. The denominator is
+intentionally unchanged. Tile painting, chunk creation, map resizing with layer
+authoring, and warp and connection editing each moved the count because each is a
+new capability an author can use, delivered at the engine's own unit rather than as
+a finer one the format does not have. Variable-length dialogue strengthened an
 existing capability rather than inventing one, which is why it did not move the
-count. The important point is that the infrastructure under those 17 shipped
+count. The important point is that the infrastructure under those 20 shipped
 capabilities is substantially stronger than the percentage alone suggests.
 
 | Area | Current | Status | Shipped today |
 | --- | --- | --- | --- |
 | READ | 5 / 5 | Complete | Shell; atlas/search; record inspection; sprite/animation/palette browsing; Map Browser |
-| EDIT | 5 / 8 | 3 missing | Dialogue; palette recolor; object placement; map layout chunk-cell replacement; tile painting (chunk-cell, 2026-09-25) |
+| EDIT | 8 / 8 | Complete | Dialogue; palette recolor; object placement; map layout chunk-cell replacement; tile painting (chunk-cell, 2026-09-25); chunk creation (2026-09-25); map resizing and layer authoring (2026-09-26); warp and connection editing (2026-09-28) |
 | AUTHOR | 3 / 7 | 4 missing | Authored entities; behavior/scripts; text beyond retail slot |
 | DELIVER | 4 / 4 | Complete | Validate/build; safe Save As; derivative provenance/reopen; launch |
 
@@ -172,15 +183,12 @@ it now would make progress percentages historically meaningless. "100%" means
 all 24 currently-defined product capabilities are shipped and independently
 validated.
 
-The seven missing capabilities are the only items that move the score from 71%
-to 100%:
+The four missing capabilities are the only items that move the score from 83% to
+100%. Graphics import is the next one, and it has not started:
 
 | Family | Missing capability |
 | --- | --- |
-| EDIT | chunk creation |
-| EDIT | map resizing / layer authoring |
-| EDIT | warp / connection editing |
-| AUTHOR | graphics import |
+| AUTHOR | graphics import (NEXT - not started) |
 | AUTHOR | new sprite / animation / frame authoring |
 | AUTHOR | new appearance definitions |
 | AUTHOR | new maps |
@@ -274,10 +282,10 @@ unless new evidence proves a dependency wrong.
 | 0 - Land current work | Completed | Variable-length dialogue merged, CI green, deployed, live wording verified. | 16/24 |
 | 1 - Authoring-safety baseline | Completed | CQA-05/06 together (**CLOSED** 2026-09-24); CQA-07/08 together (**CLOSED** 2026-09-25); Phase 1 complete. Preserve staged edits/undo, totalize GUI errors, remove pathological palette work, ensure CI actually executes GUI dependencies. | 16/24 |
 | 2A - Tile painting | Map editing | Brush/pick/erase/fill/selection + undo/redo using existing tile vocabulary. **COMPLETE** 2026-09-25: delivered at the engine's own unit, one four-byte chunk-cell reference to an existing chunk; retail-engine display runtime-proven after a genuine map rebuild. | 17/24 |
-| 2B - Chunk creation | Map editing | Create/materialize new chunk data; allocate/relocate safely; prove the map/chunk pointer domain the feature needs. | 18/24 |
-| 2C - Resize + layers | Map editing | Resize grids, create/relocate layer resources, preserve handler semantics, validate boundaries and reopen. | 19/24 |
-| 2D - Warps / connections | Map editing | Visual destination editing, connection/warp consistency, runtime transition proof. | 20/24 |
-| 3A - Graphics import | Graphics authoring | Image import -> quantization -> tiles/container encoding -> allocation -> runtime proof; prove graphics-domain expanded addressing as needed. | 21/24 |
+| 2B - Chunk creation | Map editing | Create/materialize new chunk data; allocate/relocate safely; prove the map/chunk pointer domain the feature needs. **COMPLETE** 2026-09-25: a project-authored chunk body is allocated above the original ROM's end, and the retail engine's own loaded layer record was observed referencing it. | 18/24 |
+| 2C - Resize + layers | Map editing | Resize grids, create/relocate layer resources, preserve handler semantics, validate boundaries and reopen. **COMPLETE** 2026-09-26: the grown grid is re-emitted above the original ROM's end, the map root is repointed, and the added ground is displayed at runtime. | 19/24 |
+| 2D - Warps / connections | Map editing | Visual destination editing, connection/warp consistency, runtime transition proof. **COMPLETE** 2026-09-28: a transition is retargeted through the project and one the image does not contain is authored above the original ROM's end; every supported transition is drawn and dragged on the map as its trigger region; and a human-operated run confirmed the retail engine consumes an authored transition. | 20/24 |
+| 3A - Graphics import | Graphics authoring | Image import -> quantization -> tiles/container encoding -> allocation -> runtime proof; prove graphics-domain expanded addressing as needed. **NEXT** (not started). | 21/24 |
 | 3B - Sprite / animation / frame authoring | Graphics authoring | Create new sprite definitions, frames/pieces/OAM and animation records; table expansion where necessary. | 22/24 |
 | 3C - Appearance authoring | Graphics authoring | Create new appearance definitions that bind authored graphics into game-visible actors. | 23/24 |
 | 4 - New maps | Final capability | Create MapEntry + layers/chunks + objects + warps + scripts/dialogue; expand/relocate tables; prove runtime scene. | 24/24 |
@@ -308,11 +316,16 @@ dependency order, not the naming, is what must be honoured.
   **COMPLETE** 2026-09-25:
   [`tickets/archive/MAP-TILE-PAINT-001-COMPLETE.md`](tickets/archive/MAP-TILE-PAINT-001-COMPLETE.md).
 - `MAP-CHUNK-AUTHORING-001` - create, allocate, reference, reopen and
-  runtime-prove new chunks. **NEXT** (not started).
-- `MAP-RESIZE-AND-LAYERS-001` - structural grid/layer editing.
-- `MAP-WARP-CONNECTION-EDITOR-001` - author and validate transitions/connections.
+  runtime-prove new chunks. **COMPLETE** 2026-09-25:
+  [`tickets/archive/MAP-CHUNK-AUTHORING-001-COMPLETE.md`](tickets/archive/MAP-CHUNK-AUTHORING-001-COMPLETE.md).
+- `MAP-RESIZE-AND-LAYERS-001` - structural grid/layer editing. **COMPLETE**
+  2026-09-26:
+  [`tickets/archive/MAP-RESIZE-AND-LAYERS-001-COMPLETE.md`](tickets/archive/MAP-RESIZE-AND-LAYERS-001-COMPLETE.md).
+- `MAP-WARPS-AND-CONNECTIONS-001` - author and validate transitions/connections,
+  and draw and edit their trigger regions on the map. **COMPLETE** 2026-09-28:
+  [`tickets/MAP-WARPS-AND-CONNECTIONS-001.md`](tickets/MAP-WARPS-AND-CONNECTIONS-001.md).
 - `GRAPHICS-IMPORT-001` - import original artwork into the retail graphics
-  formats.
+  formats. **NEXT** (not started).
 - `SPRITE-ANIMATION-AUTHORING-001` - new sprite/frame/animation resources.
 - `APPEARANCE-AUTHORING-001` - new appearance definitions and bindings.
 - `MAP-AUTHOR-NEW-001` - new map/scene creation, the 24/24 capability.
@@ -370,7 +383,8 @@ that actually need them, or to release hardening.
 **CLOSED**: CQA-05 and CQA-06 by `CQA-05-06-WORKBENCH-STATE-AND-ERRORS-001`
 (2026-09-24), and CQA-07 and CQA-08 by
 `CQA-07-08-WORKBENCH-PERF-AND-CI-001` (2026-09-25). The product capability count
-is unchanged at **16 / 24 (67%)**, because this phase is safety infrastructure
+did not move for this phase (it stood at **16 / 24 (67%)** when the phase
+closed), because this phase is safety infrastructure
 and ships no capability. Audit finding CQA-10 remains **PARTIAL / IMPROVED** and
 is not closed by this work.
 
@@ -380,6 +394,10 @@ Map editing should become a coherent progression rather than four disconnected
 features. Each step builds on the previous one and should reuse the same map
 view/model, undo system, allocator, identity/provenance rules and runtime proof
 workflow.
+
+**PHASE 2 - COMPLETE MAP EDITING: COMPLETE (2026-09-28).** All four capabilities
+have shipped and each carries its own runtime proof. EDIT now reads 8 / 8 and the
+product stands at **20 / 24 (83%)**.
 
 ### 7.1 Tile painting -> 17/24
 
@@ -410,6 +428,14 @@ This ticket owns the just-in-time addressability proof for the map/chunk pointer
 domain it needs. Reopen must preserve authored chunk identity and allocation
 reservations.
 
+**COMPLETE (2026-09-25):**
+[`tickets/archive/MAP-CHUNK-AUTHORING-001-COMPLETE.md`](tickets/archive/MAP-CHUNK-AUTHORING-001-COMPLETE.md).
+Delivered: a project-authored chunk is a new 32x32 screen-entry body with its own
+durable identity, composed only from the screen entries its template layer already
+draws, allocated above the original ROM's end and resolved from identity to address
+at build time. The retail engine's own loaded layer record was observed referencing
+the authored body, with the other three layers byte-identical.
+
 ### 7.3 Map resizing and layers -> 19/24
 
 Allow an author to change grid dimensions and supported layer structure.
@@ -417,6 +443,15 @@ Relocate affected pointer arrays/resources safely, preserve the special-handler
 distinctions discovered by CQA-04, and fail closed for layer types that remain
 read-only. Add visible budget/limit information where fixed dimensions or handler
 constraints apply.
+
+**COMPLETE (2026-09-26):**
+[`tickets/archive/MAP-RESIZE-AND-LAYERS-001-COMPLETE.md`](tickets/archive/MAP-RESIZE-AND-LAYERS-001-COMPLETE.md).
+Delivered: a supported dominant layer's chunk grid can be grown, top-left anchored,
+so every existing cell keeps its coordinate; the layer record is re-emitted whole
+above the original ROM's end and the map root's own layer-slot field is repointed at
+it; and one of the map's four fixed layer slots can be activated as a new supported
+visual layer. Growth only - shrinking is refused - and read-only layer forms fail
+closed with their own reason.
 
 ### 7.4 Warp/connection editing -> 20/24
 
@@ -426,7 +461,25 @@ bidirectional relationships consistent where the engine contract requires it, an
 prove the transition in-game. This should feel closer to Porymap's
 event/connection workflow than to editing pointer words.
 
+**COMPLETE (2026-09-28):**
+[`tickets/MAP-WARPS-AND-CONNECTIONS-001.md`](tickets/MAP-WARPS-AND-CONNECTIONS-001.md).
+Delivered: the Maps editor's Warps mode lists a map's connections and retargets a
+selected transition's destination, arrival and facing through the project, with
+Apply and Revert on the editor's own undo history; the Create transition form
+authors a transition the image does not contain, under a durable identity of the
+form `map:NNNN/transition:<name>`, composed over a same-map template and emitted
+with an expanded record-pointer array above the original ROM's end; and the map
+canvas draws every supported transition as its trigger region, selects that
+connection on a click and moves the region as one undoable gesture. A human-operated
+run confirmed the retail engine consumes an authored transition. The 169-class
+family, shared connection roots, unresolved record bytes and every unsupported form
+fail closed with their reason stated rather than being forced.
+
 ## 8. Phase 3 - Complete graphics authoring (3 capabilities)
+
+**PHASE 3 - GRAPHICS AND ACTOR AUTHORING: NEXT, NOT STARTED.** This is the next
+phase in the order, and no work on it has begun: the first capability below,
+graphics import, is chosen but not started.
 
 Graphics authoring should follow the same pattern as variable-length dialogue:
 the user performs a semantic edit, while the tool absorbs quantization, container
@@ -439,7 +492,9 @@ Import original user-provided artwork, quantize/validate it against Buu's Fury
 palette and tile constraints, encode the correct graphics container,
 allocate/relocate as needed, update references, reopen, and render in the retail
 engine. This ticket owns the runtime proof for the graphics-container
-addressability domain it actually uses.
+addressability domain it actually uses. **NEXT - not started.** It is blocked on
+allocation for payloads that change size and on a write path that can put a changed
+graphic back.
 
 ### 8.2 New sprite / animation / frame authoring -> 22/24
 
@@ -587,14 +642,14 @@ which is authoritative; the roadmap note column is this document's.
 | EDIT | Shared palette recolour | Shipped | |
 | EDIT | Object placement on the rendered map | Shipped | |
 | EDIT | Map layout editing: chunk-cell replacement | Shipped | |
-| EDIT | Tile-level painting | Shipped | Phase 2A, delivered 2026-09-25 at the engine's own unit: one four-byte chunk-cell reference to an existing chunk, not an individual 8x8 tile |
-| EDIT | Chunk creation and editing | Missing | Phase 2B -> 18/24 |
-| EDIT | Map resizing and layer changes | Missing | Phase 2C -> 19/24 |
-| EDIT | Warp and connection editing | Missing | Phase 2D -> 20/24 |
+| EDIT | Tile painting | Shipped | Phase 2A, delivered 2026-09-25 at the engine's own unit: one four-byte chunk-cell reference to an existing chunk, not an individual 8x8 tile |
+| EDIT | Chunk creation and editing | Shipped | Phase 2B, complete 2026-09-25: the authored body is allocated above the original ROM's end and the retail engine loads it |
+| EDIT | Map resizing and layer changes | Shipped | Phase 2C, complete 2026-09-26: the grown layer record is relocated above the original ROM's end and the added ground is displayed at runtime |
+| EDIT | Warp and connection editing | Shipped | Phase 2D, complete 2026-09-28: retarget and create transitions, and draw, select and drag their trigger regions on the map; runtime-proven |
 | AUTHOR | Authored entities and placements | Shipped | |
 | AUTHOR | Authored behavior and scripts | Shipped | |
 | AUTHOR | Authored text beyond the retail slot | Shipped | Distinct from the compressed-dialogue capability |
-| AUTHOR | Graphics replacement and import | Missing | Phase 3A -> 21/24 |
+| AUTHOR | Graphics replacement and import | Missing | Phase 3A (NEXT, not started) -> 21/24 |
 | AUTHOR | New sprite, animation and frame authoring | Missing | Phase 3B -> 22/24 |
 | AUTHOR | New appearance definitions | Missing | Phase 3C -> 23/24 |
 | AUTHOR | New map and scene materialisation | Missing | Phase 4 -> 24/24 |
@@ -614,8 +669,8 @@ This keeps reverse engineering attached to visible product progress.
 | Domain family | When to prove | Policy |
 | --- | --- | --- |
 | Packed dialogue | Already runtime-proven | Keep as the established reference proof |
-| Map chunks/layers | Phase 2B/2C | Prove when chunk creation/resizing requires relocation or expanded placement |
-| Map connections/warps | Phase 2D if pointer-bearing | Prove only if expanded relocation is required |
+| Map chunks/layers | Phase 2B/2C - proven | Chunk creation and resizing both place their records above the original ROM's end, and both are runtime-proven |
+| Map connections/warps | Phase 2D - proven | An authored transition record and its expanded pointer array were placed above the original ROM's end and consumed by the retail engine |
 | Graphics containers | Phase 3A | Graphics import owns its real engine proof |
 | Sprite/frame/animation structures | Phase 3B | The authoring ticket owns pointer/table range proof |
 | Appearance table/resources | Phase 3C | Appearance creation owns table expansion/addressability proof |
@@ -853,8 +908,9 @@ Buu's Fury's retail binary engine and this repository's evidence discipline.
   CQA-02, CQA-03/CQA-15 and CQA-04
   ([audit](research/PROJECT_CODE_QUALITY_AUDIT.md),
   [series index](tickets/archive/CQA-004.md)).
-- Current capability registry: 24 total, 16 shipped (READ 5/5, EDIT 4/8,
-  AUTHOR 3/7, DELIVER 4/4).
+- Current capability registry: 24 total, 20 shipped (READ 5/5, EDIT 8/8,
+  AUTHOR 3/7, DELIVER 4/4); Phase 2 map editing is complete and the next
+  capability is graphics import (Phase 3A, not started).
 - Known open/deferred items: CQA-10 (partial) and
   `ROM-CAPACITY-ATLAS-SEED-OVERLAY-001`. CQA-05, CQA-06, CQA-07 and CQA-08 are
   **CLOSED** (2026-09-24 and 2026-09-25).
@@ -863,10 +919,9 @@ Buu's Fury's retail binary engine and this repository's evidence discipline.
 
 | | |
 | --- | --- |
-| **Now** | 17/24 (71%); Phase 2A tile painting shipped and runtime-proven |
-| **Next** | Phase 2B chunk creation (`MAP-CHUNK-AUTHORING-001`, not started) |
-| **Then** | Three more map-editing capabilities -> 20/24 |
-| **Then** | Three graphics-authoring capabilities -> 23/24 |
+| **Now** | 20/24 (83%); Phase 2 map editing is complete, all four map capabilities runtime-proven |
+| **Next** | Phase 3A graphics import (`GRAPHICS-IMPORT-001`; NEXT, not started) |
+| **Then** | Two more graphics-authoring capabilities -> 23/24 |
 | **Feature-complete finish** | New-map authoring -> 24/24 (100%) |
 | **Ship finish** | Creator UX/RC -> golden dogfood -> BPS distribution -> hardware smoke -> v1.0 |
 

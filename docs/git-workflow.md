@@ -138,6 +138,29 @@ glab api --method PUT "projects/.../merge_requests/<iid>" \
 
 The `Content-Type` header is required; without it the API answers `HTTP 415`.
 
+## Two credential and output traps on the Windows workflow
+
+Both were measured on this machine and this repository on 2026-09-28. They are
+local observations, not a claim about GitLab generally.
+
+**The git and REST API paths may need different header forms from the same
+stored credential.** `git push` uses the credential `glab` already provides
+through `glab auth git-credential`, and `glab api "<path>"` authenticates for
+reads. A direct REST call from a script needs the credential spelled as a header
+instead: `Authorization: Bearer <token>`. Measured on this token, against
+`/api/v4/user`, `Authorization: Bearer` answered `200`, while both
+`PRIVATE-TOKEN: <token>` and `Authorization: Basic` with the same token answered
+`401`. The stored `glab` credential here is an OAuth-style token, which is why
+the bearer form is the one that works; a personal access token may differ. Use
+this form only when a `glab` subcommand cannot express what is needed, such as a
+merge pinned to a reviewed SHA that must be passed as a request field.
+
+**Redirected `glab` output is UTF-16 on this shell.** `glab ... > file` writes
+UTF-16LE with a BOM (`FF FE 7B 00 22 00` for `{"`), so the file is not readable
+UTF-8 text and a naive read produces NUL-separated garbage. Either read the file
+with the encoding it was written in, or call the API from a process that decodes
+the response explicitly rather than through a shell redirect.
+
 ## Before merging
 
 Wait for the merge-request pipeline to settle and read its jobs, rather than

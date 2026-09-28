@@ -661,10 +661,12 @@ which is authoritative; the roadmap note column is this document's.
 ## 13. Domain addressability strategy
 
 Checkpoint A mapped sixteen addressability domains. Thirteen can encode addresses
-above the original 8 MiB boundary, but only packed dialogue has runtime proof
-there. **The optimized roadmap does not attempt to prove all thirteen in
-advance.** Instead, each feature ticket owns the proof for the domain it needs.
-This keeps reverse engineering attached to visible product progress.
+above the original 8 MiB boundary. Three of those families now have runtime proof
+there, not one: packed dialogue first, and then map chunks/layers (Phase 2B/2C)
+and connections/warps (Phase 2D), each proven by the feature that needed it. **The
+optimized roadmap does not attempt to prove all thirteen in advance.** Instead,
+each feature ticket owns the proof for the domain it needs. This keeps reverse
+engineering attached to visible product progress.
 
 | Domain family | When to prove | Policy |
 | --- | --- | --- |
@@ -921,7 +923,7 @@ Buu's Fury's retail binary engine and this repository's evidence discipline.
 | --- | --- |
 | **Now** | 20/24 (83%); Phase 2 map editing is complete, all four map capabilities runtime-proven |
 | **Next** | Phase 3A graphics import (`GRAPHICS-IMPORT-001`; NEXT, not started) |
-| **Then** | Two more graphics-authoring capabilities -> 23/24 |
+| **Then** | Graphics import, then new sprites/animations, then appearances -> 23/24 |
 | **Feature-complete finish** | New-map authoring -> 24/24 (100%) |
 | **Ship finish** | Creator UX/RC -> golden dogfood -> BPS distribution -> hardware smoke -> v1.0 |
 

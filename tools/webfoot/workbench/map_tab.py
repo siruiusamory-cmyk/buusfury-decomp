@@ -1,15 +1,38 @@
 """WORKBENCH-006 visual map-authoring workspace.
+MAP-WARP-CANVAS-001 - its connection trigger regions.
 
-The Map tab is a thin presentation client over ``map_render`` and ``scene``.
-It renders the SDK's ROM-only indexed map output once, adapts that result to a
-Qt pixmap, and overlays semantic placement markers at the coordinate API's
-confirmed logical map pixels.  It contains no decompression, screen-entry,
-palette, pointer, address, or position-bit arithmetic.
+The Map tab is a thin presentation client over ``map_render``, ``scene`` and
+``map_transitions``. It renders the SDK's ROM-only indexed map output once,
+adapts that result to a Qt pixmap, and overlays semantic placement markers at the
+coordinate API's confirmed logical map pixels. It contains no decompression,
+screen-entry, palette, pointer, address, or position-bit arithmetic.
+
+**The connection overlay (MAP-WARP-CANVAS-001).** The same canvas draws every
+connection of the displayed map as its **trigger region** - the record's two
+ordered intervals, the first horizontal and the second vertical in the engine's
+own map pixels, which is the measured reading and the same pixel space the
+rendered artwork and the placement markers already use. So the rectangle is one
+scene item at those coordinates and the view's single zoom/scroll transform
+carries it exactly as it carries everything else; no widget here re-derives a
+coordinate. The region shown is the one a build would apply: the project's
+authored region where it has one (that is why the canvas reads the project's
+transition documents), the record's own otherwise.
+
+Clicking a region drives the **shipped** Warps editor - the Maps editor switches
+to that mode and selects the connection's row - and dragging one moves the region
+through the same authority that editor's Apply uses
+(``map_transitions.set_transition_edits``), in one ``ByteChange``, as one undo
+entry. Nothing here composes a record, writes a document, computes an offset or
+masks a byte, and nothing here states an editability rule of its own: whether a
+region may be moved is answered by the Warps surface (``region_edit_refusal``),
+whose refusal is the one shown, and a canvas with no such surface wired refuses
+every drag rather than inventing a rule.
 """
 
 from __future__ import annotations
 
 from collections.abc import Callable
+from dataclasses import dataclass
 
 from PySide6.QtCore import QPointF, QRectF, Qt, QTimer, Signal
 from PySide6.QtGui import QAction, QColor, QKeySequence, QPainter, QPen, QUndoCommand, QUndoStack
@@ -19,6 +42,7 @@ from PySide6.QtWidgets import (
     QGridLayout,
     QGraphicsItem,
     QGraphicsPixmapItem,
+    QGraphicsRectItem,
     QGraphicsScene,
     QGraphicsSimpleTextItem,
     QGraphicsView,
@@ -36,12 +60,94 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from .. import map_render, scene as scene_sdk
+from .. import map_render, map_transitions as transition_sdk, scene as scene_sdk
+from ..formats.map_entry import MapEntryProfileError
+from ..formats.map_graphics import MapGraphicsError
+from ..formats.map_transitions import MapTransitionError, TransitionRegion
 from ..project import ProjectError
 from . import theme
 from .graphics_tab import indexed_pixmap
 from .session import Session
 from .widgets import PanelHeader, ToolStrip
+
+#: Every failure family the transition authority and the project underneath it can
+#: raise on a gesture. `MapTransitionsError` is the authority's parent
+#: (`TransitionFieldError`, `UnknownTransitionError`, `TransitionProfileError`),
+#: `MapTransitionError` is the codec's, `MapEntryProfileError` and
+#: `MapGraphicsError` are the map-table and map-graphics families the corpus route
+#: goes through, and `ProjectError`/`OSError` are the project read and write. None
+#: shares a parent with the others, so each is named - the WORKBENCH-001 rule.
+_TRANSITION_ERRORS = (
+    transition_sdk.MapTransitionsError,
+    MapTransitionError,
+    MapEntryProfileError,
+    MapGraphicsError,
+    ProjectError,
+    OSError,
+)
+
+#: What reading the *session's* image or project can add on top of that. A profile
+#: object that is not a `RomProfile` surfaces as `AttributeError`/`TypeError` rather
+#: than as a refusal, and at a session boundary or a repaint that is a read-only
+#: state like any other ("this image's connections cannot be read") rather than a
+#: traceback inside a widget. The gesture slots keep the narrower tuple above, so a
+#: programmer error there is still loud - the split `warp_tab` makes between
+#: `_WARP_SESSION_ERRORS` and `_WARP_ERRORS`.
+_TRANSITION_SESSION_ERRORS = _TRANSITION_ERRORS + (AttributeError, TypeError)
+
+#: Why a transition's trigger region cannot be moved from this canvas at all: no
+#: authoring surface is wired to answer what may be edited. Fail closed rather than
+#: invent a rule here - the Maps editor always wires the Warps surface.
+_NO_TRANSITION_GUARD = (
+    "This canvas is not connected to the Maps editor's Warps surface, so no "
+    "connection can be authorised for editing here."
+)
+
+
+def _region_words(region: TransitionRegion) -> str:
+    """One region in the codec's own positional words, for a status line."""
+    return (
+        f"first {region.first[0]}-{region.first[1]}, "
+        f"second {region.second[0]}-{region.second[1]}"
+    )
+
+
+def _translated_region(
+    region: TransitionRegion, dx: int, dy: int
+) -> TransitionRegion:
+    """The region one canvas drag produced, in the codec's own domain.
+
+    The gesture is a translation of the region the project currently applies: both
+    endpoints of the horizontal interval move by ``dx`` and both of the vertical
+    one by ``dy``, so a move preserves both widths and cannot make an interval
+    unordered or degenerate. A translated endpoint outside the ``u16`` domain is
+    refused by :class:`TransitionRegion` itself, in its own words; the canvas adds
+    no bounds rule of its own.
+    """
+    (first_low, first_high), (second_low, second_high) = region.first, region.second
+    return TransitionRegion(
+        first=(first_low + dx, first_high + dx),
+        second=(second_low + dy, second_high + dy),
+    )
+
+
+@dataclass(frozen=True, slots=True)
+class TransitionOverlayState:
+    """One connection drawn on the canvas, and whether its region may be moved.
+
+    ``identity`` is an SDK transition identity - `TransitionIdentity` for a record
+    the image holds, `CreatedTransitionIdentity` for one the project creates - and
+    ``region`` is the region a build would apply: the project's authored one where
+    it has one, the record's own otherwise. ``refusal`` is the authoring surface's
+    own answer about editing this connection, or None; it is never a rule stated
+    here.
+    """
+
+    identity: object
+    region: TransitionRegion
+    refusal: str | None
+    #: Whether the region shown is the project's rather than the base image's.
+    authored: bool = False
 
 
 class PlacementMarker(QGraphicsItem):
@@ -127,12 +233,145 @@ class PlacementMarker(QGraphicsItem):
             self.setPos(origin)
 
 
+class TransitionOverlay(QGraphicsRectItem):
+    """One connection's trigger region, drawn where the engine reads it.
+
+    The item IS the region: its rectangle is the region's own two intervals on the
+    item's axes and its position is the region's low corner, both in the map pixels
+    the rendered artwork and the placement markers already live in. Nothing is
+    recomputed per paint, and the view's one zoom/scroll transform places it exactly
+    as it places the map underneath.
+
+    A press that ends where it started is a **selection** and a press that ends
+    elsewhere is a **move**, reported once on release so one drag is one gesture -
+    the same shape `PlacementMarker` gives a placement. A region the authoring
+    surface will refuse is drawn dashed and still draggable: the gesture has to be
+    possible for its refusal to be readable, which is what keeps it from looking
+    like a dead click.
+    """
+
+    def __init__(
+        self,
+        state: TransitionOverlayState,
+        *,
+        clicked: Callable[[object], None],
+        drag_completed: Callable[[TransitionOverlayState, tuple[int, int], tuple[int, int]], bool],
+    ) -> None:
+        super().__init__()
+        self.state = state
+        self._clicked = clicked
+        self._drag_completed = drag_completed
+        self._drag_origin: QPointF | None = None
+        self._selected = False
+        first_low, first_high = state.region.first
+        second_low, second_high = state.region.second
+        self.setRect(QRectF(0, 0, first_high - first_low, second_high - second_low))
+        self.setPos(first_low, second_low)
+        # Above the artwork (0) and below the placement markers (20): a region is a
+        # large wash, and a marker sitting on a door must stay on top of it.
+        self.setZValue(10)
+        self.setToolTip(
+            f"{state.identity}\n"
+            f"Trigger region: {_region_words(state.region)}\n"
+            + (state.refusal if state.refusal is not None else
+               "Drag to move the trigger region on the map")
+        )
+        self.setFlag(QGraphicsItem.GraphicsItemFlag.ItemIsMovable, True)
+        # The region's own identity appears only while it is selected, so a map
+        # dense with doors stays readable - the placement marker's rule.
+        self._label = QGraphicsSimpleTextItem(str(state.identity), self)
+        self._label.setBrush(theme.color("text_primary"))
+        self._label.setPos(2, 2)
+        self._label.setVisible(False)
+
+    def boundingRect(self) -> QRectF:
+        # The painted halo sits outside the region's own rectangle.
+        return self.rect().adjusted(-3, -3, 3, 3)
+
+    def set_selected(self, selected: bool) -> None:
+        """Show (or stop showing) that this is the connection being edited."""
+        if selected == self._selected:
+            return
+        self._selected = selected
+        self._label.setVisible(selected)
+        self.update()
+
+    def paint(self, painter: QPainter, _option, _widget=None) -> None:
+        painter.save()
+        rect = self.rect()
+        provenance = theme.color(
+            "region_authored" if self.state.authored else "region_retail"
+        )
+        # A white halo plus a dark edge, so the region reads over any palette: the
+        # map is the most saturated object on screen, so the overlay is separated
+        # from it by value as well as by hue.
+        painter.setPen(QPen(theme.color("marker_halo"), 5 if self._selected else 4))
+        painter.setBrush(Qt.BrushStyle.NoBrush)
+        painter.drawRect(rect)
+        # A light wash, not a fill: the terrain under a door is what tells the
+        # author where that door is.
+        wash = QColor(provenance)
+        wash.setAlpha(84 if self._selected else 56)
+        painter.setPen(Qt.PenStyle.NoPen)
+        painter.setBrush(wash)
+        painter.drawRect(rect)
+        pen = QPen(theme.color("selection_edge") if self._selected else provenance, 3 if self._selected else 2)
+        if self.state.refusal is not None:
+            # Dashed: this connection is one the authoring surface will refuse to
+            # move, and the shape says so before the gesture is made.
+            pen.setStyle(Qt.PenStyle.DashLine)
+        painter.setPen(pen)
+        painter.setBrush(Qt.BrushStyle.NoBrush)
+        painter.drawRect(rect)
+        if self._selected:
+            # A chip behind the identity label, drawn by the parent so the child
+            # text lands on it: the one label on a dense map has to stay readable
+            # over foliage and over sand, not only over sky.
+            chip = QColor(theme.color("marker_halo"))
+            chip.setAlpha(215)
+            painter.setPen(Qt.PenStyle.NoPen)
+            painter.setBrush(chip)
+            painter.drawRoundedRect(
+                self._label.boundingRect().translated(self._label.pos()).adjusted(
+                    -2, -1, 2, 1
+                ),
+                2,
+                2,
+            )
+        painter.restore()
+
+    def mousePressEvent(self, event) -> None:
+        self._drag_origin = self.pos()
+        super().mousePressEvent(event)
+
+    def mouseReleaseEvent(self, event) -> None:
+        origin = self._drag_origin
+        super().mouseReleaseEvent(event)
+        self._drag_origin = None
+        if origin is None:
+            return
+        before = (round(origin.x()), round(origin.y()))
+        after = (round(self.pos().x()), round(self.pos().y()))
+        if before == after:
+            # A click: the connection is selected rather than moved. Nothing is
+            # written and no history entry is created.
+            self._clicked(self.state.identity)
+            return
+        if not self._drag_completed(self.state, before, after):
+            # The authority refused the move: the region goes back where it was.
+            self.setPos(origin)
+
+
 class MapCanvasView(QGraphicsView):
     """Crisp map viewport with editor-standard middle pan and wheel zoom."""
 
     cursorMoved = Signal(int, int)
     nudgeRequested = Signal(int, int)
     zoomChanged = Signal(float)
+    #: A left press that landed on no overlay at all. The scene clears its own
+    #: selection for such a press, but it emits nothing when there was none to
+    #: clear - and "click empty canvas to deselect" has to work in that case too.
+    backgroundPressed = Signal()
 
     def __init__(self, scene: QGraphicsScene) -> None:
         super().__init__(scene)
@@ -207,7 +446,18 @@ class MapCanvasView(QGraphicsView):
             self.setCursor(Qt.CursorShape.ClosedHandCursor)
             event.accept()
             return
+        if event.button() == Qt.MouseButton.LeftButton and not self._hits_an_overlay(
+            event.position().toPoint()
+        ):
+            self.backgroundPressed.emit()
         super().mousePressEvent(event)
+
+    def _hits_an_overlay(self, point) -> bool:
+        """Whether a left press at ``point`` lands on a selectable canvas object."""
+        return any(
+            isinstance(item, (PlacementMarker, TransitionOverlay))
+            for item in self.items(point)
+        )
 
     def mouseMoveEvent(self, event) -> None:
         scene_point = self.mapToScene(event.position().toPoint())
@@ -280,12 +530,53 @@ class PlacementMoveCommand(QUndoCommand):
             self._tab._discard_failed_history()
 
 
+class TransitionRegionCommand(QUndoCommand):
+    """One committed region drag, stored as a semantic project operation.
+
+    The whole gesture is one entry, and both endpoints are resolved before it is
+    pushed: the widget validates and persists first, so `redo()`'s first call -
+    which Qt makes during `push()` - must not write a second time, exactly as
+    `PlacementMoveCommand` records it.
+    """
+
+    def __init__(
+        self,
+        tab: "MapWorkspaceTab",
+        identity,
+        before: TransitionRegion,
+        after: TransitionRegion,
+    ) -> None:
+        super().__init__(
+            f"Moved the trigger region of {identity}: "
+            f"{_region_words(before)} \u2192 {_region_words(after)}"
+        )
+        self._tab = tab
+        self._identity = identity
+        self._before = before
+        self._after = after
+        self._first_redo = True
+
+    def redo(self) -> None:
+        if self._first_redo:
+            self._first_redo = False
+            return
+        if not self._tab._apply_command_region(self._identity, self._after):
+            self._tab._discard_failed_history()
+
+    def undo(self) -> None:
+        if not self._tab._apply_command_region(self._identity, self._before):
+            self._tab._discard_failed_history()
+
+
 class MapWorkspaceTab(QWidget):
     """Visual map workspace, thin over the SDK's renderer and scene facade."""
 
     projectChanged = Signal()
     openSceneRequested = Signal(str, str)
     buildRunRequested = Signal()
+    #: A connection was selected on the canvas, as an SDK transition identity. The
+    #: Maps editor answers it by showing the Warps mode on that connection's row.
+    transitionSelected = Signal(object)
     #: The compact one-line status this editor maintains, republished for the shell.
     statusChanged = Signal(str)
 
@@ -300,12 +591,34 @@ class MapWorkspaceTab(QWidget):
         self._selected_identity: str | None = None
         self._background_rect = QRectF()
         self._history_failed = False
+        #: Every connection of the displayed map, drawn as its trigger region, by
+        #: identity key.
+        self._transition_overlays: dict[str, TransitionOverlay] = {}
+        #: The whole-image connection corpus, resolved once per session (CQA-07).
+        self._transition_corpus: "transition_sdk.MapTransitions | None" = None
+        #: Why it could not be resolved, when it could not.
+        self._transition_corpus_error: str | None = None
+        #: The authoring surface's own answer to "may this connection be edited?".
+        #: Installed by the Maps editor; absent means nothing may be edited here.
+        self._transition_guard: Callable[[object], str | None] | None = None
+        #: The project's authored regions and creations, re-read ONCE per project
+        #: revision - never per repaint, per layer change or per overlay.
+        self._transition_project_revision: int | None = None
+        self._transition_authored_regions: dict = {}
+        self._transition_creations: dict = {}
+        self._transition_project_error: str | None = None
+        #: The map domain's own identity for each `map:NNNN` key, so the corpus can
+        #: be asked about the displayed map without parsing its identity here.
+        self._map_identities: dict = {}
+        #: The connection the Warps editor has selected, mirrored for the canvas.
+        self._selected_transition: str | None = None
 
         self._scene = QGraphicsScene(self)
         self._canvas = MapCanvasView(self._scene)
         self._canvas.cursorMoved.connect(self._on_cursor_moved)
         self._canvas.nudgeRequested.connect(self._nudge_selected)
         self._canvas.zoomChanged.connect(self._on_zoom_changed)
+        self._canvas.backgroundPressed.connect(self._on_canvas_background_pressed)
         self._scene.selectionChanged.connect(self._on_scene_selection_changed)
 
         self._maps = QListWidget()
@@ -537,6 +850,17 @@ class MapWorkspaceTab(QWidget):
         self._pixmap_cache.clear()
         self._history_failed = False
         self._undo_stack.clear()
+        # The connection corpus, the project's authored regions and every identity
+        # they are keyed by describe the image and project that were open, so a true
+        # session replacement drops them; a project mutation does not.
+        self._transition_corpus = None
+        self._transition_corpus_error = None
+        self._transition_project_revision = None
+        self._transition_authored_regions = {}
+        self._transition_creations = {}
+        self._transition_project_error = None
+        self._map_identities = {}
+        self._selected_transition = None
         self._populate_maps()
 
     def on_project_mutated(self) -> None:
@@ -562,11 +886,19 @@ class MapWorkspaceTab(QWidget):
         self._maps.blockSignals(True)
         previous = self._current_map or self._session.selected_map
         self._maps.clear()
+        # The map domain's own identities, keyed by the identity spelling the list
+        # and the session already use, so the connection overlay can ask the corpus
+        # about the displayed map without parsing a `map:NNNN` string itself.
+        self._map_identities = {}
         if self._session.maps is None or self._session.rom_image is None:
             self._maps.blockSignals(False)
             self._maps_count.setText("")
             self._show_placeholder("Open a supported ROM to view the map workspace.")
             return
+        self._map_identities = {
+            str(entry.identity): entry.identity
+            for entry in self._session.maps.entries()
+        }
         entries = scene_sdk.list_maps(self._session.maps)
         # Present the richest semantic authoring contexts first without embedding
         # map IDs or renderer knowledge in the widget.
@@ -673,6 +1005,10 @@ class MapWorkspaceTab(QWidget):
         self._canvas.set_fit_rect(self._background_rect)
         self._scene.setSceneRect(self._background_rect)
         self._markers.clear()
+        # `QGraphicsScene.clear()` destroys every item it owns, so the overlay map
+        # must be emptied with it. Holding a wrapper for a deleted C++ item is a
+        # use-after-free waiting for the next repaint.
+        self._transition_overlays.clear()
 
     def _clear_markers(self) -> None:
         """Remove overlays only, retaining the cached retail pixmap item."""
@@ -685,11 +1021,27 @@ class MapWorkspaceTab(QWidget):
         finally:
             self._scene.blockSignals(previous_block)
 
+    def _clear_transition_overlays(self) -> None:
+        """Remove the connection overlays only, retaining the retail pixmap item."""
+        previous_block = self._scene.blockSignals(True)
+        try:
+            for overlay in self._transition_overlays.values():
+                if overlay.scene() is self._scene:
+                    self._scene.removeItem(overlay)
+            self._transition_overlays.clear()
+        finally:
+            self._scene.blockSignals(previous_block)
+
     def _update_scene_bounds(self) -> None:
-        """Make all exact placement anchors scrollable without changing Fit."""
+        """Make all exact placement anchors and regions scrollable without changing Fit."""
         rect = QRectF(self._background_rect)
         for marker in self._markers.values():
             rect = rect.united(marker.sceneBoundingRect())
+        # A trigger region is inside its map's walkable extent, which the rendered
+        # artwork need not cover; making it reachable is what lets a door be seen and
+        # dragged at the edge of a map. Fit stays anchored to the retail artwork.
+        for overlay in self._transition_overlays.values():
+            rect = rect.united(overlay.sceneBoundingRect())
         # Keep a small pan margin around a marker located outside retail art.
         self._scene.setSceneRect(rect.adjusted(-16, -16, 16, 16))
 
@@ -714,6 +1066,7 @@ class MapWorkspaceTab(QWidget):
             )
             self._markers[placement["identity"]] = marker
             self._scene.addItem(marker)
+        self._populate_transitions()
         self._update_scene_bounds()
         self._selected_identity = None
         if selected in self._markers:
@@ -751,6 +1104,8 @@ class MapWorkspaceTab(QWidget):
         self._current_render = None
         self._current_map = None
         self._markers.clear()
+        self._transition_overlays.clear()
+        self._selected_transition = None
         self._scene.clear()
         text = QGraphicsSimpleTextItem(message)
         text.setBrush(theme.color("text_primary"))
@@ -761,10 +1116,335 @@ class MapWorkspaceTab(QWidget):
         self._clear_inspector()
         self._update_controls()
 
+    # -- the connection overlay (MAP-WARP-CANVAS-001) -----------------------
+
+    def set_transition_guard(self, guard: Callable[[object], str | None] | None) -> None:
+        """Install the authoring surface's own answer about editing a connection.
+
+        The Maps editor hands over the Warps surface's `region_edit_refusal`, so the
+        canvas refuses exactly what that surface refuses, in its words: the measured
+        566/169 split, an unresolved destination, a project that cannot be read, a
+        missing project, and a connection root shared with another map. Without it
+        NOTHING is editable here, which is the fail-closed default for a canvas with
+        no authoring surface behind it.
+        """
+        self._transition_guard = guard
+        self._populate_transitions()
+
+    def selected_transition(self) -> str | None:
+        """The connection key the canvas is currently showing as selected."""
+        return self._selected_transition
+
+    def show_selected_transition(self, key: str | None) -> None:
+        """Indicate the connection the Warps editor has selected, when it is here.
+
+        The Warps editor owns the selection; the canvas only shows it. Called when
+        this mode becomes visible again, so a row picked in the connection list
+        highlights the region it belongs to instead of leaving the last clicked one
+        marked.
+        """
+        self._selected_transition = key if key in self._transition_overlays else None
+        self._refresh_transition_selection()
+
+    def transition_overlays(self) -> dict:
+        """The drawn regions, keyed by connection identity, for tests and probes."""
+        return {
+            key: overlay.state.region
+            for key, overlay in self._transition_overlays.items()
+        }
+
+    def transition_corpus_error(self) -> str | None:
+        """Why this image's connections could not be read, or None."""
+        self._transition_corpus_for_session()
+        return self._transition_corpus_error
+
+    def _transition_corpus_for_session(self) -> "transition_sdk.MapTransitions | None":
+        """The whole image's connection corpus, resolved once per session.
+
+        The canonical corpus is 735 records over 452 maps, so it is resolved ONCE
+        here and every overlay is derived from it; a layer change, a zoom, a pan, a
+        selection or a repaint reads nothing at all (CQA-07).
+        """
+        if self._transition_corpus is not None or self._transition_corpus_error is not None:
+            return self._transition_corpus
+        image = self._session.map_image
+        profile = self._session.profile
+        if image is None or profile is None:
+            self._transition_corpus_error = "Open a game image to read its connections."
+            return None
+        try:
+            self._transition_corpus = transition_sdk.read_map_transitions(image, profile)
+        except _TRANSITION_SESSION_ERRORS as exc:
+            self._transition_corpus = None
+            self._transition_corpus_error = str(exc)
+        return self._transition_corpus
+
+    def _read_authored_transitions(self) -> None:
+        """The project's authored regions and creations, once per revision.
+
+        One `read_project` supplies both of the project's transition documents, the
+        same way the Warps surface reads them, and the results are cached against the
+        session's project revision so a repaint or a map switch never re-parses the
+        project (CQA-07).
+        """
+        revision = self._session.project_revision
+        if self._transition_project_revision == revision:
+            return
+        self._transition_project_revision = revision
+        self._transition_authored_regions = {}
+        self._transition_creations = {}
+        self._transition_project_error = None
+        project = self._session.project_dir
+        if project is None:
+            return
+        try:
+            from ..project import read_project
+
+            document = read_project(project)
+            self._transition_authored_regions = {
+                identity: edit.region
+                for identity, edit in transition_sdk.transition_edits_to_requests(
+                    document.transitions
+                ).items()
+                if edit.region is not None
+            }
+            self._transition_creations = dict(
+                transition_sdk.transition_creations_to_requests(
+                    document.transition_creations
+                )
+            )
+        except _TRANSITION_ERRORS as exc:
+            # A project this surface cannot read is not permission to draw retail
+            # regions as if the project authored nothing.
+            self._transition_authored_regions = {}
+            self._transition_creations = {}
+            self._transition_project_error = str(exc)
+
+    def _current_map_identity(self):
+        """The displayed map as the SDK's own `MapIdentity`, or None."""
+        if self._current_map is None:
+            return None
+        return self._map_identities.get(self._current_map)
+
+    def _transition_refusal(self, identity) -> str | None:
+        """Why one connection may not be edited here, in the surface's own words."""
+        if self._transition_guard is None:
+            return _NO_TRANSITION_GUARD
+        try:
+            return self._transition_guard(identity)
+        except _TRANSITION_SESSION_ERRORS as exc:
+            return str(exc)
+
+    def _transition_states(self) -> tuple[TransitionOverlayState, ...]:
+        """Every connection of the displayed map, as the overlay draws it."""
+        corpus = self._transition_corpus_for_session()
+        identity = self._current_map_identity()
+        if corpus is None or identity is None:
+            return ()
+        self._read_authored_transitions()
+        if self._transition_project_error is not None:
+            # The project's own regions could not be read, so no region can be shown
+            # as the one a build would apply.
+            return ()
+        states: list[TransitionOverlayState] = []
+        try:
+            entries = corpus.for_map(identity)
+        except _TRANSITION_ERRORS:
+            entries = ()
+        for entry in entries:
+            region = self._transition_authored_regions.get(entry.identity)
+            authored = region is not None
+            if region is None:
+                region = entry.record.region
+            states.append(
+                TransitionOverlayState(
+                    identity=entry.identity,
+                    region=region,
+                    refusal=self._transition_refusal(entry.identity),
+                    authored=authored,
+                )
+            )
+        for created in sorted(self._transition_creations):
+            if created.source != identity:
+                continue
+            states.append(
+                TransitionOverlayState(
+                    identity=created,
+                    region=self._transition_creations[created].creation.region,
+                    refusal=self._transition_refusal(created),
+                    authored=True,
+                )
+            )
+        return tuple(states)
+
+    def _populate_transitions(self) -> None:
+        """Draw every connection of the displayed map as its trigger region."""
+        self._clear_transition_overlays()
+        for state in self._transition_states():
+            overlay = TransitionOverlay(
+                state,
+                clicked=self._on_overlay_clicked,
+                drag_completed=self._on_overlay_drag,
+            )
+            self._transition_overlays[state.identity.key] = overlay
+            self._scene.addItem(overlay)
+        self._refresh_transition_selection()
+
+    def _refresh_transition_selection(self) -> None:
+        for key, overlay in self._transition_overlays.items():
+            overlay.set_selected(key == self._selected_transition)
+
+    def _on_overlay_clicked(self, identity) -> None:
+        """A click on a region selects it and drives the Warps editor to its row.
+
+        The canvas keeps no editor state of its own for this: it states which
+        connection is selected and tells the Maps editor, which shows the Warps mode
+        and selects the connection's row there. A placement that was selected is
+        dropped with its inspector, so exactly one thing on this canvas is selected.
+        """
+        previous_block = self._scene.blockSignals(True)
+        try:
+            self._scene.clearSelection()
+        finally:
+            self._scene.blockSignals(previous_block)
+        self._selected_identity = None
+        self._clear_inspector()
+        self._selected_transition = identity.key
+        self._refresh_transition_selection()
+        self._set_status(f"{identity}: showing this connection in the Warps editor")
+        self.transitionSelected.emit(identity)
+
+    def _on_canvas_background_pressed(self) -> None:
+        """A press on empty canvas clears what this canvas had selected."""
+        self._selected_transition = None
+        self._refresh_transition_selection()
+
+    def _on_overlay_drag(
+        self,
+        state: TransitionOverlayState,
+        before: tuple[int, int],
+        after: tuple[int, int],
+    ) -> bool:
+        """One committed region drag: one authority write, one undo entry.
+
+        Ends where it started, or ends on a region the authority reports the project
+        already holds: nothing is written by this gesture, no history entry is created
+        and the canvas is repopulated from the project either way. Otherwise the whole
+        gesture is resolved - the authority's answer about editing this connection,
+        the translated region, and the write itself - BEFORE the command is pushed,
+        because Qt calls `redo()` inside `push()` and a refusal must not cross that
+        frame.
+        """
+        if before == after:
+            return True
+        identity = state.identity
+        if not isinstance(identity, transition_sdk.TransitionIdentity):
+            self._report_transition_refusal(
+                state.refusal if state.refusal is not None else _NO_TRANSITION_GUARD
+            )
+            return False
+        refusal = self._transition_refusal(identity)
+        if refusal is not None:
+            self._report_transition_refusal(refusal)
+            return False
+        dx = after[0] - before[0]
+        dy = after[1] - before[1]
+        try:
+            region = _translated_region(state.region, dx, dy)
+        except MapTransitionError as exc:
+            # The codec's own refusal: an endpoint outside the u16 domain.
+            self._report_transition_refusal(str(exc))
+            return False
+        written = self._write_transition_region(identity, region)
+        if written is None:
+            # The edit could not be attempted or was refused: it is reported, and it
+            # is not a write this canvas may record as undoable.
+            return False
+        if written:
+            self._undo_stack.push(
+                TransitionRegionCommand(self, identity, state.region, region)
+            )
+        return written
+
+    def _apply_command_region(self, identity, region: TransitionRegion) -> bool:
+        """Undo/redo's own application of a resolved region.
+
+        The first application was validated before `stack.push()`; undo and redo take
+        the same authority path and catch the complete failure families, so nothing
+        raises across Qt's undo frame. A re-application the authority reports as
+        already current wrote nothing and is still a success: this entry's history
+        stands rather than being discarded for having had nothing left to do.
+        """
+        return self._write_transition_region(identity, region) is not None
+
+    def _write_transition_region(
+        self, identity, region: TransitionRegion
+    ) -> bool | None:
+        """Move one trigger region through the authority, in ONE semantic write.
+
+        `set_transition_edits` is the entry point the Warps editor's Apply uses: it
+        re-reads the canonical record, checks that only the fields this request names
+        change, and returns the authority's own byte plan for the one record. Nothing
+        here composes a record, a byte or an offset, and every other field of that
+        record is preserved because it was never named.
+
+        Returns `True` when the write changed the project's stored region, `False`
+        when the authority wrote nothing because the project already held exactly this
+        region, and `None` when the edit could not be attempted or was refused (the
+        refusal is reported). The canvas is repopulated after every call that reached
+        the authority, so what it draws is the project's own truth whether or not this
+        gesture was the one that changed it - and only a real change may become a
+        history entry.
+        """
+        project = self._session.project_dir
+        image = self._session.map_image
+        profile = self._session.profile
+        if project is None or image is None or profile is None:
+            self._report_transition_refusal(self._transition_refusal(identity))
+            return None
+        try:
+            changed = transition_sdk.set_transition_edits(
+                project,
+                profile,
+                image,
+                {identity: transition_sdk.TransitionEdit(region=region)},
+            )
+        except _TRANSITION_ERRORS as exc:
+            self._report_transition_refusal(str(exc))
+            return None
+        if not changed:
+            # The project already holds exactly this region, so this gesture wrote
+            # nothing and there is no write to undo. The canvas is repopulated anyway:
+            # an overlay stale by the drag delta must end the gesture showing the
+            # project's own region rather than the one it drew.
+            self._populate_transitions()
+            return False
+        # The write is committed, so the session advances and the shell re-arms
+        # validation and build, exactly as a placement drag does.
+        self._session.project_mutated()
+        self.projectChanged.emit()
+        self._populate_transitions()
+        self._selected_transition = identity.key
+        self._refresh_transition_selection()
+        self._set_status(
+            f"Moved the trigger region of {identity} to {_region_words(region)}"
+        )
+        return True
+
+    def _report_transition_refusal(self, message: str) -> None:
+        """An expected refusal on a gesture the user made: stated, never silent."""
+        self._set_status(message)
+        QMessageBox.warning(self, "Move trigger region", message)
+
+
     # -- selection and inspector -------------------------------------------
 
     def _on_scene_selection_changed(self) -> None:
         selected = [item for item in self._scene.selectedItems() if isinstance(item, PlacementMarker)]
+        # Selecting a placement is the canvas moving on from a connection, so the
+        # connection highlight goes with it: one thing on this canvas is selected.
+        self._selected_transition = None
+        self._refresh_transition_selection()
         if not selected:
             self._clear_inspector()
             return
@@ -871,7 +1551,7 @@ class MapWorkspaceTab(QWidget):
             return
         self._history_failed = True
         self._sync_undo_controls()
-        self._set_status("Undo/redo history cleared because the project position could not be saved.")
+        self._set_status("Undo/redo history cleared because the project could not be saved.")
         QTimer.singleShot(0, self._clear_failed_history)
 
     def _clear_failed_history(self) -> None:

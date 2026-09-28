@@ -20,6 +20,24 @@ Map Browser capture shipped byte-identical to its source
 of a second capture (SHA-256 `4af08ab2...d9862e`), both real captures of the real
 application.
 
+### Superseded 2026-09-27
+
+Both of those files were replaced, because the 2026-09-22 visual-direction pass
+changed the shipped shell (four primary editors and the Maps editor's modes) and
+the application theme, so the published plates showed a window the product no
+longer opens. The replacements were approved individually by the owner, captured
+from the real application over the verified canonical ROM with
+`tools/qa/visual_pass_capture.py`'s harness:
+
+| Shipped path | Capture | Transform | SHA-256 of the shipped file |
+| --- | --- | --- | --- |
+| `public/dbz-map-browser.png` | Maps editor, Browse mode, `map:0040`, 1700x1264 | none | `849fe570...810a2e9` |
+| `public/dbz-layout-editor.png` | Maps editor, Layout mode, `map:0040` BG1, one staged paint | crop of the Inspector pane, x=1399 y=86 w=301 h=746 | `36b24698...0e9dba` |
+
+The two files above remain the record of the first approval and their SHAs are
+history, not the current assets. This section is an instance of the decision, not
+a new one, and it widens nothing in the "what this does not authorize" list.
+
 ## What this does not authorize
 
 Recorded so the scoped approval cannot be read more widely than it is. This ADR

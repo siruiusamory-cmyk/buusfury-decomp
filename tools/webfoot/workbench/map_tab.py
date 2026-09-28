@@ -1327,11 +1327,13 @@ class MapWorkspaceTab(QWidget):
     ) -> bool:
         """One committed region drag: one authority write, one undo entry.
 
-        Ends where it started: nothing is asked for, nothing is written and no
-        history entry is created. Otherwise the whole gesture is resolved - the
-        authority's answer about editing this connection, the translated region, and
-        the write itself - BEFORE the command is pushed, because Qt calls `redo()`
-        inside `push()` and a refusal must not cross that frame.
+        Ends where it started, or ends on a region the authority reports the project
+        already holds: nothing is written by this gesture, no history entry is created
+        and the canvas is repopulated from the project either way. Otherwise the whole
+        gesture is resolved - the authority's answer about editing this connection,
+        the translated region, and the write itself - BEFORE the command is pushed,
+        because Qt calls `redo()` inside `push()` and a refusal must not cross that
+        frame.
         """
         if before == after:
             return True
@@ -1353,23 +1355,31 @@ class MapWorkspaceTab(QWidget):
             # The codec's own refusal: an endpoint outside the u16 domain.
             self._report_transition_refusal(str(exc))
             return False
-        if not self._write_transition_region(identity, region):
+        written = self._write_transition_region(identity, region)
+        if written is None:
+            # The edit could not be attempted or was refused: it is reported, and it
+            # is not a write this canvas may record as undoable.
             return False
-        self._undo_stack.push(
-            TransitionRegionCommand(self, identity, state.region, region)
-        )
-        return True
+        if written:
+            self._undo_stack.push(
+                TransitionRegionCommand(self, identity, state.region, region)
+            )
+        return written
 
     def _apply_command_region(self, identity, region: TransitionRegion) -> bool:
         """Undo/redo's own application of a resolved region.
 
         The first application was validated before `stack.push()`; undo and redo take
         the same authority path and catch the complete failure families, so nothing
-        raises across Qt's undo frame.
+        raises across Qt's undo frame. A re-application the authority reports as
+        already current wrote nothing and is still a success: this entry's history
+        stands rather than being discarded for having had nothing left to do.
         """
-        return self._write_transition_region(identity, region)
+        return self._write_transition_region(identity, region) is not None
 
-    def _write_transition_region(self, identity, region: TransitionRegion) -> bool:
+    def _write_transition_region(
+        self, identity, region: TransitionRegion
+    ) -> bool | None:
         """Move one trigger region through the authority, in ONE semantic write.
 
         `set_transition_edits` is the entry point the Warps editor's Apply uses: it
@@ -1377,13 +1387,21 @@ class MapWorkspaceTab(QWidget):
         change, and returns the authority's own byte plan for the one record. Nothing
         here composes a record, a byte or an offset, and every other field of that
         record is preserved because it was never named.
+
+        Returns `True` when the write changed the project's stored region, `False`
+        when the authority wrote nothing because the project already held exactly this
+        region, and `None` when the edit could not be attempted or was refused (the
+        refusal is reported). The canvas is repopulated after every call that reached
+        the authority, so what it draws is the project's own truth whether or not this
+        gesture was the one that changed it - and only a real change may become a
+        history entry.
         """
         project = self._session.project_dir
         image = self._session.map_image
         profile = self._session.profile
         if project is None or image is None or profile is None:
             self._report_transition_refusal(self._transition_refusal(identity))
-            return False
+            return None
         try:
             changed = transition_sdk.set_transition_edits(
                 project,
@@ -1393,10 +1411,14 @@ class MapWorkspaceTab(QWidget):
             )
         except _TRANSITION_ERRORS as exc:
             self._report_transition_refusal(str(exc))
-            return False
+            return None
         if not changed:
-            # The project already holds exactly this region; nothing was written.
-            return True
+            # The project already holds exactly this region, so this gesture wrote
+            # nothing and there is no write to undo. The canvas is repopulated anyway:
+            # an overlay stale by the drag delta must end the gesture showing the
+            # project's own region rather than the one it drew.
+            self._populate_transitions()
+            return False
         # The write is committed, so the session advances and the shell re-arms
         # validation and build, exactly as a placement drag does.
         self._session.project_mutated()

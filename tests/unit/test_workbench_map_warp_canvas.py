@@ -16,9 +16,11 @@ the retail one, a project-created transition, click-select driving the shipped
 Warps editor through `MapsEditor.show_transition`, the canvas marking the
 connection that editor has selected, clicking empty canvas and clicking a
 placement marker, the drag (region only, every other byte of the record preserved,
-one undo entry, undo/redo, save/reopen, and no history for a no-op drag), the
-fail-closed refusals (169-class, shared connection root, an out-of-domain region,
-no authoring surface at all), and the bounded reads (CQA-07).
+every byte of each region word when both endpoints are above `0xFF`, one undo entry,
+undo/redo, save/reopen, and no history for a no-op drag - one that ends where it
+started, or whose write the authority reports as already current), the fail-closed
+refusals (169-class, shared connection root, an out-of-domain region, no authoring
+surface at all), and the bounded reads (CQA-07).
 """
 
 from __future__ import annotations
@@ -568,6 +570,45 @@ def test_a_drag_writes_only_the_region_and_is_one_undo_entry(tab, session, proje
     assert overlay(tab, TARGET).pos() == canvas_mod.QPointF(140, 60)
 
 
+def test_a_drag_above_0xFF_changes_only_the_four_region_halfwords(
+    tab, session, project, image, profile
+):
+    """Both endpoints above 0xFF: every byte of each region word moves, nothing else.
+
+    The other byte test asserts the SET of differing offsets, and every endpoint in
+    its fixture is under 0x100 - so a write that dropped the high byte of each region
+    ``u16`` would have passed it. This drag lands on ``first (400, 440)`` and
+    ``second (320, 360)``, so the four little-endian words at ``+0x08``, ``+0x0A``,
+    ``+0x0C`` and ``+0x0E`` are ``0x0190``, ``0x0140``, ``0x01B8`` and ``0x0168``
+    and all eight of their bytes differ from retail.
+    """
+    target = mt.TransitionIdentity(MapIdentity(0), 0)
+    retail = mt.read_map_transitions(image, profile).entry(target).record
+    assert tab._on_overlay_drag(overlay(tab, TARGET).state, (100, 20), (400, 320))
+
+    authored = mt.read_project_transition_requests(project)[target]
+    assert authored.region == TransitionRegion(first=(400, 440), second=(320, 360))
+    built, _image = built_record(project, image, profile, target)
+    before, after = retail.to_bytes(), built.to_bytes()
+    changed = {index for index in range(24) if after[index] != before[index]}
+    # The four halfwords are the WHOLE diff: a high-byte truncation would leave
+    # +0x09, +0x0B, +0x0D and +0x0F equal to retail, and is not this set.
+    assert changed == set(range(0x08, 0x10))
+    words = {
+        offset: after[offset] | (after[offset + 1] << 8)
+        for offset in (0x08, 0x0A, 0x0C, 0x0E)
+    }
+    assert words == {0x08: 0x0190, 0x0A: 0x0140, 0x0C: 0x01B8, 0x0E: 0x0168}
+    # Everything the gesture never named is byte-identical: the class word and the
+    # invariant word (+0x00..+0x07), then +0x10..+0x13 (facing, destination key and
+    # the unresolved byte) and the arrival pair at +0x14..+0x17.
+    assert after[0x00:0x08] == before[0x00:0x08]
+    assert after[0x10:0x18] == before[0x10:0x18]
+    assert built.class_raw == retail.class_raw
+    assert built.constant_raw == retail.constant_raw
+    assert built.arrival == retail.arrival
+
+
 def test_undo_and_redo_restore_the_exact_original_bytes(tab, session, project, image, profile):
     target = mt.TransitionIdentity(MapIdentity(0), 0)
     assert tab._on_overlay_drag(overlay(tab, TARGET).state, (100, 20), (120, 40))
@@ -593,6 +634,48 @@ def test_a_drag_that_ends_where_it_started_adds_no_history(tab, project):
     assert tab._undo_stack.count() == 0
     assert mt.read_project_transition_requests(project) == {}
     assert region_of(tab, TARGET) == TARGET_REGION
+
+
+def test_a_drag_that_writes_nothing_adds_no_history_and_keeps_the_authored_region(
+    tab, session, project, image, profile
+):
+    """A write the authority reports as already current must not become undo history.
+
+    The canvas can be one project revision behind: it draws what it read when it last
+    populated. Here an unrelated surface authors the very region this gesture
+    translates the stale overlay TO, so the authority writes nothing. There is no
+    project change, so there is no history entry - and no entry whose Undo would write
+    the stale (retail) region back and delete the pre-existing authored one.
+    """
+    target = mt.TransitionIdentity(MapIdentity(0), 0)
+    authored = TransitionRegion(first=(140, 180), second=(60, 100))
+    assert mt.set_transition_edits(
+        session.project_dir,
+        session.profile,
+        session.map_image,
+        {target: mt.TransitionEdit(region=authored)},
+    )
+    # The project advanced and this canvas did NOT repopulate, so its overlay is stale
+    # by exactly the drag delta below: retail + (40, 40) is the authored region.
+    session.project_mutated()
+    state = overlay(tab, TARGET).state
+    assert state.region == TARGET_REGION
+    assert state.region.first[0] + 40 == authored.first[0]
+    assert state.region.second[0] + 40 == authored.second[0]
+
+    # The drag reports NO write, and no history entry exists to Undo.
+    assert tab._on_overlay_drag(state, (100, 20), (140, 60)) is False
+    assert tab._undo_stack.count() == 0
+    # It is repopulated anyway: the canvas now shows the project's own region rather
+    # than the stale one it was drawing.
+    assert region_of(tab, TARGET) == authored
+    assert overlay(tab, TARGET).state.authored is True
+    # The Undo that used to delete the authored region cannot: there is no entry for
+    # it to undo, and the project still holds the region.
+    tab._undo_stack.undo()
+    assert mt.read_project_transition_requests(project)[target].region == authored
+    built, _image = built_record(project, image, profile, target)
+    assert built.region == authored
 
 
 def test_the_region_reproduces_after_save_and_reopen(tab, session, project, rendered, warps):

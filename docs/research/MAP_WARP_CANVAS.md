@@ -161,7 +161,7 @@ offset mapping could not put that rectangle on that door.
 | `tools/webfoot/workbench/editors.py` | the wiring: `show_transition`, the guard, and re-reading the Warps selection when the Objects mode becomes visible |
 | `tools/webfoot/workbench/theme.py` | two overlay tokens (`region_retail`, `region_authored`) |
 | `tools/qa/visual_pass_capture.py` | states 90-97 and their gating |
-| `tests/unit/test_workbench_map_warp_canvas.py` | the new focused file (19 tests) |
+| `tests/unit/test_workbench_map_warp_canvas.py` | the new focused file (20 tests) |
 
 `src/data/capabilities.json`, `src/data/project.ts`, `docs/DEVELOPMENT.md`, `docs/DEVELOPMENT.md`,
 `docs/PROJECT_<local-state-name>`, `docs/PROJECT_<local-state-name>` and `tools/webfoot/
@@ -174,17 +174,18 @@ Named files only; no broad suite, no `-m fast`, no `scripts/test.ps1`.
 
 | command | result |
 | --- | --- |
-| `python -m pytest tests/unit/test_workbench_map_warp_canvas.py -q` | **20 passed** |
+| `python -m pytest tests/unit/test_workbench_map_warp_canvas.py -q` | **20 passed** (reviewed freeze; 22 after the correction) |
 | `python -m pytest tests/unit/test_workbench_map_tab.py -q` | **10 passed** |
 | `python -m pytest tests/unit/test_workbench_warp_transitions.py -q` | **32 passed** |
 | `python -m pytest tests/unit/test_workbench_warp_creation.py -q` | **78 passed** |
-| all four files in one run | **140 passed** (10.5 s) |
+| all four files in one run | **140 passed** (10.5 s) (reviewed freeze; 142 after the correction) |
 | `test_workbench_state_and_errors.py`, `test_workbench_smoke.py`, `test_workbench_map_browser.py`, `test_workbench_chunk_authoring.py` | **133 passed** |
 | `test_workbench_graphics.py`, `test_workbench_chunk_authoring.py`, `test_workbench_resize_and_layers.py`, `test_workbench_scene.py`, `test_workbench_session.py`, `test_workbench_build_run_dialogs.py`, `test_workbench_dialogue.py` | **195 passed, 5 skipped** (the skips are "canonical Buu's Fury ROM not present locally", which this worktree does not hold; `test_workbench_chunk_authoring.py` appears in both neighbour runs and is not counted twice anywhere) |
-| `git diff --check` | **clean, no findings** |
+| `git diff --check` | **clean over the corrected range** (the first freeze carried one trailing space at line 204, which the review caught and this correction removed) |
 | `git diff --numstat` vs `git diff --ignore-cr-at-eol --numstat` | **identical for every modified file** (no ending churn) |
 
-The new test file is untracked; it is LF-only, like every modified file.
+The new test file is tracked at the frozen candidate; it is LF-only, like
+every modified file.
 
 ### What the new file covers, by test name
 
@@ -201,7 +202,7 @@ The new test file is untracked; it is LF-only, like every modified file.
   and the row are the connection's, the form agrees, and a second click selects
   the other connection),
   `test_the_canvas_marks_the_connection_the_warps_editor_has_selected` (a row
-  picked in the list, then the canvas), 
+  picked in the list, then the canvas),
   `test_clicking_empty_canvas_clears_the_canvas_selection`,
   `test_selecting_a_placement_marker_clears_the_region_selection`.
 * **The drag**: `test_a_drag_writes_only_the_region_and_is_one_undo_entry` (the
@@ -323,10 +324,60 @@ same rule.
 * **The full suite was not run**, by the ticket's instruction and the
   evidence-proportional policy: the touch is GUI-only plus two Qt-side
   neighbours, and the focused files above bound it.
-* **No independent review yet.** By the instruction this pass stops at
-  "uncommitted, for review"; the gate in `docs/DEVELOPMENT.md` is the next step and is
-  not claimed here.
+* **Independent review: PASS.** The frozen candidate
+  `27eb04d90561bfdb9946bc7310c723ad1326dbd5` was reviewed against all twelve
+  claims by a separate reviewer: zero blocking findings, eight non-blocking. NB1
+  was a real defect and is fixed in the correction section below; NB2 is the
+  endpoint test added there; NB3 and NB4 are the two record corrections made
+  there.
 * **The status line after an Undo states "Moved the trigger region of ... to
   <the restored region>"**, which is the shipped placement-drag behaviour reused
   rather than a new message. It is accurate about the resulting region and
   slightly odd about the verb.
+
+## Correction after independent review (2026-09-28)
+Findings are bound to the review's numbers explicitly: NB1 is the phantom-undo
+defect fixed here; NB2 is the high-byte coverage added here as
+`test_a_drag_above_0xFF_changes_only_the_four_region_halfwords`; NB3 is the
+`git diff --check` claim and the trailing space corrected here; NB4 is the test
+count corrected here.
+
+
+This section supersedes the review status recorded above. The independent review
+passed the frozen candidate `27eb04d` with **zero blocking findings and eight
+non-blocking** ones; this pass applies the four it named, and nothing else.
+
+* **NB1 - the one behaviour change.** The region write reported success when the
+  authority wrote nothing, so `_on_overlay_drag` pushed a `TransitionRegionCommand`
+  over an edit that was never written. Measured consequence: with the canvas's drawn
+  region stale by exactly the drag delta, a drag reported success, added one history
+  entry, wrote nothing, and that entry's Undo wrote the stale region, deleting a
+  pre-existing authored region. `_write_transition_region` now propagates whether the
+  project actually changed (`True` changed, `False` nothing written, `None` refused),
+  `_on_overlay_drag` pushes history only for a real write, and the canvas is
+  repopulated after every attempted edit, so it shows the project's truth either way.
+  Pinned by
+  `test_a_drag_that_writes_nothing_adds_no_history_and_keeps_the_authored_region`
+  (a pre-existing authored region plus an overlay stale by exactly the drag delta: the
+  drag reports no write, no history entry is added, and the authored region survives
+  the Undo).
+* **NB2 and NB3 - the two record corrections.** The file row above said the new
+  focused file defines 19 tests; it defines **20** at that freeze. And this record
+  claimed `git diff --check` was clean while line 204 carried one trailing space,
+  which made the check over the first freeze exit 2; the space is removed, so the
+  check is clean over the corrected range - baseline `fc5d1b8` through this
+  correction's commit. The frozen candidate `27eb04d` still carries the space, because
+  an amended freeze is not permitted.
+* **NB4 - the byte test's coverage.** It asserted only the SET of differing offsets,
+  and every endpoint in its fixture was under `0x100`, so a write that kept only the
+  low byte of each region `u16` would have passed. The new
+  `test_a_drag_above_0xFF_changes_only_the_four_region_halfwords` drags to
+  `first (400, 440)` / `second (320, 360)` and asserts that exactly the four halfwords
+  at `+0x08`, `+0x0A`, `+0x0C` and `+0x0E` change - `0x0190`, `0x0140`, `0x01B8`,
+  `0x0168` little-endian - and that `+0x00..+0x07` and `+0x10..+0x17` are
+  byte-identical to before.
+
+Re-measured after this correction (the focused table above records the reviewed
+freeze): the focused file defines **22** tests - the reviewed 20 plus the two added
+here - and the four named files run **142 passed** together
+(22 + 10 + 32 + 78).

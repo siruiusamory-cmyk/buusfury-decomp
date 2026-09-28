@@ -34,6 +34,37 @@ from the real application over the verified canonical ROM with
 | `public/dbz-map-browser.png` | Maps editor, Browse mode, `map:0040`, 1700x1264 | none | `849fe570...810a2e9` |
 | `public/dbz-layout-editor.png` | Maps editor, Layout mode, `map:0040` BG1, one staged paint | crop of the Inspector pane, x=1399 y=86 w=301 h=746 | `36b24698...0e9dba` |
 
+### Superseded 2026-09-28
+
+The Layout-editor plate was replaced again. It still showed the retired pink
+accent palette - a saturated magenta "Save As New ROM" button and magenta
+structure rows - which the shipped theme no longer uses; the Maps editor's right
+hand detail panel is now the neutral grey surface the product opens today. The
+replacement is a real capture of the real application over the verified canonical
+ROM (`940ad5f0...6f059e`, 8,388,608 bytes), taken with
+`tools/qa/visual_pass_capture.py`'s harness through the Maps editor in Layout mode
+with one staged paint, and cropped without scaling:
+
+| Shipped path | Capture | Transform | SHA-256 of the shipped file |
+| --- | --- | --- | --- |
+| `public/dbz-layout-editor.png` | Maps editor, Layout mode, `map:0064` (`PROOF_MAP`), layer BG0, one staged paint, 1700x1264 | crop x=1395 y=75 w=305 h=716 | `481d466e...ba1693` |
+
+The full capture is kept as provenance of the crop
+(`9e8c50d1...0700efb`). The crop bounds are measured from the capture, not chosen
+by eye: x=1395 is the panel's own vertical frame hairline, y=75 its accent top
+border, and y=790 the last row of its final control. The plate is 716 px tall
+rather than the previous 746 because the panel's own content is shorter than the
+old file, and padding it with invented blank space to preserve a byte count would
+be the worse artefact. The Map Browser plate is unchanged and still current.
+
+**The new plate faithfully reproduces one limitation of the current application:**
+in the MAP STRUCTURE list, the longest layer description is elided by the panel
+itself (`...SOU...`) because the panel is narrower than the descriptions. This is
+the application's own rendering, not a crop artefact, and it is recorded here
+rather than cropped around or retouched, because a published screenshot must be
+what the product actually shows.
+
+
 The two files above remain the record of the first approval and their SHAs are
 history, not the current assets. This section is an instance of the decision, not
 a new one, and it widens nothing in the "what this does not authorize" list.

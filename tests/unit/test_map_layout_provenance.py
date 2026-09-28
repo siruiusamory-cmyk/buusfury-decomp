@@ -167,3 +167,57 @@ def test_an_explicit_manifest_path_is_honoured(tmp_path: Path) -> None:
         prov.verify_authored_rom(rom, manifest_path=elsewhere)
     # Reached the declared-output check, so the explicit manifest was read.
     assert "does not match its provenance" in str(excinfo.value)
+
+
+def test_an_expanded_derivative_reopens_using_the_profile_canonical_size(
+    tmp_path: Path,
+) -> None:
+    """A derivative larger than the canonical image still proves its base.
+
+    The canonical span is the profile's own declared size, not a literal: this
+    pins that ``verify_authored_rom`` takes the base extent from
+    ``RomProfile.identity`` (here reached through the export authority, the same
+    triple) rather than hashing whatever length the file happens to be.
+
+    The image is synthetic, so it is not the canonical bytes; what the
+    reconstruction must produce is exactly the profile's canonical *length*, and
+    that span is then held to the canonical digest and refused. A refusal whose
+    reconstructed digest differs from the image's own digest is the positive
+    evidence that the generated tail was excluded: hashing the whole file could
+    only ever report the longer buffer's digest.
+    """
+    identity = profile_authority.canonical_export_identity()
+    canonical_size = identity.image_size
+    padding_byte = 0x5A
+    # A file the profile would measure as canonical in length, then expanded.
+    expanded = (
+        bytes([padding_byte]) * canonical_size
+        + bytes([padding_byte]) * canonical_size
+    )
+    assert len(expanded) == 2 * canonical_size, "the fixture really is expanded"
+
+    rom = tmp_path / "expanded.gba"
+    rom.write_bytes(expanded)
+    manifest = _document()
+    manifest["output"] = {
+        "sha256": hashlib.sha256(expanded).hexdigest(),
+        "size": len(expanded),
+    }
+    prov.manifest_path_for(rom).write_text(json.dumps(manifest), encoding="utf-8")
+
+    with pytest.raises(prov.ProvenanceError) as excinfo:
+        prov.verify_authored_rom(rom)
+
+    message = str(excinfo.value)
+    # It reached reconstruction (not an identity or size refusal) ...
+    assert "canonical ROM plus the changes" in message
+    # ... and the span it hashed is the canonical one, not the whole file:
+    # reversing the declared change over the canonical prefix is what the rule
+    # reports, while the generated tail never enters the digest at all.
+    declared = _change()
+    span = bytearray(expanded[:canonical_size])
+    span[declared["offset"] : declared["offset"] + declared["size"]] = bytes.fromhex(
+        declared["old"]
+    )
+    assert hashlib.sha256(bytes(span)).hexdigest() in message
+    assert hashlib.sha256(expanded).hexdigest() not in message

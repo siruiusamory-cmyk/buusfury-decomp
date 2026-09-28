@@ -1,0 +1,267 @@
+{
+  "schema": 1,
+  "_comment": [
+    "The baseline byte map of the canonical ROM: which file ranges the reference",
+    "build REBUILDS from source, and which it copies verbatim out of the baserom.",
+    "",
+    "This map is DERIVED from 2genkidev/buusfury @ cc53d0cd, not independently",
+    "re-derived from the binary. It is the agreed starting point for the real ROM",
+    "map (DECOMP-ROM-MAP-001). Nothing here claims the classification is final.",
+    "",
+    "It is nonetheless FACTUALLY VERIFIED in three ways, all enforced by",
+    "tools/buusfury/regions.py and tools/buusfury/assets.py:",
+    "  1. the regions tile [0x000000, 0x800000) exactly - no gaps, no overlaps;",
+    "  2. every class=asset region has been REBUILT from its source asset and",
+    "     found byte-identical to the canonical ROM (see docs/VALIDATION_REPORT.md);",
+    "  3. every class=ads region is exactly one whose reference build feeds to",
+    "     armasm or armcpp.",
+    "",
+    "CLASSES",
+    "  incbin - opaque. Copied verbatim from the baserom. The reference build",
+    "           INCBINs exactly these ranges, so it reconstructs them trivially.",
+    "  asset  - generated from a source asset (BMP / .pal) with grit and/or the",
+    "           JCALG1 compress front-end. Reproducible WITHOUT ADS 1.2.",
+    "  ads    - generated from source by the ARM Developer Suite 1.2 toolchain.",
+    "           NOT reproducible without a licensed ADS 1.2 installation."
+  ],
+
+  "rom_size": "0x800000",
+
+  "provenance": {
+    "derived_from": "2genkidev/buusfury",
+    "commit": "cc53d0cd2d1c167e749419187e2d92017ac07468",
+    "commit_date": "2025-07-27",
+    "url": "https://github.com/2genkidev/buusfury",
+    "license": "NONE - GitHub API reports \"license\": null. Not copied; used as research reference only.",
+    "derivation_inputs": [
+      "build.bat - the ten tools/incbin.bat calls give every opaque range exactly",
+      "scatter.ld - the LOAD_ROM/ROM_LOAD section addresses give every boundary",
+      "asm/buu.s, asm/GBARam.s, asm/rest_of_the_game.s - the INCBIN ordering"
+    ],
+    "derived_on": "2026-09-28"
+  },
+
+  "regions": [
+    {
+      "id": "rom_header",
+      "start": "0x000000", "end": "0x0000C0",
+      "class": "incbin",
+      "reference_source": "asm/rom_header.s",
+      "note": "GBA header: entry branch, the 156-byte mandated Nintendo logo, then title/game-code/checksum. The reference build regenerates it from source; we deliberately do NOT, because 156 of these 192 bytes are a fixed platform constant belonging to Nintendo. The 36 meaningful header bytes are instead verified independently by tools/buusfury/identity.py against config/rom.json, which is what actually detects a wrong revision. Promoting this region to class=generated is a DECOMP-ROM-MAP-001 item."
+    },
+    {
+      "id": "crt0",
+      "start": "0x0000C0", "end": "0x000158",
+      "class": "ads",
+      "reference_source": "asm/crt0.s (INCLUDEd by asm/buu.s as AREA Init)",
+      "tool": "armasm",
+      "note": "C runtime start-up: CPU mode and stack setup, display/sound hardware init, then a tail branch to 0x0800419D. 0x98 bytes: 28 instructions plus a 7-word literal pool whose last entry (0x0800419D) ends exactly at 0x000158, so the first opaque range begins flush."
+    },
+    {
+      "id": "opaque_01",
+      "start": "0x000158", "end": "0x03D4D0",
+      "class": "incbin",
+      "reference_source": "tools/incbin.bat baserom.gba 0x0158 0x3d4d0",
+      "note": "Largest single opaque range below the string pool. 250,744 bytes of engine code."
+    },
+    {
+      "id": "gbaram_text",
+      "start": "0x03D4D0", "end": "0x03D5B8",
+      "class": "ads",
+      "reference_source": "asm/GBARam.s",
+      "tool": "armasm",
+      "note": "232 bytes of hand-transcribed Thumb. asm/GBARam.s line 5 preserves the command line that produced the original: 'tcpp -S -c -cpu ARM7TDMI -O1 src/GBARam.c', annotated 'For now, just assembly because of alignment issues.' This is the ONLY surviving evidence of the original compiler's optimisation level and the single most valuable input to DECOMP-COMPILER-PROBE-001."
+    },
+    {
+      "id": "opaque_02",
+      "start": "0x03D5B8", "end": "0x03D63C",
+      "class": "incbin",
+      "reference_source": "asm/GBARam.s |GBARam_Malloc| INCBIN baserom.gba_0x03d5b8_0x03d63c.extracted",
+      "note": "132 bytes. GBARam_Malloc, left opaque even inside the GBARam.s area."
+    },
+    {
+      "id": "opaque_03",
+      "start": "0x03D63C", "end": "0x03D730",
+      "class": "incbin",
+      "reference_source": "asm/GBARam.s |GBARam_Free| INCBIN baserom.gba_0x03d63c_0x03d730.extracted",
+      "note": "244 bytes. GBARam_Free, likewise left opaque."
+    },
+    {
+      "id": "gbaram_data",
+      "start": "0x03D730", "end": "0x03D740",
+      "class": "incbin",
+      "reference_source": "asm/GBARam.s |GBARam_LocalVars| DATA",
+      "note": "16 bytes: four DCD values (0x02000800, 0x03003488, 0x0000FDFE, 0x7FFFFFFF) forming the GBARam allocator's local variables. Pure data with no toolchain dependency - trivially promotable to class=generated. Kept opaque for the baseline so that no ROM-derived bytes are committed."
+    },
+    {
+      "id": "opaque_04",
+      "start": "0x03D740", "end": "0x03D784",
+      "class": "incbin",
+      "reference_source": "asm/buu.s AREA UnusedGBARam |GBARam_UnusedFunctionsAndTheirVariables| INCBIN baserom.gba_0x03d740_0x03d784.extracted",
+      "note": "68 bytes, named by the reference project but not disassembled."
+    },
+    {
+      "id": "opaque_05",
+      "start": "0x03D784", "end": "0x049114",
+      "class": "incbin",
+      "reference_source": "asm/buu.s |Unknown__1| INCBIN baserom.gba_0x03d784_0x049114.extracted",
+      "note": "47,504 bytes."
+    },
+    {
+      "id": "afterlibs_thunk",
+      "start": "0x049114", "end": "0x049120",
+      "class": "ads",
+      "reference_source": "asm/buu.s AREA AfterLibs",
+      "tool": "armasm",
+      "note": "12 bytes: an ARM veneer. 'LDR r12,|FUN_08046aec_PTR|' / 'BX r12' / 'DCD 0x08046AED'. The odd target (0x08046AED) sets the Thumb bit. The reference project's name 'MaybeStart' records that even this thunk's role is not established."
+    },
+    {
+      "id": "opaque_06",
+      "start": "0x049120", "end": "0x055620",
+      "class": "incbin",
+      "reference_source": "tools/incbin.bat baserom.gba 0x049120 0x055620",
+      "note": "50,432 bytes."
+    },
+    {
+      "id": "asset_intro",
+      "start": "0x055620", "end": "0x0561C4",
+      "class": "asset",
+      "reference_source": "asm/buu.s |bmp_intro_jcalg1| INCBIN build/asset_intro.compressed",
+      "source_asset": "assets/intro.bmp",
+      "pipeline": ["grit -gB8 -p! -ftb -gb", "jcalg1 compress (no minimum size)"],
+      "note": "2,980 bytes. VERIFIED byte-identical when rebuilt from assets/intro.bmp. JCALG1 stream header: 01 00 00 00 then a u32 decompressed size of 0x9600 = 38,400 = exactly the 240x160 8bpp frame that grit produces."
+    },
+    {
+      "id": "dat_080561c4",
+      "start": "0x0561C4", "end": "0x05622C",
+      "class": "incbin",
+      "reference_source": "asm/buu.s named DCD labels at |PTR_DAT_080561c4| .. |PTR_var_area_info_080561f4|",
+      "note": "104 bytes = 26 data words: runtime pointers, a Region_TitlescreenMenu rect, and four (destination, size=0x2000, pointer) triples for the corner blits. Address constants with no toolchain dependency; kept opaque for the baseline so no ROM-derived bytes are committed."
+    },
+    {
+      "id": "bmp_corner_top_left",
+      "start": "0x05622C", "end": "0x05626C",
+      "class": "asset",
+      "reference_source": "asm/buu.s |BMP_UNCOMPRESSED_TOP_LEFT_CORNER| INCBIN build/corner_top_left.img.bin",
+      "source_asset": "assets/cornet_top_left.bmp",
+      "pipeline": ["grit -gB8 -p! -ftb -gb"],
+      "note": "64 bytes. VERIFIED byte-identical. NOTE the upstream filename is misspelled 'cornet_top_left.bmp' on disk while the build output is named 'corner_top_left'; the misspelling is load-bearing and is reproduced exactly."
+    },
+    {
+      "id": "bmp_corner_top_right",
+      "start": "0x05626C", "end": "0x0562AC",
+      "class": "asset",
+      "reference_source": "asm/buu.s |BMP_UNCOMPRESSED_TOP_RIGHT_CORNER| INCBIN build/corner_top_right.img.bin",
+      "source_asset": "assets/corner_top_right.bmp",
+      "pipeline": ["grit -gB8 -p! -ftb -gb"],
+      "note": "64 bytes. VERIFIED byte-identical."
+    },
+    {
+      "id": "bmp_corner_bottom_left",
+      "start": "0x0562AC", "end": "0x0562EC",
+      "class": "asset",
+      "reference_source": "asm/buu.s |BMP_UNCOMPRESSED_BOTTOM_LEFT_CORNER| INCBIN build/corner_bottom_left.img.bin",
+      "source_asset": "assets/corner_bottom_left.bmp",
+      "pipeline": ["grit -gB8 -p! -ftb -gb"],
+      "note": "64 bytes. VERIFIED byte-identical."
+    },
+    {
+      "id": "bmp_corner_bottom_right",
+      "start": "0x0562EC", "end": "0x05632C",
+      "class": "asset",
+      "reference_source": "asm/buu.s |BMP_UNCOMPRESSED_BOTTOM_RIGHT_CORNER| INCBIN build/corner_bottom_right.img.bin",
+      "source_asset": "assets/corner_bottom_right.bmp",
+      "pipeline": ["grit -gB8 -p! -ftb -gb"],
+      "note": "64 bytes. VERIFIED byte-identical. The four corners together total 256 bytes and end exactly at 0x05632C, where the palette block begins - an independent confirmation that every one of these boundaries is right."
+    },
+    {
+      "id": "palette_bg",
+      "start": "0x05632C", "end": "0x05652C",
+      "class": "asset",
+      "reference_source": "asm/buu.s |PALETTES| INCBIN assets/palettes/bg.pal",
+      "source_asset": "assets/palettes/bg.pal",
+      "pipeline": ["copy"],
+      "note": "512 bytes. VERIFIED byte-identical."
+    },
+    {
+      "id": "palette_sprite",
+      "start": "0x05652C", "end": "0x05672C",
+      "class": "asset",
+      "reference_source": "asm/buu.s |PALETTES| INCBIN assets/palettes/sprite.pal",
+      "source_asset": "assets/palettes/sprite.pal",
+      "pipeline": ["copy"],
+      "note": "512 bytes. VERIFIED byte-identical."
+    },
+    {
+      "id": "color_transforms",
+      "start": "0x05672C", "end": "0x05792C",
+      "class": "ads",
+      "reference_source": "src/color_transforms.cpp (+ color_transforms.hpp)",
+      "tool": "armcpp",
+      "note": "4,608 bytes = 18 tables of 256 unsigned char: a screen-fade / colour-effect LUT bank (lut_fx_8bit, lut_fx_grayscale, lut_fx_dark0-2, red0-2, white0-5, green0-3). Placed by scatter.ld section COLOR_TRANSFORMATIONS 0x0805672c from color_transforms.o(.constdata). The reference compile command carries NO optimisation flag: 'armcpp -c src/color_transforms.cpp -o build/color_transforms.o', so the ADS 1.2 default applies - a DECOMP-COMPILER-PROBE-001 question."
+    },
+    {
+      "id": "strings",
+      "start": "0x05792C", "end": "0x06D4E0",
+      "class": "ads",
+      "reference_source": "src/strings.cpp",
+      "tool": "armcpp",
+      "note": "89,012 bytes, the single largest non-opaque region and 1.06% of the ROM on its own. 1,534 wchar_t string literals (ADS wchar_t is 2 bytes, matching the UTF-16LE pool) followed by the pointer table, emitted as one C++ translation unit of ~3,071 lines. Names carry their own addresses (u_Start_0805792e), so the file is self-locating. Placed by scatter.ld section STRINGS 0x0805792c."
+    },
+    {
+      "id": "opaque_07",
+      "start": "0x06D4E0", "end": "0x071758",
+      "class": "incbin",
+      "reference_source": "asm/rest_of_the_game.s INCBIN baserom.gba_0x06d4e0_0x071758.extracted",
+      "note": "17,016 bytes. First range of the 'placeholder' area, which is otherwise entirely INCBIN."
+    },
+    {
+      "id": "asset_dialogbox",
+      "start": "0x071758", "end": "0x071A6C",
+      "class": "asset",
+      "reference_source": "asm/rest_of_the_game.s INCBIN build/asset_dialogbox.compressed",
+      "source_asset": "assets/dialogbox.bmp",
+      "pipeline": ["grit -gB8 -p! -ftb -gb", "jcalg1 compress (minimum size 788)"],
+      "note": "788 bytes. VERIFIED byte-identical. The reference build passes 788 as an explicit minimum size, which is exactly the uncompressed stream's own length - an unusually strong self-check that this boundary is correct."
+    },
+    {
+      "id": "asset_dialogbox_small",
+      "start": "0x071A6C", "end": "0x071C90",
+      "class": "asset",
+      "reference_source": "asm/rest_of_the_game.s INCBIN build/asset_dialogbox_small.compressed",
+      "source_asset": "assets/dialogbox_small.bmp",
+      "pipeline": ["grit -gB8 -p! -ftb -gb", "jcalg1 compress (no minimum size)"],
+      "note": "548 bytes. VERIFIED byte-identical. The second JCALG1 stream header at 0x071A6C declares 0x2800 = 10,240 bytes, matching grit's output exactly."
+    },
+    {
+      "id": "opaque_08",
+      "start": "0x071C90", "end": "0x3BE3D4",
+      "class": "incbin",
+      "reference_source": "asm/rest_of_the_game.s INCBIN baserom.gba_0x071c90_0x3be3d4.extracted",
+      "note": "3,458,884 bytes. The largest opaque range - 41.2% of the ROM on its own, and the bulk of the game."
+    },
+    {
+      "id": "asset_splash",
+      "start": "0x3BE3D4", "end": "0x3C33F8",
+      "class": "asset",
+      "reference_source": "asm/rest_of_the_game.s INCBIN build/asset_splash.compressed",
+      "source_asset": "assets/splash.bmp",
+      "pipeline": ["grit -gB8 -p! -ftb -gb", "jcalg1 compress (minimum size 20516)"],
+      "note": "20,516 bytes. VERIFIED byte-identical. The JCALG1 stream at 0x3BE3D4 declares 0x9600 = 38,400 bytes decompressed."
+    },
+    {
+      "id": "opaque_09",
+      "start": "0x3C33F8", "end": "0x7B89A8",
+      "class": "incbin",
+      "reference_source": "asm/rest_of_the_game.s INCBIN baserom.gba_0x3c33f8_0x7b89a8.extracted",
+      "note": "4,150,704 bytes - 49.5% of the ROM. Together with opaque_08 this is 90.7% of the image in two INCBIN directives."
+    },
+    {
+      "id": "opaque_10",
+      "start": "0x7B89A8", "end": "0x800000",
+      "class": "incbin",
+      "reference_source": "asm/rest_of_the_game.s INCBIN baserom.gba_0x7b89a8_0x800000.extracted",
+      "note": "292,440 bytes labelled '<null bytes>' by the reference build. VERIFIED to be 0xFF-filled, not null. The label is wrong; the range is NOT proven unused. LOG1-REMAKE's TOOLKIT-011 measured 516 pointer-shaped little-endian u32 hits into this range and explicitly refused to promote it to free space. Do not treat it as free space without independent ownership evidence."
+    }
+  ]
+}

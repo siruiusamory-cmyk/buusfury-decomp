@@ -1,0 +1,63 @@
+{
+  "schema": 1,
+  "_comment": [
+    "Canonical identity of the target ROM. This file is the single source of",
+    "truth for every identity check in this repository. tools/buusfury/identity.py",
+    "fails closed on ANY mismatch - wrong revision, wrong region, a single",
+    "flipped byte - and never continues with an unverified input."
+  ],
+
+  "profile_id": "buus_fury_usa_rev0_f1c4b075",
+  "game": "Dragon Ball Z: Buu's Fury",
+  "platform": "Game Boy Advance",
+  "region": "USA",
+  "revision": "rev0",
+  "size_bytes": 8388608,
+
+  "hashes": {
+    "sha1":   "f1c4b07554d2a3b1ad2f325307051e775ce68087",
+    "sha256": "940ad5f01db4465b8877dfe739510cbf34f4ea3d390f3df13519808bc36f059e",
+    "md5":    "3a74fce97f1ea2b28c2a50ec3df0acee",
+    "crc32":  "01c1707f"
+  },
+
+  "hashes_verified_on": "2026-09-28",
+  "hashes_verified_with": "Get-FileHash (SHA-1/SHA-256/MD5) and tools/buusfury/identity.py (CRC-32)",
+
+  "gba_header": {
+    "_comment": [
+      "File offset 0x00A0..0x00BC. Verified independently of the hash so that a",
+      "ROM with a correct-looking hash but a tampered header is still rejected,",
+      "and so that a wrong-revision dump is diagnosed rather than merely refused."
+    ],
+    "offset": 160,
+    "length": 29,
+    "title": "DBZBUUSFURY",
+    "game_code": "BG3E",
+    "maker_code": "70",
+    "fixed_value": 150,
+    "main_unit_code": 0,
+    "device_type": 0,
+    "software_version": 0,
+    "header_checksum": 132,
+    "header_checksum_offset": 189
+  },
+
+  "aliases": [
+    {
+      "_comment": "The LOG1-REMAKE / Dragonbyte Z repository identifies the SAME image by CRC-32 rather than SHA-1. One ROM, two naming conventions - NOT two revisions.",
+      "repository": "C:/Dev/log1-remake",
+      "profile_id": "buus_fury_usa_rev0_01c1707f",
+      "crc32": "01c1707f"
+    }
+  ],
+
+  "known_distinct_images": [
+    {
+      "_comment": "A separate Buu's Fury static-recompilation image. Byte-wise a DIFFERENT profile: its file offsets are not transferable without independent validation. Recorded so it can never be mistaken for the canonical baserom.",
+      "description": "Buu's Fury recompilation image (gbarecomp target)",
+      "sha1_prefix": "e65738e9",
+      "sha256_prefix": "15df2f"
+    }
+  ]
+}

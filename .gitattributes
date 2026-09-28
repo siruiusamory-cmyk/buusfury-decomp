@@ -1,0 +1,36 @@
+# Line-ending policy.
+#
+# Everything tracked here is text and is stored with LF, so that a generated
+# file (docs/ROM_MAP.md, build/build-report.json) is byte-stable no matter which
+# machine or tool produced it. Without this, Python's text mode writes CRLF on
+# Windows and the generated map shows a spurious diff on every regeneration.
+* text=auto eol=lf
+
+# ROM images and save data are binary and must never be end-of-line converted.
+*.gba binary
+*.agb binary
+*.sav binary
+*.ss0 binary
+*.ss1 binary
+*.ss2 binary
+*.ss3 binary
+*.sps binary
+
+# Proprietary toolchain artifacts, if one ever appears locally.
+*.exe binary
+*.dll binary
+*.lib binary
+*.obj binary
+*.o binary
+*.axf binary
+*.elf binary
+*.bin binary
+
+# Image assets.
+*.bmp binary
+*.png binary
+*.pal binary
+
+# Windows entry points must keep CRLF so cmd.exe is happy with them.
+*.cmd text eol=crlf
+*.bat text eol=crlf

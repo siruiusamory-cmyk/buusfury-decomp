@@ -1,0 +1,105 @@
+{
+  "schema": 1,
+  "_comment": [
+    "Toolchain inventory for the baseline build. Every entry records what the",
+    "pipeline needs, whether its redistribution is permitted, and how the",
+    "pipeline should locate it. tools/buusfury/toolchain.py turns this into a",
+    "machine-readable doctor report. Nothing here is ever committed as a binary."
+  ],
+
+  "redistribution_policy": {
+    "ads12": "PROHIBITED. ARM Developer Suite 1.2 is commercial software. It is installed locally by the operator and located through ADS12_ROOT. Binaries and licence files are gitignored and must never be committed or shipped.",
+    "grit": "Permitted. Open source (GBA Raster Image Transmogrifier); redistributed by devkitPro. Not vendored here - located on PATH.",
+    "jcalg1": "Permitted for this use. Jeremy Collake's JCALG1 ships its own LICENSE in the upstream submodule (tools/compress/jcalg1/LICENSE). Fetched with the reference checkout, never vendored here.",
+    "msvc": "Permitted for local use. Used only to build the JCALG1 compression front-end."
+  },
+
+  "tools": [
+    {
+      "id": "armasm",
+      "family": "ads12",
+      "purpose": "Assemble asm/crt0.s, asm/GBARam.s, asm/buu.s and the INCBIN directives that place asset blobs.",
+      "locate": ["ADS12_ROOT/Bin/armasm.exe", "PATH"],
+      "required_for": ["crt0", "gbaram_text", "afterlibs_thunk"],
+      "blocks_full_reproduction": true
+    },
+    {
+      "id": "armcpp",
+      "family": "ads12",
+      "purpose": "Compile src/color_transforms.cpp and src/strings.cpp.",
+      "locate": ["ADS12_ROOT/Bin/armcpp.exe", "PATH"],
+      "required_for": ["color_transforms", "strings"],
+      "blocks_full_reproduction": true
+    },
+    {
+      "id": "armlink",
+      "family": "ads12",
+      "purpose": "Link with -noremove -scatter scatter.ld. -noremove is load-bearing: without it armlink discards the SPACE-reserved EWRAM/IWRAM sections.",
+      "locate": ["ADS12_ROOT/Bin/armlink.exe", "PATH"],
+      "required_for": ["link"],
+      "blocks_full_reproduction": true
+    },
+    {
+      "id": "fromelf",
+      "family": "ads12",
+      "purpose": "Convert the linked ELF to a raw binary (fromelf <axf> -bin -o build/output).",
+      "locate": ["ADS12_ROOT/Bin/fromelf.exe", "PATH"],
+      "required_for": ["link"],
+      "blocks_full_reproduction": true
+    },
+    {
+      "id": "tcc",
+      "family": "ads12",
+      "purpose": "ARM C compiler. Not invoked by the reference build script, but named in its README and implied by the original toolchain. Recorded for DECOMP-COMPILER-PROBE-001.",
+      "locate": ["ADS12_ROOT/Bin/tcc.exe", "PATH"],
+      "required_for": [],
+      "blocks_full_reproduction": false
+    },
+    {
+      "id": "tcpp",
+      "family": "ads12",
+      "purpose": "ARM C preprocessor / Thumb C compiler driver. DIRECT EVIDENCE OF THE ORIGINAL BUILD: asm/GBARam.s line 5 preserves the original command line 'tcpp -S -c -cpu ARM7TDMI -O1 src/GBARam.c'. That is the only surviving statement of the original optimisation level.",
+      "locate": ["ADS12_ROOT/Bin/tcpp.exe", "PATH"],
+      "required_for": [],
+      "blocks_full_reproduction": false
+    },
+    {
+      "id": "grit",
+      "family": "asset",
+      "purpose": "Convert the source BMPs to raw GBA 8bpp image data.",
+      "exact_arguments": "-gB8 -p! -ftb -gb",
+      "locate": ["PATH"],
+      "verified_version": "0.9.2 (devkitPro tools/bin/grit.exe)",
+      "upstream_readme_points_at": "https://github.com/DylanGraham/grit",
+      "required_for": ["asset_intro", "asset_splash", "asset_dialogbox", "asset_dialogbox_small", "bmp_corner_*"],
+      "blocks_full_reproduction": false
+    },
+    {
+      "id": "cmake",
+      "family": "asset",
+      "purpose": "Configure the JCALG1 compression front-end.",
+      "exact_arguments": "-G \"Visual Studio 17 2022\" -A Win32 -DCMAKE_EXE_LINKER_FLAGS=/SAFESEH:NO",
+      "locate": ["PATH"],
+      "note": "MUST be a CMake that can name a Visual Studio generator. The MSYS2/MinGW cmake shipped by devkitPro CANNOT: it fails with 'Could not create named generator Visual Studio 17 2022'. Verified working: the CMake bundled with Visual Studio 2022 Build Tools.",
+      "required_for": ["asset_intro", "asset_splash", "asset_dialogbox", "asset_dialogbox_small"],
+      "blocks_full_reproduction": false
+    },
+    {
+      "id": "msvc-x86",
+      "family": "asset",
+      "purpose": "Build the JCALG1 compression front-end. Must be the x86 (32-bit) toolchain: jcalg1_static.lib is a prebuilt 32-bit library.",
+      "locate": ["VC/Auxiliary/Build/vcvars32.bat"],
+      "required_for": ["asset_intro", "asset_splash", "asset_dialogbox", "asset_dialogbox_small"],
+      "blocks_full_reproduction": false
+    },
+    {
+      "id": "python",
+      "family": "harness",
+      "purpose": "Run the region-map, identity, build and verification harness.",
+      "minimum_version": "3.11 (tomllib-era; currently verified on 3.12)",
+      "locate": ["PATH"],
+      "required_for": ["harness"],
+      "blocks_full_reproduction": true
+    }
+  ]
+}

@@ -18,6 +18,18 @@ trigger region, its destination, its arrival pair and its facing override, and
 stages a semantic creation through the authority. The normal Validate -> Build path
 consumes both exactly as it consumes any other authored content.
 
+**MAP-WARP-CANVAS-001 gives this surface a second way in and a second way out.**
+The Maps editor's Objects canvas draws every connection as its trigger region, and
+a click there arrives here as `select_source_map` + `select_identity`, so this
+editor stays the one owner of which connection is being edited. A region dragged on
+that canvas is written by `map_transitions.set_transition_edits` - the same entry
+point `Apply` uses - and this list then shows the authored region, because the
+region column reads the project's value over the record's exactly as the
+destination, arrival and facing columns already do. The canvas asks this surface
+what may be edited at all (`region_edit_refusal`), so the class rule, the
+shared-root fact and the project's own refusals are stated once, here, and never
+restated in a widget.
+
 What it deliberately will not do:
 
 * **No 169-class retarget, and no 169-class base.** A 169-class record stores its
@@ -219,6 +231,22 @@ def _shared_root_text(label: str, sharers: tuple[str, ...]) -> str:
         f"{label}'s connection root is shared with {' and '.join(sharers)}, so a "
         "transition created here would appear on those maps as well; the toolkit "
         "will not create one."
+    )
+
+
+def _shared_root_region_text(label: str, sharers: tuple[str, ...]) -> str:
+    """Why a trigger region on a shared connection root is not moved from a canvas.
+
+    The fact is the authority's own, the same one the Create gate refuses on: the
+    count and the array pointer live on the ROOT, so the connections reached through
+    it belong to every map that names it, and a region is part of such a connection.
+    The wording is deliberately about the region rather than about creation, since
+    the two refusals are asked for by different gestures.
+    """
+    return (
+        f"{label}'s connection root is shared with {' and '.join(sharers)}, so its "
+        "connections are not this map's alone; the toolkit will not move a trigger "
+        "region there."
     )
 
 
@@ -979,6 +1007,67 @@ class WarpTab(QWidget):
         self._table.setCurrentCell(row, 0)
         self._on_row_selected()
         return self.selected_identity() is not None
+
+    def select_identity(self, key: str) -> bool:
+        """Select one transition by its durable identity, as a click on its row would.
+
+        The mapping from an identity to a row is this surface's own (`_row_keys`:
+        canonical records in array order, then the map's created transitions), so a
+        caller - the map canvas, whose overlay was clicked - names the identity and
+        never matches display text to find the row.
+        """
+        for row, identity in enumerate(self._row_keys()):
+            if identity.key == key:
+                return self.select_row(row)
+        return False
+
+    def region_edit_refusal(self, identity) -> str | None:
+        """Why one transition's trigger region may not be moved from another surface.
+
+        MAP-WARP-CANVAS-001. The map canvas asks THIS rather than restating a class
+        rule of its own, so the canvas refuses exactly what this surface refuses for
+        the same connection and in the same words: the measured 566/169 split, an
+        unresolved destination, a project that cannot be read, and a missing project
+        (`_refusal_for`). On top of that it states the one authority fact that only
+        matters when a REGION is authored - a selector-1 root shared with another map
+        (`shared_root_maps`), which this surface's own Create gate already refuses to
+        author on, because the count and the array pointer live on the root.
+
+        A transition this project CREATES has no record in the image to hang a region
+        on, so it is refused here too, in the words of the form that does author it.
+        """
+        if isinstance(identity, mt.CreatedTransitionIdentity):
+            return (
+                f"{identity} is a transition this project creates rather than a "
+                "connection in the image, so it has no trigger region to move on this "
+                "map; its region is authored in the Create transition form."
+            )
+        if not isinstance(identity, mt.TransitionIdentity):
+            return (
+                f"{identity!r} is not a connection identity this surface can edit."
+            )
+        if self._corpus is None:
+            # `_refusal_for` answers this too; asking first is what lets the
+            # existence check below be the corpus's own word for an identity this
+            # surface does not hold (a session change between two surfaces' reads).
+            return _NO_IMAGE if self._corpus_error is None else self._corpus_error
+        try:
+            self._corpus.entry(identity)
+        except _WARP_ERRORS as exc:
+            return str(exc)
+        refusal = self._refusal_for(identity)
+        if refusal is not None:
+            return refusal
+        try:
+            sharers = self._corpus.shared_root_maps(identity.source)
+        except _WARP_ERRORS as exc:
+            return str(exc)
+        if sharers:
+            return _shared_root_region_text(
+                self._map_label(identity.source.index),
+                tuple(self._map_label(other.index) for other in sharers),
+            )
+        return None
 
     def selected_identity(self) -> str | None:
         return self._selected.key if self._selected is not None else None
@@ -3056,12 +3145,27 @@ class WarpTab(QWidget):
         return self._map_label(identity.index)
 
     def _region_text(self, identity) -> str:
+        """The region that applies to this connection, in positional words.
+
+        The project's authored region takes precedence over the record's own, exactly
+        as the destination, arrival and facing columns already take the project's
+        values over the record's: now that a trigger region can be authored (the map
+        canvas drags one, MAP-WARP-CANVAS-001), this list has to show the region a
+        build would apply rather than the retail one behind it.
+        """
         if self._corpus is None:
             return "\u2014"
         try:
             region: TransitionRegion = self._corpus.entry(identity).record.region
         except _WARP_ERRORS:
             return "\u2014"
+        staged = self._staged.get(identity)
+        if staged is not None and staged.region is not None:
+            region = staged.region
+        else:
+            committed = self._committed.get(identity)
+            if committed is not None and committed.region is not None:
+                region = committed.region
         return self._region_values_text(region)
 
     def _region_values_text(self, region) -> str:

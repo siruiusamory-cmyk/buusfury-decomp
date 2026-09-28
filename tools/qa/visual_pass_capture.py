@@ -150,6 +150,14 @@ STATES: tuple[tuple[int, str], ...] = (
     (79, "79-warps-create-no-base-on-this-map"),
     (80, "80-warps-create-shared-root-refused"),
     (81, "81-warps-create-narrow"),
+    (90, "90-warp-canvas-regions"),
+    (91, "91-warp-canvas-click-selects-row"),
+    (92, "92-warp-canvas-selected-region"),
+    (93, "93-warp-canvas-dragged-region"),
+    (94, "94-warp-canvas-warps-row-after-drag"),
+    (95, "95-warp-canvas-undo-retail"),
+    (96, "96-warp-canvas-class-169-read-only"),
+    (97, "97-warp-canvas-drag-refused"),
 )
 
 #: The last chained state; anything above it is self-contained.
@@ -163,6 +171,9 @@ FIRST_WARP_STATE = 60
 
 #: The first MAP-WARP-CREATE-WORKBENCH-001 state: the Warps mode's Create action.
 FIRST_WARP_CREATE_STATE = 70
+
+#: The first MAP-WARP-CANVAS-001 state: connections on the Objects canvas.
+FIRST_WARP_CANVAS_STATE = 90
 
 
 class _NullHost:
@@ -596,7 +607,10 @@ def capture_all(harness: Harness, workspace: Path, states: set[int] | None = Non
         FIRST_WARP_STATE <= number < FIRST_WARP_CREATE_STATE for number in states
     )
     warp_create = states is None or any(
-        number >= FIRST_WARP_CREATE_STATE for number in states
+        FIRST_WARP_CREATE_STATE <= number < FIRST_WARP_CANVAS_STATE for number in states
+    )
+    warp_canvas = states is None or any(
+        number >= FIRST_WARP_CANVAS_STATE for number in states
     )
     if chain:
         if states is not None:
@@ -610,6 +624,8 @@ def capture_all(harness: Harness, workspace: Path, states: set[int] | None = Non
         warp_qa(harness, workspace, states)
     if warp_create:
         warp_create_qa(harness, workspace, states)
+    if warp_canvas:
+        warp_canvas_qa(harness, workspace, states)
     total = len(list(harness.out.glob("*.png")))
     print(f"\nwrote {total} PNG(s) to {harness.out}")
 
@@ -1587,6 +1603,155 @@ def warp_create_qa(
     shot(81, "81-warps-create-narrow", size=NARROW)
     harness.window.resize(DESKTOP)
     harness.pump(6)
+    return written
+
+
+def warp_canvas_qa(
+    harness: Harness, workspace: Path, states: set[int] | None = None
+) -> list[Path]:
+    """MAP-WARP-CANVAS-001's states: connections drawn on the Objects canvas.
+
+    Every step goes through the SHIPPED surfaces and the SHIPPED SDK: the real
+    `map_render` over the canonical image, the real transition authority, the real
+    `set_transition_edits` write into a real extracted project in a temporary
+    directory, and the Maps editor's own mode strip, canvas and connection list. The
+    map with a region this canvas accepts, and the map whose records the authority
+    refuses to retarget, are FOUND through the authority rather than hard-coded, so
+    the capture follows whatever the open image actually holds.
+    """
+    from tools.webfoot import map_transitions as map_transitions_sdk
+    from tools.webfoot.maps import MapIdentity
+
+    written: list[Path] = []
+
+    def shot(number: int, name: str, size: QSize | None = None) -> None:
+        if states is None or number in states:
+            written.append(harness.grab(name, size=size))
+
+    project = _extracted_project(harness, workspace)
+    harness.open_canonical()
+    harness.session.set_project(project)
+    harness.editor("Atlas").romOpened.emit()
+    harness.show_editor("Maps")
+    harness.pump(10)
+    canvas = harness.maps.workspace
+    warps = harness.maps.warps
+
+    corpus = map_transitions_sdk.read_map_transitions(
+        harness.session.map_image, harness.session.profile
+    )
+    per_map: dict[int, list] = {}
+    for entry in corpus.entries():
+        per_map.setdefault(entry.identity.source.index, []).append(entry)
+
+    # One map carries every canvas state, on purpose: a map that holds BOTH a
+    # connection the canvas may move and one the authority refuses shows the two
+    # overlay states side by side on ONE render, and it keeps the capture from
+    # rendering a second map (the canonical corpus holds maps whose render is
+    # minutes long, which is not what this state is about). Both facts are asked of
+    # the authority, never decided here.
+    chosen = None
+    for index, entries in sorted(per_map.items()):
+        if corpus.shared_root_maps(MapIdentity(index)) or len(entries) > 4:
+            continue
+        editable = [entry for entry in entries if entry.record.has_raw_arrival_pair]
+        refused = [entry for entry in entries if not entry.record.has_raw_arrival_pair]
+        if not editable:
+            continue
+        if chosen is None:
+            chosen = (index, editable[0], refused[0] if refused else None)
+        if refused:
+            chosen = (index, editable[0], refused[0])
+            break
+    if chosen is None:
+        raise SystemExit("no map with an editable connection was found for the canvas")
+    source_index, target, refused_entry = chosen
+
+    def show_map(index: int) -> bool:
+        """Show one map on the canvas the way the map list does."""
+        for row in range(canvas._maps.count()):
+            entry = canvas._maps.item(row).data(Qt.ItemDataRole.UserRole)
+            if entry["identity"] == f"map:{index:04d}":
+                canvas._maps.setCurrentRow(row)
+                harness.pump(10)
+                return True
+        return False
+
+    harness.maps.set_mode("objects")
+    if not show_map(source_index):
+        raise SystemExit(f"map:{source_index:04d} is not in the canvas's map list")
+    print(
+        f"  canvas map: map:{source_index:04d}; connections "
+        f"{[entry.identity.key for entry in per_map[source_index]]}"
+    )
+    print(f"  drawn regions: { {k: (v.first, v.second) for k, v in canvas.transition_overlays().items()} }")
+    shot(90, "90-warp-canvas-regions")
+
+    print(f"  click the region of {target.identity}: switches to the Warps mode")
+    canvas._on_overlay_clicked(target.identity)
+    harness.pump(10)
+    print(
+        f"    mode={harness.maps.mode()} row={warps.selected_identity()} "
+        f"region={warps.row_values(warps._table.currentRow())[2]!r}"
+    )
+    shot(91, "91-warp-canvas-click-selects-row")
+
+    harness.maps.set_mode("objects")
+    canvas._canvas.zoom_in()
+    canvas._canvas.zoom_in()
+    harness.pump(10)
+    print(f"    the canvas marks the same connection: {canvas.selected_transition()}")
+    shot(92, "92-warp-canvas-selected-region")
+
+    region_before = canvas.transition_overlays()[target.identity.key]
+    state = canvas._transition_overlays[target.identity.key].state
+    before = (region_before.first[0], region_before.second[0])
+    after = (before[0] + 24, before[1] + 18)
+    print(f"  drag the region by {after[0] - before[0]}, {after[1] - before[1]}: {canvas._on_overlay_drag(state, before, after)}")
+    harness.pump(10)
+    print(f"    drawn now: {canvas.transition_overlays()[target.identity.key]}")
+    shot(93, "93-warp-canvas-dragged-region")
+
+    harness.maps.set_mode("warps")
+    harness.pump(10)
+    print(
+        f"    the connection list states: {warps.row_values(warps._table.currentRow())}"
+    )
+    shot(94, "94-warp-canvas-warps-row-after-drag")
+
+    harness.maps.set_mode("objects")
+    print(f"  undo: {canvas._undo_stack.canUndo()}")
+    canvas._undo_stack.undo()
+    harness.pump(10)
+    print(f"    drawn after undo: {canvas.transition_overlays()[target.identity.key]}")
+    shot(95, "95-warp-canvas-undo-retail")
+
+    # A connection the authority refuses to retarget: drawn, dashed, and refused on
+    # a drag with the surface's own reason. It lives on the SAME canvas the states
+    # above used, so no second map is rendered.
+    if refused_entry is None:
+        print("  (this image gives no map holding both classes; the read-only canvas "
+              "state is not captured)")
+        return written
+    key = refused_entry.identity.key
+    print(f"  169-class connection on the same map: {key}")
+    print(f"    drawn: {canvas.transition_overlays().get(key)}")
+    # Frame it: the read-only region can sit at a map edge, and a capture of half a
+    # rectangle would not show the dashed edge the state exists to show.
+    canvas._canvas.centerOn(canvas._transition_overlays[key])
+    harness.pump(10)
+    shot(96, "96-warp-canvas-class-169-read-only")
+    wanted = states is None or 97 in states
+    out = harness.out / "97-warp-canvas-drag-refused.png" if wanted else None
+    state = canvas._transition_overlays[key].state
+    region = state.region
+    point = (region.first[0], region.second[0])
+    QTimer.singleShot(250, lambda: _close_active_dialog(harness, out))
+    print(f"    refusal: {canvas._on_overlay_drag(state, point, (point[0] + 20, point[1] + 20))}")
+    harness.pump(10)
+    if out is not None and out.is_file():
+        print(f"  captured {out.name}")
+        written.append(out)
     return written
 
 

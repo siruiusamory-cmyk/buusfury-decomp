@@ -237,6 +237,14 @@ class MapsEditor(EditorHost):
         self.workspace.buildRunRequested.connect(self.buildRunRequested)
         self.warps.projectChanged.connect(self.projectChanged)
         self.warps.dirtyChanged.connect(self._on_warps_dirty)
+        # MAP-WARP-CANVAS-001. The Objects canvas draws this map's connections as
+        # their trigger regions. A click on one is answered HERE, by showing the
+        # Warps mode on that connection's row, so the shipped editor stays the one
+        # owner of which connection is selected; and a region drag asks the Warps
+        # surface whether that connection may be edited at all, so no class or
+        # root-sharing rule is ever restated in the canvas.
+        self.workspace.transitionSelected.connect(self.show_transition)
+        self.workspace.set_transition_guard(self.warps.region_edit_refusal)
 
         self.set_status_label(self.browser._status)
         self.browser.statusChanged.connect(self._on_browser_status)
@@ -289,6 +297,10 @@ class MapsEditor(EditorHost):
         # readout while the map browser was on screen.
         if key == "objects":
             self.workspace.restate_status()
+            # The Warps editor owns the selected connection; coming back to this
+            # canvas re-reads that selection, so the region the author picked in the
+            # list is the one marked here - never the last one clicked on the canvas.
+            self.workspace.show_selected_transition(self.warps.selected_identity())
         elif key == "warps":
             self.warps.restate_status()
         else:
@@ -372,6 +384,21 @@ class MapsEditor(EditorHost):
     def select_placement(self, map_id: str, placement_identity: str) -> None:
         self.set_mode("objects")
         self.workspace.select_placement(map_id, placement_identity)
+
+    def show_transition(self, identity) -> bool:
+        """Show one connection in the Warps mode, on its own row.
+
+        MAP-WARP-CANVAS-001. This is what a click on a trigger region means: the
+        connection's map becomes the Warps mode's source map, that mode becomes
+        visible, and the connection's own row is selected in it - so the shipped
+        form states the connection the author is editing. The identity is an SDK
+        value the canvas already holds; nothing here parses a label or matches
+        display text, and nothing here restates what the connection is.
+        """
+        self.set_mode("warps")
+        if not self.warps.select_source_map(identity.source.index):
+            return False
+        return self.warps.select_identity(identity.key)
 
     def undo_stack(self):
         """The ACTIVE mode's history, so Edit -> Undo answers what is on screen.

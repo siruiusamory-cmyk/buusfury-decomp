@@ -205,6 +205,16 @@ class Palette:
     marker_halo: str = "#ffffff"
     #: The outline that separates a marker from the artwork under it.
     marker_outline: str = "#2a2229"
+    #: A connection's trigger region drawn on the rendered map: a retail
+    #: connection, which the base image supplies. The region is an AREA rather than
+    #: a point, so it is drawn as an outlined translucent wash instead of the
+    #: placement marker's glyph - the terrain under it stays readable, and the two
+    #: overlays cannot be mistaken for each other. The hue is the same identity
+    #: pink the retail marker uses, because the provenance is the same fact.
+    region_retail: str = "#b81f6b"
+    #: The same overlay for a region the PROJECT authors - the gold the authored
+    #: placement marker already uses, for the same reason.
+    region_authored: str = "#9a5300"
 
     # -- the review's token names ------------------------------------------
     # The colour review listed the exact token names it expects. They are all

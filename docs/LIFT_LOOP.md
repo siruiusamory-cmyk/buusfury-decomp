@@ -63,8 +63,33 @@ If the family is a new translation unit, add it to
 `boundary_evidence`. If it belongs to an existing unit, the unit already covers it.
 
 **Never write function start/end pairs by hand.** A hand-written boundary is a claim
-with no evidence behind it, and the whole point of the manifest is that the ROM, not
-the author, says where each function ends.
+with no evidence behind it, and the whole point is that the ROM, not the author, says
+where each function ends.
+
+There are two supported ways to satisfy that, and they differ in what the ROM gives you:
+
+| Path | Use when | Where the boundary lives |
+| --- | --- | --- |
+| **manifest** | the unit's literal pool is adjacent to its code, so the probe manifest's `(code_end, end_address)` schema fits | `config/compiler_probes.json`, derived and whole-document verified there |
+| **derived** | the unit's literals are NOT adjacent, or a table's extent must be proved by what follows it | `tools/buusfury/lift.py`: `BCI_TU`, `BCI_FUNCTIONS`, and `derive_unit_boundaries`, re-derived and checked on EVERY run |
+
+The ByteCodeInterpreter uses the **derived** path because two alignment bytes separate
+its last function from its pool and a third literal word sits 86 bytes further on, which
+the manifest schema cannot express. `derive_unit_boundaries` tile-checks the extents,
+requires exactly one terminator per function and zero gaps, and **raises** on a
+disagreement rather than absorbing it. `derive_dispatch_table` proves a function-pointer
+table's length by decoding the string that follows it, because such a table has no length
+field.
+
+Use the aligned **chain-walk** for both derivation and any caller census. A linear sweep
+from a region's first byte desyncs whenever that byte is not an instruction boundary and
+then silently misses real branches; an earlier pass in this project under-counted the
+callers of `0x08004038` as 2 when an aligned walk found 13.
+
+If the family is a new translation unit on the **manifest** path, add it to
+`tools/buusfury/compiler_probe.py` the way `GBARAM_TU` is defined, including its
+`boundary_evidence`. If it takes the **derived** path, add its `TranslationUnit` and
+function tuple to `lift.py` and make `derive_unit_boundaries` re-derive them.
 
 ---
 
@@ -114,9 +139,13 @@ Add an entry to `config/lift_targets.json`:
 {
   "id": "<family>",
   "name": "...",
+  "ticket": "...",
   "probe_translation_unit": "<unit id>",
   "decomp_source": "src/<family>.c",
   "probe_source": "src/probes/<family>.c",
+  "selftest_source": "src/probes/<family>_selftest.c",
+  "semantic_minimum_checks": 0,
+  "host_build_bits": 32,
   "compiler": { "cpu": "arm7tdmi", "isa": "thumb", "optimization": "-O1", "extra_flags": [] },
   "role": "...",
   "notes": "...why this family and why now..."
@@ -125,6 +154,17 @@ Add an entry to `config/lift_targets.json`:
 
 The compiler block describes the **modern** configuration only. It is not a claim
 about the original compiler.
+
+`semantic_minimum_checks` is per target on purpose: one global number would either wave
+through a truncated run of a small self-check or fail a genuinely smaller one.
+
+`host_build_bits` selects the host toolchain width. **A reconstruction that holds
+pointers in `u32` fields models a 32-bit machine and must be built 32-bit.** Built
+64-bit, the high half of every stored address is lost and the first dereference through
+one faults with an access violation; that was observed, not predicted. Widening the
+typedefs would hide the machine model rather than honour it. GBARam happens to work at
+64-bit because its host mode never stores a pointer in a `u32` field; the
+ByteCodeInterpreter does, so it declares 32.
 
 ---
 
@@ -140,16 +180,29 @@ Requirements:
 - it compiles the reconstruction for the HOST and executes it;
 - it prints exactly one summary line matching `<STATUS>: <n> check(s), <m> failure(s)`;
 - it returns non-zero if any check fails;
-- the harness compares `n` against `MIN_SEMANTIC_CHECKS` and reports `PARTIAL`, never
-  `PROVEN`, when fewer checks ran than required. A self-check that stopped early
-  otherwise looks exactly like one that passed.
-
-Add the required minimum to `tools/buusfury/lift.py::MIN_SEMANTIC_CHECKS` only when the
-count is justified, and say why in the commit.
+- the harness compares `n` against the target's `semantic_minimum_checks` and reports
+  `PARTIAL`, never `PROVEN`, when fewer checks ran than required. A self-check that
+  stopped early otherwise looks exactly like one that passed.
 
 What to assert: payloads inside the arena, no overlap, free list walkable with
 symmetric links, totals conserved, and every documented sentinel actually firing. The
 cheap invariants are the ones that catch reversed merges and lost nodes.
+
+Two traps this project has already paid for, both worth reading before writing one:
+
+1. **Read anything behind a cursor pointer from INSIDE a handler.** The cursor slot is a
+   frame local of the function under test and is dead once it returns; dereferencing a
+   saved pointer to it afterwards reads a dead stack frame.
+2. **Make every synthetic program terminate deliberately.** When a NULL dispatch entry
+   is the exit condition, a test whose stop handler clears the wrong slot runs off the
+   end of the buffer and reports nonsense counts. Design the discriminator so that the
+   wrong behaviour produces a *different* count, and assert the count.
+
+If the unit calls code it does not contain, the link needs a value for each. Do **not**
+add stub objects: they add bytes to the compared window. `derive_external_calls` reads
+the unit's own BL targets out of the ROM and binds each `sub_<address>` symbol to its
+original address, so every call displacement is right and nothing extra is emitted. The
+same technique makes the host build of a 32-bit unit work: see `host_build_bits`.
 
 ---
 
@@ -203,3 +256,12 @@ the gate already loops over targets), and add tests to `tests/test_lift.py` cove
 6. **An explicit toolchain root is authoritative.** Fail closed rather than silently
    using a different toolchain.
 7. **A missing toolchain is BLOCKED, not FAIL** - the same contract as the ADS gates.
+8. **Derive boundaries by aligned chain-walk, and re-derive on every run.** A linear
+   sweep desyncs and under-counts.
+9. **Prove a table's extent by what follows it.** A function-pointer table has no
+   length field; the string after it does.
+10. **Name fields by offset, and say plainly what is unknown.** No opcode meaning may be
+    imported from another title, and the reconstruction should contain no `switch` over
+    opcodes until one is proven.
+11. **Build a 32-bit machine model 32-bit.** Do not widen a typedef to make a
+    truncation warning go away.

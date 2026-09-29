@@ -108,9 +108,29 @@ Matching means byte-identity of the produced ROM against
   boundaries.** A function with a PC-relative literal load has no meaning
   standalone, and a positional text diff of two disassemblies can report zero
   differences for unequal bytes.
+- **Derive boundaries by aligned chain-walk, and re-derive on every run.** A
+  linear sweep from a region's first byte desyncs whenever that byte is not an
+  instruction boundary and then silently misses real branches. It under-counted
+  the callers of `0x08004038` as 2 when an aligned walk found 13. A wrong
+  derived boundary must raise, not be absorbed.
+- **Prove a table's extent by what follows it.** A function-pointer table has no
+  length field; the dispatch table at `0x080554C0` is 31 entries because slot 30
+  ends where the assertion string begins.
+- **Build a 32-bit machine model 32-bit.** A reconstruction that holds pointers
+  in `u32` fields must use the 32-bit host toolchain; at 64-bit every stored
+  address loses its high half and faults. Record the width per target; never
+  widen a typedef to silence the truncation.
+- **Bind declared-not-reconstructed calls to their original addresses.** Read
+  the unit's own BL targets from the ROM and `--defsym` each `sub_<address>`
+  symbol, so call displacements stay right and no stub bytes enter the compared
+  window.
+- **Name context fields by offset and say what is unknown.** No opcode meaning
+  may be imported from another LoG title, and a reconstruction should contain no
+  `switch` over opcodes until one is proven.
 - Adding a family is a config entry plus source: `config/lift_targets.json`,
-  boundaries derived in `config/compiler_probes.json`, tested via
-  `tests/test_lift.py`. No one-off scripts. See [`docs/LIFT_LOOP.md`](docs/LIFT_LOOP.md).
+  boundaries derived in `config/compiler_probes.json` or re-derived in
+  `tools/buusfury/lift.py`, tested via `tests/test_lift*.py`. No one-off
+  scripts. See [`docs/LIFT_LOOP.md`](docs/LIFT_LOOP.md).
 
 ## Scope discipline
 

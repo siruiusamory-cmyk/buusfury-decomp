@@ -26,11 +26,22 @@ from buusfury import identity, lift
 # ---------------------------------------------------------------------------
 def test_registry_loads_and_declares_the_pilot_target():
     targets = lift.load_targets()
-    assert [t.id for t in targets] == ["gbaram"]
-    target = targets[0]
+    assert "gbaram" in [t.id for t in targets]
+    target = {t.id: t for t in targets}["gbaram"]
     assert target.probe_translation_unit == "gbaram_tu"
     assert target.cpu == "arm7tdmi"
     assert target.isa == "thumb"
+    assert target.ticket == "DECOMP-LIFT-PILOT-001"
+
+
+def test_every_registry_entry_declares_a_semantic_minimum_and_host_width():
+    """Both are per-target: one global number or width would be wrong for one
+    of them, and an entry missing either must not silently inherit a default."""
+    for target in lift.load_targets():
+        assert target.semantic_minimum_checks > 0, target.id
+        assert target.host_build_bits in (32, 64), target.id
+        assert target.selftest_source.endswith(".c"), target.id
+        assert (identity.REPO_ROOT / target.selftest_source).is_file(), target.id
 
 
 def test_registry_compiler_config_is_a_modern_configuration_not_an_ads_claim():

@@ -17,10 +17,10 @@
                                            the ROM; the probe itself is BLOCKED
                                            without ADS 1.2 - reported, not a
                                            baseline failure)
-      7. semantic lift                   (the decompiled source must build with
-                                           the MODERN toolchain, behave correctly
-                                           when RUN, and re-derive its report
-                                           key by key)
+      7. semantic lift                   (every registered target's decompiled
+                                           source must build with the MODERN
+                                           toolchain, behave correctly when RUN,
+                                           and re-derive its report key by key)
 
     Gates 5 and 6 are deliberately NOT failures. The baseline's contract is that the
     blocker is measured and precisely documented, not that it is absent. Gate 7 is
@@ -226,27 +226,32 @@ if ($null -ne $blockerCode -and $comparisons -eq 0) {
 
 Write-Host ""
 Write-Host "========================================================================="
-Write-Host "gate 7: semantic lift (DECOMP-LIFT-PILOT-001)"
+Write-Host "gate 7: semantic lift (DECOMP-LIFT-PILOT-001, DECOMP-LIFT-SCRIPT-001)"
 Write-Host "========================================================================="
 # The lift loop's own verdicts are independent of the ADS blocker: it compiles
 # the decompiled source with the MODERN toolchain and checks the reconstruction
 # by RUNNING it. ADS_MATCH stays BLOCKED and is reported as such by the tool.
 #
-# The report is regenerated and compared KEY BY KEY rather than spot-checked, so
-# a changed verdict, comparison or function row cannot pass unnoticed.
-$liftVerify = (& $python -m buusfury lift --target gbaram --rom $romPath --verify 2>&1) -join "`n"
+# Every registered target is verified. The reports are regenerated and compared
+# KEY BY KEY rather than spot-checked, so a changed verdict, comparison or
+# function row cannot pass unnoticed.
+$liftVerify = (& $python -m buusfury lift --target all --rom $romPath --verify 2>&1) -join "`n"
 $liftExit = $LASTEXITCODE
-if ($liftVerify -match "REPORT: PASS") {
-    Write-Host "      PASS  lift loop re-derived its report identically (SEMANTIC PROVEN, MODERN_BUILD PASS)" -ForegroundColor Green
-    $notes.Add("lift gate PASS; ADS_MATCH remains BLOCKED; see docs/LIFT_PILOT.md")
-} elseif ($liftVerify -match "MODERN_TOOLCHAIN_UNAVAILABLE") {
+$liftPasses = ([regex]::Matches($liftVerify, "REPORT: PASS")).Count
+$liftTargets = (& $python -m buusfury lift --list-targets 2>$null | Select-Object -Skip 1).Count
+if ($liftVerify -match "MODERN_TOOLCHAIN_UNAVAILABLE") {
     # No ARM cross toolchain is an environment problem, not a defect in the
     # repository, so it is BLOCKED rather than FAIL - the same contract as
     # gates 5 and 6. A toolchain is never installed by this repository.
     Write-Host "      BLOCKED  no ARM cross toolchain found; the lift loop cannot run here" -ForegroundColor Yellow
     $notes.Add("lift gate BLOCKED (no modern ARM toolchain); see docs/LIFT_PILOT.md")
+} elseif ($liftExit -eq 0 -and $liftTargets -gt 0 -and $liftPasses -eq $liftTargets) {
+    Write-Host "      PASS  $liftPasses/$liftTargets lift targets re-derived their reports identically" -ForegroundColor Green
+    $notes.Add("lift gate PASS ($liftPasses targets; SEMANTIC PROVEN, MODERN_BUILD PASS); ADS_MATCH remains BLOCKED")
 } else {
-    Write-Host "      FAIL  the lift loop did not reproduce its report" -ForegroundColor Red
+    # Counting the passes against the registry keeps this honest: a run that
+    # silently skipped a target cannot report success.
+    Write-Host "      FAIL  the lift loop did not reproduce every report ($liftPasses of $liftTargets)" -ForegroundColor Red
     Write-Host $liftVerify
     $overall = 'FAIL'
 }

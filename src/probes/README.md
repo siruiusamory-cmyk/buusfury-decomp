@@ -26,11 +26,24 @@ have been wasted.
 - `GBARam.c` - shim for `src/GBARam.c`, eight Thumb functions at
   `0x0803D4D0..0x0803D740`.
 - `gbaram_selftest.c` - 230 assertions over a 256 KiB arena. Exit 0 on success.
-  Its summary line format is `<STATUS>: <n> check(s), <m> failure(s)` and the lift
-  harness parses it, so the wording is load-bearing.
+- `ByteCodeInterpreter.c` - shim for `src/ByteCodeInterpreter.c`, three Thumb
+  functions at `0x08004038..0x08004160`.
+- `bci_selftest.c` - 70 assertions driving the dispatch loop over synthetic
+  bytecode with recording handlers. Exit 0 on success.
 
-Status of `GBARam.c`: **SEMANTIC PROVEN** (230 checks, 0 failures),
-**MODERN_BUILD PASS**, **ADS_MATCH BLOCKED**. See `docs/LIFT_PILOT.md`.
+Both self-checks print the summary line `<STATUS>: <n> check(s), <m> failure(s)`,
+and the lift harness parses it, so the wording is load-bearing.
+
+`bci_selftest.c` must be built **32-bit**. The reconstruction holds pointers in
+`u32` fields because the machine it models is 32-bit; built 64-bit, the high half
+of every stored context address is lost and the first dereference through one
+faults. That is recorded per target as `host_build_bits` in
+`config/lift_targets.json` rather than widened away.
+
+Status of both: **SEMANTIC PROVEN**, **MODERN_BUILD PASS**, **ADS_MATCH BLOCKED**.
+See `docs/LIFT_PILOT.md` for GBARam and `docs/LIFT_SCRIPT.md` for the
+ByteCodeInterpreter, which also records what is deliberately left unknown (every
+field name, every opcode meaning, and the intent of `sub_08004102`).
 
 Add the next family with `docs/LIFT_LOOP.md`. The original file may **not** be copied
 from `2genkidev/buusfury`; that repository carries no licence grant (see

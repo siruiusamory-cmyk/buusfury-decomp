@@ -103,6 +103,27 @@ therefore cannot be imported. See
 [`docs/ADS12_SETUP.md`](docs/ADS12_SETUP.md) and
 [`docs/DECOMP_BASELINE.md`](docs/DECOMP_BASELINE.md#the-blocker).
 
+### Script engine (DECOMP-LIFT-SCRIPT-001, measured 2026-09-29)
+
+The first real engine subsystem is lifted: the **ByteCodeInterpreter**, three Thumb
+functions at `0x08004038..0x08004160`, source at
+[`src/ByteCodeInterpreter.c`](src/ByteCodeInterpreter.c). The ROM preserves the
+original source path, which is why the file exists under that name:
+`T:\Source\ByteCodeInterpreter\ByteCodeInterpreter.cpp`.
+
+| Verdict | Result | Question it answers |
+| --- | --- | --- |
+| `SEMANTIC` | **PROVEN** | does it behave correctly? 70 assertions, 0 failures, measured by RUNNING it |
+| `MODERN_BUILD` | **PASS** | does it compile, link at `0x08004038` and emit bytes? 486 bytes |
+| `ADS_MATCH` | **BLOCKED** | does it reproduce the original compiler? `ADS12_LICENSE_UNAVAILABLE` |
+
+Its boundary is **derived from the ROM on every run** and raises on disagreement, and
+the 31-entry dispatch table's extent is proved by the assertion string that follows it
+rather than by a remembered number. The comparison: 284 of 296 bytes differ and the
+modern build is 64% larger, while the **call counts and return structure match
+exactly**. No opcode is decoded; unknown semantics are named by offset and said to be
+unknown. See [`docs/LIFT_SCRIPT.md`](docs/LIFT_SCRIPT.md).
+
 ### Lifting loop (DECOMP-LIFT-PILOT-001, measured 2026-09-29)
 
 The first function family is decompiled and the loop that produced it is reusable:
@@ -158,16 +179,18 @@ python -m buusfury build     # assemble a ROM, with per-region provenance
 python -m buusfury lift      # semantic lifting loop: build + compare one family
 python -m buusfury rommap    # independent structural ROM map + function inventory
 python -m buusfury fixed     # generate the zero-toolchain fixed regions
-python -m pytest tests -q    # 304 tests
+python -m pytest tests -q    # 341 tests
 ```
 
 ## Scope
 
-This repository is at **DECOMP-LIFT-PILOT-001**. It carries the identity gate, the
-build model, the independent ROM map and the compiler probe, plus one lifted
-function family (the GBARam allocator) and the reusable loop that produced it.
+This repository is at **DECOMP-LIFT-SCRIPT-001**. It carries the identity gate, the
+build model, the independent ROM map and the compiler probe, plus two lifted families
+- the GBARam allocator and the ByteCodeInterpreter dispatch loop - and the reusable
+loop that produced both.
 
 `ADS_MATCH` remains blocked: the ADS 1.2 installed on this machine is unlicensed, and
-nothing here reduces that. The next tickets work outward from the pilot - see
-[`docs/LIFT_PILOT.md`](docs/LIFT_PILOT.md#7-next-recommended-function-family) for the
-recommended next function families.
+nothing here reduces that. The next work continues outward from the script engine; see
+[`docs/LIFT_SCRIPT.md`](docs/LIFT_SCRIPT.md#8-recommended-next-bytecodeinterpreter-work)
+and
+[`docs/LIFT_PILOT.md`](docs/LIFT_PILOT.md#7-next-recommended-function-family).

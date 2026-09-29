@@ -18,7 +18,16 @@
     "isa": "thumb",
     "decomp_source": "src/GBARam.c",
     "probe_source": "src/probes/GBARam.c",
+    "selftest_source": "src/probes/gbaram_selftest.c",
+    "semantic_minimum_checks": 230,
+    "host_build_bits": 64,
     "original_sha1": "dfbe6b5fe604f6704138ba66494719f3a807e5d1"
+  },
+  "boundary_evidence": {
+    "method": "config/compiler_probes.json, derived and verified there",
+    "derived_from_rom": false,
+    "not_hand_written": true,
+    "detail": "the ADS probe manifest already derives and whole-document verifies this unit's boundaries"
   },
   "verdicts": {
     "semantic": {
@@ -26,7 +35,7 @@
       "checks": 230,
       "failures": 0,
       "minimum_checks": 230,
-      "host_compiler": "MSVC cl.exe",
+      "host_compiler": "MSVC cl.exe (64-bit)",
       "detail": "230 behavioural assertions passed with 0 failures (minimum 230)",
       "measures": "whether the reconstructed C behaves correctly, by RUNNING it"
     },
@@ -90,6 +99,7 @@
       "extra_flags": []
     },
     "link_origin": "0x0803D4D0",
+    "external_calls_bound_to_original_addresses": {},
     "detail": "compiled, linked at 0x0803D4D0 and emitted 772 bytes",
     "build": {
       "ok": true,
@@ -714,6 +724,21 @@
         "0x0803D730",
         "0x0803D740"
       ],
+      "declared_slots": [
+        "0x0803D730",
+        "0x0803D734",
+        "0x0803D738",
+        "0x0803D73C"
+      ],
+      "declared_slots_used": [
+        "0x0803D730",
+        "0x0803D734",
+        "0x0803D738",
+        "0x0803D73C"
+      ],
+      "all_referenced_slots_are_declared": true,
+      "all_declared_slots_are_referenced": true,
+      "undeclared_slots": [],
       "functions_reaching_it": 7
     },
     "modern": {
@@ -752,7 +777,7 @@
       "shared_pool": false,
       "functions_reaching_a_pool": 7
     },
-    "interpretation": "the original keeps one shared pool at the end of the translation unit; the modern build pools differently. That is a structural consequence of the compiler, not a defect in the reconstruction, and it is why a function with a literal load cannot be compared standalone.",
+    "interpretation": "the original's literals are accounted for by the words the unit declares; the modern build pools differently, which is a structural consequence of the compiler rather than a defect in the reconstruction. It is also why a function with a literal load cannot be compared standalone.",
     "is_a_match_claim": false
   },
   "comparison": {
@@ -776,7 +801,8 @@
     "checks": 230,
     "failures": 0,
     "minimum_checks": 230,
-    "host_compiler": "MSVC cl.exe",
+    "host_compiler": "MSVC cl.exe (64-bit)",
+    "host_build_bits": 64,
     "detail": "230 behavioural assertions passed with 0 failures (minimum 230)",
     "output": "GBARam semantic self-check (HOST, not compiler evidence)\narena 262144 bytes\nPASS: 230 check(s), 0 failure(s)\n"
   }

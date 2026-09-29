@@ -2,9 +2,16 @@
 
 This is the **product tree**: the reconstructed source of the game.
 
-The first function family lifted here is the GBARam allocator, `src/GBARam.c`,
-at file `0x03D4D0..0x03D740`. See `docs/LIFT_PILOT.md` for its results and
-`docs/LIFT_LOOP.md` for how the next family is added.
+Two function families are lifted here:
+
+- **`src/GBARam.c`**, the small-block heap allocator, file `0x03D4D0..0x03D740`.
+  See `docs/LIFT_PILOT.md`.
+- **`src/ByteCodeInterpreter.c`**, the script engine's bytecode dispatch loop and
+  its two in-unit companions, at `0x08004038..0x08004160`. Named after the path
+  the ROM itself preserves (`T:\Source\ByteCodeInterpreter\ByteCodeInterpreter.cpp`).
+  See `docs/LIFT_SCRIPT.md`.
+
+`docs/LIFT_LOOP.md` is how the next family is added.
 
 ## Conventions
 

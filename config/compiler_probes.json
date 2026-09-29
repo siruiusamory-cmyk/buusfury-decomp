@@ -8,7 +8,7 @@
   "notes": [
     "Boundaries are evidence, not a window: the previous function's every path terminated before the next function starts.",
     "config/functions.json is NOT used for boundaries. Its `size` field is analysis.decode_run(limit=0x400).bytes_ok and overruns small functions: it records 620 bytes for 0x0803D4D0 against a measured 24, and 388 bytes for 0x0803D5B8 against a measured 132. Both spans run to 0x0803D73C, through neighbouring functions and into the literal pool.",
-    "No semantic name is assigned. Probe names are sub_<address>. The `role` strings describe each function's measured shape (leaf, returns, calls, literal loads) rather than claiming a semantic name.",
+    "No semantic NAME is assigned: probe names are sub_<address>. The `role` strings are SEMANTIC HYPOTHESES about what each function does, written to help a reader recognise it. They are UNPROVEN, nothing depends on them, and no test treats them as evidence.",
     "The inventory's confidence is its own discovery method's confidence: a BL-target entry stays `medium` there even when an independent chain walk proves the boundary. The two are recorded separately on purpose."
   ],
   "translation_units": [

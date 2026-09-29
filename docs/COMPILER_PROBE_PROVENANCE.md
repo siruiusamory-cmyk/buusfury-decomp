@@ -236,9 +236,36 @@ exhaustive `BL`/`BLX` halfword-pattern census over all 8,388,608 bytes, a
 from-scratch reachability fixpoint, and in-memory reconstruction of the manifest
 and matrix. It confirmed the eight boundaries, the exact 608-byte tiling, the
 absence of a ninth function, the shared four-word pool, the two inventory gaps
-and the call graph, and found one blocker and nine major defects which this
-revision fixes. `docs/COMPILER_PROBE.md` section 17 lists them. Its verdict was
-`SOUND WITH FIXES`, with the boundary corpus itself described as reliable.
+and the call graph, and found one blocker and nine major defects.
+`docs/COMPILER_PROBE.md` section 17 lists them. Its verdict was
+`SOUND WITH FIXES`.
+
+A second verification round against the fixed revision re-confirmed the measured
+core independently (eight boundaries, every `problems` tuple empty, 608 bytes,
+`consistency_problems` empty), confirmed the blocker and seven of the nine
+majors resolved, and then found two defects that the first round of fixes had
+itself introduced:
+
+- a claim could be published as `PROVEN` when its competing configuration never
+  ran, because a missing competitor was treated as a differing one. This is the
+  same class of failure as the original blocker and is reachable as soon as a
+  partially installed toolchain runs only some configurations. Fixed by capping
+  any claim whose competitor did not compare, and by recording the cap.
+- gate 6's PASS branch was unreachable: it matched the literal string
+  `comparisons_run` against the human-readable matrix rendering, which does not
+  contain it, so a probe that actually worked would have failed the gate. Fixed
+  by reading the matrix as JSON and checking the count.
+
+It also reduced the remainder to documented NITs, each addressed here: the
+manifest note about `role` strings was untrue and is corrected to say they are
+semantic hypotheses; the target's uncovered bytes are now published as
+`undecoded_target_bytes`; the toolchain-identification limits are published as
+`toolchain_identification`; a partly blocked matrix now headlines `PARTIAL`
+instead of `COMPLETE`; manifest comparison is type-strict so `"schema": true`
+cannot pass for `1`, and a valid-JSON non-object manifest is reported rather
+than crashing; the ARM optimization claim is `UNTESTED` instead of borrowing the
+frontend comparison; and the tests that only grepped prose were replaced with
+behavioural ones, including a real CLI invocation for the exit codes.
 
 ## 8. Reproducing this ticket
 
@@ -260,9 +287,9 @@ committed manifest is therefore a claim that is re-tested rather than trusted.
 
 | item | result |
 | --- | --- |
-| `tests/test_compiler_probe.py` | 76 passed |
-| full suite | see the final ticket report |
-| `scripts/check.cmd` | see the final ticket report; gates 5 and 6 are reported `BLOCKED`, not `FAIL` |
+| `tests/test_compiler_probe.py` | 83 passed |
+| full suite | 260 passed (measured) |
+| `scripts/check.cmd` | PASS, exit 0; gates 5 and 6 are reported `BLOCKED`, not `FAIL` |
 | canonical ROM | unchanged (SHA-1 and mtime) |
 | proprietary artefacts | none created, downloaded or tracked; Git refuses every ADS tool and licence name |
 | `C:\Dev\log1-remake` | not modified |

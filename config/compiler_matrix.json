@@ -5,9 +5,11 @@
   "code": "ADS12_UNAVAILABLE",
   "conclusion": "UNTESTED",
   "no_compiler_result_claimed": true,
+  "promoted_claims": [],
   "comparisons_run": 0,
   "generated_by": "tools/buusfury/compiler_probe.py build_matrix()",
   "methodology": "the region start is the candidate origin: fromelf -bin on a scatter file whose only load region is at the unit's ROM address is taken to emit from that address. UNEXERCISED on a machine without ADS 1.2, and the first thing to confirm from the real toolchain's output when one is supplied.",
+  "toolchain_identification": "toolchain identification runs each tool with NO arguments and requires an ADS/RVCT marker in what it prints. Only the compiler is identified this way; armasm, armlink and fromelf are recorded by path and banner but are not required to identify. A genuine installation whose compiler prints nothing on a bare invocation would be reported absent. UNEXERCISED against real ADS 1.2. Note also that the -S/-c/armasm/armlink/fromelf pipeline itself has never been run here, because no installation exists.",
   "comparison_scope": "translation unit gbaram_tu (0x0803D4D0..0x0803D740): 608 bytes of code plus its 16-byte literal pool, compared as one span, then sliced into the 8 declared probe functions",
   "configurations": [
     {
@@ -284,11 +286,14 @@
       "configurations_tested": 0,
       "probe_functions_per_configuration": 8,
       "lead_matching_probes": null,
+      "claims_capped_for_a_missing_competitor": [],
+      "cap_meaning": "these claims had a winner that compared bytes but no competing configuration that ran, so they cannot be promoted above PLAUSIBLE: 'the competitor did not run' is not evidence that it differs",
       "discriminators": {
         "thumb_frontend": "tcpp -O1 against tcc -O1",
         "thumb_optimization": "tcpp -O1 against tcpp -O0 and -O2",
         "c_vs_cpp": "tcpp -O1 against tcc -O1",
         "arm_frontend": "armcpp -O1 against armcc -O1",
+        "arm_optimization": "NONE: no ARM row varies the optimization level, and there is no ARM probe corpus to optimize, so this claim is UNTESTED",
         "thumb_cpu_target": "NONE: the CPU is ARM7TDMI in every configuration, so this claim can never be promoted past PLAUSIBLE by this matrix",
         "abi": "NONE: no ABI-affecting flag is varied"
       },
@@ -297,7 +302,7 @@
     "_state_meaning": {
       "PROVEN": "multiple discriminating exact matches support the setting",
       "STRONGLY_SUPPORTED": "repeated close or exact matches, some ambiguity",
-      "PLAUSIBLE": "evidence consistent but not discriminating",
+      "PLAUSIBLE": "evidence consistent but not discriminating, or below the three-function bar",
       "REFUTED": "repeated mismatches despite semantically correct source",
       "UNTESTED": "toolchain unavailable, or no configuration compared bytes"
     }

@@ -795,9 +795,10 @@ def derive_manifest(data: bytes) -> dict:
             "it records 620 bytes for 0x0803D4D0 against a measured 24, and 388 bytes "
             "for 0x0803D5B8 against a measured 132. Both spans run to 0x0803D73C, "
             "through neighbouring functions and into the literal pool.",
-            "No semantic name is assigned. Probe names are sub_<address>. The `role` "
-            "strings describe each function's measured shape (leaf, returns, calls, "
-            "literal loads) rather than claiming a semantic name.",
+            "No semantic NAME is assigned: probe names are sub_<address>. The `role` "
+            "strings are SEMANTIC HYPOTHESES about what each function does, written "
+            "to help a reader recognise it. They are UNPROVEN, nothing depends on "
+            "them, and no test treats them as evidence.",
             "The inventory's confidence is its own discovery method's confidence: a "
             "BL-target entry stays `medium` there even when an independent chain "
             "walk proves the boundary. The two are recorded separately on purpose.",
@@ -845,6 +846,12 @@ def verify_manifest(data: bytes, path: Path | None = None) -> list[str]:
     derived = derive_manifest(data)
     problems.extend(derived["consistency_problems"])
 
+    if not isinstance(committed, dict):
+        return problems + [
+            f"{path or MANIFEST_PATH} is valid JSON but not an object, so it cannot "
+            "be a probe manifest"
+        ]
+
     # Inventory drift first: if the inventory changed, the inventory-derived
     # fields in `probes`, `inventory_gaps` and `inventory_size_disagreements`
     # will differ for a reason that is not the ROM.
@@ -860,6 +867,8 @@ def verify_manifest(data: bytes, path: Path | None = None) -> list[str]:
         )
 
     # Every key of the regenerated document must appear, and match.
+    # Comparison is type-strict: plain `==` would accept `"schema": true` for
+    # `"schema": 1`, because Python's True == 1.
     for key in sorted(set(derived) | set(committed)):
         if key == "inventory_sha1":
             continue
@@ -867,7 +876,7 @@ def verify_manifest(data: bytes, path: Path | None = None) -> list[str]:
             problems.append(f"manifest is missing the field {key!r}")
         elif key not in derived:
             problems.append(f"manifest has an unexpected field {key!r}")
-        elif committed[key] != derived[key]:
+        elif json.dumps(committed[key], sort_keys=True) != json.dumps(derived[key], sort_keys=True):
             problems.append(
                 f"manifest field {key!r} disagrees with the value re-derived from "
                 "the canonical ROM"
@@ -941,6 +950,7 @@ class ByteDiff:
     differing_instructions: int
     exact_match: bool
     base_address: int = 0
+    undecoded_target_bytes: int = 0
     notes: tuple[str, ...] = ()
 
     @property
@@ -969,6 +979,7 @@ class ByteDiff:
             "target_instructions": self.target_instructions,
             "differing_instructions": self.differing_instructions,
             "matching_instructions": self.matching_instructions,
+            "undecoded_target_bytes": self.undecoded_target_bytes,
             "exact_match": self.exact_match,
             "notes": list(self.notes),
         }
@@ -1026,6 +1037,16 @@ def compare_bytes(
         if end > len(candidate) or target[offset:end] != candidate[offset:end]:
             differing_instructions += 1
 
+    # Target bytes no instruction covers cannot be compared instruction-wise.
+    # They are published rather than silently dropped, so the invariant "unequal
+    # bytes imply differing instructions" is stated only where it holds: it is
+    # absolute only when the target decodes fully, which is asserted for every
+    # real probe.
+    covered = sum(size for _offset, size in spans)
+    undecoded = max(0, len(target) - covered)
+    if undecoded:
+        differing_instructions += undecoded
+
     return ByteDiff(
         target_size=len(target),
         candidate_size=len(candidate),
@@ -1036,6 +1057,7 @@ def compare_bytes(
         differing_instructions=differing_instructions,
         exact_match=bytes(target) == bytes(candidate),
         base_address=base_address,
+        undecoded_target_bytes=undecoded,
         notes=notes,
     )
 
@@ -1053,6 +1075,7 @@ class AdsTools:
     support: dict[str, Path]
     banner: str
     version: str
+    support_banners: dict[str, str | None] = dataclasses.field(default_factory=dict)
 
     def as_dict(self) -> dict:
         return {
@@ -1062,6 +1085,8 @@ class AdsTools:
             "banner": self.banner,
             "version": self.version,
             "support": {name: str(path) for name, path in sorted(self.support.items())},
+            "support_banners": dict(sorted(self.support_banners.items())),
+            "identification": BANNER_ASSUMPTION,
             "redistribution": "PROHIBITED: commercial software, located locally, never committed",
         }
 
@@ -1146,10 +1171,12 @@ def discover_ads(
     if banner is None:
         return None
     support: dict[str, Path] = {}
+    support_banners: dict[str, str | None] = {}
     for name in ADS_SUPPORT_TOOLS:
         found = _find_ads_tool(name, resolved, allow_path=not explicit)
         if found is not None:
             support[name] = found
+            support_banners[name] = identify_ads_tool(found)
     return AdsTools(
         root=resolved if resolved is not None else compiler.parent,
         compiler=compiler,
@@ -1157,6 +1184,7 @@ def discover_ads(
         support=support,
         banner=banner,
         version=_banner_version(banner),
+        support_banners=support_banners,
     )
 
 
@@ -1302,6 +1330,17 @@ ORIGIN_ASSUMPTION = (
     "whose only load region is at the unit's ROM address is taken to emit from "
     "that address. UNEXERCISED on a machine without ADS 1.2, and the first thing "
     "to confirm from the real toolchain's output when one is supplied."
+)
+
+#: The second unexercised assumption on the ADS leg, stated for the same reason.
+BANNER_ASSUMPTION = (
+    "toolchain identification runs each tool with NO arguments and requires an "
+    "ADS/RVCT marker in what it prints. Only the compiler is identified this way; "
+    "armasm, armlink and fromelf are recorded by path and banner but are not "
+    "required to identify. A genuine installation whose compiler prints nothing "
+    "on a bare invocation would be reported absent. UNEXERCISED against real "
+    "ADS 1.2. Note also that the -S/-c/armasm/armlink/fromelf pipeline itself has "
+    "never been run here, because no installation exists."
 )
 
 
@@ -1700,16 +1739,23 @@ def build_matrix(
             if code == BLOCK_ADS_UNAVAILABLE
             else f"COMPILER PROBE: BLOCKED - {code} (no configuration produced a comparison)"
         )
-        return _matrix_document(
-            sha1,
-            configurations,
-            result=result,
-            code=code,
-            details=[BLOCKED_STATEMENT],
+    elif comparisons < len(configurations):
+        # Some configurations ran and some did not. Saying "COMPLETE" would hide
+        # that, and the missing ones may be exactly the negative controls.
+        result = (
+            f"COMPILER PROBE: PARTIAL ({comparisons} of {len(configurations)} "
+            "configurations compared)"
         )
+        code = None
+    else:
+        result, code = "COMPILER PROBE: COMPLETE", None
 
     return _matrix_document(
-        sha1, configurations, result="COMPILER PROBE: COMPLETE", code=None, details=[]
+        sha1,
+        configurations,
+        result=result,
+        code=code,
+        details=[BLOCKED_STATEMENT] if code else [],
     )
 
 
@@ -1739,18 +1785,27 @@ def _matrix_document(
         for c in configurations
     ]
     comparisons = sum(1 for c in configurations if c["comparison_ran"])
+    claims = fingerprint(configurations) if comparisons else fingerprint([])
+    promoted = [
+        name
+        for name, state in claims.items()
+        if not name.startswith("_") and state in ("PROVEN", "STRONGLY_SUPPORTED")
+    ]
     return {
         "schema": 1,
         "source_sha1": sha1,
         "result": result,
         "code": code,
-        "conclusion": (
-            "UNTESTED" if code else fingerprint(configurations)["thumb_frontend"]
-        ),
-        "no_compiler_result_claimed": bool(code),
+        "conclusion": claims["thumb_frontend"],
+        # A "claimed result" means a claim was actually promoted, not merely that
+        # the run finished. Publishing "no compiler result is claimed" from the
+        # presence of a blocker code alone would be wrong in the partial case.
+        "no_compiler_result_claimed": not promoted,
+        "promoted_claims": promoted,
         "comparisons_run": comparisons,
         "generated_by": "tools/buusfury/compiler_probe.py build_matrix()",
         "methodology": ORIGIN_ASSUMPTION,
+        "toolchain_identification": BANNER_ASSUMPTION,
         "comparison_scope": (
             "translation unit gbaram_tu (0x0803D4D0..0x0803D740): 608 bytes of code "
             "plus its 16-byte literal pool, compared as one span, then sliced into "
@@ -1764,9 +1819,7 @@ def _matrix_document(
             "tcpp -O1 vs -O2: the lead against more optimisation",
             "armcc/armcpp: ARM instruction set against the observed Thumb",
         ],
-        "fingerprint": (
-            fingerprint(configurations) if comparisons else fingerprint([])
-        ),
+        "fingerprint": claims,
         "details": details,
     }
 
@@ -1798,22 +1851,34 @@ def _row(configurations: list[dict], frontend: str, optimization: str) -> dict |
 def _claim(winner: dict | None, competitor: dict | None, probe_total: int) -> str:
     """Classify ONE claim from the two configurations that discriminate it.
 
-    The questions this answers are: did the favoured configuration match, how
-    many of the probe FUNCTIONS did it match, and did the competing setting
-    produce different code? A match that the competitor reproduces exactly is
-    non-discriminating and can only ever be PLAUSIBLE.
+    The questions this answers are: did the favoured configuration actually
+    compare bytes, how many of the probe FUNCTIONS did it match, and did the
+    competing setting produce different code?
+
+    A missing or never-run competitor can never promote a claim. Treating "the
+    competitor did not run" as "the competitor differs" would publish PROVEN for
+    a setting with no discriminating evidence at all, which is precisely the
+    failure this function exists to prevent - and it becomes reachable the
+    moment a partially installed toolchain runs only some configurations.
     """
-    if winner is None:
+    if winner is None or not winner.get("comparison_ran"):
         return "UNTESTED"
     matched = winner.get("matching_probes") or 0
     total = winner.get("total_probes") or probe_total
     if matched == 0:
         return "REFUTED"
-    if competitor is not None and (competitor.get("matching_probes") or 0) == matched:
+    if competitor is None or not competitor.get("comparison_ran"):
+        # Nothing to discriminate against, so nothing above "consistent".
         return "PLAUSIBLE"
+    if (competitor.get("matching_probes") or 0) == matched:
+        return "PLAUSIBLE"
+    # The ticket's bar is three discriminating ordinary engine functions, so a
+    # single function match is consistent evidence and no more.
     if matched >= 3 and matched == total:
         return "PROVEN"
-    return "STRONGLY_SUPPORTED"
+    if matched >= 2:
+        return "STRONGLY_SUPPORTED"
+    return "PLAUSIBLE"
 
 
 def fingerprint(matrix_results: list[dict]) -> dict:
@@ -1849,7 +1914,11 @@ def fingerprint(matrix_results: list[dict]) -> dict:
     thumb_optimization = _claim(tcpp_o1, first_or_none(tcpp_o0, tcpp_o2), probe_total)
     c_vs_cpp = _claim(tcpp_o1, tcc_o1, probe_total)
     arm_frontend = _claim(armcpp_o1, armcc_o1, probe_total)
-    arm_optimization = _claim(armcc_o1, armcpp_o1, probe_total)
+    # ARM optimization is NOT tested by this matrix: no ARM row varies -O, and
+    # scoring it from armcc-vs-armcpp would silently report the frontend
+    # comparison under an optimization label. There is also no ARM probe corpus
+    # to optimize, so the honest answer is UNTESTED rather than a borrowed state.
+    arm_optimization = "UNTESTED"
 
     # The CPU target never varies in this matrix: every configuration is
     # ARM7TDMI. With nothing to discriminate it, a match can only ever be
@@ -1857,8 +1926,21 @@ def fingerprint(matrix_results: list[dict]) -> dict:
     thumb_cpu_target = (
         "PLAUSIBLE"
         if (tcpp_o1 or {}).get("matching_probes")
-        else ("REFUTED" if tcpp_o1 else "UNTESTED")
+        else ("REFUTED" if (tcpp_o1 and tcpp_o1.get("comparison_ran")) else "UNTESTED")
     )
+
+    missing_competitors = [
+        label
+        for label, winner, competitor in (
+            ("thumb_frontend", tcpp_o1, tcc_o1),
+            ("thumb_optimization", tcpp_o1, first_or_none(tcpp_o0, tcpp_o2)),
+            ("c_vs_cpp", tcpp_o1, tcc_o1),
+            ("arm_frontend", armcpp_o1, armcc_o1),
+        )
+        if winner is not None
+        and winner.get("comparison_ran")
+        and (competitor is None or not competitor.get("comparison_ran"))
+    ]
 
     return {
         "thumb_frontend": thumb_frontend,
@@ -1873,11 +1955,22 @@ def fingerprint(matrix_results: list[dict]) -> dict:
             "configurations_tested": len(matrix_results),
             "probe_functions_per_configuration": probe_total,
             "lead_matching_probes": (tcpp_o1 or {}).get("matching_probes"),
+            "claims_capped_for_a_missing_competitor": missing_competitors,
+            "cap_meaning": (
+                "these claims had a winner that compared bytes but no competing "
+                "configuration that ran, so they cannot be promoted above "
+                "PLAUSIBLE: 'the competitor did not run' is not evidence that it "
+                "differs"
+            ),
             "discriminators": {
                 "thumb_frontend": "tcpp -O1 against tcc -O1",
                 "thumb_optimization": "tcpp -O1 against tcpp -O0 and -O2",
                 "c_vs_cpp": "tcpp -O1 against tcc -O1",
                 "arm_frontend": "armcpp -O1 against armcc -O1",
+                "arm_optimization": (
+                    "NONE: no ARM row varies the optimization level, and there is "
+                    "no ARM probe corpus to optimize, so this claim is UNTESTED"
+                ),
                 "thumb_cpu_target": (
                     "NONE: the CPU is ARM7TDMI in every configuration, so this "
                     "claim can never be promoted past PLAUSIBLE by this matrix"
@@ -1893,7 +1986,8 @@ def fingerprint(matrix_results: list[dict]) -> dict:
         "_state_meaning": {
             "PROVEN": "multiple discriminating exact matches support the setting",
             "STRONGLY_SUPPORTED": "repeated close or exact matches, some ambiguity",
-            "PLAUSIBLE": "evidence consistent but not discriminating",
+            "PLAUSIBLE": "evidence consistent but not discriminating, or below the "
+            "three-function bar",
             "REFUTED": "repeated mismatches despite semantically correct source",
             "UNTESTED": "toolchain unavailable, or no configuration compared bytes",
         },

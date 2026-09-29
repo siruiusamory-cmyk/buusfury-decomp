@@ -535,6 +535,9 @@ def cmd_compiler_probe(args) -> int:
         print("relocation methodology:")
         print(f"  {_cp.ORIGIN_ASSUMPTION}")
         print()
+        print("toolchain identification:")
+        print(f"  {_cp.BANNER_ASSUMPTION}")
+        print()
         print("--plan executes nothing and therefore always exits 0.")
         return EXIT_OK
 
@@ -589,6 +592,8 @@ def cmd_compiler_probe(args) -> int:
 
     if args.json:
         print(json.dumps(report, indent=2))
+        if report["consistency_problems"]:
+            return EXIT_FAIL
         return EXIT_OK if tools is not None else EXIT_FAIL
 
     print("=" * 72)

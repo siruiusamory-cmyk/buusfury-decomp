@@ -463,18 +463,34 @@ def test_the_blocked_matrix_records_itself_environment_independently(rom_bytes, 
     assert cp.build_matrix(rom_bytes, "f" * 40) == matrix
 
 
-def test_the_documented_exit_contract_is_that_a_blocker_is_non_zero():
-    """The docs say a blocked run exits non-zero; the CLI must agree.
+def test_the_documented_exit_contract_is_enforced_by_a_real_invocation(baserom):
+    """Behavioural: run the CLI and check its exit code, do not read its source.
 
-    Asserted structurally rather than by running the CLI, so this stays a
-    portable test: the --json branch must not return success before the blocked
-    branch.
+    Replaces a test that grepped cli.py for `EXIT_FAIL`, which could not fail if
+    the exit path were wrong in any other way.
     """
-    source = (REPO_ROOT / "tools" / "buusfury" / "cli.py").read_text(encoding="utf-8")
-    json_branch = source.index('print(json.dumps(report, indent=2))')
-    tail = source[json_branch : json_branch + 200]
-    assert "EXIT_FAIL" in tail, "the --json path must not pass a blocked probe"
-    assert "EXIT_OK if tools is not None else EXIT_FAIL" in tail
+    for flags in (["--json"], ["--matrix", "--json"], ["--json", "--verify-matrix"]):
+        completed = subprocess.run(
+            [
+                sys.executable,
+                "-m",
+                "buusfury",
+                "compiler-probe",
+                "--rom",
+                str(baserom),
+                *flags,
+            ],
+            cwd=str(REPO_ROOT),
+            capture_output=True,
+            text=True,
+            env={**__import__("os").environ, "PYTHONPATH": str(REPO_ROOT / "tools")},
+        )
+        # No ADS on the build machine, so every probe mode must be non-zero.
+        # --verify-matrix legitimately passes, so it is checked separately.
+        if "--verify-matrix" in flags:
+            assert completed.returncode == 0, completed.stdout + completed.stderr
+            continue
+        assert completed.returncode == 1, (flags, completed.stdout[-400:])
 
 
 # ---------------------------------------------------------------------------
@@ -507,10 +523,28 @@ def test_a_lead_that_matches_nothing_is_refuted():
 
 
 def test_matching_all_probes_with_a_differing_competitor_is_proven():
-    state = cp.fingerprint([_row("tcpp", "-O1", PROBE_COUNT), _row("tcc", "-O1", 0)])
-    assert state["thumb_frontend"] == "PROVEN"
-    assert state["c_vs_cpp"] == "PROVEN"
-    assert state["thumb_optimization"] == "PROVEN"
+    """Each claim needs its OWN competing setting to have run.
+
+    tcc -O1 discriminates the frontend but says nothing about the optimization
+    level, so `thumb_optimization` is only PROVEN once an -O0 or -O2 row has run
+    and differed. An earlier revision asserted PROVEN from the tcc row alone,
+    which is the defect this now guards against.
+    """
+    frontend_only = cp.fingerprint(
+        [_row("tcpp", "-O1", PROBE_COUNT), _row("tcc", "-O1", 0)]
+    )
+    assert frontend_only["thumb_frontend"] == "PROVEN"
+    assert frontend_only["c_vs_cpp"] == "PROVEN"
+    assert frontend_only["thumb_optimization"] == "PLAUSIBLE", "no -O competitor ran"
+
+    with_optimisation = cp.fingerprint(
+        [
+            _row("tcpp", "-O1", PROBE_COUNT),
+            _row("tcc", "-O1", 0),
+            _row("tcpp", "-O0", 0),
+        ]
+    )
+    assert with_optimisation["thumb_optimization"] == "PROVEN"
 
 
 def test_a_competitor_that_matches_identically_is_only_plausible():
@@ -543,9 +577,64 @@ def test_the_cpu_claim_can_never_be_promoted_by_this_matrix():
     assert "can never be promoted" in state["_evidence"]["discriminators"]["thumb_cpu_target"]
 
 
-def test_a_partial_match_is_strongly_supported_not_proven():
-    state = cp.fingerprint([_row("tcpp", "-O1", 2), _row("tcc", "-O1", 0)])
-    assert state["thumb_frontend"] == "STRONGLY_SUPPORTED"
+def test_a_partial_match_is_plausible_not_proven():
+    """The ticket's bar is three discriminating functions, so one is not enough."""
+    state = cp.fingerprint([_row("tcpp", "-O1", 1), _row("tcc", "-O1", 0)])
+    assert state["thumb_frontend"] == "PLAUSIBLE"
+    two = cp.fingerprint([_row("tcpp", "-O1", 2), _row("tcc", "-O1", 0)])
+    assert two["thumb_frontend"] == "STRONGLY_SUPPORTED"
+
+
+def test_a_winner_with_no_running_competitor_can_never_be_promoted():
+    """A competitor that never ran is not a competitor that differs.
+
+    This was a real defect: treating a missing competitor as differing published
+    PROVEN for a compiler setting with no discriminating evidence at all, which
+    becomes reachable as soon as a partially installed toolchain runs only some
+    configurations.
+    """
+    state = cp.fingerprint([_row("tcpp", "-O1", PROBE_COUNT)])
+    assert state["thumb_frontend"] == "PLAUSIBLE"
+    assert state["thumb_optimization"] == "PLAUSIBLE"
+    assert state["c_vs_cpp"] == "PLAUSIBLE"
+    assert "thumb_frontend" in state["_evidence"]["claims_capped_for_a_missing_competitor"]
+
+    # A blocker on the competitor row is the same situation as a missing row.
+    state = cp.fingerprint(
+        [_row("tcpp", "-O1", PROBE_COUNT), _row("tcc", "-O1", None, ran=False)]
+    )
+    assert state["thumb_frontend"] == "PLAUSIBLE"
+
+    # And a partially installed toolchain, where only some rows ran, must not
+    # promote the optimization claim whose -O2 row is blocked.
+    state = cp.fingerprint(
+        [
+            _row("tcpp", "-O1", PROBE_COUNT),
+            _row("tcc", "-O1", 0),
+            _row("tcpp", "-O0", 0),
+            _row("tcpp", "-O2", None, ran=False),
+        ]
+    )
+    assert state["thumb_optimization"] == "PROVEN", "one differing competitor is enough"
+    state_missing_both = cp.fingerprint(
+        [
+            _row("tcpp", "-O1", PROBE_COUNT),
+            _row("tcc", "-O1", 0),
+            _row("tcpp", "-O0", None, ran=False),
+            _row("tcpp", "-O2", None, ran=False),
+        ]
+    )
+    assert state_missing_both["thumb_optimization"] == "PLAUSIBLE"
+
+
+def test_arm_optimization_is_untested_because_nothing_varies_it():
+    """No ARM row varies -O and there is no ARM probe corpus to optimize."""
+    state = cp.fingerprint(
+        [_row("armcpp", "-O1", PROBE_COUNT), _row("armcc", "-O1", 0)]
+    )
+    assert state["arm_frontend"] == "PROVEN"
+    assert state["arm_optimization"] == "UNTESTED"
+    assert "no ARM row varies" in state["_evidence"]["discriminators"]["arm_optimization"]
 
 
 # ---------------------------------------------------------------------------
@@ -612,6 +701,46 @@ def test_matching_instructions_can_never_go_negative():
     diff = cp.compare_bytes(target, candidate, 0x08000000, "thumb")
     assert diff.differing_instructions <= diff.target_instructions
     assert diff.matching_instructions >= 0
+
+
+def test_unequal_bytes_almost_always_imply_a_differing_instruction():
+    """The invariant, and the one case where it does not hold.
+
+    If the target's own bytes do not decode to a single instruction there is
+    nothing to compare instruction-wise, so the uncovered bytes are published as
+    `undecoded_target_bytes` rather than being silently dropped. Every real probe
+    decodes fully, and that is asserted separately.
+    """
+    # A target that decodes to nothing.
+    diff = cp.compare_bytes(bytes.fromhex("00f0"), bytes.fromhex("00bf"), 0x08000000, "thumb")
+    assert diff.exact_match is False
+    assert diff.target_instructions == 0
+    assert diff.undecoded_target_bytes == 2
+    assert diff.differing_instructions == 2, "uncovered bytes must be published"
+
+    # A target that decodes fully: unequal bytes always give a differing instruction.
+    for target_hex, candidate_hex in (
+        ("8042", "0045"),
+        ("0020", "0120"),
+        ("00200149", "00200150"),
+    ):
+        diff = cp.compare_bytes(
+            bytes.fromhex(target_hex), bytes.fromhex(candidate_hex), 0x08000000, "thumb"
+        )
+        assert diff.undecoded_target_bytes == 0
+        assert not diff.exact_match
+        assert diff.differing_instructions > 0, (target_hex, candidate_hex)
+
+
+def test_every_real_probe_decodes_fully_so_the_invariant_holds_for_it(rom_bytes, manifest):
+    for probe in manifest["probes"]:
+        start = int(probe["rom_address"], 16)
+        raw = cp.extract(rom_bytes, start, probe["byte_length"])
+        spans = cp.instruction_spans(raw, start, probe["isa"])
+        assert sum(size for _offset, size in spans) == probe["byte_length"], probe["name"]
+        diff = cp.compare_bytes(raw, raw[:1] * probe["byte_length"], start, probe["isa"])
+        assert diff.undecoded_target_bytes == 0, probe["name"]
+        assert diff.differing_instructions > 0, probe["name"]
 
 
 def test_the_first_difference_address_uses_the_base_address():
@@ -703,13 +832,32 @@ def test_the_origin_assumption_is_stated_not_implied():
     assert "UNEXERCISED" in cp.ORIGIN_ASSUMPTION
 
 
-def test_probe_slices_are_taken_from_one_build_not_separate_ones():
-    """The shared literal pool is why per-probe results are slices, not builds."""
-    source = (REPO_ROOT / "tools" / "buusfury" / "compiler_probe.py").read_text(
-        encoding="utf-8"
-    )
-    assert "sliced out of ONE translation-unit build" in source
-    assert "not independent builds" in source
+def test_probe_slices_partition_the_target_and_report_one_result_per_function(rom_bytes):
+    """Behavioural: the slices must cover the unit exactly, once each.
+
+    Replaces a test that only grepped two prose substrings out of the module and
+    therefore could not fail for the property it named.
+    """
+    unit = cp.GBARAM_TU
+    target = cp.extract(rom_bytes, unit.rom_address, unit.length)
+    matches = cp.probe_slice_matches(target, target, unit, unit.isa)
+    assert len(matches) == PROBE_COUNT
+    assert all(matched for _name, matched in matches), "a self-comparison must match"
+    assert [name for name, _m in matches] == [f"sub_{s:08X}" for s, _e, _r in cp.GBARAM_FUNCTIONS]
+
+    # A candidate differing in exactly one function must fail exactly that one.
+    changed = bytearray(target)
+    changed[0] ^= 0xFF
+    matches = cp.probe_slice_matches(target, bytes(changed), unit, unit.isa)
+    assert sum(1 for _n, m in matches if m) == PROBE_COUNT - 1
+    assert matches[0][1] is False
+
+    # And the slices must tile the code body exactly, with no byte counted twice.
+    spans = [(s - unit.rom_address, e - unit.rom_address) for s, e, _r in cp.GBARAM_FUNCTIONS]
+    assert spans[0][0] == 0
+    assert spans[-1][1] == unit.code_length
+    for (_a, end_a), (start_b, _b) in zip(spans, spans[1:]):
+        assert end_a == start_b
 
 
 # ---------------------------------------------------------------------------
@@ -762,11 +910,56 @@ def test_a_tampered_matrix_is_caught(rom_bytes, tmp_path):
 
 
 def test_the_committed_matrix_claims_no_result(rom_bytes):
+    """Only asserted on a machine that cannot run the probe.
+
+    On a machine with an identified ADS 1.2 the matrix legitimately becomes
+    COMPLETE once regenerated, so requiring `comparisons_run == 0` there would
+    make the suite unable to pass on exactly the machine the next ticket needs.
+    The consistency check below is the part that always applies.
+    """
     matrix = json.loads(cp.MATRIX_PATH.read_text(encoding="utf-8"))
-    assert matrix["comparisons_run"] == 0
-    assert matrix["no_compiler_result_claimed"] is True
-    assert matrix["code"] == cp.BLOCK_ADS_UNAVAILABLE
+    if cp.discover_ads() is None:
+        assert matrix["comparisons_run"] == 0
+        assert matrix["no_compiler_result_claimed"] is True
+        assert matrix["code"] == cp.BLOCK_ADS_UNAVAILABLE
+        assert matrix["promoted_claims"] == []
+    else:
+        assert "comparisons_run" in matrix
     assert cp.verify_matrix(rom_bytes, identity.load_canonical()["hashes"]["sha1"]) == []
+
+
+def test_the_matrix_headlines_partial_when_only_some_configurations_ran():
+    """A partly blocked matrix must not be called COMPLETE."""
+    one_ran = [_row("tcpp", "-O1", 0)]
+    doc = cp._matrix_document(
+        "f" * 40,
+        [
+            {
+                **row,
+                "isa": "thumb",
+                "cpu": "ARM7TDMI",
+                "translation_unit": "gbaram_tu",
+                "matching_instructions": None,
+                "total_instructions": None,
+                "dropped_candidate_bytes": 0,
+                "status": "DIFFER" if row["comparison_ran"] else "BLOCKED",
+                "code": None if row["comparison_ran"] else cp.BLOCK_ADS_UNAVAILABLE,
+                "exact_match": False,
+                "probe_matches": {},
+            }
+            for row in (
+                one_ran[0],
+                _row("tcc", "-O1", None, ran=False),
+            )
+        ],
+        result="x",
+        code=None,
+        details=[],
+    )
+    assert doc["comparisons_run"] == 1
+    # No claim was promoted, so the document must not appear to claim a result.
+    assert doc["no_compiler_result_claimed"] is True
+    assert doc["promoted_claims"] == []
 
 
 # ---------------------------------------------------------------------------
@@ -867,12 +1060,33 @@ def test_a_blocked_probe_writes_nothing_outside_the_probe_workspace(
 
 
 def test_the_harness_holds_no_path_into_the_other_checkout():
+    """A cheap guard, deliberately not the main defence.
+
+    The repository-wide invariant in tests/test_rom_map.py covers tools/*.py; this
+    adds the tests directory and the CLI module, which that one does not reach.
+    A string check cannot prove absence of a write path, which is why
+    `test_a_blocked_probe_writes_nothing_outside_the_probe_workspace` exists.
+    """
     needle = "log1" + "-remake"
     for name in ("compiler_probe.py", "cli.py"):
         source = (REPO_ROOT / "tools" / "buusfury" / name).read_text(encoding="utf-8")
         assert needle not in source, name
     test_source = (REPO_ROOT / "tests" / "test_compiler_probe.py").read_text(encoding="utf-8")
     assert needle not in test_source
+
+
+def test_the_manifest_does_not_present_semantic_roles_as_measurements(manifest):
+    """The role strings are hypotheses, and the manifest must say so.
+
+    An earlier revision claimed the roles described each function's measured
+    shape while the strings actually carried semantic guesses.
+    """
+    note = " ".join(manifest["notes"])
+    assert "SEMANTIC HYPOTHESES" in note
+    assert "UNPROVEN" in note
+    roles = " ".join(probe["role"] for probe in manifest["probes"])
+    assert "free" in roles or "allocate" in roles, "the roles really are semantic"
+    assert "method" in manifest and "chain-walk" in manifest["method"]
 
 
 def test_the_files_this_ticket_adds_are_ascii_lf_and_bom_free():
@@ -902,14 +1116,22 @@ def test_the_files_this_ticket_adds_are_ascii_lf_and_bom_free():
         assert "\u2014" not in text and "\u2013" not in text, path.name
 
 
-def test_the_diagnostic_control_is_labelled_as_not_evidence():
-    assert cp.DIAGNOSTIC_CONTROL == "DIAGNOSTIC_CONTROL_NOT_EVIDENCE"
-    compiler = cp.discover_diagnostic_compiler()
-    if compiler is None:
-        pytest.skip("no devkitARM GCC available for the plumbing control")
-    described = compiler.as_dict()
-    assert described["classification"] == cp.DIAGNOSTIC_CONTROL
-    assert "cannot be evidence" in described["why"]
+def test_the_diagnostic_control_cannot_reach_a_compiler_finding():
+    """Behavioural: the GCC path must not be reachable from the probe pipeline.
+
+    Replaces a test that compared a constant to its own literal. What matters is
+    that no code path that produces a claim can obtain the diagnostic compiler.
+    """
+    import inspect
+
+    assert cp.DIAGNOSTIC_CONTROL not in (cp.BLOCK_ADS_UNAVAILABLE, cp.BLOCK_TOOLCHAIN)
+    for producer in (cp.run_probe, cp.build_matrix, cp.fingerprint, cp._claim):
+        source = inspect.getsource(producer)
+        assert "diagnostic" not in source.lower(), producer.__name__
+        assert "gcc" not in source.lower(), producer.__name__
+    # And the blocker codes are distinct from the control label, so a control
+    # result can never be read as a probe status.
+    assert "DIAGNOSTIC" not in cp.BLOCK_ADS_UNAVAILABLE
 
 
 # ---------------------------------------------------------------------------

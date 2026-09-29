@@ -170,17 +170,25 @@ if ($LASTEXITCODE -ne 0) { $overall = 'FAIL' }
 # The probe itself cannot run without ADS 1.2. Report that as BLOCKED, the same
 # contract as gate 5, and never let it read as a compiler result. PASS requires
 # that at least one configuration actually COMPARED BYTES; a run that merely
-# found a driver name is not a result.
-$matrixText = (& $python -m buusfury compiler-probe --rom $romPath --matrix 2>&1) -join "`n"
+# found a driver name is not a result. The matrix step is read as JSON because
+# the human-readable rendering does not contain a machine-checkable count.
+$matrixJson = (& $python -m buusfury compiler-probe --rom $romPath --matrix --json 2>&1) -join "`n"
 $matrixExit = $LASTEXITCODE
-if ($matrixText -match 'ADS12_UNAVAILABLE') {
+$comparisons = $null
+try {
+    $comparisons = ($matrixJson | ConvertFrom-Json).comparisons_run
+} catch {
+    $comparisons = $null
+}
+if ($matrixJson -match 'ADS12_UNAVAILABLE') {
     Write-Host ""
     Write-Host "      BLOCKED  probe prepared; no compiler result is claimed" -ForegroundColor Yellow
     Write-Host "               reason: ADS12_UNAVAILABLE (no identified ARM Developer Suite 1.2)"
     $notes.Add('compiler probe BLOCKED on ADS 1.2; preparation complete, see docs/COMPILER_PROBE.md')
-} elseif ($matrixText -match 'comparisons_run') {
+} elseif ($null -ne $comparisons -and $comparisons -gt 0) {
     Write-Host ""
-    Write-Host "      PASS  compiler probe produced a result (see docs/COMPILER_PROBE.md)"
+    Write-Host "      PASS  compiler probe compared $comparisons configuration(s)" -ForegroundColor Green
+    $notes.Add("compiler probe ran: $comparisons configuration(s) compared; see docs/COMPILER_PROBE.md")
 } elseif ($matrixExit -ne 0) {
     Write-Host "      FAIL  compiler probe reported an unexpected failure" -ForegroundColor Red
     $overall = 'FAIL'

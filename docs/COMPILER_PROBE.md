@@ -208,7 +208,11 @@ Exit codes:
 
 `--matrix` exits 0 **only if at least one configuration actually compared
 bytes**. A matrix in which every configuration is blocked is a failure to obtain
-a verdict, not a pass.
+a verdict, not a pass. When some configurations ran and some did not, the
+document says `COMPILER PROBE: PARTIAL (N of M configurations compared)` rather
+than `COMPLETE`, because the configurations that did not run may include exactly
+the negative controls the claim depends on. `no_compiler_result_claimed` means
+that no claim was actually promoted, not merely that the run finished.
 
 Every comparison reports target size, candidate size, identical bytes, first
 differing offset with its ROM address, number of differing bytes, the target's
@@ -218,8 +222,12 @@ instruction boundaries, never on a positional walk of both streams: capstone
 renders distinct Thumb encodings as the same text (127 colliding
 `(mnemonic, op_str)` pairs exist among the 65,536 halfwords, for example
 `0x4280` and `0x4500` both being `cmp r0, r0`), so a text comparison can report
-zero differing instructions for bytes that are not equal. Assembly is compared
-as decoded instructions in addition to raw bytes, never as text alone.
+zero differing instructions for bytes that are not equal. Any target byte that
+no instruction covers is published as `undecoded_target_bytes` rather than
+silently dropped, so the "unequal bytes imply a differing instruction" guarantee
+is stated only where it holds; every real probe decodes fully and a test asserts
+that. Assembly is compared as decoded instructions in addition to raw bytes,
+never as text alone.
 
 ### Identifying the toolchain
 
@@ -231,6 +239,12 @@ compiler's mismatches be published as a finding about the original build. When
 so an unrelated same-named binary cannot be substituted for the requested
 installation. An unidentifiable tool is treated as absent, and the exact banner
 and version of an identified one are recorded in the matrix.
+
+Two limits on this are published in the matrix as `toolchain_identification`:
+only the compiler is required to identify, and the no-argument banner probe
+itself is unexercised against a real ADS 1.2 installation. A genuine install
+whose compiler prints nothing on a bare invocation would be reported absent, and
+the whole `-S`/`armasm`/`armlink`/`fromelf` pipeline has never been run here.
 
 ## 8. Relocation methodology
 
@@ -291,9 +305,11 @@ ticket's preferred criterion, implemented in `fingerprint()`:
 - `REFUTED` when the favoured configuration matched none of the eight probe
   functions,
 - `PLAUSIBLE` when it matched but the competing setting produced **identical**
-  results, because that is the non-discriminating case,
-- `STRONGLY_SUPPORTED` on one or two discriminating function matches,
-- `PROVEN` when all eight match AND the competing setting differs, and
+  results, or when no competing setting ran at all, or when only one function
+  matched,
+- `STRONGLY_SUPPORTED` on two or more discriminating function matches,
+- `PROVEN` when all eight match AND a competing setting that actually ran
+  differs, and
 - `UNTESTED` when the configurations never compared bytes at all.
 
 Each claim is scored from **its own** two discriminating configurations, not
@@ -306,13 +322,25 @@ from one pooled set of evidence:
 | C vs C++ | `tcpp -O1` against `tcc -O1` |
 | ARM front end | `armcpp -O1` against `armcc -O1` |
 | Thumb CPU target | **nothing**: the CPU is ARM7TDMI in every configuration, so this claim is structurally capped at `PLAUSIBLE` |
+| ARM optimization | **nothing**: no ARM row varies `-O`, and there is no ARM probe corpus to optimize, so `UNTESTED` |
 | ABI | **nothing**: no ABI-affecting flag is varied, so `UNTESTED` |
 
-The score counts matching probe **functions** under one shared configuration.
-Counting matching configurations would invert the meaning: `-O0`, `-O1` and
-`-O2` all matching is exactly the non-discriminating case, not three independent
-confirmations. That is also why the corpus spans straight-line code, conditional
-branches, loops, early returns and calls, and why the negative controls exist.
+**A competitor that never ran cannot promote a claim.** If the favoured
+configuration compared bytes but its competing configuration was blocked or
+absent, the claim is capped at `PLAUSIBLE`, and the cap is recorded in
+`_evidence.claims_capped_for_a_missing_competitor`. Treating "the competitor did
+not run" as "the competitor differs" would publish `PROVEN` for a setting with
+no discriminating evidence at all, and that becomes reachable the moment a
+partially installed toolchain runs only some configurations.
+
+The score counts matching probe **functions** under one shared configuration,
+and `PROVEN` additionally requires all eight of them. Counting matching
+configurations would invert the meaning: `-O0`, `-O1` and `-O2` all matching is
+exactly the non-discriminating case, not three independent confirmations. A
+single matching function is `PLAUSIBLE`, not `STRONGLY_SUPPORTED`, because the
+ticket's bar is three. That is also why the corpus spans straight-line code,
+conditional branches, loops, early returns and calls, and why the negative
+controls exist.
 
 Per-function results are slices of the one translation-unit build, reported as
 `probe_matches` on each configuration, because the ticket's criterion is stated
@@ -389,9 +417,9 @@ deleted to make a test pass.
 | Thumb optimization | `UNTESTED` |
 | Thumb CPU target | `UNTESTED` |
 | ARM front end | `UNTESTED` |
-| ARM optimization | `UNTESTED` |
+| ARM optimization | `UNTESTED` (structurally untestable by this matrix) |
 | C vs C++ | `UNTESTED` |
-| ABI characteristics | `UNTESTED` |
+| ABI characteristics | `UNTESTED` (no ABI-affecting flag is varied) |
 
 `UNTESTED` is defined as "toolchain unavailable". It is not a weak positive and
 must not be read as one.
@@ -486,7 +514,7 @@ regenerated, and `--verify-matrix` will say so.
 
 ## 16. Tests
 
-`tests/test_compiler_probe.py`, 76 tests, all passing. Portable and ROM-gated
+`tests/test_compiler_probe.py`, 83 tests, all passing. Portable and ROM-gated
 tests are deliberately separated; a missing ADS installation is a *passing*
 state for the suite because the ticket's contract is that the blocker is
 measured, not that it is absent. A further test asserts that running the whole
@@ -505,19 +533,26 @@ write path into the other checkout.
 Beyond the ticket's list, and directly from the independent review:
 
 - a blocked toolchain can never produce a `COMPLETE` document, a `REFUTED`
-  claim, or exit code 0;
+  claim, or exit code 0, and a winner whose competing configuration never ran
+  cannot be promoted above `PLAUSIBLE`;
 - the fingerprint is per claim, counts matching functions rather than matching
-  configurations, and cannot promote the CPU or ABI claims;
-- tampering with any field of the manifest or the matrix is detected;
+  configurations, cannot promote the CPU, ARM-optimization or ABI claims, and
+  cannot reach `PROVEN` on a single function;
+- tampering with any field of the manifest or the matrix is detected, including
+  type-substituted values such as `true` for `1`, and a valid-JSON non-object
+  manifest is reported rather than crashing;
 - inventory drift is reported separately from ROM drift;
-- `compare_bytes` cannot report zero differing instructions for unequal bytes,
-  and cannot report a negative matching count;
+- `compare_bytes` cannot report zero differing instructions for unequal bytes
+  when the target decodes fully, and cannot report a negative matching count;
+  uncovered target bytes are published as `undecoded_target_bytes`;
 - an executable named `tcpp.exe` is not accepted as ARM's compiler, the Tiny C
   Compiler's banner is rejected, and an explicit `ADS12_ROOT` never falls back
   to `PATH`;
 - every control names a region that exists in `config/rom_map.json` with the
   declared ISA, confidence and executable state, and exactly two regions are
-  ARM and confirmed.
+  ARM and confirmed;
+- the probe files this ticket adds are ASCII, LF-only and BOM-free;
+- the CLI's exit codes are checked by running it, not by reading its source.
 
 ## 17. Independent review
 
@@ -551,7 +586,15 @@ that compared nothing; `--json` exited 0 on a blocked probe; and any
 same-named executable was accepted as ADS.
 
 The review's own verdict was **SOUND WITH FIXES**, with the boundary corpus
-described as reliable as committed. This revision is the response to that.
+described as reliable as committed. A second verification round then confirmed
+that blocker and seven of the nine majors resolved, and found that the first
+revision of the fixes had introduced two new defects of its own: a claim could
+be published as `PROVEN` when its competing configuration never ran, and gate 6's
+PASS branch was unreachable because it matched a JSON field name against
+human-readable output. Both are fixed here, the first with a test for the
+missing-competitor case and the second by reading the matrix as JSON. That
+round's verdict was again **SOUND WITH FIXES**, and this revision is the
+response to it.
 
 ## 18. Next ticket
 

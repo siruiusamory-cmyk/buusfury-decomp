@@ -130,7 +130,7 @@ layer.*
 
 ![The DragonByte Z Inspector in the Maps editor's Layout mode, showing one staged paint on a 256x256 chunk cell](public/dbz-layout-editor.png)
 
-*Layout mode: a staged chunk-cell paint on map:0040, with the map-structure list
+*Layout mode: a staged chunk-cell paint on map:0064, with the map-structure list
 beside it.*
 
 The public progress site is

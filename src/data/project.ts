@@ -1250,17 +1250,17 @@ export const project: ProjectStatus = {
     },
     {
       src: "dbz-layout-editor.png",
-      width: 301,
-      height: 746,
+      width: 305,
+      height: 716,
       alt:
         "The DragonByte Z Inspector pane in the Maps editor's Layout mode for" +
-        " map:0040, layer BG1, showing one staged paint on a 256x256 chunk cell, the" +
+        " map:0064, layer BG0, showing one staged paint on a 256x256 chunk cell, the" +
         " layer's 2x2 chunk grid, the cell's four-byte pointer field being changed in" +
         " place, and the map-structure list naming every layer's form beside the" +
         " resize, Create Chunk and Save As New ROM controls.",
       title: "Layout editing",
       caption:
-        "Layout mode on map:0040, one 256x256 cell of dominant layer BG1. The staged" +
+        "Layout mode on map:0064, one 256x256 cell of dominant layer BG0. The staged" +
         " paint is a four-byte in-place cell write, and the map-structure list states" +
         " which layers may be changed and which stay read-only.",
       facts: [

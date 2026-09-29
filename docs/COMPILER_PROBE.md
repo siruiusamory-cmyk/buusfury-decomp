@@ -530,7 +530,7 @@ regenerated, and `--verify-matrix` will say so.
 
 ## 16. Tests
 
-`tests/test_compiler_probe.py`, 86 tests, all passing. Portable and ROM-gated
+`tests/test_compiler_probe.py`, 88 tests, all passing. Portable and ROM-gated
 tests are deliberately separated; a missing ADS installation is a *passing*
 state for the suite because the ticket's contract is that the blocker is
 measured, not that it is absent. A further test asserts that running the whole
@@ -621,6 +621,16 @@ into the gate's JSON stream could turn a working probe into a false `FAIL`; and
 folding uncovered target bytes into the instruction count made
 `matching_instructions` negative for an undecodable target. Each now has a test,
 including one that pins the `PARTIAL`/row-code trap itself.
+
+A fourth round returned **CLOSURE-READY** with two non-blocking one-liners, both
+taken. The CPU claim published `REFUTED` for a row that the rest of the module
+treats as unusable evidence, and the gate's blocker test preceded its comparison
+test, so a hand-tampered document carrying both would have read `BLOCKED`. The
+gate now requires `comparisons_run == 0` for the blocker branch, so a comparison
+always wins, and a test pins the underlying invariant that `build_matrix` never
+emits a non-null top-level `code` alongside a non-zero `comparisons_run`. Across
+four rounds none of the findings could produce a false PASS or an unjustified
+`PROVEN`.
 
 ## 18. Next ticket
 

@@ -189,12 +189,16 @@ try {
 } catch {
     $matrix = $null
 }
-if ($blockerCode -eq 'ADS12_UNAVAILABLE') {
+if ($blockerCode -eq 'ADS12_UNAVAILABLE' -and $comparisons -eq 0) {
     Write-Host ""
     Write-Host "      BLOCKED  probe prepared; no compiler result is claimed" -ForegroundColor Yellow
     Write-Host "               reason: ADS12_UNAVAILABLE (no identified ARM Developer Suite 1.2)"
     $notes.Add('compiler probe BLOCKED on ADS 1.2; preparation complete, see docs/COMPILER_PROBE.md')
 } elseif ($null -ne $comparisons -and $comparisons -gt 0) {
+    # Tested BEFORE the blocker branch's consequence: a document that both
+    # compared bytes and names a blocker code must report the comparison, never
+    # BLOCKED. build_matrix cannot emit that combination, so this is only about
+    # keeping the branch total for a hand-tampered document.
     Write-Host ""
     Write-Host "      PASS  compiler probe compared $comparisons configuration(s)" -ForegroundColor Green
     $notes.Add("compiler probe ran: $comparisons configuration(s) compared; see docs/COMPILER_PROBE.md")

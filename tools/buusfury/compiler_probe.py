@@ -1937,11 +1937,19 @@ def fingerprint(matrix_results: list[dict]) -> dict:
     # The CPU target never varies in this matrix: every configuration is
     # ARM7TDMI. With nothing to discriminate it, a match can only ever be
     # consistent evidence, so it is capped at PLAUSIBLE rather than promoted.
-    thumb_cpu_target = (
-        "PLAUSIBLE"
-        if (tcpp_o1 or {}).get("matching_probes")
-        else ("REFUTED" if (tcpp_o1 and tcpp_o1.get("comparison_ran")) else "UNTESTED")
+    # A lead that claims to have compared but published no count is unusable
+    # evidence, exactly as `_claim` treats it, so it cannot refute anything.
+    lead_count = (
+        (tcpp_o1 or {}).get("matching_probes")
+        if (tcpp_o1 and tcpp_o1.get("comparison_ran"))
+        else None
     )
+    if lead_count is None:
+        thumb_cpu_target = "UNTESTED"
+    elif lead_count:
+        thumb_cpu_target = "PLAUSIBLE"
+    else:
+        thumb_cpu_target = "REFUTED"
 
     missing_competitors = [
         label

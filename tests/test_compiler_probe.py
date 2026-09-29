@@ -667,6 +667,52 @@ def test_the_cpu_claim_can_never_be_promoted_by_this_matrix():
     assert "can never be promoted" in state["_evidence"]["discriminators"]["thumb_cpu_target"]
 
 
+def test_a_lead_with_no_published_count_cannot_refute_the_cpu_claim():
+    """Unusable evidence must read the same way in every claim.
+
+    `_claim` treats a row that says it compared but publishes no count as
+    UNTESTED. The CPU claim was mapping the same row to REFUTED, publishing a
+    refutation from evidence the module elsewhere calls unusable.
+    """
+    winner = {
+        "frontend": "tcpp",
+        "optimization": "-O1",
+        "comparison_ran": True,
+        "matching_probes": None,
+        "total_probes": PROBE_COUNT,
+        "exact_match": False,
+    }
+    state = cp.fingerprint([winner, _row("tcc", "-O1", 0)])
+    assert state["thumb_frontend"] == "UNTESTED"
+    assert state["thumb_cpu_target"] == "UNTESTED", "not REFUTED from unusable evidence"
+    # And a winner that genuinely matched nothing still refutes it.
+    assert cp.fingerprint([_row("tcpp", "-O1", 0), _row("tcc", "-O1", 0)])[
+        "thumb_cpu_target"
+    ] == "REFUTED"
+
+
+def test_a_blocker_code_and_a_comparison_never_coexist_in_an_emitted_document(
+    rom_bytes, monkeypatch, tmp_path
+):
+    """The invariant that makes gate 6's branch order safe.
+
+    Gate 6 tests the blocker code before the comparison count. That is only
+    total because `build_matrix` assigns a non-null top-level `code` solely in
+    the zero-comparison branch, so a document carrying both cannot be emitted.
+    If that ever changed, a run that compared bytes could be reported BLOCKED.
+    """
+    monkeypatch.delenv("ADS12_ROOT", raising=False)
+    monkeypatch.setenv("PATH", str(tmp_path))
+    for sha in ("f" * 40, identity.load_canonical()["hashes"]["sha1"]):
+        doc = cp.build_matrix(rom_bytes, sha)
+        if doc["code"] is not None:
+            assert doc["comparisons_run"] == 0, (
+                "a document with a blocker code must not report comparisons"
+            )
+        if doc["comparisons_run"] > 0:
+            assert doc["code"] is None
+
+
 def test_a_partial_match_is_plausible_not_proven():
     """The ticket's bar is three discriminating functions, so one is not enough."""
     state = cp.fingerprint([_row("tcpp", "-O1", 1), _row("tcc", "-O1", 0)])

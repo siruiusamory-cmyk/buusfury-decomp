@@ -416,7 +416,7 @@ python -m buusfury compiler-probe --diagnostic-control
 # classification: DIAGNOSTIC_CONTROL_NOT_EVIDENCE. Not a compiler finding.
 
 python -m pytest tests -q
-# 263 passed in 30.59s        (177 before this ticket; +86 in tests/test_compiler_probe.py)
+# 265 passed in 30.56s        (177 before this ticket; +88 in tests/test_compiler_probe.py)
 ```
 
 The diagnostic-control run is reported here for one reason only: it proves the
@@ -478,7 +478,7 @@ for `sub_0803D5B8`" claim (620 belongs to `sub_0803D4D0`) and "three confirmed
 ARM regions" (there are two). Its verdict was `SOUND WITH FIXES`. See
 [`COMPILER_PROBE.md`](COMPILER_PROBE.md) section 17 for the full list.
 
-After the fixes the probe suite is 86 tests and the full suite is 263, measured.
+After the fixes the probe suite is 88 tests and the full suite is 265, measured.
 
 A second verification round re-confirmed the measured core independently and
 confirmed the original blocker and seven of the nine majors resolved, but found
@@ -498,3 +498,13 @@ count made `matching_instructions` negative for an undecodable target. Each has 
 test, including one that pins the `PARTIAL`/row-code trap itself, and the gate's
 branches were replayed against complete, partial and blocked documents. See
 [`COMPILER_PROBE.md`](COMPILER_PROBE.md) section 17.
+
+A fourth round returned **CLOSURE-READY** with two non-blocking one-liners, both
+taken here: `thumb_cpu_target` published `REFUTED` for a row that `_claim`
+elsewhere treats as unusable evidence, and gate 6 tested the blocker code before
+the comparison count, so a hand-tampered document carrying both a top-level
+`ADS12_UNAVAILABLE` code and `comparisons_run > 0` would have read `BLOCKED`. The
+blocker branch now also requires `comparisons_run == 0`, so a comparison always
+wins, and a test pins the invariant that makes that ordering total for emitted
+documents. Across four rounds no reviewer finding could produce a false PASS or
+an unjustified `PROVEN`.

@@ -289,6 +289,15 @@ That round's verdict was again `SOUND WITH FIXES`, with all three items
 described as narrow and none able to produce a false PASS or an unjustified
 `PROVEN`.
 
+A fourth round returned **CLOSURE-READY** and noted two non-blocking one-liners,
+both taken: `thumb_cpu_target` published `REFUTED` for a row that `_claim`
+elsewhere treats as unusable evidence (it is now `UNTESTED`), and gate 6 tested
+the blocker code before the comparison count, so a hand-tampered document
+carrying both a top-level `ADS12_UNAVAILABLE` code and `comparisons_run > 0`
+would have read `BLOCKED`. The blocker branch now also requires
+`comparisons_run -eq 0`, so a comparison always wins, and a test pins the
+invariant that makes that order total for emitted documents.
+
 ## 8. Reproducing this ticket
 
 From a bare checkout with a legally dumped canonical ROM:
@@ -309,8 +318,8 @@ committed manifest is therefore a claim that is re-tested rather than trusted.
 
 | item | result |
 | --- | --- |
-| `tests/test_compiler_probe.py` | 86 passed |
-| full suite | 263 passed (measured) |
+| `tests/test_compiler_probe.py` | 88 passed |
+| full suite | 265 passed (measured) |
 | `scripts/check.cmd` | PASS, exit 0; gates 5 and 6 are reported `BLOCKED`, not `FAIL` |
 | canonical ROM | unchanged (SHA-1 and mtime) |
 | proprietary artefacts | none created, downloaded or tracked; Git refuses every ADS tool and licence name |

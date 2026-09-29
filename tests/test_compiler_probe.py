@@ -875,6 +875,33 @@ def test_the_harness_holds_no_path_into_the_other_checkout():
     assert needle not in test_source
 
 
+def test_the_files_this_ticket_adds_are_ascii_lf_and_bom_free():
+    """A BOM or a smart dash is invisible in review and breaks the text contract.
+
+    This repository's generated documents are LF-only and its markdown is ASCII
+    (a global pre-commit hook rejects em-dashes in .md and .txt). A PowerShell
+    `Set-Content -Encoding UTF8` silently writes a BOM, which showed up as an
+    unwanted whole-file change while this ticket was being written, so the rule
+    is asserted rather than remembered.
+    """
+    paths = [
+        REPO_ROOT / "config" / "compiler_probes.json",
+        REPO_ROOT / "config" / "compiler_matrix.json",
+        REPO_ROOT / "docs" / "COMPILER_PROBE.md",
+        REPO_ROOT / "docs" / "COMPILER_PROBE_PROVENANCE.md",
+        REPO_ROOT / "src" / "probes" / "GBARam.c",
+        REPO_ROOT / "src" / "probes" / "README.md",
+        REPO_ROOT / "tools" / "buusfury" / "compiler_probe.py",
+        REPO_ROOT / "tests" / "test_compiler_probe.py",
+    ]
+    for path in paths:
+        raw = path.read_bytes()
+        assert not raw.startswith(b"\xef\xbb\xbf"), f"{path.name} starts with a BOM"
+        assert b"\r\n" not in raw, f"{path.name} has CRLF line endings"
+        text = raw.decode("ascii", errors="strict")  # raises on any non-ASCII byte
+        assert "\u2014" not in text and "\u2013" not in text, path.name
+
+
 def test_the_diagnostic_control_is_labelled_as_not_evidence():
     assert cp.DIAGNOSTIC_CONTROL == "DIAGNOSTIC_CONTROL_NOT_EVIDENCE"
     compiler = cp.discover_diagnostic_compiler()

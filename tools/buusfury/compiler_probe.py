@@ -1097,15 +1097,27 @@ class AdsTools:
 #: bare name match is not enough: `tcc` is also the name of the Tiny C Compiler,
 #: so accepting any executable called `tcc.exe` would let an unrelated tool be
 #: used and its mismatches reported as a compiler finding.
+#:
+#: The Thumb-specific wordings matter and were a real gap: ADS 1.2 ships
+#: instruction-set-specific drivers, and `tcc`/`tcpp` - the drivers the
+#: surviving build command line names - may announce themselves as "ARM Thumb C
+#: Compiler" rather than "ARM C Compiler". A list without those phrases would
+#: report a correctly installed ADS as absent, which is a false negative in the
+#: fail-closed direction. Every phrase here is ARM-branded, so adding them cannot
+#: make a non-ARM tool acceptable; the Tiny C Compiler's banner still fails.
 _ADS_BANNER_MARKERS = (
     "developer suite",
     "realview",
     "rvct",
+    "ads1.2",
+    "ads 1.2",
     "arm c/c++ compiler",
     "arm c compiler",
+    "arm c++ compiler",
+    "arm thumb c compiler",
+    "arm thumb c++ compiler",
     "arm assembler",
     "arm linker",
-    "arm c++ compiler",
 )
 
 
@@ -1201,9 +1213,28 @@ def _ads_root(explicit: str | Path | None) -> Path | None:
 
 
 def _find_ads_tool(tool_id: str, root: Path | None, *, allow_path: bool) -> Path | None:
+    """Locate one ADS tool under a root, one directory level deep, or on PATH.
+
+    The extra level is not decoration. ADS 1.2 installs as a versioned product
+    directory, so an operator may reasonably point ADS12_ROOT either at the
+    version directory itself or at its parent (for example `C:\\Program Files\\ARM`
+    with the tools in `<root>\\ADSv1_2\\Bin`). Searching exactly one level down
+    covers both without inventing a path or walking the filesystem.
+    """
     if root is not None:
+        candidates: list[Path] = []
         for sub in ("Bin", "bin", ""):
-            candidate = (root / sub / f"{tool_id}.exe") if sub else (root / f"{tool_id}.exe")
+            candidates.append(
+                (root / sub / f"{tool_id}.exe") if sub else (root / f"{tool_id}.exe")
+            )
+        try:
+            children = sorted(child for child in root.iterdir() if child.is_dir())
+        except OSError:
+            children = []
+        for child in children:
+            for sub in ("Bin", "bin"):
+                candidates.append(child / sub / f"{tool_id}.exe")
+        for candidate in candidates:
             if candidate.is_file():
                 return candidate
     if allow_path:
@@ -1234,10 +1265,13 @@ def ads_blocked_details(root: str | Path | None = None) -> list[str]:
         )
     details.extend(
         [
+            "Each tool is sought at $ADS12_ROOT/Bin/<tool>.exe, at "
+            "$ADS12_ROOT/<tool>.exe, one level down at "
+            "$ADS12_ROOT/<product>/Bin/<tool>.exe (ADS installs as a versioned "
+            "product directory), and, only when ADS12_ROOT itself is unset, on PATH.",
             "ARM Developer Suite 1.2 is commercial software and is deliberately NOT "
             "bundled, downloaded or vendored by this repository.",
-            "Install it locally and set ADS12_ROOT to the installation root; the "
-            "tools are then expected at $ADS12_ROOT/Bin/<tool>.exe.",
+            "Install it locally and set ADS12_ROOT to the installation root.",
             "Once supplied, the exact command this probe will run is printed by: "
             "python -m buusfury compiler-probe --plan",
         ]
@@ -1340,9 +1374,13 @@ BANNER_ASSUMPTION = (
     "ADS/RVCT marker in what it prints. Only the compiler is identified this way; "
     "armasm, armlink and fromelf are recorded by path and banner but are not "
     "required to identify. A genuine installation whose compiler prints nothing "
-    "on a bare invocation would be reported absent. UNEXERCISED against real "
-    "ADS 1.2. Note also that the -S/-c/armasm/armlink/fromelf pipeline itself has "
-    "never been run here, because no installation exists."
+    "on a bare invocation would be reported absent. The marker list includes the "
+    "instruction-set-specific Thumb wordings ('ARM Thumb C Compiler' and "
+    "'ARM Thumb C++ Compiler') because the surviving command line names the Thumb "
+    "drivers, but that wording has NOT been observed from a real ADS 1.2 banner: "
+    "it is a precaution against reporting a correct installation as absent, and "
+    "the first thing to confirm from real output. The -S/-c/armasm/armlink/fromelf "
+    "pipeline itself has never been run here, because no installation exists."
 )
 
 

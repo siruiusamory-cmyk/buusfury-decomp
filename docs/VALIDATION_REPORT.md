@@ -416,7 +416,7 @@ python -m buusfury compiler-probe --diagnostic-control
 # classification: DIAGNOSTIC_CONTROL_NOT_EVIDENCE. Not a compiler finding.
 
 python -m pytest tests -q
-# 265 passed in 30.56s        (177 before this ticket; +88 in tests/test_compiler_probe.py)
+# 267 passed in 31.80s        (177 before this ticket; +90 in tests/test_compiler_probe.py)
 ```
 
 The diagnostic-control run is reported here for one reason only: it proves the
@@ -478,7 +478,7 @@ for `sub_0803D5B8`" claim (620 belongs to `sub_0803D4D0`) and "three confirmed
 ARM regions" (there are two). Its verdict was `SOUND WITH FIXES`. See
 [`COMPILER_PROBE.md`](COMPILER_PROBE.md) section 17 for the full list.
 
-After the fixes the probe suite is 88 tests and the full suite is 265, measured.
+After the fixes the probe suite is 90 tests and the full suite is 267, measured.
 
 A second verification round re-confirmed the measured core independently and
 confirmed the original blocker and seven of the nine majors resolved, but found
@@ -508,3 +508,33 @@ blocker branch now also requires `comparisons_run == 0`, so a comparison always
 wins, and a test pins the invariant that makes that ordering total for emitted
 documents. Across four rounds no reviewer finding could produce a false PASS or
 an unjustified `PROVEN`.
+
+## ADS execution pass, attempted 2026-09-29: BLOCKED
+
+An execution pass was opened against `a0cbeb7` on the expectation that ADS 1.2
+had been installed locally. It had not. The preflight was repeated independently
+and returns the same absence by six checks: `ADS12_ROOT` unset in the process
+environment and empty in both registry scopes, no ADS tool on `PATH`, no
+plausible install root, no registry uninstall entry or vendor key, no Start Menu
+shortcut, and only one volume with no unextracted installer or archive anywhere
+searched. The harness was then run in that state and failed closed: `--plan`
+reported `BLOCKED [ADS12_UNAVAILABLE]` with every required tool `MISSING`, and
+`--matrix --json` reported `comparisons_run: 0`, `conclusion: UNTESTED`,
+`no_compiler_result_claimed: true`, `promoted_claims: []` and exit 1.
+
+Neither `ORIGIN_ASSUMPTION` nor `BANNER_ASSUMPTION` could be exercised, so
+neither is confirmed or refuted. No compiler configuration was tested, no exact
+match was obtained, and no compiler verdict is claimed.
+
+Two ways the harness could itself have produced a *false* `ADS12_UNAVAILABLE`
+were closed while waiting, both precautionary rather than observed: the banner
+markers now include the Thumb-specific driver wordings (`ARM Thumb C Compiler`,
+`ARM Thumb C++ Compiler`) and the `ADS1.2` version strings, because the surviving
+command line names the Thumb drivers; and the root lookup searches one level
+down for a versioned product directory, because ADS 1.2 installs as one and an
+operator may point `ADS12_ROOT` at either the version directory or its parent.
+Tests cover the accept and reject sets, and one asserts the deeper search stops
+after a single level so no path is invented.
+
+`scripts\check.cmd` after these changes: **OVERALL PASS**, exit 0, gates 5 and 6
+reported `BLOCKED`. Full suite 267 passed.

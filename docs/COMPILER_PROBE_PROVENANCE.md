@@ -24,6 +24,31 @@ unchanged around the probe's read path.
 
 ## 2. Toolchain inventory, measured 2026-09-29
 
+**Re-measured for the ADS execution pass, after ADS 1.2 was expected to be
+installed. It is still absent.** The second preflight is independent: `ADS12_ROOT`
+is unset in the process environment and empty for both the User and Machine
+scopes in the registry; `shutil.which` finds none of the nine ADS tool names; no
+plausible install root exists; no registry uninstall entry or vendor key matches
+ARM / ADS / Developer Suite / RVCT / RealView / Keil; a depth-5 search for
+ARM-specific file names under `Program Files`, `Program Files (x86)`, `C:\Dev`,
+`C:\Tools`, `Downloads`, `Desktop`, `Documents` and `C:\opt` returns nothing; no
+Start Menu shortcut matches; and only one volume exists, with no unextracted
+installer or archive matching `*ADS*`, `*ARM*Developer*`, `*RVCT*`, `*ads1*`,
+`*armcc*`, `*armasm*` or `.iso` variants anywhere searched.
+
+The harness was run in that state and failed closed correctly, reporting
+`BLOCKED - ADS12_UNAVAILABLE` with `comparisons_run: 0`, `conclusion: UNTESTED`
+and `promoted_claims: []`. Neither `ORIGIN_ASSUMPTION` nor `BANNER_ASSUMPTION`
+could be exercised, and no compiler result was produced.
+
+Two ways the harness could itself have produced a false `ADS12_UNAVAILABLE` were
+then closed: the banner markers gained the Thumb-specific driver wordings
+(`ARM Thumb C Compiler`, `ARM Thumb C++ Compiler`) plus the `ADS1.2` version
+strings, and the root lookup now searches one level down for a versioned product
+directory. Both are precautionary, not observed, and both are labelled as such
+in the published `toolchain_identification` text. Tests cover the accept and
+reject sets and assert that the deeper search stops after one level.
+
 ### Present
 
 | tool | version / path | used for |

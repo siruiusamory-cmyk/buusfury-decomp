@@ -262,6 +262,21 @@ itself is unexercised against a real ADS 1.2 installation. A genuine install
 whose compiler prints nothing on a bare invocation would be reported absent, and
 the whole `-S`/`armasm`/`armlink`/`fromelf` pipeline has never been run here.
 
+The marker list deliberately includes the instruction-set-specific Thumb
+wordings, `ARM Thumb C Compiler` and `ARM Thumb C++ Compiler`, because the
+surviving command line names the Thumb drivers `tcpp`. Without them a correctly
+installed ADS 1.2 could be reported absent, which is a false negative in the
+fail-closed direction. That wording has **not** been observed from real ADS
+output; it is a precaution, and every phrase added is ARM-branded, so the Tiny C
+Compiler's banner is still rejected.
+
+Lookup order, which is bounded and never invents a path: `$ADS12_ROOT/Bin/<tool>.exe`,
+`$ADS12_ROOT/<tool>.exe`, then one level down at
+`$ADS12_ROOT/<product>/Bin/<tool>.exe` because ADS 1.2 installs as a versioned
+product directory and an operator may reasonably point `ADS12_ROOT` at either
+the version directory or its parent. `PATH` is consulted **only** when
+`ADS12_ROOT` itself is unset. A tool two or more levels down is not found.
+
 ## 8. Relocation methodology
 
 This is the part of the probe that is easiest to get wrong, so it is stated
@@ -452,8 +467,38 @@ must not be read as one.
 
 ## 13. Toolchain preflight
 
-ADS 1.2 is **absent**. Established by six independent checks, none of which was
-allowed to invent a path:
+**Re-checked 2026-09-29 for the ADS execution pass, after ADS 1.2 was expected to
+be installed. It is still absent.** The second preflight is independent of the
+first and reaches the same result by six checks, none of which may invent a path:
+
+1. `ADS12_ROOT` is unset in the process environment, and empty for both the User
+   and the Machine scopes in the registry.
+2. `shutil.which` finds none of `armcc`, `armcpp`, `tcc`, `tcpp`, `armasm`,
+   `armlink`, `fromelf`, `armsd`, `axd`.
+3. None of the plausible install roots exists (`C:\Program Files\ARM`,
+   `C:\Program Files (x86)\ARM`, `C:\ARM`, `C:\ADS`, `C:\ADS12`, `C:\Keil`,
+   `C:\Dev\ADS`, `C:\Tools\ADS`, and the `ADSv1_2` / `RVCT` variants).
+4. No registry uninstall entry and no vendor key matches ARM / ADS / Developer
+   Suite / RVCT / RealView / Keil. A search for the ARM-specific file names at
+   depth 5 under `Program Files`, `Program Files (x86)`, `C:\Dev`, `C:\Tools`,
+   `Downloads`, `Desktop`, `Documents` and `C:\opt` returns nothing.
+5. No Start Menu shortcut matches ARM / ADS / AXD / Multi-ICE.
+6. Only **one** volume exists (`C:`, label `Acer`, 475 GB), and a search for an
+   unextracted installer or archive (`*ADS*`, `*ARM*Developer*`, `*RVCT*`,
+   `*ads1*`, `*armcc*`, `*armasm*` and `.iso` variants) under `Downloads`,
+   `Desktop`, `Documents`, `C:\Dev`, `C:\Temp` and `%TEMP%` finds no such file.
+
+The harness was then run in that state and behaved correctly: `--plan` reported
+`BLOCKED [ADS12_UNAVAILABLE]` with every required tool `MISSING`, and
+`--matrix --json` reported `result: COMPILER PROBE: BLOCKED - ADS12_UNAVAILABLE`,
+`code: ADS12_UNAVAILABLE`, `comparisons_run: 0`, `conclusion: UNTESTED`,
+`no_compiler_result_claimed: true`, `promoted_claims: []` and exit 1. No compiler
+result was produced or claimed, and neither assumption could be exercised.
+
+### What the first preflight found
+
+The earlier preflight established the same absence, and its detail is retained
+below because it is the baseline this second pass confirms rather than replaces.
 
 1. `ADS12_ROOT` is unset.
 2. `shutil.which` finds none of `armcc`, `armcpp`, `tcc`, `tcpp`, `armasm`,
@@ -476,6 +521,14 @@ ADS 1.2 was deliberately not downloaded. It is commercial software whose licence
 does not permit redistribution, and the ticket forbids unofficial, abandonware
 and warez sources. No proprietary binary, licence file or registry entry was
 created or modified by this ticket.
+
+Because the installation could not be found, the two ways the harness could
+itself have produced a *false* `ADS12_UNAVAILABLE` were closed, without
+weakening anything: the banner markers now include the Thumb-specific driver
+wordings, and the root lookup searches one level down for a versioned product
+directory. Both are precautionary rather than observed, both are labelled as
+such, and both have tests, including one asserting that the deeper search does
+**not** wander further than one level so no path can be invented.
 
 ## 14. Exact command required once ADS is supplied
 

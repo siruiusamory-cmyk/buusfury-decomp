@@ -390,13 +390,52 @@ def test_a_real_non_ads_executable_is_rejected(tmp_path):
 
 
 def test_the_banner_matcher_accepts_ads_and_rejects_the_tiny_c_compiler():
+    # ADS 1.2 wordings, including the instruction-set-specific Thumb drivers that
+    # the surviving command line names. Missing these would report a correctly
+    # installed ADS as absent.
     assert cp.looks_like_ads("ARM C/C++ Compiler, ADS1.2 [Build 842]")
+    assert cp.looks_like_ads("ARM C Compiler, ADS1.2 [Build 805]")
+    assert cp.looks_like_ads("ARM Thumb C Compiler, ADS1.2 [Build 805]")
+    assert cp.looks_like_ads("ARM Thumb C++ Compiler, ADS1.2 [Build 805]")
     assert cp.looks_like_ads("ARM Developer Suite 1.2")
-    assert cp.looks_like_ads("ARM Assembler, RVCT 2.2")
-    assert cp.looks_like_ads("ARM Linker, RealView")
-    # Tiny C Compiler: the name collides, the banner must not.
+    assert cp.looks_like_ads("ARM Assembler, ADS1.2 [Build 731]")
+    assert cp.looks_like_ads("ARM Linker, ADS1.2 [Build 731]")
+    # Later ARM tool families that ship the same driver names.
+    assert cp.looks_like_ads("ARM C/C++ Compiler, RVCT3.1 [Build 826]")
+    assert cp.looks_like_ads("ARM C/C++ Compiler, 5.06 update 7 (build 960)")
+    # Not ARM's.
     assert cp.looks_like_ads("tcc version 0.9.27 (x86_64 Linux)") is False
+    assert cp.looks_like_ads("GNU Arm Embedded Toolchain 10.3-2021.10") is False
+    assert cp.looks_like_ads("arm-none-eabi-gcc.exe: fatal error: no input files") is False
+    assert cp.looks_like_ads("Python 3.12.0") is False
     assert cp.looks_like_ads("") is False
+
+
+def test_a_versioned_product_directory_one_level_below_the_root_is_found(monkeypatch, tmp_path):
+    """An operator may point ADS12_ROOT at the family directory, not the version.
+
+    ADS 1.2 installs as a versioned product directory, so `<root>\\ADSv1_2\\Bin`
+    is a realistic layout for a correct installation. Failing to look one level
+    down would report it as absent.
+    """
+    bindir = tmp_path / "ADSv1_2" / "Bin"
+    bindir.mkdir(parents=True)
+    (bindir / "tcpp.exe").write_bytes(b"MZ")
+    monkeypatch.delenv("PATH", raising=False)
+    assert cp._find_ads_tool("tcpp", tmp_path, allow_path=False) == bindir / "tcpp.exe"
+    # And the direct layout still wins when both exist.
+    (tmp_path / "Bin").mkdir()
+    (tmp_path / "Bin" / "tcpp.exe").write_bytes(b"MZ")
+    assert cp._find_ads_tool("tcpp", tmp_path, allow_path=False) == tmp_path / "Bin" / "tcpp.exe"
+
+
+def test_the_deeper_search_does_not_wander_beyond_one_level(monkeypatch, tmp_path):
+    """Bounded: a tool two levels down is NOT found, so no path is invented."""
+    deep = tmp_path / "a" / "b" / "Bin"
+    deep.mkdir(parents=True)
+    (deep / "tcpp.exe").write_bytes(b"MZ")
+    monkeypatch.delenv("PATH", raising=False)
+    assert cp._find_ads_tool("tcpp", tmp_path, allow_path=False) is None
 
 
 def test_an_explicit_root_does_not_fall_back_to_path(monkeypatch, tmp_path):

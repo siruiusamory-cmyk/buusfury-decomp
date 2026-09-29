@@ -53,9 +53,41 @@ pwsh -File scripts/build.ps1 -AllowPassthrough       # byte-identical image + pr
 
 See [`docs/DECOMP_BASELINE.md`](docs/DECOMP_BASELINE.md) for the full baseline,
 [`docs/VALIDATION_REPORT.md`](docs/VALIDATION_REPORT.md) for the measured
-results, and [`docs/ROM_MAP.md`](docs/ROM_MAP.md) for the byte map.
+results, [`docs/ROM_MAP.md`](docs/ROM_MAP.md) for the independent structural ROM
+map, [`docs/ROM_MAP_PROVENANCE.md`](docs/ROM_MAP_PROVENANCE.md) for why each of
+its boundaries is believed, and [`docs/BUILD_REGIONS.md`](docs/BUILD_REGIONS.md)
+for what the build does with each byte.
 
-Measured against the canonical image on 2026-09-28:
+Two models, deliberately kept apart: `BUILD_REGIONS.md` answers *who builds the
+bytes*, `ROM_MAP.md` answers *what the bytes are*.
+
+### Structural coverage (DECOMP-ROM-MAP-001, measured 2026-09-29)
+
+| Classification | Bytes | Share |
+| --- | ---: | ---: |
+| `unknown` | 4,554,062 | 54.289% |
+| `compressed_asset` | 3,060,696 | 36.486% |
+| `padding` | 292,442 | 3.486% |
+| `pointer_table` | 166,260 | 1.982% |
+| `code` | 104,796 | 1.249% |
+| `strings` | 82,874 | 0.988% |
+| `code_candidate` | 81,742 | 0.974% |
+| `lookup_table` | 42,366 | 0.505% |
+| `library_data` | 2,050 | 0.024% |
+| `palette` | 1,024 | 0.012% |
+| `header` + `structured_data` | 296 | 0.004% |
+
+Executable bytes: **9,684 `confirmed`** (a lower bound, from recursive
+reachability) plus 168,662 `probable`. Candidate functions: **341** (3 confirmed
+ARM, 1 probable ARM, 5 confirmed Thumb, 332 probable Thumb).
+
+The 54% `unknown` is a measured property of the cartridge, not a gap in effort:
+this engine's Thumb data decodes at roughly 94%, so a UTF-16LE text pool or a
+pointer table decodes end to end exactly like code. The map refuses to guess
+rather than over-claim; see
+[`ROM_MAP_PROVENANCE.md`](docs/ROM_MAP_PROVENANCE.md) section 3.
+
+### Build coverage (DECOMP-BASELINE-001, measured 2026-09-28)
 
 | class | bytes | share | regions | status |
 | --- | ---: | ---: | ---: | --- |

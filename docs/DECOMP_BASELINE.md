@@ -271,7 +271,9 @@ this; a gap or overlap is a hard failure.
 | `ads` | rebuilt from source by ARM Developer Suite 1.2 | 94,016 | 1.121% | 5 |
 | **total** | | **8,388,608** | **100.000%** | **28** |
 
-Full per-region detail: [`ROM_MAP.md`](ROM_MAP.md) (generated from the config).
+Full per-region detail: [`BUILD_REGIONS.md`](BUILD_REGIONS.md) (generated from the
+config). The independent structural map is a separate artefact: see
+[`ROM_MAP.md`](ROM_MAP.md) and [`ROM_MAP_PROVENANCE.md`](ROM_MAP_PROVENANCE.md).
 
 **Provenance of the map.** It is *derived* from the reference build script and
 scatter file, not independently re-derived from the binary. That is an honest
@@ -438,7 +440,7 @@ prove the map and is labelled as such in its report.
 | 5 | No proprietary toolchain binary tracked | **PASS** |
 | 6 | Existing Dragonbyte Z files untouched | **PASS** |
 | 7 | Build documented clearly enough for a new contributor | **PASS** - this document, `README.md`, `docs/DEVELOPMENT.md`, `DEPENDENCIES.md`, `ADS12_SETUP.md` |
-| 8 | Current disassembly/source coverage inventoried | **PASS** - §3, `ROM_MAP.md`, `REFERENCE_AUDIT.md` |
+| 8 | Current disassembly/source coverage inventoried | **PASS** - §3, `BUILD_REGIONS.md`, `REFERENCE_AUDIT.md` |
 | 9 | No new gameplay function decompilation begun | **PASS** - no `src/` or `asm/` reconstruction exists |
 
 86 portable tests pass. Exact commands and raw output:
@@ -485,6 +487,23 @@ No tracked file contains a machine-specific absolute path.
 ---
 
 ## 8. Recommended next tickets
+
+> **EXTENDED (2026-09-29) by `DECOMP-ROM-MAP-001`.** Ticket 1 below ran; its
+> structural map now lives in [`ROM_MAP.md`](ROM_MAP.md) with its evidence in
+> [`ROM_MAP_PROVENANCE.md`](ROM_MAP_PROVENANCE.md). Two corrections to this
+> document came out of that work:
+>
+> - The four compressed assets were called "JCALG1" here. That name is **not
+>   supported**. Their 8-byte prologue is `kind = 1` at `+0x00` and
+>   `declared_size` at `+0x04`, which is the engine's own container shape; the
+>   bytes are proven by reproduction, the codec's name is not. The structural map
+>   now says `compressed_asset` and names no codec.
+> - The reset path's DMA3 source `0x087B79A4` is recorded here as referencing a
+>   blob. Its transfer size is **unresolved** (`CNT_H = 0x8400`: a 16-bit
+>   decrementing reading gives 2,050 bytes below that address; a 32-bit
+>   incrementing reading gives 4,100 bytes above it, ending exactly at the `0xFF`
+>   fill). The `codec_blob` region is bounded by CONTENT instead, which does not
+>   depend on the answer.
 
 1. **`DECOMP-ROM-MAP-001`** - replace the *derived* map with an independently
    re-derived one, and promote the three zero-toolchain regions

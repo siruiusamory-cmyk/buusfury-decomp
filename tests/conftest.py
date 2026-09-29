@@ -89,3 +89,32 @@ def tmp_path_factory():
     TMP_ROOT.mkdir(parents=True, exist_ok=True)
     yield _LocalTmpFactory(TMP_ROOT)
     shutil.rmtree(TMP_ROOT, ignore_errors=True)
+
+
+# ---------------------------------------------------------------------------
+# ROM-gated fixture
+# ---------------------------------------------------------------------------
+@pytest.fixture(scope="session")
+def baserom():
+    """The canonical baserom, or a skip.
+
+    Tests that need the real ROM are gated on this so the suite stays portable.
+    The ROM is opened READ-ONLY and is never written to by any test.
+    """
+    from buusfury import identity  # noqa: PLC0415 - keeps import cost off collection
+
+    try:
+        path = identity.resolve_baserom()
+    except identity.RomNotFoundError as exc:
+        pytest.skip(f"no canonical baserom available: {exc}")
+    try:
+        identity.verify(path)
+    except identity.IdentityError as exc:
+        pytest.skip(f"the baserom present on this machine is not the canonical ROM: {exc}")
+    return path
+
+
+@pytest.fixture(scope="session")
+def rom_bytes(baserom):
+    """Raw bytes of the canonical ROM, read once per session."""
+    return baserom.read_bytes()

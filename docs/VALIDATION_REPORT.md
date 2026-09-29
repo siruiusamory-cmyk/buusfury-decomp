@@ -240,7 +240,7 @@ redirects the cache there. The suite is therefore reproducible on any machine
 instead of depending on an environment variable and a special command line.
 
 **A reproducibility bug was found and fixed.** Python's text mode translates
-`\n` to `os.linesep` on Windows, so the generated `docs/ROM_MAP.md` was written
+`\n` to `os.linesep` on Windows, so the generated `docs/BUILD_REGIONS.md` was written
 CRLF and `git diff --check` flagged every line. `--write` and the build report
 now open files with `newline="\n"`, `.gitattributes` normalises all text to LF,
 and two tests lock the guarantee (LF-only output, and a fresh render equal to the
@@ -318,7 +318,7 @@ precisely so that no artifact would appear inside the LOG1-REMAKE tree.
 | 5 | No proprietary toolchain binary tracked | **PASS** | §7.2 |
 | 6 | Existing Dragonbyte Z files untouched | **PASS** | §7.4 |
 | 7 | Documented clearly enough for a new contributor | **PASS** | `docs/DECOMP_BASELINE.md`, `docs/DEPENDENCIES.md`, `docs/ADS12_SETUP.md`, `docs/REFERENCE_AUDIT.md`, `docs/DEVELOPMENT.md`, `README.md` |
-| 8 | Disassembly/source coverage inventoried | **PASS** | `docs/ROM_MAP.md`, `docs/REFERENCE_AUDIT.md` §2 |
+| 8 | Disassembly/source coverage inventoried | **PASS** | `docs/BUILD_REGIONS.md`, `docs/REFERENCE_AUDIT.md` §2 |
 | 9 | No new gameplay function decompilation begun | **PASS** | `src/`, `asm/`, `data/`, `include/` contain only a README |
 
 Requirement 2 is the only partial, and it is partial for one reason that is

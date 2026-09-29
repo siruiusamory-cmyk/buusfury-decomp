@@ -107,4 +107,7 @@ Matching means byte-identity of the produced ROM against
 - `docs/DECOMP_BASELINE.md` is the entry point for a new contributor.
 - `docs/VALIDATION_REPORT.md` records what was actually run and measured, with
   commands and results. Never claim a run that did not happen.
-- Keep `docs/ROM_MAP.md` generated: `python -m buusfury map --write docs/ROM_MAP.md`.
+- Keep the two maps generated and distinct: `docs/BUILD_REGIONS.md` describes what
+  the build does with each byte (`python -m buusfury map --write docs/BUILD_REGIONS.md`);
+  `docs/ROM_MAP.md` is the independent structural model of the ROM
+  (`python -m buusfury rommap --docs docs/ROM_MAP.md`). Never conflate them.

@@ -321,6 +321,133 @@ def cmd_status(args) -> int:
 
 
 # --------------------------------------------------------------------------
+# fixed   (Workstream 2: generate, don't copy)
+# --------------------------------------------------------------------------
+def cmd_fixed(args) -> int:
+    from . import fixed as _fixed
+
+    try:
+        rom = _resolve_rom(args)
+        identity = _identity.verify(rom)
+    except (_identity.IdentityError, _identity.RomNotFoundError) as exc:
+        print(f"FAIL: {exc}")
+        return EXIT_FAIL
+
+    data = identity.path.read_bytes()
+    results = _fixed.verify_all(data)
+    if args.json:
+        print(json.dumps([r.as_dict() for r in results], indent=2))
+    else:
+        print(f"{'region':<20} {'result':<8} {'bytes':>7}  detail")
+        for result in results:
+            state = "OK" if result.matches_rom else "FAIL"
+            print(
+                f"{result.region_id:<20} {state:<8} {result.generated_length:>7}  {result.detail}"
+            )
+    good = sum(1 for r in results if r.matches_rom)
+    print(f"\n{good}/{len(results)} fixed regions generate byte-identically")
+    return EXIT_OK if good == len(results) else EXIT_FAIL
+
+
+# --------------------------------------------------------------------------
+# rommap   (Workstreams 1, 3, 4, 5, 6, 7)
+# --------------------------------------------------------------------------
+def cmd_rommap(args) -> int:
+    from . import analysis as _analysis
+    from . import mapbuild as _mapbuild
+    from . import rommap as _rm
+
+    try:
+        rom = _resolve_rom(args)
+        identity = _identity.verify(rom)
+    except (_identity.IdentityError, _identity.RomNotFoundError) as exc:
+        print(f"FAIL: {exc}")
+        return EXIT_FAIL
+
+    data = identity.path.read_bytes()
+    tooling = {
+        "disassembler": f"capstone {__import__('capstone').__version__} (ARM + Thumb)",
+        "array_math": f"numpy {__import__('numpy').__version__}",
+        "ghidra": "not used and not installed; import metadata is left to a later ticket",
+    }
+
+    print("analysing...")
+    reset = _analysis.trace_reset(data)
+    if args.show_reset:
+        for line in reset.evidence:
+            print(f"  - {line}")
+
+    rom_map = _mapbuild.build_rom_map(data, identity.sha1, tooling=tooling)
+    coverage = rom_map.coverage()
+
+    print(f"\nROM map: {len(rom_map.regions)} regions tile {rom_map.rom_size:,} bytes exactly")
+    print(f"\n{'classification':<20} {'bytes':>12} {'share':>9} {'regions':>8}  bytes by confidence")
+    for name, slot in coverage.items():
+        breakdown = ", ".join(f"{lvl} {n:,}" for lvl, n in slot["confidence"].items())
+        print(
+            f"{name:<20} {slot['bytes']:>12,} {100.0*slot['bytes']/rom_map.rom_size:>8.3f}% "
+            f"{slot['regions']:>8}  {breakdown}"
+        )
+    print(f"{'total':<20} {rom_map.rom_size:>12,} {100.0:>8.3f}% {len(rom_map.regions):>8}")
+
+    print("\nexecutable byte coverage:")
+    for state, count in rom_map.executable_coverage().items():
+        print(f"  {state:<10} {count:>12,}  {100.0*count/rom_map.rom_size:>7.3f}%")
+
+    # --- function discovery
+    seeds = [
+        (reset.entry_address, reset.entry_isa, "cartridge header entry branch"),
+        (reset.handoff_address, "arm", "reset path tail branch (C runtime entry veneer)"),
+        (reset.game_entry, "thumb", "lr value the reset path sets before the tail branch"),
+    ]
+    if reset.library_entry:
+        seeds.append((reset.library_entry, "thumb", "code pointer the C runtime veneer BXes"))
+    for region in rom_map.regions:
+        if region.classification == "code" and region.confidence in ("proven", "high") and region.isa:
+            seeds.append((region.address_start, region.isa, f"entry of proven code region {region.id}"))
+
+    print(f"\ndiscovering functions from {len(seeds)} seeds...")
+    discovery = _analysis.discover_functions(data, rom_map, seeds)
+    inventory = _rm.FunctionInventory(
+        functions=list(discovery.functions.values()),
+        source_sha1=identity.sha1,
+        method=(
+            "linear sweep of every code-classified region in its own instruction set, "
+            "harvesting BL/BLX immediate targets and literal-pool code pointers, iterated "
+            "to a fixpoint and then validated by disassembling from each candidate"
+        ),
+        notes="No semantic name is assigned to any function. Names are sub_<address>.",
+    )
+    counts = inventory.counts()
+    print(f"\n{'ARM (confirmed)':<20} {counts['confirmed_arm']:>6}")
+    print(f"{'ARM (probable)':<20} {counts['probable_arm']:>6}")
+    print(f"{'Thumb (confirmed)':<20} {counts['confirmed_thumb']:>6}")
+    print(f"{'Thumb (probable)':<20} {counts['probable_thumb']:>6}")
+    print(f"{'ISA uncertain':<20} {counts['uncertain_isa']:>6}")
+    print(f"{'total candidates':<20} {counts['total']:>6}")
+
+    if args.write:
+        target = Path(args.write)
+        target.parent.mkdir(parents=True, exist_ok=True)
+        with target.open("w", encoding="utf-8", newline="\n") as handle:
+            handle.write(rom_map.to_json())
+        print(f"\nwrote {target}")
+    if args.functions:
+        target = Path(args.functions)
+        target.parent.mkdir(parents=True, exist_ok=True)
+        with target.open("w", encoding="utf-8", newline="\n") as handle:
+            handle.write(inventory.to_json())
+        print(f"wrote {target}")
+    if args.docs:
+        target = Path(args.docs)
+        target.parent.mkdir(parents=True, exist_ok=True)
+        with target.open("w", encoding="utf-8", newline="\n") as handle:
+            handle.write(_rm.render_rom_map_markdown(rom_map, tooling))
+        print(f"wrote {target}")
+    return EXIT_OK
+
+
+# --------------------------------------------------------------------------
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="buusfury",
@@ -374,6 +501,23 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--reference", default=None)
     p.add_argument("--ads12-root", default=None)
     p.set_defaults(func=cmd_status)
+
+    p = sub.add_parser(
+        "fixed", help="generate the zero-toolchain fixed regions and compare to the ROM"
+    )
+    add_rom(p)
+    p.add_argument("--json", action="store_true")
+    p.set_defaults(func=cmd_fixed)
+
+    p = sub.add_parser(
+        "rommap", help="build the independent ROM map and the candidate function inventory"
+    )
+    add_rom(p)
+    p.add_argument("--write", default=None, help="write config/rom_map.json here")
+    p.add_argument("--functions", default=None, help="write config/functions.json here")
+    p.add_argument("--docs", default=None, help="write docs/ROM_MAP.md here")
+    p.add_argument("--show-reset", action="store_true", help="print the reset-path evidence")
+    p.set_defaults(func=cmd_rommap)
 
     return parser
 

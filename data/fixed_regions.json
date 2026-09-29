@@ -1,0 +1,310 @@
+{
+  "_comment": [
+    "Fixed-format regions that need no toolchain: they are generated from the",
+    "facts below and then asserted byte-for-byte against the canonical ROM.",
+    "",
+    "These are NOT copies of ROM bytes. Each entry is a fact about the program",
+    "(an address, a sentinel, a header field, a platform constant) stated in a",
+    "form that can be reasoned about and tested. Values whose MEANING is unknown",
+    "are marked unknown rather than given an invented name.",
+    "",
+    "Verified by tools/buusfury/fixed.py::verify_all and tests/test_fixed_regions.py."
+  ],
+  "regions": [
+    {
+      "id": "rom_header",
+      "start": "0x000000",
+      "end": "0x0000C0"
+    },
+    {
+      "id": "gbaram_literals",
+      "start": "0x03D730",
+      "end": "0x03D740"
+    },
+    {
+      "id": "titlescreen_data",
+      "start": "0x0561C4",
+      "end": "0x05622C"
+    }
+  ],
+  "rom_header": {
+    "_comment": [
+      "The entry branch is DERIVED from entry_target, not copied. The boot logo",
+      "lives in data/gba_boot_logo.bin and is a fixed GBA platform constant",
+      "(verified: 156/156 bytes equal the mandated logo). The remaining fields are",
+      "decoded facts, and the checksum is recomputed from them."
+    ],
+    "entry_source": 134217728,
+    "entry_target": 134217920,
+    "fields": {
+      "title": "DBZBUUSFURY",
+      "game_code": "BG3E",
+      "maker_code": "70",
+      "fixed_value": 150,
+      "main_unit_code": 0,
+      "device_type": 0,
+      "reserved_1_hex": "00000000000000",
+      "software_version": 0,
+      "header_checksum": 132,
+      "reserved_2_hex": "0000"
+    }
+  },
+  "gbaram_literals": {
+    "_comment": [
+      "The literal pool of the small-block allocator at 0x03D4D0..0x03D730.",
+      "Every word is loaded by code immediately before this range. The first two",
+      "are EWRAM/IWRAM addresses; the third and fourth are allocator sentinels.",
+      "The pool's END is proven by the next anchored region; its START is proven",
+      "because no instruction before it loads from inside it."
+    ],
+    "words": [
+      {
+        "offset": "0x03D730",
+        "value": 33556480,
+        "kind": "ewram_address",
+        "meaning": "base of the allocator's heap region in EWRAM",
+        "confidence": "high"
+      },
+      {
+        "offset": "0x03D734",
+        "value": 50345096,
+        "kind": "iwram_address",
+        "meaning": "allocator state block in IWRAM",
+        "confidence": "high"
+      },
+      {
+        "offset": "0x03D738",
+        "value": 65022,
+        "kind": "sentinel",
+        "meaning": "unknown",
+        "confidence": "low"
+      },
+      {
+        "offset": "0x03D73C",
+        "value": 2147483647,
+        "kind": "sentinel",
+        "meaning": "unknown (maximum signed 32-bit value)",
+        "confidence": "medium"
+      }
+    ]
+  },
+  "titlescreen_data": {
+    "_comment": [
+      "104 bytes = 26 words between two reproduced anchors (the intro stream ends",
+      "here and the corner images begin here), so the extent is proven even though",
+      "the content is not understood. Recorded as numbered facts with the address",
+      "space each word falls into, so a later ticket can replace the placeholders",
+      "with meaning without having to re-derive the bytes."
+    ],
+    "words": [
+      {
+        "offset": "0x0561C4",
+        "value": 50346136,
+        "kind": "address",
+        "space": "iwram",
+        "meaning": "unknown",
+        "confidence": "unknown"
+      },
+      {
+        "offset": "0x0561C8",
+        "value": 50346148,
+        "kind": "address",
+        "space": "iwram",
+        "meaning": "unknown",
+        "confidence": "unknown"
+      },
+      {
+        "offset": "0x0561CC",
+        "value": 80,
+        "kind": "address",
+        "space": "bios",
+        "meaning": "unknown",
+        "confidence": "unknown"
+      },
+      {
+        "offset": "0x0561D0",
+        "value": 104,
+        "kind": "address",
+        "space": "bios",
+        "meaning": "unknown",
+        "confidence": "unknown"
+      },
+      {
+        "offset": "0x0561D4",
+        "value": 160,
+        "kind": "address",
+        "space": "bios",
+        "meaning": "unknown",
+        "confidence": "unknown"
+      },
+      {
+        "offset": "0x0561D8",
+        "value": 144,
+        "kind": "address",
+        "space": "bios",
+        "meaning": "unknown",
+        "confidence": "unknown"
+      },
+      {
+        "offset": "0x0561DC",
+        "value": 50344704,
+        "kind": "address",
+        "space": "iwram",
+        "meaning": "unknown",
+        "confidence": "unknown"
+      },
+      {
+        "offset": "0x0561E0",
+        "value": 50346136,
+        "kind": "address",
+        "space": "iwram",
+        "meaning": "unknown",
+        "confidence": "unknown"
+      },
+      {
+        "offset": "0x0561E4",
+        "value": 134676780,
+        "kind": "address",
+        "space": "rom",
+        "meaning": "unknown",
+        "confidence": "unknown"
+      },
+      {
+        "offset": "0x0561E8",
+        "value": 134668368,
+        "kind": "address",
+        "space": "rom",
+        "meaning": "unknown",
+        "confidence": "unknown"
+      },
+      {
+        "offset": "0x0561EC",
+        "value": 50335848,
+        "kind": "address",
+        "space": "iwram",
+        "meaning": "unknown",
+        "confidence": "unknown"
+      },
+      {
+        "offset": "0x0561F0",
+        "value": 50338212,
+        "kind": "address",
+        "space": "iwram",
+        "meaning": "unknown",
+        "confidence": "unknown"
+      },
+      {
+        "offset": "0x0561F4",
+        "value": 50338172,
+        "kind": "address",
+        "space": "iwram",
+        "meaning": "unknown",
+        "confidence": "unknown"
+      },
+      {
+        "offset": "0x0561F8",
+        "value": 50338892,
+        "kind": "address",
+        "space": "iwram",
+        "meaning": "unknown",
+        "confidence": "unknown"
+      },
+      {
+        "offset": "0x0561FC",
+        "value": 134742016,
+        "kind": "address",
+        "space": "rom",
+        "meaning": "unknown",
+        "confidence": "unknown"
+      },
+      {
+        "offset": "0x056200",
+        "value": 8192,
+        "kind": "address",
+        "space": "bios",
+        "meaning": "unknown",
+        "confidence": "unknown"
+      },
+      {
+        "offset": "0x056204",
+        "value": 134570540,
+        "kind": "address",
+        "space": "rom",
+        "meaning": "unknown",
+        "confidence": "unknown"
+      },
+      {
+        "offset": "0x056208",
+        "value": 134742263,
+        "kind": "address",
+        "space": "rom",
+        "meaning": "unknown",
+        "confidence": "unknown"
+      },
+      {
+        "offset": "0x05620C",
+        "value": 8192,
+        "kind": "address",
+        "space": "bios",
+        "meaning": "unknown",
+        "confidence": "unknown"
+      },
+      {
+        "offset": "0x056210",
+        "value": 134570604,
+        "kind": "address",
+        "space": "rom",
+        "meaning": "unknown",
+        "confidence": "unknown"
+      },
+      {
+        "offset": "0x056214",
+        "value": 134801408,
+        "kind": "address",
+        "space": "rom",
+        "meaning": "unknown",
+        "confidence": "unknown"
+      },
+      {
+        "offset": "0x056218",
+        "value": 8192,
+        "kind": "address",
+        "space": "bios",
+        "meaning": "unknown",
+        "confidence": "unknown"
+      },
+      {
+        "offset": "0x05621C",
+        "value": 134570668,
+        "kind": "address",
+        "space": "rom",
+        "meaning": "unknown",
+        "confidence": "unknown"
+      },
+      {
+        "offset": "0x056220",
+        "value": 134801655,
+        "kind": "address",
+        "space": "rom",
+        "meaning": "unknown",
+        "confidence": "unknown"
+      },
+      {
+        "offset": "0x056224",
+        "value": 8192,
+        "kind": "address",
+        "space": "bios",
+        "meaning": "unknown",
+        "confidence": "unknown"
+      },
+      {
+        "offset": "0x056228",
+        "value": 134570732,
+        "kind": "address",
+        "space": "rom",
+        "meaning": "unknown",
+        "confidence": "unknown"
+      }
+    ]
+  }
+}

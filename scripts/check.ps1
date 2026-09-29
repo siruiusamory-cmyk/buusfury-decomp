@@ -125,12 +125,16 @@ if ($LASTEXITCODE -ne 0) { $overall = 'FAIL' }
 
 Write-Host ""
 Write-Host "========================================================================="
-Write-Host "portable regression tests"
+Write-Host "regression tests"
 Write-Host "========================================================================="
 if ($SkipTests) {
     Write-Host "skipped (-SkipTests)"
     $notes.Add('pytest gate skipped by request')
 } else {
+    # Export the baserom we already resolved so the ROM-gated tests RUN instead
+    # of skipping. Without this the gate silently weakens to portable-only.
+    $previousRom = $env:BUUSFURY_ROM
+    $env:BUUSFURY_ROM = $romPath
     Push-Location $repoRoot
     try {
         & $python -m pytest tests -q
@@ -140,6 +144,11 @@ if ($SkipTests) {
         $notes.Add('pytest gate could not run')
     } finally {
         Pop-Location
+        if ($null -eq $previousRom) {
+            Remove-Item Env:\BUUSFURY_ROM -ErrorAction SilentlyContinue
+        } else {
+            $env:BUUSFURY_ROM = $previousRom
+        }
     }
 }
 

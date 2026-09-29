@@ -257,8 +257,13 @@ def test_generated_markdown_uses_lf_only(region_list):
 
 
 def test_committed_map_matches_a_fresh_render(region_list):
-    """docs/ROM_MAP.md must be exactly what the generator produces today."""
-    committed = (regions._identity.REPO_ROOT / "docs" / "ROM_MAP.md").read_text(
+    """docs/BUILD_REGIONS.md must be exactly what the generator produces today.
+
+    The build-region document was called ROM_MAP.md before DECOMP-ROM-MAP-001;
+    that name now belongs to the independent structural ROM map produced by
+    tools/buusfury/mapbuild.py, so the build model lives here instead.
+    """
+    committed = (regions._identity.REPO_ROOT / "docs" / "BUILD_REGIONS.md").read_text(
         encoding="utf-8"
     )
     assert committed == regions.render_markdown(region_list, ROM_SIZE)

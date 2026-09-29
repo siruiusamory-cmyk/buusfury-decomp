@@ -1,0 +1,224 @@
+{
+  "schema": 1,
+  "source_sha1": "f1c4b07554d2a3b1ad2f325307051e775ce68087",
+  "result": "COMPILER PROBE: BLOCKED - ADS12_UNAVAILABLE",
+  "code": "ADS12_UNAVAILABLE",
+  "conclusion": "UNTESTED",
+  "no_compiler_result_claimed": true,
+  "generated_by": "tools/buusfury/compiler_probe.py build_matrix()",
+  "methodology": "the region start is the candidate origin: fromelf -bin on a scatter file whose only load region is at the unit's ROM address is taken to emit from that address. UNEXERCISED on a machine without ADS 1.2, and the first thing to confirm from the real toolchain's output when one is supplied.",
+  "comparison_scope": "translation unit gbaram_tu (0x0803D4D0..0x0803D740): 608 bytes of code plus its 16-byte literal pool, compared as one span",
+  "configurations": [
+    {
+      "frontend": "tcpp",
+      "isa": "thumb",
+      "cpu": "ARM7TDMI",
+      "optimization": "-O1",
+      "other_flags": [
+        "-S",
+        "-c"
+      ],
+      "translation_unit": "gbaram_tu",
+      "exact_match": false,
+      "matching_instructions": null,
+      "total_instructions": null,
+      "status": "BLOCKED",
+      "code": "ADS12_UNAVAILABLE",
+      "why": "the historical lead, verbatim",
+      "notes": "not executed: ADS 1.2 is not installed"
+    },
+    {
+      "frontend": "tcpp",
+      "isa": "thumb",
+      "cpu": "ARM7TDMI",
+      "optimization": "-O0",
+      "other_flags": [
+        "-S",
+        "-c"
+      ],
+      "translation_unit": "gbaram_tu",
+      "exact_match": false,
+      "matching_instructions": null,
+      "total_instructions": null,
+      "status": "BLOCKED",
+      "code": "ADS12_UNAVAILABLE",
+      "why": "negative control: optimisation off",
+      "notes": "not executed: ADS 1.2 is not installed"
+    },
+    {
+      "frontend": "tcpp",
+      "isa": "thumb",
+      "cpu": "ARM7TDMI",
+      "optimization": "-O2",
+      "other_flags": [
+        "-S",
+        "-c"
+      ],
+      "translation_unit": "gbaram_tu",
+      "exact_match": false,
+      "matching_instructions": null,
+      "total_instructions": null,
+      "status": "BLOCKED",
+      "code": "ADS12_UNAVAILABLE",
+      "why": "negative control: more optimisation",
+      "notes": "not executed: ADS 1.2 is not installed"
+    },
+    {
+      "frontend": "tcc",
+      "isa": "thumb",
+      "cpu": "ARM7TDMI",
+      "optimization": "-O1",
+      "other_flags": [
+        "-S",
+        "-c"
+      ],
+      "translation_unit": "gbaram_tu",
+      "exact_match": false,
+      "matching_instructions": null,
+      "total_instructions": null,
+      "status": "BLOCKED",
+      "code": "ADS12_UNAVAILABLE",
+      "why": "C frontend instead of C++",
+      "notes": "not executed: ADS 1.2 is not installed"
+    },
+    {
+      "frontend": "armcpp",
+      "isa": "arm",
+      "cpu": "ARM7TDMI",
+      "optimization": "-O1",
+      "other_flags": [
+        "-S",
+        "-c"
+      ],
+      "translation_unit": "gbaram_tu",
+      "exact_match": false,
+      "matching_instructions": null,
+      "total_instructions": null,
+      "status": "BLOCKED",
+      "code": "ADS12_UNAVAILABLE",
+      "why": "ARM frontend, C++",
+      "notes": "not executed: ADS 1.2 is not installed"
+    },
+    {
+      "frontend": "armcc",
+      "isa": "arm",
+      "cpu": "ARM7TDMI",
+      "optimization": "-O1",
+      "other_flags": [
+        "-S",
+        "-c"
+      ],
+      "translation_unit": "gbaram_tu",
+      "exact_match": false,
+      "matching_instructions": null,
+      "total_instructions": null,
+      "status": "BLOCKED",
+      "code": "ADS12_UNAVAILABLE",
+      "why": "ARM frontend, C",
+      "notes": "not executed: ADS 1.2 is not installed"
+    }
+  ],
+  "rows": [
+    {
+      "frontend": "tcpp",
+      "isa": "thumb",
+      "cpu": "ARM7TDMI",
+      "optimization": "-O1",
+      "translation_unit": "gbaram_tu",
+      "exact_match": false,
+      "matching_instructions": null,
+      "total_instructions": null
+    },
+    {
+      "frontend": "tcpp",
+      "isa": "thumb",
+      "cpu": "ARM7TDMI",
+      "optimization": "-O0",
+      "translation_unit": "gbaram_tu",
+      "exact_match": false,
+      "matching_instructions": null,
+      "total_instructions": null
+    },
+    {
+      "frontend": "tcpp",
+      "isa": "thumb",
+      "cpu": "ARM7TDMI",
+      "optimization": "-O2",
+      "translation_unit": "gbaram_tu",
+      "exact_match": false,
+      "matching_instructions": null,
+      "total_instructions": null
+    },
+    {
+      "frontend": "tcc",
+      "isa": "thumb",
+      "cpu": "ARM7TDMI",
+      "optimization": "-O1",
+      "translation_unit": "gbaram_tu",
+      "exact_match": false,
+      "matching_instructions": null,
+      "total_instructions": null
+    },
+    {
+      "frontend": "armcpp",
+      "isa": "arm",
+      "cpu": "ARM7TDMI",
+      "optimization": "-O1",
+      "translation_unit": "gbaram_tu",
+      "exact_match": false,
+      "matching_instructions": null,
+      "total_instructions": null
+    },
+    {
+      "frontend": "armcc",
+      "isa": "arm",
+      "cpu": "ARM7TDMI",
+      "optimization": "-O1",
+      "translation_unit": "gbaram_tu",
+      "exact_match": false,
+      "matching_instructions": null,
+      "total_instructions": null
+    }
+  ],
+  "negative_controls": [
+    "tcc vs tcpp: C frontend against C++ frontend",
+    "tcpp -O0 vs -O1: optimisation off against the lead",
+    "tcpp -O1 vs -O2: the lead against more optimisation",
+    "armcc/armcpp: ARM instruction set against the observed Thumb"
+  ],
+  "fingerprint": {
+    "thumb_frontend": "UNTESTED",
+    "thumb_optimization": "UNTESTED",
+    "thumb_cpu_target": "UNTESTED",
+    "arm_frontend": "UNTESTED",
+    "arm_optimization": "UNTESTED",
+    "c_vs_cpp": "UNTESTED",
+    "abi": "UNTESTED",
+    "_evidence": {
+      "exact_matches": 0,
+      "configurations_tested": 0,
+      "success_criterion": "at least 3 discriminating ordinary engine functions matching exactly under one shared configuration"
+    },
+    "_state_meaning": {
+      "PROVEN": "multiple discriminating exact matches support the setting",
+      "STRONGLY_SUPPORTED": "repeated close or exact matches, some ambiguity",
+      "PLAUSIBLE": "evidence consistent but not discriminating",
+      "REFUTED": "repeated mismatches despite semantically correct source",
+      "UNTESTED": "toolchain unavailable"
+    }
+  },
+  "details": [
+    "ADS12_ROOT: (unset)",
+    "Required tools and where they are looked for:",
+    "  tcc       MISSING",
+    "  tcpp      MISSING",
+    "  armcc     MISSING",
+    "  armcpp    MISSING",
+    "  armasm    MISSING",
+    "  armlink   MISSING",
+    "  fromelf   MISSING",
+    "ARM Developer Suite 1.2 is commercial software and is deliberately NOT bundled, downloaded or vendored by this repository.",
+    "Install it locally and set ADS12_ROOT to the installation root; the tools are then expected at $ADS12_ROOT/Bin/<tool>.exe.",
+    "Once supplied, the exact command this probe will run is printed by: python -m buusfury compiler-probe --plan"
+  ]
+}

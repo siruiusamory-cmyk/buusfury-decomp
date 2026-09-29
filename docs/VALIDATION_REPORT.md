@@ -370,3 +370,90 @@ looked and that the repository never tracks ROM data - verified.
 6. **The 26,112 "reproduced" asset bytes depend on the reference checkout**
    (gitignored, unlicensed, containing ROM-derived BMPs). They are reproducible
    on this machine but the source assets are not redistributable.
+
+---
+
+# Validation report - `DECOMP-ROM-MAP-001` (2026-09-29)
+
+See [`ROM_MAP.md`](ROM_MAP.md) and [`ROM_MAP_PROVENANCE.md`](ROM_MAP_PROVENANCE.md).
+The ten map invariants hold, `config/rom_map.json` tiles 8,388,608 bytes exactly,
+and 177 tests passed at that ticket's closure (the 88 above plus the ROM-map
+suite).
+
+---
+
+# Validation report - `DECOMP-COMPILER-PROBE-001` (2026-09-29)
+
+Result: **`COMPILER PROBE: BLOCKED - ADS12_UNAVAILABLE`**. No compiler setting
+was proven, supported or refuted. Read [`COMPILER_PROBE.md`](COMPILER_PROBE.md).
+
+## Commands run, and their measured results
+
+```text
+python -m buusfury compiler-probe --verify-manifest
+# PROBE MANIFEST: PASS (8 probes, 8 thumb / 0 arm, 6 leaf / 2 non-leaf)
+
+python -m buusfury compiler-probe
+# COMPILER PROBE - DECOMP-COMPILER-PROBE-001
+# canonical ROM : f1c4b07554d2a3b1ad2f325307051e775ce68087
+# ADS 1.2       : ABSENT
+# probe corpus  : 8 functions in 1 translation unit (8 Thumb / 0 ARM, 6 leaf / 2 non-leaf)
+# COMPILER PROBE: BLOCKED - ADS12_UNAVAILABLE
+
+python -m buusfury compiler-probe --plan
+# exit 0. Prints the four-command ADS pipeline, the scatter file, and the
+# ORIGIN_ASSUMPTION. Executes nothing.
+
+python -m buusfury compiler-probe --matrix
+# exit 1. Six configurations, all status=BLOCKED, all exact_match=false.
+# no_compiler_result_claimed: true. Fingerprint: all claims UNTESTED.
+
+python -m buusfury compiler-probe --diagnostic-control
+# exit 0. Compiled src/probes/GBARam.c with devkitARM GCC and compared.
+# target_size 624, candidate_size 760, identical_bytes 27, first_difference 0x0,
+# differing_bytes 733, differing_instructions 367, exact_match False.
+# classification: DIAGNOSTIC_CONTROL_NOT_EVIDENCE. Not a compiler finding.
+
+python -m pytest tests -q
+# 230 passed in 30.60s        (177 before this ticket; +53 in tests/test_compiler_probe.py)
+```
+
+The diagnostic-control run is reported here for one reason only: it proves the
+harness's extraction, compilation, byte comparison and reporting paths work
+end to end, and that `src/probes/GBARam.c` at least compiles. Its numeric output
+say nothing about the original Webfoot compiler and must never be cited as
+though it did.
+
+## What was proven, and at what strength
+
+| claim | strength |
+| --- | --- |
+| the eight `gbaram_tu` function boundaries | `CONFIRMED` (chain walk, all paths terminated, zero gaps) |
+| the shared 16-byte literal pool and its four words | `CONFIRMED` (independently matches `data/fixed_regions.json`) |
+| the internal call graph of the unit | `CONFIRMED` |
+| `code_reachable_055324` is data, not code | `CONFIRMED` (decodes only as `cmp`/`lsrs` pairs over `0x0808` halfwords) |
+| `code_candidate_span_6_048F14` does not decode as ARM | `CONFIRMED` |
+| two real functions are missing from the inventory | `CONFIRMED` (recorded in `inventory_gaps`) |
+| the inventory's `size` overruns six of eight probes | `CONFIRMED` (recorded in `inventory_size_disagreements`) |
+| that the original file is `src/GBARam.c` | `INFERRED` |
+| that `tcpp` implies Thumb and C++ | `INFERRED` (published ADS driver naming) |
+| any compiler setting | `UNTESTED` |
+
+## `scripts/check.cmd`
+
+Six gates. Gates 5 and 6 are `BLOCKED`, not `FAIL`. The result is recorded in
+the ticket's final report, and the gate was added by this ticket; the probe
+manifest must regenerate from the canonical ROM for gate 6 to reach its
+`BLOCKED` branch, so a manifest that has drifted fails the build rather than
+hiding behind the blocker.
+
+## Safety
+
+- Canonical ROM SHA-1 `f1c4b07554d2a3b1ad2f325307051e775ce68087` and its
+  `mtime_ns` are asserted unchanged by `tests/test_compiler_probe.py` around the
+  probe read path, and again by a dedicated test in `tests/test_rom_map.py`.
+- No ADS binary, licence file or ROM-derived blob is tracked; every ADS tool name
+  is gitignored, and a test walks the tracked tree looking for any of them.
+- Everything the harness writes goes under `build/probes/`, which is gitignored.
+- `C:\Dev\log1-remake` was not modified. See the ticket's final report for the
+  proof.

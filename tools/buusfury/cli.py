@@ -448,6 +448,259 @@ def cmd_rommap(args) -> int:
 
 
 # --------------------------------------------------------------------------
+# compiler-probe   (DECOMP-COMPILER-PROBE-001)
+# --------------------------------------------------------------------------
+def cmd_compiler_probe(args) -> int:
+    from . import compiler_probe as _cp
+
+    if args.write_manifest:
+        target = _cp.write_manifest(
+            Path(args.write_manifest) if isinstance(args.write_manifest, str) else None
+        )
+        print(f"wrote {target}")
+        return EXIT_OK
+
+    if args.write_matrix:
+        target = _cp.write_matrix(
+            Path(args.write_matrix) if isinstance(args.write_matrix, str) else None
+        )
+        print(f"wrote {target}")
+        return EXIT_OK
+
+    try:
+        rom = _resolve_rom(args)
+        found = _identity.verify(rom)
+    except (_identity.IdentityError, _identity.RomNotFoundError) as exc:
+        print(f"FAIL: {exc}")
+        return EXIT_FAIL
+
+    data = found.path.read_bytes()
+
+    if args.verify_manifest:
+        problems = _cp.verify_manifest(data)
+        if problems:
+            print("PROBE MANIFEST: FAIL")
+            for problem in problems:
+                print(f"  - {problem}")
+            return EXIT_FAIL
+        manifest = _cp.load_manifest()
+        print(
+            f"PROBE MANIFEST: PASS ({manifest['counts']['probes']} probes, "
+            f"{manifest['counts']['thumb']} thumb / {manifest['counts']['arm']} arm, "
+            f"{manifest['counts']['leaf']} leaf / {manifest['counts']['non_leaf']} non-leaf)"
+        )
+        return EXIT_OK
+
+    if args.plan:
+        tools = _cp.discover_ads(args.ads12_root, compiler_id=args.frontend)
+        unit = _cp.GBARAM_TU
+        workdir = _cp.PROBE_WORKSPACE / unit.id
+        print(f"probe plan for {unit.id} ({unit.source})")
+        print(f"compiler: {args.frontend}  cpu: {args.cpu}  opt: {args.opt}")
+        print()
+        if tools is None:
+            print(f"BLOCKED [{_cp.BLOCK_ADS_UNAVAILABLE}] no ADS 1.2 installation found")
+            print()
+            for detail in _cp.ads_blocked_details(args.ads12_root):
+                print(f"  {detail}")
+            print()
+        print("exact command sequence once ADS 1.2 is supplied:")
+        commands = _cp.plan_commands(
+            tools
+            if tools is not None
+            else _cp.AdsTools(
+                root=Path("<ADS12_ROOT>"),
+                compiler=Path("<ADS12_ROOT>/Bin") / f"{args.frontend}.exe",
+                compiler_id=args.frontend,
+                support={
+                    name: Path("<ADS12_ROOT>/Bin") / f"{name}.exe"
+                    for name in ("armasm", "armlink", "fromelf")
+                },
+            ),
+            Path("<repo>") / unit.source,
+            workdir,
+            (args.frontend, args.cpu, args.opt),
+        )
+        for command in commands:
+            print("  " + " ".join(command))
+        print()
+        print("linker layout (probe.scatter):")
+        for line in _cp.render_scatter(unit).splitlines():
+            print(f"  {line}")
+        print()
+        print("relocation methodology:")
+        print(f"  {_cp.ORIGIN_ASSUMPTION}")
+        return EXIT_OK
+
+    if args.matrix:
+        matrix = run_matrix(args, data, found.sha1)
+        if args.json:
+            print(json.dumps(matrix, indent=2))
+        else:
+            print(_cp.render_matrix_markdown(matrix).rstrip())
+            print()
+            print(f"result: {matrix['result']}")
+            for line in matrix.get("details", []):
+                print(f"  {line}")
+        return EXIT_OK if matrix["code"] is None else EXIT_FAIL
+
+    if args.diagnostic_control:
+        return _run_diagnostic_control(args, data)
+
+    # default: report the prepared probe corpus and its blocked/tooled state
+    manifest = _cp.derive_manifest(data)
+    tools = _cp.discover_ads(args.ads12_root, compiler_id=args.frontend)
+    report = {
+        "canonical_rom_sha1": found.sha1,
+        "ads12_available": tools is not None,
+        "probe_corpus": manifest["counts"],
+        "translation_units": manifest["translation_units"],
+        "probes": manifest["probes"],
+        "controls": manifest["controls"],
+        "rejections": manifest["rejections"],
+        "consistency_problems": manifest["consistency_problems"],
+    }
+
+    if args.json:
+        print(json.dumps(report, indent=2))
+        return EXIT_OK
+
+    print("=" * 72)
+    print("COMPILER PROBE - DECOMP-COMPILER-PROBE-001")
+    print("=" * 72)
+    print(f"canonical ROM : {found.sha1}")
+    print(f"ADS 1.2       : {'AVAILABLE at ' + str(tools.root) if tools else 'ABSENT'}")
+    print()
+    counts = manifest["counts"]
+    print(
+        f"probe corpus  : {counts['probes']} functions in {counts['translation_units']} "
+        f"translation unit ({counts['thumb']} Thumb / {counts['arm']} ARM, "
+        f"{counts['leaf']} leaf / {counts['non_leaf']} non-leaf)"
+    )
+    print()
+    print(f"{'probe':<14} {'rom address':<12} {'bytes':>6} {'insn':>5} {'leaf':<5} {'lits':>5}  role")
+    for probe in manifest["probes"]:
+        print(
+            f"{probe['name']:<14} {probe['rom_address']:<12} {probe['byte_length']:>6} "
+            f"{probe['instructions']:>5} {str(probe['leaf']):<5} "
+            f"{len(probe['literal_slots']):>5}  {probe['role']}"
+        )
+    if manifest["consistency_problems"]:
+        print()
+        print("CONSISTENCY PROBLEMS:")
+        for problem in manifest["consistency_problems"]:
+            print(f"  - {problem}")
+        return EXIT_FAIL
+
+    print()
+    print(f"controls (NOT evidence)  : {len(manifest['controls'])} regions excluded by role")
+    for control in manifest["controls"]:
+        print(f"  {control['id']:<14} {control['rom_address']}  {control['excluded_because'][:64]}...")
+    print(f"rejected candidates      : {len(manifest['rejections'])}")
+
+    print()
+    print("=" * 72)
+    if tools is None:
+        blocked = _cp.blocked_result(args.ads12_root)
+        print(blocked["result"])
+        print("=" * 72)
+        print()
+        print("Preparation is complete; NO compiler result is claimed.")
+        print(f"exact command required once ADS 1.2 is supplied:")
+        print(f"  {blocked['exact_command_required']}")
+        print()
+        for detail in blocked["details"]:
+            print(f"  {detail}")
+        return EXIT_FAIL
+    print("COMPILER PROBE: READY - run with --matrix to test configurations")
+    print("=" * 72)
+    return EXIT_OK
+
+
+def run_matrix(args, data: bytes, sha1: str) -> dict:
+    """Run every candidate configuration, or report the whole matrix as blocked."""
+    from . import compiler_probe as _cp
+
+    return _cp.build_matrix(
+        data, sha1, ads12_root=args.ads12_root, frontend=args.frontend
+    )
+
+
+def _run_diagnostic_control(args, data: bytes) -> int:
+    """Exercise the compile/compare plumbing with a modern compiler.
+
+    Explicitly NOT evidence about the original build: the result is tagged
+    DIAGNOSTIC_CONTROL_NOT_EVIDENCE and is only here so that the harness's
+    extraction, compilation, byte comparison and reporting paths are known to
+    work on a machine that has no ADS 1.2.
+    """
+    from . import compiler_probe as _cp
+
+    compiler = _cp.discover_diagnostic_compiler()
+    if compiler is None:
+        print(f"DIAGNOSTIC CONTROL: unavailable (no arm-none-eabi-gcc on this machine)")
+        return EXIT_FAIL
+
+    unit = _cp.GBARAM_TU
+    source = _identity.REPO_ROOT / unit.source
+    workdir = _cp.PROBE_WORKSPACE / unit.id / "diagnostic_control"
+    target = _cp.extract(data, unit.rom_address, unit.end_address - unit.rom_address)
+
+    print("=" * 72)
+    print("DIAGNOSTIC CONTROL - NOT EVIDENCE ABOUT THE ORIGINAL COMPILER")
+    print("=" * 72)
+    print(json.dumps(compiler.as_dict(), indent=2))
+    print()
+
+    try:
+        candidate, commands = _cp.compile_diagnostic_control(
+            compiler, source, workdir, cpu="arm7tdmi", opt="-O1", thumb=True
+        )
+    except _cp.ProbeError as exc:
+        print(f"DIAGNOSTIC CONTROL: FAILED\n{exc}")
+        return EXIT_FAIL
+
+    for command in commands:
+        print("  " + " ".join(command))
+    print()
+    diff = _cp.compare_bytes(
+        target,
+        candidate,
+        unit.rom_address,
+        unit.isa,
+        notes=(_cp.DIAGNOSTIC_CONTROL, "plumbing self-test only"),
+    )
+    payload = {
+        "classification": _cp.DIAGNOSTIC_CONTROL,
+        "target_size": diff.target_size,
+        "candidate_size": diff.candidate_size,
+        "identical_bytes": diff.identical_bytes,
+        "first_difference": diff.as_dict()["first_difference"],
+        "differing_bytes": diff.differing_bytes,
+        "differing_instructions": diff.differing_instructions,
+        "exact_match": diff.exact_match,
+        "is_evidence_about_the_original_compiler": False,
+    }
+    if args.json:
+        print(json.dumps(payload, indent=2))
+    else:
+        for key in (
+            "target_size",
+            "candidate_size",
+            "identical_bytes",
+            "first_difference",
+            "differing_bytes",
+            "differing_instructions",
+            "exact_match",
+        ):
+            print(f"  {key:<20} {payload[key]}")
+        print()
+        print("  This run exercises the harness. It is NOT a compiler finding:")
+        print("  a modern GCC cannot be evidence about the original Webfoot build.")
+    return EXIT_OK
+
+
+# --------------------------------------------------------------------------
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="buusfury",
@@ -518,6 +771,40 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--docs", default=None, help="write docs/ROM_MAP.md here")
     p.add_argument("--show-reset", action="store_true", help="print the reset-path evidence")
     p.set_defaults(func=cmd_rommap)
+
+    p = sub.add_parser(
+        "compiler-probe",
+        help="establish the ADS 1.2 compiler recipe by compiling probes and diffing bytes",
+    )
+    add_rom(p)
+    p.add_argument("--ads12-root", default=None, help="ARM Developer Suite 1.2 root")
+    p.add_argument("--frontend", default="tcpp", help="compiler frontend (tcpp/tcc/armcpp/armcc)")
+    p.add_argument("--cpu", default="ARM7TDMI")
+    p.add_argument("--opt", default="-O1")
+    p.add_argument("--matrix", action="store_true", help="run every candidate configuration")
+    p.add_argument("--plan", action="store_true", help="print the exact commands, execute nothing")
+    p.add_argument(
+        "--write-manifest",
+        nargs="?",
+        const=True,
+        default=None,
+        help="regenerate config/compiler_probes.json from the canonical ROM",
+    )
+    p.add_argument(
+        "--write-matrix",
+        nargs="?",
+        const=True,
+        default=None,
+        help="regenerate config/compiler_matrix.json",
+    )
+    p.add_argument("--verify-manifest", action="store_true", help="re-derive and compare the manifest")
+    p.add_argument(
+        "--diagnostic-control",
+        action="store_true",
+        help="exercise the harness with devkitARM GCC; NEVER evidence about the original compiler",
+    )
+    p.add_argument("--json", action="store_true")
+    p.set_defaults(func=cmd_compiler_probe)
 
     return parser
 

@@ -13,8 +13,12 @@
       4. portable regression tests
       5. full source reproduction        (BLOCKED without ADS 1.2 - reported,
                                           not treated as a baseline failure)
+      6. compiler probe                  (the probe manifest must reproduce from
+                                           the ROM; the probe itself is BLOCKED
+                                           without ADS 1.2 - reported, not a
+                                           baseline failure)
 
-    Gate 5 is deliberately NOT a failure. The baseline's contract is that the
+    Gates 5 and 6 are deliberately NOT failures. The baseline's contract is that the
     blocker is measured and precisely documented, not that it is absent.
 
     Written for Windows PowerShell 5.1 and later, because 5.1 is present on
@@ -154,11 +158,37 @@ if ($SkipTests) {
 
 Write-Host ""
 Write-Host "========================================================================="
+Write-Host "gate 6: compiler probe (DECOMP-COMPILER-PROBE-001)"
+Write-Host "========================================================================="
+# The manifest is a measurement, not a declaration: it must regenerate from the
+# canonical ROM and agree field-for-field, or this gate FAILS.
+& $python -m buusfury compiler-probe --rom $romPath --verify-manifest
+if ($LASTEXITCODE -ne 0) { $overall = 'FAIL' }
+
+# The probe itself cannot run without ADS 1.2. Report that as BLOCKED, the same
+# contract as gate 5, and never let it read as a compiler result.
+$probeText = (& $python -m buusfury compiler-probe --rom $romPath 2>&1) -join "`n"
+$probeExit = $LASTEXITCODE
+if ($probeText -match 'ADS12_UNAVAILABLE') {
+    Write-Host ""
+    Write-Host "      BLOCKED  probe prepared; no compiler result is claimed" -ForegroundColor Yellow
+    Write-Host "               reason: ADS12_UNAVAILABLE (ARM Developer Suite 1.2 not installed)"
+    $notes.Add('compiler probe BLOCKED on ADS 1.2; preparation complete, see docs/COMPILER_PROBE.md')
+} elseif ($probeExit -ne 0) {
+    Write-Host "      FAIL  compiler probe reported an unexpected failure" -ForegroundColor Red
+    $overall = 'FAIL'
+} else {
+    Write-Host "      PASS  compiler probe produced a result (see docs/COMPILER_PROBE.md)"
+}
+
+Write-Host ""
+Write-Host "========================================================================="
 if ($overall -eq 'PASS') {
     Write-Host "OVERALL: PASS" -ForegroundColor Green
-    Write-Host "  Gates 1-4 established. Gate 5 (full source reproduction) is BLOCKED"
-    Write-Host "  on ARM Developer Suite 1.2; the blocker is measured and documented in"
-    Write-Host "  docs/DECOMP_BASELINE.md."
+    Write-Host "  Gates 1-4 established. Gate 5 (full source reproduction) and gate 6"
+    Write-Host "  (compiler probe) are BLOCKED on ARM Developer Suite 1.2; both blockers"
+    Write-Host "  are measured and documented in docs/DECOMP_BASELINE.md and"
+    Write-Host "  docs/COMPILER_PROBE.md."
 } else {
     Write-Host "OVERALL: FAIL" -ForegroundColor Red
 }

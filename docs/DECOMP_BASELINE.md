@@ -516,3 +516,32 @@ No tracked file contains a machine-specific absolute path.
    opaque 8.27 MB is opened.
 
 Only after those should any work begin on the 98.568% opaque region.
+
+---
+
+## 9. Compiler probe - `DECOMP-COMPILER-PROBE-001` (2026-09-29)
+
+Ticket 2 above ran. Read
+[`COMPILER_PROBE.md`](COMPILER_PROBE.md) for the result and
+[`COMPILER_PROBE_PROVENANCE.md`](COMPILER_PROBE_PROVENANCE.md) for its
+provenance.
+
+    COMPILER PROBE: BLOCKED - ADS12_UNAVAILABLE
+
+Two corrections to the recommendation above:
+
+- **"whether a free toolchain can reproduce the ADS code" is the wrong
+  question.** No free toolchain can reproduce ADS 1.2 code generation, and a
+  modern compiler is explicitly not evidence about the original build. What was
+  prepared instead is a probe harness that compiles reconstructed source with
+  ADS 1.2 and compares bytes, with a GCC path used only as a labelled plumbing
+  control tagged `DIAGNOSTIC_CONTROL_NOT_EVIDENCE`.
+- **`asm/GBARam.s:5` is now a corpus, not just a lead.** Its translation unit was
+  located in the ROM at `0x0803D4D0..0x0803D740` and its eight functions were
+  bounded exactly by an independent chain walk. The region's shared literal pool
+  holds the four values this baseline's `gbaram_data` work had already proved,
+  which is what ties the surviving command line to real machine code.
+
+No compiler setting was proven. The blocker is unchanged: a licensed ADS 1.2
+installation. See [`COMPILER_PROBE.md`](COMPILER_PROBE.md) section 14 for the
+exact commands and the expected `ADS12_ROOT` layout.

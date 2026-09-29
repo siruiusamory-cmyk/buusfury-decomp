@@ -1,0 +1,460 @@
+{
+  "schema": 1,
+  "source_sha1": "f1c4b07554d2a3b1ad2f325307051e775ce68087",
+  "generated_by": "tools/buusfury/compiler_probe.py derive_manifest()",
+  "method": "chain-walk recursive descent in the translation unit's own instruction set, following internal conditional joins and tail branches, treating calls as fall-through, and terminating a path at bx lr, pop {...,pc} or a tail branch leaving the unit",
+  "notes": [
+    "Boundaries are evidence, not a window: the previous function's every path terminated before the next function starts.",
+    "config/functions.json is NOT used for boundaries. Its `size` field is analysis.decode_run(limit=0x400).bytes_ok and overruns small functions.",
+    "No semantic name is assigned. Probe names are sub_<address>.",
+    "The inventory's confidence is its own discovery method's confidence: a BL-target entry stays `medium` there even when an independent chain walk proves the boundary. The two are recorded separately on purpose."
+  ],
+  "translation_units": [
+    {
+      "id": "gbaram_tu",
+      "rom_address": "0x0803D4D0",
+      "file_offset": "0x03D4D0",
+      "code_end_address": "0x0803D730",
+      "end_address": "0x0803D740",
+      "code_byte_length": 608,
+      "byte_length": 624,
+      "sha1": "dfbe6b5fe604f6704138ba66494719f3a807e5d1",
+      "code_sha1": "ca8d8b14926734fcf7c84b03b947b5b56d68973c",
+      "literal_pool_sha1": "8218d2767a1528d154b11fb4753e0f08b954ccd0",
+      "isa": "thumb",
+      "source_candidate": "src/probes/GBARam.c",
+      "confidence": "proven",
+      "boundary_evidence": [
+        "chain-walk recursive descent in Thumb from 0x0803D4D0: 8 functions, all paths terminated, 0 undecodable bytes, 0 gaps, region covered exactly",
+        "one literal pool shared by 7 of the 8 functions sits at the region end (0x03D730-0x03D740), which is why this is one translation unit",
+        "internal call graph measured from the disassembly: 0x0803D5B8 -> 0x0803D4E8; 0x0803D63C -> 0x0803D4E8, 0x0803D56A, 0x0803D520",
+        "external callers of 0x0803D5B8 exist at 0x0803D7B2, 0x0803DA84, 0x0803E452 and hundreds of identified engine sites, so the module is ordinary engine code and not an artefact of a decoder"
+      ],
+      "selection": [
+        "config/rom_map.json classifies 0x03D4D0-0x03D730 as gbaram_code, confidence high, executable confirmed",
+        "the surviving original command line 'tcpp -S -c -cpu ARM7TDMI -O1 src/GBARam.c' names a source file the reference build reproduces as this region",
+        "the literal pool at 0x03D730 holds exactly the four values DECOMP-ROM-MAP-001 proved as the fixed region gbaram_literals",
+        "an independent chain-walk recovers 8 functions with zero gaps and zero undecodable bytes, so every boundary is evidence rather than a window"
+      ],
+      "literal_pool": {
+        "rom_address": "0x0803D730",
+        "file_offset": "0x03D730",
+        "byte_length": 16,
+        "words": [
+          {
+            "file_offset": "0x03D730",
+            "value": "0x02000800"
+          },
+          {
+            "file_offset": "0x03D734",
+            "value": "0x03003488"
+          },
+          {
+            "file_offset": "0x03D738",
+            "value": "0x0000FDFE"
+          },
+          {
+            "file_offset": "0x03D73C",
+            "value": "0x7FFFFFFF"
+          }
+        ]
+      }
+    }
+  ],
+  "probes": [
+    {
+      "name": "sub_0803D4D0",
+      "rom_address": "0x0803D4D0",
+      "file_offset": "0x03D4D0",
+      "isa": "thumb",
+      "start": "0x0803D4D0",
+      "end": "0x0803D4E8",
+      "byte_length": 24,
+      "sha1": "22ddaa05519ed66663095995008a3df1752c78a1",
+      "instructions": 12,
+      "returns": 1,
+      "leaf": true,
+      "first_instruction": "ldr r0, [pc, #0x25c]",
+      "callees": [],
+      "literal_slots": [
+        "0x0803D730",
+        "0x0803D734",
+        "0x0803D738"
+      ],
+      "problems": [],
+      "role": "list head and node-0 pool initialiser",
+      "translation_unit": "gbaram_tu",
+      "confidence": "proven",
+      "boundary_evidence": [
+        "recovered by chain-walk recursive descent over gbaram_tu; every path terminates, so the next function starts at the terminator's end",
+        "translation unit gbaram_tu covers 0x0803D4D0..0x0803D740 with zero gaps and zero undecodable bytes"
+      ],
+      "relocations": "literal load present; comparison is translation-unit scoped so the pool displacement is reproduced rather than normalised away",
+      "in_function_inventory": true,
+      "inventory_confidence": "proven",
+      "inventory_discovery": [
+        "entry of proven code region gbaram_code"
+      ],
+      "inventory_size": 620
+    },
+    {
+      "name": "sub_0803D4E8",
+      "rom_address": "0x0803D4E8",
+      "file_offset": "0x03D4E8",
+      "isa": "thumb",
+      "start": "0x0803D4E8",
+      "end": "0x0803D520",
+      "byte_length": 56,
+      "sha1": "f7ca88616b8b51cd75cb123beb01f5933b604af6",
+      "instructions": 28,
+      "returns": 1,
+      "leaf": true,
+      "first_instruction": "movs r1, #1",
+      "callees": [],
+      "literal_slots": [
+        "0x0803D734"
+      ],
+      "problems": [],
+      "role": "unlink a node from the free list and mark it busy",
+      "translation_unit": "gbaram_tu",
+      "confidence": "proven",
+      "boundary_evidence": [
+        "recovered by chain-walk recursive descent over gbaram_tu; every path terminates, so the next function starts at the terminator's end",
+        "translation unit gbaram_tu covers 0x0803D4D0..0x0803D740 with zero gaps and zero undecodable bytes"
+      ],
+      "relocations": "literal load present; comparison is translation-unit scoped so the pool displacement is reproduced rather than normalised away",
+      "in_function_inventory": true,
+      "inventory_confidence": "medium",
+      "inventory_discovery": [
+        "BL target from 0x0803D5D6 (thumb)"
+      ],
+      "inventory_size": 596
+    },
+    {
+      "name": "sub_0803D520",
+      "rom_address": "0x0803D520",
+      "file_offset": "0x03D520",
+      "isa": "thumb",
+      "start": "0x0803D520",
+      "end": "0x0803D548",
+      "byte_length": 40,
+      "sha1": "619c93721f547d0f28b8ed45e8324294149c0e44",
+      "instructions": 20,
+      "returns": 1,
+      "leaf": true,
+      "first_instruction": "ldr r3, [pc, #0x210]",
+      "callees": [],
+      "literal_slots": [
+        "0x0803D734"
+      ],
+      "problems": [],
+      "role": "insert a node at the head of the free list",
+      "translation_unit": "gbaram_tu",
+      "confidence": "proven",
+      "boundary_evidence": [
+        "recovered by chain-walk recursive descent over gbaram_tu; every path terminates, so the next function starts at the terminator's end",
+        "translation unit gbaram_tu covers 0x0803D4D0..0x0803D740 with zero gaps and zero undecodable bytes"
+      ],
+      "relocations": "literal load present; comparison is translation-unit scoped so the pool displacement is reproduced rather than normalised away",
+      "in_function_inventory": true,
+      "inventory_confidence": "medium",
+      "inventory_discovery": [
+        "BL target from 0x0803D6C4 (thumb)"
+      ],
+      "inventory_size": 540
+    },
+    {
+      "name": "sub_0803D548",
+      "rom_address": "0x0803D548",
+      "file_offset": "0x03D548",
+      "isa": "thumb",
+      "start": "0x0803D548",
+      "end": "0x0803D56A",
+      "byte_length": 34,
+      "sha1": "e7b33bf624d426f9fb3c5a66385e894fcfffa5da",
+      "instructions": 17,
+      "returns": 1,
+      "leaf": true,
+      "first_instruction": "ldrh r2, [r0, #2]",
+      "callees": [],
+      "literal_slots": [],
+      "problems": [],
+      "role": "merge a node with its successor",
+      "translation_unit": "gbaram_tu",
+      "confidence": "proven",
+      "boundary_evidence": [
+        "recovered by chain-walk recursive descent over gbaram_tu; every path terminates, so the next function starts at the terminator's end",
+        "translation unit gbaram_tu covers 0x0803D4D0..0x0803D740 with zero gaps and zero undecodable bytes"
+      ],
+      "relocations": "none: no PC-relative literal load, so this function is byte comparable on its own as well",
+      "in_function_inventory": false,
+      "inventory_confidence": null,
+      "inventory_discovery": [],
+      "inventory_size": null
+    },
+    {
+      "name": "sub_0803D56A",
+      "rom_address": "0x0803D56A",
+      "file_offset": "0x03D56A",
+      "isa": "thumb",
+      "start": "0x0803D56A",
+      "end": "0x0803D5B8",
+      "byte_length": 78,
+      "sha1": "72462608fe895aea7c92c023a260b2454c059fcd",
+      "instructions": 39,
+      "returns": 1,
+      "leaf": true,
+      "first_instruction": "push {r4, r5}",
+      "callees": [],
+      "literal_slots": [
+        "0x0803D734"
+      ],
+      "problems": [],
+      "role": "merge a node with its predecessor",
+      "translation_unit": "gbaram_tu",
+      "confidence": "proven",
+      "boundary_evidence": [
+        "recovered by chain-walk recursive descent over gbaram_tu; every path terminates, so the next function starts at the terminator's end",
+        "translation unit gbaram_tu covers 0x0803D4D0..0x0803D740 with zero gaps and zero undecodable bytes"
+      ],
+      "relocations": "literal load present; comparison is translation-unit scoped so the pool displacement is reproduced rather than normalised away",
+      "in_function_inventory": true,
+      "inventory_confidence": "medium",
+      "inventory_discovery": [
+        "BL target from 0x0803D69A (thumb)"
+      ],
+      "inventory_size": 466
+    },
+    {
+      "name": "sub_0803D5B8",
+      "rom_address": "0x0803D5B8",
+      "file_offset": "0x03D5B8",
+      "isa": "thumb",
+      "start": "0x0803D5B8",
+      "end": "0x0803D63C",
+      "byte_length": 132,
+      "sha1": "152a8cf8b1148aee492eb5d46208512072961db5",
+      "instructions": 64,
+      "returns": 3,
+      "leaf": false,
+      "first_instruction": "push {r4, r5, r6, r7, lr}",
+      "callees": [
+        "0x0803D4E8"
+      ],
+      "literal_slots": [
+        "0x0803D734",
+        "0x0803D73C"
+      ],
+      "problems": [],
+      "role": "allocate: search the free list for a fitting node",
+      "translation_unit": "gbaram_tu",
+      "confidence": "proven",
+      "boundary_evidence": [
+        "recovered by chain-walk recursive descent over gbaram_tu; every path terminates, so the next function starts at the terminator's end",
+        "translation unit gbaram_tu covers 0x0803D4D0..0x0803D740 with zero gaps and zero undecodable bytes"
+      ],
+      "relocations": "literal load present; comparison is translation-unit scoped so the pool displacement is reproduced rather than normalised away",
+      "in_function_inventory": true,
+      "inventory_confidence": "medium",
+      "inventory_discovery": [
+        "BL target from 0x080145D4 (thumb)"
+      ],
+      "inventory_size": 388
+    },
+    {
+      "name": "sub_0803D63C",
+      "rom_address": "0x0803D63C",
+      "file_offset": "0x03D63C",
+      "isa": "thumb",
+      "start": "0x0803D63C",
+      "end": "0x0803D712",
+      "byte_length": 214,
+      "sha1": "29f276ed586b4f47c21f93d268a44921a3b0aaf0",
+      "instructions": 101,
+      "returns": 9,
+      "leaf": false,
+      "first_instruction": "push {r4, r5, r6, r7, lr}",
+      "callees": [
+        "0x0803D4E8",
+        "0x0803D520",
+        "0x0803D56A"
+      ],
+      "literal_slots": [
+        "0x0803D734"
+      ],
+      "problems": [],
+      "role": "free: return a node and coalesce with neighbours",
+      "translation_unit": "gbaram_tu",
+      "confidence": "proven",
+      "boundary_evidence": [
+        "recovered by chain-walk recursive descent over gbaram_tu; every path terminates, so the next function starts at the terminator's end",
+        "translation unit gbaram_tu covers 0x0803D4D0..0x0803D740 with zero gaps and zero undecodable bytes"
+      ],
+      "relocations": "literal load present; comparison is translation-unit scoped so the pool displacement is reproduced rather than normalised away",
+      "in_function_inventory": true,
+      "inventory_confidence": "medium",
+      "inventory_discovery": [
+        "BL target from 0x0801A6C6 (thumb)"
+      ],
+      "inventory_size": 256
+    },
+    {
+      "name": "sub_0803D712",
+      "rom_address": "0x0803D712",
+      "file_offset": "0x03D712",
+      "isa": "thumb",
+      "start": "0x0803D712",
+      "end": "0x0803D730",
+      "byte_length": 30,
+      "sha1": "1a9d1289e2ad2f030ab0ed02bd20b05db389350d",
+      "instructions": 15,
+      "returns": 1,
+      "leaf": true,
+      "first_instruction": "ldr r1, [pc, #0x20]",
+      "callees": [],
+      "literal_slots": [
+        "0x0803D734"
+      ],
+      "problems": [],
+      "role": "sum the sizes of every free node",
+      "translation_unit": "gbaram_tu",
+      "confidence": "proven",
+      "boundary_evidence": [
+        "recovered by chain-walk recursive descent over gbaram_tu; every path terminates, so the next function starts at the terminator's end",
+        "translation unit gbaram_tu covers 0x0803D4D0..0x0803D740 with zero gaps and zero undecodable bytes"
+      ],
+      "relocations": "literal load present; comparison is translation-unit scoped so the pool displacement is reproduced rather than normalised away",
+      "in_function_inventory": false,
+      "inventory_confidence": null,
+      "inventory_discovery": [],
+      "inventory_size": null
+    }
+  ],
+  "controls": [
+    {
+      "id": "reset_crt",
+      "rom_address": "0x080000C0",
+      "isa": "arm",
+      "role": "control",
+      "excluded_because": "startup/CRT code. The cartridge header branches here and it hands off to the ADS C runtime; it is hand-written or library origin and says nothing about how gameplay C was compiled"
+    },
+    {
+      "id": "crt_veneer",
+      "rom_address": "0x08049114",
+      "isa": "arm",
+      "role": "control",
+      "excluded_because": "the ADS C runtime static-initialiser veneer reached from the reset path; library code, not engine code"
+    },
+    {
+      "id": "codec_blob",
+      "rom_address": "0x087B79A4",
+      "isa": "arm",
+      "role": "control",
+      "excluded_because": "may be hand-written or library/codec assembly and is not representative; its clean ARM prologues (push {r8,r9,r10,r11}) are not enough to attribute it to the engine's C compiler"
+    }
+  ],
+  "rejections": [
+    {
+      "id": "code_reachable_055324",
+      "rom_address": "0x08055324",
+      "map_claim": "code, high confidence, executable confirmed, thumb",
+      "rejected_because": "DATA, not code. It disassembles only as a repeating pair 'cmp rX, #imm' / 'lsrs r0, r0, #0x20', i.e. a table of halfwords followed by 0x0808. This is why a map classification of 'high' is not sufficient evidence to build a probe on."
+    },
+    {
+      "id": "code_candidate_span_6_048F14",
+      "rom_address": "0x08048F14",
+      "map_claim": "code_candidate, medium confidence, arm",
+      "rejected_because": "does not decode as ARM at all: capstone emits no instruction for the first word, which is the NV-condition signature of data. No ARM probe can be built here."
+    },
+    {
+      "id": "code_candidate_span_5_03D2D0",
+      "rom_address": "0x0803D2D0",
+      "map_claim": "code_candidate, medium confidence, thumb",
+      "rejected_because": "chain-walk reaches an impossible '40 bytes / 137 instructions' entry and two functions with no terminator, so the span mixes inline data with code and its boundaries cannot be established."
+    },
+    {
+      "id": "code_reachable_02E1C0",
+      "rom_address": "0x0802E1C0",
+      "map_claim": "code, high confidence, executable confirmed, thumb",
+      "rejected_because": "reachable and real code, but not independently bounded: the region is a 4096-byte window and its first function is 1022 bytes with 20 callees, which is a poor probe (many relocation sites, large control flow). Deferred, not refuted."
+    },
+    {
+      "id": "sub_0803D5B8_functions_json_entry",
+      "rom_address": "0x0803D5B8",
+      "map_claim": "config/functions.json size=620, callees=0x0803D4E8/0x0803D520/0x0803D56A",
+      "rejected_because": "config/functions.json's size is analysis.decode_run(limit=0x400).bytes_ok, so for 0x0803D5B8 it ran 620 bytes past the function end and attributed three neighbouring functions' calls to it. Its callee lists are used as a cross-check only, never as boundary input."
+    }
+  ],
+  "inventory_gaps": [
+    {
+      "name": "sub_0803D548",
+      "rom_address": "0x0803D548",
+      "why_absent": "no BL/BLX site anywhere in the image targets this address, and it is not a literal-pool code pointer, so the previous ticket's branch-target inventory could not have found it. It is present in the image and inside a proven code region.",
+      "independent_evidence": [
+        "decodes completely as thumb over all 34 bytes with no undecodable or leftover bytes",
+        "terminates on every path (1 return site(s)), which is what ends the previous function's boundary",
+        "lies inside gbaram_tu, whose boundaries are otherwise confirmed by the shared literal pool and by the surviving build command line"
+      ],
+      "consequence": "recorded as a measured gap in config/functions.json rather than dropped, because the function is real and its bytes must be part of the translation-unit comparison"
+    },
+    {
+      "name": "sub_0803D712",
+      "rom_address": "0x0803D712",
+      "why_absent": "no BL/BLX site anywhere in the image targets this address, and it is not a literal-pool code pointer, so the previous ticket's branch-target inventory could not have found it. It is present in the image and inside a proven code region.",
+      "independent_evidence": [
+        "decodes completely as thumb over all 30 bytes with no undecodable or leftover bytes",
+        "terminates on every path (1 return site(s)), which is what ends the previous function's boundary",
+        "lies inside gbaram_tu, whose boundaries are otherwise confirmed by the shared literal pool and by the surviving build command line"
+      ],
+      "consequence": "recorded as a measured gap in config/functions.json rather than dropped, because the function is real and its bytes must be part of the translation-unit comparison"
+    }
+  ],
+  "inventory_size_disagreements": [
+    {
+      "name": "sub_0803D4D0",
+      "inventory_size": 620,
+      "measured_boundary": 24,
+      "explanation": "config/functions.json's size is analysis.decode_run(limit=0x400).bytes_ok, so it ran past the function end. The measured boundary comes from a chain walk in which every path terminates."
+    },
+    {
+      "name": "sub_0803D4E8",
+      "inventory_size": 596,
+      "measured_boundary": 56,
+      "explanation": "config/functions.json's size is analysis.decode_run(limit=0x400).bytes_ok, so it ran past the function end. The measured boundary comes from a chain walk in which every path terminates."
+    },
+    {
+      "name": "sub_0803D520",
+      "inventory_size": 540,
+      "measured_boundary": 40,
+      "explanation": "config/functions.json's size is analysis.decode_run(limit=0x400).bytes_ok, so it ran past the function end. The measured boundary comes from a chain walk in which every path terminates."
+    },
+    {
+      "name": "sub_0803D56A",
+      "inventory_size": 466,
+      "measured_boundary": 78,
+      "explanation": "config/functions.json's size is analysis.decode_run(limit=0x400).bytes_ok, so it ran past the function end. The measured boundary comes from a chain walk in which every path terminates."
+    },
+    {
+      "name": "sub_0803D5B8",
+      "inventory_size": 388,
+      "measured_boundary": 132,
+      "explanation": "config/functions.json's size is analysis.decode_run(limit=0x400).bytes_ok, so it ran past the function end. The measured boundary comes from a chain walk in which every path terminates."
+    },
+    {
+      "name": "sub_0803D63C",
+      "inventory_size": 256,
+      "measured_boundary": 214,
+      "explanation": "config/functions.json's size is analysis.decode_run(limit=0x400).bytes_ok, so it ran past the function end. The measured boundary comes from a chain walk in which every path terminates."
+    }
+  ],
+  "consistency_problems": [],
+  "counts": {
+    "probes": 8,
+    "thumb": 8,
+    "arm": 0,
+    "leaf": 6,
+    "non_leaf": 2,
+    "with_literal_load": 7,
+    "translation_units": 1
+  }
+}

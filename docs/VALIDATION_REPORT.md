@@ -476,6 +476,6 @@ discovered-but-useless toolchain could be reported as `COMPLETE` with a
 `REFUTED` fingerprint and exit code 0; the factual errors were the "620 bytes
 for `sub_0803D5B8`" claim (620 belongs to `sub_0803D4D0`) and "three confirmed
 ARM regions" (there are two). Its verdict was `SOUND WITH FIXES`. See
-[`COMPILER_PROBE.md`](COMPILER_PROBE.md) section 16 for the full list.
+[`COMPILER_PROBE.md`](COMPILER_PROBE.md) section 17 for the full list.
 
 After the fixes the probe suite is 76 tests and the full suite is 253, measured.

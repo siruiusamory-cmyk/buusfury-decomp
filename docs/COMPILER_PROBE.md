@@ -465,7 +465,7 @@ when `--write-manifest` or `--write-matrix` is passed explicitly, because a
 generated config file must be a deliberate act. A test runs the whole blocked
 harness and asserts the working tree is unchanged.
 
-### Self-verification
+## 15. Verifying the committed results
 
 `--verify-manifest` regenerates the entire manifest and compares **every** field,
 not a hand-picked subset, so a document whose `controls`, `rejections`,
@@ -484,7 +484,7 @@ environment-independent, so its blocked state is reproducible on any machine
 without ADS; on a machine **with** an identified ADS 1.2 the matrix must be
 regenerated, and `--verify-matrix` will say so.
 
-## 15. Tests
+## 16. Tests
 
 `tests/test_compiler_probe.py`, 76 tests, all passing. Portable and ROM-gated
 tests are deliberately separated; a missing ADS installation is a *passing*
@@ -519,7 +519,7 @@ Beyond the ticket's list, and directly from the independent review:
   declared ISA, confidence and executable state, and exactly two regions are
   ARM and confirmed.
 
-## 16. Independent review
+## 17. Independent review
 
 The implementation was frozen at commit `c6882ae` and put through an independent
 adversarial review whose method was its own, not this ticket's. It re-derived
@@ -553,7 +553,7 @@ same-named executable was accepted as ADS.
 The review's own verdict was **SOUND WITH FIXES**, with the boundary corpus
 described as reliable as committed. This revision is the response to that.
 
-## 17. Next ticket
+## 18. Next ticket
 
 If ADS 1.2 is supplied and three or more discriminating probe functions match
 byte-for-byte under one configuration, the next ticket is

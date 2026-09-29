@@ -237,7 +237,7 @@ from-scratch reachability fixpoint, and in-memory reconstruction of the manifest
 and matrix. It confirmed the eight boundaries, the exact 608-byte tiling, the
 absence of a ninth function, the shared four-word pool, the two inventory gaps
 and the call graph, and found one blocker and nine major defects which this
-revision fixes. `docs/COMPILER_PROBE.md` section 16 lists them. Its verdict was
+revision fixes. `docs/COMPILER_PROBE.md` section 17 lists them. Its verdict was
 `SOUND WITH FIXES`, with the boundary corpus itself described as reliable.
 
 ## 8. Reproducing this ticket

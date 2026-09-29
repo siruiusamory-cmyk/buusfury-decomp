@@ -28,6 +28,7 @@
     "unit_id": "handler2_tu",
     "code_extent": "0x08003CBE..0x08003CD4",
     "pool_extent": "0x08003F40..0x08003F44",
+    "has_literal_pool": true,
     "pool_is_adjacent_to_code": false,
     "pool_gap_bytes": 620,
     "alignment_padding_bytes": null,

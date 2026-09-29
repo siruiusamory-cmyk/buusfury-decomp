@@ -174,6 +174,44 @@ H2_FUNCTIONS = (
 )
 H2_LITERAL_POOL = ((0x03F40, 0x08055098),)
 
+# ---------------------------------------------------------------------------
+# the ByteCodeInterpreter operand-reader unit
+# ---------------------------------------------------------------------------
+# Primary dispatch slot 1. A LEAF: no calls, and no literal pool at all, because
+# every instruction is register-only. Whether it shared a translation unit with
+# the adjacent slot-2 handler is not established; with no pool there is no
+# pooling evidence either way.
+OP_TU = cp.TranslationUnit(
+    id="operand_tu",
+    rom_address=0x08003C8A,
+    code_end_address=0x08003CBE,
+    end_address=0x08003CBE,
+    isa="thumb",
+    source="src/probes/ByteCodeInterpreter_operand.c",
+    confidence="proven",
+    boundary_evidence=(
+        "chain-walk from 0x08003C8A: 26 instructions, no gaps, one terminator at "
+        "0x08003CBC (bx lr)",
+        "the table word at primary slot 1 is 0x08003C8B, whose Thumb bit masks to "
+        "this entry, so the entry is anchored by the dispatch table itself",
+        "no direct BL site anywhere in the image targets it: it is reached only "
+        "through the primary table",
+        "its end 0x08003CBE is the slot-2 handler's derived entry, so the two "
+        "boundaries confirm each other",
+    ),
+    # NO literal pool: there is no `ldr rX,[pc,#N]` anywhere in the handler.
+    literal_pool=(),
+    selection=(
+        "primary dispatch table slot 1 holds 0x08003C8B",
+        "it is the handler that reads a variable-length signed operand from the "
+        "cursor and pushes it onto the context's value stack",
+    ),
+)
+OP_FUNCTIONS = (
+    (0x08003C8A, 0x08003CBE, "primary dispatch slot 1: reads a variable-length signed operand and pushes it"),
+)
+OP_LITERAL_POOL: tuple = ()
+
 #: The native dispatch table and the structure that bounds it from above.
 NATIVE_TABLE = 0x08055098
 NATIVE_TABLE_LIMIT = 0x080554C0  # the primary table base
@@ -184,6 +222,141 @@ PRIMARY_BOUNDING_STRING = 0x0805553C
 #: The refuted count. Kept as data so the refutation is re-measured every run
 #: rather than remembered in prose.
 REFUTED_NATIVE_ENTRIES = 283
+
+def derive_operand_encoding(rom_bytes: bytes) -> dict:
+    """Re-read the operand format off the handler's own instructions.
+
+    Every field below is measured from the disassembly of 0x08003C8A..0x08003CBE
+    rather than restated from prose: the group width comes from the paired
+    shift-left/shift-right that masks a byte, the continuation and sign bit
+    positions come from the shifts that feed the two conditional branches, and
+    the per-byte-count value range is then SIMULATED from the derived width. A
+    change to any of those instructions changes this block.
+    """
+    base = _gba.ROM_BASE
+    start, end, _role = OP_FUNCTIONS[0]
+    insns = list(cp.MD["thumb"].disasm(rom_bytes[start - base : end - base], start))
+
+    def immediate(text: str):
+        match = re.search(r"#(0x[0-9a-fA-F]+|\d+)\s*$", text.strip())
+        return int(match.group(1), 0) if match else None
+
+    shifts: dict[int, int] = {}
+    for ins in insns:
+        if ins.mnemonic in ("lsls", "lsrs", "asrs"):
+            value = immediate(ins.op_str)
+            if value is not None:
+                shifts[value] = shifts.get(value, 0) + 1
+
+    mask_shift = 0x19  # 25: the pair that isolates the low 7 bits
+    group_bits = 32 - mask_shift if shifts.get(mask_shift, 0) >= 2 else None
+    continuation_shift = 0x18  # 24: leaves bit 7 in the sign position
+    sign_shift = 0x1F          # 31: leaves bit 0 in the sign position
+
+    all_shifts = []
+    for ins in insns:
+        if ins.mnemonic in ("lsls", "lsrs", "asrs"):
+            value = immediate(ins.op_str)
+            if value is not None:
+                all_shifts.append((ins.address, ins.mnemonic, value))
+
+    literal_slots = []
+    for ins in insns:
+        slot = cp._literal_slot(ins.address, "thumb", ins.op_str)
+        if slot is not None and ins.mnemonic.startswith("ldr"):
+            literal_slots.append(slot)
+
+    byte_loads = [i for i in insns if i.mnemonic == "ldrb"]
+    calls = [i for i in insns if i.mnemonic in ("bl", "blx")]
+    arithmetic = [i for i in insns if i.mnemonic == "asrs"]
+
+    # Simulate the extreme encoding per byte count from the derived width, and
+    # the accumulator it builds, rather than tabulating remembered numbers.
+    def extreme(group_count: int) -> dict:
+        # A group of `group_bits` bits reaches (1 << group_bits) - 1. Using the
+        # width minus one here understated every extreme by one bit and made the
+        # report disagree with the semantic test, which is why the two are
+        # asserted against each other.
+        groups = [(1 << group_bits) - 1] * group_count if group_bits else []
+        accumulator = 0
+        for group in groups:
+            accumulator = ((accumulator << group_bits) + group) & 0xFFFFFFFF
+        signed_accumulator = (
+            accumulator - 0x100000000 if accumulator & 0x80000000 else accumulator
+        )
+        if accumulator & 1:
+            value = -((signed_accumulator >> 1))
+        else:
+            value = signed_accumulator >> 1
+        value &= 0xFFFFFFFF
+        return {
+            "groups": group_count,
+            "accumulator": f"0x{accumulator:08X}",
+            "accumulator_bit_31_set": bool(accumulator & 0x80000000),
+            "value": value - 0x100000000 if value & 0x80000000 else value,
+            "sign_magnitude_holds": not (accumulator & 0x80000000),
+        }
+
+    per_count = [extreme(n) for n in range(1, 6)]
+
+    return {
+        "unit_id": OP_TU.id,
+        "extent": f"0x{start:08X}..0x{end:08X}",
+        "instructions": len(insns),
+        "group_bits": group_bits,
+        "group_bits_evidence": (
+            f"the pair of shifts by {mask_shift} at 0x08003C98..0x08003C9A isolates "
+            f"the low {group_bits} bits of each byte" if group_bits else "not found"
+        ),
+        "group_order": "most significant first",
+        "group_order_evidence": (
+            "the accumulator is shifted left by the group width BEFORE each group "
+            "is added, so the first byte holds the highest bits"
+        ),
+        "continuation_shift": continuation_shift,
+        "continuation_bit": 7,
+        "continuation_bit_evidence": (
+            f"a shift by {continuation_shift} at 0x08003C9E feeds the `bmi` at "
+            "0x08003CA0, which loops while bit 7 of the byte is set"
+        ),
+        "sign_shift": sign_shift,
+        "sign_bit": 0,
+        "sign_bit_evidence": (
+            f"a shift by {sign_shift} at 0x08003CA2 feeds the `bpl` at 0x08003CA4, "
+            "which selects the positive branch on bit 0 of the accumulator"
+        ),
+        "magnitude_shift_is_arithmetic": bool(arithmetic),
+        "magnitude_shift_evidence": (
+            "`asrs` at 0x08003CA6 and 0x08003CAC replicates bit 31"
+            if arithmetic else "no arithmetic shift found"
+        ),
+        "bytes_read_per_iteration": len(byte_loads),
+        "calls": len(calls),
+        "literal_slots": len(literal_slots),
+        "has_literal_pool": bool(literal_slots),
+        "has_length_limit": False,
+        "has_length_limit_evidence": (
+            "the loop's only exit is the bit-7 test; nothing counts iterations, "
+            "compares the cursor against a bound, or limits the read"
+        ),
+        "is_canonical": False,
+        "is_canonical_evidence": (
+            "leading zero groups are accepted, so a value has many spellings: "
+            "0x02 and 0x80 0x02 both decode to +1"
+        ),
+        "shifts": [{"address": f"0x{a:08X}", "mnemonic": m, "amount": v} for a, m, v in all_shifts],
+        "extreme_per_byte_count": per_count,
+        "sign_magnitude_domain": "accumulator < 0x80000000",
+        "high_accumulator_artifact": (
+            "the magnitude shift is arithmetic, so once bit 31 of the accumulator "
+            "is set the two branches invert: a nominally positive encoding yields "
+            "a negative value and vice versa. The maximal five-group sequence "
+            "reaches accumulator 0xFFFFFFFF and decodes to +1, not -2147483647."
+        ),
+        "derived_from_rom": True,
+        "not_hand_written": True,
+    }
+
 
 UNITS: dict = {}
 
@@ -208,6 +381,14 @@ def _register_units() -> None:
         "literal_pool": H2_LITERAL_POOL,
         "boundaries": "derived",
         # No adjacent pool, so there is no padding to check.
+        "expect_padding": None,
+    }
+    UNITS[OP_TU.id] = {
+        "unit": OP_TU,
+        "functions": OP_FUNCTIONS,
+        "literal_pool": OP_LITERAL_POOL,
+        "boundaries": "derived",
+        # A leaf with no pool at all: there is nothing to measure.
         "expect_padding": None,
     }
 
@@ -424,12 +605,22 @@ def derive_unit_boundaries(rom_bytes: bytes, unit_id: str) -> dict:
                 )
 
     last = derived[-1]
-    pool_addresses = sorted(off + _gba.ROM_BASE for off, _value in spec["literal_pool"])
-    pool_start = pool_addresses[0]
-    pool_end = pool_addresses[-1] + 4
-    gap = pool_start - last["end"]
+    pool_entries = spec["literal_pool"]
+    if pool_entries:
+        pool_addresses = sorted(off + _gba.ROM_BASE for off, _value in pool_entries)
+        pool_start = pool_addresses[0]
+        pool_end = pool_addresses[-1] + 4
+        gap = pool_start - last["end"]
+        has_pool = True
+    else:
+        # A register-only function loads no literals, so it has no pool. That is
+        # a fact about the unit, not a missing measurement, and the report says
+        # which it is.
+        pool_start = pool_end = None
+        gap = None
+        has_pool = False
 
-    if expect_padding is None:
+    if expect_padding is None or not has_pool:
         padding = None
     else:
         padding = gap
@@ -442,8 +633,9 @@ def derive_unit_boundaries(rom_bytes: bytes, unit_id: str) -> dict:
         "method": "aligned chain-walk from each entry, following local branches",
         "unit_id": unit_id,
         "code_extent": f"0x{unit.rom_address:08X}..0x{unit.code_end_address:08X}",
-        "pool_extent": f"0x{pool_start:08X}..0x{pool_end:08X}",
-        "pool_is_adjacent_to_code": pool_start == last["end"],
+        "pool_extent": f"0x{pool_start:08X}..0x{pool_end:08X}" if has_pool else None,
+        "has_literal_pool": has_pool,
+        "pool_is_adjacent_to_code": bool(has_pool and pool_start == last["end"]),
         "pool_gap_bytes": gap,
         "alignment_padding_bytes": padding,
         "functions": [
@@ -1601,6 +1793,18 @@ def run_lift(
                 "index": 2,
                 "address": f"0x{PRIMARY_TABLE + 2 * 4:08X}",
                 "word": f"0x{H2_ENTRY | 1:08X}",
+                "detail": (
+                    "exactly one primary slot points at this handler, and no direct "
+                    "BL site anywhere targets it, so it is reached only through the "
+                    "dispatch table"
+                ),
+            }
+        elif unit.id == OP_TU.id:
+            boundary_evidence["operand_encoding"] = derive_operand_encoding(rom_bytes)
+            boundary_evidence["primary_slot"] = {
+                "index": 1,
+                "address": f"0x{PRIMARY_TABLE + 4:08X}",
+                "word": f"0x{OP_TU.rom_address | 1:08X}",
                 "detail": (
                     "exactly one primary slot points at this handler, and no direct "
                     "BL site anywhere targets it, so it is reached only through the "

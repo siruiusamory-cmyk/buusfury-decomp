@@ -134,6 +134,18 @@ Matching means byte-identity of the produced ROM against
 - **A single-byte index makes an out-of-bounds read unreachable** when the table
   is at least 256 entries. Say that as a property of the encodings, not as an
   absent check.
+- **Never add validation the original lacks.** If the loop has no length limit,
+  reconstruct it without one and test the unbounded behaviour. Inventing a guard
+  changes the thing being reconstructed.
+- **A project nickname is not a ROM fact.** If a name is not a string in the
+  image, record it as a candidate alias and describe the mechanism from the
+  instructions instead.
+- **Cross-check every derived table against the executable test.** A group-width
+  error in the derivation once made the report claim -31 where the self-check
+  proved -63. Assert the two agree.
+- **Reproduce artifacts, do not repair them.** When arithmetic produces a value
+  the encoding "should not" give, reconstruct it exactly and record it; the
+  binary is the ground truth.
 - **Name context fields by offset and say what is unknown.** No opcode meaning
   may be imported from another LoG title, and a reconstruction should contain no
   `switch` over opcodes until one is proven.

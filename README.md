@@ -103,6 +103,34 @@ therefore cannot be imported. See
 [`docs/ADS12_SETUP.md`](docs/ADS12_SETUP.md) and
 [`docs/DECOMP_BASELINE.md`](docs/DECOMP_BASELINE.md#the-blocker).
 
+### Operand reader (DECOMP-LIFT-SCRIPT-SM7-001, measured 2026-09-29)
+
+Primary dispatch slot 1 at `0x08003C8A`, 52 bytes and 26 instructions, source at
+[`src/ByteCodeInterpreter_operand.c`](src/ByteCodeInterpreter_operand.c). It reads
+a variable-length operand from the cursor and pushes it onto the context's value
+stack. A **leaf**: no calls and no literal pool, so it needed no helper lifted with
+it.
+
+| Verdict | Result | Question it answers |
+| --- | --- | --- |
+| `SEMANTIC` | **PROVEN** | does it decode correctly? 42 assertions, 0 failures, exhaustive over every 1- and 2-byte input |
+| `MODERN_BUILD` | **PASS** | does it compile, link at `0x08003C8A` and emit bytes? 86 bytes |
+| `ADS_MATCH` | **BLOCKED** | does it reproduce the original compiler? `ADS12_LICENSE_UNAVAILABLE` |
+
+The format, read off the instructions: **big-endian base-128 sign-magnitude**.
+Bit 7 of each byte continues the sequence, bit 0 of the accumulator is the sign,
+and the magnitude is extracted with an **arithmetic** shift. 1 byte reaches ±63,
+2 ±8191, 3 ±1048575, 4 ±134217727. The encoding is **not canonical** (`0x02` and
+`0x80 0x02` are both +1) and there are **two zeros**. There is **no length limit
+and no validation**; the reconstruction adds none.
+
+The arithmetic shift means the sign inverts once accumulator bit 31 is set, so the
+maximal five-group sequence `FF FF FF FF 7F` decodes to **+1**, not -2147483647.
+That is the code's actual behaviour, reproduced exactly rather than corrected.
+
+**"sm7" is not a ROM string.** It is a project nickname, recorded as a candidate
+alias only. See [`docs/LIFT_OPERAND.md`](docs/LIFT_OPERAND.md).
+
 ### Script engine handler (DECOMP-LIFT-SCRIPT-HANDLER-001, measured 2026-09-29)
 
 The first opcode handler is lifted: **primary dispatch slot 2** at `0x08003CBE`,
@@ -203,18 +231,20 @@ python -m buusfury build     # assemble a ROM, with per-region provenance
 python -m buusfury lift      # semantic lifting loop: build + compare one family
 python -m buusfury rommap    # independent structural ROM map + function inventory
 python -m buusfury fixed     # generate the zero-toolchain fixed regions
-python -m pytest tests -q    # 370 tests
+python -m pytest tests -q    # 404 tests
 ```
 
 ## Scope
 
-This repository is at **DECOMP-LIFT-SCRIPT-HANDLER-001**. It carries the identity
-gate, the build model, the independent ROM map and the compiler probe, plus three
-lifted units - the GBARam allocator, the ByteCodeInterpreter dispatch loop, and its
-primary dispatch slot 2 - and the reusable loop that produced all three.
+This repository is at **DECOMP-LIFT-SCRIPT-SM7-001**. It carries the identity gate,
+the build model, the independent ROM map and the compiler probe, plus four lifted
+units - the GBARam allocator, the ByteCodeInterpreter dispatch loop, its primary
+dispatch slot 2, and its primary dispatch slot 1 - and the reusable loop that
+produced all four.
 
 `ADS_MATCH` remains blocked: the ADS 1.2 installed on this machine is unlicensed, and
 nothing here reduces that. The next work continues outward from the script engine; see
+[`docs/LIFT_OPERAND.md`](docs/LIFT_OPERAND.md#10-recommended-next-work),
 [`docs/LIFT_HANDLER2.md`](docs/LIFT_HANDLER2.md#9-recommended-next-work),
 [`docs/LIFT_SCRIPT.md`](docs/LIFT_SCRIPT.md#8-recommended-next-bytecodeinterpreter-work)
 and

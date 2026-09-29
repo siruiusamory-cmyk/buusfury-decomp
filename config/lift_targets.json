@@ -82,6 +82,26 @@
       },
       "role": "the handler that reaches the native dispatch table: consumes a one-byte native index and selects native[index]",
       "notes": "primary dispatch slot 2, entry 0x08003CBE, 22 bytes and 10 instructions. A separate translation unit from the interpreter: separate code and a separate literal pool at 0x08003F40, which four other primary handlers (slots 21-24) also load from. It is reached ONLY through the primary dispatch table, so a direct-call census correctly returns nothing. Handler 2 never writes r0, so the context is passed to the native routine unchanged; 10 of 12 sampled native routines read r0 before writing it, and none read r2, so r0 is the argument and the table base left in r2 is incidental. The native table has 266 entries, bounded below by the one-byte index (256 values must all be in range) and above by the primary table base at 0x080554C0; a prior 283-entry claim reaches 0x08055504, inside the primary table, and is refuted. No native routine is reconstructed and no native index is named."
+    },
+    {
+      "id": "operand",
+      "name": "ByteCodeInterpreter primary slot 1 (operand reader)",
+      "ticket": "DECOMP-LIFT-SCRIPT-SM7-001",
+      "translation_unit": "operand_tu",
+      "probe_translation_unit": "operand_tu",
+      "decomp_source": "src/ByteCodeInterpreter_operand.c",
+      "probe_source": "src/probes/ByteCodeInterpreter_operand.c",
+      "selftest_source": "src/probes/operand_selftest.c",
+      "semantic_minimum_checks": 42,
+      "host_build_bits": 32,
+      "compiler": {
+        "cpu": "arm7tdmi",
+        "isa": "thumb",
+        "optimization": "-O1",
+        "extra_flags": []
+      },
+      "role": "reads a variable-length sign-magnitude operand from the cursor and pushes it onto the context's value stack",
+      "notes": "primary dispatch slot 1, entry 0x08003C8A, 52 bytes and 26 instructions. A LEAF: no calls and NO literal pool, so it needed no helper and no pool stubbing. Its only entry is primary table word 0x08003C8B, and no direct BL site targets it. The encoding read off the instructions: big-endian base-128 groups, bit 7 of each byte continues the sequence, bit 0 of the accumulator is the sign and the rest is the magnitude, extracted with an arithmetic shift. 1 byte reaches -63, 2 -8191, 3 -1048575, 4 -134217727. There is NO length limit and no validation: the only exit is a byte with bit 7 clear. The arithmetic shift makes the sign invert once accumulator bit 31 is set, so the maximal five-group sequence 0xFF 0xFF 0xFF 0xFF 0x7F decodes to +1 rather than -2147483647; that is recorded as the code's actual behaviour and reproduced exactly, not corrected. The value is pushed at context+0x00 (a counter) and context+4+4*index, which proves the field the interpreter zeroes at 0x0800405C is a stack counter. 'sm7' is NOT a ROM string: it is a project nickname recorded as a candidate alias only."
     }
   ]
 }

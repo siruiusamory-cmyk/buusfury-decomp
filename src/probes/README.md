@@ -35,6 +35,11 @@ have been wasted.
 - `handler2_selftest.c` - 23 assertions driving the handler with recording native
   routines, including discriminators that separate a byte index from a word index.
   Exit 0 on success.
+- `ByteCodeInterpreter_operand.c` - shim for `src/ByteCodeInterpreter_operand.c`,
+  primary dispatch slot 1 at `0x08003C8A`.
+- `operand_selftest.c` - 42 assertions over the variable-length operand reader,
+  exhaustive across every 1-byte input and every valid 2-byte input. Exit 0 on
+  success.
 
 Both self-checks print the summary line `<STATUS>: <n> check(s), <m> failure(s)`,
 and the lift harness parses it, so the wording is load-bearing.

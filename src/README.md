@@ -14,6 +14,9 @@ Two function families are lifted here:
   `0x08003CBE`, the handler that reaches the native dispatch table. A separate
   translation unit from the interpreter: its literal pool is at `0x08003F40`
   rather than `0x08004158`. See `docs/LIFT_HANDLER2.md`.
+- **`src/ByteCodeInterpreter_operand.c`**, primary dispatch slot 1 at
+  `0x08003C8A`, the variable-length operand reader. A leaf with no calls and no
+  literal pool. See `docs/LIFT_OPERAND.md`.
 
 `docs/LIFT_LOOP.md` is how the next family is added.
 

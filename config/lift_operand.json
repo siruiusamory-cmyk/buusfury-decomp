@@ -1,0 +1,381 @@
+{
+  "schema": 1,
+  "ticket": "DECOMP-LIFT-SCRIPT-SM7-001",
+  "generated_by": "tools/buusfury/lift.py",
+  "source_sha1": "f1c4b07554d2a3b1ad2f325307051e775ce68087",
+  "target": {
+    "id": "operand",
+    "name": "ByteCodeInterpreter primary slot 1 (operand reader)",
+    "role": "reads a variable-length sign-magnitude operand from the cursor and pushes it onto the context's value stack",
+    "notes": "primary dispatch slot 1, entry 0x08003C8A, 52 bytes and 26 instructions. A LEAF: no calls and NO literal pool, so it needed no helper and no pool stubbing. Its only entry is primary table word 0x08003C8B, and no direct BL site targets it. The encoding read off the instructions: big-endian base-128 groups, bit 7 of each byte continues the sequence, bit 0 of the accumulator is the sign and the rest is the magnitude, extracted with an arithmetic shift. 1 byte reaches -63, 2 -8191, 3 -1048575, 4 -134217727. There is NO length limit and no validation: the only exit is a byte with bit 7 clear. The arithmetic shift makes the sign invert once accumulator bit 31 is set, so the maximal five-group sequence 0xFF 0xFF 0xFF 0xFF 0x7F decodes to +1 rather than -2147483647; that is recorded as the code's actual behaviour and reproduced exactly, not corrected. The value is pushed at context+0x00 (a counter) and context+4+4*index, which proves the field the interpreter zeroes at 0x0800405C is a stack counter. 'sm7' is NOT a ROM string: it is a project nickname recorded as a candidate alias only.",
+    "translation_unit": "operand_tu",
+    "rom_address": "0x08003C8A",
+    "file_offset": "0x003C8A",
+    "code_end_address": "0x08003CBE",
+    "end_address": "0x08003CBE",
+    "byte_length": 52,
+    "code_byte_length": 52,
+    "isa": "thumb",
+    "decomp_source": "src/ByteCodeInterpreter_operand.c",
+    "probe_source": "src/probes/ByteCodeInterpreter_operand.c",
+    "selftest_source": "src/probes/operand_selftest.c",
+    "semantic_minimum_checks": 42,
+    "host_build_bits": 32,
+    "original_sha1": "e845b62e5aea0d0d8f9349333dc073ebe02d197d"
+  },
+  "boundary_evidence": {
+    "method": "aligned chain-walk from each entry, following local branches",
+    "unit_id": "operand_tu",
+    "code_extent": "0x08003C8A..0x08003CBE",
+    "pool_extent": null,
+    "has_literal_pool": false,
+    "pool_is_adjacent_to_code": false,
+    "pool_gap_bytes": null,
+    "alignment_padding_bytes": null,
+    "functions": [
+      {
+        "start": "0x08003C8A",
+        "end": "0x08003CBE",
+        "size": 52,
+        "instructions": 26,
+        "role": "primary dispatch slot 1: reads a variable-length signed operand and pushes it",
+        "terminators": [
+          "0x08003CBC"
+        ],
+        "gaps": [],
+        "matches_expected": true
+      }
+    ],
+    "problems": [],
+    "derived_from_rom": true,
+    "not_hand_written": true,
+    "operand_encoding": {
+      "unit_id": "operand_tu",
+      "extent": "0x08003C8A..0x08003CBE",
+      "instructions": 26,
+      "group_bits": 7,
+      "group_bits_evidence": "the pair of shifts by 25 at 0x08003C98..0x08003C9A isolates the low 7 bits of each byte",
+      "group_order": "most significant first",
+      "group_order_evidence": "the accumulator is shifted left by the group width BEFORE each group is added, so the first byte holds the highest bits",
+      "continuation_shift": 24,
+      "continuation_bit": 7,
+      "continuation_bit_evidence": "a shift by 24 at 0x08003C9E feeds the `bmi` at 0x08003CA0, which loops while bit 7 of the byte is set",
+      "sign_shift": 31,
+      "sign_bit": 0,
+      "sign_bit_evidence": "a shift by 31 at 0x08003CA2 feeds the `bpl` at 0x08003CA4, which selects the positive branch on bit 0 of the accumulator",
+      "magnitude_shift_is_arithmetic": true,
+      "magnitude_shift_evidence": "`asrs` at 0x08003CA6 and 0x08003CAC replicates bit 31",
+      "bytes_read_per_iteration": 1,
+      "calls": 0,
+      "literal_slots": 0,
+      "has_literal_pool": false,
+      "has_length_limit": false,
+      "has_length_limit_evidence": "the loop's only exit is the bit-7 test; nothing counts iterations, compares the cursor against a bound, or limits the read",
+      "is_canonical": false,
+      "is_canonical_evidence": "leading zero groups are accepted, so a value has many spellings: 0x02 and 0x80 0x02 both decode to +1",
+      "shifts": [
+        {
+          "address": "0x08003C90",
+          "mnemonic": "lsls",
+          "amount": 7
+        },
+        {
+          "address": "0x08003C98",
+          "mnemonic": "lsls",
+          "amount": 25
+        },
+        {
+          "address": "0x08003C9A",
+          "mnemonic": "lsrs",
+          "amount": 25
+        },
+        {
+          "address": "0x08003C9E",
+          "mnemonic": "lsls",
+          "amount": 24
+        },
+        {
+          "address": "0x08003CA2",
+          "mnemonic": "lsls",
+          "amount": 31
+        },
+        {
+          "address": "0x08003CA6",
+          "mnemonic": "asrs",
+          "amount": 1
+        },
+        {
+          "address": "0x08003CAC",
+          "mnemonic": "asrs",
+          "amount": 1
+        },
+        {
+          "address": "0x08003CB4",
+          "mnemonic": "lsls",
+          "amount": 2
+        }
+      ],
+      "extreme_per_byte_count": [
+        {
+          "groups": 1,
+          "accumulator": "0x0000007F",
+          "accumulator_bit_31_set": false,
+          "value": -63,
+          "sign_magnitude_holds": true
+        },
+        {
+          "groups": 2,
+          "accumulator": "0x00003FFF",
+          "accumulator_bit_31_set": false,
+          "value": -8191,
+          "sign_magnitude_holds": true
+        },
+        {
+          "groups": 3,
+          "accumulator": "0x001FFFFF",
+          "accumulator_bit_31_set": false,
+          "value": -1048575,
+          "sign_magnitude_holds": true
+        },
+        {
+          "groups": 4,
+          "accumulator": "0x0FFFFFFF",
+          "accumulator_bit_31_set": false,
+          "value": -134217727,
+          "sign_magnitude_holds": true
+        },
+        {
+          "groups": 5,
+          "accumulator": "0xFFFFFFFF",
+          "accumulator_bit_31_set": true,
+          "value": 1,
+          "sign_magnitude_holds": false
+        }
+      ],
+      "sign_magnitude_domain": "accumulator < 0x80000000",
+      "high_accumulator_artifact": "the magnitude shift is arithmetic, so once bit 31 of the accumulator is set the two branches invert: a nominally positive encoding yields a negative value and vice versa. The maximal five-group sequence reaches accumulator 0xFFFFFFFF and decodes to +1, not -2147483647.",
+      "derived_from_rom": true,
+      "not_hand_written": true
+    },
+    "primary_slot": {
+      "index": 1,
+      "address": "0x080554C4",
+      "word": "0x08003C8B",
+      "detail": "exactly one primary slot points at this handler, and no direct BL site anywhere targets it, so it is reached only through the dispatch table"
+    }
+  },
+  "verdicts": {
+    "semantic": {
+      "status": "PROVEN",
+      "checks": 42,
+      "failures": 0,
+      "minimum_checks": 42,
+      "host_compiler": "MSVC cl.exe (32-bit)",
+      "detail": "42 behavioural assertions passed with 0 failures (minimum 42)",
+      "measures": "whether the reconstructed C behaves correctly, by RUNNING it"
+    },
+    "modern_build": {
+      "status": "PASS",
+      "detail": "compiled, linked at 0x08003C8A and emitted 86 bytes",
+      "measures": "whether the source compiles, links and emits bytes"
+    },
+    "ads_match": {
+      "status": "BLOCKED",
+      "code": "ADS12_LICENSE_UNAVAILABLE",
+      "detail": "an ARM Developer Suite 1.2 installation is present on this machine but the licence file it ships licenses a different product, so the ARM compilers cannot be run. No compile has been attempted and no configuration has been tested. The installation is located through ADS12_ROOT.",
+      "required_to_unblock": [
+        "a licensed ADS 1.2 installation, with ADS12_ROOT pointing at it",
+        "then: python -m buusfury compiler-probe --plan, then --matrix"
+      ],
+      "not_inferable_from_modern_build": true
+    }
+  },
+  "verdicts_are_independent": "SEMANTIC, MODERN_BUILD and ADS_MATCH answer different questions and none is evidence for another. A passing modern build says nothing about the original compiler; a passing semantic run only removes one class of error.",
+  "modern_build": {
+    "status": "PASS",
+    "toolchain": {
+      "family": "GNU Arm Embedded (devkitARM)",
+      "root": "<DEVKITARM>",
+      "prefix": "arm-none-eabi-",
+      "tools": {
+        "gcc": "<DEVKITARM>\\bin\\arm-none-eabi-gcc.exe",
+        "ld": "<DEVKITARM>\\bin\\arm-none-eabi-ld.exe",
+        "objcopy": "<DEVKITARM>\\bin\\arm-none-eabi-objcopy.exe",
+        "objdump": "<DEVKITARM>\\bin\\arm-none-eabi-objdump.exe",
+        "nm": "<DEVKITARM>\\bin\\arm-none-eabi-nm.exe"
+      }
+    },
+    "identity": {
+      "gcc_banner": "arm-none-eabi-gcc.exe (devkitARM) 16.1.0",
+      "gcc_version": "16.1.0",
+      "target_triple": "arm-none-eabi",
+      "binutils_banner": "GNU objdump (GNU Binutils) 2.46.0.20260210",
+      "compiler_family": "gcc",
+      "is_the_original_compiler": false,
+      "why_not": "the original translation unit was built by ARM Developer Suite 1.2 (the surviving command line names tcpp). GCC is a different compiler with a different code generator, so its output cannot establish anything about ADS 1.2."
+    },
+    "target_support": {
+      "supported": true,
+      "cpu": "arm7tdmi",
+      "instruction_set": "thumb",
+      "commands": [
+        "<DEVKITARM>\\bin\\arm-none-eabi-gcc.exe -c -mcpu=arm7tdmi -mthumb -O1 -ffreestanding -fno-common -fno-builtin -o <REPO>\\build\\lift\\operand\\toolchain-probe\\support_probe.o <REPO>\\build\\lift\\operand\\toolchain-probe\\support_probe.c"
+      ],
+      "disassembly": [
+        "adds r0, #1",
+        "bx lr"
+      ],
+      "detail": "compiled and disassembled a probe function for ARM7TDMI Thumb: 2 instruction(s), r0 written and a return present"
+    },
+    "compiler_configuration": {
+      "cpu": "arm7tdmi",
+      "instruction_set": "thumb",
+      "optimization": "-O1",
+      "extra_flags": []
+    },
+    "link_origin": "0x08003C8A",
+    "external_calls_bound_to_original_addresses": {},
+    "detail": "compiled, linked at 0x08003C8A and emitted 86 bytes",
+    "build": {
+      "ok": true,
+      "commands": [
+        "<DEVKITARM>\\bin\\arm-none-eabi-gcc.exe -c -mcpu=arm7tdmi -mthumb -O1 -ffreestanding -fno-common -fno-builtin -fomit-frame-pointer -mno-unaligned-access -o <REPO>\\build\\lift\\operand\\operand.o <REPO>\\src\\ByteCodeInterpreter_operand.c",
+        "<DEVKITARM>\\bin\\arm-none-eabi-gcc.exe -c -mcpu=arm7tdmi -mthumb -o <REPO>\\build\\lift\\operand\\operand_externs.o -x assembler-with-cpp <REPO>\\build\\lift\\operand\\operand_externs.s",
+        "<DEVKITARM>\\bin\\arm-none-eabi-gcc.exe -nostdlib -Wl,-T,<REPO>\\build\\lift\\operand\\operand.ld -Wl,-Map,<REPO>\\build\\lift\\operand\\operand.map -o <REPO>\\build\\lift\\operand\\operand.elf <REPO>\\build\\lift\\operand\\operand.o <REPO>\\build\\lift\\operand\\operand_externs.o",
+        "<DEVKITARM>\\bin\\arm-none-eabi-objcopy.exe -O binary -j .text -j .rodata <REPO>\\build\\lift\\operand\\operand.elf <REPO>\\build\\lift\\operand\\operand.bin"
+      ],
+      "produced_byte_length": 86,
+      "symbols": {
+        "sub_08003C8A": {
+          "address": "0x08003C8A",
+          "size": 86
+        }
+      },
+      "diagnostics": ""
+    }
+  },
+  "functions": [
+    {
+      "name": "sub_08003C8A",
+      "role": "primary dispatch slot 1: reads a variable-length signed operand and pushes it",
+      "original": {
+        "start": "0x08003C8A",
+        "end": "0x08003CBE",
+        "size": 52,
+        "isa": "thumb",
+        "instructions": 26,
+        "first_instruction": "push {r4}",
+        "calls": [],
+        "literal_slots": [],
+        "returns": 1,
+        "leaf": true,
+        "abi": {
+          "callee_saved_pushed": [
+            "r4"
+          ],
+          "frame_size_bytes": 0,
+          "written_registers": [
+            "r0",
+            "r1",
+            "r2",
+            "r3",
+            "r4"
+          ]
+        }
+      },
+      "modern": {
+        "start": "0x08003C8A",
+        "end": "0x08003CE0",
+        "size": 86,
+        "isa": "thumb",
+        "instructions": 43,
+        "first_instruction": "push {r4, r5, r6, lr}",
+        "calls": [],
+        "literal_slots": [],
+        "returns": 1,
+        "leaf": true,
+        "abi": {
+          "callee_saved_pushed": [
+            "r4",
+            "r5",
+            "r6"
+          ],
+          "frame_size_bytes": 0,
+          "written_registers": [
+            "r0",
+            "r1",
+            "r2",
+            "r3",
+            "r4",
+            "r5",
+            "r6"
+          ]
+        }
+      },
+      "modern_symbol_present": true,
+      "delta": {
+        "size_bytes": 34,
+        "instructions": 17,
+        "returns": 0,
+        "calls": 0,
+        "literal_slots": 0
+      },
+      "same_extent": false,
+      "byte_identical": false
+    }
+  ],
+  "literal_pools": {
+    "original": {
+      "distinct_slots": 0,
+      "contiguous_runs": [],
+      "run_count": 0,
+      "shared_pool": false,
+      "shared_pool_applicable": false,
+      "declared_pool": [
+        "0x08003CBE",
+        "0x08003CBE"
+      ],
+      "declared_slots": [],
+      "declared_slots_used": [],
+      "all_referenced_slots_are_declared": true,
+      "all_declared_slots_are_referenced": true,
+      "undeclared_slots": [],
+      "functions_reaching_it": 0
+    },
+    "modern": {
+      "distinct_slots": 0,
+      "contiguous_runs": [],
+      "run_count": 0,
+      "shared_pool": true,
+      "functions_reaching_a_pool": 0
+    },
+    "interpretation": "the original's literals are accounted for by the words the unit declares; the modern build pools differently, which is a structural consequence of the compiler rather than a defect in the reconstruction. It is also why a function with a literal load cannot be compared standalone.",
+    "is_a_match_claim": false
+  },
+  "comparison": {
+    "original_byte_length": 52,
+    "modern_byte_length": 86,
+    "overlap_byte_length": 52,
+    "differing_bytes_in_overlap": 50,
+    "matching_bytes_in_overlap": 2,
+    "original_only_bytes": 0,
+    "modern_only_bytes": 34,
+    "original_instruction_spans": 26,
+    "matching_instruction_spans": 0,
+    "differing_instruction_spans": 26,
+    "bytes_not_covered_by_an_original_instruction": 0,
+    "byte_identical": false,
+    "is_a_match_claim": false,
+    "match_claim_note": "MEASUREMENT ONLY. This compares a modern GCC build against the cartridge. A modern compiler is not the original compiler, so a difference here is expected and proves nothing; an identity here would also prove nothing about ADS 1.2. ADS_MATCH stays BLOCKED."
+  },
+  "semantic_check": {
+    "status": "PROVEN",
+    "checks": 42,
+    "failures": 0,
+    "minimum_checks": 42,
+    "host_compiler": "MSVC cl.exe (32-bit)",
+    "host_build_bits": 32,
+    "detail": "42 behavioural assertions passed with 0 failures (minimum 42)",
+    "output": "PASS: 42 check(s), 0 failure(s)\n"
+  }
+}

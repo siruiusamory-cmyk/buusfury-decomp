@@ -28,6 +28,7 @@
     "unit_id": "bci_tu",
     "code_extent": "0x08004038..0x08004158",
     "pool_extent": "0x08004158..0x0800419C",
+    "has_literal_pool": true,
     "pool_is_adjacent_to_code": false,
     "pool_gap_bytes": 2,
     "alignment_padding_bytes": 2,

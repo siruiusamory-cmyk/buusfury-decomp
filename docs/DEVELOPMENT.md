@@ -161,6 +161,15 @@ Matching means byte-identity of the produced ROM against
   the lifted consumer cannot show operand order; the convention comes from the
   sibling's subtract, and the report names the sibling rather than asserting the
   order as if it had been observed.
+- **Adding a target must not restate an earlier one.** A registry `notes` string
+  feeds that target's committed report, so editing it changes the report even
+  though no measurement moved. Restore the previous wording byte-for-byte and
+  pin it with a test; a ticket that adds a family member does not own its
+  sibling's prose.
+- **Derive a family across units, not just within one.** The arithmetic
+  derivation re-reads all three members from the ROM even though they live in two
+  translation units, so the shared contract comes from the image rather than from
+  the siblings being assumed alike.
 - **Name context fields by offset and say what is unknown.** No opcode meaning
   may be imported from another LoG title, and a reconstruction should contain no
   `switch` over opcodes until one is proven.

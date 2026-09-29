@@ -20,6 +20,9 @@ Two function families are lifted here:
 - **`src/ByteCodeInterpreter_stack.c`**, primary dispatch slot 7 at
   `0x08003D3E`, the first consumer of the value stack: it pops the top value and
   adds it to the new top in place. See `docs/LIFT_STACK.md`.
+- **`src/ByteCodeInterpreter_arith.c`**, primary dispatch slots 8 and 9 at
+  `0x08003D52` and `0x08003D66`, completing the arithmetic family with a subtract
+  and a multiply. See `docs/LIFT_ARITH.md`.
 
 `docs/LIFT_LOOP.md` is how the next family is added.
 

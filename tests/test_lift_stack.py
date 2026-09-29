@@ -38,8 +38,12 @@ def test_the_stack_minimum_is_a_real_floor():
     assert lift.get_target("stack").semantic_minimum_checks <= source.count("check(")
 
 
-def test_all_five_targets_remain_registered():
-    assert [t.id for t in lift.load_targets()] == ["gbaram", "bci", "handler2", "operand", "stack"]
+def test_all_earlier_targets_remain_registered():
+    """Checked as a subset so that adding a target never requires editing an
+    earlier ticket's test."""
+    ids = [t.id for t in lift.load_targets()]
+    for earlier in ("gbaram", "bci", "handler2", "operand", "stack"):
+        assert earlier in ids, earlier
 
 
 # ---------------------------------------------------------------------------

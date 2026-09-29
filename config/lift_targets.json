@@ -122,6 +122,26 @@
       },
       "role": "the first consumer of the value stack: pops the top value, adds it to the new top in place, and leaves the sum in the lower slot",
       "notes": "primary dispatch slot 7, entry 0x08003D3E, 20 bytes and 10 instructions. The smallest function in the image holding the value-stack pop idiom, and a leaf with no calls and no literal pool. 84 functions in the VM surface contain the idiom (111 pops total; 69 native, 15 primary), so this is one of a family, but only this one is lifted. It consumes two values and produces one, a net counter delta of -1, and the result is written to the LOWER operand slot values[count-2] while the upper slot is abandoned rather than cleared. The counter is written back BEFORE the operand reads, which the underflow proves. There is NO underflow check: a zero counter becomes 0xFFFFFFFF, the slot address becomes context-4, and the handler decrements the word immediately BELOW the context object while touching no value slot; successive underflows walk the base four bytes further down each time. That is recorded as actual behaviour and reproduced exactly, including the 32-bit address wrap the modelling depends on. The operand order values[count-2] <op> values[count-1] is not observable in this handler because addition is commutative; it is established by the sibling at primary slot 8 (0x08003D52), which shares the first eight instructions and performs `subs r1, r2, r1`. Slots 8 and 9 are NOT lifted. No opcode table is reconstructed and no opcode index is named."
+    },
+    {
+      "id": "arith",
+      "name": "ByteCodeInterpreter value-stack arithmetic (primary slots 8 and 9)",
+      "ticket": "DECOMP-LIFT-SCRIPT-ARITH-001",
+      "translation_unit": "arith_tu",
+      "probe_translation_unit": "arith_tu",
+      "decomp_source": "src/ByteCodeInterpreter_arith.c",
+      "probe_source": "src/probes/ByteCodeInterpreter_arith.c",
+      "selftest_source": "src/probes/arith_selftest.c",
+      "semantic_minimum_checks": 45,
+      "host_build_bits": 32,
+      "compiler": {
+        "cpu": "arm7tdmi",
+        "isa": "thumb",
+        "optimization": "-O1",
+        "extra_flags": []
+      },
+      "role": "the rest of the value-stack arithmetic family: slot 8 subtracts the top from the deeper value, slot 9 multiplies them",
+      "notes": "primary dispatch slots 8 (0x08003D52) and 9 (0x08003D66), 20 bytes and 10 instructions each, mutually adjacent and adjacent to slot 7 which is lifted separately so its report stays reproducible. Both are leaves: no calls and no literal pool. The three tile 0x08003D3E..0x08003D7A and differ in exactly one instruction - `adds r1, r2, r1`, `subs r1, r2, r1`, `muls r2, r1, r2`. Slot 8 is the member that proves the operand order for the whole family, because addition and multiplication are commutative: `subs r1, r2, r1` computes r2 - r1, r2 holds the lower slot and r1 the top, so the shared contract is `deeper = FIRST source, top = SECOND source`. Note slot 9's combining instruction writes r2 rather than r1, so its store is `str r2,[r0]` where the others store r1; the result register differs but the slot written and the contract do not. All three are plain 32-bit operations with no saturation and no overflow branch, so `muls` keeps only the low half of a 64-bit product. There is NO underflow check in any member: a zero counter becomes 0xFFFFFFFF and the arithmetic runs against the word immediately below the context object - slot 8 INCREMENTS it (deeper - 0xFFFFFFFF = deeper + 1) and slot 9 replaces it with its own negation (0xFFFFFFFF * deeper = -deeper) - while no value slot is touched, and successive underflows walk four bytes further down. Reproduced exactly, with no guard added. No opcode table is reconstructed and no opcode index is given a name beyond the operation its own instruction performs."
     }
   ]
 }

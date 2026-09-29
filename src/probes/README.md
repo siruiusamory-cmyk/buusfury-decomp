@@ -47,6 +47,11 @@ have been wasted.
   host context carries real storage BELOW the counter, because an underflowing
   pop writes there and the walk has to be observable and bounded. Exit 0 on
   success.
+- `ByteCodeInterpreter_arith.c` - shim for `src/ByteCodeInterpreter_arith.c`,
+  primary dispatch slots 8 and 9.
+- `arith_selftest.c` - 45 assertions over both arithmetic handlers: an exhaustive
+  65,536-pair sweep each, an antisymmetry sweep proving operand order, and the
+  underflow results for each. Exit 0 on success.
 
 Both self-checks print the summary line `<STATUS>: <n> check(s), <m> failure(s)`,
 and the lift harness parses it, so the wording is load-bearing.

@@ -251,6 +251,52 @@ STACK_LITERAL_POOL: tuple = ()
 #: The siblings that share the shape and differ in the combining instruction.
 STACK_SIBLING_SLOTS = (8, 9)
 
+# ---------------------------------------------------------------------------
+# the rest of the value-stack arithmetic family
+# ---------------------------------------------------------------------------
+# Primary dispatch slots 8 and 9. Slot 7 lives in its own unit at
+# src/ByteCodeInterpreter_stack.c and is NOT touched here, so its committed
+# report stays reproducible. The three tile 0x08003D3E..0x08003D7A at twenty
+# bytes each.
+ARITH_ENTRY = 0x08003D52
+ARITH_TU = cp.TranslationUnit(
+    id="arith_tu",
+    rom_address=0x08003D52,
+    code_end_address=0x08003D7A,
+    end_address=0x08003D7A,
+    isa="thumb",
+    source="src/probes/ByteCodeInterpreter_arith.c",
+    confidence="proven",
+    boundary_evidence=(
+        "chain-walk from 0x08003D52: 10 instructions, no gaps, one terminator at "
+        "0x08003D64 (bx lr)",
+        "chain-walk from 0x08003D66: 10 instructions, no gaps, one terminator at "
+        "0x08003D78 (bx lr)",
+        "the table words at primary slots 8 and 9 are 0x08003D53 and 0x08003D67, "
+        "whose Thumb bits mask to these entries",
+        "no direct BL site anywhere in the image targets either entry",
+    ),
+    literal_pool=(),
+    selection=(
+        "primary dispatch table slots 8 and 9 hold 0x08003D53 and 0x08003D67",
+        "they are the other two members of the 20-byte arithmetic trio whose "
+        "third member is slot 7, already lifted",
+        "slot 8's subtraction is what proves the operand order for the whole "
+        "family, because addition and multiplication are commutative",
+    ),
+)
+ARITH_FUNCTIONS = (
+    (0x08003D52, 0x08003D66, "primary dispatch slot 8: subtract the top from the deeper value"),
+    (0x08003D66, 0x08003D7A, "primary dispatch slot 9: multiply the top and the deeper value"),
+)
+ARITH_LITERAL_POOL: tuple = ()
+#: The three members of the family, in slot order, with the unit each lives in.
+ARITH_FAMILY = (
+    (7, STACK_TU.id, 0),
+    (8, ARITH_TU.id, 0),
+    (9, ARITH_TU.id, 1),
+)
+
 #: Offsets the pop idiom proves, in bytes from the context.
 VALUE_STACK_COUNT_OFFSET = 0
 VALUE_STACK_VALUES_OFFSET = 4
@@ -422,17 +468,18 @@ def _thumb_dst(ins):
     return None
 
 
-def derive_stack_consumer(rom_bytes: bytes) -> dict:
-    """Re-read the value-stack access off the consumer's own instructions.
+def derive_stack_consumer(rom_bytes: bytes, unit_id: str | None = None, function_index: int = 0) -> dict:
+    """Re-read the value-stack access off a consumer's own instructions.
 
-    The pop shape is matched step by step against the ten instructions the ROM
-    holds at this entry, and each matched step is reported with its address. The
+    The pop shape is matched step by step against the instructions the ROM holds
+    at that entry, and each matched step is reported with its address. The
     combining instruction is read out of the stream rather than named, and the
-    siblings are read the same way to establish the operand order that a
-    commutative add cannot show.
+    siblings are read the same way to establish the operand order.
     """
+    unit_id = unit_id or STACK_TU.id
+    spec = UNITS[unit_id]
     base = _gba.ROM_BASE
-    start, end, _role = STACK_FUNCTIONS[0]
+    start, end, _role = spec["functions"][function_index]
     insns = list(cp.MD["thumb"].disasm(rom_bytes[start - base : end - base], start))
 
     def at(index):
@@ -620,9 +667,94 @@ def _register_units() -> None:
         "boundaries": "derived",
         "expect_padding": None,
     }
+    UNITS[ARITH_TU.id] = {
+        "unit": ARITH_TU,
+        "functions": ARITH_FUNCTIONS,
+        "literal_pool": ARITH_LITERAL_POOL,
+        "boundaries": "derived",
+        "expect_padding": None,
+    }
 
 
 _register_units()
+
+
+def derive_arith_family(rom_bytes: bytes) -> dict:
+    """Derive the whole value-stack arithmetic family from the ROM.
+
+    All three members are re-read here regardless of which unit they live in, so
+    the shared contract and the operand order are established from the image
+    rather than from the sibling relationship being asserted. Slot 8's
+    subtraction is the member that makes the order observable.
+    """
+    rows = []
+    for slot, unit_id, index in ARITH_FAMILY:
+        shape = derive_stack_consumer(rom_bytes, unit_id, index)
+        rows.append({
+            "slot": slot,
+            "entry": shape["extent"].split("..")[0],
+            "extent": shape["extent"],
+            "instructions": shape["instructions"],
+            "operation": shape["operation"],
+            "pop_shape_matched": shape["pop_shape_matched"],
+            "consumes": shape["consumes"],
+            "produces": shape["produces"],
+            "net_counter_delta": shape["net_counter_delta"],
+            "result_slot": shape["result_slot"],
+            "upper_slot": shape["upper_slot"],
+            "counter_written_before_operand_reads": shape["counter_written_before_operand_reads"],
+            "reads_cursor_slot": shape["reads_cursor_slot"],
+            "has_underflow_check": shape["has_underflow_check"],
+            "calls": shape["calls"],
+            "literal_slots": shape["literal_slots"],
+            "deeper_operand_is_first_source": shape["deeper_operand_is_first_source"],
+        })
+
+    # The order is proven by whichever member is not commutative. Read the
+    # mnemonic rather than naming a slot, so this stays honest if the image
+    # changes.
+    order_proof = []
+    for row in rows:
+        mnemonic = (row["operation"] or "").split(" ")[0]
+        if mnemonic in ("subs", "sub", "rsbs", "rsb"):
+            order_proof.append({
+                "slot": row["slot"],
+                "operation": row["operation"],
+                "why": (
+                    "subtraction is not commutative, so the two source registers "
+                    "fix which stack slot is the left operand"
+                ),
+                "deeper_operand_is_first_source": row["deeper_operand_is_first_source"],
+            })
+
+    return {
+        "unit_ids": sorted({unit_id for _slot, unit_id, _index in ARITH_FAMILY}),
+        "members": rows,
+        "member_count": len(rows),
+        "all_shapes_matched": all(row["pop_shape_matched"] for row in rows),
+        "shared_contract": {
+            "count_offset": VALUE_STACK_COUNT_OFFSET,
+            "values_offset": VALUE_STACK_VALUES_OFFSET,
+            "entry_size_bytes": VALUE_STACK_ENTRY_SIZE,
+            "consumes": 2,
+            "produces": 1,
+            "net_counter_delta": -1,
+            "result_slot": "values[count-2], the LOWER of the two operands",
+            "upper_slot": "abandoned above the new counter, not cleared",
+            "counter_written_before_operand_reads": True,
+            "operand_order": "deeper value is the FIRST source, top value is the SECOND",
+        },
+        "operand_order_proven_by": order_proof,
+        "operand_order_directly_proven": bool(order_proof),
+        "commuting_members": [
+            row["slot"] for row in rows
+            if (row["operation"] or "").split(" ")[0] in ("adds", "add", "muls", "mul", "ands", "orrs", "eors")
+        ],
+        "calls_across_family": sum(row["calls"] for row in rows),
+        "literals_across_family": sum(row["literal_slots"] for row in rows),
+        "derived_from_rom": True,
+        "not_hand_written": True,
+    }
 
 
 def derive_native_table(rom_bytes: bytes) -> dict:
@@ -2051,6 +2183,19 @@ def run_lift(
                     "BL site anywhere targets it"
                 ),
             }
+        elif unit.id == ARITH_TU.id:
+            boundary_evidence["value_stack_access"] = derive_stack_consumer(
+                rom_bytes, ARITH_TU.id, 0
+            )
+            boundary_evidence["arith_family"] = derive_arith_family(rom_bytes)
+            boundary_evidence["primary_slots"] = [
+                {
+                    "index": slot,
+                    "entry": f"0x{(PRIMARY_TABLE and 0) or entry:08X}",
+                    "detail": "one primary slot each; no direct BL site targets either",
+                }
+                for slot, entry in ((8, ARITH_FUNCTIONS[0][0]), (9, ARITH_FUNCTIONS[1][0]))
+            ]
     else:
         boundary_evidence = {
             "method": "config/compiler_probes.json, derived and verified there",

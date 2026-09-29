@@ -103,6 +103,28 @@ therefore cannot be imported. See
 [`docs/ADS12_SETUP.md`](docs/ADS12_SETUP.md) and
 [`docs/DECOMP_BASELINE.md`](docs/DECOMP_BASELINE.md#the-blocker).
 
+### Value-stack arithmetic (DECOMP-LIFT-SCRIPT-ARITH-001, measured 2026-09-29)
+
+Slots **8** (`0x08003D52`) and **9** (`0x08003D66`) complete the arithmetic family
+begun by slot 7, source at
+[`src/ByteCodeInterpreter_arith.c`](src/ByteCodeInterpreter_arith.c). 20 bytes and
+10 instructions each.
+
+| Verdict | Result | Question it answers |
+| --- | --- | --- |
+| `SEMANTIC` | **PROVEN** | do they pop correctly? 45 assertions, 0 failures |
+| `MODERN_BUILD` | **PASS** | do they compile, link at `0x08003D52` and emit bytes? 40 bytes |
+| `ADS_MATCH` | **BLOCKED** | does it reproduce the original compiler? `ADS12_LICENSE_UNAVAILABLE` |
+
+The three members tile `0x08003D3E..0x08003D7A` and differ in one instruction:
+`adds r1,r2,r1`, `subs r1,r2,r1`, `muls r2,r1,r2`. **Operand order is now proven
+directly** rather than by sibling inference: subtraction is not commutative, and
+`subs r1, r2, r1` shows the deeper value is the **first** source and the top the
+**second**. The shared contract - pop two, produce one, delta count -1, result in
+the **lower** slot, counter written before the reads, **no underflow check** - is
+derived from the ROM for all three. Slot 7's report is **byte-identical** to
+before this ticket. See [`docs/LIFT_ARITH.md`](docs/LIFT_ARITH.md).
+
 ### Value-stack consumer (DECOMP-LIFT-SCRIPT-STACK-001, measured 2026-09-29)
 
 The first **consumer** of the interpreter's value stack: primary dispatch slot 7 at
@@ -145,8 +167,8 @@ it.
 
 The format, read off the instructions: **big-endian base-128 sign-magnitude**.
 Bit 7 of each byte continues the sequence, bit 0 of the accumulator is the sign,
-and the magnitude is extracted with an **arithmetic** shift. 1 byte reaches ±63,
-2 ±8191, 3 ±1048575, 4 ±134217727. The encoding is **not canonical** (`0x02` and
+and the magnitude is extracted with an **arithmetic** shift. 1 byte reaches Â±63,
+2 Â±8191, 3 Â±1048575, 4 Â±134217727. The encoding is **not canonical** (`0x02` and
 `0x80 0x02` are both +1) and there are **two zeros**. There is **no length limit
 and no validation**; the reconstruction adds none.
 
@@ -257,16 +279,16 @@ python -m buusfury build     # assemble a ROM, with per-region provenance
 python -m buusfury lift      # semantic lifting loop: build + compare one family
 python -m buusfury rommap    # independent structural ROM map + function inventory
 python -m buusfury fixed     # generate the zero-toolchain fixed regions
-python -m pytest tests -q    # 437 tests
+python -m pytest tests -q    # 467 tests
 ```
 
 ## Scope
 
-This repository is at **DECOMP-LIFT-SCRIPT-STACK-001**. It carries the identity
-gate, the build model, the independent ROM map and the compiler probe, plus five
+This repository is at **DECOMP-LIFT-SCRIPT-ARITH-001**. It carries the identity
+gate, the build model, the independent ROM map and the compiler probe, plus six
 lifted units - the GBARam allocator, the ByteCodeInterpreter dispatch loop, its
-primary dispatch slots 2 and 1, and its first value-stack consumer - and the
-reusable loop that produced all five.
+primary dispatch slots 2 and 1, its first value-stack consumer, and the rest of
+the value-stack arithmetic family - and the reusable loop that produced all six.
 
 `ADS_MATCH` remains blocked: the ADS 1.2 installed on this machine is unlicensed, and
 nothing here reduces that. The next work continues outward from the script engine; see

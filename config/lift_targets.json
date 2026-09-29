@@ -142,6 +142,26 @@
       },
       "role": "the rest of the value-stack arithmetic family: slot 8 subtracts the top from the deeper value, slot 9 multiplies them",
       "notes": "primary dispatch slots 8 (0x08003D52) and 9 (0x08003D66), 20 bytes and 10 instructions each, mutually adjacent and adjacent to slot 7 which is lifted separately so its report stays reproducible. Both are leaves: no calls and no literal pool. The three tile 0x08003D3E..0x08003D7A and differ in exactly one instruction - `adds r1, r2, r1`, `subs r1, r2, r1`, `muls r2, r1, r2`. Slot 8 is the member that proves the operand order for the whole family, because addition and multiplication are commutative: `subs r1, r2, r1` computes r2 - r1, r2 holds the lower slot and r1 the top, so the shared contract is `deeper = FIRST source, top = SECOND source`. Note slot 9's combining instruction writes r2 rather than r1, so its store is `str r2,[r0]` where the others store r1; the result register differs but the slot written and the contract do not. All three are plain 32-bit operations with no saturation and no overflow branch, so `muls` keeps only the low half of a 64-bit product. There is NO underflow check in any member: a zero counter becomes 0xFFFFFFFF and the arithmetic runs against the word immediately below the context object - slot 8 INCREMENTS it (deeper - 0xFFFFFFFF = deeper + 1) and slot 9 replaces it with its own negation (0xFFFFFFFF * deeper = -deeper) - while no value slot is touched, and successive underflows walk four bytes further down. Reproduced exactly, with no guard added. No opcode table is reconstructed and no opcode index is given a name beyond the operation its own instruction performs."
+    },
+    {
+      "id": "use",
+      "name": "ByteCodeInterpreter surviving-value consumer (native entry 29)",
+      "ticket": "DECOMP-LIFT-SCRIPT-USE-001",
+      "translation_unit": "use_tu",
+      "probe_translation_unit": "use_tu",
+      "decomp_source": "src/ByteCodeInterpreter_use.c",
+      "probe_source": "src/probes/ByteCodeInterpreter_use.c",
+      "selftest_source": "src/probes/use_selftest.c",
+      "semantic_minimum_checks": 32,
+      "host_build_bits": 32,
+      "compiler": {
+        "cpu": "arm7tdmi",
+        "isa": "thumb",
+        "optimization": "-O1",
+        "extra_flags": []
+      },
+      "role": "pop one value and pass it to a call, with a global field as the other argument",
+      "notes": "native dispatch entry 29, code address 0x080007E6, 24 bytes and 11 instructions, one terminator at 0x080007FC. A mechanical scan of both proven dispatch tables found 52 functions that pop a stack value and do NOT write a result back into the slot; this is the smallest of them, with one pop, one call, one literal and no branches. It is the first routine in the target chain that turns a surviving stack value into an actual use: it decrements the counter, reads values[count-1], and passes that value as the SECOND argument (r1) to sub_08004380, with the FIRST argument (r0) being the +0x14 field of the object at the routine's only literal 0x08054FBC. Nothing is written back to the stack, so the consumed slot keeps its old value and no result replaces it, which is what distinguishes it from the arithmetic family. Ordering is proven by the self-check reading the counter from inside the callee: the counter store precedes the value read, which precedes the call. UNDERFLOW IS HARMLESS TO MEMORY here, unlike the arithmetic family: a zero counter becomes 0xFFFFFFFF, the base becomes context-4, and [slot+4] is therefore context itself, so the value passed on underflow is the brand-new counter 0xFFFFFFFF; because the routine has no store to the slot, nothing below the context is read or written. A second underflow walks the base down and reads pre[3] instead. No guard was added. The callee is declared, not reconstructed, and no meaning is imported from another title."
     }
   ]
 }

@@ -290,7 +290,6 @@ ARITH_FUNCTIONS = (
     (0x08003D66, 0x08003D7A, "primary dispatch slot 9: multiply the top and the deeper value"),
 )
 ARITH_LITERAL_POOL: tuple = ()
-#: The three members of the family, in slot order, with the unit each lives in.
 ARITH_FAMILY = (
     (7, STACK_TU.id, 0),
     (8, ARITH_TU.id, 0),
@@ -627,6 +626,44 @@ def derive_stack_consumer(rom_bytes: bytes, unit_id: str | None = None, function
     }
 
 
+# ---------------------------------------------------------------------------
+# the first consumer of a surviving value for a non-stack side effect
+# ---------------------------------------------------------------------------
+# Native dispatch entry 29. The smallest of the 52 functions that pop a value and
+# do NOT write a result back into the slot.
+USE_ENTRY = 0x080007E6
+USE_TU = cp.TranslationUnit(
+    id="use_tu",
+    rom_address=0x080007E6,
+    code_end_address=0x080007FE,
+    end_address=0x080007FE,
+    isa="thumb",
+    source="src/probes/ByteCodeInterpreter_use.c",
+    confidence="proven",
+    boundary_evidence=(
+        "chain-walk from 0x080007E6: 11 instructions, no gaps, one terminator at "
+        "0x080007FC (pop {r3,pc})",
+        "the native table entry 29 holds 0x080007E7, whose Thumb bit masks to this "
+        "entry",
+        "it is the smallest of the 52 scanned functions that read a stack value "
+        "without writing a replacement back into the slot",
+    ),
+    # NOT adjacent: the pool sits at 0x080008D8, 0xDA bytes past the code end.
+    literal_pool=((0x0008D8, 0x08054FBC),),
+    selection=(
+        "native dispatch table entry 29 holds 0x080007E7",
+        "it pops one value and passes it to a call without writing anything back "
+        "to the stack, so it is a genuine surviving-value consumer",
+        "it is reachable through the proven chain interpreter -> primary slot 2 -> "
+        "native table, and its call is the only fully observable use at this size",
+    ),
+)
+USE_FUNCTIONS = (
+    (0x080007E6, 0x080007FE, "native dispatch entry 29: pop a value and pass it to a call"),
+)
+USE_LITERAL_POOL = ((0x0008D8, 0x08054FBC),)
+
+
 UNITS: dict = {}
 
 
@@ -671,6 +708,13 @@ def _register_units() -> None:
         "unit": ARITH_TU,
         "functions": ARITH_FUNCTIONS,
         "literal_pool": ARITH_LITERAL_POOL,
+        "boundaries": "derived",
+        "expect_padding": None,
+    }
+    UNITS[USE_TU.id] = {
+        "unit": USE_TU,
+        "functions": USE_FUNCTIONS,
+        "literal_pool": USE_LITERAL_POOL,
         "boundaries": "derived",
         "expect_padding": None,
     }
@@ -752,6 +796,131 @@ def derive_arith_family(rom_bytes: bytes) -> dict:
         ],
         "calls_across_family": sum(row["calls"] for row in rows),
         "literals_across_family": sum(row["literal_slots"] for row in rows),
+        "derived_from_rom": True,
+        "not_hand_written": True,
+    }
+
+
+def derive_value_use(rom_bytes: bytes) -> dict:
+    """Re-read a surviving-value consumer that does NOT write back.
+
+    This matcher exists because the arithmetic shape matcher cannot describe this
+    routine, and reusing it produced a report claiming an operation, a result
+    slot and a two-into-one reduction that the code does not perform. A report
+    field must be derived or absent, never inherited from a shape that did not
+    match.
+
+    It matches the seven-instruction POP prefix, then classifies the tail rather
+    than assuming it: whether a result is written back into the slot, what calls
+    are made, and what literals are loaded.
+    """
+    base = _gba.ROM_BASE
+    start, end, _role = USE_FUNCTIONS[0]
+    insns = list(cp.MD["thumb"].disasm(rom_bytes[start - base : end - base], start))
+
+    def at(index):
+        return insns[index] if 0 <= index < len(insns) else None
+
+    def immediate(ins):
+        if ins and ins.operands and ins.operands[-1].type == cp.capstone.arm.ARM_OP_IMM:
+            return ins.operands[-1].imm
+        return None
+
+    steps = []
+
+    # A unit reached through the native table may open with a register save, as
+    # this one does with `push {r3, lr}`; the pop prefix starts after it.
+    off = 1 if insns and insns[0].mnemonic.startswith("push") else 0
+
+    def record(index, name, ok):
+        ins = at(index + off)
+        steps.append({
+            "step": name,
+            "address": f"0x{ins.address:08X}" if ins else None,
+            "instruction": f"{ins.mnemonic} {ins.op_str}".strip() if ins else None,
+            "matched": bool(ok),
+        })
+        return ok
+
+    a, b, c, d, e, f = (at(k + off) for k in range(6))
+    count_reg = _thumb_dst(a) if a else None
+    mem_a = _thumb_mem(a) if a else None
+    record(0, "read the counter from context+0x00",
+           a and a.mnemonic == "ldr" and mem_a and mem_a[1] == VALUE_STACK_COUNT_OFFSET
+           and mem_a[2] is None)
+    record(1, "decrement it by one",
+           b and b.mnemonic == "subs" and immediate(b) == 1 and count_reg in b.op_str)
+    count_dec = _thumb_dst(b) if b else count_reg
+    mem_c = _thumb_mem(c) if c else None
+    record(2, "write the decremented counter back BEFORE the value is read",
+           c and c.mnemonic == "str" and mem_c and mem_c[1] == VALUE_STACK_COUNT_OFFSET
+           and mem_c[2] is None)
+    record(3, "scale the index by four",
+           d and d.mnemonic == "lsls" and immediate(d) == 2 and count_dec in d.op_str)
+    scaled = _thumb_dst(d) if d else count_dec
+    record(4, "form the slot address as context + count*4",
+           e and e.mnemonic == "adds" and scaled in e.op_str and "r0" in e.op_str)
+    slot_reg = _thumb_dst(e) if e else None
+    mem_f = _thumb_mem(f) if f else None
+    record(5, "read values[count-1], the old top, through [slot+4]",
+           f and f.mnemonic == "ldr" and mem_f and mem_f[1] == VALUE_STACK_ENTRY_SIZE
+           and mem_f[2] is None and mem_f[0] == slot_reg)
+    value_reg = _thumb_dst(f) if f else None
+
+    tail = insns[6 + off:]
+    # A write-back would store into the slot register computed at step 4.
+    writes_back = any(
+        (m := _thumb_mem(x)) and x.mnemonic.startswith("str") and m[0] == slot_reg
+        for x in tail
+    )
+    calls = []
+    for x in tail:
+        if x.mnemonic in ("bl", "blx") and x.operands:
+            op = x.operands[0]
+            if op.type == cp.capstone.arm.ARM_OP_IMM:
+                calls.append({"site": f"0x{x.address:08X}", "target": f"0x{op.imm & ~1:08X}"})
+            else:
+                calls.append({"site": f"0x{x.address:08X}", "target": "register-indirect"})
+    literal_slots = []
+    for x in insns:
+        slot = cp._literal_slot(x.address, "thumb", x.op_str)
+        if slot is not None and x.mnemonic.startswith("ldr"):
+            literal_slots.append(slot)
+
+    return {
+        "unit_id": USE_TU.id,
+        "extent": f"0x{start:08X}..0x{end:08X}",
+        "instructions": len(insns),
+        "pop_prefix_matched": all(step["matched"] for step in steps),
+        "pop_steps": steps,
+        "count_offset": VALUE_STACK_COUNT_OFFSET,
+        "values_offset": VALUE_STACK_VALUES_OFFSET,
+        "entry_size_bytes": VALUE_STACK_ENTRY_SIZE,
+        "is_a_pop": True,
+        "is_a_peek": False,
+        "consumes": 1,
+        "produces": 0,
+        "writes_back_to_the_stack": writes_back,
+        "counter_delta": -1,
+        "value_read": "values[count-1], the slot above the new counter",
+        "value_register": value_reg,
+        "reads_cursor_slot": False,
+        "calls": calls,
+        "call_count": len(calls),
+        "literal_slots": len(literal_slots),
+        "has_literal_pool": bool(literal_slots),
+        "has_underflow_check": False,
+        "underflow_is_read_only": not writes_back,
+        "underflow_effect": (
+            "a zero counter becomes 0xFFFFFFFF, so the slot address becomes "
+            "context-4 and [slot+4] is context itself; the value passed on is the "
+            "brand-new counter 0xFFFFFFFF. Because there is no store to the slot, "
+            "nothing below the context is written."
+        ),
+        "no_write_back_evidence": (
+            "the slot register computed at 0x080007F0 is never used as the base of "
+            "a store in the tail"
+        ),
         "derived_from_rom": True,
         "not_hand_written": True,
     }
@@ -2181,6 +2350,17 @@ def run_lift(
                 "detail": (
                     "exactly one primary slot points at this consumer, and no direct "
                     "BL site anywhere targets it"
+                ),
+            }
+        elif unit.id == USE_TU.id:
+            boundary_evidence["value_use"] = derive_value_use(rom_bytes)
+            boundary_evidence["dispatch_entry"] = {
+                "table": "native",
+                "index": 29,
+                "word": f"0x{USE_ENTRY | 1:08X}",
+                "detail": (
+                    "reached by the interpreter dispatching primary slot 2, which "
+                    "indexes the native table; exactly one entry points here"
                 ),
             }
         elif unit.id == ARITH_TU.id:

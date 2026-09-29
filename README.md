@@ -103,6 +103,25 @@ therefore cannot be imported. See
 [`docs/ADS12_SETUP.md`](docs/ADS12_SETUP.md) and
 [`docs/DECOMP_BASELINE.md`](docs/DECOMP_BASELINE.md#the-blocker).
 
+### Surviving-value consumer (DECOMP-LIFT-SCRIPT-USE-001, measured 2026-09-29)
+
+The chain **encoded value -> push -> arithmetic -> surviving value -> actual use**
+is closed. Native dispatch entry 29 at `0x080007E6`, 24 bytes and 11 instructions,
+source at [`src/ByteCodeInterpreter_use.c`](src/ByteCodeInterpreter_use.c).
+
+| Verdict | Result | Question it answers |
+| --- | --- | --- |
+| `SEMANTIC` | **PROVEN** | does it pop and pass correctly? 32 assertions, 0 failures |
+| `MODERN_BUILD` | **PASS** | does it compile, link at `0x080007E6` and emit bytes? 40 bytes |
+| `ADS_MATCH` | **BLOCKED** | does it reproduce the original compiler? `ADS12_LICENSE_UNAVAILABLE` |
+
+A scan of both dispatch tables found **52 functions that read a stack value and
+write nothing back**; this is the smallest. It pops `values[count-1]` and passes it
+as the **second argument** to `sub_08004380`, with `*(0x08054FBC + 0x14)` as the
+first. Nothing is written back to the stack, which is what separates it from the
+arithmetic family. Its underflow is **harmless to memory** - the read lands on the
+counter itself and no store follows. See [`docs/LIFT_USE.md`](docs/LIFT_USE.md).
+
 ### Value-stack arithmetic (DECOMP-LIFT-SCRIPT-ARITH-001, measured 2026-09-29)
 
 Slots **8** (`0x08003D52`) and **9** (`0x08003D66`) complete the arithmetic family
@@ -279,16 +298,17 @@ python -m buusfury build     # assemble a ROM, with per-region provenance
 python -m buusfury lift      # semantic lifting loop: build + compare one family
 python -m buusfury rommap    # independent structural ROM map + function inventory
 python -m buusfury fixed     # generate the zero-toolchain fixed regions
-python -m pytest tests -q    # 467 tests
+python -m pytest tests -q    # 490 tests
 ```
 
 ## Scope
 
-This repository is at **DECOMP-LIFT-SCRIPT-ARITH-001**. It carries the identity
-gate, the build model, the independent ROM map and the compiler probe, plus six
+This repository is at **DECOMP-LIFT-SCRIPT-USE-001**. It carries the identity
+gate, the build model, the independent ROM map and the compiler probe, plus seven
 lifted units - the GBARam allocator, the ByteCodeInterpreter dispatch loop, its
-primary dispatch slots 2 and 1, its first value-stack consumer, and the rest of
-the value-stack arithmetic family - and the reusable loop that produced all six.
+primary dispatch slots 2 and 1, its first value-stack consumer, the rest of the
+value-stack arithmetic family, and the first consumer of a surviving value - and
+the reusable loop that produced all seven.
 
 `ADS_MATCH` remains blocked: the ADS 1.2 installed on this machine is unlicensed, and
 nothing here reduces that. The next work continues outward from the script engine; see

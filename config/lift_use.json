@@ -1,0 +1,366 @@
+{
+  "schema": 1,
+  "ticket": "DECOMP-LIFT-SCRIPT-USE-001",
+  "generated_by": "tools/buusfury/lift.py",
+  "source_sha1": "f1c4b07554d2a3b1ad2f325307051e775ce68087",
+  "target": {
+    "id": "use",
+    "name": "ByteCodeInterpreter surviving-value consumer (native entry 29)",
+    "role": "pop one value and pass it to a call, with a global field as the other argument",
+    "notes": "native dispatch entry 29, code address 0x080007E6, 24 bytes and 11 instructions, one terminator at 0x080007FC. A mechanical scan of both proven dispatch tables found 52 functions that pop a stack value and do NOT write a result back into the slot; this is the smallest of them, with one pop, one call, one literal and no branches. It is the first routine in the target chain that turns a surviving stack value into an actual use: it decrements the counter, reads values[count-1], and passes that value as the SECOND argument (r1) to sub_08004380, with the FIRST argument (r0) being the +0x14 field of the object at the routine's only literal 0x08054FBC. Nothing is written back to the stack, so the consumed slot keeps its old value and no result replaces it, which is what distinguishes it from the arithmetic family. Ordering is proven by the self-check reading the counter from inside the callee: the counter store precedes the value read, which precedes the call. UNDERFLOW IS HARMLESS TO MEMORY here, unlike the arithmetic family: a zero counter becomes 0xFFFFFFFF, the base becomes context-4, and [slot+4] is therefore context itself, so the value passed on underflow is the brand-new counter 0xFFFFFFFF; because the routine has no store to the slot, nothing below the context is read or written. A second underflow walks the base down and reads pre[3] instead. No guard was added. The callee is declared, not reconstructed, and no meaning is imported from another title.",
+    "translation_unit": "use_tu",
+    "rom_address": "0x080007E6",
+    "file_offset": "0x0007E6",
+    "code_end_address": "0x080007FE",
+    "end_address": "0x080007FE",
+    "byte_length": 24,
+    "code_byte_length": 24,
+    "isa": "thumb",
+    "decomp_source": "src/ByteCodeInterpreter_use.c",
+    "probe_source": "src/probes/ByteCodeInterpreter_use.c",
+    "selftest_source": "src/probes/use_selftest.c",
+    "semantic_minimum_checks": 32,
+    "host_build_bits": 32,
+    "original_sha1": "dab2a2d0bcc4f8fdc9e23d1417f2d06cf692aaa2"
+  },
+  "boundary_evidence": {
+    "method": "aligned chain-walk from each entry, following local branches",
+    "unit_id": "use_tu",
+    "code_extent": "0x080007E6..0x080007FE",
+    "pool_extent": "0x080008D8..0x080008DC",
+    "has_literal_pool": true,
+    "pool_is_adjacent_to_code": false,
+    "pool_gap_bytes": 218,
+    "alignment_padding_bytes": null,
+    "functions": [
+      {
+        "start": "0x080007E6",
+        "end": "0x080007FE",
+        "size": 24,
+        "instructions": 11,
+        "role": "native dispatch entry 29: pop a value and pass it to a call",
+        "terminators": [
+          "0x080007FC"
+        ],
+        "gaps": [],
+        "matches_expected": true
+      }
+    ],
+    "problems": [],
+    "derived_from_rom": true,
+    "not_hand_written": true,
+    "value_use": {
+      "unit_id": "use_tu",
+      "extent": "0x080007E6..0x080007FE",
+      "instructions": 11,
+      "pop_prefix_matched": true,
+      "pop_steps": [
+        {
+          "step": "read the counter from context+0x00",
+          "address": "0x080007E8",
+          "instruction": "ldr r1, [r0]",
+          "matched": true
+        },
+        {
+          "step": "decrement it by one",
+          "address": "0x080007EA",
+          "instruction": "subs r1, #1",
+          "matched": true
+        },
+        {
+          "step": "write the decremented counter back BEFORE the value is read",
+          "address": "0x080007EC",
+          "instruction": "str r1, [r0]",
+          "matched": true
+        },
+        {
+          "step": "scale the index by four",
+          "address": "0x080007EE",
+          "instruction": "lsls r1, r1, #2",
+          "matched": true
+        },
+        {
+          "step": "form the slot address as context + count*4",
+          "address": "0x080007F0",
+          "instruction": "adds r0, r1, r0",
+          "matched": true
+        },
+        {
+          "step": "read values[count-1], the old top, through [slot+4]",
+          "address": "0x080007F2",
+          "instruction": "ldr r1, [r0, #4]",
+          "matched": true
+        }
+      ],
+      "count_offset": 0,
+      "values_offset": 4,
+      "entry_size_bytes": 4,
+      "is_a_pop": true,
+      "is_a_peek": false,
+      "consumes": 1,
+      "produces": 0,
+      "writes_back_to_the_stack": false,
+      "counter_delta": -1,
+      "value_read": "values[count-1], the slot above the new counter",
+      "value_register": "r1",
+      "reads_cursor_slot": false,
+      "calls": [
+        {
+          "site": "0x080007F8",
+          "target": "0x08004380"
+        }
+      ],
+      "call_count": 1,
+      "literal_slots": 1,
+      "has_literal_pool": true,
+      "has_underflow_check": false,
+      "underflow_is_read_only": true,
+      "underflow_effect": "a zero counter becomes 0xFFFFFFFF, so the slot address becomes context-4 and [slot+4] is context itself; the value passed on is the brand-new counter 0xFFFFFFFF. Because there is no store to the slot, nothing below the context is written.",
+      "no_write_back_evidence": "the slot register computed at 0x080007F0 is never used as the base of a store in the tail",
+      "derived_from_rom": true,
+      "not_hand_written": true
+    },
+    "dispatch_entry": {
+      "table": "native",
+      "index": 29,
+      "word": "0x080007E7",
+      "detail": "reached by the interpreter dispatching primary slot 2, which indexes the native table; exactly one entry points here"
+    }
+  },
+  "verdicts": {
+    "semantic": {
+      "status": "PROVEN",
+      "checks": 32,
+      "failures": 0,
+      "minimum_checks": 32,
+      "host_compiler": "MSVC cl.exe (32-bit)",
+      "detail": "32 behavioural assertions passed with 0 failures (minimum 32)",
+      "measures": "whether the reconstructed C behaves correctly, by RUNNING it"
+    },
+    "modern_build": {
+      "status": "PASS",
+      "detail": "compiled, linked at 0x080007E6 and emitted 40 bytes",
+      "measures": "whether the source compiles, links and emits bytes"
+    },
+    "ads_match": {
+      "status": "BLOCKED",
+      "code": "ADS12_LICENSE_UNAVAILABLE",
+      "detail": "an ARM Developer Suite 1.2 installation is present on this machine but the licence file it ships licenses a different product, so the ARM compilers cannot be run. No compile has been attempted and no configuration has been tested. The installation is located through ADS12_ROOT.",
+      "required_to_unblock": [
+        "a licensed ADS 1.2 installation, with ADS12_ROOT pointing at it",
+        "then: python -m buusfury compiler-probe --plan, then --matrix"
+      ],
+      "not_inferable_from_modern_build": true
+    }
+  },
+  "verdicts_are_independent": "SEMANTIC, MODERN_BUILD and ADS_MATCH answer different questions and none is evidence for another. A passing modern build says nothing about the original compiler; a passing semantic run only removes one class of error.",
+  "modern_build": {
+    "status": "PASS",
+    "toolchain": {
+      "family": "GNU Arm Embedded (devkitARM)",
+      "root": "<DEVKITARM>",
+      "prefix": "arm-none-eabi-",
+      "tools": {
+        "gcc": "<DEVKITARM>\\bin\\arm-none-eabi-gcc.exe",
+        "ld": "<DEVKITARM>\\bin\\arm-none-eabi-ld.exe",
+        "objcopy": "<DEVKITARM>\\bin\\arm-none-eabi-objcopy.exe",
+        "objdump": "<DEVKITARM>\\bin\\arm-none-eabi-objdump.exe",
+        "nm": "<DEVKITARM>\\bin\\arm-none-eabi-nm.exe"
+      }
+    },
+    "identity": {
+      "gcc_banner": "arm-none-eabi-gcc.exe (devkitARM) 16.1.0",
+      "gcc_version": "16.1.0",
+      "target_triple": "arm-none-eabi",
+      "binutils_banner": "GNU objdump (GNU Binutils) 2.46.0.20260210",
+      "compiler_family": "gcc",
+      "is_the_original_compiler": false,
+      "why_not": "the original translation unit was built by ARM Developer Suite 1.2 (the surviving command line names tcpp). GCC is a different compiler with a different code generator, so its output cannot establish anything about ADS 1.2."
+    },
+    "target_support": {
+      "supported": true,
+      "cpu": "arm7tdmi",
+      "instruction_set": "thumb",
+      "commands": [
+        "<DEVKITARM>\\bin\\arm-none-eabi-gcc.exe -c -mcpu=arm7tdmi -mthumb -O1 -ffreestanding -fno-common -fno-builtin -o <REPO>\\build\\lift\\use\\toolchain-probe\\support_probe.o <REPO>\\build\\lift\\use\\toolchain-probe\\support_probe.c"
+      ],
+      "disassembly": [
+        "adds r0, #1",
+        "bx lr"
+      ],
+      "detail": "compiled and disassembled a probe function for ARM7TDMI Thumb: 2 instruction(s), r0 written and a return present"
+    },
+    "compiler_configuration": {
+      "cpu": "arm7tdmi",
+      "instruction_set": "thumb",
+      "optimization": "-O1",
+      "extra_flags": []
+    },
+    "link_origin": "0x080007E6",
+    "external_calls_bound_to_original_addresses": {
+      "sub_08004380": "0x08004380"
+    },
+    "detail": "compiled, linked at 0x080007E6 and emitted 40 bytes",
+    "build": {
+      "ok": true,
+      "commands": [
+        "<DEVKITARM>\\bin\\arm-none-eabi-gcc.exe -c -mcpu=arm7tdmi -mthumb -O1 -ffreestanding -fno-common -fno-builtin -fomit-frame-pointer -mno-unaligned-access -o <REPO>\\build\\lift\\use\\use.o <REPO>\\src\\ByteCodeInterpreter_use.c",
+        "<DEVKITARM>\\bin\\arm-none-eabi-gcc.exe -c -mcpu=arm7tdmi -mthumb -o <REPO>\\build\\lift\\use\\use_externs.o -x assembler-with-cpp <REPO>\\build\\lift\\use\\use_externs.s",
+        "<DEVKITARM>\\bin\\arm-none-eabi-gcc.exe -nostdlib -Wl,-T,<REPO>\\build\\lift\\use\\use.ld -Wl,-Map,<REPO>\\build\\lift\\use\\use.map -o <REPO>\\build\\lift\\use\\use.elf <REPO>\\build\\lift\\use\\use.o <REPO>\\build\\lift\\use\\use_externs.o",
+        "<DEVKITARM>\\bin\\arm-none-eabi-objcopy.exe -O binary -j .text -j .rodata <REPO>\\build\\lift\\use\\use.elf <REPO>\\build\\lift\\use\\use.bin"
+      ],
+      "produced_byte_length": 40,
+      "symbols": {
+        "sub_080007E6": {
+          "address": "0x080007E8",
+          "size": 36
+        }
+      },
+      "diagnostics": ""
+    }
+  },
+  "functions": [
+    {
+      "name": "sub_080007E6",
+      "role": "native dispatch entry 29: pop a value and pass it to a call",
+      "original": {
+        "start": "0x080007E6",
+        "end": "0x080007FE",
+        "size": 24,
+        "isa": "thumb",
+        "instructions": 11,
+        "first_instruction": "push {r3, lr}",
+        "calls": [
+          "0x08004380"
+        ],
+        "literal_slots": [
+          "0x080008D8"
+        ],
+        "returns": 1,
+        "leaf": false,
+        "abi": {
+          "callee_saved_pushed": [],
+          "frame_size_bytes": 0,
+          "written_registers": [
+            "r0",
+            "r1",
+            "r3"
+          ]
+        }
+      },
+      "modern": {
+        "start": "0x080007E8",
+        "end": "0x0800080C",
+        "size": 36,
+        "isa": "thumb",
+        "instructions": 17,
+        "first_instruction": "ldr r3, [r0]",
+        "calls": [
+          "0x0800437E"
+        ],
+        "literal_slots": [
+          "0x08000808",
+          "0x08000AF8",
+          "0x08000AFC"
+        ],
+        "returns": 1,
+        "leaf": false,
+        "abi": {
+          "callee_saved_pushed": [],
+          "frame_size_bytes": 0,
+          "written_registers": [
+            "r0",
+            "r1",
+            "r3",
+            "r4",
+            "r5",
+            "r7",
+            "r8"
+          ]
+        }
+      },
+      "modern_symbol_present": true,
+      "delta": {
+        "size_bytes": 12,
+        "instructions": 6,
+        "returns": 0,
+        "calls": 0,
+        "literal_slots": 2
+      },
+      "same_extent": false,
+      "byte_identical": false
+    }
+  ],
+  "literal_pools": {
+    "original": {
+      "distinct_slots": 1,
+      "contiguous_runs": [
+        [
+          "0x080008D8",
+          "0x080008DC"
+        ]
+      ],
+      "run_count": 1,
+      "shared_pool": false,
+      "shared_pool_applicable": false,
+      "declared_pool": [
+        "0x080007FE",
+        "0x080007FE"
+      ],
+      "declared_slots": [
+        "0x080008D8"
+      ],
+      "declared_slots_used": [
+        "0x080008D8"
+      ],
+      "all_referenced_slots_are_declared": true,
+      "all_declared_slots_are_referenced": true,
+      "undeclared_slots": [],
+      "functions_reaching_it": 1
+    },
+    "modern": {
+      "distinct_slots": 3,
+      "contiguous_runs": [
+        [
+          "0x08000808",
+          "0x0800080C"
+        ],
+        [
+          "0x08000AF8",
+          "0x08000B00"
+        ]
+      ],
+      "run_count": 2,
+      "shared_pool": false,
+      "functions_reaching_a_pool": 1
+    },
+    "interpretation": "the original's literals are accounted for by the words the unit declares; the modern build pools differently, which is a structural consequence of the compiler rather than a defect in the reconstruction. It is also why a function with a literal load cannot be compared standalone.",
+    "is_a_match_claim": false
+  },
+  "comparison": {
+    "original_byte_length": 24,
+    "modern_byte_length": 40,
+    "overlap_byte_length": 24,
+    "differing_bytes_in_overlap": 16,
+    "matching_bytes_in_overlap": 8,
+    "original_only_bytes": 0,
+    "modern_only_bytes": 16,
+    "original_instruction_spans": 11,
+    "matching_instruction_spans": 1,
+    "differing_instruction_spans": 10,
+    "bytes_not_covered_by_an_original_instruction": 0,
+    "byte_identical": false,
+    "is_a_match_claim": false,
+    "match_claim_note": "MEASUREMENT ONLY. This compares a modern GCC build against the cartridge. A modern compiler is not the original compiler, so a difference here is expected and proves nothing; an identity here would also prove nothing about ADS 1.2. ADS_MATCH stays BLOCKED."
+  },
+  "semantic_check": {
+    "status": "PROVEN",
+    "checks": 32,
+    "failures": 0,
+    "minimum_checks": 32,
+    "host_compiler": "MSVC cl.exe (32-bit)",
+    "host_build_bits": 32,
+    "detail": "32 behavioural assertions passed with 0 failures (minimum 32)",
+    "output": "PASS: 32 check(s), 0 failure(s)\n"
+  }
+}

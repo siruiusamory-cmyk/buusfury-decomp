@@ -211,8 +211,15 @@ bytes**. A matrix in which every configuration is blocked is a failure to obtain
 a verdict, not a pass. When some configurations ran and some did not, the
 document says `COMPILER PROBE: PARTIAL (N of M configurations compared)` rather
 than `COMPLETE`, because the configurations that did not run may include exactly
-the negative controls the claim depends on. `no_compiler_result_claimed` means
-that no claim was actually promoted, not merely that the run finished.
+the negative controls the claim depends on.
+
+Gate 6 in `scripts/check.ps1` reads that JSON and branches on the document's own
+**top-level** `code` and `comparisons_run` fields, never on a substring of the
+document text. That distinction is load-bearing: in a `PARTIAL` matrix the
+blocked *rows* still carry `"code": "ADS12_UNAVAILABLE"`, so a substring test
+would report a run that did compare bytes as `BLOCKED`. The gate also parses
+stdout only, because a warning on stderr merged into the stream would break the
+JSON and turn a working probe into a false `FAIL`. Both hazards have tests.
 
 Every comparison reports target size, candidate size, identical bytes, first
 differing offset with its ROM address, number of differing bytes, the target's
@@ -222,12 +229,21 @@ instruction boundaries, never on a positional walk of both streams: capstone
 renders distinct Thumb encodings as the same text (127 colliding
 `(mnemonic, op_str)` pairs exist among the 65,536 halfwords, for example
 `0x4280` and `0x4500` both being `cmp r0, r0`), so a text comparison can report
-zero differing instructions for bytes that are not equal. Any target byte that
-no instruction covers is published as `undecoded_target_bytes` rather than
-silently dropped, so the "unequal bytes imply a differing instruction" guarantee
-is stated only where it holds; every real probe decodes fully and a test asserts
-that. Assembly is compared as decoded instructions in addition to raw bytes,
-never as text alone.
+zero differing instructions for bytes that are not equal.
+
+The guarantee "unequal bytes imply a differing instruction" is scoped to a
+target that **decodes fully**, which every real probe does and a test asserts.
+When the target's own bytes do not decode to a single instruction there is
+nothing to compare instruction-wise: those bytes are published as
+`undecoded_target_bytes` rather than folded into the instruction count, and
+`matching_instructions` is clamped at zero so it can never be negative. Assembly
+is compared as decoded instructions in addition to raw bytes, never as text
+alone.
+
+`no_compiler_result_claimed` means **no setting was identified**, that is, no
+claim reached `PROVEN` or `STRONGLY_SUPPORTED`. It does not mean nothing was
+learned: a run whose lead matched nothing is a real result and is reported
+separately in `refuted_claims`.
 
 ### Identifying the toolchain
 
@@ -514,7 +530,7 @@ regenerated, and `--verify-matrix` will say so.
 
 ## 16. Tests
 
-`tests/test_compiler_probe.py`, 83 tests, all passing. Portable and ROM-gated
+`tests/test_compiler_probe.py`, 86 tests, all passing. Portable and ROM-gated
 tests are deliberately separated; a missing ADS installation is a *passing*
 state for the suite because the ticket's contract is that the blocker is
 measured, not that it is absent. A further test asserts that running the whole
@@ -535,6 +551,9 @@ Beyond the ticket's list, and directly from the independent review:
 - a blocked toolchain can never produce a `COMPLETE` document, a `REFUTED`
   claim, or exit code 0, and a winner whose competing configuration never ran
   cannot be promoted above `PLAUSIBLE`;
+- a `PARTIAL` matrix keeps `code: null` at the top level while its blocked rows
+  carry `ADS12_UNAVAILABLE`, which is the trap a substring-reading gate would
+  fall into; and stderr noise cannot break the gate's JSON parse;
 - the fingerprint is per claim, counts matching functions rather than matching
   configurations, cannot promote the CPU, ARM-optimization or ABI claims, and
   cannot reach `PROVEN` on a single function;
@@ -543,8 +562,8 @@ Beyond the ticket's list, and directly from the independent review:
   manifest is reported rather than crashing;
 - inventory drift is reported separately from ROM drift;
 - `compare_bytes` cannot report zero differing instructions for unequal bytes
-  when the target decodes fully, and cannot report a negative matching count;
-  uncovered target bytes are published as `undecoded_target_bytes`;
+  when the target decodes fully, and `matching_instructions` is clamped at zero
+  for every input including an undecodable target;
 - an executable named `tcpp.exe` is not accepted as ARM's compiler, the Tiny C
   Compiler's banner is rejected, and an explicit `ADS12_ROOT` never falls back
   to `PATH`;
@@ -591,10 +610,17 @@ that blocker and seven of the nine majors resolved, and found that the first
 revision of the fixes had introduced two new defects of its own: a claim could
 be published as `PROVEN` when its competing configuration never ran, and gate 6's
 PASS branch was unreachable because it matched a JSON field name against
-human-readable output. Both are fixed here, the first with a test for the
-missing-competitor case and the second by reading the matrix as JSON. That
-round's verdict was again **SOUND WITH FIXES**, and this revision is the
-response to it.
+human-readable output.
+
+A third round confirmed both of those fixed - no row set reaches `PROVEN` or
+`STRONGLY_SUPPORTED` without a competitor that ran and differed - and found
+three narrow defects of the same class, all fixed here: the gate's BLOCKED
+branch was still decided by a whole-document substring, so a `PARTIAL` matrix
+whose rows carry `ADS12_UNAVAILABLE` was misreported as `BLOCKED`; stderr merged
+into the gate's JSON stream could turn a working probe into a false `FAIL`; and
+folding uncovered target bytes into the instruction count made
+`matching_instructions` negative for an undecodable target. Each now has a test,
+including one that pins the `PARTIAL`/row-code trap itself.
 
 ## 18. Next ticket
 

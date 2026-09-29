@@ -267,6 +267,28 @@ than crashing; the ARM optimization claim is `UNTESTED` instead of borrowing the
 frontend comparison; and the tests that only grepped prose were replaced with
 behavioural ones, including a real CLI invocation for the exit codes.
 
+A third round verified that revision and found three further narrow defects of
+the same class, all fixed here:
+
+- the gate's BLOCKED branch was still decided by searching the whole document
+  text for `ADS12_UNAVAILABLE`. In a `PARTIAL` matrix the blocked rows carry
+  that code, so a run that did compare bytes was reported `BLOCKED`. The gate
+  now branches on the document's own top-level `code` and `comparisons_run`,
+  and a test pins the trap by asserting that a partial document keeps
+  `code: null` while the string is still present in it.
+- the gate merged stderr into the JSON it parsed, so a warning line broke the
+  parse and turned a working probe into a false `FAIL`. It now parses stdout
+  only, verified by replaying both forms.
+- folding uncovered target bytes into the instruction count made
+  `matching_instructions` negative for an undecodable target, contradicting the
+  documented guarantee. Those bytes are now reported only in
+  `undecoded_target_bytes`, the property is clamped at zero, and a property test
+  covers adversarial pairs including undecodable targets.
+
+That round's verdict was again `SOUND WITH FIXES`, with all three items
+described as narrow and none able to produce a false PASS or an unjustified
+`PROVEN`.
+
 ## 8. Reproducing this ticket
 
 From a bare checkout with a legally dumped canonical ROM:
@@ -287,8 +309,8 @@ committed manifest is therefore a claim that is re-tested rather than trusted.
 
 | item | result |
 | --- | --- |
-| `tests/test_compiler_probe.py` | 83 passed |
-| full suite | 260 passed (measured) |
+| `tests/test_compiler_probe.py` | 86 passed |
+| full suite | 263 passed (measured) |
 | `scripts/check.cmd` | PASS, exit 0; gates 5 and 6 are reported `BLOCKED`, not `FAIL` |
 | canonical ROM | unchanged (SHA-1 and mtime) |
 | proprietary artefacts | none created, downloaded or tracked; Git refuses every ADS tool and licence name |

@@ -957,10 +957,13 @@ class ByteDiff:
     def matching_instructions(self) -> int:
         """Target instructions whose encoding is byte-identical in the candidate.
 
-        Never negative: it is ``target_instructions - differing_instructions``
-        and differing can never exceed the target's own count.
+        Clamped at zero. It is normally ``target_instructions -
+        differing_instructions``, but a target whose own bytes do not decode to
+        any instruction has ``target_instructions == 0``, and the uncovered bytes
+        are reported in ``undecoded_target_bytes`` rather than being folded into
+        the instruction count, so this can never go negative.
         """
-        return self.target_instructions - self.differing_instructions
+        return max(0, self.target_instructions - self.differing_instructions)
 
     def as_dict(self) -> dict:
         return {
@@ -1038,14 +1041,13 @@ def compare_bytes(
             differing_instructions += 1
 
     # Target bytes no instruction covers cannot be compared instruction-wise.
-    # They are published rather than silently dropped, so the invariant "unequal
-    # bytes imply differing instructions" is stated only where it holds: it is
-    # absolute only when the target decodes fully, which is asserted for every
-    # real probe.
+    # They are published in `undecoded_target_bytes` rather than folded into the
+    # instruction count, which would make `matching_instructions` negative. The
+    # guarantee "unequal bytes imply a differing instruction" therefore holds
+    # only for a fully-decoding target, which every real probe is and which a
+    # test asserts.
     covered = sum(size for _offset, size in spans)
     undecoded = max(0, len(target) - covered)
-    if undecoded:
-        differing_instructions += undecoded
 
     return ByteDiff(
         target_size=len(target),
@@ -1791,17 +1793,24 @@ def _matrix_document(
         for name, state in claims.items()
         if not name.startswith("_") and state in ("PROVEN", "STRONGLY_SUPPORTED")
     ]
+    refuted = [
+        name
+        for name, state in claims.items()
+        if not name.startswith("_") and state == "REFUTED"
+    ]
     return {
         "schema": 1,
         "source_sha1": sha1,
         "result": result,
         "code": code,
         "conclusion": claims["thumb_frontend"],
-        # A "claimed result" means a claim was actually promoted, not merely that
-        # the run finished. Publishing "no compiler result is claimed" from the
-        # presence of a blocker code alone would be wrong in the partial case.
+        # `no_compiler_result_claimed` means NO SETTING WAS IDENTIFIED, i.e. no
+        # claim reached PROVEN or STRONGLY_SUPPORTED. It does not mean nothing
+        # was learned: a run in which the lead matched nothing is a real result,
+        # and it is reported separately as `refuted_claims`.
         "no_compiler_result_claimed": not promoted,
         "promoted_claims": promoted,
+        "refuted_claims": refuted,
         "comparisons_run": comparisons,
         "generated_by": "tools/buusfury/compiler_probe.py build_matrix()",
         "methodology": ORIGIN_ASSUMPTION,
@@ -1863,14 +1872,19 @@ def _claim(winner: dict | None, competitor: dict | None, probe_total: int) -> st
     """
     if winner is None or not winner.get("comparison_ran"):
         return "UNTESTED"
-    matched = winner.get("matching_probes") or 0
+    matched = winner.get("matching_probes")
+    if matched is None:
+        # A configuration that claims to have compared but published no count is
+        # not usable evidence either way.
+        return "UNTESTED"
     total = winner.get("total_probes") or probe_total
     if matched == 0:
         return "REFUTED"
-    if competitor is None or not competitor.get("comparison_ran"):
-        # Nothing to discriminate against, so nothing above "consistent".
+    rival = competitor.get("matching_probes") if competitor else None
+    if competitor is None or not competitor.get("comparison_ran") or rival is None:
+        # Nothing usable to discriminate against, so nothing above "consistent".
         return "PLAUSIBLE"
-    if (competitor.get("matching_probes") or 0) == matched:
+    if rival == matched:
         return "PLAUSIBLE"
     # The ticket's bar is three discriminating ordinary engine functions, so a
     # single function match is consistent evidence and no more.

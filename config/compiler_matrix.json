@@ -6,6 +6,7 @@
   "conclusion": "UNTESTED",
   "no_compiler_result_claimed": true,
   "promoted_claims": [],
+  "refuted_claims": [],
   "comparisons_run": 0,
   "generated_by": "tools/buusfury/compiler_probe.py build_matrix()",
   "methodology": "the region start is the candidate origin: fromelf -bin on a scatter file whose only load region is at the unit's ROM address is taken to emit from that address. UNEXERCISED on a machine without ADS 1.2, and the first thing to confirm from the real toolchain's output when one is supplied.",

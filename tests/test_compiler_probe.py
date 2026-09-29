@@ -463,6 +463,96 @@ def test_the_blocked_matrix_records_itself_environment_independently(rom_bytes, 
     assert cp.build_matrix(rom_bytes, "f" * 40) == matrix
 
 
+def test_a_partial_matrix_carries_the_blocker_code_on_its_rows_only(rom_bytes, monkeypatch, tmp_path):
+    """The root cause of the gate's substring bug, pinned so it cannot come back.
+
+    In a PARTIAL matrix the blocked ROWS carry `"code": "ADS12_UNAVAILABLE"` while
+    the document's own top-level `code` is null. Any consumer that searches the
+    document text for that string therefore mistakes a run that did compare bytes
+    for a blocked one, which is exactly what a gate must not do. Gate 6 reads the
+    top-level field instead.
+    """
+    monkeypatch.delenv("ADS12_ROOT", raising=False)
+    monkeypatch.setenv("PATH", str(tmp_path))
+    blocked = cp.build_matrix(rom_bytes, "f" * 40)
+    assert blocked["code"] == cp.BLOCK_ADS_UNAVAILABLE
+    assert blocked["comparisons_run"] == 0
+    assert "ADS12_UNAVAILABLE" in json.dumps(blocked)
+
+    # A synthetic partial matrix: one row compared, five blocked.
+    def row(frontend, opt, matched, ran=True):
+        return {
+            "frontend": frontend,
+            "optimization": opt,
+            "isa": "thumb",
+            "cpu": "ARM7TDMI",
+            "translation_unit": "gbaram_tu",
+            "comparison_ran": ran,
+            "exact_match": False,
+            "matching_probes": matched if ran else None,
+            "total_probes": PROBE_COUNT if ran else None,
+            "matching_instructions": None,
+            "total_instructions": None,
+            "dropped_candidate_bytes": 0,
+            "status": "DIFFER" if ran else "BLOCKED",
+            "code": None if ran else cp.BLOCK_ADS_UNAVAILABLE,
+            "probe_matches": {},
+        }
+
+    partial = cp._matrix_document(
+        "f" * 40,
+        [row("tcpp", "-O1", 0)] + [row(f, "-O1", None, ran=False) for f in ("tcc", "armcc")],
+        result="COMPILER PROBE: PARTIAL",
+        code=None,
+        details=[],
+    )
+    assert partial["comparisons_run"] == 1
+    assert partial["code"] is None, "the document is not blocked even though rows are"
+    assert "ADS12_UNAVAILABLE" in json.dumps(partial), (
+        "and the string is still present, which is why the gate must not search for it"
+    )
+    assert partial["result"].startswith("COMPILER PROBE: PARTIAL")
+
+
+def test_no_compiler_result_claimed_means_nothing_was_promoted():
+    """It does not mean nothing was learned: a refuted lead is still a result."""
+    def row(frontend, opt, matched):
+        return {
+            "frontend": frontend,
+            "optimization": opt,
+            "isa": "thumb",
+            "cpu": "ARM7TDMI",
+            "translation_unit": "gbaram_tu",
+            "comparison_ran": True,
+            "exact_match": False,
+            "matching_probes": matched,
+            "total_probes": PROBE_COUNT,
+            "matching_instructions": None,
+            "total_instructions": None,
+            "dropped_candidate_bytes": 0,
+            "status": "DIFFER",
+            "code": None,
+            "probe_matches": {},
+        }
+
+    refuted = cp._matrix_document(
+        "f" * 40,
+        [row("tcpp", "-O1", 0), row("tcc", "-O1", 0)],
+        result="COMPILER PROBE: COMPLETE",
+        code=None,
+        details=[],
+    )
+    assert refuted["no_compiler_result_claimed"] is True
+    assert refuted["promoted_claims"] == []
+    # The CPU claim is also refuted, because the winner matched nothing at all.
+    assert refuted["refuted_claims"] == [
+        "thumb_frontend",
+        "thumb_optimization",
+        "thumb_cpu_target",
+        "c_vs_cpp",
+    ]
+
+
 def test_the_documented_exit_contract_is_enforced_by_a_real_invocation(baserom):
     """Behavioural: run the CLI and check its exit code, do not read its source.
 
@@ -708,17 +798,19 @@ def test_unequal_bytes_almost_always_imply_a_differing_instruction():
 
     If the target's own bytes do not decode to a single instruction there is
     nothing to compare instruction-wise, so the uncovered bytes are published as
-    `undecoded_target_bytes` rather than being silently dropped. Every real probe
-    decodes fully, and that is asserted separately.
+    `undecoded_target_bytes`. They are deliberately NOT folded into the
+    instruction count, because that made `matching_instructions` negative. The
+    documented guarantee is therefore scoped to a fully-decoding target, which
+    every real probe is.
     """
-    # A target that decodes to nothing.
     diff = cp.compare_bytes(bytes.fromhex("00f0"), bytes.fromhex("00bf"), 0x08000000, "thumb")
     assert diff.exact_match is False
     assert diff.target_instructions == 0
+    assert diff.differing_bytes == 1
     assert diff.undecoded_target_bytes == 2
-    assert diff.differing_instructions == 2, "uncovered bytes must be published"
+    assert diff.differing_instructions == 0, "no instruction spans exist to differ"
+    assert diff.matching_instructions == 0, "and the matching count must clamp at zero"
 
-    # A target that decodes fully: unequal bytes always give a differing instruction.
     for target_hex, candidate_hex in (
         ("8042", "0045"),
         ("0020", "0120"),
@@ -730,6 +822,24 @@ def test_unequal_bytes_almost_always_imply_a_differing_instruction():
         assert diff.undecoded_target_bytes == 0
         assert not diff.exact_match
         assert diff.differing_instructions > 0, (target_hex, candidate_hex)
+        assert diff.matching_instructions >= 0
+
+
+def test_matching_instructions_never_goes_negative_for_any_input():
+    """Property test over adversarial pairs, including undecodable targets."""
+    cases = [
+        (bytes.fromhex("00f0"), bytes.fromhex("00bf")),
+        (bytes.fromhex("00f0"), b""),
+        (b"", bytes.fromhex("00bf")),
+        (bytes.fromhex("0020"), bytes.fromhex("00200149")),
+        (bytes.fromhex("00200149"), bytes.fromhex("0020")),
+        (bytes(8), bytes.fromhex("00b6" * 4)),
+    ]
+    for target, candidate in cases:
+        diff = cp.compare_bytes(target, candidate, 0x08000000, "thumb")
+        assert diff.matching_instructions >= 0, (target.hex(), candidate.hex())
+        assert diff.differing_instructions <= max(diff.target_instructions, 0) + 0
+        assert diff.identical_bytes >= 0
 
 
 def test_every_real_probe_decodes_fully_so_the_invariant_holds_for_it(rom_bytes, manifest):

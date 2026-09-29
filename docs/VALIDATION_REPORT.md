@@ -416,7 +416,7 @@ python -m buusfury compiler-probe --diagnostic-control
 # classification: DIAGNOSTIC_CONTROL_NOT_EVIDENCE. Not a compiler finding.
 
 python -m pytest tests -q
-# 260 passed in 30.81s        (177 before this ticket; +83 in tests/test_compiler_probe.py)
+# 263 passed in 30.59s        (177 before this ticket; +86 in tests/test_compiler_probe.py)
 ```
 
 The diagnostic-control run is reported here for one reason only: it proves the
@@ -478,16 +478,23 @@ for `sub_0803D5B8`" claim (620 belongs to `sub_0803D4D0`) and "three confirmed
 ARM regions" (there are two). Its verdict was `SOUND WITH FIXES`. See
 [`COMPILER_PROBE.md`](COMPILER_PROBE.md) section 17 for the full list.
 
-After the fixes the probe suite is 83 tests and the full suite is 260, measured.
+After the fixes the probe suite is 86 tests and the full suite is 263, measured.
 
 A second verification round re-confirmed the measured core independently and
 confirmed the original blocker and seven of the nine majors resolved, but found
 that the first round of fixes had introduced two defects of its own: a claim
 could be published as `PROVEN` when its competing configuration never ran, and
 gate 6's PASS branch was unreachable because it matched the literal string
-`comparisons_run` against human-readable output that does not contain it. Both
-are fixed, the first with a missing-competitor test and the second by reading the
-matrix as JSON; the PASS branch was exercised against a synthetic
-`comparisons_run = 6` document to prove it is now reachable. Its verdict was
-again `SOUND WITH FIXES`, with the remainder reduced to documented NITs, all of
-which are addressed. See [`COMPILER_PROBE.md`](COMPILER_PROBE.md) section 17.
+`comparisons_run` against human-readable output that does not contain it.
+
+A third round confirmed both of those fixed - no row set reaches `PROVEN` or
+`STRONGLY_SUPPORTED` without a competitor that ran and differed - and found three
+further narrow defects of the same class, all now fixed: the gate's BLOCKED
+branch was still decided by a whole-document substring, so a `PARTIAL` matrix
+whose blocked rows carry `ADS12_UNAVAILABLE` was misreported as `BLOCKED`; stderr
+merged into the gate's JSON stream could break the parse and turn a working probe
+into a false `FAIL`; and folding uncovered target bytes into the instruction
+count made `matching_instructions` negative for an undecodable target. Each has a
+test, including one that pins the `PARTIAL`/row-code trap itself, and the gate's
+branches were replayed against complete, partial and blocked documents. See
+[`COMPILER_PROBE.md`](COMPILER_PROBE.md) section 17.

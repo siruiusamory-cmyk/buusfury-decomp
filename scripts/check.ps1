@@ -170,17 +170,26 @@ if ($LASTEXITCODE -ne 0) { $overall = 'FAIL' }
 # The probe itself cannot run without ADS 1.2. Report that as BLOCKED, the same
 # contract as gate 5, and never let it read as a compiler result. PASS requires
 # that at least one configuration actually COMPARED BYTES; a run that merely
-# found a driver name is not a result. The matrix step is read as JSON because
-# the human-readable rendering does not contain a machine-checkable count.
-$matrixJson = (& $python -m buusfury compiler-probe --rom $romPath --matrix --json 2>&1) -join "`n"
+# found a driver name is not a result.
+#
+# The branch reads the document's own fields rather than searching its text. A
+# PARTIAL matrix carries "code": "ADS12_UNAVAILABLE" on its blocked ROWS, so a
+# substring test would report a run that did compare bytes as BLOCKED. stderr is
+# kept out of the parsed stream for the same reason: a warning line would break
+# the JSON and turn a working probe into a false FAIL.
+$matrixJson = (& $python -m buusfury compiler-probe --rom $romPath --matrix --json 2>$null) -join "`n"
 $matrixExit = $LASTEXITCODE
+$matrix = $null
 $comparisons = $null
+$blockerCode = $null
 try {
-    $comparisons = ($matrixJson | ConvertFrom-Json).comparisons_run
+    $matrix = $matrixJson | ConvertFrom-Json
+    $comparisons = $matrix.comparisons_run
+    $blockerCode = $matrix.code
 } catch {
-    $comparisons = $null
+    $matrix = $null
 }
-if ($matrixJson -match 'ADS12_UNAVAILABLE') {
+if ($blockerCode -eq 'ADS12_UNAVAILABLE') {
     Write-Host ""
     Write-Host "      BLOCKED  probe prepared; no compiler result is claimed" -ForegroundColor Yellow
     Write-Host "               reason: ADS12_UNAVAILABLE (no identified ARM Developer Suite 1.2)"
@@ -189,11 +198,11 @@ if ($matrixJson -match 'ADS12_UNAVAILABLE') {
     Write-Host ""
     Write-Host "      PASS  compiler probe compared $comparisons configuration(s)" -ForegroundColor Green
     $notes.Add("compiler probe ran: $comparisons configuration(s) compared; see docs/COMPILER_PROBE.md")
-} elseif ($matrixExit -ne 0) {
-    Write-Host "      FAIL  compiler probe reported an unexpected failure" -ForegroundColor Red
+} elseif ($null -ne $matrix) {
+    Write-Host "      FAIL  compiler probe ran but compared nothing" -ForegroundColor Red
     $overall = 'FAIL'
 } else {
-    Write-Host "      FAIL  compiler probe ran but compared nothing" -ForegroundColor Red
+    Write-Host "      FAIL  compiler probe produced no readable result (exit $matrixExit)" -ForegroundColor Red
     $overall = 'FAIL'
 }
 

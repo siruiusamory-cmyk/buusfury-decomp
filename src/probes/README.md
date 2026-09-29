@@ -40,6 +40,13 @@ have been wasted.
 - `operand_selftest.c` - 42 assertions over the variable-length operand reader,
   exhaustive across every 1-byte input and every valid 2-byte input. Exit 0 on
   success.
+- `ByteCodeInterpreter_stack.c` - shim for `src/ByteCodeInterpreter_stack.c`,
+  primary dispatch slot 7 at `0x08003D3E`.
+- `stack_selftest.c` - 34 assertions over the value-stack consumer, including an
+  exhaustive sweep of 65,536 operand pairs and three successive underflows. The
+  host context carries real storage BELOW the counter, because an underflowing
+  pop writes there and the walk has to be observable and bounded. Exit 0 on
+  success.
 
 Both self-checks print the summary line `<STATUS>: <n> check(s), <m> failure(s)`,
 and the lift harness parses it, so the wording is load-bearing.

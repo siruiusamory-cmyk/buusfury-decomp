@@ -17,6 +17,9 @@ Two function families are lifted here:
 - **`src/ByteCodeInterpreter_operand.c`**, primary dispatch slot 1 at
   `0x08003C8A`, the variable-length operand reader. A leaf with no calls and no
   literal pool. See `docs/LIFT_OPERAND.md`.
+- **`src/ByteCodeInterpreter_stack.c`**, primary dispatch slot 7 at
+  `0x08003D3E`, the first consumer of the value stack: it pops the top value and
+  adds it to the new top in place. See `docs/LIFT_STACK.md`.
 
 `docs/LIFT_LOOP.md` is how the next family is added.
 

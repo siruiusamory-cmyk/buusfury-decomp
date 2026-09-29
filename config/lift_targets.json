@@ -102,6 +102,26 @@
       },
       "role": "reads a variable-length sign-magnitude operand from the cursor and pushes it onto the context's value stack",
       "notes": "primary dispatch slot 1, entry 0x08003C8A, 52 bytes and 26 instructions. A LEAF: no calls and NO literal pool, so it needed no helper and no pool stubbing. Its only entry is primary table word 0x08003C8B, and no direct BL site targets it. The encoding read off the instructions: big-endian base-128 groups, bit 7 of each byte continues the sequence, bit 0 of the accumulator is the sign and the rest is the magnitude, extracted with an arithmetic shift. 1 byte reaches -63, 2 -8191, 3 -1048575, 4 -134217727. There is NO length limit and no validation: the only exit is a byte with bit 7 clear. The arithmetic shift makes the sign invert once accumulator bit 31 is set, so the maximal five-group sequence 0xFF 0xFF 0xFF 0xFF 0x7F decodes to +1 rather than -2147483647; that is recorded as the code's actual behaviour and reproduced exactly, not corrected. The value is pushed at context+0x00 (a counter) and context+4+4*index, which proves the field the interpreter zeroes at 0x0800405C is a stack counter. 'sm7' is NOT a ROM string: it is a project nickname recorded as a candidate alias only."
+    },
+    {
+      "id": "stack",
+      "name": "ByteCodeInterpreter value-stack consumer (primary slot 7)",
+      "ticket": "DECOMP-LIFT-SCRIPT-STACK-001",
+      "translation_unit": "stack_tu",
+      "probe_translation_unit": "stack_tu",
+      "decomp_source": "src/ByteCodeInterpreter_stack.c",
+      "probe_source": "src/probes/ByteCodeInterpreter_stack.c",
+      "selftest_source": "src/probes/stack_selftest.c",
+      "semantic_minimum_checks": 34,
+      "host_build_bits": 32,
+      "compiler": {
+        "cpu": "arm7tdmi",
+        "isa": "thumb",
+        "optimization": "-O1",
+        "extra_flags": []
+      },
+      "role": "the first consumer of the value stack: pops the top value, adds it to the new top in place, and leaves the sum in the lower slot",
+      "notes": "primary dispatch slot 7, entry 0x08003D3E, 20 bytes and 10 instructions. The smallest function in the image holding the value-stack pop idiom, and a leaf with no calls and no literal pool. 84 functions in the VM surface contain the idiom (111 pops total; 69 native, 15 primary), so this is one of a family, but only this one is lifted. It consumes two values and produces one, a net counter delta of -1, and the result is written to the LOWER operand slot values[count-2] while the upper slot is abandoned rather than cleared. The counter is written back BEFORE the operand reads, which the underflow proves. There is NO underflow check: a zero counter becomes 0xFFFFFFFF, the slot address becomes context-4, and the handler decrements the word immediately BELOW the context object while touching no value slot; successive underflows walk the base four bytes further down each time. That is recorded as actual behaviour and reproduced exactly, including the 32-bit address wrap the modelling depends on. The operand order values[count-2] <op> values[count-1] is not observable in this handler because addition is commutative; it is established by the sibling at primary slot 8 (0x08003D52), which shares the first eight instructions and performs `subs r1, r2, r1`. Slots 8 and 9 are NOT lifted. No opcode table is reconstructed and no opcode index is named."
     }
   ]
 }

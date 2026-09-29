@@ -146,6 +146,21 @@ Matching means byte-identity of the produced ROM against
 - **Reproduce artifacts, do not repair them.** When arithmetic produces a value
   the encoding "should not" give, reconstruct it exactly and record it; the
   binary is the ground truth.
+- **Equal size is not a match.** The modern build of the value-stack consumer is
+  the same 20 bytes and 10 instructions as the original and still differs in nine
+  bytes. Never let a size coincidence read as identity; assert `byte_identical`
+  is false.
+- **Do not add an underflow guard.** The consumer decrements its counter with no
+  test, so a zero counter walks the slot address below the context object and
+  corrupts it. Reproduce that, give the host test real storage below the context
+  so the walk is observable and bounded, and never write a guard.
+- **A pattern scan is a lower bound.** 84 functions matched the pop idiom; a
+  consumer reaching the same stack through a different register path would not
+  match, so report the count as a floor.
+- **When a claim rests on sibling evidence, say so.** Addition is commutative, so
+  the lifted consumer cannot show operand order; the convention comes from the
+  sibling's subtract, and the report names the sibling rather than asserting the
+  order as if it had been observed.
 - **Name context fields by offset and say what is unknown.** No opcode meaning
   may be imported from another LoG title, and a reconstruction should contain no
   `switch` over opcodes until one is proven.

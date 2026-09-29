@@ -37,10 +37,12 @@ def test_the_operand_minimum_is_a_real_floor():
     assert lift.get_target("operand").semantic_minimum_checks <= source.count("check(")
 
 
-def test_the_target_count_is_now_four():
-    """The three earlier targets must remain registered: this ticket adds one."""
+def test_the_earlier_targets_are_still_registered():
+    """This ticket adds a target; it must not drop any earlier one. Checked as a
+    subset so that adding a target never requires editing this test."""
     ids = [t.id for t in lift.load_targets()]
-    assert ids == ["gbaram", "bci", "handler2", "operand"]
+    for earlier in ("gbaram", "bci", "handler2", "operand"):
+        assert earlier in ids, earlier
 
 
 # ---------------------------------------------------------------------------

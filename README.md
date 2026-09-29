@@ -103,6 +103,32 @@ therefore cannot be imported. See
 [`docs/ADS12_SETUP.md`](docs/ADS12_SETUP.md) and
 [`docs/DECOMP_BASELINE.md`](docs/DECOMP_BASELINE.md#the-blocker).
 
+### Value-stack consumer (DECOMP-LIFT-SCRIPT-STACK-001, measured 2026-09-29)
+
+The first **consumer** of the interpreter's value stack: primary dispatch slot 7 at
+`0x08003D3E`, 20 bytes and 10 instructions, source at
+[`src/ByteCodeInterpreter_stack.c`](src/ByteCodeInterpreter_stack.c).
+
+| Verdict | Result | Question it answers |
+| --- | --- | --- |
+| `SEMANTIC` | **PROVEN** | does it pop correctly? 34 assertions, 0 failures |
+| `MODERN_BUILD` | **PASS** | does it compile, link at `0x08003D3E` and emit bytes? 20 bytes |
+| `ADS_MATCH` | **BLOCKED** | does it reproduce the original compiler? `ADS12_LICENSE_UNAVAILABLE` |
+
+The consumer was found **mechanically**: a scan of both proven dispatch tables for
+the value-stack pop idiom found **84 functions holding it, 111 pops in total**.
+This one is the smallest. It **pops** the top value, adds it to the new top in
+place, and leaves the sum in the **lower** slot; the counter is written back
+before the operand reads. There is **no underflow check**: a zero counter becomes
+`0xFFFFFFFF`, the slot address becomes `context-4`, and the handler decrements the
+word immediately below the context object, walking four bytes further down each
+time. That is reproduced exactly, with no guard added.
+
+The modern build is the **same size** as the original for the first time - 20
+bytes and 10 instructions - but 9 bytes still differ, so this is a size
+coincidence and **not a match**; a test asserts that. See
+[`docs/LIFT_STACK.md`](docs/LIFT_STACK.md).
+
 ### Operand reader (DECOMP-LIFT-SCRIPT-SM7-001, measured 2026-09-29)
 
 Primary dispatch slot 1 at `0x08003C8A`, 52 bytes and 26 instructions, source at
@@ -231,19 +257,20 @@ python -m buusfury build     # assemble a ROM, with per-region provenance
 python -m buusfury lift      # semantic lifting loop: build + compare one family
 python -m buusfury rommap    # independent structural ROM map + function inventory
 python -m buusfury fixed     # generate the zero-toolchain fixed regions
-python -m pytest tests -q    # 404 tests
+python -m pytest tests -q    # 437 tests
 ```
 
 ## Scope
 
-This repository is at **DECOMP-LIFT-SCRIPT-SM7-001**. It carries the identity gate,
-the build model, the independent ROM map and the compiler probe, plus four lifted
-units - the GBARam allocator, the ByteCodeInterpreter dispatch loop, its primary
-dispatch slot 2, and its primary dispatch slot 1 - and the reusable loop that
-produced all four.
+This repository is at **DECOMP-LIFT-SCRIPT-STACK-001**. It carries the identity
+gate, the build model, the independent ROM map and the compiler probe, plus five
+lifted units - the GBARam allocator, the ByteCodeInterpreter dispatch loop, its
+primary dispatch slots 2 and 1, and its first value-stack consumer - and the
+reusable loop that produced all five.
 
 `ADS_MATCH` remains blocked: the ADS 1.2 installed on this machine is unlicensed, and
 nothing here reduces that. The next work continues outward from the script engine; see
+[`docs/LIFT_STACK.md`](docs/LIFT_STACK.md#10-recommended-next-work),
 [`docs/LIFT_OPERAND.md`](docs/LIFT_OPERAND.md#10-recommended-next-work),
 [`docs/LIFT_HANDLER2.md`](docs/LIFT_HANDLER2.md#9-recommended-next-work),
 [`docs/LIFT_SCRIPT.md`](docs/LIFT_SCRIPT.md#8-recommended-next-bytecodeinterpreter-work)

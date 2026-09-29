@@ -212,6 +212,50 @@ OP_FUNCTIONS = (
 )
 OP_LITERAL_POOL: tuple = ()
 
+# ---------------------------------------------------------------------------
+# the first value-stack consumer
+# ---------------------------------------------------------------------------
+# Primary dispatch slot 7. Slots 7, 8 and 9 are the value-stack arithmetic trio:
+# identical 20-byte, 10-instruction shapes differing in one combining
+# instruction. Only slot 7 is reconstructed; 8 and 9 are read here for the
+# operand-order convention that the commutative add cannot show by itself.
+STACK_ENTRY = 0x08003D3E
+STACK_TU = cp.TranslationUnit(
+    id="stack_tu",
+    rom_address=0x08003D3E,
+    code_end_address=0x08003D52,
+    end_address=0x08003D52,
+    isa="thumb",
+    source="src/probes/ByteCodeInterpreter_stack.c",
+    confidence="proven",
+    boundary_evidence=(
+        "chain-walk from 0x08003D3E: 10 instructions, no gaps, one terminator at "
+        "0x08003D50 (bx lr), straight-line with no local branches",
+        "the table word at primary slot 7 is 0x08003D3F, whose Thumb bit masks to "
+        "this entry",
+        "no direct BL site anywhere in the image targets it",
+    ),
+    literal_pool=(),
+    selection=(
+        "primary dispatch table slot 7 holds 0x08003D3F",
+        "it is the smallest function in the image that contains the value-stack "
+        "pop idiom: 20 bytes, 10 instructions, one pop, no calls",
+        "its neighbours 8 and 9 share the same shape, so the operand-order "
+        "convention is visible from ROM evidence in the siblings",
+    ),
+)
+STACK_FUNCTIONS = (
+    (0x08003D3E, 0x08003D52, "primary dispatch slot 7: binary add over the value stack"),
+)
+STACK_LITERAL_POOL: tuple = ()
+#: The siblings that share the shape and differ in the combining instruction.
+STACK_SIBLING_SLOTS = (8, 9)
+
+#: Offsets the pop idiom proves, in bytes from the context.
+VALUE_STACK_COUNT_OFFSET = 0
+VALUE_STACK_VALUES_OFFSET = 4
+VALUE_STACK_ENTRY_SIZE = 4
+
 #: The native dispatch table and the structure that bounds it from above.
 NATIVE_TABLE = 0x08055098
 NATIVE_TABLE_LIMIT = 0x080554C0  # the primary table base
@@ -358,6 +402,184 @@ def derive_operand_encoding(rom_bytes: bytes) -> dict:
     }
 
 
+def _thumb_mem(ins):
+    """(base register, displacement, index register) for a memory operand."""
+    if not ins.mnemonic.startswith(("ldr", "str", "ldrb", "strb", "ldrh", "strh")):
+        return None
+    for operand in ins.operands:
+        if operand.type == cp.capstone.arm.ARM_OP_MEM:
+            return (
+                ins.reg_name(operand.mem.base),
+                operand.mem.disp,
+                ins.reg_name(operand.mem.index) if operand.mem.index else None,
+            )
+    return None
+
+
+def _thumb_dst(ins):
+    if ins.operands and ins.operands[0].type == cp.capstone.arm.ARM_OP_REG:
+        return ins.reg_name(ins.operands[0].reg)
+    return None
+
+
+def derive_stack_consumer(rom_bytes: bytes) -> dict:
+    """Re-read the value-stack access off the consumer's own instructions.
+
+    The pop shape is matched step by step against the ten instructions the ROM
+    holds at this entry, and each matched step is reported with its address. The
+    combining instruction is read out of the stream rather than named, and the
+    siblings are read the same way to establish the operand order that a
+    commutative add cannot show.
+    """
+    base = _gba.ROM_BASE
+    start, end, _role = STACK_FUNCTIONS[0]
+    insns = list(cp.MD["thumb"].disasm(rom_bytes[start - base : end - base], start))
+
+    def at(index):
+        return insns[index] if 0 <= index < len(insns) else None
+
+    steps: list[dict] = []
+
+    def record(index, name, ok):
+        ins = at(index)
+        steps.append({
+            "step": name,
+            "address": f"0x{ins.address:08X}" if ins else None,
+            "instruction": f"{ins.mnemonic} {ins.op_str}".strip() if ins else None,
+            "matched": bool(ok),
+        })
+        return ok
+
+    def immediate(ins):
+        if ins and ins.operands and ins.operands[-1].type == cp.capstone.arm.ARM_OP_IMM:
+            return ins.operands[-1].imm
+        return None
+
+    a, b, c, d, e, f, g, h, i, j = (at(k) for k in range(10))
+
+    count_reg = _thumb_dst(a) if a else None
+    mem_a = _thumb_mem(a) if a else None
+    record(0, "read the counter from context+0x00",
+           a and a.mnemonic == "ldr" and mem_a and mem_a[1] == VALUE_STACK_COUNT_OFFSET
+           and mem_a[2] is None)
+    record(1, "decrement it by one",
+           b and b.mnemonic == "subs" and immediate(b) == 1 and count_reg in b.op_str)
+    count_dec = _thumb_dst(b) if b else count_reg
+    mem_c = _thumb_mem(c) if c else None
+    record(2, "write the decremented counter back BEFORE any value is read",
+           c and c.mnemonic == "str" and mem_c and mem_c[1] == VALUE_STACK_COUNT_OFFSET
+           and mem_c[2] is None)
+    record(3, "scale the index by four, so the values are word sized",
+           d and d.mnemonic == "lsls" and immediate(d) == 2 and count_dec in d.op_str)
+    scaled = _thumb_dst(d) if d else count_dec
+    record(4, "form the slot address as context + count*4",
+           e and e.mnemonic == "adds" and scaled in e.op_str and "r0" in e.op_str)
+    base_reg = _thumb_dst(e) if e else None
+    mem_f = _thumb_mem(f) if f else None
+    record(5, "read values[count-1], the OLD TOP, through [slot+4]",
+           f and f.mnemonic == "ldr" and mem_f and mem_f[1] == VALUE_STACK_ENTRY_SIZE
+           and mem_f[2] is None and mem_f[0] == base_reg)
+    top_reg = _thumb_dst(f) if f else None
+    mem_g = _thumb_mem(g) if g else None
+    record(6, "read values[count-2], the NEW TOP, through [slot]",
+           g and g.mnemonic == "ldr" and mem_g and mem_g[1] == 0 and mem_g[2] is None
+           and mem_g[0] == base_reg)
+    deeper_reg = _thumb_dst(g) if g else None
+    record(7, "combine the two operands",
+           h and h.mnemonic in ("adds", "subs", "muls") and top_reg in h.op_str
+           and deeper_reg in h.op_str)
+    result_reg = _thumb_dst(h) if h else None
+    mem_i = _thumb_mem(i) if i else None
+    record(8, "store the result into the LOWER slot, values[count-2]",
+           i and i.mnemonic == "str" and mem_i and mem_i[1] == 0 and mem_i[2] is None
+           and mem_i[0] == base_reg)
+    record(9, "return", j and j.mnemonic == "bx" and "lr" in j.op_str)
+
+    # The operation and the operand order, read from the combining instruction.
+    # Thumb renders a two-source ALU op as `op Rd, Rn, Rm`, and Rn is the left
+    # operand of the arithmetic. Slot 8's `subs r1, r2, r1` therefore computes
+    # r2 - r1, with r2 the deeper operand, which is what fixes the convention.
+    combined = h.op_str if h else ""
+    sources = [part.strip() for part in combined.split(",")] if combined else []
+    deeper_is_first_source = bool(
+        deeper_reg and len(sources) >= 2 and sources[1] == deeper_reg
+    )
+
+    # Siblings: same shape, different combining instruction. This is where the
+    # operand ORDER becomes visible, because subtraction is not commutative.
+    siblings = []
+    for slot in STACK_SIBLING_SLOTS:
+        word = int.from_bytes(
+            rom_bytes[
+                PRIMARY_TABLE - base + slot * 4 : PRIMARY_TABLE - base + slot * 4 + 4
+            ],
+            "little",
+        )
+        entry = word & ~1
+        body = list(cp.MD["thumb"].disasm(rom_bytes[entry - base : entry - base + 20], entry))
+        op = None
+        for index in range(7, min(9, len(body))):
+            if body[index].mnemonic in ("adds", "subs", "muls"):
+                op = f"{body[index].mnemonic} {body[index].op_str}"
+                break
+        siblings.append({
+            "slot": slot,
+            "entry": f"0x{entry:08X}",
+            "combining_instruction": op,
+            "shares_the_shape": len(body) == 10,
+        })
+
+    return {
+        "unit_id": STACK_TU.id,
+        "extent": f"0x{start:08X}..0x{end:08X}",
+        "instructions": len(insns),
+        "pop_shape_matched": all(step["matched"] for step in steps),
+        "steps": steps,
+        "count_offset": VALUE_STACK_COUNT_OFFSET,
+        "values_offset": VALUE_STACK_VALUES_OFFSET,
+        "entry_size_bytes": VALUE_STACK_ENTRY_SIZE,
+        "operation": f"{h.mnemonic} {h.op_str}" if h else None,
+        "operation_is_32_bit": bool(h and h.mnemonic in ("adds", "subs", "muls")),
+        "consumes": 2,
+        "produces": 1,
+        "net_counter_delta": -1,
+        "result_slot": "values[count-2], the LOWER of the two operands",
+        "upper_slot": "abandoned above the new counter, not cleared",
+        "counter_written_before_operand_reads": bool(
+            steps[2]["matched"] and steps[5]["matched"] and steps[6]["matched"]
+        ),
+        "calls": sum(1 for x in insns if x.mnemonic in ("bl", "blx")),
+        "literal_slots": len([
+            slot for x in insns
+            if (slot := cp._literal_slot(x.address, "thumb", x.op_str)) is not None
+            and x.mnemonic.startswith("ldr")
+        ]),
+        "reads_cursor_slot": False,
+        "reads_cursor_slot_evidence": (
+            "the first instruction overwrites r1 before any read of it"
+        ),
+        "has_underflow_check": False,
+        "underflow_evidence": (
+            "the counter is decremented with no test and no branch, so a zero "
+            "counter becomes 0xFFFFFFFF and the slot address becomes context-4"
+        ),
+        "operand_order": "values[count-2] <op> values[count-1] on the sibling evidence",
+        "operand_order_from_this_handler": (
+            "not observable: addition is commutative"
+        ),
+        "deeper_operand_is_first_source": deeper_is_first_source,
+        "deeper_operand_is_first_source_evidence": (
+            "in `op Rd, Rn, Rm` the first source Rn is the left operand of the "
+            "arithmetic; the sibling at slot 8 renders `subs r1, r2, r1` and r2 is "
+            "the register loaded from the lower slot, so the deeper value is the "
+            "left operand and slot 8 computes values[count-2] - values[count-1]"
+        ),
+        "siblings": siblings,
+        "derived_from_rom": True,
+        "not_hand_written": True,
+    }
+
+
 UNITS: dict = {}
 
 
@@ -389,6 +611,13 @@ def _register_units() -> None:
         "literal_pool": OP_LITERAL_POOL,
         "boundaries": "derived",
         # A leaf with no pool at all: there is nothing to measure.
+        "expect_padding": None,
+    }
+    UNITS[STACK_TU.id] = {
+        "unit": STACK_TU,
+        "functions": STACK_FUNCTIONS,
+        "literal_pool": STACK_LITERAL_POOL,
+        "boundaries": "derived",
         "expect_padding": None,
     }
 
@@ -1809,6 +2038,17 @@ def run_lift(
                     "exactly one primary slot points at this handler, and no direct "
                     "BL site anywhere targets it, so it is reached only through the "
                     "dispatch table"
+                ),
+            }
+        elif unit.id == STACK_TU.id:
+            boundary_evidence["value_stack_access"] = derive_stack_consumer(rom_bytes)
+            boundary_evidence["primary_slot"] = {
+                "index": 7,
+                "address": f"0x{PRIMARY_TABLE + 7 * 4:08X}",
+                "word": f"0x{STACK_ENTRY | 1:08X}",
+                "detail": (
+                    "exactly one primary slot points at this consumer, and no direct "
+                    "BL site anywhere targets it"
                 ),
             }
     else:

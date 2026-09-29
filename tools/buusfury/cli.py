@@ -491,6 +491,16 @@ def cmd_compiler_probe(args) -> int:
         )
         return EXIT_OK
 
+    if args.verify_matrix:
+        problems = _cp.verify_matrix(data, found.sha1)
+        if problems:
+            print("PROBE MATRIX: FAIL")
+            for problem in problems:
+                print(f"  - {problem}")
+            return EXIT_FAIL
+        print("PROBE MATRIX: PASS (config/compiler_matrix.json reproduces)")
+        return EXIT_OK
+
     if args.plan:
         tools = _cp.discover_ads(args.ads12_root, compiler_id=args.frontend)
         unit = _cp.GBARAM_TU
@@ -499,24 +509,18 @@ def cmd_compiler_probe(args) -> int:
         print(f"compiler: {args.frontend}  cpu: {args.cpu}  opt: {args.opt}")
         print()
         if tools is None:
-            print(f"BLOCKED [{_cp.BLOCK_ADS_UNAVAILABLE}] no ADS 1.2 installation found")
+            print(f"BLOCKED [{_cp.BLOCK_ADS_UNAVAILABLE}] no identified ADS 1.2 installation")
             print()
             for detail in _cp.ads_blocked_details(args.ads12_root):
                 print(f"  {detail}")
             print()
+        else:
+            print(f"identified toolchain: {tools.banner}")
+            print()
         print("exact command sequence once ADS 1.2 is supplied:")
+        planning = tools or _cp.planning_tools(args.frontend)
         commands = _cp.plan_commands(
-            tools
-            if tools is not None
-            else _cp.AdsTools(
-                root=Path("<ADS12_ROOT>"),
-                compiler=Path("<ADS12_ROOT>/Bin") / f"{args.frontend}.exe",
-                compiler_id=args.frontend,
-                support={
-                    name: Path("<ADS12_ROOT>/Bin") / f"{name}.exe"
-                    for name in ("armasm", "armlink", "fromelf")
-                },
-            ),
+            planning,
             Path("<repo>") / unit.source,
             workdir,
             (args.frontend, args.cpu, args.opt),
@@ -530,6 +534,8 @@ def cmd_compiler_probe(args) -> int:
         print()
         print("relocation methodology:")
         print(f"  {_cp.ORIGIN_ASSUMPTION}")
+        print()
+        print("--plan executes nothing and therefore always exits 0.")
         return EXIT_OK
 
     if args.matrix:
@@ -540,20 +546,40 @@ def cmd_compiler_probe(args) -> int:
             print(_cp.render_matrix_markdown(matrix).rstrip())
             print()
             print(f"result: {matrix['result']}")
+            print(
+                f"configurations compared: {matrix['comparisons_run']} of "
+                f"{len(matrix['configurations'])}"
+            )
             for line in matrix.get("details", []):
                 print(f"  {line}")
-        return EXIT_OK if matrix["code"] is None else EXIT_FAIL
+            if not matrix["comparisons_run"]:
+                print()
+                print("live toolchain state on this machine:")
+                for line in _cp.ads_blocked_details(args.ads12_root):
+                    print(f"  {line}")
+        # Exit 0 only when at least one configuration actually compared bytes.
+        # A blocked matrix is a failure to obtain a verdict, not a pass.
+        return EXIT_OK if matrix["comparisons_run"] else EXIT_FAIL
 
     if args.diagnostic_control:
         return _run_diagnostic_control(args, data)
 
-    # default: report the prepared probe corpus and its blocked/tooled state
+    # default: report the prepared probe corpus and its blocked/tooled state.
+    # A blocked toolchain makes this a NON-ZERO exit even under --json, because
+    # no verdict was obtained and the documented contract says so.
     manifest = _cp.derive_manifest(data)
     tools = _cp.discover_ads(args.ads12_root, compiler_id=args.frontend)
     report = {
         "canonical_rom_sha1": found.sha1,
         "ads12_available": tools is not None,
+        "ads12_banner": tools.banner if tools else None,
         "probe_corpus": manifest["counts"],
+        "result": (
+            "COMPILER PROBE: READY - run with --matrix to test configurations"
+            if tools
+            else _cp.blocked_result(args.ads12_root)["result"]
+        ),
+        "no_compiler_result_claimed": tools is None,
         "translation_units": manifest["translation_units"],
         "probes": manifest["probes"],
         "controls": manifest["controls"],
@@ -563,7 +589,7 @@ def cmd_compiler_probe(args) -> int:
 
     if args.json:
         print(json.dumps(report, indent=2))
-        return EXIT_OK
+        return EXIT_OK if tools is not None else EXIT_FAIL
 
     print("=" * 72)
     print("COMPILER PROBE - DECOMP-COMPILER-PROBE-001")
@@ -606,13 +632,14 @@ def cmd_compiler_probe(args) -> int:
         print("=" * 72)
         print()
         print("Preparation is complete; NO compiler result is claimed.")
-        print(f"exact command required once ADS 1.2 is supplied:")
+        print("exact command required once ADS 1.2 is supplied:")
         print(f"  {blocked['exact_command_required']}")
         print()
         for detail in blocked["details"]:
             print(f"  {detail}")
         return EXIT_FAIL
-    print("COMPILER PROBE: READY - run with --matrix to test configurations")
+    print(f"COMPILER PROBE: READY - identified {tools.banner}")
+    print("  run with --matrix to test configurations")
     print("=" * 72)
     return EXIT_OK
 
@@ -621,9 +648,7 @@ def run_matrix(args, data: bytes, sha1: str) -> dict:
     """Run every candidate configuration, or report the whole matrix as blocked."""
     from . import compiler_probe as _cp
 
-    return _cp.build_matrix(
-        data, sha1, ads12_root=args.ads12_root, frontend=args.frontend
-    )
+    return _cp.build_matrix(data, sha1, ads12_root=args.ads12_root)
 
 
 def _run_diagnostic_control(args, data: bytes) -> int:
@@ -676,8 +701,11 @@ def _run_diagnostic_control(args, data: bytes) -> int:
         "candidate_size": diff.candidate_size,
         "identical_bytes": diff.identical_bytes,
         "first_difference": diff.as_dict()["first_difference"],
+        "first_difference_address": diff.as_dict()["first_difference_address"],
         "differing_bytes": diff.differing_bytes,
+        "target_instructions": diff.target_instructions,
         "differing_instructions": diff.differing_instructions,
+        "matching_instructions": diff.matching_instructions,
         "exact_match": diff.exact_match,
         "is_evidence_about_the_original_compiler": False,
     }
@@ -689,11 +717,14 @@ def _run_diagnostic_control(args, data: bytes) -> int:
             "candidate_size",
             "identical_bytes",
             "first_difference",
+            "first_difference_address",
             "differing_bytes",
+            "target_instructions",
             "differing_instructions",
+            "matching_instructions",
             "exact_match",
         ):
-            print(f"  {key:<20} {payload[key]}")
+            print(f"  {key:<26} {payload[key]}")
         print()
         print("  This run exercises the harness. It is NOT a compiler finding:")
         print("  a modern GCC cannot be evidence about the original Webfoot build.")
@@ -781,24 +812,29 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--frontend", default="tcpp", help="compiler frontend (tcpp/tcc/armcpp/armcc)")
     p.add_argument("--cpu", default="ARM7TDMI")
     p.add_argument("--opt", default="-O1")
-    p.add_argument("--matrix", action="store_true", help="run every candidate configuration")
-    p.add_argument("--plan", action="store_true", help="print the exact commands, execute nothing")
-    p.add_argument(
+    # The modes are mutually exclusive on purpose: previously a combined
+    # invocation silently ran only one of them, which is how a flag can appear
+    # to have had an effect it never had.
+    mode = p.add_mutually_exclusive_group()
+    mode.add_argument("--matrix", action="store_true", help="run every candidate configuration")
+    mode.add_argument("--plan", action="store_true", help="print the exact commands, execute nothing")
+    mode.add_argument(
         "--write-manifest",
         nargs="?",
         const=True,
         default=None,
         help="regenerate config/compiler_probes.json from the canonical ROM",
     )
-    p.add_argument(
+    mode.add_argument(
         "--write-matrix",
         nargs="?",
         const=True,
         default=None,
         help="regenerate config/compiler_matrix.json",
     )
-    p.add_argument("--verify-manifest", action="store_true", help="re-derive and compare the manifest")
-    p.add_argument(
+    mode.add_argument("--verify-manifest", action="store_true", help="re-derive and compare the manifest")
+    mode.add_argument("--verify-matrix", action="store_true", help="re-derive and compare the matrix")
+    mode.add_argument(
         "--diagnostic-control",
         action="store_true",
         help="exercise the harness with devkitARM GCC; NEVER evidence about the original compiler",

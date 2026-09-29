@@ -160,25 +160,33 @@ Write-Host ""
 Write-Host "========================================================================="
 Write-Host "gate 6: compiler probe (DECOMP-COMPILER-PROBE-001)"
 Write-Host "========================================================================="
-# The manifest is a measurement, not a declaration: it must regenerate from the
-# canonical ROM and agree field-for-field, or this gate FAILS.
+# The manifest and the matrix are measurements, not declarations: both must
+# regenerate from the canonical ROM and agree, or this gate FAILS.
 & $python -m buusfury compiler-probe --rom $romPath --verify-manifest
+if ($LASTEXITCODE -ne 0) { $overall = 'FAIL' }
+& $python -m buusfury compiler-probe --rom $romPath --verify-matrix
 if ($LASTEXITCODE -ne 0) { $overall = 'FAIL' }
 
 # The probe itself cannot run without ADS 1.2. Report that as BLOCKED, the same
-# contract as gate 5, and never let it read as a compiler result.
-$probeText = (& $python -m buusfury compiler-probe --rom $romPath 2>&1) -join "`n"
-$probeExit = $LASTEXITCODE
-if ($probeText -match 'ADS12_UNAVAILABLE') {
+# contract as gate 5, and never let it read as a compiler result. PASS requires
+# that at least one configuration actually COMPARED BYTES; a run that merely
+# found a driver name is not a result.
+$matrixText = (& $python -m buusfury compiler-probe --rom $romPath --matrix 2>&1) -join "`n"
+$matrixExit = $LASTEXITCODE
+if ($matrixText -match 'ADS12_UNAVAILABLE') {
     Write-Host ""
     Write-Host "      BLOCKED  probe prepared; no compiler result is claimed" -ForegroundColor Yellow
-    Write-Host "               reason: ADS12_UNAVAILABLE (ARM Developer Suite 1.2 not installed)"
+    Write-Host "               reason: ADS12_UNAVAILABLE (no identified ARM Developer Suite 1.2)"
     $notes.Add('compiler probe BLOCKED on ADS 1.2; preparation complete, see docs/COMPILER_PROBE.md')
-} elseif ($probeExit -ne 0) {
+} elseif ($matrixText -match 'comparisons_run') {
+    Write-Host ""
+    Write-Host "      PASS  compiler probe produced a result (see docs/COMPILER_PROBE.md)"
+} elseif ($matrixExit -ne 0) {
     Write-Host "      FAIL  compiler probe reported an unexpected failure" -ForegroundColor Red
     $overall = 'FAIL'
 } else {
-    Write-Host "      PASS  compiler probe produced a result (see docs/COMPILER_PROBE.md)"
+    Write-Host "      FAIL  compiler probe ran but compared nothing" -ForegroundColor Red
+    $overall = 'FAIL'
 }
 
 Write-Host ""

@@ -236,6 +236,14 @@ def chain_walk(
             address = todo.pop()
             while True:
                 if not (entry <= address < end_address):
+                    # A path that leaves the unit is a real gap in the boundary
+                    # evidence: the reachable body would extend past the reported
+                    # end, so it must be reported rather than silently dropped.
+                    if body:
+                        problems.append(
+                            f"flow left the unit at 0x{address:08X}, past the "
+                            f"declared end 0x{end_address:08X}"
+                        )
                     break
                 if address in body:
                     break
@@ -277,6 +285,17 @@ def chain_walk(
                     target = int(op_str[1:], 16)
                     if entry <= target < end_address:
                         todo.append(target)
+                    else:
+                        # A conditional branch out of the unit is a tail call or
+                        # an early return the unit does not contain. Following it
+                        # is impossible and ignoring it silently would let the
+                        # reported body be an unannounced lower bound, so it is
+                        # recorded: the boundary's "every path terminates inside
+                        # the unit" claim has to be earned, not assumed.
+                        problems.append(
+                            f"conditional branch at 0x{address:08X} leaves the unit "
+                            f"for 0x{target:08X}; the body beyond it is not analysed"
+                        )
                 address = following
 
         if not body:
@@ -347,6 +366,21 @@ class TranslationUnit:
     def as_dict(self, data: bytes) -> dict:
         offset = self.rom_address - _gba.ROM_BASE
         raw = data[offset : offset + self.length]
+        pool = {
+            "rom_address": (
+                f"0x{self.literal_pool[0][0] + _gba.ROM_BASE:08X}"
+                if self.literal_pool
+                else None
+            ),
+            "file_offset": (
+                f"0x{self.literal_pool[0][0]:06X}" if self.literal_pool else None
+            ),
+            "byte_length": 4 * len(self.literal_pool),
+            "words": [
+                {"file_offset": f"0x{o:06X}", "value": f"0x{v:08X}"}
+                for o, v in self.literal_pool
+            ],
+        }
         return {
             "id": self.id,
             "rom_address": f"0x{self.rom_address:08X}",
@@ -363,15 +397,7 @@ class TranslationUnit:
             "confidence": self.confidence,
             "boundary_evidence": list(self.boundary_evidence),
             "selection": list(self.selection),
-            "literal_pool": {
-                "rom_address": f"0x{self.literal_pool[0][0] + _gba.ROM_BASE:08X}",
-                "file_offset": f"0x{self.literal_pool[0][0]:06X}",
-                "byte_length": 4 * len(self.literal_pool),
-                "words": [
-                    {"file_offset": f"0x{o:06X}", "value": f"0x{v:08X}"}
-                    for o, v in self.literal_pool
-                ],
-            },
+            "literal_pool": pool,
         }
 
 
@@ -430,11 +456,22 @@ GBARAM_FUNCTIONS = (
 
 #: Regions that must NOT be used as ordinary-engine compiler evidence, recorded
 #: so a later ticket cannot quietly promote one of them.
+#:
+#: Measured from config/rom_map.json: exactly TWO regions are isa=arm with
+#: executable=confirmed (reset_code and codec_blob). The ARM veneer at
+#: 0x08049114 is NOT a region start; it lies inside
+#: code_candidate_span_6_048F14 (0x08048F14..0x08049324, code_candidate, medium,
+#: executable=probable), which is also the one ARM candidate that does not
+#: decode as ARM at all. That is why the ARM probe corpus is legitimately empty
+#: rather than merely unselected.
 CONTROLS = (
     {
         "id": "reset_crt",
         "rom_address": "0x080000C0",
+        "region_id": "reset_code",
         "isa": "arm",
+        "region_confidence": "proven",
+        "region_executable": "confirmed",
         "role": "control",
         "excluded_because": (
             "startup/CRT code. The cartridge header branches here and it hands off "
@@ -445,17 +482,25 @@ CONTROLS = (
     {
         "id": "crt_veneer",
         "rom_address": "0x08049114",
+        "region_id": "code_candidate_span_6_048F14",
         "isa": "arm",
+        "region_confidence": "medium",
+        "region_executable": "probable",
         "role": "control",
         "excluded_because": (
             "the ADS C runtime static-initialiser veneer reached from the reset "
-            "path; library code, not engine code"
+            "path; library code, not engine code. NOTE this address is not a region "
+            "start: it lies inside code_candidate_span_6_048F14, and the region's "
+            "own first word does not decode as ARM."
         ),
     },
     {
         "id": "codec_blob",
         "rom_address": "0x087B79A4",
+        "region_id": "codec_blob",
         "isa": "arm",
+        "region_confidence": "high",
+        "region_executable": "confirmed",
         "role": "control",
         "excluded_because": (
             "may be hand-written or library/codec assembly and is not "
@@ -510,14 +555,26 @@ REJECTIONS = (
         ),
     },
     {
-        "id": "sub_0803D5B8_functions_json_entry",
-        "rom_address": "0x0803D5B8",
-        "map_claim": "config/functions.json size=620, callees=0x0803D4E8/0x0803D520/0x0803D56A",
+        "id": "sub_0803D4D0_inventory_entry",
+        "rom_address": "0x0803D4D0",
+        "map_claim": "config/functions.json size=620",
         "rejected_because": (
-            "config/functions.json's size is analysis.decode_run(limit=0x400).bytes_ok, "
-            "so for 0x0803D5B8 it ran 620 bytes past the function end and attributed "
-            "three neighbouring functions' calls to it. Its callee lists are used as "
-            "a cross-check only, never as boundary input."
+            "the size is analysis.decode_run(limit=0x400).bytes_ok, not a boundary. "
+            "620 bytes from 0x0803D4D0 runs to 0x0803D73C and spans the whole unit "
+            "plus 12 bytes of its literal pool, and its callee list "
+            "(0x0803D4E8, 0x0803D520, 0x0803D56A) is those neighbouring functions' "
+            "calls attributed to it. The measured boundary is 24 bytes with no calls."
+        ),
+    },
+    {
+        "id": "sub_0803D5B8_inventory_entry",
+        "rom_address": "0x0803D5B8",
+        "map_claim": "config/functions.json size=388",
+        "rejected_because": (
+            "same defect: 388 bytes from 0x0803D5B8 runs to 0x0803D73C, straight "
+            "through 0x0803D63C and 0x0803D712 and into the pool, and carries the "
+            "same contaminated callee list. The measured boundary is 132 bytes with "
+            "one distinct callee, 0x0803D4E8."
         ),
     },
 )
@@ -539,16 +596,49 @@ def _file_offset(address: int) -> int:
 
 
 def _inventory_index() -> dict[int, dict]:
-    """config/functions.json keyed by address, or empty when it is absent.
+    """config/functions.json keyed by address, or {} when it is absent.
 
     Used only as a cross-check. It is never boundary input: its `size` is a
     decode extent, and it is the artefact this ticket is testing against.
+
+    A malformed inventory is reported as a ProbeError rather than a KeyError or
+    a JSONDecodeError, because it is an input problem and not a probe defect.
     """
     path = _identity.CONFIG_DIR / "functions.json"
     if not path.is_file():
         return {}
-    raw = json.loads(path.read_text(encoding="utf-8"))
-    return {int(entry["address"], 16) & ~1: entry for entry in raw.get("functions", [])}
+    try:
+        raw = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        raise ProbeError(f"{path} is not readable JSON: {exc}") from exc
+    if not isinstance(raw, dict) or not isinstance(raw.get("functions"), list):
+        raise ProbeError(f"{path} has no 'functions' list")
+    index: dict[int, dict] = {}
+    for entry in raw["functions"]:
+        try:
+            address = int(entry["address"], 16) & ~1
+        except (KeyError, TypeError, ValueError) as exc:
+            raise ProbeError(f"{path} has an entry without a usable address") from exc
+        index[address] = {
+            "size": entry.get("size"),
+            "confidence": entry.get("confidence"),
+            "discovery": entry.get("discovery") or [],
+            "isa": entry.get("isa"),
+        }
+    return index
+
+
+def _inventory_digest() -> str | None:
+    """SHA-1 of config/functions.json, so inventory drift is distinguishable.
+
+    The manifest embeds inventory-derived fields. Without pinning the inventory
+    itself, a changed inventory would look like a manifest that disagrees with
+    the ROM, and the error message would blame the wrong file.
+    """
+    path = _identity.CONFIG_DIR / "functions.json"
+    if not path.is_file():
+        return None
+    return hashlib.sha1(path.read_bytes()).hexdigest()
 
 
 def derive_manifest(data: bytes) -> dict:
@@ -683,6 +773,13 @@ def derive_manifest(data: bytes) -> dict:
     return {
         "schema": 1,
         "source_sha1": hashlib.sha1(data).hexdigest(),
+        "inventory_sha1": _inventory_digest(),
+        "inventory_basis": (
+            "config/functions.json is pinned by digest because this manifest embeds "
+            "three fields derived from it (per-probe inventory_confidence and "
+            "inventory_size, inventory_gaps, and inventory_size_disagreements). It "
+            "is a cross-check only and is never boundary input."
+        ),
         "generated_by": "tools/buusfury/compiler_probe.py derive_manifest()",
         "method": (
             "chain-walk recursive descent in the translation unit's own instruction "
@@ -694,8 +791,13 @@ def derive_manifest(data: bytes) -> dict:
             "Boundaries are evidence, not a window: the previous function's every "
             "path terminated before the next function starts.",
             "config/functions.json is NOT used for boundaries. Its `size` field is "
-            "analysis.decode_run(limit=0x400).bytes_ok and overruns small functions.",
-            "No semantic name is assigned. Probe names are sub_<address>.",
+            "analysis.decode_run(limit=0x400).bytes_ok and overruns small functions: "
+            "it records 620 bytes for 0x0803D4D0 against a measured 24, and 388 bytes "
+            "for 0x0803D5B8 against a measured 132. Both spans run to 0x0803D73C, "
+            "through neighbouring functions and into the literal pool.",
+            "No semantic name is assigned. Probe names are sub_<address>. The `role` "
+            "strings describe each function's measured shape (leaf, returns, calls, "
+            "literal loads) rather than claiming a semantic name.",
             "The inventory's confidence is its own discovery method's confidence: a "
             "BL-target entry stays `medium` there even when an independent chain "
             "walk proves the boundary. The two are recorded separately on purpose.",
@@ -719,27 +821,84 @@ def derive_manifest(data: bytes) -> dict:
     }
 
 
-def verify_manifest(data: bytes) -> list[str]:
-    """Regenerate the manifest and return every disagreement with the file on disk."""
-    try:
-        committed = json.loads(MANIFEST_PATH.read_text(encoding="utf-8"))
-    except FileNotFoundError:
-        return [f"{MANIFEST_PATH} does not exist"]
-    derived = derive_manifest(data)
-    problems: list[str] = []
+def verify_manifest(data: bytes, path: Path | None = None) -> list[str]:
+    """Regenerate the manifest and return every disagreement with the file on disk.
 
-    for key in (
-        "source_sha1",
-        "counts",
-        "probes",
-        "translation_units",
-        "inventory_gaps",
-        "inventory_size_disagreements",
-    ):
-        if committed.get(key) != derived.get(key):
-            problems.append(f"manifest field {key!r} does not match the canonical ROM")
+    The WHOLE document is compared, not a hand-picked subset. An earlier version
+    of this function compared six keys and would have accepted a manifest whose
+    ``controls``, ``rejections``, ``method``, ``notes``, ``schema`` and
+    ``generated_by`` had been rewritten to say anything at all, which is exactly
+    the kind of drift a verification step exists to catch.
+
+    Inventory drift is reported separately from ROM drift, because the manifest
+    embeds fields derived from ``config/functions.json`` and blaming the ROM for
+    a changed inventory would point a reader at the wrong file.
+    """
+    try:
+        committed = json.loads((path or MANIFEST_PATH).read_text(encoding="utf-8"))
+    except FileNotFoundError:
+        return [f"{path or MANIFEST_PATH} does not exist"]
+    except json.JSONDecodeError as exc:
+        return [f"{path or MANIFEST_PATH} is not readable JSON: {exc}"]
+
+    problems: list[str] = []
+    derived = derive_manifest(data)
     problems.extend(derived["consistency_problems"])
+
+    # Inventory drift first: if the inventory changed, the inventory-derived
+    # fields in `probes`, `inventory_gaps` and `inventory_size_disagreements`
+    # will differ for a reason that is not the ROM.
+    committed_digest = committed.get("inventory_sha1")
+    current_digest = derived.get("inventory_sha1")
+    if committed_digest != current_digest:
+        problems.append(
+            "INVENTORY DRIFT: config/functions.json has changed since this "
+            f"manifest was generated (committed {committed_digest}, current "
+            f"{current_digest}). The manifest's inventory-derived fields cannot be "
+            "compared meaningfully until it is regenerated with --write-manifest. "
+            "This is not evidence about the ROM."
+        )
+
+    # Every key of the regenerated document must appear, and match.
+    for key in sorted(set(derived) | set(committed)):
+        if key == "inventory_sha1":
+            continue
+        if key not in committed:
+            problems.append(f"manifest is missing the field {key!r}")
+        elif key not in derived:
+            problems.append(f"manifest has an unexpected field {key!r}")
+        elif committed[key] != derived[key]:
+            problems.append(
+                f"manifest field {key!r} disagrees with the value re-derived from "
+                "the canonical ROM"
+            )
     return problems
+
+
+def verify_matrix(data: bytes, sha1: str, path: Path | None = None) -> list[str]:
+    """Regenerate config/compiler_matrix.json and report every disagreement.
+
+    The matrix had no drift check at all, so a stale one could sit in the repo
+    claiming a result no run produced.
+    """
+    target = path or MATRIX_PATH
+    if not target.is_file():
+        return [f"{target} does not exist"]
+    try:
+        committed = json.loads(target.read_text(encoding="utf-8"))
+    except json.JSONDecodeError as exc:
+        return [f"{target} is not readable JSON: {exc}"]
+    derived = build_matrix(data, sha1)
+    if committed == derived:
+        return []
+    differing = sorted(
+        key for key in set(committed) | set(derived) if committed.get(key) != derived.get(key)
+    )
+    return [
+        f"{target} does not match the matrix re-derived on this machine "
+        f"(committed result {committed.get('result')!r}, derived "
+        f"{derived.get('result')!r}; differing fields: {', '.join(differing) or 'none'})"
+    ]
 
 
 def load_manifest(path: Path | None = None) -> dict:
@@ -761,17 +920,37 @@ def extract(data: bytes, rom_address: int, length: int) -> bytes:
 
 @dataclasses.dataclass(frozen=True)
 class ByteDiff:
-    """A structured, deterministic comparison of two machine-code spans."""
+    """A structured, deterministic comparison of two machine-code spans.
+
+    Instruction counts are derived from the TARGET's instruction boundaries,
+    never from a positional walk of both streams. That matters: capstone reports
+    different Thumb encodings as the same ``(mnemonic, op_str)`` pair (for
+    example ``0x4280`` and ``0x4500`` both render as ``cmp r0, r0``), so a
+    positional text comparison can report zero differing instructions for bytes
+    that are plainly different, and can report more differences than there are
+    instructions once the two streams have different lengths. Counting how many
+    of the target's instructions have a non-identical encoding cannot do either.
+    """
 
     target_size: int
     candidate_size: int
     identical_bytes: int
     first_difference: int | None
     differing_bytes: int
+    target_instructions: int
     differing_instructions: int
-    compared_instructions: int
     exact_match: bool
+    base_address: int = 0
     notes: tuple[str, ...] = ()
+
+    @property
+    def matching_instructions(self) -> int:
+        """Target instructions whose encoding is byte-identical in the candidate.
+
+        Never negative: it is ``target_instructions - differing_instructions``
+        and differing can never exceed the target's own count.
+        """
+        return self.target_instructions - self.differing_instructions
 
     def as_dict(self) -> dict:
         return {
@@ -781,12 +960,30 @@ class ByteDiff:
             "first_difference": (
                 f"0x{self.first_difference:X}" if self.first_difference is not None else None
             ),
+            "first_difference_address": (
+                f"0x{self.base_address + self.first_difference:08X}"
+                if self.first_difference is not None
+                else None
+            ),
             "differing_bytes": self.differing_bytes,
+            "target_instructions": self.target_instructions,
             "differing_instructions": self.differing_instructions,
-            "compared_instructions": self.compared_instructions,
+            "matching_instructions": self.matching_instructions,
             "exact_match": self.exact_match,
             "notes": list(self.notes),
         }
+
+
+def instruction_spans(data: bytes, base_address: int, isa: str) -> list[tuple[int, int]]:
+    """Byte spans of every instruction the target decodes to.
+
+    Returns ``(offset_from_base, size)`` pairs. Offsets, not text, are what the
+    comparison keys on.
+    """
+    spans: list[tuple[int, int]] = []
+    for ins in MD[isa].disasm(data, base_address):
+        spans.append((ins.address - base_address, ins.size))
+    return spans
 
 
 def disassemble(data: bytes, base_address: int, isa: str) -> list[tuple[int, str, str]]:
@@ -820,27 +1017,25 @@ def compare_bytes(
     """
     length = min(len(target), len(candidate))
     differences = [index for index in range(length) if target[index] != candidate[index]]
-    differences.extend(range(length, max(len(target), len(candidate))))
-    identical = length - sum(1 for d in differences if d < length)
+    differing = len(differences) + abs(len(target) - len(candidate))
 
-    target_ins = disassemble(target, base_address, isa)
-    candidate_ins = disassemble(candidate, base_address, isa)
+    spans = instruction_spans(target, base_address, isa)
     differing_instructions = 0
-    compared = min(len(target_ins), len(candidate_ins))
-    for index in range(compared):
-        if target_ins[index][1:] != candidate_ins[index][1:]:
+    for offset, size in spans:
+        end = offset + size
+        if end > len(candidate) or target[offset:end] != candidate[offset:end]:
             differing_instructions += 1
-    differing_instructions += abs(len(target_ins) - len(candidate_ins))
 
     return ByteDiff(
         target_size=len(target),
         candidate_size=len(candidate),
-        identical_bytes=identical,
+        identical_bytes=length - len(differences),
         first_difference=differences[0] if differences else None,
-        differing_bytes=len(differences),
+        differing_bytes=differing,
+        target_instructions=len(spans),
         differing_instructions=differing_instructions,
-        compared_instructions=compared,
         exact_match=bytes(target) == bytes(candidate),
+        base_address=base_address,
         notes=notes,
     )
 
@@ -850,40 +1045,118 @@ def compare_bytes(
 # ---------------------------------------------------------------------------
 @dataclasses.dataclass(frozen=True)
 class AdsTools:
-    """An installed ADS 1.2 toolchain, resolved but never shipped."""
+    """An installed ADS 1.2 toolchain, resolved and IDENTIFIED but never shipped."""
 
     root: Path
     compiler: Path
     compiler_id: str
     support: dict[str, Path]
+    banner: str
+    version: str
 
     def as_dict(self) -> dict:
         return {
             "root": str(self.root),
             "compiler": self.compiler_id,
             "compiler_path": str(self.compiler),
+            "banner": self.banner,
+            "version": self.version,
             "support": {name: str(path) for name, path in sorted(self.support.items())},
             "redistribution": "PROHIBITED: commercial software, located locally, never committed",
         }
 
 
+#: Substrings that identify an ARM Developer Suite / RealView tool banner. A
+#: bare name match is not enough: `tcc` is also the name of the Tiny C Compiler,
+#: so accepting any executable called `tcc.exe` would let an unrelated tool be
+#: used and its mismatches reported as a compiler finding.
+_ADS_BANNER_MARKERS = (
+    "developer suite",
+    "realview",
+    "rvct",
+    "arm c/c++ compiler",
+    "arm c compiler",
+    "arm assembler",
+    "arm linker",
+    "arm c++ compiler",
+)
+
+
+def looks_like_ads(banner: str) -> bool:
+    """Whether a tool banner identifies ARM Developer Suite / RealView / RVCT.
+
+    A bare executable-name match is not enough: `tcc` is also the Tiny C
+    Compiler, so a tool of that name would be used and its mismatches reported
+    as a compiler finding. The banner is the discriminator.
+    """
+    lowered = banner.lower()
+    return any(marker in lowered for marker in _ADS_BANNER_MARKERS)
+
+
+def identify_ads_tool(exe: Path, *, timeout: float = 20.0) -> str | None:
+    """Run a tool for its banner and return it iff it identifies as ARM ADS/RVCT.
+
+    Returns None when the tool cannot be executed, produces nothing, times out,
+    or produces a banner without any ADS/RVCT marker. Fails CLOSED: an
+    unidentified tool is treated as absent, never as an ARM compiler.
+    """
+    try:
+        completed = subprocess.run(
+            [str(exe)],
+            capture_output=True,
+            text=True,
+            timeout=timeout,
+            errors="replace",
+        )
+    except (OSError, subprocess.SubprocessError):
+        return None
+    blob = f"{completed.stdout or ''}\n{completed.stderr or ''}"
+    if not looks_like_ads(blob):
+        return None
+    for line in blob.splitlines():
+        stripped = line.strip()
+        if stripped:
+            return stripped[:200]
+    return None
+
+
+def _banner_version(banner: str) -> str:
+    """Pull a version-looking token out of a banner, or say it is unknown."""
+    match = re.search(r"\b(\d+\.\d+(?:\.\d+)?)\b", banner)
+    return match.group(1) if match else "unknown"
+
+
 def discover_ads(
     root: str | Path | None = None, compiler_id: str = "tcpp"
 ) -> AdsTools | None:
-    """Resolve an ADS 1.2 installation, or None. Never invents a path."""
+    """Resolve and IDENTIFY an ADS 1.2 installation, or None.
+
+    Never invents a path, and never accepts a tool that does not identify as
+    ARM ADS/RVCT. When an explicit root is supplied the lookup is confined to
+    it: falling back to PATH there would silently substitute an unrelated
+    same-named executable for the requested installation.
+    """
     resolved = _ads_root(root)
-    if resolved is None:
-        return None
-    compiler = _ads_executable(compiler_id, resolved)
+    explicit = root is not None or bool(os.environ.get("ADS12_ROOT", "").strip())
+
+    compiler = _find_ads_tool(compiler_id, resolved, allow_path=not explicit)
     if compiler is None:
         return None
-    support = {}
+    banner = identify_ads_tool(compiler)
+    if banner is None:
+        return None
+    support: dict[str, Path] = {}
     for name in ADS_SUPPORT_TOOLS:
-        found = _ads_executable(name, resolved)
+        found = _find_ads_tool(name, resolved, allow_path=not explicit)
         if found is not None:
             support[name] = found
     return AdsTools(
-        root=resolved, compiler=compiler, compiler_id=compiler_id, support=support
+        root=resolved if resolved is not None else compiler.parent,
+        compiler=compiler,
+        compiler_id=compiler_id,
+        support=support,
+        banner=banner,
+        version=_banner_version(banner),
     )
 
 
@@ -897,26 +1170,37 @@ def _ads_root(explicit: str | Path | None) -> Path | None:
     return None
 
 
-def _ads_executable(tool_id: str, root: Path) -> Path | None:
-    for sub in ("Bin", "bin", ""):
-        candidate = (root / sub / f"{tool_id}.exe") if sub else (root / f"{tool_id}.exe")
-        if candidate.is_file():
-            return candidate
-    found = shutil.which(tool_id)
-    return Path(found) if found else None
+def _find_ads_tool(tool_id: str, root: Path | None, *, allow_path: bool) -> Path | None:
+    if root is not None:
+        for sub in ("Bin", "bin", ""):
+            candidate = (root / sub / f"{tool_id}.exe") if sub else (root / f"{tool_id}.exe")
+            if candidate.is_file():
+                return candidate
+    if allow_path:
+        found = shutil.which(tool_id)
+        return Path(found) if found else None
+    return None
 
 
 def ads_blocked_details(root: str | Path | None = None) -> list[str]:
     """The actionable description of what is missing and what to do about it."""
     resolved = _ads_root(root)
+    explicit = root is not None or bool(os.environ.get("ADS12_ROOT", "").strip())
     details = [
         f"ADS12_ROOT: {resolved if resolved else '(unset)'}",
+        "A tool counts only if it identifies as ARM ADS/RVCT from its own banner; "
+        "a same-named executable is treated as absent (tcc is also Tiny C Compiler).",
         "Required tools and where they are looked for:",
     ]
     for tool_id in ADS_COMPILE_TOOLS + ADS_SUPPORT_TOOLS:
-        found = _ads_executable(tool_id, resolved) if resolved else shutil.which(tool_id)
+        found = _find_ads_tool(tool_id, resolved, allow_path=not explicit)
+        if found is None:
+            details.append(f"  {tool_id:<9} MISSING")
+            continue
+        banner = identify_ads_tool(found)
         details.append(
-            f"  {tool_id:<9} {'found: ' + str(found) if found else 'MISSING'}"
+            f"  {tool_id:<9} found: {found} "
+            f"[{'identified: ' + banner if banner else 'NOT IDENTIFIED as ADS/RVCT'}]"
         )
     details.extend(
         [
@@ -968,6 +1252,27 @@ def plan_commands(
     if fromelf is not None:
         commands.append([str(fromelf), str(elf), "-bin", "-o", str(binary)])
     return commands
+
+
+def planning_tools(frontend: str, root_label: str = "<ADS12_ROOT>") -> AdsTools:
+    """A placeholder toolchain used only to render ``--plan`` output.
+
+    It exists so the plan can be printed without any compiler present. It is
+    never passed to ``run_probe``, so a placeholder can never be mistaken for an
+    identified installation.
+    """
+    root = Path(root_label)
+    return AdsTools(
+        root=root,
+        compiler=root / "Bin" / f"{frontend}.exe",
+        compiler_id=frontend,
+        support={
+            name: root / "Bin" / f"{name}.exe"
+            for name in ("armasm", "armlink", "fromelf")
+        },
+        banner="(planning placeholder: no installation was identified)",
+        version="unknown",
+    )
 
 
 def render_scatter(unit: TranslationUnit) -> str:
@@ -1092,15 +1397,32 @@ def compile_diagnostic_control(
 # ---------------------------------------------------------------------------
 @dataclasses.dataclass(frozen=True)
 class ProbeResult:
+    """The outcome of comparing one compiled translation unit against the ROM.
+
+    ``comparison_ran`` is the honest predicate for "did this configuration
+    actually produce a verdict". A status of MATCH or DIFFER means yes; BLOCKED
+    means no, and no compiler conclusion may be drawn from it.
+    """
+
     probe: str
     translation_unit: str
     frontend: str
     cpu: str
     optimization: str
-    status: str  # "MATCH" | "DIFFER" | "BLOCKED" | "CONTROL"
+    status: str  # "MATCH" | "DIFFER" | "BLOCKED"
     code: str | None
     diff: ByteDiff | None
     notes: tuple[str, ...]
+    probe_matches: tuple[tuple[str, bool], ...] = ()
+    dropped_candidate_bytes: int = 0
+
+    @property
+    def comparison_ran(self) -> bool:
+        return self.status in ("MATCH", "DIFFER") and self.diff is not None
+
+    @property
+    def matching_probes(self) -> int:
+        return sum(1 for _name, matched in self.probe_matches if matched)
 
     def as_dict(self) -> dict:
         return {
@@ -1111,10 +1433,81 @@ class ProbeResult:
             "optimization": self.optimization,
             "status": self.status,
             "code": self.code,
+            "comparison_ran": self.comparison_ran,
             "exact_match": bool(self.diff and self.diff.exact_match),
+            "probe_matches": {name: matched for name, matched in self.probe_matches},
+            "matching_probes": self.matching_probes,
+            "total_probes": len(self.probe_matches),
+            "dropped_candidate_bytes": self.dropped_candidate_bytes,
             "diff": self.diff.as_dict() if self.diff else None,
             "notes": list(self.notes),
         }
+
+
+def probe_slice_matches(
+    target: bytes,
+    candidate: bytes,
+    unit: TranslationUnit,
+    isa: str,
+) -> tuple[tuple[str, bool], ...]:
+    """Per-function exact-match results, sliced out of ONE translation-unit build.
+
+    The ticket's success criterion is stated per function ("at least three
+    unrelated ordinary engine functions match byte-for-byte under the same
+    compiler configuration"), so a single unit-level boolean is not enough
+    evidence. These slices are not independent builds: they are windows into the
+    same linked image, which is the only thing that keeps the shared literal pool
+    and its displacements comparable.
+    """
+    results: list[tuple[str, bool]] = []
+    for start, end, _role in GBARAM_FUNCTIONS:
+        offset = start - unit.rom_address
+        length = end - start
+        target_slice = target[offset : offset + length]
+        candidate_slice = candidate[offset : offset + length]
+        results.append(
+            (f"sub_{start:08X}", bytes(target_slice) == bytes(candidate_slice))
+        )
+    return tuple(results)
+
+
+#: A STABLE, environment-independent statement of the blocker. The live
+#: per-machine tool listing belongs in the CLI's printed output, never in a
+#: committed document, or the document would differ between machines and could
+#: not be verified.
+BLOCKED_STATEMENT = (
+    "No configuration produced a comparison: ARM Developer Suite 1.2 was not "
+    "found, or what was found did not identify as an ADS/RVCT tool from its own "
+    "banner. Run `python -m buusfury compiler-probe --plan` for the live "
+    "per-machine tool listing and the exact commands required."
+)
+
+#: The same statement, shaped as the notes a blocked probe result carries.
+BLOCKED_NOTES = (
+    BLOCKED_STATEMENT,
+    "No compiler conclusion is drawn from a configuration that ran no comparison.",
+)
+
+
+def _blocked(
+    unit: TranslationUnit,
+    frontend: str,
+    cpu: str,
+    optimization: str,
+    code: str,
+    notes: tuple[str, ...],
+) -> ProbeResult:
+    return ProbeResult(
+        probe=unit.id,
+        translation_unit=unit.id,
+        frontend=frontend,
+        cpu=cpu,
+        optimization=optimization,
+        status="BLOCKED",
+        code=code,
+        diff=None,
+        notes=notes,
+    )
 
 
 def run_probe(
@@ -1129,21 +1522,16 @@ def run_probe(
 ) -> ProbeResult:
     """Compile the unit and compare it, or fail closed with a blocker code.
 
-    A missing toolchain is reported as BLOCKED with ``ADS12_UNAVAILABLE``. It is
-    never reported as a pass, and no compiler conclusion is attached.
+    A missing or unidentifiable toolchain is reported as BLOCKED with
+    ``ADS12_UNAVAILABLE``. It is never reported as a pass, and no compiler
+    conclusion is attached.
     """
     tools = discover_ads(ads12_root, compiler_id=frontend)
     if tools is None:
-        return ProbeResult(
-            probe=unit.id,
-            translation_unit=unit.id,
-            frontend=frontend,
-            cpu=cpu,
-            optimization=optimization,
-            status="BLOCKED",
-            code=BLOCK_ADS_UNAVAILABLE,
-            diff=None,
-            notes=tuple(ads_blocked_details(ads12_root)),
+        # Deliberately the stable statement, not the live tool listing: a
+        # committed matrix must not embed this machine's environment.
+        return _blocked(
+            unit, frontend, cpu, optimization, BLOCK_ADS_UNAVAILABLE, BLOCKED_NOTES
         )
 
     source_path = source or (_identity.REPO_ROOT / unit.source)
@@ -1161,16 +1549,13 @@ def run_probe(
             command, capture_output=True, text=True, errors="replace", timeout=300
         )
         if completed.returncode != 0:
-            return ProbeResult(
-                probe=unit.id,
-                translation_unit=unit.id,
-                frontend=frontend,
-                cpu=cpu,
-                optimization=optimization,
-                status="BLOCKED",
-                code=BLOCK_TOOLCHAIN,
-                diff=None,
-                notes=(
+            return _blocked(
+                unit,
+                frontend,
+                cpu,
+                optimization,
+                BLOCK_TOOLCHAIN,
+                (
                     f"command failed: {' '.join(command)}",
                     (completed.stdout or "") + (completed.stderr or ""),
                 ),
@@ -1178,30 +1563,31 @@ def run_probe(
 
     binary = workdir / "probe.bin"
     if not binary.is_file():
-        return ProbeResult(
-            probe=unit.id,
-            translation_unit=unit.id,
-            frontend=frontend,
-            cpu=cpu,
-            optimization=optimization,
-            status="BLOCKED",
-            code=BLOCK_TOOLCHAIN,
-            diff=None,
-            notes=("the toolchain produced no binary output",),
+        return _blocked(
+            unit,
+            frontend,
+            cpu,
+            optimization,
+            BLOCK_TOOLCHAIN,
+            ("the toolchain produced no binary output",),
         )
 
-    target = extract(
-        data, unit.rom_address, unit.end_address - unit.rom_address
-    )
+    target = extract(data, unit.rom_address, unit.end_address - unit.rom_address)
     candidate = binary.read_bytes()
     notes = (
         "translation-unit scoped comparison: the whole unit including its literal "
         "pool was linked at its original ROM address",
+        f"toolchain identified from its banner: {tools.banner}",
         ORIGIN_ASSUMPTION,
     )
+    dropped = 0
     if len(candidate) > len(target):
+        dropped = len(candidate) - len(target)
         candidate = candidate[: len(target)]
-        notes += ("candidate output was truncated to the target length",)
+        notes += (
+            f"candidate output was {dropped} bytes longer than the target span and "
+            "was truncated to it; the dropped bytes are counted, not ignored",
+        )
     diff = compare_bytes(target, candidate, unit.rom_address, unit.isa, notes=notes)
     return ProbeResult(
         probe=unit.id,
@@ -1213,6 +1599,8 @@ def run_probe(
         code=None,
         diff=diff,
         notes=notes,
+        probe_matches=probe_slice_matches(target, candidate, unit, unit.isa),
+        dropped_candidate_bytes=dropped,
     )
 
 
@@ -1257,44 +1645,21 @@ def build_matrix(
     sha1: str,
     *,
     ads12_root: str | Path | None = None,
-    frontend: str = "tcpp",
 ) -> dict:
-    """Test every candidate configuration, or report the whole matrix blocked.
+    """Test every candidate configuration, or report the outcome honestly.
 
     The first configuration is the historical lead. The rest are the negative
     controls the probe needs in order to be worth anything: a probe set that
     cannot tell two configurations apart has not identified a compiler.
+
+    Crucially, this never infers a "complete" run from the mere availability of
+    the driver names. Every configuration is resolved and identified on its own;
+    if none of them produced a comparison, the document is BLOCKED and no
+    fingerprint is published, because a set of failures to run is not evidence
+    about the compiler.
     """
     unit = GBARAM_TU
     configurations: list[dict] = []
-
-    tools = discover_ads(ads12_root, compiler_id=frontend)
-    if tools is None:
-        for frontend_id, cpu, opt, why in MATRIX_CONFIGS:
-            configurations.append(
-                {
-                    "frontend": frontend_id,
-                    "isa": "arm" if frontend_id in ("armcc", "armcpp") else "thumb",
-                    "cpu": cpu,
-                    "optimization": opt,
-                    "other_flags": ["-S", "-c"],
-                    "translation_unit": unit.id,
-                    "exact_match": False,
-                    "matching_instructions": None,
-                    "total_instructions": None,
-                    "status": "BLOCKED",
-                    "code": BLOCK_ADS_UNAVAILABLE,
-                    "why": why,
-                    "notes": "not executed: ADS 1.2 is not installed",
-                }
-            )
-        return _matrix_document(
-            sha1,
-            configurations,
-            result="COMPILER PROBE: BLOCKED - ADS12_UNAVAILABLE",
-            code=BLOCK_ADS_UNAVAILABLE,
-            details=ads_blocked_details(ads12_root),
-        )
 
     for frontend_id, cpu, opt, why in MATRIX_CONFIGS:
         try:
@@ -1307,28 +1672,41 @@ def build_matrix(
                 optimization=opt,
             )
         except ProbeError as exc:
-            probe_result = ProbeResult(
-                probe=unit.id,
-                translation_unit=unit.id,
-                frontend=frontend_id,
-                cpu=cpu,
-                optimization=opt,
-                status="BLOCKED",
-                code=BLOCK_TOOLCHAIN,
-                diff=None,
-                notes=(str(exc),),
+            probe_result = _blocked(
+                unit, frontend_id, cpu, opt, BLOCK_TOOLCHAIN, (str(exc),)
             )
         entry = probe_result.as_dict()
         entry["isa"] = "arm" if frontend_id in ("armcc", "armcpp") else "thumb"
         entry["other_flags"] = ["-S", "-c"]
         entry["why"] = why
-        if probe_result.diff is not None:
-            entry["matching_instructions"] = (
-                probe_result.diff.compared_instructions
-                - probe_result.diff.differing_instructions
-            )
-            entry["total_instructions"] = probe_result.diff.compared_instructions
+        entry["matching_instructions"] = (
+            probe_result.diff.matching_instructions if probe_result.diff else None
+        )
+        entry["total_instructions"] = (
+            probe_result.diff.target_instructions if probe_result.diff else None
+        )
         configurations.append(entry)
+
+    comparisons = sum(1 for c in configurations if c["comparison_ran"])
+    if comparisons == 0:
+        codes = {c["code"] for c in configurations if c["code"]}
+        code = (
+            BLOCK_ADS_UNAVAILABLE
+            if codes == {BLOCK_ADS_UNAVAILABLE}
+            else (next(iter(codes)) if len(codes) == 1 else BLOCK_TOOLCHAIN)
+        )
+        result = (
+            "COMPILER PROBE: BLOCKED - ADS12_UNAVAILABLE"
+            if code == BLOCK_ADS_UNAVAILABLE
+            else f"COMPILER PROBE: BLOCKED - {code} (no configuration produced a comparison)"
+        )
+        return _matrix_document(
+            sha1,
+            configurations,
+            result=result,
+            code=code,
+            details=[BLOCKED_STATEMENT],
+        )
 
     return _matrix_document(
         sha1, configurations, result="COMPILER PROBE: COMPLETE", code=None, details=[]
@@ -1350,24 +1728,33 @@ def _matrix_document(
             "cpu": c["cpu"],
             "optimization": c["optimization"],
             "translation_unit": c["translation_unit"],
+            "comparison_ran": c["comparison_ran"],
             "exact_match": c["exact_match"],
+            "matching_probes": c.get("matching_probes"),
+            "total_probes": c.get("total_probes"),
             "matching_instructions": c.get("matching_instructions"),
             "total_instructions": c.get("total_instructions"),
+            "dropped_candidate_bytes": c.get("dropped_candidate_bytes"),
         }
         for c in configurations
     ]
+    comparisons = sum(1 for c in configurations if c["comparison_ran"])
     return {
         "schema": 1,
         "source_sha1": sha1,
         "result": result,
         "code": code,
-        "conclusion": "UNTESTED" if code else fingerprint(configurations)["thumb_frontend"],
+        "conclusion": (
+            "UNTESTED" if code else fingerprint(configurations)["thumb_frontend"]
+        ),
         "no_compiler_result_claimed": bool(code),
+        "comparisons_run": comparisons,
         "generated_by": "tools/buusfury/compiler_probe.py build_matrix()",
         "methodology": ORIGIN_ASSUMPTION,
         "comparison_scope": (
             "translation unit gbaram_tu (0x0803D4D0..0x0803D740): 608 bytes of code "
-            "plus its 16-byte literal pool, compared as one span"
+            "plus its 16-byte literal pool, compared as one span, then sliced into "
+            "the 8 declared probe functions"
         ),
         "configurations": configurations,
         "rows": rows,
@@ -1377,7 +1764,9 @@ def _matrix_document(
             "tcpp -O1 vs -O2: the lead against more optimisation",
             "armcc/armcpp: ARM instruction set against the observed Thumb",
         ],
-        "fingerprint": fingerprint(configurations) if not code else fingerprint([]),
+        "fingerprint": (
+            fingerprint(configurations) if comparisons else fingerprint([])
+        ),
         "details": details,
     }
 
@@ -1395,34 +1784,110 @@ def write_matrix(path: Path | None = None) -> Path:
     return target
 
 
-def fingerprint(matrix_results: list[dict]) -> dict:
-    """Classify each claim separately. Never invents certainty.
+def _row(configurations: list[dict], frontend: str, optimization: str) -> dict | None:
+    for entry in configurations:
+        if (
+            entry.get("frontend") == frontend
+            and entry.get("optimization") == optimization
+            and entry.get("comparison_ran")
+        ):
+            return entry
+    return None
 
-    A claim is PROVEN only on multiple discriminating exact matches under one
-    shared configuration; a single tiny function matching proves nothing,
-    because a two-instruction getter compiles identically at every -O level.
+
+def _claim(winner: dict | None, competitor: dict | None, probe_total: int) -> str:
+    """Classify ONE claim from the two configurations that discriminate it.
+
+    The questions this answers are: did the favoured configuration match, how
+    many of the probe FUNCTIONS did it match, and did the competing setting
+    produce different code? A match that the competitor reproduces exactly is
+    non-discriminating and can only ever be PLAUSIBLE.
     """
-    exact = [r for r in matrix_results if r.get("exact_match")]
-    if not matrix_results:
-        state = "UNTESTED"
-    elif exact:
-        state = "STRONGLY_SUPPORTED" if len(exact) >= 3 else "PLAUSIBLE"
-    else:
-        state = "REFUTED"
+    if winner is None:
+        return "UNTESTED"
+    matched = winner.get("matching_probes") or 0
+    total = winner.get("total_probes") or probe_total
+    if matched == 0:
+        return "REFUTED"
+    if competitor is not None and (competitor.get("matching_probes") or 0) == matched:
+        return "PLAUSIBLE"
+    if matched >= 3 and matched == total:
+        return "PROVEN"
+    return "STRONGLY_SUPPORTED"
+
+
+def fingerprint(matrix_results: list[dict]) -> dict:
+    """Classify each claim SEPARATELY. Never invents certainty.
+
+    Every claim is scored from the two configurations that actually discriminate
+    it, and the score counts matching probe FUNCTIONS under one shared
+    configuration, not matching configurations. Counting configurations would
+    invert the meaning: `-O0`, `-O1` and `-O2` all matching is exactly the
+    non-discriminating case, not three independent confirmations.
+
+    `PROVEN` requires that every one of at least three probe functions match and
+    that the competing setting differ. A claim whose configurations never
+    compared bytes is `UNTESTED`, which is not a weak positive.
+    """
+    probe_total = len(GBARAM_FUNCTIONS)
+    compared = [r for r in matrix_results if r.get("comparison_ran")]
+
+    tcpp_o1 = _row(matrix_results, "tcpp", "-O1")
+    tcc_o1 = _row(matrix_results, "tcc", "-O1")
+    tcpp_o0 = _row(matrix_results, "tcpp", "-O0")
+    tcpp_o2 = _row(matrix_results, "tcpp", "-O2")
+    armcpp_o1 = _row(matrix_results, "armcpp", "-O1")
+    armcc_o1 = _row(matrix_results, "armcc", "-O1")
+
+    def first_or_none(*rows):
+        for row in rows:
+            if row is not None:
+                return row
+        return None
+
+    thumb_frontend = _claim(tcpp_o1, tcc_o1, probe_total)
+    thumb_optimization = _claim(tcpp_o1, first_or_none(tcpp_o0, tcpp_o2), probe_total)
+    c_vs_cpp = _claim(tcpp_o1, tcc_o1, probe_total)
+    arm_frontend = _claim(armcpp_o1, armcc_o1, probe_total)
+    arm_optimization = _claim(armcc_o1, armcpp_o1, probe_total)
+
+    # The CPU target never varies in this matrix: every configuration is
+    # ARM7TDMI. With nothing to discriminate it, a match can only ever be
+    # consistent evidence, so it is capped at PLAUSIBLE rather than promoted.
+    thumb_cpu_target = (
+        "PLAUSIBLE"
+        if (tcpp_o1 or {}).get("matching_probes")
+        else ("REFUTED" if tcpp_o1 else "UNTESTED")
+    )
+
     return {
-        "thumb_frontend": state,
-        "thumb_optimization": state,
-        "thumb_cpu_target": state,
-        "arm_frontend": "UNTESTED",
-        "arm_optimization": "UNTESTED",
-        "c_vs_cpp": state,
+        "thumb_frontend": thumb_frontend,
+        "thumb_optimization": thumb_optimization,
+        "thumb_cpu_target": thumb_cpu_target,
+        "arm_frontend": arm_frontend,
+        "arm_optimization": arm_optimization,
+        "c_vs_cpp": c_vs_cpp,
         "abi": "UNTESTED",
         "_evidence": {
-            "exact_matches": len(exact),
+            "configurations_compared": len(compared),
             "configurations_tested": len(matrix_results),
+            "probe_functions_per_configuration": probe_total,
+            "lead_matching_probes": (tcpp_o1 or {}).get("matching_probes"),
+            "discriminators": {
+                "thumb_frontend": "tcpp -O1 against tcc -O1",
+                "thumb_optimization": "tcpp -O1 against tcpp -O0 and -O2",
+                "c_vs_cpp": "tcpp -O1 against tcc -O1",
+                "arm_frontend": "armcpp -O1 against armcc -O1",
+                "thumb_cpu_target": (
+                    "NONE: the CPU is ARM7TDMI in every configuration, so this "
+                    "claim can never be promoted past PLAUSIBLE by this matrix"
+                ),
+                "abi": "NONE: no ABI-affecting flag is varied",
+            },
             "success_criterion": (
                 "at least 3 discriminating ordinary engine functions matching "
-                "exactly under one shared configuration"
+                "exactly under one shared configuration, with the competing "
+                "setting differing"
             ),
         },
         "_state_meaning": {
@@ -1430,7 +1895,7 @@ def fingerprint(matrix_results: list[dict]) -> dict:
             "STRONGLY_SUPPORTED": "repeated close or exact matches, some ambiguity",
             "PLAUSIBLE": "evidence consistent but not discriminating",
             "REFUTED": "repeated mismatches despite semantically correct source",
-            "UNTESTED": "toolchain unavailable",
+            "UNTESTED": "toolchain unavailable, or no configuration compared bytes",
         },
     }
 
@@ -1447,22 +1912,37 @@ def render_matrix_markdown(matrix: dict) -> str:
         "",
         f"Status: **{matrix['result']}**",
         "",
-        "| frontend | ISA | CPU | opt | unit | exact | matching insn | total insn |",
-        "| --- | --- | --- | --- | --- | --- | --- | --- |",
+        f"Configurations that actually compared bytes: {matrix.get('comparisons_run', 0)} "
+        f"of {len(matrix['configurations'])}",
+        "",
+        "| frontend | ISA | CPU | opt | unit | compared | exact | matching probes |"
+        " matching insn | total insn |",
+        "| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |",
     ]
     for row in matrix["configurations"]:
         lines.append(
-            "| {frontend} | {isa} | {cpu} | {opt} | {unit} | {exact} | {mi} | {ti} |".format(
+            "| {frontend} | {isa} | {cpu} | {opt} | {unit} | {ran} | {exact} | {mp} |"
+            " {mi} | {ti} |".format(
                 frontend=row["frontend"],
                 isa=row["isa"],
                 cpu=row["cpu"],
                 opt=row["optimization"],
                 unit=row["translation_unit"],
+                ran="yes" if row["comparison_ran"] else "no",
                 exact="yes" if row["exact_match"] else "no",
-                mi=row.get("matching_instructions", "-"),
-                ti=row.get("total_instructions", "-"),
+                mp=f"{row.get('matching_probes')}/{row.get('total_probes')}"
+                if row["comparison_ran"]
+                else "-",
+                mi=row.get("matching_instructions") if row["comparison_ran"] else "-",
+                ti=row.get("total_instructions") if row["comparison_ran"] else "-",
             )
         )
+    if not matrix.get("comparisons_run"):
+        lines += [
+            "",
+            "No configuration produced a comparison, so the table above records no",
+            "result for any row and no compiler conclusion is claimed.",
+        ]
     return "\n".join(lines) + "\n"
 
 

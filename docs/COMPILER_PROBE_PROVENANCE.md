@@ -111,12 +111,25 @@ have produced a corpus that cannot be compiled into the original layout.
 
 `config/functions.json` derives `size` from
 `analysis.decode_run(limit=0x400).bytes_ok`. That is a decode extent capped at
-1024 bytes, not a function boundary. Six of the eight probes carry an inventory
-size larger than the measured boundary; `sub_0803D5B8` is recorded as 620 bytes
-against a measured 132, and its inventory `callees` list
-(`0x0803D4E8`, `0x0803D520`, `0x0803D56A`) is those three neighbours' calls
-attributed to it. All six disagreements are in
-`config/compiler_probes.json` under `inventory_size_disagreements`.
+1024 bytes, not a function boundary. Measured against this unit:
+
+| address | inventory size | measured boundary | overrun |
+| --- | --- | --- | --- |
+| `0x0803D4D0` | 620 | 24 | 596 bytes |
+| `0x0803D4E8` | 596 | 56 | 540 bytes |
+| `0x0803D5B8` | 388 | 132 | 256 bytes |
+| `0x0803D63C` | 256 | 214 | 42 bytes |
+
+Both of the larger spans end at `0x0803D73C`, running through neighbouring
+functions and into the literal pool, and both carry the same contaminated callee
+list (`0x0803D4E8`, `0x0803D520`, `0x0803D56A`) because those are the
+neighbours' calls. Six of the eight probes carry an overrun; all six are in
+`config/compiler_probes.json` under `inventory_size_disagreements`, each with the
+recorded value and the measured one side by side.
+
+An earlier revision of this document attached the 620 figure to
+`0x0803D5B8`. The independent review measured both entries and caught it; the
+manifest now records both pairs explicitly and a test asserts them.
 
 ### Two functions missing from the inventory
 
@@ -162,10 +175,22 @@ the exact spelling and its interaction with `-O1` must come from the installed
 compiler's own help, and the ticket forbids blind brute force of undocumented
 flags. Adding them once documented is a one-line change to `MATRIX_CONFIGS`.
 
+Two claims have **no** discriminator in this matrix and are structurally capped
+rather than promoted: the CPU target (every configuration is ARM7TDMI) and ABI
+characteristics (no ABI-affecting flag is varied). `fingerprint()` says so in
+its evidence block instead of reporting them at the same strength as the claims
+that do have competing settings.
+
 Exact matches: **none**. Near matches: **none**. Ambiguous or non-discriminating
 functions: **not established**, because no probe has been run. Failed
 hypotheses: **none yet**, for the same reason; the hypotheses that have been
 recorded as unresolved are the two semantic questions listed in section 4.
+
+The committed `config/compiler_matrix.json` is deliberately
+**environment-independent**: it carries a stable blocker statement rather than
+this machine's tool listing, so it reproduces byte-identically on any machine
+without ADS and `--verify-matrix` is meaningful. On a machine with an identified
+ADS 1.2 the matrix must be regenerated, and `--verify-matrix` fails until it is.
 
 ## 7. Provenance of the harness itself
 
@@ -189,10 +214,12 @@ scatter file, and `fromelf` extracts the bytes.
 
 | path | exercised? | how |
 | --- | --- | --- |
-| manifest derivation and verification | yes | `--write-manifest`, `--verify-manifest`, 53 tests |
+| manifest derivation and verification | yes | `--write-manifest`, `--verify-manifest`, and tests that tamper with each field in turn |
+| matrix derivation and verification | yes | `--write-matrix`, `--verify-matrix`, and a tampering test |
 | byte comparison, including length mismatch and instruction counting | yes | portable tests plus a real compile |
 | command construction and scatter generation | yes | `--plan`, and tests that assert the exact argument order |
-| blocked reporting | yes | `--matrix` on this machine |
+| blocked reporting, including the aggregate | yes | `--matrix` on this machine, plus a test that every configuration blocked still yields BLOCKED rather than COMPLETE |
+| toolchain identification by banner | partly | the rejection paths are tested against a real non-ADS executable and against the Tiny C Compiler's banner; no real ADS banner has been seen |
 | compiler invocation and object extraction with GCC | yes | `--diagnostic-control`, tagged not-evidence |
 | compiler invocation, linking and extraction with ADS 1.2 | **no** | no installation exists |
 
@@ -200,6 +227,18 @@ The ADS leg is therefore **unexercised**. The one assumption in it that could
 silently corrupt a result is stated in every report as `ORIGIN_ASSUMPTION`: that
 `fromelf -bin` on a single-load-region scatter emits from that region's address.
 Confirming it from real toolchain output is the first step after installation.
+
+## 8b. Independent review
+
+The implementation was frozen at `c6882ae` and reviewed adversarially by a
+reviewer whose brief was to falsify it and whose method was independent: an
+exhaustive `BL`/`BLX` halfword-pattern census over all 8,388,608 bytes, a
+from-scratch reachability fixpoint, and in-memory reconstruction of the manifest
+and matrix. It confirmed the eight boundaries, the exact 608-byte tiling, the
+absence of a ninth function, the shared four-word pool, the two inventory gaps
+and the call graph, and found one blocker and nine major defects which this
+revision fixes. `docs/COMPILER_PROBE.md` section 16 lists them. Its verdict was
+`SOUND WITH FIXES`, with the boundary corpus itself described as reliable.
 
 ## 8. Reproducing this ticket
 
@@ -221,11 +260,11 @@ committed manifest is therefore a claim that is re-tested rather than trusted.
 
 | item | result |
 | --- | --- |
-| `tests/test_compiler_probe.py` | 53 passed |
+| `tests/test_compiler_probe.py` | 76 passed |
 | full suite | see the final ticket report |
 | `scripts/check.cmd` | see the final ticket report; gates 5 and 6 are reported `BLOCKED`, not `FAIL` |
 | canonical ROM | unchanged (SHA-1 and mtime) |
-| proprietary artefacts | none created, downloaded or tracked; every ADS tool name is gitignored |
+| proprietary artefacts | none created, downloaded or tracked; Git refuses every ADS tool and licence name |
 | `C:\Dev\log1-remake` | not modified |
 
 ## 10. Blocker, precisely

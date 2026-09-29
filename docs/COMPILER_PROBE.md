@@ -105,11 +105,15 @@ than a decoder artefact.
 
 `config/functions.json` was **not** used for boundaries, and could not be. Its
 `size` field is `analysis.decode_run(limit=0x400).bytes_ok`: a decode extent
-capped at 1024 bytes. For `sub_0803D5B8` it runs 620 bytes, straight through
-three neighbouring functions, and attributes their calls to it. Six of the eight
-probes carry an inventory size that overruns the measured boundary; those
-disagreements are recorded in `config/compiler_probes.json` under
-`inventory_size_disagreements` rather than smoothed over.
+capped at 1024 bytes. Measured against this unit, it records 620 bytes for
+`0x0803D4D0` where the boundary is 24, and 388 bytes for `0x0803D5B8` where the
+boundary is 132; both spans run to `0x0803D73C`, straight through neighbouring
+functions and into the literal pool, and both carry the same contaminated callee
+list (`0x0803D4E8`, `0x0803D520`, `0x0803D56A`) because those are the
+neighbours' calls. Six of the eight probes carry an inventory size that overruns
+the measured boundary; those disagreements are recorded in
+`config/compiler_probes.json` under `inventory_size_disagreements` rather than
+smoothed over.
 
 The boundary method used instead is a **chain walk**: a recursive descent in the
 unit's own instruction set that
@@ -182,7 +186,8 @@ one-line change.
 | flag | effect |
 | --- | --- |
 | (none) | report the probe corpus and the blocked/tooled state |
-| `--verify-manifest` | re-derive `config/compiler_probes.json` from the ROM and compare; FAIL on any disagreement |
+| `--verify-manifest` | re-derive `config/compiler_probes.json` and compare the WHOLE document; FAIL on any disagreement |
+| `--verify-matrix` | re-derive `config/compiler_matrix.json` and compare the whole document |
 | `--write-manifest` | regenerate the manifest from the ROM |
 | `--write-matrix` | regenerate `config/compiler_matrix.json` |
 | `--plan` | print the exact command sequence and the linker layout; execute nothing |
@@ -190,13 +195,42 @@ one-line change.
 | `--diagnostic-control` | exercise the harness with devkitARM GCC; NEVER evidence |
 | `--json` | machine-readable output |
 
-Exit codes: `0` when a verdict was produced, `1` when no verdict could be
-obtained (the blocked case, which fails closed), `2` on usage error.
+The modes are mutually exclusive, so a combined invocation is a usage error
+rather than silently running only one of them.
+
+Exit codes:
+
+| code | meaning |
+| --- | --- |
+| `0` | a verdict was produced, or the requested check passed (`--plan` and `--verify-*` always exit 0 on success because they execute nothing failing) |
+| `1` | no verdict could be obtained, or a check failed. **`--json` does not change this**: a blocked probe exits non-zero with or without `--json` |
+| `2` | usage error |
+
+`--matrix` exits 0 **only if at least one configuration actually compared
+bytes**. A matrix in which every configuration is blocked is a failure to obtain
+a verdict, not a pass.
 
 Every comparison reports target size, candidate size, identical bytes, first
-differing offset, number of differing bytes, number of differing instructions,
-and an exact-match boolean. Assembly is compared as decoded instructions in
-addition to raw bytes, never as text.
+differing offset with its ROM address, number of differing bytes, the target's
+instruction count, the number of those instructions whose encoding differs, and
+an exact-match boolean. Instruction counts are keyed on the **target's**
+instruction boundaries, never on a positional walk of both streams: capstone
+renders distinct Thumb encodings as the same text (127 colliding
+`(mnemonic, op_str)` pairs exist among the 65,536 halfwords, for example
+`0x4280` and `0x4500` both being `cmp r0, r0`), so a text comparison can report
+zero differing instructions for bytes that are not equal. Assembly is compared
+as decoded instructions in addition to raw bytes, never as text alone.
+
+### Identifying the toolchain
+
+A tool is accepted only if it **identifies as ARM ADS/RVCT from its own banner**.
+The executable name alone is not enough: `tcc` is also the name of the Tiny C
+Compiler, so accepting any executable called `tcc.exe` would let an unrelated
+compiler's mismatches be published as a finding about the original build. When
+`ADS12_ROOT` is set, the lookup is confined to it and `PATH` is not consulted,
+so an unrelated same-named binary cannot be substituted for the requested
+installation. An unidentifiable tool is treated as absent, and the exact banner
+and version of an identified one are recorded in the matrix.
 
 ## 8. Relocation methodology
 
@@ -254,18 +288,41 @@ alone or in the unit. If it does not, the harness itself is wrong.
 A compiler configuration is not proven because one tiny function matches. The
 ticket's preferred criterion, implemented in `fingerprint()`:
 
-- `PLAUSIBLE` on one exact match,
-- `STRONGLY_SUPPORTED` on three or more,
-- `PROVEN` on multiple *discriminating* exact matches, and
-- `REFUTED` on repeated mismatches despite semantically correct source.
+- `REFUTED` when the favoured configuration matched none of the eight probe
+  functions,
+- `PLAUSIBLE` when it matched but the competing setting produced **identical**
+  results, because that is the non-discriminating case,
+- `STRONGLY_SUPPORTED` on one or two discriminating function matches,
+- `PROVEN` when all eight match AND the competing setting differs, and
+- `UNTESTED` when the configurations never compared bytes at all.
 
-A two-instruction getter that compiles identically at `-O0`, `-O1` and `-O2` is
-non-discriminating and cannot prove an optimization level; that is why the
-corpus spans straight-line code, conditional branches, loops, early returns and
-calls, and why the negative controls exist.
+Each claim is scored from **its own** two discriminating configurations, not
+from one pooled set of evidence:
 
-**Result on this machine: all seven claims are `UNTESTED`**, because the
-toolchain is unavailable. See section 12.
+| claim | discriminated by |
+| --- | --- |
+| Thumb front end | `tcpp -O1` against `tcc -O1` |
+| Thumb optimization | `tcpp -O1` against `tcpp -O0` and `-O2` |
+| C vs C++ | `tcpp -O1` against `tcc -O1` |
+| ARM front end | `armcpp -O1` against `armcc -O1` |
+| Thumb CPU target | **nothing**: the CPU is ARM7TDMI in every configuration, so this claim is structurally capped at `PLAUSIBLE` |
+| ABI | **nothing**: no ABI-affecting flag is varied, so `UNTESTED` |
+
+The score counts matching probe **functions** under one shared configuration.
+Counting matching configurations would invert the meaning: `-O0`, `-O1` and
+`-O2` all matching is exactly the non-discriminating case, not three independent
+confirmations. That is also why the corpus spans straight-line code, conditional
+branches, loops, early returns and calls, and why the negative controls exist.
+
+Per-function results are slices of the one translation-unit build, reported as
+`probe_matches` on each configuration, because the ticket's criterion is stated
+per function ("at least three unrelated ordinary engine functions match
+byte-for-byte under the same compiler configuration"). They are not independent
+builds: the shared literal pool is what makes one build the only comparable
+thing.
+
+**Result on this machine: every claim is `UNTESTED`**, because no configuration
+compared bytes. See section 12.
 
 ## 11. Controls and rejected candidates
 
@@ -285,7 +342,8 @@ toolchain is unavailable. See section 12.
 | `code_candidate_span_6_048F14` | code_candidate, `medium`, ARM | does not decode as ARM at all; the first word is an NV-condition word, the signature of data. No ARM probe can be built here. |
 | `code_candidate_span_5_03D2D0` | code_candidate, `medium`, Thumb | the chain walk reaches an impossible "40 bytes / 137 instructions" entry and two functions with no terminator, so the span mixes inline data with code. |
 | `code_reachable_02E1C0` | code, `high`, executable `confirmed` | real and reachable, but not independently bounded: the first function is 1022 bytes with 20 callees. Deferred, not refuted. |
-| `sub_0803D5B8` entry in `config/functions.json` | `size=620` | the size is a decode extent; it overruns three functions and attributes their calls to it. Used as a cross-check only. |
+| `sub_0803D4D0` entry | `size=620` | the size is a decode extent; 620 bytes runs to `0x0803D73C`, spanning the whole unit plus 12 bytes of its pool, and its callee list is its neighbours' calls. The measured boundary is 24 bytes with no calls. |
+| `sub_0803D5B8` entry | `size=388` | the same defect: 388 bytes runs to `0x0803D73C`, through `0x0803D63C` and `0x0803D712` and into the pool. The measured boundary is 132 bytes with one distinct callee. |
 
 The first two matter more than their length suggests. `code_reachable_055324`
 carries the map's strongest code vocabulary and **is not code**. This is because
@@ -296,14 +354,21 @@ licence to build a probe on it.
 
 ### Why there is no ARM probe
 
-The three confirmed ARM regions are the reset/CRT at `0x080000C0` (excluded by
-the ticket), the C runtime veneer at `0x08049114` (library), and `codec_blob` at
-`0x087B79A4` (excluded by the ticket as primary evidence). The one ARM
-`code_candidate` does not decode. An ARM probe would have to be forced, and the
-ticket explicitly permits the honest answer:
+Measured from `config/rom_map.json`, exactly **two** regions are `isa=arm` with
+`executable=confirmed`: the reset/CRT at `0x080000C0` (excluded by the ticket)
+and `codec_blob` at `0x087B79A4` (excluded by the ticket as primary evidence).
+The ARM veneer at `0x08049114` is not a region start at all: it lies inside
+`code_candidate_span_6_048F14` (`0x08048F14..0x08049324`, `code_candidate`,
+`medium`, executable `probable`), which is also the only ARM candidate in the
+image and the one that does not decode as ARM. An ARM probe would have to be
+forced, and the ticket explicitly permits the honest answer:
 
-    ARM startup:      hand-written assembly          - NOT APPLICABLE
+    ARM startup:       hand-written assembly          - NOT APPLICABLE
     ARM library/codec: tool origin unresolved
+
+`tests/test_compiler_probe.py` asserts this count against the map, so if a third
+ARM region were ever confirmed as ordinary code the empty ARM corpus would fail
+loudly instead of being inherited silently.
 
 ### Inventory gaps
 
@@ -392,16 +457,40 @@ installation:
         Lib\
         ...
 
-The harness looks for `<root>/Bin/<tool>.exe`, then `<root>/<tool>.exe`, then
-`PATH`, and never invents a path. Everything it writes goes under
-`build/probes/`, which is gitignored.
+The harness looks for `<root>/Bin/<tool>.exe`, then `<root>/<tool>.exe`, and
+never invents a path. When `ADS12_ROOT` is supplied, `PATH` is not consulted.
+What it writes automatically goes under `build/probes/`, which is gitignored;
+the only writes outside it are the two committed results, and those happen only
+when `--write-manifest` or `--write-matrix` is passed explicitly, because a
+generated config file must be a deliberate act. A test runs the whole blocked
+harness and asserts the working tree is unchanged.
+
+### Self-verification
+
+`--verify-manifest` regenerates the entire manifest and compares **every** field,
+not a hand-picked subset, so a document whose `controls`, `rejections`,
+`method`, `notes`, `schema` or `generated_by` had been rewritten would be
+rejected. Tests tamper with each of those fields in turn and assert the
+tampering is caught.
+
+Because the manifest embeds three fields derived from `config/functions.json`,
+that inventory is pinned inside the manifest by SHA-1, and a changed inventory is
+reported as `INVENTORY DRIFT` explicitly distinguished from ROM drift, rather
+than blaming the ROM for a difference the ROM did not cause.
+
+`--verify-matrix` does the same for `config/compiler_matrix.json`, which
+previously had no drift check at all. The committed matrix is written to be
+environment-independent, so its blocked state is reproducible on any machine
+without ADS; on a machine **with** an identified ADS 1.2 the matrix must be
+regenerated, and `--verify-matrix` will say so.
 
 ## 15. Tests
 
-`tests/test_compiler_probe.py`, 53 tests, all passing. Portable and ROM-gated
+`tests/test_compiler_probe.py`, 76 tests, all passing. Portable and ROM-gated
 tests are deliberately separated; a missing ADS installation is a *passing*
 state for the suite because the ticket's contract is that the blocker is
-measured, not that it is absent.
+measured, not that it is absent. A further test asserts that running the whole
+blocked harness leaves the working tree byte-for-byte unchanged.
 
 Covered, per the ticket's list: probe manifest validity; probe addresses present
 in `config/functions.json` or recorded as a measured gap; ISA consistency;
@@ -410,10 +499,61 @@ each declared span; no overlapping probe ranges and exact tiling of the code
 body; deterministic comparison; a wrong ROM refused before any probe runs; the
 canonical ROM unmutated by probe reads (digest and mtime); toolchain absence
 producing `BLOCKED` and never a false PASS or an `exact_match`; no proprietary
-binary or licence tracked and every ADS tool name gitignored; and no write path
-into the other checkout.
+binary or licence tracked and every ADS tool name refused by Git itself; and no
+write path into the other checkout.
 
-## 16. Next ticket
+Beyond the ticket's list, and directly from the independent review:
+
+- a blocked toolchain can never produce a `COMPLETE` document, a `REFUTED`
+  claim, or exit code 0;
+- the fingerprint is per claim, counts matching functions rather than matching
+  configurations, and cannot promote the CPU or ABI claims;
+- tampering with any field of the manifest or the matrix is detected;
+- inventory drift is reported separately from ROM drift;
+- `compare_bytes` cannot report zero differing instructions for unequal bytes,
+  and cannot report a negative matching count;
+- an executable named `tcpp.exe` is not accepted as ARM's compiler, the Tiny C
+  Compiler's banner is rejected, and an explicit `ADS12_ROOT` never falls back
+  to `PATH`;
+- every control names a region that exists in `config/rom_map.json` with the
+  declared ISA, confidence and executable state, and exactly two regions are
+  ARM and confirmed.
+
+## 16. Independent review
+
+The implementation was frozen at commit `c6882ae` and put through an independent
+adversarial review whose method was its own, not this ticket's. It re-derived
+the eight boundaries by exhaustive halfword-pattern `BL`/`BLX` census over all
+8,388,608 bytes plus a from-scratch reachability fixpoint, and it reconstructed
+the manifest and matrix in memory.
+
+It **confirmed the measured core**: 296 instruction starts over 304 halfword
+slots, the eight closures tiling `0x0803D4D0..0x0803D730` exactly, zero
+undecodable bytes, zero escapes, every closure's reachable maximum equal to its
+declared end, no ninth function, no aligned pointer into the region, all ten
+PC-relative loads resolving into the same four-word pool, and the return and
+instruction counts matching the manifest. It also confirmed the two inventory
+gaps, the internal call graph, and the absence of any hardcoded path into the
+other checkout.
+
+It found, and this revision fixes, one blocker and nine major defects. The
+blocker is the one worth naming: a toolchain that was discovered but useless
+could be reported as `COMPLETE` with a `REFUTED` fingerprint and exit code 0,
+because the matrix aggregated nothing and the fingerprint counted configurations
+rather than functions. Also fixed: the manifest was compared only field by field
+over six of its keys; a correct manifest could be rejected when the unpinned
+inventory differed, with the message blaming the ROM; the "620 bytes for
+`sub_0803D5B8`" claim was wrong (620 belongs to `sub_0803D4D0`, `sub_0803D5B8`
+is 388); "three confirmed ARM regions" was wrong (there are two); instruction
+comparison could report zero differing instructions for different bytes and a
+negative matching count; gate 6 in `scripts/check.ps1` printed PASS for a run
+that compared nothing; `--json` exited 0 on a blocked probe; and any
+same-named executable was accepted as ADS.
+
+The review's own verdict was **SOUND WITH FIXES**, with the boundary corpus
+described as reliable as committed. This revision is the response to that.
+
+## 17. Next ticket
 
 If ADS 1.2 is supplied and three or more discriminating probe functions match
 byte-for-byte under one configuration, the next ticket is

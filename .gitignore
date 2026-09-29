@@ -61,6 +61,8 @@ rom/
 /ADS/
 *.lic
 *.license
+license.txt
+LICENSE.txt
 armasm
 armasm.exe
 armlink
@@ -77,6 +79,8 @@ fromelf
 fromelf.exe
 armsd
 armsd.exe
+axd
+axd.exe
 
 # ---------------------------------------------------------------------------
 # Scratch and editor noise.
@@ -95,6 +99,7 @@ Thumbs.db
 desktop.ini
 .vscode/
 .idea/
+# Local tool state, never tracked.
 
 # Python
 __pycache__/

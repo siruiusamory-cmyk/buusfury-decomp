@@ -410,12 +410,13 @@ python -m buusfury compiler-probe --matrix
 
 python -m buusfury compiler-probe --diagnostic-control
 # exit 0. Compiled src/probes/GBARam.c with devkitARM GCC and compared.
-# target_size 624, candidate_size 760, identical_bytes 27, first_difference 0x0,
-# differing_bytes 733, differing_instructions 367, exact_match False.
+# target_size 624, candidate_size 760, identical_bytes 27, first_difference 0x0
+#   (address 0x0803D4D0), differing_bytes 733, target_instructions 301,
+#   differing_instructions 298, matching_instructions 3, exact_match False.
 # classification: DIAGNOSTIC_CONTROL_NOT_EVIDENCE. Not a compiler finding.
 
 python -m pytest tests -q
-# 230 passed in 30.60s        (177 before this ticket; +53 in tests/test_compiler_probe.py)
+# 253 passed in 32.76s        (177 before this ticket; +76 in tests/test_compiler_probe.py)
 ```
 
 The diagnostic-control run is reported here for one reason only: it proves the
@@ -452,8 +453,29 @@ hiding behind the blocker.
 - Canonical ROM SHA-1 `f1c4b07554d2a3b1ad2f325307051e775ce68087` and its
   `mtime_ns` are asserted unchanged by `tests/test_compiler_probe.py` around the
   probe read path, and again by a dedicated test in `tests/test_rom_map.py`.
-- No ADS binary, licence file or ROM-derived blob is tracked; every ADS tool name
-  is gitignored, and a test walks the tracked tree looking for any of them.
-- Everything the harness writes goes under `build/probes/`, which is gitignored.
+- No ADS binary, licence file or ROM-derived blob is tracked; Git itself refuses
+  every ADS tool name and licence filename, and a test walks the repository tree
+  looking for any of them.
+- Automatic harness output goes under `build/probes/`, which is gitignored. The
+  only writes outside it are the two committed results, and only when
+  `--write-manifest` or `--write-matrix` is passed explicitly. A test runs the
+  whole blocked harness and asserts the working tree is unchanged.
 - `C:\Dev\log1-remake` was not modified. See the ticket's final report for the
   proof.
+
+## Independent review of this ticket
+
+The implementation was frozen at `c6882ae` and reviewed adversarially, with an
+independent method (an exhaustive `BL`/`BLX` census over all 8,388,608 bytes plus
+a from-scratch reachability fixpoint, and in-memory reconstruction of both
+committed documents). The review **confirmed the measured core** - the eight
+exact boundaries, the 608-byte tiling, no ninth function, the shared four-word
+pool, the two inventory gaps, and the call graph - and found one blocker and nine
+major defects, all fixed in the revision that follows. The blocker was that a
+discovered-but-useless toolchain could be reported as `COMPLETE` with a
+`REFUTED` fingerprint and exit code 0; the factual errors were the "620 bytes
+for `sub_0803D5B8`" claim (620 belongs to `sub_0803D4D0`) and "three confirmed
+ARM regions" (there are two). Its verdict was `SOUND WITH FIXES`. See
+[`COMPILER_PROBE.md`](COMPILER_PROBE.md) section 16 for the full list.
+
+After the fixes the probe suite is 76 tests and the full suite is 253, measured.

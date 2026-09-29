@@ -5,117 +5,178 @@
   "code": "ADS12_UNAVAILABLE",
   "conclusion": "UNTESTED",
   "no_compiler_result_claimed": true,
+  "comparisons_run": 0,
   "generated_by": "tools/buusfury/compiler_probe.py build_matrix()",
   "methodology": "the region start is the candidate origin: fromelf -bin on a scatter file whose only load region is at the unit's ROM address is taken to emit from that address. UNEXERCISED on a machine without ADS 1.2, and the first thing to confirm from the real toolchain's output when one is supplied.",
-  "comparison_scope": "translation unit gbaram_tu (0x0803D4D0..0x0803D740): 608 bytes of code plus its 16-byte literal pool, compared as one span",
+  "comparison_scope": "translation unit gbaram_tu (0x0803D4D0..0x0803D740): 608 bytes of code plus its 16-byte literal pool, compared as one span, then sliced into the 8 declared probe functions",
   "configurations": [
     {
+      "probe": "gbaram_tu",
+      "translation_unit": "gbaram_tu",
       "frontend": "tcpp",
-      "isa": "thumb",
       "cpu": "ARM7TDMI",
       "optimization": "-O1",
+      "status": "BLOCKED",
+      "code": "ADS12_UNAVAILABLE",
+      "comparison_ran": false,
+      "exact_match": false,
+      "probe_matches": {},
+      "matching_probes": 0,
+      "total_probes": 0,
+      "dropped_candidate_bytes": 0,
+      "diff": null,
+      "notes": [
+        "No configuration produced a comparison: ARM Developer Suite 1.2 was not found, or what was found did not identify as an ADS/RVCT tool from its own banner. Run `python -m buusfury compiler-probe --plan` for the live per-machine tool listing and the exact commands required.",
+        "No compiler conclusion is drawn from a configuration that ran no comparison."
+      ],
+      "isa": "thumb",
       "other_flags": [
         "-S",
         "-c"
       ],
-      "translation_unit": "gbaram_tu",
-      "exact_match": false,
-      "matching_instructions": null,
-      "total_instructions": null,
-      "status": "BLOCKED",
-      "code": "ADS12_UNAVAILABLE",
       "why": "the historical lead, verbatim",
-      "notes": "not executed: ADS 1.2 is not installed"
+      "matching_instructions": null,
+      "total_instructions": null
     },
     {
+      "probe": "gbaram_tu",
+      "translation_unit": "gbaram_tu",
       "frontend": "tcpp",
-      "isa": "thumb",
       "cpu": "ARM7TDMI",
       "optimization": "-O0",
+      "status": "BLOCKED",
+      "code": "ADS12_UNAVAILABLE",
+      "comparison_ran": false,
+      "exact_match": false,
+      "probe_matches": {},
+      "matching_probes": 0,
+      "total_probes": 0,
+      "dropped_candidate_bytes": 0,
+      "diff": null,
+      "notes": [
+        "No configuration produced a comparison: ARM Developer Suite 1.2 was not found, or what was found did not identify as an ADS/RVCT tool from its own banner. Run `python -m buusfury compiler-probe --plan` for the live per-machine tool listing and the exact commands required.",
+        "No compiler conclusion is drawn from a configuration that ran no comparison."
+      ],
+      "isa": "thumb",
       "other_flags": [
         "-S",
         "-c"
       ],
-      "translation_unit": "gbaram_tu",
-      "exact_match": false,
-      "matching_instructions": null,
-      "total_instructions": null,
-      "status": "BLOCKED",
-      "code": "ADS12_UNAVAILABLE",
       "why": "negative control: optimisation off",
-      "notes": "not executed: ADS 1.2 is not installed"
+      "matching_instructions": null,
+      "total_instructions": null
     },
     {
+      "probe": "gbaram_tu",
+      "translation_unit": "gbaram_tu",
       "frontend": "tcpp",
-      "isa": "thumb",
       "cpu": "ARM7TDMI",
       "optimization": "-O2",
-      "other_flags": [
-        "-S",
-        "-c"
-      ],
-      "translation_unit": "gbaram_tu",
-      "exact_match": false,
-      "matching_instructions": null,
-      "total_instructions": null,
       "status": "BLOCKED",
       "code": "ADS12_UNAVAILABLE",
-      "why": "negative control: more optimisation",
-      "notes": "not executed: ADS 1.2 is not installed"
-    },
-    {
-      "frontend": "tcc",
+      "comparison_ran": false,
+      "exact_match": false,
+      "probe_matches": {},
+      "matching_probes": 0,
+      "total_probes": 0,
+      "dropped_candidate_bytes": 0,
+      "diff": null,
+      "notes": [
+        "No configuration produced a comparison: ARM Developer Suite 1.2 was not found, or what was found did not identify as an ADS/RVCT tool from its own banner. Run `python -m buusfury compiler-probe --plan` for the live per-machine tool listing and the exact commands required.",
+        "No compiler conclusion is drawn from a configuration that ran no comparison."
+      ],
       "isa": "thumb",
-      "cpu": "ARM7TDMI",
-      "optimization": "-O1",
       "other_flags": [
         "-S",
         "-c"
       ],
-      "translation_unit": "gbaram_tu",
-      "exact_match": false,
+      "why": "negative control: more optimisation",
       "matching_instructions": null,
-      "total_instructions": null,
+      "total_instructions": null
+    },
+    {
+      "probe": "gbaram_tu",
+      "translation_unit": "gbaram_tu",
+      "frontend": "tcc",
+      "cpu": "ARM7TDMI",
+      "optimization": "-O1",
       "status": "BLOCKED",
       "code": "ADS12_UNAVAILABLE",
+      "comparison_ran": false,
+      "exact_match": false,
+      "probe_matches": {},
+      "matching_probes": 0,
+      "total_probes": 0,
+      "dropped_candidate_bytes": 0,
+      "diff": null,
+      "notes": [
+        "No configuration produced a comparison: ARM Developer Suite 1.2 was not found, or what was found did not identify as an ADS/RVCT tool from its own banner. Run `python -m buusfury compiler-probe --plan` for the live per-machine tool listing and the exact commands required.",
+        "No compiler conclusion is drawn from a configuration that ran no comparison."
+      ],
+      "isa": "thumb",
+      "other_flags": [
+        "-S",
+        "-c"
+      ],
       "why": "C frontend instead of C++",
-      "notes": "not executed: ADS 1.2 is not installed"
+      "matching_instructions": null,
+      "total_instructions": null
     },
     {
+      "probe": "gbaram_tu",
+      "translation_unit": "gbaram_tu",
       "frontend": "armcpp",
-      "isa": "arm",
       "cpu": "ARM7TDMI",
       "optimization": "-O1",
+      "status": "BLOCKED",
+      "code": "ADS12_UNAVAILABLE",
+      "comparison_ran": false,
+      "exact_match": false,
+      "probe_matches": {},
+      "matching_probes": 0,
+      "total_probes": 0,
+      "dropped_candidate_bytes": 0,
+      "diff": null,
+      "notes": [
+        "No configuration produced a comparison: ARM Developer Suite 1.2 was not found, or what was found did not identify as an ADS/RVCT tool from its own banner. Run `python -m buusfury compiler-probe --plan` for the live per-machine tool listing and the exact commands required.",
+        "No compiler conclusion is drawn from a configuration that ran no comparison."
+      ],
+      "isa": "arm",
       "other_flags": [
         "-S",
         "-c"
       ],
-      "translation_unit": "gbaram_tu",
-      "exact_match": false,
-      "matching_instructions": null,
-      "total_instructions": null,
-      "status": "BLOCKED",
-      "code": "ADS12_UNAVAILABLE",
       "why": "ARM frontend, C++",
-      "notes": "not executed: ADS 1.2 is not installed"
+      "matching_instructions": null,
+      "total_instructions": null
     },
     {
+      "probe": "gbaram_tu",
+      "translation_unit": "gbaram_tu",
       "frontend": "armcc",
-      "isa": "arm",
       "cpu": "ARM7TDMI",
       "optimization": "-O1",
+      "status": "BLOCKED",
+      "code": "ADS12_UNAVAILABLE",
+      "comparison_ran": false,
+      "exact_match": false,
+      "probe_matches": {},
+      "matching_probes": 0,
+      "total_probes": 0,
+      "dropped_candidate_bytes": 0,
+      "diff": null,
+      "notes": [
+        "No configuration produced a comparison: ARM Developer Suite 1.2 was not found, or what was found did not identify as an ADS/RVCT tool from its own banner. Run `python -m buusfury compiler-probe --plan` for the live per-machine tool listing and the exact commands required.",
+        "No compiler conclusion is drawn from a configuration that ran no comparison."
+      ],
+      "isa": "arm",
       "other_flags": [
         "-S",
         "-c"
       ],
-      "translation_unit": "gbaram_tu",
-      "exact_match": false,
-      "matching_instructions": null,
-      "total_instructions": null,
-      "status": "BLOCKED",
-      "code": "ADS12_UNAVAILABLE",
       "why": "ARM frontend, C",
-      "notes": "not executed: ADS 1.2 is not installed"
+      "matching_instructions": null,
+      "total_instructions": null
     }
   ],
   "rows": [
@@ -125,9 +186,13 @@
       "cpu": "ARM7TDMI",
       "optimization": "-O1",
       "translation_unit": "gbaram_tu",
+      "comparison_ran": false,
       "exact_match": false,
+      "matching_probes": 0,
+      "total_probes": 0,
       "matching_instructions": null,
-      "total_instructions": null
+      "total_instructions": null,
+      "dropped_candidate_bytes": 0
     },
     {
       "frontend": "tcpp",
@@ -135,9 +200,13 @@
       "cpu": "ARM7TDMI",
       "optimization": "-O0",
       "translation_unit": "gbaram_tu",
+      "comparison_ran": false,
       "exact_match": false,
+      "matching_probes": 0,
+      "total_probes": 0,
       "matching_instructions": null,
-      "total_instructions": null
+      "total_instructions": null,
+      "dropped_candidate_bytes": 0
     },
     {
       "frontend": "tcpp",
@@ -145,9 +214,13 @@
       "cpu": "ARM7TDMI",
       "optimization": "-O2",
       "translation_unit": "gbaram_tu",
+      "comparison_ran": false,
       "exact_match": false,
+      "matching_probes": 0,
+      "total_probes": 0,
       "matching_instructions": null,
-      "total_instructions": null
+      "total_instructions": null,
+      "dropped_candidate_bytes": 0
     },
     {
       "frontend": "tcc",
@@ -155,9 +228,13 @@
       "cpu": "ARM7TDMI",
       "optimization": "-O1",
       "translation_unit": "gbaram_tu",
+      "comparison_ran": false,
       "exact_match": false,
+      "matching_probes": 0,
+      "total_probes": 0,
       "matching_instructions": null,
-      "total_instructions": null
+      "total_instructions": null,
+      "dropped_candidate_bytes": 0
     },
     {
       "frontend": "armcpp",
@@ -165,9 +242,13 @@
       "cpu": "ARM7TDMI",
       "optimization": "-O1",
       "translation_unit": "gbaram_tu",
+      "comparison_ran": false,
       "exact_match": false,
+      "matching_probes": 0,
+      "total_probes": 0,
       "matching_instructions": null,
-      "total_instructions": null
+      "total_instructions": null,
+      "dropped_candidate_bytes": 0
     },
     {
       "frontend": "armcc",
@@ -175,9 +256,13 @@
       "cpu": "ARM7TDMI",
       "optimization": "-O1",
       "translation_unit": "gbaram_tu",
+      "comparison_ran": false,
       "exact_match": false,
+      "matching_probes": 0,
+      "total_probes": 0,
       "matching_instructions": null,
-      "total_instructions": null
+      "total_instructions": null,
+      "dropped_candidate_bytes": 0
     }
   ],
   "negative_controls": [
@@ -195,30 +280,29 @@
     "c_vs_cpp": "UNTESTED",
     "abi": "UNTESTED",
     "_evidence": {
-      "exact_matches": 0,
+      "configurations_compared": 0,
       "configurations_tested": 0,
-      "success_criterion": "at least 3 discriminating ordinary engine functions matching exactly under one shared configuration"
+      "probe_functions_per_configuration": 8,
+      "lead_matching_probes": null,
+      "discriminators": {
+        "thumb_frontend": "tcpp -O1 against tcc -O1",
+        "thumb_optimization": "tcpp -O1 against tcpp -O0 and -O2",
+        "c_vs_cpp": "tcpp -O1 against tcc -O1",
+        "arm_frontend": "armcpp -O1 against armcc -O1",
+        "thumb_cpu_target": "NONE: the CPU is ARM7TDMI in every configuration, so this claim can never be promoted past PLAUSIBLE by this matrix",
+        "abi": "NONE: no ABI-affecting flag is varied"
+      },
+      "success_criterion": "at least 3 discriminating ordinary engine functions matching exactly under one shared configuration, with the competing setting differing"
     },
     "_state_meaning": {
       "PROVEN": "multiple discriminating exact matches support the setting",
       "STRONGLY_SUPPORTED": "repeated close or exact matches, some ambiguity",
       "PLAUSIBLE": "evidence consistent but not discriminating",
       "REFUTED": "repeated mismatches despite semantically correct source",
-      "UNTESTED": "toolchain unavailable"
+      "UNTESTED": "toolchain unavailable, or no configuration compared bytes"
     }
   },
   "details": [
-    "ADS12_ROOT: (unset)",
-    "Required tools and where they are looked for:",
-    "  tcc       MISSING",
-    "  tcpp      MISSING",
-    "  armcc     MISSING",
-    "  armcpp    MISSING",
-    "  armasm    MISSING",
-    "  armlink   MISSING",
-    "  fromelf   MISSING",
-    "ARM Developer Suite 1.2 is commercial software and is deliberately NOT bundled, downloaded or vendored by this repository.",
-    "Install it locally and set ADS12_ROOT to the installation root; the tools are then expected at $ADS12_ROOT/Bin/<tool>.exe.",
-    "Once supplied, the exact command this probe will run is printed by: python -m buusfury compiler-probe --plan"
+    "No configuration produced a comparison: ARM Developer Suite 1.2 was not found, or what was found did not identify as an ADS/RVCT tool from its own banner. Run `python -m buusfury compiler-probe --plan` for the live per-machine tool listing and the exact commands required."
   ]
 }

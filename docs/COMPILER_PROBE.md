@@ -146,17 +146,48 @@ structurally faithful to the disassembly and it compiles cleanly under a modern
 GCC (used only as a plumbing control), but matching instruction-for-instruction
 is the iteration the matrix exists to perform.
 
-Assumptions are recorded in the file header rather than buried. Two are
-genuinely unresolved and are called out:
+Assumptions are recorded in the file header rather than buried. Four of them have
+since been **settled by running the reconstruction**, not by reading it.
 
-- the `0x7FFFFFFF` guard in `sub_0803D5B8` is compared against a value read with
-  `ldrh`, so it can never be taken. Either the original field is wider than 16
-  bits, or the guard is a sentinel test whose emitted form is not obvious.
-- in `sub_0803D56A` both list-neighbour updates store the word read from
-  `block[1] + 0x04`, which does not read as a plain unlink.
+### The semantic self-check
 
-Neither is hidden from the harness: both are in the source, and both are
-candidates for the first thing a real compiler run will correct.
+`src/probes/gbaram_selftest.c` compiles `GBARam.c` for the HOST and actually
+executes the allocator: init, allocate, free, coalesce, and a bounded allocation
+run, checking after every step that payloads are inside the arena, that they do
+not overlap, that the free list is walkable with symmetric links and no busy
+node in it, and that the total free bytes return exactly to the initial value.
+
+This is **not compiler evidence** and says nothing about ADS 1.2 code generation.
+It is the one check a compiler can perform here that the ROM cannot: a
+translation unit whose C is semantically wrong cannot match under *any* compiler,
+so a behavioural failure is a real defect on the critical path. A pass only
+removes one class of error.
+
+It found four defects, none of which could ever have matched:
+
+| defect | how it showed |
+| --- | --- |
+| `sub_0803D5B8`'s loop advanced on `GBA_BLOCK_FROM_WORD(block->prev)` without testing the word first, so index 0 became a valid-looking pointer instead of terminating | the self-check **hung** |
+| the `0x7FFFFFFF` value was read as a size **guard** rather than the search's initial best-size sentinel; `r3` is reassigned at `0x0803D5E6`, so the branch means "not smaller than the best so far" | found by re-reading the loop with that reassignment in view |
+| three of the six coalesce cases in `sub_0803D63C` merged into the wrong neighbour, and one called `sub_0803D56A` with reversed arguments | the free total collapsed to 172 bytes instead of returning to 260,088 |
+| the reconstruction was declared unsigned (`u32`, `0x7FFFFFFFu`) where the ROM emits `asrs` and `bge` | found by reading the signedness of the emitted shifts and branches |
+
+Two consequences worth recording. The search is **best-fit**: because `best_size`
+only ever decreases, the loop finds the smallest free block strictly larger than
+the request, with an exact-size hit returning immediately. And there is **no
+out-of-memory path**: `sub_0803D5B8` dereferences `best` unconditionally, so a
+request larger than the largest free block reads index 0. That is faithful to the
+ROM and is recorded rather than "fixed" with a null check the original does not
+have.
+
+`sub_0803D56A`'s store of the word at `absorbed+0x04` into both of `absorbed`'s
+list neighbours is now *behaviourally consistent*: the free total and every list
+invariant hold across 230 checks, so `+0x00`/`+0x04` behave as the neighbour
+links used for coalescing. The field's **name** is still unknown, and behavioural
+consistency is not proof of the original source.
+
+A test runs the self-check whenever a host C compiler is present and skips
+otherwise, so the portable suite stays portable.
 
 ## 6. Compiler configuration matrix
 

@@ -1311,6 +1311,91 @@ def test_the_files_this_ticket_adds_are_ascii_lf_and_bom_free():
         assert "\u2014" not in text and "\u2013" not in text, path.name
 
 
+def test_the_gbaram_reconstruction_is_behaviourally_coherent_on_the_host(tmp_path):
+    """Compile the probe source for the HOST and actually run the allocator.
+
+    This is not compiler evidence and says nothing about ADS 1.2 codegen. It is
+    the one check a compiler can perform here that the ROM cannot: a translation
+    unit whose C is semantically wrong cannot match under ANY compiler, so a
+    behavioural failure is a real defect on the critical path. Running it is how
+    four such defects were found, including a loop that never terminated and an
+    inverted coalesce that collapsed the free total from 260,088 bytes to 172.
+
+    Skipped when no host C compiler is available, so the portable suite stays
+    portable.
+    """
+    import os
+    import shutil
+
+    repo = identity.REPO_ROOT
+    selftest = repo / "src" / "probes" / "gbaram_selftest.c"
+    assert selftest.is_file()
+
+    candidates = [
+        Path(r"C:\Program Files (x86)\Microsoft Visual Studio\2022\BuildTools")
+        / "VC" / "Auxiliary" / "Build" / "vcvars64.bat",
+        Path(r"C:\Program Files\Microsoft Visual Studio\2022\Community")
+        / "VC" / "Auxiliary" / "Build" / "vcvars64.bat",
+    ]
+    vcvars = next((p for p in candidates if p.is_file()), None)
+    if vcvars is None and shutil.which("cl") is None:
+        pytest.skip("no host C compiler available for the behavioural self-check")
+
+    workdir = tmp_path / "selftest"
+    workdir.mkdir(parents=True, exist_ok=True)
+    exe = workdir / "gbaram_selftest.exe"
+
+    comspec = os.environ.get("COMSPEC") or r"C:\Windows\System32\cmd.exe"
+    if not Path(comspec).is_file():
+        pytest.skip("no usable command interpreter for the self-check")
+
+    # A batch file rather than a /c command string: cmd's /c quote-stripping
+    # mangles a command that itself starts with a quoted path, which silently
+    # produced an empty run and a bare exit code 1.
+    #
+    # /Fo and /Fd are deliberately NOT used: a path ending in a backslash before
+    # a closing quote escapes the quote, and cl then fails with
+    # "Cannot open compiler generated file: ''". Changing directory first puts
+    # the .obj and .pdb in the same place without needing either flag.
+    compile_log = workdir / "compile.log"
+    batch = workdir / "build_selftest.bat"
+    lines = ["@echo off"]
+    if vcvars is not None:
+        lines.append(f'call "{vcvars}" >nul 2>&1')
+        lines.append("if errorlevel 1 exit /b 90")
+    lines.append(f'cd /d "{workdir}"')
+    lines.append(
+        f'cl /nologo /W3 /std:c11 /TC /Fe:gbaram_selftest.exe "{selftest}" '
+        f'> "{compile_log}" 2>&1'
+    )
+    batch.write_text("\r\n".join(lines) + "\r\n", encoding="ascii", newline="\n")
+
+    compile_run = subprocess.run(
+        [comspec, "/c", str(batch)],
+        cwd=str(repo),
+        capture_output=True,
+        text=True,
+        errors="replace",
+        env={**os.environ},
+    )
+    log = compile_log.read_text(encoding="utf-8", errors="replace") if compile_log.is_file() else ""
+    assert compile_run.returncode == 0, (
+        f"self-check compile failed (exit {compile_run.returncode})\n"
+        f"--- batch ---\n{chr(10).join(lines)}\n--- cl output ---\n{log}\n"
+        f"--- stdout ---\n{compile_run.stdout}\n--- stderr ---\n{compile_run.stderr}"
+    )
+    assert exe.is_file(), "the self-check did not produce an executable"
+
+    executed = subprocess.run(
+        [str(exe)], capture_output=True, text=True, errors="replace", timeout=120
+    )
+    assert executed.returncode == 0, (
+        "the reconstruction is not behaviourally coherent:\n" + executed.stdout
+    )
+    assert "PASS" in executed.stdout, executed.stdout
+    assert "0 failure" in executed.stdout, executed.stdout
+
+
 def test_the_diagnostic_control_cannot_reach_a_compiler_finding():
     """Behavioural: the GCC path must not be reachable from the probe pipeline.
 

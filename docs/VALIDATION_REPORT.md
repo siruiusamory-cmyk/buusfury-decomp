@@ -538,3 +538,29 @@ after a single level so no path is invented.
 
 `scripts\check.cmd` after these changes: **OVERALL PASS**, exit 0, gates 5 and 6
 reported `BLOCKED`. Full suite 267 passed.
+
+## Semantic self-check of the probe source, 2026-09-29
+
+Running the reconstruction on the host found four defects that reading had not,
+none of which could ever have matched the ROM. `src/probes/gbaram_selftest.c`
+compiles `GBARam.c` for x86 and executes the allocator, checking payload bounds,
+non-overlap, free-list integrity and the conservation of free bytes across 230
+checks. This is **not compiler evidence**; it is the one check a compiler can
+perform here that the ROM cannot.
+
+| defect | how it surfaced |
+| --- | --- |
+| the search loop advanced without testing the neighbour word, so index 0 became a valid-looking pointer instead of terminating | the self-check **hung** |
+| `0x7FFFFFFF` was read as a dead size guard; it is the search's initial best-size sentinel, and `r3` is reassigned at `0x0803D5E6` | re-reading the loop with that reassignment in view |
+| three of six coalesce cases merged into the wrong neighbour and one passed `sub_0803D56A` its arguments reversed | free total collapsed to 172 bytes instead of 260,088 |
+| the source was unsigned where the ROM emits `asrs` and `bge` | reading the signedness of the emitted shift and branches |
+
+Two semantic consequences are now recorded: the search is **best-fit** (the
+smallest block strictly larger than the request, with an exact-size shortcut),
+and the allocator has **no out-of-memory path** (`best` is dereferenced
+unconditionally). The previously unresolved `sub_0803D56A` store at
+`absorbed+0x04` is behaviourally consistent with neighbour links used for
+coalescing, though the field's name remains unknown and consistency is not proof.
+
+Full suite 268 passed. `scripts\check.cmd` still **OVERALL PASS**, exit 0, with
+gates 5 and 6 `BLOCKED`.

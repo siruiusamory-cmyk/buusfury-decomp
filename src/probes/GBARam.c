@@ -22,13 +22,33 @@
  * Assumption (NOT evidence, to be corrected by the first successful run):
  *   - field names. The disassembly fixes each offset and its access width; it
  *     does not say what the game called it. Names below are placeholders.
- *   - the 0x7FFFFFFF guard in sub_0803D5B8 is compared against a value read
- *     with ldrh, so it can never be taken. Either the original field is wider
- *     than 16 bits, or the guard is a sentinel test whose form the compiler
- *     kept. UNRESOLVED.
- *   - in sub_0803D56A the two list-neighbour updates both store the word read
- *     from block[1]+0x04. Whether that field is a tree child, a relocated
- *     pointer, or a second link is UNRESOLVED.
+ *
+ * What RUNNING the reconstruction on the host has already settled (see
+ * gbaram_selftest.c). Four defects were found this way, and none of them could
+ * ever have matched the ROM:
+ *   - The search in sub_0803D5B8 is BEST-FIT and 0x7FFFFFFF is its initial
+ *     sentinel, not a size test. r3 is REASSIGNED to the running best size at
+ *     0x0803D5E6, so `cmp r2, r3 / bge` means "not smaller than the best so
+ *     far, skip". An earlier reading of this as a guard that can never fire was
+ *     simply wrong: r3 is not constant across the loop.
+ *   - The loop terminator is `prev == 0`, not a null pointer. Index 0 is the
+ *     NULL encoding, so the advance must test the WORD before converting it.
+ *     Converting first yields a valid-looking non-null pointer and the loop
+ *     never terminates; the host run hung on exactly this.
+ *   - Every coalesce in sub_0803D63C merges the freed block INTO the surviving
+ *     neighbour, which keeps its place in the free list. Three of the six cases
+ *     previously had the direction inverted, and one called sub_0803D56A with
+ *     its arguments reversed; together they collapsed the free total from
+ *     260,088 bytes to 172.
+ *   - sub_0803D56A's store of the word at absorbed+0x04 into both of absorbed's
+ *     list neighbours is CONSISTENT with the host self-check: the free total and
+ *     the list invariants hold across 230 checks, so +0x00/+0x04 behave as the
+ *     neighbour links used for coalescing. The field's NAME is still unknown,
+ *     and behavioural consistency is not proof of the original source.
+ *   - There is NO out-of-memory path: sub_0803D5B8 dereferences `best`
+ *     unconditionally, so a request larger than the largest free block reads
+ *     index 0. Faithful, and recorded rather than "fixed" with a null check the
+ *     original does not have.
  *
  * The original file may NOT be copied from 2genkidev/buusfury: that repository
  * carries no licence grant. See docs/REFERENCE_AUDIT.md.
@@ -49,11 +69,25 @@ typedef struct GbaBlock {
     u16 next;   /* 0x0A, free-list link */
 } GbaBlock;
 
+#ifndef GBARAM_HOST_TEST
 #define GBA_HEAP_BASE ((GbaBlock *)0x02000800u)
 #define GBA_LIST_HEAD ((GbaBlock **)0x03003488u)
 
 #define GBA_BLOCK_FROM_WORD(w) ((GbaBlock *)(((u32)(w) << 2) + 0x02000000u))
 #define GBA_WORD_FROM_BLOCK(p) ((u16)(((int)(p) - (int)0x02000000) >> 2))
+#else
+/* Host build (see gbaram_selftest.c). The three absolute addresses and the
+ * index origin are redirected into a real arena so the allocator can be RUN and
+ * its behaviour checked. Only ADDRESS ENCODING differs: every semantic
+ * operation, branch and arithmetic step below is the same code the probe build
+ * compiles. The probe build takes the definitions above, token-for-token as it
+ * always has, so the emitted machine code cannot depend on this block existing. */
+extern unsigned char gbaram_arena[];
+#define GBA_HEAP_BASE ((GbaBlock *)(gbaram_arena + 0x800))
+#define GBA_LIST_HEAD ((GbaBlock **)(gbaram_arena + 0x3FF00))
+#define GBA_BLOCK_FROM_WORD(w) ((GbaBlock *)(gbaram_arena + ((u32)(w) << 2)))
+#define GBA_WORD_FROM_BLOCK(p) ((u16)(((u8 *)(p) - gbaram_arena) >> 2))
+#endif
 
 #define GBA_PAYLOAD(b) ((u8 *)(b) + 8)
 
@@ -153,28 +187,54 @@ void sub_0803D56A(GbaBlock *block, GbaBlock *absorbed)
  *
  * ASSUMPTION, UNRESOLVED: the 0x7FFFFFFF comparison cannot be taken for a
  * 16-bit field. Kept because the disassembly emits it. */
-void *sub_0803D5B8(u32 size)
+void *sub_0803D5B8(int size)
 {
-    u32 want = (size + 3) >> 2;
+    /* The ROM emits `asrs` for this shift, not `lsrs`: the value is SIGNED, so
+     * the parameter, `want`, `best_size` and `remaining` are all `int`.
+     * Writing `u32` here produces `lsrs` and cannot match.
+     *
+     * THE SEARCH IS BEST-FIT, and the 0x7FFFFFFF is its initial sentinel, not a
+     * size test. Register r3 is loaded with 0x7FFFFFFF and is REASSIGNED to the
+     * running best size at 0x0803D5E6, so `cmp r2, r3 / bge` means "this block
+     * is not smaller than the best already found, so skip it". An earlier
+     * reading of this as a guard that can never fire was wrong: r3 is not a
+     * constant across the loop. Because best_size only decreases, the loop
+     * finds the smallest block that is strictly larger than `want`, with an
+     * exact-size hit returning immediately.
+     *
+     * The loop terminator is `prev == 0`, NOT a null pointer: index 0 is the
+     * NULL encoding, so the advance must test the WORD before converting it.
+     * Converting first yields a valid-looking non-null pointer and never
+     * terminates. Running the reconstruction on the host hung on exactly this,
+     * which is how it was found. */
+    int want = (size + 3) >> 2;
     GbaBlock *best = 0;
+    int best_size = 0x7FFFFFFF;
     GbaBlock *block = *GBA_LIST_HEAD;
 
-    while (block != 0) {
-        if (block->size >= 0x7FFFFFFFu) {
-            break;
-        }
-        if (block->size == want) {
+    for (;;) {
+        if (block->size >= best_size) {
+            /* Not smaller than the best so far: fall through to the advance. */
+        } else if (block->size == want) {
             sub_0803D4E8(block);
             return GBA_PAYLOAD(block);
-        }
-        if (block->size > want) {
+        } else if (block->size > want) {
             best = block;
+            best_size = block->size;
+        }
+        if (block->prev == 0) {
+            break;
         }
         block = GBA_BLOCK_FROM_WORD(block->prev);
     }
 
     {
-        u32 remaining = best->size - want - 2;
+        /* The ROM dereferences `best` unconditionally here, so there is NO
+         * out-of-memory path: a request larger than the largest free block
+         * reads index 0 rather than returning NULL. Faithful, and recorded as a
+         * semantic property rather than "fixed" with a null check the original
+         * does not have. */
+        int remaining = best->size - want - 2;
 
         if (remaining <= 0) {
             sub_0803D4E8(best);
@@ -199,13 +259,19 @@ void *sub_0803D5B8(u32 size)
 }
 
 /* 0x0803D63C - 214 bytes, 9 exits, calls sub_0803D4E8 / sub_0803D56A /
- * sub_0803D520. Return an allocation and coalesce it with its list neighbours
- * where they are free. */
+ * sub_0803D520. Return an allocation and coalesce it with its free neighbours.
+ *
+ * Every merge goes the SAME way: the freed block is absorbed INTO the surviving
+ * neighbour, which keeps its place in the free list. An earlier revision had the
+ * merge direction inverted in three of the six cases (unlinking and growing the
+ * left neighbour instead of the right, and calling sub_0803D56A with its
+ * arguments reversed). Running the reconstruction on the host caught it: the
+ * free total collapsed to 172 bytes instead of returning to 260,088. */
 void sub_0803D63C(void *payload)
 {
     GbaBlock *block;
-    GbaBlock *prev;
-    GbaBlock *next;
+    GbaBlock *left;
+    GbaBlock *right;
 
     if (payload == 0) {
         return;
@@ -215,56 +281,67 @@ void sub_0803D63C(void *payload)
     block->busy = 0;
 
     if (block->left == 0) {
-        if (block->right != 0) {
-            next = GBA_BLOCK_FROM_WORD(block->right);
-            if (next->busy == 0) {
-                sub_0803D56A(next, block);
-                return;
-            }
-            sub_0803D520(block);
+        if (block->right == 0) {
+            /* 0x0803D708: nothing on either side, so block becomes the list. */
+            *GBA_LIST_HEAD = block;
+            block->prev = 0;
+            block->next = 0;
             return;
         }
-        *GBA_LIST_HEAD = block;
-        block->prev = 0;
-        block->next = 0;
+        right = GBA_BLOCK_FROM_WORD(block->right);
+        if (right->busy == 0) {
+            /* 0x0803D6E8: absorbed into the free right neighbour. */
+            right->size = right->size + block->size + 2;
+            right->left = block->left; /* 0, so right becomes leftmost */
+            return;
+        }
+        sub_0803D520(block);
         return;
     }
 
-    prev = GBA_BLOCK_FROM_WORD(block->left);
+    left = GBA_BLOCK_FROM_WORD(block->left);
+
     if (block->right == 0) {
-        if (prev->busy == 0) {
-            sub_0803D56A(prev, block);
-        } else {
-            sub_0803D520(block);
-        }
-        return;
-    }
-
-    next = GBA_BLOCK_FROM_WORD(block->right);
-    if (prev->busy == 0) {
-        if (next->busy != 0) {
-            sub_0803D56A(prev, block);
+        /* 0x0803D6CA: only a left neighbour exists. */
+        if (left->busy == 0) {
+            sub_0803D56A(block, left);
             return;
         }
-        sub_0803D4E8(next);
-        prev->size = prev->size + block->size + next->size + 4;
-        prev->left = next->left;
-        if (next->left != 0) {
-            GBA_BLOCK_FROM_WORD(next->left)->right = block->right;
-        }
+        sub_0803D520(block);
         return;
     }
 
-    if (next->busy == 0) {
-        prev->size = prev->size + block->size + 2;
-        prev->left = block->left;
+    right = GBA_BLOCK_FROM_WORD(block->right);
+
+    if (left->busy != 0) {
+        if (right->busy != 0) {
+            /* 0x0803D6C2: both neighbours are in use, so just re-list block. */
+            sub_0803D520(block);
+            return;
+        }
+        /* 0x0803D6A0: absorbed into the free right neighbour. */
+        right->size = right->size + block->size + 2;
+        right->left = block->left;
         if (block->left != 0) {
             GBA_BLOCK_FROM_WORD(block->left)->right = block->right;
         }
         return;
     }
 
-    sub_0803D520(block);
+    if (right->busy != 0) {
+        /* 0x0803D696: block absorbs its free left neighbour. */
+        sub_0803D56A(block, left);
+        return;
+    }
+
+    /* 0x0803D66A: both free. The LEFT neighbour is unlinked and all three are
+     * merged into the RIGHT neighbour, which stays in the list. */
+    sub_0803D4E8(left);
+    right->size = block->size + left->size + right->size + 4;
+    right->left = left->left;
+    if (left->left != 0) {
+        GBA_BLOCK_FROM_WORD(left->left)->right = block->right;
+    }
 }
 
 /* 0x0803D712 - 30 bytes, leaf. Total free space, in 4-byte words, walking the

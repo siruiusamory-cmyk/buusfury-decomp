@@ -757,6 +757,140 @@ def _run_diagnostic_control(args, data: bytes) -> int:
 
 
 # --------------------------------------------------------------------------
+# lift   (DECOMP-LIFT-PILOT-001)
+# --------------------------------------------------------------------------
+def cmd_lift(args) -> int:
+    from . import lift as _lift
+
+    if args.list_targets:
+        print(f"{'id':<14} {'translation unit':<18} {'source':<22} {'cpu':<12} isa    opt")
+        for target in _lift.load_targets():
+            print(
+                f"{target.id:<14} {target.probe_translation_unit:<18} "
+                f"{target.decomp_source:<22} {target.cpu:<12} {target.isa:<6} "
+                f"{target.optimization}"
+            )
+        return EXIT_OK
+
+    toolchain = _lift.discover_modern_toolchain(args.toolchain_root)
+    if toolchain is None:
+        print("LIFT: BLOCKED [MODERN_TOOLCHAIN_UNAVAILABLE]")
+        print(
+            "  No ARM cross toolchain was found. Looked at --toolchain-root, then "
+            f"${_lift.DEVKITARM_ENV}, then {_lift.DEFAULT_DEVKITARM}."
+        )
+        print("  This ticket requires an EXISTING toolchain; it installs nothing.")
+        return EXIT_FAIL
+
+    try:
+        rom = _resolve_rom(args)
+        found = _identity.verify(rom)
+    except (_identity.IdentityError, _identity.RomNotFoundError) as exc:
+        print(f"FAIL: {exc}")
+        return EXIT_FAIL
+
+    data = found.path.read_bytes()
+    target_ids = (
+        [t.id for t in _lift.load_targets()] if args.target == "all" else [args.target]
+    )
+
+    exit_code = EXIT_OK
+    for target_id in target_ids:
+        try:
+            document = _lift.run_lift(
+                target_id,
+                data,
+                toolchain,
+                run_semantic=not args.no_semantic,
+            )
+        except (_lift.LiftError, _cp_free_exception()) as exc:  # pragma: no cover
+            print(f"LIFT {target_id}: FAIL\n  {exc}")
+            exit_code = EXIT_FAIL
+            continue
+
+        verdicts = document["verdicts"]
+        if args.json:
+            print(json.dumps(document, indent=2))
+        elif args.verify:
+            verification = _lift.verify_report(data, target_id)
+            if verification["ok"]:
+                print(f"LIFT {target_id} REPORT: PASS ({verification['detail']})")
+            else:
+                print(f"LIFT {target_id} REPORT: FAIL ({verification['detail']})")
+                for problem in verification["problems"][:40]:
+                    print(f"  - {problem}")
+                if len(verification["problems"]) > 40:
+                    print(f"  ... {len(verification['problems']) - 40} more")
+                exit_code = EXIT_FAIL
+            for note in verification["exempted"]:
+                print(f"  exempted: {note}")
+        else:
+            print(f"=== lift {target_id}: {document['target']['name']} ===")
+            print(f"  source        : {document['target']['decomp_source']}")
+            print(
+                f"  ROM extent    : file {document['target']['file_offset']}"
+                f"..0x{int(document['target']['file_offset'], 16) + document['target']['byte_length']:06X}"
+                f"   address {document['target']['rom_address']}"
+                f"..{document['target']['end_address']}"
+                f"   ({document['target']['byte_length']} bytes,"
+                f" {document['target']['code_byte_length']} code)"
+            )
+            print(
+                f"  toolchain     : {document['modern_build']['identity']['gcc_banner']}"
+            )
+            print(f"  config        : {document['modern_build']['compiler_configuration']}")
+            print()
+            for name in ("semantic", "modern_build", "ads_match"):
+                verdict = verdicts[name]
+                print(f"  {name.upper():<14} {verdict['status']}")
+                print(f"                 {verdict['detail']}")
+            print()
+            if document.get("comparison", {}).get("original_byte_length"):
+                comparison = document["comparison"]
+                print("  modern vs original (MEASUREMENT ONLY, not a match claim):")
+                for key in (
+                    "original_byte_length",
+                    "modern_byte_length",
+                    "differing_bytes_in_overlap",
+                    "matching_instruction_spans",
+                    "differing_instruction_spans",
+                    "byte_identical",
+                ):
+                    print(f"    {key:<42} {comparison[key]}")
+            print()
+            print(f"  {'function':<16} {'orig B':>7} {'mod B':>7} {'orig i':>7} {'mod i':>7} {'calls':>7} {'lits':>5}")
+            for row in document["functions"]:
+                original = row["original"]
+                modern = row["modern"]
+                print(
+                    f"  {row['name']:<16} {original['size']:>7} "
+                    f"{(modern['size'] if modern else 0):>7} "
+                    f"{original['instructions']:>7} "
+                    f"{(modern['instructions'] if modern else 0):>7} "
+                    f"{len(original['calls']):>7} "
+                    f"{len(original['literal_slots']):>5}"
+                )
+
+        target_path = Path(args.write) if args.write else _lift.report_path_for(target_id)
+        _lift.write_report(document, target_path)
+        print(f"  report        : {target_path}")
+
+        if verdicts["semantic"]["status"] not in ("PROVEN", "UNTESTED"):
+            exit_code = EXIT_FAIL
+        if verdicts["modern_build"]["status"] != "PASS":
+            exit_code = EXIT_FAIL
+
+    return exit_code
+
+
+def _cp_free_exception():
+    """The compiler-probe exception type, imported lazily to avoid a cycle."""
+    from . import compiler_probe as _cp
+
+    return _cp.ProbeError
+
+
+# --------------------------------------------------------------------------
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="buusfury",
@@ -866,6 +1000,20 @@ def build_parser() -> argparse.ArgumentParser:
     )
     p.add_argument("--json", action="store_true")
     p.set_defaults(func=cmd_compiler_probe)
+
+    p = sub.add_parser(
+        "lift",
+        help="semantic lifting loop: decompiled source -> modern build -> comparison",
+    )
+    add_rom(p)
+    p.add_argument("--target", default="gbaram", help="target id, or 'all'")
+    p.add_argument("--list-targets", action="store_true", help="list the registry and exit")
+    p.add_argument("--toolchain-root", default=None, help="ARM cross toolchain root")
+    p.add_argument("--write", default=None, help="report path (default config/lift_<id>.json)")
+    p.add_argument("--verify", action="store_true", help="regenerate and compare the whole report")
+    p.add_argument("--no-semantic", action="store_true", help="skip the host self-check")
+    p.add_argument("--json", action="store_true")
+    p.set_defaults(func=cmd_lift)
 
     return parser
 

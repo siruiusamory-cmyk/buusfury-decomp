@@ -1,14 +1,42 @@
-﻿# src/ - C/C++ reconstruction
+# src/ - C/C++ and C reconstruction
 
-Empty at DECOMP-BASELINE-001 by design: **no gameplay function has been
-decompiled yet**, and the stop condition of this ticket forbids starting.
+This is the **product tree**: the reconstructed source of the game.
 
-What belongs here, from DECOMP-ROM-MAP-001 / DECOMP-COMPILER-PROBE-001 onwards:
+The first function family lifted here is the GBARam allocator, `src/GBARam.c`,
+at file `0x03D4D0..0x03D740`. See `docs/LIFT_PILOT.md` for its results and
+`docs/LIFT_LOOP.md` for how the next family is added.
 
-- C/C++ reconstruction of the regions `config/regions.json` marks `class: "ads"`,
-  and later of the opaque `incbin` regions.
-- One translation unit per original compilation unit, named after the region id
-  where the original name is unknown.
+## Conventions
 
-Read `docs/DECOMP_BASELINE.md` first. The reference project's `src/` may **not**
-be copied here (see `docs/REFERENCE_AUDIT.md`).
+- **One translation unit per original compilation unit.** Where the original
+  filename is known from build evidence, use it: the GBARam file is called
+  `src/GBARam.c` because the surviving command line names exactly that path.
+- **Functions are named `sub_<ROM address>`** (`sub_0803D4D0`). Do not invent
+  semantic names: the disassembly fixes offsets and access widths, not the
+  names the game used. The lift harness pairs original and modern functions by
+  symbol name, so this convention is load-bearing rather than cosmetic.
+- **Say what is evidence and what is a placeholder**, in the file's own header.
+  Assume a reader who will not trust either without being told which is which.
+- **State the three verdicts separately** in each file header: SEMANTIC,
+  MODERN_BUILD, ADS_MATCH. They answer different questions and none is evidence
+  for another.
+
+## Status vocabulary
+
+| Verdict | Meaning |
+| --- | --- |
+| `SEMANTIC` | the reconstruction behaves correctly, checked by RUNNING it on the host |
+| `MODERN_BUILD` | it compiles, links at its original address and emits bytes |
+| `ADS_MATCH` | it reproduces the original compiler's output - **BLOCKED**, the ADS 1.2 on this machine is unlicensed |
+
+## Probes are not the product
+
+`src/probes/` holds the harness: self-checks and thin shims. It is not where
+reconstruction lives. A file under `src/probes/` that contains an implementation
+is a bug, and a test asserts the GBARam shim has not grown into a second copy.
+
+## Licensing
+
+The reference project's `src/` may **not** be copied here; it carries no licence
+grant. See `docs/REFERENCE_AUDIT.md`. Everything in this tree is written from the
+disassembly and the ROM's own structure.

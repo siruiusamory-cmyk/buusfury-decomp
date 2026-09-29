@@ -77,19 +77,51 @@ Matching means byte-identity of the produced ROM against
 - The build must be **command-driven** and repeatable. No manually edited
   generated files.
 - No machine-specific absolute paths in tracked files. Use `ADS12_ROOT`,
-  `BUUSFURY_ROM`, `BUUSFURY_REFERENCE`, `BUUSFURY_COMPRESS`, `GRIT`, `CMAKE`, or
-  CLI arguments.
+  `BUUSFURY_ROM`, `BUUSFURY_REFERENCE`, `BUUSFURY_COMPRESS`, `DEVKITARM`, `GRIT`,
+  `CMAKE`, or CLI arguments. Generated reports must be environment independent:
+  relabel toolchain and checkout roots, and scrub any remaining absolute path.
 - `scripts/check.ps1` is the one-command gate. It must stay green.
-- Portable tests must never require a baserom, a reference checkout, ADS, grit or
-  the JCALG1 build. Anything needing those belongs in a CLI gate.
+- Portable tests must never require a baserom, a reference checkout, ADS, a modern
+  ARM toolchain, grit or the JCALG1 build. Anything needing those belongs in a CLI
+  gate, and skips rather than fails when the tool is absent.
+
+## The lifting loop
+
+- Reconstruction lives in `src/<family>.c`. `src/probes/` holds only shims and
+  self-checks; an implementation there is a bug.
+- **One source of truth.** A probe entry point is a shim that `#include`s the real
+  file. Verify it by compiling both and comparing disassembly, never by assuming.
+- **Never name a function semantically.** Use `sub_<ROM address>`: the disassembly
+  fixes offsets and access widths, not the names the game used. The lift harness
+  pairs original and modern functions by symbol name, so the convention is load
+  bearing.
+- **Run the reconstruction on the host before spending a compiler run.** A wrong
+  translation unit cannot match under any compiler.
+- **Three verdicts, three vocabularies, never inferred from one another:**
+  `SEMANTIC` (behaviour, measured by running it), `MODERN_BUILD` (does it compile
+  and emit bytes), `ADS_MATCH` (does it reproduce the original compiler). A passing
+  modern build says nothing about ADS 1.2.
+- **Never report a modern build as a match.** The comparison carries
+  `is_a_match_claim: false` and a note saying so. Report the measurement; do not
+  read it as agreement or as disagreement.
+- **Compare at translation-unit scope, keyed on the target's instruction
+  boundaries.** A function with a PC-relative literal load has no meaning
+  standalone, and a positional text diff of two disassemblies can report zero
+  differences for unequal bytes.
+- Adding a family is a config entry plus source: `config/lift_targets.json`,
+  boundaries derived in `config/compiler_probes.json`, tested via
+  `tests/test_lift.py`. No one-off scripts. See [`docs/LIFT_LOOP.md`](docs/LIFT_LOOP.md).
 
 ## Scope discipline
 
 - Execute only the current ticket; stop at its stop condition.
-- Do not begin bulk decompilation, convert functions to C/C++, stand up function-analysis workers, build a Ghidra database, start m2c automation, configure
-  objdiff matching, or create the modern mod-build until a ticket says to.
+- Do not begin bulk decompilation, stand up function-analysis workers, build a Ghidra
+  database, start m2c automation, configure objdiff matching, or create the modern
+  mod-build until a ticket says to.
 - A measured blocker with evidence is a valid, reportable outcome. Do not work
-  around a mismatch to make a number look better.
+  around a mismatch to make a number look better. In particular, never weaken the
+  ADS blocker: an unlicensed installation stays `ADS12_LICENSE_UNAVAILABLE`, which
+  is a different condition from "not installed".
 
 ## Git discipline
 

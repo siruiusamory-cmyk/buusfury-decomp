@@ -1,0 +1,33 @@
+{
+  "schema": 1,
+  "_comment": [
+    "Registry for the semantic lifting loop (DECOMP-LIFT-PILOT-001).",
+    "",
+    "One entry per reconstructed translation unit. Adding the next function",
+    "family means adding an entry here plus its C source; the harness derives",
+    "function boundaries from config/compiler_probes.json so they are never",
+    "restated by hand. See docs/LIFT_LOOP.md.",
+    "",
+    "`compiler` describes the MODERN toolchain configuration only. It is not a",
+    "claim about the original compiler, and no result from it may be reported as",
+    "an ADS 1.2 finding."
+  ],
+  "targets": [
+    {
+      "id": "gbaram",
+      "name": "GBARam allocator",
+      "translation_unit": "gbaram_tu",
+      "probe_translation_unit": "gbaram_tu",
+      "decomp_source": "src/GBARam.c",
+      "probe_source": "src/probes/GBARam.c",
+      "compiler": {
+        "cpu": "arm7tdmi",
+        "isa": "thumb",
+        "optimization": "-O1",
+        "extra_flags": []
+      },
+      "role": "small-block heap allocator: initialise, unlink, insert, merge, allocate, free, total free",
+      "notes": "the first lifted family. Chosen because it is the only region in the ROM map whose boundaries are independently established: eight functions recovered by chain-walk recursive descent, every path terminating, zero gaps, zero undecodable bytes, and one shared 4-word literal pool that proves it was a single translation unit. The surviving original build command names it directly: tcpp -S -c -cpu ARM7TDMI -O1 src/GBARam.c."
+    }
+  ]
+}

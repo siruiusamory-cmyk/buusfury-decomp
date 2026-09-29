@@ -125,9 +125,41 @@ Built by `scripts/fetch-reference.ps1 -BuildTools`, landing at
 
 ### ARM Developer Suite 1.2 - the ADS leg
 
-See [`ADS12_SETUP.md`](ADS12_SETUP.md). Not present on this machine, not
-redistributable, and not sufficient on its own: the ADS input sources do not exist
-in this repository and cannot be imported.
+An ADS 1.2 installation **is present** on this machine
+(`armcc`, `armcpp`, `armasm`, `armlink`, `fromelf`, `tcc`, `tcpp`), but the licence
+file it ships licenses `Win32_CWIDE_Unlimited` (the CodeWarrior IDE) and carries no
+compiler/armasm/armlink feature, so FLEXlm refuses the tools. The correct code is
+`ADS12_LICENSE_UNAVAILABLE`, which is a different condition from "ADS is not
+installed" and is why gates 5 and 6 report BLOCKED rather than FAIL.
+
+Not redistributable, and not sufficient on its own: the ADS input sources do not
+exist in this repository and cannot be imported. See
+[`ADS12_SETUP.md`](ADS12_SETUP.md).
+
+### The modern ARM toolchain - the lifting loop
+
+Needed by gate 7 and by `python -m buusfury lift`. **Never installed by this
+repository**; it is detected and reported.
+
+| | |
+| --- | --- |
+| Family | GNU Arm Embedded (devkitARM) |
+| Verified version | `arm-none-eabi-gcc.exe (devkitARM) 16.1.0`, binutils 2.46.0.20260210 |
+| Target triple | `arm-none-eabi` |
+| Default root | `C:\devkitPro\devkitARM` (reported as `<DEVKITARM>`) |
+| Discovery | `--toolchain-root`, then `$DEVKITARM`, then the default |
+
+Required tools: `arm-none-eabi-{gcc,ld,objcopy,objdump,nm}`. **All** must be present;
+a partial installation is reported absent rather than used, so a build can never
+half-run. An **explicit** root is authoritative: if it does not hold a complete
+toolchain the answer is "no toolchain", never a silent fallback to a different one.
+
+This toolchain is **not the original compiler** and its output can never be a
+finding about ADS 1.2. It exists so the reconstruction can be built and its shape
+compared. See [`LIFT_PILOT.md`](LIFT_PILOT.md) and [`LIFT_LOOP.md`](LIFT_LOOP.md).
+
+If it is missing, gate 7 reports **BLOCKED** - an environment problem, not a defect
+in the repository - and the portable test suite still passes.
 
 ---
 
@@ -141,6 +173,7 @@ All optional. No tracked file contains a machine-specific absolute path.
 | `BUUSFURY_REFERENCE` | fetched reference checkout |
 | `BUUSFURY_COMPRESS` | JCALG1 front-end binary |
 | `ADS12_ROOT` | ARM Developer Suite 1.2 root |
+| `DEVKITARM` | modern ARM cross toolchain root (for the lifting loop) |
 | `GRIT` | grit binary |
 | `CMAKE` | CMake binary (must name a VS generator) |
 

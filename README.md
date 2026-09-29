@@ -103,15 +103,39 @@ therefore cannot be imported. See
 [`docs/ADS12_SETUP.md`](docs/ADS12_SETUP.md) and
 [`docs/DECOMP_BASELINE.md`](docs/DECOMP_BASELINE.md#the-blocker).
 
+### Lifting loop (DECOMP-LIFT-PILOT-001, measured 2026-09-29)
+
+The first function family is decompiled and the loop that produced it is reusable:
+the **GBARam allocator**, eight Thumb functions at `0x03D4D0..0x03D740`, source at
+[`src/GBARam.c`](src/GBARam.c).
+
+| Verdict | Result | Question it answers |
+| --- | --- | --- |
+| `SEMANTIC` | **PROVEN** | does it behave correctly? 230 assertions, 0 failures, measured by RUNNING it |
+| `MODERN_BUILD` | **PASS** | does it compile, link at its original address and emit bytes? 772 bytes |
+| `ADS_MATCH` | **BLOCKED** | does it reproduce the original compiler? `ADS12_LICENSE_UNAVAILABLE` |
+
+The three are independent and none is evidence for another. A modern GCC build is
+**not** a match and is never reported as one: the comparison is a measurement, with
+`is_a_match_claim: false`.
+
+What the comparison found: 595 of 624 bytes differ and the modern build is 23.7%
+larger, while the **structure** agrees exactly - identical call counts and identical
+literal-slot counts for all eight functions. The sharpest divergence is the literal
+pool: the original keeps **one** shared pool reached by seven of eight functions
+(which is itself the evidence that the region was a single translation unit), the
+modern build keeps seven. See [`docs/LIFT_PILOT.md`](docs/LIFT_PILOT.md); add the next
+family with [`docs/LIFT_LOOP.md`](docs/LIFT_LOOP.md).
+
 ## Layout
 
 ```
-config/     canonical ROM identity, the region map, the toolchain manifest
-docs/       baseline, dependencies, ADS 1.2 setup, reference audit, ROM map
-src/        C/C++ reconstruction          (empty - DECOMP-ROM-MAP-001 onwards)
-asm/        assembly reconstruction       (empty)
-data/       extracted/derived data        (empty)
-include/    shared headers                (empty)
+config/     ROM identity, region map, toolchain manifest, lift targets + reports
+docs/       baseline, dependencies, ADS 1.2 setup, reference audit, ROM map, lift
+src/        the reconstruction      (src/GBARam.c is the first lifted family)
+asm/        assembly reconstruction (empty)
+data/       extracted/derived data  (fixed regions, boot logo)
+include/    shared headers          (empty)
 tools/      the harness (pure stdlib Python)
 scripts/    one-command entry points
 tests/      portable regression tests
@@ -131,13 +155,19 @@ python -m buusfury map       # region-map tiling and coverage
 python -m buusfury doctor    # toolchain availability
 python -m buusfury assets    # rebuild asset regions, compare to the ROM
 python -m buusfury build     # assemble a ROM, with per-region provenance
-python -m pytest tests -q    # 86 portable tests
+python -m buusfury lift      # semantic lifting loop: build + compare one family
+python -m buusfury rommap    # independent structural ROM map + function inventory
+python -m buusfury fixed     # generate the zero-toolchain fixed regions
+python -m pytest tests -q    # 304 tests
 ```
 
 ## Scope
 
-This repository is at **DECOMP-BASELINE-001 + DECOMP-BOOTSTRAP-001**. It
-establishes the identity gate, the byte map, the toolchain inventory and the
-reproducible parts of the build. It intentionally contains **no decompiled
-gameplay functions**. The next tickets are `DECOMP-ROM-MAP-001` and
-`DECOMP-COMPILER-PROBE-001`.
+This repository is at **DECOMP-LIFT-PILOT-001**. It carries the identity gate, the
+build model, the independent ROM map and the compiler probe, plus one lifted
+function family (the GBARam allocator) and the reusable loop that produced it.
+
+`ADS_MATCH` remains blocked: the ADS 1.2 installed on this machine is unlicensed, and
+nothing here reduces that. The next tickets work outward from the pilot - see
+[`docs/LIFT_PILOT.md`](docs/LIFT_PILOT.md#7-next-recommended-function-family) for the
+recommended next function families.

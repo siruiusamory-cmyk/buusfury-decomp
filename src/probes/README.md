@@ -1,24 +1,37 @@
-# src/probes/ - compiler probe candidates
+# src/probes/ - the lifting harness, not the product
 
-Reconstruction candidates used only to **identify the original compiler**. These
-are not the ticket's decompilation product and must not be read as one; they are
-the minimum source a compiler needs in order to be tested.
+Reconstruction does **not** live here. It lives in the real tree: `src/GBARam.c`,
+`src/<family>.c`. This directory holds only the machinery that tests it.
 
-- `GBARam.c` - first hypothesis for the original `src/GBARam.c` translation unit
-  at file `0x03D4D0..0x03D740`, named by the surviving build command line
-  `tcpp -S -c -cpu ARM7TDMI -O1 src/GBARam.c`.
+- `<family>.c` - a **shim**: `#include "../<family>.c"`. It exists so the compiler
+  probe and the lift loop keep one stable entry point while the implementation has
+  one home. A plain `#include` means the translation unit a compiler sees is
+  identical whichever path invokes it; that is verified by compiling both and
+  comparing disassembly, not assumed.
+- `<family>_selftest.c` - compiles the reconstruction for the HOST and RUNS it.
+  This is the SEMANTIC verdict. It is **not** compiler evidence and must never be
+  cited as such: it says nothing about ADS 1.2 code generation. What it can do is
+  falsify the reconstruction, and that is worth more than it sounds - a translation
+  unit whose C is semantically wrong cannot match the ROM byte-for-byte under ANY
+  compiler.
 
-Status: **not validated**. No ADS 1.2 installation exists on the authoring
-machine, so this file has never been compiled by the tool it targets. It compiles
-under a modern GCC, which proves only that it is syntactically valid; that run is
-tagged `DIAGNOSTIC_CONTROL_NOT_EVIDENCE` and says nothing about the original
-compiler.
+Running the reconstruction early is the technique that paid off: the GBARam pilot
+found four real defects this way, a hang, an inverted merge, a misread sentinel and
+a signedness error, none of which reading the disassembly had exposed, and none of
+which could ever have matched. A compiler run spent before the behavioural run would
+have been wasted.
 
-Assumptions, unresolved questions and the evidence behind each function are in
-the file's own header comment, in
-[`config/compiler_probes.json`](../../config/compiler_probes.json), and in
-[`docs/COMPILER_PROBE.md`](../../docs/COMPILER_PROBE.md).
+## Current contents
 
-The original file may **not** be copied from `2genkidev/buusfury`; that
-repository carries no licence grant. See
-[`docs/REFERENCE_AUDIT.md`](../../docs/REFERENCE_AUDIT.md).
+- `GBARam.c` - shim for `src/GBARam.c`, eight Thumb functions at
+  `0x0803D4D0..0x0803D740`.
+- `gbaram_selftest.c` - 230 assertions over a 256 KiB arena. Exit 0 on success.
+  Its summary line format is `<STATUS>: <n> check(s), <m> failure(s)` and the lift
+  harness parses it, so the wording is load-bearing.
+
+Status of `GBARam.c`: **SEMANTIC PROVEN** (230 checks, 0 failures),
+**MODERN_BUILD PASS**, **ADS_MATCH BLOCKED**. See `docs/LIFT_PILOT.md`.
+
+Add the next family with `docs/LIFT_LOOP.md`. The original file may **not** be copied
+from `2genkidev/buusfury`; that repository carries no licence grant (see
+`docs/REFERENCE_AUDIT.md`).

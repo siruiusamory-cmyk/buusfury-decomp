@@ -1,0 +1,783 @@
+{
+  "schema": 1,
+  "ticket": "DECOMP-LIFT-PILOT-001",
+  "generated_by": "tools/buusfury/lift.py",
+  "source_sha1": "f1c4b07554d2a3b1ad2f325307051e775ce68087",
+  "target": {
+    "id": "gbaram",
+    "name": "GBARam allocator",
+    "role": "small-block heap allocator: initialise, unlink, insert, merge, allocate, free, total free",
+    "notes": "the first lifted family. Chosen because it is the only region in the ROM map whose boundaries are independently established: eight functions recovered by chain-walk recursive descent, every path terminating, zero gaps, zero undecodable bytes, and one shared 4-word literal pool that proves it was a single translation unit. The surviving original build command names it directly: tcpp -S -c -cpu ARM7TDMI -O1 src/GBARam.c.",
+    "translation_unit": "gbaram_tu",
+    "rom_address": "0x0803D4D0",
+    "file_offset": "0x03D4D0",
+    "code_end_address": "0x0803D730",
+    "end_address": "0x0803D740",
+    "byte_length": 624,
+    "code_byte_length": 608,
+    "isa": "thumb",
+    "decomp_source": "src/GBARam.c",
+    "probe_source": "src/probes/GBARam.c",
+    "original_sha1": "dfbe6b5fe604f6704138ba66494719f3a807e5d1"
+  },
+  "verdicts": {
+    "semantic": {
+      "status": "PROVEN",
+      "checks": 230,
+      "failures": 0,
+      "minimum_checks": 230,
+      "host_compiler": "MSVC cl.exe",
+      "detail": "230 behavioural assertions passed with 0 failures (minimum 230)",
+      "measures": "whether the reconstructed C behaves correctly, by RUNNING it"
+    },
+    "modern_build": {
+      "status": "PASS",
+      "detail": "compiled, linked at 0x0803D4D0 and emitted 772 bytes",
+      "measures": "whether the source compiles, links and emits bytes"
+    },
+    "ads_match": {
+      "status": "BLOCKED",
+      "code": "ADS12_LICENSE_UNAVAILABLE",
+      "detail": "an ARM Developer Suite 1.2 installation is present on this machine but the licence file it ships licenses a different product, so the ARM compilers cannot be run. No compile has been attempted and no configuration has been tested. The installation is located through ADS12_ROOT.",
+      "required_to_unblock": [
+        "a licensed ADS 1.2 installation, with ADS12_ROOT pointing at it",
+        "then: python -m buusfury compiler-probe --plan, then --matrix"
+      ],
+      "not_inferable_from_modern_build": true
+    }
+  },
+  "verdicts_are_independent": "SEMANTIC, MODERN_BUILD and ADS_MATCH answer different questions and none is evidence for another. A passing modern build says nothing about the original compiler; a passing semantic run only removes one class of error.",
+  "modern_build": {
+    "status": "PASS",
+    "toolchain": {
+      "family": "GNU Arm Embedded (devkitARM)",
+      "root": "<DEVKITARM>",
+      "prefix": "arm-none-eabi-",
+      "tools": {
+        "gcc": "<DEVKITARM>\\bin\\arm-none-eabi-gcc.exe",
+        "ld": "<DEVKITARM>\\bin\\arm-none-eabi-ld.exe",
+        "objcopy": "<DEVKITARM>\\bin\\arm-none-eabi-objcopy.exe",
+        "objdump": "<DEVKITARM>\\bin\\arm-none-eabi-objdump.exe",
+        "nm": "<DEVKITARM>\\bin\\arm-none-eabi-nm.exe"
+      }
+    },
+    "identity": {
+      "gcc_banner": "arm-none-eabi-gcc.exe (devkitARM) 16.1.0",
+      "gcc_version": "16.1.0",
+      "target_triple": "arm-none-eabi",
+      "binutils_banner": "GNU objdump (GNU Binutils) 2.46.0.20260210",
+      "compiler_family": "gcc",
+      "is_the_original_compiler": false,
+      "why_not": "the original translation unit was built by ARM Developer Suite 1.2 (the surviving command line names tcpp). GCC is a different compiler with a different code generator, so its output cannot establish anything about ADS 1.2."
+    },
+    "target_support": {
+      "supported": true,
+      "cpu": "arm7tdmi",
+      "instruction_set": "thumb",
+      "commands": [
+        "<DEVKITARM>\\bin\\arm-none-eabi-gcc.exe -c -mcpu=arm7tdmi -mthumb -O1 -ffreestanding -fno-common -fno-builtin -o <REPO>\\build\\lift\\gbaram\\toolchain-probe\\support_probe.o <REPO>\\build\\lift\\gbaram\\toolchain-probe\\support_probe.c"
+      ],
+      "disassembly": [
+        "adds r0, #1",
+        "bx lr"
+      ],
+      "detail": "compiled and disassembled a probe function for ARM7TDMI Thumb: 2 instruction(s), r0 written and a return present"
+    },
+    "compiler_configuration": {
+      "cpu": "arm7tdmi",
+      "instruction_set": "thumb",
+      "optimization": "-O1",
+      "extra_flags": []
+    },
+    "link_origin": "0x0803D4D0",
+    "detail": "compiled, linked at 0x0803D4D0 and emitted 772 bytes",
+    "build": {
+      "ok": true,
+      "commands": [
+        "<DEVKITARM>\\bin\\arm-none-eabi-gcc.exe -c -mcpu=arm7tdmi -mthumb -O1 -ffreestanding -fno-common -fno-builtin -fomit-frame-pointer -mno-unaligned-access -o <REPO>\\build\\lift\\gbaram\\gbaram.o <REPO>\\src\\GBARam.c",
+        "<DEVKITARM>\\bin\\arm-none-eabi-gcc.exe -nostdlib -Wl,-T,<REPO>\\build\\lift\\gbaram\\gbaram.ld -Wl,-Map,<REPO>\\build\\lift\\gbaram\\gbaram.map -o <REPO>\\build\\lift\\gbaram\\gbaram.elf <REPO>\\build\\lift\\gbaram\\gbaram.o",
+        "<DEVKITARM>\\bin\\arm-none-eabi-objcopy.exe -O binary <REPO>\\build\\lift\\gbaram\\gbaram.elf <REPO>\\build\\lift\\gbaram\\gbaram.bin"
+      ],
+      "produced_byte_length": 772,
+      "symbols": {
+        "sub_0803D4D0": {
+          "address": "0x0803D4D0",
+          "size": 40
+        },
+        "sub_0803D4E8": {
+          "address": "0x0803D4F8",
+          "size": 80
+        },
+        "sub_0803D520": {
+          "address": "0x0803D548",
+          "size": 44
+        },
+        "sub_0803D548": {
+          "address": "0x0803D574",
+          "size": 34
+        },
+        "sub_0803D56A": {
+          "address": "0x0803D596",
+          "size": 106
+        },
+        "sub_0803D5B8": {
+          "address": "0x0803D600",
+          "size": 160
+        },
+        "sub_0803D63C": {
+          "address": "0x0803D6A0",
+          "size": 264
+        },
+        "sub_0803D712": {
+          "address": "0x0803D7A8",
+          "size": 44
+        }
+      },
+      "diagnostics": ""
+    }
+  },
+  "functions": [
+    {
+      "name": "sub_0803D4D0",
+      "role": "list head and node-0 pool initialiser",
+      "original": {
+        "start": "0x0803D4D0",
+        "end": "0x0803D4E8",
+        "size": 24,
+        "isa": "thumb",
+        "instructions": 12,
+        "first_instruction": "ldr r0, [pc, #0x25c]",
+        "calls": [],
+        "literal_slots": [
+          "0x0803D730",
+          "0x0803D734",
+          "0x0803D738"
+        ],
+        "returns": 1,
+        "leaf": true,
+        "abi": {
+          "callee_saved_pushed": [],
+          "frame_size_bytes": 0,
+          "written_registers": [
+            "r0",
+            "r1",
+            "r2"
+          ]
+        }
+      },
+      "modern": {
+        "start": "0x0803D4D0",
+        "end": "0x0803D4F8",
+        "size": 40,
+        "isa": "thumb",
+        "instructions": 19,
+        "first_instruction": "ldr r3, [pc, #0x18]",
+        "calls": [],
+        "literal_slots": [
+          "0x0803D4EC",
+          "0x0803D4F0",
+          "0x0803D4F4"
+        ],
+        "returns": 1,
+        "leaf": true,
+        "abi": {
+          "callee_saved_pushed": [],
+          "frame_size_bytes": 0,
+          "written_registers": [
+            "r0",
+            "r1",
+            "r2",
+            "r3",
+            "r4",
+            "r8"
+          ]
+        }
+      },
+      "modern_symbol_present": true,
+      "delta": {
+        "size_bytes": 16,
+        "instructions": 7,
+        "returns": 0,
+        "calls": 0,
+        "literal_slots": 0
+      },
+      "same_extent": false,
+      "byte_identical": false
+    },
+    {
+      "name": "sub_0803D4E8",
+      "role": "unlink a node from the free list and mark it busy",
+      "original": {
+        "start": "0x0803D4E8",
+        "end": "0x0803D520",
+        "size": 56,
+        "isa": "thumb",
+        "instructions": 28,
+        "first_instruction": "movs r1, #1",
+        "calls": [],
+        "literal_slots": [
+          "0x0803D734"
+        ],
+        "returns": 1,
+        "leaf": true,
+        "abi": {
+          "callee_saved_pushed": [],
+          "frame_size_bytes": 0,
+          "written_registers": [
+            "r0",
+            "r1",
+            "r2",
+            "r3"
+          ]
+        }
+      },
+      "modern": {
+        "start": "0x0803D4F8",
+        "end": "0x0803D548",
+        "size": 80,
+        "isa": "thumb",
+        "instructions": 40,
+        "first_instruction": "movs r3, #1",
+        "calls": [],
+        "literal_slots": [
+          "0x0803D544"
+        ],
+        "returns": 1,
+        "leaf": true,
+        "abi": {
+          "callee_saved_pushed": [],
+          "frame_size_bytes": 0,
+          "written_registers": [
+            "r0",
+            "r1",
+            "r2",
+            "r3",
+            "r4"
+          ]
+        }
+      },
+      "modern_symbol_present": true,
+      "delta": {
+        "size_bytes": 24,
+        "instructions": 12,
+        "returns": 0,
+        "calls": 0,
+        "literal_slots": 0
+      },
+      "same_extent": false,
+      "byte_identical": false
+    },
+    {
+      "name": "sub_0803D520",
+      "role": "insert a node at the head of the free list",
+      "original": {
+        "start": "0x0803D520",
+        "end": "0x0803D548",
+        "size": 40,
+        "isa": "thumb",
+        "instructions": 20,
+        "first_instruction": "ldr r3, [pc, #0x210]",
+        "calls": [],
+        "literal_slots": [
+          "0x0803D734"
+        ],
+        "returns": 1,
+        "leaf": true,
+        "abi": {
+          "callee_saved_pushed": [
+            "r4",
+            "r5"
+          ],
+          "frame_size_bytes": 0,
+          "written_registers": [
+            "r0",
+            "r1",
+            "r2",
+            "r3",
+            "r4",
+            "r5"
+          ]
+        }
+      },
+      "modern": {
+        "start": "0x0803D548",
+        "end": "0x0803D574",
+        "size": 44,
+        "isa": "thumb",
+        "instructions": 22,
+        "first_instruction": "ldr r3, [pc, #0x24]",
+        "calls": [],
+        "literal_slots": [
+          "0x0803D570"
+        ],
+        "returns": 1,
+        "leaf": true,
+        "abi": {
+          "callee_saved_pushed": [],
+          "frame_size_bytes": 0,
+          "written_registers": [
+            "r0",
+            "r1",
+            "r2",
+            "r3",
+            "r4",
+            "r8"
+          ]
+        }
+      },
+      "modern_symbol_present": true,
+      "delta": {
+        "size_bytes": 4,
+        "instructions": 2,
+        "returns": 0,
+        "calls": 0,
+        "literal_slots": 0
+      },
+      "same_extent": false,
+      "byte_identical": false
+    },
+    {
+      "name": "sub_0803D548",
+      "role": "merge a node with its successor",
+      "original": {
+        "start": "0x0803D548",
+        "end": "0x0803D56A",
+        "size": 34,
+        "isa": "thumb",
+        "instructions": 17,
+        "first_instruction": "ldrh r2, [r0, #2]",
+        "calls": [],
+        "literal_slots": [],
+        "returns": 1,
+        "leaf": true,
+        "abi": {
+          "callee_saved_pushed": [],
+          "frame_size_bytes": 0,
+          "written_registers": [
+            "r0",
+            "r1",
+            "r2",
+            "r3"
+          ]
+        }
+      },
+      "modern": {
+        "start": "0x0803D574",
+        "end": "0x0803D596",
+        "size": 34,
+        "isa": "thumb",
+        "instructions": 17,
+        "first_instruction": "ldrh r3, [r1, #2]",
+        "calls": [],
+        "literal_slots": [],
+        "returns": 1,
+        "leaf": true,
+        "abi": {
+          "callee_saved_pushed": [],
+          "frame_size_bytes": 0,
+          "written_registers": [
+            "r1",
+            "r2",
+            "r3"
+          ]
+        }
+      },
+      "modern_symbol_present": true,
+      "delta": {
+        "size_bytes": 0,
+        "instructions": 0,
+        "returns": 0,
+        "calls": 0,
+        "literal_slots": 0
+      },
+      "same_extent": false,
+      "byte_identical": false
+    },
+    {
+      "name": "sub_0803D56A",
+      "role": "merge a node with its predecessor",
+      "original": {
+        "start": "0x0803D56A",
+        "end": "0x0803D5B8",
+        "size": 78,
+        "isa": "thumb",
+        "instructions": 39,
+        "first_instruction": "push {r4, r5}",
+        "calls": [],
+        "literal_slots": [
+          "0x0803D734"
+        ],
+        "returns": 1,
+        "leaf": true,
+        "abi": {
+          "callee_saved_pushed": [
+            "r4",
+            "r5"
+          ],
+          "frame_size_bytes": 0,
+          "written_registers": [
+            "r0",
+            "r2",
+            "r3",
+            "r4",
+            "r5"
+          ]
+        }
+      },
+      "modern": {
+        "start": "0x0803D596",
+        "end": "0x0803D600",
+        "size": 106,
+        "isa": "thumb",
+        "instructions": 53,
+        "first_instruction": "push {r4, lr}",
+        "calls": [],
+        "literal_slots": [
+          "0x0803D5FC"
+        ],
+        "returns": 1,
+        "leaf": true,
+        "abi": {
+          "callee_saved_pushed": [
+            "r4"
+          ],
+          "frame_size_bytes": 0,
+          "written_registers": [
+            "r0",
+            "r1",
+            "r2",
+            "r3",
+            "r4",
+            "r8"
+          ]
+        }
+      },
+      "modern_symbol_present": true,
+      "delta": {
+        "size_bytes": 28,
+        "instructions": 14,
+        "returns": 0,
+        "calls": 0,
+        "literal_slots": 0
+      },
+      "same_extent": false,
+      "byte_identical": false
+    },
+    {
+      "name": "sub_0803D5B8",
+      "role": "allocate: search the free list for a fitting node",
+      "original": {
+        "start": "0x0803D5B8",
+        "end": "0x0803D63C",
+        "size": 132,
+        "isa": "thumb",
+        "instructions": 64,
+        "first_instruction": "push {r4, r5, r6, r7, lr}",
+        "calls": [
+          "0x0803D4E8"
+        ],
+        "literal_slots": [
+          "0x0803D734",
+          "0x0803D73C"
+        ],
+        "returns": 3,
+        "leaf": false,
+        "abi": {
+          "callee_saved_pushed": [
+            "r4",
+            "r5",
+            "r6",
+            "r7"
+          ],
+          "frame_size_bytes": 0,
+          "written_registers": [
+            "r0",
+            "r1",
+            "r2",
+            "r3",
+            "r4",
+            "r5",
+            "r6",
+            "r7"
+          ]
+        }
+      },
+      "modern": {
+        "start": "0x0803D600",
+        "end": "0x0803D6A0",
+        "size": 160,
+        "isa": "thumb",
+        "instructions": 76,
+        "first_instruction": "push {r4, r5, r6, lr}",
+        "calls": [
+          "0x0803D4F8"
+        ],
+        "literal_slots": [
+          "0x0803D698",
+          "0x0803D69C"
+        ],
+        "returns": 1,
+        "leaf": false,
+        "abi": {
+          "callee_saved_pushed": [
+            "r4",
+            "r5",
+            "r6"
+          ],
+          "frame_size_bytes": 0,
+          "written_registers": [
+            "r0",
+            "r1",
+            "r2",
+            "r3",
+            "r4",
+            "r5",
+            "r6",
+            "r8"
+          ]
+        }
+      },
+      "modern_symbol_present": true,
+      "delta": {
+        "size_bytes": 28,
+        "instructions": 12,
+        "returns": -2,
+        "calls": 0,
+        "literal_slots": 0
+      },
+      "same_extent": false,
+      "byte_identical": false
+    },
+    {
+      "name": "sub_0803D63C",
+      "role": "free: return a node and coalesce with neighbours",
+      "original": {
+        "start": "0x0803D63C",
+        "end": "0x0803D712",
+        "size": 214,
+        "isa": "thumb",
+        "instructions": 101,
+        "first_instruction": "push {r4, r5, r6, r7, lr}",
+        "calls": [
+          "0x0803D4E8",
+          "0x0803D520",
+          "0x0803D56A"
+        ],
+        "literal_slots": [
+          "0x0803D734"
+        ],
+        "returns": 9,
+        "leaf": false,
+        "abi": {
+          "callee_saved_pushed": [
+            "r4",
+            "r5",
+            "r6",
+            "r7"
+          ],
+          "frame_size_bytes": 0,
+          "written_registers": [
+            "r0",
+            "r1",
+            "r2",
+            "r3",
+            "r4",
+            "r5",
+            "r6",
+            "r7"
+          ]
+        }
+      },
+      "modern": {
+        "start": "0x0803D6A0",
+        "end": "0x0803D7A8",
+        "size": 264,
+        "isa": "thumb",
+        "instructions": 126,
+        "first_instruction": "push {r4, r5, r6, lr}",
+        "calls": [
+          "0x0803D4F8",
+          "0x0803D548",
+          "0x0803D596"
+        ],
+        "literal_slots": [
+          "0x0803D7A4"
+        ],
+        "returns": 1,
+        "leaf": false,
+        "abi": {
+          "callee_saved_pushed": [
+            "r4",
+            "r5",
+            "r6"
+          ],
+          "frame_size_bytes": 0,
+          "written_registers": [
+            "r0",
+            "r1",
+            "r2",
+            "r3",
+            "r4",
+            "r5",
+            "r6",
+            "r8"
+          ]
+        }
+      },
+      "modern_symbol_present": true,
+      "delta": {
+        "size_bytes": 50,
+        "instructions": 25,
+        "returns": -8,
+        "calls": 0,
+        "literal_slots": 0
+      },
+      "same_extent": false,
+      "byte_identical": false
+    },
+    {
+      "name": "sub_0803D712",
+      "role": "sum the sizes of every free node",
+      "original": {
+        "start": "0x0803D712",
+        "end": "0x0803D730",
+        "size": 30,
+        "isa": "thumb",
+        "instructions": 15,
+        "first_instruction": "ldr r1, [pc, #0x20]",
+        "calls": [],
+        "literal_slots": [
+          "0x0803D734"
+        ],
+        "returns": 1,
+        "leaf": true,
+        "abi": {
+          "callee_saved_pushed": [],
+          "frame_size_bytes": 0,
+          "written_registers": [
+            "r0",
+            "r1",
+            "r2",
+            "r3"
+          ]
+        }
+      },
+      "modern": {
+        "start": "0x0803D7A8",
+        "end": "0x0803D7D4",
+        "size": 44,
+        "isa": "thumb",
+        "instructions": 22,
+        "first_instruction": "ldr r3, [pc, #0x24]",
+        "calls": [],
+        "literal_slots": [
+          "0x0803D7D0"
+        ],
+        "returns": 1,
+        "leaf": true,
+        "abi": {
+          "callee_saved_pushed": [],
+          "frame_size_bytes": 0,
+          "written_registers": [
+            "r0",
+            "r2",
+            "r3",
+            "r4",
+            "r8"
+          ]
+        }
+      },
+      "modern_symbol_present": true,
+      "delta": {
+        "size_bytes": 14,
+        "instructions": 7,
+        "returns": 0,
+        "calls": 0,
+        "literal_slots": 0
+      },
+      "same_extent": false,
+      "byte_identical": false
+    }
+  ],
+  "literal_pools": {
+    "original": {
+      "distinct_slots": 4,
+      "contiguous_runs": [
+        [
+          "0x0803D730",
+          "0x0803D740"
+        ]
+      ],
+      "run_count": 1,
+      "shared_pool": true,
+      "declared_pool": [
+        "0x0803D730",
+        "0x0803D740"
+      ],
+      "functions_reaching_it": 7
+    },
+    "modern": {
+      "distinct_slots": 10,
+      "contiguous_runs": [
+        [
+          "0x0803D4EC",
+          "0x0803D4F8"
+        ],
+        [
+          "0x0803D544",
+          "0x0803D548"
+        ],
+        [
+          "0x0803D570",
+          "0x0803D574"
+        ],
+        [
+          "0x0803D5FC",
+          "0x0803D600"
+        ],
+        [
+          "0x0803D698",
+          "0x0803D6A0"
+        ],
+        [
+          "0x0803D7A4",
+          "0x0803D7A8"
+        ],
+        [
+          "0x0803D7D0",
+          "0x0803D7D4"
+        ]
+      ],
+      "run_count": 7,
+      "shared_pool": false,
+      "functions_reaching_a_pool": 7
+    },
+    "interpretation": "the original keeps one shared pool at the end of the translation unit; the modern build pools differently. That is a structural consequence of the compiler, not a defect in the reconstruction, and it is why a function with a literal load cannot be compared standalone.",
+    "is_a_match_claim": false
+  },
+  "comparison": {
+    "original_byte_length": 624,
+    "modern_byte_length": 772,
+    "overlap_byte_length": 624,
+    "differing_bytes_in_overlap": 595,
+    "matching_bytes_in_overlap": 29,
+    "original_only_bytes": 0,
+    "modern_only_bytes": 148,
+    "original_instruction_spans": 296,
+    "matching_instruction_spans": 3,
+    "differing_instruction_spans": 293,
+    "bytes_not_covered_by_an_original_instruction": 16,
+    "byte_identical": false,
+    "is_a_match_claim": false,
+    "match_claim_note": "MEASUREMENT ONLY. This compares a modern GCC build against the cartridge. A modern compiler is not the original compiler, so a difference here is expected and proves nothing; an identity here would also prove nothing about ADS 1.2. ADS_MATCH stays BLOCKED."
+  },
+  "semantic_check": {
+    "status": "PROVEN",
+    "checks": 230,
+    "failures": 0,
+    "minimum_checks": 230,
+    "host_compiler": "MSVC cl.exe",
+    "detail": "230 behavioural assertions passed with 0 failures (minimum 230)",
+    "output": "GBARam semantic self-check (HOST, not compiler evidence)\narena 262144 bytes\nPASS: 230 check(s), 0 failure(s)\n"
+  }
+}

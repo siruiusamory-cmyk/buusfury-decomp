@@ -222,6 +222,46 @@
       },
       "role": "replace the stack top with the flag bit, and with its inverse",
       "notes": "sub_080007B6 (22 bytes, 10 instructions) and sub_080007CC (26 bytes, 12 instructions), adjacent, one terminator each at 0x080007CA and 0x080007E4, one call each to the already-lifted reader sub_08004364, and one shared literal at 0x080008D8. THE DESTINATION IS THE SAME AT BOTH SITES, and it is derived rather than assumed: each computes its address as `context + count*4` from the counter at context+0x00 (`ldr r1,[r0] ; lsls r1,r1,#2 ; adds r4,r1,r0`), and the value stack holds values[i] at context + 4 + 4*i, so context + count*4 is context + 4 + 4*(count-1), which is values[count-1], THE TOP OF THE STACK. Both routines therefore REPLACE THE STACK TOP IN PLACE. This is NOT a pop: neither stores to context+0x00, so the COUNTER IS UNCHANGED, and it is not a separate word either. The two differ only in what they store: the first stores the flag (0 or 1), the second stores 1 - flag, so for a boolean input the second is the exact inverse of the first. Both return the value they stored in r0, and neither reads r1. THE STACK IS NOT CHECKED FOR BEING EMPTY: with a counter of zero the computed address is context + 0, so the word read is the COUNTER itself and the store REPLACES THE COUNTER with the flag, leaving the count at 0 or 1. No guard was added. THE FIRST CONCRETE CONSEQUENCE, proven through the already-lifted consumer sub_080007E6 which begins immediately after these two at 0x080007E6: it pops values[count-1] and passes it to sub_08004380, which sets bit (value & 7) of the byte at base + (value >> 3) + 0x55. With a materialised boolean the index is 0 or 1, so THE BOOLEAN SELECTS WHICH BIT IS SET in the first byte of the flag array - bit 0 when the tested flag was clear, bit 1 when it was set. The boolean is therefore used as a BIT INDEX by the first consumer downstream of it, not as a truth value. UNKNOWN: what either bit means, whether callers rely on the counter being untouched, and what reads the array afterwards. No semantic name is assigned, and nothing is imported from another title."
+    },
+    {
+      "id": "clear",
+      "name": "ByteCodeInterpreter bit-array clearer (sub_08004396)",
+      "ticket": "DECOMP-LIFT-FLAGSTATE-001",
+      "translation_unit": "clear_tu",
+      "probe_translation_unit": "clear_tu",
+      "decomp_source": "src/ByteCodeInterpreter_clear.c",
+      "probe_source": "src/probes/ByteCodeInterpreter_clear.c",
+      "selftest_source": "src/probes/clear_selftest.c",
+      "semantic_minimum_checks": 18,
+      "host_build_bits": 32,
+      "compiler": {
+        "cpu": "arm7tdmi",
+        "isa": "thumb",
+        "optimization": "-O1",
+        "extra_flags": []
+      },
+      "role": "clear one bit of the byte array with a read-modify-write",
+      "notes": "sub_08004396, 22 bytes and 11 instructions, one terminator at 0x080043AA, no calls and NO literal pool. It is the third and last member of the bit-array accessor trio, sitting immediately after the setter at 0x08004380, so the reader, the setter and this clearer tile 0x08004364..0x080043AC. DERIVED ON ITS OWN EVIDENCE, not by assuming it mirrors the setter: the differing instruction is `bics`, which computes byte & ~(1 << (value & 7)) - a bit CLEAR - where the setter uses `orrs`. The index split is the same as the other two: `asrs #3` selects the byte, the `lsls`/`lsrs #0x1d` pair isolates the low three bits, and the byte is at base + (value >> 3) + 0x55. The byte-index shift is ARITHMETIC, so a value with bit 31 set clears BEFORE the base. It is a READ-MODIFY-WRITE: `ldrb` reads, `bics` clears, `strb` writes back, so the other seven bits of that byte survive; exactly one byte is modified. There is NO BOUNDS CHECK and no NULL check. THE RETURN VALUE IS NOT DEFINED: the routine ends with `bx lr` with r0 still holding the computed field address, not a status or a boolean, so the reconstruction returns void rather than inventing a result. Clearing an already-clear bit is a no-op, and clearing the same bit twice equals clearing it once; both are asserted. UNKNOWN: what the bit means, and how large the array is. No semantic name is assigned and nothing is imported from another title."
+    },
+    {
+      "id": "gather",
+      "name": "ByteCodeInterpreter flag-array gather loop (sub_080032C2)",
+      "ticket": "DECOMP-LIFT-FLAGSTATE-001",
+      "translation_unit": "gather_tu",
+      "probe_translation_unit": "gather_tu",
+      "decomp_source": "src/ByteCodeInterpreter_gather.c",
+      "probe_source": "src/probes/ByteCodeInterpreter_gather.c",
+      "selftest_source": "src/probes/gather_selftest.c",
+      "semantic_minimum_checks": 20,
+      "host_build_bits": 32,
+      "compiler": {
+        "cpu": "arm7tdmi",
+        "isa": "thumb",
+        "optimization": "-O1",
+        "extra_flags": []
+      },
+      "role": "gather a run of flag bits into a mask and push it back onto the VM stack",
+      "notes": "sub_080032C2, 78 bytes and 38 instructions, one terminator at 0x0800330E, one call to the already-lifted reader sub_08004364, and one literal 0x08054FBC. No BL caller targets it anywhere in the image, so it is reached by VM dispatch: it is the function the flagread report recorded as the reader's third call site 0x080032EE. IT IS A TWO-INTO-ONE REDUCTION OVER THE FLAG ARRAY rather than over its two operands: it POPS a BOUND from the top and a BIT OFFSET from beneath it, then for n = 0 .. bound-1 tests the array bit at `offset + n` and sets bit n of an accumulator when that flag is set, finally PUSHING the mask as a new stack value. Net counter movement is -1, two consumed and one produced, so it leaves a result on the VM stack rather than escaping the VM. THE VALUE PASSED TO THE READER IS `offset + n`, NOT `n` (`adds r1, r0, r4`), which is the detail that fixes the meaning: the second operand is a BIT NUMBER in the array, not a byte index and not a pointer, and successive iterations test successive BITS from that offset. LOOP BOUNDS: the loop runs while n < bound with n starting at 0, so a positive bound gathers exactly that many bits; a bound of zero or LESS is skipped entirely by the `ble`, which compares the bound as signed, producing a mask of 0 with no call to the reader at all; there is NO upper clamp, and the mask bit is built with a Thumb `lsls` on a 32-bit register, so the shift amount is taken modulo 32 and a bound above 32 wraps and re-sets bits already set - the machine's behaviour, reproduced rather than corrected. THE RESULTING MASK: bit n is the flag array bit at (offset + n), so the mask is the packed run of flags from the caller's offset. Its DESTINATION is the VM stack itself - the routine increments the counter and stores the mask at values[count] - so the mask becomes the new stack top, to be consumed by whatever pops it next, which is as far as this ticket follows it. NO BOUNDS CHECK, NO NULL CHECK, AND NO SIZE KNOWLEDGE: neither the offset nor the bound is compared against any size, and the array size is not reachable from this routine at all. ARRAY EXTENT: the proven LOWER bound is one byte, eight bits, because the trio addresses one byte at base + 0x55 and the boolean transforms only ever produce indices 0 and 1; no static UPPER bound is derivable from code evidence, because no instruction compares an index against a size and the gather loop's offset and bound are runtime values. No guard was added. UNKNOWN: what the gathered mask means, how large the array is, and what pops the mask."
     }
   ]
 }

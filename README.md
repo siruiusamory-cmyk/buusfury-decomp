@@ -103,6 +103,24 @@ therefore cannot be imported. See
 [`docs/ADS12_SETUP.md`](docs/ADS12_SETUP.md) and
 [`docs/DECOMP_BASELINE.md`](docs/DECOMP_BASELINE.md#the-blocker).
 
+### Flag-state cluster (DECOMP-LIFT-FLAGSTATE-001, measured 2026-09-29)
+
+The accessor trio is complete and the array is bounded. Two functions: the clear
+accessor sub_08004396 at **0x08004396** (22 B) and the gather loop
+sub_080032C2 at **0x080032C2** (78 B).
+
+| Target | SEMANTIC | MODERN_BUILD | ADS_MATCH |
+| --- | --- | --- | --- |
+| clear | **PROVEN** (18 checks) | **PASS** (36 B) | **BLOCKED** |
+| gather | **PROVEN** (20 checks) | **PASS** (120 B) | **BLOCKED** |
+
+The trio tiles 0x08004364..0x080043AC: test (\nds\), set (\orrs\), **clear
+(\ics\)** - derived on its own evidence, not assumed to mirror the setter. The
+gather pops a **bit offset** and a **bound**, gathers \ound\ bits from \offset+ninto a mask, and **pushes the mask back onto the VM stack**; a bound of zero or
+less is skipped entirely, and a bound above 32 wraps. **Array extent: lower bound
+1 byte, no derivable upper bound.** See
+[docs/LIFT_FLAGSTATE.md](docs/LIFT_FLAGSTATE.md).
+
 ### Boolean materialisation (DECOMP-LIFT-SCRIPT-BOOLUSE-001, measured 2026-09-29)
 
 The two routines that carry the reader's boolean into the VM stack: `sub_080007B6`
@@ -355,7 +373,7 @@ python -m buusfury build     # assemble a ROM, with per-region provenance
 python -m buusfury lift      # semantic lifting loop: build + compare one family
 python -m buusfury rommap    # independent structural ROM map + function inventory
 python -m buusfury fixed     # generate the zero-toolchain fixed regions
-python -m pytest tests -q    # 558 tests
+python -m pytest tests -q    # 588 tests
 ```
 
 ## Scope

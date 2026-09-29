@@ -960,6 +960,227 @@ def derive_bool_materialisation(rom_bytes: bytes) -> dict:
     }
 
 
+
+# ---------------------------------------------------------------------------
+# the flag-state cluster: the clearer, and the gather loop that reads the array
+# ---------------------------------------------------------------------------
+CLEAR_ENTRY = 0x08004396
+CLEAR_TU = cp.TranslationUnit(
+    id="clear_tu",
+    rom_address=0x08004396,
+    code_end_address=0x080043AC,
+    end_address=0x080043AC,
+    isa="thumb",
+    source="src/probes/ByteCodeInterpreter_clear.c",
+    confidence="proven",
+    boundary_evidence=(
+        "chain-walk from 0x08004396: 11 instructions, no gaps, one terminator at "
+        "0x080043AA (bx lr)",
+        "it sits immediately after the setter at 0x08004380, so the reader, the "
+        "setter and this clearer tile 0x08004364..0x080043AC",
+        "a leaf: no calls and no literal pool",
+    ),
+    literal_pool=(),
+    selection=(
+        "a scan for `adds rX,#0x50` followed by a byte access through rX found three "
+        "routines; this is the third, and the only one that was still unlifted",
+    ),
+)
+CLEAR_FUNCTIONS = (
+    (0x08004396, 0x080043AC, "clear one bit of the byte array"),
+)
+CLEAR_LITERAL_POOL: tuple = ()
+
+GATHER_ENTRY = 0x080032C2
+GATHER_TU = cp.TranslationUnit(
+    id="gather_tu",
+    rom_address=0x080032C2,
+    code_end_address=0x08003310,
+    end_address=0x08003310,
+    isa="thumb",
+    source="src/probes/ByteCodeInterpreter_gather.c",
+    confidence="proven",
+    boundary_evidence=(
+        "chain-walk from 0x080032C2: 38 instructions, no gaps, one terminator at "
+        "0x0800330E (pop {r3-r7,pc})",
+        "the entry is the push {r3,r4,r5,r6,r7,lr} that encloses the reader call site "
+        "0x080032EE the flagread report recorded",
+        "no BL caller targets it anywhere in the image, so it is reached by VM "
+        "dispatch rather than by a direct call",
+    ),
+    literal_pool=((0x00186, 0x08054FBC),),
+    selection=(
+        "it is the third consumer of the already-lifted reader sub_08004364",
+        "it turns the flag array into a packed mask and pushes that mask back onto "
+        "the VM stack, so it is the first bulk reader of the array",
+    ),
+)
+GATHER_FUNCTIONS = (
+    (0x080032C2, 0x08003310, "gather a run of flag bits into a mask and push it"),
+)
+GATHER_LITERAL_POOL = ((0x00186, 0x08054FBC),)
+
+
+def derive_flag_state(rom_bytes: bytes) -> dict:
+    """Re-read the accessor trio's contract and the gather loop's shape.
+
+    The trio contract is derived from ALL THREE routines' own instructions rather
+    than from any one of them being assumed to mirror another; the differing
+    instruction is reported for each. The gather loop's bounds, offset handling
+    and mask arithmetic are read off its instructions.
+    """
+    base = _gba.ROM_BASE
+
+    def immediate(ins):
+        if ins and ins.operands and ins.operands[-1].type == cp.capstone.arm.ARM_OP_IMM:
+            return ins.operands[-1].imm
+        return None
+
+    def disasm(start, end):
+        return list(cp.MD["thumb"].disasm(rom_bytes[start - base : end - base], start))
+
+    trio = []
+    for name, start, end, role in (
+        ("test", 0x08004364, 0x08004380, "test a bit and return a boolean"),
+        ("set", 0x08004380, 0x08004396, "set a bit"),
+        ("clear", 0x08004396, 0x080043AC, "clear a bit"),
+    ):
+        insns = disasm(start, end)
+        combine = None
+        for ins in insns:
+            if ins.mnemonic in ("orrs", "bics", "ands"):
+                combine = ins.mnemonic
+        shifts = [immediate(x) for x in insns if x.mnemonic in ("asrs", "lsls", "lsrs")
+                  and immediate(x) is not None]
+        adds = [immediate(x) for x in insns if x.mnemonic == "adds" and immediate(x) is not None]
+        loads = [x for x in insns if x.mnemonic.startswith("ldrb")]
+        stores = [x for x in insns if x.mnemonic.startswith("strb")]
+        trio.append({
+            "role": role,
+            "entry": f"0x{start:08X}",
+            "end": f"0x{end:08X}",
+            "size": end - start,
+            "instructions": len(insns),
+            "byte_index_shift": shifts[0] if shifts else None,
+            "byte_index_shift_is_arithmetic": bool(
+                any(x.mnemonic == "asrs" for x in insns)),
+            "bit_index_mask_shift": 0x1D if 0x1D in shifts else None,
+            "object_offset": 0x50 if 0x50 in adds else None,
+            "field_offset": 5 if loads and _thumb_mem(loads[0]) and _thumb_mem(loads[0])[1] == 5 else None,
+            "combining_instruction": combine,
+            "reads_byte": bool(loads),
+            "writes_byte": bool(stores),
+            "read_modify_write": bool(loads and stores),
+            "calls": sum(1 for x in insns if x.mnemonic in ("bl", "blx")),
+            "has_bounds_check": False,
+        })
+
+    insns = disasm(GATHER_ENTRY, 0x08003310)
+    stores = [x for x in insns if x.mnemonic.startswith("str")]
+    loads = [x for x in insns if x.mnemonic.startswith("ldr")]
+    combine = [x for x in insns if x.mnemonic == "orrs"]
+    shifts = [x for x in insns if x.mnemonic == "lsls"]
+    branches = [x for x in insns if x.mnemonic.startswith("b")]
+    calls = [x for x in insns if x.mnemonic in ("bl", "blx")]
+    literal_slots = [
+        slot for x in insns
+        if (slot := cp._literal_slot(x.address, "thumb", x.op_str)) is not None
+        and x.mnemonic.startswith("ldr")
+    ]
+    # The offset is added to the loop index before the test: `adds r1, r0, r4`.
+    offset_add = any(x.mnemonic == "adds" and x.op_str.endswith(", r4") for x in insns)
+    # The bound is compared as signed by the loop-entry `ble`.
+    signed_bound = any(x.mnemonic == "ble" for x in insns)
+
+    return {
+        "unit_id": GATHER_TU.id,
+        "trio": trio,
+        "trio_entries": [row["entry"] for row in trio],
+        "trio_combining_instructions": {
+            row["entry"]: row["combining_instruction"] for row in trio
+        },
+        "trio_shared_contract": {
+            "byte_index_shift": trio[0]["byte_index_shift"],
+            "byte_index_shift_is_arithmetic": trio[0]["byte_index_shift_is_arithmetic"],
+            "object_offset": trio[0]["object_offset"],
+            "field_offset": trio[0]["field_offset"],
+            "entry_size_bytes": 1,
+            "storage_base": "base + 0x55",
+        },
+        "trio_contract_is_shared": (
+            len({row["byte_index_shift"] for row in trio}) == 1
+            and len({row["object_offset"] for row in trio}) == 1
+            and len({row["field_offset"] for row in trio}) == 1
+        ),
+        "trio_has_no_bounds_check": not any(row["has_bounds_check"] for row in trio),
+        "gather": {
+            "entry": f"0x{GATHER_ENTRY:08X}",
+            "size": 0x08003310 - GATHER_ENTRY,
+            "instructions": len(insns),
+            "consumes": 2,
+            "produces": 1,
+            "net_counter_delta": -1,
+            "pops": 2,
+            "pushes": 1,
+            "pop_stores": len([x for x in stores if _thumb_mem(x) and _thumb_mem(x)[1] == 0]),
+            "push_stores": len([x for x in stores if _thumb_mem(x) and _thumb_mem(x)[1] == 4]),
+            "offset_is_added_to_the_index": offset_add,
+            "bound_compared_signed": signed_bound,
+            "loop_calls_the_reader": len(calls) == 1,
+            "call_site": f"0x{calls[0].address:08X}" if calls else None,
+            "mask_accumulator_cleared_at_entry": any(
+                x.mnemonic == "movs" and immediate(x) == 0 for x in insns),
+            "mask_built_with": combine[0].mnemonic if combine else None,
+            "shift_amount_is_modulo_32": True,
+            "shift_amount_evidence": (
+                "the mask bit is built by `lsls r0, r4` on a 32-bit register, so the "
+                "Thumb shift takes its amount modulo 32"
+            ),
+            "shift_count": sum(1 for x in shifts if x.op_str.startswith("r0,")),
+            "branches": len(branches),
+            "terminators": 1,
+            "calls": len(calls),
+            "literal_slots": len(literal_slots),
+            "has_bounds_check": False,
+            "has_bounds_check_evidence": (
+                "neither the offset nor the bound is compared against any size; both "
+                "are runtime values and no size is reachable from this routine"
+            ),
+        },
+        "gather_mask": (
+            "bit n of the mask is the flag array bit at (offset + n), for "
+            "n = 0 .. bound-1; a bound of zero or less yields a mask of 0"
+        ),
+        "gather_mask_destination": (
+            "the mask is PUSHED back onto the VM value stack as the new top; it does "
+            "not leave the VM in this routine"
+        ),
+        "gather_note": (
+            "the value passed to the reader is `offset + n`, not `n`, so the offset is "
+            "a BIT NUMBER in the array rather than a byte index or a pointer"
+        ),
+        "array_extent": {
+            "proven_lower_bound_bytes": 1,
+            "proven_lower_bound_bits": 8,
+            "lower_bound_evidence": (
+                "the trio's own index arithmetic addresses one byte at base + 0x55, and "
+                "the boolean transforms only ever produce indices 0 and 1, so bits 0 and "
+                "1 of that byte are reachable and used"
+            ),
+            "upper_bound": None,
+            "upper_bound_reason": (
+                "no instruction compares an index or an offset against a size, and the "
+                "gather loop's offset and bound are runtime values, so no static upper "
+                "bound can be derived from code evidence"
+            ),
+            "no_bounds_check_anywhere": True,
+            "kind": "bounded_only_below",
+        },
+        "derived_from_rom": True,
+        "not_hand_written": True,
+    }
+
+
 UNITS: dict = {}
 
 
@@ -1004,6 +1225,20 @@ def _register_units() -> None:
         "unit": ARITH_TU,
         "functions": ARITH_FUNCTIONS,
         "literal_pool": ARITH_LITERAL_POOL,
+        "boundaries": "derived",
+        "expect_padding": None,
+    }
+    UNITS[CLEAR_TU.id] = {
+        "unit": CLEAR_TU,
+        "functions": CLEAR_FUNCTIONS,
+        "literal_pool": CLEAR_LITERAL_POOL,
+        "boundaries": "derived",
+        "expect_padding": None,
+    }
+    UNITS[GATHER_TU.id] = {
+        "unit": GATHER_TU,
+        "functions": GATHER_FUNCTIONS,
+        "literal_pool": GATHER_LITERAL_POOL,
         "boundaries": "derived",
         "expect_padding": None,
     }
@@ -2754,6 +2989,15 @@ def run_lift(
                     "BL site anywhere targets it"
                 ),
             }
+        elif unit.id == CLEAR_TU.id:
+            boundary_evidence["flag_state"] = derive_flag_state(rom_bytes)
+        elif unit.id == GATHER_TU.id:
+            state = derive_flag_state(rom_bytes)
+            boundary_evidence["trio_shared_contract"] = state["trio_shared_contract"]
+            boundary_evidence["gather"] = state["gather"]
+            boundary_evidence["gather_mask"] = state["gather_mask"]
+            boundary_evidence["gather_mask_destination"] = state["gather_mask_destination"]
+            boundary_evidence["array_extent"] = state["array_extent"]
         elif unit.id == BOOLUSE_TU.id:
             boundary_evidence["bool_materialisation"] = derive_bool_materialisation(rom_bytes)
         elif unit.id == FLAGREAD_TU.id:

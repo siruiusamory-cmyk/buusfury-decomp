@@ -1,0 +1,377 @@
+{
+  "schema": 1,
+  "ticket": "DECOMP-LIFT-FLAGSTATE-001",
+  "generated_by": "tools/buusfury/lift.py",
+  "source_sha1": "f1c4b07554d2a3b1ad2f325307051e775ce68087",
+  "target": {
+    "id": "clear",
+    "name": "ByteCodeInterpreter bit-array clearer (sub_08004396)",
+    "role": "clear one bit of the byte array with a read-modify-write",
+    "notes": "sub_08004396, 22 bytes and 11 instructions, one terminator at 0x080043AA, no calls and NO literal pool. It is the third and last member of the bit-array accessor trio, sitting immediately after the setter at 0x08004380, so the reader, the setter and this clearer tile 0x08004364..0x080043AC. DERIVED ON ITS OWN EVIDENCE, not by assuming it mirrors the setter: the differing instruction is `bics`, which computes byte & ~(1 << (value & 7)) - a bit CLEAR - where the setter uses `orrs`. The index split is the same as the other two: `asrs #3` selects the byte, the `lsls`/`lsrs #0x1d` pair isolates the low three bits, and the byte is at base + (value >> 3) + 0x55. The byte-index shift is ARITHMETIC, so a value with bit 31 set clears BEFORE the base. It is a READ-MODIFY-WRITE: `ldrb` reads, `bics` clears, `strb` writes back, so the other seven bits of that byte survive; exactly one byte is modified. There is NO BOUNDS CHECK and no NULL check. THE RETURN VALUE IS NOT DEFINED: the routine ends with `bx lr` with r0 still holding the computed field address, not a status or a boolean, so the reconstruction returns void rather than inventing a result. Clearing an already-clear bit is a no-op, and clearing the same bit twice equals clearing it once; both are asserted. UNKNOWN: what the bit means, and how large the array is. No semantic name is assigned and nothing is imported from another title.",
+    "translation_unit": "clear_tu",
+    "rom_address": "0x08004396",
+    "file_offset": "0x004396",
+    "code_end_address": "0x080043AC",
+    "end_address": "0x080043AC",
+    "byte_length": 22,
+    "code_byte_length": 22,
+    "isa": "thumb",
+    "decomp_source": "src/ByteCodeInterpreter_clear.c",
+    "probe_source": "src/probes/ByteCodeInterpreter_clear.c",
+    "selftest_source": "src/probes/clear_selftest.c",
+    "semantic_minimum_checks": 18,
+    "host_build_bits": 32,
+    "original_sha1": "3e5bb058e4026007a632f814235a5e8f32de5e54"
+  },
+  "boundary_evidence": {
+    "method": "aligned chain-walk from each entry, following local branches",
+    "unit_id": "clear_tu",
+    "code_extent": "0x08004396..0x080043AC",
+    "pool_extent": null,
+    "has_literal_pool": false,
+    "pool_is_adjacent_to_code": false,
+    "pool_gap_bytes": null,
+    "alignment_padding_bytes": null,
+    "functions": [
+      {
+        "start": "0x08004396",
+        "end": "0x080043AC",
+        "size": 22,
+        "instructions": 11,
+        "role": "clear one bit of the byte array",
+        "terminators": [
+          "0x080043AA"
+        ],
+        "gaps": [],
+        "matches_expected": true
+      }
+    ],
+    "problems": [],
+    "derived_from_rom": true,
+    "not_hand_written": true,
+    "flag_state": {
+      "unit_id": "gather_tu",
+      "trio": [
+        {
+          "role": "test a bit and return a boolean",
+          "entry": "0x08004364",
+          "end": "0x08004380",
+          "size": 28,
+          "instructions": 14,
+          "byte_index_shift": 3,
+          "byte_index_shift_is_arithmetic": true,
+          "bit_index_mask_shift": 29,
+          "object_offset": 80,
+          "field_offset": 5,
+          "combining_instruction": "ands",
+          "reads_byte": true,
+          "writes_byte": false,
+          "read_modify_write": false,
+          "calls": 0,
+          "has_bounds_check": false
+        },
+        {
+          "role": "set a bit",
+          "entry": "0x08004380",
+          "end": "0x08004396",
+          "size": 22,
+          "instructions": 11,
+          "byte_index_shift": 3,
+          "byte_index_shift_is_arithmetic": true,
+          "bit_index_mask_shift": 29,
+          "object_offset": 80,
+          "field_offset": 5,
+          "combining_instruction": "orrs",
+          "reads_byte": true,
+          "writes_byte": true,
+          "read_modify_write": true,
+          "calls": 0,
+          "has_bounds_check": false
+        },
+        {
+          "role": "clear a bit",
+          "entry": "0x08004396",
+          "end": "0x080043AC",
+          "size": 22,
+          "instructions": 11,
+          "byte_index_shift": 3,
+          "byte_index_shift_is_arithmetic": true,
+          "bit_index_mask_shift": 29,
+          "object_offset": 80,
+          "field_offset": 5,
+          "combining_instruction": "bics",
+          "reads_byte": true,
+          "writes_byte": true,
+          "read_modify_write": true,
+          "calls": 0,
+          "has_bounds_check": false
+        }
+      ],
+      "trio_entries": [
+        "0x08004364",
+        "0x08004380",
+        "0x08004396"
+      ],
+      "trio_combining_instructions": {
+        "0x08004364": "ands",
+        "0x08004380": "orrs",
+        "0x08004396": "bics"
+      },
+      "trio_shared_contract": {
+        "byte_index_shift": 3,
+        "byte_index_shift_is_arithmetic": true,
+        "object_offset": 80,
+        "field_offset": 5,
+        "entry_size_bytes": 1,
+        "storage_base": "base + 0x55"
+      },
+      "trio_contract_is_shared": true,
+      "trio_has_no_bounds_check": true,
+      "gather": {
+        "entry": "0x080032C2",
+        "size": 78,
+        "instructions": 38,
+        "consumes": 2,
+        "produces": 1,
+        "net_counter_delta": -1,
+        "pops": 2,
+        "pushes": 1,
+        "pop_stores": 4,
+        "push_stores": 1,
+        "offset_is_added_to_the_index": true,
+        "bound_compared_signed": true,
+        "loop_calls_the_reader": true,
+        "call_site": "0x080032EE",
+        "mask_accumulator_cleared_at_entry": true,
+        "mask_built_with": "orrs",
+        "shift_amount_is_modulo_32": true,
+        "shift_amount_evidence": "the mask bit is built by `lsls r0, r4` on a 32-bit register, so the Thumb shift takes its amount modulo 32",
+        "shift_count": 3,
+        "branches": 4,
+        "terminators": 1,
+        "calls": 1,
+        "literal_slots": 1,
+        "has_bounds_check": false,
+        "has_bounds_check_evidence": "neither the offset nor the bound is compared against any size; both are runtime values and no size is reachable from this routine"
+      },
+      "gather_mask": "bit n of the mask is the flag array bit at (offset + n), for n = 0 .. bound-1; a bound of zero or less yields a mask of 0",
+      "gather_mask_destination": "the mask is PUSHED back onto the VM value stack as the new top; it does not leave the VM in this routine",
+      "gather_note": "the value passed to the reader is `offset + n`, not `n`, so the offset is a BIT NUMBER in the array rather than a byte index or a pointer",
+      "array_extent": {
+        "proven_lower_bound_bytes": 1,
+        "proven_lower_bound_bits": 8,
+        "lower_bound_evidence": "the trio's own index arithmetic addresses one byte at base + 0x55, and the boolean transforms only ever produce indices 0 and 1, so bits 0 and 1 of that byte are reachable and used",
+        "upper_bound": null,
+        "upper_bound_reason": "no instruction compares an index or an offset against a size, and the gather loop's offset and bound are runtime values, so no static upper bound can be derived from code evidence",
+        "no_bounds_check_anywhere": true,
+        "kind": "bounded_only_below"
+      },
+      "derived_from_rom": true,
+      "not_hand_written": true
+    }
+  },
+  "verdicts": {
+    "semantic": {
+      "status": "PROVEN",
+      "checks": 18,
+      "failures": 0,
+      "minimum_checks": 18,
+      "host_compiler": "MSVC cl.exe (32-bit)",
+      "detail": "18 behavioural assertions passed with 0 failures (minimum 18)",
+      "measures": "whether the reconstructed C behaves correctly, by RUNNING it"
+    },
+    "modern_build": {
+      "status": "PASS",
+      "detail": "compiled, linked at 0x08004396 and emitted 36 bytes",
+      "measures": "whether the source compiles, links and emits bytes"
+    },
+    "ads_match": {
+      "status": "BLOCKED",
+      "code": "ADS12_LICENSE_UNAVAILABLE",
+      "detail": "an ARM Developer Suite 1.2 installation is present on this machine but the licence file it ships licenses a different product, so the ARM compilers cannot be run. No compile has been attempted and no configuration has been tested. The installation is located through ADS12_ROOT.",
+      "required_to_unblock": [
+        "a licensed ADS 1.2 installation, with ADS12_ROOT pointing at it",
+        "then: python -m buusfury compiler-probe --plan, then --matrix"
+      ],
+      "not_inferable_from_modern_build": true
+    }
+  },
+  "verdicts_are_independent": "SEMANTIC, MODERN_BUILD and ADS_MATCH answer different questions and none is evidence for another. A passing modern build says nothing about the original compiler; a passing semantic run only removes one class of error.",
+  "modern_build": {
+    "status": "PASS",
+    "toolchain": {
+      "family": "GNU Arm Embedded (devkitARM)",
+      "root": "<DEVKITARM>",
+      "prefix": "arm-none-eabi-",
+      "tools": {
+        "gcc": "<DEVKITARM>\\bin\\arm-none-eabi-gcc.exe",
+        "ld": "<DEVKITARM>\\bin\\arm-none-eabi-ld.exe",
+        "objcopy": "<DEVKITARM>\\bin\\arm-none-eabi-objcopy.exe",
+        "objdump": "<DEVKITARM>\\bin\\arm-none-eabi-objdump.exe",
+        "nm": "<DEVKITARM>\\bin\\arm-none-eabi-nm.exe"
+      }
+    },
+    "identity": {
+      "gcc_banner": "arm-none-eabi-gcc.exe (devkitARM) 16.1.0",
+      "gcc_version": "16.1.0",
+      "target_triple": "arm-none-eabi",
+      "binutils_banner": "GNU objdump (GNU Binutils) 2.46.0.20260210",
+      "compiler_family": "gcc",
+      "is_the_original_compiler": false,
+      "why_not": "the original translation unit was built by ARM Developer Suite 1.2 (the surviving command line names tcpp). GCC is a different compiler with a different code generator, so its output cannot establish anything about ADS 1.2."
+    },
+    "target_support": {
+      "supported": true,
+      "cpu": "arm7tdmi",
+      "instruction_set": "thumb",
+      "commands": [
+        "<DEVKITARM>\\bin\\arm-none-eabi-gcc.exe -c -mcpu=arm7tdmi -mthumb -O1 -ffreestanding -fno-common -fno-builtin -o <REPO>\\build\\lift\\clear\\toolchain-probe\\support_probe.o <REPO>\\build\\lift\\clear\\toolchain-probe\\support_probe.c"
+      ],
+      "disassembly": [
+        "adds r0, #1",
+        "bx lr"
+      ],
+      "detail": "compiled and disassembled a probe function for ARM7TDMI Thumb: 2 instruction(s), r0 written and a return present"
+    },
+    "compiler_configuration": {
+      "cpu": "arm7tdmi",
+      "instruction_set": "thumb",
+      "optimization": "-O1",
+      "extra_flags": []
+    },
+    "link_origin": "0x08004396",
+    "external_calls_bound_to_original_addresses": {},
+    "detail": "compiled, linked at 0x08004396 and emitted 36 bytes",
+    "build": {
+      "ok": true,
+      "commands": [
+        "<DEVKITARM>\\bin\\arm-none-eabi-gcc.exe -c -mcpu=arm7tdmi -mthumb -O1 -ffreestanding -fno-common -fno-builtin -fomit-frame-pointer -mno-unaligned-access -o <REPO>\\build\\lift\\clear\\clear.o <REPO>\\src\\ByteCodeInterpreter_clear.c",
+        "<DEVKITARM>\\bin\\arm-none-eabi-gcc.exe -c -mcpu=arm7tdmi -mthumb -o <REPO>\\build\\lift\\clear\\clear_externs.o -x assembler-with-cpp <REPO>\\build\\lift\\clear\\clear_externs.s",
+        "<DEVKITARM>\\bin\\arm-none-eabi-gcc.exe -nostdlib -Wl,-T,<REPO>\\build\\lift\\clear\\clear.ld -Wl,-Map,<REPO>\\build\\lift\\clear\\clear.map -o <REPO>\\build\\lift\\clear\\clear.elf <REPO>\\build\\lift\\clear\\clear.o <REPO>\\build\\lift\\clear\\clear_externs.o",
+        "<DEVKITARM>\\bin\\arm-none-eabi-objcopy.exe -O binary -j .text -j .rodata <REPO>\\build\\lift\\clear\\clear.elf <REPO>\\build\\lift\\clear\\clear.bin"
+      ],
+      "produced_byte_length": 36,
+      "symbols": {
+        "sub_08004396": {
+          "address": "0x08004396",
+          "size": 36
+        }
+      },
+      "diagnostics": ""
+    }
+  },
+  "functions": [
+    {
+      "name": "sub_08004396",
+      "role": "clear one bit of the byte array",
+      "original": {
+        "start": "0x08004396",
+        "end": "0x080043AC",
+        "size": 22,
+        "isa": "thumb",
+        "instructions": 11,
+        "first_instruction": "asrs r2, r1, #3",
+        "calls": [],
+        "literal_slots": [],
+        "returns": 1,
+        "leaf": true,
+        "abi": {
+          "callee_saved_pushed": [],
+          "frame_size_bytes": 0,
+          "written_registers": [
+            "r0",
+            "r1",
+            "r2",
+            "r3"
+          ]
+        }
+      },
+      "modern": {
+        "start": "0x08004396",
+        "end": "0x080043BA",
+        "size": 36,
+        "isa": "thumb",
+        "instructions": 18,
+        "first_instruction": "lsrs r3, r1, #3",
+        "calls": [],
+        "literal_slots": [],
+        "returns": 1,
+        "leaf": true,
+        "abi": {
+          "callee_saved_pushed": [],
+          "frame_size_bytes": 0,
+          "written_registers": [
+            "r0",
+            "r1",
+            "r2",
+            "r3"
+          ]
+        }
+      },
+      "modern_symbol_present": true,
+      "delta": {
+        "size_bytes": 14,
+        "instructions": 7,
+        "returns": 0,
+        "calls": 0,
+        "literal_slots": 0
+      },
+      "same_extent": false,
+      "byte_identical": false
+    }
+  ],
+  "literal_pools": {
+    "original": {
+      "distinct_slots": 0,
+      "contiguous_runs": [],
+      "run_count": 0,
+      "shared_pool": false,
+      "shared_pool_applicable": false,
+      "declared_pool": [
+        "0x080043AC",
+        "0x080043AC"
+      ],
+      "declared_slots": [],
+      "declared_slots_used": [],
+      "all_referenced_slots_are_declared": true,
+      "all_declared_slots_are_referenced": true,
+      "undeclared_slots": [],
+      "functions_reaching_it": 0
+    },
+    "modern": {
+      "distinct_slots": 0,
+      "contiguous_runs": [],
+      "run_count": 0,
+      "shared_pool": true,
+      "functions_reaching_a_pool": 0
+    },
+    "interpretation": "the original's literals are accounted for by the words the unit declares; the modern build pools differently, which is a structural consequence of the compiler rather than a defect in the reconstruction. It is also why a function with a literal load cannot be compared standalone.",
+    "is_a_match_claim": false
+  },
+  "comparison": {
+    "original_byte_length": 22,
+    "modern_byte_length": 36,
+    "overlap_byte_length": 22,
+    "differing_bytes_in_overlap": 20,
+    "matching_bytes_in_overlap": 2,
+    "original_only_bytes": 0,
+    "modern_only_bytes": 14,
+    "original_instruction_spans": 11,
+    "matching_instruction_spans": 1,
+    "differing_instruction_spans": 10,
+    "bytes_not_covered_by_an_original_instruction": 0,
+    "byte_identical": false,
+    "is_a_match_claim": false,
+    "match_claim_note": "MEASUREMENT ONLY. This compares a modern GCC build against the cartridge. A modern compiler is not the original compiler, so a difference here is expected and proves nothing; an identity here would also prove nothing about ADS 1.2. ADS_MATCH stays BLOCKED."
+  },
+  "semantic_check": {
+    "status": "PROVEN",
+    "checks": 18,
+    "failures": 0,
+    "minimum_checks": 18,
+    "host_compiler": "MSVC cl.exe (32-bit)",
+    "host_build_bits": 32,
+    "detail": "18 behavioural assertions passed with 0 failures (minimum 18)",
+    "output": "PASS: 18 check(s), 0 failure(s)\n"
+  }
+}

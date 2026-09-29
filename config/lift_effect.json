@@ -1,0 +1,320 @@
+{
+  "schema": 1,
+  "ticket": "DECOMP-LIFT-SCRIPT-EFFECT-001",
+  "generated_by": "tools/buusfury/lift.py",
+  "source_sha1": "f1c4b07554d2a3b1ad2f325307051e775ce68087",
+  "target": {
+    "id": "effect",
+    "name": "ByteCodeInterpreter VM value effect (sub_08004380)",
+    "role": "set one bit of a byte array inside an object, from the value the VM popped",
+    "notes": "sub_08004380, 22 bytes and 11 instructions, one terminator at 0x08004394, no branches, NO calls and NO literal pool. A LEAF, so the effect is established by this routine alone and no helper had to be followed. Its argument contract is already proven from its caller: native dispatch entry 29 passes r0 = *(0x08054FBC + 0x14) and r1 = values[count-1] popped from the VM stack. THE CONCRETE EFFECT: it sets bit (value & 7) of the byte at base + (value >> 3) + 0x55, preserving the other seven bits. The two shifts are the standard bit-array split - `asrs r2, r1, #3` selects the byte, `lsls r3, r1, #0x1d` then `lsrs r3, r3, #0x1d` isolates the low three bits to select the bit within it - and `orrs` plus `strb` make it a read-modify-write. THE BYTE-INDEX SHIFT IS ARITHMETIC, which matters: a value with bit 31 set gives a negative byte index and the write lands BEFORE the base. 0xFFFFFFFF maps to base + 0x54 bit 7, one byte before its unsigned position, and 0x80000000 maps to base + 0xF0000055, nowhere near the logical-shift answer of base + 0x10000055. THE RECONSTRUCTION MODELS THE ARITHMETIC SHIFT EXPLICITLY because C's right shift of a negative signed value is implementation-defined. THERE IS NO BOUNDS CHECK and no NULL check: no compare against a size and no conditional branch exists anywhere in the routine, so every value selects a byte and that byte is written, however far outside the object it lies. No guard was added. UNKNOWN: what the bit MEANS, how large the byte array is, and what reads the bit afterwards. No name is assigned to the object, the array or the bit, and nothing is imported from another title.",
+    "translation_unit": "effect_tu",
+    "rom_address": "0x08004380",
+    "file_offset": "0x004380",
+    "code_end_address": "0x08004396",
+    "end_address": "0x08004396",
+    "byte_length": 22,
+    "code_byte_length": 22,
+    "isa": "thumb",
+    "decomp_source": "src/ByteCodeInterpreter_effect.c",
+    "probe_source": "src/probes/ByteCodeInterpreter_effect.c",
+    "selftest_source": "src/probes/effect_selftest.c",
+    "semantic_minimum_checks": 19,
+    "host_build_bits": 32,
+    "original_sha1": "3371ec952e586907549c667c06e49455833aec6e"
+  },
+  "boundary_evidence": {
+    "method": "aligned chain-walk from each entry, following local branches",
+    "unit_id": "effect_tu",
+    "code_extent": "0x08004380..0x08004396",
+    "pool_extent": null,
+    "has_literal_pool": false,
+    "pool_is_adjacent_to_code": false,
+    "pool_gap_bytes": null,
+    "alignment_padding_bytes": null,
+    "functions": [
+      {
+        "start": "0x08004380",
+        "end": "0x08004396",
+        "size": 22,
+        "instructions": 11,
+        "role": "set one bit of a byte array inside an object",
+        "terminators": [
+          "0x08004394"
+        ],
+        "gaps": [],
+        "matches_expected": true
+      }
+    ],
+    "problems": [],
+    "derived_from_rom": true,
+    "not_hand_written": true,
+    "bit_field_write": {
+      "unit_id": "effect_tu",
+      "extent": "0x08004380..0x08004396",
+      "instructions": 11,
+      "byte_index_shift": 3,
+      "byte_index_shift_is_arithmetic": true,
+      "bit_index_mask_bits": 3,
+      "object_offset": 80,
+      "field_offset_from_object_offset": 5,
+      "read_modify_write": true,
+      "read_count": 1,
+      "write_count": 1,
+      "or_count": 1,
+      "calls": 0,
+      "literal_slots": 0,
+      "has_literal_pool": false,
+      "has_bounds_check": false,
+      "has_bounds_check_evidence": "there is no compare against a size and no conditional branch anywhere in the routine; every value selects a byte and the byte is written",
+      "shifts": [
+        {
+          "address": "0x08004380",
+          "mnemonic": "asrs",
+          "amount": 3
+        },
+        {
+          "address": "0x08004384",
+          "mnemonic": "lsls",
+          "amount": 29
+        },
+        {
+          "address": "0x0800438A",
+          "mnemonic": "lsrs",
+          "amount": 29
+        }
+      ],
+      "offsets": [
+        {
+          "address": "0x08004388",
+          "mnemonic": "ldrb",
+          "displacement": 5
+        },
+        {
+          "address": "0x08004392",
+          "mnemonic": "strb",
+          "displacement": 5
+        }
+      ],
+      "adds": [
+        {
+          "address": "0x08004386",
+          "amount": 80
+        }
+      ],
+      "effect": "sets bit (value & 7) of the byte at base + (value >> 3) + 0x55, preserving the other seven bits",
+      "negative_index_behaviour": "the byte-index shift is arithmetic, so a value with bit 31 set gives a negative index and the write lands before the base",
+      "derived_from_rom": true,
+      "not_hand_written": true
+    },
+    "called_from": {
+      "routine": "sub_080007E6",
+      "site": "0x080007F8",
+      "arguments": "r0 = *(0x08054FBC + 0x14), r1 = the value popped from the VM stack"
+    }
+  },
+  "verdicts": {
+    "semantic": {
+      "status": "PROVEN",
+      "checks": 19,
+      "failures": 0,
+      "minimum_checks": 19,
+      "host_compiler": "MSVC cl.exe (32-bit)",
+      "detail": "19 behavioural assertions passed with 0 failures (minimum 19)",
+      "measures": "whether the reconstructed C behaves correctly, by RUNNING it"
+    },
+    "modern_build": {
+      "status": "PASS",
+      "detail": "compiled, linked at 0x08004380 and emitted 36 bytes",
+      "measures": "whether the source compiles, links and emits bytes"
+    },
+    "ads_match": {
+      "status": "BLOCKED",
+      "code": "ADS12_LICENSE_UNAVAILABLE",
+      "detail": "an ARM Developer Suite 1.2 installation is present on this machine but the licence file it ships licenses a different product, so the ARM compilers cannot be run. No compile has been attempted and no configuration has been tested. The installation is located through ADS12_ROOT.",
+      "required_to_unblock": [
+        "a licensed ADS 1.2 installation, with ADS12_ROOT pointing at it",
+        "then: python -m buusfury compiler-probe --plan, then --matrix"
+      ],
+      "not_inferable_from_modern_build": true
+    }
+  },
+  "verdicts_are_independent": "SEMANTIC, MODERN_BUILD and ADS_MATCH answer different questions and none is evidence for another. A passing modern build says nothing about the original compiler; a passing semantic run only removes one class of error.",
+  "modern_build": {
+    "status": "PASS",
+    "toolchain": {
+      "family": "GNU Arm Embedded (devkitARM)",
+      "root": "<DEVKITARM>",
+      "prefix": "arm-none-eabi-",
+      "tools": {
+        "gcc": "<DEVKITARM>\\bin\\arm-none-eabi-gcc.exe",
+        "ld": "<DEVKITARM>\\bin\\arm-none-eabi-ld.exe",
+        "objcopy": "<DEVKITARM>\\bin\\arm-none-eabi-objcopy.exe",
+        "objdump": "<DEVKITARM>\\bin\\arm-none-eabi-objdump.exe",
+        "nm": "<DEVKITARM>\\bin\\arm-none-eabi-nm.exe"
+      }
+    },
+    "identity": {
+      "gcc_banner": "arm-none-eabi-gcc.exe (devkitARM) 16.1.0",
+      "gcc_version": "16.1.0",
+      "target_triple": "arm-none-eabi",
+      "binutils_banner": "GNU objdump (GNU Binutils) 2.46.0.20260210",
+      "compiler_family": "gcc",
+      "is_the_original_compiler": false,
+      "why_not": "the original translation unit was built by ARM Developer Suite 1.2 (the surviving command line names tcpp). GCC is a different compiler with a different code generator, so its output cannot establish anything about ADS 1.2."
+    },
+    "target_support": {
+      "supported": true,
+      "cpu": "arm7tdmi",
+      "instruction_set": "thumb",
+      "commands": [
+        "<DEVKITARM>\\bin\\arm-none-eabi-gcc.exe -c -mcpu=arm7tdmi -mthumb -O1 -ffreestanding -fno-common -fno-builtin -o <REPO>\\build\\lift\\effect\\toolchain-probe\\support_probe.o <REPO>\\build\\lift\\effect\\toolchain-probe\\support_probe.c"
+      ],
+      "disassembly": [
+        "adds r0, #1",
+        "bx lr"
+      ],
+      "detail": "compiled and disassembled a probe function for ARM7TDMI Thumb: 2 instruction(s), r0 written and a return present"
+    },
+    "compiler_configuration": {
+      "cpu": "arm7tdmi",
+      "instruction_set": "thumb",
+      "optimization": "-O1",
+      "extra_flags": []
+    },
+    "link_origin": "0x08004380",
+    "external_calls_bound_to_original_addresses": {},
+    "detail": "compiled, linked at 0x08004380 and emitted 36 bytes",
+    "build": {
+      "ok": true,
+      "commands": [
+        "<DEVKITARM>\\bin\\arm-none-eabi-gcc.exe -c -mcpu=arm7tdmi -mthumb -O1 -ffreestanding -fno-common -fno-builtin -fomit-frame-pointer -mno-unaligned-access -o <REPO>\\build\\lift\\effect\\effect.o <REPO>\\src\\ByteCodeInterpreter_effect.c",
+        "<DEVKITARM>\\bin\\arm-none-eabi-gcc.exe -c -mcpu=arm7tdmi -mthumb -o <REPO>\\build\\lift\\effect\\effect_externs.o -x assembler-with-cpp <REPO>\\build\\lift\\effect\\effect_externs.s",
+        "<DEVKITARM>\\bin\\arm-none-eabi-gcc.exe -nostdlib -Wl,-T,<REPO>\\build\\lift\\effect\\effect.ld -Wl,-Map,<REPO>\\build\\lift\\effect\\effect.map -o <REPO>\\build\\lift\\effect\\effect.elf <REPO>\\build\\lift\\effect\\effect.o <REPO>\\build\\lift\\effect\\effect_externs.o",
+        "<DEVKITARM>\\bin\\arm-none-eabi-objcopy.exe -O binary -j .text -j .rodata <REPO>\\build\\lift\\effect\\effect.elf <REPO>\\build\\lift\\effect\\effect.bin"
+      ],
+      "produced_byte_length": 36,
+      "symbols": {
+        "sub_08004380": {
+          "address": "0x08004380",
+          "size": 36
+        }
+      },
+      "diagnostics": ""
+    }
+  },
+  "functions": [
+    {
+      "name": "sub_08004380",
+      "role": "set one bit of a byte array inside an object",
+      "original": {
+        "start": "0x08004380",
+        "end": "0x08004396",
+        "size": 22,
+        "isa": "thumb",
+        "instructions": 11,
+        "first_instruction": "asrs r2, r1, #3",
+        "calls": [],
+        "literal_slots": [],
+        "returns": 1,
+        "leaf": true,
+        "abi": {
+          "callee_saved_pushed": [],
+          "frame_size_bytes": 0,
+          "written_registers": [
+            "r0",
+            "r1",
+            "r2",
+            "r3"
+          ]
+        }
+      },
+      "modern": {
+        "start": "0x08004380",
+        "end": "0x080043A4",
+        "size": 36,
+        "isa": "thumb",
+        "instructions": 18,
+        "first_instruction": "lsrs r3, r1, #3",
+        "calls": [],
+        "literal_slots": [],
+        "returns": 1,
+        "leaf": true,
+        "abi": {
+          "callee_saved_pushed": [],
+          "frame_size_bytes": 0,
+          "written_registers": [
+            "r0",
+            "r1",
+            "r2",
+            "r3"
+          ]
+        }
+      },
+      "modern_symbol_present": true,
+      "delta": {
+        "size_bytes": 14,
+        "instructions": 7,
+        "returns": 0,
+        "calls": 0,
+        "literal_slots": 0
+      },
+      "same_extent": false,
+      "byte_identical": false
+    }
+  ],
+  "literal_pools": {
+    "original": {
+      "distinct_slots": 0,
+      "contiguous_runs": [],
+      "run_count": 0,
+      "shared_pool": false,
+      "shared_pool_applicable": false,
+      "declared_pool": [
+        "0x08004396",
+        "0x08004396"
+      ],
+      "declared_slots": [],
+      "declared_slots_used": [],
+      "all_referenced_slots_are_declared": true,
+      "all_declared_slots_are_referenced": true,
+      "undeclared_slots": [],
+      "functions_reaching_it": 0
+    },
+    "modern": {
+      "distinct_slots": 0,
+      "contiguous_runs": [],
+      "run_count": 0,
+      "shared_pool": true,
+      "functions_reaching_a_pool": 0
+    },
+    "interpretation": "the original's literals are accounted for by the words the unit declares; the modern build pools differently, which is a structural consequence of the compiler rather than a defect in the reconstruction. It is also why a function with a literal load cannot be compared standalone.",
+    "is_a_match_claim": false
+  },
+  "comparison": {
+    "original_byte_length": 22,
+    "modern_byte_length": 36,
+    "overlap_byte_length": 22,
+    "differing_bytes_in_overlap": 20,
+    "matching_bytes_in_overlap": 2,
+    "original_only_bytes": 0,
+    "modern_only_bytes": 14,
+    "original_instruction_spans": 11,
+    "matching_instruction_spans": 1,
+    "differing_instruction_spans": 10,
+    "bytes_not_covered_by_an_original_instruction": 0,
+    "byte_identical": false,
+    "is_a_match_claim": false,
+    "match_claim_note": "MEASUREMENT ONLY. This compares a modern GCC build against the cartridge. A modern compiler is not the original compiler, so a difference here is expected and proves nothing; an identity here would also prove nothing about ADS 1.2. ADS_MATCH stays BLOCKED."
+  },
+  "semantic_check": {
+    "status": "PROVEN",
+    "checks": 19,
+    "failures": 0,
+    "minimum_checks": 19,
+    "host_compiler": "MSVC cl.exe (32-bit)",
+    "host_build_bits": 32,
+    "detail": "19 behavioural assertions passed with 0 failures (minimum 19)",
+    "output": "PASS: 19 check(s), 0 failure(s)\n"
+  }
+}

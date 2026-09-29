@@ -103,6 +103,25 @@ therefore cannot be imported. See
 [`docs/ADS12_SETUP.md`](docs/ADS12_SETUP.md) and
 [`docs/DECOMP_BASELINE.md`](docs/DECOMP_BASELINE.md#the-blocker).
 
+### VM value effect (DECOMP-LIFT-SCRIPT-EFFECT-001, measured 2026-09-29)
+
+The chain **encoded value -> push -> arithmetic -> surviving value -> call ->
+concrete effect** is closed. `sub_08004380` at `0x08004380`, 22 bytes and 11
+instructions, source at
+[`src/ByteCodeInterpreter_effect.c`](src/ByteCodeInterpreter_effect.c).
+
+| Verdict | Result | Question it answers |
+| --- | --- | --- |
+| `SEMANTIC` | **PROVEN** | does it set the right bit? 19 assertions, 0 failures |
+| `MODERN_BUILD` | **PASS** | does it compile, link at `0x08004380` and emit bytes? 36 bytes |
+| `ADS_MATCH` | **BLOCKED** | does it reproduce the original compiler? `ADS12_LICENSE_UNAVAILABLE` |
+
+A **leaf** - no calls, no literal pool - so no helper was needed. It **sets bit
+`(value & 7)` of the byte at `base + (value >> 3) + 0x55`**, preserving the other
+seven bits. The byte-index shift is **arithmetic**, so a value with bit 31 set
+writes *before* the base (`0xFFFFFFFF` maps to `base + 0x54`). There is no bounds
+check and no NULL check anywhere. See [`docs/LIFT_EFFECT.md`](docs/LIFT_EFFECT.md).
+
 ### Surviving-value consumer (DECOMP-LIFT-SCRIPT-USE-001, measured 2026-09-29)
 
 The chain **encoded value -> push -> arithmetic -> surviving value -> actual use**
@@ -298,17 +317,18 @@ python -m buusfury build     # assemble a ROM, with per-region provenance
 python -m buusfury lift      # semantic lifting loop: build + compare one family
 python -m buusfury rommap    # independent structural ROM map + function inventory
 python -m buusfury fixed     # generate the zero-toolchain fixed regions
-python -m pytest tests -q    # 490 tests
+python -m pytest tests -q    # 511 tests
 ```
 
 ## Scope
 
-This repository is at **DECOMP-LIFT-SCRIPT-USE-001**. It carries the identity
-gate, the build model, the independent ROM map and the compiler probe, plus seven
+This repository is at **DECOMP-LIFT-SCRIPT-EFFECT-001**. It carries the identity
+gate, the build model, the independent ROM map and the compiler probe, plus eight
 lifted units - the GBARam allocator, the ByteCodeInterpreter dispatch loop, its
 primary dispatch slots 2 and 1, its first value-stack consumer, the rest of the
-value-stack arithmetic family, and the first consumer of a surviving value - and
-the reusable loop that produced all seven.
+value-stack arithmetic family, the first consumer of a surviving value, and the
+routine that gives that value its concrete effect - and the reusable loop that
+produced all eight.
 
 `ADS_MATCH` remains blocked: the ADS 1.2 installed on this machine is unlicensed, and
 nothing here reduces that. The next work continues outward from the script engine; see

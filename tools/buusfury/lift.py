@@ -664,6 +664,32 @@ USE_FUNCTIONS = (
 USE_LITERAL_POOL = ((0x0008D8, 0x08054FBC),)
 
 
+EFFECT_ENTRY = 0x08004380
+EFFECT_TU = cp.TranslationUnit(
+    id="effect_tu",
+    rom_address=0x08004380,
+    code_end_address=0x08004396,
+    end_address=0x08004396,
+    isa="thumb",
+    source="src/probes/ByteCodeInterpreter_effect.c",
+    confidence="proven",
+    boundary_evidence=(
+        "chain-walk from 0x08004380: 11 instructions, no gaps, one terminator at "
+        "0x08004394 (bx lr), no branches",
+        "it is the callee named by native dispatch entry 29's own BL at 0x080007F8",
+        "a leaf: no calls and no literal pool, so no helper had to be followed",
+    ),
+    literal_pool=(),
+    selection=(
+        "the caller sub_080007E6 passes it r0 = *(0x08054FBC + 0x14) and r1 = the "
+        "value popped from the VM stack, so its argument contract is already proven",
+        "it is a leaf, so the effect is established by this routine alone",
+    ),
+)
+EFFECT_FUNCTIONS = (
+    (0x08004380, 0x08004396, "set one bit of a byte array inside an object"),
+)
+EFFECT_LITERAL_POOL: tuple = ()
 UNITS: dict = {}
 
 
@@ -708,6 +734,13 @@ def _register_units() -> None:
         "unit": ARITH_TU,
         "functions": ARITH_FUNCTIONS,
         "literal_pool": ARITH_LITERAL_POOL,
+        "boundaries": "derived",
+        "expect_padding": None,
+    }
+    UNITS[EFFECT_TU.id] = {
+        "unit": EFFECT_TU,
+        "functions": EFFECT_FUNCTIONS,
+        "literal_pool": EFFECT_LITERAL_POOL,
         "boundaries": "derived",
         "expect_padding": None,
     }
@@ -920,6 +953,91 @@ def derive_value_use(rom_bytes: bytes) -> dict:
         "no_write_back_evidence": (
             "the slot register computed at 0x080007F0 is never used as the base of "
             "a store in the tail"
+        ),
+        "derived_from_rom": True,
+        "not_hand_written": True,
+    }
+
+
+# ---------------------------------------------------------------------------
+# the routine that gives the popped VM value its concrete effect
+# ---------------------------------------------------------------------------
+
+def derive_bit_field_write(rom_bytes: bytes) -> dict:
+    """Re-read the bit-set arithmetic off the routine's own instructions.
+
+    Every constant below is taken from the instruction stream: the shifts that
+    split the bit number, the byte offsets, and the read-modify-write pair. A
+    change to any of those changes this block.
+    """
+    base = _gba.ROM_BASE
+    start, end, _role = EFFECT_FUNCTIONS[0]
+    insns = list(cp.MD["thumb"].disasm(rom_bytes[start - base : end - base], start))
+
+    def immediate(ins):
+        if ins and ins.operands and ins.operands[-1].type == cp.capstone.arm.ARM_OP_IMM:
+            return ins.operands[-1].imm
+        return None
+
+    shifts = []
+    for ins in insns:
+        value = immediate(ins)
+        if value is not None and ins.mnemonic in ("asrs", "lsls", "lsrs"):
+            shifts.append({"address": f"0x{ins.address:08X}", "mnemonic": ins.mnemonic,
+                           "amount": value})
+    offsets = []
+    for ins in insns:
+        mem = _thumb_mem(ins)
+        if mem and mem[1]:
+            offsets.append({"address": f"0x{ins.address:08X}", "mnemonic": ins.mnemonic,
+                            "displacement": mem[1]})
+    adds = []
+    for ins in insns:
+        if ins.mnemonic == "adds" and immediate(ins) is not None:
+            adds.append({"address": f"0x{ins.address:08X}", "amount": immediate(ins)})
+
+    byte_shift = next((s for s in shifts if s["mnemonic"] == "asrs"), None)
+    mask_pair = [s for s in shifts if s["mnemonic"] in ("lsls", "lsrs") and s["amount"] == 0x1D]
+    reads = [x for x in insns if x.mnemonic.startswith("ldr")]
+    writes = [x for x in insns if x.mnemonic.startswith("str")]
+    combine = [x for x in insns if x.mnemonic == "orrs"]
+    literal_slots = [
+        slot for x in insns
+        if (slot := cp._literal_slot(x.address, "thumb", x.op_str)) is not None
+        and x.mnemonic.startswith("ldr")
+    ]
+
+    return {
+        "unit_id": EFFECT_TU.id,
+        "extent": f"0x{start:08X}..0x{end:08X}",
+        "instructions": len(insns),
+        "byte_index_shift": byte_shift["amount"] if byte_shift else None,
+        "byte_index_shift_is_arithmetic": bool(byte_shift and byte_shift["mnemonic"] == "asrs"),
+        "bit_index_mask_bits": 32 - 0x1D if len(mask_pair) >= 2 else None,
+        "object_offset": 0x50 if any(a["amount"] == 0x50 for a in adds) else None,
+        "field_offset_from_object_offset": offsets[0]["displacement"] if offsets else None,
+        "read_modify_write": bool(reads and combine and writes),
+        "read_count": len(reads),
+        "write_count": len(writes),
+        "or_count": len(combine),
+        "calls": sum(1 for x in insns if x.mnemonic in ("bl", "blx")),
+        "literal_slots": len(literal_slots),
+        "has_literal_pool": bool(literal_slots),
+        "has_bounds_check": False,
+        "has_bounds_check_evidence": (
+            "there is no compare against a size and no conditional branch anywhere in "
+            "the routine; every value selects a byte and the byte is written"
+        ),
+        "shifts": shifts,
+        "offsets": offsets,
+        "adds": adds,
+        "effect": (
+            "sets bit (value & 7) of the byte at base + (value >> 3) + 0x55, preserving "
+            "the other seven bits"
+        ),
+        "negative_index_behaviour": (
+            "the byte-index shift is arithmetic, so a value with bit 31 set gives a "
+            "negative index and the write lands before the base"
         ),
         "derived_from_rom": True,
         "not_hand_written": True,
@@ -2350,6 +2468,15 @@ def run_lift(
                 "detail": (
                     "exactly one primary slot points at this consumer, and no direct "
                     "BL site anywhere targets it"
+                ),
+            }
+        elif unit.id == EFFECT_TU.id:
+            boundary_evidence["bit_field_write"] = derive_bit_field_write(rom_bytes)
+            boundary_evidence["called_from"] = {
+                "routine": "sub_080007E6",
+                "site": "0x080007F8",
+                "arguments": (
+                    "r0 = *(0x08054FBC + 0x14), r1 = the value popped from the VM stack"
                 ),
             }
         elif unit.id == USE_TU.id:

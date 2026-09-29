@@ -162,6 +162,26 @@
       },
       "role": "pop one value and pass it to a call, with a global field as the other argument",
       "notes": "native dispatch entry 29, code address 0x080007E6, 24 bytes and 11 instructions, one terminator at 0x080007FC. A mechanical scan of both proven dispatch tables found 52 functions that pop a stack value and do NOT write a result back into the slot; this is the smallest of them, with one pop, one call, one literal and no branches. It is the first routine in the target chain that turns a surviving stack value into an actual use: it decrements the counter, reads values[count-1], and passes that value as the SECOND argument (r1) to sub_08004380, with the FIRST argument (r0) being the +0x14 field of the object at the routine's only literal 0x08054FBC. Nothing is written back to the stack, so the consumed slot keeps its old value and no result replaces it, which is what distinguishes it from the arithmetic family. Ordering is proven by the self-check reading the counter from inside the callee: the counter store precedes the value read, which precedes the call. UNDERFLOW IS HARMLESS TO MEMORY here, unlike the arithmetic family: a zero counter becomes 0xFFFFFFFF, the base becomes context-4, and [slot+4] is therefore context itself, so the value passed on underflow is the brand-new counter 0xFFFFFFFF; because the routine has no store to the slot, nothing below the context is read or written. A second underflow walks the base down and reads pre[3] instead. No guard was added. The callee is declared, not reconstructed, and no meaning is imported from another title."
+    },
+    {
+      "id": "effect",
+      "name": "ByteCodeInterpreter VM value effect (sub_08004380)",
+      "ticket": "DECOMP-LIFT-SCRIPT-EFFECT-001",
+      "translation_unit": "effect_tu",
+      "probe_translation_unit": "effect_tu",
+      "decomp_source": "src/ByteCodeInterpreter_effect.c",
+      "probe_source": "src/probes/ByteCodeInterpreter_effect.c",
+      "selftest_source": "src/probes/effect_selftest.c",
+      "semantic_minimum_checks": 19,
+      "host_build_bits": 32,
+      "compiler": {
+        "cpu": "arm7tdmi",
+        "isa": "thumb",
+        "optimization": "-O1",
+        "extra_flags": []
+      },
+      "role": "set one bit of a byte array inside an object, from the value the VM popped",
+      "notes": "sub_08004380, 22 bytes and 11 instructions, one terminator at 0x08004394, no branches, NO calls and NO literal pool. A LEAF, so the effect is established by this routine alone and no helper had to be followed. Its argument contract is already proven from its caller: native dispatch entry 29 passes r0 = *(0x08054FBC + 0x14) and r1 = values[count-1] popped from the VM stack. THE CONCRETE EFFECT: it sets bit (value & 7) of the byte at base + (value >> 3) + 0x55, preserving the other seven bits. The two shifts are the standard bit-array split - `asrs r2, r1, #3` selects the byte, `lsls r3, r1, #0x1d` then `lsrs r3, r3, #0x1d` isolates the low three bits to select the bit within it - and `orrs` plus `strb` make it a read-modify-write. THE BYTE-INDEX SHIFT IS ARITHMETIC, which matters: a value with bit 31 set gives a negative byte index and the write lands BEFORE the base. 0xFFFFFFFF maps to base + 0x54 bit 7, one byte before its unsigned position, and 0x80000000 maps to base + 0xF0000055, nowhere near the logical-shift answer of base + 0x10000055. THE RECONSTRUCTION MODELS THE ARITHMETIC SHIFT EXPLICITLY because C's right shift of a negative signed value is implementation-defined. THERE IS NO BOUNDS CHECK and no NULL check: no compare against a size and no conditional branch exists anywhere in the routine, so every value selects a byte and that byte is written, however far outside the object it lies. No guard was added. UNKNOWN: what the bit MEANS, how large the byte array is, and what reads the bit afterwards. No name is assigned to the object, the array or the bit, and nothing is imported from another title."
     }
   ]
 }

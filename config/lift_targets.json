@@ -182,6 +182,26 @@
       },
       "role": "set one bit of a byte array inside an object, from the value the VM popped",
       "notes": "sub_08004380, 22 bytes and 11 instructions, one terminator at 0x08004394, no branches, NO calls and NO literal pool. A LEAF, so the effect is established by this routine alone and no helper had to be followed. Its argument contract is already proven from its caller: native dispatch entry 29 passes r0 = *(0x08054FBC + 0x14) and r1 = values[count-1] popped from the VM stack. THE CONCRETE EFFECT: it sets bit (value & 7) of the byte at base + (value >> 3) + 0x55, preserving the other seven bits. The two shifts are the standard bit-array split - `asrs r2, r1, #3` selects the byte, `lsls r3, r1, #0x1d` then `lsrs r3, r3, #0x1d` isolates the low three bits to select the bit within it - and `orrs` plus `strb` make it a read-modify-write. THE BYTE-INDEX SHIFT IS ARITHMETIC, which matters: a value with bit 31 set gives a negative byte index and the write lands BEFORE the base. 0xFFFFFFFF maps to base + 0x54 bit 7, one byte before its unsigned position, and 0x80000000 maps to base + 0xF0000055, nowhere near the logical-shift answer of base + 0x10000055. THE RECONSTRUCTION MODELS THE ARITHMETIC SHIFT EXPLICITLY because C's right shift of a negative signed value is implementation-defined. THERE IS NO BOUNDS CHECK and no NULL check: no compare against a size and no conditional branch exists anywhere in the routine, so every value selects a byte and that byte is written, however far outside the object it lies. No guard was added. UNKNOWN: what the bit MEANS, how large the byte array is, and what reads the bit afterwards. No name is assigned to the object, the array or the bit, and nothing is imported from another title."
+    },
+    {
+      "id": "flagread",
+      "name": "ByteCodeInterpreter bit-array reader (sub_08004364)",
+      "ticket": "DECOMP-LIFT-SCRIPT-FLAGREAD-001",
+      "translation_unit": "flagread_tu",
+      "probe_translation_unit": "flagread_tu",
+      "decomp_source": "src/ByteCodeInterpreter_flagread.c",
+      "probe_source": "src/probes/ByteCodeInterpreter_flagread.c",
+      "selftest_source": "src/probes/flagread_selftest.c",
+      "semantic_minimum_checks": 17,
+      "host_build_bits": 32,
+      "compiler": {
+        "cpu": "arm7tdmi",
+        "isa": "thumb",
+        "optimization": "-O1",
+        "extra_flags": []
+      },
+      "role": "test one bit of the byte array the effect routine writes, and return 0 or 1",
+      "notes": "sub_08004364, 28 bytes and 14 instructions, two terminators at 0x0800437A and 0x0800437E, no calls and NO literal pool. A LEAF sitting immediately before the setter sub_08004380, with the clearer sub_08004396 immediately after it, so the three tile 0x08004364..0x080043AC as one bit-array accessor trio. THE INDEX SPLIT IS IDENTICAL TO THE SETTER'S: `asrs r2, r1, #3` selects the byte and the `lsls r2, r1, #0x1d` / `lsrs r2, r2, #0x1d` pair isolates the low three bits, so it reads the byte at base + (value >> 3) + 0x55, the same byte the setter writes. The byte-index shift is ARITHMETIC, so a value with bit 31 set reads BEFORE the base, exactly as the setter writes. IT TESTS THE BIT FOR SET: `ands` masks the byte with 1 << (value & 7) and the routine branches on whether the result is zero. THE RETURN VALUE IS A NORMALISED BOOLEAN, 0 or 1, not the masked byte, so a caller cannot see which bit was masked. IT WRITES NOTHING: there is no store anywhere in the routine, which is what makes it a reader rather than the setter or the clearer. There is NO BOUNDS CHECK and no NULL check. THE FIRST OBSERVABLE CONSEQUENCE: three call sites consume the boolean, and all three treat the bit as a predicate - at 0x080007C4 the boolean is materialised into a word slot by `str r0, [r4]`; at 0x080007DA the INVERTED boolean is materialised by `movs r1,#1 ; subs r0, r1, r0 ; str r0, [r4]`; and at 0x080032EE the boolean gates setting a bit in a packed local word (`cmp r0,#0 ; beq ; movs r0,#1 ; lsls r0,r4 ; orrs r6,r0`), a gather loop copying set bits out of the array. So the bit's first concrete consequence is that it becomes a 0/1 value in an engine slot, and one caller deliberately inverts it. WHAT THE BIT MEANS IS STILL UNKNOWN: no semantic name is assigned to the flag, the array or the object, the array's size is unknown, and what reads the materialised word afterwards is not followed. Nothing is imported from another title."
     }
   ]
 }

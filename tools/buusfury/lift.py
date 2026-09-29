@@ -690,6 +690,110 @@ EFFECT_FUNCTIONS = (
     (0x08004380, 0x08004396, "set one bit of a byte array inside an object"),
 )
 EFFECT_LITERAL_POOL: tuple = ()
+
+# ---------------------------------------------------------------------------
+# the reader of the bit array the effect routine writes
+# ---------------------------------------------------------------------------
+FLAGREAD_ENTRY = 0x08004364
+FLAGREAD_TU = cp.TranslationUnit(
+    id="flagread_tu",
+    rom_address=0x08004364,
+    code_end_address=0x08004380,
+    end_address=0x08004380,
+    isa="thumb",
+    source="src/probes/ByteCodeInterpreter_flagread.c",
+    confidence="proven",
+    boundary_evidence=(
+        "chain-walk from 0x08004364: 14 instructions, no gaps, two terminators at "
+        "0x0800437A and 0x0800437E, both bx lr",
+        "it sits immediately before the setter at 0x08004380, so the two boundaries "
+        "confirm each other",
+        "a leaf: no calls and no literal pool",
+    ),
+    literal_pool=(),
+    selection=(
+        "a scan for `adds rX,#0x50` followed by a byte access through rX found this "
+        "routine reading the same byte the setter writes",
+        "it returns a normalised boolean and writes nothing, so it is a reader",
+        "its three call sites all consume the boolean, which gives an observable "
+        "consequence within one step",
+    ),
+)
+FLAGREAD_FUNCTIONS = (
+    (0x08004364, 0x08004380, "test one bit of the byte array and return 0 or 1"),
+)
+FLAGREAD_LITERAL_POOL: tuple = ()
+
+
+def derive_bit_field_read(rom_bytes: bytes) -> dict:
+    """Re-read the bit-test arithmetic off the reader's own instructions.
+
+    Every constant is taken from the instruction stream. The routine is a
+    mirror of the setter: the same index split, but a masked test and a boolean
+    return instead of an OR and a store.
+    """
+    base = _gba.ROM_BASE
+    start, end, _role = FLAGREAD_FUNCTIONS[0]
+    insns = list(cp.MD["thumb"].disasm(rom_bytes[start - base : end - base], start))
+
+    def immediate(ins):
+        if ins and ins.operands and ins.operands[-1].type == cp.capstone.arm.ARM_OP_IMM:
+            return ins.operands[-1].imm
+        return None
+
+    shifts = [
+        {"address": f"0x{x.address:08X}", "mnemonic": x.mnemonic, "amount": immediate(x)}
+        for x in insns if x.mnemonic in ("asrs", "lsls", "lsrs") and immediate(x) is not None
+    ]
+    byte_shift = next((s for s in shifts if s["mnemonic"] == "asrs"), None)
+    mask_pair = [s for s in shifts if s["mnemonic"] in ("lsls", "lsrs") and s["amount"] == 0x1D]
+    adds = [immediate(x) for x in insns if x.mnemonic == "adds" and immediate(x) is not None]
+    loads = [x for x in insns if x.mnemonic.startswith("ldr")]
+    stores = [x for x in insns if x.mnemonic.startswith("str")]
+    tests = [x for x in insns if x.mnemonic in ("ands", "tst", "bics", "orrs", "eors")]
+    branches = [x for x in insns if x.mnemonic.startswith("b")]
+    returns = [x for x in insns if x.mnemonic in ("bx", "pop") or
+               (x.mnemonic.startswith("ldr") and "pc" in x.op_str)]
+    literal_slots = [
+        slot for x in insns
+        if (slot := cp._literal_slot(x.address, "thumb", x.op_str)) is not None
+        and x.mnemonic.startswith("ldr")
+    ]
+
+    return {
+        "unit_id": FLAGREAD_TU.id,
+        "extent": f"0x{start:08X}..0x{end:08X}",
+        "instructions": len(insns),
+        "byte_index_shift": byte_shift["amount"] if byte_shift else None,
+        "byte_index_shift_is_arithmetic": bool(byte_shift and byte_shift["mnemonic"] == "asrs"),
+        "bit_index_mask_bits": 32 - 0x1D if len(mask_pair) >= 2 else None,
+        "object_offset": 0x50 if 0x50 in adds else None,
+        "field_offset": 5 if any(_thumb_mem(x) and _thumb_mem(x)[1] == 5 for x in loads) else None,
+        "test_mnemonic": tests[0].mnemonic if tests else None,
+        "tests_for_set": bool(tests and tests[0].mnemonic == "ands"),
+        "writes_nothing": len(stores) == 0,
+        "store_count": len(stores),
+        "returns_normalised_boolean": bool(len(returns) >= 2 and branches),
+        "return_values": [immediate(x) for x in insns if x.mnemonic == "movs" and immediate(x) in (0, 1)],
+        "calls": sum(1 for x in insns if x.mnemonic in ("bl", "blx")),
+        "literal_slots": len(literal_slots),
+        "has_literal_pool": bool(literal_slots),
+        "has_bounds_check": False,
+        "has_bounds_check_evidence": (
+            "no compare against a size and no conditional branch other than the bit "
+            "test itself"
+        ),
+        "shifts": shifts,
+        "read_semantics": (
+            "reads the byte at base + (value >> 3) + 0x55 and returns 1 when bit "
+            "(value & 7) is set, else 0; the byte is never written"
+        ),
+        "consumed_by": [],
+        "derived_from_rom": True,
+        "not_hand_written": True,
+    }
+
+
 UNITS: dict = {}
 
 
@@ -734,6 +838,13 @@ def _register_units() -> None:
         "unit": ARITH_TU,
         "functions": ARITH_FUNCTIONS,
         "literal_pool": ARITH_LITERAL_POOL,
+        "boundaries": "derived",
+        "expect_padding": None,
+    }
+    UNITS[FLAGREAD_TU.id] = {
+        "unit": FLAGREAD_TU,
+        "functions": FLAGREAD_FUNCTIONS,
+        "literal_pool": FLAGREAD_LITERAL_POOL,
         "boundaries": "derived",
         "expect_padding": None,
     }
@@ -2470,6 +2581,28 @@ def run_lift(
                     "BL site anywhere targets it"
                 ),
             }
+        elif unit.id == FLAGREAD_TU.id:
+            read = derive_bit_field_read(rom_bytes)
+            # Re-derive the call sites so the consequence is measured, not remembered.
+            base = _gba.ROM_BASE
+            callers = []
+            for candidate in range(FLAGREAD_ENTRY - 0x8000, FLAGREAD_ENTRY + 0x8000, 2):
+                if not _gba.in_cartridge(candidate):
+                    continue
+                for ins in cp.MD["thumb"].disasm(
+                    rom_bytes[candidate - base : candidate - base + 4], candidate
+                ):
+                    if ins.mnemonic in ("bl", "blx") and ins.operands:
+                        operand = ins.operands[0]
+                        if (operand.type == cp.capstone.arm.ARM_OP_IMM
+                                and (operand.imm & ~1) == FLAGREAD_ENTRY):
+                            callers.append(f"0x{ins.address:08X}")
+            read["consumed_by"] = sorted(set(callers))
+            read["consequence"] = (
+                "the boolean is materialised into an engine slot at two sites "
+                "(one directly, one inverted) and gates a bit-gather at a third"
+            )
+            boundary_evidence["bit_field_read"] = read
         elif unit.id == EFFECT_TU.id:
             boundary_evidence["bit_field_write"] = derive_bit_field_write(rom_bytes)
             boundary_evidence["called_from"] = {

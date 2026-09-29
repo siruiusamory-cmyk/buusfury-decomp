@@ -1,0 +1,308 @@
+{
+  "schema": 1,
+  "ticket": "DECOMP-LIFT-SCRIPT-FLAGREAD-001",
+  "generated_by": "tools/buusfury/lift.py",
+  "source_sha1": "f1c4b07554d2a3b1ad2f325307051e775ce68087",
+  "target": {
+    "id": "flagread",
+    "name": "ByteCodeInterpreter bit-array reader (sub_08004364)",
+    "role": "test one bit of the byte array the effect routine writes, and return 0 or 1",
+    "notes": "sub_08004364, 28 bytes and 14 instructions, two terminators at 0x0800437A and 0x0800437E, no calls and NO literal pool. A LEAF sitting immediately before the setter sub_08004380, with the clearer sub_08004396 immediately after it, so the three tile 0x08004364..0x080043AC as one bit-array accessor trio. THE INDEX SPLIT IS IDENTICAL TO THE SETTER'S: `asrs r2, r1, #3` selects the byte and the `lsls r2, r1, #0x1d` / `lsrs r2, r2, #0x1d` pair isolates the low three bits, so it reads the byte at base + (value >> 3) + 0x55, the same byte the setter writes. The byte-index shift is ARITHMETIC, so a value with bit 31 set reads BEFORE the base, exactly as the setter writes. IT TESTS THE BIT FOR SET: `ands` masks the byte with 1 << (value & 7) and the routine branches on whether the result is zero. THE RETURN VALUE IS A NORMALISED BOOLEAN, 0 or 1, not the masked byte, so a caller cannot see which bit was masked. IT WRITES NOTHING: there is no store anywhere in the routine, which is what makes it a reader rather than the setter or the clearer. There is NO BOUNDS CHECK and no NULL check. THE FIRST OBSERVABLE CONSEQUENCE: three call sites consume the boolean, and all three treat the bit as a predicate - at 0x080007C4 the boolean is materialised into a word slot by `str r0, [r4]`; at 0x080007DA the INVERTED boolean is materialised by `movs r1,#1 ; subs r0, r1, r0 ; str r0, [r4]`; and at 0x080032EE the boolean gates setting a bit in a packed local word (`cmp r0,#0 ; beq ; movs r0,#1 ; lsls r0,r4 ; orrs r6,r0`), a gather loop copying set bits out of the array. So the bit's first concrete consequence is that it becomes a 0/1 value in an engine slot, and one caller deliberately inverts it. WHAT THE BIT MEANS IS STILL UNKNOWN: no semantic name is assigned to the flag, the array or the object, the array's size is unknown, and what reads the materialised word afterwards is not followed. Nothing is imported from another title.",
+    "translation_unit": "flagread_tu",
+    "rom_address": "0x08004364",
+    "file_offset": "0x004364",
+    "code_end_address": "0x08004380",
+    "end_address": "0x08004380",
+    "byte_length": 28,
+    "code_byte_length": 28,
+    "isa": "thumb",
+    "decomp_source": "src/ByteCodeInterpreter_flagread.c",
+    "probe_source": "src/probes/ByteCodeInterpreter_flagread.c",
+    "selftest_source": "src/probes/flagread_selftest.c",
+    "semantic_minimum_checks": 17,
+    "host_build_bits": 32,
+    "original_sha1": "1dd0cc68b81d0a5c691dda62f5de8f6eb5c4ad12"
+  },
+  "boundary_evidence": {
+    "method": "aligned chain-walk from each entry, following local branches",
+    "unit_id": "flagread_tu",
+    "code_extent": "0x08004364..0x08004380",
+    "pool_extent": null,
+    "has_literal_pool": false,
+    "pool_is_adjacent_to_code": false,
+    "pool_gap_bytes": null,
+    "alignment_padding_bytes": null,
+    "functions": [
+      {
+        "start": "0x08004364",
+        "end": "0x08004380",
+        "size": 28,
+        "instructions": 14,
+        "role": "test one bit of the byte array and return 0 or 1",
+        "terminators": [
+          "0x0800437A",
+          "0x0800437E"
+        ],
+        "gaps": [],
+        "matches_expected": true
+      }
+    ],
+    "problems": [],
+    "derived_from_rom": true,
+    "not_hand_written": true,
+    "bit_field_read": {
+      "unit_id": "flagread_tu",
+      "extent": "0x08004364..0x08004380",
+      "instructions": 14,
+      "byte_index_shift": 3,
+      "byte_index_shift_is_arithmetic": true,
+      "bit_index_mask_bits": 3,
+      "object_offset": 80,
+      "field_offset": 5,
+      "test_mnemonic": "ands",
+      "tests_for_set": true,
+      "writes_nothing": true,
+      "store_count": 0,
+      "returns_normalised_boolean": true,
+      "return_values": [
+        1,
+        1,
+        0
+      ],
+      "calls": 0,
+      "literal_slots": 0,
+      "has_literal_pool": false,
+      "has_bounds_check": false,
+      "has_bounds_check_evidence": "no compare against a size and no conditional branch other than the bit test itself",
+      "shifts": [
+        {
+          "address": "0x08004364",
+          "mnemonic": "asrs",
+          "amount": 3
+        },
+        {
+          "address": "0x08004368",
+          "mnemonic": "lsls",
+          "amount": 29
+        },
+        {
+          "address": "0x0800436E",
+          "mnemonic": "lsrs",
+          "amount": 29
+        }
+      ],
+      "read_semantics": "reads the byte at base + (value >> 3) + 0x55 and returns 1 when bit (value & 7) is set, else 0; the byte is never written",
+      "consumed_by": [
+        "0x080007C4",
+        "0x080007DA",
+        "0x080032EE"
+      ],
+      "derived_from_rom": true,
+      "not_hand_written": true,
+      "consequence": "the boolean is materialised into an engine slot at two sites (one directly, one inverted) and gates a bit-gather at a third"
+    }
+  },
+  "verdicts": {
+    "semantic": {
+      "status": "PROVEN",
+      "checks": 17,
+      "failures": 0,
+      "minimum_checks": 17,
+      "host_compiler": "MSVC cl.exe (32-bit)",
+      "detail": "17 behavioural assertions passed with 0 failures (minimum 17)",
+      "measures": "whether the reconstructed C behaves correctly, by RUNNING it"
+    },
+    "modern_build": {
+      "status": "PASS",
+      "detail": "compiled, linked at 0x08004364 and emitted 38 bytes",
+      "measures": "whether the source compiles, links and emits bytes"
+    },
+    "ads_match": {
+      "status": "BLOCKED",
+      "code": "ADS12_LICENSE_UNAVAILABLE",
+      "detail": "an ARM Developer Suite 1.2 installation is present on this machine but the licence file it ships licenses a different product, so the ARM compilers cannot be run. No compile has been attempted and no configuration has been tested. The installation is located through ADS12_ROOT.",
+      "required_to_unblock": [
+        "a licensed ADS 1.2 installation, with ADS12_ROOT pointing at it",
+        "then: python -m buusfury compiler-probe --plan, then --matrix"
+      ],
+      "not_inferable_from_modern_build": true
+    }
+  },
+  "verdicts_are_independent": "SEMANTIC, MODERN_BUILD and ADS_MATCH answer different questions and none is evidence for another. A passing modern build says nothing about the original compiler; a passing semantic run only removes one class of error.",
+  "modern_build": {
+    "status": "PASS",
+    "toolchain": {
+      "family": "GNU Arm Embedded (devkitARM)",
+      "root": "<DEVKITARM>",
+      "prefix": "arm-none-eabi-",
+      "tools": {
+        "gcc": "<DEVKITARM>\\bin\\arm-none-eabi-gcc.exe",
+        "ld": "<DEVKITARM>\\bin\\arm-none-eabi-ld.exe",
+        "objcopy": "<DEVKITARM>\\bin\\arm-none-eabi-objcopy.exe",
+        "objdump": "<DEVKITARM>\\bin\\arm-none-eabi-objdump.exe",
+        "nm": "<DEVKITARM>\\bin\\arm-none-eabi-nm.exe"
+      }
+    },
+    "identity": {
+      "gcc_banner": "arm-none-eabi-gcc.exe (devkitARM) 16.1.0",
+      "gcc_version": "16.1.0",
+      "target_triple": "arm-none-eabi",
+      "binutils_banner": "GNU objdump (GNU Binutils) 2.46.0.20260210",
+      "compiler_family": "gcc",
+      "is_the_original_compiler": false,
+      "why_not": "the original translation unit was built by ARM Developer Suite 1.2 (the surviving command line names tcpp). GCC is a different compiler with a different code generator, so its output cannot establish anything about ADS 1.2."
+    },
+    "target_support": {
+      "supported": true,
+      "cpu": "arm7tdmi",
+      "instruction_set": "thumb",
+      "commands": [
+        "<DEVKITARM>\\bin\\arm-none-eabi-gcc.exe -c -mcpu=arm7tdmi -mthumb -O1 -ffreestanding -fno-common -fno-builtin -o <REPO>\\build\\lift\\flagread\\toolchain-probe\\support_probe.o <REPO>\\build\\lift\\flagread\\toolchain-probe\\support_probe.c"
+      ],
+      "disassembly": [
+        "adds r0, #1",
+        "bx lr"
+      ],
+      "detail": "compiled and disassembled a probe function for ARM7TDMI Thumb: 2 instruction(s), r0 written and a return present"
+    },
+    "compiler_configuration": {
+      "cpu": "arm7tdmi",
+      "instruction_set": "thumb",
+      "optimization": "-O1",
+      "extra_flags": []
+    },
+    "link_origin": "0x08004364",
+    "external_calls_bound_to_original_addresses": {},
+    "detail": "compiled, linked at 0x08004364 and emitted 38 bytes",
+    "build": {
+      "ok": true,
+      "commands": [
+        "<DEVKITARM>\\bin\\arm-none-eabi-gcc.exe -c -mcpu=arm7tdmi -mthumb -O1 -ffreestanding -fno-common -fno-builtin -fomit-frame-pointer -mno-unaligned-access -o <REPO>\\build\\lift\\flagread\\flagread.o <REPO>\\src\\ByteCodeInterpreter_flagread.c",
+        "<DEVKITARM>\\bin\\arm-none-eabi-gcc.exe -c -mcpu=arm7tdmi -mthumb -o <REPO>\\build\\lift\\flagread\\flagread_externs.o -x assembler-with-cpp <REPO>\\build\\lift\\flagread\\flagread_externs.s",
+        "<DEVKITARM>\\bin\\arm-none-eabi-gcc.exe -nostdlib -Wl,-T,<REPO>\\build\\lift\\flagread\\flagread.ld -Wl,-Map,<REPO>\\build\\lift\\flagread\\flagread.map -o <REPO>\\build\\lift\\flagread\\flagread.elf <REPO>\\build\\lift\\flagread\\flagread.o <REPO>\\build\\lift\\flagread\\flagread_externs.o",
+        "<DEVKITARM>\\bin\\arm-none-eabi-objcopy.exe -O binary -j .text -j .rodata <REPO>\\build\\lift\\flagread\\flagread.elf <REPO>\\build\\lift\\flagread\\flagread.bin"
+      ],
+      "produced_byte_length": 38,
+      "symbols": {
+        "sub_08004364": {
+          "address": "0x08004364",
+          "size": 38
+        }
+      },
+      "diagnostics": ""
+    }
+  },
+  "functions": [
+    {
+      "name": "sub_08004364",
+      "role": "test one bit of the byte array and return 0 or 1",
+      "original": {
+        "start": "0x08004364",
+        "end": "0x08004380",
+        "size": 28,
+        "isa": "thumb",
+        "instructions": 14,
+        "first_instruction": "asrs r2, r1, #3",
+        "calls": [],
+        "literal_slots": [],
+        "returns": 2,
+        "leaf": true,
+        "abi": {
+          "callee_saved_pushed": [],
+          "frame_size_bytes": 0,
+          "written_registers": [
+            "r0",
+            "r1",
+            "r2"
+          ]
+        }
+      },
+      "modern": {
+        "start": "0x08004364",
+        "end": "0x0800438A",
+        "size": 38,
+        "isa": "thumb",
+        "instructions": 19,
+        "first_instruction": "lsrs r3, r1, #3",
+        "calls": [],
+        "literal_slots": [],
+        "returns": 1,
+        "leaf": true,
+        "abi": {
+          "callee_saved_pushed": [],
+          "frame_size_bytes": 0,
+          "written_registers": [
+            "r0",
+            "r1",
+            "r2",
+            "r3"
+          ]
+        }
+      },
+      "modern_symbol_present": true,
+      "delta": {
+        "size_bytes": 10,
+        "instructions": 5,
+        "returns": -1,
+        "calls": 0,
+        "literal_slots": 0
+      },
+      "same_extent": false,
+      "byte_identical": false
+    }
+  ],
+  "literal_pools": {
+    "original": {
+      "distinct_slots": 0,
+      "contiguous_runs": [],
+      "run_count": 0,
+      "shared_pool": false,
+      "shared_pool_applicable": false,
+      "declared_pool": [
+        "0x08004380",
+        "0x08004380"
+      ],
+      "declared_slots": [],
+      "declared_slots_used": [],
+      "all_referenced_slots_are_declared": true,
+      "all_declared_slots_are_referenced": true,
+      "undeclared_slots": [],
+      "functions_reaching_it": 0
+    },
+    "modern": {
+      "distinct_slots": 0,
+      "contiguous_runs": [],
+      "run_count": 0,
+      "shared_pool": true,
+      "functions_reaching_a_pool": 0
+    },
+    "interpretation": "the original's literals are accounted for by the words the unit declares; the modern build pools differently, which is a structural consequence of the compiler rather than a defect in the reconstruction. It is also why a function with a literal load cannot be compared standalone.",
+    "is_a_match_claim": false
+  },
+  "comparison": {
+    "original_byte_length": 28,
+    "modern_byte_length": 38,
+    "overlap_byte_length": 28,
+    "differing_bytes_in_overlap": 25,
+    "matching_bytes_in_overlap": 3,
+    "original_only_bytes": 0,
+    "modern_only_bytes": 10,
+    "original_instruction_spans": 14,
+    "matching_instruction_spans": 1,
+    "differing_instruction_spans": 13,
+    "bytes_not_covered_by_an_original_instruction": 0,
+    "byte_identical": false,
+    "is_a_match_claim": false,
+    "match_claim_note": "MEASUREMENT ONLY. This compares a modern GCC build against the cartridge. A modern compiler is not the original compiler, so a difference here is expected and proves nothing; an identity here would also prove nothing about ADS 1.2. ADS_MATCH stays BLOCKED."
+  },
+  "semantic_check": {
+    "status": "PROVEN",
+    "checks": 17,
+    "failures": 0,
+    "minimum_checks": 17,
+    "host_compiler": "MSVC cl.exe (32-bit)",
+    "host_build_bits": 32,
+    "detail": "17 behavioural assertions passed with 0 failures (minimum 17)",
+    "output": "PASS: 17 check(s), 0 failure(s)\n"
+  }
+}

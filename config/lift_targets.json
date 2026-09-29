@@ -202,6 +202,26 @@
       },
       "role": "test one bit of the byte array the effect routine writes, and return 0 or 1",
       "notes": "sub_08004364, 28 bytes and 14 instructions, two terminators at 0x0800437A and 0x0800437E, no calls and NO literal pool. A LEAF sitting immediately before the setter sub_08004380, with the clearer sub_08004396 immediately after it, so the three tile 0x08004364..0x080043AC as one bit-array accessor trio. THE INDEX SPLIT IS IDENTICAL TO THE SETTER'S: `asrs r2, r1, #3` selects the byte and the `lsls r2, r1, #0x1d` / `lsrs r2, r2, #0x1d` pair isolates the low three bits, so it reads the byte at base + (value >> 3) + 0x55, the same byte the setter writes. The byte-index shift is ARITHMETIC, so a value with bit 31 set reads BEFORE the base, exactly as the setter writes. IT TESTS THE BIT FOR SET: `ands` masks the byte with 1 << (value & 7) and the routine branches on whether the result is zero. THE RETURN VALUE IS A NORMALISED BOOLEAN, 0 or 1, not the masked byte, so a caller cannot see which bit was masked. IT WRITES NOTHING: there is no store anywhere in the routine, which is what makes it a reader rather than the setter or the clearer. There is NO BOUNDS CHECK and no NULL check. THE FIRST OBSERVABLE CONSEQUENCE: three call sites consume the boolean, and all three treat the bit as a predicate - at 0x080007C4 the boolean is materialised into a word slot by `str r0, [r4]`; at 0x080007DA the INVERTED boolean is materialised by `movs r1,#1 ; subs r0, r1, r0 ; str r0, [r4]`; and at 0x080032EE the boolean gates setting a bit in a packed local word (`cmp r0,#0 ; beq ; movs r0,#1 ; lsls r0,r4 ; orrs r6,r0`), a gather loop copying set bits out of the array. So the bit's first concrete consequence is that it becomes a 0/1 value in an engine slot, and one caller deliberately inverts it. WHAT THE BIT MEANS IS STILL UNKNOWN: no semantic name is assigned to the flag, the array or the object, the array's size is unknown, and what reads the materialised word afterwards is not followed. Nothing is imported from another title."
+    },
+    {
+      "id": "booluse",
+      "name": "ByteCodeInterpreter boolean materialisation (sub_080007B6, sub_080007CC)",
+      "ticket": "DECOMP-LIFT-SCRIPT-BOOLUSE-001",
+      "translation_unit": "booluse_tu",
+      "probe_translation_unit": "booluse_tu",
+      "decomp_source": "src/ByteCodeInterpreter_booluse.c",
+      "probe_source": "src/probes/ByteCodeInterpreter_booluse.c",
+      "selftest_source": "src/probes/booluse_selftest.c",
+      "semantic_minimum_checks": 17,
+      "host_build_bits": 32,
+      "compiler": {
+        "cpu": "arm7tdmi",
+        "isa": "thumb",
+        "optimization": "-O1",
+        "extra_flags": []
+      },
+      "role": "replace the stack top with the flag bit, and with its inverse",
+      "notes": "sub_080007B6 (22 bytes, 10 instructions) and sub_080007CC (26 bytes, 12 instructions), adjacent, one terminator each at 0x080007CA and 0x080007E4, one call each to the already-lifted reader sub_08004364, and one shared literal at 0x080008D8. THE DESTINATION IS THE SAME AT BOTH SITES, and it is derived rather than assumed: each computes its address as `context + count*4` from the counter at context+0x00 (`ldr r1,[r0] ; lsls r1,r1,#2 ; adds r4,r1,r0`), and the value stack holds values[i] at context + 4 + 4*i, so context + count*4 is context + 4 + 4*(count-1), which is values[count-1], THE TOP OF THE STACK. Both routines therefore REPLACE THE STACK TOP IN PLACE. This is NOT a pop: neither stores to context+0x00, so the COUNTER IS UNCHANGED, and it is not a separate word either. The two differ only in what they store: the first stores the flag (0 or 1), the second stores 1 - flag, so for a boolean input the second is the exact inverse of the first. Both return the value they stored in r0, and neither reads r1. THE STACK IS NOT CHECKED FOR BEING EMPTY: with a counter of zero the computed address is context + 0, so the word read is the COUNTER itself and the store REPLACES THE COUNTER with the flag, leaving the count at 0 or 1. No guard was added. THE FIRST CONCRETE CONSEQUENCE, proven through the already-lifted consumer sub_080007E6 which begins immediately after these two at 0x080007E6: it pops values[count-1] and passes it to sub_08004380, which sets bit (value & 7) of the byte at base + (value >> 3) + 0x55. With a materialised boolean the index is 0 or 1, so THE BOOLEAN SELECTS WHICH BIT IS SET in the first byte of the flag array - bit 0 when the tested flag was clear, bit 1 when it was set. The boolean is therefore used as a BIT INDEX by the first consumer downstream of it, not as a truth value. UNKNOWN: what either bit means, whether callers rely on the counter being untouched, and what reads the array afterwards. No semantic name is assigned, and nothing is imported from another title."
     }
   ]
 }

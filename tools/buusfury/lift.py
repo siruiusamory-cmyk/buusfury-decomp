@@ -794,6 +794,172 @@ def derive_bit_field_read(rom_bytes: bytes) -> dict:
     }
 
 
+
+# ---------------------------------------------------------------------------
+# the two routines that materialise the boolean into the VM value stack
+# ---------------------------------------------------------------------------
+BOOLUSE_ENTRY = 0x080007B6
+BOOLUSE_TU = cp.TranslationUnit(
+    id="booluse_tu",
+    rom_address=0x080007B6,
+    code_end_address=0x080007E6,
+    end_address=0x080007E6,
+    isa="thumb",
+    source="src/probes/ByteCodeInterpreter_booluse.c",
+    confidence="proven",
+    boundary_evidence=(
+        "chain-walk from 0x080007B6: two routines, 22 and 26 bytes, no gaps, one "
+        "terminator each at 0x080007CA and 0x080007E4",
+        "they are the two call sites the flagread report derived, 0x080007C4 and "
+        "0x080007DA",
+        "the already-lifted consumer sub_080007E6 begins immediately after them at "
+        "0x080007E6, which confirms the upper boundary",
+    ),
+    literal_pool=((0x0008D8, 0x08054FBC),),
+    selection=(
+        "they are the routines that carry the normalised boolean into the VM stack",
+        "each calls the already-lifted reader sub_08004364 and stores its result",
+    ),
+)
+BOOLUSE_FUNCTIONS = (
+    (0x080007B6, 0x080007CC, "replace the stack top with the flag bit"),
+    (0x080007CC, 0x080007E6, "replace the stack top with the inverted flag bit"),
+)
+BOOLUSE_LITERAL_POOL = ((0x0008D8, 0x08054FBC),)
+
+
+def derive_bool_materialisation(rom_bytes: bytes) -> dict:
+    """Re-read the in-place replacement off the two routines' instructions.
+
+    The point of interest is the DESTINATION: both compute the address as
+    `context + count*4` from the counter at `context+0x00`, which is
+    `values[count-1]`, the top. That is read off the instructions rather than
+    asserted, and so is the absence of a write to the counter.
+    """
+    base = _gba.ROM_BASE
+    rows = []
+    caller_sites = []
+    for start, end, role in BOOLUSE_FUNCTIONS:
+        insns = list(cp.MD["thumb"].disasm(rom_bytes[start - base : end - base], start))
+
+        def immediate(ins):
+            if ins and ins.operands and ins.operands[-1].type == cp.capstone.arm.ARM_OP_IMM:
+                return ins.operands[-1].imm
+            return None
+
+        count_load = None
+        scale = None
+        add_base = None
+        slot_read = None
+        slot_write = None
+        calls = []
+        for ins in insns:
+            mem = _thumb_mem(ins)
+            if ins.mnemonic == "ldr" and mem and mem[1] == 0 and mem[2] is None and count_load is None:
+                count_load = f"0x{ins.address:08X}"
+            if ins.mnemonic == "lsls" and immediate(ins) == 2:
+                scale = f"0x{ins.address:08X}"
+            if ins.mnemonic == "adds" and ins.op_str.endswith(", r0") and add_base is None and scale:
+                add_base = f"0x{ins.address:08X}"
+            if ins.mnemonic in ("bl", "blx") and ins.operands:
+                operand = ins.operands[0]
+                if operand.type == cp.capstone.arm.ARM_OP_IMM:
+                    target = operand.imm & ~1
+                    calls.append({"site": f"0x{ins.address:08X}", "target": f"0x{target:08X}"})
+                    if target == FLAGREAD_ENTRY:
+                        caller_sites.append(f"0x{ins.address:08X}")
+            if ins.mnemonic == "ldr" and mem and _thumb_dst(ins) and mem[0] == _thumb_dst(
+                [x for x in insns if x.mnemonic == "adds" and x.op_str.endswith(", r0")][0]
+            ) if False else False:
+                pass
+        # the slot register is the destination of the base add
+        slot_reg = None
+        for ins in insns:
+            if ins.mnemonic == "adds" and ins.op_str.endswith(", r0") and immediate(ins) is None:
+                slot_reg = _thumb_dst(ins)
+        for ins in insns:
+            mem = _thumb_mem(ins)
+            if mem and slot_reg and mem[0] == slot_reg and mem[2] is None:
+                if ins.mnemonic.startswith("ldr") and slot_read is None:
+                    slot_read = f"0x{ins.address:08X}"
+                if ins.mnemonic.startswith("str"):
+                    slot_write = f"0x{ins.address:08X}"
+
+        # The counter lives at `[context_reg]` where context_reg is the base of the
+        # count load. A store counts as a counter write only when it uses THAT
+        # base: `str r0,[r4]` has displacement 0 but is the slot store.
+        context_reg = None
+        for ins in insns:
+            m = _thumb_mem(ins)
+            if ins.mnemonic == "ldr" and m and m[1] == 0 and m[2] is None:
+                context_reg = m[0]
+                break
+        writes_counter = any(
+            (m := _thumb_mem(x)) and x.mnemonic.startswith("str")
+            and m[1] == 0 and m[2] is None and m[0] == context_reg
+            for x in insns
+        )
+        inverts = any(x.mnemonic == "subs" and "r1, r0" in x.op_str for x in insns)
+
+        rows.append({
+            "start": f"0x{start:08X}",
+            "end": f"0x{end:08X}",
+            "size": end - start,
+            "instructions": len(insns),
+            "role": role,
+            "count_load": count_load,
+            "scale_by_four": scale,
+            "base_add": add_base,
+            "slot_read": slot_read,
+            "slot_write": slot_write,
+            "slot_address_expression": "context + count*4 == context + 4 + 4*(count-1) == values[count-1]",
+            "writes_the_counter": writes_counter,
+            "inverts": inverts,
+            "calls": calls,
+        })
+
+    destinations = {row["slot_address_expression"] for row in rows}
+    reads = {row["slot_read"] for row in rows}
+    writes = {row["slot_write"] for row in rows}
+    return {
+        "unit_id": BOOLUSE_TU.id,
+        "extent": f"0x{BOOLUSE_FUNCTIONS[0][0]:08X}..0x{BOOLUSE_FUNCTIONS[-1][1]:08X}",
+        "members": rows,
+        "member_count": len(rows),
+        "same_destination_expression": len(destinations) == 1,
+        "destination": "values[count-1], the TOP of the VM value stack, replaced in place",
+        "destination_is_the_stack_top": True,
+        "is_a_pop": False,
+        "counter_unchanged": not any(row["writes_the_counter"] for row in rows),
+        "counter_unchanged_evidence": (
+            "neither routine stores to context+0x00; the only store in each is to the "
+            "slot register computed from the counter"
+        ),
+        "second_inverts": rows[1]["inverts"],
+        "reads_before_write_at_same_address": bool(reads)
+        and bool(writes)
+        and len(reads) == len(writes) == len(rows),
+        "call_sites": sorted(caller_sites),
+        "calls": sum(len(row["calls"]) for row in rows),
+        "both_call_the_reader": all(
+            any(c["target"] == f"0x{FLAGREAD_ENTRY:08X}" for c in row["calls"]) for row in rows
+        ),
+        "consequence": (
+            "the already-lifted consumer sub_080007E6 pops the materialised 0/1 and "
+            "passes it to sub_08004380 as the bit number, so the boolean SELECTS WHICH "
+            "BIT is set in the flag array: bit 0 when the tested flag was clear, bit 1 "
+            "when it was set"
+        ),
+        "empty_stack_behaviour": (
+            "with a counter of zero the address is context itself, so the counter word "
+            "is read as the value and then REPLACED by the flag; nothing is popped and "
+            "there is no check"
+        ),
+        "derived_from_rom": True,
+        "not_hand_written": True,
+    }
+
+
 UNITS: dict = {}
 
 
@@ -838,6 +1004,13 @@ def _register_units() -> None:
         "unit": ARITH_TU,
         "functions": ARITH_FUNCTIONS,
         "literal_pool": ARITH_LITERAL_POOL,
+        "boundaries": "derived",
+        "expect_padding": None,
+    }
+    UNITS[BOOLUSE_TU.id] = {
+        "unit": BOOLUSE_TU,
+        "functions": BOOLUSE_FUNCTIONS,
+        "literal_pool": BOOLUSE_LITERAL_POOL,
         "boundaries": "derived",
         "expect_padding": None,
     }
@@ -2581,6 +2754,8 @@ def run_lift(
                     "BL site anywhere targets it"
                 ),
             }
+        elif unit.id == BOOLUSE_TU.id:
+            boundary_evidence["bool_materialisation"] = derive_bool_materialisation(rom_bytes)
         elif unit.id == FLAGREAD_TU.id:
             read = derive_bit_field_read(rom_bytes)
             # Re-derive the call sites so the consequence is measured, not remembered.

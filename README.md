@@ -103,6 +103,25 @@ therefore cannot be imported. See
 [`docs/ADS12_SETUP.md`](docs/ADS12_SETUP.md) and
 [`docs/DECOMP_BASELINE.md`](docs/DECOMP_BASELINE.md#the-blocker).
 
+### Boolean materialisation (DECOMP-LIFT-SCRIPT-BOOLUSE-001, measured 2026-09-29)
+
+The two routines that carry the reader's boolean into the VM stack: `sub_080007B6`
+(22 B) and `sub_080007CC` (26 B) at `0x080007B6`, source at
+[src/ByteCodeInterpreter_booluse.c](src/ByteCodeInterpreter_booluse.c).
+
+| Verdict | Result | Question it answers |
+| --- | --- | --- |
+| `SEMANTIC` | **PROVEN** | in-place replacement, inversion, unchanged counter? 17 assertions, 0 failures |
+| `MODERN_BUILD` | **PASS** | do they compile, link at `0x080007B6` and emit bytes? 72 bytes |
+| `ADS_MATCH` | **BLOCKED** | do they reproduce the original compiler? `ADS12_LICENSE_UNAVAILABLE` |
+
+Both compute `context + count*4`, which IS `values[count-1]` - **both write the
+same location, the stack TOP, in place, and neither changes the counter**. The
+second stores `1 - flag`. Chained through the already-lifted consumer
+`sub_080007E6` immediately after them, the boolean becomes the **bit index** for
+`sub_08004380`: the bit becomes **bit 0 when false and bit 1 when true**. See
+[docs/LIFT_BOOLUSE.md](docs/LIFT_BOOLUSE.md).
+
 ### Bit-array reader (DECOMP-LIFT-SCRIPT-FLAGREAD-001, measured 2026-09-29)
 
 The reader of the array the effect routine writes: `sub_08004364` at `0x08004364`,
@@ -336,19 +355,19 @@ python -m buusfury build     # assemble a ROM, with per-region provenance
 python -m buusfury lift      # semantic lifting loop: build + compare one family
 python -m buusfury rommap    # independent structural ROM map + function inventory
 python -m buusfury fixed     # generate the zero-toolchain fixed regions
-python -m pytest tests -q    # 533 tests
+python -m pytest tests -q    # 558 tests
 ```
 
 ## Scope
 
-This repository is at **DECOMP-LIFT-SCRIPT-FLAGREAD-001**. It carries the identity
-gate, the build model, the independent ROM map and the compiler probe, plus nine
-lifted units covering the whole path from a script byte to an engine flag -
-the GBARam allocator, the ByteCodeInterpreter dispatch loop, its primary dispatch
-slots 2 and 1, its first value-stack consumer, the value-stack arithmetic family,
-the first surviving-value consumer, the routine that gives that value its effect,
-and the reader of the flag array it writes - and the reusable loop that produced
-all nine.
+This repository is at **DECOMP-LIFT-SCRIPT-BOOLUSE-001**. It carries the identity
+gate, the build model, the independent ROM map and the compiler probe, plus ten
+lifted units covering the whole path from a script byte to an engine flag - the
+GBARam allocator, the ByteCodeInterpreter dispatch loop, its primary dispatch slots
+2 and 1, its first value-stack consumer, the value-stack arithmetic family, the
+first surviving-value consumer, the routine that gives that value its effect, the
+reader of the flag array it writes, and the routines that materialise that
+boolean back into the stack - and the reusable loop that produced all ten.
 
 `ADS_MATCH` remains blocked: the ADS 1.2 installed on this machine is unlicensed, and
 nothing here reduces that. The next work continues outward from the script engine; see

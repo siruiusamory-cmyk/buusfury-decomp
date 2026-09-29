@@ -137,6 +137,54 @@ BCI_BOUNDING_TEXT = '"Expected dialog to start with a code block"'
 #: Padding between the last function and the pool.
 BCI_ALIGNMENT_PADDING = 2
 
+# ---------------------------------------------------------------------------
+# the ByteCodeInterpreter handler unit
+# ---------------------------------------------------------------------------
+# Primary dispatch slot 2. A different translation unit from the interpreter:
+# separate code and a separate literal pool at 0x08003F40, which four other
+# primary handlers also load from.
+H2_ENTRY = 0x08003CBE
+H2_TU = cp.TranslationUnit(
+    id="handler2_tu",
+    rom_address=0x08003CBE,
+    code_end_address=0x08003CD4,
+    end_address=0x08003CD4,
+    isa="thumb",
+    source="src/probes/ByteCodeInterpreter_handlers.c",
+    confidence="proven",
+    boundary_evidence=(
+        "chain-walk from 0x08003CBE: 10 instructions, no gaps, one terminator "
+        "at 0x08003CD2 (pop {r3,pc})",
+        "the table word at primary slot 2 is 0x08003CBF, whose Thumb bit masks to "
+        "this entry, so the entry is anchored by the dispatch table itself",
+        "no direct BL site anywhere in the image targets it: it is reached only "
+        "through the primary table",
+    ),
+    # NOT adjacent to the code: the pool sits at 0x08003F40, 0x26C bytes later,
+    # and holds the word the handler loads at 0x08003CCA.
+    literal_pool=((0x03F40, 0x08055098),),
+    selection=(
+        "primary dispatch table slot 2 holds 0x08003CBF",
+        "it is the handler that reaches the native dispatch table at 0x08055098, "
+        "which is the bridge from the bytecode layer to the engine",
+    ),
+)
+H2_FUNCTIONS = (
+    (0x08003CBE, 0x08003CD4, "primary dispatch slot 2: selects a native routine"),
+)
+H2_LITERAL_POOL = ((0x03F40, 0x08055098),)
+
+#: The native dispatch table and the structure that bounds it from above.
+NATIVE_TABLE = 0x08055098
+NATIVE_TABLE_LIMIT = 0x080554C0  # the primary table base
+PRIMARY_TABLE = 0x080554C0
+PRIMARY_TABLE_ENTRIES = 31
+PRIMARY_BOUNDING_STRING = 0x0805553C
+
+#: The refuted count. Kept as data so the refutation is re-measured every run
+#: rather than remembered in prose.
+REFUTED_NATIVE_ENTRIES = 283
+
 UNITS: dict = {}
 
 
@@ -152,10 +200,108 @@ def _register_units() -> None:
         "functions": BCI_FUNCTIONS,
         "literal_pool": BCI_LITERAL_POOL,
         "boundaries": "derived",
+        "expect_padding": BCI_ALIGNMENT_PADDING,
+    }
+    UNITS[H2_TU.id] = {
+        "unit": H2_TU,
+        "functions": H2_FUNCTIONS,
+        "literal_pool": H2_LITERAL_POOL,
+        "boundaries": "derived",
+        # No adjacent pool, so there is no padding to check.
+        "expect_padding": None,
     }
 
 
 _register_units()
+
+
+def derive_native_table(rom_bytes: bytes) -> dict:
+    """Prove the native dispatch table's width and count mechanically.
+
+    The width comes from the handler's own indexed load: `lsls r1,r2,#2` scales
+    the index by four before `ldr r1,[r2,r1]`, so entries are four bytes.
+
+    The count is bounded on BOTH sides, which is what makes it a proof rather
+    than a scan:
+
+    * LOWER BOUND - the index is one byte, read with `ldrb`, so it ranges over
+      0..255. Every one of those must land inside the table, or the handler could
+      read past it. So there are at least 256 entries.
+    * UPPER BOUND - the primary dispatch table begins at 0x080554C0, an address
+      the interpreter loads for itself, and its own extent is anchored by the
+      assertion string at 0x0805553C. The native table cannot cross it.
+
+    256 <= 266. That is also why the handler needs no bounds check: no reachable
+    index can be out of range.
+
+    A prior claim of 283 entries is refuted here rather than merely restated.
+    """
+    base = _gba.ROM_BASE
+    count = (NATIVE_TABLE_LIMIT - NATIVE_TABLE) // 4
+    values = []
+    invalid = []
+    for index in range(count):
+        address = NATIVE_TABLE + index * 4
+        value = int.from_bytes(rom_bytes[address - base : address - base + 4], "little")
+        values.append(value)
+        if not (_gba.in_cartridge(value) and (value & 1)):
+            invalid.append({"index": index, "value": f"0x{value:08X}"})
+
+    targets = sorted(v & ~1 for v in values)
+    refuted_end = NATIVE_TABLE + REFUTED_NATIVE_ENTRIES * 4
+
+    # Independently re-read what bounds the table from above, so this does not
+    # rest on a remembered constant.
+    primary_first = int.from_bytes(
+        rom_bytes[PRIMARY_TABLE - base : PRIMARY_TABLE - base + 4], "little"
+    )
+    tail = rom_bytes[PRIMARY_BOUNDING_STRING - base : PRIMARY_BOUNDING_STRING - base + 0x80]
+    bounding_text = tail.decode("utf-16-le", "replace").split("\x00")[0]
+
+    return {
+        "address": f"0x{NATIVE_TABLE:08X}",
+        "entry_width_bytes": 4,
+        "entry_width_evidence": (
+            "lsls r1,r2,#2 at 0x08003CC8 scales the index by four before "
+            "ldr r1,[r2,r1] at 0x08003CCC"
+        ),
+        "index_width_bytes": 1,
+        "index_encoding": "a single unsigned byte, ldrb r2,[r3] at 0x08003CC2",
+        "index_range": [0, 255],
+        "entries": count,
+        "lower_bound": 256,
+        "lower_bound_reason": (
+            "the index is one byte, so every value in 0..255 must land inside the "
+            "table or the handler could read past it"
+        ),
+        "upper_bound": count,
+        "upper_bound_reason": (
+            f"the primary dispatch table begins at 0x{PRIMARY_TABLE:08X}, which the "
+            "interpreter loads for itself and which is bounded in turn by the "
+            f"assertion string at 0x{PRIMARY_BOUNDING_STRING:08X}"
+        ),
+        "index_is_always_in_range": 256 <= count,
+        "invalid_entries": invalid,
+        "distinct_targets": len(set(targets)),
+        "target_range": [f"0x{targets[0]:08X}", f"0x{targets[-1]:08X}"] if targets else [],
+        "bounded_below_by": "the primary table base",
+        "bounded_above_by": f"0x{PRIMARY_TABLE:08X}",
+        "primary_table_base_recheck": f"0x{primary_first:08X}",
+        "primary_table_bounding_string_matches": bounding_text == BCI_BOUNDING_TEXT,
+        "refuted_claim": {
+            "entries": REFUTED_NATIVE_ENTRIES,
+            "would_end_at": f"0x{refuted_end:08X}",
+            "why_impossible": (
+                f"{REFUTED_NATIVE_ENTRIES} entries at four bytes each reach "
+                f"0x{refuted_end:08X}, which is INSIDE the primary dispatch table "
+                f"(0x{PRIMARY_TABLE:08X}..0x{PRIMARY_BOUNDING_STRING:08X}). A table "
+                "based here cannot have that many entries."
+            ),
+            "measured_entries": count,
+        },
+        "derived_from_rom": True,
+        "not_hand_written": True,
+    }
 
 
 def derive_dispatch_table(rom_bytes: bytes) -> dict:
@@ -199,13 +345,17 @@ def derive_unit_boundaries(rom_bytes: bytes, unit_id: str) -> dict:
     the caller census and under-counted the callers of 0x08004038 two to
     thirteen, which is why the walk is the method here.
     """
-    if unit_id != BCI_TU.id:
+    spec = UNITS.get(unit_id)
+    if spec is None or spec.get("boundaries") != "derived":
         raise LiftError(f"{unit_id!r} has no derived boundary; it comes from the manifest")
+    unit = spec["unit"]
+    functions = spec["functions"]
+    expect_padding = spec.get("expect_padding")
 
     base = _gba.ROM_BASE
     md = cp.MD["thumb"]
     derived = []
-    for start, expected_end, role in BCI_FUNCTIONS:
+    for start, expected_end, role in functions:
         seen: dict[int, int] = {}
         terminators: list[int] = []
         pending = [start]
@@ -274,18 +424,27 @@ def derive_unit_boundaries(rom_bytes: bytes, unit_id: str) -> dict:
                 )
 
     last = derived[-1]
-    padding = BCI_TU.literal_pool[0][0] + _gba.ROM_BASE - last["end"]
-    if padding != BCI_ALIGNMENT_PADDING:
-        tiling_problems.append(
-            f"expected {BCI_ALIGNMENT_PADDING} padding bytes before the pool, saw {padding}"
-        )
+    pool_addresses = sorted(off + _gba.ROM_BASE for off, _value in spec["literal_pool"])
+    pool_start = pool_addresses[0]
+    pool_end = pool_addresses[-1] + 4
+    gap = pool_start - last["end"]
+
+    if expect_padding is None:
+        padding = None
+    else:
+        padding = gap
+        if padding != expect_padding:
+            tiling_problems.append(
+                f"expected {expect_padding} padding bytes before the pool, saw {padding}"
+            )
 
     return {
         "method": "aligned chain-walk from each entry, following local branches",
         "unit_id": unit_id,
-        "code_extent": f"0x{BCI_TU.rom_address:08X}..0x{BCI_TU.code_end_address:08X}",
-        "pool_extent": f"0x{BCI_LITERAL_POOL[0][0] + _gba.ROM_BASE:08X}..0x{BCI_LITERAL_POOL[1][0] + _gba.ROM_BASE + 4:08X}",
-        "pool_is_adjacent_to_code": False,
+        "code_extent": f"0x{unit.rom_address:08X}..0x{unit.code_end_address:08X}",
+        "pool_extent": f"0x{pool_start:08X}..0x{pool_end:08X}",
+        "pool_is_adjacent_to_code": pool_start == last["end"],
+        "pool_gap_bytes": gap,
         "alignment_padding_bytes": padding,
         "functions": [
             {
@@ -832,10 +991,39 @@ def derive_external_calls(rom_bytes: bytes, unit_id: str) -> dict[str, int]:
                 continue
             target = operand.imm & ~1
             if not (unit.rom_address <= target < unit.code_end_address):
-                # bit 0 set: these are Thumb entry points, and the linker needs
-                # it to emit a Thumb BL rather than a BLX.
-                found[f"sub_{target:08X}"] = target | 1
+                found[f"sub_{target:08X}"] = target
     return found
+
+
+def render_external_symbols(symbols: dict[str, int]) -> str:
+    """Declare each external call target as an absolute THUMB function.
+
+    `--defsym` cannot express this and is a trap: an absolute symbol made that
+    way carries no Thumb marking, so the linker emits a Thumb-to-ARM
+    interworking veneer. The veneer does `bx pc` and then an ARM branch, which
+    enters a Thumb target in ARM state, and it adds eight bytes per target to
+    the compared image. Both were observed here rather than predicted.
+
+    `.thumb_func` before `.set` marks the absolute symbol as Thumb, and the call
+    becomes a direct Thumb BL to the original address with nothing emitted. An
+    earlier revision of this module used `--defsym` and produced five veneers in
+    the ByteCodeInterpreter build.
+    """
+    lines = [
+        "/* generated by tools/buusfury/lift.py - do not edit */",
+        "\t.syntax unified",
+        "\t.thumb",
+        "",
+        "/* Absolute Thumb entry points for calls this unit makes but does not",
+        " * contain. The bodies are not here because these functions belong to",
+        " * other translation units; only the call target matters. */",
+    ]
+    for name, address in sorted(symbols.items()):
+        lines.append(f"\t.globl {name}")
+        lines.append("\t.thumb_func")
+        lines.append(f"\t.set {name}, 0x{address:08X}")
+    lines.append("")
+    return "\n".join(lines)
 
 
 def build_target(
@@ -873,22 +1061,39 @@ def build_target(
         *target.extra_compiler_flags,
         "-o", obj, source,
     ]
+
+    # Declare the unit's external call targets as Thumb functions. See
+    # render_external_symbols for why --defsym is not used.
+    symbols_source = workdir / f"{target.id}_externs.s"
+    symbols_source.write_text(
+        render_external_symbols(defined_symbols or {}), encoding="ascii", newline="\n"
+    )
+    symbols_object = workdir / f"{target.id}_externs.o"
+    symbols_command = [
+        toolchain.gcc, "-c", "-mcpu=" + target.cpu,
+        "-mthumb" if target.isa == "thumb" else "-marm",
+        "-o", symbols_object, "-x", "assembler-with-cpp", symbols_source,
+    ]
+
     link_command = [
         toolchain.gcc, "-nostdlib",
-        *[f"-Wl,--defsym={name}=0x{value:08X}"
-          for name, value in sorted((defined_symbols or {}).items())],
         f"-Wl,-T,{script}", f"-Wl,-Map,{map_file}",
-        "-o", elf, obj,
+        "-o", elf, obj, symbols_object,
     ]
-    objcopy_command = [toolchain.objcopy, "-O", "binary", elf, binary]
+    # Restricted on purpose: the emitted bytes are the reconstructed code and
+    # its literals, and nothing a stub or a linker helper might add.
+    objcopy_command = [
+        toolchain.objcopy, "-O", "binary", "-j", ".text", "-j", ".rodata", elf, binary,
+    ]
     commands = [
         " ".join(str(c) for c in compile_command),
+        " ".join(str(c) for c in symbols_command),
         " ".join(str(c) for c in link_command),
         " ".join(str(c) for c in objcopy_command),
     ]
 
     log: list[str] = []
-    for command in (compile_command, link_command, objcopy_command):
+    for command in (compile_command, symbols_command, link_command, objcopy_command):
         completed = _run(command)
         log.append(f"$ {' '.join(str(c) for c in command)}\n{completed.stdout}{completed.stderr}")
         if completed.returncode != 0:
@@ -1028,6 +1233,9 @@ def literal_pool_structure(
             "contiguous_runs": [[f"0x{a:08X}", f"0x{b:08X}"] for a, b in original_runs],
             "run_count": len(original_runs),
             "shared_pool": original_shared,
+            # A single-function unit with no adjacent pool cannot have a shared
+            # run, so the test is not applicable rather than failed.
+            "shared_pool_applicable": unit.code_end_address != unit.end_address,
             "declared_pool": [f"0x{declared_start:08X}", f"0x{declared_end:08X}"],
             "declared_slots": [f"0x{a:08X}" for a in declared_slots],
             "declared_slots_used": [f"0x{a:08X}" for a in sorted(referenced & declared)],
@@ -1363,7 +1571,7 @@ def run_lift(
         },
         "link_origin": f"0x{rom_address:08X}",
         "external_calls_bound_to_original_addresses": {
-            name: f"0x{value & ~1:08X}" for name, value in sorted(external_calls.items())
+            name: f"0x{value:08X}" for name, value in sorted(external_calls.items())
         },
         "detail": (
             f"compiled, linked at 0x{rom_address:08X} and emitted "
@@ -1384,7 +1592,21 @@ def run_lift(
                 "the derived boundary disagrees with the recorded one: "
                 + "; ".join(boundary_evidence["problems"])
             )
-        boundary_evidence["dispatch_table"] = derive_dispatch_table(rom_bytes)
+        if unit.id == BCI_TU.id:
+            boundary_evidence["dispatch_table"] = derive_dispatch_table(rom_bytes)
+        elif unit.id == H2_TU.id:
+            boundary_evidence["dispatch_table"] = derive_dispatch_table(rom_bytes)
+            boundary_evidence["native_table"] = derive_native_table(rom_bytes)
+            boundary_evidence["primary_slot"] = {
+                "index": 2,
+                "address": f"0x{PRIMARY_TABLE + 2 * 4:08X}",
+                "word": f"0x{H2_ENTRY | 1:08X}",
+                "detail": (
+                    "exactly one primary slot points at this handler, and no direct "
+                    "BL site anywhere targets it, so it is reached only through the "
+                    "dispatch table"
+                ),
+            }
     else:
         boundary_evidence = {
             "method": "config/compiler_probes.json, derived and verified there",

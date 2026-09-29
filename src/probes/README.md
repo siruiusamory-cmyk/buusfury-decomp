@@ -30,6 +30,11 @@ have been wasted.
   functions at `0x08004038..0x08004160`.
 - `bci_selftest.c` - 70 assertions driving the dispatch loop over synthetic
   bytecode with recording handlers. Exit 0 on success.
+- `ByteCodeInterpreter_handlers.c` - shim for `src/ByteCodeInterpreter_handlers.c`,
+  primary dispatch slot 2 at `0x08003CBE`.
+- `handler2_selftest.c` - 23 assertions driving the handler with recording native
+  routines, including discriminators that separate a byte index from a word index.
+  Exit 0 on success.
 
 Both self-checks print the summary line `<STATUS>: <n> check(s), <m> failure(s)`,
 and the lift harness parses it, so the wording is load-bearing.

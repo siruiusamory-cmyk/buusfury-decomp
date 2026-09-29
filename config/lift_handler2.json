@@ -1,0 +1,334 @@
+{
+  "schema": 1,
+  "ticket": "DECOMP-LIFT-SCRIPT-HANDLER-001",
+  "generated_by": "tools/buusfury/lift.py",
+  "source_sha1": "f1c4b07554d2a3b1ad2f325307051e775ce68087",
+  "target": {
+    "id": "handler2",
+    "name": "ByteCodeInterpreter primary slot 2",
+    "role": "the handler that reaches the native dispatch table: consumes a one-byte native index and selects native[index]",
+    "notes": "primary dispatch slot 2, entry 0x08003CBE, 22 bytes and 10 instructions. A separate translation unit from the interpreter: separate code and a separate literal pool at 0x08003F40, which four other primary handlers (slots 21-24) also load from. It is reached ONLY through the primary dispatch table, so a direct-call census correctly returns nothing. Handler 2 never writes r0, so the context is passed to the native routine unchanged; 10 of 12 sampled native routines read r0 before writing it, and none read r2, so r0 is the argument and the table base left in r2 is incidental. The native table has 266 entries, bounded below by the one-byte index (256 values must all be in range) and above by the primary table base at 0x080554C0; a prior 283-entry claim reaches 0x08055504, inside the primary table, and is refuted. No native routine is reconstructed and no native index is named.",
+    "translation_unit": "handler2_tu",
+    "rom_address": "0x08003CBE",
+    "file_offset": "0x003CBE",
+    "code_end_address": "0x08003CD4",
+    "end_address": "0x08003CD4",
+    "byte_length": 22,
+    "code_byte_length": 22,
+    "isa": "thumb",
+    "decomp_source": "src/ByteCodeInterpreter_handlers.c",
+    "probe_source": "src/probes/ByteCodeInterpreter_handlers.c",
+    "selftest_source": "src/probes/handler2_selftest.c",
+    "semantic_minimum_checks": 23,
+    "host_build_bits": 32,
+    "original_sha1": "e6278b2d74457c3f5ba7747860203837fab36a70"
+  },
+  "boundary_evidence": {
+    "method": "aligned chain-walk from each entry, following local branches",
+    "unit_id": "handler2_tu",
+    "code_extent": "0x08003CBE..0x08003CD4",
+    "pool_extent": "0x08003F40..0x08003F44",
+    "pool_is_adjacent_to_code": false,
+    "pool_gap_bytes": 620,
+    "alignment_padding_bytes": null,
+    "functions": [
+      {
+        "start": "0x08003CBE",
+        "end": "0x08003CD4",
+        "size": 22,
+        "instructions": 10,
+        "role": "primary dispatch slot 2: selects a native routine",
+        "terminators": [
+          "0x08003CD2"
+        ],
+        "gaps": [],
+        "matches_expected": true
+      }
+    ],
+    "problems": [],
+    "derived_from_rom": true,
+    "not_hand_written": true,
+    "dispatch_table": {
+      "address": "0x080554C0",
+      "entries": 31,
+      "null_entries": [
+        17
+      ],
+      "bounding_string_address": "0x0805553C",
+      "bounding_string_text": "\"Expected dialog to start with a code block\"",
+      "bounding_string_matches": true,
+      "entries_are_thumb_pointers": 30
+    },
+    "native_table": {
+      "address": "0x08055098",
+      "entry_width_bytes": 4,
+      "entry_width_evidence": "lsls r1,r2,#2 at 0x08003CC8 scales the index by four before ldr r1,[r2,r1] at 0x08003CCC",
+      "index_width_bytes": 1,
+      "index_encoding": "a single unsigned byte, ldrb r2,[r3] at 0x08003CC2",
+      "index_range": [
+        0,
+        255
+      ],
+      "entries": 266,
+      "lower_bound": 256,
+      "lower_bound_reason": "the index is one byte, so every value in 0..255 must land inside the table or the handler could read past it",
+      "upper_bound": 266,
+      "upper_bound_reason": "the primary dispatch table begins at 0x080554C0, which the interpreter loads for itself and which is bounded in turn by the assertion string at 0x0805553C",
+      "index_is_always_in_range": true,
+      "invalid_entries": [],
+      "distinct_targets": 265,
+      "target_range": [
+        "0x08000206",
+        "0x08003BFC"
+      ],
+      "bounded_below_by": "the primary table base",
+      "bounded_above_by": "0x080554C0",
+      "primary_table_base_recheck": "0x08003C75",
+      "primary_table_bounding_string_matches": true,
+      "refuted_claim": {
+        "entries": 283,
+        "would_end_at": "0x08055504",
+        "why_impossible": "283 entries at four bytes each reach 0x08055504, which is INSIDE the primary dispatch table (0x080554C0..0x0805553C). A table based here cannot have that many entries.",
+        "measured_entries": 266
+      },
+      "derived_from_rom": true,
+      "not_hand_written": true
+    },
+    "primary_slot": {
+      "index": 2,
+      "address": "0x080554C8",
+      "word": "0x08003CBF",
+      "detail": "exactly one primary slot points at this handler, and no direct BL site anywhere targets it, so it is reached only through the dispatch table"
+    }
+  },
+  "verdicts": {
+    "semantic": {
+      "status": "PROVEN",
+      "checks": 23,
+      "failures": 0,
+      "minimum_checks": 23,
+      "host_compiler": "MSVC cl.exe (32-bit)",
+      "detail": "23 behavioural assertions passed with 0 failures (minimum 23)",
+      "measures": "whether the reconstructed C behaves correctly, by RUNNING it"
+    },
+    "modern_build": {
+      "status": "PASS",
+      "detail": "compiled, linked at 0x08003CBE and emitted 40 bytes",
+      "measures": "whether the source compiles, links and emits bytes"
+    },
+    "ads_match": {
+      "status": "BLOCKED",
+      "code": "ADS12_LICENSE_UNAVAILABLE",
+      "detail": "an ARM Developer Suite 1.2 installation is present on this machine but the licence file it ships licenses a different product, so the ARM compilers cannot be run. No compile has been attempted and no configuration has been tested. The installation is located through ADS12_ROOT.",
+      "required_to_unblock": [
+        "a licensed ADS 1.2 installation, with ADS12_ROOT pointing at it",
+        "then: python -m buusfury compiler-probe --plan, then --matrix"
+      ],
+      "not_inferable_from_modern_build": true
+    }
+  },
+  "verdicts_are_independent": "SEMANTIC, MODERN_BUILD and ADS_MATCH answer different questions and none is evidence for another. A passing modern build says nothing about the original compiler; a passing semantic run only removes one class of error.",
+  "modern_build": {
+    "status": "PASS",
+    "toolchain": {
+      "family": "GNU Arm Embedded (devkitARM)",
+      "root": "<DEVKITARM>",
+      "prefix": "arm-none-eabi-",
+      "tools": {
+        "gcc": "<DEVKITARM>\\bin\\arm-none-eabi-gcc.exe",
+        "ld": "<DEVKITARM>\\bin\\arm-none-eabi-ld.exe",
+        "objcopy": "<DEVKITARM>\\bin\\arm-none-eabi-objcopy.exe",
+        "objdump": "<DEVKITARM>\\bin\\arm-none-eabi-objdump.exe",
+        "nm": "<DEVKITARM>\\bin\\arm-none-eabi-nm.exe"
+      }
+    },
+    "identity": {
+      "gcc_banner": "arm-none-eabi-gcc.exe (devkitARM) 16.1.0",
+      "gcc_version": "16.1.0",
+      "target_triple": "arm-none-eabi",
+      "binutils_banner": "GNU objdump (GNU Binutils) 2.46.0.20260210",
+      "compiler_family": "gcc",
+      "is_the_original_compiler": false,
+      "why_not": "the original translation unit was built by ARM Developer Suite 1.2 (the surviving command line names tcpp). GCC is a different compiler with a different code generator, so its output cannot establish anything about ADS 1.2."
+    },
+    "target_support": {
+      "supported": true,
+      "cpu": "arm7tdmi",
+      "instruction_set": "thumb",
+      "commands": [
+        "<DEVKITARM>\\bin\\arm-none-eabi-gcc.exe -c -mcpu=arm7tdmi -mthumb -O1 -ffreestanding -fno-common -fno-builtin -o <REPO>\\build\\lift\\handler2\\toolchain-probe\\support_probe.o <REPO>\\build\\lift\\handler2\\toolchain-probe\\support_probe.c"
+      ],
+      "disassembly": [
+        "adds r0, #1",
+        "bx lr"
+      ],
+      "detail": "compiled and disassembled a probe function for ARM7TDMI Thumb: 2 instruction(s), r0 written and a return present"
+    },
+    "compiler_configuration": {
+      "cpu": "arm7tdmi",
+      "instruction_set": "thumb",
+      "optimization": "-O1",
+      "extra_flags": []
+    },
+    "link_origin": "0x08003CBE",
+    "external_calls_bound_to_original_addresses": {
+      "sub_08046AA2": "0x08046AA2"
+    },
+    "detail": "compiled, linked at 0x08003CBE and emitted 40 bytes",
+    "build": {
+      "ok": true,
+      "commands": [
+        "<DEVKITARM>\\bin\\arm-none-eabi-gcc.exe -c -mcpu=arm7tdmi -mthumb -O1 -ffreestanding -fno-common -fno-builtin -fomit-frame-pointer -mno-unaligned-access -o <REPO>\\build\\lift\\handler2\\handler2.o <REPO>\\src\\ByteCodeInterpreter_handlers.c",
+        "<DEVKITARM>\\bin\\arm-none-eabi-gcc.exe -c -mcpu=arm7tdmi -mthumb -o <REPO>\\build\\lift\\handler2\\handler2_externs.o -x assembler-with-cpp <REPO>\\build\\lift\\handler2\\handler2_externs.s",
+        "<DEVKITARM>\\bin\\arm-none-eabi-gcc.exe -nostdlib -Wl,-T,<REPO>\\build\\lift\\handler2\\handler2.ld -Wl,-Map,<REPO>\\build\\lift\\handler2\\handler2.map -o <REPO>\\build\\lift\\handler2\\handler2.elf <REPO>\\build\\lift\\handler2\\handler2.o <REPO>\\build\\lift\\handler2\\handler2_externs.o",
+        "<DEVKITARM>\\bin\\arm-none-eabi-objcopy.exe -O binary -j .text -j .rodata <REPO>\\build\\lift\\handler2\\handler2.elf <REPO>\\build\\lift\\handler2\\handler2.bin"
+      ],
+      "produced_byte_length": 40,
+      "symbols": {
+        "sub_08003CBE": {
+          "address": "0x08003CC0",
+          "size": 36
+        }
+      },
+      "diagnostics": ""
+    }
+  },
+  "functions": [
+    {
+      "name": "sub_08003CBE",
+      "role": "primary dispatch slot 2: selects a native routine",
+      "original": {
+        "start": "0x08003CBE",
+        "end": "0x08003CD4",
+        "size": 22,
+        "isa": "thumb",
+        "instructions": 10,
+        "first_instruction": "push {r3, lr}",
+        "calls": [
+          "0x08046AA2"
+        ],
+        "literal_slots": [
+          "0x08003F40"
+        ],
+        "returns": 1,
+        "leaf": false,
+        "abi": {
+          "callee_saved_pushed": [],
+          "frame_size_bytes": 0,
+          "written_registers": [
+            "r1",
+            "r2",
+            "r3"
+          ]
+        }
+      },
+      "modern": {
+        "start": "0x08003CC0",
+        "end": "0x08003CE4",
+        "size": 36,
+        "isa": "thumb",
+        "instructions": 17,
+        "first_instruction": "ldr r2, [r1]",
+        "calls": [
+          "0x08046AA0"
+        ],
+        "literal_slots": [
+          "0x08003CDC"
+        ],
+        "returns": 1,
+        "leaf": false,
+        "abi": {
+          "callee_saved_pushed": [],
+          "frame_size_bytes": 0,
+          "written_registers": [
+            "r0",
+            "r1",
+            "r2",
+            "r3",
+            "r4",
+            "r5",
+            "r8"
+          ]
+        }
+      },
+      "modern_symbol_present": true,
+      "delta": {
+        "size_bytes": 14,
+        "instructions": 7,
+        "returns": 0,
+        "calls": 0,
+        "literal_slots": 0
+      },
+      "same_extent": false,
+      "byte_identical": false
+    }
+  ],
+  "literal_pools": {
+    "original": {
+      "distinct_slots": 1,
+      "contiguous_runs": [
+        [
+          "0x08003F40",
+          "0x08003F44"
+        ]
+      ],
+      "run_count": 1,
+      "shared_pool": false,
+      "shared_pool_applicable": false,
+      "declared_pool": [
+        "0x08003CD4",
+        "0x08003CD4"
+      ],
+      "declared_slots": [
+        "0x08003F40"
+      ],
+      "declared_slots_used": [
+        "0x08003F40"
+      ],
+      "all_referenced_slots_are_declared": true,
+      "all_declared_slots_are_referenced": true,
+      "undeclared_slots": [],
+      "functions_reaching_it": 1
+    },
+    "modern": {
+      "distinct_slots": 1,
+      "contiguous_runs": [
+        [
+          "0x08003CDC",
+          "0x08003CE0"
+        ]
+      ],
+      "run_count": 1,
+      "shared_pool": true,
+      "functions_reaching_a_pool": 1
+    },
+    "interpretation": "the original's literals are accounted for by the words the unit declares; the modern build pools differently, which is a structural consequence of the compiler rather than a defect in the reconstruction. It is also why a function with a literal load cannot be compared standalone.",
+    "is_a_match_claim": false
+  },
+  "comparison": {
+    "original_byte_length": 22,
+    "modern_byte_length": 40,
+    "overlap_byte_length": 22,
+    "differing_bytes_in_overlap": 15,
+    "matching_bytes_in_overlap": 7,
+    "original_only_bytes": 0,
+    "modern_only_bytes": 18,
+    "original_instruction_spans": 10,
+    "matching_instruction_spans": 0,
+    "differing_instruction_spans": 10,
+    "bytes_not_covered_by_an_original_instruction": 0,
+    "byte_identical": false,
+    "is_a_match_claim": false,
+    "match_claim_note": "MEASUREMENT ONLY. This compares a modern GCC build against the cartridge. A modern compiler is not the original compiler, so a difference here is expected and proves nothing; an identity here would also prove nothing about ADS 1.2. ADS_MATCH stays BLOCKED."
+  },
+  "semantic_check": {
+    "status": "PROVEN",
+    "checks": 23,
+    "failures": 0,
+    "minimum_checks": 23,
+    "host_compiler": "MSVC cl.exe (32-bit)",
+    "host_build_bits": 32,
+    "detail": "23 behavioural assertions passed with 0 failures (minimum 23)",
+    "output": "PASS: 23 check(s), 0 failure(s)\n"
+  }
+}

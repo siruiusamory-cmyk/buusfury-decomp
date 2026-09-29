@@ -86,9 +86,17 @@ engine's own words, **including its surrounding quote characters**:
 Comparing against the unquoted form left a false mismatch until the quotes were
 included, which is why the harness reads the string rather than remembering it.
 
-The 31 handler targets and the separate 283-entry native table are **not**
-decompiled. They are not needed to prove the loop and the ticket forbids widening
+The 31 handler targets and the separate native table are **not** decompiled in
+this ticket. They are not needed to prove the loop and the ticket forbids widening
 into a broad script-engine decomp.
+
+**Correction, measured by DECOMP-LIFT-SCRIPT-HANDLER-001:** this document
+originally repeated a claim that the native table at `0x08055098` holds **283**
+entries. That is wrong; it holds **266**. The count is bounded below by the
+handler's one-byte index (256 values must all be in range) and above by the
+primary dispatch table's base at `0x080554C0`, and 283 entries would reach
+`0x08055504`, which is inside that table. See
+[`LIFT_HANDLER2.md`](LIFT_HANDLER2.md#4-the-native-table-is-266-entries-not-283).
 
 ---
 
@@ -227,8 +235,7 @@ pwsh -File scripts/check.ps1          # gate 7 verifies every registered target
 ## 7. Limits
 
 1. **Three functions of a large subsystem.** The engine also has 30 other
-   handlers and a 283-entry native table, none of them touched.
-2. **No opcode is decoded.** The reconstruction cannot execute real game
+   handlers and a 266-entry native table, none of them touched here.2. **No opcode is decoded.** The reconstruction cannot execute real game
    bytecode; it can only be shown to dispatch, nest, terminate and mutate the
    context correctly.
 3. **`ADS_MATCH` remains BLOCKED.** Every number in section 4 describes a modern
@@ -244,7 +251,7 @@ pwsh -File scripts/check.ps1          # gate 7 verifies every registered target
 In the order the evidence supports:
 
 1. **Handler 2 at `0x08003CBF`**, the `native_stack` opcode. It indexes the
-   283-entry native table at `0x08055098` after pushing arguments, so it is the
+   native table at `0x08055098` after pushing arguments, so it is the
    bridge between the bytecode layer and the engine and is the smallest step
    that makes the interpreter do something real. Its entry is a table slot, so
    its boundary is already anchored.

@@ -105,8 +105,9 @@
       "ok": true,
       "commands": [
         "<DEVKITARM>\\bin\\arm-none-eabi-gcc.exe -c -mcpu=arm7tdmi -mthumb -O1 -ffreestanding -fno-common -fno-builtin -fomit-frame-pointer -mno-unaligned-access -o <REPO>\\build\\lift\\gbaram\\gbaram.o <REPO>\\src\\GBARam.c",
-        "<DEVKITARM>\\bin\\arm-none-eabi-gcc.exe -nostdlib -Wl,-T,<REPO>\\build\\lift\\gbaram\\gbaram.ld -Wl,-Map,<REPO>\\build\\lift\\gbaram\\gbaram.map -o <REPO>\\build\\lift\\gbaram\\gbaram.elf <REPO>\\build\\lift\\gbaram\\gbaram.o",
-        "<DEVKITARM>\\bin\\arm-none-eabi-objcopy.exe -O binary <REPO>\\build\\lift\\gbaram\\gbaram.elf <REPO>\\build\\lift\\gbaram\\gbaram.bin"
+        "<DEVKITARM>\\bin\\arm-none-eabi-gcc.exe -c -mcpu=arm7tdmi -mthumb -o <REPO>\\build\\lift\\gbaram\\gbaram_externs.o -x assembler-with-cpp <REPO>\\build\\lift\\gbaram\\gbaram_externs.s",
+        "<DEVKITARM>\\bin\\arm-none-eabi-gcc.exe -nostdlib -Wl,-T,<REPO>\\build\\lift\\gbaram\\gbaram.ld -Wl,-Map,<REPO>\\build\\lift\\gbaram\\gbaram.map -o <REPO>\\build\\lift\\gbaram\\gbaram.elf <REPO>\\build\\lift\\gbaram\\gbaram.o <REPO>\\build\\lift\\gbaram\\gbaram_externs.o",
+        "<DEVKITARM>\\bin\\arm-none-eabi-objcopy.exe -O binary -j .text -j .rodata <REPO>\\build\\lift\\gbaram\\gbaram.elf <REPO>\\build\\lift\\gbaram\\gbaram.bin"
       ],
       "produced_byte_length": 772,
       "symbols": {
@@ -720,6 +721,7 @@
       ],
       "run_count": 1,
       "shared_pool": true,
+      "shared_pool_applicable": true,
       "declared_pool": [
         "0x0803D730",
         "0x0803D740"

@@ -110,10 +110,11 @@ def test_the_pool_is_not_adjacent_to_the_code(rom_bytes):
 
 def test_a_wrong_expected_extent_is_reported_not_absorbed(rom_bytes, monkeypatch):
     """The derivation must be able to fail. If it could not, 'derived' would be
-    a word rather than a check."""
-    wrong = list(lift.BCI_FUNCTIONS)
+    a word rather than a check. The registry entry is the injection point,
+    because that is what derive_unit_boundaries actually reads."""
+    wrong = list(lift.UNITS["bci_tu"]["functions"])
     wrong[0] = (0x08004038, 0x0800409A, wrong[0][2])
-    monkeypatch.setattr(lift, "BCI_FUNCTIONS", tuple(wrong))
+    monkeypatch.setitem(lift.UNITS["bci_tu"], "functions", tuple(wrong))
     evidence = lift.derive_unit_boundaries(rom_bytes, "bci_tu")
     assert evidence["problems"], "a wrong expected extent was accepted"
 

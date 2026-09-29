@@ -103,6 +103,30 @@ therefore cannot be imported. See
 [`docs/ADS12_SETUP.md`](docs/ADS12_SETUP.md) and
 [`docs/DECOMP_BASELINE.md`](docs/DECOMP_BASELINE.md#the-blocker).
 
+### Script engine handler (DECOMP-LIFT-SCRIPT-HANDLER-001, measured 2026-09-29)
+
+The first opcode handler is lifted: **primary dispatch slot 2** at `0x08003CBE`,
+22 bytes and 10 instructions, source at
+[`src/ByteCodeInterpreter_handlers.c`](src/ByteCodeInterpreter_handlers.c). It is
+the handler that reaches the native dispatch table at `0x08055098`.
+
+| Verdict | Result | Question it answers |
+| --- | --- | --- |
+| `SEMANTIC` | **PROVEN** | does it behave correctly? 23 assertions, 0 failures, measured by RUNNING it |
+| `MODERN_BUILD` | **PASS** | does it compile, link at `0x08003CBE` and emit bytes? 40 bytes |
+| `ADS_MATCH` | **BLOCKED** | does it reproduce the original compiler? `ADS12_LICENSE_UNAVAILABLE` |
+
+It consumes a **one-byte** native index, advances the cursor by one, and calls
+`native[index]` through the `bx r1` thunk with `r0` untouched. It never writes
+`r0`, so the context passes through unchanged.
+
+**The native table has 266 entries, not 283.** The count is bounded on both sides:
+the one-byte index needs at least 256, and the primary dispatch table's base at
+`0x080554C0` caps it at exactly 266. A 283-entry table would run through the
+primary table. Independently, the project's 2026 runtime capture recorded slot 178
+dispatching to `0x08003030`, and reading index 178 statically gives `0x08003031`,
+masking to the same address. See [`docs/LIFT_HANDLER2.md`](docs/LIFT_HANDLER2.md).
+
 ### Script engine (DECOMP-LIFT-SCRIPT-001, measured 2026-09-29)
 
 The first real engine subsystem is lifted: the **ByteCodeInterpreter**, three Thumb
@@ -179,18 +203,19 @@ python -m buusfury build     # assemble a ROM, with per-region provenance
 python -m buusfury lift      # semantic lifting loop: build + compare one family
 python -m buusfury rommap    # independent structural ROM map + function inventory
 python -m buusfury fixed     # generate the zero-toolchain fixed regions
-python -m pytest tests -q    # 341 tests
+python -m pytest tests -q    # 370 tests
 ```
 
 ## Scope
 
-This repository is at **DECOMP-LIFT-SCRIPT-001**. It carries the identity gate, the
-build model, the independent ROM map and the compiler probe, plus two lifted families
-- the GBARam allocator and the ByteCodeInterpreter dispatch loop - and the reusable
-loop that produced both.
+This repository is at **DECOMP-LIFT-SCRIPT-HANDLER-001**. It carries the identity
+gate, the build model, the independent ROM map and the compiler probe, plus three
+lifted units - the GBARam allocator, the ByteCodeInterpreter dispatch loop, and its
+primary dispatch slot 2 - and the reusable loop that produced all three.
 
 `ADS_MATCH` remains blocked: the ADS 1.2 installed on this machine is unlicensed, and
 nothing here reduces that. The next work continues outward from the script engine; see
+[`docs/LIFT_HANDLER2.md`](docs/LIFT_HANDLER2.md#9-recommended-next-work),
 [`docs/LIFT_SCRIPT.md`](docs/LIFT_SCRIPT.md#8-recommended-next-bytecodeinterpreter-work)
 and
 [`docs/LIFT_PILOT.md`](docs/LIFT_PILOT.md#7-next-recommended-function-family).

@@ -121,9 +121,19 @@ Matching means byte-identity of the produced ROM against
   address loses its high half and faults. Record the width per target; never
   widen a typedef to silence the truncation.
 - **Bind declared-not-reconstructed calls to their original addresses.** Read
-  the unit's own BL targets from the ROM and `--defsym` each `sub_<address>`
-  symbol, so call displacements stay right and no stub bytes enter the compared
-  window.
+  the unit's own BL targets from the ROM and declare each `sub_<address>` symbol
+  with `.thumb_func` before `.set`, so call displacements stay right and no stub
+  bytes enter the compared window. **Never use `--defsym`:** it creates an
+  absolute symbol with no Thumb marking regardless of bit 0, so the linker wraps
+  every external call in a Thumb-to-ARM interworking veneer (`bx pc` then an ARM
+  branch, entering Thumb code in ARM state) and adds eight bytes per call.
+- **Prove a table's extent from both sides where possible.** The native table is
+  266 entries because the one-byte index needs 256 and the next table's base caps
+  it; a claimed 283 was refuted by arithmetic, not by preference. An existing
+  count claim is a hypothesis to re-measure, not a fact to repeat.
+- **A single-byte index makes an out-of-bounds read unreachable** when the table
+  is at least 256 entries. Say that as a property of the encodings, not as an
+  absent check.
 - **Name context fields by offset and say what is unknown.** No opcode meaning
   may be imported from another LoG title, and a reconstruction should contain no
   `switch` over opcodes until one is proven.

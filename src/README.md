@@ -10,6 +10,10 @@ Two function families are lifted here:
   its two in-unit companions, at `0x08004038..0x08004160`. Named after the path
   the ROM itself preserves (`T:\Source\ByteCodeInterpreter\ByteCodeInterpreter.cpp`).
   See `docs/LIFT_SCRIPT.md`.
+- **`src/ByteCodeInterpreter_handlers.c`**, primary dispatch slot 2 at
+  `0x08003CBE`, the handler that reaches the native dispatch table. A separate
+  translation unit from the interpreter: its literal pool is at `0x08003F40`
+  rather than `0x08004158`. See `docs/LIFT_HANDLER2.md`.
 
 `docs/LIFT_LOOP.md` is how the next family is added.
 

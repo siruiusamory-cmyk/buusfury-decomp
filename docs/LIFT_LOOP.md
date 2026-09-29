@@ -201,8 +201,26 @@ Two traps this project has already paid for, both worth reading before writing o
 If the unit calls code it does not contain, the link needs a value for each. Do **not**
 add stub objects: they add bytes to the compared window. `derive_external_calls` reads
 the unit's own BL targets out of the ROM and binds each `sub_<address>` symbol to its
-original address, so every call displacement is right and nothing extra is emitted. The
-same technique makes the host build of a 32-bit unit work: see `host_build_bits`.
+original address, so every call displacement is right and nothing extra is emitted.
+
+**Do not bind those symbols with `--defsym`.** It creates an absolute symbol with no
+Thumb marking and bit 0 of the value does not change that, so the linker wraps every
+external call in a Thumb-to-ARM interworking veneer: `bx pc` then an ARM branch, which
+enters Thumb code in ARM state, plus eight bytes per call in the compared image. The
+`bci` build carried five such veneers before this was caught. Use
+`render_external_symbols`, which emits
+
+```asm
+	.syntax unified
+	.thumb
+	.globl sub_080046AA2
+	.thumb_func
+	.set sub_080046AA2, 0x080046AA2
+```
+
+and produce a direct Thumb `BL` with nothing emitted. A test asserts that no committed
+report records a `--defsym` command and that no built ELF contains a `from_thumb` or
+`from_arm` symbol.
 
 ---
 

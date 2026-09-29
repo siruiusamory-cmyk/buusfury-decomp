@@ -61,7 +61,27 @@
         "extra_flags": []
       },
       "role": "script engine: the bytecode dispatch loop, the dialog entry point that calls it, and one untitled helper sharing the same literal pool",
-      "notes": "the first real engine subsystem. The ROM preserves the original source path T:\\Source\\ByteCodeInterpreter\\ByteCodeInterpreter.cpp as ASCII at 0x08004160, referenced by the assertion at 0x080040F4. The unit is three functions because they share ONE 8-byte literal pool at 0x08004158, which is what establishes a single compilation unit. The pool is NOT adjacent to the code: two alignment bytes separate them and 86 bytes of unrelated code sit between. The dispatch table at 0x080554C0 has 31 entries, bounded by the UTF-16 assertion string at 0x0805553C. The 31 handler targets and the 283-entry native table are deliberately NOT decompiled."
+      "notes": "the first real engine subsystem. The ROM preserves the original source path T:\\Source\\ByteCodeInterpreter\\ByteCodeInterpreter.cpp as ASCII at 0x08004160, referenced by the assertion at 0x080040F4. The unit is three functions because they share ONE 8-byte literal pool at 0x08004158, which is what establishes a single compilation unit. The pool is NOT adjacent to the code: two alignment bytes separate them and 86 bytes of unrelated code sit between. The dispatch table at 0x080554C0 has 31 entries, bounded by the UTF-16 assertion string at 0x0805553C. The 31 handler targets and the native table are deliberately NOT decompiled here; the native table is 266 entries, measured and proved by DECOMP-LIFT-SCRIPT-HANDLER-001 (a prior claim of 283 is refuted)."
+    },
+    {
+      "id": "handler2",
+      "name": "ByteCodeInterpreter primary slot 2",
+      "ticket": "DECOMP-LIFT-SCRIPT-HANDLER-001",
+      "translation_unit": "handler2_tu",
+      "probe_translation_unit": "handler2_tu",
+      "decomp_source": "src/ByteCodeInterpreter_handlers.c",
+      "probe_source": "src/probes/ByteCodeInterpreter_handlers.c",
+      "selftest_source": "src/probes/handler2_selftest.c",
+      "semantic_minimum_checks": 23,
+      "host_build_bits": 32,
+      "compiler": {
+        "cpu": "arm7tdmi",
+        "isa": "thumb",
+        "optimization": "-O1",
+        "extra_flags": []
+      },
+      "role": "the handler that reaches the native dispatch table: consumes a one-byte native index and selects native[index]",
+      "notes": "primary dispatch slot 2, entry 0x08003CBE, 22 bytes and 10 instructions. A separate translation unit from the interpreter: separate code and a separate literal pool at 0x08003F40, which four other primary handlers (slots 21-24) also load from. It is reached ONLY through the primary dispatch table, so a direct-call census correctly returns nothing. Handler 2 never writes r0, so the context is passed to the native routine unchanged; 10 of 12 sampled native routines read r0 before writing it, and none read r2, so r0 is the argument and the table base left in r2 is incidental. The native table has 266 entries, bounded below by the one-byte index (256 values must all be in range) and above by the primary table base at 0x080554C0; a prior 283-entry claim reaches 0x08055504, inside the primary table, and is refuted. No native routine is reconstructed and no native index is named."
     }
   ]
 }

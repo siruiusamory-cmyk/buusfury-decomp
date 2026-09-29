@@ -234,7 +234,7 @@ Exit codes:
 | code | meaning |
 | --- | --- |
 | `0` | a verdict was produced, or the requested check passed (`--plan` and `--verify-*` always exit 0 on success because they execute nothing failing) |
-| `1` | no verdict could be obtained, or a check failed. **`--json` does not change this**: a blocked probe exits non-zero with or without `--json` |
+| `1` | no verdict could be obtained, or a check failed. **`--json` does not change this**: a blocked probe exits non-zero with or without `--json`. An identified-but-unlicensed toolchain is a blocked probe, not a ready one, so the default report exits 1 when `ads12_licensed` is false |
 | `2` | usage error |
 
 `--matrix` exits 0 **only if at least one configuration actually compared
@@ -498,35 +498,85 @@ must not be read as one.
 
 ## 13. Toolchain preflight
 
-**Re-checked 2026-09-29 for the ADS execution pass, after ADS 1.2 was expected to
-be installed. It is still absent.** The second preflight is independent of the
-first and reaches the same result by six checks, none of which may invent a path:
+### Final state, 2026-09-29: INSTALLED BUT NOT LICENSED
 
-1. `ADS12_ROOT` is unset in the process environment, and empty for both the User
-   and the Machine scopes in the registry.
-2. `shutil.which` finds none of `armcc`, `armcpp`, `tcc`, `tcpp`, `armasm`,
-   `armlink`, `fromelf`, `armsd`, `axd`.
-3. None of the plausible install roots exists (`C:\Program Files\ARM`,
-   `C:\Program Files (x86)\ARM`, `C:\ARM`, `C:\ADS`, `C:\ADS12`, `C:\Keil`,
-   `C:\Dev\ADS`, `C:\Tools\ADS`, and the `ADSv1_2` / `RVCT` variants).
-4. No registry uninstall entry and no vendor key matches ARM / ADS / Developer
-   Suite / RVCT / RealView / Keil. A search for the ARM-specific file names at
-   depth 5 under `Program Files`, `Program Files (x86)`, `C:\Dev`, `C:\Tools`,
-   `Downloads`, `Desktop`, `Documents` and `C:\opt` returns nothing.
-5. No Start Menu shortcut matches ARM / ADS / AXD / Multi-ICE.
-6. Only **one** volume exists (`C:`, label `Acer`, 475 GB), and a search for an
-   unextracted installer or archive (`*ADS*`, `*ARM*Developer*`, `*RVCT*`,
-   `*ads1*`, `*armcc*`, `*armasm*` and `.iso` variants) under `Downloads`,
-   `Desktop`, `Documents`, `C:\Dev`, `C:\Temp` and `%TEMP%` finds no such file.
+    ADS 1.2 Build 805, installed at C:\Program Files (x86)\ARM\ADSv1_2
 
-The harness was then run in that state and behaved correctly: `--plan` reported
-`BLOCKED [ADS12_UNAVAILABLE]` with every required tool `MISSING`, and
-`--matrix --json` reported `result: COMPILER PROBE: BLOCKED - ADS12_UNAVAILABLE`,
-`code: ADS12_UNAVAILABLE`, `comparisons_run: 0`, `conclusion: UNTESTED`,
-`no_compiler_result_claimed: true`, `promoted_claims: []` and exit 1. No compiler
-result was produced or claimed, and neither assumption could be exercised.
+All seven required tools are present in `...\ADSv1_2\Bin\`: `tcpp`, `tcc`,
+`armcc`, `armcpp`, `armasm`, `armlink`, `fromelf`. The installation directory was
+added to the machine `PATH`, so the harness finds the toolchain with or without
+`ADS12_ROOT`.
 
-### What the first preflight found
+Real banners, captured verbatim (this is what `BANNER_ASSUMPTION` was guessing
+at, and it resolves the guess):
+
+    tcpp      Thumb C++ Compiler, ADS1.2 [Build 805]
+    tcc       Thumb C Compiler, ADS1.2 [Build 805]
+    armcc     ARM C Compiler, ADS1.2 [Build 805]
+    armcpp    ARM C++ Compiler, ADS1.2 [Build 805]
+    armasm    ARM/Thumb Macro Assembler, ADS1.2 [Build 805]
+    armlink   ARM Linker, ADS1.2 [Build 805]
+    fromelf   ARM FromELF, ADS1.2 [Build 805]
+
+Two things follow. First, `tcpp` really is the **Thumb C++ Compiler**, which
+upgrades the section 2 inference from `INFERRED` to `CONFIRMED` for this
+installation. Second, the Thumb drivers carry **no `ARM` prefix**; the
+precautionary markers added earlier guessed "ARM Thumb C++ Compiler" and would
+have missed the real banner. The installation was identified only because
+`ADS1.2` was also in the marker list. The observed wording is now in the list and
+pinned by a test.
+
+### The blocker: FLEXlm refuses every build tool
+
+A bare invocation does **not** reveal this: ADS prints its banner and usage text
+before the licence check, so an unlicensed toolchain identifies perfectly and
+then fails on first use. Asking `tcpp` to compile one line gives:
+
+    tcpp     Serious error: C3397E: Cannot obtain license for compiler with
+             license version >= 1.2: No such feature exists    (Feature: compiler)
+    armasm   Error: A1439E: Cannot obtain license for "armasm" ... No such feature exists
+    armlink  Fatal error: L6579E: Cannot obtain license for armlink ...
+             License does not match configuration file
+
+The harness now detects this class by its own signatures and reports
+`ADS12_LICENSE_UNAVAILABLE`, which is a **different blocker from
+`ADS12_UNAVAILABLE`**: one sends the operator to a licence file, the other sends
+them looking for an installation that is already there.
+
+### Licence inventory: no included licence covers the required build tools
+
+Every file in the installation (2,822 files) and in the installer media (1,189
+files) was scanned for FLEXlm content, not merely for licence-like names.
+Exactly **two** files in the installation are FLEXlm licence files, plus their
+byte-identical copies on the media, and all of them contain **one** feature:
+
+| file | features |
+| --- | --- |
+| `...\ADSv1_2\license.dat` | `Win32_CWIDE_Unlimited` (vendor `metrowks`) |
+| `...\ADSv1_2\licenses\license.dat` | `Win32_CWIDE_Unlimited` (vendor `metrowks`) |
+| `<media>\license.dat` (same bytes) | `Win32_CWIDE_Unlimited` (vendor `metrowks`) |
+
+`Win32_CWIDE_Unlimited` is the **Metrowerks CodeWarrior IDE** licence that
+shipped alongside ADS. It licenses the bundled IDE, not ARM's tools. No file
+anywhere in the installation or the media contains a `compiler`, `armasm` or
+`armlink` feature, and `C:\ADS12_INSTALL` does not exist.
+
+No `ARMLMD_LICENSE_FILE`, `LM_LICENSE_FILE` or `ARM_LICENSE_FILE` is set in the
+process, user or machine scope, so ADS falls back to its default search path,
+which its own error message names: `...\ADSv1_2\licenses\license.dat`. That is
+the active licence, and it is the one-feature file above.
+
+**NO INCLUDED LICENSE COVERS THE REQUIRED BUILD TOOLS.**
+
+A live check confirms it rather than inferring it: `tcpp` exits 1 with the
+`C3397E` refusal and produces no object file.
+
+### What the earlier preflights found
+
+The two preflights that preceded the installation are retained below. The first
+established absence by six checks; the second repeated it independently after
+ADS was believed to have been installed, and was correct at the time it ran. The
+installation then appeared, which is why the state above supersedes both.
 
 The earlier preflight established the same absence, and its detail is retained
 below because it is the baseline this second pass confirms rather than replaces.

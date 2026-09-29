@@ -572,17 +572,32 @@ def cmd_compiler_probe(args) -> int:
     # no verdict was obtained and the documented contract says so.
     manifest = _cp.derive_manifest(data)
     tools = _cp.discover_ads(args.ads12_root, compiler_id=args.frontend)
+    # An identified toolchain is not a usable one. Ask it to compile something
+    # trivial before calling the probe ready: "a toolchain was found" is a proxy
+    # for "a verdict is obtainable", and a licence refusal makes them differ.
+    licensed: bool | None = None
+    licence_evidence: str | None = None
+    if tools is not None:
+        licensed, licence_evidence = _cp.licence_status(
+            tools, _cp.PROBE_WORKSPACE / "licence-check"
+        )
+    usable = tools is not None and licensed
+    if tools is None:
+        result = _cp.blocked_result(args.ads12_root)["result"]
+    elif not licensed:
+        result = f"COMPILER PROBE: BLOCKED - {_cp.BLOCK_LICENSE}"
+    else:
+        result = "COMPILER PROBE: READY - run with --matrix to test configurations"
+
     report = {
         "canonical_rom_sha1": found.sha1,
         "ads12_available": tools is not None,
         "ads12_banner": tools.banner if tools else None,
+        "ads12_licensed": licensed,
+        "ads12_licence_evidence": licence_evidence,
         "probe_corpus": manifest["counts"],
-        "result": (
-            "COMPILER PROBE: READY - run with --matrix to test configurations"
-            if tools
-            else _cp.blocked_result(args.ads12_root)["result"]
-        ),
-        "no_compiler_result_claimed": tools is None,
+        "result": result,
+        "no_compiler_result_claimed": not usable,
         "translation_units": manifest["translation_units"],
         "probes": manifest["probes"],
         "controls": manifest["controls"],
@@ -594,13 +609,18 @@ def cmd_compiler_probe(args) -> int:
         print(json.dumps(report, indent=2))
         if report["consistency_problems"]:
             return EXIT_FAIL
-        return EXIT_OK if tools is not None else EXIT_FAIL
+        return EXIT_OK if usable else EXIT_FAIL
 
     print("=" * 72)
     print("COMPILER PROBE - DECOMP-COMPILER-PROBE-001")
     print("=" * 72)
     print(f"canonical ROM : {found.sha1}")
-    print(f"ADS 1.2       : {'AVAILABLE at ' + str(tools.root) if tools else 'ABSENT'}")
+    if tools is None:
+        print("ADS 1.2       : ABSENT")
+    else:
+        print(f"ADS 1.2       : {tools.banner}")
+        print(f"  installed at: {tools.root}")
+        print(f"  licensed    : {'yes' if licensed else 'NO - ' + str(licence_evidence)}")
     print()
     counts = manifest["counts"]
     print(

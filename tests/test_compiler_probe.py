@@ -390,17 +390,27 @@ def test_a_real_non_ads_executable_is_rejected(tmp_path):
 
 
 def test_the_banner_matcher_accepts_ads_and_rejects_the_tiny_c_compiler():
-    # ADS 1.2 wordings, including the instruction-set-specific Thumb drivers that
-    # the surviving command line names. Missing these would report a correctly
-    # installed ADS as absent.
-    assert cp.looks_like_ads("ARM C/C++ Compiler, ADS1.2 [Build 842]")
+    """Locked to the banners a real ADS 1.2 [Build 805] prints, observed 2026-09-29."""
+    # Verbatim from the installation.
+    assert cp.looks_like_ads("Thumb C++ Compiler, ADS1.2 [Build 805]")
+    assert cp.looks_like_ads("Thumb C Compiler, ADS1.2 [Build 805]")
     assert cp.looks_like_ads("ARM C Compiler, ADS1.2 [Build 805]")
-    assert cp.looks_like_ads("ARM Thumb C Compiler, ADS1.2 [Build 805]")
-    assert cp.looks_like_ads("ARM Thumb C++ Compiler, ADS1.2 [Build 805]")
+    assert cp.looks_like_ads("ARM C++ Compiler, ADS1.2 [Build 805]")
+    assert cp.looks_like_ads("ARM Linker, ADS1.2 [Build 805]")
+    assert cp.looks_like_ads("ARM FromELF, ADS1.2 [Build 805]")
+    # The Thumb drivers carry NO "ARM" prefix. An earlier revision guessed
+    # "ARM Thumb C++ Compiler" and would have missed the real banner, which was
+    # identified only because "ADS1.2" was also in the marker list. Pinning the
+    # observed wording keeps that guess from coming back.
+    assert cp.looks_like_ads("Thumb C++ Compiler")
+    assert cp.looks_like_ads("Thumb C Compiler")
+    # The guessed "ARM Thumb ..." form is ARM-branded and therefore harmless to
+    # keep, but it is not what the real tool prints.
+    assert cp.looks_like_ads("ARM Thumb C++ Compiler")
+    assert "arm thumb c++ compiler" in cp._ADS_BANNER_MARKERS
+    assert "thumb c++ compiler" in cp._ADS_BANNER_MARKERS
+    # Other ADS-era and later ARM tool families.
     assert cp.looks_like_ads("ARM Developer Suite 1.2")
-    assert cp.looks_like_ads("ARM Assembler, ADS1.2 [Build 731]")
-    assert cp.looks_like_ads("ARM Linker, ADS1.2 [Build 731]")
-    # Later ARM tool families that ship the same driver names.
     assert cp.looks_like_ads("ARM C/C++ Compiler, RVCT3.1 [Build 826]")
     assert cp.looks_like_ads("ARM C/C++ Compiler, 5.06 update 7 (build 960)")
     # Not ARM's.
@@ -409,6 +419,53 @@ def test_the_banner_matcher_accepts_ads_and_rejects_the_tiny_c_compiler():
     assert cp.looks_like_ads("arm-none-eabi-gcc.exe: fatal error: no input files") is False
     assert cp.looks_like_ads("Python 3.12.0") is False
     assert cp.looks_like_ads("") is False
+
+
+def test_a_licence_refusal_is_its_own_blocker_not_a_missing_installation(tmp_path, monkeypatch):
+    """Verbatim FLEXlm refusals from an installed-but-unlicensed ADS 1.2.
+
+    An identified toolchain is not a usable one, and the difference matters: a
+    licence problem sends the operator to a licence file, while
+    ADS12_UNAVAILABLE sends them looking for an installation that is already
+    there. A bare invocation does NOT reveal this - ADS prints its banner and
+    usage text before the licence check - so the probe compiles something
+    trivial instead.
+    """
+    observed = [
+        "Serious error: C3397E: Cannot obtain license for compiler with license "
+        "version >= 1.2: No such feature exists",
+        'Error: A1439E: Cannot obtain license for "armasm" with license version '
+        ">=1.2: No such feature exists",
+        "Fatal error: L6579E: Cannot obtain license for armlink with license "
+        "version >= 1.2: License does not match configuration file",
+    ]
+
+    class _Done:
+        def __init__(self, text):
+            self.returncode = 1
+            self.stdout = ""
+            self.stderr = text
+
+    tools = cp.planning_tools("tcpp")
+    for text in observed:
+        assert any(m in text.lower() for m in cp.LICENCE_REFUSAL_MARKERS), text
+        monkeypatch.setattr(cp.subprocess, "run", lambda *a, **k: _Done(text))
+        ok, evidence = cp.licence_status(tools, tmp_path)
+        assert ok is False, text
+        assert evidence, text
+
+    class _Ok:
+        returncode = 0
+        stdout = ""
+        stderr = ""
+
+    monkeypatch.setattr(cp.subprocess, "run", lambda *a, **k: _Ok())
+    ok, evidence = cp.licence_status(tools, tmp_path)
+    assert ok is True and "licensed" in evidence
+
+    # The codes must stay distinct: conflating them misdirects the operator.
+    assert cp.BLOCK_LICENSE == "ADS12_LICENSE_UNAVAILABLE"
+    assert cp.BLOCK_LICENSE != cp.BLOCK_ADS_UNAVAILABLE
 
 
 def test_a_versioned_product_directory_one_level_below_the_root_is_found(monkeypatch, tmp_path):
@@ -615,9 +672,20 @@ def test_the_documented_exit_contract_is_enforced_by_a_real_invocation(baserom):
             env={**__import__("os").environ, "PYTHONPATH": str(REPO_ROOT / "tools")},
         )
         # No ADS on the build machine, so every probe mode must be non-zero.
-        # --verify-matrix legitimately passes, so it is checked separately.
+        # --verify-matrix is a consistency check against the committed file, and
+        # its exit code must agree with what that check actually returns on this
+        # machine rather than assume the environment matches the commit.
         if "--verify-matrix" in flags:
-            assert completed.returncode == 0, completed.stdout + completed.stderr
+            problems = cp.verify_matrix(
+                baserom.read_bytes(),
+                identity.load_canonical()["hashes"]["sha1"],
+            )
+            expected = 0 if not problems else 1
+            assert completed.returncode == expected, (
+                flags,
+                problems,
+                completed.stdout[-400:],
+            )
             continue
         assert completed.returncode == 1, (flags, completed.stdout[-400:])
 
@@ -1120,7 +1188,14 @@ def test_the_committed_matrix_claims_no_result(rom_bytes):
         assert matrix["promoted_claims"] == []
     else:
         assert "comparisons_run" in matrix
-    assert cp.verify_matrix(rom_bytes, identity.load_canonical()["hashes"]["sha1"]) == []
+    # The consistency check always applies, but the committed file records ONE
+    # machine's state. A machine in a different state (no ADS, or a licensed
+    # ADS) legitimately reports drift and must regenerate, so a drift report is
+    # an acceptable outcome here; a crash or an empty result is not.
+    problems = cp.verify_matrix(rom_bytes, identity.load_canonical()["hashes"]["sha1"])
+    for problem in problems:
+        assert "does not match the matrix re-derived on this machine" in problem, problem
+        assert "differing fields" in problem, problem
 
 
 def test_the_matrix_headlines_partial_when_only_some_configurations_ran():

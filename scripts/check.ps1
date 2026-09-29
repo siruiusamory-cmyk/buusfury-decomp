@@ -189,11 +189,19 @@ try {
 } catch {
     $matrix = $null
 }
-if ($blockerCode -eq 'ADS12_UNAVAILABLE' -and $comparisons -eq 0) {
+if ($null -ne $blockerCode -and $comparisons -eq 0) {
+    # Any blocker code is BLOCKED, not FAIL. The distinction between "ADS not
+    # installed" and "ADS installed but unlicensed" changes the MESSAGE, not
+    # whether this gate fails: both are environment problems this repository
+    # cannot fix. The code is printed so the reason is unambiguous.
     Write-Host ""
     Write-Host "      BLOCKED  probe prepared; no compiler result is claimed" -ForegroundColor Yellow
-    Write-Host "               reason: ADS12_UNAVAILABLE (no identified ARM Developer Suite 1.2)"
-    $notes.Add('compiler probe BLOCKED on ADS 1.2; preparation complete, see docs/COMPILER_PROBE.md')
+    Write-Host "               reason: $blockerCode"
+    if ($blockerCode -eq 'ADS12_LICENSE_UNAVAILABLE') {
+        Write-Host "               ADS 1.2 is installed and identified, but FLEXlm refuses"
+        Write-Host "               the tools (no compiler/armasm/armlink feature present)."
+    }
+    $notes.Add("compiler probe BLOCKED ($blockerCode); see docs/COMPILER_PROBE.md")
 } elseif ($null -ne $comparisons -and $comparisons -gt 0) {
     # Tested BEFORE the blocker branch's consequence: a document that both
     # compared bytes and names a blocker code must report the comparison, never

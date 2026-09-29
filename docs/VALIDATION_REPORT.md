@@ -564,3 +564,41 @@ coalescing, though the field's name remains unknown and consistency is not proof
 
 Full suite 268 passed. `scripts\check.cmd` still **OVERALL PASS**, exit 0, with
 gates 5 and 6 `BLOCKED`.
+
+## ADS 1.2 installation and licence audit, 2026-09-29
+
+ADS 1.2 Build 805 was installed at `C:\Program Files (x86)\ARM\ADSv1_2`, with all
+seven required tools present in `Bin\` and the directory added to the machine
+`PATH`. Real banners were captured, which validates `BANNER_ASSUMPTION` and
+**corrects** it: the Thumb drivers print `Thumb C++ Compiler` / `Thumb C Compiler`
+with **no `ARM` prefix**, whereas the precautionary markers had guessed
+"ARM Thumb C++ Compiler". The installation was identified only because `ADS1.2`
+was also in the marker list. That `tcpp` is the *Thumb C++ Compiler* upgrades the
+section 2 inference from `INFERRED` to `CONFIRMED` for this installation.
+
+**The tools cannot run.** FLEXlm refuses every build tool: `tcpp` gives
+`C3397E: Cannot obtain license for compiler ... No such feature exists`, `armasm`
+gives `A1439E` for feature `armasm`, and `armlink` gives `L6579E ... License does
+not match configuration file`. A bare invocation does not show this, because ADS
+prints its banner before the licence check; asking `tcpp` to compile one line
+does, and it produces no object file.
+
+A content-based scan of the installation (2,822 files) and the installer media
+(1,189 files) found exactly two FLEXlm licence files plus their identical media
+copies, all containing a single feature: `Win32_CWIDE_Unlimited`, vendor
+`metrowks` - the bundled Metrowerks CodeWarrior IDE licence. **No file anywhere
+contains a `compiler`, `armasm` or `armlink` feature**, and `C:\ADS12_INSTALL`
+does not exist. No `ARMLMD_LICENSE_FILE`, `LM_LICENSE_FILE` or
+`ARM_LICENSE_FILE` is set at any scope, so ADS falls back to its default path,
+`...\ADSv1_2\licenses\license.dat`, which is that one-feature file.
+
+    NO INCLUDED LICENSE COVERS THE REQUIRED BUILD TOOLS
+
+Two harness defects were exposed by this state, which is distinct from "not
+installed", and both are fixed: the CLI's default report judged the probe ready
+from the mere presence of an identified toolchain, so it exited 0 while nothing
+was usable; and gate 6 branched on the literal `ADS12_UNAVAILABLE`, so a licence
+blocker would have failed the gate rather than being reported. Both now key on
+the blocker code itself, and the new `ADS12_LICENSE_UNAVAILABLE` code carries the
+FLEXlm evidence. Full suite 269 passed; `scripts\check.cmd` **OVERALL PASS**,
+exit 0, gate 6 `BLOCKED (ADS12_LICENSE_UNAVAILABLE)`.

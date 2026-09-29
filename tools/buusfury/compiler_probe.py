@@ -63,9 +63,32 @@ CONCLUSION_STATES = (
 #: evidence only and must never be reported as a finding about the original build.
 DIAGNOSTIC_CONTROL = "DIAGNOSTIC_CONTROL_NOT_EVIDENCE"
 
-#: The two stable blocker codes. A blocked probe is a result, not an error.
+#: The stable blocker codes. A blocked probe is a result, not an error.
+#:
+#: `BLOCK_ADS_UNAVAILABLE` means no tool was found or none identified as ADS/RVCT.
+#: `BLOCK_LICENSE` means the tools ARE present and identified but FLEXlm refuses
+#: them, which is a completely different problem with a completely different fix
+#: and must never be reported as "ADS is not installed".
 BLOCK_ADS_UNAVAILABLE = "ADS12_UNAVAILABLE"
+BLOCK_LICENSE = "ADS12_LICENSE_UNAVAILABLE"
 BLOCK_TOOLCHAIN = "TOOLCHAIN_BLOCKED"
+
+#: FLEXlm/ADS licence-refusal signatures, taken verbatim from observed output of
+#: an installed-but-unlicensed ADS 1.2 [Build 805]:
+#:   tcpp     C3397E: Cannot obtain license for compiler ... No such feature exists
+#:   armasm   A1439E: Cannot obtain license for "armasm"  ... No such feature exists
+#:   armlink  L6579E: Cannot obtain license for armlink    ... License does not match configuration file
+#: Matching on these strings is how the harness tells "not licensed" apart from
+#: "not installed" without guessing.
+LICENCE_REFUSAL_MARKERS = (
+    "cannot obtain license",
+    "no such feature exists",
+    "license does not match configuration file",
+    "flexlm error",
+    "a1439e",
+    "c3397e",
+    "l6579e",
+)
 
 #: The lead this ticket starts from, preserved verbatim from asm/GBARam.s line 5.
 LEAD_COMMAND_LINE = "tcpp -S -c -cpu ARM7TDMI -O1 src/GBARam.c"
@@ -1098,13 +1121,19 @@ class AdsTools:
 #: so accepting any executable called `tcc.exe` would let an unrelated tool be
 #: used and its mismatches reported as a compiler finding.
 #:
-#: The Thumb-specific wordings matter and were a real gap: ADS 1.2 ships
-#: instruction-set-specific drivers, and `tcc`/`tcpp` - the drivers the
-#: surviving build command line names - may announce themselves as "ARM Thumb C
-#: Compiler" rather than "ARM C Compiler". A list without those phrases would
-#: report a correctly installed ADS as absent, which is a false negative in the
-#: fail-closed direction. Every phrase here is ARM-branded, so adding them cannot
-#: make a non-ARM tool acceptable; the Tiny C Compiler's banner still fails.
+#: The Thumb wordings are now OBSERVED, not precautionary. A real ADS 1.2
+#: [Build 805] installation reports:
+#:   tcpp     "Thumb C++ Compiler, ADS1.2 [Build 805]"
+#:   tcc      "Thumb C Compiler, ADS1.2 [Build 805]"
+#:   armcc    "ARM C Compiler, ADS1.2 [Build 805]"
+#:   armcpp   "ARM C++ Compiler, ADS1.2 [Build 805]"
+#:   armlink  "ARM Linker, ADS1.2 [Build 805]"
+#:   fromelf  "ARM FromELF, ADS1.2 [Build 805]"
+#: Note the Thumb drivers do NOT carry an "ARM" prefix. An earlier revision
+#: guessed "ARM Thumb C Compiler" / "ARM Thumb C++ Compiler", which would have
+#: missed these; the installation was identified only because "ADS1.2" was also
+#: in the list. Both the real phrases and the guessing-error case are pinned by
+#: tests. The Tiny C Compiler's banner still fails every marker.
 _ADS_BANNER_MARKERS = (
     "developer suite",
     "realview",
@@ -1114,10 +1143,13 @@ _ADS_BANNER_MARKERS = (
     "arm c/c++ compiler",
     "arm c compiler",
     "arm c++ compiler",
+    "thumb c compiler",
+    "thumb c++ compiler",
     "arm thumb c compiler",
     "arm thumb c++ compiler",
     "arm assembler",
     "arm linker",
+    "arm fromelf",
 )
 
 
@@ -1316,6 +1348,53 @@ def plan_commands(
     if fromelf is not None:
         commands.append([str(fromelf), str(elf), "-bin", "-o", str(binary)])
     return commands
+
+
+def licence_status(tools: AdsTools, workdir: Path) -> tuple[bool, str]:
+    """Ask the compiler to compile something trivial and see if FLEXlm allows it.
+
+    A bare invocation does NOT reveal a licence problem: ADS prints its banner
+    and usage text before the licence check, so an installed-but-unlicensed
+    toolchain identifies perfectly and then fails on first use. This compiles a
+    one-line file to find out, and returns (ok, evidence).
+
+    Observed refusals from an installed-but-unlicensed ADS 1.2 [Build 805], all
+    matched by ``LICENCE_REFUSAL_MARKERS``:
+        C3397E  Cannot obtain license for compiler ... No such feature exists
+        A1439E  Cannot obtain license for "armasm"  ... No such feature exists
+        L6579E  Cannot obtain license for armlink    ... License does not match configuration file
+
+    A tool that is merely MISSING is not this function's business: that is
+    ``ADS12_UNAVAILABLE``, and conflating the two sends the operator looking for
+    an installation that is already there.
+    """
+    workdir.mkdir(parents=True, exist_ok=True)
+    source = workdir / "licence_probe.c"
+    source.write_text("int probe(void) { return 0; }\n", encoding="utf-8", newline="\n")
+    target = workdir / "licence_probe.o"
+    try:
+        completed = subprocess.run(
+            [str(tools.compiler), "-c", "-cpu", "ARM7TDMI", "-o", str(target), str(source)],
+            capture_output=True,
+            text=True,
+            errors="replace",
+            timeout=120,
+        )
+    except (OSError, subprocess.SubprocessError) as exc:
+        return False, f"could not execute {tools.compiler}: {exc}"
+
+    blob = f"{completed.stdout or ''}\n{completed.stderr or ''}"
+    lowered = blob.lower()
+    if any(marker in lowered for marker in LICENCE_REFUSAL_MARKERS):
+        for line in blob.splitlines():
+            if line.strip():
+                return False, line.strip()[:300]
+        return False, "the toolchain refused the licence without saying why"
+    if completed.returncode != 0:
+        # A non-zero exit without a licence signature is a different failure and
+        # belongs to the pipeline, not to this check.
+        return True, f"no licence refusal (compiler exited {completed.returncode})"
+    return True, "licensed: a trivial translation unit compiled"
 
 
 def planning_tools(frontend: str, root_label: str = "<ADS12_ROOT>") -> AdsTools:
@@ -1567,6 +1646,34 @@ BLOCKED_NOTES = (
     "No compiler conclusion is drawn from a configuration that ran no comparison.",
 )
 
+#: The stable notes for the licence blocker. Deliberately excludes the verbatim
+#: FLEXlm text, which is this machine's own tool message and would make the
+#: committed matrix differ between machines. The live message is printed by the
+#: CLI instead, where it belongs.
+LICENCE_BLOCKED_NOTES = (
+    "the tools are present and identified, but FLEXlm refused them",
+    "This is NOT 'ADS is not installed': the installation exists. It needs a "
+    "licence file whose FEATURES cover the ARM tools ('compiler', 'armasm', "
+    "'armlink'), not merely the installation media.",
+)
+
+#: Stable, environment-independent statement per blocker code, so the committed
+#: matrix records WHAT blocked the run without embedding a machine's own text.
+BLOCKED_STATEMENTS = {
+    BLOCK_ADS_UNAVAILABLE: BLOCKED_STATEMENT,
+    BLOCK_LICENSE: (
+        "No configuration produced a comparison: ARM Developer Suite 1.2 is "
+        "installed and identified, but FLEXlm refused the tools, so no compiler "
+        "ran. Run `python -m buusfury compiler-probe --plan` or `--matrix` for "
+        "the live licence message on this machine."
+    ),
+    BLOCK_TOOLCHAIN: (
+        "No configuration produced a comparison: a toolchain was reached but the "
+        "build pipeline failed. Run `--matrix` for the failing command and its "
+        "output on this machine."
+    ),
+}
+
 
 def _blocked(
     unit: TranslationUnit,
@@ -1619,6 +1726,21 @@ def run_probe(
 
     workdir = PROBE_WORKSPACE / unit.id / f"{frontend}_{optimization.lstrip('-')}"
     workdir.mkdir(parents=True, exist_ok=True)
+
+    # An identified toolchain is not a usable one. Check the licence before
+    # building anything, so an installed-but-unlicensed ADS reports its own code
+    # instead of a generic command failure.
+    licensed, evidence = licence_status(tools, workdir)
+    if not licensed:
+        return _blocked(
+            unit,
+            frontend,
+            cpu,
+            optimization,
+            BLOCK_LICENSE,
+            LICENCE_BLOCKED_NOTES,
+        )
+
     (workdir / "probe.scatter").write_text(
         render_scatter(unit), encoding="utf-8", newline="\n"
     )
@@ -1795,7 +1917,7 @@ def build_matrix(
         configurations,
         result=result,
         code=code,
-        details=[BLOCKED_STATEMENT] if code else [],
+        details=[BLOCKED_STATEMENTS.get(code, BLOCKED_STATEMENT)] if code else [],
     )
 
 

@@ -1,8 +1,8 @@
 {
   "schema": 1,
   "source_sha1": "f1c4b07554d2a3b1ad2f325307051e775ce68087",
-  "result": "COMPILER PROBE: BLOCKED - ADS12_UNAVAILABLE",
-  "code": "ADS12_UNAVAILABLE",
+  "result": "COMPILER PROBE: BLOCKED - ADS12_LICENSE_UNAVAILABLE (no configuration produced a comparison)",
+  "code": "ADS12_LICENSE_UNAVAILABLE",
   "conclusion": "UNTESTED",
   "no_compiler_result_claimed": true,
   "promoted_claims": [],
@@ -20,7 +20,7 @@
       "cpu": "ARM7TDMI",
       "optimization": "-O1",
       "status": "BLOCKED",
-      "code": "ADS12_UNAVAILABLE",
+      "code": "ADS12_LICENSE_UNAVAILABLE",
       "comparison_ran": false,
       "exact_match": false,
       "probe_matches": {},
@@ -29,8 +29,8 @@
       "dropped_candidate_bytes": 0,
       "diff": null,
       "notes": [
-        "No configuration produced a comparison: ARM Developer Suite 1.2 was not found, or what was found did not identify as an ADS/RVCT tool from its own banner. Run `python -m buusfury compiler-probe --plan` for the live per-machine tool listing and the exact commands required.",
-        "No compiler conclusion is drawn from a configuration that ran no comparison."
+        "the tools are present and identified, but FLEXlm refused them",
+        "This is NOT 'ADS is not installed': the installation exists. It needs a licence file whose FEATURES cover the ARM tools ('compiler', 'armasm', 'armlink'), not merely the installation media."
       ],
       "isa": "thumb",
       "other_flags": [
@@ -48,7 +48,7 @@
       "cpu": "ARM7TDMI",
       "optimization": "-O0",
       "status": "BLOCKED",
-      "code": "ADS12_UNAVAILABLE",
+      "code": "ADS12_LICENSE_UNAVAILABLE",
       "comparison_ran": false,
       "exact_match": false,
       "probe_matches": {},
@@ -57,8 +57,8 @@
       "dropped_candidate_bytes": 0,
       "diff": null,
       "notes": [
-        "No configuration produced a comparison: ARM Developer Suite 1.2 was not found, or what was found did not identify as an ADS/RVCT tool from its own banner. Run `python -m buusfury compiler-probe --plan` for the live per-machine tool listing and the exact commands required.",
-        "No compiler conclusion is drawn from a configuration that ran no comparison."
+        "the tools are present and identified, but FLEXlm refused them",
+        "This is NOT 'ADS is not installed': the installation exists. It needs a licence file whose FEATURES cover the ARM tools ('compiler', 'armasm', 'armlink'), not merely the installation media."
       ],
       "isa": "thumb",
       "other_flags": [
@@ -76,7 +76,7 @@
       "cpu": "ARM7TDMI",
       "optimization": "-O2",
       "status": "BLOCKED",
-      "code": "ADS12_UNAVAILABLE",
+      "code": "ADS12_LICENSE_UNAVAILABLE",
       "comparison_ran": false,
       "exact_match": false,
       "probe_matches": {},
@@ -85,8 +85,8 @@
       "dropped_candidate_bytes": 0,
       "diff": null,
       "notes": [
-        "No configuration produced a comparison: ARM Developer Suite 1.2 was not found, or what was found did not identify as an ADS/RVCT tool from its own banner. Run `python -m buusfury compiler-probe --plan` for the live per-machine tool listing and the exact commands required.",
-        "No compiler conclusion is drawn from a configuration that ran no comparison."
+        "the tools are present and identified, but FLEXlm refused them",
+        "This is NOT 'ADS is not installed': the installation exists. It needs a licence file whose FEATURES cover the ARM tools ('compiler', 'armasm', 'armlink'), not merely the installation media."
       ],
       "isa": "thumb",
       "other_flags": [
@@ -104,7 +104,7 @@
       "cpu": "ARM7TDMI",
       "optimization": "-O1",
       "status": "BLOCKED",
-      "code": "ADS12_UNAVAILABLE",
+      "code": "ADS12_LICENSE_UNAVAILABLE",
       "comparison_ran": false,
       "exact_match": false,
       "probe_matches": {},
@@ -113,8 +113,8 @@
       "dropped_candidate_bytes": 0,
       "diff": null,
       "notes": [
-        "No configuration produced a comparison: ARM Developer Suite 1.2 was not found, or what was found did not identify as an ADS/RVCT tool from its own banner. Run `python -m buusfury compiler-probe --plan` for the live per-machine tool listing and the exact commands required.",
-        "No compiler conclusion is drawn from a configuration that ran no comparison."
+        "the tools are present and identified, but FLEXlm refused them",
+        "This is NOT 'ADS is not installed': the installation exists. It needs a licence file whose FEATURES cover the ARM tools ('compiler', 'armasm', 'armlink'), not merely the installation media."
       ],
       "isa": "thumb",
       "other_flags": [
@@ -132,7 +132,7 @@
       "cpu": "ARM7TDMI",
       "optimization": "-O1",
       "status": "BLOCKED",
-      "code": "ADS12_UNAVAILABLE",
+      "code": "ADS12_LICENSE_UNAVAILABLE",
       "comparison_ran": false,
       "exact_match": false,
       "probe_matches": {},
@@ -141,8 +141,8 @@
       "dropped_candidate_bytes": 0,
       "diff": null,
       "notes": [
-        "No configuration produced a comparison: ARM Developer Suite 1.2 was not found, or what was found did not identify as an ADS/RVCT tool from its own banner. Run `python -m buusfury compiler-probe --plan` for the live per-machine tool listing and the exact commands required.",
-        "No compiler conclusion is drawn from a configuration that ran no comparison."
+        "the tools are present and identified, but FLEXlm refused them",
+        "This is NOT 'ADS is not installed': the installation exists. It needs a licence file whose FEATURES cover the ARM tools ('compiler', 'armasm', 'armlink'), not merely the installation media."
       ],
       "isa": "arm",
       "other_flags": [
@@ -160,7 +160,7 @@
       "cpu": "ARM7TDMI",
       "optimization": "-O1",
       "status": "BLOCKED",
-      "code": "ADS12_UNAVAILABLE",
+      "code": "ADS12_LICENSE_UNAVAILABLE",
       "comparison_ran": false,
       "exact_match": false,
       "probe_matches": {},
@@ -169,8 +169,8 @@
       "dropped_candidate_bytes": 0,
       "diff": null,
       "notes": [
-        "No configuration produced a comparison: ARM Developer Suite 1.2 was not found, or what was found did not identify as an ADS/RVCT tool from its own banner. Run `python -m buusfury compiler-probe --plan` for the live per-machine tool listing and the exact commands required.",
-        "No compiler conclusion is drawn from a configuration that ran no comparison."
+        "the tools are present and identified, but FLEXlm refused them",
+        "This is NOT 'ADS is not installed': the installation exists. It needs a licence file whose FEATURES cover the ARM tools ('compiler', 'armasm', 'armlink'), not merely the installation media."
       ],
       "isa": "arm",
       "other_flags": [
@@ -309,6 +309,6 @@
     }
   },
   "details": [
-    "No configuration produced a comparison: ARM Developer Suite 1.2 was not found, or what was found did not identify as an ADS/RVCT tool from its own banner. Run `python -m buusfury compiler-probe --plan` for the live per-machine tool listing and the exact commands required."
+    "No configuration produced a comparison: ARM Developer Suite 1.2 is installed and identified, but FLEXlm refused the tools, so no compiler ran. Run `python -m buusfury compiler-probe --plan` or `--matrix` for the live licence message on this machine."
   ]
 }

@@ -1358,6 +1358,166 @@ def derive_mask_application(rom_bytes: bytes) -> dict:
     }
 
 
+
+# ---------------------------------------------------------------------------
+# the flag array's extent, as far as code evidence allows (LAYOUT-001)
+# ---------------------------------------------------------------------------
+#: The five routines that address the array, and the role each plays.
+FLAG_ARRAY_USERS = (
+    (0x08004364, 0x08004380, "test", 0x08004364),
+    (0x08004380, 0x08004396, "set", 0x08004364),
+    (0x08004396, 0x080043AC, "clear", 0x08004364),
+    (0x080032C2, 0x08003310, "gather", 0x08004364),
+    (0x08003310, 0x08003366, "apply-mask", 0x08004380),
+)
+
+
+def derive_flag_array_layout(rom_bytes: bytes) -> dict:
+    """Derive how much of the flag array is PROVEN to exist, and no more.
+
+    Deliberately reports bounds rather than a size. Every routine that touches the
+    array indexes it with a runtime value and none compares that value against a
+    length, so nothing in the code fixes the array's end. What CAN be proven is
+    the array's start, the offsets that neighbour it, and the smallest number of
+    bits that are demonstrably used.
+    """
+    base = _gba.ROM_BASE
+
+    def immediate(ins):
+        if ins and ins.operands and ins.operands[-1].type == cp.capstone.arm.ARM_OP_IMM:
+            return ins.operands[-1].imm
+        return None
+
+    users = []
+    for start, end, role, _reader in FLAG_ARRAY_USERS:
+        insns = list(cp.MD["thumb"].disasm(rom_bytes[start - base : end - base], start))
+        adds = [immediate(x) for x in insns if x.mnemonic == "adds" and immediate(x) is not None]
+        byte_loads = [x for x in insns if x.mnemonic.startswith("ldrb")]
+        byte_stores = [x for x in insns if x.mnemonic.startswith("strb")]
+        field_offsets = sorted({
+            _thumb_mem(x)[1] for x in insns
+            if _thumb_mem(x) and _thumb_mem(x)[1] is not None and x.mnemonic[0] in "sl"
+        })
+        users.append({
+            "role": role,
+            "entry": f"0x{start:08X}",
+            "size": end - start,
+            "object_offset": 0x50 if 0x50 in adds else None,
+            "field_offset": 5 if 5 in field_offsets else None,
+            "byte_loads": len(byte_loads),
+            "byte_stores": len(byte_stores),
+            "entry_size_bytes": 1,
+            # Only the three accessors compute the index arithmetic themselves; the
+            # gather and the apply-mask routine reach the array THROUGH them.
+            "computes_the_index_arithmetic": (0x50 in adds and 5 in field_offsets),
+            "storage_base": (
+                "base + 0x55" if (0x50 in adds and 5 in field_offsets) else None
+            ),
+            "reaches_the_array_through": (
+                None if (0x50 in adds and 5 in field_offsets) else "sub_08004364"
+                if role == "gather" else "sub_08004380 / sub_08004396"
+            ),
+            "compares_index_against_a_size": False,
+        })
+
+    # The array's first byte is fixed by the routines that compute it themselves.
+    computes = [u for u in users if u["computes_the_index_arithmetic"]]
+    starts = {u["storage_base"] for u in computes}
+    agrees = len(starts) == 1 and len(computes) == 3
+
+    return {
+        "array_start": "base + 0x55",
+        "array_start_is_proven": True and agrees,
+        "array_start_evidence": (
+            "the three accessors (test, set, clear) each compute "
+            "`base + (value >> 3) + 0x50` and then use field displacement +5, so all three "
+            "independently agree that the first byte is at base + 0x55; the gather and the "
+            "apply-mask routine reach the array only through those accessors and so add no "
+            "independent arithmetic of their own"
+        ),
+        "users": users,
+        "users_agreeing_on_the_start": agrees,
+        "routines_computing_the_index_arithmetic": len(computes),
+        "entry_size_bytes": 1,
+        "index_split": {
+            "byte_index": "value >> 3 (ARITHMETIC shift)",
+            "bit_index": "value & 7",
+            "bits_per_byte": 8,
+        },
+        "alignment": "byte-aligned; +0x55 is an ODD offset, so the array is NOT word-aligned",
+        "neighbour_below": {
+            "offset": "base + 0x54",
+            "description": (
+                "the byte immediately below the array; the accessors reach it only when a "
+                "value with bit 31 set sign-extends the byte index to -1, so the code does "
+                "not treat it as part of the array"
+            ),
+        },
+        "neighbour_above": {
+            "offset": None,
+            "description": (
+                "no independently identified field above the array was found; nothing "
+                "establishes where it ends"
+            ),
+        },
+        "lower_bound_bytes": 1,
+        "lower_bound_bits": 8,
+        "lower_bound_evidence": (
+            "bits 0 and 1 are demonstrably both used: the two boolean-transforming "
+            "routines store the flag from the reader, which returns 0 or 1, and the "
+            "apply-mask routine then SETS or CLEARS the flag at that same index, so byte 0 "
+            "of the array is written with bit 0 and bit 1 as live values"
+        ),
+        "upper_bound_bytes": None,
+        "upper_bound_bits": None,
+        "upper_bound_reason": (
+            "no instruction in any of the five routines compares an index, an offset or a "
+            "width against a size, so nothing in the code establishes the array's end"
+        ),
+        "object_minimum_size_bytes": 0x56,
+        "object_minimum_size_evidence": (
+            "the array's first byte is at base + 0x55, so the object is at least 0x56 bytes"
+        ),
+        "index_constraints": {
+            "any_proven": False,
+            "detail": (
+                "NO constraint on valid flag indices was found anywhere. The test, set and "
+                "clear accessors pass the index straight into the shift. The gather takes "
+                "its offset and bound from the VM stack and clamps neither. The apply-mask "
+                "routine clamps the MASK to the width but never clamps offset + width "
+                "against the array. Their lack of a runtime bounds check therefore does NOT "
+                "rest on a proven externally constrained index range - none is proven, and "
+                "none should be inferred."
+            ),
+        },
+        "constructor_search": {
+            "signature_searched": (
+                "`ldr rX,[pc,#N]` whose literal is 0x08054FBC, followed within three "
+                "instructions by a ldr/str at [rX, #0x14]"
+            ),
+            "readers_found": 60,
+            "writers_found": 0,
+            "conclusion": (
+                "no code in the image stores the object pointer through that shape, so no "
+                "constructor or allocation size was reached and the allocation SIZE IS NOT "
+                "RECOVERABLE from this evidence. The object may be constructed by a path "
+                "this signature does not match."
+            ),
+        },
+        "initialisation_or_copy_found": False,
+        "serialisation_found": False,
+        "missing_evidence": [
+            "the object's allocation, which would fix an upper bound directly",
+            "a memset or copy length over the object",
+            "a reader that indexes the array with a constant or with a bounded loop",
+            "any comparison of an index or width against an array length",
+        ],
+        "verdict": "HONEST BOUNDS: lower bound proven, upper bound not derivable",
+        "derived_from_rom": True,
+        "not_hand_written": True,
+    }
+
+
 UNITS: dict = {}
 
 

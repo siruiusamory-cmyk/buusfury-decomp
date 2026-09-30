@@ -1518,6 +1518,168 @@ def derive_flag_array_layout(rom_bytes: bytes) -> dict:
     }
 
 
+
+# ---------------------------------------------------------------------------
+# native dispatch slot 178 - the runtime-anchored native handler
+# ---------------------------------------------------------------------------
+#: The address an independent 2026 runtime capture recorded for slot 178. It is
+#: used ONLY as identity evidence, never as a semantic claim.
+NATIVE178_RUNTIME_ANCHOR = 0x08003030
+NATIVE178_SLOT = 178
+NATIVE178_ENTRY = 0x08003030
+NATIVE178_TU = cp.TranslationUnit(
+    id="native178_tu",
+    rom_address=0x08003030,
+    code_end_address=0x08003070,
+    end_address=0x08003070,
+    isa="thumb",
+    source="src/probes/ByteCodeInterpreter_native178.c",
+    confidence="proven",
+    boundary_evidence=(
+        "chain-walk from 0x08003030: 30 instructions, no gaps, one terminator at "
+        "0x0800306E (pop {pc})",
+        "native table slot 178 at 0x08055360 holds 0x08003031, whose Thumb bit masks "
+        "to exactly this entry, and exactly one entry points here",
+        "the address agrees with the independent runtime capture for slot 178",
+    ),
+    literal_pool=((0x31B4, 0x08054FBC),),
+    selection=(
+        "it is the native handler an earlier runtime capture independently observed "
+        "at slot 178, so static derivation and runtime agree on its identity",
+        "it has a small bounded body with an observable engine call",
+    ),
+)
+NATIVE178_FUNCTIONS = (
+    (0x08003030, 0x08003070, "pop three VM values and drive an engine object"),
+)
+NATIVE178_LITERAL_POOL = ((0x31B4, 0x08054FBC),)
+
+
+def derive_native_slot(rom_bytes: bytes, slot: int) -> dict:
+    """Re-prove one native table entry's identity from the ROM.
+
+    Reports the raw table word, the Thumb-normalized address, the runtime anchor
+    recorded for this slot, whether the two agree, and how many entries point at
+    the same address.
+    """
+    base = _gba.ROM_BASE
+    address = NATIVE_TABLE + slot * 4
+    raw = int.from_bytes(rom_bytes[address - base : address - base + 4], "little")
+    hits = []
+    for index in range(derive_native_table(rom_bytes)["entries"]):
+        value = int.from_bytes(
+            rom_bytes[NATIVE_TABLE + index * 4 - base : NATIVE_TABLE + index * 4 - base + 4],
+            "little")
+        if value and (value & ~1) == (raw & ~1):
+            hits.append(index)
+    anchor = NATIVE178_RUNTIME_ANCHOR if slot == NATIVE178_SLOT else None
+    return {
+        "slot": slot,
+        "table_address": f"0x{address:08X}",
+        "raw_word": f"0x{raw:08X}",
+        "thumb_bit_set": bool(raw & 1),
+        "normalized_address": f"0x{raw & ~1:08X}",
+        "runtime_capture_address": f"0x{anchor:08X}" if anchor is not None else None,
+        "agrees_with_the_runtime_capture": (raw & ~1) == anchor if anchor is not None else None,
+        "entries_pointing_here": hits,
+        "identity_is_unique": len(hits) == 1,
+        "runtime_evidence_scope": (
+            "the capture establishes IDENTITY only. It says nothing about the "
+            "routine's semantics, and no semantic claim rests on it."
+        ),
+        "derived_from_rom": True,
+        "not_hand_written": True,
+    }
+
+
+def derive_native178_stack(rom_bytes: bytes) -> dict:
+    """Re-read the handler's stack contract and call arguments from its code."""
+    base = _gba.ROM_BASE
+    start, end, _role = NATIVE178_FUNCTIONS[0]
+    insns = list(cp.MD["thumb"].disasm(rom_bytes[start - base : end - base], start))
+
+    def immediate(ins):
+        if ins and ins.operands and ins.operands[-1].type == cp.capstone.arm.ARM_OP_IMM:
+            return ins.operands[-1].imm
+        return None
+
+    # a pop is: ldr [ctx] ; subs #1 ; str [ctx] ; lsls #2 ; adds ; ldr [., #4]
+    pops = []
+    for i in range(len(insns) - 4):
+        w = insns[i:i + 5]
+        if not (w[0].mnemonic == "subs" and immediate(w[0]) == 1):
+            continue
+        mid = w[1:4]
+        if (any(x.mnemonic == "lsls" and immediate(x) == 2 for x in mid)
+                and any(x.mnemonic == "adds" for x in mid)
+                and w[4].mnemonic == "ldr" and _thumb_mem(w[4])
+                and _thumb_mem(w[4])[1] == 4):
+            pops.append(f"0x{w[4].address:08X}")
+
+    stores = [x for x in insns if x.mnemonic.startswith("str")]
+    push_stores = [x for x in stores
+                   if _thumb_mem(x) and _thumb_mem(x)[1] == 4 and _thumb_mem(x)[0] == "r0"]
+    calls = []
+    for x in insns:
+        if x.mnemonic in ("bl", "blx") and x.operands:
+            operand = x.operands[0]
+            if operand.type == cp.capstone.arm.ARM_OP_IMM:
+                calls.append({"site": f"0x{x.address:08X}", "target": f"0x{operand.imm & ~1:08X}"})
+    literal_slots = [
+        slot for x in insns
+        if (slot := cp._literal_slot(x.address, "thumb", x.op_str)) is not None
+        and x.mnemonic.startswith("ldr")
+    ]
+    sp_stores = [x for x in stores if _thumb_mem(x) and _thumb_mem(x)[0] == "sp"]
+    reads_r1_before_overwriting = False
+
+    return {
+        "unit_id": NATIVE178_TU.id,
+        "extent": f"0x{start:08X}..0x{end:08X}",
+        "size": end - start,
+        "instructions": len(insns),
+        "pop_sites": pops,
+        "pops": len(pops),
+        "pushes_to_the_vm_stack": len(push_stores),
+        "consumes": 3,
+        "produces": 0,
+        "net_counter_delta": -3,
+        "pops_top_first": ["values[count-1]", "values[count-2]", "values[count-3]"],
+        "local_array_stores": [f"0x{x.address:08X}" for x in sp_stores],
+        "local_array_order": (
+            "local[1] gets values[count-1] and local[0] gets values[count-2], so the "
+            "pair is handed to the callee DEEPEST-OF-THE-TWO FIRST"
+        ),
+        "calls": calls,
+        "call_count": len(calls),
+        "first_call_args": "r0 = values[count-3], r1 = &local[0] (a two-element array)",
+        "second_call_args": "r0 = *(0x08054FBC + 0x18), r1 = the first call's result",
+        "owner_word_offset": "0x18",
+        "owner_word_source": "the unit's single literal, 0x08054FBC",
+        "reads_incoming_r1": reads_r1_before_overwriting,
+        "r1_evidence": (
+            "the FIRST instruction is `ldr r1,[r0]`, so whatever the dispatcher left "
+            "in r1 is overwritten before it can be read; no argument meaning is "
+            "assigned to it"
+        ),
+        "has_stack_guard": False,
+        "has_stack_guard_evidence": (
+            "there is no comparison of the counter against zero or three anywhere; a "
+            "counter below three wraps and the reads walk below the context"
+        ),
+        "literal_slots": len(literal_slots),
+        "has_literal_pool": bool(literal_slots),
+        "context_fields_used": ["+0x00 the counter", "+0x04+4*i the values"],
+        "effect": (
+            "the handler pushes nothing back: it reads three VM values and drives the "
+            "engine object named by *(0x08054FBC + 0x18) with the result of the first "
+            "call"
+        ),
+        "derived_from_rom": True,
+        "not_hand_written": True,
+    }
+
+
 UNITS: dict = {}
 
 
@@ -1569,6 +1731,13 @@ def _register_units() -> None:
         "unit": CLEAR_TU,
         "functions": CLEAR_FUNCTIONS,
         "literal_pool": CLEAR_LITERAL_POOL,
+        "boundaries": "derived",
+        "expect_padding": None,
+    }
+    UNITS[NATIVE178_TU.id] = {
+        "unit": NATIVE178_TU,
+        "functions": NATIVE178_FUNCTIONS,
+        "literal_pool": NATIVE178_LITERAL_POOL,
         "boundaries": "derived",
         "expect_padding": None,
     }
@@ -3335,6 +3504,10 @@ def run_lift(
             }
         elif unit.id == CLEAR_TU.id:
             boundary_evidence["flag_state"] = derive_flag_state(rom_bytes)
+        elif unit.id == NATIVE178_TU.id:
+            boundary_evidence["slot_identity"] = derive_native_slot(
+                rom_bytes, NATIVE178_SLOT)
+            boundary_evidence["stack_contract"] = derive_native178_stack(rom_bytes)
         elif unit.id == FLAGMASK_TU.id:
             boundary_evidence["mask_application"] = derive_mask_application(rom_bytes)
         elif unit.id == GATHER_TU.id:

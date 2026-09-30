@@ -1,0 +1,362 @@
+{
+  "schema": 1,
+  "ticket": "DECOMP-LIFT-NATIVE178-001",
+  "generated_by": "tools/buusfury/lift.py",
+  "source_sha1": "f1c4b07554d2a3b1ad2f325307051e775ce68087",
+  "target": {
+    "id": "native178",
+    "name": "ByteCodeInterpreter native slot 178 (sub_08003030)",
+    "role": "pop three VM values and drive an engine object with the result",
+    "notes": "Native dispatch slot 178, 0x08003030, 64 bytes and 30 instructions, one terminator at 0x0800306E, two calls, one literal 0x08054FBC. IDENTITY IS CROSS-VALIDATED STATIC AND RUNTIME: the native table at 0x08055098 holds 0x08003031 at slot 178 (table address 0x08055360), whose Thumb bit masks off to 0x08003030, which is exactly the address an independent 2026 runtime capture recorded for slot 178; the two agree, and exactly ONE table entry points here. THE RUNTIME CAPTURE IS USED ONLY AS IDENTITY EVIDENCE and no semantic claim rests on it. THE ENTRY CONTRACT: r0 is the interpreter context and is used as the base of the value stack, reading the counter at +0x00 and the values at +4+4*i; r1 IS NEVER READ, because the first instruction is `ldr r1,[r0]` which overwrites it, so no argument meaning is assigned to it despite the dispatcher leaving the routine's own address there incidentally. STACK BEHAVIOUR: it POPS THREE values and PUSHES NOTHING, so the counter moves by exactly -3, and it reads them top-first as values[count-1], values[count-2], values[count-3]. It builds a TWO-ELEMENT ARRAY ON ITS OWN FRAME rather than on the VM stack: local[1] takes values[count-1] and local[0] takes values[count-2], so the pair is handed to the callee DEEPEST-OF-THE-TWO FIRST, which is the reverse of VM stack order. No value slot is written, so the consumed slots are abandoned rather than cleared. THERE IS NO STACK GUARD: no comparison of the counter against zero or three exists, so a counter below three wraps and the reads walk below the context object; that is reproduced rather than guarded, and the self-check pins it, including that POP 2's `+1` wraps onto the counter itself and POP 3 lands on the word immediately below the context. THE FIRST CONCRETE NON-STACK EFFECT: the handler makes TWO calls and returns nothing to the VM - `result = sub_0802BFBC(values[count-3], { values[count-2], values[count-1] })` and then `sub_0801191A(*(0x08054FBC + 0x18), result)`. The second call is the observable engine effect, handing the first call's result to an engine routine together with the object named by the table word at 0x08054FBC + 0x18, which is the IWRAM address 0x03001C4C. Both callees are DECLARED, not reconstructed, and are bound at their original addresses, so nothing was lifted beyond this handler. UNKNOWN: what sub_0802BFCC computes, what sub_0801191A does with the object and the result, and what the object at 0x03001C4C is. No semantic name is assigned and nothing is imported from another title.",
+    "translation_unit": "native178_tu",
+    "rom_address": "0x08003030",
+    "file_offset": "0x003030",
+    "code_end_address": "0x08003070",
+    "end_address": "0x08003070",
+    "byte_length": 64,
+    "code_byte_length": 64,
+    "isa": "thumb",
+    "decomp_source": "src/ByteCodeInterpreter_native178.c",
+    "probe_source": "src/probes/ByteCodeInterpreter_native178.c",
+    "selftest_source": "src/probes/native178_selftest.c",
+    "semantic_minimum_checks": 22,
+    "host_build_bits": 32,
+    "original_sha1": "021df7cabca7c4f8d36dd942d1ebbf216c6bdbe9"
+  },
+  "boundary_evidence": {
+    "method": "aligned chain-walk from each entry, following local branches",
+    "unit_id": "native178_tu",
+    "code_extent": "0x08003030..0x08003070",
+    "pool_extent": "0x080031B4..0x080031B8",
+    "has_literal_pool": true,
+    "pool_is_adjacent_to_code": false,
+    "pool_gap_bytes": 324,
+    "alignment_padding_bytes": null,
+    "functions": [
+      {
+        "start": "0x08003030",
+        "end": "0x08003070",
+        "size": 64,
+        "instructions": 30,
+        "role": "pop three VM values and drive an engine object",
+        "terminators": [
+          "0x0800306E"
+        ],
+        "gaps": [],
+        "matches_expected": true
+      }
+    ],
+    "problems": [],
+    "derived_from_rom": true,
+    "not_hand_written": true,
+    "slot_identity": {
+      "slot": 178,
+      "table_address": "0x08055360",
+      "raw_word": "0x08003031",
+      "thumb_bit_set": true,
+      "normalized_address": "0x08003030",
+      "runtime_capture_address": "0x08003030",
+      "agrees_with_the_runtime_capture": true,
+      "entries_pointing_here": [
+        178
+      ],
+      "identity_is_unique": true,
+      "runtime_evidence_scope": "the capture establishes IDENTITY only. It says nothing about the routine's semantics, and no semantic claim rests on it.",
+      "derived_from_rom": true,
+      "not_hand_written": true
+    },
+    "stack_contract": {
+      "unit_id": "native178_tu",
+      "extent": "0x08003030..0x08003070",
+      "size": 64,
+      "instructions": 30,
+      "pop_sites": [
+        "0x0800303E",
+        "0x0800304C",
+        "0x0800305A"
+      ],
+      "pops": 3,
+      "pushes_to_the_vm_stack": 0,
+      "consumes": 3,
+      "produces": 0,
+      "net_counter_delta": -3,
+      "pops_top_first": [
+        "values[count-1]",
+        "values[count-2]",
+        "values[count-3]"
+      ],
+      "local_array_stores": [
+        "0x08003040",
+        "0x0800304E"
+      ],
+      "local_array_order": "local[1] gets values[count-1] and local[0] gets values[count-2], so the pair is handed to the callee DEEPEST-OF-THE-TWO FIRST",
+      "calls": [
+        {
+          "site": "0x0800305E",
+          "target": "0x0802BFBC"
+        },
+        {
+          "site": "0x08003068",
+          "target": "0x0801191A"
+        }
+      ],
+      "call_count": 2,
+      "first_call_args": "r0 = values[count-3], r1 = &local[0] (a two-element array)",
+      "second_call_args": "r0 = *(0x08054FBC + 0x18), r1 = the first call's result",
+      "owner_word_offset": "0x18",
+      "owner_word_source": "the unit's single literal, 0x08054FBC",
+      "reads_incoming_r1": false,
+      "r1_evidence": "the FIRST instruction is `ldr r1,[r0]`, so whatever the dispatcher left in r1 is overwritten before it can be read; no argument meaning is assigned to it",
+      "has_stack_guard": false,
+      "has_stack_guard_evidence": "there is no comparison of the counter against zero or three anywhere; a counter below three wraps and the reads walk below the context",
+      "literal_slots": 1,
+      "has_literal_pool": true,
+      "context_fields_used": [
+        "+0x00 the counter",
+        "+0x04+4*i the values"
+      ],
+      "effect": "the handler pushes nothing back: it reads three VM values and drives the engine object named by *(0x08054FBC + 0x18) with the result of the first call",
+      "derived_from_rom": true,
+      "not_hand_written": true
+    }
+  },
+  "verdicts": {
+    "semantic": {
+      "status": "PROVEN",
+      "checks": 22,
+      "failures": 0,
+      "minimum_checks": 22,
+      "host_compiler": "MSVC cl.exe (32-bit)",
+      "detail": "22 behavioural assertions passed with 0 failures (minimum 22)",
+      "measures": "whether the reconstructed C behaves correctly, by RUNNING it"
+    },
+    "modern_build": {
+      "status": "PASS",
+      "detail": "compiled, linked at 0x08003030 and emitted 68 bytes",
+      "measures": "whether the source compiles, links and emits bytes"
+    },
+    "ads_match": {
+      "status": "BLOCKED",
+      "code": "ADS12_LICENSE_UNAVAILABLE",
+      "detail": "an ARM Developer Suite 1.2 installation is present on this machine but the licence file it ships licenses a different product, so the ARM compilers cannot be run. No compile has been attempted and no configuration has been tested. The installation is located through ADS12_ROOT.",
+      "required_to_unblock": [
+        "a licensed ADS 1.2 installation, with ADS12_ROOT pointing at it",
+        "then: python -m buusfury compiler-probe --plan, then --matrix"
+      ],
+      "not_inferable_from_modern_build": true
+    }
+  },
+  "verdicts_are_independent": "SEMANTIC, MODERN_BUILD and ADS_MATCH answer different questions and none is evidence for another. A passing modern build says nothing about the original compiler; a passing semantic run only removes one class of error.",
+  "modern_build": {
+    "status": "PASS",
+    "toolchain": {
+      "family": "GNU Arm Embedded (devkitARM)",
+      "root": "<DEVKITARM>",
+      "prefix": "arm-none-eabi-",
+      "tools": {
+        "gcc": "<DEVKITARM>\\bin\\arm-none-eabi-gcc.exe",
+        "ld": "<DEVKITARM>\\bin\\arm-none-eabi-ld.exe",
+        "objcopy": "<DEVKITARM>\\bin\\arm-none-eabi-objcopy.exe",
+        "objdump": "<DEVKITARM>\\bin\\arm-none-eabi-objdump.exe",
+        "nm": "<DEVKITARM>\\bin\\arm-none-eabi-nm.exe"
+      }
+    },
+    "identity": {
+      "gcc_banner": "arm-none-eabi-gcc.exe (devkitARM) 16.1.0",
+      "gcc_version": "16.1.0",
+      "target_triple": "arm-none-eabi",
+      "binutils_banner": "GNU objdump (GNU Binutils) 2.46.0.20260210",
+      "compiler_family": "gcc",
+      "is_the_original_compiler": false,
+      "why_not": "the original translation unit was built by ARM Developer Suite 1.2 (the surviving command line names tcpp). GCC is a different compiler with a different code generator, so its output cannot establish anything about ADS 1.2."
+    },
+    "target_support": {
+      "supported": true,
+      "cpu": "arm7tdmi",
+      "instruction_set": "thumb",
+      "commands": [
+        "<DEVKITARM>\\bin\\arm-none-eabi-gcc.exe -c -mcpu=arm7tdmi -mthumb -O1 -ffreestanding -fno-common -fno-builtin -o <REPO>\\build\\lift\\native178\\toolchain-probe\\support_probe.o <REPO>\\build\\lift\\native178\\toolchain-probe\\support_probe.c"
+      ],
+      "disassembly": [
+        "adds r0, #1",
+        "bx lr"
+      ],
+      "detail": "compiled and disassembled a probe function for ARM7TDMI Thumb: 2 instruction(s), r0 written and a return present"
+    },
+    "compiler_configuration": {
+      "cpu": "arm7tdmi",
+      "instruction_set": "thumb",
+      "optimization": "-O1",
+      "extra_flags": []
+    },
+    "link_origin": "0x08003030",
+    "external_calls_bound_to_original_addresses": {
+      "sub_0801191A": "0x0801191A",
+      "sub_0802BFBC": "0x0802BFBC"
+    },
+    "detail": "compiled, linked at 0x08003030 and emitted 68 bytes",
+    "build": {
+      "ok": true,
+      "commands": [
+        "<DEVKITARM>\\bin\\arm-none-eabi-gcc.exe -c -mcpu=arm7tdmi -mthumb -O1 -ffreestanding -fno-common -fno-builtin -fomit-frame-pointer -mno-unaligned-access -o <REPO>\\build\\lift\\native178\\native178.o <REPO>\\src\\ByteCodeInterpreter_native178.c",
+        "<DEVKITARM>\\bin\\arm-none-eabi-gcc.exe -c -mcpu=arm7tdmi -mthumb -o <REPO>\\build\\lift\\native178\\native178_externs.o -x assembler-with-cpp <REPO>\\build\\lift\\native178\\native178_externs.s",
+        "<DEVKITARM>\\bin\\arm-none-eabi-gcc.exe -nostdlib -Wl,-T,<REPO>\\build\\lift\\native178\\native178.ld -Wl,-Map,<REPO>\\build\\lift\\native178\\native178.map -o <REPO>\\build\\lift\\native178\\native178.elf <REPO>\\build\\lift\\native178\\native178.o <REPO>\\build\\lift\\native178\\native178_externs.o",
+        "<DEVKITARM>\\bin\\arm-none-eabi-objcopy.exe -O binary -j .text -j .rodata <REPO>\\build\\lift\\native178\\native178.elf <REPO>\\build\\lift\\native178\\native178.bin"
+      ],
+      "produced_byte_length": 68,
+      "symbols": {
+        "sub_08003030": {
+          "address": "0x08003030",
+          "size": 64
+        }
+      },
+      "diagnostics": ""
+    }
+  },
+  "functions": [
+    {
+      "name": "sub_08003030",
+      "role": "pop three VM values and drive an engine object",
+      "original": {
+        "start": "0x08003030",
+        "end": "0x08003070",
+        "size": 64,
+        "isa": "thumb",
+        "instructions": 30,
+        "first_instruction": "push {lr}",
+        "calls": [
+          "0x0801191A",
+          "0x0802BFBC"
+        ],
+        "literal_slots": [
+          "0x080031B4"
+        ],
+        "returns": 1,
+        "leaf": false,
+        "abi": {
+          "callee_saved_pushed": [],
+          "frame_size_bytes": 0,
+          "written_registers": [
+            "r0",
+            "r1"
+          ]
+        }
+      },
+      "modern": {
+        "start": "0x08003030",
+        "end": "0x08003070",
+        "size": 64,
+        "isa": "thumb",
+        "instructions": 30,
+        "first_instruction": "push {r4, lr}",
+        "calls": [
+          "0x0801191A",
+          "0x0802BFBC"
+        ],
+        "literal_slots": [
+          "0x0800306C",
+          "0x08003360"
+        ],
+        "returns": 1,
+        "leaf": false,
+        "abi": {
+          "callee_saved_pushed": [
+            "r4"
+          ],
+          "frame_size_bytes": 0,
+          "written_registers": [
+            "r0",
+            "r1",
+            "r2",
+            "r3",
+            "r4",
+            "r5",
+            "r7"
+          ]
+        }
+      },
+      "modern_symbol_present": true,
+      "delta": {
+        "size_bytes": 0,
+        "instructions": 0,
+        "returns": 0,
+        "calls": 0,
+        "literal_slots": 1
+      },
+      "same_extent": true,
+      "byte_identical": false
+    }
+  ],
+  "literal_pools": {
+    "original": {
+      "distinct_slots": 1,
+      "contiguous_runs": [
+        [
+          "0x080031B4",
+          "0x080031B8"
+        ]
+      ],
+      "run_count": 1,
+      "shared_pool": false,
+      "shared_pool_applicable": false,
+      "declared_pool": [
+        "0x08003070",
+        "0x08003070"
+      ],
+      "declared_slots": [
+        "0x080031B4"
+      ],
+      "declared_slots_used": [
+        "0x080031B4"
+      ],
+      "all_referenced_slots_are_declared": true,
+      "all_declared_slots_are_referenced": true,
+      "undeclared_slots": [],
+      "functions_reaching_it": 1
+    },
+    "modern": {
+      "distinct_slots": 2,
+      "contiguous_runs": [
+        [
+          "0x0800306C",
+          "0x08003070"
+        ],
+        [
+          "0x08003360",
+          "0x08003364"
+        ]
+      ],
+      "run_count": 2,
+      "shared_pool": false,
+      "functions_reaching_a_pool": 1
+    },
+    "interpretation": "the original's literals are accounted for by the words the unit declares; the modern build pools differently, which is a structural consequence of the compiler rather than a defect in the reconstruction. It is also why a function with a literal load cannot be compared standalone.",
+    "is_a_match_claim": false
+  },
+  "comparison": {
+    "original_byte_length": 64,
+    "modern_byte_length": 68,
+    "overlap_byte_length": 64,
+    "differing_bytes_in_overlap": 62,
+    "matching_bytes_in_overlap": 2,
+    "original_only_bytes": 0,
+    "modern_only_bytes": 4,
+    "original_instruction_spans": 30,
+    "matching_instruction_spans": 0,
+    "differing_instruction_spans": 30,
+    "bytes_not_covered_by_an_original_instruction": 0,
+    "byte_identical": false,
+    "is_a_match_claim": false,
+    "match_claim_note": "MEASUREMENT ONLY. This compares a modern GCC build against the cartridge. A modern compiler is not the original compiler, so a difference here is expected and proves nothing; an identity here would also prove nothing about ADS 1.2. ADS_MATCH stays BLOCKED."
+  },
+  "semantic_check": {
+    "status": "PROVEN",
+    "checks": 22,
+    "failures": 0,
+    "minimum_checks": 22,
+    "host_compiler": "MSVC cl.exe (32-bit)",
+    "host_build_bits": 32,
+    "detail": "22 behavioural assertions passed with 0 failures (minimum 22)",
+    "output": "PASS: 22 check(s), 0 failure(s)\n"
+  }
+}

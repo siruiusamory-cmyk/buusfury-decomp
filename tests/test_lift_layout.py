@@ -142,6 +142,15 @@ def test_the_derivation_is_mechanical(layout):
 
 
 def test_no_new_lift_target_was_added():
-    """This ticket resolves a layout question with evidence; it lifts nothing, so
-    the thirteen reports are unchanged."""
-    assert len(lift.load_targets()) == 13
+    """A FLOOR, not an exact count.
+
+    Pinning the exact number of targets means every later ticket that adds one must
+    edit an earlier ticket's test. That happened four times when native slot 178
+    became the fourteenth target, so this asserts a floor and the named survivors
+    instead.
+    """
+    ids = [t.id for t in lift.load_targets()]
+    assert len(ids) >= 13, ids
+    for earlier in ("gbaram", "bci", "handler2", "operand", "stack", "arith",
+                    "use", "effect", "flagread", "booluse", "clear", "gather", "flagmask"):
+        assert earlier in ids, earlier

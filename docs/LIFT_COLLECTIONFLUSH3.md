@@ -81,14 +81,20 @@ Four independent searches, all reproducible as tests:
    words `0x03001E50` (`object+0x204`), `0x03001E54` (`object+0x208`) and
    `0x03001E58` (`object+0x20C`) finds **zero occurrences**. So no code can reach the
    region through a pointer either, and the generic append could not be aimed at it.
-4. `sub_08011B04` **bulk-fills the array** at `object + 0x20C` with `0x200` bytes
-   through an **IWRAM-installed function pointer**: the `bx pc` trampoline at
-   `0x0804912C` jumps to whatever is stored at `0x030007A8`. Its argument order is
-   therefore **not statically resolvable**, and it is the only writer of the array
-   area this work cannot characterise.
+4. `sub_08011B04` **bulk-fills the array** at `object + 0x20C`, and CALLS THE
+   IWRAM-INSTALLED ROUTINE AT `0x030007A8`. **This item was WRONG when this
+   document was written and is corrected here** (see section 8). It claimed the
+   trampoline "jumps to whatever is stored at `0x030007A8`", which would make the
+   argument order unresolvable. The instruction is `ldr pc,[pc,#-4]`: the stub's
+   own literal IS the destination, `0x030007A8`, and that address is filled by
+   the reset code's DMA3 with a verbatim copy of ROM `0x087B79A4..0x087B89A8`.
+   The call is a WORD FILL - `r0` destination, `r1` a 32-bit value replicated and
+   never masked, `r2` size in bytes - and it is fully statically resolvable.
 
 **Consequence:** the count is zero on every readable path, which makes the drain
-**defensive and normally a no-op**.
+**defensive and normally a no-op**. The bulk fills DO write the element slots, but
+with sentinel values (`0x03002A4C` over the first three arrays, `0x03001C44` over
+the fourth) rather than with appended elements, so no element is ever readable.
 
 ### What `sub_08011B04` is
 A **reset/destructor**, not a populator. It calls `table[+4]` destructors on the first
@@ -105,8 +111,9 @@ drain - a teardown sequence.
 count is only ever written as zero, that block does nothing in practice - so the
 "third collection is flushed" transition recorded in the previous ticket is real but
 **normally vacuous**. Its presence implies the code's author expected the count to be
-non-zero at some point, which is exactly the gap the bulk fill might close - and that
-is the open question, not a settled one.
+non-zero at some point, and RESOLVED 2026-09-29 by `DECOMP-RUNTIME-IWRAM-001`: the
+bulk fill does not close that gap either, because it writes the element slots with
+sentinel WORDS and the counts are zeroed immediately afterwards by the same routine.
 
 ---
 
@@ -131,18 +138,44 @@ is the open question, not a settled one.
 | capacity checks | **none** |
 | overflow behaviour | **not applicable** to this routine |
 | cross-collection transition | **none**: it does not touch the first or second collection |
-| `+0x00` | **not touched** |
+| `+0x00` | **not touched BY THIS ROUTINE**. Corrected 2026-09-29: `sub_08011B04` DOES write `+0x00 = 0` and `+0x01 = 1` as bytes at `0x08011C02`/`0x08011C06`, so the earlier wording "untouched by every routine lifted so far" was true only of the routines lifted BEFORE it. |
 | why `sub_08011732` flushes it | because it is a shared drain concept; the count is zero on every readable path, so the flush is defensive |
 | verdicts 1/2 | **not advanced** by this routine - it calls only `table+0x14` |
 | capacity | **no evidence** of any limit |
 
 ## 7. Recommended next subsystem ticket
 
-1. **Resolve the IWRAM-installed callee at `0x030007A8`** (the `bx pc` trampoline
-   family at `0x0804912C`..`0x0804918C`). This is the single blocker on the array's
-   content, and it likely unlocks several other unresolved calls across the image.
+**RAN.** Item 1 below became `DECOMP-RUNTIME-IWRAM-001`; its result is
+[`LIFT_IWRAM_RUNTIME.md`](LIFT_IWRAM_RUNTIME.md). The slot at `0x030007A8` is the
+first word of a block FILL at ROM `0x087B814C`, installed by the reset code's DMA3.
+
+1. ~~**Resolve the IWRAM-installed callee at `0x030007A8`**~~ - **DONE**. It was not
+   a function pointer at all: the trampoline jumps straight to `0x030007A8`.
 2. **What `table+0x14` means** for these elements.
 3. **The fourth region at `object + 0x610`**, zeroed in the same reset and never
-   examined.
+   examined - its layout is now proven contiguous (`count +0x610`, array
+   `+0x614..+0x694`, 32 slots) but its USE is still open.
 4. **`sub_0804FE54`** - does it compact?
-5. **The object's `+0x00` field**, still untouched by every routine lifted so far.
+5. **The object's `+0x00` field**: written `0` and `+0x01` written `1` by
+   `sub_08011B04` (corrected above); what the pair means is still open.
+
+---
+
+## 8. Correction carried by `DECOMP-RUNTIME-IWRAM-001` (2026-09-29)
+
+Section 3 item 4, section 4 and section 6's `+0x00` row stated things that later
+evidence refutes. All three are corrected in place above, and the correction also
+changed the committed `config/lift_collectionflush3.json` (its `target.notes` field)
+and `src/ByteCodeInterpreter_collectionflush3.c`'s comment. Nothing else in that
+report moved: only `/target/notes` differs from the previous revision. This was a
+deliberate deviation from "existing reports stay byte-identical", taken because the
+artifact asserted something false and the evidence is the veneer's own instruction.
+
+What was wrong:
+
+| Claim | Status | Evidence |
+| --- | --- | --- |
+| the trampoline at `0x0804912C` "jumps to whatever is stored at `0x030007A8`" | **REFUTED** | `0xE51FF004` is `ldr pc,[pc,#-4]`; it loads the stub's own literal into PC, so `0x030007A8` is the destination |
+| the call's argument order is "NOT statically resolvable" | **REFUTED** | the destination resolves to ROM `0x087B814C`, a word fill: `r0` dest, `r1` value, `r2` bytes |
+| whether the bulk fill writes elements "is NOT established" | **RESOLVED** | it writes the sentinel WORDS `0x03002A4C` / `0x03001C44` into the slots, then the routine zeroes all four counts |
+| `object + 0x00` is untouched | **REFUTED for this routine** | `0x08011C02 strb r0,[r4]` sets it to 0 and `0x08011C06 strb r0,[r4,#1]` sets `+0x01` to 1 |

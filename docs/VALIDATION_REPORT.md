@@ -602,3 +602,148 @@ blocker would have failed the gate rather than being reported. Both now key on
 the blocker code itself, and the new `ADS12_LICENSE_UNAVAILABLE` code carries the
 FLEXlm evidence. Full suite 269 passed; `scripts\check.cmd` **OVERALL PASS**,
 exit 0, gate 6 `BLOCKED (ADS12_LICENSE_UNAVAILABLE)`.
+
+---
+
+# Validation report - `DECOMP-RUNTIME-IWRAM-001` (2026-09-29)
+
+**Focused validation only, as the ticket directed. The full suite was NOT run.**
+The canonical ROM was re-verified before and after: SHA-1
+`F1C4B07554D2A3B1AD2F325307051E775CE68087`, mtime `2026-08-19T18:10:12` -
+unchanged.
+
+## Commands run, and their measured results
+
+```
+# focused tests: the lift loop, the neighbouring collection/object work, the maps
+python -m pytest tests/test_lift.py tests/test_lift_iwramblock.py \
+    tests/test_lift_collectionflush3.py tests/test_lift_collectioninsert2.py \
+    tests/test_lift_collectionwrite2.py tests/test_lift_collectionread.py \
+    tests/test_lift_append.py tests/test_lift_native178.py tests/test_ewram_layout.py \
+    tests/test_object_layout.py tests/test_object_constructor.py tests/test_regions.py \
+    tests/test_rom_map.py tests/test_identity.py tests/test_fixed_regions.py \
+    -q -p no:cacheprovider
+# 392 passed in 99.12s      (232 before this ticket; +160 with the new target)
+
+# the rest of the lift loop and the harness it shares, added so that nothing the
+# derivation and the registry touch is left unmeasured
+python -m pytest tests/test_compiler_probe.py tests/test_lift_arith.py \
+    tests/test_lift_booluse.py tests/test_lift_effect.py tests/test_lift_flagmask.py \
+    tests/test_lift_flagread.py tests/test_lift_flagstate.py tests/test_lift_handler2.py \
+    tests/test_lift_layout.py tests/test_lift_operand.py tests/test_lift_script.py \
+    tests/test_lift_stack.py tests/test_lift_use.py tests/test_stackflow_tracker.py \
+    tests/test_toolchain.py -q -p no:cacheprovider
+# 460 passed in 150.85s
+
+# deterministic report regeneration, the same command gate 7 runs
+python -m buusfury lift --target all --verify
+# 20/20 REPORT: PASS, exit 0
+
+# the new target's own loop
+python -m buusfury lift --target iwramblock --write config/lift_iwramblock.json
+# SEMANTIC      PROVEN   165 behavioural assertions, 0 failures (minimum 160)
+# MODERN_BUILD  PASS     arm-none-eabi-gcc 16.1.0, linked at 0x087B810C, 552 bytes
+# ADS_MATCH     BLOCKED  ADS12_LICENSE_UNAVAILABLE
+
+# ROM integrity, before and after every write
+Get-FileHash -Algorithm SHA1 'C:\Dev\log1-remake\roms\Dragon Ball Z - Buu''s Fury (U).gba'
+# F1C4B07554D2A3B1AD2F325307051E775CE68087
+```
+
+`scripts/check.ps1` was deliberately **not** run: its pytest gate is
+`pytest tests -q`, i.e. the whole suite, which this ticket's validation section
+forbids. Gate 7's own command was run directly instead, and it is byte for byte
+the command the gate executes.
+
+**852 tests passed** across the 30 test files that this ticket can affect. The two
+files not run are `tests/test_build.py` (the asset/JCALG1 leg) and
+`tests/test_gba.py`; neither reads the lift registry, the lift derivation or the
+region map, and neither was touched.
+
+The modern toolchain is ARM-capable and was proven so rather than assumed: a
+two-line function compiled with `arm-none-eabi-gcc -mcpu=arm7tdmi -marm -O1` and
+disassembled to three ARM instructions (`add r1,r1,r1,lsl #1` / `add r0,r1,r0` /
+`bx lr`). This is the first lift target in the project in **ARM** state; every
+earlier one is Thumb.
+
+## Report regression
+
+**19 of the 20 committed reports are byte-identical to the previous revision.**
+`git diff --stat -- config` reports exactly two changed files, and one of them is
+the registry:
+
+| file | change |
+| --- | --- |
+| `config/lift_iwramblock.json` | **new** (the target's report) |
+| `config/lift_targets.json` | the new entry, plus one corrected note |
+| `config/lift_collectionflush3.json` | **one field only**: `/target/notes` |
+
+The `collectionflush3` report changed because new evidence refutes a claim that
+note made, and per this project's own rule a known error is corrected and the
+deviation declared rather than frozen to satisfy a byte-identity check. A
+key-by-key comparison against `HEAD` reports exactly one difference:
+
+```
+DIFF at /target/notes
+```
+
+Nothing else in that report moved: not a verdict, not a comparison count, not a
+function row. The other eighteen reports were not rewritten at all.
+
+## What the new target measures
+
+| | original | modern |
+| --- | ---: | ---: |
+| bytes | 256 | 552 |
+| code bytes (no literal pool) | 256 | 552 |
+| instructions in the four functions | 16 / 21 / 23 / 4 | 47 / 45 / 39 / 7 |
+| differing bytes in the overlap | - | 226 |
+| matching instruction spans | - | **0** of 64 |
+| `byte_identical` | - | **false** |
+| `is_a_match_claim` | - | **false** |
+
+No match is claimed. The structural agreement that does hold is the one the loop
+exists to expose: every function is paired by name, all four are leaves on both
+sides (0 calls, 0 literal slots), the unit has no literal pool on either side, and
+the 64 instruction spans keyed on the **original's** boundaries account for 256 of
+the 256 original bytes with no uncovered remainder.
+
+The three verdicts are independent and were read separately:
+**SEMANTIC PROVEN** (the reconstruction was run and 165 assertions passed),
+**MODERN_BUILD PASS** (it compiles and emits ARM bytes), **ADS_MATCH BLOCKED**
+(never compiled by the tool it targets; no byte-match claim is made).
+
+## The behaviours the semantic check pins
+
+Sixteen sizes through each of the four routines, with the expected written-byte
+counts computed **by hand from the ARM instructions** rather than from the C: the
+32-byte and 16-byte fast paths, the round-up tails (5 -> 8, 7 -> 8, 17 -> 18,
+33 -> 34), the fact that a **zero-size call still stores one unit**, that the fill
+writes the **whole 32-bit word** (`0xDEADBEEF` must not become `0xEFEFEFEF`), and
+that the 2-byte copy's computed-jump entry always starts at source offset 0. Two
+defects were caught this way before any compiler run: the same table asserted
+`0x030007FC` occurs exactly once in the image when it occurs once *aligned* and
+once more at an odd offset, and an earlier draft of the derivation reused the loop
+variable `address` after the veneer walk and silently truncated the reported
+family extent by one stub - the derivation now fails closed on that invariant
+(`the veneer family's end does not follow its last stub`).
+
+## Corrections carried, and their evidence
+
+| artifact | claim | status |
+| --- | --- | --- |
+| `src/ByteCodeInterpreter_collectionflush3.c`, `docs/LIFT_COLLECTIONFLUSH3.md`, `config/lift_targets.json` | the trampoline at `0x0804912C` "jumps to whatever is stored at `0x030007A8`", so the call is "NOT statically resolvable" | **REFUTED** by `0xE51FF004` = `ldr pc,[pc,#-4]`; the literal is the destination |
+| `docs/ROM_MAP_PROVENANCE.md` section 2 | the DMA3 transfer size is unresolved; `CNT_H = 0x8400` read as 16-bit gives 2,050 bytes | **RESOLVED** at 4,100 bytes by the block tiling both ends exactly |
+| `docs/LIFT_COLLECTIONFLUSH3.md`, `LIFT_APPEND.md`, `LIFT_NATIVE178.md` | `object + 0x00` is untouched | **REFUTED for `sub_08011B04`**: `0x08011C02` writes 0 and `0x08011C06` writes 1 |
+| `tests/test_lift_collectionflush3.py` | pinned the refuted sentence | repointed at the correction |
+
+## Safety
+
+No ROM was written, patched, truncated or renamed. The canonical ROM was
+read-only throughout and its SHA-1 and mtime are unchanged. No ROM data, no
+extracted blob and no proprietary binary is tracked: the new files are source, a
+self-check, a test, a document and a report. `C:\Dev\log1-remake` was read (its
+`roms/` copy of the canonical dump) and never written. No `--defsym` appears in
+any report, no ARM interworking veneer symbol appears in any build, and the
+reconstruction's instruction set is declared `arm` on the target and `arm` on the
+unit rather than being inferred.

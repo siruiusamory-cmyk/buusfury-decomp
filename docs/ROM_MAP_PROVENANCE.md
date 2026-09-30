@@ -106,8 +106,8 @@ GBATEK layout `0x8400` means *16-bit transfers with source decrement*; under a
 32-bit incrementing reading the span would end exactly at the `0xFF` fill, which
 is a striking coincidence in the corpus's favour.
 
-**This ticket does not claim either reading.** It records the register values as
-facts and establishes the *region* by content instead:
+**This ticket did not claim either reading.** It recorded the register values as
+facts and established the *region* by content instead:
 
 - `0x07B79A4` is the first byte of clean ARM code (`push {r8,r9,r10,r11}`), so it
   is a real boundary regardless of the transfer size;
@@ -115,9 +115,34 @@ facts and establishes the *region* by content instead:
 - the span between them is exactly 4,100 bytes.
 
 The region is therefore `high`, not `proven`, and the `notes` field states the
-open question. Resolving it needs either a runtime DMA observation or a
-higher-confidence reading of the ARM immediate encoding, and belongs to a later
-ticket.
+open question.
+
+### RESOLVED (2026-09-29, `DECOMP-RUNTIME-IWRAM-001`)
+
+**The 32-bit reading is the correct one: 4,100 bytes, `[0x7B79A4, 0x7B89A8)`.**
+Two independent facts settle it, and neither needs an external register layout:
+
+1. The same reset routine programs DMA3 **twice**, and both control words carry
+   the same field that differs only by `0x0100`. The *first* setup is
+   `SAD = SP`, `DAD = 0x03001004`, `CNT = 0x850010BE` - and its source is a single
+   zero word the routine pushes and then pops, which only produces a sensible
+   result if that source address is held **fixed**, i.e. `0x0100` in `CNT_H` is
+   the source-address-fixed bit, not part of the transfer-size field.
+2. With `CNT_L = 0x0401` read as 1,025 **words**, the copy ends at `0x087B89A8`,
+   exactly where the `0xFF` fill begins, *and* at IWRAM `0x03001004`, exactly where
+   the first setup's destination begins. Read as 2,050 bytes it ends at
+   `0x087B81A6`, in the middle of a function, and leaves eight of the thirteen
+   ROM-side Thumb-to-ARM veneers pointing outside the copied block - at addresses
+   the ROM itself branches to.
+
+The alternative reading is therefore **refuted by internal consistency**, and the
+earlier wording here ("bits 11-10 are source address control", "`0x8400` means
+16-bit transfers with source decrement") used a layout that this ROM's own code
+contradicts. The 4,100-byte span also makes the `codec_blob` region sound by
+content *and* by transfer, not by content alone. Full derivation:
+[`LIFT_IWRAM_RUNTIME.md`](LIFT_IWRAM_RUNTIME.md) sections 2 and 9, and the
+machine-checked `boundary_evidence.iwram_runtime` block of
+`config/lift_iwramblock.json`.
 
 ---
 

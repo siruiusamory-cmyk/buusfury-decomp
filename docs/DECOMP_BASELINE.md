@@ -545,3 +545,44 @@ Two corrections to the recommendation above:
 No compiler setting was proven. The blocker is unchanged: a licensed ADS 1.2
 installation. See [`COMPILER_PROBE.md`](COMPILER_PROBE.md) section 14 for the
 exact commands and the expected `ADS12_ROOT` layout.
+
+---
+
+## 10. Runtime-installed IWRAM call subsystem - `DECOMP-RUNTIME-IWRAM-001` (2026-09-29)
+
+Ticket 1 of the collection family's follow-up list ran. Read
+[`LIFT_IWRAM_RUNTIME.md`](LIFT_IWRAM_RUNTIME.md) for the whole subsystem.
+
+The previously opaque call through the Thumb trampoline at `0x0804912C` is
+**resolved, and it was never opaque**. The stub is `bx pc` / `nop` /
+`ldr pc,[pc,#-4]` / `dcd 0x030007A8`: the literal **is** the destination, not a
+slot holding a function pointer. `0x030007A8` is filled at boot by the reset
+code, which programs DMA3 with `SAD 0x087B79A4`, `DAD 0x03000000` and
+`CNT 0x84000401` - a verbatim 4100-byte copy - so the code that runs there is ROM
+`0x087B814C`, a block fill.
+
+Three consequences that reach beyond the one slot:
+
+- **the whole fifteen-entry veneer family at `0x08049120..0x080491CC` is mapped**,
+  and all thirteen of its IWRAM destinations were resolved in one step;
+- **the transfer size left open by `DECOMP-ROM-MAP-001` is settled** at 4,100
+  bytes, by the two DMA setups tiling IWRAM and ROM exactly rather than by a
+  register-layout preference ([`ROM_MAP_PROVENANCE.md`](ROM_MAP_PROVENANCE.md)
+  section 2);
+- **the block is not the ADS C library.** It is a codec/mixing overlay: 20 ARM
+  functions, a 14-entry interrupt vector table, a `REG_IE`/`REG_IME` dispatcher
+  and a 192-byte `.data` section, with two byte-identical copies of one helper.
+  Its copy/fill routines round their counts **up** and always move at least one
+  unit, which no conforming C library does.
+
+`sub_08011B04`'s opaque operation is a **word fill of four element arrays with
+sentinel addresses followed by zeroing of their counts**, plus a `0xFF` fill -
+so the third collection's missing population path is confirmed missing rather
+than merely unfound. One earlier claim is corrected: the IWRAM call was recorded
+as "not statically resolvable", and it is.
+
+Lifted: `src/IwramBlock.c` (the four block-memory routines, the first **ARM** lift
+target), registered as `iwramblock`. SEMANTIC PROVEN (165 assertions),
+MODERN_BUILD PASS, ADS_MATCH BLOCKED. 19 of the 20 committed lift reports are
+byte-identical to their previous revision; `config/lift_collectionflush3.json`
+changed in its `target.notes` alone, deliberately, to carry the correction.

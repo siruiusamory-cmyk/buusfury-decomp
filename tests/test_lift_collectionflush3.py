@@ -218,7 +218,12 @@ def test_the_host_macro_is_defined_by_the_self_check():
 def test_the_source_records_the_negative_finding():
     source = (identity.REPO_ROOT / "src" / "ByteCodeInterpreter_collectionflush3.c").read_text("utf-8")
     assert "THERE IS NO POPULATION PATH" in source
-    assert "NOT statically resolvable" in source
+    # CORRECTED by DECOMP-RUNTIME-IWRAM-001: this comment used to say the IWRAM call
+    # was "NOT statically resolvable". It is resolvable, so the assertion now pins the
+    # correction rather than the refuted claim. See tests/test_lift_iwramblock.py.
+    assert "NOT STATICALLY RESOLVABLE, AND" in source
+    assert "NOT statically resolvable" not in source
+    assert "ldr pc,[pc,#-4]" in source
 
 
 def test_the_source_adds_no_guard_and_no_name(rom_bytes):

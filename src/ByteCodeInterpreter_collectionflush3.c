@@ -77,15 +77,24 @@
  *   * a search of the whole image for a STORED POINTER to the region found ZERO
  *     occurrences of object+0x204, object+0x208 or object+0x20C, so no code can reach
  *     it through a pointer either, and a generic append could not be aimed at it;
- *   * sub_08011B04 additionally bulk-fills the ARRAY at object + 0x20C with 0x200
- *     bytes through an IWRAM-INSTALLED function pointer (the `bx pc` trampoline at
- *     0x0804912C jumps to whatever is stored at 0x030007A8). Its argument order is
- *     therefore NOT statically resolvable, and that single call is the only writer of
- *     the array area that this work cannot characterise.
+ *   * sub_08011B04 additionally bulk-fills the ARRAY at object + 0x20C. AN EARLIER
+ *     REVISION OF THIS COMMENT SAID THAT CALL WAS NOT STATICALLY RESOLVABLE, AND
+ *     THAT WAS WRONG. It said the `bx pc` trampoline at 0x0804912C "jumps to
+ *     whatever is stored at 0x030007A8". The ARM instruction is 0xE51FF004 =
+ *     `ldr pc,[pc,#-4]`, which loads the stub's OWN literal into PC, so 0x030007A8
+ *     is the DESTINATION ADDRESS and not a slot holding one. That address is
+ *     installed by the reset code, which programs DMA3 with SAD 0x087B79A4, DAD
+ *     0x03000000 and CNT 0x84000401, a verbatim 4100-byte copy, so IWRAM 0x030007A8
+ *     holds ROM 0x087B814C: a WORD FILL taking r0 = destination, r1 = a 32-bit value
+ *     replicated into eight registers and never masked, r2 = size in bytes. Resolved
+ *     by DECOMP-RUNTIME-IWRAM-001; see docs/LIFT_IWRAM_RUNTIME.md.
  * The count is consequently zero on every path that can be read, which makes the
- * drain loop DEFENSIVE: it normally has nothing to do. Whether the bulk fill writes
- * ELEMENTS (which the zeroing count would then contradict) or unrelated data sharing
- * the address range is NOT established here.
+ * drain loop DEFENSIVE: it normally has nothing to do. THE BULK FILLS WRITE ELEMENT
+ * SLOTS, but as sentinel VALUES rather than as appended elements: the 32-bit word
+ * 0x03002A4C over the first three arrays and 0x03001C44 over the fourth, followed by
+ * 0xFFFFFFFF over object+0x694..0xBF7. The counts are then zeroed, so no element is
+ * ever readable and the drain stays vacuous. What those two sentinel addresses refer
+ * to is NOT established here.
  *
  * STATUS, and these three lines are INDEPENDENT of one another.
  *   SEMANTIC.....PROVEN   the backward drain, the method slot, the termination order

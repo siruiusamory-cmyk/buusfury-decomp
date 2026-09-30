@@ -2303,6 +2303,570 @@ def derive_collection_flush3(rom_bytes: bytes) -> dict:
 UNITS: dict = {}
 
 
+# ---------------------------------------------------------------------------
+# the runtime-installed IWRAM block  (DECOMP-RUNTIME-IWRAM-001)
+# ---------------------------------------------------------------------------
+# The four block-memory routines of that block. They are ARM, they are
+# register-only (so the unit has no literal pool at all), and their boundaries
+# are anchored from OUTSIDE the block: each entry address is the literal of a
+# ROM-side Thumb-to-ARM veneer, and the four tile 0x087B810C..0x087B820C with no
+# padding. The fifth routine of the block starts at 0x087B820C with a different
+# prologue, which is what bounds the last one.
+IWRAM_BLOCK_TU = cp.TranslationUnit(
+    id="iwram_block_tu",
+    rom_address=0x087B810C,
+    code_end_address=0x087B820C,
+    end_address=0x087B820C,
+    isa="arm",
+    source="src/probes/IwramBlock.c",
+    confidence="proven",
+    boundary_evidence=(
+        "each of the four entries is the destination literal of a ROM-side "
+        "Thumb-to-ARM veneer (0x08049138, 0x0804912C, 0x08049144, 0x08049168), "
+        "so the entry points are anchored by the veneer family and not by a "
+        "classifier window",
+        "an aligned chain-walk from each entry reaches exactly one `bx lr` and "
+        "the four extents tile 0x087B810C..0x087B820C with zero gaps and no "
+        "alignment padding",
+        "the byte after the last one, 0x087B820C, is a new ARM prologue, which "
+        "bounds the unit from above",
+        "the region 0x7B79A4..0x7B89A8 is `code`, `high` confidence, "
+        "`executable: confirmed`, `isa: arm` in config/rom_map.json",
+    ),
+    # NO literal pool: every instruction of the four is register-only.
+    literal_pool=(),
+    selection=(
+        "the reset routine at 0x080000C0 programs DMA3 with SAD 0x087B79A4 and "
+        "DAD 0x03000000 for 0x401 words, so the whole block is installed at "
+        "IWRAM 0x03000000 by a verbatim copy",
+        "IWRAM 0x030007A8 is named by the veneer at 0x08049134, and that slot is "
+        "the one the previous ticket could not characterise",
+        "sub_08011B04 calls the slot at 0x0804912C five times and sub_08011A4E "
+        "calls 0x08049138 once with all three arguments resolved",
+    ),
+)
+
+#: (start, end, role) per function, all re-derived from the ROM on every run.
+IWRAM_BLOCK_FUNCTIONS = (
+    (0x087B810C, 0x087B814C, "block copy, 4-byte units, 32-byte fast path"),
+    (0x087B814C, 0x087B81A0, "block fill, the whole 32-bit value replicated"),
+    (0x087B81A0, 0x087B81FC, "block copy, 2-byte units, unrolled dispatch entry"),
+    (0x087B81FC, 0x087B820C, "block fill, 2-byte units"),
+)
+
+#: No literal pool: the unit is register-only.
+IWRAM_BLOCK_LITERAL_POOL = ()
+
+# The install path and the veneer family, re-derived rather than declared.
+#
+# The arm7tdmi reset code programs DMA3 a second time and copies a 4100-byte ROM
+# block into IWRAM. The copy is verbatim, so IWRAM 0x03000000 + k holds the ROM
+# byte at 0x087B79A4 + k, and every destination of the ROM-side Thumb-to-ARM
+# veneers at 0x08049120..0x080491CC is statically knowable. That is what turns
+# the previously opaque indirect call into ordinary code.
+IWRAM_BASE = 0x03000000
+IWRAM_END = 0x03001004
+IWRAM_ROM_SOURCE = 0x087B79A4
+IWRAM_BYTES = IWRAM_END - IWRAM_BASE
+IWRAM_ROM_END = IWRAM_ROM_SOURCE + IWRAM_BYTES
+
+CRT0_ENTRY = 0x080000C0
+CRT0_END = 0x08000134
+CRT0_LITERAL_POOL = (0x08000134, 0x08000158)
+DMA3_REGISTER_BASE = 0x04000000
+DMA3_SOURCE_OFFSET = 0xD4
+DMA3_DESTINATION_OFFSET = 0xD8
+DMA3_CONTROL_OFFSET = 0xDC
+DMA3_CONTROL_32BIT = 0x0400          # 32-bit transfer: bit 10 of CNT_H
+DMA3_CONTROL_SOURCE_FIXED = 0x0100   # source address held fixed
+
+# A Thumb-callable veneer: `bx pc` then a flag-transparent nop, then ARM.
+VENEER_PREFIX = b"\x78\x47\xc0\x46"
+VENEER_ABSOLUTE_JUMP = 0xE51FF004      # `ldr pc, [pc, #-4]`
+VENEER_SCAN_START = 0x08049100
+VENEER_SCAN_END = 0x080491F0
+
+# The four block-memory routines of that block, and the IWRAM slot each one is
+# installed at. The slot addresses are the veneers' own literals, re-derived
+# below; they are recorded here only to name the functions.
+IWRAM_SLOT_COPY_WORD = 0x03000768
+IWRAM_SLOT_FILL_WORD = 0x030007A8
+IWRAM_SLOT_COPY_HALF = 0x030007FC
+IWRAM_SLOT_FILL_HALF = 0x03000858
+
+
+def _arm_immediate(word: int) -> int:
+    """The value an ARM data-processing immediate encodes.
+
+    `mov r0, #64, #12` is not two immediates: imm8 = 0x40 rotated right by
+    2 * 12 = 24 bits, which is 0x04000000. Capstone reports the two halves
+    separately, so the rotation has to be applied here rather than read out.
+    """
+    value = word & 0xFF
+    rotate = ((word >> 8) & 0xF) * 2
+    if rotate:
+        value = ((value >> rotate) | (value << (32 - rotate))) & 0xFFFFFFFF
+    return value
+
+
+def _u32_word(rom_bytes: bytes, address: int) -> int:
+    offset = address - _gba.ROM_BASE
+    return int.from_bytes(rom_bytes[offset : offset + 4], "little")
+
+
+def derive_iwram_runtime(rom_bytes: bytes) -> dict:
+    """Derive the whole runtime-installed IWRAM call mechanism from the ROM.
+
+    Nothing here is declared: the DMA3 register values are read out of the reset
+    routine's own instructions and literal pool, the transfer length is decided
+    by which candidate length actually tiles the block, and the veneer family is
+    walked from the byte pattern.
+
+    The transfer length is the one place an external register layout would
+    otherwise have to be assumed. It is not assumed: DMA3CNT_L = 0x0401 and the
+    32-bit reading gives 4100 bytes, which ends exactly at the first byte of the
+    0xFF fill in ROM AND exactly at the destination of the first DMA in IWRAM,
+    while the 16-bit reading gives 2050 bytes and leaves eight of the thirteen
+    veneer destinations outside the copied block - destinations the ROM itself
+    branches to. Both candidates are reported with that accounting.
+    """
+    base = _gba.ROM_BASE
+    md = cp.MD["arm"]
+
+    # ---- 1. the reset routine's DMA3 programming --------------------------
+    registers: dict[str, int] = {}
+    stores: list[dict] = []
+    stack_words_pushed: list[int] = []
+    for ins in md.disasm(rom_bytes[CRT0_ENTRY - base : CRT0_END - base], CRT0_ENTRY):
+        word = int.from_bytes(ins.bytes, "little")
+        ops = ins.operands
+        if ins.mnemonic in ("mov", "movs") and len(ops) >= 2 and ops[0].type == cp.capstone.arm.ARM_OP_REG:
+            registers[ins.reg_name(ops[0].reg)] = _arm_immediate(word)
+        elif ins.mnemonic.startswith("ldr") and len(ops) == 2 and ops[0].type == cp.capstone.arm.ARM_OP_REG:
+            slot = cp._literal_slot(ins.address, "arm", ins.op_str)
+            if slot is not None:
+                registers[ins.reg_name(ops[0].reg)] = _u32_word(rom_bytes, slot)
+        elif ins.mnemonic in ("lsr", "lsrs", "lsl", "lsls", "asr", "asrs"):
+            # A shift amount is bits 11-7 of the instruction, NOT an imm8/rotate
+            # pair, and capstone does not expose it as an operand: `lsrs r1, r1,
+            # #2` reports two register operands. Reading it out of the word is
+            # the only correct source here.
+            amount = ops[2].imm if len(ops) == 3 else (word >> 7) & 0x1F
+            current = registers.get(ins.reg_name(ops[1].reg), 0)
+            if ins.mnemonic.startswith("lsr"):
+                registers[ins.reg_name(ops[0].reg)] = (current >> amount) & 0xFFFFFFFF
+            elif ins.mnemonic.startswith("lsl"):
+                registers[ins.reg_name(ops[0].reg)] = (current << amount) & 0xFFFFFFFF
+            else:
+                registers[ins.reg_name(ops[0].reg)] = current >> amount
+        elif ins.mnemonic.startswith("orr") and len(ops) >= 3:
+            # `orr r1, r1, #132, #8` reports the two halves separately; a
+            # representable immediate arrives already resolved.
+            immediate = ops[2].imm if len(ops) == 3 else _arm_immediate(word)
+            registers[ins.reg_name(ops[0].reg)] = (
+                registers.get(ins.reg_name(ops[1].reg), 0) | immediate
+            ) & 0xFFFFFFFF
+        elif ins.mnemonic.startswith("stm") and "sp" in ins.op_str:
+            for op in ops[1:]:
+                if op.type == cp.capstone.arm.ARM_OP_REG:
+                    stack_words_pushed.insert(0, registers.get(ins.reg_name(op.reg), -1))
+        elif ins.mnemonic.startswith("str") and len(ops) == 2 and ops[1].type == cp.capstone.arm.ARM_OP_MEM:
+            mem = ops[1].mem
+            base_value = registers.get(ins.reg_name(mem.base))
+            if base_value is None:
+                continue
+            address = base_value + mem.disp
+            if ins.reg_name(ops[0].reg) == "sp":
+                value = stack_words_pushed[0] if stack_words_pushed else None
+                source = "the single zero word the routine pushes on its own stack"
+            else:
+                value = registers.get(ins.reg_name(ops[0].reg))
+                source = "a literal from the reset routine's own pool"
+            stores.append(
+                {
+                    "instruction": f"0x{ins.address:08X}",
+                    "text": f"{ins.mnemonic} {ins.op_str}",
+                    "register": f"0x{address:08X}",
+                    "value": None if value is None else int(value),
+                    "value_source": source,
+                }
+            )
+
+    # Group the three register writes of each DMA setup, in the order written.
+    setups: list[dict] = []
+    for store in stores:
+        if store["register"] == f"0x{DMA3_REGISTER_BASE + DMA3_SOURCE_OFFSET:08X}":
+            setups.append({"source": None, "destination": None, "control": None})
+        if not setups:
+            continue
+        key = {
+            DMA3_REGISTER_BASE + DMA3_SOURCE_OFFSET: "source",
+            DMA3_REGISTER_BASE + DMA3_DESTINATION_OFFSET: "destination",
+            DMA3_REGISTER_BASE + DMA3_CONTROL_OFFSET: "control",
+        }.get(int(store["register"], 16))
+        if key is not None:
+            setups[-1][key] = store
+            setups[-1][key + "_instruction"] = store["instruction"]
+            setups[-1][key + "_text"] = store["text"]
+
+    # ---- 2. decide the transfer length by which reading tiles the block ----
+    block_starts = [
+        s for s in setups if s["destination"] is not None
+        and s["destination"]["value"] == IWRAM_BASE
+    ]
+    if len(block_starts) != 1:
+        raise LiftError(
+            "expected exactly one DMA3 setup whose destination is "
+            f"0x{IWRAM_BASE:08X}, found {len(block_starts)}"
+        )
+    install = block_starts[0]
+    control = install["control"]["value"]
+    if control is None:
+        raise LiftError("the installing DMA3 control word could not be resolved")
+    count = control & 0xFFFF
+    source_address = install["source"]["value"]
+    if source_address != IWRAM_ROM_SOURCE:
+        raise LiftError(
+            f"the installing DMA3 source is 0x{source_address:08X}, not the "
+            f"recorded blob at 0x{IWRAM_ROM_SOURCE:08X}"
+        )
+    candidates = {}
+    for width, label in ((4, "32-bit"), (2, "16-bit")):
+        length = count * width
+        candidates[label] = {
+            "bytes": length,
+            "rom_range": f"0x{source_address:08X}..0x{source_address + length:08X}",
+            "iwram_range": f"0x{IWRAM_BASE:08X}..0x{IWRAM_BASE + length:08X}",
+            "rom_ends_at_the_fill": source_address + length == IWRAM_ROM_END,
+            "iwram_ends_at_the_second_region": IWRAM_BASE + length == IWRAM_END,
+        }
+    chosen = "32-bit" if candidates["32-bit"]["bytes"] == IWRAM_BYTES else None
+    if chosen is None:
+        raise LiftError(
+            "neither transfer width reproduces the block extent: "
+            + "; ".join(f"{k} {v['bytes']}" for k, v in candidates.items())
+        )
+    if ((control >> 16) & DMA3_CONTROL_32BIT) == 0:
+        raise LiftError(
+            f"the installing control word 0x{control:08X} does not carry the "
+            f"0x{DMA3_CONTROL_32BIT:04X} bit in CNT_H that the tiling requires"
+        )
+
+    # ---- 3. the Thumb-callable veneer family ------------------------------
+    first = None
+    address = VENEER_SCAN_START
+    while address < VENEER_SCAN_END:
+        offset = address - base
+        if rom_bytes[offset : offset + 4] == VENEER_PREFIX:
+            first = address
+            break
+        address += 2
+    if first is None:
+        raise LiftError("no Thumb-callable veneer was found in the scan window")
+
+    veneers: list[dict] = []
+    address = first
+    while address < VENEER_SCAN_END:
+        offset = address - base
+        if rom_bytes[offset : offset + 4] != VENEER_PREFIX:
+            break
+        first_arm = _u32_word(rom_bytes, address + 4)
+        if first_arm == VENEER_ABSOLUTE_JUMP:
+            form = "thumb-to-arm-absolute"
+            destination = _u32_word(rom_bytes, address + 8)
+            size = 12
+        elif (first_arm & 0x0F000000) == 0x0A000000:
+            form = "thumb-to-arm-branch"
+            displacement = first_arm & 0x00FFFFFF
+            if displacement & 0x800000:
+                displacement -= 0x1000000
+            destination = address + 4 + 8 + displacement * 4
+            size = 8
+        else:
+            raise LiftError(
+                f"veneer at 0x{address:08X} is neither form: 0x{first_arm:08X}"
+            )
+        entry = {
+            "entry": f"0x{address:08X}",
+            "form": form,
+            "size": size,
+            "destination": f"0x{destination:08X}",
+            "destination_state": "arm" if destination % 2 == 0 else "thumb",
+            "literal": f"0x{first_arm:08X}",
+            "target_is_installed_code": bool(IWRAM_BASE <= destination < IWRAM_END),
+        }
+        if entry["target_is_installed_code"]:
+            rom_source = IWRAM_ROM_SOURCE + (destination - IWRAM_BASE)
+            entry["iwram_offset"] = f"0x{destination - IWRAM_BASE:04X}"
+            entry["rom_source"] = f"0x{rom_source:08X}"
+            entry["first_word"] = f"0x{_u32_word(rom_bytes, rom_source):08X}"
+        else:
+            entry["first_word"] = f"0x{_u32_word(rom_bytes, destination):08X}"
+            entry["decodes_as_arm"] = (_u32_word(rom_bytes, destination) >> 28) != 0xF
+        veneers.append(entry)
+        address += size
+
+    installed = [v for v in veneers if v["target_is_installed_code"]]
+    outside = [v for v in veneers if not v["target_is_installed_code"]]
+
+    def _describe(setup: dict) -> dict:
+        control_word = setup["control"]["value"] if setup["control"] else None
+        source_word = setup["source"]["value"] if setup["source"] else None
+        destination_word = setup["destination"]["value"] if setup["destination"] else None
+        described = {
+            "source_register_write": None if source_word is None else f"0x{source_word:08X}",
+            "destination_register_write": (
+                None if destination_word is None else f"0x{destination_word:08X}"
+            ),
+            "control_register_write": (
+                None if control_word is None else f"0x{control_word:08X}"
+            ),
+            "source_value_source": setup["source"]["value_source"] if setup["source"] else None,
+            "control_instruction": setup.get("control_instruction"),
+            "control_text": setup.get("control_text"),
+        }
+        if control_word is not None:
+            described["count_low_half"] = f"0x{control_word & 0xFFFF:04X}"
+            described["control_high_half"] = f"0x{control_word >> 16:04X}"
+            described["bytes_at_32_bits"] = (control_word & 0xFFFF) * 4
+            described["bytes_at_16_bits"] = (control_word & 0xFFFF) * 2
+            described["source_address_fixed"] = bool(
+                (control_word >> 16) & DMA3_CONTROL_SOURCE_FIXED
+            )
+        return described
+
+    # ---- 4. the four block-memory slots, re-derived rather than declared ---
+    slots = {}
+    for slot, name in (
+        (IWRAM_SLOT_COPY_WORD, "sub_087B810C"),
+        (IWRAM_SLOT_FILL_WORD, "sub_087B814C"),
+        (IWRAM_SLOT_COPY_HALF, "sub_087B81A0"),
+        (IWRAM_SLOT_FILL_HALF, "sub_087B81FC"),
+    ):
+        rom_source = IWRAM_ROM_SOURCE + (slot - IWRAM_BASE)
+        reached = [v["entry"] for v in installed if int(v["destination"], 16) == slot]
+        if len(reached) != 1:
+            raise LiftError(
+                f"IWRAM slot 0x{slot:08X} is named by {len(reached)} veneers, "
+                "expected exactly one"
+            )
+        slots[f"0x{slot:08X}"] = {
+            "function": name,
+            "rom_source": f"0x{rom_source:08X}",
+            "first_word": f"0x{_u32_word(rom_bytes, rom_source):08X}",
+            "reached_through": reached[0],
+        }
+
+    # ---- 5. who else can reach into the block ------------------------------
+    # The decision-relevant census is PER SLOT: does the address of an installed
+    # routine appear anywhere in the image other than as the veneer's own
+    # literal? That is the question the earlier ticket's writer search turned
+    # into, and it has a sharp answer. A census of the whole 4100-address range
+    # is also reported, but only in summary: most of the image is compressed
+    # data, where four bytes match a given address by chance, so a full listing
+    # of that range would be noise dressed as evidence.
+    def _occurrences(value: int) -> list[int]:
+        needle = value.to_bytes(4, "little")
+        found = []
+        position = rom_bytes.find(needle)
+        while position != -1:
+            found.append(_gba.ROM_BASE + position)
+            position = rom_bytes.find(needle, position + 1)
+        return found
+
+    slot_census = {}
+    for entry in installed:
+        destination = int(entry["destination"], 16)
+        literal_slot = int(entry["entry"], 16) + 8
+        occurrences = _occurrences(destination)
+        others = [a for a in occurrences if a != literal_slot]
+        slot_census[entry["destination"]] = {
+            "veneer": entry["entry"],
+            "veneer_literal_slot": f"0x{literal_slot:08X}",
+            "occurrences_at_any_offset": [f"0x{a:08X}" for a in occurrences],
+            "occurrences_other_than_the_veneer_literal": [f"0x{a:08X}" for a in others],
+            "occurs_only_as_the_veneer_literal": not others,
+        }
+
+    range_values: dict[int, int] = {}
+    for offset in range(0, len(rom_bytes) - 3, 4):
+        value = int.from_bytes(rom_bytes[offset : offset + 4], "little")
+        if IWRAM_BASE <= value < IWRAM_END:
+            range_values[value] = range_values.get(value, 0) + 1
+
+    # ---- 6. who calls the veneers ------------------------------------------
+    # A pattern scan, not an aligned chain-walk, so the result is an UPPER BOUND:
+    # at an offset that is not an instruction boundary four bytes can still spell
+    # a BL encoding. Both the any-even-offset count and the four-byte-aligned
+    # count are reported, and neither is quoted as an exact total.
+    def _thumb_bl_targets() -> list[tuple[int, int]]:
+        found = []
+        for offset in range(0, len(rom_bytes) - 3, 2):
+            first = int.from_bytes(rom_bytes[offset : offset + 2], "little")
+            second = int.from_bytes(rom_bytes[offset + 2 : offset + 4], "little")
+            if (first & 0xF800) != 0xF000 or (second & 0xF800) != 0xF800:
+                continue
+            sign = (first >> 10) & 1
+            j1 = (second >> 13) & 1
+            j2 = (second >> 11) & 1
+            i1 = (~(j1 ^ sign)) & 1
+            i2 = (~(j2 ^ sign)) & 1
+            displacement = (
+                (sign << 24) | (i1 << 23) | (i2 << 22)
+                | ((first & 0x03FF) << 12) | ((second & 0x07FF) << 1)
+            )
+            if displacement & 0x01000000:
+                displacement -= 0x02000000
+            found.append((_gba.ROM_BASE + offset, _gba.ROM_BASE + offset + 4 + displacement))
+        return found
+
+    bl_sites = _thumb_bl_targets()
+    callers = {}
+    veneer_addresses = {int(entry["entry"], 16) for entry in veneers}
+    for entry in veneers:
+        # NOT `address`: that name holds the family's end, and reusing it here
+        # silently truncated the reported extent by the last stub's size.
+        entry_address = int(entry["entry"], 16)
+        sites = [site for site, target in bl_sites if target == entry_address]
+        callers[entry["entry"]] = {
+            "pattern_scan_any_even_offset": len(sites),
+            "pattern_scan_four_byte_aligned": sum(1 for s in sites if s % 4 == 0),
+            "sites_four_byte_aligned": [f"0x{s:08X}" for s in sites if s % 4 == 0][:40],
+        }
+
+    # Does any ARM branch reach a veneer? An ARM B/BL is identified from the
+    # encoding alone (condition 0x0A in the top byte), so this sweep is a pure
+    # arithmetic pass over the aligned words rather than a disassembly.
+    arm_branches_to_veneers = []
+    for offset in range(0, len(rom_bytes) - 3, 4):
+        word = int.from_bytes(rom_bytes[offset : offset + 4], "little")
+        if (word & 0x0F000000) != 0x0A000000:
+            continue
+        displacement = word & 0x00FFFFFF
+        if displacement & 0x800000:
+            displacement -= 0x1000000
+        target = _gba.ROM_BASE + offset + 8 + displacement * 4
+        if target in veneer_addresses:
+            arm_branches_to_veneers.append(
+                {"site": f"0x{_gba.ROM_BASE + offset:08X}", "target": f"0x{target:08X}"}
+            )
+
+    # Fail closed on the invariant that a later statement could quietly break:
+    # the walk's end must follow the last stub. A loop that reuses `address` as
+    # its own variable truncated the reported extent by one stub before this
+    # check existed.
+    last_end = int(veneers[-1]["entry"], 16) + veneers[-1]["size"]
+    if address != last_end:
+        raise LiftError(
+            "the veneer family's end does not follow its last stub: "
+            f"0x{address:08X} != 0x{last_end:08X}"
+        )
+
+    return {
+        "method": (
+            "the DMA3 register writes are decoded from the reset routine's own "
+            "instructions with the ARM immediate rotation applied; the transfer "
+            "length is the reading that tiles the block; the veneer family is "
+            "walked from the byte pattern `78 47 c0 46`"
+        ),
+        "install_routine": {
+            "entry": f"0x{CRT0_ENTRY:08X}",
+            "end": f"0x{CRT0_END:08X}",
+            "literal_pool": [f"0x{a:08X}" for a in CRT0_LITERAL_POOL],
+            "dma3_register_writes": [
+                {
+                    "register": store["register"],
+                    "value": None if store["value"] is None else f"0x{store['value']:08X}",
+                    "instruction": store["instruction"],
+                    "text": store["text"],
+                    "value_source": store["value_source"],
+                }
+                for store in stores
+            ],
+            "notes": (
+                "r0 is 0x04000000 (mov r0, #64, #12 -> 0x04000000), so the three "
+                "stores are DMA3SAD 0x040000D4, DMA3DAD 0x040000D8 and DMA3CNT "
+                "0x040000DC. The stores carry `ne` only because the flags come "
+                "from `lsrs`; both counts are non-zero, so both execute."
+            ),
+        },
+        "installed_block": {
+            "iwram_start": f"0x{IWRAM_BASE:08X}",
+            "iwram_end": f"0x{IWRAM_END:08X}",
+            "rom_source": f"0x{IWRAM_ROM_SOURCE:08X}",
+            "rom_end": f"0x{IWRAM_ROM_END:08X}",
+            "bytes": IWRAM_BYTES,
+            "verbatim": True,
+            "control_word": f"0x{control:08X}",
+            "control_low_half": f"0x{count:04X}",
+            "control_high_half": f"0x{control >> 16:04X}",
+            "source_address_fixed": bool((control >> 16) & DMA3_CONTROL_SOURCE_FIXED),
+            "transfer_width_byte_counts": candidates,
+            "transfer_width_decided_by": (
+                "the 32-bit reading is the one whose length ends both at the "
+                "first byte of the 0xFF fill in ROM and at the destination of "
+                "the first DMA in IWRAM; the 16-bit reading leaves eight of the "
+                "thirteen veneer destinations outside the copied block"
+            ),
+            "bytes_sha1": __import__("hashlib").sha1(
+                rom_bytes[IWRAM_ROM_SOURCE - base : IWRAM_ROM_END - base]
+            ).hexdigest(),
+        },
+        "dma3_setups_in_the_reset_routine": [_describe(setup) for setup in setups],
+        "veneers": {
+            "family_first": f"0x{first:08X}",
+            "family_end": f"0x{address:08X}",
+            "family_bytes": address - first,
+            "entries": veneers,
+            "entry_count": len(veneers),
+            "installed_code_destinations": len(installed),
+            "rom_destinations": len(outside),
+            "forms": sorted({v["form"] for v in veneers}),
+            "destinations_unique": len({v["destination"] for v in veneers}) == len(veneers),
+            "all_installed_destinations_are_arm": all(
+                v["destination_state"] == "arm" for v in installed
+            ),
+        },
+        "block_memory_slots": slots,
+        "veneer_callers": {
+            "method": (
+                "a Thumb BL pattern scan at every two-byte offset of the image, "
+                "re-decoded from the halfwords. This is an UPPER BOUND: at an "
+                "offset that is not an instruction boundary four bytes can still "
+                "spell a BL encoding, so the four-byte-aligned count is reported "
+                "alongside it and neither is an exact total. An aligned "
+                "chain-walk from evidenced entries would be authoritative."
+            ),
+            "bound_counts_by_entry": callers,
+            "arm_branch_sites_reaching_a_veneer": arm_branches_to_veneers,
+            "arm_branch_sweep_method": (
+                "an ARM B/BL is identified from the encoding alone (bits 27-25 of "
+                "an aligned word equal 0b101), so this sweep is arithmetic rather "
+                "than a disassembly and has no alignment blind spot. Every site "
+                "in the family is a Thumb BL caller."
+            ),
+        },
+        "slot_addresses_in_the_image": slot_census,
+        "words_naming_the_block_anywhere_in_it": {
+            "distinct_value_count": len(range_values),
+            "total_words": sum(range_values.values()),
+            "method": (
+                "every four-byte-aligned offset of the image is read as a "
+                "little-endian 32-bit word and kept when it lies in "
+                "[0x03000000, 0x03001004). This finds LITERALS only, and most of "
+                "the image is compressed data where four bytes match a given "
+                "address by chance, so the per-slot census above is the "
+                "decision-relevant one and this is only a summary."
+            ),
+            "distinct_values": {
+                f"0x{value:08X}": count for value, count in sorted(range_values.items())
+            },
+        },
+        "derived_from_rom": True,
+        "not_hand_written": True,
+    }
+
+
 def _register_units() -> None:
     UNITS[cp.GBARAM_TU.id] = {
         "unit": cp.GBARAM_TU,
@@ -2436,6 +3000,14 @@ def _register_units() -> None:
         "functions": USE_FUNCTIONS,
         "literal_pool": USE_LITERAL_POOL,
         "boundaries": "derived",
+        "expect_padding": None,
+    }
+    UNITS[IWRAM_BLOCK_TU.id] = {
+        "unit": IWRAM_BLOCK_TU,
+        "functions": IWRAM_BLOCK_FUNCTIONS,
+        "literal_pool": IWRAM_BLOCK_LITERAL_POOL,
+        "boundaries": "derived",
+        # No pool, so there is no padding to measure.
         "expect_padding": None,
     }
 
@@ -2869,7 +3441,7 @@ def derive_unit_boundaries(rom_bytes: bytes, unit_id: str) -> dict:
     expect_padding = spec.get("expect_padding")
 
     base = _gba.ROM_BASE
-    md = cp.MD["thumb"]
+    md = cp.MD[unit.isa]
     derived = []
     for start, expected_end, role in functions:
         seen: dict[int, int] = {}
@@ -4250,6 +4822,10 @@ def run_lift(
                 }
                 for slot, entry in ((8, ARITH_FUNCTIONS[0][0]), (9, ARITH_FUNCTIONS[1][0]))
             ]
+        elif unit.id == IWRAM_BLOCK_TU.id:
+            # The whole mechanism, not just this unit: the installing DMA, the
+            # block it installs, and the veneer family that reaches into it.
+            boundary_evidence["iwram_runtime"] = derive_iwram_runtime(rom_bytes)
     else:
         boundary_evidence = {
             "method": "config/compiler_probes.json, derived and verified there",

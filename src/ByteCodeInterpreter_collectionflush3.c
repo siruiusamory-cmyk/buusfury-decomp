@@ -62,9 +62,18 @@
  * THEY DO NOT:
  *   * no instruction in the image accesses the region by an immediate displacement,
  *     so the address is always computed;
- *   * 
- *   * EIGHT SITES IN THE IMAGE BUILD THE CONSTANT 0x208, found by scanning every byte for the movs/lsls pair in all its register forms and all its decompositions. Exactly THREE of them are in the collection cluster and use it as object + 0x208 for the object at 0x03001C4C: this routine at 0x0801158A, sub_08011732 at 0x080117CA, and sub_08011B04 at 0x08011B7A. ALL THREE WRITE ZERO TO THE COUNT AND NONE OF THEM WRITES AN ELEMENT. The other five sites
- *     - 0x080344CC, 0x08034A6A, 0x0804843E, 0x0804E9AE and 0x08054492 - are in unrelated routines that build the same numeric offset for other structures, and NONE of the eight performs the append shape (read a count at +0, increment, store an element at +4). An earlier revision of this comment claimed only three routines compute 0x208; that was WRONG and is corrected here.
+ *   * EIGHT SITES IN THE IMAGE BUILD THE CONSTANT 0x208, found by scanning every
+ *     byte for the movs/lsls pair in all its register forms and all its
+ *     decompositions. Exactly THREE of them are in the collection cluster and use it
+ *     as object + 0x208 for the object at 0x03001C4C: this routine at 0x0801158A,
+ *     sub_08011732 at 0x080117CA, and sub_08011B04 at 0x08011B7A. ALL THREE WRITE
+ *     ZERO TO THE COUNT AND NONE OF THEM WRITES AN ELEMENT. The other five sites -
+ *     0x080344CC, 0x08034A6A, 0x0804843E, 0x0804E9AE and 0x08054492 - are in
+ *     unrelated routines that build the same numeric offset for other structures,
+ *     and NONE of the eight performs the append shape, which would be reading a count
+ *     at +0, incrementing it, and storing an element at +4. An earlier revision of
+ *     this comment claimed only three routines compute 0x208; that was WRONG and is
+ *     corrected here;
  *   * a search of the whole image for a STORED POINTER to the region found ZERO
  *     occurrences of object+0x204, object+0x208 or object+0x20C, so no code can reach
  *     it through a pointer either, and a generic append could not be aimed at it;

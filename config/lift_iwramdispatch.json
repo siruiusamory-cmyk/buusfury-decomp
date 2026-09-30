@@ -5139,6 +5139,14 @@
               "function": "0x0803F3DA"
             }
           ],
+          "installer_call_sites": [
+            {
+              "site": "0x0803D7CC",
+              "kind": "thumb-bl"
+            }
+          ],
+          "installer_is_named_by_a_stored_word": false,
+          "installer_is_named_by_a_stored_word_note": "the 4-byte value 0x0803F3DA does not occur anywhere in the image, so the only way to reach the routine is a branch - which is why a search for the address as a pointer reports, wrongly, that the BIOS IRQ vector is never installed",
           "bios_irq_vector_pointer_method": "for every instruction that pc-relatively reads the dispatcher's own address literal, the enclosing Thumb function is walked with registers tracked through literal loads, and each store of that value through a literal base is reported with its computed destination - the BIOS IRQ vector pointer is never stored as a literal, it is computed as 0x03007FC0 + 0x3C",
           "vector_table_writes": [
             {

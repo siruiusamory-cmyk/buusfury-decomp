@@ -445,6 +445,44 @@ def test_the_installer_writes_the_bios_irq_vector_pointer(rom_bytes):
     assert rom_bytes.count((0x03007FFC).to_bytes(4, "little")) == 0
 
 
+def test_the_installer_is_reached_by_a_call_and_named_by_no_stored_word(rom_bytes):
+    """The same trap twice over, and the reason the subsystem is LIVE.
+
+    The installer's own address is named by NO stored word anywhere in the image
+    - 0x0803F3DA occurs zero times at every alignment - so a pointer search
+    reports that the installer is never called and the IRQ vector never
+    installed. It is called, by a Thumb `bl` from the system-init path.
+
+    A Thumb `bl` is a 32-bit instruction. Decoding one halfword at a time reports
+    the whole instruction as undecodable and loses the edge; that is exactly how
+    an independent sweep of this image concluded the dispatcher was dead code.
+    """
+    installer = 0x0803F3DA
+    assert rom_bytes.count(installer.to_bytes(4, "little")) == 0
+
+    sites = lift._branch_sites_into(rom_bytes, installer)
+    assert [(f"0x{site:08X}", kind) for site, kind, _t in sites] == [
+        ("0x0803D7CC", "thumb-bl"),
+    ]
+
+    # And the call really is a Thumb BL: decoded as a PAIR it is a branch, and
+    # decoded as two halfwords it is not even an instruction.
+    import capstone
+
+    offset = 0x0803D7CC - gba.ROM_BASE
+    thumb = capstone.Cs(capstone.CS_ARCH_ARM, capstone.CS_MODE_THUMB)
+    thumb.detail = True
+    decoded = [i for i in thumb.disasm(rom_bytes[offset:offset + 4], 0x0803D7CC)]
+    assert len(decoded) == 1
+    assert decoded[0].mnemonic == "bl"
+    assert decoded[0].size == 4
+    assert (decoded[0].operands[0].imm & 0xFFFFFFFF) == installer
+
+    first = int.from_bytes(rom_bytes[offset:offset + 2], "little")
+    second = int.from_bytes(rom_bytes[offset + 2:offset + 4], "little")
+    assert (first & 0xF800) == 0xF000 and (second & 0xF800) == 0xF800
+
+
 # ---------------------------------------------------------------------------
 # agreement with the harness derivation, when this revision registers it
 # ---------------------------------------------------------------------------

@@ -172,12 +172,39 @@ others, `0x0803F220` writing `0x03000AE0` into **slot 10** at `0x03000FD8` - and
 slot 10 is exactly the slot the priority chain selects for bit 10, which is exactly
 the bit that same routine enables in `REG_IE`. The two halves of the install agree.
 
-### The software pending word
+### The software pending word is a producer/consumer semaphore
 
-`0x03000FE8`, immediately after the table, receives `OR served_mask` before the
-handler runs. Nothing else in the block reads it and its consumer was not found, so
-its purpose is **UNKNOWN**. It is not a nest counter and not a copy of `REG_IF` -
-it accumulates rather than being overwritten.
+`0x03000FE8`, immediately after the table, receives `OR served_mask` **before the
+handler runs**. Its consumer is a ROM routine, not part of the block: the waiter
+`0x0803F3F4` takes the table base in `r0` and an awaited mask in `r1`, and
+
+```
+0x0803F420  strh r0, [r4, #0x38]   ; clear the pending word
+0x0803F422  svc  #2                ; halt until an interrupt
+0x0803F426  ldrsh r0, [r4, r2]     ; the dispatcher has ORed the served mask in
+0x0803F428  ands r0, r5            ; is anything we are waiting for set?
+0x0803F42A  beq  0x0803F422        ; no: halt again
+0x0803F42E  bics r0, r5            ; yes: consume those bits
+0x0803F430  strh r0, [r4, #0x38]
+```
+
+So it is a **bitmap the dispatcher produces and a waiter consumes**, not a nest
+counter: nothing increments it, the waiter clears it before waiting and bics the
+bits it consumed afterwards. An earlier revision of this document called its
+purpose UNKNOWN; the consumer was simply outside the block being analysed.
+
+The waiter also writes `0x03000FEC` (`+0x3C`), once with a constant `100` at
+`0x0803F406` and otherwise with a value computed from `VCOUNT` at `0x0803F41C`,
+so that word is a scanline-derived timing value rather than part of the vector
+table. The waiter has five callers, all passing `0x03000FB0` in `r0`.
+
+### The bit-13 hang is armed at run time
+
+The install routine sets `REG_IE = 0x2000`, which is **exactly bit 13** - the one
+bit whose settled path is the self-branch - and its caller then ORs in bit 0
+(VBlank), leaving `REG_IE = 0x2001`. So the latent hang is not dead configuration:
+a pending Game Pak interrupt would spin the machine with `IME` already set to 1.
+This is recorded, not repaired.
 
 ### The install path
 
@@ -196,6 +223,22 @@ REG_IE = 0x2000 ; REG_IME = 1 ; REG_DISPSTAT = 0x18
 for the BIOS vector therefore finds nothing and concludes the vector is never
 installed; the address is computed. This is the single most reusable fact in the
 ticket.
+
+### The routine that does it is reached by a call, not by a pointer
+
+The same trap has a second half. The installer's own address is named by **no
+stored word anywhere in the image** - the 4-byte value `0x0803F3DA` occurs zero
+times at every alignment - so a pointer search reports that the installer is never
+called either. It is called: `0x0803D7CC` is a Thumb `bl 0x0803F3DA`, through the
+system-init path that also loads the IWRAM system-pointer table at `0x087B5B80`,
+writes handler `0x0803D785` into vector slot 0, calls `0x0803F1B8` (which installs
+`0x03000AE0` into slot 10 and enables `REG_IE` bit 10), and enables interrupts.
+
+A Thumb `bl` is a 32-bit instruction, so it has to be decoded as a **pair**.
+Decoding one halfword at a time reports the whole instruction as undecodable and
+loses the edge - which is the likeliest reason an independent sweep of this image
+concluded the installer was unreachable. The subsystem is **live**: the BIOS IRQ
+vector is written, the vector table is populated, and the dispatcher runs.
 
 ## 6. The internal callgraph
 

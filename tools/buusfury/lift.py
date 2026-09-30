@@ -3621,6 +3621,58 @@ def _vector_table_writers(rom_bytes: bytes, readers_index: dict, census: dict) -
     return out
 
 
+def _branch_sites_into(rom_bytes: bytes, value: int) -> list:
+    """Every Thumb BL/BLX and ARM B/BL in the image whose target is `value`.
+
+    This is the question a stored-word search cannot answer. The routine that
+    installs the BIOS IRQ vector is named by NO word anywhere in the image - the
+    4-byte value 0x0803F3DA occurs zero times at every alignment - so a literal
+    search concludes the vector is never installed. It is installed: the routine
+    is reached by a BL from the system-init path at 0x0803D7CC. A Thumb BL is a
+    32-bit instruction, so it must be decoded as a PAIR; decoding one halfword at
+    a time reports it as undecodable and loses the edge.
+    """
+    base = _gba.ROM_BASE
+    out = []
+    for offset in range(0, len(rom_bytes) - 3, 2):
+        first = int.from_bytes(rom_bytes[offset : offset + 2], "little")
+        if (first & 0xF800) != 0xF000:
+            continue
+        second = int.from_bytes(rom_bytes[offset + 2 : offset + 4], "little")
+        if (second & 0xF800) not in (0xF800, 0xE800):
+            continue
+        sign = (first >> 10) & 1
+        j1 = (second >> 13) & 1
+        j2 = (second >> 11) & 1
+        i1 = (~(j1 ^ sign)) & 1
+        i2 = (~(j2 ^ sign)) & 1
+        displacement = (
+            (sign << 24) | (i1 << 23) | (i2 << 22)
+            | ((first & 0x03FF) << 12) | ((second & 0x07FF) << 1)
+        )
+        if displacement & 0x01000000:
+            displacement -= 0x02000000
+        kind = "thumb-bl" if (second & 0xF800) == 0xF800 else "thumb-blx"
+        target = base + offset + 4 + displacement
+        if kind == "thumb-blx":
+            target &= ~3
+        if target == value:
+            out.append((base + offset, kind, target))
+    for offset in range(0, len(rom_bytes) - 3, 4):
+        word = int.from_bytes(rom_bytes[offset : offset + 4], "little")
+        if word >> 28 == 0xF:
+            continue
+        if ((word >> 25) & 0x7) != 0b101:
+            continue
+        displacement = word & 0x00FFFFFF
+        if displacement & 0x800000:
+            displacement -= 0x1000000
+        target = base + offset + 8 + displacement * 4
+        if target == value:
+            out.append((base + offset, "arm-branch", target))
+    return out
+
+
 def _derive_irq(rom_bytes: bytes, graph: dict, readers_index: dict, census: dict) -> dict:
     """Decode the IRQ dispatcher, its vector table and its install path."""
     words = []
@@ -3898,6 +3950,19 @@ def _derive_irq(rom_bytes: bytes, graph: dict, readers_index: dict, census: dict
         },
         "install_path": {
             "bios_irq_vector_pointer_sites": install,
+            "installer_call_sites": [
+                {"site": f"0x{site:08X}", "kind": kind}
+                for site, kind, _target in _branch_sites_into(rom_bytes, ROM_IRQ_INSTALL)
+            ],
+            "installer_is_named_by_a_stored_word": bool(
+                rom_bytes.find(ROM_IRQ_INSTALL.to_bytes(4, "little")) != -1
+            ),
+            "installer_is_named_by_a_stored_word_note": (
+                "the 4-byte value 0x%08X does not occur anywhere in the image, so "
+                "the only way to reach the routine is a branch - which is why a "
+                "search for the address as a pointer reports, wrongly, that the "
+                "BIOS IRQ vector is never installed" % ROM_IRQ_INSTALL
+            ),
             "bios_irq_vector_pointer_method": (
                 "for every instruction that pc-relatively reads the dispatcher's "
                 "own address literal, the enclosing Thumb function is walked with "

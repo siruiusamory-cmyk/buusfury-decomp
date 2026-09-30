@@ -103,6 +103,26 @@ therefore cannot be imported. See
 [`docs/ADS12_SETUP.md`](docs/ADS12_SETUP.md) and
 [`docs/DECOMP_BASELINE.md`](docs/DECOMP_BASELINE.md#the-blocker).
 
+### Flag-mask application (DECOMP-LIFT-FLAGMASK-001, measured 2026-09-29)
+
+The first consumer of the mask the gather produces: `sub_08003310` at
+**0x08003310**, 86 bytes and 41 instructions, native dispatch entry 187, source at
+[src/ByteCodeInterpreter_flagmask.c](src/ByteCodeInterpreter_flagmask.c).
+
+| Verdict | Result | Question it answers |
+| --- | --- | --- |
+| `SEMANTIC` | **PROVEN** | per-bit set/clear, both clamps, width 32? 22 assertions, 0 failures |
+| `MODERN_BUILD` | **PASS** | does it compile and emit bytes? 144 bytes |
+| `ADS_MATCH` | **BLOCKED** | does it reproduce the original compiler? `ADS12_LICENSE_UNAVAILABLE` |
+
+It begins **exactly where the gather ends**. It pops **three** values - the mask
+from the top, then the width, then the bit offset - pushes nothing, and then
+**applies the mask per bit**: for `i = 0..width-1` it **SETs** the flag at
+`offset + i` when mask bit `i` is 1 and **CLEARs** it when the bit is 0. So **each
+bit of the mask becomes the state of the corresponding flag**, making it the exact
+counterpart of the gather. Width 32 overflows the clamp to `0xFFFFFFFF` and sets
+the whole run. See [docs/LIFT_FLAGMASK.md](docs/LIFT_FLAGMASK.md).
+
 ### Flag-state cluster (DECOMP-LIFT-FLAGSTATE-001, measured 2026-09-29)
 
 The accessor trio is complete and the array is bounded. Two functions: the clear
@@ -373,7 +393,7 @@ python -m buusfury build     # assemble a ROM, with per-region provenance
 python -m buusfury lift      # semantic lifting loop: build + compare one family
 python -m buusfury rommap    # independent structural ROM map + function inventory
 python -m buusfury fixed     # generate the zero-toolchain fixed regions
-python -m pytest tests -q    # 588 tests
+python -m pytest tests -q    # 614 tests
 ```
 
 ## Scope

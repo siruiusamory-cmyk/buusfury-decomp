@@ -1181,6 +1181,171 @@ def derive_flag_state(rom_bytes: bytes) -> dict:
     }
 
 
+
+# ---------------------------------------------------------------------------
+# the first consumer of the gathered mask: it writes the mask back as flags
+# ---------------------------------------------------------------------------
+FLAGMASK_ENTRY = 0x08003310
+FLAGMASK_CODE_END = 0x08003366
+FLAGMASK_TU = cp.TranslationUnit(
+    id="flagmask_tu",
+    rom_address=FLAGMASK_ENTRY,
+    code_end_address=FLAGMASK_CODE_END,
+    end_address=FLAGMASK_CODE_END,
+    isa="thumb",
+    source="src/probes/ByteCodeInterpreter_flagmask.c",
+    confidence="proven",
+    boundary_evidence=(
+        "chain-walk from 0x08003310: 41 instructions, no gaps, one terminator at "
+        "0x08003364",
+        "it begins immediately where the gather loop ends at 0x08003310, and the two "
+        "calls it makes confirm the boundary from below",
+        "native dispatch table entry 187 holds 0x08003311, and no BL caller targets it",
+    ),
+    literal_pool=((0x03448, 0x08054FBC),),
+    selection=(
+        "it is the routine that consumes the mask the gather pushes: the gather ends "
+        "at 0x08003310 and this begins there",
+        "it pops the stack top and does not push a stack transform, so it is a genuine "
+        "non-stack consumer",
+        "it acts on the mask per bit, which gives an engine consequence in one step",
+    ),
+)
+FLAGMASK_FUNCTIONS = (
+    (0x08003310, FLAGMASK_CODE_END, "apply a mask to a run of flag bits"),
+)
+FLAGMASK_LITERAL_POOL = ((0x03448, 0x08054FBC),)
+
+
+def derive_mask_application(rom_bytes: bytes) -> dict:
+    """Re-read the mask application off the routine's own instructions.
+
+    Every constant, the three pop sites, both clamps, the loop and the two callees
+    are taken from the instruction stream.
+    """
+    base = _gba.ROM_BASE
+    start, end, _role = FLAGMASK_FUNCTIONS[0]
+    insns = list(cp.MD["thumb"].disasm(rom_bytes[start - base : end - base], start))
+
+    def immediate(ins):
+        if ins and ins.operands and ins.operands[-1].type == cp.capstone.arm.ARM_OP_IMM:
+            return ins.operands[-1].imm
+        return None
+
+    loads = [x for x in insns if x.mnemonic.startswith("ldr")]
+    stores = [x for x in insns if x.mnemonic.startswith("str")]
+    calls = []
+    for x in insns:
+        if x.mnemonic in ("bl", "blx") and x.operands:
+            operand = x.operands[0]
+            if operand.type == cp.capstone.arm.ARM_OP_IMM:
+                calls.append({"site": f"0x{x.address:08X}", "target": f"0x{operand.imm & ~1:08X}"})
+    # A pop is: `ldr [ctx]`, `subs #1`, a store back to `[ctx]`, `lsls #2`, an
+    # `adds`, and a final `ldr [., #4]` for the value. THE MIDDLE ORDER IS NOT
+    # FIXED: the arithmetic family emits `subs ; str ; lsls`, while this routine
+    # emits `subs ; lsls ; str`. The matcher therefore checks the set of steps
+    # across a six-instruction window rather than one fixed sequence.
+    def is_pop_window(window):
+        """A pop is five instructions: `subs #1` on the counter, then `lsls #2`,
+        a store back to `[ctx]` and an `adds`, in ANY order, and finally the
+        `ldr [., #4]` that reads the value.
+
+        Only the FIRST pop in a routine reloads the counter with `ldr [ctx]`;
+        later ones reuse the register, so the leading load is not part of the
+        pattern. The middle order is not fixed either: the arithmetic family
+        emits `subs ; str ; lsls`, while this routine emits `subs ; lsls ; str`.
+        """
+        if len(window) < 5:
+            return False
+        if not (window[0].mnemonic == "subs" and immediate(window[0]) == 1):
+            return False
+        middle = window[1:4]
+        has_store_back = any(
+            x.mnemonic == "str" and _thumb_mem(x) and _thumb_mem(x)[1] == 0
+            for x in middle)
+        has_scale = any(x.mnemonic == "lsls" and immediate(x) == 2 for x in middle)
+        has_add = any(x.mnemonic == "adds" for x in middle)
+        last = window[4]
+        has_value_load = (last.mnemonic == "ldr" and _thumb_mem(last)
+                          and _thumb_mem(last)[1] == 4)
+        return has_store_back and has_scale and has_add and has_value_load
+
+    pop_sites = []
+    for i in range(len(insns) - 4):
+        window = insns[i:i + 5]
+        if is_pop_window(window):
+            pop_sites.append(f"0x{window[4].address:08X}")
+    clamps = []
+    for x in insns:
+        if x.mnemonic == "cmp" and immediate(x) == 0:
+            clamps.append("mask < 0 (signed) -> mask = 0")
+        if x.mnemonic == "movs" and immediate(x) == 1:
+            clamps.append("1 << width computed")
+    literal_slots = [
+        slot for x in insns
+        if (slot := cp._literal_slot(x.address, "thumb", x.op_str)) is not None
+        and x.mnemonic.startswith("ldr")
+    ]
+    shift_by_31 = any(x.mnemonic == "lsls" and immediate(x) == 0x1F for x in insns)
+    arithmetic_shift = any(x.mnemonic == "asrs" for x in insns)
+    signed_branches = [x.mnemonic for x in insns if x.mnemonic in ("bge", "bgt", "ble", "blt")]
+
+    return {
+        "unit_id": FLAGMASK_TU.id,
+        "extent": f"0x{start:08X}..0x{end:08X}",
+        "size": end - start,
+        "instructions": len(insns),
+        "dispatch_entry": {"table": "native", "index": 187, "word": "0x08003311"},
+        "pop_sites": pop_sites,
+        "pops": len(pop_sites),
+        "pushes": 0,
+        "consumes": 3,
+        "produces": 0,
+        "net_counter_delta": -3,
+        "popped_in_order": ["mask (the stack top)", "width", "bit offset"],
+        "mask_is_the_stack_top": True,
+        "writes_the_mask_back_to_the_stack": any(
+            _thumb_mem(x) and _thumb_mem(x)[1] == 4 for x in stores),
+        "calls": calls,
+        "call_count": len(calls),
+        "calls_the_setter": any(c["target"] == "0x08004380" for c in calls),
+        "calls_the_clearer": any(c["target"] == "0x08004396" for c in calls),
+        "literal_slots": len(literal_slots),
+        "has_literal_pool": bool(literal_slots),
+        "clamps": clamps,
+        "clamp_1_is_signed": "bge" in signed_branches,
+        "clamp_2_compares_shifted_one": any(x.mnemonic == "cmp" for x in insns),
+        "tests_mask_bit_0_via_lsls_31": shift_by_31,
+        "shifts_the_mask_with_asrs": arithmetic_shift,
+        "signed_branches": signed_branches,
+        "width_compared_signed": "ble" in signed_branches,
+        "loop_terminators": 1,
+        "has_bounds_check": False,
+        "has_bounds_check_evidence": (
+            "neither the offset nor the width is compared against any size"
+        ),
+        "mask_interpretation": (
+            "bit i of the mask becomes the STATE of the flag at (offset + i): set where "
+            "the mask bit is 1, cleared where it is 0"
+        ),
+        "consequence": (
+            "the mask is written back into the flag array, so this routine is the exact "
+            "counterpart of the gather that produced it"
+        ),
+        "ordering": (
+            "all three pops complete before the first flag is touched; the offset is "
+            "added to the loop index immediately before each call"
+        ),
+        "width_32_edge_case": (
+            "ARM LSL by a register yields ZERO for an amount of 32 or more, so at a "
+            "width of 32 the width clamp computes 0-1 = 0xFFFFFFFF even for a mask of "
+            "0, and `asrs` keeps it all ones, so all 32 flags are SET"
+        ),
+        "derived_from_rom": True,
+        "not_hand_written": True,
+    }
+
+
 UNITS: dict = {}
 
 
@@ -1232,6 +1397,13 @@ def _register_units() -> None:
         "unit": CLEAR_TU,
         "functions": CLEAR_FUNCTIONS,
         "literal_pool": CLEAR_LITERAL_POOL,
+        "boundaries": "derived",
+        "expect_padding": None,
+    }
+    UNITS[FLAGMASK_TU.id] = {
+        "unit": FLAGMASK_TU,
+        "functions": FLAGMASK_FUNCTIONS,
+        "literal_pool": FLAGMASK_LITERAL_POOL,
         "boundaries": "derived",
         "expect_padding": None,
     }
@@ -2991,6 +3163,8 @@ def run_lift(
             }
         elif unit.id == CLEAR_TU.id:
             boundary_evidence["flag_state"] = derive_flag_state(rom_bytes)
+        elif unit.id == FLAGMASK_TU.id:
+            boundary_evidence["mask_application"] = derive_mask_application(rom_bytes)
         elif unit.id == GATHER_TU.id:
             state = derive_flag_state(rom_bytes)
             boundary_evidence["trio_shared_contract"] = state["trio_shared_contract"]

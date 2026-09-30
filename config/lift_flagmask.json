@@ -1,0 +1,376 @@
+{
+  "schema": 1,
+  "ticket": "DECOMP-LIFT-FLAGMASK-001",
+  "generated_by": "tools/buusfury/lift.py",
+  "source_sha1": "f1c4b07554d2a3b1ad2f325307051e775ce68087",
+  "target": {
+    "id": "flagmask",
+    "name": "ByteCodeInterpreter flag-mask application (sub_08003310)",
+    "role": "apply a mask to a run of flag bits: set where a bit is 1, clear where it is 0",
+    "notes": "sub_08003310, 86 bytes and 41 instructions, one terminator at 0x08003364, native dispatch entry 187, calls the already-lifted setter sub_08004380 and clearer sub_08004396, one literal 0x08054FBC. It begins IMMEDIATELY WHERE THE GATHER ENDS at 0x08003310, and it is the first consumer of the mask that gather pushes. STACK BEHAVIOUR: it POPPED three values in order - the MASK from the stack top, then the WIDTH, then the BIT OFFSET - and pushes NOTHING, so the counter moves by exactly -3 and the mask is never written back to the stack. MASK INTERPRETATION: it is not merely tested or stored. The routine applies it per bit: for i = 0..width-1 it SETS the flag at (offset + i) when mask bit i is 1 and CLEARS it when that bit is 0, so EACH BIT OF THE MASK BECOMES THE STATE OF THE CORRESPONDING FLAG. That makes it the exact counterpart of the gather that produced it, and it is the first concrete engine consequence of the gathered mask. The bit under test is always mask bit 0, because `lsls r2, r4, #0x1f` moves it into bit 31 for the `beq` and `asrs r4, r4, #1` then brings the next bit down. TWO CLAMPS, BOTH SIGNED: a mask that is negative when read as signed is replaced by 0 entirely, and a mask where (1 << width) is not greater is truncated to (1 << width) - 1. ORDERING: all three pops complete before the first flag is touched, and the offset is added to the loop index immediately before each call. WIDTH 32 IS A REAL EDGE CASE, reproduced rather than corrected: ARM LSL by a register yields ZERO for an amount of 32 or more, so at a width of 32 the width clamp computes 0 - 1 = 0xFFFFFFFF EVEN FOR A MASK OF 0, and `asrs` keeps it all ones, so all 32 flags are SET. A width of zero or less is skipped entirely by the `ble`, though the three values are still consumed. THE THUMB SHIFT IS MODELLED EXPLICITLY rather than left to C, because `1u << 32` is undefined in C and MSVC masks the amount to five bits and yields 1, which is the opposite of the machine. NO BOUNDS CHECK and no NULL check. UNKNOWN: what the flags mean, and how large the array is. No semantic name is assigned, and nothing is imported from another title.",
+    "translation_unit": "flagmask_tu",
+    "rom_address": "0x08003310",
+    "file_offset": "0x003310",
+    "code_end_address": "0x08003366",
+    "end_address": "0x08003366",
+    "byte_length": 86,
+    "code_byte_length": 86,
+    "isa": "thumb",
+    "decomp_source": "src/ByteCodeInterpreter_flagmask.c",
+    "probe_source": "src/probes/ByteCodeInterpreter_flagmask.c",
+    "selftest_source": "src/probes/flagmask_selftest.c",
+    "semantic_minimum_checks": 22,
+    "host_build_bits": 32,
+    "original_sha1": "eb2693766ace41e8225cbc4947abe4fb7c3cda4c"
+  },
+  "boundary_evidence": {
+    "method": "aligned chain-walk from each entry, following local branches",
+    "unit_id": "flagmask_tu",
+    "code_extent": "0x08003310..0x08003366",
+    "pool_extent": "0x08003448..0x0800344C",
+    "has_literal_pool": true,
+    "pool_is_adjacent_to_code": false,
+    "pool_gap_bytes": 226,
+    "alignment_padding_bytes": null,
+    "functions": [
+      {
+        "start": "0x08003310",
+        "end": "0x08003366",
+        "size": 86,
+        "instructions": 41,
+        "role": "apply a mask to a run of flag bits",
+        "terminators": [
+          "0x08003364"
+        ],
+        "gaps": [],
+        "matches_expected": true
+      }
+    ],
+    "problems": [],
+    "derived_from_rom": true,
+    "not_hand_written": true,
+    "mask_application": {
+      "unit_id": "flagmask_tu",
+      "extent": "0x08003310..0x08003366",
+      "size": 86,
+      "instructions": 41,
+      "dispatch_entry": {
+        "table": "native",
+        "index": 187,
+        "word": "0x08003311"
+      },
+      "pop_sites": [
+        "0x0800331C",
+        "0x08003326",
+        "0x08003330"
+      ],
+      "pops": 3,
+      "pushes": 0,
+      "consumes": 3,
+      "produces": 0,
+      "net_counter_delta": -3,
+      "popped_in_order": [
+        "mask (the stack top)",
+        "width",
+        "bit offset"
+      ],
+      "mask_is_the_stack_top": true,
+      "writes_the_mask_back_to_the_stack": false,
+      "calls": [
+        {
+          "site": "0x08003352",
+          "target": "0x08004380"
+        },
+        {
+          "site": "0x08003358",
+          "target": "0x08004396"
+        }
+      ],
+      "call_count": 2,
+      "calls_the_setter": true,
+      "calls_the_clearer": true,
+      "literal_slots": 1,
+      "has_literal_pool": true,
+      "clamps": [
+        "mask < 0 (signed) -> mask = 0",
+        "1 << width computed",
+        "mask < 0 (signed) -> mask = 0"
+      ],
+      "clamp_1_is_signed": true,
+      "clamp_2_compares_shifted_one": true,
+      "tests_mask_bit_0_via_lsls_31": true,
+      "shifts_the_mask_with_asrs": true,
+      "signed_branches": [
+        "bge",
+        "bgt",
+        "ble",
+        "blt"
+      ],
+      "width_compared_signed": true,
+      "loop_terminators": 1,
+      "has_bounds_check": false,
+      "has_bounds_check_evidence": "neither the offset nor the width is compared against any size",
+      "mask_interpretation": "bit i of the mask becomes the STATE of the flag at (offset + i): set where the mask bit is 1, cleared where it is 0",
+      "consequence": "the mask is written back into the flag array, so this routine is the exact counterpart of the gather that produced it",
+      "ordering": "all three pops complete before the first flag is touched; the offset is added to the loop index immediately before each call",
+      "width_32_edge_case": "ARM LSL by a register yields ZERO for an amount of 32 or more, so at a width of 32 the width clamp computes 0-1 = 0xFFFFFFFF even for a mask of 0, and `asrs` keeps it all ones, so all 32 flags are SET",
+      "derived_from_rom": true,
+      "not_hand_written": true
+    }
+  },
+  "verdicts": {
+    "semantic": {
+      "status": "PROVEN",
+      "checks": 22,
+      "failures": 0,
+      "minimum_checks": 22,
+      "host_compiler": "MSVC cl.exe (32-bit)",
+      "detail": "22 behavioural assertions passed with 0 failures (minimum 22)",
+      "measures": "whether the reconstructed C behaves correctly, by RUNNING it"
+    },
+    "modern_build": {
+      "status": "PASS",
+      "detail": "compiled, linked at 0x08003310 and emitted 144 bytes",
+      "measures": "whether the source compiles, links and emits bytes"
+    },
+    "ads_match": {
+      "status": "BLOCKED",
+      "code": "ADS12_LICENSE_UNAVAILABLE",
+      "detail": "an ARM Developer Suite 1.2 installation is present on this machine but the licence file it ships licenses a different product, so the ARM compilers cannot be run. No compile has been attempted and no configuration has been tested. The installation is located through ADS12_ROOT.",
+      "required_to_unblock": [
+        "a licensed ADS 1.2 installation, with ADS12_ROOT pointing at it",
+        "then: python -m buusfury compiler-probe --plan, then --matrix"
+      ],
+      "not_inferable_from_modern_build": true
+    }
+  },
+  "verdicts_are_independent": "SEMANTIC, MODERN_BUILD and ADS_MATCH answer different questions and none is evidence for another. A passing modern build says nothing about the original compiler; a passing semantic run only removes one class of error.",
+  "modern_build": {
+    "status": "PASS",
+    "toolchain": {
+      "family": "GNU Arm Embedded (devkitARM)",
+      "root": "<DEVKITARM>",
+      "prefix": "arm-none-eabi-",
+      "tools": {
+        "gcc": "<DEVKITARM>\\bin\\arm-none-eabi-gcc.exe",
+        "ld": "<DEVKITARM>\\bin\\arm-none-eabi-ld.exe",
+        "objcopy": "<DEVKITARM>\\bin\\arm-none-eabi-objcopy.exe",
+        "objdump": "<DEVKITARM>\\bin\\arm-none-eabi-objdump.exe",
+        "nm": "<DEVKITARM>\\bin\\arm-none-eabi-nm.exe"
+      }
+    },
+    "identity": {
+      "gcc_banner": "arm-none-eabi-gcc.exe (devkitARM) 16.1.0",
+      "gcc_version": "16.1.0",
+      "target_triple": "arm-none-eabi",
+      "binutils_banner": "GNU objdump (GNU Binutils) 2.46.0.20260210",
+      "compiler_family": "gcc",
+      "is_the_original_compiler": false,
+      "why_not": "the original translation unit was built by ARM Developer Suite 1.2 (the surviving command line names tcpp). GCC is a different compiler with a different code generator, so its output cannot establish anything about ADS 1.2."
+    },
+    "target_support": {
+      "supported": true,
+      "cpu": "arm7tdmi",
+      "instruction_set": "thumb",
+      "commands": [
+        "<DEVKITARM>\\bin\\arm-none-eabi-gcc.exe -c -mcpu=arm7tdmi -mthumb -O1 -ffreestanding -fno-common -fno-builtin -o <REPO>\\build\\lift\\flagmask\\toolchain-probe\\support_probe.o <REPO>\\build\\lift\\flagmask\\toolchain-probe\\support_probe.c"
+      ],
+      "disassembly": [
+        "adds r0, #1",
+        "bx lr"
+      ],
+      "detail": "compiled and disassembled a probe function for ARM7TDMI Thumb: 2 instruction(s), r0 written and a return present"
+    },
+    "compiler_configuration": {
+      "cpu": "arm7tdmi",
+      "instruction_set": "thumb",
+      "optimization": "-O1",
+      "extra_flags": []
+    },
+    "link_origin": "0x08003310",
+    "external_calls_bound_to_original_addresses": {
+      "sub_08004380": "0x08004380",
+      "sub_08004396": "0x08004396"
+    },
+    "detail": "compiled, linked at 0x08003310 and emitted 144 bytes",
+    "build": {
+      "ok": true,
+      "commands": [
+        "<DEVKITARM>\\bin\\arm-none-eabi-gcc.exe -c -mcpu=arm7tdmi -mthumb -O1 -ffreestanding -fno-common -fno-builtin -fomit-frame-pointer -mno-unaligned-access -o <REPO>\\build\\lift\\flagmask\\flagmask.o <REPO>\\src\\ByteCodeInterpreter_flagmask.c",
+        "<DEVKITARM>\\bin\\arm-none-eabi-gcc.exe -c -mcpu=arm7tdmi -mthumb -o <REPO>\\build\\lift\\flagmask\\flagmask_externs.o -x assembler-with-cpp <REPO>\\build\\lift\\flagmask\\flagmask_externs.s",
+        "<DEVKITARM>\\bin\\arm-none-eabi-gcc.exe -nostdlib -Wl,-T,<REPO>\\build\\lift\\flagmask\\flagmask.ld -Wl,-Map,<REPO>\\build\\lift\\flagmask\\flagmask.map -o <REPO>\\build\\lift\\flagmask\\flagmask.elf <REPO>\\build\\lift\\flagmask\\flagmask.o <REPO>\\build\\lift\\flagmask\\flagmask_externs.o",
+        "<DEVKITARM>\\bin\\arm-none-eabi-objcopy.exe -O binary -j .text -j .rodata <REPO>\\build\\lift\\flagmask\\flagmask.elf <REPO>\\build\\lift\\flagmask\\flagmask.bin"
+      ],
+      "produced_byte_length": 144,
+      "symbols": {
+        "sub_08003310": {
+          "address": "0x08003310",
+          "size": 140
+        }
+      },
+      "diagnostics": ""
+    }
+  },
+  "functions": [
+    {
+      "name": "sub_08003310",
+      "role": "apply a mask to a run of flag bits",
+      "original": {
+        "start": "0x08003310",
+        "end": "0x08003366",
+        "size": 86,
+        "isa": "thumb",
+        "instructions": 41,
+        "first_instruction": "push {r3, r4, r5, r6, r7, lr}",
+        "calls": [
+          "0x08004380",
+          "0x08004396"
+        ],
+        "literal_slots": [
+          "0x08003448"
+        ],
+        "returns": 1,
+        "leaf": false,
+        "abi": {
+          "callee_saved_pushed": [
+            "r4",
+            "r5",
+            "r6",
+            "r7"
+          ],
+          "frame_size_bytes": 0,
+          "written_registers": [
+            "r0",
+            "r1",
+            "r2",
+            "r3",
+            "r4",
+            "r5",
+            "r6",
+            "r7"
+          ]
+        }
+      },
+      "modern": {
+        "start": "0x08003310",
+        "end": "0x0800339C",
+        "size": 140,
+        "isa": "thumb",
+        "instructions": 68,
+        "first_instruction": "push {r4, r5, r6, r7, lr}",
+        "calls": [
+          "0x08004380",
+          "0x08004396"
+        ],
+        "literal_slots": [
+          "0x08003398",
+          "0x0800368C"
+        ],
+        "returns": 1,
+        "leaf": false,
+        "abi": {
+          "callee_saved_pushed": [
+            "r4",
+            "r5",
+            "r6",
+            "r7"
+          ],
+          "frame_size_bytes": 0,
+          "written_registers": [
+            "r0",
+            "r1",
+            "r2",
+            "r3",
+            "r4",
+            "r5",
+            "r6",
+            "r7",
+            "r8"
+          ]
+        }
+      },
+      "modern_symbol_present": true,
+      "delta": {
+        "size_bytes": 54,
+        "instructions": 27,
+        "returns": 0,
+        "calls": 0,
+        "literal_slots": 1
+      },
+      "same_extent": false,
+      "byte_identical": false
+    }
+  ],
+  "literal_pools": {
+    "original": {
+      "distinct_slots": 1,
+      "contiguous_runs": [
+        [
+          "0x08003448",
+          "0x0800344C"
+        ]
+      ],
+      "run_count": 1,
+      "shared_pool": false,
+      "shared_pool_applicable": false,
+      "declared_pool": [
+        "0x08003366",
+        "0x08003366"
+      ],
+      "declared_slots": [
+        "0x08003448"
+      ],
+      "declared_slots_used": [
+        "0x08003448"
+      ],
+      "all_referenced_slots_are_declared": true,
+      "all_declared_slots_are_referenced": true,
+      "undeclared_slots": [],
+      "functions_reaching_it": 1
+    },
+    "modern": {
+      "distinct_slots": 2,
+      "contiguous_runs": [
+        [
+          "0x08003398",
+          "0x0800339C"
+        ],
+        [
+          "0x0800368C",
+          "0x08003690"
+        ]
+      ],
+      "run_count": 2,
+      "shared_pool": false,
+      "functions_reaching_a_pool": 1
+    },
+    "interpretation": "the original's literals are accounted for by the words the unit declares; the modern build pools differently, which is a structural consequence of the compiler rather than a defect in the reconstruction. It is also why a function with a literal load cannot be compared standalone.",
+    "is_a_match_claim": false
+  },
+  "comparison": {
+    "original_byte_length": 86,
+    "modern_byte_length": 144,
+    "overlap_byte_length": 86,
+    "differing_bytes_in_overlap": 77,
+    "matching_bytes_in_overlap": 9,
+    "original_only_bytes": 0,
+    "modern_only_bytes": 58,
+    "original_instruction_spans": 41,
+    "matching_instruction_spans": 1,
+    "differing_instruction_spans": 40,
+    "bytes_not_covered_by_an_original_instruction": 0,
+    "byte_identical": false,
+    "is_a_match_claim": false,
+    "match_claim_note": "MEASUREMENT ONLY. This compares a modern GCC build against the cartridge. A modern compiler is not the original compiler, so a difference here is expected and proves nothing; an identity here would also prove nothing about ADS 1.2. ADS_MATCH stays BLOCKED."
+  },
+  "semantic_check": {
+    "status": "PROVEN",
+    "checks": 22,
+    "failures": 0,
+    "minimum_checks": 22,
+    "host_compiler": "MSVC cl.exe (32-bit)",
+    "host_build_bits": 32,
+    "detail": "22 behavioural assertions passed with 0 failures (minimum 22)",
+    "output": "PASS: 22 check(s), 0 failure(s)\n"
+  }
+}

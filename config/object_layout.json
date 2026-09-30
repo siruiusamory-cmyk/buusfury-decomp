@@ -454,181 +454,29 @@
   "offset_map": {
     "0": [
       {
-        "function": "0x08000336",
-        "site": "0x0800033C",
-        "offset": 0,
-        "indexed": false,
-        "width": 1,
-        "access": "read",
-        "mnemonic": "ldrb",
-        "via_reload": false
-      },
-      {
-        "function": "0x0800035C",
-        "site": "0x08000362",
-        "offset": 0,
-        "indexed": false,
-        "width": 1,
-        "access": "read",
-        "mnemonic": "ldrb",
-        "via_reload": false
-      },
-      {
-        "function": "0x08000382",
-        "site": "0x08000388",
-        "offset": 0,
-        "indexed": false,
-        "width": 1,
-        "access": "read",
-        "mnemonic": "ldrb",
-        "via_reload": false
-      },
-      {
-        "function": "0x080003FC",
-        "site": "0x0800040E",
-        "offset": 0,
-        "indexed": false,
-        "width": 1,
-        "access": "read",
-        "mnemonic": "ldrb",
-        "via_reload": false
-      },
-      {
-        "function": "0x08000478",
-        "site": "0x08000482",
-        "offset": 0,
-        "indexed": false,
-        "width": 1,
-        "access": "read",
-        "mnemonic": "ldrb",
-        "via_reload": false
-      },
-      {
-        "function": "0x080004BA",
-        "site": "0x080004C2",
-        "offset": 0,
-        "indexed": false,
-        "width": 1,
-        "access": "read",
-        "mnemonic": "ldrb",
-        "via_reload": false
-      },
-      {
-        "function": "0x0800051A",
-        "site": "0x08000522",
-        "offset": 0,
-        "indexed": false,
-        "width": 1,
-        "access": "read",
-        "mnemonic": "ldrb",
-        "via_reload": false
-      },
-      {
-        "function": "0x0800058E",
-        "site": "0x08000596",
-        "offset": 0,
-        "indexed": false,
-        "width": 1,
-        "access": "read",
-        "mnemonic": "ldrb",
-        "via_reload": false
-      },
-      {
         "function": "0x08000618",
-        "site": "0x0800061C",
+        "site": "0x0800061E",
         "offset": 0,
         "indexed": false,
-        "width": 1,
+        "width": 4,
         "access": "read",
-        "mnemonic": "ldrb",
+        "mnemonic": "ldr",
         "via_reload": false
       },
       {
-        "function": "0x0800062C",
-        "site": "0x08000632",
+        "function": "0x080007B6",
+        "site": "0x080007C8",
         "offset": 0,
         "indexed": false,
-        "width": 1,
-        "access": "read",
-        "mnemonic": "ldrb",
-        "via_reload": false
-      },
-      {
-        "function": "0x08000678",
-        "site": "0x0800067E",
-        "offset": 0,
-        "indexed": false,
-        "width": 1,
-        "access": "read",
-        "mnemonic": "ldrb",
-        "via_reload": false
-      },
-      {
-        "function": "0x080006FE",
-        "site": "0x08000708",
-        "offset": 0,
-        "indexed": false,
-        "width": 1,
-        "access": "read",
-        "mnemonic": "ldrb",
-        "via_reload": false
-      },
-      {
-        "function": "0x080029D8",
-        "site": "0x080029E0",
-        "offset": 0,
-        "indexed": false,
-        "width": 1,
-        "access": "read",
-        "mnemonic": "ldrb",
-        "via_reload": false
-      },
-      {
-        "function": "0x08002C2A",
-        "site": "0x08002C30",
-        "offset": 0,
-        "indexed": false,
-        "width": 1,
-        "access": "read",
-        "mnemonic": "ldrb",
-        "via_reload": false
-      },
-      {
-        "function": "0x080033EA",
-        "site": "0x080033F0",
-        "offset": 0,
-        "indexed": false,
-        "width": 1,
-        "access": "read",
-        "mnemonic": "ldrb",
-        "via_reload": false
-      }
-    ],
-    "1": [
-      {
-        "function": "0x08002FE4",
-        "site": "0x08002FF2",
-        "offset": 1,
-        "indexed": false,
-        "width": 1,
-        "access": "read",
-        "mnemonic": "ldrb",
-        "via_reload": false
-      },
-      {
-        "function": "0x08002FE4",
-        "site": "0x08002FFA",
-        "offset": 1,
-        "indexed": false,
-        "width": 1,
+        "width": 4,
         "access": "write",
-        "mnemonic": "strb",
+        "mnemonic": "str",
         "via_reload": false
       },
       {
-        "function": "0x0800300C",
-        "site": "0x08003012",
-        "offset": 1,
+        "function": "0x08000B80",
+        "site": "0x08000B9C",
+        "offset": 0,
         "indexed": false,
         "width": 1,
         "access": "read",
@@ -636,9 +484,9 @@
         "via_reload": false
       },
       {
-        "function": "0x0800339C",
-        "site": "0x080033A2",
-        "offset": 1,
+        "function": "0x08000BB2",
+        "site": "0x08000BC4",
+        "offset": 0,
         "indexed": false,
         "width": 1,
         "access": "read",
@@ -646,92 +494,42 @@
         "via_reload": false
       },
       {
-        "function": "0x0800339C",
-        "site": "0x080033A6",
-        "offset": 1,
+        "function": "0x08000BCC",
+        "site": "0x08000BE8",
+        "offset": 0,
         "indexed": false,
         "width": 1,
+        "access": "read",
+        "mnemonic": "ldrb",
+        "via_reload": false
+      },
+      {
+        "function": "0x08002928",
+        "site": "0x0800294A",
+        "offset": 0,
+        "indexed": false,
+        "width": 4,
         "access": "write",
-        "mnemonic": "strb",
-        "via_reload": false
-      },
-      {
-        "function": "0x080033AA",
-        "site": "0x080033B0",
-        "offset": 1,
-        "indexed": false,
-        "width": 1,
-        "access": "read",
-        "mnemonic": "ldrb",
-        "via_reload": false
-      },
-      {
-        "function": "0x0800340E",
-        "site": "0x08003414",
-        "offset": 1,
-        "indexed": false,
-        "width": 1,
-        "access": "read",
-        "mnemonic": "ldrb",
-        "via_reload": false
-      },
-      {
-        "function": "0x0800340E",
-        "site": "0x08003418",
-        "offset": 1,
-        "indexed": false,
-        "width": 1,
-        "access": "write",
-        "mnemonic": "strb",
-        "via_reload": false
-      },
-      {
-        "function": "0x0800341C",
-        "site": "0x08003422",
-        "offset": 1,
-        "indexed": false,
-        "width": 1,
-        "access": "read",
-        "mnemonic": "ldrb",
-        "via_reload": false
-      },
-      {
-        "function": "0x08003978",
-        "site": "0x0800397E",
-        "offset": 1,
-        "indexed": false,
-        "width": 1,
-        "access": "read",
-        "mnemonic": "ldrb",
-        "via_reload": false
-      },
-      {
-        "function": "0x08003978",
-        "site": "0x08003982",
-        "offset": 1,
-        "indexed": false,
-        "width": 1,
-        "access": "write",
-        "mnemonic": "strb",
+        "mnemonic": "str",
         "via_reload": false
       }
     ]
   },
   "distinct_offsets": [
-    0,
-    1
+    0
   ],
-  "distinct_offset_count": 2,
-  "highest_proven_offset": 1,
-  "highest_proven_offset_hex": "0x001",
+  "distinct_offset_count": 1,
+  "highest_proven_offset": 0,
+  "highest_proven_offset_hex": "0x000",
   "accesses_via_a_reload": 0,
   "accesses_in_0x2D_to_0x80": [],
   "accesses_above_the_flag_array": [],
   "access_widths": {
-    "1": 26
+    "1": 3,
+    "4": 3
   },
   "indexed_accesses": 0,
-  "constant_accesses": 26,
+  "constant_accesses": 6,
   "constructor_search": {
     "shape_1": {
       "signature": "seed then ldr/str [rG,#0x14] within 3 instructions",

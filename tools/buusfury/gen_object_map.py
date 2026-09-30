@@ -26,6 +26,7 @@ import json, pathlib, sys
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent))
 import capstone
 from buusfury import analysis as A, gba, identity
+from buusfury import object_track
 
 # The ROM is resolved through the project identity, never by a hardcoded
 # absolute path: production code under tools/ must contain no path into
@@ -101,8 +102,6 @@ def imm_of(ins):
             return op.imm
     return None
 
-WIDTH = {"ldrb": 1, "strb": 1, "ldrh": 2, "strh": 2, "ldr": 4, "str": 4,
-         "ldrsb": 1, "ldrsh": 2}
 
 # ---- enumerate the object-user SITES (3-instruction window, unchanged) ----
 sites = []
@@ -136,80 +135,17 @@ records = []
 chains = []
 for s in sites:
     insns, obj = s["insns"], s["object_register"]
-    prov = {obj: 0}
-    slots = {}
-    prev = None
-    spills = []
-    reloads = []
-    for x in insns[s["index"]:]:
-        if prev is not None and x.address != prev:
-            # A discontinuity: the walk has jumped, so the next instruction is
-            # reached from somewhere this linear pass cannot prove. STOP, rather
-            # than continue with provenance that a merge may have invalidated.
-            break
-        prev = x.address + x.size
-        if x.mnemonic == "bx" or (x.mnemonic.startswith("pop") and "pc" in x.op_str):
-            break
-        if x.mnemonic.startswith("b") and x.mnemonic not in ("bl", "blx") and x.mnemonic != "bx":
-            # any branch ends the straight-line run
-            break
-
-        d = dst(x)
-        m = memop(x)
-        sp_base = m is not None and x.reg_name(m.base) == "sp"
-
-        if m is not None and sp_base and x.mnemonic.startswith("str"):
-            if d in prov and m.disp is not None:
-                slots[m.disp] = prov[d]
-                spills.append((f"0x{x.address:08X}", m.disp))
-            elif m.disp is not None:
-                slots.pop(m.disp, None)
-            continue
-        if m is not None and sp_base and x.mnemonic.startswith("ldr"):
-            if m.disp is not None and m.disp in slots and d is not None:
-                prov[d] = slots[m.disp]
-                reloads.append((f"0x{x.address:08X}", m.disp))
-            elif d in prov:
-                prov.pop(d)
-            continue
-        if m is not None and x.mnemonic.startswith(("ldr", "str")) and not sp_base:
-            b = x.reg_name(m.base)
-            if b in prov:
-                records.append({
-                    "function": s["function"], "site": f"0x{x.address:08X}",
-                    "offset": prov[b] + (m.disp or 0), "indexed": bool(m.index),
-                    "width": WIDTH.get(x.mnemonic, 0),
-                    "access": "write" if x.mnemonic.startswith("str") else "read",
-                    "mnemonic": x.mnemonic,
-                    "via_reload": bool(reloads),
-                })
-                continue
-
-        if d is not None:
-            if m is not None:
-                if d in prov:
-                    prov.pop(d)
-            elif x.mnemonic in ("adds", "subs"):
-                srcs = [x.reg_name(o.reg) for o in x.operands[1:]
-                        if o.type == capstone.arm.ARM_OP_REG]
-                imm = imm_of(x)
-                if len(srcs) == 1 and srcs[0] in prov and imm is not None:
-                    prov[d] = prov[srcs[0]] + (imm if x.mnemonic == "adds" else -imm)
-                elif d in prov:
-                    prov.pop(d)
-            elif x.mnemonic in ("mov", "movs"):
-                srcs = [x.reg_name(o.reg) for o in x.operands[1:]
-                        if o.type == capstone.arm.ARM_OP_REG]
-                if len(srcs) == 1 and srcs[0] in prov:
-                    prov[d] = prov[srcs[0]]
-                elif d in prov:
-                    prov.pop(d)
-            elif d in prov:
-                prov.pop(d)
-    if reloads:
-        chains.append({"function": s["function"],
-                       "spills": [f"0x{a:08X}" for a, _ in spills],
-                       "reloads": [f"0x{a:08X}" for a, _ in reloads]})
+    outcome = object_track.track_normalized(
+        [object_track.normalize(x) for x in insns[s["index"]:]],
+        obj, s["function"],
+    )
+    records.extend(outcome["records"])
+    if outcome["reloads"]:
+        chains.append({
+            "function": s["function"],
+            "spills": [site for site, _slot in outcome["spills"]],
+            "reloads": [site for site, _slot in outcome["reloads"]],
+        })
 
 offset_map = {}
 for r in records:

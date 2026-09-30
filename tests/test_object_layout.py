@@ -69,12 +69,21 @@ def test_the_offset_map_groups_by_offset_with_width_and_direction(census):
 
 def test_the_confirmed_field_offsets(census):
     """The independently confirmed fields, from the tracked register."""
-    assert census["distinct_offsets"] == [0x0, 0x1], census["distinct_offsets"]
+    assert census["distinct_offsets"] == [0x0], census["distinct_offsets"]
 
 
 def test_the_highest_proven_offset(census):
-    assert census["highest_proven_offset"] == 0x1
-    assert census["highest_proven_offset_hex"] == "0x001"
+    assert census["highest_proven_offset"] == 0x0
+    assert census["highest_proven_offset_hex"] == "0x000"
+
+
+def test_the_refactor_tightened_one_rule(census):
+    """Moving the policy into buusfury.object_track tightened one rule: a
+    two-register add no longer preserves provenance, because object + object + const
+    is not a valid object pointer. That removed the 0x01 access, and the loss is
+    recorded rather than hidden."""
+    assert census["distinct_offsets"] == [0x0]
+    assert census["stack_flow"]["implemented"] is True
 
 
 def test_the_tracker_is_sound_rather_than_permissive(census):

@@ -544,6 +544,93 @@
   },
   "flag_array_bound_status": "UNRESOLVED AND UNIMPROVED. The stack-aware census resolved no access in 0x2D..0x80 through a tracked register, so no first field above the array, no bounded loop, no copy extent and no object-size evidence was established. The upper bound of the flag array at base + 0x55 remains not derivable.",
   "census_is_a_lower_bound": "This census is a LOWER BOUND on the object's field usage, not a complete map. Provenance is dropped deliberately at every control-flow discontinuity and at every unrecognised register write, so a routine that reaches the object by a route this walk could not follow contributes no offsets. Absence of an offset here is NOT evidence that the offset is unused.",
+  "owner_table": {
+    "global_struct": "0x08054FBC",
+    "words": [
+      {
+        "offset": "0x00",
+        "value": "0x03003300",
+        "raw": 50344704
+      },
+      {
+        "offset": "0x04",
+        "value": "0x03003898",
+        "raw": 50346136
+      },
+      {
+        "offset": "0x08",
+        "value": "0x030038A4",
+        "raw": 50346148
+      },
+      {
+        "offset": "0x0C",
+        "value": "0x0300197C",
+        "raw": 50338172
+      },
+      {
+        "offset": "0x10",
+        "value": "0x03001990",
+        "raw": 50338192
+      },
+      {
+        "offset": "0x14",
+        "value": "0x03001068",
+        "raw": 50335848
+      },
+      {
+        "offset": "0x18",
+        "value": "0x03001C4C",
+        "raw": 50338892
+      },
+      {
+        "offset": "0x1C",
+        "value": "0x03002BAC",
+        "raw": 50342828
+      },
+      {
+        "offset": "0x20",
+        "value": "0x03002BD8",
+        "raw": 50342872
+      },
+      {
+        "offset": "0x24",
+        "value": "0x030019A4",
+        "raw": 50338212
+      },
+      {
+        "offset": "0x28",
+        "value": "0x03002A64",
+        "raw": 50342500
+      },
+      {
+        "offset": "0x2C",
+        "value": "0x00000000",
+        "raw": 0
+      }
+    ],
+    "object_slot_offset": "0x14",
+    "object_slot_value": "0x03001068",
+    "object_address": "0x03001068",
+    "all_values_are_ewram_pointers": true,
+    "ewram_pointer_count": 11,
+    "zero_terminated_at": "0x2C",
+    "planted_by_code": false,
+    "planted_by_code_evidence": "the value is present in the ROM image at 0x08054FD0, so the field is initialised from static data rather than assigned by any routine. That is why every code-side writer search, direct and indirect, found zero writers: there is no writer in code to find.",
+    "address_is_static_not_heap": true,
+    "allocator_note": "the image's allocator is sub_0803D5B8, reached by the constructor-shaped sub_0805082C, which allocates 0x28 bytes when its first argument is NULL. That routine is NOT this object's constructor: its store to [r0+0x14] is inside the 40 bytes it just allocated, a different object with a pointer at its own +0x00 and +0x04.",
+    "next_ewram_address_above_the_object": "0x0300197C",
+    "static_extent_upper_bound_bytes": 2324,
+    "static_extent_upper_bound_evidence": "INFERRED, NOT PROVEN. The owner table's other entries are EWRAM pointers, and the smallest of them above the object's address is taken as the next object's start. If the two objects do not overlap, the object ends at or before that address. Nothing in the code proves they are disjoint, so this is an inferred upper bound and is labelled as one.",
+    "static_extent_upper_bound_is_proven": false
+  },
   "exact_size_proven": false,
+  "flag_array_upper_bound_from_static_layout": {
+    "flag_array_start": "object + 0x55",
+    "object_address": "0x03001068",
+    "flag_array_start_address": "0x030010BD",
+    "upper_bound_bytes": null,
+    "upper_bound_bits": null,
+    "status": "STILL NOT PROVEN. The object sits at a fixed EWRAM address, so an upper bound now depends on the static extent inference in owner_table rather than on an allocation size. That extent is INFERRED from neighbouring table pointers and assumes the objects are disjoint, so it does not establish a proven flag-array bound."
+  },
   "verdict": "stack-aware object offset map committed as a lower bound; size and flag-array bound remain unresolved"
 }

@@ -155,6 +155,68 @@ hi = offsets[-1] if offsets else None
 neighbourhood = [o for o in offsets if 0x2D <= o <= 0x80]
 above = [o for o in offsets if o > 0x55]
 
+
+# ---------------------------------------------------------------------------
+# the owner table and the object's static location (DECOMP-OBJECT-CONSTRUCTOR-001)
+# ---------------------------------------------------------------------------
+def derive_owner_table(rom_bytes):
+    """Read the owner struct at 0x08054FBC as the ROM stores it.
+
+    This is the finding that closes the constructor question: the field at +0x14
+    is NOT written by any code, it is a constant in the ROM image.
+    """
+    words = []
+    for off in range(0, 0x30, 4):
+        words.append({"offset": f"0x{off:02X}",
+                      "value": f"0x{u32(GLOBAL + off):08X}",
+                      "raw": u32(GLOBAL + off)})
+    object_slot = next(w for w in words if w["offset"] == "0x14")
+    ewram = [w for w in words if 0x02000000 <= w["raw"] < 0x03008000]
+    above = sorted(w["raw"] for w in ewram if w["raw"] > object_slot["raw"])
+    object_addr = object_slot["raw"]
+    next_addr = above[0] if above else None
+    return {
+        "global_struct": f"0x{GLOBAL:08X}",
+        "words": words,
+        "object_slot_offset": "0x14",
+        "object_slot_value": object_slot["value"],
+        "object_address": f"0x{object_addr:08X}",
+        "all_values_are_ewram_pointers": len(ewram) == len(words) - 1,
+        "ewram_pointer_count": len(ewram),
+        "zero_terminated_at": next((w["offset"] for w in words if w["raw"] == 0), None),
+        "planted_by_code": False,
+        "planted_by_code_evidence": (
+            "the value is present in the ROM image at 0x08054FD0, so the field is "
+            "initialised from static data rather than assigned by any routine. That is "
+            "why every code-side writer search, direct and indirect, found zero writers: "
+            "there is no writer in code to find."
+        ),
+        "address_is_static_not_heap": True,
+        "allocator_note": (
+            "the image's allocator is sub_0803D5B8, reached by the constructor-shaped "
+            "sub_0805082C, which allocates 0x28 bytes when its first argument is NULL. "
+            "That routine is NOT this object's constructor: its store to [r0+0x14] is "
+            "inside the 40 bytes it just allocated, a different object with a pointer at "
+            "its own +0x00 and +0x04."
+        ),
+        "next_ewram_address_above_the_object": (
+            f"0x{next_addr:08X}" if next_addr is not None else None
+        ),
+        "static_extent_upper_bound_bytes": (
+            (next_addr - object_addr) if next_addr is not None else None
+        ),
+        "static_extent_upper_bound_evidence": (
+            "INFERRED, NOT PROVEN. The owner table's other entries are EWRAM pointers, "
+            "and the smallest of them above the object's address is taken as the next "
+            "object's start. If the two objects do not overlap, the object ends at or "
+            "before that address. Nothing in the code proves they are disjoint, so this "
+            "is an inferred upper bound and is labelled as one."
+        ),
+        "static_extent_upper_bound_is_proven": False,
+    }
+
+
+
 artifact = {
     "generated_by": "tools/buusfury/gen_object_map.py",
     "object_expression": "*(0x08054FBC + 0x14)",
@@ -224,7 +286,22 @@ artifact = {
         "route this walk could not follow contributes no offsets. Absence of an offset "
         "here is NOT evidence that the offset is unused."
     ),
+    "owner_table": derive_owner_table(data),
     "exact_size_proven": False,
+    "flag_array_upper_bound_from_static_layout": {
+        "flag_array_start": "object + 0x55",
+        "object_address": "0x03001068",
+        "flag_array_start_address": f"0x{0x03001068 + 0x55:08X}",
+        "upper_bound_bytes": None,
+        "upper_bound_bits": None,
+        "status": (
+            "STILL NOT PROVEN. The object sits at a fixed EWRAM address, so an upper "
+            "bound now depends on the static extent inference in owner_table rather "
+            "than on an allocation size. That extent is INFERRED from neighbouring "
+            "table pointers and assumes the objects are disjoint, so it does not "
+            "establish a proven flag-array bound."
+        ),
+    },
     "verdict": "stack-aware object offset map committed as a lower bound; size and flag-array bound remain unresolved",
 }
 out = pathlib.Path('config/object_layout.json')

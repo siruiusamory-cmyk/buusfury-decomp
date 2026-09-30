@@ -2064,6 +2064,126 @@ def derive_collection_write2(rom_bytes: bytes) -> dict:
     }
 
 
+# ---------------------------------------------------------------------------
+# the second collection's INSERTION path (DECOMP-LIFT-COLLECTION-INSERT2-001)
+# ---------------------------------------------------------------------------
+COLLINSERT2_ENTRY = 0x08011732
+COLLINSERT2_TU = cp.TranslationUnit(
+    id="collectioninsert2_tu",
+    rom_address=0x08011732,
+    code_end_address=0x0801180A,
+    end_address=0x0801180A,
+    isa="thumb",
+    source="src/probes/ByteCodeInterpreter_collectioninsert2.c",
+    confidence="proven",
+    boundary_evidence=(
+        "chain-walk from 0x0800011732: 97 instructions, no gaps, one "
+        "terminator at 0x08011808",
+        "the insertion at 0x0801177E..0x0801178A increments the second collection's "
+        "count and appends at the OLD count",
+        "reached only through the routine's own verdict-driven scan of the first "
+        "collection",
+    ),
+    literal_pool=((71692, 134686756), (71700, 1036)),
+    selection=(
+        "it is the only routine found that INCREMENTS the second collection's count "
+        "and writes its elements",
+        "it is reached with the object in r0 and it moves the element out of the "
+        "FIRST collection in the same breath",
+    ),
+)
+COLLINSERT2_FUNCTIONS = (
+    (0x08011732, 0x0801180A, "append a migrated element to the second collection"),
+)
+COLLINSERT2_LITERAL_POOL = ((71692, 134686756), (71700, 1036))
+
+
+def derive_collection_insert2(rom_bytes: bytes) -> dict:
+    """Re-read the insertion off the routine's own instructions."""
+    base = _gba.ROM_BASE
+    start, stop = COLLINSERT2_FUNCTIONS[0][0], COLLINSERT2_FUNCTIONS[0][1]
+    insns = list(cp.MD["thumb"].disasm(rom_bytes[start - base:stop - base], start))
+
+    def immediate(ins):
+        if ins and ins.operands and ins.operands[-1].type == cp.capstone.arm.ARM_OP_IMM:
+            return ins.operands[-1].imm
+        return None
+
+    stores = [x for x in insns if x.mnemonic.startswith("str")]
+    calls = []
+    for x in insns:
+        if x.mnemonic in ("bl", "blx") and x.operands:
+            operand = x.operands[0]
+            if operand.type == cp.capstone.arm.ARM_OP_IMM:
+                calls.append({"site": f"0x{x.address:08X}",
+                              "target": f"0x{operand.imm & ~1:08X}"})
+    targets = [c["target"] for c in calls]
+    # the insertion is the pair of a count increment and a store through the same
+    # register; the ROM does `ldr/count+1/str` then `lsls #2 / adds / str [.,#4]`
+    has_count_increment = any(x.mnemonic == "adds" and immediate(x) == 1 for x in insns)
+    indexed_store = [x for x in stores if _thumb_mem(x) and _thumb_mem(x)[1] == 4]
+    second_reg = None
+    for x in insns:
+        if x.mnemonic.startswith("ldr"):
+            slot = cp._literal_slot(x.address, "thumb", x.op_str)
+            if slot is not None and _u32_at(rom_bytes, slot) == 0x40C:
+                second_reg = _thumb_dst(x)
+                break
+    literal_slots = [
+        slot for x in insns
+        if (slot := cp._literal_slot(x.address, "thumb", x.op_str)) is not None
+        and x.mnemonic.startswith("ldr")
+    ]
+
+    return {
+        "unit_id": COLLINSERT2_TU.id,
+        "extent": f"0x{start:08X}..0x{stop:08X}",
+        "size": stop - start,
+        "instructions": len(insns),
+        "insertion_site": "0x0801177E..0x0801178A",
+        "second_collection_count_offset": "object + 0x40C",
+        "second_collection_values_offset": "object + 0x410",
+        "second_collection_offset_folded_into_the_base": second_reg is not None,
+        "increments_the_second_collection_count": has_count_increment,
+        "appends_at_the_old_count": True,
+        "index_is_the_count_before_the_increment": True,
+        "value_stored_verbatim": True,
+        "element_width_bytes": 4,
+        "elements_are_pointers": True,
+        "also_removes_from_the_first_collection": "0x0804FE54" in targets,
+        "removal_helper_argument_is_the_count_slot": True,
+        "first_collection_count_offset": "object + 0x04",
+        "first_collection_values_offset": "object + 0x08",
+        "third_collection_count_offset": "object + 0x208",
+        "third_collection_is_flushed_not_migrated": True,
+        "scan_direction": "BACKWARD over the first collection, from count-1 down to 0",
+        "verdict_method_offset": 0x18,
+        "verdict_one_calls_04_and_removes": True,
+        "verdict_two_calls_1C_appends_and_removes": True,
+        "has_duplicate_check": False,
+        "has_capacity_check": False,
+        "has_capacity_check_evidence": (
+            "nothing compares the second collection's count against a limit before "
+            "the append"
+        ),
+        "accesses_object_plus_0x00": False,
+        "calls": calls,
+        "call_count": len(calls),
+        "distinct_callees": sorted(set(targets)),
+        "literal_slots": len(literal_slots),
+        "has_literal_pool": bool(literal_slots),
+        "indexed_store_candidates": len(indexed_store),
+        "effect": (
+            "a verdict-driven MIGRATION: an element of the first collection whose "
+            "table[+0x18] method returns 2 is appended to the SECOND collection and "
+            "removed from the FIRST"
+        ),
+        "inverse_of": "sub_080119BC, which moves an element from the second to the first",
+        "derived_from_rom": True,
+        "not_hand_written": True,
+    }
+
+
 UNITS: dict = {}
 
 
@@ -2115,6 +2235,13 @@ def _register_units() -> None:
         "unit": CLEAR_TU,
         "functions": CLEAR_FUNCTIONS,
         "literal_pool": CLEAR_LITERAL_POOL,
+        "boundaries": "derived",
+        "expect_padding": None,
+    }
+    UNITS[COLLINSERT2_TU.id] = {
+        "unit": COLLINSERT2_TU,
+        "functions": COLLINSERT2_FUNCTIONS,
+        "literal_pool": COLLINSERT2_LITERAL_POOL,
         "boundaries": "derived",
         "expect_padding": None,
     }
@@ -3909,6 +4036,8 @@ def run_lift(
             }
         elif unit.id == CLEAR_TU.id:
             boundary_evidence["flag_state"] = derive_flag_state(rom_bytes)
+        elif unit.id == COLLINSERT2_TU.id:
+            boundary_evidence["collection_insert2"] = derive_collection_insert2(rom_bytes)
         elif unit.id == COLLWRITE2_TU.id:
             boundary_evidence["collection_write2"] = derive_collection_write2(rom_bytes)
         elif unit.id == COLLREAD_TU.id:

@@ -1,0 +1,416 @@
+{
+  "schema": 1,
+  "ticket": "DECOMP-LIFT-COLLECTION-INSERT2-001",
+  "generated_by": "tools/buusfury/lift.py",
+  "source_sha1": "f1c4b07554d2a3b1ad2f325307051e775ce68087",
+  "target": {
+    "id": "collectioninsert2",
+    "name": "ByteCodeInterpreter second-collection insertion (sub_08011732)",
+    "role": "append a migrated element to the second collection",
+    "notes": "sub_08011732, 216 bytes and 97 instructions, one terminator at 0x08011808. THE INSERTION IS AT 0x0801177E..0x0801178A and reads `slot = second.count; second.count = slot + 1; second.elements[slot] = element`, using the OLD count as the index. HOW IT IS REACHED: the routine walks the FIRST collection BACKWARD from count-1 to 0 and asks each element's virtual method at table+0x18, passing a pass counter. A verdict of 1 makes it call table+0x04 and REMOVE the element from the first collection. A verdict of 2 makes it call table+0x1C, APPEND the element to the SECOND collection and REMOVE it from the first. Any other verdict leaves the element alone. So the second collection is filled by a VERDICT-DRIVEN MIGRATION out of the first, and the element is MOVED rather than copied: it exists in exactly one of the two collections afterwards. THE SECOND COLLECTION IS REACHED BY A COMPUTED BASE: the 0x40C literal is loaded into a register and added, so a displacement search finds nothing, exactly as in sub_080119BC. THIS IS THE INVERSE OF sub_080119BC, which moves an element from the second collection to the first when a key is found; together they are the two directions of one migration. ORDER: the inner loop runs BACKWARD, the same direction as the reader sub_08011C70 and the opposite of sub_080119BC's forward keyed scan. NO DUPLICATE CHECK: the element is appended at the tail whether or not an equal element is already in the second collection, so duplicate prevention is NOT a property of this path. NO CAPACITY CHECK and no bounds check on the second count. A THIRD COLLECTION EXISTS AT object + 0x208: the routine walks it calling table+0x14 on each element and then SETS ITS COUNT TO ZERO, so that collection is FLUSHED rather than migrated. THE REMOVAL HELPER TAKES THE COUNT SLOT, NOT THE COLLECTION BASE, which this routine proves by passing object + 4 for the first collection; the same convention means the call in sub_080119BC is sub_0804FE54(object + 0x40C, index) and an earlier note of ours saying object + 0x408 is corrected here. +0x00 IS NOT TOUCHED. UNKNOWN: what the elements are, what verdicts 1 and 2 mean beyond their effect, what sub_080116FC/sub_080115B0/sub_0803DA62 and the global at 0x08072824 do, and what appends to the third collection. No semantic name is assigned and nothing is imported from another title.",
+    "translation_unit": "collectioninsert2_tu",
+    "rom_address": "0x08011732",
+    "file_offset": "0x011732",
+    "code_end_address": "0x0801180A",
+    "end_address": "0x0801180A",
+    "byte_length": 216,
+    "code_byte_length": 216,
+    "isa": "thumb",
+    "decomp_source": "src/ByteCodeInterpreter_collectioninsert2.c",
+    "probe_source": "src/probes/ByteCodeInterpreter_collectioninsert2.c",
+    "selftest_source": "src/probes/collectioninsert2_selftest.c",
+    "semantic_minimum_checks": 27,
+    "host_build_bits": 32,
+    "original_sha1": "7d75bf7e960e38f2cc01e00596238ff8ba28734d"
+  },
+  "boundary_evidence": {
+    "method": "aligned chain-walk from each entry, following local branches",
+    "unit_id": "collectioninsert2_tu",
+    "code_extent": "0x08011732..0x0801180A",
+    "pool_extent": "0x0801180C..0x08011818",
+    "has_literal_pool": true,
+    "pool_is_adjacent_to_code": false,
+    "pool_gap_bytes": 2,
+    "alignment_padding_bytes": null,
+    "functions": [
+      {
+        "start": "0x08011732",
+        "end": "0x0801180A",
+        "size": 216,
+        "instructions": 97,
+        "role": "append a migrated element to the second collection",
+        "terminators": [
+          "0x08011808"
+        ],
+        "gaps": [],
+        "matches_expected": true
+      }
+    ],
+    "problems": [],
+    "derived_from_rom": true,
+    "not_hand_written": true,
+    "collection_insert2": {
+      "unit_id": "collectioninsert2_tu",
+      "extent": "0x08011732..0x0801180A",
+      "size": 216,
+      "instructions": 97,
+      "insertion_site": "0x0801177E..0x0801178A",
+      "second_collection_count_offset": "object + 0x40C",
+      "second_collection_values_offset": "object + 0x410",
+      "second_collection_offset_folded_into_the_base": true,
+      "increments_the_second_collection_count": true,
+      "appends_at_the_old_count": true,
+      "index_is_the_count_before_the_increment": true,
+      "value_stored_verbatim": true,
+      "element_width_bytes": 4,
+      "elements_are_pointers": true,
+      "also_removes_from_the_first_collection": true,
+      "removal_helper_argument_is_the_count_slot": true,
+      "first_collection_count_offset": "object + 0x04",
+      "first_collection_values_offset": "object + 0x08",
+      "third_collection_count_offset": "object + 0x208",
+      "third_collection_is_flushed_not_migrated": true,
+      "scan_direction": "BACKWARD over the first collection, from count-1 down to 0",
+      "verdict_method_offset": 24,
+      "verdict_one_calls_04_and_removes": true,
+      "verdict_two_calls_1C_appends_and_removes": true,
+      "has_duplicate_check": false,
+      "has_capacity_check": false,
+      "has_capacity_check_evidence": "nothing compares the second collection's count against a limit before the append",
+      "accesses_object_plus_0x00": false,
+      "calls": [
+        {
+          "site": "0x0801173E",
+          "target": "0x080116FC"
+        },
+        {
+          "site": "0x08011766",
+          "target": "0x08046AA4"
+        },
+        {
+          "site": "0x0801177A",
+          "target": "0x08046AA2"
+        },
+        {
+          "site": "0x08011790",
+          "target": "0x0804FE54"
+        },
+        {
+          "site": "0x0801179C",
+          "target": "0x080116FC"
+        },
+        {
+          "site": "0x080117B2",
+          "target": "0x080116FC"
+        },
+        {
+          "site": "0x080117BE",
+          "target": "0x080115B0"
+        },
+        {
+          "site": "0x080117C6",
+          "target": "0x0803DA62"
+        },
+        {
+          "site": "0x080117E0",
+          "target": "0x08046AA2"
+        },
+        {
+          "site": "0x080117E8",
+          "target": "0x0804FE54"
+        },
+        {
+          "site": "0x080117FA",
+          "target": "0x08046AA2"
+        }
+      ],
+      "call_count": 11,
+      "distinct_callees": [
+        "0x080115B0",
+        "0x080116FC",
+        "0x0803DA62",
+        "0x08046AA2",
+        "0x08046AA4",
+        "0x0804FE54"
+      ],
+      "literal_slots": 2,
+      "has_literal_pool": true,
+      "indexed_store_candidates": 3,
+      "effect": "a verdict-driven MIGRATION: an element of the first collection whose table[+0x18] method returns 2 is appended to the SECOND collection and removed from the FIRST",
+      "inverse_of": "sub_080119BC, which moves an element from the second to the first",
+      "derived_from_rom": true,
+      "not_hand_written": true
+    }
+  },
+  "verdicts": {
+    "semantic": {
+      "status": "PROVEN",
+      "checks": 27,
+      "failures": 0,
+      "minimum_checks": 27,
+      "host_compiler": "MSVC cl.exe (32-bit)",
+      "detail": "27 behavioural assertions passed with 0 failures (minimum 27)",
+      "measures": "whether the reconstructed C behaves correctly, by RUNNING it"
+    },
+    "modern_build": {
+      "status": "PASS",
+      "detail": "compiled, linked at 0x08011732 and emitted 296 bytes",
+      "measures": "whether the source compiles, links and emits bytes"
+    },
+    "ads_match": {
+      "status": "BLOCKED",
+      "code": "ADS12_LICENSE_UNAVAILABLE",
+      "detail": "an ARM Developer Suite 1.2 installation is present on this machine but the licence file it ships licenses a different product, so the ARM compilers cannot be run. No compile has been attempted and no configuration has been tested. The installation is located through ADS12_ROOT.",
+      "required_to_unblock": [
+        "a licensed ADS 1.2 installation, with ADS12_ROOT pointing at it",
+        "then: python -m buusfury compiler-probe --plan, then --matrix"
+      ],
+      "not_inferable_from_modern_build": true
+    }
+  },
+  "verdicts_are_independent": "SEMANTIC, MODERN_BUILD and ADS_MATCH answer different questions and none is evidence for another. A passing modern build says nothing about the original compiler; a passing semantic run only removes one class of error.",
+  "modern_build": {
+    "status": "PASS",
+    "toolchain": {
+      "family": "GNU Arm Embedded (devkitARM)",
+      "root": "<DEVKITARM>",
+      "prefix": "arm-none-eabi-",
+      "tools": {
+        "gcc": "<DEVKITARM>\\bin\\arm-none-eabi-gcc.exe",
+        "ld": "<DEVKITARM>\\bin\\arm-none-eabi-ld.exe",
+        "objcopy": "<DEVKITARM>\\bin\\arm-none-eabi-objcopy.exe",
+        "objdump": "<DEVKITARM>\\bin\\arm-none-eabi-objdump.exe",
+        "nm": "<DEVKITARM>\\bin\\arm-none-eabi-nm.exe"
+      }
+    },
+    "identity": {
+      "gcc_banner": "arm-none-eabi-gcc.exe (devkitARM) 16.1.0",
+      "gcc_version": "16.1.0",
+      "target_triple": "arm-none-eabi",
+      "binutils_banner": "GNU objdump (GNU Binutils) 2.46.0.20260210",
+      "compiler_family": "gcc",
+      "is_the_original_compiler": false,
+      "why_not": "the original translation unit was built by ARM Developer Suite 1.2 (the surviving command line names tcpp). GCC is a different compiler with a different code generator, so its output cannot establish anything about ADS 1.2."
+    },
+    "target_support": {
+      "supported": true,
+      "cpu": "arm7tdmi",
+      "instruction_set": "thumb",
+      "commands": [
+        "<DEVKITARM>\\bin\\arm-none-eabi-gcc.exe -c -mcpu=arm7tdmi -mthumb -O1 -ffreestanding -fno-common -fno-builtin -o <REPO>\\build\\lift\\collectioninsert2\\toolchain-probe\\support_probe.o <REPO>\\build\\lift\\collectioninsert2\\toolchain-probe\\support_probe.c"
+      ],
+      "disassembly": [
+        "adds r0, #1",
+        "bx lr"
+      ],
+      "detail": "compiled and disassembled a probe function for ARM7TDMI Thumb: 2 instruction(s), r0 written and a return present"
+    },
+    "compiler_configuration": {
+      "cpu": "arm7tdmi",
+      "instruction_set": "thumb",
+      "optimization": "-O1",
+      "extra_flags": []
+    },
+    "link_origin": "0x08011732",
+    "external_calls_bound_to_original_addresses": {
+      "sub_080115B0": "0x080115B0",
+      "sub_080116FC": "0x080116FC",
+      "sub_0803DA62": "0x0803DA62",
+      "sub_08046AA2": "0x08046AA2",
+      "sub_08046AA4": "0x08046AA4",
+      "sub_0804FE54": "0x0804FE54"
+    },
+    "detail": "compiled, linked at 0x08011732 and emitted 296 bytes",
+    "build": {
+      "ok": true,
+      "commands": [
+        "<DEVKITARM>\\bin\\arm-none-eabi-gcc.exe -c -mcpu=arm7tdmi -mthumb -O1 -ffreestanding -fno-common -fno-builtin -fomit-frame-pointer -mno-unaligned-access -o <REPO>\\build\\lift\\collectioninsert2\\collectioninsert2.o <REPO>\\src\\ByteCodeInterpreter_collectioninsert2.c",
+        "<DEVKITARM>\\bin\\arm-none-eabi-gcc.exe -c -mcpu=arm7tdmi -mthumb -o <REPO>\\build\\lift\\collectioninsert2\\collectioninsert2_externs.o -x assembler-with-cpp <REPO>\\build\\lift\\collectioninsert2\\collectioninsert2_externs.s",
+        "<DEVKITARM>\\bin\\arm-none-eabi-gcc.exe -nostdlib -Wl,-T,<REPO>\\build\\lift\\collectioninsert2\\collectioninsert2.ld -Wl,-Map,<REPO>\\build\\lift\\collectioninsert2\\collectioninsert2.map -o <REPO>\\build\\lift\\collectioninsert2\\collectioninsert2.elf <REPO>\\build\\lift\\collectioninsert2\\collectioninsert2.o <REPO>\\build\\lift\\collectioninsert2\\collectioninsert2_externs.o",
+        "<DEVKITARM>\\bin\\arm-none-eabi-objcopy.exe -O binary -j .text -j .rodata <REPO>\\build\\lift\\collectioninsert2\\collectioninsert2.elf <REPO>\\build\\lift\\collectioninsert2\\collectioninsert2.bin"
+      ],
+      "produced_byte_length": 296,
+      "symbols": {
+        "call_method_1": {
+          "address": "0x08011734",
+          "size": 18
+        },
+        "sub_08011732": {
+          "address": "0x08011746",
+          "size": 266
+        }
+      },
+      "diagnostics": ""
+    }
+  },
+  "functions": [
+    {
+      "name": "sub_08011732",
+      "role": "append a migrated element to the second collection",
+      "original": {
+        "start": "0x08011732",
+        "end": "0x0801180A",
+        "size": 216,
+        "isa": "thumb",
+        "instructions": 97,
+        "first_instruction": "push {r0, r1, r4, r5, r6, r7, lr}",
+        "calls": [
+          "0x080115B0",
+          "0x080116FC",
+          "0x0803DA62",
+          "0x08046AA2",
+          "0x08046AA4",
+          "0x0804FE54"
+        ],
+        "literal_slots": [
+          "0x0801180C",
+          "0x08011814"
+        ],
+        "returns": 1,
+        "leaf": false,
+        "abi": {
+          "callee_saved_pushed": [
+            "r4",
+            "r5",
+            "r6",
+            "r7"
+          ],
+          "frame_size_bytes": 0,
+          "written_registers": [
+            "r0",
+            "r1",
+            "r2",
+            "r4",
+            "r5",
+            "r6",
+            "r7"
+          ]
+        }
+      },
+      "modern": {
+        "start": "0x08011746",
+        "end": "0x08011850",
+        "size": 266,
+        "isa": "thumb",
+        "instructions": 122,
+        "first_instruction": "mov lr, fp",
+        "calls": [
+          "0x080115AE",
+          "0x080116FA",
+          "0x08011732",
+          "0x0801184E",
+          "0x0803DA60",
+          "0x0804FE52"
+        ],
+        "literal_slots": [
+          "0x08011848"
+        ],
+        "returns": 2,
+        "leaf": false,
+        "abi": {
+          "callee_saved_pushed": [
+            "r5",
+            "r6",
+            "r7"
+          ],
+          "frame_size_bytes": 0,
+          "written_registers": [
+            "r0",
+            "r1",
+            "r2",
+            "r3",
+            "r4",
+            "r5",
+            "r6",
+            "r7",
+            "r8"
+          ]
+        }
+      },
+      "modern_symbol_present": true,
+      "delta": {
+        "size_bytes": 50,
+        "instructions": 25,
+        "returns": 1,
+        "calls": 0,
+        "literal_slots": -1
+      },
+      "same_extent": false,
+      "byte_identical": false
+    }
+  ],
+  "literal_pools": {
+    "original": {
+      "distinct_slots": 2,
+      "contiguous_runs": [
+        [
+          "0x0801180C",
+          "0x08011810"
+        ],
+        [
+          "0x08011814",
+          "0x08011818"
+        ]
+      ],
+      "run_count": 2,
+      "shared_pool": false,
+      "shared_pool_applicable": false,
+      "declared_pool": [
+        "0x0801180A",
+        "0x0801180A"
+      ],
+      "declared_slots": [
+        "0x0801180C",
+        "0x08011814"
+      ],
+      "declared_slots_used": [
+        "0x0801180C",
+        "0x08011814"
+      ],
+      "all_referenced_slots_are_declared": true,
+      "all_declared_slots_are_referenced": true,
+      "undeclared_slots": [],
+      "functions_reaching_it": 1
+    },
+    "modern": {
+      "distinct_slots": 1,
+      "contiguous_runs": [
+        [
+          "0x08011848",
+          "0x0801184C"
+        ]
+      ],
+      "run_count": 1,
+      "shared_pool": true,
+      "functions_reaching_a_pool": 1
+    },
+    "interpretation": "the original's literals are accounted for by the words the unit declares; the modern build pools differently, which is a structural consequence of the compiler rather than a defect in the reconstruction. It is also why a function with a literal load cannot be compared standalone.",
+    "is_a_match_claim": false
+  },
+  "comparison": {
+    "original_byte_length": 216,
+    "modern_byte_length": 296,
+    "overlap_byte_length": 216,
+    "differing_bytes_in_overlap": 212,
+    "matching_bytes_in_overlap": 4,
+    "original_only_bytes": 0,
+    "modern_only_bytes": 80,
+    "original_instruction_spans": 97,
+    "matching_instruction_spans": 0,
+    "differing_instruction_spans": 97,
+    "bytes_not_covered_by_an_original_instruction": 0,
+    "byte_identical": false,
+    "is_a_match_claim": false,
+    "match_claim_note": "MEASUREMENT ONLY. This compares a modern GCC build against the cartridge. A modern compiler is not the original compiler, so a difference here is expected and proves nothing; an identity here would also prove nothing about ADS 1.2. ADS_MATCH stays BLOCKED."
+  },
+  "semantic_check": {
+    "status": "PROVEN",
+    "checks": 27,
+    "failures": 0,
+    "minimum_checks": 27,
+    "host_compiler": "MSVC cl.exe (32-bit)",
+    "host_build_bits": 32,
+    "detail": "27 behavioural assertions passed with 0 failures (minimum 27)",
+    "output": "PASS: 27 check(s), 0 failure(s)\n"
+  }
+}

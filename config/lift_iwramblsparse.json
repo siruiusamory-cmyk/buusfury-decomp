@@ -1,0 +1,265 @@
+{
+  "schema": 1,
+  "ticket": "DECOMP-IWRAM-TRANSFORMS-001",
+  "generated_by": "tools/buusfury/lift.py",
+  "source_sha1": "f1c4b07554d2a3b1ad2f325307051e775ce68087",
+  "target": {
+    "id": "iwramblsparse",
+    "name": "runtime-installed IWRAM byte-lane sparse store",
+    "role": "byte-lane sparse store: each non-zero lane of a source word written to its own byte of a context-named destination, with the destination advancing four bytes per word whether or not anything was written",
+    "notes": "THE THIRD BATCH OF THE SAME RUNTIME-INSTALLED BLOCK. The 4100 bytes at ROM 0x087B79A4..0x087B89A8 are the image of IWRAM 0x03000000..0x03001004, installed by the reset code's second DMA3 program (SAD 0x087B79A4, DAD 0x03000000, CNT 0x84000401 = 1025 words), so IWRAM X = ROM 0x087B79A4 + (X - 0x03000000) and every byte is statically known. The block's code half ends at 0x03000F44; this batch covers the byte-lane and Q-format transform families inside it. THE ROUTINE is 0x087B7CD4 (IWRAM 0x03000330), 88 bytes and 22 ARM instructions, ending at the `bx lr` at IWRAM 0x03000384, with no literal pool. Its arguments are a CONTEXT RECORD: +0x24 is the destination BYTE ADDRESS and +0x30 is the byte count. IT IS A SEPARATE TRANSLATION UNIT FROM `iwrambl` BECAUSE THE IMAGE SAYS SO: the eight bytes at IWRAM 0x03000328 between the two routines belong to a third routine, so no contiguous unit can hold both. The unit's own span therefore ends at its last instruction and the four remaining bytes to the next prologue are reported as alignment padding. THE EQUATION: for each source word, if the word is zero nothing is stored; otherwise each non-zero lane k is written to destination[k]. The destination advances by four per source word REGARDLESS, so this is a SPARSE MASKED STORE and NOT a compaction - reading `sparse` as `compacting` is the obvious wrong reading and is refuted by the `add r0, r0, #4` that precedes the zero test. THE COUNT TEST IS SIGNED: `subs r2, r2, #4` followed by `bmi` (word 0x4A00000C, condition 0100 = MI) is an N test, not a C test. The count is decremented once BEFORE the loop and once at the end of each pass, so a count at or above four yields exactly count/4 passes and a count below four yields NONE - a count of five or six does NOT round up. A count at or above 0x80000004 wraps the pre-loop subtraction negative and the routine does nothing; 0x80000000 does NOT, because 0x80000000 - 4 = 0x7FFFFFFC is positive, so the wrap boundary is 0x80000004 and not the sign bit. REACHABILITY: NOTHING CALLS IT, and that is a measured negative. IWRAM 0x03000330 occurs ZERO times in the whole 8 MiB image at every byte alignment, in both the even (ARM) and odd (Thumb) forms; no in-block BL, branch or literal-pool word in the walk-reached set names it; and fall-through is impossible because 0x087B7C80 ends in an unconditional `bx lr` with a third routine's pool after it. Its status is INFERRED DEAD/UNREACHABLE and NOT proven dead: the one route a static census cannot see is a pointer assembled at run time from two registers, which only PC sampling could settle. The record beyond +0x24 and +0x30 is UNKNOWN. RELATIONSHIP TO `iwrambl`: the two are VARIANTS of one four-byte-stride byte-lane transform - same stride, same 0xFF mask, the same `byte 0 is special` idiom where one skips the table READ and the other skips the STORE, and both lane maps the identity. They are NOT inverses, NOT a pack/unpack pair and NOT byte permutations. No table can invert this routine because it is not injective: eight different source words driven at a three-word count produce a repeated destination word, and the test asserts that collision.",
+    "translation_unit": "iwram_bl_sparse_tu",
+    "rom_address": "0x087B7CD4",
+    "file_offset": "0x7B7CD4",
+    "code_end_address": "0x087B7D2C",
+    "end_address": "0x087B7D2C",
+    "byte_length": 88,
+    "code_byte_length": 88,
+    "isa": "arm",
+    "decomp_source": "src/IwramByteLaneSparse.c",
+    "probe_source": "src/probes/IwramByteLaneSparse.c",
+    "selftest_source": "src/probes/iwrambl_selftest.c",
+    "semantic_minimum_checks": 8000,
+    "host_build_bits": 32,
+    "original_sha1": "78680f50a4635dcada7c11fc116ae22044b68642"
+  },
+  "boundary_evidence": {
+    "method": "aligned chain-walk from each entry, following local branches",
+    "unit_id": "iwram_bl_sparse_tu",
+    "code_extent": "0x087B7CD4..0x087B7D2C",
+    "pool_extent": null,
+    "has_literal_pool": false,
+    "pool_is_adjacent_to_code": false,
+    "pool_gap_bytes": null,
+    "alignment_padding_bytes": null,
+    "functions": [
+      {
+        "start": "0x087B7CD4",
+        "end": "0x087B7D2C",
+        "size": 88,
+        "instructions": 22,
+        "role": "byte lane sparse store: each non-zero lane of a source word written to its own byte of a context-named destination, no compaction",
+        "terminators": [
+          "0x087B7D28"
+        ],
+        "gaps": [],
+        "matches_expected": true
+      }
+    ],
+    "problems": [],
+    "derived_from_rom": true,
+    "not_hand_written": true
+  },
+  "verdicts": {
+    "semantic": {
+      "status": "PROVEN",
+      "checks": 10726,
+      "failures": 0,
+      "minimum_checks": 8000,
+      "host_compiler": "MSVC cl.exe (32-bit)",
+      "detail": "10726 behavioural assertions passed with 0 failures (minimum 8000)",
+      "measures": "whether the reconstructed C behaves correctly, by RUNNING it"
+    },
+    "modern_build": {
+      "status": "PASS",
+      "detail": "compiled, linked at 0x087B7CD4 and emitted 128 bytes",
+      "measures": "whether the source compiles, links and emits bytes"
+    },
+    "ads_match": {
+      "status": "BLOCKED",
+      "code": "ADS12_LICENSE_UNAVAILABLE",
+      "detail": "an ARM Developer Suite 1.2 installation is present on this machine but the licence file it ships licenses a different product, so the ARM compilers cannot be run. No compile has been attempted and no configuration has been tested. The installation is located through ADS12_ROOT.",
+      "required_to_unblock": [
+        "a licensed ADS 1.2 installation, with ADS12_ROOT pointing at it",
+        "then: python -m buusfury compiler-probe --plan, then --matrix"
+      ],
+      "not_inferable_from_modern_build": true
+    }
+  },
+  "verdicts_are_independent": "SEMANTIC, MODERN_BUILD and ADS_MATCH answer different questions and none is evidence for another. A passing modern build says nothing about the original compiler; a passing semantic run only removes one class of error.",
+  "modern_build": {
+    "status": "PASS",
+    "toolchain": {
+      "family": "GNU Arm Embedded (devkitARM)",
+      "root": "<DEVKITARM>",
+      "prefix": "arm-none-eabi-",
+      "tools": {
+        "gcc": "<DEVKITARM>\\bin\\arm-none-eabi-gcc.exe",
+        "ld": "<DEVKITARM>\\bin\\arm-none-eabi-ld.exe",
+        "objcopy": "<DEVKITARM>\\bin\\arm-none-eabi-objcopy.exe",
+        "objdump": "<DEVKITARM>\\bin\\arm-none-eabi-objdump.exe",
+        "nm": "<DEVKITARM>\\bin\\arm-none-eabi-nm.exe"
+      }
+    },
+    "identity": {
+      "gcc_banner": "arm-none-eabi-gcc.exe (devkitARM) 16.1.0",
+      "gcc_version": "16.1.0",
+      "target_triple": "arm-none-eabi",
+      "binutils_banner": "GNU objdump (GNU Binutils) 2.46.0.20260210",
+      "compiler_family": "gcc",
+      "is_the_original_compiler": false,
+      "why_not": "the original translation unit was built by ARM Developer Suite 1.2 (the surviving command line names tcpp). GCC is a different compiler with a different code generator, so its output cannot establish anything about ADS 1.2."
+    },
+    "target_support": {
+      "supported": true,
+      "cpu": "arm7tdmi",
+      "instruction_set": "thumb",
+      "commands": [
+        "<DEVKITARM>\\bin\\arm-none-eabi-gcc.exe -c -mcpu=arm7tdmi -mthumb -O1 -ffreestanding -fno-common -fno-builtin -o <REPO>\\build\\lift\\iwramblsparse\\toolchain-probe\\support_probe.o <REPO>\\build\\lift\\iwramblsparse\\toolchain-probe\\support_probe.c"
+      ],
+      "disassembly": [
+        "adds r0, #1",
+        "bx lr"
+      ],
+      "detail": "compiled and disassembled a probe function for ARM7TDMI Thumb: 2 instruction(s), r0 written and a return present"
+    },
+    "compiler_configuration": {
+      "cpu": "arm7tdmi",
+      "instruction_set": "arm",
+      "optimization": "-O1",
+      "extra_flags": []
+    },
+    "link_origin": "0x087B7CD4",
+    "external_calls_bound_to_original_addresses": {},
+    "detail": "compiled, linked at 0x087B7CD4 and emitted 128 bytes",
+    "build": {
+      "ok": true,
+      "commands": [
+        "<DEVKITARM>\\bin\\arm-none-eabi-gcc.exe -c -mcpu=arm7tdmi -marm -O1 -ffreestanding -fno-common -fno-builtin -fomit-frame-pointer -mno-unaligned-access -o <REPO>\\build\\lift\\iwramblsparse\\iwramblsparse.o <REPO>\\src\\IwramByteLaneSparse.c",
+        "<DEVKITARM>\\bin\\arm-none-eabi-gcc.exe -c -mcpu=arm7tdmi -marm -o <REPO>\\build\\lift\\iwramblsparse\\iwramblsparse_externs.o -x assembler-with-cpp <REPO>\\build\\lift\\iwramblsparse\\iwramblsparse_externs.s",
+        "<DEVKITARM>\\bin\\arm-none-eabi-gcc.exe -nostdlib -Wl,-T,<REPO>\\build\\lift\\iwramblsparse\\iwramblsparse.ld -Wl,-Map,<REPO>\\build\\lift\\iwramblsparse\\iwramblsparse.map -o <REPO>\\build\\lift\\iwramblsparse\\iwramblsparse.elf <REPO>\\build\\lift\\iwramblsparse\\iwramblsparse.o <REPO>\\build\\lift\\iwramblsparse\\iwramblsparse_externs.o",
+        "<DEVKITARM>\\bin\\arm-none-eabi-objcopy.exe -O binary -j .text -j .rodata <REPO>\\build\\lift\\iwramblsparse\\iwramblsparse.elf <REPO>\\build\\lift\\iwramblsparse\\iwramblsparse.bin"
+      ],
+      "produced_byte_length": 128,
+      "symbols": {
+        "sub_087B7CD4": {
+          "address": "0x087B7CD4",
+          "size": 128
+        }
+      },
+      "diagnostics": ""
+    }
+  },
+  "functions": [
+    {
+      "name": "sub_087B7CD4",
+      "role": "byte lane sparse store: each non-zero lane of a source word written to its own byte of a context-named destination, no compaction",
+      "original": {
+        "start": "0x087B7CD4",
+        "end": "0x087B7D2C",
+        "size": 88,
+        "isa": "arm",
+        "instructions": 22,
+        "first_instruction": "push {r4, r5}",
+        "calls": [],
+        "literal_slots": [],
+        "returns": 1,
+        "leaf": true,
+        "abi": {
+          "callee_saved_pushed": [
+            "r4",
+            "r5"
+          ],
+          "frame_size_bytes": 0,
+          "written_registers": [
+            "r0",
+            "r2",
+            "r3",
+            "r4",
+            "r5"
+          ]
+        }
+      },
+      "modern": {
+        "start": "0x087B7CD4",
+        "end": "0x087B7D54",
+        "size": 128,
+        "isa": "arm",
+        "instructions": 32,
+        "first_instruction": "push {r4, r5, lr}",
+        "calls": [],
+        "literal_slots": [],
+        "returns": 1,
+        "leaf": true,
+        "abi": {
+          "callee_saved_pushed": [
+            "r4",
+            "r5"
+          ],
+          "frame_size_bytes": 0,
+          "written_registers": [
+            "r0",
+            "r2",
+            "r3",
+            "r4",
+            "r5"
+          ]
+        }
+      },
+      "modern_symbol_present": true,
+      "delta": {
+        "size_bytes": 40,
+        "instructions": 10,
+        "returns": 0,
+        "calls": 0,
+        "literal_slots": 0
+      },
+      "same_extent": false,
+      "byte_identical": false
+    }
+  ],
+  "literal_pools": {
+    "original": {
+      "distinct_slots": 0,
+      "contiguous_runs": [],
+      "run_count": 0,
+      "shared_pool": false,
+      "shared_pool_applicable": false,
+      "declared_pool": [
+        "0x087B7D2C",
+        "0x087B7D2C"
+      ],
+      "declared_slots": [],
+      "declared_slots_used": [],
+      "all_referenced_slots_are_declared": true,
+      "all_declared_slots_are_referenced": true,
+      "undeclared_slots": [],
+      "functions_reaching_it": 0
+    },
+    "modern": {
+      "distinct_slots": 0,
+      "contiguous_runs": [],
+      "run_count": 0,
+      "shared_pool": true,
+      "functions_reaching_a_pool": 0
+    },
+    "interpretation": "the original's literals are accounted for by the words the unit declares; the modern build pools differently, which is a structural consequence of the compiler rather than a defect in the reconstruction. It is also why a function with a literal load cannot be compared standalone.",
+    "is_a_match_claim": false
+  },
+  "comparison": {
+    "original_byte_length": 88,
+    "modern_byte_length": 128,
+    "overlap_byte_length": 88,
+    "differing_bytes_in_overlap": 73,
+    "matching_bytes_in_overlap": 15,
+    "original_only_bytes": 0,
+    "modern_only_bytes": 40,
+    "original_instruction_spans": 22,
+    "matching_instruction_spans": 0,
+    "differing_instruction_spans": 22,
+    "bytes_not_covered_by_an_original_instruction": 0,
+    "byte_identical": false,
+    "is_a_match_claim": false,
+    "match_claim_note": "MEASUREMENT ONLY. This compares a modern GCC build against the cartridge. A modern compiler is not the original compiler, so a difference here is expected and proves nothing; an identity here would also prove nothing about ADS 1.2. ADS_MATCH stays BLOCKED."
+  },
+  "semantic_check": {
+    "status": "PROVEN",
+    "checks": 10726,
+    "failures": 0,
+    "minimum_checks": 8000,
+    "host_compiler": "MSVC cl.exe (32-bit)",
+    "host_build_bits": 32,
+    "detail": "10726 behavioural assertions passed with 0 failures (minimum 8000)",
+    "output": "PASS: 10726 check(s), 0 failure(s)\n"
+  }
+}

@@ -636,3 +636,75 @@ eight that three files claimed; "all four block-memory slots occur exactly once"
 was self-contradictory because `0x030007FC` occurs twice; and the whole-image
 census was a 4-byte-aligned **lower bound** (129 values over 257 windows against
 225 over 533 at 2-byte alignment), which the report said nowhere.
+
+## 12. IWRAM byte-lane and Q-format transform families - `DECOMP-IWRAM-TRANSFORMS-001` (2026-09-30)
+
+The third pass over the same 4100-byte block, and the one that turns two families
+the previous ticket's classification could only *group* into proven operations.
+Read [`LIFT_IWRAM_TRANSFORMS.md`](LIFT_IWRAM_TRANSFORMS.md) for the whole
+derivation. Three targets, five routines:
+
+* `iwrambl` - `0x087B7C80` (IWRAM `0x030002DC`), 76 bytes, 19 instructions.
+  **76, not 84**: the eight bytes the entry-to-next-entry window absorbs are a
+  **third** routine's literal pool, read only by `0x03000230` and `0x03000240`,
+  both inside the 149-word routine that precedes it. This is the ticket's own
+  brief being wrong, in exactly the way `LIFT_LOOP.md` forbids.
+* `iwramblsparse` - `0x087B7CD4` (IWRAM `0x03000330`), 88 bytes, 22 instructions,
+  still **inferred dead/unreachable**: its address occurs zero times in the whole
+  image at every alignment.
+* `iwramqf` - `0x087B7F04` (IWRAM `0x03000560`), 416 bytes, and `0x087B80A4`
+  (IWRAM `0x03000700`), 104 bytes, **adjacent in the image**, which is why they
+  are one unit.
+
+**What is reusable, stated as an equation.** `0x087B7C80` maps each 0xFF-masked
+byte lane of a source word through a caller-supplied 256-byte table and packs it
+back **in place**, with `T(0) = 0` - a zero lane never reads the table at all,
+because `ldrbne` is predicated on the `ands`. `0x087B7CD4` is a **sparse masked
+store**: each non-zero lane is written to its own byte, an all-zero word stores
+nothing, and the destination advances four bytes per word regardless. The two are
+**variants of one four-byte-stride byte-lane transform**, with the same mask, the
+same "byte 0 is special" idiom and the identity lane map - **not inverses**, not a
+pack/unpack pair and not byte permutations. `0x087B7CD4` is not injective, so
+nothing can invert it.
+
+**The Q10 reduction**, from `smull`/`smlal` into a signed 64-bit sum followed by
+`lsr #10` and `add ..., lsl #22`:
+
+    (low >> 10) + (high << 22)  ==  (u32)(((u64)sum) >> 10)   for every 64-bit pattern
+
+That is an identity, and the self-check now asserts it as one. **This ticket
+claimed three times that the two-instruction form differed from a truncated
+arithmetic shift as well; it does not**, because an `asr` differs from an `lsr`
+only in the bits shifted in at the top, which truncation to 32 bits discards. The
+source comment asserting `lsr` was "load-bearing" was wrong and was corrected.
+
+**The three fixed-point routines are not one primitive.** `0x087B7F04` reduces
+each lane **separately** and sums the reduced 32-bit values with wraparound;
+`0x087B80A4` reduces **once** per output word after all three products, so its
+intermediate is a genuine 64-bit sum that cannot wrap. A test case with equal
+coefficients does *not* show the difference - multiplying by three commutes with
+the shift - and the first attempt at that check used one and failed.
+`0x03000868` is **not** in the family at all: zero `smull`/`smlal`, zero
+`lsr #10`/`lsl #22`, `mla` plus `ldrsb` and `lsl #18`/`asr #14`. The previous
+document already recorded 18.14 as a fingerprint guess; this ticket's measurement
+confirms it and **splits one row of that document's family table in two**. No count
+in that document changes.
+
+**The Q10 scale itself is INFERRED, not proven.** `0x400` occurs nowhere in either
+routine and neither has a literal pool. The shift discards ten fraction bits
+whatever the input scale is, so the code licenses a *relative* scale and the name
+"Q10" for the data comes from the call sites.
+
+**Verdicts**: SEMANTIC PROVEN for all three (10726, 10726 and 340029 assertions,
+0 failures - the first two share one self-check that covers both byte-lane
+routines), MODERN_BUILD PASS, ADS_MATCH BLOCKED. The modern builds differ
+structurally and the reports say so as measurements: GCC hoists a loop test, and
+for `0x087B80A4` expands each signed 64-bit product into `umull` plus a sign
+correction where the original uses one `smull`/`smlal`.
+
+**Overlay-wide census**: 8 exact byte-lane sites in 2 functions, 15 exact Q10
+reduction sites in 2 functions, 0 variants of either within the family, and
+`0x03000868` as the sole Q18.14 member. Two counting hazards are recorded because
+each one silently under-counts: a byte-lane rule requiring `lsr #N` finds 3 of 4
+lanes (lane 0 is unshifted), and a Q10 rule keyed on the folded spelling finds 3
+of 12 reductions.

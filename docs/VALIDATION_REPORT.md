@@ -855,3 +855,151 @@ holds an mGBA 0.10.5 win64 build downloaded before it was established that the
 project's runtime tooling already exists in `C:\Dev\log1-remake\tools\runtime\`
 and that mGBA 0.10.5 and 0.11.0 are both already installed. It is untracked and
 gitignored, it was not used, and it is a delete-on-request duplicate.
+
+# Validation report - `DECOMP-IWRAM-TRANSFORMS-001` (2026-09-30)
+
+Baseline `a312d1060a7374bfb100f4f894c4470d8c44acff`. This ticket lifts the
+byte-lane and Q-format families of the runtime-installed IWRAM block. Read
+[`LIFT_IWRAM_TRANSFORMS.md`](LIFT_IWRAM_TRANSFORMS.md) for the derivation.
+
+## What was run, and what it measured
+
+```
+# the new family's own focused tests, with the ROM present
+python -m pytest tests/test_lift_iwramtransforms.py -q
+# 36 passed in 12.99s
+
+# the same file WITHOUT a baserom: the portable half must stand alone
+python -m pytest tests/test_lift_iwramtransforms.py -q
+# 16 passed, 20 skipped in 8.35s
+
+# the focused set: the new family, both earlier IWRAM targets, the lift loop and
+# harness it shares, and the neighbouring region/identity/build/map checks
+python -m pytest tests/test_lift_iwramtransforms.py tests/test_lift_iwramblock.py \
+  tests/test_lift_iwramdispatch.py tests/test_lift.py tests/test_regions.py \
+  tests/test_identity.py tests/test_build.py tests/test_rom_map.py \
+  tests/test_fixed_regions.py tests/test_lift_layout.py \
+  tests/test_object_layout.py tests/test_ewram_layout.py tests/test_toolchain.py \
+  tests/test_gba.py -q
+# 373 passed in 79.48s
+
+# and the whole portable suite, so that nothing the three new registry entries
+# touch is left unmeasured
+python -m pytest tests -q --ignore=tests/test_compiler_probe.py
+# 883 passed in 264.09s
+
+# deterministic report regeneration, key by key, the same command gate 7 runs
+python -m buusfury lift --target all --rom build/buusfury.gba --verify
+# 24/24 REPORT: PASS (the whole document regenerated identically), exit 0
+
+# each new target's own loop
+python -m buusfury lift --target iwrambl       --rom build/buusfury.gba
+# SEMANTIC      PROVEN   10726 behavioural assertions, 0 failures (minimum 8000)
+# MODERN_BUILD  PASS     arm-none-eabi-gcc 16.1.0, linked at 0x087B7C80, 128 bytes
+# ADS_MATCH     BLOCKED  ADS12_LICENSE_UNAVAILABLE
+# comparison    84 original vs 128 modern, 80 differing bytes,
+#               0 of 19 instruction spans identical, byte_identical FALSE,
+#               is_a_match_claim FALSE
+
+python -m buusfury lift --target iwramblsparse --rom build/buusfury.gba
+# SEMANTIC      PROVEN   10726 behavioural assertions, 0 failures (minimum 8000)
+# MODERN_BUILD  PASS     arm-none-eabi-gcc 16.1.0, linked at 0x087B7CD4, 128 bytes
+# ADS_MATCH     BLOCKED  ADS12_LICENSE_UNAVAILABLE
+# comparison    88 original vs 128 modern, 73 differing bytes,
+#               0 of 22 instruction spans identical, byte_identical FALSE,
+#               is_a_match_claim FALSE
+
+python -m buusfury lift --target iwramqf --rom build/buusfury.gba
+# SEMANTIC      PROVEN   340029 behavioural assertions, 0 failures (minimum 200000)
+# MODERN_BUILD  PASS     arm-none-eabi-gcc 16.1.0, linked at 0x087B7F04, 800 bytes
+# ADS_MATCH     BLOCKED  ADS12_LICENSE_UNAVAILABLE
+# comparison    520 original vs 800 modern, 463 differing bytes,
+#               1 of 130 instruction spans identical, byte_identical FALSE,
+#               is_a_match_claim FALSE
+
+# the host self-checks, run directly, before the first compiler run and after
+# every later change to the reconstruction
+# PASS: 10726 check(s), 0 failure(s)      (byte-lane, covers both routines)
+# PASS: 340029 check(s), 0 failure(s)     (Q-format, covers both routines)
+
+# shim equality: compile the real source and the probe shim, disassemble both,
+# compare the sha1 of the instruction stream. LIFT_LOOP.md step 3, run.
+# OK   src/IwramByteLanePair.c     a9d82f704d4453e0  == src/probes/IwramByteLanePair.c
+# OK   src/IwramByteLaneSparse.c   387efa482e17256b  == src/probes/IwramByteLaneSparse.c
+# OK   src/IwramQFormat.c          4faaba574ea928f4  == src/probes/IwramQFormat.c
+# shim equality: 3/3 identical
+```
+
+## The three verdicts are independent
+
+`SEMANTIC` is measured by RUNNING the reconstruction on the host. `MODERN_BUILD`
+is whether the source compiles, links and emits bytes for arm7tdmi. `ADS_MATCH`
+stays `BLOCKED` with `ADS12_LICENSE_UNAVAILABLE`: the installation is present on
+this machine but the licence it ships covers a different product, so no compile
+has been attempted and no configuration has been tested. The blocker is not
+weakened, and no report infers ADS from either of the other two.
+
+Every report carries `is_a_match_claim: false`. A modern compiler is not the
+original compiler, so the comparisons above are measurements and not agreement or
+disagreement. The structural differences are named rather than hidden: GCC hoists
+`0x087B7C80`'s loop test to the top and keeps a 32-instruction body against the
+original's 19, and for `0x087B80A4` it expands each signed 64-bit product into
+`umull` plus a `mul`/`mla` sign correction where the original uses one `smull` or
+`smlal`.
+
+## Machine facts checked on the built ELFs, not inferred from the source
+
+```
+--defsym in any of the three reports      : False
+"from_thumb" / "from_arm" / veneer symbol : none in all three ELFs
+architecture / flags                      : armv3m, flags 0x00000112 (ARM state)
+compile command                           : -mcpu=arm7tdmi -marm -O1
+is_the_original_compiler                  : False
+absolute paths in any report              : False
+```
+
+`-marm` with `isa: "arm"` on both the target and the translation unit is the
+ARM/Thumb state declaration, and it is what the disassembly confirms. There are
+no veneers because none of the five routines calls anything, so
+`derive_external_calls` finds no external symbol to bind; the `--defsym` trap the
+project paid for once never arises here, and the check is run anyway.
+
+## Report regression
+
+**24 of 24 committed lift reports regenerate identically, key by key, exit 0.**
+Twenty-one of them are the previous baseline's and are unchanged: no measurement
+moved in any of them, and `config/lift_targets.json`'s diff is 47 added lines with
+no existing line modified.
+
+Three reports are new: `config/lift_iwrambl.json`,
+`config/lift_iwramblsparse.json` and `config/lift_iwramqf.json`.
+
+## Corrections carried, and their evidence
+
+| artifact | claim | status |
+| --- | --- | --- |
+| this ticket's own brief | `0x030002DC` is 84 bytes | **REFUTED**: 76 bytes / 19 instructions. The eight bytes at `0x03000328`/`0x0300032C` are the literal pool of the 149-word routine at `0x03000040` that *precedes* it, read only by `ldr r8,[pc,#0xf0]` at `0x03000230` and `ldr r8,[pc,#0xe4]` at `0x03000240`. Entry-to-next-entry counts two data words as instructions |
+| this ticket's own brief | `0x03000868` is in the Q10 family | **REFUTED**: zero `smull`/`smlal`, zero `lsr #10`/`lsl #22`; it is Q18.14 with 21 `mla` and 22 `ldrsb`. The committed `LIFT_IWRAM_DISPATCH.md` already recorded 18.14, so the brief was the outlier |
+| this ticket's own brief | the byte-lane fingerprint is `ands ... lsr #N` | **REFUTED as a complete rule**: lane 0's term is unshifted, so a rule requiring a shift finds 3 of 4 lanes per function |
+| this ticket's own brief | the Q10 fingerprint is the folded `add ..., lsr #10` | **REFUTED as a complete rule**: `0x087B7F04` uses the standalone `lsr` form nine times and the folded form once, so a folded-only scan finds 3 of 12 reductions |
+| `src/IwramQFormat.c` (this ticket, first revision) | the two-instruction reduction differs from an arithmetic shift, so `lsr` is "load-bearing" | **CORRECTED three times before it was measured**: the two forms are identical after truncation to 32 bits. The comment and the self-check now assert the identity |
+| this ticket's self-checks (first revision) | an A2 pass count of `(count-4)/4+1`; a destination window anchored differently; a discriminating constant of `0xFFFFFFFE00000000`; `table` is a bijection | **all four were test defects, found by the tests failing**, and each is recorded in the self-check's own comments. The reconstructions were right and the checks were wrong |
+
+## Safety
+
+No ROM was written, patched, truncated or renamed. Canonical identity before and
+after every write:
+
+```
+SHA-1    F1C4B07554D2A3B1AD2F325307051E775CE68087
+SHA-256  940ad5f01db4465b8877dfe739510cbf34f4ea3d390f3df13519808bc36f059e
+MD5      3a74fce97f1ea2b28c2a50ec3df0acee
+size     8388608      mtime unchanged
+```
+
+No `.gba`, save or state is tracked. `C:\Dev\log1-remake` was not opened for
+writing; its directory timestamp is 2026-09-29 09:03:02, before this session.
+
+The new tracked files are three C sources, three shims, two self-checks, one test
+file, one document, three reports and two documentation edits. Nothing is staged
+with `git add -A`; every path is named explicitly.

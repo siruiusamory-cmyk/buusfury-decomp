@@ -2301,6 +2301,181 @@ def derive_collection_flush3(rom_bytes: bytes) -> dict:
     }
 
 
+# ---------------------------------------------------------------------------
+# the byte-lane and Q-format transform families of the same block
+#   (DECOMP-IWRAM-TRANSFORMS-001)
+# ---------------------------------------------------------------------------
+# Three sibling families of the 4100-byte block, lifted together because the
+# census that classifies them is one census. Each unit is contiguous in the
+# image, which is what a translation unit has to be: the two byte-lane routines
+# are NOT adjacent (8 bytes of the PRECEDING routine's literal pool sit between
+# them) and the two Q-format routines ARE adjacent, so the byte-lane pair is two
+# units and the fixed-point pair is one.
+#
+# None of the five routines loads a literal of its own. The eight bytes at
+# 0x03000328 are a pool, but they belong to 0x03000040, which reads them at
+# 0x03000230 and 0x03000240; they are therefore the ODD unit's leading gap and
+# the EVEN unit's trailing padding, and neither declares them.
+IWRAM_BL_PAIR_ROM = 0x087B7C80
+IWRAM_BL_PAIR_CODE_END = 0x087B7CCC        # the last instruction ends here
+IWRAM_BL_PAIR_END = 0x087B7CD4             # the next function's start
+
+IWRAM_BL_SPARSE_ROM = 0x087B7CD4
+IWRAM_BL_SPARSE_CODE_END = 0x087B7D2C
+
+IWRAM_QF_ROM = 0x087B7F04
+IWRAM_QF_CODE_END = 0x087B810C
+
+IWRAM_BL_PAIR_TU = cp.TranslationUnit(
+    id="iwram_bl_pair_tu",
+    rom_address=IWRAM_BL_PAIR_ROM,
+    code_end_address=IWRAM_BL_PAIR_CODE_END,
+    end_address=IWRAM_BL_PAIR_END,
+    isa="arm",
+    source="src/probes/IwramByteLanePair.c",
+    confidence="proven",
+    boundary_evidence=(
+        "the entry is the literal of the ROM-side Thumb-to-ARM veneer at "
+        "0x0804918C, so the entry point is anchored by the veneer family rather "
+        "than by a classifier window",
+        "an aligned chain-walk from the entry reaches 19 instructions and "
+        "exactly one `bx lr`, at IWRAM 0x03000324; the walk ends there and the "
+        "two words after it are `strdeq`/`andeq` under ARM decode, which is what "
+        "an alignment-sensitive sweep would report for a literal pool",
+        "the eight bytes at ROM 0x087B7CCC..0x087B7CD4 are a literal pool and "
+        "NOT this unit's: exactly two instructions in the whole block read them "
+        "(0x03000230 `ldr r8,[pc,#0xf0]` and 0x03000240 `ldr r8,[pc,#0xe4]`, "
+        "targets 0x03000328 and 0x0300032C) and both lie inside 0x03000040, "
+        "which is the 149-word routine immediately PRECEDING this one. This unit "
+        "has zero pc-relative loads, so it declares no pool at all",
+        "the 4 bytes at 0x087B7CD0..0x087B7CD4 are the alignment padding that "
+        "separates this unit from the next, and the next unit's first word "
+        "0xE92D0030 is a new ARM prologue",
+        "the region 0x7B79A4..0x7B89A8 is `code`, `high` confidence, "
+        "`executable: confirmed`, `isa: arm` in config/rom_map.json",
+    ),
+    literal_pool=(),
+    selection=(
+        "the veneer at 0x0804918C has three Thumb BL callers (ROM 0x08030EBC, "
+        "0x0803D99C, 0x0803F9FA); all three set r0 = r1 = the SAME address and "
+        "r2 = the 256-byte ROM table at 0x0805672C, so the routine transforms a "
+        "byte string in place through a caller-supplied table",
+        "0x0805672C occurs exactly once in the whole image as a word, at "
+        "0x08030F30, which is the literal slot the 0x08030EBC call site loads",
+    ),
+)
+
+IWRAM_BL_SPARSE_TU = cp.TranslationUnit(
+    id="iwram_bl_sparse_tu",
+    rom_address=IWRAM_BL_SPARSE_ROM,
+    code_end_address=IWRAM_BL_SPARSE_CODE_END,
+    end_address=IWRAM_BL_SPARSE_CODE_END,
+    isa="arm",
+    source="src/probes/IwramByteLaneSparse.c",
+    confidence="proven",
+    boundary_evidence=(
+        "the extent is closed from both sides rather than assumed: it begins "
+        "immediately after the preceding unit's four-byte alignment padding and "
+        "an aligned chain-walk from 0x03000330 reaches 22 instructions and "
+        "exactly one `bx lr`, at IWRAM 0x03000384, ending at 0x03000388",
+        "the byte after it, 0x087B7D2C, is a new ARM prologue (`push "
+        "{r4,r5,r6,r7,r8,sb,sl,fp,lr}`), which bounds the unit from above",
+        "the routine has zero pc-relative loads, so it declares no pool: the "
+        "pool test is not applicable rather than failed",
+        "the region 0x7B79A4..0x7B89A8 is `code`, `high` confidence, "
+        "`executable: confirmed`, `isa: arm` in config/rom_map.json",
+    ),
+    literal_pool=(),
+    selection=(
+        "the routine is UNREACHABLE: its IWRAM address 0x03000330 occurs ZERO "
+        "times in the whole 8 MiB image at every byte alignment, in both the even "
+        "(ARM) and odd (Thumb) forms, and no in-block BL, branch or literal-pool "
+        "word in the walk-reached set names it. Fall-through is impossible: the "
+        "preceding unit ends in an unconditional `bx lr` with another routine's "
+        "pool between them. The status is INFERRED DEAD/UNREACHABLE, not proven "
+        "dead; the one route a static census cannot see is a pointer assembled at "
+        "run time from two registers",
+        "its arguments are a CONTEXT RECORD, and only two fields are used: +0x24 "
+        "is the destination address and +0x30 is the byte count, compared SIGNED",
+    ),
+)
+
+IWRAM_QF_TU = cp.TranslationUnit(
+    id="iwram_qf_tu",
+    rom_address=IWRAM_QF_ROM,
+    code_end_address=IWRAM_QF_CODE_END,
+    end_address=IWRAM_QF_CODE_END,
+    isa="arm",
+    source="src/probes/IwramQFormat.c",
+    confidence="proven",
+    boundary_evidence=(
+        "two adjacent routines, and the adjacency is the evidence: an aligned "
+        "chain-walk from 0x03000560 reaches 104 instructions and one `bx lr` at "
+        "IWRAM 0x030006FC, ending at exactly the address the second entry starts "
+        "at, and a walk from 0x03000700 reaches 26 instructions and one `bx lr` "
+        "at 0x03000764, ending at 0x03000768",
+        "the byte after the second, 0x087B810C, is a different implementation "
+        "already lifted elsewhere (the block-memory copy in src/IwramBlock.c), "
+        "which bounds the unit from above",
+        "neither routine has a pc-relative load, so the unit declares no pool: "
+        "the pool test is not applicable rather than failed",
+        "the region 0x7B79A4..0x7B89A8 is `code`, `high` confidence, "
+        "`executable: confirmed`, `isa: arm` in config/rom_map.json",
+    ),
+    literal_pool=(),
+    selection=(
+        "each entry is the literal of a ROM-side Thumb-to-ARM veneer - "
+        "0x08049174 for 0x03000560 and 0x08049180 for 0x03000700 - and each "
+        "veneer has exactly ONE Thumb BL caller in the image, at 0x0802EFD0 and "
+        "0x0802F1DC respectively",
+        "the shared element is the REDUCTION: `smull`/`smlal` into a signed "
+        "64-bit sum, then `lsr #10` of the low word with `add ..., lsl #22` of the "
+        "high word. The two routines are NOT the same operation: the larger "
+        "reduces each lane separately and sums the reduced values, the smaller "
+        "reduces once per output word after all three products",
+    ),
+)
+
+#: (start, end, role) per function, all re-derived from the ROM on every run.
+IWRAM_BL_PAIR_FUNCTIONS = (
+    (
+        IWRAM_BL_PAIR_ROM,
+        IWRAM_BL_PAIR_CODE_END,
+        "byte lane transform: four 0xFF-masked lanes of each source word mapped "
+        "through a 256-byte table and packed back, in place",
+    ),
+)
+
+IWRAM_BL_SPARSE_FUNCTIONS = (
+    (
+        IWRAM_BL_SPARSE_ROM,
+        IWRAM_BL_SPARSE_CODE_END,
+        "byte lane sparse store: each non-zero lane of a source word written to "
+        "its own byte of a context-named destination, no compaction",
+    ),
+)
+
+IWRAM_QF_FUNCTIONS = (
+    (
+        IWRAM_QF_ROM,
+        0x087B80A4,
+        "twelve-term Q10 sum of products over three lanes, each lane reducing "
+        "its own 64-bit product sum and the reduced 32-bit values then added",
+    ),
+    (
+        0x087B80A4,
+        IWRAM_QF_CODE_END,
+        "three-term Q10 dot product: one 64-bit product sum per output word, "
+        "reduced once",
+    ),
+)
+
+#: No literal pool in any of the three: every instruction is register-only.
+IWRAM_BL_PAIR_LITERAL_POOL = ()
+IWRAM_BL_SPARSE_LITERAL_POOL = ()
+IWRAM_QF_LITERAL_POOL = ()
+
+
 UNITS: dict = {}
 
 
@@ -4430,6 +4605,31 @@ def _register_units() -> None:
         "expect_padding": None,
         # Opt in to following `add rD, pc, #imm` as a code successor.
         "pc_add_successors": True,
+    }
+    UNITS[IWRAM_BL_PAIR_TU.id] = {
+        "unit": IWRAM_BL_PAIR_TU,
+        "functions": IWRAM_BL_PAIR_FUNCTIONS,
+        "literal_pool": IWRAM_BL_PAIR_LITERAL_POOL,
+        "boundaries": "derived",
+        # The four bytes of alignment padding between this unit and the next are
+        # expected and are reported; the eight bytes of the PRECEDING routine's
+        # pool are before this unit's entry and are not its padding.
+        "expect_padding": None,
+    }
+    UNITS[IWRAM_BL_SPARSE_TU.id] = {
+        "unit": IWRAM_BL_SPARSE_TU,
+        "functions": IWRAM_BL_SPARSE_FUNCTIONS,
+        "literal_pool": IWRAM_BL_SPARSE_LITERAL_POOL,
+        "boundaries": "derived",
+        "expect_padding": None,
+    }
+    UNITS[IWRAM_QF_TU.id] = {
+        "unit": IWRAM_QF_TU,
+        "functions": IWRAM_QF_FUNCTIONS,
+        "literal_pool": IWRAM_QF_LITERAL_POOL,
+        "boundaries": "derived",
+        # Two adjacent routines with no padding and no pool between them.
+        "expect_padding": None,
     }
 
 

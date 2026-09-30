@@ -52,10 +52,19 @@ def test_it_is_the_first_arm_target_and_the_only_one():
     target: the same copied block's interrupt dispatcher, entered from the BIOS
     IRQ vector rather than from a veneer. The list is still exact, so a third ARM
     target cannot appear without this test being widened again on purpose.
+
+    Widened again, deliberately, by DECOMP-IWRAM-TRANSFORMS-001, which adds three
+    more ARM targets from the same block: the byte-lane table transform, the
+    byte-lane sparse store, and the Q-format fixed-point pair. Five ARM targets in
+    all, every one of them inside the 4100-byte runtime-installed block, and still
+    an exact list.
     """
     assert [t.id for t in lift.load_targets() if t.isa == "arm"] == [
         "iwramblock",
         "iwramdispatch",
+        "iwrambl",
+        "iwramblsparse",
+        "iwramqf",
     ]
 
 

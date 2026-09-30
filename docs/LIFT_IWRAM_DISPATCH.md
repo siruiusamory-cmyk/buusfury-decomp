@@ -10,6 +10,12 @@ block-memory routines. This one answers how the ROM reaches *everything else* in
 the block, what the interrupt dispatcher does, and what the internal callgraph
 looks like.
 
+[`LIFT_IWRAM_TRANSFORMS.md`](LIFT_IWRAM_TRANSFORMS.md) is the third pass over the
+same block. It lifts the byte-lane and Q10 families this document ranked first
+and second, and it **corrects one row of the family table below**: the third
+member of the "fixed point" family does not carry the idiom that family was keyed
+on, so the table now splits Q10 from Q18.14. No count in this document changes.
+
 Every number here is regenerated on demand by
 `tools/buusfury/lift.py`'s `derive_iwram_dispatch` and carried, whole, inside
 `config/lift_iwramdispatch.json`. Nothing in it is hand-written prose that could
@@ -265,13 +271,20 @@ Classified from each function's own instructions, not from names:
 | dispatch | `0x030007FC`, `0x03000B6C`, `0x03000AE0` | a register- or table-indexed branch |
 | block memory | `0x03000768`, `0x030007A8`, `0x030007FC`, `0x03000858` | already lifted as `src/IwramBlock.c` |
 | bit-stream | `0x03000040`, `0x03000CA0` (+ two byte-identical helpers) | bit-cursor refill loops; both share the thresholds `0x37FF`/`0x027F` |
-| byte-lane transforms | `0x030002DC`, `0x03000330` | `0xff` masks and repeated `ands` |
-| fixed point | `0x03000560`, `0x03000700`, `0x03000868` | `smull`/`smlal`/`mla` with Q-format shifts |
+| byte-lane transforms | `0x030002DC`, `0x03000330` | `0xff` masks and repeated `ands`; **LIFTED** by DECOMP-IWRAM-TRANSFORMS-001 as `iwrambl` and `iwramblsparse` |
+| fixed point, Q10 | `0x03000560`, `0x03000700` | `smull`/`smlal` plus the `lsr #10` / `lsl #22` reduction; **LIFTED** by DECOMP-IWRAM-TRANSFORMS-001 as `iwramqf` |
+| fixed point, Q18.14 | `0x03000868` | `mla` + `ldrsb`, `lsl #18`/`asr #14`, 64-bit `adds`/`adc` position accumulation; **no** `smull`/`smlal` at all. The "fixed point" grouping is right and a "Q10" reading of this member is not: see `LIFT_IWRAM_TRANSFORMS.md` section 5 |
 | clamp / pack | `0x03000A4C` | signed-byte clamp and two-byte packing, destructively zeroing its source |
 | strided gather | `0x03000388`, `0x03000414`, `0x030004C0` | `mla` addressing with a pitch taken from the context record |
 | graphics / DMA | **empty** | no resolved effective address lands in `0x040000B0..0xDF` or `0x06000000`, and no pool word holds one |
 
 The graphics/DMA family being empty is a **measured negative**, not an omission.
+
+**The fixed-point row above was one row in this ticket's classification and is two
+families.** The third member has none of the two instructions the classification
+was keyed on, so the table now splits it out. The correction is a change to this
+table and not to any measurement this document carries: every count in sections 2
+to 6 below is unchanged and was re-derived when the split was made.
 
 ## 7. What this ticket lifted
 
@@ -321,6 +334,9 @@ Each is a factual error found by measurement, not a rewording.
 ## 9. Unknown
 
 * The identity of whatever reaches `0x03000330` and `0x03000414`, if anything does.
+  Still open after `LIFT_IWRAM_TRANSFORMS.md`: both are reported as INFERRED
+  DEAD/UNREACHABLE, and `0x03000330`'s address occurs zero times in the image.
+* The meaning of the 256-byte table at `0x0805672C` that `0x030002DC` indexes.
 * The consumer of the software pending word `0x03000FE8`.
 * The purpose of the guard-adjacent spin on bit 13 - whether it is a deliberate
   park or a defect in the original.
@@ -331,13 +347,30 @@ Each is a factual error found by measurement, not a rewording.
 
 ## 10. The next subsystem-sized batch
 
-Ranked by evidence per byte, from the callgraph rather than from adjacency:
+Ranked by evidence per byte, from the callgraph rather than from adjacency. Items
+1 and 2 were **taken** by DECOMP-IWRAM-TRANSFORMS-001, and the note under each
+says what that ticket found; the ranking below is left as it stood so the two
+documents can be read against each other.
 
 1. **The byte-lane transforms**, `0x030002DC` (76 bytes, all arguments in registers,
    no callees, no pool) and then `0x03000330` (88 bytes, reference-free, so lifting
    is its only route to a contract). Both are exhaustively testable on the host.
+   *DONE: lifted as `iwrambl` and `iwramblsparse`. The 76 is confirmed and the
+   entry-to-next-entry reading of 84 is refuted; `0x03000330` remains INFERRED
+   DEAD; the two are variants of one transform, not an inverse pair, and
+   `0x030002DC`'s table is a single 256-byte ROM map at `0x0805672C`.*
 2. **The Q10 fixed-point family**, `0x03000700` first (104 bytes, nine
    `smull`/`smlal` and an unambiguous `lsr #10`/`lsl #22` idiom), which pins the
    idiom that `0x03000560` and `0x03000868` repeat.
+   *DONE for the first two, lifted as `iwramqf`. `0x03000868` does NOT repeat the
+   idiom - it has zero `smull`/`smlal` and zero `lsr #10`/`lsl #22` - so it is not
+   Q10 and is the recommended next batch instead.*
 3. **The two orphan functions**, which are complete and well formed and whose only
    blocker is the unresolved question of whether anything calls them.
+4. **`0x03000868`** (484 bytes, 21 `mla`, 22 `ldrsb`, Q18.14), the largest
+   pool-free leaf in the block and the only function in it with a 64-bit adder
+   and no 64-bit multiplier.
+5. **`0x03000A4C`** (148 bytes, 6 callers), whose eight shift sites sum to 38
+   rather than 32 and whose first reading is therefore undecided.
+6. **The strided gather family** `0x03000388`, `0x030004C0`, `0x03000414`
+   (472 bytes), whose contract lives in an uncharacterised context record.

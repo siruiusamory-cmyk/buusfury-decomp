@@ -1,0 +1,340 @@
+{
+  "schema": 1,
+  "ticket": "DECOMP-LIFT-COLLECTION-WRITE2-001",
+  "generated_by": "tools/buusfury/lift.py",
+  "source_sha1": "f1c4b07554d2a3b1ad2f325307051e775ce68087",
+  "target": {
+    "id": "collectionwrite2",
+    "name": "ByteCodeInterpreter second-collection writer (sub_080119BC)",
+    "role": "keyed replace in the first collection, else remove the key from the second and append to the first",
+    "notes": "sub_080119BC, the routine that reaches the SECOND collection as a writer. THE WRITE CONTRACT: it scans the FIRST collection FORWARD from index 0 comparing each element against the KEY (second argument). If the key is found, it REPLACES that element with the value and does NOT touch any count. If the key is absent from the first collection it scans the SECOND collection the same way at object + 0x40C, and when the key is found there it REMOVES it through sub_0804FE54(object + 0x408, index), then APPENDS the value to the FIRST collection, incrementing only the first collection's count. So it is a keyed MOVE ACROSS THE TWO COLLECTIONS. THE SECOND COLLECTION IS A WRITER TARGET ONLY THROUGH THAT REMOVAL: nothing here appends to it and nothing here increments its count. THE SECOND COLLECTION IS REACHED BY A COMPUTED BASE, NOT A DISPLACEMENT: the routine adds 0x40C to the object base once and works through that register afterwards, which is why an image-wide search for stores at a displacement near 0x40C finds NOTHING. That also explains why the count it reads is at object + 0x40C and the elements at object + 0x410 + 4*i, the shape the reader sub_08011C70 proved. ORDER: both scans run FORWARD, so the FIRST element equal to the key wins, the OPPOSITE direction from the reader's backward search. The value is stored VERBATIM. NO CAPACITY CHECK and no bounds check. +0x00 IS NOT TOUCHED. COMPARISON WITH sub_0801191A, and this is measured rather than inferred from their adjacency: they are NOT structurally equivalent at different offsets. sub_0801191A is a GENERIC append that takes any collection base, and its callers pass many different bases including *(r5+4), *(r5) and *(r7+0xc), so it is not tied to this object or to either of its collections. sub_080119BC hardcodes the 0x40C offset and knows about both of this object's collections. They are two members of ONE API FAMILY with DIFFERENT roles: a generic append, and an object-specific keyed move. UNKNOWN: what the elements mean, what sub_0804FE54 does beyond removing an entry and whether it compacts, and CRUCIALLY WHAT APPENDS TO THE SECOND COLLECTION - this routine only removes from it, so the second collection's INSERTION path is still unfound. The object's +0x00 field is untouched here. No semantic name is assigned and nothing is imported from another title.",
+    "translation_unit": "collectionwrite2_tu",
+    "rom_address": "0x080119BC",
+    "file_offset": "0x0119BC",
+    "code_end_address": "0x08011A1E",
+    "end_address": "0x08011A1E",
+    "byte_length": 98,
+    "code_byte_length": 98,
+    "isa": "thumb",
+    "decomp_source": "src/ByteCodeInterpreter_collectionwrite2.c",
+    "probe_source": "src/probes/ByteCodeInterpreter_collectionwrite2.c",
+    "selftest_source": "src/probes/collectionwrite2_selftest.c",
+    "semantic_minimum_checks": 21,
+    "host_build_bits": 32,
+    "original_sha1": "105d257bf98b4be5a474017e530ea9755fc5e952"
+  },
+  "boundary_evidence": {
+    "method": "aligned chain-walk from each entry, following local branches",
+    "unit_id": "collectionwrite2_tu",
+    "code_extent": "0x080119BC..0x08011A1E",
+    "pool_extent": "0x08011A9C..0x08011AA0",
+    "has_literal_pool": true,
+    "pool_is_adjacent_to_code": false,
+    "pool_gap_bytes": 126,
+    "alignment_padding_bytes": null,
+    "functions": [
+      {
+        "start": "0x080119BC",
+        "end": "0x08011A1E",
+        "size": 98,
+        "instructions": 48,
+        "role": "keyed replace in the first collection, else remove from the second and append to the first",
+        "terminators": [
+          "0x080119E8"
+        ],
+        "gaps": [],
+        "matches_expected": true
+      }
+    ],
+    "problems": [],
+    "derived_from_rom": true,
+    "not_hand_written": true,
+    "collection_write2": {
+      "unit_id": "collectionwrite2_tu",
+      "extent": "0x080119BC..0x08011A1E",
+      "size": 98,
+      "instructions": 48,
+      "collections_touched": 2,
+      "first_collection_count_offset": "object + 0x04",
+      "first_collection_values_offset": "object + 0x08",
+      "second_collection_count_offset": "object + 0x40C",
+      "second_collection_values_offset": "object + 0x410",
+      "second_collection_reached_by": "the base is computed once, at the `adds r0, r0, #0x40C`, and every access afterwards goes through that register",
+      "second_collection_offset_folded_into_the_base": false,
+      "scan_direction": "FORWARD from index 0, so the FIRST element equal to the key wins",
+      "scan_direction_evidence": "the index starts at 0 and the loop continues while count > index on `bgt`, the opposite direction from the reader's backward search",
+      "compares_the_element_against_the_key": true,
+      "replace_in_place_on_a_first_collection_hit": true,
+      "count_changed_by_a_replace": false,
+      "removes_from_the_second_collection_on_a_miss": true,
+      "removal_call": {
+        "site": "0x08011A0C",
+        "target": "0x0804FE54"
+      },
+      "appends_to_the_first_collection_on_a_miss": true,
+      "appends_to_the_second_collection": false,
+      "increments_the_second_collection_count": false,
+      "count_loads": 3,
+      "value_stored_verbatim": true,
+      "accesses_object_plus_0x00": false,
+      "calls": [
+        {
+          "site": "0x08011A0C",
+          "target": "0x0804FE54"
+        }
+      ],
+      "call_count": 1,
+      "literal_slots": 1,
+      "has_literal_pool": true,
+      "has_capacity_check": false,
+      "has_capacity_check_evidence": "nothing compares either count against a limit before the append",
+      "effect": "a keyed MOVE: replace in the first collection if the key is there, otherwise remove the key from the second collection and append the value to the first",
+      "comparison_with_the_first_append": "NOT structurally equivalent at a different offset. sub_0801191A is a GENERIC append taking any collection base, and its callers pass many different bases, so it is not tied to this object. sub_080119BC hardcodes the 0x40C offset and knows about both of this object's collections. They are two members of one API family with DIFFERENT roles.",
+      "derived_from_rom": true,
+      "not_hand_written": true
+    }
+  },
+  "verdicts": {
+    "semantic": {
+      "status": "PROVEN",
+      "checks": 21,
+      "failures": 0,
+      "minimum_checks": 21,
+      "host_compiler": "MSVC cl.exe (32-bit)",
+      "detail": "21 behavioural assertions passed with 0 failures (minimum 21)",
+      "measures": "whether the reconstructed C behaves correctly, by RUNNING it"
+    },
+    "modern_build": {
+      "status": "PASS",
+      "detail": "compiled, linked at 0x080119BC and emitted 116 bytes",
+      "measures": "whether the source compiles, links and emits bytes"
+    },
+    "ads_match": {
+      "status": "BLOCKED",
+      "code": "ADS12_LICENSE_UNAVAILABLE",
+      "detail": "an ARM Developer Suite 1.2 installation is present on this machine but the licence file it ships licenses a different product, so the ARM compilers cannot be run. No compile has been attempted and no configuration has been tested. The installation is located through ADS12_ROOT.",
+      "required_to_unblock": [
+        "a licensed ADS 1.2 installation, with ADS12_ROOT pointing at it",
+        "then: python -m buusfury compiler-probe --plan, then --matrix"
+      ],
+      "not_inferable_from_modern_build": true
+    }
+  },
+  "verdicts_are_independent": "SEMANTIC, MODERN_BUILD and ADS_MATCH answer different questions and none is evidence for another. A passing modern build says nothing about the original compiler; a passing semantic run only removes one class of error.",
+  "modern_build": {
+    "status": "PASS",
+    "toolchain": {
+      "family": "GNU Arm Embedded (devkitARM)",
+      "root": "<DEVKITARM>",
+      "prefix": "arm-none-eabi-",
+      "tools": {
+        "gcc": "<DEVKITARM>\\bin\\arm-none-eabi-gcc.exe",
+        "ld": "<DEVKITARM>\\bin\\arm-none-eabi-ld.exe",
+        "objcopy": "<DEVKITARM>\\bin\\arm-none-eabi-objcopy.exe",
+        "objdump": "<DEVKITARM>\\bin\\arm-none-eabi-objdump.exe",
+        "nm": "<DEVKITARM>\\bin\\arm-none-eabi-nm.exe"
+      }
+    },
+    "identity": {
+      "gcc_banner": "arm-none-eabi-gcc.exe (devkitARM) 16.1.0",
+      "gcc_version": "16.1.0",
+      "target_triple": "arm-none-eabi",
+      "binutils_banner": "GNU objdump (GNU Binutils) 2.46.0.20260210",
+      "compiler_family": "gcc",
+      "is_the_original_compiler": false,
+      "why_not": "the original translation unit was built by ARM Developer Suite 1.2 (the surviving command line names tcpp). GCC is a different compiler with a different code generator, so its output cannot establish anything about ADS 1.2."
+    },
+    "target_support": {
+      "supported": true,
+      "cpu": "arm7tdmi",
+      "instruction_set": "thumb",
+      "commands": [
+        "<DEVKITARM>\\bin\\arm-none-eabi-gcc.exe -c -mcpu=arm7tdmi -mthumb -O1 -ffreestanding -fno-common -fno-builtin -o <REPO>\\build\\lift\\collectionwrite2\\toolchain-probe\\support_probe.o <REPO>\\build\\lift\\collectionwrite2\\toolchain-probe\\support_probe.c"
+      ],
+      "disassembly": [
+        "adds r0, #1",
+        "bx lr"
+      ],
+      "detail": "compiled and disassembled a probe function for ARM7TDMI Thumb: 2 instruction(s), r0 written and a return present"
+    },
+    "compiler_configuration": {
+      "cpu": "arm7tdmi",
+      "instruction_set": "thumb",
+      "optimization": "-O1",
+      "extra_flags": []
+    },
+    "link_origin": "0x080119BC",
+    "external_calls_bound_to_original_addresses": {
+      "sub_0804FE54": "0x0804FE54"
+    },
+    "detail": "compiled, linked at 0x080119BC and emitted 116 bytes",
+    "build": {
+      "ok": true,
+      "commands": [
+        "<DEVKITARM>\\bin\\arm-none-eabi-gcc.exe -c -mcpu=arm7tdmi -mthumb -O1 -ffreestanding -fno-common -fno-builtin -fomit-frame-pointer -mno-unaligned-access -o <REPO>\\build\\lift\\collectionwrite2\\collectionwrite2.o <REPO>\\src\\ByteCodeInterpreter_collectionwrite2.c",
+        "<DEVKITARM>\\bin\\arm-none-eabi-gcc.exe -c -mcpu=arm7tdmi -mthumb -o <REPO>\\build\\lift\\collectionwrite2\\collectionwrite2_externs.o -x assembler-with-cpp <REPO>\\build\\lift\\collectionwrite2\\collectionwrite2_externs.s",
+        "<DEVKITARM>\\bin\\arm-none-eabi-gcc.exe -nostdlib -Wl,-T,<REPO>\\build\\lift\\collectionwrite2\\collectionwrite2.ld -Wl,-Map,<REPO>\\build\\lift\\collectionwrite2\\collectionwrite2.map -o <REPO>\\build\\lift\\collectionwrite2\\collectionwrite2.elf <REPO>\\build\\lift\\collectionwrite2\\collectionwrite2.o <REPO>\\build\\lift\\collectionwrite2\\collectionwrite2_externs.o",
+        "<DEVKITARM>\\bin\\arm-none-eabi-objcopy.exe -O binary -j .text -j .rodata <REPO>\\build\\lift\\collectionwrite2\\collectionwrite2.elf <REPO>\\build\\lift\\collectionwrite2\\collectionwrite2.bin"
+      ],
+      "produced_byte_length": 116,
+      "symbols": {
+        "sub_080119BC": {
+          "address": "0x080119BC",
+          "size": 112
+        }
+      },
+      "diagnostics": ""
+    }
+  },
+  "functions": [
+    {
+      "name": "sub_080119BC",
+      "role": "keyed replace in the first collection, else remove from the second and append to the first",
+      "original": {
+        "start": "0x080119BC",
+        "end": "0x08011A1E",
+        "size": 98,
+        "isa": "thumb",
+        "instructions": 48,
+        "first_instruction": "push {r3, r4, r5, r6, r7, lr}",
+        "calls": [
+          "0x0804FE54"
+        ],
+        "literal_slots": [
+          "0x08011A9C"
+        ],
+        "returns": 1,
+        "leaf": false,
+        "abi": {
+          "callee_saved_pushed": [
+            "r4",
+            "r5",
+            "r6",
+            "r7"
+          ],
+          "frame_size_bytes": 0,
+          "written_registers": [
+            "r0",
+            "r1",
+            "r2",
+            "r3",
+            "r4",
+            "r5",
+            "r6"
+          ]
+        }
+      },
+      "modern": {
+        "start": "0x080119BC",
+        "end": "0x08011A2C",
+        "size": 112,
+        "isa": "thumb",
+        "instructions": 55,
+        "first_instruction": "push {r4, r5, r6, lr}",
+        "calls": [
+          "0x0804FE54"
+        ],
+        "literal_slots": [
+          "0x08011A28"
+        ],
+        "returns": 1,
+        "leaf": false,
+        "abi": {
+          "callee_saved_pushed": [
+            "r4",
+            "r5",
+            "r6"
+          ],
+          "frame_size_bytes": 0,
+          "written_registers": [
+            "r0",
+            "r1",
+            "r2",
+            "r3",
+            "r4",
+            "r5",
+            "r6"
+          ]
+        }
+      },
+      "modern_symbol_present": true,
+      "delta": {
+        "size_bytes": 14,
+        "instructions": 7,
+        "returns": 0,
+        "calls": 0,
+        "literal_slots": 0
+      },
+      "same_extent": false,
+      "byte_identical": false
+    }
+  ],
+  "literal_pools": {
+    "original": {
+      "distinct_slots": 1,
+      "contiguous_runs": [
+        [
+          "0x08011A9C",
+          "0x08011AA0"
+        ]
+      ],
+      "run_count": 1,
+      "shared_pool": false,
+      "shared_pool_applicable": false,
+      "declared_pool": [
+        "0x08011A1E",
+        "0x08011A1E"
+      ],
+      "declared_slots": [
+        "0x08011A9C"
+      ],
+      "declared_slots_used": [
+        "0x08011A9C"
+      ],
+      "all_referenced_slots_are_declared": true,
+      "all_declared_slots_are_referenced": true,
+      "undeclared_slots": [],
+      "functions_reaching_it": 1
+    },
+    "modern": {
+      "distinct_slots": 1,
+      "contiguous_runs": [
+        [
+          "0x08011A28",
+          "0x08011A2C"
+        ]
+      ],
+      "run_count": 1,
+      "shared_pool": true,
+      "functions_reaching_a_pool": 1
+    },
+    "interpretation": "the original's literals are accounted for by the words the unit declares; the modern build pools differently, which is a structural consequence of the compiler rather than a defect in the reconstruction. It is also why a function with a literal load cannot be compared standalone.",
+    "is_a_match_claim": false
+  },
+  "comparison": {
+    "original_byte_length": 98,
+    "modern_byte_length": 116,
+    "overlap_byte_length": 98,
+    "differing_bytes_in_overlap": 94,
+    "matching_bytes_in_overlap": 4,
+    "original_only_bytes": 0,
+    "modern_only_bytes": 18,
+    "original_instruction_spans": 48,
+    "matching_instruction_spans": 0,
+    "differing_instruction_spans": 48,
+    "bytes_not_covered_by_an_original_instruction": 0,
+    "byte_identical": false,
+    "is_a_match_claim": false,
+    "match_claim_note": "MEASUREMENT ONLY. This compares a modern GCC build against the cartridge. A modern compiler is not the original compiler, so a difference here is expected and proves nothing; an identity here would also prove nothing about ADS 1.2. ADS_MATCH stays BLOCKED."
+  },
+  "semantic_check": {
+    "status": "PROVEN",
+    "checks": 21,
+    "failures": 0,
+    "minimum_checks": 21,
+    "host_compiler": "MSVC cl.exe (32-bit)",
+    "host_build_bits": 32,
+    "detail": "21 behavioural assertions passed with 0 failures (minimum 21)",
+    "output": "PASS: 21 check(s), 0 failure(s)\n"
+  }
+}

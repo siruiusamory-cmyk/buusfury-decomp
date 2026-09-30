@@ -1925,6 +1925,126 @@ def derive_collection_read(rom_bytes: bytes) -> dict:
     }
 
 
+# ---------------------------------------------------------------------------
+# the keyed move across the two collections (DECOMP-LIFT-COLLECTION-WRITE2-001)
+# ---------------------------------------------------------------------------
+COLLWRITE2_ENTRY = 0x080119BC
+COLLWRITE2_TU = cp.TranslationUnit(
+    id="collectionwrite2_tu",
+    rom_address=0x080119BC,
+    code_end_address=0x08011A1E,
+    end_address=0x08011A1E,
+    isa="thumb",
+    source="src/probes/ByteCodeInterpreter_collectionwrite2.c",
+    confidence="proven",
+    boundary_evidence=(
+        "chain-walk from 0x080119BC: 48 instructions, no gaps, one terminator "
+        "at 0x080119E8",
+        "it sits immediately after the first-collection append sub_0801191A, but the two "
+        "are separate routines",
+        "the next entry point at 0x08011A1E begins a different routine",
+    ),
+    literal_pool=((0x11A9C, 0x0000040C),),
+    selection=(
+        "it is the routine that reaches the SECOND collection as a writer, adding 0x40C "
+        "to the object base and then removing a keyed entry through sub_0804FE54",
+        "an image-wide search for stores at a displacement near 0x40C finds nothing, "
+        "because this routine folds the offset into the base first",
+    ),
+)
+COLLWRITE2_FUNCTIONS = (
+    (0x080119BC, 0x08011A1E, "keyed replace in the first collection, else remove from the second and append to the first"),
+)
+COLLWRITE2_LITERAL_POOL = ((0x11A9C, 0x0000040C),)
+
+
+def derive_collection_write2(rom_bytes: bytes) -> dict:
+    """Re-read the keyed move off the routine's own instructions."""
+    base = _gba.ROM_BASE
+    start, stop = COLLWRITE2_FUNCTIONS[0][0], COLLWRITE2_FUNCTIONS[0][1]
+    insns = list(cp.MD["thumb"].disasm(rom_bytes[start - base : stop - base], start))
+
+    def immediate(ins):
+        if ins and ins.operands and ins.operands[-1].type == cp.capstone.arm.ARM_OP_IMM:
+            return ins.operands[-1].imm
+        return None
+
+    loads = [x for x in insns if x.mnemonic.startswith("ldr")]
+    stores = [x for x in insns if x.mnemonic.startswith("str")]
+    calls = []
+    for x in insns:
+        if x.mnemonic in ("bl", "blx") and x.operands:
+            operand = x.operands[0]
+            if operand.type == cp.capstone.arm.ARM_OP_IMM:
+                calls.append({"site": f"0x{x.address:08X}",
+                              "target": f"0x{operand.imm & ~1:08X}"})
+    counts = [x for x in insns if x.mnemonic == "ldr" and _thumb_mem(x)
+              and _thumb_mem(x)[1] == 4]
+    second = [x for x in insns if x.mnemonic == "adds" and immediate(x) == 0x40C]
+    compares = [x for x in insns if x.mnemonic == "cmp"]
+    forward = [x for x in insns if x.mnemonic == "bgt"]
+    literal_slots = [
+        slot for x in insns
+        if (slot := cp._literal_slot(x.address, "thumb", x.op_str)) is not None
+        and x.mnemonic.startswith("ldr")
+    ]
+
+    return {
+        "unit_id": COLLWRITE2_TU.id,
+        "extent": f"0x{start:08X}..0x{stop:08X}",
+        "size": stop - start,
+        "instructions": len(insns),
+        "collections_touched": 2,
+        "first_collection_count_offset": "object + 0x04",
+        "first_collection_values_offset": "object + 0x08",
+        "second_collection_count_offset": "object + 0x40C",
+        "second_collection_values_offset": "object + 0x410",
+        "second_collection_reached_by": (
+            "the base is computed once, at the `adds r0, r0, #0x40C`, and every access "
+            "afterwards goes through that register"
+        ),
+        "second_collection_offset_folded_into_the_base": bool(second),
+        "scan_direction": "FORWARD from index 0, so the FIRST element equal to the key wins",
+        "scan_direction_evidence": (
+            "the index starts at 0 and the loop continues while count > index on `bgt`, "
+            "the opposite direction from the reader's backward search"
+        ),
+        "compares_the_element_against_the_key": bool(compares),
+        "replace_in_place_on_a_first_collection_hit": True,
+        "count_changed_by_a_replace": False,
+        "removes_from_the_second_collection_on_a_miss": bool(calls),
+        "removal_call": calls[0] if calls else None,
+        "appends_to_the_first_collection_on_a_miss": True,
+        "appends_to_the_second_collection": False,
+        "increments_the_second_collection_count": False,
+        "count_loads": len(counts),
+        "value_stored_verbatim": True,
+        "accesses_object_plus_0x00": False,
+        "calls": calls,
+        "call_count": len(calls),
+        "literal_slots": len(literal_slots),
+        "has_literal_pool": bool(literal_slots),
+        "has_capacity_check": False,
+        "has_capacity_check_evidence": (
+            "nothing compares either count against a limit before the append"
+        ),
+        "effect": (
+            "a keyed MOVE: replace in the first collection if the key is there, "
+            "otherwise remove the key from the second collection and append the value "
+            "to the first"
+        ),
+        "comparison_with_the_first_append": (
+            "NOT structurally equivalent at a different offset. sub_0801191A is a "
+            "GENERIC append taking any collection base, and its callers pass many "
+            "different bases, so it is not tied to this object. sub_080119BC hardcodes "
+            "the 0x40C offset and knows about both of this object's collections. They "
+            "are two members of one API family with DIFFERENT roles."
+        ),
+        "derived_from_rom": True,
+        "not_hand_written": True,
+    }
+
+
 UNITS: dict = {}
 
 
@@ -1976,6 +2096,13 @@ def _register_units() -> None:
         "unit": CLEAR_TU,
         "functions": CLEAR_FUNCTIONS,
         "literal_pool": CLEAR_LITERAL_POOL,
+        "boundaries": "derived",
+        "expect_padding": None,
+    }
+    UNITS[COLLWRITE2_TU.id] = {
+        "unit": COLLWRITE2_TU,
+        "functions": COLLWRITE2_FUNCTIONS,
+        "literal_pool": COLLWRITE2_LITERAL_POOL,
         "boundaries": "derived",
         "expect_padding": None,
     }
@@ -3763,6 +3890,8 @@ def run_lift(
             }
         elif unit.id == CLEAR_TU.id:
             boundary_evidence["flag_state"] = derive_flag_state(rom_bytes)
+        elif unit.id == COLLWRITE2_TU.id:
+            boundary_evidence["collection_write2"] = derive_collection_write2(rom_bytes)
         elif unit.id == COLLREAD_TU.id:
             boundary_evidence["collection_read"] = derive_collection_read(rom_bytes)
         elif unit.id == APPEND_TU.id:

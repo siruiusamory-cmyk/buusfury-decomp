@@ -2,7 +2,25 @@
   "generated_by": "tools/buusfury/gen_object_map.py",
   "object_expression": "*(0x08054FBC + 0x14)",
   "global_struct": "0x08054FBC",
-  "method": "walk every reachable function; find `ldr rG,[pc,#N]` whose literal is 0x08054FBC; require a ldr of [rG,#0x14] within three instructions; then track the register the object lands in FORWARD through simple copies and adds, and record every ldr/str whose base is in that derived set",
+  "method": "walk every reachable function; find `ldr rG,[pc,#N]` whose literal is 0x08054FBC; require a ldr of [rG,#0x14] within three instructions; then track the object register FORWARD as a register -> object-relative-offset map, following spills to and reloads from [sp,#imm] and immediate register copies. PROVENANCE IS DROPPED on any control-flow discontinuity, on any stack slot overwritten by a store of unknown provenance, and on any unrecognised write to a tracked register, so nothing is guessed.",
+  "stack_flow": {
+    "implemented": true,
+    "tracks": [
+      "str rX,[sp,#imm]",
+      "ldr rY,[sp,#imm]",
+      "aliases made from a reloaded pointer",
+      "simple register moves",
+      "object-relative loads and stores after a reload"
+    ],
+    "fails_closed_on": [
+      "a stack-slot overwrite by an unknown store",
+      "any control-flow discontinuity, since the list has no basic-block structure",
+      "pointer arithmetic other than an immediate add to a known value",
+      "register provenance conflict, by dropping the register"
+    ],
+    "chains_recovered": 0,
+    "chain_examples": []
+  },
   "user_sites": [
     {
       "function": "0x080000C0",
@@ -442,16 +460,8 @@
         "indexed": false,
         "width": 1,
         "access": "read",
-        "mnemonic": "ldrb"
-      },
-      {
-        "function": "0x08000336",
-        "site": "0x0800034C",
-        "offset": 0,
-        "indexed": true,
-        "width": 2,
-        "access": "read",
-        "mnemonic": "ldrsh"
+        "mnemonic": "ldrb",
+        "via_reload": false
       },
       {
         "function": "0x0800035C",
@@ -460,16 +470,8 @@
         "indexed": false,
         "width": 1,
         "access": "read",
-        "mnemonic": "ldrb"
-      },
-      {
-        "function": "0x0800035C",
-        "site": "0x08000372",
-        "offset": 0,
-        "indexed": true,
-        "width": 2,
-        "access": "read",
-        "mnemonic": "ldrsh"
+        "mnemonic": "ldrb",
+        "via_reload": false
       },
       {
         "function": "0x08000382",
@@ -478,25 +480,8 @@
         "indexed": false,
         "width": 1,
         "access": "read",
-        "mnemonic": "ldrb"
-      },
-      {
-        "function": "0x08000382",
-        "site": "0x08000398",
-        "offset": 0,
-        "indexed": true,
-        "width": 2,
-        "access": "read",
-        "mnemonic": "ldrsh"
-      },
-      {
-        "function": "0x080003A8",
-        "site": "0x080003B0",
-        "offset": 0,
-        "indexed": false,
-        "width": 4,
-        "access": "read",
-        "mnemonic": "ldr"
+        "mnemonic": "ldrb",
+        "via_reload": false
       },
       {
         "function": "0x080003FC",
@@ -505,61 +490,8 @@
         "indexed": false,
         "width": 1,
         "access": "read",
-        "mnemonic": "ldrb"
-      },
-      {
-        "function": "0x080003FC",
-        "site": "0x08000444",
-        "offset": 0,
-        "indexed": false,
-        "width": 2,
-        "access": "write",
-        "mnemonic": "strh"
-      },
-      {
-        "function": "0x080003FC",
-        "site": "0x08000448",
-        "offset": 0,
-        "indexed": true,
-        "width": 2,
-        "access": "read",
-        "mnemonic": "ldrsh"
-      },
-      {
-        "function": "0x080003FC",
-        "site": "0x08000452",
-        "offset": 0,
-        "indexed": true,
-        "width": 2,
-        "access": "read",
-        "mnemonic": "ldrsh"
-      },
-      {
-        "function": "0x080003FC",
-        "site": "0x0800045A",
-        "offset": 0,
-        "indexed": false,
-        "width": 2,
-        "access": "write",
-        "mnemonic": "strh"
-      },
-      {
-        "function": "0x080003FC",
-        "site": "0x08000462",
-        "offset": 0,
-        "indexed": false,
-        "width": 2,
-        "access": "write",
-        "mnemonic": "strh"
-      },
-      {
-        "function": "0x080003FC",
-        "site": "0x08000466",
-        "offset": 0,
-        "indexed": true,
-        "width": 2,
-        "access": "read",
-        "mnemonic": "ldrsh"
+        "mnemonic": "ldrb",
+        "via_reload": false
       },
       {
         "function": "0x08000478",
@@ -568,34 +500,8 @@
         "indexed": false,
         "width": 1,
         "access": "read",
-        "mnemonic": "ldrb"
-      },
-      {
-        "function": "0x08000478",
-        "site": "0x08000498",
-        "offset": 0,
-        "indexed": false,
-        "width": 2,
-        "access": "write",
-        "mnemonic": "strh"
-      },
-      {
-        "function": "0x08000478",
-        "site": "0x0800049C",
-        "offset": 0,
-        "indexed": true,
-        "width": 2,
-        "access": "read",
-        "mnemonic": "ldrsh"
-      },
-      {
-        "function": "0x08000478",
-        "site": "0x080004A8",
-        "offset": 0,
-        "indexed": true,
-        "width": 2,
-        "access": "read",
-        "mnemonic": "ldrsh"
+        "mnemonic": "ldrb",
+        "via_reload": false
       },
       {
         "function": "0x080004BA",
@@ -604,34 +510,8 @@
         "indexed": false,
         "width": 1,
         "access": "read",
-        "mnemonic": "ldrb"
-      },
-      {
-        "function": "0x080004BA",
-        "site": "0x080004EA",
-        "offset": 0,
-        "indexed": false,
-        "width": 2,
-        "access": "read",
-        "mnemonic": "ldrh"
-      },
-      {
-        "function": "0x080004BA",
-        "site": "0x080004FE",
-        "offset": 0,
-        "indexed": false,
-        "width": 2,
-        "access": "read",
-        "mnemonic": "ldrh"
-      },
-      {
-        "function": "0x080004BA",
-        "site": "0x0800050E",
-        "offset": 0,
-        "indexed": true,
-        "width": 2,
-        "access": "read",
-        "mnemonic": "ldrsh"
+        "mnemonic": "ldrb",
+        "via_reload": false
       },
       {
         "function": "0x0800051A",
@@ -640,88 +520,8 @@
         "indexed": false,
         "width": 1,
         "access": "read",
-        "mnemonic": "ldrb"
-      },
-      {
-        "function": "0x0800051A",
-        "site": "0x0800053A",
-        "offset": 0,
-        "indexed": true,
-        "width": 2,
-        "access": "read",
-        "mnemonic": "ldrsh"
-      },
-      {
-        "function": "0x0800051A",
-        "site": "0x08000540",
-        "offset": 0,
-        "indexed": true,
-        "width": 2,
-        "access": "read",
-        "mnemonic": "ldrsh"
-      },
-      {
-        "function": "0x0800051A",
-        "site": "0x0800054E",
-        "offset": 0,
-        "indexed": false,
-        "width": 1,
-        "access": "read",
-        "mnemonic": "ldrb"
-      },
-      {
-        "function": "0x0800051A",
-        "site": "0x0800055C",
-        "offset": 0,
-        "indexed": false,
-        "width": 2,
-        "access": "write",
-        "mnemonic": "strh"
-      },
-      {
-        "function": "0x0800051A",
-        "site": "0x0800055E",
-        "offset": 0,
-        "indexed": false,
-        "width": 2,
-        "access": "read",
-        "mnemonic": "ldrh"
-      },
-      {
-        "function": "0x0800051A",
-        "site": "0x08000572",
-        "offset": 0,
-        "indexed": false,
-        "width": 2,
-        "access": "write",
-        "mnemonic": "strh"
-      },
-      {
-        "function": "0x0800051A",
-        "site": "0x08000574",
-        "offset": 0,
-        "indexed": false,
-        "width": 2,
-        "access": "read",
-        "mnemonic": "ldrh"
-      },
-      {
-        "function": "0x0800051A",
-        "site": "0x08000582",
-        "offset": 0,
-        "indexed": false,
-        "width": 2,
-        "access": "write",
-        "mnemonic": "strh"
-      },
-      {
-        "function": "0x0800051A",
-        "site": "0x08000586",
-        "offset": 0,
-        "indexed": true,
-        "width": 2,
-        "access": "read",
-        "mnemonic": "ldrsh"
+        "mnemonic": "ldrb",
+        "via_reload": false
       },
       {
         "function": "0x0800058E",
@@ -730,52 +530,8 @@
         "indexed": false,
         "width": 1,
         "access": "read",
-        "mnemonic": "ldrb"
-      },
-      {
-        "function": "0x0800058E",
-        "site": "0x080005AA",
-        "offset": 0,
-        "indexed": false,
-        "width": 2,
-        "access": "write",
-        "mnemonic": "strh"
-      },
-      {
-        "function": "0x0800058E",
-        "site": "0x080005AE",
-        "offset": 0,
-        "indexed": true,
-        "width": 2,
-        "access": "read",
-        "mnemonic": "ldrsh"
-      },
-      {
-        "function": "0x0800058E",
-        "site": "0x080005BA",
-        "offset": 0,
-        "indexed": true,
-        "width": 2,
-        "access": "read",
-        "mnemonic": "ldrsh"
-      },
-      {
-        "function": "0x080005C4",
-        "site": "0x080005D2",
-        "offset": 0,
-        "indexed": false,
-        "width": 4,
-        "access": "write",
-        "mnemonic": "str"
-      },
-      {
-        "function": "0x080005C4",
-        "site": "0x080005D4",
-        "offset": 0,
-        "indexed": false,
-        "width": 4,
-        "access": "read",
-        "mnemonic": "ldr"
+        "mnemonic": "ldrb",
+        "via_reload": false
       },
       {
         "function": "0x08000618",
@@ -784,7 +540,8 @@
         "indexed": false,
         "width": 1,
         "access": "read",
-        "mnemonic": "ldrb"
+        "mnemonic": "ldrb",
+        "via_reload": false
       },
       {
         "function": "0x0800062C",
@@ -793,7 +550,8 @@
         "indexed": false,
         "width": 1,
         "access": "read",
-        "mnemonic": "ldrb"
+        "mnemonic": "ldrb",
+        "via_reload": false
       },
       {
         "function": "0x08000678",
@@ -802,16 +560,8 @@
         "indexed": false,
         "width": 1,
         "access": "read",
-        "mnemonic": "ldrb"
-      },
-      {
-        "function": "0x080006AC",
-        "site": "0x080006DC",
-        "offset": 0,
-        "indexed": true,
-        "width": 4,
-        "access": "read",
-        "mnemonic": "ldr"
+        "mnemonic": "ldrb",
+        "via_reload": false
       },
       {
         "function": "0x080006FE",
@@ -820,7 +570,8 @@
         "indexed": false,
         "width": 1,
         "access": "read",
-        "mnemonic": "ldrb"
+        "mnemonic": "ldrb",
+        "via_reload": false
       },
       {
         "function": "0x080029D8",
@@ -829,97 +580,8 @@
         "indexed": false,
         "width": 1,
         "access": "read",
-        "mnemonic": "ldrb"
-      },
-      {
-        "function": "0x080029D8",
-        "site": "0x08002A08",
-        "offset": 0,
-        "indexed": false,
-        "width": 4,
-        "access": "read",
-        "mnemonic": "ldr"
-      },
-      {
-        "function": "0x08002B4A",
-        "site": "0x08002B68",
-        "offset": 0,
-        "indexed": false,
-        "width": 1,
-        "access": "read",
-        "mnemonic": "ldrb"
-      },
-      {
-        "function": "0x08002B7C",
-        "site": "0x08002B98",
-        "offset": 0,
-        "indexed": false,
-        "width": 1,
-        "access": "read",
-        "mnemonic": "ldrb"
-      },
-      {
-        "function": "0x08002B7C",
-        "site": "0x08002B9E",
-        "offset": 0,
-        "indexed": false,
-        "width": 1,
-        "access": "write",
-        "mnemonic": "strb"
-      },
-      {
-        "function": "0x08002BA2",
-        "site": "0x08002BBE",
-        "offset": 0,
-        "indexed": false,
-        "width": 1,
-        "access": "read",
-        "mnemonic": "ldrb"
-      },
-      {
-        "function": "0x08002BA2",
-        "site": "0x08002BC4",
-        "offset": 0,
-        "indexed": false,
-        "width": 1,
-        "access": "write",
-        "mnemonic": "strb"
-      },
-      {
-        "function": "0x08002BC8",
-        "site": "0x08002BE4",
-        "offset": 0,
-        "indexed": false,
-        "width": 1,
-        "access": "read",
-        "mnemonic": "ldrb"
-      },
-      {
-        "function": "0x08002BC8",
-        "site": "0x08002BEA",
-        "offset": 0,
-        "indexed": false,
-        "width": 1,
-        "access": "write",
-        "mnemonic": "strb"
-      },
-      {
-        "function": "0x08002C04",
-        "site": "0x08002C20",
-        "offset": 0,
-        "indexed": false,
-        "width": 1,
-        "access": "read",
-        "mnemonic": "ldrb"
-      },
-      {
-        "function": "0x08002C04",
-        "site": "0x08002C26",
-        "offset": 0,
-        "indexed": false,
-        "width": 1,
-        "access": "write",
-        "mnemonic": "strb"
+        "mnemonic": "ldrb",
+        "via_reload": false
       },
       {
         "function": "0x08002C2A",
@@ -928,70 +590,8 @@
         "indexed": false,
         "width": 1,
         "access": "read",
-        "mnemonic": "ldrb"
-      },
-      {
-        "function": "0x08002C2A",
-        "site": "0x08002C48",
-        "offset": 0,
-        "indexed": false,
-        "width": 1,
-        "access": "read",
-        "mnemonic": "ldrb"
-      },
-      {
-        "function": "0x08002EE2",
-        "site": "0x08002F54",
-        "offset": 0,
-        "indexed": false,
-        "width": 1,
-        "access": "read",
-        "mnemonic": "ldrb"
-      },
-      {
-        "function": "0x08002EE2",
-        "site": "0x08002F5E",
-        "offset": 0,
-        "indexed": false,
-        "width": 1,
-        "access": "write",
-        "mnemonic": "strb"
-      },
-      {
-        "function": "0x08002EE2",
-        "site": "0x08002F60",
-        "offset": 0,
-        "indexed": false,
-        "width": 1,
-        "access": "read",
-        "mnemonic": "ldrb"
-      },
-      {
-        "function": "0x08002EE2",
-        "site": "0x08002F66",
-        "offset": 0,
-        "indexed": false,
-        "width": 1,
-        "access": "write",
-        "mnemonic": "strb"
-      },
-      {
-        "function": "0x08002EE2",
-        "site": "0x08002F68",
-        "offset": 0,
-        "indexed": false,
-        "width": 1,
-        "access": "read",
-        "mnemonic": "ldrb"
-      },
-      {
-        "function": "0x08002EE2",
-        "site": "0x08002F6E",
-        "offset": 0,
-        "indexed": false,
-        "width": 1,
-        "access": "write",
-        "mnemonic": "strb"
+        "mnemonic": "ldrb",
+        "via_reload": false
       },
       {
         "function": "0x080033EA",
@@ -1000,577 +600,8 @@
         "indexed": false,
         "width": 1,
         "access": "read",
-        "mnemonic": "ldrb"
-      },
-      {
-        "function": "0x080033EA",
-        "site": "0x080033FE",
-        "offset": 0,
-        "indexed": false,
-        "width": 4,
-        "access": "read",
-        "mnemonic": "ldr"
-      },
-      {
-        "function": "0x080039E4",
-        "site": "0x08003A04",
-        "offset": 0,
-        "indexed": false,
-        "width": 2,
-        "access": "read",
-        "mnemonic": "ldrh"
-      },
-      {
-        "function": "0x08003A14",
-        "site": "0x08003A3C",
-        "offset": 0,
-        "indexed": false,
-        "width": 2,
-        "access": "read",
-        "mnemonic": "ldrh"
-      },
-      {
-        "function": "0x08003A14",
-        "site": "0x08003A44",
-        "offset": 0,
-        "indexed": false,
-        "width": 2,
-        "access": "write",
-        "mnemonic": "strh"
-      },
-      {
-        "function": "0x08003A14",
-        "site": "0x08003A46",
-        "offset": 0,
-        "indexed": false,
-        "width": 2,
-        "access": "read",
-        "mnemonic": "ldrh"
-      },
-      {
-        "function": "0x08003A74",
-        "site": "0x08003AB2",
-        "offset": 0,
-        "indexed": false,
-        "width": 1,
-        "access": "read",
-        "mnemonic": "ldrb"
-      },
-      {
-        "function": "0x08003A74",
-        "site": "0x08003AC4",
-        "offset": 0,
-        "indexed": false,
-        "width": 1,
-        "access": "read",
-        "mnemonic": "ldrb"
-      },
-      {
-        "function": "0x08003A74",
-        "site": "0x08003ACC",
-        "offset": 0,
-        "indexed": false,
-        "width": 1,
-        "access": "write",
-        "mnemonic": "strb"
-      },
-      {
-        "function": "0x08003A74",
-        "site": "0x08003ACE",
-        "offset": 0,
-        "indexed": false,
-        "width": 1,
-        "access": "read",
-        "mnemonic": "ldrb"
-      },
-      {
-        "function": "0x08003A74",
-        "site": "0x08003AD8",
-        "offset": 0,
-        "indexed": false,
-        "width": 1,
-        "access": "read",
-        "mnemonic": "ldrb"
-      },
-      {
-        "function": "0x08003A74",
-        "site": "0x08003AE0",
-        "offset": 0,
-        "indexed": false,
-        "width": 1,
-        "access": "write",
-        "mnemonic": "strb"
-      },
-      {
-        "function": "0x08003A74",
-        "site": "0x08003AE2",
-        "offset": 0,
-        "indexed": false,
-        "width": 1,
-        "access": "read",
-        "mnemonic": "ldrb"
-      },
-      {
-        "function": "0x08003A74",
-        "site": "0x08003AEC",
-        "offset": 0,
-        "indexed": false,
-        "width": 1,
-        "access": "read",
-        "mnemonic": "ldrb"
-      },
-      {
-        "function": "0x08003A74",
-        "site": "0x08003AF4",
-        "offset": 0,
-        "indexed": false,
-        "width": 1,
-        "access": "write",
-        "mnemonic": "strb"
-      },
-      {
-        "function": "0x08003A74",
-        "site": "0x08003AF6",
-        "offset": 0,
-        "indexed": false,
-        "width": 1,
-        "access": "read",
-        "mnemonic": "ldrb"
-      },
-      {
-        "function": "0x08003A74",
-        "site": "0x08003B00",
-        "offset": 0,
-        "indexed": false,
-        "width": 1,
-        "access": "read",
-        "mnemonic": "ldrb"
-      },
-      {
-        "function": "0x08003A74",
-        "site": "0x08003B08",
-        "offset": 0,
-        "indexed": false,
-        "width": 1,
-        "access": "write",
-        "mnemonic": "strb"
-      },
-      {
-        "function": "0x08003A74",
-        "site": "0x08003B0A",
-        "offset": 0,
-        "indexed": false,
-        "width": 1,
-        "access": "read",
-        "mnemonic": "ldrb"
-      },
-      {
-        "function": "0x08003A74",
-        "site": "0x08003B32",
-        "offset": 0,
-        "indexed": false,
-        "width": 1,
-        "access": "write",
-        "mnemonic": "strb"
-      },
-      {
-        "function": "0x08003A74",
-        "site": "0x08003B34",
-        "offset": 0,
-        "indexed": false,
-        "width": 1,
-        "access": "read",
-        "mnemonic": "ldrb"
-      },
-      {
-        "function": "0x08003A74",
-        "site": "0x08003B3C",
-        "offset": 0,
-        "indexed": false,
-        "width": 4,
-        "access": "read",
-        "mnemonic": "ldr"
-      },
-      {
-        "function": "0x08003BFC",
-        "site": "0x08003C2E",
-        "offset": 0,
-        "indexed": false,
-        "width": 1,
-        "access": "write",
-        "mnemonic": "strb"
-      },
-      {
-        "function": "0x08003BFC",
-        "site": "0x08003C30",
-        "offset": 0,
-        "indexed": false,
-        "width": 1,
-        "access": "read",
-        "mnemonic": "ldrb"
-      },
-      {
-        "function": "0x08003BFC",
-        "site": "0x08003C38",
-        "offset": 0,
-        "indexed": false,
-        "width": 4,
-        "access": "read",
-        "mnemonic": "ldr"
-      }
-    ],
-    "4": [
-      {
-        "function": "0x08000336",
-        "site": "0x08000358",
-        "offset": 4,
-        "indexed": false,
-        "width": 4,
-        "access": "write",
-        "mnemonic": "str"
-      },
-      {
-        "function": "0x0800035C",
-        "site": "0x0800037E",
-        "offset": 4,
-        "indexed": false,
-        "width": 4,
-        "access": "write",
-        "mnemonic": "str"
-      },
-      {
-        "function": "0x08000382",
-        "site": "0x080003A4",
-        "offset": 4,
-        "indexed": false,
-        "width": 4,
-        "access": "write",
-        "mnemonic": "str"
-      },
-      {
-        "function": "0x080003A8",
-        "site": "0x080003BC",
-        "offset": 4,
-        "indexed": false,
-        "width": 4,
-        "access": "write",
-        "mnemonic": "str"
-      },
-      {
-        "function": "0x08000618",
-        "site": "0x08000628",
-        "offset": 4,
-        "indexed": false,
-        "width": 4,
-        "access": "write",
-        "mnemonic": "str"
-      },
-      {
-        "function": "0x0800062C",
-        "site": "0x0800065C",
-        "offset": 4,
-        "indexed": false,
-        "width": 4,
-        "access": "write",
-        "mnemonic": "str"
-      },
-      {
-        "function": "0x08000678",
-        "site": "0x08000696",
-        "offset": 4,
-        "indexed": false,
-        "width": 2,
-        "access": "read",
-        "mnemonic": "ldrh"
-      },
-      {
-        "function": "0x08000678",
-        "site": "0x080006A8",
-        "offset": 4,
-        "indexed": false,
-        "width": 4,
-        "access": "write",
-        "mnemonic": "str"
-      },
-      {
-        "function": "0x080029D8",
-        "site": "0x080029FA",
-        "offset": 4,
-        "indexed": false,
-        "width": 4,
-        "access": "read",
-        "mnemonic": "ldr"
-      },
-      {
-        "function": "0x08002C2A",
-        "site": "0x08002C64",
-        "offset": 4,
-        "indexed": false,
-        "width": 4,
-        "access": "write",
-        "mnemonic": "str"
-      },
-      {
-        "function": "0x080032C2",
-        "site": "0x0800330C",
-        "offset": 4,
-        "indexed": false,
-        "width": 4,
-        "access": "write",
-        "mnemonic": "str"
-      },
-      {
-        "function": "0x080033B8",
-        "site": "0x080033CE",
-        "offset": 4,
-        "indexed": false,
-        "width": 4,
-        "access": "write",
-        "mnemonic": "str"
-      },
-      {
-        "function": "0x080033EA",
-        "site": "0x0800340A",
-        "offset": 4,
-        "indexed": false,
-        "width": 4,
-        "access": "write",
-        "mnemonic": "str"
-      }
-    ],
-    "2": [
-      {
-        "function": "0x080003FC",
-        "site": "0x08000458",
-        "offset": 2,
-        "indexed": false,
-        "width": 2,
-        "access": "read",
-        "mnemonic": "ldrh"
-      },
-      {
-        "function": "0x08000478",
-        "site": "0x080004A4",
-        "offset": 2,
-        "indexed": false,
-        "width": 2,
-        "access": "write",
-        "mnemonic": "strh"
-      },
-      {
-        "function": "0x0800058E",
-        "site": "0x080005B6",
-        "offset": 2,
-        "indexed": false,
-        "width": 2,
-        "access": "write",
-        "mnemonic": "strh"
-      },
-      {
-        "function": "0x0800062C",
-        "site": "0x0800064A",
-        "offset": 2,
-        "indexed": false,
-        "width": 2,
-        "access": "read",
-        "mnemonic": "ldrh"
-      },
-      {
-        "function": "0x080006AC",
-        "site": "0x080006D6",
-        "offset": 2,
-        "indexed": false,
-        "width": 2,
-        "access": "read",
-        "mnemonic": "ldrh"
-      },
-      {
-        "function": "0x08000B08",
-        "site": "0x08000B16",
-        "offset": 2,
-        "indexed": false,
-        "width": 1,
-        "access": "read",
-        "mnemonic": "ldrb"
-      },
-      {
-        "function": "0x08000B80",
-        "site": "0x08000B9C",
-        "offset": 2,
-        "indexed": false,
-        "width": 1,
-        "access": "read",
-        "mnemonic": "ldrb"
-      },
-      {
-        "function": "0x08000B80",
-        "site": "0x08000BA8",
-        "offset": 2,
-        "indexed": false,
-        "width": 1,
-        "access": "write",
-        "mnemonic": "strb"
-      },
-      {
-        "function": "0x08000B80",
-        "site": "0x08000BAE",
-        "offset": 2,
-        "indexed": false,
-        "width": 1,
-        "access": "write",
-        "mnemonic": "strb"
-      },
-      {
-        "function": "0x08000BB2",
-        "site": "0x08000BC4",
-        "offset": 2,
-        "indexed": false,
-        "width": 1,
-        "access": "read",
-        "mnemonic": "ldrb"
-      },
-      {
-        "function": "0x08000BB2",
-        "site": "0x08000BC8",
-        "offset": 2,
-        "indexed": false,
-        "width": 1,
-        "access": "write",
-        "mnemonic": "strb"
-      },
-      {
-        "function": "0x08000BCC",
-        "site": "0x08000BE8",
-        "offset": 2,
-        "indexed": false,
-        "width": 1,
-        "access": "read",
-        "mnemonic": "ldrb"
-      },
-      {
-        "function": "0x08000BCC",
-        "site": "0x08000BEC",
-        "offset": 2,
-        "indexed": false,
-        "width": 1,
-        "access": "write",
-        "mnemonic": "strb"
-      }
-    ],
-    "19": [
-      {
-        "function": "0x080003FC",
-        "site": "0x0800046C",
-        "offset": 19,
-        "indexed": false,
-        "width": 1,
-        "access": "read",
-        "mnemonic": "ldrb"
-      },
-      {
-        "function": "0x08000478",
-        "site": "0x080004AE",
-        "offset": 19,
-        "indexed": false,
-        "width": 1,
-        "access": "read",
-        "mnemonic": "ldrb"
-      }
-    ],
-    "20": [
-      {
-        "function": "0x080004BA",
-        "site": "0x080004CE",
-        "offset": 20,
-        "indexed": false,
-        "width": 1,
-        "access": "read",
-        "mnemonic": "ldrb"
-      },
-      {
-        "function": "0x0800051A",
-        "site": "0x08000542",
-        "offset": 20,
-        "indexed": false,
-        "width": 1,
-        "access": "read",
-        "mnemonic": "ldrb"
-      },
-      {
-        "function": "0x0800062C",
-        "site": "0x0800063E",
-        "offset": 20,
-        "indexed": false,
-        "width": 1,
-        "access": "read",
-        "mnemonic": "ldrb"
-      },
-      {
-        "function": "0x08000678",
-        "site": "0x0800068A",
-        "offset": 20,
-        "indexed": false,
-        "width": 1,
-        "access": "read",
-        "mnemonic": "ldrb"
-      },
-      {
-        "function": "0x080006AC",
-        "site": "0x080006CA",
-        "offset": 20,
-        "indexed": false,
-        "width": 1,
-        "access": "read",
-        "mnemonic": "ldrb"
-      },
-      {
-        "function": "0x08002C2A",
-        "site": "0x08002C3C",
-        "offset": 20,
-        "indexed": false,
-        "width": 1,
-        "access": "read",
-        "mnemonic": "ldrb"
-      },
-      {
-        "function": "0x08002C68",
-        "site": "0x08002C86",
-        "offset": 20,
-        "indexed": false,
-        "width": 1,
-        "access": "read",
-        "mnemonic": "ldrb"
-      },
-      {
-        "function": "0x08002FE4",
-        "site": "0x08003008",
-        "offset": 20,
-        "indexed": false,
-        "width": 4,
-        "access": "write",
-        "mnemonic": "str"
-      }
-    ],
-    "14": [
-      {
-        "function": "0x08002C68",
-        "site": "0x08002C94",
-        "offset": 14,
-        "indexed": false,
-        "width": 2,
-        "access": "read",
-        "mnemonic": "ldrh"
-      }
-    ],
-    "8": [
-      {
-        "function": "0x08002EE2",
-        "site": "0x08002F34",
-        "offset": 8,
-        "indexed": false,
-        "width": 4,
-        "access": "write",
-        "mnemonic": "str"
+        "mnemonic": "ldrb",
+        "via_reload": false
       }
     ],
     "1": [
@@ -1581,7 +612,8 @@
         "indexed": false,
         "width": 1,
         "access": "read",
-        "mnemonic": "ldrb"
+        "mnemonic": "ldrb",
+        "via_reload": false
       },
       {
         "function": "0x08002FE4",
@@ -1590,7 +622,8 @@
         "indexed": false,
         "width": 1,
         "access": "write",
-        "mnemonic": "strb"
+        "mnemonic": "strb",
+        "via_reload": false
       },
       {
         "function": "0x0800300C",
@@ -1599,16 +632,8 @@
         "indexed": false,
         "width": 1,
         "access": "read",
-        "mnemonic": "ldrb"
-      },
-      {
-        "function": "0x0800300C",
-        "site": "0x08003016",
-        "offset": 1,
-        "indexed": false,
-        "width": 1,
-        "access": "write",
-        "mnemonic": "strb"
+        "mnemonic": "ldrb",
+        "via_reload": false
       },
       {
         "function": "0x0800339C",
@@ -1617,7 +642,8 @@
         "indexed": false,
         "width": 1,
         "access": "read",
-        "mnemonic": "ldrb"
+        "mnemonic": "ldrb",
+        "via_reload": false
       },
       {
         "function": "0x0800339C",
@@ -1626,7 +652,8 @@
         "indexed": false,
         "width": 1,
         "access": "write",
-        "mnemonic": "strb"
+        "mnemonic": "strb",
+        "via_reload": false
       },
       {
         "function": "0x080033AA",
@@ -1635,16 +662,8 @@
         "indexed": false,
         "width": 1,
         "access": "read",
-        "mnemonic": "ldrb"
-      },
-      {
-        "function": "0x080033AA",
-        "site": "0x080033B4",
-        "offset": 1,
-        "indexed": false,
-        "width": 1,
-        "access": "write",
-        "mnemonic": "strb"
+        "mnemonic": "ldrb",
+        "via_reload": false
       },
       {
         "function": "0x0800340E",
@@ -1653,7 +672,8 @@
         "indexed": false,
         "width": 1,
         "access": "read",
-        "mnemonic": "ldrb"
+        "mnemonic": "ldrb",
+        "via_reload": false
       },
       {
         "function": "0x0800340E",
@@ -1662,7 +682,8 @@
         "indexed": false,
         "width": 1,
         "access": "write",
-        "mnemonic": "strb"
+        "mnemonic": "strb",
+        "via_reload": false
       },
       {
         "function": "0x0800341C",
@@ -1671,16 +692,8 @@
         "indexed": false,
         "width": 1,
         "access": "read",
-        "mnemonic": "ldrb"
-      },
-      {
-        "function": "0x0800341C",
-        "site": "0x08003426",
-        "offset": 1,
-        "indexed": false,
-        "width": 1,
-        "access": "write",
-        "mnemonic": "strb"
+        "mnemonic": "ldrb",
+        "via_reload": false
       },
       {
         "function": "0x08003978",
@@ -1689,7 +702,8 @@
         "indexed": false,
         "width": 1,
         "access": "read",
-        "mnemonic": "ldrb"
+        "mnemonic": "ldrb",
+        "via_reload": false
       },
       {
         "function": "0x08003978",
@@ -1698,171 +712,40 @@
         "indexed": false,
         "width": 1,
         "access": "write",
-        "mnemonic": "strb"
-      }
-    ],
-    "24": [
-      {
-        "function": "0x0800338C",
-        "site": "0x08003398",
-        "offset": 24,
-        "indexed": false,
-        "width": 4,
-        "access": "write",
-        "mnemonic": "str"
-      },
-      {
-        "function": "0x080033B8",
-        "site": "0x080033C2",
-        "offset": 24,
-        "indexed": false,
-        "width": 4,
-        "access": "read",
-        "mnemonic": "ldr"
-      }
-    ],
-    "44": [
-      {
-        "function": "0x08003A74",
-        "site": "0x08003B1E",
-        "offset": 44,
-        "indexed": false,
-        "width": 4,
-        "access": "write",
-        "mnemonic": "str"
-      },
-      {
-        "function": "0x08003BFC",
-        "site": "0x08003C24",
-        "offset": 44,
-        "indexed": false,
-        "width": 4,
-        "access": "write",
-        "mnemonic": "str"
-      }
-    ],
-    "40": [
-      {
-        "function": "0x08003A74",
-        "site": "0x08003B20",
-        "offset": 40,
-        "indexed": false,
-        "width": 4,
-        "access": "write",
-        "mnemonic": "str"
-      },
-      {
-        "function": "0x08003BFC",
-        "site": "0x08003C22",
-        "offset": 40,
-        "indexed": false,
-        "width": 4,
-        "access": "write",
-        "mnemonic": "str"
-      }
-    ],
-    "36": [
-      {
-        "function": "0x08003A74",
-        "site": "0x08003B28",
-        "offset": 36,
-        "indexed": false,
-        "width": 4,
-        "access": "write",
-        "mnemonic": "str"
-      },
-      {
-        "function": "0x08003BFC",
-        "site": "0x08003C20",
-        "offset": 36,
-        "indexed": false,
-        "width": 4,
-        "access": "write",
-        "mnemonic": "str"
-      }
-    ],
-    "32": [
-      {
-        "function": "0x08003A74",
-        "site": "0x08003B2A",
-        "offset": 32,
-        "indexed": false,
-        "width": 4,
-        "access": "write",
-        "mnemonic": "str"
-      },
-      {
-        "function": "0x08003BFC",
-        "site": "0x08003C1E",
-        "offset": 32,
-        "indexed": false,
-        "width": 4,
-        "access": "write",
-        "mnemonic": "str"
-      }
-    ],
-    "28": [
-      {
-        "function": "0x08003A74",
-        "site": "0x08003B30",
-        "offset": 28,
-        "indexed": false,
-        "width": 4,
-        "access": "write",
-        "mnemonic": "str"
-      },
-      {
-        "function": "0x08003BFC",
-        "site": "0x08003C1A",
-        "offset": 28,
-        "indexed": false,
-        "width": 4,
-        "access": "write",
-        "mnemonic": "str"
+        "mnemonic": "strb",
+        "via_reload": false
       }
     ]
   },
   "distinct_offsets": [
     0,
-    1,
-    2,
-    4,
-    8,
-    14,
-    19,
-    20,
-    24,
-    28,
-    32,
-    36,
-    40,
-    44
+    1
   ],
-  "highest_proven_offset": 44,
-  "highest_proven_offset_hex": "0x02C",
-  "accesses_in_the_flag_neighbourhood_0x40_to_0x80": [],
+  "distinct_offset_count": 2,
+  "highest_proven_offset": 1,
+  "highest_proven_offset_hex": "0x001",
+  "accesses_via_a_reload": 0,
+  "accesses_in_0x2D_to_0x80": [],
+  "accesses_above_the_flag_array": [],
   "access_widths": {
-    "1": 80,
-    "2": 37,
-    "4": 34
+    "1": 26
   },
-  "indexed_accesses": 15,
-  "constant_accesses": 136,
+  "indexed_accesses": 0,
+  "constant_accesses": 26,
   "constructor_search": {
     "shape_1": {
-      "signature": "ldr rG,[pc,#N] (literal 0x08054FBC) then ldr/str [rG,#0x14] within 3 instructions",
+      "signature": "seed then ldr/str [rG,#0x14] within 3 instructions",
       "readers": 61,
       "writers": 0
     },
     "shape_2": {
-      "signature": "ldr rG,[pc,#N] (literal 0x08054FBC) then str [rG,#0x14] within 12 instructions, i.e. the global base held in a register",
-      "writers": 0,
-      "sites": []
+      "signature": "seed then str [rG,#0x14] within 12 instructions",
+      "writers": 0
     },
-    "conclusion": "BOTH SHAPES FOUND ZERO WRITERS, so no constructor or allocation size was reached by either. The object pointer is never stored by any code path matching a global-literal load followed by a store to +0x14 within 12 instructions. The allocation SIZE REMAINS UNRECOVERABLE, and the object may be built through a thunk, a call return, or a path where the global base is obtained another way."
+    "conclusion": "No constructor write was exposed by the stack-aware walk either. The allocation size remains UNRECOVERABLE and the object's exact size is not proven. This ticket did not begin a separate broad constructor hunt."
   },
-  "flag_array_bound_status": "UNRESOLVED AND UNIMPROVED. The census found no access in +0x40..+0x80 at all through the tracked register, so no first-field-after-the-array, no bounded loop and no copy extent was established. The upper bound of the flag array at base + 0x55 remains not derivable.",
-  "census_is_a_lower_bound": "This census is a LOWER BOUND on the object's field usage, not a complete map. Registers are tracked only through simple copies and adds, so a routine that reaches the object by another route, or that reloads it into a register this walk did not derive, contributes no offsets. Absence of an offset here is NOT evidence that the offset is unused.",
+  "flag_array_bound_status": "UNRESOLVED AND UNIMPROVED. The stack-aware census resolved no access in 0x2D..0x80 through a tracked register, so no first field above the array, no bounded loop, no copy extent and no object-size evidence was established. The upper bound of the flag array at base + 0x55 remains not derivable.",
+  "census_is_a_lower_bound": "This census is a LOWER BOUND on the object's field usage, not a complete map. Provenance is dropped deliberately at every control-flow discontinuity and at every unrecognised register write, so a routine that reaches the object by a route this walk could not follow contributes no offsets. Absence of an offset here is NOT evidence that the offset is unused.",
   "exact_size_proven": false,
-  "verdict": "object offset map committed as a lower bound; size and flag-array bound remain unresolved"
+  "verdict": "stack-aware object offset map committed as a lower bound; size and flag-array bound remain unresolved"
 }

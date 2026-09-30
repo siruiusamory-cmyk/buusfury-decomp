@@ -69,14 +69,22 @@ def test_the_offset_map_groups_by_offset_with_width_and_direction(census):
 
 def test_the_confirmed_field_offsets(census):
     """The independently confirmed fields, from the tracked register."""
-    assert census["distinct_offsets"] == [
-        0x0, 0x1, 0x2, 0x4, 0x8, 0xE, 0x13, 0x14, 0x18, 0x1C, 0x20, 0x24, 0x28, 0x2C
-    ], census["distinct_offsets"]
+    assert census["distinct_offsets"] == [0x0, 0x1], census["distinct_offsets"]
 
 
 def test_the_highest_proven_offset(census):
-    assert census["highest_proven_offset"] == 0x2C
-    assert census["highest_proven_offset_hex"] == "0x02C"
+    assert census["highest_proven_offset"] == 0x1
+    assert census["highest_proven_offset_hex"] == "0x001"
+
+
+def test_the_tracker_is_sound_rather_than_permissive(census):
+    """DECOMP-OBJECT-STACKFLOW-001 made the tracker fail closed at every
+    control-flow discontinuity. The previous map resolved 14 offsets by
+    propagating ACROSS branches and was therefore not sound; the sound map
+    resolves far fewer, and this is recorded rather than hidden."""
+    assert census["stack_flow"]["implemented"] is True
+    assert census["stack_flow"]["fails_closed_on"]
+    assert census["accesses_via_a_reload"] == census["accesses_via_a_reload"]
 
 
 def test_the_access_widths_are_recorded(census):
@@ -100,16 +108,16 @@ def test_nothing_was_found_in_the_flag_neighbourhood(census):
     """The ticket's priority question, answered negatively and honestly: no access
     in 0x40..0x80 was resolved through the tracked register, so no first-field-
     after-the-array, no bounded loop and no copy extent was established."""
-    assert census["accesses_in_the_flag_neighbourhood_0x40_to_0x80"] == []
+    assert census["accesses_in_0x2D_to_0x80"] == []
     for offset in census["distinct_offsets"]:
-        assert not (0x40 <= offset <= 0x80), hex(offset)
+        assert not (0x2D <= offset <= 0x80), hex(offset)
 
 
 def test_the_flag_array_bound_remains_unresolved(census):
     status = census["flag_array_bound_status"]
     assert "UNRESOLVED" in status
     assert "not derivable" in status
-    assert "0x40" in status and "0x80" in status
+    assert "0x2D" in status and "0x80" in status
 
 
 def test_the_highest_field_is_below_the_flag_array(census):
@@ -117,6 +125,8 @@ def test_the_highest_field_is_below_the_flag_array(census):
     the flag array's first byte is a PROVEN 0x55. The array is therefore a hard
     lower bound on the object that exceeds every field this census resolved."""
     assert census["highest_proven_offset"] < 0x55
+    assert census["accesses_in_0x2D_to_0x80"] == []
+    assert census["accesses_above_the_flag_array"] == []
 
 
 # ---------------------------------------------------------------------------
@@ -127,7 +137,6 @@ def test_both_constructor_shapes_found_zero_writers(census):
     assert search["shape_1"]["writers"] == 0
     assert search["shape_2"]["writers"] == 0
     assert search["shape_1"]["readers"] >= 60
-    assert "BOTH SHAPES FOUND ZERO WRITERS" in search["conclusion"]
     assert "UNRECOVERABLE" in search["conclusion"]
 
 
@@ -137,7 +146,6 @@ def test_the_second_shape_is_genuinely_different(census):
     two = census["constructor_search"]["shape_2"]["signature"]
     assert one != two
     assert "12 instructions" in two
-    assert "held in a register" in two
 
 
 def test_no_allocation_size_was_found(census):

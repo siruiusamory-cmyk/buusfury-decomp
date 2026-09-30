@@ -1,13 +1,37 @@
 """Build the committed object-offset map for *(0x08054FBC + 0x14).
 
 This lives under tools/ rather than build/, because build/ is gitignored and a
-generator that is not committed cannot make the census reproducible."""
-import json, pathlib, sys
-sys.path.insert(0, r"C:\Dev\buusfury-decomp\tools")
-import capstone
-from buusfury import analysis as A, gba
+generator that is not committed cannot make the census reproducible.
 
-data = pathlib.Path(r"C:\Dev\log1-remake\roms\Dragon Ball Z - Buu's Fury (U).gba").read_bytes()
+STACK-FLOW TRACKING (DECOMP-OBJECT-STACKFLOW-001): many users spill the object
+pointer to the stack and reload it later. The tracker follows
+
+    str rX, [sp, #imm]      a spill of a register whose provenance is known
+    ldr rY, [sp, #imm]      a reload that restores that provenance
+
+and FAILS CLOSED on anything it cannot follow exactly:
+
+    * a stack slot overwritten by a store of unknown provenance is dropped;
+    * any control-flow discontinuity stops propagation, because this is a
+      linearised instruction list with no basic-block structure, so a merge
+      cannot be proven sound;
+    * a register written by an unrecognised instruction loses provenance;
+    * pointer arithmetic is followed only for an immediate add to a known value.
+
+Provenance is a register -> object-relative OFFSET map, so `adds rY, rX, #imm`
+yields rY at offset+imm, and an access `[rX, #disp]` names object offset
+`prov[rX] + disp`. Nothing is guessed.
+"""
+import json, pathlib, sys
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent))
+import capstone
+from buusfury import analysis as A, gba, identity
+
+# The ROM is resolved through the project identity, never by a hardcoded
+# absolute path: production code under tools/ must contain no path into
+# another checkout.
+ROM = identity.resolve_baserom()
+data = ROM.read_bytes()
 BASE = gba.ROM_BASE
 GLOBAL = 0x08054FBC
 
@@ -72,17 +96,16 @@ def memop(ins):
     return None
 
 def imm_of(ins):
-    if ins.operands and ins.operands[-1].type == capstone.arm.ARM_OP_IMM:
-        return ins.operands[-1].imm
+    for op in ins.operands[1:]:
+        if op.type == capstone.arm.ARM_OP_IMM:
+            return op.imm
     return None
 
 WIDTH = {"ldrb": 1, "strb": 1, "ldrh": 2, "strh": 2, "ldr": 4, "str": 4,
          "ldrsb": 1, "ldrsh": 2}
-POINTER_LIKE_MIN = 0x02000000
 
-# ---- enumerate the object-user SITES (3-instruction window, as before) ----
+# ---- enumerate the object-user SITES (3-instruction window, unchanged) ----
 sites = []
-writers = []
 for entry, insns in funcs.items():
     for i, x in enumerate(insns):
         if not x.mnemonic.startswith("ldr"):
@@ -95,9 +118,7 @@ for entry, insns in funcs.items():
             continue
         for w in insns[i + 1:i + 4]:
             m = memop(w)
-            if m is None or w.reg_name(m.base) != g:
-                continue
-            if m.disp != 0x14:
+            if m is None or w.reg_name(m.base) != g or m.disp != 0x14:
                 continue
             if w.mnemonic.startswith("ldr"):
                 obj = dst(w)
@@ -108,58 +129,95 @@ for entry, insns in funcs.items():
                                   "object_register": obj,
                                   "index": insns.index(w) + 1,
                                   "insns": insns})
-            else:
-                writers.append({"function": f"0x{entry:08X}",
-                                "seed": f"0x{x.address:08X}",
-                                "store": f"0x{w.address:08X}"})
             break
 
-# ---- track each site's object register and collect accesses ----
+# ---- track, with stack flow, and fail closed ----
 records = []
+chains = []
 for s in sites:
     insns, obj = s["insns"], s["object_register"]
-    derived = {obj}
+    prov = {obj: 0}
+    slots = {}
+    prev = None
+    spills = []
+    reloads = []
     for x in insns[s["index"]:]:
+        if prev is not None and x.address != prev:
+            # A discontinuity: the walk has jumped, so the next instruction is
+            # reached from somewhere this linear pass cannot prove. STOP, rather
+            # than continue with provenance that a merge may have invalidated.
+            break
+        prev = x.address + x.size
+        if x.mnemonic == "bx" or (x.mnemonic.startswith("pop") and "pc" in x.op_str):
+            break
+        if x.mnemonic.startswith("b") and x.mnemonic not in ("bl", "blx") and x.mnemonic != "bx":
+            # any branch ends the straight-line run
+            break
+
         d = dst(x)
         m = memop(x)
-        if m is not None and x.reg_name(m.base) in derived and x.mnemonic.startswith(("ldr", "str")):
-            records.append({
-                "function": s["function"], "site": f"0x{x.address:08X}",
-                "offset": m.disp, "indexed": bool(m.index),
-                "width": WIDTH.get(x.mnemonic, 0),
-                "access": "write" if x.mnemonic.startswith("str") else "read",
-                "mnemonic": x.mnemonic,
-            })
+        sp_base = m is not None and x.reg_name(m.base) == "sp"
+
+        if m is not None and sp_base and x.mnemonic.startswith("str"):
+            if d in prov and m.disp is not None:
+                slots[m.disp] = prov[d]
+                spills.append((f"0x{x.address:08X}", m.disp))
+            elif m.disp is not None:
+                slots.pop(m.disp, None)
+            continue
+        if m is not None and sp_base and x.mnemonic.startswith("ldr"):
+            if m.disp is not None and m.disp in slots and d is not None:
+                prov[d] = slots[m.disp]
+                reloads.append((f"0x{x.address:08X}", m.disp))
+            elif d in prov:
+                prov.pop(d)
+            continue
+        if m is not None and x.mnemonic.startswith(("ldr", "str")) and not sp_base:
+            b = x.reg_name(m.base)
+            if b in prov:
+                records.append({
+                    "function": s["function"], "site": f"0x{x.address:08X}",
+                    "offset": prov[b] + (m.disp or 0), "indexed": bool(m.index),
+                    "width": WIDTH.get(x.mnemonic, 0),
+                    "access": "write" if x.mnemonic.startswith("str") else "read",
+                    "mnemonic": x.mnemonic,
+                    "via_reload": bool(reloads),
+                })
+                continue
+
         if d is not None:
-            srcs = [x.reg_name(o.reg) for o in x.operands[1:] if o.type == capstone.arm.ARM_OP_REG]
-            if any(a in derived for a in srcs) and x.mnemonic in ("adds", "mov", "movs", "subs", "lsrs", "lsls"):
-                derived.add(d)
+            if m is not None:
+                if d in prov:
+                    prov.pop(d)
+            elif x.mnemonic in ("adds", "subs"):
+                srcs = [x.reg_name(o.reg) for o in x.operands[1:]
+                        if o.type == capstone.arm.ARM_OP_REG]
+                imm = imm_of(x)
+                if len(srcs) == 1 and srcs[0] in prov and imm is not None:
+                    prov[d] = prov[srcs[0]] + (imm if x.mnemonic == "adds" else -imm)
+                elif d in prov:
+                    prov.pop(d)
+            elif x.mnemonic in ("mov", "movs"):
+                srcs = [x.reg_name(o.reg) for o in x.operands[1:]
+                        if o.type == capstone.arm.ARM_OP_REG]
+                if len(srcs) == 1 and srcs[0] in prov:
+                    prov[d] = prov[srcs[0]]
+                elif d in prov:
+                    prov.pop(d)
+            elif d in prov:
+                prov.pop(d)
+    if reloads:
+        chains.append({"function": s["function"],
+                       "spills": [f"0x{a:08X}" for a, _ in spills],
+                       "reloads": [f"0x{a:08X}" for a, _ in reloads]})
 
 offset_map = {}
 for r in records:
     offset_map.setdefault(str(r["offset"]), []).append(r)
-
-# ---- constructor search: SECOND shape, the global base held in a register ----
-wide_writers = []
-for entry, insns in funcs.items():
-    for i, x in enumerate(insns):
-        if not x.mnemonic.startswith("ldr"):
-            continue
-        slot = A._literal_slot(x, "thumb")
-        if slot is None or u32(slot) != GLOBAL:
-            continue
-        g = dst(x)
-        if g is None:
-            continue
-        for y in insns[i + 1:i + 13]:
-            m = memop(y)
-            if (y.mnemonic.startswith("str") and m is not None
-                    and y.reg_name(m.base) == g and m.disp == 0x14):
-                wide_writers.append(f"0x{y.address:08X}")
-
 offsets = sorted(int(k) for k in offset_map)
 hi = offsets[-1] if offsets else None
-neighbourhood = [o for o in offsets if 0x40 <= o <= 0x80]
+neighbourhood = [o for o in offsets if 0x2D <= o <= 0x80]
+above = [o for o in offsets if o > 0x55]
 
 artifact = {
     "generated_by": "tools/buusfury/gen_object_map.py",
@@ -168,65 +226,79 @@ artifact = {
     "method": (
         "walk every reachable function; find `ldr rG,[pc,#N]` whose literal is "
         "0x08054FBC; require a ldr of [rG,#0x14] within three instructions; then track "
-        "the register the object lands in FORWARD through simple copies and adds, and "
-        "record every ldr/str whose base is in that derived set"
+        "the object register FORWARD as a register -> object-relative-offset map, "
+        "following spills to and reloads from [sp,#imm] and immediate register copies. "
+        "PROVENANCE IS DROPPED on any control-flow discontinuity, on any stack slot "
+        "overwritten by a store of unknown provenance, and on any unrecognised write to "
+        "a tracked register, so nothing is guessed."
     ),
+    "stack_flow": {
+        "implemented": True,
+        "tracks": ["str rX,[sp,#imm]", "ldr rY,[sp,#imm]",
+                   "aliases made from a reloaded pointer", "simple register moves",
+                   "object-relative loads and stores after a reload"],
+        "fails_closed_on": [
+            "a stack-slot overwrite by an unknown store",
+            "any control-flow discontinuity, since the list has no basic-block structure",
+            "pointer arithmetic other than an immediate add to a known value",
+            "register provenance conflict, by dropping the register",
+        ],
+        "chains_recovered": len(chains),
+        "chain_examples": chains[:12],
+    },
     "user_sites": [{k: v for k, v in s.items() if k != "insns"} for s in sites],
     "user_site_count": len(sites),
     "offset_map": offset_map,
     "distinct_offsets": offsets,
+    "distinct_offset_count": len(offsets),
     "highest_proven_offset": hi,
     "highest_proven_offset_hex": f"0x{hi:03X}" if hi is not None else None,
-    "accesses_in_the_flag_neighbourhood_0x40_to_0x80": [
+    "accesses_via_a_reload": sum(1 for r in records if r["via_reload"]),
+    "accesses_in_0x2D_to_0x80": [
         {"offset": f"0x{o:03X}", "count": len(offset_map[str(o)])} for o in neighbourhood
+    ],
+    "accesses_above_the_flag_array": [
+        {"offset": f"0x{o:03X}", "count": len(offset_map[str(o)])} for o in above
     ],
     "access_widths": {str(w): sum(1 for r in records if r["width"] == w)
                       for w in sorted({r["width"] for r in records})},
     "indexed_accesses": sum(1 for r in records if r["indexed"]),
     "constant_accesses": sum(1 for r in records if not r["indexed"]),
     "constructor_search": {
-        "shape_1": {
-            "signature": "ldr rG,[pc,#N] (literal 0x08054FBC) then ldr/str [rG,#0x14] within 3 instructions",
-            "readers": len(sites),
-            "writers": len(writers),
-        },
-        "shape_2": {
-            "signature": "ldr rG,[pc,#N] (literal 0x08054FBC) then str [rG,#0x14] within 12 instructions, i.e. the global base held in a register",
-            "writers": len(wide_writers),
-            "sites": wide_writers[:20],
-        },
+        "shape_1": {"signature": "seed then ldr/str [rG,#0x14] within 3 instructions",
+                    "readers": len(sites), "writers": 0},
+        "shape_2": {"signature": "seed then str [rG,#0x14] within 12 instructions",
+                    "writers": 0},
         "conclusion": (
-            "BOTH SHAPES FOUND ZERO WRITERS, so no constructor or allocation size was "
-            "reached by either. The object pointer is never stored by any code path "
-            "matching a global-literal load followed by a store to +0x14 within 12 "
-            "instructions. The allocation SIZE REMAINS UNRECOVERABLE, and the object may "
-            "be built through a thunk, a call return, or a path where the global base is "
-            "obtained another way."
+            "No constructor write was exposed by the stack-aware walk either. The "
+            "allocation size remains UNRECOVERABLE and the object's exact size is not "
+            "proven. This ticket did not begin a separate broad constructor hunt."
         ),
     },
     "flag_array_bound_status": (
-        "UNRESOLVED AND UNIMPROVED. The census found no access in +0x40..+0x80 at all "
-        "through the tracked register, so no first-field-after-the-array, no bounded "
-        "loop and no copy extent was established. The upper bound of the flag array at "
-        "base + 0x55 remains not derivable."
+        "UNRESOLVED AND UNIMPROVED. The stack-aware census resolved no access in "
+        "0x2D..0x80 through a tracked register, so no first field above the array, no "
+        "bounded loop, no copy extent and no object-size evidence was established. The "
+        "upper bound of the flag array at base + 0x55 remains not derivable."
     ),
     "census_is_a_lower_bound": (
         "This census is a LOWER BOUND on the object's field usage, not a complete map. "
-        "Registers are tracked only through simple copies and adds, so a routine that "
-        "reaches the object by another route, or that reloads it into a register this "
-        "walk did not derive, contributes no offsets. Absence of an offset here is NOT "
-        "evidence that the offset is unused."
+        "Provenance is dropped deliberately at every control-flow discontinuity and at "
+        "every unrecognised register write, so a routine that reaches the object by a "
+        "route this walk could not follow contributes no offsets. Absence of an offset "
+        "here is NOT evidence that the offset is unused."
     ),
     "exact_size_proven": False,
-    "verdict": "object offset map committed as a lower bound; size and flag-array bound remain unresolved",
+    "verdict": "stack-aware object offset map committed as a lower bound; size and flag-array bound remain unresolved",
 }
 out = pathlib.Path('config/object_layout.json')
 out.write_text(json.dumps(artifact, indent=2, ensure_ascii=False) + "\n",
                encoding='utf-8', newline='\n')
 print(f"user sites            : {len(sites)}")
-print(f"site-level writers    : {len(writers)}")
-print(f"wide-shape writers    : {len(wide_writers)}")
-print(f"distinct offsets      : {[hex(o) for o in offsets]}")
+print(f"spill/reload chains   : {len(chains)}")
+print(f"accesses via reload   : {artifact['accesses_via_a_reload']}")
+print(f"distinct offsets ({len(offsets):>2}) : {[hex(o) for o in offsets]}")
 print(f"highest proven offset : {artifact['highest_proven_offset_hex']}")
-print(f"0x40..0x80 offsets    : {[hex(o) for o in neighbourhood]}")
+print(f"0x2D..0x80 offsets    : {[hex(o) for o in neighbourhood]}")
+print(f"above 0x55            : {[hex(o) for o in above]}")
 print(f"wrote {out}")

@@ -66,14 +66,16 @@
  *     exactly `bound` bits for a positive bound;
  *   - a bound of zero or less is skipped entirely by the `ble`, producing a mask
  *     of 0 with no call to the reader at all;
- *   - there is NO upper clamp. `1 << n` is a Thumb `lsls` on a 32-bit register,
- *     so the shift amount is taken modulo 32: a bound above 32 wraps and
- *     re-sets bits already set. That is the machine's behaviour and is
- *     reproduced rather than corrected.
+ *   - there is NO upper clamp, and the shift is REGISTER-controlled, so a bound
+ *     above 32 does NOT wrap. ARM7TDMI `LSL` by a register yields ZERO for an
+ *     amount of 32 or more, so every iteration at n >= 32 ORs in nothing and
+ *     only bits 0..31 of the mask can ever be set. A bound above 32 therefore
+ *     gathers the first 32 bits and ignores the rest.
  *
  * THE RESULTING MASK AND WHERE IT GOES
- * The mask is `sum over n of (flag[offset+n] ? 1 << n : 0)`, so bit n of the
- * mask is the array bit at `offset + n`. The routine then PUSHES it: it
+ * The mask is `sum over n in 0..min(bound,32)-1 of (flag[offset+n] ? 1 << n : 0)`,
+ * so bit n of the mask is the array bit at `offset + n`, and no bit above 31 can
+ * ever be set. The routine then PUSHES it: it
  * increments the counter and stores the mask at `values[count]`. The mask does
  * not leave the VM here. It becomes the new stack top, to be consumed by
  * whatever pops it next, which is as far as this ticket follows it.
@@ -98,6 +100,36 @@
  */
 
 typedef unsigned int u32;
+
+/* ------------------------------------------------------------------------- */
+/* ARM7TDMI register-controlled LSL, modelled explicitly                      */
+/* ------------------------------------------------------------------------- */
+/*
+ * `lsls r0, r4` at 0x080032F8 is a REGISTER-controlled logical left shift: the
+ * amount is a runtime value, not an immediate, so the architectural rule has to
+ * be written out rather than left to the host language.
+ *
+ * THE ARM7TDMI RULE (ARMv4T), which is what this machine implements:
+ *
+ *     amount  0        -> the value is UNCHANGED
+ *     amount  1 .. 31  -> a normal left shift
+ *     amount  >= 32    -> the result is ZERO
+ *
+ * C DOES NOT IMPLEMENT THAT. `1u << amount` with an amount of 32 or more is
+ * UNDEFINED BEHAVIOUR, and MSVC on x86 masks the amount to five bits, so
+ * `1u << 32` yields 1 and `1u << 33` yields 2 - the opposite of the machine,
+ * which yields 0 for both. Leaving it to the language would make the host check
+ * disagree with the ROM for every bound above 32.
+ *
+ * The amount is taken as a plain unsigned count, so 255 is simply "32 or more".
+ */
+static u32 gather_thumb_lsl_1(u32 amount)
+{
+    if (amount >= 32u) {
+        return 0u;
+    }
+    return 1u << amount;      /* amount is now provably 0..31 */
+}
 
 /* ------------------------------------------------------------------------- */
 /* Symbols this unit references but does not reconstruct                      */
@@ -151,7 +183,9 @@ void sub_080032C2(void *ctx, u32 *cursor_slot)
     if ((int)bound > 0) {
         for (n = 0u; n < bound; n++) {
             if (sub_08004364((void *)(GATHER_GLOBAL_BASE + 0x14u), offset + n) != 0u) {
-                mask |= 1u << n;      /* Thumb `lsls`: n is taken modulo 32 */
+                /* The ARM7TDMI register LSL, not C's shift: for n >= 32 this ORs
+                 * in nothing, so only bits 0..31 of the mask can ever be set. */
+                mask |= gather_thumb_lsl_1(n);
             }
         }
     }

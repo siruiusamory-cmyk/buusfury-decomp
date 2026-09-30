@@ -120,23 +120,23 @@ values are still consumed.
 
 ---
 
-## 6. Known discrepancy carried over, and NOT fixed here
+## 6. The carried-over discrepancy, now discharged
 
-This ticket's regression requirement is that all twelve earlier reports regenerate
-byte-identically. While building the width-32 case I established that the **gather
-loop's shift explanation from the previous ticket is wrong**: it states the Thumb
-`lsls` amount is taken *modulo 32*, whereas ARM LSL by a register yields **zero**
-for an amount of 32 or more. The gather's reconstruction also leaves `1u << n`
-undefined in C for `n >= 32`.
+While building the width-32 case this ticket established that the **gather loop's
+shift explanation was wrong**: it claimed the Thumb `lsls` amount was taken
+*modulo 32*, whereas ARM `LSL` by a register yields **zero** for an amount of 32 or
+more, and its reconstruction left `1u << n` undefined in C for `n >= 32`.
 
-The gather's **observable results are unaffected** - its committed test asserted
-`0xFFFFFFFF` for a bound of 33 with every source bit set, and that answer is the
-same under either rule. But the explanation and the C are both wrong, and fixing
-them would change the gather's committed report, which this ticket may not do.
+This ticket could not fix it, because its regression requirement was that all
+twelve earlier reports regenerate byte-identically, and correcting the gather
+changes that report.
 
-**This is recorded rather than silently left: a follow-up ticket should correct
-`src/ByteCodeInterpreter_gather.c` to model the shift, and update the gather
-report's `shift_amount_is_modulo_32` field and its note.**
+**It was fixed by the immediately following ticket,
+`DECOMP-FLAGSTATE-SHIFT-FIX-001`**, which owns that report change: the gather now
+models the architectural rule in an explicit helper, its report carries
+`shift_is_register_controlled` and `shift_amount_at_or_above_32_yields_zero` in
+place of the removed `shift_amount_is_modulo_32`, and its self-check covers shift
+amounts 0, 1, 31, 32, 33 and 255 directly.
 
 ---
 

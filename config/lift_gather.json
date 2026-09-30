@@ -7,7 +7,7 @@
     "id": "gather",
     "name": "ByteCodeInterpreter flag-array gather loop (sub_080032C2)",
     "role": "gather a run of flag bits into a mask and push it back onto the VM stack",
-    "notes": "sub_080032C2, 78 bytes and 38 instructions, one terminator at 0x0800330E, one call to the already-lifted reader sub_08004364, and one literal 0x08054FBC. No BL caller targets it anywhere in the image, so it is reached by VM dispatch: it is the function the flagread report recorded as the reader's third call site 0x080032EE. IT IS A TWO-INTO-ONE REDUCTION OVER THE FLAG ARRAY rather than over its two operands: it POPS a BOUND from the top and a BIT OFFSET from beneath it, then for n = 0 .. bound-1 tests the array bit at `offset + n` and sets bit n of an accumulator when that flag is set, finally PUSHING the mask as a new stack value. Net counter movement is -1, two consumed and one produced, so it leaves a result on the VM stack rather than escaping the VM. THE VALUE PASSED TO THE READER IS `offset + n`, NOT `n` (`adds r1, r0, r4`), which is the detail that fixes the meaning: the second operand is a BIT NUMBER in the array, not a byte index and not a pointer, and successive iterations test successive BITS from that offset. LOOP BOUNDS: the loop runs while n < bound with n starting at 0, so a positive bound gathers exactly that many bits; a bound of zero or LESS is skipped entirely by the `ble`, which compares the bound as signed, producing a mask of 0 with no call to the reader at all; there is NO upper clamp, and the mask bit is built with a Thumb `lsls` on a 32-bit register, so the shift amount is taken modulo 32 and a bound above 32 wraps and re-sets bits already set - the machine's behaviour, reproduced rather than corrected. THE RESULTING MASK: bit n is the flag array bit at (offset + n), so the mask is the packed run of flags from the caller's offset. Its DESTINATION is the VM stack itself - the routine increments the counter and stores the mask at values[count] - so the mask becomes the new stack top, to be consumed by whatever pops it next, which is as far as this ticket follows it. NO BOUNDS CHECK, NO NULL CHECK, AND NO SIZE KNOWLEDGE: neither the offset nor the bound is compared against any size, and the array size is not reachable from this routine at all. ARRAY EXTENT: the proven LOWER bound is one byte, eight bits, because the trio addresses one byte at base + 0x55 and the boolean transforms only ever produce indices 0 and 1; no static UPPER bound is derivable from code evidence, because no instruction compares an index against a size and the gather loop's offset and bound are runtime values. No guard was added. UNKNOWN: what the gathered mask means, how large the array is, and what pops the mask.",
+    "notes": "sub_080032C2, 78 bytes and 38 instructions, one terminator at 0x0800330E, one call to the already-lifted reader sub_08004364, and one literal 0x08054FBC. No BL caller targets it anywhere in the image, so it is reached by VM dispatch: it is the function the flagread report recorded as the reader's third call site 0x080032EE. IT IS A TWO-INTO-ONE REDUCTION OVER THE FLAG ARRAY rather than over its two operands: it POPS a BOUND from the top and a BIT OFFSET from beneath it, then for n = 0 .. bound-1 tests the array bit at `offset + n` and sets bit n of an accumulator when that flag is set, finally PUSHING the mask as a new stack value. Net counter movement is -1, two consumed and one produced, so it leaves a result on the VM stack rather than escaping the VM. THE VALUE PASSED TO THE READER IS `offset + n`, NOT `n` (`adds r1, r0, r4`), which is the detail that fixes the meaning: the second operand is a BIT NUMBER in the array, not a byte index and not a pointer, and successive iterations test successive BITS from that offset. LOOP BOUNDS: the loop runs while n < bound with n starting at 0, so a positive bound gathers exactly that many bits; a bound of zero or LESS is skipped entirely by the `ble`, which compares the bound as signed, producing a mask of 0 with no call to the reader at all; there is NO upper clamp, and the shift amount is the RUNTIME loop index, so the ARCHITECTURAL rule applies: ARM7TDMI register-controlled LSL yields ZERO at an amount of 32 or more, so every iteration at n >= 32 ORs in nothing and the mask can never carry a bit above 31 whatever the bound is. AN EARLIER REVISION OF THIS ENTRY AND REPORT CLAIMED THE AMOUNT WAS TAKEN MODULO 32; THAT IS NOT THE ARM7TDMI RULE AND WAS CORRECTED BY DECOMP-FLAGSTATE-SHIFT-FIX-001. THE RESULTING MASK: bit n is the flag array bit at (offset + n), so the mask is the packed run of flags from the caller's offset. Its DESTINATION is the VM stack itself - the routine increments the counter and stores the mask at values[count] - so the mask becomes the new stack top, to be consumed by whatever pops it next, which is as far as this ticket follows it. NO BOUNDS CHECK, NO NULL CHECK, AND NO SIZE KNOWLEDGE: neither the offset nor the bound is compared against any size, and the array size is not reachable from this routine at all. ARRAY EXTENT: the proven LOWER bound is one byte, eight bits, because the trio addresses one byte at base + 0x55 and the boolean transforms only ever produce indices 0 and 1; no static UPPER bound is derivable from code evidence, because no instruction compares an index against a size and the gather loop's offset and bound are runtime values. No guard was added. UNKNOWN: what the gathered mask means, how large the array is, and what pops the mask.",
     "translation_unit": "gather_tu",
     "rom_address": "0x080032C2",
     "file_offset": "0x0032C2",
@@ -19,7 +19,7 @@
     "decomp_source": "src/ByteCodeInterpreter_gather.c",
     "probe_source": "src/probes/ByteCodeInterpreter_gather.c",
     "selftest_source": "src/probes/gather_selftest.c",
-    "semantic_minimum_checks": 20,
+    "semantic_minimum_checks": 31,
     "host_build_bits": 32,
     "original_sha1": "2a8df95e4fdb91ec456ddce8a1787d66d3914f37"
   },
@@ -74,8 +74,12 @@
       "call_site": "0x080032EE",
       "mask_accumulator_cleared_at_entry": true,
       "mask_built_with": "orrs",
-      "shift_amount_is_modulo_32": true,
-      "shift_amount_evidence": "the mask bit is built by `lsls r0, r4` on a 32-bit register, so the Thumb shift takes its amount modulo 32",
+      "shift_is_register_controlled": true,
+      "shift_amount_rule": "ARM7TDMI register LSL: an amount of 0 leaves the value unchanged, 1..31 shifts normally, and an amount of 32 OR MORE YIELDS ZERO",
+      "shift_amount_at_or_above_32_yields_zero": true,
+      "shift_bits_above_31_can_never_be_set": true,
+      "shift_bits_above_31_evidence": "`lsls r0, r4` makes the shift amount the RUNTIME loop index, and the architectural rule for a register-controlled LSL zeroes the result at an amount of 32 or more, so every iteration at n >= 32 ORs in nothing and the mask can never carry a bit above 31 whatever the bound is",
+      "shift_was_previously_wrong": "an earlier revision of this report claimed the amount was taken modulo 32; that is not the ARM7TDMI rule and is corrected here",
       "shift_count": 3,
       "branches": 4,
       "terminators": 1,
@@ -99,16 +103,16 @@
   "verdicts": {
     "semantic": {
       "status": "PROVEN",
-      "checks": 20,
+      "checks": 31,
       "failures": 0,
-      "minimum_checks": 20,
+      "minimum_checks": 31,
       "host_compiler": "MSVC cl.exe (32-bit)",
-      "detail": "20 behavioural assertions passed with 0 failures (minimum 20)",
+      "detail": "31 behavioural assertions passed with 0 failures (minimum 31)",
       "measures": "whether the reconstructed C behaves correctly, by RUNNING it"
     },
     "modern_build": {
       "status": "PASS",
-      "detail": "compiled, linked at 0x080032C2 and emitted 124 bytes",
+      "detail": "compiled, linked at 0x080032C2 and emitted 132 bytes",
       "measures": "whether the source compiles, links and emits bytes"
     },
     "ads_match": {
@@ -169,7 +173,7 @@
     "external_calls_bound_to_original_addresses": {
       "sub_08004364": "0x08004364"
     },
-    "detail": "compiled, linked at 0x080032C2 and emitted 124 bytes",
+    "detail": "compiled, linked at 0x080032C2 and emitted 132 bytes",
     "build": {
       "ok": true,
       "commands": [
@@ -178,11 +182,11 @@
         "<DEVKITARM>\\bin\\arm-none-eabi-gcc.exe -nostdlib -Wl,-T,<REPO>\\build\\lift\\gather\\gather.ld -Wl,-Map,<REPO>\\build\\lift\\gather\\gather.map -o <REPO>\\build\\lift\\gather\\gather.elf <REPO>\\build\\lift\\gather\\gather.o <REPO>\\build\\lift\\gather\\gather_externs.o",
         "<DEVKITARM>\\bin\\arm-none-eabi-objcopy.exe -O binary -j .text -j .rodata <REPO>\\build\\lift\\gather\\gather.elf <REPO>\\build\\lift\\gather\\gather.bin"
       ],
-      "produced_byte_length": 124,
+      "produced_byte_length": 132,
       "symbols": {
         "sub_080032C2": {
           "address": "0x080032C4",
-          "size": 120
+          "size": 128
         }
       },
       "diagnostics": ""
@@ -228,18 +232,18 @@
       },
       "modern": {
         "start": "0x080032C4",
-        "end": "0x0800333C",
-        "size": 120,
+        "end": "0x08003344",
+        "size": 128,
         "isa": "thumb",
-        "instructions": 59,
+        "instructions": 63,
         "first_instruction": "mov lr, fp",
         "calls": [
           "0x08004362"
         ],
         "literal_slots": [
-          "0x08003338",
-          "0x08003628",
-          "0x0800362C"
+          "0x08003340",
+          "0x08003630",
+          "0x08003634"
         ],
         "returns": 1,
         "leaf": false,
@@ -265,8 +269,8 @@
       },
       "modern_symbol_present": true,
       "delta": {
-        "size_bytes": 42,
-        "instructions": 21,
+        "size_bytes": 50,
+        "instructions": 25,
         "returns": 0,
         "calls": 0,
         "literal_slots": 2
@@ -306,12 +310,12 @@
       "distinct_slots": 3,
       "contiguous_runs": [
         [
-          "0x08003338",
-          "0x0800333C"
+          "0x08003340",
+          "0x08003344"
         ],
         [
-          "0x08003628",
-          "0x08003630"
+          "0x08003630",
+          "0x08003638"
         ]
       ],
       "run_count": 2,
@@ -323,15 +327,15 @@
   },
   "comparison": {
     "original_byte_length": 78,
-    "modern_byte_length": 124,
+    "modern_byte_length": 132,
     "overlap_byte_length": 78,
-    "differing_bytes_in_overlap": 70,
-    "matching_bytes_in_overlap": 8,
+    "differing_bytes_in_overlap": 69,
+    "matching_bytes_in_overlap": 9,
     "original_only_bytes": 0,
-    "modern_only_bytes": 46,
+    "modern_only_bytes": 54,
     "original_instruction_spans": 38,
-    "matching_instruction_spans": 1,
-    "differing_instruction_spans": 37,
+    "matching_instruction_spans": 2,
+    "differing_instruction_spans": 36,
     "bytes_not_covered_by_an_original_instruction": 0,
     "byte_identical": false,
     "is_a_match_claim": false,
@@ -339,12 +343,12 @@
   },
   "semantic_check": {
     "status": "PROVEN",
-    "checks": 20,
+    "checks": 31,
     "failures": 0,
-    "minimum_checks": 20,
+    "minimum_checks": 31,
     "host_compiler": "MSVC cl.exe (32-bit)",
     "host_build_bits": 32,
-    "detail": "20 behavioural assertions passed with 0 failures (minimum 20)",
-    "output": "PASS: 20 check(s), 0 failure(s)\n"
+    "detail": "31 behavioural assertions passed with 0 failures (minimum 31)",
+    "output": "PASS: 31 check(s), 0 failure(s)\n"
   }
 }

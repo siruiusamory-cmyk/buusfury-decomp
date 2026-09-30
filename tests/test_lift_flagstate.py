@@ -24,7 +24,9 @@ def test_both_targets_are_registered():
     assert clear.rom_address == 0x08004396
     assert gather.rom_address == 0x080032C2
     assert clear.semantic_minimum_checks == 18
-    assert gather.semantic_minimum_checks == 20
+    # Raised from 20 by DECOMP-FLAGSTATE-SHIFT-FIX-001, which added the explicit
+    # ARM7TDMI register-LSL cases.
+    assert gather.semantic_minimum_checks == 31
     for target in (clear, gather):
         assert target.host_build_bits == 32
 
@@ -141,7 +143,11 @@ def test_the_mask_arithmetic_is_recorded(rom_bytes):
     gather = lift.derive_flag_state(rom_bytes)["gather"]
     assert gather["mask_accumulator_cleared_at_entry"] is True
     assert gather["mask_built_with"] == "orrs"
-    assert gather["shift_amount_is_modulo_32"] is True
+    assert "shift_amount_is_modulo_32" not in gather, "that claim was wrong and is removed"
+    assert gather["shift_is_register_controlled"] is True
+    assert gather["shift_amount_at_or_above_32_yields_zero"] is True
+    assert gather["shift_bits_above_31_can_never_be_set"] is True
+    assert "ZERO" in gather["shift_amount_rule"]
     assert gather["loop_calls_the_reader"] is True
 
 
@@ -198,7 +204,11 @@ def test_the_gather_source_uses_the_same_shifts_as_the_reader():
     source = (identity.REPO_ROOT / "src" / "ByteCodeInterpreter_gather.c").read_text("utf-8")
     code = re.sub(r"/\*.*?\*/", "", source, flags=re.DOTALL)
     assert "offset + n" in code
-    assert "1u << n" in code
+    # DECOMP-FLAGSTATE-SHIFT-FIX-001: the amount is a runtime value, so the
+    # architectural rule is modelled rather than left to C's shift.
+    assert "gather_thumb_lsl_1(n)" in code
+    assert "amount >= 32u" in code
+    assert "1u << n" not in code, "the raw C shift must not be used for a runtime amount"
     assert "sub_08004364" in code
     assert "void sub_08004364" not in code, "the reader is reconstructed elsewhere"
 
@@ -211,7 +221,7 @@ def test_both_probe_paths_are_shims():
 
 
 @pytest.mark.parametrize("checks,minimum,expected", [
-    (18, 18, "PROVEN"), (17, 18, "PARTIAL"), (20, 20, "PROVEN"), (19, 20, "PARTIAL"),
+    (18, 18, "PROVEN"), (17, 18, "PARTIAL"), (31, 31, "PROVEN"), (30, 31, "PARTIAL"),
 ])
 def test_the_minimums_are_enforced(checks, minimum, expected):
     status, _detail = lift.semantic_verdict(0, checks, 0, minimum=minimum)

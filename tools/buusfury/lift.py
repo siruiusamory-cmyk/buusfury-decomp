@@ -1131,10 +1131,22 @@ def derive_flag_state(rom_bytes: bytes) -> dict:
             "mask_accumulator_cleared_at_entry": any(
                 x.mnemonic == "movs" and immediate(x) == 0 for x in insns),
             "mask_built_with": combine[0].mnemonic if combine else None,
-            "shift_amount_is_modulo_32": True,
-            "shift_amount_evidence": (
-                "the mask bit is built by `lsls r0, r4` on a 32-bit register, so the "
-                "Thumb shift takes its amount modulo 32"
+            "shift_is_register_controlled": True,
+            "shift_amount_rule": (
+                "ARM7TDMI register LSL: an amount of 0 leaves the value unchanged, "
+                "1..31 shifts normally, and an amount of 32 OR MORE YIELDS ZERO"
+            ),
+            "shift_amount_at_or_above_32_yields_zero": True,
+            "shift_bits_above_31_can_never_be_set": True,
+            "shift_bits_above_31_evidence": (
+                "`lsls r0, r4` makes the shift amount the RUNTIME loop index, and the "
+                "architectural rule for a register-controlled LSL zeroes the result at "
+                "an amount of 32 or more, so every iteration at n >= 32 ORs in nothing "
+                "and the mask can never carry a bit above 31 whatever the bound is"
+            ),
+            "shift_was_previously_wrong": (
+                "an earlier revision of this report claimed the amount was taken "
+                "modulo 32; that is not the ARM7TDMI rule and is corrected here"
             ),
             "shift_count": sum(1 for x in shifts if x.op_str.startswith("r0,")),
             "branches": len(branches),

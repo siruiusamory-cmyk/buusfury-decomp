@@ -137,7 +137,9 @@ sub_080032C2 at **0x080032C2** (78 B).
 The trio tiles 0x08004364..0x080043AC: test (\nds\), set (\orrs\), **clear
 (\ics\)** - derived on its own evidence, not assumed to mirror the setter. The
 gather pops a **bit offset** and a **bound**, gathers \ound\ bits from \offset+ninto a mask, and **pushes the mask back onto the VM stack**; a bound of zero or
-less is skipped entirely, and a bound above 32 wraps. **Array extent: lower bound
+less is skipped entirely, and a bound above 32 does **not** wrap: the shift is
+register-controlled, so ARM7TDMI `LSL` yields zero at an amount of 32 or more and
+only mask bits 0..31 can ever be set. **Array extent: lower bound
 1 byte, no derivable upper bound.** See
 [docs/LIFT_FLAGSTATE.md](docs/LIFT_FLAGSTATE.md).
 

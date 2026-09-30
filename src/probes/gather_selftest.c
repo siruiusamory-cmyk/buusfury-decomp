@@ -162,8 +162,11 @@ int main(void)
               (unsigned long)bad);
     }
 
-    /* ---- 7. a bound above 32 WRAPS, because Thumb lsls is modulo 32 --- */
-    /* This is the machine's behaviour, reproduced rather than corrected. */
+    /* ---- 7. a bound above 32 does NOT wrap ---------------------------- */
+    /* ARM7TDMI register LSL yields zero at an amount of 32 or more, so the
+     * iterations at n >= 32 contribute nothing. Section 11 isolates that case;
+     * here every source bit in the run is set, so the first 32 iterations alone
+     * fill the mask. */
     reset_ctx();
     {
         u32 n;
@@ -175,7 +178,7 @@ int main(void)
     run(300u, 33u);
     check(g_mock_calls == 33u, "a bound of 33 makes 33 calls", (unsigned long)g_mock_calls);
     check(g_ctx.values[0] == 0xFFFFFFFFu,
-          "and bit 32 wraps onto bit 0, so the mask is still all ones",
+          "and the first 32 iterations fill the mask on their own",
           (unsigned long)g_ctx.values[0]);
 
     reset_ctx();
@@ -190,7 +193,7 @@ int main(void)
     g_mock_bits[(432u >> 3) & 15u] &= (u8)~(1u << (432u & 7u));
     run(400u, 33u);
     check(g_ctx.values[0] == 0xFFFFFFFFu && g_mock_calls == 33u,
-          "and a bound of 33 sets every mask bit once the wrap is accounted for",
+          "and clearing the n = 32 source changes nothing, because it never mattered",
           (unsigned long)g_ctx.values[0]);
 
     /* ---- 8. the offset is a BIT number, and can be negative ----------- */
@@ -209,6 +212,68 @@ int main(void)
     run(0u, 16u);
     check(g_ctx.values[0] == 0x8001u,
           "gathering 16 bits from offset 0 yields bit0 from bit0 and bit15 from bit15",
+          (unsigned long)g_ctx.values[0]);
+
+    /* ---- 10. the ARM7TDMI register LSL rule, one case per branch --------- */
+    /* The shift amount is a runtime value, so the architectural rule must be
+     * modelled rather than left to C, where `1u << 32` is undefined. */
+    check(gather_thumb_lsl_1(0u) == 0x00000001u,
+          "amount 0 leaves the value unchanged: 1 << 0 is 1", (unsigned long)gather_thumb_lsl_1(0u));
+    check(gather_thumb_lsl_1(1u) == 0x00000002u,
+          "amount 1 shifts normally", (unsigned long)gather_thumb_lsl_1(1u));
+    check(gather_thumb_lsl_1(31u) == 0x80000000u,
+          "amount 31 is the last shift that produces a bit", (unsigned long)gather_thumb_lsl_1(31u));
+    check(gather_thumb_lsl_1(32u) == 0x00000000u,
+          "amount 32 yields ZERO, which C and MSVC do not", (unsigned long)gather_thumb_lsl_1(32u));
+    check(gather_thumb_lsl_1(33u) == 0x00000000u,
+          "amount 33 yields ZERO too, not a wrapped shift by one",
+          (unsigned long)gather_thumb_lsl_1(33u));
+    check(gather_thumb_lsl_1(255u) == 0x00000000u,
+          "amount 255 yields ZERO", (unsigned long)gather_thumb_lsl_1(255u));
+
+    /* ---- 11. a bound above 32 gathers the first 32 bits and ignores the rest */
+    /* This is the case the old modulo-32 explanation got wrong: with ONLY the
+     * source bit at n = 32 set, a wrapping shift would have set mask bit 0,
+     * whereas the architecture ORs in nothing and the mask stays 0. */
+    reset_ctx();
+    {
+        u32 bit = 500u + 32u;           /* the source read on the n = 32 iteration */
+        g_mock_bits[(bit >> 3) & 15u] |= (u8)(1u << (bit & 7u));
+    }
+    run(500u, 33u);
+    check(g_mock_calls == 33u, "a bound of 33 still makes 33 calls", (unsigned long)g_mock_calls);
+    check(g_ctx.values[0] == 0x00000000u,
+          "but a source bit at n = 32 contributes NOTHING to the mask",
+          (unsigned long)g_ctx.values[0]);
+
+    /* No bound can ever set a mask bit above 31. */
+    reset_ctx();
+    {
+        u32 n;
+        for (n = 0u; n < 40u; n++) {
+            u32 bit = 600u + n;
+            g_mock_bits[(bit >> 3) & 15u] |= (u8)(1u << (bit & 7u));
+        }
+    }
+    run(600u, 40u);
+    check(g_mock_calls == 40u, "a bound of 40 makes 40 calls", (unsigned long)g_mock_calls);
+    check(g_ctx.values[0] == 0xFFFFFFFFu,
+          "and the mask is 0xFFFFFFFF: bits 0..31 from the first 32 iterations only",
+          (unsigned long)g_ctx.values[0]);
+
+    /* The iterations above 31 leave the mask alone, so the mask is the SAME as a
+     * bound of exactly 32 over the same source run. */
+    reset_ctx();
+    {
+        u32 n;
+        for (n = 0u; n < 40u; n++) {
+            u32 bit = 600u + n;
+            g_mock_bits[(bit >> 3) & 15u] |= (u8)(1u << (bit & 7u));
+        }
+    }
+    run(600u, 32u);
+    check(g_ctx.values[0] == 0xFFFFFFFFu && g_mock_calls == 32u,
+          "a bound of 32 over the same run gives the identical mask",
           (unsigned long)g_ctx.values[0]);
 
     printf("%s: %d check(s), %d failure(s)\n",

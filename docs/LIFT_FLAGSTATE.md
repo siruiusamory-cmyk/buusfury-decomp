@@ -77,7 +77,7 @@ the array, not a byte index and not a pointer.
 | --- | --- |
 | positive | gathers exactly that many bits |
 | **zero or less** | skipped entirely by the `ble`, which compares the bound as **signed**; mask is `0` and the reader is **not called at all** |
-| above 32 | **wraps.** The mask bit is built by a Thumb `lsls` on a 32-bit register, so the shift amount is taken modulo 32 and bits already set are re-set. The machine's behaviour, reproduced rather than corrected |
+| above 32 | **does NOT wrap.** The shift amount is the runtime loop index, so the architectural rule applies: ARM7TDMI register-controlled `LSL` yields **ZERO** at an amount of 32 or more. Every iteration at `n >= 32` ORs in nothing, so **only bits 0..31 of the mask can ever be set** whatever the bound is. Corrected by `DECOMP-FLAGSTATE-SHIFT-FIX-001` |
 
 ### The resulting mask and where it goes
 
@@ -114,6 +114,49 @@ that the code has no size knowledge to recover.
 
 ---
 
+## 3a. Correction: the register-controlled shift (`DECOMP-FLAGSTATE-SHIFT-FIX-001`)
+
+This report originally claimed the mask bit's shift amount was taken **modulo 32**,
+so that a bound above 32 wrapped and re-set bits already set. **That is not the
+ARM7TDMI rule.** The instruction is `lsls r0, r4` at `0x080032F8`, a
+**register-controlled** logical left shift, and ARMv4T defines it as:
+
+| amount | result |
+| --- | --- |
+| `0` | the value is **unchanged** |
+| `1..31` | a normal left shift |
+| **`>= 32`** | **ZERO** |
+
+The amount is therefore not taken modulo 32, and nothing wraps. Every iteration at
+`n >= 32` ORs in nothing, so the mask is
+
+```
+sum over n in 0..min(bound,32)-1 of ( flag[offset+n] ? 1 << n : 0 )
+```
+
+and **no mask bit above 31 can ever be set, whatever the bound is**. A bound above
+32 gathers the first 32 bits and ignores the rest.
+
+**C does not implement this.** `1u << amount` is *undefined behaviour* for an
+amount of 32 or more, and MSVC on x86 masks the amount to five bits, so `1u << 32`
+yields `1` and `1u << 33` yields `2` - the opposite of the machine. The source now
+calls an explicit `gather_thumb_lsl_1` helper that implements the architectural
+rule, and the self-check covers amounts `0`, `1`, `31`, `32`, `33` and `255`
+directly.
+
+### The observable results did not change, but the reason did
+
+| Case | Mask | Why |
+| --- | --- | --- |
+| bound 33, every source bit set | `0xFFFFFFFF` | bits 0..31 come from the first 32 iterations; `n = 32` contributes nothing |
+| bound 33, **only** the `n = 32` source bit set | **`0`** | the iteration ORs in nothing. Under the old modulo-32 claim this would have set mask bit 0 |
+| bound 40, every source bit set | `0xFFFFFFFF` | identical to a bound of exactly 32 over the same run |
+
+The second row is the discriminating case, and it is asserted: it is the one the
+old explanation got wrong.
+
+---
+
 ## 4. The comparison
 
 | Target | Original | Modern | Differing bytes | Spans (identical/total) | Calls | Literals |
@@ -138,7 +181,7 @@ Verdicts remain independent for both targets: **SEMANTIC PROVEN**,
 Everything in sections 1 to 4, plus: the trio tiles contiguously; the clearer is a
 read-modify-write that touches one byte; the gather's call site is the one the
 `flagread` report recorded from the other direction; the mask is `(1<<bound)-1`
-when every gathered bit is set, for bound 1..32; a bound above 32 wraps.
+when every gathered bit is set, for bound 1..32; and a bound above 32 gathers only the first 32 bits, because the register-controlled shift yields zero at an amount of 32 or more.
 
 ### Unresolved
 

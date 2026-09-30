@@ -1,0 +1,447 @@
+{
+  "generated_by": "tools/buusfury/gen_ewram_layout.py",
+  "table_address": "0x08054FBC",
+  "table_extent": "0x08054FBC..0x08054FEC",
+  "region_correction": "THE PREVIOUS ARTIFACT CALLED THESE EWRAM POINTERS. THEY ARE NOT. EWRAM is 0x02000000..0x0203FFFF and IWRAM is 0x03000000..0x03007FFF; every entry here is 0x0300xxxx, so every object is in IWRAM.",
+  "entries": [
+    {
+      "table_offset": "0x00",
+      "rom_address": "0x08054FBC",
+      "value": "0x03003300",
+      "raw": 50344704,
+      "region": "IWRAM",
+      "ascending_position": 8,
+      "nearest_lower_static_object": "0x03002BD8",
+      "nearest_higher_static_object": "0x03003898",
+      "gap_to_next_higher_bytes": 1432,
+      "gap_to_next_lower_bytes": 1832,
+      "class": "INFERRED_MAX_EXTENT",
+      "extent_basis": "the next known static object above, ASSUMING the two do not overlap; an upper bound only"
+    },
+    {
+      "table_offset": "0x04",
+      "rom_address": "0x08054FC0",
+      "value": "0x03003898",
+      "raw": 50346136,
+      "region": "IWRAM",
+      "ascending_position": 9,
+      "nearest_lower_static_object": "0x03003300",
+      "nearest_higher_static_object": "0x030038A4",
+      "gap_to_next_higher_bytes": 12,
+      "gap_to_next_lower_bytes": 1432,
+      "class": "INFERRED_MAX_EXTENT",
+      "extent_basis": "the next known static object above, ASSUMING the two do not overlap; an upper bound only"
+    },
+    {
+      "table_offset": "0x08",
+      "rom_address": "0x08054FC4",
+      "value": "0x030038A4",
+      "raw": 50346148,
+      "region": "IWRAM",
+      "ascending_position": 10,
+      "nearest_lower_static_object": "0x03003898",
+      "nearest_higher_static_object": null,
+      "gap_to_next_higher_bytes": null,
+      "gap_to_next_lower_bytes": 12,
+      "class": "PROVEN_START_UNBOUNDED_ABOVE",
+      "extent_basis": "the next known static object above, ASSUMING the two do not overlap; an upper bound only"
+    },
+    {
+      "table_offset": "0x0C",
+      "rom_address": "0x08054FC8",
+      "value": "0x0300197C",
+      "raw": 50338172,
+      "region": "IWRAM",
+      "ascending_position": 1,
+      "nearest_lower_static_object": "0x03001068",
+      "nearest_higher_static_object": "0x03001990",
+      "gap_to_next_higher_bytes": 20,
+      "gap_to_next_lower_bytes": 2324,
+      "class": "INFERRED_MAX_EXTENT",
+      "extent_basis": "the next known static object above, ASSUMING the two do not overlap; an upper bound only"
+    },
+    {
+      "table_offset": "0x10",
+      "rom_address": "0x08054FCC",
+      "value": "0x03001990",
+      "raw": 50338192,
+      "region": "IWRAM",
+      "ascending_position": 2,
+      "nearest_lower_static_object": "0x0300197C",
+      "nearest_higher_static_object": "0x030019A4",
+      "gap_to_next_higher_bytes": 20,
+      "gap_to_next_lower_bytes": 20,
+      "class": "INFERRED_MAX_EXTENT",
+      "extent_basis": "the next known static object above, ASSUMING the two do not overlap; an upper bound only"
+    },
+    {
+      "table_offset": "0x14",
+      "rom_address": "0x08054FD0",
+      "value": "0x03001068",
+      "raw": 50335848,
+      "region": "IWRAM",
+      "ascending_position": 0,
+      "nearest_lower_static_object": null,
+      "nearest_higher_static_object": "0x0300197C",
+      "gap_to_next_higher_bytes": 2324,
+      "gap_to_next_lower_bytes": null,
+      "class": "INFERRED_MAX_EXTENT",
+      "extent_basis": "the next known static object above, ASSUMING the two do not overlap; an upper bound only"
+    },
+    {
+      "table_offset": "0x18",
+      "rom_address": "0x08054FD4",
+      "value": "0x03001C4C",
+      "raw": 50338892,
+      "region": "IWRAM",
+      "ascending_position": 4,
+      "nearest_lower_static_object": "0x030019A4",
+      "nearest_higher_static_object": "0x03002A64",
+      "gap_to_next_higher_bytes": 3608,
+      "gap_to_next_lower_bytes": 680,
+      "class": "INFERRED_MAX_EXTENT",
+      "extent_basis": "the next known static object above, ASSUMING the two do not overlap; an upper bound only"
+    },
+    {
+      "table_offset": "0x1C",
+      "rom_address": "0x08054FD8",
+      "value": "0x03002BAC",
+      "raw": 50342828,
+      "region": "IWRAM",
+      "ascending_position": 6,
+      "nearest_lower_static_object": "0x03002A64",
+      "nearest_higher_static_object": "0x03002BD8",
+      "gap_to_next_higher_bytes": 44,
+      "gap_to_next_lower_bytes": 328,
+      "class": "INFERRED_MAX_EXTENT",
+      "extent_basis": "the next known static object above, ASSUMING the two do not overlap; an upper bound only"
+    },
+    {
+      "table_offset": "0x20",
+      "rom_address": "0x08054FDC",
+      "value": "0x03002BD8",
+      "raw": 50342872,
+      "region": "IWRAM",
+      "ascending_position": 7,
+      "nearest_lower_static_object": "0x03002BAC",
+      "nearest_higher_static_object": "0x03003300",
+      "gap_to_next_higher_bytes": 1832,
+      "gap_to_next_lower_bytes": 44,
+      "class": "INFERRED_MAX_EXTENT",
+      "extent_basis": "the next known static object above, ASSUMING the two do not overlap; an upper bound only"
+    },
+    {
+      "table_offset": "0x24",
+      "rom_address": "0x08054FE0",
+      "value": "0x030019A4",
+      "raw": 50338212,
+      "region": "IWRAM",
+      "ascending_position": 3,
+      "nearest_lower_static_object": "0x03001990",
+      "nearest_higher_static_object": "0x03001C4C",
+      "gap_to_next_higher_bytes": 680,
+      "gap_to_next_lower_bytes": 20,
+      "class": "INFERRED_MAX_EXTENT",
+      "extent_basis": "the next known static object above, ASSUMING the two do not overlap; an upper bound only"
+    },
+    {
+      "table_offset": "0x28",
+      "rom_address": "0x08054FE4",
+      "value": "0x03002A64",
+      "raw": 50342500,
+      "region": "IWRAM",
+      "ascending_position": 5,
+      "nearest_lower_static_object": "0x03001C4C",
+      "nearest_higher_static_object": "0x03002BAC",
+      "gap_to_next_higher_bytes": 328,
+      "gap_to_next_lower_bytes": 3608,
+      "class": "INFERRED_MAX_EXTENT",
+      "extent_basis": "the next known static object above, ASSUMING the two do not overlap; an upper bound only"
+    }
+  ],
+  "terminator": {
+    "table_offset": "0x2C",
+    "rom_address": "0x08054FE8",
+    "value": "0x00000000",
+    "raw": 0,
+    "region": null
+  },
+  "validation": {
+    "non_zero_entry_count": 11,
+    "all_values_unique": true,
+    "table_order_equals_memory_order": false,
+    "table_order_note": "the table is NOT sorted by address, so table order and memory order are different and both are recorded",
+    "regions_present": [
+      "IWRAM"
+    ],
+    "entries_outside_valid_gba_ram": [],
+    "any_outside_valid_ram": false,
+    "all_in_IWRAM": true,
+    "smallest_gap_bytes": 12,
+    "largest_gap_bytes": 3608
+  },
+  "sorted_memory_layout": [
+    {
+      "ascending_position": 0,
+      "table_offset": "0x14",
+      "target": "0x03001068",
+      "gap_to_next_higher_bytes": 2324,
+      "class": "INFERRED_MAX_EXTENT"
+    },
+    {
+      "ascending_position": 1,
+      "table_offset": "0x0C",
+      "target": "0x0300197C",
+      "gap_to_next_higher_bytes": 20,
+      "class": "INFERRED_MAX_EXTENT"
+    },
+    {
+      "ascending_position": 2,
+      "table_offset": "0x10",
+      "target": "0x03001990",
+      "gap_to_next_higher_bytes": 20,
+      "class": "INFERRED_MAX_EXTENT"
+    },
+    {
+      "ascending_position": 3,
+      "table_offset": "0x24",
+      "target": "0x030019A4",
+      "gap_to_next_higher_bytes": 680,
+      "class": "INFERRED_MAX_EXTENT"
+    },
+    {
+      "ascending_position": 4,
+      "table_offset": "0x18",
+      "target": "0x03001C4C",
+      "gap_to_next_higher_bytes": 3608,
+      "class": "INFERRED_MAX_EXTENT"
+    },
+    {
+      "ascending_position": 5,
+      "table_offset": "0x28",
+      "target": "0x03002A64",
+      "gap_to_next_higher_bytes": 328,
+      "class": "INFERRED_MAX_EXTENT"
+    },
+    {
+      "ascending_position": 6,
+      "table_offset": "0x1C",
+      "target": "0x03002BAC",
+      "gap_to_next_higher_bytes": 44,
+      "class": "INFERRED_MAX_EXTENT"
+    },
+    {
+      "ascending_position": 7,
+      "table_offset": "0x20",
+      "target": "0x03002BD8",
+      "gap_to_next_higher_bytes": 1832,
+      "class": "INFERRED_MAX_EXTENT"
+    },
+    {
+      "ascending_position": 8,
+      "table_offset": "0x00",
+      "target": "0x03003300",
+      "gap_to_next_higher_bytes": 1432,
+      "class": "INFERRED_MAX_EXTENT"
+    },
+    {
+      "ascending_position": 9,
+      "table_offset": "0x04",
+      "target": "0x03003898",
+      "gap_to_next_higher_bytes": 12,
+      "class": "INFERRED_MAX_EXTENT"
+    },
+    {
+      "ascending_position": 10,
+      "table_offset": "0x08",
+      "target": "0x030038A4",
+      "gap_to_next_higher_bytes": null,
+      "class": "PROVEN_START_UNBOUNDED_ABOVE"
+    }
+  ],
+  "focus_object": {
+    "table_offset": "0x14",
+    "rom_address_of_the_entry": "0x08054FD0",
+    "target": "0x03001068",
+    "region": "IWRAM",
+    "nearest_lower_static_object": null,
+    "nearest_higher_static_object": "0x0300197C",
+    "gap_to_next_lower_bytes": null,
+    "gap_to_next_higher_bytes": 2324,
+    "ascending_position": 0,
+    "position_note": "the LOWEST address in the table, so there is no lower static object to bound it from below and the gap above is its only static constraint",
+    "maximum_extent_bytes_under_non_overlap": 2324,
+    "maximum_extent_is_proven": false,
+    "maximum_extent_class": "INFERRED_MAX_EXTENT",
+    "flag_array_start_offset": "0x55",
+    "flag_array_start_address": "0x030010BD",
+    "max_bytes_available_from_the_flag_array_start": 2239,
+    "max_flag_bits_if_the_inferred_extent_held": 17912,
+    "why_this_is_not_proven": "the extent comes only from the next pointer in the SAME table, under an assumption of non-overlap that no code or data establishes. Nothing shows the object fills its interval, and nothing shows the next object starts where its pointer says."
+  },
+  "cross_check_literal_references": [
+    {
+      "table_offset": "0x00",
+      "target": "0x03003300",
+      "literal_word_occurrences_in_the_image": 55,
+      "first_occurrences": [
+        "0x08054FBC",
+        "0x0805561C",
+        "0x080561DC",
+        "0x08070138"
+      ],
+      "referenced_by_code_as_a_constant": true,
+      "note": "one occurrence is the table entry itself; more than one means some other site names the address as a constant"
+    },
+    {
+      "table_offset": "0x04",
+      "target": "0x03003898",
+      "literal_word_occurrences_in_the_image": 83,
+      "first_occurrences": [
+        "0x08054FC0",
+        "0x080561C4",
+        "0x080561E0",
+        "0x0807013C"
+      ],
+      "referenced_by_code_as_a_constant": true,
+      "note": "one occurrence is the table entry itself; more than one means some other site names the address as a constant"
+    },
+    {
+      "table_offset": "0x08",
+      "target": "0x030038A4",
+      "literal_word_occurrences_in_the_image": 5,
+      "first_occurrences": [
+        "0x08054FC4",
+        "0x08055598",
+        "0x080561C8",
+        "0x080716A0"
+      ],
+      "referenced_by_code_as_a_constant": true,
+      "note": "one occurrence is the table entry itself; more than one means some other site names the address as a constant"
+    },
+    {
+      "table_offset": "0x0C",
+      "target": "0x0300197C",
+      "literal_word_occurrences_in_the_image": 10,
+      "first_occurrences": [
+        "0x08054FC8",
+        "0x080555AC",
+        "0x080561F4",
+        "0x080707B8"
+      ],
+      "referenced_by_code_as_a_constant": true,
+      "note": "one occurrence is the table entry itself; more than one means some other site names the address as a constant"
+    },
+    {
+      "table_offset": "0x10",
+      "target": "0x03001990",
+      "literal_word_occurrences_in_the_image": 4,
+      "first_occurrences": [
+        "0x08048260",
+        "0x08054FCC",
+        "0x080716C4",
+        "0x0877B13C"
+      ],
+      "referenced_by_code_as_a_constant": true,
+      "note": "one occurrence is the table entry itself; more than one means some other site names the address as a constant"
+    },
+    {
+      "table_offset": "0x14",
+      "target": "0x03001068",
+      "literal_word_occurrences_in_the_image": 41,
+      "first_occurrences": [
+        "0x080481A4",
+        "0x08054FD0",
+        "0x080555A8",
+        "0x08055618"
+      ],
+      "referenced_by_code_as_a_constant": true,
+      "note": "one occurrence is the table entry itself; more than one means some other site names the address as a constant"
+    },
+    {
+      "table_offset": "0x18",
+      "target": "0x03001C4C",
+      "literal_word_occurrences_in_the_image": 180,
+      "first_occurrences": [
+        "0x08048474",
+        "0x08054FD4",
+        "0x080555B4",
+        "0x080561F8"
+      ],
+      "referenced_by_code_as_a_constant": true,
+      "note": "one occurrence is the table entry itself; more than one means some other site names the address as a constant"
+    },
+    {
+      "table_offset": "0x1C",
+      "target": "0x03002BAC",
+      "literal_word_occurrences_in_the_image": 5,
+      "first_occurrences": [
+        "0x08054FD8",
+        "0x08070170",
+        "0x0807258C",
+        "0x086FDA48"
+      ],
+      "referenced_by_code_as_a_constant": true,
+      "note": "one occurrence is the table entry itself; more than one means some other site names the address as a constant"
+    },
+    {
+      "table_offset": "0x20",
+      "target": "0x03002BD8",
+      "literal_word_occurrences_in_the_image": 15,
+      "first_occurrences": [
+        "0x08048584",
+        "0x08048EA4",
+        "0x08054FDC",
+        "0x08070178"
+      ],
+      "referenced_by_code_as_a_constant": true,
+      "note": "one occurrence is the table entry itself; more than one means some other site names the address as a constant"
+    },
+    {
+      "table_offset": "0x24",
+      "target": "0x030019A4",
+      "literal_word_occurrences_in_the_image": 82,
+      "first_occurrences": [
+        "0x0804828C",
+        "0x08054FE0",
+        "0x080555B0",
+        "0x080561F0"
+      ],
+      "referenced_by_code_as_a_constant": true,
+      "note": "one occurrence is the table entry itself; more than one means some other site names the address as a constant"
+    },
+    {
+      "table_offset": "0x28",
+      "target": "0x03002A64",
+      "literal_word_occurrences_in_the_image": 16,
+      "first_occurrences": [
+        "0x08048490",
+        "0x08054FE4",
+        "0x08070190",
+        "0x080707B4"
+      ],
+      "referenced_by_code_as_a_constant": true,
+      "note": "one occurrence is the table entry itself; more than one means some other site names the address as a constant"
+    }
+  ],
+  "cross_check_conclusion": "Every target was searched for as a literal word in the image. The count includes the table entry itself, so a count above one means another site names that address. This is a consistency check on the interval model, not a proof of any object's size.",
+  "adjacency_is_an_upper_bound_only": "Every interval is classed INFERRED_MAX_EXTENT and bounds its object FROM ABOVE under a non-overlap assumption. No interval proves an object's size, and no interval proves an object fills it.",
+  "flag_array_bound_status": "STILL NOT PROVEN. The flag array at 0x030010BD now has an INFERRED maximum of 0x8BF bytes (17,912 bits) from the static layout, which is a stronger statement than before but remains an upper bound under an unproven non-overlap assumption.",
+  "proven": [
+    "the table lives at 0x08054FBC and holds 11 non-zero words",
+    "all values are unique",
+    "every value is an IWRAM address",
+    "the table is zero-terminated",
+    "the +0x14 entry contains the focus object's address"
+  ],
+  "inferred": [
+    "every object's maximum extent, from the gap to the next object above it",
+    "the focus object's maximum extent and the flag array's maximum capacity"
+  ],
+  "unproven": [
+    "any object's exact size",
+    "that any two objects are disjoint",
+    "that any object fills its interval",
+    "the flag array's true upper bound"
+  ]
+}

@@ -1,0 +1,342 @@
+{
+  "schema": 1,
+  "ticket": "DECOMP-LIFT-COLLECTION-INSERT3-001",
+  "generated_by": "tools/buusfury/lift.py",
+  "source_sha1": "f1c4b07554d2a3b1ad2f325307051e775ce68087",
+  "target": {
+    "id": "collectionflush3",
+    "name": "ByteCodeInterpreter third-region drain (sub_0801157E)",
+    "role": "drain the third region and zero its count",
+    "notes": "sub_0801157E, 50 bytes and 23 instructions, one terminator at 0x080115AE. THE THIRD REGION'S SHAPE, PROVEN FROM THIS ROUTINE'S OWN INSTRUCTIONS AND NOT FROM SPACING: count at object + 0x208 as a 32-bit word, elements at object + 0x20C + 4*i so 32 bits wide, and each element is DEREFERENCED and used as a table pointer, so each is a POINTER to a virtual object - the same element type as the other two collections. The offset is built by `movs r0, #0x41` then `lsls r0, r0, #3`, so it is never a literal and never an immediate displacement. THE METHOD CALLED IS AT table + 0x14, a DIFFERENT slot from the first collection's destructor at +0x04, the second's at +0x04, and the reader's search predicate at +0x24, so the slot is part of this region's identity and is not shared blindly. The traversal is BACKWARD, from count-1 down to 0, the same direction as the reader and opposite to the keyed move. THE OPERATION IS A DRAIN, NOT A POPULATION: it calls one virtual method per element and then writes ZERO to the count; it never writes an element and never increments a count. sub_08011732 contains the IDENTICAL drain-and-zero inline at 0x080117CA..0x08011804, so this is a routine concept rather than incidental cleanup. NO POPULATION PATH EXISTS, AND THAT IS THE FINDING: (a) no instruction in the image accesses the region by an immediate displacement, so the address is always computed; (b) EIGHT SITES IN THE IMAGE BUILD THE CONSTANT 0x208, found by scanning every byte for the movs/lsls pair in all its register forms and all its decompositions. Exactly THREE of them are in the collection cluster and use it as object + 0x208 for the object at 0x03001C4C: this routine at 0x0801158A, sub_08011732 at 0x080117CA, and sub_08011B04 at 0x08011B7A. ALL THREE WRITE ZERO TO THE COUNT AND NONE OF THEM WRITES AN ELEMENT. The other five sites - 0x080344CC, 0x08034A6A, 0x0804843E, 0x0804E9AE and 0x08054492 - are in unrelated routines that build the same numeric offset for other structures, and NONE of the eight performs the append shape (read a count at +0, increment, store an element at +4). An earlier revision of this comment claimed only three routines compute 0x208; that was WRONG and is corrected here. (c) a search of the WHOLE IMAGE for a STORED POINTER to the region found ZERO occurrences of object+0x204, object+0x208 and object+0x20C, so no code can reach it through a pointer either and a generic append could not be aimed at it; (d) sub_08011B04 additionally bulk-fills the ARRAY at object + 0x20C with 0x200 bytes through an IWRAM-INSTALLED function pointer - the `bx pc` trampoline at 0x0804912C jumps to whatever is stored at 0x030007A8 - so that call's argument order is NOT statically resolvable and it is the single writer of the array area this work cannot characterise. The count is therefore zero on every readable path, which makes the drain DEFENSIVE and normally a no-op. NO CAPACITY CHECK and NO NULL CHECK. The object's +0x00 is not touched. The first and second collections are not consulted. UNKNOWN: whether the bulk fill writes elements or unrelated data sharing the address range, what table+0x14 means, and what sub_0803DA62 and the global at 0x08072824 do. No semantic name is assigned and nothing is imported from another title.",
+    "translation_unit": "collectionflush3_tu",
+    "rom_address": "0x0801157E",
+    "file_offset": "0x01157E",
+    "code_end_address": "0x080115B0",
+    "end_address": "0x080115B0",
+    "byte_length": 50,
+    "code_byte_length": 50,
+    "isa": "thumb",
+    "decomp_source": "src/ByteCodeInterpreter_collectionflush3.c",
+    "probe_source": "src/probes/ByteCodeInterpreter_collectionflush3.c",
+    "selftest_source": "src/probes/collectionflush3_selftest.c",
+    "semantic_minimum_checks": 16,
+    "host_build_bits": 32,
+    "original_sha1": "1f494875235b0b97f26d169fdd66c32c8f2409c7"
+  },
+  "boundary_evidence": {
+    "method": "aligned chain-walk from each entry, following local branches",
+    "unit_id": "collectionflush3_tu",
+    "code_extent": "0x0801157E..0x080115B0",
+    "pool_extent": "0x0801180C..0x08011810",
+    "has_literal_pool": true,
+    "pool_is_adjacent_to_code": false,
+    "pool_gap_bytes": 604,
+    "alignment_padding_bytes": null,
+    "functions": [
+      {
+        "start": "0x0801157E",
+        "end": "0x080115B0",
+        "size": 50,
+        "instructions": 23,
+        "role": "drain the third region and zero its count",
+        "terminators": [
+          "0x080115AE"
+        ],
+        "gaps": [],
+        "matches_expected": true
+      }
+    ],
+    "problems": [],
+    "derived_from_rom": true,
+    "not_hand_written": true,
+    "collection_flush3": {
+      "unit_id": "collectionflush3_tu",
+      "extent": "0x0801157E..0x080115B0",
+      "size": 50,
+      "instructions": 23,
+      "third_count_offset": "object + 0x208",
+      "third_values_offset": "object + 0x20C",
+      "element_width_bytes": 4,
+      "elements_are_pointers": true,
+      "count_width_bytes": 4,
+      "built_by_shift_pair": true,
+      "built_by_shift_pair_evidence": "`movs r0, #0x41` then `lsls r0, r0, #3`, so the offset is never a literal and never an immediate displacement",
+      "count_reads": 3,
+      "element_load_displacement": 4,
+      "method_slot": 20,
+      "traversal": "BACKWARD, from count-1 down to 0",
+      "traversal_evidence": "the index is decremented before the loop and the loop continues on `bpl`",
+      "drains_the_third_region": true,
+      "writes_zero_to_the_count": true,
+      "count_stores": 1,
+      "writes_an_element": false,
+      "increments_a_count": false,
+      "touches_the_first_collection": false,
+      "touches_the_second_collection": false,
+      "accesses_object_plus_0x00": false,
+      "has_null_check": false,
+      "has_capacity_check": false,
+      "calls": [
+        {
+          "site": "0x08011586",
+          "target": "0x0803DA62"
+        },
+        {
+          "site": "0x080115A2",
+          "target": "0x08046AA2"
+        }
+      ],
+      "call_count": 2,
+      "distinct_callees": [
+        "0x0803DA62",
+        "0x08046AA2"
+      ],
+      "literal_slots": 1,
+      "has_literal_pool": true,
+      "same_operation_as_the_inline_block_in": "sub_08011732",
+      "effect": "a DRAIN: call table[+0x14] on every element of the third region from the top down, then set the third count to zero",
+      "derived_from_rom": true,
+      "not_hand_written": true
+    }
+  },
+  "verdicts": {
+    "semantic": {
+      "status": "PROVEN",
+      "checks": 16,
+      "failures": 0,
+      "minimum_checks": 16,
+      "host_compiler": "MSVC cl.exe (32-bit)",
+      "detail": "16 behavioural assertions passed with 0 failures (minimum 16)",
+      "measures": "whether the reconstructed C behaves correctly, by RUNNING it"
+    },
+    "modern_build": {
+      "status": "PASS",
+      "detail": "compiled, linked at 0x0801157E and emitted 84 bytes",
+      "measures": "whether the source compiles, links and emits bytes"
+    },
+    "ads_match": {
+      "status": "BLOCKED",
+      "code": "ADS12_LICENSE_UNAVAILABLE",
+      "detail": "an ARM Developer Suite 1.2 installation is present on this machine but the licence file it ships licenses a different product, so the ARM compilers cannot be run. No compile has been attempted and no configuration has been tested. The installation is located through ADS12_ROOT.",
+      "required_to_unblock": [
+        "a licensed ADS 1.2 installation, with ADS12_ROOT pointing at it",
+        "then: python -m buusfury compiler-probe --plan, then --matrix"
+      ],
+      "not_inferable_from_modern_build": true
+    }
+  },
+  "verdicts_are_independent": "SEMANTIC, MODERN_BUILD and ADS_MATCH answer different questions and none is evidence for another. A passing modern build says nothing about the original compiler; a passing semantic run only removes one class of error.",
+  "modern_build": {
+    "status": "PASS",
+    "toolchain": {
+      "family": "GNU Arm Embedded (devkitARM)",
+      "root": "<DEVKITARM>",
+      "prefix": "arm-none-eabi-",
+      "tools": {
+        "gcc": "<DEVKITARM>\\bin\\arm-none-eabi-gcc.exe",
+        "ld": "<DEVKITARM>\\bin\\arm-none-eabi-ld.exe",
+        "objcopy": "<DEVKITARM>\\bin\\arm-none-eabi-objcopy.exe",
+        "objdump": "<DEVKITARM>\\bin\\arm-none-eabi-objdump.exe",
+        "nm": "<DEVKITARM>\\bin\\arm-none-eabi-nm.exe"
+      }
+    },
+    "identity": {
+      "gcc_banner": "arm-none-eabi-gcc.exe (devkitARM) 16.1.0",
+      "gcc_version": "16.1.0",
+      "target_triple": "arm-none-eabi",
+      "binutils_banner": "GNU objdump (GNU Binutils) 2.46.0.20260210",
+      "compiler_family": "gcc",
+      "is_the_original_compiler": false,
+      "why_not": "the original translation unit was built by ARM Developer Suite 1.2 (the surviving command line names tcpp). GCC is a different compiler with a different code generator, so its output cannot establish anything about ADS 1.2."
+    },
+    "target_support": {
+      "supported": true,
+      "cpu": "arm7tdmi",
+      "instruction_set": "thumb",
+      "commands": [
+        "<DEVKITARM>\\bin\\arm-none-eabi-gcc.exe -c -mcpu=arm7tdmi -mthumb -O1 -ffreestanding -fno-common -fno-builtin -o <REPO>\\build\\lift\\collectionflush3\\toolchain-probe\\support_probe.o <REPO>\\build\\lift\\collectionflush3\\toolchain-probe\\support_probe.c"
+      ],
+      "disassembly": [
+        "adds r0, #1",
+        "bx lr"
+      ],
+      "detail": "compiled and disassembled a probe function for ARM7TDMI Thumb: 2 instruction(s), r0 written and a return present"
+    },
+    "compiler_configuration": {
+      "cpu": "arm7tdmi",
+      "instruction_set": "thumb",
+      "optimization": "-O1",
+      "extra_flags": []
+    },
+    "link_origin": "0x0801157E",
+    "external_calls_bound_to_original_addresses": {
+      "sub_0803DA62": "0x0803DA62",
+      "sub_08046AA2": "0x08046AA2"
+    },
+    "detail": "compiled, linked at 0x0801157E and emitted 84 bytes",
+    "build": {
+      "ok": true,
+      "commands": [
+        "<DEVKITARM>\\bin\\arm-none-eabi-gcc.exe -c -mcpu=arm7tdmi -mthumb -O1 -ffreestanding -fno-common -fno-builtin -fomit-frame-pointer -mno-unaligned-access -o <REPO>\\build\\lift\\collectionflush3\\collectionflush3.o <REPO>\\src\\ByteCodeInterpreter_collectionflush3.c",
+        "<DEVKITARM>\\bin\\arm-none-eabi-gcc.exe -c -mcpu=arm7tdmi -mthumb -o <REPO>\\build\\lift\\collectionflush3\\collectionflush3_externs.o -x assembler-with-cpp <REPO>\\build\\lift\\collectionflush3\\collectionflush3_externs.s",
+        "<DEVKITARM>\\bin\\arm-none-eabi-gcc.exe -nostdlib -Wl,-T,<REPO>\\build\\lift\\collectionflush3\\collectionflush3.ld -Wl,-Map,<REPO>\\build\\lift\\collectionflush3\\collectionflush3.map -o <REPO>\\build\\lift\\collectionflush3\\collectionflush3.elf <REPO>\\build\\lift\\collectionflush3\\collectionflush3.o <REPO>\\build\\lift\\collectionflush3\\collectionflush3_externs.o",
+        "<DEVKITARM>\\bin\\arm-none-eabi-objcopy.exe -O binary -j .text -j .rodata <REPO>\\build\\lift\\collectionflush3\\collectionflush3.elf <REPO>\\build\\lift\\collectionflush3\\collectionflush3.bin"
+      ],
+      "produced_byte_length": 84,
+      "symbols": {
+        "sub_0801157E": {
+          "address": "0x08011580",
+          "size": 76
+        }
+      },
+      "diagnostics": ""
+    }
+  },
+  "functions": [
+    {
+      "name": "sub_0801157E",
+      "role": "drain the third region and zero its count",
+      "original": {
+        "start": "0x0801157E",
+        "end": "0x080115B0",
+        "size": 50,
+        "isa": "thumb",
+        "instructions": 23,
+        "first_instruction": "push {r3, r4, r5, lr}",
+        "calls": [
+          "0x0803DA62",
+          "0x08046AA2"
+        ],
+        "literal_slots": [
+          "0x0801180C"
+        ],
+        "returns": 1,
+        "leaf": false,
+        "abi": {
+          "callee_saved_pushed": [
+            "r4",
+            "r5"
+          ],
+          "frame_size_bytes": 0,
+          "written_registers": [
+            "r0",
+            "r1",
+            "r2",
+            "r3",
+            "r4",
+            "r5"
+          ]
+        }
+      },
+      "modern": {
+        "start": "0x08011580",
+        "end": "0x080115CC",
+        "size": 76,
+        "isa": "thumb",
+        "instructions": 36,
+        "first_instruction": "movs r6, r0",
+        "calls": [
+          "0x080115CA",
+          "0x0803DA60"
+        ],
+        "literal_slots": [
+          "0x080115C4"
+        ],
+        "returns": 2,
+        "leaf": false,
+        "abi": {
+          "callee_saved_pushed": [],
+          "frame_size_bytes": 0,
+          "written_registers": [
+            "r0",
+            "r2",
+            "r3",
+            "r4",
+            "r5",
+            "r6",
+            "r7",
+            "r8"
+          ]
+        }
+      },
+      "modern_symbol_present": true,
+      "delta": {
+        "size_bytes": 26,
+        "instructions": 13,
+        "returns": 1,
+        "calls": 0,
+        "literal_slots": 0
+      },
+      "same_extent": false,
+      "byte_identical": false
+    }
+  ],
+  "literal_pools": {
+    "original": {
+      "distinct_slots": 1,
+      "contiguous_runs": [
+        [
+          "0x0801180C",
+          "0x08011810"
+        ]
+      ],
+      "run_count": 1,
+      "shared_pool": false,
+      "shared_pool_applicable": false,
+      "declared_pool": [
+        "0x080115B0",
+        "0x080115B0"
+      ],
+      "declared_slots": [
+        "0x0801180C"
+      ],
+      "declared_slots_used": [
+        "0x0801180C"
+      ],
+      "all_referenced_slots_are_declared": true,
+      "all_declared_slots_are_referenced": true,
+      "undeclared_slots": [],
+      "functions_reaching_it": 1
+    },
+    "modern": {
+      "distinct_slots": 1,
+      "contiguous_runs": [
+        [
+          "0x080115C4",
+          "0x080115C8"
+        ]
+      ],
+      "run_count": 1,
+      "shared_pool": true,
+      "functions_reaching_a_pool": 1
+    },
+    "interpretation": "the original's literals are accounted for by the words the unit declares; the modern build pools differently, which is a structural consequence of the compiler rather than a defect in the reconstruction. It is also why a function with a literal load cannot be compared standalone.",
+    "is_a_match_claim": false
+  },
+  "comparison": {
+    "original_byte_length": 50,
+    "modern_byte_length": 84,
+    "overlap_byte_length": 50,
+    "differing_bytes_in_overlap": 44,
+    "matching_bytes_in_overlap": 6,
+    "original_only_bytes": 0,
+    "modern_only_bytes": 34,
+    "original_instruction_spans": 23,
+    "matching_instruction_spans": 0,
+    "differing_instruction_spans": 23,
+    "bytes_not_covered_by_an_original_instruction": 0,
+    "byte_identical": false,
+    "is_a_match_claim": false,
+    "match_claim_note": "MEASUREMENT ONLY. This compares a modern GCC build against the cartridge. A modern compiler is not the original compiler, so a difference here is expected and proves nothing; an identity here would also prove nothing about ADS 1.2. ADS_MATCH stays BLOCKED."
+  },
+  "semantic_check": {
+    "status": "PROVEN",
+    "checks": 16,
+    "failures": 0,
+    "minimum_checks": 16,
+    "host_compiler": "MSVC cl.exe (32-bit)",
+    "host_build_bits": 32,
+    "detail": "16 behavioural assertions passed with 0 failures (minimum 16)",
+    "output": "PASS: 16 check(s), 0 failure(s)\n"
+  }
+}

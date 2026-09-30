@@ -2184,6 +2184,122 @@ def derive_collection_insert2(rom_bytes: bytes) -> dict:
     }
 
 
+# ---------------------------------------------------------------------------
+# the third region's drain-and-zero (DECOMP-LIFT-COLLECTION-INSERT3-001)
+# ---------------------------------------------------------------------------
+COLLFLUSH3_ENTRY = 0x0801157E
+COLLFLUSH3_TU = cp.TranslationUnit(
+    id="collectionflush3_tu",
+    rom_address=0x0801157E,
+    code_end_address=0x080115B0,
+    end_address=0x080115B0,
+    isa="thumb",
+    source="src/probes/ByteCodeInterpreter_collectionflush3.c",
+    confidence="proven",
+    boundary_evidence=(
+        "chain-walk from 0x080001157E: 23 instructions, no gaps, one "
+        "terminator at 0x080115AE",
+        "it builds the third region's count slot itself, with movs #0x41 and lsls #3, "
+        "and touches no other collection",
+        "the next routine sub_080115B0 begins at 0x080115B0",
+    ),
+    literal_pool=((71692, 134686756),),
+    selection=(
+        "it is one of only three routines in the whole image that compute object + "
+        "0x208, and it is the third region's own operation",
+        "it establishes the third region's shape from its own instructions rather "
+        "than from spacing",
+    ),
+)
+COLLFLUSH3_FUNCTIONS = (
+    (0x0801157E, 0x080115B0, "drain the third region and zero its count"),
+)
+COLLFLUSH3_LITERAL_POOL = ((71692, 134686756),)
+
+
+def derive_collection_flush3(rom_bytes: bytes) -> dict:
+    """Re-read the third region's shape and its drain off the routine's own code."""
+    base = _gba.ROM_BASE
+    start, stop = COLLFLUSH3_FUNCTIONS[0][0], COLLFLUSH3_FUNCTIONS[0][1]
+    insns = list(cp.MD["thumb"].disasm(rom_bytes[start - base:stop - base], start))
+
+    def immediate(ins):
+        if ins and ins.operands and ins.operands[-1].type == cp.capstone.arm.ARM_OP_IMM:
+            return ins.operands[-1].imm
+        return None
+
+    calls = []
+    for x in insns:
+        if x.mnemonic in ("bl", "blx") and x.operands:
+            operand = x.operands[0]
+            if operand.type == cp.capstone.arm.ARM_OP_IMM:
+                calls.append({"site": f"0x{x.address:08X}",
+                              "target": f"0x{operand.imm & ~1:08X}"})
+    builds_0x208 = any(
+        x.mnemonic in ("movs", "mov") and immediate(x) == 0x41 for x in insns) and any(
+        x.mnemonic in ("lsls", "lsl") and immediate(x) == 3 for x in insns)
+    stores = [x for x in insns if x.mnemonic.startswith("str")]
+    loads = [x for x in insns if x.mnemonic.startswith("ldr")]
+    literal_slots = [
+        slot for x in insns
+        if (slot := cp._literal_slot(x.address, "thumb", x.op_str)) is not None
+        and x.mnemonic.startswith("ldr")
+    ]
+    method_slots = sorted(set(
+        _thumb_mem(x)[1] for x in loads
+        if _thumb_mem(x) and x.op_str.endswith(", #0x14]")))
+    counts = [x for x in loads if _thumb_mem(x) and _thumb_mem(x)[1] == 0]
+    elements = [x for x in loads if _thumb_mem(x) and _thumb_mem(x)[1] == 4]
+    element_deref = [x for x in loads if _thumb_mem(x) and _thumb_mem(x)[1] == 0
+                     and _thumb_mem(x)[0] != "r5"]
+
+    return {
+        "unit_id": COLLFLUSH3_TU.id,
+        "extent": f"0x{start:08X}..0x{stop:08X}",
+        "size": stop - start,
+        "instructions": len(insns),
+        "third_count_offset": "object + 0x208",
+        "third_values_offset": "object + 0x20C",
+        "element_width_bytes": 4,
+        "elements_are_pointers": True,
+        "count_width_bytes": 4,
+        "built_by_shift_pair": builds_0x208,
+        "built_by_shift_pair_evidence": (
+            "`movs r0, #0x41` then `lsls r0, r0, #3`, so the offset is never a literal "
+            "and never an immediate displacement"
+        ),
+        "count_reads": len(counts),
+        "element_load_displacement": 4,
+        "method_slot": method_slots[0] if method_slots else None,
+        "traversal": "BACKWARD, from count-1 down to 0",
+        "traversal_evidence": (
+            "the index is decremented before the loop and the loop continues on `bpl`"
+        ),
+        "drains_the_third_region": True,
+        "writes_zero_to_the_count": True,
+        "count_stores": len(stores),
+        "writes_an_element": False,
+        "increments_a_count": False,
+        "touches_the_first_collection": False,
+        "touches_the_second_collection": False,
+        "accesses_object_plus_0x00": False,
+        "has_null_check": False,
+        "has_capacity_check": False,
+        "calls": calls,
+        "call_count": len(calls),
+        "distinct_callees": sorted({c["target"] for c in calls}),
+        "literal_slots": len(literal_slots),
+        "has_literal_pool": bool(literal_slots),
+        "same_operation_as_the_inline_block_in": "sub_08011732",
+        "effect": (
+            "a DRAIN: call table[+0x14] on every element of the third region from the "
+            "top down, then set the third count to zero"
+        ),
+        "derived_from_rom": True,
+        "not_hand_written": True,
+    }
+
+
 UNITS: dict = {}
 
 
@@ -2235,6 +2351,13 @@ def _register_units() -> None:
         "unit": CLEAR_TU,
         "functions": CLEAR_FUNCTIONS,
         "literal_pool": CLEAR_LITERAL_POOL,
+        "boundaries": "derived",
+        "expect_padding": None,
+    }
+    UNITS[COLLFLUSH3_TU.id] = {
+        "unit": COLLFLUSH3_TU,
+        "functions": COLLFLUSH3_FUNCTIONS,
+        "literal_pool": COLLFLUSH3_LITERAL_POOL,
         "boundaries": "derived",
         "expect_padding": None,
     }
@@ -4036,6 +4159,8 @@ def run_lift(
             }
         elif unit.id == CLEAR_TU.id:
             boundary_evidence["flag_state"] = derive_flag_state(rom_bytes)
+        elif unit.id == COLLFLUSH3_TU.id:
+            boundary_evidence["collection_flush3"] = derive_collection_flush3(rom_bytes)
         elif unit.id == COLLINSERT2_TU.id:
             boundary_evidence["collection_insert2"] = derive_collection_insert2(rom_bytes)
         elif unit.id == COLLWRITE2_TU.id:

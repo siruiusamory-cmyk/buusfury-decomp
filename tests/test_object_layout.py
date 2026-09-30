@@ -168,9 +168,13 @@ def test_the_artifact_is_environment_independent(census):
 
 def test_the_generator_is_committed(census):
     """The census must be reproducible, so its generator ships with it."""
-    generator = identity.REPO_ROOT / "build" / "gen_object_map.py"
+    # The generator must live OUTSIDE build/, which is gitignored: a generator
+    # under build/ is not committed, so the census would not be reproducible.
+    generator = identity.REPO_ROOT / "tools" / "buusfury" / "gen_object_map.py"
     assert generator.is_file(), "the committed census has no committed generator"
-    assert census["generated_by"] == "build/gen_object_map.py"
+    assert census["generated_by"] == "tools/buusfury/gen_object_map.py"
+    assert not (identity.REPO_ROOT / "build" / "gen_object_map.py").exists(), \
+        "the generator must not live under the gitignored build/"
 
 
 def test_no_new_lift_target_was_added():

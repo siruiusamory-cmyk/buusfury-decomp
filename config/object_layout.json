@@ -1,5 +1,5 @@
 {
-  "generated_by": "build/gen_object_map.py",
+  "generated_by": "tools/buusfury/gen_object_map.py",
   "object_expression": "*(0x08054FBC + 0x14)",
   "global_struct": "0x08054FBC",
   "method": "walk every reachable function; find `ldr rG,[pc,#N]` whose literal is 0x08054FBC; require a ldr of [rG,#0x14] within three instructions; then track the register the object lands in FORWARD through simple copies and adds, and record every ldr/str whose base is in that derived set",

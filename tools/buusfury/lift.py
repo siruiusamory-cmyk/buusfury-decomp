@@ -1958,6 +1958,12 @@ COLLWRITE2_FUNCTIONS = (
 COLLWRITE2_LITERAL_POOL = ((0x11A9C, 0x0000040C),)
 
 
+
+def _u32_at(rom_bytes: bytes, address: int) -> int:
+    """Little-endian 32-bit word at a ROM address."""
+    base = _gba.ROM_BASE
+    return int.from_bytes(rom_bytes[address - base:address - base + 4], "little")
+
 def derive_collection_write2(rom_bytes: bytes) -> dict:
     """Re-read the keyed move off the routine's own instructions."""
     base = _gba.ROM_BASE
@@ -1980,7 +1986,19 @@ def derive_collection_write2(rom_bytes: bytes) -> dict:
                               "target": f"0x{operand.imm & ~1:08X}"})
     counts = [x for x in insns if x.mnemonic == "ldr" and _thumb_mem(x)
               and _thumb_mem(x)[1] == 4]
-    second = [x for x in insns if x.mnemonic == "adds" and immediate(x) == 0x40C]
+    # The offset is folded into the base with `adds r0, r0, r2` where r2 holds the
+    # 0x40C literal, so the detector must follow the REGISTER, not look for an
+    # immediate add. The earlier immediate-only version reported this as False.
+    second_reg = None
+    for x in insns:
+        if x.mnemonic.startswith("ldr"):
+            slot = cp._literal_slot(x.address, "thumb", x.op_str)
+            if slot is not None and _u32_at(rom_bytes, slot) == 0x40C:
+                second_reg = _thumb_dst(x)
+                break
+    second = [x for x in insns
+              if x.mnemonic == "adds" and second_reg is not None
+              and second_reg in x.op_str and x.op_str.endswith(", " + second_reg)]
     compares = [x for x in insns if x.mnemonic == "cmp"]
     forward = [x for x in insns if x.mnemonic == "bgt"]
     literal_slots = [
@@ -2000,8 +2018,9 @@ def derive_collection_write2(rom_bytes: bytes) -> dict:
         "second_collection_count_offset": "object + 0x40C",
         "second_collection_values_offset": "object + 0x410",
         "second_collection_reached_by": (
-            "the base is computed once, at the `adds r0, r0, #0x40C`, and every access "
-            "afterwards goes through that register"
+            "the base is computed once: the 0x40C literal is loaded into a register and "
+            "then added with `adds r0, r0, r2`, and every access afterwards goes through "
+            "that register rather than through a displacement"
         ),
         "second_collection_offset_folded_into_the_base": bool(second),
         "scan_direction": "FORWARD from index 0, so the FIRST element equal to the key wins",

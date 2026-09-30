@@ -131,7 +131,7 @@ Two independent facts settle it, and neither needs an external register layout:
 2. With `CNT_L = 0x0401` read as 1,025 **words**, the copy ends at `0x087B89A8`,
    exactly where the `0xFF` fill begins, *and* at IWRAM `0x03001004`, exactly where
    the first setup's destination begins. Read as 2,050 bytes it ends at
-   `0x087B81A6`, in the middle of a function, and leaves eight of the thirteen
+   `0x087B81A6`, in the middle of a function, and leaves three of the thirteen
    ROM-side Thumb-to-ARM veneers pointing outside the copied block - at addresses
    the ROM itself branches to.
 

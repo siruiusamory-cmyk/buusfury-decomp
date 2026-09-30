@@ -174,7 +174,21 @@
             "iwram_ends_at_the_second_region": false
           }
         },
-        "transfer_width_decided_by": "the 32-bit reading is the one whose length ends both at the first byte of the 0xFF fill in ROM and at the destination of the first DMA in IWRAM; the 16-bit reading leaves eight of the thirteen veneer destinations outside the copied block",
+        "transfer_width_decided_by": "the 32-bit reading is the one whose length ends both at the first byte of the 0xFF fill in ROM and at the destination of the first DMA in IWRAM; the 16-bit reading ends in the middle of a function and leaves 3 of the thirteen veneer destinations outside the copied block (0x03000858, 0x03000A4C, 0x03000CA0)",
+        "veneer_destinations_outside_the_16_bit_reading": [
+          {
+            "iwram": "0x03000858",
+            "rom": "0x087B81FC"
+          },
+          {
+            "iwram": "0x03000A4C",
+            "rom": "0x087B83F0"
+          },
+          {
+            "iwram": "0x03000CA0",
+            "rom": "0x087B8644"
+          }
+        ],
         "bytes_sha1": "99b20b07fe643fbc3c9802f9288efa8682a02782"
       },
       "dma3_setups_in_the_reset_routine": [
@@ -2487,7 +2501,7 @@
       "words_naming_the_block_anywhere_in_it": {
         "distinct_value_count": 129,
         "total_words": 257,
-        "method": "every four-byte-aligned offset of the image is read as a little-endian 32-bit word and kept when it lies in [0x03000000, 0x03001004). This finds LITERALS only, and most of the image is compressed data where four bytes match a given address by chance, so the per-slot census above is the decision-relevant one and this is only a summary.",
+        "method": "every four-byte-aligned offset of the image is read as a little-endian 32-bit word and kept when it lies in [0x03000000, 0x03001004). This is a LOWER BOUND: a second pass at every 2-byte-aligned offset finds 225 values over 533 windows against 129 over 257, the difference being 96 values that occur at an odd offset only. Most of the image is compressed data, where four bytes match a given address by chance, so the per-slot census above is the decision-relevant one and this is a summary.",
         "distinct_values": {
           "0x03000000": 23,
           "0x03000001": 5,

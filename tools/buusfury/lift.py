@@ -42,6 +42,7 @@ import json
 import os
 import re
 import shutil
+import struct
 import subprocess
 from pathlib import Path
 
@@ -2394,6 +2395,102 @@ IWRAM_SLOT_FILL_WORD = 0x030007A8
 IWRAM_SLOT_COPY_HALF = 0x030007FC
 IWRAM_SLOT_FILL_HALF = 0x03000858
 
+# ---------------------------------------------------------------------------
+# the dispatch and IRQ subsystem of the same block  (DECOMP-IWRAM-DISPATCH-001)
+# ---------------------------------------------------------------------------
+# The block's IRQ dispatcher, and the routes into the block that are NOT the
+# Thumb-to-ARM veneer family. The dispatcher is the only part of the block whose
+# entry is a hardware vector rather than a call site, so its unit is the
+# contiguous ARM body from the dispatcher entry to the `bx lr` that ends the
+# restore path, plus the single literal it loads.
+IWRAM_DISPATCH_ROM = 0x087B8510
+IWRAM_DISPATCH_CODE_END = 0x087B863C
+IWRAM_DISPATCH_END = 0x087B8644
+IWRAM_DISPATCH_LITERAL = 0x087B8640
+IWRAM_DISPATCH_ENTRY = 0x03000B6C
+IWRAM_VECTOR_TABLE = 0x03000FB0
+IWRAM_VECTOR_TABLE_ROM = 0x087B8954
+IWRAM_PENDING_WORD = 0x03000FE8
+IWRAM_HANDLER_RETURN_ROM = 0x087B863C   # Thumb halfword 0x4720 `bx r4`
+IWRAM_HANDLER_RETURN = 0x03000C98
+IWRAM_BIOS_IRQ_POINTER = 0x03007FFC
+ROM_IRQ_NULL_HANDLER = 0x0803F3D8
+ROM_IRQ_INSTALL = 0x0803F3DA
+GBA_REG_IE = 0x04000200
+GBA_REG_IF = 0x04000202
+GBA_REG_IME = 0x04000208
+#: ROM literal-pool words that name an IWRAM address instead of going through a
+#: veneer. Re-derived below; named here only for the unit's evidence string.
+IWRAM_STORED_POINTER_SITES = (0x0803E36C, 0x0803F3BC, 0x0803F434)
+
+IWRAM_DISPATCH_TU = cp.TranslationUnit(
+    id="iwram_dispatch_tu",
+    rom_address=IWRAM_DISPATCH_ROM,
+    code_end_address=IWRAM_DISPATCH_CODE_END,
+    end_address=IWRAM_DISPATCH_END,
+    isa="arm",
+    source="src/probes/IwramDispatch.c",
+    confidence="proven",
+    boundary_evidence=(
+        "the entry is not a call site: the Thumb routine at ROM 0x0803F3DA "
+        "stores the IWRAM address 0x03000B6C into the GBA BIOS IRQ vector "
+        "pointer, which it computes as 0x03007FC0 + 0x3C",
+        "the body is ARM and its extent is closed by an aligned chain-walk: the "
+        "last instruction, `bx lr` at 0x087B8638, is reached through the "
+        "dispatcher's own zero-test exit, and the walk reaches every word of "
+        "0x087B8510..0x087B863C with no gap once the pc-relative `add r4, pc, #0` "
+        "at 0x087B8618 is followed as a successor - that add is the return point "
+        "the handler's Thumb trampoline jumps back to",
+        "the byte after the body, 0x087B863C, is the Thumb halfword 0x4720 "
+        "(`bx r4`) the handler returns through, and 0x087B8640 is the one word "
+        "the routine loads pc-relatively (0x03000FB0, the vector table base); "
+        "0x087B8644 begins the next function, which the veneer at 0x080491A8 "
+        "enters",
+        "the region 0x7B79A4..0x7B89A8 is `code`, `high` confidence, "
+        "`executable: confirmed`, `isa: arm` in config/rom_map.json",
+    ),
+    literal_pool=((IWRAM_DISPATCH_LITERAL - _gba.ROM_BASE, IWRAM_VECTOR_TABLE),),
+    selection=(
+        "exactly one 32-bit word in the whole image is the IWRAM address "
+        "0x03000B6C, at ROM 0x0803F434, and exactly one instruction reads that "
+        "slot, at 0x0803F3DA",
+        "the 14-entry vector table the dispatcher indexes lives on top of it at "
+        "IWRAM 0x03000FB0 and every slot starts at the one-instruction Thumb "
+        "stub 0x0803F3D9",
+        "the routine reads REG_IE at 0x04000200 and REG_IME at 0x04000208, so it "
+        "is the machine's interrupt entry rather than an ordinary subroutine",
+    ),
+)
+
+#: (start, end, role) per function, re-derived from the ROM on every run.
+IWRAM_DISPATCH_FUNCTIONS = (
+    (
+        IWRAM_DISPATCH_ROM,
+        IWRAM_DISPATCH_CODE_END,
+        "IRQ dispatch: IE/IF priority scan, acknowledge, vector call, restore",
+    ),
+)
+
+IWRAM_DISPATCH_LITERAL_POOL = (
+    (IWRAM_DISPATCH_LITERAL - _gba.ROM_BASE, IWRAM_VECTOR_TABLE),
+)
+
+#: First byte of the block's .data tail: the code half is 0x03000000..0x03000F44.
+CODE_END_IWRAM = 0x03000F44
+#: The code half's own literal pools sit inside the code region, so "reached by
+#: the walk" and "read as a literal" together have to explain every word.
+IW_ROM_START = IWRAM_ROM_SOURCE
+
+
+def iwram_rom(address: int) -> int:
+    """The ROM address holding the byte the block has at `address`."""
+    return IWRAM_ROM_SOURCE + (address - IWRAM_BASE)
+
+
+def rom_iwram(address: int) -> int:
+    """The IWRAM address the block gives to the byte at ROM `address`."""
+    return IWRAM_BASE + (address - IWRAM_ROM_SOURCE)
+
 
 def _arm_immediate(word: int) -> int:
     """The value an ARM data-processing immediate encodes.
@@ -2426,9 +2523,13 @@ def derive_iwram_runtime(rom_bytes: bytes) -> dict:
     otherwise have to be assumed. It is not assumed: DMA3CNT_L = 0x0401 and the
     32-bit reading gives 4100 bytes, which ends exactly at the first byte of the
     0xFF fill in ROM AND exactly at the destination of the first DMA in IWRAM,
-    while the 16-bit reading gives 2050 bytes and leaves eight of the thirteen
-    veneer destinations outside the copied block - destinations the ROM itself
-    branches to. Both candidates are reported with that accounting.
+    while the 16-bit reading gives 2050 bytes, ends in the middle of a function,
+    and leaves THREE of the thirteen veneer destinations outside the copied block
+    - 0x03000858, 0x03000A4C and 0x03000CA0 - which the ROM itself branches to.
+    Both candidates are reported with that accounting, and the count is derived
+    from the destination list rather than restated: it was carried as "eight" in
+    this docstring, in docs/LIFT_IWRAM_RUNTIME.md and in the report until this
+    ticket measured it.
     """
     base = _gba.ROM_BASE
     md = cp.MD["arm"]
@@ -2762,6 +2863,21 @@ def derive_iwram_runtime(rom_bytes: bytes) -> dict:
             f"0x{address:08X} != 0x{last_end:08X}"
         )
 
+    # Which veneer destinations the 16-bit reading of the same control word
+    # would leave outside the copied block. This number was carried as prose
+    # ("eight") in a docstring, a document and this report until
+    # DECOMP-IWRAM-DISPATCH-001 measured it; it is derived here so it cannot
+    # drift again.
+    end_16 = source_address + count * 2
+    outside_16bit = sorted(
+        (
+            entry["destination"],
+            iwram_rom(int(entry["destination"], 16)),
+        )
+        for entry in installed
+        if iwram_rom(int(entry["destination"], 16)) >= end_16
+    )
+
     return {
         "method": (
             "the DMA3 register writes are decoded from the reset routine's own "
@@ -2805,9 +2921,21 @@ def derive_iwram_runtime(rom_bytes: bytes) -> dict:
             "transfer_width_decided_by": (
                 "the 32-bit reading is the one whose length ends both at the "
                 "first byte of the 0xFF fill in ROM and at the destination of "
-                "the first DMA in IWRAM; the 16-bit reading leaves eight of the "
-                "thirteen veneer destinations outside the copied block"
+                "the first DMA in IWRAM; the 16-bit reading ends in the middle "
+                "of a function and leaves %d of the thirteen veneer "
+                "destinations outside the copied block (%s)"
+                % (
+                    len(outside_16bit),
+                    ", ".join(destination for destination, _ in outside_16bit),
+                )
             ),
+            "veneer_destinations_outside_the_16_bit_reading": [
+                {
+                    "iwram": destination,
+                    "rom": f"0x{rom_address:08X}",
+                }
+                for destination, rom_address in outside_16bit
+            ],
             "bytes_sha1": __import__("hashlib").sha1(
                 rom_bytes[IWRAM_ROM_SOURCE - base : IWRAM_ROM_END - base]
             ).hexdigest(),
@@ -2853,10 +2981,12 @@ def derive_iwram_runtime(rom_bytes: bytes) -> dict:
             "method": (
                 "every four-byte-aligned offset of the image is read as a "
                 "little-endian 32-bit word and kept when it lies in "
-                "[0x03000000, 0x03001004). This finds LITERALS only, and most of "
-                "the image is compressed data where four bytes match a given "
-                "address by chance, so the per-slot census above is the "
-                "decision-relevant one and this is only a summary."
+                "[0x03000000, 0x03001004). This is a LOWER BOUND: a second pass at "
+                "every 2-byte-aligned offset finds 225 values over 533 windows "
+                "against 129 over 257, the difference being 96 values that occur "
+                "at an odd offset only. Most of the image is compressed data, "
+                "where four bytes match a given address by chance, so the per-slot "
+                "census above is the decision-relevant one and this is a summary."
             ),
             "distinct_values": {
                 f"0x{value:08X}": count for value, count in sorted(range_values.items())
@@ -2865,6 +2995,1220 @@ def derive_iwram_runtime(rom_bytes: bytes) -> dict:
         "derived_from_rom": True,
         "not_hand_written": True,
     }
+
+
+def _u32_read(rom_bytes: bytes, address: int) -> int:
+    offset = address - _gba.ROM_BASE
+    return int.from_bytes(rom_bytes[offset : offset + 4], "little")
+
+
+def _one_arm(rom_bytes: bytes, address: int):
+    """Decode exactly one ARM word.
+
+    `MD.disasm` stops at the first word it cannot decode, so a region that
+    contains a single NV-condition word silently truncates a linear sweep.
+    One word at a time has no such failure mode.
+    """
+    offset = address - _gba.ROM_BASE
+    if offset < 0 or offset + 4 > len(rom_bytes):
+        return None
+    for ins in cp.MD["arm"].disasm(rom_bytes[offset : offset + 4], address):
+        return ins
+    return None
+
+
+def _one_thumb(rom_bytes: bytes, address: int):
+    offset = address - _gba.ROM_BASE
+    if offset < 0 or offset + 2 > len(rom_bytes):
+        return None
+    for ins in cp.MD["thumb"].disasm(rom_bytes[offset : offset + 2], address):
+        return ins
+    return None
+
+
+#: The top of the half of the image prior tickets model as game code: the
+#: veneer family ends at 0x080491CC, the native dispatch table at 0x08055360 and
+#: the interpreter's bounding string at 0x0805553C, while the first data table
+#: above is at 0x080561C4. Readers ABOVE this boundary sit in the asset half,
+#: where four bytes spell a plausible IWRAM address by chance; every reader it
+#: keeps was read by hand, and every reader it drops is in an asset region.
+GAME_CODE_HALF_END = 0x08060000
+
+
+def _code_region_end() -> int:
+    """The boundary above which a pc-relative read is a coincidence.
+
+    Stated as a constant rather than derived from config/rom_map.json, because
+    that map classes the installed block itself and a handler cluster at
+    0x087B6904 as `code`, so the map's maximum code end lies above the whole
+    asset half and a derived boundary would accept every coincidence. The map's
+    code regions above the boundary are reported alongside it so the choice is
+    auditable rather than asserted.
+    """
+    return GAME_CODE_HALF_END
+
+
+def _code_regions_above(boundary: int) -> list:
+    document = json.loads((_identity.CONFIG_DIR / "rom_map.json").read_text(encoding="utf-8"))
+    return [
+        {
+            "id": region["id"],
+            "start": region["rom_address_start"],
+            "end": region["rom_address_end"],
+            "classification": region.get("classification"),
+        }
+        for region in document["regions"]
+        if region.get("classification") in ("code", "code_candidate")
+        and int(region["rom_address_start"], 16) >= boundary
+    ]
+
+
+def _iwram_pointer_census(rom_bytes: bytes) -> dict:
+    """Every 4-byte window, at EVERY 2-byte-aligned offset, holding an IWRAM address.
+
+    A 4-byte-aligned sweep is a lower bound and it is not a small one: the same
+    image gives 129 distinct values over 257 windows aligned and 225 over 533 at
+    two-byte alignment. A pointer table based at an odd halfword is invisible to
+    the aligned form, and there is no reason a compiler would align one.
+    """
+    base = _gba.ROM_BASE
+    counted = len(rom_bytes) // 4
+    found: dict[int, list[int]] = {}
+    for shift, count in ((0, counted), (2, counted - 1)):
+        for index, value in enumerate(struct.unpack_from(f"<{count}I", rom_bytes, shift)):
+            if IWRAM_BASE <= value < IWRAM_END:
+                found.setdefault(value, []).append(base + shift + 4 * index)
+    return {value: sorted(set(sites)) for value, sites in found.items()}
+
+
+def _pc_relative_index(rom_bytes: bytes) -> dict:
+    """Every pc-relative read in the image, keyed by the slot it lands on.
+
+    Arithmetic over the encodings rather than a disassembly, so there is no
+    alignment blind spot. This is the question that matters: an address stored in
+    a literal pool is not an entry unless some instruction LOADS it, and the
+    install path for the IRQ vector proves an address can also be COMPUTED.
+
+    Built once and indexed, because a per-slot rescan makes the whole derivation
+    quadratic over an 8 MiB image and it stopped finishing.
+    """
+    base = _gba.ROM_BASE
+    found: dict[int, list] = {}
+
+    def note(slot: int, record: dict):
+        found.setdefault(slot, []).append(record)
+
+    for offset in range(0, len(rom_bytes) - 3, 2):
+        address = base + offset
+        half = int.from_bytes(rom_bytes[offset : offset + 2], "little")
+        if (half & 0xF800) in (0x4800, 0xA000):
+            slot = ((address + 4) & ~3) + (half & 0xFF) * 4
+            note(
+                slot,
+                {
+                    "site": address,
+                    "kind": "thumb-ldr-pc" if half & 0x0800 else "thumb-add-pc",
+                    "encoding": f"0x{half:04X}",
+                },
+            )
+        if offset % 4:
+            continue
+        word = int.from_bytes(rom_bytes[offset : offset + 4], "little")
+        if word >> 28 == 0xF:
+            continue
+        top = (word >> 25) & 0x7
+        if top == 0b010 and not (word & (1 << 25)) and ((word >> 16) & 0xF) == 0xF \
+                and (word & (1 << 24)):
+            up = (word >> 23) & 1
+            immediate = word & 0xFFF
+            slot = address + 8 + (immediate if up else -immediate)
+            note(
+                slot,
+                {
+                    "site": address,
+                    "kind": "arm-ldr-pc" if (word >> 20) & 1 else "arm-str-pc",
+                    "encoding": f"0x{word:08X}",
+                },
+            )
+    return found
+
+
+def _pc_relative_readers(rom_bytes: bytes, slot: int) -> list:
+    """Every instruction whose pc-relative read lands on `slot`."""
+    return _pc_relative_index(rom_bytes).get(slot, [])
+
+
+def _memory_operands(op_str: str):
+    """(source, base, index, immediate) for `rS,[rB,#imm]`, `[rB]` or `[rB,rI]`.
+
+    Splitting the operand text on commas is not safe here: `r0,[r1,#0x3c]` has
+    three comma-separated pieces, and an earlier revision that required exactly
+    two silently dropped every store, which made the whole IRQ install path
+    derive as empty.
+    """
+    if "[" not in op_str or "," not in op_str:
+        return None
+    source, rest = op_str.split(",", 1)
+    if "[" not in rest:
+        return None
+    inside = rest.split("[", 1)[1].split("]", 1)[0]
+    parts = inside.split(",")
+    base = parts[0]
+    index = None
+    immediate = 0
+    if len(parts) > 1:
+        second = parts[1]
+        if second.startswith("#"):
+            try:
+                immediate = int(second[1:], 0)
+            except ValueError:
+                immediate = 0
+        else:
+            index = second
+    return source, base, index, immediate
+
+
+def _thumb_function_start(rom_bytes: bytes, site: int, limit: int = 0x800):
+    """The nearest preceding Thumb prologue that still encloses `site`.
+
+    A backward scan for `push {..., lr}` is only evidence while nothing between
+    it and the site has already left the function, so the scan stops at the
+    first `bx lr` or `pop {..., pc}` it crosses. That makes the answer a bound
+    with a stated rule rather than a guess about where a function starts.
+    """
+    base = _gba.ROM_BASE
+    address = site - 2
+    stop = max(base, site - limit)
+    while address >= stop:
+        half = int.from_bytes(rom_bytes[address - base : address - base + 2], "little")
+        if half == 0x4770 or (half & 0xFF00) == 0xBD00 or (half & 0xFF07) == 0x4700:
+            # A terminator reached first bounds the function from above: the
+            # enclosing unit can only start at the instruction after it. Both
+            # readers of the dispatch slots are prologue-less leaves, so this is
+            # the normal answer here, not the fallback.
+            return address + 2
+        if (half & 0xFE00) == 0xB400:  # push {..}
+            registers = half & 0x01FF
+            if (half & 0x0100) or (registers & 0x80):  # lr set, or pc in list
+                return address
+        address -= 2
+    return None
+
+
+_ARM_BRANCHES = ("b", "bl", "bx", "blx", "bxj")
+
+
+def _arm_successors(rom_bytes: bytes, ins) -> tuple:
+    """(successors, kind, target) for one ARM instruction.
+
+    Capstone reports an ARM branch operand as the ABSOLUTE target, so no pc+8
+    arithmetic belongs here. The instruction ID decides what the instruction is:
+    the mnemonic carries the condition, so `bne` is neither `b` nor a
+    terminator and keying on the text drops every conditional branch - which is
+    exactly what left the dispatcher's own tail unreachable the first time.
+    A conditional `bxne r4` still falls through and must NOT terminate a walk.
+    """
+    address = ins.address
+    mnemonic = ins.mnemonic
+    op_str = ins.op_str.replace(" ", "")
+    fallthrough = address + 4
+    unconditional = mnemonic in ("b", "bl", "bx", "blx", "bxj")
+    ins_id = ins.id
+    if ins_id in (cp.capstone.arm.ARM_INS_B, cp.capstone.arm.ARM_INS_BL) and ins.operands:
+        target = ins.operands[0].imm & 0xFFFFFFFF
+        if ins_id == cp.capstone.arm.ARM_INS_BL:
+            return [fallthrough, target], "call", target
+        return ([target] if unconditional else [target, fallthrough]), "branch", target
+    if ins_id in (cp.capstone.arm.ARM_INS_BX, cp.capstone.arm.ARM_INS_BLX,
+                  cp.capstone.arm.ARM_INS_BXJ):
+        register = op_str.split(",")[0]
+        if register == "lr":
+            return ([] if unconditional else [fallthrough]), "return", None
+        return ([] if unconditional else [fallthrough]), "indirect", None
+    if _is_arm_terminator(ins):
+        return ([] if unconditional else [fallthrough]), "terminator", None
+    if mnemonic.startswith("add") and ",pc," in op_str and ins.operands \
+            and ins.operands[-1].type == cp.capstone.arm.ARM_OP_IMM:
+        target = address + 8 + ins.operands[-1].imm
+        return ([fallthrough, target], "pc_add", target)
+    return [fallthrough], "next", None
+
+
+def _is_arm_terminator(ins) -> bool:
+    mnemonic = ins.mnemonic
+    op_str = ins.op_str.replace(" ", "")
+    if mnemonic in ("bx", "bxj", "blx"):
+        return op_str.split(",")[0] == "lr"
+    if mnemonic.startswith("pop") or mnemonic.startswith("ldm"):
+        return "pc" in op_str.split("{")[-1]
+    if mnemonic.startswith("ldr"):
+        return op_str.split(",")[0] == "pc"
+    if mnemonic.startswith("mov"):
+        return op_str.split(",")[0] == "pc"
+    return False
+
+
+def _arm_literal_value(rom_bytes: bytes, ins):
+    """The value of a pc-relative literal load, or None.
+
+    The two instruction sets differ in where PC points: ARM reads `address + 8`,
+    Thumb reads `(address + 4)` with bit 1 cleared. Using the ARM rule on Thumb
+    code reads a word two bytes into the pool and returns a plausible-looking
+    wrong constant, which is exactly what it did here first.
+    """
+    op_str = ins.op_str.replace(" ", "")
+    if "[pc," not in op_str:
+        return None
+    inner = op_str.split("[pc,", 1)[1].split("]", 1)[0]
+    try:
+        immediate = int(inner.lstrip("#"), 0) if inner.startswith("#") else 0
+    except ValueError:
+        return None
+    if ins.size == 2:
+        slot = ((ins.address + 4) & ~3) + immediate
+    else:
+        slot = ins.address + 8 + immediate
+    return _u32_read(rom_bytes, slot)
+
+
+def derive_iwram_dispatch(rom_bytes: bytes) -> dict:
+    """Derive the block's dispatch and IRQ architecture from the ROM.
+
+    Four questions, each answered by a mechanism rather than by reading a name:
+
+    1. Which routes enter the block? The veneer family answers one half; the
+       other half is every ROM word whose value is an IWRAM address, filtered by
+       the question that actually matters - does an instruction LOAD it.
+    2. Which five functions have no caller inside the block, and what reaches
+       them? Answered by comparing the walk's reachable set against the block's
+       code words minus its literal words.
+    3. What is the IRQ dispatcher's algorithm, its vector table, and its install
+       path? Decoded from its own instruction stream, including the ARM
+       immediate rotation that hides 0x2000 inside `lsls r1, r1, #0xd`.
+    4. What does the internal callgraph look like? An aligned recursive descent
+       over the code half with the function leaders derived, not declared.
+    """
+    runtime = derive_iwram_runtime(rom_bytes)
+    census = _iwram_pointer_census(rom_bytes)
+    readers_index = _pc_relative_index(rom_bytes)
+    code_end = _code_region_end()
+    veneers = runtime["veneers"]["entries"]
+    installed = [entry for entry in veneers if entry["destination_state"] == "arm"]
+
+    # ---- 1. the stored-pointer route --------------------------------------
+    # A word in the image that equals an IWRAM address is only a reference when
+    # an instruction LOADS it, and only a real one when that instruction lies in
+    # the half of the image the structural map calls code.
+    stored = []
+    coincidences = []
+    for value, sites in sorted(census.items()):
+        readers = []
+        for site in sites:
+            for reader in readers_index.get(site, []):
+                record = dict(reader, site=f"0x{reader['site']:08X}")
+                if reader["site"] < code_end or IW_ROM_START <= reader["site"] < IWRAM_ROM_END:
+                    readers.append(record)
+                else:
+                    coincidences.append(
+                        {
+                            "iwram": f"0x{value:08X}",
+                            "slot": f"0x{site:08X}",
+                            "reader": f"0x{reader['site']:08X}",
+                            "kind": reader["kind"],
+                        }
+                    )
+        inside = [s for s in sites if IWRAM_ROM_SOURCE <= s < IWRAM_ROM_END]
+        veneer_literals = {
+            int(entry["entry"], 16) + 8: entry["destination"] for entry in veneers
+        }
+        as_veneer_literal = [
+            f"0x{s:08X}" for s in sites if s in veneer_literals
+        ]
+        stored.append(
+            {
+                "iwram": f"0x{value:08X}",
+                "region_within_the_block": (
+                    "code"
+                    if value < CODE_END_IWRAM
+                    else "data_tail"
+                ),
+                "sites": [f"0x{s:08X}" for s in sites],
+                "sites_inside_the_block": [f"0x{s:08X}" for s in inside],
+                "veneer_literals_that_name_it": as_veneer_literal,
+                "readers": readers,
+                "is_an_entry": bool(readers),
+                "notes": (
+                    "read by a pc-relative load, so this really is a stored "
+                    "pointer; whether it enters code or names a data slot is the "
+                    "region_within_the_block field"
+                    if readers
+                    else "no instruction in the image loads this word, so it is "
+                    "data or a coincidence rather than an entry"
+                ),
+            }
+        )
+    entries = [row for row in stored if row["is_an_entry"]]
+    code_entries = [row for row in entries if row["region_within_the_block"] == "code"]
+    data_entries = [row for row in entries if row["region_within_the_block"] == "data_tail"]
+
+    # ---- 2. the second dispatch path --------------------------------------
+    veneer_destinations = {int(entry["destination"], 16) for entry in installed}
+    second = []
+    for row in code_entries:
+        value = int(row["iwram"], 16)
+        for reader in row["readers"]:
+            site = int(reader["site"], 16)
+            # The slot's own index: the word at `value` is written into an
+            # object field by the reader, which is what makes this an
+            # INSTALLATION rather than a call.
+            target_field, store_site = None, None
+            start = _thumb_function_start(rom_bytes, site)
+            if start is not None:
+                tracked: dict[str, int] = {}
+                address = start
+                while address < site + 0x40:
+                    ins = _one_thumb(rom_bytes, address)
+                    if ins is None:
+                        break
+                    literal = _arm_literal_value(rom_bytes, ins)
+                    op = ins.op_str.replace(" ", "")
+                    if literal is not None and op.startswith("r") and "," in op:
+                        tracked[op.split(",")[0]] = literal
+                    if ins.mnemonic == "str" and not ins.mnemonic.startswith("strh"):
+                        parsed = _memory_operands(op)
+                        if parsed is not None:
+                            source, base, _index, immediate = parsed
+                            base_value = tracked.get(base)
+                            if base_value is not None and tracked.get(source) == value:
+                                target_field = base_value + immediate
+                                store_site = address
+                    address += ins.size
+            second.append(
+                {
+                    "iwram": row["iwram"],
+                    "rom": f"0x{IWRAM_ROM_SOURCE + (value - IWRAM_BASE):08X}",
+                    "route": (
+                        "veneer" if value in veneer_destinations else "stored_pointer"
+                    ),
+                    "slot_rom": next(
+                        (s for s in row["sites"]
+                         if not (IW_ROM_START <= int(s, 16) < IWRAM_ROM_END)), row["sites"][0]
+                    ),
+                    "reader": reader["site"],
+                    "reader_kind": reader["kind"],
+                    "reader_function_start": None if start is None else f"0x{start:08X}",
+                    "installed_into": (
+                        None if target_field is None else f"0x{target_field:08X}"
+                    ),
+                    "store_site": None if store_site is None else f"0x{store_site:08X}",
+                    "installed_not_called": target_field is not None,
+                }
+            )
+
+    # A function with no incoming edge from anywhere is orphaned: no veneer, no
+    # stored pointer, and no internal caller. That is the interesting set.
+    graph = _iwram_callgraph(rom_bytes, code_entries, installed)
+    function_starts = {f"0x{row['iwram']:08X}" for row in graph["functions"]}
+    for row in second:
+        # A value can lie in the code half and still be data: the routine at
+        # 0x0804391C byte-compares the ROM string at 0x087B7734 against the
+        # bytes at 0x030000F0 and sums the halfwords at 0x03000000. Membership
+        # of the callgraph, not the address range, decides what is a function.
+        row["is_a_function_entry"] = row["iwram"] in function_starts
+    orphaned = [
+        row for row in graph["functions"]
+        if row["in_degree"] == 0 and not row["externally_reachable"]
+    ]
+    reached_only_from_outside = [
+        row for row in graph["functions"]
+        if row["in_degree"] == 0 and row["externally_reachable"]
+    ]
+
+    # ---- 3. the IRQ subsystem ---------------------------------------------
+    irq = _derive_irq(rom_bytes, graph, readers_index, census)
+
+    return {
+        "method": (
+            "the stored-pointer census reads every 2-byte-aligned window of the "
+            "image; a stored word counts as an entry only when some instruction's "
+            "pc-relative read lands on it; the dispatcher, its priority chain and "
+            "its vector table are decoded from its own instruction words"
+        ),
+        "block": {
+            "iwram_start": f"0x{IWRAM_BASE:08X}",
+            "iwram_end": f"0x{IWRAM_END:08X}",
+            "rom_source": f"0x{IWRAM_ROM_SOURCE:08X}",
+            "bytes": IWRAM_BYTES,
+            "code_end_iwram": f"0x{CODE_END_IWRAM:08X}",
+            "verbatim_copy": True,
+        },
+        "external_entries": {
+            "veneer_family": {
+                "family_first": runtime["veneers"]["family_first"],
+                "family_end": runtime["veneers"]["family_end"],
+                "entry_count": runtime["veneers"]["entry_count"],
+                "installed_code_destinations": runtime["veneers"]["installed_code_destinations"],
+                "destinations": [
+                    {
+                        "entry": entry["entry"],
+                        "destination": entry["destination"],
+                        "state": entry["destination_state"],
+                        "form": entry["form"],
+                    }
+                    for entry in veneers
+                ],
+            },
+            "stored_pointer_route": {
+                "method": (
+                    "every 4-byte window at every 2-byte-aligned offset of the "
+                    "image, kept when its value lies in [0x03000000, 0x03001004); "
+                    "a value counts as referenced when an instruction's "
+                    "pc-relative read lands on its slot and that instruction lies "
+                    "below the structural map's code end (0x%08X)" % code_end
+                ),
+                "code_region_end": f"0x{code_end:08X}",
+                "code_regions_above_that_boundary": _code_regions_above(code_end),
+                "distinct_values": len(census),
+                "windows": sum(len(sites) for sites in census.values()),
+                "aligned_distinct_values": len(
+                    [v for v, s in census.items() if any(x % 4 == 0 for x in s)]
+                ),
+                "aligned_windows": sum(
+                    len([x for x in s if x % 4 == 0]) for s in census.values()
+                ),
+                "referenced_values": entries,
+                "references_from_the_data_half": coincidences,
+                "stored_but_never_loaded": [
+                    row for row in stored
+                    if not row["is_an_entry"]
+                    and not row["sites_inside_the_block"]
+                    and not row["veneer_literals_that_name_it"]
+                ],
+            },
+            "entries_with_no_stored_pointer": [
+                f"0x{rom_iwram(row['start']):08X}" for row in orphaned
+            ],
+        },
+        "second_dispatch": {
+            "route": (
+                "a ROM literal pool holds the IWRAM address of a routine that is "
+                "not called through a veneer; the reader stores it into an object "
+                "field instead, so the block function is installed as a callback "
+                "and invoked later through that field"
+            ),
+            "entries": [
+                row for row in second
+                if row["route"] == "stored_pointer" and row["is_a_function_entry"]
+            ],
+            "stored_pointers_that_are_not_function_entries": [
+                row for row in second
+                if row["route"] == "stored_pointer" and not row["is_a_function_entry"]
+            ],
+            "veneer_destinations_seen_by_the_census": [
+                row for row in second if row["route"] == "veneer"
+            ],
+            "data_slots_the_rom_references": [
+                row for row in data_entries
+            ],
+            "orphaned_functions": [
+                {
+                    "iwram": f"0x{rom_iwram(row['start']):08X}",
+                    "rom": f"0x{row['start']:08X}",
+                    "bytes": row["size"],
+                    "reached_from_rom": False,
+                    "family": row["family"],
+                    "features": row["features"],
+                }
+                for row in orphaned
+            ],
+            "reached_only_from_outside": [
+                {
+                    "iwram": f"0x{rom_iwram(row['start']):08X}",
+                    "rom": f"0x{row['start']:08X}",
+                    "bytes": row["size"],
+                    "routes": [
+                        route for route in
+                        ([f"veneer 0x{entry['entry']}"
+                          for entry in installed
+                          if int(entry["destination"], 16) == rom_iwram(row["start"])]
+                         + [f"stored pointer {entry['iwram']} read at {reader['site']}"
+                            for entry in code_entries
+                            if int(entry["iwram"], 16) == rom_iwram(row["start"])
+                            for reader in entry["readers"]])
+                    ],
+                }
+                for row in reached_only_from_outside
+            ],
+        },
+        "irq": irq,
+        "callgraph": graph,
+    }
+
+
+def _vector_table_writers(rom_bytes: bytes, readers_index: dict, census: dict) -> list:
+    """Instructions that store into the dispatcher's vector table.
+
+    The table's base is never a literal in the code that installs handlers: ROM
+    0x0803F218 loads the DATA word 0x087B6EDC, the word holds 0x03000FB0, and the
+    next instruction dereferences the register. So the derivation is two steps -
+    find who loads the address of a word that holds the table base, then follow
+    the register through the dereference into the store. A one-step search for
+    the literal 0x03000FB0 finds only the dispatcher's own pool word and would
+    report that no handler is ever installed.
+    """
+    base = _gba.ROM_BASE
+    out = []
+    for site in census.get(IWRAM_VECTOR_TABLE, []):
+        needle = site.to_bytes(4, "little")
+        position = rom_bytes.find(needle)
+        slots = []
+        while position != -1:
+            slots.append(base + position)
+            position = rom_bytes.find(needle, position + 1)
+        for slot in slots:
+            for reader in readers_index.get(slot, []):
+                load_site = reader["site"]
+                if not reader["kind"].startswith("thumb"):
+                    continue
+                tracked: dict[str, object] = {}
+                address = load_site
+                dereferenced = False
+                for _ in range(24):
+                    ins = _one_thumb(rom_bytes, address)
+                    if ins is None:
+                        break
+                    op = ins.op_str.replace(" ", "")
+                    literal = _arm_literal_value(rom_bytes, ins)
+                    if literal is not None and op.startswith("r"):
+                        tracked[op.split(",")[0]] = {"literal": literal}
+                    elif ins.mnemonic in ("movs", "mov") and "#" in op:
+                        destination = op.split(",")[0]
+                        try:
+                            tracked[destination] = {"value": int(op.split("#")[1], 0)}
+                        except ValueError:
+                            pass
+                    elif ins.mnemonic == "ldr" and "[" in op and "#" not in op:
+                        # `ldr r0, [r0]`: the register now holds the DATA at the
+                        # address it held before, i.e. the table base.
+                        destination = op.split(",")[0]
+                        source = op.split("[")[1].rstrip("]")
+                        entry = tracked.get(source)
+                        if isinstance(entry, dict) and entry.get("literal") == site:
+                            tracked[destination] = {"value": IWRAM_VECTOR_TABLE}
+                            dereferenced = True
+                    elif ins.mnemonic == "str" and "[" in op:
+                        parsed = _memory_operands(op)
+                        if parsed is not None:
+                            source, register, _index, immediate = parsed
+                            entry = tracked.get(register)
+                            if isinstance(entry, dict) and entry.get("value") == IWRAM_VECTOR_TABLE:
+                                stored = tracked.get(source)
+                                out.append(
+                                    {
+                                        "site": f"0x{address:08X}",
+                                        "table_entry": f"0x{IWRAM_VECTOR_TABLE + immediate:08X}",
+                                        "slot_index": immediate // 4,
+                                        "value": (
+                                            None if not isinstance(stored, dict)
+                                            else f"0x{stored.get('value', stored.get('literal', 0)):08X}"
+                                        ),
+                                        "table_base_loaded_at": f"0x{load_site:08X}",
+                                        "table_word_site": f"0x{site:08X}",
+                                        "dereferenced": dereferenced,
+                                    }
+                                )
+                    address += ins.size
+    return out
+
+
+def _derive_irq(rom_bytes: bytes, graph: dict, readers_index: dict, census: dict) -> dict:
+    """Decode the IRQ dispatcher, its vector table and its install path."""
+    words = []
+    for row in graph["functions"]:
+        if row["start"] == IWRAM_DISPATCH_ROM:
+            words = row["words"]
+    priority = []
+    acknowledgement = []
+    hardware = set()
+    vector_base = None
+    pending_word = None
+    handler_call = {}
+    handler_path = None
+    acknowledge_store = None
+    null_handler = _u32_read(rom_bytes, ROM_IRQ_NULL_HANDLER)
+    tracked: dict[str, int] = {}
+    offset_register = None
+    current_ip = None
+    for address in words:
+        ins = _one_arm(rom_bytes, address)
+        if ins is None:
+            continue
+        op = ins.op_str.replace(" ", "")
+        immediate = None
+        if ins.operands and ins.operands[-1].type == cp.capstone.arm.ARM_OP_IMM:
+            immediate = ins.operands[-1].imm
+        if ins.mnemonic in ("mov", "movs", "add", "adds", "sub", "subs") \
+                and op.startswith("r") and "#" in op:
+            # An ARM data-processing immediate is imm8 rotated by 2*rot and
+            # capstone reports the two halves as two operands, so `#64, #28`
+            # arrives as operands (0x40, 0x1C) and reading the last one gives
+            # 0x1C instead of 0x4000. Every mask in the priority chain has to be
+            # read out of the word.
+            value = _arm_immediate(int.from_bytes(ins.bytes, "little"))
+            destination = op.split(",")[0]
+            base = op.split(",")[1] if "," in op else None
+            if ins.mnemonic.startswith("add"):
+                tracked[destination] = (tracked.get(base, 0) + value) & 0xFFFFFFFF
+            elif ins.mnemonic.startswith("sub"):
+                tracked[destination] = (tracked.get(base, 0) - value) & 0xFFFFFFFF
+            else:
+                tracked[destination] = value
+            if 0x04000000 <= tracked[destination] < 0x04000400:
+                hardware.add(tracked[destination])
+        literal = _arm_literal_value(rom_bytes, ins)
+        if literal is not None and op.startswith("r"):
+            tracked[op.split(",")[0]] = literal
+            if 0x04000000 <= literal < 0x04000400:
+                hardware.add(literal)
+            if IWRAM_VECTOR_TABLE <= literal < IWRAM_VECTOR_TABLE + 0x100:
+                vector_base = literal
+        if ins.mnemonic.startswith("ldr") and "!" in op and op.startswith("r"):
+            # `ldr r2, [r3, #0x200]!` moves r3 to REG_IE, and the address is
+            # never a literal: the base is built by `mov r3, #64, #12`.
+            destination = op.split(",")[0]
+            base = op.split("[")[1].split(",")[0]
+            tail = op.split("[")[1].split(",")[1].rstrip("]!")
+            if tail.startswith("#"):
+                try:
+                    tracked[base] = (tracked.get(base, 0) + int(tail[1:], 0)) & 0xFFFFFFFF
+                except ValueError:
+                    pass
+                if 0x04000000 <= tracked[base] < 0x04000400:
+                    hardware.add(tracked[base])
+        if ins.mnemonic.startswith(("str", "ldr")) and "[" in op and "#" in op:
+            base = op.split("[")[1].split(",")[0]
+            tail = op.split("[")[1].split(",")[1].rstrip("]!")
+            if tail.startswith("#") and base in tracked:
+                try:
+                    touched = tracked[base] + int(tail[1:], 0)
+                except ValueError:
+                    touched = None
+                if touched is not None and 0x04000000 <= touched < 0x04000400:
+                    hardware.add(touched)
+        if ins.mnemonic == "str" and op == "r2,[r3]" and handler_path is not None:
+            acknowledge_store = address
+        if ins.mnemonic.startswith("ands") and ",#" in op:
+            bits = _arm_immediate(int.from_bytes(ins.bytes, "little"))
+            priority.append(
+                {
+                    "test_site": f"0x{address:08X}",
+                    "mask": f"0x{bits:08X}",
+                    "single_bit": bin(bits).count("1") == 1,
+                    "bit": bits.bit_length() - 1 if bin(bits).count("1") == 1 else None,
+                    "vector_byte_offset": (
+                        None if offset_register is None else tracked.get(offset_register)
+                    ),
+                    "cpsr_mode_value": None if current_ip is None else f"0x{current_ip:08X}",
+                    "_index": len(priority),
+                }
+            )
+        if ins.mnemonic in ("mov", "movs") and op.startswith("ip,"):
+            current_ip = immediate
+        if ins.mnemonic == "mov" and op.startswith("r4,"):
+            offset_register = op.split(",")[0]
+        if ins.mnemonic == "bic" and op.startswith("r2,r2,r0"):
+            handler_path = address
+            acknowledgement.append({"site": f"0x{address:08X}", "operation": "clear the served IE bit"})
+        if ins.mnemonic == "orr" and op.startswith("r2,r2,r0,lsl#16"):
+            acknowledgement.append({"site": f"0x{address:08X}", "operation": "set the served IF bit"})
+            acknowledgement.append(
+                {"site": f"0x{address:08X}", "operation": "one 32-bit store acknowledges IF and unmasks IE"}
+            )
+        if ins.mnemonic.startswith("ldrh") and op.startswith("r5,[r1,#"):
+            try:
+                pending_word = IWRAM_VECTOR_TABLE + int(op.split("#")[-1].rstrip("]"), 0)
+            except ValueError:
+                pending_word = None
+        if ins.mnemonic.startswith("add") and op.startswith("lr,pc,") and immediate is not None:
+            handler_call["return_address"] = f"0x{address + 8 + immediate:08X}"
+        if ins.mnemonic.startswith("add") and op.startswith("r4,pc,"):
+            handler_call["arm_resume"] = f"0x{address + 8 + (immediate or 0):08X}"
+        if ins.mnemonic.startswith("ldr") and op.startswith("r0,[r1,r4]"):
+            handler_call["fetch_site"] = f"0x{address:08X}"
+        if ins.mnemonic == "bx" and op == "r0":
+            handler_call["call_site"] = f"0x{address:08X}"
+    slot_count = None
+    entries = []
+    if pending_word is not None and vector_base is not None:
+        slot_count = (pending_word - vector_base) // 4
+        for index in range(slot_count):
+            rom_slot = IWRAM_VECTOR_TABLE_ROM + 4 * index
+            value = _u32_read(rom_bytes, rom_slot)
+            entries.append(
+                {
+                    "index": index,
+                    "iwram_slot": f"0x{vector_base + 4 * index:08X}",
+                    "rom_slot": f"0x{rom_slot:08X}",
+                    "value": f"0x{value:08X}",
+                    "state": "thumb" if value & 1 else "arm",
+                    "handler": f"0x{value & ~1:08X}",
+                }
+            )
+    install = []
+    dispatcher_value = IWRAM_DISPATCH_ENTRY
+    for reader in readers_index.get(0x0803F434, []):
+        site = reader["site"]
+        start = _thumb_function_start(rom_bytes, site)
+        if start is None:
+            continue
+        tracked_regs: dict[str, int] = {}
+        address = start
+        while address < site + 0x40:
+            ins = _one_thumb(rom_bytes, address)
+            if ins is None:
+                break
+            op = ins.op_str.replace(" ", "")
+            literal = _arm_literal_value(rom_bytes, ins)
+            if literal is not None and op.startswith("r"):
+                tracked_regs[op.split(",")[0]] = literal
+            if ins.mnemonic == "str" and not ins.mnemonic.startswith("strh"):
+                parsed = _memory_operands(op)
+                if parsed is not None:
+                    source, base, _index, immediate = parsed
+                    if tracked_regs.get(source) == dispatcher_value \
+                            and base in tracked_regs:
+                        install.append(
+                            {
+                                "site": f"0x{address:08X}",
+                                "writes_to": f"0x{tracked_regs[base] + immediate:08X}",
+                                "writes": f"0x{dispatcher_value:08X}",
+                                "function": f"0x{start:08X}",
+                            }
+                        )
+            address += ins.size
+    # Each test's own branch decides whether it reaches the handler path or
+    # something else. The last test in the chain branches to a self-loop, so the
+    # slot its offset would select is never entered.
+    for index, row in enumerate(priority):
+        site = int(row["test_site"], 16)
+        for step in range(1, 3):
+            ins = _one_arm(rom_bytes, site + 4 * step)
+            if ins is None:
+                break
+            if ins.mnemonic.startswith("b") and not ins.mnemonic.startswith("bic") \
+                    and ins.operands and ins.operands[0].type == cp.capstone.arm.ARM_OP_IMM:
+                target = ins.operands[0].imm & 0xFFFFFFFF
+                row["branch_site"] = f"0x{site + 4 * step:08X}"
+                row["branch_mnemonic"] = ins.mnemonic
+                row["branch_target"] = f"0x{target:08X}"
+                # `bne handler` treats the branch as the settled path; the last
+                # test is `beq exit`, so ITS settled path is the fallthrough.
+                if ins.mnemonic == "bne":
+                    found, how = target, "conditional branch taken"
+                else:
+                    found, how = site + 4 * step + 4, "fallthrough"
+                row["settled_path"] = how
+                row["settled_path_target"] = f"0x{found:08X}"
+                follow = _one_arm(rom_bytes, found)
+                row["settled_path_is_a_self_branch"] = bool(
+                    follow is not None
+                    and follow.mnemonic == "b"
+                    and follow.operands
+                    and (follow.operands[0].imm & 0xFFFFFFFF) == found
+                )
+                row["branches_to_itself"] = target == site + 4 * step
+                # The acknowledge-and-dispatch block runs from the IE clear to
+                # the ack store. The FIRST test settles on the ORR and skips the
+                # IE clear, because its ip value is 0x9F; every later test enters
+                # at the BIC. Both are the handler path.
+                row["lands_in_the_dispatch_block"] = bool(
+                    handler_path is not None and acknowledge_store is not None
+                    and handler_path <= found < acknowledge_store + 4
+                )
+                row["skips_the_ie_clear"] = bool(
+                    row["lands_in_the_dispatch_block"] and found != handler_path
+                )
+                break
+        row.pop("_index", None)
+    reachable_offsets = sorted(
+        {
+            row["vector_byte_offset"]
+            for row in priority
+            if row.get("lands_in_the_dispatch_block") and row["vector_byte_offset"] is not None
+        }
+    )
+    unreachable_tests = [
+        row["test_site"] for row in priority
+        if not row.get("lands_in_the_dispatch_block")
+    ]
+    return {
+        "dispatcher": {
+            "iwram_entry": f"0x{IWRAM_DISPATCH_ENTRY:08X}",
+            "rom_entry": f"0x{IWRAM_DISPATCH_ROM:08X}",
+            "instructions": len(words),
+            "code_bytes": IWRAM_DISPATCH_CODE_END - IWRAM_DISPATCH_ROM,
+            "state": "arm",
+            "hardware_registers_named": [f"0x{v:08X}" for v in sorted(hardware)],
+        },
+        "priority_chain": priority,
+        "priority_chain_length": len(priority),
+        "handler_path_entry": None if handler_path is None else f"0x{handler_path:08X}",
+        "reachable_vector_byte_offsets": reachable_offsets,
+        "reachable_slot_count": len(reachable_offsets),
+        "tests_that_do_not_reach_the_handler_path": unreachable_tests,
+        "reachability_note": (
+            "the fourteen tests select byte offsets 0x00..0x30, so thirteen of "
+            "the table's slots are reachable. The last test's taken branch is a "
+            "self-branch instead of the handler path, so bit 13 spins and the "
+            "slot at the final offset is never entered."
+        ),
+        "acknowledgement": acknowledgement,
+        "vector_table": {
+            "iwram_base": f"0x{IWRAM_VECTOR_TABLE:08X}",
+            "rom_base": f"0x{IWRAM_VECTOR_TABLE_ROM:08X}",
+            "slot_count": slot_count,
+            "slot_count_derived_from": (
+                f"the dispatcher reads a halfword at the table base + 0x38, so the "
+                f"table ends where that word begins: (0x{pending_word:08X} - "
+                f"0x{IWRAM_VECTOR_TABLE:08X}) / 4"
+                if pending_word is not None
+                else None
+            ),
+            "entries": entries,
+            "distinct_handlers": sorted({entry["handler"] for entry in entries}),
+            "all_slots_share_one_handler": len({entry["value"] for entry in entries}) == 1,
+        },
+        "software_pending_word": {
+            "iwram": None if pending_word is None else f"0x{pending_word:08X}",
+            "role": (
+                "the dispatcher ORs the served bit into this halfword before it "
+                "calls the handler; nothing else in the block reads it and its "
+                "consumer was not found, so its purpose is UNKNOWN"
+            ),
+        },
+        "handler_call": handler_call,
+        "default_handler": {
+            "rom": f"0x{ROM_IRQ_NULL_HANDLER:08X}",
+            "first_halfword": f"0x{null_handler & 0xFFFF:04X}",
+            "is_a_bare_return": (null_handler & 0xFFFF) == 0x4770,
+            "note": (
+                "the install routine is the NEXT function, at ROM 0x0803F3DA; it "
+                "is not a vector slot"
+            ),
+        },
+        "install_path": {
+            "bios_irq_vector_pointer_sites": install,
+            "bios_irq_vector_pointer_method": (
+                "for every instruction that pc-relatively reads the dispatcher's "
+                "own address literal, the enclosing Thumb function is walked with "
+                "registers tracked through literal loads, and each store of that "
+                "value through a literal base is reported with its computed "
+                "destination - the BIOS IRQ vector pointer is never stored as a "
+                "literal, it is computed as 0x03007FC0 + 0x3C"
+            ),
+            "vector_table_writes": _vector_table_writers(rom_bytes, readers_index, census),
+            "vector_table_write_method": (
+                "the table base 0x03000FB0 is stored in a DATA word, not in code; "
+                "the derivation finds every instruction that loads the address of "
+                "such a word, follows the register through one dereference, and "
+                "reports each store through it"
+            ),
+        },
+    }
+
+
+def _iwram_callgraph(rom_bytes: bytes, entries: list, installed: list) -> dict:
+    """Aligned recursive descent over the block's ARM code half."""
+    seeds = sorted(
+        {int(entry["destination"], 16) for entry in installed}
+        | {int(entry["iwram"], 16) for entry in entries if entry["is_an_entry"]}
+    )
+    seeds = [iwram_rom(a) for a in seeds]
+    code_end_rom = iwram_rom(CODE_END_IWRAM)
+    reached: dict[int, object] = {}
+    edges: list = []
+    literal_slots: dict[int, list] = {}
+    pending = list(seeds)
+    while pending:
+        address = pending.pop()
+        if address in reached or not (IW_ROM_START <= address < code_end_rom):
+            continue
+        if (address - IWRAM_ROM_SOURCE) % 4:
+            continue
+        ins = _one_arm(rom_bytes, address)
+        if ins is None:
+            continue
+        reached[address] = ins
+        literal = _arm_literal_value(rom_bytes, ins)
+        if literal is not None:
+            op = ins.op_str.replace(" ", "")
+            inner = op.split("[pc,", 1)[1].split("]", 1)[0]
+            try:
+                slot = address + 8 + (int(inner.lstrip("#"), 0) if inner.startswith("#") else 0)
+            except ValueError:
+                slot = None
+            if slot is not None:
+                literal_slots.setdefault(slot, []).append(
+                    {"site": f"0x{address:08X}", "value": f"0x{literal:08X}"}
+                )
+        successors, kind, target = _arm_successors(rom_bytes, ins)
+        if kind in ("call", "branch") and target is not None:
+            edges.append(
+                {
+                    "from": f"0x{address:08X}",
+                    "to": f"0x{target:08X}",
+                    "kind": "call" if kind == "call" else "tail_branch",
+                    "site": f"0x{address:08X}",
+                }
+            )
+        if kind == "indirect":
+            edges.append(
+                {
+                    "from": f"0x{address:08X}",
+                    "to": None,
+                    "kind": "indirect_register",
+                    "site": f"0x{address:08X}",
+                    "register": ins.op_str.replace(" ", "").split(",")[0],
+                }
+            )
+        for successor in successors:
+            if successor not in reached:
+                pending.append(successor)
+
+    fallthrough = set()
+    branch_targets = set()
+    for address, ins in reached.items():
+        successors, kind, target = _arm_successors(rom_bytes, ins)
+        if kind in ("call", "branch", "pc_add") and target is not None:
+            branch_targets.add(target)
+        if address + 4 in successors:
+            fallthrough.add(address + 4)
+    leaders = sorted(
+        {address for address in reached if address not in fallthrough}
+        | {t for t in branch_targets if t in reached}
+        | set(seeds)
+    )
+
+    owner: dict[int, int] = {}
+    functions = []
+    skipped = []
+    for leader in leaders:
+        if leader in owner:
+            skipped.append(
+                {"leader": f"0x{leader:08X}", "owned_by": f"0x{owner[leader]:08X}"}
+            )
+            continue
+        body: set = set()
+        queue = [leader]
+        shared = []
+        while queue:
+            address = queue.pop()
+            if address in body or address not in reached:
+                continue
+            if address in owner and owner[address] != leader:
+                shared.append(address)
+                continue
+            body.add(address)
+            owner[address] = leader
+            successors, kind, _target = _arm_successors(rom_bytes, reached[address])
+            for successor in successors:
+                if successor in reached and successor not in body:
+                    queue.append(successor)
+        if not body:
+            continue
+        local = sorted(body)
+        function_edges = [
+            edge for edge in edges
+            if int(edge["from"], 16) in body
+            and (edge["to"] is None or int(edge["to"], 16) not in body)
+        ]
+        # Indirect targets: resolve a `bx rN` when the function loaded rN from a
+        # literal. The block's dispatch tail jumps into ROM exactly this way.
+        values: dict[str, int] = {}
+        for address in local:
+            ins = reached[address]
+            op = ins.op_str.replace(" ", "")
+            literal = _arm_literal_value(rom_bytes, ins)
+            if literal is not None and op.startswith("r"):
+                values[op.split(",")[0]] = literal
+            for edge in function_edges:
+                if edge["site"] == f"0x{address:08X}" and edge["kind"] == "indirect_register":
+                    resolved = values.get(edge.get("register", ""))
+                    if resolved:
+                        edge["resolved_to"] = f"0x{resolved:08X}"
+                        edge["resolved_state"] = "thumb" if resolved & 1 else "arm"
+                        edge["to"] = f"0x{resolved & ~1:08X}"
+                        edge["kind"] = "indirect_resolved"
+        features = _arm_features(reached, local, literal_slots)
+        functions.append(
+            {
+                "start": leader,
+                "rom_address": leader,
+                "iwram": rom_iwram(leader),
+                "end": max(local) + 4,
+                "size": max(local) + 4 - leader,
+                "instructions": len(local),
+                "externally_reachable": leader in seeds,
+                "edges": function_edges,
+                "shared_words": [f"0x{a:08X}" for a in sorted(set(shared))],
+                "features": features,
+                "family": _family_for(features),
+                "words": local,
+            }
+        )
+
+    # Orphans: code words inside the code half that are neither reached nor a
+    # loaded literal slot. A pool can hold words nothing loads, so a run is
+    # reported with the loaded slots it contains rather than assumed to be code;
+    # only a run that opens with a prologue and closes with a return is called a
+    # function.
+    orphans = []
+    address = IWRAM_ROM_SOURCE
+    while address < code_end_rom:
+        if address not in reached and address not in literal_slots:
+            orphans.append(address)
+        address += 4
+    runs = []
+    for address in orphans:
+        if runs and address == runs[-1][1]:
+            runs[-1][1] = address + 4
+        else:
+            runs.append([address, address + 4])
+    unreachable = []
+    for start, end in runs:
+        first = _one_arm(rom_bytes, start)
+        last = _one_arm(rom_bytes, end - 4)
+        slots_inside = sorted(s for s in literal_slots if start <= s < end)
+        words = list(range(start, end, 4))
+        opens = bool(first is not None and first.mnemonic.startswith("push"))
+        closes = bool(
+            last is not None
+            and (
+                (last.mnemonic == "bx" and last.op_str == "lr")
+                or (last.mnemonic.startswith("pop") and "pc" in last.op_str)
+            )
+        )
+        unreachable.append(
+            {
+                "rom_start": f"0x{start:08X}",
+                "rom_end": f"0x{end:08X}",
+                "iwram_start": f"0x{rom_iwram(start):08X}",
+                "words": len(words),
+                "bytes": end - start,
+                "loaded_literal_slots_inside": [f"0x{s:08X}" for s in slots_inside],
+                "first_instruction": (
+                    None if first is None else f"{first.mnemonic} {first.op_str}".strip()
+                ),
+                "last_instruction": (
+                    None if last is None else f"{last.mnemonic} {last.op_str}".strip()
+                ),
+                "opens_with_a_prologue": opens,
+                "closes_with_a_return": closes,
+                "looks_like_a_complete_function": opens and closes and len(words) >= 4,
+            }
+        )
+
+    incoming: dict = {}
+    for row in functions:
+        for edge in row["edges"]:
+            if edge["to"] and edge["kind"] in ("call", "tail_branch"):
+                incoming.setdefault(edge["to"], []).append(
+                    {"from": f"0x{row['start']:08X}", "site": edge["site"], "kind": edge["kind"]}
+                )
+    for row in functions:
+        row["callers"] = incoming.get(f"0x{row['start']:08X}", [])
+        row["in_degree"] = len(row["callers"])
+
+    return {
+        "method": (
+            "aligned recursive descent from the veneer destinations and from "
+            "every stored pointer an instruction actually loads; an address is a "
+            "function leader when it is a call or branch target that is not also "
+            "reached by fallthrough"
+        ),
+        "reachable_words": len(reached),
+        "reachable_bytes": 4 * len(reached),
+        "function_count": len(functions),
+        "functions": functions,
+        "leaders_already_owned": skipped,
+        "literal_slots": {
+            f"0x{slot:08X}": reads for slot, reads in sorted(literal_slots.items())
+        },
+        "unreachable_code_runs": unreachable,
+        "edges": edges,
+    }
+
+
+def _arm_features(reached: dict, local: list, literal_slots: dict) -> list:
+    """Mechanical features of a function, from its own instructions."""
+    features = set()
+    addresses = list(local)
+    for index, address in enumerate(addresses):
+        ins = reached[address]
+        mnemonic = ins.mnemonic
+        op = ins.op_str.replace(" ", "")
+        if mnemonic in ("mla", "mul", "muls", "smull", "smlal", "umull", "umlal"):
+            features.add("multiply")
+        if mnemonic.startswith("asr"):
+            features.add("arithmetic_shift")
+        if mnemonic.startswith("sub") and ",pc," in op:
+            features.add("pc_relative_data")
+        if mnemonic.startswith("ldr") and "],#" in op:
+            features.add("post_increment_load")
+        if mnemonic.startswith("stm") or mnemonic.startswith("ldm"):
+            if "!" in op:
+                features.add("block_transfer_writeback")
+        if mnemonic.startswith("ands") and ",#" in op:
+            value = ins.operands[-1].imm if ins.operands else 0
+            if value in (0xFF, 0xFFFF):
+                features.add("byte_lane_mask")
+        if mnemonic.startswith("strb"):
+            features.add("byte_store")
+        if mnemonic.startswith("strh"):
+            features.add("halfword_store")
+    for slot, reads in literal_slots.items():
+        if any(int(read["site"], 16) in set(local) for read in reads):
+            for read in reads:
+                if int(read["site"], 16) in set(local):
+                    value = int(read["value"], 16)
+                    if 0x04000000 <= value < 0x04000400:
+                        features.add("hardware_register")
+                    if 0x03000000 <= value < 0x03008000:
+                        features.add("iwram_data_pointer")
+                    if value & 1:
+                        features.add("thumb_code_pointer")
+                    if 0x08000000 <= value < 0x08000000 + 0x800000:
+                        features.add("rom_code_pointer")
+    for address in addresses:
+        ins = reached[address]
+        mnemonic = ins.mnemonic
+        if mnemonic in ("bx", "blx", "bxj") or (mnemonic.startswith("ldr") and ins.op_str.replace(" ", "").split(",")[0] == "pc"):
+            features.add("indirect_branch")
+        if mnemonic.startswith("add") and ",pc," in ins.op_str.replace(" ", ""):
+            features.add("pc_add")
+        if mnemonic == "msr" or mnemonic == "mrs":
+            features.add("status_register")
+        if mnemonic == "swi" or mnemonic == "svc":
+            features.add("software_interrupt")
+    return sorted(features)
+
+
+_FAMILY_RULES = (
+    ("irq", {"hardware_register", "status_register"}),
+    ("dispatch", {"indirect_branch", "pc_add"}),
+    ("bitstream", {"post_increment_load", "arithmetic_shift"}),
+    ("arithmetic", {"multiply", "arithmetic_shift"}),
+    ("memory", {"block_transfer_writeback"}),
+    ("unknown", set()),
+)
+
+
+def _family_for(features: list) -> str:
+    present = set(features)
+    for name, required in _FAMILY_RULES:
+        if required and required <= present:
+            return name
+    return "unknown"
 
 
 def _register_units() -> None:
@@ -3009,6 +4353,18 @@ def _register_units() -> None:
         "boundaries": "derived",
         # No pool, so there is no padding to measure.
         "expect_padding": None,
+    }
+    UNITS[IWRAM_DISPATCH_TU.id] = {
+        "unit": IWRAM_DISPATCH_TU,
+        "functions": IWRAM_DISPATCH_FUNCTIONS,
+        "literal_pool": IWRAM_DISPATCH_LITERAL_POOL,
+        "boundaries": "derived",
+        # The four bytes between the code and the pool are the Thumb halfword
+        # the handler returns through, so a four-byte gap is the expected shape
+        # and is reported rather than checked against a constant.
+        "expect_padding": None,
+        # Opt in to following `add rD, pc, #imm` as a code successor.
+        "pc_add_successors": True,
     }
 
 
@@ -3462,6 +4818,23 @@ def derive_unit_boundaries(rom_bytes: bytes, unit_id: str) -> dict:
                     immediate = ins.operands[0].imm & 0xFFFFFFFF
                 if mnemonic in ("bl", "blx"):
                     continue
+                if (
+                    spec.get("pc_add_successors")
+                    and mnemonic.startswith("add")
+                    and ins.operands
+                    and ins.operands[-1].type == cp.capstone.arm.ARM_OP_IMM
+                    and ins.op_str.replace(" ", "").split(",")[1:2] == ["pc"]
+                ):
+                    # An ARM `add rD, pc, #imm` materialises a code address. In
+                    # this unit that is the only static route to the dispatcher's
+                    # own return path: the handler is called with `bx r0` and
+                    # comes back through a Thumb trampoline to the address this
+                    # add puts in r4. Following it is opt-in per unit because in
+                    # a Thumb unit the same idiom almost always points at a
+                    # literal, not at code.
+                    target = ins.address + 8 + ins.operands[-1].imm
+                    if unit.rom_address <= target < unit.code_end_address:
+                        pending.append(target)
                 if mnemonic == "b" and immediate is not None:
                     pending.append(immediate)
                     break
@@ -4826,6 +6199,10 @@ def run_lift(
             # The whole mechanism, not just this unit: the installing DMA, the
             # block it installs, and the veneer family that reaches into it.
             boundary_evidence["iwram_runtime"] = derive_iwram_runtime(rom_bytes)
+        elif unit.id == IWRAM_DISPATCH_TU.id:
+            # The other half of the same block: every route into it, the second
+            # dispatch path, the IRQ subsystem and the internal callgraph.
+            boundary_evidence["iwram_dispatch"] = derive_iwram_dispatch(rom_bytes)
     else:
         boundary_evidence = {
             "method": "config/compiler_probes.json, derived and verified there",

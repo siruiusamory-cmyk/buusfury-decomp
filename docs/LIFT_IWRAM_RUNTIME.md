@@ -79,20 +79,21 @@ what makes that the only sensible reading.
 count are computed and reported, and the 32-bit one is the one that tiles: it
 ends at `0x087B89A8`, the first byte of the 0xFF fill run in ROM, *and* at
 `0x03001004`, the destination of the first DMA in IWRAM. The 16-bit reading gives
-2050 bytes and leaves eight of the thirteen veneer destinations outside the copied
-block - destinations the ROM itself branches to. The two DMA setups also tile
-IWRAM exactly, with no gap and no overlap.
+2050 bytes and leaves three of the thirteen veneer destinations outside the copied
+block - `0x03000858`, `0x03000A4C` and `0x03000CA0` - destinations the ROM itself
+branches to. The two DMA setups also tile IWRAM exactly, with no gap and no overlap.
 
 The odd literal `0x00001007` explains itself: `0x1007 >> 2 = 0x401`, so the
 truncating shift is *why* the length is `0x1004` bytes and not `0x1007` units.
 
-**How the slots are named.** Eight of the thirteen destination addresses -
-including **all four block-memory slots** - occur in the whole 8 MiB image
-**exactly once**, and that occurrence is their own veneer's literal. The other five
-(`0x03000000`, `0x03000040`, `0x03000700`, `0x030007FC`, `0x03000CA0`) have
-further matches, and every one of those is either at an **odd** offset, where no
-32-bit stored word can live, or inside a region the ROM map classes as `unknown`,
-`compressed_asset` or `library_data` - never in a confirmed code region.
+**How the slots are named.** Eight of the thirteen destination addresses - and
+three of the four block-memory slots, `0x030007FC` being the exception - occur in
+the whole 8 MiB image **exactly once**, and that occurrence is their own veneer's
+literal. The other five (`0x03000000`, `0x03000040`, `0x03000700`, `0x030007FC`,
+`0x03000CA0`) have further matches, and every one of those is either at an **odd**
+offset, where no aligned 32-bit stored word can live, or inside a region the ROM
+map classes as `unknown`, `compressed_asset` or `library_data` - never in a
+confirmed code region.
 
 **What else writes the block.** An independent sweep found post-boot writers, and
 they matter for the claim above. Every one of them lands in the block's **192-byte

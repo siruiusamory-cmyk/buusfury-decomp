@@ -747,3 +747,111 @@ self-check, a test, a document and a report. `C:\Dev\log1-remake` was read (its
 any report, no ARM interworking veneer symbol appears in any build, and the
 reconstruction's instruction set is declared `arm` on the target and `arm` on the
 unit rather than being inferred.
+
+---
+
+# Validation report - `DECOMP-IWRAM-DISPATCH-001` (2026-09-30)
+
+**Focused validation only, as the ticket directed. The full suite was NOT run.**
+The canonical working copy `build/buusfury.gba` was re-verified before and after:
+SHA-1 `F1C4B07554D2A3B1AD2F325307051E775CE68087`, mtime `2026-09-28T14:43:13` -
+unchanged. `C:\Dev\log1-remake` stayed at `511ba74` with only its pre-existing
+` M docs/DEVELOPMENT.md`, untouched by this ticket.
+
+## Commands run, and their measured results
+
+```
+# the focused set: the lift loop, the IWRAM work on both halves of the block,
+# the neighbouring collection/object/region/identity work, the shared harness
+python -m pytest tests/test_lift.py tests/test_lift_iwramdispatch.py \
+    tests/test_lift_iwramblock.py tests/test_lift_collectionflush3.py \
+    tests/test_lift_collectioninsert2.py tests/test_lift_collectionwrite2.py \
+    tests/test_lift_collectionread.py tests/test_lift_append.py \
+    tests/test_lift_native178.py tests/test_ewram_layout.py \
+    tests/test_object_layout.py tests/test_object_constructor.py \
+    tests/test_regions.py tests/test_rom_map.py tests/test_identity.py \
+    tests/test_fixed_regions.py tests/test_compiler_probe.py \
+    tests/test_lift_arith.py tests/test_lift_booluse.py tests/test_lift_effect.py \
+    tests/test_lift_flagmask.py tests/test_lift_flagread.py \
+    tests/test_lift_flagstate.py tests/test_lift_handler2.py tests/test_lift_layout.py \
+    tests/test_lift_operand.py tests/test_lift_script.py tests/test_lift_stack.py \
+    tests/test_lift_use.py tests/test_stackflow_tracker.py tests/test_toolchain.py \
+    -q -p no:cacheprovider
+# 880 passed in 495.35s
+
+# the new target's own file, on its own
+python -m pytest tests/test_lift_iwramdispatch.py -q -p no:cacheprovider
+# 29 passed in 10.78s
+
+# deterministic report regeneration, key by key, the command gate 7 runs
+python -m buusfury lift --target all --rom build/buusfury.gba --verify
+# 21/21 REPORT: PASS (the whole document regenerated identically), exit 0
+
+# the new target's own loop
+python -m buusfury lift --target iwramdispatch --rom build/buusfury.gba
+# SEMANTIC      PROVEN   277 behavioural assertions, 0 failures (minimum 90)
+# MODERN_BUILD  PASS     arm-none-eabi-gcc 16.1.0, linked at 0x087B8510, 472 bytes
+# ADS_MATCH     BLOCKED  ADS12_LICENSE_UNAVAILABLE
+# comparison    308 original vs 472 modern, 257 differing bytes,
+#               0 of 75 instruction spans identical, byte_identical FALSE,
+#               is_a_match_claim FALSE
+```
+
+`scripts/check.ps1` was deliberately **not** run: its pytest gate is
+`pytest tests -q`, i.e. the whole suite, which this ticket's validation section
+forbids. Gate 7's own command was run directly and is the command the gate
+executes; its ticket list was extended to name `DECOMP-IWRAM-DISPATCH-001`.
+
+The modern toolchain was exercised in **ARM** state again and produced 472 bytes
+from a 300-byte original. **A modern build is not a match.** The reconstruction is
+larger because C cannot express the SPSR access, the CPSR mode switch or the
+ARM-to-Thumb-to-ARM return, so those are environment calls rather than inline
+instructions. The comparison asserts `byte_identical` is false.
+
+## Report regression
+
+**Every report regenerates identically except the one this ticket intends to
+change.** `config/lift_iwramdispatch.json` is new. `config/lift_iwramblock.json`
+changed, and a key-by-key diff against `HEAD` reports **exactly three
+differences**, every one of them a measured correction declared in
+[`LIFT_IWRAM_DISPATCH.md`](LIFT_IWRAM_DISPATCH.md) section 8:
+
+| key | change |
+| --- | --- |
+| `/boundary_evidence/iwram_runtime/installed_block/transfer_width_decided_by` | "leaves eight of the thirteen veneer destinations outside the copied block" -> the count is **derived** and reads `3`, with the three destinations named |
+| `/boundary_evidence/iwram_runtime/installed_block/veneer_destinations_outside_the_16_bit_reading` | **added**: the derived evidence the score above rests on |
+| `/boundary_evidence/iwram_runtime/words_naming_the_block_anywhere_in_it/method` | the 4-byte-aligned census is now declared a **LOWER BOUND**, with both measurements (129 values / 257 windows against 225 / 533) |
+
+`tests/test_lift_iwramblock.py` was updated for the first of those: it used to
+assert the prose `"the 16-bit reading leaves eight"` and now pins the derivation,
+so the number cannot drift back. Its `test_it_is_the_first_arm_target_and_the_only_one`
+was **widened deliberately**, which is what that test's own docstring instructs
+when a second ARM target appears; the list is still exact, so a third cannot
+appear unnoticed.
+
+## Corrections carried, and their evidence
+
+| artifact | claim | status |
+| --- | --- | --- |
+| `docs/LIFT_IWRAM_RUNTIME.md`, `docs/ROM_MAP_PROVENANCE.md`, `lift.py` docstring | "the 16-bit reading ... leaves **eight** of the thirteen veneer destinations outside the copied block" | **CORRECTED to three** (`0x03000858`, `0x03000A4C`, `0x03000CA0`); the count is now derived from the destination list rather than restated |
+| `docs/LIFT_IWRAM_RUNTIME.md` | "**all four** block-memory slots ... occur exactly once" | **CORRECTED**: `0x030007FC` occurs twice, and the same sentence lists it among the five that do not |
+| `config/lift_iwramblock.json` method note | the census "finds LITERALS only", stated of a 4-byte-aligned scan | **CORRECTED**: it is a lower bound; 2-byte alignment adds 96 values over 276 windows |
+| this ticket's own recon brief | priority order "bit14, bit7, bit6, ..., bit18, bit19" | **REFUTED** and corrected inside the derivation: the masks are bits 0-13, and the trap was reading capstone's second immediate operand instead of applying the ARM rotation |
+| this ticket's own recon brief | "the five functions reached only through the three ROM-stored pointers" | **REFUTED for two**: `0x03000330` occurs nowhere in the image at any byte offset, and `0x03000414` occurs once inside asset data with no reader |
+
+## Safety
+
+No ROM was written, patched, truncated or renamed. No `.gba`, save or state is
+tracked. The new tracked files are two C sources, a shim, a self-check, a test, a
+document and a report. `src/IwramDispatch.c` carries no `--defsym`, declares its
+instruction set as `arm` on the target and on the unit, and adds one guarded
+weak default definition per environment hook so that the translation unit links
+on its own for the modern-build verdict; the host self-check defines
+`IWRAMDISPATCH_HOST_TEST` and supplies its own, so the defaults are never
+executed by the behavioural check.
+
+**Housekeeping, disclosed rather than hidden:** `C:\Dev\buusfury-decomp\reference\tools\`
+holds an mGBA 0.10.5 win64 build downloaded before it was established that the
+project's runtime tooling already exists in `C:\Dev\log1-remake\tools\runtime\`
+and that mGBA 0.10.5 and 0.11.0 are both already installed. It is untracked and
+gitignored, it was not used, and it is a delete-on-request duplicate.

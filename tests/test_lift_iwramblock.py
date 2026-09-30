@@ -46,8 +46,17 @@ def test_the_target_is_registered():
 
 def test_it_is_the_first_arm_target_and_the_only_one():
     """Every earlier target is Thumb. If a second ARM target appears, this test
-    should be widened deliberately rather than silently accept it."""
-    assert [t.id for t in lift.load_targets() if t.isa == "arm"] == ["iwramblock"]
+    should be widened deliberately rather than silently accept it.
+
+    Widened deliberately by DECOMP-IWRAM-DISPATCH-001, which adds the second ARM
+    target: the same copied block's interrupt dispatcher, entered from the BIOS
+    IRQ vector rather than from a veneer. The list is still exact, so a third ARM
+    target cannot appear without this test being widened again on purpose.
+    """
+    assert [t.id for t in lift.load_targets() if t.isa == "arm"] == [
+        "iwramblock",
+        "iwramdispatch",
+    ]
 
 
 def test_every_earlier_target_survives():
@@ -163,7 +172,15 @@ def test_the_block_ends_where_the_first_dma_begins(rom_bytes):
 
 
 def test_the_transfer_width_is_decided_by_tiling_and_not_assumed(rom_bytes):
-    """Both readings are reported; exactly one closes the block at both ends."""
+    """Both readings are reported; exactly one closes the block at both ends.
+
+    DECOMP-IWRAM-DISPATCH-001 corrected the count of veneer destinations the
+    16-bit reading would leave outside the copied block: it was prose saying
+    "eight" in the docstring and in the report, and the measured value is three
+    (0x03000858, 0x03000A4C, 0x03000CA0). The count is now DERIVED from the
+    destination list, and this test pins the derivation rather than the prose, so
+    it cannot drift back.
+    """
     block = runtime_of(rom_bytes)["installed_block"]
     counts = block["transfer_width_byte_counts"]
     assert counts["32-bit"]["bytes"] == 4100
@@ -172,7 +189,30 @@ def test_the_transfer_width_is_decided_by_tiling_and_not_assumed(rom_bytes):
     assert counts["32-bit"]["iwram_ends_at_the_second_region"] is True
     assert counts["16-bit"]["rom_ends_at_the_fill"] is False
     assert counts["16-bit"]["iwram_ends_at_the_second_region"] is False
-    assert "the 16-bit reading leaves eight" in block["transfer_width_decided_by"]
+
+    outside = block["veneer_destinations_outside_the_16_bit_reading"]
+    assert [row["iwram"] for row in outside] == [
+        "0x03000858",
+        "0x03000A4C",
+        "0x03000CA0",
+    ]
+    assert [row["rom"] for row in outside] == [
+        "0x087B81FC",
+        "0x087B83F0",
+        "0x087B8644",
+    ]
+    # The 16-bit reading ends at 0x087B81A6, so every reported destination is at
+    # or above it and every unreported one is below it.
+    end_16 = 0x087B79A4 + 2050
+    for row in outside:
+        assert int(row["rom"], 16) >= end_16
+    installed = [
+        entry for entry in runtime_of(rom_bytes)["veneers"]["entries"]
+        if entry["destination_state"] == "arm" and entry["target_is_installed_code"]
+    ]
+    assert len(installed) == 13
+    assert len(outside) == 3
+    assert "leaves 3 of the thirteen" in block["transfer_width_decided_by"]
 
 
 def test_the_installed_image_is_a_verbatim_copy(rom_bytes):

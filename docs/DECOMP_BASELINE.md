@@ -586,3 +586,53 @@ target), registered as `iwramblock`. SEMANTIC PROVEN (165 assertions),
 MODERN_BUILD PASS, ADS_MATCH BLOCKED. 19 of the 20 committed lift reports are
 byte-identical to their previous revision; `config/lift_collectionflush3.json`
 changed in its `target.notes` alone, deliberately, to carry the correction.
+
+---
+
+## 11. IWRAM dispatch and IRQ subsystem - `DECOMP-IWRAM-DISPATCH-001` (2026-09-30)
+
+The second half of the same block. Read
+[`LIFT_IWRAM_DISPATCH.md`](LIFT_IWRAM_DISPATCH.md) for the whole subsystem.
+
+**There are sixteen ways into the block, not thirteen.** Thirteen are the veneers
+established in section 10; three more are ordinary literal-pool words in ROM code
+(`0x0803E36C = 0x03000868`, `0x0803F3BC = 0x03000AE0`, `0x0803F434 = 0x03000B6C`),
+each read by exactly one Thumb instruction. Two of those are *installations*, not
+calls: `0x03000AE0` is written into **IRQ vector slot 10** while the same routine
+enables `REG_IE` bit 10, and `0x03000B6C` is written into the **BIOS IRQ vector
+pointer** `0x03007FFC`.
+
+**The BIOS vector pointer is never a literal.** The installing routine computes it
+as `0x03007FC0 + 0x3C`; the literal `0x03007FFC` occurs **zero times** in the whole
+image. Any search that looks for the address as a stored word concludes the vector
+is never installed, and is wrong.
+
+**The dispatcher** at `0x03000B6C` saves SPSR/IME/IE, re-enables IME, computes
+`IE & IF`, scans the bits in a fixed priority order, acknowledges the served source
+with **one 32-bit store that clears the bit in IE's half and sets it in IF's half
+before the handler runs**, ORs the served mask into a software word at the table's
+end, and calls `vector_table[offset/4]` with `r4` set to an ARM resume address and
+`lr` to an **odd** address - the handler returns in Thumb state through the
+halfword `0x4720` at `0x03000C98`. Reading the priority masks requires applying the
+ARM immediate rotation: `ands r0, r1, #64, #28` is `0x400`, i.e. **bit 10**, and a
+derivation that reads capstone's last operand instead gets 28.
+
+The table is **14 entries at `0x03000FB0`, every one `0x0803F3D9` in the ROM** -
+the one-instruction Thumb stub `0x0803F3D8` whose whole body is `bx lr` - and it
+**is** written at run time, which a two-step derivation finds and a one-step
+literal search cannot: the base is loaded from a *data* word (`0x087B6EDC`), then
+dereferenced.
+
+Lifted: `src/IwramDispatch.c`, registered as `iwramdispatch`, the second **ARM**
+target and the first whose entry is a hardware vector rather than a call site. The
+SPSR access, the CPSR mode switch and the ARM-to-Thumb-to-ARM return are not
+expressible in C and are modelled as environment calls; every memory-visible
+effect is reconstructed exactly, including the **infinite spin** a pending bit 13
+produces and the first test's skip of the IE clear.
+
+**Corrections carried** (each measured, not reworded): the 16-bit reading of the
+DMA count leaves **three** veneer destinations outside the copied block, not the
+eight that three files claimed; "all four block-memory slots occur exactly once"
+was self-contradictory because `0x030007FC` occurs twice; and the whole-image
+census was a 4-byte-aligned **lower bound** (129 values over 257 windows against
+225 over 533 at 2-byte alignment), which the report said nowhere.

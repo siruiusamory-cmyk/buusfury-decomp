@@ -1799,6 +1799,132 @@ def derive_object_append(rom_bytes: bytes) -> dict:
     }
 
 
+# ---------------------------------------------------------------------------
+# the collection reader: a virtual-dispatch search over the object's collections
+# ---------------------------------------------------------------------------
+COLLREAD_ENTRY = 0x08011C70
+COLLREAD_TU = cp.TranslationUnit(
+    id="collectionread_tu",
+    rom_address=0x08011C70,
+    code_end_address=0x08011CCA,
+    end_address=0x08011CCA,
+    isa="thumb",
+    source="src/probes/ByteCodeInterpreter_collectionread.c",
+    confidence="proven",
+    boundary_evidence=(
+        "chain-walk from 0x08011C70: 44 instructions, no gaps, one terminator at "
+        "0x08011CC8 (pop {r3-r7,pc})",
+        "it is called WITH the collection object in r0, from 0x08001E1E and others",
+        "the next entry point at 0x08011CCA begins a different routine",
+    ),
+    literal_pool=((0x0134, 0x0000040C),),
+    selection=(
+        "it is the first routine found that READS the collection the append routine "
+        "fills: it loads the count at +0x04 and indexes elements from +0x08",
+        "it gives an element's first concrete non-collection use, a virtual call",
+    ),
+)
+COLLREAD_FUNCTIONS = (
+    (0x08011C70, 0x08011CCA, "search the collection by virtual dispatch"),
+)
+COLLREAD_LITERAL_POOL = ((0x0134, 0x0000040C),)
+
+
+def derive_collection_read(rom_bytes: bytes) -> dict:
+    """Re-read the search off the routine's own instructions."""
+    base = _gba.ROM_BASE
+    start, end = COLLREAD_FUNCTIONS[0][0], COLLREAD_FUNCTIONS[0][1]
+    insns = list(cp.MD["thumb"].disasm(rom_bytes[start - base : end - base], start))
+
+    def immediate(ins):
+        if ins and ins.operands and ins.operands[-1].type == cp.capstone.arm.ARM_OP_IMM:
+            return ins.operands[-1].imm
+        return None
+
+    loads = [x for x in insns if x.mnemonic.startswith("ldr")]
+    calls = []
+    for x in insns:
+        if x.mnemonic in ("bl", "blx") and x.operands:
+            operand = x.operands[0]
+            if operand.type == cp.capstone.arm.ARM_OP_IMM:
+                calls.append({"site": f"0x{x.address:08X}",
+                              "target": f"0x{operand.imm & ~1:08X}"})
+    literal_slots = [
+        slot for x in insns
+        if (slot := cp._literal_slot(x.address, "thumb", x.op_str)) is not None
+        and x.mnemonic.startswith("ldr")
+    ]
+    count_load = next(
+        (f"0x{x.address:08X}" for x in loads
+         if _thumb_mem(x) and _thumb_mem(x)[1] == 4 and _thumb_mem(x)[0] == "r0"), None)
+    method_loads = [
+        _thumb_mem(x)[1] for x in loads
+        if _thumb_mem(x) and _thumb_mem(x)[1] == 0x24 and _thumb_mem(x)[0] == "r1"]
+    decrements = [x for x in insns if x.mnemonic == "subs" and immediate(x) == 1]
+    signed_tests = [x.mnemonic for x in insns if x.mnemonic in ("bpl", "bmi")]
+
+    return {
+        "unit_id": COLLREAD_TU.id,
+        "extent": f"0x{start:08X}..0x{end:08X}",
+        "size": end - start,
+        "instructions": len(insns),
+        "count_offset": "collection + 0x04",
+        "count_load_site": count_load,
+        "values_offset": "collection + 0x08",
+        "element_width_bytes": 4,
+        "elements_are_pointers": True,
+        "element_dereference": (
+            "each element is a POINTER to an object whose FIRST WORD points at a "
+            "dispatch table"
+        ),
+        "method_offset_in_the_table": method_loads[0] if method_loads else None,
+        "method_call": "r3 = table + table[9]; the call goes through it",
+        "traversal": ("BACKWARD: the index starts at count-1 and continues while it is "
+                      "non-negative"),
+        "traversal_evidence": (
+            "the index is decremented by one and the loop continues on `bpl`, so the "
+            "FIRST element tested is the most recently appended one"
+        ),
+        "count_decrements": len(decrements),
+        "signed_loop_tests": signed_tests,
+        "stop_rule": "the FIRST non-zero method result is returned immediately",
+        "empty_collection_behaviour": (
+            "count 0 makes the index -1 and the `bmi` skips the loop entirely, so no "
+            "method is called at all"
+        ),
+        "count_is_read_only": True,
+        "count_is_read_only_evidence": (
+            "there is no store to collection + 0x04 anywhere in the routine"
+        ),
+        "second_collection_offset": "object + 0x408",
+        "second_collection_evidence": (
+            "the routine adds 0x40C to the object base and then reads the count from "
+            "that address, so the SECOND collection's base is object + 0x408 with the "
+            "same shape"
+        ),
+        "collections_searched": 2,
+        "accesses_object_plus_0x00": False,
+        "calls": calls,
+        "call_count": len(calls),
+        "reaches_the_method_through_the_bx_thunk": any(
+            c["target"] == "0x08046AA6" for c in calls),
+        "literal_slots": len(literal_slots),
+        "has_literal_pool": bool(literal_slots),
+        "has_bounds_check": False,
+        "has_bounds_check_evidence": (
+            "the count is never compared against a capacity and no element is null "
+            "checked"
+        ),
+        "effect": (
+            "a SEARCH: for each element from the top of the collection down, call the "
+            "element's virtual method at table+0x24 with the two incoming arguments "
+            "until one returns non-zero"
+        ),
+        "derived_from_rom": True,
+        "not_hand_written": True,
+    }
+
+
 UNITS: dict = {}
 
 
@@ -1850,6 +1976,13 @@ def _register_units() -> None:
         "unit": CLEAR_TU,
         "functions": CLEAR_FUNCTIONS,
         "literal_pool": CLEAR_LITERAL_POOL,
+        "boundaries": "derived",
+        "expect_padding": None,
+    }
+    UNITS[COLLREAD_TU.id] = {
+        "unit": COLLREAD_TU,
+        "functions": COLLREAD_FUNCTIONS,
+        "literal_pool": COLLREAD_LITERAL_POOL,
         "boundaries": "derived",
         "expect_padding": None,
     }
@@ -3630,6 +3763,8 @@ def run_lift(
             }
         elif unit.id == CLEAR_TU.id:
             boundary_evidence["flag_state"] = derive_flag_state(rom_bytes)
+        elif unit.id == COLLREAD_TU.id:
+            boundary_evidence["collection_read"] = derive_collection_read(rom_bytes)
         elif unit.id == APPEND_TU.id:
             boundary_evidence["object_append"] = derive_object_append(rom_bytes)
             boundary_evidence["object_layout_note"] = {

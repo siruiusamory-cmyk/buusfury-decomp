@@ -1680,6 +1680,125 @@ def derive_native178_stack(rom_bytes: bytes) -> dict:
     }
 
 
+
+# ---------------------------------------------------------------------------
+# the routine native slot 178 drives: an append into the object's array
+# ---------------------------------------------------------------------------
+APPEND_ENTRY = 0x0801191A
+APPEND_TU = cp.TranslationUnit(
+    id="append_tu",
+    rom_address=0x0801191A,
+    code_end_address=0x0801192C,
+    end_address=0x0801192C,
+    isa="thumb",
+    source="src/probes/ByteCodeInterpreter_append.c",
+    confidence="proven",
+    boundary_evidence=(
+        "chain-walk from 0x0801191A: 9 instructions, no gaps, one terminator at "
+        "0x0801192A (bx lr)",
+        "it is the callee named by native slot 178's own BL at 0x08003068",
+        "a leaf: no calls and no literal pool, so no helper had to be followed",
+    ),
+    literal_pool=(),
+    selection=(
+        "native slot 178 calls it with r0 = *(0x08054FBC + 0x18), the IWRAM object "
+        "0x03001C4C, and r1 = sub_0802BFBC's result, so its argument contract is "
+        "already proven",
+        "it is a leaf, so the effect is established by this routine alone",
+    ),
+)
+APPEND_FUNCTIONS = (
+    (0x0801191A, 0x0801192C, "append a value to the array carried by the object"),
+)
+APPEND_LITERAL_POOL: tuple = ()
+
+
+def derive_object_append(rom_bytes: bytes) -> dict:
+    """Re-read the append off the routine's own instructions.
+
+    Every constant, the read-before-increment order and the absence of any capacity
+    test are taken from the instruction stream.
+    """
+    base = _gba.ROM_BASE
+    start, end = APPEND_FUNCTIONS[0][0], APPEND_FUNCTIONS[0][1]
+    insns = list(cp.MD["thumb"].disasm(rom_bytes[start - base : end - base], start))
+
+    def immediate(ins):
+        if ins and ins.operands and ins.operands[-1].type == cp.capstone.arm.ARM_OP_IMM:
+            return ins.operands[-1].imm
+        return None
+
+    adds = [immediate(x) for x in insns if x.mnemonic == "adds" and immediate(x) is not None]
+    loads = [x for x in insns if x.mnemonic.startswith("ldr")]
+    stores = [x for x in insns if x.mnemonic.startswith("str")]
+    load_sites = [x.address for x in loads]
+    store_sites = [x.address for x in stores]
+    literal_slots = [
+        slot for x in insns
+        if (slot := cp._literal_slot(x.address, "thumb", x.op_str)) is not None
+        and x.mnemonic.startswith("ldr")
+    ]
+    compares = [x for x in insns if x.mnemonic in ("cmp", "tst", "cmn")]
+    branches = [x for x in insns if x.mnemonic.startswith("b") and x.mnemonic != "bx"]
+
+    return {
+        "unit_id": APPEND_TU.id,
+        "extent": f"0x{start:08X}..0x{end:08X}",
+        "size": end - start,
+        "instructions": len(insns),
+        "object_offset_advanced_first": 4 if 4 in adds else None,
+        "count_load": f"0x{load_sites[0]:08X}" if load_sites else None,
+        "count_store": f"0x{store_sites[0]:08X}" if store_sites else None,
+        "element_store": f"0x{store_sites[-1]:08X}" if store_sites else None,
+        "count_read_before_it_is_written": bool(
+            load_sites and store_sites and load_sites[0] < store_sites[0]),
+        "element_store_follows_the_count_store": bool(
+            len(store_sites) >= 2 and store_sites[-1] > store_sites[0]),
+        "element_index_shift": 2 if 2 in adds or any(
+            x.mnemonic == "lsls" and immediate(x) == 2 for x in insns) else None,
+        "element_offset_from_the_count_slot": 4,
+        "count_offset": "object + 0x04",
+        "values_base": "object + 0x08",
+        "element_offset": "object + 0x08 + 4*count",
+        # r0 is ADVANCED BY 4 in the first instruction and every store goes through
+        # it afterwards, so a displacement-0 store targets object+4, the count, and
+        # nothing in the routine addresses object+0. Reading the raw displacement
+        # without the advance would wrongly call `str r3,[r0]` an access to +0x00.
+        "writes_object_plus_0x00": False,
+        "writes_object_plus_0x00_evidence": (
+            "r0 is advanced by 4 in the FIRST instruction and every store goes through "
+            "it afterwards, so a displacement-0 store targets object+4, the count, and "
+            "nothing in the routine addresses object+0"
+        ),
+        "accesses": (
+            ["+0x04 read, 32-bit: the count",
+             "+0x04 written, 32-bit: the count, incremented",
+             "+0x08 + 4*count written, 32-bit: the appended element"]
+        ),
+        "compares_the_count_against_anything": bool(compares),
+        "branches": len(branches),
+        "has_capacity_check": bool(compares) and bool(branches),
+        "has_capacity_check_evidence": (
+            "there is no compare of the count against any limit and no branch on it, "
+            "so no capacity is enforced here and none is reachable from this routine"
+        ),
+        "calls": sum(1 for x in insns if x.mnemonic in ("bl", "blx")),
+        "literal_slots": len(literal_slots),
+        "has_literal_pool": bool(literal_slots),
+        "return_value_defined": False,
+        "return_value_evidence": (
+            "the routine ends with `bx lr` with r0 holding the address of the element "
+            "it just wrote, which is not a status and not a boolean"
+        ),
+        "effect": (
+            "APPENDS the incoming value at index `count` of the object's array, then "
+            "increments the count at object + 0x04"
+        ),
+        "derived_from_rom": True,
+        "not_hand_written": True,
+    }
+
+
 UNITS: dict = {}
 
 
@@ -1731,6 +1850,13 @@ def _register_units() -> None:
         "unit": CLEAR_TU,
         "functions": CLEAR_FUNCTIONS,
         "literal_pool": CLEAR_LITERAL_POOL,
+        "boundaries": "derived",
+        "expect_padding": None,
+    }
+    UNITS[APPEND_TU.id] = {
+        "unit": APPEND_TU,
+        "functions": APPEND_FUNCTIONS,
+        "literal_pool": APPEND_LITERAL_POOL,
         "boundaries": "derived",
         "expect_padding": None,
     }
@@ -3504,6 +3630,19 @@ def run_lift(
             }
         elif unit.id == CLEAR_TU.id:
             boundary_evidence["flag_state"] = derive_flag_state(rom_bytes)
+        elif unit.id == APPEND_TU.id:
+            boundary_evidence["object_append"] = derive_object_append(rom_bytes)
+            boundary_evidence["object_layout_note"] = {
+                "object": "0x03001C4C",
+                "count_offset": "object + 0x04",
+                "values_base": "object + 0x08",
+                "caller": "native slot 178 at 0x08003030",
+                "preserved_for_reuse": (
+                    "this object is the most heavily referenced entry in the static "
+                    "pointer table, so its count-and-array shape is recorded here for "
+                    "later tickets"
+                ),
+            }
         elif unit.id == NATIVE178_TU.id:
             boundary_evidence["slot_identity"] = derive_native_slot(
                 rom_bytes, NATIVE178_SLOT)

@@ -25,10 +25,17 @@ def test_the_target_is_registered():
 
 
 def test_every_earlier_target_survives():
+    """A FLOOR, not an exact count.
+
+    The ticket that added this file pinned `== 14`, and the very next ticket's
+    fifteenth target broke it - the same trap this file's own ticket fixed four
+    times elsewhere. A ticket that does not own the registry must never pin its size.
+    """
     ids = [t.id for t in lift.load_targets()]
-    assert len(ids) == 14
+    assert len(ids) >= 14, ids
     for earlier in ("gbaram", "bci", "handler2", "operand", "stack", "arith",
-                    "use", "effect", "flagread", "booluse", "clear", "gather", "flagmask"):
+                    "use", "effect", "flagread", "booluse", "clear", "gather",
+                    "flagmask", "native178"):
         assert earlier in ids, earlier
 
 

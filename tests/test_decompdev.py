@@ -508,7 +508,10 @@ def test_an_absolute_source_path_is_rejected(inventory: dd.Inventory, report: di
     broken = copy.deepcopy(report)
     for unit in broken["units"]:
         if unit.get("metadata", {}).get("source_path"):
-            unit["metadata"]["source_path"] = "C:/Dev/buusfury-decomp/src/GBARam.c"
+            # A synthetic drive: the guard keys on the shape of an absolute path,
+            # so the fixture needs a drive letter and nothing else. Naming a real
+            # directory here would put this machine's layout in a tracked file.
+            unit["metadata"]["source_path"] = "Q:/example-checkout/src/GBARam.c"
             break
     assert dd.proprietary_payload_findings(broken, inventory)
 

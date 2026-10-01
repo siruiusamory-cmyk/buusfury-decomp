@@ -46,7 +46,7 @@
   "aliases": [
     {
       "_comment": "The LOG1-REMAKE / Dragonbyte Z repository identifies the SAME image by CRC-32 rather than SHA-1. One ROM, two naming conventions - NOT two revisions.",
-      "repository": "C:/Dev/log1-remake",
+      "repository": "log1-remake",
       "profile_id": "buus_fury_usa_rev0_01c1707f",
       "crc32": "01c1707f"
     }

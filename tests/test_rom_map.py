@@ -138,23 +138,62 @@ def test_the_map_carries_extents_and_claims_never_bytes(committed):
 
 
 def test_invariant_10_dragonbyte_z_is_never_a_write_target():
-    """Production code must contain no path into the other checkout.
+    """No tracked file may hardcode a path into the other checkout.
 
     A mention of the project by NAME in a provenance note is fine and expected;
     a hardcoded absolute path is what would let a future edit write into it. The
     needle is assembled at runtime so this test does not match itself.
+
+    The scan covers every file in the repository, prose included. It used to
+    cover only `tools/*.py`, and `config/rom.json` carried such a path in its
+    alias note the whole time: the invariant's stated intent was violated while
+    its scan scope said nothing. A scope that quietly excludes the data files is
+    the defect, not just the one needle it missed.
+
+    The two exceptions below are DATED records of commands that were actually
+    executed, quoted verbatim including the directory they ran in. Rewriting
+    those quotes would falsify the record, which this project treats as worse
+    than the leak; they cannot be written to by an edit of this repository.
     """
+    import os
+
     from buusfury import identity
 
+    historical_records = {
+        "docs/VALIDATION_REPORT.md",
+        "docs/COMPILER_PROBE_PROVENANCE.md",
+    }
     needle_a = "C:" + "\\" + "Dev" + "\\" + "log1" + "-remake"
     needle_b = needle_a.replace("\\", "/")
+    # Never descend into ignored checkouts, build output or version control.
+    prune = {".git", "build", "reference", "__pycache__", ".pytest_cache"}
+    binary_suffixes = {
+        ".gba", ".agb", ".sav", ".bin", ".bmp", ".png", ".pal",
+        ".exe", ".dll", ".lib", ".o", ".obj", ".axf", ".elf",
+    }
+
     offenders = []
-    for path in (identity.REPO_ROOT / "tools").rglob("*.py"):
-        if "__pycache__" in path.parts:
-            continue
-        text = path.read_text(encoding="utf-8")
-        if needle_a in text or needle_b in text:
-            offenders.append(str(path.relative_to(identity.REPO_ROOT)))
+    scanned = 0
+    for root, dirs, files in os.walk(identity.REPO_ROOT):
+        dirs[:] = [d for d in dirs if d not in prune]
+        for name in files:
+            path = os.path.join(root, name)
+            relative = os.path.relpath(path, identity.REPO_ROOT).replace("\\", "/")
+            if relative in historical_records:
+                continue
+            if os.path.splitext(name)[1].lower() in binary_suffixes:
+                continue
+            try:
+                with open(path, encoding="utf-8") as handle:
+                    text = handle.read()
+            except (UnicodeDecodeError, OSError):
+                continue
+            scanned += 1
+            if needle_a in text or needle_b in text:
+                offenders.append(relative)
+
+    # A scan that silently walked nothing would pass for the wrong reason.
+    assert scanned > 150, f"the scan only reached {scanned} files"
     assert not offenders, f"hardcoded paths to the other checkout: {offenders}"
     # And the two repositories must never be linked as one Git repository.
     assert not (identity.REPO_ROOT / ".gitmodules").exists(), (

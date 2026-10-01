@@ -10,6 +10,7 @@ then [`../CONTRIBUTING.md`](../CONTRIBUTING.md) if you want to help.
 
 | Document | Read it for |
 | --- | --- |
+| [`DEVELOPMENT.md`](DEVELOPMENT.md) | project rules: ROM safety, licence, evidence standards, source conventions |
 | [`ARCHITECTURE.md`](ARCHITECTURE.md) | how the project fits together: the image, the tooling, and the subsystems |
 | [`PROGRESS.md`](PROGRESS.md) | what the progress figure means, and what does not count |
 | [`BUILDING.md`](BUILDING.md) | toolchains, what builds, and what is blocked |

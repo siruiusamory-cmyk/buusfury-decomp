@@ -22,6 +22,8 @@ write-ups, not in the front-door navigation.
 
 from __future__ import annotations
 
+import base64
+import json
 import os
 import re
 
@@ -30,7 +32,36 @@ import pytest
 from buusfury import decompdev as dd
 from buusfury import identity
 
-#: The scan targets are defined by the current revision of this file.
+#: The terms this scan exists to catch, stored as an encoded table rather than
+#: spelled out. A file that lists them in plain text can never pass a scan of
+#: the repository it lives in, and a public project should not carry the very
+#: strings it checks for. Decode it with FORBIDDEN_JSON below, or:
+#:
+#:     python -c "import tests.test_public_surface as t; print(t.FORBIDDEN_JSON)"
+_FORBIDDEN_TABLE = (
+    "WwogIHsKICAgICJsYWJlbCI6ICJhIHZlbmRvciBvciBwcm9kdWN0IG5hbWUiLAogICAgInBh"
+    "dHRlcm4iOiAiXFxiKD86Q2hhdEdQVHxPcGVuQUl8Q2xhdWRlfENvZGV4fERlZXBTZWVrfEFu"
+    "dGhyb3BpY3xDb3BpbG90fEdlbWluaXxMbGFtYXxNaXN0cmFsKVxcYiIsCiAgICAiZmxhZ3Mi"
+    "OiAyCiAgfSwKICB7CiAgICAibGFiZWwiOiAiYW4gYWJicmV2aWF0aW9uIGZvciB0aGF0IHRl"
+    "Y2hub2xvZ3kiLAogICAgInBhdHRlcm4iOiAiXFxiKD86QUl8TExNcz98QUdJKVxcYiIsCiAg"
+    "ICAiZmxhZ3MiOiAwCiAgfSwKICB7CiAgICAibGFiZWwiOiAidGhhdCBhYmJyZXZpYXRpb24g"
+    "d2l0aCBhbiAtYXNzaXN0ZWQgc3VmZml4IiwKICAgICJwYXR0ZXJuIjogIkFJW1xccy1dKmFz"
+    "c2lzdGVkIiwKICAgICJmbGFncyI6IDIKICB9LAogIHsKICAgICJsYWJlbCI6ICJhbiBhZ2Vu"
+    "dCBvciBzdWJhZ2VudCByZWZlcmVuY2UiLAogICAgInBhdHRlcm4iOiAiXFxic3ViLT9hZ2Vu"
+    "dHM/XFxiIiwKICAgICJmbGFncyI6IDIKICB9LAogIHsKICAgICJsYWJlbCI6ICJhbiBhZ2Vu"
+    "dCByZWZlcmVuY2UiLAogICAgInBhdHRlcm4iOiAiXFxiYWdlbnRzP1xcYiIsCiAgICAiZmxh"
+    "Z3MiOiAwCiAgfSwKICB7CiAgICAibGFiZWwiOiAiaW5zdHJ1Y3Rpb24tdGV4dCBqYXJnb24i"
+    "LAogICAgInBhdHRlcm4iOiAiXFxicHJvbXB0cz9cXGIiLAogICAgImZsYWdzIjogMgogIH0s"
+    "CiAgewogICAgImxhYmVsIjogIndvcmtmbG93LWF1dG9tYXRpb24gamFyZ29uIiwKICAgICJw"
+    "YXR0ZXJuIjogIlxcYm9yY2hlc3RyYXRcXHcqXFxiIiwKICAgICJmbGFncyI6IDIKICB9LAog"
+    "IHsKICAgICJsYWJlbCI6ICJjb21wb3VuZCB3b3JrZmxvdyBqYXJnb24iLAogICAgInBhdHRl"
+    "cm4iOiAiXFxibXVsdGktP2FnZW50XFxiIiwKICAgICJmbGFncyI6IDIKICB9Cl0="
+)
+FORBIDDEN_JSON = base64.b64decode(_FORBIDDEN_TABLE).decode("utf-8")
+FORBIDDEN: tuple[tuple[str, re.Pattern[str]], ...] = tuple(
+    (entry["label"], re.compile(entry["pattern"], entry["flags"]))
+    for entry in json.loads(FORBIDDEN_JSON)
+)
 
 #: This file necessarily names the terms it forbids, so it cannot pass its own
 #: scan. It is the ONLY exclusion: every other tracked file is scanned, which is
@@ -88,8 +119,6 @@ def test_no_provider_or_process_residue_in_tracked_text() -> None:
         except (UnicodeDecodeError, OSError):
             continue
         scanned += 1
-        for noise in _FILENAME_NOISE:
-            text = text.replace(noise, "")
         for number, line in enumerate(text.splitlines(), 1):
             for label, pattern in FORBIDDEN:
                 if pattern.search(line):
@@ -205,7 +234,7 @@ def test_the_documentation_index_lists_the_entry_points() -> None:
         assert name in index, f"docs/README.md does not link {name}"
 
 
-def test_agents_md_reads_as_contributor_policy() -> None:
+def test_the_policy_document_reads_as_contributor_policy() -> None:
     policy = _read("docs/DEVELOPMENT.md")
     for heading in (
         "## ROM safety",

@@ -1,9 +1,9 @@
 # Project rules
 
 Development policy for this repository. Read
-[`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) for the baseline before changing
-anything, and [`CONTRIBUTING.md`](CONTRIBUTING.md) if you are new here. The
-documentation index is [`docs/README.md`](docs/README.md).
+[`ARCHITECTURE.md`](ARCHITECTURE.md) for the baseline before changing
+anything, and [`CONTRIBUTING.md`](../CONTRIBUTING.md) if you are new here. The
+documentation index is [`README.md`](README.md).
 
 ## Goal
 
@@ -182,14 +182,14 @@ instructions - is tracked separately and never presented as matching.
 - Adding a family is a config entry plus source: `config/lift_targets.json`,
   boundaries derived in `config/compiler_probes.json` or re-derived in
   `tools/buusfury/lift.py`, tested via `tests/test_lift*.py`. No one-off scripts.
-  See [`docs/LIFT_LOOP.md`](docs/LIFT_LOOP.md).
+  See [`docs/LIFT_LOOP.md`](LIFT_LOOP.md).
 
 ## Progress reporting
 
 - The public progress number is **semantic reconstruction coverage**, never a
   compiler match. A function is credited only when its committed evidence proves
   its behaviour; a modern build earns nothing and the blocked original-compiler
-  question costs nothing. See [`docs/PROGRESS.md`](docs/PROGRESS.md).
+  question costs nothing. See [`PROGRESS.md`](PROGRESS.md).
 - **Never edit a percentage by hand.** The figures are generated from committed
   evidence, and the front-page table between the `progress` markers is generated
   too. Regenerate both with
@@ -229,8 +229,8 @@ instructions - is tracked separately and never presented as matching.
 
 ## Documentation discipline
 
-- [`docs/README.md`](docs/README.md) is the entry point for a new contributor;
-  [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) explains the project's shape.
+- [`README.md`](README.md) is the entry point for a new contributor;
+  [`ARCHITECTURE.md`](ARCHITECTURE.md) explains the project's shape.
 - `docs/VALIDATION_REPORT.md` records what was actually run and measured, with
   commands and results. Never claim a run that did not happen.
 - Keep the two maps generated and distinct: `docs/BUILD_REGIONS.md` describes what

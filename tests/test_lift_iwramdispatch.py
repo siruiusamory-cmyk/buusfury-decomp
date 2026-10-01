@@ -586,7 +586,7 @@ def test_the_source_mentions_no_defsym():
 
 
 def test_the_source_states_that_the_cannot_represent_list_is_explicit():
-    """docs/DEVELOPMENT.md requires the omissions to be named, not implied."""
+    """The project rules require the omissions to be named, not implied."""
     source = (identity.REPO_ROOT / "src" / "IwramDispatch.c").read_text("utf-8")
     assert "NOT" in source and "REPRESENTED" in source
     for phrase in ("SPSR", "mode switch", "interworking", "bx r4", "0x03000C98"):

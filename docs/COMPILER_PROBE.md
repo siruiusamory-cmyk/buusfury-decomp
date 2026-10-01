@@ -10,7 +10,7 @@ compile/compare harness that fails closed. Every piece is in place for the first
 run to produce an answer the moment ARM Developer Suite 1.2 is available.
 
 - Repository: `C:\Dev\buusfury-decomp`
-- Starting commit: `53fba714b4b4fe041e8223f27faed7151983ffe8`
+- Starting commit: `08be46f35f9230819b4aa2a7a671056602db6ff3`
 - Canonical ROM SHA-1: `f1c4b07554d2a3b1ad2f325307051e775ce68087` (unchanged)
 - Machine-readable results: `config/compiler_probes.json`, `config/compiler_matrix.json`
 
@@ -709,7 +709,7 @@ Beyond the ticket's list, and directly from the independent review:
 
 ## 17. Independent review
 
-The implementation was frozen at commit `c6882ae` and put through an independent
+The implementation was frozen at commit `8cf9dc5` and put through an independent
 adversarial review whose method was its own, not this ticket's. It re-derived
 the eight boundaries by exhaustive halfword-pattern `BL`/`BLX` census over all
 8,388,608 bytes plus a from-scratch reachability fixpoint, and it reconstructed

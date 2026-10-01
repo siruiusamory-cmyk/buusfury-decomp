@@ -2,7 +2,7 @@
 
 **Result: option B, honest bounds.** The array's start is proven, a lower bound is
 proven, and **no upper bound is derivable** from code evidence.
-**Baseline:** `0117178985ef4fe05b9b38ed54dcaa8fb022c88a`.
+**Baseline:** `d1ab5d42381e7d95c9e7b360e7f69869bf2bb0fe`.
 **Canonical ROM:** `f1c4b07554d2a3b1ad2f325307051e775ce68087` (unchanged).
 
 **No routine was lifted and no lift report was added or changed.** The evidence

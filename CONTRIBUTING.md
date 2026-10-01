@@ -50,6 +50,10 @@ $env:BUUSFURY_ROM = 'D:\dumps\Dragon Ball Z - Buu''s Fury (U).gba'
 pwsh -File scripts/check.ps1
 ```
 
+> **If you cloned this project before October 2026, reclone it.** The published
+> history was consolidated once, before the first release, so a clone made earlier
+> shares no commits with this repository. Replace it rather than merging the two.
+
 Python 3.11+ and Git are the only requirements for the analysis, test and
 progress tooling: it is pure standard-library Python. Some gates need toolchains
 that may not be present on your machine (an ARM cross-compiler, the original

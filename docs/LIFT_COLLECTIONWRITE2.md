@@ -3,7 +3,7 @@
 **Status:** lifted and validated. The second collection's **write** path is proven;
 its **insertion** path is not, and that is stated rather than glossed.
 **Target:** `sub_080119BC` at `0x080119BC`, Thumb.
-**Baseline:** `66f29cdc1e54382161ce0d81bc9fbd093dbb479f`.
+**Baseline:** `75a755d8f5947e5b8754285889a68a7766384784`.
 **Canonical ROM:** `f1c4b07554d2a3b1ad2f325307051e775ce68087` (unchanged).
 
 ---

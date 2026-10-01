@@ -3,7 +3,7 @@
 **Status:** primary dispatch slot 1 is lifted and its operand format is proven
 from the instructions.
 **Target:** `0x08003C8A`, the code entry behind primary table word `0x08003C8B` (slot 1), Thumb.
-**Baseline:** `893baa99f8cea57c7ae7bf3bbdeab5de12d79a09`.
+**Baseline:** `c245b32c4e83cb076085c7c90902aa0363cc21d2`.
 **Canonical ROM:** `f1c4b07554d2a3b1ad2f325307051e775ce68087` (unchanged).
 
 ---

@@ -3,7 +3,7 @@
 **Status:** lifted and validated. **How elements get into the second collection is
 now proven.**
 **Target:** `sub_08011732` at `0x08011732`, Thumb.
-**Baseline:** `40f6dfb3ae86408a7a746b7324a20c1750971b6c`.
+**Baseline:** `70a4f56b7edb09a6cb9ffab0c640d8a2a5dfd08f`.
 **Canonical ROM:** `f1c4b07554d2a3b1ad2f325307051e775ce68087` (unchanged).
 
 ---

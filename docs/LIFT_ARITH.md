@@ -3,7 +3,7 @@
 **Status:** the arithmetic family is complete. Slots 8 and 9 are lifted, and
 together with slot 7 they establish the VM's binary arithmetic stack contract.
 **Targets:** primary dispatch slot 8 at `0x08003D52` and slot 9 at `0x08003D66`, Thumb.
-**Baseline:** `254ef77c554b1c0df8168931fcaea3476f794620`.
+**Baseline:** `7baa3bfa8a2e74cf8a29b24e555511b13befa03e`.
 **Canonical ROM:** `f1c4b07554d2a3b1ad2f325307051e775ce68087` (unchanged).
 
 ---

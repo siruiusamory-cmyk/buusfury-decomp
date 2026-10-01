@@ -4,7 +4,7 @@
 chain `script byte -> push -> arithmetic -> consumer -> effect -> reader ->
 materialised boolean -> bit selection` is closed.
 **Targets:** `sub_080007B6` and `sub_080007CC`, Thumb, at `0x080007B6`.
-**Baseline:** `729f9fcfa25af4e6a66d5069742ebc1c084b8c88`.
+**Baseline:** `75f766039c58a1e0ad2d70964ebb8248bf1f582a`.
 **Canonical ROM:** `f1c4b07554d2a3b1ad2f325307051e775ce68087` (unchanged).
 
 ---

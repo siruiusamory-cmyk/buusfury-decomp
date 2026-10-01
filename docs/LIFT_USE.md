@@ -4,7 +4,7 @@
 actual use` is closed. The first routine that consumes a stack value for a
 non-stack side effect is found, bounded, lifted and run.
 **Target:** native dispatch entry 29, code address `0x080007E6`, Thumb.
-**Baseline:** `3e823fd7ea3427fd656e78967bcf0f4ab8689bd8`.
+**Baseline:** `ef01f7996a6854b9323e580aee622224c2f33f0a`.
 **Canonical ROM:** `f1c4b07554d2a3b1ad2f325307051e775ce68087` (unchanged).
 
 ---

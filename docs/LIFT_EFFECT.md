@@ -3,7 +3,7 @@
 **Status:** the effect is established. The chain `encoded value -> push ->
 arithmetic -> surviving value -> call -> concrete effect` is closed.
 **Target:** `sub_08004380` at `0x08004380`, Thumb.
-**Baseline:** `98a8e985f837163d8ede4d4afaec03277679e1c1`.
+**Baseline:** `174521384f97e48c995afa5f8e8191a8bfe41d2a`.
 **Canonical ROM:** `f1c4b07554d2a3b1ad2f325307051e775ce68087` (unchanged).
 
 ---

@@ -2,7 +2,7 @@
 
 **Status:** the loop is proven end to end on one function family.
 **Target:** the GBARam allocator at file `0x03D4D0..0x03D740`.
-**Baseline:** `f729b44ccf98dd352376ac2f503bb96769eadb38`.
+**Baseline:** `d832c78e6f74243d1401de74d2a0f38778c40d65`.
 **Canonical ROM:** `f1c4b07554d2a3b1ad2f325307051e775ce68087` (unchanged).
 
 ---

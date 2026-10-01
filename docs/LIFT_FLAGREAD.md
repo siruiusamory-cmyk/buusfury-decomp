@@ -4,7 +4,7 @@
 The chain `encoded value -> push -> arithmetic -> consumer -> effect -> reader ->
 consequence` is closed.
 **Target:** `sub_08004364` at `0x08004364`, Thumb.
-**Baseline:** `bc64cec3b8d9b976db70c0338c7ba4ba9d1e6444`.
+**Baseline:** `e6a7206cf23181d315cf00e9149f19a3ddac9849`.
 **Canonical ROM:** `f1c4b07554d2a3b1ad2f325307051e775ce68087` (unchanged).
 
 ---

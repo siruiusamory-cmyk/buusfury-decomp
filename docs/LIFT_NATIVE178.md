@@ -4,7 +4,7 @@
 capture agree on the identity, the boundary is proven, and the first concrete
 engine effect is established.
 **Target:** `0x08003030`, Thumb, native dispatch slot 178.
-**Baseline:** `cdc0bb6d29cbe5da7cff3a29dee0e9992ce75b9e`.
+**Baseline:** `f76a57c3ff7389b4e04921fe1ac859e339d51ce4`.
 **Canonical ROM:** `f1c4b07554d2a3b1ad2f325307051e775ce68087` (unchanged).
 
 ---

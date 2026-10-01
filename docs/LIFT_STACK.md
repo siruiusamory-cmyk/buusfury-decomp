@@ -3,7 +3,7 @@
 **Status:** the first consumer of the ByteCodeInterpreter value stack is found,
 bounded, lifted and run.
 **Target:** primary dispatch slot 7, entry `0x08003D3E`, Thumb.
-**Baseline:** `12580af33a55f7609aaf10707830feb673b6fec1`.
+**Baseline:** `6ca08e848e5249564a3f7ae7a46cb20d66e11ae2`.
 **Canonical ROM:** `f1c4b07554d2a3b1ad2f325307051e775ce68087` (unchanged).
 
 ---

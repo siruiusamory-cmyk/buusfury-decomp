@@ -1,6 +1,6 @@
 # The IWRAM block's dispatch and IRQ architecture
 
-Ticket: DECOMP-IWRAM-DISPATCH-001. Baseline `9893abb824ebc2efde1c741068520455e55e54e4`.
+Ticket: DECOMP-IWRAM-DISPATCH-001. Baseline `b3097339dd0399d1730004a87f94147d198d2522`.
 
 This document records what the 4100-byte block's entry, dispatch and interrupt
 architecture is, and what is still unknown. It is the second half of the picture

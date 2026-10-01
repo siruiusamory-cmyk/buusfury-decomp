@@ -3,7 +3,7 @@
 **Status:** the first opcode handler is lifted, and it is the one that reaches the
 native dispatch table.
 **Target:** `0x08003CBE`, the code entry behind primary table word `0x08003CBF` (slot 2), Thumb.
-**Baseline:** `4ab8c884cc7697f3d2d3abbbb124d37bfb3836cd`.
+**Baseline:** `e49e911c47b6fa8388583db73a51dab455ea2fbb`.
 **Canonical ROM:** `f1c4b07554d2a3b1ad2f325307051e775ce68087` (unchanged).
 
 ---

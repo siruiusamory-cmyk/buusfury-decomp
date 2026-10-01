@@ -3,7 +3,7 @@
 **Status:** the accessor trio is complete, the gather loop is proven, and the
 array is bounded honestly.
 **Functions lifted:** `sub_08004396` (clear) and `sub_080032C2` (gather), Thumb.
-**Baseline:** `20a3b1bb3e9494e32a26d9c0650dc868476a54cf`.
+**Baseline:** `b4717046e0925ebdf89dc8c10867896b8f7e0dee`.
 **Canonical ROM:** `f1c4b07554d2a3b1ad2f325307051e775ce68087` (unchanged).
 
 ---

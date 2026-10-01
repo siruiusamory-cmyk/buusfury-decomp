@@ -3,7 +3,7 @@
 **Status:** the mask's first concrete use is proven. The chain now runs from a
 script byte all the way to a **write back into the flag array**.
 **Target:** `sub_08003310` at `0x08003310`, Thumb, native dispatch entry 187.
-**Baseline:** `bd7cfe760dabd390dc12f78ddea13bdc5261ca93`.
+**Baseline:** `fc72c09377cc2eb9d05ee584825a087104b3f55f`.
 **Canonical ROM:** `f1c4b07554d2a3b1ad2f325307051e775ce68087` (unchanged).
 
 ---

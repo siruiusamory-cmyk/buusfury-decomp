@@ -465,7 +465,7 @@ hiding behind the blocker.
 
 ## Independent review of this ticket
 
-The implementation was frozen at `c6882ae` and reviewed adversarially, with an
+The implementation was frozen at `8cf9dc5` and reviewed adversarially, with an
 independent method (an exhaustive `BL`/`BLX` census over all 8,388,608 bytes plus
 a from-scratch reachability fixpoint, and in-memory reconstruction of both
 committed documents). The review **confirmed the measured core** - the eight
@@ -511,7 +511,7 @@ an unjustified `PROVEN`.
 
 ## ADS execution pass, attempted 2026-09-29: BLOCKED
 
-An execution pass was opened against `a0cbeb7` on the expectation that ADS 1.2
+An execution pass was opened against `04b1b47` on the expectation that ADS 1.2
 had been installed locally. It had not. The preflight was repeated independently
 and returns the same absence by six checks: `ADS12_ROOT` unset in the process
 environment and empty in both registry scopes, no ADS tool on `PATH`, no
@@ -858,7 +858,7 @@ gitignored, it was not used, and it is a delete-on-request duplicate.
 
 # Validation report - `DECOMP-IWRAM-TRANSFORMS-001` (2026-09-30)
 
-Baseline `a312d1060a7374bfb100f4f894c4470d8c44acff`. This ticket lifts the
+Baseline `307186b1b1be41711d6a5cc8a6f2a3fbf4355f2a`. This ticket lifts the
 byte-lane and Q-format families of the runtime-installed IWRAM block. Read
 [`LIFT_IWRAM_TRANSFORMS.md`](LIFT_IWRAM_TRANSFORMS.md) for the derivation.
 
@@ -1008,10 +1008,10 @@ with `git add -A`; every path is named explicitly.
 
 # Validation report - `DECOMP-IWRAM-NUMERIC-001` (2026-09-30)
 
-The ticket names baseline `ac509de`. HEAD had already advanced to
-`21a5f34dda607e841d8ec19be8423fa4120604fe` when this work began, and a concurrent
+The ticket names baseline `eee1851`. HEAD had already advanced to
+`98cb417cb155583b219b9656d25d1aebbfd10609` when this work began, and a concurrent
 documentation change set landed on top of it during the ticket as
-`1c08604 Present the repository as a conventional decompilation project`; the
+`0c7fa81 Present the repository as a conventional decompilation project`; the
 reconstruction commit sits on that. Read
 [`LIFT_IWRAM_NUMERIC.md`](LIFT_IWRAM_NUMERIC.md) for the derivation.
 

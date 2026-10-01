@@ -3,7 +3,7 @@
 **Status:** lifted and validated. The first concrete reader of the collection the
 append routine fills is found, and an element's first non-collection use is proven.
 **Target:** `sub_08011C70` at `0x08011C70`, Thumb.
-**Baseline:** `fdd92c68b2e342a41bf15e2b25964b17600955ae`.
+**Baseline:** `cefdb2d5189a33569999c5db459d3508a6157ce4`.
 **Canonical ROM:** `f1c4b07554d2a3b1ad2f325307051e775ce68087` (unchanged).
 
 ---

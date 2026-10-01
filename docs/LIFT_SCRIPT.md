@@ -3,7 +3,7 @@
 **Status:** the ByteCodeInterpreter entry function is lifted and the loop that
 produced it is unchanged from the pilot.
 **Target:** `0x08004038`, the bytecode dispatch loop, Thumb.
-**Baseline:** `ad947f190063bdfae0f132924995aa7a45bda855`.
+**Baseline:** `821d30295f4b3b460c02585f87d4ece17eeff901`.
 **Canonical ROM:** `f1c4b07554d2a3b1ad2f325307051e775ce68087` (unchanged).
 
 ---

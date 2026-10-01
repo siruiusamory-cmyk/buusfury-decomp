@@ -4,7 +4,7 @@
 population path does not exist in the reachable code** - a result that is stated
 plainly rather than papered over.
 **Target:** `sub_0801157E` at `0x0801157E`, Thumb.
-**Baseline:** `e9f92202478f893ced638f7bbde8fb77af03c80d`.
+**Baseline:** `27231adb853b59bb13c6974425d8646b94fcf571`.
 **Canonical ROM:** `f1c4b07554d2a3b1ad2f325307051e775ce68087` (unchanged).
 
 ---

@@ -5,7 +5,7 @@ resolved, its install path is proven from the reset code's own instructions, the
 relevant veneer family is mapped exhaustively, and the operation inside
 `sub_08011B04` that the previous ticket could not characterise is explained.
 
-**Baseline:** `4c9101bab63178c3690de846dc2bd6e7ffbdef93`.
+**Baseline:** `0100c662bcf046e08d5088489dd07f32b3384605`.
 **Canonical ROM:** `f1c4b07554d2a3b1ad2f325307051e775ce68087` (unchanged).
 
 This document is the integration of five independent investigations. Every claim

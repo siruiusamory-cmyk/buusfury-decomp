@@ -10,7 +10,7 @@ can re-derive or falsify each step instead of trusting it.
 | item | value |
 | --- | --- |
 | repository | `C:\Dev\buusfury-decomp` |
-| starting commit | `53fba714b4b4fe041e8223f27faed7151983ffe8` |
+| starting commit | `08be46f35f9230819b4aa2a7a671056602db6ff3` |
 | canonical ROM SHA-1 | `f1c4b07554d2a3b1ad2f325307051e775ce68087` |
 | ROM size | 8,388,608 bytes |
 | ROM path used | resolved through `tools/buusfury/identity.py`; never hardcoded in code |
@@ -255,7 +255,7 @@ Confirming it from real toolchain output is the first step after installation.
 
 ## 8b. Independent review
 
-The implementation was frozen at `c6882ae` and reviewed adversarially by a
+The implementation was frozen at `8cf9dc5` and reviewed adversarially by a
 reviewer whose brief was to falsify it and whose method was independent: an
 exhaustive `BL`/`BLX` halfword-pattern census over all 8,388,608 bytes, a
 from-scratch reachability fixpoint, and in-memory reconstruction of the manifest

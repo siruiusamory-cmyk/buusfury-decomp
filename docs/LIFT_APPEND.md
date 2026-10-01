@@ -3,7 +3,7 @@
 **Status:** lifted and validated. The first concrete effect of the chain that starts
 at native slot 178 is established.
 **Target:** `sub_0801191A` at `0x0801191A`, Thumb.
-**Baseline:** `5b101dbadc8aa89d0d729750f184b87462b6fca1`.
+**Baseline:** `c8a2f7b2b27f2effc2d3fd66e0f60c6213fb9b2d`.
 **Canonical ROM:** `f1c4b07554d2a3b1ad2f325307051e775ce68087` (unchanged).
 
 ---

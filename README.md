@@ -87,6 +87,40 @@ pointer table decodes end to end exactly like code. The map refuses to guess
 rather than over-claim; see
 [`ROM_MAP_PROVENANCE.md`](docs/ROM_MAP_PROVENANCE.md) section 3.
 
+### Semantic reconstruction progress (INFRA-DECOMPDEV-001)
+
+The public progress figure is **semantic source coverage**, not a compiler match.
+A function is credited only when its committed lift report establishes
+`SEMANTIC = PROVEN`; `MODERN_BUILD = PASS` earns nothing and `ADS_MATCH = BLOCKED`
+costs nothing. Credited bytes are the functions' **original** extents.
+
+| | functions | original executable bytes |
+| --- | ---: | ---: |
+| tracked (the denominator) | 266 | 186,346 |
+| semantic-complete | 39 (14.662%) | 3,112 (1.670%) |
+| - ROM | 30 / 248 | 1,872 / 182,438 (1.026%) |
+| - runtime-copied IWRAM overlay | 9 / 18 | 1,240 / 3,908 (31.730%) |
+
+Those bytes are split into 5,748 measured, 89,092 upper-bound and 91,506
+unattributed; the last two are shown rather than hidden, which is what keeps the
+figure conservative. The denominator is derived from committed provenance and
+cannot shrink as a side effect of reconstruction work. Every figure above is
+generated; `tests/test_decompdev.py` locks this table to the generator's output so
+the prose cannot drift.
+
+This is **not** the informal project-maturity estimate and is not comparable with
+a matching decomp's published percentage, because it does not measure the same
+thing. [`docs/DECOMP_DEV.md`](docs/DECOMP_DEV.md) defines it precisely; the
+committed machine-readable record is `config/decompdev_inventory.json` and the
+artifact is `config/decompdev_report.json`.
+
+```powershell
+python -m buusfury decompdev-report --summary   # what the dashboard shows
+scripts\check-progress.cmd                      # required closeout check
+```
+
+Needs no ROM, no compiler and no build.
+
 ### Build coverage (DECOMP-BASELINE-001, measured 2026-09-28)
 
 | class | bytes | share | regions | status |
@@ -395,6 +429,8 @@ python -m buusfury build     # assemble a ROM, with per-region provenance
 python -m buusfury lift      # semantic lifting loop: build + compare one family
 python -m buusfury rommap    # independent structural ROM map + function inventory
 python -m buusfury fixed     # generate the zero-toolchain fixed regions
+python -m buusfury decompdev-inventory   # derive the semantic progress denominator
+python -m buusfury decompdev-report      # the objdiff Report v2 decomp.dev ingests
 python -m pytest tests -q    # 614 tests
 ```
 

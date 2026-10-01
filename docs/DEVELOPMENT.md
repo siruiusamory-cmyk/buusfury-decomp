@@ -177,13 +177,39 @@ Matching means byte-identity of the produced ROM against
   boundaries derived in `config/compiler_probes.json` or re-derived in
   `tools/buusfury/lift.py`, tested via `tests/test_lift*.py`. No one-off
   scripts. See [`docs/LIFT_LOOP.md`](docs/LIFT_LOOP.md).
+- **Every completed ticket that changes reconstruction state runs the progress
+  check before commit/closeout.** `scripts\check-progress.cmd` regenerates and
+  validates the decomp.dev semantic progress report and prints the one line the
+  ticket report must quote. It is a targeted infrastructure check, not a test
+  suite, and it needs no ROM. Details: [`docs/DECOMP_DEV.md`](docs/DECOMP_DEV.md).
+
+## Progress reporting - mandatory
+
+- The public progress number is **semantic reconstruction coverage**, never a
+  compiler match. A function is credited only when its committed lift report says
+  `SEMANTIC = PROVEN`; `MODERN_BUILD = PASS` earns nothing and `ADS_MATCH =
+  BLOCKED` costs nothing. See [`docs/DECOMP_DEV.md`](docs/DECOMP_DEV.md).
+- **Never edit a percentage by hand.** The number is derived from committed
+  provenance by `python -m buusfury decompdev-report`. If reconstruction state
+  changed, regenerate the inventory (`decompdev-inventory --write`) in the same
+  commit; the check fails when the committed snapshot is stale.
+- **Never restore a full-suite requirement for this.** The closeout gate is one
+  targeted check.
+- Do not delete unresolved work to raise the number. The denominator refuses to
+  shrink silently, and every unreconstructed function stays in it at zero.
+- Quote the generator's line in the ticket report, verbatim:
+  `decomp.dev: semantic code X% -> Y% (report check PASS)`, or
+  `decomp.dev: unchanged (report check PASS)`.
 
 ## Scope discipline
 
 - Execute only the current ticket; stop at its stop condition.
 - Do not begin bulk decompilation, stand up function-analysis workers, build a Ghidra
   database, start m2c automation, configure objdiff matching, or create the modern
-  mod-build until a ticket says to.
+  mod-build until a ticket says to. The semantic progress report authorised by
+  `INFRA-DECOMPDEV-001` is **not** compiler matching: it never claims a byte
+  match, its units are semantic coverage, and `ADS_MATCH` stays BLOCKED. Setting
+  up byte-matching comparison remains out of scope until a ticket says otherwise.
 - A measured blocker with evidence is a valid, reportable outcome. Do not work
   around a mismatch to make a number look better. In particular, never weaken the
   ADS blocker: an unlicensed installation stays `ADS12_LICENSE_UNAVAILABLE`, which

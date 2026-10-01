@@ -891,6 +891,149 @@ def _cp_free_exception():
 
 
 # --------------------------------------------------------------------------
+# decompdev-inventory   (INFRA-DECOMPDEV-001)
+# --------------------------------------------------------------------------
+def cmd_decompdev_inventory(args) -> int:
+    from . import decompdev as _dd
+
+    try:
+        inventory = _dd.build_inventory(_dd.load_inputs())
+    except (_dd.DecompDevError, OSError, KeyError, ValueError) as exc:
+        print(f"DECOMPDEV INVENTORY: FAIL\n  {exc}")
+        return EXIT_FAIL
+
+    if isinstance(args.write, str):
+        path = Path(args.write)
+    elif args.write:
+        path = _dd.INVENTORY_PATH
+    else:
+        path = _dd.INVENTORY_PATH
+    problems = list(inventory.problems)
+
+    # The inventory is derived from committed provenance only, so a refresh never
+    # needs the ROM. What it must never do silently is SHRINK: unresolved work has
+    # to stay in the denominator, or a ticket could raise its own percentage by
+    # deleting work it could not reconstruct.
+    previous = _dd.previous_inventory_totals(path)
+    changes, shrink = _dd.denominator_changes(inventory, previous)
+    if shrink and not args.allow_denominator_decrease:
+        problems.extend(shrink)
+    elif shrink:
+        for problem in shrink:
+            print(f"  ALLOWED (denominator decrease): {problem}")
+
+    if problems:
+        print("DECOMPDEV INVENTORY: FAIL")
+        for problem in problems:
+            print(f"  - {problem}")
+        return EXIT_FAIL
+
+    if args.check:
+        stale = _dd.compare_inventory(inventory, path)
+        if stale:
+            print("DECOMPDEV INVENTORY: STALE")
+            for problem in stale[:40]:
+                print(f"  - {problem}")
+            if len(stale) > 40:
+                print(f"  ... {len(stale) - 40} more")
+            return EXIT_FAIL
+        print(
+            f"DECOMPDEV INVENTORY: PASS ({inventory.tracked_functions} tracked "
+            f"functions, {inventory.tracked_executable_bytes:,} tracked executable "
+            f"bytes, committed snapshot reproduces)"
+        )
+        return EXIT_OK
+
+    if not args.write:
+        print(
+            f"DECOMPDEV INVENTORY: derived ({inventory.tracked_functions} tracked "
+            f"functions, {inventory.tracked_executable_bytes:,} tracked executable "
+            f"bytes); pass --write to commit it or --check to compare"
+        )
+        for change in changes:
+            print(f"  {change}")
+        return EXIT_OK
+
+    path.parent.mkdir(parents=True, exist_ok=True)
+    # newline="\n" is load-bearing: Python's text mode would emit CRLF on Windows
+    # and the committed snapshot would differ from its regenerated form.
+    with path.open("w", encoding="utf-8", newline="\n") as handle:
+        handle.write(inventory.to_json())
+    print(
+        f"DECOMPDEV INVENTORY: WROTE {path} ({inventory.tracked_functions} tracked "
+        f"functions, {inventory.tracked_executable_bytes:,} tracked executable bytes)"
+    )
+    for change in changes:
+        print(f"  {change}")
+    return EXIT_OK
+
+
+# --------------------------------------------------------------------------
+# decompdev-report   (INFRA-DECOMPDEV-001)
+# --------------------------------------------------------------------------
+def cmd_decompdev_report(args) -> int:
+    from . import decompdev as _dd
+
+    try:
+        inventory = _dd.build_inventory(_dd.load_inputs())
+    except (_dd.DecompDevError, OSError, KeyError, ValueError) as exc:
+        print(f"DECOMPDEV REPORT: FAIL\n  {exc}")
+        return EXIT_FAIL
+
+    report = _dd.objdiff_report(inventory)
+    text = _dd.render_report_json(report)
+    percent = report["measures"].get("matched_code_percent", 0.0)
+
+    # Capture the committed report's measures BEFORE --out can overwrite it, so
+    # the change line the ticket quotes reports real movement rather than
+    # comparing the fresh document against itself.
+    previous = _dd.committed_report_measures()
+
+    if args.out:
+        target = Path(args.out)
+        target.parent.mkdir(parents=True, exist_ok=True)
+        with target.open("w", encoding="utf-8", newline="\n") as handle:
+            handle.write(text)
+        print(
+            f"DECOMPDEV REPORT: wrote {target} ({len(text):,} bytes, "
+            f"{len(report['units'])} units)"
+        )
+
+    if args.summary or not (args.check or args.json):
+        for line in inventory.summary_lines():
+            print(line)
+        print()
+        print(f"artifact      : {_dd.ARTIFACT_NAME} containing {_dd.ARTIFACT_FILE_NAME}")
+        print(
+            f"report version: {_dd.VERSION_NAME} "
+            f"(objdiff Report version {_dd.REPORT_VERSION})"
+        )
+        print("local command : python -m buusfury decompdev-report --out report.json")
+
+    if args.json:
+        print(text, end="")
+
+    if not args.check:
+        return EXIT_OK
+
+    problems, line = _dd.check(inventory, previous_measures=previous)
+    if problems:
+        print("DECOMPDEV REPORT: FAIL")
+        for problem in problems:
+            print(f"  - {problem}")
+        print(f"decomp.dev: semantic code {percent:.3f}% (report check FAIL)")
+        return EXIT_FAIL
+
+    print(
+        "DECOMPDEV REPORT: PASS "
+        f"({len(report['units'])} units, {inventory.complete_functions} "
+        "semantic-complete functions, deterministic, committed report current)"
+    )
+    print(line)
+    return EXIT_OK
+
+
+# --------------------------------------------------------------------------
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="buusfury",
@@ -1014,6 +1157,44 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--no-semantic", action="store_true", help="skip the host self-check")
     p.add_argument("--json", action="store_true")
     p.set_defaults(func=cmd_lift)
+
+    p = sub.add_parser(
+        "decompdev-inventory",
+        help=(
+            "derive the decomp.dev progress inventory (the denominator) from committed "
+            "project provenance; needs no ROM and no toolchain"
+        ),
+    )
+    p.add_argument(
+        "--write",
+        nargs="?",
+        const=True,
+        default=None,
+        help="write the snapshot (default config/decompdev_inventory.json)",
+    )
+    p.add_argument("--check", action="store_true", help="verify the committed snapshot reproduces from the inputs")
+    p.add_argument(
+        "--allow-denominator-decrease",
+        action="store_true",
+        help=(
+            "permit a tracked-function or tracked-byte DECREASE. Requires review: "
+            "removing unresolved work raises the percentage without doing any."
+        ),
+    )
+    p.set_defaults(func=cmd_decompdev_inventory)
+
+    p = sub.add_parser(
+        "decompdev-report",
+        help=(
+            "generate the objdiff Report version 2 that decomp.dev ingests "
+            "(semantic coverage, not byte matching)"
+        ),
+    )
+    p.add_argument("--out", default=None, help="write the report JSON here")
+    p.add_argument("--check", action="store_true", help="verify determinism, invariants and the committed report")
+    p.add_argument("--summary", action="store_true", help="print the human-readable summary")
+    p.add_argument("--json", action="store_true", help="print the report itself")
+    p.set_defaults(func=cmd_decompdev_report)
 
     return parser
 

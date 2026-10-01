@@ -260,6 +260,40 @@ the gate already loops over targets), and add tests to `tests/test_lift.py` cove
 
 ---
 
+## Step 8 - close out the progress report
+
+A lift ticket changes reconstruction state, so it moves the public progress
+number. That number is derived, never edited. Before commit:
+
+```powershell
+python -m buusfury decompdev-inventory --write   # if the inventory changed
+scripts\check-progress.cmd
+```
+
+The check is targeted infrastructure, **not** a test suite, and needs no ROM: it
+re-derives the inventory from committed provenance, refuses to record a smaller
+denominator, regenerates the objdiff Report version 2 that decomp.dev ingests,
+and verifies every invariant listed in
+[`DECOMP_DEV.md`](DECOMP_DEV.md) section 7. Then quote its line verbatim in the
+ticket report:
+
+```text
+decomp.dev: semantic code X% -> Y% (report check PASS)
+```
+
+or, when the ticket changed no semantic coverage:
+
+```text
+decomp.dev: unchanged (report check PASS)
+```
+
+What that percentage is: **semantic** coverage of mechanically identified original
+executable bytes. It is not a byte-match percentage. Only `SEMANTIC = PROVEN`
+earns credit - `MODERN_BUILD = PASS` earns none and `ADS_MATCH = BLOCKED` costs
+none. See [`DECOMP_DEV.md`](DECOMP_DEV.md).
+
+---
+
 ## Rules that the pilot established
 
 1. **Run the reconstruction before spending a compiler run.** Behavioural defects

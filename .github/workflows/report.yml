@@ -1,0 +1,102 @@
+# Semantic progress report for decomp.dev  (INFRA-DECOMPDEV-001)
+#
+# decomp.dev ingests progress from a GitHub Actions artifact:
+#
+#   * the artifact name must match  ^(?P<version>[A-z0-9_.\-]+)[_-]report(?:[_-].*)?$
+#     so `semantic_report` is read as report version `semantic`, which decomp.dev
+#     displays verbatim next to the series;
+#   * the archive must contain a file whose stem is `report` (i.e. report.json);
+#   * that file must be an objdiff Report version 2 JSON document whose FIRST
+#     BYTE is `{` (objdiff decides JSON-vs-protobuf from byte 0, so a BOM or any
+#     leading whitespace makes it try to decode binary protobuf and fail);
+#   * only runs on the DEFAULT BRANCH with event=push are ingested, which is why
+#     the push trigger is `main`; pull-request and manual runs execute the same
+#     check but decomp.dev ignores them.
+#
+# WHAT THE NUMBER MEANS: this is SEMANTIC source coverage - the share of
+# mechanically identified original executable bytes whose reconstruction has a
+# committed `SEMANTIC = PROVEN` verdict. It is NOT a byte-identical
+# compiler-match percentage. No reconstructed function reproduces the original
+# compiler's output (ADS_MATCH is BLOCKED for every target), and MODERN_BUILD =
+# PASS earns no credit here. See docs/DECOMP_DEV.md.
+#
+# THIS JOB NEEDS NO ROM, NO COMPILER AND NO BUILD. Everything it reads is
+# committed provenance: config/functions.json, config/rom_map.json,
+# config/lift_targets.json and config/lift_<id>.json. It refuses to run if a
+# baserom is present, and it uploads exactly one file.
+
+name: progress report
+
+on:
+  push:
+    branches:
+      - main
+  # Pull-request runs are NOT ingested by decomp.dev (it excludes them), but they
+  # run the same check, which is where a stale committed report or a shrunken
+  # denominator gets caught before merge.
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  semantic-report:
+    name: semantic progress report
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out the repository
+        uses: actions/checkout@v7
+
+      # The generator is a pure-Python standard-library program: nothing to
+      # install. This step exists to state the version it is known to run under.
+      - name: Set up Python
+        uses: actions/setup-python@v7
+        with:
+          python-version: '3.12'
+
+      - name: Refuse to run against a cartridge image
+        run: |
+          set -euo pipefail
+          if [ -e baserom.gba ]; then
+            echo "::error::a baserom is present in the checkout; this job must be ROM-free"
+            exit 1
+          fi
+          roms="$(git ls-files | grep -Ei '\.(gba|agb|sav|ss[0-9])$' || true)"
+          if [ -n "$roms" ]; then
+            echo "::error::tracked ROM or save data: $roms"
+            exit 1
+          fi
+          echo "no cartridge image is present or tracked"
+
+      - name: Generate the report, and validate it
+        # --check proves: the inventory reproduces from committed provenance, the
+        # denominators did not shrink, no semantic-complete unit lacks evidence,
+        # no orphan lift target, no duplicate or overlapping unit, the aggregate
+        # measures equal the unit sums, the category measures equal their members,
+        # the schema accepts only objdiff Report fields, the document carries no
+        # proprietary bytes, and two generations are byte-identical.
+        env:
+          PYTHONPATH: tools
+        run: |
+          set -euo pipefail
+          python -m buusfury decompdev-inventory --check
+          python -m buusfury decompdev-report --out report.json --check
+          python -m buusfury decompdev-report --summary
+
+      - name: Prove the report is deterministic and JSON-shaped
+        env:
+          PYTHONPATH: tools
+        run: |
+          set -euo pipefail
+          python -m buusfury decompdev-report --out report.again.json
+          cmp report.json report.again.json
+          python -c "import json; raw = open('report.json', 'rb').read(); assert raw[:1] == b'{', raw[:8]; doc = json.loads(raw); assert doc['version'] == 2, doc['version']; print('report.json is byte-identical across runs, starts with {, and is objdiff Report version 2')"
+
+      - name: Upload the progress report
+        uses: actions/upload-artifact@v7
+        with:
+          name: semantic_report
+          path: report.json
+          if-no-files-found: error
+          retention-days: 90

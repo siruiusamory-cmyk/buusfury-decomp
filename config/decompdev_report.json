@@ -1,12 +1,12 @@
 {
   "measures": {
-    "fuzzy_match_percent": 1.670012,
+    "fuzzy_match_percent": 2.009166,
     "total_code": "186346",
-    "matched_code": "3112",
-    "matched_code_percent": 1.670012,
+    "matched_code": "3744",
+    "matched_code_percent": 2.009166,
     "total_functions": 266,
-    "matched_functions": 39,
-    "matched_functions_percent": 14.661654,
+    "matched_functions": 41,
+    "matched_functions_percent": 15.413534,
     "total_units": 295
   },
   "units": [
@@ -386,14 +386,19 @@
     {
       "name": "iwram/sub_03000868",
       "measures": {
+        "fuzzy_match_percent": 100.0,
         "total_code": "484",
-        "total_functions": 1
+        "matched_code": "484",
+        "matched_code_percent": 100.0,
+        "total_functions": 1,
+        "matched_functions": 1,
+        "matched_functions_percent": 100.0
       },
       "functions": [
         {
           "name": "sub_03000868",
           "size": "484",
-          "fuzzy_match_percent": 0.0,
+          "fuzzy_match_percent": 100.0,
           "metadata": {
             "demangled_name": "sub_03000868",
             "virtual_address": "50333800"
@@ -403,6 +408,7 @@
       "metadata": {
         "complete": false,
         "module_name": "iwram_overlay",
+        "source_path": "src/IwramQ1814.c",
         "progress_categories": [
           "iwram_overlay"
         ]
@@ -411,14 +417,19 @@
     {
       "name": "iwram/sub_03000A4C",
       "measures": {
+        "fuzzy_match_percent": 100.0,
         "total_code": "148",
-        "total_functions": 1
+        "matched_code": "148",
+        "matched_code_percent": 100.0,
+        "total_functions": 1,
+        "matched_functions": 1,
+        "matched_functions_percent": 100.0
       },
       "functions": [
         {
           "name": "sub_03000A4C",
           "size": "148",
-          "fuzzy_match_percent": 0.0,
+          "fuzzy_match_percent": 100.0,
           "metadata": {
             "demangled_name": "sub_03000A4C",
             "virtual_address": "50334284"
@@ -428,6 +439,7 @@
       "metadata": {
         "complete": false,
         "module_name": "iwram_overlay",
+        "source_path": "src/IwramFieldClamp.c",
         "progress_categories": [
           "iwram_overlay"
         ]
@@ -7301,13 +7313,13 @@
       "id": "iwram_overlay",
       "name": "IWRAM overlay (runtime-copied, semantic reconstruction)",
       "measures": {
-        "fuzzy_match_percent": 26.053215,
+        "fuzzy_match_percent": 43.569845,
         "total_code": "3608",
-        "matched_code": "940",
-        "matched_code_percent": 26.053215,
+        "matched_code": "1572",
+        "matched_code_percent": 43.569845,
         "total_functions": 17,
-        "matched_functions": 8,
-        "matched_functions_percent": 47.058824
+        "matched_functions": 10,
+        "matched_functions_percent": 58.823529
       }
     },
     {

@@ -1,0 +1,275 @@
+{
+  "schema": 1,
+  "ticket": "DECOMP-IWRAM-NUMERIC-001",
+  "generated_by": "tools/buusfury/lift.py",
+  "source_sha1": "f1c4b07554d2a3b1ad2f325307051e775ce68087",
+  "target": {
+    "id": "iwramfieldclamp",
+    "name": "runtime-installed IWRAM ten-bit field clamp and de-interleave",
+    "role": "a field conversion and de-interleave: two ten-bit signed fields per source word, each saturated to signed 8-bit, packed into two destination halfword streams while the source pair is zeroed in place",
+    "notes": "THE OVERLAY'S ONLY SATURATING CONVERSION, AND THE ANSWER TO THE BRIEF'S 'EIGHT SHIFT SITES SUMMING TO 38'. The routine reads two source words, ZEROES THEM IN PLACE, and writes one halfword to each of two destination cursors: each source word carries TWO ten-bit SIGNED fields, at bits 31..22 and at bits 15..6, and bits 21..16 and 5..0 are never read by any instruction. Each field is saturated to signed 8-bit [-128,127] and packed as one byte, with the two LOW fields going to the first destination and the two HIGH fields to the second - a DE-INTERLEAVE of a two-channel interleaved stream, not a conversion of one stream. THE SHIFT SITES: there are EIGHT and their amounts are 22, 22, 16, 16, 22, 22, 8, 8, summing to 136 and not 38. The 38 is a TWO-SITE PAIR SUM rather than a total, and the previous census's own field names it: `same_register_opposite_shift` printed `amount(nearest opposite-direction shift on the same source register) + amount(this site)`, which for the low-field extractor is `lsl #16` + `asr #22 = 38`, printed at six of the eight sites. Eight non-zero amounts of at least 8 cannot total 38. The pair is also not a net `>> 6`: the intermediate 32-bit logical shift DISCARDS bits 31..16 so that the arithmetic shift sign-extends from bit 15, which is what makes it a ten-bit field rather than a six-bit one. Reading those two instructions as one net shift is the error the brief's number came from. THE SATURATION IS FOUR INSTRUCTIONS and the pattern `cmp #0x7F ; movgt #0x7F ; cmn #0x80 ; mvnlt #0x7F` occurs exactly once in the whole 8 MiB image, so this unit is the only clamp in the overlay; ARMv4T has no ssat/usat, so a saturation can only be a conditional move. THE TWO LOW values are explicitly masked with `and #0xFF` before the `orr`; the two HIGH values are not, because the `strh` keeps only the low 16 bits - the missing mask is a property of the store width. THE COUNT is a do-while over word PAIRS with a SIGNED greater-than test, so the body always runs at least once whatever the count is, and an odd count over-reads one word: a count of 3 consumes four words and runs twice. There is no bound on the source pointer. Reproduced, not repaired. THE FINGERPRINT that finds it is the POST-INDEXED store to two cursor registers; 'two halfword destination bases' alone is not enough, because the IRQ dispatcher also has two and neither of its stores advances. See docs/LIFT_IWRAM_NUMERIC.md.",
+    "translation_unit": "iwram_field_clamp_tu",
+    "rom_address": "0x087B83F0",
+    "file_offset": "0x7B83F0",
+    "code_end_address": "0x087B8484",
+    "end_address": "0x087B8484",
+    "byte_length": 148,
+    "code_byte_length": 148,
+    "isa": "arm",
+    "decomp_source": "src/IwramFieldClamp.c",
+    "probe_source": "src/probes/IwramFieldClamp.c",
+    "selftest_source": "src/probes/iwramfieldclamp_selftest.c",
+    "semantic_minimum_checks": 60000,
+    "host_build_bits": 32,
+    "original_sha1": "f614e2a46da3853be42e75e7e94eec160f1b1ccb"
+  },
+  "boundary_evidence": {
+    "method": "aligned chain-walk from each entry, following local branches",
+    "unit_id": "iwram_field_clamp_tu",
+    "code_extent": "0x087B83F0..0x087B8484",
+    "pool_extent": null,
+    "has_literal_pool": false,
+    "pool_is_adjacent_to_code": false,
+    "pool_gap_bytes": null,
+    "alignment_padding_bytes": null,
+    "functions": [
+      {
+        "start": "0x087B83F0",
+        "end": "0x087B8484",
+        "size": 148,
+        "instructions": 37,
+        "role": "ten-bit signed field clamp and de-interleave: two fields per source word, saturated to signed 8-bit, packed into two destination streams while the source pair is zeroed in place",
+        "terminators": [
+          "0x087B8480"
+        ],
+        "gaps": [],
+        "matches_expected": true
+      }
+    ],
+    "problems": [],
+    "derived_from_rom": true,
+    "not_hand_written": true
+  },
+  "verdicts": {
+    "semantic": {
+      "status": "PROVEN",
+      "checks": 69424,
+      "failures": 0,
+      "minimum_checks": 60000,
+      "host_compiler": "MSVC cl.exe (32-bit)",
+      "detail": "69424 behavioural assertions passed with 0 failures (minimum 60000)",
+      "measures": "whether the reconstructed C behaves correctly, by RUNNING it"
+    },
+    "modern_build": {
+      "status": "PASS",
+      "detail": "compiled, linked at 0x087B83F0 and emitted 196 bytes",
+      "measures": "whether the source compiles, links and emits bytes"
+    },
+    "ads_match": {
+      "status": "BLOCKED",
+      "code": "ADS12_LICENSE_UNAVAILABLE",
+      "detail": "an ARM Developer Suite 1.2 installation is present on this machine but the licence file it ships licenses a different product, so the ARM compilers cannot be run. No compile has been attempted and no configuration has been tested. The installation is located through ADS12_ROOT.",
+      "required_to_unblock": [
+        "a licensed ADS 1.2 installation, with ADS12_ROOT pointing at it",
+        "then: python -m buusfury compiler-probe --plan, then --matrix"
+      ],
+      "not_inferable_from_modern_build": true
+    }
+  },
+  "verdicts_are_independent": "SEMANTIC, MODERN_BUILD and ADS_MATCH answer different questions and none is evidence for another. A passing modern build says nothing about the original compiler; a passing semantic run only removes one class of error.",
+  "modern_build": {
+    "status": "PASS",
+    "toolchain": {
+      "family": "GNU Arm Embedded (devkitARM)",
+      "root": "<DEVKITARM>",
+      "prefix": "arm-none-eabi-",
+      "tools": {
+        "gcc": "<DEVKITARM>\\bin\\arm-none-eabi-gcc.exe",
+        "ld": "<DEVKITARM>\\bin\\arm-none-eabi-ld.exe",
+        "objcopy": "<DEVKITARM>\\bin\\arm-none-eabi-objcopy.exe",
+        "objdump": "<DEVKITARM>\\bin\\arm-none-eabi-objdump.exe",
+        "nm": "<DEVKITARM>\\bin\\arm-none-eabi-nm.exe"
+      }
+    },
+    "identity": {
+      "gcc_banner": "arm-none-eabi-gcc.exe (devkitARM) 16.1.0",
+      "gcc_version": "16.1.0",
+      "target_triple": "arm-none-eabi",
+      "binutils_banner": "GNU objdump (GNU Binutils) 2.46.0.20260210",
+      "compiler_family": "gcc",
+      "is_the_original_compiler": false,
+      "why_not": "the original translation unit was built by ARM Developer Suite 1.2 (the surviving command line names tcpp). GCC is a different compiler with a different code generator, so its output cannot establish anything about ADS 1.2."
+    },
+    "target_support": {
+      "supported": true,
+      "cpu": "arm7tdmi",
+      "instruction_set": "thumb",
+      "commands": [
+        "<DEVKITARM>\\bin\\arm-none-eabi-gcc.exe -c -mcpu=arm7tdmi -mthumb -O1 -ffreestanding -fno-common -fno-builtin -o <REPO>\\build\\lift\\iwramfieldclamp\\toolchain-probe\\support_probe.o <REPO>\\build\\lift\\iwramfieldclamp\\toolchain-probe\\support_probe.c"
+      ],
+      "disassembly": [
+        "adds r0, #1",
+        "bx lr"
+      ],
+      "detail": "compiled and disassembled a probe function for ARM7TDMI Thumb: 2 instruction(s), r0 written and a return present"
+    },
+    "compiler_configuration": {
+      "cpu": "arm7tdmi",
+      "instruction_set": "arm",
+      "optimization": "-O1",
+      "extra_flags": []
+    },
+    "link_origin": "0x087B83F0",
+    "external_calls_bound_to_original_addresses": {},
+    "detail": "compiled, linked at 0x087B83F0 and emitted 196 bytes",
+    "build": {
+      "ok": true,
+      "commands": [
+        "<DEVKITARM>\\bin\\arm-none-eabi-gcc.exe -c -mcpu=arm7tdmi -marm -O1 -ffreestanding -fno-common -fno-builtin -fomit-frame-pointer -mno-unaligned-access -o <REPO>\\build\\lift\\iwramfieldclamp\\iwramfieldclamp.o <REPO>\\src\\IwramFieldClamp.c",
+        "<DEVKITARM>\\bin\\arm-none-eabi-gcc.exe -c -mcpu=arm7tdmi -marm -o <REPO>\\build\\lift\\iwramfieldclamp\\iwramfieldclamp_externs.o -x assembler-with-cpp <REPO>\\build\\lift\\iwramfieldclamp\\iwramfieldclamp_externs.s",
+        "<DEVKITARM>\\bin\\arm-none-eabi-gcc.exe -nostdlib -Wl,-T,<REPO>\\build\\lift\\iwramfieldclamp\\iwramfieldclamp.ld -Wl,-Map,<REPO>\\build\\lift\\iwramfieldclamp\\iwramfieldclamp.map -o <REPO>\\build\\lift\\iwramfieldclamp\\iwramfieldclamp.elf <REPO>\\build\\lift\\iwramfieldclamp\\iwramfieldclamp.o <REPO>\\build\\lift\\iwramfieldclamp\\iwramfieldclamp_externs.o",
+        "<DEVKITARM>\\bin\\arm-none-eabi-objcopy.exe -O binary -j .text -j .rodata <REPO>\\build\\lift\\iwramfieldclamp\\iwramfieldclamp.elf <REPO>\\build\\lift\\iwramfieldclamp\\iwramfieldclamp.bin"
+      ],
+      "produced_byte_length": 196,
+      "symbols": {
+        "sub_087B83F0": {
+          "address": "0x087B83F0",
+          "size": 196
+        }
+      },
+      "diagnostics": ""
+    }
+  },
+  "functions": [
+    {
+      "name": "sub_087B83F0",
+      "role": "ten-bit signed field clamp and de-interleave: two fields per source word, saturated to signed 8-bit, packed into two destination streams while the source pair is zeroed in place",
+      "original": {
+        "start": "0x087B83F0",
+        "end": "0x087B8484",
+        "size": 148,
+        "isa": "arm",
+        "instructions": 37,
+        "first_instruction": "push {r4, r5, r6, r7, r8}",
+        "calls": [],
+        "literal_slots": [],
+        "returns": 1,
+        "leaf": true,
+        "abi": {
+          "callee_saved_pushed": [
+            "r4",
+            "r5",
+            "r6",
+            "r7",
+            "r8"
+          ],
+          "frame_size_bytes": 0,
+          "written_registers": [
+            "r2",
+            "r3",
+            "r4",
+            "r5",
+            "r6",
+            "r7",
+            "r8"
+          ]
+        }
+      },
+      "modern": {
+        "start": "0x087B83F0",
+        "end": "0x087B84B4",
+        "size": 196,
+        "isa": "arm",
+        "instructions": 49,
+        "first_instruction": "push {r4, r5, r6, r7, lr}",
+        "calls": [],
+        "literal_slots": [],
+        "returns": 1,
+        "leaf": true,
+        "abi": {
+          "callee_saved_pushed": [
+            "r4",
+            "r5",
+            "r6",
+            "r7"
+          ],
+          "frame_size_bytes": 0,
+          "written_registers": [
+            "r0",
+            "r1",
+            "r2",
+            "r3",
+            "r4",
+            "r5",
+            "r6",
+            "r7"
+          ]
+        }
+      },
+      "modern_symbol_present": true,
+      "delta": {
+        "size_bytes": 48,
+        "instructions": 12,
+        "returns": 0,
+        "calls": 0,
+        "literal_slots": 0
+      },
+      "same_extent": false,
+      "byte_identical": false
+    }
+  ],
+  "literal_pools": {
+    "original": {
+      "distinct_slots": 0,
+      "contiguous_runs": [],
+      "run_count": 0,
+      "shared_pool": false,
+      "shared_pool_applicable": false,
+      "declared_pool": [
+        "0x087B8484",
+        "0x087B8484"
+      ],
+      "declared_slots": [],
+      "declared_slots_used": [],
+      "all_referenced_slots_are_declared": true,
+      "all_declared_slots_are_referenced": true,
+      "undeclared_slots": [],
+      "functions_reaching_it": 0
+    },
+    "modern": {
+      "distinct_slots": 0,
+      "contiguous_runs": [],
+      "run_count": 0,
+      "shared_pool": true,
+      "functions_reaching_a_pool": 0
+    },
+    "interpretation": "the original's literals are accounted for by the words the unit declares; the modern build pools differently, which is a structural consequence of the compiler rather than a defect in the reconstruction. It is also why a function with a literal load cannot be compared standalone.",
+    "is_a_match_claim": false
+  },
+  "comparison": {
+    "original_byte_length": 148,
+    "modern_byte_length": 196,
+    "overlap_byte_length": 148,
+    "differing_bytes_in_overlap": 132,
+    "matching_bytes_in_overlap": 16,
+    "original_only_bytes": 0,
+    "modern_only_bytes": 48,
+    "original_instruction_spans": 37,
+    "matching_instruction_spans": 0,
+    "differing_instruction_spans": 37,
+    "bytes_not_covered_by_an_original_instruction": 0,
+    "byte_identical": false,
+    "is_a_match_claim": false,
+    "match_claim_note": "MEASUREMENT ONLY. This compares a modern GCC build against the cartridge. A modern compiler is not the original compiler, so a difference here is expected and proves nothing; an identity here would also prove nothing about ADS 1.2. ADS_MATCH stays BLOCKED."
+  },
+  "semantic_check": {
+    "status": "PROVEN",
+    "checks": 69424,
+    "failures": 0,
+    "minimum_checks": 60000,
+    "host_compiler": "MSVC cl.exe (32-bit)",
+    "host_build_bits": 32,
+    "detail": "69424 behavioural assertions passed with 0 failures (minimum 60000)",
+    "output": "PASS: 69424 check(s), 0 failure(s)\n"
+  }
+}

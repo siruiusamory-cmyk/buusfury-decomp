@@ -49,9 +49,10 @@ wrongly - that the interrupt vector is never installed.
 | block memory: copy and fill in 4-byte and 2-byte units | `0x03000768`, `0x030007A8`, `0x030007FC`, `0x03000858` |
 | byte-lane transforms | `0x030002DC`, `0x03000330` |
 | strided gather | `0x03000388`, `0x030004C0` |
-| Q10 fixed-point transforms | `0x03000560`, `0x03000700`, `0x03000868` |
+| Q22.10 fixed-point dot products | `0x03000560`, `0x03000700` |
+| Q18.14 signed-byte resampling sampler | `0x03000868` |
 | bit-stream decoders (with byte-identical helpers) | `0x03000040`, `0x03000CA0` |
-| clamp-and-pack | `0x03000A4C` |
+| ten-bit field clamp and de-interleave | `0x03000A4C` |
 | interrupt handler protocol | `0x03000AE0` |
 | interrupt dispatch and vector table | `0x03000B6C`, table at `0x03000FB0` |
 
@@ -63,6 +64,13 @@ The block has been described as holding twenty ARM functions. The committed
 derivation enumerates **eighteen** complete functions, covering 3,876 of the 3,908
 code bytes, plus the interworking halfword and a small literal pool. The
 difference is recorded rather than papered over.
+
+A census re-derived from the image for
+[`LIFT_IWRAM_NUMERIC.md`](LIFT_IWRAM_NUMERIC.md) closes the gap to twenty and
+locates the two: `0x0300028C` and `0x03000EF4` are 72-byte helpers reached by nine
+`BL`s each from inside the windows of `0x03000040` and `0x03000CA0`, and they are
+**byte-identical** to one another. The committed callgraph's `functions` array
+predates that measurement; its `unreachable_code_runs` agrees with the census.
 
 ## The interrupt entry point
 
@@ -87,6 +95,8 @@ than only the served one.
 | `src/IwramByteLanePair.c` | a byte-lane table transform |
 | `src/IwramByteLaneSparse.c` | a sparse byte-lane store |
 | `src/IwramQFormat.c` | the Q10 fixed-point transforms |
+| `src/IwramQ1814.c` | the Q18.14 signed-byte resampling sampler |
+| `src/IwramFieldClamp.c` | the ten-bit field clamp and de-interleave |
 
 ## Where the evidence is
 
@@ -95,6 +105,7 @@ than only the served one.
 | [`LIFT_IWRAM_RUNTIME.md`](LIFT_IWRAM_RUNTIME.md) | how the copy works, and the block memory family |
 | [`LIFT_IWRAM_DISPATCH.md`](LIFT_IWRAM_DISPATCH.md) | the dispatcher, the vector table and the interrupt protocol |
 | [`LIFT_IWRAM_TRANSFORMS.md`](LIFT_IWRAM_TRANSFORMS.md) | the byte-lane and fixed-point transform families |
+| [`LIFT_IWRAM_NUMERIC.md`](LIFT_IWRAM_NUMERIC.md) | the Q18.14 sampler and the ten-bit field clamp, and the family census |
 | [`ROM_MAP_PROVENANCE.md`](ROM_MAP_PROVENANCE.md) | why the block's extent is believed |
 
 ## What remains unknown

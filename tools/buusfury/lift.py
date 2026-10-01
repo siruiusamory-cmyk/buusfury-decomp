@@ -2476,6 +2476,126 @@ IWRAM_BL_SPARSE_LITERAL_POOL = ()
 IWRAM_QF_LITERAL_POOL = ()
 
 
+# ---------------------------------------------------------------------------
+# the numeric / data-processing families of the same block
+#   (DECOMP-IWRAM-NUMERIC-001)
+# ---------------------------------------------------------------------------
+# Two routines that are adjacent in the image and share nothing else. They are
+# two units rather than one because the family each belongs to is decided by its
+# own data flow - the census that classified them found NO sibling for either -
+# and because "adjacent" is not a reason to put two unrelated operations in one
+# translation unit.
+#
+# Both are register-only leaves with no pc-relative load, so neither declares a
+# pool: the pool test is not applicable rather than failed.
+IWRAM_Q1814_ROM = 0x087B820C
+IWRAM_Q1814_CODE_END = 0x087B83F0        # the next entry starts here
+
+IWRAM_FIELDCLAMP_ROM = 0x087B83F0
+IWRAM_FIELDCLAMP_CODE_END = 0x087B8484   # a new ARM prologue starts here
+
+IWRAM_Q1814_TU = cp.TranslationUnit(
+    id="iwram_q1814_tu",
+    rom_address=IWRAM_Q1814_ROM,
+    code_end_address=IWRAM_Q1814_CODE_END,
+    end_address=IWRAM_Q1814_CODE_END,
+    isa="arm",
+    source="src/probes/IwramQ1814.c",
+    confidence="proven",
+    boundary_evidence=(
+        "the entry is the ROM literal-pool word at 0x0803E36C, which holds "
+        "0x03000868 and is read by exactly one Thumb instruction; it is one of "
+        "the three stored-pointer routes into the block, disjoint from the "
+        "thirteen Thumb-to-ARM veneers",
+        "an aligned chain-walk from the entry reaches 121 instructions and "
+        "exactly one `bx lr`, at IWRAM 0x03000A48, ending at 0x03000A4C - which "
+        "is exactly where the NEXT entry begins, so the extent is closed from "
+        "both sides rather than bounded by a window",
+        "the routine has zero pc-relative loads, so it declares no pool: the "
+        "pool test is not applicable rather than failed",
+        "the 24-byte prologue is UNIQUE in the whole 8 MiB image (one "
+        "occurrence, at 0x087B820C), so the entry cannot be confused with a "
+        "sibling shape",
+        "the region 0x7B79A4..0x7B89A8 is `code`, `high` confidence, "
+        "`executable: confirmed`, `isa: arm` in config/rom_map.json",
+    ),
+    literal_pool=(),
+    selection=(
+        "the four input words are a record read by ONE `ldm r0,{r3,r4,r5,r6}`: "
+        "+0 A and +4 B are the position and the per-sample step in Q18.14, +8 C "
+        "is the integer base added into the address, +12 D is the multiplier",
+        "the census measured EXACTLY TWO Q18.14 pairs in the whole code half, "
+        "both in this routine, and ZERO unpaired occurrences of either shift "
+        "amount - so the family has one member and is not a variant of the Q22.10 "
+        "dot products, which use smull/smlal where this uses adds/adc",
+        "a state-file census of the block's 22 `ldrsb` sites finds all 22 here, "
+        "12 plain and 10 under the HS condition with writeback; the conditional "
+        "form is the carry propagation of the 64-bit increment",
+    ),
+)
+
+IWRAM_FIELDCLAMP_TU = cp.TranslationUnit(
+    id="iwram_field_clamp_tu",
+    rom_address=IWRAM_FIELDCLAMP_ROM,
+    code_end_address=IWRAM_FIELDCLAMP_CODE_END,
+    end_address=IWRAM_FIELDCLAMP_CODE_END,
+    isa="arm",
+    source="src/probes/IwramFieldClamp.c",
+    confidence="proven",
+    boundary_evidence=(
+        "the routine begins at exactly the address the preceding unit ends at, "
+        "0x087B83F0, so the boundary is shared rather than estimated",
+        "an aligned chain-walk from the entry reaches 37 instructions and "
+        "exactly one `bx lr`, at IWRAM 0x03000ADC, ending at 0x03000AE0; the "
+        "byte after it, 0x087B8484, is a new ARM prologue "
+        "(`push {r4,r5,r6,r7,r8,lr}`), which bounds the unit from above",
+        "the routine has zero pc-relative loads, so it declares no pool",
+        "the region 0x7B79A4..0x7B89A8 is `code`, `high` confidence, "
+        "`executable: confirmed`, `isa: arm` in config/rom_map.json",
+    ),
+    literal_pool=(),
+    selection=(
+        "the census found the saturation pattern `cmp #0x7F ; movgt #0x7F ; "
+        "cmn #0x80 ; mvnlt #0x7F` exactly FOUR times in the whole image and all "
+        "four are in this routine, and the 16-byte pattern occurs once, so this "
+        "unit is the only clamp in the overlay",
+        "it is also the only routine in the block that writes POST-INDEXED "
+        "halfwords to two cursor registers; `two halfword destination bases` "
+        "alone is not the fingerprint, because the IRQ dispatcher has two and "
+        "neither store advances",
+        "the eight shift sites the ticket's brief described as summing to 38 "
+        "measure as amounts 22, 22, 16, 16, 22, 22, 8, 8 (sum 136): the 38 is "
+        "the sum of the two DISTINCT amounts of the low-field extraction pair, "
+        "`lsl #16` then `asr #22`, which together are a net `>> 6` with the "
+        "intermediate truncation that makes them a ten-bit sign extension",
+    ),
+)
+
+#: (start, end, role) per function, all re-derived from the ROM on every run.
+IWRAM_Q1814_FUNCTIONS = (
+    (
+        IWRAM_Q1814_ROM,
+        IWRAM_Q1814_CODE_END,
+        "Q18.14 fractional-position signed-byte resampler: a 64-bit phase whose "
+        "HIGH WORD is the byte address, accumulated with adds/adc and "
+        "multiply-accumulated into an existing destination",
+    ),
+)
+
+IWRAM_FIELDCLAMP_FUNCTIONS = (
+    (
+        IWRAM_FIELDCLAMP_ROM,
+        IWRAM_FIELDCLAMP_CODE_END,
+        "ten-bit signed field clamp and de-interleave: two fields per source "
+        "word, saturated to signed 8-bit, packed into two destination streams "
+        "while the source pair is zeroed in place",
+    ),
+)
+
+IWRAM_Q1814_LITERAL_POOL = ()
+IWRAM_FIELDCLAMP_LITERAL_POOL = ()
+
+
 UNITS: dict = {}
 
 
@@ -4629,6 +4749,21 @@ def _register_units() -> None:
         "literal_pool": IWRAM_QF_LITERAL_POOL,
         "boundaries": "derived",
         # Two adjacent routines with no padding and no pool between them.
+        "expect_padding": None,
+    }
+    UNITS[IWRAM_Q1814_TU.id] = {
+        "unit": IWRAM_Q1814_TU,
+        "functions": IWRAM_Q1814_FUNCTIONS,
+        "literal_pool": IWRAM_Q1814_LITERAL_POOL,
+        "boundaries": "derived",
+        # No pool and no padding: the next entry begins at this one's last byte.
+        "expect_padding": None,
+    }
+    UNITS[IWRAM_FIELDCLAMP_TU.id] = {
+        "unit": IWRAM_FIELDCLAMP_TU,
+        "functions": IWRAM_FIELDCLAMP_FUNCTIONS,
+        "literal_pool": IWRAM_FIELDCLAMP_LITERAL_POOL,
+        "boundaries": "derived",
         "expect_padding": None,
     }
 

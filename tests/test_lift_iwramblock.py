@@ -58,6 +58,10 @@ def test_it_is_the_first_arm_target_and_the_only_one():
     byte-lane sparse store, and the Q-format fixed-point pair. Five ARM targets in
     all, every one of them inside the 4100-byte runtime-installed block, and still
     an exact list.
+
+    Widened again, deliberately, by DECOMP-IWRAM-NUMERIC-001, which adds the two
+    numeric/data-processing routines of the same block: the Q18.14 signed-byte
+    sampler and the ten-bit field clamp. Seven ARM targets, still an exact list.
     """
     assert [t.id for t in lift.load_targets() if t.isa == "arm"] == [
         "iwramblock",
@@ -65,6 +69,8 @@ def test_it_is_the_first_arm_target_and_the_only_one():
         "iwrambl",
         "iwramblsparse",
         "iwramqf",
+        "iwramq1814",
+        "iwramfieldclamp",
     ]
 
 

@@ -60,9 +60,9 @@ generated from committed evidence; nothing here is edited by hand.
 
 | Metric | Progress |
 | --- | ---: |
-| Semantically reconstructed functions | 39 / 266 (14.66%) |
-| Reconstructed executable bytes | 3,112 / 186,346 (1.67%) |
-| Overall semantic code coverage | 1.670% |
+| Semantically reconstructed functions | 41 / 266 (15.41%) |
+| Reconstructed executable bytes | 3,744 / 186,346 (2.01%) |
+| Overall semantic code coverage | 2.009% |
 <!-- progress:end -->
 
 In short:

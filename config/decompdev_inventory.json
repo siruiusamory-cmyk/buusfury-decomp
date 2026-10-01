@@ -7,7 +7,7 @@
     "digests": {
       "functions.json": "55acd716b45499bd5a95491ba48d55a0a2fa7364",
       "rom_map.json": "cf413f3ceadb6da92805668cda70169d0476e044",
-      "lift_targets.json": "3148e89f8745e3ea5e270524408c33d69c5ec8cd"
+      "lift_targets.json": "356c473da4044a741fee00741d30ea18c28c3446"
     },
     "lift_reports": [
       {
@@ -239,6 +239,30 @@
         "sha1": "326d39334f174c4aa54b9324a6bf6bd506921685"
       },
       {
+        "path": "config/lift_iwramfieldclamp.json",
+        "target": "iwramfieldclamp",
+        "ticket": "DECOMP-IWRAM-NUMERIC-001",
+        "semantic": "PROVEN",
+        "modern_build": "PASS",
+        "ads_match": "BLOCKED",
+        "ads_code": "ADS12_LICENSE_UNAVAILABLE",
+        "credited_functions": 1,
+        "credit": true,
+        "sha1": "f6d761be9b7a23b1bf2d87737d79c6048f5dbd62"
+      },
+      {
+        "path": "config/lift_iwramq1814.json",
+        "target": "iwramq1814",
+        "ticket": "DECOMP-IWRAM-NUMERIC-001",
+        "semantic": "PROVEN",
+        "modern_build": "PASS",
+        "ads_match": "BLOCKED",
+        "ads_code": "ADS12_LICENSE_UNAVAILABLE",
+        "credited_functions": 1,
+        "credit": true,
+        "sha1": "0b5d14f5fa292ffc6745e5c47fdc5a71c4b8b0ba"
+      },
+      {
         "path": "config/lift_iwramqf.json",
         "target": "iwramqf",
         "ticket": "DECOMP-IWRAM-TRANSFORMS-001",
@@ -323,10 +347,10 @@
   },
   "semantic_credit": {
     "rule": "credit is granted only when a committed lift report's verdicts.semantic.status is PROVEN; MODERN_BUILD and ADS_MATCH never grant credit",
-    "complete_functions": 39,
-    "complete_bytes": 3112,
-    "complete_percent_of_functions": 14.661654,
-    "complete_percent_of_bytes": 1.670012
+    "complete_functions": 41,
+    "complete_bytes": 3744,
+    "complete_percent_of_functions": 15.413534,
+    "complete_percent_of_bytes": 2.009166
   },
   "categories": [
     {
@@ -362,8 +386,8 @@
       "units": 18,
       "functions": 17,
       "bytes": 3608,
-      "complete_functions": 8,
-      "complete_bytes": 940
+      "complete_functions": 10,
+      "complete_bytes": 1572
     },
     {
       "id": "allocator",
@@ -668,15 +692,15 @@
       "isa": "arm",
       "original_byte_size": 484,
       "extent": "measured",
-      "status": "not_reconstructed",
+      "status": "semantic_complete",
       "category": "iwram_overlay",
       "family": "iwram_overlay",
       "region": "iwram_overlay",
       "region_classification": "code",
       "region_confidence": "high",
-      "lift_target": null,
-      "evidence": null,
-      "source": null,
+      "lift_target": "iwramq1814",
+      "evidence": "config/lift_iwramq1814.json",
+      "source": "src/IwramQ1814.c",
       "instructions": 121
     },
     {
@@ -687,15 +711,15 @@
       "isa": "arm",
       "original_byte_size": 148,
       "extent": "measured",
-      "status": "not_reconstructed",
+      "status": "semantic_complete",
       "category": "iwram_overlay",
       "family": "iwram_overlay",
       "region": "iwram_overlay",
       "region_classification": "code",
       "region_confidence": "high",
-      "lift_target": null,
-      "evidence": null,
-      "source": null,
+      "lift_target": "iwramfieldclamp",
+      "evidence": "config/lift_iwramfieldclamp.json",
+      "source": "src/IwramFieldClamp.c",
       "instructions": 37
     },
     {

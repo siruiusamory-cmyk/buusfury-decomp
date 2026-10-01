@@ -1,0 +1,292 @@
+{
+  "schema": 1,
+  "ticket": "DECOMP-IWRAM-NUMERIC-001",
+  "generated_by": "tools/buusfury/lift.py",
+  "source_sha1": "f1c4b07554d2a3b1ad2f325307051e775ce68087",
+  "target": {
+    "id": "iwramq1814",
+    "name": "runtime-installed IWRAM Q18.14 signed-byte resampling mixer",
+    "role": "a fractional-position signed-byte resampler: a Q18.14 phase accumulated in 64 bits whose high word is the byte address, with each sample multiply-accumulated into an existing destination word",
+    "notes": "THE LARGEST POOL-FREE LEAF OF THE RUNTIME-INSTALLED BLOCK, AND THE ONE THE PREVIOUS TICKET CORRECTLY SEPARATED FROM ITS OWN FAMILY. The 4100 bytes at ROM 0x087B79A4..0x087B89A8 are the image of IWRAM 0x03000000..0x03001004, installed by the reset code's DMA3 program, so IWRAM X = ROM 0x087B79A4 + (X - 0x03000000) and every byte is statically known. This unit is entered through the ROM literal-pool word at 0x0803E36C, one of the three stored-pointer routes into the block and disjoint from the thirteen Thumb-to-ARM veneers. THE OPERATION is out[i] += D * (s8)mem[C + floor((A + i*B) / 2^14)] with 32-bit wraparound on the destination. A and B are Q18.14: A is the starting byte position and B the per-sample step, C is the integer base added into the address and D the multiplier. THE PHASE IS 64 BITS AND ITS HIGH WORD IS THE ADDRESS, which is the fact that makes this routine findable and is also the trap in it: `lsl r7,r3,#0x12` makes the low word of A*2^18 and `add r3,r5,r3,asr #14` puts the integer part of A into r3, and r3 is then dereferenced 22 times. The increment is `adds r7,r7,r8` / `adc r3,r3,r4` with r8 = B lsl 18 and r4 = B asr 14, so the pair carries B*2^18 exactly for every 32-bit B. THE CONDITIONAL WRITEBACK is the second specialization and the sharpest detail: when the increment's high word is zero the compiler replaces the `adc` with `ldrsbhs r0,[r3,#1]!`, and when HS (carry set) is FALSE that instruction has NO EFFECT AT ALL - no load, no memory access and no base writeback. That single predicated instruction is the 64-bit carry, and a reconstruction that reads it as an unconditional post-increment gets the address wrong on every element whose fractional part does not carry. THE COUNT DISPATCH is a Duff's device with an asymmetry: `tst r2,#4` SKIPS the first four-element group when bit 2 is set, but the following `subs r2,r2,#8` still subtracts EIGHT - so a count of 12 writes twelve elements, not eight. There is NO pre-test, so a count of ZERO writes EIGHT destination words; and the loop test is `bhi`, so a large negative count does not terminate. Both are reproduced, not repaired. THE EXTENT is closed from both sides: 121 instructions and one `bx lr` at IWRAM 0x03000A48, ending at 0x03000A4C, which is exactly where the next entry begins. THE FAMILY HAS ONE MEMBER: a census of the whole code half found exactly two Q18.14 pairs, both here, and ZERO unpaired occurrences of either shift amount; the Q22.10 dot products use smull/smlal where this uses adds/adc and mla, so the two are different mechanisms and are deliberately not one family. THE SEMANTIC VERDICT was measured three ways: 20635 host assertions against a closed-form model, a differential of the reconstructed C against the ROM's own bytes executed by an ARM interpreter, and the census of the instructions. See docs/LIFT_IWRAM_NUMERIC.md.",
+    "translation_unit": "iwram_q1814_tu",
+    "rom_address": "0x087B820C",
+    "file_offset": "0x7B820C",
+    "code_end_address": "0x087B83F0",
+    "end_address": "0x087B83F0",
+    "byte_length": 484,
+    "code_byte_length": 484,
+    "isa": "arm",
+    "decomp_source": "src/IwramQ1814.c",
+    "probe_source": "src/probes/IwramQ1814.c",
+    "selftest_source": "src/probes/iwramq1814_selftest.c",
+    "semantic_minimum_checks": 20000,
+    "host_build_bits": 32,
+    "original_sha1": "bb4766f12c739f41f3f44f1eb745b1b638068967"
+  },
+  "boundary_evidence": {
+    "method": "aligned chain-walk from each entry, following local branches",
+    "unit_id": "iwram_q1814_tu",
+    "code_extent": "0x087B820C..0x087B83F0",
+    "pool_extent": null,
+    "has_literal_pool": false,
+    "pool_is_adjacent_to_code": false,
+    "pool_gap_bytes": null,
+    "alignment_padding_bytes": null,
+    "functions": [
+      {
+        "start": "0x087B820C",
+        "end": "0x087B83F0",
+        "size": 484,
+        "instructions": 121,
+        "role": "Q18.14 fractional-position signed-byte resampler: a 64-bit phase whose HIGH WORD is the byte address, accumulated with adds/adc and multiply-accumulated into an existing destination",
+        "terminators": [
+          "0x087B8330",
+          "0x087B83EC"
+        ],
+        "gaps": [],
+        "matches_expected": true
+      }
+    ],
+    "problems": [],
+    "derived_from_rom": true,
+    "not_hand_written": true
+  },
+  "verdicts": {
+    "semantic": {
+      "status": "PROVEN",
+      "checks": 20644,
+      "failures": 0,
+      "minimum_checks": 20000,
+      "host_compiler": "MSVC cl.exe (32-bit)",
+      "detail": "20644 behavioural assertions passed with 0 failures (minimum 20000)",
+      "measures": "whether the reconstructed C behaves correctly, by RUNNING it"
+    },
+    "modern_build": {
+      "status": "PASS",
+      "detail": "compiled, linked at 0x087B820C and emitted 1008 bytes",
+      "measures": "whether the source compiles, links and emits bytes"
+    },
+    "ads_match": {
+      "status": "BLOCKED",
+      "code": "ADS12_LICENSE_UNAVAILABLE",
+      "detail": "an ARM Developer Suite 1.2 installation is present on this machine but the licence file it ships licenses a different product, so the ARM compilers cannot be run. No compile has been attempted and no configuration has been tested. The installation is located through ADS12_ROOT.",
+      "required_to_unblock": [
+        "a licensed ADS 1.2 installation, with ADS12_ROOT pointing at it",
+        "then: python -m buusfury compiler-probe --plan, then --matrix"
+      ],
+      "not_inferable_from_modern_build": true
+    }
+  },
+  "verdicts_are_independent": "SEMANTIC, MODERN_BUILD and ADS_MATCH answer different questions and none is evidence for another. A passing modern build says nothing about the original compiler; a passing semantic run only removes one class of error.",
+  "modern_build": {
+    "status": "PASS",
+    "toolchain": {
+      "family": "GNU Arm Embedded (devkitARM)",
+      "root": "<DEVKITARM>",
+      "prefix": "arm-none-eabi-",
+      "tools": {
+        "gcc": "<DEVKITARM>\\bin\\arm-none-eabi-gcc.exe",
+        "ld": "<DEVKITARM>\\bin\\arm-none-eabi-ld.exe",
+        "objcopy": "<DEVKITARM>\\bin\\arm-none-eabi-objcopy.exe",
+        "objdump": "<DEVKITARM>\\bin\\arm-none-eabi-objdump.exe",
+        "nm": "<DEVKITARM>\\bin\\arm-none-eabi-nm.exe"
+      }
+    },
+    "identity": {
+      "gcc_banner": "arm-none-eabi-gcc.exe (devkitARM) 16.1.0",
+      "gcc_version": "16.1.0",
+      "target_triple": "arm-none-eabi",
+      "binutils_banner": "GNU objdump (GNU Binutils) 2.46.0.20260210",
+      "compiler_family": "gcc",
+      "is_the_original_compiler": false,
+      "why_not": "the original translation unit was built by ARM Developer Suite 1.2 (the surviving command line names tcpp). GCC is a different compiler with a different code generator, so its output cannot establish anything about ADS 1.2."
+    },
+    "target_support": {
+      "supported": true,
+      "cpu": "arm7tdmi",
+      "instruction_set": "thumb",
+      "commands": [
+        "<DEVKITARM>\\bin\\arm-none-eabi-gcc.exe -c -mcpu=arm7tdmi -mthumb -O1 -ffreestanding -fno-common -fno-builtin -o <REPO>\\build\\lift\\iwramq1814\\toolchain-probe\\support_probe.o <REPO>\\build\\lift\\iwramq1814\\toolchain-probe\\support_probe.c"
+      ],
+      "disassembly": [
+        "adds r0, #1",
+        "bx lr"
+      ],
+      "detail": "compiled and disassembled a probe function for ARM7TDMI Thumb: 2 instruction(s), r0 written and a return present"
+    },
+    "compiler_configuration": {
+      "cpu": "arm7tdmi",
+      "instruction_set": "arm",
+      "optimization": "-O1",
+      "extra_flags": []
+    },
+    "link_origin": "0x087B820C",
+    "external_calls_bound_to_original_addresses": {},
+    "detail": "compiled, linked at 0x087B820C and emitted 1008 bytes",
+    "build": {
+      "ok": true,
+      "commands": [
+        "<DEVKITARM>\\bin\\arm-none-eabi-gcc.exe -c -mcpu=arm7tdmi -marm -O1 -ffreestanding -fno-common -fno-builtin -fomit-frame-pointer -mno-unaligned-access -o <REPO>\\build\\lift\\iwramq1814\\iwramq1814.o <REPO>\\src\\IwramQ1814.c",
+        "<DEVKITARM>\\bin\\arm-none-eabi-gcc.exe -c -mcpu=arm7tdmi -marm -o <REPO>\\build\\lift\\iwramq1814\\iwramq1814_externs.o -x assembler-with-cpp <REPO>\\build\\lift\\iwramq1814\\iwramq1814_externs.s",
+        "<DEVKITARM>\\bin\\arm-none-eabi-gcc.exe -nostdlib -Wl,-T,<REPO>\\build\\lift\\iwramq1814\\iwramq1814.ld -Wl,-Map,<REPO>\\build\\lift\\iwramq1814\\iwramq1814.map -o <REPO>\\build\\lift\\iwramq1814\\iwramq1814.elf <REPO>\\build\\lift\\iwramq1814\\iwramq1814.o <REPO>\\build\\lift\\iwramq1814\\iwramq1814_externs.o",
+        "<DEVKITARM>\\bin\\arm-none-eabi-objcopy.exe -O binary -j .text -j .rodata <REPO>\\build\\lift\\iwramq1814\\iwramq1814.elf <REPO>\\build\\lift\\iwramq1814\\iwramq1814.bin"
+      ],
+      "produced_byte_length": 1008,
+      "symbols": {
+        "q1814_group_carry": {
+          "address": "0x087B82A4",
+          "size": 160
+        },
+        "q1814_group_general": {
+          "address": "0x087B820C",
+          "size": 152
+        },
+        "sub_087B820C": {
+          "address": "0x087B8344",
+          "size": 696
+        }
+      },
+      "diagnostics": ""
+    }
+  },
+  "functions": [
+    {
+      "name": "sub_087B820C",
+      "role": "Q18.14 fractional-position signed-byte resampler: a 64-bit phase whose HIGH WORD is the byte address, accumulated with adds/adc and multiply-accumulated into an existing destination",
+      "original": {
+        "start": "0x087B820C",
+        "end": "0x087B83F0",
+        "size": 484,
+        "isa": "arm",
+        "instructions": 121,
+        "first_instruction": "push {r4, r5, r6, r7, r8, sb, sl}",
+        "calls": [],
+        "literal_slots": [],
+        "returns": 2,
+        "leaf": true,
+        "abi": {
+          "callee_saved_pushed": [
+            "r4",
+            "r5",
+            "r6",
+            "r7",
+            "r8",
+            "sl"
+          ],
+          "frame_size_bytes": 0,
+          "written_registers": [
+            "r0",
+            "r1",
+            "r2",
+            "r3",
+            "r4",
+            "r5",
+            "r7",
+            "r8"
+          ]
+        }
+      },
+      "modern": {
+        "start": "0x087B8344",
+        "end": "0x087B85FC",
+        "size": 696,
+        "isa": "arm",
+        "instructions": 174,
+        "first_instruction": "push {r4, r5, r6, r7, r8, sb, sl, lr}",
+        "calls": [
+          "0x087B820C",
+          "0x087B82A4"
+        ],
+        "literal_slots": [],
+        "returns": 1,
+        "leaf": false,
+        "abi": {
+          "callee_saved_pushed": [
+            "r4",
+            "r5",
+            "r6",
+            "r7",
+            "r8",
+            "sl"
+          ],
+          "frame_size_bytes": 0,
+          "written_registers": [
+            "r0",
+            "r1",
+            "r2",
+            "r3",
+            "r4",
+            "r5",
+            "r6",
+            "r7",
+            "r8"
+          ]
+        }
+      },
+      "modern_symbol_present": true,
+      "delta": {
+        "size_bytes": 212,
+        "instructions": 53,
+        "returns": -1,
+        "calls": 2,
+        "literal_slots": 0
+      },
+      "same_extent": false,
+      "byte_identical": false
+    }
+  ],
+  "literal_pools": {
+    "original": {
+      "distinct_slots": 0,
+      "contiguous_runs": [],
+      "run_count": 0,
+      "shared_pool": false,
+      "shared_pool_applicable": false,
+      "declared_pool": [
+        "0x087B83F0",
+        "0x087B83F0"
+      ],
+      "declared_slots": [],
+      "declared_slots_used": [],
+      "all_referenced_slots_are_declared": true,
+      "all_declared_slots_are_referenced": true,
+      "undeclared_slots": [],
+      "functions_reaching_it": 0
+    },
+    "modern": {
+      "distinct_slots": 0,
+      "contiguous_runs": [],
+      "run_count": 0,
+      "shared_pool": true,
+      "functions_reaching_a_pool": 0
+    },
+    "interpretation": "the original's literals are accounted for by the words the unit declares; the modern build pools differently, which is a structural consequence of the compiler rather than a defect in the reconstruction. It is also why a function with a literal load cannot be compared standalone.",
+    "is_a_match_claim": false
+  },
+  "comparison": {
+    "original_byte_length": 484,
+    "modern_byte_length": 1008,
+    "overlap_byte_length": 484,
+    "differing_bytes_in_overlap": 457,
+    "matching_bytes_in_overlap": 27,
+    "original_only_bytes": 0,
+    "modern_only_bytes": 524,
+    "original_instruction_spans": 121,
+    "matching_instruction_spans": 0,
+    "differing_instruction_spans": 121,
+    "bytes_not_covered_by_an_original_instruction": 0,
+    "byte_identical": false,
+    "is_a_match_claim": false,
+    "match_claim_note": "MEASUREMENT ONLY. This compares a modern GCC build against the cartridge. A modern compiler is not the original compiler, so a difference here is expected and proves nothing; an identity here would also prove nothing about ADS 1.2. ADS_MATCH stays BLOCKED."
+  },
+  "semantic_check": {
+    "status": "PROVEN",
+    "checks": 20644,
+    "failures": 0,
+    "minimum_checks": 20000,
+    "host_compiler": "MSVC cl.exe (32-bit)",
+    "host_build_bits": 32,
+    "detail": "20644 behavioural assertions passed with 0 failures (minimum 20000)",
+    "output": "PASS: 20644 check(s), 0 failure(s)\n"
+  }
+}

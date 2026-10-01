@@ -1003,3 +1003,120 @@ writing; its directory timestamp is 2026-09-29 09:03:02, before this session.
 The new tracked files are three C sources, three shims, two self-checks, one test
 file, one document, three reports and two documentation edits. Nothing is staged
 with `git add -A`; every path is named explicitly.
+
+---
+
+# Validation report - `DECOMP-IWRAM-NUMERIC-001` (2026-09-30)
+
+The ticket names baseline `ac509de`. HEAD had already advanced to
+`21a5f34dda607e841d8ec19be8423fa4120604fe` when this work began, and a concurrent
+documentation change set landed on top of it during the ticket as
+`1c08604 Present the repository as a conventional decompilation project`; the
+reconstruction commit sits on that. Read
+[`LIFT_IWRAM_NUMERIC.md`](LIFT_IWRAM_NUMERIC.md) for the derivation.
+
+## What was run, and what it measured
+
+```
+# the new family's own focused tests, with the ROM present
+python -m pytest tests/test_lift_iwramnumeric.py -q
+# 31 passed in 17.25s
+
+# the new family plus every neighbouring IWRAM target and the progress harness
+python -m pytest tests/test_lift_iwramnumeric.py tests/test_lift_iwramtransforms.py \
+  tests/test_lift_iwramblock.py tests/test_lift_iwramdispatch.py \
+  tests/test_lift.py tests/test_decompdev.py -q
+# 206 passed in 104.24s
+
+# every committed lift report re-derived and diffed against the file of record
+python -m buusfury lift --target all --verify --rom <canonical image>
+# PASS for 25 of 26 targets. iwramfieldclamp differed in ONE field - its own
+# target.notes - because the registry note was corrected after the report was
+# first generated. After regenerating that one report both new targets verify
+# PASS ("the whole document regenerated identically") and the earlier 24 are
+# byte-identical.
+
+# the two host self-checks, compiled 32-bit and RUN (the SEMANTIC verdict)
+# PASS: 20644 check(s), 0 failure(s)     (Q18.14 sampler)
+# PASS: 69424 check(s), 0 failure(s)     (ten-bit field clamp)
+
+# the instruction differential: a Python model of the equations against the
+# ROM's OWN BYTES executed by an ARM interpreter written for this ticket
+python build/recon/IWRAM_N/diff_rom.py 200
+# cases 1914, failures 0
+
+# the C-versus-ROM differential: the RECONSTRUCTED C against the same ROM bytes
+# on a shared deterministic case stream, one quarter of the sampler cases with
+# the destination ALIASING the sampled bytes
+python build/recon/IWRAM_N/cdiff.py 0x5EED1234 6000
+# 0x03000868 : 6000 cases, 0 mismatches
+# 0x03000A4C : 6000 cases, 0 mismatches
+
+# the closeout, in the documented single-command form so the generator itself
+# emits the movement line
+python -m buusfury decompdev-inventory --write
+python -m buusfury decompdev-report --out config/decompdev_report.json \
+  --sync-readme --check
+# decomp.dev: semantic code 1.670% -> 2.009% (report check PASS)
+
+scripts\check-progress.cmd
+# PROGRESS CHECK: PASS   (its own final line reads "unchanged", because by then
+# the artifact of record is already current; the movement line above is the one
+# the generator emitted while regenerating it)
+
+# LIFT_LOOP.md step 3: each probe shim against its real source, compiled
+# separately and compared by the sha1 of the disassembly
+python build/recon/IWRAM_N/shim_check.py
+# OK   src/IwramQ1814.c       8d1396922421b02535be2f5ed6dd2a9ae1f99881
+#      == src/probes/IwramQ1814.c
+# OK   src/IwramFieldClamp.c  436faa9f6bc071bf4243cb9ac3bfd7d89cc15648
+#      == src/probes/IwramFieldClamp.c
+# shim equality: 2/2 identical
+
+# and the machine state of both objects, from their own ELF attributes
+arm-none-eabi-readelf -A build/recon/IWRAM_N/shim/real.o
+# Tag_CPU_arch: v4T      Tag_ARM_ISA_use: Yes
+# neither routine declares an external symbol (0 calls, 0 literals in both lift
+# reports), so there is nothing for the linker to wrap: an objdump scan of the
+# objects finds no `bx pc` and no `ldr pc` branch-exchange veneer, and no
+# --defsym is used anywhere.
+```
+
+## Semantic credit
+
+| | before | after | delta |
+|---|---|---|---|
+| semantic functions | 39 / 266 | **41 / 266** | +2 |
+| semantically reconstructed bytes | 3,112 / 186,346 | **3,744 / 186,346** | +632 |
+| semantic code coverage | 1.670% | **2.009%** | +0.339 |
+
+The 632 bytes are exactly the two functions: `iwram/sub_03000868` 484 B
+(`src/IwramQ1814.c`) and `iwram/sub_03000A4C` 148 B (`src/IwramFieldClamp.c`).
+Both were **already carried in the denominator at zero**, so proving them moved
+only the numerator; every denominator term is identical before and after.
+
+## Defects found by running, and corrected
+
+| where | what was wrong | why |
+|---|---|---|
+| `src/IwramQ1814.c` (first revision) | the carry-only body re-read the sample every element | the `ldrsbhs` fails its condition and does **not** re-read; the retained byte is observable when the destination aliases the sampled bytes. Found by a branch's independent worked example, reproduced, then pinned by a test proved to discriminate (re-introducing the re-read makes exactly that assertion fail, with detail `0xFFFFC180`) |
+| `src/probes/iwramq1814_selftest.c` | a reference read a sample byte before the test had written it | test defect; 256 assertions failed, the reconstruction was right |
+| `src/probes/iwramfieldclamp_selftest.c` | a saturation boundary compared a signed value against an unsigned return, and a reference table was too short for one count | test defects, both; the reconstruction was right |
+
+## Safety
+
+No ROM was written, patched, truncated or renamed. Canonical identity before and
+after every write:
+
+```
+SHA-1    F1C4B07554D2A3B1AD2F325307051E775CE68087
+SHA-256  940ad5f01db4465b8877dfe739510cbf34f4ea3d390f3df13519808bc36f059e
+size     8388608      mtime 2026-09-28T14:43:13, unchanged
+```
+
+No `.gba`, save or state is tracked. `C:\Dev\log1-remake` was not opened for
+writing. The new tracked files are two C sources, two shims, two self-checks, one
+test file, one new document, two documentation edits, two reports and one
+registry entry; every path is named explicitly and nothing is staged with
+`git add -A`.
+

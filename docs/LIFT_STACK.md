@@ -1,4 +1,4 @@
-# DECOMP-LIFT-SCRIPT-STACK-001 - the first value-stack consumer
+# The first value-stack consumer (DECOMP-LIFT-SCRIPT-STACK-001)
 
 **Status:** the first consumer of the ByteCodeInterpreter value stack is found,
 bounded, lifted and run.

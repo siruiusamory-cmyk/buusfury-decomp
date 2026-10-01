@@ -1,4 +1,4 @@
-# Validation report - DECOMP-BASELINE-001 + DECOMP-BOOTSTRAP-001
+# Validation report (DECOMP-BASELINE-001 + DECOMP-BOOTSTRAP-001)
 
 Everything below was **executed on 2026-09-28** on the machine described in §1.
 Nothing in this report is projected, estimated or assumed. Where a value is

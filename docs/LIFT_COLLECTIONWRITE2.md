@@ -1,4 +1,4 @@
-# DECOMP-LIFT-COLLECTION-WRITE2-001 - the second collection's writer
+# The second collection's writer (DECOMP-LIFT-COLLECTION-WRITE2-001)
 
 **Status:** lifted and validated. The second collection's **write** path is proven;
 its **insertion** path is not, and that is stated rather than glossed.

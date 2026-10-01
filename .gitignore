@@ -97,9 +97,11 @@ axd.exe
 *~
 Thumbs.db
 desktop.ini
+# Editor and local tool state. Anything a tool writes into the checkout for its
+# own use belongs here rather than in version control; the specific directories
+# a given tool uses are listed in .git/info/exclude so this file stays generic.
 .vscode/
 .idea/
-# Local tool state, never tracked.
 
 # Python
 __pycache__/

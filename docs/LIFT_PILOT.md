@@ -1,4 +1,4 @@
-# DECOMP-LIFT-PILOT-001 - the first semantic lifting loop
+# The first semantic lifting loop (DECOMP-LIFT-PILOT-001)
 
 **Status:** the loop is proven end to end on one function family.
 **Target:** the GBARam allocator at file `0x03D4D0..0x03D740`.

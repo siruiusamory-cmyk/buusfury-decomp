@@ -1,4 +1,4 @@
-# DECOMP-LIFT-FLAGSTATE-001 - the first decompiled flag-state cluster
+# The first decompiled flag-state cluster (DECOMP-LIFT-FLAGSTATE-001)
 
 **Status:** the accessor trio is complete, the gather loop is proven, and the
 array is bounded honestly.

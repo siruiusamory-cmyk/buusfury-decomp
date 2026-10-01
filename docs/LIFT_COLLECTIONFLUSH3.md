@@ -1,4 +1,4 @@
-# DECOMP-LIFT-COLLECTION-INSERT3-001 - the third region's population path
+# The third region's population path (DECOMP-LIFT-COLLECTION-INSERT3-001)
 
 **Status:** lifted and validated. The third region's shape is proven, and **the
 population path does not exist in the reachable code** - a result that is stated

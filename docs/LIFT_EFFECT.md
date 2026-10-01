@@ -1,4 +1,4 @@
-# DECOMP-LIFT-SCRIPT-EFFECT-001 - what the popped VM value does
+# What the popped VM value does (DECOMP-LIFT-SCRIPT-EFFECT-001)
 
 **Status:** the effect is established. The chain `encoded value -> push ->
 arithmetic -> surviving value -> call -> concrete effect` is closed.

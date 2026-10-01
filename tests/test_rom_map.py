@@ -165,7 +165,9 @@ def test_invariant_10_dragonbyte_z_is_never_a_write_target():
     }
     needle_a = "C:" + "\\" + "Dev" + "\\" + "log1" + "-remake"
     needle_b = needle_a.replace("\\", "/")
-    # Never descend into ignored checkouts, build output or version control.
+    # Never descend into ignored checkouts or build output, and skip every
+    # dot-directory except .github: a developer's local tool state is not project
+    # content, and naming a specific tool here would put it in a public file.
     prune = {".git", "build", "reference", "__pycache__", ".pytest_cache"}
     binary_suffixes = {
         ".gba", ".agb", ".sav", ".bin", ".bmp", ".png", ".pal",
@@ -175,7 +177,11 @@ def test_invariant_10_dragonbyte_z_is_never_a_write_target():
     offenders = []
     scanned = 0
     for root, dirs, files in os.walk(identity.REPO_ROOT):
-        dirs[:] = [d for d in dirs if d not in prune]
+        dirs[:] = [
+            d
+            for d in dirs
+            if d not in prune and (d == ".github" or not d.startswith("."))
+        ]
         for name in files:
             path = os.path.join(root, name)
             relative = os.path.relpath(path, identity.REPO_ROOT).replace("\\", "/")

@@ -1,4 +1,4 @@
-# DECOMP-FLAGSTATE-LAYOUT-001 - the flag array's extent
+# The flag array's extent (DECOMP-FLAGSTATE-LAYOUT-001)
 
 **Result: option B, honest bounds.** The array's start is proven, a lower bound is
 proven, and **no upper bound is derivable** from code evidence.

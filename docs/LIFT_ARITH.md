@@ -1,4 +1,4 @@
-# DECOMP-LIFT-SCRIPT-ARITH-001 - the value-stack arithmetic family
+# The value-stack arithmetic family (DECOMP-LIFT-SCRIPT-ARITH-001)
 
 **Status:** the arithmetic family is complete. Slots 8 and 9 are lifted, and
 together with slot 7 they establish the VM's binary arithmetic stack contract.

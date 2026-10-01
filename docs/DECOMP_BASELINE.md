@@ -1,4 +1,4 @@
-# DECOMP-BASELINE-001 + DECOMP-BOOTSTRAP-001 - baseline
+# Baseline (DECOMP-BASELINE-001 + DECOMP-BOOTSTRAP-001)
 
 **Status:** baseline established. Identity gate, byte map, toolchain inventory and
 the reproducible parts of the build are all in place and verified. Full source

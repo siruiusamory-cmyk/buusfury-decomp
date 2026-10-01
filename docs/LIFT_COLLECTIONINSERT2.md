@@ -1,4 +1,4 @@
-# DECOMP-LIFT-COLLECTION-INSERT2-001 - the second collection's insertion path
+# The second collection's insertion path (DECOMP-LIFT-COLLECTION-INSERT2-001)
 
 **Status:** lifted and validated. **How elements get into the second collection is
 now proven.**

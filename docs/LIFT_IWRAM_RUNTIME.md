@@ -1,4 +1,4 @@
-# DECOMP-RUNTIME-IWRAM-001 - the runtime-installed IWRAM call subsystem
+# The runtime-installed IWRAM call subsystem (DECOMP-RUNTIME-IWRAM-001)
 
 **Status:** the mechanism is recovered and reproducible. Slot `0x030007A8` is
 resolved, its install path is proven from the reset code's own instructions, the

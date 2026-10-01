@@ -999,6 +999,17 @@ def cmd_decompdev_report(args) -> int:
             f"{len(report['units'])} units)"
         )
 
+    if args.sync_readme:
+        try:
+            changed = _dd.sync_readme(inventory)
+        except (_dd.DecompDevError, OSError) as exc:
+            print(f"DECOMPDEV REPORT: FAIL\n  {exc}")
+            return EXIT_FAIL
+        print(
+            "DECOMPDEV REPORT: README progress block "
+            + ("updated" if changed else "already current")
+        )
+
     if args.summary or not (args.check or args.json):
         for line in inventory.summary_lines():
             print(line)
@@ -1191,6 +1202,11 @@ def build_parser() -> argparse.ArgumentParser:
         ),
     )
     p.add_argument("--out", default=None, help="write the report JSON here")
+    p.add_argument(
+        "--sync-readme",
+        action="store_true",
+        help="regenerate the README's delimited progress table from the same evidence",
+    )
     p.add_argument("--check", action="store_true", help="verify determinism, invariants and the committed report")
     p.add_argument("--summary", action="store_true", help="print the human-readable summary")
     p.add_argument("--json", action="store_true", help="print the report itself")

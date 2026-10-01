@@ -1,4 +1,4 @@
-# DECOMP-LIFT-FLAGMASK-001 - the first consumer of the gathered mask
+# The first consumer of the gathered mask (DECOMP-LIFT-FLAGMASK-001)
 
 **Status:** the mask's first concrete use is proven. The chain now runs from a
 script byte all the way to a **write back into the flag array**.

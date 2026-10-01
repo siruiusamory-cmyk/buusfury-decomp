@@ -262,35 +262,39 @@ the gate already loops over targets), and add tests to `tests/test_lift.py` cove
 
 ## Step 8 - close out the progress report
 
-A lift ticket changes reconstruction state, so it moves the public progress
-number. That number is derived, never edited. Before commit:
+A reconstruction change moves the public progress figures. They are derived,
+never edited, and one command regenerates all of them:
 
 ```powershell
-python -m buusfury decompdev-inventory --write   # if the inventory changed
-scripts\check-progress.cmd
+scripts\check-progress.cmd -Update     # regenerate the report and the front page
+scripts\check-progress.cmd             # verify; must pass before commit
 ```
+
+`-Update` regenerates the inventory, the report of record and the progress table
+on the front page of the README - the same figures decomp.dev publishes - and then
+the check re-derives everything independently. There is no number to type in.
 
 The check is targeted infrastructure, **not** a test suite, and needs no ROM: it
 re-derives the inventory from committed provenance, refuses to record a smaller
 denominator, regenerates the objdiff Report version 2 that decomp.dev ingests,
-and verifies every invariant listed in
+confirms the README table is current, and verifies every invariant listed in
 [`DECOMP_DEV.md`](DECOMP_DEV.md) section 7. Then quote its line verbatim in the
-ticket report:
+pull request:
 
 ```text
 decomp.dev: semantic code X% -> Y% (report check PASS)
 ```
 
-or, when the ticket changed no semantic coverage:
+or, when the change affected no semantic coverage:
 
 ```text
 decomp.dev: unchanged (report check PASS)
 ```
 
-What that percentage is: **semantic** coverage of mechanically identified original
-executable bytes. It is not a byte-match percentage. Only `SEMANTIC = PROVEN`
-earns credit - `MODERN_BUILD = PASS` earns none and `ADS_MATCH = BLOCKED` costs
-none. See [`DECOMP_DEV.md`](DECOMP_DEV.md).
+What that percentage is: **semantic** coverage of the original executable bytes the
+project has identified. It is not a byte-match percentage. Only proven behaviour
+earns credit - a modern build earns none and the blocked original-compiler
+question costs none. See [`PROGRESS.md`](PROGRESS.md).
 
 ---
 

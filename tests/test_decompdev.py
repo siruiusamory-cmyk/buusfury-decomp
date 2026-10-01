@@ -635,34 +635,61 @@ def test_check_passes_on_the_committed_tree(inventory: dd.Inventory) -> None:
     assert line == "decomp.dev: unchanged (report check PASS)"
 
 
-def test_the_readme_quotes_the_generated_figures(inventory: dd.Inventory) -> None:
-    """Prose is not allowed to drift from the committed config.
+def test_the_readme_progress_block_is_generated(inventory: dd.Inventory) -> None:
+    """The front page and the dashboard come from one set of figures.
 
-    The same discipline `tests/test_regions.py` applies to the coverage tables.
+    The table is generated between the markers, so the same command that produces
+    the decomp.dev report produces the README, and neither can drift.
     """
+    assert dd.readme_progress_findings(inventory) == []
+    block = dd.render_progress_block(inventory)
+    assert dd.PROGRESS_START in block and dd.PROGRESS_END in block
+    assert f"{inventory.complete_functions} / {inventory.tracked_functions}" in block
+    assert (
+        f"{inventory.complete_bytes:,} / {inventory.tracked_executable_bytes:,}" in block
+    )
     readme = (dd._identity.REPO_ROOT / "README.md").read_text(encoding="utf-8")
-    section = readme.split("### Semantic reconstruction progress", 1)
-    assert len(section) == 2, "the README must carry the semantic progress section"
-    section = section[1].split("### Build coverage", 1)[0]
+    assert block in readme
+    # Every figure in the block is derived, so a hand-edited one is a failure.
+    assert "Do not edit by hand" in block
 
-    assert f"{inventory.tracked_functions}" in section
-    assert f"{inventory.tracked_executable_bytes:,}" in section
-    assert (
-        f"{inventory.complete_functions} ({_percent(inventory.complete_functions, inventory.tracked_functions)}%)"
-        in section
+
+def test_a_stale_or_missing_readme_block_is_detected(
+    inventory: dd.Inventory, tmp_path
+) -> None:
+    path = tmp_path / "README.md"
+    good = (dd._identity.REPO_ROOT / "README.md").read_text(encoding="utf-8")
+
+    path.write_text(good, encoding="utf-8", newline="\n")
+    assert dd.readme_progress_findings(inventory, path) == []
+
+    tampered = good.replace("| Metric | Progress |", "| Metric | Progress |\n| nonsense | 99% |")
+    path.write_text(tampered, encoding="utf-8", newline="\n")
+    problems = dd.readme_progress_findings(inventory, path)
+    assert problems and "stale" in problems[0]
+
+    path.write_text("# A front page with no markers\n", encoding="utf-8", newline="\n")
+    problems = dd.readme_progress_findings(inventory, path)
+    assert problems and "block" in problems[0]
+
+
+def test_syncing_the_readme_block_is_idempotent(inventory: dd.Inventory, tmp_path) -> None:
+    path = tmp_path / "README.md"
+    path.write_text(
+        "# Test\n\n" + dd.PROGRESS_START + "\nstale\n" + dd.PROGRESS_END + "\n",
+        encoding="utf-8",
+        newline="\n",
     )
-    assert (
-        f"{inventory.complete_bytes:,} ({_percent(inventory.complete_bytes, inventory.tracked_executable_bytes)}%)"
-        in section
-    )
-    assert f"{inventory.measured_bytes:,}" in section
-    assert f"{inventory.upper_bound_bytes:,}" in section
-    assert f"{inventory.unattributed_bytes:,}" in section
-    for label, iwram in (("ROM", False), ("runtime-copied IWRAM overlay", True)):
-        members = inventory.scoped(iwram=iwram)
-        functions = [u for u in members if u.is_function]
-        credited = [u for u in functions if u.credited]
-        assert f"{len(credited)} / {len(functions)}" in section, label
+    assert dd.sync_readme(inventory, path) is True
+    assert dd.readme_progress_findings(inventory, path) == []
+    # A second sync changes nothing, so a closeout run cannot churn the file.
+    assert dd.sync_readme(inventory, path) is False
+
+    # Without the markers there is nothing to fill in, and guessing where to put
+    # a generated block is worse than refusing.
+    path.write_text("# Test\n", encoding="utf-8", newline="\n")
+    with pytest.raises(dd.DecompDevError):
+        dd.sync_readme(inventory, path)
 
 
 def _percent(part: int, whole: int) -> str:

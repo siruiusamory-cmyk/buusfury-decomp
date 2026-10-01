@@ -1,4 +1,4 @@
-# DECOMP-LIFT-SCRIPT-USE-001 - the first surviving-value consumer
+# The first surviving-value consumer (DECOMP-LIFT-SCRIPT-USE-001)
 
 **Status:** the chain `encoded value -> push -> arithmetic -> surviving value ->
 actual use` is closed. The first routine that consumes a stack value for a

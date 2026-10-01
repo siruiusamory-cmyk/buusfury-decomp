@@ -1,4 +1,4 @@
-# Compiler probe provenance: DECOMP-COMPILER-PROBE-001
+# Compiler probe provenance (DECOMP-COMPILER-PROBE-001)
 
 Companion to `docs/COMPILER_PROBE.md`. That document states the result and the
 method; this one records where every claim came from, what was measured rather

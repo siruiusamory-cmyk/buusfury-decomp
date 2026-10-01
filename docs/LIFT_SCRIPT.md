@@ -1,4 +1,4 @@
-# DECOMP-LIFT-SCRIPT-001 - the first real engine subsystem
+# The first real engine subsystem (DECOMP-LIFT-SCRIPT-001)
 
 **Status:** the ByteCodeInterpreter entry function is lifted and the loop that
 produced it is unchanged from the pilot.

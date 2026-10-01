@@ -1,4 +1,4 @@
-# DECOMP-LIFT-SCRIPT-SM7-001 - the variable-length operand reader
+# The variable-length operand reader (DECOMP-LIFT-SCRIPT-SM7-001)
 
 **Status:** primary dispatch slot 1 is lifted and its operand format is proven
 from the instructions.

@@ -1,4 +1,4 @@
-# DECOMP-LIFT-COLLECTION-READ-001 - the collection reader
+# The collection reader (DECOMP-LIFT-COLLECTION-READ-001)
 
 **Status:** lifted and validated. The first concrete reader of the collection the
 append routine fills is found, and an element's first non-collection use is proven.

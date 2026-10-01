@@ -1,4 +1,4 @@
-# DECOMP-OBJECT-LAYOUT-001 - the object at *(0x08054FBC + 0x14)
+# The object at *(0x08054FBC + 0x14) (DECOMP-OBJECT-LAYOUT-001)
 
 **Result:** an object-offset census is committed, **61 user sites** are classified,
 **14 field offsets are independently confirmed**, and the flag array's upper bound

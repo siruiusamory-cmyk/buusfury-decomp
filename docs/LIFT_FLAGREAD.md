@@ -1,4 +1,4 @@
-# DECOMP-LIFT-SCRIPT-FLAGREAD-001 - the reader of the flag array
+# The reader of the flag array (DECOMP-LIFT-SCRIPT-FLAGREAD-001)
 
 **Status:** the first reader is found, bounded, and its first consequence proven.
 The chain `encoded value -> push -> arithmetic -> consumer -> effect -> reader ->

@@ -1,4 +1,4 @@
-# DECOMP-LIFT-NATIVE178-EFFECT-001 - the object append
+# The object append (DECOMP-LIFT-NATIVE178-EFFECT-001)
 
 **Status:** lifted and validated. The first concrete effect of the chain that starts
 at native slot 178 is established.

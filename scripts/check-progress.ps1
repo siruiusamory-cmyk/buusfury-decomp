@@ -24,11 +24,20 @@
 
     Writes its scratch output under build/ (gitignored). Touches nothing else.
 
+    With -Update the check first regenerates the inventory, the report of record
+    and the front-page progress table from committed evidence, then verifies the
+    result. That is the whole manual effort a change costs: one command, and no
+    number typed in.
+
 .EXAMPLE
     scripts\check-progress.cmd
+
+.EXAMPLE
+    scripts\check-progress.cmd -Update
 #>
 param(
-    [switch] $Quiet
+    [switch] $Quiet,
+    [switch] $Update
 )
 
 Set-StrictMode -Version Latest
@@ -67,15 +76,29 @@ function Invoke-Step {
 
 Write-Host ""
 Write-Host "========================================================================="
-Write-Host "decomp.dev semantic progress - closeout check (INFRA-DECOMPDEV-001)"
+Write-Host "decomp.dev semantic progress - closeout check"
 Write-Host "========================================================================="
+
+if ($Update) {
+    # Regenerate everything that is derived, so a change to reconstruction state
+    # never needs a figure typed in by hand. Both the published report and the
+    # front-page table come out of this one command.
+    Write-Host "  regenerating the derived artifacts (-Update)" -ForegroundColor Cyan
+    Invoke-Step 'inventory regenerated from committed evidence' @(
+        'decompdev-inventory', '--write') | Out-Null
+    Invoke-Step 'report and README progress table regenerated' @(
+        'decompdev-report',
+        '--out', (Join-Path $repoRoot 'config/decompdev_report.json'),
+        '--sync-readme') | Out-Null
+}
 
 # 1. The denominator. Derived from committed provenance only: no ROM.
 Invoke-Step 'inventory reproduces and the denominator did not shrink' @(
     'decompdev-inventory', '--check') | Out-Null
 
 # 2. The report itself, written into scratch so the committed file is compared,
-#    not overwritten.
+#    not overwritten. This also verifies the generated README progress table, so
+#    a stale front page fails here too.
 Invoke-Step 'report generates, validates and matches the committed artifact' @(
     'decompdev-report', '--out', (Join-Path $scratch 'report.json'), '--check') | Out-Null
 

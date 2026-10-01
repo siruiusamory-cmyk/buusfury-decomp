@@ -1,4 +1,4 @@
-# DECOMP-LIFT-NATIVE178-001 - native dispatch slot 178
+# Native dispatch slot 178 (DECOMP-LIFT-NATIVE178-001)
 
 **Status:** lifted and validated. Static derivation and an independent runtime
 capture agree on the identity, the boundary is proven, and the first concrete

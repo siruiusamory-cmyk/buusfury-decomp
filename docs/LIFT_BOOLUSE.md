@@ -1,4 +1,4 @@
-# DECOMP-LIFT-SCRIPT-BOOLUSE-001 - what the materialised boolean controls
+# What the materialised boolean controls (DECOMP-LIFT-SCRIPT-BOOLUSE-001)
 
 **Status:** the materialised boolean's first concrete consequence is proven. The
 chain `script byte -> push -> arithmetic -> consumer -> effect -> reader ->

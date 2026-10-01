@@ -1,4 +1,4 @@
-# DECOMP-LIFT-SCRIPT-HANDLER-001 - primary dispatch slot 2
+# Primary dispatch slot 2 (DECOMP-LIFT-SCRIPT-HANDLER-001)
 
 **Status:** the first opcode handler is lifted, and it is the one that reaches the
 native dispatch table.

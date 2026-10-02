@@ -25,17 +25,22 @@ reviewer whose strengths differ from the implementer's, so the review probes
 what the implementation was least likely to check. This is not a seniority
 ranking. Disagreement is resolved by evidence, never by authority.
 
-## The four pre-review gates
+## The pre-review gates
 
-A nontrivial code-bearing change must pass all four before review closes:
+A nontrivial code-bearing change must pass all of them before review closes:
 
 | Gate | Command | What it protects |
 | --- | --- | --- |
-| Source readability | `python -m tools.quality.readability --changed <rev>` | research narrative and dead scaffolding in shipped source |
+| Source readability | `python -m tools.quality.readability --all` | research narrative and dead scaffolding in shipped source |
 | Architecture and repository purity | `python -m tools.quality.architecture` | where source, tests, evidence and configuration are allowed to live |
-| Public surface | `python -m tools.quality.public_surface` | what the repository says about itself, and to whom |
-| Built site | `python -m tools.quality.public_surface --built dist` and `python -m pytest tests/unit/test_site_consistency.py` | what a visitor actually receives, and whether the page still agrees with its own data |
+| Public surface | `python -m tools.quality.public_surface --all` | what the repository says about itself, and to whom |
+| Built site | `python -m tools.quality.site_check` | what a visitor actually receives: the status data, the page's own figures, its links, its heading order, and the artifact's absence of private material |
 | Independent review | this document | correctness and everything a test cannot see |
+
+`site_check.py` is the one implementation of the built-site checks: CI runs it
+as a script in both the test and deploy jobs, and
+`tests/unit/test_site_consistency.py` imports it and runs the same checks
+locally, so the two cannot disagree.
 
 A gate may be run over the whole tree or over the changed set; both forms are
 deterministic and both are documented by the tools themselves. A hard finding

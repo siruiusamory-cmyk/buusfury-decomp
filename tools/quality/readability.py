@@ -6,7 +6,7 @@ the file. Two layers instead:
 
 * **Hard findings** are residue that must not ship in a public repository: an
   absolute path from one machine, vocabulary pasted out of a development
-  process, an implementation left behind behind a comment marker.
+  process, an implementation left behind a comment marker.
 * **Advisories** are a reading list. They never change the exit code, and the
   summary says so on its last line.
 
@@ -122,7 +122,6 @@ OUT_OF_SCOPE: tuple[ScanRoot, ...] = (
     ScanRoot("extern", "Checked-out upstream repositories: other projects' source."),
     ScanRoot("roms", "Commercial ROM images and saves; never committed."),
     ScanRoot("extracted", "Extracted game data; ignored by git."),
-    ScanRoot("build", "Also covers per-worktree build scratch space."),
 )
 
 #: Directory names that are never entered even if a tracked path names them.
@@ -318,10 +317,9 @@ SIGNAL_BY_ID: dict[str, Signal] = {signal.id: signal for signal in SIGNALS}
 
 # --- thresholds ------------------------------------------------------------
 #
-# Every figure below was chosen against this tree on 2026-10-02: 496 source
-# files across the roots above, read through this module's own scanner. Each is
-# a judgement call, so each hard limit states the measurement that produced it,
-# and only the residue classes are hard.
+# Every figure below was chosen by reading this tree through this module's own
+# scanner. Each is a judgement call, so each hard limit states the measurement
+# that produced it, and only the residue classes are hard.
 
 #: Longest comment run on the tree is 104 lines (a runtime probe's file header).
 #: 40 flags 13 runs, all of them runtime/research probe headers; nothing in the
@@ -831,8 +829,8 @@ _USER_PATH = re.compile(
 #: the tree names the canonical ROM's local filename in 99 places, all of them
 #: the documented "put your own verified copy here" convention that `.gitignore`
 #: covers (`roms/Dragon Ball Z - Buu's Fury (U).gba`). Flagging those would bury
-#: the one reference that really is machine-specific. Measured 2026-10-02: 99
-#: relative references, 1 absolute.
+#: the one reference that really is machine-specific. Against this tree: 99
+#: relative references and 1 absolute.
 _ROM_FILENAME = re.compile(
     r"(?i)(?:[A-Za-z]:\\|\\\\|/home/|/Users/)[^\"'\n]*?"
     r"(?:buu'*s?\s+fury|legacy of goku|dragon ball)[^\"'\n]{0,60}?"

@@ -73,6 +73,13 @@ Never commit any of the following, anywhere in the repository:
 proprietary path is tracked. Machine-local convenience links and directories are
 covered by the same rules.
 
+The one deliberate exception is `public/dbz-map-browser.png` and
+`public/dbz-layout-editor.png`. They are unaltered captures of the editor
+working on the author's own verified copy, cropped and nothing else. They show
+the tool rather than a distributable asset, the site discloses them as captures,
+and they contain no extracted game file. Nothing else rendered from a game is
+tracked anywhere in the repository.
+
 ## Runtime inputs
 
 Saves and save states are private local research inputs.

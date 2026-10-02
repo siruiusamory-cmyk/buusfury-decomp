@@ -180,6 +180,109 @@ def test_open_items_must_not_be_empty():
     assert any("empty open item" in finding for finding in site_check.structure_findings(status))
 
 
+# --- the artifact rules can fail too -----------------------------------------
+
+
+def _built(tmp_path, *, page: str, status: dict | None = None) -> Path:
+    directory = tmp_path / "dist"
+    directory.mkdir()
+    (directory / site_check.PAGE).write_text(page, encoding="utf-8")
+    (directory / site_check.STATUS_DOCUMENT).write_text(
+        json.dumps(status if status is not None else _clean_status()), encoding="utf-8"
+    )
+    return directory
+
+
+def _passing_page(status: dict | None = None) -> str:
+    """A page that satisfies every artifact rule, quoting its own data."""
+    status = status if status is not None else _clean_status()
+    section = status["buildout"]
+    return (
+        "<html><body><h1>Webfoot SDK</h1><h2>Status</h2><h3>Milestones</h3>"
+        f'<a href="{site_check.REPOSITORY_URL}">repository</a>'
+        '<a href="#status">status</a><div id="status"></div>'
+        f"<p>{section['done']} / {section['total']} capabilities, {section['percent']}%</p>"
+        '<img src="/shot.png" alt="">'
+        "</body></html>"
+    )
+
+
+def test_a_clean_artifact_is_accepted(tmp_path):
+    directory = _built(tmp_path, page=_passing_page())
+    (directory / "shot.png").write_bytes(b"\x89PNG")
+
+    assert site_check.artifact_findings(directory) == []
+
+
+def test_a_heading_level_skip_is_reported():
+    findings = site_check._heading_findings("<h1>a</h1><h2>b</h2><h4>c</h4>")
+
+    assert any("skips from h2 to h4" in finding for finding in findings)
+
+
+def test_a_heading_sequence_without_a_skip_is_accepted():
+    assert site_check._heading_findings("<h1>a</h1><h2>b</h2><h3>c</h3>") == []
+
+
+def test_two_h1_headings_are_reported():
+    findings = site_check._heading_findings("<h1>a</h1><h1>b</h1>")
+
+    assert any("exactly one h1" in finding for finding in findings)
+
+
+def test_an_anchor_with_no_target_is_reported(tmp_path):
+    page = _passing_page().replace('<div id="status"></div>', "")
+    directory = _built(tmp_path, page=page)
+    (directory / "shot.png").write_bytes(b"\x89PNG")
+
+    findings = site_check.artifact_findings(directory)
+
+    assert any("#status has no target" in finding for finding in findings)
+
+
+def test_a_figure_the_data_does_not_report_is_reported(tmp_path):
+    page = _passing_page().replace("75%", "91%")
+    directory = _built(tmp_path, page=page)
+    (directory / "shot.png").write_bytes(b"\x89PNG")
+
+    findings = site_check.artifact_findings(directory)
+
+    assert any("computed 75%" in finding for finding in findings)
+
+
+def test_a_forbidden_marker_in_the_artifact_is_reported(tmp_path):
+    directory = _built(tmp_path, page=_passing_page() + "<p>C:\\Dev\\somewhere</p>")
+
+    findings = site_check.artifact_findings(directory)
+
+    assert any("C:\\" in finding for finding in findings)
+
+
+def test_a_missing_asset_is_reported(tmp_path):
+    directory = _built(tmp_path, page=_passing_page())
+
+    findings = site_check.artifact_findings(directory)
+
+    assert any("missing asset /shot.png" in finding for finding in findings)
+
+
+# --- unreadable content is not clean content ---------------------------------
+
+
+def test_an_undecodable_file_is_reported_rather_than_counted(monkeypatch, tmp_path):
+    """A file the screen cannot read must not look like a file it cleared."""
+    from tools.quality import public_surface
+
+    (tmp_path / "binary-ish.py").write_bytes(b"\xff\xfe\x00\x01")
+    monkeypatch.setattr(public_surface, "tracked_text_files", lambda root=None: ["binary-ish.py"])
+
+    report = public_surface.scan_tree(tmp_path)
+
+    assert report["unreadable"] == ["binary-ish.py"]
+    assert report["files_scanned"] == 0
+    assert report["files_selected"] == 1
+
+
 # --- the source, not the artifact --------------------------------------------
 
 

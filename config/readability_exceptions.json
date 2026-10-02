@@ -3,7 +3,7 @@
     {
       "path": "tests/unit/test_project_safety.py",
       "signal": "process_narration",
-      "reason": "The names are the subject of the assertion, not residue: this test proves that four local tool-state directories (together with <local-state-name>, <local-state-prefix>/ and <local-state-name>) cannot be staged and are not tracked. Deleting the names deletes the guard, so the two hits are reported here once, with a reason, instead of being hidden. Judged genuine-as-written by the ticket owner."
+      "reason": "The names are the subject of the assertion, not residue: this test proves that four local tool-state directories (together with <local-state-name>, <local-state-prefix>/ and <local-state-name>) cannot be staged and are not tracked. Deleting the names deletes the guard, so the two hits are reported here once, with a reason, instead of being hidden."
     },
     {
       "path": "tools/runtime/p007_wolf_ai_trace.lua",

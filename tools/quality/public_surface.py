@@ -243,16 +243,25 @@ def scan(root: Path | None = None, relative: str = "", *, exceptions: ExceptionT
 
 
 def scan_tree(root: Path | None = None, files: list[str] | None = None) -> dict:
-    """The whole report document: findings, per-signal counts and metrics."""
+    """The whole report document: findings, per-signal counts and metrics.
+
+    A file that cannot be decoded is reported rather than skipped. Counting it as
+    scanned while returning no findings would make the screen look cleanest
+    exactly where it is blind, so an unreadable file is its own failure.
+    """
     base = root or REPOSITORY_ROOT
     table = ExceptionTable.load(base / "config" / "public_surface_exceptions.json")
     selected = files if files is not None else tracked_text_files(base)
     findings: list[dict] = []
+    unreadable: list[str] = []
     suppressed = 0
-    scanned = 0
     for relative in selected:
-        found, covered = scan(base, relative, exceptions=table)
-        scanned += 1
+        try:
+            text = (base / relative).read_text(encoding="utf-8")
+        except (OSError, UnicodeDecodeError):
+            unreadable.append(relative)
+            continue
+        found, covered = scan(base, relative, exceptions=table, text=text)
         findings.extend(found)
         suppressed += covered
     findings.sort(key=lambda item: (item["path"], item["line"], item["signal_index"]))
@@ -261,12 +270,13 @@ def scan_tree(root: Path | None = None, files: list[str] | None = None) -> dict:
         counts[item["signal"]] = counts.get(item["signal"], 0) + 1
     return {
         "schema": SCHEMA,
-        "files_scanned": scanned,
+        "files_scanned": len(selected) - len(unreadable),
         "files_selected": len(selected),
         "exceptions": len(table.entries),
         "suppressed": suppressed,
         "findings": findings,
         "signal_counts": dict(sorted(counts.items())),
+        "unreadable": sorted(unreadable),
     }
 
 
@@ -359,7 +369,7 @@ def main(argv: list[str] | None = None) -> int:
         else:
             report = scan_tree()
             report["revision"] = None
-    except RuntimeError as error:
+    except (RuntimeError, ValueError, json.JSONDecodeError) as error:
         print(f"BLOCKED: {error}", file=sys.stderr)
         return 2
 
@@ -371,6 +381,13 @@ def main(argv: list[str] | None = None) -> int:
         )
     _render(report, sys.stdout)
 
+    if report.get("unreadable"):
+        print(
+            "\nSome tracked files could not be decoded, so they were not "
+            "screened. Fix the encoding or remove them from the text tree.",
+            file=sys.stderr,
+        )
+        return 1
     if report["findings"] and not arguments.no_fail:
         print(
             "\nPublic content carries private development residue. Remove it, or "

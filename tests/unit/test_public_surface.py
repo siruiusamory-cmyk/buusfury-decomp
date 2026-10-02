@@ -139,17 +139,26 @@ def test_the_report_is_deterministic(tmp_path):
     assert first.read_bytes() == second.read_bytes()
 
 
-def test_no_fail_reports_without_failing(monkeypatch, capsys):
+def test_no_fail_reports_without_failing(monkeypatch, tmp_path):
     """--no-fail is the reading mode: findings are printed, the exit code is 0."""
-    entry = {"path": "example.py", "signal_index": 0, "reason": "controlled"}
-    monkeypatch.setattr(
-        surface.ExceptionTable, "load", classmethod(lambda cls, path=None: cls([]))
-    )
+    (tmp_path / "example.py").write_text("clean\n", encoding="utf-8")
+    monkeypatch.setattr(surface, "REPOSITORY_ROOT", tmp_path)
     monkeypatch.setattr(surface, "tracked_text_files", lambda root=None: ["example.py"])
     monkeypatch.setattr(
-        surface, "scan", lambda *a, **k: ([{"path": "example.py", "line": 1,
-                                             "signal_index": 0,
-                                             "signal": "s", "text": "t"}], 0)
+        surface,
+        "scan",
+        lambda *a, **k: (
+            [
+                {
+                    "path": "example.py",
+                    "line": 1,
+                    "signal_index": 0,
+                    "signal": "a screen",
+                    "text": "matched",
+                }
+            ],
+            0,
+        ),
     )
 
     assert surface.main(["--all", "--no-fail"]) == 0

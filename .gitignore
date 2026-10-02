@@ -22,7 +22,7 @@ exports/
 *.dump
 *.raw
 
-# Extracted graphics (TOOLKIT-010). Project extraction writes one indexed PNG
+# Extracted graphics. Project extraction writes one indexed PNG
 # per sprite payload; those pixels are the publisher's artwork, so they are
 # project OUTPUT and are never committed, wherever a project happens to sit.
 graphics/assets/
@@ -40,7 +40,7 @@ node_modules/
 # one BESIDE its output image (`authored_image.manifest_path_for`), and `*.gba`
 # does not match `foo.gba.dragonbyte.json` - so a derivative saved outside an
 # ignored build directory would otherwise commit the manifest, which carries
-# ROM-derived provenance, while gitignoring the ROM it describes (CQA-12).
+# ROM-derived provenance, while gitignoring the ROM it describes.
 *.dragonbyte.json
 
 # External upstream repositories

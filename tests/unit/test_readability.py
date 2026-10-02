@@ -30,8 +30,8 @@ EXCEPTIONS_PATH: Path = REPO_ROOT / "config" / "readability_exceptions.json"
 #: left to whatever the module happens to contain.
 EXPECTED_EXCLUSIONS = 2
 
-#: The real tree is a moving target while the hardening work is in flight; this
-#: floor asserts the scan reaches the source rather than passing vacuously.
+#: A floor rather than an exact count: it asserts the scan reaches the source
+#: rather than passing vacuously, and does not fail when a file is added.
 MINIMUM_FILES_SCANNED = 400
 
 
@@ -648,7 +648,7 @@ def test_the_exceptions_file_must_parse_or_the_scan_blocks(monkeypatch):
 # --- house style -----------------------------------------------------------
 
 
-def test_the_files_this_change_adds_carry_no_em_dash():
+def test_the_quality_tooling_carries_no_em_dash():
     for relative in (
         "tools/quality/__init__.py",
         "tools/quality/readability.py",

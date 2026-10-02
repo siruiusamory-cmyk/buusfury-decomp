@@ -90,6 +90,11 @@
       "path": "tools/quality/readability.py",
       "signal_index": 8,
       "reason": "The same scan-root declaration names the local tooling directory it covers."
+    },
+    {
+      "path": "tests/unit/test_site_consistency.py",
+      "signal_index": 10,
+      "reason": "A synthetic control for the built-site screen: the test builds a page containing an absolute user path and asserts the screen reports it. The path belongs to no real machine."
     }
   ]
 }

@@ -98,6 +98,14 @@ test-sdk:
     # The JUnit report is what makes a failure legible in the merge request
     # without downloading the raw job log.
     - python -m pytest tests/unit -q --junitxml=report.xml
+    # The gates a reviewer is told to run, run here as well. The unit suite does
+    # exercise the public-surface and purity checks through their tests, but the
+    # readability gate is only asserted over the shipping package there, so the
+    # tree-wide form has to be its own step or a hard finding outside
+    # `tools/webfoot/` would pass CI.
+    - python -m tools.quality.public_surface --all
+    - python -m tools.quality.architecture
+    - python -m tools.quality.readability --all
   artifacts:
     when: always
     reports:
@@ -145,10 +153,16 @@ deploy-site:
     BASE_PATH: "/"
     CLOUDFLARE_ACCOUNT_ID: "ff3bf4332547a755ec1c5a344ab15f33"
   before_script:
+    # The artifact check runs here as well as in `test-site`, because this job
+    # can be reached without that one having run: a push to the default branch
+    # while a merge request is open skips `test-site`'s condition. The check is
+    # standard-library Python, so a bare interpreter is the whole dependency.
+    - apt-get update -qq && apt-get install -y -qq --no-install-recommends python3
     - npm ci
   script:
     - npm run check
     - npm run build
+    - python3 tools/quality/site_check.py
     - npx --yes wrangler@4.105.0 deploy
   rules:
     - if: '$CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH'

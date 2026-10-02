@@ -10,7 +10,7 @@ acceptance target is authored Legacy of Goku content running inside the actual
 Legacy of Goku II/Buu's Fury engine. Buu's Fury currently leads as the measurement
 target; the architecture is intended for all three games.
 
-> **No ROM is included.** This repository contains no game data. You supply your
+> **No ROM is included.** This repository contains no game data files. You supply your
 > own legally obtained copy of the game, and the toolkit refuses an image it
 > cannot identify against a configured profile.
 
@@ -200,7 +200,7 @@ tools/ghidra/        static-analysis helpers
 tools/research/      read-only ROM research adapters
 tools/qa/            visual and interaction capture tooling
 tools/export/        resource exporter
-tools/quality/       repository gates: public surface, purity, readability
+tools/quality/       repository gates: public surface, purity, readability, built site
 src/                 the public progress site (Astro)
 tests/unit/          portable tests, synthetic fixtures only
 tests/integration/   ROM-gated tests, skipped without a configured image
@@ -219,6 +219,10 @@ scripts/             setup, test and packaging entry points
 - Generated output - built ROMs, saves, save states, memory dumps, extracted
   assets and build directories - is local and is not committed, and it must stay
   that way. Do not open issues or merge requests containing ROM-derived data.
+- The two screenshots under `public/` are the one deliberate exception: unaltered
+  captures of the editor working on the author's own verified copy, showing the
+  tool rather than a distributable asset. Nothing else rendered from a game is
+  tracked.
 
 ## Project status / experimental warning
 

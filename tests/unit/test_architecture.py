@@ -100,6 +100,23 @@ def test_local_state_is_a_violation_but_a_policy_document_is_not():
     assert arch._rule_no_local_state_tracked(["docs/DEVELOPMENT.md"]) == []
 
 
+def test_a_tracked_file_the_ignore_rules_match_is_reported(monkeypatch):
+    """The generated-output rule is the one rule that asks git, so it is
+    controlled by giving it git's answer rather than by committing a fixture."""
+    monkeypatch.setattr(arch, "_git", lambda *arguments: "build/generated.py\0")
+
+    findings = arch._rule_nothing_generated_is_tracked([])
+
+    assert [item["rule"] for item in findings] == ["nothing-generated-tracked"]
+    assert findings[0]["path"] == "build/generated.py"
+
+
+def test_a_tree_with_nothing_ignored_tracked_is_accepted(monkeypatch):
+    monkeypatch.setattr(arch, "_git", lambda *arguments: "")
+
+    assert arch._rule_nothing_generated_is_tracked([]) == []
+
+
 def test_site_source_and_sdk_source_may_not_cross():
     assert arch._rule_site_and_sdk_are_separate(["src/tool.py"])
     assert arch._rule_site_and_sdk_are_separate(["tools/webfoot/theme.py"]) == []

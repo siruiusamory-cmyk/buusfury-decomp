@@ -1,0 +1,144 @@
+"""The placement record mutation authority for the enemy randomizer pack.
+
+One component decides how an intended semantic edit to a placement record becomes
+an attributed :class:`~tools.webfoot.write.ByteChange`. The placement shuffle and
+the type shuffle both express their intent as *field values* and hand them here,
+so neither module encodes bytes and the record codec stays in one place.
+
+Why edits are merged before encoding
+====================================
+
+A placement record is a single object, and both shuffles can touch the same
+record: the type shuffle rewrites ``+0x08``/``+0x10`` and the placement shuffle
+rewrites ``+0x0C``. Two independent full-record overwrites of the same bytes would
+be reported as an overlap by :func:`tools.webfoot.write.plan_changes`, and
+correctly so - it cannot tell that the two writers were describing different
+fields of one object. The fix is not to relax the overlap check; it is to merge
+the intended fields first and encode the record exactly once, which also makes the
+manifest carry one attributed change per record instead of two overlapping ones.
+
+Every edit is applied to the record's **own original bytes**, and only the decoded
+span is overwritten. The variable-length child-pointer array at ``+0x1C`` and the
+flags at ``+0x04`` therefore ride through untouched, which is what makes an
+unedited record re-serialize byte-identically.
+"""
+
+from __future__ import annotations
+
+from dataclasses import dataclass, replace
+
+from ..maps import PlacementEntry, PlacementIdentity
+from ..write import ByteChange
+
+#: The placement fields this pack is allowed to rewrite, by record offset.
+#:
+#: ``+0x04`` (flags) is deliberately absent. It is a real field with 57 distinct
+#: canonical values, its semantics are UNKNOWN, and nothing in this pack's
+#: evidence says which values are compatible with which identity. Rewriting it
+#: would be a guess, and the ticket's fail-closed rule forbids that.
+#:
+#: ``+0x14`` (the behavior-descriptor pointer) is likewise absent: swapping an
+#: enemy identity must not silently re-point behavior, and the identity templates
+#: this pack uses are already proven coherent without touching it.
+EDITABLE_FIELDS: frozenset[str] = frozenset({"type_raw", "position_raw", "id_raw"})
+
+#: The fields the type shuffle owns.
+TYPE_FIELDS: tuple[str, ...] = ("type_raw", "id_raw")
+
+#: The fields the placement shuffle owns.
+PLACEMENT_FIELDS: tuple[str, ...] = ("position_raw",)
+
+
+class RecordEditError(ValueError):
+    """An edit this authority will not perform."""
+
+
+@dataclass(frozen=True, slots=True)
+class RecordEdits:
+    """Intended field values, accumulated per placement, keyed by owner module.
+
+    ``edits[identity][module]`` is the dict of field values that module wants.
+    Keeping the module as a key rather than merging immediately is what lets the
+    manifest attribute a change to the module that caused it and lets a test
+    assert that one module's choices cannot depend on another's.
+    """
+
+    edits: dict[PlacementIdentity, dict[str, dict[str, int]]]
+
+    @classmethod
+    def empty(cls) -> "RecordEdits":
+        return cls(edits={})
+
+    def set(self, identity: PlacementIdentity, module_id: str, **values: int) -> None:
+        unknown = set(values) - EDITABLE_FIELDS
+        if unknown:
+            raise RecordEditError(
+                f"{identity}: {', '.join(sorted(unknown))} is not editable by this "
+                f"pack; editable: {', '.join(sorted(EDITABLE_FIELDS))}"
+            )
+        self.edits.setdefault(identity, {})[module_id] = dict(values)
+
+    def fields_for(self, identity: PlacementIdentity) -> dict[str, int]:
+        """Every intended field for one placement, merged across modules."""
+        merged: dict[str, int] = {}
+        for values in self.edits.get(identity, {}).values():
+            merged.update(values)
+        return merged
+
+    def modules_for(self, identity: PlacementIdentity) -> tuple[str, ...]:
+        return tuple(sorted(self.edits.get(identity, {})))
+
+    def is_empty(self) -> bool:
+        return not self.edits
+
+
+def _apply(entry: PlacementEntry, fields: dict[str, int]):
+    """The record with ``fields`` installed, validated by the codec on encode."""
+    return replace(entry.record, **fields)
+
+
+def changes_for(
+    entries: dict[PlacementIdentity, PlacementEntry],
+    edits: RecordEdits,
+) -> tuple[ByteChange, ...]:
+    """Encode each edited placement once, as an attributed change.
+
+    The ``owner`` is the placement's semantic identity - never a ROM address -
+    and the ``reason`` names the modules that produced the value, so a manifest
+    answers "which edit changed these bytes" rather than only "these bytes
+    differ".
+    """
+    changes: list[ByteChange] = []
+    for identity in sorted(edits.edits):
+        entry = entries.get(identity)
+        if entry is None:
+            raise RecordEditError(f"{identity}: no such placement in this image")
+        fields = edits.fields_for(identity)
+        if not fields:
+            continue
+        record = _apply(entry, fields)
+        encoded = record.to_bytes()
+        if len(encoded) != len(entry.original_bytes):
+            raise RecordEditError(
+                f"{identity}: encoding changed the record's length "
+                f"({len(entry.original_bytes)} -> {len(encoded)}); the placement "
+                "family is variable-length and this pack only rewrites fixed-width "
+                "fields inside the existing extent"
+            )
+        if encoded == entry.original_bytes:
+            # A module may legitimately draw the identity a slot already had.
+            # Emitting a no-op change would put a row in the manifest claiming a
+            # rewrite that did not happen.
+            continue
+        modules = ", ".join(edits.modules_for(identity))
+        fields_named = ", ".join(sorted(fields))
+        changes.append(
+            ByteChange(
+                offset=entry.file_offset,
+                old=entry.original_bytes,
+                new=encoded,
+                owner=str(identity),
+                reason=f"enemy randomizer [{modules}]: {fields_named}",
+            )
+        )
+    return tuple(changes)

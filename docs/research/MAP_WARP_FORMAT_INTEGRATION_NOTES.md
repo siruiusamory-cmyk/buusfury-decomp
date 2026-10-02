@@ -94,8 +94,8 @@ reached by two maps; two records whose 24-byte extents overlap.
 
 ## Independent verification
 
-One pass, independent context, `the local reviewer` headless in a clean detached worktree at
-the frozen candidate. Job `cl-20260926-074757-494761`, local session
+One pass, independent context, an independent local review headless in a clean detached worktree at
+the frozen candidate. Job `the review job`, local session
 `2a8c3964-c141-4522-b3c0-e32e935e27cc`, exit 0, 308 s, $2.52, verdict read from
 `local_headless`.
 

@@ -83,8 +83,8 @@ emitted.
 
 ## Independent verification
 
-One pass, independent context, `the local reviewer` headless in the frozen record worktree. Job
-`cl-20260926-105014-a10dbc`, exit 0, about 376 s, verdict read from
+One pass, independent context, an independent local review headless in the frozen record worktree. Job
+`the review job`, exit 0, about 376 s, verdict read from
 `local_headless`.
 
 **Verdict: `PASS` - zero blocking findings, zero non-blocking notes, four NOTEs.**

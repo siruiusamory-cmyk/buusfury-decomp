@@ -136,9 +136,9 @@ version, observer allowlist, no mGBA already running).
 
 ```powershell
 powershell.exe -NoProfile -ExecutionPolicy Bypass -File tools/runtime/start_warpedit001_live.ps1 `
-  -RomPath "<checkout>\roms\Dragon Ball Z - Buu's Fury (U).gba" `
+  -RomPath "<checkout>'s Fury (U).gba" `
   -RomSha256 "940ad5f01db4465b8877dfe739510cbf34f4ea3d390f3df13519808bc36f059e" `
-  -StatePath "<checkout>\roms\Dragon Ball Z - Buu's Fury (U).ss1" `
+  -StatePath "<checkout>'s Fury (U).ss1" `
   -Label "A-retail"
 ```
 

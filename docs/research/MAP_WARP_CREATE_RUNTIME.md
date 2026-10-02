@@ -276,7 +276,7 @@ that revision: its CSV has **zero** `ROUTE_UNRESOLVED` rows.
 MAP-WARP-CREATE-RUNTIME-001 - STATUS REPORT
 
 BASELINE:                    5224c7376660c5e35f2063e9e59699911a1a4750
-WORKTREE:                    <records>\map-warp-create-runtime-001
+WORKTREE:                    <record worktree>
 SOURCE MAP:                  map:0040 (Grand Kai's Planet)
 AUTHORED IDENTITY:           map:0040/transition:proof-door-rt001
 CANONICAL TRANSITION COUNT:  2

@@ -49,8 +49,8 @@ the project authors and the build that writes it read one implementation.
 
 ## Independent verification
 
-One pass, independent context, `the local reviewer` headless. Frozen reviewed candidate
-`a0d9cab12379e8692fef5cfe32f0baca4394734b`; job `cl-20260926-204738-c1cab6`.
+One pass, independent context, an independent local review headless. Frozen reviewed candidate
+`a0d9cab12379e8692fef5cfe32f0baca4394734b`; job `the review job`.
 
 **Verdict: `APPROVE` - zero blocking findings, two NOTE-level observations, no
 production correction.** The candidate was not amended, and the commits after it

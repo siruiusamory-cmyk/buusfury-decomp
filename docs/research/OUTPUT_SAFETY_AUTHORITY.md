@@ -186,7 +186,7 @@ enforced either way.
 
 ## 8. Canonical ROM safety
 
-`<checkout>\roms\Dragon Ball Z - Buu's Fury (U).gba`, **read only**:
+`<checkout>'s Fury (U).gba`, **read only**:
 
 ```text
 sha256 before : 940ad5f01db4465b8877dfe739510cbf34f4ea3d390f3df13519808bc36f059e

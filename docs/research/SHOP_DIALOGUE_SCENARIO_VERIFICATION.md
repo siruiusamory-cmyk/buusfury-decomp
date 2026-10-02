@@ -291,7 +291,7 @@ entry - so the broad integration gate was not run.
 
 The 31 errors are all one cause and are **not record-caused**: `PermissionError
 [WinError 5]` on the pytest `tmp_path` fixture root
-(`the pytest temporary root`). Every erroring test
+(`<pytest temporary root>`). Every erroring test
 requires `tmp_path`; none of them reached its body. Reproduced and preserved
 rather than worked around, per the full-suite policy.
 

@@ -184,7 +184,7 @@ The file skips cleanly when the ROM is unavailable.
   tests/unit/test_map_entry.py -q` -> `49 passed, 46 skipped, 15 errors`.
   The 15 errors are all
   `PermissionError: [WinError 5] Access is denied:
-  the pytest temporary root` raised during `tmp_path`
+  <pytest temporary root>` raised during `tmp_path`
   fixture setup, i.e. an environment temp-directory restriction, not a record
   failure.
 - **MEASURED** the same three affected files re-run with a writable

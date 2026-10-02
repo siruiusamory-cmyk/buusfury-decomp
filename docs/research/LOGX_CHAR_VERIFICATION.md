@@ -395,7 +395,7 @@ Measured, not derived.
 
 ```text
 $ cd <temp>\log1-remake-logx-char-001
-$ $env:LOGX_CANONICAL_ROM = "<checkout>\roms\Dragon Ball Z - Buu's Fury (U).gba"
+$ $env:LOGX_CANONICAL_ROM = "<checkout>'s Fury (U).gba"
 $ python -m pytest tests/unit tests/integration/test_logx_char_rom.py `
     tests/integration/test_logx_codec_rom.py tests/integration/test_logx_connector_rom.py `
     tests/integration/test_logx_layer_rom.py tests/integration/test_logx_map_record_rom.py `

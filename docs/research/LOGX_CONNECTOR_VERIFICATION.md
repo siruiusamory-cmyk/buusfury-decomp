@@ -339,7 +339,7 @@ recorded as *shape* facts rather than anomalies:
 ## Test results
 
 Measured on this worktree with
-`LOGX_CANONICAL_ROM=<checkout>\build\ghidra\input\buus_fury_verified.gba`.
+`LOGX_CANONICAL_ROM=<checkout>`.
 
 | Suite | Result |
 | --- | --- |
@@ -349,7 +349,7 @@ Measured on this worktree with
 | `tests/unit` (portable) | **1096 passed, 15 skipped, 238 errors** |
 
 The 5 and 238 errors are **pre-existing environment failures, not this record's**:
-every one is `PermissionError: [WinError 5] ... 'the pytest temporary root'`
+every one is `PermissionError: [WinError 5] ... '<pytest temporary root>'`
 raised inside pytest's own `tmp_path` fixture factory. They reproduce identically
 on the untouched accepted suites (`test_logx_tile_rom.py`,
 `test_logx_layer_rom.py`, `test_text_project.py`, ...) at the START SHA. The new

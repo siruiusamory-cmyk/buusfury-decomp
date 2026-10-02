@@ -122,7 +122,7 @@ Evidence, in order:
 
 1. **Exact failing operation.** `_pytest/pathlib.py:175`, inside `find_prefixed`,
    calling `os.scandir` on
-   `the pytest temporary root`. The call chain is
+   `<pytest temporary root>`. The call chain is
    `getbasetemp` -> `make_numbered_dir_with_cleanup` -> `make_numbered_dir` ->
    `find_suffixes` -> `find_prefixed`. pytest is *enumerating* the directory to
    choose the next run number; no project code is on the stack.

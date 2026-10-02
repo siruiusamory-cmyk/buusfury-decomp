@@ -15,7 +15,7 @@ no pointer or count arithmetic in Qt.
 ## What shipped
 
 Baseline `87a47ff721896a1d99632e78ff7cf6032cf9f8ae`, implemented and isolated in
-`<records>\map-warp-create-workbench-001` on
+`<record worktree>` on
 `record/map-warp-create-workbench-001` (origin/master, the primary checkout HEAD and
 the record baseline were the same commit, no drift).
 

@@ -77,7 +77,7 @@ BASELINE:
 d9f7e6db2014c8d0b5919edf5c923169b3b1f57a
 
 WORKTREE:
-<records>\map-warp-workbench-001 (record/map-warp-workbench-001)
+<record worktree> (record/map-warp-workbench-001)
 
 IMPLEMENTATION COMMITS:
 19202ba map_transitions: bind the corpus to its profile, preserve the facing
@@ -94,7 +94,7 @@ a0d9cab12379e8692fef5cfe32f0baca4394734b
 
 INDEPENDENT REVIEW:
 APPROVE - zero blocking findings, two NOTE-level observations, no production
-correction. Job cl-20260926-204738-c1cab6 (the local reviewer); record:
+correction. The review job (an independent local review); record:
 MAP-WARP-WORKBENCH-001-review.md
 
 TRANSITION LIST:

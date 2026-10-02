@@ -506,7 +506,7 @@ Both are deterministic and write nothing except an explicitly requested
 | `tests/integration/test_map_render_rom.py` + `test_graphics_rom.py` | **32 passed, 2 skipped** (the 2 need the MAP-VIS-001 VRAM oracle, not this record) |
 
 Environment note: five tests that use pytest's `tmp_path` fail in this
-environment with `PermissionError: [WinError 5] 'the pytest temporary root'`
+environment with `PermissionError: [WinError 5] '<pytest temporary root>'`
 - a pre-existing temp-directory permission problem, unrelated to this record;
 they pass when the suite is run with `--basetemp` on a writable path.
 

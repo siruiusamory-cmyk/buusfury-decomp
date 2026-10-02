@@ -19,7 +19,7 @@ opened before authorizing any probe.
 **Settled externally, do not re-derive:**
 
 - The IGN control list documents `A` as "Melee attack" with no combo notation.
-- `<reference-checkout>\docs\REFERENCE.md:518`, drawn from the retail
+- `<reference checkout>:518`, drawn from the retail
   instruction booklet read cover to cover, records that the real behavior is
   "a single repeating attack alternating punch/kick animations, so the plan
   implements one attack, not a combo string". **There is no melee combo.**

@@ -24,14 +24,14 @@ the visual workspace, not another prerequisite research pass. Details below.
 
 | # | Question | Answer (evidence) |
 |---|---|---|
-| 1 | User's primary task | See the rendered retail map, see its placements overlaid on it, select one, inspect/author its behavior/text, add or clone a supported placement, build, run. This is the scene-authoring loop of `scene_tab.py` given a visual surface. `dragonbyte-ui-design` the guide:29-34 (visual game content -> tools -> inspector). |
+| 1 | User's primary task | See the rendered retail map, see its placements overlaid on it, select one, inspect/author its behavior/text, add or clone a supported placement, build, run. This is the scene-authoring loop of `scene_tab.py` given a visual surface. `docs/desktop-ui.md` (visual game content -> tools -> inspector). |
 | 2 | Primary visual object | The composited map image. `render_map(rom, map_id)` returns `MapRenderResult` with `width`, `height`, 8-bit indexed `composite` bytes, `layers`, and 256-triple `palette` (`map_render.py:558,632-641`). Overlaid on it: placement markers. |
 | 3 | Selection/context model | ONE selected placement persists while its behavior/text/trigger are edited in the inspector -- mirrors `scene_tab.py`'s navigation stack (`scene_tab.py:172,384,432-437`) which keeps `("map", id)` context under a placement. Map identity + selected placement live in `Session` (`session.py:57-58 selected_map`), not in the widget. |
 | 4 | Primary actions (on the canvas) | Select placement (click), pan (middle-mouse), zoom (scroll), and drag-to-move -- `desktop-editor-patterns.md:24-27`. Add/Clone placement (canvas-anchored button or context action). The coordinate transform is now gated by signed-16 range validation, not by unproven semantics. |
 | 5 | Secondary actions (inspector) / menus/toolbars | Inspector: choose behavior (existing descriptor or authored `show_centered_sprite_text` script), set trigger, edit X/Y map pixels, revert a pending change -- all already exist in `scene_tab.py:298-335,439-455,486-504`. Toolbar: layer/overlay toggles, zoom, Add/Clone, Build/Run (`desktop-editor-patterns.md:9-12`). Menus: File/project-level only (`desktop-editor-patterns.md:4-6`). |
-| 6 | Hidden / progressively disclosed | Every ROM address, file offset, `position_raw` word, `id_raw`, descriptor pointer, allocation/relocation. The workspace names things by semantic identity `map:NNNN` / `map:NNNN/placement:NNNN` (`scene.py:6-11`; webfoot-workbench the guide:65-84 "Navigate concepts, not storage"). Preserve raw halfword bits internally; present signed X/Y pixels. |
+| 6 | Hidden / progressively disclosed | Every ROM address, file offset, `position_raw` word, `id_raw`, descriptor pointer, allocation/relocation. The workspace names things by semantic identity `map:NNNN` / `map:NNNN/placement:NNNN` (`scene.py:6-11`; `docs/workbench-architecture.md` "Navigate concepts, not storage"). Preserve raw halfword bits internally; present signed X/Y pixels. |
 | 7 | Keyboard path | Tab order through map list -> canvas -> inspector fields; Ctrl+Z/Ctrl+Y undo/redo via `QUndoStack.createUndoAction` exactly as `graphics_tab.py:323-339`; arrow-key nudge of the selected placement is a keyboard alternative to drag (`accessibility-and-input.md:1-3,12`). Every mouse action needs a keyboard alternative. |
-| 8 | Empty / error / read-only / disabled states | No ROM open -> tab disabled (`app.py:33,57-58`). Map with no supported placement source -> READ-ONLY, no fallback (`scene.py:126-131` MapSupport.READ_ONLY; the guide fail-closed). Render failure -> `MapRenderError` caught at the slot boundary, QMessageBox not a dead click (webfoot-workbench the guide:31-37; the parent-catch rule). No project open -> authoring disabled with reason (`scene_tab.py:339-341`). |
+| 8 | Empty / error / read-only / disabled states | No ROM open -> tab disabled (`app.py:33,57-58`). Map with no supported placement source -> READ-ONLY, no fallback (`scene.py:126-131` MapSupport.READ_ONLY; the fail-closed rule). Render failure -> `MapRenderError` caught at the slot boundary, QMessageBox not a dead click (`docs/workbench-architecture.md`; the parent-catch rule). No project open -> authoring disabled with reason (`scene_tab.py:339-341`). |
 | 9 | Expected data volume | Maps are small: a BG layer is W×H 32×32-tile chunks; a chunk = 256×256 px. Map 39 is 3×2/3×2/4×2 chunks per BG -> composite ≈ up to 1024×512 px; map 40 is 1×1/2×2 (`MAP_RENDER_FORMAT.md:176-178`; `SCREEN_CHUNK_SIDE`/`map_render.py:61,316`). Worst realistic case ≈ ~1024×1024 px. Placements: **1,442 total across 240 maps**, max **69 placements for one type across 36 maps** but per-map counts are modest (`PLACEMENT_CODEC.md:39-43`; `PLACEMENT_TYPES.md:112`). So: one moderate image + tens of markers per map, never thousands. |
 | 10 | Performance risks | `render_map` is **1.03 s (map 39) / 0.53 s (map 40)** uncached (`MAP_RENDER_FORMAT.md:222-224`) -- over the ~400 ms Doherty threshold (`qt-widgets-patterns.md:48-51`). So render MUST NOT run on pan/zoom/select; cache by map identity+revision (`performance.md:6`). Never decode in `paintEvent` (`performance.md:4`). Marker overlays are cheap; the risk is re-rendering the base needlessly. |
 
@@ -145,7 +145,7 @@ tile/collision overlays are just additional item layers on the same scene, no
 rewrite.
 
 Do NOT build a generic reusable canvas framework (`desktop-editor-patterns.md:59-63`;
-webfoot-workbench the guide:76-78 "not a giant editor framework"). Qt classes:
+`docs/workbench-architecture.md` "not a giant editor framework"). Qt classes:
 `QGraphicsView`, `QGraphicsScene`, `QGraphicsPixmapItem`, `QGraphicsItem`
 subclass for markers, `QUndoStack`/`QUndoCommand`.
 
@@ -197,7 +197,7 @@ Panel hierarchy (all within the one tab):
 
 - **Left: map list** -- `list_maps`/`list_authorable_maps` with support state
   (`scene.py:102-148`), as the existing `scene_tab.py:206-226` selector but as a
-  list. The map is the composition hub (webfoot-workbench the guide:70-72).
+  list. The map is the composition hub (`docs/workbench-architecture.md`).
 - **Center: canvas** -- the `QGraphicsView` of SC4 with markers.
 - **Right: inspector** -- selected placement's relationships + editors, REUSED
   from `scene_tab.py`: behavior chooser (`scene_tab.py:298-313`), authored
@@ -262,9 +262,9 @@ Ordered implementable chunks, each with rough SDK touch-points:
    emit `projectChanged`->`on_project_mutated` (`app.py:74-75`).
 10. **Tests** -- headless: render-cache invalidation, marker plotting from SDK
     rows, undo/merge for a move, add/clone round-trip; per webfoot-workbench
-    the guide the SDK-parent-catch behavior must be tested.
+    `docs/workbench-architecture.md` requires the SDK-parent-catch behavior to be tested.
 11. **QA** -- mandatory `dragonbyte-ui-qa` live launch/screenshot/inspect pass
-    (`dragonbyte-ui-design` the guide:89-92; webfoot-workbench the guide:62).
+    (`docs/desktop-ui.md`; `docs/workbench-architecture.md`).
     Feedback GUI except-breadth is a known live-walkthrough-only defect
     (MEMORY.md).
 

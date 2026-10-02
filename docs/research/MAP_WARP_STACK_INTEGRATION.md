@@ -71,7 +71,7 @@ from 7758 insertions / 1573 deletions to **6208 insertions / 23 deletions**.
 
 ## Verification and gate scope
 
-The independent review of `4cada7b` - `the local reviewer`, headless, independent context -
+The independent review of `4cada7b` - an independent local review, headless, independent context -
 returned **`APPROVE WITH NON-BLOCKING NOTES`** with zero blocking findings. One
 review finding was fixed before that verdict: `arrival` had no class check, so all
 169 class-B records passed a bounds check that would have written a relative delta as

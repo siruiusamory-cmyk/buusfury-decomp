@@ -156,6 +156,22 @@ and independently of the planner that produced it: all twelve
 `caseB.gba`, and every one holds the relocated GBA address while the original
 payload bytes are still present and unchanged.
 
+How the two derivatives were made, so the digests above are reproducible from
+the repository rather than from a scratch directory. Both start from a project
+extracted from the canonical image with graphics, edit the eight player PNGs in
+place, and run the normal build:
+
+- **Case A.** Each container's decoded indices replaced by `3 if index else 0`,
+  re-encoded as an indexed PNG with that same PNG's palette. Every payload then
+  fits, so the build takes the in-place path and allocates nothing.
+- **Case B.** Each container's decoded indices replaced by a deterministic
+  high-entropy sequence seeded from that container's own content, so the eight
+  payloads differ:
+  `state = 0x12345678 ^ (len(base) << 3) ^ sum(base) ^ (sum(base) * 31)` masked to
+  32 bits, then repeated `state = (state * 1103515245 + 12345) mod 2**32` with the
+  output byte taken from `(state >> 16) & 0xFF`. Every payload then exceeds its
+  original extent, so the build relocates all eight.
+
 Conclusion: **relocation ships.** The retail engine follows a rewritten graphics
 reference into allocator-chosen expanded storage and renders the authored pixels,
 and the whole confirmed consumer set for the moved payloads is repointed in the

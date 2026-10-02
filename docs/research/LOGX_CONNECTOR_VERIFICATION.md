@@ -465,7 +465,7 @@ this record's defect.
 
 **Scope and safety confirmed.** `git status` shows only the seven intended paths;
 `tools/webfoot/workbench/`, the renderer and authoring,
-`PROJECT_<local-state-name>` are all untouched; the canonical ROM SHA-256 is unchanged at
+`PROJECT_STATE.md` are all untouched; the canonical ROM SHA-256 is unchanged at
 `940AD5F0...F059E`; `git diff --check` is clean.
 
 ### Findings and their disposition

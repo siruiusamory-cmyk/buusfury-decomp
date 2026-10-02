@@ -407,7 +407,7 @@ not byte-for-byte (PyInstaller embeds build metadata).
 
 - **Scope:** the branch is **17 additions and zero modifications** against
   `origin/master`; the core algorithm, the capability registry,
-  `src/data/project.ts`, the working queue, `PROJECT_<local-state-name>` and the whole Workbench
+  `src/data/project.ts`, the working queue, `PROJECT_STATE.md` and the whole Workbench
   tree are untouched, and no ROM, save, savestate, runtime capture, image or
   archive is tracked anywhere in the diff.
 - **Thin client:** no shuffle, pairing, arrival, facing or policy decision exists
@@ -420,10 +420,10 @@ not byte-for-byte (PyInstaller embeds build metadata).
   path, Randomize, progress, status, success summary, source immutability,
   deterministic manifest and progression disclaimer all present in source.
 
-### Why `docs/PROJECT_<local-state-name>` was not edited
+### Why `docs/PROJECT_STATE.md` was not edited
 
 The predecessor side record (`ROMHACK-WARP-RANDOMIZER-001`) was likewise never
-the working queue and is likewise **not** recorded in `docs/PROJECT_<local-state-name>`; it sits
+the working queue and is likewise **not** recorded in `docs/PROJECT_STATE.md`; it sits
 in the working queue root, as this one does. `docs/records/README.md`'s archive step is
 part of the *replace the working queue* workflow, which never applied here, and this
 record advances no capability to record. Keeping the closeout in this document

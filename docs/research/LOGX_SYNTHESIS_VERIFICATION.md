@@ -18,7 +18,7 @@ Evidence document: [`LOGX_SYNTHESIS_PROVENANCE.md`](LOGX_SYNTHESIS_PROVENANCE.md
 | `tests/unit/test_logx_synthesis_audit.py` | 23 portable tests pinning those invariants |
 | corrected `docs/reverse-engineering.md` | ten accepted-evidence corrections |
 | corrected `docs/research/GRAPHICS_FORMAT.md` | superseded-statements banner plus the `0x179764` ownership and piece-row corrections |
-| corrected `docs/PROJECT_<local-state-name>`, `docs/PROJECT_<local-state-name>` | newest baseline entry and a stale `## Next` block |
+| corrected `docs/PROJECT_STATE.md`, `docs/PROJECT_STATE.md` | newest baseline entry and a stale `## Next` block |
 
 ---
 

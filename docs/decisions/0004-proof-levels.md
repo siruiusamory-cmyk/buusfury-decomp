@@ -5,7 +5,7 @@
   (`proof`, and `researchOnly`); [`docs/capability-registry.md`](../capability-registry.md)
   ("Fields"); [`DEVELOPMENT.md`](../DEVELOPMENT.md) ("Evidence discipline");
   the capability registry record and
-  [`../PROJECT_<local-state-name>`](../PROJECT_<local-state-name>) (the corrected
+  [`../PROJECT_STATE.md`](../PROJECT_STATE.md) (the corrected
   `visual-editor-foundation` proof claim); `WORKBENCH-002` (dialogue, runtime);
   `MAP-LAYOUT-WRITE-001` ("Emulator runtime validation was not performed");
   [`docs/research/MAP_RENDER_FORMAT.md`](../research/MAP_RENDER_FORMAT.md)

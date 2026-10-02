@@ -26,7 +26,7 @@ table `0x0806BCE8`, 1,534 entries); TOOLKIT-007 `MAP_FORMAT.md`; TOOLKIT-008
 placement format; TOOLKIT-009 `PLACEMENT_TYPES.md` (table `0x08711274`, stride
 28, constructor `0x0800F68C`); TOOLKIT-011 free space; TOOLKIT-012
 `COLLISION_FORMAT.md` including the `MapEntry[+0x2C]` content stream and the
-`0x08046AA4` `__call_via_rN` correction; `SUBSYSTEM_MAP.md`; `AUTO_RE_<local-state-name>`.
+`0x08046AA4` `__call_via_rN` correction; `SUBSYSTEM_MAP.md`; `AUTO_RE_STATE.md`.
 
 Upstream `extern/buusfury` remains the stub recorded in TOOLKIT-013: no opcode
 table, no script walker, no item structure. Nothing was transferred from it.

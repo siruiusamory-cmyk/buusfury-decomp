@@ -96,7 +96,7 @@ untracked `p006_reaction_trace.lua` and `p006_hit_bracket_scan.lua` files, plus 
 wheel subprocess error. The staged wheel test then passed with filesystem
 access and a fresh ignored pytest temp directory. No unrelated runtime file or
 test change was staged to hide those baseline dependencies. Exact results are
-recorded in `../PROJECT_<local-state-name>` and distinguish worktree from index validation.
+recorded in `../PROJECT_STATE.md` and distinguish worktree from index validation.
 
 ROM/save/state hashes and mtimes were rechecked against the pre-staging snapshot
 and remain unchanged. No canonical relocation proof or new research was added.

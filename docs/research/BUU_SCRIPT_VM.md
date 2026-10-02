@@ -15,7 +15,7 @@ Consulted before fresh RE: TOOLKIT-006 (`SCRIPT_VM.md`) for the generic
 abstractions only; TOOLKIT-004 text facts (`TEXT_FORMAT.md`); TOOLKIT-007/008/009
 map, placement and placement-type evidence; TOOLKIT-011 free-space; TOOLKIT-012
 `COLLISION_FORMAT.md` including the `MapEntry[+0x2C]` content-stream finding and
-the `0x08046AA4` `__call_via_rN` correction; `SUBSYSTEM_MAP.md`; `AUTO_RE_<local-state-name>`.
+the `0x08046AA4` `__call_via_rN` correction; `SUBSYSTEM_MAP.md`; `AUTO_RE_STATE.md`.
 
 Upstream audit: `extern/buusfury` is a **stub**, not a disassembly - it contains
 only `src/strings.cpp`, `src/color_transforms.*` and seven small `asm/*.s` files

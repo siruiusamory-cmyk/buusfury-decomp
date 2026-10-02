@@ -97,7 +97,7 @@ broad collision RE for a future editor's benefit.
    as one from a single-entry static decode. Corpus-wide: 163 entries pair a
    positive count with a NULL pointer, 69 pair a zero count with a live ROM
    pointer, and only 35 of 153 readable arrays are uniformly shaped. Recorded as
-   OLD CLAIM / NEW EVIDENCE / RESOLUTION in `research/AUTO_RE_<local-state-name>`.
+   OLD CLAIM / NEW EVIDENCE / RESOLUTION in `research/AUTO_RE_STATE.md`.
 2. **MapEntry 451's declared extent overruns the MapEntry table.** Four declared
    records at `0x0008E2D0` would consume the first 16 bytes of the table at
    `0x0008E2E0` that indexes it. Surfaced by `plan_changes` as a genuine overlap
@@ -108,11 +108,11 @@ broad collision RE for a future editor's benefit.
    verified**. An earlier draft of the evidence doc said "88 unverified targets",
    implying one was verified; corrected to 89.
 
-4. **`docs/PROJECT_<local-state-name>` exceeded its documented bound (241).** The budget is
+4. **`docs/PROJECT_STATE.md` exceeded its documented bound (241).** The budget is
    enforced by `test_required_workflow_files_exist_and_are_bounded` and exists to
    push completed-record records into the continuation file. Fixed by moving the
    oldest COMPLETE entry (TOOLKIT-003, already marked "older baselines below are
-   historical") verbatim into `docs/PROJECT_<local-state-name>`, which documents itself
+   historical") verbatim into `docs/PROJECT_STATE.md`, which documents itself
    as holding exactly those records, **not** by raising the limit.
 5. **Two workflow tests pinned the previous record's name.**
    `test_context_split_...` and `test_toolkit_activation_...` asserted literal

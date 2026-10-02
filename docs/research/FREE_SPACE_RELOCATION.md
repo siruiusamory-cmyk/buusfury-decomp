@@ -16,7 +16,7 @@ Baseline: `d773eb183c150a35dfed74df56f66db901d18ea8`.
 Local: TOOLKIT-003 implementation/review and `docs/relocation.md`; TOOLKIT-010
 closure and `GRAPHICS_FORMAT.md`; `profile.py`, packaged and compatibility ROM
 profiles, `layout.py`, `document.py`, `allocation.py`, `relocation.py`; semantic
-graphics, map, text and placement-type reference publishers; `AUTO_RE_<local-state-name>`,
+graphics, map, text and placement-type reference publishers; `AUTO_RE_STATE.md`,
 all three PROJECT_STATE files, `consumer-analysis.md`; existing analysis scripts
 and text free-space notes. No existing complete occupancy proof was found.
 

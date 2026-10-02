@@ -75,9 +75,9 @@ slices **ripped reference sheets** for the Godot remake using a hand-rolled
 zlib/struct PNG codec; it never touches a ROM. Nothing in it was duplicated, and
 nothing in it was promotable, because it solves a different problem.
 
-Also audited and found to contain no graphics decode path: `AUTO_RE_<local-state-name>`,
+Also audited and found to contain no graphics decode path: `AUTO_RE_STATE.md`,
 `PROJECT_STATE*.md`, `consumer-analysis.md`, `SUBSYSTEM_MAP.md`, the
-TOOLKIT-007/008/009 findings, and the `p0xx` runtime probes. `AUTO_RE_<local-state-name>`
+TOOLKIT-007/008/009 findings, and the `p0xx` runtime probes. `AUTO_RE_STATE.md`
 does record that EWRAM `0x3DE60..0x3DFA0` is *sprite/animation work* and that
 several once-promising "HP" addresses were tile/frame data - useful negative
 evidence, and consistent with what this ticket found statically.

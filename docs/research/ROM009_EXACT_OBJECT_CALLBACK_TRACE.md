@@ -24,7 +24,7 @@ including after one south transition. This is a hypothesis to test, not a fact.
 - Record its size and SHA-256 before use.
 - Preserve every original input read-only.
 - Use ignored byte-identical working copies.
-- Use the canonical verified ROM profile from `docs/PROJECT_<local-state-name>`.
+- Use the canonical verified ROM profile from `docs/PROJECT_STATE.md`.
 - Derive the active `MapEntry` from runtime. Do not infer it from a location or
   map name.
 

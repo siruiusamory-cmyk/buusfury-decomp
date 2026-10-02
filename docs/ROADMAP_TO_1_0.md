@@ -82,7 +82,7 @@ Two supporting documents are deliberately **not** planning authority:
   `WRITE-*`, `NEW-*`). It is engineering detail beneath this product roadmap, and
   parts of it are already executed. Where the two name the same work, this file
   owns the phase, the capability exit and the progress number.
-- [`PROJECT_<local-state-name>`](PROJECT_<local-state-name>) and its `PROJECT_STATE_*.md`
+- [`PROJECT_STATE.md`](PROJECT_STATE.md) and its `PROJECT_STATE_*.md`
   continuations are historical state snapshots and durable links to evidence,
   not a forward plan.
 
@@ -839,7 +839,7 @@ the roadmap.
 | [`src/data/capabilities.json`](../src/data/capabilities.json) | Stable definition of product completeness and the public progress denominator. Changes only when the product definition itself intentionally changes. | **What does feature-complete mean?** |
 | `docs/ROADMAP_TO_1_0.md` | Canonical long-range ordering, phase dependencies, the 24/24 plan, the RC/v1.0 gate, non-goals and the post-1.0 parking lot. | **What order do we build the remaining product in?** |
 | [`research/PROJECT_CODE_QUALITY_AUDIT.md`](research/PROJECT_CODE_QUALITY_AUDIT.md) and its remediation records | Risk register. Findings are attached to affected capability/release paths rather than automatically sequenced. | **What technical risks and debt exist?** |
-| [`PROJECT_<local-state-name>`](PROJECT_<local-state-name>) and `PROJECT_STATE_*.md` | Historical milestone/state snapshots and durable links to research and closure records. Not planning authority. | **What has been verified?** |
+| [`PROJECT_STATE.md`](PROJECT_STATE.md) and `PROJECT_STATE_*.md` | Historical milestone/state snapshots and durable links to research and closure records. Not planning authority. | **What has been verified?** |
 
 ### 18.1 Roadmap change policy
 

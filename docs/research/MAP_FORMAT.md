@@ -19,7 +19,7 @@ added no field names and renamed none.
 
 ## The `+0x04` / `+0x10` pairing: corrected
 
-Prior research (`AUTO_RE_<local-state-name>`, AUTO-012) established from a **single-entry
+Prior research (`AUTO_RE_STATE.md`, AUTO-012) established from a **single-entry
 static decode** that `MapEntry[+0x10]` reaches 8-byte records counted by
 `MapEntry[+0x04]`. Measured across all 452 records, that reading does not
 generalise.
@@ -119,7 +119,7 @@ promoted to either, and no claim about the ROM may rest on it.
 
 ## The one verified instance
 
-`AUTO_RE_<local-state-name>` records MapEntry 39 slot[1] as type `0x00020006` reaching
+`AUTO_RE_STATE.md` records MapEntry 39 slot[1] as type `0x00020006` reaching
 source `0x080755C0` with bounds `(481,121)..(615,271)`. That reproduces here
 byte-for-byte: the halfwords at that source `+0x08` are `481, 121, 615, 271`.
 Kept as a regression fixture in `tests/integration/test_local_maps_rom.py`.

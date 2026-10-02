@@ -367,7 +367,7 @@ is what this pass was told not to do.
 * **No transition deletion**, canonical or created: Revert discards a staged creation
   or restores a saved one's values, and never removes a project entry.
 * **No capability advance.** 20 / 24 happens only when the parent ships.
-* **No registry or public-site change**, and no `docs/PROJECT_<local-state-name>` update.
+* **No registry or public-site change**, and no `docs/PROJECT_STATE.md` update.
 * **The shell's unsaved-work guard is unchanged**, for the same reason
   `MAP-WARP-WORKBENCH-001` recorded: a staged transition is project-bound like an
   unapplied palette value, and the surface states its own staged count.

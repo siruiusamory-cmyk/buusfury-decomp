@@ -448,7 +448,7 @@ actor+0x1A4 >> 8 - context+0x2C  -> actor+0x70
 
 The direct disassembly is retained in the reproducible bounded audit below.
 It corroborates the independently recorded screen-delta writer
-(`AUTO_RE_<local-state-name>:1754-1774`) without transferring any combat-object identity.
+(`AUTO_RE_STATE.md:1754-1774`) without transferring any combat-object identity.
 
 The following dispatch-table entry (`+0x10`, fetch `0x0800EF94`) reads
 `actor+0x6C` and `actor+0x70` and packs them independently into the generated

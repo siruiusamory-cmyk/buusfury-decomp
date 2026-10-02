@@ -182,7 +182,7 @@ tickets agree on is the **3,745 distinct payloads**.
 LOGX-FRAME-001, and each claim about the definition/animation/frame/piece chain
 was compared against those two tickets. Adjacent graphics documents
 (`MAP_FORMAT.md`, `MAP_RENDER_FORMAT.md`, `ENTITY_FORMAT.md`,
-`COLLISION_FORMAT.md`, `consumer-analysis.md`) and `PROJECT_<local-state-name>` .. `_8`
+`COLLISION_FORMAT.md`, `consumer-analysis.md`) and `PROJECT_STATE.md` .. `_8`
 were swept for the same models.
 
 **Result: `UPDATED` with a superseded-statements banner.**
@@ -224,8 +224,8 @@ is unambiguous, which is what the ticket requires.
 "animation record / frame_count" is the *map animated-tile* family - a distinct
 structure from the sprite animation object); `MAP_FORMAT.md`;
 `COLLISION_FORMAT.md` (refuses collision/hitbox semantics explicitly);
-`consumer-analysis.md` (refuses graphics naming explicitly); `PROJECT_<local-state-name>`
-through `_7.md`. `PROJECT_<local-state-name>` was `CONSISTENT WITH MARKED HISTORICAL
+`consumer-analysis.md` (refuses graphics naming explicitly); `PROJECT_STATE.md`
+through `_7.md`. `PROJECT_STATE.md` was `CONSISTENT WITH MARKED HISTORICAL
 TEXT` **except** its `## Next` block, corrected in §5 below.
 
 **One address-notation debt is recorded, not fixed here.**
@@ -427,7 +427,7 @@ and corrected.
 | `STALE DOCUMENTATION` | `GRAPHICS_FORMAT.md` (un-noted totals), `docs/architecture.md`, `docs/project-format.md`, `docs/research/SUBSYSTEM_MAP.md`, `THIRD-PARTY-NOTICES.md`, `config/roms.yaml` and its packaged copy `tools/webfoot/data/roms.yaml`, and docstrings in `build.py`, `cli.py` (user-visible help), `atlas_producers/seed.py`, `webfoot_lz.py` | the `7,355` subset presented as the corpus total, the structure-to-structure animation walk presented as the method, and the single-piece-only frame model |
 | `PRODUCTION BUG` (output quality, outside the canonical path) | `tools/webfoot/atlas_producers/scan.py::_compression_rows` | a stride-4 heuristic sweep whose own docstring calls its output noise (24,285 hits / 68.7 MiB); recorded by LOGX-GFXSCAN-001 and inventoried in `LOGX_SYNTHESIS.md` §11.6 |
 | `TEST EXPECTATION` | `tests/integration/test_graphics_rom.py` (`UNIQUE_GRAPHICS = 7355` and four dependants), `tests/unit/test_sprite_graphics.py` (16-byte piece and 4-byte-header fixtures), `tests/unit/test_logx_sprite_reference.py` (pins `FRAME_FIRST_PIECE == 0x04`, `PIECE_RECORD_SIZE == 0x10`) | these tests encode the refuted layout and **must move with the parser correction**, not before it |
-| `RESEARCH-ONLY LEGACY` | the ten tickets' review, provenance and archive records; `tools/research/logx_sprite_probe.py` (which still models the 4-byte header while the newer `logx_frame_probe.py` uses `0x08`); `docs/research/AUTO_RE_<local-state-name>`; earlier `PROJECT_STATE` parts | preserved deliberately |
+| `RESEARCH-ONLY LEGACY` | the ten tickets' review, provenance and archive records; `tools/research/logx_sprite_probe.py` (which still models the 4-byte header while the newer `logx_frame_probe.py` uses `0x08`); `docs/research/AUTO_RE_STATE.md`; earlier `PROJECT_STATE` parts | preserved deliberately |
 | `HARMLESS COMMENT` / `NO LONGER USED` | none material | - |
 
 **No `PRODUCTION BUG`-class hit survives in the audit's scan scope once the
@@ -480,7 +480,7 @@ a sanity check with no demonstrated benefit.
 
 | File | Correction |
 | --- | --- |
-| `docs/PROJECT_<local-state-name>` | its `## Next` block still named `LOGX-GFXSCAN-001` as NEXT with baseline `2c44837a088263b4df6e9cf3f5f8a727f9105afd`, contradicting the same file's own header (GFXSCAN COMPLETE / ACCEPTED) and its "Current Baseline" entry (LOGX-SYNTHESIS-001 next). Corrected to name `LOGX-SYNTHESIS-001` with the authorized baseline `a commit since folded into its successor`, and the original paragraph retained beneath as marked history |
+| `docs/PROJECT_STATE.md` | its `## Next` block still named `LOGX-GFXSCAN-001` as NEXT with baseline `2c44837a088263b4df6e9cf3f5f8a727f9105afd`, contradicting the same file's own header (GFXSCAN COMPLETE / ACCEPTED) and its "Current Baseline" entry (LOGX-SYNTHESIS-001 next). Corrected to name `LOGX-SYNTHESIS-001` with the authorized baseline `a commit since folded into its successor`, and the original paragraph retained beneath as marked history |
 | `docs/research/GRAPHICS_FORMAT.md` | superseded-statements banner; the `0x179764` ownership correction; the two named production defects cross-referenced to the roadmap |
 | `docs/reverse-engineering.md` | the ten corrections in §1 |
 

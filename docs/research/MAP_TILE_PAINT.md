@@ -235,7 +235,7 @@ for this record.
 During implementation I ran `pytest tests/unit -q --tb=line -p no:cacheprovider`
 as a background job from the record worktree, and reported its result
 (**2588 passed, 1 failed, 13 skipped in 207.99s**; the failure is the pre-existing
-packaged-wheel test already recorded in `docs/PROJECT_<local-state-name>`). That is a
+packaged-wheel test already recorded in `docs/PROJECT_STATE.md`). That is a
 directory-wide run of the whole portable unit suite.
 
 `MAP-TILE-PAINT-001`'s test policy forbids exactly that, and the earlier report

@@ -18,7 +18,7 @@ strongest candidate was *refuted* rather than promoted.
 | `docs/research/PLACEMENT_TYPES.md` (TOOLKIT-009) | Placement type selector chain into enemy stat records | Anything environmental |
 | `docs/consumer-analysis.md` (ROM-011/012) | The registry population path `0x08012664`, the AABB query family `0x080126D4..0x080128F2`, and the ROM-012 runtime trace | A collision label; it states collision semantics remain unproven |
 | `docs/reverse-engineering.md` | The nine MapEntry pointer words and the full pointer census | Any Category A collision confirmation |
-| `docs/research/AUTO_RE_<local-state-name>` | The `FUN_0803B4FC` ray-march notes; the "point query" notes | A correct callee identity - see the correction below |
+| `docs/research/AUTO_RE_STATE.md` | The `FUN_0803B4FC` ray-march notes; the "point query" notes | A correct callee identity - see the correction below |
 | `extern/buusfury` (pinned disassembly) | MapEntry table base/stride/count | Nothing on collision; `src/` holds only 3 unrelated files |
 | `extern/DragonByteZ` | Upstream field names `items`/`objects`/`npcs` | Zero collision hits on a full-text grep |
 | `extern/Legacy` (DBZKit) | Script VM opcodes 71 `SetCollisionRect` / 72 `ClearCollisionRect` | These are **Legacy of Goku** bytecode ops; LOG1 collision is out of scope per section 36, and no Buu equivalent exists |
@@ -31,7 +31,7 @@ names were treated as leads, and none survived.
 
 ## OLD CLAIM / NEW EVIDENCE / RESOLUTION: `0x08046AA4` is not a collision query
 
-**OLD CLAIM.** `AUTO_RE_<local-state-name>` records, in five separate places (lines 910,
+**OLD CLAIM.** `AUTO_RE_STATE.md` records, in five separate places (lines 910,
 1022, 1291, 1461, 2090), a "point query `0x08046AA4`" / "`0x08046AA6`", and
 describes `FUN_0803B4FC` as "a dual ray-march against map collision via
 `FUN_08046AA4` (point query on `*param_2+0x54` room data)".
@@ -53,7 +53,7 @@ This is the standard gcc `__call_via_rN` indirect-call thunk block. `0x08046AA4`
 is not a function that queries anything; it is a **register-indirect jump**. The
 real callee is whatever pointer was in `r2` at the moment of the call.
 `docs/consumer-analysis.md:252` already had this right, naming
-`0x08046AA2` "the Thumb `BX r1` veneer"; `AUTO_RE_<local-state-name>` did not.
+`0x08046AA2` "the Thumb `BX r1` veneer"; `AUTO_RE_STATE.md` did not.
 
 **RESOLUTION.** Every note describing `0x08046AA4`/`0x08046AA6` as a point query
 is describing a **virtual dispatch**, not a fixed collision routine. Re-reading

@@ -1203,7 +1203,7 @@ attributed to a separate probe.
   attribute renamed, refactor, or nothing rendered - `offenders` is empty for all
   screens, the probe prints "clean" nine times and exits 0. There is no vacuity
   guard and no assertion that nine screens were reached, yet
-  `docs/PROJECT_<local-state-name>` cites exactly this output as the whole-class
+  `docs/PROJECT_STATE.md` cites exactly this output as the whole-class
   evidence for a defect that took four rounds to close.
 - **Why it matters:** the instrument, not the thing measured, silently stops
   working. The pytest guard for the same defect does assert non-vacuity, but that

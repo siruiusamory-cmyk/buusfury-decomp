@@ -1850,7 +1850,7 @@ HP decrement observed, writer PC identified)
 - `RETRACTED`: classifying the `0x0804C484` object as the wolf combat/HP
   object. It is retained only as a moving HURT-path target of unresolved type.
 - `REJECTED`: `+0x74` as a fallback HP candidate; prior evidence identifies it
-  as a graphics/frame pointer slot (`AUTO_RE_<local-state-name>` lines 1081-1095 and
+  as a graphics/frame pointer slot (`AUTO_RE_STATE.md` lines 1081-1095 and
   1128-1142 before this insertion).
 - True wolf entity, HP field, and damage mutation are `UNKNOWN`. The strongest
   bounded next locus is hit-phase function `0x080342AE..0x08034305`, which
@@ -2198,9 +2198,9 @@ The 28-tick reaction duration from the three-breakpoint run is retained as
 historical evidence and explained by that instrumentation's pacing
 perturbation; the canonical low-perturbation value is 24 ticks.
 
-`docs/PROJECT_<local-state-name>` is bounded at 240 lines by
+`docs/PROJECT_STATE.md` is bounded at 240 lines by
 `tests/unit/test_workflow_migration.py`. Completed-ticket result records now
-continue in `docs/PROJECT_<local-state-name>`, linked from the primary file, so closing
+continue in `docs/PROJECT_STATE.md`, linked from the primary file, so closing
 a ticket no longer forces older verified records to be compressed away.
 
 ## P-007 Wolf Combat AI (2026-08-28)

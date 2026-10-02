@@ -133,7 +133,7 @@ leaves the other accepting - the observed persistence.
   two confirmed factory words; ownership chains resolve through
   `descriptor <- ptr array <- selected value S (word0 000C10xx, +40 count,
   +44 array) <- variation source <- MapEntry`. Bounds are map-local.
-  byte10/byte11 clustering leads recorded in AUTO_RE_<local-state-name>.
+  byte10/byte11 clustering leads recorded in AUTO_RE_STATE.md.
 
 ## 4. Runtime observation infrastructure
 
@@ -178,7 +178,7 @@ character table has only 2 inbound word-aligned references in the image
 **Partly superseded.** Script VM and dialogue (TOOLKIT-013/019/020/021), portraits
 (PORTRAIT-COMPLETENESS-001), and the map/tile/sprite graphics families (LOGX-*)
 have since been mapped to the degree recorded in
-[`PROJECT_<local-state-name>`](../PROJECT_<local-state-name>) and
+[`PROJECT_STATE.md`](../PROJECT_STATE.md) and
 [`GRAPHICS_COVERAGE.md`](GRAPHICS_COVERAGE.md); UI/HUD and fonts stay open there.
 The rest of this list stands.
 
@@ -186,7 +186,7 @@ Main loop / scheduler, player entity update, movement/collision resolution,
 enemy AI, combat/damage, script VM + dialogue, inventory/stats, save format,
 animation/audio loaders, and every graphics family other than actor sprites
 (map tilesets, portraits, UI, fonts, effects). The **runtime** graphics path is
-also unmapped: `AUTO_RE_<local-state-name>` records EWRAM `0x3DE60..0x3DFA0` as
+also unmapped: `AUTO_RE_STATE.md` records EWRAM `0x3DE60..0x3DFA0` as
 sprite/animation work, but nothing links it to the static tables above. Anchors
 into these exist only where noted (e.g., query entity `0x0202E4D0` strongly
 supported as player-controlled in ROM-012).

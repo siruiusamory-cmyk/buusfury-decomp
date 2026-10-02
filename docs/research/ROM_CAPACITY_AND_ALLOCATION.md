@@ -14,7 +14,7 @@ allocation proof) are **not** part of this checkpoint and are not claimed here.
 | Canonical ROM | `940ad5f01db4465b8877dfe739510cbf34f4ea3d390f3df13519808bc36f059e` |
 | Canonical size | 8,388,608 bytes = 0x00800000 = 8 MiB |
 
-`docs/PROJECT_<local-state-name>` and earlier records show that TOOLKIT-011 refused the whole
+`docs/PROJECT_STATE.md` and earlier records show that TOOLKIT-011 refused the whole
 upstream tail and TOOLKIT-028 verified one 256-byte carve of it. This checkpoint
 does **not** revisit, weaken or widen those decisions. It measures the image, and
 it reports candidate capacity separately from declared capacity at every point.

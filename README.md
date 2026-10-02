@@ -171,7 +171,7 @@ The desktop editor needs the PySide6 extra
 
 Read next: [project format](docs/project-format.md),
 [Workbench](docs/workbench.md), [architecture](docs/architecture.md) and
-[verified project state](docs/PROJECT_<local-state-name>). The portable suite runs with
+[verified project state](docs/PROJECT_STATE.md). The portable suite runs with
 `.\scripts\test.ps1`.
 
 ## Contributing and documentation

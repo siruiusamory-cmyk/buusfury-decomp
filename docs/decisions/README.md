@@ -2,7 +2,7 @@
 
 These record the small set of engineering decisions a future contributor must not
 have to re-derive from project history. They are not a ledger and not a second
-project state: `docs/PROJECT_<local-state-name>` records what is currently true, while an
+project state: `docs/PROJECT_STATE.md` records what is currently true, while an
 ADR here records a decision that outlives it and that later work is expected to
 obey.
 

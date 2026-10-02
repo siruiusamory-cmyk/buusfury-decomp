@@ -29,9 +29,9 @@ than assumed from the CLI's example string:
 
 | Evidence | Says |
 |---|---|
-| `docs/PROJECT_<local-state-name>:198` | "wolf selectors are contiguous 434-439" |
-| `docs/PROJECT_<local-state-name>:156` | "Wolf base EXP is 225" - the record's EXP is 225 |
-| `docs/PROJECT_<local-state-name>:166-169` | Wolf fixture: 175 displayed HP, **4 hits to kill**, 47-52 displayed damage |
+| `docs/PROJECT_STATE.md:198` | "wolf selectors are contiguous 434-439" |
+| `docs/PROJECT_STATE.md:156` | "Wolf base EXP is 225" - the record's EXP is 225 |
+| `docs/PROJECT_STATE.md:166-169` | Wolf fixture: 175 displayed HP, **4 hits to kill**, 47-52 displayed damage |
 | `tools/webfoot/formats/stat_tables.py:249` | "HP 175, which is unique across the table" |
 
 Decoded canonical record: `hp=175 exp=225 type_id=434 level=60 str=10 pow=0
@@ -90,7 +90,7 @@ Observed, in one session:
 | Two wolves spawned after reloading the area | the modified ROM | **1 each** |
 
 **Prediction matched for every wolf constructed after the patch.** Baseline for
-this fixture is 4 hits (`PROJECT_<local-state-name>:166-169`).
+this fixture is 4 hits (`PROJECT_STATE.md:166-169`).
 
 No runtime instrumentation was needed. Human gameplay observation was
 sufficient and unambiguous, so the record's escalation path (section 12) was
@@ -123,7 +123,7 @@ reload on the same modified ROM died in one hit.
 **RESOLUTION:** enemy base HP is used when constructing/seeding the actor's live
 HP state. The instantiated actor thereafter carries live current HP
 independently, consistent with the previously established `target+0x28C`
-current-HP field (`PROJECT_<local-state-name>:175`).
+current-HP field (`PROJECT_STATE.md:175`).
 
 This makes the run *stronger* than a uniform result would have been. The
 surviving 4-hit wolf is an unplanned in-run control: it shows the modified ROM

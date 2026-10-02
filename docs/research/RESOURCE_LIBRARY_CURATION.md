@@ -38,7 +38,7 @@ Three sources, in strict priority, and nothing else:
    position. The three `unknown*` entries are placeholders, not names.
 
    **Status is recorded, not promoted.** The accepted project record
-   (`docs/PROJECT_<local-state-name>`, LOGX-SPRITE-001) still classes LOGExtractor's
+   (`docs/PROJECT_STATE.md`, LOGX-SPRITE-001) still classes LOGExtractor's
    slot names as unproven engine facts. Curation uses them in a local resource
    pack where the human has verified them for that purpose, and every animation
    record carries its name source (`LOGEXTRACTOR_SOURCE`) so the distinction is

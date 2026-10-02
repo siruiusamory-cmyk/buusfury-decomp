@@ -47,7 +47,7 @@ At the start of ROM-010:
 2. run the 208-test portable suite
 3. verify ROM/save/state hashes
 4. commit legitimate ROM-009 work as the new baseline
-5. update `docs/PROJECT_<local-state-name>` accordingly
+5. update `docs/PROJECT_STATE.md` accordingly
 6. begin ROM-010 from a clean tree
 
 Use an appropriate commit message such as:
@@ -169,7 +169,7 @@ Do not repeatedly relaunch GUI processes in an uncontrolled loop.
 
 As soon as the runtime path is working, STOP infrastructure expansion.
 
-Use the NEW dialogue-free runtime state already documented in `PROJECT_<local-state-name>`.
+Use the NEW dialogue-free runtime state already documented in `PROJECT_STATE.md`.
 
 Re-run the existing clean-state experiment.
 

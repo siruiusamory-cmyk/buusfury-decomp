@@ -19,7 +19,7 @@ The 108 unreachable well-formed and 168 non-conforming occurrences stay excluded
 | ROM-006/007/008, `consumer-analysis.md:236-256,326-371` | Selected variation +40/+44 dispatches descriptors through 08012664; separate heterogeneous family |
 | ROM-011/012, `consumer-analysis.md:807-865` | Descriptor 08294948 -> 08007675 rectangle-aware object and exact runtime attribution; no FD55 link |
 | P-003/P-004 | Retracted actor attribution is not placement/enemy evidence |
-| `AUTO_RE_<local-state-name>:265-275,379-403`, `PROJECT_STATE*.md`, `SUBSYSTEM_MAP.md:70-96` | Separate map-loader/per-character mechanisms; reused runtime slots never identity |
+| `AUTO_RE_STATE.md:265-275,379-403`, `PROJECT_STATE*.md`, `SUBSYSTEM_MAP.md:70-96` | Separate map-loader/per-character mechanisms; reused runtime slots never identity |
 | `build/ghidra/reports/p001-entity-ctors.txt:204-235` (ignored) | Existing canonical type getter 0801713C, no FD55 link; prior reports/research contain no FD55 trace |
 | DragonByteZ `b2691209fa873cc0c1d7aa9cdea7c1da4430afe4`, `src/analysis.cpp:462-487,587-618` | Names MapEntry fields, follows +2C; no FD55 consumer. NPC/item/object labels remain INFERRED |
 | Arefu/Legacy `d22a556cd33dee56513d5b606b6ae8065ccc5752`, `DBZKit/DrGero/Types.cs:5-54`, `DBZLOG2.cs:20-30` | LoGII labels/config, not a Buu placement parser |
@@ -53,8 +53,8 @@ The raw pointer is retained separately, never silently normalized as data.
 | 0800F724-0800F72A | reload selected record, read u32 +08, call 0800AA9C | Selected record supplies the initial behavior-controller selector |
 
 Existing independent anchors: authoritative HP at object+28C
-(`PROJECT_<local-state-name>`, P-006A/P-006B section); controller push 0800AA9C
-(`PROJECT_<local-state-name>`, P-006C section); enemy layout/identity
+(`PROJECT_STATE.md`, P-006A/P-006B section); controller push 0800AA9C
+(`PROJECT_STATE.md`, P-006C section); enemy layout/identity
 `tools/webfoot/formats/stat_tables.py:133-170,327-364` and uniqueness gate
 `tools/webfoot/stats.py:379-402`.
 

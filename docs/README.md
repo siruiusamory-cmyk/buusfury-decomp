@@ -23,7 +23,7 @@ The index for everything under `docs/`. Start with the root
 | [`project-format.md`](project-format.md) | The authored project format and its determinism guarantees. |
 | [`capability-registry.md`](capability-registry.md) | How the public capability list is defined and changed. |
 | [`ROADMAP_TO_1_0.md`](ROADMAP_TO_1_0.md) | The complete route to a 1.0 release. |
-| [`PROJECT_<local-state-name>`](PROJECT_<local-state-name>) | Current verified facts: the canonical image, established formats, executable flow and open questions. |
+| [`PROJECT_STATE.md`](PROJECT_STATE.md) | Current verified facts: the canonical image, established formats, executable flow and open questions. |
 | [`workbench.md`](workbench.md) | The Maps editor's Layout mode and reopening a ROM the tool wrote. |
 | [`workbench-architecture.md`](workbench-architecture.md) | The desktop editor's structure and its hard rules. |
 | [`desktop-ui.md`](desktop-ui.md) | How a DragonByte Z editor surface should look, behave and be reviewed. |

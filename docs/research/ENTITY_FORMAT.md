@@ -14,7 +14,7 @@ prior ticket's summary or from an upstream project.
 | --- | --- | --- |
 | `docs/reverse-engineering.md` | The nine MapEntry pointer words, the full ROM-003 pointer census, the count/pointer correlation matrix | Any confirmed semantics; it records all nine as Category B/C, none Category A |
 | `docs/research/MAP_FORMAT.md` | The `+0x04` correction, the typed/opaque split, the one CONFIRMED bounds structure | Anything about the other four count/pointer pairs |
-| `docs/research/AUTO_RE_<local-state-name>` | Factory raws `0x08007675`/`0x080072CD`, the 24-byte rectangle-object family, descriptor field map, the reusable-actor-slot warning | A static placement record layout |
+| `docs/research/AUTO_RE_STATE.md` | Factory raws `0x08007675`/`0x080072CD`, the 24-byte rectangle-object family, descriptor field map, the reusable-actor-slot warning | A static placement record layout |
 | `spicybung/DragonByteZ` (via the RE doc's pinned commit) | The upstream field names `items`/`objects`/`npcs` | Any dereference of those words; it follows only `+0x2C` |
 | `2genkidev/buusfury` (pinned disassembly) | Table base, stride, count, byte accesses at `+0x00`/`+0x01` | No identified consumer loads any of the nine pointer words |
 

@@ -343,9 +343,11 @@ CODEFLAG_MIN_RUN = 3
 #: the tree alone and is a judgement call, hence advisory.
 NESTING_MAX_DEPTH = 8
 
-#: One definition longer than this. 8,814 definitions were measured on the tree;
-#: 30 exceed 200 lines, headed by a 993-line constructor, an 835-line data
-#: builder and a 559-line argument parser. 120 flagged 77 and read as noise.
+#: One definition longer than this. Measured against this tree through the
+#: module's own scanner, a few dozen definitions exceed it, headed by a very
+#: long constructor and a data builder; a limit of 120 flagged far more and read
+#: as noise, which is why this one is higher. The exact figures move as the tree
+#: changes, so they are not restated here.
 FUNCTION_MAX_LINES = 200
 
 #: Two hex literals combined directly, e.g. ``0x08000000 + 0x1234``. The ticket

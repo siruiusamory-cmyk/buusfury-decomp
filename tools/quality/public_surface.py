@@ -104,9 +104,16 @@ class ExceptionTable:
         if not target.is_file():
             return cls([])
         document = json.loads(target.read_text(encoding="utf-8"))
+        if not isinstance(document, dict):
+            raise ValueError(f"{target} must be a JSON object")
         if document.get("schema_version") != EXCEPTION_SCHEMA_VERSION:
             raise ValueError(f"{target} has an unexpected schema_version")
-        return cls(list(document.get("exceptions", [])))
+        entries = document.get("exceptions", [])
+        if not isinstance(entries, list):
+            raise ValueError(f"{target} has a non-list 'exceptions'")
+        if any(not isinstance(entry, dict) for entry in entries):
+            raise ValueError(f"{target} has an exception that is not an object")
+        return cls(list(entries))
 
     def reason_for(self, index: int, relative: str) -> str | None:
         """The written reason this screen is excepted at ``relative``, if any."""
@@ -291,8 +298,16 @@ def scan_built(directory: Path) -> dict:
         raise RuntimeError(f"no built site at {directory}")
     selected = built_files(directory)
     findings: list[dict] = []
+    unreadable: list[str] = []
     for relative in selected:
-        found, _ = scan(directory, relative, exceptions=ExceptionTable([]))
+        try:
+            text = (directory / relative).read_text(encoding="utf-8")
+        except (OSError, UnicodeDecodeError):
+            unreadable.append(relative)
+            continue
+        found, _ = scan(
+            directory, relative, exceptions=ExceptionTable([]), text=text
+        )
         findings.extend(found)
     findings.sort(key=lambda item: (item["path"], item["line"], item["signal_index"]))
     counts: dict[str, int] = {}
@@ -301,18 +316,23 @@ def scan_built(directory: Path) -> dict:
     return {
         "schema": SCHEMA,
         "built_from": str(directory),
-        "files_scanned": len(selected),
+        "files_scanned": len(selected) - len(unreadable),
         "files_selected": len(selected),
         "exceptions": 0,
         "suppressed": 0,
         "findings": findings,
         "signal_counts": dict(sorted(counts.items())),
+        "unreadable": sorted(unreadable),
     }
 
 
 def _render(report: dict, stream) -> None:
+    if report.get("built_from"):
+        subject = f"built site at {report['built_from']}"
+    else:
+        subject = "tracked text files"
     print(
-        f"public surface: {report['files_scanned']} tracked text files scanned, "
+        f"public surface: {report['files_scanned']} {subject} scanned, "
         f"{len(report['findings'])} finding(s), "
         f"{report['suppressed']} suppressed by a written exception",
         file=stream,
@@ -387,7 +407,10 @@ def main(argv: list[str] | None = None) -> int:
             "screened. Fix the encoding or remove them from the text tree.",
             file=sys.stderr,
         )
-        return 1
+        # A file that cannot be read is not a file that passed, and --no-fail
+        # reframes findings rather than blindness, so this is BLOCKED, not a
+        # failure with a reading list attached.
+        return 2
     if report["findings"] and not arguments.no_fail:
         print(
             "\nPublic content carries private development residue. Remove it, or "

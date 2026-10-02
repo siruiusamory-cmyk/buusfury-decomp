@@ -10,7 +10,7 @@ positional argument. The real invocation is
 `webfoot graphics export <rom> <identity> --out <path>`, and that is what was
 driven.
 
-**CLI.** Probe `<temp>\cqa01-probe\probe_cli_export_alias.py` calls the real
+**CLI.** Probe `<temporary probe directory>\probe_cli_export_alias.py` calls the real
 `main()` with one synthetic 8,192-byte image named as both the ROM and `--out`,
 with only the read-only `load_actor_sprites` call stubbed (a synthetic profile
 can never pass `capability.require`, which re-checks extents against the
@@ -23,7 +23,7 @@ can never pass `capability.require`, which re-checks extents against the
 | head | `00000000` | `89504e470d0a1a0a` (PNG signature) |
 | result | - | `exit code 0`, result JSON printed the clobbered path |
 
-**Workbench.** Probe `<temp>\cqa01-probe\probe_workbench_export_alias.py` drives
+**Workbench.** Probe `<temporary probe directory>\probe_workbench_export_alias.py` drives
 the real `GraphicsTab._on_export` slot with the open ROM's own path chosen in the
 save dialog. A synthetic 2,048-byte file became an 864-byte PNG, `QMessageBox`
 list was **empty**, and the status line read
@@ -152,7 +152,7 @@ remaining ~24 write sites) were left for their own records.
 ## 6. Mutation check
 
 Two temporary, bounded mutations in an **isolated scratch worktree**
-(`<temp>\dsh-cqa01-mutation`), never in the record worktree, each reverted
+(`<temporary directory>`), never in the record worktree, each reverted
 byte-for-byte and SHA-verified afterwards.
 
 | Mutation | Result |
@@ -193,7 +193,7 @@ sha256 before : 940ad5f01db4465b8877dfe739510cbf34f4ea3d390f3df13519808bc36f059e
 sha256 after  : 940ad5f01db4465b8877dfe739510cbf34f4ea3d390f3df13519808bc36f059e
 ```
 
-Positive safety validation (`<temp>\cqa01-probe\canonical_positive.py`) confirms
+Positive safety validation (`<temporary probe directory>\canonical_positive.py`) confirms
 the shared rule recognises the canonical ROM, a case-varied spelling, a relative
 spelling, a **symlink alias** and a **hard-link alias**, refuses each, accepts a
 distinct destination, and leaves the ROM byte-identical. The destructive
@@ -252,7 +252,7 @@ uncommitted state are exactly as found.
 
 ## 11. Focused validation
 
-Measured in the record worktree (`<temp>\log1-remake-cqa-01-output-safety-001`),
+Measured in the record worktree (`<temporary directory>\log1-remake-cqa-01-output-safety-001`),
 with the canonical image reachable through an untracked `roms` junction pointing
 at the read-only main-checkout copy.
 

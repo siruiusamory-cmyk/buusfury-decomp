@@ -118,7 +118,7 @@ revalidate it rather than treating it as reviewed by default.
 implementation plus any public-progress change
 -> focused validation
 -> implementation frozen
--> readability, architecture and public-surface gates
+-> readability, architecture, public-surface and built-site gates
 -> independent review
 -> review fixes if needed
 -> reviewer sign-off

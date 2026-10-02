@@ -458,7 +458,7 @@ covered and uncovered families.
 `tests/unit/test_thumb_mem_operands.py` **26 passed**, and the five LOGX ROM-gated
 suites together give **103 passed, 5 errors** - every number matching the record's
 report. All 5 errors are the pre-existing pytest `tmp_path`
-`PermissionError: [WinError 5] ... pytest-of-<user>`; the verification pass reproduced them
+`PermissionError: [WinError 5] ... the pytest temporary root`; the verification pass reproduced them
 on the untouched accepted `test_logx_tile_rom.py`, whose own three `tmp_path`
 tests error while its other 27 pass. The environment claim is correct and is not
 this record's defect.

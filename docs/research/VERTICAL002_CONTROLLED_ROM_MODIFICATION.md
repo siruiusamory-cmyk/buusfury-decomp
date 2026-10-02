@@ -158,7 +158,7 @@ tests/integration/test_stat_write_rom.py
 
 Five tests initially reported `ERROR at setup` with
 `PermissionError: [WinError 5] Access is denied` on pytest's temp directory
-(`AppData\Local\Temp\pytest-of-<user>`). That is a Windows sandbox filesystem
+(`the pytest temporary root`). That is a Windows sandbox filesystem
 restriction, not a test failure. Re-running the affected scope
 (`test_stat_write_rom.py`) with a writable `--basetemp` gives **20 passed**. No
 assertion failed at any point.

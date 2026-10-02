@@ -394,13 +394,13 @@ Measured, not derived.
 | `pytest tests/unit tests/integration/test_logx_char_rom.py tests/integration/test_logx_{codec,connector,layer,map_record,map_render,tile}_rom.py tests/integration/test_text_rom.py -q` (isolated basetemp outside the repository, junction removed) | see below |
 
 ```text
-$ cd <temp>\log1-remake-logx-char-001
+$ cd <temporary directory>\log1-remake-logx-char-001
 $ $env:LOGX_CANONICAL_ROM = "<checkout>'s Fury (U).gba"
 $ python -m pytest tests/unit tests/integration/test_logx_char_rom.py `
     tests/integration/test_logx_codec_rom.py tests/integration/test_logx_connector_rom.py `
     tests/integration/test_logx_layer_rom.py tests/integration/test_logx_map_record_rom.py `
     tests/integration/test_logx_map_render_rom.py tests/integration/test_logx_tile_rom.py `
-    tests/integration/test_text_rom.py -q --basetemp=<temp>\dsh-pytemp-final
+    tests/integration/test_text_rom.py -q --basetemp=<temporary directory>
 
 1551 passed, 52 skipped in 249.97s (0:04:09)
 ```
@@ -426,7 +426,7 @@ this record, and both are reported rather than hidden.
    **73 passed**.
 
 A third, unrelated environment error was also seen once:
-`PermissionError` on `<temp>\pytest-of-<user>`, caused by a concurrent process
+`PermissionError` on `the pytest temporary root`, caused by a concurrent process
 holding that directory; re-running with an isolated basetemp cleared it.
 
 ---

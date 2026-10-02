@@ -137,7 +137,7 @@ pre-fix module at the START SHA, the value is **12 bytes**
 (`0200000040000000fe53d020`), with `fill = 0` and 0 padding bits - every other
 property §2.3 states about that case holds. The 292 figure belongs to the 256-byte
 random payload in the first row of the investigator's own probe output
-(`<temp>\cqa02\flush.txt`, section B), whose `fill = 0` it shares; the figure was
+(`<temporary directory>\cqa02\flush.txt`, section B), whose `fill = 0` it shares; the figure was
 carried across rows. A 64-byte payload cannot reach 292 bytes under this encoder,
 whose literal token is nine bits.
 

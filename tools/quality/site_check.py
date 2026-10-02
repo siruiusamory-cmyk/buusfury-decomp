@@ -30,6 +30,11 @@ from tools.quality import public_surface  # noqa: E402
 STATUS_DOCUMENT = "project.json"
 PAGE = "index.html"
 
+#: The capability registry: the authority for what is shipped. The page derives
+#: its figure from this file at build time, and this check is what proves it,
+#: because the job that builds the site is the only CI job that has both.
+REGISTRY = "src/data/capabilities.json"
+
 MILESTONE_STATUSES = {"complete", "current", "next", "target"}
 PHASE_STATES = {"complete", "in-progress", "next", "planned"}
 
@@ -228,7 +233,41 @@ def _heading_findings(page: str) -> list[str]:
 
 
 def check(directory: Path) -> list[str]:
-    return structure_findings(load_status(directory)) + artifact_findings(directory)
+    status = load_status(directory)
+    return (
+        structure_findings(status)
+        + registry_findings(status)
+        + artifact_findings(directory)
+    )
+
+
+def registry_findings(status: dict, root: Path | None = None) -> list[str]:
+    """The published count must be the registry's own count.
+
+    The build derives the figure from the registry, so in a correct tree this
+    cannot fail; it is checked anyway because the failure it guards against is
+    exactly the one a rebuild would not catch - a registry and a status document
+    that were both written by hand and drifted apart.
+    """
+    path = (root or REPOSITORY_ROOT) / REGISTRY
+    if not path.is_file():
+        return [f"no {REGISTRY} to check the published count against"]
+    registry = json.loads(path.read_text(encoding="utf-8"))
+    capabilities = registry.get("capabilities", [])
+    shipped = [entry for entry in capabilities if entry.get("state") == "shipped"]
+    findings: list[str] = []
+    published = status.get("buildout", {})
+    if published.get("total") != len(capabilities):
+        findings.append(
+            f"the site publishes {published.get('total')} capabilities but the "
+            f"registry declares {len(capabilities)}"
+        )
+    if published.get("done") != len(shipped):
+        findings.append(
+            f"the site publishes {published.get('done')} shipped capabilities but "
+            f"the registry marks {len(shipped)} shipped"
+        )
+    return findings
 
 
 def main(argv: list[str] | None = None) -> int:

@@ -219,10 +219,10 @@ scripts/             setup, test and packaging entry points
 - Generated output - built ROMs, saves, save states, memory dumps, extracted
   assets and build directories - is local and is not committed, and it must stay
   that way. Do not open issues or merge requests containing ROM-derived data.
-- The two screenshots under `public/` are the one deliberate exception: unaltered
-  captures of the editor working on the author's own verified copy, showing the
-  tool rather than a distributable asset. Nothing else rendered from a game is
-  tracked.
+- The two screenshots under `public/` are the one deliberate exception: captures
+  of the editor working on the author's own verified copy, cropped only, showing
+  the tool rather than a distributable asset. Nothing else rendered from a game
+  is tracked.
 
 ## Project status / experimental warning
 

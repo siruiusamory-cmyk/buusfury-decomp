@@ -191,7 +191,7 @@ The dispatcher, disassembled:
 ```
 
 Its else-branch calls `0x0803DF14` with Webfoot's own source path
-`T:\Source\ByteCodeInterpreter\ByteCodeInterpreter.cpp`, which independently
+`<absolute path>`, which independently
 confirms the subsystem identity. Ten BL sites call it; the interpreter has 29
 callers.
 

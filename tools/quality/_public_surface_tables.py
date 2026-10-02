@@ -56,14 +56,14 @@ FORBIDDEN_B64 = (
     "dWxhcnkiLAogICJwYXR0ZXJuIjogIlxcYnNlc3Npb25zP1tcXHMtXSsoPzpub3Rlcz98b3Jj"
     "aGVzdHJhdGlvbnxtYW5hZ2VtZW50fGxvZ3xoYW5kb2ZmfHRyYW5zY3JpcHQpcz9cXGIiCiB9"
     "LAogewogICJmbGFncyI6IDAsCiAgImxhYmVsIjogImEgbWFjaGluZS1zcGVjaWZpYyBhYnNv"
-    "bHV0ZSBwYXRoIiwKICAicGF0dGVybiI6ICIoPzpbQS1aYS16XTpbXFxcXC9dK1VzZXJzW1xc"
-    "XFwvXStbXlxcXFwvXFxzXFxcIic8PnxdK3xbQS1aYS16XTpbXFxcXC9dK0RldltcXFxcL118"
-    "L2hvbWUvW2Etel1bYS16MC05Xy1dKi9bXlxcc118W0EtWmEtel06W1xcXFwvXStVc2Vyc1tc"
-    "XFxcL10rW0EtWmEtejAtOS5fLV0rW1xcXFwvXStBcHBEYXRhKSIKIH0sCiB7CiAgImZsYWdz"
-    "IjogMCwKICAibGFiZWwiOiAiYW4gZW1iZWRkZWQgY3JlZGVudGlhbCIsCiAgInBhdHRlcm4i"
-    "OiAiKD86c2stW0EtWmEtejAtOV8tXXsyMCx9fGdpdGh1Yl9wYXRfW0EtWmEtejAtOV9dezIw"
-    "LH18Z2hwX1tBLVphLXowLTldezIwLH18Z2xwYXQtW0EtWmEtejAtOV8tXXsxNix9fEFLSUFb"
-    "MC05QS1aXXsxNn0pIgogfQpd"
+    "bHV0ZSBwYXRoIiwKICAicGF0dGVybiI6ICIoPzpbQS1aYS16XTpbXFxcXC9dKyg/OlVzZXJz"
+    "fERldnx0bXB8VGVtcClbXFxcXC9dK3wlVEVNUCV8JUxPQ0FMQVBQREFUQSV8cHl0ZXN0LW9m"
+    "LVtBLVphLXowLTkuXy1dK3wvaG9tZS9bYS16XVthLXowLTlfLV0qL3xcXFxcXFxcXFtBLVph"
+    "LXowLTkuXyQtXStcXFxcW0EtWmEtejAtOS5fJC1dKykiCiB9LAogewogICJmbGFncyI6IDAs"
+    "CiAgImxhYmVsIjogImFuIGVtYmVkZGVkIGNyZWRlbnRpYWwiLAogICJwYXR0ZXJuIjogIig/"
+    "OnNrLVtBLVphLXowLTlfLV17MjAsfXxnaXRodWJfcGF0X1tBLVphLXowLTlfXXsyMCx9fGdo"
+    "cF9bQS1aYS16MC05XXsyMCx9fGdscGF0LVtBLVphLXowLTlfLV17MTYsfXxBS0lBWzAtOUEt"
+    "Wl17MTZ9KSIKIH0KXQ=="
 )
 
 #: Screen 2: positive and negative controls, one pair per forbidden entry.

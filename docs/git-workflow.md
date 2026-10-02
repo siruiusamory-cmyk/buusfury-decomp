@@ -236,7 +236,7 @@ Prefer a detached worktree of the merge commit over reusing a branch that has
 already been deleted or moved:
 
 ```bash
-git worktree add --detach <temp>\<verify> origin/master
+git worktree add --detach <temporary directory>\<verify> origin/master
 ```
 
 Portable tests should pass with no ROM present; ROM-gated tests skip and report

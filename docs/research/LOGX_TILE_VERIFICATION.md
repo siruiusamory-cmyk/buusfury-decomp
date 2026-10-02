@@ -398,7 +398,7 @@ Private-runtime validation: **none performed**. This record is static-only, made
 no mGBA capture and produced no derived ROM.
 
 Environment note: `tmp_path`-using tests fail with
-`PermissionError: [WinError 5] ... \AppData\Local\Temp\pytest-of-<user>` in this
+`PermissionError: [WinError 5] ... the pytest temporary root` in this
 environment. That is pre-existing and not record-caused - the same failure occurs
 on the untouched `tests/integration/test_logx_layer_rom.py` - and every run above
 was made with an explicit `--basetemp`. The independent verification pass could not

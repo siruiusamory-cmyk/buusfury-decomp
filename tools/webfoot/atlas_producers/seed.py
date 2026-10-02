@@ -57,11 +57,11 @@ def _rows() -> list[dict]:
         source="docs/research/BUU_VERIFIED_CAPACITY.md:116",
         evidence="Positive control 'header_startup' window [0x000000,0x000100) is REJECTED by the "
                  "capacity scanner on checks 'bounds' and 'fill' - i.e. it is declared, occupied header, "
-                 "above which every free window must lie. PROJECT_<local-state-name> records GBA title DBZBUUSFURY, "
+                 "above which every free window must lie. PROJECT_STATE.md records GBA title DBZBUUSFURY, "
                  "game code BG3E, maker 70, header checksum 0x84 valid.",
         notes="Declared header bound is quoted as 0x158 in BUU_VERIFIED_CAPACITY.md:86; the control window "
               "used is the first 0x100 bytes. Size 0x100 is the control window, not a proven header extent. "
-              "ARM entry point 0x080000C0 (docs/PROJECT_<local-state-name>:162) lies inside.")
+              "ARM entry point 0x080000C0 (docs/PROJECT_STATE.md:162) lies inside.")
 
     # ---------------------------------------------------------- low code region
     add(addr=0x08004038, size=None, kind="function",
@@ -162,7 +162,7 @@ def _rows() -> list[dict]:
         evidence="0x08046AA4 remains the gcc __call_via_rN veneer. Correction recorded in TOOLKIT-012: it is a "
                  "veneer, NOT a point query.",
         notes="size null: extent not stated. Earlier 'point query' naming is SUPERSEDED by TOOLKIT-012 "
-              "(docs/PROJECT_<local-state-name>:19).")
+              "(docs/PROJECT_STATE.md:19).")
 
     add(addr=0x080126D4, size=0x080127AE - 0x080126D4, kind="function",
         identity="spatial.point_query",
@@ -213,17 +213,17 @@ def _rows() -> list[dict]:
     add(addr=0x08007674, size=None, kind="function",
         identity="spatial.rect_object_factory",
         conf="RUNTIME_CONFIRMED",
-        source="docs/PROJECT_<local-state-name>:112",
+        source="docs/PROJECT_STATE.md:112",
         evidence="ROM-007/ROM-008: raw factory target 0x08007675, Thumb fetch 0x08007674, allocation 0x18 bytes, "
                  "creates a 24-byte rectangle-aware runtime object registered by the population manager. "
                  "STRONGLY SUPPORTED generic 24-byte rectangle-aware runtime object.",
         notes="size null: extent not stated. Collision/trigger/transition semantics are explicitly NOT proven "
-              "(docs/PROJECT_<local-state-name>:124). Recorded at the Thumb fetch address; raw is 0x08007675.")
+              "(docs/PROJECT_STATE.md:124). Recorded at the Thumb fetch address; raw is 0x08007675.")
 
     add(addr=0x0800FA50, size=None, kind="function",
         identity="combat.hp_writer",
         conf="RUNTIME_CONFIRMED",
-        source="docs/PROJECT_<local-state-name>:175",
+        source="docs/PROJECT_STATE.md:175",
         evidence="P-006A confirmed signed current HP at target+0x28C, incoming damage at record+0x18, "
                  "authoritative writer 0x0800FA50, death threshold HP <= 0.",
         notes="size null: extent not stated. target+0x28C is EWRAM runtime state, not a ROM offset, and is "
@@ -357,7 +357,7 @@ def _rows() -> list[dict]:
               "would run to 0x08055504, OVERRUNNING both the paired table at 0x08055478 and the primary dispatch "
               "table at 0x080554C0. The handler count and a dense 4-byte layout from this base are therefore not "
               "simultaneously consistent; no size is asserted. Semantics of all 283 handlers are UNKNOWN "
-              "(docs/PROJECT_<local-state-name>:57). Flagged for follow-up.")
+              "(docs/PROJECT_STATE.md:57). Flagged for follow-up.")
 
     add(addr=0x08055478, size=None, kind="pointer_table",
         identity="script_vm.native_paired_table",
@@ -473,7 +473,7 @@ def _rows() -> list[dict]:
     add(addr=0x0870F514, size=None, kind="record_table",
         identity="behavior_state_table",
         conf="RUNTIME_CONFIRMED",
-        source="docs/PROJECT_<local-state-name>:190",
+        source="docs/PROJECT_STATE.md:190",
         evidence="P-006C: state-table base is 0x0870F514, stride 8; entries are {node, table_slot}. Reading "
                  "wolf+0x238 per frame reproduced wolf selectors 434-439 with zero stops, confirming the table "
                  "at Level 3.",
@@ -487,7 +487,7 @@ def _rows() -> list[dict]:
         source="config/roms.yaml:48",
         evidence="Declared in the toolchain profile: enemy_stats address 0x08711274, count 141, record_size "
                  "0x1c. TOOLKIT-009 round-tripped 2,660 bytes across 95 enemy-linked types / 1,284 placements "
-                 "(docs/PROJECT_<local-state-name>:27); GRAPHICS_FORMAT.md:380 probed all 141 records at 0x1C stride.",
+                 "(docs/PROJECT_STATE.md:27); GRAPHICS_FORMAT.md:380 probed all 141 records at 0x1C stride.",
         notes="CONFLICT: placement_types declares the SAME base address 0x08711274 with stride 28 (=0x1C) and "
               "max_selector 149 (config/roms.yaml:33). The two declarations share a base and a stride but "
               "disagree on count/extent - 141 records (3,948 bytes) versus a selector bound of 149. "
@@ -563,7 +563,7 @@ def _rows() -> list[dict]:
                  "0x007EA448, leaving 184 bytes of the 256-byte window.",
         notes="NESTED inside free_region.toolkit028. SDK-authored, not canonical. OLD CLAIM of a 12-byte array "
               "(TOOLKIT-028) is SUPERSEDED by TOOLKIT-032: map 40 has 4 canonical slots so its array is 5*4=20 "
-              "(docs/PROJECT_<local-state-name>:41).")
+              "(docs/PROJECT_STATE.md:41).")
 
     # --------------------------------------------------- shop dialogue / events
     SHOP_START = 0x0877F09A
@@ -715,7 +715,7 @@ def _rows() -> list[dict]:
     # TEXT-HANDLE-001 asked which code WRITES it and measured that none does:
     # the "runtime object" pointer is a pointer INTO the ROM-resident dialog
     # record pool, so the field is already in the image and the record is its
-    # durable owner. Producer stopping point A.
+    # durable owner. Producer Stop Condition A.
     add(addr=0x08012230, size=None, kind="function",
         identity="compressed_text.consumer_08012230",
         conf="RUNTIME_CONFIRMED",
@@ -777,7 +777,7 @@ def _rows() -> list[dict]:
         identity="compressed_text.handle_owner_record_84",
         conf="RUNTIME_CONFIRMED",
         source="docs/research/BUU_EVENT_RESOURCE.md:35",
-        evidence="TEXT-HANDLE-001 Producer stopping point A: there is NO runtime producer for the packed "
+        evidence="TEXT-HANDLE-001 Producer Stop Condition A: there is NO runtime producer for the packed "
                  "compressed-text handle. A WRITE watchpoint armed for the whole capture recorded zero producing "
                  "writes, while the consumer read the value 65 times. The 'runtime object' the consumer receives "
                  "in r1 is 0x08781CF8, a ROM address lying inside the dialog record pool 0x0877C5A4..0x0879B704 "
@@ -849,7 +849,7 @@ def _rows() -> list[dict]:
                  "All-byte u32 audit finds 516 unresolved CANDIDATE references, 99 word-aligned sources.",
         notes="SUPERSEDED by TOOLKIT-028: the whole region stays REJECTED and verified capacity from it is zero; "
               "only the carved 256-byte window [0x7EA400,0x7EA500) is CONFIRMED free "
-              "(docs/PROJECT_<local-state-name>:200). Emitted as UNKNOWN so the atlas records that these 292,440 bytes "
+              "(docs/PROJECT_STATE.md:200). Emitted as UNKNOWN so the atlas records that these 292,440 bytes "
               "are FF-filled but NOT usable, and that FF fill does not imply free space. CONTAINS the verified "
               "free region and the authored rows above - genuine nesting.")
 

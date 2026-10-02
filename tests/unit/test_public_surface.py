@@ -44,7 +44,7 @@ FRONT_DOOR = (
     "docs/reverse-engineering.md",
     "docs/testing.md",
     "docs/runtime-capture.md",
-    "docs/PROJECT_<local-state-name>",
+    "docs/PROJECT_STATE.md",
     "docs/ROADMAP_TO_1_0.md",
 )
 
@@ -196,7 +196,7 @@ def test_the_front_door_points_at_conventional_documents_only():
     assert "CONTRIBUTING.md" in readme
     assert "docs/DEVELOPMENT.md" in readme
     assert "docs/ROM_SAFETY.md" in readme
-    assert "docs/PROJECT_<local-state-name>" in readme
+    assert "docs/PROJECT_STATE.md" in readme
 
 
 def test_relative_links_in_the_front_door_resolve():

@@ -70,7 +70,7 @@ PLACEMENT_COUNT = 1559
 PLACEMENT_MAP_COUNT = 268
 PLACEMENT_BYTES = 49988
 
-#: The one instance whose referenced structure `AUTO_RE_<local-state-name>:314` verifies.
+#: The one instance whose referenced structure `AUTO_RE_STATE.md:314` verifies.
 CONFIRMED_MAP = 39
 CONFIRMED_SLOT = 1
 CONFIRMED_TYPE = 0x00020006
@@ -171,7 +171,7 @@ def test_a_readable_extent_never_overlaps_another(maps):
 
 
 def test_the_confirmed_source_reference_reproduces_exactly(maps):
-    """MapEntry 39 slot[1] and its bounds, from `AUTO_RE_<local-state-name>:314`.
+    """MapEntry 39 slot[1] and its bounds, from `AUTO_RE_STATE.md:314`.
 
     Kept as a regression fixture: this is the single instance whose referenced
     structure this project has verified, and the evidence it rests on.

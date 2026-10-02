@@ -1,7 +1,7 @@
 """Map-linked 8-byte slot arrays: lossless bytes first, typed decode second.
 
 TOOLKIT-007. A `MapEntry` at `+0x10` carries a pointer and at `+0x04` a byte.
-Prior research (`docs/research/AUTO_RE_<local-state-name>:314`) established, from a static
+Prior research (`docs/research/AUTO_RE_STATE.md:314`) established, from a static
 decode of one entry, that the pointer reaches 8-byte records and that the byte
 counts them. Measured across the whole 452-record corpus that reading does not
 generalise, and this module is shaped by exactly what the measurement showed:

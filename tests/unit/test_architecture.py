@@ -96,7 +96,7 @@ def test_an_upstream_checkout_under_extern_is_a_violation():
 
 
 def test_local_state_is_a_violation_but_a_policy_document_is_not():
-    assert arch._rule_no_local_state_tracked(["<local-state-prefix>/notes.md"])
+    assert arch._rule_no_local_state_tracked(["handoffs/notes.md"])
     assert arch._rule_no_local_state_tracked(["docs/DEVELOPMENT.md"]) == []
 
 

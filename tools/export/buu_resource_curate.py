@@ -161,7 +161,7 @@ DIRECTION_COUNT = 4
 #: rather than names, so those positions take the neutral fallback instead.
 #:
 #: **Status.** These are the external tool's labels, not engine facts. The
-#: accepted project record (`docs/PROJECT_<local-state-name>`, LOGX-SPRITE-001) still
+#: accepted project record (`docs/PROJECT_STATE.md`, LOGX-SPRITE-001) still
 #: classes LOGExtractor's slot names as unproven, so nothing here promotes them:
 #: this library is a local resource pack, it claims no engine behaviour, and the
 #: index records this exact source beside every name it supplies.

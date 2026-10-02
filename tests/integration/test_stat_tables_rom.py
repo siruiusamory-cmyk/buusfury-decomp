@@ -32,7 +32,7 @@ RUNTIME_WOLF_HP_DISPLAYED = 175
 RUNTIME_WOLF_BASE_EXP = 225
 #: The fixed-point HP scale fixed by the runtime capture: 1024 raw units = 1
 #: displayed HP; see the damage-scale section of
-#: ``docs/research/AUTO_RE_<local-state-name>``.
+#: ``docs/research/AUTO_RE_STATE.md``.
 HP_RAW_PER_POINT = 1024
 RUNTIME_WOLF_HP_RAW = 179200
 

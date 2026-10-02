@@ -152,7 +152,7 @@ class PlacementIdentity:
 
     TOOLKIT-008. Identity is `(map index, index within that map's array)` and
     nothing else. It deliberately excludes the record's ROM offset and every
-    runtime address: `docs/research/AUTO_RE_<local-state-name>` records that this project
+    runtime address: `docs/research/AUTO_RE_STATE.md` records that this project
     already lost time once by treating reusable EWRAM actor slots as stable
     identity, and a physical offset would break the moment anything moved.
     """
@@ -210,7 +210,7 @@ class MapEntryEntry:
 class SourceReference:
     """A typed slot's reference to a secondary structure.
 
-    READ/DECODE only. `AUTO_RE_<local-state-name>:314` verifies the layout behind exactly
+    READ/DECODE only. `AUTO_RE_STATE.md:314` verifies the layout behind exactly
     one of these - MapEntry 39 slot[1] -> `0x080755C0`, whose halfwords at
     `+0x08` are the bounds `(481, 121, 615, 271)`. The other targets are
     distinct addresses whose layout no evidence establishes, so this dataclass

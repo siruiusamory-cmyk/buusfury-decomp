@@ -17,7 +17,7 @@
   ],
   "exceptions": [
     {
-      "path": "docs/research/AUTO_RE_<local-state-name>",
+      "path": "docs/research/AUTO_RE_STATE.md",
       "signal_index": 3,
       "reason": "Enemy behaviour. The ledger records what the game's opponents do, including their state machines and timers, not how the work was organised."
     },

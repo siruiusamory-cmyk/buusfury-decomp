@@ -551,7 +551,7 @@ def test_tilepaint001_observer_is_read_only_and_allowlisted():
 
 
 def test_p008_mash_driver_is_separate_and_varies_its_interval():
-    """the maintainer asked that repetitive mashing be scripted. The driver is a
+    """Cale asked that repetitive mashing be scripted. The driver is a
     deliberately separate tool: a fixed period could alias against an internal
     timer, so the interval varies and is recorded on every row."""
     root = Path(__file__).resolve().parents[2]

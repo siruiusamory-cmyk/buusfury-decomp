@@ -113,7 +113,7 @@ SCAN_ROOTS: tuple[ScanRoot, ...] = (
 OUT_OF_SCOPE: tuple[ScanRoot, ...] = (
     ScanRoot("docs", "Narrative, evidence records and tickets: prose about the project."),
     ScanRoot("config", "Data read by the toolkit at run time, not executable source."),
-    ScanRoot("<local-state-prefix>", "Local tooling definitions, markdown only."),
+    ScanRoot(".agents", "Local tooling definitions, markdown only."),
     ScanRoot("build", "Generated build output; ignored by git and never shipped."),
     ScanRoot("dist", "Packaged output, generated."),
     ScanRoot("node_modules", "Third-party dependencies, not this project's source."),

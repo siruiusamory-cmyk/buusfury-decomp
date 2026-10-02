@@ -87,10 +87,10 @@ e3079403c33b59a7e3e9f186be422b7d0508404b tests: cover the Warps surface, its ref
 b8fae1ca41177e9a6fdb357b3cb318f0fbbc6b0d qa: capture the Warps surface from the real application
 d15188d3bd76bbc04ae92eb1db6c13a95516e9d4 docs: record MAP-WARP-WORKBENCH-001 and its progress note
 250e8afac34eb308eb8e35d607471d175f9f86ca merge origin/master (781d4e7151c030491e6ea8529f06aee659f59362, WARPRAND-APP-001) - conflict-free, additive
-a commit since folded into its successor docs: add the independent review brief  <-- FROZEN REVIEWED CANDIDATE
+a commit consolidated into a later one docs: add the independent review brief  <-- FROZEN REVIEWED CANDIDATE
 
 FROZEN REVIEWED CANDIDATE:
-a commit since folded into its successor
+a commit consolidated into a later one
 
 INDEPENDENT REVIEW:
 APPROVE - zero blocking findings, two NOTE-level observations, no production

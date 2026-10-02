@@ -169,7 +169,7 @@ Measured in this checkout, on the canonical image:
 | `pytest tests/integration/test_logx_gfxscan_rom.py tests/unit/test_logx_gfxscan_probe.py` | 70 passed |
 | `pytest tests/integration/test_asset_export_rom.py` | 81 passed |
 | `pytest -m fast` (the portable gate, all of `tests/unit`) | 2,931 passed, 3 skipped, **1 failed** - a pre-existing stale build artifact, see below |
-| CI `test-sdk` on the frozen candidate (`a commit since folded into its successor`) | **passed**, pipeline `2884791492` |
+| CI `test-sdk` on the frozen candidate (`a commit consolidated into a later one`) | **passed**, pipeline `2884791492` |
 | `git diff --check` | clean |
 
 The CI job runs the whole portable suite (all of `tests/unit`) on the frozen

@@ -29,7 +29,7 @@ Full evidence: [BUU_SHOP_SCENARIO_MODEL.md](../../research/BUU_SHOP_SCENARIO_MOD
 
 ## Identity
 
-- Canonical start SHA `a commit since folded into its successor`, local `master`.
+- Canonical start SHA `a commit consolidated into a later one`, local `master`.
 - `origin/master` is a **stale local ref** at `26b56e244bd9b0b1b747f16a26b856668ab500f3`; local `master` is **10
   commits ahead**. SSH fetch fails with `Permission denied (publickey)`, the
   condition ROM-ATLAS-001 already recorded, so the GitLab API was not reachable

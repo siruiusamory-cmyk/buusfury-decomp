@@ -50,14 +50,13 @@ strength. `MAP-WARP-CREATE-RUNTIME-001` later supplied that runtime proof.
 
 ## Independent verification
 
-Range reviewed `3d8d373beb931ad4275f8edabfa7426d07d2a7cf..282fb401ee86de6e5ce81b8e460f69f660b852bc`, an independent local review headless, independent context; job
-`the review job`.
+Range reviewed `3d8d373beb931ad4275f8edabfa7426d07d2a7cf..282fb401ee86de6e5ce81b8e460f69f660b852bc` by an independent review in a separate context.
 
 **Verdict: `APPROVE` - no blocking or major findings, one trivial non-blocking
 finding.** The finding was a duplicated, unreachable shared-root guard in
 `_resolve_creation`; it was resolved by a correction commit whose only change is the
 deletion of those nine lines, `ffec6aac8b4b3b5b6d573af9e4bff7342616ad2e`, and the
-verification pass confirmed by a follow-up pass (`the review job`, range
+verification pass confirmed by a follow-up pass (range
 `fde0e4023ce36c7d5f3d350cb72a9ef350f1f265..ffec6aac8b4b3b5b6d573af9e4bff7342616ad2e`) that the verdict stands for the corrected tip. No reviewed commit
 was amended. The verification pass reproduced both focused suites green, re-verified the
 canonical ROM hash, and independently confirmed the aliasing refusal cannot be

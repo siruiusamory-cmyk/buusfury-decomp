@@ -173,7 +173,7 @@ Maintainability:
 
 Public-release hygiene:
 - PASS. No src/, site or capability data in the candidate; no generated imagery
-  committed (captures live under C:\tmp); the em-dash and markdown-fence
+  committed (captures live outside the repository); the em-dash and markdown-fence
   violations raised by the repository's pre-commit scan were corrected before
   the freeze rather than bypassed.
 

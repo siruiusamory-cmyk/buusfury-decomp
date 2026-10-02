@@ -6,12 +6,12 @@ implemented, the acceptance measurements and the questions left open.
 ## Baseline drift, recorded rather than papered over
 
 - **Requested baseline:** `ad03b895a419db3e8960b8297e92985011b3ba52`.
-- **Actual record start:** `a commit since folded into its successor`.
+- **Actual record start:** `a commit consolidated into a later one`.
 
-`a commit since folded into its successor` **was and still is** current `origin/master` at record start, verified
-two ways: local `master` and `origin/master` were both `a commit since folded into its successor` (0 ahead, 0
+`a commit consolidated into a later one` **was and still is** current `origin/master` at record start, verified
+two ways: local `master` and `origin/master` were both `a commit consolidated into a later one` (0 ahead, 0
 behind), and a live `git ls-remote origin refs/heads/master` returned
-`a commit since folded into its successor`. The reflog shows `ad03b895a419db3e8960b8297e92985011b3ba52` sitting
+`a commit consolidated into a later one`. The reflog shows `ad03b895a419db3e8960b8297e92985011b3ba52` sitting
 four steps back as an older `origin/master`
 (`refs/remotes/origin/master@{4}: fetch origin --prune: fast-forward`).
 
@@ -22,8 +22,8 @@ appear current:
 | Commits | Record |
 | --- | --- |
 | `2ae0d7d51016414a10e6048489d3a558e72d5e66`, `e0f2c997fe36f64849cff6160549df999f8e9660` | `MAP-GFX-DIAG-001`, diagnose the map graphics corruption, plus its documentation-note commit |
-| `b3ddb94dd5c682f91b81ad0440bb21fc85011490`, `a commit since folded into its successor`, `93f04645878ea0cac6d4010493a553f5991655df`, `2d97fdc923da96043ebcbc73f7eba300c94f8723` | `WEBFOOT-LZ-LITERAL-BASE-001`, literal-base reset correction, merged and closed |
-| `939e16cc7371f4bc57299bb6242150772949b67a`, `a commit since folded into its successor`, `5742353528484f473c5fdef8842eb8a48168c391`, `a commit since folded into its successor`, `bde93c6b4c6f14fee1535fa35f93ef632f287448`, `1551a275c01f7d953dc8f8f57b6dd4804a2ee33e`, `a commit since folded into its successor` | `TILESET-COMPOSITOR-001`, inferred authoring atlas, merged and closed |
+| `b3ddb94dd5c682f91b81ad0440bb21fc85011490`, `a commit consolidated into a later one`, `93f04645878ea0cac6d4010493a553f5991655df`, `2d97fdc923da96043ebcbc73f7eba300c94f8723` | `WEBFOOT-LZ-LITERAL-BASE-001`, literal-base reset correction, merged and closed |
+| `939e16cc7371f4bc57299bb6242150772949b67a`, `a commit consolidated into a later one`, `5742353528484f473c5fdef8842eb8a48168c391`, `a commit consolidated into a later one`, `bde93c6b4c6f14fee1535fa35f93ef632f287448`, `1551a275c01f7d953dc8f8f57b6dd4804a2ee33e`, `a commit consolidated into a later one` | `TILESET-COMPOSITOR-001`, inferred authoring atlas, merged and closed |
 
 `e0f2c997fe36f64849cff6160549df999f8e9660` is attributed to `MAP-GFX-DIAG-001` and not to
 `WEBFOOT-LZ-LITERAL-BASE-001`: it touches only
@@ -94,10 +94,8 @@ reached by two maps; two records whose 24-byte extents overlap.
 
 ## Independent verification
 
-One pass, independent context, an independent local review headless in a clean detached worktree at
-the frozen candidate. Job `the review job`, local session
-`2a8c3964-c141-4522-b3c0-e32e935e27cc`, exit 0, 308 s, $2.52, verdict read from
-`local_headless`.
+One pass, independent context, in a clean detached worktree at the frozen
+candidate. It completed in 308 s with exit 0.
 
 **Verdict: `APPROVE` - zero blocking findings, zero non-blocking notes.** The
 verification pass ran the two named test files itself against the canonical image through

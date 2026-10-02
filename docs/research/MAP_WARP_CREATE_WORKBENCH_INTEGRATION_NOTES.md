@@ -52,7 +52,7 @@ The review history is preserved because it is the sub-pass's real record:
 | 3 | `af90b908d84b8971076e718beead5605a8b3d4fc` | BLOCK, one finding | a refused form became the owner of the identity it was refused for; fixed in `46dcbae87cf8bde59a9421faedc1556653b65433` |
 | 4 | `46dcbae87cf8bde59a9421faedc1556653b65433` | BLOCK, one finding | the authority-refusal branch also recorded a binding; fixed in `c248553544b14cfa1b72d6afd71c329903cfb525` |
 | 5 | `8549d42974b28a2e71f2f6bbf1b24bf24916675f` | BLOCK, one finding | a binding learned by staging counted as ownership; fixed in `0465588ce5d294197f750a0acc6ac50cf570df6a` |
-| 6 | `a commit since folded into its successor` | BLOCK, two findings | a staged row click claimed the project's entry, and the gate was not at the write; fixed in `198e9cb15cbed102147ad29a6de8e8fde8455c48` |
+| 6 | `a commit consolidated into a later one` | BLOCK, two findings | a staged row click claimed the project's entry, and the gate was not at the write; fixed in `198e9cb15cbed102147ad29a6de8e8fde8455c48` |
 | 7 | `9199b52de1d671e90664e3c5df5404a0638d4285` | BLOCK, one finding | a row both staged and committed showed the staged values and claimed the project's entry; fixed in `91c8b17bd54bef73732afe7456c63dbebf9ca715` |
 
 Every blocking finding was one family - who owns a durable identity, and when a form

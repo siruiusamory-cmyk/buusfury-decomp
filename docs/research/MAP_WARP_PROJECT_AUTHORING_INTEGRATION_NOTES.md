@@ -83,9 +83,8 @@ emitted.
 
 ## Independent verification
 
-One pass, independent context, an independent local review headless in the frozen record worktree. Job
-`the review job`, exit 0, about 376 s, verdict read from
-`local_headless`.
+One pass, independent context, in the frozen record worktree. It completed in
+about 376 s with exit 0.
 
 **Verdict: `PASS` - zero blocking findings, zero non-blocking notes, four NOTEs.**
 The verification pass ran the two named test files itself (60 + 15 passed) against the

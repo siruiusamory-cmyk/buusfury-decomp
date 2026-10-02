@@ -11,7 +11,7 @@ the synthesis's claims are separable from the ten tickets it summarizes. The ten
 tickets' own provenance is in their own files and is not duplicated here.
 
 ```text
-START SHA:             a commit since folded into its successor
+START SHA:             a commit consolidated into a later one
 BRANCH:                logx-synthesis-001
 WORKTREE:              <temporary directory>\log1-remake-logx-synthesis-001
 CANONICAL ROM SHA-256: 940AD5F01DB4465B8877DFE739510CBF34F4EA3D390F3DF13519808BC36F059E
@@ -480,7 +480,7 @@ a sanity check with no demonstrated benefit.
 
 | File | Correction |
 | --- | --- |
-| `docs/PROJECT_STATE.md` | its `## Next` block still named `LOGX-GFXSCAN-001` as NEXT with baseline `2c44837a088263b4df6e9cf3f5f8a727f9105afd`, contradicting the same file's own header (GFXSCAN COMPLETE / ACCEPTED) and its "Current Baseline" entry (LOGX-SYNTHESIS-001 next). Corrected to name `LOGX-SYNTHESIS-001` with the authorized baseline `a commit since folded into its successor`, and the original paragraph retained beneath as marked history |
+| `docs/PROJECT_STATE.md` | its `## Next` block still named `LOGX-GFXSCAN-001` as NEXT with baseline `2c44837a088263b4df6e9cf3f5f8a727f9105afd`, contradicting the same file's own header (GFXSCAN COMPLETE / ACCEPTED) and its "Current Baseline" entry (LOGX-SYNTHESIS-001 next). Corrected to name `LOGX-SYNTHESIS-001` with the authorized baseline `a commit consolidated into a later one`, and the original paragraph retained beneath as marked history |
 | `docs/research/GRAPHICS_FORMAT.md` | superseded-statements banner; the `0x179764` ownership correction; the two named production defects cross-referenced to the roadmap |
 | `docs/reverse-engineering.md` | the ten corrections in §1 |
 

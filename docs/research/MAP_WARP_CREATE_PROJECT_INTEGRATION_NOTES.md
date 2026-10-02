@@ -50,15 +50,15 @@ strength. `MAP-WARP-CREATE-RUNTIME-001` later supplied that runtime proof.
 
 ## Independent verification
 
-Range reviewed `6b805bd679b12a1a9ccf9264ac96cd5b55036230..149cf2adb8348c80fae576eef2dd8bc2a1408179`, an independent local review headless, independent context; job
+Range reviewed `966a49957bb360015a5f858341ff8cbcbd7b2f81..fde0e4023ce36c7d5f3d350cb72a9ef350f1f265`, an independent local review headless, independent context; job
 `the review job`.
 
 **Verdict: `APPROVE` - no blocking or major findings, one trivial non-blocking
 finding.** The finding was a duplicated, unreachable shared-root guard in
 `_resolve_creation`; it was resolved by a correction commit whose only change is the
-deletion of those nine lines, `e810442525883a5383156516296e506770316206`, and the
+deletion of those nine lines, `2533c67150b276df7289b1039b456205086862ba`, and the
 verification pass confirmed by a follow-up pass (`the review job`, range
-`149cf2adb8348c80fae576eef2dd8bc2a1408179..e810442525883a5383156516296e506770316206`) that the verdict stands for the corrected tip. No reviewed commit
+`fde0e4023ce36c7d5f3d350cb72a9ef350f1f265..2533c67150b276df7289b1039b456205086862ba`) that the verdict stands for the corrected tip. No reviewed commit
 was amended. The verification pass reproduced both focused suites green, re-verified the
 canonical ROM hash, and independently confirmed the aliasing refusal cannot be
 bypassed, that the count and the array pointer cannot disagree, and that the
@@ -66,11 +66,11 @@ addressability claim is labelled encoding/build-proven and never runtime-proven.
 
 ## Lifecycle and integration
 
-Baseline `6b805bd679b12a1a9ccf9264ac96cd5b55036230`; implementation
-`149cf2adb8348c80fae576eef2dd8bc2a1408179`; frozen reviewed tip `e810442525883a5383156516296e506770316206`; pushed
-tip `893c69b2754d8899ffbbcc02823c33ead923a39f`; opened as **MR !94**, CI pipeline
+Baseline `966a49957bb360015a5f858341ff8cbcbd7b2f81`; implementation
+`fde0e4023ce36c7d5f3d350cb72a9ef350f1f265`; frozen reviewed tip `2533c67150b276df7289b1039b456205086862ba`; pushed
+tip `45489c67697a6ad41a8a6700d70cf9ae38bbabf2`; opened as **MR !94**, CI pipeline
 `2885987621` **SUCCESS** (`test-sdk` 3329 passed / 12 skipped), and merged as
-`ac1be70250ba2a7c544918a8b9231551f59fe6a4` with no squash and no amend. The merged
+`0c4130f8d3356741f7741fdc878e17666c6a8d9f` with no squash and no amend. The merged
 content is byte-identical to the reviewed tip over all twelve paths, and every cited
 SHA is an ancestor of `origin/master`.
 

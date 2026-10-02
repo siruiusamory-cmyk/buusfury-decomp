@@ -6,12 +6,12 @@ implemented, the acceptance measurements and the questions left open.
 ## Baseline drift, recorded rather than papered over
 
 - **Requested baseline:** `8c774965a91f337bf6195d1fd404ba1b60d5e3ce`.
-- **Actual record start:** `0000000000000000000000000000000000000000`.
+- **Actual record start:** `a commit since folded into its successor`.
 
-`0000000000000000000000000000000000000000` **was and still is** current `origin/master` at record start, verified
-two ways: local `master` and `origin/master` were both `0000000000000000000000000000000000000000` (0 ahead, 0
+`a commit since folded into its successor` **was and still is** current `origin/master` at record start, verified
+two ways: local `master` and `origin/master` were both `a commit since folded into its successor` (0 ahead, 0
 behind), and a live `git ls-remote origin refs/heads/master` returned
-`0000000000000000000000000000000000000000`. The reflog shows `8c774965a91f337bf6195d1fd404ba1b60d5e3ce` sitting
+`a commit since folded into its successor`. The reflog shows `8c774965a91f337bf6195d1fd404ba1b60d5e3ce` sitting
 four steps back as an older `origin/master`
 (`refs/remotes/origin/master@{4}: fetch origin --prune: fast-forward`).
 
@@ -22,8 +22,8 @@ appear current:
 | Commits | Record |
 | --- | --- |
 | `16f53cbb8e899e69bf5c3c34e3d2ea5a25c6ae0f`, `fe8e3d6253ec4fb415cf453b2b54d90fa2b8d573` | `MAP-GFX-DIAG-001`, diagnose the map graphics corruption, plus its documentation-note commit |
-| `db086123f915a262e889244da70540af39dd2522`, `0000000000000000000000000000000000000000`, `c69d87b0cdfd7ee2dc9914f326dc67d43451016a`, `526ed55b1ac59f502f155f862c1c42412768f40e` | `WEBFOOT-LZ-LITERAL-BASE-001`, literal-base reset correction, merged and closed |
-| `d6922c2ff7fec0006ebf6c7fc96933dbe2cfbdfc`, `0000000000000000000000000000000000000000`, `ca5b01e6834640e3a04cd8d2d3c72bf9cf1b70d4`, `0000000000000000000000000000000000000000`, `c258664f9976de73be009d3788cac45ee115be00`, `3b5fda4aa1a012c3eb656273080f638574536b47`, `0000000000000000000000000000000000000000` | `TILESET-COMPOSITOR-001`, inferred authoring atlas, merged and closed |
+| `db086123f915a262e889244da70540af39dd2522`, `a commit since folded into its successor`, `c69d87b0cdfd7ee2dc9914f326dc67d43451016a`, `526ed55b1ac59f502f155f862c1c42412768f40e` | `WEBFOOT-LZ-LITERAL-BASE-001`, literal-base reset correction, merged and closed |
+| `d6922c2ff7fec0006ebf6c7fc96933dbe2cfbdfc`, `a commit since folded into its successor`, `ca5b01e6834640e3a04cd8d2d3c72bf9cf1b70d4`, `a commit since folded into its successor`, `c258664f9976de73be009d3788cac45ee115be00`, `3b5fda4aa1a012c3eb656273080f638574536b47`, `a commit since folded into its successor` | `TILESET-COMPOSITOR-001`, inferred authoring atlas, merged and closed |
 
 `fe8e3d6253ec4fb415cf453b2b54d90fa2b8d573` is attributed to `MAP-GFX-DIAG-001` and not to
 `WEBFOOT-LZ-LITERAL-BASE-001`: it touches only

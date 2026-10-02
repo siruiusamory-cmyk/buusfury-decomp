@@ -7,7 +7,7 @@ Buu's Fury authoring environment.
 | --- | --- |
 | **Status** | Canonical product roadmap. Approved by the owner and adopted into the repository by `ROADMAP-TO-1-0-ADOPTION-001`. |
 | **Source** | `DragonByte_Z_Complete_Roadmap_to_1_0.docx`, adapted faithfully into repository-native Markdown. The roadmap substance is that document's; capability names, states and the denominator are reconciled against the registry. |
-| **Project head at planning baseline** | `0000000000000000000000000000000000000000` |
+| **Project head at planning baseline** | `a commit since folded into its successor` |
 | **Authority for "what is shipped"** | [`src/data/capabilities.json`](../src/data/capabilities.json) - this document never overrides it. |
 
 ## Current product status
@@ -297,7 +297,7 @@ unless new evidence proves a dependency wrong.
 The variable-length dialogue work is **already merged**. Phase 0 required no
 implementation and is recorded here only so that the roadmap's starting point is
 explicit: `DIALOGUE-VARIABLE-LENGTH-001` completed, merged and was verified live
-at the planning baseline `0000000000000000000000000000000000000000`. There is no Phase 0 work outstanding, and
+at the planning baseline `a commit since folded into its successor`. There is no Phase 0 work outstanding, and
 starting it again would be a no-op.
 
 ### Recommended tentative ticket packages
@@ -885,7 +885,7 @@ Buu's Fury's retail binary engine and this repository's evidence discipline.
 ### Project-specific evidence used in this roadmap
 
 - `DIALOGUE-VARIABLE-LENGTH-001` final closeout at project head
-  `0000000000000000000000000000000000000000`.
+  `a commit since folded into its successor`.
 - `ROM-CAPACITY-AND-ALLOCATION-001` Checkpoints A-D and closeout records
   ([evidence](research/ROM_CAPACITY_AND_ALLOCATION.md)).
 - `PROJECT-CODE-QUALITY-AUDIT-001` and the closed remediation records CQA-01,

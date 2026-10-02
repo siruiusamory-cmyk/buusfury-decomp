@@ -7,7 +7,7 @@ any line that reads state, chooses a path, calls the SDK, or writes anything -
 as opposed to a line that sets a colour, a metric, a metric's policy, a tooltip,
 an accessible name, or a widget's visibility.
 
-Baseline `0000000000000000000000000000000000000000`. Frozen candidate
+Baseline `a commit since folded into its successor`. Frozen candidate
 `430c662470148ad689e1462f07a5be23bfaaffa4`, with the post-review corrections `a2798bff0e2b1bc0a8c83b2005a13770d8db1937` and the correction commit on
 top.
 

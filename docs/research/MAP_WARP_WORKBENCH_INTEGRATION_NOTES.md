@@ -50,7 +50,7 @@ the project authors and the build that writes it read one implementation.
 ## Independent verification
 
 One pass, independent context, an independent local review headless. Frozen reviewed candidate
-`0000000000000000000000000000000000000000`; job `the review job`.
+`a commit since folded into its successor`; job `the review job`.
 
 **Verdict: `APPROVE` - zero blocking findings, two NOTE-level observations, no
 production correction.** The candidate was not amended, and the commits after it

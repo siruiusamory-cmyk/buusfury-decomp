@@ -87,10 +87,10 @@ bfae3a52ea726369bfc017f935847994ef7ede74 workbench: add the Maps editor's Warps 
 d18e7c4ee8733db461804fc8cfeae3a6afc2762a qa: capture the Warps surface from the real application
 767a64619d30ef731fa001188bef7a0a953d0618 docs: record MAP-WARP-WORKBENCH-001 and its progress note
 c31a7e56b43f79d861646bcb5d92bc63a09897b6 merge origin/master (8724ebecd08d858a02de5c17c43102aae824ebfb, WARPRAND-APP-001) - conflict-free, additive
-0000000000000000000000000000000000000000 docs: add the independent review brief  <-- FROZEN REVIEWED CANDIDATE
+a commit since folded into its successor docs: add the independent review brief  <-- FROZEN REVIEWED CANDIDATE
 
 FROZEN REVIEWED CANDIDATE:
-0000000000000000000000000000000000000000
+a commit since folded into its successor
 
 INDEPENDENT REVIEW:
 APPROVE - zero blocking findings, two NOTE-level observations, no production

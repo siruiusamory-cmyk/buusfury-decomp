@@ -33,7 +33,7 @@ tests are added, and they are not a maintained fact.
 The whole of each gate, on its own:
 
 ```bash
-python -m pytest -m fast          # the portable suite, ~2.5 minutes
+python -m pytest -m fast          # the portable suite; about 6.5 minutes here
 python -m pytest -m workbench     # DragonByte Z UI and editor regressions
 python -m pytest -m writer        # write-path safety
 python -m pytest -m map           # map reading, placement, rendering, layout
@@ -163,10 +163,11 @@ belongs in `REQUIRED_GUI_MODULES` in `tests/gates.py`, the list CI fails over
 when a whole Workbench module skips (see "Environment requirements"). A GUI
 module left out of that list still runs; its silent collapse is just not caught.
 
-## Measured baseline, 2026-09-20
+## Measured baselines
 
-`pytest 8.4.2` on Windows from the repository root, with PySide6, capstone and
-hypothesis installed, and a local `roms/` link present:
+Earlier measurement, 2026-09-20, `pytest 8.4.2` on Windows from the repository
+root, with PySide6, capstone and hypothesis installed, and a local `roms/` link
+present:
 
 | command | result |
 |---|---|
@@ -176,6 +177,17 @@ hypothesis installed, and a local `roms/` link present:
 | `-m "fast and map"` | 297 passed, 1 skipped, ~13 s |
 | `-m "fast and research"` | 648 passed, 1 skipped, ~73 s |
 | `tests/integration/test_map_render_rom.py` | 3 passed, 2 skipped, ~5 s |
+
+Most recent measurement, 2026-10-02, same machine and the same installed extras:
+
+| command | result |
+|---|---|
+| `python -m pytest tests/unit` (the `fast` gate) | 3,592 passed, 9 skipped, 0 failed, ~392 s |
+| `python -m pytest` (the whole tree) | 3,609 passed, 1,239 skipped, 0 failed, ~448 s |
+
+The whole-tree run skips the ROM-gated half because no canonical image was
+configured for it, so the 90-minute figure for the full `rom` gate remains a
+statement about the ROM-gated suite rather than something this table measured.
 
 The full `rom` gate was not run: it is the expensive integration gate the
 policy forbids running by reflex. The single ROM-gated file above is a

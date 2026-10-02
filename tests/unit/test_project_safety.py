@@ -8,6 +8,8 @@ import sys
 
 import pytest
 
+from tools.quality import _local_state_paths
+
 
 def test_upstream_lock_has_eight_unique_pins():
     data = json.loads(Path("upstreams.lock").read_text(encoding="utf-8"))
@@ -234,8 +236,8 @@ def test_no_rom_or_proprietary_directory_is_tracked():
     assert result.stdout == ""
 
 
-LOCAL_STATE_NAMES = {"<local-state-name>", "<local-state-name>", "<local-state-name>"}
-LOCAL_STATE_PREFIXES = ("<local-state-prefix>/", "<local-state-prefix>/", "<local-state-prefix>/", "<local-state-prefix>/")
+LOCAL_STATE_NAMES = set(_local_state_paths.LOCAL_STATE_NAMES)
+LOCAL_STATE_PREFIXES = tuple(_local_state_paths.LOCAL_STATE_PREFIXES)
 
 
 def test_no_local_state_is_tracked():
@@ -272,7 +274,14 @@ def test_a_checkout_that_excludes_its_own_state_cannot_stage_it():
     exclude path in its own platform's form.
     """
     probe = subprocess.run(
-        ["git", "check-ignore", "--no-index", "-v", "--", "<local-state-name>"],
+        [
+            "git",
+            "check-ignore",
+            "--no-index",
+            "-v",
+            "--",
+            _local_state_paths.local_state_path("policy_pointer"),
+        ],
         check=False,
         capture_output=True,
         text=True,
@@ -282,14 +291,17 @@ def test_a_checkout_that_excludes_its_own_state_cannot_stage_it():
     if ".gitignore:" in probe.stdout:
         pytest.skip("local state is excluded by the tracked ignore file, not locally")
 
+    def path(name: str) -> str:
+        return _local_state_paths.local_state_path(name)
+
     for probe in (
-        "<local-state-name>",
-        "<local-state-prefix>/example.md",
-        "<local-state-name>",
-        "<local-state-prefix>/state.json",
-        "<local-state-prefix>/settings.json",
-        "<local-state-prefix>/goals/example.json",
-        "<local-state-name>",
+        path("working_state"),
+        path("working_notes") + "example.md",
+        path("migration_note"),
+        path("workflow_state") + "state.json",
+        path("tool_state") + "settings.json",
+        path("tool_state_alt") + "goals/example.json",
+        path("policy_pointer"),
     ):
         result = subprocess.run(
             ["git", "check-ignore", "--no-index", "--quiet", "--", probe],

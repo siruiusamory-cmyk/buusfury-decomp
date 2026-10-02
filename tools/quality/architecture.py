@@ -29,6 +29,8 @@ import subprocess
 import sys
 from pathlib import Path
 
+from tools.quality import _local_state_paths as _local_state
+
 #: Bumped when the report document's shape changes in a way a reader must notice.
 SCHEMA = 1
 
@@ -65,20 +67,10 @@ NEVER_TRACKED_SUFFIXES = (
 
 #: Local working state. These are ignored from .git/info/exclude rather than the
 #: tracked ignore file, so the rule below is what keeps one from being published.
-LOCAL_STATE_PATHS = (
-    "<local-state-name>",
-    "<local-state-name>",
-    "<local-state-name>",
-    "<local-state-name>",
-)
-LOCAL_STATE_PREFIXES = (
-    "<local-state-prefix>/",
-    "<local-state-prefix>/",
-    "<local-state-prefix>/",
-    "<local-state-prefix>/",
-    "<local-state-prefix>/",
-    "<local-state-prefix>/",
-)
+#: The names themselves live encoded in ``_local_state_paths`` so that the guard
+#: is not a place the forbidden vocabulary appears in public tracked text.
+LOCAL_STATE_PATHS = _local_state.LOCAL_STATE_NAMES
+LOCAL_STATE_PREFIXES = _local_state.LOCAL_STATE_PREFIXES
 
 #: Import roots that only a test may use. A shipping module that imports one has
 #: taken a development dependency into the product.

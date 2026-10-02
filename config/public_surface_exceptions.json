@@ -42,31 +42,6 @@
       "reason": "Enemy behaviour. This is the probe itself: it watches the wolf's pursuit timer, not a development tool."
     },
     {
-      "path": "tests/unit/test_project_safety.py",
-      "signal_index": 0,
-      "reason": "The local-state contract names one tool's configuration directory in order to assert that it is not stageable. Naming it is the assertion."
-    },
-    {
-      "path": "tests/unit/test_project_safety.py",
-      "signal_index": 8,
-      "reason": "The same contract: the private working-state paths are listed so that the test can prove each one is ignored and none is tracked."
-    },
-    {
-      "path": "tools/quality/architecture.py",
-      "signal_index": 0,
-      "reason": "The repository-purity gate names the local tool-state directories it refuses to see tracked. Naming them is the rule."
-    },
-    {
-      "path": "tools/quality/architecture.py",
-      "signal_index": 8,
-      "reason": "The same rule list: the private working-state paths are the input to the no-local-state check."
-    },
-    {
-      "path": "config/readability_exceptions.json",
-      "signal_index": 8,
-      "reason": "An exception has to name the paths it excepts in order to excuse them. The reason text is the justification for the readability gate's own denylist and is not a reference to the retired policy files."
-    },
-    {
       "path": "tests/unit/test_architecture.py",
       "signal_index": 8,
       "reason": "A control input for the repository-purity rule: the test feeds the rule a local-state path and asserts the rule reports it. The path is the rule's subject, not a tracked file."
@@ -75,11 +50,6 @@
       "path": "tests/unit/test_readability.py",
       "signal_index": 10,
       "reason": "A synthetic control: the test asserts the scanner detects an absolute user path by giving it one that belongs to no real machine."
-    },
-    {
-      "path": "tools/quality/architecture.py",
-      "signal_index": 6,
-      "reason": "The repository-purity gate names the local tool-state directories it refuses to see tracked. Naming them is the rule."
     },
     {
       "path": "tools/quality/readability.py",

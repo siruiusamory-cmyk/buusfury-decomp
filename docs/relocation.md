@@ -117,3 +117,33 @@ separately; no mGBA capture, Ghidra analysis or new game-format evidence occurs.
 Whole-ROM anchoring, game content adapters, relative game-format contracts,
 complete reference discovery, source backends, expansion and reclamation remain
 outside this ticket. Unknown game semantics remain UNKNOWN.
+
+## Later registrations
+
+This document describes the infrastructure TOOLKIT-003 built. Since then the
+authority for what MAY be relocated has stayed exactly one constant,
+`layout.RELOCATION_ELIGIBLE_KINDS`, and the authority for where it may go has
+stayed exactly one allocator, `allocation.allocate`. Later tickets added kinds
+deliberately, each on a stated argument, and each per-anchor decision is still
+made by `layout.relocation_eligible` rather than by membership alone:
+
+- `placement_reference_array` (TOOLKIT-024, TOOLKIT-026);
+- `text-string` (TOOLKIT-036, proven per entry by measured inbound count);
+- `graphics_container` (GRAPHICS-IMPORT-BOUNDARY-001). A container is a graph
+  leaf: the reference walk publishes no reference sourced inside one, so its
+  whole inbound surface is the set of `CONFIRMED` piece words that name it.
+  Membership is **not** a claim that the published set is every word in the
+  image that equals the payload's address; that completeness is `UNKNOWN`,
+  which is why the graphics relocation path leaves the original payload bytes
+  intact rather than retiring them.
+  `docs/research/GRAPHICS_PIXEL_OVERRIDE.md` records the runtime proof that the
+  retail engine follows a rewritten graphics reference into allocator-chosen
+  expanded storage.
+
+`Addressability` moved with them. `PACKED_STREAM` is `EXPANDED_PERMITTED`;
+`LAYER_RECORD`, `TRANSITION_RECORD` and `TRANSITION_POINTER_ARRAY` are
+`EXPANDED_ONLY` because their aggregate demand is unbounded and the canonical
+image declares one small verified-free region; `GRAPHICS_CONTAINER` is
+`EXPANDED_PERMITTED`, because a re-encoded container that genuinely fits trusted
+verified-free bytes is a strictly weaker addressability claim than an expanded
+one, and first fit therefore takes the conservative option when one exists.

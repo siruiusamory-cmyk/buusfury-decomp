@@ -286,6 +286,17 @@ $allowedLua = @(
     [System.IO.Path]::GetFullPath(
         (Join-Path $workspaceRoot 'tools\runtime\warpcreate001_transition_watch.lua')
     )
+    # Added by GRAPHICS-IMPORT-BOUNDARY-001: the read-only observer for a
+    # human-played proof that the retail engine renders AUTHORED actor-sprite
+    # pixels, including a re-encoded payload the allocator placed above canonical
+    # EOF. It captures every screen whose object-tile region has settled, with
+    # the live map index, so the analysis afterwards chooses the gameplay frame
+    # from the sequence instead of the instrument guessing it. It reads emulated
+    # memory and writes only host files inside the run directory, and it accepts
+    # both the canonical 8 MiB image and the 16 MiB generated one.
+    [System.IO.Path]::GetFullPath(
+        (Join-Path $workspaceRoot 'tools\runtime\gfximport001_pixel_proof.lua')
+    )
 )
 $resolvedLua = [System.IO.Path]::GetFullPath($LuaPath)
 if ($resolvedLua -notin $allowedLua) {

@@ -174,6 +174,19 @@ PALETTE_BYTES = PALETTE_ENTRIES * 2
 #: not assumed from platform convention.
 TRANSPARENT_INDEX = 0
 
+#: The container kind every actor-sprite graphics container declares.
+#:
+#: CONFIRMED by measurement over the whole canonical corpus: all 7,390 graphics
+#: containers carry kind 1 in their header word, and none carries any other
+#: value. That matters because a kind is not a label - `webfoot_lz` passes it to
+#: its decoder as the stream's INITIAL LITERAL WIDTH, so the retail engine
+#: dispatches on it, and a payload re-encoded under the wrong kind is decoded by
+#: a different path than the one the corpus was written for. Measured at runtime:
+#: writing kind 2 where the corpus has kind 1 produced a garbled sprite in the
+#: retail engine while the host codec round-tripped the same bytes happily (see
+#: `docs/research/GRAPHICS_PIXEL_OVERRIDE.md`).
+GRAPHICS_CONTAINER_KIND = 1
+
 
 # --- palette -----------------------------------------------------------------
 
@@ -658,6 +671,89 @@ class PayloadPlan:
         return self.original_size - len(self.payload)
 
 
+def encode_graphic_payload(graphic: Graphic, pixels: bytes, *, kind: int) -> bytes:
+    """Re-encode ``pixels`` into a retail-terminating container stream.
+
+    The whole encode lives here, without the fit comparison, so the two callers
+    that need it share one implementation instead of two that could drift:
+    :func:`plan_graphic_payload` adds the in-place capacity rule below, and the
+    build's graphics authoring domain asks for the bytes first so it can choose
+    between an in-place overwrite and an allocator-backed relocation.
+
+    ``kind`` is REQUIRED rather than defaulted, and that is a correctness
+    requirement rather than a style choice. A container kind is the stream's
+    initial literal width and the retail engine dispatches on it, so a caller that
+    let the packer pick its own default could write a payload the engine decodes
+    down a different path than the one every container in the corpus was written
+    for. Both callers read the source container's kind from the image and pass it,
+    and both refuse a kind this write path has not been shown to produce
+    (:data:`GRAPHICS_CONTAINER_KIND`) instead of guessing.
+
+    Every check that makes a re-encode trustworthy happens here, in this order,
+    and each failure is a refusal rather than a partial result:
+
+    * the pixel count must equal the piece's declared ``width x height``;
+    * every index must be addressable at the piece's bit depth (0..15 at 4bpp,
+      0..255 at 8bpp), because a value above the depth would otherwise be
+      truncated by the retail decoder instead of refused;
+    * the linear pixels are re-swizzled into the hardware tile order and packed
+      with `webfoot_lz.pack` under ``kind``;
+    * the packed stream is re-decoded to the retail decoder's own termination
+      rule. Without that check a payload could only terminate by running into
+      whatever bytes follow it - which, for a relocated payload, is the pad byte
+      of the generated image rather than another container.
+    """
+    if len(pixels) != graphic.width * graphic.height:
+        raise SpriteFormatError(
+            f"expected {graphic.width * graphic.height} pixels for a "
+            f"{graphic.width}x{graphic.height} graphic, got {len(pixels)}"
+        )
+    limit = 255 if graphic.colour_256 else 15
+    for index, value in enumerate(pixels):
+        if value > limit:
+            raise SpriteFormatError(
+                f"pixel {index} has index {value}, above the {limit} a "
+                f"{8 if graphic.colour_256 else 4}bpp graphic can address"
+            )
+
+    tiles = swizzle_tiles(
+        pixels, graphic.width, graphic.height, colour_256=graphic.colour_256
+    )
+    payload = webfoot_lz.pack(tiles, kind=kind)
+    # The same production postcondition the dialogue write path applies, and the
+    # same one place that owns it: a planned payload must reach the retail
+    # decoder's own escape at its declared length rather than depending on the
+    # bytes that follow it. Refusing here keeps an invalid stream out of the plan
+    # before the allocation question is even asked.
+    try:
+        webfoot_lz.validate_retail_termination(payload)
+    except webfoot_lz.ContainerError as exc:
+        raise SpriteFormatError(
+            f"re-encoded graphic at {graphic.offset:#x} does not satisfy the "
+            f"retail termination contract: {exc}"
+        ) from exc
+    return payload
+
+
+def graphics_container_kind(data: bytes, offset: int) -> int:
+    """The container kind the graphic at ``offset`` actually declares, or refuse.
+
+    Read from the image rather than assumed, because the kind is what the retail
+    engine dispatches on. A graphics container whose kind this write path has not
+    been shown to produce is refused here, at the codec boundary, rather than
+    re-encoded under a default that would only be discovered at runtime.
+    """
+    kind, _declared = webfoot_lz.read_header(data, offset)
+    if kind != GRAPHICS_CONTAINER_KIND:
+        raise SpriteFormatError(
+            f"graphic at {offset:#x} is a kind-{kind} container, but every "
+            f"graphics container in the verified corpus is kind "
+            f"{GRAPHICS_CONTAINER_KIND}; re-encoding it in an unproven container "
+            "form is refused rather than guessed"
+        )
+    return kind
+
+
 def plan_graphic_payload(data: bytes, graphic: Graphic, pixels: bytes) -> PayloadPlan:
     """Re-encode ``pixels`` into the space the original payload occupied.
 
@@ -697,35 +793,9 @@ def plan_graphic_payload(data: bytes, graphic: Graphic, pixels: bytes) -> Payloa
     zero-filled, because nothing establishes that trailing allocation bytes are
     disposable and a container's tail may be another record's head.
     """
-    if len(pixels) != graphic.width * graphic.height:
-        raise SpriteFormatError(
-            f"expected {graphic.width * graphic.height} pixels for a "
-            f"{graphic.width}x{graphic.height} graphic, got {len(pixels)}"
-        )
-    limit = 255 if graphic.colour_256 else 15
-    for index, value in enumerate(pixels):
-        if value > limit:
-            raise SpriteFormatError(
-                f"pixel {index} has index {value}, above the {limit} a "
-                f"{8 if graphic.colour_256 else 4}bpp graphic can address"
-            )
-
-    tiles = swizzle_tiles(
-        pixels, graphic.width, graphic.height, colour_256=graphic.colour_256
+    payload = encode_graphic_payload(
+        graphic, pixels, kind=graphics_container_kind(data, graphic.offset)
     )
-    payload = webfoot_lz.pack(tiles)
-    # The same production postcondition the dialogue write path applies, and the
-    # same one place that owns it: a planned payload must reach the retail
-    # decoder's own escape at its declared length rather than depending on the
-    # bytes that follow it. Refusing here keeps an invalid stream out of the plan
-    # before the allocation question is even asked.
-    try:
-        webfoot_lz.validate_retail_termination(payload)
-    except webfoot_lz.ContainerError as exc:
-        raise SpriteFormatError(
-            f"re-encoded graphic at {graphic.offset:#x} does not satisfy the "
-            f"retail termination contract: {exc}"
-        ) from exc
     original = graphic.packed_size
     if len(payload) > original:
         raise SpriteFormatError(

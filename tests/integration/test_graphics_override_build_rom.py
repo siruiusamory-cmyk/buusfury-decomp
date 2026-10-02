@@ -28,12 +28,18 @@ CANONICAL_SHA256 = (
 
 
 def _rom_path() -> str:
-    matches = glob.glob(os.path.join("roms", "*Buu*.gba"))
+    """The canonical image, found by content rather than by directory order.
+
+    `roms/` may hold several images (a warp-randomized derivative among them),
+    and glob order is not a property these offsets may be keyed on.
+    """
+    matches = sorted(glob.glob(os.path.join("roms", "*.gba")))
     if not matches:
         pytest.skip("canonical Buu's Fury ROM not present locally")
-    if hashlib.sha256(open(matches[0], "rb").read()).hexdigest() != CANONICAL_SHA256:
-        pytest.skip("local ROM is not the canonical profile these offsets target")
-    return matches[0]
+    for candidate in matches:
+        if hashlib.sha256(open(candidate, "rb").read()).hexdigest() == CANONICAL_SHA256:
+            return candidate
+    pytest.skip("local ROM is not the canonical profile these offsets target")
 
 
 @pytest.fixture

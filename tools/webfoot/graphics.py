@@ -38,7 +38,7 @@ independently addressable, which is why the pipeline is useful without it.
 from __future__ import annotations
 
 from collections.abc import Mapping
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from functools import cached_property
 
 from . import capability
@@ -388,6 +388,15 @@ class ActorSprites:
         Frame pointers are deliberately left out. Publishing all 13,660 slots
         would triple the graph to restate what the animation records already say,
         and none of them is an edit target.
+
+        **What completeness this claims.** The published set is the references
+        this walk actually decoded: every distinct piece record whose ``+0x08``
+        word resolved to a container in this corpus. It is not the result of a
+        scan for words that equal a container's address, so it is not claimed to
+        be every word in the image that names one. A relocation built on this
+        document rewrites all of the confirmed consumers and leaves the original
+        payload bytes in place, so an undiscovered reference keeps pointing at
+        intact original art rather than at freed storage.
         """
         from .binary import FileOffset, GbaRomAddress
         from .document import RomDocument
@@ -468,11 +477,25 @@ class ActorSprites:
                     )
                 )
 
+        # A graphic anchor is published relocatable only where the shared
+        # eligibility rule says so, computed from the references assembled above
+        # rather than asserted. For every canonical container the answer is yes,
+        # and for the palette and character anchors it is no - their kinds are not
+        # in `RELOCATION_ELIGIBLE_KINDS` - so applying the one rule uniformly
+        # cannot mark anything movable on hope.
+        from .layout import relocation_eligible
+
+        references = tuple(references)
+        anchors = tuple(
+            replace(anchor, relocatable=relocation_eligible(anchor, references))
+            for anchor in anchors
+        )
+
         return RomDocument.from_bytes(
             self.base_bytes,
             self.profile,
-            anchors=tuple(anchors),
-            references=tuple(references),
+            anchors=anchors,
+            references=references,
         )
 
     # --- editing -------------------------------------------------------------
@@ -566,6 +589,43 @@ class ActorSprites:
             packed_end=graphic.file_offset + graphic.packed_size,
         )
         return sg.plan_graphic_payload(self.base_bytes, decoded, pixels)
+
+    def encode_pixels(self, identity: GraphicIdentity, pixels: bytes) -> bytes:
+        """Re-encode authored pixels WITHOUT applying the in-place capacity rule.
+
+        :meth:`plan_pixels` is the in-place planner: it refuses a payload larger
+        than the graphic's original packed extent, because it can only write back
+        where the payload already is. A caller that can place the payload
+        somewhere else - the build's graphics authoring domain, which asks the
+        allocator - needs the bytes before it can decide which of those two
+        paths applies.
+
+        Every other guarantee `plan_pixels` carries is applied here: the pixel
+        count must match the piece's declared dimensions, every index must be
+        addressable at the piece's bit depth, and the packed stream must satisfy
+        the retail decoder's own termination contract. What is deliberately NOT
+        decided here is where the bytes go, and that is the whole point of the
+        split.
+
+        The re-encoded container keeps the kind its source declares, read from the
+        image. A kind is the stream's initial literal width and the retail engine
+        dispatches on it, so it is a write-critical property that must come from
+        the ROM rather than from the packer's default; a container in an unproven
+        form is refused by the codec.
+        """
+        graphic = self.graphic(identity)
+        decoded = sg.Graphic(
+            offset=graphic.file_offset,
+            width=graphic.width,
+            height=graphic.height,
+            colour_256=graphic.colour_256,
+            pixels=graphic.pixels,
+            packed_end=graphic.file_offset + graphic.packed_size,
+        )
+        return sg.encode_graphic_payload(
+            decoded, pixels,
+            kind=sg.graphics_container_kind(self.base_bytes, graphic.file_offset),
+        )
 
     def apply_plan(self, plan: sg.PayloadPlan) -> tuple[int, bytes]:
         """Turn a payload plan into one contiguous ``(offset, bytes)`` change.

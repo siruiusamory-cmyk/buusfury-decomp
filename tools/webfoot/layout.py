@@ -235,7 +235,27 @@ class FreeRegion:
 #: kind admissible, and `webfoot.text` still proves it PER ENTRY before publishing
 #: any anchor as relocatable - the five canonical bodies a second aligned word also
 #: names are refused by their measured inbound count.
-RELOCATION_ELIGIBLE_KINDS = frozenset({"placement_reference_array", "text-string"})
+#:
+#: GRAPHICS-IMPORT-BOUNDARY-001 added `graphics_container`, and it is the first
+#: kind admitted on a *structural* argument rather than a verified inbound scan.
+#: What is established: a container is a leaf of the graph. The reference walk
+#: publishes no reference sourced inside one (nothing inside a compressed payload
+#: is a pointer field this toolkit decodes), so the "every reference sourced
+#: inside the anchor" half of :func:`relocation_eligible` is satisfied by
+#: construction, and every inbound reference is the CONFIRMED ``+0x08`` container
+#: word of a specific 12-byte piece record, published by
+#: `webfoot.graphics.ActorSprites.reference_document`.
+#:
+#: What is NOT established, and must not be implied by membership here: that the
+#: published piece set is the COMPLETE set of words in the image that name this
+#: payload. A word-aligned scan for a graphics container's address has not been
+#: run, so an undiscovered reference is possible in principle. That is why the
+#: graphics relocation path keeps the original payload bytes intact rather than
+#: retiring them, and why `webfoot.relocation`'s per-anchor
+#: :func:`relocation_eligible` gate - not this constant - decides whether any
+#: particular container may move.
+RELOCATION_ELIGIBLE_KINDS = frozenset({"placement_reference_array", "text-string",
+                                       "graphics_container"})
 
 
 def relocation_eligible(anchor: Anchor, references: Iterable[Reference]) -> bool:

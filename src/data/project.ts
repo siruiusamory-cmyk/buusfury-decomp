@@ -347,16 +347,16 @@ export const project: ProjectStatus = {
     "The percentage above is counted from the capability list below, so it moves when a" +
     " capability does. It is a count of editor capabilities, not an estimate.",
   currentPhase: "DRAGONBYTE Z BUILDOUT",
-  blockerTitle: "Bring an author's own graphics into the game",
+  blockerTitle: "Create graphics the game does not contain",
   blockerShort:
     "The resource pipeline is complete and curated, and map editing is finished:" +
     " DragonByte Z renders all 452 maps from ROM, paints tiles, creates chunks, grows" +
     " a map, adds a layer, and lists, retargets and creates the transitions between" +
     " areas - including on the map itself, where every supported transition is drawn" +
-    " as the region that triggers it. What remains is graphics import, the next" +
-    " capability: replacing a game graphic with an author's own artwork. The remaining" +
-    " gap is replacing an existing graphic in place when the replacement payload" +
-    " changes size, so no editor surface offers it yet.",
+    " as the region that triggers it. Graphics import has now shipped as well: an" +
+    " extracted sprite PNG can be edited in the project, rebuilt, and seen in the" +
+    " retail engine. What remains is creating graphics the game does not contain -" +
+    " new frames and animation slots rather than replacement art for existing ones.",
   blockerParagraphs: [
     "Map editing is complete, and the capability list says so. Phase 2 covered the four" +
     " map capabilities in order: tile painting, chunk creation, map resizing with layer" +
@@ -367,18 +367,21 @@ export const project: ProjectStatus = {
     " where a click selects it and a drag moves it as one undoable gesture. A" +
     " human-operated run confirmed that the retail engine consumes an authored" +
     " transition, so the map surfaces are proven rather than planned.",
-    "The blocker is graphics import, the next capability in the published order and the" +
-    " first step of the graphics phase. An import path exists inside the SDK, but it has" +
-    " no production caller, so no editor surface offers it. The gap is narrower than" +
-    " allocation in general: the production allocator already places new data in" +
-    " generated space, and a dialogue replacement whose payload changes size is" +
-    " allocated into verified space. What no surface does yet is replace an existing" +
-    " graphic in place when the replacement payload changes size. It is the next" +
-    " capability, not a started one.",
-    "Authoring entirely new content remains the project's final acceptance target: the" +
-    " buildout proceeds one editor capability at a time against the verified corpus, and" +
-    " the four steps left are graphics import, new sprites and animations, appearances," +
-    " and finally new maps.",
+    "Graphics import is the first capability of the graphics phase and it has shipped." +
+    " An extracted sprite asset's PNG is the authored source: edit it, validate, build," +
+    " and the retail engine renders the authored pixels. A re-encoded payload that" +
+    " still fits the slot the original occupied is written in place; one that does not" +
+    " is placed by the production allocator above the original end of the image, with" +
+    " every confirmed reference to it rewritten in the same transaction. A" +
+    " human-operated run proved both halves, including that the engine follows a" +
+    " rewritten reference into expanded storage.",
+    "The next capability, and the current blocker, is creating graphics the game does" +
+    " not contain: new sprites, animation slots and frames rather than replacement art." +
+    " It needs allocation plus same-count replacement of animation cell pointers and" +
+    " frame piece records, and it is the step that turns an edited asset into a new" +
+    " actor. Authoring entirely new content remains the project's final acceptance" +
+    " target, and the remaining steps are new sprites and animations, appearances, and" +
+    " finally new maps.",
   ],
   acceptanceTarget:
     "Author playable Legacy of Goku content inside the real LOGII/Buu engine.",
@@ -755,13 +758,14 @@ export const project: ProjectStatus = {
   frontier: [
     {
       kind: "near",
-      title: "Bring an author's own graphics back into the image",
+      title: "Author new sprites and animation frames",
       detail:
-        "Graphics import is the next capability. The SDK can already read the game's" +
-        " graphics, and an import path exists inside it, but no editor surface offers" +
-        " that path. The remaining gap is replacing an existing graphic in place when" +
-        " the replacement payload changes size, so the retail engine loads the authored" +
-        " artwork.",
+        "Graphics import shipped: an extracted sprite PNG can be edited and built," +
+        " and the retail engine renders the authored pixels - in place when the" +
+        " re-encoded payload still fits, or from storage above the original end of" +
+        " the image when it does not. The next capability is creating graphics the" +
+        " game does not contain: new frames and animation slots rather than" +
+        " replacement art.",
     },
     {
       kind: "near",
@@ -1421,7 +1425,7 @@ const roadmapTo1: RoadmapTo1 = {
     "The foundation and the authoring-safety baseline are complete, and Phase 2 is"
     + " complete: tile painting, chunk creation, map resizing with layer authoring, and"
     + " warp and connection editing have all shipped. Phase 3, graphics and actor"
-    + " authoring, is next and has not started.",
+    + " authoring, has started with graphics import.",
   phases: [
     {
       id: "foundation",
@@ -1501,11 +1505,6 @@ const roadmapTo1: RoadmapTo1 = {
         + " with the tool absorbing the format and engine constraints.",
       outcomes: [
         {
-          capabilityId: "gfx-import",
-          title: "Graphics import",
-          detail: "Bring original artwork into the game.",
-        },
-        {
           capabilityId: "sprite-new",
           title: "Sprites and animation",
           detail:
@@ -1517,7 +1516,16 @@ const roadmapTo1: RoadmapTo1 = {
           detail: "Bind newly authored graphics into game-visible actors.",
         },
       ],
-      work: [],
+      work: [
+        "Graphics import - SHIPPED: edit an extracted sprite asset's PNG in the project," +
+        " validate, and build. A re-encoded payload that still fits the slot the original" +
+        " occupied is written in place; one that does not is placed by the production" +
+        " allocator above the original end of the image, with every confirmed reference to" +
+        " it rewritten in the same transaction. A human-operated run proved both halves," +
+        " including that the retail engine follows a rewritten reference into expanded" +
+        " storage and renders the authored pixels. Same dimensions only - no resizing, no" +
+        " new frames - and a confirmed-reference limit that is stated rather than assumed",
+      ],
       state: "next",
     },
     {

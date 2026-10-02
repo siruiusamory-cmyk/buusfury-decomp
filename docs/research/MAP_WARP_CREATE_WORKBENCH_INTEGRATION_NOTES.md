@@ -14,7 +14,7 @@ no pointer or count arithmetic in Qt.
 
 ## What shipped
 
-Baseline `74d8b5a0418060d86da81995653c15475bc3adb0`, implemented and isolated in
+Baseline `a228b6c8c9dddb9f1993ba158e994dfa202eca7a`, implemented and isolated in
 `<record worktree>` on
 `record/map-warp-create-workbench-001` (origin/master, the primary checkout HEAD and
 the record baseline were the same commit, no drift).
@@ -36,7 +36,7 @@ the record baseline were the same commit, no drift).
   both of its states before the command is pushed, and
   `test_cqa06_a_programmer_error_in_a_slot_is_loud` pins that.
 
-Merged into `master` as `b522b2d43b6bd4c4c30b5f6c5fe06243b28cd837`.
+Merged into `master` as `11dc4ebd68f5abe06f1837a49ec1b2b798803cec`.
 
 ## The ownership family the verification converged on
 
@@ -47,19 +47,19 @@ The review history is preserved because it is the sub-pass's real record:
 
 | round | frozen candidate | verdict | resolution |
 | --- | --- | --- | --- |
-| 1 | `f0e55eb1e3e35b0e7b7d63fb3089eee0198014e1` | APPROVE WITH NON-BLOCKING NOTES, 0 blocking, six notes | five corrected (guarded `_retail`, undo across a source-map change, row highlight on close, this record's stale totals, restored the repository rules triggers); one wording note accepted |
-| 2 | `75e0d48c82aeff27aec102801b6498481b7c008b` | BLOCK, one finding | correcting round 1 had introduced a silent discard of a staged creation; fixed at both root causes in `a467c6d34b77efa0299f494aff3d7b8a9657e720` |
-| 3 | `93d35de055b4689265d6cf64dd36e3ecb984a29b` | BLOCK, one finding | a refused form became the owner of the identity it was refused for; fixed in `37c3e9e12639b824a2efa87a8b51b6f76a97c6ba` |
-| 4 | `37c3e9e12639b824a2efa87a8b51b6f76a97c6ba` | BLOCK, one finding | the authority-refusal branch also recorded a binding; fixed in `014e26b0fc4e2165d9b4e229334019a362e26d8e` |
-| 5 | `2773d8a23337495ac90bcf696c7ddf477ab1c1e2` | BLOCK, one finding | a binding learned by staging counted as ownership; fixed in `0667c29c71eb9bd9ad3e03604b9ecd5ea6f717cd` |
-| 6 | `a commit since folded into its successor` | BLOCK, two findings | a staged row click claimed the project's entry, and the gate was not at the write; fixed in `8e683a573476513fc0bf130609415436c19a5ead` |
-| 7 | `096301fecf8b43ad1a488b98d96519d124fd0a18` | BLOCK, one finding | a row both staged and committed showed the staged values and claimed the project's entry; fixed in `04db69414c08a5b10574873f7bb68b249d8f7083` |
+| 1 | `de9d7b3e827bfb712577ff6024537194e35e274a` | APPROVE WITH NON-BLOCKING NOTES, 0 blocking, six notes | five corrected (guarded `_retail`, undo across a source-map change, row highlight on close, this record's stale totals, restored the repository rules triggers); one wording note accepted |
+| 2 | `c4b9668062c4dd57d645b0ea0524cb0757b4f5ae` | BLOCK, one finding | correcting round 1 had introduced a silent discard of a staged creation; fixed at both root causes in `c3e3f1fe773ea4cf93e963121ed4dcec3011d8cb` |
+| 3 | `af90b908d84b8971076e718beead5605a8b3d4fc` | BLOCK, one finding | a refused form became the owner of the identity it was refused for; fixed in `46dcbae87cf8bde59a9421faedc1556653b65433` |
+| 4 | `46dcbae87cf8bde59a9421faedc1556653b65433` | BLOCK, one finding | the authority-refusal branch also recorded a binding; fixed in `c248553544b14cfa1b72d6afd71c329903cfb525` |
+| 5 | `8549d42974b28a2e71f2f6bbf1b24bf24916675f` | BLOCK, one finding | a binding learned by staging counted as ownership; fixed in `0465588ce5d294197f750a0acc6ac50cf570df6a` |
+| 6 | `a commit since folded into its successor` | BLOCK, two findings | a staged row click claimed the project's entry, and the gate was not at the write; fixed in `198e9cb15cbed102147ad29a6de8e8fde8455c48` |
+| 7 | `9199b52de1d671e90664e3c5df5404a0638d4285` | BLOCK, one finding | a row both staged and committed showed the staged values and claimed the project's entry; fixed in `91c8b17bd54bef73732afe7456c63dbebf9ca715` |
 
 Every blocking finding was one family - who owns a durable identity, and when a form
 learns that it does - and each was fixed and pinned where the state is created rather
 than where the symptom appeared. An adversarial state-machine sweep by the
 author between rounds 4 and 5 found one further defect (a closed form reporting
-`New (staged)` with an empty staged set), corrected in `436a16be5a08a5441198acead1973a82d4cf4ab4`.
+`New (staged)` with an empty staged set), corrected in `87e7ef6b1d924b05defd4fd424b6e9694086c829`.
 
 **Rounds stopped at five, then resumed, and the loop was closed.** After round
 five the record states that a sixth round was not proportionate at that point and
@@ -73,8 +73,8 @@ regression, a write-time gate and a state-space sweep.
 
 ## Final ownership correction
 
-One correction commit, `04db69414c08a5b10574873f7bb68b249d8f7083`, on top of the reviewed candidate; final candidate
-`7a8b96639d3d2b759d2aaf48763656c45175731f`, which carries the correction and this
+One correction commit, `91c8b17bd54bef73732afe7456c63dbebf9ca715`, on top of the reviewed candidate; final candidate
+`d44c122b620a7894a9c12125ad411c20e76981cb`, which carries the correction and this
 record.
 
 * **Ownership follows the displayed value source.** A row whose identity is also in

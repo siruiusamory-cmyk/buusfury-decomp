@@ -225,7 +225,7 @@ artifacts; nothing ROM-derived is committed.
 ## Final engineering corrections
 
 **Seventh review, frozen candidate
-`096301fecf8b43ad1a488b98d96519d124fd0a18`: BLOCK, one blocking finding.** The
+`9199b52de1d671e90664e3c5df5404a0638d4285`: BLOCK, one blocking finding.** The
 verification pass's probe reproduced the last member of the ownership family. A row whose
 identity was BOTH staged and committed showed the author's STAGED values, and
 `_open_creation_row` then set `owned` from the identity's presence in the committed
@@ -243,7 +243,7 @@ regression, write-time gate, and state-space sweep.*
 
 ### The final ownership correction
 
-One correction commit, `04db69414c08a5b10574873f7bb68b249d8f7083`, on top of the reviewed candidate:
+One correction commit, `91c8b17bd54bef73732afe7456c63dbebf9ca715`, on top of the reviewed candidate:
 
 * **Ownership follows the displayed value source.** `_open_creation_row` computes
   `shadowed = identity in self._staged_creations`; a shadowed row claims no ownership
@@ -336,7 +336,7 @@ needs both halves, and the combined reversion above is caught.
 * **Not run in this pass, stated rather than implied:** no broad suite, no ROM
   integration rerun (the correction changes `tools/webfoot/workbench/warp_tab.py`
   only, and this record touched `tools/webfoot/map_transitions.py`, the file that
-  integration file exercises, in **one** commit - the implementation `f4d3768c6c2aeaf849f2ff039c89fbbf20ea785b`), no
+  integration file exercises, in **one** commit - the implementation `a1e25486823c069f2e7837452ab3c4e7f727374b`), no
   visual re-capture and no emulator run.
 
 ### Known limitation, recorded
@@ -352,9 +352,9 @@ is what this pass was told not to do.
 
 ### Closeout labels
 
-* **FINAL OWNERSHIP FIX:** `04db69414c08a5b10574873f7bb68b249d8f7083` - the single correction commit, production and
+* **FINAL OWNERSHIP FIX:** `91c8b17bd54bef73732afe7456c63dbebf9ca715` - the single correction commit, production and
   tests, no amend.
-* **FINAL CANDIDATE:** `7a8b96639d3d2b759d2aaf48763656c45175731f` - the branch tip
+* **FINAL CANDIDATE:** `d44c122b620a7894a9c12125ad411c20e76981cb` - the branch tip
   that carries that correction and this record, and the tree every number above was
   measured on. The commit that adds these two labels is documentation only, on top
   of it.

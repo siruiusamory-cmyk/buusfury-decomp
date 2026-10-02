@@ -12,7 +12,7 @@ No raw address is required from the author, and no meaning is invented for an
 MAP-WARP-PROJECT-AUTHORING-001 - STATUS REPORT
 
 BASELINE:
-486be13cff3d2c5f9b109273eddbc2af44fcd676
+7800412dd9dfa8798d32fb1d9d23531f3e86d8c0
 
 PROJECT REPRESENTATION:
 maps/transitions.toml - [transition."map:NNNN"."IIII"], one entry per edited
@@ -304,7 +304,7 @@ was established by evidence, not by assertion:
 
 | Failure | Why it is not this record |
 | --- | --- |
-| `tests/integration/test_map_browser_rom.py::test_map_19_renders_the_accepted_terrain_field` | **Reproduced at the pristine baseline.** A clean `git worktree` at `486be13cff3d2c5f9b109273eddbc2af44fcd676` fails this one test with the *identical* digest mismatch (`1b386a509aad…9fc57` observed against the pinned `2ece490ffb79…4cfeec`). The pass touches no rendering code and `tests/integration/test_map_browser_rom.py` is unmodified. |
+| `tests/integration/test_map_browser_rom.py::test_map_19_renders_the_accepted_terrain_field` | **Reproduced at the pristine baseline.** A clean `git worktree` at `7800412dd9dfa8798d32fb1d9d23531f3e86d8c0` fails this one test with the *identical* digest mismatch (`1b386a509aad…9fc57` observed against the pinned `2ece490ffb79…4cfeec`). The pass touches no rendering code and `tests/integration/test_map_browser_rom.py` is unmodified. |
 | `tests/unit/test_capability_registry.py::test_the_built_page_renders_the_registry_list` | A **stale git-ignored `dist/` build**. `dist/index.html` was last written 2026-09-25 12:54, while `resize` shipped later the same day (18:42), so the rendered page still says `is-todo` for a capability the registry reports as shipped. `git check-ignore` confirms `dist/` is untracked; the same test **skips** in the clean baseline worktree where no `dist/` exists. This is exactly the pre-existing failure the predecessor's review request records. `src/` is untouched by this pass. |
 
 No failure is attributed to this diff, and no assertion was weakened to reach a

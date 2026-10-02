@@ -273,7 +273,7 @@ same rule.
   evidence-proportional policy: the touch is GUI-only plus two Qt-side
   neighbours, and the focused files above bound it.
 * **Independent review: PASS.** The frozen candidate
-  `0ac734cb5be2bb424f00f35c2f0b933ef3eda0cd` was reviewed against all twelve
+  `2c4b818192964d4a3292cb0f4925647c89c5c70c` was reviewed against all twelve
   claims by a separate verification pass: zero blocking findings, eight non-blocking. NB1
   was a real defect and is fixed in the correction section below; NB2 is the
   endpoint test added there; NB3 and NB4 are the two record corrections made
@@ -292,7 +292,7 @@ count corrected here.
 
 
 This section supersedes the review status recorded above. The independent review
-passed the frozen candidate `0ac734cb5be2bb424f00f35c2f0b933ef3eda0cd` with **zero blocking findings and eight
+passed the frozen candidate `2c4b818192964d4a3292cb0f4925647c89c5c70c` with **zero blocking findings and eight
 non-blocking** ones; this pass applies the four it named, and nothing else.
 
 * **NB1 - the one behaviour change.** The region write reported success when the
@@ -313,8 +313,8 @@ non-blocking** ones; this pass applies the four it named, and nothing else.
   focused file defines 19 tests; it defines **20** at that freeze. And this record
   claimed `git diff --check` was clean while line 204 carried one trailing space,
   which made the check over the first freeze exit 2; the space is removed, so the
-  check is clean over the corrected range - baseline `351d748c20264fd43bec1bbb7f1221a82e39d19f` through this
-  correction's commit. The frozen candidate `0ac734cb5be2bb424f00f35c2f0b933ef3eda0cd` still carries the space, because
+  check is clean over the corrected range - baseline `28836d75c21e4db49367f16a1e4d2dc733677b46` through this
+  correction's commit. The frozen candidate `2c4b818192964d4a3292cb0f4925647c89c5c70c` still carries the space, because
   an amended freeze is not permitted.
 * **NB4 - the byte test's coverage.** It asserted only the SET of differing offsets,
   and every endpoint in its fixture was under `0x100`, so a write that kept only the

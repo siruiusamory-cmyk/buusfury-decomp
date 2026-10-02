@@ -156,7 +156,7 @@ generic helper still needs its own follow-up record.
 VERDICT: REJECT
 ```
 
-Reviewed revision `4ba14892d6ed2971c418cd1646ed7ad119b3af98`. The three original blockers were confirmed closed:
+Reviewed revision `b74b1656d40fd0be0ec128d41b1be92495882922`. The three original blockers were confirmed closed:
 A1 (the payload is a 32x32 tile-ordinal plane), A2 (the destination literal is
 `0x0600F000`, `0x06008000` has zero hits in the image, the count pair computes
 `(32 - m) / 2` halfwords under a `0x8000` control = `32 - m` bytes, `0x040000D4`
@@ -165,7 +165,7 @@ the `0x40` the destination register), A3, A4, A5 and A6. The verification pass r
 the record chain, the container run, the plane digest, the ordinal population, the
 character block, the semantic split, both artifacts' digests and a `git archive`
 test run, and confirmed the correction history is preserved and reachable through
-`git show fe41d14c90f86a627db6a6e19b87326cf4b9fe0e`.
+`git show 001f9a7eceb3393b7d6741b12fdfbcc0ebf492fe`.
 
 Required findings, all accepted and closed:
 
@@ -304,7 +304,7 @@ control is stated as typical rather than universal, the origin overlay is descri
 as the 0.18 % corner it is, and the root extents are marked unreconciled. Its third
 nit identified a **pre-existing** mislabel (`0x04000200` is `REG_IE` bit 1, the
 HBlank interrupt, not `DISPSTAT` bit 1) present in the accepted text from
-`4c79a59ba190c1b142dc32bd02ed6293c8721016`; it is corrected in the three files this record owns. The same mislabel
+`0f832c63eed2bb2215d62dde3d3f713bef12c732`; it is corrected in the three files this record owns. The same mislabel
 also survives in the earlier record's records
 (`docs/research/ASSET_EXPORT_MAP_HANDLERS_PROVENANCE.md` and
 the earlier map-handler verification record), which are outside this
@@ -315,7 +315,7 @@ than edited.
 
 the first verification pass's third pass returned `REJECT` on five documentation items (R1-R5) plus
 seven nits, explicitly stating that no artifact, field, mechanism or code change
-was implied. All of them are corrected in `85d987253c515cd49b243b1b36a2b640a19ad186`: the `BGxCNT` bit-6 error is
+was implied. All of them are corrected in `78641134a728efe4ef4446131382422e89d89860`: the `BGxCNT` bit-6 error is
 replaced by the correct mosaic/mode account, the text-mode size is stated as
 `256x512` = `32 x 64` entries, the open item is reframed as DISPCNT's video mode
 from the per-map context field, the map area is `4 KiB`, the §6 register values
@@ -325,12 +325,12 @@ correction history names each revision.
 the second verification pass's re-review of the same material returned `APPROVE WITH NON-BLOCKING
 NOTES`, with its required bookkeeping item satisfied and its nits applied.
 
-**State of the gate: OPEN.** the first verification pass's fourth pass reviewed `58f71ab815a818efae0ed12929bca94732f397e2` and
+**State of the gate: OPEN.** the first verification pass's fourth pass reviewed `144c68fe062bd2d22feea2407c8bbc236f3c4abd` and
 returned `REJECT` on the record's own review record: the corrected provenance and
 `asset-export.md` text was verified right, but three of the falsified statements
 survived verbatim in this sheet (the A9 entry's bit-6/mode reasoning and its
 `512x256` size, and Gate 2's `0x78A3` register block), plus seven nits and one
-adjacent finding. All of them are corrected in `c4d2a56e8d3b138cedbce84810ebeeb5da793093`:
+adjacent finding. All of them are corrected in `3dc87a0ad4037fe7aaf04a6b39199024d59a9d7b`:
 
 * the A9 entry is annotated as superseded by provenance §8 (bit 6 is mosaic;
   affine-ness is the DISPCNT mode) and its `512x256` text is corrected in place;
@@ -340,7 +340,7 @@ adjacent finding. All of them are corrected in `c4d2a56e8d3b138cedbce84810ebeeb5
   note that the `+1` and `*7+11` displacements do **not** collapse - my earlier
   `0.052`/`0.051`/`0.086` figures were wrong and are withdrawn;
 * §10's open item names DISPCNT and the `ctx + 0xA2` source;
-* the identity blocks name every revision and no longer mislabel `4ba14892d6ed2971c418cd1646ed7ad119b3af98`;
+* the identity blocks name every revision and no longer mislabel `b74b1656d40fd0be0ec128d41b1be92495882922`;
 * the `REG_IE` correction is scoped to the three files this record owns, with the
   surviving instances in the earlier record's records recorded as a finding for a
   documentation sweep;
@@ -349,9 +349,9 @@ adjacent finding. All of them are corrected in `c4d2a56e8d3b138cedbce84810ebeeb5
   silently reconcile the two.
 
 No artifact or code behaviour changed in any of these passes: an AST comparison of
-every `tools/export/*.py` across `9ae27fe8f7619c3981ef8a44af123b0d74ff61e8`..`58f71ab815a818efae0ed12929bca94732f397e2` shows the only differing file
+every `tools/export/*.py` across `e053d76bb097c503ec071da8f3d93155aa7e8e89`..`144c68fe062bd2d22feea2407c8bbc236f3c4abd` shows the only differing file
 is `canonical.py`, whose AST is identical (comment-only), and the export is
-byte-identical. A further confirming verification pass over `c4d2a56e8d3b138cedbce84810ebeeb5da793093` is the
+byte-identical. A further confirming verification pass over `3dc87a0ad4037fe7aaf04a6b39199024d59a9d7b` is the
 outstanding formal step; this record does not claim that pass happened, and the
 gate stays `OPEN` until it does.
 

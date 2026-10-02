@@ -72,7 +72,7 @@ Nothing was deleted or squashed.
 Closed by **`MAP-WARP-FORMAT-001`**
 ([`MAP-WARP-FORMAT-001.md`](MAP-WARP-FORMAT-001.md); closure
 [`archive/MAP-WARP-FORMAT-001.md`](archive/MAP-WARP-FORMAT-001.md); merge
-`486be13cff3d2c5f9b109273eddbc2af44fcd676`). The family is the 24-byte record a map's selector-1 root reaches through
+`7800412dd9dfa8798d32fb1d9d23531f3e86d8c0`). The family is the 24-byte record a map's selector-1 root reaches through
 the root's `+0x40` count and `+0x44` pointer array; the destination is the two
 independent bytes at `+0x11` (high) / `+0x12` (low) resolved through the MapEntry
 two-byte key scan; the region is four `u16` at `+0x08`/`+0x0A`/`+0x0C`/`+0x0E`
@@ -98,7 +98,7 @@ Closed by two sub-passes, one for each editable shape:
 - **`MAP-WARP-PROJECT-AUTHORING-001`** ([record](MAP-WARP-PROJECT-AUTHORING-001.md);
   closure
   [`archive/MAP-WARP-PROJECT-AUTHORING-001.md`](archive/MAP-WARP-PROJECT-AUTHORING-001.md);
-  merge `4d9bb953bba417e20fe803393f3ad1a6c8117016`) - a supported transition is editable **by semantic identity**
+  merge `197c6671ea121af2849d9de5f751b2ef61641ddd`) - a supported transition is editable **by semantic identity**
   through a project. `maps/transitions.toml` stores `TransitionIdentity(source map,
   array index)` with each editable field as a prior/authored pair; the build loads
   the canonical record by that identity, verifies the stored prior, applies the edit
@@ -108,7 +108,7 @@ Closed by two sub-passes, one for each editable shape:
 - **`MAP-WARP-CREATE-PROJECT-001`** ([record](MAP-WARP-CREATE-PROJECT-001.md);
   closure
   [`archive/MAP-WARP-CREATE-PROJECT-001.md`](archive/MAP-WARP-CREATE-PROJECT-001.md);
-  merge `0c4130f8d3356741f7741fdc878e17666c6a8d9f`) - **creation**. The durable identity is
+  merge `aea91c9ad6c811bffd450d5d9275c182c06e640f`) - **creation**. The durable identity is
   `map:NNNN/transition:<name>` - a source map key plus an authored name, with no
   address and no array index, because the index a created record will occupy does
   not exist until a build appends it. The record is composed over a named canonical
@@ -138,11 +138,11 @@ are needed to close it:
 - **The Warps list, form and Create surface** - `MAP-WARP-WORKBENCH-001`
   ([record](MAP-WARP-WORKBENCH-001.md); closure
   [`archive/MAP-WARP-WORKBENCH-001.md`](archive/MAP-WARP-WORKBENCH-001.md); merge
-  `b5e33df551c0e5c1bcd086eb775368c04f985711`; independent review `APPROVE`, zero blocking) and
+  `5294934d25022f1da684775895ef76d451cad4b0`; independent review `APPROVE`, zero blocking) and
   `MAP-WARP-CREATE-WORKBENCH-001`
   ([record](MAP-WARP-CREATE-WORKBENCH-001.md); closure
   [`archive/MAP-WARP-CREATE-WORKBENCH-001.md`](archive/MAP-WARP-CREATE-WORKBENCH-001.md);
-  merge `b522b2d43b6bd4c4c30b5f6c5fe06243b28cd837`). `Maps -> Warps` lists a map's existing connections and
+  merge `11dc4ebd68f5abe06f1837a49ec1b2b798803cec`). `Maps -> Warps` lists a map's existing connections and
   retargets destination, arrival and facing as one semantic project edit through the
   authority, with Apply/Revert, real Undo/Redo, the 169-class family refused outright
   and the raw `+0x10` never exposed; its **Create Transition** action authors a
@@ -151,7 +151,7 @@ are needed to close it:
 - **The map surface itself** - `MAP-WARP-CANVAS-001`
   ([record](MAP-WARP-CANVAS-001.md); closure
   [`archive/MAP-WARP-CANVAS-001.md`](archive/MAP-WARP-CANVAS-001.md); merged as
-  `10178f557659e2d4fe26fadff321a43a32e5bb0b`). Every supported transition of the
+  `5ec2c67912477d67897dbdef1c3a2c257222f34c`). Every supported transition of the
   displayed map is drawn as its trigger region on the rendered Objects canvas, a
   click selects that connection in the Warps editor, and a drag translates the region
   as **one undoable gesture** through `map_transitions.set_transition_edits` - the
@@ -178,7 +178,7 @@ surfaces and the normal build path:
 - **`MAP-WARP-WORKBENCH-RUNTIME-001`** ([record](MAP-WARP-WORKBENCH-RUNTIME-001.md);
   closure
   [`archive/MAP-WARP-WORKBENCH-RUNTIME-001.md`](archive/MAP-WARP-WORKBENCH-RUNTIME-001.md);
-  merge `966a49957bb360015a5f858341ff8cbcbd7b2f81`) - the **existing-edit** proof. `map:0040/transition:0000` was
+  merge `3d8d373beb931ad4275f8edabfa7426d07d2a7cf`) - the **existing-edit** proof. `map:0040/transition:0000` was
   retargeted from map 39 to **map 435** with arrival `(16, 360)` and facing **East**,
   authored one gesture at a time through the shipped `Maps -> Warps` surface, saved,
   reopened, and built by the normal production path into a derivative that is
@@ -191,7 +191,7 @@ surfaces and the normal build path:
 - **`MAP-WARP-CREATE-RUNTIME-001`** ([record](MAP-WARP-CREATE-RUNTIME-001.md);
   closure
   [`archive/MAP-WARP-CREATE-RUNTIME-001.md`](archive/MAP-WARP-CREATE-RUNTIME-001.md);
-  merge `351d748c20264fd43bec1bbb7f1221a82e39d19f`) - the **creation** proof. The retail control on the canonical
+  merge `28836d75c21e4db49367f16a1e4d2dc733677b46`) - the **creation** proof. The retail control on the canonical
   image showed root count **2**, the created element **absent**, and the authored
   destination never reached. On the derivative, the created transition **fired**:
   the live array was `0x08800000` and the live new record `0x0880000C`, both above
@@ -230,7 +230,7 @@ in full in its evidence record:
   The regression pins the review's NB1: the region write had reported success when
   the authority wrote nothing, so a drag over a canvas stale by exactly the drag
   delta pushed an undo entry over an edit that was never written, and that entry's
-  Undo deleted a pre-existing authored region. The correction is merged in `10178f557659e2d4fe26fadff321a43a32e5bb0b`.
+  Undo deleted a pre-existing authored region. The correction is merged in `5ec2c67912477d67897dbdef1c3a2c257222f34c`.
 
 ## Scope Boundaries
 

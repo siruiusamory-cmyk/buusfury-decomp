@@ -2,7 +2,7 @@
 
 Canonical ROM `940ad5f01db4465b8877dfe739510cbf34f4ea3d390f3df13519808bc36f059e`
 (`Dragon Ball Z - Buu's Fury (U).gba`, 8,388,608 bytes). Read-only throughout.
-Baseline `4c614590af9368087d12a185560ec717d2ed4f86`, present on the canonical remote.
+Baseline `862a0c9d06f97136c882665b60bc4d1b125720ba`, present on the canonical remote.
 
 TOOLKIT-030 proved **AUTHORED ENTITY BEHAVIOR ATTACHMENT: YES** and left one
 question: does the attached `0x0808D788` descriptor's script path execute, and

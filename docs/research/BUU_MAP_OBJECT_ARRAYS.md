@@ -2,7 +2,7 @@
 
 Canonical ROM `940ad5f01db4465b8877dfe739510cbf34f4ea3d390f3df13519808bc36f059e`
 (`Dragon Ball Z - Buu's Fury (U).gba`, 8,388,608 bytes). Read-only; the image is an
-input and is unchanged. Baseline `ef4ce87dc2b7057ee8b3daa857ac75302ae8fcb4`, parent `088af94662355ca50f3fe41fcab31ef8a56d977a`.
+input and is unchanged. Baseline `449c3142984e2a79f7db44239d61f69a06a70f83`, parent `229f45ca1b2d1ec27958e4b744bcd744f2a8e83a`.
 
 **COMPLETE ENGINE-COUNTED MAP ARRAY MODEL: YES.**
 **AUTHORED MAP COUNT WRITE: YES.**
@@ -357,7 +357,7 @@ tail, the 516 TOOLKIT-011 references, and unrelated relocation cases.
 
 Same canonical ROM
 `940ad5f01db4465b8877dfe739510cbf34f4ea3d390f3df13519808bc36f059e`, read-only and
-unchanged. Baseline `3511c261a8af9f86030871e6048c67e9349e498a`.
+unchanged. Baseline `ec9c2979afc180854a80624d8ea611b827c22d07`.
 
 **PLACEMENT_REFERENCE_ARRAY RELOCATION: YES.**
 
@@ -566,7 +566,7 @@ census used as the rule's own control.
 
 Same canonical ROM
 `940ad5f01db4465b8877dfe739510cbf34f4ea3d390f3df13519808bc36f059e`, read-only and
-unchanged. Baseline `d01c06d762f247bcba06e45b5ca60583b52728ee`.
+unchanged. Baseline `609985b30e169395fd014719c67b4a3222b3b3f5`.
 
 **AUTHORED PLACEMENT BODY MATERIALIZATION: YES.**
 

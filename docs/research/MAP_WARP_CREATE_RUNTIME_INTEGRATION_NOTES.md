@@ -13,7 +13,7 @@ have satisfied this; only creation does.
 
 ## What was proved
 
-Baseline `b522b2d43b6bd4c4c30b5f6c5fe06243b28cd837`. The proof transition was
+Baseline `11dc4ebd68f5abe06f1837a49ec1b2b798803cec`. The proof transition was
 `map:0040/transition:proof-door-rt001`, a 566-class same-map template of
 `map:0040/transition:0000`, region first `10..60` / second `112..169` (chosen against
 retail geometry so it overlaps neither canonical box), destination `map:0435`,
@@ -64,7 +64,7 @@ it, and neither canonical record's key names map 435.
   can only be consumed once that map is re-entered - which is a measured property of
   the procedure, recorded rather than presented as a defect.
 * **One instrument artifact, recorded rather than hidden.** The control session ran
-  with observer revision `13838f3d76d63f22aea217b871bfa91edb8df3f7`, whose unresolved-route warning also fired on
+  with observer revision `d414adc60777df1bee3acba9993112ad24e58f00`, whose unresolved-route warning also fired on
   frames that merely skipped sampling, so its CSV carries one spurious
   `ROUTE_UNRESOLVED` row at frame 601 while the route rows beside it resolve
   correctly. The condition was narrowed so it fires only on frames that actually

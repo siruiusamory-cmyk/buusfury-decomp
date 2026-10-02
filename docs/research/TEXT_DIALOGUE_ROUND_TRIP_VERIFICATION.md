@@ -131,7 +131,7 @@ Evidence, in order:
    `WinError 5`. A genuine permissions problem on the directory would fail
    `stat` too, so this is a sandbox read-fence over the shared temp tree.
 3. **Reproduced on clean baseline code.** A detached worktree at
-   `2d0b703af7e90ee48f024ccbe0ac2ce240e47f84` - containing none of the
+   `9e3d1b5ced1b6f11f4b041bd6bd903449e1f8663` - containing none of the
    TOOLKIT-004 files - runs the *tracked, pre-existing* `tests/unit/test_cli.py`
    and produces **3 passed, 6 errors**, every error the same `PermissionError`.
 4. **Control, same commit and same test file.** With an explicitly writable
@@ -167,7 +167,7 @@ precedent set at every previous record transition, and coverage went up.**
   pointer at the head of the record chain, not a frozen fact.
   `git log -L82,96:tests/unit/test_workflow_migration.py` shows the same line
   retargeted at every transition: `Do not begin P-008` -> `P-009` -> `P-010` ->
-  `P-011` -> `TOOLKIT-004`, with `# TOOLKIT-003` introduced at `2d0b703af7e90ee48f024ccbe0ac2ce240e47f84`.
+  `P-011` -> `TOOLKIT-004`, with `# TOOLKIT-003` introduced at `9e3d1b5ced1b6f11f4b041bd6bd903449e1f8663`.
   Leaving them pinned would assert that TOOLKIT-004 must never be activated,
   contradicting the maintainer's authorization. Nothing was lost: the old heading and
   its STOP directive both survive verbatim in

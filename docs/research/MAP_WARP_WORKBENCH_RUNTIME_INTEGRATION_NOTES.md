@@ -12,7 +12,7 @@ destination map 435 (Buu's Stomach), arrival `(16, 360)`, facing East.
 
 ## What was proved
 
-Baseline `b5e33df551c0e5c1bcd086eb775368c04f985711` (the merge that integrated
+Baseline `5294934d25022f1da684775895ef76d451cad4b0` (the merge that integrated
 `MAP-WARP-WORKBENCH-001`). Authoring was driven one gesture at a time through the
 shipped `Maps -> Warps` widgets, never by writing TOML: open map 40, select the
 connection, state the arrival `(16, 360)` after the destination-only step was

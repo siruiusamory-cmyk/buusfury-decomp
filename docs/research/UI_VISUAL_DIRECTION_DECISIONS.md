@@ -179,7 +179,7 @@ Public-release hygiene:
 
 Validation performed:
 - git diff --stat / show --name-status / diff --check (clean, exit 0); single
-  commit 430c662470148ad689e1462f07a5be23bfaaffa4; worktree clean.
+  commit 67f28abd7ab0b45b2e6f5ea1880ca1954e7d57ac; worktree clean.
 - pytest tests/unit/test_workbench_project_status.py -q -> 14 passed.
 - pytest -m "fast and workbench" -q -> 148 passed, 3 skipped, 3051 deselected.
 - pytest test_workbench_graphics.py test_workbench_map_tab.py
@@ -209,7 +209,7 @@ Remaining uncertainty:
   re-verified against those projects' sources.
 ```
 
-The verification covered frozen candidate `430c662470148ad689e1462f07a5be23bfaaffa4` and found no blocking
+The verification covered frozen candidate `67f28abd7ab0b45b2e6f5ea1880ca1954e7d57ac` and found no blocking
 findings. The non-blocking list is led by two items worth a follow-up: the Atlas duplicate status row (a stated
 acceptance criterion that is not fully met) and the `indexed_pixmap` timing
 regression on the largest maps. Neither invalidates the accepted visual

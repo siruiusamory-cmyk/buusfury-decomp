@@ -353,7 +353,7 @@ It raised three notes, all of which are resolved rather than banked:
 | **NOTE-2 (LOW)** the four "mutation" tests were positive controls; their `pytest.fail` guards could not fire | rewritten as genuine mutations: each defines the check, shows it accepts the correct artefact, **injects the break** (a direction-blind adjacency table, an ordinal-only identity key, six forged provenance records, a merged bank partition) and requires rejection |
 | **NOTE-3 (LOW)** the observed sheet's chunk placement was verified only by dimensions | `test_observed_sheet_places_each_chunk_at_its_own_offset` now asserts each of two different chunks lands at its own offset with its own pixels and that the gutter between them stays transparent |
 
-The resolutions were re-frozen (`1f33e63412ff5fb086dbbf749f7b147cbb81520b`) and re-reviewed on `a commit since folded into its successor`, which
+The resolutions were re-frozen (`5742353528484f473c5fdef8842eb8a48168c391`) and re-reviewed on `a commit since folded into its successor`, which
 returned **APPROVE** - *"All three prior notes are fully resolved; nothing new
 blocks."* The reviewer confirmed each resolution individually, verified by diff
 that the resolution commit changed no production logic (two docstring insertions,

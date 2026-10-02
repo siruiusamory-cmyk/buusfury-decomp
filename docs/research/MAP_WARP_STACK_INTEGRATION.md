@@ -19,10 +19,10 @@ items.
 
 | Item | SHA |
 | --- | --- |
-| baseline | `486be13cff3d2c5f9b109273eddbc2af44fcd676` |
-| reviewed candidate | `f70388af56b897b5443cc18b43b9d204d5884697` |
-| final frozen candidate | `bba1a7f596935d45caa13d468163da2d7f678151` |
-| merge on `master` | `4d9bb953bba417e20fe803393f3ad1a6c8117016` |
+| baseline | `7800412dd9dfa8798d32fb1d9d23531f3e86d8c0` |
+| reviewed candidate | `5867a96580f598ab7184774120fc7e714e97b77b` |
+| final frozen candidate | `e1b5367024e99ca88bd96a46372d41cb84a1ff24` |
+| merge on `master` | `197c6671ea121af2849d9de5f751b2ef61641ddd` |
 
 The source branch was removed on merge. MR: !89.
 
@@ -71,14 +71,14 @@ from 7758 insertions / 1573 deletions to **6208 insertions / 23 deletions**.
 
 ## Verification and gate scope
 
-The independent review of `f70388af56b897b5443cc18b43b9d204d5884697` - an independent local review, headless, independent context -
+The independent review of `5867a96580f598ab7184774120fc7e714e97b77b` - an independent local review, headless, independent context -
 returned **`APPROVE WITH NON-BLOCKING NOTES`** with zero blocking findings. One
 review finding was fixed before that verdict: `arrival` had no class check, so all
 169 class-B records passed a bounds check that would have written a relative delta as
 an absolute position.
 
-The three commits after `f70388af56b897b5443cc18b43b9d204d5884697` are documentation-only plus the ending restoration,
-whose staged content is byte-identical to `f70388af56b897b5443cc18b43b9d204d5884697` with line endings ignored.
+The three commits after `5867a96580f598ab7184774120fc7e714e97b77b` are documentation-only plus the ending restoration,
+whose staged content is byte-identical to `5867a96580f598ab7184774120fc7e714e97b77b` with line endings ignored.
 the repository rules permits a trivial, non-behavioural change to take a proportionate
 lighter path provided the closure record says why. That is the basis here: the code
 under review did not change, so no second full gate was warranted, and this record

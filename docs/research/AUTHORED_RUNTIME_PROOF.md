@@ -2,7 +2,7 @@
 
 Canonical ROM `940ad5f01db4465b8877dfe739510cbf34f4ea3d390f3df13519808bc36f059e`
 (`Dragon Ball Z - Buu's Fury (U).gba`, 8,388,608 bytes). Read-only throughout;
-verified unchanged before and after the runtime session. Baseline `519905a682aafb578158be215ade0bb97bc66567`.
+verified unchanged before and after the runtime session. Baseline `daa329fc0c624925d49c5d0c7163ad1c3512710e`.
 
 **RUNTIME-PROVEN AUTHOR_NEW: YES.**
 

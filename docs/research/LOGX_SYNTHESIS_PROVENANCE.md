@@ -480,7 +480,7 @@ a sanity check with no demonstrated benefit.
 
 | File | Correction |
 | --- | --- |
-| `docs/PROJECT_<local-state-name>` | its `## Next` block still named `LOGX-GFXSCAN-001` as NEXT with baseline `b5d87aed022cb09083f51c34fe50c81c4f944c5b`, contradicting the same file's own header (GFXSCAN COMPLETE / ACCEPTED) and its "Current Baseline" entry (LOGX-SYNTHESIS-001 next). Corrected to name `LOGX-SYNTHESIS-001` with the authorized baseline `a commit since folded into its successor`, and the original paragraph retained beneath as marked history |
+| `docs/PROJECT_<local-state-name>` | its `## Next` block still named `LOGX-GFXSCAN-001` as NEXT with baseline `2c44837a088263b4df6e9cf3f5f8a727f9105afd`, contradicting the same file's own header (GFXSCAN COMPLETE / ACCEPTED) and its "Current Baseline" entry (LOGX-SYNTHESIS-001 next). Corrected to name `LOGX-SYNTHESIS-001` with the authorized baseline `a commit since folded into its successor`, and the original paragraph retained beneath as marked history |
 | `docs/research/GRAPHICS_FORMAT.md` | superseded-statements banner; the `0x179764` ownership correction; the two named production defects cross-referenced to the roadmap |
 | `docs/reverse-engineering.md` | the ten corrections in §1 |
 

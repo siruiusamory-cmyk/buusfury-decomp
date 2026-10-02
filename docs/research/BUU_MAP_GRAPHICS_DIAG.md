@@ -329,5 +329,5 @@ the SDK-plane case, and was removed rather than repaired;
 `probe_display_compare.py` covers the SDK-plane projection properly.
 
 The candidate was frozen and verified in an isolated worktree at
-`c8b891c2ee3e9b11fc9ce5536c5e6472a268f589`. The main checkout carries the same
+`2ae0d7d51016414a10e6048489d3a558e72d5e66`. The main checkout carries the same
 content uncommitted, which is this ticket's normal pattern.

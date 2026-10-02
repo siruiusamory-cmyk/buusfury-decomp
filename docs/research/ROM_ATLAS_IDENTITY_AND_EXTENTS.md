@@ -125,7 +125,7 @@ record's scope.
 The audit's list was 25 commits old and materially incomplete. Re-run by
 measurement (a lead and an independent read-only delegate), the corrections are:
 
-| # | Audit said | Measured on `04203f40011b2abf9edb9649637da6ef171fb00f` |
+| # | Audit said | Measured on `680f70bd85d6c1866e3749b8791753130266d300` |
 | --- | --- | --- |
 | 1 | `placement_links.py:305` restates the text count | it **reads** `placement_contracts.py:60`. `placement_contracts.py:60` and `script_effects.py:11` are two live index bounds the audit missed |
 | 2 | `GBA_ROM_BASE` in "eight modules under three spellings" | **11** production modules under **four** spellings, plus **2** using a bare `0x08000000` = **13** |
@@ -281,7 +281,7 @@ hash, positive image size) and the length/alignment checks the codec gets from
 Two stages are reported, because the second pass found real defects the first
 could not.
 
-### Stage 1, frozen candidate (`dd0accb47d5cfd7984e5228613e0302b6e65caed`), no ROM and no PySide6 in the worktree
+### Stage 1, frozen candidate (`7ca59792d9b97a4de4887cb54b1732926f4f6172`), no ROM and no PySide6 in the worktree
 
 | suite | result |
 | --- | --- |
@@ -310,7 +310,7 @@ Running the previously-skipping gates exposed five further record-caused defects
 broad measurements with their commits, and the test-policy statement.
 
 **BROAD / FULL SUITE: NOT MANUALLY RUN, HUMAN POLICY.** A broad `tests/unit` run
-was started once after the `efea1b6b36d6ec1db7dbcc0bb9476759db694590` fix and **terminated on instruction**; it was
+was started once after the `cff4a75448309be70480a97a63922b5462d06c1b` fix and **terminated on instruction**; it was
 not restarted, and the focused files listed in section 9 replace it.
 
 ### Mutation results
@@ -372,7 +372,7 @@ After all three: files restored byte-identically (hash-compared), no
 
 ## 9. Findings from independent verification and their resolution
 
-A independent read-only verification pass examined the frozen revision `dd0accb47d5cfd7984e5228613e0302b6e65caed`
+A independent read-only verification pass examined the frozen revision `7ca59792d9b97a4de4887cb54b1732926f4f6172`
 (a pristine `git archive` export, so the later commits could not contaminate it)
 with the canonical ROMs configured, and returned **BLOCKING = 2**. Both
 are resolved.
@@ -384,7 +384,7 @@ copy of the canonical SHA-256, compared against the **loaded image's** hash. The
 were live gates and appeared in the record's classification only as profile-id
 selectors.
 
-**Resolved** (`d78c122910d3281cdb33a62730c579b7323bd0e3`, completed in `efea1b6b36d6ec1db7dbcc0bb9476759db694590`): all **four** comparisons now
+**Resolved** (`bd99daca72546421b00fdda972e3ce691cad6b0f`, completed in `cff4a75448309be70480a97a63922b5462d06c1b`): all **four** comparisons now
 read the profile's declared identity (`authored_placements.py` two sites,
 `placement_events.py` one, `maps.py` one), so the catalog declaration is the
 authority and the contract value is a cross-check.
@@ -395,21 +395,21 @@ fails loudly.
 **The first correction was incomplete, and that is worth recording precisely.**
 There were **four** gates in this class, not the two the finding's summary
 implied. The round-1 verification pass named **three** of them (`authored_placements.py`
-two sites, `placement_events.py` one). `d78c122910d3281cdb33a62730c579b7323bd0e3` migrated **two** of those three
+two sites, `placement_events.py` one). `bd99daca72546421b00fdda972e3ce691cad6b0f` migrated **two** of those three
 and skipped the behavior-trigger gate inside `_require_trigger_contract`. A
 follow-up grep for `identification.hashes.sha256` then found that skipped site and
 one genuinely unlisted fourth, the placement-contract gate inside `load_maps`.
-Both landed in `efea1b6b36d6ec1db7dbcc0bb9476759db694590`.
+Both landed in `cff4a75448309be70480a97a63922b5462d06c1b`.
 
 An earlier draft of this section said the follow-up "found a third and fourth that
 neither the verification pass nor the author had listed", which is wrong on the
 attribution: the verification pass did list the `_require_trigger_contract` site, and
-`d78c122910d3281cdb33a62730c579b7323bd0e3` simply failed to migrate it. What is true, and was the real cause, is
+`bd99daca72546421b00fdda972e3ce691cad6b0f` simply failed to migrate it. What is true, and was the real cause, is
 that the correction was driven by the finding's *summary* rather than by an
 exhaustive search for the pattern. The fix is now proved exhaustive by grep: four
 gates, four profile comparisons, no fifth.
 
-**And `efea1b6b36d6ec1db7dbcc0bb9476759db694590` itself cost a regression, found by a delta review.** Widening
+**And `cff4a75448309be70480a97a63922b5462d06c1b` itself cost a regression, found by a delta review.** Widening
 that gate's attribute contract to read `maps.profile.sha256` broke four tests in
 `tests/unit/test_authored_behavior_trigger.py`, whose stand-in supplied only
 `profile.id`. The commit was made without re-running those tests. Fixed by giving
@@ -428,7 +428,7 @@ rather than silently reused.
 
 ### Finding 2, BLOCKING: record-caused ROM-gated test failures
 
-With the canonical ROM configured, the frozen revision failed where `04203f40011b2abf9edb9649637da6ef171fb00f`
+With the canonical ROM configured, the frozen revision failed where `680f70bd85d6c1866e3749b8791753130266d300`
 passed: `1 failed + 7 errors`, because three test files were left calling removed
 API (`st.character_identity(0)`; `mr.SUPPORTED_ROM_SHA256`;
 `map_browser.SUPPORTED_ROM_SHA256`). The record's claim that their call sites
@@ -441,7 +441,7 @@ pass the profile's character count. Verified with the ROM configured: the same
 four-file selection the verification pass used
 (`test_stat_write_rom.py`, `test_map_render_rom.py`,
 `test_map_layout_write_rom.py`, `test_buu_dialog_runtime_rom.py`) gives
-**49 passed, 2 skipped, 0 failed** at both base `04203f40011b2abf9edb9649637da6ef171fb00f` and the corrected
+**49 passed, 2 skipped, 0 failed** at both base `680f70bd85d6c1866e3749b8791753130266d300` and the corrected
 revision, measured before the test-policy correction.
 
 ### What the verification pass could not verify, and what that exposed
@@ -524,8 +524,8 @@ all now fixed:
 
 | finding | disposition |
 | --- | --- |
-| The round-1 correction migrated only 2 of the 4 contract-hash gates; `authored_placements.py:117` and `maps.py:826` still compared the data literal against the loaded image's hash | fixed in `efea1b6b36d6ec1db7dbcc0bb9476759db694590`; all four read `profile.sha256` |
-| `efea1b6b36d6ec1db7dbcc0bb9476759db694590` broke four cases in `tests/unit/test_authored_behavior_trigger.py` and the record's `tests/unit` total was stale for it | fixed in `d9e33b1e5bba0dfca7778e7d57b2ed15c6d7669f`; that file is 15 passed |
+| The round-1 correction migrated only 2 of the 4 contract-hash gates; `authored_placements.py:117` and `maps.py:826` still compared the data literal against the loaded image's hash | fixed in `cff4a75448309be70480a97a63922b5462d06c1b`; all four read `profile.sha256` |
+| `cff4a75448309be70480a97a63922b5462d06c1b` broke four cases in `tests/unit/test_authored_behavior_trigger.py` and the record's `tests/unit` total was stale for it | fixed in `2b7640896f3048f3bb975f5fe38a6ce876646f1b`; that file is 15 passed |
 | This record claimed "none left" for the canonical literal in production, and misattributed which gate had been unlisted | both corrected above (the literals survive as pinned cross-checks; the verification pass *did* list the `_require_trigger_contract` site) |
 
 Round-2 also downgraded two of the round-1 notes and one of its own:
@@ -561,12 +561,12 @@ measurements at named commits**, not as a claim about the current tip.
 
 | command | commit | result |
 | --- | --- | --- |
-| `pytest tests/unit` | `d78c122910d3281cdb33a62730c579b7323bd0e3` | **2141 passed, 23 skipped, 0 failed** |
-| `pytest tests/unit` | `08f9ff8f50c5523734a63df977f3cc5ef91bcc72` | **2327 passed, 7 skipped, 0 failed** |
-| `pytest tests/integration` | `08f9ff8f50c5523734a63df977f3cc5ef91bcc72` | **956 passed, 45 skipped, 0 failed** (71 min) |
-| `pytest tests/unit -m "fast and workbench"` | `08f9ff8f50c5523734a63df977f3cc5ef91bcc72` | **178 passed, 0 failed** |
+| `pytest tests/unit` | `bd99daca72546421b00fdda972e3ce691cad6b0f` | **2141 passed, 23 skipped, 0 failed** |
+| `pytest tests/unit` | `72ca3a7e781bb51a3de5cb05c07b816622abb239` | **2327 passed, 7 skipped, 0 failed** |
+| `pytest tests/integration` | `72ca3a7e781bb51a3de5cb05c07b816622abb239` | **956 passed, 45 skipped, 0 failed** (71 min) |
+| `pytest tests/unit -m "fast and workbench"` | `72ca3a7e781bb51a3de5cb05c07b816622abb239` | **178 passed, 0 failed** |
 
-The `08f9ff8f50c5523734a63df977f3cc5ef91bcc72` figures are **stale at the tip**: `efea1b6b36d6ec1db7dbcc0bb9476759db694590` landed after them and
+The `72ca3a7e781bb51a3de5cb05c07b816622abb239` figures are **stale at the tip**: `cff4a75448309be70480a97a63922b5462d06c1b` landed after them and
 turned four `tests/unit/test_authored_behavior_trigger.py` cases into failures
 (a delta review caught it). Those four now pass again, and the affected files were
 re-run in isolation. No broad re-measurement was taken, by policy.
@@ -577,7 +577,7 @@ Each command names explicit files that exercise a code path this record changed.
 
 | command | result |
 | --- | --- |
-| `pytest tests/unit/test_authored_behavior_trigger.py -q` | **15 passed** (the file `efea1b6b36d6ec1db7dbcc0bb9476759db694590` broke; all four failures fixed) |
+| `pytest tests/unit/test_authored_behavior_trigger.py -q` | **15 passed** (the file `cff4a75448309be70480a97a63922b5462d06c1b` broke; all four failures fixed) |
 | `pytest tests/unit/test_authored_placements.py tests/unit/test_map_placements.py tests/unit/test_scene_authoring.py -q` | **112 passed** (the other consumers of the migrated trigger gate) |
 | `pytest tests/unit/test_atlas_identity.py tests/unit/test_extent_profile_authority.py tests/unit/test_profile_authority_contract.py tests/unit/test_profile.py tests/unit/test_capability.py tests/unit/test_atlas_build.py -q` | **114 passed** (identity contract, profile/catalog parsing, synthetic profile, absence assertions) |
 | `pytest tests/unit/test_map_render.py tests/unit/test_map_layout_provenance.py tests/unit/test_workbench_session.py -q` (ROM configured) | **41 passed, 1 skipped** (map renderer, derivative provenance, Workbench session identity) |
@@ -593,7 +593,7 @@ skip in `test_map_render.py` needs the map-40 VRAM dump, which is not part of th
 record.
 
 **BROAD / FULL SUITE: NOT MANUALLY RUN, HUMAN POLICY.** A broad `tests/unit` run
-started after the `efea1b6b36d6ec1db7dbcc0bb9476759db694590` fix was **terminated on instruction** and restarted
+started after the `cff4a75448309be70480a97a63922b5462d06c1b` fix was **terminated on instruction** and restarted
 nowhere; the focused files above replace it.
 
 ### Additional mutations, on the corrected revision

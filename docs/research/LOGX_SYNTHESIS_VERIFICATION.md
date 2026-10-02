@@ -317,7 +317,7 @@ production code, the suite gate applies.
 ## 24. Independent verification
 
 Two independent verification passes, neither of whom wrote any part of the record, both
-measured against the **frozen revision `f6605d4ec9bad0328334bf27f60afeb9c033c15f`** using `git show f6605d4ec9bad0328334bf27f60afeb9c033c15f:<path>`
+measured against the **frozen revision `58a93430134865c7bf048db278a7b9e9d479e69e`** using `git show 58a93430134865c7bf048db278a7b9e9d479e69e:<path>`
 so the working tree's later commits could not contaminate their evidence. Both
 were told to re-derive claims rather than read them, to report `SURVIVES` for
 attacks that failed, and not to manufacture findings.
@@ -334,7 +334,7 @@ read-presented-as-write, no mislabeled gap** beyond the items listed.
 
 | # | Severity | Finding | Resolution |
 | --- | --- | --- | --- |
-| A-B1 | BLOCKING | `11515 = 11513 + 202` contradicts the document's own 11,715 corpus | **Reproduced.** It is a typo. Corrected to `11715 = 11513 + 202` in `51d1e70c64736bf7fc8eb018cde4cea186c464c3` |
+| A-B1 | BLOCKING | `11515 = 11513 + 202` contradicts the document's own 11,715 corpus | **Reproduced.** It is a typo. Corrected to `11715 = 11513 + 202` in `a2ba2bced2dd2a36c0ed16ab41887131daaaecc9` |
 | A-B2 | BLOCKING | the audit instrument was reported as "exit 0, zero findings" but exits 1 with 20 findings, 5 in live code; the related test description was inverted | **Reproduced.** Provenance now reports the real result; the description now says no **unrecorded** hit survives, and that the recorded defects must remain until their fixes land |
 | A-B3 | BLOCKING | `docs/reverse-engineering.md`'s MapEntry table had the `0x01` and `0x02` rows merged, corrupting the table | **Reproduced.** The newline is restored |
 | A-N1 | NON-BLOCKING | the appearance count is baked into **three** `cmp rN,#0xE8` bounds, not "eight" (eight is the base-load/`index << 4` site count) | Corrected in the synthesis and the roadmap |
@@ -395,11 +395,11 @@ omission widened the audit's scan scope.
 
 ### Re-verification after correction
 
-**CLOSED.** Both verification passes raised blocking findings against `f6605d4ec9bad0328334bf27f60afeb9c033c15f`; every one
+**CLOSED.** Both verification passes raised blocking findings against `58a93430134865c7bf048db278a7b9e9d479e69e`; every one
 was reproduced here before being applied, the corrections were re-validated
 (`1516 passed / 16 skipped` on `tests/unit`, 241 LOGX ROM-gated tests, 73
 graphics tests, 49 safety/workflow/audit tests, the audit instrument re-run, `git
-diff --check` clean, canonical ROM unchanged), and the frozen end SHA `ec06d2e78712c279122f9f3ce4efd494dbfd1497`
+diff --check` clean, canonical ROM unchanged), and the frozen end SHA `f3e270fa706af7555860de614e35e66281a90639`
 carries them. the first verification pass's own note that the working tree already fixed A-B1,
 A-N1, the A-N5-adjacent wording and A-T4's substance is accurate and is recorded
 rather than presented as review-driven work.

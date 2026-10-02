@@ -7,7 +7,7 @@
 
 Canonical identity `buus_fury_usa_rev0_01c1707f`, 8,388,608 bytes, SHA-256
 `940ad5f01db4465b8877dfe739510cbf34f4ea3d390f3df13519808bc36f059e`. The ROM is
-read-only and untouched. Baseline `088af94662355ca50f3fe41fcab31ef8a56d977a`.
+read-only and untouched. Baseline `229f45ca1b2d1ec27958e4b744bcd744f2a8e83a`.
 
 The TOOLKIT-022 blocker is **resolved as stated and replaced by a narrower one**.
 The engine's outer traversal count/termination rule is no longer UNKNOWN: it is a

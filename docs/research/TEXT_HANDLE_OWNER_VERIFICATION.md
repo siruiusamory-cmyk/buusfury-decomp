@@ -27,11 +27,11 @@ This is **Producer outcome A**.
 
 ## Identity
 
-- Start SHA `2ac3687ac8ecb94845e2b4112cd14cb016aba74d` (master).
+- Start SHA `eb838bdf646b310f66050b5d3712de6646749192` (master).
 - Canonical ROM sha256
   `940ad5f01db4465b8877dfe739510cbf34f4ea3d390f3df13519808bc36f059e`, verified
   unchanged at the start and the end of every run.
-- One commit landed during this record: `1c2eb782169e9718bfb3c0369752cd20fc68ee91` "Adopt a ROM-resident-first
+- One commit landed during this record: `c0e0ab2005c35ccb955377ed4142a9a37913579c` "Adopt a ROM-resident-first
   default for authored content research" (the workflow rules plus its bound, and the
   the workflow rules pointer).
 
@@ -163,7 +163,7 @@ These levels are deliberately not collapsed.
    captured objects' word0 fall in this family, while the narrow cut scored only
    1 of 21. **Still INFERRED, not confirmed.**
 4. **`0x00A0`/`0x00E9`/`0x00EF` are TEXT, not control units.** This landed in
-   commit `2ac3687ac8ecb94845e2b4112cd14cb016aba74d`; it is preserved here, not reopened.
+   commit `eb838bdf646b310f66050b5d3712de6646749192`; it is preserved here, not reopened.
 
 ## Atlas impact
 
@@ -213,8 +213,8 @@ The seven-container structural gate is **UNCHANGED at 7**.
 - 22 governance tests pass.
 - 71 mgba capture guard tests pass.
 - `tests/unit/test_atlas_producers.py` asserted an exact seed row count of 51,
-  frozen at commit `0fd6fc33b8cf40141acea08440eca530b672933c` and left stale by two later records. **Proven
-  pre-existing red**: a clean detached worktree at `1c2eb782169e9718bfb3c0369752cd20fc68ee91`, containing none of
+  frozen at commit `2b6d779ca7e133f31efcde0de7dd7c042b823874` and left stale by two later records. **Proven
+  pre-existing red**: a clean detached worktree at `c0e0ab2005c35ccb955377ed4142a9a37913579c`, containing none of
   this record's work, fails the same test. It has been changed to a floor
   assertion (`>= 51`) with a comment explaining why an exact count is the wrong
   instrument for a test whose stated purpose is proving the producer needs no

@@ -5,13 +5,13 @@ implemented, the acceptance measurements and the questions left open.
 
 ## Baseline drift, recorded rather than papered over
 
-- **Requested baseline:** `bc1919931445b2bd59a9db98b9c10026896ac9b2`.
+- **Requested baseline:** `ad03b895a419db3e8960b8297e92985011b3ba52`.
 - **Actual record start:** `a commit since folded into its successor`.
 
 `a commit since folded into its successor` **was and still is** current `origin/master` at record start, verified
 two ways: local `master` and `origin/master` were both `a commit since folded into its successor` (0 ahead, 0
 behind), and a live `git ls-remote origin refs/heads/master` returned
-`a commit since folded into its successor`. The reflog shows `bc1919931445b2bd59a9db98b9c10026896ac9b2` sitting
+`a commit since folded into its successor`. The reflog shows `ad03b895a419db3e8960b8297e92985011b3ba52` sitting
 four steps back as an older `origin/master`
 (`refs/remotes/origin/master@{4}: fetch origin --prune: fast-forward`).
 
@@ -21,14 +21,14 @@ appear current:
 
 | Commits | Record |
 | --- | --- |
-| `c8b891c2ee3e9b11fc9ce5536c5e6472a268f589`, `79c25ad0659e9fbfd68ffd3a89119856ff8f02a0` | `MAP-GFX-DIAG-001`, diagnose the map graphics corruption, plus its documentation-note commit |
-| `eb285694e9238982659c95b4a477a12d6775d13a`, `a commit since folded into its successor`, `25814aa175ba82b4f99c1b63cad6113412536633`, `34c42635d9c517c6752fb617eb36cda58d53bfd3` | `WEBFOOT-LZ-LITERAL-BASE-001`, literal-base reset correction, merged and closed |
-| `de3af1203f80854416fbb054fb2bef663ef115a9`, `a commit since folded into its successor`, `1f33e63412ff5fb086dbbf749f7b147cbb81520b`, `a commit since folded into its successor`, `2b7c4534eec1bd27281e696188e9706f68c7aa9f`, `e9a642e55f146505c849e7efbcd30f61a6f08e33`, `a commit since folded into its successor` | `TILESET-COMPOSITOR-001`, inferred authoring atlas, merged and closed |
+| `2ae0d7d51016414a10e6048489d3a558e72d5e66`, `e0f2c997fe36f64849cff6160549df999f8e9660` | `MAP-GFX-DIAG-001`, diagnose the map graphics corruption, plus its documentation-note commit |
+| `b3ddb94dd5c682f91b81ad0440bb21fc85011490`, `a commit since folded into its successor`, `93f04645878ea0cac6d4010493a553f5991655df`, `2d97fdc923da96043ebcbc73f7eba300c94f8723` | `WEBFOOT-LZ-LITERAL-BASE-001`, literal-base reset correction, merged and closed |
+| `939e16cc7371f4bc57299bb6242150772949b67a`, `a commit since folded into its successor`, `5742353528484f473c5fdef8842eb8a48168c391`, `a commit since folded into its successor`, `bde93c6b4c6f14fee1535fa35f93ef632f287448`, `1551a275c01f7d953dc8f8f57b6dd4804a2ee33e`, `a commit since folded into its successor` | `TILESET-COMPOSITOR-001`, inferred authoring atlas, merged and closed |
 
-`79c25ad0659e9fbfd68ffd3a89119856ff8f02a0` is attributed to `MAP-GFX-DIAG-001` and not to
+`e0f2c997fe36f64849cff6160549df999f8e9660` is attributed to `MAP-GFX-DIAG-001` and not to
 `WEBFOOT-LZ-LITERAL-BASE-001`: it touches only
 `docs/research/BUU_MAP_GRAPHICS_DIAG.md`, and that record's own closure record
-names `c8b891c2ee3e9b11fc9ce5536c5e6472a268f589` plus its documentation-note commit `79c25ad0659e9fbfd68ffd3a89119856ff8f02a0` as its baseline. The
+names `2ae0d7d51016414a10e6048489d3a558e72d5e66` plus its documentation-note commit `e0f2c997fe36f64849cff6160549df999f8e9660` as its baseline. The
 two landed interleaved, which is why the commit order alone is misleading.
 
 ## Goal

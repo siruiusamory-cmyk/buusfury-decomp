@@ -8,7 +8,7 @@ as opposed to a line that sets a colour, a metric, a metric's policy, a tooltip,
 an accessible name, or a widget's visibility.
 
 Baseline `a commit since folded into its successor`. Frozen candidate
-`430c662470148ad689e1462f07a5be23bfaaffa4`, with the post-review corrections `a2798bff0e2b1bc0a8c83b2005a13770d8db1937` and the correction commit on
+`67f28abd7ab0b45b2e6f5ea1880ca1954e7d57ac`, with the post-review corrections `98342123434cda5338eb3230ff151e5973cf50c2` and the correction commit on
 top.
 
 ## PRESENTATION CHANGES (the overwhelming majority)

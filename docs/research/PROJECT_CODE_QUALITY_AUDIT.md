@@ -1,6 +1,6 @@
 # Whole-project code quality audit
 
-- **Baseline audited:** `origin/master` at `1aa958350cc0cab4e6bdadd812a4e3f76966a7a9`
+- **Baseline audited:** `origin/master` at `ce91f8338893d511b7a0d859ed94c2a7cabe5824`
   (the merged visual-direction record).
 - **Product capability:** unchanged. DragonByte Z remains 16 / 24 (67%).
 - **No remediation was performed by the audit itself.** The remediation set is in
@@ -119,7 +119,7 @@ Severity was assigned by this audit's severity model, not by a vote. Where an as
 
 Bounded, reproducible facts. Nothing here is a finding by itself.
 
-### Scale (tracked tree, 706 files; `1aa958350cc0cab4e6bdadd812a4e3f76966a7a9`)
+### Scale (tracked tree, 706 files; `ce91f8338893d511b7a0d859ed94c2a7cabe5824`)
 
 | class | files | code LOC | note |
 | --- | --- | --- | --- |
@@ -1356,7 +1356,7 @@ and none is currently worth dedicated work.
 | CQA-55 | **Verified-sound catalogue.** Recorded in section B so these are not re-litigated: ROM-write identity re-proof and rollback, `ByteChange`/`plan_changes` validation, `withhold`'s one-directional subtraction, `capability.require` fail-closedness, packed round-trip on 400 adversarial payloads, swizzle/unswizzle inverses at every OAM dimension, `script_vm.assemble` refusal and self-disassembly, atlas classification caps, and the Workbench's `is_safe_output_path` behaviour under case/separator/dot/junction/hard-link aliases. |
 | CQA-56 | **Second expanding domain has no coordinator.** `plan_changes` requires `generated_allocations` spans to equal `generated_image.allocated_spans` exactly, and `build_project` derives `allocated_spans` from dialogue provenance alone. A second domain that expands must merge into one `GeneratedImage`, and no function does that today. Not a defect; a prerequisite to design for. |
 | CQA-57 | **Host-side decoder bounds.** `tools/export/webfoot_strict.py` caps declared output at 64 KiB (`MAX_OUTPUT`) and packed input at 64 KiB (`MAX_INPUT_BYTES`). Both are documented as host-side safety bounds, not format limits; a capacity feature that legitimately exceeds them must revisit the constants deliberately rather than discover them. |
-| CQA-58 | **Audit-method note (process, not product).** During this audit one mutation experiment edited `tools/webfoot/write.py` in the shared audit checkout (removing the canonical-EOF straddle guard, marked `MUTATION-AUDIT-TT`) and reverted it. It was caught by a second pass reading the file, and the checkout ends clean at `1aa958350cc0cab4e6bdadd812a4e3f76966a7a9`. Consequence: citations taken from `write.py` during that window would have described mutated source. Mutation experiments in a shared checkout are worth isolating (`git archive` to a scratch copy), which one pass did. |
+| CQA-58 | **Audit-method note (process, not product).** During this audit one mutation experiment edited `tools/webfoot/write.py` in the shared audit checkout (removing the canonical-EOF straddle guard, marked `MUTATION-AUDIT-TT`) and reverted it. It was caught by a second pass reading the file, and the checkout ends clean at `ce91f8338893d511b7a0d859ed94c2a7cabe5824`. Consequence: citations taken from `write.py` during that window would have described mutated source. Mutation experiments in a shared checkout are worth isolating (`git archive` to a scratch copy), which one pass did. |
 
 ---
 

@@ -340,7 +340,7 @@ case has zero padding bits) is unaffected. One number is wrong.
 §2.3 gives `pack(b"A" * 64)` a **packed byte length of 292**, and the same figure
 appears in one investigation's own table. Re-measured against the untouched
 pre-fix module
-(`git show f02fb890bee9cb3ac955a4fdf4108e923093800a:tools/webfoot/formats/webfoot_lz.py`):
+(`git show f61c9b68d5e7e564de94b025e78fe299ffb27f69:tools/webfoot/formats/webfoot_lz.py`):
 
 | Field | Phase-1 figure | Re-measured |
 | --- | ---: | ---: |

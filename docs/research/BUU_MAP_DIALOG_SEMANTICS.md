@@ -1,6 +1,6 @@
 # Buu map-reachable dialog semantics (TOOLKIT-021)
 
-Baseline `f2d75a9a711868960a112b465586701e885c7d4d`. Static evidence only; no runtime escalation was performed,
+Baseline `e41ac22c82874f1b0a16e2ab97a290225773bdd8`. Static evidence only; no runtime escalation was performed,
 and none was needed to classify the behavior below.
 
 ## Result, stated first

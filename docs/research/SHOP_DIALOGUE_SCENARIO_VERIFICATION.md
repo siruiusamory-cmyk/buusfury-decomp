@@ -30,7 +30,7 @@ Full evidence: [BUU_SHOP_SCENARIO_MODEL.md](../../research/BUU_SHOP_SCENARIO_MOD
 ## Identity
 
 - Canonical start SHA `a commit since folded into its successor`, local `master`.
-- `origin/master` is a **stale local ref** at `9f5b5b7491dc20655374d6b0973db60885b86190`; local `master` is **10
+- `origin/master` is a **stale local ref** at `26b56e244bd9b0b1b747f16a26b856668ab500f3`; local `master` is **10
   commits ahead**. SSH fetch fails with `Permission denied (publickey)`, the
   condition ROM-ATLAS-001 already recorded, so the GitLab API was not reachable
   from this session and origin state could not be independently re-read.

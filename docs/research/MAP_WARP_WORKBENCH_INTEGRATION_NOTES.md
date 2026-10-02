@@ -55,8 +55,8 @@ One pass, independent context, an independent local review headless. Frozen revi
 **Verdict: `APPROVE` - zero blocking findings, two NOTE-level observations, no
 production correction.** The candidate was not amended, and the commits after it
 are documentation only. Merged into `master` as
-`b5e33df551c0e5c1bcd086eb775368c04f985711`, after the branch merged
-`1c0e6e29e026d81544578647d94cafe3a819ee6e` (WARPRAND-APP-001) conflict-free and
+`5294934d25022f1da684775895ef76d451cad4b0`, after the branch merged
+`781d4e7151c030491e6ea8529f06aee659f59362` (WARPRAND-APP-001) conflict-free and
 additively only.
 
 ## Limitations preserved

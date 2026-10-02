@@ -92,7 +92,7 @@ ignored/untracked. Verify canonical identity before and after each experiment.
 
 ## Result
 
-Delivered in commit `eced3a84e85dd969dd1c5c089d7cfa22babe4577` ("Add shared generated ROM expansion
+Delivered in commit `770af73a1214abce4cff47cf7fe379f5b29d1493` ("Add shared generated ROM expansion
 allocation"). The retail Buu's Fury engine consumed a compressed-dialogue
 container whose authoritative table pointer was relocated into generated ROM
 expansion space, and the shared production allocator + dialogue integration

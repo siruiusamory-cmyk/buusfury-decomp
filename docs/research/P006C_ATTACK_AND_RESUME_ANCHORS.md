@@ -95,7 +95,7 @@ knockback, complete wolf behaviour, and death details may remain UNKNOWN/DEFERRE
   ignored working copy and dynamically rediscover runtime objects each load.
 - ROM SHA-256: `940AD5F01DB4465B8877DFE739510CBF34F4EA3D390F3DF13519808BC36F059E`.
 - State SHA-256: `C7C97AA7EB673F6260F08E9A9B315D8561F3EBAB2764266F7AA05B36CB2BD6A2`.
-- Baseline commit `ff50d454aff25032ffa01c3c7bbd677b66997e64`; dirty user worktree preserved; index empty; no
+- Baseline commit `cea507ad851df0d72a2d9e8920e17afec6a0ffb3`; dirty user worktree preserved; index empty; no
   commit required.
 - Baseline validation: 362 passed with 3 warnings; launcher regression and
   `git diff --check` passed; no proprietary files tracked/staged.

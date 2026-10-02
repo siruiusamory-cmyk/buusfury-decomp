@@ -15,7 +15,7 @@ canvas matching the edited preview. It re-ran its Grand Kai proof, the no-op
 identity check, the save-over-source refusals, the writer's cross-layer refusal
 and every restriction-defeat attempt, and reported the focused set at 83 passed
 with `tests/unit` at the same failure set as the base commit (six, all
-environmental: five reproduced on pristine `b55701f0d0f53e1e687af7e24540e3029e7e7ab4`, plus one caused by `roms/`
+environmental: five reproduced on pristine `df6b04a7ddeb80f9f492ed22d44f901e72fec0d9`, plus one caused by `roms/`
 being a directory junction in this worktree). **No blocking findings remain.**
 
 Its six remaining notes and their dispositions:
@@ -45,7 +45,7 @@ with three blocking findings and six non-blocking notes.
    null raised `MapLayoutWriteError`. 104 of the 341 editable maps contain such a
    cell, and the GUI slot caught only `MapLayoutEditError`, so the exception escaped
    the slot.
-   **Fixed in `ebdbd635f3fa3aa2414bc9d0aa769ff36fc6efd0`:** the writer refuses a non-int, then accepts
+   **Fixed in `91c859241fad2d7fe52808a0c61f05a0eb8993d1`:** the writer refuses a non-int, then accepts
    `replacement == original` (a restore) before the replacement policy runs; the
    editor's revert paths translate writer and reader failures into
    `MapLayoutEditError`; the GUI's edit slots catch a named `_EDIT_ERRORS` tuple
@@ -57,7 +57,7 @@ with three blocking findings and six non-blocking notes.
 2. **[MEDIUM] `AttributeError` in a Qt slot after a render failure.**
    `_show_placeholder` left the previous map's layer/cell selection behind, so
    toggling Edit Layout on the emptied tab dereferenced a missing map.
-   **Fixed in `ebdbd635f3fa3aa2414bc9d0aa769ff36fc6efd0`:** `_show_placeholder` forgets the per-map selection
+   **Fixed in `91c859241fad2d7fe52808a0c61f05a0eb8993d1`:** `_show_placeholder` forgets the per-map selection
    (target, slot, cell, draft, grid overlay, chooser) and re-syncs the panel, and
    the revert-button gate no longer dereferences a missing map. Regression test
    added.
@@ -66,7 +66,7 @@ with three blocking findings and six non-blocking notes.
    The selection path restored the cached unedited render while the change list,
    the chooser tags and the saved ROM all carried the edits, contradicting the
    public claim that the swap previews immediately.
-   **Fixed in `ebdbd635f3fa3aa2414bc9d0aa769ff36fc6efd0`:** the selection path ends in `_refresh_preview()`, so a
+   **Fixed in `91c859241fad2d7fe52808a0c61f05a0eb8993d1`:** the selection path ends in `_refresh_preview()`, so a
    map with pending edits re-renders from the session. Regression test added, and a
    re-selection step was added to the visual QA walkthrough.
 
@@ -164,16 +164,16 @@ Interaction QA is the automated suite in `tests/unit/test_workbench_map_browser.
 (real widget tree, duck-typed edit session) plus the ROM-gated
 `tests/integration/test_map_layout_editor_rom.py`.
 
-## Validation on revision `ebdbd635f3fa3aa2414bc9d0aa769ff36fc6efd0`
+## Validation on revision `91c859241fad2d7fe52808a0c61f05a0eb8993d1`
 
 - Focused map and workbench set: **90 passed, 2 skipped** (both skips are the
   MAP-VIS-001 VRAM oracle, unconfigured locally).
-- Full `pytest tests` gate on `ebdbd635f3fa3aa2414bc9d0aa769ff36fc6efd0` (the state this run imported; measured, not
+- Full `pytest tests` gate on `91c859241fad2d7fe52808a0c61f05a0eb8993d1` (the state this run imported; measured, not
   derived): **6 failed, 2953 passed, 19 skipped in 5126 s (1:25:26)**. The six
   failures are all environmental and are not caused by this change: five
   (`test_asset_export_output_safety.py` x4 and
   `test_mgba_capture.py::test_capture_output_is_restricted_to_ignored_build_tree`)
-  reproduce identically on the pristine base commit `b55701f0d0f53e1e687af7e24540e3029e7e7ab4` in a separate
+  reproduce identically on the pristine base commit `df6b04a7ddeb80f9f492ed22d44f901e72fec0d9` in a separate
   worktree, and the sixth
   (`test_project_safety.py::test_proprietary_and_generated_paths_are_git_ignored`)
   fails only because `roms/` is a directory junction in this worktree, so
@@ -182,7 +182,7 @@ Interaction QA is the automated suite in `tests/unit/test_workbench_map_browser.
   documented ROM-oracle, capstone-presence and curation-basetemp conditions,
   including the two MAP-VIS-001 VRAM oracle skips.
 
-## Validation on revision `34da3c938e093ee99e9ba07f7f16bd1aff92f70c`
+## Validation on revision `9b136510fa8c01a2c9c316c7caa5bcd4b84785c0`
 
 The polish delta is three local state changes, each covered by its own test:
 **63 passed** across the four unit files `tests/unit/test_map_layout_edit.py`,
@@ -195,9 +195,9 @@ The polish delta is three local state changes, each covered by its own test:
 itself and bounded the blast radius independently (`_READ_ONLY_FORMS` is referenced
 only by the session module and the two unit test files; `_reset_editor` has one call
 site; `_update_status` and `_show_edit_groups` are tab-internal), which is why the
-long suite gate was not rerun for that delta. The gate below ran against `ebdbd635f3fa3aa2414bc9d0aa769ff36fc6efd0`.
+long suite gate was not rerun for that delta. The gate below ran against `91c859241fad2d7fe52808a0c61f05a0eb8993d1`.
 - Pre-existing environment failures, reproduced on the pristine base commit
-  `b55701f0d0f53e1e687af7e24540e3029e7e7ab4` in a separate worktree, are unrelated to this change:
+  `df6b04a7ddeb80f9f492ed22d44f901e72fec0d9` in a separate worktree, are unrelated to this change:
   `tests/unit/test_asset_export_output_safety.py` (4) and
   `tests/unit/test_mgba_capture.py::test_capture_output_is_restricted_to_ignored_build_tree`.
   A sixth failure appears only in a worktree where `roms/` is a directory junction
@@ -209,7 +209,7 @@ long suite gate was not rerun for that delta. The gate below ran against `ebdbd6
 ## Product-safety correction
 
 Human acceptance accepted the implementation except for two product-level issues,
-fixed in `15dcb1bbd70b62b9480bed9b15b100fda22b988b` and `0ed03a406eb479faf0364db10b57dc1bf00efb5b` and `4e42c901060b41aa7fbf358406c2d0d8642bbc67` on the same branch:
+fixed in `8c610189dfe085cae2c5fb314a574e8716961bc9` and `0b48d8853623cb18860a841049ef6674796c52e6` and `9128d18be883281243c5dab91671c898022d7e50` on the same branch:
 
 1. **DragonByte Z could not reopen its own output.** The Map Browser renders the
    canonical image only, so an emitted derivative was refused. Save As now writes a
@@ -246,10 +246,10 @@ regression and the exact changed surface.
 - **First pass: BLOCK**, one HIGH finding - `save()` guarded only the requested
   output against the source, so a source file named after a derived path (the
   manifest name, or either staging name) could be replaced or deleted by a save.
-  Reproduced with two concrete collisions. Fixed in `0ed03a406eb479faf0364db10b57dc1bf00efb5b`; the verification pass then
+  Reproduced with two concrete collisions. Fixed in `0b48d8853623cb18860a841049ef6674796c52e6`; the verification pass then
   reproduced both collisions as refused with the source byte-identical, and added
   its own symlink and directory-junction alias attempts, all refused.
-- Its six non-blocking notes were also cleared in `0ed03a406eb479faf0364db10b57dc1bf00efb5b`: the manifest's base
+- Its six non-blocking notes were also cleared in `0b48d8853623cb18860a841049ef6674796c52e6`: the manifest's base
   profile must now be the profile of the canonical image (a canonical base naming
   Legacy of Goku's profile was previously accepted and relabelled the image in the
   Atlas tab); the schema version must be an integer; the declared changed-byte count
@@ -258,7 +258,7 @@ regression and the exact changed surface.
   manifest publish is reported as an image written without provenance; a refused
   open states the identification reason before the provenance reason.
 - **Second pass: APPROVE WITH NON-BLOCKING NOTES**, with two new LOW items from the
-  fix delta itself, both cleared in `4e42c901060b41aa7fbf358406c2d0d8642bbc67`: a failed final publish left the
+  fix delta itself, both cleared in `9128d18be883281243c5dab91671c898022d7e50`: a failed final publish left the
   staging files behind, and the verifier hashed the whole image once per declared
   edit (now one writer per check: verification of a 20-edit derivative measured at
   175 ms instead of about 1.4 s).

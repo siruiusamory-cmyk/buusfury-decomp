@@ -529,7 +529,7 @@ def test_pack_output_still_decodes_exactly_after_the_strictness_change(size: int
 # re-decodes to the escape and requires it at exactly the declared length.
 
 #: `pack(b"A" * 64)` **before** CQA-02-PACKED-STREAM-TERMINATION-001, byte for
-#: byte, from the ticket's own pre-fix worktree (`git show f02fb890bee9cb3ac955a4fdf4108e923093800a:...`). Its
+#: byte, from the ticket's own pre-fix worktree (`git show f61c9b68d5e7e564de94b025e78fe299ffb27f69:...`). Its
 #: final token ends flush on the 32-bit boundary, so it emits exactly zero padding
 #: bits and its packed stream contains no escape at all - the case the audit
 #: described as "only appears valid because of what happens to follow it". Frozen

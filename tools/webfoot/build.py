@@ -1538,6 +1538,8 @@ def build_project(
     # reference this toolkit did not discover still reaches the art it always did.
     graphic_relocations: tuple = ()
     if pixel_overrides:
+        from .allocation import AllocationError
+        from .formats.sprite_graphics import SpriteFormatError
         from .graphics_authoring import GraphicsAuthoringError, plan_graphic_overrides
         try:
             materialization = plan_graphic_overrides(
@@ -1547,8 +1549,12 @@ def build_project(
                 reserved=reserved,
                 sprites=sprites,
             )
-        except GraphicsAuthoringError as exc:
-            # One validation family at the build boundary, naming the graphic.
+        except (GraphicsAuthoringError, SpriteFormatError, AllocationError) as exc:
+            # One validation family at the build boundary, naming the graphic. The
+            # codec's own refusals (a malformed or unproven container) and the
+            # allocator's (nowhere legitimate to place the payload) are build
+            # problems for this project, not escaping library errors, so they are
+            # reported in the same family rather than surfacing raw.
             raise ProjectValidationError(f"authored graphic pixels: {exc}") from exc
         changes += materialization.changes
         reserved += materialization.reserved

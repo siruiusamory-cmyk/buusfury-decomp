@@ -115,36 +115,51 @@ and 2858 at the next, and the first single-container Case A run stopped on 2859,
 which is why its screenshots showed unedited art.
 
 Case A, in place. Authored art: each container's own silhouette flattened to
-palette index 3. Re-encoded payloads 136, 136, 136, 136, 132, 132, 140, 148
+palette index 3. Re-encoded payloads 136, 136, 136, 136, 136, 132, 140 and 148
 bytes, all inside their original extents, therefore eight in-place overwrites and
 no allocation and no reference rewrite. Output 8,388,608 bytes, SHA-256
 `CA6B8B4145F54BB95AD6F819ED0651C82DD1BAB011B3DF13FA2184E31D0A4509`.
 
-Case B, relocated. Authored art: deterministic high-entropy pixels. Every
-payload re-encodes to 1,152 bytes, above every original extent, so each went
-through the allocator: eight allocations placed at file offsets `0x00800000`
-through `0x00801F80`, i.e. ROM addresses `0x08800000` onwards, above the
-original end of the image. Eight relocations, twelve confirmed consumer words
-rewritten, output 16,777,216 bytes, SHA-256
-`935106C2ECBF2B3C23BD41D4FBC624841FAE28745522977FC9B2316F9F2401BF`.
+Case B, relocated. Authored art: deterministic high-entropy pixels, seeded from
+each container's own content so the eight payloads are genuinely distinct (an
+earlier build seeded the generator with a constant, which made all eight payloads
+byte-identical and therefore made "each of the eight is resident" a claim about
+one blob rather than eight references; that build is retained at
+`build/gfximport001/caseB-identical-payloads`). Re-encoded payloads 1,152, 1,152,
+1,156, 1,148, 1,152, 1,152, 1,152 and 1,152 bytes, all above every original
+extent, so each went through the allocator: eight allocations placed at file
+offsets `0x00800000` through `0x00801F80`, i.e. ROM addresses `0x08800000`
+onwards, above the original end of the image. Eight relocations, twelve
+confirmed consumer words rewritten, output 16,777,216 bytes, SHA-256
+`7CB536754D48F110AD7E48F6B1D2CE998B857903C256DC0D618CDF79D00EDEC0`.
 
 Results.
 
 | run | image | what the engine had in object VRAM | what it drew |
 | --- | --- | --- | --- |
 | retail control | canonical | container 2858's canonical tiles, 16/16 | the retail Goku sprite |
-| Case A | `caseA.gba` | the authored in-place tiles | a solid red silhouette |
-| Case B | `caseB.gba` | **all eight relocated payloads, 16/16 tiles each** | the authored high-entropy art |
+| Case A | `caseA.gba` | authored in-place tiles for three distinct containers, 16/16 each | a solid red silhouette |
+| Case B | `caseB.gba` | one relocated payload in full, 16/16 | the authored high-entropy art |
 
-The Case B VRAM evidence is the load-bearing one: the eight authored payloads
-are each fully present in the engine's object-tile region while the original
-containers are not, which can only happen if the engine followed the rewritten
-references to storage above the original end of the image. It is corroborated by
-the emulator's own framebuffer (`settle-09.png`), which shows the authored art on
-screen.
+**What the Case B run measured, stated exactly.** At each settled screen from
+settle-04 onwards, exactly one of the eight distinct relocated payloads was
+present in the engine's object-tile region, in full, and the original containers
+were not. That is one rewritten confirmed reference followed into storage above
+the original end of the image. It is **not** eight: the engine streams one
+facing's container into VRAM at a time, which the retail control run measured
+independently (container 2861 resident at one settled screen, 2858 at the next),
+so a single settled screen can only ever exhibit the container it is displaying.
+
+The rest of the consumer set is established statically rather than by residency,
+and independently of the planner that produced it: all twelve
+`references_rewritten` records in `caseB.manifest.json` were read back from
+`caseB.gba`, and every one holds the relocated GBA address while the original
+payload bytes are still present and unchanged.
 
 Conclusion: **relocation ships.** The retail engine follows a rewritten graphics
-reference into allocator-chosen expanded storage and renders the authored pixels.
+reference into allocator-chosen expanded storage and renders the authored pixels,
+and the whole confirmed consumer set for the moved payloads is repointed in the
+emitted image.
 
 ## 5. Shared graphics
 
@@ -170,14 +185,35 @@ address, and no word-aligned scan for one was run. An undiscovered reference is
 therefore possible in principle. It is documented as `UNKNOWN` rather than
 silently upgraded to complete coverage, and two properties keep it honest:
 
-- a `CANDIDATE_REFERENCE` reaching a payload withdraws that anchor's
-  relocatability, so an unresolved numeric hit refuses the move instead of being
-  ignored;
 - the original payload bytes are never freed, so an undiscovered reference still
-  reaches intact original art.
+  reaches intact original art. This is the only protection that operates in
+  production, and it is the one the runtime run actually exercised;
+- a `CANDIDATE_REFERENCE` reaching a payload withdraws that anchor's
+  relocatability, so an unresolved numeric hit refuses the move rather than being
+  ignored. This is a guard, not an active protection: the graphics reference
+  document publishes only `CONFIRMED_REFERENCE` records, so in production the
+  check cannot fire, and it is exercised only by tests that construct a candidate
+  deliberately. It is kept because a document produced anywhere else must not be
+  able to move a payload with a half-decoded consumer set.
 
 The eight authored containers here have 1, 1, 3, 2, 2, 1, 1 and 1 confirmed
-consumers respectively.
+consumers respectively, twelve in total once the shared containers are counted.
+
+## 6a. Other stated limits
+
+- **A PNG palette recolour is not a pixel override.** The authored content is the
+  index array; the PNG's own palette is discarded on import, exactly as it is
+  discarded on export. An author who edits only the PNG's colours has changed
+  nothing the build can see, and the build reports no problem. Palette authoring
+  goes through the project's palette overrides, which do reach the image.
+- **A settled screen is what is captured.** The observer writes `proof.txt` when
+  it reaches its own cap or frame limit; a session the operator closes first
+  leaves `liveness.csv` as the record that the instrument was running, which is
+  why the finisher reports liveness rather than relying on `proof.txt`.
+- **A manifest without digests costs a corpus walk.** A project extracted before
+  this boundary carries no `png_sha256`, so its assets are compared against the
+  decoded base image instead and every build pays that walk. Re-extracting writes
+  the digests and restores the hash-only fast path.
 
 ## 7. Determinism
 

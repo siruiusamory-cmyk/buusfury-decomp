@@ -512,9 +512,11 @@ def _relocation_changes(document, allocation: Allocation, moving: Mapping, image
 
     Returns all of them together because the two halves are one transaction: a
     payload written without its consumers repointed is a graphic nothing can
-    reach, and a consumer repointed without its payload is a pointer into padding.
-    Both are refusals at `write.plan_changes`, but they are also never produced
-    apart from each other here.
+    reach, and a consumer repointed without its payload is a pointer into
+    padding. What makes the pair atomic is that this function either returns both
+    or raises - a batch with a bad member never reaches `write.plan_changes` at
+    all. (`plan_changes` itself stores the relocations without cross-checking them
+    against the changes, so it is not a second guard here.)
     """
     identity = allocation.request.anchor.value
     _anchor, consumers, payload = moving[identity]

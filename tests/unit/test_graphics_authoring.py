@@ -431,9 +431,11 @@ def test_a_manifest_without_digests_falls_back_to_the_base_image(tmp_path):
 def test_graphics_is_a_first_class_allocation_kind():
     """Registration one: the single allocation authority knows the kind."""
     assert AllocationKind.GRAPHICS_CONTAINER.value == "graphics_container"
+    # EXPANDED_PERMITTED rather than EXPANDED_ONLY: a payload small enough for
+    # trusted canonical verified-free bytes takes the weaker addressability
+    # claim, and the declared expansion is reachable when it does not fit.
     assert (DEFAULT_ADDRESSABILITY[AllocationKind.GRAPHICS_CONTAINER]
             is Addressability.EXPANDED_PERMITTED)
-    # ...and a canonical-only request can never be handed the expansion.
     _, profile, _ = _world()
     model = StorageModel.from_profile(profile)
     assert model.expanded_authorized is True

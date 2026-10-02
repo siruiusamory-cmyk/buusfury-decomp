@@ -211,7 +211,7 @@ def test_dispatcher_accepts_only_types_zero_and_four(rom):
     """Why 0x08004098 cannot be the plaintext consumer.
 
     It compares against 0 and 4 and asserts otherwise, so a type-0x03 body
-    routed here would fail. That is this ticket's stop condition, so it is
+    routed here would fail. That is the boundary this ticket must not cross, so it is
     pinned rather than left as prose.
     """
     # cmp r1,#0 ; beq ; cmp r1,#4 ; bne  -- CMP Rn,#imm8 is 0010 1 Rn imm8

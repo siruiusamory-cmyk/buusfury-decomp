@@ -15,6 +15,7 @@ import subprocess
 
 import pytest
 
+from tools.quality import _local_state_paths
 from tools.quality import architecture as arch
 
 REPOSITORY_ROOT = Path(__file__).resolve().parents[2]
@@ -96,7 +97,8 @@ def test_an_upstream_checkout_under_extern_is_a_violation():
 
 
 def test_local_state_is_a_violation_but_a_policy_document_is_not():
-    assert arch._rule_no_local_state_tracked(["handoffs/notes.md"])
+    working_notes = _local_state_paths.local_state_path("working_notes")
+    assert arch._rule_no_local_state_tracked([working_notes + "notes.md"])
     assert arch._rule_no_local_state_tracked(["docs/DEVELOPMENT.md"]) == []
 
 

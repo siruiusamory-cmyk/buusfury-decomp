@@ -42,24 +42,9 @@
       "reason": "Enemy behaviour. This is the probe itself: it watches the wolf's pursuit timer, not a development tool."
     },
     {
-      "path": "tests/unit/test_architecture.py",
-      "signal_index": 8,
-      "reason": "A control input for the repository-purity rule: the test feeds the rule a local-state path and asserts the rule reports it. The path is the rule's subject, not a tracked file."
-    },
-    {
       "path": "tests/unit/test_readability.py",
       "signal_index": 10,
       "reason": "A synthetic control: the test asserts the scanner detects an absolute user path by giving it one that belongs to no real machine."
-    },
-    {
-      "path": "tools/quality/readability.py",
-      "signal_index": 6,
-      "reason": "The readability gate declares which source roots it scans, and one of them is a local tooling directory that must be scanned when present. The declaration is the configuration, not a workflow reference."
-    },
-    {
-      "path": "tools/quality/readability.py",
-      "signal_index": 8,
-      "reason": "The same scan-root declaration names the local tooling directory it covers."
     },
     {
       "path": "tests/unit/test_site_consistency.py",

@@ -19,21 +19,21 @@ HANDLER:       0x080088BD
 GRID:          +0x04 = 0x0E (14), +0x05 = 0x0A (10)
 CONTAINERS:    140 consecutive u32 at +0x08, 0x0829F814 .. 0x082ABDF4
 CELL:          0x400 declared decoded bytes each, all 140 decoding to 1024
-START SHA:     c6821d450b475ec5d262f0b239b3f2dce8de6559
-FIRST FREEZE (REJECTED):    c01000953e2682918cc1f2d4e8071abbb5a2d1ba
+START SHA:     6a2c7f4ebe88810222cee1fabf7f0f79e32f45f7
+FIRST FREEZE (REJECTED):    fe41d14c90f86a627db6a6e19b87326cf4b9fe0e
 TILE-ORDINAL CORRECTION (REJECTED on documentation findings):
-                            3529b80f6032c5a7bbb702bddc28802a6c04f441
+                            4ba14892d6ed2971c418cd1646ed7ad119b3af98
 PLACEMENT-PROVISIONAL REVISION (REJECTED on documentation findings):
-                            c8cf6c6df40f555959c3ffe18943af015516e967
-MODE/RECORD CORRECTION:     db52eaca5ceccb23d894900c3dad1280f42249c6
-FINAL REVISION:             07a85b3652a6dd7cfc5eb4419ff2a862c8b8b7fe
+                            9ae27fe8f7619c3981ef8a44af123b0d74ff61e8
+MODE/RECORD CORRECTION:     85d987253c515cd49b243b1b36a2b640a19ad186
+FINAL REVISION:             58f71ab815a818efae0ed12929bca94732f397e2
 ```
 
-The commit history is: `c010009` (first freeze, rejected), `3bebe02` (inert
-dead-constant removal), `bb0426d` (the tile-ordinal correction), `3529b80f`
-(correction-gate record), `c8cf6c6` (engine claims corrected, placement marked
-provisional), `db52eac` (BGxCNT mode account and runtime register record
-corrected), `07a85b3` (review record).
+The commit history is: `fe41d14c90f86a627db6a6e19b87326cf4b9fe0e` (first freeze, rejected), `634ecf87772a28c6e7fb56276b5491e4ad804651` (inert
+dead-constant removal), `5645a74a17bec4b8f8796e4f22e0d85290280f6f` (the tile-ordinal correction), `4ba14892d6ed2971c418cd1646ed7ad119b3af98`
+(correction-gate record), `9ae27fe8f7619c3981ef8a44af123b0d74ff61e8` (engine claims corrected, placement marked
+provisional), `85d987253c515cd49b243b1b36a2b640a19ad186` (BGxCNT mode account and runtime register record
+corrected), `58f71ab815a818efae0ed12929bca94732f397e2` (review record).
 
 The record's own cell grid is **14 x 10 = 140**, and 140 is exactly the length of
 the container pointer run: the word after the last pointer (`+0x238`) is

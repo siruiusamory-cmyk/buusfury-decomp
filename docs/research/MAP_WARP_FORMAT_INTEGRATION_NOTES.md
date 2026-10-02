@@ -5,13 +5,13 @@ implemented, the acceptance measurements and the questions left open.
 
 ## Baseline drift, recorded rather than papered over
 
-- **Requested baseline:** `fc8ba48b184a06fcff79dcbf3fc1d215e5af2046`.
-- **Actual record start:** `82835a09c155f82f4af675f41e297fff0c365522`.
+- **Requested baseline:** `8c774965a91f337bf6195d1fd404ba1b60d5e3ce`.
+- **Actual record start:** `0000000000000000000000000000000000000000`.
 
-`82835a0` **was and still is** current `origin/master` at record start, verified
-two ways: local `master` and `origin/master` were both `82835a0` (0 ahead, 0
+`0000000000000000000000000000000000000000` **was and still is** current `origin/master` at record start, verified
+two ways: local `master` and `origin/master` were both `0000000000000000000000000000000000000000` (0 ahead, 0
 behind), and a live `git ls-remote origin refs/heads/master` returned
-`82835a09c155f82f4af675f41e297fff0c365522`. The reflog shows `fc8ba48` sitting
+`0000000000000000000000000000000000000000`. The reflog shows `8c774965a91f337bf6195d1fd404ba1b60d5e3ce` sitting
 four steps back as an older `origin/master`
 (`refs/remotes/origin/master@{4}: fetch origin --prune: fast-forward`).
 
@@ -21,14 +21,14 @@ appear current:
 
 | Commits | Record |
 | --- | --- |
-| `13e9e11`, `8506a4b` | `MAP-GFX-DIAG-001`, diagnose the map graphics corruption, plus its documentation-note commit |
-| `5c452ed`, `5d22982`, `4f8febe`, `a3681b0` | `WEBFOOT-LZ-LITERAL-BASE-001`, literal-base reset correction, merged and closed |
-| `f5e8292`, `b63a289`, `6faccc3`, `c1bd86a`, `72341bb`, `f639b39`, `82835a0` | `TILESET-COMPOSITOR-001`, inferred authoring atlas, merged and closed |
+| `16f53cbb8e899e69bf5c3c34e3d2ea5a25c6ae0f`, `fe8e3d6253ec4fb415cf453b2b54d90fa2b8d573` | `MAP-GFX-DIAG-001`, diagnose the map graphics corruption, plus its documentation-note commit |
+| `db086123f915a262e889244da70540af39dd2522`, `0000000000000000000000000000000000000000`, `c69d87b0cdfd7ee2dc9914f326dc67d43451016a`, `526ed55b1ac59f502f155f862c1c42412768f40e` | `WEBFOOT-LZ-LITERAL-BASE-001`, literal-base reset correction, merged and closed |
+| `d6922c2ff7fec0006ebf6c7fc96933dbe2cfbdfc`, `0000000000000000000000000000000000000000`, `ca5b01e6834640e3a04cd8d2d3c72bf9cf1b70d4`, `0000000000000000000000000000000000000000`, `c258664f9976de73be009d3788cac45ee115be00`, `3b5fda4aa1a012c3eb656273080f638574536b47`, `0000000000000000000000000000000000000000` | `TILESET-COMPOSITOR-001`, inferred authoring atlas, merged and closed |
 
-`8506a4b` is attributed to `MAP-GFX-DIAG-001` and not to
+`fe8e3d6253ec4fb415cf453b2b54d90fa2b8d573` is attributed to `MAP-GFX-DIAG-001` and not to
 `WEBFOOT-LZ-LITERAL-BASE-001`: it touches only
 `docs/research/BUU_MAP_GRAPHICS_DIAG.md`, and that record's own closure record
-names `13e9e11` plus its documentation-note commit `8506a4b` as its baseline. The
+names `16f53cbb8e899e69bf5c3c34e3d2ea5a25c6ae0f` plus its documentation-note commit `fe8e3d6253ec4fb415cf453b2b54d90fa2b8d573` as its baseline. The
 two landed interleaved, which is why the commit order alone is misleading.
 
 ## Goal

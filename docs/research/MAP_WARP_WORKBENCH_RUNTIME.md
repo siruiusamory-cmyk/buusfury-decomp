@@ -181,7 +181,7 @@ whose destination and facing differ from retail, and the player remained usable.
 MAP-WARP-WORKBENCH-RUNTIME-001 - STATUS REPORT
 
 BASELINE:
-7efbb9c1f83169f42c548557fb3bab1fb73f8804
+e9b5da362fa6566b266f7b14316b6cf6076d18c6
 
 TRANSITION:
 map:0040/transition:0000

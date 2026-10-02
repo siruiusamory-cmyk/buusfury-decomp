@@ -74,23 +74,23 @@ No serializer was added: `TransitionRecord.to_bytes` remains the only encoder.
 MAP-WARP-WORKBENCH-001 - STATUS REPORT
 
 BASELINE:
-d9f7e6db2014c8d0b5919edf5c923169b3b1f57a
+2ca0d833e004c069ed5f743652d1076289e3d608
 
 WORKTREE:
 <record worktree> (record/map-warp-workbench-001)
 
 IMPLEMENTATION COMMITS:
-19202ba map_transitions: bind the corpus to its profile, preserve the facing
+c96b5084305470bca11c74afd0619fdfe7fce531 map_transitions: bind the corpus to its profile, preserve the facing
         low nibble, add check_edit
-3e378d2 workbench: add the Maps editor's Warps mode
-11a6fcf tests: cover the Warps surface, its refusals and the authority corrections
-af1264e qa: capture the Warps surface from the real application
-d0773fc docs: record MAP-WARP-WORKBENCH-001 and its progress note
-bd14032 merge origin/master (5e01f5f, WARPRAND-APP-001) - conflict-free, additive
-a0d9cab docs: add the independent review brief  <-- FROZEN REVIEWED CANDIDATE
+bfae3a52ea726369bfc017f935847994ef7ede74 workbench: add the Maps editor's Warps mode
+0c58517516698669cd41aa54244bc1c976286c66 tests: cover the Warps surface, its refusals and the authority corrections
+d18e7c4ee8733db461804fc8cfeae3a6afc2762a qa: capture the Warps surface from the real application
+767a64619d30ef731fa001188bef7a0a953d0618 docs: record MAP-WARP-WORKBENCH-001 and its progress note
+c31a7e56b43f79d861646bcb5d92bc63a09897b6 merge origin/master (8724ebecd08d858a02de5c17c43102aae824ebfb, WARPRAND-APP-001) - conflict-free, additive
+0000000000000000000000000000000000000000 docs: add the independent review brief  <-- FROZEN REVIEWED CANDIDATE
 
 FROZEN REVIEWED CANDIDATE:
-a0d9cab12379e8692fef5cfe32f0baca4394734b
+0000000000000000000000000000000000000000
 
 INDEPENDENT REVIEW:
 APPROVE - zero blocking findings, two NOTE-level observations, no production

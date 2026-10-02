@@ -23,7 +23,7 @@ did, without ever writing to the user's ROM.
 
 ## What was built
 
-**Baseline: `d9f7e6d`** - current clean master, which by then already carried the
+**Baseline: `2ca0d833e004c069ed5f743652d1076289e3d608`** - current clean master, which by then already carried the
 predecessor randomizer (`record/romhack-warp-randomizer-001` was merged into
 master while this record ran). This pass adds exactly one commit on top of it and
 modifies no file that was already there.

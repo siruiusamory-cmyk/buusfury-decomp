@@ -59,10 +59,10 @@ put that rectangle on that door.
 
 ## Independent verification and the correction it produced
 
-Frozen candidate `27eb04d90561bfdb9946bc7310c723ad1326dbd5`, reviewed against all
+Frozen candidate `5f588049f0063431cfd8b1739e4c9b53f7cfeaed`, reviewed against all
 twelve claims by a separate verification pass with no author context: **zero blocking
 findings, eight non-blocking**. The correction applies the four it named and nothing
-else, in the commit merged as part of `89a37ed`:
+else, in the commit merged as part of `f4368d99d9ff8fe5fdc4deca128575d10544214f`:
 
 * **NB1, the one behaviour change.** The region write reported success when the
   authority wrote nothing, so a drag over a canvas stale by exactly the drag delta
@@ -79,7 +79,7 @@ else, in the commit merged as part of `89a37ed`:
   have passed.
 
 The frozen candidate was not amended. The sub-pass merged into `master` as
-`89a37ed6176db77d7d77b2f4dc660800258911f8`.
+`f4368d99d9ff8fe5fdc4deca128575d10544214f`.
 
 ## Validation
 

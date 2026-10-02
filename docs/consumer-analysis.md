@@ -2,7 +2,7 @@
 
 ## Scope and profile
 
-This analysis targets only `buus_fury_usa_rev0_01c1707f`, SHA-256 `940ad5f01db4465b8877dfe739510cbf34f4ea3d390f3df13519808bc36f059e`. The ROM-004 baseline is commit `6cbf218f8894618dfd55342c48e48baecc994292` (`feat: add variation-array first-word analysis`). The MapEntry contract remains a `0x38`-byte record with `variation_array_pointer_raw` at `+0x2C`; the project reader still reads only the four bytes at variation target `+0x00` and never follows the resulting value.
+This analysis targets only `buus_fury_usa_rev0_01c1707f`, SHA-256 `940ad5f01db4465b8877dfe739510cbf34f4ea3d390f3df13519808bc36f059e`. The ROM-004 baseline is commit `d140917f02dfce6234cc36eb8797051c1b6872a0` (`feat: add variation-array first-word analysis`). The MapEntry contract remains a `0x38`-byte record with `variation_array_pointer_raw` at `+0x2C`; the project reader still reads only the four bytes at variation target `+0x00` and never follows the resulting value.
 
 ## Static evidence
 

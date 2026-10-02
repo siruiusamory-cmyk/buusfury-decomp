@@ -50,13 +50,13 @@ the project authors and the build that writes it read one implementation.
 ## Independent verification
 
 One pass, independent context, an independent local review headless. Frozen reviewed candidate
-`a0d9cab12379e8692fef5cfe32f0baca4394734b`; job `the review job`.
+`0000000000000000000000000000000000000000`; job `the review job`.
 
 **Verdict: `APPROVE` - zero blocking findings, two NOTE-level observations, no
 production correction.** The candidate was not amended, and the commits after it
 are documentation only. Merged into `master` as
-`7efbb9c1f83169f42c548557fb3bab1fb73f8804`, after the branch merged
-`5e01f5fec177e4d3413a6ff2c19b9b46265739a6` (WARPRAND-APP-001) conflict-free and
+`e9b5da362fa6566b266f7b14316b6cf6076d18c6`, after the branch merged
+`8724ebecd08d858a02de5c17c43102aae824ebfb` (WARPRAND-APP-001) conflict-free and
 additively only.
 
 ## Limitations preserved

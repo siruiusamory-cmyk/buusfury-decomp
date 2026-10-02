@@ -2,7 +2,7 @@
 
 Canonical ROM `940ad5f01db4465b8877dfe739510cbf34f4ea3d390f3df13519808bc36f059e`
 (`Dragon Ball Z - Buu's Fury (U).gba`, 8,388,608 bytes). Read-only throughout.
-Baseline `91d14f3`.
+Baseline `0000000000000000000000000000000000000000`.
 
 TOOLKIT-031 proved **RUNTIME-PROVEN AUTHORED BEHAVIOR: YES** - the engine
 executes a behavior the SDK attached to a newly authored entity. It left one

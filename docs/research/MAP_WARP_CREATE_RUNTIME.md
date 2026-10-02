@@ -263,10 +263,10 @@ the instrument's evidence rather than as a paraphrase of the operator.
 | `0x03001A34` | **not measured in this record** (the facing tracer's channel) |
 
 **One instrument artifact, recorded rather than hidden.** The control session was
-run with observer revision `fb66c3f`, whose unresolved-route warning also fired on
+run with observer revision `de5c09aa4058c2b6808e09cfa0c209c0971c8121`, whose unresolved-route warning also fired on
 frames that merely skipped sampling; its CSV therefore carries one spurious
 `ROUTE_UNRESOLVED` row at frame 601 while the route rows beside it resolve count 2
-and element 2 `absent` correctly. Commit `ac25214` narrowed the condition to frames
+and element 2 `absent` correctly. Commit `17f0c1af307ae8b9c80d1dbbb4fb67e0b424f521` narrowed the condition to frames
 that actually sampled and never resolved, and the derivative session was run with
 that revision: its CSV has **zero** `ROUTE_UNRESOLVED` rows.
 
@@ -275,7 +275,7 @@ that revision: its CSV has **zero** `ROUTE_UNRESOLVED` rows.
 ```text
 MAP-WARP-CREATE-RUNTIME-001 - STATUS REPORT
 
-BASELINE:                    5224c7376660c5e35f2063e9e59699911a1a4750
+BASELINE:                    e77e9eede0ac3b8368e2151db95c92475a1b506d
 WORKTREE:                    <record worktree>
 SOURCE MAP:                  map:0040 (Grand Kai's Planet)
 AUTHORED IDENTITY:           map:0040/transition:proof-door-rt001

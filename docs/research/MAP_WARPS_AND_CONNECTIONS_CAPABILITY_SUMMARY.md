@@ -22,9 +22,9 @@ one with a click and moving it with a drag as one undoable gesture.
 | Family tally | `EDIT` moves **7 / 8** to **8 / 8** (READ 5/5, AUTHOR 3/7, DELIVER 4/4) |
 | Phase | Phase 2 - Map Editing - **complete** |
 | Next capability | graphics import (Phase 3), chosen and **not started** |
-| Baseline | `89a37ed6176db77d7d77b2f4dc660800258911f8` |
-| Closeout commit | `b2536f6f00eada62a2e111b97bb077df4465ad7f` ("Ship warps and connections and complete Phase 2") |
-| Merge | `af688c0d65ebd60412cedd094834e85013e5806f` (merge of `record/map-warps-closeout-001`) |
+| Baseline | `f4368d99d9ff8fe5fdc4deca128575d10544214f` |
+| Closeout commit | `8ed148da3ab3b6700dc648eedcdc8c885387fae3` ("Ship warps and connections and complete Phase 2") |
+| Merge | `ba204204ec0786705eede2c6545e82417740bff6` (merge of `record/map-warps-closeout-001`) |
 | Public progress impact | `UPDATED` - registry, roadmap and project status changed with the capability |
 
 Runtime proof: a human-operated mGBA run consumed an authored transition, and the

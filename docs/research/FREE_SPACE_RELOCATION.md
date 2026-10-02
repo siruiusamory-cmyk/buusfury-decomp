@@ -9,7 +9,7 @@ stop-on-insufficient-evidence branch applies; the relocation milestone is unmet.
 
 Canonical identity: `buus_fury_usa_rev0_01c1707f`, 8,388,608 bytes,
 SHA-256 `940ad5f01db4465b8877dfe739510cbf34f4ea3d390f3df13519808bc36f059e`.
-Baseline: `9366e080b60e4d4448fd27c1c70df6249c7099a6`.
+Baseline: `8ee5d7d1107bb2ac974974b187eff4498b3a1184`.
 
 ## Existing evidence audited before probing
 

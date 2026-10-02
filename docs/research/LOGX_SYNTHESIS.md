@@ -5,7 +5,7 @@ research queue. **Documentation and audit only.** No GUI, no Workbench, no
 authoring surface and no production parser was changed by this ticket.
 
 ```text
-START SHA:                 64fa98626065cf49c631878c53e1c8e1073a3bd6
+START SHA:                 0000000000000000000000000000000000000000
 BRANCH:                    logx-synthesis-001
 CANONICAL ROM SHA-256:     940AD5F01DB4465B8877DFE739510CBF34F4EA3D390F3DF13519808BC36F059E
                            (unchanged before and after; never written)

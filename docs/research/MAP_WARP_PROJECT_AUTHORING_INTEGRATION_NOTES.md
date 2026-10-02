@@ -104,7 +104,7 @@ readable verdict; `require_readable_verdict` was enforced and the local channel 
 before this ruling and is **not repeated**: 4261 passed / 2 pre-existing failed /
 6 skipped. Both failures are pre-existing at the baseline and not record-caused -
 `test_map_browser_rom.py::test_map_19_renders_the_accepted_terrain_field` was
-reproduced at `05870f1` in a clean worktree with an identical digest mismatch, and
+reproduced at `933e0fc39e79a99c0aeb849fa02b63e4d6a906b4` in a clean worktree with an identical digest mismatch, and
 `test_capability_registry.py::test_the_built_page_renders_the_registry_list` reads a
 stale git-ignored `dist/`. The full number is recorded here as history, not as
 evidence for this record: the focused gates it names are the evidence.

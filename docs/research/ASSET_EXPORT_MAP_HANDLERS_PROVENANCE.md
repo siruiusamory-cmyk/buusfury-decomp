@@ -6,8 +6,8 @@ Evidence record for classifying the 43 map-layer references that
 
 | | |
 | --- | --- |
-| START SHA | `ac047fd6728759af9a32bd54841c19060881e7a3` (tip of `asset-export-001`) |
-| Parent project baseline | `2111a819e9fdfc0820e5a089eacfa8cd03a90890` |
+| START SHA | `5422c842b018f729c4750a727a925da7c9d0f025` (tip of `asset-export-001`) |
+| Parent project baseline | `0000000000000000000000000000000000000000` |
 | Superseded freeze | `359d346d83cb0cc380ae9627d0be76455692c58d` (handler `0x0800897B` misclassified; see §9) |
 | END SHA | (filled at freeze) |
 | Branch | `asset-export-map-handlers-001` |

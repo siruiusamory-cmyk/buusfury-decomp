@@ -19,10 +19,10 @@ items.
 
 | Item | SHA |
 | --- | --- |
-| baseline | `05870f1e9c90fc5ef83ddfd1fa69fdedb06f926a` |
-| reviewed candidate | `4cada7b9ea3f3ce585635fc80bd52462e00e2d88` |
-| final frozen candidate | `65b4b24a41f2ea70fe0d93fbb2a10e7c28cf5d76` |
-| merge on `master` | `d4baa1448ca63fa575141933edc2acb3d27ef541` |
+| baseline | `933e0fc39e79a99c0aeb849fa02b63e4d6a906b4` |
+| reviewed candidate | `3446eafba84a5bf981b8423224e0d2bbdabd3c8c` |
+| final frozen candidate | `f4d4f7ce7f45060753b42c0bb73ad4b35e4ba0f9` |
+| merge on `master` | `e21bf5e0d581ca89a28767310cbbca0872b8ee4f` |
 
 The source branch was removed on merge. MR: !89.
 
@@ -71,14 +71,14 @@ from 7758 insertions / 1573 deletions to **6208 insertions / 23 deletions**.
 
 ## Verification and gate scope
 
-The independent review of `4cada7b` - an independent local review, headless, independent context -
+The independent review of `3446eafba84a5bf981b8423224e0d2bbdabd3c8c` - an independent local review, headless, independent context -
 returned **`APPROVE WITH NON-BLOCKING NOTES`** with zero blocking findings. One
 review finding was fixed before that verdict: `arrival` had no class check, so all
 169 class-B records passed a bounds check that would have written a relative delta as
 an absolute position.
 
-The three commits after `4cada7b` are documentation-only plus the ending restoration,
-whose staged content is byte-identical to `4cada7b` with line endings ignored.
+The three commits after `3446eafba84a5bf981b8423224e0d2bbdabd3c8c` are documentation-only plus the ending restoration,
+whose staged content is byte-identical to `3446eafba84a5bf981b8423224e0d2bbdabd3c8c` with line endings ignored.
 the repository rules permits a trivial, non-behavioural change to take a proportionate
 lighter path provided the closure record says why. That is the basis here: the code
 under review did not change, so no second full gate was warranted, and this record

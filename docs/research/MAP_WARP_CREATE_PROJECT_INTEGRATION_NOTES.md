@@ -50,15 +50,15 @@ strength. `MAP-WARP-CREATE-RUNTIME-001` later supplied that runtime proof.
 
 ## Independent verification
 
-Range reviewed `df81e7a..5c0f6e4`, an independent local review headless, independent context; job
+Range reviewed `6b805bd679b12a1a9ccf9264ac96cd5b55036230..149cf2adb8348c80fae576eef2dd8bc2a1408179`, an independent local review headless, independent context; job
 `the review job`.
 
 **Verdict: `APPROVE` - no blocking or major findings, one trivial non-blocking
 finding.** The finding was a duplicated, unreachable shared-root guard in
 `_resolve_creation`; it was resolved by a correction commit whose only change is the
-deletion of those nine lines, `7a0abc57fea6c20799bbc9079d3544809fea41b8`, and the
+deletion of those nine lines, `e810442525883a5383156516296e506770316206`, and the
 verification pass confirmed by a follow-up pass (`the review job`, range
-`5c0f6e4..7a0abc5`) that the verdict stands for the corrected tip. No reviewed commit
+`149cf2adb8348c80fae576eef2dd8bc2a1408179..e810442525883a5383156516296e506770316206`) that the verdict stands for the corrected tip. No reviewed commit
 was amended. The verification pass reproduced both focused suites green, re-verified the
 canonical ROM hash, and independently confirmed the aliasing refusal cannot be
 bypassed, that the count and the array pointer cannot disagree, and that the
@@ -66,11 +66,11 @@ addressability claim is labelled encoding/build-proven and never runtime-proven.
 
 ## Lifecycle and integration
 
-Baseline `df81e7ab9bcffc99c526b7e9bffe768d8420214d`; implementation
-`5c0f6e4df77697031b92800dabb812a9ba5543bb`; frozen reviewed tip `7a0abc5`; pushed
-tip `5a9abe003bc5295d25dcfcdad0718db9616c8a95`; opened as **MR !94**, CI pipeline
+Baseline `6b805bd679b12a1a9ccf9264ac96cd5b55036230`; implementation
+`149cf2adb8348c80fae576eef2dd8bc2a1408179`; frozen reviewed tip `e810442525883a5383156516296e506770316206`; pushed
+tip `893c69b2754d8899ffbbcc02823c33ead923a39f`; opened as **MR !94**, CI pipeline
 `2885987621` **SUCCESS** (`test-sdk` 3329 passed / 12 skipped), and merged as
-`b39e5fe2291b6fdbf46d095db87e40b895eb2def` with no squash and no amend. The merged
+`ac1be70250ba2a7c544918a8b9231551f59fe6a4` with no squash and no amend. The merged
 content is byte-identical to the reviewed tip over all twelve paths, and every cited
 SHA is an ancestor of `origin/master`.
 

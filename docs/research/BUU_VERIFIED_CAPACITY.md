@@ -8,7 +8,7 @@ in the production profile as a `CONFIRMED` free region.
 
 Canonical identity: `buus_fury_usa_rev0_01c1707f`, 8,388,608 bytes,
 SHA-256 `940ad5f01db4465b8877dfe739510cbf34f4ea3d390f3df13519808bc36f059e`.
-Baseline: `0eefecc` (`feat: materialize authored Buu placements`).
+Baseline: `b426d32ad4d088a69e05c3e1206330b361df6287` (`feat: materialize authored Buu placements`).
 
 This is **not** a claim that the surrounding tail is free. TOOLKIT-011 refused the
 whole `[0x007B89A8, 0x00800000)` region and that refusal stands unchanged. This is a

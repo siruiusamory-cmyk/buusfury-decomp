@@ -12,7 +12,7 @@ No raw address is required from the author, and no meaning is invented for an
 MAP-WARP-PROJECT-AUTHORING-001 - STATUS REPORT
 
 BASELINE:
-05870f1e9c90fc5ef83ddfd1fa69fdedb06f926a
+933e0fc39e79a99c0aeb849fa02b63e4d6a906b4
 
 PROJECT REPRESENTATION:
 maps/transitions.toml - [transition."map:NNNN"."IIII"], one entry per edited
@@ -70,7 +70,7 @@ read-only)
 BROAD SUITE:
 RUN ONCE IN ERROR AGAINST STANDING POLICY - recorded as history, NOT repeated.
 Measured 4261 passed, 2 failed, 6 skipped in 1:26:11. Both failures are pre-existing
-at 05870f1 and not record-caused. The focused files named above are this record's
+at 933e0fc39e79a99c0aeb849fa02b63e4d6a906b4 and not record-caused. The focused files named above are this record's
 evidence.
 
 CANONICAL ROM:
@@ -304,7 +304,7 @@ was established by evidence, not by assertion:
 
 | Failure | Why it is not this record |
 | --- | --- |
-| `tests/integration/test_map_browser_rom.py::test_map_19_renders_the_accepted_terrain_field` | **Reproduced at the pristine baseline.** A clean `git worktree` at `05870f1e9c90fc5ef83ddfd1fa69fdedb06f926a` fails this one test with the *identical* digest mismatch (`1b386a509aad…9fc57` observed against the pinned `2ece490ffb79…4cfeec`). The pass touches no rendering code and `tests/integration/test_map_browser_rom.py` is unmodified. |
+| `tests/integration/test_map_browser_rom.py::test_map_19_renders_the_accepted_terrain_field` | **Reproduced at the pristine baseline.** A clean `git worktree` at `933e0fc39e79a99c0aeb849fa02b63e4d6a906b4` fails this one test with the *identical* digest mismatch (`1b386a509aad…9fc57` observed against the pinned `2ece490ffb79…4cfeec`). The pass touches no rendering code and `tests/integration/test_map_browser_rom.py` is unmodified. |
 | `tests/unit/test_capability_registry.py::test_the_built_page_renders_the_registry_list` | A **stale git-ignored `dist/` build**. `dist/index.html` was last written 2026-09-25 12:54, while `resize` shipped later the same day (18:42), so the rendered page still says `is-todo` for a capability the registry reports as shipped. `git check-ignore` confirms `dist/` is untracked; the same test **skips** in the clean baseline worktree where no `dist/` exists. This is exactly the pre-existing failure the predecessor's review request records. `src/` is untouched by this pass. |
 
 No failure is attributed to this diff, and no assertion was weakened to reach a

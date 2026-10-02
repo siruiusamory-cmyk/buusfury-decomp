@@ -51,8 +51,8 @@ an emulator observation. The two byte changes are within the four-byte field;
 - `git diff --check`: clean; no ROM, save, state, proprietary asset, generated
   ROM, or generated PNG tracked. WORKBENCH-006 untouched.
 
-Frozen capability commit `5c08d8414b53873cc2fb28ac1f00af852670ec8f`
-merged by MR !53 as `3cdec7e317132561845f735464c9a036c05b0bc3`.
+Frozen capability commit `cfd85a040357b3931093ddace6c706bb35d02183`
+merged by MR !53 as `14c846987c611ccab3eb7e3271310b27eead0ece`.
 `public-progress impact: UPDATED`: the reviewed `src/data/project.ts` text
 reports only the fixed-size reversible chunk-pointer proof. The overall
 percentage was not changed. Master pipeline `2864612153` passed `test-sdk`

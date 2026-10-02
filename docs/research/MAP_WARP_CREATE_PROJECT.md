@@ -13,7 +13,7 @@ for an `UNRESOLVED` field.
 MAP-WARP-CREATE-PROJECT-001 - STATUS REPORT
 
 BASELINE:
-df81e7ab9bcffc99c526b7e9bffe768d8420214d (master, clean tree)
+6b805bd679b12a1a9ccf9264ac96cd5b55036230 (master, clean tree)
 
 AUTHORED TRANSITION IDENTITY:
 map:NNNN/transition:<name> - the source map's durable MapEntry key plus a lowercase
@@ -179,9 +179,9 @@ radius of a change to the shared allocator and write layers, and is recorded rat
 than hidden. The focused files above are the acceptance evidence.)
 
 INDEPENDENT REVIEW:
-APPROVE - candidate 5c0f6e4, range df81e7a..5c0f6e4, job cl-20260926-221253-299abe.
+APPROVE - candidate 149cf2adb8348c80fae576eef2dd8bc2a1408179, range 6b805bd679b12a1a9ccf9264ac96cd5b55036230..149cf2adb8348c80fae576eef2dd8bc2a1408179, job cl-20260926-221253-299abe.
 One non-blocking finding (a duplicated, unreachable shared-root guard), resolved by
-correction 7a0abc5 and confirmed by follow-up job cl-20260926-222936-818c6b:
+correction e810442525883a5383156516296e506770316206 and confirmed by follow-up job cl-20260926-222936-818c6b:
 "APPROVE - verdict stands for the corrected tip". No blocking finding outstanding.
 
 CANONICAL ROM:
@@ -207,14 +207,14 @@ RETURN FOR REVIEW
 MAP-WARP-CREATE-PROJECT-001 - FINAL INTEGRATION
 
 ORIGINAL BASELINE:
-df81e7ab9bcffc99c526b7e9bffe768d8420214d
+6b805bd679b12a1a9ccf9264ac96cd5b55036230
 
 PRE-MERGE origin/master:
-df81e7ab9bcffc99c526b7e9bffe768d8420214d (unchanged; the branch was a clean
+6b805bd679b12a1a9ccf9264ac96cd5b55036230 (unchanged; the branch was a clean
 fast-forward base)
 
 FINAL HEAD TIP:
-5a9abe003bc5295d25dcfcdad0718db9616c8a95 (pushed; remote tip verified equal)
+893c69b2754d8899ffbbcc02823c33ead923a39f (pushed; remote tip verified equal)
 
 MR:
 !94 - https://gitlab.com/siruiusamory/log1-remake/-/merge_requests/94
@@ -224,11 +224,11 @@ PIPELINE:
 test-sdk: 3329 passed, 12 skipped in 49.57s
 
 MERGE SHA:
-b39e5fe2291b6fdbf46d095db87e40b895eb2def (merge commit; no squash, no reviewed
+ac1be70250ba2a7c544918a8b9231551f59fe6a4 (merge commit; no squash, no reviewed
 commit amended)
 
 FINAL PROJECT HEAD:
-b39e5fe2291b6fdbf46d095db87e40b895eb2def - primary checkout master, verified
+ac1be70250ba2a7c544918a8b9231551f59fe6a4 - primary checkout master, verified
 master == origin/master, 0 ahead / 0 behind
 
 INDEPENDENT REVIEW:
@@ -267,7 +267,7 @@ MAP-WARP-CREATE-WORKBENCH-001
 **How the primary checkout was cleaned.** All twelve modified/untracked paths were
 enumerated and each was proved to be (a) present in the implementation commit, and
 (b) byte-identical to the record branch tip by git object id - eleven also identical
-to the cited tip `37ad6ac3`, the twelfth being the evidence record that this
+to the cited tip `2c0484a9cbe3592aec820016585cc9c9f161ef69`, the twelfth being the evidence record that this
 integration pass was asked to correct. Only then were the eight tracked paths restored
 with a path-scoped `git checkout master -- <path>` and the four untracked record-only
 files removed by explicit path. No whole-tree restore, reset, clean or `git add -A`
@@ -275,8 +275,8 @@ was used, and nothing unrelated was touched: the primary checkout reported exact
 those twelve paths before the cleanup and nothing afterwards. The inventory is kept in
 the ignored `build/research/warpcreate_primary_inventory.json`.
 
-**Post-merge verification.** Every cited SHA (`df81e7a`, `5c0f6e4`, `7a0abc5`,
-`37ad6ac`, `a4a4325`, `4d29a08`, `5a9abe0`, `b39e5fe`) is an ancestor of
+**Post-merge verification.** Every cited SHA (`6b805bd679b12a1a9ccf9264ac96cd5b55036230`, `149cf2adb8348c80fae576eef2dd8bc2a1408179`, `e810442525883a5383156516296e506770316206`,
+`2c0484a9cbe3592aec820016585cc9c9f161ef69`, `e1b3dde8121f58ce0e85e39c8009e9d48f6a07c7`, `c8d35909d617d62f9ae039b2012e4356d89dd53a`, `893c69b2754d8899ffbbcc02823c33ead923a39f`, `ac1be70250ba2a7c544918a8b9231551f59fe6a4`) is an ancestor of
 `origin/master`; the local topic branch holds 0 commits and 0 objects not reachable
 from `origin/master`; and `git diff` between the reviewed tip and merged `master` over
 all twelve paths is empty, so the accepted content survived integration byte-for-byte.
@@ -365,9 +365,9 @@ reported on the author's own verdict.
 
 | | |
 | --- | --- |
-| Range reviewed | `df81e7a..5c0f6e4` (implementation) |
+| Range reviewed | `6b805bd679b12a1a9ccf9264ac96cd5b55036230..149cf2adb8348c80fae576eef2dd8bc2a1408179` (implementation) |
 | Verdict | **APPROVE**, no blocking or major findings, one trivial non-blocking finding |
-| Range reviewed after the correction | `5c0f6e4..7a0abc5` |
+| Range reviewed after the correction | `149cf2adb8348c80fae576eef2dd8bc2a1408179..e810442525883a5383156516296e506770316206` |
 | Follow-up verdict | **APPROVE** - "verdict stands for the corrected tip" |
 
 The verification pass reproduced both focused suites green at the candidate, re-verified the
@@ -385,7 +385,7 @@ labelled **encoding/build-proven** and never runtime-proven.
 twice - the second copy byte-identical to the first and unreachable, because the first
 always raises. The verification pass marked it trivial and explicitly "not a gate". It is
 resolved anyway, by a correction commit whose only change is the deletion of those nine
-lines: `7a0abc57fea6c20799bbc9079d3544809fea41b8`, confirmed by the follow-up review
+lines: `e810442525883a5383156516296e506770316206`, confirmed by the follow-up review
 above. The deletion cannot change behaviour - the removed block could not execute - and
 the focused files were re-run on the corrected tip (180 portable tests and the 30
 ROM-gated tests, all green).

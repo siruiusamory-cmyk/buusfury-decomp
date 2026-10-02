@@ -52,7 +52,7 @@ def test_candidate_fields_have_table_wide_structural_support(canonical_bytes: by
 
 def test_representatives_preserve_the_observed_bytes_and_text_resolution(canonical_bytes: bytes) -> None:
     rows = {record["index"]: record for record in analyze(canonical_bytes)["representatives"]}
-    assert rows[0]["bytes"] == "000102000000000001a commit since folded into its successor00000000000000ff00000000000000cc2807080000000000000000"
+    assert rows[0]["bytes"] == "000102000000000001000000000000000000000000000000000000000000000000000000ff00000000000000cc2807080000000000000000"
     assert rows[39]["key_be"] == 0x010B
     assert rows[39]["text_index_low16"] == 0x0228
     assert rows[39]["text"] == "Grand Kai's Planet"

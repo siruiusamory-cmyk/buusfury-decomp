@@ -34,6 +34,10 @@ from .build import (
     extract_project,
     validate_project,
 )
+# RANDOMIZER-ENEMY-PACK-001. The enemy randomizer registers its own parser and
+# owns its run path, because it composes several SDK layers and that composition
+# is worth reading on its own rather than inline here.
+from .commands import randomize as randomize_command
 from .profile import ProfileConfigError, RomProfileCatalog, VerificationStatus
 from .layout import LayoutError
 from .project import ProjectError
@@ -580,6 +584,8 @@ def build_parser() -> argparse.ArgumentParser:
         "--no-manifest", action="store_true",
         help="write no provenance manifest for this build",
     )
+
+    randomize_command.add_parser(subparsers)
 
     # TILESET-COMPOSITOR-001. A derived-resource view: it reads the ROM, learns
     # tile relationships from how maps actually use the banks, and writes an
@@ -1970,6 +1976,12 @@ def main(argv: list[str] | None = None) -> int:
         from .relocation_proof import synthetic_relocation_proof
         print(json.dumps(synthetic_relocation_proof().to_json(), indent=2, sort_keys=True))
         return 0
+
+    # Dispatched before the ROM-loading block below, which assumes every command
+    # takes a positional `rom` and would otherwise load one for a command whose
+    # base ROM arrives as `--rom` under its own output rules.
+    if args.command == "randomize":
+        return randomize_command.dispatch(args)
 
     # TOOLKIT-002 commands are dispatched before the ROM-loading block below,
     # which assumes every command takes a positional `rom` and would otherwise

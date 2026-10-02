@@ -1,7 +1,7 @@
 """ROM-ATLAS-001 Layer D broad discovery passes: the six `scan_*.jsonl` files.
 
-Ported from scratchpad/atlas_scan.py (session
-afdddff1-9c87-4859-818c-7a33efc68a28). Read-only against the ROM.
+Ported from the earlier exploratory script `atlas_scan.py`. Read-only against the
+ROM.
 
 **The pass selector is gone, deliberately.** The original gated its writes behind
 `ONLY = set((sys.argv[2] if len(sys.argv) > 2 else "1,2,3,4,5").split(","))`

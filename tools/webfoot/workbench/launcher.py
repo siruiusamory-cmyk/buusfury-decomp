@@ -5,7 +5,7 @@ verify the executable exists -> launch. It is a direct, fire-and-forget
 `subprocess.Popen([mgba_exe, rom_path])` (list form, no shell): control returns
 to the UI at once, and a short QTimer debounce re-enables the button.
 
-Deliberately NOT here (the maintainer RESOLVED): no Lua injection (`inject_mgba_lua.ps1`
+Deliberately NOT here (a review decision): no Lua injection (`inject_mgba_lua.ps1`
 is future Debug/Runtime tooling), no runtime-config module, no required-version
 accessor. A version is DISPLAY-ONLY and never gates launch - a wrong/old mGBA
 must not reject the user's install.

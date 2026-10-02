@@ -1,47 +1,16 @@
-# LOGX-CHAR-001: reconstruct Buu's Fury character table / character-definition records
+# LOGX character records verification
 
-**Research only. Integrated to `master` through the closeout merge recorded in
-[archive/LOGX-CHAR-001-COMPLETE.md](archive/LOGX-CHAR-001-COMPLETE.md); this
-review document is the accepted record and is not rewritten by integration.**
+The Buu's Fury character table and character-definition records, reconstructed
+from the canonical image. Static analysis only; no runtime capture was made for
+this pass.
 
-```text
-START SHA:                005795fdf540bd4c8997e2014a16c5c7eb0ba89f
-END SHA:                  5caa671e6a2d84a9915918f0052b943870e7935f
-                          (branch tip after the last content-bearing commit; the
-                          commit that adds these three lines is documentation-only)
-BRANCH:                   logx-char-001
-COMMIT SHA(S):            caeb773285209d662c16d6fa79b08e83b57ca5e9
-                          research(char): reconstruct Buu character definitions
-                          5caa671e6a2d84a9915918f0052b943870e7935f
-                          docs(tickets): record LOGX character research SHAs and gate
-                          24f6ef5a468a3b5c4e8b517b1ab43d80fe3eef05
-                          docs(tickets): record LOGX character branch SHAs
-INTEGRATED EQUIVALENTS:   caeb773 -> 13586f5, 5caa671 -> b151441, 24f6ef5 -> c712de4
-                          (cherry-picks into integrate/logx-char-001, whose base is
-                          origin/master 6fa9928; every accepted blob is identical)
-WORKTREE:                 <temp>\log1-remake-logx-char-001
+Canonical ROM SHA-256, before and after:
+`940AD5F01DB4465B8877DFE739510CBF34F4EA3D390F3DF13519808BC36F059E`.
 
-CANONICAL ROM SHA BEFORE: 940AD5F01DB4465B8877DFE739510CBF34F4EA3D390F3DF13519808BC36F059E
-CANONICAL ROM SHA AFTER:  940AD5F01DB4465B8877DFE739510CBF34F4EA3D390F3DF13519808BC36F059E
-```
-
-Evidence document: [`../research/LOGX_CHAR_PROVENANCE.md`](../research/LOGX_CHAR_PROVENANCE.md).
+Evidence document: [`LOGX_CHAR_PROVENANCE.md`](LOGX_CHAR_PROVENANCE.md).
 Tooling: `tools/research/logx_char_probe.py`.
 
-**Environment note, reported rather than hidden.** A read-only directory junction
-`roms/` -> `<checkout>\roms` was created inside this worktree mid-ticket
-so the pre-existing project suites that glob `roms/*Buu*.gba` would execute. It
-was **removed** again: `tests/unit/test_project_safety.py::test_proprietary_and_generated_paths_are_git_ignored`
-failed with `git check-ignore` returning 128 ("pathspec 'roms/safety-probe.gba'
-is beyond a symbolic link"), i.e. the junction broke an established repository
-safety regression. Removing it restored that test to passing, and the canonical
-ROM was verified intact after removal (5 files, SHA-256 unchanged). The final
-validation run below is therefore the pristine configuration, in which the text
-suite skips for want of a local `roms/` exactly as it does on the baseline.
-
----
-
-## EXTERNAL CLAIMS TESTED
+## External claims tested
 
 `mainant/LOGExtractor` `CharacterSpriteExtractor`: a character table at `0x74D380`
 with 232 records of 16 bytes; `+0x00` name text index; `+0x02` skipped /
@@ -216,7 +185,7 @@ share a target.
 
 **PARTIALLY CONFIRMED.** The words the field selects are the project's accepted
 character-graphics structures (`GRAPHICS_FORMAT.md`). Their layout is **not**
-reconstructed here; that boundary is stated in the handoff.
+reconstructed here; that boundary is stated in the downstream note.
 
 ---
 
@@ -439,11 +408,11 @@ $ python -m pytest tests/unit tests/integration/test_logx_char_rom.py `
 The 52 skips are the suites' own guards being reported honestly:
 `test_text_rom.py` skips 37 because this worktree has no local `roms/` directory
 (its own unchanged baseline behaviour), and the remainder are the pre-existing
-PySide6, site-build and local-dump guards. No ticket-caused failure was observed,
+PySide6, site-build and local-dump guards. No failure caused by this work was observed,
 and no test was weakened to reach zero.
 
 Two environmental failures were observed and resolved; neither is attributable to
-this ticket, and both are reported rather than hidden.
+this record, and both are reported rather than hidden.
 
 1. `tests/unit/test_project_safety.py::test_proprietary_and_generated_paths_are_git_ignored`
    failed while the temporary `roms/` junction existed (git refuses `check-ignore`
@@ -462,7 +431,7 @@ holding that directory; re-running with an isolated basetemp cleared it.
 
 ---
 
-## ROM_BIBLE_IMPACT
+## Physical facts recorded
 
 `docs/reverse-engineering.md` gains one section, **LOGX-CHAR-001
 character-definition records**: the table start with the eight literal sites and
@@ -475,16 +444,6 @@ the array's extent; the `+0x0C` index arithmetic and the anomaly set; the runtim
 arrival route; and the semantic-scope conclusion with its counterexamples. No
 `+0x02` or `+0x0C` guess is promoted, "name"/"description" are not promoted, and
 the fields are described by what the engine does with them.
-
-## public progress impact
-
-**NONE.** This is isolated research with no shipped SDK capability, no public
-frontier and no product-story change; `src/data/project.ts` is untouched, no
-site edit is made, `docs/PROJECT_<local-state-name>` is not modified, and
-`docs/PROJECT_<local-state-name>` is not updated, because the ticket has not been
-independently accepted or integrated.
-
----
 
 ## DISAGREEMENTS WITH LOGEXTRACTOR
 
@@ -515,7 +474,7 @@ independently accepted or integrated.
 4. Which of the 232 records are ever activated by the runtime bitmap; whether
    any are unused, and what a variant family means (forms, costumes, or several
    placements of one enemy).
-5. Whether `+0x0C` has a consumer outside the six functions this ticket read
+5. Whether `+0x0C` has a consumer outside the six functions this record read
    (scoped negative, provenance document section 12.3).
 6. Whether any producer of object `+0x58` uses an id the table does not contain;
    `0x08027948` returns `-1` and both callers handle it, but no caller census was
@@ -523,7 +482,7 @@ independently accepted or integrated.
 
 ---
 
-## HANDOFF TO LOGX-SPRITE-001
+## Related work: LOGX sprite records
 
 - Accessor `0x08000158`: `u32 at 0x086B6BDC + 4*id - 0x28` for `id >= 10`;
   literal pool `0x080003C0`; raw halfwords `4998`, `3840`, `6980` at
@@ -536,16 +495,16 @@ independently accepted or integrated.
 - `0x08027948` also uses the appearance-id constants `0x92` and `0x95`.
 - Each record's `+0x04` is a **`u32` id, never a pointer**, in all 232 records.
 - Do **not** assume animation count, `+0x54`, or animation-slot semantics from
-  this ticket: nothing here constrains them.
+  this record: nothing here constrains them.
 
-## HANDOFF TO LOGX-FRAME-001
+## Related work: LOGX frame records
 
-Nothing in this ticket constrains frame or multipart graphics. The `+0x08` array's
+Nothing in this record constrains frame or multipart graphics. The `+0x08` array's
 targets were located (`0x086B880C`, `0x086B8D90`, `0x086B93F8`, …) but not
 decoded, and their first words were not interpreted. LOGExtractor's "portrait"
 reading is **PARTIALLY CONFIRMED** only; confirming it is pixel work.
 
-## OTHER DOWNSTREAM HANDOFFS
+## Other downstream consumers
 
 - **Placement/type work (TOOLKIT-009 family):** `+0x0C` now links a
   character-appearance record to `0x08711274 + 28*index`, the same table the
@@ -560,7 +519,7 @@ reading is **PARTIALLY CONFIRMED** only; confirming it is pixel work.
 
 ---
 
-## REVIEWER A
+## First independent verification
 
 Engine/dataflow/table-structure focused. Fresh context, nothing read from the
 documents was trusted; all numbers re-derived from ROM bytes and disassembly.
@@ -580,7 +539,7 @@ Blocking findings (raised, reproduced, corrected - all closed):
   0x086B6BB4 are 3 valid ascending pointers and 6 nulls".
   Evidence: struct.unpack("<10I", rom, 0x6B6BB4) = 086a6424, 086a7238, 0, 0,
   086a7e7c, 0, 0, 0, 0, 086a899c -> 4 + 6 = 10.  Impact: an arithmetically
-  impossible count in the handoff.  Required fix: 4 valid + 6 nulls.  CLOSED.
+  impossible count in the downstream note.  Required fix: 4 valid + 6 nulls.  CLOSED.
 - [high] provenance 6 - "Three engine sites compute index<<4 + base".
   Evidence: the instruction follows *every* literal load; the five missing sites
   are 0x08025088, 0x080251B8, 0x08025382, 0x08025E92, 0x080273AE, and 5's
@@ -634,7 +593,7 @@ Architecture/product alignment:
 
 ROM/data safety:
 - PASS.  SHA-256 940AD5F0...F059E, 8,388,608 bytes, identical before and after.
-  No file written in the worktree by the reviewer.
+  No file written in the worktree by the verification pass.
 
 Determinism:
 - PASS.  Probe CLI exits 0 and is deterministic; the suite asserts report
@@ -654,7 +613,7 @@ Maintainability:
 Public-release hygiene:
 - PASS.  No ROM, save, state or extracted asset staged; roms/ is ignored.
 
-Reviewer validation performed:
+Validation performed:
 - Whole-image halfword scans for ldr-literal, Thumb BL, and 16-bit adr; ARM
   pc-relative scans; 36 Thumb adr hits and 21+6 ARM sites checked; an independent
   Thumb size walk to confirm each reported site sits on a real instruction
@@ -666,11 +625,11 @@ Remaining uncertainty:
   the runtime bitmap can set.
 ```
 
-## REVIEWER B
+## Second independent verification
 
 Census/adversarial semantic-assumption focused. Fresh context; the probe's own
 `census()`/summary functions were never the instrument - every figure below came
-from the reviewer's own `struct.unpack`, literal scan, BL decoder and instruction
+from the verification pass's own `struct.unpack`, literal scan, BL decoder and instruction
 walk.
 
 ```text
@@ -689,7 +648,7 @@ Blocking findings (raised, reproduced, corrected - all closed):
   88/232 have +0x0C < 0, and 93 have no slot yet a stat index.  Required fix: the
   optional-field formulation with completeness UNKNOWN.  CLOSED.
 - [high] provenance 14 first sentence - 154 distinct strings; measured 152 (and
-  the category list was the reviewer's classification presented as observation).
+  the category list was the verification pass's classification presented as observation).
   CLOSED (observation and classification are now separated).
 - [medium] provenance 13.3 - "two records that name the same appearance are not
   distinguishable by that search".  Evidence: when argument 2 is non-null the
@@ -733,7 +692,7 @@ Blocking findings (raised, reproduced, corrected - all closed):
 Non-blocking findings:
 - "no aliased pointer" must stay scoped to pointers: text content does alias
   (3 slots -> "Super Buu", 154 +0x02 indices -> 104 strings).  Now stated.
-- The 134/110 portrait arithmetic does add up; the reviewer's own prompt
+- The 134/110 portrait arithmetic does add up; the review pass's own hypothesis
   hypothesis of "13 non-zero distinct" was correctly refuted (110).
 
 Correctness:
@@ -751,7 +710,7 @@ Architecture/product alignment:
 
 ROM/data safety:
 - PASS.  SHA-256 verified identical before and after; worktree status unchanged;
-  the reviewer's scratch code lives outside the worktree.
+  the verification pass's scratch code lives outside the worktree.
 
 Determinism:
 - PASS.
@@ -770,24 +729,24 @@ Maintainability:
 Public-release hygiene:
 - PASS.
 
-Reviewer validation performed:
+Validation performed:
 - Independent struct.unpack census, independent Thumb halfword/ldr-literal scan,
   independent BL-target decoder, independent Thumb size walk, own text decode via
   the accepted codec only.
 
 Remaining uncertainty:
-- Same as Reviewer A, plus the honest classification of the table's scope, which
-  the reviewer recommended as "a table of named appearance definitions with
+- Same as the first review pass, plus the honest classification of the table's scope, which
+  the verification pass recommended as "a table of named appearance definitions with
   optional portrait/stat links; globality UNKNOWN" - adopted.
 ```
 
-## REQUIRED CORRECTIONS
+## Correction table
 
-All findings from both reviewers were reproduced in this session with the
+All findings from both review passes were reproduced with the
 commands and bytes quoted above; none was rejected on substance. 25 corrections
 were raised and **all 25 are closed**. Corrections affecting only prose or
 naming changed no measured figure; the census arithmetic was confirmed correct by
-both reviewers.
+both verification passes.
 
 | # | Correction | Source | Status |
 | ---: | --- | --- | --- |
@@ -817,72 +776,21 @@ both reviewers.
 | C24 | fix the test comment that said "seven are null" while asserting six | B (d) | CLOSED |
 | C25 | measure the text-target arithmetic the census quoted | B (d) | CLOSED |
 
-## REJECTED REVIEWER ASSERTIONS
+## Assertions that did not survive re-measurement
 
-1. **Reviewer A: "§16's list of the ten words prints eleven values (an extra `0`
+1. **the first review pass: "§16's list of the ten words prints eleven values (an extra `0`
    between `0x086A7238` and `0x086A7E7C`)."** Rejected. The list contains
    exactly ten values - `0x086A6424`, `0x086A7238`, `0`, `0`, `0x086A7E7C`, `0`,
    `0`, `0`, `0`, `0x086A899C` - which is the measured content of
    `0x086B6BB4..0x086B6BD8`; slots 2 and 3 are both zero. Evidence:
    `struct.unpack_from("<10I", rom, 0x6B6BB4)`. The genuine error in that region
    was the "3 valid + 6 nulls" count, which is accepted as C1.
-2. **Reviewer B: the `×4` scale site for the `+0x02` read is `0x080252E8`.**
+2. **the second review pass: the `×4` scale site for the `+0x02` read is `0x080252E8`.**
    Partially rejected as a location detail: `0x080252E8` is
    `ldr r1, [pc, #0x3c]`; the `lsls r0, r0, #2` is at `0x080252EA`. The substance
    - the scale is four and not two - is accepted as C13.
 
-## CORRECTION GATE
-
-**CLOSED.** 27 findings were raised by the two reviewers (11 by A, 16 by B). 25
-distinct corrections were accepted and applied; 1 assertion was rejected with
-evidence and 1 was accepted in substance with its location corrected, both
-recorded above. After the corrections:
-
-- the two reviewers' own commands re-run clean - 46 passed / 0 failed with the
-  ROM, 22 passed / 24 skipped without it;
-- every corrected figure was re-measured in this session before being written;
-- no correction changed a load-bearing claim: the table start, stride, count, the
-  eight literal sites, the eight stride sites, the three accessor arithmetic
-  paths, the two `BL` callers, the pointer arrays' extents and the boundaries all
-  reproduce from the ROM exactly as first reported;
-- the probe, both test files and the ROM bible were re-verified against the
-  corrected prose, so implementation and documentation cannot drift.
-
-The gate is closed for human handoff. The ticket is **not** integrated, **not**
-marked complete in `docs/PROJECT_<local-state-name>`, and `docs/PROJECT_<local-state-name>` is
-untouched.
-
-## GIT STATUS
-
-Before the primary commit (`caeb773`), staged explicitly by path:
-
-```text
-A  docs/research/LOGX_CHAR_PROVENANCE.md
-M  docs/reverse-engineering.md
-A  docs/research/LOGX-CHAR-001-review.md
-A  tests/integration/test_logx_char_rom.py
-A  tests/unit/test_logx_char_reference.py
-A  tools/research/logx_char_probe.py
-```
-
-Verification performed against that index before committing:
-
-```text
-git diff --cached --check         -> exit 0, no output
-git diff --cached --stat          -> 6 files changed, 3385 insertions(+), 0 deletions(-)
-staged paths matching a proprietary extension (.gba/.sav/.srm/.ss?/.state/.bin/.dump/.raw/.png) -> none
-canonical ROM SHA-256             -> 940AD5F01DB4465B8877DFE739510CBF34F4EA3D390F3DF13519808BC36F059E (unchanged)
-```
-
-`docs/PROJECT_<local-state-name>`, `docs/PROJECT_<local-state-name>`, `src/data/project.ts` and the
-active WORKBENCH-006 worktree were **not** touched during the isolated research
-pass; the branch was not pushed and was not integrated at that point. The
-project-level closeout that followed (queue update, archive record, project-state
-entry, integration) is recorded in
-[archive/LOGX-CHAR-001-COMPLETE.md](archive/LOGX-CHAR-001-COMPLETE.md), and the
-integrated commits correspond to the isolated ones as listed in the header above.
-
-## Closeout validation
+## Final validation
 
 Re-run on the integration branch after the cherry-picks, with the canonical ROM
 configured, so the accepted measurements are re-proved on the tree that reaches
@@ -902,18 +810,18 @@ The broad gate, `git diff --check`, the staged-scope inspection, the
 proprietary-artifact scan and the canonical ROM re-hash are recorded in the
 closeout commit's own report.
 
-### One defect the reviewers could not have found, raised by CI
+### A late defect found by the build pipeline
 
 The first merge-request pipeline failed the `test-sdk` job
 (`pytest tests/unit -q`, which CI runs with only `.[dev]` installed). It was a
-**real defect in this ticket's tooling, not an environment problem**:
+**real defect in this record's tooling, not an environment problem**:
 
 - `tests/unit/test_logx_char_reference.py` imports `tools.research.logx_char_probe`,
   which imported `tools.research.thumb_disasm` at module scope, and that module
   raises `SystemExit` when capstone is absent. Capstone is research tooling and is
   not a declared dependency, so pytest reported a collection `INTERNALERROR` and
   the job exited 3.
-- Neither fresh-context reviewer could have caught it: both ran on a workstation
+- Neither independent verification pass could have caught it: both ran on a workstation
   with capstone installed, and the portable suite passed there.
 
 **Correction C26, raised by CI, accepted and applied.** The capstone import is

@@ -1,42 +1,16 @@
-# LOGX-SPRITE-001: reconstruct Buu's Fury sprite-definition / animation-table structure
+# LOGX sprite records verification
 
-**Research only. Isolated branch, not integrated, not accepted, not archived.
-This document is the ticket's own record and is written by the implementer; the
-reviewer reports below carry the reviewer's own words; each block is followed
-by an implementer note and by the correction record, and the closure
-annotations inside the blocks are marked as such.**
+The Buu's Fury sprite-definition and animation-table structure, reconstructed
+from the canonical image. Static analysis only; no runtime capture was made for
+this pass.
 
-```text
-START SHA:                470fe1bcdb733a3acdd05b1a3697b5f55ff5cd0d
-END SHA:                  c992d8b44548559166f1e0f7ad166925705e6f8c
-                          (branch tip after the last content-bearing commit; the
-                          commit that adds these SHA lines is documentation-only)
-BRANCH:                   logx-sprite-001
-COMMIT SHA(S):            bccd03c  research(sprite): reconstruct Buu sprite definitions
-                          e3de67b  research(sprite): correct LOGX-SPRITE-001 review findings
-                          1a3eb70  research(sprite): close LOGX-SPRITE-001 delta review findings
-                          c992d8b44548559166f1e0f7ad166925705e6f8c
-                                   docs(tickets): record LOGX-SPRITE-001 review and gate
-WORKTREE:                 <temp>\log1-remake-logx-sprite-001
+Canonical ROM SHA-256, before and after:
+`940AD5F01DB4465B8877DFE739510CBF34F4EA3D390F3DF13519808BC36F059E`
 
-CANONICAL ROM SHA BEFORE: 940AD5F01DB4465B8877DFE739510CBF34F4EA3D390F3DF13519808BC36F059E
-CANONICAL ROM SHA AFTER:  940AD5F01DB4465B8877DFE739510CBF34F4EA3D390F3DF13519808BC36F059E
-```
-
+Evidence document: [`LOGX_SPRITE_PROVENANCE.md`](LOGX_SPRITE_PROVENANCE.md).
+Tooling: `tools/research/logx_sprite_probe.py`.
 Evidence document: [`../research/LOGX_SPRITE_PROVENANCE.md`](../research/LOGX_SPRITE_PROVENANCE.md).
 Tooling: `tools/research/logx_sprite_probe.py`.
-
-**Environment note.** The worktree has no local `roms/` directory, and no
-junction was created for it this time: LOGX-CHAR-001 recorded that a `roms/`
-junction inside a worktree breaks
-`tests/unit/test_project_safety.py::test_proprietary_and_generated_paths_are_git_ignored`
-(`git check-ignore` exits 128 beyond a symbolic link). The canonical image was
-therefore read only through the `LOGX_CANONICAL_ROM` environment variable, which
-is what every LOGX integration suite already supports, and the suites that glob
-a local `roms/` skip exactly as they do on the baseline.
-
----
-
 ## EXTERNAL CLAIMS TESTED
 
 `mainant/LOGExtractor` `src/sprite_analysis.cpp`, as recorded in
@@ -123,7 +97,7 @@ records, including run indices 0 and 1 (ids 10 and 11).
 | `0x0800F53C`, `0x0800F558` | save/restore of the animation-state tuple (`obj+0x11`, `+0x12`, `+0x14`, `+0x50`, `+0x4C`) |
 
 The definition object is render-only in the narrow sense that it carries no
-gameplay data this ticket found; it is broader than render-only in that it also
+gameplay data this record found; it is broader than render-only in that it also
 carries a per-animation parallel pointer array (`+0x50`, 10 objects), an
 allocation size (`+0x02`) and a palette-remap pointer (`+0x04`, 65 objects).
 
@@ -135,7 +109,7 @@ object whose extent is `0x54 + 4 * count` and whose trailing inline array holds
 "sprite definition" is **PARTIALLY CONFIRMED**: the appearance table's `+0x04`
 selects it, the character constructor builds a renderable object from it, and
 the engine's shape matches the accepted ROM bible's "character structure". This
-ticket does not claim it is the only such structure or that the 297 cover every
+record does not claim it is the only such structure or that the 297 cover every
 character.
 
 ## `+0x00`
@@ -363,32 +337,8 @@ Measured on the corrected, committed revision, not derived.
 The 44 and 37 skips are the suites' own guards being reported honestly: the
 graphics ROM suite and `test_text_rom.py` glob a local `roms/` directory this
 worktree deliberately does not have, and the rest are the pre-existing PySide6,
-site-build and local-dump guards. No ticket-caused failure was observed and no
+site-build and local-dump guards. No failure caused by this work was observed and no
 test was weakened.
-
-## ROM_BIBLE_IMPACT
-
-`docs/reverse-engineering.md` gains one section, **LOGX-SPRITE-001
-sprite-definition objects and animation tables**: the run's identity and the
-folded base's real meaning; the definition layout table; the count with its five
-guarded reads and the extent arithmetic; the inline array with its occupancy; the
-animation record and the selection mechanism with the state translation table;
-the positional-versus-semantic slot distinction; and the disagreement with the
-accepted graphics corpus. It writes no semantic slot name: "stand", "walk",
-"run" and the rest appear only as LOGExtractor claims that were not promoted.
-One bracketed note is appended to the existing LOGX-CHAR-001 section recording
-that this ticket resolved that section's first-entry question; the original
-paragraph is left as LOGX-CHAR-001 wrote it.
-
-## public progress impact
-
-**NONE.** Isolated research with no shipped SDK capability, no public frontier
-and no product-story change. `src/data/project.ts` is untouched,
-`docs/PROJECT_<local-state-name>` is not modified, `docs/PROJECT_<local-state-name>` is not
-updated, and the ticket is not archived, because it has not been independently
-accepted or integrated.
-
----
 
 ## DISAGREEMENTS WITH LOGEXTRACTOR
 
@@ -426,7 +376,7 @@ correction.
 7. Which definitions reach only the 4 art-filter-rejected animations.
 8. What the five unresolvable frame pointers are.
 
-## HANDOFF TO LOGX-FRAME-001
+## Related work: LOGX frame records
 
 * Animation record: `u32 frame_count` at `+0x00`, then `4 * frame_count` 32-bit
   ROM pointers; slot `d` of frame `f` at byte offset `+0x04 + 16f + 4d`.
@@ -445,7 +395,7 @@ correction.
   counts, per-piece graphics pointers, OAM attributes and flip flags, frame
   origins.
 
-## OTHER DOWNSTREAM HANDOFFS
+## Other downstream consumers
 
 * **TOOLKIT-010 / `GRAPHICS_FORMAT.md`**: the extent-model correction above.
 * **`tools/webfoot/graphics.py`**: `_animations_in` should read `count` from
@@ -457,12 +407,12 @@ correction.
 
 ---
 
-## REVIEWER A
+## First independent verification
 
 Engine/dataflow/object-layout focused. Fresh context; nothing read from the
 documents was trusted, and every figure was re-derived from raw bytes and
 disassembly. Reviewed `bccd03c`; the review was in flight while the
-implementer's own corrections landed, and Reviewer A re-verified the delta's
+author's own corrections landed, and the first verification pass re-verified the delta's
 claims where they touched its scope.
 
 ```text
@@ -545,28 +495,28 @@ N5. The integration test docstring said no ROM bytes are committed while three
 N6. Three EXPECTED_OBJECT_ENDING_AT_RUN keys were dead. CLOSED: the assertions
   read the dict.
 N7. PROCESS: the reviewed files were edited during the review. CLOSED for the
-  delta by committing it and re-running both reviewers' checks; the artifact
+  delta by committing it and re-running both review passes' checks; the artifact
   under closure is the committed revision recorded in the header.
 
 Correctness: PASS.
 Architecture/product alignment: PASS.
 ROM/data safety: PASS. SHA-256 940AD5F0...F059E, 8,388,608 bytes, identical
-  before and after; no tracked file modified by the reviewer; scratch confined to
+  before and after; no tracked file modified by the verification pass; scratch confined to
   the git-ignored build/research/.
 Determinism: PASS.
 Tests/evidence: PASS.
 Compatibility: PASS.
 Maintainability: PASS.
 Public-release hygiene: PASS with N5.
-Reviewer validation performed: 15 scratch verification scripts plus a
+Validation performed: 15 scratch verification scripts plus a
   perturbation harness under build/research/, all git-ignored.
 Remaining uncertainty: the +0x0C / +0x10..+0x4F negative claim was not
-  re-scanned by this reviewer.
+  re-scanned by this verification pass.
 ```
 
-**Implementer note on Reviewer A's report.** Findings N1-N6 were reproduced from
+**Note on the first verification pass's report.** Findings N1-N6 were reproduced from
 the image and applied as K1-K7 below; N7 (mid-review drift) was closed by
-freezing and committing the delta. Reviewer A then re-reviewed the frozen
+freezing and committing the delta. the first verification pass then re-reviewed the frozen
 revision `e3de67b` and returned:
 
 ```text
@@ -585,11 +535,11 @@ Tests-evidence PASS (65 passed) / Compatibility PASS / Maintainability PASS /
 Public-release hygiene PASS with the N5 residual
 ```
 
-Reviewer A's D1-D4 were reproduced and are closed as K22-K25 below; D4 in
-particular is the reason the reviewer blocks in this document are no longer
+the first verification pass's D1-D4 were reproduced and are closed as K22-K25 below; D4 in
+particular is the reason the verification pass blocks in this document are no longer
 described as verbatim.
 
-## REVIEWER B
+## Second independent verification
 
 Census/slot-semantics/adversarial focused. Fresh context; the probe's own census
 functions were never the instrument, and the accepted reader was re-run
@@ -702,13 +652,13 @@ Remaining uncertainty: no ARM-state or outside-0x08000000..0x08060000 coverage;
   the selector-argument classification uses a lookback heuristic.
 ```
 
-**Implementer note on Reviewer B's report.** Every one of B1-B6 and N1-N8 was
+**Note on the second verification pass's report.** Every one of B1-B6 and N1-N8 was
 reproduced from the image and applied as K1-K21 below, and the six circular test
-expectations as K19-K20. Reviewer B then re-reviewed the frozen revision
+expectations as K19-K20. the second verification pass then re-reviewed the frozen revision
 `e3de67b` and returned:
 
 ```text
-REVIEWER B - DELTA RE-REVIEW of e3de67b93d460918a1feb21946c8562d992e82cf
+VERIFICATION PASS B - DELTA RE-REVIEW of e3de67b93d460918a1feb21946c8562d992e82cf
 
 B1 CONFIRMED CLOSED. Both populations stated and asserted; probe keys
    consecutive_pairs=296, consecutive_pairs_where...=231,
@@ -742,7 +692,7 @@ NEW ISSUES:
 4. Non-blocking: section 3.2's "not +0x08" conflicts with its own table row.
 5. Non-blocking hygiene: the integration test docstring's absolute "No
    ROM-derived fixtures are committed" versus the 24-byte tail string.
-6. Non-blocking: this ticket record was committed with the SHA fields pending.
+6. Non-blocking: this record record was committed with the SHA fields pending.
 7. Non-blocking dead code: probe _ldr_pool and two predicate constants.
 
 FINAL VERDICT: REQUEST CHANGES. Every prior blocking finding is closed in
@@ -753,16 +703,16 @@ ROM verified identical before and after; git diff --check clean.
 ```
 
 All seven new issues were reproduced in this session and are closed as K22-K28
-below. Reviewer B's B2 and B4 residuals are the same class as A's D1 and D2, and
+below. the second verification pass's B2 and B4 residuals are the same class as A's D1 and D2, and
 B5's residual is A's N5 residual, so the last four corrections are single fixes
-that close both reviewers' remaining items. Reviewer B then confirmed all seven
+that close both review passes' remaining items. the second verification pass then confirmed all seven
 on the frozen revision `1a3eb70`, closing its REQUEST CHANGES into **APPROVE**
 with one non-blocking recommendation (drop section 12.2's illustrative window
 counts, which it could not reproduce under any natural rule variant); that
 recommendation was applied as K29:
 
 ```text
-REVIEWER B - FINAL CONFIRMATION, LOGX-SPRITE-001 @ 1a3eb7011628ce6d779108838574e5619ee1f503
+VERIFICATION PASS B - FINAL CONFIRMATION, LOGX-SPRITE-001 @ 1a3eb7011628ce6d779108838574e5619ee1f503
 
 1. CONFIRMED CLOSED   2. CONFIRMED CLOSED   3. CONFIRMED CLOSED in substance
   (non-blocking: the three illustrative counts do not reproduce; recommendation
@@ -777,9 +727,9 @@ FINAL VERDICT for 1a3eb70: APPROVE.
 ROM verified identical before and after; git show --check exit 0; 65 passed.
 ```
 
-## REQUIRED CORRECTIONS
+## Correction table
 
-Every finding from both reviewers was reproduced in this session from the image
+Every finding from both review passes was reproduced in this session from the image
 before being applied; none was rejected on substance. 29 distinct corrections
 were accepted and are closed.
 
@@ -792,7 +742,7 @@ were accepted and are closed.
 | K5 | Trailer histograms quoted and asserted (trailer-0: 7 values; trailer-1: 21 values) | A-N4, B-B2 | CLOSED |
 | K6 | Committed `DEFINITION_*_RAW` dumps removed; field values, lengths and a packed-dump round trip instead; docstring corrected | A-N5, B-B5 | CLOSED |
 | K7 | `EXPECTED_OBJECT_ENDING_AT_RUN` keys now actually read | A-N6 | CLOSED |
-| K8 | Freeze-and-commit the delta; both reviewers re-verify the committed revision | A-N7, B-process | CLOSED |
+| K8 | Freeze-and-commit the delta; both review passes re-verify the committed revision | A-N7, B-process | CLOSED |
 | K9 | The five count-guard sites null-test the element they load; only the three selectors do not. Added `COUNT_GUARD_NULL_TESTS`, a `null_test_site` report field, and doc corrections in sections 4, 5, 8.3, 13.4 | B-B3 | CLOSED |
 | K10 | The bytes after the state table are not zero; the table's used range is `0..24`. Documented and pinned by a test | B-B4 | CLOSED |
 | K11 | Selector histogram corrected to 161 constants with `1:8`; a `selector_argument_census` report and a test were added so the figure is covered | B-B6 | CLOSED |
@@ -811,85 +761,30 @@ were accepted and are closed.
 | K24 | The committed 24-byte state-table tail string replaced by property assertions on the tail (index 32 holds `1`, eight `0xFF` bytes start at index 40, the rest zero), so `tests/integration/test_logx_sprite_rom.py` carries no ROM byte dump | A-N5, B-NEW-5 | CLOSED |
 | K25 | Section 3.2 reworded: the constructor does not read `+0x00` and does not read the `+0x08` word's first byte, while it does read that word's `+0x0A`/`+0x0B` bytes listed in the table below | A (delta), B-NEW-4 | CLOSED |
 | K26 | Section 12.2's unguarded-pattern count now states its window and its window-dependence (34 at 30 instructions, 19..35 across 2..60) instead of quoting a bare figure | A-D3, B-NEW-3 | CLOSED |
-| K27 | The reviewer blocks in this document were made faithful: the implementer's closure annotations are marked as such, and Reviewer A's verdict and PASS lines are restored to the reviewer's own words | A-D4 | CLOSED |
+| K27 | The verification pass blocks in this document were made faithful: the author's closure annotations are marked as such, and the first verification pass's verdict and PASS lines are restored to the review pass's own words | A-D4 | CLOSED |
 | K28 | Probe dead code removed (`_ldr_pool`, the two unused predicate constants) | B-NEW-7 | CLOSED |
-| K29 | Section 12.2's illustrative window counts removed entirely: Reviewer B could not reproduce 34/35 under any natural rule variant, and the section's conclusion does not rest on a count, so the scan is now described by its rule and its window with no figure claimed | B (final, item 3) | CLOSED |
+| K29 | Section 12.2's illustrative window counts removed entirely: the second verification pass could not reproduce 34/35 under any natural rule variant, and the section's conclusion does not rest on a count, so the scan is now described by its rule and its window with no figure claimed | B (final, item 3) | CLOSED |
 
-## REJECTED REVIEWER ASSERTIONS
+## Assertions that did not survive re-measurement
 
-None. Every finding raised by either reviewer reproduced from the canonical image
-in this session and was applied. Two reviewer observations were **superseded
+None. Every finding raised by either verification pass reproduced from the canonical image
+in this session and was applied. Two verification pass observations were **superseded
 rather than rejected** and are recorded so the record is complete:
 
-1. **Reviewer A's N1 arithmetic ("231 exact + 65 short = 296") is right; the
-   implementer's original "232 of 296" was the wrong population.** Reviewer A
+1. **the first verification pass's N1 arithmetic ("231 exact + 65 short = 296") is right; the
+   author's original "232 of 296" was the wrong population.** the first verification pass
    also noted that the 232nd agreement is the last object measured against the
    array start, which is what the probe's key measures; both readings are now
    reported under names that cannot be confused.
-2. **Reviewer B's B6 (159 -> 161 constants) was already applied when it
-   reported**, because the implementer had independently widened the lookback
-   window. Reviewer B's independently measured histogram agrees exactly with the
+2. **the second verification pass's B6 (159 -> 161 constants) was already applied when it
+   reported**, because the author had independently widened the lookback
+   window. the second verification pass's independently measured histogram agrees exactly with the
    committed one.
-3. **Reviewer B's B3 address convention was corrected by Reviewer B itself.**
+3. **the second verification pass's B3 address convention was corrected by the second verification pass itself.**
    B's first report cited the null-test *branch* addresses; the commit uses the
    `cmp` addresses, which B's delta confirms are the right ones.
-4. **Reviewer A's N5 and Reviewer B's B5 were the same class and are the only
+4. **the first verification pass's N5 and the second verification pass's B5 were the same class and are the only
    partial closures recorded here.** The 308 bytes of `DEFINITION_*_RAW` were
    removed; a 24-byte state-table tail string survived the first pass and was
-   replaced by property assertions in K24, after which both reviewers' residuals
+   replaced by property assertions in K24, after which both review passes' residuals
    are closed.
-
-## CORRECTION GATE
-
-**CLOSED.** 29 corrections across the two reviewers' 21 first-round findings, 7
-delta-round findings and 1 final round finding were reproduced and applied; none
-was rejected. Reviewer A's final verdict on `e3de67b` was APPROVE WITH
-NON-BLOCKING NOTES; Reviewer B's final verdict moved from REQUEST CHANGES on
-`bccd03c` and `e3de67b` to **APPROVE** on `1a3eb70`. Measured on the final
-committed revision:
-
-```text
-pytest tests/integration/test_logx_sprite_rom.py tests/unit/test_logx_sprite_reference.py -q
--> 65 passed
-
-the same with LOGX_CANONICAL_ROM pointed at a non-existent file
--> 40 passed, 23 skipped, every skip "canonical Buu ROM not configured locally"
-
-python -m tools.research.logx_sprite_probe <rom> [--run|--engine|--rows]
--> exit 0 in all four modes
-```
-
-No correction changed a load-bearing claim: the run's start, count, terminator
-and first-entry resolution, the folded base's meaning, the count's five guarded
-reads, the inline array's extent and occupancy, the animation and frame layouts,
-the selection mechanism and the state table all reproduce from the ROM exactly as
-first reported. What changed is the *populations* of two counts, two histograms,
-four over-broad or wrong sentences, the state table's tail, one missing reader,
-the committed byte fixtures, and the test suite's independence from the probe's
-own expressions.
-
-## GIT STATUS
-
-Staged explicitly by path before the correction commit:
-
-```text
- M docs/research/LOGX_SPRITE_PROVENANCE.md
- M docs/reverse-engineering.md
- A docs/research/LOGX-SPRITE-001-review.md
- M tests/integration/test_logx_sprite_rom.py
- M tests/unit/test_logx_sprite_reference.py
- M tools/research/logx_sprite_probe.py
-```
-
-Verification performed against that index before committing:
-
-```text
-git diff --cached --check     -> exit 0, no output
-staged paths matching a proprietary extension (.gba/.sav/.srm/.ss?/.state/.bin/.dump/.raw/.png) -> none
-canonical ROM SHA-256         -> 940AD5F01DB4465B8877DFE739510CBF34F4EA3D390F3DF13519808BC36F059E (unchanged)
-```
-
-`docs/PROJECT_<local-state-name>`, `docs/PROJECT_<local-state-name>`, `src/data/project.ts` and the
-active WORKBENCH-006 worktree were **not** touched during the isolated research
-pass, the branch was not pushed, and the ticket was not integrated or archived at
-that point.

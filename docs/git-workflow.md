@@ -2,20 +2,19 @@
 
 How to push a branch, open a merge request and finalize after merge in this
 repository without tripping on environment or tooling traps. Operational only:
-permanent rules stay in [`../DEVELOPMENT.md`](../DEVELOPMENT.md) and
-[`../docs/DEVELOPMENT.md`](../docs/DEVELOPMENT.md).
+the permanent rules stay in [`DEVELOPMENT.md`](DEVELOPMENT.md) and
+[`REVIEW.md`](REVIEW.md).
 
 Read this before pushing, and before reporting any authentication failure. The
 most expensive mistake in this area is misreading an environment problem as a
-permissions problem: agent sessions are non-interactive, so a credential helper
-that depends on an interactive login profile can hand git an empty password and
-produce an "Access denied" that says nothing about authorization. Diagnose the
-resolved helper before concluding anything, and never retry a push in a loop,
-weaken a credential check, or work around one.
+permissions problem: a non-interactive session does not run an interactive login
+profile, so a credential helper that depends on one can hand git an empty
+password and produce an "Access denied" that says nothing about authorization.
+Diagnose the resolved helper before concluding anything, and never retry a push
+in a loop, weaken a credential check, or work around one.
 
-This document is deliberately not summarized in `docs/DEVELOPMENT.md`: that file is bound
-to 300 lines as an always-loaded context budget and is already at 299, so a new
-rule has to be condensed to fit rather than displace an existing one.
+This document is operational detail and is deliberately not summarized in the
+policy documents, which stay readable by being concise.
 
 ## Credential helper: the canonical setup
 
@@ -42,16 +41,16 @@ git config --list --show-origin | grep credential
 
 ### The failure this prevents
 
-`<home>\.gitconfig` (seen from MSYS2 as `<home>/.gitconfig`)
+`~/.gitconfig` (seen from MSYS2 as `/home/<user>/.gitconfig`)
 previously set a per-host helper that read a shell variable:
 
 ```text
 helper = "!f() { echo username=oauth2; echo password=$GITLAB_TOKEN; }; f"
 ```
 
-`GITLAB_TOKEN` is set by an interactive login profile. **Agent and scripted
-sessions are non-interactive and do not run that profile, so the variable is
-empty**, the helper emits an empty password, and GitLab refuses the push. The
+`GITLAB_TOKEN` is set by an interactive login profile. **A scripted or
+non-interactive session does not run that profile, so the variable is empty**,
+the helper emits an empty password, and GitLab refuses the push. The
 trap is that this global helper is consulted *before* the correct repository
 helper, so the working configuration never gets a chance. Reads such as
 `git ls-remote` had already been satisfied by an earlier credential lookup,

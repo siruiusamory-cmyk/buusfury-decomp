@@ -1,12 +1,14 @@
-# TOOLKIT-007 closure: map content editing and round-trip
+# Map content editing and round trip
 
-Implemented 2026-09-06 from baseline `0851cd81db6dc3c551e8f69369a0fcd57be89f08`.
-Awaiting owner review. Unrelated dirty and untracked work preserved.
+Editing map content with a byte-identical round-trip proof: the supported corpus,
+the semantic edit proof, the cross-subsystem write safety and the remaining
+unknowns.
+
 
 ## Tests and results
 
 `869 passed, 0 failed` across the whole repository (was 804; **+65**), three
-pre-existing marker warnings unrelated to this ticket.
+pre-existing marker warnings unrelated to this record.
 
 TOOLKIT-007 contributes **65**, which is exactly the 869 - 804 delta:
 
@@ -25,7 +27,7 @@ and skip cleanly when the user-supplied ROM is absent.
 An unrelated pre-existing environment fault affects `tmp_path` on this machine
 (`PermissionError` on the default pytest temp root); it reproduces on the
 untouched `tests/unit/test_text_project.py` and is worked around with
-`--basetemp`. It is not caused by, and does not affect, this ticket's code.
+`--basetemp`. It is not caused by, and does not affect, this record's code.
 
 ## Supported map corpus
 
@@ -106,20 +108,20 @@ broad collision RE for a future editor's benefit.
    verified**. An earlier draft of the evidence doc said "88 unverified targets",
    implying one was verified; corrected to 89.
 
-4. **`docs/PROJECT_<local-state-name>` exceeded its 240-line budget (241).** The budget is
+4. **`docs/PROJECT_<local-state-name>` exceeded its documented bound (241).** The budget is
    enforced by `test_required_workflow_files_exist_and_are_bounded` and exists to
-   push completed-ticket records into the continuation file. Fixed by moving the
+   push completed-record records into the continuation file. Fixed by moving the
    oldest COMPLETE entry (TOOLKIT-003, already marked "older baselines below are
    historical") verbatim into `docs/PROJECT_<local-state-name>`, which documents itself
    as holding exactly those records, **not** by raising the limit.
-5. **Two workflow tests pinned the previous ticket's name.**
+5. **Two workflow tests pinned the previous record's name.**
    `test_context_split_...` and `test_toolkit_activation_...` asserted literal
    `# TOOLKIT-006`, `Do not begin TOOLKIT-007` and `archive/TOOLKIT-005.md`, so
    they fail on every activation, the same class TOOLKIT-003 hit ("obsolete
-   ticket assertions, fixed"). Rewritten to derive the id from PROJECT_<local-state-name>'s own
+   record assertions, fixed"). Rewritten to derive the id from the working queue's own
    heading, which is the convention
    `test_runner_dry_run_works_from_an_unrelated_directory` already states
-   explicitly ("rather than pinning one ticket's name here"). The invariant they
+   explicitly ("rather than pinning one record's name here"). The invariant they
    check is unchanged and now survives the next activation.
 
 ## Explicit tradeoff: the typed-array threshold
@@ -145,27 +147,6 @@ retained as an **explicit classifier heuristic and nothing more**.
 It is called out rather than buried because it is the single knob deciding the
 35/117 split, and therefore the typed ROUND_TRIP counts and the 89-edge graph.
 
-## Files changed
-
-Added:
-* `tools/webfoot/formats/map_slots.py`: slot codec, two rungs
-* `tools/webfoot/maps.py`: semantic layer, identity, graph, write plan
-* `tests/unit/test_map_slots.py`, `tests/unit/test_maps.py`,
-  `tests/unit/test_map_project.py`
-* `tests/integration/test_local_maps_rom.py`
-* `docs/research/MAP_FORMAT.md`
-
-Modified:
-* `tools/webfoot/project/model.py`: `maps/maps.toml` authoring surface
-* `tools/webfoot/build.py`: extract/validate/build map integration
-* `tools/webfoot/cli.py`: `webfoot map list|show|connections|validate-round-trip`
-* `docs/research/AUTO_RE_<local-state-name>`: AUTO-012 scope correction
-* `docs/PROJECT_<local-state-name>`: baseline entry; TOOLKIT-003's record moved out to
-  hold the 240-line budget
-* `docs/PROJECT_<local-state-name>`: receives TOOLKIT-003's record verbatim
-* `tests/unit/test_workflow_migration.py`: ticket-name assertions derived from
-  PROJECT_<local-state-name>'s heading instead of pinned
-
 ## Canonical input status
 
 Unchanged, verified before and after:
@@ -186,7 +167,7 @@ Unchanged, verified before and after:
 * Every slot word in the 117 opaque arrays.
 * Collision representation; canonical map display names.
 
-## Scope held
+## Scope and canonical growth
 
 No graphical editor, no tileset UI, no LOGII map archaeology, no script-semantic
 expansion, no free-space archaeology, no ROM growth, no AUTHOR_NEW maps, no fresh

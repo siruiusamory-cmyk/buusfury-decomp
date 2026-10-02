@@ -1,18 +1,11 @@
-# DIALOGUE-VARIABLE-LENGTH-001 - Variable-length replacement of existing compressed dialogue
+# Variable-length replacement of compressed dialogue
 
-> **Recorded out of sequence.** This ticket was instructed directly by the owner
-> and is not the ticket `PROJECT_<local-state-name>` names. `PROJECT_<local-state-name>` still records
-> `CQA-05-06-WORKBENCH-STATE-AND-ERRORS-001` as **NOT STARTED**, and the ticket
-> queue remains the owner's to change. Nothing in `PROJECT_<local-state-name>`, CQA-07, CQA-08,
-> CQA-10 or WORKBENCH-006 was touched by this work.
+Replacing an existing compressed-dialogue record with text of a different decoded
+length through the production path: the measured result and its bounds.
 
-TICKET CLASS: AUTHORING CAPABILITY / FORMAT PROOF
+Evidence document: [`ROM_DIALOGUE_VARIABLE_LENGTH.md`](ROM_DIALOGUE_VARIABLE_LENGTH.md).
 
-Predecessor: [`archive/ROM-CAPACITY-AND-ALLOCATION-001-COMPLETE.md`](archive/ROM-CAPACITY-AND-ALLOCATION-001-COMPLETE.md)
-§11, which refused exactly this request by design and named the route to it. The
-allocator, generated-expansion, safe-write, provenance and packed-stream
-termination infrastructure it delivered is **used** here, not rebuilt. Evidence
-record: [`../research/ROM_DIALOGUE_VARIABLE_LENGTH.md`](../research/ROM_DIALOGUE_VARIABLE_LENGTH.md).
+record: [`ROM_DIALOGUE_VARIABLE_LENGTH.md`](ROM_DIALOGUE_VARIABLE_LENGTH.md).
 
 ## Objective
 
@@ -26,7 +19,7 @@ semantic record, and the retail engine displays the whole longer line.
 Acceptance case: `goku-greeting`, retail `Good luck, Goku!` (32 decoded bytes),
 authored `Hot take: SSJ3 is the worst form imo` (72 decoded bytes).
 
-## Context Delta
+## Context and measurements
 
 Numeric shape of a handle, the consumer's reading of it, and the container's
 layout policy as measured here (each with its evidence in the research record):
@@ -50,23 +43,6 @@ layout policy as measured here (each with its evidence in the research record):
   15 occurrences outside the carrier structure; all 15 are data, none is in the
   dialog pool, and they are the M4 control.
 
-## Required Work
-
-1. ONE authoritative handle encode/decode with a typed `DialogueHandle` and
-   validation of every field boundary. No writer path shifts bits itself.
-2. Deterministic container re-layout: splice at the record's own end, shift every
-   record at or after it, re-author each handle, and refuse a container whose
-   records cross the edited span.
-3. Container-wide and reference-consistency invariants, failing closed before any
-   pack, allocation or plan.
-4. Relax the authoring contract to "replace this record with this text"; keep an
-   anchor-based identity (`selector`, decoded start) so a derivative reopens as
-   the same semantic record after its handle changed.
-5. Carry the edit in the existing manifest (`dialogue_edits`); no third sidecar.
-6. Focused tests including the five mutations M1-M5, and one ROM-backed proof.
-7. Runtime proof through the tracked Checkpoint D mGBA chain, retargeted at the
-   re-authored handle, with a neighbour/container semantic control.
-
 ## Runtime Inputs
 
 - Canonical ROM `roms/Dragon Ball Z - Buu's Fury (U).gba`, SHA-256
@@ -76,12 +52,12 @@ layout policy as measured here (each with its evidence in the research record):
   into the ignored run directory before use and never modified.
 - mGBA 0.11 dev build at the path the tracked runner already names and verifies.
 
-## Required Delegation
+## Work split
 
 Two read-only investigations were delegated: static disassembly of the consumer
 chain at `0x08012240`, and an operational map of the Checkpoint D runtime
 workflow. Both are cited in the research record. The permanent independent-review
-gate applies (nontrivial code-bearing ticket).
+gate applies (nontrivial code-bearing record).
 
 ## Scope Boundaries
 
@@ -95,39 +71,10 @@ gate applies (nontrivial code-bearing ticket).
 - No Workbench redesign; leave the capability headless if GUI integration would
   cross the deferred CQA gates.
 
-## Ticket-Specific Validation
+## Validation
 
 - Explicit test files/nodes only: handles, dialogue authoring, compressed-dialogue
   write guard, the new variable-length authoring file, allocation/provenance,
   write invariants, mGBA capture guards, and the two ROM-gated dialogue proofs.
 - Mutation validation runs only the node expected to detect each mutation.
 - `git diff --check` clean; canonical ROM digest verified before and after.
-
-## Required Review
-
-Independent code review of the frozen candidate: a DSH `the hosted reviewer` session and
-a fresh `the local reviewer` machine-readable review against the same SHA. Blocking
-findings require correction commits and fresh review; the frozen candidate is not
-amended. The reviewer must independently verify the handle bitfield
-interpretation, that the new handle is production-authored, that the decoded
-length really changes, that every semantic reference updates while unrelated
-equal words do not, that the downstream layout is correct, that neighbours
-survive, that the allocator and the production writer/provenance are used, that
-the runtime displays the complete longer line, that the canonical ROM is
-immutable, and that no broad tests or unrelated GUI work occurred.
-
-## Completion Criteria
-
-The sixteen acceptance criteria of the ticket, including the runtime display of
-the complete line `Hot take: SSJ3 is the worst form imo` with no truncation, an
-unchanged canonical ROM, and all five mutations detected.
-
-## Final Report Requirements
-
-`public progress impact` classification, the capability-registry result, and the
-ticket's STATUS REPORT skeleton, completed from measured values only.
-
-## Stop
-
-Stop after the STATUS REPORT and the independent review. Do not commit, merge or
-start another ticket; return for review and closeout.

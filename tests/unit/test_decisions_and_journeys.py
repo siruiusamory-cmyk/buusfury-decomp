@@ -313,10 +313,10 @@ def test_a_journey_describes_a_sequence_of_steps():
 def test_every_journey_and_adr_link_resolves():
     """A decision whose evidence link 404s is not authoritative evidence.
 
-    Checked only over the files this directory owns. The repository has a known
-    backlog of broken relative links under ``docs/research/archive/`` from
-    archived ``PROJECT_<local-state-name>`` copies, and a repository-wide link check would fail
-    on that pre-existing debt rather than on anything here.
+    Checked only over the files in ``docs/decisions/`` and ``docs/journeys/``:
+    the check is scoped to the documents this module owns, so an unrelated
+    pre-existing dead link elsewhere in the repository cannot fail it, and a
+    link added in these two directories still cannot rot unnoticed.
     """
     for path in [DECISIONS_INDEX, JOURNEYS_INDEX, *adr_files(), *journey_files()]:
         text = path.read_text(encoding="utf-8")

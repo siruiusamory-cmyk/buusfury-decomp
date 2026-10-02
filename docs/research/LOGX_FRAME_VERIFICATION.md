@@ -1,22 +1,14 @@
-# LOGX-FRAME-001 review: reconstruct Buu's Fury animation / frame / multipart sprite records
+# LOGX frame and animation records verification
 
-Status: **isolated research complete, independent review closed, not integrated.**
-This ticket is not marked complete in `PROJECT_<local-state-name>`, is not archived, and does not
-update canonical `PROJECT_STATE`.
+The Buu's Fury animation, frame and multipart sprite records, reconstructed from
+the canonical image. Static analysis only; no runtime capture was made for this
+pass.
 
-```text
-START SHA:            274502187596066cabf77c09bbefea5062438580
-END SHA:              b731897c5e4c46646c3507c99edaf477d165d6a3
-BRANCH:               logx-frame-001
-COMMIT SHA(S):        b731897c5e4c46646c3507c99edaf477d165d6a3  (research)
-                      plus the follow-up commit that records this SHA
+Canonical ROM SHA-256, before and after:
+`940AD5F01DB4465B8877DFE739510CBF34F4EA3D390F3DF13519808BC36F059E`
 
-CANONICAL ROM SHA BEFORE: 940AD5F01DB4465B8877DFE739510CBF34F4EA3D390F3DF13519808BC36F059E
-CANONICAL ROM SHA AFTER:  940AD5F01DB4465B8877DFE739510CBF34F4EA3D390F3DF13519808BC36F059E
-```
-
----
-
+Evidence document: [`LOGX_FRAME_PROVENANCE.md`](LOGX_FRAME_PROVENANCE.md).
+Tooling: `tools/research/logx_frame_probe.py`.
 ## EXTERNAL CLAIMS TESTED
 
 | Claim | Source | Verdict |
@@ -27,7 +19,7 @@ CANONICAL ROM SHA AFTER:  940AD5F01DB4465B8877DFE739510CBF34F4EA3D390F3DF1351980
 | "all 10,959 frames declare exactly one piece" | accepted `GRAPHICS_FORMAT.md` §2, §4 | **REFUTED**: 21 frames declare 2 or 4 pieces |
 | "the four slots are numbered, never named" | accepted `GRAPHICS_FORMAT.md` §10 | **CONFIRMED as policy**, and strengthened: the four engine values and their axis split are observable; the physical order remains `INFERRED` |
 | the animation record is `u32 frame_count` then `frame_count*4` pointers, direction-major | accepted `GRAPHICS_FORMAT.md` §2 | **CONFIRMED** |
-| `16*frame + 4*direction + 4` indexes the selected animation | LOGX-SPRITE-001 handoff | **CONFIRMED** as a two-dimensional cell table |
+| `16*frame + 4*direction + 4` indexes the selected animation | LOGX-SPRITE-001 downstream note | **CONFIRMED** as a two-dimensional cell table |
 | multipart frames with a piece count | LOGExtractor | **CONFIRMED** |
 | flip/flag fields in a piece | LOGExtractor | **CONFIRMED as stored bits** at `+0x04` (horizontal flip set on 2,848 pieces, vertical on none); the rendering effect is `UNRESOLVED` |
 | sprite origins / hitbox | LOGExtractor | **UNRESOLVED**; out of scope per section P |
@@ -200,7 +192,7 @@ FLIP / ATTRIBUTE FIELDS:  A packed OBJ attribute pair IS stored, at piece +0x04,
                           Where the horizontal pair differs in attribute-1 bit 12 the two
                           cells name the SAME container in 2,599 of 2,600 poses, so the bit
                           is a flip applied to shared art - which is what an earlier draft
-                          of this ticket got backwards.
+                          of this record got backwards.
 PALETTE RELATIONSHIP:     No palette field in a frame or a piece: the 12-byte record's six
                           fields all have a located engine read.  UNRESOLVED at this level.
 GRAPHICS RELATIONSHIP:    piece +0x08 is a pointer to a packed Webfoot container.  Every one
@@ -277,7 +269,7 @@ graphics `0x08578FE8` declaring 4096.
    reader dropped - **do not exist under this layout**; they were artifacts of the
    16-byte piece stride.
 2. The graphics-pointer population was mis-stated in earlier drafts of this
-   ticket itself. Two successive errors were found by the independent reviewers and
+   record itself. Two successive errors were found by the independent verification passes and
    corrected: an early rule accepted words such as `0x80002000` that resolve as GBA
    addresses but point into the code area, and a later draft reported a 19-piece
    "relative pointer" minority that does not exist. The final rule requires all
@@ -296,8 +288,8 @@ graphics `0x08578FE8` declaring 4096.
 5. 1,017 frame targets are shared sub-records of a larger frame, so the counted
    extent lands on the next known frame start for 9,963 of the **10,979 consecutive
    frame pairs** and not for all of them. Both numbers are reported.
-6. **This ticket corrected itself four times under review**, each time because a
-   reviewer reproduced a measurement that contradicted the draft: the resolution
+6. **This record corrected itself four times under review**, each time because a
+   verification pass reproduced a measurement that contradicted the draft: the resolution
    rule, the "no attribute word" claim, the frame-header description, and the
    direction of the horizontal-flip correlation. Every correction is recorded in
    place rather than quietly patched, and each is cross-referenced from the
@@ -340,14 +332,14 @@ tests/unit/test_logx_frame_probe.py                    20 passed  (ROM absent)
 tests/unit/test_logx_frame_probe.py                    20 passed, 1 skipped (capstone present)
 tests/integration/test_logx_frame_rom.py               25 passed  (ROM configured)
 tests/integration/test_logx_frame_rom.py               25 skipped (ROM absent, no errors)
-tests/integration/test_logx_sprite_rom.py              (see GIT STATUS section)
-tests/integration/test_graphics_rom.py                 (see GIT STATUS section)
+tests/integration/test_logx_sprite_rom.py              (recorded in the audit trail)
+tests/integration/test_graphics_rom.py                 (recorded in the audit trail)
 ```
 
 ```text
 ROM_BIBLE_IMPACT:         UPDATED - new `## LOGX-FRAME-001` section in
                           docs/reverse-engineering.md (evidence above threshold only)
-public progress impact:   NONE - isolated research on internal record layout; no new
+public-progress impact:   NONE - isolated research on internal record layout; no new
                           shipping capability, no user-visible behaviour change
 ```
 
@@ -384,7 +376,7 @@ documents are deliberately left unmodified.
    preserved attribute-1 bits 9-15 mean for tile numbering.
 8. What `definition + 0x50`'s parallel array holds (left open by LOGX-SPRITE-001).
 
-## HANDOFF TO LOGX-GFXSCAN-001
+## Related work: LOGX graphics discovery
 
 * The boundary: the frame record, its pieces, the graphics **pointer** and the
   joint resolution test are in scope here; unknown or unindexed graphics
@@ -397,9 +389,9 @@ documents are deliberately left unmodified.
   absolute one, so a portable discovery scan should accept both and require a
   decodable container whose declared size is credible.
 * The piece attribute pair's `0xFE00FFFF` merge preserves attribute-1 bits 9-15;
-  whatever rebuilds the tile number is the next thing a graphics ticket needs.
+  whatever rebuilds the tile number is the next thing a graphics record needs.
 
-## OTHER DOWNSTREAM HANDOFFS
+## Other downstream consumers
 
 * `GRAPHICS_FORMAT.md` §2/§4: two statements are refuted (the 16-byte piece
   stride, "all frames are single-piece") and one is corrected by a single offset
@@ -411,24 +403,24 @@ documents are deliberately left unmodified.
   (`+0x04`). `Piece.shape`/`size`/`horizontal_flip`/`vertical_flip` are **kept**.
   `decode_animation` needs no change. Left to the production owner.
 * `tools/webfoot/graphics.py::_animations_in` (LOGX-SPRITE-001 §10.1): unchanged,
-  not this ticket's to repair.
-* LOGX-SPRITE-001: its frame-record handoff is superseded in two places; its
-  animation-object handoff is confirmed in full.
+  not this record's to repair.
+* LOGX-SPRITE-001: its frame-record downstream note is superseded in two places; its
+  animation-object downstream note is confirmed in full.
 
-## REVIEW
+## Independent verification
 
-Two fresh-context reviewers were used, neither of which had seen the other's work
+Two independent verification passes were used, neither of which had seen the other's work
 or this conversation.
 
 ```text
-REVIEWER A (engine / dataflow / frame layout):
-REVIEWER B (census / adversarial graphics semantics):
+VERIFICATION PASS A (engine / dataflow / frame layout):
+VERIFICATION PASS B (census / adversarial graphics semantics):
 REQUIRED CORRECTIONS:
-REJECTED REVIEWER ASSERTIONS:
+REJECTED VERIFICATION ASSERTIONS:
 CORRECTION GATE:
 ```
 
-### REVIEWER A - engine, dataflow and frame layout
+### First independent verification: engine, dataflow and frame layout
 
 Verified the ROM hash, re-implemented the definition -> animation -> frame walk
 without importing the probe for its corpus numbers, capstone-checked 103 quoted
@@ -441,7 +433,7 @@ header description was **REFUTED**; the "no stored attribute word" claim
 split **CONFIRMED** with the screen orientation correctly left open; the
 multi-piece counts **CONFIRMED exactly**; seven of 103 quoted addresses wrong.
 
-**All 13 required corrections were reproduced by the implementer before
+**All 13 required corrections were reproduced by the author before
 acceptance, and all were accepted.**
 
 | # | Correction | Reproduced as |
@@ -458,26 +450,26 @@ acceptance, and all were accepted.**
 | 10 | the "no other literal writer to `obj+0x10`" negative is not established | replaced with the narrower statement the code supports |
 | 11 | 30 of 1,017 animation objects are followed immediately by a frame record, so the trailer extent is unproven | reported as `animations_whose_table_end_is_a_frame_record_start: 30` |
 | 12 | `0x0800F3A6` is a container-**kind** test, not a null test, and the pointer is dereferenced unguarded | corrected in both documents |
-| 13 | `sprite_graphics.Piece` needs its attribute offset **moved**, not its flip/shape/size properties deleted | downstream handoff rewritten |
+| 13 | `sprite_graphics.Piece` needs its attribute offset **moved**, not its flip/shape/size properties deleted | downstream downstream note rewritten |
 
-### REVIEWER B - census, populations, graphics semantics, tests
+### Second independent verification: census, populations, graphics semantics, tests
 
 Re-implemented a walk of its own, froze a snapshot of the revision it reviewed,
 verified the ROM hash after every run, and computed the exact set relation between
-this ticket's container population and the accepted one.
+this record's container population and the accepted one.
 
 It confirmed all 15 rows of the full-census table, the ten named populations, both
 extent figures, the frame bounding box, the `7,355` subset relation, the clean
 skip behaviour and the absence of committed proprietary content. It **refuted
-three of this ticket's conclusions and eight of its numbers**, every one of which
-the implementer reproduced before accepting.
+three of this record's conclusions and eight of its numbers**, every one of which
+the author reproduced before accepting.
 
 | # | Finding | Reproduced as |
 | ---: | --- | --- |
 | 1 | the evidence against the horizontal-flip field was **inverted** | in the 2,600 poses where directions 2 and 3 differ in attribute-1 bit 12, the two cells name the **same** container in **2,599** cases (different once). The earlier count had compared *frame records* rather than containers. Conclusion reversed |
 | 2 | "1,691 same-container pairs, zero attribute differences" is wrong | **8,713** same-container pairs over 20,490 direction pairs: 5,420 identical, 3,293 differing |
 | 3 | shared graphics targets: 2,614 is wrong | **2,994** |
-| 4 | the `7,355` vs `7,390` gap is **not** deduplication | the accepted set is **exactly** the single-piece-frame container set; `ticket \ accepted` is exactly the 35 offsets the 21 multi-piece frames reach; the accepted 16-byte stride accepts exactly 10,959 frames and rejects exactly the 21 |
+| 4 | the `7,355` vs `7,390` gap is **not** deduplication | the accepted set is **exactly** the single-piece-frame container set; `record \ accepted` is exactly the 35 offsets the 21 multi-piece frames reach; the accepted 16-byte stride accepts exactly 10,959 frames and rejects exactly the 21 |
 | 5 | §12 identity arithmetic | `3,415 = sum(k*count(k))`, not the distribution's sum (**1,017**); the reuse identity is `2*287 + 3*702 = 2,680`, not `3*287 + 4*702` (= 3,669) |
 | 6 | the "1,332 bytes below / six containers" graphics lead | refuted; the region bound equals the accepted figure |
 | 7 | two stored pointer forms | refuted: **11,005 absolute, 0 bare offsets** |
@@ -489,90 +481,27 @@ the implementer reproduced before accepting.
 | 13 | `scratchpad2/` untracked and unignored; the bare `roms` symlink missed by `roms/` | scratch removed; `.gitignore` gained `/scratchpad/` and a bare `roms` |
 | 14 | §4.1's frame-pair denominator | stated as 9,963 **of 10,979 consecutive pairs** |
 
-**Reviewer B's process finding is accepted.** It reported that the worktree was
-not frozen while it measured - the implementer kept editing - so its document
-verdicts are scoped to its own snapshot and no revision of the ticket was
+**the second verification pass's process finding is accepted.** It reported that the worktree was
+not frozen while it measured - the author kept editing - so its document
+verdicts are scoped to its own snapshot and no revision of the record was
 recoverable from git at that time. That is a real defect in how this review was
 run, and it is recorded rather than excused. Its ROM measurements are unaffected,
 every one was reproduced against the frozen artifacts, and this commit is the
 freeze that was missing.
 
-**Reviewer B's caveat on the joint test is accepted.** On 7 of the 21 multi-piece
+**the second verification pass's caveat on the joint test is accepted.** On 7 of the 21 multi-piece
 frames the frame header's own `+0x04` word also decodes to a container of the
 right size. The graphics-word identity does not rest on that test alone - it rests
 on the engine's `ldr r0,[r7,#8]` at `0x0800F3CE` and on the 11,005-piece agreement,
 and no word *inside* the 12-byte piece passes the test except `+0x08` - but the
 provenance now states the exception rather than presenting the test as unique.
 
-### Where the two reviewers disagreed
+### Where the two verification passes disagreed
 
 They agree that piece `+0x04` is a stored OAM attribute pair and that the earlier
-"no attribute word" claim was wrong. They differ on the flip inference: Reviewer A
-did not examine the container-sharing correlation at all, while Reviewer B measured
-it and showed the earlier count was inverted. The implementer reproduced Reviewer
+"no attribute word" claim was wrong. They differ on the flip inference: the first verification pass
+did not examine the container-sharing correlation at all, while the second verification pass measured
+it and showed the earlier count was inverted. The author reproduced the
 B's measurement directly (2,599 same-container cases of 2,600) and adopted it;
-Reviewer A's findings are unaffected and all are applied. **No reviewer assertion
+the first verification pass's findings are unaffected and all are applied. **No verification pass assertion
 was rejected.**
-
-### CORRECTION GATE
-
-```text
-REVIEWER A  : 13 required corrections, all reproduced and accepted
-REVIEWER B  : 14 required corrections, all reproduced and accepted
-REJECTED    : 0 reviewer assertions
-DISAGREEMENT: one, on the flip inference; resolved by direct measurement in
-              Reviewer B's favour
-GATE        : CLOSED - all corrections applied, focused suites green with and
-              without the ROM, git diff --check clean, canonical ROM hash
-              unchanged, worktree frozen by the commit below
-```
-
-## GIT STATUS
-
-```text
-WORKTREE:   <temp>\log1-remake-logx-frame-001   branch logx-frame-001
-START SHA:  274502187596066cabf77c09bbefea5062438580
-END SHA:    b731897c5e4c46646c3507c99edaf477d165d6a3
-
-SCOPED DIFF (7 paths, no unrelated edits):
-  M  .gitignore                              (ignore /scratchpad/ and a bare roms symlink)
-  M  docs/reverse-engineering.md             (+145 lines: the LOGX-FRAME-001 section)
-  A  docs/research/LOGX_FRAME_PROVENANCE.md
-  A  docs/research/LOGX-FRAME-001-review.md
-  A  tools/research/logx_frame_probe.py
-  A  tests/integration/test_logx_frame_rom.py
-  A  tests/unit/test_logx_frame_probe.py
-
-FOCUSED TESTS
-  tests/unit/test_logx_frame_probe.py                22 passed  (ROM absent)
-  tests/integration/test_logx_frame_rom.py           27 passed  (ROM configured)
-  both together                                      49 passed, 1 skipped (capstone present)
-  both together, ROM absent                          23 passed, 27 skipped, 0 errors
-  tests/unit (whole portable suite)                  1545 passed, 8 skipped
-
-RELATED REGRESSION SUITES (run earlier in this session, ROM configured)
-  tests/integration/test_logx_sprite_rom.py          passed
-  tests/integration/test_graphics_rom.py             29 passed
-  tests/integration/test_logx_char_rom.py            passed
-  tests/integration/test_logx_codec_rom.py           passed
-  tests/integration/test_logx_connector_rom.py       passed
-  tests/integration/test_logx_layer_rom.py           passed
-  tests/integration/test_logx_map_record_rom.py      passed
-  tests/integration/test_logx_map_render_rom.py      passed
-  tests/integration/test_logx_tile_rom.py            passed
-  tests/unit/test_logx_*_reference.py                passed
-  tests/unit/test_sprite_graphics.py                 passed
-  tests/unit/test_graphics_*.py                      passed
-
-ROM SAFETY
-  canonical SHA-256 before 940AD5F01DB4465B8877DFE739510CBF34F4EA3D390F3DF13519808BC36F059E
-  canonical SHA-256 after  940AD5F01DB4465B8877DFE739510CBF34F4EA3D390F3DF13519808BC36F059E
-  ROM writes: none.  Every probe reads bytes the caller supplies and writes nothing.
-  No ROM, save, state, dump, image or decoded proprietary asset is staged; the
-  staged set is the seven paths above and nothing else.
-  All artifacts are LF; git diff --check exits 0.
-
-WORKFLOW
-  Not integrated to master.  Not archived.  PROJECT_<local-state-name> and PROJECT_<local-state-name>
-  deliberately unchanged.  public progress impact: NONE.
-```

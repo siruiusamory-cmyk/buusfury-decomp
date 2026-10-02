@@ -1,14 +1,13 @@
-# MAP-TILE-PAINT-001 evidence record
+# Tile painting on existing map resources
 
-Ticket: tile painting on existing map resources. Baseline
-`fb20e06e070ae72fadf91af6bf07be6b7467906c`. Worktree
-`<ticket-worktrees>\map-tile-paint-001`, branch
-`ticket/map-tile-paint-001`.
+What was measured, what was not, and why. The runtime rule established by three
+rejected attempts is retained here.
+
 
 This file records what was measured, what was not, and why. It is deliberately
 specific about the runtime result, because reaching it took three rejected
 attempts and the rule those attempts established is the reusable part of this
-ticket. The three failures are retained below rather than deleted: a savestate
+record. The three failures are retained below rather than deleted: a savestate
 restores the already-assembled background, so a capture taken straight after a
 state load is decided by the state and not by the ROM.
 
@@ -22,13 +21,13 @@ chunk (`CHUNK_SIDE_TILES`, `CHUNK_ENTRY_COUNT`, `CHUNK_PIXELS`). The innermost
 unit the format lets an author choose between is therefore the chunk, and the
 layer's own chunk grid is squared by `CHUNK_SIDE_TILES` for the logical map size.
 
-The replacement rule is the one MAP-LAYOUT-WRITE-001 proved and this ticket
+The replacement rule is the one MAP-LAYOUT-WRITE-001 proved and this record
 reuses unchanged: a cell may only be given a non-null chunk pointer **the same
 layer already uses at another of its cells**. That is why the legal brush
-vocabulary is the layer's own existing chunks, and why this ticket cannot
+vocabulary is the layer's own existing chunks, and why this record cannot
 allocate, relocate, create a chunk, resize a layer, or create a map.
 
-Painting in this ticket is therefore **chunk-cell painting on an existing
+Painting in this record is therefore **chunk-cell painting on an existing
 dominant layer**, and the UI says "chunk" rather than "8x8 tile" for that reason.
 Presenting a finer brush would be inventing an abstraction the format does not
 have.
@@ -146,7 +145,7 @@ Attempt 1 loaded the canonical ROM and the authored derivative with the same
 savestate and confirmed both live in map 40 with BG1's screenblock at
 `0x0600E800`. Every dumped region - VRAM, palette, all four screenblocks, IO
 registers - was **byte-identical** between the two runs. Explanation, and it is
-a property of the input rather than of the ticket: a savestate restores emulated
+a property of the input rather than of the record: a savestate restores emulated
 RAM and VRAM, including the map background the engine had already assembled, so
 the engine never re-reads the map from ROM. **A ROM-side map edit cannot appear
 under a state taken after the map was loaded.**
@@ -161,8 +160,8 @@ live screenblock is not a verbatim chunk plane under either plausible layout:
 reading it at a 32-entry stride or at the layer's 64-tile stride, its region
 matches neither the retail nor the authored chunk entry-for-entry. The engine
 applies a further transformation when it uploads the map, and that transformation
-is not established by this ticket. **It is also not required**: the visible result
-above is proven without decoding it, exactly as section 5 of the ticket allows.
+is not established by this record. **It is also not required**: the visible result
+above is proven without decoding it, exactly as section 5 of the record allows.
 The second reason that attempt failed is that the camera moved between the two
 captures, so the difference covered 76% of the viewport and could not isolate a
 256x256 chunk region.
@@ -220,7 +219,7 @@ Every command named explicit files or nodes.
 The counts are the recorded results of the focused runs, not a rerun performed
 for this record.
 
-## Mutation campaign (the ticket's M1-M6)
+## Mutation campaign (the record's M1-M6)
 
 | Mutation | Result |
 |---|---|
@@ -234,7 +233,7 @@ for this record.
 ## Test-reporting correction (honest record)
 
 During implementation I ran `pytest tests/unit -q --tb=line -p no:cacheprovider`
-as a background job from the ticket worktree, and reported its result
+as a background job from the record worktree, and reported its result
 (**2588 passed, 1 failed, 13 skipped in 207.99s**; the failure is the pre-existing
 packaged-wheel test already recorded in `docs/PROJECT_<local-state-name>`). That is a
 directory-wide run of the whole portable unit suite.
@@ -244,7 +243,7 @@ labelled it "full portable suite" while separately claiming "broad suite: not
 manually run" - a contradiction. The accurate record is:
 
 **BROAD SUITE: MANUALLY RUN - POLICY VIOLATION.** It must not be repeated. The
-only test commands that should run under this ticket are explicitly named files
+only test commands that should run under this record are explicitly named files
 or nodes, as in the focused runs recorded above.
 
 ## Runtime input identity
@@ -260,57 +259,15 @@ The emulator was mGBA `0.11-9128-c65e8a3d4` (verified from the binary's
 re-hashed after every run and are unchanged. The derivative, every snapshot and
 every capture live under ignored `build/`; nothing proprietary is committed.
 
-## Independent review
-
-A fresh-context headless CLI review through the `the local reviewer` backend, model
-`the reviewer model`, CLI session `17f46b0e-b9eb-4bfa-b6e1-7f7dda92130f`, 37 turns,
-on the reviewed cumulative candidate
-`512c9eff4dea3d03b380862a50c88cc23ac20465`:
-
-**VERDICT: PASS** - 0 blocking findings, 0 non-blocking findings, 3 NOTEs, none
-requiring a product correction. The reviewer re-derived the editable unit, the
-fail-closed layer scope, the row-major geometry, the undo/redo and
-previous-value semantics, the persistence and reopen refusals, the CQA-05/06/07
-continuity and the runtime-proof methodology from the source itself, and it
-confirmed there is no overclaim beyond existing-chunk cell replacement. It could
-not re-run the captures (private ROM and emulator) and stated that limitation
-instead of glossing it. The NOTEs are the retained invalid capture helper, the
-whole-file line-ending flip in `build.py`/`model.py`, and the `git diff --check`
-CRLF artifact; the record, the transcript and the resolutions are in
-[`MAP-TILE-PAINT-001-review.md`](MAP-TILE-PAINT-001-review.md).
-
-**the reviewer CLOUD: NOT RUN - readable verdict unavailable.** Cloud attach is refused
-for this account, so a cloud review could not have produced a readable verdict
-and none was launched.
-
-## Capability
-
-**CAPABILITY: SHIPPED.** EDIT / TILE PAINTING moves to **5 / 8** and DragonByte Z
-to **17 / 24 (71%)**, the count and the percentage taken from the capability
-registry, which is the sole authority for both. Every acceptance criterion is
-met: production semantic authoring path; Workbench painting UI; single-cell and
-drag painting; pick/select an existing value; undo/redo; project state surviving
-unrelated mutation; save/reopen; build; canonical ROM immutable; the authored
-layout displayed by the actual retail engine after a genuine per-run rebuild; and
-no manual offsets or hex editing anywhere in the flow.
-
-`public progress impact: UPDATED` - the capability count moves **16 / 24 (67%)**
-to **17 / 24 (71%)**, `tiles` becomes `shipped` in the registry, and the Phase 2
-roadmap state moves from NEXT to **IN PROGRESS** with tile painting complete and
-chunk creation next. The registry entry
-(`src/data/capabilities.json`) states the shipped surface, the runtime proof and
-the limits explicitly, including that the editable unit is one four-byte
-chunk-cell reference to an existing 256x256 chunk and not an individual 8x8 tile.
-
 ## Deliberately not done
 
 No new chunk, no map resize, no new layer, no warp or connection editing, no
 graphics import, no sprite or appearance authoring and no new map. **Chunk
 creation was not begun**; it is the next capability (`MAP-CHUNK-AUTHORING-001`,
-Phase 2B, expected 18 / 24) and is not part of this ticket.
+Phase 2B, expected 18 / 24) and is not part of this record.
 
 One technical observation is retained as debt rather than solved here: the live
 screenblock is not the chunk plane verbatim, so a VRAM dump cannot yet be decoded
 back to a chunk identity. It belongs to MAP-VIS-001's ROM ->
 charblock/screenblock blocker, it does not block this capability, and reverse
-engineering it was out of scope for this ticket.
+engineering it was out of scope for this record.

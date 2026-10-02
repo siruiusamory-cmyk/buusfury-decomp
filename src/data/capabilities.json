@@ -167,7 +167,7 @@
       ],
       "surface": "Maps editor, Layout mode: chunk-cell replacement with a same-layer chunk chooser",
       "proof": "application",
-      "evidence": "MAP-LAYOUT-WRITE-001; DRAGONBYTE-Z-MAP-LAYOUT-EDITOR-001; docs/workbench.md",
+      "evidence": "MAP-LAYOUT-WRITE-001; DRAGONBYTE-Z-MAP-LAYOUT-EDITOR-001; docs/research/MAP_LAYOUT_EDITOR_VERIFICATION.md; docs/workbench.md",
       "measurements": {
         "mapsViewable": 452,
         "editableMaps": 341,
@@ -190,7 +190,7 @@
         "Screen-entry layers, terrain-field layers (Map 19), absent slots and zero-dimension grids are refused with a stated reason rather than forced into a grid they do not have.",
         "Painting does not allocate or relocate: the replacement is a fixed four-byte in-place write, so a build changes only the painted cells."
       ],
-      "evidence": "MAP-TILE-PAINT-001; docs/research/MAP-TILE-PAINT-001.md"
+      "evidence": "MAP-TILE-PAINT-001; docs/research/MAP_TILE_PAINT.md"
     },
     {
       "id": "chunks",
@@ -208,7 +208,7 @@
         "The authored body must go above the original ROM end: the canonical image's only declared free region is 256 bytes and a chunk container is larger, so this capability depends on generated expansion rather than fitting in place.",
         "A 16 MiB derivative is not reopened by the authoring tool's derivative verifier, which reconstructs and hashes the canonical image from the whole file. That limit is shared with compressed dialogue and predates this capability; the project itself reopens fully."
       ],
-      "evidence": "MAP-CHUNK-AUTHORING-001; docs/research/MAP-CHUNK-AUTHORING-001.md"
+      "evidence": "MAP-CHUNK-AUTHORING-001; docs/research/MAP_CHUNK_AUTHORING.md"
     },
     {
       "id": "resize",
@@ -227,7 +227,7 @@
         "No collision authoring, no warp or connection editing, no new-map creation, no graphics import. A grown area does not have to be connected to anything, and this capability does not connect it.",
         "The authored record must go above the original ROM's end: the canonical image declares one 256-byte free region and a record grows with the authored grid, so this depends on generated expansion rather than fitting in place."
       ],
-      "evidence": "MAP-RESIZE-AND-LAYERS-001; docs/research/MAP-RESIZE-AND-LAYERS-001.md"
+      "evidence": "MAP-RESIZE-AND-LAYERS-001; docs/research/MAP_RESIZE_AND_LAYERS.md"
     },
     {
       "id": "warps",
@@ -248,7 +248,7 @@
         "A transition the project creates has no record in the image, so its region is drawn read-only on the map canvas and its drag refuses with the reason stated.",
         "This is the supported, proven authoring surface, not every engine transition form."
       ],
-      "evidence": "MAP-WARPS-AND-CONNECTIONS-001; MAP-WARP-FORMAT-001; MAP-WARP-WORKBENCH-001; MAP-WARP-WORKBENCH-RUNTIME-001; MAP-WARP-CREATE-PROJECT-001; MAP-WARP-CREATE-RUNTIME-001; MAP-WARP-CANVAS-001; docs/research/MAP-WARPS-AND-CONNECTIONS-001.md",
+      "evidence": "MAP-WARPS-AND-CONNECTIONS-001; MAP-WARP-FORMAT-001; MAP-WARP-WORKBENCH-001; MAP-WARP-WORKBENCH-RUNTIME-001; MAP-WARP-CREATE-PROJECT-001; MAP-WARP-CREATE-RUNTIME-001; MAP-WARP-CANVAS-001; docs/research/MAP_WARPS_AND_CONNECTIONS.md",
       "measurements": {
         "transitionRecords": 735
       }
@@ -342,7 +342,7 @@
         "Not implemented: no editor surface materialises a new map or scene.",
         "The terminal frontier. The authored warp it depends on now ships with warps and connections; the remaining blockers are map-root fields that are still unresolved."
       ],
-      "evidence": "DRAGONBYTE-Z-MAP-LAYOUT-EDITOR-001; docs/research/POST_LOGX_IMPLEMENTATION_ROADMAP.md"
+      "evidence": "DRAGONBYTE-Z-MAP-LAYOUT-EDITOR-001; docs/research/MAP_LAYOUT_EDITOR_VERIFICATION.md; docs/research/POST_LOGX_IMPLEMENTATION_ROADMAP.md"
     },
     {
       "id": "validate",
@@ -371,7 +371,7 @@
       ],
       "surface": "Maps editor Save As New ROM\u2026: emit a new ROM plus its provenance manifest",
       "proof": "application",
-      "evidence": "DRAGONBYTE-Z-AUTHORED-IMAGE-PIPELINE-001; DRAGONBYTE-Z-MAP-LAYOUT-EDITOR-001"
+      "evidence": "DRAGONBYTE-Z-AUTHORED-IMAGE-PIPELINE-001; DRAGONBYTE-Z-MAP-LAYOUT-EDITOR-001; docs/research/AUTHORED_IMAGE_PIPELINE_VERIFICATION.md; docs/research/MAP_LAYOUT_EDITOR_VERIFICATION.md"
     },
     {
       "id": "provenance",
@@ -386,7 +386,7 @@
       ],
       "surface": "Atlas editor ROM open: provenance-checked acceptance of an emitted derivative",
       "proof": "application",
-      "evidence": "DRAGONBYTE-Z-MAP-LAYOUT-EDITOR-001; DRAGONBYTE-Z-AUTHORED-IMAGE-PIPELINE-001; docs/workbench.md"
+      "evidence": "DRAGONBYTE-Z-MAP-LAYOUT-EDITOR-001; DRAGONBYTE-Z-AUTHORED-IMAGE-PIPELINE-001; docs/research/MAP_LAYOUT_EDITOR_VERIFICATION.md; docs/research/AUTHORED_IMAGE_PIPELINE_VERIFICATION.md; docs/workbench.md"
     },
     {
       "id": "launch",
@@ -400,7 +400,7 @@
       ],
       "surface": "Run action: run the emitted ROM in a configured emulator",
       "proof": "application",
-      "evidence": "WORKBENCH-001; WORKBENCH-004"
+      "evidence": "WORKBENCH-001; docs/workbench.md; docs/workbench-architecture.md"
     }
   ],
   "researchOnly": [

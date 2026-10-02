@@ -28,7 +28,7 @@ A full run takes roughly nine minutes, almost all of it in the compression probe
 ## The producers
 
 `tools/webfoot/atlas_producers/`: one module per recovered scratchpad script,
-with the hardcoded `<checkout>` roots replaced by explicit `rom_path` /
+with the hardcoded absolute roots replaced by explicit `rom_path` /
 `out_dir` parameters and every threshold, sort order and serialization detail
 preserved.
 
@@ -103,7 +103,7 @@ tracked producer says `Flagged for follow-up` instead.
 
 | row identity | historical tail | tracked tail |
 | --- | --- | --- |
-| `script_vm.native_dispatch_table` | named an agent workflow role | `... Flagged for follow-up.` |
+| `script_vm.native_dispatch_table` | named a forbidden workflow role | `... Flagged for follow-up.` |
 | `event_resource.record_pool` | named the same role, plus `rather than resolved` | `... Flagged for follow-up.` |
 
 Measured, not assumed:
@@ -173,12 +173,12 @@ The copying was convenience, not necessity.
 | --- | --- |
 | historical ROM-ATLAS-001 artifact | `7c7087a88614ad8c97414599e3aa557cc8aa70d0529756318bbc21f49ee08ca9` |
 | clean chain, pre-policy rewording | `8b6e440023eb61fdaf0e00a3ee205ebb83e62774273b29bedf021081c7533adb` |
-| clean chain, tracked at ROM-ATLAS-001 closure | `8b6e440023eb61fdaf0e00a3ee205ebb83e62774273b29bedf021081c7533adb` |
-| clean chain, tracked at TOOLKIT-038 closure | `5350ba1d8708564e6408fe8db1e532b897a6cf746198d6384b5f6e290d20553a` |
-| clean chain, tracked at TEXT-INDEX-001 closure | `3121faa123cdf2745c386c679c39fa46de71c4e5b7ed5133a46e1e40ad89b7f1` |
+| clean chain, tracked at the ROM-ATLAS-001 stage | `8b6e440023eb61fdaf0e00a3ee205ebb83e62774273b29bedf021081c7533adb` |
+| clean chain, tracked at the TOOLKIT-038 stage | `5350ba1d8708564e6408fe8db1e532b897a6cf746198d6384b5f6e290d20553a` |
+| clean chain, tracked at the TEXT-INDEX-001 stage | `3121faa123cdf2745c386c679c39fa46de71c4e5b7ed5133a46e1e40ad89b7f1` |
 | clean chain, tracked at the Latin-1 text reclassification | `030fe799db12b37f62ba87eefb14d0bb3f2e76791673f7cea2b00274b96e7d57` |
-| clean chain, tracked at TEXT-HANDLE-001 closure | `e0bcf1b4a572401bd85a86e762c067ae2d9614fea58e9dc433388ea53352bd89` |
-| **clean chain, measured at TEXT-HANDLE-002 closure (canonical)** | `5347bb720d59f80312520a38ee11d073a12a1b86e07c854117e657499fa38023` |
+| clean chain, tracked at the TEXT-HANDLE-001 stage | `e0bcf1b4a572401bd85a86e762c067ae2d9614fea58e9dc433388ea53352bd89` |
+| **clean chain, measured at the TEXT-HANDLE-002 stage (canonical)** | `5347bb720d59f80312520a38ee11d073a12a1b86e07c854117e657499fa38023` |
 
 The first seven are retained as provenance baselines. **The eighth is what the
 tracked tooling produces for the measured TEXT-HANDLE-002 evidence and is the
@@ -321,7 +321,7 @@ inside the reached span, immediately after code ends at `0x055646` and before th
 final `literal_pool` at `0x055748`, which is the end of the reached span in both
 files (`0x05574C`). Its bytes are high-entropy with no discernible structure
 (`62f2 9825 4665 2f4f 5d05 4abd ...`). It falls inside the
-`0x55098..0x55646` cluster tracked as its own ticket.
+`0x55098..0x55646` cluster tracked separately.
 
 Both cases are the same carve/boundary effect, not a gap in the atlas. Layer A
 coverage still tiles all 8,388,608 bytes with zero gaps across 7,833 spans; these

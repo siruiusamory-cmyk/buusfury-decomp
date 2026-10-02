@@ -542,7 +542,7 @@ Prefix `0 0 0`, then a seven-bit distance field at `b3..b9`:
   `3 + 7 + 2 = 12`, both host readers implement twelve, and the twelve-zero-bit
   model predicted the strict reader's accept/refuse outcome on 30/30 controlled
   trials. Corrected here rather than deleted; the correction is recorded in
-  [`CQA_02_PACKED_TERMINATION_RESOLUTION.md`](CQA_02_PACKED_TERMINATION_RESOLUTION.md)
+  [`PACKED_STREAM_TERMINATION.md`](PACKED_STREAM_TERMINATION.md)
   §3.8.
 
 **CONFIRMED** by the differential.
@@ -642,7 +642,7 @@ obligation below.
 > so there is no length rule for a precedence question to be about. The engine
 > stops on the escape and on nothing else - `CONFIRMED`, from two independent
 > disassemblies plus a positive census that found no destination comparison. See
-> [`CQA_02_PACKED_TERMINATION_RESOLUTION.md`](CQA_02_PACKED_TERMINATION_RESOLUTION.md)
+> [`PACKED_STREAM_TERMINATION.md`](PACKED_STREAM_TERMINATION.md)
 > §2.1 and §3.6. The corpus statements in this section remain true as *corpus*
 > statements and are not restated.
 
@@ -1131,7 +1131,7 @@ Two statements are kept deliberately apart throughout:
    declared size disagree. No canonical container exercises the case.
    **RESOLVED as moot (CQA-02-PACKED-STREAM-TERMINATION-001, 2026-09-23):** the
    engine has no declared-size comparison to obey, so precedence never arises -
-   see [`CQA_02_PACKED_TERMINATION_RESOLUTION.md`](CQA_02_PACKED_TERMINATION_RESOLUTION.md)
+   see [`PACKED_STREAM_TERMINATION.md`](PACKED_STREAM_TERMINATION.md)
    §3.6.
 4. Whether the engine's codec is byte-compatible with any specific JCALG1
    reference implementation.

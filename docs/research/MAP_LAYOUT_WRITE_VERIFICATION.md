@@ -1,7 +1,7 @@
-# MAP-LAYOUT-WRITE-001 - Fixed-size map-layout writing
+# Fixed-size map-layout writing
 
-Status: **COMPLETE** (2026-09-19). Human verdict: **ACCEPTED**. Independent
-review: **APPROVE** after the public-progress wording was corrected.
+The narrow map-layout writer: what it accepts, what it refuses, the proof case and
+the validation record.
 
 ## Result and boundary
 
@@ -53,19 +53,8 @@ an emulator observation. The two byte changes are within the four-byte field;
 
 Frozen capability commit `5c08d8414b53873cc2fb28ac1f00af852670ec8f`
 merged by MR !53 as `3cdec7e317132561845f735464c9a036c05b0bc3`.
-`public progress impact: UPDATED`: the reviewed `src/data/project.ts` text
+`public-progress impact: UPDATED`: the reviewed `src/data/project.ts` text
 reports only the fixed-size reversible chunk-pointer proof. The overall
 percentage was not changed. Master pipeline `2864612153` passed `test-sdk`
 and `deploy-site`; a fresh HTTP 200 fetch of the live site contained the new
 "First reversible map-layout write" and "in-place layout replacement" text.
-
-## Stop
-
-Next substantive ticket: **DRAGONBYTE-Z-MAP-LAYOUT-EDITOR-001**. Its initial
-scope is to select a dominant-layer chunk cell in the existing Map Browser /
-Workbench surface, choose another valid existing chunk from that same layer,
-preview it, and safely rebuild a ROM copy with no-op identity. Tile painting,
-new chunks, resizing, relocation, arbitrary layer formats, and Map 19 editing
-are outside that initial scope.
-
-STOP. Do not begin DRAGONBYTE-Z-MAP-LAYOUT-EDITOR-001 in this pass.

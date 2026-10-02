@@ -1,28 +1,12 @@
-# LOGX-MAP-RENDER-001 review
+# LOGX map render verification
 
-## Repository and safety
+The selected-map root layout of Buu's Fury, verified against the canonical image.
+Static analysis only; no runtime capture was made for this pass.
 
-- **START SHA:** `4eabf4a74af999375acd281e390bbcce011ecd2a`
-- **END SHA:** `HEAD` of branch `logx-map-render-001` after this review commit;
-  the exact value is reported in the ticket handoff
-- **BRANCH:** `logx-map-render-001`
-- **COMMIT SHA:** `a59d0856fed3d9bb3dc8726168063e5be3c221e9`
-  (`research(map): verify selected map root layout`), plus one
-  documentation-only commit, `docs(tickets): record LOGX map root review
-  verdict`, recording this independent review verdict and the
-  reviewer-required corrections
-- **CANONICAL ROM SHA BEFORE:**
-  `940AD5F01DB4465B8877DFE739510CBF34F4EA3D390F3DF13519808BC36F059E`
-- **CANONICAL ROM SHA AFTER:**
-  `940AD5F01DB4465B8877DFE739510CBF34F4EA3D390F3DF13519808BC36F059E`
+Canonical ROM SHA-256, before and after:
+`940AD5F01DB4465B8877DFE739510CBF34F4EA3D390F3DF13519808BC36F059E`
 
-The isolated worktree was created from the START SHA. The active WORKBENCH-006
-worktree was neither read for modification nor touched. The ROM was opened
-read-only; no save, state, derived ROM, or emulator artifact was created. The
-Ghidra project was processed with `-noanalysis -readOnly` and Ghidra reported
-`Discarding changes to the following read-only file`. No mutation of any kind
-was required, so no derived ROM exists for this ticket.
-
+Evidence document: [`LOGX_MAP_RENDER_PROVENANCE.md`](LOGX_MAP_RENDER_PROVENANCE.md).
 ## External claims tested
 
 The external hypothesis source is `mainant/LOGExtractor`, `MapViewer/MainForm.cs`
@@ -201,19 +185,19 @@ The file skips cleanly when the ROM is unavailable.
   The 15 errors are all
   `PermissionError: [WinError 5] Access is denied:
   the pytest temporary root` raised during `tmp_path`
-  fixture setup, i.e. an environment temp-directory restriction, not a ticket
+  fixture setup, i.e. an environment temp-directory restriction, not a record
   failure.
 - **MEASURED** the same three affected files re-run with a writable
   `--basetemp` -> `18 passed, 52 skipped`. The skips are the pre-existing
   `roms/` path expectation, which this fresh worktree does not satisfy; those
-  tests are unmodified by this ticket. No ticket-caused failure remains
+  tests are unmodified by this record. No record-caused failure remains
   unresolved.
 - No full-suite run: this change adds isolated read-only research tooling, one
   new regression file, and documentation. It changes no production parser,
   codec, build, profile, or shared-library code, so the blast radius is bounded
   by the focused runs above.
 
-## ROM bible impact
+## Physical facts recorded
 
 `docs/reverse-engineering.md` gained one section, "LOGX-MAP-RENDER-001 selected
 map root", documenting only engine-confirmed physical readings: access widths
@@ -223,12 +207,6 @@ shape, the container at `+0x48`, the shared `+0x4C` word, and the
 no-literal-root observation. Field names that remain provisional
 (width/height, BG slot assignment, animated-tile identity, connector record
 layout, `+0x30`, `+0x50..+0x5C`) are explicitly listed as not promoted.
-
-## Public progress impact
-
-**public progress impact: NONE.** This ticket improves reverse-engineering
-detail only; it adds no player-visible capability, frontier change, or
-outside-usable feature, so `src/data/project.ts` is untouched.
 
 ## Disagreements with LOGExtractor
 
@@ -258,7 +236,7 @@ outside-usable feature, so `src/data/project.ts` is untouched.
   MapEntry?
 - What are the true units of `+0x08`/`+0x0A` (pixels versus tiles)?
 
-## Handoffs
+## Downstream consumers
 
 - **LOGX-LAYER-001** : handler vocabulary and layer-record constructor
   `0x08007B78`, chunk dimensions as separate bytes, the 4-chunk cap, the shared
@@ -274,12 +252,12 @@ outside-usable feature, so `src/data/project.ts` is untouched.
   null exactly when `+0x18` is null), not a small flag, so `+0x18` is a
   variable-length record list with the count at `+0x05`.
 
-## Independent review
+## Independent verification
 
-**Reviewer:** independent claim-verification pass, fresh context, read-only,
+**Verification:** independent claim-verification pass, independent context, read-only,
 separate from the implementation.
 
-**Verdict: `APPROVE WITH REQUIRED CORRECTIONS`.** The reviewer re-derived the
+**Verdict: `APPROVE WITH REQUIRED CORRECTIONS`.** The verification pass re-derived the
 ROM hash before and after and found it unchanged, confirmed no tracked file was
 modified during its pass, and independently recomputed the census. Seven of the
 eight claim groups were `CONFIRMED` with exact bytes and addresses reproduced
@@ -296,7 +274,7 @@ documentation errors were found. All were corrected before commit:
 | glibc `param_1 + 0x27` annotated "dest +0x4E" | Corrected to `dest +0x9C`; `strh r0,[r4,#0x1c]` with `r4 = param_1 + 0x80`. |
 | MapEntry `+0x05` annotated "a count, 1..3" | Corrected with the measured distribution and the `+0x18` coupling, and the missing `cmp`/`ble` guard was added to the snippet. |
 
-**Reviewer cross-checks that passed unchanged:** root resolution for maps 0, 1,
+**Cross-checks that passed unchanged:** root resolution for maps 0, 1,
 2, 39, 451; all 17 header fields of root `0x08294968`; every instruction address
 in section 4; the resolver bytes and its exactly three `BL` callers; the
 `0x08009670` bytes, its literal `0x080716C4` -> `0x03002A64`, and its single
@@ -307,9 +285,9 @@ census 1516/249/41/1/1 over 1808 slots; 98 roots and 249 slots pointing at
 `0x080707FC` with dimensions `0`x`0`; the `+0x34`/`+0x38` container length word
 `0x2000` on all 452; and the `BG0CNT..BG3CNT` store addresses.
 
-**Required-correction gate: CLOSED.** Every reviewer finding was independently
-re-verified by the implementer against the ROM before being applied, and every
-one reproduced; no finding was accepted on the reviewer's authority alone and no
+**Required-correction gate: CLOSED.** Every verification pass finding was independently
+re-verified by the author against the ROM before being applied, and every
+one reproduced; no finding was accepted on the review pass's authority alone and no
 finding was left unaddressed.
 
 **Closeout follow-up.** During canonical closeout a systematic search for the
@@ -319,21 +297,3 @@ sections, and one run-length sentence that omitted the tail of the histogram.
 Those were corrected in the closeout commit without touching the accepted
 research commits. The corrections table above now names every affected section,
 and this document contains no remaining instance of the superseded values.
-
-## Git status
-
-All ticket files are new or one documentation edit; nothing was deleted or
-rewritten destructively.
-
-```text
- M docs/reverse-engineering.md
-?? docs/research/LOGX_MAP_RENDER_PROVENANCE.md
-?? tests/integration/test_logx_map_render_rom.py
-?? tools/ghidra/LogxRootConsumers.java
-?? tools/ghidra/run-logx-root-consumers.ps1
-?? tools/research/logx_map_render_probe.py
-```
-
-No ROM, save, state, memory dump, extracted proprietary blob, or generated
-commercial asset is staged or untracked in this worktree. Scratch analysis
-scripts and the generated Ghidra reports remain under ignored `build/`.

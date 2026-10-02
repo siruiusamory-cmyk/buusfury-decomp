@@ -14,11 +14,11 @@ The 108 unreachable well-formed and 168 non-conforming occurrences stay excluded
 
 | Source | Result and limits |
 | --- | --- |
-| `ENTITY_FORMAT.md:60-115`, `TOOLKIT-008-review.md` | Ownership/32-byte representation only; type fields and tails unclassified |
+| `ENTITY_FORMAT.md:60-115` | Ownership/32-byte representation only; type fields and tails unclassified |
 | `MAP_FORMAT.md`, TOOLKIT-007 findings | Keep corrected opaque 112 arrays/596 slots and typed 35/89; no placement type proof |
 | ROM-006/007/008, `consumer-analysis.md:236-256,326-371` | Selected variation +40/+44 dispatches descriptors through 08012664; separate heterogeneous family |
 | ROM-011/012, `consumer-analysis.md:807-865` | Descriptor 08294948 -> 08007675 rectangle-aware object and exact runtime attribution; no FD55 link |
-| P-003/P-004, `tickets/archive/P-004.md:1-12,78-80` | Retracted actor attribution is not placement/enemy evidence |
+| P-003/P-004 | Retracted actor attribution is not placement/enemy evidence |
 | `AUTO_RE_<local-state-name>:265-275,379-403`, `PROJECT_STATE*.md`, `SUBSYSTEM_MAP.md:70-96` | Separate map-loader/per-character mechanisms; reused runtime slots never identity |
 | `build/ghidra/reports/p001-entity-ctors.txt:204-235` (ignored) | Existing canonical type getter 0801713C, no FD55 link; prior reports/research contain no FD55 trace |
 | DragonByteZ `b2691209fa873cc0c1d7aa9cdea7c1da4430afe4`, `src/analysis.cpp:462-487,587-618` | Names MapEntry fields, follows +2C; no FD55 consumer. NPC/item/object labels remain INFERRED |
@@ -213,6 +213,3 @@ untouched. The same field contract holds for the two sibling families
 (`0x08017DA3` at `+0x10`, `0x080111A9` at `+0x0C`). Full statement and the
 map-object census result: [actor sprite graphics](GRAPHICS_FORMAT.md) §12 and
 [map object arrays](BUU_MAP_OBJECT_ARRAYS.md).
-
-Validation and independent final review results are recorded in
-`../tickets/TOOLKIT-009-review.md` after completion.

@@ -1,8 +1,8 @@
 """Portable tests for the static stat-table parsers (DATA-001).
 
-These use SYNTHETIC fixtures only, per docs/DEVELOPMENT.md: no ROM bytes are committed
-and the suite runs without the proprietary image. The ROM-gated cross-checks
-against real data live in `tests/integration/test_stat_tables_rom.py`.
+These use SYNTHETIC fixtures only, per ``docs/ROM_SAFETY.md``: no ROM bytes are
+committed and the suite runs without the proprietary image. The ROM-gated
+cross-checks against real data live in `tests/integration/test_stat_tables_rom.py`.
 """
 
 from __future__ import annotations

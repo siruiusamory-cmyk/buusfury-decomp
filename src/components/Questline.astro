@@ -2,9 +2,7 @@
 import { project, statusMeta } from "../data/project";
 
 // The rail's colour stops are derived from the milestone statuses rather than
-// hardcoded, so checking a milestone off actually moves the fill. They were
-// fixed percentages before, and had drifted badly: 9 of 12 milestones complete
-// still rendered a rail filled to 52%.
+// hardcoded, so checking a milestone off actually moves the fill.
 //
 // The rail is inset to the first and last node centres, so node k sits at
 // k / (n - 1). The rail is a CONNECTOR: the segment for milestone k runs from
@@ -38,7 +36,7 @@ const railStyle = [
       <span class="quest-node" aria-hidden="true">{statusMeta[milestone.status].icon}</span>
       <article>
         <p class="quest-status">{statusMeta[milestone.status].label}</p>
-        <h4>{milestone.title}</h4>
+        <h3>{milestone.title}</h3>
         <p>{milestone.plainEnglish}</p>
         {milestone.technical && <p class="quest-tech">{milestone.technical}</p>}
       </article>

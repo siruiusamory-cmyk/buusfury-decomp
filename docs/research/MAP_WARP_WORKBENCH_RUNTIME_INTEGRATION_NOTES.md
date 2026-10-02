@@ -1,16 +1,8 @@
-# MAP-WARP-WORKBENCH-RUNTIME-001 - end-to-end proof of a Workbench-authored transition
+# End-to-end proof of a Workbench-authored transition: integration notes
 
-STATUS: **CLOSED.** Scoped **sub-pass of `MAP-WARPS-AND-CONNECTIONS-001`**,
-completed 2026-09-26 and archived at the parent's closeout (2026-09-28). The full
-evidence record and every measured value stay at
-[`../MAP-WARP-WORKBENCH-RUNTIME-001.md`](../MAP-WARP-WORKBENCH-RUNTIME-001.md).
+The condensed record of the end-to-end runtime proof, with its limits preserved.
 
-`public progress impact: NONE` - no capability shipped here: no product code
-changed, the registry stayed at **19 / 24 (79%)**, `EDIT` stayed **7 / 8**, `warps`
-stayed `missing`, and no site source changed. The capability advance to **20 / 24**
-belongs to the parent's own closeout.
-
-## What it was asked to do
+## Scope
 
 Prove the **existing-transition authoring path end to end**: a transition authored
 through the real Workbench surface, saved, reopened, built by the production path,
@@ -41,12 +33,6 @@ the image `MAP-WARP-FACING-TRACE-001` had already measured at runtime from a pro
 built outside the Workbench, so the Workbench authoring chain reproduces the
 already-proven artifact exactly and the run re-measured it independently.
 
-## Review status
-
-No product code changed, so no independent code-review gate applied to a diff, and
-this record is the evidence. The parent capability owns the review gate at its own
-closure.
-
 ## Limitations preserved
 
 * **The arrival pixel was not machine-measured in this run.** The passive observer
@@ -62,7 +48,7 @@ closure.
 * **This proves existing-transition editing only.** At this pass the parent still
   needed its own decision and proof for transition creation before 20 / 24.
 
-## Validation and policy
+## Validation
 
 * The evidence is the human-operated runtime run; authoring, save/reopen and build
   were exercised through the production surfaces only.
@@ -72,15 +58,7 @@ closure.
   player later moving on to map 434 and back to 435, which is only possible with a
   controllable player.
 
-## Safety
-
-Canonical ROM `940ad5f0...f059e` verified before and after and **UNCHANGED**; no
-ROM, save, state, capture, dump or generated artifact tracked - the run directory,
-project, shots and derivative all live under ignored `build/`; private save and
-savestate copies were hash-verified and the originals were never loaded; no new
-transition was created and no class-169 behaviour was touched.
-
-## Stop and next
+## Stop
 
 Stopped after the runtime proof. The parent's transition-creation half and the
 capability advance to **20 / 24** remained; `MAP-WARP-CREATE-RUNTIME-001` later

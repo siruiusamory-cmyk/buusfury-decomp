@@ -16,7 +16,7 @@
 -- such controller, so only the wolf's is read.
 --
 -- POSITION: +0x1A0 is world X and +0x1A4 is world Y, both 8.8 fixed point, per
--- docs/research/archive/P-006.md and corroborated by cand_body_bounds_0800FE78.
+-- docs/research/AUTO_RE_<local-state-name> and corroborated by cand_body_bounds_0800FE78.
 -- docs/runtime-capture.md records the invariant
 -- u32(target+0x04) == floor(u32(target+0x1A4) / 256) + 4, which is why +0x04 is
 -- the integer world Y and was retracted as an HP field.

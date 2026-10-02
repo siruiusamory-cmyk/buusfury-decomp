@@ -106,19 +106,19 @@ GATE_RULES: tuple[tuple[str, tuple[str, ...]], ...] = (
 )
 
 #: The shipping GUI test surface that must never collapse to a whole-module
-#: skip (CQA-08). Paths are relative to ``tests/`` with forward slashes.
+#: skip. Paths are relative to ``tests/`` with forward slashes.
 #:
 #: Every entry is a Workbench module whose PySide6 import sits behind a
 #: module-level ``pytest.importorskip`` guard, so on a machine without Qt the
 #: whole file collapses to one ``SKIPPED`` line instead of erroring. That is the
-#: right behaviour for a developer, and the wrong behaviour for CI: CQA-08 was
-#: exactly that failure - CI installed only ``.[dev]``, fourteen PySide6 modules
-#: and three capstone modules collapsed to one ``SKIPPED`` line each, and the job
-#: still exited 0 while claiming a green Workbench suite. ``tests/conftest.py``
+#: right behaviour for a developer, and the wrong behaviour for CI: a job that
+#: installs only ``.[dev]`` makes every PySide6 module and every capstone module
+#: collapse to one ``SKIPPED`` line each and still exits 0, claiming a green
+#: Workbench suite that never executed the shipping surface. ``tests/conftest.py``
 #: therefore fails the session when one of these files is collected but
 #: contributes no test, and ``tests/unit/test_ci_gui_surface.py`` checks the CI
 #: environment that must make them run (the extras, the headless Qt platform,
-#: the guards, and the ticket's explicitly named regressions).
+#: the guards, and the named editor regressions).
 #:
 #: The list is deliberately explicit rather than "every ``workbench``-gated
 #: file", so that adding a shipping GUI module is a visible decision instead of
@@ -134,11 +134,11 @@ REQUIRED_GUI_MODULES: tuple[str, ...] = (
     "unit/test_workbench_launcher_settings.py",
     "unit/test_workbench_map_browser.py",
     "unit/test_workbench_map_tab.py",
-    # MAP-WARP-WORKBENCH-001: the Maps editor's Warps mode, whose refusal and
-    # no-op regressions must execute in CI rather than collapse to a skip.
+    # The Maps editor's Warps mode, whose refusal and no-op regressions must
+    # execute in CI rather than collapse to a skip.
     "unit/test_workbench_warp_transitions.py",
-    # CQA-07's palette-cost regression; it lives in the same shipping surface as
-    # the other Workbench editor modules and must execute in CI with them.
+    # The palette-cost regression; it lives in the same shipping surface as the
+    # other Workbench editor modules and must execute in CI with them.
     "unit/test_workbench_palette_cost.py",
     "unit/test_workbench_project_status.py",
     "unit/test_workbench_scene.py",

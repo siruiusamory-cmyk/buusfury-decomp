@@ -1,23 +1,10 @@
-# CQA-03-15-IDENTITY-AND-EXTENTS-001, ROM/atlas identity refusal and single-source extents
+# ROM and atlas identity refusal with single-source extents
 
-Audit findings: [`../research/PROJECT_CODE_QUALITY_AUDIT.md`](../research/PROJECT_CODE_QUALITY_AUDIT.md)
+One atlas and ROM identity contract, fail-closed refusal on mismatch, and a
+single source for per-profile extents.
+
+Audit findings: [`PROJECT_CODE_QUALITY_AUDIT.md`](PROJECT_CODE_QUALITY_AUDIT.md)
 sections C.2 (CQA-03, CQA-15) and the section F group table.
-
-| | |
-| --- | --- |
-| Start SHA | `170dc8151b6cf0b7dba9cf2454708ff67d6522fd` (`origin/master`) |
-| Frozen SHA | `1067a539a0e1215043812be3d80e39bdd9272e06` |
-| Correction commits | `03779c2` data-contract hash authority; `9a463f6` resolution of both blocking review findings. The frozen SHA was never amended. |
-| Independent review | **BLOCKING = 2**, both resolved in `9a463f6` and re-verified (section 9) |
-| Ticket | CQA-03 [HIGH] + CQA-15 [MEDIUM], audit group C |
-| Scope | identity refusal, one atlas/ROM identity contract, single-source profile extents |
-| Product capability | none: `READ 5/5`, `EDIT 4/8`, `AUTHOR 3/7`, `DELIVER 4/4`, 16/24, 67% |
-| `public progress impact` | `NONE`, internal identity guard and duplicate-authority removal, no user-visible capability, frontier or questline change |
-| CQA-04 | **still open** (the duplicated decode stacks were deliberately not touched) |
-| ROM-CAPACITY-AND-ALLOCATION-001 | **still blocked** |
-
----
-
 ## 1. CQA-03, the defect, reproduced before it was fixed
 
 `Session.open_rom` identified the ROM, resolved the profile, loaded the one
@@ -73,7 +60,7 @@ the same game, the hash alone would accept an atlas whose offsets were resolved
 against another profile sharing the image, and a differently-sized atlas cannot
 describe this image even when both named values agree.
 
-### Canonical vs derivative rules (section 4 of the ticket)
+### Canonical vs derivative rules (section 4 of the record)
 
 The existing derivative-trust model was determined from the repository, not
 invented:
@@ -94,7 +81,7 @@ A derivative's **output** bytes hash differently from the canonical image, and
 that is correct and intended: every accepted reader runs against the
 reconstructed canonical bytes (`Session.map_image`), so the atlas is required to
 describe the canonical base, **not** the derivative's output digest. The
-ticket's warning, do not make a derivative appear to need a rebuilt atlas
+record's warning, do not make a derivative appear to need a rebuilt atlas
 merely because its current output SHA differs, is satisfied by construction,
 and `test_E_a_derivative_is_checked_against_its_canonical_base` pins both halves
 of it. No second derivative identity system was created.
@@ -113,7 +100,7 @@ of it. No second derivative identity system was created.
   `atlas build` command.
 - No classification is downgraded and the open continues; the open is refused.
 - `test_verified_free_evidence_cannot_reach_a_mismatched_base` is the focused
-  regression the ticket asks for: a structurally valid atlas carrying a real
+  regression the record asks for: a structurally valid atlas carrying a real
   `VERIFIED_FREE` span built for another profile is refused, and the same span
   under the right identity is accepted, so the refusal is about identity, not
   about the classification.
@@ -129,14 +116,14 @@ them to disagree with. `atlas text --rom` opens the ROM only for the text
 search path; that path is reached from the Workbench through
 `Session.open_rom`, which is now guarded, and `handles.recover_handle`'s own
 profile-contract gap is audit finding **CQA-16**, explicitly out of this
-ticket's scope.
+record's scope.
 
 ---
 
 ## 2. CQA-15, the inventory, re-run against the current tree
 
 The audit's list was 25 commits old and materially incomplete. Re-run by
-measurement (owner + an independent read-only delegate), the corrections are:
+measurement (a lead and an independent read-only delegate), the corrections are:
 
 | # | Audit said | Measured on `170dc815` |
 | --- | --- | --- |
@@ -187,7 +174,7 @@ reintroduced quietly.
 
 ---
 
-## 3. Retained literals, classification (section 21 of the ticket)
+## 3. Retained literals, classification (section 21 of the record)
 
 The defect was multiple independent **behaviour-driving authorities**, not
 repetition. Each retained copy is classified; there is no unexplained
@@ -222,8 +209,8 @@ load-bearing duplicate.
 | canonical profile id in `export/profile_authority.CANONICAL_EXPORT_PROFILE_ID` | `tools/export/` | names which catalog entry the export readers resolve; the values come from it |
 | `map_render._CANONICAL_PROFILE_ID` | `webfoot/map_render.py` | the Buu-only default profile for callers that supply none; identity is still compared against the bytes |
 | `EXPECTED_SHA` in `code_functions.py` | atlas producer | read from the packaged profile, so it is a view of A, not a rival copy |
-| `ENEMY_TABLE_START`/`LAST`/`COUNT`, `BASE_STAT_TABLE_START`/`COUNT` | `formats/stat_tables.py` | the **measured extent**, kept as the evidence a ticket verified; their only readers are `iter_enemy_records` / `iter_base_stat_records`, which have **no production caller**. A test asserts they still describe a whole number of records and that the profile's GBA address equals their file offset plus the sanctioned base |
-| `BASE_STAT_NAMES` | `formats/stat_tables.py` | **the one remaining per-game literal in this layer, and the reviewer was right to name it.** An INFERRED Buu display roster, live in production via `stats.character_alias` for `CharacterEntry.alias`. It is not a duplicate authority (nothing else declares it), but it is not format data either. Now guarded rather than silently reused: `character_alias(index, count)` refuses a profile whose declared roster is not this one, and refuses an index past the verified names. Owning it as profile data is recorded debt (section 8) |
+| `ENEMY_TABLE_START`/`LAST`/`COUNT`, `BASE_STAT_TABLE_START`/`COUNT` | `formats/stat_tables.py` | the **measured extent**, kept as the evidence a record verified; their only readers are `iter_enemy_records` / `iter_base_stat_records`, which have **no production caller**. A test asserts they still describe a whole number of records and that the profile's GBA address equals their file offset plus the sanctioned base |
+| `BASE_STAT_NAMES` | `formats/stat_tables.py` | **the one remaining per-game literal in this layer, and the verification pass was right to name it.** An INFERRED Buu display roster, live in production via `stats.character_alias` for `CharacterEntry.alias`. It is not a duplicate authority (nothing else declares it), but it is not format data either. Now guarded rather than silently reused: `character_alias(index, count)` refuses a profile whose declared roster is not this one, and refuses an index past the verified names. Owning it as profile data is recorded debt (section 8) |
 | `PROFILE_ID` keys in `data/placement_contracts.py`, `data/script_effects.py`, `data/behavior_triggers.py`, `data/script_specs.py` | `webfoot/data/` | these dicts are **selected by** profile id; the id is the selector. Their per-game **counts** were removed and are read from the profile. Their `sha256` fields were **live gates** and are now compared against `profile.sha256` (review finding 1) |
 | `940ad5f0…f059e` in production | **two sites, both cross-checks, no gate** | the literal survives as data at `data/behavior_triggers.py:12` and `data/placement_contracts.py:518`; it is no longer an authority and no longer gates, because all four comparisons that read it compare it against `profile.sha256` (`maps.py:830`, `authored_placements.py:120`, `authored_placements.py:245`, `placement_events.py:44`), and `test_the_data_contract_hashes_agree_with_the_profile` pins each value to its catalog declaration. An earlier draft of this row said "none left", which was false as written: the literals are still present, they simply no longer decide anything |
 | `tools/research/*_probe.py`, `tools/runtime/*.lua`, `tools/ghidra/*.java`, `tools/mgba_probe/`, `tools/qa/` literals | research / probe / runtime tooling | independent measurements used to *check* production. CQA-15 is about production behaviour-driving authorities; a probe that imported its expectations from the code under test could not detect that code drifting. Two probes were updated from the deleted codec constants to their own measured literals for exactly this reason |
@@ -234,7 +221,7 @@ load-bearing duplicate.
 | value | location | why retained |
 | --- | --- | --- |
 | `940ad5f0…f059e` | ~46 test sites (`tests/conftest.py`, per-file `CANONICAL_SHA`) | pins the local image to the expected identity; a test that read the hash from the code under test would detect nothing |
-| `1534`, `0x0005792C`, `0x0006BCE6`, `0x0006BCE8` | `tests/integration/test_text_rom.py` | the ticket's own words: repeated rather than imported so the test fails if the profile drifts |
+| `1534`, `0x0005792C`, `0x0006BCE6`, `0x0006BCE8` | `tests/integration/test_text_rom.py` | the record's own words: repeated rather than imported so the test fails if the profile drifts |
 | MapEntry address/count/stride | many integration tests | same |
 | `452`, `0x0808E2E0` in `tests/unit/test_map_render.py` | replaced by a **synthetic non-Buu profile** | the old form could not fail; the new form fails if a Buu literal is reintroduced |
 | stat extents | `tests/unit/test_stat_tables.py`, `tests/integration/test_stat_tables_rom.py` | independent measurement of the same bytes |
@@ -282,7 +269,7 @@ reintroduced duplicate fails even before it disagrees with anything.
 Reused, not rebuilt: `RomProfile.from_mapping` already validates that every
 declared address is inside the GBA ROM window, that counts and strides are
 positive, that the pointer table and pool tile their declared extents, and that
-each extent ends inside the image (`profile.py`). This ticket added only the
+each extent ends inside the image (`profile.py`). This record added only the
 identity-value invariants `AtlasIdentity.__post_init__` needs (non-empty id and
 hash, positive image size) and the length/alignment checks the codec gets from
 `stat_tables`. No second schema framework.
@@ -291,8 +278,8 @@ hash, positive image size) and the length/alignment checks the codec gets from
 
 ## 6. Focused validation
 
-Two stages are reported, because the second is what the independent review
-prompted and it found real defects the first could not.
+Two stages are reported, because the second pass found real defects the first
+could not.
 
 ### Stage 1, frozen candidate (`1067a539`), no ROM and no PySide6 in the worktree
 
@@ -304,21 +291,21 @@ prompted and it found real defects the first could not.
 | `tests/unit/test_extent_profile_authority.py` (new) | 12 passed |
 | `tests/unit/test_profile_authority_contract.py` (new) | 11 passed |
 | `git diff --check` | clean, exit 0 |
-| canonical ROM | **absent from this worktree**; never read, hashed or written |
+| canonical ROM | **absent from the working copy**; never read, hashed or written |
 
 **The weakness of stage 1, stated plainly:** the ROM-gated families
 (`test_map_layout_editor_rom`, `test_map_layout_write_rom`, `test_map_browser_rom`,
 `test_text_rom`, `test_stat_tables_rom`, the Workbench ROM tests) **skipped**
 because no canonical image was configured, and every Workbench GUI test skipped
 because PySide6 was not installed. Three of the ROM-gated files were in fact
-broken by this ticket (review finding 2), and five Workbench defects were hidden.
+broken by this record (review finding 2), and five Workbench defects were hidden.
 A green `tests/unit` total with 23 skips was **not** adequate evidence, and the
 claim in an earlier draft of this record that the ROM-gated call sites "were
 updated for the new signatures" was false for three files.
 
 ### Stage 2, corrected revision, PySide6 + canonical ROM + atlas configured
 
-Running the previously-skipping gates exposed five further ticket-caused defects
+Running the previously-skipping gates exposed five further record-caused defects
 (section 9). Section 9 also holds the full focused-command list, the historical
 broad measurements with their commits, and the test-policy statement.
 
@@ -342,12 +329,12 @@ After all three: files restored byte-identically (hash-compared), no
 
 ---
 
-## 7. What this ticket did **not** do
+## 7. What this record did **not** do
 
 - **CQA-04 stays open.** The two map/graphics decode stacks were not
   consolidated, merged or re-pointed at each other. `map_render` and
   `export/canonical` remain separate readers; only their *profile identity and
-  extents* were moved onto one authority, which is what the ticket asked for.
+  extents* were moved onto one authority, which is what the record asked for.
 - No Workbench state-destruction fix (CQA-05), no Session error-family work
   beyond the identity refusal (CQA-06), no graphics performance work (CQA-07),
   no CI changes (CQA-08), no capacity or allocation work.
@@ -363,7 +350,7 @@ After all three: files restored byte-identically (hash-compared), no
 ## 8. Remaining related debt
 
 - **CQA-16**, `handles.recover_handle` still selects one profile's contract by
-  literal key inside a profile-free API. Directly adjacent to this ticket and
+  literal key inside a profile-free API. Directly adjacent to this record and
   **not fixed here**; it is the next identity-adjacent finding.
 - **CQA-17**, `placement_types.table_address` and `enemy_stats.address` both
   declare `0x08711274` in the profile, and `entities.py` mints a CONFIRMED link
@@ -383,11 +370,11 @@ After all three: files restored byte-identically (hash-compared), no
 
 ---
 
-## 9. Independent review and its resolution
+## 9. Findings from independent verification and their resolution
 
-A fresh-context read-only reviewer examined the frozen revision `1067a539`
+A independent read-only verification pass examined the frozen revision `1067a539`
 (a pristine `git archive` export, so the later commits could not contaminate it)
-with the owner's canonical ROMs configured, and returned **BLOCKING = 2**. Both
+with the canonical ROMs configured, and returned **BLOCKING = 2**. Both
 are resolved.
 
 ### Finding 1 (H/N), BLOCKING: two data-module SHA literals still gated behaviour
@@ -407,7 +394,7 @@ fails loudly.
 
 **The first correction was incomplete, and that is worth recording precisely.**
 There were **four** gates in this class, not the two the finding's summary
-implied. The round-1 reviewer named **three** of them (`authored_placements.py`
+implied. The round-1 verification pass named **three** of them (`authored_placements.py`
 two sites, `placement_events.py` one). `03779c2` migrated **two** of those three
 and skipped the behavior-trigger gate inside `_require_trigger_contract`. A
 follow-up grep for `identification.hashes.sha256` then found that skipped site and
@@ -415,8 +402,8 @@ one genuinely unlisted fourth, the placement-contract gate inside `load_maps`.
 Both landed in `7d7c16d`.
 
 An earlier draft of this section said the follow-up "found a third and fourth that
-neither the reviewer nor the implementer had listed", which is wrong on the
-attribution: the reviewer did list the `_require_trigger_contract` site, and
+neither the verification pass nor the author had listed", which is wrong on the
+attribution: the verification pass did list the `_require_trigger_contract` site, and
 `03779c2` simply failed to migrate it. What is true, and was the real cause, is
 that the correction was driven by the finding's *summary* rather than by an
 exhaustive search for the pattern. The fix is now proved exhaustive by grep: four
@@ -431,35 +418,35 @@ which is also the more faithful fixture: a case that overrides it now genuinely
 exercises the profile-authority comparison rather than the old image-hash one.
 All 15 tests in that file pass. The wider lesson is recorded below: a commit that
 changes an attribute contract must re-run the files that stub it, and the
-ticket's test totals must be re-measured whenever a commit lands after them.
+record's test totals must be re-measured whenever a commit lands after them.
 
-The reviewer's related point, that two further behaviour-driving literals were
+The verification pass's related point, that two further behaviour-driving literals were
 unnamed in the classification, is also fixed: `BG_PALETTE_ADDRESS` is now
 profile-declared (below), and `BASE_STAT_NAMES` is documented as the one
 remaining per-game literal in that layer, now guarded against a foreign roster
 rather than silently reused.
 
-### Finding 2, BLOCKING: ticket-caused ROM-gated test failures
+### Finding 2, BLOCKING: record-caused ROM-gated test failures
 
 With the canonical ROM configured, the frozen revision failed where `170dc815`
 passed: `1 failed + 7 errors`, because three test files were left calling removed
 API (`st.character_identity(0)`; `mr.SUPPORTED_ROM_SHA256`;
 `map_browser.SUPPORTED_ROM_SHA256`). The record's claim that their call sites
 were updated was **false for those three files**, and its integration evidence
-could not be reproduced in the environment the ticket says they must run in.
+could not be reproduced in the environment the record says they must run in.
 
 **Resolved**: the three files now derive the identity from
 `profile_authority.canonical_export_identity()` / `mr.canonical_profile()` and
 pass the profile's character count. Verified with the ROM configured: the same
-four-file selection the reviewer used
+four-file selection the verification pass used
 (`test_stat_write_rom.py`, `test_map_render_rom.py`,
 `test_map_layout_write_rom.py`, `test_buu_dialog_runtime_rom.py`) gives
 **49 passed, 2 skipped, 0 failed** at both base `170dc815` and the corrected
 revision, measured before the test-policy correction.
 
-### What the reviewer could not verify, and what that exposed
+### What the verification pass could not verify, and what that exposed
 
-The reviewer recorded that PySide6 was absent, so **every Workbench GUI test
+The verification pass recorded that PySide6 was absent, so **every Workbench GUI test
 skipped in both revisions** and the Workbench claims were code-level only. That
 gap was closed rather than accepted:
 
@@ -479,21 +466,21 @@ gap was closed rather than accepted:
   ```
 
   Then run **named files only**, never a broad suite (`docs/testing.md`, and the
-  human test policy in force for this ticket). The exact focused commands and
+  human test policy in force for this record). The exact focused commands and
   their results are listed below.
 
   **ROM discovery is not uniform, and this bites the exact command an earlier
   draft quoted.** Some ROM-gated files honour `WEBFOOT_BUU_ROM` /
   `LOGX_CANONICAL_ROM`; others locate the image by a hard-coded relative path and
-  ignore both. Measured by the reviewer: with only the two environment variables
+  ignore both. Measured by the verification pass: with only the two environment variables
   set, the four-file selection returns **5 passed, 46 skipped**;
   `49 passed, 2 skipped` appears only once the image is also discoverable at
   `roms/Dragon Ball Z - Buu's Fury (U).gba`. The two files that bypass the
   variables are `tests/integration/test_stat_write_rom.py:47` (a `roms/*Buu*.gba`
   glob) and `tests/integration/test_buu_dialog_runtime_rom.py:31` (a literal
   path). This is pre-existing path logic, not introduced here, and
-  `test_stat_write_rom.py` was edited by this ticket without aligning it; a
-  follow-up should make every ROM-gated file read the same variables so a ticket
+  `test_stat_write_rom.py` was edited by this record without aligning it; a
+  follow-up should make every ROM-gated file read the same variables so a record
   can state one command.
 
   Measured on the two workbench files that gate this way, run singly:
@@ -505,33 +492,33 @@ gap was closed rather than accepted:
 
   So the workbench-gate total moves by exactly those 5 tests depending on
   discovery, which is why an earlier draft's figure of 178 (no image at `roms/`)
-  and the round-2 reviewer's 181 differ by a bounded, now-observed amount rather
+  and the round-2 verification pass's 181 differ by a bounded, now-observed amount rather
   than an unexplained one.
 - Running the gates that had always skipped **found five real defects that this
-  ticket had introduced and that no previous run could have caught**:
+  record had introduced and that no previous run could have caught**:
   - `render_map` gained a `profile=` keyword and two Workbench test stubs still
     had the old signature, so the map tab never loaded its map: two failures and
-    one **hang**. All three pass at base, so all three were ticket-caused.
+    one **hang**. All three pass at base, so all three were record-caused.
   - `map_browser_tab`'s read-only detail text assertion still expected the word
     "canonical".
   - `scene.script_effect_options` reads the declared text count, which the shared
     synthetic profile fixture did not declare.
   - `test_graphics_cli`'s synthetic `actor_sprites` declaration lacked the new
     `bg_palette_address` field.
-- `map_render`'s `BG_PALETTE_ADDRESS` was the reviewer's own escaped mutation
+- `map_render`'s `BG_PALETTE_ADDRESS` was the verification pass's own escaped mutation
   (`export/render.py` object palette, `map_layout_write` count and
   `authored_placements` text bound were the others). `BG_PALETTE_ADDRESS` is now
   the profile's `tables.actor_sprites.bg_palette_address`, and new tests catch
   every one of those three mutations (section 6, below).
 
 This is the honest reading: the frozen revision was **not** closure-ready, and
-the reviewer was right on both counts. The corrected revision is materially
+the verification pass was right on both counts. The corrected revision is materially
 better tested than the frozen one because the gates now actually execute.
 
 ### Second review round
 
-A fresh round-2 reviewer examined the corrected revision, and a separate delta
-reviewer examined the follow-up. Verdict at the tip: **BLOCKING = NONE**. Between
+A fresh round-2 verification pass examined the corrected revision, and a separate delta
+verification pass examined the follow-up. Verdict at the tip: **BLOCKING = NONE**. Between
 them they found three things that the round-1 report and this record had wrong,
 all now fixed:
 
@@ -539,7 +526,7 @@ all now fixed:
 | --- | --- |
 | The round-1 correction migrated only 2 of the 4 contract-hash gates; `authored_placements.py:117` and `maps.py:826` still compared the data literal against the loaded image's hash | fixed in `7d7c16d`; all four read `profile.sha256` |
 | `7d7c16d` broke four cases in `tests/unit/test_authored_behavior_trigger.py` and the record's `tests/unit` total was stale for it | fixed in `5bf25be`; that file is 15 passed |
-| This record claimed "none left" for the canonical literal in production, and misattributed which gate had been unlisted | both corrected above (the literals survive as pinned cross-checks; the reviewer *did* list the `_require_trigger_contract` site) |
+| This record claimed "none left" for the canonical literal in production, and misattributed which gate had been unlisted | both corrected above (the literals survive as pinned cross-checks; the verification pass *did* list the `_require_trigger_contract` site) |
 
 Round-2 also downgraded two of the round-1 notes and one of its own:
 
@@ -550,12 +537,12 @@ Round-2 also downgraded two of the round-1 notes and one of its own:
   even though the value has one owner.
 - A meta line missing keys still raises a bare `KeyError` from
   `tools/webfoot/atlas.py:511`. It fails closed (no atlas is accepted) and that
-  file is untouched by this ticket, so it is out of scope; recorded as debt.
+  file is untouched by this record, so it is out of scope; recorded as debt.
 - The `map_layout_write` count guard was caught only by a **source-text**
   assertion. Strengthened: `MapLayoutWriter` now accepts an injected profile, and
   `test_the_map_layout_writer_bound_is_the_profiles` drives a profile declaring
   only 3 maps through the writer and asserts its own gate refuses index 3 and 452.
-  Re-running the reviewer's exact mutation (`count = 452`) against that single
+  Re-running the verification pass's exact mutation (`count = 452`) against that single
   test fails it. The writer's identity gate is still satisfied by a declared
   identity rather than by stubbing.
 
@@ -586,7 +573,7 @@ re-run in isolation. No broad re-measurement was taken, by policy.
 
 #### Focused manual runs on the current tip
 
-Each command names explicit files that exercise a code path this ticket changed.
+Each command names explicit files that exercise a code path this record changed.
 
 | command | result |
 | --- | --- |
@@ -603,7 +590,7 @@ Each command names explicit files that exercise a code path this ticket changed.
 ROM-backed runs above are named by file and read the canonical image read-only;
 the ROM's SHA-256 was verified unchanged before and after. The single remaining
 skip in `test_map_render.py` needs the map-40 VRAM dump, which is not part of this
-ticket.
+record.
 
 **BROAD / FULL SUITE: NOT MANUALLY RUN, HUMAN POLICY.** A broad `tests/unit` run
 started after the `7d7c16d` fix was **terminated on instruction** and restarted
@@ -624,7 +611,7 @@ each one**, not a suite:
 | text bound -> literal `1534` | `webfoot/authored_placements.py` | `test_gameplay_effect_native.py` | detected by the discriminating 1,000-entry profile |
 
 `test_a_shorter_declared_text_table_moves_the_bound` exists specifically because
-of the reviewer's observation that the canonical profile's own count is 1,534, so
+of the verification pass's observation that the canonical profile's own count is 1,534, so
 the original test could not distinguish "reads the profile" from "hard-codes
 Buu's number". Every mutation was reverted immediately and the tree verified
 clean (`git status` empty, no `MUTATION` marker).

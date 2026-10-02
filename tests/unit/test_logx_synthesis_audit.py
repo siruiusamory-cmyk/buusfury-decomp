@@ -133,10 +133,10 @@ def test_roadmap_exists_and_is_grouped_into_phases():
         "Phase 5 - Advanced / forensic",
     ):
         assert phase in text, phase
-    # every proposed ticket is named and each phase names its gating fact
-    for ticket in ("FIX-1", "FIX-2", "FIX-3", "TOOLS-3", "WRITE-2", "NEW-4"):
-        assert ticket in text, ticket
-    assert "Recommended first implementation ticket" in text
+    # every proposed item is named and each phase names its gating fact
+    for item in ("FIX-1", "FIX-2", "FIX-3", "TOOLS-3", "WRITE-2", "NEW-4"):
+        assert item in text, item
+    assert "Recommended first implementation item" in text
 
 
 # --------------------------------------------------------------------------- #

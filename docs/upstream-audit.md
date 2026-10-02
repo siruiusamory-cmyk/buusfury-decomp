@@ -2,7 +2,7 @@
 
 Audit date: 2026-08-19. Exact revisions are machine-pinned in `upstreams.lock`. License statements describe each inspected tree only; they are not a project-wide compatibility conclusion.
 
-The Phase 0 project's own code license is not yet selected. This is a known distribution limitation, independent of upstream licenses.
+This project's own code is licensed under the Mozilla Public License 2.0, stated in the root `LICENSE`.
 
 ## DragonByteZ
 

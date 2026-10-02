@@ -1,13 +1,15 @@
-# P-009 - Critical Hit Mechanics
+# P-009 critical hit mechanics
 
-**Status: PARTIAL - critical hit semantics confirmed, producer unresolved.**
+Critical hit semantics recovered from two independent directions: the
+discriminator, the multiplier and the presentation path, with the producer of the
+critical roll left open.
 
-## RESULT: PARTIAL - Critical Hit Semantics Confirmed, Producer Unresolved
+## Result: critical hit semantics confirmed, producer unresolved
 
 P-009 reached its §25-B evidence blocker. The critical discriminator, the
 multiplier, and the presentation path are confirmed from two independent
 directions. The critical *roll* - its RNG source and STR-dependent probability
-- is blocked on a hit-resolution-side search that this ticket does not open.
+- is blocked on a hit-resolution-side search that this record does not open.
 
 ## Objective
 
@@ -25,7 +27,7 @@ and are reported to knock enemies back. RE scope therefore began at *how
 exactly*, not *do criticals exist*.
 
 One element of that prior is now **contradicted by the binary** (see below).
-Per the External-Research-First rule in `docs/DEVELOPMENT.md`, the runtime observation
+Per the External-Research-First rule in the repository rules, the runtime observation
 wins, because the binary is ground truth for this project.
 
 ## Confirmed results
@@ -120,7 +122,7 @@ the external prior was wrong.
 
 **RESOLVED.** The P-008 refusal was correct on the evidence available then; the
 reclassification rests on new executable and runtime evidence, not on
-association with the topic of this ticket.
+association with the topic of this record.
 
 ## Unknown and deferred
 
@@ -216,7 +218,7 @@ recorded as such in the remake, not a guess presented as recovered behavior.
 
 ## Continuation
 
-Further work is a **new ticket**, not an extension of this one:
+Further work is a **new record**, not an extension of this one:
 
 **P-010 candidate - Critical Producer & Hit-Resolution Path.** Approach the
 damage record from the attack and hit-resolution side rather than the

@@ -1,114 +1,14 @@
-# DRAGONBYTE-Z-AUTHORED-IMAGE-PIPELINE-001 - independent review record
+# Authored-image pipeline verification
 
-Ticket: **DRAGONBYTE-Z-AUTHORED-IMAGE-PIPELINE-001** - extract the DragonByte Z
-Save As / provenance / derivative-trust machinery out of the Map Layout Editor into
-one shared authored-image pipeline, with no new ROM capability and no change to the
-accepted Map Layout Editor behaviour.
-
-Worktree `<checkout>-authored-image-001`, branch
-`authored-image-pipeline-001`, created from `origin/master` at
-`41e218e93d6a54793a975fff734a4e93b7b672f5`. Frozen, uncommitted; nothing staged.
-
-```text
-CODE REVIEW
-
-Verdict: APPROVE WITH NON-BLOCKING NOTES
-
-Scope reviewed:
-- NEW  tools/webfoot/authored_image.py                       (631 lines)
-- NEW  tests/unit/test_authored_image.py                     (608 lines)
-- MOD  tools/webfoot/map_layout_edit.py                      (save -> shared transaction)
-- MOD  tools/webfoot/map_layout_provenance.py                (map-layout half only)
-- MOD  tests/unit/test_map_layout_provenance.py
-- MOD  docs/workbench.md                                     (one paragraph)
-- Read for context (unchanged): tools/webfoot/write.py,
-  tools/webfoot/map_layout_write.py, tools/webfoot/workbench/session.py,
-  tools/webfoot/workbench/map_browser_tab.py, tools/webfoot/workbench/atlas_browser.py,
-  tests/integration/test_map_layout_editor_rom.py, tests/unit/test_workbench_map_browser.py
-- Compared against HEAD's tools/webfoot/map_layout_provenance.py and
-  tools/webfoot/map_layout_edit.py, loaded from git into throwaway modules.
-
-Blocking findings:
-- None.
-
-Non-blocking findings:
-- [MEDIUM] tests/unit/test_authored_image.py - the decisive canonical-reconstruction
-  equality check (authored_image.py:512-536) has no discriminating test, and the test
-  that pinned it at HEAD was deleted. Evidence: with the check removed, 60 tests pass.
-  Impact: the shared verifier is now the single trust boundary for every domain and its
-  own decisive rule is unpinned; in this domain MapLayoutWriter's SHA gate redundantly
-  enforces the same property, so no ROM is accepted today. Fix: one negative control.
-- [MEDIUM] tools/webfoot/authored_image.py:388-402 (_load_manifest) - the documented
-  "Raises AuthoredImageError for ... a malformed ... manifest" contract is incomplete:
-  a non-UTF-8 manifest raises UnicodeDecodeError and a deeply nested one raises
-  RecursionError, both escaping verify_authored_rom and Session.open_rom, whose only
-  GUI call site catches SessionError. Pre-existing at HEAD (reproduced against HEAD's
-  own module), carried forward unchanged.
-- [LOW] tools/webfoot/authored_image.py:129-162,290 - normalize_changes collapses exact
-  duplicate writes, so the save path now accepts a pair that write.plan_changes refuses
-  (OverlappingChangeError). Emitted bytes and manifest are identical, and the Map Layout
-  Editor cannot construct the case, so no accepted image widens.
-- [LOW] tools/webfoot/authored_image.py:222-343 - save_authored_image takes no
-  field_bytes, so it cannot guarantee the derivative it publishes satisfies
-  verify_authored_image's field-width rule; unreachable from MapLayoutEditor.save.
-- [LOW] tools/webfoot/map_layout_provenance.py:163-165,238-241 - only
-  AuthoredImageError is translated into ProvenanceError; MapLayoutWriteError from the
-  domain hook's own MapLayoutWriter would escape (unreachable while reconstruction runs
-  first). Not "one public error type for every reason".
-- [LOW] test/portability and pre-existing notes: the map-range negative control moved
-  from portable to ROM-gated only; the manifest-only publish failure is still probe-only;
-  a hard link to the source is not detected by the path-based alias guard (unchanged from
-  HEAD); LayoutSave.changes is annotated tuple[LayoutEdit, ...] but holds ByteChanges.
-
-Correctness:
-- PASS. Every refusal the pre-refactor modules made still fires in the same situation
-  with its own message (46/46 reproduced against a real emitted derivative). Every
-  accepted-derivative decision matches HEAD's verifier over a 265-case fuzz (0
-  mismatches). Every accepted Map Layout Editor save matches HEAD's byte for byte.
-
-Architecture/product alignment:
-- PASS. The generic logic exists once; no map/chunk/layer rule leaked into the shared
-  module; no generic logic left duplicated in the domain module; no plugin system,
-  editor registry, abstract factory, command bus, second manifest format, new ROM
-  capability, UI change or site change.
-
-ROM/data safety:
-- PASS. Canonical ROM byte-identical (8,388,608 bytes, SHA-256 940ad5f0...f059e) after
-  every run, including the save-over-source, junction-alias and hard-link probes. No
-  save can replace or delete the source through any of the four names it touches.
-
-Determinism:
-- PASS. Edit order does not change the emitted image or the manifest; the normalized
-  plan is ordered by offset; the manifest is the existing deterministic WriteManifest.
-
-Tests/evidence:
-- PASS with the MEDIUM note above. The new tests are discriminating negative and
-  positive controls, the ROM-gated evidence is intact and unmodified, and no previously
-  passing assertion was weakened. Two coverage items moved rather than disappeared.
-
-Compatibility:
-- PASS. A derivative written by HEAD's code still verifies and reopens; the document
-  format, suffix, schema version, owner vocabulary, reason string and field width are
-  unchanged; the Map Browser still renders a derivative from the reconstructed canonical
-  bytes with the declared edits as overrides, and still refuses to edit it.
-
-Maintainability:
-- PASS. The domain module is now ~260 lines and holds only owner vocabulary, reason,
-  the same-layer rule and the typed records; the shared module is the one place that
-  knows about staging, aliases, publication order and manifest structure.
-
-Public-release hygiene:
-- N/A / PASS. No tracked file other than this record was added; `git diff --check` is
-  clean; only build/ was written to; no ROM, save, state, generated image or generated
-  document appears in the diff.
-```
+One shared authored-image pipeline for Save As, provenance and derivative trust,
+with the findings raised against it and their dispositions.
 
 ## Findings, in detail
 
 ### 1. [MEDIUM] The decisive provenance check has no discriminating test
 
 `tools/webfoot/authored_image.py:512-536` (`_reconstruct_canonical`) is the rule both
-the module docstring and the ticket call decisive: undoing every declared change must
+the module docstring and the record call decisive: undoing every declared change must
 reproduce the canonical image by SHA-256, which is what bounds an accepted derivative to
 canonical-plus-declared and so needs no copy of the canonical file. HEAD pinned it
 directly in `tests/unit/test_map_layout_provenance.py::test_canonical_reconstruction_is_required`
@@ -123,7 +23,7 @@ earlier by a different rule:
 | `test_authored_image.py:449-458` byte flipped outside the field, manifest untouched | `_output_identity` (digest mismatch) |
 | `test_authored_image.py:462-467` byte flipped inside the field, manifest re-hashed | `_check_declared_values` - reconstruction *passes*, because it overwrites the whole declared field with `old` |
 | `test_map_layout_editor_rom.py:554-565` the same case on the real ROM | `_check_declared_values` |
-| `test_authored_image.py:524` a declared span past the image | `_declared_changes` alignment rule (offset 2046 is not 4-aligned); confirmed by the reviewer, which reaches the intended branch only at `offset == len(image)` |
+| `test_authored_image.py:524` a declared span past the image | `_declared_changes` alignment rule (offset 2046 is not 4-aligned); confirmed by the verification pass, which reaches the intended branch only at `offset == len(image)` |
 
 **Evidence.** `build/review/mutate_recon_off.py` loads as a pytest plugin and replaces
 `_reconstruct_canonical` with the same inversion minus the SHA-256 equality:
@@ -136,7 +36,7 @@ earlier by a different rule:
 ```
 
 The check is load-bearing, so this is a real hole in the *suite*, not a redundant rule:
-with the mutation loaded, the reviewer's refusal inventory loses two rows -
+with the mutation loaded, the verification pass's refusal inventory loses two rows -
 `[FAIL] undeclared byte change, honest digest` and `[FAIL] declared old is not the
 canonical value` (44/46) - and an arbitrary modified ROM stops being refused by the
 shared verifier.
@@ -180,7 +80,7 @@ and `Session._verify_derivative` catches only `ProvenanceError`
 cover it: the intended "Load failed: ..." message becomes an unhandled exception on a
 user-chosen file. Nothing is accepted, so this fails closed.
 
-**Pre-existing, not a regression** - the reviewer loaded HEAD's module from git and ran
+**Pre-existing, not a regression** - the verification pass loaded HEAD's module from git and ran
 the same two inputs through it: `OLD non-UTF-8 bytes -> ESCAPED UnicodeDecodeError` and
 `OLD deep nesting -> ESCAPED RecursionError`. The refactor copied the loader's structure
 into the new shared module, which is now the right place to fix it.
@@ -217,7 +117,7 @@ the same byte ... refusing is the only safe outcome", `write.py:58-64`). Either 
 `save_authored_image` (`authored_image.py:222`) takes no `field_bytes`, while
 `verify_authored_image` (`:555-565`) does. `verify_emitted_image` proves only "the output
 is the base plus the spans the caller declared", of any width, and the manifest it writes
-can then never satisfy `_declared_changes`' `size == field_bytes`. The reviewer confirmed
+can then never satisfy `_declared_changes`' `size == field_bytes`. The verification pass confirmed
 that e.g. a 2-byte no-op at the last field is accepted and published. Unreachable from
 this domain: `MapLayoutEditor.save` builds only four-byte changes
 (`edit.replacement.to_bytes(4, "little")` with a four-byte `old` slice) and its own
@@ -231,7 +131,7 @@ derivative is "exactly the canonical image plus the declared, domain-legal field
 `canon.Rom`, `canon.read_map_entries` and `MapLayoutWriter(canonical_image)` at
 `:163-165`, all of which raise their own types. It is unreachable on the frozen code
 because reconstruction has already proved the canonical bytes equal `mb.SUPPORTED_ROM_SHA256`
-before the hook runs, and the reviewer confirmed that by symptom: under mutation A the
+before the hook runs, and the verification pass confirmed that by symptom: under mutation A the
 only difference on this path was `MapLayoutWriteError: expected the canonical Buu rev0
 image` escaping instead of a `ProvenanceError`. The claim "one public error type for every
 reason a derivative is not accepted" would be true if `verify_authored_image` wrapped the
@@ -248,11 +148,11 @@ hook's own exceptions too. Defence in depth only; non-blocking.
   owner of `map:0452`.
 - The manifest-only publish failure (image published, manifest rename refused) is still
   verified only by probe, as the previous review recorded; the refactor preserves it
-  (reviewer probe 11: `AuthoredImageError` naming the manifest path, image present,
+  (verification pass probe 11: `AuthoredImageError` naming the manifest path, image present,
   manifest absent, no staging left, and the published image then refuses to reopen).
   A committed test for it is still missing.
 - The alias guard is path-based: a hard link to the source at a different path is not
-  detected (`Path.resolve()` has no inode identity). The reviewer reproduced it
+  detected (`Path.resolve()` has no inode identity). The verification pass reproduced it
   synthetically: the save is accepted, the source's own bytes survive at the source path,
   and the *chosen output path* is replaced - correct for a deliberately chosen output,
   and identical to HEAD's behaviour. Worth one docstring clause, since the module says
@@ -261,27 +161,27 @@ hook's own exceptions too. Defence in depth only; non-blocking.
   but has always held `write_sdk.ByteChange`; the GUI only reads `len()`. Pre-existing;
   the shared `AuthoredImageSave.changes` uses the correct type.
 
-## Reviewer validation performed
+## Verification performed
 
 Focused only, per the human's policy override: the eight-file gate below plus throwaway
-probes the reviewer wrote under `build/`. No full-suite run and no broad `tests/unit` run
+probes the verification pass wrote under `build/`. No full-suite run and no broad `tests/unit` run
 was started. All pytest runs used an explicit `--basetemp`.
 
 1. `git status --porcelain=v1` - exactly the four modified and two untracked files in the
-   ticket; nothing staged and no other tracked path touched.
+   record; nothing staged and no other tracked path touched.
    `git diff --check` - exit 0 (no whitespace errors).
-2. The ticket's focused gate verbatim, `--basetemp=build/pytest-review-focused`:
+2. The record's focused gate verbatim, `--basetemp=build/pytest-review-focused`:
    **125 passed in 103.75 s, 0 skipped** (the atlas is present, so every ROM-gated test
-   ran). This matches the implementer's measured total.
+   ran). This matches the author's measured total.
 3. The "before" number, arithmetically rather than by re-running: HEAD's
    `test_map_layout_provenance.py` (extracted with `git show` to
    `build/review/old_map_layout_provenance_test.py`) collects **11**, the new one
    collects **12**, the new `test_authored_image.py` collects **23**, and the other six
    files collect **90**. So HEAD = 90 + 11 = **101** = 98 passed + 3 skipped and the
-   frozen tree = 90 + 12 + 23 = **125**. The reviewer did not reproduce the pass/skip
+   frozen tree = 90 + 12 + 23 = **125**. The verification pass did not reproduce the pass/skip
    split itself, because that needs a second checkout or a change to git state.
 4. `build/review/probe_shared.py` - **27/27** adversarial probes against the shared layer
-   with the reviewer's own toy domain: conflicting writes (same field, overlapping spans,
+   with the verification pass's own toy domain: conflicting writes (same field, overlapping spans,
    same offset/different width) fail closed before publication with an existing
    destination and manifest untouched; all four source collisions plus `sub/../source.gba`,
    a case-only alias and a symlink alias refused with the source byte-identical and
@@ -334,7 +234,7 @@ was started. All pytest runs used an explicit `--basetemp`.
 
 ## Remaining uncertainty
 
-- I did not run `pytest tests` (out of scope by the human's override, and the implementer
+- I did not run `pytest tests` (out of scope by the human's override, and the author
   had already started it), so no full-suite statement is made. Everything above is
   focused and independently reproduced.
 - I did not re-run the pre-change suite, so the "98 passed, 3 skipped" figure is
@@ -347,18 +247,18 @@ was started. All pytest runs used an explicit `--basetemp`.
 - 8.3 short-name aliasing could not be tested: this volume generates no short names for
   the ROM files, so the `Path.resolve()` claim is verified for relative, dot-dot,
   case-only, symlink and junction aliases only.
-- Whether a future domain will reuse this layer is the ticket's premise, not something
+- Whether a future domain will reuse this layer is the record's premise, not something
   this review can measure; findings 1 and 4 are stated in those terms.
 
-## Post-fix addendum - re-review of the accepted delta
+## Post-fix addendum: verification of the accepted delta
 
 **Final verdict on the fixed artifact: APPROVE WITH NON-BLOCKING NOTES.** No blocking
 finding remains; all four accepted items are verified fixed, and the residue is
 non-blocking by decision or pre-existing.
 
-### The delta I inspected
+### The delta inspected
 
-| File | Delta | Reviewer's reading |
+| File | Delta | Independent reading |
 | --- | --- | --- |
 | `tools/webfoot/authored_image.py` | +11 lines total (631 -> 642): 1 module-docstring bullet, 5 `save_authored_image` docstring lines, 5 `_load_manifest` lines | Exactly the two docstring additions and the two `except` clauses described. I confirmed the size by checking every top-level definition's line number against the revision I reviewed (+1 to +11, monotonic and fully accounted for); the `save_authored_image` body, `verify_emitted_image`, `_reconstruct_canonical`, `_declared_changes`, `_canonical_base`, `_output_identity` and `_field` are byte-for-byte where they were. |
 | `tools/webfoot/write.py` | +5 docstring lines in `plan_changes` only | `git diff` shows additions inside the docstring, before the body. No logic change. |
@@ -410,13 +310,13 @@ non-blocking by decision or pre-existing.
    `MapLayoutWriteError` from the domain hook (finding 5 - unreachable while
    reconstruction runs first, and the SHA gate in `map_layout_write.py:43` is what makes
    it unreachable); the hard-link alias (pre-existing, identical to HEAD); and the
-   `LayoutSave.changes` annotation (pre-existing). None of these blocks the ticket, and
-   the reviewer's earlier severities for them stand as LOW.
+   `LayoutSave.changes` annotation (pre-existing). None of these blocks the record, and
+   the verification pass's earlier severities for them stand as LOW.
 
 ### Re-validation on the fixed revision
 
 - Focused eight-file gate, `--basetemp=build/pytest-review-postfix`:
-  **128 passed in 111.57 s, 0 skipped** - reproduces the implementer's count
+  **128 passed in 111.57 s, 0 skipped** - reproduces the author's count
   (125 -> 128, the three added test functions).
 - Mutation A (reconstruction equality removed): **1 failed, 62 passed** - pinned now.
 - `build/review/probe_postfix.py` **10/10**; `build/review/probe_shared.py` **27/27**;
@@ -428,7 +328,7 @@ non-blocking by decision or pre-existing.
   (8,388,608 bytes, SHA-256 `940ad5f0...f059e`). Only `build/` was written to; the sole
   tracked addition remains this review record.
 
-### Remaining non-blocking notes on the fixed revision
+### Remaining notes on the fixed revision
 
 - [LOW] `tests/unit/test_authored_image.py:273-291` - the new manifest-publish test keys
   its fake `os.replace` on *call order* (`published[1]`), not on the target, and patches
@@ -441,10 +341,3 @@ non-blocking by decision or pre-existing.
 - The first pass's uncertainties stand unchanged: no full-suite run, the pre-change
   pass/skip split confirmed arithmetically only, no live Qt click-through, and 8.3
   short-name aliasing untestable on this volume.
-
-## Stop
-
-This record covers the frozen, uncommitted implementation on
-`authored-image-pipeline-001`, including the post-review delta. It does not modify the
-implementation, the tests, the canonical ROM or any other tracked file, and nothing was
-committed, staged or pushed.

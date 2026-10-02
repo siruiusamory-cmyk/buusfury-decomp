@@ -1,38 +1,12 @@
-# MAP-WARP-PROJECT-AUTHORING-001 - persisting a semantic transition edit
+# Persisting a semantic transition edit
 
-STATUS: **CLOSED (2026-09-26).** Class: scoped project-format, SDK-authority and
-build-integration pass. This is a **sub-pass of the parent capability
-`MAP-WARPS-AND-CONNECTIONS-001`**, which stays active and unshipped in
-[`PROJECT_<local-state-name>`](PROJECT_<local-state-name>); the parent's Workbench surface, runtime proof,
-allocation work and capability advance are explicitly **not** in scope here and
-were not begun.
+How a semantic transition edit is represented in the project, persisted, rebuilt
+and reopened, with the determinism and safety proofs behind it.
 
-Baseline: `05870f1e9c90fc5ef83ddfd1fa69fdedb06f926a` (the ticket's stated baseline
-and the actual start SHA - verified with `git rev-parse HEAD` on a clean tree, no
-drift). Implementation and frozen reviewed candidate:
-`b9d8fd68673989d6197ad3f4669af82dc07e87bb` on
-`ticket/map-warp-project-authoring-001`. Independent local review: **PASS**, zero
-blocking findings, no correction commit. Verdict:
-[`MAP-WARP-PROJECT-AUTHORING-001-review.md`](MAP-WARP-PROJECT-AUTHORING-001-review.md);
-closure:
-[`archive/MAP-WARP-PROJECT-AUTHORING-001.md`](archive/MAP-WARP-PROJECT-AUTHORING-001.md).
+No raw address is required from the author, and no meaning is invented for an
+`UNRESOLVED` field.
 
-**public progress impact: NONE.** No capability ships, the registry stays at
-**19 / 24 (79%)**, `EDIT` stays **7 / 8**, `src/data/capabilities.json` is
-untouched, `warps` remains missing, and no published claim, blocker or questline
-entry changes wording. `docs/PROJECT_<local-state-name>` is deliberately **not** touched: the
-parent capability has not shipped, and the closed predecessor sub-pass
-`MAP-WARP-FORMAT-001` recorded its state in its own ticket record rather than in
-project state.
-
-Scope boundaries honoured: no Workbench UI, no new transition creation, no
-runtime/emulator proof, no capability count change, no public-site change, no
-allocation, no relocation, no second serializer, no invented meaning for an
-`UNRESOLVED` field, and no raw address required from the author.
-
----
-
-## RETURN
+## Measured status summary
 
 ```text
 MAP-WARP-PROJECT-AUTHORING-001 - STATUS REPORT
@@ -96,7 +70,7 @@ read-only)
 BROAD SUITE:
 RUN ONCE IN ERROR AGAINST STANDING POLICY - recorded as history, NOT repeated.
 Measured 4261 passed, 2 failed, 6 skipped in 1:26:11. Both failures are pre-existing
-at 05870f1 and not ticket-caused. The focused files named above are this ticket's
+at 05870f1 and not record-caused. The focused files named above are this record's
 evidence.
 
 CANONICAL ROM:
@@ -133,7 +107,7 @@ prior_region = [[592, 601], [136, 241]]
 region = [[304, 960], [272, 544]]
 ```
 
-Every element of the ticket's "expected information" is present and semantic:
+Every element of the record's "expected information" is present and semantic:
 
 | Expected information | Where it lives | Form |
 | --- | --- | --- |
@@ -147,7 +121,7 @@ Every element of the ticket's "expected information" is present and semantic:
 is the same durable `map:NNNN` `maps/maps.toml` uses, the transition is named by
 the position the engine's own array walk assigns, and the replacement is the
 destination map's own lookup key. A pointer, a count and a file offset are all
-refused for the reason the parent ticket refuses them: editing one moves a
+refused for the reason the parent record refuses them: editing one moves a
 structure this toolkit does not own. The written file is asserted to contain no
 `0x`, no `offset`, no `address` and no `pointer`.
 
@@ -313,11 +287,11 @@ preservation, canonical-ROM safety, no-op, deterministic rebuild, manifest
 provenance, stale prior, invalid identity, invalid destination, invalid region on
 disk, and the staging refusal.
 
-### The full-suite gate - run once in error, not repeated
+### The full-suite gate
 
 **This command was run ONCE IN ERROR AGAINST STANDING POLICY and is NOT repeated.**
 The number below is kept as history and is deliberately not offered as this
-ticket's evidence: the focused files above are. No further broad run was made for
+record's evidence: the focused files above are. No further broad run was made for
 confidence, and none may be inferred from anything here.
 
 ```text
@@ -325,10 +299,10 @@ python -m pytest tests -q -p no:cacheprovider
 4261 passed, 2 failed, 6 skipped in 5171.39s (1:26:11)
 ```
 
-**Both failures are pre-existing at the baseline and are not ticket-caused.** Each
+**Both failures are pre-existing at the baseline and are not record-caused.** Each
 was established by evidence, not by assertion:
 
-| Failure | Why it is not this ticket |
+| Failure | Why it is not this record |
 | --- | --- |
 | `tests/integration/test_map_browser_rom.py::test_map_19_renders_the_accepted_terrain_field` | **Reproduced at the pristine baseline.** A clean `git worktree` at `05870f1e9c90fc5ef83ddfd1fa69fdedb06f926a` fails this one test with the *identical* digest mismatch (`1b386a509aad…9fc57` observed against the pinned `2ece490ffb79…4cfeec`). The pass touches no rendering code and `tests/integration/test_map_browser_rom.py` is unmodified. |
 | `tests/unit/test_capability_registry.py::test_the_built_page_renders_the_registry_list` | A **stale git-ignored `dist/` build**. `dist/index.html` was last written 2026-09-25 12:54, while `resize` shipped later the same day (18:42), so the rendered page still says `is-todo` for a capability the registry reports as shipped. `git check-ignore` confirms `dist/` is untracked; the same test **skips** in the clean baseline worktree where no `dist/` exists. This is exactly the pre-existing failure the predecessor's review request records. `src/` is untouched by this pass. |
@@ -393,7 +367,7 @@ an entry whose authored value equals its prior produces no provenance entry at a
   change, and the build's own byte diff shows that.
 - **No runtime or emulator proof.** No emulator was launched and no savestate was
   read. This pass proves the project model, the build and the serialization; the
-  retail engine consuming a warp remains the parent ticket's Required Work 4.
+  retail engine consuming a warp remains the parent record's Required Work 4.
 - **No capability count change.** `EDIT` stays 7 / 8 and DragonByte Z stays
   19 / 24 (79%). `warps` does not ship.
 - **No public-site change.** `src/` is untouched.
@@ -425,7 +399,7 @@ python -m pytest tests/unit/test_map_transition_project.py -q
 python -m pytest tests/integration/test_map_transition_project_rom.py -q
 ```
 
-**Do not run the full suite for this ticket.** It was run once in error against
+**Do not run the full suite for this record.** It was run once in error against
 standing policy (see the section above); repeating it for confidence is explicitly
 not wanted, and CI owns broad validation.
 

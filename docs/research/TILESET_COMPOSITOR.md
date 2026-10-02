@@ -252,7 +252,8 @@ by `test_determinism_is_pinned_to_the_supplied_plane_order`.
 
 ## 6. Cross-check against the supplied resource library
 
-`<resource-library>\Tilesets\` holds 187 tilesets, each a 16x16 raw
+The supplied resource library's `Tilesets` directory holds 187 tilesets, each a
+16x16 raw
 `Sheet.png` and a `Tileset.json`. Two things were confirmed against it:
 
 - **Tileset N is bank N-1, CONFIRMED.** `Tileset 1`'s declared

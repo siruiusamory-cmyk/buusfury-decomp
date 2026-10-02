@@ -1,22 +1,9 @@
-# DRAGONBYTE-Z-VISUAL-DIRECTION-PASS-001 review
+# DragonByte Z visual direction verification
+
+Verification of the accepted DragonByte Z visual direction: the findings, the
+measured evidence behind each one, the claim spot-check and the validation runs.
 
 ```text
-CODE REVIEW
-
-Verdict: APPROVE WITH NON-BLOCKING NOTES
-
-Scope reviewed:
-- frozen candidate 13d2ab207f92f7df547651d38433a2bac592302a against parent
-  ad3c0226eea902be1c983922274fffbca9794f9c (35 files, +7912/-598)
-- all 13 workbench modules in the diff, the 4 changed/new tests, the 6 UI
-  research documents, the 12 new tools/qa harnesses
-- all 24 final captures in <temp>\dbz-visual-pass\light (plus a labelled
-  status-bar sheet rebuilt from all 24), palette-comparison-buu.png,
-  comparison-light\ and three of its sheets
-- ROM/provenance/SDK paths outside the diff, and the canonical ROM hash
-
-Blocking findings:
-- none
 
 Non-blocking findings:
 - [NONBLOCKING] tools/webfoot/workbench/atlas_browser.py:61,131 - Atlas still
@@ -32,7 +19,7 @@ Non-blocking findings:
   exactly one QStatusBar, so the second row is the editor's, not a second bar.
   Impact: a redundant status row on one editor; no functional effect, no other
   editor is affected.
-  Required fix: hide `_load_status` as the Graphics, Maps, Scene and Inspector
+  Correction proposed: hide `_load_status` as the Graphics, Maps, Scene and Inspector
   labels already are (the shell owns the one status line).
 
 - [NONBLOCKING] tools/webfoot/workbench/graphics_tab.py:203-209 - the new
@@ -47,7 +34,7 @@ Non-blocking findings:
   UI_FUNCTIONAL_DIFF.md claims map rendering is untouched.
   Impact: a responsiveness regression introduced by this pass, on the largest
   maps only.
-  Required fix: replace the per-pixel loop with a QImage colour-table or
+  Correction proposed: replace the per-pixel loop with a QImage colour-table or
   mask-based conversion.
 
 - [NONBLOCKING] docs/research/UI_BUU_SPRITE_COLOR_SOURCE.md:110,120,150,168 - the
@@ -59,7 +46,7 @@ Non-blocking findings:
   7.14:1. Nineteen of the twenty documented contrast ratios reproduce exactly.
   Impact: the provenance document is the evidence for the palette, so stale
   values in it undermine the audit trail rather than the product.
-  Required fix: correct the four values and the one ratio.
+  Correction proposed: correct the four values and the one ratio.
 
 - [NONBLOCKING] docs/research/UI_BUU_SPRITE_COLOR_SOURCE.md:171-178 and
   tools/webfoot/workbench/theme.py:178 - `research: #6b3fa0` is described as
@@ -68,7 +55,7 @@ Non-blocking findings:
   55 degrees from the nearest sprite hue. It is a second undocumented exception
   beside the honestly documented green.
   Impact: provenance accuracy only.
-  Required fix: list `research` as a second documented exception.
+  Correction proposed: list `research` as a second documented exception.
 
 - [NONBLOCKING] docs/research/UI_HUMAN_REVIEW_INDEX.md:3,16-18,28-36,101-108 -
   the committed index describes a superseded capture set. It says "Not frozen,
@@ -78,21 +65,21 @@ Non-blocking findings:
   no longer exists (the state is 14-build-action, which is also why there is no
   compare-14 sheet); and it calls a deviation a "black band" that is mauve in the
   final 09 capture.
-  Impact: reviewer-facing documentation does not describe the frozen artifact.
-  Required fix: re-point the index at the final capture set.
+  Impact: verification pass-facing documentation does not describe the frozen artifact.
+  Correction proposed: re-point the index at the final capture set.
 
 - [NONBLOCKING] docs/research/UI_FUNCTIONAL_DIFF.md:10-11,38,102 - stale against
   the frozen revision: "Candidate uncommitted" (it is committed), `_anim_preview`
   listed as present (removed), "Map rendering ... untouched" (see the timing
   finding), and the index-0 transparency change is absent from its behaviour list.
   Impact: same as above.
-  Required fix: update to the frozen revision.
+  Correction proposed: update to the frozen revision.
 
 - [NONBLOCKING] Test gap: no test exercises `_show_surface_dialog`,
   `open_build_report` or `open_run_configuration`, so the re-parenting that moved
   Build and Run out of the editor stage has no automated guard.
   Impact: a future regression in the action-surface wiring would not be caught.
-  Required fix: add a focused test asserting a dialog parent, the expected
+  Correction proposed: add a focused test asserting a dialog parent, the expected
   controls, and that the active editor and status are unchanged after opening.
 
 - [NONBLOCKING] tools/webfoot/workbench/map_browser_tab.py:122-124,1781 -
@@ -124,12 +111,12 @@ Notes:
   hash-verified before use and never written, and all QA output goes to temp dirs.
 - [NOTE] docs/research/UI_GAME_COLOR_SOURCE.md has a typo (`\theme.py`). The file
   is correctly banner-marked SUPERSEDED.
-- [NOTE] The docs/DEVELOPMENT.md `public progress impact` classification is a closure-time
-  item and is not recorded in the candidate. The underlying facts are verified:
+- [NOTE] The public-progress impact classification is not recorded in the
+  candidate. The underlying facts are verified:
   src/data/capabilities.json and project.ts are byte-unchanged.
 
-Report-claim spot-check (the review tested three specific claims rather than
-accepting the ticket report):
+Report-claim spot-check (three specific claims were checked rather than taken
+from the record):
 
 1. "One physical status bar, no editor draws its own duplicate status row" -
    NOT SUPPORTED as worded. There is exactly one QStatusBar and the Graphics,
@@ -178,7 +165,7 @@ Tests/evidence:
   strong, with none weakened to hide a failure.
 
 Compatibility:
-- PASS. No dependency, format or CLI change; no generated imagery dependency added.
+- PASS. No dependency, format or CLI change; no generative-model dependency added.
 
 Maintainability:
 - PASS. Theme roles are centralized (no `#rrggbb` literal outside theme.py; every
@@ -190,7 +177,7 @@ Public-release hygiene:
   violations raised by the repository's pre-commit scan were corrected before
   the freeze rather than bypassed.
 
-Reviewer validation performed:
+Validation performed:
 - git diff --stat / show --name-status / diff --check (clean, exit 0); single
   commit 13d2ab2; worktree clean.
 - pytest tests/unit/test_workbench_project_status.py -q -> 14 passed.
@@ -222,10 +209,9 @@ Remaining uncertainty:
   re-verified against those projects' sources.
 ```
 
-Reviewed frozen candidate `13d2ab2`. Verdict: **APPROVE WITH NON-BLOCKING NOTES**;
-no blocking findings, so the candidate stands as frozen. The non-blocking list is
-led by two items worth a follow-up: the Atlas duplicate status row (a stated
+The verification covered frozen candidate `13d2ab2` and found no blocking
+findings. The non-blocking list is led by two items worth a follow-up: the Atlas duplicate status row (a stated
 acceptance criterion that is not fully met) and the `indexed_pixmap` timing
 regression on the largest maps. Neither invalidates the accepted visual
-direction, and neither was corrected here, because the reviewer must not edit a
-frozen candidate.
+direction, and neither was corrected here, because the verification pass does not
+edit a frozen candidate.

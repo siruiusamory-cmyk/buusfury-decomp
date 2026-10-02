@@ -50,8 +50,7 @@ The project has ROM text, a pinned external tool's table, and a curated
 resource pack, at different levels of proof, and the UI must show something for
 every record - including the ones no source names. Guessing from appearance is
 the failure mode this precedence exists to prevent: a plausible-looking name
-silently becomes a claim about what a structure *is*, and a later ticket then
-has to disprove it.
+silently becomes a claim about what a structure *is*, and later work then has to disprove it.
 
 ## Consequences
 

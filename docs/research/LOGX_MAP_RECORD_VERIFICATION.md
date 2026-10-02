@@ -1,15 +1,12 @@
-# LOGX-MAP-RECORD-001 review
+# LOGX map record verification
 
-## Repository and safety
+The Buu's Fury MapEntry root table, verified against the canonical image. Static
+analysis only; no runtime capture was made for this pass.
 
-- **START SHA:** `65d5373ba21ebf19a9497ccd3612a169bc9a0580`
-- **END SHA:** `HEAD` after this ticket commit (recorded in the handoff below)
-- **BRANCH:** `logx-map-record-001-clean`
-- **COMMIT SHA:** this ticket's single `research(map): verify Buu map record root structure` commit
-- **Canonical ROM SHA-256, before and after:**
-  `940AD5F01DB4465B8877DFE739510CBF34F4EA3D390F3DF13519808BC36F059E`
-- The starting isolated worktree was clean.  The source ROM was opened read-only
-  from the original workspace and no save/state/proprietary artifact was added.
+Canonical ROM SHA-256, before and after:
+`940AD5F01DB4465B8877DFE739510CBF34F4EA3D390F3DF13519808BC36F059E`
+
+Evidence document: [`LOGX_MAP_RECORD_PROVENANCE.md`](LOGX_MAP_RECORD_PROVENANCE.md).
 
 ## Claims tested and result
 
@@ -36,7 +33,7 @@ blank text, repeated text indices, low/middle/high keys, and divergent selected
 target ranges.  Key anomalies: 70 distinct text slots across 452 records, 23
 zero/empty entries, and 421 unique selected words despite 452 unique sources.
 
-## Validation and review
+## Validation
 
 - Added `tools/research/logx_map_record_probe.py` and
   `tests/integration/test_logx_map_record_rom.py`.
@@ -45,16 +42,16 @@ zero/empty entries, and 421 unique selected words despite 452 unique sources.
 - No full suite: this is isolated read-only research tooling with a bounded
   regression file; no shared production parser/codec behavior changed.
 - **ROM Bible impact:** none.  The physical facts were already documented;
-  the semantic uncertainties remain in ticket provenance rather than being
+  the semantic uncertainties remain in record provenance rather than being
   promoted.
-- Independent reviewer: initial verdict `BLOCK` found the direct-script import
+- Independent verification pass: initial verdict `BLOCK` found the direct-script import
   failure and an incorrect evidence citation; both were corrected.  Recheck
   verdict: **APPROVE WITH NON-BLOCKING NOTES**.
 
-## Handoff / stopping point
+## Downstream consumers
 
 LOGX-MAP-RENDER-001 may use the proven selector-dependent route
 `MapEntry+0x2c + 4*(selector-1)`.  It must establish descriptor bounds and
 type per selected target; it may not call every selected word a render
-structure from this ticket.  This ticket stops after independent review,
+structure from this record.  This record stops after independent review,
 final hash check, and the single isolated commit; it does not begin that work.

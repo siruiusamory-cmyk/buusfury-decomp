@@ -1,8 +1,7 @@
 """ROM-ATLAS-001 graphics extents: `graphics_extents.jsonl`.
 
-Ported from scratchpad/gen_graphics_extents.py (session
-afdddff1-9c87-4859-818c-7a39efc68a28 — note the different session id from the
-other five producers; this one was recovered separately).
+Ported from the earlier exploratory script `gen_graphics_extents.py`, recovered
+separately from the other five producers.
 
 Records where the existing walker already goes: `graphics.load_actor_sprites`
 (graphics.py:612) is called and one row is written per distinct container file

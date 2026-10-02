@@ -1,5 +1,5 @@
 /* ###
- * IP: LOG1-REMAKE
+ * IP: Webfoot SDK
  *
  * AUTO-002: seed ROM-010's candidate query-caller entries plus the two
  * remaining established AABB query entries, verify callsite containment,

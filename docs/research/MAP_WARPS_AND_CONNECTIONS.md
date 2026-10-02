@@ -1,43 +1,10 @@
-# MAP-WARPS-AND-CONNECTIONS-001 - editing map transitions
+# Editing map transitions
 
-STATUS: **SHIPPED (2026-09-28).** Phase 2D is complete, and Phase 2 (Map Editing) is
-complete with it. The **`warps`** capability is `shipped`: DragonByte Z moves from
-**19 / 24 (79%)** to **20 / 24 - 83%**, and **EDIT** from **7 / 8** to **8 / 8**. The
-next capability is **graphics import** (Phase 3), **NOT STARTED**.
+The shipped map-transition editing capability: the transition record, the project
+representation, the Workbench surface, the end-to-end proof and the focused
+regressions behind it.
 
-The ticket below is completed, not rewritten: its Objective, Context delta, Required
-Work, Scope Boundaries, Ticket-Specific Validation, Required Review and Completion
-Criteria are the ticket as it was set, and the sections added by this closeout state
-what actually shipped and map every numbered requirement to its committed evidence.
-
-A closeout was attempted once before and was **STOPPED** rather than closed over a
-gap. The Warps list, form and Create surface existed, but the ticket's Required Work
-3 also asks for transitions **drawn and edited on the existing map surface**, and
-that half did not exist. That missing half is why **`MAP-WARP-CANVAS-001`** was
-opened; it merged as `89a37ed6176db77d7d77b2f4dc660800258911f8`, and this closeout
-follows it.
-
-**This file is not the roadmap.** The approved route to 24/24 and v1.0 lives in
-[`../ROADMAP_TO_1_0.md`](../ROADMAP_TO_1_0.md); read its Phase 2 section and its
-section 13 for this work rather than restating them here. The fixed capability
-denominator and the open technical risks live in
-[`../../src/data/capabilities.json`](../../src/data/capabilities.json) and
-[`../research/PROJECT_CODE_QUALITY_AUDIT.md`](../research/PROJECT_CODE_QUALITY_AUDIT.md).
-
-**Phase 2A (tile painting), 2B (chunk creation), 2C (map resizing and layer
-authoring) and 2D (map transitions) are COMPLETE and integrated.** Predecessor
-closures:
-[`archive/MAP-TILE-PAINT-001-COMPLETE.md`](archive/MAP-TILE-PAINT-001-COMPLETE.md),
-[`archive/MAP-CHUNK-AUTHORING-001-COMPLETE.md`](archive/MAP-CHUNK-AUTHORING-001-COMPLETE.md)
-and
-[`archive/MAP-RESIZE-AND-LAYERS-001-COMPLETE.md`](archive/MAP-RESIZE-AND-LAYERS-001-COMPLETE.md),
-whose evidence records are [`MAP-TILE-PAINT-001.md`](MAP-TILE-PAINT-001.md),
-[`MAP-CHUNK-AUTHORING-001.md`](MAP-CHUNK-AUTHORING-001.md) and
-[`MAP-RESIZE-AND-LAYERS-001.md`](MAP-RESIZE-AND-LAYERS-001.md). **CQA-05** through
-**CQA-09**, **CQA-12** and **CQA-15** are CLOSED and must not be reopened.
-**CQA-10 remains PARTIAL / IMPROVED** and is not part of this ticket.
-
-## Outcome (2026-09-28)
+## Outcome
 
 - **Capability:** `warps` is `shipped`; DragonByte Z is **20 / 24 - 83%**; `EDIT` is
   **8 / 8**. Phase 2 (Map Editing) is complete.
@@ -65,19 +32,19 @@ capability in the registry is the only authority for that count.
 **This objective is met.** The product moved to **20 / 24 - 83%** when `warps` was
 marked `shipped`, and the registry holds that count.
 
-## Context delta
+## Context
 
-- *This is the delta as the ticket was opened.* What the sub-passes actually shipped
+- *This is the delta as the record was opened.* What the sub-passes actually shipped
   is mapped item by item under Required Work below.
 - The transition contract is already read, not guessed: all **735** transition
   records behind the 452 map roots parse with no anomalies, the record is a 24-byte
   block reached from a root's `+0x40`/`+0x44` count/array pair, and the destination
   is a two-byte map key at `+0x11`/`+0x12` resolved against the MapEntry key table.
-  **At the ticket's opening, reading a transition was not editing one**: no surface
+  **At the record's opening, reading a transition was not editing one**: no surface
   wrote a transition record, and the fields past the destination key were recorded
   with meanings still `UNRESOLVED`. Both gaps are closed above, and the
   `UNRESOLVED` fields remain unresolved by design.
-- Phase 2C established two facts this ticket will need and must reuse: a map root's
+- Phase 2C established two facts this record will need and must reuse: a map root's
   pointer fields are full 32-bit GBA addresses the retail engine follows above the
   canonical EOF, and a map whose root is **shared** with another map cannot be
   edited in place - 11 canonical roots serve more than one map.
@@ -92,31 +59,13 @@ marked `shipped`, and the registry holds that count.
   provenance rules, the production allocator and the one write plan. Do not add a
   second rendering, editing or allocation path.
 
-## Required Work
-
-1. Establish by measurement what a transition record actually is: which fields the
-   engine reads, which of them are safe to author, and what the engine's own limits
-   are - so an unsupported transition form is refused before it is planned.
-2. Implement transition authoring through the production write path, persisting
-   semantically and allocating only through declared free space plus generated
-   expansion.
-3. Make the result observable and revisable in the Workbench: transitions drawn and
-   edited on the existing map surface, one undoable gesture, reopen reproducing the
-   authored transition.
-4. Prove it end to end: the project reopens, a built image contains the authored
-   transition, the canonical input is still refused as a write target, and the
-   retail engine consumes the transition after a genuine rebuild.
-5. Add focused regressions with named failing nodes and one mutation that restores
-   the old behaviour, keeping the change bounded to this capability.
-
-## Required Work, closed out item by item
+## Required work, closed out item by item
 
 Every numbered item is mapped below to its committed evidence, its sub-pass record
 and, where useful, its merge SHA. Every sub-pass record is retained: nine full
-evidence records under `docs/research/`, and every closure under
-`docs/research/archive/` - `MAP-WARP-FACING-TRACE-001` and
-`MAP-WARP-STACK-REVIEW-AND-INTEGRATE-001` exist in the archive only, which is where
-their closures were written. Nothing was deleted or squashed.
+evidence records and every closure; `MAP-WARP-FACING-TRACE-001` and
+`MAP-WARP-STACK-REVIEW-AND-INTEGRATE-001` exist only as condensed integration notes.
+Nothing was deleted or squashed.
 
 ### RW1 - measure the record, refuse unsupported forms before planning
 
@@ -283,21 +232,6 @@ in full in its evidence record:
   delta pushed an undo entry over an edit that was never written, and that entry's
   Undo deleted a pre-existing authored region. The correction is merged in `89a37ed`.
 
-## Sub-pass chain
-
-| Sub-pass | What it closed | Merge |
-| --- | --- | --- |
-| `MAP-WARP-FORMAT-001` | the measured format, one SDK authority and the fail-closed refusals (RW1; the format half of RW2 and RW5) | `05870f1` |
-| `MAP-WARP-PROJECT-AUTHORING-001` | a semantic prior/authored transition edit persisted in the project and applied by the production build (RW2) | `d4baa14` |
-| `MAP-WARP-RUNTIME-EDIT-001`, `MAP-WARP-FACING-TRACE-001` | the earlier runtime work that resolved the arrival pair and the facing rule and corrected two over-general runtime rules (context for RW4) | folded into the stacked candidate merged at `d4baa14` |
-| `MAP-WARP-STACK-REVIEW-AND-INTEGRATE-001` | the preceding sub-passes frozen, reviewed, CI-run and merged as one candidate | `d4baa14` |
-| `MAP-WARP-WORKBENCH-001` | the Warps list and form (RW3, first half) | `7efbb9c` |
-| `MAP-WARP-WORKBENCH-RUNTIME-001` | the human-operated end-to-end proof of an existing-transition edit (RW4) | `df81e7a` |
-| `MAP-WARP-CREATE-PROJECT-001` | creation through the project and the build (RW1, RW2) | `b39e5fe` |
-| `MAP-WARP-CREATE-WORKBENCH-001` | the Create Transition surface (RW3) | `5224c73` |
-| `MAP-WARP-CREATE-RUNTIME-001` | the retail engine consuming a created transition (RW4) | `fc5d1b8` |
-| `MAP-WARP-CANVAS-001` | transitions drawn and edited on the map surface (RW3, second half), and the missing half that stopped the earlier closeout | `89a37ed` |
-
 ## Scope Boundaries
 
 - Do not change the canonical ROM, and do not commit ROM-derived fixtures or
@@ -309,63 +243,6 @@ in full in its evidence record:
 - Do not weaken `tools/webfoot/profile.py`, the identity checks, output and source
   separation, allocation authorization or provenance.
 - Do not touch CQA-10, and do not reopen CQA-01 through CQA-09, CQA-12 or CQA-15.
-
-## Ticket-Specific Validation
-
-- The transition operation, demonstrated on a real map with a real rebuild.
-- A named regression that fails on the pre-edit shape, with the failing node
-  recorded, plus the mutation that restores the old shape.
-- The reopen, build and identity-refusal proof named in Required Work.
-- Focused named-file tests only, `git diff --check`, and the gates for the changed
-  surface. Broad validation belongs to CI.
-
-**Met.** Both the existing-edit and the creation operations were demonstrated on a
-real map with a real rebuild; the named regressions and their mutations are listed
-under Required Work 5; and the reopen, build and identity-refusal proofs are the RW4
-runtime records.
-
-## Required Review
-
-Independent code-review gate per [`../../docs/DEVELOPMENT.md`](../../docs/DEVELOPMENT.md) using
-[`REVIEW.md`](REVIEW.md), with a fresh-context reviewer given the
-ticket, the START SHA, the frozen SHA and the frozen worktree. A review is launched
-only when its verdict can be read.
-
-**The gate was met sub-pass by sub-pass**, because this capability was built as a
-chain of scoped passes rather than one code change: `MAP-WARP-FORMAT-001`
-`APPROVE` (no findings), `MAP-WARP-PROJECT-AUTHORING-001` `PASS` (zero blocking),
-`MAP-WARP-STACK-REVIEW-AND-INTEGRATE-001` `APPROVE WITH NON-BLOCKING NOTES` (its five
-notes recorded as follow-ups), `MAP-WARP-WORKBENCH-001` `APPROVE` (zero blocking),
-`MAP-WARP-CREATE-PROJECT-001` `APPROVE` (one trivial non-blocking finding resolved
-and re-confirmed), `MAP-WARP-CREATE-WORKBENCH-001` seven review rounds (five blocking
-findings in the ownership family, all fixed and pinned) and `MAP-WARP-CANVAS-001`
-`PASS` (zero blocking, eight non-blocking, four applied in the correction). The two
-runtime-proof sub-passes changed no product code, so no diff gate applied and their
-own records are the evidence. The reviews record that a cloud verdict was not
-available on this account and that the readable local channel was used instead; the
-no-amend rule was observed throughout.
-
-## Completion Criteria
-
-- A supported map's transitions can be authored, materialized, reopened and
-  consumed by the retail engine, and the addressability the feature needs is proven
-  rather than assumed.
-- Because every write must use the flow
-  `verified base -> working copy/generated output -> patch/output ROM`, the
-  canonical input is still refused as a write target and the canonical ROM is
-  unchanged.
-- Reopen reproduces the authored transition byte-exactly, and the build is
-  deterministic.
-- Focused tests pass, the independent review returns a verdict with no unresolved
-  blocking finding, and the `warps` capability is marked shipped only after the
-  work is done and reviewed.
-
-**All four are met.** Addressability is proven by measurement and by the retail
-engine following an above-EOF array and record; the canonical input stayed refused
-and unchanged; reopen reproduced the authored transition and the build was
-deterministic (the derivative's SHA-256 was reproduced by an independent second
-run); and the focused tests and the independent reviews completed with no unresolved
-blocking finding before `warps` was marked shipped.
 
 ## Limitations that do not block the shipped capability
 
@@ -400,44 +277,3 @@ blocking finding before `warps` was marked shipped.
 **The shipped capability is the supported, proven authoring surface, not a claim of
 universal engine-transition support.** An unsupported transition form is refused
 before it is planned, and every refusal fails closed rather than guessing.
-
-## Stop
-
-Stop when transition authoring is implemented, proved and reviewed. **That condition
-was reached on 2026-09-28.**
-
-Do not begin MAP-NEW-MAPS-001 or any later capability in this pass. Do not
-implement new maps, graphics import, or sprite or appearance authoring, and do not
-reorder the roadmap's phases. **The next capability is graphics import (Phase 3),
-NOT STARTED**, and no part of it was begun here.
-
-No capability count may be advanced before the work is done and reviewed: the
-capability registry is the authority, and reaching 20 / 24 happens only when the
-capability actually ships.
-
-WORKBENCH-006 remains untouched and needs owner direction before it resumes. It is
-not part of this ticket.
-
-## Completed
-
-- **MAP-WARPS-AND-CONNECTIONS-001** - **SHIPPED (2026-09-28)**; Phase 2D map
-  transitions shipped, Phase 2 (Map Editing) complete, DragonByte Z **20 / 24
-  (83%)**, `EDIT` **8 / 8**. The sub-pass records stay under `docs/research/` and
-  their closures under `docs/research/archive/`.
-- **MAP-RESIZE-AND-LAYERS-001** - CLOSED and reviewed (2026-09-26); Phase 2C map
-  growth and supported layer authoring shipped, DragonByte Z **19 / 24 (79%)**;
-  closeout
-  [`archive/MAP-RESIZE-AND-LAYERS-001-COMPLETE.md`](archive/MAP-RESIZE-AND-LAYERS-001-COMPLETE.md).
-- **MAP-CHUNK-AUTHORING-001** - CLOSED and integrated (2026-09-25); Phase 2B chunk
-  creation shipped, DragonByte Z **18 / 24 (75%)**; closeout
-  [`archive/MAP-CHUNK-AUTHORING-001-COMPLETE.md`](archive/MAP-CHUNK-AUTHORING-001-COMPLETE.md).
-- **MAP-TILE-PAINT-001** - CLOSED and integrated (2026-09-25); Phase 2A tile
-  painting shipped, DragonByte Z **17 / 24 (71%)**; closeout
-  [`archive/MAP-TILE-PAINT-001-COMPLETE.md`](archive/MAP-TILE-PAINT-001-COMPLETE.md).
-- **CQA-07-08-WORKBENCH-PERF-AND-CI-001** - CLOSED and integrated (2026-09-25);
-  closeout [`archive/CQA-07-08-WORKBENCH-PERF-AND-CI-001-COMPLETE.md`](archive/CQA-07-08-WORKBENCH-PERF-AND-CI-001-COMPLETE.md).
-- **CQA-05-06-WORKBENCH-STATE-AND-ERRORS-001** - CLOSED and integrated.
-- **CQA-04-DECODE-STACK-AUTHORITY-001** - CLOSED and integrated.
-- **CQA-03-15-IDENTITY-AND-EXTENTS-001**,
-  **CQA-02-PACKED-STREAM-TERMINATION-001** and
-  **CQA-01-OUTPUT-SAFETY-001** - CLOSED and integrated (2026-09-23).

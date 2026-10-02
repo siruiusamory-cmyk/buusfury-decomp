@@ -28,10 +28,10 @@ from tools.webfoot.workbench.session import Session  # noqa: E402
 ROM = Path(
     os.environ.get(
         "DBZ_QA_ROM",
-        r"<checkout>\roms\Dragon Ball Z - Buu's Fury (U).gba",
+        ROOT / "roms" / "Dragon Ball Z - Buu's Fury (U).gba",
     )
 )
-ATLAS = Path(os.environ.get("DBZ_QA_ATLAS_DIR", r"<checkout>\build\atlas"))
+ATLAS = Path(os.environ.get("DBZ_QA_ATLAS_DIR", ROOT / "build" / "atlas"))
 
 
 def main() -> int:

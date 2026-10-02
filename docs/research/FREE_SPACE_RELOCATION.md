@@ -149,8 +149,8 @@ research code to promote candidates.
 ## Review, validation and next evidence
 
 Independent upstream review rejected whole-tail promotion and unsupported prefix
-carving. Final code/evidence review and exact tests are recorded in
-`../tickets/TOOLKIT-011-review.md`; changing suite totals belong in PROJECT_STATE.
+carving. The exact tests and the review findings are recorded in this repository;
+changing suite totals belongs in PROJECT_STATE.
 
 Next evidence needed: independently resolve candidate source uses and unknown
 extent/ownership coverage, or supply another independently bounded free-region

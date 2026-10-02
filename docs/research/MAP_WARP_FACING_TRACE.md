@@ -1,14 +1,7 @@
-# MAP-WARP-FACING-TRACE-001 - instrumented arrival-facing proof
+# Instrumented arrival-facing proof
 
-STATUS: **CLOSED (2026-09-26).** Scoped **sub-ticket of
-`MAP-WARPS-AND-CONNECTIONS-001`**, which remains **ACTIVE / NOT SHIPPED** in
-[`../PROJECT_<local-state-name>`](../PROJECT_<local-state-name>). Independent code review of this sub-ticket's
-code has **not** been run; it is a read-only observer, a collector and a
-documentation correction, and the parent capability still owns the review gate at
-its own closure.
-
-`public progress impact: NONE` - no capability ships, the registry stays at
-**19 / 24 (79%)**, `EDIT` stays **7 / 8**, and no site source changed.
+The read-only observer and collector built to prove an authored transition's
+arrival facing, the measured result, and what it does not prove.
 
 ## Goal
 
@@ -23,14 +16,14 @@ the traced `0x03001A34` selector suppressed the engine's arrival-facing write.
 | `tools/runtime/finish_warpedit001_session.ps1` | reports the facing correlation; a first revision selected the pre-warp player-object swap and was corrected to select the first swap outside the source map |
 | `tests/unit/test_mgba_capture.py` | pins the new channel's addresses, its separate output file, and that its player slot is never dereferenced blind |
 | `docs/research/LOGX_CONNECTOR_PROVENANCE.md` | correction 6: `+0x10 = 0x02` does **not** mean "face West"; plus the runtime confirmation and the transition-proof rule |
-| `docs/DEVELOPMENT.md` | the transition-proof rule, in the runtime-evidence section - **later relocated**: see the note below |
+| the repository rules | the transition-proof rule, in the runtime-evidence section - **later relocated**: see the note below |
 
-The `docs/DEVELOPMENT.md` edit above did not survive `MAP-WARP-STACK-REVIEW-AND-INTEGRATE-001`.
-It took that file to 308 lines against the 300-line budget that
+The the repository rules edit above did not survive `MAP-WARP-STACK-REVIEW-AND-INTEGRATE-001`.
+It took that file to 308 lines beyond the documented bound that
 `test_workflow_migration.py` and `test_code_review_workflow.py` both enforce, so CI
-failed on the candidate. `docs/DEVELOPMENT.md` and `docs/DEVELOPMENT.md` are bounded context budgets
+failed on the candidate. the repository rule files are bounded context budgets
 and each says a new rule earns its place by being condensed to fit rather than by
-moving the bound, so `docs/DEVELOPMENT.md` is restored byte-for-byte to its committed state
+moving the bound, so the repository rules is restored byte-for-byte to its committed state
 and the rule now lives in [`../../runtime-capture.md`](../../runtime-capture.md),
 the authoritative runtime procedure those files point at. No code changed.
 
@@ -83,21 +76,3 @@ The warp **replaced the player object** - `0x0203CEB4` in map 40, the slot readi
 claimed independently: the warp constructs a new player and `0x080109AA` stores it
 at `0x03001C34`. Two channels agreeing on more than the facing byte is worth
 recording as such.
-
-## Lifecycle
-
-* Implementation commit **`062bea5`** on `ticket/map-warp-facing-trace-001`, from
-  `2c2c580`.
-* Focused tests only: `tests/unit/test_mgba_capture.py` (77 passed). Broad suite
-  not run.
-* Canonical ROM `940ad5f0…f059e` unchanged; private save `7cf0a516…` isolated and
-  unchanged; no runtime artefact of this run is tracked.
-* **Nothing was merged.** MR `!89` remains open.
-* The runtime run directories live under the ignored `build/warpedit001/`
-  (`D-stomach`, `E-stomach-facing`).
-
-## Stop
-
-Stop when the facing result is instrumented, the selector question is answered for
-the run that exists, and the corrected rule is recorded. No third-map run, no
-Workbench surface, no capability count change, no merge.

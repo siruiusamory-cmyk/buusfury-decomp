@@ -230,3 +230,96 @@ def test_no_rom_or_proprietary_directory_is_tracked():
     )
 
     assert result.stdout == ""
+
+
+def test_local_state_is_not_stageable():
+    """The local working state a tool keeps in the checkout must stay untracked.
+
+    These paths are ignored from `.git/info/exclude` rather than the tracked
+    `.gitignore`, so that a contributor's tooling choices are not published as
+    part of the project. The contract is the same either way: a stray
+    `git add -A` must not pick them up, and no tracked path may be one of them.
+    """
+    probes = [
+        "<local-state-name>",
+        "<local-state-prefix>/example.md",
+        "<local-state-name>",
+        "<local-state-prefix>/state.json",
+        "<local-state-prefix>/settings.json",
+        "<local-state-prefix>/goals/example.json",
+        "<local-state-name>",
+    ]
+
+    for probe in probes:
+        result = subprocess.run(
+            ["git", "check-ignore", "--no-index", "--quiet", "--", probe],
+            check=False,
+            capture_output=True,
+            text=True,
+        )
+        assert result.returncode == 0, f"local state is stageable: {probe}"
+
+    tracked = subprocess.run(
+        ["git", "ls-files"],
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout.splitlines()
+    offenders = [
+        name
+        for name in tracked
+        if name in {"<local-state-name>", "<local-state-name>", "<local-state-name>"}
+        or name.startswith(("<local-state-prefix>/", "<local-state-prefix>/", "<local-state-prefix>/", "<local-state-prefix>/"))
+    ]
+    assert offenders == [], f"local state is tracked: {offenders}"
+
+
+def test_pytest_does_not_retain_passing_run_artifacts():
+    """Build/extract tests write whole ROMs and thousands of PNGs into tmp_path.
+
+    pytest's defaults keep three basetemp roots, so a run under a fresh TEMP
+    never collects the previous one: thousands of orphaned ROMs and over a
+    million PNGs reached 17 GB before this was set. Retaining only failed runs
+    keeps what diagnosis needs and nothing else.
+    """
+    config = Path("pyproject.toml").read_text(encoding="utf-8")
+
+    assert 'tmp_path_retention_policy = "failed"' in config
+    assert "tmp_path_retention_count" in config
+
+
+def test_no_tracked_text_embeds_proprietary_artifacts():
+    """No tracked text may name a private ROM, save state or dump.
+
+    The named files are local research inputs. A document that cites one as a
+    required input turns an instruction to a reader into an instruction to
+    obtain proprietary data, so the ban is on the filename anywhere in tracked
+    text, not only in a workflow document.
+
+    This file necessarily contains the names it forbids, so it is the only
+    exclusion. That is asserted rather than assumed: a detector that quietly
+    stops scanning a file is worse than no detector.
+    """
+    forbidden = ("higher-plane-original.ss1", "higher-plane-original.sav", "BEGIN ROM")
+    self_path = "tests/unit/test_project_safety.py"
+    offenders = []
+    excluded = 0
+    listing = subprocess.run(
+        ["git", "ls-files", "-z"], check=True, capture_output=True, text=True
+    ).stdout.split("\0")
+    for name in listing:
+        if not name or Path(name).suffix.lower() in {".png", ".gba", ".sav", ".ss1"}:
+            continue
+        if name == self_path:
+            excluded += 1
+            continue
+        try:
+            text = Path(name).read_text(encoding="utf-8")
+        except (OSError, UnicodeDecodeError):
+            continue
+        for marker in forbidden:
+            if marker in text:
+                offenders.append(f"{name}: {marker}")
+
+    assert excluded == 1, "the detector must be the only file skipped"
+    assert offenders == [], "tracked text names proprietary inputs:\n" + "\n".join(offenders)

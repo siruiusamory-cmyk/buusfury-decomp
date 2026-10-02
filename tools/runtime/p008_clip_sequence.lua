@@ -13,7 +13,7 @@
 -- selection (repeats at the rate chance predicts).
 --
 -- It does NOT try to prove or disprove a combo. External research already
--- settled that question; see docs/PROJECT_<local-state-name>.
+-- settled that question; see docs/research/P008_MELEE_VARIANT_SELECTION.md.
 --
 -- The candidate RNG words are sampled ONLY as raw observations. REFERENCE.md
 -- records LoG2 seeds at 0x03003890 and 0x03003894 from TASVideos, and P-007

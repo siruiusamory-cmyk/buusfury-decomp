@@ -1,53 +1,8 @@
-# TOOLKIT-003 review record
+# Scanner candidate classification and the interior-delta block
 
-Result: COMPLETE, owner accepted. Narrow local acceptance commit authorized;
-TOOLKIT-004 is not started. Full specification: `archive/TOOLKIT-003.md`.
-Exact changing test counts are recorded only in `../PROJECT_<local-state-name>`.
+The scanner candidate-classification work, the interior-delta block it produced,
+the proofs behind them and the architectural limits found.
 
-## Baseline and activation
-
-Implementation HEAD stayed `f66007b34d81c7f7c5aac0d1bf8cbf796918a07e`. The index was
-empty at implementation and acceptance start. Existing TOOLKIT-001/002 code and many
-research/remake files were already unstaged or untracked. They were used as the
-baseline, not attributed to this ticket. No baseline commit was requested.
-
-The owner explicitly authorized replacing the stop-only active slot. Its full
-closure text was archived in `archive/TOOLKIT-002-COMPLETE.md` before activation;
-the archived P-009/P-010 debts remain intact. The two lifecycle assertions that
-required the old active-slot contents were updated without dropping their
-archived-evidence checks (`tests/unit/test_workflow_migration.py:76`).
-
-## Ticket-only files
-
-New files:
-
-- `tools/webfoot/layout.py`: typed ranges, anchors, ownership and evidence/encoding contracts.
-- `tools/webfoot/document.py`: verified immutable document, graph validation and candidate scan.
-- `tools/webfoot/allocation.py`: deterministic profile-only allocator.
-- `tools/webfoot/relocation.py`: batch transaction and existing-writer integration.
-- `tools/webfoot/relocation_proof.py`: constructed synthetic CLI demonstration.
-- `tests/unit/test_relocation.py`: portable success/failure proofs.
-- `docs/relocation.md`: APIs, trust boundaries and limitations.
-- `docs/research/archive/TOOLKIT-002-COMPLETE.md`: prior placeholder preserved.
-- `docs/research/archive/TOOLKIT-003.md`: accepted specification and closure.
-- This review record.
-
-Modified files (additions made on top of existing content):
-
-- `tools/webfoot/binary.py`: explicit `FileOffset` primitive.
-- `tools/webfoot/profile.py`: strict verified free-region declarations.
-- `tools/webfoot/write.py`: relocation provenance, revalidated public plans,
-  manifest alias/overwrite checks and staged exclusive publication/rollback.
-- `tools/webfoot/cli.py`: synthetic `relocation-proof` inspection command.
-- `tests/unit/test_workflow_migration.py`: authorized lifecycle activation checks.
-- `docs/architecture.md`: new layers and retained scope boundaries.
-- `docs/PROJECT_<local-state-name>`: verified state and exact test results.
-- `docs/PROJECT_<local-state-name>`: activation and closure.
-
-No modifications to the existing stat codecs, stat semantic APIs, project
-format/build code, canonical profile data, runtime tools or Godot files were
-needed. Hash comparison against the captured dirty-file inventory confirms
-unchanged unrelated files.
 
 ## Evidence and proofs
 
@@ -77,7 +32,7 @@ unchanged unrelated files.
 All new binary-layout proof is synthetic. No numeric game observation was
 promoted to CONFIRMED and no new commercial format was decoded. The canonical
 relocation proof is omitted because checked-in profiles declare no verified
-free space; new research is outside this ticket.
+free space; new research is outside this record.
 
 ## Defects and architectural limits
 
@@ -99,11 +54,11 @@ moves against the original verified base. Modified-image reopening, persistent
 graphs, complete discovery and canonical relocation authority remain deferred.
 The bounded pointer scanner is never a completeness proof.
 
-## Independent review and safety
+## Independent verification and safety
 
-Independent an independent reviewer review approved code, tests, CLI and documentation with
-no blocking finding. An initial reviewer test run encountered pytest temp-folder
-permissions; its isolated-temp rerun passed. The reviewer caught a prospective
+Independent a separate verification pass review approved code, tests, CLI and documentation with
+no blocking finding. An initial verification pass test run encountered pytest temp-folder
+permissions; its isolated-temp rerun passed. The verification pass caught a prospective
 test-count misstatement before final reporting; the recorded counts use actual
 collection/results. Its documentation ordering suggestion was incorporated.
 
@@ -112,19 +67,19 @@ Canonical ROM hash stayed
 mtime stayed unchanged. Local save/state hashes and mtimes also stayed unchanged.
 No mGBA, Ghidra or new reverse engineering was performed. Generated integration
 outputs are pytest temporary artifacts, not tracked proprietary fixtures.
-Tracked-file checks found no ROM/save/state/dump/upstream artifact. The owner
+Tracked-file checks found no ROM/save/state/dump/upstream artifact. The maintainer
 subsequently authorized narrow staging and one local commit. No push, stash or
 destructive Git operation is authorized or needed.
 
 Raw `git diff --check` reports pre-existing CRLF whitespace in the dirty remake
 files and workflow test; those unrelated edits were preserved. The full check
-passes with `git -c core.whitespace=cr-at-eol diff --check`. New ticket files
+passes with `git -c core.whitespace=cr-at-eol diff --check`. New record files
 were also checked for trailing whitespace. Acceptance staging selects only
-ticket-owned paths/hunks; pre-existing stat/profile/CLI/documentation changes
+record-owned paths/hunks; pre-existing stat/profile/CLI/documentation changes
 remain in the worktree. The reviewed `write.py` was previously untracked: its
 first tracked version necessarily includes the fixed-length writer primitives
 used by relocation, but no stat/project semantic implementation is included.
-No next ticket is authorized by completion or acceptance.
+No next record is authorized by completion or acceptance.
 
 ## Acceptance validation
 

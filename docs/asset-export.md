@@ -264,9 +264,9 @@ for the full design.
 
 ```text
 python -m tools.export.buu_resource_curate ^
-  --source "<resource-library>" ^
-  --output "<resource-library>" ^
-  --audit "<resource-library> Audit"
+  --source "<raw export root>" ^
+  --output "<curated library root>" ^
+  --audit "<audit root>"
 ```
 
 | Option | Effect |

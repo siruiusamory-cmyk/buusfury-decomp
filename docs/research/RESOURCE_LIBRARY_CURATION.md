@@ -8,12 +8,11 @@ to re-derive them.
 
 ## Two libraries, two jobs
 
-The raw library under `<resource-library>` is the extractor's output:
+The raw library is the extractor's output:
 86,444 artifacts named by numeric identity, one per structural record. It is
 structural truth and it stays untouched.
 
-The curated library under `<resource-library>` is a separate,
-human-first resource pack. It keeps every identity the raw library establishes
+The curated library is a separate, human-first resource pack. It keeps every identity the raw library establishes
 and stops repeating payloads that several identities share. Every image is a
 byte copy of a raw artifact; nothing is re-encoded, rescaled, recoloured or
 "cleaned up". Every curated path is tied back to the raw paths it came from in

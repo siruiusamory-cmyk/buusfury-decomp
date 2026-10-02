@@ -222,7 +222,7 @@ def decode_packed(
     convenience, not the engine's rule**: the retail packed decoder keeps no output
     counter, compares nothing against its destination cursor, and stops only on
     that escape (`CONFIRMED`;
-    `docs/research/CQA_02_PACKED_TERMINATION_RESOLUTION.md` §2.1, adjudicated in
+    `docs/research/PACKED_STREAM_TERMINATION.md` §2.1, adjudicated in
     Phase 1 of CQA-02-PACKED-STREAM-TERMINATION-001). The sentence that used to
     stand here called the declared-size stop "the engine's and the shipping
     decoder's rule"; it was wrong about the engine, and it contradicted this same

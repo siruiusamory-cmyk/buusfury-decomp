@@ -1,46 +1,7 @@
-# MAP-WARP-WORKBENCH-001 - the Maps editor's Warps surface
+# The Maps editor Warps surface
 
-STATUS: **CLOSED (2026-09-26).** Independent review **APPROVE**. Class:
-GUI and project-surface pass. This is a **sub-pass of the parent capability
-`MAP-WARPS-AND-CONNECTIONS-001`**, which ships as of the parent's closeout
-(2026-09-28); archived at closure in
-[`archive/MAP-WARP-WORKBENCH-001.md`](archive/MAP-WARP-WORKBENCH-001.md). Nothing
-here shipped the parent: the capability count was unchanged and the registry was
-untouched.
-
-Baseline: `d9f7e6db2014c8d0b5919edf5c923169b3b1f57a` (verified with
-`git fetch origin --prune` + `git rev-parse origin/master` at ticket start). Master
-had moved by the sync step: the branch merged
-`5e01f5fec177e4d3413a6ff2c19b9b46265739a6` (WARPRAND-APP-001) conflict-free, and
-that merge's only effect is 17 additive files under `tools/webfoot/warprand/`,
-`scripts/`, `docs/warprand/` and `tests/` - `git diff d0773fc bd14032` is 5736
-insertions and 0 deletions, and it touches none of this ticket's files. The
-original `d9f7e6d` baseline is preserved in the branch history and in the review
-range.
-
-Worktree: `<ticket-worktrees>\map-warp-workbench-001` on
-`ticket/map-warp-workbench-001`. The WARPRAND app worktree was not touched.
-
-**FROZEN REVIEWED CANDIDATE:
-`a0d9cab12379e8692fef5cfe32f0baca4394734b`** - independent review **APPROVE**, zero
-blocking findings, two NOTE-level observations, no production correction. Review
-job `cl-20260926-204738-c1cab6` (`the local reviewer`, verdict read back in full);
-verdict and findings: [`MAP-WARP-WORKBENCH-001-review.md`](MAP-WARP-WORKBENCH-001-review.md).
-The candidate was not amended; the commits after it are documentation only.
-
-**public progress impact: NONE.** No capability ships, the registry stays at
-**19 / 24 (79%)**, `EDIT` stays **7 / 8**, `src/data/capabilities.json` is
-untouched, `warps` remains `missing`, and no published claim, blocker or
-questline entry changes wording. `docs/PROJECT_<local-state-name>` is deliberately not
-touched: the parent capability has not shipped.
-
-Scope boundaries honoured: **no emulator runtime proof**, **no new transition
-created**, **no new warp research campaign**, **no capability-count change**, **no
-public-site change**, **no GUI ROM write**, **no direct byte patching in Qt code**,
-and no second serializer - every write goes through
-`map_transitions.set_transition_edits` and the production build.
-
----
+The Warps surface in the Maps editor: what it adds, the SDK corrections it
+required, the mutation record and the visual QA.
 
 ## What it adds
 
@@ -84,7 +45,7 @@ transition authority:
 
 1. **The low nibble of `+0x10` is now preserved whole** (`FACING_PRESERVED_MASK`).
    An arrival-facing write previously kept only the two gate bits, so a record
-   carrying bits 2-3 would lose them; the ticket requires the unresolved low-nibble
+   carrying bits 2-3 would lose them; the record requires the unresolved low-nibble
    bits to survive. Every canonical low nibble is `0..3`, so this is
    **byte-identical on all 735 measured records** and strictly more conservative
    for any other image.
@@ -107,7 +68,7 @@ No serializer was added: `TransitionRecord.to_bytes` remains the only encoder.
 
 ---
 
-## RETURN
+## Measured status summary
 
 ```text
 MAP-WARP-WORKBENCH-001 - STATUS REPORT
@@ -116,7 +77,7 @@ BASELINE:
 d9f7e6db2014c8d0b5919edf5c923169b3b1f57a
 
 WORKTREE:
-<ticket-worktrees>\map-warp-workbench-001 (ticket/map-warp-workbench-001)
+<records>\map-warp-workbench-001 (record/map-warp-workbench-001)
 
 IMPLEMENTATION COMMITS:
 19202ba map_transitions: bind the corpus to its profile, preserve the facing
@@ -327,7 +288,7 @@ fourth); nothing ROM-derived is committed.
 * **No capability advance.** 20 / 24 happens only when the parent ships.
 * **No registry or public-site change.**
 * **The shell's unsaved-work guard is unchanged.** `MapsEditor.unsaved_edit_count`
-  and the ROM-open discard prompt remain scoped to layout edits, because those are
+  and the ROM-open discard dialogue remain scoped to layout edits, because those are
   the Save-As-bound edits that guard exists for; a staged transition edit is
   project-bound like an unapplied palette or dialogue value, which the guard's own
   docstring already describes as cleared by a session change by design. The

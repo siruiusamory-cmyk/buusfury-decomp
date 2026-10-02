@@ -16,6 +16,17 @@ export interface Milestone {
   plainEnglish: string;
   technical?: string;
   status: MilestoneStatus;
+  /**
+   * Work this milestone deliberately leaves open, named as such.
+   *
+   * A milestone is completed when the work it records is done. Where its own
+   * description has to say that something remains unmeasured or unsupported, the
+   * remaining item is declared here, so a reader sees a stated limit rather than
+   * unfinished work presented as finished. The consistency tests require the
+   * declaration whenever a completed milestone's text still reads as open, and
+   * forbid it anywhere else.
+   */
+  openItems?: string[];
 }
 
 export interface Breakthrough {
@@ -334,8 +345,7 @@ export const project: ProjectStatus = {
     " resource corpus.",
   progressCaveat:
     "The percentage above is counted from the capability list below, so it moves when a" +
-    " capability does. It is a count of editor capabilities, not a ticket count and not" +
-    " an estimate.",
+    " capability does. It is a count of editor capabilities, not an estimate.",
   currentPhase: "DRAGONBYTE Z BUILDOUT",
   blockerTitle: "Bring an author's own graphics into the game",
   blockerShort:
@@ -506,6 +516,9 @@ export const project: ProjectStatus = {
         "A message can be any length in storage, and a long line runs past the edges of the screen when the game draws it centred without wrapping.",
       technical:
         "Measured. Storage length no longer bounds an authored message; the remaining limit on this particular message style is display width, because the engine draws it centred in a large font with no wrapping. The character ceiling and the cost of adding line breaks are not yet measured. This is a known constraint of one message style rather than the project's frontier.",
+      openItems: [
+        "The character ceiling for a centred message, and what adding line breaks would cost.",
+      ],
       status: "complete",
     },
     {
@@ -550,7 +563,7 @@ export const project: ProjectStatus = {
       plainEnglish:
         "Do the whole find, inspect, build and run loop from a graphical application instead of the command line.",
       technical:
-        "Confirmed. The Webfoot Workbench is a desktop GUI and a second client of the same SDK, with four tabs backing the full loop: search the atlas, inspect an object or text record, build the game, and run the build. The build panel refuses to write over the source ROM. Graphical dialogue editing is intentionally not part of this milestone.",
+        "Confirmed. The Webfoot Workbench is a desktop GUI and a second client of the same SDK, with its own editor surfaces covering the full loop: search the atlas, inspect a record, edit the game's content, build the game, and run the build. The build panel refuses to write over the source ROM. Graphical dialogue editing is intentionally not part of this milestone.",
       status: "complete",
     },
     {
@@ -559,7 +572,7 @@ export const project: ProjectStatus = {
       plainEnglish:
         "Search a supported line in the desktop tool, edit it, then build and run it — all without touching the command line.",
       technical:
-        "Confirmed. The Inspector resolves mapped semantic targets through the production authoring API, keeps original, saved and unsaved values distinct, validates before mutation, persists the normal project schema, invalidates stale validation/build state, and builds through validate_project and build_project. The goku-greeting workflow was completed twice through the GUI and the retail engine displayed Nice work, Goku!; unsupported search results remain read-only.",
+        "Confirmed. The Inspector resolves mapped semantic targets through the production authoring API, keeps original, saved and unsaved values distinct, validates before mutation, persists the normal project schema, invalidates stale validation and build state, and builds through the SDK's own validate and build entry points. The goku-greeting workflow was completed twice through the GUI and the retail engine displayed Nice work, Goku!; unsupported search results remain read-only.",
       status: "complete",
     },
     {
@@ -568,7 +581,7 @@ export const project: ProjectStatus = {
       plainEnglish:
         "Bring entity, placement, script, and dialogue authoring together in the desktop tool so a whole playable scene can be built without hand-operating the SDK.",
       technical:
-        "Confirmed and runtime-proven. The owner personally authored a complete playable NPC scene entirely through the desktop GUI: select map:0040, clone a type_0086 enemy-linked placement, configure the entity, assign an on_defeat behavior plus an authored show_centered_sprite_text script, then Validate, Build, and Launch. Defeating the NPC in the retail Buu's Fury engine displayed the authored banner in-game. No new reverse engineering was required; every capability was surfaced through the existing SDK. Independent review approved.",
+        "Confirmed and runtime-proven. The owner personally authored a complete playable NPC scene entirely through the desktop GUI: select map:0040, clone a type_0086 enemy-linked placement, configure the entity, assign an on_defeat behavior plus an authored show_centered_sprite_text script, then Validate, Build, and Launch. Defeating the NPC in the retail Buu's Fury engine displayed the authored banner in-game. No new reverse engineering was required; every capability was surfaced through the existing SDK.",
       status: "complete",
     },
     {
@@ -652,7 +665,7 @@ export const project: ProjectStatus = {
         "Open any of the game's maps in the editor and see its real layered layout, at" +
         " zoom, without a running emulator.",
       technical:
-        "Complete. The Map Browser is a read-only tab over the production ROM-only" +
+        "Complete. The Map Browser is a read-only surface over the production ROM-only" +
         " renderer: all 452 maps are listed and filterable by name or map id, each map's" +
         " graphical layers render from immutable ROM bytes, and a map-information panel" +
         " reports its id, dimensions, layer count and per-layer type. Maps and layers" +
@@ -991,9 +1004,9 @@ export const project: ProjectStatus = {
         "The broad reverse-engineering programme that underpinned the toolkit is finished," +
         " and its results are consolidated into canonical schemas.",
       technical:
-        "The ten-ticket archaeology queue and its consolidation close out, each read through" +
-        " its own accepted review, closeout and provenance record. Further work is targeted" +
-        " and capability-driven rather than a new archaeology queue.",
+        "The broad reverse-engineering programme is consolidated into canonical schemas," +
+        " and every load-bearing result is recorded with its evidence and confidence." +
+        " Further work is targeted and capability-driven rather than open-ended.",
     },
     {
       id: "visual-map-placement-authoring",
@@ -1009,7 +1022,7 @@ export const project: ProjectStatus = {
       summary:
         "Workbench now browses maps and related game content by semantic identity, keeps a scene's relationships together, previews pending changes, and has produced a second playable authored scene on a different map.",
       technical:
-        "Runtime-proven on map:0041 after the earlier map:0040 scene. The owner selected the map, cloned and configured a supported entity, assigned behavior and a visible response, reviewed project changes, validated, built, launched, reached the map, and observed the authored interaction—without raw ROM addresses or project-file editing. Independent review approved the thin-client architecture.",
+        "Runtime-proven on map:0041 after the earlier map:0040 scene. The owner selected the map, cloned and configured a supported entity, assigned behavior and a visible response, reviewed project changes, validated, built, launched, reached the map, and observed the authored interaction—without raw ROM addresses or project-file editing.",
     },
     {
       id: "scene-authored-through-workbench",
@@ -1017,7 +1030,7 @@ export const project: ProjectStatus = {
       summary:
         "The project owner built a full playable NPC scene from start to finish inside Webfoot Workbench — choosing a map, placing an enemy, giving it behavior, a script, a defeat trigger, and an author-written message, then validating, building, and launching — with no Python, TOML, command line, or hex. Defeating the NPC in the original Buu's Fury engine showed the authored banner on screen.",
       technical:
-        "Runtime-proven and independently approved. The scene was authored on map:0040: clone a type_0086 enemy-linked placement, configure the entity, assign an on_defeat behavior plus an authored show_centered_sprite_text script, then Validate, Build, Launch, defeat the NPC, and observe the authored banner in the retail engine — every step through the GUI. No new reverse engineering was required; the capabilities were surfaced through the existing SDK. The proven scene is deliberately one authored record plus one line of text, which makes breadth the next frontier.",
+        "Runtime-proven. The scene was authored on map:0040: clone a type_0086 enemy-linked placement, configure the entity, assign an on_defeat behavior plus an authored show_centered_sprite_text script, then Validate, Build, Launch, defeat the NPC, and observe the authored banner in the retail engine — every step through the GUI. No new reverse engineering was required; the capabilities were surfaced through the existing SDK. The proven scene is deliberately one authored record plus one line of text, which makes breadth the next frontier.",
     },
     {
       id: "first-usable-workbench",

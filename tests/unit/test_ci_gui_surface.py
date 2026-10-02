@@ -1,11 +1,12 @@
-"""The CI environment contract for the shipping GUI surface (CQA-08).
+"""The CI environment contract for the shipping GUI surface.
 
-CQA-08 was not a missing test: the Workbench suite existed and passed locally,
-while CI installed only ``.[dev]``, so fourteen PySide6 modules and three
-capstone modules each collapsed to a single ``SKIPPED`` line and the job exited
-0. The tests in this file therefore do not test the Workbench - they test the
-*environment CI promises the Workbench*, so that breaking that promise fails a
-named test instead of silently reducing the suite:
+A GUI suite that passes locally can still never run in CI. When the test job
+installs only ``.[dev]``, every PySide6 module and every capstone module
+collapses to a single ``SKIPPED`` line, and the job exits 0 while reporting a
+green Workbench suite that never executed the shipping surface at all. The tests
+in this file therefore do not test the Workbench - they test the *environment CI
+promises the Workbench*, so that breaking that promise fails a named test
+instead of silently reducing the suite:
 
 - the pip install line must name the ``workbench`` and ``research`` extras;
 - the job must set a headless Qt platform, because the runner has no display;
@@ -13,8 +14,9 @@ named test instead of silently reducing the suite:
 - every module in ``REQUIRED_GUI_MODULES`` must exist, carry the ``workbench``
   gate and hold a module-level ``PySide6`` import guard, so the list stays a
   claim about dependency-guarded GUI modules rather than an arbitrary path list;
-- the list must cover the regressions the ticket names (CQA-05/CQA-06 and
-  CQA-07), which is what pins the acceptance criterion durably.
+- the list must cover the named editor regressions (the state and error-surface
+  regression, the palette editor, undo/redo and palette cost), which is what
+  pins the acceptance criterion durably.
 
 This module imports no PySide6 (and no capstone) at module scope, so it is
 always collected and never skips as a whole: the failure it reports must be
@@ -147,7 +149,8 @@ def test_the_ci_job_installs_the_shipping_gui_and_research_extras():
 
     The one-line install is asserted as a whole, so an edit that removes
     ``workbench`` fails this test by name instead of quietly restoring the
-    CQA-08 state ("green job, Workbench surface never executed").
+    failure this file exists to catch: a green job with the Workbench surface
+    never executed.
     """
     job = _ci_config()[TEST_JOB]
     install = _job_step(job, "pip install", "-e")
@@ -162,7 +165,7 @@ def test_the_ci_job_installs_the_shipping_gui_and_research_extras():
         f"{_cited(install)} is missing the {missing} extra(s); the shipping "
         "Workbench modules (tests/gates.py REQUIRED_GUI_MODULES) and the three "
         "capstone modules then collapse to whole-file skips and CI reports green "
-        "over a surface it never executed (CQA-08)"
+        "over a surface it never executed"
     )
 
 
@@ -187,7 +190,8 @@ def test_the_required_gui_surface_is_installed_in_this_environment():
 
     Outside CI this is not a claim about the machine, so it skips with the
     reason. Under CI it is the assertion that turns a broken GUI environment
-    into a red job - the direct opposite of the CQA-08 behaviour.
+    into a red job - the direct opposite of the silent whole-file skip this
+    file guards against.
     """
     if not _in_ci():
         pytest.skip(
@@ -233,23 +237,25 @@ def test_every_required_gui_module_exists_and_is_dependency_guarded():
         )
 
 
-def test_the_required_gui_surface_covers_the_cqa05_and_cqa07_regressions():
-    """Prevents: silently dropping a regression this ticket exists to make run.
+def test_the_required_gui_surface_covers_the_named_editor_regressions():
+    """Prevents: silently dropping a regression the guarded list must execute.
 
-    CQA-08's ticket names the surfaces CI must execute: the CQA-05/CQA-06 state
-    and error-surface regression, and the CQA-07 palette editor, undo and cost
+    The contract names the editor surfaces CI must execute: the state and
+    error-surface regression, and the palette editor, undo/redo and palette cost
     regressions. Keeping them named here means a later reorganisation cannot
     "simplify" the guarded list past them.
     """
     required = {
-        "unit/test_workbench_state_and_errors.py": "CQA-05/CQA-06",
-        "unit/test_workbench_graphics.py": "CQA-07 palette editor",
-        "unit/test_workbench_graphics_undo.py": "CQA-07 undo/redo",
-        "unit/test_workbench_palette_cost.py": "CQA-07 palette cost",
+        "unit/test_workbench_state_and_errors.py": (
+            "the state and error-surface regression"
+        ),
+        "unit/test_workbench_graphics.py": "the palette editor",
+        "unit/test_workbench_graphics_undo.py": "undo/redo",
+        "unit/test_workbench_palette_cost.py": "palette cost",
     }
     missing = sorted(set(required) - set(REQUIRED_GUI_MODULES))
     assert not missing, (
-        "REQUIRED_GUI_MODULES (tests/gates.py) must cover the regressions this "
-        "ticket requires CI to execute: "
+        "REQUIRED_GUI_MODULES (tests/gates.py) must cover the editor regressions "
+        "CI is required to execute: "
         + ", ".join(f"{name} ({required[name]})" for name in missing)
     )

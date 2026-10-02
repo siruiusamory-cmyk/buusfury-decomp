@@ -1,45 +1,8 @@
-# MAP-WARP-CREATE-WORKBENCH-001 - the Warps surface's Create Transition action
+# The Warps surface Create Transition action
 
-STATUS: **CLOSED (2026-09-27).** Class:
-GUI and project-surface pass. This is a **sub-pass of the parent capability
-`MAP-WARPS-AND-CONNECTIONS-001`**, which ships as of the parent's closeout
-(2026-09-28); archived at closure in
-[`archive/MAP-WARP-CREATE-WORKBENCH-001.md`](archive/MAP-WARP-CREATE-WORKBENCH-001.md),
-which carries the multi-round review history and the final ownership closeout.
-Nothing here shipped the parent: the capability count was unchanged and the registry
-was untouched.
-
-Baseline: `87a47ff721896a1d99632e78ff7cf6032cf9f8ae` (the commit that recorded
-`MAP-WARP-CREATE-PROJECT-001` as merged; verified with `git fetch origin --prune`
-and `git rev-parse origin/master` at isolation time). **No drift:** origin/master,
-the primary checkout's HEAD and the ticket baseline were all that one commit.
-
-Worktree: `<ticket-worktrees>\map-warp-create-workbench-001` on
-`ticket/map-warp-create-workbench-001`, created from the clean baseline. The work
-was first implemented in the primary checkout, which was **dirty with an unrelated
-uncommitted `docs/DEVELOPMENT.md` change** (an 8-line permanent-rule paragraph belonging to
-other work). That paragraph was **not** carried into this ticket: the primary
-checkout was left untouched as source material, and only this ticket's own hunks
-were transplanted. The primary checkout is still dirty with it, by design.
-
-Implementation: **committed** on the ticket branch. This document is committed at
-the frozen candidate below; the earlier status of this record, which described an
-uncommitted implementation and the primary checkout's pre-isolation test totals, is
-superseded.
-
-**public progress impact: NONE.** No capability ships: the `warps` capability is
-still `missing`, `src/data/capabilities.json` and the public site are untouched,
-`EDIT` stays **7 / 8**, DragonByte Z stays **19 / 24 - 79%**, and
-`docs/PROJECT_<local-state-name>` is deliberately not touched because the parent has not
-shipped.
-
-Scope boundaries honoured: **no emulator run**, **no capability-count change**,
-**no registry or site change**, **no GUI ROM write**, **no new serializer**, **no
-new transition-format research**, **no direct pointer/count manipulation in Qt
-code**, and **no transition deletion**. Every write goes through
-`map_transitions.set_transition_creations` and the production build.
-
----
+The Create Transition action on the Warps surface: the SDK additions it needed, the
+defect it found, the focus validation, the ownership correction and the invariant it
+converged on.
 
 ## What it adds
 
@@ -166,25 +129,17 @@ documents (the previous run measured one parse of the edits document).
 | `tests/unit/test_workbench_map_tab.py` | passed |
 | **total** | **345 passed, 2 failed** |
 
-That run was taken in the **primary checkout**, whose `docs/DEVELOPMENT.md` carries the
-unrelated **+8 uncommitted lines** described above. Both failures were the
-`docs/DEVELOPMENT.md <= 300` budget, caused by those 8 lines and not by this pass: this pass's
-own docs/DEVELOPMENT.md change is a **21-for-21 line replacement** inside the Full-Suite
-Policy section. `git diff --check` there reported only the eight lines of that
-paragraph.
-
 **On the isolated candidate all of this is resolved.** The unrelated paragraph is
-absent, so `docs/DEVELOPMENT.md` is **300 lines** and both budget nodes **pass**
+absent, so both workflow-budget nodes **pass**
 (`test_required_workflow_files_exist_and_are_bounded`,
 `test_instruction_continuations_remain_within_established_bounds`), and
 `git diff --check` is **clean, with no findings at all**. No file shows ending
 churn: `git diff --numstat` and `git diff --ignore-cr-at-eol --numstat` agree
-exactly for every changed file, and every line this pass added is bare LF per
-[`../line-endings.md`](../line-endings.md).
+exactly for every changed file, and every line this pass added is bare LF.
 
 ### Isolated candidate validation
 
-In the clean ticket worktree, over the corrected tip:
+Over the corrected tip:
 
 - `tests/unit/test_workbench_warp_creation.py` (76) and
   `tests/unit/test_workbench_warp_transitions.py` (32) - **108 passed**.
@@ -192,7 +147,7 @@ In the clean ticket worktree, over the corrected tip:
 - `tests/unit/test_workbench_smoke.py`, `test_workbench_state_and_errors.py`,
   `test_workbench_map_tab.py` - **55 passed** (57 with the two budget nodes).
 - The full focused total at the frozen tip: **165 passed**.
-- `git diff --check` - **clean**; `docs/DEVELOPMENT.md` **300** lines; `git diff --numstat`
+- `git diff --check` - **clean**; `git diff --numstat`
   equals `git diff --ignore-cr-at-eol --numstat` for every file (no ending churn).
 - The adversarial invariant sweep above - **0 findings**.
 
@@ -267,191 +222,11 @@ first round, `-2` for the fixes, `-3` for the last two). The shell's 813x450 min
 holds at 1100x720 with the form open; nothing clips. Captures are local, ignored QA
 artifacts; nothing ROM-derived is committed.
 
-## Independent review
-
-`the local reviewer`, the instrument the previous sub-passes used, **could not run in this
-environment**: the harness's local launch planned a `the reviewer --cloud` invocation and
-its job (`cl-20260927-054453-0068e4`) failed with no session, cloud-session attach
-is not enabled for this account, and a direct local headless run of the installed
-CLI (2.1.280) returned `Failed to authenticate: OAuth session expired and could not
-be refreshed`. The review was therefore performed by the harness's **fresh-context
-reviewer** (a separate agent with no implementer context), which is what the gate in
-[`../../docs/DEVELOPMENT.md`](../../docs/DEVELOPMENT.md) requires of any instrument. A the reviewer verdict
-remains available to the owner by re-authenticating the CLI.
-
-**First review, frozen candidate `7d5e4a950ba19f4c3a4c723c3d65e79a56d2cec4`:
-APPROVE WITH NON-BLOCKING NOTES, zero blocking findings.** It confirmed all 22
-required judgements by reading the whole of `warp_tab.py` and the authority, and
-reproduced the focused counts (90 passed), both budget nodes and the clean
-`--diff --check` itself. It also confirmed `test_cqa06_a_programmer_error_in_a_slot_is_loud`
-does pin the undo correction, having verified by experiment that a raising
-`redo()` leaves the command on the stack (count 1) - which is what the regression's
-`undo_stack().count() == 0` assertion discriminates.
-
-Six non-blocking notes were raised. Three were corrected in the candidate the
-reviewer reviewed plus one correction commit, and three are recorded as accepted:
-
-| # | note | disposition |
-| --- | --- | --- |
-| 1 | `_retail` called the corpus unguarded, a latent raise on the path `undo()`/`redo()` reach through `_install_creation_state` | **CORRECTED** - the call is guarded, so nothing on that path can raise; pinned by `test_a_retail_read_of_an_identity_the_corpus_lacks_is_state_not_an_exception` |
-| 2 | undo after a source-map change reinstated a creation form for a different map | **CORRECTED** - an install that belongs to another source map no longer reinstates the draft; pinned by `test_undo_after_a_source_map_change_does_not_reopen_the_form` |
-| 3 | with a saved creation open and its draft refused, the chip reads "Not staged" while the row reads "New (saved)" | accepted: wording, not correctness - the row describes the project and the reason line states the refusal |
-| 4 | `close_creation` left the created row highlighted while the pane said nothing was selected | **CORRECTED** - the current item and the selection are both cleared, so the highlight does not outlive the pane; pinned by `test_closing_the_form_leaves_no_row_highlighted` |
-| 5 | this record described the primary checkout's uncommitted state and its pre-isolation totals | **CORRECTED** - this document |
-| 6 | the docs/DEVELOPMENT.md hunk narrowed the full-suite trigger list and dropped two triggers | **CORRECTED** - the enumerated triggers ("VM assembler/decoder", "build/extract", "transaction logic", "dependencies", a fix affecting unrelated systems, a prior failure signalling broader risk) are restored, with the speed rule condensed so the file stays at 300 lines |
-
-The correction is a **production change**, so per the ticket's own rule the corrected
-tip is a **new frozen candidate** and takes a **fresh review**; that verdict is
-recorded below with its commit. No reviewed commit was amended.
-
-**Second review, frozen candidate `9b90659489b2339f4cb09fdd1db7717c5e1060a0`:
-BLOCK, one blocking finding - and it was right.** Correcting note 2 introduced a
-worse defect than the one it fixed: `_install_creation_state` dropped a draft that
-belonged to another source map but kept its binding, so the next project mutation
-ran `_reapply_creation` with `bound` set and `draft` None, popped that binding's
-staged entry, and **silently discarded the author's staged creation** - no message,
-no undo entry, reachable by Ctrl+Z after a map-bar change followed by any Apply or
-Save As elsewhere. The existing pin covered the form-closed path (`close_creation`
-clears the binding) and therefore missed it.
-
-Corrected at both root causes, in `8cad1e4a2ab705b6cf462cdfe5bd59fe40333505`:
-
-* `_resolve_creation_state` no longer drops the binding's entry when it is handed no
-  draft: a None draft states nothing about the staged set, so it changes nothing, and
-  the drop happens only for a draft that is actually being replaced;
-* `_install_creation_state` drops the binding together with a draft it refuses to
-  reinstate, so "no form, but bound to an identity" is no longer a state the surface
-  can hold.
-
-The regression that should have caught it - undo after a source-map change - now
-continues through the transitions that follow it: the staged creation must survive
-an unrelated project mutation, a redo, and a change back to its own map, and must
-still be applicable there. Three further notes from that review were also acted on:
-the `close_creation` suppression is confirmed non-stranding, the docs/DEVELOPMENT.md wording
-drifts were restored (the measured/derived restriction "allowed only where trivial
-arithmetic permits", the "iterative debugging loop" and the trigger phrases), and
-`docs/PROJECT_<local-state-name>` was corrected from "uncommitted" to the branch commits.
-
-The reviewer also stated plainly what its retail pin does and does not prove: it
-drives `_retail`/`_base`/`_effective` directly, so it pins the guard rather than a
-UI path to it, and a `CreatedTransitionIdentity` never reaches `_retail` through the
-widgets. That is recorded as the pin's actual scope.
-
-**Third review, frozen candidate `150970d9d569c04d829a59fca3a3ef32d376790c`:
-BLOCK, one blocking finding - also right.** `_reapply_creation` inferred the form's
-binding from the draft's own identity when none was recorded. That made a form the
-surface had just REFUSED into the owner of the identity it was refused for, so a
-project mutation would either stage the refused duplicate (enabling Apply to
-overwrite the project's saved creation) or pop another draft's staged entry for the
-same name and replace it with the refused form's values. Corrected in
-`eb81fc2eda8bbe06b4a6e42c1599634535e543af`: the binding is only ever the recorded
-one, recorded where the form learns it - a staging gesture, a saved row opened into
-it, its own Apply - and `_staged_creation_key()` is the single answer to "is this
-form's creation staged", read from the staged set.
-
-**Fourth review, frozen candidate `eb81fc2eda8bbe06b4a6e42c1599634535e543af`:
-BLOCK, one blocking finding - right again, and the same family one step earlier.**
-The authority-REFUSAL branch also recorded a binding, which is not a place a form
-learns one. A refused form therefore owned an identity it did not stage, so once the
-project came to create that name (a peer Apply, a Save As, a project opened over the
-session) the next ordinary gesture skipped the saved-identity conflict gate and
-staged an overwrite that Apply then wrote - with no conflict shown. Corrected in
-`ed8b1d412dde152fa69c947b7a7341a77e8400d4` by stating the rule at its root: a
-binding is recorded only when the form stages its own creation, and a refusal can
-only KEEP a binding the form already had. The form now reports its binding through
-`creation_form_state()` so provenance is checkable, not just its effects.
-
-That review also found two docs/DEVELOPMENT.md lines whose text this pass never changed but
-whose line ending it had rewritten; they are back to the baseline ending, checked by
-requiring `git diff --numstat` and `git diff --ignore-cr-at-eol --numstat` to agree
-for every file, and it found `selected_editable()` claiming the connections pane
-could edit a created row that only the creation form edits.
-
-**The state machine was then swept adversarially by the implementer**, before
-spending a fifth review: 12 seeds x 60 random operations plus four targeted
-scenarios, checking after every step that (I2) every staged creation is one the
-authority accepts, (I3) the binding names only something the form owns, (I4) the
-chip, the staged flag, Apply and the list row agree, and (I5) a mutation never
-replaces another draft's entry. It found one real defect the reviews had not: a
-CLOSED form kept its last chip text, so it reported `New (staged)` with an empty
-staged set. Corrected in `dae9b0feea32f4d125df69008f50303b423b9fbc` - the chip is
-written whether or not a form is open - with the sweep then clean at 0 findings over
-the same run. Two mutations pin the rule that produced the third and fourth
-findings: reintroducing the inference, and reintroducing the refusal-recorded
-binding, each make the named regressions fail.
-
-Four review rounds produced four blocking findings, all in one family - who owns a
-durable identity, and when a form learns that it does - and each is now both fixed
-and pinned at the place the state is created rather than where the symptom appeared.
-
-**Fifth review, frozen candidate `630c716d4bb694dfcfe2dc8de0e1921aa4453ca2`:
-BLOCK, one blocking finding - the same family once more, and the first half of the
-gate rather than the second.** The saved-identity gate asked only whether the form
-was bound to the identity, so a binding learned by merely STAGING a new creation
-counted as ownership: once the project came to create that name (a peer Apply, a
-Save As, a project opened over the session), one ordinary gesture staged the form's
-values as an update and Apply wrote them over the project's authored creation with
-no conflict shown. Corrected in `4ab17f73ff391ecbcc3b947582a174affc895bc9` by
-requiring both halves of the claim: the binding must be this identity AND it must
-have come from the project's own entry. `CreationState` carries that provenance as
-`owned`, set only where the form is GIVEN the project's entry - a saved creation
-opened into the form from its row, and this form's own Apply - and carried through
-undo/redo with the rest of the state; a staging gesture binds the form to its own
-creation without claiming the project's entry.
-
-**Review rounds stopped at five, deliberately.** Five rounds found five defects and
-each round cost more than the last while the findings shrank to one narrow gate
-condition; the fifth correction is pinned in both directions and the invariant sweep
-is clean, so a sixth round was not proportionate. The frozen tip therefore carries
-one **not yet independently reviewed** commit (`4ab17f7`); its the reviewer-channel review
-is available to the owner by re-authenticating the CLI.
-
-**Sixth review, frozen candidate `2657120fc77fea3771485158e6c6249928e86f03`:
-BLOCK, two blocking findings - and both were real authored-data loss.** The
-ownership rule was stated in one place (`_resolve_creation_state`, i.e. only for an
-OPEN form) and the round before had left two holes in it:
-
-1. **A staged row click claimed the project's entry.** `_open_creation_row` set
-   `owned` unconditionally, so clicking the row of the author's own STAGED creation
-   made the form the owner of an identity it did not own - one Apply later the
-   project's authored creation was overwritten with no conflict shown.
-2. **The gate was not at the write.** Three routes reached `apply_creations` with
-   stale staged state: the form was closed, the form had never been given the entry,
-   or undo reinstated a captured staged state. Each ended in the same silent
-   overwrite.
-
-Both are corrected in `4d6fceefe0636db29b8e71ec7907d7e2ffb80070`:
-
-* ownership follows the **SOURCE** of the values, not the click - a row owns its
-  entry only when `identity in self._committed_creations`;
-* the rule is enforced **at the write boundary** in `apply_creations`, which every
-  write crosses, reading the project's own document rather than trusting the last
-  broadcast (so a second instance, a hand edit or a CLI write cannot be overwritten
-  either);
-* a conflicting batch is refused **atomically**: nothing written, nothing partially
-  written, nothing silently adopted, and the conflict is stated through the normal
-  refused-Apply surface;
-* a legitimate owned edit - a committed creation opened from its own row, or one this
-  form applied - still writes, which is pinned;
-* `_open_creation_owned` is cleared wherever its binding is dropped, and the form
-  reports it through `creation_form_state()`.
-
-**The ownership matrix was then swept deliberately, not one case at a time:** 1,372
-checked states over source state (none / staged / committed) x form (open / closed) x
-row (clicked / never) x project mutation (none / unrelated / same identity introduced)
-x history (none / undo / redo) x action (Apply / Revert / Cancel), plus ten random
-40-step sequences, checking after every step that (I1) no staged creation overwrites
-a project creation that appeared after staging unless the editor has an explicit
-legitimate owned binding, and (I2) no refusal or conflict path writes project data.
-I1 and I2 hold in every state. The nine states where Apply does change a held value
-are the intended owned re-authoring - verified directly: the editor owns the entry,
-`_creation_conflicts()` is empty, and its own value is written.
-
-## Final engineering closeout
+## Final engineering corrections
 
 **Seventh review, frozen candidate
 `21f8473ff3e97fe3c5c1887bbdf3c0fcdf2f8259`: BLOCK, one blocking finding.** The
-reviewer's probe reproduced the last member of the ownership family. A row whose
+verification pass's probe reproduced the last member of the ownership family. A row whose
 identity was BOTH staged and committed showed the author's STAGED values, and
 `_open_creation_row` then set `owned` from the identity's presence in the committed
 map. The form claimed the project's entry while editing something else, the
@@ -459,8 +234,8 @@ write-time exemption read that claim, and one Apply replaced the project's autho
 creation with the stale staged values with no conflict shown. Both halves are one
 rule: ownership must follow the SOURCE of the values on screen.
 
-The owner then closed the review loop for this ticket. `INDEPENDENT REVIEW: NOT
-REPEATED`, for the reason recorded verbatim: *the ticket already underwent repeated
+The review loop for this record then closed. `INDEPENDENT REVIEW: NOT
+REPEATED`, for the reason recorded verbatim: *the record already underwent repeated
 independent review rounds; later findings converged on permutations of the same
 ownership-state family rather than new architectural areas; the final known failure
 is now addressed by an explicit ownership invariant, exact order-sensitive
@@ -560,7 +335,7 @@ needs both halves, and the combined reversion above is caught.
   line is bare LF.
 * **Not run in this pass, stated rather than implied:** no broad suite, no ROM
   integration rerun (the correction changes `tools/webfoot/workbench/warp_tab.py`
-  only, and this ticket touched `tools/webfoot/map_transitions.py`, the file that
+  only, and this record touched `tools/webfoot/map_transitions.py`, the file that
   integration file exercises, in **one** commit - the implementation `5bae7e6`), no
   visual re-capture and no emulator run.
 

@@ -55,8 +55,9 @@ __pycache__/
 .coverage
 htmlcov/
 
-# Local environment secrets. Tooling credentials (for example DEEPSEEK_API_KEY)
-# live in a local .env read by the shell or by the tool itself; nothing in this
+# Local environment secrets. Tooling credentials (an API key for a local
+# service, for example) live in a local .env read by the shell or by the tool
+# itself; nothing in this
 # repository loads it at runtime, so it is local configuration, never project
 # content. `.env.example` is deliberately NOT ignored: a template carrying only
 # variable NAMES is the trackable way to document what a local .env needs.
@@ -71,29 +72,15 @@ htmlcov/
 .env.local
 .env.*.local
 
-# Local workflow-hook state
-<tool-state>/
-
-# Private agent/session workflow residue. These are local working notes, not
-# project history, and must never reach the public repository.
-/<working-notes>.md
-/<workflow-state>/
-/<working-notes>/
-
-# local tool runtime state
-<tool-state>/goals/
-<tool-state>/workflow-steps/
-<tool-state>/workflow-locks/
-
-# Superseded one-off workflow migration prompt
-/<working-notes>.txt
-
-# IDE / OS
+# Editor and local tool state. Anything a tool writes into the checkout for its
+# own use belongs here rather than in version control; the specific directories
+# a given tool uses are listed in .git/info/exclude so this file stays generic.
 .vscode/
 .idea/
 .DS_Store
 Thumbs.db
 
-# Local research scratch space. Ad-hoc probes and one-off scripts live here while
-# a ticket is in flight; they are not deliverables and are never committed.
+# Local research scratch space. Ad-hoc probes and one-off scripts live here
+# while a change is in flight; they are not deliverables and are never
+# committed.
 /scratchpad/

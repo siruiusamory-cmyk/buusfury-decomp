@@ -26,11 +26,13 @@ from tools.webfoot.formats import stat_tables as st
 CANONICAL_SHA1 = "f1c4b07554d2a3b1ad2f325307051e775ce68087"
 
 # --- Values established independently by the P-010 runtime capture ---
-# docs/research/archive/P-010.md:346  "initial HP 179200 raw = 175 displayed"
-# docs/research/archive/P-010.md:353  "base EXP              225"
+# initial HP 179200 raw = 175 displayed; base EXP 225. Both are runtime
+# measurements, not readings of the static table.
 RUNTIME_WOLF_HP_DISPLAYED = 175
 RUNTIME_WOLF_BASE_EXP = 225
-#: docs/PROJECT_<local-state-name>: 1024 raw units = 1 displayed HP.
+#: The fixed-point HP scale fixed by the runtime capture: 1024 raw units = 1
+#: displayed HP; see the damage-scale section of
+#: ``docs/research/AUTO_RE_<local-state-name>``.
 HP_RAW_PER_POINT = 1024
 RUNTIME_WOLF_HP_RAW = 179200
 

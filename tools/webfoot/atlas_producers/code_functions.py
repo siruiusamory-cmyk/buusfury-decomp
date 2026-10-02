@@ -1,8 +1,7 @@
 """ROM-ATLAS-001 code cartography: `code_functions.jsonl` and the wave-4 delta.
 
-Ported from scratchpad/trace.py and scratchpad/wave4.py (session
-afdddff1-9c87-4859-818c-7a33efc68a28). Read-only against the ROM; the shared
-traversal body lives in `traversal.py`.
+Ported from the earlier exploratory scripts `trace.py` and `wave4.py`. Read-only
+against the ROM; the shared traversal body lives in `traversal.py`.
 
 `build_wave2` is trace.py's seed set and worklist: seed functions from
 `seed_knowledge.jsonl`, the two doc-evidenced PC4 entry points, the two dispatch

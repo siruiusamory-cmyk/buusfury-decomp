@@ -16,7 +16,7 @@ The candidate rule below is carried as an injectable decoder under the ignored
 > `tools/webfoot/formats/webfoot_lz.py::_unpack_stream`, in the export reader and
 > in the research reference, and every pin this document predicted would move has
 > been re-baselined with per-pin attribution. The evidence record is
-> [`../tickets/WEBFOOT-LZ-LITERAL-BASE-001.md`](../tickets/WEBFOOT-LZ-LITERAL-BASE-001.md).
+> [`WEBFOOT_LZ_LITERAL_BASE.md`](WEBFOOT_LZ_LITERAL_BASE.md).
 > Every number below is the **pre-correction** measurement and is left as it stood.
 
 ## 1. Result
@@ -53,8 +53,8 @@ tiles appear to be "from elsewhere" and "the wrong colour".
 
 ## 2. Corpus
 
-Chosen with the maintainer from the compiled resource compile (`<resource-library>`,
-452 maps, 1,808 layers). Reported symptoms: Yakon's Planet, Yemma's Office and
+Chosen from the compiled resource corpus (452 maps, 1,808 layers). Reported
+symptoms: Yakon's Planet, Yemma's Office and
 West City. The first two screenshots were matched back to their artifacts by
 `build/gfxdiag/match_reported.py` at distance 0.00000, so the map identity is not
 a guess.
@@ -316,10 +316,10 @@ engine's own 0.9390 ceiling, it currently does not.
 
 Every probe named above is a read-only script under the ignored
 `build/gfxdiag/`, and every runtime artifact under the ignored
-`build/toolkit031/`. **The probes hardcode `ROOT = <checkout>`,** the
-checkout they were written in; a reviewer working from a clone or a ticket
-worktree must point that constant at their own tree first (the review of this
-ticket ran them from the main checkout for that reason, with the candidate's
+`build/toolkit031/`. **The probes hardcode a repository-root constant,** the checkout they were
+written in; anyone working from a clone must point that constant at their own
+tree first (the verification ran them from the main checkout for that reason,
+with the candidate's
 `tools/` and `tests/` on the path).
 
 The runtime comparison is carried by `probe_final_proof.py`, which reports the
@@ -328,7 +328,6 @@ An earlier `probe_display_model.py` produced the same A/B numbers but crashes on
 the SDK-plane case, and was removed rather than repaired;
 `probe_display_compare.py` covers the SDK-plane projection properly.
 
-The candidate was frozen and reviewed in the ticket worktree
-`<ticket-worktrees>\map-gfx-diag-001` at
+The candidate was frozen and verified in an isolated worktree at
 `13e9e11955762dc4f61255e65a8fc9fd85500948`. The main checkout carries the same
 content uncommitted, which is this ticket's normal pattern.

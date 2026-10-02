@@ -1,6 +1,9 @@
-# ROM-011 - Native mGBA One-Shot Read Probe
+# ROM-011 in-process mGBA read-range probe
 
-## Objective
+Replacing the slow GDB watchpoint approach with an in-process mGBA read-range probe,
+to capture the first runtime read of the dynamic object's fields.
+
+## Question
 
 Finish the existing ROM-011 human-assisted experiment by replacing the unusably slow GDB watchpoint approach with a lightweight IN-PROCESS mGBA read-range probe.
 
@@ -31,7 +34,7 @@ The game must remain normally playable.
 
 ---
 
-## Context Delta
+## Context
 
 ROM-011 attempted GDB-based dynamic object observation.
 
@@ -104,7 +107,7 @@ The instrumented emulator is a research tool, not part of the final game.
 
 ## Baseline
 
-ROM-011 is still the current research ticket.
+ROM-011 is still the current research pass.
 
 Do NOT commit ROM-011 merely because instrumentation strategy changed.
 
@@ -273,7 +276,7 @@ native probe captures event
     ->
 probe immediately disables
     ->
-event becomes available to Python/the tool
+event becomes available to Python/the operator
 
 The control mechanism may be:
 
@@ -340,7 +343,7 @@ No second read may overwrite the first event.
 
 The emulator should continue safely or pause in a controlled way.
 
-Prefer preserving enough state that the tool can inspect the exact hit before gameplay continues.
+Prefer preserving enough state that the operator can inspect the exact hit before gameplay continues.
 
 ---
 
@@ -348,7 +351,7 @@ Prefer preserving enough state that the tool can inspect the exact hit before ga
 
 When a hit occurs:
 
-the tool should clearly tell the user:
+the operator should clearly tell the user:
 
 PROBE HIT - STOP INPUT
 
@@ -428,7 +431,7 @@ native probe/control path ready
 
 Use existing mGBA command-line savestate loading where supported by the pinned build.
 
-If script support is still useful for non-hot-path orchestration, load it without Windows UI automation.
+If script support is still useful for non-hot-path launch sequencing, load it without Windows UI automation.
 
 Inspect the pinned source/build capabilities rather than assuming a --script option exists.
 
@@ -487,7 +490,7 @@ If not, a playable SDL frontend is acceptable if it supports:
 - loading the working state
 - the native probe
 
-Do not spend the ticket installing a huge unrelated GUI toolchain merely to preserve Qt.
+Do not spend the record installing a huge unrelated GUI toolchain merely to preserve Qt.
 
 ---
 
@@ -515,29 +518,6 @@ The hot-path probe may observe:
 It must not alter the value returned by the memory read.
 
 Add tests or assertions where practical that demonstrate the wrapped/instrumented read returns the exact underlying value unchanged.
-
----
-
-## Required Delegation
-
-### an independent reviewer - mGBA Instrumentation Design Review
-
-Before implementation, inspect the exact pinned 0.10.5 source.
-
-Identify:
-
-- narrowest read path where the dedicated probe can observe relevant GBA EWRAM reads
-- how to obtain CPU PC/register state at that point
-- how to avoid the generic memory-debugger watchpoint scanner
-- safe place to hold one probe state
-- clean event-delivery mechanism
-- simplest command-driven startup path
-
-Return exact source files/functions.
-
-Do not edit.
-
-The primary implementer then implements the minimum design.
 
 ---
 
@@ -708,74 +688,3 @@ Record first exact X read if captured.
 Do not conflate emulator-tool evidence with ROM semantics.
 
 ---
-
-## Final Review
-
-Required an independent reviewer review.
-
-Audit specifically:
-
-- mGBA pinned commit correctness
-- instrumentation accidentally changing emulation semantics
-- wrong memory layer
-- writes mistaken for reads
-- access-width errors
-- endianness/range overlap errors
-- stale X
-- probe not actually disarming
-- logging performed in hot path
-- performance measurement validity
-- stock versus instrumented comparison
-- UI automation still secretly required
-- binary/source licensing/provenance mistakes
-- ROM modification
-- semantic overpromotion
-
-Resolve legitimate findings.
-
----
-
-## Completion Criteria
-
-ROM-011 is complete when:
-
-- existing GDB watchpoint failure is preserved as evidence
-- exact pinned mGBA 0.10.5 source is used
-- a minimal native one-shot read-range probe exists
-- stock mGBA remains untouched
-- no game ROM patch exists
-- full modified upstream source is not vendored
-- instrumentation can dynamically arm for X
-- ranges X+04..+0F and X+14..+17 are covered
-- first matching read records PC/register/access data
-- probe immediately disarms
-- memory read semantics remain unchanged
-- instrumentation launches without Windows UI automation
-- armed gameplay passes the playability/speed gate
-- human-assisted gameplay experiment resumes
-- result A/B/C/D/E/F is obtained
-- tests pass
-- independent review completes
-- ROM/save/state originals remain unchanged
-- ROM-011 changes remain uncommitted and unstaged
-
-## Stop
-
-Do not begin ROM-012.
-
-Do not implement the descriptor parser.
-
-Do not keep optimizing the emulator after the performance gate passes.
-
-The immediate engineering problem is:
-
-STOCK GDB WATCHPOINTS ARE TOO EXPENSIVE.
-
-Replace them with:
-
-ONE NATIVE ARMED RANGE CHECK
-→ FIRST READ
-→ CAPTURE CPU STATE
-→ DISARM
-
-Then return immediately to the real reverse-engineering experiment.

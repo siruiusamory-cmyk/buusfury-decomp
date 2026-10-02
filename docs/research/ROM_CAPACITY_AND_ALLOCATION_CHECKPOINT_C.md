@@ -1,11 +1,10 @@
-# ROM-CAPACITY-AND-ALLOCATION-001 - Checkpoint C
+# Allocator checkpoint C: one production allocator authority
 
-**The one production allocator authority, proved synthetically.** Checkpoint A
-(`d7d5ca548adb3753b580b0144f6f02d38b5cfeea`) and Checkpoint B
-(`9b0c4889f275d9066e984e9f4c5ddced5deb9e24`, record head `6d96593`) are frozen and
-were accepted by the owner; neither is reopened here.
+The single production allocator, proved synthetically: the input contract,
+region-class safety, deterministic policy, collision handling and fail-closed
+behaviour.
 
-This checkpoint is headless SDK infrastructure. It is **not** the real-ROM runtime
+This is headless SDK infrastructure. It is **not** the real-ROM runtime
 proof - that is Checkpoint D - and it is **not** wired into any GUI.
 
 ## 1. One authority, extended not duplicated

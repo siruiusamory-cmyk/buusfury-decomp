@@ -1,9 +1,9 @@
 """ROM-ATLAS-001 evidence producers: the scripts that write the atlas inputs.
 
 `tools/webfoot/atlas_build.py` assembles ten artifacts into one atlas, but the
-scripts that *produced* those artifacts lived only in session scratchpads and
+scripts that *produced* those artifacts lived only outside the repository and
 were never tracked. This package is those producers, promoted: every module here
-is a port of one recovered scratchpad script, with its hardcoded repository path
+is a port of one recovered exploratory script, with its hardcoded repository path
 replaced by explicit `rom_path` / `out_dir` parameters and its thresholds,
 ordering, tie-breaking and serialization preserved byte-for-byte.
 

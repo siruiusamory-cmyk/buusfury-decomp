@@ -1,6 +1,10 @@
-# TEXT-HANDLE-001 - Locate the Producer of the Packed Compressed-Text Handle
+# The producer of the packed compressed-text handle
 
-## Objective
+Where the packed compressed-text handle consumed from a runtime object field comes
+from: the runtime-proven ROM-resident record, the durable message identity, and the
+producer that does not exist.
+
+## Question
 
 Determine where the packed compressed-text handle consumed from runtime object
 `+0x04` comes from: identify the writer, or prove there is none and name the
@@ -19,7 +23,7 @@ durable owner instead.
 There is no runtime write to find. The runtime object pointer points into a
 ROM-resident record in the dialog pool, and the packed handle is already stored
 at that record's `+0x04`. The persistent ROM record **is** the durable owner.
-This is **Producer stopping point A**.
+This is **Producer outcome A**.
 
 ## Identity
 
@@ -27,9 +31,9 @@ This is **Producer stopping point A**.
 - Canonical ROM sha256
   `940ad5f01db4465b8877dfe739510cbf34f4ea3d390f3df13519808bc36f059e`, verified
   unchanged at the start and the end of every run.
-- One commit landed during this ticket: `039ad86` "Adopt a ROM-resident-first
-  default for authored content research" (`docs/DEVELOPMENT.md` plus its bound, and the
-  `docs/DEVELOPMENT.md` pointer).
+- One commit landed during this record: `039ad86` "Adopt a ROM-resident-first
+  default for authored content research" (the workflow rules plus its bound, and the
+  the workflow rules pointer).
 
 ## Runtime fixture
 
@@ -61,7 +65,7 @@ This is **Producer stopping point A**.
 observer's arming guard requires an EWRAM address and correctly declined to arm
 a write watch on a ROM address.
 
-This is **stopping point A**: the experiment established *why* no write
+This is **Outcome A**: the experiment established *why* no write
 exists, and it is **not** a missed capture.
 
 ## Decoded handle
@@ -209,51 +213,12 @@ The seven-container structural gate is **UNCHANGED at 7**.
 - 22 governance tests pass.
 - 71 mgba capture guard tests pass.
 - `tests/unit/test_atlas_producers.py` asserted an exact seed row count of 51,
-  frozen at commit `0e05cac` and left stale by two later tickets. **Proven
+  frozen at commit `0e05cac` and left stale by two later records. **Proven
   pre-existing red**: a clean detached worktree at `039ad86`, containing none of
-  this ticket's work, fails the same test. It has been changed to a floor
+  this record's work, fails the same test. It has been changed to a floor
   assertion (`>= 51`) with a comment explaining why an exact count is the wrong
   instrument for a test whose stated purpose is proving the producer needs no
   pre-existing artifact.
-
-## Safety
-
-- The ROM was opened read-only; its sha256 was verified unchanged at the start
-  and the end of every run.
-- The savestate fixture was unchanged by the run.
-- No write watch could be armed on a ROM address, by design of the observer's
-  arming guard.
-- No commercial ROM text is committed; the only quoted phrase is the ticket's
-  own subject line.
-- Generated atlas outputs remain ignored; only producer inputs were edited.
-
-## Public progress
-
-`public progress impact: NONE`. The public frontier remains ordinary plaintext
-dialogue display; this ticket resolved provenance behind that frontier without
-changing what the SDK can do for an outside visitor.
-
-## ROM Bible
-
-`ROM_BIBLE_IMPACT: UPDATE RECOMMENDED`, after the technical state is committed.
-The Bible was **not** modified by this ticket.
-
-## Files changed
-
-All unstaged except `039ad86`, which is committed.
-
-| file | change |
-|---|---|
-| `tools/runtime/text_handle_001_producer_watch.lua` | new observer |
-| `tools/runtime/stage_text_handle_001.ps1` | new staging wrapper; docstring corrected post-result, because it originally framed the work as a producer hunt |
-| `tools/runtime/inject_mgba_lua.ps1` | +3, allowlist entry |
-| `tools/webfoot/atlas_producers/seed.py` | +119/-4 |
-| `tools/webfoot/cli.py` | +155/-8 |
-| `tests/unit/test_decoded_text_index.py` | +244 |
-| `tests/unit/test_atlas_producers.py` | stale assertion fixed |
-| `docs/research/ROM_ATLAS_REGENERATION.md` | +26/-8, new digest recorded |
-| `docs/research/BUU_DIALOG_RUNTIME.md` | two stale table rows and one stale prose section corrected |
-| `docs/research/BUU_DIALOGUE_TEXT_STORES.md` | one stale table row and one stale comparison sentence corrected |
 
 ## Next measured blocker
 
@@ -263,4 +228,4 @@ Exactly one:
 > confirm that it interprets record `+0x04` as the packed compressed-text
 > handle.
 
-**This ticket does not start it.**
+**This record does not start it.**

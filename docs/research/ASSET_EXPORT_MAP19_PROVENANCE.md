@@ -352,7 +352,7 @@ record.
 
 **Supersession note.** The accepted `LOGX-TILE-001` records read the same size
 field `2` as `512x256` (`docs/research/LOGX_TILE_PROVENANCE.md`,
-`docs/reverse-engineering.md`, `docs/research/LOGX-TILE-001-review.md`). That is the
+`docs/reverse-engineering.md`, `docs/research/LOGX_TILE_VERIFICATION.md`). That is the
 size-field-`1` geometry; in text mode size `2` is `256x512` = `32 x 64` entries and
 in affine mode `512x512` = `64 x 64` entries, both 64 bytes on a row. The
 `256x512` reading is the one map 19's blit agrees with. Those documents belong to an

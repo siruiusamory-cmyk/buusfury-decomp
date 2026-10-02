@@ -7,11 +7,11 @@ container is re-laid out, every word the engine reads as a handle is repointed,
 the payload is repacked and relocated by the production allocator, and the retail
 engine displays the whole longer line.
 
-It supersedes the boundary recorded in
-[`tickets/archive/ROM-CAPACITY-AND-ALLOCATION-001-COMPLETE.md`](../tickets/archive/ROM-CAPACITY-AND-ALLOCATION-001-COMPLETE.md)
-§11, where exactly this request was refused by design and the route to reaching
-it was named. Sections 1-10 of that record (the above-EOF allocator proof) stand
-unchanged and are *used* here, not rebuilt.
+It supersedes the boundary recorded at the close of the
+[`ROM-CAPACITY-AND-ALLOCATION-001`](ROM_CAPACITY_AND_ALLOCATION.md) capacity
+series, where exactly this request was refused by design and the route to
+reaching it was named. The above-EOF allocator proof in that series stands
+unchanged and is *used* here, not rebuilt.
 
 ## 0. Result
 
@@ -372,7 +372,7 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass `
   -RomPath "build\varlen-001\derivative.gba" `
   -RomSha256 dbeba9abc58db5343bd4a7c004207636c8fa6932b0f9527a866fe09ee2aba036 `
   -RomSize 16777216 `
-  -StatePath "<checkout>\roms\Dragon Ball Z - Buu's Fury (U).ss1" `
+  -StatePath "<copy of the verified state>.ss1" `
   -Label varlen-001-human1 -ExpectedPointer 0x08800000 `
   -LuaPath "tools\runtime\varlen001_dialogue_variable_length_probe.lua" `
   -MGBPath "build\tools\mgba-dev\extracted\mGBA-build-2026-08-27-win64-9128-c65e8a3d4666b0ea68a01578232452f31b185332\mGBA.exe"

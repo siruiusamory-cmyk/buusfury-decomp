@@ -1,7 +1,7 @@
 /* ###
- * IP: LOG1-REMAKE
+ * IP: Webfoot SDK
  *
- * Generic bounded Ghidra helper for the research lane:
+ * Generic bounded Ghidra helper for batch static research:
  * seed Thumb functions at given addresses (optional names), then emit a
  * report (identity, body, callers/callees, disassembly preview,
  * decompilation) under build/ghidra/reports/.

@@ -484,9 +484,7 @@ a sanity check with no demonstrated benefit.
 | `docs/research/GRAPHICS_FORMAT.md` | superseded-statements banner; the `0x179764` ownership correction; the two named production defects cross-referenced to the roadmap |
 | `docs/reverse-engineering.md` | the ten corrections in §1 |
 
-`docs/PROJECT_<local-state-name>` was **not** modified: it is the queue's own handoff
-document and its LOGX-GFXSCAN-001 closeout text is still the correct record of
-that ticket. No historical review, provenance or archive record was edited.
+No historical review, provenance or archive record was edited.
 
 ---
 

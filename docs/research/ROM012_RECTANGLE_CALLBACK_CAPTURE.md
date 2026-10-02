@@ -1,4 +1,8 @@
-# ROM-012 - Enter One 0x08007675 Rectangle and Capture Its Callbacks
+# ROM-012 rectangle containment and callback capture
+
+Capturing the containment-accepted path for an exact runtime object created by
+factory `0x08007675`, including the query entity identity, the target rectangle,
+the accepted-containment gate and the callbacks.
 
 ## Objective
 
@@ -155,7 +159,7 @@ Do NOT automate hundreds of movement frames.
 
 The human controls gameplay.
 
-the tool keeps instrumentation armed.
+the operator keeps instrumentation armed.
 
 The user should navigate naturally toward the target rectangle.
 
@@ -316,7 +320,7 @@ stop with that precise result.
 
 Do not progress story or explore additional maps.
 
-## the reviewer Static Result To Preserve
+## Static result preserved
 
 Independent static analysis established:
 
@@ -408,7 +412,7 @@ Add synthetic tests only where new helper logic requires them.
 
 Runtime evidence remains separate from portable pytest.
 
-## Final Report Additions
+## Report fields
 
 Report:
 
@@ -453,9 +457,9 @@ separate from executable evidence
 
 ### Parser Readiness
 
-Then normal docs/DEVELOPMENT.md validation/reviewer/safety/Git sections.
 
-## Completion Criteria
+
+## Acceptance criteria
 
 ROM-012 is complete when:
 
@@ -474,7 +478,7 @@ ROM-012 is complete when:
 - ROM/save/state remain unchanged
 - ROM-012 remains uncommitted and unstaged
 
-## Stop
+## Closing statement
 
 Do not begin ROM-013.
 

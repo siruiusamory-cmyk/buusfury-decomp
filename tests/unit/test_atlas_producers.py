@@ -25,9 +25,8 @@ MODULES = sorted(PACKAGE.glob("*.py"))
 def _docstring_ids(tree: ast.AST) -> set[int]:
     """Ids of the string constants that are module/class/function docstrings.
 
-    SC1 requires every module to name the scratchpad script it was ported from,
-    and those provenance headers quote the originals verbatim — hardcoded
-    `C:\\Dev` paths and the deleted `sys.argv` pass selector included. The
+    The producer headers record which earlier exploratory script each module was
+    ported from, and that provenance prose is not executable code. The
     prohibitions below are about executable code, so the prose is excluded
     rather than the rule weakened.
     """

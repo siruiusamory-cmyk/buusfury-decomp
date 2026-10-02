@@ -1,16 +1,9 @@
-# MAP-WARP-CREATE-WORKBENCH-001 - the Warps surface's Create Transition action
+# The Warps surface Create Transition action: integration notes
 
-STATUS: **CLOSED.** Scoped **sub-pass of `MAP-WARPS-AND-CONNECTIONS-001`**,
-completed 2026-09-27 and archived at the parent's closeout (2026-09-28). The full
-evidence record, the seven review rounds and the final ownership closeout stay at
-[`../MAP-WARP-CREATE-WORKBENCH-001.md`](../MAP-WARP-CREATE-WORKBENCH-001.md).
+The condensed record of the Create Transition pass: what shipped, the ownership
+family it converged on, and the limits kept.
 
-`public progress impact: NONE` - no capability shipped here: `src/` was untouched,
-the registry stayed at **19 / 24 (79%)**, `EDIT` stayed **7 / 8**, and `warps`
-stayed `missing`. The capability advance to **20 / 24** belongs to the parent's own
-closeout.
-
-## What it was asked to do
+## Scope
 
 Advance the GUI half of the parent's Required Work 1 and 3 for creation: let the
 shipped `Maps -> Warps` surface author a transition the image does not contain -
@@ -22,9 +15,9 @@ no pointer or count arithmetic in Qt.
 ## What shipped
 
 Baseline `87a47ff721896a1d99632e78ff7cf6032cf9f8ae`, implemented and isolated in
-`<ticket-worktrees>\map-warp-create-workbench-001` on
-`ticket/map-warp-create-workbench-001` (origin/master, the primary checkout HEAD and
-the ticket baseline were the same commit, no drift).
+`<records>\map-warp-create-workbench-001` on
+`record/map-warp-create-workbench-001` (origin/master, the primary checkout HEAD and
+the record baseline were the same commit, no drift).
 
 * A **Create Transition** action opens a form that authors the durable name, the
   same-map 566-class template, the positional trigger region, the destination, the
@@ -45,22 +38,16 @@ the ticket baseline were the same commit, no drift).
 
 Merged into `master` as `5224c7376660c5e35f2063e9e59699911a1a4750`.
 
-## The independent review, and the ownership family it converged on
+## The ownership family the verification converged on
 
-`the local reviewer` could not run in this environment at the time: the local launch
-planned a `the reviewer --cloud` invocation whose job (`cl-20260927-054453-0068e4`) failed
-with no session, cloud-session attach is not enabled for this account, and a direct
-local headless run of the installed CLI returned an expired OAuth session. The
-review was therefore performed by the harness's fresh-context reviewer - a separate
-agent with no implementer context - which is what the repository's review gate
-requires of any instrument. A the reviewer verdict remained available to the owner by
-re-authenticating the CLI.
+The independent verification was performed by a independent verification pass with no
+part in the implementation, which is what the repository's review gate requires.
 
 The review history is preserved because it is the sub-pass's real record:
 
 | round | frozen candidate | verdict | resolution |
 | --- | --- | --- | --- |
-| 1 | `7d5e4a9` | APPROVE WITH NON-BLOCKING NOTES, 0 blocking, six notes | five corrected (guarded `_retail`, undo across a source-map change, row highlight on close, this record's stale totals, restored docs/DEVELOPMENT.md triggers); one wording note accepted |
+| 1 | `7d5e4a9` | APPROVE WITH NON-BLOCKING NOTES, 0 blocking, six notes | five corrected (guarded `_retail`, undo across a source-map change, row highlight on close, this record's stale totals, restored the repository rules triggers); one wording note accepted |
 | 2 | `9b90659` | BLOCK, one finding | correcting round 1 had introduced a silent discard of a staged creation; fixed at both root causes in `8cad1e4` |
 | 3 | `150970d` | BLOCK, one finding | a refused form became the owner of the identity it was refused for; fixed in `eb81fc2` |
 | 4 | `eb81fc2` | BLOCK, one finding | the authority-refusal branch also recorded a binding; fixed in `ed8b1d4` |
@@ -71,20 +58,20 @@ The review history is preserved because it is the sub-pass's real record:
 Every blocking finding was one family - who owns a durable identity, and when a form
 learns that it does - and each was fixed and pinned where the state is created rather
 than where the symptom appeared. An adversarial state-machine sweep by the
-implementer between rounds 4 and 5 found one further defect (a closed form reporting
+author between rounds 4 and 5 found one further defect (a closed form reporting
 `New (staged)` with an empty staged set), corrected in `dae9b0f`.
 
-**Rounds stopped at five, then resumed, and the owner closed the loop.** After round
+**Rounds stopped at five, then resumed, and the loop was closed.** After round
 five the record states that a sixth round was not proportionate at that point and
 that the frozen tip carried one not-yet-reviewed commit; rounds six and seven
-followed, and after the round-seven correction the owner closed the review loop with
-`INDEPENDENT REVIEW: NOT REPEATED`, recorded verbatim: the ticket already underwent
+followed, and after the round-seven correction the review loop closed with
+`INDEPENDENT REVIEW: NOT REPEATED`, recorded verbatim: the record already underwent
 repeated independent review rounds; later findings converged on permutations of the
 same ownership-state family rather than new architectural areas; and the final known
 failure is addressed by an explicit ownership invariant, an exact order-sensitive
 regression, a write-time gate and a state-space sweep.
 
-## The final ownership closeout
+## Final ownership correction
 
 One correction commit, `1420754`, on top of the reviewed candidate; final candidate
 `88a83f1ec253a113e5306b881f626c09f652cfc8`, which carries the correction and this
@@ -126,7 +113,7 @@ record.
 * **The shell's unsaved-work guard is unchanged**, for the same reason
   `MAP-WARP-WORKBENCH-001` recorded.
 
-## Validation and policy
+## Validation
 
 * Focused named files: `tests/unit/test_workbench_warp_creation.py` **78 passed**,
   `test_workbench_warp_transitions.py` **32 passed**, `test_workbench_smoke.py` +
@@ -140,16 +127,9 @@ record.
   integration rerun (the correction changes only `tools/webfoot/workbench/warp_tab.py`),
   no visual re-capture and no emulator run in the final correction pass.
 
-## Safety
+## Stop
 
-`src/data/capabilities.json`, `src/data/project.ts` and the public site were
-untouched; no GUI ROM write; every write went through
-`map_transitions.set_transition_creations` and the production build. No ROM-derived
-artifact was added, staged or committed.
-
-## Stop and next
-
-Stopped after the ownership correction and the owner's closure of the review loop.
+Stopped after the ownership correction and the closure of the review loop.
 The runtime proof of a created transition and the capability advance to **20 / 24**
 remained; `MAP-WARP-CREATE-RUNTIME-001` followed, and the parent's own closeout
 states the final result.

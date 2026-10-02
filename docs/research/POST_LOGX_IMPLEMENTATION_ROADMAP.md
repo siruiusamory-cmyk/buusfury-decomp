@@ -4,7 +4,7 @@
 (LOGX-SYNTHESIS-001). **This is an implementation queue, not a research
 provenance record.** The evidence behind every statement here is in
 [`LOGX_SYNTHESIS.md`](LOGX_SYNTHESIS.md) (canonical synthesis) and the ten
-tickets' own provenance documents; this file does not repeat it.
+the per-system provenance documents; this file does not repeat it.
 
 **Read first:** [`LOGX_SYNTHESIS.md`](LOGX_SYNTHESIS.md) §11 (production
 defects), §14 (read support), §15 (authoring readiness), §16 (portrait decision),
@@ -16,18 +16,18 @@ defects), §14 (read support), §15 (authoring readiness), §16 (portrait decisi
 > [`../ROADMAP_TO_1_0.md`](../ROADMAP_TO_1_0.md); where the two name the same
 > work, that document owns the roadmap and this one owns the engineering detail.
 
-> **This roadmap creates no work by itself.** Every ticket below is a proposal
-> for a human to authorize. Tickets are sized to be independent; the dependency
+> **This roadmap is a plan, not a schedule.** Each item below is a self-contained
+> proposal. Items are sized to be independent; the dependency
 > column, not the ordering, is what must be honoured.
 
 ---
 
-## How to read a ticket
+## How to read an item
 
 | Field | Meaning |
 | --- | --- |
-| **Goal** | the single thing that is true when the ticket is done |
-| **Dependencies** | tickets or facts that must exist first |
+| **Goal** | the single thing that is true when the item is done |
+| **Dependencies** | items or facts that must exist first |
 | **Subsystem** | the code or document that changes |
 | **Kind** | `engineering`, `research`, or `engineering + research` |
 | **Acceptance** | the observable condition that proves the goal |
@@ -35,8 +35,8 @@ defects), §14 (read support), §15 (authoring readiness), §16 (portrait decisi
 | **`AUTHOR_NEW`** | whether this materially advances the acceptance frontier |
 | **Public** | whether it changes a user-visible product capability |
 
-**Standing prerequisites that apply to every writing ticket** (not repeated per
-ticket, because they come from the project's own rules rather than from LOGX):
+**Standing prerequisites that apply to every writing item** (not repeated per
+item, because they come from the project's own rules rather than from LOGX):
 
 * the original ROM is read-only; every write goes
   `verified base -> working copy -> generated output`;
@@ -53,7 +53,7 @@ ticket, because they come from the project's own rules rather than from LOGX):
 
 **Theme:** stop relying on tooling that is known wrong. Nothing downstream should
 be built on a parser whose offsets are refuted, or on a decoder that can report a
-truncated payload as success. Every ticket here is `engineering`; none needs
+truncated payload as success. Every item here is `engineering`; none needs
 research.
 
 ---
@@ -164,7 +164,7 @@ editing of content the engine already has. All are `engineering`.
 | | |
 | --- | --- |
 | **Goal** | the SDK exposes the accepted appearance-definition table: 232 records, the five physical fields, resolved text for `+0x00`/`+0x02`, resolved sprite-definition target for `+0x04`, resolved portrait pointer for `+0x08`, and the signed `+0x0C` stat index |
-| **Dependencies** | FIX-6 (the shared metadata writer, if the ticket is extended to edit); otherwise independent |
+| **Dependencies** | FIX-6 (the shared metadata writer, if the item is extended to edit); otherwise independent |
 | **Subsystem** | a new reader over `0x0874D380` in `tools/webfoot/formats/`, plus the atlas/project path and CLI surface |
 | **Kind** | `engineering` |
 | **Acceptance** | all 232 records read with the accepted population figures (154 distinct `+0x00` indices -> 152 strings, 154 `+0x02` -> 104 strings, 198 distinct `+0x04` ids -> 198 targets, 110 distinct non-zero `+0x08` slots, 144 non-negative `+0x0C`); the three anomaly sets are surfaced rather than hidden; the neutral vocabulary ("named appearance definitions with optional slot and stat indices") is used, **not** "character table" |
@@ -248,7 +248,7 @@ packed-stream emission has open research items.
 | --- | --- |
 | **Goal** | emit a stored-form Webfoot container: `u32` form `0`, `u32` declared decoded size, payload at `+0x08` |
 | **Dependencies** | FIX-1 |
-| **Subsystem** | `tools/webfoot/formats/webfoot_lz.py` (`build_stored` already exists; this ticket hardens and integrates it) |
+| **Subsystem** | `tools/webfoot/formats/webfoot_lz.py` (`build_stored` already exists; this item hardens and integrates it) |
 | **Kind** | `engineering` |
 | **Acceptance** | a generated stored container is read back by the project decoder and by an independent reader with identical bytes; the engine's own form-0 path (`memcpy` of exactly `container[+0x04]` bytes) is honoured; a zero-length stored container is legal and round-trips |
 | **Risk** | **low.** The stored form is the simpler branch and is already implemented; the risk is integration, not correctness |
@@ -262,10 +262,10 @@ packed-stream emission has open research items.
 | | |
 | --- | --- |
 | **Goal** | emit a packed Webfoot container the engine decodes correctly, with the stream's control escape placed so decoding stops exactly at the declared size |
-| **Dependencies** | FIX-1; the recommended research ticket `LOGX-CODEC-WRITE-001` (see §Follow-up research) |
+| **Dependencies** | FIX-1; the recommended research item `LOGX-CODEC-WRITE-001` (see §Follow-up research) |
 | **Subsystem** | `tools/webfoot/formats/webfoot_lz.py` (`pack`), or a new encoder module |
 | **Kind** | `engineering + research` - the wrapper and grammar are `CONFIRMED`; the **initial literal width** is `UNRESOLVED` and the marker-versus-declared-size disagreement rule has no canonical instance |
-| **Acceptance** | decode(encode(x)) == x byte-for-byte; the emitted declared size equals the decoded length; the emitted end marker falls at that same length; the emitted stream length is measured and reported against `packed_end - offset`; the encoder **does not** rely on the unresolved dispatcher literal state, or the ticket resolves it first |
+| **Acceptance** | decode(encode(x)) == x byte-for-byte; the emitted declared size equals the decoded length; the emitted end marker falls at that same length; the emitted stream length is measured and reported against `packed_end - offset`; the encoder **does not** rely on the unresolved dispatcher literal state, or the item resolves it first |
 | **Risk** | **medium-high.** The engine performs **no** validation: a bad stream is not caught at runtime. `webfoot_lz.pack` already produces valid streams with a **measured size penalty**, so the open question is whether its output fits where it must go |
 | **`AUTHOR_NEW`** | yes - it is the gate for every insertion capability |
 | **Public** | no direct capability change until allocation exists |
@@ -304,7 +304,7 @@ packed-stream emission has open research items.
 
 ## Phase 4 - `AUTHOR_NEW`
 
-**Theme:** create content that does not exist. Each ticket here is gated by a
+**Theme:** create content that does not exist. Each item here is gated by a
 research item or an allocation dependency; none is close to ready today.
 
 ---
@@ -318,7 +318,7 @@ research item or an allocation dependency; none is close to ready today.
 | **Subsystem** | the sprite authoring path |
 | **Kind** | `engineering` (the layouts are `STRUCTURALLY SOLVED`) with one caveat |
 | **Acceptance** | a new animation's `frame_count` and `4*frame_count` cells are emitted; its two trailing words are **copied from a chosen existing record** rather than invented; a new frame's header bounding box is **computed** from its pieces and matches the engine's own rule; the definition's `+0x00` count is updated consistently and `+0x54 + 4*count` is the new extent |
-| **Risk** | **medium.** The animation's two trailing words are `UNRESOLVED`; the ticket must preserve them from an existing record rather than guess. The count update is the coupled invariant |
+| **Risk** | **medium.** The animation's two trailing words are `UNRESOLVED`; the item must preserve them from an existing record rather than guess. The count update is the coupled invariant |
 | **`AUTHOR_NEW`** | yes |
 | **Public** | yes |
 
@@ -348,7 +348,7 @@ research item or an allocation dependency; none is close to ready today.
 | **Subsystem** | the appearance table `0x0874D380` |
 | **Kind** | `research + engineering` - the **table growth story is genuinely unresolved** |
 | **Acceptance** | the 233rd record is reachable by the engine's own search; `+0x02 == +0x00 + 1` is preserved or the divergence is deliberately stated; the `+0x0C` stat index is either valid or negative |
-| **Risk** | **high, and currently blocked by an unresolved fact.** The count is baked into **eight** engine sites as `cmp rN,#0xE8` with a pre-increment, there is no terminator, and the runtime roster walk is bounded by a 232-bit bitmap. Growing the table means either relocating it and following eight literal sites, or extending it in place and finding that every bound is a constant. This ticket must start with a bounded research question - *is the count reloadable, or is it a compile-time constant the engine never re-reads?* - and stop if the answer is "constant" |
+| **Risk** | **high, and currently blocked by an unresolved fact.** The count is baked into **eight** engine sites as `cmp rN,#0xE8` with a pre-increment, there is no terminator, and the runtime roster walk is bounded by a 232-bit bitmap. Growing the table means either relocating it and following eight literal sites, or extending it in place and finding that every bound is a constant. This item must start with a bounded research question - *is the count reloadable, or is it a compile-time constant the engine never re-reads?* - and stop if the answer is "constant" |
 | **`AUTHOR_NEW`** | yes |
 | **Public** | yes |
 
@@ -378,7 +378,7 @@ research item or an allocation dependency; none is close to ready today.
 | **Subsystem** | the whole map-load template |
 | **Kind** | `research + engineering` |
 | **Acceptance** | the engine loads the authored map by key, resolves its root, builds four layers, streams chunks, and accepts a connection into and out of it |
-| **Risk** | **very high.** Requires layer positioning (unknown), selector semantics above `1` (unresolved), the `+0x0C`/`+0x10` consumer (unrecovered), the `+0x24`/`+0x28` object types (unknown), and a verified allocator for every new structure plus five pointer/count updates per root. This is the last ticket in the roadmap, not the first |
+| **Risk** | **very high.** Requires layer positioning (unknown), selector semantics above `1` (unresolved), the `+0x0C`/`+0x10` consumer (unrecovered), the `+0x24`/`+0x28` object types (unknown), and a verified allocator for every new structure plus five pointer/count updates per root. This is the last item in the roadmap, not the first |
 | **`AUTHOR_NEW`** | yes - the terminal acceptance frontier |
 | **Public** | yes |
 
@@ -397,7 +397,7 @@ future reader knows they were considered and why they are parked.
 | animation slot names | naming them would be an invented semantic; a UI may show index, occupancy and a preview |
 | MapEntry's upstream-labelled metadata fields | the accepted discovery route uses `+0x00`, `+0x0C` and `+0x2C` only; an editor preserves the rest byte-exactly |
 | the animation trailing words | preserving two unknown words needs no semantics; only `NEW-1` touches them, by copying |
-| `SUBSYSTEM_MAP.md` / `GRAPHICS_FORMAT.md` address-notation pass | a documentation cleanup with no capability attached. Do it when a ticket next edits those files, not on its own |
+| `SUBSYSTEM_MAP.md` / `GRAPHICS_FORMAT.md` address-notation pass | a documentation cleanup with no capability attached. Do it when one of those files is next edited, not on its own |
 
 ---
 
@@ -439,7 +439,7 @@ knowledge that is explicitly **outside** this research queue:
 
 **Recommendation:** ship the randomizer as a **structural** tool that states its
 policy, refuses unresolvable keys and never claims progression safety. Treat
-solvability validation as a separate, later ticket owned by whoever owns
+solvability validation as a separate, later item owned by whoever owns
 progression logic - not by the LOGX research line.
 
 ---
@@ -452,7 +452,7 @@ capability being scheduled. A fourth lead is recorded as **parked** because it
 cannot name a blocked capability. Full reasoning in
 [`LOGX_SYNTHESIS.md`](LOGX_SYNTHESIS.md) §17.
 
-| Ticket | Blocks | Priority |
+| Item | Blocks | Priority |
 | --- | --- | --- |
 | **`LOGX-CODEC-WRITE-001`** | `WRITE-2` and therefore every insertion capability (`WRITE-4`, `NEW-1`..`NEW-5`). The encoder format is `PARTIAL`: the initial literal width is `UNRESOLVED`, no production encoder exists, and `pack` has a measured size penalty | **high** - the gate for Phase 3/4 |
 | **`LOGX-CONNECTOR-GEOMETRY-001`** | `NEW-4` (arbitrary new warp trigger authoring) and map position authoring generally. Needs a runtime capture placing the player inside and outside a record's interval | **only when trigger authoring is scheduled.** Does **not** block `TOOLS-3`/`TOOLS-4` |
@@ -461,7 +461,7 @@ cannot name a blocked capability. Full reasoning in
 
 ---
 
-## Recommended first implementation ticket
+## Recommended first implementation item
 
 **`FIX-1` - strict decoded-size enforcement in `webfoot_lz`.**
 
@@ -480,7 +480,7 @@ parser then faithfully reports as valid.
 
 ## Queue summary
 
-| Phase | Tickets | Gating fact |
+| Phase | Items | Gating fact |
 | --- | --- | --- |
 | 1 - Correctness and parser repair | `FIX-1` .. `FIX-6` | none. Every item is engineering with a `CONFIRMED` target structure |
 | 2 - Verified existing-content tools | `TOOLS-1` .. `TOOLS-5` | needs Phase 1's parsers for `TOOLS-2`/`TOOLS-5`; `TOOLS-3`/`TOOLS-4` need nothing from Phase 1 |

@@ -187,9 +187,9 @@ DOMAINS: tuple[DomainReach, ...] = (
               "the engine actually read - the relocated container - NOT over the "
               "whole expansion.",
         evidence=("docs/research/ROM_EXPANSION.md:24-46",
-                  "docs/research/archive/ROM-EXPAND-001-COMPLETE.md:149-176",
+                  "docs/research/ROM_EXPANSION_VERIFICATION.md:93-120",
                   "tools/webfoot/compressed_dialogue.py:68-77,142-168",
-                  "docs/research/ROM-CAPACITY-AND-ALLOCATION-001-checkpoint-d.md"),
+                  "docs/research/ROM_CAPACITY_AND_ALLOCATION_CHECKPOINT_D.md"),
     ),
     DomainReach(
         key="map_entry_scripts_pointer", title="MapEntry +0x14 object array pointer",
@@ -436,7 +436,7 @@ DOMAINS: tuple[DomainReach, ...] = (
         notes="Proven address-INDEPENDENT: the handle was unchanged while its "
               "container moved to 0x08800000. It is not itself an above-EOF carrier.",
         evidence=("tools/webfoot/handles.py:17-31",
-                  "docs/research/archive/TEXT-HANDLE-002-COMPLETE.md:79-82"),
+                  "docs/research/TEXT_HANDLE_OWNER_VERIFICATION.md"),
     ),
 )
 

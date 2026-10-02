@@ -1,23 +1,14 @@
-# WEBFOOT-LZ-LITERAL-BASE-001 - Correct packed-container literal-base reset
+# Packed-container literal-base reset: integration notes
 
-STATUS: **COMPLETE AND MERGED (2026-09-26).** Archived from `PROJECT_<local-state-name>` at
-closure. Baseline: the frozen accepted `MAP-GFX-DIAG-001` candidate `13e9e11`
-(plus its documentation-note commit `8506a4b`). Implementation `5c452ed`, closure
-documentation fix `5d22982`, merge `4f8febe`. Frozen reviewed candidate
-`5d229821da42609c8c3d9222b580f96e1b7281f4`; independent review returned no
-blocking findings. CI green on the frozen candidate (`test-sdk`, pipeline
-`2884791492`).
+The condensed record of the literal-base reset correction: the proven defect, the
+implementation and the acceptance measurements.
 
-`public progress impact: NONE` - the correction changes decoded bytes and fixes
-rendered map art, but no published capability, count, blocker or claim wording
-changes; the capability registry's decoder statement was already compatible and
-is now strictly more accurate.
 
 The evidence record is
-[`../WEBFOOT-LZ-LITERAL-BASE-001.md`](../WEBFOOT-LZ-LITERAL-BASE-001.md); the
+`WEBFOOT_LZ_LITERAL_BASE.md`; the
 review brief is
-[`../WEBFOOT-LZ-LITERAL-BASE-001-review-request.md`](../WEBFOOT-LZ-LITERAL-BASE-001-review-request.md).
-The last archived closure before this ticket is
+the review brief recorded with that work.
+The last archived closure before this record is
 [`MAP-RESIZE-AND-LAYERS-001-COMPLETE.md`](MAP-RESIZE-AND-LAYERS-001-COMPLETE.md).
 
 ## Goal
@@ -81,8 +72,3 @@ retained runtime captures, and framebuffer comparison.
 
 No map-layout changes, no palette heuristics, no compositor/UI work, no map-102
 investigation, and no capability-count increase.
-
-## Stop
-
-Stopped after the correction was merged and runtime-verified.
-`TILESET-COMPOSITOR-001` was not begun.

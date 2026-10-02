@@ -190,7 +190,7 @@ def decode_packed(
       engine's. The engine carries no output counter and performs no size
       comparison at all, so it stops only on the stream's own escape. That is
       `CONFIRMED` and adjudicated in
-      `docs/research/CQA_02_PACKED_TERMINATION_RESOLUTION.md` §2.1; the sentence
+      `docs/research/PACKED_STREAM_TERMINATION.md` §2.1; the sentence
       that used to stand here called the declared-size stop "also the engine's",
       which CQA-02-PACKED-STREAM-TERMINATION-001 corrected.
     * ``"end_marker"`` - ignore ``declared_size`` and run to the stream's own

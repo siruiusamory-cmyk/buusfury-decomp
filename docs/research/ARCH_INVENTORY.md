@@ -1,8 +1,7 @@
 # ARCH_INVENTORY -- Webfoot SDK architecture inventory
 
-**Ticket:** ARCH-CLEANUP-001 phase 1 (inventory only; no code changed).
+**Status:** inventory only; no code changed.
 **Scope:** every `.py` file under `tools/webfoot/` -- 49 files, 16,119 lines.
-**Canonical SHA:** `78315c7fb81a21ec599256e36ff3f4a72fb78542` (branch `master`).
 **Method:** every claim below cites a `file:line` actually opened. The import
 graph, the cycle analysis and the test-coverage map were built by AST parse of
 the tree, not by reading import lines by eye.
@@ -18,7 +17,7 @@ only one of them is large *because two different things live in it*.
 
 The single highest-value finding is in §5 (AUTHOR_NEW ownership): of the ten
 TOOLKIT-029..034 concepts, **one and only one is understood nowhere but in
-`build.py` -- the authored-materialization orchestration sequence at
+`build.py` -- the authored-materialization control sequence at
 `build.py:855-905`**, which decides when to call `materialize_authored_runs`,
 when to fall back to `require_materialization_contract`, and how the authored
 changes join the merged plan. Everything else in that feature set has a real
@@ -121,7 +120,7 @@ schema across six places for zero dependency gain. TOOLKIT-005's rule
 (semantic layer must not be titled or branched for one game) is respected:
 no game name appears in a branch here.
 
-**`rom.py`** -- 73 · Read-only identification orchestration: one descriptor,
+**`rom.py`** -- 73 · Read-only identification control flow: one descriptor,
 hash + header, then re-check device/inode/size/mtime. ·
 `RomIdentification(L23)`, `identify_rom(L31)` · deps: gba_header, hashing,
 profile · inbound: 12 modules · cross-cutting · **PUBLIC**  --
@@ -410,9 +409,9 @@ separate from extracted canonical rows. · `BehaviorTrigger(L30)`,
 authored_placements, cli, project.model · authored placements · **PUBLIC**  --
 8 test files · **LEAVE ALONE.** See §4 A for its lazy cycle edge.
 
-### Layer 5 -- orchestration and presentation
+### Layer 5 -- control flow and presentation
 
-**`build.py`** -- 1008 · Extract / validate / build orchestration, plus
+**`build.py`** -- 1008 · Extract / validate / build control flow, plus
 authored-materialization sequencing. Full analysis in §8. · `BuildError(L74)`,
 `ProjectRomMismatchError(L78)`, `ValidationReport(L88)`, `BuildResult(L108)`,
 `_require_extractable_profile(L131)`, `extract_project(L153)`,
@@ -596,7 +595,7 @@ acyclic. Python could import every module in dependency order with no deferral.
 
 ### B. REVERSE DEPENDENCIES -- every named violation checked
 
-| Violation the ticket names | Verdict | How checked |
+| Named violation | Verdict | How checked |
 |---|---|---|
 | formats → CLI | **ABSENT** | `grep -rn "from .cli\|from ..cli\|import cli" tools/webfoot` returns exactly one hit: `tools/webfoot/__main__.py:1`, which is the entry point and correct. |
 | allocator → argparse | **ABSENT** | `grep -rn argparse tools/webfoot --include=*.py` excluding `cli.py` returns **zero** hits. `argparse` appears only in `cli.py`. |
@@ -605,7 +604,7 @@ acyclic. Python could import every module in dependency order with no deferral.
 | build core → runtime research probe | **ABSENT** | `build.py` imports nothing from `analysis/`, `tools/runtime/`, or `tools/mgba_probe/`. Its full import set is listed in §2. |
 | research tooling on the required SDK production path | **PARTIAL -- one finding** | `analysis/*` is imported by `cli.py:11-19` (`analysis.map_entry_pointers`, `analysis.variation_arrays`) and **by no other production module**. So research code is *not* on the extract/validate/build path -- but it *is* statically imported at CLI module load, meaning `import tools.webfoot.cli` pulls in 891 lines of research census code even for `webfoot build`. This is an import-weight issue, not a layering violation: no build-path function calls into `analysis/`. |
 
-**One additional reverse dependency, not on the ticket's list:**
+**One additional reverse dependency, not in the original list:**
 `formats/map_entry.py` imports `..rom` and `..capability`
 (`formats/map_entry.py:9-13`) and takes filesystem paths
 (`read_map_entry_table(L226)`, `validate_map_entry_round_trips(L284)`). This
@@ -626,7 +625,7 @@ does so. Reported as an inventory finding; see §8 R5 for why it is low priority
 | 7 | Script allocation | `authored_placements.py:210` `_assemble_script` (assembles via `formats.script_vm.assemble_source`) and the script body is allocated as part of `plan_authored_materialization(L652)` | No |
 | 8 | Behavior trigger attribution / validation | `authored_placements.py:101` `_require_trigger_contract` against `data/behavior_triggers.py:10` `BEHAVIOR_TRIGGER_CONTRACTS`; the authored value is `project/placements.py:30` `BehaviorTrigger` | No |
 | 9 | Generated change ownership | Split, correctly: `write.py:68` `ByteChange(owner=, reason=)` is the mechanism; `authored_placements.py:296` `derive_count_change` and `:811` `materialize_authored_runs` name authored owners; `maps.py:664` `Maps.changes(authored_maps=)` is what *cedes* ownership | No |
-| 10 | **Build orchestration of authored materialization** | **`build.py:855-905` ONLY** | **YES** |
+| 10 | **Build control of authored materialization** | **`build.py:855-905` ONLY** | **YES** |
 
 **THE HIGHEST-VALUE FINDING.** Concept 10 has no domain owner. `build.py:855-905`
 is the only code in the tree that knows the *sequence*:
@@ -682,23 +681,23 @@ reconciliation.
 are dispatched *before* the shared ROM-loading block, for the reason documented
 at `cli.py:1486-1488` (they take `--rom` rather than a positional `rom`).
 
-**The ticket's four families do not fit the code.** The actual code supports
+**The proposed four families do not fit the code.** The actual code supports
 **five** groupings, because *presentation weight* -- not conceptual family  --
 is what determines whether a handler is thin. I report the real five and map
-them to the ticket's four.
+them to the four proposed.
 
 | Command / subcommand | Handler | Thin or domain? |
 |---|---|---|
-| **A. Lifecycle (ticket: lifecycle)** | | |
+| **A. Lifecycle (proposed: lifecycle)** | | |
 | `extract` | `main:1508` → `extract_project` + `_print_extract(L1142)` | **Thin.** Printer lists paths. |
 | `validate` | `main:1519` → `validate_project` + `_print_validate(L1159)` | **Thin.** |
 | `build` | `main:1523` → `build_project` + `_print_build(L1178)` | **Thin** (but see D2/D3 duplication). |
-| **B. Authoring (ticket: authoring)** | | |
+| **B. Authoring (proposed: authoring)** | | |
 | `placement clone` | `main:1494` → `project.placements.clone_placement` | **Thin.** |
 | `placement plan` | `main:1500` → `build.authored_capacity_plan` | **Thin.** JSON dump. |
 | `stats set` | `_print_stats_set(L759)` | **DOMAIN.** Reads `before` off the record (`L762`,`L768`), calls `tables.plan()` and `emit_image` (`L771`) directly -- the CLI is the only caller sequencing a single-field stat edit into a written image. |
 | `text set` | `_print_text_set(L1103)` | **DOMAIN.** Same shape: `strings.set_text` then `emit_image(L1109)`. |
-| **C. Inspection (ticket: inspection)** | | |
+| **C. Inspection (proposed: inspection)** | | |
 | `identify` | `_print_identification(L473)` | Thin. |
 | `entity list/show/type/types/placements-of-type/summary/references` | inline in `main:1442-1472` | **Mostly thin**, but `main:1454-1458` parses a `placement_type:NNNN` identity inline and `main:1468-1470` builds the list-projection dict -- small domain logic. |
 | `event families/summary/list/show/attachments/for-owner/owners-of/validate-round-trip` | `_run_event(L1331)` | **Mixed.** `L1387-1398` reconstructs the block for an entity by matching `b.instructions[0].source_offset` against `entry.offset` -- a corpus-navigation rule that belongs in `scripts.py`/`ScriptCorpus`. |
@@ -710,7 +709,7 @@ them to the ticket's four.
 | `stats validate-round-trip` | `_print_round_trip(L738)` | **Semi-thin.** Uses `plan.is_noop` -- the domain already answers it. |
 | `text list/show` | `_print_text_list(L818)`, `_print_text_show(L1057)` | Thin. |
 | `text validate-round-trip` | `_print_text_round_trip(L1072)` | **DOMAIN.** Re-encodes every string (`L1085-1089`). |
-| **D. Research proof (ticket: research-proof)** | | |
+| **D. Research proof (proposed: research-proof)** | | |
 | `relocation-proof` | `main:1481-1484` | Thin. |
 | `validate-map-entries` | `_print_map_entry_validation(L510)` | Thin -- `formats.map_entry` computes it. |
 | `map-entries pointer-census` | `_print_map_entry_pointer_census(L539)` | Thin -- `analysis` computes it. |
@@ -819,7 +818,7 @@ by round-trip project tests
 `extract(...) then validate(...) reports zero problems for the events catalog`
 is needed **before** the D1 duplication is collapsed.
 
-**G6 -- the four `build.py:855-905` orchestration decisions are pinned only in
+**G6 -- the four `build.py:855-905` control decisions are pinned only in
 aggregate.** `tests/integration/test_authored_placements_rom.py` and the three
 `test_authored_behavior_*_rom.py` files exercise the happy path and some
 refusals end to end, but no test isolates: (a) `document is None` →
@@ -844,7 +843,7 @@ no test with a valid identity; `tests/integration/test_buu_event_cli_rom.py`
 invokes `['event', 'show', rom, 'nope']`, which takes the earlier
 `entry is None` branch. **Required before moving `_run_event`.**
 
-**What IS well characterized** (so a future ticket does not re-test it):
+**What IS well characterized** (so a future reader does not re-test it):
 `profile` (36 files), `maps` (17), `cli` (16), `binary` (16),
 `formats.script_vm` (15), `layout` (14), `build` (14),
 `formats.map_placements` (13), `project` (13), `data.script_specs` (11),
@@ -1143,8 +1142,7 @@ predicates -- which R2 makes natural, since both modules will already own their
 document shape.
 
 ### R7 -- the `maps`/`placement_events`/`scripts` cycle (T5)
-**Value: understanding only. Risk: high.** **Recommend NOT doing it as a
-refactor ticket.**
+**Value: understanding only. Risk: high.** **Recommend NOT doing it as a refactor.**
 
 The cycle is real, but it encodes a real fact: placement descriptors are
 simultaneously a map property, a script family, and a shared-resource graph.

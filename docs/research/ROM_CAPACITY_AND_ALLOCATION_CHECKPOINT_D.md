@@ -1,11 +1,8 @@
-# ROM-CAPACITY-AND-ALLOCATION-001 - Checkpoint D
+# Allocator checkpoint D: above-8-MiB runtime proof
 
-**The real ROM / above-8-MiB runtime proof, through the production allocator**, plus
-the addendum's quantitative domain reachable-capacity map. Checkpoints A
-(`d7d5ca548adb3753b580b0144f6f02d38b5cfeea`), B
-(`9b0c4889f275d9066e984e9f4c5ddced5deb9e24`, record `6d96593`) and C
-(`8f6b83caa0af7f54f14fa75815435eb3ee522e6f`, record `c5919d8`) are frozen; none is
-reopened.
+The real-ROM runtime proof that the retail engine consumes a resource the
+production allocator placed above the original image end, plus the domain
+reachable-capacity map.
 
 ## 0. Result in one paragraph
 
@@ -66,7 +63,7 @@ provenance record for it.
 | Pointer/address | table entry `0x08800000` for handle `0x02002641`, selector 1 |
 | Derivative | SHA-256 `3ccbef45940e8f5c27d3f88839639eb04d9cc50f8d942f18bc850872628724cb` |
 
-### 2.1 Liveness, stated explicitly (skill §8)
+### 2.1 Liveness, stated explicitly
 
 | Run | Target | Liveness | Case |
 |---|---|---|---|

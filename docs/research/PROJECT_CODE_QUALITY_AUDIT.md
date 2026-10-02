@@ -1,15 +1,10 @@
-# PROJECT-CODE-QUALITY-AUDIT-001 - whole-project code quality / failure-mode audit
+# Whole-project code quality audit
 
 - **Baseline audited:** `origin/master` at `1b276e3fe3b8b3170618567bd5a4306e79a2cea2`
-  (the merged closeout of DRAGONBYTE-Z-VISUAL-DIRECTION-PASS-001).
-- **Audit worktree:** `<temp>\log1-remake-cq-audit-001`, detached at that SHA,
-  created for this ticket. The dirty WORKBENCH-006 checkout was never read as
-  the baseline and was never touched.
-- **Ticket:** see [`../tickets/PROJECT_<local-state-name>`](../tickets/PROJECT_<local-state-name>) and the review
-  record [`../tickets/PROJECT-CODE-QUALITY-AUDIT-001-review.md`](../tickets/PROJECT-CODE-QUALITY-AUDIT-001-review.md).
+  (the merged visual-direction record).
 - **Product capability:** unchanged. DragonByte Z remains 16 / 24 (67%).
-- **No remediation was performed.** This document is the ticket's output; the
-  next phase is the remediation set in section F.
+- **No remediation was performed by the audit itself.** The remediation set is in
+  section F.
 - **This is a risk register, not the roadmap.** A finding blocks a roadmap
   feature only when repository evidence shows that feature exercises the unsafe
   path; the remaining debt stays tracked without being automatically sequenced.
@@ -18,23 +13,20 @@
 
 ## Method
 
-1. Five fresh-context, adversarial domain reviews were run independently
-   (ROM/core; writer/provenance; map/graphics/script/entity; Workbench;
-   tests/tooling), each producing its own findings without seeing the others'.
-   They are deduplicated here, and every CRITICAL/HIGH claim was re-verified
-   against the source by the ticket owner before it was retained, re-classified
-   or rejected.
-2. Static inventory was produced with a temporary AST/text analyzer kept
-   outside the repository (`<temp>\cq-audit\inventory.py`, plus
-   `crossscan.py`, `fanin_scan.py`, `globals_scan.py`, `name_refs.py`). No new
-   project dependency was added and no tool output is dumped here.
+1. Five independent domain reviews were run (ROM/core; writer/provenance;
+   map/graphics/script/entity; Workbench; tests/tooling), each producing its own
+   findings without seeing the others'. They are deduplicated here, and every
+   CRITICAL/HIGH claim was re-verified against the source before it was retained,
+   re-classified or rejected.
+2. Static inventory was produced with a temporary AST/text analyzer kept outside
+   the repository. No new project dependency was added and no tool output is
+   dumped here.
 3. Material claims were probed: CLI/GUI reproduction scripts, call-count and
-   timing measurements, a simulated missing-dependency collection run,
-   repo-wide caller searches, and mutation experiments run against a
-   `git archive` copy or reverted immediately (section G records one process
-   consequence of that).
-4. **The full test suite was not run** (standing human policy). Focused runs
-   only; the reviewers' focused runs are recorded with their findings.
+   timing measurements, a simulated missing-dependency collection run, repo-wide
+   caller searches, and mutation experiments run against a `git archive` copy or
+   reverted immediately (section G records one process consequence of that).
+4. **The full test suite was not run** (standing project policy). Focused runs
+   only, recorded with their findings.
 
 Evidence labels follow the project's existing discipline: `CONFIRMED`
 (directly established here), `INFERRED`, `UNKNOWN`.
@@ -56,7 +48,7 @@ no duplicated allocator logic exists anywhere, and the three decompositions
 that matter for the roadmap (identity, address/offset typing, span arithmetic)
 are typed and validated rather than ad hoc.
 
-Repository discipline is also unusually good for a rapidly developed codebase: **no** `TODO`/`FIXME`/`HACK`/`XXX` markers in production code (one
+Repository discipline is also unusually good for a large modern codebase: **no** `TODO`/`FIXME`/`HACK`/`XXX` markers in production code (one
 marker line exists repository-wide, inside a gate test), **zero** import cycles
 among `tools.webfoot` modules, **no** mutable module-level state in production
 (every module-level collection is a `frozenset`, tuple, regex or frozen
@@ -101,10 +93,7 @@ particular is an extension target, not a replacement target.
 | LOW | 25 | CQA-28 - CQA-52 (compact, section C.4) |
 | INFO | 6 | CQA-53 - CQA-58 (compact, section C.5) |
 
-Severity was assigned by the ticket's model, not by reviewer vote. Where a
-reviewer and the owner disagreed, the disagreement and the reason are recorded
-in the finding; two reviewer HIGH ratings were reduced (CQA-09) and one
-reviewer finding was rejected outright (section G).
+Severity was assigned by this audit's severity model, not by a vote. Where an assessment and the owner disagreed, the disagreement and the reason are recorded in the finding; two HIGH ratings were reduced (CQA-09) and one finding was rejected outright (section G).
 
 ### Biggest risk themes
 
@@ -140,7 +129,7 @@ Bounded, reproducible facts. Nothing here is a finding by itself.
 | TEST (`tests/`) | 168 | 37,771 | 103 unit, 61 integration, conftest/gates/helpers |
 | QA / RESEARCH (`tools/qa`, `tools/research`, `tools/runtime`, `tools/mgba_probe`) | 48 | 18,892 | plus 68 `.lua`, 20 `.ps1` |
 | SITE (`src/`, `public/`) | 12 | - | Astro; not a code-quality subject here |
-| ARCHIVED / HISTORICAL | - | - | `docs/research/archive/`, older `PROJECT_STATE_*.md` parts, superseded probes. Not reviewed as shipping code. |
+| ARCHIVED / HISTORICAL | - | - | archived process records, older state parts and superseded probes. Not reviewed as shipping code. |
 
 Total Python: 314 files, ~91,468 code lines. Test code exceeds the SDK it tests
 (37.8k vs 20.8k lines), which is a healthy ratio for a project whose stated
@@ -230,7 +219,6 @@ caps scanner output at `CANDIDATE`/`OBSERVED` by type.
 > repository-output policy, atlas atomic publication and the remaining
 > unguarded writers are still open). Reproduction, mutation check, canonical-ROM
 > hash and focused validation:
-> [`../tickets/CQA-01-OUTPUT-SAFETY-001.md`](../tickets/CQA-01-OUTPUT-SAFETY-001.md).
 > The text below is the finding **as originally recorded** and is not restated.
 
 - **Subsystem:** PRODUCTION - `tools/webfoot/cli.py`, `tools/webfoot/workbench/graphics_tab.py`.
@@ -258,12 +246,12 @@ caps scanner output at `CANDIDATE`/`OBSERVED` by type.
   copy-paste that names the verified image destroys the single irreplaceable
   input this project measures everything against - truncated to the size of a
   PNG, with no backup, no manifest and no warning - and the command reports
-  success. This is the exact event `docs/DEVELOPMENT.md` ("Original ROM Safety -
-  Mandatory") and [ADR 0001](../decisions/0001-canonical-rom-immutability.md)
+  success. This is the exact event `docs/ROM_SAFETY.md` ("The canonical input
+  is read-only") and [ADR 0001](../decisions/0001-canonical-rom-immutability.md)
   exist to prevent.
-- **Evidence:** owner probe `<temp>\cq-audit\probe_cli_export_alias.py` drives the
+- **Evidence:** an owner probe drives the
   real `_run_graphics` with only the read-only SDK calls stubbed (there is no
-  ROM in the audit worktree): a 2,077-byte input named as both `--rom` and
+  ROM in the audit checkout): a 2,077-byte input named as both `--rom` and
   `--out` came back as 15 bytes, `exit code 0`, result JSON printed the
   clobbered path. Independently reproduced by the writer review with a
   4,096-byte input (probe `probe_graphics_cli.py`), which also confirmed the
@@ -298,15 +286,9 @@ caps scanner output at `CANDIDATE`/`OBSERVED` by type.
 > closed before any size decision or plan. Final encoded length drives fit and
 > allocation. The contradictory claims this finding names were corrected **with
 > their evidence, not deleted**. Finding **CLOSED**; CQA-10 is unchanged
-> (**PARTIAL / IMPROVED**). Frozen implementation `2138635`, independent review
-> `PASS` with no blocking findings, canonical ROM unchanged, no capability change.
-> Record, mutation table, corpus counts, and the explicitly recorded Phase-1
-> measurement correction:
-> [`../tickets/CQA-02-PACKED-STREAM-TERMINATION-001.md`](../tickets/CQA-02-PACKED-STREAM-TERMINATION-001.md);
-> closure:
-> [`../tickets/archive/CQA-02-PACKED-STREAM-TERMINATION-001-COMPLETE.md`](../tickets/archive/CQA-02-PACKED-STREAM-TERMINATION-001-COMPLETE.md).
+> (**PARTIAL / IMPROVED**). Canonical ROM unchanged, no capability change. Mutation table, corpus counts and the explicitly recorded Phase-1 measurement correction are recorded with the finding.
 > The text below is the finding **as originally recorded** and is not restated. Its
-> "not yet confirmed" list is now answered by Phase 1 of the closing ticket.
+> "not yet confirmed" list is now answered by the follow-up work.
 
 - **Subsystem:** PRODUCTION - compression (`tools/webfoot/formats/webfoot_lz.py`) and its write-path consumers.
 - **Location:** `formats/webfoot_lz.py:490-495` (`_WordBitWriter.finish`), `:515-626` (`pack`), `:251` (shipping decoder loop); accepted by `formats/sprite_graphics.py:640-653`; shipped caller `compressed_dialogue.py:111`; contradicting claims at `tools/export/webfoot_strict.py:48-75`, `tests/unit/test_asset_export_strict_lz.py:153-171`, and `tools/research/webfoot_codec_reference.py:14-17,31-33,179-182`.
@@ -421,13 +403,7 @@ caps scanner output at `CANDIDATE`/`OBSERVED` by type.
 > regression proves a `VERIFIED_FREE` span from another profile cannot reach the
 > session while the same span under the right identity is accepted. Finding
 > **CLOSED**; CQA-04 remains **OPEN** and CQA-10 is unchanged
-> (**PARTIAL / IMPROVED**). Frozen implementation `1067a539` (unamended, corrected
-> through separate commits), independent review `PASS` with **no blocking
-> findings** at the final correction head, canonical ROM unchanged, no capability
-> change. Record, retained-literal classification and mutation table:
-> [`../tickets/CQA-03-15-IDENTITY-AND-EXTENTS-001.md`](../tickets/CQA-03-15-IDENTITY-AND-EXTENTS-001.md);
-> closure:
-> [`../tickets/archive/CQA-03-15-IDENTITY-AND-EXTENTS-001-COMPLETE.md`](../tickets/archive/CQA-03-15-IDENTITY-AND-EXTENTS-001-COMPLETE.md).
+> (**PARTIAL / IMPROVED**). Corrected through separate commits. Canonical ROM unchanged, no capability change. The retained-literal classification and mutation table are recorded with the finding.
 > The text below is the finding **as originally recorded** and is not restated.
 
 - **Subsystem:** PRODUCTION - `workbench/session.py` (atlas ownership).
@@ -452,7 +428,7 @@ caps scanner output at `CANDIDATE`/`OBSERVED` by type.
   not there - silently. `config/roms.yaml` declares four 8 MiB profiles, so the
   wrong pairing is one ordinary "open another supported game" away. This is the
   highest-priority HIGH because the atlas is the evidence base the capacity
-  ticket will read for free space.
+  capacity work will read for free space.
 - **Evidence:** independent map/graphics review probe
   (`probe_atlas_profile.py`) stubs identification to a verified LoG II match,
   points the atlas directory at a Buu-built `atlas.jsonl`, and calls the real
@@ -505,7 +481,7 @@ caps scanner output at `CANDIDATE`/`OBSERVED` by type.
   copies already disagree observably for one map. The writer's dependency also
   means a profile-level change to the declared map-entry table would not reach
   the write path (see CQA-15).
-- **Owner correction to the reviewer's version:** the reviewer additionally
+- **Owner correction to an earlier version:** that version additionally
   claimed the two surfaces render *different images* for a derivative, because
   Objects reads `session.rom_image` while Browse reads `session.map_image`. That
   is not reachable: `open_rom` sets `maps = None` for a derivative
@@ -554,7 +530,6 @@ caps scanner output at `CANDIDATE`/`OBSERVED` by type.
 > CQA-27 (an SDK session facade for layout authoring) remains the durable
 > follow-up and is unchanged. Reproduction, mutation checks M1/M3, test list and
 > the GUI QA record:
-> [`../tickets/archive/CQA-05-06-WORKBENCH-STATE-AND-ERRORS-001.md`](../tickets/archive/CQA-05-06-WORKBENCH-STATE-AND-ERRORS-001.md).
 > The text below is the finding **as originally recorded** and is not restated.
 
 - **Subsystem:** PRODUCTION - Workbench shell / Maps editor state ownership.
@@ -621,7 +596,6 @@ caps scanner output at `CANDIDATE`/`OBSERVED` by type.
 > its own error type. Finding **CLOSED**; CQA-07 and CQA-08 are unstarted and
 > unchanged. Reproduction, mutation checks M2/M4, test list and the GUI QA
 > record:
-> [`../tickets/archive/CQA-05-06-WORKBENCH-STATE-AND-ERRORS-001.md`](../tickets/archive/CQA-05-06-WORKBENCH-STATE-AND-ERRORS-001.md).
 > The text below is the finding **as originally recorded** and is not restated.
 
 - **Subsystem:** PRODUCTION - Workbench error handling at the SDK boundary.
@@ -695,10 +669,7 @@ caps scanner output at `CANDIDATE`/`OBSERVED` by type.
 > byte-exactly: M1, M1b, M1c, M1d, M2, M2b, M5 and M6. **M2** is the load-bearing
 > one, because breaking the displayed colour fails the correctness controls while
 > every cost-only test still passes, which proves the performance tests
-> did not replace the semantic ones. The frozen reviewed candidate `52c6314`
-> received an independent **PASS** with 0 blocking and 0 non-blocking findings
-> and 3 notes, none requiring a correction. Finding **CLOSED**. Closure record:
-> [`../tickets/archive/CQA-07-08-WORKBENCH-PERF-AND-CI-001-COMPLETE.md`](../tickets/archive/CQA-07-08-WORKBENCH-PERF-AND-CI-001-COMPLETE.md).
+> did not replace the semantic ones. Finding **CLOSED**.
 > The text below is the finding **as originally recorded** and is not restated.
 
 - **Subsystem:** PRODUCTION - Graphics editor refresh cost.
@@ -730,7 +701,7 @@ caps scanner output at `CANDIDATE`/`OBSERVED` by type.
   `_populate_palette` and two `_populate_grid` calls per Apply. The independent
   map/graphics review measured the `palette_users` half separately
   (~1.71 s for 256 indices on corpus-shaped synthetic data). Wall-clock on real
-  ROM data is **not** measured (no ROM in the audit worktree).
+  ROM data is **not** measured (no ROM in the audit checkout).
 - **Tests covering it:** **no** - the graphics tests assert behaviour, never call
   counts; nothing asserts a performance budget.
 - **Bounded remediation idea:** pass the already-computed `rgb` map into the
@@ -750,7 +721,7 @@ caps scanner output at `CANDIDATE`/`OBSERVED` by type.
 > only the `dev` extra, so the whole PySide6 and capstone test modules collapsed
 > to one skip line each while the job stayed green. The measured baseline is
 > **14 PySide6 modules**, which **supersedes the earlier estimate of 13** that
-> the ticket narrative and the CQA-05/06 closeout record both carried, plus **3
+> an earlier narrative carried, plus **3
 > capstone modules**; those 14 modules held **215 collected tests** and the 3
 > research modules held **88**, so **303 portable tests** were collected as
 > nothing and never executed (the `test-sdk` job trace reported **2227 passed, 27
@@ -778,8 +749,6 @@ caps scanner output at `CANDIDATE`/`OBSERVED` by type.
 > skipped. Final CI: **2549 passed, 12 skipped, 0 failed, 0 errors**, zero
 > whole-module collapses and the guard silent, against the **2227 passed, 27
 > skipped** baseline. Mutations **M3** and **M4** pass. Finding **CLOSED**.
-> Closure record:
-> [`../tickets/archive/CQA-07-08-WORKBENCH-PERF-AND-CI-001-COMPLETE.md`](../tickets/archive/CQA-07-08-WORKBENCH-PERF-AND-CI-001-COMPLETE.md).
 > The text below is the finding **as originally recorded** and is not restated.
 
 - **Subsystem:** TOOLING (CI) / TEST.
@@ -823,7 +792,7 @@ caps scanner output at `CANDIDATE`/`OBSERVED` by type.
 
 Each entry gives location, the observed structure, why it matters, the evidence,
 and whether it gates the capacity work. Evidence is owner-verified unless it is
-attributed to an independent review probe.
+attributed to a separate probe.
 
 #### CQA-09 [MEDIUM] The canonical-EOF straddle guard is load-bearing and has zero test coverage
 
@@ -833,12 +802,12 @@ attributed to an independent review probe.
   allocator-authorization branch at `:422-429` is skipped entirely; only this
   branch refuses it. Deleting the branch leaves the documented `writer` gate at
   **443 passed** and `fast and (map or research)` at **1003 passed** (mutation
-  experiment, run against a `git archive` copy and against the worktree with an
+  experiment, run against a `git archive` copy and against the checkout with an
   immediate revert).
-- **Why it matters:** it is the exact boundary the capacity ticket will extend.
+- **Why it matters:** it is the exact boundary the capacity work will extend.
   The guard is correct today, so this is not a live defect - it is a guard whose
   removal is invisible in a function that is certain to be refactored.
-- **Evidence:** two independent reviews reached this by mutation (writer and
+- **Evidence:** two separate mutation experiments reached this (writer and
   tests/tooling); a purpose-built probe shows a 2-byte write at the last
   canonical byte with a 1-byte allocator span flipping from `REFUSED` to
   `ACCEPTED` when the branch is removed.
@@ -849,11 +818,11 @@ attributed to an independent review probe.
 - **Remediation:** one synthetic case in `test_rom_expansion.py` - 10-byte base,
   16-byte generated output, a 1-byte allocator span, and a 2-byte change at
   offset 9 expecting `ChangeValidationError` matching `straddles canonical EOF`.
-- **Severity note:** both reviewers rated this HIGH; the owner retains MEDIUM
+- **Severity note:** an earlier assessment rated this HIGH; the owner retains MEDIUM
   (the guard is present and correct, so this is weakly-tested boundary coverage,
-  which the ticket's model classes as MEDIUM) but keeps it in the
+  which this audit classes as MEDIUM) but keeps it in the
   must-fix-before-capacity set.
-- **Before ROM-capacity/allocation work?** **yes (same ticket that extends it).**
+- **Before ROM-capacity/allocation work?** **yes (the same work that extends it).**
 
 #### CQA-10 [MEDIUM] Output-path safety has no single owner: four divergent policies and two writers with none
 
@@ -867,7 +836,6 @@ attributed to an independent review probe.
 > helpers in `tools/export/`, **atlas atomic publication** (CQA-13),
 > `.gitignore` coverage for stray exported artefacts, and the remaining
 > unguarded write sites across the wider repository. Details:
-> [`../tickets/CQA-01-OUTPUT-SAFETY-001.md`](../tickets/CQA-01-OUTPUT-SAFETY-001.md).
 > The text below is the finding **as originally recorded** and is not restated.
 
 - **Location:** `write.py:508-516` (file equality + existence);
@@ -890,7 +858,7 @@ attributed to an independent review probe.
   property of one layer, not of the tool, so each new writer is a new chance to
   lose it. Capacity work will add output artefacts and probably a build-directory
   convention, and it should not have to reason about safety in three places.
-- **Evidence:** reviewer probe case C (`emit_image` writing a ROM into a git
+- **Evidence:** a separate probe, case C (`emit_image` writing a ROM into a git
   repo: OK); the two export tools additionally carry eight near-identical copied
   helpers (`sha256_bytes`, `is_repository_root`, `find_repository_root`,
   `ensure_outside_repository`, `audit_root_for`, `_has_files`,
@@ -921,7 +889,7 @@ attributed to an independent review probe.
   is answerable for one writer and not the others. The Build tab's order is the
   sharpest: the one irreversible act (deleting a user's existing output) happens
   before the operation that was supposed to replace it is known to succeed.
-- **Evidence:** reviewer probe case J (a pre-filled destination replaced on a
+- **Evidence:** a separate probe, case J (a pre-filled destination replaced on a
   successful `save_authored_image`, manifest included) against case B
   (`emit_image` raising the same situation); `build_panel.py:327-339` read
   directly by the owner.
@@ -950,7 +918,7 @@ attributed to an independent review probe.
   at the last link. For a roadmap whose next step is *allocation and expansion*,
   an output that cannot state its base is the wrong default, because expansion
   makes silent divergence inaudible.
-- **Owner correction to the reviewer's version:** the reviewer also presented
+- **Owner correction to an earlier version:** that version also presented
   "the Workbench cannot reopen its own output" as part of this defect. That is
   **documented, accepted behaviour** - the same journey's coverage table states
   that Build-tab domains are built but **not** reopened, and that "that refusal
@@ -980,7 +948,7 @@ attributed to an independent review probe.
   good atlas with a truncated one and the Workbench is broken until someone
   regenerates it. `webfoot atlas build --atlas <any path>` also truncates any
   existing file at that path.
-- **Evidence:** reviewer probe `probe_atlas.py`: a 4,096-byte existing file was
+- **Evidence:** a separate probe (`probe_atlas.py`): a 4,096-byte existing file was
   reduced to 3 bytes (`{}`), and a mid-write failure left a previously good
   atlas replaced by a partial document. Owner read the two `open("w")` sites.
 - **Tests covering it:** no - `test_atlas_build.py:325` calls `write_atlas` on a
@@ -1002,7 +970,7 @@ attributed to an independent review probe.
   ~1.34 s is this diff, with the window frozen. The check is also unnecessary in
   its current form: `plan_changes` already proved every declared span, so the
   invariant can be verified per span instead of over the whole image.
-- **Evidence:** reviewer probe `probe_perf.py`: `save_authored_image` over 8 MiB
+- **Evidence:** a separate probe (`probe_perf.py`): `save_authored_image` over 8 MiB
   = 1.700 s (changed=4); `verify_emitted_image` alone = 1.336 s; one SHA-256 over
   8 MiB = 0.041 s.
 - **Tests covering it:** yes for correctness
@@ -1011,7 +979,7 @@ attributed to an independent review probe.
 - **Remediation:** compute differing offsets from the declared spans only (that
   is exactly the invariant being asserted), keeping the current semantics and
   adding an equivalence test.
-- **Before ROM-capacity/allocation work?** no, but on the same ticket - expansion
+- **Before ROM-capacity/allocation work?** no, but in the same area - expansion
   adds spans to this same verification step.
 
 #### CQA-15 [MEDIUM] Load-bearing constants and verified extents have multiple owners, and one copy is a live index bound
@@ -1033,7 +1001,6 @@ attributed to an independent review probe.
 > gates compare against `profile.sha256`, with each contract literal retained as a
 > **pinned cross-check** asserted against the catalog for every profile. The GBA
 > base has one authority, `webfoot/binary.GBA_ROM_BASE`.
->
 > **The closure claim is precise:** *independent behavioural authorities* were
 > removed or migrated. It is **not** that every canonical literal vanished: two
 > pinned cross-checks survive in production data and no longer gate, format
@@ -1044,9 +1011,6 @@ attributed to an independent review probe.
 > production readers through it, so a reintroduced Buu literal fails; mutations
 > confirm each guard is load-bearing. Finding **CLOSED**; CQA-04 remains **OPEN**
 > and CQA-10 is unchanged (**PARTIAL / IMPROVED**). Record:
-> [`../tickets/CQA-03-15-IDENTITY-AND-EXTENTS-001.md`](../tickets/CQA-03-15-IDENTITY-AND-EXTENTS-001.md);
-> closure:
-> [`../tickets/archive/CQA-03-15-IDENTITY-AND-EXTENTS-001-COMPLETE.md`](../tickets/archive/CQA-03-15-IDENTITY-AND-EXTENTS-001-COMPLETE.md).
 > The text below is the finding **as originally recorded** and is not restated.
 
 - **Location:** canonical ROM identity `940ad5f0...f059e` written three times in
@@ -1077,7 +1041,7 @@ attributed to an independent review probe.
   **silently** in the readers and, for the writer, refuses with a message about a
   constant nobody changed. Allocation decisions must read one declared extent,
   not one of several copies.
-- **Evidence:** repo-wide greps (owner and both reviewers, independently); the
+- **Evidence:** repo-wide greps (run independently more than once); the
   three byte-identical SHA literals compared character-by-character by the writer
   review; `_verify_supported_rom` diffed by the owner (identical condition, own
   constant, different error type).
@@ -1127,7 +1091,8 @@ attributed to an independent review probe.
   falls inside the enemy-stats extent on a record boundary
   (`relative % stats.record_size == 0`). The real justification is that both
   declarations name the same table in `config/roms.yaml:34,49` - a fact about the
-  profile, not about arithmetic congruence. `docs/DEVELOPMENT.md` forbids promotion on
+  profile, not about arithmetic congruence. `docs/DEVELOPMENT.md` forbids
+  promotion on
   alignment grounds.
 - **Why it matters:** it is correct today only because the two declarations
   coincide. A profile that declared a placement-type table merely overlapping its
@@ -1193,7 +1158,7 @@ attributed to an independent review probe.
 - **Why it matters:** the deploy step is the one irreversible action in CI and the
   documented verification path for the public capability list. A commit whose
   tests never ran can be published. No public capability changes as a result of
-  this audit, and `public progress impact` remains `NONE`.
+  this audit, and No public progress value changed.
 - **Evidence:** structural fact `CONFIRMED` from the file; the
   `CI_OPEN_MERGE_REQUESTS` race is `INFERRED` (not reproducible here).
 - **Tests covering it:** no.
@@ -1217,9 +1182,9 @@ attributed to an independent review probe.
   percentage - skips locally and is unreachable in CI, because the test job never
   runs Node and the deploy job never runs pytest.
 - **Why it matters:** "`-m fast` passed" is not a machine-independent statement,
-  and the deployed artifact's only semantic guard is inert everywhere. A ticket
+  and the deployed artifact's only semantic guard is inert everywhere. A work item
   author reading a green local run cannot tell which assertions executed.
-- **Evidence:** `Test-Path dist` false in the worktree; `.gitignore` ignores
+- **Evidence:** `Test-Path dist` false in the checkout; `.gitignore` ignores
   `dist/`; the CI file installs no Node in the test job and runs no pytest in the
   deploy job; `docs/testing.md:84-102` records the temp-root failures by name.
 - **Tests covering it:** partially - `test_test_gates.py` verifies gate
@@ -1238,7 +1203,7 @@ attributed to an independent review probe.
   attribute renamed, refactor, or nothing rendered - `offenders` is empty for all
   screens, the probe prints "clean" nine times and exits 0. There is no vacuity
   guard and no assertion that nine screens were reached, yet
-  `docs/PROJECT_<local-state-name>:55-61` cites exactly this output as the whole-class
+  `docs/PROJECT_<local-state-name>` cites exactly this output as the whole-class
   evidence for a defect that took four rounds to close.
 - **Why it matters:** the instrument, not the thing measured, silently stops
   working. The pytest guard for the same defect does assert non-vacuity, but that
@@ -1300,7 +1265,7 @@ attributed to an independent review probe.
   connecting to a C++ slot rather than a Python closure; the fix was not applied
   here. The single-flag wiring would also silently fail to track a second stack if
   another editor ever exposes one.
-- **Evidence:** reviewer probe `probe_undo.py` reproduced
+- **Evidence:** a separate probe (`probe_undo.py`) reproduced
   `RuntimeError: libshiboken: Internal C++ object (QUndoStack) already deleted`
   from `app.py:580` and `:581`; owner verified the closure connections.
 - **Tests covering it:** no.
@@ -1352,13 +1317,13 @@ attributed to an independent review probe.
 ### C.4 LOW
 
 Compact entries: location, issue, and the reason it is not higher. All are real
-and none is currently worth a dedicated ticket.
+and none is currently worth dedicated work.
 
 | ID | Location | Issue |
 | --- | --- | --- |
 | CQA-28 | `write.py:140`, `workbench/theme.py:302,368`, `analysis/thumb.py:196`, `scene.py:410`, `map_render.py:688` | Six definitions referenced nowhere in the repository (verified by whole-repo token search): `GeneratedImage.contains_allocated`, `theme.css_rgba`, `theme.state_color`, `thumb.scan_push_prologues`, `scene.visible_text_options`, `map_render.load_canonical_rom`. Two of them (`contains_allocated`, `load_canonical_rom`) are plausible convenience API for the allocation work, so deletion should be a deliberate choice. |
 | CQA-29 | `write.py:572-573` | Publication uses `os.link`, which fails on FAT/exFAT/some network shares, so a build cannot be written to a typical flashcart volume. Fails closed with no leftovers; no fallback and no filesystem-naming diagnostic. |
-| CQA-30 | `write.py:508`, `workbench/build_panel.py:41-43`, `export/buu_resource_curate.py:2345`, `tools/qa/*`, `tools/runtime/*` | Windows/platform assumptions: `--out x.gba.` silently creates `x.gba`; the build output filename interpolates an unvalidated profile id; the curator CLI hard-codes `<resource-library>` as a default; three QA/runtime tools hard-code one developer's checkout path (a class the project has already fixed once elsewhere). |
+| CQA-30 | `write.py:508`, `workbench/build_panel.py:41-43`, `export/buu_resource_curate.py:2345`, `tools/qa/*`, `tools/runtime/*` | Windows/platform assumptions: `--out x.gba.` silently creates `x.gba`; the build output filename interpolates an unvalidated profile id; the curator CLI hard-codes `a repository-relative path` as a default; three QA/runtime tools hard-code one developer's checkout path (a class the project has already fixed once elsewhere). |
 | CQA-31 | `workbench/session.py:23` | The Workbench session model imports the CLI's **private** `_default_atlas_directory`; a refactor of a private CLI helper silently changes GUI behaviour. |
 | CQA-32 | `map_layout_write.py:48-58`, `map_layout_edit.py:306-350`, `maps.py:548-559` | Repeated whole-table work: `MapLayoutWriter._layer` re-reads all 452 map records per call (measured 2.75 ms/call; 176 ms for a 64-cell grid build), and `Maps.map_placements` rescans all placements per call (78 ms across 452 maps). Bounded today; the pattern is what becomes a stall when allocation adds per-cell work. |
 | CQA-33 | `text.py:689-755,839-852` | Every over-length text edit re-derives the whole relocation plan (document rebuild + allocator run) to learn whether the new total fits, so N over-length edits cost O(N²) document builds. Fails safe; latency only. |
@@ -1369,9 +1334,9 @@ and none is currently worth a dedicated ticket.
 | CQA-38 | `formats/indexed_png.py:139-155,173` | The reader verifies no chunk CRC (the writer emits them) and calls `zlib.decompress` with no output bound, checking the expected size only after inflating. |
 | CQA-39 | `formats/map_slots.py:163-171` | The docstring claims a caller "cannot get a plausible offset out of an opaque slot", but `source_file_offset` is unconditional and `ArrayShape`/`is_typed` are advisory. Documentation overclaim. |
 | CQA-40 | `data/placement_contracts.py:9`, `atlas_producers/seed.py:346-357`, `placement_events.py:293-305` | A data table whose extent is documented UNKNOWN (the seed file says extent and count are "not simultaneously consistent") is indexed as production truth for relocation anchors and Thumb handler fetches. Fails loud (a `ValueError` on a non-Thumb word), hence LOW. |
-| CQA-41 | `tests/gates.py:51-106` | The `writer` gate is a filename heuristic, so write-path tests whose names do not state the concern (the LZ encoder, the sprite payload planner) carry only `-m fast`; a ticket that edits the encoder and runs `-m writer` sees green. |
+| CQA-41 | `tests/gates.py:51-106` | The `writer` gate is a filename heuristic, so write-path tests whose names do not state the concern (the LZ encoder, the sprite payload planner) carry only `-m fast`; an edit to the encoder that runs `-m writer` sees green. |
 | CQA-42 | `scripts/test.ps1:9` | The repository's single test entry point runs the bare ~90-minute full suite with no gate selection, contradicting the Full-Suite Policy and `docs/testing.md`. |
-| CQA-43 | `tests/unit/test_code_review_workflow.py` | Asserts exact English phrases in `docs/DEVELOPMENT.md` and is counted in the "passed" total, so a documentation reword turns CI red and the cheapest fix is to weaken the test. |
+| CQA-43 | `tests/unit/test_code_review_workflow.py` (since removed) | Asserted exact English phrases in the policy files and was counted in the "passed" total, so a documentation reword turned CI red and the cheapest fix was to weaken the test. Closed by removing the file: the review rules it policed now live in `docs/REVIEW.md`, which does not pin sentences. |
 | CQA-44 | `tests/unit/test_write_invariants_property.py:47-61` | The property sweep is derandomized at a fixed 50 examples and nothing raises `WEBFOOT_PROPERTY_EXAMPLES`, so its discovery power is frozen. |
 | CQA-45 | `workbench/app.py:546` | View -> Detailed Editor follows an editor *switch* but not the Maps mode change it depends on; the smoke test and a QA probe both work around it by forcing the action. |
 | CQA-46 | `workbench/map_browser_tab.py` (`projectChanged`) | Declared and wired but never emitted. |
@@ -1386,40 +1351,40 @@ and none is currently worth a dedicated ticket.
 
 | ID | Note |
 | --- | --- |
-| CQA-53 | **The allocator is single-sourced (positive).** `allocation.allocate`/`withhold` are the only first-fit and span-subtraction implementations; all four allocating call sites use them, and the build coordinator threads one reservation set through the domains in existing order. Two structural facts for the capacity ticket: (a) `capacity_regions`/`image_size` (generated expansion) reaches exactly one production domain today (`compressed_dialogue`), while placements and text are bounded by `profile.free_regions` and `profile.size`; (b) `GeneratedImage` requires the expansion to begin exactly at canonical EOF, so a "grow into a mid-image hole" policy is not expressible without a change to `write.py`. |
+| CQA-53 | **The allocator is single-sourced (positive).** `allocation.allocate`/`withhold` are the only first-fit and span-subtraction implementations; all four allocating call sites use them, and the build coordinator threads one reservation set through the domains in existing order. Two structural facts for the capacity work: (a) `capacity_regions`/`image_size` (generated expansion) reaches exactly one production domain today (`compressed_dialogue`), while placements and text are bounded by `profile.free_regions` and `profile.size`; (b) `GeneratedImage` requires the expansion to begin exactly at canonical EOF, so a "grow into a mid-image hole" policy is not expressible without a change to `write.py`. |
 | CQA-54 | `docs/workbench.md:23-26` still describes the removed eight-tab shell. Stale documentation; the accepted visual direction changed the shell. |
 | CQA-55 | **Verified-sound catalogue.** Recorded in section B so these are not re-litigated: ROM-write identity re-proof and rollback, `ByteChange`/`plan_changes` validation, `withhold`'s one-directional subtraction, `capability.require` fail-closedness, packed round-trip on 400 adversarial payloads, swizzle/unswizzle inverses at every OAM dimension, `script_vm.assemble` refusal and self-disassembly, atlas classification caps, and the Workbench's `is_safe_output_path` behaviour under case/separator/dot/junction/hard-link aliases. |
 | CQA-56 | **Second expanding domain has no coordinator.** `plan_changes` requires `generated_allocations` spans to equal `generated_image.allocated_spans` exactly, and `build_project` derives `allocated_spans` from dialogue provenance alone. A second domain that expands must merge into one `GeneratedImage`, and no function does that today. Not a defect; a prerequisite to design for. |
 | CQA-57 | **Host-side decoder bounds.** `tools/export/webfoot_strict.py` caps declared output at 64 KiB (`MAX_OUTPUT`) and packed input at 64 KiB (`MAX_INPUT_BYTES`). Both are documented as host-side safety bounds, not format limits; a capacity feature that legitimately exceeds them must revisit the constants deliberately rather than discover them. |
-| CQA-58 | **Audit-method note (process, not product).** During this audit one reviewer's mutation experiment edited `tools/webfoot/write.py` in the shared audit worktree (removing the canonical-EOF straddle guard, marked `MUTATION-AUDIT-TT`) and reverted it. It was caught by a second reviewer reading the file, and the worktree ends clean at `1b276e3`. Consequence: citations taken from `write.py` during that window would have described mutated source. Mutation experiments in a shared worktree are worth isolating (`git archive` to a scratch copy), which one reviewer did. |
+| CQA-58 | **Audit-method note (process, not product).** During this audit one mutation experiment edited `tools/webfoot/write.py` in the shared audit checkout (removing the canonical-EOF straddle guard, marked `MUTATION-AUDIT-TT`) and reverted it. It was caught by a second pass reading the file, and the checkout ends clean at `1b276e3`. Consequence: citations taken from `write.py` during that window would have described mutated source. Mutation experiments in a shared checkout are worth isolating (`git archive` to a scratch copy), which one pass did. |
 
 ---
 
-## D. Domain review summaries
+## D. Domain summaries
 
-**REVIEW A - ROM / CORE: COMPLETE.** 8 findings (1 CRITICAL, 3 MEDIUM, 4 LOW);
+**ROM / CORE.** 8 findings (1 CRITICAL, 3 MEDIUM, 4 LOW);
 focused validation 480 passed. Verdict: the codec and address layers are
 disciplined - typed `FileOffset`/`GbaRomAddress`, checked encode/decode pairs,
 round-trip proofs, honest `UNKNOWN` labels - and the CRITICAL is a *premise*
 problem (packed self-termination, CQA-02) rather than a parsing defect. Its
 durable contribution is the identification of the conflicting engine-termination
-claims and of the multi-owner constant/extent problem (CQA-15). The reviewer
+claims and of the multi-owner constant/extent problem (CQA-15). The audit
 explicitly verified as sound: pack/unpack round-trip on 400 adversarial payloads,
 the indexed-PNG reader against Qt's independent decoder, swizzle inverses at
 every OAM dimension, `capability.require`, MapEntry layout/struct/dataclass
 agreement, stat codec span preservation, and the `data/` numeric tables.
 
-**REVIEW B - WRITER / PROVENANCE: COMPLETE.** 11 findings (1 CRITICAL, 6 MEDIUM,
+**WRITER / PROVENANCE.** 11 findings (1 CRITICAL, 6 MEDIUM,
 3 LOW, 1 INFO); focused validation 53 passed. Verdict: the ROM-write layer itself
 is the strongest part of the codebase and needs extension, not replacement -
 every hostile output shape it probed failed closed with the input intact - while the
 *boundary* around it is where the risk is (CQA-01, CQA-10, CQA-11, CQA-13). Its
 `os.link`/staging/rollback analysis, its hostile-path probe matrix, and
 its `git archive`-based mutation method are the most reusable evidence in this
-audit. One of its findings was **rejected by the owner** after verification
-(CQA-12, reviewer correction recorded).
+audit. One finding was **rejected** after verification
+(CQA-12, correction recorded).
 
-**REVIEW C - MAP / GRAPHICS / SCRIPT / ENTITY: COMPLETE.** 12 findings (2 HIGH,
+**MAP / GRAPHICS / SCRIPT / ENTITY.** 12 findings (2 HIGH,
 5 MEDIUM, 5 LOW); focused validation 27 passed / 5 ROM-gated skips. Verdict: each
 subsystem's interior is unusually disciplined (frozen records, fail-closed
 codecs, explicit identity vs provenance), but the *seams* are the risk - two
@@ -1430,7 +1395,7 @@ findings (CQA-17, CQA-18) and measured the `palette_users` cost. One sub-claim w
 narrowed by the owner after verification (the derivative image-source divergence,
 recorded as CQA-49).
 
-**REVIEW D - WORKBENCH: COMPLETE.** 19 findings (3 HIGH, 6 MEDIUM, 8 LOW,
+**WORKBENCH.** 19 findings (3 HIGH, 6 MEDIUM, 8 LOW,
 2 INFO); focused validation 33 passed / 4 skipped and 120 passed / 1 skipped.
 Verdict: no CRITICAL, and the canonical-ROM guard held under every alias probed
 (case, separator, dotted, junction, hard link). The GUI's risk is state
@@ -1438,9 +1403,9 @@ ownership and refresh cost, not safety: in-memory authored state destroyed by an
 unrelated editor (CQA-05), SDK error families escaping slots (CQA-06), and
 full-corpus work per UI element (CQA-07). It also confirmed PySide6 optionality
 is clean, which is a genuine positive. It made no visual claim, correctly: there
-is no ROM in the audit worktree, so the GUI was never launched against real data.
+is no ROM in the audit checkout, so the GUI was never launched against real data.
 
-**REVIEW E - TESTS / TOOLING: COMPLETE.** 10 findings (2 HIGH, 3 MEDIUM, 5 LOW).
+**TESTS / TOOLING.** 10 findings (2 HIGH, 3 MEDIUM, 5 LOW).
 Verdict: no CRITICAL, but two HIGH - CI silently skips 258 portable tests
 (CQA-08) and the canonical-EOF straddle guard is untested (CQA-09). Its most
 valuable contribution is the mutation-verified commendation list: it broke the
@@ -1461,7 +1426,7 @@ local-only.
    from an error to a silence. This is the single most consequential CI fact in
    the audit.
 2. **The real-ROM gate is local-only.** `tests/integration` is 61 files and never
-   runs in CI; the audit worktree has no ROM, so every capacity, expansion,
+   runs in CI; the audit checkout has no ROM, so every capacity, expansion,
    relocation, stat and text write proof was unverifiable here. The merged
    baseline's CI numbers therefore describe the *portable* suite only.
 3. **Two guards are mutation-proven; one is not.** Deleting the base-byte
@@ -1505,14 +1470,14 @@ Bounded follow-up work, not a rewrite. Nothing here requires a new architecture.
 | CQA-06 | Capacity fences in the loaders will each land on this uncaught path; a dead click is the worst possible signal for a fail-closed fence. |
 | CQA-07 | The planned next authoring surface is modelled on this code; fix the shape before copying it. |
 | CQA-08 | If the Workbench remains the authoring surface, its suite must actually run in CI. |
-| CQA-09 | One regression test on the exact boundary the capacity ticket extends. |
+| CQA-09 | One regression test on the exact boundary the capacity work extends. |
 | CQA-10 | One output-path policy owner, so new artefacts inherit the rule instead of re-deriving it. |
 | CQA-12 | Capacity work will produce images whose base identity must be provable from disk. |
 | CQA-15 | Allocation must read one declared extent/identity, not one of three-to-eight copies. |
 
 ### REMEDIATION ORDER
 
-A roadmap aid, **not** permission to start: these are bounded tickets, not one
+A roadmap aid, **not** permission to start: these are bounded items, not one
 giant remediation branch.
 
 1. **FIRST: CQA-01, output safety.** There is a demonstrated path that can
@@ -1550,11 +1515,11 @@ must-fix set above; a finding's text is never edited, only annotated in place.
 | CQA-02 | CRITICAL | **CLOSED** - CQA-02-PACKED-STREAM-TERMINATION-001 |
 | CQA-03 | HIGH | **CLOSED** - CQA-03-15-IDENTITY-AND-EXTENTS-001 |
 | CQA-15 | MEDIUM | **CLOSED** - CQA-03-15-IDENTITY-AND-EXTENTS-001 |
-| CQA-04 | HIGH | **CLOSED** - CQA-04-DECODE-STACK-AUTHORITY-001. Shared binary interpretation has one production authority (`tools/webfoot/formats/map_graphics.py`), the production map-layout writer no longer reads through `tools.export`, common-corpus equivalence was proved before the duplicate implementation was removed, and the two genuine historical divergences (layer-handler support; tile-bank decoded-extent policy) are reconciled or documented as deliberate outer policy. Independent review APPROVE, no findings. |
-| CQA-05 | HIGH | **CLOSED** - CQA-05-06-WORKBENCH-STATE-AND-ERRORS-001. One shell callback no longer answers two events: `MainWindow._on_project_changed` routes every peer to `on_project_mutated()`, which re-reads only what a project can change, and `on_session_changed()` is reached only by a genuine ROM/session replacement. Staged layout edits, the placement undo history, unapplied palette colours and typed dialogue text therefore survive an unrelated project mutation, the Maps mode strip can no longer disagree with the editor it names, and opening another image or closing the window with unwritten layout edits asks first, gated on `unsaved_edit_count()`. Frozen candidate `3de2b69`, independent review PASS with no blocking findings, mutations M1/M3 PASS. Closeout: [`../tickets/archive/CQA-05-06-WORKBENCH-STATE-AND-ERRORS-001-COMPLETE.md`](../tickets/archive/CQA-05-06-WORKBENCH-STATE-AND-ERRORS-001-COMPLETE.md). |
-| CQA-06 | HIGH | **CLOSED** - CQA-05-06-WORKBENCH-STATE-AND-ERRORS-001. `Session.open_rom` is total over the SDK's declared failure families (`RomReadError`/`RomChangedError`, the `OSError` of the image and artifact reads, `MapError`/`UnknownMapError`, the capability family, `AtlasError`, `AtlasBuildError` and the text table family), which leave it as `SessionError`; the Open ROM slot catches the session's single `OPEN_ROM_FAILURES` tuple, and a session transition contains an expected failure per peer because PySide prints and swallows an exception raised in a slot reached through a signal. The families are named rather than caught as `ValueError`, so a `RuntimeError` still leaves both boundaries, and `atlas_build._read_jsonl` converts a malformed decoded-text artifact into `AtlasBuildError` instead of leaking a bare `JSONDecodeError`. Frozen candidate `3de2b69`, independent review PASS with no blocking findings, mutations M2/M4 PASS. Closeout: [`../tickets/archive/CQA-05-06-WORKBENCH-STATE-AND-ERRORS-001-COMPLETE.md`](../tickets/archive/CQA-05-06-WORKBENCH-STATE-AND-ERRORS-001-COMPLETE.md). |
-| CQA-07 | HIGH | **CLOSED** - CQA-07-08-WORKBENCH-PERF-AND-CI-001. One shared root cause behind four redundancies: a per-swatch whole-project reparse, a per-staged-colour whole-corpus rescan, a per-index whole-project read and write, and a duplicate repaint from the shell and the tab both refreshing the same edit. The palette editor now computes one effective palette per repaint and threads it to every surface, `ActorSprites` memoizes the index-to-consumer inverse so `palette_users` does not rescan, every logical edit is served by one `_repaint_project_state` path with a re-entrancy guard, and `set_palette_overrides` is the single batch-write authority that validates the whole batch first, loads the project once and writes only on a real change; no tab-level cache was introduced. Measured on the canonical image plus a real 1.33 MB extracted project: a 256-swatch repaint went from 257 whole-project parses to 1 (104.896 s to 0.433 s), one Apply from about 1040 parses to 3 for 4 and for 8 staged colours, and the 256-index consumer disclosure from 2.93 s to 0.171 s with no repeated rescan; the primary evidence is structural and call-count based, and wall clock is a supporting measurement rather than a test assertion. Mutations M1/M1b/M1c/M1d/M2/M2b/M5/M6 PASS, with M2 the load-bearing one. Frozen candidate `52c6314`, independent review PASS with 0 blocking and 0 non-blocking findings and 3 notes, none requiring a correction. Closeout: [`../tickets/archive/CQA-07-08-WORKBENCH-PERF-AND-CI-001-COMPLETE.md`](../tickets/archive/CQA-07-08-WORKBENCH-PERF-AND-CI-001-COMPLETE.md). |
-| CQA-08 | HIGH | **CLOSED** - CQA-07-08-WORKBENCH-PERF-AND-CI-001. CI installed only the `dev` extra, so whole PySide6 and capstone test modules collapsed to one skip line each while the job stayed green. Measured baseline: **14 PySide6 modules** (superseding the earlier estimate of 13 carried by the ticket narrative and the CQA-05/06 record) plus 3 capstone modules, holding 215 and 88 collected tests, so 303 portable tests never executed. The existing `test-sdk` job now installs `-e ".[dev,workbench,research]"`, carries a declared `research = ["capstone>=5"]` extra, sets `QT_QPA_PLATFORM=offscreen` at job level and installs the Qt runtime package list derived from the PySide6 wheels' own ELF dependencies. The guard is `REQUIRED_GUI_MODULES` in `tests/gates.py` plus the `tests/conftest.py` session guard that fails CI when a required module contributes no test, warning rather than failing outside CI, with `tests/unit/test_ci_gui_surface.py` as an independent second net. Result: invalid environment skips 17 to 0, 0 stale skips, 12 legitimate conditional skips remaining, and final CI 2549 passed / 12 skipped / 0 failed / 0 errors with zero whole-module collapses, against a 2227/27 baseline; the CQA-05/06 and CQA-07 regressions execute at 38 and 15 tests with none skipped. Mutations M3/M4 PASS. Frozen candidate `52c6314`, independent review PASS with 0 blocking findings. Closeout: [`../tickets/archive/CQA-07-08-WORKBENCH-PERF-AND-CI-001-COMPLETE.md`](../tickets/archive/CQA-07-08-WORKBENCH-PERF-AND-CI-001-COMPLETE.md). |
+| CQA-04 | HIGH | **CLOSED** - CQA-04-DECODE-STACK-AUTHORITY-001. Shared binary interpretation has one production authority (`tools/webfoot/formats/map_graphics.py`), the production map-layout writer no longer reads through `tools.export`, common-corpus equivalence was proved before the duplicate implementation was removed, and the two genuine historical divergences (layer-handler support; tile-bank decoded-extent policy) are reconciled or documented as deliberate outer policy. |
+| CQA-05 | HIGH | **CLOSED** - CQA-05-06-WORKBENCH-STATE-AND-ERRORS-001. One shell callback no longer answers two events: `MainWindow._on_project_changed` routes every peer to `on_project_mutated()`, which re-reads only what a project can change, and `on_session_changed()` is reached only by a genuine ROM/session replacement. Staged layout edits, the placement undo history, unapplied palette colours and typed dialogue text therefore survive an unrelated project mutation, the Maps mode strip can no longer disagree with the editor it names, and opening another image or closing the window with unwritten layout edits asks first, gated on `unsaved_edit_count()`. Mutations M1/M3 PASS.  |
+| CQA-06 | HIGH | **CLOSED** - CQA-05-06-WORKBENCH-STATE-AND-ERRORS-001. `Session.open_rom` is total over the SDK's declared failure families (`RomReadError`/`RomChangedError`, the `OSError` of the image and artifact reads, `MapError`/`UnknownMapError`, the capability family, `AtlasError`, `AtlasBuildError` and the text table family), which leave it as `SessionError`; the Open ROM slot catches the session's single `OPEN_ROM_FAILURES` tuple, and a session transition contains an expected failure per peer because PySide prints and swallows an exception raised in a slot reached through a signal. The families are named rather than caught as `ValueError`, so a `RuntimeError` still leaves both boundaries, and `atlas_build._read_jsonl` converts a malformed decoded-text artifact into `AtlasBuildError` instead of leaking a bare `JSONDecodeError`. Mutations M2/M4 PASS.  |
+| CQA-07 | HIGH | **CLOSED** - CQA-07-08-WORKBENCH-PERF-AND-CI-001. One shared root cause behind four redundancies: a per-swatch whole-project reparse, a per-staged-colour whole-corpus rescan, a per-index whole-project read and write, and a duplicate repaint from the shell and the tab both refreshing the same edit. The palette editor now computes one effective palette per repaint and threads it to every surface, `ActorSprites` memoizes the index-to-consumer inverse so `palette_users` does not rescan, every logical edit is served by one `_repaint_project_state` path with a re-entrancy guard, and `set_palette_overrides` is the single batch-write authority that validates the whole batch first, loads the project once and writes only on a real change; no tab-level cache was introduced. Measured on the canonical image plus a real 1.33 MB extracted project: a 256-swatch repaint went from 257 whole-project parses to 1 (104.896 s to 0.433 s), one Apply from about 1040 parses to 3 for 4 and for 8 staged colours, and the 256-index consumer disclosure from 2.93 s to 0.171 s with no repeated rescan; the primary evidence is structural and call-count based, and wall clock is a supporting measurement rather than a test assertion. Mutations M1/M1b/M1c/M1d/M2/M2b/M5/M6 PASS, with M2 the load-bearing one.  |
+| CQA-08 | HIGH | **CLOSED** - CQA-07-08-WORKBENCH-PERF-AND-CI-001. CI installed only the `dev` extra, so whole PySide6 and capstone test modules collapsed to one skip line each while the job stayed green. Measured baseline: **14 PySide6 modules** (superseding the earlier estimate of 13 carried by an earlier narrative and the CQA-05/06 record) plus 3 capstone modules, holding 215 and 88 collected tests, so 303 portable tests never executed. The existing `test-sdk` job now installs `-e ".[dev,workbench,research]"`, carries a declared `research = ["capstone>=5"]` extra, sets `QT_QPA_PLATFORM=offscreen` at job level and installs the Qt runtime package list derived from the PySide6 wheels' own ELF dependencies. The guard is `REQUIRED_GUI_MODULES` in `tests/gates.py` plus the `tests/conftest.py` session guard that fails CI when a required module contributes no test, warning rather than failing outside CI, with `tests/unit/test_ci_gui_surface.py` as an independent second net. Result: invalid environment skips 17 to 0, 0 stale skips, 12 legitimate conditional skips remaining, and final CI 2549 passed / 12 skipped / 0 failed / 0 errors with zero whole-module collapses, against a 2227/27 baseline; the CQA-05/06 and CQA-07 regressions execute at 38 and 15 tests with none skipped. Mutations M3/M4 PASS.   |
 | CQA-09 | HIGH | **CLOSED** - ROM-CAPACITY-AND-ALLOCATION-001 Checkpoint B, re-read against the original finding at the milestone closeout. The finding was "the canonical-EOF straddle guard is load-bearing and has zero test coverage", whose remediation was one synthetic case: 10-byte base, 16-byte generated output, a 1-byte allocator span, and a 2-byte change at offset 9 expecting `ChangeValidationError` matching `straddles canonical EOF`. That case is in `tests/unit/test_rom_expansion.py` verbatim, with its positive control (the same authorized span accepts a non-straddling change) and mutation M4 (deleting the guard fails that case and leaves the other eleven tests passing, reproducing the invisibility the finding measured). The finding contains no other requirement, so it is **CLOSED**, not partial. |
 | CQA-12 | HIGH | **CLOSED** - ROM-CAPACITY-AND-ALLOCATION-001 Checkpoint B, re-read against the original finding at the milestone closeout. The finding was that the Build path emits no provenance document; its remediation was two parts: "have `_run_build` write the manifest beside the image by default (or have `build_project` do so unless told otherwise), **and add a reopen/`identify` assertion for the produced file**". Part one is Checkpoint B (default sibling publication through `authored_image.manifest_path_for`, CLI default with explicit `--manifest`/`--no-manifest`, Workbench inheritance, `*.dragonbyte.json` gitignore coverage, mutation M6). Part two is satisfied by the assertions that read the produced document back and check `base.sha256`, `base.profile_id` and `output.sha256`, and by Checkpoint D's reopen proof. The finding's own owner correction excluded "the Workbench cannot reopen its own output" as documented accepted behaviour, and that is not reopened. **CLOSED**. |
 | CQA-10 | MEDIUM | **PARTIAL** - **ALLOCATION-RELEVANT PORTION: CLOSED**; **REMAINDER: OPEN**. Confirmed rather than extended at Checkpoint B: a default build publishes through the shared `emit_image` transaction, so it inherits the source-alias refusal, the new-destination refusal, staged publication, rollback and manifest association, and a pre-existing sibling manifest is refused before anything is written. Confirmed again at Checkpoint D, whose derivative was emitted through that transaction. The remainder - the overwrite-policy divergence, the repository/raw-input-root output policy and the eight copied helpers in `tools/export/`, atlas atomic publication, and the remaining unguarded write sites - is exporter/output-policy hygiene and does not block the milestone. **No code change was made for this item.** |
@@ -1567,11 +1532,11 @@ Remaining pre-capacity blockers, in the dependency-aware groups above:
 > (2026-09-24).** The paragraph above is the state as at CQA-04's closeout and is
 > not restated. It was superseded by
 > **ROADMAP-ALLOCATION-GATE-REVIEW-001**, which established that the number of
-> implementation tickets required before capacity research is **0**: CQA-09 and
+> implementation items required before capacity research is **0**: CQA-09 and
 > CQA-12 each carry exactly one bounded Gate-B requirement, both now discharged
 > above, and **CQA-05/CQA-06/CQA-07/CQA-08 remain deferred** - they must precede
 > allocator-backed *GUI authoring*, not capacity research or the headless
-> allocator. CQA-10's allocation-relevant portion is closed. So the ticket is no
+> allocator. CQA-10's allocation-relevant portion is closed. So the capacity work is no
 > longer blocked by this list; the CQA-09 and CQA-12 rows above record which
 > parts of it were consumed by it and which parts remain open.
 
@@ -1591,7 +1556,7 @@ Remaining pre-capacity blockers, in the dependency-aware groups above:
 > remains PARTIAL / IMPROVED** and is the only remaining partially-remediated
 > item; CQA-01, CQA-02, CQA-03, CQA-04, CQA-05, CQA-06, CQA-09, CQA-12 and CQA-15
 > remain closed and are not reopened. The next capability-bearing work is Phase
-> 2A tile painting (`MAP-TILE-PAINT-001`), which this ticket did not begin.
+> 2A tile painting (`MAP-TILE-PAINT-001`), which this work did not begin.
 
 **New debt recorded at the same closeout, deliberately NOT fixed there:**
 `ROM-CAPACITY-ATLAS-SEED-OVERLAY-001` - the atlas seed
@@ -1604,7 +1569,7 @@ declaration. Found during ROM-CAPACITY-AND-ALLOCATION-001 Phase A; the capacity
 model deliberately does not consume the atlas. Defined in full at
 [`ROM_CAPACITY_AND_ALLOCATION.md`](ROM_CAPACITY_AND_ALLOCATION.md) §8.1.
 
-Next active ticket: **CQA-05-06-WORKBENCH-STATE-AND-ERRORS-001**, the group E work:
+Next active work: **CQA-05-06-WORKBENCH-STATE-AND-ERRORS-001**, the group E work:
 CQA-05 (a project mutation must not silently destroy staged map/layout edits) and
 CQA-06 (`Session.open_rom` must not let sibling SDK error families escape the Open
 ROM slot as a dead click). CQA-07's refresh-cost work is **not** folded in; its
@@ -1643,8 +1608,8 @@ touched next.
   images* for a derivative is not reachable (`maps` is `None` for a derivative);
   only the divergent rendering *capability* on the canonical ROM is retained
   (CQA-04), with the image-source half demoted to CQA-49.
-- **Two reviewer HIGH ratings were reduced to MEDIUM** (CQA-09), because the
-  guard in question is present and correct and the ticket's model classes weak
+- **Two HIGH ratings were reduced to MEDIUM** (CQA-09), because the
+  guard in question is present and correct and this audit classes as weak
   boundary coverage as MEDIUM. The finding is still in the must-fix set.
 - **Deliberate duplication that should NOT be "fixed":**
   `tools/export/webfoot_strict.py` against `webfoot_lz` is documented,
@@ -1671,7 +1636,7 @@ touched next.
 
 **Not directly. It can proceed immediately after the must-fix set above.**
 
-Answering the ticket's question literally: are there code-quality findings that
+Answering the audit's question literally: are there code-quality findings that
 would make capacity experiments or a future production allocator unsafe or
 misleading?
 
@@ -1704,7 +1669,7 @@ misleading?
 
 ## Limits of this audit
 
-- **No canonical ROM was available** in the audit worktree, so every ROM-gated
+- **No canonical ROM was available** in the audit checkout, so every ROM-gated
   integration test skipped: no real-image capacity, expansion, relocation, stat,
   text, graphics or map-write behaviour was re-verified here. Claims about
   canonical data are either read from tracked documents or marked `INFERRED`.
@@ -1712,13 +1677,12 @@ misleading?
   interaction-quality claim is made, and the Workbench timing figures are
   measured floors (call counts and empty-project cost), not wall clock on real
   content.
-- **Two findings depend on evidence outside this worktree** and are labelled as
+- **Two findings depend on evidence outside this checkout** and are labelled as
   such: the engine's packed-stream termination rule (CQA-02, from transcribed
-  disassembly) and the atlas-mismatch demonstration (CQA-03, from a reviewer
-  probe with stubbed identification).
-- **Coverage is representative, not exhaustive.** The reviews prioritised
+  disassembly) and the atlas-mismatch demonstration (CQA-03, from a probe with stubbed identification).
+- **Coverage is representative, not exhaustive.** The audit prioritised
   mutation boundaries, the write path, the map/graphics seams and the GUI state
   model. `tools/ghidra`, the Lua runtime probes, the Astro site and the archived
   research tree were inventoried but not reviewed as engineering subjects.
-- Two independent reviewers' findings were re-verified by the owner; the owner
-  rejects or narrows a finding only with a citation, recorded in section G.
+- Every retained finding was re-verified against the source; a finding is
+  rejected or narrowed only with a citation, recorded in section G.

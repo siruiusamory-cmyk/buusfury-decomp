@@ -1,8 +1,8 @@
-# WORKBENCH-006 -- Visual map-authoring workspace -- DESIGN NOTE
+# Visual map-authoring workspace design
 
-Design analyst note. No production code written. Every mechanism claim is
-grounded in `file:line` or a research doc section per the project #1 rule
-NEVER GUESS. Design follows `dragonbyte-ui-design` the guide.
+The design note for the DragonByte Z visual map-authoring workspace: the
+coordinate contract, the authoring round-trip, canvas architecture, the workspace
+layout and the phased implementation outline.
 
 Status of the three load-bearing verdicts (full evidence in SC2/SC3/SC5):
 
@@ -16,7 +16,7 @@ The headline consequence: the TOOLKIT-022 ownership refusal and the former SC2
 coordinate block are **superseded**. A built playable-shaped ROM with an added
 placement exists today, and PLACEMENT-POS-001 now establishes the reversible
 logical-canvas transform. The remaining work is implementation and validation of
-the visual workspace, not another prerequisite research ticket. Details below.
+the visual workspace, not another prerequisite research pass. Details below.
 
 ---
 
@@ -64,7 +64,7 @@ Classification: **CONFIRMED.**
 
 ## SC3 -- Authoring round-trip verdict -- **ROUND-TRIP-PROVEN** (structural)
 
-The TOOLKIT-022 refusal quoted in the ticket's CONTEXT is **stale**. The
+The TOOLKIT-022 refusal quoted in the record's CONTEXT is **stale**. The
 `AUTHORED_PLACEMENTS.md` header still opens "Materialization is refused"
 (:1-6), but its own body carries superseding banners and the code has moved past
 every blocker:
@@ -188,7 +188,7 @@ Do NOT infer sprite identity from numeric similarity, names, or adjacency
 
 **Add ONE new tab, "Map"** (a visual sibling of the existing "Maps"/Scene tab),
 plugged into the existing `QTabWidget` shell. Do **not** replace `scene_tab.py`
-this ticket -- reuse it. The shell already enumerates tabs and enables them on ROM
+this record -- reuse it. The shell already enumerates tabs and enables them on ROM
 open via signal wiring (`app.py:32-33,44-78`); a new tab follows the same
 `on_session_changed` + `projectChanged`->`_build.on_project_mutated` pattern
 (`app.py:74-75`).
@@ -282,14 +282,10 @@ longer blocked by coordinate research.
 
 SC3 remains the reported constraint; SC2 is closed by PLACEMENT-POS-001 Phase 3.
 
-## SCOPE ADHERENCE
-
-The note follows the design brief exactly; no scope changes were made.
-
 ## RECOMMENDED NEXT
 
-The coordinate prerequisite is closed. If the owner elects to open the
-implementation ticket, execute the full ordered canvas plan with signed-16 range
+The coordinate prerequisite is closed. If the maintainer elects to open the
+implementation task, execute the full ordered canvas plan with signed-16 range
 validation and the mandatory GUI QA pass.
 
 ---
@@ -298,10 +294,10 @@ validation and the mandatory GUI QA pass.
 
 This decision takes precedence over the Recommended Next paragraph above.
 
-WORKBENCH-006 remains a design-only ticket; this note does not authorize its GUI
+WORKBENCH-006 remains a design-only record; this note does not authorize its GUI
 implementation. Its former reason for stopping is superseded: the core
 acceptance path now has a proven placement coordinate transform. A future
-implementation ticket may use direct manipulation, but still needs normal
+implementation task may use direct manipulation, but still needs normal
 implementation, runtime acceptance validation, and GUI QA.
 
 ### Dependency graph at design close
@@ -319,11 +315,11 @@ The prior WORKBENCH-006 threat around TOOLKIT-022 materialization refusal is
 
 ### Handback
 
-    WORKBENCH-006 STATUS: DESIGN COMPLETE / AWAITING IMPLEMENTATION TICKET
+    DESIGN COMPLETE / AWAITING IMPLEMENTATION
     COORDINATE CONTRACT: placement position_raw <-> logical map pixel CONFIRMED
     PLACEMENT MATERIALIZATION: PROVEN
     PLACEMENT -> SPRITE IDENTITY: UNKNOWN / NON-BLOCKING
     PROVISIONAL MAP MARKERS ALLOWED: N/A - markers may use the proven transform
-    NEXT REQUIRED WORK: owner-selected GUI implementation ticket
+    NEXT REQUIRED WORK: the selected GUI implementation task
 
-The next ticket is NOT defined here (ticket section 44: do not define or begin the next ticket).
+The next record is NOT defined here (record section 44: do not define or begin the next record).

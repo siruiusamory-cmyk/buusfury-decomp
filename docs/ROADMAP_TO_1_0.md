@@ -66,14 +66,13 @@ final v1.0 ship phase.
 
 ## What this document is, and what it is not
 
-Four artifacts answer four different questions. None of them answers another's,
+Three artifacts answer three different questions. None of them answers another's,
 and none silently takes over the roadmap:
 
 | Artifact | Question it owns |
 | --- | --- |
 | [`src/data/capabilities.json`](../src/data/capabilities.json) | **What does "feature complete" mean?** It owns the fixed 24-capability denominator. |
 | `docs/ROADMAP_TO_1_0.md` (this file) | **What order do we build the remaining product in?** It owns the long-term route to 24/24 and v1.0. |
-| [`tickets/PROJECT_<local-state-name>`](tickets/PROJECT_<local-state-name>) | **What are we working on right now?** It stays small and operational. |
 | [`research/PROJECT_CODE_QUALITY_AUDIT.md`](research/PROJECT_CODE_QUALITY_AUDIT.md) and its remediation records | **What technical risks and debt exist?** It is a risk register - not automatically the product roadmap. |
 
 Two supporting documents are deliberately **not** planning authority:
@@ -157,8 +156,9 @@ capabilities is substantially stronger than the percentage alone suggests.
   records, updated 470 true references, left 15 unrelated equal-valued words
   untouched, repacked and relocated the container, reopened the derivative, and
   displayed the full longer line in-game.
-- **Independent review workflow.** a local reviewer remains the local implementer; the hosted reviewer is available as an off-machine read-only reviewer, with local the reviewer used
-  when a machine-readable verdict is required.
+- **Independent review gate.** Every nontrivial code-bearing change is reviewed
+  by someone who did not implement it, against the frozen diff, its tests, the
+  architecture and the underlying evidence. See [`REVIEW.md`](REVIEW.md).
 
 ### The most important capacity conclusion
 
@@ -306,24 +306,19 @@ Ticket boundaries are proposals for a human to authorize, not commitments. The
 dependency order, not the naming, is what must be honoured.
 
 - `CQA-05-06-WORKBENCH-STATE-AND-ERRORS-001` - staged-state preservation + total
-  GUI error boundary. **COMPLETE** 2026-09-24:
-  [`tickets/archive/CQA-05-06-WORKBENCH-STATE-AND-ERRORS-001-COMPLETE.md`](tickets/archive/CQA-05-06-WORKBENCH-STATE-AND-ERRORS-001-COMPLETE.md).
+  GUI error boundary. **COMPLETE** 2026-09-24.
 - `CQA-07-08-WORKBENCH-PERF-AND-CI-001` - eliminate pathological palette
   recomputation + make CI execute the shipping GUI dependencies. **COMPLETE**
-  2026-09-25:
-  [`tickets/archive/CQA-07-08-WORKBENCH-PERF-AND-CI-001-COMPLETE.md`](tickets/archive/CQA-07-08-WORKBENCH-PERF-AND-CI-001-COMPLETE.md).
+  2026-09-25.
 - `MAP-TILE-PAINT-001` - complete tile painting UX on existing map resources.
-  **COMPLETE** 2026-09-25:
-  [`tickets/archive/MAP-TILE-PAINT-001-COMPLETE.md`](tickets/archive/MAP-TILE-PAINT-001-COMPLETE.md).
+  **COMPLETE** 2026-09-25.
 - `MAP-CHUNK-AUTHORING-001` - create, allocate, reference, reopen and
-  runtime-prove new chunks. **COMPLETE** 2026-09-25:
-  [`tickets/archive/MAP-CHUNK-AUTHORING-001-COMPLETE.md`](tickets/archive/MAP-CHUNK-AUTHORING-001-COMPLETE.md).
+  runtime-prove new chunks. **COMPLETE** 2026-09-25.
 - `MAP-RESIZE-AND-LAYERS-001` - structural grid/layer editing. **COMPLETE**
-  2026-09-26:
-  [`tickets/archive/MAP-RESIZE-AND-LAYERS-001-COMPLETE.md`](tickets/archive/MAP-RESIZE-AND-LAYERS-001-COMPLETE.md).
+  2026-09-26.
 - `MAP-WARPS-AND-CONNECTIONS-001` - author and validate transitions/connections,
   and draw and edit their trigger regions on the map. **COMPLETE** 2026-09-28:
-  [`tickets/MAP-WARPS-AND-CONNECTIONS-001.md`](tickets/MAP-WARPS-AND-CONNECTIONS-001.md).
+  [`research/MAP_WARPS_AND_CONNECTIONS.md`](research/MAP_WARPS_AND_CONNECTIONS.md).
 - `GRAPHICS-IMPORT-001` - import original artwork into the retail graphics
   formats. **NEXT** (not started).
 - `SPRITE-ANIMATION-AUTHORING-001` - new sprite/frame/animation resources.
@@ -343,8 +338,7 @@ product-risk gates, not the roadmap itself.**
 
 ### 6.1 CQA-05 + CQA-06: state and errors
 
-**COMPLETE (2026-09-24):**
-[`tickets/archive/CQA-05-06-WORKBENCH-STATE-AND-ERRORS-001-COMPLETE.md`](tickets/archive/CQA-05-06-WORKBENCH-STATE-AND-ERRORS-001-COMPLETE.md).
+**COMPLETE (2026-09-24).**
 The four requirements below were the exit condition and are now met; they are kept
 here as the record of what that exit required.
 
@@ -359,8 +353,7 @@ here as the record of what that exit required.
 
 ### 6.2 CQA-07 + CQA-08: responsiveness and honest CI
 
-**COMPLETE (2026-09-25):**
-[`tickets/archive/CQA-07-08-WORKBENCH-PERF-AND-CI-001-COMPLETE.md`](tickets/archive/CQA-07-08-WORKBENCH-PERF-AND-CI-001-COMPLETE.md).
+**COMPLETE (2026-09-25).**
 The four requirements below were the exit condition and are now met; they are kept
 here as the record of what that exit required.
 
@@ -401,8 +394,7 @@ product stands at **20 / 24 (83%)**.
 
 ### 7.1 Tile painting -> 17/24
 
-**COMPLETE (2026-09-25):**
-[`tickets/archive/MAP-TILE-PAINT-001-COMPLETE.md`](tickets/archive/MAP-TILE-PAINT-001-COMPLETE.md).
+**COMPLETE (2026-09-25).**
 The requirements below were the exit condition and are now met; they are kept here
 as the record of what that exit required.
 
@@ -428,8 +420,7 @@ This ticket owns the just-in-time addressability proof for the map/chunk pointer
 domain it needs. Reopen must preserve authored chunk identity and allocation
 reservations.
 
-**COMPLETE (2026-09-25):**
-[`tickets/archive/MAP-CHUNK-AUTHORING-001-COMPLETE.md`](tickets/archive/MAP-CHUNK-AUTHORING-001-COMPLETE.md).
+**COMPLETE (2026-09-25).**
 Delivered: a project-authored chunk is a new 32x32 screen-entry body with its own
 durable identity, composed only from the screen entries its template layer already
 draws, allocated above the original ROM's end and resolved from identity to address
@@ -444,8 +435,7 @@ distinctions discovered by CQA-04, and fail closed for layer types that remain
 read-only. Add visible budget/limit information where fixed dimensions or handler
 constraints apply.
 
-**COMPLETE (2026-09-26):**
-[`tickets/archive/MAP-RESIZE-AND-LAYERS-001-COMPLETE.md`](tickets/archive/MAP-RESIZE-AND-LAYERS-001-COMPLETE.md).
+**COMPLETE (2026-09-26).**
 Delivered: a supported dominant layer's chunk grid can be grown, top-left anchored,
 so every existing cell keeps its coordinate; the layer record is re-emitted whole
 above the original ROM's end and the map root's own layer-slot field is repointed at
@@ -461,8 +451,8 @@ bidirectional relationships consistent where the engine contract requires it, an
 prove the transition in-game. This should feel closer to Porymap's
 event/connection workflow than to editing pointer words.
 
-**COMPLETE (2026-09-28):**
-[`tickets/MAP-WARPS-AND-CONNECTIONS-001.md`](tickets/MAP-WARPS-AND-CONNECTIONS-001.md).
+**COMPLETE (2026-09-28).**
+[`research/MAP_WARPS_AND_CONNECTIONS.md`](research/MAP_WARPS_AND_CONNECTIONS.md).
 Delivered: the Maps editor's Warps mode lists a map's connections and retargets a
 selected transition's destination, arrival and facing through the project, with
 Apply and Revert on the editor's own undo history; the Create transition form
@@ -714,8 +704,7 @@ the feature that needs it is implemented:
 8. A real ROM-backed/runtime proof exists when the claim depends on engine
    behavior.
 9. Independent review has no unresolved `BLOCKING` finding.
-10. Broad validation runs in CI; the implementation agent does not manually run
-    the full or broad suite.
+10. Broad validation runs in CI; the full or broad suite is not run by hand.
 11. The public capability registry changes only when its actual acceptance target
     is met.
 
@@ -849,12 +838,8 @@ the roadmap.
 | --- | --- | --- |
 | [`src/data/capabilities.json`](../src/data/capabilities.json) | Stable definition of product completeness and the public progress denominator. Changes only when the product definition itself intentionally changes. | **What does feature-complete mean?** |
 | `docs/ROADMAP_TO_1_0.md` | Canonical long-range ordering, phase dependencies, the 24/24 plan, the RC/v1.0 gate, non-goals and the post-1.0 parking lot. | **What order do we build the remaining product in?** |
-| [`tickets/PROJECT_<local-state-name>`](tickets/PROJECT_<local-state-name>) | Exactly one current implementation ticket, or an explicit `NOT STARTED` next ticket. **Not** a long-term roadmap. | **What are we working on right now?** |
 | [`research/PROJECT_CODE_QUALITY_AUDIT.md`](research/PROJECT_CODE_QUALITY_AUDIT.md) and its remediation records | Risk register. Findings are attached to affected capability/release paths rather than automatically sequenced. | **What technical risks and debt exist?** |
 | [`PROJECT_<local-state-name>`](PROJECT_<local-state-name>) and `PROJECT_STATE_*.md` | Historical milestone/state snapshots and durable links to research and closure records. Not planning authority. | **What has been verified?** |
-
-`PROJECT_<local-state-name>` must remain small and operational: it holds one ticket's delta, links
-to this roadmap, and states that it is **not** the full roadmap.
 
 ### 18.1 Roadmap change policy
 
@@ -876,8 +861,7 @@ The roadmap is complete enough that there is always a known next phase. It is
 - Large tickets should use checkpoints when the factual research result needs
   human review before policy or implementation is frozen.
 - When a ticket closes out of sequence - as variable-length dialogue did -
-  `ROADMAP_TO_1_0.md` should be updated, but `PROJECT_<local-state-name>` should not silently
-  rewrite project history.
+  `ROADMAP_TO_1_0.md` should be updated so the recorded route matches.
 
 ## 19. References and comparative research
 
@@ -901,15 +885,12 @@ Buu's Fury's retail binary engine and this repository's evidence discipline.
 ### Project-specific evidence used in this roadmap
 
 - `DIALOGUE-VARIABLE-LENGTH-001` final closeout at project head
-  `d8c82ef6640a1eb786ec40223f3538e7b8cf8634`
-  ([archive](tickets/archive/DIALOGUE-VARIABLE-LENGTH-001-COMPLETE.md)).
+  `d8c82ef6640a1eb786ec40223f3538e7b8cf8634`.
 - `ROM-CAPACITY-AND-ALLOCATION-001` Checkpoints A-D and closeout records
-  ([closeout](tickets/archive/ROM-CAPACITY-AND-ALLOCATION-001-COMPLETE.md),
-  [evidence](research/ROM_CAPACITY_AND_ALLOCATION.md)).
+  ([evidence](research/ROM_CAPACITY_AND_ALLOCATION.md)).
 - `PROJECT-CODE-QUALITY-AUDIT-001` and the closed remediation records CQA-01,
   CQA-02, CQA-03/CQA-15 and CQA-04
-  ([audit](research/PROJECT_CODE_QUALITY_AUDIT.md),
-  [series index](tickets/archive/CQA-004.md)).
+  ([audit](research/PROJECT_CODE_QUALITY_AUDIT.md)).
 - Current capability registry: 24 total, 20 shipped (READ 5/5, EDIT 8/8,
   AUTHOR 3/7, DELIVER 4/4); Phase 2 map editing is complete and the next
   capability is graphics import (Phase 3A, not started).

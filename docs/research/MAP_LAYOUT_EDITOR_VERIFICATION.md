@@ -1,22 +1,13 @@
-# DRAGONBYTE-Z-MAP-LAYOUT-EDITOR-001 - independent review record
+# Map layout editor verification
 
-Ticket: **DRAGONBYTE-Z-MAP-LAYOUT-EDITOR-001** - edit existing map chunk layouts in
-the DragonByte Z Map Browser.
+Editing existing map chunk layouts in the DragonByte Z Map Browser: the
+verification findings and their resolutions, the independent re-measurements, and
+the validation results on each revision.
 
-Isolated implementation pass. Base `fbd48b60408e1189cc1806fbe29fd9330179f1e8`
-(`origin/master` at the start of the pass). Branch `dbz-map-layout-editor-001` in
-the worktree `<checkout>-dbz-map-layout-editor-001`.
 
-| Revision | Meaning |
-| --- | --- |
-| `fbd48b60` | reviewed base (`origin/master`) |
-| `b51aa82` | frozen implementation, first review artifact (`feat: edit map chunk layouts in the Map Browser`) |
-| `2224e5e` | review fixes (`fix: restore a null layout cell and keep edit state honest`) |
-| `f735433` | re-review polish, and the revision that carries this record (`polish: state the read-only reason and reset edit mode honestly`) |
+## Second verification pass
 
-## Second review verdict: APPROVE WITH NON-BLOCKING NOTES
-
-The same reviewer re-inspected `b51aa82..2224e5e` and reproduced each fix
+The same verification pass re-inspected `b51aa82..2224e5e` and reproduced each fix
 independently: the null-cell revert at SDK level, through the real tab's Revert
 slot, and through a full apply / leave-the-map / return / revert cycle ending in
 `build() == source`; the render-failure state reset; and the re-selected map's
@@ -35,18 +26,18 @@ Its six remaining notes and their dispositions:
 | Read-only reason read "BG3 is the slot holds no layer" | **Fixed**: the absent-slot phrase is now "an empty slot holding no layer", and a test asserts every read-only phrase reads as a sentence after "BGn is". |
 | The status bar said "EDIT LAYOUT … no changes yet" on a map the badge calls read-only | **Fixed**: the status now reads "EDIT LAYOUT · no editable layer on this map". |
 | A session change left Edit Layout switched on with an empty explanation | **Fixed**: a new ROM resets to view mode and unchecks the toggle. |
-| The worst-layer chunk pick is ~2.2 s because a pending edit re-renders the whole map | **Accepted as a limit.** Measured: typical editable maps preview in ~0.23 s (map:0040, after the character-block cache); the largest editable layer (map:0102 BG3, 20 chunks, 1280x1024) takes ~1.0-2.2 s. Removing it means a second, delta-based render path in the session, which this ticket's scope explicitly avoids. The public text says the swap "previews … immediately"; the measured spread is recorded here rather than smoothed over. |
-| Unlink-before-emit on a user-confirmed target; `char_data` remains a trust-the-caller fast path; the ticket ledger is left to the closure pass | **Accepted deliberately**, with the reasons given above. |
+| The worst-layer chunk pick is ~2.2 s because a pending edit re-renders the whole map | **Accepted as a limit.** Measured: typical editable maps preview in ~0.23 s (map:0040, after the character-block cache); the largest editable layer (map:0102 BG3, 20 chunks, 1280x1024) takes ~1.0-2.2 s. Removing it means a second, delta-based render path in the session, which this record's scope explicitly avoids. The public text says the swap "previews … immediately"; the measured spread is recorded here rather than smoothed over. |
+| Unlink-before-emit on a user-confirmed target; `char_data` remains a trust-the-caller fast path; the record ledger is left to the closure pass | **Accepted deliberately**, with the reasons given above. |
 
-## First review verdict: BLOCK
+## First verification pass
 
-An independent reviewer with fresh context, no part in the implementation, read the
+An independent verification pass with independent context, no part in the implementation, read the
 whole `fbd48b60..b51aa82` diff and its surroundings and re-derived the evidence
 independently (its own raw four-byte patch and its own accepted-reader render for
 the Grand Kai proof; its own census; its own defeat attempts). It returned **BLOCK**
 with three blocking findings and six non-blocking notes.
 
-### Blocking findings and resolutions
+### Findings and resolutions
 
 1. **[HIGH] A null-original revert raised, so "Revert cell" was dead on click.**
    `MapLayoutWriter.set_chunk_pointer` validated the replacement before noticing it
@@ -79,7 +70,7 @@ with three blocking findings and six non-blocking notes.
    map with pending edits re-renders from the session. Regression test added, and a
    re-selection step was added to the visual QA walkthrough.
 
-### Non-blocking notes and dispositions
+### Notes and dispositions
 
 - The chooser's error guard did not cover thumbnail expansion (`mb.rgba`).
   **Fixed**: thumbnail expansion is inside the same guarded block.
@@ -97,12 +88,12 @@ with three blocking findings and six non-blocking notes.
   `build_panel.py` convention (its overwrite flow deletes then rebuilds), and
   `emit_image`'s refuse-to-overwrite property is what makes a second save fail
   closed at SDK level.
-- No ticket-ledger update and no UI-QA record in the frozen tree.
-  **Partly addressed**: this record carries the UI-QA result. `docs/PROJECT_<local-state-name>`
+- No record-ledger update and no UI-QA record in the frozen tree.
+  **Partly addressed**: this record carries the UI-QA result. `docs/records/the working queue`
   and the archive closeout are deliberately left to the human's closure pass, which
-  owns the ticket lifecycle in this repository.
+  owns the record lifecycle in this repository.
 
-## What the reviewer confirmed independently (not taken on trust)
+## What the verification pass confirmed independently (not taken on trust)
 
 - Census: 452 maps readable, 341 with an editable layer, 111 read-only.
 - The Grand Kai proof case: `map:0040` dominant layer 1 cell 0
@@ -122,7 +113,7 @@ with three blocking findings and six non-blocking notes.
 - `git diff --check` clean; added lines bare-LF; no ROM, save, state, generated ROM
   or generated PNG in the diff; no CLI path exposes the write.
 
-## Visual and interaction QA (dragonbyte-ui-qa)
+## Visual and interaction QA
 
 Run on the real windows platform plugin (the offscreen plugin has no font database
 here, so every label renders as tofu boxes and its screenshots are worthless for
@@ -164,7 +155,7 @@ Defects the pass found and fixed before the freeze:
    "previewing an unapplied choice".
 
 Known UI limits, not fixed because they are pre-existing shell behaviour or outside
-this ticket's scope: the window's minimum height is 1264 px on this machine, which is
+this record's scope: the window's minimum height is 1264 px on this machine, which is
 identical on the reviewed base commit (it comes from other tabs, not this feature);
 at very narrow widths the map list is squeezed by the canvas toolbar; only the
 accepted renderer's transparency (index 0) is shown as canvas checkerboard.
@@ -173,7 +164,7 @@ Interaction QA is the automated suite in `tests/unit/test_workbench_map_browser.
 (real widget tree, duck-typed edit session) plus the ROM-gated
 `tests/integration/test_map_layout_editor_rom.py`.
 
-## Validation on the fixed revision `2224e5e`
+## Validation on revision `2224e5e`
 
 - Focused map and workbench set: **90 passed, 2 skipped** (both skips are the
   MAP-VIS-001 VRAM oracle, unconfigured locally).
@@ -191,7 +182,7 @@ Interaction QA is the automated suite in `tests/unit/test_workbench_map_browser.
   documented ROM-oracle, capstone-presence and curation-basetemp conditions,
   including the two MAP-VIS-001 VRAM oracle skips.
 
-## Validation on the final revision `f735433`
+## Validation on revision `f735433`
 
 The polish delta is three local state changes, each covered by its own test:
 **63 passed** across the four unit files `tests/unit/test_map_layout_edit.py`,
@@ -200,7 +191,7 @@ The polish delta is three local state changes, each covered by its own test:
 `tests/unit/test_workbench_session.py` and the three ROM-gated files
 `tests/integration/test_map_layout_editor_rom.py`,
 `tests/integration/test_map_layout_write_rom.py` and
-`tests/integration/test_map_browser_rom.py`. The reviewer reproduced both numbers
+`tests/integration/test_map_browser_rom.py`. The verification pass reproduced both numbers
 itself and bounded the blast radius independently (`_READ_ONLY_FORMS` is referenced
 only by the session module and the two unit test files; `_reset_editor` has one call
 site; `_update_status` and `_show_edit_groups` are tab-internal), which is why the
@@ -215,18 +206,7 @@ long suite gate was not rerun for that delta. The gate below ran against `2224e5
 - `npm run check`: 0 errors, 0 warnings, 0 hints. `npm run build`: passed, and the
   built page carries the new capability text.
 
-## Public progress
-
-`public progress impact: UPDATED` - the current frontier milestone
-("Build DragonByte Z out feature by feature") and the completed
-"First reversible map-layout write" breakthrough now describe a usable editing
-feature, and the blocker paragraph naming what the editor does next was corrected.
-`src/data/project.ts` is in the frozen diff and was reviewed with it. Publishing
-(deploy plus live verification) is **not** done in this isolated pass; the ticket
-says not to publish during isolated implementation, and the repository/site step
-belongs to the closure pass that pushes this branch.
-
-## Product-safety correction (post-approval)
+## Product-safety correction
 
 Human acceptance accepted the implementation except for two product-level issues,
 fixed in `c3ae867` and `2dfcf87` and `f3ff76f` on the same branch:
@@ -257,16 +237,16 @@ fixed in `c3ae867` and `2dfcf87` and `f3ff76f` on the same branch:
    manifest, and both staging names - is resolved and refused against the source
    before anything is deleted or emitted.
 
-### Correction review
+### Correction verification
 
-A fresh reviewer inspected only the correction: provenance-aware reopening,
+A fresh verification pass inspected only the correction: provenance-aware reopening,
 arbitrary-modified-ROM rejection, existing-destination failure safety, canonical-path
 regression and the exact changed surface.
 
 - **First pass: BLOCK**, one HIGH finding - `save()` guarded only the requested
   output against the source, so a source file named after a derived path (the
   manifest name, or either staging name) could be replaced or deleted by a save.
-  Reproduced with two concrete collisions. Fixed in `2dfcf87`; the reviewer then
+  Reproduced with two concrete collisions. Fixed in `2dfcf87`; the verification pass then
   reproduced both collisions as refused with the source byte-identical, and added
   its own symlink and directory-junction alias attempts, all refused.
 - Its six non-blocking notes were also cleared in `2dfcf87`: the manifest's base
@@ -283,7 +263,7 @@ regression and the exact changed surface.
   edit (now one writer per check: verification of a 20-edit derivative measured at
   175 ms instead of about 1.4 s).
 - **Final delta confirmation: APPROVE WITH NON-BLOCKING NOTES**, no blockers, and
-  the reviewer's own re-runs (85/0 and 38/0 harness checks, focused set 107 passed,
+  the verification pass's own re-runs (85/0 and 38/0 harness checks, focused set 107 passed,
   remaining ROM-gated set 81 passed/3 skipped, `pytest tests/unit` at the same six
   environmental failures as before and none new).
 
@@ -301,7 +281,7 @@ claiming a terrain-field edit, an untouched canonical image accepted again
 afterwards, and a failed Save As over an existing destination with the destination
 preserved and no staging file left behind.
 
-### Carried non-blocking notes (not fixed, none blocking)
+### Carried notes (not fixed, none blocking)
 
 - `verify_authored_rom` returns an `AuthoredRom` whose `profile_id` could contradict
   its `canonical_sha256`; the binding is enforced in `Session`, its single consumer,
@@ -315,11 +295,5 @@ preserved and no staging file left behind.
   byte-plan cross-check. The provenance format cannot express that state, so it
   fails closed rather than writing.
 - A derivative has no scene or text domain of its own, so the Maps, Map and Scene
-  tabs show nothing for it; the Map Browser renders it, which is what this ticket
+  tabs show nothing for it; the Map Browser renders it, which is what this record
   requires.
-
-## Stop
-
-This record covers the isolated implementation pass and the two post-approval
-corrections. The ticket ledger (`PROJECT_<local-state-name>`), the archive closeout and
-`PROJECT_STATE` are updated by the closure pass once the merge SHA exists.

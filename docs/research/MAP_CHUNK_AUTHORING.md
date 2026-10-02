@@ -1,9 +1,7 @@
-# MAP-CHUNK-AUTHORING-001 - chunk creation and materialization
+# Chunk creation and materialization
 
-STATUS: **implemented, validated, runtime-proven, frozen for independent review.**
-Phase 2B. Capability `chunks`. Baseline `ad06470cc6a06219b86617ab7388dcbe9d151e9e`;
-implementation `400ccf7f311805083d05872e605a1e6150fc3068`; correction
-`2d8cfcd7180c48cba41feab7ad41da3e88e9be82`.
+What one chunk object is, what the chunk-authoring capability builds, what was
+measured, what is proven at runtime, and what is deliberately not claimed.
 
 This record states what a chunk is, what was built, what was measured, what was
 proven at runtime, and what is deliberately not claimed.
@@ -202,19 +200,6 @@ Runner: `build/research/mutations.py`. All eight caught.
   two chunks in one build cannot overlap; a second chunk in the same build lands
   after the first.
 
-## 8. CQA continuity
-
-- **CQA-05 PASS** - `on_session_changed` clears the staged authored placements, the
-  open chunk editor, staged chunk-cell edits and the resolved-plane cache;
-  `on_project_mutated` preserves all of them and re-reads only project-derived
-  facts. Staged state survives an unrelated project mutation.
-- **CQA-06 PASS** - every new SDK-touching slot catches a declared family tuple
-  including `ChunkAuthoringError` and reports a `QMessageBox`; no bare `Exception`
-  or `ValueError` catch was added. Expected refusals cross the typed boundary.
-- **CQA-07 PASS** - the project and the authored chunks are read once per
-  mutation/session, never per repaint or per cell; a resolved 1,024-entry plane is
-  cached per identity; one drag pushes one undo command. CQA-07 was not reopened.
-
 ## 9. Scope boundaries and what is NOT claimed
 
 Not claimed, and not implemented: graphics import, new tiles, new palettes, new
@@ -231,7 +216,7 @@ Two limits are recorded rather than hidden:
   That shared verifier reconstructs the canonical image from the whole input
   buffer and hashes it, so any derivative larger than the canonical image is
   refused. This is **pre-existing**: the compressed-dialogue domain has expanded
-  above EOF since ROM-EXPAND-001 and is refused the same way. This ticket's
+  above EOF since ROM-EXPAND-001 and is refused the same way. This record's
   reopen acceptance is the **project** reopen, which passes. Widening the shared
   verifier is a separate change with its own blast radius and is not attempted
   here.
@@ -241,8 +226,3 @@ CRLF line endings, so `git diff --check` reports the documented CRLF artifact on
 added lines. Measured separately: that file is 481 CRLF and 0 LF-only lines, with
 **zero** lines carrying actual trailing whitespace. No bytes were rewritten to
 make the artifact disappear.
-
-## 10. Stop
-
-stopping point reached: new chunk creation is implemented, proved and reviewed.
-MAP-RESIZE-AND-LAYERS-001 and every later capability are not begun.

@@ -15,16 +15,16 @@ Tickets synthesized: **10 / 10**
 
 | # | Ticket | Subject | Deep evidence |
 | --- | --- | --- | --- |
-| 1 | LOGX-MAP-RECORD-001 | MapEntry table and selector source | [provenance](LOGX_MAP_RECORD_PROVENANCE.md) / [review](../tickets/LOGX-MAP-RECORD-001-review.md) |
-| 2 | LOGX-MAP-RENDER-001 | selector-1 root / map load template | [provenance](LOGX_MAP_RENDER_PROVENANCE.md) / [review](../tickets/LOGX-MAP-RENDER-001-review.md) |
-| 3 | LOGX-LAYER-001 | layer record structure | [provenance](LOGX_LAYER_PROVENANCE.md) / [review](../tickets/LOGX-LAYER-001-review.md) |
-| 4 | LOGX-TILE-001 | chunk payloads, tile entries, selector streams | [provenance](LOGX_TILE_PROVENANCE.md) / [review](../tickets/LOGX-TILE-001-review.md) |
-| 5 | LOGX-CONNECTOR-001 | `root +0x40`/`+0x44` transition records | [provenance](LOGX_CONNECTOR_PROVENANCE.md) / [review](../tickets/LOGX-CONNECTOR-001-review.md) |
-| 6 | LOGX-CODEC-001 | Webfoot container wrapper and packed stream | [provenance](LOGX_CODEC_PROVENANCE.md) / [review](../tickets/LOGX-CODEC-001-review.md) |
-| 7 | LOGX-CHAR-001 | appearance-definition records | [provenance](LOGX_CHAR_PROVENANCE.md) / [review](../tickets/LOGX-CHAR-001-review.md) |
-| 8 | LOGX-SPRITE-001 | sprite-definition objects and animation arrays | [provenance](LOGX_SPRITE_PROVENANCE.md) / [review](../tickets/LOGX-SPRITE-001-review.md) |
-| 9 | LOGX-FRAME-001 | animation, frame and multipart-piece records | [provenance](LOGX_FRAME_PROVENANCE.md) / [review](../tickets/LOGX-FRAME-001-review.md) |
-| 10 | LOGX-GFXSCAN-001 | external scanner measured as a recall instrument | [provenance](LOGX_GFXSCAN_PROVENANCE.md) / [review](../tickets/LOGX-GFXSCAN-001-review.md) |
+| 1 | LOGX-MAP-RECORD-001 | MapEntry table and selector source | [provenance](LOGX_MAP_RECORD_PROVENANCE.md) / [review](LOGX_MAP_RECORD_VERIFICATION.md) |
+| 2 | LOGX-MAP-RENDER-001 | selector-1 root / map load template | [provenance](LOGX_MAP_RENDER_PROVENANCE.md) / [review](LOGX_MAP_RENDER_VERIFICATION.md) |
+| 3 | LOGX-LAYER-001 | layer record structure | [provenance](LOGX_LAYER_PROVENANCE.md) / [review](LOGX_LAYER_VERIFICATION.md) |
+| 4 | LOGX-TILE-001 | chunk payloads, tile entries, selector streams | [provenance](LOGX_TILE_PROVENANCE.md) / [review](LOGX_TILE_VERIFICATION.md) |
+| 5 | LOGX-CONNECTOR-001 | `root +0x40`/`+0x44` transition records | [provenance](LOGX_CONNECTOR_PROVENANCE.md) / [review](LOGX_CONNECTOR_VERIFICATION.md) |
+| 6 | LOGX-CODEC-001 | Webfoot container wrapper and packed stream | [provenance](LOGX_CODEC_PROVENANCE.md) / [review](LOGX_CODEC_VERIFICATION.md) |
+| 7 | LOGX-CHAR-001 | appearance-definition records | [provenance](LOGX_CHAR_PROVENANCE.md) / [review](LOGX_CHAR_VERIFICATION.md) |
+| 8 | LOGX-SPRITE-001 | sprite-definition objects and animation arrays | [provenance](LOGX_SPRITE_PROVENANCE.md) / [review](LOGX_SPRITE_VERIFICATION.md) |
+| 9 | LOGX-FRAME-001 | animation, frame and multipart-piece records | [provenance](LOGX_FRAME_PROVENANCE.md) / [review](LOGX_FRAME_VERIFICATION.md) |
+| 10 | LOGX-GFXSCAN-001 | external scanner measured as a recall instrument | [provenance](LOGX_GFXSCAN_PROVENANCE.md) / [review](LOGX_GFXSCAN_VERIFICATION.md) |
 
 ---
 
@@ -1851,8 +1851,7 @@ above, the authoritative record is:
 | For | Read |
 | --- | --- |
 | what a ticket measured, and how | `docs/research/LOGX_<TICKET>_PROVENANCE.md` |
-| what its reviewers found and how the gate closed | `docs/research/LOGX-<TICKET>-001-review.md` |
-| its accepted conclusions, refutations and deferred follow-ups | `docs/research/archive/LOGX-<TICKET>-001-COMPLETE.md` |
+| what its reviewers found and how the gate closed | `docs/research/LOGX_<TICKET>_VERIFICATION.md` |
 | the current canonical engine format | `docs/reverse-engineering.md` |
 | the actor-graphics document, with its supersession banner | `docs/research/GRAPHICS_FORMAT.md` |
 | this ticket's own audit method and measurements | `docs/research/LOGX_SYNTHESIS_PROVENANCE.md` |

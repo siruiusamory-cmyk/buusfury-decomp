@@ -1,15 +1,9 @@
-# MAP-WARP-CANVAS-001 - connections on the Maps canvas
+# Connections on the Maps canvas: integration notes
 
-STATUS: **CLOSED.** Scoped **sub-pass of `MAP-WARPS-AND-CONNECTIONS-001`**,
-completed 2026-09-28 and archived at the parent's closeout. The full evidence record,
-the test inventory and the post-review correction stay at
-[`../MAP-WARP-CANVAS-001.md`](../MAP-WARP-CANVAS-001.md).
+The condensed record of the map-connection canvas pass: what shipped, the
+coordinate mapping, the correction it produced and the limits kept.
 
-`public progress impact: NONE` - no capability shipped here: no registry or site
-source changed, `EDIT` stayed **7 / 8** and DragonByte Z stayed **19 / 24 - 79%**.
-The capability advance to **20 / 24** belongs to the parent's own closeout.
-
-## Why this sub-pass exists
+## Why this work exists
 
 The parent's map-surface half of Required Work 3 did not exist when the closeout was
 first attempted, and that attempt was **STOPPED** rather than closed over the gap: the
@@ -63,10 +57,10 @@ on map 39's east doorway band, which `MAP-RESIZE-AND-LAYERS-001` had measured at
 runtime as that map's only eastward passage. A transposed or offset mapping could not
 put that rectangle on that door.
 
-## Independent review and the correction it produced
+## Independent verification and the correction it produced
 
 Frozen candidate `27eb04d90561bfdb9946bc7310c723ad1326dbd5`, reviewed against all
-twelve claims by a separate reviewer with no implementer context: **zero blocking
+twelve claims by a separate verification pass with no author context: **zero blocking
 findings, eight non-blocking**. The correction applies the four it named and nothing
 else, in the commit merged as part of `89a37ed`:
 
@@ -87,7 +81,7 @@ else, in the commit merged as part of `89a37ed`:
 The frozen candidate was not amended. The sub-pass merged into `master` as
 `89a37ed6176db77d7d77b2f4dc660800258911f8`.
 
-## Validation and policy
+## Validation
 
 * Focused named files at the reviewed freeze: the new
   `tests/unit/test_workbench_map_warp_canvas.py` **20 passed**,
@@ -128,15 +122,7 @@ The frozen candidate was not amended. The sub-pass merged into `master` as
 * **A staged creation the project has come to hold still has no per-row discard
   action**, unchanged from `MAP-WARP-CREATE-WORKBENCH-001`.
 
-## Safety
-
-Canonical ROM unchanged - the focused files do not open it and the visual pass only
-reads it after re-verifying its SHA-256, writing its project into a temporary
-directory; no build, no ROM output and no emulator run happened; no proprietary
-artifact committed (the PNGs live under ignored `build/qa/`); no capability count
-change and no registry or site change; `map_transitions.py` untouched.
-
-## Stop and next
+## Stop
 
 Stopped after the correction, with the parent's map-surface half of Required Work 3
 satisfied in full. The parent's own closeout states the final result: `warps` ships,

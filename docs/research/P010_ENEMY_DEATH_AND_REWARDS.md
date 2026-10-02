@@ -1,8 +1,10 @@
-# P-010 - Enemy Death, EXP & Drop Pipeline
+# P-010 enemy death, EXP and drop pipeline
 
-**Status: RESOLVED - all 11 closure criteria met, with two bounded unknowns.**
+The enemy death and progression pipeline: death-to-EXP timing, recipient
+resolution, wolf base EXP, the equipment bonus, the drop structure and actor
+lifecycle.
 
-## RESULT: RESOLVED
+## Result
 
 The enemy death and progression pipeline is implementation-ready:
 
@@ -16,7 +18,7 @@ blocks closure.
 ## External research attestation
 
 External sources established **player-visible behavior only** and were used to
-narrow the ticket before any probe. RE established the entire precision layer.
+narrow the record before any probe. RE established the entire precision layer.
 
 The decisive external artifact was the Data Crystal RAM map for this game. It
 is fetch-blocked by a human-verification interstitial on both `curl` and
@@ -38,7 +40,7 @@ was confirmed independently from ROM pool `0x086B7080`, which holds
 `0x03001068`. External evidence narrowed the search; it was never accepted as
 proof.
 
-This ticket is the clearest example so far of the standing method: **research
+This record is the clearest example so far of the standing method: **research
 first, reverse engineer only the unresolved precision.**
 
 ## Death to EXP timing
@@ -155,7 +157,7 @@ CONFIRMED and multiplicative is REFUTED by an exact integer.
 
 ## Bonus arithmetic site - NARROWED UNKNOWN
 
-**Status: UNKNOWN / DEFERRED.**
+**UNKNOWN / DEFERRED.**
 
 Known: the +23-per-item effect is confirmed at the observable reward level, and
 the bonus is **already baked into the reward object at creation**.
@@ -284,21 +286,21 @@ A real asymmetry worth preserving: the XP writer (`0x080139F4`) and Zeni writer
 
 ## Drop roll - NARROWED UNKNOWN
 
-**Status: UNKNOWN / DEFERRED.** Same producer-tracing class as the P-009
+**UNKNOWN / DEFERRED.** Same producer-tracing class as the P-009
 critical-producer blocker.
 
 Dataflow stops precisely here: the tables above are decoded and the pickup
 object's link to them is confirmed (`+0x10` type, `+0x60` amount), but **the
 code that selects which index to spawn was not located**.
 
-Routes attempted and rejected during this ticket, so they are not retried:
+Routes attempted and rejected during this record, so they are not retried:
 
 - Literal scans for the descriptor and denomination tables found only the pool
   slot `0x08013E60` and the intra-table pointers; no selector site.
 - `0x08013E38` was followed to completion and is a **type resolver**, a
   two-key lookup, not a roll.
 
-Probability was **not** estimated statistically, per the ticket. The observed
+Probability was **not** estimated statistically, per the record. The observed
 25:1 split of +5 to +100 is a raw count, not a rate, and must not be quoted as
 one.
 
@@ -330,7 +332,7 @@ loose: it accepts any EWRAM word whose `+0x238` and `+0x28C` happen to read
 plausibly. It produced **73 bogus LETHAL rows for 2 real kills** across 13,513
 CSV rows.
 
-**The defect did not reach any result.** Every value in this ticket comes from
+**The defect did not reach any result.** Every value in this record comes from
 the breakpoint capture, which is independent of the observer's own rows; the
 observer's contribution was the shared tick counter, which was correct. Before
 that observer's SCAN/LETHAL rows are trusted, discovery must be tightened -
@@ -362,7 +364,7 @@ WOLF
 
 ## Level threshold table - extra result
 
-Not required by the ticket; recovered while tracing the award path.
+Not required by the record; recovered while tracing the award path.
 
 The pool literal `0x086B7080` holds the **save-block pointer** `0x03001068`,
 which independently confirms the RAM map base. The XP threshold table begins
@@ -425,7 +427,7 @@ on_enemy_lethal_damage(enemy):
     complete_death_lifecycle_and_remove(enemy)
 ```
 
-## Closure status
+## Remaining unknowns
 
 **P-010 - RESOLVED**, with two bounded unknowns recorded as research debts:
 

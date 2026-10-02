@@ -6,8 +6,8 @@
 -- "setKeys" does not appear in them. Do not merge this driver into one of
 -- them; that would silently void the read-only evidence guarantee.
 --
--- Purpose: the maintainer asked that repetitive button mashing be scripted rather than
--- performed by hand. This presses A on a varying interval and records, for
+-- Purpose: the operator asked that repetitive button mashing be scripted rather
+-- than performed by hand. This presses A on a varying interval and records, for
 -- every accepted punch, the clip variant chosen and the timing of the attack,
 -- so the three variants can be compared on equal terms.
 --

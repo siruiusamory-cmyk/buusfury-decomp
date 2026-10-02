@@ -1,20 +1,10 @@
-# LOGX-TILE-001: Complete
+# LOGX tile integration record
 
-`LOGX-TILE-001` is COMPLETE / ACCEPTED.
+The accepted tile-format findings as integrated: the applicability boundary, the
+accepted census, the chunk physical format, the tile-entry bitfields and the
+selector stream.
 
-- Original accepted research commits:
-  `5dd99cb` (`research(map): reconstruct Buu chunk and tile format`),
-  `f4e3076` (`docs(tickets): record LOGX tile review verdict and corrections`)
-  and `8fd1998` (`docs(tickets): record LOGX tile research and correction SHAs`).
-- Accepted end SHA: `8fd199880125de700fac2d7e31dc0027fce91408`.
-- Integration cherry-pick commits: `fcffeb3`, `a00e0e4` and `ed87f4b`, taken in
-  order from `origin/master` `22d60419d61132ecaa3128b28a2ef274d317be66`. All
-  three applied with no conflict, and every cherry-picked file is byte-identical
-  to the accepted branch (verified per blob).
-- Canonical ROM SHA-256:
-  `940ad5f01db4465b8877dfe739510cbf34f4ea3d390f3df13519808bc36f059e`.
-- Evidence: [provenance](../../research/LOGX_TILE_PROVENANCE.md) and
-  [review](../LOGX-TILE-001-review.md).
+Evidence: [`LOGX_TILE_PROVENANCE.md`](LOGX_TILE_PROVENANCE.md).
 
 ## Applicability boundary
 
@@ -140,47 +130,18 @@ window into a four-entry id array and decompresses whichever chunk is missing
 into a four-entry resident cache, so a record with `x*y > 4` loses nothing. No
 unrelated cache reverse engineering was performed.
 
-## Independent review and correction gate
-
-Reviewer A (census and disassembly gate) returned **REJECT (fixable)**;
-reviewer B (adversarial verification) returned **APPROVE WITH REQUIRED
-CORRECTIONS**. **20 required corrections** were re-measured against the ROM and
-applied; the correction gate is **closed**. Two reviewer assertions did not
-survive re-measurement and are recorded as reviewer errors rather than adopted.
-
-The material tooling correction is preserved: a faulty
-`find_field_extractions` predicate (a strict `>` between the two shift amounts)
-made `right_shift == 0` unreachable, so earlier statements about the absence of
-bits-0..9 masking sites were **vacuously true rather than measured**. The
-predicate was fixed, the scan total re-measured from 959 to **1532** pairs, and a
-portable synthetic test now fails if the vacuous form returns. Those invalid
-absence claims are **not** restored. Every canonical statement about absence of
-masks, absence of bit consumers, field-extraction searches and code-site
-coverage matches the corrected evidence, including the explicit list of idioms
-that were **not** scanned.
-
-## Impact
-
-`ROM_BIBLE_IMPACT: UPDATED`. The integrated ROM Bible gains one section at
-`docs/reverse-engineering.md`, "LOGX-TILE-001 chunk payloads and tile entries";
-this closeout makes no technical expansion beyond the accepted evidence.
-
-`public progress impact: NONE`: the accepted research changes no public SDK
-capability, frontier or product story, so no public milestone is created and no
-site edit is made.
-
-## Next dependency
+## Downstream codec requirements
 
 `LOGX-CONNECTOR-001` may start only from the post-merge `origin/master` SHA
-recorded by this closeout. The tile/chunk side is closed; the codec handoff
+recorded by this closeout. The tile/chunk side is closed; the codec downstream note
 below is retained for `LOGX-CODEC-001` and is not absorbed by
 `LOGX-CONNECTOR-001`.
 
-Codec handoff retained for `LOGX-CODEC-001`: decompressor entry `0x0803D940`
+Codec downstream note retained for `LOGX-CODEC-001`: decompressor entry `0x0803D940`
 dispatches on the container's first word (`0` -> `memcpy`, `1`/`2` -> packed
 decoder `0x08049120`, anything else -> destination untouched); it takes source
 and destination only, with no bound and no returned length, so the decoded size
-is the container's own `+0x04`. Canonical usage measured by this ticket: 3745
+is the container's own `+0x04`. Canonical usage measured by this record: 3745
 dominant chunk targets all kind-1 `0x800`; 452 selector streams (450 kind-1,
 2 kind-0); 187 bank containers (186 x `0x4000`, 1 x `0x3C40`). Canonical wrapper
 behaviour, the raw/uncompressed wrapper form beyond the kind-0 branch, the

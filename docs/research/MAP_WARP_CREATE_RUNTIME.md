@@ -1,18 +1,8 @@
-# MAP-WARP-CREATE-RUNTIME-001 - a created transition at runtime
+# A created transition at runtime
 
-STATUS: **CLOSED (2026-09-27).** Runtime proof complete. A transition the canonical
-image does not contain, created through the real DragonByte Z Workbench and built by
-the normal production path, was found and consumed by the retail engine from an array
-and a record placed above the original 8 MiB EOF. Scoped sub-pass of
-`MAP-WARPS-AND-CONNECTIONS-001`, which ships as of the parent's closeout
-(2026-09-28); archived at closure in
-[`archive/MAP-WARP-CREATE-RUNTIME-001.md`](archive/MAP-WARP-CREATE-RUNTIME-001.md).
-
-Baseline: `5224c7376660c5e35f2063e9e59699911a1a4750` on branch
-`ticket/map-warp-create-runtime-001`, worktree
-`<ticket-worktrees>\map-warp-create-runtime-001` (clean at creation).
-`public progress impact: NONE` - the registry stays at **19 / 24 (79%)**, `EDIT`
-stays **7 / 8**, and no site source changed.
+Runtime proof that the retail engine consumes a transition created through the
+Workbench and built by the normal production path, from a record placed above the
+original image end.
 
 ## Goal
 
@@ -20,7 +10,7 @@ Prove that a transition which does **not** exist in the canonical image, created
 through the real DragonByte Z Workbench, is found and consumed by the retail
 engine - including the pointer array and the record the build places **above the
 original 8 MiB EOF**. Retargeting an existing transition does not satisfy this
-ticket; only creation does.
+record; only creation does.
 
 ## 1. The proof transition
 
@@ -268,9 +258,9 @@ the instrument's evidence rather than as a paraphrase of the operator.
 | above-EOF addressability for creation | **RUNTIME-PROVEN**: both structures live at file `0x800000`/`0x80000C` |
 | the authored arrival value at runtime | **in the live record**: `arrival_14 = 0010`, `arrival_16/17 = 68,01` = `(16, 360)` |
 | the authored facing at runtime | **in the live record**: `+0x10 = 0x42` (East, low nibble `0x2` preserved) |
-| the exact arrival pixel on screen | **NOT INSTRUMENTED**: this observer has no player-coordinate channel, and the ticket does not require one |
-| the warp's write of the arrival facing onto the player object | **not re-measured here**; proved by `MAP-WARP-WORKBENCH-RUNTIME-001` with the facing tracer, which this ticket did not rerun |
-| `0x03001A34` | **not measured in this ticket** (the facing tracer's channel) |
+| the exact arrival pixel on screen | **NOT INSTRUMENTED**: this observer has no player-coordinate channel, and the record does not require one |
+| the warp's write of the arrival facing onto the player object | **not re-measured here**; proved by `MAP-WARP-WORKBENCH-RUNTIME-001` with the facing tracer, which this record did not rerun |
+| `0x03001A34` | **not measured in this record** (the facing tracer's channel) |
 
 **One instrument artifact, recorded rather than hidden.** The control session was
 run with observer revision `fb66c3f`, whose unresolved-route warning also fired on
@@ -280,13 +270,13 @@ and element 2 `absent` correctly. Commit `ac25214` narrowed the condition to fra
 that actually sampled and never resolved, and the derivative session was run with
 that revision: its CSV has **zero** `ROUTE_UNRESOLVED` rows.
 
-## RETURN
+## Measured status summary
 
 ```text
 MAP-WARP-CREATE-RUNTIME-001 - STATUS REPORT
 
 BASELINE:                    5224c7376660c5e35f2063e9e59699911a1a4750
-WORKTREE:                    <ticket-worktrees>\map-warp-create-runtime-001
+WORKTREE:                    <records>\map-warp-create-runtime-001
 SOURCE MAP:                  map:0040 (Grand Kai's Planet)
 AUTHORED IDENTITY:           map:0040/transition:proof-door-rt001
 CANONICAL TRANSITION COUNT:  2
@@ -327,19 +317,8 @@ CANONICAL ROM:               UNCHANGED (940AD5F01DB4465B8877DFE739510CBF34F4EA3D
 PRIVATE SAVE / SAVESTATE:    UNCHANGED (7CF0A516..., 2D5740A8...)
 PRODUCT CODE CHANGED:        NO
 MANUAL BROAD SUITE:          NOT RUN
-PRODUCT CAPABILITY IMPACT:   NONE IN THIS TICKET
+PRODUCT CAPABILITY IMPACT:   NONE
 DRAGONBYTE Z:                19 / 24 - 79%
 PARENT:                      MAP-WARPS-AND-CONNECTIONS-001 - READY FOR CLOSEOUT
 NEXT:                        MAP-WARPS-AND-CONNECTIONS-001 PARENT CLOSEOUT
 ```
-
-## Safety
-
-* Canonical ROM `940ad5f0...f059e` - verified before every launch and re-verified
-  afterwards; **UNCHANGED**.
-* No ROM, savestate, save, capture or generated project output is tracked; the
-  derivative, the project and the run directories are all under ignored `build/`.
-* The private save beside the canonical image is never written: the launcher points
-  the emulator at an isolated save directory inside the run directory.
-* No product code changed. No test suite was run for this ticket: the acceptance
-  evidence is the runtime run.

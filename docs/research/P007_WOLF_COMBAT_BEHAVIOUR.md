@@ -1,8 +1,8 @@
-# P-007 - Wolf AI & Attack Behavior
+# P-007 wolf combat behaviour
 
-## Status
-
-CLOSED. All eight closure criteria met.
+The wolf's ordinary combat behaviour: idle, player acquisition, approach, attack
+decision, attack start, attack execution, attack recovery, and re-engage or
+disengage.
 
 ## Objective
 
@@ -75,7 +75,3 @@ The player three-clip pattern remains **UNKNOWN** and must not be promoted to
 combo semantics. Knockback and world position remain **DEFERRED**. Separate
 invulnerability remains **UNKNOWN**. Death, XP, and rewards are out of scope.
 The complete wolf state machine was not required.
-
-## Stop
-
-Stopped on closure. P-008 not started.

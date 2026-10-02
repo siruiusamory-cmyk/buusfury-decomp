@@ -2330,6 +2330,23 @@ def compare_trees(reference: Path, candidate: Path) -> dict[str, Any]:
 
 # --- command line ------------------------------------------------------------
 
+#: The canonical raw library lives outside the repository, wherever the operator
+#: put it, so its location is a per-machine setting rather than a path restated
+#: in the source.
+SOURCE_ENV = "DBZ_CURATE_SOURCE"
+
+
+def source_from_environment() -> Path:
+    """`--source`'s default: the configured raw library root, or a refusal."""
+    value = os.environ.get(SOURCE_ENV)
+    if not value:
+        raise CurationError(
+            f"no --source given and {SOURCE_ENV} is unset; pass --source or set "
+            f"{SOURCE_ENV} to the canonical raw resource root"
+        )
+    return Path(value)
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="python -m tools.export.buu_resource_curate",
@@ -2342,8 +2359,11 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--source",
         type=Path,
-        default=Path(r"<resource-library>"),
-        help="canonical raw resource root (read-only input)",
+        default=None,
+        help=(
+            "canonical raw resource root (read-only input); "
+            f"default: the {SOURCE_ENV} environment variable"
+        ),
     )
     parser.add_argument(
         "--output",
@@ -2404,7 +2424,7 @@ def main(argv: list[str] | None = None) -> int:
 
 
 def _run(args: argparse.Namespace) -> int:
-    source = Path(args.source).resolve()
+    source = (args.source or source_from_environment()).resolve()
     output = Path(args.output).resolve() if args.output else default_output_for(source)
     audit_root = (
         Path(args.audit).resolve() if args.audit else audit_root_for(output)

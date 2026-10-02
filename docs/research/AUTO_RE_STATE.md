@@ -50,7 +50,7 @@ proprietary artifacts.
 ## Current Objective
 
 P-004 RETRY READY (2026-08-25, evening). Run-1 postmortem and fixes, all
-validated automatically end-to-end through real mGBA:
+validated end-to-end through real mGBA:
 - RSP reader rewritten ($-anchored, checksum-verified, acks sent,
   192-byte chunked reads with truncate-tolerant oversize handling).
   mGBA's stub intermittently pads/repeats frames around breakpoint
@@ -141,7 +141,7 @@ Synthesis pass after units 1-5 (2026-08-23):
   `<role>_0XXXXXXXXX` lowercase-hex suffix form.
 
 (Inherited anchors are summarized in SUBSYSTEM_MAP.md; this section records new
-findings from this research lane only.)
+findings only.)
 
 - **AUTO-001 (2026-08-23), read-only static, canonical profile:**
   - `CONFIRMED`: MapEntry-39 selected value `0x08294968` is unique among all
@@ -2181,8 +2181,8 @@ an observation from clip counts only and was not investigated.
 
 ### P-006 closed (2026-08-28)
 
-P-006 is **RESOLVED**. P-006C is archived at `docs/research/archive/P-006C.md`
-and `docs/PROJECT_<local-state-name>` is a stop-only placeholder; P-007 is not started.
+P-006 is **RESOLVED**. P-006C is archived at
+`docs/research/P006C_ATTACK_AND_RESUME_ANCHORS.md`; P-007 is not started.
 
 Two corrections carried into the permanent state file:
 
@@ -2325,7 +2325,7 @@ not a leash value, and must not be implemented as one.
 This ticket is the first run under the External-Research-First rule, and it is
 the rule's own justification. Seven angles were opened before any probe.
 
-The decisive source was `<reference-checkout>\docs\REFERENCE.md:518`,
+The decisive source was a compiled reference document,
 drawn from the retail instruction booklet read cover to cover, which records
 that the real behavior is "a single repeating attack alternating punch/kick
 animations, so the plan implements one attack, not a combo string". Line 273

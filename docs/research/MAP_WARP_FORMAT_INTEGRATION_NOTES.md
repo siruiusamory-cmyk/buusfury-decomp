@@ -1,33 +1,25 @@
-# MAP-WARP-FORMAT-001 - prove and productionize the map-transition data model
+# Proving the map-transition data model: integration notes
 
-STATUS: **CLOSED (2026-09-26).** Scoped **sub-pass of
-`MAP-WARPS-AND-CONNECTIONS-001`**, which remains **ACTIVE / NOT SHIPPED** in
-[`../PROJECT_<local-state-name>`](../PROJECT_<local-state-name>). Archived at closure; the full evidence record,
-every measured number and the mutation table stay at
-[`../MAP-WARP-FORMAT-001.md`](../MAP-WARP-FORMAT-001.md), and the review brief at
-[`../MAP-WARP-FORMAT-001-review-request.md`](../MAP-WARP-FORMAT-001-review-request.md).
-
-`public progress impact: NONE` - no published capability, count, blocker,
-questline entry or claim wording changes. The registry is untouched and stays at
-**19 / 24 (79%)**; `warps` remains missing and the parent ticket still owns it.
+The condensed record of the transition-format pass: the supported family, what was
+implemented, the acceptance measurements and the questions left open.
 
 ## Baseline drift, recorded rather than papered over
 
 - **Requested baseline:** `fc8ba48b184a06fcff79dcbf3fc1d215e5af2046`.
-- **Actual ticket start:** `82835a09c155f82f4af675f41e297fff0c365522`.
+- **Actual record start:** `82835a09c155f82f4af675f41e297fff0c365522`.
 
-`82835a0` **was and still is** current `origin/master` at ticket start, verified
+`82835a0` **was and still is** current `origin/master` at record start, verified
 two ways: local `master` and `origin/master` were both `82835a0` (0 ahead, 0
 behind), and a live `git ls-remote origin refs/heads/master` returned
 `82835a09c155f82f4af675f41e297fff0c365522`. The reflog shows `fc8ba48` sitting
 four steps back as an older `origin/master`
 (`refs/remotes/origin/master@{4}: fetch origin --prune: fast-forward`).
 
-The **13 commits** between them are two separately closed tickets, not this
-ticket's work, and history was not rewritten to make the requested baseline
+The **13 commits** between them are two separately closed records, not this
+record's work, and history was not rewritten to make the requested baseline
 appear current:
 
-| Commits | Ticket |
+| Commits | Record |
 | --- | --- |
 | `13e9e11`, `8506a4b` | `MAP-GFX-DIAG-001`, diagnose the map graphics corruption, plus its documentation-note commit |
 | `5c452ed`, `5d22982`, `4f8febe`, `a3681b0` | `WEBFOOT-LZ-LITERAL-BASE-001`, literal-base reset correction, merged and closed |
@@ -35,7 +27,7 @@ appear current:
 
 `8506a4b` is attributed to `MAP-GFX-DIAG-001` and not to
 `WEBFOOT-LZ-LITERAL-BASE-001`: it touches only
-`docs/research/BUU_MAP_GRAPHICS_DIAG.md`, and that ticket's own closure record
+`docs/research/BUU_MAP_GRAPHICS_DIAG.md`, and that record's own closure record
 names `13e9e11` plus its documentation-note commit `8506a4b` as its baseline. The
 two landed interleaved, which is why the commit order alone is misleading.
 
@@ -72,7 +64,7 @@ words the canonical corpus measured.
 | `tools/webfoot/map_transitions.py` | SDK authority: enumeration, destination resolution, `TransitionIdentity = (source map, index)`, staged edits, `changes()`, `plan()` |
 | `tests/unit/test_map_transitions.py` | 54 portable tests over a synthetic image built from the measured format |
 | `tests/integration/test_map_transitions_rom.py` | 15 ROM-gated tests, read-only, `LOGX_CANONICAL_ROM` overridable |
-| `docs/research/MAP-WARP-FORMAT-001.md` | the evidence record |
+| `MAP_WARP_FORMAT.md` | the evidence record |
 
 Editable fields are exactly two: the destination `MapEntry` key and the record's
 two ordered interval pairs. The class word, the invariant `+0x04` word and the
@@ -100,15 +92,15 @@ reached by two maps; two records whose 24-byte extents overlap.
 | Canonical ROM unchanged | **MET** - SHA-256 `940ad5f0…f059e` before and after; the input is refused as a write target |
 | Mutations M1-M4 | **MET** - each breaks the named regression; see the evidence record section 7 |
 
-## Independent review
+## Independent verification
 
-One pass, fresh context, `the local reviewer` headless in a clean detached worktree at
+One pass, independent context, `the local reviewer` headless in a clean detached worktree at
 the frozen candidate. Job `cl-20260926-074757-494761`, local session
 `2a8c3964-c141-4522-b3c0-e32e935e27cc`, exit 0, 308 s, $2.52, verdict read from
 `local_headless`.
 
 **Verdict: `APPROVE` - zero blocking findings, zero non-blocking notes.** The
-reviewer ran the two named test files itself against the canonical image through
+verification pass ran the two named test files itself against the canonical image through
 `LOGX_CANONICAL_ROM` (69 passed) and re-checked the image hash either side.
 
 The three probes it was invited to attack hardest, and its conclusions:
@@ -133,24 +125,6 @@ UNAVAILABLE on this account, so a cloud session would have produced no locally
 readable verdict; the launch was refused as unreadable rather than paid for, and
 `require_readable_verdict` was enforced on the local launch.
 
-## Lifecycle
-
-- Implementation and frozen reviewed candidate:
-  `b4ca0612341b9b50b60073ce4e77cebd82b4ad29` on `ticket/map-warp-format-001`,
-  from `82835a0`. **Not amended.**
-- **No review correction commit**: no production behavior changed after the
-  freeze.
-- Closure documentation (this record, the evidence record's status block and the
-  `PROJECT_<local-state-name>` note) is a **separate** commit, so the frozen tree is not
-  misrepresented as having always contained it.
-- Nothing was pushed. `master` remains at `origin/master` (`82835a0`); the branch
-  is one implementation commit plus the closure documentation ahead of it.
-- **`docs/PROJECT_<local-state-name>` was deliberately left unchanged**, on the ticket's
-  explicit "no project-state change" scope. Its sentence that "the transition
-  contract is already read ... but no surface writes one" is still true of
-  *surfaces*; the SDK authority now plans edits, and the verified-facts entry
-  belongs with the parent capability's closure.
-
 ## Boundaries observed
 
 No Workbench UI. No project authoring, project format or builder change. No
@@ -159,7 +133,7 @@ site change. No CLI surface. No GUI serializer. No raw-offset authoring API. No
 renaming of positional fields to X/Y. The canonical image was read-only
 throughout.
 
-## Still UNRESOLVED - do not close these by naming them
+## Still UNRESOLVED
 
 - the meaning of the two constructor/class words;
 - which of the two region intervals is horizontal;
@@ -168,12 +142,3 @@ throughout.
 - the semantics of `+0x10`, `+0x13`, `+0x14`, `+0x16`, `+0x17`;
 - where the destination position comes from;
 - the origin of the LOGExtractor `+8` viewer adjustment.
-
-## Stop
-
-Stop when the transition data model is proved, carried by one reviewed SDK
-authority, and closed. Do not begin the Workbench warp editor, project
-authoring, or any later capability in this pass.
-
-**Next: `MAP-WARP-PROJECT-AUTHORING-001` - NOT STARTED.** Parent capability
-`MAP-WARPS-AND-CONNECTIONS-001` remains **ACTIVE / NOT SHIPPED**.

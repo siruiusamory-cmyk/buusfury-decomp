@@ -12,13 +12,13 @@ stages:
 # runner setup than it saves, and more jobs would make one failing gate harder
 # to read, not easier.
 #
-# CQA-08 added the shipping GUI dependency set to *this* job rather than to a
+# The shipping GUI dependency set is installed in *this* job rather than in a
 # second, PySide6-only job, for the same reason: the portable suite is one job,
 # a second job would repeat the runner setup and split one gate across two logs,
-# and the audit's bounded remediation for CQA-08 is to install the extras the
-# shipping tests import in the existing test job. What it must not be is a job
-# that installs only `.[dev]` and reports green over a Workbench surface that
-# collapsed to skips, which is what it did before.
+# and installing the extras the shipping tests import in the existing test job
+# is the bounded fix. What it must not be is a job that installs only `.[dev]`
+# and reports green over a Workbench surface that collapsed to skips, which is
+# what it did before.
 #
 # The whole unit suite runs unmodified, including the git-backed
 # repository-safety tests, hence the git install below.
@@ -92,7 +92,7 @@ test-sdk:
       git libglib2.0-0t64 libegl1 libgl1 libx11-6 libxkbcommon0 libfontconfig1 libfreetype6 libdbus-1-3
     - python -m pip install --quiet --upgrade pip
     # `workbench` is the shipping GUI surface and `research` is capstone: without
-    # them fifteen modules under tests/unit skip as a whole (CQA-08).
+    # them fifteen modules under tests/unit skip as a whole.
     - python -m pip install --quiet -e ".[dev,workbench,research]"
   script:
     # The JUnit report is what makes a failure legible in the merge request
@@ -106,6 +106,34 @@ test-sdk:
     # Run on merge requests, and on branch pushes that have no open merge
     # request. The second condition suppresses the duplicate branch pipeline
     # that would otherwise run alongside every merge-request pipeline.
+    - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
+    - if: '$CI_COMMIT_BRANCH && $CI_OPEN_MERGE_REQUESTS == null'
+
+# The public progress site is a public product surface, so its built artifact is
+# validated in the test stage rather than discovered to be wrong after a deploy.
+#
+# Two things make this a job of its own rather than part of `test-sdk`. The
+# artifact can only be judged after the site is built, which needs Node; and the
+# checks read `dist/project.json`, the machine-readable copy of the status data
+# the page renders, so the page and the data behind it are compared rather than
+# assumed to agree. `tools/quality/site_check.py` is the same implementation a
+# developer runs locally, so the two cannot drift apart.
+#
+# python3 is installed because the checker is standard-library Python; no
+# packages are needed, and the site's own dependencies come from `npm ci`.
+test-site:
+  stage: test
+  image: node:22
+  before_script:
+    - apt-get update -qq && apt-get install -y -qq --no-install-recommends python3
+    - npm ci
+  script:
+    # `astro check` type-checks the site source, `astro build` produces the
+    # artifact, and the checker validates both the data and the artifact.
+    - npm run check
+    - npm run build
+    - python3 tools/quality/site_check.py
+  rules:
     - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
     - if: '$CI_COMMIT_BRANCH && $CI_OPEN_MERGE_REQUESTS == null'
 

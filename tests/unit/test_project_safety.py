@@ -6,6 +6,8 @@ import re
 import subprocess
 import sys
 
+import pytest
+
 
 def test_upstream_lock_has_eight_unique_pins():
     data = json.loads(Path("upstreams.lock").read_text(encoding="utf-8"))
@@ -232,33 +234,16 @@ def test_no_rom_or_proprietary_directory_is_tracked():
     assert result.stdout == ""
 
 
-def test_local_state_is_not_stageable():
-    """The local working state a tool keeps in the checkout must stay untracked.
+LOCAL_STATE_NAMES = {"<local-state-name>", "<local-state-name>", "<local-state-name>"}
+LOCAL_STATE_PREFIXES = ("<local-state-prefix>/", "<local-state-prefix>/", "<local-state-prefix>/", "<local-state-prefix>/")
 
-    These paths are ignored from `.git/info/exclude` rather than the tracked
-    `.gitignore`, so that a contributor's tooling choices are not published as
-    part of the project. The contract is the same either way: a stray
-    `git add -A` must not pick them up, and no tracked path may be one of them.
+
+def test_no_local_state_is_tracked():
+    """No local working state may be tracked, in any checkout.
+
+    This is the portable half of the contract. It needs nothing but the index,
+    so it holds in CI exactly as it holds locally.
     """
-    probes = [
-        "<local-state-name>",
-        "<local-state-prefix>/example.md",
-        "<local-state-name>",
-        "<local-state-prefix>/state.json",
-        "<local-state-prefix>/settings.json",
-        "<local-state-prefix>/goals/example.json",
-        "<local-state-name>",
-    ]
-
-    for probe in probes:
-        result = subprocess.run(
-            ["git", "check-ignore", "--no-index", "--quiet", "--", probe],
-            check=False,
-            capture_output=True,
-            text=True,
-        )
-        assert result.returncode == 0, f"local state is stageable: {probe}"
-
     tracked = subprocess.run(
         ["git", "ls-files"],
         check=True,
@@ -268,10 +253,51 @@ def test_local_state_is_not_stageable():
     offenders = [
         name
         for name in tracked
-        if name in {"<local-state-name>", "<local-state-name>", "<local-state-name>"}
-        or name.startswith(("<local-state-prefix>/", "<local-state-prefix>/", "<local-state-prefix>/", "<local-state-prefix>/"))
+        if name in LOCAL_STATE_NAMES or name.startswith(LOCAL_STATE_PREFIXES)
     ]
+
     assert offenders == [], f"local state is tracked: {offenders}"
+
+
+def test_a_checkout_that_excludes_its_own_state_cannot_stage_it():
+    """Where a checkout ignores its local state, the ignore must be effective.
+
+    The exclusion lives in `.git/info/exclude` rather than the tracked
+    `.gitignore`, so that one developer's tooling choices are not published as
+    part of the project. That file is not in the repository, so a fresh clone
+    has no local state to ignore and this half does not apply to it: what CI
+    checks is the portable half above.
+
+    The guard asks git rather than reading the file, because git reports the
+    exclude path in its own platform's form.
+    """
+    probe = subprocess.run(
+        ["git", "check-ignore", "--no-index", "-v", "--", "<local-state-name>"],
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    if probe.returncode != 0:
+        pytest.skip("this checkout configures no local exclude for its own state")
+    if ".gitignore:" in probe.stdout:
+        pytest.skip("local state is excluded by the tracked ignore file, not locally")
+
+    for probe in (
+        "<local-state-name>",
+        "<local-state-prefix>/example.md",
+        "<local-state-name>",
+        "<local-state-prefix>/state.json",
+        "<local-state-prefix>/settings.json",
+        "<local-state-prefix>/goals/example.json",
+        "<local-state-name>",
+    ):
+        result = subprocess.run(
+            ["git", "check-ignore", "--no-index", "--quiet", "--", probe],
+            check=False,
+            capture_output=True,
+            text=True,
+        )
+        assert result.returncode == 0, f"local state is stageable: {probe}"
 
 
 def test_pytest_does_not_retain_passing_run_artifacts():

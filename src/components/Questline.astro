@@ -39,6 +39,9 @@ const railStyle = [
         <h3>{milestone.title}</h3>
         <p>{milestone.plainEnglish}</p>
         {milestone.technical && <p class="quest-tech">{milestone.technical}</p>}
+        {milestone.openItems?.map((item) => (
+          <p class="quest-open"><b>Still open:</b> {item}</p>
+        ))}
       </article>
     </li>
   ))}

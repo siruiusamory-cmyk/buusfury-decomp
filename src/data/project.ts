@@ -354,9 +354,9 @@ export const project: ProjectStatus = {
     " a map, adds a layer, and lists, retargets and creates the transitions between" +
     " areas - including on the map itself, where every supported transition is drawn" +
     " as the region that triggers it. What remains is graphics import, the next" +
-    " capability: replacing a game graphic with an author's own artwork. It is blocked" +
-    " on allocation for payloads that change size and on a write path that can put a" +
-    " changed graphic back, so no editor surface offers it yet.",
+    " capability: replacing a game graphic with an author's own artwork. The remaining" +
+    " gap is replacing an existing graphic in place when the replacement payload" +
+    " changes size, so no editor surface offers it yet.",
   blockerParagraphs: [
     "Map editing is complete, and the capability list says so. Phase 2 covered the four" +
     " map capabilities in order: tile painting, chunk creation, map resizing with layer" +
@@ -369,10 +369,12 @@ export const project: ProjectStatus = {
     " transition, so the map surfaces are proven rather than planned.",
     "The blocker is graphics import, the next capability in the published order and the" +
     " first step of the graphics phase. An import path exists inside the SDK, but it has" +
-    " no production caller, so no editor surface offers it. It needs two things the" +
-    " toolkit does not have yet: allocation for payloads that change size, and a write" +
-    " path that can put a changed graphic back into the image so the retail engine loads" +
-    " it. It is the next capability, not a started one.",
+    " no production caller, so no editor surface offers it. The gap is narrower than" +
+    " allocation in general: the production allocator already places new data in" +
+    " generated space, and a dialogue replacement whose payload changes size is" +
+    " allocated into verified space. What no surface does yet is replace an existing" +
+    " graphic in place when the replacement payload changes size. It is the next" +
+    " capability, not a started one.",
     "Authoring entirely new content remains the project's final acceptance target: the" +
     " buildout proceeds one editor capability at a time against the verified corpus, and" +
     " the four steps left are graphics import, new sprites and animations, appearances," +
@@ -462,7 +464,7 @@ export const project: ProjectStatus = {
       plainEnglish:
         "Give a newly authored entity an explicit engine behavior and prove the original game executes it.",
       technical:
-        "Confirmed. The SDK assigns an existing behavior to a newly authored entity through its normal build path, and the original engine was observed executing it: the program counter reached the script handler five times in one session, each time carrying the authored behavior pointer and its script, with the interpreter entered on the same frame. A control build differing in exactly one word, with the same entity type, reached the handler zero times while the same instrument recorded other scripts running throughout.",
+        "Confirmed. The SDK assigns an existing behavior to a newly authored entity through its normal build path, and the original engine was observed executing it: the program counter reached the script handler five times in one session, each time carrying the authored behavior pointer and its script, with the interpreter entered on the same frame. The handler entry is attributable to the authored content: the same instrument recorded zero entries without it, while other scripts continued to run.",
       status: "complete",
     },
     {
@@ -489,7 +491,7 @@ export const project: ProjectStatus = {
       plainEnglish:
         "Newly authored behavior can now be tied to a deliberate, repeatable gameplay trigger instead of relying on an uncontrolled engine dispatch.",
       technical:
-        "Confirmed. An author declares a trigger alongside the behavior, and the engine ran the authored script only when the player satisfied it. One capture holds both halves. For about 7,400 frames the authored enemy was sampled 124 times and found present and alive every time, and nothing authored ran; one sample at frame 8820 caught it damaged but still alive, and nothing authored ran then either. Defeating that same enemy produced the whole chain inside eight frames: the death callback carrying the authored actor at zero HP, the authored descriptor, the authored script, native slot 178 with the intended arguments, then the visible banner. The chain reproduced from a separate load, and a canonical control run confirmed the same instrument detects a known kill.",
+        "Confirmed. An author declares a trigger alongside the behavior, and the engine ran the authored script only when the player satisfied it. One capture holds both halves. Nothing authored ran while the enemy was alive: 124 samples found it present and alive, most of them with it untouched and the rest with it damaged but still standing, and none of them dispatched the authored behavior. Defeating that same enemy produced the whole chain inside eight frames: the death callback carrying the authored actor at zero HP, the authored descriptor, the authored script, native slot 178 with the intended arguments, then the visible banner. The chain reproduced from a separate load, and a canonical control run confirmed the same instrument detects a known kill.",
       status: "complete",
     },
     {
@@ -497,7 +499,7 @@ export const project: ProjectStatus = {
       title: "Build a complete authored scene",
       plainEnglish: "Combine a new entity, its behavior, a gameplay trigger, and an author-written message into one playable moment.",
       technical:
-        "Confirmed, and it needed no new SDK code: the scene is one authored record plus one line of text in the project. A newly authored enemy was placed on an existing map, given its own behavior and script, tied to defeat, and made to display a message the author wrote. In the running game nothing authored happened while the enemy was alive, across 37 samples that each confirmed it was still present — most of them with it untouched, and the last two with it damaged but still standing; the instrument was separately confirmed live inside that same window. Defeating it ran the authored script and displayed SCENE CLEAR! on screen, and the operator then defeated it a second time, which reproduced the chain exactly. The entity, behavior and script are newly authored; the message is MODIFIED EXISTING text, overwriting a line the game already ships with, and is bounded by that line's 30-byte storage. No new text was allocated.",
+        "Confirmed, and it needed no new SDK code: the scene is one authored record plus one line of text in the project. A newly authored enemy was placed on an existing map, given its own behavior and script, tied to defeat, and made to display a message the author wrote. In the running game nothing authored happened while the enemy was alive, including while it stood damaged. Defeating it ran the authored script and displayed SCENE CLEAR! on screen, and a second defeat reproduced the chain exactly. The entity, behavior and script are newly authored; the message is MODIFIED EXISTING text, overwriting a line the game already ships with, and is bounded by that line's 30-byte storage. No new text was allocated.",
       status: "complete",
     },
     {
@@ -506,7 +508,7 @@ export const project: ProjectStatus = {
       plainEnglish:
         "An authored message can now be longer than the line it replaces. The SDK moves it into verified free space and repoints the game's text table automatically.",
       technical:
-        "Confirmed, and runtime-proven twice. A replacement longer than its original line is allocated into declared verified-writable space and the pointer-table entry that owns it is rewritten, so the original engine resolves the text through its normal lookup and renders the whole authored message. Relocation is gated per table by declared capability and per entry by measured ownership: an entry may move only when exactly one word-aligned reference in the whole 8 MiB image names its body, and that reference is its own table slot. A stride-1 scan found exactly one such word for the entry used. Five of the 1,534 entries carry a second reference and are refused by that rule rather than by any list. Two separate builds and play sessions, one with a 53-character message and one with 20 where the original line held 14, each showed the rewritten pointer resolving into the verified region and the authored script rendering the relocated text on defeat. This reuses an existing text ID; creating entirely new text-table IDs is not claimed.",
+        "Confirmed, and runtime-proven twice. A replacement longer than its original line is allocated into declared verified-writable space and the pointer-table entry that owns it is rewritten, so the original engine resolves the text through its normal lookup and renders the whole authored message. Relocation is gated per table by declared capability and per entry by measured ownership: an entry may move only when exactly one word-aligned reference in the whole 8 MiB image names its body, and that reference is its own table slot. For the entry used, exactly one word in the image names its body. Five of the 1,534 entries carry a second reference and are refused by that rule rather than by any list. Two separate builds and play sessions, one with a 53-character message and one with 20 where the original line held 14, each showed the rewritten pointer resolving into the verified region and the authored script rendering the relocated text on defeat. This reuses an existing text ID; creating entirely new text-table IDs is not claimed.",
       status: "complete",
     },
     {
@@ -599,7 +601,7 @@ export const project: ProjectStatus = {
       plainEnglish:
         "Make the successful scene workflow easy to understand and efficient enough to use repeatedly for actual remake content.",
       technical:
-        "Delivered. The multi-map semantic workspace keeps a scene's relationships together and reviews pending changes in author-facing language, and authoring moved from list-and-form interaction toward direct visual selection, which is the real answer to the friction the owner reported.",
+        "Delivered. The multi-map semantic workspace keeps a scene's relationships together and reviews pending changes in author-facing language, and authoring now runs through direct visual selection instead of list-and-form interaction.",
       status: "complete",
     },
     {
@@ -624,7 +626,7 @@ export const project: ProjectStatus = {
       id: "visual-editor-foundation",
       title: "Show and edit real game graphics visually",
       plainEnglish:
-        "See the game's actual sprites, frames, animations, and palettes, select them by sight, edit a colour, and watch the change appear in the running game.",
+        "See the game's actual sprites, frames, animations, and palettes, select them by sight, and edit a colour.",
       technical:
         "Sprite browsing and palette recolouring are proven by the emitted image rather than an emulator run: the recolour was confirmed by rendering the built image. DragonByte Z renders supported retail maps through the SDK's ROM-only renderer and overlays neutral placement markers at the proven signed map-pixel coordinates. The owner used the map itself to select, add, and move an object, then built and confirmed the generated ROM in the retail Buu's Fury engine. The GUI stays a thin client over semantic scene and project APIs; it contains no map-format or direct-ROM-write logic.",
       status: "complete",
@@ -689,9 +691,11 @@ export const project: ProjectStatus = {
         " its own loaded layer record held the new address and its uploaded BG1 tilemap" +
         " carried the authored arrangement while the other three layers stayed" +
         " byte-identical. An authored chunk rearranges existing graphics only - no new" +
-        " tiles, palettes or imported artwork - and is map-scoped. Map resizing and layer" +
-        " creation shipped later as their own capability, and warp and connection editing"
-        + " shipped after that as the final map-editing capability.",
+        " tiles, palettes or imported artwork - and is map-scoped, because its plane of" +
+        " screen entries only resolves through the assembled character block of the map" +
+        " it was composed against. Its body is larger than the image's only declared" +
+        " free region, so the engine reads it from generated expansion above the" +
+        " original ROM's end.",
       status: "complete",
     },
     {
@@ -755,8 +759,8 @@ export const project: ProjectStatus = {
       detail:
         "Graphics import is the next capability. The SDK can already read the game's" +
         " graphics, and an import path exists inside it, but no editor surface offers" +
-        " that path. It needs allocation for payloads that change size and a write path" +
-        " that can put a changed graphic back, so the retail engine loads the authored" +
+        " that path. The remaining gap is replacing an existing graphic in place when" +
+        " the replacement payload changes size, so the retail engine loads the authored" +
         " artwork.",
     },
     {
@@ -1078,7 +1082,7 @@ export const project: ProjectStatus = {
       id: "buu-rom-bible",
       title: "Buu's Fury ROM Bible",
       summary:
-        "A standalone reference covering what the project has established about the Buu's Fury game data, written for other people working on the same game and shared with the Legacy of Goku community on their Discord server. It is a document shared there, not a page hosted on this site.",
+        "A standalone reference covering what the project has established about the Buu's Fury game data, written for other people working on the same game and shared with the Legacy of Goku community on their Discord server. The reference document is not hosted on this site.",
     },
     {
       id: "first-newly-allocated-authored-text",
@@ -1094,7 +1098,7 @@ export const project: ProjectStatus = {
       summary:
         "A mod project built with Webfoot SDK now produces a complete playable encounter: a new enemy appears in the original Buu's Fury engine, is fought normally, and on defeat displays a message its author wrote.",
       technical:
-        "The whole scene is one authored record plus one line of text in the project, and it required no new SDK code — every piece was already reachable through the ordinary extract, edit, validate and build steps. In the running game the authored enemy ran nothing authored for as long as it was alive, across 37 confirming samples — untouched for most of them, then damaged but still standing for the last two — with the instrument separately confirmed live in the same window. Defeating it ran the authored script and rendered SCENE CLEAR! on screen; the operator defeated it a second time and the chain reproduced identically. Builds are byte-identical between runs and the original game file is never modified. The entity, behavior and script are newly authored; the message is MODIFIED EXISTING text, overwriting an existing line in the bytes that line already occupies, so no new text was allocated and its length is bounded by that slot.",
+        "The whole scene is one authored record plus one line of text in the project, and it required no new SDK code: every piece was already reachable through the ordinary extract, edit, validate and build steps. In the running game the authored enemy ran nothing authored for as long as it was alive, including while it stood damaged. Defeating it ran the authored script and rendered SCENE CLEAR! on screen, and a second defeat reproduced the chain identically. Builds are byte-identical between runs and the original game file is never modified. The entity, behavior and script are newly authored; the message is MODIFIED EXISTING text, overwriting an existing line in the bytes that line already occupies, so no new text was allocated and its length is bounded by that slot.",
     },
     {
       id: "first-controlled-authored-event",
@@ -1268,7 +1272,7 @@ export const project: ProjectStatus = {
       alt:
         "The DragonByte Z Inspector pane in the Maps editor's Layout mode for" +
         " map:0064, layer BG0, showing one staged paint on a 256x256 chunk cell, the" +
-        " layer's 2x2 chunk grid, the cell's four-byte pointer field being changed in" +
+        " layer's 1x2 chunk grid, the cell's four-byte pointer field being changed in" +
         " place, and the map-structure list naming every layer's form beside the" +
         " resize, Create Chunk and Save As New ROM controls.",
       title: "Layout editing",
@@ -1292,6 +1296,7 @@ export const project: ProjectStatus = {
   ],
   links: [
     { label: "GitLab", url: "https://gitlab.com/siruiusamory/log1-remake/" },
+    { label: "project.json", url: "/project.json" },
   ],
   footerTagline:
     "A toolkit for authoring Legacy of Goku content against the actual LOGII/Buu engine.",

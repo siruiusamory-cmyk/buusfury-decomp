@@ -35,8 +35,10 @@ import { project, proofStrip, ledgerGroups, ledgerMetrics } from "../data/projec
                 {group.metrics.map((metric) => (
                   <div class="ledger-row">
                     <dt>{metric.label}</dt>
-                    <dd>{metric.value}</dd>
-                    {metric.explanation && <p>{metric.explanation}</p>}
+                    <dd>
+                      {metric.value}
+                      {metric.explanation && <span class="ledger-note">{metric.explanation}</span>}
+                    </dd>
                   </div>
                 ))}
               </dl>

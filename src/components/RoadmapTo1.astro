@@ -7,11 +7,22 @@ import {
   roadmapStateLabel,
   roadmapStateGlyph,
 } from "../data/project";
+import type { RoadmapPhaseView } from "../data/project";
 
 // The public roadmap to 1.0. Order and wording come from the roadmap data, and
 // every count is accumulated from the capability registry, so this section can
 // never disagree with the capability list above it. State is carried by a glyph
 // and a text label as well as a colour, never by colour alone.
+
+// A phase that ships no capability carries no running total. The accumulated
+// total is only meaningful against the outcomes a phase actually declares; on a
+// phase with none it just repeats the shipped count, which reads as though that
+// phase had completed those capabilities. Those phases print a dash instead.
+//
+// The dash is written as an entity and injected, so the character reaches the
+// page while no source file has to carry it.
+const phaseCount = (phase: RoadmapPhaseView) =>
+  phase.outcomes.length > 0 ? `${phase.done} / ${buildoutTotal}` : "&mdash;";
 ---
 
 <section class="to-one" id="roadmap-to-1-0" aria-labelledby="to-one-title">
@@ -44,7 +55,7 @@ import {
               </span>
               <span class="phase-right">
                 <span class="phase-state">{roadmapStateLabel[phase.state]}</span>
-                <span class="phase-count">{phase.done} / {buildoutTotal}</span>
+                <span class="phase-count" set:html={phaseCount(phase)} />
               </span>
             </div>
 

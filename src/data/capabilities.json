@@ -161,7 +161,7 @@
       "detail": "Reassign one 256x256 chunk cell of a map's dominant layer to another chunk that layer already uses. 341 of the 452 maps expose an editable layer; the remaining 111 are read-only, with the reason stated.",
       "limits": [
         "One operation only: reassign an existing same-layer dominant-layer chunk cell. The replacement must be a non-null chunk that the same layer already uses elsewhere.",
-        "No tile painting, no new or edited chunks, no resizing or layer changes, no relocation, and no arbitrary map formats.",
+        "Cell replacement stays an in-place edit of a supported dominant layer: it does not relocate a layer's record, and it accepts no arbitrary map format.",
         "111 of the 452 maps are read-only: dominant grids that use a single chunk, absent dominant layers, and maps outside the proven form state the reason.",
         "Emulator validation of the layout write itself was not performed; the application round-trip, which reopens its own emitted ROM through the manifest it wrote, was."
       ],
@@ -186,7 +186,7 @@
       "limits": [
         "The editable unit is the engine's own: one four-byte chunk-cell reference to an existing 256x256 chunk. It is not an individual 8x8 hardware tile, and no surface pretends otherwise.",
         "A cell may only be given a chunk the same layer already uses at another of its cells, so a layer that uses a single chunk has nothing to paint with and is read-only. Creating a chunk the layer does not already use is the separate Chunk creation capability.",
-        "No map resizing, no new layers, no new maps, no warp or connection editing, no graphics import, and no collision editing.",
+        "No new-map creation, no graphics import and no collision editing. Resizing remains growth only, so painting cannot reshape a map either.",
         "Screen-entry layers, terrain-field layers (Map 19), absent slots and zero-dimension grids are refused with a stated reason rather than forced into a grid they do not have.",
         "Painting does not allocate or relocate: the replacement is a fixed four-byte in-place write, so a build changes only the painted cells."
       ],
@@ -204,7 +204,7 @@
         "An authored chunk is a new arrangement of graphics the layer already draws. It adds no tiles, no palettes and no imported artwork; an entry outside the layer's own vocabulary is refused. The chunk editor offers exactly the screen entries the template's layer already displays, which for Grand Kai's BG1 is 104 of them.",
         "A chunk is map-scoped. Its plane holds tile ordinals, which only resolve through the assembled character block of the map it was composed against, so it is composed against one map and placed only in that map's layers, which may be any of them.",
         "The chunk container is emitted in the one kind every canonical chunk uses, so this is not an engine-format experiment, but the format is not re-opened either: a chunk is still a 32x32 plane of 16-bit screen entries and nothing else.",
-        "No map resizing, no new layers, no new maps, no warp or connection editing, no graphics import, no collision editing.",
+        "No new-map creation, no graphics import and no collision editing. Chunks stay map-scoped, so a chunk composed against one map is not reusable in another.",
         "The authored body must go above the original ROM end: the canonical image's only declared free region is 256 bytes and a chunk container is larger, so this capability depends on generated expansion rather than fitting in place.",
         "A 16 MiB derivative is not reopened by the authoring tool's derivative verifier, which reconstructs and hashes the canonical image from the whole file. That limit is shared with compressed dialogue and predates this capability; the project itself reopens fully."
       ],
@@ -224,7 +224,7 @@
         "The engine's layer count is fixed at four, because a map root carries exactly four layer-slot pointers. Creating a layer therefore means activating a slot the game leaves unused, which is what the engine actually does; there is no dynamic layer list.",
         "A new layer is a supported visual dominant layer composed from graphics a layer on that same map already draws. It adds no tiles, palettes or imported artwork, and an entry outside that vocabulary is refused. Authored layers and authored chunks are map-scoped.",
         "A map whose definition is shared with another map is refused outright: the root holds the layer-slot pointers and the extent, so editing one would silently change every map that shares it.",
-        "No collision authoring, no warp or connection editing, no new-map creation, no graphics import. A grown area does not have to be connected to anything, and this capability does not connect it.",
+        "No collision authoring, no new-map creation and no graphics import. A grown area is not connected to any transition by this capability: it does not have to be connected to anything, and this surface does not connect it.",
         "The authored record must go above the original ROM's end: the canonical image declares one 256-byte free region and a record grows with the authored grid, so this depends on generated expansion rather than fitting in place."
       ],
       "evidence": "MAP-RESIZE-AND-LAYERS-001; docs/research/MAP_RESIZE_AND_LAYERS.md"

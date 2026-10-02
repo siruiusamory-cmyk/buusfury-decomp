@@ -446,8 +446,10 @@ summary:hover { color: var(--ink); }
 }
 .ledger-row { display: flex; align-items: baseline; justify-content: space-between; gap: var(--s3); padding: 0.26rem 0; border-bottom: 1px solid var(--rule); }
 .ledger-row dt { color: var(--ink-2); font-size: 0.8rem; }
-.ledger-row dd { flex: 0 0 auto; color: var(--ink); font: 700 0.78rem/1.4 var(--mono); }
-.ledger-row p { grid-column: 1 / -1; color: var(--ink-3); font-size: 0.74rem; }
+.ledger-row dd { flex: 0 0 auto; color: var(--ink); font: 700 0.78rem/1.4 var(--mono); text-align: right; }
+/* The explanation belongs to the value it qualifies, so it lives inside the dd:
+   a dl admits only dt and dd, and a paragraph beside them is invalid markup. */
+.ledger-note { display: block; max-width: 34ch; margin-top: 0.1rem; color: var(--ink-3); font: 400 0.72rem/1.4 var(--sans); text-align: left; }
 
 /* --- completed programme rail (inside the roadmap disclosure) ------------ */
 
@@ -466,6 +468,11 @@ summary:hover { color: var(--ink); }
 .quest.is-target .quest-node, .quest.is-target .quest-status { color: var(--violet); }
 .quest.is-current .quest-node, .quest.is-current .quest-status { color: var(--amber); }
 .quest-tech { margin-top: var(--s2) !important; padding: var(--s2) var(--s3); background: var(--bg); border-left: 2px solid var(--rule-2); color: var(--ink-2) !important; font-size: 0.76rem !important; overflow-wrap: anywhere; }
+/* A limit the milestone declares rather than hides: the same left-rule treatment
+   as the technical note, without its background, so a completed milestone never
+   shows a plain tick beside an unexplained admission of unfinished work. */
+.quest-open { margin-top: var(--s2) !important; padding-left: var(--s3); border-left: 2px solid var(--rule); color: var(--ink-2) !important; font-size: 0.74rem !important; }
+.quest-open b { color: var(--ink-3); font: 700 0.66rem/1.4 var(--mono); }
 
 .ladder { margin-top: var(--s5); border-top: 1px solid var(--rule-2); }
 .ladder li {

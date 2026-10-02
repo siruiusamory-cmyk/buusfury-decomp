@@ -1,0 +1,6 @@
+# The site is a public status page for an open-source project: everything on it
+# is meant to be read and indexed. A sitemap is deliberately not declared here,
+# because its URL would be a second hand-written copy of the site address that
+# no build checks; the deploy job is the one place that address is set.
+User-agent: *
+Allow: /

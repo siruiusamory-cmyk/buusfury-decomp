@@ -1,6 +1,6 @@
 # Testing: focused validation gates
 
-`docs/DEVELOPMENT.md` already states the policy: the full suite is an expensive
+`docs/DEVELOPMENT.md` states the policy: the full suite is an expensive
 integration gate (about 90 minutes here), never an iterative loop and never a
 reflex after a fix. This file is the operational half of that rule: how to run
 the *small* scope that validates a change, by name, without reconstructing a
@@ -25,7 +25,7 @@ marker registry by `tests/unit/test_test_gates.py`.
 `fast` and `rom` are the axis: every test is in exactly one of them, decided by
 which directory it lives in. The four subsystem gates cut across that axis, so
 a map-layout write test is `rom`, `map` *and* `writer` at once. Counts above
-are what the collection reported on 2026-09-20 in this worktree; they move as
+are what the collection reported on 2026-09-20 in this checkout; they move as
 tests are added, and they are not a maintained fact.
 
 ## Running a gate
@@ -45,7 +45,7 @@ Compose them when the change crosses a boundary:
 
 ```bash
 python -m pytest -m "fast and writer"     # one subsystem, portable only
-python -m pytest -m "writer or map"       # what a ticket usually asks for
+python -m pytest -m "writer or map"       # a typical subsystem cross-check
 python -m pytest -m "fast and research"
 ```
 
@@ -64,7 +64,7 @@ reproducible run to run. Raise the search depth for a deeper sweep with
 `WEBFOOT_PROPERTY_EXAMPLES=500`; a failure always prints the falsifying example
 and the seed that produced it.
 
-## What a normal ticket runs
+## What a normal change runs
 
 The smallest scope that bounds the change, then the portable gate if the
 change is shared:
@@ -73,7 +73,8 @@ change is shared:
 - relevant domain: `python -m pytest -m <gate>` for the subsystem;
 - cross-domain safety: `python -m pytest -m fast` before freezing.
 
-The full-suite rules in `docs/DEVELOPMENT.md` still govern when a broad integration run
+The full-suite rules in `docs/DEVELOPMENT.md` still govern when a broad
+integration run
 is genuinely warranted.
 
 ## Environment requirements
@@ -81,11 +82,11 @@ is genuinely warranted.
 - **Run from the repository root.** Tests read `config/`, `upstreams.lock` and
   `roms/` relatively. The session header says so when the working directory is
   not the root.
-- **The temporary root must be outside the work tree.** The output-safety
+- **The temporary root must be outside the repository tree.** The output-safety
   tests that expect an accepted output fail by design when `tmp_path` resolves
   inside the repository, because the generated-output guards refuse paths
   inside version control. Measured 2026-09-20 with the temp root at
-  `<worktree>/build/`: exactly five tests, four in
+  `<checkout>/build/`: exactly five tests, four in
   `test_asset_export_output_safety.py` plus
   `test_mgba_capture.py::test_capture_output_is_restricted_to_ignored_build_tree`.
   The mGBA check is location-dependent because `build/` is an accepted capture
@@ -97,7 +98,7 @@ is genuinely warranted.
   temp root to an isolated one under the system temp directory and says so in
   the header. Redirecting rather than pinning `--basetemp` keeps pytest's own
   numbered basetemps, its `tmp_path_retention_count` pruning and its
-  cleanup-after-a-green-run, and keeps two concurrent runs in one worktree from
+  cleanup-after-a-green-run, and keeps two concurrent runs in one checkout from
   deleting each other's temporary directories. A `--basetemp` inside the
   repository is honoured, with a warning.
 - **PySide6** is needed for the `workbench` gate. Without it those modules
@@ -122,7 +123,7 @@ is genuinely warranted.
   `pytest tests/unit/test_map_render.py` stays quiet.
   `tests/unit/test_ci_gui_surface.py` checks the CI half of the contract: the
   installed extras, the headless Qt platform, the module-level dependency guards
-  and the regressions the ticket names.
+  and the regressions the change names.
 - **A canonical ROM** is needed for the `rom` gate. It is read only; the
   canonical image is never written. The header reports which image, if any,
   the session found. The default location is

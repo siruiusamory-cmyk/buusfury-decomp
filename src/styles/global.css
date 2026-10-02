@@ -1,6 +1,6 @@
 /* ===========================================================================
    Webfoot SDK — public status dashboard
-   Composition contract: the approved DragonByte Z mockup. One hero band with
+   Composition contract. One hero band with
    the real application window on the right, a three-stage programme rail
    beneath it, a roadmap/current-focus content band, the roadmap to 1.0, a
    compact proof strip and a restrained footer. Flat panels with hairline
@@ -32,7 +32,11 @@
   --border-strong: #cbadbc;
   --text-primary: #2a2229;
   --text-secondary: #5c525a;
-  --text-muted: #756970;
+  /* Muted and success are darkened from the sampled shades so that each reaches
+     WCAG AA (4.5:1) against the two lightest surfaces they are used on,
+     --background #f2ccdf and --chrome #eebfd6: 4.52:1 and 4.51:1 respectively.
+     The hue is unchanged; only the step is deeper. */
+  --text-muted: #5e545a;
   --accent: var(--pink-strong);
   --accent-hover: #930f53;
   --accent-ground: #f7dbe8;
@@ -41,7 +45,7 @@
   --selection: #f2b3d0;
   --selection-edge: #8f1350;
   --focus: #c9186a;
-  --success: #1f7a3d;
+  --success: #196331;
   --research: #6b3fa0;
 
   /* Legacy aliases: the existing component rules were written against these
@@ -330,7 +334,7 @@ b, strong { font-weight: 700; }
   padding: 0.3rem 0;
   border-bottom: 1px solid var(--rule);
 }
-.row-n { color: var(--rule-2); font: 700 0.6rem/1.5 var(--mono); }
+.row-n { color: var(--text-muted); font: 700 0.6rem/1.5 var(--mono); }
 .row-name { min-width: 0; font-size: 0.75rem; line-height: 1.3; }
 .row.is-todo .chip { border-color: var(--rule-2); color: var(--ink-3); }
 .row.is-done .chip { border-color: var(--success); color: var(--green); }
@@ -374,8 +378,9 @@ b, strong { font-weight: 700; }
 .frontier .is-gated .frontier-kind { color: var(--ink-2); }
 .frontier .is-horizon .frontier-kind, .frontier .is-horizon b { color: var(--violet); }
 
-/* The plate is a real 390x800 crop; framing its top at a small size keeps the
-   focus panel compact without scaling or redrawing anything. */
+/* The plate is a real crop of the application window; framing its top at a
+   small size keeps the focus panel compact without scaling or redrawing
+   anything. */
 .focus-shot { margin: var(--s3) 0 0; display: grid; grid-template-columns: 4rem minmax(0, 1fr); gap: var(--s3); align-items: start; }
 .focus-shot img {
   width: 4rem; height: 6rem;
@@ -447,15 +452,14 @@ summary:hover { color: var(--ink); }
 /* --- completed programme rail (inside the roadmap disclosure) ------------ */
 
 .questline { position: relative; margin-top: var(--s3); }
-/* Stops come from the milestone statuses via --rail-* (set in Questline.astro).
-   They were hardcoded percentages once and drifted as milestones were checked
-   off: at 9 of 12 complete the rail still filled to 52%. */
+/* Stops come from the milestone statuses via --rail-* (set in Questline.astro),
+   so the rail cannot disagree with the list it annotates. */
 .questline::before { content: ""; position: absolute; top: 0.45rem; bottom: 0.45rem; left: 0.28rem; width: 1px; background: linear-gradient(var(--green) 0 var(--rail-complete), var(--amber) var(--rail-complete) var(--rail-current), var(--rule-2) var(--rail-current) var(--rail-target), var(--violet) var(--rail-target)); }
 .quest { position: relative; display: grid; grid-template-columns: 1.3rem minmax(0, 1fr); gap: var(--s3); padding-bottom: 0.4rem; }
 .quest-node { position: relative; z-index: 1; color: var(--ink-3); font: 700 0.58rem/1 var(--mono); padding-top: 0.3rem; }
 .quest article { min-width: 0; padding-bottom: 0.4rem; border-bottom: 1px solid var(--rule); }
 .quest:last-child article { border-bottom: 0; }
-.quest h4 { margin: 0; font-size: 0.82rem; }
+.quest h3 { margin: 0; font-size: 0.82rem; }
 .quest-status { color: var(--ink-3); font: 700 0.58rem/1.4 var(--mono); letter-spacing: 0.1em; }
 .quest article > p:not(.quest-status) { margin-top: 0.1rem; color: var(--ink-3); font-size: 0.78rem; }
 .quest.is-complete .quest-node, .quest.is-complete .quest-status { color: var(--green); }
@@ -505,7 +509,7 @@ summary:hover { color: var(--ink); }
   gap: var(--s3);
   align-items: center;
 }
-.phase-glyph { font: 700 0.95rem/1 var(--mono); color: var(--rule-2); }
+.phase-glyph { font: 700 0.95rem/1 var(--mono); color: var(--text-muted); }
 .phase-n { color: var(--rule-2); font: 800 1.5rem/1 var(--mono); }
 .phase-heading { min-width: 0; }
 .phase-kicker { display: block; color: var(--ink-3); font: 700 0.6rem/1.4 var(--mono); letter-spacing: 0.12em; }

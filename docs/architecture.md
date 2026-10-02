@@ -95,6 +95,20 @@ LoG / LoG II / Buu ROM readers
 
 The Buu's Fury engine is the target. Direct LoG1-binary-to-Buu-binary conversion is not planned. Unknown bytes must survive future parse/serialize round trips exactly before semantic editing is allowed.
 
+Standing tooling direction that follows from this:
+
+- Treat profile metadata as trusted and profile-specific; never carry a
+  constant between profiles without re-measuring it there.
+- Use a recompilation project only as a behavioral oracle or reference.
+  Generated C or C++ is a hypothesis about the binary, never canonical editable
+  game source.
+- Investigate the existing upstream compression tooling before reimplementing
+  it. JCALG1 and its relatives already exist.
+- Begin script work with lossless bytecode disassembly and assembly, so the
+  representation is proven before anything is authored through it.
+- Add a write path only after enough read-side understanding exists to prove
+  what it writes.
+
 ## Safety invariants
 
 - Original ROMs are inputs only and are opened with `rb`. Every write path emits a separate image and refuses to write over its input or over an existing output.

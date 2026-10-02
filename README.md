@@ -10,6 +10,10 @@ acceptance target is authored Legacy of Goku content running inside the actual
 Legacy of Goku II/Buu's Fury engine. Buu's Fury currently leads as the measurement
 target; the architecture is intended for all three games.
 
+> **No ROM is included.** This repository contains no game data files. You supply your
+> own legally obtained copy of the game, and the toolkit refuses an image it
+> cannot identify against a configured profile.
+
 ## What it can do
 
 **Find and inspect anything the SDK has classified.**
@@ -166,10 +170,44 @@ The desktop editor needs the PySide6 extra
 `python -m tools.webfoot.workbench`.
 
 Read next: [project format](docs/project-format.md),
-[Workbench](docs/workbench.md), [architecture](docs/architecture.md),
-[verified project state](docs/PROJECT_<local-state-name>) and the
-[current ticket](docs/PROJECT_<local-state-name>). The portable suite runs with
+[Workbench](docs/workbench.md), [architecture](docs/architecture.md) and
+[verified project state](docs/PROJECT_<local-state-name>). The portable suite runs with
 `.\scripts\test.ps1`.
+
+## Contributing and documentation
+
+[`CONTRIBUTING.md`](CONTRIBUTING.md) is the practical entry point for a change.
+The rules behind it are
+[`docs/DEVELOPMENT.md`](docs/DEVELOPMENT.md) (engineering policy),
+[`docs/REVIEW.md`](docs/REVIEW.md) (the review gate) and
+[`docs/ROM_SAFETY.md`](docs/ROM_SAFETY.md) (the safety contract).
+[`docs/README.md`](docs/README.md) indexes everything else, including the
+[reverse-engineering methodology](docs/reverse-engineering.md), the
+[testing gates](docs/testing.md) and the
+[route to 1.0](docs/ROADMAP_TO_1_0.md).
+
+The project is active and not yet 1.0, so the development rules above are also
+where an unsupported or unmeasured case is described: the toolkit refuses what
+it has not measured rather than guessing.
+
+## Repository layout
+
+```text
+tools/webfoot/       the shipping SDK: identification, formats, project, build
+tools/webfoot/workbench/   DragonByte Z, the desktop editor
+tools/runtime/       emulator capture toolbox (mGBA, GDB, Lua probes)
+tools/ghidra/        static-analysis helpers
+tools/research/      read-only ROM research adapters
+tools/qa/            visual and interaction capture tooling
+tools/export/        resource exporter
+tools/quality/       repository gates: public surface, purity, readability, built site
+src/                 the public progress site (Astro)
+tests/unit/          portable tests, synthetic fixtures only
+tests/integration/   ROM-gated tests, skipped without a configured image
+docs/                documentation; start at docs/README.md
+config/roms.yaml     the trusted profile catalog
+scripts/             setup, test and packaging entry points
+```
 
 ## Legal / ROM policy
 
@@ -181,6 +219,10 @@ Read next: [project format](docs/project-format.md),
 - Generated output - built ROMs, saves, save states, memory dumps, extracted
   assets and build directories - is local and is not committed, and it must stay
   that way. Do not open issues or merge requests containing ROM-derived data.
+- The two screenshots under `public/` are the one deliberate exception: captures
+  of the editor working on the author's own verified copy, cropped only, showing
+  the tool rather than a distributable asset. Nothing else rendered from a game
+  is tracked.
 
 ## Project status / experimental warning
 

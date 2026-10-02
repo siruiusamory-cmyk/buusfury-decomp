@@ -1,20 +1,19 @@
-# P-006C - Accepted Attack & AI Resume Anchors
+# P-006C accepted attack and behaviour-resume anchors
 
-## Status
-
-AUTHORIZED NARROW CONTINUATION
+The accepted normal-punch start event, the minimum observed normal-punch cadence,
+and the exact behaviour-resume event after the wolf is hurt.
 
 ## Objective
 
 Close only the two remaining P-006 timing blockers:
 
 1. exact accepted normal-punch start event and minimum observed cadence;
-2. exact wolf normal-AI-resume event after HURT.
+2. exact wolf normal-behaviour-resume event after HURT.
 
 Do not begin P-007 or investigate knockback/world position, the complete wolf
-AI state machine, death/XP/rewards, ki behavior, or generalized damage.
+behaviour state machine, death/XP/rewards, ki behavior, or generalized damage.
 
-## Canonical P-006B Evidence
+## Canonical P-006B evidence
 
 - Current HP: target `+0x28C`, signed 32-bit.
 - Incoming damage: record `+0x18`.
@@ -27,7 +26,7 @@ AI state machine, death/XP/rewards, ki behavior, or generalized damage.
   immunity.
 - Separate invulnerability remains UNKNOWN. Knockback remains DEFERRED.
 
-## Accepted Normal-Punch Anchor
+## Accepted normal-punch anchor
 
 Use the established P-003 chain first:
 
@@ -43,18 +42,18 @@ entry, phase initialization, or controller/animation entry.
 
 For one controlled punch, use one shared gameplay tick and capture raw A,
 `T_ATTACK_ACCEPT`, `T_HURT_ENTER`, `T_DAMAGE`, `T_HURT_EXIT`, and
-`T_AI_RESUME`. Report `T_HURT_ENTER - T_ATTACK_ACCEPT`,
+the resume marker. Report `T_HURT_ENTER - T_ATTACK_ACCEPT`,
 `T_DAMAGE - T_ATTACK_ACCEPT`, and whether HURT-to-damage `+3` revalidates.
 Raw button-to-hit latency may be separate but cannot substitute for acceptance.
 
-## Minimum Normal-Punch Cadence
+## Minimum normal-punch cadence
 
 After validating `T_ATTACK_ACCEPT`, perform a held/mash-A test and record every
 raw A assertion and accepted attack. Report accepted ticks, consecutive
 intervals, and the minimum observed interval independently of contact/damage.
 Held versus repeated-A behavior is supplemental and cannot block closure.
 
-## Exact Normal-AI Resume
+## Exact Normal-behaviour Resume
 
 Begin at the confirmed HURT exit path. Trace only the immediate transition:
 
@@ -63,23 +62,23 @@ PRE-HIT NORMAL -> HURT -> POST-HURT NORMAL/RECOVERY
 ```
 
 Use an executable handler, state function/ID, node pointer, controller slot, or
-dispatch index. Define `T_AI_RESUME` as the first gameplay tick after HURT when
-the normal wolf AI control path executes again. If RECOVERY intervenes, preserve
-it and keep HURT exit distinct from AI resume. Movement alone is corroboration.
+dispatch index. Define the resume marker as the first gameplay tick after HURT when
+the normal wolf control path executes again. If RECOVERY intervenes, preserve
+it and keep HURT exit distinct from behaviour resume. Movement alone is corroboration.
 Capture the HURT exit condition only if directly visible without broadening
 scope; otherwise leave it UNKNOWN.
 
-Report `AI suppression duration = T_AI_RESUME - T_HURT_ENTER`. Only call this
-normal-melee hitstun after executable AI resumption is resolved.
+Report `behaviour suppression duration = the resume marker - T_HURT_ENTER`. Only call this
+normal-melee hitstun after executable behaviour resumption is resolved.
 
-## Desired Results
+## Acceptance results
 
 ```text
 T_ATTACK_ACCEPT: 0
 T_HURT_ENTER:    +N
 T_DAMAGE:        +N
 T_HURT_EXIT:     +N
-T_AI_RESUME:     +N
+the resume marker:     +N
 ```
 
 Also report accepted attack ticks, consecutive intervals, minimum observed
@@ -87,7 +86,7 @@ cadence, raw A cadence, and held-A behavior or UNKNOWN.
 
 P-006 may close when the attack anchor/cadence and post-HURT executable
 control/timing are both established. Exact invulnerability, world coordinates,
-knockback, complete wolf AI, and death details may remain UNKNOWN/DEFERRED.
+knockback, complete wolf behaviour, and death details may remain UNKNOWN/DEFERRED.
 
 ## Runtime and Validation
 
@@ -103,8 +102,3 @@ knockback, complete wolf AI, and death details may remain UNKNOWN/DEFERRED.
 
 Before closure run full portable tests, launcher regression, `git diff --check`,
 ROM/state identity checks, staged/proprietary audit, and independent review.
-
-## Stop
-
-Stop immediately when both accepted normal-punch timing/cadence and exact
-normal-AI-resume timing are established. Do not begin P-007.

@@ -1,19 +1,9 @@
-# MAP-WARP-WORKBENCH-001 - the Maps editor's Warps surface
+# The Maps editor Warps surface: integration notes
 
-STATUS: **CLOSED.** Scoped **sub-pass of `MAP-WARPS-AND-CONNECTIONS-001`**,
-completed 2026-09-26 and archived at the parent's closeout (2026-09-28). The full
-evidence record, every measured number and the mutation table stay at
-[`../MAP-WARP-WORKBENCH-001.md`](../MAP-WARP-WORKBENCH-001.md); the verdict at
-[`../MAP-WARP-WORKBENCH-001-review.md`](../MAP-WARP-WORKBENCH-001-review.md) and the
-brief at
-[`../MAP-WARP-WORKBENCH-001-review-brief.md`](../MAP-WARP-WORKBENCH-001-review-brief.md).
+The condensed record of the Warps-surface pass: what shipped, the limits kept and
+the validation.
 
-`public progress impact: NONE` - this sub-pass shipped no capability: `src/` was
-untouched, the registry stayed at **19 / 24 (79%)**, `EDIT` stayed **7 / 8**, and
-`warps` stayed `missing`. The capability advance to **20 / 24** belongs to the
-parent's own closeout, which is where the `warps` entry changes state.
-
-## What it was asked to do
+## Scope
 
 Advance the GUI half of the parent's Required Work 3: make an existing supported
 transition observable and revisable in the Workbench, through the already-merged
@@ -57,10 +47,10 @@ path and records nothing; a corpus now carries the profile it was read for, so
 `map_transitions.transition_edits_to_requests`, so the surface that displays what
 the project authors and the build that writes it read one implementation.
 
-## Independent review
+## Independent verification
 
-One pass, fresh context, `the local reviewer` headless. Frozen reviewed candidate
-`a0d9cab12379e8692fef5cfe32f0baca4394734b`; job `cl-20260926-204738-c1cab6`.
+One pass, independent context, an independent local review headless. Frozen reviewed candidate
+`a0d9cab12379e8692fef5cfe32f0baca4394734b`; job `the review job`.
 
 **Verdict: `APPROVE` - zero blocking findings, two NOTE-level observations, no
 production correction.** The candidate was not amended, and the commits after it
@@ -93,7 +83,7 @@ These were true at this pass and are not erased by the parent shipping:
   Work 3 - transitions drawn and edited on the existing map canvas - was untouched
   and was later supplied by `MAP-WARP-CANVAS-001`.
 
-## Validation and policy
+## Validation
 
 * Focused named file `tests/unit/test_workbench_warp_transitions.py`:
   **32 passed**, over the synthetic image the format sub-pass assembled and a real
@@ -108,17 +98,10 @@ These were true at this pass and are not erased by the parent shipping:
 * Visual QA states 60-69 of `tools/qa/visual_pass_capture.py`, captured from the
   real `MainWindow` and opened and inspected. Four defects were found by looking and
   fixed; the captures are ignored local artifacts under `build/qa/`.
-* **Test-policy record:** focused named files only, per the ticket and the
+* **Test-policy record:** focused named files only, per the record and the
   evidence-proportional policy; no broad suite was run in this pass.
 
-## Safety
-
-The canonical ROM `940ad5f0...f059e` was unchanged; no ROM, save, state, capture or
-generated artifact was tracked; no GUI ROM write and no direct byte patching in Qt
-code; every write went through `map_transitions.set_transition_edits` and the
-production build.
-
-## Stop and next
+## Stop
 
 Stopped after the review and the merge. At that point the parent's Required Work 4
 and the map-surface half of Required Work 3 remained, and the capability advance to

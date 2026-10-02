@@ -11,11 +11,10 @@ allocation proof) are **not** part of this checkpoint and are not claimed here.
 |---|---|
 | Repository authority | `origin/master` |
 | Baseline SHA | `cf8f4777a3fd1919727385c4b4c39e7ec78d7535` |
-| Worktree | clean isolated checkout of that SHA; WORKBENCH-006 untouched |
 | Canonical ROM | `940ad5f01db4465b8877dfe739510cbf34f4ea3d390f3df13519808bc36f059e` |
 | Canonical size | 8,388,608 bytes = 0x00800000 = 8 MiB |
 
-`docs/PROJECT_<local-state-name>` and prior tickets record that TOOLKIT-011 refused the whole
+`docs/PROJECT_<local-state-name>` and earlier records show that TOOLKIT-011 refused the whole
 upstream tail and TOOLKIT-028 verified one 256-byte carve of it. This checkpoint
 does **not** revisit, weaken or widen those decisions. It measures the image, and
 it reports candidate capacity separately from declared capacity at every point.
@@ -57,7 +56,7 @@ would advertise bytes a production loader already reads as `UNKNOWN`:
 
 A generated expanded image is **not** part of this partition. Expansion is a
 write-time policy (`profile.generated_expansion`), not canonical occupancy, and
-conflating the two is exactly the error the ticket names.
+conflating the two is exactly the error this census names.
 
 ### 1.2 Measured accounting
 
@@ -79,7 +78,7 @@ not merely where the classification changes, so the map carries **all 10,177
 distinct owners** the model knows rather than coalescing them by class. Identical
 inputs produce identical bytes.
 
-For orientation on the fill/absence distinction the whole ticket turns on: the
+For orientation on the fill/absence distinction the whole census turns on: the
 canonical image holds **340,319** `0xFF` bytes and **812,561** zero bytes - and
 only **256** of those are proven free.
 
@@ -100,7 +99,7 @@ measured directly here:
 |---|---|
 | The 292,440-byte candidate tail | TOOLKIT-011 counted it as an *annotation* (`candidate_tail`, status `CANDIDATE`) and therefore outside its `UNKNOWN`. This model refuses to count a candidate as ownership, so the tail is `UNKNOWN` here - which is what "candidate" means. |
 | Three domains this model adds | script tables/pools, the compressed-dialogue selector table and containers, the placement-type dispatch table: **13 annotations and 7 references**, all counted. |
-| Growth of the **shared base model** itself | `free_space_audit.build_model` is not the same model TOOLKIT-011 ran against: it now yields ~19,720 references and ~10,238 annotations, against TOOLKIT-011's 16,977 and 9,598. This component is **`INFERRED`**: the current counts are measured, the historical counts are read from the ticket record, and the subtraction is arithmetic, not a re-run of the old code. |
+| Growth of the **shared base model** itself | `free_space_audit.build_model` is not the same model TOOLKIT-011 ran against: it now yields ~19,720 references and ~10,238 annotations, against TOOLKIT-011's 16,977 and 9,598. This component is **`INFERRED`**: the current counts are measured, the historical counts are read from the earlier record, and the subtraction is arithmetic, not a re-run of the old code. |
 
 The labelled split of the delta is therefore `INFERRED`; the two endpoint figures
 are `CONFIRMED`. The direction is the honest one: this model **owns less than
@@ -152,7 +151,7 @@ unsafe direction. That list is empty for the canonical image.
 
 ### 2.2 Candidate windows: a census, not a declaration
 
-The ticket's Phase A must distinguish "free" from "looks like fill". The census
+Phase A must distinguish "free" from "looks like fill". The census
 therefore runs the **same checks TOOLKIT-028's verifier runs** over the *whole
 image* rather than one 292 KB tail:
 
@@ -238,7 +237,7 @@ convention, not a disagreement: TOOLKIT-028 names the interval by its first *fre
 byte `0x7E9D4C`, while the census clips from the target byte `0x7E9D4B` one below
 it. Stated on the same boundary the two agree: the census finds precisely the two
 promotable runs either side of the already-declared window, and nothing else in
-that interval. Two independent procedures, written for different tickets, agree
+that interval. Two independent procedures, written for different purposes, agree
 on the same bytes.
 
 **Every census run was re-verified, not just the largest.** That distinction is
@@ -253,8 +252,7 @@ figures.
 
 ### 3.1 What was actually proven (not restated, read)
 
-`docs/research/ROM_EXPANSION.md` records the experiment; the ticket archive
-`docs/research/archive/ROM-EXPAND-001-COMPLETE.md:149-176` records the closeout.
+`docs/research/ROM_EXPANSION.md` records the experiment and its outcome.
 
 | What the proof establishes | Value |
 |---|---|
@@ -286,7 +284,7 @@ rather than widened.
 
 ### 3.3 Raw storage ceiling: four separate numbers
 
-The ticket requires these not be conflated. They are not.
+These must not be conflated. They are not.
 
 | | Quantity | Value | Basis |
 |---|---|---|---|
@@ -353,7 +351,7 @@ dereferenced it at runtime, not because its field is 32 bits wide.
 For every domain whose expansion is `UNKNOWN`, an allocator or its caller must
 **refuse** to place that class above canonical EOF unless a separate bounded
 proof exists. Placing globally and hoping each consumer accepts the address is
-exactly what the ticket forbids. Encoding that per-domain constraint is Phase B
+exactly what the policy forbids. Encoding that per-domain constraint is Phase B
 work; this section is its evidence base.
 
 ---
@@ -483,7 +481,7 @@ per-window proof-review path TOOLKIT-028 used. Nothing here promotes any of them
 | Dialogue containers | 7 exist; the selector table "must NOT be widened" |
 | Sprite containers at the median packed size | ~29,959 fit by bytes |
 
-The dialogue number exposes the ticket's own distinction: 8 MiB holds roughly 480
+The dialogue number exposes the distinction: 8 MiB holds roughly 480
 copies of a median packed dialogue container, but there are only **seven
 selectors**, so byte capacity is not what constrains dialogue. The table is.
 
@@ -540,7 +538,7 @@ recorded because the atlas must know the window is now claimed by the SDK"*
 
 It propagates: a local, identity-verified atlas built from this seed
 (`build/atlas/atlas.jsonl`, `base_sha256` = the canonical hash; gitignored, so it
-does not exist in a clean worktree) was observed to classify those 71 bytes as
+does not exist in a clean checkout) was observed to classify those 71 bytes as
 `RUNTIME_CONFIRMED`/`CONFIRMED` coverage, leaving only 185 of the window's 256
 bytes as `VERIFIED_FREE`. That observation is local corroboration; the tracked
 seed rows above are the reproducible basis for the claim.
@@ -558,7 +556,7 @@ fixed in Checkpoint A or Checkpoint B).** Give the atlas seed rows an explicit
 canonical atlas and an allocation occupancy authority cannot disagree. Scope:
 `tools/webfoot/atlas_producers/seed.py` (the four `authored.*` rows at
 `:530-566`) and whatever consumes `free_region` rows in `atlas_build._seed_claims`.
-It is outside capacity/allocation scope, it does not block this ticket - the
+It is outside capacity/allocation scope, it does not block this work - the
 capacity model deliberately does not read the atlas - and it must not be folded
 into Checkpoint B.
 
@@ -624,59 +622,33 @@ fixed table or index - not ROM size - is what will stop you first.
 
 ---
 
-## 11. Checkpoint A review record
+## 11. Census corrections carried by this report
 
-Independent review passes were run against this checkpoint. They are recorded
-because the result changed the numbers, not merely the wording.
+Two real defects were found in the census while it was being checked, and every
+figure in this document already reflects the corrections.
 
-| Pass | Reviewer | Verdict | Outcome |
-|---|---|---|---|
-| 1 | fresh local the reviewer session (read-only) | no findings reported; the requested verdict token was not emitted | Two non-blocking notes accepted: a dead expression in `resource_distributions`, and that a conflicting free declaration was reported but not refused. Both fixed; the audit entry point now fails closed via `require_consistent`. |
-| 1 (parallel) | fresh-context reviewer agent, read-only | **BLOCK** | One blocking finding and eight others. |
-| 2 | fresh-context reviewer agent, re-review of the fixes | **APPROVE WITH NON-BLOCKING NOTES** | Independently reproduced every corrected figure; found no new material defect. |
-| 3 | fresh local the reviewer session (read-only) | no defects found; verdict token again not emitted | Confirmed the corrections. |
-
-### 11.1 The blocking finding, and why it mattered
-
-The reviewer re-ran the reviewed verifier over **all** census runs and found that
-the census omitted the `candidate_source` check it claimed to mirror. The
-counterexample was real and canonical: `[0x32EC99, 0x32EC9A)`, a one-byte `FF`
-pocket whose following bytes read `06 14 08`, holds the word `0x081406FF` - a
+The census omitted the `candidate_source` check it claimed to mirror. The
+counterexample is real and canonical: `[0x32EC99, 0x32EC9A)`, a one-byte `FF`
+pocket whose following bytes read `06 14 08`, holds the word `0x081406FF`, a
 valid ROM pointer **sourced inside the pocket**. Writing that byte would corrupt a
 word some unknown consumer reads as a pointer, and `verify_window` refuses it.
-
 The reasoning that produced the omission is worth recording because it is
 plausible and wrong: *"a census run is all `FF`, and `0xFFFFFFFF` is not a ROM
 address, so no pointer can start inside it."* Only the **first** byte of the word
 has to lie inside the run. The census now tests `candidate_sources` as well, and
-`census_agrees_with_verifier` checks **every** run rather than the largest - the
+`census_agrees_with_verifier` checks **every** run rather than the largest; the
 largest run happened to be clean, which is precisely how the defect survived the
-first review and the original tests.
+original tests.
 
 Effect on this report: the promotable census **116 runs / 23,596 bytes became 115
 runs / 23,595 bytes**, and the no-margin figure 336,393 / 35,968 became 336,135 /
-35,729. Every figure in this document is the corrected one.
+35,729.
 
 A second real defect was found while fixing the first: the region map's
 attribution used a bounded backward scan for the innermost annotation, which could
 miss a long enclosing span when many annotations began in between - reporting
 `unattributed` for bytes that were in fact owned. It is now an exact active-set
 sweep, and the map carries all 10,177 annotation owners instead of 4,185.
-
-### 11.2 Cloud review
-
-No the hosted reviewer session was created for this checkpoint: this harness provides no
-path to one, and no transcript was programmatically retrieved. Per the ticket that
-is recorded rather than claimed:
-
-```text
-CLOUD SESSION: none created (no harness path to a cloud session)
-CLOUD RESULT INGESTION: MANUAL UI ONLY
-```
-
-The machine-readable independent verdict above is the **local** review, which the
-ticket permits as a secondary reviewer, and it is labelled local throughout. It is
-not presented as a cloud review.
 
 
 ---

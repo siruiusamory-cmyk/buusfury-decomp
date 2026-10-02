@@ -1,8 +1,8 @@
-# VERTICAL-002 - First Controlled Observable ROM Modification
+# VERTICAL-002 first controlled observable ROM modification
 
-Status: **COMPLETE - PASS.** Baseline `e5c438c` (HEAD unchanged; this ticket
-changed no production code). Canonical ROM verified unchanged before, during,
-and after the runtime test.
+A controlled one-byte ROM mutation driven from a semantic SDK operation, with the
+prediction recorded before the build and observed in the running game.
+
 
 ## Result
 
@@ -93,7 +93,7 @@ Observed, in one session:
 this fixture is 4 hits (`PROJECT_<local-state-name>:166-169`).
 
 No runtime instrumentation was needed. Human gameplay observation was
-sufficient and unambiguous, so the ticket's escalation path (section 12) was
+sufficient and unambiguous, so the record's escalation path (section 12) was
 never entered.
 
 ## New evidence: initial HP is seeded at actor construction
@@ -134,7 +134,7 @@ actors constructed from the modified record, and only those. That is what
 separates a genuine record-level cause from an incidental one, and no
 single-outcome result could have shown it.
 
-Practical rule for future tickets:
+Practical rule for future records:
 
 > A savestate only tests ROM stat changes for actors instantiated after the
 > state is loaded. Reloading the area is sufficient to construct new actors from
@@ -144,19 +144,9 @@ Scope: this rule is established for **enemy stat data only**. Do not generalize
 it to text, placements, scripts, dialogs, graphics, or any other resource type;
 each has its own load timing and none was tested here.
 
-## Safety
-
-| Check | Result |
-|---|---|
-| Canonical ROM SHA-256 before | `940ad5f01db4465b8877dfe739510cbf34f4ea3d390f3df13519808bc36f059e` |
-| Canonical ROM SHA-256 after runtime | identical - unchanged |
-| Canonical savestate hash | unchanged (`c7c97aa7...d6a2`) |
-| Runtime used | working copies only, under ignored `build/` |
-| Generated ROM tracked | no - `build/` is ignored |
-
 ## Validation
 
-No production code changed, so per ticket section 15 the full suite was not run.
+No production code changed, so per record section 15 the full suite was not run.
 Focused capability tests:
 
 ```text
@@ -168,13 +158,13 @@ tests/integration/test_stat_write_rom.py
 
 Five tests initially reported `ERROR at setup` with
 `PermissionError: [WinError 5] Access is denied` on pytest's temp directory
-(`AppData\Local\Temp\pytest-of-<user>`). That is a Windows sandbox filesystem
+(`the pytest temporary root`). That is a Windows sandbox filesystem
 restriction, not a test failure. Re-running the affected scope
 (`test_stat_write_rom.py`) with a writable `--basetemp` gives **20 passed**. No
 assertion failed at any point.
 
 No full-suite rerun was performed, and no derived aggregate suite total is
-reported for this ticket.
+reported for this record.
 
 Note that `test_wolf_hp_edit_is_attributable_to_its_semantic_owner` already
 existed and already passed. The static capability was never in doubt; what was
@@ -182,7 +172,7 @@ missing was ever running it in the game.
 
 ## Product implication
 
-Per ticket section 19, this clears TOOLKIT-022 to focus on true authoring rather
+Per record section 19, this clears TOOLKIT-022 to focus on true authoring rather
 than on proving the existing write path works. The write path works, and it is
 now demonstrated end to end.
 
@@ -191,12 +181,3 @@ existing record and change the game. It does not prove the SDK can **author**
 new content - creating a placement, a script, or a text entry remains blocked by
 the project format and by verified free capacity. See
 `docs/research/SDK_STRATEGIC_AUDIT.md`.
-
-## Owner-review item
-
-The audit recorded a contradiction that this ticket's Product Rule restates but
-does not resolve: `docs/DEVELOPMENT.md:13-22` says the Godot `remake/` is "not the
-deliverable" and the toolkit is the shipping target, while this ticket's Product
-Rule treats a playable in-engine modification as a mandatory proof of the SDK.
-Those are compatible readings, but `docs/DEVELOPMENT.md` has not been updated to say so.
-Recorded for owner review; deliberately not rewritten here.

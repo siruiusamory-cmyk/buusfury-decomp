@@ -102,12 +102,12 @@ SYNTHESIS_TICKETS: tuple[str, ...] = (
 )
 
 #: The per-ticket canonical documents the synthesis is required to have read.
-#: ``{ticket}`` is substituted in each template. Review records live under
-#: ``docs/research/``; archive closeout records under ``docs/research/archive/``;
-#: provenance documents under ``docs/research/`` using underscores.
+#: ``{provenance}`` is substituted in each template: the ticket id with its
+#: numeric suffix removed and its hyphens replaced by underscores. The relocated
+#: review/closeout records and the provenance documents both live under
+#: ``docs/research/``.
 DOCUMENT_EDITS: tuple[str, ...] = (
-    "docs/research/{ticket}-review.md",
-    "docs/research/archive/{ticket}-COMPLETE.md",
+    "docs/research/{provenance}_VERIFICATION.md",
     "docs/research/{provenance}_PROVENANCE.md",
 )
 
@@ -500,7 +500,7 @@ def _ticket_documents(ticket: str) -> tuple[str, ...]:
 
 
 def check_documents(root: Path | None = None) -> list[Finding]:
-    """Every accepted ticket has a non-empty review, closeout and provenance."""
+    """Every accepted ticket has a non-empty verification and provenance record."""
     base = root if root is not None else project_root()
     findings: list[Finding] = []
     for ticket in SYNTHESIS_TICKETS:

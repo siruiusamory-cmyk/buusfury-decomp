@@ -1,26 +1,14 @@
-# LOGX-CONNECTOR-001 - Reconstruct Buu's Fury root `+0x40`/`+0x44` transition records
+# LOGX connector verification
 
-Research only. No GUI, Workbench, map-rendering or authoring change was made.
-The active WORKBENCH-006 worktree was not touched.
+The Buu's Fury root `+0x40`/`+0x44` transition records, reconstructed from the
+canonical image. Static analysis only; no runtime capture was made for this
+pass.
 
----
+Canonical ROM SHA-256, before and after:
+`940AD5F01DB4465B8877DFE739510CBF34F4EA3D390F3DF13519808BC36F059E`.
 
-## Identity
-
-| | |
-| --- | --- |
-| **START SHA** | `d0b29f9f1e8b6d0e11d67605dc96ba82ade5ab96` |
-| **END SHA** | `e3d65e3b9136098b1cedef99f4738ddce9b15a7c` (accepted end SHA) |
-| **BRANCH** | `logx-connector-001` (isolated research) -> `integrate/logx-connector-001` |
-| **WORKTREE** | `<temp>\log1-remake-logx-connector-001` (research); `<temp>\log1-remake-integrate-logx-connector-001` (integration) |
-| **COMMIT SHA(S)** | research `a67faee`, review record `e3d65e3`; integration cherry-picks `0b56ca0` and `f113c27`, taken from `origin/master` `d0b29f9f1e8b6d0e11d67605dc96ba82ade5ab96` |
-| **CANONICAL ROM SHA BEFORE** | `940AD5F01DB4465B8877DFE739510CBF34F4EA3D390F3DF13519808BC36F059E` |
-| **CANONICAL ROM SHA AFTER** | `940AD5F01DB4465B8877DFE739510CBF34F4EA3D390F3DF13519808BC36F059E` |
-
-The canonical ROM was opened read-only for every measurement and is unchanged.
-
----
-
+Evidence document: [`LOGX_CONNECTOR_PROVENANCE.md`](LOGX_CONNECTOR_PROVENANCE.md).
+Tooling: `tools/research/logx_connector_probe.py`.
 ## External claims tested
 
 `mainant/LOGExtractor`, `MapViewer/MainForm.cs`, treated as claims only.
@@ -181,7 +169,7 @@ values was recovered, so inclusivity cannot be stated.
 
 **UNRESOLVED**, with a narrowed negative. No `+8` appears anywhere on the
 destination-resolution path, which uses a key lookup and no coordinate
-adjustment. The path's own arithmetic is `-112` / `-76`. This ticket therefore
+adjustment. The path's own arithmetic is `-112` / `-76`. This record therefore
 does **not** claim `+8` is wrong; it claims it has no engine counterpart on the
 recovered path and is **not needed to resolve a destination**. A renderer- or
 hitbox-side origin for it was not excluded.
@@ -351,7 +339,7 @@ recorded as *shape* facts rather than anomalies:
 ## Test results
 
 Measured on this worktree with
-`LOGX_CANONICAL_ROM=<checkout>\build\ghidra\input\buus_fury_verified.gba`.
+`LOGX_CANONICAL_ROM=<checkout>`.
 
 | Suite | Result |
 | --- | --- |
@@ -360,8 +348,8 @@ Measured on this worktree with
 | `tests/integration/test_logx_connector_rom.py` + `test_logx_tile_rom.py` + `test_logx_layer_rom.py` + `test_logx_map_record_rom.py` + `test_logx_map_render_rom.py` | **103 passed, 5 errors** |
 | `tests/unit` (portable) | **1096 passed, 15 skipped, 238 errors** |
 
-The 5 and 238 errors are **pre-existing environment failures, not this ticket's**:
-every one is `PermissionError: [WinError 5] ... 'the pytest temporary root'`
+The 5 and 238 errors are **pre-existing environment failures, not this record's**:
+every one is `PermissionError: [WinError 5] ... '<pytest temporary root>'`
 raised inside pytest's own `tmp_path` fixture factory. They reproduce identically
 on the untouched accepted suites (`test_logx_tile_rom.py`,
 `test_logx_layer_rom.py`, `test_text_project.py`, ...) at the START SHA. The new
@@ -376,14 +364,14 @@ instruction boundary the module invent no site Capstone disagrees with. Measured
 population: **3147** in-scope boundary sites, **0** misses, **0** misreports; the
 test asserts `in_scope > 3000` so a collapse in coverage fails.
 
-Not run: the full repository suite. Its blast radius here is bounded - the ticket
+Not run: the full repository suite. Its blast radius here is bounded - the record
 adds two new leaf research modules, two new test files and documentation, and
 modifies no existing production code - so the LOGX suites plus `tests/unit` are
 the proportional scope.
 
 ---
 
-## ROM_BIBLE_IMPACT
+## Physical facts recorded
 
 **UPDATED.** `docs/reverse-engineering.md` gains a
 `## LOGX-CONNECTOR-001` section (68 inserted lines, 3 changed) recording the
@@ -391,13 +379,6 @@ the proportional scope.
 and the census, with the unresolved items named as unresolved. The existing
 `+0x40`/`+0x44` rows in the LOGX-MAP-RENDER-001 table were corrected: `+0x40` now
 records that the pair is read by one `ldm`, and `+0x44` now records the array.
-
-## public progress impact
-
-**NONE.** This is isolated read-only research; it creates no user-facing SDK
-capability, no authoring surface and no Workbench change.
-
----
 
 ## Disagreements with LOGExtractor
 
@@ -411,27 +392,24 @@ capability, no authoring surface and no Workbench change.
 4. **`X += 8`.** No engine counterpart was found on the recovered path; the only
    coordinate arithmetic there is `-112` / `-76`. Not promoted.
 5. **Semantic naming.** LOGExtractor calls the elements "connectors" and the four
-   values a "transition rectangle". This ticket confirms a map-destination key
+   values a "transition rectangle". This record confirms a map-destination key
    and a pair of ordered intervals, and stops there.
 
 ---
 
-## Independent review
+## Independent verification
 
-**Reviewer:** independent fresh-context pass; no part of this ticket was written
-by the reviewer. Every load-bearing claim was re-derived from the ROM bytes and
+Every load-bearing claim here was re-derived independently from the ROM bytes and
 the instructions, not read out of the documents.
 
-**VERDICT: REQUEST CHANGES.** The engineering core of the ticket reproduces
-exactly and is, in the reviewer's judgement, correct: the root census, the
-recovered consumer, the record layout, the two-byte destination and the decoder
-all verified. Three documentation defects are material and must be corrected
-before this is returned for human acceptance. None of them requires new
-measurement - the data is already in the ROM and in this ticket's own probe.
+The engineering core reproduces exactly: the root census, the recovered consumer,
+the record layout, the two-byte destination and the decoder all verified. Three
+documentation defects were material and were corrected. None of them required new
+measurement: the data is already in the ROM and in this record's own probe.
 
 ### What was independently re-measured and reproduced
 
-| Check | Reviewer measurement | Document claim | Result |
+| Check | Independent measurement | Recorded claim | Result |
 | --- | --- | --- | --- |
 | selector-1 roots | 452 | 452 | reproduce |
 | `+0x40 == 0` / `!= 0` | 104 / 348 | 104 / 348 | reproduce |
@@ -478,19 +456,19 @@ covered and uncovered families.
 
 **Tests re-run:** `tests/integration/test_logx_connector_rom.py` **30 passed**,
 `tests/unit/test_thumb_mem_operands.py` **26 passed**, and the five LOGX ROM-gated
-suites together give **103 passed, 5 errors** - every number matching the ticket's
+suites together give **103 passed, 5 errors** - every number matching the record's
 report. All 5 errors are the pre-existing pytest `tmp_path`
-`PermissionError: [WinError 5] ... pytest-of-<user>`; the reviewer reproduced them
+`PermissionError: [WinError 5] ... the pytest temporary root`; the verification pass reproduced them
 on the untouched accepted `test_logx_tile_rom.py`, whose own three `tmp_path`
 tests error while its other 27 pass. The environment claim is correct and is not
-this ticket's defect.
+this record's defect.
 
 **Scope and safety confirmed.** `git status` shows only the seven intended paths;
-`tools/webfoot/workbench/`, the renderer, authoring and `PROJECT_<local-state-name>` /
+`tools/webfoot/workbench/`, the renderer and authoring,
 `PROJECT_<local-state-name>` are all untouched; the canonical ROM SHA-256 is unchanged at
 `940AD5F0...F059E`; `git diff --check` is clean.
 
-### Findings
+### Findings and their disposition
 
 **1. BLOCKING - `docs/research/LOGX_CONNECTOR_PROVENANCE.md:716-718`: three
 representative-table rows do not match the ROM, and one destination in the map-39
@@ -511,7 +489,7 @@ Measured raw bytes: `0x081DACB8` =
 `0x081DACD0` = `...01070120003401...`; `0x081DACE8` = `...010601c0003401...`;
 `0x08294948` = `...03010c0000008b00...`. The map 338 key at `+0x11`/`+0x12` is
 plainly `0E 04`, so `0101 -> 33` cannot be read from the record. This looks like
-map 39's rows copied into the map 338 block. The reviewer's re-measurement of the
+map 39's rows copied into the map 338 block. The verification pass's re-measurement of the
 *whole corpus* still gives 735/735 key resolution and the same 350 distinct
 destinations, so the census is unaffected - but section 11 is presented as
 byte-exact and it currently misstates four cells beyond the one-line fix. The
@@ -530,20 +508,20 @@ LOGExtractor) states:
 
 That is stale text from before the consumer was found. The same document at
 lines 126-199 (section 3.4) and the claim ledger at line 742 mark the
-`0x08009676` `ldm` / `0x08012664` walk as **CONFIRMED**, and the reviewer verified
-it directly. Section 13 directly contradicts the ticket's headline result. The
+`0x08009676` `ldm` / `0x08012664` walk as **CONFIRMED**, and the verification pass verified
+it directly. Section 13 directly contradicts the record's headline result. The
 same staleness appears in section 4 line 267 ("**PARTIALLY CONFIRMED** for the
 count (section 3.5)") while section 3.3 line 123 marks the same claim
 **CONFIRMED**. **Delete or update both, so one verdict per claim.** This is the
 single most damaging defect for a human reader, because it is the sentence that
-summarises the ticket's main finding.
+summarises the record's main finding.
 
 **3. BLOCKING - a test docstring asserts a false negative claim.**
 
 `tests/integration/test_logx_connector_rom.py:453-465`, in
 `test_constant_immediate_accesses_at_the_root_pair_offsets_are_other_objects`:
 
-> This ticket did **not** recover the instruction that consumes the selector-1
+> This record did **not** recover the instruction that consumes the selector-1
 > root's `+0x40` count / `+0x44` array pair, so no negative claim about that
 > consumer is made.
 
@@ -551,7 +529,7 @@ The instruction *was* recovered and the test file itself asserts it 100 lines
 later (`test_the_engine_reads_both_words_with_one_ldm`, line 555). Separately, the
 same docstring at line 385-386 claims "no `ldrh` reads any of these offsets
 anywhere in the code region" - a claim the test does **not** actually assert, and
-which the reviewer measured to be **false**: an in-scope `ldrh` scan over
+which the verification pass measured to be **false**: an in-scope `ldrh` scan over
 `0x08000000..0x08007000` finds **206** sites at displacement `0x11` or `0x12`
 (e.g. `0x0800E7BC` `ldrb r5,[r5,#0x11]`-adjacent word reads, and 8,536 `ldrh`
 sites across `+0x10..+0x13` image-wide). Those sites read other objects, not
@@ -562,13 +540,13 @@ future reader will quote. The provenance document's narrower wording at line 433
 **Narrow the docstring to the path actually traced.**
 
 **4. NON-BLOCKING - the two agreement statements do not agree with each other.**
-`docs/research/LOGX-CONNECTOR-001-review.md:371-374` documents the coverage claim
+The earlier coverage claim documents the coverage claim
 as "zero disagreements over a population of more than 1,500 in-scope sites",
 which is literally what `test_the_operand_scan_agrees_with_capstone` asserts
 (`assert matched > 1500`, line 548) but is **21x weaker** than the measured
 population. `docs/research/LOGX_CONNECTOR_PROVENANCE.md:804-808` states
 "31,971 of 31,973" (a figure that **did not survive re-measurement** and was
-replaced; see the correction gate below). The reviewer measured 31,962 in-scope
+replaced; see the correction gate below). The verification pass measured 31,962 in-scope
 sites and 0 disagreements, so the substance is sound; the problem is that the
 asserted threshold is far below the measured value, so the test would still pass
 if coverage collapsed by 95%. **Raise the bound to the measured value** so the
@@ -578,7 +556,7 @@ regression net is real.
 split.** `docs/research/LOGX_CONNECTOR_PROVENANCE.md:389-401` says "No other byte
 pair in the record scores 735: the nearest neighbours are far lower", and the
 review document at line 217-219 compresses it to "No other content byte pair
-scores above 589". The reviewer's exhaustive scan over all 24x23 ordered byte
+scores above 589". The verification pass's exhaustive scan over all 24x23 ordered byte
 pairs finds that the pairs `(0x02,0x03)`, `(0x02,0x07)`, `(0x02,0x1B)`,
 `(0x03,0x07)`, `(0x03,0x1B)`, `(0x06,0x03)`, `(0x06,0x07)`, `(0x06,0x1B)`,
 `(0x07,0x03)`, `(0x07,0x1B)`, `(0x1B,0x03)`, `(0x1B,0x07)` **also score 735/735**.
@@ -590,10 +568,10 @@ parenthetical, and the review document's compressed form drops the disclosure
 entirely. **State the complete set of 735-scoring pairs in both places.** The
 test correctly avoids the over-broad form.
 
-**6. NIT - weak field measurements.** The ticket's own review at line 371 frames
+**6. NIT - weak field measurements.** The record's own review at line 371 frames
 the Capstone test as a "differential", but it is a one-directional containment
 check (Capstone site must appear in the module's output); it never tests the
-converse. The reviewer's independent two-directional differential found zero
+converse. The verification pass's independent two-directional differential found zero
 disagreements in either direction, so nothing is hidden - but the test itself
 would not catch a module that over-reports. The `matched` counter is a correct
 vacuous-pass guard.
@@ -605,7 +583,7 @@ LOGExtractor's "one byte before the destination, which it skips", and the body
 text is unambiguous, but the heading invites the opposite reading. Consider
 "the byte between the bounds block and the destination" or naming the offset.
 
-### Corrections required
+### Corrections applied
 
 1. Fix the four wrong cells in `LOGX_CONNECTOR_PROVENANCE.md:714-718` and add the
    missing `+0x13 = 1` rows. (Finding 1)
@@ -618,12 +596,11 @@ text is unambiguous, but the heading invites the opposite reading. Consider
    measured value and update the review document's coverage sentence. (Finding 4)
 5. State the full set of 735-scoring byte pairs. (Finding 5)
 
-### Correction gate
+### Re-verification after correction
 
-**CLOSED** (implementer response, same session). The reviewer's verdict was
-REQUEST CHANGES with 3 BLOCKING and 2 NON-BLOCKING findings. All five were
-documentation or test-docstring defects; none required re-deriving a measurement,
-and none changed a CONFIRMED verdict.
+All five findings (3 blocking, 2 non-blocking) were documentation or test-docstring
+defects; none required re-deriving a measurement, and none changed a CONFIRMED
+verdict.
 
 Every correction was re-measured against the ROM before and after the edit, and
 the whole area was re-audited mechanically: a script now re-reads every cited
@@ -633,15 +610,15 @@ are cross-checked against the numbers quoted in this file (all match).
 
 | Finding | Severity | Resolution |
 | --- | --- | --- |
-| 1. Wrong representative-table cells | BLOCKING | The whole table was regenerated from the ROM. **Five** cells were wrong, not four: the reviewer caught three map-338 destination keys plus map 39's `010C -> 44`, and re-measurement also caught map 39 record 0's `+0x10` (`0` -> `1`). Two wrong `List` addresses (map 34, map 35) were found in the same pass. The byte-exact raw forms of the cited rows are now printed under the table, and the `+0x13 = 1` variant is called out explicitly. |
+| 1. Wrong representative-table cells | BLOCKING | The whole table was regenerated from the ROM. **Five** cells were wrong, not four: the verification pass caught three map-338 destination keys plus map 39's `010C -> 44`, and re-measurement also caught map 39 record 0's `+0x10` (`0` -> `1`). Two wrong `List` addresses (map 34, map 35) were found in the same pass. The byte-exact raw forms of the cited rows are now printed under the table, and the `+0x13 = 1` variant is called out explicitly. |
 | 2. Internal contradiction on the headline result | BLOCKING | Section 13's disagreement row and section 4's "PARTIALLY CONFIRMED for the count" were stale pre-correction text. Both now match the ledger: the count semantic is **CONFIRMED**; only the *name* "connector" stays PARTIALLY CONFIRMED. |
 | 3. False test docstrings | BLOCKING | The offset-scan docstring no longer says the consumer was not recovered (it now explains that the consumer uses `ldm`, which is why the offset scan cannot see it). The `ldrh` universal was removed and replaced by a scoped statement that names the counterexamples. |
-| 4. Coverage bound far below the measured population | NON-BLOCKING | The differential was rewritten to a two-directional check with the same scope definition on both sides, and now measures **3147** in-scope boundary sites with **0** misses and **0** misreports; the test asserts `in_scope > 3000`. The provenance's "31,971 of 31,973" figure (which this reviewer could not reproduce and which came from the decoder sub-task, not from this test) was replaced with the 3147/0/0 measurement, and the review doc now quotes the same numbers. |
+| 4. Coverage bound far below the measured population | NON-BLOCKING | The differential was rewritten to a two-directional check with the same scope definition on both sides, and now measures **3147** in-scope boundary sites with **0** misses and **0** misreports; the test asserts `in_scope > 3000`. The provenance's "31,971 of 31,973" figure (which the independent pass could not reproduce and which came from the decoder sub-task, not from this test) was replaced with the 3147/0/0 measurement, and the review doc now quotes the same numbers. |
 | 5. Inexact "no other pair scores 735" | NON-BLOCKING | Section 6.1 now lists all twelve scoring pairs and explains why the eleven prefix-involving ones are constants rather than keys. |
 | 6. One-directional differential | NIT | Addressed by the same rewrite: direction 2 rejects any module site at a 16-bit boundary that Capstone does not decode as in-scope. The width qualifier is documented as the deliberate escape hatch for fixed-width-scan ambiguity. |
 | 7. "Pre-destination byte" heading | NIT | Renamed to "Byte after the destination". |
 
-**Residual reviewer note, accepted.** The reviewer observed that at some 4-byte
+**Residual note, accepted.** At some 4-byte
 instruction boundaries the module still reports a 16-bit site for the first
 halfword (14 such addresses). This is inherent to a fixed-width halfword scanner
 over an ARM7TDMI image that contains no Thumb-2: the first halfword of a
@@ -651,7 +628,7 @@ instruction boundaries.
 
 **Second-pass review needed?** The corrections are documentation and test
 changes, all re-measured mechanically. Findings 1-3 changed what the artifact
-*asserts*; findings 4-7 changed only how it is stated. A fresh reviewer should
+*asserts*; findings 4-7 changed only how it is stated. A fresh verification pass should
 spot-check the regenerated table against the raw bytes printed beside it and
 confirm the ledger now carries one status per claim.
 
@@ -671,58 +648,20 @@ confirm the ledger now carries one status per claim.
    direct `bl` caller and is not in any literal pool.
 6. The origin of LOGExtractor's `+8`.
 
-## HANDOFF TO LOGX-CODEC-001
+## Related work: LOGX codec
 
-**None.** Nothing in this ticket touches the container decoder. The ticket reuses
+**None.** Nothing in this record touches the container decoder. The record reuses
 `tools/webfoot/formats/webfoot_lz.py` unchanged and adds no new container type.
 
-## Other downstream handoffs
+## Other downstream consumers
 
 - **Runtime:** unresolved question 2 is a runtime question and needs the accepted
   mGBA path in `docs/runtime-capture.md`; load a map, place the player on a
   record's interval, and watch whether the `0x08008B30` install fires.
 - **Workbench:** any future map-overlay work must use the physical fields above
   and must not adopt the `+8` adjustment. Scope boundary stays
-  `docs/research/WORKBENCH-006-design.md`.
+  `WORKBENCH_MAP_AUTHORING_DESIGN.md`.
 - **Follow-up research:** the two record classes are a bounded, well-anchored
-  next ticket.
+  next record.
 
 ---
-
-## GIT STATUS
-
-**Branch `logx-connector-001`, isolated. NOT integrated to master.**
-
-| | |
-| --- | --- |
-| START SHA | `d0b29f9f1e8b6d0e11d67605dc96ba82ade5ab96` |
-| Accepted research commits | `a67faee` (research/tooling/tests/ROM Bible), `e3d65e3` (independent-review record) |
-| Accepted end SHA | `e3d65e3b9136098b1cedef99f4738ddce9b15a7c` |
-| Integration cherry-picks | `0b56ca0`, `f113c27` from `origin/master` `d0b29f9f1e8b6d0e11d67605dc96ba82ade5ab96`; both clean, every blob byte-identical to the accepted branch |
-| Files in the research commit | 7 changed, 3597 insertions(+), 3 deletions(-) |
-| Worktree | `<temp>\log1-remake-logx-connector-001` |
-
-```
-docs/reverse-engineering.md                 | modified (68 insertions, 3 deletions)
-docs/research/LOGX_CONNECTOR_PROVENANCE.md  | new
-docs/research/LOGX-CONNECTOR-001-review.md   | new
-tests/integration/test_logx_connector_rom.py| new
-tests/unit/test_thumb_mem_operands.py       | new
-tools/research/logx_connector_probe.py      | new
-tools/research/thumb_mem_operands.py        | new
-```
-
-**Safety results**
-
-| Check | Result |
-| --- | --- |
-| Canonical ROM SHA-256 before | `940AD5F01DB4465B8877DFE739510CBF34F4EA3D390F3DF13519808BC36F059E` |
-| Canonical ROM SHA-256 after | `940AD5F01DB4465B8877DFE739510CBF34F4EA3D390F3DF13519808BC36F059E` |
-| ROM writes | none; every tool opens it through `Path.read_bytes` |
-| `git diff --check` | clean |
-| Proprietary artifacts staged | none (no ROM, save, state, dump or `extern/` path) |
-| Scratch artifacts | all under the ignored `build/` tree, never staged |
-| WORKBENCH-006 worktree | untouched |
-| `docs/PROJECT_<local-state-name>`, `docs/PROJECT_<local-state-name>` | untouched |
-| GUI, renderer, authoring code | untouched |
-| Commit attribution trailers | none |

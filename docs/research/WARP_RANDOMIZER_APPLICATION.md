@@ -1,19 +1,9 @@
-# WARPRAND-APP-001 - the standalone Buu's Fury Warp Randomizer application
+# The standalone Buu's Fury Warp Randomizer application
 
-STATUS: **CLOSED** (2026-09-26). v0.1.0 is built, packaged, independently
-reviewed, and integrated. **The v0.1.0 executable was already shared publicly
-before this integration completed** - that is recorded as history below, not
-backdated.
+The small Windows utility that runs the warp randomizer against a user's own clean
+ROM: the product boundary, the release evidence and the known limits.
 
-**This is not a roadmap ticket.** It occupies no phase and advances no
-capability. It wraps the already-closed side hack recorded in
-[`ROMHACK-WARP-RANDOMIZER-001.md`](ROMHACK-WARP-RANDOMIZER-001.md) as a small
-Windows utility that other people can run against their own clean ROM.
-`docs/PROJECT_<local-state-name>` stays `MAP-WARPS-AND-CONNECTIONS-001`, the Workbench
-warp editor is **not** resumed by this pass, and `src/data/capabilities.json` is
-**not touched**: DragonByte Z remains **19 / 24 - 79%**.
-
-## Objective
+## What the application does
 
 Ship **Buu's Fury Warp Randomizer v0.1.0** - one window, one ROM check, one
 seed, one output - as a standalone Windows executable that randomizes the
@@ -34,11 +24,11 @@ did, without ever writing to the user's ROM.
 ## What was built
 
 **Baseline: `d9f7e6d`** - current clean master, which by then already carried the
-predecessor randomizer (`ticket/romhack-warp-randomizer-001` was merged into
-master while this ticket ran). This pass adds exactly one commit on top of it and
+predecessor randomizer (`record/romhack-warp-randomizer-001` was merged into
+master while this record ran). This pass adds exactly one commit on top of it and
 modifies no file that was already there.
 
-The architecture is the one the ticket asked for, outermost last:
+The architecture is the one the record asked for, outermost last:
 
 ```text
 tools/webfoot/warp_randomizer.py            the algorithm - unchanged, reused
@@ -70,7 +60,7 @@ repository's convention.
   size and SHA-256. The expected values are read from verified profile data, not
   restated in the app, so the refusal can never quote a stale hash. It returns a
   verdict rather than raising, because it is called the instant a file is chosen.
-* `randomize_warps(source, output, seed, policy)` is the ticket's signature. It
+* `randomize_warps(source, output, seed, policy)` is the record's signature. It
   refuses an unknown policy rather than ignoring it - a policy argument that was
   silently dropped would produce a `/3` mapping under a caller's `/4` label.
 * Output naming, seed sanitisation, collision policy and the manifest live here.
@@ -121,7 +111,7 @@ appears in `gui.py`'s executable code.
 Each row was measured per file with `pytest <file> -q`, no marker gate, no skips.
 This table has been wrong twice: an earlier revision said 39/43, and the revision
 after that said 48/51. Both were arithmetic guessed from a combined total instead
-of measured, and the independent reviewer caught both. It now carries measured
+of measured, and the independent verification pass caught both. It now carries measured
 values, and the five-file figure below is the measured sum, not a guess.
 
 The whole randomizer surface - the predecessor's two files included - was run on
@@ -163,7 +153,7 @@ still hold.
 `python -m pytest -m fast` on the final tip: **3,239 passed, 1 failed, 3 skipped**
 (1,230 deselected - the `rom` axis).
 
-**Recorded as: RUN ONCE, AGAINST THIS TICKET'S STANDING POLICY, NOT REPEATED.**
+**Recorded as: run once, against the standing policy, not repeated.**
 It was run once during implementation, before the closeout policy was stated, and
 it is reported here because a run that happened is not made untrue by being
 discouraged. Closeout itself ran no marker gate and no directory-wide selection;
@@ -175,16 +165,16 @@ corrections added their tests; the stale-aggregate habit is why the number is
 stated with its context rather than alone.
 
 The one failure is `test_capability_registry.py::test_the_built_page_renders_the_registry_list`,
-and it is **pre-existing and environmental, not caused by this ticket**. It
+and it is **pre-existing and environmental, not caused by this record**. It
 compares the *generated site page* `dist/index.html` against
 `src/data/capabilities.json`. That page is an untracked build artifact - `dist/`
 is ignored - and on this machine it was written `2026-09-25 12:54`, six hours
 *before* the registry it now contradicts (`2026-09-25 18:51`); the registry says
 the `resize` capability shipped and the stale page renders it as planned. It
-fails identically in isolation, it fails without any of this ticket's files, and
-this ticket changed neither the registry nor the site. It is the same stale
-`dist/index.html` the predecessor ticket recorded. Rebuilding the site is a
-public-publishing action and is out of scope here (`public progress impact:
+fails identically in isolation, it fails without any of this record's files, and
+this record changed neither the registry nor the site. It is the same stale
+`dist/index.html` the predecessor record recorded. Rebuilding the site is a
+public-publishing action and is out of scope here (`public-progress impact:
 NONE`), so it is reported rather than papered over.
 
 ### The golden launch seed
@@ -198,10 +188,10 @@ supported 735 / randomized 496 / destinations moved 492 / skipped 239
 Recorded from the **packaged executable**, and reproduced independently by the
 ROM-gated test (which recomputes the 8 MB output and compares its digest) and by
 the packaged `--smoke` run. An earlier revision of this document said "four
-independent ways"; that was an overclaim the reviewer correctly measured - the GUI
+independent ways"; that was an overclaim the verification pass correctly measured - the GUI
 test only carries the constant as a stand-in fixture's field and never computes
 it, and the portable boundary test works on a 4 KB synthetic image and cannot
-produce this digest at all. The ticket's warning was honoured: this is *not* the
+produce this digest at all. The record's warning was honoured: this is *not* the
 older `0ff__white` hash.
 
 ### Packaged executable smoke
@@ -254,13 +244,13 @@ Two earlier defects in this probe were found and fixed, both by measurement:
   by byte diversity fixed it;
 * its second version claimed to sample "across the whole image" while actually
   covering the **first 197 KB** - 2.35% of the bytes, none of the graphics or
-  text it was meant to catch. The independent reviewer measured that; the needle
+  text it was meant to catch. The independent verification pass measured that; the needle
   selection now walks the whole image and takes 48 evenly spaced across it, and
   the script prints the **spanned-offset** figure (96.5% of offsets) - not a
   byte-coverage figure, which is 0.027%.
 
 **What the probe still does not catch** is recorded in the script's header rather
-than left implied, and the reviewer measured the real numbers so the claim is not
+than left implied, and the verification pass measured the real numbers so the claim is not
 read as stronger than it is: the 48 needles search **2,304 bytes of 8,388,608 -
 0.027% of the image** - even though their *offsets* span 96.5% of it. Round two
 measured that; round three re-measured it and confirmed the corrected header,
@@ -277,8 +267,8 @@ Result: `Buu-Fury-Warp-Randomizer-v0.1.0-win64.zip`, 35.1 MB, containing
 **exactly two files** - `Buu-Fury-Warp-Randomizer.exe` and `README.txt` - so
 "extract and run" is the whole procedure. **Proprietary content: NONE.**
 
-The build is a **single file**, at the owner's direction. That is the form the
-ticket allows ("single `.exe`"), and it is why the spec has no `COLLECT`: an
+The build is a **single file**, by design. That is the form the
+record allows ("single `.exe`"), and it is why the spec has no `COLLECT`: an
 onedir build cannot be reduced to a lone executable, because the `.exe` needs its
 runtime directory beside it, so a two-file archive required switching to one-file
 packaging. The trade is stated rather than hidden:
@@ -290,7 +280,7 @@ packaging. The trade is stated rather than hidden:
   slower to appear;
 * a self-extracting executable is more likely to draw an anti-virus heuristic
   than a plain directory of DLLs, so the README tells the user what the
-  "unknown publisher" prompt means;
+  "unknown publisher" dialogue means;
 * the byte-run content probe is **narrower** than it was for a directory of loose
   files, because the payload is now a compressed archive and only uncompressed
   content is searchable. What carries the weight instead is that the build has no
@@ -326,147 +316,6 @@ To run the utility from a checkout instead of the executable:
 python -m tools.webfoot.warprand
 ```
 
-## Independent review
-
-Every review round is recorded in full in
-[`WARPRAND-APP-001-review.md`](WARPRAND-APP-001-review.md), including each
-round's verdict, findings and dispositions. The number is deliberately not
-stated here: an earlier revision said "two rounds" while the file already held
-three, which is the same stale-count mistake the rounds themselves kept catching.
-
-**The mandated channel was attempted on every round, and failed every time.**
-`the local reviewer` returned
-`You've hit your session limit · resets 10:40am (America/Los_Angeles)` - jobs
-`cl-20260926-151346-c84856` and `cl-20260926-153558-0ebd29`, both recorded
-`status: failed, session: (none)`. That is an **account usage limit**, not a
-candidate defect. Cloud was **not** run: `the reviewer readback probe` reports
-`cloud_attach UNAVAILABLE` ("attaching to an existing cloud session is not enabled
-for this account"), so a cloud verdict would not be readable here - the ticket's
-own stated condition.
-
-Every round then ran through a **fresh-context reviewer** that did not implement
-the work, so the repository's independent-review gate was satisfied rather than
-skipped.
-
-### Round 1 - BLOCKED, one blocking finding
-
-The reviewer confirmed scope independently (15 added files, 0 modified;
-`capabilities.json`, `project.ts`, `PROJECT_<local-state-name>`, `PROJECT_<local-state-name>` untouched; no
-ROM/save/state artefact), re-ran the permitted tests, reproduced the golden hash
-and verified the canonical ROM unchanged before and after.
-
-**B1.** `verify_rom` documented "Never raises" and did not honour it.
-`tools.webfoot.rom.identify_rom` raises `GbaHeaderError` - a `ValueError` - for
-any file under 192 bytes or with a non-ASCII header field, and `_identify` caught
-only `RomReadError`/`OSError`. The consequence was worse than an ugly traceback:
-`verify_selected_rom` assigned the cached verdict only *after* the call returned,
-so selecting a good ROM and then a 24-byte file left the **good ROM's** "Verified
-supported ROM ✓" on screen with **Randomize enabled** - a false verified state for
-a file that is not a ROM - and pressing it produced the "unexpected problem"
-defect dialog. Reachable through the file dialog's own "All files" filter.
-
-Reproduced here before fixing (`24-byte file -> RAISED GbaHeaderError`). Fixed by
-catching `GbaHeaderError` explicitly - not as a bare `ValueError`, so a real
-programmer error still escapes - and reporting it as
-`The selected file is not a Game Boy Advance ROM: …`; and by clearing the cached
-verdict *before* anything can go wrong, with a defensive red "could not be
-checked" state that keeps Randomize disabled if the boundary ever breaks its
-contract again. Both halves are pinned by new tests.
-
-### Round 2 - PASS, no blocking findings
-
-On the correction commit `9402381`. Beyond re-running the permitted files, the
-reviewer verified the blocking fix **end to end rather than by tests**: it drove
-the real service through the real window, confirmed the exact round-1 scenario now
-yields `Unsupported ROM ✗ … GBA header requires at least 192 bytes; got 24` with
-Randomize disabled and no bug dialog, could construct **no** input that still makes
-`verify_rom` raise, and proved the new service tests are genuine regression tests
-by running them against a verbatim reproduction of the pre-fix method body. It
-also confirmed the overwrite reordering introduced no new defect, that the
-canonical-copy refusal still fires with `overwrite=True`, that the probe's
-positive control now exercises the real per-file scan, and that the progress bar
-can never reach 4/4 before the work is done.
-
-It then raised four non-blocking findings and three notes **about the honesty of
-this document and of the release claim** - two of them catching round-1 entries
-that had been marked "Fixed" without being fixed. Those are exactly the findings
-worth having, and all seven were addressed:
-
-| | Round-2 finding | Resolution |
-| --- | --- | --- |
-| F1 | The per-file test counts in this document were wrong *again* (48/51; measured 42/49) | **Fixed**; the table is now measured per file, and the document says plainly that it has been wrong twice and why |
-| F2 | Residual stale-verdict state of B1's class: the ROM field's own clear button left a verified verdict and an enabled Randomize over an **empty** path; `set_rom_path(..., verify=False)` had the same shape and was dead in production | **Fixed.** `rom_edit.textChanged` now invalidates the cached verdict immediately and shows a neutral "Not checked yet."; the dead parameter is gone. Pinned by a new GUI test |
-| F3 | The probe's header still claimed it catches "a carved blob of 48+ contiguous bytes from anywhere in the image"; its needles actually search 2,304 of 8,388,608 bytes (0.027%), and a 48-byte carve at offset 1,000 is missed | **Fixed.** The header now states the measured byte coverage, adds "a carve from an unsampled region" to the blind-spot list, and says what it *does* catch. This document no longer calls the spanned-offset figure "measured coverage" |
-| F4 | The committed brief still said "exactly one commit" and pinned `7bbd985`, a superseded candidate | **Fixed**; the brief now reads its SHAs from the repository |
-| F5 | This document linked `WARPRAND-APP-001-review.md`, committed nowhere | **Fixed**; that file is the record |
-| F6 | A GUI test's docstring claimed to pin B1 while passing on the pre-fix code | **Fixed**; the docstring now says what it actually proves and names the tests that do pin it |
-| F7 | `gui.py` held a fallback output-name literal while this document claims the GUI owns no output naming | **Fixed**; the fallback uses the service's own template and seed sanitiser |
-
-`SourceChangedError` remains the one declared test gap; the reviewer agreed it
-cannot be arranged honestly in a portable test and it is recorded in the known
-limits below.
-
-### Round 3 - narrow verification of the corrections, PASS
-
-Two of the round-2 fixes changed **production code** after a PASS, so a third,
-narrow round verified that correction diff. It re-measured every test file on its
-own, then verified the fixes **by measurement rather than by reading**:
-
-* it clicked the ROM field's real clear button on the real window and confirmed
-  no verdict and no enabled Randomize survive, then loaded the **pre-fix** `gui.py`
-  side by side and reproduced the defect on the same click - proving the fix is
-  operative and the new test genuinely fails on the old code (three of its five
-  assertions fail there);
-* it fuzzed **200 mutation sequences** over the ROM/output/seed controls against
-  the invariants "a cached OK verdict must belong to the current text" and "no
-  `None` verdict beside a Verified label", and found **zero** violations;
-* it reimplemented the release script's needle selection read-only and confirmed
-  both header numbers exactly, including that a 1 MB carve at offset 4,000,000 is
-  caught while a 48-byte carve at offset 1,000 is not.
-
-Its three findings were all documentation residuals of the same class round 2 had
-raised, surviving in sentences round 2's own fix had added - the five-file
-aggregate said 163 (measured **165**), the known-limits bullet still said the probe
-"spans all of it" with "four" blind spots, and the brief still counted commits.
-All three are fixed above. Full record:
-[`WARPRAND-APP-001-review.md`](WARPRAND-APP-001-review.md).
-
-**One gap the implementer found while the review ran:** the bundle ships Qt and
-CPython with no notices for them. `docs/warprand/THIRD-PARTY-NOTICES.txt` now
-names every bundled component and licence and states plainly that the LGPL
-licence *texts* are still not bundled. At the owner's later direction the release
-archive was cut back to the executable plus a brief README, so that notice no
-longer ships either - which makes the gap larger, not smaller, and it is recorded
-as an owner decision before any public distribution rather than glossed over.
-
-Two things are worth stating plainly rather than burying: **two round-1 entries
-marked "Fixed" were not actually fixed**, and only the second round caught it -
-the lesson, recorded in the review record, is that a correction to a *claim* needs
-the claim re-measured rather than rewritten. And the release-content probe's
-coverage is genuinely much weaker than the first version of this document implied;
-what it does catch is now stated exactly.
-
-## Scope boundaries observed
-
-- **No capability count change.** `src/data/capabilities.json` untouched;
-  DragonByte Z stays 19 / 24 - 79%. Warp/connection *editing* is not marked
-  shipped because a standalone randomizer exists.
-- **No Workbench surface**, no new tab, no editor. The Workbench is not resumed.
-- **No new reverse engineering**: every fact used was already measured and is
-  carried by `map_transitions` and the transition authority.
-- **No progression guarantee.** The window states it; the manifest records it;
-  the README repeats it.
-- **No ROM distribution, and no ROM committed.** No `.gba`, save, state or
-  runtime capture is staged; `dist/` and `build/` stay ignored.
-
-### public progress impact: NONE
-
-A side utility that ships an offline artefact adds no DragonByte Z capability and
-moves no capability count, so the public capability story is unchanged:
-`src/data/capabilities.json`, `src/data/project.ts` and the published site are all
-untouched by this diff, warp/connection *editing* is not marked shipped, and no
-cosmetic site edit was made to say otherwise.
-
 ## Known limits, stated rather than implied
 
 - Randomization is verified against **one** image. Another region, revision or a
@@ -480,7 +329,7 @@ cosmetic site edit was made to say otherwise.
 - Windows x64 only. Nothing was verified on another platform. The build follows
   this repository's PyInstaller conventions in every respect **except** the
   packaging mode: `DragonByte Z.spec` is an onedir `COLLECT` build, and this
-  artifact is one file, at the owner's direction - the trade is measured in the
+  artifact is one file, by design - the trade is measured in the
   spec's own docstring and above in this document.
 - The ROM-content probe samples the image and its needle offsets span 96.5% of it,
   but it is a strong check, not a proof of absence: **48 needles of 48 bytes search
@@ -506,7 +355,7 @@ cosmetic site edit was made to say otherwise.
   bundled anywhere, which is an owner decision before any public distribution.
   What is not in the archive cannot be read by whoever downloads it.
 
-## Closeout
+## Release record
 
 ### The product, as shipped
 
@@ -558,7 +407,7 @@ not byte-for-byte (PyInstaller embeds build metadata).
 
 - **Scope:** the branch is **17 additions and zero modifications** against
   `origin/master`; the core algorithm, the capability registry,
-  `src/data/project.ts`, `PROJECT_<local-state-name>`, `PROJECT_<local-state-name>` and the whole Workbench
+  `src/data/project.ts`, the working queue, `PROJECT_<local-state-name>` and the whole Workbench
   tree are untouched, and no ROM, save, savestate, runtime capture, image or
   archive is tracked anywhere in the diff.
 - **Thin client:** no shuffle, pairing, arrival, facing or policy decision exists
@@ -573,25 +422,12 @@ not byte-for-byte (PyInstaller embeds build metadata).
 
 ### Why `docs/PROJECT_<local-state-name>` was not edited
 
-The predecessor side ticket (`ROMHACK-WARP-RANDOMIZER-001`) was likewise never
-`PROJECT_<local-state-name>` and is likewise **not** recorded in `docs/PROJECT_<local-state-name>`; it sits
-at the tickets root, as this one does. `docs/README.md`'s archive step is
-part of the *replace `PROJECT_<local-state-name>`* workflow, which never applied here, and this
-ticket advances no capability to record. Keeping the closeout in this document
+The predecessor side record (`ROMHACK-WARP-RANDOMIZER-001`) was likewise never
+the working queue and is likewise **not** recorded in `docs/PROJECT_<local-state-name>`; it sits
+in the working queue root, as this one does. `docs/records/README.md`'s archive step is
+part of the *replace the working queue* workflow, which never applied here, and this
+record advances no capability to record. Keeping the closeout in this document
 therefore follows the convention its predecessor set and leaves the roadmap,
-`PROJECT_<local-state-name>` and the capability registry untouched, as instructed. If the owner
-wants a side-tool line in the project state anyway, that is a deliberate addition
+the working queue and the capability registry untouched, as instructed. If a side-tool line
+is wanted in the project state anyway, that is a deliberate addition
 rather than a closeout omission.
-
-## Stop
-
-Stop when the application exists, is packaged, is proved by the packaged smoke,
-and has been independently reviewed. Do not resume the Workbench warp editor, do
-not open a new research line, and do not begin `MAP-WARPS-AND-CONNECTIONS-001`'s
-Required Work 3 or 4 from here.
-
-**Reached.** The application exists and is packaged; the packaged-executable
-smoke passes on the real binary with the pinned golden hash; the independent
-review gate returned PASS with no blocking findings outstanding. The ticket is
-CLOSED. Do not begin v0.1.1 work, do not redesign the packaging, and do not change
-the randomizer algorithm under this ticket.

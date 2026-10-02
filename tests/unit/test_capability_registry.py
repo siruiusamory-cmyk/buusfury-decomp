@@ -45,13 +45,15 @@ REGISTRY_PATH = PROJECT_ROOT / "src/data/capabilities.json"
 PROJECT_SOURCE = PROJECT_ROOT / "src/data/project.ts"
 MAIN_COMPONENT = PROJECT_ROOT / "src/components/MainBand.astro"
 BUILT_PAGE = PROJECT_ROOT / "dist/index.html"
-TICKETS_DIRECTORY = PROJECT_ROOT / "docs/tickets"
+EVIDENCE_DIRECTORY = PROJECT_ROOT / "docs"
 
 #: A stable capability id: lowercase kebab-case, matching the site's row keys.
 STABLE_ID = re.compile(r"^[a-z][a-z0-9-]*$")
 
-#: A ticket id such as ``TOOLKIT-037`` or ``DRAGONBYTE-Z-MAP-BROWSER-001``.
-TICKET_ID = re.compile(r"^[A-Z][A-Z0-9]*(?:-[A-Z0-9]+)*-\d{3}$")
+#: A provenance label such as ``TOOLKIT-037`` or ``DRAGONBYTE-Z-MAP-BROWSER-001``.
+#: It is a name for a body of work, and it is only accepted when a tracked
+#: evidence document actually records it, so an invented label fails here.
+PROVENANCE_LABEL = re.compile(r"^[A-Z][A-Z0-9]*(?:-[A-Z0-9]+)*-\d{3}$")
 
 #: How a shipped capability's result was proven.
 PROOF_LEVELS = {"runtime", "application"}
@@ -128,16 +130,19 @@ def built_page() -> str:
 
 
 @lru_cache(maxsize=1)
-def ticket_text() -> str:
-    """Ticket ids the repository actually records, filenames included.
+def evidence_text() -> str:
+    """Provenance labels the documentation actually records, filenames included.
 
     Evidence must be checkable from a checked-out tree and no deeper: CI clones
-    shallowly, so nothing here may need repository history. A cited ticket has
-    to exist somewhere under ``docs/tickets`` and a cited path has to exist on
-    disk, which is what makes an invented provenance id fail rather than ship.
+    shallowly, so nothing here may need repository history. A cited path has to
+    exist on disk, and a cited label has to appear in a tracked document under
+    ``docs/``, which is what makes an invented provenance name fail rather than
+    ship. The search covers the whole documentation set rather than one
+    directory, because a label is recorded wherever the decision or the format it
+    belongs to is written down.
     """
     parts: list[str] = []
-    for path in sorted(TICKETS_DIRECTORY.rglob("*.md")):
+    for path in sorted(EVIDENCE_DIRECTORY.rglob("*.md")):
         parts.append(path.name)
         parts.append(path.read_text(encoding="utf-8", errors="replace"))
     return "\n".join(parts)
@@ -307,7 +312,7 @@ def test_a_measurement_name_means_one_thing_registry_wide():
 
 def test_evidence_names_real_provenance():
     """Provenance must resolve in the checked-out tree, not read plausibly."""
-    recorded = ticket_text()
+    recorded = evidence_text()
 
     for entry in capabilities():
         tokens = [token.strip() for token in entry["evidence"].split(";")]
@@ -317,10 +322,10 @@ def test_evidence_names_real_provenance():
                 assert (PROJECT_ROOT / token).is_file(), (
                     f"{entry['id']} cites a missing path: {token}")
             else:
-                assert TICKET_ID.match(token), (
-                    f"{entry['id']} cites a malformed provenance id: {token}")
+                assert PROVENANCE_LABEL.match(token), (
+                    f"{entry['id']} cites a malformed provenance label: {token}")
                 assert token in recorded, (
-                    f"{entry['id']} cites an unrecorded ticket: {token}")
+                    f"{entry['id']} cites a label no evidence document records: {token}")
 
 
 # ---------------------------------------------------------------------------

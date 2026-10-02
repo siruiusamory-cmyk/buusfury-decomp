@@ -152,7 +152,8 @@ lists named offsets individually and never states where either table begins or
 ends, so the bounds in this repository are this project's measurement, not the
 upstream's word.
 
-Semantics stay labelled by evidence level, per `docs/DEVELOPMENT.md`:
+Semantics stay labelled by evidence level, per
+[`docs/DEVELOPMENT.md`](docs/DEVELOPMENT.md):
 
 - `CONFIRMED` - record stride, table extent, and field decode, established from
   the canonical ROM.

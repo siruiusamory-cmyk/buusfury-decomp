@@ -9,7 +9,7 @@ RGB->GBA-word packing via `plan_palette_entry_rgb`, applied at build); a recolou
 is recorded through the project + `session.project_mutated()`, exactly the way
 the Inspector records a dialogue edit.
 
-Desktop patterns adopted (the maintainer's DragonByte Z correction, not the old plain-UX
+Desktop patterns adopted (the DragonByte Z correction, not the old plain-UX
 rule): a QSplitter between the thumbnail grid and the selected-asset inspector,
 a contextual animation toolbar (prev/next + animation chooser), palette
 Apply/Revert buttons, and a status line (selected asset, dimensions, shared

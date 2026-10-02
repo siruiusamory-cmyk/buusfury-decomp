@@ -1,19 +1,19 @@
-# ROMHACK-WARP-RANDOMIZER-001 - a seeded warp randomizer (side hack)
+# Seeded warp randomizer
 
-**This is not a roadmap ticket.** It occupies no phase, advances no capability and
-is not the current ticket in [`PROJECT_<local-state-name>`](PROJECT_<local-state-name>), which stays
-`MAP-WARPS-AND-CONNECTIONS-001`. It is the ROM-hack deliverable the owner asked
-for directly, recorded here because it produces an artefact and a mapping that a
-later reader has to be able to reproduce.
+A deterministic, seeded derivative of the canonical Buu's Fury image in which the
+safely supported map transitions lead somewhere else, with a manifest that states
+every decision, including the records left alone and why, and without the canonical
+image being touched.
 
-## Objective
+
+## What the randomizer does
 
 Produce one deterministic, seeded derivative of the canonical Buu's Fury image in
 which the safely supported map transitions lead somewhere else, with a manifest
 that states every decision - including the records left alone and why - and
 without the canonical image being touched.
 
-## Context Delta
+## Context
 
 Nothing here is newly reverse engineered. The tool consumes only what is already
 recorded:
@@ -45,23 +45,6 @@ the permutation had pointed elsewhere, and a player who arrives inside a trigger
 never crosses its edge; permuting pairs fixed that but closed 2-cycles between
 dead-end maps.
 
-## Required Work
-
-1. A seeded, deterministic permutation of whole reciprocal door pairs, with the
-   dead-end guard, in `tools/webfoot/warp_randomizer.py`.
-2. Stage each accepted pair through the transition authority's own
-   `set_destination` / `set_arrival` / `set_facing`, arriving each half on the
-   partner's own trigger rectangle and validating the point against the
-   destination's walkable extent.
-3. Leave every record the policy cannot safely randomize byte-identical and
-   record its reason: the 169 class, and a record that is not half of a clean pair.
-4. A deterministic JSON manifest: source transition, retail destination and
-   arrival, randomized destination and arrival, facing, class, disposition, reason,
-   the counterpart that makes each row's return door checkable, the pair labels and
-   the byte-offset policy.
-5. Build the derivative ROM through `webfoot.write.emit_image` only - the one
-   writer, which refuses to overwrite and re-checks the base identity.
-
 ## Runtime Inputs
 
 - Canonical image: `roms/Dragon Ball Z - Buu's Fury (U).gba`, SHA-256
@@ -82,66 +65,6 @@ dead-end maps.
   states that solvability is a separate problem, and this hack does not
   contradict it.
 - The canonical image is never a write target, and no ROM is committed.
-
-## Ticket-Specific Validation
-
-Focused, named-file tests only; no broad manual suite.
-
-- `tests/unit/test_warp_randomizer.py` - the seeded permutation, the seed's own
-  rules, the manifest's byte determinism and counts, and the structural claim that
-  the offsets this policy may rewrite are real bytes of the codec's record and
-  partition it with the preserved ones.
-- `tests/integration/test_warp_randomizer_rom.py` - the canonical census, same-seed
-  determinism, different-seed difference, source-trigger preservation, bundle
-  consistency, unrelated-byte safety, skipped-record determinism and reasons, the
-  emitted artefact against its own manifest, and the canonical image unchanged.
-- A whole-suite `-m fast` run was taken as the integration boundary at the end of
-  implementation; its one failure is a stale local `dist/index.html` and is
-  recorded in the final report, not papered over.
-
-## Required Review
-
-An independent, fresh-context reviewer inspected the frozen implementation (the
-three untracked files), the transition authority it builds on and both test files,
-re-ran the focused tests and reproduced the invariants independently from the ROM.
-Verdict: **APPROVE WITH NON-BLOCKING NOTES**, no blocking findings. Its
-independent pass recovered 1999 differing bytes, all of them inside the declared
-randomized offsets of records the manifest called randomized, with 0 bytes outside,
-0 trigger-region violations, 0 destination/arrival/facing/gate violations across
-the 559, every skipped record byte-identical, and the same output hash reproduced
-in three separate interpreters under three `PYTHONHASHSEED` values.
-
-The notes it raised were resolved before the artefact was re-emitted, and each is
-now covered by a test:
-
-- the randomizer's own manifest path could alias the output image and replace the
-  freshly emitted ROM with JSON while still reporting success - now guarded with
-  `paths_are_the_same_file` against the output, the canonical image and the
-  provenance manifest, with a test that reproduces the collision;
-- `assert retail is not None` was control flow over a value the same module
-  treats as possibly absent. A record whose retail destination does not resolve is
-  now excluded from the pair search before any assignment, so that branch is gone
-  rather than asserted past, and the per-record staging path it belonged to no
-  longer exists: each pair is carried through the authority's own `set_arrival` on
-  a third view of the image before a byte is staged, so a refusal leaves nothing
-  half-written;
-- the CLI's `--provenance` help promised a default that did not exist - the CLI
-  now writes the provenance manifest beside the output by default;
-- the manifest claimed "the retail bundle" while carrying no retail arrival - rows
-  now carry `retail_arrival`, null for the 566-class sentinel and for every
-  169-class delta;
-- the changed-set assertion read the implementation's own `changed` flag - it now
-  recovers the changed record set from the image diff and compares it with the
-  manifest;
-- manifest determinism was only asserted twice in one process - a fresh-interpreter
-  test now compares two `PYTHONHASHSEED` values against the in-process digest;
-- a parametrized shuffle case re-asserted the seed refusal instead of exercising
-  the shuffle - `shuffled_indices` now normalizes its seed and the case tests that.
-
-Because the fixes are local to the three files (nothing else imports the module)
-and both focused files were re-run, the whole-suite gate was not repeated; the
-output image's SHA-256 is unchanged by the fixes, so the reviewed bytes are the
-delivered bytes.
 
 ## Runtime Smoke
 
@@ -184,7 +107,7 @@ pass showed the industry fixes this earlier in the pipeline.
 
 The observer's player-slot read did not resolve in this session (`0x03001C34` read
 0 throughout), so its facing channel is silent and the arrival/facing judgements
-are the operator's, as this ticket intends.
+are the operator's, as this record intends.
 
 ### The `/3` re-run: PASS, as played
 
@@ -206,7 +129,7 @@ door three times. No arrival was unusable, nothing trapped the player, and the
 1 → 3 → 4 → 5 → 6 → 0 → 31 → 29 → 1 → 33 opening (scripted moves, no door record)
 is unchanged, as expected.
 
-Stated with its limits, because the ticket asks for a playable ROM and not a
+Stated with its limits, because the record asks for a playable ROM and not a
 certificate: this is **five randomized links out of 496**, it is the operator's
 report ("from what I played") rather than an exhaustive traversal, and progression
 is still not guaranteed - `/3` removes the degenerate dead-end shape, not every
@@ -214,7 +137,7 @@ pocket a hub can lead into.
 
 ### The external practice, and the policy it produced
 
-An external pass was run for this (the ticket's External-Research-First rule). The
+An external pass was run for this (the record's External-Research-First rule). The
 [OoT Entrance Randomizer
 wiki](https://wiki.ootrandomizer.com/index.php?title=Entrance_Randomizer) states
 the governing rule outright: **"all entrances are kept bidirectional, which means
@@ -283,30 +206,9 @@ the hub at map 287, arriving on its return door.
 
 The limit is stated rather than implied: **this does not guarantee a route.** A hub
 can still lead into a pocket, and only reachability logic over the whole graph
-would rule that out - which this ticket puts out of scope. What `/3` removes is the
+would rule that out - which this record puts out of scope. What `/3` removes is the
 degenerate shape that made the failure immediate and unavoidable.
 
 Cited as sources, not paraphrased: OoT's own `EntranceShuffle.py` was not read for
 this pass, and no claim is made about either project's implementation beyond the
 wiki text quoted above.
-
-## Completion Criteria
-
-- A randomized derivative exists, its manifest accounts for all 735 records, and
-  the canonical image is byte-identical afterwards.
-- Same seed, same bytes; different seed, different bytes.
-- Focused tests pass, and the human-operated playthrough exists as a reported
-  result rather than an assumption.
-
-## Final Report Requirements
-
-`public progress impact: NONE` - this is a side hack that ships an offline
-artifact: it adds no capability, changes no registry or site surface, and the
-randomizer itself is not a published product capability.
-
-## Stop
-
-Stop when the derivative ROM, its manifest and the focused proofs exist and the
-runtime smoke has been reported. Do not open a Workbench surface, do not touch the
-capability registry, do not begin `MAP-WARPS-AND-CONNECTIONS-001`'s Required Work 3
-or 4 from here, and do not start a new research line.

@@ -1,35 +1,34 @@
 # DragonByte Z, human visual review index
 
-`DRAGONBYTE-Z-VISUAL-DIRECTION-PASS-001`, final accepted candidate: frozen at
-`13d2ab2`, with the post-review corrections committed on top. Nothing here is
-generated artwork: every image is a real screenshot of the running PySide6
+Final accepted candidate, with the post-review corrections applied. Nothing here
+is generated artwork: every image is a real screenshot of the running PySide6
 application against the canonical Buu's Fury USA rev0 image.
 
 Most captures are 1440x900. Four are 1100x720 (the narrow states plus
 `g8-graphics-narrow`), and the two project-action dialogues are their own
 content-sized dimensions, 542x350 for Build and 480x326 for Run.
 
-## Look at these first
+## Where the images are
 
-| | Path |
-|---|---|
-| **Contact sheet, all 25 candidate states in one image** | `<temp>\dbz-visual-pass\light-contact-sheet.png` |
-| **Palette comparison, dark interim theme vs the accepted pink theme** | `<temp>\dbz-visual-pass\palette-comparison-buu.png` |
-| **Before/after sheets, 17 pairs with captions** | `<temp>\dbz-visual-pass\comparison-light\` |
+The contact sheet, the palette comparison and the before/after sheets were
+produced for the human visual pass and are not part of the repository. What the
+repository records is the state list, the per-state verdicts and the measured
+checks below; the capture names are the durable identifiers.
 
 ## A. Reference matrix (what the real tools do)
 
 `docs/research/UI_REFERENCE_MATRIX.md`, a 14-row x 9-column matrix over GB Studio,
 Porymap, Tiled, LDtk, Godot, Aseprite, RPG Maker MZ and HexManiacAdvance, with the
-verified findings that changed a decision and the confirmed anti-AI constraints.
+verified findings that changed a decision and the confirmed constraints that keep
+the interface from reading as generic generated artwork.
 
-## B. BEFORE captures (baseline `ad3c022`)
+## B. BEFORE captures
 
-`<temp>\dbz-visual-pass\before\`, 18 PNGs.
+18 baseline captures were taken before the change.
 
 ## C. AFTER captures (accepted candidate)
 
-`<temp>\dbz-visual-pass\light\`, 25 PNGs:
+25 captures:
 
 - the 18 review states, `01-shell-no-rom` through `18-narrow-shell-atlas`;
 - six Graphics states: `g2-graphics-static-sprite`, `g3-graphics-animated-sprite`,
@@ -42,12 +41,12 @@ verified findings that changed a decision and the confirmed anti-AI constraints.
 
 Two of the 18 are captured as the **modal dialogues** they are, not as pages:
 `14-build-action` (Build) and `15-run-configuration` (Run). Because `14-build-surface`
-was renamed to `14-build-action`, the comparison directory holds 17 sheets rather
+was renamed to `14-build-action`, the comparison set holds 17 sheets rather
 than 18; the only missing pair is `compare-14`.
 
 ## D. Comparison sheets
 
-`<temp>\dbz-visual-pass\comparison-light\`, 17 PNGs plus `index.md`.
+17 before/after comparison sheets plus their own index were produced.
 
 ## E. Per-state verdicts
 

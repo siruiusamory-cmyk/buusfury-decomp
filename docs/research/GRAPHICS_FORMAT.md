@@ -155,8 +155,7 @@ with per-direction bounding boxes. **INFERRED**; not decoded, not exposed.
 > filters are applied (`1017 - 4 = 1013`, `13660 - 64 = 13596`,
 > `10964 - 5 = 10959`, `1562` deduplicated); the reader itself
 > (`tools/webfoot/graphics.py::_animations_in`) is **deliberately left unchanged**
-> here, and the bounded correction is recorded as a deferred follow-up in
-> [`../tickets/archive/LOGX-SPRITE-001-COMPLETE.md`](../tickets/archive/LOGX-SPRITE-001-COMPLETE.md).
+> here, and the bounded correction is recorded as a deferred follow-up.
 > Evidence: [`LOGX_SPRITE_PROVENANCE.md`](LOGX_SPRITE_PROVENANCE.md).
 
 ### Animation record
@@ -204,8 +203,7 @@ numbered, never named - see §10.
 > reason this document's "7,355 unique graphics containers" differs from the
 > 7,390 distinct container offsets the corpus actually reaches (the 21 frames reach
 > 35 containers the single-piece set does not).
-> Evidence: [`LOGX_FRAME_PROVENANCE.md`](LOGX_FRAME_PROVENANCE.md);
-> closure: [`../tickets/archive/LOGX-FRAME-001-COMPLETE.md`](../tickets/archive/LOGX-FRAME-001-COMPLETE.md).
+> Evidence: [`LOGX_FRAME_PROVENANCE.md`](LOGX_FRAME_PROVENANCE.md).
 
 > **SUPERSEDED - the paragraph below is the accepted reader's original description,
 > retained as history. LOGX-FRAME-001 refutes it; see the correction note above.**
@@ -345,8 +343,7 @@ single-piece-frame subset and this reader cannot see the 21 multi-piece frames.)
 > slots, `10964 - 5 = 10959` frame records). The reader
 > (`tools/webfoot/graphics.py`) and `tools/webfoot/formats/sprite_graphics.py`
 > are **deliberately left unchanged** by this closeout; the bounded implementation
-> follow-up is recorded in
-> [`../tickets/archive/LOGX-FRAME-001-COMPLETE.md`](../tickets/archive/LOGX-FRAME-001-COMPLETE.md).
+> follow-up is recorded as a deferred item.
 
 ### Sharing
 

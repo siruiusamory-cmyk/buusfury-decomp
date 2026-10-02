@@ -1,4 +1,7 @@
-# ROM-010 - Make Runtime Probing Reliable, Then Re-run Clean-State Callback Trace
+# ROM-010 runtime probe reliability
+
+Removing the runtime-launch blocker that stopped the clean-state callback trace,
+then re-running the exact-object experiment against a reliably usable probe.
 
 ## Objective
 
@@ -14,7 +17,7 @@ Does a dialogue-free gameplay state allow a factory `0x08007675` object to reach
 
 ---
 
-## Context Delta
+## Context
 
 ROM-009 completed with:
 
@@ -59,7 +62,7 @@ No proprietary/runtime artifacts may enter the commit.
 
 ## Primary Problem
 
-The current mGBA/GDB/Lua orchestration depends on an execution path that the environment could not complete reliably.
+The current mGBA/GDB/Lua launch sequencing depends on an execution path that the environment could not complete reliably.
 
 Determine the exact failure boundary.
 
@@ -71,7 +74,7 @@ Classify it as one of:
 - Lua injection/loading blocked
 - process discovery blocked
 - save-state loading blocked
-- orchestration timing/race
+- launch-condition timing or race
 - another precisely demonstrated cause
 
 Do not merely report "environment blocked" again.
@@ -80,7 +83,7 @@ Identify the narrowest concrete boundary.
 
 ---
 
-## Required Work - Phase 1: Audit Existing Runtime Harness
+## Phase 1: audit the existing runtime harness
 
 Inspect existing runtime tooling from ROM-006 through ROM-009.
 
@@ -107,9 +110,9 @@ Prefer adapting existing infrastructure over adding a second competing harness.
 
 ---
 
-## Required Work - Phase 2: Minimize GUI Dependency
+## Phase 2: minimize GUI dependency
 
-Make the smallest robust change that lets the tool perform the experiment without repeated GUI approval attempts.
+Make the smallest robust change that lets the operator perform the experiment without repeated GUI approval attempts.
 
 Preferred approaches, in order:
 
@@ -137,7 +140,7 @@ But prefer zero manual interaction if supported.
 
 ---
 
-## Required Work - Phase 3: Harden Orchestration
+## Phase 3: harden the probe state machine
 
 The runtime launcher/probe must fail closed.
 
@@ -162,7 +165,7 @@ Do not repeatedly relaunch GUI processes in an uncontrolled loop.
 
 ---
 
-## Required Work - Phase 4: Re-run ROM-009 Experiment
+## Phase 4: re-run the exact-object experiment
 
 As soon as the runtime path is working, STOP infrastructure expansion.
 
@@ -184,7 +187,7 @@ Required sequence:
 10. if new map creates X2, retire X and track X2 separately
 11. stop on exact-object callback
 
-Object identity rules from prior tickets remain mandatory.
+Object identity rules from prior records remain mandatory.
 
 Object Y is never evidence for object X.
 
@@ -294,7 +297,7 @@ All local runtime artifacts remain beneath ignored `build/rom010/` or existing i
 
 Portable tests must not require private ROM/save/state files.
 
-Add synthetic tests for any new orchestration logic.
+Add synthetic tests for any new launch-sequencing logic.
 
 At minimum cover:
 
@@ -305,31 +308,6 @@ At minimum cover:
 - stale object rejection
 - exact callback success
 - infrastructure success vs research failure distinction
-
----
-
-## Delegation
-
-Initial read-only review:
-
-### an independent reviewer - Runtime Harness Audit
-
-Trace the existing ROM-006→009 launch/debug pipeline and identify the smallest concrete environmental dependency causing ROM-009 failure.
-
-Return:
-
-- pipeline
-- failure boundary
-- GUI dependencies
-- recommended minimal fix
-
-The primary implementer implements.
-
-Do not spawn broad reverse-engineering agents before the runtime environment works.
-
-If runtime succeeds but the exact object remains filtered, then use an independent reviewer for the bounded guard analysis.
-
-Final independent an independent reviewer review remains required by `docs/DEVELOPMENT.md`.
 
 ---
 
@@ -352,7 +330,7 @@ Report private runtime replay separately from portable pytest.
 
 ---
 
-## Required Result
+## Result classifications
 
 ROM-010 should end in one of:
 
@@ -377,36 +355,3 @@ Unlike ROM-009, D must identify the exact external boundary and the smallest use
 Do not simply repeat "environment blocked."
 
 ---
-
-## Completion Criteria
-
-ROM-010 is done when:
-
-- ROM-009 is committed as baseline
-- runtime-launch/debug pipeline is mapped
-- previous generic environment failure is narrowed to an exact cause
-- smallest robust fix/workaround is implemented
-- clean dialogue-free experiment is attempted
-- exact target attribution remains fail-closed
-- result A, B, C, or precise D is obtained
-- dialogue hypothesis is reassessed
-- parser readiness is reassessed
-- all tests pass
-- independent review completes
-- ROM/save/state originals remain unchanged
-- ROM-010 changes remain uncommitted and unstaged
-
-## Stop
-
-Do not begin ROM-011.
-
-Do not implement a descriptor parser.
-
-Do not broaden into unrelated engine archaeology.
-
-The priority is:
-
-FIX THE LAB
-→ RUN THE EXPERIMENT
-→ GET ONE PRECISE RESULT
-→ STOP.

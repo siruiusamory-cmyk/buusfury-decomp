@@ -1,16 +1,9 @@
-# MAP-WARP-CREATE-RUNTIME-001 - a created transition at runtime
+# A created transition at runtime: integration notes
 
-STATUS: **CLOSED.** Scoped **sub-pass of `MAP-WARPS-AND-CONNECTIONS-001`**,
-completed 2026-09-27 and archived at the parent's closeout (2026-09-28). The full
-evidence record, the run sheets and the observer derivations stay at
-[`../MAP-WARP-CREATE-RUNTIME-001.md`](../MAP-WARP-CREATE-RUNTIME-001.md).
+The condensed record of the runtime proof that the retail engine consumed a created
+transition, with its limits preserved.
 
-`public progress impact: NONE` - no capability shipped here: no product code
-changed, the registry stayed at **19 / 24 (79%)**, `EDIT` stayed **7 / 8**, and no
-site source changed. The capability advance to **20 / 24** belongs to the parent's
-own closeout.
-
-## What it was asked to do
+## Scope
 
 Prove that a transition the canonical image does **not** contain, created through the
 real DragonByte Z Workbench and built by the normal production path, is found and
@@ -54,23 +47,16 @@ The record states why this is creation and not something else: on map 40 only th
 element 2's region contains the authored box, both canonical boxes are disjoint from
 it, and neither canonical record's key names map 435.
 
-## Review status
-
-No product code changed, so no independent code-review gate applied to a diff. The
-tracked additions are a read-only observer, a session summariser and an
-additions-only allowlist entry naming the observer; the parent capability owns the
-review gate at its own closure.
-
 ## Limitations preserved
 
 * **The exact arrival pixel on screen was NOT INSTRUMENTED.** The observer has no
-  player-coordinate channel and the ticket did not require one. The authored value
+  player-coordinate channel and the record did not require one. The authored value
   is verified present in the live record (`arrival_14 = 0010`,
   `arrival_16/17 = 68,01` = `(16, 360)`).
 * **The warp's write of the arrival facing onto the player object was not re-measured
   here.** It is proved by `MAP-WARP-WORKBENCH-RUNTIME-001` with the facing tracer,
-  which this ticket did not rerun.
-* **`0x03001A34` was not measured in this ticket** (it is the facing tracer's
+  which this record did not rerun.
+* **`0x03001A34` was not measured in this record** (it is the facing tracer's
   channel), and what it selects remains `UNRESOLVED`; its non-zero case remains
   `UNTESTED`.
 * **The savestate carries the map's already-built area.** A savestate taken on the
@@ -85,25 +71,17 @@ review gate at its own closure.
   sampled and never resolved; the derivative session ran with that revision and has
   **zero** `ROUTE_UNRESOLVED` rows.
 
-## Validation and policy
+## Validation
 
 * The evidence is the human-operated runtime run plus the static build evidence; the
   observer's expected rows were derived independently over both images before the
   run.
-* **Test-policy record:** no manual broad suite was run for this ticket; the
+* **Test-policy record:** no manual broad suite was run for this record; the
   acceptance evidence is the runtime run.
 * Authoring was driven through the shipped surface and the build through the shipped
   path, so the proof is of the shipped chain, not of a research harness.
 
-## Safety
-
-Canonical ROM `940ad5f0...f059e` verified before every launch and re-verified
-afterwards and **UNCHANGED**; private save and savestate unchanged
-(`7CF0A516...`, `2D5740A8...`); no ROM, savestate, save, capture or generated project
-output tracked - the derivative, the project and the run directories all live under
-ignored `build/`; the private save beside the canonical image was never written.
-
-## Stop and next
+## Stop
 
 Stopped after the runtime proof. The sub-pass reported the parent as ready for
 closeout. The parent's own closeout states the final result: `warps` ships, `EDIT`

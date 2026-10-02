@@ -1,33 +1,16 @@
-# LOGX-TILE-001 review
+# LOGX tile verification
 
-Reconstruct Buu's Fury chunk / tile representation. Research only.
+The Buu's Fury chunk and tile representation, reconstructed from the canonical
+image. Static analysis only; no runtime capture was made for this pass.
 
-## Repository and safety
+Canonical ROM SHA-256, before and after:
+`940AD5F01DB4465B8877DFE739510CBF34F4EA3D390F3DF13519808BC36F059E`
 
-- **START SHA:** `22d60419d61132ecaa3128b28a2ef274d317be66`
-- **END SHA:** the branch head of `logx-tile-001` after the commit that records
-  these SHAs; the two commits below are `5dd99cb` and `f4e3076`
-- **BRANCH:** `logx-tile-001`
-- **COMMIT SHA(S):** `5dd99cb4fa5bf7e6f6e3fe72f653681d8012762e`
-  `research(map): reconstruct Buu chunk and tile format` (the research result),
-  up to and including `f4e30767f149f3ba6862752358deb820cf70c059`
-  `docs(tickets): record LOGX tile review verdict and corrections` (the
-  independent review verdicts, the 20 required corrections and the correction
-  gate)
-- **CANONICAL ROM SHA BEFORE:**
-  `940AD5F01DB4465B8877DFE739510CBF34F4EA3D390F3DF13519808BC36F059E`
-- **CANONICAL ROM SHA AFTER:**
-  `940AD5F01DB4465B8877DFE739510CBF34F4EA3D390F3DF13519808BC36F059E`
-
-The isolated worktree was created from the START SHA as a fresh branch. The
-retained `logx-layer-001`, `logx-map-render-001` and `logx-map-record-001`
-branches, the active WORKBENCH-006 worktree and stale local state were not used
-and were not touched. The ROM was opened read-only; no save, state, derived ROM,
-dump or extracted asset was created, and none is staged.
-
+Evidence document: [`LOGX_TILE_PROVENANCE.md`](LOGX_TILE_PROVENANCE.md).
+Tooling: `tools/research/logx_tile_probe.py`.
 ## External claims tested
 
-Source: `mainant/LOGExtractor`, as summarised in the ticket. Every claim was
+Source: `mainant/LOGExtractor`, as summarised in the record. Every claim was
 treated as a claim only:
 
 1. background tiles are 8x8 pixels;
@@ -225,7 +208,7 @@ REFUTED as a universal property.** The engine allocates a fixed `0x4000`-byte
 decode buffer (`0x08009C18`) and indexes it with an 8-bit field scaled by 64, so
 256 64-byte tiles is the exact addressed capacity; 256 tiles at 8x8 is 16x16
 tiles = 128x128 px. But 186 of 187 canonical banks declare exactly `0x4000`, one
-declares `0x3C40`, and the payload side of this ticket uses a different decoded
+declares `0x3C40`, and the payload side of this record uses a different decoded
 size (`0x800`) and index width.
 
 ## Non-dominant handler applicability
@@ -408,21 +391,21 @@ the canonical ROM, after the review corrections:
   the non-canonical-file refusal. The portable synthetic file needs no ROM and
   passes either way.
 
-The record-shape findings of this ticket do not disturb the accepted production
+The record-shape findings of this record do not disturb the accepted production
 renderer.
 
-Private-runtime validation: **none performed**. This ticket is static-only, made
+Private-runtime validation: **none performed**. This record is static-only, made
 no mGBA capture and produced no derived ROM.
 
 Environment note: `tmp_path`-using tests fail with
-`PermissionError: [WinError 5] ... \AppData\Local\Temp\pytest-of-<user>` in this
-environment. That is pre-existing and not ticket-caused - the same failure occurs
+`PermissionError: [WinError 5] ... the pytest temporary root` in this
+environment. That is pre-existing and not record-caused - the same failure occurs
 on the untouched `tests/integration/test_logx_layer_rom.py` - and every run above
-was made with an explicit `--basetemp`. The independent reviewer could not
+was made with an explicit `--basetemp`. The independent verification pass could not
 reproduce the claim on their machine and therefore did not confirm it; it is a
-local environment observation, not a ticket finding.
+local environment observation, not a record finding.
 
-## ROM_BIBLE_IMPACT
+## Physical facts recorded
 
 `docs/reverse-engineering.md` gains a "LOGX-TILE-001 chunk payloads and tile
 entries" section stating physical facts only: the element-to-container
@@ -434,11 +417,6 @@ container and its prefix recurrence and packed `(bank, tile)` semantics, the
 corrected identity of `0x179764`, the handler-applicability boundary, and the
 resolution of LOGX-LAYER-001's four-slot-cap question. Layer positioning stays
 UNRESOLVED. No speculative semantic name is promoted.
-
-## public progress impact
-
-**NONE.** The ticket is research-only: no parser, editor, renderer or SDK facade
-changes, no new shipping capability, and no public frontier moves.
 
 ## Disagreements with LOGExtractor
 
@@ -472,12 +450,12 @@ changes, no new shipping capability, and no public frontier moves.
 7. The `0x08007B63` and `0x080088BD` singletons.
 8. Packed-stream internals.
 
-## Handoff to LOGX-CONNECTOR-001
+## Downstream note to LOGX-CONNECTOR-001
 
 Nothing new. The `0x18`-byte element stride remains scoped to root `+0x24`/`+0x28`
 and MapEntry `+0x18`; no layer-record site uses it.
 
-## Handoff to LOGX-CODEC-001
+## Downstream note to LOGX-CODEC-001
 
 - Decompressor entry `0x0803D940`: `kind 0` -> `memcpy(dst, src+8, src[+4])`,
   `kind 1`/`kind 2` -> packed decoder `0x08049120`, any other kind -> return with
@@ -491,23 +469,23 @@ and MapEntry `+0x18`; no layer-record site uses it.
   first-word-zero disagreement, the `UnknownHeader` path, general encoder
   requirements, and every other compressed asset class.
 
-## Other downstream handoffs
+## Other downstream consumers
 
 - **Any position consumer:** layer positioning is still UNRESOLVED.
 - **Any renderer change:** the 32x32 payload shape, bits 0-9 semantics and the
   character-region ordering are now engine-proven and can be relied on; the
   bit 10/11 direction is not engine-proven.
 - **LOGX-LAYER-001 successor:** its four-slot-cap open question is resolved by
-  this ticket; its other questions are unchanged.
+  this record; its other questions are unchanged.
 
-## Independent review
+## Independent verification
 
-Two fresh-context reviewers were used, each with no knowledge of this ticket's
+Two independent verification passes were used, each with no knowledge of this record's
 working sessions and each free to write and run its own analysis code against the
 canonical image. Both verified the ROM SHA-256 before and after their work and
 neither wrote to the image or to the worktree.
 
-**Reviewer A - census and disassembly gate. Verdict: REJECT (fixable), then
+**the first verification pass - census and disassembly gate. Verdict: REJECT (fixable), then
 re-verified.** It independently re-derived every census number with its own code:
 452 / 421 / 1808 / 1464; 1516 / 1420; `4274 = 156 + 4118`; 3745 distinct with 165
 shared and a maximum reuse of 10; the target range; all 3745 targets kind-1
@@ -520,9 +498,9 @@ instruction-level statement in provenance sections 4, 6, 9 or 10 contradicted by
 disassembly, and confirmed that the only platform-convention claim (bit 10/11
 direction) is correctly labelled PARTIALLY CONFIRMED. It confirmed the ROM
 unchanged. It then reported seven blocking corrections, of which C1 was found
-independently by this ticket during self-check before the verdict arrived.
+independently by this record during self-check before the verdict arrived.
 
-**Reviewer B - adversarial verification. Verdict: APPROVE WITH REQUIRED
+**the second verification pass - adversarial verification. Verdict: APPROVE WITH REQUIRED
 CORRECTIONS.** It attacked each conclusion rather than confirming it, using
 dataflow rather than linear sweeps:
 
@@ -564,7 +542,7 @@ dataflow rather than linear sweeps:
 ## Required corrections
 
 Every correction below was independently re-verified against the ROM by this
-ticket before being applied, and the affected numbers were re-measured rather
+record before being applied, and the affected numbers were re-measured rather
 than copied from a review.
 
 | # | Correction | Source | Status |
@@ -574,7 +552,7 @@ than copied from a review.
 | 3 | `"961 of them inside 0x08000000..0x08007000"` transposed two digits of the range. Corrected to the full breakdown: 46 below `0x08007000`, 29 in the map/layer region, 961 in the first `0x70000` bytes, 571 above. | B (1) | APPLIED and re-verified |
 | 4 | The absence claim was stated image-wide. Rewritten to the payload-scoped form, with the three unscanned idioms measured and published (8,014 shift-then-branch pairs, 1,204 `movs`+`lsls` builds, non-adjacent pairs) and the sampling result that none of them reads a payload buffer. Corrected in the provenance document, the review document and the ROM bible. | B (4), corroborated by A (C) | APPLIED and re-verified |
 | 5 | `"its only consumer"` was too narrow: the decoded stream has one consumer, but the *field* `root+0x48` has two, because `0x08009B80` reads its declared size. | B (5) | APPLIED and re-verified |
-| 6 | `"inside the code that owns a layer payload there is no mask or field extraction reaching bit 9 or above at all"` contradicted the ticket's own table row for the two in-region `(0, 16)` `& 0xFFFF` truncations. Rewritten as "no pair in the region has `right_shift >= 9`". | B (3) | APPLIED and re-verified |
+| 6 | `"inside the code that owns a layer payload there is no mask or field extraction reaching bit 9 or above at all"` contradicted the record's own table row for the two in-region `(0, 16)` `& 0xFFFF` truncations. Rewritten as "no pair in the region has `right_shift >= 9`". | B (3) | APPLIED and re-verified |
 | 7 | The BL/BLX figures mixed two enumerations. Replaced with one enumeration stated per number: **8,838** 4-byte-aligned encodings, **8,266** resolving in-ROM, **4,440** distinct targets, per-block call targets **2**..**1,384**, block `0x08060000` = **9**, `0x0806E000..0x0806F000` = **0**. Also corrected the bytes quoted at `0x0806E640` to `0x03800070` / `0x00000C00` / `0x40040002`. | B (2) and A (C3, C4, C5) | APPLIED and re-verified |
 | 8 | `"Expanding every unique dominant payload (1,241,888 nonzero entries)"` used the wrong unit. 1,241,888 is a per-map, per-reference expansion; the unique-payload expansion is **1,107,699** (`3,834,880 - 2,727,181`). Both are now stated with their units, and the probe's union output carries `nonzero_entries` so the two can never be confused again. | A (C6), independently confirmed by B | APPLIED and re-verified |
 | 9 | `0x0800897B`'s first-window-word prose was ambiguous. Replaced with the four exact values and their record counts: `0x00000000` on 38 records, plus `0xFFFFFF56`, `0xFFFFFFAB` and `0x000000AA` once each, all three outside the ROM address range. | A (C7) - A's own classification of `0x000000AA` as unaligned-in-ROM is itself incorrect, since it lies below the ROM base; the document states the measured class | APPLIED and re-verified |
@@ -588,47 +566,10 @@ than copied from a review.
 | 17 | The placeholder class `0x08049548` `memset`s the same screenblock region to zero (`0x08007A28`..`0x08007A38`); the blit is not the region's only writer. Recorded. | B (non-blocking) | APPLIED and re-verified |
 | 18 | The constructor initialises `object+0x10`..`+0x1C` to the default container `0x08070808` (`0x08007BA8`..`0x08007BB2`); added, because it explains the null-cell blit path. | B (non-blocking) | APPLIED and re-verified |
 | 19 | The payload-read enumeration cannot exclude an indirect call reaching a reader. Scoping caveat added. | B (non-blocking) | APPLIED and re-verified |
-| 20 | `tmp_path` `PermissionError` claim: reviewer A could not reproduce it on its machine. Retained as a local environment observation only, and labelled as such. | A (non-blocking) | APPLIED |
+| 20 | `tmp_path` `PermissionError` claim: verification pass A could not reproduce it on its machine. Retained as a local environment observation only, and labelled as such. | A (non-blocking) | APPLIED |
 
-No correction was rejected, and no reviewer finding was accepted on its word
-alone: each was re-measured here first. Two reviewer assertions did not survive
-that check and are recorded rather than adopted - reviewer A's classification of
-`0x000000AA` as unaligned-in-ROM, and reviewer B's per-64 KiB-block range, which
+No correction was rejected, and no verification pass finding was accepted on its word
+alone: each was re-measured here first. Two verification pass assertions did not survive
+that check and are recorded rather than adopted - verification pass A's classification of
+`0x000000AA` as unaligned-in-ROM, and verification pass B's per-64 KiB-block range, which
 belongs to a different enumeration than the one the document now cites.
-
-## Correction gate
-
-Closed. All 20 corrections were verified against the ROM by this ticket, the
-provenance document, the review document and the ROM bible were updated, and the
-focused suites plus the surrounding integration files were re-run after the last
-edit: `test_logx_tile_rom.py` + `test_thumb_disasm_field_extraction.py`
-**41 passed**; with the four LOGX files, `test_map_render_rom.py` and the four
-safety/workflow unit files **123 passed, 2 skipped**; `tests/unit`
-**1308 passed, 15 skipped**; and with the ROM unavailable `test_logx_tile_rom.py`
-**4 passed, 26 skipped, 0 failed**.
-The canonical ROM SHA-256 was re-verified as unchanged after the corrections, and
-the probe's output was re-checked for determinism (two byte-identical runs).
-
-## Git status
-
-The isolated worktree's change set is **4 new files plus 2 edited files**:
-
-```text
- M docs/reverse-engineering.md
- M tools/research/thumb_disasm.py
-?? docs/research/LOGX_TILE_PROVENANCE.md
-?? docs/research/LOGX-TILE-001-review.md
-?? tests/integration/test_logx_tile_rom.py
-?? tests/unit/test_thumb_disasm_field_extraction.py
-?? tools/research/logx_tile_probe.py
-```
-
-Unlike the LOGX-LAYER-001 worktree, this checkout produced no CRLF noise: the
-worktree reports exactly those seven paths, so a whole-tree `git diff --check` is
-usable here and is clean (`exit 0`). None of the new files contains trailing
-whitespace or a tab; all are LF.
-
-No ROM, save, state, dump, derived ROM, generated commercial asset or `extern/`
-checkout is staged or untracked in the worktree; the canonical ROM lives outside
-it and outside the repository tree, and its SHA-256 was re-verified unchanged
-after the work.

@@ -56,18 +56,18 @@ except ImportError:  # pragma: no cover - baseline capture only
     app_theme = None
 
 #: The canonical Buu's Fury USA rev0 image, and the assembled Atlas artifact the
-#: Session expects. Both live OUTSIDE this worktree by default (they are ignored
-#: local inputs), so they are overridable rather than copied in - a junction
-#: inside the worktree is reported by git as a link it will not resolve, which
+#: Session expects. Both are ignored local inputs resolved against this checkout
+#: by default, and both are overridable rather than copied in - a junction inside
+#: the worktree is reported by git as a link it will not resolve, which
 #: `tests/unit/test_project_safety.py` correctly refuses.
 ROM = Path(
     os.environ.get(
         "DBZ_QA_ROM",
-        r"<checkout>\roms\Dragon Ball Z - Buu's Fury (U).gba",
+        _ROOT / "roms" / "Dragon Ball Z - Buu's Fury (U).gba",
     )
 )
 ATLAS_DIR = Path(
-    os.environ.get("DBZ_QA_ATLAS_DIR", r"<checkout>\build\atlas")
+    os.environ.get("DBZ_QA_ATLAS_DIR", _ROOT / "build" / "atlas")
 )
 CANONICAL_SHA256 = "940ad5f01db4465b8877dfe739510cbf34f4ea3d390f3df13519808bc36f059e"
 

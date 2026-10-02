@@ -1,6 +1,6 @@
 """ROM-ATLAS-001 code regions: `code_regions.jsonl`, from upstream evidence only.
 
-**This module replaces scratchpad/regen.py, which was broken.** regen.py read the
+**This module replaces the earlier `regen.py`, which was broken.** regen.py read the
 existing `code_regions.jsonl` (regen.py:19-21), copied its `jump_table` rows
 verbatim (regen.py:104-106) and reused its `code_reached` / `literal_pool`
 extents as the wave-2 reach record (regen.py:31-40), then overwrote that same
@@ -14,10 +14,10 @@ Nothing here reads a prior `code_regions.jsonl`. Every row is derived from:
 * the wave-2 traversal's per-byte reach record and literal-pool word addresses,
 * the wave-4 traversal's same two records,
 * jump tables re-derived from ROM bytes by `Traversal.jump_tables`, which is the
-  surviving scratchpad/trace.py:234-258 logic.
+  surviving `trace.py:234-258` logic.
 
 The emission (classification names, confidence levels, note strings, the
-`(file_offset, size)` sort) is scratchpad/trace.py:358-432, which is the form
+`(file_offset, size)` sort) is `trace.py:358-432`, which is the form
 `atlas_build._code_region_claims` consumes.
 
 regen.py's carve/row shape (regen.py:66-102) is reproduced implicitly: literal

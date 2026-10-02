@@ -10,7 +10,7 @@ Measured on `origin/master` (`git cat-file` on the blobs, 609 tracked files):
 | kind | count | notes |
 | --- | --- | --- |
 | bare LF only | 593 | the overwhelming majority |
-| CRLF only | 7 | includes `docs/DEVELOPMENT.md` and `docs/DEVELOPMENT.md` |
+| CRLF only | 3 | preserved as they are; never normalize a line you did not otherwise change |
 | mixed | 9 | CRLF-dominant with interspersed bare-LF lines |
 
 The mixed files on `origin/master` are `config/roms.yaml`,
@@ -79,6 +79,6 @@ valid, and assert on the content of each region before writing.
 
 A repo-wide CRLF/LF normalisation is a separate, deliberate decision. It is
 **not** an acceptable side effect of an unrelated change, and it must never be
-committed inside a feature or ticket branch: it destroys reviewability and
-buries the real change. If you find a worktree full of pure ending churn, report
+committed alongside one: it destroys reviewability and
+buries the real change. If you find a checkout full of pure ending churn, report
 it; do not commit it.

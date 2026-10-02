@@ -1,38 +1,11 @@
-# ASSET-EXPORT-MAP19-001 - review
+# Map 19 asset export verification
 
-```
-START SHA:    c6821d450b475ec5d262f0b239b3f2dce8de6559
-              (the current accepted tip of asset-export-map-handlers-001,
-              verified as: 9154fed and 5ab0f5c are ancestors, the worktree is
-              clean, and both reviewer approvals are recorded in
-              docs/research/ASSET-EXPORT-MAP-HANDLERS-001-review.md)
-FROZEN CONTENT REVISION: c01000953e2682918cc1f2d4e8071abbb5a2d1ba
-              ("export: resolve final special map layer" - the first frozen
-              revision, reviewed and REJECTED)
-CORRECTED REVISION:      3529b80f6032c5a7bbb702bddc28802a6c04f441
-              ("record the map 19 correction gate" - the tile-ordinal
-              correction was bb0426d; this is its gate record. Reviewed and
-              REJECTED on documentation findings)
-PLACEMENT-PROVISIONAL REVISION: c8cf6c6df40f555959c3ffe18943af015516e967
-              ("correct the map 19 engine claims and mark placement
-              provisional" - reviewed and REJECTED on documentation findings)
-MODE/RECORD CORRECTION:  db52eaca5ceccb23d894900c3dad1280f42249c6
-              ("correct the map 19 mode and runtime register record")
-FINAL REVISION:          07a85b3652a6dd7cfc5eb4419ff2a862c8b8b7fe
-              ("record the map 19 reviewer re-reviews")
-BRANCH:       asset-export-map19-001
-COMMITS:      this ticket's own commits on top of the start SHA
-CANONICAL ROM SHA BEFORE: 940AD5F01DB4465B8877DFE739510CBF34F4EA3D390F3DF13519808BC36F059E
-CANONICAL ROM SHA AFTER:  940AD5F01DB4465B8877DFE739510CBF34F4EA3D390F3DF13519808BC36F059E
-```
+The map-19 terrain and asset-export corrections, the byte-level change audit, the
+independent re-measurements and the runtime placement validation.
 
-The commit history is: `c010009` (first freeze, rejected), `3bebe02` (inert
-dead-constant removal), `bb0426d` (the tile-ordinal correction), `3529b80f`
-(correction-gate record), `c8cf6c6` (engine claims corrected, placement marked
-provisional), `db52eac` (BGxCNT mode account and runtime register record
-corrected), `07a85b3` (review record).
+Canonical image: the verified Buu's Fury profile used by the export reader.
 
-## What the ticket set out to do
+## Scope of the pass
 
 Resolve the one `static_graphical_assembly_unresolved` reference left by
 ASSET-EXPORT-MAP-HANDLERS-001: map 19, root `0x082AD8BC`, slot `+0x1C`, record
@@ -136,7 +109,7 @@ written 452, layers classified 1808.
 DETERMINISM:        PASS (the export is a pure function of the ROM: the layer,
                     composite and plane digests are reproduced by the pinned tests
                     from the ROM alone, and the exporter's repeat-render test
-                    passes). Reviewer B re-ran a maps-only export and matched all
+                    passes). the second verification pass re-ran a maps-only export and matched all
                     2,470 map-side rows byte-for-byte, and 33 of its focused
                     integration tests passed.
 VISUAL VALIDATION:  PASS as a coherence check only - layer_2.png at 3584x2560 is
@@ -144,7 +117,7 @@ VISUAL VALIDATION:  PASS as a coherence check only - layer_2.png at 3584x2560 is
                     mountains, forest and sand, with no seams and no repeated or
                     garbage blocks. Visual coherence is validation, not evidence;
                     the unit was established by the semantic split recorded above.
-                    Reviewer B re-measured the seams independently: boundary deltas
+                    the second verification pass re-measured the seams independently: boundary deltas
                     fall below interior deltas at both the 32x32-cell and 8x8-tile
                     scales, while column-major and x-descending alternatives are 8x
                     to 10x discontinuous.
@@ -168,16 +141,16 @@ composite changes size.
 ## Caller-search discipline
 
 `tools/research/thumb_disasm.py::scan_thumb_bl_callers` was not used as evidence
-for any claim in this ticket. Every field offset, instruction sequence and
+for any claim in this record. Every field offset, instruction sequence and
 constant above was read from the canonical ROM with Capstone 5.0.7. The helper's
 known defects (54.9 % true call-site recall, 1,552 false-positive pairs, and the
 `resolve_thumb_bl` word-alignment gap for unaligned `BLX` sites) are recorded in
 `ASSET_EXPORT_MAP_HANDLERS_PROVENANCE.md` §7 and are not repaired here; the
-generic helper still needs its own follow-up ticket.
+generic helper still needs its own follow-up record.
 
-## Independent review
+## Independent verification
 
-### Reviewer A - second pass at the corrected revision
+### Second verification pass at the corrected revision
 
 ```text
 VERDICT: REJECT
@@ -188,7 +161,7 @@ A1 (the payload is a 32x32 tile-ordinal plane), A2 (the destination literal is
 `0x0600F000`, `0x06008000` has zero hits in the image, the count pair computes
 `(32 - m) / 2` halfwords under a `0x8000` control = `32 - m` bytes, `0x040000D4`
 is DMA3SAD, and in all nine blocks the `0x20` advance is the source register and
-the `0x40` the destination register), A3, A4, A5 and A6. The reviewer reproduced
+the `0x40` the destination register), A3, A4, A5 and A6. The verification pass reproduced
 the record chain, the container run, the plane digest, the ordinal population, the
 character block, the semantic split, both artifacts' digests and a `git archive`
 test run, and confirmed the correction history is preserved and reachable through
@@ -199,7 +172,7 @@ Required findings, all accepted and closed:
 * **A7: the falsified one-byte-per-pixel unit survived in three places**
   (`canonical.py` class docstring, `buu_resource_export.py` `render_layer`
   docstring, and the integration-test constant comment). Independent review found
-  these by the ticket's own "no stale unit" criterion. All three are corrected.
+  these by the record's own "no stale unit" criterion. All three are corrected.
 * **A8: the constructor description was wrong.** The nine-slot init writes the
   constant `0x08071020` - a stored 0x400-byte all-zero ROM cell, the "no cell"
   placeholder - to `object + 0x08 + 4*i`, and `0xFF` to `object + 0x2C + 4*i`; the
@@ -229,7 +202,7 @@ Nits accepted: the quoted listing's addresses were one instruction early (the
 `((32 - m) << 15) >> 16`; "nine structurally identical blocks" now states the two
 clip variants; and the terrain-classification sentence is labelled `INFERRED`.
 
-### Reviewer A - engine/assembly (first pass at the frozen revision)
+### First verification pass: engine and assembly
 
 ```text
 VERDICT: REJECT
@@ -263,7 +236,7 @@ Required findings, all accepted:
   validation wording are corrected, and the discriminating measurement is now a
   pinned ROM-gated test rather than a coherence claim.
 
-### Reviewer B - rendering/completeness
+### Rendering and completeness verification
 
 ```text
 VERDICT: APPROVE (one required bookkeeping item, two non-blocking notes)
@@ -279,12 +252,12 @@ which is resolved by freezing the corrected revision and recording it here; both
 nits (the addend half of the ordering key doing no work on this map, and the one
 duplicated palette colour at indices 0/1) are recorded.
 
-Reviewer B's reconstruction was of the **wrong unit**, which is exactly what
-Reviewer A's semantic measurement caught: two implementations agreeing on a
-model does not establish the model. Both reviewers' artifact-level and
+the second verification pass's reconstruction was of the **wrong unit**, which is exactly what
+the first verification pass's semantic measurement caught: two implementations agreeing on a
+model does not establish the model. Both verification passes' artifact-level and
 census-level results are unaffected by the correction and were carried forward.
 
-### Correction record
+### Correction table
 
 Both required findings were closed by re-deriving the unit from the ROM:
 
@@ -305,13 +278,13 @@ Both required findings were closed by re-deriving the unit from the ROM:
   the same model - which is recorded as the reason the ROM-gated semantic test
   exists.
 
-### Reviewer B - re-review of the changed surface
+### Verification of the changed surface
 
 ```text
 VERDICT: APPROVE WITH NON-BLOCKING NOTES
 ```
 
-Reviewer B re-derived the changed surface with its own packed decoder, its own
+the second verification pass re-derived the changed surface with its own packed decoder, its own
 raster plane, its own tile lookup and its own PNG decoder: the ordinal plane and
 its digest, the 539-tile character block, the 3584x2560 index image, and
 **0 mismatching pixels of 9,175,040** against both `layer_2.png` and
@@ -331,16 +304,16 @@ control is stated as typical rather than universal, the origin overlay is descri
 as the 0.18 % corner it is, and the root extents are marked unreconciled. Its third
 nit identified a **pre-existing** mislabel (`0x04000200` is `REG_IE` bit 1, the
 HBlank interrupt, not `DISPSTAT` bit 1) present in the accepted text from
-`9154fed`; it is corrected in the three files this ticket owns. The same mislabel
-also survives in the earlier ticket's records
+`9154fed`; it is corrected in the three files this record owns. The same mislabel
+also survives in the earlier record's records
 (`docs/research/ASSET_EXPORT_MAP_HANDLERS_PROVENANCE.md` and
-`docs/research/ASSET-EXPORT-MAP-HANDLERS-001-review.md`), which are outside this
-ticket's scope and are recorded here as a finding for a documentation sweep rather
+the earlier map-handler verification record), which are outside this
+record's scope and are recorded here as a finding for a documentation sweep rather
 than edited.
 
-### Correction gate
+### Re-verification after correction
 
-Reviewer A's third pass returned `REJECT` on five documentation items (R1-R5) plus
+the first verification pass's third pass returned `REJECT` on five documentation items (R1-R5) plus
 seven nits, explicitly stating that no artifact, field, mechanism or code change
 was implied. All of them are corrected in `db52eac`: the `BGxCNT` bit-6 error is
 replaced by the correct mosaic/mode account, the text-mode size is stated as
@@ -349,11 +322,11 @@ from the per-map context field, the map area is `4 KiB`, the §6 register values
 quote the retained capture, the listing and count comments are exact, and the
 correction history names each revision.
 
-Reviewer B's re-review of the same material returned `APPROVE WITH NON-BLOCKING
+the second verification pass's re-review of the same material returned `APPROVE WITH NON-BLOCKING
 NOTES`, with its required bookkeeping item satisfied and its nits applied.
 
-**State of the gate: OPEN.** Reviewer A's fourth pass reviewed `07a85b3` and
-returned `REJECT` on the ticket's own review record: the corrected provenance and
+**State of the gate: OPEN.** the first verification pass's fourth pass reviewed `07a85b3` and
+returned `REJECT` on the record's own review record: the corrected provenance and
 `asset-export.md` text was verified right, but three of the falsified statements
 survived verbatim in this sheet (the A9 entry's bit-6/mode reasoning and its
 `512x256` size, and Gate 2's `0x78A3` register block), plus seven nits and one
@@ -368,8 +341,8 @@ adjacent finding. All of them are corrected in `0bc8958`:
   `0.052`/`0.051`/`0.086` figures were wrong and are withdrawn;
 * §10's open item names DISPCNT and the `ctx + 0xA2` source;
 * the identity blocks name every revision and no longer mislabel `3529b80f`;
-* the `REG_IE` correction is scoped to the three files this ticket owns, with the
-  surviving instances in the earlier ticket's records recorded as a finding for a
+* the `REG_IE` correction is scoped to the three files this record owns, with the
+  surviving instances in the earlier record's records recorded as a finding for a
   documentation sweep;
 * provenance §8 records that the accepted `LOGX-TILE-001` text reads size field 2
   as `512x256`, states why the `256x512` reading is the correct one, and declines to
@@ -378,7 +351,7 @@ adjacent finding. All of them are corrected in `0bc8958`:
 No artifact or code behaviour changed in any of these passes: an AST comparison of
 every `tools/export/*.py` across `c8cf6c6`..`07a85b3` shows the only differing file
 is `canonical.py`, whose AST is identical (comment-only), and the export is
-byte-identical. A further confirming Reviewer-A pass over `0bc8958` is the
+byte-identical. A further confirming verification pass over `0bc8958` is the
 outstanding formal step; this record does not claim that pass happened, and the
 gate stays `OPEN` until it does.
 
@@ -396,7 +369,7 @@ distinct extent pairs across all 452 maps; and the driver streams a nine-cell 3x
 window over a 14x10 grid, so the engine copies a **window** of the field rather
 than holding it whole. Not established, and therefore not claimed: that the
 overworld scene displays this map, and that player flight drives the viewport -
-both need the runtime observation this ticket could not obtain.
+both need the runtime observation this record could not obtain.
 
 The consequence is recorded plainly: **resource completeness** and **runtime
 screen composition** are different claims. `maps/map_019/layer_2.png` is complete
@@ -406,7 +379,7 @@ provisional.
 
 ## Gate 2 - runtime placement validation
 
-**Status: COMPOSITE_PROVISIONAL_RUNTIME_CAPTURE_UNAVAILABLE.**
+**Classification: COMPOSITE_PROVISIONAL_RUNTIME_CAPTURE_UNAVAILABLE.**
 
 **Method.** The project's pinned emulator was used, not another static parser:
 mGBA 0.10.5 at `build/tools/mgba-0.10.5/extracted/mGBA-0.10.5-win64/mGBA.exe`,
@@ -452,7 +425,7 @@ environment (the tracked states are P-002 / placement-pos / ROM-006 captures on
 other maps). The tracked GDB client is read-only by design, so the active-map
 pointer cannot be forced either. The observer's input path works
 (`emu:setKeys`), but driving an unknown menu path reliably is outside this
-ticket's scope.
+record's scope.
 
 **Missing evidence, stated exactly.** One map-19 session reading: `DISPCNT`'s mode
 and enabled backgrounds; `BG2CNT` as the background programmer writes it;
@@ -498,8 +471,3 @@ DETERMINISM:        PASS (two independent full exports; the map side is
 UNRELATED PNG CHANGES: 0
 DIFF CHECK:         `git diff --check` clean
 ```
-
-## stopping point
-
-`PROJECT_<local-state-name>` was not modified and no integration was performed. The result is
-returned isolated on `asset-export-map19-001` for human review.

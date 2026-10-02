@@ -147,7 +147,7 @@ def ensure_not_source_alias(source: str | Path, destination: str | Path) -> None
 
     The message carries both halves deliberately: it names the rule ("refusing to
     write the output over the input image"), the reason ("the canonical ROM is
-    read-only", which `docs/DEVELOPMENT.md` states as the permanent rule) and the
+    read-only", which `docs/ROM_SAFETY.md` states as the permanent rule) and the
     consequence ("the source is an input on every path and can never be an output
     destination"). Callers keyed on the older wording keep matching rather than
     silently losing a regression assertion.

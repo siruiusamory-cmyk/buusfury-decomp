@@ -162,7 +162,7 @@ DELTAS = {"code_functions": ("code_functions_wave4",)}
 
 
 def load_artifacts(directory: Path) -> dict[str, list[dict]]:
-    """Read exactly the named artifacts. Files another agent adds are ignored."""
+    """Read exactly the named artifacts. Any other file in the directory is ignored."""
     loaded = {name: _read_jsonl(directory / f"{name}.jsonl") for name in ARTIFACTS}
     for base, deltas in DELTAS.items():
         for delta in deltas:
@@ -457,7 +457,8 @@ def _objects(artifacts: dict[str, list[dict]], shop: dict | None) -> tuple[Atlas
 
 def _references(rows: Iterable[dict]) -> tuple[AtlasReference, ...]:
     # CANDIDATE and no higher: a pointer-shaped aligned word is a numeric
-    # coincidence until something proves the engine follows it (docs/DEVELOPMENT.md:153).
+    # coincidence until something proves the engine follows it
+    # (docs/DEVELOPMENT.md, "Evidence discipline").
     proof = _proof("scan_pointers.jsonl: aligned in-range u32 pointer candidate")
     found = []
     for row in rows:
@@ -572,7 +573,8 @@ def parse_offset(text: str) -> tuple[int, str]:
     """Parse an offset, reporting which address space it was read in.
 
     A bare number in the GBA ROM window is converted, and the caller is told, so
-    a number is never silently read in the wrong space (docs/DEVELOPMENT.md:108).
+    a number is never silently read in the wrong space
+    (docs/ROM_SAFETY.md, "Addresses and offsets").
     """
     value = int(text, 0)
     if value >= GBA_ROM_BASE:

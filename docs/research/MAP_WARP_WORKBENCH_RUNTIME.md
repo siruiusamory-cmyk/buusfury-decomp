@@ -1,16 +1,8 @@
-# MAP-WARP-WORKBENCH-RUNTIME-001 - end-to-end proof of a Workbench-authored transition
+# End-to-end proof of a Workbench-authored transition
 
-STATUS: **CLOSED (2026-09-26).** Runtime proof complete. Scoped sub-pass of
-`MAP-WARPS-AND-CONNECTIONS-001`, which ships as of the parent's closeout
-(2026-09-28); archived at closure in
-[`archive/MAP-WARP-WORKBENCH-RUNTIME-001.md`](archive/MAP-WARP-WORKBENCH-RUNTIME-001.md).
-No product code changed, so no review gate applies to a diff; this record is the
-evidence.
-
-Baseline: `7efbb9c1f83169f42c548557fb3bab1fb73f8804` (`master`, the merge that
-integrated `MAP-WARP-WORKBENCH-001`).
-`public progress impact: NONE` - the registry stays at **19 / 24 (79%)**, `EDIT`
-stays **7 / 8**, `warps` stays `missing`, and no site source changed.
+Authoring a transition in the Workbench, building it through the normal path and
+observing the retail engine consume it, with the passive instrument evidence and the
+human observation kept distinct.
 
 ## Goal
 
@@ -183,19 +175,7 @@ whose destination and facing differ from retail, and the player remained usable.
 * This proves **existing-transition editing** only. The parent capability still
   needs its own decision and proof for transition **creation** before 20 / 24.
 
-## Safety
-
-* Canonical ROM `940ad5f0...f059e` - **UNCHANGED**, verified before and after.
-* No ROM, save, savestate, capture, dump or generated artifact is tracked; the run
-  directory, the project, the shots and the derivative are all under ignored
-  `build/`.
-* Private save and savestate were copied into the run directory and the copies were
-  hash-verified; the originals were never the files the emulator loaded.
-* No new transition was created and no class-169 behaviour was touched.
-* **No product code changed**, so no focused or broad suite was re-run for
-  confidence.
-
-## RETURN
+## Measured status summary
 
 ```text
 MAP-WARP-WORKBENCH-RUNTIME-001 - STATUS REPORT

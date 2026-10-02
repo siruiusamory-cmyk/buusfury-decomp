@@ -1,20 +1,8 @@
-# WEBFOOT-LZ-LITERAL-BASE-001 - correcting the packed-container literal-base reset
+# Correcting the packed-container literal-base reset
 
-STATUS: **COMPLETE AND MERGED (2026-09-26).** Class: targeted decoder correction.
-Baseline: the frozen, accepted `MAP-GFX-DIAG-001` candidate `13e9e11`
-(`docs/research/BUU_MAP_GRAPHICS_DIAG.md`). Implementation `5c452ed`, closure
-documentation fix `5d22982`, merge `4f8febe`; frozen reviewed candidate
-`5d229821da42609c8c3d9222b580f96e1b7281f4`, independent review with no blocking
-findings, CI green (`test-sdk`, pipeline `2884791492`).
-
-**public progress impact: NONE.** The correction changes decoded bytes and fixes
-rendered map art, but no published capability, capability count, blocker,
-questline entry or claim changes wording: the registry's decoder statement
-("every reachable canonical container decodes byte- and extent-identically") was
-already compatible and is now strictly more accurate, so no site edit is
-warranted.
-
----
+The decoder correction that clears a 7-bit run's literal base on return to 8-bit
+literals: the defect and the rule, the measured blast radius and the runtime
+proof.
 
 ## 1. The defect and the rule
 
@@ -38,7 +26,7 @@ model in `tools/research/logx_gfxscan_probe.py` already reset the offset
 (`literal_offset = 0` before the conditional read), and
 `docs/research/LOGX_GFXSCAN_PROVENANCE.md` §3.3 had recorded the reset - as a
 *difference* attributed to the external tool rather than as the project's bug.
-This ticket reverses that attribution on the engine's own evidence.
+This record reverses that attribution on the engine's own evidence.
 
 ## 2. Implementation
 
@@ -56,7 +44,7 @@ Tests:
 
 - `tests/unit/test_webfoot_lz.py` - the strict `xfail` spec test
   `test_widening_back_to_eight_bit_literals_clears_the_literal_base` now passes
-  and its marker is **deleted**, as the diagnostic ticket required. A second,
+  and its marker is **deleted**, as the diagnostic record required. A second,
   new test replays the same synthetic stream under the pre-correction grammar and
   requires `0x51` instead of the engine's `0x11`: the pair is a regression with a
   mutation control rather than a restatement.
@@ -138,7 +126,7 @@ block**, so a changed pin must name a map in the 369.
 
 | Pin | Old | New | Attribution |
 | --- | --- | --- | --- |
-| `EXPECTED_EXTERNAL_VS_CANONICAL_DIFFERING` | 78 | **1** | the 77 were the banks; the residual one is the `value == 0` arm's `0x0829B308`, a genuine grammar difference this ticket does not touch |
+| `EXPECTED_EXTERNAL_VS_CANONICAL_DIFFERING` | 78 | **1** | the 77 were the banks; the residual one is the `value == 0` arm's `0x0829B308`, a genuine grammar difference this record does not touch |
 | bank recall `digests_agreeing` | 110 | **187** | every bank now reproduces the external JCALG1 model, which already reset the base |
 | residual `external_model_agrees` | 381 | **384** | `0x086B9A9C`, `0x086BC6A0`, `0x086D8C78` (4,096 bytes each, engine-referenced) now agree. Nothing moved *out*: the external sweep never submits a declared size that is not a multiple of four |
 | residual `external_confirmed` with `decoded_length % 32 == 0` | 378 | **381** | the same three |
@@ -188,20 +176,20 @@ The CI job runs the whole portable suite (all of `tests/unit`) on the frozen
 candidate and passed; the local single failure below does not reproduce there
 because it reads a git-ignored build artifact that CI does not have.
 
-**The one `-m fast` failure is not ticket-caused.**
+**The one `-m fast` failure is not record-caused.**
 `tests/unit/test_capability_registry.py::test_the_built_page_renders_the_registry_list`
 fails with `resize renders with the wrong state class`. It reads only
 `src/data/capabilities.json` and `dist/index.html`; the registry says `resize` is
 `shipped` (MAP-RESIZE-AND-LAYERS-001, merged after that page was built) while the
 local page still marks it todo. `dist/` is git-ignored build output (`.gitignore`
 line 33) last written 2026-09-25 12:54, before the merge, and neither file is
-modified by this ticket. Left as found rather than rebuilt, because rebuilding the
+modified by this record. Left as found rather than rebuilt, because rebuilding the
 site is unrelated to this correction.
 
 `MAP-GFX-DIAG-001`'s own observer test
 (`tests/unit/test_mgba_capture.py`) and its allow-listing in
 `tools/runtime/inject_mgba_lua.ps1` are part of the same uncommitted baseline the
-diagnostic ticket left behind, not part of this correction.
+diagnostic record left behind, not part of this correction.
 
 ## 7. What did not change, and what remains open
 
@@ -211,7 +199,7 @@ diagnostic ticket left behind, not part of this correction.
   The ROM and both input savestates hash identically before and after every run.
 - **The one remaining external divergence** is the four-bit `value == 0` arm,
   which the external JCALG1 source writes as a literal `0` and the project writes
-  as `literal_base & 0xFF`. This ticket deliberately does not change it: it is a
+  as `literal_base & 0xFF`. This record deliberately does not change it: it is a
   separate grammar question and no runtime evidence covers it. It is now
   recorded as the only difference rather than half of one.
 - **Map 102's unpainted region** remains exactly as `MAP-GFX-DIAG-001` left it:
@@ -219,35 +207,3 @@ diagnostic ticket left behind, not part of this correction.
 - **The 369 / 77 populations are measured by the corrected decoder**, not
   independently runtime-checked per map; the direction is fixed by bank 141 and
   by maps 39/40, which are.
-
-## 8. Independent review and integration
-
-Two fresh-context reviews ran on the frozen worktree
-`<ticket-worktrees>\webfoot-lz-literal-base-001`, both readable
-(`the local reviewer`, `local_headless`):
-
-1. Candidate `5c452ed`: **no blocking findings**; the reviewer verified the three
-   decoder paths, the unit regression and its mutation control, every re-baselined
-   pin and control, and the document corrections, and answered all five questions
-   in the ticket's favour. Two non-blocking notes: the preserved MAP-WARPS planning
-   doc bundled into the correction commit (judged legitimate lifecycle
-   bookkeeping), and a `git show --check` false positive on the diagnostic commit's
-   blockquote lines with no actual trailing whitespace.
-2. Candidate `5d22982`: re-freeze after CI, on `5c452ed`, failed two
-   `tests/unit/test_workflow_migration.py` assertions about `PROJECT_<local-state-name>`. The fix
-   was documentation-only (`PROJECT_<local-state-name>`'s stopping point on one line plus a link to
-   the last archived closure); it is committed separately (`5d22982`) so the
-   reviewed `5c452ed` remains in history. The second review returned
-   **PASS / CLOSE-READY** with the same two non-blocking notes and no new finding.
-
-Integration: pushed as `ticket/webfoot-lz-literal-base-001`, merge request
-[!86](https://gitlab.com/siruiusamory/log1-remake/-/merge_requests/86), CI
-`test-sdk` green on `5d22982` (pipeline `2884791492`), merged as `4f8febe`. The
-main checkout was then fast-forwarded to the merge; its uncommitted copies were
-byte-identical to the merged content, and the one file that differed (the
-diagnostic evidence document, which the branch's follow-up commit had extended)
-was backed up before the sync.
-
-The reviewer did not re-run the ROM-gated suites - no canonical ROM exists in the
-review worktree - so those measured results are the implementer's, reported above
-as such.

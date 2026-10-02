@@ -1,8 +1,9 @@
-# TOOLKIT-004 Closure - Text & Dialogue Round-Trip
+# Text and dialogue round trip
 
-Baseline `ce8f3b62b813ee8dacb9d042f8df15f7d87935e8`. Canonical Buu's Fury
-SHA-256 `940ad5f01db4465b8877dfe739510cbf34f4ea3d390f3df13519808bc36f059e`,
-unchanged throughout.
+The text and dialogue round-trip capability at the ROUND_TRIP rung, the verified
+encoding and layout, and why canonical relocation of a new string remains
+unavailable.
+
 
 ## Capability rung achieved
 
@@ -22,7 +23,7 @@ written and round-tripped exhaustively; a 1,535th cannot yet be created safely.
 | `Arefu/Legacy` @ `d22a556c` | `DBZKit/Assets/Dialog.cs` | Detector evidence covers `ALFE` (LoG II) only; per `docs/upstream-audit.md` not promotable to Buu's Fury. **Not used.** |
 | `spicybung/DragonByteZ` @ `b2691209` | Map/graphics/audio/compression | No string-table knowledge. **Not used.** |
 | `2genkidev/buusfury` @ `cc53d0cd` | Scatter layout, `INCBIN` ranges | No string-table knowledge. **Not used.** |
-| Local research (`docs/research/`, prior ticket archives) | Prior tickets P-004..ROM-012, TOOL/TOOLKIT | No prior text/dialogue work existed. |
+| Local research (`docs/research/`, prior record archives) | Prior records P-004..ROM-012, TOOL/TOOLKIT | No prior text/dialogue work existed. |
 
 No upstream code was copied. No dependency was added.
 
@@ -108,7 +109,7 @@ TOOLKIT-004 contributes **99** tests:
 
 No proprietary bytes are committed in any fixture.
 
-## Test-discipline reviews
+## Test notes
 
 Two items were flagged during implementation and reviewed before closure.
 
@@ -121,7 +122,7 @@ Evidence, in order:
 
 1. **Exact failing operation.** `_pytest/pathlib.py:175`, inside `find_prefixed`,
    calling `os.scandir` on
-   `the pytest temporary root`. The call chain is
+   `<pytest temporary root>`. The call chain is
    `getbasetemp` -> `make_numbered_dir_with_cleanup` -> `make_numbered_dir` ->
    `find_suffixes` -> `find_prefixed`. pytest is *enumerating* the directory to
    choose the next run number; no project code is on the stack.
@@ -136,7 +137,7 @@ Evidence, in order:
 4. **Control, same commit and same test file.** With an explicitly writable
    `--basetemp`, that identical baseline run gives **9 passed**.
 
-The variable is therefore the temp location - not the code, and not this ticket.
+The variable is therefore the temp location - not the code, and not this record.
 
 **Required local invocation.** `-p no:cacheprovider` is needed for the same
 reason: the in-repo `.pytest_cache` is access-denied by the same fence.
@@ -153,55 +154,31 @@ local sandbox would trade a real invariant for a convenience.
 ### 2. `test_workflow_migration.py` assertion change - LEGITIMATE, coverage increased
 
 **Verdict: the assertion is a moving pointer by design; the change follows the
-precedent set at every previous ticket transition, and coverage went up.**
+precedent set at every previous record transition, and coverage went up.**
 
-- **OLD INVARIANT.** `PROJECT_<local-state-name>` must carry the heading `# TOOLKIT-003` and the
+- **OLD INVARIANT.** the working queue must carry the heading `# TOOLKIT-003` and the
   STOP directive `Do not begin TOOLKIT-004`.
-- **NEW REQUIREMENT.** `PROJECT_<local-state-name>` must carry `# TOOLKIT-004` and
+- **NEW REQUIREMENT.** the working queue must carry `# TOOLKIT-004` and
   `Do not begin TOOLKIT-005`, and must additionally link
   `archive/TOOLKIT-003-COMPLETE.md` alongside the existing
   `archive/TOOLKIT-002-COMPLETE.md`.
 - **WHY THE OLD TEST WAS NO LONGER CORRECT.** These two assertions encode *which
-  ticket is active* and *which ticket must not be started next*. That is a
-  pointer at the head of the ticket chain, not a frozen fact.
+  record is active* and *which record must not be started next*. That is a
+  pointer at the head of the record chain, not a frozen fact.
   `git log -L82,96:tests/unit/test_workflow_migration.py` shows the same line
   retargeted at every transition: `Do not begin P-008` -> `P-009` -> `P-010` ->
   `P-011` -> `TOOLKIT-004`, with `# TOOLKIT-003` introduced at `ce8f3b6`.
   Leaving them pinned would assert that TOOLKIT-004 must never be activated,
-  contradicting the owner's authorization. Nothing was lost: the old heading and
+  contradicting the maintainer's authorization. Nothing was lost: the old heading and
   its STOP directive both survive verbatim in
   `archive/TOOLKIT-003-COMPLETE.md` - activation archived the placeholder rather
   than deleting it.
 - **WHAT THE NEW ASSERTION PROTECTS.** That activation archives the closed
-  ticket's placeholder instead of discarding it, and that the chain back through
+  record's placeholder instead of discarding it, and that the chain back through
   every earlier placeholder stays reachable from the live file. It is
   load-bearing, not decorative: replacing the `archive/TOOLKIT-003-COMPLETE.md`
   link with `(deleted)` fails the test at line 96. The assertion count went from
   5 to 6 - one added, none removed.
-
-## Files changed
-
-**Added**
-
-- `tools/webfoot/formats/text_tables.py` - pure UTF-16LE codec and pointer table
-- `tools/webfoot/text.py` - semantic string access, editing, planning
-- `docs/research/TEXT_FORMAT.md` - the verified format, with evidence labels
-- `docs/research/TOOLKIT-004-review.md` - this document
-- `tests/unit/test_text_tables.py`, `tests/unit/test_text_relocation.py`,
-  `tests/unit/test_text_project.py`, `tests/integration/test_text_rom.py`
-
-**Modified**
-
-- `tools/webfoot/profile.py` - `TextTableProfile` and the `text_strings` schema
-- `config/roms.yaml`, `tools/webfoot/data/roms.yaml` - declared text layout
-- `tools/webfoot/project/model.py` - `text/strings.toml` read and write
-- `tools/webfoot/project/format.py` - newline/tab TOML escapes
-- `tools/webfoot/stats.py` - `changes()` and `base_bytes` accessors
-- `tools/webfoot/build.py` - text in extract/validate/build; one merged plan
-- `tools/webfoot/cli.py` - the `text` command group
-- `docs/project-format.md`, `docs/architecture.md` - text in the format and layers
-- `docs/PROJECT_<local-state-name>` - TOOLKIT-004 activated
-- `tests/unit/test_workflow_migration.py` - tracks the ticket transition
 
 ## Defects found and fixed
 
@@ -223,7 +200,7 @@ precedent set at every previous ticket transition, and coverage went up.**
 
 - **Semantics of each `0x0008` operand.** `UNKNOWN`. Seven distinct operands
   appear; the codec preserves them opaquely rather than naming them. Resolving
-  this needs runtime observation of the renderer, which this ticket did not
+  this needs runtime observation of the renderer, which this record did not
   authorize.
 - **Text outside this table.** Plain-ASCII debug and assertion strings exist
   elsewhere (around `0x08008A72`, `0x0803E024`) and are **not** part of this pool
@@ -233,10 +210,3 @@ precedent set at every previous ticket transition, and coverage went up.**
   TOOLKIT-005.
 - **Whether a verified free region exists anywhere in the image.** Still
   `UNKNOWN`, and deliberately not investigated here.
-
-## Scope discipline
-
-No script VM, map, graphics, GUI, decompilation or new gameplay research was
-begun. No runtime capture was performed. No dependency was added. The five
-candidate references are recorded and left fail-closed rather than resolved,
-because resolving them would require the disassembly work TOOLKIT-005 owns.

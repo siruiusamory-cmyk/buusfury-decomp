@@ -13,7 +13,7 @@ tickets' own provenance is in their own files and is not duplicated here.
 ```text
 START SHA:             64fa98626065cf49c631878c53e1c8e1073a3bd6
 BRANCH:                logx-synthesis-001
-WORKTREE:              <temp>\log1-remake-logx-synthesis-001
+WORKTREE:              <temporary directory>\log1-remake-logx-synthesis-001
 CANONICAL ROM SHA-256: 940AD5F01DB4465B8877DFE739510CBF34F4EA3D390F3DF13519808BC36F059E
 ```
 
@@ -484,9 +484,7 @@ a sanity check with no demonstrated benefit.
 | `docs/research/GRAPHICS_FORMAT.md` | superseded-statements banner; the `0x179764` ownership correction; the two named production defects cross-referenced to the roadmap |
 | `docs/reverse-engineering.md` | the ten corrections in §1 |
 
-`docs/PROJECT_<local-state-name>` was **not** modified: it is the queue's own handoff
-document and its LOGX-GFXSCAN-001 closeout text is still the correct record of
-that ticket. No historical review, provenance or archive record was edited.
+No historical review, provenance or archive record was edited.
 
 ---
 

@@ -303,7 +303,7 @@ alive window is therefore empty by construction and is not cited as a negative;
 its defeat chain is unaffected and is cited.
 
 **`tk034-no-kill-03` is historical only.** Its label describes only its first
-phase; the session transcript shows a kill was requested and performed
+phase; the capture record shows a kill was requested and performed
 mid-capture, so its completed chain belongs to that kill. Its pre-kill segment
 may be cited as supporting context. Its missing `DEATH-CALLBACK` row is NOT used
 for any claim, and no explanation for that absence is offered here. The

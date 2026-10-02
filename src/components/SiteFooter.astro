@@ -13,7 +13,7 @@ const links = project.links.filter((link) => link.url);
       <p class="topbar-status"><span class="dot" aria-hidden="true"></span>{project.developmentStatus}</p>
       {links.length > 0 && (
         <nav aria-label="Project links">
-          <ul>{links.map((link) => <li><a href={link.url}>{link.label}</a></li>)}</ul>
+          <ul>{links.map((link) => <li><a href={link.url} rel="noopener">{link.label}</a></li>)}</ul>
         </nav>
       )}
     </div>

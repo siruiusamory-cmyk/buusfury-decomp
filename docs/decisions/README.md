@@ -1,16 +1,16 @@
 # Architecture decisions
 
 These record the small set of engineering decisions a future contributor must not
-have to re-derive from ticket history. They are not a ledger and not a second
-project state: a ticket records what happened on one ticket, and
-`docs/PROJECT_<local-state-name>` records what is currently true, while an ADR here records
-a decision that outlives both and that later work is expected to obey.
+have to re-derive from project history. They are not a ledger and not a second
+project state: `docs/PROJECT_<local-state-name>` records what is currently true, while an
+ADR here records a decision that outlives it and that later work is expected to
+obey.
 
 Keep them short. An ADR earns its place by changing what a future engineer would
 otherwise do, so it states the decision, the context that forced it, the
 consequences that follow from it, its current status, and the authoritative
 evidence that supports it. It should not restate the proof that produced the
-decision; that lives in the ticket, research record or module it cites.
+decision; that lives in the research record or module it cites.
 
 ## Status vocabulary
 

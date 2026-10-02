@@ -1,38 +1,7 @@
-# CQA-01-OUTPUT-SAFETY-001 - shared output-safety authority and graphics export data-loss fix
+# Shared output-safety authority and graphics export data loss
 
-STATUS: **CLOSED AND INTEGRATED.** Human acceptance YES (2026-09-23). Frozen
-implementation SHA `f9cfefb55d7e1469e106702574b51ccf7bd08ac9` (unamended),
-review/status record `31df38308c93fd02ebd0d4bce2bd56772d06b80d`, both integrated
-to `origin/master`. Independent review `APPROVE` with no blocking findings.
-
-This is the ticket's implementation and evidence record. The project-level
-closeout is
-[`archive/CQA-01-OUTPUT-SAFETY-001-COMPLETE.md`](archive/CQA-01-OUTPUT-SAFETY-001-COMPLETE.md)
-and the reviewer verdict is
-[`CQA-01-OUTPUT-SAFETY-001-review.md`](CQA-01-OUTPUT-SAFETY-001-review.md).
-
-| Fact | Value |
-| --- | --- |
-| START SHA | `d96796eb8c59f2fce664afce387f96893059c6aa` |
-| FROZEN SHA (unamended) | `f9cfefb55d7e1469e106702574b51ccf7bd08ac9` |
-| REVIEW / STATUS RECORD SHA | `31df38308c93fd02ebd0d4bce2bd56772d06b80d` |
-| CQA-01 | **CLOSED** |
-| CQA-10 | **PARTIAL / IMPROVED** |
-
-## Baseline
-
-| Fact | Value |
-| --- | --- |
-| Repository authority | `origin/master` |
-| START SHA | `d96796eb8c59f2fce664afce387f96893059c6aa` |
-| Worktree | `<temp>\log1-remake-cqa-01-output-safety-001` (detached at START SHA) |
-| Dirty `workbench-006` checkout | **not** read as the baseline and **not** touched |
-
-The working `<checkout>` checkout is on `workbench-006` (`b4b13c9`) with
-89 files of pure CRLF-vs-LF ending churn against its own `HEAD`. That is
-pre-existing unrelated local state; per [`../line-endings.md`](../line-endings.md)
-it was reported rather than committed or "fixed", and all ticket work moved to a
-clean detached worktree at the START SHA.
+The one shared output-safety authority behind graphics export, the data-loss
+defect it prevents, the caller audit and the validation record.
 
 ## 1. The defect, reproduced before any code changed (RED)
 
@@ -41,7 +10,7 @@ positional argument. The real invocation is
 `webfoot graphics export <rom> <identity> --out <path>`, and that is what was
 driven.
 
-**CLI.** Probe `<temp>\cqa01-probe\probe_cli_export_alias.py` calls the real
+**CLI.** Probe `<temporary probe directory>\probe_cli_export_alias.py` calls the real
 `main()` with one synthetic 8,192-byte image named as both the ROM and `--out`,
 with only the read-only `load_actor_sprites` call stubbed (a synthetic profile
 can never pass `capability.require`, which re-checks extents against the
@@ -54,7 +23,7 @@ can never pass `capability.require`, which re-checks extents against the
 | head | `00000000` | `89504e470d0a1a0a` (PNG signature) |
 | result | - | `exit code 0`, result JSON printed the clobbered path |
 
-**Workbench.** Probe `<temp>\cqa01-probe\probe_workbench_export_alias.py` drives
+**Workbench.** Probe `<temporary probe directory>\probe_workbench_export_alias.py` drives
 the real `GraphicsTab._on_export` slot with the open ROM's own path chosen in the
 save dialog. A synthetic 2,048-byte file became an 864-byte PNG, `QMessageBox`
 list was **empty**, and the status line read
@@ -140,7 +109,7 @@ accepts **both** an input/source path and a caller-selected output path:
 **No other immediately equivalent CQA-01 path exists.** Scope was not widened;
 the audit's other output-policy findings (atlas atomic publication, export
 directory policy, overwrite-policy unification, repository-output rules, the
-remaining ~24 write sites) were left for their own tickets.
+remaining ~24 write sites) were left for their own records.
 
 ## 5. Tests
 
@@ -183,7 +152,7 @@ remaining ~24 write sites) were left for their own tickets.
 ## 6. Mutation check
 
 Two temporary, bounded mutations in an **isolated scratch worktree**
-(`<temp>\dsh-cqa01-mutation`), never in the ticket worktree, each reverted
+(`<temporary directory>`), never in the record worktree, each reverted
 byte-for-byte and SHA-verified afterwards.
 
 | Mutation | Result |
@@ -208,7 +177,7 @@ Measured after the fix, on the same synthetic profile:
 - The ROM writers **refuse** an existing destination (`emit_image`, and the
   `--output ... (must not exist)` help text on every ROM-writing command).
 
-CLI and GUI agree with each other and differ from the ROM writers. This ticket
+CLI and GUI agree with each other and differ from the ROM writers. This record
 does **not** change it: `ensure_new_destination` exists, is tested, and is
 deliberately **not** applied to the PNG export. Changing that would be a
 behaviour change belonging to the overwrite-policy finding, and the required
@@ -217,14 +186,14 @@ enforced either way.
 
 ## 8. Canonical ROM safety
 
-`<checkout>\roms\Dragon Ball Z - Buu's Fury (U).gba`, **read only**:
+`<checkout>'s Fury (U).gba`, **read only**:
 
 ```text
 sha256 before : 940ad5f01db4465b8877dfe739510cbf34f4ea3d390f3df13519808bc36f059e
 sha256 after  : 940ad5f01db4465b8877dfe739510cbf34f4ea3d390f3df13519808bc36f059e
 ```
 
-Positive safety validation (`<temp>\cqa01-probe\canonical_positive.py`) confirms
+Positive safety validation (`<temporary probe directory>\canonical_positive.py`) confirms
 the shared rule recognises the canonical ROM, a case-varied spelling, a relative
 spelling, a **symlink alias** and a **hard-link alias**, refuses each, accepts a
 distinct destination, and leaves the ROM byte-identical. The destructive
@@ -241,7 +210,7 @@ and are sensitive to the guard's removal, and no other equivalent path exists.
 
 ### CQA-10: **PARTIAL / IMPROVED**
 
-Resolved by this ticket: the **source-alias invariant now has one SDK owner**
+Resolved by this record: the **source-alias invariant now has one SDK owner**
 (`write.py`), and the two writers that had no policy at all
 (`cli.py:1554`, `graphics_tab.py:952`) now apply it; the deliberate GUI duplicate
 `build_panel.is_safe_output_path` no longer re-derives the rule.
@@ -261,7 +230,7 @@ Still open, and **not** addressed here:
   place) - CQA-13.
 - `.gitignore` coverage for stray exported `*.png` / provenance manifests.
 - The remaining unguarded write sites across the wider repository, including two
-  the independent reviewer confirmed are **not** CQA-01 regressions but are still
+  the independent verification pass confirmed are **not** CQA-01 regressions but are still
   this finding's debt:
   - `authored_image.refuse_source_alias` (`authored_image.py:118-120`) is a third
     implementation of the alias rule and is **hard-link-blind** (it compares
@@ -283,7 +252,7 @@ uncommitted state are exactly as found.
 
 ## 11. Focused validation
 
-Measured in the ticket worktree (`<temp>\log1-remake-cqa-01-output-safety-001`),
+Measured in the record worktree (`<temporary directory>\log1-remake-cqa-01-output-safety-001`),
 with the canonical image reachable through an untracked `roms` junction pointing
 at the read-only main-checkout copy.
 
@@ -307,7 +276,7 @@ The two fast-gate counts differ only in what the environment exposed: with the
 read-only `roms` junction present, two previously-skipped Workbench tests ran
 against the canonical image (they need the assembled `atlas.jsonl`, which only
 exists beside that image). Nothing was collected or skipped differently by the
-ticket's own change.
+record's own change.
 
 The skips are all environmental and named in the output (no canonical image on
 that path, no assembled `atlas.jsonl`, no site build, `capstone`). No test was
@@ -326,46 +295,6 @@ see it.
 
 No manual full-suite run: the change is a guarded boundary plus tests; the blast
 radius is bounded by the `writer` gate, the `workbench` gate and the fast
-portable gate, and `docs/DEVELOPMENT.md`'s evidence-proportional policy makes a manual
+portable gate, and the repository's evidence-proportional policy makes a manual
 15+ minute integration run unnecessary here. CI runs the portable suite after MR
 creation.
-
-## 12. Independent review
-
-**Verdict: `APPROVE`. BLOCKING findings: none.** the reviewer (the local review tool),
-fresh context, read-only, given the repository, worktree, START SHA, FROZEN SHA,
-ticket requirements and the verbatim CQA-01/CQA-10 audit text - **without** the
-implementer's conclusions. It did not modify the frozen commit, and its full
-output is preserved at `<temp>\cqa01-probe\the reviewer model`. The record is
-[`CQA-01-OUTPUT-SAFETY-001-review.md`](CQA-01-OUTPUT-SAFETY-001-review.md).
-
-What the reviewer verified independently, rather than accepting:
-
-- Ran the focused files (`test_output_safety`, `test_graphics_cli`,
-  `test_workbench_graphics`, `test_graphics_rom`): **107 passed, 1 skipped**. The
-  skip is a missing local `atlas.jsonl`, **not** an alias-feature skip: the
-  hard-link, file-symlink and directory-symlink tests all ran on this host.
-- **Reproduced the mutation check itself** in its own scratch worktree: bypassing
-  `GraphicsTab._refuse_source_alias` failed 3 GUI refusal tests, including the
-  hard-link case and a real "ROM not byte-identical" failure.
-- Hashed the canonical ROM before and after every run: unchanged.
-- Traced the CLI statement order and confirmed the guard precedes `encode`,
-  `mkdir` and `write_bytes`.
-- Confirmed no under-refusal and no over-refusal of path aliases, and that the
-  sibling-in-the-same-directory positive control still passes.
-
-Two `NOTE`-severity findings, both explicitly deferred CQA-10 scope rather than
-CQA-01 regressions, are carried into section 9 above:
-`authored_image.refuse_source_alias` is still a third, hard-link-blind
-implementation of the alias rule; and `build.py`'s bulk PNG extraction has no
-output-path policy, which is safe today only because its destinations are derived
-rather than caller-selected.
-
-No correction commit was required: the frozen candidate
-`f9cfefb55d7e1469e106702574b51ccf7bd08ac9` stands as reviewed and **unamended**.
-The CQA-02 "fix if BLOCKING" step was not entered, so no review loop was created.
-
-## Stop
-
-Do not merge. Return for integration/closeout. The next remediation after this
-ticket is **CQA-02 PACKED-STREAM TERMINATION EVIDENCE RESOLUTION**.

@@ -1,19 +1,7 @@
-# MAP-WARP-PROJECT-AUTHORING-001 - persist and build a semantic transition edit
+# Persisting a semantic transition edit: integration notes
 
-STATUS: **CLOSED (2026-09-26).** Scoped **sub-pass of
-`MAP-WARPS-AND-CONNECTIONS-001`**, which remains **ACTIVE / NOT SHIPPED** in
-[`../PROJECT_<local-state-name>`](../PROJECT_<local-state-name>). Archived at closure; the full evidence record,
-every measured number and the mutation table stay at
-[`../MAP-WARP-PROJECT-AUTHORING-001.md`](../MAP-WARP-PROJECT-AUTHORING-001.md),
-the review brief at
-[`../MAP-WARP-PROJECT-AUTHORING-001-review-request.md`](../MAP-WARP-PROJECT-AUTHORING-001-review-request.md),
-and the verdict at
-[`../MAP-WARP-PROJECT-AUTHORING-001-review.md`](../MAP-WARP-PROJECT-AUTHORING-001-review.md).
-
-`public progress impact: NONE` - no published capability, count, blocker, questline
-entry or claim wording changes. `src/` is untouched, the registry stays at
-**19 / 24 (79%)** and `EDIT` stays **7 / 8**; `warps` remains missing and the parent
-ticket still owns it.
+The condensed record of the project-authoring pass: the stored value, the build,
+the acceptance measurements and the questions left open.
 
 ## Goal
 
@@ -31,7 +19,7 @@ without a second serializer, and without allocating or relocating anything.
 | `tools/webfoot/write.py` | `TransitionEditProvenance` and its `WritePlan` / `WriteManifest` / `plan_changes` / `emit_image` plumbing |
 | `tests/unit/test_map_transition_project.py` | 60 portable tests over the predecessor's synthetic image |
 | `tests/integration/test_map_transition_project_rom.py` | 15 ROM-gated tests, read-only |
-| `docs/research/MAP-WARP-PROJECT-AUTHORING-001.md` | the evidence record |
+| `MAP_WARP_PROJECT_AUTHORING.md` | the evidence record |
 
 `tools/webfoot/formats/map_transitions.py` - the codec `MAP-WARP-FORMAT-001` proved
 - is **byte-for-byte unchanged** by this pass.
@@ -93,14 +81,14 @@ emitted.
 | Canonical ROM unchanged | **MET** - SHA-256 `940ad5f0…f059e` before and after; refused as a write target |
 | Mutations M1-M4 | **MET** - 3, 4, 3 and 4 named tests observed failing respectively; every mutation reverted |
 
-## Independent review
+## Independent verification
 
-One pass, fresh context, `the local reviewer` headless in the frozen ticket worktree. Job
-`cl-20260926-105014-a10dbc`, exit 0, about 376 s, verdict read from
+One pass, independent context, an independent local review headless in the frozen record worktree. Job
+`the review job`, exit 0, about 376 s, verdict read from
 `local_headless`.
 
 **Verdict: `PASS` - zero blocking findings, zero non-blocking notes, four NOTEs.**
-The reviewer ran the two named test files itself (60 + 15 passed) against the
+The verification pass ran the two named test files itself (60 + 15 passed) against the
 canonical image, re-checked the image hash either side, and confirmed no second
 serializer, no allocation, byte locality, preservation, determinism, the semantic
 identity without an address, and no capability overclaim. Details and the NOTEs:
@@ -110,38 +98,16 @@ identity without an address, and no capability overclaim. Details and the NOTEs:
 UNAVAILABLE on this account, so a cloud session would have produced no locally
 readable verdict; `require_readable_verdict` was enforced and the local channel used.
 
-## Lifecycle
-
-- Implementation and frozen reviewed candidate:
-  `b9d8fd68673989d6197ad3f4669af82dc07e87bb` on
-  `ticket/map-warp-project-authoring-001`, from
-  `05870f1e9c90fc5ef83ddfd1fa69fdedb06f926a`. **Not amended.**
-- **No review correction commit**: the review found no production defect, so no
-  behavior changed after the freeze.
-- Closure documentation (this record, the verdict record, the evidence record's
-  status block and the `PROJECT_<local-state-name>` note) is a **separate** commit, so the frozen
-  tree is not misrepresented as having always contained it.
-- Nothing was pushed. `master` remains at `origin/master` (`05870f1`); the branch is
-  one implementation commit plus the closure documentation ahead of it.
-- The ticket worktree holds the candidate at the frozen SHA and is clean; the
-  reviewer's temporary read-only ROM link was removed by the reviewer and its
-  removal verified afterwards.
-- **`docs/PROJECT_<local-state-name>` was deliberately left unchanged**, on the ticket's
-  explicit "no project-state change" scope. Its sentence that "no surface writes
-  one" remains true of *surfaces*; the SDK and the build now apply a project's
-  transition edit, and the verified-facts entry belongs with the parent capability's
-  closure.
-
-## Manual broad suite, recorded exactly as directed
+## Manual broad-suite run
 
 **RUN ONCE IN ERROR AGAINST STANDING POLICY.** `python -m pytest tests` was run once
 before this ruling and is **not repeated**: 4261 passed / 2 pre-existing failed /
-6 skipped. Both failures are pre-existing at the baseline and not ticket-caused -
+6 skipped. Both failures are pre-existing at the baseline and not record-caused -
 `test_map_browser_rom.py::test_map_19_renders_the_accepted_terrain_field` was
 reproduced at `05870f1` in a clean worktree with an identical digest mismatch, and
 `test_capability_registry.py::test_the_built_page_renders_the_registry_list` reads a
 stale git-ignored `dist/`. The full number is recorded here as history, not as
-evidence for this ticket: the focused gates it names are the evidence.
+evidence for this record: the focused gates it names are the evidence.
 
 ## Boundaries observed
 
@@ -150,22 +116,10 @@ save or state write. No capability-registry or site change. No allocation, no
 relocation, no second serializer, no raw-offset authoring API. No meaning invented
 for an `UNRESOLVED` field. The canonical image was read-only throughout.
 
-## Still UNRESOLVED - do not close these by naming them
+## Still UNRESOLVED
 
 Unchanged from `MAP-WARP-FORMAT-001`: the meaning of the two constructor/class
 words; which region interval is horizontal; the region endpoints' unit; the
 invariant word at `+0x04`; the semantics of `+0x10`, `+0x13`, `+0x14`, `+0x16`,
 `+0x17`; where the destination position comes from; the origin of the LOGExtractor
 `+8` viewer adjustment. This pass added no new unknown and promoted no new semantic.
-
-## Stop
-
-Stop when a supported transition can be authored in a project, materialized,
-reopened and built, with the edit reviewed. Do not begin the Workbench warp editor,
-do not create new transitions, and do not begin any later capability in this pass.
-
-**Next: return for integration.** Parent capability
-`MAP-WARPS-AND-CONNECTIONS-001` remains **ACTIVE / NOT SHIPPED**; its remaining work
-is the Workbench transition surface (Required Work 3), the human-operated
-leave-and-re-enter runtime proof (Required Work 4), and the capability advance to
-**20 / 24**.

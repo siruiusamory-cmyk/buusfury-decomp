@@ -1,11 +1,11 @@
 """ROM-ATLAS-001 seed knowledge: `seed_knowledge.jsonl`.
 
-Ported verbatim from scratchpad/build_seed.py (session
-afdddff1-9c87-4859-818c-7a33efc68a28). Every row is harvested from a repository
-document; **no ROM bytes are read**, which is why `build` takes no ROM path.
+Ported verbatim from the earlier exploratory script `build_seed.py`. Every row is
+harvested from a repository document; **no ROM bytes are read**, which is why
+`build` takes no ROM path.
 
 The only change from the original is that the hardcoded
-`C:\\Dev\\log1-remake\\build\\atlas\\seed_knowledge.jsonl` destination
+`build/atlas/seed_knowledge.jsonl` destination
 (build_seed.py:8) became the `out_dir` parameter. Row order, the
 `(file_offset, identity)` sort key and the `ensure_ascii=False` / unsorted-keys
 serialization (build_seed.py:589) are unchanged.

@@ -1,24 +1,7 @@
-# MAP-WARP-RUNTIME-EDIT-001 - runtime-prove an existing transition edit
+# Runtime proof of an existing transition edit
 
-STATUS: **CLOSED (2026-09-26).** Sub-ticket of
-`MAP-WARPS-AND-CONNECTIONS-001`, which has since shipped the `warps` capability.
-The instrument and derivative this record prepared were carried forward by the
-parent's runtime sub-passes: a project edit to `map:0040/transition:0000` was
-built through the production path and driven by a human, and the retail engine
-consumed the authored destination (map 40 -> map 378, then map 435), with the
-arrival coordinate pair and arrival facing resolved and the facing proved by
-instrument. The standing A/B framing below was therefore not completed as
-written; the runtime proof obligation it existed to discharge is recorded in
-[`MAP-WARPS-AND-CONNECTIONS-001.md`](MAP-WARPS-AND-CONNECTIONS-001.md) and
-[`archive/MAP-WARP-FACING-TRACE-001.md`](archive/MAP-WARP-FACING-TRACE-001.md).
-Nothing was merged as its own branch, and the sections below are the record as it
-stood while the work was in progress.
-
-Scope boundaries honoured so far: no Workbench UI, no new transition creation, no
-capability count change, and **no automated gameplay input** - the observer reads
-emulated state, and there is no driver in the tree for this ticket.
-
----
+The instrument and derivative built for a runtime proof of a project transition
+edit, the destination choice, the run procedure and what remains unestablished.
 
 ## 1. The target transition
 
@@ -35,13 +18,13 @@ Established from the production authority, not guessed:
 | Record file offset | `0x29343C` (record survives the edit in place) |
 
 Map 40 carries exactly two transitions: `transition:0000` -> map 39 and
-`transition:0001` -> map 41. **The ticket's control is respected**: the same
+`transition:0001` -> map 41. **The record's control is respected**: the same
 identity `map:0040/transition:0000` is the one edited and the one both runs
 activate. The other Map 40 exit is never used as a comparison.
 
 ## 2. Destination choice
 
-**Map 41** was chosen, as the ticket prefers. It is the strongest available choice
+**Map 41** was chosen, as the record prefers. It is the strongest available choice
 on evidence rather than convenience:
 
 - map 40's **own second transition** already targets map 41 with the identical key
@@ -51,14 +34,14 @@ on evidence rather than convenience:
   transitions, one back to map 40), so nothing exotic is being asked of it;
 - the region is **not** touched: `TARGET`'s stored position is left exactly as
   retail has it, because destination-position semantics are `UNRESOLVED` and the
-  ticket forbids inventing them.
+  record forbids inventing them.
 
 **A discriminating-power fact worth stating plainly.** Only **one** byte differs
 in the derivative. Map 39's key is `010b` and map 41's is `010d`, so they share
 their high byte (`0x01`) - keys ascend `010a..010e` across maps 38..42. The engine
 compares the record's two bytes **separately** (`0x08008A0E`/`0x08008A14`) against
 `MapEntry[+0x00]` and `[+0x01]`, so a one-byte difference is still a different key;
-but the locality claim in this ticket is "inside the two key bytes", not "both key
+but the locality claim in this record is "inside the two key bytes", not "both key
 bytes", and it is asserted in exactly those terms.
 
 If map 41 turns out to be an unsuitable arrival - crash, softlock, or a rejection
@@ -68,7 +51,7 @@ work around it.
 
 ## 3. The project edit, and the derivative
 
-The derivative came from the ticket's required path and from nothing else:
+The derivative came from the record's required path and from nothing else:
 
 ```text
 canonical ROM
@@ -131,7 +114,7 @@ nothing about which record the engine would use; this does.
 
 **Read-only, with no input path.** The observer contains none of the input- or
 memory-modifying API names the repo's guard greps for, and no driver for this
-ticket exists in the tree. Two focused tests assert it.
+record exists in the tree. Two focused tests assert it.
 
 **The private save is isolated.** The emulator is pointed at
 `-C savegamePath=<run dir>\savegame`, the same switch the proven capture launcher
@@ -153,9 +136,9 @@ version, observer allowlist, no mGBA already running).
 
 ```powershell
 powershell.exe -NoProfile -ExecutionPolicy Bypass -File tools/runtime/start_warpedit001_live.ps1 `
-  -RomPath "<checkout>\roms\Dragon Ball Z - Buu's Fury (U).gba" `
+  -RomPath "<checkout>'s Fury (U).gba" `
   -RomSha256 "940ad5f01db4465b8877dfe739510cbf34f4ea3d390f3df13519808bc36f059e" `
-  -StatePath "<checkout>\roms\Dragon Ball Z - Buu's Fury (U).ss1" `
+  -StatePath "<checkout>'s Fury (U).ss1" `
   -Label "A-retail"
 ```
 
@@ -193,10 +176,10 @@ for the proof.
 
 **The runtime result itself.** Everything above is preparation: the record edit,
 its locality, and an instrument that has been syntax-checked, guard-tested and
-dry-run, but not yet driven by a human. Until both runs are captured, this ticket
+dry-run, but not yet driven by a human. Until both runs are captured, this record
 has **not** proved that the retail engine enters a different map, and no part of
 this document may be read as that proof.
 
 Also still open, and neither fixed nor worked around: whether map 41 accepts the
-caller-supplied arrival position at all (the ticket's own stated risk), and the
+caller-supplied arrival position at all (the record's own stated risk), and the
 `UNRESOLVED` destination-position semantics that would explain it if it does not.

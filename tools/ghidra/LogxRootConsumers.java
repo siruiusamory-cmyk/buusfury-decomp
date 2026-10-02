@@ -1,5 +1,5 @@
 /* ###
- * IP: LOG1-REMAKE
+ * IP: Webfoot SDK
  *
  * Headless, read-only consumer report for LOGX-MAP-RENDER-001.
  *

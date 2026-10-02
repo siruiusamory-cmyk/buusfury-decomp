@@ -1,7 +1,9 @@
-# TOOLKIT-031 - Runtime-Prove Attached Behavior Execution
+# Runtime-proven attached behaviour execution
 
-Status: **COMPLETE - Outcome A.** Baseline `86eb9dc`.
-Previous closure: [TOOLKIT-030](archive/TOOLKIT-030-COMPLETE.md).
+The original engine executing behaviour the SDK attached to a newly authored
+entity: what was observed, what is not claimed, and the corrections made along the
+way.
+
 
 ## Result
 
@@ -45,7 +47,7 @@ Full evidence: [AUTHORED_BEHAVIOR_EXECUTION.md](../research/AUTHORED_BEHAVIOR_EX
 | Independence control | TOOLKIT-029 ROM `a425ae73...`: same type `0x56`, same id `0xD3`, descriptor `0x080555A0` - **0 hits** in 7,380 frames, liveness 20 |
 | Harness changes | `run_mgba_capture.ps1` gained `-GeneratedRomSha256 <exact digest>`; canonical guard unchanged and still the default. New `start_toolkit031_session.ps1` / `finish_toolkit031_session.ps1` for free-running Lua sessions. |
 | `RUNTIME-PROVEN AUTHORED BEHAVIOR` | **YES** |
-| `public progress impact` | **UPDATED** |
+| public-progress impact | **UPDATED** |
 | Live-site status | milestone split into COMPLETE "Attach and execute behavior" + CURRENT "Author new behavior"; progress held at 80% |
 | Canonical ROM SHA-256 | `940ad5f01db4465b8877dfe739510cbf34f4ea3d390f3df13519808bc36f059e`, unchanged |
 | Canonical savestate SHA-256 | `2d5740a8c54180d153024a11b0e4d1143306957af55a3ad0664c71cf7d9a1aab`, unchanged |
@@ -69,7 +71,7 @@ constant across it, so the operator's type observation is controlled for.
 **No visible gameplay consequence.** The attached script sets a collision
 rectangle at tiles (6,24)..(10,25) from literal operands, nowhere near the
 authored entity at (22,22), and TOOLKIT-030 showed that region reads saturated.
-The ticket permits this: a visible consequence is desirable but not mandatory
+The record permits this: a visible consequence is desirable but not mandatory
 when execution attribution is exact, and here it is exact.
 
 **The type control's movement is not script-driven.** That entity moves because
@@ -78,7 +80,7 @@ of its own type; its trampoline count was zero.
 **The exact trigger action is not identified**, only its shape: gameplay-driven,
 intermittent, neither construction-time nor periodic.
 
-## Corrections made during the ticket
+## Corrections made during the record
 
 **The first "positive control" was not one.** Cloning map 40's own slot and
 overriding its descriptor reproduced TOOLKIT-030's authored ROM **byte for
@@ -90,7 +92,7 @@ static census. TOOLKIT-030's next-blocker note had left it open.
 
 **Two harness bugs killed live play sessions** - a deadline that counted setup,
 and a `finally` block firing when the hosting `Start-Job` was torn down. Both
-fixed; the rule is now recorded in `docs/DEVELOPMENT.md` and the `mgba-runtime` skill.
+fixed; the rule is now recorded in the workflow rules and the `mgba-runtime` skill.
 
 ## Validation
 
@@ -107,17 +109,13 @@ changes preserved.
 
 ## Durable capture
 
-The runtime tooling rules this ticket learned the hard way are now permanent in
-[`docs/DEVELOPMENT.md`](../../docs/DEVELOPMENT.md) "Runtime tooling rules", pointed to from
-`docs/DEVELOPMENT.md`: reuse the tracked launcher, never author `.lua`/`.ps1` through a
+The runtime tooling rules this record learned the hard way are now permanent in
+[the workflow rules](../../the workflow rules) "Runtime tooling rules", pointed to from
+the workflow rules: reuse the tracked launcher, never author `.lua`/`.ps1` through a
 bash heredoc, never let anything own the emulator's lifetime during human play,
 verify the emulator from its binary, and never read a silent instrument as
 negative evidence.
 
 Two local convenience skills (`mgba-runtime`, `progress-site`) were also written
-under the ignored `<tool-state>/` tree, by the maintainer's decision to keep them machine-local.
+in a machine-local directory kept out of the repository.
 They are not repository artifacts, and the tracked docs above are authoritative.
-
-## stopping point
-
-Stopped at the measured Outcome A. **Do not begin TOOLKIT-032.**

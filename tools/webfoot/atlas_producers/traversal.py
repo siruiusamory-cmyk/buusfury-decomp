@@ -1,9 +1,9 @@
 """Recursive Thumb traversal, shared by the code producers.
 
-Ported from scratchpad/trace.py:116-232 (session afdddff1-...-7a33efc68a28). The
-wave-4 script carried a second, byte-identical copy of the same `walk` body and
-worklist (scratchpad/wave4.py:119-228); it is deduplicated here rather than
-ported twice, which is the only structural change. Decoders come from
+Ported from the earlier exploratory script `trace.py:116-232`. The wave-4 script
+carried a second, byte-identical copy of the same `walk` body and worklist
+(`wave4.py:119-228); it is deduplicated here rather than ported twice, which is
+the only structural change. Decoders come from
 `tools.webfoot.analysis.thumb` and nowhere else: no linear sweep, no ARM.
 
 Every threshold is the historical one: depth cap 10, per-function scan cap

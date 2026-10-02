@@ -1,31 +1,20 @@
-# LOGX-LAYER-001 review
+# LOGX layer verification
 
-Reconstruct Buu's Fury layer record structure. Research only.
+The Buu's Fury layer record structure, reconstructed from the canonical image.
+Static analysis only: no runtime capture was made for this pass.
 
-## Repository and safety
+## Provenance
 
-- **START SHA:** `67fe01bdd8457954382190400870c3291449938a`
-- **END SHA:** the branch head of `logx-layer-001` after this commit
-  (`git rev-parse logx-layer-001`); it is one commit past the two SHAs below
-  because this document records them in the commit that follows them
-- **BRANCH:** `logx-layer-001`
-- **COMMIT SHA(S):** `095cf48` `research(map): reconstruct Buu layer records`
-  (the research result), plus `8abd70a` `docs(tickets): record LOGX layer review
-  verdict` (the independent review verdict and correction gate)
-- **CANONICAL ROM SHA BEFORE:**
-  `940AD5F01DB4465B8877DFE739510CBF34F4EA3D390F3DF13519808BC36F059E`
-- **CANONICAL ROM SHA AFTER:**
-  `940AD5F01DB4465B8877DFE739510CBF34F4EA3D390F3DF13519808BC36F059E`
+Canonical ROM SHA-256, before and after:
+`940AD5F01DB4465B8877DFE739510CBF34F4EA3D390F3DF13519808BC36F059E`.
 
-The isolated worktree was created from the START SHA as a fresh branch. The
-retained `logx-map-render-001` branch, the active WORKBENCH-006 worktree, and
-stale local state were not used. The ROM was opened read-only; no save, state,
-derived ROM, dump, or extracted asset was created, and none is staged.
+The ROM was opened read-only. No save, state, derived ROM, dump or extracted
+asset was created.
 
 ## External claims tested
 
-The external hypothesis source is `mainant/LOGExtractor` as summarised in the
-ticket: two layer forms discriminated by the first word (`0x08008087` as a
+The external hypothesis source is `mainant/LOGExtractor`: two layer forms
+discriminated by the first word (`0x08008087` as a
 chunk-grid layer using `+0x0D`/`+0x11` as X/Y and `+0x14`/`+0x15` as chunk
 column/row counts, `0x0800897B` as a single-image layer using `+0x1C` as a
 content pointer), plus its admitted coordinate uncertainty. Every one of those
@@ -223,7 +212,7 @@ class.
 slots across 452 roots). "Root slot *n* is BG *n*" remains **PARTIALLY
 CONFIRMED**, unchanged from MAP-RENDER: the slot-order correspondence to
 `BG0CNT..BG3CNT` byte order at `0x080093E0..0x08009406` is strong but no direct
-per-slot register write was recovered. This ticket adds that the engine itself
+per-slot register write was recovered. This record adds that the engine itself
 carries exactly four per-layer slots (`object+0x20+i`, `i < 4`, at
 `0x08007CF0`/`0x08007CF4`).
 
@@ -255,7 +244,7 @@ unique record was skipped. 1463 of 1464 unique records have a non-null `+0x18`
 window; the exception is the `0x080707FC` placeholder. A standalone scan of
 `0x08100000..0x08400000` found 1439 aligned occurrences of `0x08008087`, of
 which 1420 are referenced as a record, leaving **19 dominant-shape records that
-no selector-1 root references** (recorded as a handoff).
+no selector-1 root references** (recorded as an open item).
 
 ## Representative layers
 
@@ -312,8 +301,8 @@ The `+0x18` window is inspected for its first 16 words; a record whose `x*y`
 product exceeds 16 is judged on a truncated window (one product-20 dominant
 record and the two large singletons).
 
-The four-slot skip versus products above four is the ticket's sharpest open
-question and is stated as **UNRESOLVED** in the provenance.
+The four-slot skip versus products above four is the sharpest open question here, and is stated as **UNRESOLVED** in the
+paired provenance document.
 
 ## Tooling added
 
@@ -352,8 +341,8 @@ write to the ROM, and assert only independently established facts:
 
 ## Test results
 
-Measured in this worktree with `LOGX_CANONICAL_ROM` and `WEBFOOT_BUU_ROM` set to
-the canonical ROM:
+Measured with `LOGX_CANONICAL_ROM` and `WEBFOOT_BUU_ROM` set to the canonical
+ROM:
 
 - `tests/integration/test_logx_layer_rom.py`: **32 passed** (3.4 s).
 - `test_logx_map_render_rom.py`: **12 passed**; `test_logx_map_record_rom.py`:
@@ -363,31 +352,23 @@ the canonical ROM:
   oracle inputs). All four files together: **51 passed, 2 skipped**.
 - With the ROM unavailable (env pointed at a nonexistent path) the suite skips
   cleanly with no failures: the layer file alone gives **2 passed, 30 skipped,
-  0 failed**, and across all four files the independent reviewer measured
+  0 failed**, and across all four files an independent re-run measured
   **4 passed, 49 skipped, 0 failed**. The two tests that still pass are the ones
   that need no ROM (the non-canonical-image refusal and the rejection of a
   short image).
 
-The record-shape findings this ticket documents therefore do not disturb the
-accepted production renderer.
+The record-shape findings documented here therefore do not disturb the accepted
+production renderer.
 
-Private-runtime validation: none performed; this ticket is static-only and made
-no mGBA capture.
+Runtime validation: none performed; this work is static-only and made no mGBA
+capture.
 
-## ROM_BIBLE_IMPACT
+## Physical facts recorded
 
-`docs/reverse-engineering.md` gains a "LOGX-LAYER-001 layer records" section
-stating physical facts only: reference and unique-record counts, the
-`+0x14`/`+0x15` separate-byte reading, the `+0x18` window and its index formula,
-the `ldrsh` at `+0x16`, the five-value `+0x00` vocabulary, and the explicit
-statement that layer positioning is UNRESOLVED. Speculative semantic names are
-not promoted.
-
-## public progress impact
-
-**NONE.** The ticket is research-only and produces no new shipping capability:
-no parser, editor, or rendering behavior changes, and no public capability or
-frontier moves.
+Reference and unique-record counts, the `+0x14`/`+0x15` separate-byte reading,
+the `+0x18` window and its index formula, the `ldrsh` at `+0x16`, the five-value
+`+0x00` vocabulary, and the explicit statement that layer positioning is
+UNRESOLVED. Speculative semantic names are not promoted.
 
 ## Disagreements with LOGExtractor
 
@@ -414,38 +395,37 @@ frontier moves.
 9. Meaning of `+0x04`/`+0x08`.
 10. Whether an internal null chunk pointer means "skip" or "default".
 
-## Handoff to LOGX-TILE-001
+## Layer record to container (LOGX-TILE-001)
 
 Layer record -> container: `record + 0x18 + 4*i` for `i < record[+0x14] *
 record[+0x15]`; `record[+0x14]` is the x count and `record[+0x15]` the y count;
 each container decodes to `0x800` bytes = 1024 little-endian u16 screen entries
 through `0x0803D940` (`0x08007BFE`, `0x08007C04`). The tile-level bitfields live
-in that payload and are LOGX-TILE-001's scope; this ticket does not decode them.
+in that payload and are the scope of the LOGX tile work; this record does not decode them.
 
-## Handoff to other LOGX tickets
+## Related LOGX findings
 
 - **LOGX-CODEC-001:** the chunk decompressor call sites and destination layout
   (`object+0x4C+0x800*i`), plus the allocator entry `0x0803D5B8`.
 - **LOGX-CONNECTOR-001:** the 0x18-byte element stride belongs to root
   `+0x24`/`+0x28` and MapEntry `+0x18`, **not** to layer records.
-- **LOGX-MAP-RENDER successor / any position consumer:** layer positioning is
-  UNRESOLVED; do not import LOGExtractor's transform.
+- **Any position consumer, LOGX-MAP-RENDER and successors:** layer positioning
+  is UNRESOLVED, and LOGExtractor's transform is not supported by this image.
 
-## Independent review
+## Corrections applied to the first measurements
 
-**Verdict: APPROVE WITH REQUIRED CORRECTIONS.** A fresh-context reviewer with no
-knowledge of this ticket independently re-derived the MapEntry table, the
-selector-1 route, the entire census, the instruction bytes, the string
-dissassembly of the constructor and consumer, the literal pools, the whole-image
-`bl`-caller scan, the resynchronising sweep, the byte-field census, the window
-classification, the standalone scan, the representative records and the test
-results. It reproduced every headline census number exactly (452 / 452 / 1808 /
-0 / 1464 / 35, all five `+0x00` counts, the slot distributions, the pointer
-range, the byte-field table, the anomaly counts, 1303 + 117 = 1420, and the 19
-unreferenced records) and confirmed the canonical ROM SHA-256 was unchanged.
+The MapEntry table, the selector-1 route, the entire census, the instruction
+bytes, the constructor and consumer disassembly, the literal pools, the
+whole-image `bl`-caller scan, the resynchronising sweep, the byte-field census,
+the window classification, the standalone scan, the representative records and
+the test results were all independently re-derived. Every headline census number
+reproduced exactly (452 / 452 / 1808 / 0 / 1464 / 35, all five `+0x00` counts,
+the slot distributions, the pointer range, the byte-field table, the anomaly
+counts, 1303 + 117 = 1420, and the 19 unreferenced records), and the canonical
+ROM SHA-256 was unchanged.
 
-It then found **13 required corrections**, all of which this ticket verified
-independently and applied. The four material ones were:
+**Thirteen corrections** followed, each independently re-verified against the
+ROM and applied. The four material ones were:
 
 1. the claim that the constructor writes `0x08008087` into its object was false
    - the pool at `0x08007E68` holds `0x08049410`, an even data pointer, and the
@@ -464,11 +444,11 @@ independently and applied. The four material ones were:
    totals).
 
 Every correction was re-verified against the ROM before it was applied, and the
-documents now state the measured values. The review's non-blocking notes (the
-unstated 16-word window bound, the "installs at most four" wording, and the
-`0x08007E70` pool description) were also applied.
+document states the measured values. The non-blocking notes (the unstated
+16-word window bound, the "installs at most four" wording, and the `0x08007E70`
+pool description) were also applied.
 
-## Required corrections
+## Correction table
 
 | # | Correction | Status |
 | ---: | --- | --- |
@@ -486,46 +466,11 @@ unstated 16-word window bound, the "installs at most four" wording, and the
 | 12 | Replace the test totals with the observed ones (32; 48/0; 3 passed + 2 skipped of 5 collected; 51 passed + 2 skipped; skip scenario 2 passed / 30 skipped for the layer file, 4 / 49 across all four) | APPLIED and re-verified |
 | 13 | Scope the `0x18`-byte stride claim to root `+0x24`/`+0x28`; the cited MapEntry site is a 4-byte stride | APPLIED and re-verified |
 
-## Correction gate
+## Re-verification after correction
 
-Closed. All 13 required corrections were verified against the ROM by this
-ticket after the review reported, the documents and the ROM bible were updated,
+All 13 corrections were verified against the ROM, the documents were updated,
 and the focused suites were re-run: `tests/integration/test_logx_layer_rom.py`
 **32 passed**; the three LOGX files **48 passed**; all four files plus
 `test_map_render_rom.py` **51 passed, 2 skipped**. The canonical ROM SHA-256 was
 re-verified as unchanged after the corrections.
 
-## Git status
-
-The isolated worktree's change set is **5 new files plus one edited file**:
-
-```text
- M docs/reverse-engineering.md
-?? docs/research/LOGX_LAYER_PROVENANCE.md
-?? docs/research/LOGX-LAYER-001-review.md
-?? tests/integration/test_logx_layer_rom.py
-?? tools/research/logx_layer_probe.py
-?? tools/research/thumb_disasm.py
-```
-
-The worktree otherwise reports a large number of modified paths that are pure
-CRLF/EOL noise from checkout, not content changes: `git diff
---ignore-cr-at-eol --stat` leaves only `docs/reverse-engineering.md`. Because of
-that noise a whole-tree `git diff --check` is not a usable gate here; the scoped
-check is clean:
-
-```text
-git diff --check -- docs/reverse-engineering.md   -> exit 0
-```
-
-None of the five new files contains trailing whitespace or tabs, and every new
-file is written with LF that Git normalises on commit.
-
-No ROM, save, state, dump, generated commercial asset, or `extern/` checkout is
-staged or untracked in the worktree; the canonical ROM lives outside it and
-outside the repository tree.
-
-Commit SHA(s): `095cf48` `research(map): reconstruct Buu layer records`, plus
-`8abd70a` `docs(tickets): record LOGX layer review verdict` recording the
-independent review verdict and the correction gate. The branch head after those
-two is one commit further, since this text records their SHAs.

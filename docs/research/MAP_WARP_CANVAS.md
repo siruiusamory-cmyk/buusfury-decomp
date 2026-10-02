@@ -1,33 +1,7 @@
-# MAP-WARP-CANVAS-001 - connections on the Maps canvas
+# Connections on the Maps canvas
 
-STATUS: **CLOSED (2026-09-28).** Independent review **PASS**; the phantom-undo
-correction and the merge are recorded in the closure record linked below.
-Class: GUI and project-surface pass. This is a **sub-pass of the parent capability
-`MAP-WARPS-AND-CONNECTIONS-001`**, which ships as of the parent's closeout; archived
-at closure in
-[`archive/MAP-WARP-CANVAS-001.md`](archive/MAP-WARP-CANVAS-001.md). Nothing here
-shipped the parent: the capability count was unchanged, the registry was untouched
-and the site was untouched.
-
-Baseline: `fc5d1b86ce4f5ba34a0598e15de61a73db0261af` (the merge of
-`ticket/map-warp-create-runtime-001`; verified as `origin/master` at isolation
-time, no drift). Worktree: `<ticket-worktrees>\map-warp-canvas-001` on
-`ticket/map-warp-canvas-001`, clean at that commit.
-
-Implementation: **uncommitted and unstaged**, by the instruction that closes this
-pass. Every number below was measured in this worktree.
-
-**public progress impact: NONE.** No capability ships: `warps` is still
-`missing`, `src/data/capabilities.json`, `src/data/project.ts`, the public site,
-`docs/DEVELOPMENT.md`, `docs/DEVELOPMENT.md` and `docs/PROJECT_<local-state-name>` are all untouched, and
-`EDIT` stays **7 / 8**, DragonByte Z stays **19 / 24 - 79%**.
-
-Scope boundaries honoured: **no new serializer**, **no transition-format work**,
-**no capability or registry change**, **no GUI ROM write**, **no emulator run**,
-**no address or offset in Qt code**, **no second overlay system**, **no commit
-and no push**.
-
----
+The map-connection overlay on the Maps canvas: selection, the direct canvas edit,
+the coordinate mapping, fail-closed behaviour and the visual QA record.
 
 ## What it adds
 
@@ -146,7 +120,7 @@ rectangle is one scene item at those coordinates and the `QGraphicsView`
 transform (zoom and scroll) places it exactly as it places the artwork and the
 placement markers. **The Qt side adds no offset, no scale and no origin of its
 own.** The first-interval-horizontal / second-interval-vertical reading is the
-measured one the ticket states.
+measured one the record states.
 
 Independent confirmation from the visual pass, not from a fixture: on the
 canonical image, `map:0039/transition:0001`'s region is `first 592-601`,
@@ -154,22 +128,6 @@ canonical image, `map:0039/transition:0001`'s region is `first 592-601`,
 band - `x 592..601 / y 136..241` - which `MAP-RESIZE-AND-LAYERS-001` had
 measured at **runtime** as that map's only eastward passage. A transposed or
 offset mapping could not put that rectangle on that door.
-
-## Files changed
-
-| file | why |
-| --- | --- |
-| `tools/webfoot/workbench/map_tab.py` | the overlay item, the canvas selection, the guard, the drag and its undo command, the corpus/project caches |
-| `tools/webfoot/workbench/warp_tab.py` | `select_identity`, `region_edit_refusal`, the shared-root refusal wording, the authored-region precedence in the region column |
-| `tools/webfoot/workbench/editors.py` | the wiring: `show_transition`, the guard, and re-reading the Warps selection when the Objects mode becomes visible |
-| `tools/webfoot/workbench/theme.py` | two overlay tokens (`region_retail`, `region_authored`) |
-| `tools/qa/visual_pass_capture.py` | states 90-97 and their gating |
-| `tests/unit/test_workbench_map_warp_canvas.py` | the new focused file (20 tests) |
-
-`src/data/capabilities.json`, `src/data/project.ts`, `docs/DEVELOPMENT.md`, `docs/DEVELOPMENT.md`,
-`docs/PROJECT_<local-state-name>`, `docs/PROJECT_<local-state-name>` and `tools/webfoot/
-map_transitions.py` are **not** touched: no capability count changes, no site
-change, and the transition authority needed no new API.
 
 ## Focused validation
 
@@ -301,19 +259,6 @@ reason for that record. Reusing it verbatim is what "never invent a rule in Qt"
 requires; a region-specific second sentence would be a second statement of the
 same rule.
 
-## Safety
-
-* **Canonical ROM unchanged.** No test in the focused files opens it; the visual
-  pass only reads it (`Harness.open_canonical` re-verifies its SHA-256 first) and
-  writes its project into a temporary directory. No build, no ROM output and no
-  emulator run happened in this pass.
-* **No proprietary artifact committed**: the PNGs live under the ignored
-  `build/qa/` tree.
-* **No capability count change**, no registry or site change, and
-  `map_transitions.py` is untouched: the drag writes through the authority's
-  existing `set_transition_edits`.
-* `git diff --check` clean; no line-ending churn; every added line is bare LF.
-
 ## Not done, or not verified
 
 * **Dragging the region of a transition the project CREATES is not implemented.**
@@ -324,12 +269,12 @@ same rule.
 * **No runtime/emulator proof.** Whether the engine reads a dragged region as the
   door the author sees is a question for the parent capability's human-operated
   run; this pass produced project, GUI and build-level evidence only.
-* **The full suite was not run**, by the ticket's instruction and the
+* **The full suite was not run**, by the record's instruction and the
   evidence-proportional policy: the touch is GUI-only plus two Qt-side
   neighbours, and the focused files above bound it.
 * **Independent review: PASS.** The frozen candidate
   `27eb04d90561bfdb9946bc7310c723ad1326dbd5` was reviewed against all twelve
-  claims by a separate reviewer: zero blocking findings, eight non-blocking. NB1
+  claims by a separate verification pass: zero blocking findings, eight non-blocking. NB1
   was a real defect and is fixed in the correction section below; NB2 is the
   endpoint test added there; NB3 and NB4 are the two record corrections made
   there.
@@ -338,7 +283,7 @@ same rule.
   rather than a new message. It is accurate about the resulting region and
   slightly odd about the verb.
 
-## Correction after independent review (2026-09-28)
+## Correction after independent verification
 Findings are bound to the review's numbers explicitly: NB1 is the phantom-undo
 defect fixed here; NB2 is the high-byte coverage added here as
 `test_a_drag_above_0xFF_changes_only_the_four_region_halfwords`; NB3 is the

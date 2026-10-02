@@ -1,8 +1,7 @@
-# P-008 - Normal Melee Variant Selection
+# P-008 normal melee variant selection
 
-## Status
-
-AUTHORIZED, NARROWED BY EXTERNAL RESEARCH
+How the game chooses among the three observed normal-melee animation clips, and
+whether they are mechanically equivalent.
 
 ## Objective
 
@@ -12,15 +11,15 @@ animation clips, and confirm cheaply that they are mechanically equivalent.
 Do **not** spend runtime probes proving there is no combo. External research
 already settled that; see below.
 
-## External Research Pass
+## External research pass
 
-Required by the External-Research-First rule in `docs/DEVELOPMENT.md`. Seven angles
+Required by the External-Research-First rule in the repository rules. Seven angles
 opened before authorizing any probe.
 
 **Settled externally, do not re-derive:**
 
 - The IGN control list documents `A` as "Melee attack" with no combo notation.
-- `<reference-checkout>\docs\REFERENCE.md:518`, drawn from the retail
+- `<reference checkout>:518`, drawn from the retail
   instruction booklet read cover to cover, records that the real behavior is
   "a single repeating attack alternating punch/kick animations, so the plan
   implements one attack, not a combo string". **There is no melee combo.**
@@ -29,7 +28,7 @@ opened before authorizing any probe.
 - Line 494 records that the public record contains **zero** attack, hitstun, or
   knockback frame data for either game, confirmed absent rather than unfound.
 
-**Left open, and therefore the actual ticket:**
+**Left open, and therefore the actual record:**
 
 - Which mechanism selects the clip on each attack.
 - Whether the three clips differ in any gameplay parameter.
@@ -49,7 +48,7 @@ evidence until a runtime read establishes it.
 - Incoming damage: `record+0x18`. Authoritative writer: `0x0800FA50`.
 - Minimum accepted-punch cadence: 20 ticks; median 26.
 
-## Required Work
+## Work performed
 
 1. Record a long air-punch sequence and extract the ordered clip series.
 2. Test the order against three hypotheses, in this order:
@@ -67,26 +66,12 @@ evidence until a runtime read establishes it.
 - Do not attempt to prove a combo system. Reopen that only if runtime sequencing
   directly contradicts the external evidence, and say so explicitly if it does.
 - Do not investigate the critical-hit probability curve; the multiplier is
-  already documented and the curve is a separate ticket.
+  already documented and the curve is a separate record.
 - Do not investigate knockback, world position, death, XP, or rewards.
 - Do not broaden into the general RNG subsystem. Read a seed word only if step 3
   is actually reached.
 
-## Completion Criteria
-
-- The selection mechanism is identified, or the surviving hypotheses are named
-  with the evidence that narrowed them.
-- The three clips are classified as presentation variants, or a demonstrated
-  mechanical difference is characterized.
-
-## Stop
-
-Stop when selection is explained and equivalence is settled. Do not begin
-another ticket.
-
----
-
-## RESULT: RESOLVED
+## Result
 
 | # | Question | Answer |
 |---|---|---|

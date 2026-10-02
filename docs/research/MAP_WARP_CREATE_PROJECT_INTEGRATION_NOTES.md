@@ -1,18 +1,9 @@
-# MAP-WARP-CREATE-PROJECT-001 - creating a transition through the project and the build
+# Creating a transition through the project and the build: integration notes
 
-STATUS: **CLOSED.** Scoped **sub-pass of `MAP-WARPS-AND-CONNECTIONS-001`**,
-completed 2026-09-26 and archived at the parent's closeout (2026-09-28). The full
-evidence record, the mutation table and the addressability measurements stay at
-[`../MAP-WARP-CREATE-PROJECT-001.md`](../MAP-WARP-CREATE-PROJECT-001.md); the review
-request at
-[`../MAP-WARP-CREATE-PROJECT-001-review-request.md`](../MAP-WARP-CREATE-PROJECT-001-review-request.md).
+The condensed record of the transition-creation pass: what shipped, the
+addressability answer and its limit, and the preserved follow-up debt.
 
-`public progress impact: NONE` - no capability shipped here: `src/` was untouched,
-the registry stayed at **19 / 24 (79%)**, `EDIT` stayed **7 / 8**, and `warps`
-stayed `missing`. The capability advance to **20 / 24** belongs to the parent's own
-closeout.
-
-## What it was asked to do
+## Scope
 
 Advance the creation half of the parent's Required Work 1 and 2: let a project
 create a supported selector-1 transition the canonical image does not contain, and
@@ -57,18 +48,18 @@ The line this sub-pass did not cross was recorded rather than blurred: encoding-
 and build-proven is not runtime-proven, and no capability count moved on this pass's
 strength. `MAP-WARP-CREATE-RUNTIME-001` later supplied that runtime proof.
 
-## Independent review
+## Independent verification
 
-Range reviewed `df81e7a..5c0f6e4`, `the local reviewer` headless, fresh context; job
-`cl-20260926-221253-299abe`.
+Range reviewed `df81e7a..5c0f6e4`, an independent local review headless, independent context; job
+`the review job`.
 
 **Verdict: `APPROVE` - no blocking or major findings, one trivial non-blocking
 finding.** The finding was a duplicated, unreachable shared-root guard in
 `_resolve_creation`; it was resolved by a correction commit whose only change is the
 deletion of those nine lines, `7a0abc57fea6c20799bbc9079d3544809fea41b8`, and the
-reviewer confirmed by a follow-up pass (`cl-20260926-222936-818c6b`, range
+verification pass confirmed by a follow-up pass (`the review job`, range
 `5c0f6e4..7a0abc5`) that the verdict stands for the corrected tip. No reviewed commit
-was amended. The reviewer reproduced both focused suites green, re-verified the
+was amended. The verification pass reproduced both focused suites green, re-verified the
 canonical ROM hash, and independently confirmed the aliasing refusal cannot be
 bypassed, that the count and the array pointer cannot disagree, and that the
 addressability claim is labelled encoding/build-proven and never runtime-proven.
@@ -89,7 +80,7 @@ SHA is an ancestor of `origin/master`.
   consumption by the retail engine was the next sub-pass's job, and no count moved
   on this pass.
 * **A map with no supported 566-class record of its own cannot gain a transition.**
-  That is the deliberate fail-closed narrowing; a later ticket could widen it only
+  That is the deliberate fail-closed narrowing; a later record could widen it only
   with evidence for `+0x13` and the door gate bits, not by borrowing them from
   another map.
 * **The sibling ROM-gated helpers take the first glob match.**
@@ -97,12 +88,12 @@ SHA is an ancestor of `origin/master`.
   `tests/integration/test_map_transitions_rom.py` resolve the canonical image with
   `sorted(glob("roms/*Buu*.gba"))[0]`, so in a checkout holding a warp-randomized
   derivative they skip silently unless `LOGX_CANONICAL_ROM` is set. The one-line fix
-  belongs to whichever ticket next touches those files.
+  belongs to whichever record next touches those files.
 * **A pre-existing stale-page failure** in
   `tests/unit/test_capability_registry.py::test_the_built_page_renders_the_registry_list`
   is unrelated to this sub-pass and is already recorded as pre-existing.
 
-## Test-policy deviation, recorded exactly as directed
+## Test-policy deviation
 
 **A manual broad-suite run was made ONCE IN ERROR against the standing policy and is
 NOT repeated.** `python -m pytest tests` reported 3332 passed, 8 skipped and 1
@@ -110,17 +101,7 @@ pre-existing stale-dist failure. The number is recorded as history, not as evide
 the focused named files are this sub-pass's evidence. The earlier integration record
 for this branch reports the same deviation in the same terms.
 
-## Safety
-
-Canonical ROM `940ad5f0...f059e` verified before and after every run and re-verified
-after the whole validation sequence, and still refused as a build output target. All
-735 canonical records re-read byte-identically from the derivative at identical
-addresses; existing ordering preserved; within the original canonical span the byte
-diff (4 bytes) is confined to map 40's count and array pointer and the only added
-bytes are the two allocated spans above EOF; no pointer-array or allocator overlap;
-no unresolved byte guessed; no proprietary artifact staged or committed.
-
-## Stop and next
+## Stop
 
 Stopped after the merge. The Workbench creation surface and the human-operated
 runtime proof of a created transition remained; `MAP-WARP-CREATE-WORKBENCH-001` and

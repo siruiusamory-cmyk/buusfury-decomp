@@ -1,5 +1,5 @@
 /* ###
- * IP: LOG1-REMAKE
+ * IP: Webfoot SDK
  *
  * Applies only TOOL-001's already-established Thumb entry points and labels.
  * Run only after the blind calibration report has been captured.

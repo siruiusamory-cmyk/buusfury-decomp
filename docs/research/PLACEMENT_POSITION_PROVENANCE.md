@@ -125,7 +125,7 @@ runtime phase.
 ## SC7 â€” runtime-capture-phase handoff
 
 To close axis/unit/pixel (the WORKBENCH-006 SC2 blocker,
-`docs/research/WORKBENCH-006-design.md:42-76`):
+`docs/research/WORKBENCH_MAP_AUTHORING_DESIGN.md:42-76`):
 
 - **BREAKPOINT PC:** `0x0800FDD2` (after `position_raw_0<<8` is stored) and
   `0x0800FDD8` (after `position_raw_1<<8`), for a known map with a known
@@ -133,7 +133,7 @@ To close axis/unit/pixel (the WORKBENCH-006 SC2 blocker,
   halfwords at the read, with `r5` = `&placement[+0x0C]`.
 - **RUNTIME FIELDS TO WATCH (actor object offsets):** `actor+0x1A0`
   (`position_raw_0<<8`) and `actor+0x1A4` (`position_raw_1<<8`). Rediscover the
-  actor base per load (never hard-code EWRAM addresses â€” `docs/DEVELOPMENT.md` runtime
+  actor base per load (never hard-code EWRAM addresses â€” `docs/runtime-capture.md` runtime
   rules); the actor base is `r4` at the breakpoint.
 - **WHAT mGBA MUST MEASURE:** for a placement whose stored `position_raw` is
   known from the ROM, capture the object's actual on-screen pixel (or its camera

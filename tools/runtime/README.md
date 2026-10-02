@@ -5,21 +5,19 @@ observes the running Buu's Fury engine, or turns a capture into a report.
 
 Authoritative documents, not duplicated here:
 
-- `docs/runtime-capture.md`: the canonical capture pipeline and its ordering.
-- `docs/DEVELOPMENT.md`, section "Runtime tooling rules": the hard rules (reuse the
-  tracked launcher, never write `.lua`/`.ps1` through a bash heredoc, a human
-  play session launcher must start mGBA and exit, verify the emulator by
-  `VersionInfo.FileVersion`, a silent instrument is not negative evidence).
-- `<tool-state>/skills/mgba-runtime/the guide`: the entry point that routes between
-  the GDB pipeline and the free-running Lua-breakpoint path.
+- `docs/runtime-capture.md`: the canonical capture pipeline, its ordering, and
+  the hard tooling rules (reuse the tracked launcher, never write `.lua`/`.ps1`
+  through a bash heredoc, a human play session launcher must start mGBA and
+  exit, verify the emulator by `VersionInfo.FileVersion`, a silent instrument is
+  not negative evidence).
 
 ## Do not rename anything in this directory
 
-The ticket prefixes (`p003_`, `p006c_`, `rom009_`, `toolkit031_`, ...) are
-provenance links. Research documents under `docs/` cite these filenames as the
-evidence that backs a measured claim, and `inject_mgba_lua.ps1` allowlists many
-of them by exact path. Renaming a file breaks the citation and the allowlist at
-once. Add new files; never tidy old names.
+The historical research prefixes (`p003_`, `p006c_`, `rom009_`, `toolkit031_`,
+...) are provenance links. Research documents under `docs/` cite these filenames
+as the evidence that backs a measured claim, and `inject_mgba_lua.ps1`
+allowlists many of them by exact path. Renaming a file breaks the citation and
+the allowlist at once. Add new files; never tidy old names.
 
 ## How to read the tables
 

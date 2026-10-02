@@ -1,5 +1,5 @@
 /* ###
- * IP: LOG1-REMAKE
+ * IP: Webfoot SDK
  *
  * List all references to given addresses (globals/tables/functions), with
  * containing-function attribution where available.

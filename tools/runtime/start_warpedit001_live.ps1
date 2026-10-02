@@ -55,10 +55,10 @@ function Resolve-Required([string]$Path, [string]$What) {
 
 if (-not $LuaPath) { $LuaPath = 'tools\runtime\warpedit001_transition_watch.lua' }
 if (-not $MGBPath) {
-    # The emulator lives in the main checkout's ignored build tree; each ticket
-    # worktree has its own build directory, so this default is absolute on
-    # purpose and the version is still verified from the binary.
-    $MGBPath = '<checkout>\build\tools\mgba-dev\extracted\mGBA-build-2026-08-27-win64-9128-c65e8a3d4666b0ea68a01578232452f31b185332\mGBA.exe'
+    # The emulator lives in this checkout's ignored build tree, named relative to
+    # the repository root rather than to one machine; the version is still
+    # verified from the binary below.
+    $MGBPath = 'build\tools\mgba-dev\extracted\mGBA-build-2026-08-27-win64-9128-c65e8a3d4666b0ea68a01578232452f31b185332\mGBA.exe'
 }
 
 $resolvedRom = Resolve-Required $RomPath 'ROM'

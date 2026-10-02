@@ -13,7 +13,10 @@
 --     so the copy's row stride can be read off the live bytes rather than
 --     inferred.
 
-local OUT_ROOT = "C:/tmp/map19-rt/out"
+-- Where the observer writes. The launcher sets MAP19_OUT_ROOT to an absolute
+-- directory under the checkout's ignored build tree; the fallback is relative
+-- to the emulator's own working directory so no machine's path is baked in.
+local OUT_ROOT = os.getenv("MAP19_OUT_ROOT") or "map19-rt/out"
 local ACTIVE_MAP_PTR = 0x03001980
 local MAP_ENTRY_BASE = 0x0808E2E0
 local MAP_ENTRY_SIZE = 0x38

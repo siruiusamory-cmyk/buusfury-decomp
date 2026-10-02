@@ -1,0 +1,24 @@
+{
+  "exceptions": [
+    {
+      "path": "tests/unit/test_project_safety.py",
+      "signal": "process_narration",
+      "reason": "The names are the subject of the assertion, not residue: this test proves that four local tool-state directories (together with <local-state-name>, <local-state-prefix>/ and <local-state-name>) cannot be staged and are not tracked. Deleting the names deletes the guard, so the two hits are reported here once, with a reason, instead of being hidden."
+    },
+    {
+      "path": "tools/runtime/p007_wolf_ai_trace.lua",
+      "signal": "process_narration",
+      "reason": "The abbreviation here is the game's own enemy-behaviour vocabulary, not a hosted-tool name: P-007 is a read-only observer of the wolf's behaviour controller, and the term labels that controller and its timer. Two hits, both in the file header."
+    },
+    {
+      "path": "tools/runtime/rom008_query_probe.py",
+      "signal": "process_narration",
+      "reason": "The word is a field of this probe's own result document, naming the sequence of runtime stages it performed (verify inputs, launch the emulator, connect the debugger, install breakpoints). The same key is read back by tools/runtime/rom010_probe_status.py, so the name is an interface, not prose. The one hit left over after the build-pipeline sense guard is the bare assignment of that key."
+    },
+    {
+      "path": "tools/quality/architecture.py",
+      "signal": "process_narration",
+      "reason": "The repository-purity gate names the local tool-state directories it refuses to see tracked. Naming them is the rule; the alternative is a gate that cannot state what it forbids."
+    }
+  ]
+}

@@ -1,6 +1,6 @@
 # DragonByte Z visual direction: the real-application reference matrix
 
-This is the research artifact for `DRAGONBYTE-Z-VISUAL-DIRECTION-PASS-001`. It is
+This is the research artifact for the DragonByte Z visual direction pass. It is
 not production code and changes no behaviour.
 
 It exists because the previous generated-reference approach was rejected: a
@@ -121,7 +121,7 @@ pattern named.
 | **Narrow-window behavior** | Hard 900×600 floor, then navigator auto-collapses below 100 px; overflow split **half to each side pane** | Nothing collapses; splitters only | `Tab` = Clear View (hides all docks/toolbars); Views menu toggles; layout lock/reset | `TAB` = zen mode: hides the whole panel, leaves a 16 px revealer strip | Hard 1024×600 × display-scale floor; distraction-free mode hides docks | `Tab` hides the timeline; elements can be undocked | Not documented | `MinWidth 400`, `MinHeight 300`; the grid scrolls horizontally | **The window can actually get narrow** (the current 1090×1246 floor is a defect). Side panes have real minimums, the canvas is allowed to shrink first, and the whole shell scrolls rather than clipping. |
 | **Density** | Toolbar 38 px; panel headers 30 px uppercase 11 px bold; radius 4; base font 11 px | Stock Qt: 1 px raised frames, titled group boxes, ~11 px text | Tiled Fusion; zero margins in the tileset dock; icon-only toolbars | Panel 300 px; body 11 pt; buttons square with **no radius**; exactly **one** gradient in 10 819 lines | `base_spacing 4`, `corner_radius 3`, `border_size 0`, one accent, presets Compact/Default/Spacious | Chrome 12–18 px; 9-slice hard 1 px bevels; no gradients | ~22 controls in an 89 px strip; rows ~18 px | Field rows 18 px; anchor bar 19 px; gutter 70 px; jump buttons 22×18 | **Compact desktop density**: 3 px radius maximum on inputs, 2 px on buttons, **square panel regions** with 1 px separators, one accent (gold) spent once per surface, no gradients, no glow, no cards. |
 
-## Anti-AI-UI constraints, and how the references justify them
+## Constraints against generic generated interface patterns, and how the references justify them
 
 The generated references were rejected for generic interface patterns. Each
 banned pattern is rejected against a real reference, not against taste:
@@ -139,12 +139,11 @@ banned pattern is rejected against a real reference, not against taste:
 | invented map names or game content | DragonByte Z's names come from the ROM's own `+0x0C` text relationship; the captures use real maps (`map:0040 East District 439`, `map:0019`). |
 | decorative "workflow principles" in the app | No studied editor carries prose about itself in its editing surface. |
 
-## Reference-fidelity targets for review
+## Reference-fidelity targets
 
-Per the ticket's review order, each area is assessed against its assigned
-references and marked **BORROWED PATTERN PRESENT**, **JUSTIFIED DEVIATION** or
-**MISSING / REGRESSION** in
-[`../tickets/DRAGONBYTE-Z-VISUAL-DIRECTION-PASS-001-review.md`](../tickets/DRAGONBYTE-Z-VISUAL-DIRECTION-PASS-001-review.md).
+Each area is assessed against its assigned references and marked
+**BORROWED PATTERN PRESENT**, **JUSTIFIED DEVIATION** or
+**MISSING / REGRESSION**.
 
 | Area | Assigned references |
 |---|---|

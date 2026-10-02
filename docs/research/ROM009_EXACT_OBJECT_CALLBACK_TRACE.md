@@ -1,20 +1,24 @@
-# ROM-009 - Clean Gameplay Exact-Object Callback Trace
+# ROM-009 exact-object callback trace
 
-## Objective
+Whether a dialogue-free gameplay state reaches an AABB query and callback for the
+exact current-load-epoch object created by a raw factory, and if not, which guard
+rejects it first.
+
+## Question
 
 Determine whether the dialogue-free gameplay state reaches an AABB query and
 callback for the exact current-load-epoch object created by raw factory
 `0x08007675`. If it does not, identify the first rejecting guard with a bounded
 fallback analysis.
 
-## Why This Ticket Exists
+## Why this investigation exists
 
 ROM-008 reproduced the target factory, object, registry insertion, bounds, and
 lifecycle but captured no AABB/callback for that exact object. The earlier state
 may have been dialogue-gated. A new state now has normal control and no dialogue,
 including after one south transition. This is a hypothesis to test, not a fact.
 
-## Ticket-Specific Inputs
+## Record-Specific Inputs
 
 - Locate the new save/state locally rather than assuming its filename.
 - Record its size and SHA-256 before use.
@@ -24,31 +28,23 @@ including after one south transition. This is a hypothesis to test, not a fact.
 - Derive the active `MapEntry` from runtime. Do not infer it from a location or
   map name.
 
-## Required Delegation
+## Analyses required
 
-Before the runtime experiment, obtain these read-only analyses and wait for both:
+Before the runtime experiment, two read-only analyses were required:
 
-1. **Static callback review - the model an independent reviewer**
-   - Perform static callback analysis for factory `0x08007675`, dispatch base
-     `0x0804A09C`, object `+0x0C`, and the callback path around `0x08012784`.
-   - Return evidence and experiment-relevant findings only.
-2. **Runtime experiment design - an independent reviewer**
-   - Design the clean-state runtime experiment with exact object attribution,
-     lifecycle checks, and bounded stopping point.
-   - Return a procedure and failure classifications only.
+1. **Static callback analysis** for factory `0x08007675`, dispatch base
+   `0x0804A09C`, object `+0x0C`, and the callback path around `0x08012784`,
+   returning evidence and experiment-relevant findings only.
+2. **Runtime experiment design** for the clean-state experiment, with exact object
+   attribution, lifecycle checks and bounded rejection conditions, returning a procedure
+   and failure classifications only.
 
-The primary agent owns all edits, integration, runtime execution, and final
-conclusions.
-
-Request a **conditional scheduler review - the model an independent reviewer** only if the
-clean-state experiment still fails to produce the exact object's callback. Its
-read-only task is a
+A conditional scheduler review follows only if the clean-state experiment still
+fails to produce the exact object's callback. Its read-only task is the
 scheduler/guard decision tree around `0x080126D4`, `0x080127AE`, `0x08012846`,
-and `0x08012784`. Do not request it prematurely.
+and `0x08012784`.
 
-A an independent reviewer independent final review is required by `docs/DEVELOPMENT.md`.
-
-## Required Experiment
+## Experiment
 
 1. Verify the canonical ROM identity without modifying it.
 2. Locate and hash the new state/save.
@@ -80,7 +76,7 @@ callback, including when the AABB is reached but the callback is filtered:
 - identify the first rejecting guard;
 - stop there rather than expanding gameplay or general archaeology.
 
-## Required Result Classifications
+## Result classifications
 
 Dialogue hypothesis result must be exactly one of:
 
@@ -112,7 +108,7 @@ independent of perfect gameplay semantics.
 - lossless raw preservation.
 
 It does not require deciding whether the region is collision, trigger,
-activation, or transition. Do not implement the parser in this ticket.
+activation, or transition. Do not implement the parser in this record.
 
 ## Scope Boundaries
 
@@ -126,7 +122,7 @@ activation, or transition. Do not implement the parser in this ticket.
 - Do not accept another object's callback as evidence.
 - Do not continue guard archaeology after the first precise rejection.
 
-## Ticket-Specific Validation
+## Validation
 
 - Reverify ROM and runtime-input hashes before and after the experiment.
 - Keep all runtime artifacts under ignored paths.
@@ -136,33 +132,8 @@ activation, or transition. Do not implement the parser in this ticket.
 - Confirm no ROM, save, state, dump, or extracted proprietary artifact is
   tracked or staged.
 
-## Completion Criteria
-
-- Required A/B read-only reviews completed before runtime work.
-- Clean state tested first with exact object attribution.
-- One primary runtime classification recorded.
-- Dialogue hypothesis classified.
-- Conditional C used only if its condition was met.
-- Structural parser readiness answered `YES` or `NO` without implementing it.
-- Research documents updated with evidence and unresolved limits.
-- `docs/PROJECT_<local-state-name>` updated only with newly verified facts.
-- Portable tests and `git diff --check` pass.
-- Independent final review completed and legitimate findings resolved.
-
-## Required Final Report Additions
-
-In addition to `docs/DEVELOPMENT.md`, report:
-
-- located runtime input identities without embedding proprietary bytes;
-- exact runtime identity chain for X and, if applicable, X2;
-- primary runtime classification;
-- dialogue hypothesis classification;
-- immediate callback consequence or first rejecting guard;
-- structural parser readiness `YES` or `NO` with the smallest remaining blocker;
-- whether the conditional scheduler review was used and why.
-
 ## Stop
 
 Stop after the first exact-object callback and its immediate consequence, the
 first rejecting guard, or an explicit environment blocker. Do not implement a
-parser and do not begin another ticket.
+parser and do not begin another record.

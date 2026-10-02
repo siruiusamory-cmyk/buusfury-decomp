@@ -31,35 +31,44 @@ The tracked components are:
 - `tools/runtime/inject_mgba_lua.ps1`: PID-scoped Lua injection with a bounded
   helper process so an mGBA Run-button deadlock cannot strand the caller.
 
-## Provenance recovered from the tool sessions
+## Tooling rules
 
-The durable source is the tracked pipeline above. These identifiers make the
-historical reconstruction auditable if the local the tool database is still
-available:
+These are the hard rules for anyone touching the runtime toolbox. Each one was
+learned from a measurement that went wrong.
 
-- Session `ses_fc54f2bf9ffeW32A1kYhDpxGtZ`, part
-  `prt_03f68b488001KNY6kMPzpLWPrt`: successful single-wolf launch and capture.
-  The sequence was fresh mGBA `--gdb --savestate single-wolf.ss1`, confirm port
-  2345, then run `p004_unblock_capture.py single 20 600`. It reported `S02`, an
-  accepted `Z0`, and HURT stops attributed through `r1 = 0x0203D504` for that
-  load epoch.
-- The same session, part `prt_03f4d90f2001fEzFHeKrOFNdti`: earlier extended
-  P-004 capture with HURT stops and 0x240-byte dumps.
-- The same session, part `prt_03f4ced9f00171zpfNlPFZUjRT`: creation of the
-  successful extended capture client.
+- **Reuse the tracked launcher and client.** Do not reconstruct the GDB/Lua
+  launch-arm-continue sequence in an ignored script under `build/research/`, and
+  do not hand-drive the mGBA Scripting window. That automation already exists in
+  `tools/runtime/inject_mgba_lua.ps1` and is allowlisted per script.
+- **Never author a `.lua` or `.ps1` file through a shell heredoc.** It mangles
+  backslashes, so a Lua pattern such as `"[^/\\]+$"` reaches disk as an invalid
+  escape, the script throws on load, and the launcher reports the misleading
+  "Lua script did not report ready". Write the file with a real file write.
+- **A launcher for a human play session must start the emulator and exit**,
+  owning no wait loop and no cleanup. Two separate defects have killed live
+  sessions mid-play: a deadline that counted setup time, and a `finally` block
+  firing when the job hosting the script was torn down. Never wrap an
+  interactive session in a background job. The operator ends the session; a
+  second script collects the evidence afterwards.
+- **Verify the emulator from the binary's `VersionInfo.FileVersion`**, never
+  from its path. Two builds are present and only the newer one has the scripted
+  breakpoint API; the stable install has been silently overwritten before.
+- **The emulator has one GDB slot.** Merely completing a TCP handshake to port
+  2345 steals it, so a readiness check must not connect. There is a regression
+  test for this: `tools/runtime/test_launcher_no_tcpclient.ps1`.
+- **A silent instrument is not negative evidence.** Every observer carries a
+  liveness channel watching something known to fire, and the closure report
+  states which case the run is in: target silent plus liveness silent proves
+  nothing, target silent plus liveness firing is a real negative.
 
-Ignored local reference artifacts at preservation time were:
+## Provenance of this pipeline
 
-| Artifact | Bytes | SHA-256 |
-|---|---:|---|
-| `p004_unblock_capture.py` | 7,864 | `7EF5CA29EC005C0E4C43EF9268089B12BE0F378E31CD418A7A80E8645B7E4DDF` |
-| `p004_hurt_capture.py` | 6,633 | `91968226E567091CAC753BEA4ABAB595DCBB36DF3CB0827319F7FE2AAC5D7E03` |
-| `run_p4_focus.ps1` | 2,616 | `C79554AA520D8F83F547A1185FC75C7505FAF4A19CEF80572CB263D1D3456C11` |
-| `p004-hurt-single.csv` | 1,702 | `4E2D9EF8AF9CC7B16CC817A0D2AB26F0A8B46595FD3BDD5E8246B7B9ECBD482A` |
-| `p004-unblock-dumps.bin` | 77,616 | `BCB121E22E58A7882C28CC44EBE3262585FD0A227DE88039F8742669E1212556` |
-
-Those files remain ignored private research material. Do not move the CSV,
-memory dumps, savestates, saves, or ROM into tracked paths.
+The durable source is the tracked pipeline above. It mechanically preserves the
+ordering and the protocol parser that were proven in the original capture
+sessions; the ignored local research artifacts that were present at the time
+(one-off capture clients, a CSV and a memory dump) remain private research
+material and are not part of the repository. Do not move that CSV, those memory
+dumps, savestates, saves or any ROM into tracked paths.
 
 ## Non-negotiable ordering
 
@@ -112,10 +121,7 @@ Confirmed 2026-09-26 by `MAP-WARP-RUNTIME-EDIT-001` and
 the engine entered the authored destination and wrote the authored facing, which
 a cached retail destination could not explain.
 
-This rule lives here rather than in `docs/DEVELOPMENT.md` or `docs/DEVELOPMENT.md` because both are
-line-bounded context budgets (300 and 240 lines), and each states that a new
-permanent rule earns its place by being condensed to fit rather than by moving the
-bound. This file is the authoritative runtime procedure those two point at.
+This file is the authoritative runtime capture procedure for this repository.
 
 ## Standard command
 

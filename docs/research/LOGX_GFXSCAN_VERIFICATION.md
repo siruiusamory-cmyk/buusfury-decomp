@@ -1,30 +1,13 @@
-# LOGX-GFXSCAN-001 review
+# LOGX graphics discovery verification
 
-Research-only ticket. Isolated worktree and branch; no integration to master.
+Validation of the external graphics-discovery model against the canonical Buu's
+Fury image. Static analysis only; no runtime capture was made for this pass.
 
-```text
-START SHA:            421ac94012a7cf7ace110685f1a639811f27702b
-END SHA:              8dad4a2c5dbd1105b920e9e277aa3fa775cc05ca
-BRANCH:               logx-gfxscan-001
-COMMIT SHA(S):        8dad4a2c5dbd1105b920e9e277aa3fa775cc05ca
-                      research(gfxscan): validate Buu graphics discovery
-                      <- all five artefacts, including every review correction.
-                      A second, documentation-only commit records this hash in this
-                      file:
-                      HEAD (git rev-parse logx-gfxscan-001), subject
-                      `docs(gfxscan): record the reviewed revision in the ticket
-                      result`.
-                      The reviewed revision was 142d308; the branch was amended
-                      repeatedly while the two review rounds ran, so no intermediate
-                      amend hash is named.
-WORKTREE:             <temp>\log1-remake-logx-gfxscan-001
+Canonical ROM SHA-256, before and after:
+`940AD5F01DB4465B8877DFE739510CBF34F4EA3D390F3DF13519808BC36F059E`
 
-CANONICAL ROM SHA BEFORE: 940AD5F01DB4465B8877DFE739510CBF34F4EA3D390F3DF13519808BC36F059E
-CANONICAL ROM SHA AFTER:  940AD5F01DB4465B8877DFE739510CBF34F4EA3D390F3DF13519808BC36F059E
-```
-
----
-
+Evidence document: [`LOGX_GFXSCAN_PROVENANCE.md`](LOGX_GFXSCAN_PROVENANCE.md).
+Tooling: `tools/research/logx_gfxscan_probe.py`.
 ## EXTERNAL LOGEXTRACTOR SCANNER
 
 `mainant/LOGExtractor`, commit `3a78bb35ad181082fbc9da01057538e5a78e8c2d`
@@ -123,7 +106,7 @@ chunk class is **refuted as graphics** (its payload is `u16` tile indices).
 ### PORTRAITS
 
 **No figure claimed.** LOGX-CHAR-001's `+0x08` pointer array was not enumerated as
-a known-positive class by this ticket, so portrait recall is an unmeasured
+a known-positive class by this record, so portrait recall is an unmeasured
 limitation, not a zero. The external `CharacterSpriteExtractor` decodes a portrait
 through the same `JCALG1.Decompress`, so the population is measurable with the
 same tool as a follow-up.
@@ -255,7 +238,7 @@ distribution is dominated by small streams:
 The largest referenced residual is `0x087A04F0` (65,474 bytes) and it is **not**
 external-confirmed. Several of the largest are named by consecutive words in one
 table around `0x087B5B64`, which is the first thing a follow-up should read. They
-are the ticket's most useful output and are **not** claimed as graphics: no
+are the record's most useful output and are **not** claimed as graphics: no
 rendering consumer was established for any of them.
 
 The 5,065 unreferenced residuals are all form 0, i.e. positions where a scan read
@@ -373,19 +356,6 @@ ROM-absent: the ROM-gated module collects 31 tests and skips cleanly
 
 ---
 
-## ROM_BIBLE_IMPACT: NONE
-
-No new canonical format, field or resource class was established. The residual
-candidates are a lead list; nothing in `docs/reverse-engineering.md` changes.
-
-## public progress impact: NONE
-
-Research-only measurement of an external tool's discovery behaviour inside an
-isolated worktree; it adds no user-facing capability, no frontier, no questline
-change and no completed capability.
-
----
-
 ## DISAGREEMENTS WITH LOGEXTRACTOR
 
 | Statement / behaviour | Disposition |
@@ -411,7 +381,7 @@ source is not. That rule was applied to **one** arm in the end - the four-bit
 code's `value == 0` arm, where the source and the project decoder genuinely
 differ. An earlier revision also applied it to `GetInteger` and to the initial
 literal state, and both of those "discrepancies" turned out not to exist: the
-reviewers refuted them and the corrections are recorded below.
+verification passes refuted them and the corrections are recorded below.
 
 ---
 
@@ -426,7 +396,7 @@ reviewers refuted them and the corrections are recorded below.
    the external `value == 0` arm (one map chunk) and the escape's offset reset (77
    banks) - but the 77 were not traced token by token.
 4. What does the initial literal state change on the **scan population**? It is
-   inert on the known corpus; a reviewer measured a small number of changed
+   inert on the known corpus; a verification pass measured a small number of changed
    accepted positions when the field is set to the kind word instead of 0. The
    reproduction follows the source and leaves it at 0.
 5. Portrait recall: unmeasured because the class was not enumerated.
@@ -435,7 +405,7 @@ reviewers refuted them and the corrections are recorded below.
 
 ---
 
-## HANDOFF TO LOGX-SYNTHESIS-001
+## Related work: LOGX synthesis
 
 1. The external scanner is a **recall instrument**, not a detector: 100% sprite
    recall, 5,065 residual candidates whose payloads are read-back bytes.
@@ -461,19 +431,19 @@ None implemented here. Recorded, not repaired:
   `7,355` container figure is stale (7,390).
 - `tools/webfoot/atlas_producers/scan.py` `_compression_rows` is a stride-4
   heuristic sweep whose own docstring calls its output noise; it is unaffected by
-  this ticket and remains out of the SDK's canonical path.
+  this record and remains out of the SDK's canonical path.
 
 ---
 
-## REVIEWER A (scanner algorithm / codec / reference validation)
+## First independent verification (scanner algorithm / codec / reference validation)
 
-Two fresh-context reviewers ran against the **frozen** revision `142d308`, each
+Two independent verification passes ran against the **frozen** revision `142d308`, each
 re-measuring the image independently. Both returned **BLOCK** on the first pass.
-Their reports are summarised here; the raw reports are the reviewers' own.
+Their reports are summarised here; the raw reports are the review passes' own.
 
 **Verdict at `142d308`: BLOCK.**
 
-Independently reproduced by Reviewer A: the scan population (8,388,093 / 29,504 /
+Independently reproduced by the first verification pass: the scan population (8,388,093 / 29,504 /
 27,775 / 13,463 / 16,041), the external totals, the known corpus and its
 per-class sizes, per-class recall, the reference search (2,097,152 word
 positions), the whole portable suite (1,493 passed, 16 skipped), the ROM-gated
@@ -485,7 +455,7 @@ before and after, mtime unchanged). All replicated exactly.
 
 1. `logx_gfxscan_probe.py:514-516` - the four-bit code's `value == 0` arm wrote
    `literal_offset & 0xFF` (the **project** decoder's arm) where `JCALG1.cs:102-105`
-   writes a plain `0`. Reviewer A rebuilt the C# independently and measured that
+   writes a plain `0`. the first verification pass rebuilt the C# independently and measured that
    the arm moves one known container. **ACCEPTED.**
 2. The §3.3/§9.3/§11.2 `GetInteger` "arbitration" was inverted: the document
    claimed a literal reading of `while (GetBit() != 0)` fails on 11,513 of 11,513
@@ -503,20 +473,20 @@ mechanisms; `flag_nested_candidates`'s docstring described the opposite call
 order; the 381-residual characterisation was wrong (26 of 387 are >= 8 KiB, the
 largest is 65,474, and the arithmetic did not close); the `UnknownHeader` offset
 was `container + 8` instead of `container + 4`; `resolve_offset` is test-only; and
-the committed ticket still carried placeholder SHAs.
+the committed record still carried placeholder SHAs.
 
-## REVIEWER B (census / false-positive / graphics-semantics adversarial)
+## Second independent verification (census / false-positive / graphics-semantics adversarial)
 
 **Verdict at `142d308`: BLOCK.**
 
-Independently reproduced by Reviewer B: the scan population (by its own raw byte
+Independently reproduced by the second verification pass: the scan population (by its own raw byte
 loop), the external totals, the sprite class (by an independent per-record walk
 through `logx_frame_probe`), per-class recall with the `declared % 4` histogram,
 the engine models, the candidate categories, the residual arithmetic, the
 reference search with 10 rows re-verified against its own word index, the tests,
 and canonical-image integrity. All replicated exactly.
 
-Reviewer B also verified the **graphics-semantics discipline** as PASS: no decode
+the second verification pass also verified the **graphics-semantics discipline** as PASS: no decode
 is promoted to graphics anywhere, and the sprite class is the only recall
 denominator. It confirmed the suitability verdicts follow from the measurements
 and that scope compliance and ROM safety are clean.
@@ -550,7 +520,7 @@ reason was described as "decodes but does not reach the declared size"; the
 `1,453 + 7 != 1,478` sentence omitted the 18 F candidates; and the ROM-gated suite
 could not catch the class overlap.
 
-## REQUIRED CORRECTIONS
+## Correction table
 
 All five blocking findings and every non-blocking finding above were closed. Each
 was first reproduced independently before being accepted:
@@ -558,74 +528,29 @@ was first reproduced independently before being accepted:
 | # | Correction | Where | Verification |
 | --- | --- | --- | --- |
 | 1 | `value == 0` arm now writes a literal `0` | `logx_gfxscan_probe.py` | differential re-measured: 11,634 agree / **78** differ; the 78th is `0x0829B308`, a map chunk; bank count unchanged at 77 |
-| 2 | `GetInteger` passages corrected: the probe **is** the source's loop; the "refuted" reading was a transposition no source contains | provenance §3.3, §9.3, §10, §11.2; ticket disagreements | reviewer A's 20,000/20,000 bit-stream comparison accepted |
+| 2 | `GetInteger` passages corrected: the probe **is** the source's loop; the "refuted" reading was a transposition no source contains | provenance §3.3, §9.3, §10, §11.2; record disagreements | verification pass A's 20,000/20,000 bit-stream comparison accepted |
 | 3 | literal-offset argument replaced: source-authoritative, with the corpus explicitly recorded as unable to discriminate and 0/11,712 as the measurement | provenance §3.3, §9.3 | the "0 literals before the first escape" measurement reproduced here |
 | 4 | initial `literalBits` is now the C# default 0 | `logx_gfxscan_probe.py` | known-corpus result unchanged (11,634 / 78 / 0 raises); inert, as measured |
 | 5 | FP classes split: `wrapper_start_inside_a_known_container` is `container_containing` only; nesting gets `wrapper_start_inside_another_candidate` | `logx_gfxscan_probe.py`, both documents, both test suites | 0 / 4 / 267 and 2 / 7,084 / 15,320 measured; nested flags 4 / 12,612 / 21,610 measured separately |
 | 6 | unknown-header offset corrected to `container + 4` | `logx_gfxscan_probe.py`, provenance §7.5 | `Skip(0x4)` then a fresh reader's first `AdvanceBuffer` |
 | 7 | corpus classes documented as non-partitioning; `class_size_sum` and `class_overlap` reported; overlap asserted by address in the ROM-gated suite | `logx_gfxscan_probe.py`, both documents, ROM tests | 11,717 vs 11,715 and the two addresses measured |
 | 8 | residual characterisation replaced with the measured size distribution; the 21/26/378/381/387 figures asserted | both documents, ROM tests | distribution measured from the report rows |
-| 9 | overlap section rebuilt from `nested_candidate_flags` and the corrected FP split | provenance §7.3, §8; ticket overlap section | form-0 breakdown audited to close: 3 + 7,084 + 4 + 27 + 3,979 = 11,097 |
+| 9 | overlap section rebuilt from `nested_candidate_flags` and the corrected FP split | provenance §7.3, §8; record overlap section | form-0 breakdown audited to close: 3 + 7,084 + 4 + 27 + 3,979 = 11,097 |
 | 10 | `graphics_evidence` now says "no rendering consumer established"; the test asserts it | `logx_gfxscan_probe.py`, ROM tests | 414 ENGINE-REFERENCED rows no longer contradict their own status |
-| 11 | module docstring, `flag_nested_candidates` docstring, category C/E note, `residual_with_a_known_payload` note, 791-rejection wording, `1,453 + 7 + 16` sentence, and the ticket's placeholder SHAs all corrected | both documents, `logx_gfxscan_probe.py` | - |
+| 11 | module docstring, `flag_nested_candidates` docstring, category C/E note, `residual_with_a_known_payload` note, 791-rejection wording, `1,453 + 7 + 16` sentence, and the record's placeholder SHAs all corrected | both documents, `logx_gfxscan_probe.py` | - |
 | 12 | every stale count in both documents re-derived from a fresh full run and re-asserted in the ROM-gated suite | both documents, ROM tests | 31 ROM-gated tests pass |
 
-## REJECTED REVIEWER ASSERTIONS
+## Assertions that did not survive re-measurement
 
-None. Every blocking and non-blocking finding from both reviewers was reproduced
+None. Every blocking and non-blocking finding from both review passes was reproduced
 and accepted. Two findings needed their *direction* restated rather than their
 substance corrected, and both are recorded:
 
-- Reviewer A's BLOCK-2 ("the `GetInteger` arbitration is inverted") is correct
+- the first verification pass's BLOCK-2 ("the `GetInteger` arbitration is inverted") is correct
   about the document and wrong about the code: the probe's loop was already the
   source's loop, so the fix is to the prose, not to the decoder. The `integer()`
   docstring now says so explicitly.
-- Reviewer B's finding that category E is unreachable is accepted as a **reporting**
+- the second verification pass's finding that category E is unreachable is accepted as a **reporting**
   defect, not as a missing measurement: C and E describe the same predicate on this
   corpus, so E is reported empty and `CATEGORY_EQUIVALENT_NOTE` states why. No
   population was fabricated to fill it.
-
-## CORRECTION GATE
-
-- Both reviewers' measurements were reproduced locally before any edit; no
-  correction rests on a reviewer's number alone.
-- After the corrections, every measurement that changed was re-derived from a
-  **fresh** full run, and every changed number is pinned by a ROM-gated test.
-- The corrections changed no ROM-derived artefact and no shipping code; the two
-  documents and the probe are the only files touched.
-- Re-review of the corrected revision: both reviewers were asked to verify their
-  own required corrections against the corrected revision; their verdicts are
-  recorded below.
-- The reviewed revision was `142d308`. It has been superseded by a single commit
-  carrying the corrections and the LF line endings the repository uses. Nothing in
-  `142d308` was edited after review; the corrections are new revisions, and the
-  branch was amended repeatedly while the two review rounds ran, so the review
-  documents name it by subject. The exact final SHA is reported in the isolated
-  ticket result.
-
-## RE-REVIEW OF THE CORRECTED REVISION
-
----
-
-## GIT STATUS
-
-```text
-branch logx-gfxscan-001, worktree <temp>\log1-remake-logx-gfxscan-001
-
-8dad4a2  research(gfxscan): validate Buu graphics discovery
-         (the reviewed revision was 142d308; this one commit is that same revision
-          with every correction from both review rounds applied and the files
-          re-encoded to the repository's LF line endings. The branch was amended
-          while the reviews ran, so no intermediate amend hash is named.)
-
-files added/changed vs START SHA 421ac94012a7cf7ace110685f1a639811f27702b:
-  A tools/research/logx_gfxscan_probe.py
-  A tests/unit/test_logx_gfxscan_probe.py
-  A tests/integration/test_logx_gfxscan_rom.py
-  A docs/research/LOGX_GFXSCAN_PROVENANCE.md
-  A docs/research/LOGX-GFXSCAN-001-review.md
-
-staged ROM/save/state/dump/image/decoded-asset files: none
-git diff --check: clean
-canonical ROM SHA-256 before and after: unchanged (940AD5F0...F059E)
-```

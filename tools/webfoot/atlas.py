@@ -46,7 +46,7 @@ class Confidence(str, Enum):
     """Ascending evidence strength. These do NOT collapse into each other.
 
     `OBSERVED` is "a pass saw this shape", `CANDIDATE` is "it survived a filter",
-    `INFERRED` is docs/DEVELOPMENT.md's INFERRED, `CONFIRMED` its CONFIRMED, and
+    `INFERRED` is INFERRED in docs/DEVELOPMENT.md, `CONFIRMED` its CONFIRMED, and
     `RUNTIME_CONFIRMED` is CONFIRMED plus a LEVEL 3+ runtime observation. Kept
     distinct because collapsing OBSERVED into CANDIDATE is exactly how a numeric
     coincidence becomes a fact.

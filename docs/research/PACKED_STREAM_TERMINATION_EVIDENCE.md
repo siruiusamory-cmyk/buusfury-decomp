@@ -1,45 +1,14 @@
-# CQA-02-PACKED-STREAM-TERMINATION-001 - packed-stream termination: evidence resolution and encoder/write-path remediation
+# Packed-stream termination evidence
 
-STATUS: **CLOSED AND INTEGRATED.** Human acceptance YES (2026-09-23). Frozen
-implementation SHA `2138635e5bf1d15885a9a84fa36403ce61fa3012` (unamended, reviewed
-as frozen), integrated to `origin/master` by this ticket's merge request.
-Independent review: **PASS**, no blocking findings. No product capability changed:
-`public progress impact: NONE`.
-
-| Fact | Value |
-| --- | --- |
-| Repository authority | `origin/master` |
-| START SHA | `659db0ec3a996ea0338354c5162454981c8adff5` |
-| Intervening merges before integration | none; `origin/master` was still at START |
-| FROZEN IMPLEMENTATION SHA | `2138635e5bf1d15885a9a84fa36403ce61fa3012` |
-| Frozen commit | **unamended** |
-| CQA-02 | **CLOSED** |
-| CQA-10 | **PARTIAL / IMPROVED** (unchanged by this ticket) |
-| Independent review | `PASS`, **no blocking findings** |
-| Canonical ROM | unchanged, `940ad5f0...36f059e` |
-
-Ticket class: CRITICAL REMEDIATION. Phase 1 (evidence resolution) was run as two
-independent fresh-context investigations plus an adjudication, recorded in
-[`../research/CQA_02_PACKED_TERMINATION_DEEPSEEK.md`](../research/CQA_02_PACKED_TERMINATION_DEEPSEEK.md),
-[`../research/CQA_02_PACKED_TERMINATION_<local-state-name>`](../research/CQA_02_PACKED_TERMINATION_<local-state-name>) and
-[`../research/CQA_02_PACKED_TERMINATION_RESOLUTION.md`](../research/CQA_02_PACKED_TERMINATION_RESOLUTION.md).
-Those three documents are part of this ticket's history and are not restated here.
-
-## Baseline
-
-The audit's finding **CQA-02 [CRITICAL]**,
-[`../research/PROJECT_CODE_QUALITY_AUDIT.md`](../research/PROJECT_CODE_QUALITY_AUDIT.md)
-section C.1, was that the packed encoder's output was not provably self-terminating
-**and** that the repository asserted two mutually exclusive engine termination
-rules while the write path depended on the uncited one. `ROM-CAPACITY-AND-ALLOCATION-001`
-stayed **BLOCKED** on this.
+The packed-stream termination rule, the measurements that resolved it, and the
+encoder and write-path remediation built on that ruling.
 
 ## 1. The evidence question, resolved (Phase 1)
 
 **CASE A: the retail decoder terminates a packed stream on an explicit escape and
 on nothing else.** `CONFIRMED` by two independent disassemblies of the canonical
 image plus a positive census finding no destination comparison, adjudicated in
-[resolution](../research/CQA_02_PACKED_TERMINATION_RESOLUTION.md) §2.1:
+[resolution](../research/PACKED_STREAM_TERMINATION.md) §2.1:
 
 - entry ROM `0x087B79E4`, executed from IWRAM `0x03000040` through the Thumb to ARM
   veneer `0x08049120`;
@@ -163,12 +132,12 @@ that module's own docstring, and the "why the check is opt-in" paragraph),
 ## 7. Phase-1 measurement correction, recorded rather than rewritten
 
 The Phase-1 record gives `pack(b"A" * 64)` a packed length of **292 bytes** in the
-resolution's §2.3 and in the a local reviewer memo. Re-measured against the untouched
+resolution's §2.3 and in the separate investigator memo. Re-measured against the untouched
 pre-fix module at the START SHA, the value is **12 bytes**
 (`0200000040000000fe53d020`), with `fill = 0` and 0 padding bits - every other
 property §2.3 states about that case holds. The 292 figure belongs to the 256-byte
 random payload in the first row of the investigator's own probe output
-(`<temp>\cqa02\flush.txt`, section B), whose `fill = 0` it shares; the figure was
+(`<temporary directory>\cqa02\flush.txt`, section B), whose `fill = 0` it shares; the figure was
 carried across rows. A 64-byte payload cannot reach 292 bytes under this encoder,
 whose literal token is nine bits.
 
@@ -177,7 +146,7 @@ edited to hide the error, and no Phase-1 conclusion changed. Before commit the
 three Phase-1 documents also received one repository-required Markdown change: the
 em dash (U+2014), which this repository's commit hook rejects, was replaced by
 ordinary punctuation in 94 places. Wording is unchanged - the pre-normalisation
-SHA-256 of both investigator memos equals the hashes the ticket recorded for Phase 1
+SHA-256 of both investigator memos equals the hashes the record recorded for Phase 1
 (`A80179A4...`, `86940F2F...`), and every line's word sequence is identical apart
 from one table cell whose lone dash became `-`.
 
@@ -226,12 +195,12 @@ Added or inverted, all portable and synthetic:
   not loosened.
 
 Mutation sensitivity (each mutation applied to the frozen tree and reverted, with
-file hashes and `git status` confirming the revert; the reviewer repeated M and N
+file hashes and `git status` confirming the revert; the verification pass repeated M and N
 independently):
 
 | Mutation | Change | Result |
 | --- | --- | --- |
-| **M1** marker removed | `writer.write_end_marker()` removed from `pack` | 12 focused tests fail (13 in the reviewer's run, which included the >64 KiB case) |
+| **M1** marker removed | `writer.write_end_marker()` removed from `pack` | 12 focused tests fail (13 in the verification pass's run, which included the >64 KiB case) |
 | **M2** dialogue guard bypassed | `raise CompressedDialogueError` replaced by `pass` | 2 tests fail: the refusal and the guard-runs-before-allocation tests |
 | **M3** marker corrupted | one of the twelve marker bits set | 9 tests fail; permanently pinned for **all twelve** bit positions by `test_altering_any_bit_of_the_marker_defeats_retail_validation` |
 
@@ -259,7 +228,7 @@ narrow cap excludes.
 Canonical image `940ad5f01db4465b8877dfe739510cbf34f4ea3d390f3df13519808bc36f059e`,
 8,388,608 bytes, identical before and after every run; its boundary bytes, hole
 regions and mtime are unchanged. The ROM-gated tests read a derivative copy placed
-in this worktree, which was removed afterwards. No ROM, save, state, dump or
+in the working copy, which was removed afterwards. No ROM, save, state, dump or
 extracted payload was committed; every committed fixture is synthetic.
 
 ## 12. Focused validation
@@ -270,29 +239,29 @@ extracted payload was committed; every committed fixture is synthetic.
 - ROM-gated: `test_graphics_rom.py` **32 passed**;
   `test_webfoot_lz_strict_rom + test_rom_expand_001 + test_decoded_text_rom +
   test_logx_codec_rom + test_graphics_override_build_rom` **40 passed**.
-- `compileall` clean; `git diff --check` clean; the independent reviewer ran
+- `compileall` clean; `git diff --check` clean; the independent verification pass ran
   `tests/unit` and `tests/integration` once from its own worktree: 2,125 passed,
   996 skipped, 0 failed.
 - The full suite was **not** run manually, per standing policy.
 
 ## 13. Finding closure
 
-### CQA-02: **CLOSED**
+### CQA-02: resolved
 
 The engine's packed-stream termination rule is stated once, with evidence, in
-[resolution](../research/CQA_02_PACKED_TERMINATION_RESOLUTION.md); `pack` emits the
+[resolution](../research/PACKED_STREAM_TERMINATION.md); `pack` emits the
 escape by construction; the production validator proves the rule; both production
 write consumers invoke it and fail closed; final encoded size drives fit and
 allocation; the stale claims are corrected in place; and the mutation checks detect
 the critical bypasses. The remediation is integrated to `origin/master` on this
-ticket's merge request.
+record's merge request.
 
 ### CQA-10: **PARTIAL / IMPROVED** (unchanged)
 
-This ticket touched one write boundary (the packed-payload planner) but did not
+This record touched one write boundary (the packed-payload planner) but did not
 close any of CQA-10's recorded debt: the overwrite-policy divergence, the
 repository-output policy, atlas atomic publication, or the remaining unguarded
-writers. CQA-10 is **not** closed or reduced by this ticket.
+writers. CQA-10 is **not** closed or reduced by this record.
 
 ## 14. Scope boundaries observed
 
@@ -302,16 +271,3 @@ CQA-07, CQA-08, CQA-09, CQA-10, CQA-12 and CQA-15 remain open exactly as the aud
 recorded them. `ROM-CAPACITY-AND-ALLOCATION-001` was not started and remains
 **BLOCKED** on that set. `WORKBENCH-006` was never read as a baseline, staged,
 reset, cleaned, fast-forwarded or branched.
-
-## 15. Independent review
-
-Verdict **PASS**, no blocking findings, recorded with its verification table and
-mutation results in
-[`CQA-02-PACKED-STREAM-TERMINATION-001-review.md`](CQA-02-PACKED-STREAM-TERMINATION-001-review.md).
-No correction commit was required; the frozen candidate stands as reviewed and
-unamended.
-
-## Stop
-
-CQA-02 is closed and integrated. Do not begin `CQA-03-15-IDENTITY-AND-EXTENTS-001`,
-any other audit remediation, or `ROM-CAPACITY-AND-ALLOCATION-001` in this pass.

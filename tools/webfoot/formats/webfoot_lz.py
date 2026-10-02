@@ -73,7 +73,7 @@ performs no size comparison at all. That escape is twelve zero bits - prefix
 `000`, seven-bit field `0000000`, two-bit selector `00` - read where a token
 would begin. `CONFIRMED`; the two independent disassemblies and the positive
 census that found no destination comparison are recorded in
-`docs/research/CQA_02_PACKED_TERMINATION_RESOLUTION.md` §2.1.
+`docs/research/PACKED_STREAM_TERMINATION.md` §2.1.
 
 The **default decode here is deliberately not that rule**: it stops at the
 declared size, which is a host-side convenience that bounds the work a malformed
@@ -522,7 +522,7 @@ def validate_retail_termination(
     The retail decoder stops on this escape and on nothing else: it is called with
     `(source, destination)`, keeps no output counter and compares nothing against
     its destination cursor (`CONFIRMED`;
-    `docs/research/CQA_02_PACKED_TERMINATION_RESOLUTION.md` §2.1). A stored
+    `docs/research/PACKED_STREAM_TERMINATION.md` §2.1). A stored
     container (kind 0) needs no escape - the dispatcher copies exactly its
     declared length - so it is returned after the usual bounds check.
 

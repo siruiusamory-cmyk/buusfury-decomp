@@ -68,12 +68,12 @@ def _sprites():
     # The worktree holds no `build/` of its own (it is generated and ignored), so
     # point the CLI's default atlas directory at the configured one rather than
     # creating a junction git will refuse to resolve.
-    atlas = Path(os.environ.get("DBZ_QA_ATLAS_DIR", r"<checkout>\build\atlas"))
+    atlas = Path(os.environ.get("DBZ_QA_ATLAS_DIR", _ROOT / "build" / "atlas"))
     resolver = lambda: atlas  # noqa: E731 - a one-line stand-in
     cli_module._default_atlas_directory = resolver
     workbench_session._default_atlas_directory = resolver
 
-    rom = Path(os.environ.get("DBZ_QA_ROM", r"<checkout>\roms"))
+    rom = Path(os.environ.get("DBZ_QA_ROM", _ROOT / "roms"))
     candidates = sorted(rom.glob("*Buu*Fury*.gba")) if rom.is_dir() else []
     if not candidates:
         return None, None

@@ -60,7 +60,7 @@ No independently substantiated ARM-state consumer was found. Dynamic calls and c
 
 ## Recomp evidence
 
-The pinned recomp checkout cannot supply behavioral correspondence in its present state. `extern/dbz-buus-fury-recomp/generated/README.md:1-4` states that generated output belongs in that directory, but no generated C++ is checked in. Its configuration requires SHA-1 `e65738e9d67688309f09811a54f495523ec9aada` (`extern/dbz-buus-fury-recomp/game.toml:19-21` and `:28-30`), while this ticket's verified ROM has SHA-1 `f1c4b07554d2a3b1ad2f325307051e775ce68087`. `extern/dbz-buus-fury-recomp/tools/regen.ps1:16-19` enforces the configured input before generation.
+The pinned recomp checkout cannot supply behavioral correspondence in its present state. `extern/dbz-buus-fury-recomp/generated/README.md:1-4` states that generated output belongs in that directory, but no generated C++ is checked in. Its configuration requires SHA-1 `e65738e9d67688309f09811a54f495523ec9aada` (`extern/dbz-buus-fury-recomp/game.toml:19-21` and `:28-30`), while the verified ROM has SHA-1 `f1c4b07554d2a3b1ad2f325307051e775ce68087`. `extern/dbz-buus-fury-recomp/tools/regen.ps1:16-19` enforces the configured input before generation.
 
 Consequently there is no generated function identifier, C++ dataflow, or recomp address safe to transfer. Only the behavioral search method is portable: independently find stride `0x38`, field `+0x2C`, indexed indirection, and downstream address use in each profile.
 
@@ -144,7 +144,7 @@ Keep the project name `first_word_raw`. Evidence supports pointer use in one sta
 - Do indirect or ARM-state consumers exist?
 - Do all variation elements have the same pointer role?
 
-The next ticket should obtain or create a reproducible route/save for one known map, capture the `0x080089D4` dataflow, then step only through `0x08009670` far enough to identify its owning subsystem. It should not parse the target structure first.
+An open item is a reproducible route or save for one known map: capture the `0x080089D4` dataflow, then step only through `0x08009670` far enough to identify its owning subsystem. The target structure should not be parsed first.
 
 # ROM-006 runtime reachability and subsystem ownership
 
@@ -152,7 +152,7 @@ ROM-006 supersedes the ROM-005 runtime no-hit result above. It raises the resolv
 
 ## ROM-005 baseline
 
-ROM-005 was committed before this work as `245a6efc9f4fb78b683b27ab6a6960bcf9682769` (`feat: identify variation-array executable consumer`). Its pre-commit suite passed 118 tests, prior ROM-002 through ROM-004 regressions matched their recorded counts, evidence remained Level 2, and the worktree was clean before ROM-006 began.
+ROM-005 established the Level 2 resolver result on the same verified profile; the prior ROM-002 through ROM-004 regressions matched their recorded counts.
 
 ## Selector provenance
 
@@ -190,13 +190,13 @@ Exact first-sample replay from reset:
 ```powershell
 powershell.exe -NoProfile -ExecutionPolicy Bypass -File `
   ".\tools\runtime\load_mgba_lua.ps1" `
-  -RomPath "<checkout>\roms\Dragon Ball Z - Buu's Fury (U).gba" `
-  -LuaPath "<checkout>\tools\runtime\rom006_bootstrap.lua" `
-  -ExpectedState "<checkout>\build\rom006\bootstrap.mss"
+  -RomPath "roms\Dragon Ball Z - Buu's Fury (U).gba" `
+  -LuaPath "tools\runtime\rom006_bootstrap.lua" `
+  -ExpectedState "build\rom006\bootstrap.mss"
 
 .\.venv\Scripts\python.exe -m tools.runtime.rom006_gdb_probe `
-  "<checkout>\roms\Dragon Ball Z - Buu's Fury (U).gba" `
-  "<checkout>\build\rom006\bootstrap.mss" `
+  "roms\Dragon Ball Z - Buu's Fury (U).gba" `
+  "build\rom006\bootstrap.mss" `
   --timeout 20
 ```
 
@@ -282,7 +282,7 @@ No project data reader follows `first_word_raw` or reads target `+0x40/+0x44`. T
 - Is the registry homogeneous, or does it combine collision, trigger, activation, and event objects?
 - Can an early duplicated `first_word_raw` sample be reached without unrelated progression?
 
-The next ticket should obtain a deterministic state immediately before `0x08008ABA -> 0x08009670`, capture the adapter and one indirect factory at runtime, and stop before general target parsing.
+An open item is a deterministic state immediately before `0x08008ABA -> 0x08009670`: capture the adapter and one indirect factory at runtime, and stop before general target parsing.
 
 # ROM-007 Higher Plane factory capture
 
@@ -297,8 +297,8 @@ Tracked Lua holds GBA Down for frames 1 through 120. This crosses nearby south t
 ```powershell
 .\.venv\Scripts\python.exe -m tools.runtime.rom007_factory_probe `
   "roms\Dragon Ball Z - Buu's Fury (U).gba" `
-  "build\rom007\higher-plane-original.ss1" `
-  "build\rom007\higher-plane-original.sav" `
+  "build\rom007\<state>.ss1" `
+  "build\rom007\<state>.sav" `
   --state-sha256 329b06bc1adc458e637bd1a3afc1692ee40854d327567ea0885379c275baeb28 `
   --save-sha256 e12c350970b21ac0b5df32dba0a76b3a333c2a17a976f12a6cc5844880f08e5a `
   --lua tools\runtime\rom007_move_south.lua `
@@ -430,7 +430,7 @@ Static lifecycle evidence supports that rule:
 
 ## Dispatch-table boundary
 
-Factory `0x08007674` installs data/table base `0x0804A09C` at object `+0`. Its evidence-backed entry in this ticket is cleanup raw `0x080510A1` / Thumb fetch `0x080510A0`, reached from registry removal.
+Factory `0x08007674` installs data/table base `0x0804A09C` at object `+0`. Its evidence-backed entry here is cleanup raw `0x080510A1` / Thumb fetch `0x080510A0`, reached from registry removal.
 
 The AABB callback source is separate. Common initializer `0x08009AEC` calls a descriptor-driven function from descriptor `+0x04` and stores the returned callback reference at object `+0x0C`. AABB consumers then derive relative callback targets from that reference at `0x08012784`, `0x0801279C`, and `0x08012832`. No concrete callback target from this reference was captured for the `0x08007675` object, so dispatch base `0x0804A09C` is not mislabeled as its spatial callback table.
 
@@ -457,8 +457,8 @@ Entry-level replay command, once GUI launch approval is available:
 ```powershell
 .\.venv\Scripts\python.exe -m tools.runtime.rom008_query_probe `
   "roms\Dragon Ball Z - Buu's Fury (U).gba" `
-  "build\rom008\higher-plane-original.ss1" `
-  "build\rom008\higher-plane-original.sav" `
+  "build\rom008\<state>.ss1" `
+  "build\rom008\<state>.sav" `
   --state-sha256 329b06bc1adc458e637bd1a3afc1692ee40854d327567ea0885379c275baeb28 `
   --save-sha256 e12c350970b21ac0b5df32dba0a76b3a333c2a17a976f12a6cc5844880f08e5a `
   --lua tools\runtime\rom007_move_south.lua `
@@ -489,7 +489,7 @@ assuming their names. Canonical identities recorded before use were:
 
 Byte-identical working sources remained under ignored `build/rom009/`. The ROM
 and working sources retained their pre-run hashes, sizes, and mtimes after every
-completed replay; the untouched originals matched their before-ticket identities
+completed replay; the untouched originals matched their original identities
 again after runtime work. The canonical profile was reidentified as
 `buus_fury_usa_rev0_01c1707f` before and after runtime work. No ROM, register, or
 memory write packet was sent.
@@ -533,10 +533,11 @@ guard sites executed. No exact AABB or callback was captured. The runtime slot
 contained raw zero at X insertion. This is an observed input/runtime-environment
 blocker, not a proven guard and not a proven cause of absent scheduling.
 
-The conditional an independent reviewer scheduler review was used because the clean replay
+A separate conditional scheduler-level review was used because the clean replay
 produced no exact callback. It confirmed that zero query-entry hits cannot be
 promoted to an instruction-level rejection. Further state creation, story
-progression, or gameplay expansion would exceed the ticket boundary.
+progression, or gameplay expansion would exceed the scope of this bounded
+experiment.
 
 Required classifications:
 
@@ -641,7 +642,7 @@ Result status:
   external change is one additional read-only state from a different normal-play
   context; it qualifies only when the probe observes one of `0x08006E3C`,
   `0x08012A24`, `0x08021CC0`, or `0x080220D8` after X is live. Alternatively,
-  the ticket must explicitly permit an inconclusive functional-runtime result.
+  the experiment must explicitly permit an inconclusive functional-runtime result.
 - Dialogue hypothesis: **UNRESOLVED**. Neither input reaches the compared
   scheduler path, so the equal negative traces do not establish dialogue
   causality or its absence.
@@ -737,7 +738,7 @@ an uncapped like-for-like comparison. The sentinel exists only to keep the
 branch armed for the entire measurement; semantic capture still requires
 dynamically discovered X.
 
-The first human run exposed a separate orchestration cost: six discovery GDB
+The first human run exposed a separate operational cost: six discovery GDB
 breakpoints remained installed after native arming, making the next map load a
 slideshow. The runner now retires every discovery breakpoint after X is armed
 and leaves only registry-reset and target-removal lifecycle breakpoints. It

@@ -1,10 +1,8 @@
 # ADR 0006 - Public product screenshots
 
 - **Status:** accepted (2026-09-21)
-- **Evidence:** `WEBFOOT-SITE-VISUAL-DIRECTION-PASS-001`
-  ([record](../tickets/archive/WEBFOOT-SITE-VISUAL-DIRECTION-PASS-001-COMPLETE.md),
-  "Context delta" and "Known limits");
-  [`docs/DEVELOPMENT.md`](../../docs/DEVELOPMENT.md) ("Original ROM Safety - Mandatory");
+- **Evidence:** the site visual-direction record ("Context delta" and "Known limits");
+  [`ROM_SAFETY.md`](../ROM_SAFETY.md) ("The canonical input is read-only");
   `public/dbz-map-browser.png`, `public/dbz-layout-editor.png`.
 
 ## Decision
@@ -80,7 +78,7 @@ does **not** authorize committing:
 - decompressed proprietary blobs;
 - commercial asset packs.
 
-`docs/DEVELOPMENT.md` continues to forbid all of those without a new owner decision, and
+`ROM_SAFETY.md` continues to forbid all of those without a new owner decision, and
 no later reader may treat the approved screenshots as having created that
 decision. `public/` holds the approved PNGs and the pre-existing hand-written
 favicon, and nothing else.

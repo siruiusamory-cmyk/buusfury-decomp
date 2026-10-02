@@ -1,5 +1,5 @@
 /* ###
- * IP: LOG1-REMAKE
+ * IP: Webfoot SDK
  *
  * AUTO-003: seed ROM-012 bounded-trace sites and report the executable tree
  * around the accepted spatial action chain.

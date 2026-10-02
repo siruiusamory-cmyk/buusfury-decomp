@@ -1,7 +1,7 @@
 # ADR 0001 - Canonical ROM immutability
 
 - **Status:** accepted (2026-09-21)
-- **Evidence:** [`docs/DEVELOPMENT.md`](../../docs/DEVELOPMENT.md) ("Original ROM Safety - Mandatory");
+- **Evidence:** [`ROM_SAFETY.md`](../ROM_SAFETY.md) ("The canonical input is read-only");
   [`tools/webfoot/authored_image.py`](../../tools/webfoot/authored_image.py)
   (source-alias refusal, `save_authored_image`);
   [`tools/webfoot/workbench/session.py`](../../tools/webfoot/workbench/session.py)
@@ -24,7 +24,8 @@ to its input. Generated ROMs are **never committed**.
 
 The canonical image is the project's measurement subject: its profile and
 SHA-256 anchor every ROM address, offset and capacity figure the SDK resolves,
-and `docs/DEVELOPMENT.md` requires each write to follow `verified base -> working
+and [`ROM_SAFETY.md`](../ROM_SAFETY.md) requires each write to follow
+`verified base -> working
 copy/generated output -> patch/output ROM`. A tool that could rewrite the
 canonical file in place would invalidate the evidence base it depends on, and
 the project would lose the one trusted baseline it compares every derivative

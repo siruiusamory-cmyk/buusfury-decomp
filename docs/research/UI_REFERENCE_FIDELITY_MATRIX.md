@@ -1,4 +1,4 @@
-# Reference-fidelity matrix, DRAGONBYTE-Z-VISUAL-DIRECTION-PASS-001
+# Reference-fidelity matrix, DragonByte Z visual direction
 
 Companion to [`UI_REFERENCE_MATRIX.md`](UI_REFERENCE_MATRIX.md) (what the real
 tools do) and [`UI_FUNCTIONAL_DIFF.md`](UI_FUNCTIONAL_DIFF.md) (what behaviour
@@ -8,8 +8,8 @@ what it deliberately did differently, and what is missing**.
 Verdicts: **BORROWED PATTERN PRESENT** / **JUSTIFIED DEVIATION** /
 **MISSING / REGRESSION**. A MISSING on a primary structural row is a block.
 
-Evidence is a real capture in `<temp>\dbz-visual-pass\light`, named per row, taken
-from the running PySide6 application against the canonical ROM.
+Evidence is a real capture of the running PySide6 application against the
+canonical ROM, named per row.
 
 ## Reference set
 

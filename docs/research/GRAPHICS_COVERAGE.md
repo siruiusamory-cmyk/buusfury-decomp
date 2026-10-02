@@ -193,8 +193,7 @@ task is **`UI-HUD-GRAPHICS-001`**; the rest stay later.
    records are text/format records, not graphics), and a **deterministic,
    literal-named, corpus-disjoint population of 34 containers** was established
    with 7 assets rendered. Completeness is **not** proven. See
-   [`UI_HUD_GRAPHICS.md`](UI_HUD_GRAPHICS.md) and
-   [`../tickets/archive/UI-HUD-GRAPHICS-001-COMPLETE.md`](../tickets/archive/UI-HUD-GRAPHICS-001-COMPLETE.md).
+   [`UI_HUD_GRAPHICS.md`](UI_HUD_GRAPHICS.md).
 2. **Residual `0x087B5B64` load-descriptor** RE (**`STATIC-GRAPHICS-001`**): walk
    the single reference at `0x080123CC`/`0x080123xx` as instructions, identify the
    consumer, and settle whether the 6 large containers are title/cutscene/static

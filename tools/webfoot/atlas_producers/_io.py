@@ -3,7 +3,7 @@
 The `newline=""` / `encoding="utf-8"` pairing and the exact `json.dumps` keyword
 sets are load-bearing for determinism and are reproduced from each original
 script rather than unified: `seed_knowledge.jsonl` was written with
-`ensure_ascii=False` and no key sort (scratchpad/build_seed.py:589), every other
+`ensure_ascii=False` and no key sort (`build_seed.py:589`), every other
 artifact with `sort_keys=True, separators=(",", ":")`.
 """
 

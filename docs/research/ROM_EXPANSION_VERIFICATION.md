@@ -1,6 +1,12 @@
-# ROM-EXPAND-001: Runtime-Prove Expanded ROM Allocation with Authored Dialogue
+# Expanded ROM allocation with authored dialogue
 
-## Objective
+Runtime proof that the retail engine consumes a compressed resource whose pointer
+targets generated ROM expansion space, with the acceptance payload and the evidence
+per line.
+
+The earlier access path is `REFUTED`, with its exact measured failure recorded.
+
+## What was proved
 
 Prove or refute that the retail Buu's Fury engine can consume a compressed
 resource whose pointer targets generated ROM expansion space. The acceptance
@@ -12,7 +18,7 @@ recompression exceeds its retail allocation. Minimum evidence: a separate
 expanded generated ROM, static proof of the relocated container, and mGBA
 observation of the normal retail dialogue engine displaying the authored line.
 
-## Context Delta
+## Context
 
 - Continuation point: [TEXT-HANDLE-002 closure](archive/TEXT-HANDLE-002-COMPLETE.md).
 - Canonical Buu profile SHA-256:
@@ -28,7 +34,7 @@ observation of the normal retail dialogue engine displaying the authored line.
   1’s entry. Packed handle 0x02002641 remains selector 1, decoded start
   0x132, decoded length 0x20.
 
-## Required Work
+## Work performed
 
 1. Record branch, HEAD, initial dirty/staged state, governing files read,
    atlas digest, canonical-ROM and fixture hashes, existing allocation/build
@@ -84,69 +90,7 @@ ignored/untracked. Verify canonical identity before and after each experiment.
 - mGBA proof is mandatory. Document hardware compatibility evidence and
   remaining validation, but do not claim real-hardware proof without it.
 
-## Ticket-Specific Validation
-
-Focused tests cover sizing, deterministic padding, bounds, reservations and
-overlap, source/output separation, expansion pointer conversion, relocated
-round trip, canonical-prefix preservation, deterministic builds, and
-insufficient-capacity failure. Include ROM-gated proof that the overflowed
-dialogue relocates, decodes, preserves its handle, and leaves canonical input
-unchanged. Add discriminating tests for critical safety bounds.
-
-Run the warranted broad integration gate once after production code freezes.
-
-## Required Review
-
-An independent reviewer must inspect the frozen allocation/build/dialogue diff,
-surrounding code, tests, evidence and generated-ROM validation. The review
-explicitly covers address conversion, sizing, allocation bounds, overlap
-prevention, padding determinism, source protection, atlas semantics, dialogue
-integration, and out-of-range-write tests. Record and resolve the template
-verdict.
-
-## Public Progress
-
-If expansion is runtime-proven and unblocks authored compressed NPC dialogue,
-public progress impact is UPDATED. Update capacity and dialogue milestones,
-the next current blocker and every blocker field; validate, build, deploy and
-verify the live site. Overall percentage remains an owner decision. Otherwise
-record NONE with the required reason.
-
-## Completion Criteria
-
-Outcome A: mGBA displays “Nice work, Goku!” through the retail dialogue engine
-from the relocated expansion-space resource. Record resource access as
-RUNTIME-PROVEN, then finish minimal shared allocator and dialogue integration.
-
-Outcome B: the engine cannot consume the expanded address. Record resource
-access as REFUTED and the exact measured failure; do not speculate or overwrite
-retail resources.
-
-Outcome C: a platform/build-image issue blocks a safe experiment. Record the
-exact blocker and do not silently fall back to retail-resource overwrite.
-
-## Final Report Requirements
-
-Include identity; platform evidence; experimental layout; relocation details;
-static/runtime proof; allocator design; dialogue integration; focused,
-ROM-gated, mutation and broad validation; review; canonical/save/state/artifact
-and Git safety; atlas and ROM Bible impact; public progress; and exactly one
-next measured authoring blocker.
-
-Finally print:
-
-    EXPANDED ROM RESOURCE ACCESS: RUNTIME-PROVEN YES/NO
-    SHARED EXPANSION ALLOCATOR: SUPPORTED YES/NO
-    AUTHORED COMPRESSED NPC DIALOGUE: RUNTIME-PROVEN YES/NO
-    DIALOGUE CAPACITY BLOCKER: CLOSED YES/NO
-    CANONICAL RETAIL ROM UNCHANGED: YES/NO
-    PUBLIC AUTHORING FRONTIER MOVED: YES/NO
-
-## Stop
-
-Stop after Outcome A, B or C and required reporting. Do not begin TEXT-HANDLE-003.
-
-## Result: Outcome A - DELIVERED
+## Result
 
 Delivered in commit `9bf88f0` ("Add shared generated ROM expansion
 allocation"). The retail Buu's Fury engine consumed a compressed-dialogue
@@ -174,7 +118,7 @@ commit).
   the retail consumer at `0x08012240` read packed handle `0x02002641`, selector
   1, and the relocated pointer `0x08800000`, and the deterministic-fixture
   snapshot showed "Nice work, Goku!" in the normal retail dialogue box. This is
-  the ticket's stated runtime outcome, backed on disk by that committed research
+  the record's stated runtime outcome, backed on disk by that committed research
   doc; the mGBA session was not independently re-run during this closure pass, so
   the runtime proof rests on the recorded capture, not on a fresh run.
 - **SHARED EXPANSION ALLOCATOR: SUPPORTED / SINGLE BUILD-SCOPED RESERVATION

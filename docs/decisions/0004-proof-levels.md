@@ -3,9 +3,8 @@
 - **Status:** accepted (2026-09-21)
 - **Evidence:** [`src/data/capabilities.json`](../../src/data/capabilities.json)
   (`proof`, and `researchOnly`); [`docs/capability-registry.md`](../capability-registry.md)
-  ("Fields"); [`docs/DEVELOPMENT.md`](../../docs/DEVELOPMENT.md) ("Evidence Discipline");
-  `PROJECT-CAPABILITY-REGISTRY-001`
-  ([record](../tickets/archive/PROJECT-CAPABILITY-REGISTRY-001-COMPLETE.md)) and
+  ("Fields"); [`DEVELOPMENT.md`](../DEVELOPMENT.md) ("Evidence discipline");
+  the capability registry record and
   [`../PROJECT_<local-state-name>`](../PROJECT_<local-state-name>) (the corrected
   `visual-editor-foundation` proof claim); `WORKBENCH-002` (dialogue, runtime);
   `MAP-LAYOUT-WRITE-001` ("Emulator runtime validation was not performed");
@@ -52,7 +51,7 @@ in every respect:
 
 ## Consequences
 
-- A ticket states which level it reached, and does not report a bare "proven".
+- A capability states which level it reached, and does not report a bare "proven".
 - **RUNTIME PROOF requires an engine observation of the specific authored
   result.** No amount of static or emitted-image evidence promotes to it.
 - A golden journey ends at the **strongest level it actually reaches** and says
@@ -64,9 +63,8 @@ in every respect:
   means the result was established inside the shipped application by its own
   round-trip, a rendered image or a ROM-gated build proof - the
   structural/renderer levels, without an engine run. The registry is the
-  product-facing record; where a reader needs the finer level, the cited ticket
-  is the authority.
-- `docs/DEVELOPMENT.md`'s `CONFIRMED` / `INFERRED` / `UNKNOWN` labels and its `LEVEL 0..4`
+  product-facing record; where a reader needs the finer level, the cited research record is the authority.
+- `DEVELOPMENT.md`'s `CONFIRMED` / `INFERRED` / `UNKNOWN` labels and its `LEVEL 0..4`
   runtime scale are unchanged and remain the vocabulary for binary and
   executable claims. This ADR is about which *kind* of claim a proof is, not
   about how confident one claim is.

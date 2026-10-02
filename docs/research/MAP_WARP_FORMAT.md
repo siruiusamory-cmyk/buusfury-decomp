@@ -1,29 +1,7 @@
-# MAP-WARP-FORMAT-001 - proving and productionizing the map-transition data model
+# Proving and productionizing the map-transition data model
 
-STATUS: **CLOSED (2026-09-26).** Class: scoped format and SDK authority pass. This
-is a **sub-pass of the parent capability `MAP-WARPS-AND-CONNECTIONS-001`**, which
-stays active and unshipped in [`PROJECT_<local-state-name>`](PROJECT_<local-state-name>); the parent's Workbench
-surface, project persistence, runtime proof and capability advance are explicitly
-**not** in scope here and were not begun.
-
-Baseline as given by the ticket: `fc8ba48b184a06fcff79dcbf3fc1d215e5af2046`.
-Actual start SHA: `82835a09c155f82f4af675f41e297fff0c365522` (**13 commits later** -
-see the drift record in the closure
-[`archive/MAP-WARP-FORMAT-001.md`](archive/MAP-WARP-FORMAT-001.md)). Implementation
-and frozen reviewed candidate:
-`b4ca0612341b9b50b60073ce4e77cebd82b4ad29`. Independent review: **APPROVE**, no
-blocking findings.
-
-**public progress impact: NONE.** No capability ships, the registry stays at
-**19 / 24 (79%)**, `src/data/capabilities.json` is untouched and `warps` remains
-missing, and no published claim, blocker or questline entry changes wording - the
-work is an SDK-internal data model, so no site edit is warranted.
-
-Scope boundaries honoured: no Workbench UI, no runtime authoring proof, no
-capability count change, no public-site change, no GUI serializer, no raw-offset
-authoring API.
-
----
+The supported map-transition record family, its production authority, its semantic
+identity, the round trip and the mutations that guard it.
 
 ## 1. What was determined, and on what evidence
 
@@ -212,19 +190,19 @@ owns that when the parent capability branch is pushed.
 | `pytest tests/unit/test_map_transitions.py tests/unit/test_maps.py tests/unit/test_map_entry.py tests/unit/test_output_safety.py tests/unit/test_test_gates.py` | **116 passed** |
 | `pytest tests/integration/test_map_transitions_rom.py tests/integration/test_logx_connector_rom.py` | **45 passed** |
 | `pytest tests/integration/test_local_maps_rom.py` | **44 passed** (3 m 39 s) |
-| `pytest tests/unit/test_workflow_migration.py tests/unit/test_capability_registry.py tests/unit/test_decisions_and_journeys.py tests/unit/test_code_review_workflow.py` | **51 passed, 1 failed** - the failure is pre-existing and not ticket-caused, see below |
+| `pytest tests/unit/test_workflow_migration.py tests/unit/test_capability_registry.py tests/unit/test_decisions_and_journeys.py tests/unit/test_code_review_workflow.py` | **51 passed, 1 failed** - the failure is pre-existing and not record-caused, see below |
 | `git diff --check` (new files registered with `git add -N`, then unstaged) | clean |
 
-**The one documentation-gate failure is not ticket-caused.**
+**The one documentation-gate failure is not record-caused.**
 `tests/unit/test_capability_registry.py::test_the_built_page_renders_the_registry_list`
 fails with `resize renders with the wrong state class`. It reads only
 `src/data/capabilities.json` and the git-ignored `dist/index.html`; the registry
 says `resize` is shipped (MAP-RESIZE-AND-LAYERS-001) while the local page still
 marks it todo. `dist/` is ignored build output (`.gitignore` line 33) last
 written 2026-09-25 12:54, before that merge, and neither file is modified by this
-ticket. Left as found rather than rebuilt, because rebuilding the site is
+record. Left as found rather than rebuilt, because rebuilding the site is
 unrelated to this pass - and rebuilding it would be a public-site change, which
-this ticket forbids.
+this record forbids.
 
 The portable tests are ROM-free and use a synthetic image assembled from the
 measured format. That fixture writes its layout with the **measured literals**,
@@ -247,23 +225,23 @@ detected rather than silently followed - which is what M3 above demonstrates.
   blob or generated artefact is staged.
 - The four new files were untracked and uncommitted while this pass was in
   review; they are committed only as the frozen candidate above, on
-  `ticket/map-warp-format-001`. Nothing that already existed was modified except
-  the `PROJECT_<local-state-name>` lifecycle note.
+  `record/map-warp-format-001`. Nothing that already existed was modified except
+  the the working queue lifecycle note.
 
-## 10. What this pass did not do, and the handoffs
+## 10. What this pass did not do, and the downstream notes
 
 - **No Workbench surface.** No warp editor, no map overlay, no drawing of these
-  records. The parent ticket's `PROJECT_<local-state-name>` requirement 3 is untouched.
+  records. The parent record's the working queue requirement 3 is untouched.
 - **No runtime proof.** The parent's human-operated leave-and-re-enter capture is
   untouched. The outstanding runtime question is still the one the provenance
   document hands off: whether the `+0x08` block is tested against a player
   position at run time, and when.
 - **No count change.** `warps` is still missing in the registry; the parent
-  ticket still owns 20 / 24.
+  record still owns 20 / 24.
 - **No CLI surface** was added, deliberately: `map connections` already exists
   and reports the *slot-array* graph from `webfoot.maps`, whose destinations are
   explicitly `None`. Adding a second surface under a colliding name inside a
-  scoped format pass would be a naming hazard, and the ticket's required surface
+  scoped format pass would be a naming hazard, and the record's required surface
   is the SDK authority, which is complete.
 - **Still UNRESOLVED, and now carried rather than guessed:** the meaning of the
   two class words; which region interval is horizontal and in what unit; the
@@ -271,36 +249,3 @@ detected rather than silently followed - which is what M3 above demonstrates.
   `+0x04`; the destination-position source; the LOGExtractor `+8` adjustment's
   origin. None of these may be renamed to X/Y, given a unit or given a meaning
   until engine evidence establishes it.
-
-## 11. Independent review and closure
-
-Frozen reviewed candidate
-`b4ca0612341b9b50b60073ce4e77cebd82b4ad29`, reviewed in a clean detached worktree
-`<ticket-worktrees>\map-warp-format-001` at exactly that SHA
-(`82835a0..b4ca061`, one commit).
-
-- **Backend:** `the local reviewer` (headless, fresh context), job
-  `cl-20260926-074757-494761`, local session
-  `2a8c3964-c141-4522-b3c0-e32e935e27cc`, exit code 0, 308 s, cost $2.52, verdict
-  read back from `local_headless` (4,147 characters).
-- **Verdict: `APPROVE`** - **zero blocking findings and zero non-blocking notes.**
-- The reviewer ran the named tests itself against the canonical image via
-  `LOGX_CANONICAL_ROM` (**69 passed**, 54 unit + 15 ROM) and re-checked the image
-  hash before and after.
-- **Cloud review: NOT RUN.** `the reviewer readback probe` reports `cloud_attach`
-  **UNAVAILABLE** on this account - attaching to an existing cloud session is not
-  enabled, so a cloud session's transcript would never be readable here. A cloud
-  launch was therefore refused as unreadable rather than paid for, and
-  `require_readable_verdict` was set on the local launch.
-- The reviewer's own probe conclusions are recorded in the closure record
-  [`archive/MAP-WARP-FORMAT-001.md`](archive/MAP-WARP-FORMAT-001.md), including the
-  three places it probed hardest and the one bypass it confirmed but judged out of
-  the authoring model.
-
-No production behavior changed after the freeze, so there is **no review
-correction commit**. The only post-freeze change is documentation: this status
-block, the closure record and the `PROJECT_<local-state-name>` note - committed separately, so the
-frozen tree is not misrepresented as having always contained them.
-
-**Next:** do not begin the Workbench warp editor from this pass. The parent
-capability `MAP-WARPS-AND-CONNECTIONS-001` remains active and unshipped.

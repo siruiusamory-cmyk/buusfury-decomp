@@ -1,7 +1,8 @@
-# TOOLKIT-038 - Runtime-Prove the Shop Dialogue Scenario Consumer
+# The shop dialogue scenario consumer
 
-Previous closure: [ROM-ATLAS-001](../../research/ROM_ATLAS_REGENERATION.md),
-whose predecessor is [TOOLKIT-037](TOOLKIT-037-COMPLETE.md).
+How the original Buu's Fury engine consumes a known shop-dialogue scenario and feeds
+its text into the live dialogue path: the static census, the runtime chain and the
+community reconciliation.
 
 ## Objective
 
@@ -17,7 +18,7 @@ scenario and feeds its text into the live dialogue path.
 > **DIALOGUE CURSOR CONNECTION: NOT RUNTIME-PROVEN**
 
 **Outcome B.** The static model is fully understood and materially stronger than
-the ticket asked for: the region's ownership is resolved, the script framing and
+the record asked for: the region's ownership is resolved, the script framing and
 type census are measured across all 61 targets, the type dispatcher is located in
 the executable, and TOOLKIT-036's relocation gate is evaluated and satisfied for
 all 61 scripts. The runtime chain is incomplete because the located dispatcher
@@ -33,7 +34,7 @@ Full evidence: [BUU_SHOP_SCENARIO_MODEL.md](../../research/BUU_SHOP_SCENARIO_MOD
   commits ahead**. SSH fetch fails with `Permission denied (publickey)`, the
   condition ROM-ATLAS-001 already recorded, so the GitLab API was not reachable
   from this session and origin state could not be independently re-read.
-  **ROM-ATLAS-001's work is local-only and unpublished**, as the ticket
+  **ROM-ATLAS-001's work is local-only and unpublished**, as the record
   anticipated.
 - Canonical ROM `940ad5f01db4465b8877dfe739510cbf34f4ea3d390f3df13519808bc36f059e`,
   size 8,388,608, verified before and after every read, unchanged. The atlas
@@ -190,7 +191,7 @@ The dispatcher, disassembled:
 ```
 
 Its else-branch calls `0x0803DF14` with Webfoot's own source path
-`T:\Source\ByteCodeInterpreter\ByteCodeInterpreter.cpp`, which independently
+`<absolute path>`, which independently
 confirms the subsystem identity. Ten BL sites call it; the interpreter has 29
 callers.
 
@@ -213,7 +214,7 @@ The chosen scenario's slot-1 greeting is **plaintext**, directly decoded, not
 compressed. Type `0x04` bodies in the same scenario are compressed - high
 entropy with a shared prefix across shops - and the dispatcher routes type 4
 through `0x08049120`. **The codec was not identified and no compression support
-was added**, per the ticket's boundary.
+was added**, per the record's boundary.
 
 ## Community reconciliation
 
@@ -237,7 +238,7 @@ Types `0x01`, `0x07`, `0x09` may exist elsewhere in the 522-record pool; only th
 61 shop scripts were censused and no claim extends beyond them.
 
 A concise summary suitable for replying in the `Bytecode Scripts` thread is in
-section 8 of the evidence document. **It was not posted**, per the ticket.
+section 8 of the evidence document. **It was not posted**, per the record.
 
 ## Atlas impact
 
@@ -263,12 +264,12 @@ pipeline before and after:
 
 The first value reproduced the digest `ROM_ATLAS_REGENERATION.md` recorded as
 canonical at ROM-ATLAS-001 closure, which validates the comparison rather than
-merely asserting it. Because this ticket's seed change is now committed, the
+merely asserting it. Because this record's seed change is now committed, the
 **second value is the canonical atlas at HEAD** and the first is retained as the
 pre-038 comparison oracle in `build/atlas_v2a/`.
 
 A later full regeneration from committed HEAD reproduced `5350ba1d...` and was
-byte-identical to this ticket's run across **every** artifact, not only
+byte-identical to this record's run across **every** artifact, not only
 `atlas.jsonl`, with the ROM hash verified unchanged before and after.
 
 **The atlas delta is purely additive**: +18 rows, **0 removed, 0 reclassified**.
@@ -278,7 +279,7 @@ artifacts reproduced `5350ba1d...` byte-identically, so determinism holds.
 
 ## Validation
 
-Focused and read-only, per the ticket's proportionality rule. No shared
+Focused and read-only, per the record's proportionality rule. No shared
 production behaviour changed - the only non-doc code change is one allowlist
 entry - so the broad integration gate was not run.
 
@@ -288,9 +289,9 @@ entry - so the broad integration gate was not run.
 | `tests/unit/test_mgba_capture.py` | **68 passed**, 3 environment-blocked |
 | `tests/unit/test_atlas*.py` | **64 passed**, 28 environment-blocked |
 
-The 31 errors are all one cause and are **not ticket-caused**: `PermissionError
+The 31 errors are all one cause and are **not record-caused**: `PermissionError
 [WinError 5]` on the pytest `tmp_path` fixture root
-(`the pytest temporary root`). Every erroring test
+(`<pytest temporary root>`). Every erroring test
 requires `tmp_path`; none of them reached its body. Reproduced and preserved
 rather than worked around, per the full-suite policy.
 
@@ -307,49 +308,6 @@ new observer, so its read-only guarantee is enforced rather than asserted.
 Observer validation: **none**. `tools/runtime/toolkit038_scenario_watch.lua` is
 written, allowlisted and self-describing, but has **never been executed**, so it
 carries no liveness evidence and supports no claim in this report.
-
-## Review
-
-Only research docs, one read-only observer, atlas evidence inputs and new tests
-changed, so the focused evidence path applies rather than a product-code review.
-No independent reviewer was engaged in this session.
-
-## Safety
-
-- Canonical ROM unchanged; SHA-256 re-verified after all work, plus independently
-  by the atlas pipeline before and after its run.
-- No ROM, save, state, dump or generated output committed. All atlas artifacts
-  stay under ignored `build/`.
-- No authoring API, build, allocator, relocation or serialization code touched.
-- **Disclosed**: `build/atlas/atlas.jsonl` was overwritten during comparison,
-  because `atlas build --artifacts` selects the input directory and always writes
-  output to `build/atlas`. The file is ignored and generated; it held the
-  historical `7c7087a8...` provenance baseline, which is superseded and not
-  canonical, and `build/atlas_v2a/atlas.jsonl` retains an identical copy of the
-  pre-038 value. The directory was restored to `8b6e4400...` at closure, and
-  then, once this ticket's seed change was committed, regenerated from HEAD so
-  `build/atlas/` now holds the canonical `5350ba1d...`; `build/atlas_v2a/`
-  remains the pre-038 `8b6e4400...` oracle. Nothing unique or tracked was lost.
-- Unrelated dirty and untracked worktree paths preserved; nothing staged, nothing
-  committed; no `git add .`, `-A`, `commit -a`, stash, clean, hard reset or force
-  push.
-
-## Public progress
-
-`public progress impact: NONE`. No new authoring capability was gained: the
-consumer is still unidentified and no dialogue was authored or rendered. Overall
-progress stays at 90%.
-
-## Files changed
-
-| file | change |
-|---|---|
-| `docs/research/BUU_SHOP_SCENARIO_MODEL.md` | new, the evidence document |
-| `docs/research/archive/TOOLKIT-038-COMPLETE.md` | new, this closure |
-| `tests/integration/test_shop_scenario_rom.py` | new, 11 ROM-gated tests |
-| `tools/runtime/toolkit038_scenario_watch.lua` | new, read-only observer, unexecuted |
-| `tools/runtime/inject_mgba_lua.ps1` | +1 allowlist entry |
-| `tools/webfoot/atlas_producers/seed.py` | +18 rows, 3 notes rewritten |
 
 ## Next measured blocker
 

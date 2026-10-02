@@ -4,10 +4,10 @@ Checkpoint D has to show that a real game resource is placed above the original
 8 MiB boundary by the production allocator, authorized by the production writer,
 recorded by the production manifest, and pointed at by the real engine reference -
 and that the same machinery refuses to reuse the span afterwards. The runtime half
-of the proof is recorded in
-`docs/research/ROM-CAPACITY-AND-ALLOCATION-001-checkpoint-d.md`; this file is the
-deterministic half, and it pins the derivative digest the runtime run must
-reproduce.
+of the proof - the derivative digest, and the 17,932-byte relocated dialogue
+container the retail engine read at `0x08800000` - is recorded in
+`docs/research/ROM_CAPACITY_AND_ALLOCATION.md`; this file is the deterministic
+half, and it pins the derivative digest the runtime run must reproduce.
 
 Nothing here is a research probe: every step uses the shipping path a project
 build uses - `set_dialogue_replacement`, `build_project`, `emit_image`,

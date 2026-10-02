@@ -49,16 +49,16 @@ param(
     # test only; there is no wildcard and no skip.
     [string]$RomSha256 = 'BBD0BBBE1F01B4D715B89BB20A22F63276E36EC4FD2DC443E34AE3B99880FF35',
 
-    [string]$StatePath = '<checkout>\roms\Dragon Ball Z - Buu''s Fury (U).ss1',
+    [string]$StatePath = 'roms\Dragon Ball Z - Buu''s Fury (U).ss1',
 
     [string]$LuaPath = 'tools\runtime\toolkit034_dispatch_caller_watch.lua',
 
-    # build/ is gitignored, so this git worktree has no emulator of its own.
-    # Point at the main checkout's 0.11 dev build rather than copying an 8 MiB
-    # binary per worktree. Naming a path proves nothing on its own, and
-    # start_toolkit031_session.ps1 still reads the version out of the binary and
-    # fails closed on a mismatch, so that guard is unchanged.
-    [string]$MGBPath = '<checkout>\build\tools\mgba-dev\extracted\mGBA-build-2026-08-27-win64-9128-c65e8a3d4666b0ea68a01578232452f31b185332\mGBA.exe'
+    # The emulator lives in this checkout's ignored build tree, so the default is
+    # named relative to the repository root rather than to one machine. Naming a
+    # path proves nothing on its own, and start_toolkit031_session.ps1 still reads
+    # the version out of the binary and fails closed on a mismatch, so that guard
+    # is unchanged.
+    [string]$MGBPath = 'build\tools\mgba-dev\extracted\mGBA-build-2026-08-27-win64-9128-c65e8a3d4666b0ea68a01578232452f31b185332\mGBA.exe'
 )
 
 $ErrorActionPreference = 'Stop'

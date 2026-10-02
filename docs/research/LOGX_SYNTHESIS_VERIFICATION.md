@@ -1,36 +1,19 @@
-# LOGX-SYNTHESIS-001 - Consolidate LOGExtractor research into canonical schemas and an implementation roadmap
+# LOGX synthesis
 
-Research and synthesis only. No production code, GUI, Workbench, renderer,
-authoring surface, `PROJECT_<local-state-name>` or canonical ROM was modified. Ten accepted
-tickets were synthesized; the LOGExtractor research freeze ends here.
+Consolidation of the Buu's Fury graphics research into canonical schemas and an
+implementation roadmap, measured against the canonical image.
 
----
+Canonical ROM SHA-256, before and after:
+`940AD5F01DB4465B8877DFE739510CBF34F4EA3D390F3DF13519808BC36F059E`
 
-## 1. Identity
-
-| | |
-| --- | --- |
-| **START SHA** | `64fa98626065cf49c631878c53e1c8e1073a3bd6` |
-| **END SHA** | `271b26d532706cdc0731b3bf348589e479f299af` |
-| **BRANCH** | `logx-synthesis-001` (isolated worktree `<temp>\log1-remake-logx-synthesis-001`) |
-| **COMMIT SHA(S)** | `f6a6bc7` `research(synthesis): consolidate LOGX archaeology` (the synthesis, and the revision both reviewers measured)<br>`4722866` `research(synthesis): correct recall arithmetic and record project-state baseline` (self-check)<br>`b80d098` `research(synthesis): close independent review corrections`<br>`ad217c3` `docs(synthesis): record the LOGX-SYNTHESIS-001 result`<br>`271b26d` `docs(tickets): record the final LOGX-SYNTHESIS-001 revision` (this record's SHA lines; the END SHA) |
-| **CANONICAL ROM SHA BEFORE** | `940AD5F01DB4465B8877DFE739510CBF34F4EA3D390F3DF13519808BC36F059E` |
-| **CANONICAL ROM SHA AFTER** | `940AD5F01DB4465B8877DFE739510CBF34F4EA3D390F3DF13519808BC36F059E` |
-
-The canonical image was opened **read-only** for every measurement; no write
-path exists in any instrument used. No ROM, save, state, dump, derived ROM,
-decoded payload, generated asset or `extern/` checkout is staged or untracked.
-Not integrated to `master`.
-
----
-
+Evidence document: [`LOGX_SYNTHESIS_PROVENANCE.md`](LOGX_SYNTHESIS_PROVENANCE.md).
 ## 2. Deliverables
 
 | Artefact | Purpose |
 | --- | --- |
 | [`../research/LOGX_SYNTHESIS.md`](../research/LOGX_SYNTHESIS.md) | the authoritative synthesis: canonical resource graph, per-system schemas, the 39 refuted LOGExtractor assumptions, read-support and authoring-readiness matrices, `AUTHOR_NEW` gap analysis, freeze conclusion |
-| [`../research/POST_LOGX_IMPLEMENTATION_ROADMAP.md`](../research/POST_LOGX_IMPLEMENTATION_ROADMAP.md) | the implementation queue in five phases, with the recommended first ticket |
-| [`../research/LOGX_SYNTHESIS_PROVENANCE.md`](../research/LOGX_SYNTHESIS_PROVENANCE.md) | this ticket's own audit method, the ROM Bible corrections, and the bounded residual investigation |
+| [`../research/POST_LOGX_IMPLEMENTATION_ROADMAP.md`](../research/POST_LOGX_IMPLEMENTATION_ROADMAP.md) | the implementation queue in five phases, with the recommended first record |
+| [`../research/LOGX_SYNTHESIS_PROVENANCE.md`](../research/LOGX_SYNTHESIS_PROVENANCE.md) | this record's own audit method, the ROM Bible corrections, and the bounded residual investigation |
 | `tools/research/logx_synthesis_audit.py` | deterministic, ROM-free, read-only audit: canonical record presence, fact-table consistency, vocabulary discipline, superseded-assumption scan |
 | `tests/unit/test_logx_synthesis_audit.py` | 23 portable tests pinning those invariants |
 | corrected `docs/reverse-engineering.md` | ten accepted-evidence corrections |
@@ -39,13 +22,13 @@ Not integrated to `master`.
 
 ---
 
-## 3. TICKETS SYNTHESIZED
+## 3. Prior work synthesized
 
 **10 / 10** - `LOGX-MAP-RECORD-001`, `LOGX-MAP-RENDER-001`, `LOGX-LAYER-001`,
 `LOGX-TILE-001`, `LOGX-CONNECTOR-001`, `LOGX-CODEC-001`, `LOGX-CHAR-001`,
 `LOGX-SPRITE-001`, `LOGX-FRAME-001`, `LOGX-GFXSCAN-001`. Each was read through
 its own accepted review record, closeout record and provenance document; nothing
-was synthesized from the ticket prompts or from memory.
+was synthesized from the record briefs or from memory.
 
 ---
 
@@ -172,7 +155,7 @@ metadata writer (`FIX-6`), the four missing readers (`TOOLS-1`, `TOOLS-3`), the
 multipart preview (`TOOLS-2`), the randomizer (`TOOLS-4`), in-place replacement
 (`TOOLS-5`), the stored writer and packed encoder (`WRITE-1`, `WRITE-2`),
 allocator integration (`WRITE-3`), graphics insertion (`WRITE-4`), and all five
-`AUTHOR_NEW` tickets. **No engineering gap is described as a research blocker and
+`AUTHOR_NEW` records. **No engineering gap is described as a research blocker and
 no research gap as implementation-only.**
 
 ---
@@ -203,7 +186,7 @@ were all reproduced and fixed, and are now pinned by tests.
 ## 13. 387 REFERENCED RESIDUAL RESULT
 
 ```text
-CLASSIFICATION:  UNCLASSIFIED - needs a targeted ticket (parked, not recommended)
+CLASSIFICATION:  UNCLASSIFIED - needs a targeted record (parked, not recommended)
   6   / 387  ALREADY-KNOWN FAMILY `compressed_text`
   177 / 387  two size-locked pointer tables (155 x 4,096 at 0x086F395C,
              140 x 1,024 at 0x082ABF08), structure CONFIRMED, consumer UNKNOWN
@@ -228,7 +211,7 @@ parked because it names no blocked capability.
 structurally sufficient for the roadmap (`+0x08` -> `0x086F393C` -> container
 dispatcher), recall measures the *scanner* rather than the engine, and the
 question that would matter - pixel format and dimensions - is a different,
-`UNRESOLVED` question that this ticket is forbidden to pursue. Recorded as a
+`UNRESOLVED` question that this record is forbidden to pursue. Recorded as a
 known limitation; `LOGX-PORTRAIT-FORMAT-001` is conditional on portrait import.
 
 ## 15. AUDITS
@@ -245,12 +228,12 @@ known limitation; `LOGX-PORTRAIT-FORMAT-001` is conditional on portrait import.
 
 `docs/research/POST_LOGX_IMPLEMENTATION_ROADMAP.md` - five phases (correctness
 and parser repair; verified existing-content tools; resource writing and
-allocation; `AUTHOR_NEW`; advanced/forensic, not scheduled), 18 proposed tickets,
+allocation; `AUTHOR_NEW`; advanced/forensic, not scheduled), 18 proposed records,
 each with goal, dependencies, subsystem, kind, acceptance, risk, `AUTHOR_NEW`
 impact and public visibility. A randomized-warp readiness assessment and a
 separate gameplay-logic/softlock note are included.
 
-## 17. RECOMMENDED FIRST IMPLEMENTATION TICKET
+## 17. Recommended first implementation task
 
 **`FIX-1` - strict decoded-size enforcement in `webfoot_lz`.** Smallest change in
 the roadmap, no research dependency, the failure mode it removes is the most
@@ -259,9 +242,9 @@ is already pinned by a reproducible test. `FIX-2` + `FIX-3` follow as one window
 `FIX-1` is first because a wrong decoder can corrupt a payload that a correct
 parser then faithfully reports as valid.
 
-## 18. TARGETED FUTURE RESEARCH TICKETS
+## 18. Targeted future research
 
-| Ticket | Priority |
+| Record | Priority |
 | --- | --- |
 | `LOGX-CODEC-WRITE-001` | **high** - the gate for every insertion capability |
 | `LOGX-CONNECTOR-GEOMETRY-001` | only when trigger authoring is scheduled |
@@ -272,23 +255,11 @@ parser then faithfully reports as valid.
 
 **CAN END.** Every question the near roadmap needs is answered; the unanswered
 ones are enumerated, classified and separated into research and engineering; the
-remaining research items are bounded, with one dedicated ticket each and a named
+remaining research items are bounded, with one dedicated record each and a named
 blocked capability. Six of `AUTHOR_NEW`'s twelve dependencies are
 `IMPLEMENTATION ONLY`, `STRUCTURALLY SOLVED` or structurally solved for their
 stored form; only the appearance-count question, map data, new connections and
 compression encoding need research or a decision.
-
-## 20. public progress impact
-
-**NONE.** No public SDK capability, frontier, questline or product story changed:
-this ticket adds research documents, an audit instrument and its tests, and
-documentation corrections. `src/data/project.ts` is untouched and no site edit is
-made. The "research freeze completed" milestone is an internal project event, not
-an outside-usable capability, so under the project's own convention it does not
-qualify as a public milestone. Actual public updating, if any, is left to
-post-acceptance closeout.
-
----
 
 ## 21. TOOLING ADDED
 
@@ -303,7 +274,7 @@ post-acceptance closeout.
 ## 22. TESTS ADDED
 
 - `tests/unit/test_logx_synthesis_audit.py` - **23 portable tests**: the ten
-  tickets' canonical records; the fact table in both directions; vocabulary
+  records' canonical records; the fact table in both directions; vocabulary
   discipline including the `PARTIAL` / `PARTIAL RESEARCH REQUIRED` collision; the
   roadmap's phase structure; the recorded-defect set; and four **adversarial**
   tests that plant a lowercase address, a hedging comment on a defect line, a new
@@ -335,7 +306,7 @@ failed with `fatal: pathspec 'roms/safety-probe.gba' is beyond a symbolic link`;
 after removing it, the file reports **5 passed**. That reproduces LOGX-CHAR-001's
 recorded environment fact rather than working around it.
 
-**Not run:** the full 15-minute repository suite. This ticket changes
+**Not run:** the full 15-minute repository suite. This record changes
 documentation, one research module, one portable test file and no production
 code, so the blast radius is bounded by the LOGX suites, `tests/unit`, and the
 graphics/safety/workflow files - all run above. If the scope ever grows into
@@ -343,15 +314,15 @@ production code, the suite gate applies.
 
 ---
 
-## 24. INDEPENDENT REVIEW
+## 24. Independent verification
 
-Two fresh-context reviewers, neither of whom wrote any part of the ticket, both
+Two independent verification passes, neither of whom wrote any part of the record, both
 measured against the **frozen revision `f6a6bc7`** using `git show f6a6bc7:<path>`
 so the working tree's later commits could not contaminate their evidence. Both
 were told to re-derive claims rather than read them, to report `SURVIVES` for
 attacks that failed, and not to manufacture findings.
 
-### REVIEWER A - architecture / cross-ticket consistency / engine-schema
+### First independent verification: architecture and engine schemas
 
 **Verdict: REQUEST CHANGES** (3 BLOCKING, 9 NON-BLOCKING, 4 NIT). It re-derived
 more than 40 `CONFIRMED` claims and every §3.6 population total with its own
@@ -370,17 +341,17 @@ read-presented-as-write, no mislabeled gap** beyond the items listed.
 | A-N2 | NON-BLOCKING | `LOGX-RESTABLE-001` was "recommended" while its own Blocks cell said "nothing currently planned", violating the Vertical-Slice-First Rule and §17's own preamble | **Reproduced.** Moved to a **Parked, not recommended** paragraph; the roadmap says the same; §19's count corrected |
 | A-N3 | NON-BLOCKING | the published link-graph triple is not disjoint: the probe's `reciprocal` excludes self-links while `one_way` includes them, so 674 + 20 + 3 = 697 ≠ 694 | **Reproduced.** The synthesis and roadmap now state the definitions, that 674 + 20 = 694 closes the total, and that the disjoint reading is 674 non-self reciprocal + 17 non-self one-way + 3 self |
 | A-N4 | NON-BLOCKING | 4,118 vs 3,912 was explained as "different units"; it is the same unit over different populations (4,118 over 452 MapEntries, 3,920 over the 421 distinct roots) leaving 8 unexplained | **Reproduced.** The text now states the population difference, the 198 explained, and the 8 unexplained - reported, not harmonised |
-| A-N5 | NON-BLOCKING | in-place container replacement omitted the `packed_end - offset` encoded-length constraint, making a Phase-2 ticket depend on the `PARTIAL` encoder | **Reproduced.** Added to both affected §15 rows and reflected in `TOOLS-5` |
+| A-N5 | NON-BLOCKING | in-place container replacement omitted the `packed_end - offset` encoded-length constraint, making a Phase-2 record depend on the `PARTIAL` encoder | **Reproduced.** Added to both affected §15 rows and reflected in `TOOLS-5` |
 | A-N6 | NON-BLOCKING | §11, the "authoritative" inventory, omitted the `TEST EXPECTATION` class and four `STALE DOCUMENTATION` files its own provenance reports | **Reproduced.** New §11.5 tables the three test files; §11.4 now lists `config/roms.yaml`, `THIRD-PARTY-NOTICES.md`, `docs/architecture.md`, `docs/project-format.md` and `SUBSYSTEM_MAP.md` |
 | A-N7 | NON-BLOCKING | §14's authoring column used read-support tokens, and packed emission was rated two different ways in §14 and §15 | **Reproduced.** Plain `TRUSTED` where the gap is an unrecovered consumer; the emission classification reconciled |
 | A-N8 | NON-BLOCKING | the appearance-table growth question is a genuine research unknown but appeared in neither §12 nor §13 | **Reproduced.** Added as §12 #29 and §13 #29 |
-| A-N9 | NON-BLOCKING | "warp" was adopted as a class name though the owning closeout assigns no such name | **Reproduced.** A naming note now uses **transition record / destination key** and records "connector"/"warp"/"door"/"exit" as community labels; the roadmap's ticket names keep the community word with that caveat |
+| A-N9 | NON-BLOCKING | "warp" was adopted as a class name though the owning closeout assigns no such name | **Reproduced.** A naming note now uses **transition record / destination key** and records "connector"/"warp"/"door"/"exit" as community labels; the roadmap's record names keep the community word with that caveat |
 | A-T1 | NIT | the `0x080089FC` byte-wise lookup evidence was attributed to LOGX-MAP-RECORD-001 | Corrected to LOGX-CONNECTOR-001, with the key *shape* left with MAP-RECORD |
 | A-T2 | NIT | "Six of the twelve rows are `IMPLEMENTATION ONLY`, `STRUCTURALLY SOLVED` or `SOLVED`" does not reproduce | Rewritten with the actual rows named |
 | A-T3 | NIT | "Every entry is `REFUTED`" is false for rows 21, 23 and 27 | Rewritten to distinguish narrowed readings from refutations |
 | A-T4 | NIT | the audit instrument's enforcement is narrower than its description | **Reproduced in substance** and answered: the scope, the exemption and the marker filter are now documented as limits, the bypasses are fixed, and four adversarial tests pin them |
 
-### REVIEWER B - adversarial / implementation-readiness / stale-assumption
+### Second independent verification: implementation readiness
 
 **Verdict: REQUEST CHANGES** (2 BLOCKING, 14 other findings). It attempted to
 falsify the headline claims and reported which attacks **survived**: the
@@ -398,7 +369,7 @@ It also confirmed **`PROMOTED HYPOTHESES: NONE`** and **no scope violation**.
 | B-5 | NON-BLOCKING | `decode_animation`'s `maximum_frames = 64` was recorded by GFXSCAN as a defect and omitted | **Reproduced** and recorded as a **recorded disagreement, not a defect** (64 is a bound; the canonical `frame_count` range is 1..16) |
 | B-6 | NON-BLOCKING | the `packed_end - offset` constraint was omitted from the tile rows | Fixed with A-N5 |
 | B-7 | NON-BLOCKING | the `+0x50` parallel-array coupling was omitted from the animation-pointer row | Fixed: the row now states the pairing and forbids silent desynchronisation |
-| B-8 | NON-BLOCKING | `NEW-3`'s acceptance could not be met under its own stopping point; `NEW-1`'s count update did not say where the +4 bytes go | Both rewritten |
+| B-8 | NON-BLOCKING | `NEW-3`'s acceptance could not be met under its own acceptance condition; `NEW-1`'s count update did not say where the +4 bytes go | Both rewritten |
 | B-9 | NON-BLOCKING | §12/§13 omitted five fields §2-§9 mark `UNKNOWN`/`UNRESOLVED` | Added (tile bits 10/11, layer `+0x04`/`+0x08`, root `+0x24`/`+0x28` and `+0x34`/`+0x38`, root `+0x30`/`+0x50..+0x5C`), and §12/§13 renumbered |
 | B-10 | NIT | "the largest canonical payload is 4 KiB" contradicted the 16 KiB and 65,474-byte figures | Corrected |
 | B-11 | NIT | two §14 rows named files that do not exist | Corrected |
@@ -406,81 +377,31 @@ It also confirmed **`PROMOTED HYPOTHESES: NONE`** and **no scope violation**.
 | B-13 | NON-BLOCKING | audit-instrument bypasses (case-sensitive regex; over-broad markers; document-wide banner exemption; unreached globs; file-set-only test) | **All five reproduced and fixed**; four adversarial tests added |
 | B-14 | NON-BLOCKING | `LOGX-CODEC-WRITE-001`'s initial-literal-width item is engineering with a documented workaround, not research | Accepted: §13 and §17 now say so and the workaround is stated |
 
-### REQUIRED CORRECTIONS
+### Correction table
 
 **Five blocking corrections and every non-blocking finding were reproduced,
 accepted and closed.** Every one changed a document, a scope constant or a test -
 none required re-deriving a measurement, and none changed a `CONFIRMED` verdict.
 
-### REJECTED REVIEWER ASSERTIONS
+### Assertions that did not survive re-measurement
 
 **None.** No finding was rejected on substance. One assertion was **partly
-redirected**: Reviewer B's `decode_animation(maximum_frames=64)` item is accepted
+redirected**: the second verification pass's `decode_animation(maximum_frames=64)` item is accepted
 as a finding about the *inventory*, but this synthesis declines to classify the
 cap itself as a defect and records the disagreement with reasoning (B-5). Two
 items were **upgraded rather than merely accepted**: the audit-instrument bypasses
 became fixed code plus adversarial tests, and the `THIRD-PARTY-NOTICES.md`
 omission widened the audit's scan scope.
 
-### CORRECTION GATE
+### Re-verification after correction
 
-**CLOSED.** Both reviewers raised blocking findings against `f6a6bc7`; every one
+**CLOSED.** Both verification passes raised blocking findings against `f6a6bc7`; every one
 was reproduced here before being applied, the corrections were re-validated
 (`1516 passed / 16 skipped` on `tests/unit`, 241 LOGX ROM-gated tests, 73
 graphics tests, 49 safety/workflow/audit tests, the audit instrument re-run, `git
 diff --check` clean, canonical ROM unchanged), and the frozen end SHA `b80d098`
-carries them. Reviewer A's own note that the working tree already fixed A-B1,
+carries them. the first verification pass's own note that the working tree already fixed A-B1,
 A-N1, the A-N5-adjacent wording and A-T4's substance is accurate and is recorded
 rather than presented as review-driven work.
 
 ---
-
-## 25. GIT STATUS
-
-```text
-branch   logx-synthesis-001   (isolated; NOT integrated to master)
-worktree <temp>\log1-remake-logx-synthesis-001
-commits  64fa986 (START) -> f6a6bc7 -> 4722866 -> b80d098 -> ad217c3 -> 271b26d (END,
-         whose only change is the SHA lines in this record)
-```
-
-```text
- M docs/PROJECT_<local-state-name>
- M docs/PROJECT_<local-state-name>
- M docs/reverse-engineering.md
- M docs/research/GRAPHICS_FORMAT.md
- A docs/research/LOGX_SYNTHESIS.md
- A docs/research/LOGX_SYNTHESIS_PROVENANCE.md
- A docs/research/POST_LOGX_IMPLEMENTATION_ROADMAP.md
- A tests/unit/test_logx_synthesis_audit.py
- A tools/research/logx_synthesis_audit.py
-```
-
-Safety results:
-
-| Check | Result |
-| --- | --- |
-| canonical ROM SHA-256 before / after | `940AD5F0...F059E` / identical |
-| ROM writes | none; every instrument opens it through `Path.read_bytes` |
-| `git diff --check` | clean |
-| proprietary artefacts staged | none (no `.gba`, `.sav`, `.srm`, state, dump, `.raw`, `.png`, `extern/`) |
-| scratch artefacts | all under the ignored `build/` tree, never staged |
-| WORKBENCH-006 worktree | untouched |
-| `docs/PROJECT_<local-state-name>` | untouched |
-| GUI, Workbench, renderer, authoring and production code | untouched |
-| commit attribution trailers | none |
-
-## 26. STOPPING POINT
-
-All ten accepted tickets synthesized; ROM Bible audited; graphics-format
-documentation audited; stale project assumptions audited repository-wide;
-read/write/authoring readiness classified; research and engineering gaps
-separated; the 387-residual lead investigated, classified and parked;
-implementation roadmap produced; a first implementation ticket recommended; four
-targeted follow-up tickets proposed with only one considered genuinely necessary;
-two independent fresh-context reviews completed against a frozen revision with
-every required correction closed; committed on the isolated branch; canonical ROM
-verified unchanged.
-
-**Stopped here.** Not integrated to `master`. No implementation begun. The first
-post-LOGX ticket is not started.

@@ -639,7 +639,6 @@ data**, and it is why section 5.2 stops at "a pair of ordered intervals".
 > `+0x14`/`+0x16` pair is passed to the warp routine as a coordinate pair -
 > `08007600 adds r3,#0x14` then `0800760A bl 0x08008d44` in the 566-class method
 > `0x080075AC` - and `-112`/`-76` is applied to that pair at `08008D52`/`08008D5C`.
-> See [`../tickets/MAP-WARP-ARRIVAL-SEMANTICS-001.md`](../tickets/MAP-WARP-ARRIVAL-SEMANTICS-001.md).
 >
 > **CORRECTION - `+0x10` is now resolved, so three more places above are stale.**
 > All instruction evidence is in the same ticket record.
@@ -977,5 +976,5 @@ and watch whether the `0x08008B30` install fires.
 
 **HANDOFF (Workbench).** Any future Workbench map-overlay work that wants to
 draw these records must use the physical fields in section 5.1 and must not
-adopt the LOGExtractor `+8` adjustment; see `docs/research/WORKBENCH-006-design.md`
+adopt the LOGExtractor `+8` adjustment; see `docs/research/WORKBENCH_MAP_AUTHORING_DESIGN.md`
 for the current scope boundary.

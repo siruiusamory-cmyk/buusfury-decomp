@@ -1,8 +1,8 @@
 """Portable tests for the TOOLKIT-001 stat write path.
 
-SYNTHETIC fixtures only, per docs/DEVELOPMENT.md: no ROM bytes are committed and this
-suite runs without the proprietary image. The ROM-gated proofs (all 141+9
-records, the whole-image no-op emit, the wolf edit) live in
+SYNTHETIC fixtures only, per ``docs/ROM_SAFETY.md``: no ROM bytes are committed
+and this suite runs without the proprietary image. The ROM-gated proofs (all
+141+9 records, the whole-image no-op emit, the wolf edit) live in
 `tests/integration/test_stat_write_rom.py`.
 """
 

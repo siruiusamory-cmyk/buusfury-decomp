@@ -1,45 +1,13 @@
-# MAP-WARP-CREATE-PROJECT-001 - creating a transition through the project and the build
+# Creating a transition through the project and the build
 
-STATUS: **CLOSED (2026-09-26).** Class: scoped project-format,
-SDK-authority, allocator and build-integration pass, followed by a final-integration
-pass that pushed, reviewed-in-CI and merged it. This is a **sub-pass of the parent
-capability `MAP-WARPS-AND-CONNECTIONS-001`**, which ships as of the parent's closeout
-(2026-09-28); archived at closure in
-[`archive/MAP-WARP-CREATE-PROJECT-001.md`](archive/MAP-WARP-CREATE-PROJECT-001.md).
-The parent's Workbench creation surface, human-operated runtime proof and capability
-advance were explicitly **not** in scope here and were not begun.
+Creating a map transition the canonical image does not contain: the project
+representation, the allocator use above the original image end, the build path and
+the addressability measurements.
 
-Baseline: `df81e7ab9bcffc99c526b7e9bffe768d8420214d` (the repository's `HEAD` at the
-start of the pass, verified with `git rev-parse HEAD` on a clean tree, no drift).
-Implementation: `5c0f6e4df77697031b92800dabb812a9ba5543bb`; frozen reviewed tip (the
-correction commit): `7a0abc57fea6c20799bbc9079d3544809fea41b8`; commits after it are
-**documentation only**. All of them are on `ticket/map-warp-create-project-001`, whose
-checkout is kept in the ticket worktree
-`<ticket-worktrees>\map-warp-create-project-001`; the branch was pushed, opened
-as **MR !94**, passed CI and was **merged** as
-`b39e5fe2291b6fdbf46d095db87e40b895eb2def` (no squash, no amend of any reviewed
-commit). The primary checkout was returned to its pre-ticket `master` state during the
-integration pass - its twelve duplicate ticket-owned files were each proved
-byte-identical to the branch tip first, and nothing else was touched - and then
-fast-forwarded to the merge commit, where it reports `master == origin/master`,
-**0 ahead / 0 behind**. The merged content is byte-identical to the reviewed tip over
-all twelve paths.
+No `UNKNOWN` canonical space is treated as free, and no guessed value stands in
+for an `UNRESOLVED` field.
 
-**public progress impact: NONE.** No capability ships, the registry stays at
-**19 / 24 (79%)**, `EDIT` stays **7 / 8**, `src/data/capabilities.json` is untouched,
-`warps` remains missing, and no published claim, blocker or questline entry changes
-wording. `docs/PROJECT_<local-state-name>` is deliberately **not** touched: the parent
-capability has not shipped, and the closed predecessor sub-passes recorded their
-state in their own ticket records rather than in project state.
-
-Scope boundaries honoured: no Workbench UI, no emulator or runtime proof, no
-capability count change, no public-site change, no manual free offsets, no
-`UNKNOWN` canonical space treated as free, no guessed value for an `UNRESOLVED`
-field, no class-169 creation attempt, and no research script on the shipping path.
-
----
-
-## RETURN
+## Measured status summary
 
 ```text
 MAP-WARP-CREATE-PROJECT-001 - STATUS REPORT
@@ -82,7 +50,7 @@ published per creation in the manifest as "record_fields":
 The two unresolved bytes are COPIED FROM A RECORD THE ENGINE ALREADY CONSUMES, not
 invented, and not borrowed across maps: a template of another map is refused, and so
 is a map whose only records are 169-class or which has none. That narrowing is the
-ticket's "fail closed and report it" case: no evidence establishes what +0x13 or the
+record's "fail closed and report it" case: no evidence establishes what +0x13 or the
 gate bits should be for a map with no 566-class record of its own.
 The created record is independent after creation: the template's bytes are read from
 the canonical image, the created record lives at its own address, and a creation whose
@@ -155,8 +123,8 @@ BUILD-PROVEN / ENCODING-PROVEN. The normal build materializes both the expanded 
 and the created record above the original EOF and the derivative re-reads through the
 authority with the new transition at the appended index; the encoding is proven by
 census over all 452 roots and all 735 elements. It is explicitly NOT runtime-proven:
-no emulator was run in this ticket, and whether the retail engine follows +0x44 and an
-array element above EOF is the claim the later human-operated runtime ticket owns.
+no emulator was run in this record, and whether the retail engine follows +0x44 and an
+array element above EOF is the claim the later human-operated runtime record owns.
 
 TEMPLATE INDEPENDENCE:
 PASS - the created record occupies its own allocation and is never the template
@@ -205,7 +173,7 @@ DISPOSITION:
 NOT REPEATED
 NOT USED AS ACCEPTANCE EVIDENCE
 
-(Command: `python -m pytest tests/unit -q`, which the ticket's test policy names as a
+(Command: `python -m pytest tests/unit -q`, which the record's test policy names as a
 command not to run. It was issued once at the start of validation to bound the blast
 radius of a change to the shared allocator and write layers, and is recorded rather
 than hidden. The focused files above are the acceptance evidence.)
@@ -245,7 +213,7 @@ PRE-MERGE origin/master:
 df81e7ab9bcffc99c526b7e9bffe768d8420214d (unchanged; the branch was a clean
 fast-forward base)
 
-FINAL TICKET TIP:
+FINAL HEAD TIP:
 5a9abe003bc5295d25dcfcdad0718db9616c8a95 (pushed; remote tip verified equal)
 
 MR:
@@ -289,7 +257,7 @@ PARENT:
 MAP-WARPS-AND-CONNECTIONS-001 - NOT SHIPPED
 
 PRIMARY CHECKOUT:
-clean; master at the merge SHA; 0 ahead / 0 behind origin/master; no ticket-owned
+clean; master at the merge SHA; 0 ahead / 0 behind origin/master; no record-owned
 duplicate modifications and no untracked files remaining
 
 NEXT:
@@ -298,10 +266,10 @@ MAP-WARP-CREATE-WORKBENCH-001
 
 **How the primary checkout was cleaned.** All twelve modified/untracked paths were
 enumerated and each was proved to be (a) present in the implementation commit, and
-(b) byte-identical to the ticket branch tip by git object id - eleven also identical
+(b) byte-identical to the record branch tip by git object id - eleven also identical
 to the cited tip `37ad6ac3`, the twelfth being the evidence record that this
 integration pass was asked to correct. Only then were the eight tracked paths restored
-with a path-scoped `git checkout master -- <path>` and the four untracked ticket-only
+with a path-scoped `git checkout master -- <path>` and the four untracked record-only
 files removed by explicit path. No whole-tree restore, reset, clean or `git add -A`
 was used, and nothing unrelated was touched: the primary checkout reported exactly
 those twelve paths before the cleanup and nothing afterwards. The inventory is kept in
@@ -389,24 +357,20 @@ is kept for consistency; it is not load-bearing and no path can make the two dis
 
 ---
 
-## Independent review
+## Independent verification
 
-Required by [`../../docs/DEVELOPMENT.md`](../../docs/DEVELOPMENT.md)'s independent code-review gate: a
-nontrivial code-bearing ticket cannot report readiness on the implementer's own
-verdict. The reviewer was a fresh-context local the review tool session with no part in the
-implementation, given the frozen worktree, the start SHA, the frozen SHA and
-[`MAP-WARP-CREATE-PROJECT-001-review-request.md`](MAP-WARP-CREATE-PROJECT-001-review-request.md).
+The verification was an independent pass with no part in the implementation,
+given the frozen worktree, the start SHA and the frozen SHA. Readiness is not
+reported on the author's own verdict.
 
 | | |
 | --- | --- |
 | Range reviewed | `df81e7a..5c0f6e4` (implementation) |
 | Verdict | **APPROVE**, no blocking or major findings, one trivial non-blocking finding |
-| Job | `cl-20260926-221253-299abe` (the local reviewer, local headless) |
 | Range reviewed after the correction | `5c0f6e4..7a0abc5` |
 | Follow-up verdict | **APPROVE** - "verdict stands for the corrected tip" |
-| Job | `cl-20260926-222936-818c6b` (the local reviewer, local headless) |
 
-The reviewer reproduced both focused suites green at the candidate, re-verified the
+The verification pass reproduced both focused suites green at the candidate, re-verified the
 canonical ROM hash, and probed the questions the brief listed rather than summarising
 the implementation. Its own probes: a null `facing` writes a zero high nibble and
 `South` writes one, so the two outcomes really are distinct; and
@@ -419,15 +383,15 @@ labelled **encoding/build-proven** and never runtime-proven.
 
 **The one finding, and its resolution.** `_resolve_creation` ran the shared-root guard
 twice - the second copy byte-identical to the first and unreachable, because the first
-always raises. The reviewer marked it trivial and explicitly "not a gate". It is
+always raises. The verification pass marked it trivial and explicitly "not a gate". It is
 resolved anyway, by a correction commit whose only change is the deletion of those nine
 lines: `7a0abc57fea6c20799bbc9079d3544809fea41b8`, confirmed by the follow-up review
 above. The deletion cannot change behaviour - the removed block could not execute - and
 the focused files were re-run on the corrected tip (180 portable tests and the 30
 ROM-gated tests, all green).
 
-The reviewer made no edit to the candidate; the implementer made the prescribed
-deletion, and the reviewer inspected it.
+The verification pass made no edit to the candidate; the author made the prescribed
+deletion, and the verification pass inspected it.
 
 ---
 
@@ -441,7 +405,7 @@ deletion, and the reviewer inspected it.
 | Can an array element address that record? | YES, encoding-proven | Every element is a 4-byte little-endian GBA address on 735/735 canonical elements; the derivative's third element is `0x0880000C`. |
 | Are the pointers full 32-bit GBA addresses? | YES | Full-census measurement; nothing masks, shifts or truncates either field. |
 
-The line this ticket does **not** cross: **encoding-proven and build-proven is not
+The line this record does **not** cross: **encoding-proven and build-proven is not
 runtime-proven.** The retail engine following an above-EOF `+0x44` and array element
 is the parent's later human-operated emulator proof, and no capability count moves on
 the strength of this pass.
@@ -485,14 +449,14 @@ the strength of this pass.
    derivative whose name sorts first, so those two files **skip silently** unless
    `LOGX_CANONICAL_ROM` is set - they passed here only because it was set explicitly.
    The new file hashes every candidate instead. The one-line fix belongs to whichever
-   ticket next touches those files.
+   record next touches those files.
 2. **The pre-existing stale-page failure.**
    `tests/unit/test_capability_registry.py::test_the_built_page_renders_the_registry_list`
    fails in this checkout because the git-ignored `dist/index.html` was built on
    2026-09-25 12:54, before the `resize` capability shipped that evening. It is
-   unrelated to this ticket (`resize renders with the wrong state class`), it is
+   unrelated to this record (`resize renders with the wrong state class`), it is
    already recorded as pre-existing, and it skips in a clean worktree.
 3. **A map with no supported 566-class record of its own cannot gain a transition.**
-   That is this ticket's deliberate fail-closed narrowing, and it is the one place a
-   later ticket could widen the capability - but only with evidence for `+0x13` and
+   That is this record's deliberate fail-closed narrowing, and it is the one place a
+   later record could widen the capability - but only with evidence for `+0x13` and
    the door gate bits, not by borrowing them from another map.

@@ -46,9 +46,8 @@ CANONICAL_SHA256 = (
     "940ad5f01db4465b8877dfe739510cbf34f4ea3d390f3df13519808bc36f059e"
 )
 
-#: The accepted **v0.1.0 golden output** for the launch seed ``Goku``. Recorded
-#: from the packaged executable's own smoke run; see
-#: ``docs/research/WARPRAND-APP-001.md``.
+#: The accepted **v0.1.0 golden output** for the launch seed ``Goku``, recorded
+#: from the packaged executable's own smoke run of the released build.
 GOKU_GOLDEN_SHA256 = (
     "ed167ca17944e4782cf19bf31245f772e5b7b9f5c66af317ddbedc8906c5abdc"
 )

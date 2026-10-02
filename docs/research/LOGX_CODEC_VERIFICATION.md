@@ -1,54 +1,14 @@
-# LOGX-CODEC-001, Canonicalize Buu's Fury Webfoot container / compression semantics
+# LOGX codec verification
 
-## START SHA
+The Buu's Fury Webfoot container and compression semantics, canonicalized
+against the canonical image. Static analysis only; no runtime capture was made
+for this pass.
 
-`4d230a5e90f4c83b89ec5d02856d38aa4a364330` (`Merge branch
-'integrate/logx-connector-001' into 'master'`)
+Canonical ROM SHA-256, before and after:
+`940AD5F01DB4465B8877DFE739510CBF34F4EA3D390F3DF13519808BC36F059E`.
 
-## END SHA
-
-`5149d07` is the primary research commit on the authoring branch; its child is the
-bookkeeping commit that first records this SHA. The primary commit was amended three
-times before that, purely for line-ending and trailing-blank normalization, and the
-tree was verified with `git diff --check` after each.
-
-Integration gave those two commits different hashes, so the END SHA for work that
-reached `master` is the merge commit
-`ee2252c00a24d9bc3b73fa64d7f0358d79a494e9`, whose parents are START SHA `4d230a5`
-and closeout commit `ce2dfaf`. See "Integration and post-merge state" at the end of
-this document for the full chain.
-
-## BRANCH
-
-`logx-codec-001` (isolated worktree at `<temp>\log1-remake-logx-codec-001`);
-integrated to `master` through the short-lived branch `integrate/logx-codec-001`
-
-## COMMIT SHA(S)
-
-`5149d07` - `research(codec): canonicalize Buu container decoding` (primary)
-plus one child commit, `docs(tickets): record LOGX codec research SHAs and review
-verdicts`, which records this SHA and is the branch tip. The ticket's scope is
-research plus tooling and tests, and no production file is touched, so no separate
-baseline commit was required.
-
-The cherry-picked equivalents of those two commits that reached `master` are
-`59acc86` and `8f8be08`, followed by the closeout commit `ce2dfaf` and the merge
-commit `ee2252c`. The authoring commits were never pushed and are not ancestors of
-`master`.
-
-## CANONICAL ROM SHA BEFORE
-
-`940AD5F01DB4465B8877DFE739510CBF34F4EA3D390F3DF13519808BC36F059E`
-
-## CANONICAL ROM SHA AFTER
-
-`940AD5F01DB4465B8877DFE739510CBF34F4EA3D390F3DF13519808BC36F059E`
-
-The image was opened read-only for every measurement and never written. No
-derived ROM, save, state or decoded payload was produced.
-
----
-
+Evidence document: [`LOGX_CODEC_PROVENANCE.md`](LOGX_CODEC_PROVENANCE.md).
+Tooling: `tools/research/logx_codec_probe.py`.
 ## EXTERNAL CLAIMS TESTED
 
 | Claim (mainant/LOGExtractor) | Result |
@@ -60,7 +20,7 @@ derived ROM, save, state or decoded payload was produced.
 | `0x179764` is global graphics/tile-source data | already corrected by LOGX-TILE-001; re-confirmed as the `root + 0x4C` bank table |
 
 Both external readings of the zero first word were, in fact, describing the
-*same* engine branch from opposite ends. That is the ticket's central
+*same* engine branch from opposite ends. That is the record's central
 disagreement result and it is not a case of one tool being right.
 
 ---
@@ -84,7 +44,7 @@ of `0x0803D940`.
 **The every-even-offset walk is required, not a convenience.** The same scan on a
 stride-4 walk finds only **8,838** encoding pairs and only **30** of the 57
 callers: 27 of the 57 sites sit at address ≡ 2 (mod 4), including two of the four
-accepted sites this ticket names (`0x08009BF6`, `0x08009C5A`). Any enumeration
+accepted sites this record names (`0x08009BF6`, `0x08009C5A`). Any enumeration
 that reports 57 must be an every-even-offset walk. (Independent review re-ran the
 same scan counting individual *halfwords* rather than pairs and reported
 33,960 / 17,299 for the two strides, twice these figures, as expected, with the
@@ -96,9 +56,9 @@ and is not used.)
 incoming third argument: it takes exactly **(source, destination)** and never
 sees an output length or a declared size on the packed path.
 
-**Correction to a prior ticket, and to an earlier revision of this one.**
+**Correction to an earlier revision of this record.**
 LOGX-TILE-001 phrased this as "the decompressor takes exactly two arguments";
-that is true of `0x0803D940`. An earlier revision of this ticket claimed
+that is true of `0x0803D940`. An earlier revision of this record claimed
 `0x0803D966` was a **length-aware** variant. It is not: `r2` is only tested for
 NULL (`0x0803D972 cmp r2,#0` / `0x0803D974 bne`) and is then handed to alternate
 decode routines as a **table pointer** for a per-byte lookup, so its non-NULL
@@ -297,7 +257,7 @@ sizes its buffer from the same constant its containers declare: `0x800` per
 dominant chunk (`0x08007BFE lsls r1, r5, #0xB`) and `0x4000` per selector bank.
 **CONFIRMED** (instruction access).
 
-Host-side tooling must keep its own declared-size bound; this ticket does not
+Host-side tooling must keep its own declared-size bound; this record does not
 relax it and does not implement it.
 
 ## UNKNOWNHEADER / HEADERLESS FORM
@@ -397,7 +357,7 @@ Two differences from the engine are now documented rather than assumed, and
    host-side behaviour, and the engine has no length comparison either, but it
    is the failure mode `_unpack_stream`'s docstring says the function exists to
    prevent, and the module does not currently prevent it. **Recorded here and
-   pinned by a test; fixing it belongs to a follow-up implementation ticket.**
+   pinned by a test; fixing it belongs to a follow-up implementation task.**
    The second implementation refuses the same input, which is why the
    whole-corpus differential also demonstrates that this case never arises in the
    canonical image.
@@ -406,7 +366,7 @@ Two differences from the engine are now documented rather than assumed, and
 
 No correctness bug was found that blocks research, so no shipping change was
 made. Any change to the module's failure policy belongs to a follow-up
-implementation ticket.
+implementation task.
 
 ## DECODER DIFFERENTIAL VALIDATION
 
@@ -414,7 +374,7 @@ Two implementations were run over the same corpus:
 
 1. the project decoder, `tools.webfoot.formats.webfoot_lz.unpack`;
 2. `tools.research.webfoot_codec_reference.decode_packed`, a second
-   implementation written for this ticket.
+   implementation written for this record.
 
 | Comparison | Population | Result |
 | --- | ---: | --- |
@@ -484,7 +444,7 @@ it exists to prevent, and the module does not currently prevent it. It is
 **host-side behaviour only**, the engine has no length comparison either, so
 this is not an engine-contract violation, but it means the module can hand a
 caller a truncated payload without saying so. Fixing the failure policy is a
-follow-up implementation ticket, not this research ticket; this ticket records
+follow-up implementation task, not this research pass; this record records
 the behaviour and pins it with a test.
 
 Coverage for every row above is in `tests/unit/test_logx_codec_reference.py`
@@ -513,9 +473,9 @@ opens with an escape that overwrites it, but an encoder that relied on the
 initial width instead of writing its own escape would be relying on an unresolved
 fact.
 
-This ticket does **not** ship an encoder. `webfoot_lz.pack` is a valid-stream
+This record does **not** ship an encoder. `webfoot_lz.pack` is a valid-stream
 generator with a measured size penalty; whether that suits insertion is an
-authoring decision this ticket does not make.
+authoring decision this record does not make.
 
 ## TOOLING ADDED
 
@@ -543,28 +503,14 @@ Both are deterministic and write nothing except an explicitly requested
 | `tests/integration/test_logx_codec_rom.py` (ROM absent) | skips cleanly |
 | `tests/unit` (whole directory, ROM configured) | **1,373 passed, 15 skipped** |
 | `tests/integration/test_logx_tile_rom.py` + `test_logx_layer_rom.py` + `test_logx_connector_rom.py` | **92 passed** |
-| `tests/integration/test_map_render_rom.py` + `test_graphics_rom.py` | **32 passed, 2 skipped** (the 2 need the MAP-VIS-001 VRAM oracle, not this ticket) |
+| `tests/integration/test_map_render_rom.py` + `test_graphics_rom.py` | **32 passed, 2 skipped** (the 2 need the MAP-VIS-001 VRAM oracle, not this record) |
 
 Environment note: five tests that use pytest's `tmp_path` fail in this
-environment with `PermissionError: [WinError 5] 'the pytest temporary root'`
-- a pre-existing temp-directory permission problem, unrelated to this ticket;
+environment with `PermissionError: [WinError 5] '<pytest temporary root>'`
+- a pre-existing temp-directory permission problem, unrelated to this record;
 they pass when the suite is run with `--basetemp` on a writable path.
 
 Additional focused runs are recorded in "Correction gate" below.
-
-## ROM_BIBLE_IMPACT
-
-`docs/reverse-engineering.md` gains a `LOGX-CODEC-001` section. It keeps wrapper
-and codec separate, states the wrapper as engine instructions, states the census,
-and explicitly **corrects** the unsupported global claim "all Buu data is
-JCALG1-compressed".
-
-## public progress impact
-
-**NONE.** Research ticket; no shipping SDK capability was introduced. No
-`src/data/project.ts` change.
-
----
 
 ## DISAGREEMENTS WITH LOGEXTRACTOR
 
@@ -590,22 +536,22 @@ See "External claims tested". The load-bearing ones:
 5. Which selector reaches the 3,819 non-root dominant element targets (inherited
    from LOGX-LAYER-001, out of scope here).
 6. Whether any container form exists outside the three reachable resource graphs.
-   This ticket does not scan the image and does not claim none does.
+   This record does not scan the image and does not claim none does.
 
-## HANDOFF TO LOGX-CHAR-001
+## Related work: LOGX character records
 
 Character/sprite resources reach their graphics through the same dispatcher
 (`0x0803D940` has 57 `BL` callers across the image), so the wrapper and grammar
-established here apply unchanged. Two concrete handoffs:
+established here apply unchanged. Two concrete downstream notes:
 
 - **Use `webfoot_lz.unpack` and its `packed_end`.** The module is confirmed
   byte-exact on the whole reachable corpus; do not add a second decoder.
-- **Character containers are not in this ticket's census population.** The
+- **Character containers are not in this record's census population.** The
   census covers dominant chunks, `root+0x48` streams and `root+0x4C` banks only.
   A character-graphics container's declared size and container kind must be
   measured for that class; do not assume `0x800` or `0x4000`.
 
-## HANDOFF TO FUTURE CODEC/ENCODER IMPLEMENTATION
+## Encoder implementation requirements
 
 - The format is **PARTIAL**-ready for an encoder. Read "Future encoder
   requirements" before writing one.
@@ -619,7 +565,7 @@ established here apply unchanged. Two concrete handoffs:
 - `packed_end - offset` is the only capacity a re-encoded payload may occupy, and
   it is measured, never stored.
 
-## OTHER DOWNSTREAM HANDOFFS
+## Other downstream consumers
 
 - **LOGX-TILE-001 / map render:** unchanged; the dominant-chunk route and the
   `0x800` shape are re-measured here and reproduce exactly.
@@ -629,7 +575,7 @@ established here apply unchanged. Two concrete handoffs:
   with three live values, and a non-`{0,1,2}` value means "the engine returns
   with the destination untouched".
 
-## REVIEWER A
+## First independent verification
 
 engine/wrapper/dataflow-focused independent review. `APPROVE WITH NON-BLOCKING
 NOTES` at the third round.
@@ -640,7 +586,7 @@ the first round; the blocking items were wrong CONFIRMED engine addresses and
 labels in the evidence record, a refuted engine semantic, an unreproducible
 method figure, and stale test bookkeeping.
 
-Reviewer A independently confirmed, static and read-only: the dispatcher's
+the first review pass independently confirmed, static and read-only: the dispatcher's
 argument convention and raw halfwords; the three dispatch comparisons; the
 `+0x08` payload offset; the `{0,1,2}` selector set; "destination untouched" for
 other values; the stored-branch copy of `container[+0x04]` bytes; the **57**
@@ -649,16 +595,16 @@ any destination bound or output length, by enumerating **all 28** `cmp`/`subs` i
 the primary decoder and showing none touches `r0` or an output counter; every
 census headline; and all ten fixture addresses and digests.
 
-Reviewer A also independently derived the corrected prefix polarity from the
+the first review pass also independently derived the corrected prefix polarity from the
 engine's own tree (`0x087B7A3C adds r6,r6,r6` / `0x087B7A40 blo 0x087B7AD4`: bit 2
 clear goes to the seven-bit/control path, bit 2 set falls through to
-`mov r8,#4`), corroborating Reviewer B's B1 independently.
+`mov r8,#4`), corroborating the second review pass's B1 independently.
 
 The three non-blocking notes it left at the end (the caller-population counting
 convention, a stale `0x800` figure in the body text, and the corrections-log
 staleness) were all fixed after that verdict; it asked for no further review.
 
-### Blocking findings
+### Findings raised
 
 | # | Severity | Finding | Disposition |
 | --- | --- | --- | --- |
@@ -666,10 +612,10 @@ staleness) were all fixed after that verdict; it asked for no further review.
 | A2 | REQUIRED | `0x08049138` -> `0x03000768`, not `0x030007A8` (that literal belongs to `0x0804912C`, and it is a **memset**); and **`0x03000190` occurs zero times in the 8 MiB image**, so the "row copy" row was invented. The same two values were hard-coded in `webfoot_codec_reference.py` and a passing test asserted the wrong label. | **ACCEPTED, corrected.** The full 15-stub table is re-derived from each stub's own literal and is now in the evidence record; `IWRAM_MEMSET`/`IWRAM_MEMCPY`/`IWRAM_ROW_COPY` were replaced by the measured set, `IWRAM_ROW_COPY` was deleted, and the integration test now asserts the measured targets rather than a label. |
 | A3 | REQUIRED | "8,838 encodings; 8,266 resolve in-ROM; 4,440 distinct targets" does not reproduce under the stated method, and the "alignment-independent" claim was false. | **ACCEPTED, corrected.** The method sentence now specifies the every-even-offset walk, reports 17,748 encoding pairs (35,496 halfwords) and 9,624 distinct targets, and states that a stride-4 walk finds only 30 of the 57 callers because 27 of them sit at address ≡ 2 (mod 4). The `8,838 / 8,266 / 4,440` figures are named as belonging to a different scan that cannot produce the 57, and are not used. A final review round showed the population counts are convention-dependent (pair versus halfword); both conventions are now stated with their ratio. |
 | A4 | REQUIRED | "decoder at base + `0xF8`" contradicts the dispatcher's own target. | **ACCEPTED, corrected.** The packed decoder is ROM `0x087B79E4` = IWRAM `0x03000040` = base + `0x40`; `0x087B7A9C` is described as an interior bit-loop label. |
-| A5 | REQUIRED | The "library table at `0x087B7970` pairs destinations with ROM sources" reading is address-shifted and does not show the claimed pairing. | **ACCEPTED, corrected.** The table reading is withdrawn; its semantics are recorded as UNKNOWN, and the base is established instead from the startup DMA3 literals. Reviewer A's stronger evidence **upgraded the base from INFERRED to CONFIRMED**, which this ticket now states. |
+| A5 | REQUIRED | The "library table at `0x087B7970` pairs destinations with ROM sources" reading is address-shifted and does not show the claimed pairing. | **ACCEPTED, corrected.** The table reading is withdrawn; its semantics are recorded as UNKNOWN, and the base is established instead from the startup DMA3 literals. the first review pass's stronger evidence **upgraded the base from INFERRED to CONFIRMED**, which this record now states. |
 | A6 | REQUIRED | `0x0803D966` **does** have a `BL` caller: `0x0800F3D2`. | **ACCEPTED, corrected.** Verified here by raw scan (exactly one caller) and by disassembling the call site. Both documents now record it. |
-| A7 | REQUIRED | `r2` is a lookup-table pointer, not a length; "length-aware variant" is refuted. | **ACCEPTED, corrected.** The full `0x0803D966` control flow is now transcribed; the non-NULL branch is described as a `r2`-indexed remapping path, and the "length-aware variant" sentence is withdrawn. The `UnknownHeader` conclusion is unaffected and is now scoped to "no path skips four bytes and then decodes", which the reviewer confirmed still holds. |
-| A9 | REQUIRED | Stale test counts (41 / 33 / 20 against a frozen file holding 39 and 21). | **ACCEPTED, corrected.** The counts now match the collected totals; after Reviewer A's own two added tests the final figures are **39 unit + 23 integration = 62 passed**. |
+| A7 | REQUIRED | `r2` is a lookup-table pointer, not a length; "length-aware variant" is refuted. | **ACCEPTED, corrected.** The full `0x0803D966` control flow is now transcribed; the non-NULL branch is described as a `r2`-indexed remapping path, and the "length-aware variant" sentence is withdrawn. The `UnknownHeader` conclusion is unaffected and is now scoped to "no path skips four bytes and then decodes", which the verification pass confirmed still holds. |
+| A9 | REQUIRED | Stale test counts (41 / 33 / 20 against a frozen file holding 39 and 21). | **ACCEPTED, corrected.** The counts now match the collected totals; after the first review pass's own two added tests the final figures are **39 unit + 23 integration = 62 passed**. |
 
 ### Non-blocking notes, and their disposition
 
@@ -680,30 +626,30 @@ staleness) were all fixed after that verdict; it asked for no further review.
 | The UNRESOLVED initial-width item is over-conservative: the dispatcher leaves the dispatch word in `r3` and the decoder's prologue does not overwrite it, so the width is resolvable as 1 or 2. | **ACCEPTED, recorded.** Provenance §23 still lists it as unresolved for the *engine contract*, but now states the narrowing and that the project decoder's "read it from the dispatch word" happens to be engine-exact. |
 | The `roms` junction escapes `.gitignore`'s `roms/` rule. | **ACCEPTED**, removed before commit; only explicit paths are staged. |
 
-## REVIEWER B
+## Second independent verification
 
 decoder/fixtures/adversarial-safety-focused independent review. `APPROVE WITH
 NON-BLOCKING NOTES` at the third round.
 
 **VERDICT HISTORY: BLOCK → BLOCK → APPROVE WITH NON-BLOCKING NOTES.**
 
-Reviewer B reproduced, from its own from-scratch decoder and with no repo file
+the second review pass reproduced, from its own from-scratch decoder and with no repo file
 written: the census arithmetic (3,745 / 392 / 187 unique, 3,912 / 421 / 187
 references, 4,324 unique, kinds `{1: 4322, 0: 2}`, 421 roots, 4,324/4,324 unique
 digests with 0 collisions, declared 4..16,384, source consumed 12..8,708 totalling
 1,750,808 all `%4 == 0`); the differential (project == reference on 4,322/4,322,
-Reviewer-B-decoder == project on 4,322/4,322, sizes == declared on 4,322/4,322);
+second-verification-pass-decoder == project on 4,322/4,322, sizes == declared on 4,322/4,322);
 the end-marker distribution `{0: 4322}` and the non-vacuity of the test that
 asserts it; all ten fixture digests; and the ROM SHA-256 before and after.
 
-### Blocking findings
+### Findings raised
 
 | # | Severity | Finding | Disposition |
 | --- | --- | --- | --- |
-| B1 | HIGH | The prefix tree was stated **inverted** in the prose (README, provenance §8.1/§8.4/§8.5, `docs/reverse-engineering.md`): the seven-bit/control form is prefix `0 0 0` and the four-bit form is `0 0 1`. | **ACCEPTED, corrected.** The code was right and the prose was wrong. Every statement in every file now reads `0 0 0` = seven-bit/control (end marker), `0 0 1` = four-bit code. Reviewer B's re-review caught three README lines that still carried the inversion; those are fixed, and the review doc's own "SHORT MATCH"/"END-MARKER" lines were the last two. |
+| B1 | HIGH | The prefix tree was stated **inverted** in the prose (README, provenance §8.1/§8.4/§8.5, `docs/reverse-engineering.md`): the seven-bit/control form is prefix `0 0 0` and the four-bit form is `0 0 1`. | **ACCEPTED, corrected.** The code was right and the prose was wrong. Every statement in every file now reads `0 0 0` = seven-bit/control (end marker), `0 0 1` = four-bit code. the second review pass's re-review caught three README lines that still carried the inversion; those are fixed, and the review doc's own "SHORT MATCH"/"END-MARKER" lines were the last two. |
 | B2 | HIGH | The unit test's `_end_marker()` helper built `001`+7 zeros+`00`, which is not a marker, so the test passed only because the stream is padded to a whole word. | **ACCEPTED, corrected.** The helper now returns `000`+7 zeros+`00`, and the test asserts the consumed bit count (`37`) so padding cannot mask a wrong marker. A second test pins both prefix polarities. |
-| B3 | HIGH | The project decoder does **not** enforce "produces exactly the declared size": it silently clips an over-long final match and reports success, so a caller can receive a truncated payload. | **ACCEPTED, documented, pinned, and routed to a follow-up ticket.** Repro reproduced exactly (`01000000040000000558d020000000c0` -> `wl.unpack` accepts 4 bytes; the reference refuses). README "EXISTING PROJECT DECODER STATUS" and provenance §18/§15 rewritten; `test_project_decoder_clips_an_over_long_final_match` added. No shipping change made, per ticket scope. |
-| B4 | MEDIUM | The malformed table disagreed with `--malformed` and asserted engine behaviour the ticket elsewhere denies. | **ACCEPTED, corrected.** The probe's report now emits an explicit `engine` column phrased as "the engine would ...", routes the reference column through the same kind dispatch as the engine instead of hard-coding, and states where the reference has no arm. The README table was rewritten to match the tool's actual output. |
+| B3 | HIGH | The project decoder does **not** enforce "produces exactly the declared size": it silently clips an over-long final match and reports success, so a caller can receive a truncated payload. | **ACCEPTED, documented, pinned, and routed to follow-up work.** Repro reproduced exactly (`01000000040000000558d020000000c0` -> `wl.unpack` accepts 4 bytes; the reference refuses). README "EXISTING PROJECT DECODER STATUS" and provenance §18/§15 rewritten; `test_project_decoder_clips_an_over_long_final_match` added. No shipping change was made. |
+| B4 | MEDIUM | The malformed table disagreed with `--malformed` and asserted engine behaviour the record elsewhere denies. | **ACCEPTED, corrected.** The probe's report now emits an explicit `engine` column phrased as "the engine would ...", routes the reference column through the same kind dispatch as the engine instead of hard-coding, and states where the reference has no arm. The README table was rewritten to match the tool's actual output. |
 | B5 | MEDIUM | `opening_token_report` read the base byte from `b8..b15` instead of `b9..b16`, folding the escape's own selector bit into the value. | **ACCEPTED, corrected.** The report now decodes the two-bit field at `b7..b8` and reads the base at `b9..b16`, and reports the field histogram separately. Measured consequence of the old window: 74 distinct "base bytes" instead of the true 11, wrong on 3,188 of 4,322 containers. |
 | B6 | MEDIUM | Provenance §7.4's table and §8.6's worked example were wrong in their bit indices and values. | **ACCEPTED, corrected.** §7.4 now records the measured prefix histogram (`001` on all 4,322), the two-bit field split (1 on 3,160, 0 on 1,162), and the base-byte distribution; §8.6 now walks `0x2000114F` bit by bit with the correct polarities, and states the little-endian/MSB-first reading rule that makes the example reproducible. |
 | B7 | LOW | README said 20 ROM-gated tests; 21 were collected at that point. | **ACCEPTED, corrected.** Both counts are now current: **39 unit + 23 integration = 62 passed**. |
@@ -719,18 +665,18 @@ asserts it; all ten fixture digests; and the ROM SHA-256 before and after.
 | The portable dispatcher test only asserts literals inside the module's own report dict and must not be cited as engine evidence. | **ACCEPTED**, the integration test is the one that reads the ROM, and the distinction is stated in both files. |
 | The worktree has an untracked `roms` link to the main repository, which `.gitignore`'s `roms/` rule does not cover. | **ACCEPTED**, it is a local-only directory junction created for the ROM-gated suites; it is removed before commit and only explicit paths are ever staged. |
 
-## REQUIRED CORRECTIONS
+## Correction table
 
 Seventeen required corrections were raised across the two reviews, all of them
 reproduced here before being accepted:
 
 | From | Count | Where they landed |
 | --- | ---: | --- |
-| Reviewer A (A1–A7, A9) | 8 | provenance §4.1–§4.3, §5.3, §8, §18, §21, §23; README entry-point and decoder-status sections; `webfoot_codec_reference.py` constants and `veneer_table`; integration test assertions |
-| Reviewer B (B1–B7) | 7 blocking + 2 test-quality | provenance §7.4, §8.1, §8.4–§8.6, §13.1, §14, §15, §18; README malformed/status/test sections; `logx_codec_probe.opening_token_report` and `malformed_report`; unit-test fixtures and five added tests; integration count assertions |
-| Reviewer A non-blocking (N1, N2) | 2 | `default_fixtures`; provenance §5.3 |
+| the first review pass (A1–A7, A9) | 8 | provenance §4.1–§4.3, §5.3, §8, §18, §21, §23; README entry-point and decoder-status sections; `webfoot_codec_reference.py` constants and `veneer_table`; integration test assertions |
+| the second review pass (B1–B7) | 7 blocking + 2 test-quality | provenance §7.4, §8.1, §8.4–§8.6, §13.1, §14, §15, §18; README malformed/status/test sections; `logx_codec_probe.opening_token_report` and `malformed_report`; unit-test fixtures and five added tests; integration count assertions |
+| the first review pass non-blocking (N1, N2) | 2 | `default_fixtures`; provenance §5.3 |
 
-## REJECTED REVIEWER ASSERTIONS
+## Assertions that did not survive re-measurement
 
 **Two assertions were initially rejected and both were subsequently upheld.** They
 are recorded here because the first pass rejected them on wrong arithmetic of our
@@ -738,21 +684,21 @@ own, and the correction is the point.
 
 | Assertion | First-pass result | Final result |
 | --- | --- | --- |
-| Reviewer A: the two branch stubs target `0x08047040` and `0x08047450`. | Rejected. Re-measured as `0x08047038` / `0x0804744C` using `stub_address + 8 + (delta << 2)`. | **UPHELD.** The ARM `b` is at `stub + 4`, so PC reads as `stub + 12`. Capstone agrees: `0x0804919C b #0x8047040` and `0x080491A4 b #0x8047450`, and both targets begin `80 4d 2d e9` = `push {r7,r8,sl,fp,lr}`, valid ARM entries, while `0x0804703C` / `0x0804744C` / `0x08047038` decode mid-instruction. `veneer_table` was fixed to `address + 12 + (delta << 2)` and the two documentation rows now read `0x08047040` / `0x08047450`. |
-| Reviewer A: the stub slots are not uniform. | Accepted and refined. | **UPHELD and refined.** `ldr pc` slots are 12 bytes and branch slots are 8, so a fixed 12-byte walk stops after the first branch stub. The run is 15 stubs / **172** bytes; `veneer_table` walks both forms. |
+| the first review pass: the two branch stubs target `0x08047040` and `0x08047450`. | Rejected. Re-measured as `0x08047038` / `0x0804744C` using `stub_address + 8 + (delta << 2)`. | **UPHELD.** The ARM `b` is at `stub + 4`, so PC reads as `stub + 12`. Capstone agrees: `0x0804919C b #0x8047040` and `0x080491A4 b #0x8047450`, and both targets begin `80 4d 2d e9` = `push {r7,r8,sl,fp,lr}`, valid ARM entries, while `0x0804703C` / `0x0804744C` / `0x08047038` decode mid-instruction. `veneer_table` was fixed to `address + 12 + (delta << 2)` and the two documentation rows now read `0x08047040` / `0x08047450`. |
+| the first review pass: the stub slots are not uniform. | Accepted and refined. | **UPHELD and refined.** `ldr pc` slots are 12 bytes and branch slots are 8, so a fixed 12-byte walk stops after the first branch stub. The run is 15 stubs / **172** bytes; `veneer_table` walks both forms. |
 
 A third assertion was rejected as worded and accepted in substance:
 
 | Assertion | Result |
 | --- | --- |
-| Reviewer A (round 1): the caller-enumeration figures do not reproduce. | **Upheld in substance, and the first replacement was also wrong.** Round 2 measured 17,748 encoding pairs / 57 callers for the every-even-offset walk and 8,838 / 30 for stride 4. The final text states the pair convention explicitly, notes that a halfword-counting convention gives 33,960 / 17,299 (exactly twice, same 57 / 30 caller counts), and no longer claims alignment independence: a stride-4 walk provably cannot produce 57. |
+| the first review pass (round 1): the caller-enumeration figures do not reproduce. | **Upheld in substance, and the first replacement was also wrong.** Round 2 measured 17,748 encoding pairs / 57 callers for the every-even-offset walk and 8,838 / 30 for stride 4. The final text states the pair convention explicitly, notes that a halfword-counting convention gives 33,960 / 17,299 (exactly twice, same 57 / 30 caller counts), and no longer claims alignment independence: a stride-4 walk provably cannot produce 57. |
 
 ## CORRECTION GATE
 
 All required corrections from both reviews were re-measured against the canonical
-image, applied, and re-tested. Both reviewers re-verified three times.
+image, applied, and re-tested. Both verification passes re-verified three times.
 
-| Round | Reviewer A | Reviewer B |
+| Round | the first review pass | the second review pass |
 | --- | --- | --- |
 | 1 | BLOCK (A1–A7, A9) | BLOCK (B1–B7) |
 | 2 | BLOCK (A2 partial, A3, A11) | BLOCK (B1 partial, B7) |
@@ -760,11 +706,11 @@ image, applied, and re-tested. Both reviewers re-verified three times.
 
 Every finding was reproduced before acceptance. Two assertions were rejected on
 first pass and both were upheld on re-measurement (recorded under REJECTED
-REVIEWER ASSERTIONS); one first-pass rejection turned out to be *our* arithmetic
+VERIFICATION ASSERTIONS); one first-pass rejection turned out to be *our* arithmetic
 error, which is recorded rather than quietly fixed.
 
 Ten non-blocking notes remained after the final verdicts; all ten were fixed, and
-neither reviewer asked for a fourth round.
+neither verification pass asked for a fourth round.
 
 ### Final validation on the frozen revision
 
@@ -781,58 +727,3 @@ neither reviewer asked for a fourth round.
 | canonical ROM SHA-256 | unchanged |
 | `webfoot_lz.py` | untouched (no production edit) |
 | staged proprietary artefacts | none |
-
-## GIT STATUS
-
-Committed on branch `logx-codec-001` in the isolated worktree
-`<temp>\log1-remake-logx-codec-001`, based on START SHA
-`4d230a5e90f4c83b89ec5d02856d38aa4a364330`.
-
-| Commit | Subject |
-| --- | --- |
-| `5149d07` | `research(codec): canonicalize Buu container decoding` |
-| branch tip | `docs(tickets): record LOGX codec research SHAs and review verdicts` |
-
-Files changed versus START SHA: exactly the eight listed under TOOLING ADDED,
-TESTS ADDED and ROM_BIBLE_IMPACT, plus `docs/research-conventions.md`.
-
-Only explicit paths were staged; the local `roms` directory junction used to run
-the ROM-gated suites was removed before the commit and never staged. No ROM, save,
-state, dump or decoded payload is tracked. Working tree clean; `git diff --check`
-clean from START to HEAD.
-
-The main checkout's `workbench-006` branch and the active WORKBENCH-006 worktree
-were not touched; this branch was created from the START SHA in its own worktree.
-
-## Integration and post-merge state
-
-This ticket is integrated to `master` and closed. The paragraph that previously
-stood here recorded the then-true pre-integration state, in which the branch was
-not yet merged and this document was not archived; it is superseded by this
-section.
-
-- START SHA: `4d230a5e90f4c83b89ec5d02856d38aa4a364330`.
-- Commits that reached `master`, cherry-picked from the authoring branch:
-  `59acc86` (`research(codec): canonicalize Buu container decoding`), `8f8be08`
-  (`docs(tickets): record LOGX codec research SHAs and review verdicts`), and
-  `ce2dfaf` (`docs(research): close LOGX-CODEC-001`).
-- Authoring branch `logx-codec-001`: `5149d07` plus child
-  `53c992749fbf8b75e3a483f287efc087b8eed799`. Never pushed; not an ancestor of
-  `master`; retained locally as a safety reference.
-- Merge request: `!26`, merged into `master`; merge commit
-  `ee2252c00a24d9bc3b73fa64d7f0358d79a494e9`, whose parents are START SHA
-  `4d230a5` and closeout commit `ce2dfaf`.
-- Documentation correction merged as `!27`: commit `e5fe7ad` (`docs(tickets):
-  record LOGX codec integration ancestry`) and merge commit
-  `0f2243c3b2b30f9457e0f5f307573062992f3e5c`. That change corrected the ancestry
-  record and is documentation only, so it changes no accepted result.
-- Accepted blobs verified identical between the authoring branch tip `53c9927`
-  and `master` for all eight research files; `git diff --stat` between them is
-  empty in the changed scope.
-- The MR pipeline and the `master` pipeline ran `pytest tests/unit -q` and passed.
-- Archived as [LOGX-CODEC-001-COMPLETE](archive/LOGX-CODEC-001-COMPLETE.md);
-  `docs/PROJECT_<local-state-name>` and `docs/PROJECT_<local-state-name>` record the closeout.
-- The authorized baseline for `LOGX-CHAR-001` is the `origin/master` tip that
-  carries the complete integration and closeout record, that is
-  `0f2243c3b2b30f9457e0f5f307573062992f3e5c` or any later `origin/master` commit
-  that differs from it only in documentation.

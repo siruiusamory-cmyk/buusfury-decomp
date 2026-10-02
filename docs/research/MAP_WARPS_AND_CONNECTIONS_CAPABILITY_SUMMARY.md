@@ -1,15 +1,7 @@
-# MAP-WARPS-AND-CONNECTIONS-001 - closure
+# Editing map transitions: capability summary
 
-Closure record for the parent ticket. The ticket's own Objective, Context delta,
-Required Work, Scope Boundaries, Ticket-Specific Validation, Required Review and
-Completion Criteria, and the item-by-item closeout that maps every numbered
-requirement to its committed evidence, are all retained unchanged in the working
-record at [`../MAP-WARPS-AND-CONNECTIONS-001.md`](../MAP-WARPS-AND-CONNECTIONS-001.md).
-Read that record for the evidence; this file exists so the archive holds a
-closure for the parent, which it previously did not.
-
-STATUS: **SHIPPED (2026-09-28).** Phase 2D complete, and Phase 2 (Map Editing)
-complete with it.
+What the shipped map-transition editing capability is, what it added, and the
+limitations it preserves.
 
 ## What the capability is
 
@@ -32,30 +24,15 @@ one with a click and moving it with a drag as one undoable gesture.
 | Next capability | graphics import (Phase 3), chosen and **not started** |
 | Baseline | `89a37ed6176db77d7d77b2f4dc660800258911f8` |
 | Closeout commit | `b2536f6f00eada62a2e111b97bb077df4465ad7f` ("Ship warps and connections and complete Phase 2") |
-| Merge | `af688c0d65ebd60412cedd094834e85013e5806f` (merge of `ticket/map-warps-closeout-001`) |
+| Merge | `af688c0d65ebd60412cedd094834e85013e5806f` (merge of `record/map-warps-closeout-001`) |
 | Public progress impact | `UPDATED` - registry, roadmap and project status changed with the capability |
 
 Runtime proof: a human-operated mGBA run consumed an authored transition, and the
 engine's own loaded record array held the authored entry above the original
 image's end. Independent review was run at the sub-pass level, and each sub-pass's
 verdict and merge SHA is recorded against the numbered requirement it closed in
-the working record; this parent ticket records no separate review candidate of its
+the working record; this parent record records no separate review candidate of its
 own, so none is claimed here.
-
-## Sub-passes
-
-Eleven sub-pass records are retained at the ticket root and in this archive, and
-none was deleted, squashed or rewritten. Nine of them also retain their own
-evidence record at the ticket root, because deleting it is not this repository's
-archival pattern; two exist only in the archive, where their closures were
-written:
-
-`MAP-WARP-FORMAT-001` · `MAP-WARP-PROJECT-AUTHORING-001` ·
-`MAP-WARP-WORKBENCH-001` · `MAP-WARP-WORKBENCH-RUNTIME-001` ·
-`MAP-WARP-CREATE-PROJECT-001` · `MAP-WARP-CREATE-RUNTIME-001` ·
-`MAP-WARP-CREATE-WORKBENCH-001` · `MAP-WARP-CANVAS-001` ·
-`MAP-WARP-RUNTIME-EDIT-001` · `MAP-WARP-FACING-TRACE-001` (archive only) ·
-`MAP-WARP-STACK-REVIEW-AND-INTEGRATE-001` (archive only).
 
 ## Preserved limitations
 

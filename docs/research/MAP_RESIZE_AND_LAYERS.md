@@ -1,7 +1,8 @@
-# MAP-RESIZE-AND-LAYERS-001 - resizing a supported map and authoring its layers
+# Resizing a supported map and authoring its layers
 
-STATUS: **implemented, validated, frozen for independent review.**
-Phase 2C. Capability `resize`. Baseline `9ac4586f635d4e9c40f2c45e2164a490678e34e2`.
+What a supported map's structure actually is, what the resize capability builds,
+what was measured, what is proven at runtime, and what is deliberately not
+claimed.
 
 This record states what a supported map's structure actually is, what was built,
 what was measured, what is proven at runtime, and what is deliberately not
@@ -37,7 +38,7 @@ one definition; root `0x0822CC08` serves eight maps). The source word itself is
 
 ### 1.2 `+0x08` / `+0x0A` are the camera's maximum scroll
 
-Independently disassembled for this ticket (Thumb, read-only, canonical image
+Independently disassembled for this record (Thumb, read-only, canonical image
 hash verified):
 
 ```text
@@ -74,7 +75,7 @@ are written at `0x08007F00`/`0x08007F02` and `0x08007FBA`/`0x08007FBC`.
 **The extent gates the camera and nothing else.** A full reader census over
 `0x08000000..0x08055000` finds no actor-position code reading these words, so
 raising them extends the camera's reach, not the player's walkable area - which is
-collision geometry this ticket does not touch.
+collision geometry this record does not touch.
 
 ### 1.3 A layer record is `header + window` and nothing else
 
@@ -184,7 +185,7 @@ painter and the build validate against the same grid.
 
 ## 4. Runtime proof
 
-Method: the corrected methodology from the two predecessor map tickets. A
+Method: the corrected methodology from the two predecessor map records. A
 savestate restores the already-assembled background, so a capture under a state
 load is decided by the state and not by the ROM; **the rebuild is per run**. Each
 run loads the ROM, loads the same saved state
@@ -200,7 +201,7 @@ and is not a product issue: map 40's exit to map 39 is a band at x 0..9,
 y 112..169, and the player loads at about (48, 204), below it, so the exit needs
 two legs (walk up, then left).
 
-### 4.1 LAYER AUTHORING - PROVEN
+### 4.1 Layer authoring proven
 
 The engine enumerates and draws the project-authored layer. Measured live, in map
 39, per run:
@@ -233,7 +234,7 @@ relocated above the canonical EOF.** Measured live, per run:
 | map 39 declared camera clamp (map-state `+0x9C`) | 376 | **783** |
 | largest camera x reached in map 39, identical input | 376 | **487** |
 
-So above-EOF addressability for this ticket's own pointer holder - a **map root's
+So above-EOF addressability for this record's own pointer holder - a **map root's
 layer-slot field** - is **RUNTIME-PROVEN**: the retail engine's live layer records
 point at records placed at `0x08800030`, `0x08800128` and `0x08800158`, all above
 the canonical 8 MiB image, and it reads their grids and their chunk windows. The
@@ -255,7 +256,7 @@ region the camera can actually traverse.**
 This is a real limit of the acceptance attempt rather than a defect in the
 capability: the engine consumed and materialized every authored structure, and the
 one thing missing is a viewpoint from which to see the added cells. Authoring the
-collision geometry that confines the player is explicitly outside this ticket
+collision geometry that confines the player is explicitly outside this record
 ("collision or behavioral layers if present" are named as out of scope), and so is
 creating a new map or savestate to stand in.
 
@@ -267,7 +268,7 @@ kept for exactly that reason. The next attempt should pick a target by comparing
 player can actually walk, *before* building - `build/research/b1_target_search.py`
 now does that.
 
-### 4.3 RESIZE - CLOSED on two targets, one of them a retail layer
+### 4.3 Resize settled on two targets, one of them a retail layer
 
 The pre-flight search (4.2's method, run for real) built the transition graph from
 all 735 readable connection records and BFS'd from map 40: **only eight maps are
@@ -401,18 +402,6 @@ Runner: `build/research/mutations_resize.py`.
 - **Allocator safety**: each record is reserved before the next request is placed,
   so two records in one build cannot overlap.
 
-## 8. CQA continuity
-
-- **CQA-05 PASS** - staged structural authoring survives an unrelated project
-  mutation; a session change clears it.
-- **CQA-06 PASS** - every new SDK-touching slot catches a declared family tuple
-  including `MapStructureError`; no bare `Exception` catch was added, and the
-  project reader raises typed refusals rather than the `TypeError` a regex would
-  raise on a non-string (found and fixed while writing the tests).
-- **CQA-07 PASS** - the project and the structural document are read once per
-  mutation or session; a resolve reads cached geometry; one gesture pushes one undo
-  command.
-
 ## 9. Scope boundaries and what is NOT claimed
 
 Not claimed, and not implemented: warp or connection editing, new maps, graphics
@@ -429,7 +418,7 @@ Two limits are recorded rather than hidden:
    map; a root holds the layer-slot pointers and the extent, so editing one would
    silently change every map that loads it.
 
-## 11. Workbench surface - closed
+## 11. Workbench surface
 
 `tools/webfoot/workbench/map_browser_tab.py` carries the structural surface: the
 resize form with live preview and validation, the layer list and creation form,
@@ -462,7 +451,7 @@ four map-workbench files at 205 passed in both orders.
   `--basetemp` was being cleared mid-run by a concurrent session. That is reported
   as not reproduced rather than explained.
 
-**A tracked regression this ticket had introduced**, found by running the adjacent
+**A tracked regression this record had introduced**, found by running the adjacent
 suite: `test_a_project_mutation_keeps_every_staged_authored_fact` failed because
 the new `_reselect_layer()` in `on_project_mutated` rebuilt the layer combo and
 reset the author's brush, picked cell and draft - contradicting
@@ -492,15 +481,3 @@ base-derived, and a **sibling of the defect fixed here** - a layout or chunk rea
 failure on a project mutation is still immediately overwritten by the later
 `_update_status`, needing the same sticky per-document failure the structural half
 now has.
-
-## 12. Stop
-
-Both blockers are closed: the resize is runtime-proven as displayed on a **retail**
-layer target (4.3), and the Workbench surface is verified (11), with M11 caught.
-
-What remains is the repository's own closure sequence, and **none of it has been
-done yet**: no implementation commits, no frozen candidate, no independent review,
-and therefore **no capability-registry or public-site change**. `edit resize`
-stays `missing`, `EDIT` stays 6/8 and DragonByte Z stays 18/24 until a frozen
-candidate is reviewed. MAP-WARP-CONNECTIONS-001 and every later capability are not
-begun.

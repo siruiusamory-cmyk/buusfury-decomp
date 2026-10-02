@@ -1,10 +1,8 @@
-# ROM-CAPACITY-AND-ALLOCATION-001 - Checkpoint B
+# Allocator checkpoint B: canonical-EOF straddle guard and default provenance
 
-**Gate-B safety checkpoint.** Checkpoint A (capacity research / proof) is frozen at
-`d7d5ca548adb3753b580b0144f6f02d38b5cfeea` and was accepted by the owner. This
-checkpoint discharges the two bounded Gate-B requirements the roadmap attached to
-this milestone, plus the CQA-10 re-scope record. It is the safety precondition for
-the production allocator, not part of it.
+The safety precondition for the production allocator: the canonical-EOF straddle
+guard, default sibling provenance publication, and the mutation proofs behind
+both.
 
 ## Scope, and what is deliberately out of it
 
@@ -145,35 +143,6 @@ Both the portable default-build regression and the ROM-gated one fail, while the
 Workbench inheritance test still passes - as it should, because that test pins the
 panel's *coupling* to the default rather than the default itself. The copy was
 deleted afterwards.
-
----
-
-## 3. CQA-10 - re-scope record, no code change
-
-Recorded in [`../research/PROJECT_CODE_QUALITY_AUDIT.md`](../research/PROJECT_CODE_QUALITY_AUDIT.md)'s
-remediation-status table:
-
-```text
-CQA-10:
-PARTIAL
-
-ALLOCATION-RELEVANT PORTION:
-CLOSED
-
-REMAINDER:
-OPEN
-```
-
-The allocation-relevant portion was already satisfied by CQA-01's single
-output-path-safety owner and the shared `emit_image` transaction. Checkpoint B
-**confirmed** it rather than extending it: a default build publishes through that
-same transaction, so it inherits the source-alias refusal, the new-destination
-refusal, staged publication, rollback and manifest association, and a pre-existing
-sibling manifest is refused before anything is written. The remainder - the
-overwrite-policy divergence, the repository/raw-input-root output policy and the
-eight copied helpers in `tools/export/`, atlas atomic publication, and the
-remaining unguarded write sites - is exporter/output-policy hygiene and does not
-block this milestone. **No code change was made for this item.**
 
 ---
 

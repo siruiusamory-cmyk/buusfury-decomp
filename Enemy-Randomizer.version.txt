@@ -1,0 +1,44 @@
+# Windows version resource for the standalone Enemy Randomizer.
+#
+# Read by PyInstaller through the `version=` argument of EXE() in
+# `Enemy-Randomizer.spec.in`, which is evaluated as a Python expression with
+# PyInstaller's versioninfo names in scope. Keep the strings here in step with
+# `tools/webfoot/enemyrand/service.py`: TOOL_NAME and TOOL_VERSION are the
+# product's own identity, and a second spelling would be a second product.
+#
+# No ticket, branch, worktree, user or local path belongs in this file.
+#
+# LegalCopyright names the licence rather than a copyright holder on purpose:
+# this project states no copyright holder anywhere (README.md's Licence section,
+# pyproject.toml and LICENSE all name MPL-2.0 and nobody), and a field is better
+# left telling the truth than supplied with an invented name.
+VSVersionInfo(
+  ffi=FixedFileInfo(
+    filevers=(0, 1, 0, 0),
+    prodvers=(0, 1, 0, 0),
+    mask=0x3F,
+    flags=0x0,
+    OS=0x40004,
+    fileType=0x1,
+    subtype=0x0,
+    date=(0, 0),
+  ),
+  kids=[
+    StringFileInfo([
+      StringTable(
+        "040904B0",
+        [
+          StringStruct("CompanyName", "Webfoot SDK"),
+          StringStruct("FileDescription", "Enemy randomizer for Dragon Ball Z: Buu's Fury"),
+          StringStruct("FileVersion", "0.1.0.0"),
+          StringStruct("InternalName", "Enemy-Randomizer"),
+          StringStruct("LegalCopyright", "Mozilla Public License 2.0"),
+          StringStruct("OriginalFilename", "Enemy-Randomizer.exe"),
+          StringStruct("ProductName", "Enemy Randomizer"),
+          StringStruct("ProductVersion", "0.1.0.0"),
+        ],
+      )
+    ]),
+    VarFileInfo([VarStruct("Translation", [1033, 1200])]),
+  ],
+)

@@ -52,7 +52,7 @@ from pathlib import Path
 import secrets
 from typing import Callable, Mapping
 
-from ..cli import load_catalog
+from ..catalog import load_catalog
 from ..gba_header import GbaHeaderError
 from ..profile import RomProfile, RomProfileCatalog, VerificationStatus
 from ..rom import RomIdentification, RomReadError, identify_rom
@@ -260,10 +260,10 @@ def repository_is_dirty() -> bool | None:
     """Whether the checkout had uncommitted changes when the run was planned.
 
     ``None`` when the question cannot be asked, which is the packaged case. The
-    manifest records this beside the commit, because a commit recorded from a dirty
-    worktree names the commit the files were *based* on rather than the bytes that
-    actually produced the build - and a reader comparing two manifests deserves to
-    know which of those they are looking at.
+    manifest records this beside the commit, because a commit recorded from a
+    checkout with uncommitted changes names the commit the files were *based* on
+    rather than the bytes that actually produced the build - and a reader
+    comparing two manifests deserves to know which of those they are looking at.
     """
     global _DIRTY
     if _DIRTY is not False:

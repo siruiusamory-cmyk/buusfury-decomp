@@ -1586,7 +1586,7 @@ function validateRoadmapTo1(): void {
       throw new Error(`Roadmap phase "${phase.id}" describes no work at all.`);
     }
     for (const item of phase.work) {
-      if (/shipped/i.test(item) && !roadmapWorkItem(item).shipped) {
+      if (/\bshipped\s*:/i.test(item) && !roadmapWorkItem(item).shipped) {
         throw new Error(
           `Roadmap phase "${phase.id}" marks work as shipped without the "${SHIPPED_MARKER.trim()}" separator: "${item.slice(0, 40)}".`,
         );

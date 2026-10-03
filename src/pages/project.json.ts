@@ -9,6 +9,7 @@ import {
   programmeTotal,
   project,
   roadmap,
+  roadmapActivePhase,
   roadmapNextPhase,
 } from "../data/project";
 
@@ -29,6 +30,9 @@ export const GET: APIRoute = () =>
         acceptanceTarget: project.acceptanceTarget,
         frontier: project.frontier,
         milestones: project.milestones,
+        activePhase: roadmapActivePhase
+          ? { id: roadmapActivePhase.id, title: roadmapActivePhase.title }
+          : null,
         nextPhase: roadmapNextPhase
           ? { id: roadmapNextPhase.id, title: roadmapNextPhase.title }
           : null,

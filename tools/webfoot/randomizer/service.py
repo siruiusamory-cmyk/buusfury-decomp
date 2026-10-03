@@ -52,7 +52,6 @@ from pathlib import Path
 import secrets
 from typing import Callable, Mapping
 
-from .. import capability
 from ..cli import load_catalog
 from ..gba_header import GbaHeaderError
 from ..profile import RomProfile, RomProfileCatalog, VerificationStatus
@@ -908,27 +907,6 @@ class RandomizerService:
 
     # --- internals -------------------------------------------------------
 
-    def _require_capability(self, identification: RomIdentification) -> None:
-        """Unused by :meth:`run`, kept for callers that verify a ROM alone.
-
-        The capability gate itself lives in
-        :class:`~tools.webfoot.randomizer.context.RandomizerContext`, which is the
-        one place that binds a profile; this exists so a caller who only wants the
-        verdict can ask the same question without building a whole context.
-        """
-        try:
-            capability.require(
-                identification,
-                capability.Capability.MAP_ENTRIES,
-                subsystem="randomization",
-                error_type=UnsupportedRomError,
-                check_header=True,
-            )
-        except UnsupportedRomError:
-            raise
-        except ValueError as exc:
-            raise UnsupportedRomError(str(exc)) from exc
-
     def _merge(
         self,
         plans: tuple[ModulePlan, ...],
@@ -978,10 +956,21 @@ class RandomizerService:
     def _remove_existing(paths: list[Path], *, overwrite: bool) -> None:
         """Delete the artefacts a confirmed overwrite replaces.
 
-        The only destructive step in this module, and it is called at the point of
-        no return - after the input has been verified, the image read and the whole
-        plan built - so it can only run when a replacement is certain to be
-        producible.
+        The only destructive step in this module.
+
+        It runs after the input has been verified, the image read and the whole
+        plan built, so a *planning* failure - a bad input, an unsupported image, a
+        module refusal, a collision between modules - can no longer destroy the
+        user's previous randomized ROM. What it does not survive is a failure in
+        the write itself: `emit_image` refuses an existing destination, so the old
+        file has to be gone before the new one can be published, and a full disk or
+        a permission denial between the two would leave the user with neither. That
+        is the irreducible cost of refusing to write over an existing file, and it
+        is stated rather than implied.
+
+        The spoiler is in the list on purpose even though the run may not produce
+        one: a previous run's spoiler must not be left sitting beside a new ROM, or
+        the pair on disk would describe two different runs.
 
         This is also the step the CLI route was missing: ``webfoot randomize
         --overwrite`` deletes nothing and therefore cannot replace an existing

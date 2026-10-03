@@ -86,6 +86,17 @@ class MapWarpModule(RandomizerModule):
                 output_sha256="", output_size=len(context.image())
             )
         )
+        # The core fills two output fields from the hash its caller will produce,
+        # and a plan has not produced an image yet, so they arrive empty. They are
+        # REMOVED rather than left as `""`: an empty digest is an invalid value a
+        # reader could mistake for a real one, and the same two facts are stated
+        # once, by the application, at the top level of the manifest. An
+        # independent review found the earlier version leaving `""` here while its
+        # own comment claimed the field was absent.
+        core.pop("output_rom", None)
+        counts = core.get("counts")
+        if isinstance(counts, dict):
+            counts.pop("output_sha256", None)
         return ModulePlan(
             module_id=cls.id,
             changes=tuple(randomization.write_plan.changes),
@@ -104,13 +115,11 @@ class MapWarpModule(RandomizerModule):
                 "skipped_reasons": summary["skipped_by_reason"],
                 "class_counts": summary["class_counts"],
                 "forced_dead_end_links": summary["forced_dead_end_links"],
-                # The randomizer's own full record, verbatim: every transition
-                # row, its retail and randomized bundle, its pair and its skip
-                # reason. Carried whole so the product manifest stays a superset
-                # of the core's rather than a second, thinner document. The
-                # output digest is deliberately absent here - it is stated once,
-                # by the application, at the top level of the manifest, because a
-                # plan has not produced an image yet.
+                # The randomizer's own full record, verbatim apart from the two
+                # output fields removed above: every transition row, its retail and
+                # randomized bundle, its pair and its skip reason. Carried whole so
+                # the product manifest stays a superset of the core's rather than a
+                # second, thinner document.
                 "randomizer": core,
             },
             spoiler=None,

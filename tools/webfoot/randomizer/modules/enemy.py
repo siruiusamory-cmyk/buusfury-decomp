@@ -92,8 +92,11 @@ BAND_SETTING = SettingDescriptor(
     choices=tuple(sorted(PRESETS)),
 )
 
-#: The standing disclosure every enemy manifest section carries. Quoted from the
-#: pack so there is one wording for it, not two that can drift.
+#: The standing disclosure every enemy manifest section carries. The pack defines
+#: the same fact inside its own configuration block, and this module repeats it at
+#: the section's top level so a reader scanning a combined manifest sees it without
+#: knowing the pack's schema. A test pins the two to agree, because two statements
+#: of one fact are two things that can drift.
 MODULE_C_DELIVERED = False
 
 
@@ -222,6 +225,16 @@ def plan_enemy_group(request: GroupPlanRequest) -> tuple[ModulePlan, ...]:
     many enemy modules are enabled, which is what keeps a two-module run at one
     image load and one slot model.
     """
+    # The shell calls `validate` for a single-module group; a group planner has to
+    # do it for its own members, so the contract holds for both shapes. Imported
+    # here rather than at module scope because the registry imports this module.
+    from ..registry import module_for
+
+    for module_id in sorted(request.enabled):
+        module_for(module_id).validate(
+            request.context, request.settings.get(module_id, {})
+        )
+
     settings_by_module = {
         module_id: request.settings.get(module_id, {}) for module_id in request.enabled
     }
@@ -252,6 +265,22 @@ def plan_enemy_group(request: GroupPlanRequest) -> tuple[ModulePlan, ...]:
         )
     except (EnemyRandomizerError, ConfigError) as exc:
         raise ModuleRefusedError(f"The enemy randomizer refused this run: {exc}") from exc
+
+    # The registry's derived seed and the seed the pack actually consumed are two
+    # independently computed values, and the manifest publishes the first while the
+    # bytes come from the second. They agree today because both call the pack's own
+    # `derive_module_seed`; this refuses a run where an override ever makes them
+    # disagree, rather than letting a manifest state a seed that was not used.
+    for module_id, recorded in result.module_seeds.items():
+        if module_id not in request.enabled:
+            continue
+        expected = request.module_seeds.get(module_id)
+        if expected is not None and expected != recorded:
+            raise ModuleRefusedError(
+                f"{module_id}: the seed this run derived ({expected}) is not the "
+                f"seed the core consumed ({recorded}); refusing to record a run "
+                "whose manifest would misstate its own seed"
+            )
 
     changes = _partition_changes(tuple(result.plan.effective_changes), result)
 

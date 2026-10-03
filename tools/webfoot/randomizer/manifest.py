@@ -28,7 +28,7 @@ import hashlib
 import json
 from typing import Mapping, Sequence
 
-from .module import ModulePlan, RandomizerModule
+from .module import ModuleContractError, ModulePlan, RandomizerModule
 
 #: The document shape. See the module docstring.
 FORMAT_VERSION = 1
@@ -59,6 +59,15 @@ def document_digest(document: Mapping) -> str:
     return hashlib.sha256(canonical_json(document).encode("utf-8")).hexdigest()
 
 
+#: Keys the shell owns in every module section. A module's own manifest mapping is
+#: merged over the section, so without this guard a module could silently restate
+#: its own version, namespace or enabled flag - the three facts a reader uses to
+#: decide whether two manifests are comparable.
+RESERVED_SECTION_KEYS = frozenset(
+    {"enabled", "module_version", "seed_namespace", "derived_seed", "display_name"}
+)
+
+
 def _module_section(
     module: type[RandomizerModule],
     plan: ModulePlan | None,
@@ -71,6 +80,13 @@ def _module_section(
     comparable: a reader can tell "this module was off" from "this module did
     nothing".
     """
+    if plan is not None:
+        clash = sorted(RESERVED_SECTION_KEYS & set(plan.manifest))
+        if clash:
+            raise ModuleContractError(
+                f"{module.id}: a module section may not restate {clash}; those "
+                "keys describe the run and are written by the application"
+            )
     section: dict = {
         "display_name": module.display_name,
         "enabled": plan is not None,

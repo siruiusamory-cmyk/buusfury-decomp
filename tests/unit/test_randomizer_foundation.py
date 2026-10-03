@@ -51,6 +51,7 @@ from tools.webfoot.randomizer.errors import (
     OutputPathRefusedError,
     RandomizerAppError,
 )
+from tools.webfoot.randomizer.manifest import RESERVED_SECTION_KEYS
 from tools.webfoot.randomizer.module import ModuleContractError, SettingDescriptor
 from tools.webfoot.randomizer.service import (
     RandomizerRequest,
@@ -174,14 +175,31 @@ def test_map_warps_legacy_namespace_is_pinned():
         assert derive_module_seeds("Goku")[module_id] != "Goku"
 
 
-def test_a_seed_is_independent_of_which_modules_a_run_enables():
-    """The property that makes a combined tool possible at all."""
-    assert derive_module_seeds("Goku") == derive_module_seeds("Goku")
-    # Derivation takes nothing but the master seed, so there is no enabled set it
-    # could depend on; the signatures make that structural, and this pins it.
-    one = derive_module_seeds("Goku")["enemy-placement"]
-    two = derive_module_seeds("Goku")["enemy-placement"]
-    assert one == two
+def test_a_modules_seed_matches_the_authority_it_delegates_to():
+    """Derivation is structural, and this is the half that can actually fail.
+
+    An earlier version of this test compared :func:`derive_module_seeds` with
+    itself, which cannot fail; an independent review caught that. What can fail is
+    whether the registry's derived seed is the seed the *core* derives - the
+    manifest publishes the first and the bytes come from the second, so the two
+    agreeing is a fact about this build rather than about the signature.
+    """
+    from tools.webfoot.enemy_randomizer.seeds import derive_module_seed
+
+    seeds = derive_module_seeds("Goku")
+
+    for module_id in ("enemy-placement", "enemy-stat"):
+        assert seeds[module_id] == derive_module_seed("Goku", module_id), (
+            "the shared registry and the enemy pack must derive one seed for one "
+            "module, or the manifest would state a seed the run did not use"
+        )
+
+    # And the derivation takes no enabled set, so there is nothing for a sibling's
+    # state to travel through.
+    import inspect
+
+    signature = inspect.signature(derive_module_seeds)
+    assert list(signature.parameters) == ["master_seed"]
 
 
 def test_different_master_seeds_produce_different_module_seeds():
@@ -331,6 +349,28 @@ def test_each_module_section_carries_its_algorithm_version_and_seed():
     assert warp["derived_seed"] == "Goku"
     assert warp["algorithm"] == "reciprocal-door-pairs/3"
     assert warp["summary_lines"] == ["Supported: 735"]
+
+
+def test_a_module_cannot_restate_a_shell_owned_section_key():
+    """``enabled``, the versions and the seeds describe the run, not the module.
+
+    A module that could rewrite them could make two incomparable manifests look
+    comparable, or claim to have run when it did not.
+    """
+    for key in sorted(RESERVED_SECTION_KEYS):
+        with pytest.raises(ModuleContractError):
+            _manifest(plans=(ModulePlan(module_id="map-warp", manifest={key: "x"}),))
+
+
+def test_a_section_always_states_the_runs_own_facts():
+    document = _manifest()
+
+    for module in modules():
+        section = document["modules"][module.id]
+        assert section["display_name"] == module.display_name
+        assert section["module_version"] == module.algorithm_version
+        assert section["seed_namespace"] == module.seed_namespace
+        assert "derived_seed" in section
 
 
 def test_the_manifest_carries_a_modules_limitations_once_each():

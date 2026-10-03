@@ -32,6 +32,17 @@ This repository is an active reverse-engineering laboratory as well as a
 product. Preserve existing conventions and verified regressions; do not
 recreate or reinitialize a subsystem that already works.
 
+## Public executable releases
+
+A released randomizer executable is a first-class public surface, held to the
+same standard as the progress site: it carries the project's own name, version
+metadata and icon, ships only the executable and its README, and names no
+machine, path or private process of its own. Those rules are enforced by
+`python -m tools.quality.public_release`, which reads every release definition
+through one shared product list in `tools/quality/public_release.py`. A new
+randomizer product is added to that list and is then checked by the same rules,
+never by a second copy of them.
+
 ## Repository independence
 
 - This is a standalone repository. Do not add it as a submodule, subtree or

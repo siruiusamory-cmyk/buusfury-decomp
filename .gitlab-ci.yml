@@ -105,6 +105,7 @@ test-sdk:
     # `tools/webfoot/` would pass CI.
     - python -m tools.quality.public_surface --all
     - python -m tools.quality.architecture
+    - python -m tools.quality.public_release
     - python -m tools.quality.readability --all
   artifacts:
     when: always

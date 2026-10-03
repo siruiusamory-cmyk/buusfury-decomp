@@ -27,13 +27,18 @@ from pathlib import Path
 
 import pytest
 
+from tools.quality import public_release
+
 REPO_ROOT = Path(__file__).resolve().parents[2]
 PREFIX = "tools.webfoot"
 
-#: The entry script each spec template freezes, and the product identity beside it.
-PRODUCTS = (
-    ("enemyrand", "Enemy-Randomizer"),
-    ("warprand", "Buu-Fury-Warp-Randomizer"),
+#: The entry script each spec template freezes, and the product identity beside
+#: it. The list is the release guard's own, not a second copy of it: a product
+#: added to ``public_release.PRODUCTS`` is checked here in the same run, so a
+#: future executable cannot be registered with the release guard and left out of
+#: these rules.
+PRODUCTS = tuple(
+    (product.package, product.build_name) for product in public_release.PRODUCTS
 )
 
 #: Modules the frozen randomizers carried before EXE-PACKAGE-HYGIENE-001 and must

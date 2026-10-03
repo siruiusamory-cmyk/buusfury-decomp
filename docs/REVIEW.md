@@ -34,6 +34,7 @@ A nontrivial code-bearing change must pass all of them before review closes:
 | Source readability | `python -m tools.quality.readability --all` | research narrative and dead scaffolding in shipped source |
 | Architecture and repository purity | `python -m tools.quality.architecture` | where source, tests, evidence and configuration are allowed to live |
 | Public surface | `python -m tools.quality.public_surface --all` | what the repository says about itself, and to whom |
+| Randomizer release definitions | `python -m tools.quality.public_release` | that each public executable keeps its release wiring: version metadata, icon, the two-file package and ROM-free inputs |
 | Built site | `python -m tools.quality.site_check` | what a visitor actually receives: the status data, the page's own figures, its links, its heading order, and the artifact's absence of private material |
 | Independent review | this document | correctness and everything a test cannot see |
 

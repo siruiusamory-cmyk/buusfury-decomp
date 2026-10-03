@@ -11,7 +11,7 @@ interface Props {
   as?: "section" | "div" | "footer" | "figure";
 }
 
-const { id, title, icon, labelledby, label, class: extra, as: Tag = "section" } = Astro.props;
+const { id, title, icon, labelledby, label, class: extra, as: Tag = "section" }: Props = Astro.props;
 ---
 
 <Tag class:list={["window", extra]} id={id} aria-labelledby={labelledby} aria-label={label}>
@@ -23,4 +23,5 @@ const { id, title, icon, labelledby, label, class: extra, as: Tag = "section" } 
   <div class="window-body">
     <slot />
   </div>
+  <slot name="caption" />
 </Tag>

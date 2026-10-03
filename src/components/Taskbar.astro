@@ -3,16 +3,6 @@ import { project, buildoutDone, buildoutTotal } from "../data/project";
 import Icon from "./Icon.astro";
 
 const base = import.meta.env.BASE_URL;
-const tasks = [
-  { label: "Welcome", href: "status" },
-  { label: "Progress", href: "progress" },
-  { label: "Announcements", href: "focus" },
-  { label: "Capabilities", href: "roadmap" },
-  { label: "Latest posts", href: "wins" },
-  { label: "Roadmap to 1.0", href: "roadmap-to-1-0" },
-  { label: "Proof", href: "proof" },
-  { label: "readme.txt", href: "readme" },
-];
 ---
 
 <nav class="taskbar" aria-label="Windows">
@@ -20,7 +10,7 @@ const tasks = [
     <Icon name="logo" class="start-icon" />
   </a>
   <ul class="tasks">
-    {tasks.map((task) => (
+    {project.nav.map((task) => (
       <li><a class="task" href={`${base}#${task.href}`}>{task.label}</a></li>
     ))}
   </ul>

@@ -18,6 +18,19 @@ Notable changes to what a visitor or user of this project can see.
 - All text meets WCAG AA contrast, interactive targets are at least 24 px tall,
   and the layout stacks into one column on phones without horizontal scrolling.
 
+### Follow-up fixes
+
+- The roadmap now shows Phase 3, graphics and actor authoring, as in progress,
+  since graphics import has shipped; the desktop gadget reads "Working on now".
+- Keyboard and reading order now follow the window layout, the taskbar no
+  longer covers a focused element at the bottom of the screen, and the
+  screenshot's caption is attached to its figure.
+- On narrow screens the taskbar fades at its edge to show that more windows
+  scroll into view.
+- The taskbar is built from the site's navigation data, the wallpaper follows
+  the configured base path, and a roadmap line marked as shipped without the
+  expected separator now stops the build instead of rendering as planned.
+
 ### README
 
 - Corrected the current status to the registry's 21 / 24 (88%), with AUTHOR

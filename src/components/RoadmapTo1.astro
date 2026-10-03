@@ -5,6 +5,7 @@ import {
   buildoutPercent,
   roadmap,
   roadmapStateLabel,
+  roadmapWorkItem,
 } from "../data/project";
 import type { RoadmapPhaseView, RoadmapPhaseState } from "../data/project";
 import Icon from "./Icon.astro";
@@ -14,9 +15,8 @@ const phaseCount = (phase: RoadmapPhaseView) =>
   phase.outcomes.length > 0 ? `${phase.done} / ${buildoutTotal}` : "&mdash;";
 
 const workItem = (text: string, phaseComplete: boolean) => {
-  const [name, detail] = text.split(" - SHIPPED: ");
-  const shipped = detail !== undefined;
-  return { name, detail, shipped, done: shipped || phaseComplete };
+  const item = roadmapWorkItem(text);
+  return { ...item, done: item.shipped || phaseComplete };
 };
 
 const phaseIcon: Record<RoadmapPhaseState, "done" | "live" | "next" | "todo"> = {
@@ -84,6 +84,10 @@ const phaseIcon: Record<RoadmapPhaseState, "done" | "live" | "next" | "todo"> = 
 
           {phase.done === buildoutTotal && phase.outcomes.length > 0 && (
             <p class="phase-flag">100% feature complete</p>
+          )}
+
+          {phase.state === "in-progress" && (
+            <p class="phase-marker">You are here: this phase is in progress</p>
           )}
 
           {phase.state === "next" && (

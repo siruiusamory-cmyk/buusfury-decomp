@@ -32,11 +32,16 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 QtWidgets = pytest.importorskip("PySide6.QtWidgets")
 
 from tools.webfoot.workbench import theme  # noqa: E402
+from tools.webfoot.randomizer import gui as shell_gui  # noqa: E402
 from tools.webfoot.warprand import gui  # noqa: E402
 from tools.webfoot.warprand import service as warprand  # noqa: E402
 
-#: The GUI module's own source, for the "no second palette" guard below.
+#: The GUI module's own source, for the "no second palette" guard below. The
+#: window itself lives in ``tools/webfoot/randomizer/gui.py`` since
+#: ENEMY-RANDOMIZER-EXE-001; this file's guard scans both, because a colour
+#: literal in either would fork the product's appearance.
 GUI_SOURCE = Path(gui.__file__)
+SHELL_GUI_SOURCE = Path(shell_gui.__file__)
 
 VALID_ROM = Path("C:/games/Dragon Ball Z - Buu's Fury (U).gba")
 OTHER_ROM = Path("C:/games/Dragon Ball Z - The Legacy of Goku (USA).gba")
@@ -130,6 +135,28 @@ class FakeBoundary:
     def randomize_warps(
         self, source, output, seed, *, overwrite=False, policy=None, on_progress=None
     ):
+        """The product's own entry point. Kept so this file still reads as a warp
+        randomizer test rather than a test of the shared shell."""
+        return self._record(source, output, seed, overwrite=overwrite,
+                            on_progress=on_progress)
+
+    def randomize(self, request):
+        """The shared window protocol: the request the window built.
+
+        ENEMY-RANDOMIZER-EXE-001 moved the window onto the shared application
+        foundation, so the protocol a boundary must satisfy is now this one
+        method. The recorder is unchanged, so every assertion about what the
+        window passed through still holds.
+        """
+        return self._record(
+            request.source_rom,
+            request.output_rom,
+            request.master_seed,
+            overwrite=request.overwrite,
+            on_progress=request.on_progress,
+        )
+
+    def _record(self, source, output, seed, *, overwrite=False, on_progress=None):
         self.randomize_calls.append(
             {
                 "source": str(source),
@@ -237,7 +264,7 @@ def test_the_window_names_the_tool_and_the_policy(window):
 
 def test_browsing_for_a_rom_updates_the_path(window, qapp, boundary, monkeypatch):
     monkeypatch.setattr(
-        gui.QFileDialog, "getOpenFileName", lambda *a, **k: (str(VALID_ROM), "")
+        shell_gui.QFileDialog, "getOpenFileName", lambda *a, **k: (str(VALID_ROM), "")
     )
 
     window.browse_for_rom()
@@ -247,7 +274,7 @@ def test_browsing_for_a_rom_updates_the_path(window, qapp, boundary, monkeypatch
 
 
 def test_a_cancelled_browse_changes_nothing(window, monkeypatch):
-    monkeypatch.setattr(gui.QFileDialog, "getOpenFileName", lambda *a, **k: ("", ""))
+    monkeypatch.setattr(shell_gui.QFileDialog, "getOpenFileName", lambda *a, **k: ("", ""))
 
     assert window.browse_for_rom() is None
     assert window.rom_path() == ""
@@ -407,7 +434,7 @@ def test_copy_seed_puts_the_seed_on_the_clipboard(window):
 
 def test_browsing_for_an_output_updates_the_path(window, monkeypatch):
     monkeypatch.setattr(
-        gui.QFileDialog, "getSaveFileName", lambda *a, **k: (str(OUTPUT_ROM), "")
+        shell_gui.QFileDialog, "getSaveFileName", lambda *a, **k: (str(OUTPUT_ROM), "")
     )
 
     window.browse_for_output()

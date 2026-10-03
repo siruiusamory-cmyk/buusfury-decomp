@@ -1,19 +1,20 @@
 Enemy Randomizer v0.1.0
 =======================
 
-Randomizes the ordinary enemies in Dragon Ball Z: Buu's Fury, from a seed you
-choose. Your own ROM is never modified - the tool reads it and writes a new file
-beside it.
+Randomizes enemy placements and enemy stats in Dragon Ball Z: Buu's Fury, from a
+seed you choose. Your own ROM is never modified - the tool reads it and writes a
+new file beside it.
 
 WHAT IT DOES
 ------------
 
-- Shuffles enemy placements. Eligible ordinary enemies are moved among
-  placements the map already had, within the same map. No new spawn is created
-  and no coordinate is invented.
-- Randomizes enemy stats. Supported stats - HP, experience, level, strength,
-  power and endurance - are scaled around each enemy's own original values, so a
-  weak enemy stays weak and an endgame enemy stays endgame.
+- Shuffles enemy placements. Enemies are moved among placements the map already
+  had, within the same map. No new spawn is created and no coordinate is
+  invented. Anything the tool cannot clearly identify as an ordinary enemy is
+  left alone, but a boss that looks like an ordinary enemy may still be moved.
+- Randomizes enemy stats. HP, experience, level, strength, power and endurance
+  are scaled from each enemy's own original values, so a weak enemy stays weak
+  and an endgame enemy stays endgame.
 
 Both are on by default. That combination is the STREAM SAFE preset, and the
 button in the window restores it.
@@ -22,15 +23,13 @@ WHAT IT DOES NOT DO
 -------------------
 
 - It does NOT change enemy species or types. An enemy is never replaced by a
-  different kind of enemy, and enemy identity/type swapping is not supported in
-  this version. This is not a hidden limitation: every manifest the tool writes
-  records it.
-- It does not touch actors it can positively identify as something other than an
-  ordinary enemy. Excluded: any actor carrying a script event, any actor whose
-  script could not be decoded, any actor whose stat selector falls outside the
-  verified enemy-stat extent, any placement inside a door trigger, and any enemy
-  that is the only eligible one in its map. There is deliberately no "randomize
-  everything" switch.
+  different kind of enemy, and there is no option that swaps enemy types. Every
+  manifest the tool writes records this.
+- It leaves alone anything it cannot positively identify as an ordinary enemy:
+  any actor that runs a script event, any actor whose script could not be read,
+  any actor whose stats fall outside the range this version understands, any
+  placement inside a doorway trigger, and any enemy that is the only eligible one
+  in its map. There is deliberately no "randomize everything" switch.
 - IT DOES NOT KNOW WHICH ENEMIES ARE BOSSES. No boss, NPC or quest-critical
   classification exists in this project's evidence, so none is claimed. The
   consequence, stated plainly: a boss that is neither script-attached nor alone
@@ -52,15 +51,19 @@ HOW TO USE
    unpacks itself before it can start. Later launches are the same; this is
    normal for a single-file build.
 
-2. Click Browse... and pick your clean US Buu's Fury ROM.
+2. In the Original ROM row, click Browse... and pick your clean US Buu's Fury
+   ROM.
 
    The window tells you immediately whether the ROM is supported.
 
 3. Leave the seed as StreamBlind-0001, or type your own, or click Random Seed.
 
-4. Tick or untick "Shuffle enemy placements" and "Randomize enemy stats".
+4. Tick or untick "Shuffle enemy placements" and "Randomize enemy stats", and pick
+   an Enemy stat range if you want. Leave Generate spoiler log ticked to get a
+   readable list of what changed.
 
-5. Click Randomize.
+5. Click Randomize. The Randomized ROM row names the file to create; it is filled
+   in beside your ROM, and you can browse somewhere else if you prefer.
 
 6. Load the generated ROM in your emulator or flashcart.
 
@@ -82,20 +85,20 @@ Anything else is refused. There is no "continue anyway".
 SEEDS
 -----
 
-- Same ROM + same seed + same options = the same ROM, on any machine.
+- Same ROM + same seed + same options = the same randomized ROM, on any machine.
 - The seed is used exactly as you type it. "StreamBlind-0001" and
   "streamblind-0001" are different seeds.
-- Each module derives its own seed from yours, so turning one off never changes
-  what the other produces.
-- The manifest records your seed and every derived module seed, so a run can be
+- Each of the two options derives its own seed from yours, so turning one off
+  never changes what the other produces.
+- The manifest records your seed and every derived seed, so a run can be
   reproduced from the manifest alone.
 
 GOOD TO KNOW
 ------------
 
-- Randomized placements and stats change the game's difficulty. Progression
-  stays bounded - nothing is drawn from a global range - but full-game balance
-  is not guaranteed.
+- Randomized placements and stats change the game's difficulty. Progression stays
+  bounded - every stat is scaled from that enemy's own values - but full-game
+  balance is not guaranteed.
 - A confirmed overwrite replaces the previous output, its manifest and its
   spoiler together, and it deletes them before writing the new ROM. If the write
   itself then fails - a full disk, a permission problem - the previous files are
@@ -104,7 +107,7 @@ GOOD TO KNOW
 - The tool never writes to the ROM you selected. The output must be a separate
   file, and an output that is a copy of your clean ROM is refused even if you
   confirm the overwrite.
-- Every run records the tool version and each module's algorithm version beside
+- Every run records the tool version and each option's algorithm version beside
   the seed, because a seed only identifies a result alongside the algorithms that
   consumed it.
 

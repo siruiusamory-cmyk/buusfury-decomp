@@ -279,7 +279,7 @@ class RandomizerWindow(QMainWindow):
         self.rom_edit.editingFinished.connect(self._on_rom_path_edited)
         self.browse_rom_button = QPushButton("Browse...")
         self.browse_rom_button.clicked.connect(self.browse_for_rom)
-        grid.addWidget(self._field_label("ROM:"), 0, 0)
+        grid.addWidget(self._field_label("Original ROM:"), 0, 0)
         grid.addWidget(self.rom_edit, 0, 1)
         grid.addWidget(self.browse_rom_button, 0, 2)
 
@@ -321,7 +321,7 @@ class RandomizerWindow(QMainWindow):
         self.output_edit.textEdited.connect(self._on_output_edited)
         self.browse_output_button = QPushButton("Browse...")
         self.browse_output_button.clicked.connect(self.browse_for_output)
-        grid.addWidget(self._field_label("Output:"), 3, 0)
+        grid.addWidget(self._field_label("Randomized ROM:"), 3, 0)
         grid.addWidget(self.output_edit, 3, 1)
         grid.addWidget(self.browse_output_button, 3, 2)
 

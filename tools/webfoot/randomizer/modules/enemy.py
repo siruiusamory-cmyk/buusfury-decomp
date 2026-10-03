@@ -82,11 +82,12 @@ DEFAULT_BAND = "stream-safe"
 BAND_SETTING = SettingDescriptor(
     key="stat_band",
     kind=SETTING_CHOICE,
-    label="Enemy stat band",
+    label="Enemy stat range",
     help=(
         "How far an enemy's stats may move from their own original values. "
-        "Stream safe is the conservative band; chaos is wider and still scales "
-        "each record around itself rather than drawing from a global range."
+        "Stream safe is the conservative choice; chaos is wider, and an enemy's "
+        "stats are still scaled from its own values rather than drawn from one "
+        "big shared range."
     ),
     default=DEFAULT_BAND,
     choices=tuple(sorted(PRESETS)),
@@ -131,8 +132,8 @@ class EnemyPlacementModule(_EnemyModule):
     id = MODULE_ENEMY_PLACEMENT
     display_name = "Shuffle enemy placements"
     description = (
-        "Shuffles eligible ordinary enemies among proven existing placements in "
-        "the same map. No spawn is created and no coordinate is invented."
+        "Shuffles enemy placements within each map, using only positions the map "
+        "already had. No new spawn is created and no coordinate is invented."
     )
     default_enabled = True
     algorithm_version = 1
@@ -146,9 +147,8 @@ class EnemyStatModule(_EnemyModule):
     id = MODULE_ENEMY_STAT
     display_name = "Randomize enemy stats"
     description = (
-        "Randomizes supported enemy stats within safe bounds, scaling each record "
-        "around its own original values so the game's general progression is "
-        "preserved."
+        "Randomizes enemy stats within safe bounds, scaling each enemy from its "
+        "own original values so the game's general progression is preserved."
     )
     default_enabled = True
     algorithm_version = 1

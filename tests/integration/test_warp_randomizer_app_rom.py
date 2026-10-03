@@ -307,6 +307,26 @@ def test_the_manifest_carries_the_per_transition_mapping(service, tmp_path):
     assert sorted(outcome.skipped_reasons.values()) == [70, 169]
 
 
+def test_the_embedded_core_record_states_no_empty_output_digest(service, tmp_path):
+    """A plan has no output yet, so the record it carries must not pretend it does.
+
+    An independent review found the warp module embedding the core's record with
+    ``output_rom.sha256: ""`` and ``counts.output_sha256: ""`` while its own comment
+    claimed the field was absent. An empty digest is an invalid value a reader can
+    mistake for a real one, so the fields are removed and the two facts are stated
+    once, by the application, at the top level of the manifest.
+    """
+    outcome = service.randomize_warps(LOCAL_ROM, tmp_path / "core-record.gba", "Goku")
+    core = outcome.randomizer_manifest
+
+    assert "output_rom" not in core
+    assert "output_sha256" not in core["counts"]
+    # The facts are not lost: they are on the document itself, with real values.
+    document = json.loads(outcome.manifest_path.read_text(encoding="utf-8"))
+    assert document["output"]["sha256"] == GOKU_GOLDEN_SHA256
+    assert document["output"]["size"] == CANONICAL_SIZE
+
+
 def test_the_manifest_is_byte_identical_across_directories(service, tmp_path):
     """No absolute path and no machine detail may reach the manifest.
 

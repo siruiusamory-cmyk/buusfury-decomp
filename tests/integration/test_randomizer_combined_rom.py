@@ -147,24 +147,80 @@ def test_the_combined_manifest_is_byte_identical_across_directories(
     assert str(workdir).encode() not in first.read_bytes()
 
 
-def test_the_composition_is_additive_and_therefore_collision_free(runs):
-    """The strongest available static proof that no module's bytes were lost.
+def _changed_offsets(left: bytes, right: bytes) -> set[int]:
+    """Every byte position at which two images differ."""
+    if len(left) != len(right):
+        raise AssertionError("the images are different lengths")
+    return {index for index, (a, b) in enumerate(zip(left, right)) if a != b}
+
+
+@pytest.fixture(scope="module")
+def base_bytes() -> bytes:
+    return LOCAL_ROM.read_bytes()
+
+
+@pytest.fixture(scope="module")
+def offsets(runs, base_bytes):
+    """The byte positions each module owns, measured rather than declared."""
+    return {
+        name: _changed_offsets(base_bytes, runs[name].output_path.read_bytes())
+        for name in ("warp", "placement", "stat", "enemy-both", "combined")
+    }
+
+
+def test_the_composition_is_additive_and_therefore_collision_free(offsets):
+    """The strongest available proof that no module's bytes were lost or shared.
 
     ``plan_changes`` refuses overlapping writes outright, so a collision cannot
-    reach this assertion - but a *silently dropped* change could, and could equally
-    be hidden by a "last module wins" resolution. Adding the three single-module
-    runs up and comparing with the combined run catches both.
-    """
-    singles = (
-        runs["warp"].changed_byte_count
-        + runs["placement"].changed_byte_count
-        + runs["stat"].changed_byte_count
-    )
+    reach this assertion - but a *silently dropped* change could, and a "last
+    module wins" resolution could hide one. Counting changed bytes catches both,
+    which is what an earlier version of this test did; comparing the byte
+    POSITIONS catches more, because two modules could move the same number of
+    bytes in the same total and still not be additive.
 
-    assert runs["combined"].changed_byte_count == singles
-    assert (
-        runs["enemy-both"].changed_byte_count
-        == runs["placement"].changed_byte_count + runs["stat"].changed_byte_count
+    An independent review pointed out that the count-only form would pass a run in
+    which one module's result had drifted while its byte count stayed the same.
+    """
+    assert offsets["combined"] == (
+        offsets["warp"] | offsets["placement"] | offsets["stat"]
+    )
+    assert offsets["enemy-both"] == offsets["placement"] | offsets["stat"]
+    # And the three are genuinely disjoint, which is what makes the union above a
+    # composition rather than an overlap that failed to be detected.
+    assert not (offsets["warp"] & offsets["placement"])
+    assert not (offsets["warp"] & offsets["stat"])
+    assert not (offsets["placement"] & offsets["stat"])
+
+
+def test_every_module_writes_exactly_its_own_bytes_and_nothing_else(
+    runs, base_bytes, offsets
+):
+    """Per position: the combined image is each module's own image, or the base.
+
+    This is the end-to-end independence claim. It says that enabling the stat
+    module does not move a placement, that enabling placement does not change a
+    stat, and that the warp shuffle is unaffected by either - measured on the
+    emitted bytes rather than inferred from the seed derivation.
+    """
+    combined = runs["combined"].output_path.read_bytes()
+    owned = offsets["warp"] | offsets["placement"] | offsets["stat"]
+
+    for name in ("warp", "placement", "stat"):
+        single = runs[name].output_path.read_bytes()
+        for offset in offsets[name]:
+            assert combined[offset] == single[offset], (
+                f"{name} byte 0x{offset:06X} differs between its own run and the "
+                "combined one"
+            )
+
+    stray = [
+        offset
+        for offset in range(len(base_bytes))
+        if offset not in owned and combined[offset] != base_bytes[offset]
+    ]
+    assert stray == [], (
+        "the combined image changed bytes no module claims: "
+        f"{[hex(offset) for offset in stray[:8]]}"
     )
 
 
@@ -200,15 +256,29 @@ def test_a_disabled_module_is_still_described_in_the_combined_manifest(runs):
     assert placement_only["modules"]["enemy-stat"]["enabled"] is False
 
 
-def test_each_modules_seed_is_unmoved_by_its_siblings():
-    """Enabling or disabling a module must not perturb another module's result."""
+def test_each_modules_seed_is_unmoved_by_its_siblings(runs):
+    """Enabling or disabling a module must not perturb another module's result.
+
+    Two halves, and the difference matters. The *derivation* half is structural:
+    :func:`derive_module_seeds` takes the master seed and computes each entry
+    independently, so there is no enabled set in scope for it to depend on - and an
+    earlier version of this test asserted that by comparing the function with
+    itself, which could not fail. The half that can fail is the *effect*, and it is
+    measured on the emitted bytes by
+    :func:`test_every_module_writes_exactly_its_own_bytes_and_nothing_else` and
+    :func:`test_the_composition_is_additive_and_therefore_collision_free`.
+    """
     all_three = derive_module_seeds(SEED)
 
     assert all_three["map-warp"] == SEED, "the legacy namespace consumes the master seed"
     assert all_three["enemy-placement"] != all_three["enemy-stat"]
-    # The derivation takes only the master seed, so there is no enabled set in
-    # scope for it to depend on; the runs above confirm the effect end to end.
-    assert derive_module_seeds(SEED) == all_three
+    # Each module's seed differs from the master seed, so no two modules share a
+    # stream even though they share a master seed.
+    for module_id in ("enemy-placement", "enemy-stat"):
+        assert all_three[module_id] != SEED
+    # The seeds a run records are the seeds the runs above consumed.
+    for name in ("warp", "placement", "stat", "combined"):
+        assert runs[name].module_seeds == all_three
 
 
 def test_the_progress_plan_names_every_enabled_module_once():
@@ -223,7 +293,10 @@ def test_the_progress_plan_names_every_enabled_module_once():
 def test_the_combined_run_writes_a_spoiler_with_a_section_per_module(runs):
     document = json.loads(runs["combined"].spoiler_path.read_text(encoding="utf-8"))
 
-    # map-warp has nothing to hide; the two enemy modules do.
+    # map-warp has nothing to hide *in the spoiler*: its per-transition mapping is
+    # provenance and has lived in its manifest since v0.1.0, which is stated in the
+    # spoiler module's own docstring. The two enemy modules are the ones that keep
+    # their decisions out of the manifest.
     assert set(document["modules"]) == {"enemy-placement", "enemy-stat"}
     assert document["master_seed"] == SEED
     assert document["output"]["sha256"] == runs["combined"].output_sha256

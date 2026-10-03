@@ -45,8 +45,9 @@ application-wide style sheet, and the few widgets that must draw themselves call
 from __future__ import annotations
 
 from dataclasses import dataclass
+from functools import lru_cache
 
-from PySide6.QtGui import QColor, QFont, QFontDatabase, QPalette
+from PySide6.QtGui import QColor, QFont, QFontDatabase, QPalette, QPixmap
 from PySide6.QtWidgets import QApplication
 
 
@@ -282,9 +283,20 @@ RADIUS_BUTTON = 2
 
 #: Control geometry. One row height everywhere a list or field appears.
 ROW_HEIGHT = 20
+#: The height every action control is drawn at. The style sheet derives it from the
+#: button metrics (``ROW_HEIGHT - 6`` minimum plus padding and a 1px border), and a
+#: control that sets its own minimum instead of this one comes out two pixels short
+#: and visibly lighter than the buttons beside it, which is the fault this constant
+#: exists to prevent.
+CONTROL_HEIGHT = 24
 TOOLBAR_HEIGHT = 28
 PANEL_HEADER_HEIGHT = 22
 STATUS_HEIGHT = 22
+
+#: The check box indicator. It carries the tick, so it is square, and it is a
+#: little taller than the text line it sits on rather than smaller: a box that is
+#: shorter than its own label reads as clipped.
+CHECK_INDICATOR = 16
 
 #: Bottom-left glyph in the window title when edits are pending (Godot places its
 #: ``(*)`` first so the OS task bar shows it; this is the DragonByte Z equivalent).
@@ -319,6 +331,41 @@ def css_rgba(name: str, alpha: int) -> str:
     """
     value = QColor(getattr(COLORS, name))
     return f"rgba({value.red()}, {value.green()}, {value.blue()}, {alpha / 255:.3f})"
+
+
+@lru_cache(maxsize=4)
+def check_mark_pixmap(colour: str, size: int = CHECK_INDICATOR) -> QPixmap:
+    """A tick drawn in the given colour, for a widget that paints its own control.
+
+    Cached, because a check box asks for it on every repaint and the mark is a
+    constant value rather than per-widget state.
+
+    A painter and a raster image rather than an inline SVG: this Qt build lists
+    ``svg`` among its supported image formats and still loads nothing from a
+    ``data:`` URL in either the percent-encoded or the base64 form. Drawing the
+    mark also keeps it independent of any installed font.
+    """
+    from PySide6.QtCore import QPointF, Qt
+    from PySide6.QtGui import QImage, QPainter, QPen
+
+    image = QImage(size, size, QImage.Format.Format_ARGB32_Premultiplied)
+    image.fill(Qt.GlobalColor.transparent)
+    painter = QPainter(image)
+    painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
+    pen = QPen(QColor(colour))
+    pen.setWidthF(max(1.0, size * 0.17))
+    pen.setCapStyle(Qt.PenCapStyle.RoundCap)
+    pen.setJoinStyle(Qt.PenJoinStyle.RoundJoin)
+    painter.setPen(pen)
+    painter.drawPolyline(
+        [
+            QPointF(size * 0.24, size * 0.53),
+            QPointF(size * 0.42, size * 0.71),
+            QPointF(size * 0.78, size * 0.30),
+        ]
+    )
+    painter.end()
+    return QPixmap.fromImage(image)
 
 
 def mono_font(size_delta: int = -1) -> QFont:

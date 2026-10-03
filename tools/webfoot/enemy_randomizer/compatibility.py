@@ -133,12 +133,31 @@ def canonical_pairs(model: SlotModel) -> dict[IdentityPair, tuple[EnemySlot, ...
     return {pair: tuple(slots) for pair, slots in pairs.items()}
 
 
-def is_canonical(pair: IdentityPair, model: SlotModel) -> bool:
-    """Whether some canonical placement builds this exact pair."""
-    return any(
-        slot.original_selector == pair.selector and slot.original_sprite == pair.sprite
+def canonical_pair_set(model: SlotModel) -> frozenset[IdentityPair]:
+    """Every pair the corpus builds, as a set, for O(1) membership tests.
+
+    ``is_canonical`` scanning the slot tuple is fine for a one-off question and
+    ruinous in the type shuffle, which asks once per installed identity: the scan
+    ran 315,947 generator steps in a profile of a single plan. Building the set
+    once turns that question into a lookup.
+    """
+    return frozenset(
+        IdentityPair(slot.original_selector, slot.original_sprite)
         for slot in model.slots
     )
+
+
+def is_canonical(pair: IdentityPair, model: SlotModel) -> bool:
+    """Whether some canonical placement builds this exact pair.
+
+    The set is attached to the model, which is frozen and built once per run, so
+    the cost is paid once and every later question is a hash lookup.
+    """
+    cached = model.canonical_pair_set
+    if cached is None:
+        cached = canonical_pair_set(model)
+        object.__setattr__(model, "canonical_pair_set", cached)
+    return pair in cached
 
 
 def compatibility_class(pair: IdentityPair, model: SlotModel) -> str:

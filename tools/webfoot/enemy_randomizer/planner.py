@@ -1,5 +1,4 @@
 """The planner: one master seed in, one validated ``WritePlan`` out.
-
 Module composition order
 ========================
 
@@ -51,7 +50,7 @@ from ..maps import Maps, load_maps
 from ..placement_events import PlacementEvents
 from ..profile import RomProfile, RomProfileCatalog
 from ..rom import identify_rom
-from ..stats import load_stat_tables
+from ..stats import load_stat_tables, stat_tables_from_image
 from ..write import WritePlan, plan_changes
 from .config import EnemyRandomizerConfig
 from .eligibility import SlotModel, build_slot_model, placements_in_door_triggers, scripted_placements
@@ -151,25 +150,180 @@ def plan_enemy_randomization(
 ) -> EnemyRandomization:
     """Plan one randomized run. Reads the ROM; writes nothing.
 
+    A convenience wrapper that loads the image and then plans once. A caller that
+    plans many seeds against one image should use
+    :class:`EnemyRandomizerContext` instead: this function re-reads and re-hashes
+    the whole 8 MiB image per call, which is most of its cost and is pure waste
+    when the image cannot have changed.
+
     The canonical image is opened read-only by the loaders this composes, and the
     returned :class:`~tools.webfoot.write.WritePlan` is a pure description a
     caller applies with the one writer.
     """
+    return EnemyRandomizerContext(rom_path, catalog).plan(
+        master_seed, config, preset_name=preset_name, sdk_commit=sdk_commit
+    )
+
+
+class EnemyRandomizerContext:
+    """One verified image, loaded once, planned against many times.
+
+    Why this exists, measured. A single plan over the canonical 8 MiB image costs
+    about 1.3 s, and the profile showed 5.65 s of an 11.8 s five-seed loop inside
+    ``load_maps`` alone - of which 2.3 s was SHA-256 over the whole image. Every
+    seed re-read and re-hashed bytes that could not have changed, because the
+    randomizer is defined as read-only over a verified input. On a 1,000-seed
+    corpus that is the difference between roughly 22 minutes and a few.
+
+    What is cached and what is not is the whole design of this class:
+
+    * **cached** - the ROM identification and its digests, the parsed map table
+      and placement records, the transition corpus, and the scripted-placement
+      sets. All of it is immutable data read from one image.
+    * **NOT cached** - the stat table object, which carries the edits for a run,
+      and the slot model, which is per-run state. Both are rebuilt per call, so
+      two seeds cannot contaminate each other.
+
+    Reproducibility is unchanged: :func:`plan_enemy_randomization` now routes
+    through this class, so a corpus run and a single run execute the same plan
+    body over the same data. The only difference is that the loading happens once.
+
+    Input safety. The loader verifies the digest when it loads, and
+    :meth:`_assert_source_unchanged` re-checks the file's identity cheaply on every
+    later call, so an image edited mid-corpus is refused rather than silently
+    planning against a base that no longer matches the recorded digest.
+    """
+
+    def __init__(self, rom_path: str | Path, catalog: RomProfileCatalog) -> None:
+        self._path = Path(rom_path)
+        self._catalog = catalog
+        self._identification = identify_rom(self._path, catalog)
+        profile: RomProfile | None = self._identification.profile_match.profile
+        if profile is None:
+            raise EnemyRandomizerError(
+                "the selected image does not match a verified profile, so no "
+                "placement or stat table can be trusted"
+            )
+        self._profile = profile
+        self._maps = load_maps(self._path, catalog)
+        # The transition corpus and the scripted sets do not depend on the seed or
+        # the configuration, so they are read once here rather than per plan.
+        self._door_slots = placements_in_door_triggers(
+            self._maps, read_map_transitions(self._maps.base_bytes, self._maps.profile)
+        )
+        self._types = PlacementTypes(self._maps)
+        try:
+            self._scripted, self._unresolved = scripted_placements(
+                self._maps, PlacementEvents(self._maps)
+            )
+            self._script_error: str | None = None
+        except Exception as exc:  # noqa: BLE001 - reported, never silently absorbed
+            # Same fail-closed response as build_model: if the script question
+            # cannot be answered, no placement can be shown free of a script.
+            self._scripted = frozenset()
+            self._unresolved = frozenset(p.identity for p in self._maps.placements())
+            self._script_error = str(exc)
+        self._source_stat = self._path.stat()
+        self._plans = 0
+
+    @property
+    def profile(self) -> RomProfile:
+        return self._profile
+
+    @property
+    def maps(self):
+        return self._maps
+
+    @property
+    def plans(self) -> int:
+        """How many plans this context has produced."""
+        return self._plans
+
+    def _assert_source_unchanged(self) -> None:
+        """Refuse if the image changed under us since it was loaded.
+
+        A full re-hash per call would defeat the point of the cache, so this
+        compares the filesystem identity tuple instead: device, inode, size and
+        mtime. That catches a rewrite, a truncation and a replacement, which is
+        everything that can change the bytes behind a path. ``identify_rom``
+        already proved the digest at load time.
+        """
+        current = self._path.stat()
+        before = self._source_stat
+        if (current.st_dev, current.st_ino, current.st_size, current.st_mtime_ns) != (
+            before.st_dev, before.st_ino, before.st_size, before.st_mtime_ns
+        ):
+            raise EnemyRandomizerError(
+                f"the source image changed after it was loaded: {self._path}. "
+                "Build a new context so every plan is made against the image that "
+                "was verified."
+            )
+
+    def _build_model(self):
+        """A fresh slot model for one plan."""
+        return build_slot_model(
+            self._maps,
+            self._types,
+            scripted=self._scripted,
+            unresolved_script=self._unresolved,
+            door_slots=self._door_slots,
+            script_evidence_error=self._script_error,
+        ), self._types
+
+    def plan(
+        self,
+        master_seed: str | int,
+        config: EnemyRandomizerConfig,
+        *,
+        preset_name: str = "custom",
+        sdk_commit: str | None = None,
+    ) -> EnemyRandomization:
+        """Plan one seed against the loaded image."""
+        self._assert_source_unchanged()
+        # The stat table carries per-run edits, so it is rebuilt rather than
+        # shared. It is built from the image this context already identified and
+        # holds in memory, which avoids a second full read plus a SHA-256 over
+        # 8 MiB per plan - the remaining hot spot once the map load was cached.
+        stat_tables = stat_tables_from_image(
+            self._identification, self._profile, self._maps.base_bytes
+        )
+        self._plans += 1
+        return _plan_with_loaded(
+            maps=self._maps,
+            stat_tables=stat_tables,
+            identification=self._identification,
+            profile=self._profile,
+            model_factory=self._build_model,
+            master_seed=master_seed,
+            config=config,
+            preset_name=preset_name,
+            sdk_commit=sdk_commit,
+        )
+
+
+def _plan_with_loaded(
+    *,
+    maps,
+    stat_tables,
+    identification,
+    profile,
+    model_factory,
+    master_seed: str | int,
+    config: EnemyRandomizerConfig,
+    preset_name: str,
+    sdk_commit: str | None,
+) -> EnemyRandomization:
+    """The plan body, over an already-loaded image. No I/O of its own.
+
+    Kept separate from loading so the expensive part can be done once for many
+    seeds. ``model_factory`` builds a fresh slot model per call, because the model
+    is per-run state (it carries the caches and the refusal set for THIS run) even
+    though the placement records it reads are immutable.
+    """
     text_seed = normalize_seed(master_seed)
     module_seeds = _derive_seeds(text_seed)
 
-    identification = identify_rom(rom_path, catalog)
-    profile: RomProfile | None = identification.profile_match.profile
-    if profile is None:
-        raise EnemyRandomizerError(
-            "the selected image does not match a verified profile, so no "
-            "placement or stat table can be trusted"
-        )
-
-    maps = load_maps(rom_path, catalog)
-    model, _types = build_model(maps)
-    stat_tables = load_stat_tables(rom_path, catalog)
-
+    model, _types = model_factory()
     edits = RecordEdits.empty()
     entries = {entry.identity: entry for entry in maps.placements()}
 

@@ -335,7 +335,7 @@ and harness from the implementer's.
 
 | Range | Verdict | Outcome |
 | --- | --- | --- |
-| `d49d68c..3c68e0a` (the foundation) | APPROVE WITH NON-BLOCKING NOTES | 10 findings; the substantive ones fixed in `ea91642` |
+| `d49d68c..3c68e0a` (the foundation) | APPROVE WITH NON-BLOCKING NOTES | 10 findings; the substantive ones fixed in `7e37a97`, described below |
 | `3c68e0a..866d223` (the products) | **BLOCK** | 1 HIGH, 4 MEDIUM, 4 LOW; fixed in `04e5e4a` and `076fa34` |
 
 The blocking finding was correct and serious: the release README told users the
@@ -345,6 +345,22 @@ docstring and this record now say what is true, and the wording matches the
 `limitations` block every manifest already carried. The other fixes are listed in
 the two commits' messages; the largest is that the product's own module list is now
 enforced by the shared service rather than by each client remembering to check.
+
+The foundation's fixes were first committed as `ea91642`, and that commit did **not**
+reach `master`. While the products commit was being reviewed, the next round of
+work was committed from a detached `HEAD`; the ticket branch was then moved onto
+that line, and `ea91642` was orphaned. The merged candidate consequently shipped
+without those fixes, and an earlier revision of this section said they were "fixed
+in `ea91642`" - true of the commit, false of `master`.
+
+They were recovered by reconciliation onto `master` in `7e37a97` rather than by
+cherry-picking, because the second review had since changed three of the same
+files. Five of the eight files are byte-identical to `ea91642`; the other three
+carry its hunks alongside the later work. The recovery changes no randomizer
+output: the Map Warp `Goku` golden, the Enemy Randomizer `StreamBlind-0001` golden
+and the combined three-module output are byte-identical before and after. The one
+manifest change it does make is the removal of the empty `output_rom` digest from
+the `map-warp` section, which is the finding being fixed.
 
 Corrections after a review were not re-reviewed, at the owner's direction.
 

@@ -1,0 +1,48 @@
+---
+import { buildoutDone, buildoutTotal, buildoutPercent, familyTallies, roadmapNextPhase, proofStrip } from "../data/project";
+
+const highlights = proofStrip.slice(0, 3);
+---
+
+<aside class="gadgets" aria-label="Desktop gadgets">
+  <div class="gadget gadget-meter">
+    <div class="meter" style={`--pct: ${buildoutPercent}`} aria-hidden="true">
+      <span class="meter-value">{buildoutPercent}%</span>
+    </div>
+    <p class="gadget-caption"><b>{buildoutDone} of {buildoutTotal}</b> editor capabilities shipped</p>
+  </div>
+
+  <div class="gadget">
+    <h2 class="gadget-title">By family</h2>
+    <dl class="gadget-list">
+      {familyTallies.map((family) => (
+        <div class:list={[family.done === family.total ? "is-full" : "is-open"]}>
+          <dt>{family.label}</dt>
+          <dd>
+            <span class="gadget-bar" style={`--fill: ${(family.done / family.total) * 100}%`} aria-hidden="true"></span>
+            {family.done}/{family.total}
+          </dd>
+        </div>
+      ))}
+    </dl>
+  </div>
+
+  {roadmapNextPhase && (
+    <div class="gadget">
+      <h2 class="gadget-title">Up next</h2>
+      <p class="gadget-next"><b>Phase {roadmapNextPhase.ordinal}:</b> {roadmapNextPhase.title}</p>
+    </div>
+  )}
+
+  <div class="gadget">
+    <h2 class="gadget-title">Measured</h2>
+    <dl class="gadget-list gadget-figures">
+      {highlights.map((metric) => (
+        <div>
+          <dt>{metric.label}</dt>
+          <dd>{metric.value}</dd>
+        </div>
+      ))}
+    </dl>
+  </div>
+</aside>

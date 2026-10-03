@@ -1,0 +1,19 @@
+---
+import { project } from "../data/project";
+import Icon from "./Icon.astro";
+
+const links = project.links.filter((link) => link.url);
+---
+
+<nav class="desktop-icons" aria-label="Project links">
+  <ul>
+    {links.map((link, index) => (
+      <li>
+        <a class="desktop-icon" href={link.url} rel="noopener">
+          <Icon name={index === 0 ? "logo" : "folder"} class="desktop-glyph" />
+          <span>{link.label}</span>
+        </a>
+      </li>
+    ))}
+  </ul>
+</nav>

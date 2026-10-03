@@ -25,7 +25,7 @@ the onedir shape by giving ``EXE`` ``exclude_binaries=True`` and adding back the
 release scripts would need their artifact path changed from
 ``dist/<name>.exe`` back to ``dist/<name>/<name>.exe``.
 
-The single data file is the ROM profile catalog. ``webfoot.cli.load_catalog``
+The single data file is the ROM profile catalog. ``tools.webfoot.catalog``
 prefers a checkout's ``config/roms.yaml`` and otherwise falls back to
 ``tools.webfoot.data/roms.yaml``, which is the branch a frozen build takes - so
 that file must travel or every ROM selection is refused.
@@ -42,7 +42,10 @@ file's properties learns what it is rather than reading a blank dialog:
   window and the manifest report, and the name is the same one
   ``warprand.TOOL_NAME`` carries.
 * ``icon='scripts/randomizer.ico'`` supplies the application icon, rendered from
-  the project's own ``public/favicon.svg``.
+  the project's own ``public/favicon.svg`` by
+  ``python scripts/make-randomizer-icon.py``. That script regenerates the tracked
+  file byte-for-byte, so the icon is a build input rather than an unexplained
+  binary.
 
 Neither file may name a ticket, a branch, a checkout, a user or a local path: the
 executable is what a stranger receives.

@@ -7,6 +7,11 @@
 # product's own identity, and a second spelling would be a second product.
 #
 # No ticket, branch, worktree, user or local path belongs in this file.
+#
+# LegalCopyright names the licence rather than a copyright holder on purpose:
+# this project states no copyright holder anywhere (README.md's Licence section,
+# pyproject.toml and LICENSE all name MPL-2.0 and nobody), and a field is better
+# left telling the truth than supplied with an invented name.
 VSVersionInfo(
   ffi=FixedFileInfo(
     filevers=(0, 1, 0, 0),

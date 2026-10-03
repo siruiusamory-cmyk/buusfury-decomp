@@ -13,7 +13,7 @@ resource that names the product. Everything else - the trimmed Qt payload, the
 single bundled data file, the icon, the rationale for keeping the software OpenGL
 fallback - is the same decision and is documented once, there.
 
-The single data file is the ROM profile catalog. ``webfoot.cli.load_catalog``
+The single data file is the ROM profile catalog. ``tools.webfoot.catalog``
 prefers a checkout's ``config/roms.yaml`` and otherwise falls back to
 ``tools.webfoot.data/roms.yaml``, which is the branch a frozen build takes - so
 that file must travel or every ROM selection is refused.

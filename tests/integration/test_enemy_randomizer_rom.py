@@ -829,6 +829,56 @@ class TestManifestHonesty:
             "enabled": False
         }
 
+    def test_the_shipping_plan_honors_both_stat_veto_rules(self, shipping_plan, catalog):
+        """The vetoes must hold on the preset that ships, not only on a wider plan.
+
+        The actor-veto and lone-slot tests run over a plan with the unshipped
+        Module C forced on. A review noted that nothing pinned the same guarantees for
+        the composition that actually streams, so a preset-level regression could have
+        passed CI. This runs the shipping preset and pins both directions.
+        """
+        assert shipping_plan.stats is not None
+        model = shipping_plan.model
+        changed = {
+            d.selector for d in shipping_plan.stats.decisions if d.changed
+        }
+        assert changed, "the shipping preset must randomize some stat records"
+
+        actor_reasons = {
+            Refusal.SCRIPT_EVENT, Refusal.SCRIPT_UNRESOLVED, Refusal.OUTSIDE_STAT_EXTENT,
+        }
+        selectors = {s.original_selector for s in model.slots}
+        shared_with_actor = {
+            sel for sel in selectors
+            if any(model.refusal_reason(s) in actor_reasons
+                   for s in model.slots if s.original_selector == sel)
+        }
+        assert shared_with_actor
+        assert not (changed & shared_with_actor), (
+            "the shipping preset scaled a record read by a scripted actor"
+        )
+
+        lone_only = {
+            sel for sel in selectors
+            if all(model.refusal_reason(s) is Refusal.ALONE_IN_MAP
+                   for s in model.slots if s.original_selector == sel)
+        }
+        assert lone_only
+        assert not (changed & lone_only), (
+            "the shipping preset scaled a record used only by a lone-in-map slot"
+        )
+
+        # And it does not over-veto: a record shared with an ordinary placement that
+        # IS randomized must still be scaled.
+        shared_with_ordinary = {
+            sel for sel in selectors
+            if any(model.refusal_reason(s) is None for s in model.slots
+                   if s.original_selector == sel)
+        }
+        assert changed & shared_with_ordinary, (
+            "the shipping preset over-vetoed records shared with ordinary enemies"
+        )
+
     def test_the_manifest_states_module_c_is_not_delivered(self, safe_plan):
         """Both halves of the manifest must agree that no type change happens.
 

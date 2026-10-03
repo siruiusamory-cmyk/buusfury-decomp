@@ -202,14 +202,16 @@ def eligible_stat_selectors(
     * an actor-level refusal (a scripted actor or an unresolved script) vetoes the
       record outright - the actor must stay untouched, so every record it reads must;
     * a slot-level refusal (in a door trigger, or alone in its map) vetoes the record
-      only if NO placement using it is randomized. If a shared record still has an
-      ordinary consumer being randomized, that consumer is a legitimate subject and
-      the record is scaled; but if the only consumers are excluded slots, the record
-      is left alone. Measured on the canonical corpus, this costs exactly the two
-      selectors used solely by lone-in-map slots (80 and 136); vetoing every selector
-      that any lone slot happens to touch would have cost 11 records and silently
-      stripped stat randomization from ordinary enemies elsewhere, which is the
-      over-veto this same docstring already warns about for door slots.
+      only if NO placement using it may justify scaling. A door slot MAY justify it on
+      its own, because its refusal is about movement rather than about the actor; a
+      lone-in-map slot may not, because it means the map had no other eligible
+      placement. If a shared record still has a consumer the run randomizes, the
+      record is scaled; if every consumer is excluded, the record is left alone.
+      Measured on the canonical corpus, the lone-in-map rule costs exactly the two
+      selectors used solely by lone slots (80 and 136); vetoing every selector that a
+      lone slot happens to touch would have cost 11 records and silently stripped stat
+      randomization from ordinary enemies elsewhere, which is the over-veto this
+      docstring already warns about for door slots.
     """
     by_selector: dict[int, list[EnemySlot]] = {}
     for slot in model.slots:
@@ -237,10 +239,18 @@ def eligible_stat_selectors(
           consumer each;
         * classified ordinary combat enemy.
 
-        A placement refused only for sitting IN A DOOR TRIGGER does count here. That
-        refusal is about moving the actor, not about the actor, and a record shared
-        with properly-randomized consumers must still be scaled rather than
-        over-vetoed. See the class docstring.
+        A placement refused only for sitting IN A DOOR TRIGGER does count here, and it
+        counts EVEN AS THE ONLY CONSUMER. That is deliberate and asymmetric with
+        alone-in-map: a door refusal is about not moving an actor into a doorway, and a
+        record is shared by every placement selecting it, so letting one door-adjacent
+        placement veto a selector would strip a stat edit from every other enemy using
+        that type for a reason unrelated to stats. A lone-in-map slot is different in
+        kind: it means the map had no other eligible placement at all.
+
+        Consequence, stated rather than left to be discovered: a record whose only
+        consumer is a door-trigger slot IS scaled. That case does not arise on the
+        canonical corpus - both in-door slots use selector 115, which an ordinary
+        placement also selects - so it is latent, not live.
 
         An earlier revision folded the actor reasons into this predicate instead of
         vetoing the selector, which silently dropped the scripted-actor protection and

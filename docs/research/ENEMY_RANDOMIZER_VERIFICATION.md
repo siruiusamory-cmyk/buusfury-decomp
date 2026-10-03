@@ -73,7 +73,8 @@ therefore leaves the old sprite behind on those seven.
 
 Two further refusals apply to otherwise-eligible slots: `in_door_trigger` (2 slots,
 coordinates inside a transition rectangle) and `alone_in_map` (a map with a single
-eligible slot has nothing to shuffle against; 23 such maps in the corpus).
+eligible slot has nothing to shuffle against; measured 18 placements across 18 maps
+in the corpus, one per map).
 
 Eligibility never reads a combat stat. No rule consults `hp`, `level`, `strength`,
 `power` or `exp`; a focused test asserts that eligible selectors span the full
@@ -440,7 +441,13 @@ So the exclusion is now consistent between what the pack does and what it tells 
 | alone in its map | no | only if the record has another, randomized consumer |
 | script-attached or unresolved script | no | no |
 | selector outside the verified stat extent | no | no (not decodable) |
-| inside a transition trigger | no | yes, if the record has another randomized consumer |
+| inside a transition trigger | no | yes, if the record has another randomized consumer; a door slot also counts as that consumer on its own |
+
+The last row is the deliberate asymmetry: a door refusal is about *movement*, so a
+door-adjacent placement may justify scaling a shared record, while a lone-in-map slot
+may not. On the canonical corpus the door-only case does not arise - both in-door
+slots select selector 115, which an ordinary placement also selects - so it is
+stated as latent rather than observed.
 
 **The residual gap is unchanged and still real:** a boss that is neither
 script-attached nor alone in its map is indistinguishable from an ordinary enemy on

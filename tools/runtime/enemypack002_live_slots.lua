@@ -1,22 +1,28 @@
 -- RANDOMIZER-ENEMY-PACK-001: live placement-slot enumerator (read-only).
 --
--- PURPOSE. Prove at RUNTIME that the engine constructs the randomized enemy
--- identity, by reading the identity fields out of the objects the engine built
--- rather than inferring them from a screenshot.
+-- PURPOSE. Show which enemy identity and coordinates the RUNNING IMAGE serves for
+-- each of a map's object-array slots, so the same savestate can be compared across
+-- the canonical image and a randomized derivative.
 --
--- METHOD, and why it is not a guess. The map loader walks the map's own object
--- array (TOOLKIT-024, verbatim: `MapEntry+0x04` is the unsigned byte COUNT,
--- `MapEntry+0x14` the pointer array base, and each slot is a record body whose
--- `+0x00` word is its factory pointer). The placement constructor copies the
--- record's bytes into the object it allocates, so the object the engine built
--- carries the same `+0x08` stat selector and `+0x10` sprite id the record holds
--- in the ROM. Reading them off the live object therefore reports what the engine
--- is actually running, which is the claim under test.
+-- WHAT IT READS, stated exactly, because an earlier version of this header
+-- overstated it and a reviewer was right to reject the claim. The map loader walks
+-- the map's own object array (TOOLKIT-024, verbatim: `MapEntry+0x04` is the
+-- unsigned byte COUNT, `MapEntry+0x14` the pointer array base, and each slot is a
+-- record body whose `+0x00` word is its factory pointer). This observer follows
+-- that route and reads the RECORD out of the currently loaded ROM: `+0x08` is the
+-- stat selector, `+0x10` the sprite id, `+0x0C` the position.
 --
--- This is deliberately a COMPARISON instrument: run it over the same savestate
--- on the canonical image and on a randomized image and diff the `type`/`id`
--- columns. A difference in map 40/41 is the shuffle observed at runtime; no
--- difference would be a real negative.
+-- So it reports what the image SERVES, not what an actor object ends up holding.
+-- It distinguishes a build that applied the edits from one that did not, which is
+-- what this comparison needs, and it does NOT by itself prove that a constructed
+-- actor carries the randomized identity. That stronger statement needs an observer
+-- over live actor objects; see section 10 of
+-- docs/research/ENEMY_RANDOMIZER_VERIFICATION.md, where it is recorded as open.
+--
+-- This is deliberately a COMPARISON instrument: run it over the same savestate on
+-- the canonical image and on a randomized image and diff the `type`/`id` columns.
+-- A difference in map 40/41 is the edit observed at runtime; no difference would be
+-- a real negative.
 --
 -- READ-ONLY. It calls emu:read8/read32 and emu:screenshot only. It writes no
 -- emulated memory and drives no input, so the observer guarantee enforced by

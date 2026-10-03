@@ -134,6 +134,54 @@ STAT_FIELDS: dict[str, tuple[int, int]] = {
 DEFAULT_STAT_FIELDS: tuple[str, ...] = ("hp", "exp", "level", "strength", "power", "endurance")
 
 
+#: How the type shuffle chooses which slots an identity may be installed onto.
+#:
+#: ``PROVEN_PAIR`` (default, and the only mode the presets use) installs an
+#: identity only onto a slot whose flags, behavior descriptor and children already
+#: match the donor's. Every resulting object is a configuration some canonical
+#: placement holds.
+#:
+#: It has a consequence that must be stated rather than hidden, and an earlier
+#: revision of this file did hide it: within one such group the records differ ONLY
+#: in ``(type, id, position)``, so exchanging ``(type, id)`` between two members is
+#: equivalent to exchanging their positions. With the placement shuffle also on,
+#: the two compose to a permutation of positions and **a player sees enemies
+#: relocated, not retyped**. That is a real limit of this mode, not a bug in it,
+#: and the manifest records the mode so a reader is never misled about which effect
+#: a run had. Section 5.2 of ``docs/research/ENEMY_RANDOMIZER_VERIFICATION.md``
+#: carries the measurement.
+#:
+#: ``PROVEN_PAIR_AND_BEHAVIOUR`` is the opt-in that actually changes enemy type.
+#: It installs an identity together with the donor's flags and behavior descriptor,
+#: so the actor really becomes a different enemy. The cost is explicit: the
+#: resulting object is one whose sprite and stats come from one canonical enemy and
+#: whose behavior descriptor comes from another. That combination is NOT known to
+#: exist canonically, so nothing here claims it is coherent - the mode exists
+#: because the ticket's Module C cannot be delivered any other way, and choosing it
+#: is a deliberate acceptance of a graphics/behaviour/stat mismatch. No preset
+#: selects it.
+TYPING_PROVEN_PAIR = "proven-pair"
+TYPING_PROVEN_PAIR_AND_BEHAVIOUR = "proven-pair-and-behaviour"
+
+TYPING_MODES: dict[str, dict] = {
+    TYPING_PROVEN_PAIR: {
+        "installs": "identity only, onto a slot whose coupled fields already match",
+        "player_visible_effect": "enemies relocated, not retyped (cancels with the placement shuffle)",
+        "hybrid": "impossible by construction",
+    },
+    TYPING_PROVEN_PAIR_AND_BEHAVIOUR: {
+        "installs": "identity plus the donor's flags and behavior descriptor",
+        "player_visible_effect": "enemy type really changes",
+        "hybrid": "accepted: donor behaviour with the installed identity, not provably coherent",
+    },
+}
+
+#: Whether a mode rewrites the coupled fields.
+def typing_retypes(mode: str) -> bool:
+    """True when ``mode`` installs coupled fields, i.e. really retypes."""
+    return mode == TYPING_PROVEN_PAIR_AND_BEHAVIOUR
+
+
 @dataclass(frozen=True, slots=True)
 class EnemyRandomizerConfig:
     """One complete description of a run.
@@ -151,6 +199,8 @@ class EnemyRandomizerConfig:
     placement_scope: str = "same-map"
     type_scope: str = "same-map"
     type_requires_canonical_pair: bool = True
+    #: Which slots an identity may be installed onto. See :data:`TYPING_MODES`.
+    typing_mode: str = TYPING_PROVEN_PAIR
     enabled: frozenset[str] = field(
         default_factory=lambda: frozenset(
             {MODULE_ENEMY_TYPE, MODULE_ENEMY_PLACEMENT, MODULE_ENEMY_STAT}
@@ -180,6 +230,11 @@ class EnemyRandomizerConfig:
                 f"unknown stat field(s): {', '.join(sorted(unknown))}; "
                 f"known: {', '.join(sorted(STAT_FIELDS))}"
             )
+        if self.typing_mode not in TYPING_MODES:
+            raise ConfigError(
+                f"unknown typing mode {self.typing_mode!r}; known: "
+                f"{', '.join(sorted(TYPING_MODES))}"
+            )
         if self.stat_range is not None and MODULE_ENEMY_STAT in self.enabled and not self.stat_fields:
             raise ConfigError("stat randomization is enabled but no stat field is selected")
         if MODULE_ENEMY_STAT in self.enabled and self.stat_range is None:
@@ -197,6 +252,10 @@ class EnemyRandomizerConfig:
             "placement_scope": self.placement_scope,
             "type_scope": self.type_scope,
             "type_requires_canonical_pair": self.type_requires_canonical_pair,
+            "typing_mode": self.typing_mode,
+            # The mode's consequence travels with the manifest, so a reader learns
+            # what the run actually did rather than what its module is called.
+            "typing_mode_effect": TYPING_MODES[self.typing_mode]["player_visible_effect"],
         }
 
 

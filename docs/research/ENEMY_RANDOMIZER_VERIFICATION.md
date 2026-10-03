@@ -123,6 +123,33 @@ which requires the exact tuple
 `(selector, sprite, flags, descriptor, child_count, children)` to exist canonically
 for every changed slot.
 
+### 5.2 The coupling constraint makes the default typing mode a relocation
+
+This must be read together with 5.1, because the safety fix has a consequence that
+an earlier revision of this document did not state.
+
+Within one coupled-field group, every member has the *same* flags, descriptor and
+children **by construction**, so the records differ only in
+`(stat selector, sprite id, position)`. Exchanging `(selector, sprite)` between two
+such records therefore produces exactly the same pair of records as exchanging
+their positions. With the placement shuffle also enabled, the two modules compose
+to a permutation of positions.
+
+**In the default `proven-pair` mode a player sees enemies relocated, not retyped.**
+The per-slot `enemy_changed` counts and the separate type/placement counts describe
+relocations, and the manifest's `typing_mode_effect` now states this in the run
+record so a reader is never misled by the module's name.
+
+`proven-pair-and-behaviour` is the opt-in that really changes enemy type: it
+installs the donor's flags and behavior descriptor along with its identity. Measured
+on the canonical corpus, that mode retypes 956 slots for one seed and writes
+`type_raw, id_raw, flags_raw, descriptor_pointer_raw` in every one. Its cost is
+explicit and unproven: the result is an actor whose behavior descriptor comes from a
+different enemy than its sprite and stats, a combination not known to exist
+canonically. No preset selects it.
+
+Both modes are recorded in the manifest, and neither is hidden behind the other.
+
 ## 6. Stat policy
 
 `randomized = clamp(floored(original * factor), floor, ceiling)` with `factor` drawn
@@ -232,16 +259,41 @@ two images with the live record enumerator
 | `0x08075638` | type 86, id **209**, pos (176,208) | type 86, id **211**, pos (192,224) |
 | `0x08075670` | type 86, id **211**, pos (192,224) | type 86, id **209**, pos (176,208) |
 
-Both the sprite id and the position are swapped, exactly as the spoiler log
-specifies. The engine constructs the randomized identity and the randomized
-placement at runtime.
-
 Runs: `build/runtime-captures/20261002-144541-27b0f3b7` (canonical) and
 `build/runtime-captures/20261002-144436-a690d67f` (randomized).
 
-Full-game beatability is **not** claimed and was not tested; this is a smoke pass.
+**What this shows, stated exactly.** The enumerator follows `MapEntry+0x14` to each
+object-array slot and reads the *record* the engine is pointed at: `+0x08` and
+`+0x10` out of the ROM the emulator currently has loaded. So it establishes that the
+running image serves the randomized identity and coordinates where retail served the
+originals - which is what distinguishes a build that applied the edits from one that
+did not.
 
-## 11. Known residual risk
+**What it does NOT show.** It does not read a *constructed actor*, so it does not by
+itself demonstrate that a live actor object ends up carrying the randomized identity.
+An earlier revision of this document claimed "the engine constructs the randomized
+identity" from this run; that is stronger than the measurement, and a reviewer was
+right to reject it. For the default `proven-pair` mode the constructed-actor question
+is also moot in a second way: as section 5.2 shows, that mode exchanges identity and
+position between field-identical records, so the actor set the engine builds is the
+same either way.
+
+**Runtime confirmation of retyping, or of a constructed actor, is therefore an OPEN
+ITEM.** It would need an observer that enumerates live actor objects (by the
+placement factory's dispatch, as `tools/runtime/toolkit029_placement_watch.lua`
+does for a different question) and reports their resolved identity, ideally in
+`proven-pair-and-behaviour` mode where the two images genuinely differ in what is
+built.
+
+Cold boot also confirmed the game loads and runs: 21 map loads through the same live
+pointer, dialogue through the script VM (the liveness channel), correct HUD, player,
+collision, scrolling and doors, no crash, and no capture showing corruption.
+
+Full-game beatability is **not** claimed and was not tested; this is a smoke pass.
+No enemy encounter is claimed either - the observer had no combat channel, so
+"enemies move and can be fought" is unverified.
+
+## 11. Known residual risk, and the recorded waivers
 
 **A boss cannot be identified.** No field, table or label in this project
 distinguishes a boss from an ordinary enemy; a search for `boss` or `arena` across
@@ -250,12 +302,43 @@ distinguishes a boss from an ordinary enemy; a search for `boss` or `arena` acro
 
 Consequence, stated plainly: a boss with no script descriptor, standing in a map
 that has at least one other eligible slot, **is indistinguishable from an ordinary
-enemy on current evidence and would be randomized**. The common shapes are removed
-structurally - a script-attached actor is refused, a lone enemy in its own map is
-never shuffled - but the general case is not proven. This is the pack's residual
-softlock surface and it is bounded by runtime smoke, not by a static claim.
+enemy on current evidence and is randomized** - both relocated and, when the stat
+module is on, scaled by up to the preset's band. The common shapes are removed
+structurally (a script-attached actor is refused; a lone enemy in its own map is
+never shuffled), but the general case is not proven.
 
-Other bounded unknowns:
+### Waiver 1 - boss exclusion (owner decision, 2026-10-03)
+
+The rule from `docs/ROM_SAFETY.md` is to refuse an UNKNOWN rather than guess. This
+pack cannot satisfy that rule for bosses, because no positive classifier exists to
+refuse *with*. The ticket owner's decision, recorded here so it is auditable rather
+than implied:
+
+> The absence of a boss classifier is accepted as a known limitation. A boss that
+> is neither script-attached nor alone in its map may be randomized. The pack must
+> state this limitation in its evidence and in its manifest rather than presenting
+> the exclusion as complete.
+
+The manifest carries this: `exclusions.scope_note` names the gap on every run.
+
+**What would close it.** A positive classifier, from any of: a stat-band or
+`type_id` rule validated against a known boss encounter; a map/arena table; a
+kill-count or event-flag consumer model; or runtime observation pairing a boss
+encounter with its placement record. None exists today, and inventing one from
+stat magnitude is exactly what the ticket forbids.
+
+### Waiver 2 - typing mode (owner decision, 2026-10-03)
+
+The ticket requires enemy identity to be atomic (section 14) *and* requires an
+enemy-type shuffle (section 12). Section 5.2 shows these cannot both hold at full
+strength. The owner's decision:
+
+> Keep the provably coherent mode as the default and report its true effect - with
+> the coupled-field constraint, the type module relocates rather than retypes. The
+> retyping mode exists as an explicit opt-in whose cost is documented, and no preset
+> selects it.
+
+### Other bounded unknowns
 
 * Whether anything outside the placement table can spawn an enemy by stat selector.
   `eligible_stat_selectors` rules a record out only when a *placement* shares it with

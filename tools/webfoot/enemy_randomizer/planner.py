@@ -295,7 +295,8 @@ def _plan_with_loaded(
     # --- step 2: enemy identities, per map, canonical pairs ---
     if config.wants(MODULE_ENEMY_TYPE):
         types_outcome = shuffle_enemy_types(
-            model, Stream(module_seeds[MODULE_ENEMY_TYPE]), edits=edits
+            model, Stream(module_seeds[MODULE_ENEMY_TYPE]), edits=edits,
+            typing_mode=config.typing_mode,
         )
 
     # --- step 3: placements, per map, proven coordinates ---

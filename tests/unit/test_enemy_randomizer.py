@@ -39,10 +39,14 @@ from tools.webfoot.enemy_randomizer.config import (
     CHAOS_STATS,
     PRESETS,
     STREAM_SAFE_STATS,
+    TYPING_MODES,
+    TYPING_PROVEN_PAIR,
+    TYPING_PROVEN_PAIR_AND_BEHAVIOUR,
     ConfigError,
     EnemyRandomizerConfig,
     StatRange,
     preset,
+    typing_retypes,
 )
 from tools.webfoot.enemy_randomizer.manifest import canonical_json, digest_of
 from tools.webfoot.enemy_randomizer.seeds import (
@@ -309,6 +313,48 @@ class TestConfiguration:
     def test_an_unknown_preset_is_refused_by_name(self):
         with pytest.raises(ConfigError, match="unknown preset"):
             preset("nope")
+
+    def test_no_preset_selects_the_retyping_mode(self):
+        """The hybrid-producing mode must never be a default.
+
+        ``proven-pair-and-behaviour`` installs a behavior descriptor from a
+        different enemy than the sprite and stats, which nothing establishes is
+        coherent. It exists because the ticket's type shuffle cannot otherwise
+        change an enemy type at all, but a preset choosing it would make an
+        unproven combination the shipped behaviour.
+        """
+        for name, entry in PRESETS.items():
+            assert entry.config.typing_mode == TYPING_PROVEN_PAIR, (
+                f"preset {name} selects {entry.config.typing_mode}"
+            )
+
+    def test_an_unknown_typing_mode_is_refused(self):
+        with pytest.raises(ConfigError, match="unknown typing mode"):
+            EnemyRandomizerConfig(typing_mode="anything-goes")
+
+    def test_the_typing_mode_effect_travels_in_the_configuration(self):
+        """A reader must learn what the run did, not what its module is called.
+
+        The default mode relocates rather than retypes, which is easy to
+        misread as a bug or as a real shuffle depending on which way the reader
+        guesses. The configuration states the effect outright.
+        """
+        safe = EnemyRandomizerConfig().to_json()
+        assert safe["typing_mode"] == TYPING_PROVEN_PAIR
+        assert "relocated" in safe["typing_mode_effect"]
+        retyping = EnemyRandomizerConfig(
+            typing_mode=TYPING_PROVEN_PAIR_AND_BEHAVIOUR
+        ).to_json()
+        assert "really changes" in retyping["typing_mode_effect"]
+
+    def test_retyping_is_exactly_the_opt_in_mode(self):
+        assert typing_retypes(TYPING_PROVEN_PAIR) is False
+        assert typing_retypes(TYPING_PROVEN_PAIR_AND_BEHAVIOUR) is True
+
+    def test_every_mode_declares_its_cost(self):
+        for mode, description in TYPING_MODES.items():
+            assert description.get("player_visible_effect"), mode
+            assert description.get("hybrid"), mode
 
     def test_an_unknown_stat_field_is_refused(self):
         with pytest.raises(ConfigError, match="unknown stat field"):

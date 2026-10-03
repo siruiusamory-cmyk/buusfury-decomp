@@ -32,18 +32,28 @@ from ..write import ByteChange
 
 #: The placement fields this pack is allowed to rewrite, by record offset.
 #:
-#: ``+0x04`` (flags) is deliberately absent. It is a real field with 57 distinct
-#: canonical values, its semantics are UNKNOWN, and nothing in this pack's
-#: evidence says which values are compatible with which identity. Rewriting it
-#: would be a guess, and the ticket's fail-closed rule forbids that.
+#: ``+0x04`` (flags) and ``+0x14`` (the behavior-descriptor pointer) are editable
+#: ONLY as part of the retype typing mode, where an identity is installed together
+#: with everything the engine reads alongside it. In the default proven-pair mode
+#: neither is written: an identity goes only onto a slot that already matches, so
+#: neither changes. See :mod:`tools.webfoot.enemy_randomizer.enemy_type` for why
+#: the two modes exist.
 #:
-#: ``+0x14`` (the behavior-descriptor pointer) is likewise absent: swapping an
-#: enemy identity must not silently re-point behavior, and the identity templates
-#: this pack uses are already proven coherent without touching it.
-EDITABLE_FIELDS: frozenset[str] = frozenset({"type_raw", "position_raw", "id_raw"})
+#: ``+0x18``/``+0x1C`` (the child count and child pointers) are written by neither
+#: mode. They describe attached structure rather than the actor's own
+#: configuration, and this pack has no evidence about what may share one, so a
+#: record whose children differ from a peer's is simply not a retype donor.
+EDITABLE_FIELDS: frozenset[str] = frozenset(
+    {"type_raw", "position_raw", "id_raw", "flags_raw", "descriptor_pointer_raw"}
+)
 
-#: The fields the type shuffle owns.
+#: The fields the type shuffle owns, by mode. The coupled pair joins only when the
+#: mode retypes, because installing an identity onto a slot with different coupled
+#: fields is exactly the hybrid the default mode refuses.
 TYPE_FIELDS: tuple[str, ...] = ("type_raw", "id_raw")
+TYPE_FIELDS_WITH_COUPLING: tuple[str, ...] = (
+    "type_raw", "id_raw", "flags_raw", "descriptor_pointer_raw",
+)
 
 #: The fields the placement shuffle owns.
 PLACEMENT_FIELDS: tuple[str, ...] = ("position_raw",)

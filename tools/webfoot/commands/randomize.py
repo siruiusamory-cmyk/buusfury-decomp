@@ -45,6 +45,9 @@ import sys
 from ..enemy_randomizer.config import (
     DEFAULT_STAT_FIELDS,
     STAT_FIELDS,
+    TYPING_MODES,
+    TYPING_PROVEN_PAIR,
+    TYPING_PROVEN_PAIR_AND_BEHAVIOUR,
     EnemyRandomizerConfig,
     ConfigError,
     PRESETS,
@@ -132,6 +135,24 @@ def add_parser(subparsers) -> None:
         "--list-presets",
         action="store_true",
         help="print the presets and their enabled modules, then exit",
+    )
+    parser.add_argument(
+        "--typing-mode",
+        default=None,
+        choices=sorted(TYPING_MODES),
+        help=(
+            "how the enemy-type shuffle installs an identity. "
+            f"{TYPING_PROVEN_PAIR} (default) installs an identity only onto a slot "
+            "whose coupled fields already match, which is provably coherent but, "
+            "because such slots differ only in (type, id, position), has the same "
+            "visible effect as moving them - with the placement shuffle on, enemies "
+            "are relocated rather than retyped. "
+            f"{TYPING_PROVEN_PAIR_AND_BEHAVIOUR} installs the donor's flags and "
+            "behavior descriptor along with its identity, so the enemy type really "
+            "changes; it creates objects whose behaviour descriptor comes from a "
+            "different enemy than their sprite and stats, and no evidence establishes "
+            "that combination is coherent. No preset selects it."
+        ),
     )
     parser.add_argument(
         "--stat-range",
@@ -223,7 +244,16 @@ def build_config(args) -> EnemyRandomizerConfig:
     stat_range = base.stat_range
     if args.stat_range is not None:
         stat_range = parse_stat_range(args.stat_range)
-    return replace(base, enabled=frozenset(enabled), stat_fields=fields, stat_range=stat_range)
+    typing_mode = base.typing_mode
+    if getattr(args, "typing_mode", None) is not None:
+        typing_mode = args.typing_mode
+    return replace(
+        base,
+        enabled=frozenset(enabled),
+        stat_fields=fields,
+        stat_range=stat_range,
+        typing_mode=typing_mode,
+    )
 
 
 def _filename_safe(seed: str) -> str:

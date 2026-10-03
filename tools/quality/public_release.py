@@ -1,0 +1,602 @@
+"""Executable/public-release guard for the randomizer products.
+
+The Map Warp Randomizer and the Enemy Randomizer are two frozen executables that
+a stranger downloads and runs. What makes each of them a *public release* rather
+than a build is a small set of facts spread across a handful of files: the spec
+template that freezes the module graph, the version resource that names the
+product on screen, the project icon, the README that travels in the archive, and
+the packaging script that decides what the archive contains. Those facts were
+established one product at a time by WARPRAND-APP-001,
+ENEMY-RANDOMIZER-EXE-001 and EXE-PACKAGE-HYGIENE-001. This module is what keeps
+a third product from inheriting only some of them.
+
+What is deliberately NOT repeated here
+--------------------------------------
+
+Three neighbouring checks already own their ground, and duplicating them would
+mean two implementations that can disagree:
+
+* the import closure of each frozen build, and the agreement between a version
+  resource and its product's own ``TOOL_NAME``/``TOOL_VERSION``, are enforced by
+  ``tests/unit/test_randomizer_release.py``;
+* the byte-level proprietary-content probe over the real staged files is
+  ``scripts/randomizer-release.ps1``, which runs at packaging time;
+* the tree-wide wording and machine-path screens are
+  ``tools/quality/public_surface.py``, whose screens this module reuses rather
+  than re-implements.
+
+What is left, and what this module checks, is the static release DEFINITION: that
+the packaging shape is complete for every product, that it is the two-file
+release it claims to be, and that no release input carries a machine of its own.
+Those are the facts no other gate reads on its own.
+
+What "no ROM input" means here
+------------------------------
+
+The canonical image is a *probe* input to the packaging script, never a staged
+one, so its default path is expected to appear in the script and is not a
+finding. The check is on the edges that decide what travels: the spec's
+``datas`` list and every ``Copy-Item`` source. A ROM, save or save state named
+on either of those is a release defect.
+
+Adding a product
+----------------
+
+Append one :class:`ReleaseProduct` to :data:`PRODUCTS` and add the four files it
+names. Nothing else is product-specific: every product runs through the same
+loop, and a ``*.spec.in`` that no product declares fails the run, so a future
+randomizer release cannot be defined without being held to the same rules.
+"""
+
+from __future__ import annotations
+
+import argparse
+import json
+import re
+import struct
+import sys
+from dataclasses import dataclass
+from pathlib import Path
+
+from tools.quality import public_surface
+
+#: Bumped when the report document's shape changes in a way a reader must notice.
+SCHEMA = 1
+
+REPOSITORY_ROOT = Path(__file__).resolve().parents[2]
+
+#: The one icon both products ship, generated from the project's own
+#: ``public/favicon.svg`` by ``scripts/make-randomizer-icon.py``.
+ICON = "scripts/randomizer.ico"
+
+#: The shared release checks both packaging scripts dot-source. A product that
+#: does not reach it is not running the proprietary-content probe at all.
+SHARED_RELEASE_SCRIPT = "scripts/randomizer-release.ps1"
+
+#: The Windows resource fields every shipped product must declare. The values
+#: are checked against the product's own identity constants by
+#: ``tests/unit/test_randomizer_release.py``; here it is enough that each field
+#: exists and is non-empty, so a blank property dialog cannot ship.
+REQUIRED_METADATA = (
+    "CompanyName",
+    "FileDescription",
+    "FileVersion",
+    "InternalName",
+    "LegalCopyright",
+    "OriginalFilename",
+    "ProductName",
+    "ProductVersion",
+)
+
+#: Suffixes that are never a release input. The same set the shared PowerShell
+#: probe refuses at packaging time, kept here so the static definition check
+#: catches it before a build is ever run.
+FORBIDDEN_SUFFIXES = frozenset(
+    {
+        ".gba", ".agb", ".sav", ".srm", ".sps", ".state", ".dump",
+        ".ss0", ".ss1", ".ss2", ".ss3", ".ss4", ".ss5", ".ss6", ".ss7",
+        ".ss8", ".ss9",
+    }
+)
+
+#: The icon sizes a Windows application icon must cover: the shell's small and
+#: large list sizes, the taskbar, and the high-DPI view.
+ICON_SIZES = frozenset({(16, 16), (32, 32), (48, 48), (256, 256)})
+
+#: The residue a release input can still carry, and that the tree-wide screen
+#: deliberately does not claim. Its machine-path screen rejects a path into a
+#: user profile; a release input must also be repository-relative, so any
+#: drive-letter path is a finding here, as is the name of the local worktree the
+#: file was written in.
+RELEASE_RESIDUE: tuple[tuple[str, re.Pattern[str]], ...] = (
+    (
+        "an absolute path",
+        re.compile(r"(?<![A-Za-z0-9+.\-/])[A-Za-z]:[\\/](?![\\/])"),
+    ),
+    (
+        "a machine environment path",
+        re.compile(
+            r"\$(?:env:)?(?:USERPROFILE|TEMP|TMP|LOCALAPPDATA|APPDATA)\b",
+            re.IGNORECASE,
+        ),
+    ),
+    (
+        "a local checkout directory name",
+        re.compile(r"\blog1-remake-[A-Za-z0-9][A-Za-z0-9._-]*"),
+    ),
+)
+
+_STRING_STRUCT = re.compile(r'StringStruct\("(\w+)",\s*"((?:[^"\\]|\\.)*)"\)')
+_FIXED_INFO = re.compile(r"\b(filevers|prodvers)=\(([^)]*)\)")
+_VERSION_TUPLE = re.compile(r"\s*\d+(\s*,\s*\d+){3}\s*")
+_STAGE_DESTINATION = re.compile(
+    r"Copy-Item\s+\S+\s+\(Join-Path\s+\$stage\s+(?:'([^']*)'|\"([^\"]*)\")\)"
+)
+_COPY_ITEM = re.compile(r"(?m)^\s*Copy-Item\b")
+_SPEC_DATAS = re.compile(r"datas\s*=\s*\[(.*?)\]", re.DOTALL)
+_QUOTED = re.compile(r"'([^']*)'|\"([^\"]*)\"")
+_COPY_SOURCE = re.compile(r"(?m)^\s*Copy-Item\s+(\S+)")
+
+
+@dataclass(frozen=True)
+class ReleaseProduct:
+    """One frozen randomizer product, and the files that define its release."""
+
+    package: str
+    build_name: str
+    readme: str
+    packager: str
+
+    @property
+    def spec(self) -> str:
+        return f"{self.build_name}.spec.in"
+
+    @property
+    def version_resource(self) -> str:
+        return f"{self.build_name}.version.txt"
+
+
+#: The one place a product is declared. Adding a randomizer product means adding
+#: an entry here and the four files it names; every rule below then applies to it
+#: without an edit.
+PRODUCTS: tuple[ReleaseProduct, ...] = (
+    ReleaseProduct(
+        package="enemyrand",
+        build_name="Enemy-Randomizer",
+        readme="docs/enemyrand/README.txt",
+        packager="scripts/package-enemy-randomizer.ps1",
+    ),
+    ReleaseProduct(
+        package="warprand",
+        build_name="Buu-Fury-Warp-Randomizer",
+        readme="docs/warprand/README.txt",
+        packager="scripts/package-warprand.ps1",
+    ),
+)
+
+
+@dataclass(frozen=True)
+class Finding:
+    code: str
+    product: str
+    path: str
+    detail: str
+    line: int = 0
+
+    def as_dict(self) -> dict:
+        return {
+            "code": self.code,
+            "product": self.product,
+            "path": self.path,
+            "line": self.line,
+            "detail": self.detail,
+        }
+
+
+def _read_text(base: Path, relative: str) -> str | None:
+    try:
+        return (base / relative).read_text(encoding="utf-8")
+    except (OSError, UnicodeDecodeError):
+        return None
+
+
+def _read_bytes(base: Path, relative: str) -> bytes | None:
+    try:
+        return (base / relative).read_bytes()
+    except OSError:
+        return None
+
+
+def icon_entries(data: bytes) -> list[tuple[int, int]] | None:
+    """The ``(width, height)`` of every image in an ``.ico`` file, or None.
+
+    None means the file is not an icon at all. A zero width byte means 256, the
+    convention the format uses because the field is a byte.
+    """
+    if len(data) < 6 or data[:2] != b"\x00\x00":
+        return None
+    if struct.unpack_from("<H", data, 2)[0] != 1:
+        return None
+    count = struct.unpack_from("<H", data, 4)[0]
+    entries: list[tuple[int, int]] = []
+    for index in range(count):
+        offset = 6 + 16 * index
+        if offset + 2 > len(data):
+            return None
+        entries.append((data[offset] or 256, data[offset + 1] or 256))
+    return entries
+
+
+def _definition_findings(base: Path, product: ReleaseProduct) -> list[Finding]:
+    """Every file the release definition names must exist."""
+    findings = []
+    for code, label, relative in (
+        ("spec-missing", "packaging spec template", product.spec),
+        ("packager-missing", "release packaging script", product.packager),
+        ("readme-missing", "release README", product.readme),
+        ("version-resource-missing", "version resource", product.version_resource),
+        ("icon-missing", "application icon", ICON),
+    ):
+        if not (base / relative).is_file():
+            findings.append(
+                Finding(code, product.build_name, relative, f"no {label}")
+            )
+    return findings
+
+
+def _metadata_findings(
+    product: ReleaseProduct, relative: str, text: str
+) -> list[Finding]:
+    findings = []
+    fields = dict(_STRING_STRUCT.findall(text))
+    missing = [name for name in REQUIRED_METADATA if not fields.get(name)]
+    if missing:
+        findings.append(
+            Finding(
+                "version-metadata-missing",
+                product.build_name,
+                relative,
+                "the version resource does not declare "
+                + ", ".join(missing),
+            )
+        )
+    fixed = dict(_FIXED_INFO.findall(text))
+    malformed = [name for name, value in fixed.items() if not _VERSION_TUPLE.fullmatch(value)]
+    if set(fixed) != {"filevers", "prodvers"} or malformed:
+        findings.append(
+            Finding(
+                "version-metadata-malformed",
+                product.build_name,
+                relative,
+                "filevers/prodvers must both be four numeric fields",
+            )
+        )
+    return findings
+
+
+def _packaging_findings(
+    product: ReleaseProduct, relative: str, text: str
+) -> list[Finding]:
+    """The packaging script stages the executable and the README, and nothing else."""
+    findings = []
+    destinations = [
+        first or second for first, second in _STAGE_DESTINATION.findall(text)
+    ]
+    copies = len(_COPY_ITEM.findall(text))
+    executable = [
+        target
+        for target in destinations
+        if target.lower() in ("$buildname.exe", f"{product.build_name}.exe".lower())
+    ]
+    readme = [target for target in destinations if target.upper() == "README.TXT"]
+
+    if copies != len(destinations) or len(destinations) != 2:
+        findings.append(
+            Finding(
+                "package-contents",
+                product.build_name,
+                relative,
+                f"the package stages {len(destinations)} file(s) from {copies} "
+                "copy statement(s); the release is the executable and README.txt",
+            )
+        )
+    elif len(executable) != 1 or len(readme) != 1:
+        findings.append(
+            Finding(
+                "package-contents",
+                product.build_name,
+                relative,
+                "the staged pair is not the product executable plus README.txt: "
+                + ", ".join(destinations),
+            )
+        )
+    if "Join-Path $stage '*'" not in text:
+        findings.append(
+            Finding(
+                "package-contents",
+                product.build_name,
+                relative,
+                "the archive is not built from the staged directory",
+            )
+        )
+    if (
+        Path(SHARED_RELEASE_SCRIPT).name not in text
+        or "Assert-RandomizerNoProprietaryContent" not in text
+    ):
+        findings.append(
+            Finding(
+                "package-probe-missing",
+                product.build_name,
+                relative,
+                "the packaging script does not run the shared proprietary-content probe",
+            )
+        )
+    return findings
+
+
+def _forbidden_input_findings(
+    product: ReleaseProduct, relative: str, text: str
+) -> list[Finding]:
+    """No ROM, save or save state is a staged release input."""
+    named: list[str] = []
+    datas = _SPEC_DATAS.search(text)
+    if datas:
+        named.extend(first or second for first, second in _QUOTED.findall(datas.group(1)))
+    named.extend(_COPY_SOURCE.findall(text))
+    named.extend(first or second for first, second in _STAGE_DESTINATION.findall(text))
+    return [
+        Finding(
+            "forbidden-release-input",
+            product.build_name,
+            relative,
+            f"{name} is a ROM, save or save state and cannot travel in a release",
+        )
+        for name in named
+        if Path(name).suffix.lower() in FORBIDDEN_SUFFIXES
+    ]
+
+
+def _residue_findings(
+    product_name: str,
+    relative: str,
+    text: str,
+    table: public_surface.ExceptionTable,
+) -> list[Finding]:
+    """The release-local residue screens, plus the tree-wide screens, reused."""
+    findings = []
+    for number, line in enumerate(text.splitlines(), 1):
+        for label, pattern in RELEASE_RESIDUE:
+            if pattern.search(line):
+                findings.append(
+                    Finding(
+                        "private-path-residue",
+                        product_name,
+                        relative,
+                        f"{label}: {line.strip()[:120]}",
+                        number,
+                    )
+                )
+    shared, _ = public_surface.scan(
+        relative=relative, exceptions=table, text=text
+    )
+    for item in shared:
+        findings.append(
+            Finding(
+                "private-path-residue",
+                product_name,
+                relative,
+                f"{item['signal']}: {item['text'][:120]}",
+                item["line"],
+            )
+        )
+    return findings
+
+
+def _spec_wiring_findings(
+    product: ReleaseProduct, relative: str, text: str
+) -> list[Finding]:
+    """The spec must actually point at the identity and the icon it ships.
+
+    The values behind these references are checked against the product's own
+    constants by ``tests/unit/test_randomizer_release.py``; what is checked here
+    is that the wiring exists at all, for every registered product, so a future
+    product cannot be left pointing at nothing.
+    """
+    findings = []
+    if f"version='{product.version_resource}'" not in text:
+        findings.append(
+            Finding(
+                "spec-version-not-wired",
+                product.build_name,
+                relative,
+                f"the spec does not freeze {product.version_resource}",
+            )
+        )
+    if f"icon='{ICON}'" not in text:
+        findings.append(
+            Finding(
+                "spec-icon-not-wired",
+                product.build_name,
+                relative,
+                f"the spec does not apply {ICON}",
+            )
+        )
+    return findings
+
+
+def _product_findings(
+    base: Path, product: ReleaseProduct, table: public_surface.ExceptionTable
+) -> tuple[list[Finding], list[str]]:
+    """Every finding for one product, and the definition files actually read."""
+    findings = _definition_findings(base, product)
+    scanned: list[str] = []
+
+    texts: dict[str, str] = {}
+    for relative in (product.spec, product.packager, product.readme, product.version_resource):
+        text = _read_text(base, relative)
+        if text is not None:
+            texts[relative] = text
+            scanned.append(relative)
+
+    if product.version_resource in texts:
+        findings.extend(
+            _metadata_findings(
+                product, product.version_resource, texts[product.version_resource]
+            )
+        )
+    if product.spec in texts:
+        findings.extend(
+            _spec_wiring_findings(product, product.spec, texts[product.spec])
+        )
+    if product.packager in texts:
+        findings.extend(
+            _packaging_findings(product, product.packager, texts[product.packager])
+        )
+    for relative, text in texts.items():
+        findings.extend(_forbidden_input_findings(product, relative, text))
+        findings.extend(
+            _residue_findings(product.build_name, relative, text, table)
+        )
+
+    icon = _read_bytes(base, ICON)
+    if icon is not None:
+        scanned.append(ICON)
+        entries = icon_entries(icon)
+        if entries is None:
+            findings.append(
+                Finding("icon-not-an-icon", product.build_name, ICON, "not an .ico file")
+            )
+        elif not ICON_SIZES <= set(entries):
+            findings.append(
+                Finding(
+                    "icon-not-multi-size",
+                    product.build_name,
+                    ICON,
+                    "the icon does not cover "
+                    + ", ".join(f"{w}x{h}" for w, h in sorted(ICON_SIZES))
+                    + "; it declares "
+                    + ", ".join(f"{w}x{h}" for w, h in sorted(set(entries))),
+                )
+            )
+    return findings, scanned
+
+
+def _unregistered(base: Path, products: tuple[ReleaseProduct, ...]) -> list[Finding]:
+    """A release definition no product declares is a silent omission."""
+    registered = {product.spec for product in products}
+    return [
+        Finding(
+            "release-unregistered",
+            path.stem,
+            path.name,
+            "no ReleaseProduct in PRODUCTS declares this release definition",
+        )
+        for path in sorted(base.glob("*.spec.in"))
+        if path.name not in registered
+    ]
+
+
+def scan(root: Path | None = None, products: tuple[ReleaseProduct, ...] = PRODUCTS) -> dict:
+    """The whole report document: findings, products and files read."""
+    base = Path(root) if root is not None else REPOSITORY_ROOT
+    table = public_surface.ExceptionTable.load(
+        base / "config" / "public_surface_exceptions.json"
+    )
+
+    findings: list[Finding] = []
+    scanned: list[str] = []
+    for product in products:
+        found, names = _product_findings(base, product, table)
+        findings.extend(found)
+        scanned.extend(names)
+
+    if not (base / SHARED_RELEASE_SCRIPT).is_file():
+        findings.append(
+            Finding(
+                "shared-release-script-missing",
+                "",
+                SHARED_RELEASE_SCRIPT,
+                "the shared release checks are gone, so no product runs the probe",
+            )
+        )
+    else:
+        shared_text = _read_text(base, SHARED_RELEASE_SCRIPT)
+        if shared_text is not None:
+            scanned.append(SHARED_RELEASE_SCRIPT)
+            findings.extend(
+                _residue_findings(
+                    "", SHARED_RELEASE_SCRIPT, shared_text, table
+                )
+            )
+
+    findings.extend(_unregistered(base, products))
+    findings.sort(key=lambda item: (item.product, item.path, item.line, item.code))
+
+    counts: dict[str, int] = {}
+    for item in findings:
+        counts[item.code] = counts.get(item.code, 0) + 1
+    return {
+        "schema": SCHEMA,
+        "products": sorted(product.build_name for product in products),
+        "files_scanned": len(sorted(set(scanned))),
+        "findings": [item.as_dict() for item in findings],
+        "code_counts": dict(sorted(counts.items())),
+    }
+
+
+def _render(report: dict, stream) -> None:
+    print(
+        f"public release: {len(report['products'])} product(s), "
+        f"{report['files_scanned']} release input(s) read, "
+        f"{len(report['findings'])} finding(s)",
+        file=stream,
+    )
+    for item in report["findings"]:
+        where = f"{item['path']}:{item['line']}" if item["line"] else item["path"]
+        prefix = f"{item['product']} " if item["product"] else ""
+        print(f"  {prefix}{where}: {item['code']}: {item['detail']}", file=stream)
+
+
+def main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(
+        prog="public-release",
+        description=(
+            "Check the randomizer release definitions: metadata, icon, the "
+            "two-file package and ROM-free inputs."
+        ),
+    )
+    parser.add_argument("--json", metavar="PATH", help="write the report document as JSON")
+    parser.add_argument(
+        "--no-fail",
+        action="store_true",
+        help="report findings but always exit 0",
+    )
+    arguments = parser.parse_args(argv)
+
+    try:
+        report = scan()
+    except (OSError, ValueError, json.JSONDecodeError) as error:
+        print(f"BLOCKED: {error}", file=sys.stderr)
+        return 2
+
+    if arguments.json:
+        Path(arguments.json).write_text(
+            json.dumps(report, indent=2, sort_keys=True) + "\n",
+            encoding="utf-8",
+            newline="\n",
+        )
+    _render(report, sys.stdout)
+
+    if report["findings"] and not arguments.no_fail:
+        print(
+            "\nA public randomizer release does not meet the shared release "
+            "rules. Fix the definition, or extend PRODUCTS in "
+            "tools/quality/public_release.py deliberately.",
+            file=sys.stderr,
+        )
+        return 1
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

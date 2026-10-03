@@ -23,6 +23,9 @@ import pytest
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 QtWidgets = pytest.importorskip("PySide6.QtWidgets")
+QtCore = pytest.importorskip("PySide6.QtCore")
+QtGui = pytest.importorskip("PySide6.QtGui")
+QtTest = pytest.importorskip("PySide6.QtTest")
 
 from tools.webfoot.enemyrand import gui  # noqa: E402
 from tools.webfoot.randomizer import gui as shell_gui  # noqa: E402
@@ -34,6 +37,7 @@ from tools.webfoot.randomizer.service import (  # noqa: E402
     RandomizerResult,
     RomVerification,
 )
+from tools.webfoot.workbench import theme  # noqa: E402
 
 VALID_ROM = Path("C:/games/Dragon Ball Z - Buu's Fury (U).gba")
 OTHER_ROM = Path("C:/games/Dragon Ball Z - The Legacy of Goku (USA).gba")
@@ -374,6 +378,253 @@ def test_a_core_refusal_is_a_message_not_a_traceback(window, qapp, boundary):
 
     assert shown and "refused this run" in shown[-1]
     assert "Cannot randomize" in window.status_text()
+
+
+# --- layout ------------------------------------------------------------------
+
+
+def test_no_label_is_clipped_and_no_two_rows_share_a_row(window, qapp, boundary):
+    """The geometry the cold review measured, pinned as an invariant.
+
+    Two things are checked at the real window size in its busiest state, where the
+    three-line ROM verdict is on screen: a single-line form label fits its own
+    widget, and the verdict label does not sit on top of the Seed row that follows
+    it. That second one is not hypothetical - the window's own comment records a
+    second line landing there before the height was reserved.
+    """
+    boundary.verification = unsupported()
+    window.set_rom_path(OTHER_ROM)
+    for _ in range(10):
+        qapp.processEvents()
+    assert not window.verification.ok
+
+    for label in window.findChildren(QtWidgets.QLabel):
+        if not label.isVisible() or label.wordWrap():
+            continue
+        advance = label.fontMetrics().horizontalAdvance(label.text())
+        assert advance <= label.width(), (
+            f"{label.text()!r} needs {advance}px in {label.width()}px"
+        )
+
+    verdict = window.rom_status_label.geometry()
+    assert verdict.height() >= window.rom_status_label.fontMetrics().lineSpacing() * 3
+    assert verdict.bottom() < window.seed_edit.geometry().top()
+    assert verdict.bottom() < window.output_edit.geometry().top()
+    assert window.randomize_button.geometry().bottom() < (
+        window.centralWidget().height()
+    )
+
+
+# --- keyboard ----------------------------------------------------------------
+
+
+def test_enter_performs_the_primary_action(window, qapp, boundary):
+    """Enter is the button.
+
+    A Windows user presses Enter to accept the form, and ``QMainWindow`` has no
+    default button of its own, so without an explicit binding the key did nothing
+    at all on a form whose whole purpose is one action. Routed through the same
+    handler the click uses, so Enter can only ever do what the button would.
+    """
+    window.set_rom_path(VALID_ROM)
+    window.set_output_path("C:/games/out.gba")
+    assert window.randomize_button.isEnabled()
+    window.rom_edit.setFocus()
+    for _ in range(5):
+        qapp.processEvents()
+
+    QtTest.QTest.keyClick(window.rom_edit, QtCore.Qt.Key.Key_Return)
+    for _ in range(20):
+        qapp.processEvents()
+
+    assert boundary.randomize_calls, "Enter did not reach the boundary"
+    worker = window.active_worker
+    if worker is not None:
+        assert worker.wait(30_000)
+
+
+def test_enter_does_not_start_a_run_that_the_button_would_refuse(window, qapp, boundary):
+    """The disabled state is the guard, so Enter cannot slip past it."""
+    window.set_rom_path(VALID_ROM)
+    window.set_output_path("C:/games/out.gba")
+    for check in window.module_checks.values():
+        check.setChecked(False)
+    assert not window.randomize_button.isEnabled()
+    window.rom_edit.setFocus()
+    for _ in range(5):
+        qapp.processEvents()
+
+    QtTest.QTest.keyClick(window.rom_edit, QtCore.Qt.Key.Key_Return)
+    for _ in range(20):
+        qapp.processEvents()
+
+    assert boundary.randomize_calls == []
+    assert window.active_worker is None
+
+
+def test_the_focus_order_reads_down_the_form_and_ends_at_the_primary_action(
+    window, qapp
+):
+    """Tab walks the controls in the order the form is read.
+
+    The two post-success actions are disabled before a run and are deliberately
+    left out of this list: the chain Qt keeps contains them, but a disabled widget
+    is not a Tab stop, so listing them here would describe a stop the user never
+    lands on. The keyboard probe that walks the real key events is what proves the
+    distinction, and this pins the order itself.
+    """
+    window.set_rom_path(VALID_ROM)
+    window.set_output_path("C:/games/out.gba")
+    for _ in range(5):
+        qapp.processEvents()
+    assert window.randomize_button.isEnabled()
+
+    chain = [window.rom_edit.nextInFocusChain()]
+    for _ in range(40):
+        nxt = chain[-1].nextInFocusChain()
+        if nxt is chain[0]:
+            break
+        chain.append(nxt)
+
+    labels: list[str] = []
+    for widget in chain:
+        if not widget.isEnabled():
+            continue
+        if isinstance(widget, QtWidgets.QComboBox):
+            labels.append(f"choice:{widget.currentText()}")
+        elif isinstance(
+            widget,
+            (QtWidgets.QLineEdit, QtWidgets.QPushButton, QtWidgets.QCheckBox),
+        ):
+            labels.append(widget.text() or type(widget).__name__)
+    assert "Randomize" in labels
+    assert "Open Folder" not in labels
+    assert "Copy Hash" not in labels
+    assert any(label.startswith("choice:") for label in labels)
+    # The ROM row is the first stop after the field itself, which is where the
+    # chain starts; each field is immediately followed by its own action.
+    assert labels[0] == "Browse..."
+    seed_index = labels.index("StreamBlind-0001")
+    assert labels[seed_index + 1] == "Random Seed"
+    assert labels[seed_index + 2] == "Copy Seed"
+    assert labels.index("STREAM SAFE") < labels.index("Randomize")
+
+
+# --- the check box indicator --------------------------------------------------
+
+
+def _relative_luminance(rgb) -> float:
+    channels = []
+    for value in rgb:
+        channel = value / 255.0
+        channels.append(
+            channel / 12.92 if channel <= 0.03928 else ((channel + 0.055) / 1.055) ** 2.4
+        )
+    return 0.2126 * channels[0] + 0.7152 * channels[1] + 0.0722 * channels[2]
+
+
+def _contrast(first, second) -> float:
+    a, b = _relative_luminance(first), _relative_luminance(second)
+    return (max(a, b) + 0.05) / (min(a, b) + 0.05)
+
+
+def _rgb(colour) -> tuple[int, int, int]:
+    return (colour.red(), colour.green(), colour.blue())
+
+
+def test_a_check_box_draws_a_box_and_not_only_a_tick(window, qapp):
+    """A control the user is asked to click has to look like one.
+
+    The platform indicator is a font glyph, and with the label background left
+    transparent an unchecked box drew no box at all: measured in the shipped
+    window, 227 of the 256 pixels inside the indicator rectangle were the surface
+    colour, so the control read as a bullet beside its label. The indicator is
+    painted here now, and this pins the two facts that make it a control - a fill
+    that is not the panel, and a tick drawn in the contrasting ink.
+    """
+    box = window.module_checks["enemy-placement"]
+    box.setChecked(True)
+    for _ in range(5):
+        qapp.processEvents()
+
+    image = box.grab().toImage().convertToFormat(
+        QtGui.QImage.Format.Format_RGB32
+    )
+    indicator = box.indicator_rect()
+    assert indicator.width() >= 14 and indicator.height() >= 14
+
+    colours: dict[tuple[int, int, int], int] = {}
+    for x in range(indicator.width()):
+        for y in range(indicator.height()):
+            pixel = image.pixelColor(indicator.x() + x, indicator.y() + y)
+            rgb = (pixel.red(), pixel.green(), pixel.blue())
+            colours[rgb] = colours.get(rgb, 0) + 1
+    fill = _rgb(theme.color("accent"))
+    ink = _rgb(theme.color("accent_ink"))
+    surface = _rgb(theme.color("surface"))
+
+    assert colours.get(fill, 0) > 40, "the checked indicator is not filled with the accent"
+    assert colours.get(ink, 0) > 10, "the tick is not drawn in the accent ink"
+    assert _contrast(fill, surface) >= 3.0
+
+
+def test_an_unchecked_box_is_visible_against_the_panel_without_its_label(
+    window, qapp
+):
+    """An unchecked box is nothing but its boundary, so the boundary is the control.
+
+    WCAG 2.1 non-text contrast asks 3:1 for a UI component's visual boundary. The
+    theme's ``border_strong`` is a 2.05:1 hairline against this fill - right for a
+    separator, wrong for the edge of a control - so the edge is the palette's own
+    tertiary neutral and this asserts the ratio rather than the token name.
+    """
+    box = window.module_checks["enemy-stat"]
+    box.setChecked(False)
+    for _ in range(5):
+        qapp.processEvents()
+
+    image = box.grab().toImage().convertToFormat(
+        QtGui.QImage.Format.Format_RGB32
+    )
+    indicator = box.indicator_rect()
+    surface = _rgb(theme.color("surface"))
+    # The stroke colour is the edge's most common pixel. The darkest pixel on the
+    # edge is a rounded corner blended towards the fill, which is lighter than the
+    # stroke rather than part of it.
+    edges: dict[tuple[int, int, int], int] = {}
+    for x in range(indicator.width()):
+        for y in (0, indicator.height() - 1):
+            pixel = image.pixelColor(indicator.x() + x, indicator.y() + y)
+            rgb = (pixel.red(), pixel.green(), pixel.blue())
+            edges[rgb] = edges.get(rgb, 0) + 1
+    stroke = max(edges.items(), key=lambda item: item[1])[0]
+    assert _contrast(stroke, surface) >= 3.0, (
+        f"the unchecked indicator edge is only {_contrast(stroke, surface):.2f}:1 "
+        "against the panel"
+    )
+
+
+def test_the_controls_in_one_window_are_all_the_same_height(window, qapp):
+    """A row of buttons is one size, including the primary action.
+
+    The primary action used to take the toolbar's height instead of the control
+    height, so the emphasized button was drawn two pixels taller than every button
+    beside it. The window also had to stop opening 44 px shorter than its own
+    layout, which squashed four buttons from 24 px to 22 px without clipping them.
+    """
+    window.set_rom_path(VALID_ROM)
+    for _ in range(5):
+        qapp.processEvents()
+
+    buttons = [
+        button
+        for button in window.findChildren(QtWidgets.QPushButton)
+        if button.isVisible()
+    ]
+    heights = {button.text(): button.height() for button in buttons}
+    assert len(set(heights.values())) == 1, heights
+    assert set(heights.values()) == {theme.CONTROL_HEIGHT}, heights
+    assert window.height() >= window.sizeHint().height() - 1
 
 
 # --- the release-verification entry ------------------------------------------

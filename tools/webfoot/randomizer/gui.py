@@ -44,6 +44,14 @@ by confirming an overwrite), refusal (a sentence) and crash (a defect, with its
 traceback one click away). Every dialog goes through :meth:`notify`,
 :meth:`confirm` or :meth:`show_details`, so a test can answer a prompt without a
 human and without a modal loop.
+
+Keyboard
+========
+
+Every control is reachable with Tab in the order it is read, a disabled control is
+passed over rather than focused, and Enter performs the one emphasized action from
+anywhere on the form - the default-button behaviour a Windows user expects, which
+a ``QMainWindow`` does not provide for free.
 """
 
 from __future__ import annotations
@@ -55,8 +63,8 @@ import time
 import traceback
 from typing import Callable, Mapping, Sequence
 
-from PySide6.QtCore import QThread, QUrl, Signal
-from PySide6.QtGui import QDesktopServices, QGuiApplication
+from PySide6.QtCore import Qt, QThread, QUrl, Signal
+from PySide6.QtGui import QDesktopServices, QGuiApplication, QKeySequence, QShortcut
 from PySide6.QtWidgets import (
     QApplication,
     QCheckBox,
@@ -80,6 +88,7 @@ from PySide6.QtWidgets import (
 )
 
 from ..workbench import theme
+from ..workbench.widgets import CheckBox
 from . import registry
 from .errors import OutputAlreadyExistsError, RandomizerAppError
 from .module import SETTING_CHOICE
@@ -250,6 +259,31 @@ class RandomizerWindow(QMainWindow):
         self.setMinimumWidth(620)
         self._build()
         self._apply_initial_state()
+        self._size_to_the_layout()
+
+    def _size_to_the_layout(self) -> None:
+        """Open at a height the layout can honour.
+
+        A window shown without an explicit size takes a platform default that can
+        be *shorter* than the layout's own hint, and Qt then compresses whichever
+        rows it must. Measured on the enemy product: the window opened 44 px short,
+        which silently shrank the two buttons in the options box and both
+        post-success actions from 24 px to 22 px. Nothing was clipped, so it was
+        invisible in a screenshot review and only showed up as controls that were
+        each two pixels lighter than the ones beside them.
+
+        ``activate()`` first, because the layout hint is only complete once the
+        layout has run; the resulting size is the larger of what the layout wants
+        and what the window already demands.
+        """
+        layout = self.centralWidget().layout()
+        if layout is not None:
+            layout.activate()
+        hint = self.sizeHint()
+        self.resize(
+            max(self.minimumWidth(), hint.width()),
+            max(self.minimumHeight(), hint.height()),
+        )
 
     # --- construction ----------------------------------------------------
 
@@ -272,12 +306,12 @@ class RandomizerWindow(QMainWindow):
         outer.addLayout(grid)
 
         # --- ROM row ---
-        self.rom_edit = QLineEdit()
+        self.rom_edit = self._field()
         self.rom_edit.setPlaceholderText(self.presentation.rom_placeholder)
         self.rom_edit.setClearButtonEnabled(True)
         self.rom_edit.textChanged.connect(self._on_rom_text_changed)
         self.rom_edit.editingFinished.connect(self._on_rom_path_edited)
-        self.browse_rom_button = QPushButton("Browse...")
+        self.browse_rom_button = self._button("Browse...")
         self.browse_rom_button.clicked.connect(self.browse_for_rom)
         grid.addWidget(self._field_label("Original ROM:"), 0, 0)
         grid.addWidget(self.rom_edit, 0, 1)
@@ -299,11 +333,11 @@ class RandomizerWindow(QMainWindow):
         grid.addWidget(self.rom_status_label, 1, 1, 1, 2)
 
         # --- seed row ---
-        self.seed_edit = QLineEdit(self.presentation.default_seed)
+        self.seed_edit = self._field(self.presentation.default_seed)
         self.seed_edit.textChanged.connect(self._on_seed_changed)
-        self.random_seed_button = QPushButton("Random Seed")
+        self.random_seed_button = self._button("Random Seed")
         self.random_seed_button.clicked.connect(self.generate_seed)
-        self.copy_seed_button = QPushButton("Copy Seed")
+        self.copy_seed_button = self._button("Copy Seed")
         self.copy_seed_button.clicked.connect(self.copy_seed)
         grid.addWidget(self._field_label("Seed:"), 2, 0)
         grid.addWidget(self.seed_edit, 2, 1)
@@ -315,11 +349,11 @@ class RandomizerWindow(QMainWindow):
         grid.addLayout(seed_buttons, 2, 2)
 
         # --- output row ---
-        self.output_edit = QLineEdit()
+        self.output_edit = self._field()
         self.output_edit.setPlaceholderText(self.presentation.output_placeholder)
         self.output_edit.setClearButtonEnabled(True)
         self.output_edit.textEdited.connect(self._on_output_edited)
-        self.browse_output_button = QPushButton("Browse...")
+        self.browse_output_button = self._button("Browse...")
         self.browse_output_button.clicked.connect(self.browse_for_output)
         grid.addWidget(self._field_label("Randomized ROM:"), 3, 0)
         grid.addWidget(self.output_edit, 3, 1)
@@ -332,14 +366,13 @@ class RandomizerWindow(QMainWindow):
             outer.addWidget(self.options_group)
 
         # --- the action: the ONE emphasized control on this surface ---------
-        self.randomize_button = QPushButton("Randomize")
-        self.randomize_button.setProperty("dbzRole", "primary")
-        self.randomize_button.setMinimumHeight(theme.TOOLBAR_HEIGHT)
+        self.randomize_button = self._button("Randomize", role="primary")
         self.randomize_button.setSizePolicy(
             QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed
         )
         self.randomize_button.clicked.connect(self._on_randomize_clicked)
         outer.addWidget(self.randomize_button)
+        self._bind_enter_to_the_primary_action()
 
         self.disclaimer_label = QLabel(self.presentation.disclaimer)
         self.disclaimer_label.setProperty("dbzRole", "hint")
@@ -380,9 +413,9 @@ class RandomizerWindow(QMainWindow):
         actions = QHBoxLayout()
         actions.setContentsMargins(0, 0, 0, 0)
         actions.setSpacing(theme.SPACE_SM)
-        self.open_folder_button = QPushButton("Open Folder")
+        self.open_folder_button = self._button("Open Folder")
         self.open_folder_button.clicked.connect(self.open_output_folder)
-        self.copy_hash_button = QPushButton("Copy Hash")
+        self.copy_hash_button = self._button("Copy Hash")
         self.copy_hash_button.clicked.connect(self.copy_hash)
         actions.addWidget(self.open_folder_button)
         actions.addWidget(self.copy_hash_button)
@@ -393,6 +426,47 @@ class RandomizerWindow(QMainWindow):
         self.setStatusBar(self.status_bar)
         self.status_note_label = QLabel(self.presentation.status_note)
         self.status_bar.addWidget(self.status_note_label)
+
+    def _field(self, text: str = "") -> QLineEdit:
+        """One text field, at the one control height every other control uses."""
+        field = QLineEdit(text)
+        field.setMinimumHeight(theme.CONTROL_HEIGHT)
+        return field
+
+    def _button(self, text: str, role: str = "") -> QPushButton:
+        """One button, at the one control height and the one radius.
+
+        The height is the theme's ``CONTROL_HEIGHT`` rather than ``TOOLBAR_HEIGHT``:
+        the two are different values, and a single control that takes the larger one
+        is drawn taller than every button beside it, which is what the primary
+        action used to do.
+        """
+        button = QPushButton(text)
+        if role:
+            button.setProperty("dbzRole", role)
+        button.setMinimumHeight(theme.CONTROL_HEIGHT)
+        return button
+
+    def _bind_enter_to_the_primary_action(self) -> None:
+        """Let Enter do what the one emphasized button does.
+
+        Qt gives the Enter key to a *default button*, and a default button only
+        exists inside a ``QDialog``; this product's window is a ``QMainWindow``, so
+        ``setDefault(True)`` alone binds nothing and Enter used to be inert on the
+        form. A window shortcut is the mechanism that does work here.
+
+        It is deliberately routed through :meth:`_on_randomize_clicked` rather than
+        through the button's own ``click()``: the click path consults the same
+        guards the button consults, so Enter can only ever do what a click would
+        have done. That is also why a disabled button's state needs no special
+        case - switching it off is what keeps the run it describes from starting.
+        """
+        self.enter_shortcuts: list[QShortcut] = []
+        for key in (Qt.Key.Key_Return, Qt.Key.Key_Enter):
+            shortcut = QShortcut(QKeySequence(key), self)
+            shortcut.setContext(Qt.ShortcutContext.WindowShortcut)
+            shortcut.activated.connect(self._on_randomize_clicked)
+            self.enter_shortcuts.append(shortcut)
 
     def _build_options(self) -> QGroupBox:
         """The module toggles, the declared settings and the spoiler option.
@@ -412,7 +486,7 @@ class RandomizerWindow(QMainWindow):
         if self.presentation.shows_module_toggles:
             for toggle in self.presentation.module_toggles:
                 module = registry.module_for(toggle.module_id)
-                check = QCheckBox(toggle.label)
+                check = CheckBox(toggle.label)
                 check.setChecked(module.default_enabled)
                 check.setToolTip(toggle.help or module.description)
                 check.toggled.connect(self._on_module_toggled)
@@ -444,7 +518,7 @@ class RandomizerWindow(QMainWindow):
                     self.setting_widgets[(module.id, setting.key)] = combo
                     row.addWidget(combo)
                 else:
-                    check = QCheckBox()
+                    check = CheckBox()
                     check.setChecked(bool(setting.default))
                     check.setToolTip(setting.help)
                     check.toggled.connect(self._refresh_randomize_enabled)
@@ -454,14 +528,14 @@ class RandomizerWindow(QMainWindow):
                 layout.addLayout(row)
 
         if self.presentation.offers_spoiler:
-            self.spoiler_check = QCheckBox(self.presentation.spoiler_label)
+            self.spoiler_check = CheckBox(self.presentation.spoiler_label)
             self.spoiler_check.setChecked(self.presentation.spoiler_default)
             self.spoiler_check.setToolTip(self.presentation.spoiler_help)
             self.spoiler_check.toggled.connect(self._refresh_randomize_enabled)
             layout.addWidget(self.spoiler_check)
 
         if self.presentation.preset_label:
-            self.preset_button = QPushButton(self.presentation.preset_label)
+            self.preset_button = self._button(self.presentation.preset_label)
             self.preset_button.setToolTip(self.presentation.preset_help)
             self.preset_button.clicked.connect(self.apply_preset)
             row = QHBoxLayout()

@@ -295,8 +295,7 @@ def _plan_with_loaded(
     # --- step 2: enemy identities, per map, canonical pairs ---
     if config.wants(MODULE_ENEMY_TYPE):
         types_outcome = shuffle_enemy_types(
-            model, Stream(module_seeds[MODULE_ENEMY_TYPE]), edits=edits,
-            typing_mode=config.typing_mode,
+            model, Stream(module_seeds[MODULE_ENEMY_TYPE]), edits=edits
         )
 
     # --- step 3: placements, per map, proven coordinates ---
@@ -334,18 +333,35 @@ def _plan_with_loaded(
     exclusions = {
         "policy": (
             "Only ORDINARY_COMBAT_ENEMY placements are randomized. A placement is "
-            "refused when it carries a verified script event, when its type "
-            "selector falls outside the verified enemy-stat extent, when its "
-            "coordinates sit inside a transition trigger, or when it is the only "
-            "eligible slot in its map."
+            "refused when it carries a verified script event, when it dispatches a "
+            "script whose root was never decoded or its descriptor cannot be read "
+            "(script_unresolved), when its type selector falls outside the verified "
+            "enemy-stat extent, when its coordinates sit inside a transition "
+            "trigger, or when it is the only eligible slot in its map."
         ),
         "actor_refusals": {
             key: value for key, value in model.refusal_counts().items()
             if key != "alone_in_map"
         },
+        # The owner waiver of 2026-10-03, stated in the run record rather than only
+        # in the evidence document. A manifest that claimed a complete exclusion
+        # while a boss could still be randomized would be false; this names the gap
+        # on every run, and names the one document that measures it.
         "scope_note": (
             "No boss, NPC or quest-critical classification exists in this project's "
-            "evidence, so none is claimed. See the ticket audit for the residual."
+            "evidence, so none is claimed. The consequence is explicit: a boss that "
+            "is neither script-attached nor alone in its map IS indistinguishable "
+            "from an ordinary enemy and MAY BE RANDOMIZED. The owner accepted this "
+            "limitation in writing. Measurement and rationale: "
+            "docs/research/ENEMY_RANDOMIZER_VERIFICATION.md, sections 4 and 11."
+        ),
+        # Stated for the same reason: the type module is inert, and a reader must
+        # not infer from its presence that enemy types change.
+        "enemy_type_module": (
+            "The enemy-type module does NOT change which enemy a player meets. Its "
+            "swap is provably a relocation: see "
+            "docs/research/ENEMY_RANDOMIZER_VERIFICATION.md section 5.2. Ticket "
+            "Module C is undelivered."
         ),
     }
 

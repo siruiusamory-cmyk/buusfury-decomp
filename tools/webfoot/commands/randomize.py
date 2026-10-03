@@ -46,8 +46,6 @@ from ..enemy_randomizer.config import (
     DEFAULT_STAT_FIELDS,
     STAT_FIELDS,
     TYPING_MODES,
-    TYPING_PROVEN_PAIR,
-    TYPING_PROVEN_PAIR_AND_BEHAVIOUR,
     EnemyRandomizerConfig,
     ConfigError,
     PRESETS,
@@ -141,17 +139,14 @@ def add_parser(subparsers) -> None:
         default=None,
         choices=sorted(TYPING_MODES),
         help=(
-            "how the enemy-type shuffle installs an identity. "
-            f"{TYPING_PROVEN_PAIR} (default) installs an identity only onto a slot "
-            "whose coupled fields already match, which is provably coherent but, "
-            "because such slots differ only in (type, id, position), has the same "
-            "visible effect as moving them - with the placement shuffle on, enemies "
-            "are relocated rather than retyped. "
-            f"{TYPING_PROVEN_PAIR_AND_BEHAVIOUR} installs the donor's flags and "
-            "behavior descriptor along with its identity, so the enemy type really "
-            "changes; it creates objects whose behaviour descriptor comes from a "
-            "different enemy than their sprite and stats, and no evidence establishes "
-            "that combination is coherent. No preset selects it."
+            "how the enemy-type module installs an identity. There is one mode, "
+            "and it installs an identity only onto a slot whose flags, behavior "
+            "descriptor and children already match the donor's - so every resulting "
+            "object is one a canonical placement holds. Its honest effect is that "
+            "the module does NOT change which enemy a player meets: within such a "
+            "group the records differ only in (type, id, position), so the swap "
+            "composes with the placement shuffle to the identity. Recorded here so "
+            "the flag exists and its limit is documented rather than discovered."
         ),
     )
     parser.add_argument(

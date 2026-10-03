@@ -55,11 +55,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from .compatibility import IdentityPair, canonical_pairs, compatibility_class
-from .config import (
-    TYPING_MODES,
-    TYPING_PROVEN_PAIR,
-    typing_retypes,
-)
+from .config import TYPING_MODES, TYPING_PROVEN_PAIR
 from .eligibility import EnemySlot, Refusal, SlotModel
 from .records import RecordEdits
 from .seeds import Stream
@@ -107,10 +103,6 @@ class TypeOutcome:
     pool_size: int
     compatibility_class: str
     typing_mode: str = TYPING_PROVEN_PAIR
-    #: Whether this run installed the coupled fields, i.e. whether the enemy type
-    #: really changed. Recorded because the two modes have visibly different
-    #: effects and a reader must not have to infer which one ran.
-    retypes: bool = False
 
     @property
     def changed_count(self) -> int:
@@ -128,8 +120,10 @@ class TypeOutcome:
         return {
             "compatibility_class": self.compatibility_class,
             "typing_mode": self.typing_mode,
-            "retypes": self.retypes,
             "player_visible_effect": self.player_visible_effect,
+            "delivers_ticket_module_c": TYPING_MODES[self.typing_mode][
+                "delivers_ticket_module_c"
+            ],
             "pool_size": self.pool_size,
             "maps_shuffled": self.groups_shuffled,
             "slots_changed": self.changed_count,
@@ -142,19 +136,14 @@ class TypeOutcome:
         }
 
 
-def bucket_key(slot: EnemySlot, retyping: bool) -> tuple:
-    """The donor-pool key for one slot under the active typing mode.
+def bucket_key(slot: EnemySlot) -> tuple:
+    """The donor-pool key for one slot: every field identity travels with.
 
-    Re-typing installs the donor's flags and descriptor, so those two cannot
-    partition its pool; only the child structure must match. Not retyping installs
-    nothing but the identity, so every coupled field must already match - see
-    :func:`coupled_signature` for why.
+    Kept as a named function so the reason is stated once: installing an identity
+    onto a slot that disagrees on any of these would change what the engine reads
+    alongside the identity, which is the change this module refuses to make.
     """
-    record = slot.record
-    children = (record.child_count, tuple(record.child_pointers_raw))
-    if retyping:
-        return children
-    return (record.flags_raw, record.descriptor_pointer_raw) + children
+    return coupled_signature(slot)
 
 
 def _shuffle_pairs(
@@ -212,7 +201,6 @@ def shuffle_enemy_types(
     stream: Stream,
     *,
     edits: RecordEdits,
-    typing_mode: str = TYPING_PROVEN_PAIR,
 ) -> TypeOutcome:
     """Shuffle canonical identity pairs within each map.
 
@@ -248,23 +236,13 @@ def shuffle_enemy_types(
 
         shuffleable.sort(key=lambda s: s.placement.identity.placement_index)
 
-        # Subgroup by the fields the mode requires to agree.
-        #
-        # PROVEN_PAIR groups on the full coupled signature, so a permutation can
-        # only happen between slots that already share every field the engine reads
-        # alongside the identity - which is also why, within a group, the records
-        # differ only in (type, id, position) and the swap is equivalent to moving
-        # them. That equivalence is a property of the mode and is documented.
-        #
-        # PROVEN_PAIR_AND_BEHAVIOUR groups only on the child structure, because the
-        # donor's flags and descriptor are installed along with its identity. Those
-        # two fields are therefore expected to differ and cannot partition the
-        # group. Children still must match: this pack has no evidence about what may
-        # share one, so a differing child set is not a donor.
-        retyping = typing_retypes(typing_mode)
+        # Subgroup by the coupled fields. A permutation is legal only among slots
+        # that agree on every field the engine reads alongside the identity, so the
+        # resulting object is a combination some canonical placement holds. See
+        # coupled_signature for why, and for what this costs the module.
         buckets: dict[tuple, list[EnemySlot]] = {}
         for slot in shuffleable:
-            buckets.setdefault(bucket_key(slot, retyping), []).append(slot)
+            buckets.setdefault(coupled_signature(slot), []).append(slot)
 
         shuffled_here = 0
         for signature in sorted(buckets, key=lambda s: buckets[s][0].key):
@@ -274,7 +252,7 @@ def shuffle_enemy_types(
                 # visible in the manifest rather than looking like a silent skip.
                 groups_refused.append(
                     (map_index,
-                     f"1 slot with no same-map peer matching this mode's donor pool "
+                     f"1 slot with no same-map peer sharing flags/descriptor/children "
                      f"({bucket[0].key})")
                 )
                 continue
@@ -286,22 +264,10 @@ def shuffle_enemy_types(
                 # invariant rather than as a filter that could silently drop one.
                 compatibility_class(pair, model)
                 if pair != slot.original_pair:
-                    if retyping:
-                        # Install the donor's coupled fields WITH its identity, so
-                        # the actor really becomes that enemy. The donor is the
-                        # bucket peer that originally held this pair.
-                        donor = _donor_for(bucket, pair)
-                        edits.set(
-                            slot.identity, "enemy-type",
-                            type_raw=pair.selector, id_raw=pair.sprite,
-                            flags_raw=donor.record.flags_raw,
-                            descriptor_pointer_raw=donor.record.descriptor_pointer_raw,
-                        )
-                    else:
-                        edits.set(
-                            slot.identity, "enemy-type",
-                            type_raw=pair.selector, id_raw=pair.sprite,
-                        )
+                    edits.set(
+                        slot.identity, "enemy-type",
+                        type_raw=pair.selector, id_raw=pair.sprite,
+                    )
                 decisions.append(
                     TypeDecision(
                         placement=slot.key, map_index=map_index,
@@ -318,22 +284,5 @@ def shuffle_enemy_types(
         groups_refused=tuple(groups_refused),
         pool_size=len(pool),
         compatibility_class="PROVEN_CANONICAL",
-        typing_mode=typing_mode,
-        retypes=retyping,
-    )
-
-
-def _donor_for(bucket: list[EnemySlot], pair: IdentityPair) -> EnemySlot:
-    """The bucket member that originally held ``pair``.
-
-    The donor is what makes a retyping install coherent in the only sense this
-    mode can offer: the flags and descriptor travelling with the identity are the
-    ones that enemy carried in this same map.
-    """
-    for slot in bucket:
-        if slot.original_pair == (pair.selector, pair.sprite):
-            return slot
-    raise TypeRandomizationError(
-        f"no bucket member originally held {pair.display}; the permutation drew an "
-        "identity from outside its donor pool"
+        typing_mode=TYPING_PROVEN_PAIR,
     )

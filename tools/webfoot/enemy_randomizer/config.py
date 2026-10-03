@@ -134,52 +134,64 @@ STAT_FIELDS: dict[str, tuple[int, int]] = {
 DEFAULT_STAT_FIELDS: tuple[str, ...] = ("hp", "exp", "level", "strength", "power", "endurance")
 
 
-#: How the type shuffle chooses which slots an identity may be installed onto.
+#: How the enemy-type module chooses which slots an identity may be installed onto.
 #:
-#: ``PROVEN_PAIR`` (default, and the only mode the presets use) installs an
-#: identity only onto a slot whose flags, behavior descriptor and children already
-#: match the donor's. Every resulting object is a configuration some canonical
-#: placement holds.
+#: There is exactly one mode, and it exists because no other is available on this
+#: evidence. It installs an identity only onto a slot whose flags, behavior
+#: descriptor and children already match the donor's, so every resulting object is a
+#: configuration some canonical placement holds.
 #:
-#: It has a consequence that must be stated rather than hidden, and an earlier
-#: revision of this file did hide it: within one such group the records differ ONLY
-#: in ``(type, id, position)``, so exchanging ``(type, id)`` between two members is
-#: equivalent to exchanging their positions. With the placement shuffle also on,
-#: the two compose to a permutation of positions and **a player sees enemies
-#: relocated, not retyped**. That is a real limit of this mode, not a bug in it,
-#: and the manifest records the mode so a reader is never misled about which effect
-#: a run had. Section 5.2 of ``docs/research/ENEMY_RANDOMIZER_VERIFICATION.md``
-#: carries the measurement.
+#: ITS CONSEQUENCE, which two independent reviews converged on and which this file
+#: previously mis-described twice:
 #:
-#: ``PROVEN_PAIR_AND_BEHAVIOUR`` is the opt-in that actually changes enemy type.
-#: It installs an identity together with the donor's flags and behavior descriptor,
-#: so the actor really becomes a different enemy. The cost is explicit: the
-#: resulting object is one whose sprite and stats come from one canonical enemy and
-#: whose behavior descriptor comes from another. That combination is NOT known to
-#: exist canonically, so nothing here claims it is coherent - the mode exists
-#: because the ticket's Module C cannot be delivered any other way, and choosing it
-#: is a deliberate acceptance of a graphics/behaviour/stat mismatch. No preset
-#: selects it.
+#: * within one such group the records differ ONLY in ``(type, id, position)``, so
+#:   exchanging ``(type, id)`` between two members is exactly exchanging their
+#:   positions; and
+#: * installing the coupled fields as well does not help either. The factory word is
+#:   constant across the corpus, so a record that receives another record's
+#:   ``(type, id, flags, descriptor)`` has simply BECOME that record; the map ends up
+#:   holding the same multiset of canonical records in different places. Measured:
+#:   0 of 949 such installs produced a record with no exact canonical match.
+#:
+#: So this module cannot change what enemy a player meets. Either it permutes
+#: identity within field-identical records, which composes with the placement
+#: shuffle to the identity permutation, or it permutes whole records, which is a
+#: relocation by another name. **Ticket Module C is NOT delivered**, and claiming
+#: otherwise was the error two reviews caught. What the module does deliver is a
+#: well-defined, validated permutation over proven slots, which is why it stays
+#: compiled and tested rather than deleted: it is correct, it is inert with respect
+#: to the world, and it costs one pass over the corpus.
+#:
+#: A mode that really retyped would have to install an identity onto a slot with
+#: DIFFERENT coupled fields, producing an object whose behavior descriptor belongs to
+#: a different enemy than its sprite and stats. Nothing in this project establishes
+#: that such an object is coherent, so this pack does not produce one. Delivering
+#: Module C needs a measured compatibility dimension first; see section 5.2 of
+#: ``docs/research/ENEMY_RANDOMIZER_VERIFICATION.md``.
 TYPING_PROVEN_PAIR = "proven-pair"
-TYPING_PROVEN_PAIR_AND_BEHAVIOUR = "proven-pair-and-behaviour"
 
 TYPING_MODES: dict[str, dict] = {
     TYPING_PROVEN_PAIR: {
         "installs": "identity only, onto a slot whose coupled fields already match",
-        "player_visible_effect": "enemies relocated, not retyped (cancels with the placement shuffle)",
+        "player_visible_effect": (
+            "none: enemies are relocated, not retyped. With the placement shuffle "
+            "also enabled the two compose to the identity, and neither mode of this "
+            "module can change which enemy a player meets"
+        ),
         "hybrid": "impossible by construction",
-    },
-    TYPING_PROVEN_PAIR_AND_BEHAVIOUR: {
-        "installs": "identity plus the donor's flags and behavior descriptor",
-        "player_visible_effect": "enemy type really changes",
-        "hybrid": "accepted: donor behaviour with the installed identity, not provably coherent",
+        "delivers_ticket_module_c": False,
     },
 }
 
-#: Whether a mode rewrites the coupled fields.
+
 def typing_retypes(mode: str) -> bool:
-    """True when ``mode`` installs coupled fields, i.e. really retypes."""
-    return mode == TYPING_PROVEN_PAIR_AND_BEHAVIOUR
+    """Always False. Kept so a caller reads the reason rather than assuming.
+
+    No mode of this module changes an enemy's type; see :data:`TYPING_MODES`. The
+    function exists so that a future mode which *does* retype has an obvious place
+    to say so, and so that current callers cannot quietly assume the opposite.
+    """
+    return False
 
 
 @dataclass(frozen=True, slots=True)
@@ -199,7 +211,8 @@ class EnemyRandomizerConfig:
     placement_scope: str = "same-map"
     type_scope: str = "same-map"
     type_requires_canonical_pair: bool = True
-    #: Which slots an identity may be installed onto. See :data:`TYPING_MODES`.
+    #: Which slots an identity may be installed onto. One mode exists; see
+    #: :data:`TYPING_MODES` for why, and for what it does and does not deliver.
     typing_mode: str = TYPING_PROVEN_PAIR
     enabled: frozenset[str] = field(
         default_factory=lambda: frozenset(
@@ -256,6 +269,9 @@ class EnemyRandomizerConfig:
             # The mode's consequence travels with the manifest, so a reader learns
             # what the run actually did rather than what its module is called.
             "typing_mode_effect": TYPING_MODES[self.typing_mode]["player_visible_effect"],
+            "delivers_ticket_module_c": TYPING_MODES[self.typing_mode][
+                "delivers_ticket_module_c"
+            ],
         }
 
 

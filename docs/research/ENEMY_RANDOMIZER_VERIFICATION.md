@@ -123,32 +123,47 @@ which requires the exact tuple
 `(selector, sprite, flags, descriptor, child_count, children)` to exist canonically
 for every changed slot.
 
-### 5.2 The coupling constraint makes the default typing mode a relocation
+### 5.2 The coupling constraint means this module cannot change enemy type
 
-This must be read together with 5.1, because the safety fix has a consequence that
-an earlier revision of this document did not state.
+This must be read together with 5.1, because the safety fix removes the module's
+effect entirely. Two independent reviews converged on this, the second after an
+earlier revision of this document claimed an opt-in mode solved it.
 
-Within one coupled-field group, every member has the *same* flags, descriptor and
+Within one coupled-field group every member has the *same* flags, descriptor and
 children **by construction**, so the records differ only in
 `(stat selector, sprite id, position)`. Exchanging `(selector, sprite)` between two
 such records therefore produces exactly the same pair of records as exchanging
 their positions. With the placement shuffle also enabled, the two modules compose
-to a permutation of positions.
+to the identity.
 
-**In the default `proven-pair` mode a player sees enemies relocated, not retyped.**
-The per-slot `enemy_changed` counts and the separate type/placement counts describe
-relocations, and the manifest's `typing_mode_effect` now states this in the run
-record so a reader is never misled by the module's name.
+**Installing the coupled fields as well does not fix it.** The factory word is
+constant across the corpus (`compatibility.FACTORY_RAW` is one value), so a record
+that receives another's `(type, id, flags, descriptor)` has simply *become* that
+record; the map then holds the same multiset of canonical records in different
+places. Measured on a hash-verified canonical copy, seed `enemy-pack-001`, type
+module only: 949 records changed, 706 of them with flags or descriptor rewritten,
+and **0 of 949** lacked an exact canonical match in the same map.
 
-`proven-pair-and-behaviour` is the opt-in that really changes enemy type: it
-installs the donor's flags and behavior descriptor along with its identity. Measured
-on the canonical corpus, that mode retypes 956 slots for one seed and writes
-`type_raw, id_raw, flags_raw, descriptor_pointer_raw` in every one. Its cost is
-explicit and unproven: the result is an actor whose behavior descriptor comes from a
-different enemy than its sprite and stats, a combination not known to exist
-canonically. No preset selects it.
+So this module cannot change which enemy a player meets. An earlier revision
+claimed an opt-in `proven-pair-and-behaviour` mode did; a reviewer measured it and
+showed it relocates whole records, and the mode has been **removed** rather than
+relabelled.
 
-Both modes are recorded in the manifest, and neither is hidden behind the other.
+**Ticket Module C is NOT delivered.** What the module does deliver is a
+well-defined, validated permutation over proven slots. It is correct, it is inert
+with respect to the world, and it costs one pass over the corpus, so it stays
+compiled and tested rather than deleted - but nothing may describe it as an enemy
+type shuffle. Every manifest records this as
+`configuration.delivers_ticket_module_c: false` and states the effect verbatim in
+`configuration.typing_mode_effect`, together with `modules.enemy-type`.
+
+**What delivering Module C would take.** A measured compatibility dimension: some
+evidence that an object whose behavior descriptor belongs to a different enemy than
+its sprite and stats is coherent, or a set of identities proven interchangeable on
+that dimension. None exists today. The candidate dimensions that were checked and
+refused are in §5. The next place to look is runtime: pairing an observed enemy
+behaviour with its placement record would give a behavioural class to partition on,
+which is the dimension this pack could not derive statically.
 
 ## 6. Stat policy
 
@@ -278,12 +293,13 @@ is also moot in a second way: as section 5.2 shows, that mode exchanges identity
 position between field-identical records, so the actor set the engine builds is the
 same either way.
 
-**Runtime confirmation of retyping, or of a constructed actor, is therefore an OPEN
-ITEM.** It would need an observer that enumerates live actor objects (by the
-placement factory's dispatch, as `tools/runtime/toolkit029_placement_watch.lua`
-does for a different question) and reports their resolved identity, ideally in
-`proven-pair-and-behaviour` mode where the two images genuinely differ in what is
-built.
+**Runtime confirmation of retyping is therefore an OPEN ITEM** - and with the
+module's effect now understood (§5.2) it is an open item about a capability this
+pack does not have, not about instrumenting one it does. It would need an observer
+that enumerates live actor objects (by the placement factory's dispatch, as
+`tools/runtime/toolkit029_placement_watch.lua` does for a different question) and
+reports their resolved identity, paired with a compatibility dimension that made two
+identities genuinely interchangeable.
 
 Cold boot also confirmed the game loads and runs: 21 map loads through the same live
 pointer, dialogue through the script VM (the liveness channel), correct HUD, player,
@@ -327,16 +343,21 @@ kill-count or event-flag consumer model; or runtime observation pairing a boss
 encounter with its placement record. None exists today, and inventing one from
 stat magnitude is exactly what the ticket forbids.
 
-### Waiver 2 - typing mode (owner decision, 2026-10-03)
+### Waiver 2 - Module C not delivered (owner decision, 2026-10-03)
 
 The ticket requires enemy identity to be atomic (section 14) *and* requires an
-enemy-type shuffle (section 12). Section 5.2 shows these cannot both hold at full
-strength. The owner's decision:
+enemy-type shuffle (section 12). Section 5.2 shows these cannot both hold: on
+current evidence the only coherent identity swap is provably a relocation, and a
+swap that would really change the enemy produces an unproven behaviour/sprite/stats
+mismatch. The owner's decision:
 
-> Keep the provably coherent mode as the default and report its true effect - with
-> the coupled-field constraint, the type module relocates rather than retypes. The
-> retyping mode exists as an explicit opt-in whose cost is documented, and no preset
-> selects it.
+> Ship the provably coherent module and state its true effect. Do not deliver
+> Module C, do not claim it, and do not produce the unproven hybrid to manufacture
+> the appearance of a type shuffle. Record that Module C is undelivered and what
+> would be needed to deliver it.
+
+The manifest carries this on every run as `configuration.delivers_ticket_module_c`
+(false) and `configuration.typing_mode_effect`.
 
 ### Other bounded unknowns
 

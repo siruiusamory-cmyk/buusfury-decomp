@@ -41,7 +41,6 @@ from tools.webfoot.enemy_randomizer.config import (
     STREAM_SAFE_STATS,
     TYPING_MODES,
     TYPING_PROVEN_PAIR,
-    TYPING_PROVEN_PAIR_AND_BEHAVIOUR,
     ConfigError,
     EnemyRandomizerConfig,
     StatRange,
@@ -314,47 +313,37 @@ class TestConfiguration:
         with pytest.raises(ConfigError, match="unknown preset"):
             preset("nope")
 
-    def test_no_preset_selects_the_retyping_mode(self):
-        """The hybrid-producing mode must never be a default.
+    def test_no_mode_claims_to_retype(self):
+        """The module cannot change which enemy a player meets, and must not say it can.
 
-        ``proven-pair-and-behaviour`` installs a behavior descriptor from a
-        different enemy than the sprite and stats, which nothing establishes is
-        coherent. It exists because the ticket's type shuffle cannot otherwise
-        change an enemy type at all, but a preset choosing it would make an
-        unproven combination the shipped behaviour.
+        Two independent reviews found this the same way: within one coupled-field
+        group the records differ only in (type, id, position), so swapping identity
+        is swapping positions; and installing the coupled fields as well just moves a
+        whole canonical record, because the factory word is constant. Measured, 0 of
+        949 such installs produced a non-canonical record. So the effect string must
+        not promise a type change, and the flag that would say so must be False.
         """
-        for name, entry in PRESETS.items():
-            assert entry.config.typing_mode == TYPING_PROVEN_PAIR, (
-                f"preset {name} selects {entry.config.typing_mode}"
-            )
-
-    def test_an_unknown_typing_mode_is_refused(self):
-        with pytest.raises(ConfigError, match="unknown typing mode"):
-            EnemyRandomizerConfig(typing_mode="anything-goes")
+        for mode, description in TYPING_MODES.items():
+            assert description["delivers_ticket_module_c"] is False, mode
+            assert "none" in description["player_visible_effect"], mode
+            assert typing_retypes(mode) is False, mode
 
     def test_the_typing_mode_effect_travels_in_the_configuration(self):
         """A reader must learn what the run did, not what its module is called.
 
-        The default mode relocates rather than retypes, which is easy to
-        misread as a bug or as a real shuffle depending on which way the reader
-        guesses. The configuration states the effect outright.
+        The module relocates; a reader who assumed otherwise would be misled by the
+        name, so the configuration states the effect and whether Module C shipped.
         """
-        safe = EnemyRandomizerConfig().to_json()
-        assert safe["typing_mode"] == TYPING_PROVEN_PAIR
-        assert "relocated" in safe["typing_mode_effect"]
-        retyping = EnemyRandomizerConfig(
-            typing_mode=TYPING_PROVEN_PAIR_AND_BEHAVIOUR
-        ).to_json()
-        assert "really changes" in retyping["typing_mode_effect"]
+        config = EnemyRandomizerConfig().to_json()
+        assert config["typing_mode"] == TYPING_PROVEN_PAIR
+        assert "relocated" in config["typing_mode_effect"]
+        assert config["delivers_ticket_module_c"] is False
 
-    def test_retyping_is_exactly_the_opt_in_mode(self):
+    def test_retyping_is_never_available(self):
         assert typing_retypes(TYPING_PROVEN_PAIR) is False
-        assert typing_retypes(TYPING_PROVEN_PAIR_AND_BEHAVIOUR) is True
-
-    def test_every_mode_declares_its_cost(self):
-        for mode, description in TYPING_MODES.items():
-            assert description.get("player_visible_effect"), mode
-            assert description.get("hybrid"), mode
+        # An unknown mode is refused by the config, so there is no second answer.
+        with pytest.raises(ConfigError, match="unknown typing mode"):
+            EnemyRandomizerConfig(typing_mode="proven-pair-and-behaviour")
 
     def test_an_unknown_stat_field_is_refused(self):
         with pytest.raises(ConfigError, match="unknown stat field"):

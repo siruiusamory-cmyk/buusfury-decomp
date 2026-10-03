@@ -3,19 +3,27 @@
 #   pwsh scripts/smoke-combined-rom.ps1 -Rom <combined.gba>
 #
 # ONE internal combined test ROM (map-warp + enemy-placement + enemy-stat) is
-# booted in the emulator to show that the module architecture composes in the real
-# engine. This is NOT the public combined application and it is NOT a validation
-# project: it boots the ROM, proves the engine loaded it, holds it open for a
-# bounded window while checking the process stays alive, and closes it.
+# booted in the emulator. This is NOT the public combined application and it is
+# NOT a validation project.
 #
-# WHAT IT PROVES: the engine accepts the composed image as a Buu's Fury cartridge
-# and runs it without crashing for the window.
-# WHAT IT DOES NOT PROVE: that any particular randomized enemy is reachable, that
-# the game is beatable, or that a player can complete a map. Enemy placement was
-# already proved reachable at runtime by RANDOMIZER-ENEMY-PACK-001's controlled
-# A/B on one savestate, and warp destinations by the warp randomizer's own record;
-# this run is evidence about *composition*, and it is deliberately not stretched
-# further.
+# WHAT IT ACTUALLY SHOWS, stated narrowly because an independent review measured
+# the gap between this check and what an earlier version of this header claimed:
+#
+#   * mGBA opened the file and identified it as a Buu's Fury cartridge. The game
+#     code in the window title comes from the cartridge header, which
+#     randomization never touches, so this check would pass for any image with an
+#     intact header.
+#   * the emulator process stayed up for the hold window. mGBA does not exit when
+#     the emulated game hangs, so this is NOT proof that the game did not crash.
+#   * with no input the game never leaves the title screen, so NO randomized
+#     placement, stat or warp is loaded, reached or exercised.
+#
+# So this is a load-and-stay-up check, and it is reported as one. Evidence that a
+# randomized enemy is reachable at runtime already exists elsewhere and is not
+# claimed here: RANDOMIZER-ENEMY-PACK-001's controlled A/B on one savestate read
+# the engine's live placement records for a map whose slots were both randomized.
+# Composition is proved at the byte level instead, in
+# tests/integration/test_randomizer_combined_rom.py.
 #
 # The ROM is launched with an isolated `savegamePath`, so a boot smoke can never
 # write the canonical roms/*.sav, and the canonical image is re-hashed afterwards.
@@ -104,12 +112,16 @@ try {
     }
 
     Write-Host ''
-    Write-Host "COMBINED ROM BOOT SMOKE: PASS"
+    Write-Host "COMBINED ROM LOAD SMOKE: PASS"
     Write-Host "  rom                  : $rom"
     Write-Host "  sha256               : $((Get-FileHash $rom -Algorithm SHA256).Hash)"
-    Write-Host "  game code reported   : $ExpectedGameCode"
-    Write-Host "  held open            : $HoldSeconds s without exit"
+    Write-Host "  header game code     : $ExpectedGameCode"
+    Write-Host "  emulator held open   : $HoldSeconds s without exit"
     Write-Host "  canonical ROM        : unchanged, still 940AD5F0...F059E"
+    Write-Host ''
+    Write-Host "This shows the emulator loaded the image and stayed up. It does NOT show"
+    Write-Host "that the game ran without hanging, and no randomized data was exercised:"
+    Write-Host "with no input the game never leaves the title screen."
 }
 finally {
     Pop-Location

@@ -908,19 +908,20 @@ def _executable_source(path: Path) -> str:
 def test_the_app_module_holds_no_colour_of_its_own():
     """No second palette, ever.
 
-    The theme is the single owner of every value; the moment this window spells
-    a hex colour it has forked the product's look, and a later "small tweak"
-    would land in only one of the three surfaces. Roles and ``theme.COLORS``
-    references are the whole vocabulary available here.
+    The theme is the single owner of every value; the moment either the product
+    module or the shared window spells a hex colour it has forked the product's
+    look, and a later "small tweak" would land in only one of the three surfaces.
+    Both files are scanned, because since ENEMY-RANDOMIZER-EXE-001 most of the
+    window's code lives in the shared module.
     """
-    code = _executable_source(GUI_SOURCE)
+    for path in (GUI_SOURCE, SHELL_GUI_SOURCE):
+        code = _executable_source(path)
 
-    literals = re.findall(r"#[0-9a-fA-F]{3,8}\b", code)
+        literals = re.findall(r"#[0-9a-fA-F]{3,8}\b", code)
 
-    assert literals == [], (
-        "tools/webfoot/warprand/gui.py must name theme roles, not colours; "
-        f"found {literals}"
-    )
+        assert literals == [], (
+            f"{path.name} must name theme roles, not colours; found {literals}"
+        )
 
 
 def test_the_window_uses_the_theme_roles_and_not_local_styling(window):

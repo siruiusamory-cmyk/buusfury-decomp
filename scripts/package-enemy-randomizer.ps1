@@ -47,8 +47,8 @@ try {
     $offenders = Assert-RandomizerNoProprietaryContent `
         -Staged $staged `
         -CanonicalRom $CanonicalRom `
-        -ExpectedSha256 '940AD5F01DB4465B8877DFE739510CBF34F4EA3D390F3DF13519808BC36F059E' `
-        -ExpectedSize 8388608 `
+        -ExpectedSha256 $script:RandomizerCanonicalSha256 `
+        -ExpectedSize $script:RandomizerCanonicalSize `
         -SkipRomProbe:$SkipRomProbe
 
     if ($offenders.Count -gt 0) {

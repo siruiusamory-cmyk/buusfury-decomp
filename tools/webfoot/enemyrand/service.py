@@ -25,7 +25,6 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from ..randomizer.errors import OutputPathRefusedError, RandomizerAppError
 from ..randomizer.registry import progress_steps, resolve_enabled
 from ..randomizer.service import (
     MANIFEST_SUFFIX,
@@ -207,15 +206,17 @@ class EnemyRandomizerService:
     ) -> RandomizerRequest:
         """The shared request this product's run describes.
 
-        ``enabled`` is resolved against this product's own module list first, so a
-        caller cannot smuggle a module this tool does not offer into a run through
-        a script.
+        ``enabled`` is resolved against this product's own module list here so a
+        caller gets a refusal while building the request, and the same list travels
+        on the request so the *service* enforces it too - the check that matters,
+        because a hand-built request never passes through this method.
         """
         return RandomizerRequest(
             source_rom=Path(source_rom),
             output_rom=Path(output_rom),
             master_seed=str(seed),
             enabled=self.resolve_modules(enabled),
+            allowed_modules=frozenset(MODULE_IDS),
             module_settings=dict(module_settings or {}),
             tool_name=TOOL_NAME,
             tool_version=self.tool_version,
@@ -226,20 +227,28 @@ class EnemyRandomizerService:
         )
 
     def randomize(self, request: RandomizerRequest) -> RandomizerResult:
-        """The shared window protocol: run exactly the request it was handed."""
-        refused = frozenset(request.enabled) - frozenset(MODULE_IDS)
-        if refused:
-            # Reachable only from a hand-built request. Refused rather than
-            # narrowed, for the same reason an unknown policy is: a run that did
-            # less than its label promised is worse than a run that stops.
-            raise RandomizerAppError(
-                f"this product does not offer {', '.join(sorted(refused))}; it "
-                f"offers {', '.join(MODULE_IDS)}"
-            )
-        if not request.enabled:
-            raise OutputPathRefusedError(
-                "No randomization is selected. Tick at least one option."
-            )
+        """The shared window protocol: run exactly the request it was handed.
+
+        No product check here. An earlier version had one, and an independent
+        review pointed out that the warp product did not - which is what happens
+        when a rule is written per client instead of once. The rule now lives in
+        :meth:`tools.webfoot.randomizer.service.RandomizerService.run`, enforced
+        against :attr:`RandomizerRequest.allowed_modules`, so both products and any
+        future one get it without remembering to.
+        """
+        return self._shared.run(request)
+
+    def randomize(self, request: RandomizerRequest) -> RandomizerResult:
+        """The shared window protocol: run exactly the request it was handed.
+
+        There is deliberately no product check here. An earlier version had one,
+        and an independent review pointed out that the warp product did not - which
+        is what happens when a rule is written per client instead of once. The rule
+        now lives in
+        :meth:`tools.webfoot.randomizer.service.RandomizerService.run`, enforced
+        against :attr:`RandomizerRequest.allowed_modules`, so both products and any
+        future one get it without having to remember.
+        """
         return self._shared.run(request)
 
     # --- the same call, spelled for a script -----------------------------

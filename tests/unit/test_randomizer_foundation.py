@@ -451,6 +451,35 @@ def test_a_hash_is_shortened_the_way_a_person_can_compare_it():
     assert shorten_hash("short") == "SHORT"
 
 
+def test_the_service_refuses_a_module_outside_the_products_own_list(tmp_path):
+    """The product's list is enforced by the shell, not by each client.
+
+    An independent review found the warp product's window protocol accepting a
+    hand-built request that named an enemy module: the shared service validated
+    nothing, and only the enemy product happened to check. A rule written once per
+    client is a rule one client forgets, so the check now lives in
+    :meth:`RandomizerService.run` against the request's own ``allowed_modules``.
+    """
+    source = tmp_path / "source.gba"
+    source.write_bytes(b"x" * 16)
+    service = RandomizerService()
+
+    with pytest.raises(ModuleRefusedError) as caught:
+        service.run(
+            RandomizerRequest(
+                source_rom=source,
+                output_rom=tmp_path / "out.gba",
+                master_seed="Goku",
+                enabled=frozenset({"enemy-stat"}),
+                allowed_modules=frozenset({"map-warp"}),
+            )
+        )
+
+    assert "does not offer" in str(caught.value)
+    assert "enemy-stat" in str(caught.value)
+    assert not (tmp_path / "out.gba").exists()
+
+
 def test_the_service_refuses_a_request_with_no_module_enabled(tmp_path):
     """A run with nothing enabled would emit an unmodified copy of the ROM."""
     source = tmp_path / "source.gba"

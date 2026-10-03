@@ -404,6 +404,10 @@ class WarpRandomizerService:
             output_rom=Path(output_rom),
             master_seed=str(seed),
             enabled=frozenset({MODULE_ID}),
+            # This product's whole module list, handed to the service so the check
+            # lives in one place: a request naming any other module is refused there
+            # rather than run under this tool's name and reported with zero counts.
+            allowed_modules=frozenset({MODULE_ID}),
             tool_name=TOOL_NAME,
             tool_version=self.tool_version,
             progression=PROGRESSION_DISCLAIMER,
@@ -414,14 +418,15 @@ class WarpRandomizerService:
     def randomize(self, request: RandomizerRequest) -> RandomizationOutcome:
         """The shared window protocol: run exactly the request it was handed.
 
-        This product offers one module, so a request naming anything else is
-        refused by the registry rather than silently narrowed - and the result is
-        translated back into this product's own outcome shape, because the window
-        is the *product's* window and reports with this product's vocabulary. The
-        enemy sibling returns the shared result instead and presents its own
-        block; both are the same protocol, which is why the window treats a result
-        opaquely and only ever reads ``output_path``, ``output_sha256`` and
-        ``manifest_path`` from it.
+        This product offers one module, which the *service* enforces against
+        :attr:`RandomizerRequest.allowed_modules` - an independent review found this
+        method delegating straight through, so a hand-built request could run an
+        enemy module under the warp tool's name. The result is then translated back
+        into this product's own outcome shape, because the window is the *product's*
+        window and reports with this product's vocabulary. The enemy sibling returns
+        the shared result instead and presents its own block; both are the same
+        protocol, which is why the window treats a result opaquely and only ever
+        reads ``output_path``, ``output_sha256`` and ``manifest_path`` from it.
         """
         return self._outcome(self._shared.run(request))
 

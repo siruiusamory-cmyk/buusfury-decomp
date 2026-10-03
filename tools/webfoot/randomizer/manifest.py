@@ -105,6 +105,7 @@ def build_manifest(
     spoiler_filename: str | None = None,
     module_order: Sequence[str] = (),
     tool_commit: str | None = None,
+    tool_dirty: bool | None = None,
 ) -> dict:
     """The shared manifest for one finished run.
 
@@ -135,8 +136,10 @@ def build_manifest(
         # The commit is stated under its own key rather than inside ``tool``, so
         # adding provenance never changes the shape of the two facts every reader
         # already looks for. A packaged build has no repository to ask, so this is
-        # legitimately null there - a provenance gap, recorded rather than hidden.
-        "build": {"commit": tool_commit},
+        # legitimately null there - a provenance gap, recorded rather than hidden -
+        # and ``dirty`` says whether the recorded commit is the bytes that produced
+        # the build or only the tree they were based on.
+        "build": {"commit": tool_commit, "dirty": tool_dirty},
         "source": {
             "profile": profile_id,
             "size": source_size,

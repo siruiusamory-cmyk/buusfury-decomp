@@ -198,37 +198,85 @@ def random_seed() -> str:
 
 
 _COMMIT: str | None | bool = False
+_DIRTY: bool | None | bool = False
+
+
+def _git(*arguments: str) -> str | None:
+    """Run one read-only git command in the package's directory.
+
+    Started without a console window, because a windowed build that flashed a
+    console on every run would be a worse defect than the provenance it was
+    fetching.
+    """
+    import subprocess
+    import sys
+
+    creation_flags = 0
+    if sys.platform == "win32":
+        creation_flags = getattr(subprocess, "CREATE_NO_WINDOW", 0x08000000)
+    try:
+        result = subprocess.run(
+            ["git", *arguments],
+            cwd=Path(__file__).resolve().parent,
+            capture_output=True,
+            text=True,
+            timeout=10,
+            creationflags=creation_flags,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return None
+    if result.returncode != 0:
+        return None
+    return result.stdout.strip()
 
 
 def repository_commit() -> str | None:
     """The checkout's commit, or ``None`` when there is no repository to ask.
 
     Read once and cached, because it is provenance for a manifest rather than an
-    input to a run: a packaged executable has no ``.git`` and returns ``None``,
-    which the manifest records as a null rather than inventing a value. It is
-    deliberately not part of the reproducibility contract - a seed is identified
-    by the tool version and the module algorithm versions, which are stated
-    constants - so a missing commit is a gap in the record, not a refusal.
+    input to a run. A **packaged** build returns ``None`` without asking: a one-file
+    executable has no checkout and no ``git``, so running the command there would
+    either fail slowly or, worse, find some unrelated repository through the
+    process's working directory and record a commit that did not produce the build.
+    The manifest records the null honestly.
+
+    It is deliberately not part of the reproducibility contract - a seed is
+    identified by the tool version and the module algorithm versions, which are
+    stated constants - so a missing commit is a gap in the record, not a refusal.
     """
     global _COMMIT
     if _COMMIT is not False:
         return _COMMIT  # type: ignore[return-value]
-    import subprocess
+    import sys
 
-    try:
-        result = subprocess.run(
-            ["git", "rev-parse", "HEAD"],
-            cwd=Path(__file__).resolve().parent,
-            capture_output=True,
-            text=True,
-            timeout=10,
-        )
-    except (OSError, subprocess.SubprocessError):
+    if getattr(sys, "frozen", False):
         _COMMIT = None
         return None
-    text = result.stdout.strip()
-    _COMMIT = text if result.returncode == 0 and text else None
+    text = _git("rev-parse", "HEAD")
+    _COMMIT = text or None
     return _COMMIT  # type: ignore[return-value]
+
+
+def repository_is_dirty() -> bool | None:
+    """Whether the checkout had uncommitted changes when the run was planned.
+
+    ``None`` when the question cannot be asked, which is the packaged case. The
+    manifest records this beside the commit, because a commit recorded from a dirty
+    worktree names the commit the files were *based* on rather than the bytes that
+    actually produced the build - and a reader comparing two manifests deserves to
+    know which of those they are looking at.
+    """
+    global _DIRTY
+    if _DIRTY is not False:
+        return _DIRTY  # type: ignore[return-value]
+    import sys
+
+    if getattr(sys, "frozen", False):
+        _DIRTY = None
+        return None
+    status = _git("status", "--porcelain")
+    _DIRTY = None if status is None else bool(status)
+    return _DIRTY  # type: ignore[return-value]
 
 
 # --- the ROM check -----------------------------------------------------------
@@ -284,10 +332,15 @@ class RandomizerRequest:
     source_rom: Path
     output_rom: Path
     master_seed: str
-    #: The resolved enabled module ids. The product calls
-    #: :func:`tools.webfoot.randomizer.registry.resolve_enabled` first, so an
-    #: out-of-product module is refused before a request can be built.
+    #: The resolved enabled module ids.
     enabled: frozenset[str]
+    #: The modules the *product* offers. The service enforces this rather than
+    #: trusting the caller to have done so: an independent review found the warp
+    #: product's window protocol accepting a request that named an enemy module,
+    #: which would have run it under the warp tool's name and reported zero counts.
+    #: Validation belongs here, where both products get it, rather than in each
+    #: product's own method where one of them forgot it.
+    allowed_modules: frozenset[str] | None = None
     #: Per-module settings. Missing modules take their declared defaults.
     module_settings: Mapping[str, Mapping[str, object]] = field(default_factory=dict)
     tool_name: str = "Randomizer"
@@ -602,6 +655,17 @@ class RandomizerService:
                 "no module is enabled, so this run would produce an unmodified copy "
                 "of your ROM. Enable at least one randomization."
             )
+        if request.allowed_modules is not None:
+            # The product's own list, enforced here. A module outside it is refused
+            # rather than run, because running it would produce a ROM under a label
+            # that never offered it.
+            outside = frozenset(request.enabled) - frozenset(request.allowed_modules)
+            if outside:
+                raise ModuleRefusedError(
+                    f"this product does not offer {', '.join(sorted(outside))}; it "
+                    f"offers "
+                    f"{', '.join(sorted(request.allowed_modules)) or 'no module'}"
+                )
 
         text = self.normalize_seed(request.master_seed)
         expected = self.supported_profile()
@@ -632,21 +696,23 @@ class RandomizerService:
             if request.manifest_path is not None
             else default_manifest_path(output)
         )
-        if request.spoiler:
-            spoiler_path: Path | None = (
-                Path(request.spoiler_path)
-                if request.spoiler_path is not None
-                else default_spoiler_path(output)
-            )
-        else:
-            spoiler_path = None
-
+        # The spoiler *companion* of this output is always part of the output set,
+        # whether or not this run will write one. An independent review found the
+        # narrow version leaving a previous seed's spoiler beside a new ROM when
+        # the second run had the spoiler switched off, which pairs a ROM with
+        # another run's answers. So the path is checked and replaced as a companion;
+        # `spoiler_path` (what gets written) stays None when the option is off.
+        companion_spoiler = (
+            Path(request.spoiler_path)
+            if request.spoiler_path is not None
+            else default_spoiler_path(output)
+        )
         write_targets: list[tuple[Path, str]] = [
             (output, "the output ROM"),
             (manifest_path, "the manifest"),
+            (companion_spoiler, "the spoiler log"),
         ]
-        if spoiler_path is not None:
-            write_targets.append((spoiler_path, "the spoiler log"))
+        spoiler_path = companion_spoiler if request.spoiler else None
 
         for target, label in write_targets:
             if paths_are_the_same_file(target, source):
@@ -803,6 +869,9 @@ class RandomizerService:
             tool_commit=(
                 request.sdk_commit if request.sdk_commit is not None
                 else repository_commit()
+            ),
+            tool_dirty=(
+                None if request.sdk_commit is not None else repository_is_dirty()
             ),
         )
 

@@ -34,10 +34,20 @@ What it does not
   enemy than its sprite and stats, which nothing establishes is coherent. That
   research result is why the module is not registered here at all, and why every
   manifest this tool writes records ``delivers_ticket_module_c: false``.
-* **bosses, NPCs, quest-critical or scripted actors, or anything the eligibility
-  model cannot positively classify.** Those exclusions are the core's and are not
-  reachable from this frontend; there is no "randomize everything" switch,
-  because one would be a way to turn them off.
+* **actors it can positively identify as something other than an ordinary enemy**,
+  plus anything the eligibility model cannot classify. Excluded: actors carrying a
+  script event, actors whose script root was never decoded, actors whose stat
+  selector falls outside the verified enemy-stat extent, placements inside a door
+  trigger, and an enemy that is the only eligible one in its map. There is no
+  "randomize everything" switch, because one would be a way to turn those off.
+
+  One of those exclusions is weaker than the word "bosses" would suggest, and the
+  honest version is in every manifest this package writes: the project has **no
+  boss, NPC or quest-critical classification**, so none is claimed. A boss that is
+  neither script-attached nor alone in its map is indistinguishable from an
+  ordinary enemy and may be randomized. The shipped README says so in the same
+  words, because a user reading only the download should not have to open a
+  manifest to learn it.
 * items, map generation, or anything else.
 
 No ROM is bundled, and none can be: the only data file in the packaged build is

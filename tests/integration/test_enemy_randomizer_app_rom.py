@@ -258,6 +258,33 @@ def test_no_spoiler_file_appears_when_the_option_is_off(service, tmp_path):
     assert result.manifest_path.exists()
 
 
+def test_a_previous_runs_spoiler_never_survives_beside_a_new_rom(service, tmp_path):
+    """The spoiler is a companion of the output, whether or not this run writes one.
+
+    An independent review found the narrow version: run seed A with the spoiler on,
+    then seed B with it off over the same output, and seed A's answers stayed beside
+    seed B's ROM while the new manifest said ``spoiler: null``. The companion path
+    is therefore checked and replaced as part of the output set.
+    """
+    output = tmp_path / "reused.gba"
+    first = service.randomize_enemies(LOCAL_ROM, output, STREAM_SEED, spoiler=True)
+    spoiler = service.spoiler_path_for(output)
+    assert first.spoiler_path == spoiler and spoiler.exists()
+
+    # A stale spoiler is part of the collision the user is confirming.
+    with pytest.raises(OutputAlreadyExistsError):
+        service.randomize_enemies(LOCAL_ROM, output, "StreamBlind-0002", spoiler=False)
+
+    second = service.randomize_enemies(
+        LOCAL_ROM, output, "StreamBlind-0002", spoiler=False, overwrite=True
+    )
+
+    assert second.spoiler_path is None
+    assert not spoiler.exists(), "seed A's answers must not outlive seed A's ROM"
+    document = json.loads(second.manifest_path.read_text(encoding="utf-8"))
+    assert document["spoiler"] is None
+
+
 # --- source-ROM safety --------------------------------------------------------
 
 

@@ -38,6 +38,12 @@ $script:RandomizerForbiddenExtensions = @(
     '.ss6', '.ss7', '.ss8', '.ss9', '.sps', '.state', '.srm'
 )
 
+#: The one supported image's identity, stated once for BOTH products. Each package
+#: script used to hard-code these two values; two copies of a digest are two copies
+#: that can drift, and the copy that drifts is the one guarding a release.
+$script:RandomizerCanonicalSha256 = '940AD5F01DB4465B8877DFE739510CBF34F4EA3D390F3DF13519808BC36F059E'
+$script:RandomizerCanonicalSize = 8388608
+
 function Test-RandomizerContainsBytes {
     param([byte[]] $Haystack, [byte[]] $Needle)
     $text = $script:RandomizerLatin1.GetString($Haystack)

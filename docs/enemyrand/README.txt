@@ -25,9 +25,18 @@ WHAT IT DOES NOT DO
   different kind of enemy, and enemy identity/type swapping is not supported in
   this version. This is not a hidden limitation: every manifest the tool writes
   records it.
-- It does not randomize bosses, NPCs, quest-critical actors or scripted actors.
-  Anything the tool cannot positively classify as an ordinary enemy is left
-  alone, and there is deliberately no "randomize everything" switch.
+- It does not touch actors it can positively identify as something other than an
+  ordinary enemy. Excluded: any actor carrying a script event, any actor whose
+  script could not be decoded, any actor whose stat selector falls outside the
+  verified enemy-stat extent, any placement inside a door trigger, and any enemy
+  that is the only eligible one in its map. There is deliberately no "randomize
+  everything" switch.
+- IT DOES NOT KNOW WHICH ENEMIES ARE BOSSES. No boss, NPC or quest-critical
+  classification exists in this project's evidence, so none is claimed. The
+  consequence, stated plainly: a boss that is neither script-attached nor alone
+  in its map is indistinguishable to this tool from an ordinary enemy and MAY BE
+  RANDOMIZED. That is a real limitation of this version, and every manifest
+  records it under "limitations".
 - It does not randomize items, map warps or map layouts. The Map Warp Randomizer
   is a separate tool.
 
@@ -87,8 +96,11 @@ GOOD TO KNOW
 - Randomized placements and stats change the game's difficulty. Progression
   stays bounded - nothing is drawn from a global range - but full-game balance
   is not guaranteed.
-- A confirmed overwrite deletes the previous output only once the new one is
-  certain to be produced.
+- A confirmed overwrite replaces the previous output, its manifest and its
+  spoiler together, and it deletes them before writing the new ROM. If the write
+  itself then fails - a full disk, a permission problem - the previous files are
+  already gone. That is the cost of refusing to write over a file in place, and
+  it is stated rather than hidden.
 - The tool never writes to the ROM you selected. The output must be a separate
   file, and an output that is a copy of your clean ROM is refused even if you
   confirm the overwrite.

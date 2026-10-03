@@ -9,7 +9,7 @@ enemy executable also uses; what is left here is what is genuinely warp-specific
 * the words - the product name, the ROM prompt, the refusals, the disclaimer;
 * the launch seed and the output template;
 * the one module this product offers;
-* the success block, which this product has shown in the same eleven lines since
+* the success block, which this product has shown in the same twelve lines since
   v0.1.0 and which a user of the released tool recognises;
 * the release-verification entry, whose usage text names this executable.
 

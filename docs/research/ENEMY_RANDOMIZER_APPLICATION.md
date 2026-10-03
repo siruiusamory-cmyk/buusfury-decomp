@@ -174,7 +174,7 @@ Three things had to survive, and each is pinned by a test:
   down to the wording, including "Randomizing warp destinations".
 
 The user-visible window is the same window: one module is offered, so the shared
-window draws no options area at all, and the same eleven-line success block is
+window draws no options area at all, and the same twelve-line success block is
 produced by a product override.
 
 ### Map Warp old to new: what changed and what did not

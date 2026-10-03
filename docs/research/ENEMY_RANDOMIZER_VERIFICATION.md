@@ -245,15 +245,32 @@ overwrites.
 
 * **1,000 seeds attempted, 1,000 accepted, 0 rejected**
 * **1,000 distinct manifest ids** (no seed reproduced another's manifest)
-* 468 ms/seed, 468 s total
-* per-seed means: 467.2 type slots changed, 1,183.6 placements moved, 92.5 stat
-  records changed
+* per-seed means: 1,183.6 placements moved, 92.5 stat records changed
 * nested invariants checked on every seed: canonical pairs only, no invented
   coordinate, per-map coordinate multiset preserved, stats inside domain and band,
   no overlapping change, every excluded actor byte-identical
 * build-level corpus, 8 seeds emitted through `apply_plan`: all 8 byte-reproducible
 
 No seed was rejected, so there are no rejection reasons to report.
+
+## 9.1 Shipping composition
+
+The preset a streamed run is built from, and what it deliberately leaves out:
+
+| Module | Shipped | Why |
+| --- | --- | --- |
+| enemy-placement | **yes** | proven: permutes existing coordinates within one map |
+| enemy-stat | **yes** | proven: multiplicative within a bounded band of each record's own value |
+| enemy-type | **no** | undelivered; section 5.2 |
+| warp (separate product) | not run here | it is its own tool with its own output; this pack derives its seed so one master seed addresses both without sharing a stream |
+
+`stream-safe` and `chaos` both enable exactly `SHIPPING_MODULES`
+(`enemy-placement`, `enemy-stat`). The enemy-type module stays compiled and is
+reachable only by asking for it explicitly (`--only enemy-type`), which keeps the
+research result reproducible while ensuring no shipped preset implies the
+capability. Every run of any composition records
+`configuration.delivers_ticket_module_c` and, in the spoiler log, an
+`enemy_type_randomization` block stating the same thing.
 
 ## 10. Runtime evidence
 

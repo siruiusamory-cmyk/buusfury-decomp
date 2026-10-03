@@ -9,17 +9,10 @@ import {
   programmeTotal,
   project,
   roadmap,
+  roadmapActivePhase,
   roadmapNextPhase,
 } from "../data/project";
 
-/**
- * The status data the page renders, as JSON.
- *
- * The progress page and this document are built from the same module in the
- * same build, so a consumer can check the rendered page against the data behind
- * it instead of matching prose. That is the point: the figures and the milestone
- * states have exactly one owner, and a test can prove the two never drift.
- */
 export const GET: APIRoute = () =>
   new Response(
     JSON.stringify(
@@ -37,6 +30,9 @@ export const GET: APIRoute = () =>
         acceptanceTarget: project.acceptanceTarget,
         frontier: project.frontier,
         milestones: project.milestones,
+        activePhase: roadmapActivePhase
+          ? { id: roadmapActivePhase.id, title: roadmapActivePhase.title }
+          : null,
         nextPhase: roadmapNextPhase
           ? { id: roadmapNextPhase.id, title: roadmapNextPhase.title }
           : null,

@@ -1,7 +1,9 @@
 ---
-import { buildoutDone, buildoutTotal, buildoutPercent, familyTallies, roadmapNextPhase, proofStrip } from "../data/project";
+import { buildoutDone, buildoutTotal, buildoutPercent, familyTallies, roadmapActivePhase, roadmapNextPhase, proofStrip } from "../data/project";
 
 const highlights = proofStrip.slice(0, 3);
+const focusPhase = roadmapActivePhase ?? roadmapNextPhase;
+const focusLabel = roadmapActivePhase ? "Working on now" : "Up next";
 ---
 
 <aside class="gadgets" aria-label="Desktop gadgets">
@@ -27,10 +29,10 @@ const highlights = proofStrip.slice(0, 3);
     </dl>
   </div>
 
-  {roadmapNextPhase && (
+  {focusPhase && (
     <div class="gadget">
-      <h2 class="gadget-title">Up next</h2>
-      <p class="gadget-next"><b>Phase {roadmapNextPhase.ordinal}:</b> {roadmapNextPhase.title}</p>
+      <h2 class="gadget-title">{focusLabel}</h2>
+      <p class="gadget-next"><b>Phase {focusPhase.ordinal}:</b> {focusPhase.title}</p>
     </div>
   )}
 

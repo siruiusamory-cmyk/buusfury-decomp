@@ -5,8 +5,6 @@ import {
   buildoutTotal,
   roadmapRows,
   familyTallies,
-  recentBreakthroughs,
-  archivedBreakthroughs,
 } from "../data/project";
 import type { DependencyStep, FrontierStep } from "../data/project";
 import Questline from "./Questline.astro";
@@ -14,8 +12,6 @@ import Icon from "./Icon.astro";
 import Window from "./Window.astro";
 
 const pad = (n: number) => String(n).padStart(2, "0");
-const latest = recentBreakthroughs.slice(0, 4);
-const rest = [...recentBreakthroughs.slice(4), ...archivedBreakthroughs];
 const shot = project.figures[1];
 
 const numbered = roadmapRows.map((row, index) => ({ ...row, n: pad(index + 1) }));
@@ -128,41 +124,6 @@ const frontierLabel: Record<FrontierStep["kind"], string> = {
                 {step.marker && <strong class="marker">{step.marker}</strong>}
               </span>
               <span class="state">{step.state}</span>
-            </li>
-          ))}
-        </ol>
-      </div>
-    </details>
-  </Window>
-
-  <Window id="wins" title="Latest posts - DragonByte Z Forums" icon="folder-new" labelledby="wins-title" class="forum-window wins-panel">
-    <div class="th">
-      <h2 id="wins-title">Latest verified wins</h2>
-      <span class="th-aside">Proven at runtime or byte for byte</span>
-    </div>
-    <ol class="wins">
-      {latest.map((item) => (
-        <li class="topic">
-          <Icon name="folder-new" class="topic-icon" />
-          <details class="topic-body toggle">
-            <summary><b>{item.title}</b></summary>
-            <small>{item.summary}</small>
-          </details>
-        </li>
-      ))}
-    </ol>
-
-    <details class="more">
-      <summary>{rest.length} earlier logged results</summary>
-      <div class="disclosure-body">
-        <ol class="wins wins-archive">
-          {rest.map((item) => (
-            <li class="topic">
-              <Icon name="folder" class="topic-icon" />
-              <details class="topic-body toggle">
-                <summary><b>{item.title}</b></summary>
-                <small>{item.summary}</small>
-              </details>
             </li>
           ))}
         </ol>

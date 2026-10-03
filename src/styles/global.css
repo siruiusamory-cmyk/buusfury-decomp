@@ -45,6 +45,7 @@
 html {
   scroll-behavior: smooth;
   scroll-padding-top: 16px;
+  scroll-padding-bottom: calc(var(--taskbar-h) + 16px);
   -webkit-text-size-adjust: 100%;
   scrollbar-color: #d679a7 #fbe3ef;
 }
@@ -53,7 +54,7 @@ body {
   margin: 0;
   min-height: 100vh;
   padding: 28px 16px calc(var(--taskbar-h) + 32px);
-  background: url("/aero-sky.svg") center top / cover no-repeat, linear-gradient(180deg, #fff6fa, #f9d3e5 45%, #ec93bd);
+  background: var(--wallpaper, none) center top / cover no-repeat, linear-gradient(180deg, #fff6fa, #f9d3e5 45%, #ec93bd);
   background-color: #f9d3e5;
   background-attachment: fixed, fixed;
   color: var(--ink);
@@ -215,7 +216,7 @@ figure { margin: 0; }
 
 .shot-window .window-body { padding: 0; }
 .shot-window img { width: 100%; }
-.shot-window figcaption { padding: 8px 12px; border-top: 1px solid var(--line); background: var(--row1); color: var(--ink-2); font-size: 12px; }
+.shot-window figcaption { margin-top: 6px; padding: 8px 12px; background: rgba(255, 255, 255, 0.9); border: 1px solid rgba(60, 0, 30, 0.4); border-radius: 2px; color: var(--ink-2); font-size: 12px; }
 
 .dialog-title { font: 400 18px/1.3 var(--window); color: #3a1028; }
 .copy-route { margin-top: 10px; font-size: 12px; color: var(--ink-2); }
@@ -377,7 +378,6 @@ figure { margin: 0; }
   box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.4);
 }
 
-.gel-button,
 .more > summary {
   position: relative;
   display: inline-flex; align-items: center;
@@ -392,7 +392,6 @@ figure { margin: 0; }
   cursor: pointer;
   transition: background-color 0.25s, box-shadow 0.25s;
 }
-.gel-button:hover,
 .more > summary:hover {
   color: var(--ink);
   text-decoration: none;
@@ -426,8 +425,6 @@ figure { margin: 0; }
 }
 .cols-cap { grid-template-columns: 22px minmax(0, 1fr) 84px; }
 .cols-cap span:last-child { text-align: center; }
-.cols-stage { grid-template-columns: 22px minmax(0, 1fr) 64px 96px; }
-.cols-stage span:nth-child(n + 3) { text-align: center; }
 
 .chip,
 .chip-live {
@@ -638,7 +635,9 @@ summary::-webkit-details-marker { display: none; }
 .post:nth-child(even) .post-body { background: var(--page); }
 .phase-title { font: 700 14px/1.3 var(--title); color: var(--ink); padding-bottom: 6px; border-bottom: 1px dotted var(--line-strong); }
 .phase-summary { margin-top: 6px; color: var(--ink-2); max-width: 75ch; }
+.post.is-in-progress .postbit,
 .post.is-next .postbit { background: linear-gradient(180deg, #fde2ef, #f7c2db); }
+.post.is-in-progress .post-body,
 .post.is-next .post-body { background: #fff; box-shadow: inset 3px 0 0 -2px var(--gel-low); }
 
 .outcomes { margin-top: 8px; border: 1px solid var(--line); }
@@ -714,7 +713,6 @@ summary::-webkit-details-marker { display: none; }
 .proof-value { display: block; margin-top: 2px; font: 700 15px/1.25 var(--title); color: var(--gel-deep); overflow-wrap: anywhere; font-variant-numeric: tabular-nums; }
 
 .dod { display: grid; grid-template-columns: 22px minmax(0, 1fr); gap: 10px; padding: 10px 12px; }
-.dod h3 { font: 700 13px/1.3 var(--title); color: var(--gold); }
 .dod-target { margin-top: 2px; font-weight: 700; }
 .dod-note { margin-top: 6px; color: var(--ink-2); font-size: 12px; max-width: 75ch; }
 
@@ -731,6 +729,10 @@ summary::-webkit-details-marker { display: none; }
 @media (max-width: 1240px) {
   .desktop { grid-template-columns: minmax(0, 1fr) 220px; grid-template-areas: "windows gadgets" "readme gadgets"; }
   .desktop-icons { display: none; }
+}
+
+@media (max-width: 1040px) {
+  .tasks { scrollbar-width: thin; scrollbar-color: rgba(255, 255, 255, 0.55) transparent; -webkit-mask-image: linear-gradient(90deg, #000 calc(100% - 32px), transparent); mask-image: linear-gradient(90deg, #000 calc(100% - 32px), transparent); padding-right: 36px; }
 }
 
 @media (max-width: 1000px) {

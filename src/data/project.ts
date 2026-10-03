@@ -2,12 +2,6 @@ import capabilityRegistry from "./capabilities.json";
 
 export type MilestoneStatus = "complete" | "current" | "next" | "target";
 
-/**
- * State of one DragonByte Z buildout capability. Deliberately binary: a
- * capability is either shipped and reachable from the desktop application, or
- * it is not. "The binary structure is known" is not a state this track can
- * express, because a reverse-engineering result is not a product capability.
- */
 export type CapabilityState = "shipped" | "missing";
 
 export interface Milestone {
@@ -16,16 +10,6 @@ export interface Milestone {
   plainEnglish: string;
   technical?: string;
   status: MilestoneStatus;
-  /**
-   * Work this milestone deliberately leaves open, named as such.
-   *
-   * A milestone is completed when the work it records is done. Where its own
-   * description has to say that something remains unmeasured or unsupported, the
-   * remaining item is declared here, so a reader sees a stated limit rather than
-   * unfinished work presented as finished. The consistency tests require the
-   * declaration whenever a completed milestone's text still reads as open, and
-   * forbid it anywhere else.
-   */
   openItems?: string[];
 }
 
@@ -37,7 +21,6 @@ export interface Breakthrough {
   date?: string;
   badge?: string;
   commit?: string;
-  /** Part of the current frontier period, shown in the recent log. */
   recent?: boolean;
 }
 
@@ -45,10 +28,7 @@ export interface ProjectMetric {
   label: string;
   value: string;
   explanation?: string;
-  /** Which proof group the metric belongs to. */
   group: string;
-  /** Headline figures shown in the compact proof strip; the rest sit in the
-      full-ledger disclosure, so no figure is duplicated on the page. */
   strip?: boolean;
 }
 
@@ -63,7 +43,6 @@ export interface DependencyStep {
   marker?: string;
 }
 
-/** One capability in the active DragonByte Z buildout track. */
 export interface BuildoutItem {
   key: string;
   title: string;
@@ -78,7 +57,6 @@ export interface BuildoutFamily {
   items: BuildoutItem[];
 }
 
-/** The active product-development track. */
 export interface Buildout {
   label: string;
   title: string;
@@ -92,13 +70,11 @@ export interface FrontierStep {
   detail: string;
 }
 
-/** A single measured figure shown in the masthead readout. */
 export interface StateFact {
   label: string;
   value: string;
 }
 
-/** A real product capture, shipped unaltered except for cropping. */
 export interface Figure {
   src: string;
   width: number;
@@ -124,7 +100,6 @@ export interface ProjectStatus {
   dependencyLadder: DependencyStep[];
   buildout: Buildout;
   frontier: FrontierStep[];
-  /** Measured product figures for the masthead readout. */
   stateFacts: StateFact[];
   breakthroughs: Breakthrough[];
   metrics: ProjectMetric[];
@@ -134,26 +109,9 @@ export interface ProjectStatus {
   footerTagline: string;
   developmentStatus: string;
   disclaimer: string;
-  /** Waiver of the proprietary-artifact rule for real product captures. */
   assetPolicy: string;
 }
 
-/* ---------------------------------------------------------------------------
- * The capability registry
- *
- * `capabilities.json` is the one current list of DragonByte Z product
- * capabilities. The buildout list below, its per-family tallies and the
- * percentage on the site are all derived from it, so there is no second place
- * to record a capability's state.
- *
- * The registry keeps product capability and research knowledge apart on
- * purpose. Knowing a binary structure is not a shipped capability, so a
- * capability that is counted as shipped must name the editor surface a user
- * reaches it through, how its result was proven, and the evidence behind it;
- * everything else lives in `researchOnly`, which is never counted.
- * ------------------------------------------------------------------------- */
-
-/** How a shipped capability's result was proven. */
 export type CapabilityProof = "runtime" | "application";
 
 const PROOF_LEVELS: readonly CapabilityProof[] = ["runtime", "application"];
@@ -170,18 +128,13 @@ interface RegistryCapability {
   title: string;
   state: CapabilityState;
   detail: string;
-  /** Bounded scope: what the capability does NOT do, or why it is missing. */
   limits: string[];
-  /** Where in DragonByte Z it is reachable. Shipped capabilities only. */
   surface?: string;
-  /** How its result was proven. Shipped capabilities only. */
   proof?: CapabilityProof;
   evidence: string;
-  /** Counts this capability owns, so a quoted figure has exactly one owner. */
   measurements?: Record<string, number>;
 }
 
-/** A proven fact about the binary that is deliberately not a product capability. */
 interface RegistryResearchNote {
   id: string;
   statement: string;
@@ -204,15 +157,6 @@ interface CapabilityRegistry {
 
 const registry = capabilityRegistry as unknown as CapabilityRegistry;
 
-/**
- * The structural half of the registry contract, enforced when the site builds.
- *
- * It is deliberately a SUBSET of what `tests/unit/test_capability_registry.py`
- * checks: it exists so a malformed registry fails `npm run check` and
- * `npm run build` instead of publishing a wrong page, while CI - which runs the
- * suite without Node - enforces the whole contract, including the fields a page
- * never reads (limitations, evidence and research separation).
- */
 function validateCapabilityRegistry(value: CapabilityRegistry): void {
   if (value.schemaVersion !== 1) {
     throw new Error(`Unsupported capability registry schema version: ${value.schemaVersion}.`);
@@ -232,8 +176,6 @@ function validateCapabilityRegistry(value: CapabilityRegistry): void {
     throw new Error(`Capability ids must be unique; "${duplicateCapability}" appears twice.`);
   }
 
-  // The declared denominator is deliberately redundant with the list: changing
-  // the total is a product decision, not a side effect of editing one record.
   if (value.capabilities.length !== value.track.capabilityTotal) {
     throw new Error(
       `The registry declares ${value.track.capabilityTotal} capabilities but lists ` +
@@ -260,9 +202,6 @@ function validateCapabilityRegistry(value: CapabilityRegistry): void {
       throw new Error(`${where} has state "${capability.state}", not "shipped" or "missing".`);
     }
 
-    // A research result is not a product capability: a counted capability names
-    // the editor surface a user reaches it through and how its result was
-    // proven, and one that is not shipped claims neither.
     if (capability.state === "shipped") {
       if (!capability.surface?.trim() || !capability.proof || !PROOF_LEVELS.includes(capability.proof)) {
         throw new Error(
@@ -294,14 +233,6 @@ function validateCapabilityRegistry(value: CapabilityRegistry): void {
 
 validateCapabilityRegistry(registry);
 
-/**
- * A count one capability owns, read from the registry.
- *
- * The page states a few of these figures outside the roadmap - in the measured
- * strip and in the product-capture captions - so they are read here instead of
- * being written twice. A missing or misspelled measurement throws rather than
- * publishing a blank or stale number.
- */
 function capabilityCount(capabilityId: string, name: string): number {
   const declared = registry.capabilities
     .find((capability) => capability.id === capabilityId)?.measurements?.[name];
@@ -747,9 +678,6 @@ export const project: ProjectStatus = {
     { label: "ADVANCED AUTHORING / AUTHOR_NEW", state: "target" },
     { label: "PLAYABLE LOG1 CONTENT", state: "target" },
   ],
-  // The active track, derived from the capability registry above: the capability
-  // list, the per-family tallies and the percentage all come from that one
-  // source, so a capability cannot be shipped in one place and planned in another.
   buildout,
   stateFacts: [
     { label: "TARGET HARDWARE", value: "GBA · 240 × 160" },
@@ -1292,11 +1220,14 @@ export const project: ProjectStatus = {
     },
   ],
   nav: [
-    { label: "STATUS", href: "status" },
-    { label: "PROGRESS", href: "progress" },
-    { label: "ROADMAP", href: "roadmap-to-1-0" },
-    { label: "CAPABILITIES", href: "roadmap" },
-    { label: "PROOF", href: "proof" },
+    { label: "Welcome", href: "status" },
+    { label: "Progress", href: "progress" },
+    { label: "Latest posts", href: "wins" },
+    { label: "Announcements", href: "focus" },
+    { label: "Capabilities", href: "roadmap" },
+    { label: "Roadmap to 1.0", href: "roadmap-to-1-0" },
+    { label: "Proof", href: "proof" },
+    { label: "readme.txt", href: "readme" },
   ],
   links: [
     { label: "GitLab", url: "https://gitlab.com/siruiusamory/log1-remake/" },
@@ -1313,26 +1244,12 @@ export const project: ProjectStatus = {
     " and this site ships no generated imagery of any kind.",
 };
 
-/* ---------------------------------------------------------------------------
- * Derived progress
- *
- * The DragonByte Z percentage is computed from the buildout capability list, so
- * it cannot drift from the milestones it claims to summarise. Reclassify one
- * capability and the number moves; there is no second place to edit.
- * ------------------------------------------------------------------------- */
-
 const buildoutItems = project.buildout.families.flatMap((family) => family.items);
 
 export const buildoutDone = buildoutItems.filter((item) => item.state === "shipped").length;
 export const buildoutTotal = buildoutItems.length;
 export const buildoutPercent = Math.round((buildoutDone / buildoutTotal) * 100);
 
-/**
- * The completed authoring programme. It is presented as history at 100%, and it
- * is measured from the milestones the rail already renders rather than from a
- * separate hand-written number. The acceptance-target milestone is the horizon
- * beyond this track, not a part of it, so it is excluded from the count.
- */
 const programmeMilestones = project.milestones.filter((m) => m.status !== "target");
 export const programmeTotal = programmeMilestones.length;
 export const programmeDone = programmeMilestones.filter((m) => m.status === "complete").length;
@@ -1341,12 +1258,9 @@ export const programmePercent = Math.round((programmeDone / programmeTotal) * 10
 export const recentBreakthroughs = project.breakthroughs.filter((b) => b.recent);
 export const archivedBreakthroughs = project.breakthroughs.filter((b) => !b.recent);
 
-/** Headline measured facts for the compact proof strip. */
 export const proofStrip = project.metrics.filter((metric) => metric.strip);
-/** Everything else, behind one disclosure so no figure is duplicated. */
 export const ledgerMetrics = project.metrics.filter((metric) => !metric.strip);
 
-/** Shipped/total per buildout family, for the roadmap header and group labels. */
 export const familyTallies = project.buildout.families.map((family) => ({
   key: family.key,
   label: family.label,
@@ -1355,35 +1269,13 @@ export const familyTallies = project.buildout.families.map((family) => ({
   total: family.items.length,
 }));
 
-/** Flat, numbered roadmap rows in family order. */
 export const roadmapRows = project.buildout.families.flatMap((family) =>
   family.items.map((item) => ({ ...item, family: family.label })),
 );
 
-/* ---------------------------------------------------------------------------
- * The roadmap to 1.0
- *
- * This is the public build ORDER, not a second capability registry. The order
- * and the visitor-facing wording live here; every COUNT is accumulated from the
- * registry, and `validateRoadmapTo1` below refuses to build if the capabilities
- * this roadmap promises to ship are not exactly the ones the registry still
- * reports as missing. Adding a capability to this list without changing the
- * registry fails `npm run check` and `npm run build` rather than publishing a
- * roadmap that disagrees with the product.
- *
- * Nothing here is a new capability claim: the roadmap is a plan, so a phase that
- * has not shipped says so on the page.
- * ------------------------------------------------------------------------- */
-
-/**
- * Public position of a phase. `next` is deliberately distinct from `current`:
- * the next phase has been chosen but NOT started, and the page must not imply
- * otherwise.
- */
 export type RoadmapPhaseState = "complete" | "in-progress" | "next" | "planned";
 
 export interface RoadmapOutcome {
-  /** The registry capability this step ships. Never a new capability. */
   capabilityId: string;
   title: string;
   detail: string;
@@ -1394,9 +1286,7 @@ export interface RoadmapPhase {
   ordinal: string;
   title: string;
   summary: string;
-  /** Capabilities this phase ships, in build order. May be empty. */
   outcomes: RoadmapOutcome[];
-  /** Work in the phase that ships no capability. May be empty. */
   work: string[];
   state: RoadmapPhaseState;
 }
@@ -1406,7 +1296,6 @@ export interface RoadmapTo1 {
   lede: string;
   position: string;
   phases: RoadmapPhase[];
-  /** Why 24/24 is not the same milestone as v1.0. */
   featureCompleteTitle: string;
   featureComplete: string;
   releaseTitle: string;
@@ -1526,7 +1415,7 @@ const roadmapTo1: RoadmapTo1 = {
         " storage and renders the authored pixels. Same dimensions only - no resizing, no" +
         " new frames - and a confirmed-reference limit that is stated rather than assumed",
       ],
-      state: "next",
+      state: "in-progress",
     },
     {
       id: "new-map",
@@ -1610,21 +1499,11 @@ const roadmapTo1: RoadmapTo1 = {
     + " manually entered ROM offset.",
 };
 
-/** A phase with its counts already accumulated from the registry. */
 export interface RoadmapPhaseView extends RoadmapPhase {
-  /** Capabilities shipped once this phase is done. */
   done: number;
-  /** Shipped-per-step running total, aligned with `outcomes`. */
   outcomeTotals: number[];
 }
 
-/**
- * The phases with running totals accumulated, never written down.
- *
- * Totals start from the shipped count the registry reports and increase by one
- * per promised capability, so the visible progression (17, 18, ... 24) is a
- * consequence of the registry's state rather than a number anyone types.
- */
 function accumulateRoadmap(base: number): RoadmapPhaseView[] {
   let running = base;
   return roadmapTo1.phases.map((phase) => {
@@ -1637,8 +1516,9 @@ export const roadmapBase = buildoutDone;
 export const roadmapPhases = accumulateRoadmap(roadmapBase);
 export const roadmap = { ...roadmapTo1, phases: roadmapPhases };
 
-/** The single phase the project is currently pointed at, if any. */
 export const roadmapNextPhase = roadmapPhases.find((phase) => phase.state === "next");
+
+export const roadmapActivePhase = roadmapPhases.find((phase) => phase.state === "in-progress");
 
 export const roadmapStateLabel: Record<RoadmapPhaseState, string> = {
   complete: "COMPLETE",
@@ -1647,12 +1527,12 @@ export const roadmapStateLabel: Record<RoadmapPhaseState, string> = {
   planned: "PLANNED",
 };
 
-export const roadmapStateGlyph: Record<RoadmapPhaseState, string> = {
-  complete: "✓",
-  "in-progress": "▶",
-  next: "◆",
-  planned: "○",
-};
+const SHIPPED_MARKER = " - SHIPPED: ";
+
+export function roadmapWorkItem(text: string): { name: string; detail?: string; shipped: boolean } {
+  const [name, detail] = text.split(SHIPPED_MARKER);
+  return { name, detail, shipped: detail !== undefined };
+}
 
 function validateRoadmapTo1(): void {
   const promised = roadmapTo1.phases.flatMap((phase) =>
@@ -1664,8 +1544,6 @@ function validateRoadmapTo1(): void {
     throw new Error(`The roadmap to 1.0 ships capability "${duplicate}" more than once.`);
   }
 
-  // The roadmap may only promise capabilities the registry says are missing, and
-  // it must promise every one of them - otherwise it is a competing registry.
   const outstanding = registry.capabilities
     .filter((capability) => capability.state !== "shipped")
     .map((capability) => capability.id);
@@ -1682,7 +1560,6 @@ function validateRoadmapTo1(): void {
     );
   }
 
-  // The phases are read top to bottom, so the states must be in order.
   const order: RoadmapPhaseState[] = roadmapTo1.phases.map((phase) => phase.state);
   const rank: Record<RoadmapPhaseState, number> = {
     complete: 0,
@@ -1708,9 +1585,15 @@ function validateRoadmapTo1(): void {
     if (!phase.outcomes.length && !phase.work.length) {
       throw new Error(`Roadmap phase "${phase.id}" describes no work at all.`);
     }
+    for (const item of phase.work) {
+      if (/\bshipped\s*:/i.test(item) && !roadmapWorkItem(item).shipped) {
+        throw new Error(
+          `Roadmap phase "${phase.id}" marks work as shipped without the "${SHIPPED_MARKER.trim()}" separator: "${item.slice(0, 40)}".`,
+        );
+      }
+    }
   }
 
-  // The publishable progression must reach the full denominator exactly.
   const finalDone = roadmapPhases[roadmapPhases.length - 1].done;
   if (finalDone !== buildoutTotal) {
     throw new Error(
@@ -1744,8 +1627,6 @@ function validateProjectStatus(value: ProjectStatus): void {
     throw new Error("Project status must include an acceptance target and a target milestone.");
   }
 
-  // The buildout is the active track, so this is where "exactly one frontier"
-  // is now enforced. The historical programme has no current milestone.
   const currentMilestones = value.milestones.filter(({ status }) => status === "current");
   if (currentMilestones.length !== 0) {
     throw new Error(
@@ -1778,9 +1659,9 @@ function validateProjectStatus(value: ProjectStatus): void {
 
 validateProjectStatus(project);
 
-export const statusMeta: Record<MilestoneStatus, { icon: string; label: string }> = {
-  complete: { icon: "✓", label: "COMPLETE" },
-  current: { icon: "◆", label: "CURRENT" },
-  next: { icon: "○", label: "NEXT" },
-  target: { icon: "★", label: "TARGET" },
+export const statusMeta: Record<MilestoneStatus, { label: string }> = {
+  complete: { label: "COMPLETE" },
+  current: { label: "CURRENT" },
+  next: { label: "NEXT" },
+  target: { label: "TARGET" },
 };

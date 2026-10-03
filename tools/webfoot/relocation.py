@@ -12,15 +12,25 @@ from .write import (ByteChange, ReferenceRewrite, RelocationProvenance, WriteMan
                     WritePlan, apply_plan, emit_image, plan_changes)
 
 
-#: Which semantic allocation kind a relocatable anchor kind asks for. The two
+#: Which semantic allocation kind a relocatable anchor kind asks for. The
 #: production eligible kinds are named; anything else that `plan_relocation` may
 #: legitimately move - a synthetic fixture anchor, or a kind a later ticket
 #: publishes before it names a class here - is recorded as the conservative
 #: generic relocation kind. The fallback is canonical-only, so an unmodelled kind
 #: can never acquire expanded storage by being unmodelled.
+#:
+#: GRAPHICS-IMPORT-BOUNDARY-001 made `graphics_container` eligible and names its
+#: kind here too, even though the graphics domain plans through its own
+#: materializer rather than through `plan_relocation` (that path encodes a
+#: reference against the canonical image size, which cannot express a placement
+#: above canonical EOF). The entry is what keeps the shared path honest if a
+#: graphics anchor is ever handed to it: without it, the anchor would quietly
+#: become a canonical-only `RELOCATED_ANCHOR_PAYLOAD` and its payload would be
+#: refused rather than placed where this domain actually puts it.
 _ALLOCATION_KIND = {
     "placement_reference_array": AllocationKind.PLACEMENT_REFERENCE_ARRAY,
     "text-string": AllocationKind.TEXT_STRING,
+    "graphics_container": AllocationKind.GRAPHICS_CONTAINER,
 }
 
 

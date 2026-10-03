@@ -1953,18 +1953,85 @@ class TransitionCreations:
 
 
 @dataclass(frozen=True)
-class GraphicsOverrides:
-    """Authored graphics edits: palette-index -> 8-bit RGB recolour.
+class PixelOverride:
+    """One graphic whose authored pixels differ from the extracted baseline.
 
-    Only RGB is held, never the packed GBA word: the SDK owns the RGB->word
-    packing (`sprite_graphics.pack_gba_colour`), and a project that stored the
-    word would bake ROM-format knowledge into authored source. The build packs
-    each triple and plans it through `ActorSprites.plan_palette_entry`, so an
-    authored recolour reaches the emitted ROM at that entry's two bytes.
+    The authored source of a pixel override is a PNG in the project, not a field
+    in a TOML document. `docs/project-format.md` writes `graphics/` as files plus
+    a manifest precisely because pixels are not text, so this dataclass holds what
+    the build RESOLVED from that file rather than duplicating it: a `[pixels]`
+    table carrying the pixels would make the PNG and the TOML two statements of
+    one asset, and one of them would eventually be the wrong one.
+
+    ``file`` is project-relative and POSIX-spelled, matching the manifest's own
+    ``file`` field. ``pixels`` are decoded linear palette indices in the order
+    `ActorSprites.plan_pixels` consumes, so nothing above the codec has to know
+    either the PNG container or the hardware tile order. ``width``, ``height``
+    and ``colour_256`` are the facts the *piece* record declares, carried from the
+    manifest so a resized or re-depth-ed PNG can be refused without opening the
+    ROM.
+    """
+
+    identity: str
+    file: str
+    pixels: bytes
+    width: int
+    height: int
+    colour_256: bool
+
+    def __post_init__(self) -> None:
+        for name in ("identity", "file"):
+            value = getattr(self, name)
+            if not isinstance(value, str) or not value.strip():
+                raise ProjectValidationError(
+                    f"a pixel override requires a non-empty {name}"
+                )
+        if type(self.pixels) is not bytes or not self.pixels:
+            raise ProjectValidationError(
+                f"{self.identity}: a pixel override requires non-empty immutable pixels"
+            )
+        if (type(self.width) is not int or self.width <= 0
+                or type(self.height) is not int or self.height <= 0):
+            raise ProjectValidationError(
+                f"{self.identity}: a pixel override requires positive dimensions"
+            )
+        if len(self.pixels) != self.width * self.height:
+            raise ProjectValidationError(
+                f"{self.identity}: {len(self.pixels)} pixels do not describe a "
+                f"{self.width}x{self.height} graphic"
+            )
+        if type(self.colour_256) is not bool:
+            raise ProjectValidationError(
+                f"{self.identity}: a pixel override requires a boolean bit depth"
+            )
+
+
+@dataclass(frozen=True)
+class GraphicsOverrides:
+    """Authored graphics edits: palette recolours and authored pixel content.
+
+    Two edits, one document. The palette half is authored source in
+    `graphics/overrides.toml` and holds only RGB, never the packed GBA word: the
+    SDK owns the RGB->word packing (`sprite_graphics.pack_gba_colour`), and a
+    project that stored the word would bake ROM-format knowledge into authored
+    source. The build packs each triple and plans it through
+    `ActorSprites.plan_palette_entry`, so an authored recolour reaches the emitted
+    ROM at that entry's two bytes.
+
+    The pixel half is resolved from the project's own PNGs against the baseline
+    the extracted `graphics/graphics.toml` manifest recorded, and is empty for a
+    project that authored nothing. `graphics_authoring.resolve_pixel_overrides`
+    is the ONE place that derivation happens, and `validate` and `build` both go
+    through it, so the two steps can never disagree about which graphics a project
+    authors. Palette and pixel edits then merge into the same single write plan,
+    so neither can silently overwrite the other.
     """
 
     #: palette index -> (red, green, blue), each channel 0..255.
     palette: dict[int, tuple[int, int, int]] = field(default_factory=dict)
+    #: graphic identity (``<profile>/graphic:NNNN``) -> authored pixel content.
+    #: Derived, never serialized: see the class docstring.
+    pixels: dict[str, PixelOverride] = field(default_factory=dict)
 
     def to_document(self) -> dict[str, Any]:
         """The `[palette]` table, keyed by zero-padded index for numeric order."""

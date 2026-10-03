@@ -78,6 +78,9 @@ GATE_RULES: tuple[tuple[str, tuple[str, ...]], ...] = (
     ("*/test_map_layout_*.py", ("writer",)),
     ("*/test_project_build_rom.py", ("writer",)),
     ("*/test_graphics_override_build_rom.py", ("writer",)),
+    # GRAPHICS-IMPORT-BOUNDARY-001: the project-authored-pixel build proof runs
+    # against the canonical image and emits one, so it is a writer test too.
+    ("*/test_graphics_pixel_override_rom.py", ("writer",)),
     ("*/test_cross_profile_invariants.py", ("writer",)),
     ("*/test_gameplay_effect_native*.py", ("writer",)),
 

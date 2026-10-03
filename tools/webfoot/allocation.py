@@ -143,6 +143,14 @@ class AllocationKind(str, Enum):
     #: count can only grow by re-emitting the whole array, because the canonical
     #: array's following bytes are the root itself.
     TRANSITION_POINTER_ARRAY = "transition_pointer_array"
+    #: GRAPHICS-IMPORT-BOUNDARY-001. One re-encoded actor-sprite graphics
+    #: container: the compressed payload a frame piece's ``+0x08`` word names,
+    #: re-emitted because its authored pixels no longer fit the extent the
+    #: original container occupied. The container is a leaf - the reference walk
+    #: publishes no reference sourced inside one - so its whole inbound surface is
+    #: the set of CONFIRMED piece references the graphics reference document
+    #: carries, and relocation rewrites exactly those.
+    GRAPHICS_CONTAINER = "graphics_container"
 
 
 class Addressability(str, Enum):
@@ -218,6 +226,28 @@ class Addressability(str, Enum):
 #: single 256-byte VERIFIED_FREE region that other domains already draw on. It is
 #: also exactly the addressability this capability has to prove, so the policy and
 #: the proof are the same decision - the same argument `LAYER_RECORD` records.
+#:
+#: GRAPHICS-IMPORT-BOUNDARY-001 adds one entry and states both halves separately,
+#: because for this domain they came apart. What IS measured: a piece's ``+0x08``
+#: container word is a full 32-bit little-endian GBA address over all 11,005
+#: canonical piece references - nothing masks or truncates it - so the field can
+#: ENCODE an address above canonical EOF, and the profile's declared expansion maps
+#: file offset 0x00800000 to 0x08800000 inside the 0x08000000..0x09FFFFFF Game Pak
+#: window. What is NOT measured by this constant: whether the retail engine
+#: actually decodes a container it reaches above EOF. A human-operated emulator run
+#: owns that claim, and the capability must not advance on the strength of this
+#: mapping alone.
+#:
+#: `EXPANDED_PERMITTED` rather than `EXPANDED_ONLY` is the conservative choice here,
+#: and it is the opposite of `LAYER_RECORD`'s for a reason of the domain. A layer
+#: record's aggregate demand is unbounded and would consume the single 256-byte
+#: canonical region for nothing; a re-encoded graphics container is usually larger
+#: than that region anyway, so first-fit canonical placement is only reachable by a
+#: payload that genuinely fits trusted, declared, verified-free bytes. Where it does
+#: fit, a canonical address is a strictly weaker addressability claim than an
+#: expanded one, so preferring it cannot overstate what has been proven. Where it
+#: does not fit, the request moves to the declared expansion - the case the runtime
+#: proof owns.
 DEFAULT_ADDRESSABILITY = {
     AllocationKind.PACKED_STREAM: Addressability.EXPANDED_PERMITTED,
     AllocationKind.PLACEMENT_BODY: Addressability.CANONICAL_ONLY,
@@ -229,6 +259,7 @@ DEFAULT_ADDRESSABILITY = {
     AllocationKind.LAYER_RECORD: Addressability.EXPANDED_ONLY,
     AllocationKind.TRANSITION_RECORD: Addressability.EXPANDED_ONLY,
     AllocationKind.TRANSITION_POINTER_ARRAY: Addressability.EXPANDED_ONLY,
+    AllocationKind.GRAPHICS_CONTAINER: Addressability.EXPANDED_PERMITTED,
 }
 
 

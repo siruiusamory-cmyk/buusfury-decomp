@@ -1230,3 +1230,100 @@ def test_warpedit001_launcher_verifies_identity_and_owns_no_session_lifetime():
     assert "CHANGED - INVESTIGATE" in finisher
     assert "a silent" in finisher
     assert "NOT evidence of absence" in finisher
+
+
+def test_gfximport001_observer_is_read_only_and_allowlisted():
+    """GRAPHICS-IMPORT-BOUNDARY-001 proves the engine renders AUTHORED pixels.
+
+    An observer that could also drive input or write emulated memory would make
+    "the engine drew this" unfalsifiable, so it must be read-only. And because a
+    silent channel is not a negative, it must carry a liveness channel of its
+    own: the settled-screen capture list is only meaningful alongside a
+    heartbeat that shows the instrument was running at all.
+    """
+    root = Path(__file__).resolve().parents[2]
+    observer = (root / "tools/runtime/gfximport001_pixel_proof.lua").read_text(
+        encoding="utf-8"
+    )
+    injector = (root / "tools/runtime/inject_mgba_lua.ps1").read_text(
+        encoding="utf-8"
+    )
+
+    assert "setKeys" not in observer
+    assert "addKeys" not in observer
+    assert "clearKeys" not in observer
+    assert "emu:write" not in observer
+
+    # The runtime-proven live MapEntry pointer and table geometry.
+    assert "local ACTIVE_MAP_PTR = 0x03001980" in observer
+    assert "local MAP_ENTRY_BASE = 0x0808E2E0" in observer
+    assert "local MAP_ENTRY_SIZE = 0x38" in observer
+    # Both game-code spellings: the 0.11 dev build returns the bare one.
+    assert '"AGB-BG3E"' in observer
+    # Both legitimate image shapes: the canonical 8 MiB image and the 16 MiB
+    # generated one a relocation emits.
+    assert "8388608" in observer and "16777216" in observer
+
+    # Liveness, and an explicit record that the instrument stopped.
+    assert 'in_run("liveness.csv")' in observer
+    assert "HEARTBEAT_FRAMES" in observer
+    assert 'in_run("proof.txt")' in observer
+    # Every settled screen is captured with its frame and live map index, so the
+    # gameplay frame is chosen from the sequence rather than guessed.
+    assert 'in_run("settles.csv")' in observer
+    assert "stable_frames >= DWELL_FRAMES" in observer
+    assert "emu:screenshot" in observer
+    # The display is captured from the emulator's own framebuffer, and the
+    # artifact directory is derived from the injected run path.
+    assert "rom011_marker_path" in observer
+
+    assert "gfximport001_pixel_proof.lua" in injector
+
+
+def test_gfximport001_launcher_verifies_identity_and_owns_no_session_lifetime():
+    """The live launcher pins the image and then gets out of the way.
+
+    It must verify BOTH the exact digest and the exact size, because the two
+    legitimate images for this ticket differ in size (8 MiB canonical against the
+    16 MiB generated derivative), and it must hold no wait loop, start no job and
+    kill nothing: two earlier bugs killed a live session by owning the
+    emulator's lifetime.
+    """
+    root = Path(__file__).resolve().parents[2]
+    launcher = (root / "tools/runtime/start_gfximport001_live.ps1").read_text(
+        encoding="utf-8"
+    )
+    finisher = (root / "tools/runtime/finish_gfximport001_session.ps1").read_text(
+        encoding="utf-8"
+    )
+
+    # Exact identity, from the binary and from the caller's own declarations.
+    assert "^[0-9A-F]{64}$" in launcher
+    assert "ROM identity mismatch; run refused" in launcher
+    assert "$romInfo.Length -ne $ExpectedRomSize" in launcher
+    assert "VersionInfo.FileVersion" in launcher
+    assert "mGBA version mismatch" in launcher
+    # The private save is copied and the copy verified, so the source is never
+    # what the emulator writes to.
+    assert "Save copy hash mismatch" in launcher
+    assert "savegamePath" in launcher
+    # The observer is injected after the window settles.
+    assert launcher.index("Start-Process") < launcher.index("inject_mgba_lua.ps1")
+
+    # No ownership of the session, and no racing or replacing prior evidence.
+    assert "Start-Job" not in launcher
+    assert "Wait-Process" not in launcher
+    assert "Stop-Process" not in launcher
+    assert "Remove-Item" not in launcher
+    assert "RunSeconds" not in launcher
+    assert "Run directory already exists" in launcher
+    # A savestate would restore the VRAM this proof has to see the engine build,
+    # so the launcher deliberately has no state to load.
+    assert "toolkit031_load_state.ps1" not in launcher
+
+    # The finisher re-verifies both inputs and refuses to call a silent observer
+    # evidence.
+    assert "rom unchanged" in finisher
+    assert "source save kept" in finisher
+    assert "NO LIVENESS ROWS" in finisher
+    assert "not evidence" in finisher

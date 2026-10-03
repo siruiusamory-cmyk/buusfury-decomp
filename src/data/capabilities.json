@@ -300,13 +300,18 @@
       "id": "gfx-import",
       "family": "author",
       "title": "Graphics replacement and import",
-      "state": "missing",
-      "detail": "Not implemented. An import path exists but has no production caller, so no editor surface offers it.",
+      "state": "shipped",
+      "detail": "An extracted sprite asset's PNG can be edited in the project and rebuilt, and the retail engine renders the authored pixels - whether the re-encoded payload still fits the slot the original occupied or has to be placed above the original end of the image.",
       "limits": [
-        "Not implemented: the SDK's import path has no production caller and no editor surface offers it.",
-        "Blocked on allocation for payloads that change size and on a write path that can put a changed graphic back."
+        "Same dimensions only: the pixel contents may change; the dimensions, the frame layout and the sprite topology may not.",
+        "Actor-sprite graphics only. Map chunks, tilesets, UI, HUD and portrait graphics have their own formats and are not covered.",
+        "Every confirmed reference to a relocated payload is rewritten, but the published reference set is not claimed to be every word in the image that names that payload.",
+        "The re-encoder is not competitive, so an edit whose payload no longer fits its original slot is placed elsewhere by the allocator: in trusted canonical free space when one can host it, and otherwise above the original end of the image, where the build emits a 16 MiB image. Only the expanded case has been proven in the running engine.",
+        "No editor surface edits pixels yet. The supported workflow is extract, edit the extracted PNG, validate, build."
       ],
-      "evidence": "GRAPHICS-COVERAGE-001; docs/research/POST_LOGX_IMPLEMENTATION_ROADMAP.md"
+      "surface": "Project workflow: extract, edit an extracted sprite PNG, validate, build",
+      "proof": "runtime",
+      "evidence": "GRAPHICS-IMPORT-BOUNDARY-001; docs/research/GRAPHICS_PIXEL_OVERRIDE.md"
     },
     {
       "id": "sprite-new",

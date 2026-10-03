@@ -56,10 +56,20 @@ PIECE_REFERENCES = 11005
 
 
 def _rom_path() -> str:
-    matches = glob.glob(os.path.join("roms", "*Buu*.gba"))
+    """The canonical image, found by content rather than by directory order.
+
+    `roms/` may hold several images (a warp-randomized derivative among them),
+    and glob order is not a property these offsets may be keyed on - taking the
+    first match made every test in this module skip on a checkout where the
+    canonical image was present all along.
+    """
+    matches = sorted(glob.glob(os.path.join("roms", "*.gba")))
     if not matches:
         pytest.skip("canonical Buu's Fury ROM not present locally")
-    return matches[0]
+    for candidate in matches:
+        if hashlib.sha1(open(candidate, "rb").read()).hexdigest() == CANONICAL_SHA1:
+            return candidate
+    pytest.skip("local ROM is not the canonical profile these offsets target")
 
 
 def _rom_bytes(path: str) -> bytes:

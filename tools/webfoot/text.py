@@ -101,7 +101,9 @@ class TextTooLongError(TextTableError):
 
 #: TOOLKIT-036. The anchor kind a text-string body is published under. It is
 #: listed in `layout.RELOCATION_ELIGIBLE_KINDS`, which is what lets the existing
-#: `relocation.plan_relocation` path carry text; no second relocation path exists.
+#: `relocation.plan_relocation` path carry text. (GRAPHICS-IMPORT-BOUNDARY-001
+#: later added a second materializer for one domain whose references must be
+#: encoded against the generated image size; text still uses the path below.)
 TEXT_STRING_KIND = "text-string"
 
 

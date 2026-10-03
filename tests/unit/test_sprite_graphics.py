@@ -281,7 +281,7 @@ def test_animation_with_an_absurd_frame_count_is_refused() -> None:
 def _graphic_blob(width: int, height: int, fill: int = 3) -> tuple[bytes, bytes]:
     pixels = bytes([fill]) * (width * height)
     tiles = sg.swizzle_tiles(pixels, width, height, colour_256=True)
-    return wl.pack(tiles), pixels
+    return wl.pack(tiles, kind=sg.GRAPHICS_CONTAINER_KIND), pixels
 
 
 def _fitting_graphic(width: int, height: int, salt: int = 0) -> tuple[bytes, bytes]:
@@ -296,7 +296,7 @@ def _fitting_graphic(width: int, height: int, salt: int = 0) -> tuple[bytes, byt
     """
     pixels = bytes((index * 37 + salt) % 256 for index in range(width * height))
     tiles = sg.swizzle_tiles(pixels, width, height, colour_256=True)
-    return wl.pack(tiles), pixels
+    return wl.pack(tiles, kind=sg.GRAPHICS_CONTAINER_KIND), pixels
 
 
 def test_decode_graphic_cross_checks_the_declared_size_against_the_piece() -> None:
@@ -312,7 +312,8 @@ def test_decode_graphic_cross_checks_the_declared_size_against_the_piece() -> No
 def test_pixel_index_above_the_depth_is_refused_before_encoding() -> None:
     """A 4bpp graphic cannot address index 16, and the plan refuses by name."""
     pixels = bytes([1]) * 64
-    blob = wl.pack(sg.swizzle_tiles(pixels, 8, 8, colour_256=False))
+    blob = wl.pack(sg.swizzle_tiles(pixels, 8, 8, colour_256=False),
+                   kind=sg.GRAPHICS_CONTAINER_KIND)
     graphic = sg.decode_graphic(blob, 0, 8, 8, colour_256=False)
     too_high = bytes([16]) + bytes([1]) * 63
     with pytest.raises(sg.SpriteFormatError, match="above the 15"):
@@ -358,7 +359,7 @@ def _pack_without_marker(monkeypatch, payload: bytes) -> bytes:
     """The pre-fix encoder's output: `pack` with the escape emission removed."""
     monkeypatch.setattr(wl._WordBitWriter, "write_end_marker", lambda self: None)
     try:
-        return wl.pack(payload)
+        return wl.pack(payload, kind=sg.GRAPHICS_CONTAINER_KIND)
     finally:
         monkeypatch.undo()
 
@@ -396,7 +397,8 @@ def test_the_sprite_planner_refuses_a_payload_without_an_in_stream_escape(
     with pytest.raises(wl.ContainerError):
         wl.validate_retail_termination(before_marker)
 
-    monkeypatch.setattr(sg.webfoot_lz, "pack", lambda payload: before_marker)
+    monkeypatch.setattr(sg.webfoot_lz, "pack",
+                        lambda payload, kind=None: before_marker)
     graphic = sg.decode_graphic(before_marker, 0, 32, 32, colour_256=True)
     with pytest.raises(sg.SpriteFormatError, match="retail termination contract"):
         sg.plan_graphic_payload(before_marker, graphic, pixels)
@@ -413,10 +415,39 @@ def test_the_marker_is_charged_to_the_sprite_capacity_rule(monkeypatch) -> None:
     pixels = bytes([7]) * (32 * 32)
     tiles = sg.swizzle_tiles(pixels, 32, 32, colour_256=True)
     before_marker = _pack_without_marker(monkeypatch, tiles)
-    after_marker = wl.pack(tiles)
+    after_marker = wl.pack(tiles, kind=sg.GRAPHICS_CONTAINER_KIND)
     assert len(after_marker) > len(before_marker), "this case must be marker-costing"
 
     graphic = sg.decode_graphic(before_marker, 0, 32, 32, colour_256=True)
     assert graphic.packed_size == len(before_marker)
     with pytest.raises(sg.SpriteFormatError, match="growth is refused"):
         sg.plan_graphic_payload(before_marker, graphic, pixels)
+
+
+# --- the container kind is a write-critical property -------------------------
+
+
+def test_the_graphics_container_kind_is_read_from_the_image_not_defaulted() -> None:
+    """A kind is the stream's initial literal width, and the engine dispatches on it.
+
+    Every one of the 7,390 graphics containers in the canonical corpus declares
+    kind 1; `webfoot_lz.pack` defaults to kind 2, which is the form the packed
+    dialogue path uses. Writing the packer's default into a graphics container is
+    therefore a silent container-form change, and it was measured at runtime to
+    make the retail engine draw a garbled sprite while the host codec round-tripped
+    the very same bytes without complaint.
+    """
+    assert sg.GRAPHICS_CONTAINER_KIND == 1
+    blob, pixels = _fitting_graphic(8, 8)
+    graphic = sg.decode_graphic(blob, 0, 8, 8, colour_256=True)
+    assert sg.graphics_container_kind(blob, 0) == sg.GRAPHICS_CONTAINER_KIND
+
+    # The re-encoded payload keeps the kind the source declared.
+    plan = sg.plan_graphic_payload(blob, graphic, pixels)
+    assert struct.unpack_from("<I", plan.payload, 0)[0] == sg.GRAPHICS_CONTAINER_KIND
+
+    # A container in a form this write path has not been shown to produce is
+    # refused rather than re-encoded under a default.
+    wrong_kind = wl.pack(sg.swizzle_tiles(pixels, 8, 8, colour_256=True), kind=2)
+    with pytest.raises(sg.SpriteFormatError, match="unproven container form"):
+        sg.plan_graphic_payload(wrong_kind, graphic, pixels)

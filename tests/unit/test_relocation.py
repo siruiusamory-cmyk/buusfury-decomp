@@ -482,14 +482,18 @@ def test_unlisted_anchor_kinds_stay_fixed_however_clean_their_references():
 
     Membership is asserted exactly, so a kind can only ever join it deliberately.
     TOOLKIT-024 proved `placement_reference_array`; TOOLKIT-036 proved
-    `text-string`, whose whole inbound surface is its own pointer-table slot.
+    `text-string`, whose whole inbound surface is its own pointer-table slot;
+    GRAPHICS-IMPORT-BOUNDARY-001 added `graphics_container`, whose inbound surface
+    is the CONFIRMED piece `+0x08` words the graphics reference walk publishes and
+    which is a graph leaf by construction.
     """
     assert RELOCATION_ELIGIBLE_KINDS == frozenset(
-        {"placement_reference_array", "text-string"}
+        {"placement_reference_array", "text-string", "graphics_container"}
     )
     owner = _ref(0x200)
     for kind in ("map_entry", "placement", "enemy_stat_record", "thumb_entry",
-                 "placement_descriptor", "opaque-test"):
+                 "placement_descriptor", "object_palette", "character_structure",
+                 "opaque-test"):
         assert relocation_eligible(_anchor(kind=kind), (owner,)) is False
 
 

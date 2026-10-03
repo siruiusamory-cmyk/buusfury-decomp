@@ -54,6 +54,28 @@ would turn 7,390 real payloads into 11,005 fictional ones and would make a globa
 edit look local. The object palette travels as raw GBA 15-bit words, never as
 RGB, because an 8-bit triple cannot round-trip to a unique word.
 
+**Editing a PNG is how a project authors pixels, and the build consumes it.**
+Each manifest asset also records the digest of the PNG extraction wrote
+(`png_sha256`) and of the indices it encoded (`pixels_sha256`). An asset whose
+file no longer matches its recorded digest is an authored override: the build
+decodes it, refuses anything that is not the indexed form, refuses a changed
+dimension or an index above the piece's bit depth, and plans the result through
+the same `GraphicsOverrides` surface the palette overrides use. There is no
+registration step and no separate command - `extract`, edit the PNG, `validate`,
+`build` is the whole workflow, and one resolver runs in both `validate` and
+`build` so the two cannot disagree about which graphics a project authors.
+Palette and pixel edits merge into the one write plan, so neither can overwrite
+the other.
+
+A re-encoded payload that fits the extent its original container occupied is
+written in place, and the bytes between the new payload and the end of that
+extent are left untouched rather than rewritten. A payload that does not fit is
+placed by the allocation authority and every confirmed reference to the old
+payload is rewritten in the same batch; the original bytes are left intact, so a
+reference this toolkit did not discover still reaches the art it always reached.
+`docs/research/GRAPHICS_PIXEL_OVERRIDE.md` records what is proven about that
+boundary, including the one property it leaves `UNKNOWN`.
+
 Build outputs (`.gba`, manifests) are artefacts and belong outside the authored
 tree; the repository `.gitignore` already excludes them. Extracted PNGs are
 ROM-derived and are likewise never committed.

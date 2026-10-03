@@ -122,9 +122,11 @@ def _imported_names(source: Path, package: str) -> set[str]:
     ``from .cli import ...`` inside a function that a frozen build still bundles
     and a live interpreter never runs.
 
-    Only names under :data:`PREFIX` are resolved: resolving a third-party alias
-    such as ``PySide6.QtWidgets.QApplication`` would import a widget toolkit to
-    answer a question about this project's own modules.
+    Only names under :data:`PREFIX` are resolved, and a submodule alias is probed
+    only when the base is a package. Both limits exist to keep this from
+    importing anything: ``find_spec`` imports a name's parents, so probing
+    ``PySide6.QtWidgets.QApplication`` would load a widget toolkit, and so would
+    probing ``...enemyrand.gui.main``, whose parent module imports one.
     """
     found: set[str] = set()
     for node in ast.walk(ast.parse(source.read_text(encoding="utf-8"))):
@@ -135,6 +137,8 @@ def _imported_names(source: Path, package: str) -> set[str]:
             if base:
                 found.add(base)
             if base != PREFIX and not base.startswith(PREFIX + "."):
+                continue
+            if not _is_package(base):
                 continue
             for alias in node.names:
                 if alias.name != "*" and _module_path(f"{base}.{alias.name}"):

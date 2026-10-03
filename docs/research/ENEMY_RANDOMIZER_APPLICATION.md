@@ -205,18 +205,19 @@ Measured per file with `pytest <file> -q -p no:randomly`, on the frozen candidat
 | `tests/unit/test_warp_randomizer.py` | `fast` | 38 passed |
 | `tests/unit/test_warp_randomizer_app.py` | `fast` | 43 passed |
 | `tests/unit/test_warp_randomizer_gui.py` | `fast` | 50 passed |
-| `tests/unit/test_randomizer_foundation.py` | `fast` | 35 passed |
+| `tests/unit/test_randomizer_foundation.py` | `fast` | 36 passed |
 | `tests/unit/test_randomizer_architecture.py` | `fast` | 11 passed |
 | `tests/unit/test_enemy_randomizer_gui.py` | `fast` | 19 passed |
 | `tests/integration/test_warp_randomizer_rom.py` | `rom` | 19 passed |
 | `tests/integration/test_warp_randomizer_app_rom.py` | `rom` | 16 passed |
-| `tests/integration/test_enemy_randomizer_app_rom.py` | `rom` | 22 passed |
+| `tests/integration/test_enemy_randomizer_app_rom.py` | `rom` | 23 passed |
 | `tests/integration/test_randomizer_combined_rom.py` | `rom` | 13 passed |
-| **total** | | **266 passed** |
+| **total** | | **268 passed** |
 
-The portable gate - `pytest tests/unit` - was run once at the candidate:
-**3744 passed, 15 skipped**. The skips are the site-not-built, capstone-present
-and ROM-not-present families that skip in any worktree.
+The portable gate - `pytest tests/unit` - was run once at the frozen candidate:
+**3752 passed, 9 skipped**. The skips are the CI-contract, capstone-present and
+ROM-not-present families that skip in any worktree; the site-not-built family is
+absent here because the built site was generated for the built-site gate.
 
 ### The golden cross-check
 
@@ -295,6 +296,64 @@ both.
 
 `scripts/smoke-warprand-packaged.ps1` was re-run against the rebuilt sibling
 executable and also **PASS**es, reproducing `ed167ca1…abdc`.
+
+### Release artifact
+
+Built at `076fa34267f64094b780fe2813f0bd73fcd436b3`, from the ignored `dist/` tree:
+
+```text
+Enemy-Randomizer.exe
+  bytes  37300910
+  sha256 8cadf749cc36b08b28975ac541dbf6ba9e26fa33213b25c1a63549430396d8bf
+
+Enemy-Randomizer-v0.1.0-win64.zip   (contains only the .exe and README.txt)
+  bytes  36958004
+  sha256 f9301bcf5e7e34b1bd54d47b3855706b8495911c3983c9e8064f6f33b7542c05
+```
+
+The zip was extracted to a directory outside the repository and run from there
+with `PATH` reduced to `C:\Windows\system32;C:\Windows` and no Python environment
+variables set: exit 0, both modules enabled, the manifest and spoiler written, and
+the `StreamBlind-0001` golden hash reproduced. That is the packaged-execution
+check, since a one-file build is exactly what makes the machine's Python
+irrelevant.
+
+Rebuilding from the frozen source reproduces the artifact by procedure, not
+byte-for-byte: PyInstaller embeds build metadata. The sibling product's rebuilt
+executable is `f677724988c8a15b3149fe743b34689acabb7b184ce9268908f59ddef92cf43d`
+(37,302,808 bytes), and its archive
+`ee20792fc644ffe53a111a1705756c34ef1599fb1f8f0a91bc01555d11e9424a`
+(36,958,985 bytes).
+
+### Independent review
+
+Two reviews were run against the frozen intermediate commits, each with a
+fresh-context reviewer that did not implement the change and that was given the
+range, `docs/REVIEW.md`, and the instruction to find defects rather than summarise.
+Both used the machine's independent review tooling, which runs a different model
+and harness from the implementer's.
+
+| Range | Verdict | Outcome |
+| --- | --- | --- |
+| `d49d68c..3c68e0a` (the foundation) | APPROVE WITH NON-BLOCKING NOTES | 10 findings; the substantive ones fixed in `ea91642` |
+| `3c68e0a..866d223` (the products) | **BLOCK** | 1 HIGH, 4 MEDIUM, 4 LOW; fixed in `04e5e4a` and `076fa34` |
+
+The blocking finding was correct and serious: the release README told users the
+tool does not randomize bosses, while the pack's own run record says no boss, NPC
+or quest-critical classification exists at all. The README, the product package
+docstring and this record now say what is true, and the wording matches the
+`limitations` block every manifest already carried. The other fixes are listed in
+the two commits' messages; the largest is that the product's own module list is now
+enforced by the shared service rather than by each client remembering to check.
+
+Corrections after a review were not re-reviewed, at the owner's direction.
+
+The hosted review route named in `docs/REVIEW.md` was unavailable for this
+change: its tenant reported exhausted usage credits, and this machine's remote
+backend cannot attach to an existing session, so a launched remote review would
+have produced a verdict nobody could read. The reviews above were run as headless
+local sessions with the same prompt instead, which is why they are readable in
+full.
 
 ## Known limits, stated rather than implied
 

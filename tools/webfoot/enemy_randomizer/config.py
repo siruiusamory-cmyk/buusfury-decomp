@@ -104,18 +104,23 @@ CHAOS_STATS = StatRange.of("1/2", "2", "chaos")
 #:   the game's own model, so 200 is the correct ceiling and 255 would be a bug
 #:   waiting for a high-rolling seed.
 #:
-#: ``hp`` is additionally **fixed point**: 1024 raw units is one displayed HP
-#: (P-010 measured the wolf at 175 displayed = 179200 raw). Its floor is therefore
-#: one *displayed* HP expressed in raw units, not the integer 1 - randomizing it
-#: at display granularity while emitting raw units is what keeps the result
-#: meaningful.
+#: ``hp`` IN THIS RECORD IS THE DISPLAYED HIT-POINT VALUE, not a fixed-point
+#: quantity, and an earlier revision of this pack got that wrong. The measured
+#: evidence is the repository's own identification oracle: the wolf is found by
+#: ``find_enemies_by_hp(175)`` (``tools/webfoot/formats/stat_tables.py``), i.e.
+#: the record holds 175 - the number the player sees - and it is the only record
+#: with that value. P-010's 1024-raw-units-per-displayed-point figure describes
+#: the RUNTIME ACTOR's HP, which is a different quantity at a different place;
+#: applying it here put a floor of 1024 under a field whose observed values run
+#: down to 1, so every record below 1024 was clamped upward whatever the seed.
+#: The floor is therefore 1: a displayed HP of zero would be a dead enemy.
 #:
 #: Zero is a legal value for ``exp``, ``strength``, ``power`` and ``endurance``
 #: (measured: 13, 25, 47 and 4 records respectively), so their floor is 0 and a
 #: multiplicative policy leaves an original zero at zero rather than inventing a
 #: minimum. ``hp`` and ``level`` have nonzero floors because zero would make the
 #: enemy invalid rather than merely weak.
-MINIMUM_ENEMY_HP = 1024  # one displayed HP, in the raw fixed-point domain
+MINIMUM_ENEMY_HP = 1
 
 #: u24 ceiling, shared by the two 24-bit fields.
 _U24_MAX = (1 << 24) - 1

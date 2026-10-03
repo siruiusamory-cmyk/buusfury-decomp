@@ -281,6 +281,16 @@ def run(args) -> int:
             "--seed is required. One master seed controls every module; omit it "
             "only with --list-presets."
         )
+    # Refused rather than ignored. A dry run writes nothing by design, so asking
+    # for a spoiler log during one is a request this command cannot honour; saying
+    # so is better than exiting 0 with no spoiler log and no explanation.
+    if args.dry_run and args.spoiler:
+        raise RandomizeError(
+            "--dry-run writes nothing, so --spoiler cannot be produced. Drop "
+            "--dry-run to write the spoiler log, or drop --spoiler."
+        )
+    if args.dry_run and args.overwrite:
+        raise RandomizeError("--overwrite has no meaning with --dry-run.")
 
     config = build_config(args)
     catalog = load_catalog_for(args)
@@ -293,10 +303,36 @@ def run(args) -> int:
             "reads. Choose a different --output."
         )
 
+    # EVERY path this command will write is checked against the input and against
+    # the output, not just the manifest. The spoiler log is the one that makes
+    # this more than tidiness: an earlier revision checked only the manifest, so
+    # `--spoiler <the input ROM>` overwrote the verified image with JSON - and
+    # because the spoiler is written after the post-write source hash check,
+    # nothing in the run would have noticed. ROM_SAFETY.md forbids any write path
+    # reaching the input, and a check that covers some of them is not that rule.
     manifest_path = Path(args.manifest) if args.manifest else default_manifest(output)
-    for candidate, label in ((manifest_path, "the manifest path"),):
-        if paths_are_the_same_file(candidate, source):
-            raise RandomizeError(f"{label} is the input ROM: {candidate}")
+    write_targets: list[tuple[Path, str]] = [
+        (output, "output ROM"),
+        (manifest_path, "manifest"),
+    ]
+    if args.spoiler:
+        write_targets.append((Path(args.spoiler), "spoiler log"))
+
+    for target, label in write_targets:
+        if paths_are_the_same_file(target, source):
+            raise RandomizeError(
+                f"the {label} path is the input ROM, which this command never "
+                f"writes: {target}"
+            )
+    # Two destinations that are the same file would silently destroy one result;
+    # the manifest and the spoiler are separate documents and must stay separate.
+    for index, (target, label) in enumerate(write_targets):
+        for other, other_label in write_targets[index + 1:]:
+            if paths_are_the_same_file(target, other):
+                raise RandomizeError(
+                    f"the {label} and the {other_label} are the same file "
+                    f"({target}); choose different paths so neither result is lost."
+                )
 
     if not args.dry_run:
         if output.exists() and not args.overwrite:
@@ -311,6 +347,17 @@ def run(args) -> int:
                 f"{output} is a copy of the canonical ROM, so it is not replaced. "
                 "Choose a different --output."
             )
+        # The manifest and the spoiler follow the same policy as the image they
+        # describe. An earlier revision wrote them over an existing file with no
+        # confirmation while the ROM itself needed --overwrite, so a run could
+        # silently replace the recorded provenance of a previous randomized ROM -
+        # the artefact that makes that ROM reproducible.
+        for target, label in write_targets[1:]:
+            if target.exists() and not args.overwrite:
+                raise RandomizeError(
+                    f"the {label} {target} already exists. Pass --overwrite to "
+                    f"replace it, or choose another {label} path."
+                )
 
     before = identify_rom(source, catalog)
     result = plan_enemy_randomization(

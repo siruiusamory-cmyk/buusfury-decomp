@@ -1977,9 +1977,10 @@ def main(argv: list[str] | None = None) -> int:
         print(json.dumps(synthetic_relocation_proof().to_json(), indent=2, sort_keys=True))
         return 0
 
-    # Dispatched before the ROM-loading block below, which assumes every command
-    # takes a positional `rom` and would otherwise load one for a command whose
-    # base ROM arrives as `--rom` under its own output rules.
+    # RANDOMIZER-ENEMY-PACK-001. Dispatched before the ROM-loading block below so
+    # the command manages its own inputs: it takes `rom` positionally, verifies the
+    # image itself, applies its own output/overwrite rules, and must be able to
+    # return from `--dry-run` before anything is written.
     if args.command == "randomize":
         return randomize_command.dispatch(args)
 

@@ -56,6 +56,7 @@ from enum import Enum
 
 from ..entities import PlacementTypeIdentity, PlacementTypes
 from ..formats import stat_tables as st
+from ..formats.map_placements import SCRIPT_DISPATCH_HANDLER
 from ..maps import MapIdentity, PlacementEntry, PlacementIdentity, Maps
 
 #: The seven selectors the constructor computes but which fall outside the
@@ -86,6 +87,10 @@ class Refusal(str, Enum):
     """Why one slot is not randomized. Each value is a stable manifest key."""
 
     SCRIPT_EVENT = "script_event"
+    #: A placement that dispatches a script this project has not decoded, or whose
+    #: descriptor could not be read. Refused because "not decoded" is not
+    #: "not scripted".
+    SCRIPT_UNRESOLVED = "script_unresolved"
     OUTSIDE_STAT_EXTENT = "outside_stat_extent"
     IN_DOOR_TRIGGER = "in_door_trigger"
     ALONE_IN_MAP = "alone_in_map"
@@ -95,7 +100,11 @@ class Refusal(str, Enum):
 #: The refusal reasons that describe the *actor*, not the run. A slot refused for
 #: one of these is excluded from both shuffles and from stat randomization, and
 #: is reported under its own reason rather than as an unexplained omission.
-ACTOR_REFUSALS: tuple[Refusal, ...] = (Refusal.SCRIPT_EVENT, Refusal.OUTSIDE_STAT_EXTENT)
+ACTOR_REFUSALS: tuple[Refusal, ...] = (
+    Refusal.SCRIPT_EVENT,
+    Refusal.SCRIPT_UNRESOLVED,
+    Refusal.OUTSIDE_STAT_EXTENT,
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -169,6 +178,10 @@ class SlotModel:
     slots: tuple[EnemySlot, ...]
     refusals: tuple[tuple[EnemySlot, Refusal], ...]
     out_of_extent_selectors: tuple[int, ...]
+    #: Why the script exclusion could not be evaluated, or ``None`` when it could.
+    #: Carried on the model so the manifest can state that the run fell back to
+    #: refusing every actor, instead of silently looking like a normal run.
+    script_evidence_error: str | None = None
 
     @property
     def eligible(self) -> tuple[EnemySlot, ...]:
@@ -220,6 +233,7 @@ def _classify(
     type_identity: PlacementTypeIdentity,
     types: PlacementTypes,
     has_script_event: bool,
+    has_unresolved_script: bool,
 ) -> Classification:
     """Classify one placement from evidence its consumers actually established.
 
@@ -228,8 +242,12 @@ def _classify(
     link. A scripted placement that also resolves a stat record is still a
     scripted actor - the stat record says what it *is*, the script says what it
     *does*, and it is the doing that makes it unsafe to move.
+
+    A placement that dispatches a script this project never decoded is refused on
+    the same footing: the absence of a decoded script is not evidence that there
+    is no script.
     """
-    if has_script_event:
+    if has_script_event or has_unresolved_script:
         return Classification.SCRIPTED_ACTOR
     if types.type(type_identity).enemy_identity is None:
         # Inside the supported selector bound, but outside the verified stat
@@ -244,22 +262,38 @@ def build_slot_model(
     types: PlacementTypes,
     *,
     scripted: frozenset[PlacementIdentity] | tuple[PlacementIdentity, ...] = (),
+    unresolved_script: frozenset[PlacementIdentity] | tuple[PlacementIdentity, ...] | None = None,
     door_slots: frozenset[PlacementIdentity] | tuple[PlacementIdentity, ...] = (),
+    script_evidence_error: str | None = None,
 ) -> SlotModel:
     """Classify every placement once, and record why the refused ones were refused.
 
-    ``scripted`` is the set of placements carrying a verified script event,
-    supplied by the caller because reading the event corpus is expensive and
-    profile-conditional; :func:`scripted_placements` produces it.
-    ``door_slots`` is the set of eligible slots whose coordinates fall inside one
-    of their own map's transition rectangles, produced by
-    :func:`placements_in_door_triggers`.
+    ``scripted`` and ``unresolved_script`` are supplied by the caller because
+    reading the event corpus is expensive and profile-conditional;
+    :func:`scripted_placements` produces both. ``door_slots`` is the set of slots
+    whose coordinates fall inside one of their own map's transition rectangles,
+    produced by :func:`placements_in_door_triggers`.
 
-    Both are passed in rather than computed here so this function stays a pure
-    classification over data the caller already had to load, and so the tests can
-    drive it without a ROM.
+    All three are passed in rather than computed here so this function stays a
+    pure classification over data the caller already had to load, and so the
+    tests can drive it without a ROM.
+
+    ``unresolved_script`` has no default, and that is deliberate. Defaulting it to
+    empty would make the fail-closed rule optional and would reproduce the exact
+    defect this parameter exists to fix: a caller who forgot it would silently
+    treat an undecoded script as no script. Passing ``frozenset()`` is a statement
+    that the script evidence was checked and found nothing; omitting the argument
+    is now a TypeError rather than a quiet widening of eligibility.
     """
+    if unresolved_script is None:
+        raise TypeError(
+            "build_slot_model requires unresolved_script: pass the set from "
+            "scripted_placements (or an explicit frozenset() if the script "
+            "evidence was genuinely checked and empty). It is not defaulted so "
+            "that forgetting it cannot silently admit a scripted actor."
+        )
     scripted_ids = frozenset(scripted)
+    unresolved_ids = frozenset(unresolved_script)
     door_ids = frozenset(door_slots)
     slots: list[EnemySlot] = []
     refusals: list[tuple[EnemySlot, Refusal]] = []
@@ -267,8 +301,10 @@ def build_slot_model(
 
     for placement in maps.placements():
         resolved = types.type_of(placement.identity)
+        has_event = placement.identity in scripted_ids
+        unresolved = placement.identity in unresolved_ids
         classification = _classify(
-            placement, resolved.identity, types, placement.identity in scripted_ids
+            placement, resolved.identity, types, has_event, unresolved
         )
         slot = EnemySlot(
             placement=placement,
@@ -278,8 +314,10 @@ def build_slot_model(
             stat_identity=resolved.enemy_identity,
         )
         slots.append(slot)
-        if classification is Classification.SCRIPTED_ACTOR:
+        if has_event:
             refusals.append((slot, Refusal.SCRIPT_EVENT))
+        elif unresolved:
+            refusals.append((slot, Refusal.SCRIPT_UNRESOLVED))
         elif classification is Classification.UNKNOWN:
             refusals.append((slot, Refusal.OUTSIDE_STAT_EXTENT))
             seen_out_of_extent.add(placement.record.type_raw)
@@ -309,29 +347,53 @@ def build_slot_model(
         slots=tuple(slots),
         refusals=tuple(refusals),
         out_of_extent_selectors=tuple(sorted(seen_out_of_extent)),
+        script_evidence_error=script_evidence_error,
     )
 
 
-def scripted_placements(maps: Maps, events) -> frozenset[PlacementIdentity]:
-    """Every placement the verified event corpus attaches a script to.
+def scripted_placements(
+    maps: Maps, events
+) -> tuple[frozenset[PlacementIdentity], frozenset[PlacementIdentity]]:
+    """Placements the verified event corpus ties to a script.
 
-    A placement whose descriptor carries a script root is an actor the game
-    drives from a script - a cutscene participant, an event gate or a scripted
-    encounter. Moving or re-skinning it is exactly the change the ticket forbids
-    in the default configuration, so it is excluded rather than reasoned about.
+    Returns ``(scripted, unresolved)``; both sets are excluded from randomization.
+    The second is the part that makes this fail closed, and an earlier revision of
+    this pack did not have it.
 
-    Refuses nothing itself: a placement with no descriptor, or a descriptor with
-    no event, simply contributes nothing.
+    ``scripted`` is straightforward: the descriptor's handler dispatches a script
+    and the corpus decoded that script's root, so the placement is an actor the
+    game drives from a script - a cutscene participant, an event gate or a
+    scripted encounter.
+
+    ``unresolved`` is the subtle case. Seven placements in the canonical corpus
+    dispatch through the verified script handler ``0x0800421F`` but point at a
+    script root whose extent was never established under the VM evidence
+    contract, so
+    :class:`~tools.webfoot.placement_events.PlacementEvents` returns them with
+    ``event is None`` - it says so itself, that admitting them "would promote
+    undecoded roots into the event corpus on reachability alone, which is not
+    evidence". A placement that dispatches a script is a scripted actor **whether
+    or not this project has decoded the script**, so reading a ``None`` event as
+    "not scripted" is exactly the inference from absence the ticket forbids. They
+    are excluded, and kept in their own set so the reason stays visible instead of
+    being folded into the count of decoded ones.
+
+    A placement whose descriptor cannot be read at all is likewise unresolved: an
+    unreadable descriptor is not evidence that the placement has no script.
     """
-    found: set[PlacementIdentity] = set()
+    scripted: set[PlacementIdentity] = set()
+    unresolved: set[PlacementIdentity] = set()
     for placement in maps.placements():
         try:
             descriptor = events.descriptor_of(placement.identity)
-        except Exception:  # noqa: BLE001 - an unowned placement has no event
+        except Exception:  # noqa: BLE001 - unreadable is refused, not assumed safe
+            unresolved.add(placement.identity)
             continue
         if descriptor.event is not None:
-            found.add(placement.identity)
-    return frozenset(found)
+            scripted.add(placement.identity)
+        elif descriptor.record.handler_pointer_raw == SCRIPT_DISPATCH_HANDLER:
+            unresolved.add(placement.identity)
+    return frozenset(scripted), frozenset(unresolved)
 
 
 def placements_in_door_triggers(
@@ -346,9 +408,23 @@ def placements_in_door_triggers(
     doorway band. The census found exactly **2** such slots in the whole corpus,
     which is why this is a cheap exact exclusion rather than a heuristic.
 
-    The region's two intervals are both treated as ordered bounds because that is
-    all the format proves; which interval is horizontal is not needed, since the
-    test is symmetric in the two axes.
+    Each region's two intervals are treated as ordered bounds, because "two
+    ordered pairs" is all the format proves: which interval is horizontal is
+    UNRESOLVED in the transition record itself. The placement's axes ARE
+    established (``PLACEMENT-POS-001`` Phase 3: low halfword = map X, high = map
+    Y), so this function makes one assignment - placement X against the region's
+    ``first`` interval and Y against ``second`` - and does not treat the test as
+    axis-symmetric, which it is not. An earlier revision's docstring said
+    "symmetric"; the code was never symmetric, and neither is the underlying
+    uncertainty.
+
+    The consequence is bounded and worth stating: if the region's axis order is
+    the opposite of this assignment, a slot could be missed. The exposure is at
+    most the 2 slots the census found inside a trigger, and a region is a
+    rectangle in the same pixel plane, so a hit under either assignment is a real
+    overlap. The check is therefore sound in the direction that matters - it never
+    reports an overlap that is not one - and may under-report by at most the
+    region's own extent on a rotated convention.
     """
     regions: dict[int, list[tuple[tuple[int, int], tuple[int, int]]]] = {}
     for entry in transitions.entries():

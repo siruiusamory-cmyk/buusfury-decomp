@@ -58,8 +58,17 @@ local PLACEMENT_FACTORY = 0x0800FD55
 local HEARTBEAT_STRIDE = 600
 local ROW_STRIDE = 900
 
+-- One header, and EVERY row emits the same number of columns. An earlier revision
+-- wrote 13 fields in the boot row and 14 in the heartbeat row against a 12-column
+-- header, which makes the file unparseable by the reader that is supposed to diff
+-- two runs - the exact purpose this instrument exists for. `note` carries the
+-- per-row extra (the game code on boot, the seen counters on a heartbeat) in the
+-- one column reserved for it, so the shape is uniform.
+local HEADER = "frame,event,map_index,map_entry,count,slot,object,body,type,id,pos_low,pos_high,note\n"
+local COLUMNS = 13
+
 local csv = assert(io.open(OUT, "w"))
-csv:write("frame,event,map_index,map_entry,count,slot,object,body,type,id,pos_low,pos_high\n")
+csv:write(HEADER)
 csv:flush()
 
 local ready = io.open(OUT .. ".ready", "w")
@@ -71,6 +80,15 @@ local last_key = nil
 local last_emit = 0
 local objects_seen = 0
 local maps_seen = 0
+
+--- Write one row, always COLUMNS wide, refusing to emit a ragged line.
+local function write_row(fields, note)
+  while #fields < COLUMNS - 1 do fields[#fields + 1] = "" end
+  fields[COLUMNS] = note or ""
+  assert(#fields == COLUMNS, "row has " .. #fields .. " columns, expected " .. COLUMNS)
+  csv:write(table.concat(fields, ",") .. "\n")
+  csv:flush()
+end
 
 local function u8(addr)
   local ok, v = pcall(function() return emu:read8(addr) end)
@@ -94,16 +112,17 @@ local function map_index_of(pointer)
 end
 
 local function emit(event, index, entry, count, slot, object, body, t, i, lo, hi)
-  csv:write(string.format("%d,%s,%d,0x%08X,%d,%s,%s,%s,%s,%s,%s,%s\n",
-    frame, event, index, entry or 0, count or 0,
+  write_row({
+    tostring(frame), event, tostring(index),
+    string.format("0x%08X", entry or 0), tostring(count or 0),
     slot ~= nil and tostring(slot) or "",
     object and string.format("0x%08X", object) or "",
     body and string.format("0x%08X", body) or "",
     t ~= nil and tostring(t) or "",
     i ~= nil and tostring(i) or "",
     lo ~= nil and tostring(lo) or "",
-    hi ~= nil and tostring(hi) or ""))
-  csv:flush()
+    hi ~= nil and tostring(hi) or "",
+  })
 end
 
 local function survey(event)
@@ -146,8 +165,7 @@ callbacks:add("frame", function()
     local code = "unknown"
     local ok, value = pcall(function() return emu:getGameCode() end)
     if ok and value then code = tostring(value) end
-    csv:write(string.format("0,boot,-1,0x00000000,0,,,,,,,,%s\n", code))
-    csv:flush()
+    write_row({"0", "boot", "-1", "0x00000000", "0"}, "game_code=" .. code)
   end
 
   -- Emit when the live map state actually CHANGES, rather than on a clock. The
@@ -174,9 +192,10 @@ callbacks:add("frame", function()
   end
 
   if frame % HEARTBEAT_STRIDE == 0 then
-    csv:write(string.format("%d,heartbeat,%d,0x%08X,%d,,,,,,,,,%d/%d\n",
-      frame, index, entry or 0, count or 0, maps_seen, objects_seen))
-    csv:flush()
+    write_row(
+      {tostring(frame), "heartbeat", tostring(index),
+       string.format("0x%08X", entry or 0), tostring(count or 0)},
+      string.format("maps_seen=%d objects_seen=%d", maps_seen, objects_seen))
   end
 end)
 

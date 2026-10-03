@@ -27,17 +27,21 @@ zero-semantics come from the codec (:mod:`tools.webfoot.formats.stat_tables`,
 field          storage    domain        notes
 =============  =========  ============  ==================================
 ``exp``        u24 @0x00  0..16777215   0 is legal (13 records hold 0)
-``hp``         u24 @0x04  0..16777215   fixed point, 1024 raw = 1 displayed
-``level``      u8  @0x0C  0..255        measured 1..175, floor 1
+``hp``         u24 @0x04  0..16777215   displayed hit points; floor 1
+``level``      u8  @0x0C  0..255        measured 1..175, floor 1, cap 200
 ``strength``   u8  @0x0D  0..255        0 legal (25 records)
 ``power``      u8  @0x0E  0..255        0 legal (47 records)
 ``endurance``  u8  @0x0F  0..255        0 legal (4 records)
 =============  =========  ============  ==================================
 
-The two 24-bit fields are **unsigned**, as are the four u8 fields. ``hp`` is the
-one field whose unit is not the displayed number: P-010 measured the wolf at 175
-displayed = 179200 raw, i.e. 1024 raw units per displayed hit point, so its floor
-is one *displayed* HP expressed in raw units rather than the integer 1.
+The two 24-bit fields are **unsigned**, as are the four u8 fields. ``hp`` here is
+the **displayed** hit-point value, not a fixed-point quantity, and the evidence is
+the repository's own identification oracle: the wolf is found by
+``find_enemies_by_hp(175)``, so the record holds 175 - the number the player sees.
+P-010's 1024-raw-units-per-displayed-point figure describes the RUNTIME ACTOR's
+HP, a different quantity in a different place; applying it to this record once put
+a floor of 1024 under values that run as low as 1 and clamped every record below
+it upward whatever the seed. The floor is therefore 1.
 
 Zero has no "unset" meaning in this data model. A zero ``strength`` is a real
 authored zero, so a multiplicative policy leaves it at zero - ``0 * k == 0`` -

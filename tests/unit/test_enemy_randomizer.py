@@ -211,10 +211,21 @@ class TestStatPolicy:
         assert strong > weak * 50
 
     def test_the_stat_range_never_upscales_a_below_floor_original_illegally(self):
-        """A field floor is a bound; the policy cannot return below it."""
-        # hp's floor is one *displayed* HP in raw units, not 1.
-        assert config_module.MINIMUM_ENEMY_HP == 1024
+        """A field floor is a bound; the policy cannot return below it.
+
+        ``hp`` in the record is the DISPLAYED hit-point value, so its floor is 1
+        and not a fixed-point quantity. An earlier revision applied P-010's
+        runtime 1024-raw-units-per-displayed-point figure to this field, which put
+        a floor of 1024 under values that run as low as 1 and clamped every record
+        below it upward whatever the seed. The repository's own oracle is the
+        evidence: the wolf is found by ``find_enemies_by_hp(175)``, so the record
+        holds the number the player sees.
+        """
+        assert config_module.MINIMUM_ENEMY_HP == 1
         assert scale_field(1, Fraction(1, 2), "hp") == config_module.MINIMUM_ENEMY_HP
+        # A small original must scale DOWN, not jump to a floor it never had.
+        assert scale_field(20, Fraction(1, 2), "hp") == 10
+        assert scale_field(5, Fraction(3, 4), "hp") == 3
 
     def test_level_ceiling_is_the_game_cap_not_the_field_width(self):
         """The authoritative cap, which is tighter than u8.

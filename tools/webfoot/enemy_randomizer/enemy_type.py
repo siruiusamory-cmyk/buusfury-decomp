@@ -140,12 +140,55 @@ def _shuffle_pairs(
     count = len(pairs)
     if count < 2:
         return pairs
+    order: tuple[int, ...] = tuple(range(count))
     for _ in range(MAX_REDRAWS):
         order = stream.permutation(count)
         candidate = [pairs[index] for index in order]
         if candidate != pairs:
             return candidate
     return [pairs[index] for index in order]
+
+
+def coupled_signature(slot: EnemySlot) -> tuple:
+    """The fields an identity swap must NOT disturb, as a comparable key.
+
+    This is the fix for a defect an independent review measured, and the reasoning
+    is worth keeping because it is not obvious from the field list alone.
+
+    An earlier revision wrote only ``+0x08`` (the stat selector) and ``+0x10`` (the
+    sprite id) and left each slot's own ``+0x04`` flags, ``+0x14`` behavior
+    descriptor and ``+0x18``/``+0x1C`` child pointers untouched. Those fields are
+    not identity, so leaving them looked right - but the consequence is that the
+    object the engine builds is then a combination that never existed: enemy B's
+    stats and graphics driven by enemy A's behavior descriptor. Measured over the
+    canonical corpus, 54 of 1,002 type-changed slots received a descriptor no donor
+    of the installed identity had, and 46 produced an (identity, descriptor) pair
+    that appears nowhere in the corpus. The claim that "the resulting object is one
+    the retail engine itself constructs" was therefore false for those slots, which
+    is exactly the graphics/behavior/stat hybrid the ticket forbids.
+
+    The corpus does vary all three (131 distinct descriptor pointers, 57 distinct
+    flags values, 56 distinct child arrays), so this cannot be dismissed as "they
+    are all the same anyway".
+
+    The fix keeps the swap atomic with respect to everything the engine reads as a
+    unit: identities are permuted only among slots whose coupled fields are
+    identical. Every resulting object is then one some canonical placement already
+    builds, because the slot the identity came from held that exact combination.
+
+    It costs scope, and the cost is measured rather than assumed: 1,263 of the
+    1,465 eligible slots in multi-slot maps have at least one same-map peer with
+    identical coupled fields, so the large majority still shuffle. The rest fall
+    into single-element groups, where a permutation is the identity anyway, so they
+    are left alone and reported rather than silently mishandled.
+    """
+    record = slot.record
+    return (
+        record.flags_raw,
+        record.descriptor_pointer_raw,
+        record.child_count,
+        tuple(record.child_pointers_raw),
+    )
 
 
 def shuffle_enemy_types(
@@ -187,26 +230,49 @@ def shuffle_enemy_types(
             continue
 
         shuffleable.sort(key=lambda s: s.placement.identity.placement_index)
-        new_pairs = _shuffle_pairs(shuffleable, stream)
-        groups_shuffled += 1
 
-        for slot, pair in zip(shuffleable, new_pairs):
-            # Every pair here came from this map's own slots, so it is canonical
-            # by construction; the check is kept as an assertion of that
-            # invariant rather than as a filter that could silently drop one.
-            compatibility_class(pair, model)
-            if pair != slot.original_pair:
-                edits.set(
-                    slot.identity, "enemy-type",
-                    type_raw=pair.selector, id_raw=pair.sprite,
+        # Subgroup by the coupled fields. A permutation is only legal among slots
+        # that agree on every field the engine reads alongside the identity, so
+        # that the object built afterwards is a combination some canonical
+        # placement already has. See coupled_signature for the measurement that
+        # forced this.
+        buckets: dict[tuple, list[EnemySlot]] = {}
+        for slot in shuffleable:
+            buckets.setdefault(coupled_signature(slot), []).append(slot)
+
+        shuffled_here = 0
+        for signature in sorted(buckets, key=lambda s: buckets[s][0].key):
+            bucket = buckets[signature]
+            if len(bucket) < 2:
+                # Nothing to permute. Recorded so the cost of the constraint is
+                # visible in the manifest rather than looking like a silent skip.
+                groups_refused.append(
+                    (map_index,
+                     f"1 slot with no same-map peer sharing flags/descriptor/children "
+                     f"({bucket[0].key})")
                 )
-            decisions.append(
-                TypeDecision(
-                    placement=slot.key, map_index=map_index,
-                    original=IdentityPair(*slot.original_pair),
-                    randomized=pair,
+                continue
+            new_pairs = _shuffle_pairs(bucket, stream)
+            shuffled_here += 1
+            for slot, pair in zip(bucket, new_pairs):
+                # Every pair here came from this map's own slots, so it is canonical
+                # by construction; the check is kept as an assertion of that
+                # invariant rather than as a filter that could silently drop one.
+                compatibility_class(pair, model)
+                if pair != slot.original_pair:
+                    edits.set(
+                        slot.identity, "enemy-type",
+                        type_raw=pair.selector, id_raw=pair.sprite,
+                    )
+                decisions.append(
+                    TypeDecision(
+                        placement=slot.key, map_index=map_index,
+                        original=IdentityPair(*slot.original_pair),
+                        randomized=pair,
+                    )
                 )
-            )
+        if shuffled_here:
+            groups_shuffled += 1
 
     return TypeOutcome(
         decisions=tuple(decisions),

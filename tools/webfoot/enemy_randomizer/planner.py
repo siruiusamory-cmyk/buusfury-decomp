@@ -110,19 +110,34 @@ def build_model(
     exactly one place per run.
     """
     types = PlacementTypes(maps)
-    scripted = frozenset()
+    scripted: frozenset[PlacementIdentity] = frozenset()
+    unresolved: frozenset[PlacementIdentity] | None = None
     if with_events:
-        import contextlib
-
-        # A profile with no verified placement descriptor contract cannot answer
-        # the script question at all. That is not a reason to abort the whole run:
-        # it means the script exclusion is unavailable, and the safe response is
-        # to treat the evidence as absent and say so, rather than to guess that
-        # nothing is scripted.
-        with contextlib.suppress(Exception):
-            scripted = scripted_placements(maps, PlacementEvents(maps))
+        try:
+            scripted, unresolved = scripted_placements(maps, PlacementEvents(maps))
+        except Exception as exc:  # noqa: BLE001 - reported, never silently absorbed
+            # A profile with no verified placement descriptor contract cannot
+            # answer the script question at all. An earlier revision swallowed
+            # this and carried on with an EMPTY scripted set, which silently
+            # disabled the exclusion for every actor in the game while the
+            # manifest still claimed scripted actors were refused.
+            #
+            # The honest response is neither to abort nor to pretend: the
+            # exclusion could not be evaluated, so NO placement can be shown to be
+            # free of a script, and every one of them is refused as unresolved
+            # until the corpus can answer. That fails closed and names itself.
+            unresolved = frozenset(p.identity for p in maps.placements())
+            script_evidence_error: str | None = str(exc)
+        else:
+            script_evidence_error = None
+    else:
+        script_evidence_error = "event corpus not loaded (with_events=False)"
+        unresolved = frozenset()
     door = placements_in_door_triggers(maps, read_map_transitions(maps.base_bytes, maps.profile))
-    return build_slot_model(maps, types, scripted=scripted, door_slots=door), types
+    return build_slot_model(
+        maps, types, scripted=scripted, unresolved_script=unresolved,
+        door_slots=door, script_evidence_error=script_evidence_error,
+    ), types
 
 
 def plan_enemy_randomization(

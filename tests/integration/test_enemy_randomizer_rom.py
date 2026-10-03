@@ -139,10 +139,12 @@ def types(maps):
 @pytest.fixture(scope="module")
 def model(maps, types):
     events = PlacementEvents(maps)
+    scripted, unresolved = scripted_placements(maps, events)
     return build_slot_model(
         maps,
         types,
-        scripted=scripted_placements(maps, events),
+        scripted=scripted,
+        unresolved_script=unresolved,
         door_slots=placements_in_door_triggers(
             maps, read_map_transitions(maps.base_bytes, maps.profile)
         ),
@@ -183,13 +185,32 @@ class TestEligibility:
 
     def test_scripted_actors_are_classified_and_refused(self, model, maps):
         events = PlacementEvents(maps)
-        scripted = scripted_placements(maps, events)
+        scripted, unresolved = scripted_placements(maps, events)
         assert len(scripted) == 57, "measured: 57 canonical script-attached placements"
         by_id = {s.identity: s for s in model.slots}
         for identity in scripted:
             slot = by_id[identity]
             assert slot.classification is Classification.SCRIPTED_ACTOR
             assert model.refusal_reason(slot) is Refusal.SCRIPT_EVENT
+
+    def test_a_script_dispatch_with_no_decoded_root_is_refused(self, model, maps):
+        """Fail closed: an UNDECODED script is not the absence of a script.
+
+        Seven canonical placements dispatch through the verified script handler
+        ``0x0800421F`` but point at a root whose extent was never established, so
+        the event corpus reports ``event is None`` for them. Treating that as "not
+        scripted" would randomize a scripted actor, which is what an earlier
+        revision of this pack did. They are refused, under their own reason.
+        """
+        events = PlacementEvents(maps)
+        scripted, unresolved = scripted_placements(maps, events)
+        assert len(unresolved) == 7, "measured: 7 script-dispatch roots are undecoded"
+        assert not (set(unresolved) & set(scripted)), "the two sets must not overlap"
+        by_id = {s.identity: s for s in model.slots}
+        for identity in unresolved:
+            slot = by_id[identity]
+            assert slot.classification is Classification.SCRIPTED_ACTOR
+            assert model.refusal_reason(slot) is Refusal.SCRIPT_UNRESOLVED
 
     def test_selectors_outside_the_stat_extent_are_unknown_and_refused(self, model):
         """UNKNOWN must fail closed, and it must be the measured set."""
@@ -243,7 +264,8 @@ class TestExcludedActorsUntouched:
 
         by_identity = {s.identity: s for s in safe_plan.model.slots}
         for slot, reason in safe_plan.model.refusals:
-            if reason not in (Refusal.SCRIPT_EVENT, Refusal.OUTSIDE_STAT_EXTENT):
+            if reason not in (Refusal.SCRIPT_EVENT, Refusal.SCRIPT_UNRESOLVED,
+                              Refusal.OUTSIDE_STAT_EXTENT):
                 continue
             entry = by_identity[slot.identity].placement
             span = set(range(entry.file_offset,
@@ -299,6 +321,67 @@ class TestTypeCompatibility:
         }
         for decision in safe_plan.types.decisions:
             assert (decision.randomized.selector, decision.randomized.sprite) in canonical
+
+    def test_every_resulting_combination_already_exists_canonically(self, safe_plan, model):
+        """The identity AND every coupled field must be a combination retail builds.
+
+        This is the invariant an earlier revision violated. It wrote only ``+0x08``
+        and ``+0x10`` and left each slot's own ``+0x04`` flags, ``+0x14`` behavior
+        descriptor and child pointers behind, so 54 of 1,002 changed slots ended up
+        as enemy B's stats and graphics driven by enemy A's behavior descriptor - a
+        combination that appears nowhere in the corpus, and the graphics/behaviour/
+        stat hybrid the ticket forbids.
+
+        Asserted the strong way: for each changed slot, the exact tuple
+        ``(selector, sprite, flags, descriptor, child_count, children)`` must appear
+        on some canonical placement. If the shuffle ever mixes fields from two
+        sources, no slot will carry that tuple and this fails.
+        """
+        canonical = {
+            (s.original_selector, s.original_sprite,
+             s.record.flags_raw, s.record.descriptor_pointer_raw,
+             s.record.child_count, tuple(s.record.child_pointers_raw))
+            for s in model.slots
+        }
+        by_key = {s.key: s for s in model.slots}
+        for decision in safe_plan.types.decisions:
+            slot = by_key[decision.placement]
+            combination = (
+                decision.randomized.selector, decision.randomized.sprite,
+                slot.record.flags_raw, slot.record.descriptor_pointer_raw,
+                slot.record.child_count, tuple(slot.record.child_pointers_raw),
+            )
+            assert combination in canonical, (
+                f"{decision.placement} would become a combination no canonical "
+                f"placement builds: {combination}"
+            )
+
+    def test_a_swapped_identity_keeps_the_slots_coupled_fields(self, safe_plan, model):
+        """The donor of the installed identity must agree on the coupled fields.
+
+        The direct statement of the rule: the slot the identity came from shares
+        the recipient's flags, descriptor and children, so nothing is mixed.
+        """
+        by_key = {s.key: s for s in model.slots}
+        for decision in safe_plan.types.decisions:
+            if not decision.changed:
+                continue
+            recipient = by_key[decision.placement]
+            donors = [
+                s for s in model.slots
+                if s.map_index == decision.map_index
+                and s.original_pair == (decision.randomized.selector,
+                                        decision.randomized.sprite)
+            ]
+            assert donors, "no same-map donor carries the installed identity"
+            assert any(
+                (s.record.flags_raw, s.record.descriptor_pointer_raw,
+                 s.record.child_count, tuple(s.record.child_pointers_raw))
+                == (recipient.record.flags_raw, recipient.record.descriptor_pointer_raw,
+                    recipient.record.child_count,
+                    tuple(recipient.record.child_pointers_raw))
+                for s in donors
+            ), f"{decision.placement} took an identity from a slot with different coupled fields"
 
     def test_an_identity_stays_in_its_own_map(self, safe_plan):
         for decision in safe_plan.types.decisions:

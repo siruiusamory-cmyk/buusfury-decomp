@@ -8,10 +8,10 @@ reduced to a lone executable, because the ``.exe`` needs its runtime directory
 beside it.
 
 This file is the sibling of ``Buu-Fury-Warp-Randomizer.spec.in`` and differs from
-it in exactly two lines: the frozen entry script and the executable's name.
-Everything else - the trimmed Qt payload, the single bundled data file, the
-rationale for keeping the software OpenGL fallback - is the same decision and is
-documented once, there.
+it in three lines: the frozen entry script, the executable's name, and the version
+resource that names the product. Everything else - the trimmed Qt payload, the
+single bundled data file, the icon, the rationale for keeping the software OpenGL
+fallback - is the same decision and is documented once, there.
 
 The single data file is the ROM profile catalog. ``webfoot.cli.load_catalog``
 prefers a checkout's ``config/roms.yaml`` and otherwise falls back to
@@ -91,6 +91,8 @@ exe = EXE(
     a.datas,
     [],
     name='Enemy-Randomizer',
+    icon='scripts/randomizer.ico',
+    version='Enemy-Randomizer.version.txt',
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,

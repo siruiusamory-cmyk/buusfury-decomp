@@ -30,6 +30,23 @@ prefers a checkout's ``config/roms.yaml`` and otherwise falls back to
 ``tools.webfoot.data/roms.yaml``, which is the branch a frozen build takes - so
 that file must travel or every ROM selection is refused.
 
+Windows resource metadata
+-------------------------
+
+The executable carries the product's own identity, so a user who looks at the
+file's properties learns what it is rather than reading a blank dialog:
+
+* ``version='Buu-Fury-Warp-Randomizer.version.txt'`` supplies ProductName,
+  FileDescription, FileVersion/ProductVersion, InternalName, OriginalFilename,
+  CompanyName and the licence. The version there is the same ``0.1.0`` the
+  window and the manifest report, and the name is the same one
+  ``warprand.TOOL_NAME`` carries.
+* ``icon='scripts/randomizer.ico'`` supplies the application icon, rendered from
+  the project's own ``public/favicon.svg``.
+
+Neither file may name a ticket, a branch, a checkout, a user or a local path: the
+executable is what a stranger receives.
+
 Nothing from the commercial ROM is bundled, and nothing can be: the profile
 catalog is a table of addresses and hashes, not game content.
 
@@ -42,7 +59,7 @@ Qt translation - libraries a single window with three text fields, a button and
 a progress bar never loads. The excluded set is named in ``_UNUSED_QT_PREFIXES``
 below.
 
-The released artifact measures **35.4 MB** as a one-file executable - one
+The released artifact measures **35.2 MB** as a one-file executable - one
 compressed archive of the runtime plus a README - which is the only size figure
 this file states, because it is the one that was measured.
 
@@ -120,6 +137,8 @@ exe = EXE(
     a.datas,
     [],
     name='Buu-Fury-Warp-Randomizer',
+    icon='scripts/randomizer.ico',
+    version='Buu-Fury-Warp-Randomizer.version.txt',
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,

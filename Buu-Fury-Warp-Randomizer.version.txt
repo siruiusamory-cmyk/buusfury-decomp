@@ -1,0 +1,39 @@
+# Windows version resource for the standalone Buu's Fury Warp Randomizer.
+#
+# Read by PyInstaller through the `version=` argument of EXE() in
+# `Buu-Fury-Warp-Randomizer.spec.in`, which is evaluated as a Python expression
+# with PyInstaller's versioninfo names in scope. Keep the strings here in step
+# with `tools/webfoot/warprand/service.py`: TOOL_NAME and TOOL_VERSION are the
+# product's own identity, and a second spelling would be a second product.
+#
+# No ticket, branch, worktree, user or local path belongs in this file.
+VSVersionInfo(
+  ffi=FixedFileInfo(
+    filevers=(0, 1, 0, 0),
+    prodvers=(0, 1, 0, 0),
+    mask=0x3F,
+    flags=0x0,
+    OS=0x40004,
+    fileType=0x1,
+    subtype=0x0,
+    date=(0, 0),
+  ),
+  kids=[
+    StringFileInfo([
+      StringTable(
+        "040904B0",
+        [
+          StringStruct("CompanyName", "Webfoot SDK"),
+          StringStruct("FileDescription", "Door warp randomizer for Dragon Ball Z: Buu's Fury"),
+          StringStruct("FileVersion", "0.1.0.0"),
+          StringStruct("InternalName", "Buu-Fury-Warp-Randomizer"),
+          StringStruct("LegalCopyright", "Mozilla Public License 2.0"),
+          StringStruct("OriginalFilename", "Buu-Fury-Warp-Randomizer.exe"),
+          StringStruct("ProductName", "Buu's Fury Warp Randomizer"),
+          StringStruct("ProductVersion", "0.1.0.0"),
+        ],
+      )
+    ]),
+    VarFileInfo([VarStruct("Translation", [1033, 1200])]),
+  ],
+)

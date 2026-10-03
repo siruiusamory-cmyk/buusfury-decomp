@@ -226,24 +226,45 @@ def test_the_manifest_is_created_beside_the_output(service, tmp_path):
     )
     document = json.loads(outcome.manifest_path.read_text(encoding="utf-8"))
 
+    # ENEMY-RANDOMIZER-EXE-001 moved this product onto the shared, versioned
+    # randomizer manifest, because a combined run has one output and therefore
+    # needs one document describing it. The warp-specific facts did not leave the
+    # document, only moved under the module that owns them.
+    assert document["format_version"] == warprand.MANIFEST_SCHEMA_VERSION
     assert document["tool"] == {
         "name": "Buu's Fury Warp Randomizer",
         "version": "0.1.0",
     }
-    assert document["policy"] == "reciprocal-door-pairs/3"
-    assert document["seed"] == "Goku"
-    assert document["input"]["size"] == CANONICAL_SIZE
-    assert document["input"]["sha256"] == CANONICAL_SHA256
+    assert document["master_seed"] == "Goku"
+    assert document["module_order"] == ["map-warp", "enemy-placement", "enemy-stat"]
+    assert document["source"]["size"] == CANONICAL_SIZE
+    assert document["source"]["sha256"] == CANONICAL_SHA256
     assert document["output"]["filename"] == output.name
     assert document["output"]["sha256"] == GOKU_GOLDEN_SHA256
-    assert document["counts"] == {
+
+    warp = document["modules"]["map-warp"]
+    assert warp["enabled"] is True
+    assert warp["algorithm"] == "reciprocal-door-pairs/3"
+    # The launch seed is the master seed verbatim for this one module: its seed
+    # semantics predate the shared framework and every warp seed ever produced
+    # depends on them, so the namespace says so out loud.
+    assert warp["seed_namespace"] == "master-legacy"
+    assert warp["derived_seed"] == "Goku"
+    assert warp["module_version"] == 1
+    assert warp["counts"] == {
         "supported": SUPPORTED,
         "randomized": RANDOMIZED,
         "destinations_moved": DESTINATIONS_MOVED,
         "destinations_unchanged": RANDOMIZED - DESTINATIONS_MOVED,
         "skipped": SKIPPED,
     }
-    assert sum(document["skipped_reasons"].values()) == SKIPPED
+    assert sum(warp["skipped_reasons"].values()) == SKIPPED
+    # Every registered module is described, including the ones this product does
+    # not offer, so two manifests are comparable without knowing which product
+    # wrote them - and "off" is distinguishable from "did nothing".
+    assert document["modules"]["enemy-placement"]["enabled"] is False
+    assert document["modules"]["enemy-stat"]["enabled"] is False
+    assert document["spoiler"] is None
     # The limitation travels with the artefact, not only with the window that
     # made it. The reviewer noted this was asserted nowhere.
     assert document["progression"] == warprand.PROGRESSION_DISCLAIMER

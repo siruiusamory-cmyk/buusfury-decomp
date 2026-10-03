@@ -51,6 +51,7 @@ The index for everything under `docs/`. Start with the root
 | [`decisions/`](decisions/) | Accepted architecture decisions, each recording its context and consequences. |
 | [`journeys/`](journeys/) | End-to-end authoring walkthroughs through the tool. |
 | [`warprand/`](warprand/) | The packaged warp randomizer application. |
+| [`enemyrand/`](enemyrand/) | The packaged enemy randomizer application. |
 
 ## Conventions used here
 

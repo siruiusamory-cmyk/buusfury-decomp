@@ -216,18 +216,20 @@ def eligible_stat_selectors(
         by_selector.setdefault(slot.original_selector, []).append(slot)
 
     #: Reasons about the ACTOR: a scripted actor, an actor whose script was never
-    #: decoded, or a selector outside the verified stat extent. Any of these vetoes
-    #: the record outright.
+    #: decoded, or a selector outside the verified stat extent. ANY consumer with one
+    #: of these vetoes the record outright, no matter how many other consumers look
+    #: ordinary. That is the original rule and it is not negotiable: the actor is one
+    #: the run promised not to touch, so every record it reads must be left alone.
     actor_refusals = {
         Refusal.SCRIPT_EVENT, Refusal.SCRIPT_UNRESOLVED, Refusal.OUTSIDE_STAT_EXTENT,
     }
 
-    def may_consume(slot) -> bool:
-        """Whether this placement is a legitimate reason to scale the record.
+    def may_justify_scaling(slot) -> bool:
+        """Whether this placement, on its own, justifies scaling the record.
 
-        Three conditions, and the middle one is the correction a review forced:
+        Deliberately NOT the whole rule - it answers only "is this a placement the
+        run randomizes as a placement". Two conditions:
 
-        * not refused for an actor-level reason;
         * not ``alone_in_map``. A lone slot is never randomized as a slot, so it
           cannot justify scaling its record either; otherwise a record used solely by
           one lone enemy gets scaled while the manifest tells the reader that
@@ -235,13 +237,18 @@ def eligible_stat_selectors(
           consumer each;
         * classified ordinary combat enemy.
 
-        A placement refused only for sitting IN A DOOR TRIGGER is still a valid
-        consumer. That refusal is about moving the actor, not about the actor, and a
-        record shared with properly-randomized consumers must still be scaled - the
-        over-veto this docstring warns about.
+        A placement refused only for sitting IN A DOOR TRIGGER does count here. That
+        refusal is about moving the actor, not about the actor, and a record shared
+        with properly-randomized consumers must still be scaled rather than
+        over-vetoed. See the class docstring.
+
+        An earlier revision folded the actor reasons into this predicate instead of
+        vetoing the selector, which silently dropped the scripted-actor protection and
+        let 21 records shared with scripted actors be scaled - a regression a review
+        caught. Actor reasons are checked at the selector level below, where they
+        cannot be diluted by an ordinary sibling.
         """
-        reason = model.refusal_reason(slot)
-        if reason in actor_refusals or reason is Refusal.ALONE_IN_MAP:
+        if model.refusal_reason(slot) is Refusal.ALONE_IN_MAP:
             return False
         return slot.classification is Classification.ORDINARY_COMBAT_ENEMY
 
@@ -249,10 +256,21 @@ def eligible_stat_selectors(
     refused: list[tuple[int, str]] = []
     for selector in sorted(by_selector):
         slots = by_selector[selector]
-        consumers = [s for s in slots if may_consume(s)]
+
+        # Rule 1, and it dominates: if ANY consumer is an actor the run must leave
+        # alone, the record is refused. Checked over every slot, not over a filtered
+        # subset, so an ordinary sibling can never outvote a scripted actor.
+        actor_blocked = [s for s in slots if model.refusal_reason(s) in actor_refusals]
+        if actor_blocked:
+            kinds = sorted({model.refusal_reason(s).value for s in actor_blocked})
+            refused.append((selector, f"shared with {'/'.join(kinds)} placement(s)"))
+            continue
+
+        # Rule 2: the record must have at least one consumer that the run actually
+        # randomizes. Otherwise it is only read by excluded placements (alone in its
+        # map, or in a door trigger with no randomized sibling).
+        consumers = [s for s in slots if may_justify_scaling(s)]
         if not consumers:
-            # No consumer justifies scaling this record: every placement that selects
-            # it is excluded, whether for an actor reason or because it is alone.
             kinds = sorted({
                 (model.refusal_reason(s) or s.classification).value
                 if hasattr(model.refusal_reason(s) or s.classification, "value")

@@ -312,23 +312,49 @@ class TestExcludedActorsUntouched:
                             entry.file_offset + len(entry.original_bytes)]
 
     def test_a_scripted_actors_shared_stat_record_is_not_randomized(self, safe_plan, model):
-        """One unsafe consumer vetoes the shared record.
+        """One unsafe consumer vetoes the shared record, however many safe ones exist.
 
         A stat record is shared by every placement selecting it. Randomizing a
-        record that a scripted actor also uses would change that actor's stats,
-        which the default configuration forbids, so the record is skipped and the
-        reason is reported.
+        record that a scripted actor also uses would change that actor's stats, which
+        the configuration forbids, so the record is skipped.
+
+        This test used to loop over ``stats.refused_selectors``, which made it
+        VACUOUS under a later rule: those are by definition the selectors nothing was
+        scaled for, so the assertion could not fail. A review caught the resulting
+        regression - 21 records shared with scripted actors were being scaled - going
+        undetected. It now asks the model directly which selectors have an actor-level
+        consumer, and holds the run to refusing every one of them.
         """
-        refused = dict(safe_plan.stats.refused_selectors)
-        assert refused, "the canonical corpus shares selectors with scripted actors"
+        actor_reasons = {
+            Refusal.SCRIPT_EVENT, Refusal.SCRIPT_UNRESOLVED, Refusal.OUTSIDE_STAT_EXTENT,
+        }
+        by_selector: dict[int, list] = {}
+        for slot in model.slots:
+            by_selector.setdefault(slot.original_selector, []).append(slot)
+
+        shared_with_actor = [
+            selector for selector, slots in by_selector.items()
+            if any(model.refusal_reason(s) in actor_reasons for s in slots)
+        ]
+        assert shared_with_actor, "the corpus shares selectors with scripted actors"
+
         randomized_identities = {d.enemy_identity for d in safe_plan.stats.decisions}
-        for selector in refused:
-            slots = [s for s in model.slots if s.original_selector == selector]
-            identities = {str(s.stat_identity) for s in slots if s.stat_identity}
-            assert not (identities & randomized_identities), (
-                f"selector {selector} shares a record with a refused actor but was "
-                "randomized anyway"
-            )
+        leaked = []
+        for selector in shared_with_actor:
+            identities = {
+                str(s.stat_identity) for s in by_selector[selector] if s.stat_identity
+            }
+            if identities & randomized_identities:
+                leaked.append(selector)
+        assert not leaked, (
+            f"selectors {sorted(leaked)} are read by a scripted or unresolved-script "
+            "actor, which the run must leave untouched, but their records were scaled"
+        )
+
+        # And the refusal is reported, so the cost is visible in the run record.
+        refused = dict(safe_plan.stats.refused_selectors)
+        for selector in shared_with_actor:
+            assert selector in refused, selector
 
     def test_a_lone_enemys_stat_record_is_not_randomized(self, safe_plan, model):
         """A slot the run refuses must not have its record scaled behind its back.

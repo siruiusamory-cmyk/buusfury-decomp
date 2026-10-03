@@ -30,7 +30,7 @@ in.
 from __future__ import annotations
 
 from .config import PRESETS, EnemyRandomizerConfig, Preset
-from .eligibility import Classification, EnemySlot, SlotModel, build_slot_model
+from .eligibility import Classification, EnemySlot, SlotModel
 from .manifest import RunManifest
 from .planner import EnemyRandomization, plan_enemy_randomization
 from .seeds import (
@@ -66,7 +66,6 @@ __all__ = [
     "SeedError",
     "SlotModel",
     "Stream",
-    "build_slot_model",
     "derive_all_module_seeds",
     "derive_module_seed",
     "normalize_seed",

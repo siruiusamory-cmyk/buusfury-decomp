@@ -37,7 +37,8 @@ consequences are stated rather than hidden:
    provide is that the common shapes are removed structurally: a script-attached
    actor is refused, and an enemy alone in its own map is never shuffled because
    a shuffle of one element is not a shuffle. The residual is bounded by runtime
-   smoke, and the audit document says so.
+   smoke. Its measurement and the exact scope of the claim are in section 11 of
+   ``docs/research/ENEMY_RANDOMIZER_VERIFICATION.md``.
 
 Eligibility is never inferred from HP
 =====================================
@@ -233,7 +234,7 @@ class SlotModel:
         return dict(sorted(tally.items()))
 
     def summary(self) -> dict:
-        return {
+        document = {
             "placements": len(self.slots),
             "eligible": len(self.eligible),
             "maps_with_eligible": len(self.by_map()),
@@ -244,6 +245,16 @@ class SlotModel:
             "refusal_counts": self.refusal_counts(),
             "out_of_extent_selectors": list(self.out_of_extent_selectors),
         }
+        # A run that could not evaluate the script exclusion refuses every actor
+        # instead. That fallback must be VISIBLE in the manifest, or such a run
+        # looks exactly like a normal one whose seed simply changed nothing.
+        if self.script_evidence_error is not None:
+            document["script_evidence_error"] = self.script_evidence_error
+            document["script_evidence_fallback"] = (
+                "the script exclusion could not be evaluated, so every placement "
+                "was refused as unresolved rather than assumed script-free"
+            )
+        return document
 
 
 def _classify(
@@ -388,11 +399,11 @@ def scripted_placements(
     script root whose extent was never established under the VM evidence
     contract, so
     :class:`~tools.webfoot.placement_events.PlacementEvents` returns them with
-    ``event is None`` - it says so itself, that admitting them "would promote
-    undecoded roots into the event corpus on reachability alone, which is not
-    evidence". A placement that dispatches a script is a scripted actor **whether
-    or not this project has decoded the script**, so reading a ``None`` event as
-    "not scripted" is exactly the inference from absence the ticket forbids. They
+    ``event is None`` - it states that admitting them "would promote undecoded
+    roots into the event corpus on reachability alone, which is not evidence". A
+    placement that dispatches a script is a scripted actor **whether or not this
+    project has decoded the script**, so reading a ``None`` event as "not scripted"
+    is the inference from absence the ticket forbids. They
     are excluded, and kept in their own set so the reason stays visible instead of
     being folded into the count of decoded ones.
 
@@ -431,18 +442,14 @@ def placements_in_door_triggers(
     UNRESOLVED in the transition record itself. The placement's axes ARE
     established (``PLACEMENT-POS-001`` Phase 3: low halfword = map X, high = map
     Y), so this function makes one assignment - placement X against the region's
-    ``first`` interval and Y against ``second`` - and does not treat the test as
-    axis-symmetric, which it is not. An earlier revision's docstring said
-    "symmetric"; the code was never symmetric, and neither is the underlying
-    uncertainty.
-
-    The consequence is bounded and worth stating: if the region's axis order is
-    the opposite of this assignment, a slot could be missed. The exposure is at
-    most the 2 slots the census found inside a trigger, and a region is a
-    rectangle in the same pixel plane, so a hit under either assignment is a real
-    overlap. The check is therefore sound in the direction that matters - it never
-    reports an overlap that is not one - and may under-report by at most the
-    region's own extent on a rotated convention.
+    ``first`` interval and Y against ``second`` - and does NOT treat the test as
+    axis-symmetric. It is not, and neither is the underlying uncertainty: if the
+    region's axis order is the opposite of this assignment a slot could be missed,
+    so the check can under-report by at most the region's own extent. It does not
+    over-report, which is the direction that matters, because a reported overlap is
+    a real rectangle overlap in the same pixel plane. Exposure is bounded by the 2
+    slots the census found inside a trigger. See section 7.1 of
+    ``docs/research/ENEMY_RANDOMIZER_VERIFICATION.md``.
     """
     regions: dict[int, list[tuple[tuple[int, int], tuple[int, int]]]] = {}
     for entry in transitions.entries():

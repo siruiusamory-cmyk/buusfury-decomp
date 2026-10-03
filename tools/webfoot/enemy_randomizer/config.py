@@ -66,15 +66,6 @@ class StatRange:
         """Build a band from exact literals, e.g. ``StatRange.of("3/4", "27/20")``."""
         return cls(Fraction(low), Fraction(high), label)
 
-    def scale(self, original: int) -> int:
-        """``original * factor`` for the band's endpoints, exactly.
-
-        The caller picks the factor with the stream; this exists so the two
-        endpoints are computed the same way and a test can assert the bound
-        holds at both ends.
-        """
-        return (original * self.low.numerator) // self.low.denominator
-
     def to_json(self) -> dict:
         return {"low": str(self.low), "high": str(self.high), "label": self.label}
 
@@ -105,15 +96,15 @@ CHAOS_STATS = StatRange.of("1/2", "2", "chaos")
 #:   waiting for a high-rolling seed.
 #:
 #: ``hp`` IN THIS RECORD IS THE DISPLAYED HIT-POINT VALUE, not a fixed-point
-#: quantity, and an earlier revision of this pack got that wrong. The measured
-#: evidence is the repository's own identification oracle: the wolf is found by
-#: ``find_enemies_by_hp(175)`` (``tools/webfoot/formats/stat_tables.py``), i.e.
-#: the record holds 175 - the number the player sees - and it is the only record
-#: with that value. P-010's 1024-raw-units-per-displayed-point figure describes
-#: the RUNTIME ACTOR's HP, which is a different quantity at a different place;
-#: applying it here put a floor of 1024 under a field whose observed values run
-#: down to 1, so every record below 1024 was clamped upward whatever the seed.
-#: The floor is therefore 1: a displayed HP of zero would be a dead enemy.
+#: quantity. The measured evidence is the repository's own identification oracle:
+#: the wolf is found by ``find_enemies_by_hp(175)``
+#: (``tools/webfoot/formats/stat_tables.py``), i.e. the record holds 175 - the
+#: number the player sees. P-010's 1024-raw-units-per-displayed-point figure
+#: describes the RUNTIME ACTOR's HP, a different quantity in a different place.
+#: Applying it here puts a floor of 1024 under a field whose observed values run
+#: down to 1, so every record below 1024 would be clamped upward whatever the seed.
+#: The floor is therefore 1: a displayed HP of zero would be a dead enemy. See
+#: section 6 of ``docs/research/ENEMY_RANDOMIZER_VERIFICATION.md``.
 #:
 #: Zero is a legal value for ``exp``, ``strength``, ``power`` and ``endurance``
 #: (measured: 13, 25, 47 and 4 records respectively), so their floor is 0 and a

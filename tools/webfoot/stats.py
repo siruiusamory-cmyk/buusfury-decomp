@@ -383,14 +383,43 @@ def stat_tables_from_image(
     re-verification dominated a profile of the enemy randomizer's corpus loop
     (239 ms per call, 1.75 s of a 9.3 s ten-seed batch, almost all of it hashing).
 
-    The caller owns the identity claim. This function does not re-verify, because
-    re-verification is precisely what the caller has already done; every safety
-    rule about *which* image may be read stays in :func:`load_stat_tables` and in
-    the profile gate `_require_stat_profile` applies.
+    The profile contract is re-checked here, not assumed from ``identification``.
+    ``_require_stat_profile`` is what refuses a hand-edited ``--profiles`` file
+    whose table locations differ from the packaged catalog, and an earlier
+    revision of this function relied on the caller having called
+    :func:`load_stat_tables` - which let ``EnemyRandomizerContext`` accept such a
+    profile and plan 1,447 changes against it. ``ROM_SAFETY.md`` requires failing
+    closed on a provenance mismatch, so the check belongs on every path that
+    decodes these tables, including this one.
 
     Edits must not leak between callers, so this always constructs a NEW
     :class:`StatTables`: the object carries the pending edits for one run.
     """
+    # The profile gate, applied on this path too. `_require_stat_profile` is called
+    # for the declaration and identity checks it owns, AND the packaged-contract
+    # comparison is asserted here explicitly: the gate's behaviour for a given
+    # identification depends on which capability was checked last, so leaning on it
+    # was the defect rather than the fix. ROM_SAFETY.md requires failing closed on a
+    # provenance mismatch, so every path that decodes these tables checks it.
+    checked = _require_stat_profile(identification)
+    if checked.id != profile.id:
+        raise StatProfileError(
+            f"stat read was given profile {profile.id!r} but the identified image "
+            f"resolves to {checked.id!r}"
+        )
+    for required in (
+        capability.Capability.ENEMY_STATS,
+        capability.Capability.CHARACTER_BASE_STATS,
+    ):
+        contract = capability.packaged_contract(
+            profile.id, required, error_type=StatProfileError
+        )
+        if getattr(profile, required.value) != getattr(contract, required.value):
+            raise StatProfileError(
+                f"supplied profile {required.value} metadata conflicts with the "
+                "packaged contract; refusing stat-table access against unverified "
+                "extents"
+            )
     if not isinstance(data, (bytes, bytearray)) or len(data) != identification.size:
         raise RomChangedError(
             f"stat read needs the identified {identification.size}-byte image; "

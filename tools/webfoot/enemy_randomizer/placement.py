@@ -15,9 +15,10 @@ Same map, not global
 
 The permutation is computed independently per map. A global permutation would let
 an enemy move to a map it was never placed on, which changes which encounters
-exist rather than only where they stand. Same-map was measured to be a real
-scope, not a token one: 236 of the 268 placement-bearing maps hold two or more
-eligible slots, covering 1,465 of the 1,487 eligible placements.
+exist rather than only where they stand. Same-map was measured to be a real scope,
+not a token one: 236 of the 268 placement-bearing maps hold two or more eligible
+slots, covering 1,465 of the 1,480 eligible placements (section 1 of
+``docs/research/ENEMY_RANDOMIZER_VERIFICATION.md``).
 
 What this module does NOT change
 ================================
@@ -25,7 +26,10 @@ What this module does NOT change
 It writes ``position_raw`` only. Identity, the type selector, the sprite id, the
 flags word, the behavior-descriptor pointer and the child-pointer array are all
 left exactly as they were, so a placement move cannot silently change what an
-enemy *is*, only where it stands. That separation is what makes the three modules
+enemy *is* - only where it stands. The type module DOES match those coupled fields
+when it swaps an identity (see :func:`enemy_type.coupled_signature`); this module
+does not need to, because it never changes an identity, and whether a position
+depends on the descriptor is UNKNOWN (section 11 of the same document). That separation is what makes the three modules
 compose predictably: this module never depends on the type module's choices, and
 the type module never depends on this one's.
 

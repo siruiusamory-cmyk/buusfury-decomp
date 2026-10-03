@@ -22,10 +22,13 @@ ground / flying         **No field distinguishes them.** The enemy stat record
                         one from it would be exactly the speculation the ticket
                         forbids.
 melee / ranged          Same: no decoded field carries it.
-movement behavior       The placement's behavior-descriptor pointer is the
-                        **same shared null-handler descriptor** (``0x080555A0``)
-                        across the corpus. It cannot separate two enemies,
-                        because it is identical for all of them.
+movement behavior       The placement's behavior-descriptor pointer is
+                        ``0x080555A0`` for most of the corpus (1,429 of 1,559
+                        placements), which is the shared null-handler descriptor -
+                        but NOT for all of it: 131 distinct descriptor pointers
+                        exist, so the field does vary and is treated as part of the
+                        identity template rather than discarded. See
+                        ``enemy_type.coupled_signature``.
 collision footprint     No per-placement collision data exists in this project; a
                         search finds none. ``COLLISION_FORMAT.md`` covers map
                         collision, not actor footprints.
@@ -57,11 +60,14 @@ actually builds. Not a composed pair, not a selector alone, and not an identity
 from another profile.
 
 The safety argument is about **internal coherence**, not about movement: when a
-whole canonical pair is installed, the stat record and the sprite travel together
-to the same object, which is the combination the retail engine itself constructs
-in that very profile. The forbidden hybrid - one enemy's graphics with another's
-behaviour and a third's stats - is not representable, because the module never
-writes a selector and a sprite independently.
+whole canonical pair is installed *together with the slot fields the engine reads
+alongside it*, the stat record, the sprite and the behaviour travel as one unit,
+which is a combination the retail engine itself constructs in that very profile.
+The forbidden hybrid - one enemy's graphics with another's behaviour and a third's
+stats - is not produced, and that is a property of the permutation's donor pool
+rather than of this module alone: see :func:`enemy_type.coupled_signature` for why
+writing only the selector and the sprite was not enough, and section 5.1 of
+``docs/research/ENEMY_RANDOMIZER_VERIFICATION.md`` for the measurement.
 
 A finer taxonomy would be *desirable* and is not *available*, and inventing one
 would be worse than admitting that: it would look like a safety property while
@@ -73,7 +79,7 @@ What the class does not claim
 It does not claim that any canonical enemy is safe in any canonical slot. It
 claims the identity is internally coherent, which is what the evidence supports.
 The residual risk - an actor that is visually or mechanically out of place, or a
-boss that no available field identifies - is stated in the audit and bounded by
+boss that no available field identifies - is quantified in section 11 of
 runtime smoke, not papered over with a class name.
 """
 

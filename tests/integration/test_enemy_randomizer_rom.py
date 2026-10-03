@@ -62,10 +62,7 @@ from tools.webfoot.enemy_randomizer.eligibility import (
     scripted_placements,
 )
 from tools.webfoot.enemy_randomizer.manifest import canonical_json
-from tools.webfoot.enemy_randomizer.planner import (
-    build_model,
-    plan_enemy_randomization,
-)
+from tools.webfoot.enemy_randomizer.planner import plan_enemy_randomization
 from tools.webfoot.enemy_randomizer.seeds import (
     MODULE_ENEMY_PLACEMENT,
     MODULE_ENEMY_STAT,

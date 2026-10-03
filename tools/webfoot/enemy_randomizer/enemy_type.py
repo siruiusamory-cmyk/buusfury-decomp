@@ -152,35 +152,19 @@ def _shuffle_pairs(
 def coupled_signature(slot: EnemySlot) -> tuple:
     """The fields an identity swap must NOT disturb, as a comparable key.
 
-    This is the fix for a defect an independent review measured, and the reasoning
-    is worth keeping because it is not obvious from the field list alone.
+    Identity is not the whole of what the engine reads from a placement. When it
+    constructs an actor it also consumes ``+0x04`` flags, the ``+0x14`` behavior
+    descriptor and the ``+0x18``/``+0x1C`` child pointers, and the canonical corpus
+    varies all three (131 distinct descriptor pointers, 57 flags values, 56 child
+    arrays). Writing only ``+0x08`` and ``+0x10`` therefore produces an object the
+    engine never otherwise builds: one enemy's stats and graphics driven by
+    another's behavior descriptor. The measurement, its size, and the scope this
+    constraint costs are in section 5.1 of
+    ``docs/research/ENEMY_RANDOMIZER_VERIFICATION.md``.
 
-    An earlier revision wrote only ``+0x08`` (the stat selector) and ``+0x10`` (the
-    sprite id) and left each slot's own ``+0x04`` flags, ``+0x14`` behavior
-    descriptor and ``+0x18``/``+0x1C`` child pointers untouched. Those fields are
-    not identity, so leaving them looked right - but the consequence is that the
-    object the engine builds is then a combination that never existed: enemy B's
-    stats and graphics driven by enemy A's behavior descriptor. Measured over the
-    canonical corpus, 54 of 1,002 type-changed slots received a descriptor no donor
-    of the installed identity had, and 46 produced an (identity, descriptor) pair
-    that appears nowhere in the corpus. The claim that "the resulting object is one
-    the retail engine itself constructs" was therefore false for those slots, which
-    is exactly the graphics/behavior/stat hybrid the ticket forbids.
-
-    The corpus does vary all three (131 distinct descriptor pointers, 57 distinct
-    flags values, 56 distinct child arrays), so this cannot be dismissed as "they
-    are all the same anyway".
-
-    The fix keeps the swap atomic with respect to everything the engine reads as a
-    unit: identities are permuted only among slots whose coupled fields are
-    identical. Every resulting object is then one some canonical placement already
-    builds, because the slot the identity came from held that exact combination.
-
-    It costs scope, and the cost is measured rather than assumed: 1,263 of the
-    1,465 eligible slots in multi-slot maps have at least one same-map peer with
-    identical coupled fields, so the large majority still shuffle. The rest fall
-    into single-element groups, where a permutation is the identity anyway, so they
-    are left alone and reported rather than silently mishandled.
+    Permuting identities only among slots that agree on this signature keeps the
+    swap atomic with respect to everything the engine reads as a unit, so every
+    resulting object is one a canonical placement already holds.
     """
     record = slot.record
     return (

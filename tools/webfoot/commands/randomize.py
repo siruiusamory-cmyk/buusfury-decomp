@@ -304,12 +304,11 @@ def run(args) -> int:
         )
 
     # EVERY path this command will write is checked against the input and against
-    # the output, not just the manifest. The spoiler log is the one that makes
-    # this more than tidiness: an earlier revision checked only the manifest, so
-    # `--spoiler <the input ROM>` overwrote the verified image with JSON - and
-    # because the spoiler is written after the post-write source hash check,
-    # nothing in the run would have noticed. ROM_SAFETY.md forbids any write path
-    # reaching the input, and a check that covers some of them is not that rule.
+    # the output, not just the manifest. The spoiler log is the one that makes this
+    # more than tidiness: it is written after the post-write source check, so a
+    # spoiler aimed at the input would destroy the verified image with nothing
+    # noticing. ROM_SAFETY.md forbids any write path reaching the input, and a
+    # check covering some of them is not that rule.
     manifest_path = Path(args.manifest) if args.manifest else default_manifest(output)
     write_targets: list[tuple[Path, str]] = [
         (output, "output ROM"),
@@ -348,10 +347,10 @@ def run(args) -> int:
                 "Choose a different --output."
             )
         # The manifest and the spoiler follow the same policy as the image they
-        # describe. An earlier revision wrote them over an existing file with no
-        # confirmation while the ROM itself needed --overwrite, so a run could
-        # silently replace the recorded provenance of a previous randomized ROM -
-        # the artefact that makes that ROM reproducible.
+        # describe. Writing them over an existing file without confirmation while
+        # the ROM itself needed --overwrite would let a run replace the recorded
+        # provenance of a previous randomized ROM - the artefact that makes that
+        # ROM reproducible.
         for target, label in write_targets[1:]:
             if target.exists() and not args.overwrite:
                 raise RandomizeError(

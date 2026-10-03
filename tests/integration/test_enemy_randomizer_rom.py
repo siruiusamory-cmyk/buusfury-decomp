@@ -149,11 +149,47 @@ def model(maps, types):
 
 
 @pytest.fixture(scope="module")
-def safe_plan(catalog):
+def shipping_plan(catalog):
+    """The plan the SHIPPING preset produces: placement and stats only.
+
+    This is what a streamed run is built from, and what the acceptance target names.
+    The enemy-type module is absent here because the preset disables it.
+    """
     preset = PRESETS["stream-safe"]
     return plan_enemy_randomization(
         ROM, catalog, SEED, preset.config, preset_name=preset.name
     )
+
+
+def _all_modules_plan(catalog):
+    """All three modules forced on, including the undelivered one.
+
+    The enemy-type module is DISABLED in every preset because it does not deliver a
+    type change (section 5.2 of the evidence document). Its invariants are still
+    worth testing - the research result must stay reproducible and a future ticket
+    will build on it - so the type-specific tests drive it explicitly rather than
+    relying on a preset to enable it.
+    """
+    preset = PRESETS["stream-safe"]
+    forced = replace(
+        preset.config,
+        enabled=frozenset(
+            {MODULE_ENEMY_TYPE, MODULE_ENEMY_PLACEMENT, MODULE_ENEMY_STAT}
+        ),
+    )
+    return plan_enemy_randomization(
+        ROM, catalog, SEED, forced, preset_name="all-modules-explicit"
+    )
+
+
+@pytest.fixture(scope="module")
+def safe_plan(catalog):
+    """All three modules, for the type-module invariant tests.
+
+    Named for what it is: a deliberately WIDER plan than the preset ships, so a test
+    that uses it is testing the module rather than the shipping composition.
+    """
+    return _all_modules_plan(catalog)
 
 
 @pytest.fixture(scope="module")
@@ -545,19 +581,54 @@ class TestDeterminism:
 
 class TestSeedSeparation:
     def test_disabling_stats_leaves_types_and_placements_identical(self, catalog):
+        """The type module is forced on here, because no preset enables it.
+
+        Seed separation must hold for the module itself, not only for the shipping
+        composition, so this drives all three explicitly and then drops one.
+        """
         preset = PRESETS["stream-safe"]
-        full = plan_enemy_randomization(ROM, catalog, SEED, preset.config,
-                                        preset_name=preset.name)
-        without_stats = replace(
+        all_on = replace(
             preset.config,
+            enabled=frozenset(
+                {MODULE_ENEMY_TYPE, MODULE_ENEMY_PLACEMENT, MODULE_ENEMY_STAT}
+            ),
+        )
+        full = plan_enemy_randomization(ROM, catalog, SEED, all_on,
+                                        preset_name="all-modules-explicit")
+        without_stats = replace(
+            all_on,
             enabled=frozenset({MODULE_ENEMY_TYPE, MODULE_ENEMY_PLACEMENT}),
         )
         other = plan_enemy_randomization(ROM, catalog, SEED, without_stats,
-                                         preset_name=preset.name)
+                                         preset_name="all-modules-explicit")
         assert [d.to_json() for d in other.types.decisions] == \
             [d.to_json() for d in full.types.decisions]
         assert [d.to_json() for d in other.placements.decisions] == \
             [d.to_json() for d in full.placements.decisions]
+
+    def test_the_shipping_preset_leaves_placement_and_stats_identical_to_wider_runs(
+        self, catalog
+    ):
+        """What stream-safe ships matches the same modules run explicitly.
+
+        The preset enables a subset; a caller who names the same subset by hand must
+        get the same decisions, or "the preset is the acceptance target" would not be
+        checkable.
+        """
+        preset = PRESETS["stream-safe"]
+        shipped = plan_enemy_randomization(
+            ROM, catalog, SEED, preset.config, preset_name=preset.name
+        )
+        explicit = plan_enemy_randomization(
+            ROM, catalog, SEED,
+            replace(preset.config, enabled=frozenset(preset.config.enabled)),
+            preset_name=preset.name,
+        )
+        assert [d.to_json() for d in shipped.placements.decisions] == \
+            [d.to_json() for d in explicit.placements.decisions]
+        assert [d.to_json() for d in shipped.stats.decisions] == \
+            [d.to_json() for d in explicit.stats.decisions]
+        assert shipped.types is None, "the shipping preset must not run the type module"
 
     def test_disabling_types_leaves_placements_identical(self, catalog):
         preset = PRESETS["stream-safe"]
@@ -653,6 +724,62 @@ class TestCompositionAndWarp:
 
 
 # --- 9. ROM safety -----------------------------------------------------------
+
+
+class TestManifestHonesty:
+    def test_the_spoiler_also_states_module_c_is_not_delivered(self, shipping_plan):
+        """The spoiler is a separate document and must not imply it by omission.
+
+        A reader who opens only the spoiler sees per-slot rows; without an explicit
+        statement they would reasonably read those as enemy-type changes. The
+        shipping plan does not even run the type module, so the log has to say so.
+        """
+        document = shipping_plan.spoiler.to_json()
+        statement = document["enemy_type_randomization"]
+        assert statement["delivered"] is False
+        assert "not delivered" in statement["note"]
+        # The spoiler must agree with the manifest about what ran.
+        assert document["modules"] == shipping_plan.manifest.to_json()["modules"]
+        assert document["modules"]["enemy-type"]["enabled"] is False
+
+    def test_the_shipping_plan_runs_no_type_module(self, shipping_plan):
+        assert shipping_plan.types is None
+        assert shipping_plan.manifest.to_json()["modules"]["enemy-type"] == {
+            "enabled": False
+        }
+
+    def test_the_manifest_states_module_c_is_not_delivered(self, safe_plan):
+        """Both halves of the manifest must agree that no type change happens.
+
+        A review found the manifest contradicting itself: the configuration's
+        ``typing_mode_effect`` correctly said the module exchanges identity between
+        otherwise-identical slots, while ``exclusions.enemy_type_module`` retracted
+        with "does not change which enemy a player meets" - which is false, because
+        with the placement module off a given spot really is occupied by a different
+        identity. Nothing tested the exclusion note, which is why it survived.
+        """
+        document = safe_plan.manifest.to_json()
+        configuration = document["configuration"]
+        assert configuration["delivers_ticket_module_c"] is False
+        assert "relocation-equivalent" in configuration["typing_mode_effect"]
+        assert "does not change which enemy a player meets" not in (
+            configuration["typing_mode_effect"]
+        )
+
+        module_note = document["exclusions"]["enemy_type_module"]
+        assert "does NOT change an enemy's TYPE" in module_note
+        assert "Module C is undelivered" in module_note
+        assert "does not change which enemy a player meets" not in module_note
+
+        module_summary = document["modules"]["enemy-type"]
+        assert module_summary["delivers_ticket_module_c"] is False
+        assert module_summary["typing_mode"] == configuration["typing_mode"]
+
+    def test_every_exclusion_note_is_readable(self, safe_plan):
+        """The exclusion block is prose a reader must be able to read."""
+        exclusions = safe_plan.manifest.to_json()["exclusions"]
+        for key in ("policy", "scope_note", "enemy_type_module"):
+            assert isinstance(exclusions[key], str) and exclusions[key].strip(), key
 
 
 class TestRomSafety:

@@ -307,36 +307,59 @@ def _all_enemy_modules() -> frozenset[str]:
     return frozenset({MODULE_ENEMY_TYPE, MODULE_ENEMY_PLACEMENT, MODULE_ENEMY_STAT})
 
 
+#: The modules a preset may enable, and therefore the modules a SHIPPING run may
+#: enable. The enemy-type module is deliberately absent.
+#:
+#: It is not in this set because it does not deliver what it is named for: on
+#: current evidence its only coherent swap is a relocation of the coupled canonical
+#: record (section 5.2 of the evidence document), so enabling it in a streamed run
+#: would spend 467 record rewrites per seed to change nothing a player can
+#: perceive, while lending the preset an implied capability it does not have. A
+#: preset that enabled it would be a claim.
+#:
+#: The module stays compiled and tested so the research result is reproducible and so
+#: a future ticket has somewhere to put a real compatibility dimension. It remains
+#: reachable ONLY by asking for it explicitly through ``--only enemy-type``, which
+#: reports ``delivers_ticket_module_c: false`` in its manifest like every other run.
+SHIPPING_MODULES: frozenset[str] = frozenset(
+    {MODULE_ENEMY_PLACEMENT, MODULE_ENEMY_STAT}
+)
+
 #: The acceptance target: a conservative run for an actual streamed playthrough.
 #:
-#: Everything randomized is bounded and reversible in effect: identities come
-#: only from pairs the retail engine already builds, placements only move
-#: between slots the map already had, and stats move by at most 35%. Excluded by
+#: Composed of PROVEN modules only. Placements move between slots the map already
+#: had, and stats move by at most 35% of their own original values. Excluded by
 #: construction rather than by a list: every actor the model cannot positively
-#: classify, every script-attached placement, every selector outside the verified
-#: stat extent, and any slot sitting in a door trigger.
+#: classify, every script-attached placement, every placement whose script root was
+#: never decoded, every selector outside the verified stat extent, and any slot
+#: sitting in a door trigger.
+#:
+#: The enemy-type module is DISABLED here. It is not a proven module; see
+#: :data:`SHIPPING_MODULES`.
 STREAM_SAFE = Preset(
     name="stream-safe",
     description=(
-        "Conservative streamed-playthrough preset: same-map placement shuffling "
-        "over canonically proven slots, identity relocation within identical-field "
-        "groups (which does NOT change enemy types - Module C is undelivered), and "
-        "enemy stats scaled within 0.75x-1.35x of their original values."
+        "Conservative streamed-playthrough preset for a blind run. Enables the "
+        "proven modules only: same-map enemy PLACEMENT shuffling over canonically "
+        "proven slots, plus bounded enemy stat randomization within 0.75x-1.35x of "
+        "each record's original values. Enemy-TYPE randomization is DISABLED and "
+        "Module C is undelivered; the manifest states this on every run."
     ),
-    config=EnemyRandomizerConfig(stat_range=STREAM_SAFE_STATS),
+    config=EnemyRandomizerConfig(stat_range=STREAM_SAFE_STATS, enabled=SHIPPING_MODULES),
 )
 
 #: The aggressive band, kept deliberately small in scope: it changes the
 #: multiplier range and nothing else, so enabling it cannot widen eligibility or
-#: reach an actor the safe preset leaves alone.
+#: reach an actor the safe preset leaves alone. It enables the same proven modules.
 CHAOS = Preset(
     name="chaos",
     description=(
-        "Aggressive stats only: the same proven identities, slots and "
-        "exclusions as stream-safe, with enemy stats scaled within 0.5x-2.0x of "
-        "their original values."
+        "Aggressive stats only: the same proven modules, slots and exclusions as "
+        "stream-safe, with enemy stats scaled within 0.5x-2.0x of their original "
+        "values. Enemy-TYPE randomization remains DISABLED and Module C is "
+        "undelivered."
     ),
-    config=EnemyRandomizerConfig(stat_range=CHAOS_STATS),
+    config=EnemyRandomizerConfig(stat_range=CHAOS_STATS, enabled=SHIPPING_MODULES),
 )
 
 #: The warp randomizer's module is not run by these presets: it is a separate

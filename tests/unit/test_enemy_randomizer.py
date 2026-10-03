@@ -38,6 +38,7 @@ from tools.webfoot.enemy_randomizer import seeds as seeds_module
 from tools.webfoot.enemy_randomizer.config import (
     CHAOS_STATS,
     PRESETS,
+    SHIPPING_MODULES,
     STREAM_SAFE_STATS,
     TYPING_MODES,
     TYPING_PROVEN_PAIR,
@@ -286,12 +287,39 @@ class TestStatPolicy:
 
 
 class TestConfiguration:
-    def test_the_stream_safe_preset_is_the_default_shape(self):
+    def test_the_stream_safe_preset_enables_only_proven_modules(self):
+        """The shipping preset must not enable a module that does not deliver.
+
+        The enemy-type module is undelivered (section 5.2 of the evidence document),
+        so a preset that enabled it would spend hundreds of record rewrites per seed
+        changing nothing a player can perceive while implying a capability the pack
+        does not have. It stays reachable only by asking for it explicitly.
+        """
         entry = preset("stream-safe")
         assert entry.config.stat_range is STREAM_SAFE_STATS
-        assert set(entry.config.enabled) == {
-            MODULE_ENEMY_TYPE, MODULE_ENEMY_PLACEMENT, MODULE_ENEMY_STAT
-        }
+        assert set(entry.config.enabled) == {MODULE_ENEMY_PLACEMENT, MODULE_ENEMY_STAT}
+        assert MODULE_ENEMY_TYPE not in entry.config.enabled
+        assert set(entry.config.enabled) == set(SHIPPING_MODULES)
+
+    def test_no_preset_enables_the_undelivered_module(self):
+        for name, entry in PRESETS.items():
+            assert MODULE_ENEMY_TYPE not in entry.config.enabled, name
+
+    def test_the_undelivered_module_is_still_reachable_explicitly(self):
+        """Disabled by default, not removed: the research result stays reproducible."""
+        explicit = EnemyRandomizerConfig(
+            stat_range=None, enabled=frozenset({MODULE_ENEMY_TYPE})
+        )
+        assert explicit.wants(MODULE_ENEMY_TYPE)
+        assert explicit.to_json()["delivers_ticket_module_c"] is False
+
+    def test_the_preset_descriptions_do_not_claim_type_randomization(self):
+        for name, entry in PRESETS.items():
+            text = entry.description.lower()
+            assert "enemy-type randomization" in text, name
+            assert "disabled" in text, name
+            assert "module c is undelivered" in text, name
+            assert "enemy identity shuffle" not in text, name
 
     def test_the_chaos_preset_differs_only_in_the_multiplier_band(self):
         """Chaos must not widen scope.
@@ -314,20 +342,23 @@ class TestConfiguration:
             preset("nope")
 
     def test_no_mode_claims_to_retype(self):
-        """The module cannot change which enemy a player meets, and must not say it can.
+        """No mode may claim to change an enemy's TYPE, and none may claim inaction.
 
-        Two independent reviews found this the same way: within one coupled-field
-        group the records differ only in (type, id, position), so swapping identity
-        is swapping positions; and installing the coupled fields as well just moves a
-        whole canonical record, because the factory word is constant. Measured, 0 of
-        949 such installs produced a non-canonical record. So the effect string must
-        not promise a type change, and the flag that would say so must be False.
+        Two independent reviews found the first half: within one coupled-field group
+        the records differ only in (type, id, position), so swapping identity is
+        swapping positions, and installing the coupled fields as well just moves a
+        whole canonical record because the factory word is constant - measured, 0 of
+        949 such installs produced a non-canonical record.
+
+        A third review found the second half: retracting with "the module does not
+        change which enemy a player meets" is itself FALSE, because with the
+        placement module off and this one on, a given spot in a group really is
+        occupied by a different identity. Both halves are asserted below.
         """
         for mode, description in TYPING_MODES.items():
             assert description["delivers_ticket_module_c"] is False, mode
             # It relocates. It must not claim to retype, and it must not claim to
-            # do nothing either: composed with placement it yields a new
-            # arrangement, and alone it moves which enemy stands where in a group.
+            # do nothing either.
             assert "relocation-equivalent" in description["player_visible_effect"], mode
             assert "cannot make one enemy become a different kind" in (
                 description["player_visible_effect"]
@@ -381,11 +412,20 @@ class TestConfiguration:
         assert not config.wants(MODULE_ENEMY_STAT)
 
     def test_the_configuration_serializes_stably(self):
+        """The preset's configuration and the shipping default agree field for field.
+
+        They must, because the preset IS the shipping composition: a run built from
+        the preset and a run built from an explicit configuration of the same shape
+        have to produce the same manifest, or "the preset is the acceptance target"
+        would not be checkable.
+        """
         one = PRESETS["stream-safe"].config.to_json()
-        two = EnemyRandomizerConfig().to_json()
+        two = EnemyRandomizerConfig(enabled=SHIPPING_MODULES).to_json()
         assert one == two
         assert one["stat_range"]["low"] == "3/4"
         assert one["stat_range"]["high"] == "27/20"
+        assert one["delivers_ticket_module_c"] is False
+        assert MODULE_ENEMY_TYPE not in one["enabled_modules"]
 
 
 # --- manifest determinism ----------------------------------------------------

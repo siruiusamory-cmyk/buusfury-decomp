@@ -29,7 +29,7 @@ from __future__ import annotations
 
 import hashlib
 import json
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Mapping
 
 from .seeds import MASTER_DOMAIN, MODULE_DOMAIN, derive_all_module_seeds
@@ -135,6 +135,10 @@ class SpoilerLog:
     profile_id: str
     slots: tuple[dict, ...]
     stats: tuple[dict, ...]
+    #: What each module did, so the log cannot imply by omission that a module ran
+    #: or changed something. Carries the same `delivers_ticket_module_c` statement
+    #: the manifest does.
+    module_summaries: dict = field(default_factory=dict)
 
     def to_json(self) -> dict:
         return {
@@ -145,6 +149,20 @@ class SpoilerLog:
                 "module_seeds": dict(sorted(self.module_seeds.items())),
             },
             "profile": self.profile_id,
+            # Stated up front, because a reader opening only this file would
+            # otherwise see per-slot rows and reasonably assume enemy types moved.
+            "enemy_type_randomization": {
+                "delivered": False,
+                "note": (
+                    "Enemy-TYPE randomization is not delivered on current evidence. "
+                    "If the enemy-type module ran, it exchanged identity only between "
+                    "slots whose flags, behavior descriptor and children already "
+                    "matched, which cannot turn an ordinary enemy into a different "
+                    "kind of enemy. See section 5.2 of "
+                    "docs/research/ENEMY_RANDOMIZER_VERIFICATION.md."
+                ),
+            },
+            "modules": self.module_summaries,
             "slots": list(self.slots),
             "stats": list(self.stats),
         }

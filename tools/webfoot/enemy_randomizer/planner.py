@@ -355,13 +355,22 @@ def _plan_with_loaded(
             "limitation in writing. Measurement and rationale: "
             "docs/research/ENEMY_RANDOMIZER_VERIFICATION.md, sections 4 and 11."
         ),
-        # Stated for the same reason: the type module is inert, and a reader must
-        # not infer from its presence that enemy types change.
+        # Stated for the same reason: the module is recorded as not delivering a
+        # type change, and a reader must not infer from its presence that enemy
+        # types change. The wording here deliberately claims only that, because the
+        # stronger "does not change which enemy a player meets" is FALSE: within a
+        # coupled group the swap does exchange identity between slots, so with the
+        # placement module off and this one on, a given spot really is occupied by a
+        # different identity. An earlier revision said the stronger thing here while
+        # configuration.typing_mode_effect said the opposite, so the two halves of
+        # one manifest contradicted each other.
         "enemy_type_module": (
-            "The enemy-type module does NOT change which enemy a player meets. Its "
-            "swap is provably a relocation: see "
-            "docs/research/ENEMY_RANDOMIZER_VERIFICATION.md section 5.2. Ticket "
-            "Module C is undelivered."
+            "The enemy-type module does NOT change an enemy's TYPE. It swaps "
+            "identity only between slots whose other fields already match, so it "
+            "never turns an ordinary enemy into a different kind of enemy and never "
+            "creates a record canonical does not already hold. Ticket Module C is "
+            "undelivered; see "
+            "docs/research/ENEMY_RANDOMIZER_VERIFICATION.md section 5.2."
         ),
     }
 
@@ -373,6 +382,7 @@ def _plan_with_loaded(
         stats=tuple(
             decision.to_json() for decision in (stats_outcome.decisions if stats_outcome else ())
         ),
+        module_summaries=module_summaries,
     )
 
     manifest = RunManifest(

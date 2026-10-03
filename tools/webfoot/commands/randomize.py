@@ -139,14 +139,14 @@ def add_parser(subparsers) -> None:
         default=None,
         choices=sorted(TYPING_MODES),
         help=(
-            "how the enemy-type module installs an identity. There is one mode, "
-            "and it installs an identity only onto a slot whose flags, behavior "
-            "descriptor and children already match the donor's - so every resulting "
-            "object is one a canonical placement holds. Its honest effect is that "
-            "the module does NOT change which enemy a player meets: within such a "
-            "group the records differ only in (type, id, position), so the swap "
-            "composes with the placement shuffle to the identity. Recorded here so "
-            "the flag exists and its limit is documented rather than discovered."
+            "how the enemy-type module installs an identity. One mode exists: an "
+            "identity is installed only onto a slot whose flags, behavior descriptor "
+            "and children already match the donor's, so every resulting object is one "
+            "a canonical placement holds. It does NOT change an enemy's TYPE and does "
+            "not deliver ticket Module C. Every manifest records "
+            "delivers_ticket_module_c: false, and the module's exact effect is stated "
+            "in configuration.typing_mode_effect. See section 5.2 of "
+            "docs/research/ENEMY_RANDOMIZER_VERIFICATION.md."
         ),
     )
     parser.add_argument(

@@ -326,8 +326,69 @@ pointer, dialogue through the script VM (the liveness channel), correct HUD, pla
 collision, scrolling and doors, no crash, and no capture showing corruption.
 
 Full-game beatability is **not** claimed and was not tested; this is a smoke pass.
-No enemy encounter is claimed either - the observer had no combat channel, so
-"enemies move and can be fought" is unverified.
+
+### 10.1 Human smoke, and the drop A/B that settled it
+
+A human smoke of the shipping candidate was run at closeout (seed
+`StreamBlind-0001`). Boot, save load, map load, enemy movement, combat, doors and
+absence of crashes all passed. Two things needed follow-up.
+
+**Placement, check 4.** The operator reported "no change", which could not be
+resolved from memory: the altered enemy positions are only visible to someone who
+remembers the retail layout. The observer settled it instead
+(`build/toolkit031/enemypack002-closeout-smoke`), recording map 40 serving
+
+| slot | retail (canonical) | shipping candidate |
+| --- | --- | --- |
+| 1 (`0x08075638`) | `(176, 208)` | `(192, 224)` |
+| 3 (`0x08075670`) | `(192, 224)` | `(176, 208)` |
+
+That is the swapped pair, read from the loaded image. Check 4 is therefore
+CONFIRMED by the enumerator, not by memory, and the honest human answer was "cannot
+tell", which is a limitation of the checklist rather than a failure.
+
+**Drops, check 6.** The operator reported that killed enemies "no longer drop Zeni
+or items", which would be a progression regression. It could not be settled by
+argument, because `P-010` measures the drop rate as genuinely sparse - 13 pickups
+across a whole research session, twelve of them only +5 Zeni - so a handful of kills
+with no drop is well inside normal variance.
+
+It was settled by measurement. `tools/runtime/enemypack003_reward_watch.lua` (new,
+read-only) watches the documented Zeni counter `0x0300155C` and item count
+`0x0300114C`, logging every change with a delta plus a fixed-stride heartbeat so a
+silent channel is never read as a negative. Both arms were played once from the same
+savestate, in map 40:
+
+| | canonical | shipping candidate |
+| --- | --- | --- |
+| Zeni gain events | 23 | 19 |
+| Zeni total | +275 | **+350** |
+| distinct deltas | {5, 165} | {5, **100**, 165} |
+| item drops | 0 | **1** |
+| frames observed | 4,545 | 3,000 |
+
+Logs: `build/toolkit031/enemypack-ab-A-canonical/enemypack003-rewards.csv` and
+`.../enemypack-ab-B-randomized/enemypack003-rewards.csv`.
+
+**The report is REFUTED.** The candidate dropped more, not less, and the `+100` is
+one of the two denominations `P-010` documents from the reward table at `0x086FC250`,
+so the table lookup is intact. Both arms also show the `+165` at frame ~260 that is
+the savestate restoring Zeni.
+
+**Why it does not implicate the edits, structurally.** The shipping composition
+enables placement and stats only, and the placement module writes `position_raw`
+alone: the sprite id at `+0x10`, the stat selector at `+0x08`, the behavior
+descriptor at `+0x14`, the flags at `+0x04` and the constant factory word are all
+byte-identical. The stat codec writes `exp`, `hp`, `level`, `strength`, `power` and
+`endurance` and preserves the rest of the record. So neither edit reaches the drop
+roll or the reward identity.
+
+**A caution recorded because it nearly misled this document.** A quick
+classification of "which placement fields changed" used 8-byte strides over a record
+whose fields are 4 bytes apart, and reported `factory, flags, position` changing -
+implying the writer was rewriting a constant. Reading the raw bytes showed only
+bytes 12-15 differ. Field layout is to be read from the codec's dataclass order,
+never inferred from hex with an assumed stride.
 
 ## 11. Known residual risk, and the recorded waivers
 
@@ -356,6 +417,35 @@ than implied:
 > the exclusion as complete.
 
 The manifest carries this: `exclusions.scope_note` names the gap on every run.
+
+**What "alone in its map" does and does not protect, corrected after a review.** An
+earlier revision of this section described the lone-enemy case as "removed
+structurally", which was true of the *placement* module and false of the stat
+module: lone slots keep the classification `ORDINARY_COMBAT_ENEMY`, so their stat
+records were being scaled. A review measured 11 of 18 lone slots on a changed
+record, and two selectors (80 and 136) used by nothing but a lone slot.
+
+That mattered because this waiver leans on the lone-in-map shape as part of the boss
+protection. The stat module now honors it: a record is scaled only when at least one
+placement using it is itself randomized, so a record whose only consumer is a lone
+slot is left alone. Selectors 80 and 136 are now vetoed, and records still shared
+with a properly-randomized ordinary enemy are still scaled rather than
+over-vetoed. See `eligible_stat_selectors` for the rule and its cost.
+
+So the exclusion is now consistent between what the pack does and what it tells you:
+
+| Shape | Placement moved | Stat record scaled |
+| --- | --- | --- |
+| ordinary, multi-slot map | yes | yes |
+| alone in its map | no | only if the record has another, randomized consumer |
+| script-attached or unresolved script | no | no |
+| selector outside the verified stat extent | no | no (not decodable) |
+| inside a transition trigger | no | yes, if the record has another randomized consumer |
+
+**The residual gap is unchanged and still real:** a boss that is neither
+script-attached nor alone in its map is indistinguishable from an ordinary enemy on
+every field this pack reads, so it can be both moved and scaled. That is what the
+waiver accepts.
 
 **What would close it.** A positive classifier, from any of: a stat-band or
 `type_id` rule validated against a known boss encounter; a map/arena table; a

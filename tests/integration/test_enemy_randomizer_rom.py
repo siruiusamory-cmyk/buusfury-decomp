@@ -330,6 +330,61 @@ class TestExcludedActorsUntouched:
                 "randomized anyway"
             )
 
+    def test_a_lone_enemys_stat_record_is_not_randomized(self, safe_plan, model):
+        """A slot the run refuses must not have its record scaled behind its back.
+
+        A review found this: ``alone_in_map`` slots stay classified
+        ``ORDINARY_COMBAT_ENEMY`` (they are ordinary enemies; the refusal is about
+        moving them), so they passed the classification test and their stat records
+        were scaled - while ``exclusions.policy`` told the reader that a placement is
+        "refused when it is the only eligible slot in its map", and Waiver 1 leaned
+        on that exclusion as the boss protection. A record whose ONLY consumer is
+        such a slot is now vetoed.
+        """
+        by_selector: dict[int, list] = {}
+        for slot in model.slots:
+            by_selector.setdefault(slot.original_selector, []).append(slot)
+
+        lone_only = [
+            selector for selector, slots in by_selector.items()
+            if all(model.refusal_reason(s) is Refusal.ALONE_IN_MAP for s in slots)
+        ]
+        assert lone_only, "the canonical corpus has selectors used only by lone slots"
+
+        randomized_identities = {d.enemy_identity for d in safe_plan.stats.decisions}
+        for selector in lone_only:
+            identities = {
+                str(s.stat_identity) for s in by_selector[selector] if s.stat_identity
+            }
+            assert not (identities & randomized_identities), (
+                f"selector {selector} is used only by an alone-in-map slot, which the "
+                "manifest says is refused, but its record was scaled"
+            )
+
+    def test_a_lone_slots_shared_record_is_still_scaled(self, safe_plan, model):
+        """The veto must not spread to records ordinary enemies also share.
+
+        Vetoing every selector a lone slot touches would have cost 11 records and
+        silently stripped stat randomization from ordinary enemies elsewhere. Only a
+        record with no legitimate consumer is vetoed.
+        """
+        by_selector: dict[int, list] = {}
+        for slot in model.slots:
+            by_selector.setdefault(slot.original_selector, []).append(slot)
+
+        shared_with_lone = [
+            selector for selector, slots in by_selector.items()
+            if any(model.refusal_reason(s) is Refusal.ALONE_IN_MAP for s in slots)
+            and any(model.refusal_reason(s) is None for s in slots)
+        ]
+        assert shared_with_lone, "expected selectors shared between lone and ordinary slots"
+        randomized_identities = {d.enemy_identity for d in safe_plan.stats.decisions}
+        assert any(
+            {str(s.stat_identity) for s in by_selector[sel] if s.stat_identity}
+            & randomized_identities
+            for sel in shared_with_lone
+        ), "a record shared with a properly-randomized ordinary enemy was over-vetoed"
+
 
 # --- 3. type compatibility ---------------------------------------------------
 

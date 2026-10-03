@@ -70,7 +70,7 @@ from fractions import Fraction
 from ..formats import stat_tables as st
 from ..stats import StatTables
 from .config import STAT_FIELDS, EnemyRandomizerConfig
-from .eligibility import Classification, EnemySlot, SlotModel
+from .eligibility import Classification, EnemySlot, Refusal, SlotModel
 from .seeds import Stream
 
 
@@ -182,32 +182,86 @@ def eligible_stat_selectors(
     Returns one representative slot per eligible selector - every slot sharing a
     selector carries the same stat identity, so any of them names the record.
 
-    A placement refused for sitting **in a door trigger** does not veto its
-    record here, and that asymmetry is deliberate: the door exclusion is about
-    not *moving* an actor into a doorway, and a stat record is shared by every
-    placement that selects it. Letting one door-adjacent placement veto a
-    selector would silently remove a stat edit from every other enemy using that
-    type, for a reason that has nothing to do with stats. Only a classification
-    refusal - a scripted actor, or a selector outside the verified extent -
-    vetoes the shared record.
+    A stat record is SCALED only when every placement that selects it is an ordinary
+    combat enemy that the run actually randomized. That is stricter than "the
+    placement is classified ordinary", and deliberately so, because the manifest and
+    the owner's waiver both describe EXCLUSIONS, and a record whose other consumer is
+    an excluded actor is not excluded from the effect.
+
+    A review found the consequence of getting this wrong: ``alone_in_map`` slots stay
+    classified ``ORDINARY_COMBAT_ENEMY`` (they are ordinary enemies; the refusal is
+    about *moving* them, not about what they are), so they were passing the
+    classification test and their records were being scaled - 11 of 18 such slots had
+    their stats changed, while ``exclusions.policy`` told the reader that a placement
+    "is refused when it is the only eligible slot in its map", and Waiver 1 leaned on
+    that exclusion as the boss protection.
+
+    Two refusals are therefore treated the same way here, and the distinction is
+    worth stating because they are not the same kind of thing:
+
+    * an actor-level refusal (a scripted actor or an unresolved script) vetoes the
+      record outright - the actor must stay untouched, so every record it reads must;
+    * a slot-level refusal (in a door trigger, or alone in its map) vetoes the record
+      only if NO placement using it is randomized. If a shared record still has an
+      ordinary consumer being randomized, that consumer is a legitimate subject and
+      the record is scaled; but if the only consumers are excluded slots, the record
+      is left alone. Measured on the canonical corpus, this costs exactly the two
+      selectors used solely by lone-in-map slots (80 and 136); vetoing every selector
+      that any lone slot happens to touch would have cost 11 records and silently
+      stripped stat randomization from ordinary enemies elsewhere, which is the
+      over-veto this same docstring already warns about for door slots.
     """
     by_selector: dict[int, list[EnemySlot]] = {}
     for slot in model.slots:
         by_selector.setdefault(slot.original_selector, []).append(slot)
 
+    #: Reasons about the ACTOR: a scripted actor, an actor whose script was never
+    #: decoded, or a selector outside the verified stat extent. Any of these vetoes
+    #: the record outright.
+    actor_refusals = {
+        Refusal.SCRIPT_EVENT, Refusal.SCRIPT_UNRESOLVED, Refusal.OUTSIDE_STAT_EXTENT,
+    }
+
+    def may_consume(slot) -> bool:
+        """Whether this placement is a legitimate reason to scale the record.
+
+        Three conditions, and the middle one is the correction a review forced:
+
+        * not refused for an actor-level reason;
+        * not ``alone_in_map``. A lone slot is never randomized as a slot, so it
+          cannot justify scaling its record either; otherwise a record used solely by
+          one lone enemy gets scaled while the manifest tells the reader that
+          placement is refused. Selectors 80 and 136 are exactly this case, one lone
+          consumer each;
+        * classified ordinary combat enemy.
+
+        A placement refused only for sitting IN A DOOR TRIGGER is still a valid
+        consumer. That refusal is about moving the actor, not about the actor, and a
+        record shared with properly-randomized consumers must still be scaled - the
+        over-veto this docstring warns about.
+        """
+        reason = model.refusal_reason(slot)
+        if reason in actor_refusals or reason is Refusal.ALONE_IN_MAP:
+            return False
+        return slot.classification is Classification.ORDINARY_COMBAT_ENEMY
+
     eligible: list[EnemySlot] = []
     refused: list[tuple[int, str]] = []
     for selector in sorted(by_selector):
         slots = by_selector[selector]
-        blocked = [
-            s for s in slots
-            if s.classification is not Classification.ORDINARY_COMBAT_ENEMY
-        ]
-        if blocked:
-            kinds = sorted({s.classification.value for s in blocked})
-            refused.append((selector, f"shared with {'/'.join(kinds)} placement(s)"))
+        consumers = [s for s in slots if may_consume(s)]
+        if not consumers:
+            # No consumer justifies scaling this record: every placement that selects
+            # it is excluded, whether for an actor reason or because it is alone.
+            kinds = sorted({
+                (model.refusal_reason(s) or s.classification).value
+                if hasattr(model.refusal_reason(s) or s.classification, "value")
+                else str(model.refusal_reason(s) or s.classification)
+                for s in slots
+            })
+            refused.append((selector, f"every consumer is excluded ({'/'.join(kinds)})"))
             continue
-        eligible.append(slots[0])
+        eligible.append(consumers[0])
     return eligible, refused
 
 

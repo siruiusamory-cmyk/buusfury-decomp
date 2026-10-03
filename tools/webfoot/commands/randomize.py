@@ -426,13 +426,12 @@ def run(args) -> int:
 
     if args.spoiler:
         spoiler = result.spoiler
-        document_spoiler = SpoilerLog(
-            master_seed=spoiler.master_seed,
-            module_seeds=spoiler.module_seeds,
-            profile_id=spoiler.profile_id,
-            slots=spoiler.slots,
-            stats=spoiler.stats,
-        ).to_json()
+        # Reuse the result's own log rather than rebuilding it. An earlier revision
+        # reconstructed the dataclass and dropped module_summaries on the floor, so
+        # the file on disk always carried an empty "modules": {} block - and the test
+        # that checks the spoiler agrees with the manifest was reading the in-memory
+        # object, not the file, so it never caught it.
+        document_spoiler = spoiler.to_json()
         document_spoiler["output_sha256"] = write_manifest.output_sha256
         Path(args.spoiler).parent.mkdir(parents=True, exist_ok=True)
         Path(args.spoiler).write_text(canonical_json(document_spoiler), encoding="utf-8")

@@ -225,11 +225,11 @@ class EnemyRandomizerConfig:
     #: Which slots an identity may be installed onto. One mode exists; see
     #: :data:`TYPING_MODES` for why, and for what it does and does not deliver.
     typing_mode: str = TYPING_PROVEN_PAIR
-    enabled: frozenset[str] = field(
-        default_factory=lambda: frozenset(
-            {MODULE_ENEMY_TYPE, MODULE_ENEMY_PLACEMENT, MODULE_ENEMY_STAT}
-        )
-    )
+    #: The default is the SHIPPING set, not "everything". A library caller who
+    #: constructs a bare EnemyRandomizerConfig must not silently get the
+    #: undelivered module, or the default and the preset would disagree about what a
+    #: run does.
+    enabled: frozenset[str] = field(default_factory=lambda: SHIPPING_MODULES)
 
     def __post_init__(self) -> None:
         if self.placement_scope != "same-map":
@@ -303,17 +303,13 @@ class Preset:
         }
 
 
-def _all_enemy_modules() -> frozenset[str]:
-    return frozenset({MODULE_ENEMY_TYPE, MODULE_ENEMY_PLACEMENT, MODULE_ENEMY_STAT})
-
-
 #: The modules a preset may enable, and therefore the modules a SHIPPING run may
 #: enable. The enemy-type module is deliberately absent.
 #:
 #: It is not in this set because it does not deliver what it is named for: on
 #: current evidence its only coherent swap is a relocation of the coupled canonical
 #: record (section 5.2 of the evidence document), so enabling it in a streamed run
-#: would spend 467 record rewrites per seed to change nothing a player can
+#: would rewrite roughly 467 identities per seed - measured as 949 flags-or-descriptor rewrites in the removed retyping mode, and 467 identity swaps in the surviving one - to change nothing a player can
 #: perceive, while lending the preset an implied capability it does not have. A
 #: preset that enabled it would be a claim.
 #:

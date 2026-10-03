@@ -358,7 +358,8 @@ def build_slot_model(
 
     # A map with a single eligible slot has nothing to shuffle against. Recorded
     # as a refusal rather than left as a silent no-op, so a reader can see the
-    # 23 lone-enemy maps were considered and why they did nothing.
+    # maps whose only eligible slot was left alone and why. Measured on the
+    # canonical corpus: 18 lone-in-map placements across 18 maps.
     eligible_by_map = Counter(
         slot.map_index for slot in slots
         if slot.classification.eligible

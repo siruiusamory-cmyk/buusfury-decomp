@@ -30,7 +30,7 @@ and configuration must produce the same plan, and reordering the modules would
 change every output. What the tests currently establish is that two runs with the
 same seed agree with each other; there is no committed golden plan or output
 digest, so a reordering that stayed internally consistent would NOT be caught. A
-pinned digest is the missing check (see the non-blocking note in section 12 of
+pinned digest is the missing check (recorded as OPEN in section 12 of
 ``docs/research/ENEMY_RANDOMIZER_VERIFICATION.md``).
 
 Seed derivation
@@ -332,12 +332,15 @@ def _plan_with_loaded(
     }
     exclusions = {
         "policy": (
-            "Only ORDINARY_COMBAT_ENEMY placements are randomized. A placement is "
-            "refused when it carries a verified script event, when it dispatches a "
-            "script whose root was never decoded or its descriptor cannot be read "
-            "(script_unresolved), when its type selector falls outside the verified "
-            "enemy-stat extent, when its coordinates sit inside a transition "
-            "trigger, or when it is the only eligible slot in its map."
+            "Placements are randomized only when the model positively classifies them "
+            "as ORDINARY_COMBAT_ENEMY, and a placement is refused when it carries a "
+            "verified script event, when it dispatches a script whose root was never "
+            "decoded or its descriptor cannot be read (script_unresolved), when its "
+            "type selector falls outside the verified enemy-stat extent, when its "
+            "coordinates sit inside a transition trigger, or when it is the only "
+            "eligible slot in its map. A refused placement's STAT RECORD is also left "
+            "alone unless some other placement using that record is randomized: the "
+            "record is shared, so it is scaled only when a legitimate consumer exists."
         ),
         "actor_refusals": {
             key: value for key, value in model.refusal_counts().items()

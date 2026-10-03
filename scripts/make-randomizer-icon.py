@@ -25,6 +25,7 @@ resulting ``.ico`` in the same change.
 from __future__ import annotations
 
 import argparse
+import os
 import struct
 import sys
 from pathlib import Path
@@ -128,7 +129,9 @@ def main(argv: list[str] | None = None) -> int:
         return 2
 
     # QGuiApplication must exist before anything paints, and it must exist only
-    # once per process; offscreen keeps this usable on a machine with no display.
+    # once per process. The mark is rendered offscreen, so this works on a machine
+    # with no display; a caller who has a real platform plugin set keeps it.
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
     application = QGuiApplication.instance() or QGuiApplication([])
     assert application is not None
     data = build_icon(source.read_bytes())

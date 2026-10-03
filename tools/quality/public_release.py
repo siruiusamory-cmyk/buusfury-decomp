@@ -298,9 +298,14 @@ def _packaging_findings(
 ) -> list[Finding]:
     """The packaging script stages the executable and the README, and nothing else.
 
-    Every path the script touches under ``$stage`` is counted, not only
-    ``Copy-Item``: a file written there by any other cmdlet travels in the
-    archive just the same, and the archive is always the staged directory.
+    The screen reads the ``Join-Path $stage '<literal>'`` form the established
+    scripts use, plus the archive's own ``*`` glob, so any extra target written
+    through that form is counted whether or not a ``Copy-Item`` put it there. A
+    path assembled into the staged directory some other way (a quoted ``$stage``
+    path, ``Join-Path -Path $stage -ChildPath``, ``New-Item -Name``) is not
+    matched by this static screen; what still covers it is the packaging-time
+    probe in ``scripts/randomizer-release.ps1``, which scans the files that
+    actually got staged.
     """
     findings = []
     targets = [first or second for first, second in _STAGE_LITERAL.findall(text)]

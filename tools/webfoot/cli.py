@@ -5,7 +5,6 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
-from importlib import resources
 from pathlib import Path
 import sys
 
@@ -38,7 +37,11 @@ from .build import (
 # owns its run path, because it composes several SDK layers and that composition
 # is worth reading on its own rather than inline here.
 from .commands import randomize as randomize_command
-from .profile import ProfileConfigError, RomProfileCatalog, VerificationStatus
+from .catalog import (  # noqa: F401 - re-exported: callers import both from here
+    development_profile_path,
+    load_catalog,
+)
+from .profile import ProfileConfigError, VerificationStatus
 from .layout import LayoutError
 from .project import ProjectError
 from .rom import RomIdentification, RomReadError, identify_rom
@@ -64,25 +67,6 @@ from .handles import (
     recover_handle as _recover_handle,
     unpack_handle as _unpack_handle,
 )
-
-
-def development_profile_path() -> Path:
-    return Path(__file__).resolve().parents[2] / "config" / "roms.yaml"
-
-
-def load_catalog(profile_path: Path | None) -> RomProfileCatalog:
-    if profile_path is not None:
-        return RomProfileCatalog.load(profile_path)
-
-    development_path = development_profile_path()
-    if development_path.is_file():
-        return RomProfileCatalog.load(development_path)
-
-    packaged = resources.files("tools.webfoot.data").joinpath("roms.yaml")
-    return RomProfileCatalog.loads(
-        packaged.read_text(encoding="utf-8"),
-        source="packaged tools.webfoot.data/roms.yaml",
-    )
 
 
 def _parse_u32(value: str) -> int:

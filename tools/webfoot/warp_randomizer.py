@@ -1022,7 +1022,7 @@ def emit_randomized_rom(
 
 def main(argv: Sequence[str] | None = None) -> int:
     """``python -m tools.webfoot.warp_randomizer`` - build one randomized ROM."""
-    from .cli import load_catalog
+    from .catalog import load_catalog
 
     parser = argparse.ArgumentParser(
         prog="python -m tools.webfoot.warp_randomizer",

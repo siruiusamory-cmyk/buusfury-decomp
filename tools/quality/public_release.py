@@ -18,7 +18,8 @@ mean two implementations that can disagree:
 
 * the import closure of each frozen build, and the agreement between a version
   resource and its product's own ``TOOL_NAME``/``TOOL_VERSION``, are enforced by
-  ``tests/unit/test_randomizer_release.py``;
+  ``tests/unit/test_randomizer_release.py``, which takes its product list from
+  this module rather than keeping a second one;
 * the byte-level proprietary-content probe over the real staged files is
   ``scripts/randomizer-release.ps1``, which runs at packaging time;
 * the tree-wide wording and machine-path screens are
@@ -30,22 +31,38 @@ the packaging shape is complete for every product, that it is the two-file
 release it claims to be, and that no release input carries a machine of its own.
 Those are the facts no other gate reads on its own.
 
+The wiring this module proves (that the spec points at the version resource and
+the icon) overlaps one assertion in that test on purpose: this guard is meant to
+be runnable by a release engineer with `python -m tools.quality.public_release`
+and nothing else, so it does not defer the whole question to pytest. What it does
+NOT repeat is the value agreement, which the test alone can prove.
+
 What "no ROM input" means here
 ------------------------------
 
 The canonical image is a *probe* input to the packaging script, never a staged
 one, so its default path is expected to appear in the script and is not a
 finding. The check is on the edges that decide what travels: the spec's
-``datas`` list and every ``Copy-Item`` source. A ROM, save or save state named
-on either of those is a release defect.
+``datas`` list and every path the script touches under the stage directory. A
+ROM, save or save state named on any of those is a release defect.
+
+Fail closed
+-----------
+
+A release input that exists but cannot be decoded is a finding of its own kind
+and stops the run, exactly as ``tools/quality/public_surface.py`` treats an
+unreadable file: counting it as checked while checking nothing would make the
+guard cleanest where it is blind.
 
 Adding a product
 ----------------
 
 Append one :class:`ReleaseProduct` to :data:`PRODUCTS` and add the four files it
 names. Nothing else is product-specific: every product runs through the same
-loop, and a ``*.spec.in`` that no product declares fails the run, so a future
-randomizer release cannot be defined without being held to the same rules.
+loop, a ``*.spec.in`` at the repository root or a ``scripts/package-*.ps1`` that
+no product declares fails the run, and the identity test beside this module
+reads the same list. A future randomizer release therefore cannot be defined
+without being held to the same rules.
 """
 
 from __future__ import annotations
@@ -129,6 +146,7 @@ RELEASE_RESIDUE: tuple[tuple[str, re.Pattern[str]], ...] = (
 _STRING_STRUCT = re.compile(r'StringStruct\("(\w+)",\s*"((?:[^"\\]|\\.)*)"\)')
 _FIXED_INFO = re.compile(r"\b(filevers|prodvers)=\(([^)]*)\)")
 _VERSION_TUPLE = re.compile(r"\s*\d+(\s*,\s*\d+){3}\s*")
+_STAGE_LITERAL = re.compile(r"Join-Path\s+\$stage\s+(?:'([^']*)'|\"([^\"]*)\")")
 _STAGE_DESTINATION = re.compile(
     r"Copy-Item\s+\S+\s+\(Join-Path\s+\$stage\s+(?:'([^']*)'|\"([^\"]*)\")\)"
 )
@@ -136,6 +154,7 @@ _COPY_ITEM = re.compile(r"(?m)^\s*Copy-Item\b")
 _SPEC_DATAS = re.compile(r"datas\s*=\s*\[(.*?)\]", re.DOTALL)
 _QUOTED = re.compile(r"'([^']*)'|\"([^\"]*)\"")
 _COPY_SOURCE = re.compile(r"(?m)^\s*Copy-Item\s+(\S+)")
+_PARAMETER = re.compile(r"\$(BuildName|ReadmePath)\s*=\s*(?:'([^']*)'|\"([^\"]*)\")")
 
 
 @dataclass(frozen=True)
@@ -277,8 +296,14 @@ def _metadata_findings(
 def _packaging_findings(
     product: ReleaseProduct, relative: str, text: str
 ) -> list[Finding]:
-    """The packaging script stages the executable and the README, and nothing else."""
+    """The packaging script stages the executable and the README, and nothing else.
+
+    Every path the script touches under ``$stage`` is counted, not only
+    ``Copy-Item``: a file written there by any other cmdlet travels in the
+    archive just the same, and the archive is always the staged directory.
+    """
     findings = []
+    targets = [first or second for first, second in _STAGE_LITERAL.findall(text)]
     destinations = [
         first or second for first, second in _STAGE_DESTINATION.findall(text)
     ]
@@ -290,33 +315,46 @@ def _packaging_findings(
     ]
     readme = [target for target in destinations if target.upper() == "README.TXT"]
 
-    if copies != len(destinations) or len(destinations) != 2:
+    if (
+        copies != len(destinations)
+        or len(destinations) != 2
+        or len(executable) != 1
+        or len(readme) != 1
+        or sorted(targets) != sorted([*destinations, "*"])
+    ):
         findings.append(
             Finding(
                 "package-contents",
                 product.build_name,
                 relative,
-                f"the package stages {len(destinations)} file(s) from {copies} "
-                "copy statement(s); the release is the executable and README.txt",
+                f"the package stages {destinations} and touches {targets} under the "
+                "stage directory; the release is the executable and README.txt, "
+                "archived as one glob",
             )
         )
-    elif len(executable) != 1 or len(readme) != 1:
+
+    declared = {
+        name: first or second
+        for name, first, second in _PARAMETER.findall(text)
+    }
+    if declared.get("ReadmePath") != product.readme:
         findings.append(
             Finding(
-                "package-contents",
+                "package-readme-mismatch",
                 product.build_name,
                 relative,
-                "the staged pair is not the product executable plus README.txt: "
-                + ", ".join(destinations),
+                f"the packaged README default is {declared.get('ReadmePath')!r}, "
+                f"not {product.readme!r}",
             )
         )
-    if "Join-Path $stage '*'" not in text:
+    if declared.get("BuildName") != product.build_name:
         findings.append(
             Finding(
-                "package-contents",
+                "package-build-name-mismatch",
                 product.build_name,
                 relative,
-                "the archive is not built from the staged directory",
+                f"the packaged build name default is {declared.get('BuildName')!r}, "
+                f"not {product.build_name!r}",
             )
         )
     if (
@@ -343,7 +381,7 @@ def _forbidden_input_findings(
     if datas:
         named.extend(first or second for first, second in _QUOTED.findall(datas.group(1)))
     named.extend(_COPY_SOURCE.findall(text))
-    named.extend(first or second for first, second in _STAGE_DESTINATION.findall(text))
+    named.extend(first or second for first, second in _STAGE_LITERAL.findall(text))
     return [
         Finding(
             "forbidden-release-input",
@@ -425,7 +463,10 @@ def _spec_wiring_findings(
 
 
 def _product_findings(
-    base: Path, product: ReleaseProduct, table: public_surface.ExceptionTable
+    base: Path,
+    product: ReleaseProduct,
+    table: public_surface.ExceptionTable,
+    unreadable: list[str],
 ) -> tuple[list[Finding], list[str]]:
     """Every finding for one product, and the definition files actually read."""
     findings = _definition_findings(base, product)
@@ -433,10 +474,14 @@ def _product_findings(
 
     texts: dict[str, str] = {}
     for relative in (product.spec, product.packager, product.readme, product.version_resource):
+        if not (base / relative).is_file():
+            continue
         text = _read_text(base, relative)
-        if text is not None:
-            texts[relative] = text
-            scanned.append(relative)
+        if text is None:
+            unreadable.append(relative)
+            continue
+        texts[relative] = text
+        scanned.append(relative)
 
     if product.version_resource in texts:
         findings.extend(
@@ -458,55 +503,83 @@ def _product_findings(
             _residue_findings(product.build_name, relative, text, table)
         )
 
-    icon = _read_bytes(base, ICON)
-    if icon is not None:
-        scanned.append(ICON)
-        entries = icon_entries(icon)
-        if entries is None:
-            findings.append(
-                Finding("icon-not-an-icon", product.build_name, ICON, "not an .ico file")
-            )
-        elif not ICON_SIZES <= set(entries):
-            findings.append(
-                Finding(
-                    "icon-not-multi-size",
-                    product.build_name,
-                    ICON,
-                    "the icon does not cover "
-                    + ", ".join(f"{w}x{h}" for w, h in sorted(ICON_SIZES))
-                    + "; it declares "
-                    + ", ".join(f"{w}x{h}" for w, h in sorted(set(entries))),
+    if (base / ICON).is_file():
+        icon = _read_bytes(base, ICON)
+        if icon is None:
+            unreadable.append(ICON)
+        else:
+            scanned.append(ICON)
+            entries = icon_entries(icon)
+            if entries is None:
+                findings.append(
+                    Finding(
+                        "icon-not-an-icon", product.build_name, ICON, "not an .ico file"
+                    )
                 )
-            )
+            elif not ICON_SIZES <= set(entries):
+                findings.append(
+                    Finding(
+                        "icon-not-multi-size",
+                        product.build_name,
+                        ICON,
+                        "the icon does not cover "
+                        + ", ".join(f"{w}x{h}" for w, h in sorted(ICON_SIZES))
+                        + "; it declares "
+                        + ", ".join(f"{w}x{h}" for w, h in sorted(set(entries))),
+                    )
+                )
     return findings, scanned
 
 
 def _unregistered(base: Path, products: tuple[ReleaseProduct, ...]) -> list[Finding]:
-    """A release definition no product declares is a silent omission."""
-    registered = {product.spec for product in products}
-    return [
-        Finding(
-            "release-unregistered",
-            path.stem,
-            path.name,
-            "no ReleaseProduct in PRODUCTS declares this release definition",
-        )
-        for path in sorted(base.glob("*.spec.in"))
-        if path.name not in registered
-    ]
+    """A release definition or packaging script no product declares.
+
+    Spec templates are read from the repository root because that is where the
+    build scripts resolve them (``$BuildName.spec.in`` beside the generated
+    ``.spec``); a packaging script is found by the ``package-*.ps1`` naming the
+    existing two use.
+    """
+    declared = set()
+    for product in products:
+        declared.add(product.spec)
+        declared.add(product.packager)
+    findings = []
+    for pattern in ("*.spec.in", "scripts/package-*.ps1"):
+        for path in sorted(base.glob(pattern)):
+            if path.relative_to(base).as_posix() in declared:
+                continue
+            findings.append(
+                Finding(
+                    "release-unregistered",
+                    path.stem,
+                    path.relative_to(base).as_posix(),
+                    "no ReleaseProduct in PRODUCTS declares this release definition",
+                )
+            )
+    return findings
 
 
-def scan(root: Path | None = None, products: tuple[ReleaseProduct, ...] = PRODUCTS) -> dict:
-    """The whole report document: findings, products and files read."""
+def scan(
+    root: Path | None = None,
+    products: tuple[ReleaseProduct, ...] | None = None,
+) -> dict:
+    """The whole report document: findings, products and files read.
+
+    ``unreadable`` is separate from ``findings`` for the same reason
+    ``tools/quality/public_surface.py`` keeps it separate: a file that could not
+    be read is not a finding to weigh, it is a check that did not run.
+    """
     base = Path(root) if root is not None else REPOSITORY_ROOT
+    selected = PRODUCTS if products is None else products
     table = public_surface.ExceptionTable.load(
         base / "config" / "public_surface_exceptions.json"
     )
 
     findings: list[Finding] = []
     scanned: list[str] = []
-    for product in products:
-        found, names = _product_findings(base, product, table)
+    unreadable: list[str] = []
+    for product in selected:
+        found, names = _product_findings(base, product, table, unreadable)
         findings.extend(found)
         scanned.extend(names)
 
@@ -521,7 +594,9 @@ def scan(root: Path | None = None, products: tuple[ReleaseProduct, ...] = PRODUC
         )
     else:
         shared_text = _read_text(base, SHARED_RELEASE_SCRIPT)
-        if shared_text is not None:
+        if shared_text is None:
+            unreadable.append(SHARED_RELEASE_SCRIPT)
+        else:
             scanned.append(SHARED_RELEASE_SCRIPT)
             findings.extend(
                 _residue_findings(
@@ -529,7 +604,7 @@ def scan(root: Path | None = None, products: tuple[ReleaseProduct, ...] = PRODUC
                 )
             )
 
-    findings.extend(_unregistered(base, products))
+    findings.extend(_unregistered(base, selected))
     findings.sort(key=lambda item: (item.product, item.path, item.line, item.code))
 
     counts: dict[str, int] = {}
@@ -537,8 +612,9 @@ def scan(root: Path | None = None, products: tuple[ReleaseProduct, ...] = PRODUC
         counts[item.code] = counts.get(item.code, 0) + 1
     return {
         "schema": SCHEMA,
-        "products": sorted(product.build_name for product in products),
-        "files_scanned": len(sorted(set(scanned))),
+        "products": sorted(product.build_name for product in selected),
+        "files_scanned": len(set(scanned)),
+        "unreadable": sorted(set(unreadable)),
         "findings": [item.as_dict() for item in findings],
         "code_counts": dict(sorted(counts.items())),
     }
@@ -555,6 +631,8 @@ def _render(report: dict, stream) -> None:
         where = f"{item['path']}:{item['line']}" if item["line"] else item["path"]
         prefix = f"{item['product']} " if item["product"] else ""
         print(f"  {prefix}{where}: {item['code']}: {item['detail']}", file=stream)
+    for relative in report["unreadable"]:
+        print(f"  {relative}: release-input-unreadable", file=stream)
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -587,6 +665,16 @@ def main(argv: list[str] | None = None) -> int:
         )
     _render(report, sys.stdout)
 
+    if report["unreadable"]:
+        print(
+            "\nSome release inputs could not be read, so they were not checked. "
+            "Write them as UTF-8 text: a release input that cannot be decoded is "
+            "not a release input that passed.",
+            file=sys.stderr,
+        )
+        # A file that cannot be read is not a file that passed, and --no-fail
+        # reframes findings rather than blindness, so this is BLOCKED.
+        return 2
     if report["findings"] and not arguments.no_fail:
         print(
             "\nA public randomizer release does not meet the shared release "

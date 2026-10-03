@@ -197,6 +197,13 @@ def test_an_undeclared_release_definition_fails(tmp_path):
     assert "release-unregistered" in _codes(tmp_path)
 
 
+def test_an_undeclared_packaging_script_fails(tmp_path):
+    _tree(tmp_path)
+    _write(tmp_path, "scripts/package-other.ps1", _packager())
+
+    assert "release-unregistered" in _codes(tmp_path)
+
+
 # --- each detector fails on a deliberately bad release ----------------------
 
 
@@ -323,6 +330,60 @@ def test_a_package_that_skips_the_shared_probe_fails(tmp_path):
     assert "package-probe-missing" in _codes(tmp_path)
 
 
+def test_the_packager_must_name_the_declared_readme_and_build(tmp_path):
+    _tree(tmp_path)
+    packager = tmp_path / FUTURE.packager
+
+    packager.write_text(
+        _packager().replace(FUTURE.readme, "docs/other/README.txt"),
+        encoding="utf-8",
+        newline="\n",
+    )
+    assert "package-readme-mismatch" in _codes(tmp_path)
+
+    packager.write_text(
+        _packager().replace(
+            f"$BuildName = '{FUTURE.build_name}'", "$BuildName = 'Other-Randomizer'"
+        ),
+        encoding="utf-8",
+        newline="\n",
+    )
+    assert "package-build-name-mismatch" in _codes(tmp_path)
+
+
+def test_a_stage_file_written_by_another_cmdlet_fails(tmp_path):
+    _tree(tmp_path)
+    packager = tmp_path / FUTURE.packager
+
+    packager.write_text(
+        _packager().replace(
+            "Compress-Archive",
+            "Set-Content (Join-Path $stage 'notes.txt') -Value 'x'\nCompress-Archive",
+        ),
+        encoding="utf-8",
+        newline="\n",
+    )
+
+    assert "package-contents" in _codes(tmp_path)
+
+
+def test_the_archive_glob_cannot_smuggle_a_rom(tmp_path):
+    _tree(tmp_path)
+    packager = tmp_path / FUTURE.packager
+
+    packager.write_text(
+        _packager().replace(
+            "(Join-Path $stage '*')", "(Join-Path $stage 'roms/game.gba')"
+        ),
+        encoding="utf-8",
+        newline="\n",
+    )
+    codes = _codes(tmp_path)
+
+    assert "package-contents" in codes
+    assert "forbidden-release-input" in codes
+
+
 def test_a_developer_path_in_a_release_input_fails(tmp_path):
     _tree(tmp_path)
     spec = tmp_path / FUTURE.spec
@@ -406,10 +467,28 @@ def test_the_report_is_deterministic(tmp_path):
     assert first.read_bytes() == second.read_bytes()
 
 
+def test_an_unreadable_release_input_blocks_the_run(tmp_path, monkeypatch):
+    _tree(tmp_path)
+    resource = tmp_path / FUTURE.version_resource
+    resource.write_bytes(
+        _version().encode("utf-16")
+    )
+    monkeypatch.setattr(release, "REPOSITORY_ROOT", tmp_path)
+    monkeypatch.setattr(release, "PRODUCTS", (FUTURE,))
+
+    report = release.scan(tmp_path, (FUTURE,))
+    assert report["unreadable"] == [FUTURE.version_resource]
+
+    # Blindness is BLOCKED, not a reading list: --no-fail does not excuse it.
+    assert release.main(["--no-fail"]) == 2
+    assert release.main([]) == 2
+
+
 def test_no_fail_reports_without_failing(tmp_path, monkeypatch):
     _tree(tmp_path)
     (tmp_path / FUTURE.readme).unlink()
     monkeypatch.setattr(release, "REPOSITORY_ROOT", tmp_path)
+    monkeypatch.setattr(release, "PRODUCTS", (FUTURE,))
 
     assert release.main(["--no-fail"]) == 0
     assert release.main([]) == 1

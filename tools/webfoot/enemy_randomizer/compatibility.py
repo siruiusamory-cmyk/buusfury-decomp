@@ -80,7 +80,8 @@ It does not claim that any canonical enemy is safe in any canonical slot. It
 claims the identity is internally coherent, which is what the evidence supports.
 The residual risk - an actor that is visually or mechanically out of place, or a
 boss that no available field identifies - is quantified in section 11 of
-runtime smoke, not papered over with a class name.
+``docs/research/ENEMY_RANDOMIZER_VERIFICATION.md``, together with the owner's
+recorded waiver, rather than papered over with a class name.
 """
 
 from __future__ import annotations

@@ -474,8 +474,10 @@ def _report(result, output: Path, manifest_path: Path, write_manifest) -> None:
     print(f"  output sha256 : {write_manifest.output_sha256}")
     print(f"  manifest      : {manifest_path}")
     if types:
-        print(f"  enemy types   : {types.changed_count} slot(s) changed in "
-              f"{types.groups_shuffled} map(s); pool {types.pool_size} canonical pairs")
+        print(f"  identity swaps: {types.changed_count} slot(s) relocated within "
+              f"identical-field groups in {types.groups_shuffled} map(s); "
+              f"pool {types.pool_size} canonical pairs. This does NOT change enemy "
+              f"types - Module C is undelivered.")
     if placement:
         print(f"  placements    : {placement.moved_count} slot(s) moved in "
               f"{placement.groups_shuffled} map(s)")

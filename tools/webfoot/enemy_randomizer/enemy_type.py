@@ -1,4 +1,17 @@
-"""MODULE C - same-map enemy-type shuffle over proven-coherent identity pairs.
+"""Identity relocation within proven-coherent groups (ticket Module C, undelivered).
+
+WHAT THIS MODULE DOES NOT DO, stated first because the name invites the opposite
+assumption. It does not make an enemy become a different kind of enemy. It permutes
+identity only among slots whose flags, behavior descriptor and children already
+match, and within such a group the records differ only in
+``(type, id, position)`` - so the result is the same records, in different places.
+Installing the coupled fields as well cannot help either: the factory word is
+constant across the corpus, so the recipient simply BECOMES the donor's record.
+Measured, 0 of 949 such installs produced a record with no exact canonical match.
+
+The owner reviewed this and chose to ship the module while recording that ticket
+Module C is undelivered, rather than delete it or manufacture a hybrid. See
+section 5.2 and Waiver 2 of ``docs/research/ENEMY_RANDOMIZER_VERIFICATION.md``.
 
 What an "enemy type" is, and why it is a pair
 =============================================
@@ -30,7 +43,10 @@ already builds, so the resulting object is one the retail engine itself
 constructs: its stats and its sprite belong together. The mode the ticket forbids
 - enemy B's graphics with enemy A's behaviour and enemy C's stats - cannot be
 produced, because the module never sources the two halves from different enemies
-and never composes a pair the corpus does not contain.
+and never composes a pair the corpus does not contain. That is also exactly why it
+cannot retype: a genuinely different enemy would need a different coupled
+configuration, and swapping that configuration as well merely moves the donor's
+record.
 
 Same map
 ========

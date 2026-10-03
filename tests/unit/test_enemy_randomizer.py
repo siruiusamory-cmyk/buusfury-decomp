@@ -325,7 +325,13 @@ class TestConfiguration:
         """
         for mode, description in TYPING_MODES.items():
             assert description["delivers_ticket_module_c"] is False, mode
-            assert "none" in description["player_visible_effect"], mode
+            # It relocates. It must not claim to retype, and it must not claim to
+            # do nothing either: composed with placement it yields a new
+            # arrangement, and alone it moves which enemy stands where in a group.
+            assert "relocation-equivalent" in description["player_visible_effect"], mode
+            assert "cannot make one enemy become a different kind" in (
+                description["player_visible_effect"]
+            ), mode
             assert typing_retypes(mode) is False, mode
 
     def test_the_typing_mode_effect_travels_in_the_configuration(self):
@@ -336,7 +342,7 @@ class TestConfiguration:
         """
         config = EnemyRandomizerConfig().to_json()
         assert config["typing_mode"] == TYPING_PROVEN_PAIR
-        assert "relocated" in config["typing_mode_effect"]
+        assert "relocation-equivalent" in config["typing_mode_effect"]
         assert config["delivers_ticket_module_c"] is False
 
     def test_retyping_is_never_available(self):

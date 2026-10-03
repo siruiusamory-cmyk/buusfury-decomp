@@ -123,39 +123,42 @@ which requires the exact tuple
 `(selector, sprite, flags, descriptor, child_count, children)` to exist canonically
 for every changed slot.
 
-### 5.2 The coupling constraint means this module cannot change enemy type
+### 5.2 This module relocates identity; it cannot change enemy type
 
 This must be read together with 5.1, because the safety fix removes the module's
-effect entirely. Two independent reviews converged on this, the second after an
-earlier revision of this document claimed an opt-in mode solved it.
+ability to do what its name suggests. Two independent reviews converged on this, the
+second after an earlier revision of this document claimed an opt-in mode solved it.
 
 Within one coupled-field group every member has the *same* flags, descriptor and
 children **by construction**, so the records differ only in
 `(stat selector, sprite id, position)`. Exchanging `(selector, sprite)` between two
-such records therefore produces exactly the same pair of records as exchanging
-their positions. With the placement shuffle also enabled, the two modules compose
-to the identity.
+such records therefore produces the same pair of records as exchanging their
+positions: the group's record multiset is unchanged.
 
-**Installing the coupled fields as well does not fix it.** The factory word is
-constant across the corpus (`compatibility.FACTORY_RAW` is one value), so a record
-that receives another's `(type, id, flags, descriptor)` has simply *become* that
-record; the map then holds the same multiset of canonical records in different
-places. Measured on a hash-verified canonical copy, seed `enemy-pack-001`, type
-module only: 949 records changed, 706 of them with flags or descriptor rewritten,
-and **0 of 949** lacked an exact canonical match in the same map.
+**Installing the coupled fields as well does not fix it.** The factory word is one
+constant (`formats/map_placements.py`, `FACTORY_RAW`), so a record that receives
+another's `(type, id, flags, descriptor)` has simply *become* that record. Measured
+on a hash-verified canonical copy, seed `enemy-pack-001`, type module only: 949
+records changed, 706 of them with flags or descriptor rewritten, and **0 of 949**
+lacked an exact canonical match in the same map. The mode that did this was removed
+rather than relabelled.
 
-So this module cannot change which enemy a player meets. An earlier revision
-claimed an opt-in `proven-pair-and-behaviour` mode did; a reviewer measured it and
-showed it relocates whole records, and the mode has been **removed** rather than
-relabelled.
+**The composition with the placement shuffle is NOT the identity**, and an earlier
+revision of this section wrongly said it was. The placement shuffle permutes the
+whole map's eligible slots from its own independent seed, while this module permutes
+only within coupled groups. The composed result is identity at a permuted position,
+which is generally a new arrangement; and with `--only enemy-type` a player really
+does meet a different enemy at a given spot inside a group.
 
-**Ticket Module C is NOT delivered.** What the module does deliver is a
-well-defined, validated permutation over proven slots. It is correct, it is inert
-with respect to the world, and it costs one pass over the corpus, so it stays
-compiled and tested rather than deleted - but nothing may describe it as an enemy
-type shuffle. Every manifest records this as
+**So the module never changes a map's set of enemies and never creates a record
+canonical does not already hold. Ticket Module C - an ordinary enemy becoming a
+different KIND of enemy - is NOT delivered.** Every manifest records this as
 `configuration.delivers_ticket_module_c: false` and states the effect verbatim in
-`configuration.typing_mode_effect`, together with `modules.enemy-type`.
+`configuration.typing_mode_effect`, and the module summary carries both.
+
+The module stays compiled and tested rather than deleted, by owner decision: the
+permutation is correct and well-defined, and it is recorded as a relocation rather
+than presented as a type shuffle.
 
 **What delivering Module C would take.** A measured compatibility dimension: some
 evidence that an object whose behavior descriptor belongs to a different enemy than
@@ -288,7 +291,7 @@ did not.
 itself demonstrate that a live actor object ends up carrying the randomized identity.
 An earlier revision of this document claimed "the engine constructs the randomized
 identity" from this run; that is stronger than the measurement, and a reviewer was
-right to reject it. For the default `proven-pair` mode the constructed-actor question
+right to reject it. For this module the constructed-actor question
 is also moot in a second way: as section 5.2 shows, that mode exchanges identity and
 position between field-identical records, so the actor set the engine builds is the
 same either way.

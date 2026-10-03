@@ -141,32 +141,38 @@ DEFAULT_STAT_FIELDS: tuple[str, ...] = ("hp", "exp", "level", "strength", "power
 #: descriptor and children already match the donor's, so every resulting object is a
 #: configuration some canonical placement holds.
 #:
-#: ITS CONSEQUENCE, which two independent reviews converged on and which this file
-#: previously mis-described twice:
+#: WHAT IT ACTUALLY DOES, which two independent reviews converged on and which two
+#: earlier revisions of this comment got wrong in opposite directions:
 #:
-#: * within one such group the records differ ONLY in ``(type, id, position)``, so
-#:   exchanging ``(type, id)`` between two members is exactly exchanging their
-#:   positions; and
-#: * installing the coupled fields as well does not help either. The factory word is
-#:   constant across the corpus, so a record that receives another record's
-#:   ``(type, id, flags, descriptor)`` has simply BECOME that record; the map ends up
-#:   holding the same multiset of canonical records in different places. Measured:
-#:   0 of 949 such installs produced a record with no exact canonical match.
+#: * within one coupled-field group the records differ ONLY in ``(type, id,
+#:   position)``, so EXCHANGING identity between two members is equivalent to
+#:   exchanging their positions. The group's multiset of records is unchanged;
+#: * installing the coupled fields as well does not help. The factory word is
+#:   constant across the corpus, so a record that receives another's ``(type, id,
+#:   flags, descriptor)`` has simply BECOME that record. Measured: 0 of 949 such
+#:   installs produced a record with no exact canonical match.
 #:
-#: So this module cannot change what enemy a player meets. Either it permutes
-#: identity within field-identical records, which composes with the placement
-#: shuffle to the identity permutation, or it permutes whole records, which is a
-#: relocation by another name. **Ticket Module C is NOT delivered**, and claiming
-#: otherwise was the error two reviews caught. What the module does deliver is a
-#: well-defined, validated permutation over proven slots, which is why it stays
-#: compiled and tested rather than deleted: it is correct, it is inert with respect
-#: to the world, and it costs one pass over the corpus.
+#: So this module never changes a map's SET of enemies and never creates a record
+#: that canonical does not already contain. It relocates identity within a group.
+#:
+#: It does NOT compose with the placement shuffle to the identity, and an earlier
+#: revision wrongly said it did. The placement shuffle permutes the whole map's
+#: eligible slots from its own independent seed, while this one permutes only within
+#: coupled groups, so the composed arrangement is identity at a permuted position -
+#: generally a NEW arrangement, and with ``--only enemy-type`` alone a player really
+#: does meet a different enemy at a given spot inside each group.
+#:
+#: **Ticket Module C is NOT delivered** in the sense the ticket means, which is that
+#: an ordinary enemy can become a different KIND of enemy: no identity crosses a
+#: coupled-field boundary, so no enemy is retyped. The module is correct, it is a
+#: strict relocation, and it is recorded as such - every manifest carries
+#: ``configuration.delivers_ticket_module_c: false`` and the effect string below.
 #:
 #: A mode that really retyped would have to install an identity onto a slot with
 #: DIFFERENT coupled fields, producing an object whose behavior descriptor belongs to
 #: a different enemy than its sprite and stats. Nothing in this project establishes
-#: that such an object is coherent, so this pack does not produce one. Delivering
-#: Module C needs a measured compatibility dimension first; see section 5.2 of
+#: that such an object is coherent, so this pack does not produce one; delivering
+#: Module C needs a measured compatibility dimension first. See section 5.2 of
 #: ``docs/research/ENEMY_RANDOMIZER_VERIFICATION.md``.
 TYPING_PROVEN_PAIR = "proven-pair"
 
@@ -174,9 +180,13 @@ TYPING_MODES: dict[str, dict] = {
     TYPING_PROVEN_PAIR: {
         "installs": "identity only, onto a slot whose coupled fields already match",
         "player_visible_effect": (
-            "none: enemies are relocated, not retyped. With the placement shuffle "
-            "also enabled the two compose to the identity, and neither mode of this "
-            "module can change which enemy a player meets"
+            "relocation-equivalent within each coupled group: exchanges identity "
+            "between slots whose other fields are identical. It never changes a "
+            "map's set of enemies and never creates a record canonical does not "
+            "already hold, so it cannot make one enemy become a different kind of "
+            "enemy. Composed with the placement shuffle it yields identity at a "
+            "permuted position, which is a new arrangement rather than the identity; "
+            "on its own it does move which enemy stands at a given spot inside a group"
         ),
         "hybrid": "impossible by construction",
         "delivers_ticket_module_c": False,
@@ -187,9 +197,10 @@ TYPING_MODES: dict[str, dict] = {
 def typing_retypes(mode: str) -> bool:
     """Always False. Kept so a caller reads the reason rather than assuming.
 
-    No mode of this module changes an enemy's type; see :data:`TYPING_MODES`. The
-    function exists so that a future mode which *does* retype has an obvious place
-    to say so, and so that current callers cannot quietly assume the opposite.
+    No mode of this module makes an enemy become a different kind of enemy; see
+    :data:`TYPING_MODES`. The function exists so a future mode that *does* retype has
+    an obvious place to say so, and so current callers cannot quietly assume the
+    opposite.
     """
     return False
 
@@ -307,9 +318,10 @@ def _all_enemy_modules() -> frozenset[str]:
 STREAM_SAFE = Preset(
     name="stream-safe",
     description=(
-        "Conservative streamed-playthrough preset: same-map enemy identity and "
-        "placement shuffles over canonically proven pairs and slots, with enemy "
-        "stats scaled within 0.75x-1.35x of their original values."
+        "Conservative streamed-playthrough preset: same-map placement shuffling "
+        "over canonically proven slots, identity relocation within identical-field "
+        "groups (which does NOT change enemy types - Module C is undelivered), and "
+        "enemy stats scaled within 0.75x-1.35x of their original values."
     ),
     config=EnemyRandomizerConfig(stat_range=STREAM_SAFE_STATS),
 )

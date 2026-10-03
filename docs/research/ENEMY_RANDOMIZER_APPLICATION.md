@@ -254,17 +254,25 @@ collision would have failed closed; and the source image untouched.
 
 One internal combined ROM
 (`8215dcdb1220a7c5526ec1d4c092d53720f70a67a56f4e01b254ed75d97ed33b`, 5,948
-changed bytes) was booted under mGBA 0.11-9128 with an isolated `savegamePath`:
-the window reported `DBZBUUSFURY` at 60 fps, the process stayed alive for 40 s
+changed bytes) was loaded under mGBA 0.11-9128 with an isolated `savegamePath`:
+the window reported `DBZBUUSFURY` at 60 fps, the process stayed up for 40 s
 without exiting, and the canonical ROM was still `940AD5F0…F059E` afterwards.
 
-**What that proves**: the engine accepts the composed image as a Buu's Fury
-cartridge and runs it without crashing. **What it does not prove**: that a
-particular randomized enemy is reachable, that a map is completable, or anything
-about beatability. Enemy placement was already proved reachable at runtime by
-RANDOMIZER-ENEMY-PACK-001's controlled A/B on one savestate, and warp destinations
-by the warp randomizer's own record; this run is evidence about composition and is
-deliberately not stretched further. It is not the public combined application.
+**What that shows, stated narrowly.** mGBA opened the file and identified it as a
+Buu's Fury cartridge, and the emulator process stayed up. That is all. The game
+code in the window title comes from the cartridge header, which randomization
+never touches, so the check would pass for any image with an intact header; mGBA
+does not exit when the emulated game hangs, so "process alive" is not "the game
+did not crash"; and with no input the game never leaves the title screen, so no
+randomized placement, stat or warp was loaded or exercised.
+
+An independent review measured that gap between the check and the claim it was
+carrying, and the claim is reduced rather than the check inflated. Evidence that a
+randomized enemy is reachable at runtime already exists and is not restated here:
+RANDOMIZER-ENEMY-PACK-001's controlled A/B on one savestate read the engine's live
+placement records for a map whose both slots were randomized. Composition is
+proved at the byte level instead, by the per-position test above. This is not the
+public combined application, and it is not a beatability claim.
 
 ### Quality gates
 
@@ -301,7 +309,12 @@ executable and also **PASS**es, reproducing `ed167ca1…abdc`.
   establishes is coherent. The module is not registered in the foundation at all,
   so no product built on it can offer one.
 - **No boss, NPC or quest-critical classification exists** in the project's
-  evidence, so none is claimed. The consequence is stated in every enemy run's
+  evidence, so none is claimed, and the shipped README says so in the same words
+  rather than implying that "bosses are excluded". What is excluded is what the
+  model can positively identify: actors carrying a script event, actors whose
+  script root was never decoded, actors whose stat selector falls outside the
+  verified extent, placements inside a door trigger, and an enemy that is the only
+  eligible one in its map. The consequence is recorded in every enemy run's
   manifest: a boss that is neither script-attached nor alone in its map is
   indistinguishable from an ordinary enemy and may be randomized. The owner
   accepted that limitation in writing for RANDOMIZER-ENEMY-PACK-001.

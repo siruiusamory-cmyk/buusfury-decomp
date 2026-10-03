@@ -114,18 +114,19 @@ ENEMY_PRESENTATION = ProductPresentation(
             module_id="enemy-placement",
             label="Shuffle enemy placements",
             help=(
-                "Shuffles eligible ordinary enemies among proven existing "
-                "placements in the same map. No spawn is created and no coordinate "
-                "is invented."
+                "Shuffles enemy placements within each map, using only positions "
+                "the map already had. No new spawn is created and no coordinate is "
+                "invented. A boss that looks like an ordinary enemy may still be "
+                "moved."
             ),
         ),
         ModuleToggle(
             module_id="enemy-stat",
             label="Randomize enemy stats",
             help=(
-                "Randomizes supported enemy stats within safe bounds, scaling each "
-                "record around its own original values so the game's general "
-                "progression is preserved."
+                "Randomizes enemy stats within safe bounds, scaling each enemy from "
+                "its own original values so the game's general progression is "
+                "preserved."
             ),
         ),
     ),
@@ -136,15 +137,15 @@ ENEMY_PRESENTATION = ProductPresentation(
     spoiler_default=True,
     spoiler_label="Generate spoiler log",
     spoiler_help=(
-        "Writes a readable record of what changed: which enemy stands where and "
-        "what its stats became. It is never opened for you, so this does not spoil "
-        "a blind run unless you open it."
+        "Writes a readable list of what changed: which enemy stands where and what "
+        "its stats became. It is never opened for you, so this does not spoil a "
+        "blind run unless you open it."
     ),
     preset_label="STREAM SAFE",
     preset_help=(
-        "The conservative preset: both proven modules on, enemy stats scaled "
-        "within 0.75x-1.35x of each record's own values. This restores exactly the "
-        "defaults, so it cannot drift from what the core ships."
+        "The conservative preset: both options on, enemy stats scaled between "
+        "0.75x and 1.35x of each enemy's own values. It restores the default "
+        "settings exactly."
     ),
     options_title="Randomization",
     running_status=RUNNING_STATUS,
@@ -177,11 +178,11 @@ USAGE = f"""\
   {EXECUTABLE_STEM}                       open the window
 
   {EXECUTABLE_STEM} {SMOKE_FLAG} --rom <rom> --output <rom>
-      [--seed <seed>] [--report <file>] [--without <modules>] [--no-spoiler]
+      [--seed <seed>] [--report <file>] [--without <options>] [--no-spoiler]
         perform one run through the same window and write a JSON report.
         Used to verify a packaged release without a human at the keyboard.
 
-  --without enemy-placement,enemy-stat   disable a module for this one run
+  --without enemy-placement,enemy-stat   leave one of the two options off
   --no-spoiler                           do not write the spoiler log
 """
 

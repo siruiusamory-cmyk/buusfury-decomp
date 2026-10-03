@@ -536,4 +536,4 @@ def test_the_service_refuses_a_request_with_no_module_enabled(tmp_path):
             )
         )
 
-    assert "no module is enabled" in str(caught.value)
+    assert "No randomization is selected" in str(caught.value)

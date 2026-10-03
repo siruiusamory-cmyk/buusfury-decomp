@@ -254,9 +254,13 @@ def test_the_progression_limit_is_on_screen(window):
     assert window.disclaimer_label.wordWrap()
 
 
-def test_the_window_names_the_tool_and_the_policy(window):
+def test_the_window_names_the_tool_and_what_it_does(window):
     assert gui.WINDOW_TITLE == "Buu's Fury Warp Randomizer v0.1.0"
-    assert window.policy_label.text() == f"Policy: {warprand.POLICY_ID}"
+    # The status bar names the game and the change, not the internal policy id,
+    # which stays in the manifest where it identifies the algorithm.
+    assert "Buu's Fury (US)" in window.policy_label.text()
+    assert "reciprocal pairs" in window.policy_label.text()
+    assert warprand.POLICY_ID not in window.policy_label.text()
 
 
 # --- the ROM -----------------------------------------------------------------
@@ -497,10 +501,11 @@ def test_the_success_state_shows_the_returned_counts_and_hash(window, qapp, boun
     text = window.status_text()
     assert text.splitlines()[0] == "Success"
     assert "Seed: Goku" in text
-    assert "Supported: 735" in text
-    assert "Randomized: 496" in text
+    assert "Door transitions: 735" in text
+    assert "Doors randomized: 496" in text
     assert "Destinations moved: 492" in text
-    assert "Skipped: 239" in text
+    assert "Left unchanged: 239" in text
+    assert warprand.POLICY_ID not in text
     assert f"Output: {OUTPUT_ROM}" in text
     assert f"SHA-256: {OUTPUT_SHA256}" in text
     assert window.outcome is not None
@@ -520,9 +525,9 @@ def test_the_success_state_is_built_from_what_the_boundary_returned(
 
     text = window.status_text()
     assert "Seed: Namek-0001" in text
-    assert "Randomized: 12" in text
-    assert "Skipped: 723" in text
-    assert "Randomized: 496" not in text
+    assert "Doors randomized: 12" in text
+    assert "Left unchanged: 723" in text
+    assert "Doors randomized: 496" not in text
 
 
 def test_a_refused_run_shows_the_error_state(window, qapp, boundary):

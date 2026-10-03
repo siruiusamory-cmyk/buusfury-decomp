@@ -428,7 +428,7 @@ def test_an_empty_seed_is_refused_cleanly(boundary):
     with pytest.raises(warprand.SeedRefusedError) as caught:
         service.randomize_warps(source, output, "")
 
-    assert "must not be empty" in str(caught.value)
+    assert "The seed is empty" in str(caught.value)
 
 
 def test_a_seed_is_not_trimmed_or_case_folded(boundary):

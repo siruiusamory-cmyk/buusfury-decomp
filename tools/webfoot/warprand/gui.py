@@ -9,8 +9,9 @@ enemy executable also uses; what is left here is what is genuinely warp-specific
 * the words - the product name, the ROM prompt, the refusals, the disclaimer;
 * the launch seed and the output template;
 * the one module this product offers;
-* the success block, which this product has shown in the same twelve lines since
-  v0.1.0 and which a user of the released tool recognises;
+* the success block, which this product has shown in the same order since v0.1.0
+  with the same returned numbers; two labels in it were rewritten in the reader's
+  words, and a user of the released tool still recognises the block;
 * the release-verification entry, whose usage text names this executable.
 
 Why the window moved rather than being copied
@@ -112,7 +113,15 @@ WARPRAND_PRESENTATION = ProductPresentation(
     default_seed=warprand.DEFAULT_SEED,
     output_template=warprand.OUTPUT_TEMPLATE,
     disclaimer=warprand.PROGRESSION_DISCLAIMER,
-    status_note=f"Policy: {warprand.POLICY_ID}",
+    # The status bar states what this product does to *which* game and version, in
+    # the same shape the enemy executable's status bar uses: the provenance a user
+    # can check without opening a file, then one plain sentence about the change.
+    # The policy id stays in the manifest, where it identifies the algorithm that
+    # produced a run, and is not shown to a player.
+    status_note=(
+        "Dragon Ball Z: Buu's Fury (US) - door destinations; doors move in "
+        "reciprocal pairs"
+    ),
     # One module, so the window draws no options area at all and the layout is the
     # one this product has always shipped.
     module_toggles=(
@@ -141,7 +150,12 @@ class MainWindow(RandomizerWindow):
         self.policy_label = self.status_note_label
 
     def success_lines(self, outcome) -> list[str]:
-        """The success block, verbatim since v0.1.0.
+        """The success block this product has shown since v0.1.0.
+
+        Same lines, same order and the same eleven facts as v0.1.0; the two labels
+        that only made sense to the author are now the reader's words. "Supported"
+        and "Randomized" carried no noun, so a player could not tell what was being
+        counted, and the policy id named the algorithm rather than the change.
 
         Built entirely from what the boundary returned, never from a constant, so
         a policy change can never leave a stale number on screen.
@@ -150,11 +164,10 @@ class MainWindow(RandomizerWindow):
             "Success",
             "ROM verified \u2713",
             f"Seed: {outcome.seed}",
-            f"Policy: {outcome.policy_id}",
-            f"Supported: {outcome.supported}",
-            f"Randomized: {outcome.randomized}",
+            f"Door transitions: {outcome.supported}",
+            f"Doors randomized: {outcome.randomized}",
             f"Destinations moved: {outcome.destinations_moved}",
-            f"Skipped: {outcome.skipped}",
+            f"Left unchanged: {outcome.skipped}",
             f"Output: {outcome.output_path}",
             f"SHA-256: {outcome.output_sha256}",
             f"Manifest: {outcome.manifest_path}",

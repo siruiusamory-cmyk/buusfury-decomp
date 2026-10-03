@@ -394,11 +394,18 @@ class RandomizerResult:
         reproduces the one it has always shown - but this is the shared form, and
         it is built only from what the service returned.
         """
+        # Each module's *published* name, which is what its check box says and what
+        # its manifest section records. The registry id (``enemy-placement``) is an
+        # implementation name and belongs in the manifest, not in the text a player
+        # reads.
+        applied = ", ".join(
+            registry.module_for(module_id).display_name for module_id in self.enabled
+        )
         lines = [
             "Success",
             "ROM verified \u2713",
             f"Seed: {self.master_seed}",
-            f"Modules: {', '.join(self.enabled)}",
+            f"Applied: {applied}",
         ]
         for module_id in self.enabled:
             lines.extend(self.module_section(module_id).get("summary_lines", ()))
@@ -479,10 +486,12 @@ class RandomizerService:
         importing a core exception.
         """
         if isinstance(seed, bool) or not isinstance(seed, (str, int)):
-            raise SeedRefusedError(f"a seed is a string or an integer, got {seed!r}")
+            raise SeedRefusedError(f"A seed must be text or a number, got {seed!r}")
         text = str(seed)
         if not text:
-            raise SeedRefusedError("a seed must not be empty")
+            raise SeedRefusedError(
+                "The seed is empty. Type a seed, or use Random Seed for one."
+            )
         return text
 
     def generate_seed(self) -> str:
@@ -651,8 +660,8 @@ class RandomizerService:
         output = Path(request.output_rom)
         if not request.enabled:
             raise ModuleRefusedError(
-                "no module is enabled, so this run would produce an unmodified copy "
-                "of your ROM. Enable at least one randomization."
+                "No randomization is selected, so this run would produce an "
+                "unmodified copy of your ROM. Choose at least one option."
             )
         if request.allowed_modules is not None:
             # The product's own list, enforced here. A module outside it is refused

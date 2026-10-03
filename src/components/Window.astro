@@ -1,0 +1,26 @@
+---
+import Icon from "./Icon.astro";
+
+interface Props {
+  id?: string;
+  title: string;
+  icon: "done" | "live" | "next" | "todo" | "target" | "folder" | "folder-new" | "announce" | "logo";
+  labelledby?: string;
+  label?: string;
+  class?: string;
+  as?: "section" | "div" | "footer" | "figure";
+}
+
+const { id, title, icon, labelledby, label, class: extra, as: Tag = "section" } = Astro.props;
+---
+
+<Tag class:list={["window", extra]} id={id} aria-labelledby={labelledby} aria-label={label}>
+  <div class="title-bar">
+    <Icon name={icon} class="title-icon" />
+    <span class="title-text">{title}</span>
+    <span class="title-controls" aria-hidden="true"><i class="tc-min"></i><i class="tc-max"></i><i class="tc-close"></i></span>
+  </div>
+  <div class="window-body">
+    <slot />
+  </div>
+</Tag>

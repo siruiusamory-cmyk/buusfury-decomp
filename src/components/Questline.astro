@@ -1,13 +1,8 @@
 ---
 import { project, statusMeta } from "../data/project";
+import type { MilestoneStatus } from "../data/project";
+import Icon from "./Icon.astro";
 
-// The rail's colour stops are derived from the milestone statuses rather than
-// hardcoded, so checking a milestone off actually moves the fill.
-//
-// The rail is inset to the first and last node centres, so node k sits at
-// k / (n - 1). The rail is a CONNECTOR: the segment for milestone k runs from
-// node k to node k+1, so a band that ends after the last complete milestone
-// ends at that milestone's own node, not one past it.
 const milestones = project.milestones;
 const spans = Math.max(milestones.length - 1, 1);
 const at = (nodeIndex: number) =>
@@ -20,20 +15,24 @@ const lastComplete = lastIndexOf("complete");
 const lastCurrent = lastIndexOf("current");
 const firstTarget = milestones.findIndex(({ status }) => status === "target");
 
-// Green ends at the last completed node; amber covers the current milestone's
-// own node; violet begins at the first target node, leaving the milestones
-// between them a visible grey segment.
 const railStyle = [
   `--rail-complete: ${at(lastComplete)}`,
   `--rail-current: ${at(Math.max(lastCurrent, lastComplete))}`,
   `--rail-target: ${at(firstTarget === -1 ? spans : firstTarget)}`,
 ].join("; ");
+
+const questIcon: Record<MilestoneStatus, "done" | "live" | "next" | "target"> = {
+  complete: "done",
+  current: "live",
+  next: "next",
+  target: "target",
+};
 ---
 
 <ol class="questline" style={railStyle}>
   {milestones.map((milestone) => (
     <li class:list={["quest", `is-${milestone.status}`]}>
-      <span class="quest-node" aria-hidden="true">{statusMeta[milestone.status].icon}</span>
+      <Icon name={questIcon[milestone.status]} class="quest-node" />
       <article>
         <p class="quest-status">{statusMeta[milestone.status].label}</p>
         <h3>{milestone.title}</h3>

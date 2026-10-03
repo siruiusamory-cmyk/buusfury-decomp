@@ -5,111 +5,110 @@ import {
   buildoutPercent,
   roadmap,
   roadmapStateLabel,
-  roadmapStateGlyph,
 } from "../data/project";
-import type { RoadmapPhaseView } from "../data/project";
+import type { RoadmapPhaseView, RoadmapPhaseState } from "../data/project";
+import Icon from "./Icon.astro";
+import Window from "./Window.astro";
 
-// The public roadmap to 1.0. Order and wording come from the roadmap data, and
-// every count is accumulated from the capability registry, so this section can
-// never disagree with the capability list above it. State is carried by a glyph
-// and a text label as well as a colour, never by colour alone.
-
-// A phase that ships no capability carries no running total. The accumulated
-// total is only meaningful against the outcomes a phase actually declares; on a
-// phase with none it just repeats the shipped count, which reads as though that
-// phase had completed those capabilities. Those phases print a dash instead.
-//
-// The dash is written as an entity and injected, so the character reaches the
-// page while no source file has to carry it.
 const phaseCount = (phase: RoadmapPhaseView) =>
   phase.outcomes.length > 0 ? `${phase.done} / ${buildoutTotal}` : "&mdash;";
+
+const workItem = (text: string, phaseComplete: boolean) => {
+  const [name, detail] = text.split(" - SHIPPED: ");
+  const shipped = detail !== undefined;
+  return { name, detail, shipped, done: shipped || phaseComplete };
+};
+
+const phaseIcon: Record<RoadmapPhaseState, "done" | "live" | "next" | "todo"> = {
+  complete: "done",
+  "in-progress": "live",
+  next: "next",
+  planned: "todo",
+};
 ---
 
-<section class="to-one" id="roadmap-to-1-0" aria-labelledby="to-one-title">
-  <div class="shell">
-    <div class="panel to-one-panel">
-      <div class="panel-head">
-        <div>
-          <p class="kicker">ROADMAP TO 1.0</p>
-          <h2 id="to-one-title">{roadmap.title}</h2>
+<Window id="roadmap-to-1-0" title="Roadmap to 1.0 - DragonByte Z Forums" icon="next" labelledby="to-one-title" class="forum-window to-one">
+  <div class="th">
+    <h2 id="to-one-title">Thread: {roadmap.title}</h2>
+    <span class="th-aside">Current: <b class="to-one-count">{buildoutDone} / {buildoutTotal}</b> <span class="to-one-pct">{buildoutPercent}%</span></span>
+  </div>
+
+  <div class="thread-intro row1">
+    <p class="to-one-lede">{roadmap.lede}</p>
+    <p class="to-one-where">{roadmap.position}</p>
+  </div>
+
+  <ol class="phases">
+    {roadmap.phases.map((phase) => (
+      <li class:list={["phase", "post", `is-${phase.state}`]}>
+        <div class="postbit">
+          <Icon name={phaseIcon[phase.state]} class="postbit-icon" />
+          <span class="phase-kicker">Phase {phase.ordinal}</span>
+          <span class="phase-state">{roadmapStateLabel[phase.state]}</span>
+          <span class="phase-count" set:html={phaseCount(phase)} />
         </div>
-        <p class="to-one-position">
-          <span class="kicker">CURRENT</span>
-          <b class="to-one-count">{buildoutDone} / {buildoutTotal}</b>
-          <span class="to-one-pct">{buildoutPercent}%</span>
-        </p>
-      </div>
 
-      <p class="to-one-lede">{roadmap.lede}</p>
-      <p class="to-one-where">{roadmap.position}</p>
+        <div class="post-body">
+          <h3 class="phase-title">{phase.title}</h3>
+          <p class="phase-summary">{phase.summary}</p>
 
-      <ol class="phases">
-        {roadmap.phases.map((phase) => (
-          <li class:list={["phase", `is-${phase.state}`]}>
-            <div class="phase-head">
-              <span class="phase-glyph" aria-hidden="true">{roadmapStateGlyph[phase.state]}</span>
-              <span class="phase-n" aria-hidden="true">{phase.ordinal}</span>
-              <span class="phase-heading">
-                <span class="phase-kicker">PHASE {phase.ordinal}</span>
-                <b class="phase-title">{phase.title}</b>
-              </span>
-              <span class="phase-right">
-                <span class="phase-state">{roadmapStateLabel[phase.state]}</span>
-                <span class="phase-count" set:html={phaseCount(phase)} />
-              </span>
-            </div>
+          {phase.outcomes.length > 0 && (
+            <ol class="outcomes">
+              {phase.outcomes.map((outcome, index) => (
+                <li class="outcome">
+                  <Icon name="todo" class="outcome-icon" />
+                  <span class="outcome-body">
+                    <b>{outcome.title}</b>
+                    <small>{outcome.detail}</small>
+                  </span>
+                  <span class="outcome-count">{phase.outcomeTotals[index]} / {buildoutTotal}</span>
+                </li>
+              ))}
+            </ol>
+          )}
 
-            <p class="phase-summary">{phase.summary}</p>
+          {phase.work.length > 0 && (
+            <ul class="phase-work">
+              {phase.work.map((text) => workItem(text, phase.state === "complete")).map((item) => (
+                <li class:list={["work-item", item.done ? "is-done" : "is-todo"]}>
+                  <Icon name={item.done ? "done" : "todo"} class="work-icon" />
+                  <span class="work-body">
+                    <b>{item.name}</b>
+                    {item.detail && <small>{item.detail}</small>}
+                  </span>
+                  {item.shipped && <span class="chip chip-shipped">SHIPPED</span>}
+                </li>
+              ))}
+            </ul>
+          )}
 
-            {phase.outcomes.length > 0 && (
-              <ol class="outcomes">
-                {phase.outcomes.map((outcome, index) => (
-                  <li class="outcome">
-                    <span class="outcome-mark" aria-hidden="true">→</span>
-                    <span class="outcome-body">
-                      <b>{outcome.title}</b>
-                      <small>{outcome.detail}</small>
-                    </span>
-                    <span class="outcome-count">{phase.outcomeTotals[index]} / {buildoutTotal}</span>
-                  </li>
-                ))}
-              </ol>
-            )}
+          {phase.done === buildoutTotal && phase.outcomes.length > 0 && (
+            <p class="phase-flag">100% feature complete</p>
+          )}
 
-            {phase.work.length > 0 && (
-              <ul class="phase-work">
-                {phase.work.map((item) => <li>{item}</li>)}
-              </ul>
-            )}
-
-            {phase.done === buildoutTotal && phase.outcomes.length > 0 && (
-              <p class="phase-flag">100% FEATURE COMPLETE</p>
-            )}
-
-            {phase.state === "next" && (
-              <p class="phase-marker">YOU ARE HERE · this phase has not started</p>
-            )}
-          </li>
-        ))}
-      </ol>
-
-      <div class="to-one-notes">
-        <div class="to-one-note">
-          <p class="kicker">FEATURE COMPLETE</p>
-          <h3>{roadmap.featureCompleteTitle}</h3>
-          <p>{roadmap.featureComplete}</p>
+          {phase.state === "next" && (
+            <p class="phase-marker">You are here: this phase has not started</p>
+          )}
         </div>
-        <div class="to-one-note">
-          <p class="kicker">1.0</p>
-          <h3>{roadmap.releaseTitle}</h3>
-          <p>{roadmap.releaseGate}</p>
-        </div>
-        <div class="to-one-note is-golden">
-          <p class="kicker">FINAL ACCEPTANCE</p>
-          <h3>{roadmap.goldenTitle}</h3>
-          <p>{roadmap.goldenProject}</p>
-        </div>
-      </div>
+      </li>
+    ))}
+  </ol>
+
+  <div class="to-one-notes">
+    <div class="to-one-note">
+      <Icon name="folder" class="note-icon" />
+      <h3>{roadmap.featureCompleteTitle}</h3>
+      <p>{roadmap.featureComplete}</p>
+    </div>
+    <div class="to-one-note">
+      <Icon name="folder" class="note-icon" />
+      <h3>{roadmap.releaseTitle}</h3>
+      <p>{roadmap.releaseGate}</p>
+    </div>
+    <div class="to-one-note is-golden">
+      <Icon name="target" class="note-icon" />
+      <h3>{roadmap.goldenTitle}</h3>
+      <p>{roadmap.goldenProject}</p>
     </div>
   </div>
-</section>
+</Window>

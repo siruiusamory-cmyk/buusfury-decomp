@@ -160,15 +160,30 @@ per map is unchanged.
 Same-map is the shipping boundary. A slot inside a transition rectangle is excluded
 from the pool.
 
-### 7.1 The door test's real strength
+### 7.1 The door test's axis pairing is an OPEN QUESTION
 
 A region's two intervals are ordered but which is horizontal is UNRESOLVED in the
 transition format, while the placement's axes ARE established
-(`PLACEMENT-POS-001` Phase 3). The test makes one assignment and is therefore not
-axis-symmetric. If the region's axis order is the opposite of that assignment a
-slot could be missed, so the check can under-report; it does not report an overlap
-that is not one. Exposure is bounded by the 2 measured slots and by the region's own
-extent.
+(`PLACEMENT-POS-001` Phase 3). The test therefore makes one assignment - placement
+X against the region's `first` interval, Y against `second` - and is not
+axis-symmetric.
+
+**The unsafe direction is under-reporting.** A slot the test fails to identify is a
+slot that gets shuffled, which is the outcome the exclusion exists to prevent; a
+false positive only withholds a slot from the shuffle, which is harmless. If the
+region's axis order is the opposite of the assignment, every hit is spurious and
+every real overlap is missed, so the check degrades to "nothing excluded".
+
+The exposure is **not bounded by the 2 slots reported in section 1**. That count
+came from this same one-orientation test, so citing it as the bound is circular. An
+earlier revision did exactly that, and a reviewer was right to reject it. What is
+established: the transition format does not resolve the axis, the placement format
+does, and which pairing is correct has not been measured. Settling it needs either
+an instrumented run that records a door rectangle and an actor inside it, or a
+transition-format finding that names the axis.
+
+Contrast with section 5.1, which is genuinely bounded: the coupling constraint was
+measured by counting donors, not by a test that assumes its own conclusion.
 
 ## 8. Module composition
 

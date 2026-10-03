@@ -27,8 +27,11 @@ install somewhere.
 
 The order is part of the reproducibility contract: the same master seed, image
 and configuration must produce the same plan, and reordering the modules would
-change every output. The focused determinism tests pin the whole plan's bytes, not
-just each module's, so a reordering cannot pass unnoticed.
+change every output. What the tests currently establish is that two runs with the
+same seed agree with each other; there is no committed golden plan or output
+digest, so a reordering that stayed internally consistent would NOT be caught. A
+pinned digest is the missing check (see the non-blocking note in section 12 of
+``docs/research/ENEMY_RANDOMIZER_VERIFICATION.md``).
 
 Seed derivation
 ===============

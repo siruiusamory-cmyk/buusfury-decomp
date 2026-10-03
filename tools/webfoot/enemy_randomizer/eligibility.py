@@ -434,8 +434,7 @@ def placements_in_door_triggers(
     ``PLACEMENT-POS-001`` Phase 3 proves the placement's two raw halfwords are
     signed map X and Y, and a transition's region endpoints are the same plane -
     ``MAP-WARP-CANVAS-001`` independently landed a known region on map 39's
-    doorway band. The census found exactly **2** such slots in the whole corpus,
-    which is why this is a cheap exact exclusion rather than a heuristic.
+    doorway band.
 
     Each region's two intervals are treated as ordered bounds, because "two
     ordered pairs" is all the format proves: which interval is horizontal is
@@ -443,13 +442,23 @@ def placements_in_door_triggers(
     established (``PLACEMENT-POS-001`` Phase 3: low halfword = map X, high = map
     Y), so this function makes one assignment - placement X against the region's
     ``first`` interval and Y against ``second`` - and does NOT treat the test as
-    axis-symmetric. It is not, and neither is the underlying uncertainty: if the
-    region's axis order is the opposite of this assignment a slot could be missed,
-    so the check can under-report by at most the region's own extent. It does not
-    over-report, which is the direction that matters, because a reported overlap is
-    a real rectangle overlap in the same pixel plane. Exposure is bounded by the 2
-    slots the census found inside a trigger. See section 7.1 of
-    ``docs/research/ENEMY_RANDOMIZER_VERIFICATION.md``.
+    axis-symmetric. It is not, and neither is the underlying uncertainty.
+
+    THE UNSAFE DIRECTION IS UNDER-REPORTING, not over-reporting. A slot this
+    function fails to identify is a slot that gets shuffled, which is the outcome
+    the exclusion exists to prevent; a false positive merely withholds a slot from
+    the shuffle, which is harmless. If the region's axis order is the opposite of
+    the assignment made here, every hit is spurious and every real overlap is
+    missed, so the check degrades to "no slots excluded" rather than to something
+    conservative.
+
+    The size of that exposure is NOT established, and an earlier revision of this
+    docstring wrongly called it bounded by "the 2 slots the census found inside a
+    trigger" - circular, because the census used this same one-orientation test.
+    What is true: the transition format does not resolve the axis, the placement
+    format does, and nobody has yet established which pairing is correct. Section
+    7.1 of ``docs/research/ENEMY_RANDOMIZER_VERIFICATION.md`` records this as an
+    open question rather than a bound.
     """
     regions: dict[int, list[tuple[tuple[int, int], tuple[int, int]]]] = {}
     for entry in transitions.entries():

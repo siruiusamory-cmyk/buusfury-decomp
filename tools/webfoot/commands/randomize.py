@@ -341,11 +341,18 @@ def run(args) -> int:
             )
         # Refused even with --overwrite: replacing a copy of the canonical image
         # would destroy a clean ROM, the one file this command exists to protect.
-        if output.exists() and _is_canonical_copy(output, catalog):
-            raise RandomizeError(
-                f"{output} is a copy of the canonical ROM, so it is not replaced. "
-                "Choose a different --output."
-            )
+        #
+        # This covers EVERY destination, not just the output. The manifest and the
+        # spoiler take the same flag and are written by the same run, so a
+        # destination aimed at a second clean copy of the canonical image would
+        # have been replaced by JSON - the same loss the output guard exists to
+        # prevent, through a different flag.
+        for target, label in write_targets:
+            if target.exists() and _is_canonical_copy(target, catalog):
+                raise RandomizeError(
+                    f"the {label} {target} is a copy of the canonical ROM, so it is "
+                    f"not replaced. Choose another {label} path."
+                )
         # The manifest and the spoiler follow the same policy as the image they
         # describe. Writing them over an existing file without confirmation while
         # the ROM itself needed --overwrite would let a run replace the recorded

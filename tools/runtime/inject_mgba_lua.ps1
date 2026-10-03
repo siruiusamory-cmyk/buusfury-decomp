@@ -297,6 +297,25 @@ $allowedLua = @(
     [System.IO.Path]::GetFullPath(
         (Join-Path $workspaceRoot 'tools\runtime\gfximport001_pixel_proof.lua')
     )
+    # Added by RANDOMIZER-ENEMY-PACK-001: the read-only map-identity and liveness
+    # observer for the randomized-enemy smoke. It latches the engine's live
+    # MapEntry pointer and the map index it resolves to, emits a heartbeat on a
+    # fixed frame stride so an empty log can never be read as a negative, and
+    # takes host-side screenshots. It writes no emulated memory and drives no
+    # input; tests/unit/test_mgba_capture.py names this file explicitly.
+    [System.IO.Path]::GetFullPath(
+        (Join-Path $workspaceRoot 'tools\runtime\enemypack001_observer.lua')
+    )
+    # Added by RANDOMIZER-ENEMY-PACK-001: the live placement-slot enumerator. It
+    # walks the engine's own map object array (MapEntry+0x04 count, +0x14 array)
+    # and reads each placement record's stat selector (+0x08) and sprite id
+    # (+0x10) out of the ROM the engine is actually running, so the same
+    # savestate can be compared across the canonical and a randomized image. It
+    # calls emu:read8/read32 and emu:screenshot only; tests/unit/test_mgba_capture.py
+    # names this file explicitly.
+    [System.IO.Path]::GetFullPath(
+        (Join-Path $workspaceRoot 'tools\runtime\enemypack002_live_slots.lua')
+    )
 )
 $resolvedLua = [System.IO.Path]::GetFullPath($LuaPath)
 if ($resolvedLua -notin $allowedLua) {

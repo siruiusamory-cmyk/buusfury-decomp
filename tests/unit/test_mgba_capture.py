@@ -1327,3 +1327,74 @@ def test_gfximport001_launcher_verifies_identity_and_owns_no_session_lifetime():
     assert "source save kept" in finisher
     assert "NO LIVENESS ROWS" in finisher
     assert "not evidence" in finisher
+
+
+def test_the_enemy_pack_observers_are_allowlisted_and_read_only():
+    """RANDOMIZER-ENEMY-PACK-001's two read-only runtime observers.
+
+    Both are driven by the tracked launcher through `-LuaPath`, so both must be in
+    `$allowedLua` for injection to accept them, and both must stay read-only: the
+    pack's runtime evidence is only worth anything if the instrument could not
+    have changed the thing it measured.
+    """
+    root = Path(__file__).resolve().parents[2]
+    injector = (root / "tools/runtime/inject_mgba_lua.ps1").read_text(encoding="utf-8")
+
+    observers = {
+        "enemypack001_observer.lua": "map identity and liveness",
+        "enemypack002_live_slots.lua": "live placement slots",
+    }
+    for name, purpose in observers.items():
+        path = root / "tools/runtime" / name
+        assert path.is_file(), f"{name} ({purpose}) is missing"
+        assert name in injector, f"{name} is not in the injector allowlist"
+        source = path.read_text(encoding="utf-8")
+        for forbidden in ("addKey", "clearKey", "setKeys", "write8", "write16",
+                          "write32", "saveStateFile"):
+            assert forbidden not in source, (
+                f"{name} contains {forbidden!r}; observers must not write emulated "
+                "memory or drive input"
+            )
+        # Every observer needs a liveness channel: a silent log must never be
+        # readable as a negative result.
+        assert "heartbeat" in source, f"{name} has no liveness channel"
+
+    # enemypack002's comparison depends on the file being machine-parseable by the
+    # reader that diffs two runs, so every row must go through the width guard.
+    slots = (root / "tools/runtime/enemypack002_live_slots.lua").read_text(
+        encoding="utf-8"
+    )
+    assert slots.count("write_row(") >= 3, "rows must go through the width guard"
+
+
+def test_every_allowlisted_observer_exists_exactly_once():
+    """The allowlist must not name the same file twice.
+
+    A duplicate entry is not harmless: it inflates the allowlist, and a rehearsed
+    edit can add a second copy without anything noticing - which is exactly what
+    happened while this ticket's two entries were being added by hand.
+
+    This deliberately does NOT require every allowlisted name to exist on disk.
+    Eight of them do not (`p004_actor_enum`, `p004_kihit`, `p006_ewram_hp_scan`,
+    `p011_wolf_speed_probe`, `p012_rng_probe`, `p013_knockback_probe`,
+    `p015_bodyrect_probe`, `p016_anchor_probe`); all eight are named by master's
+    allowlist and only ever existed on an unmerged salvage branch, so their
+    absence is pre-existing and nothing this ticket introduced. Requiring them
+    would make this test fail on master and force an unrelated fix, which the
+    ticket's scope forbids. The observation is recorded here instead, and
+    test_the_enemy_pack_observers_are_allowlisted_and_read_only asserts existence
+    for the two this ticket adds.
+    """
+    import re
+
+    root = Path(__file__).resolve().parents[2]
+    injector = (root / "tools/runtime/inject_mgba_lua.ps1").read_text(encoding="utf-8")
+    start = injector.index("$allowedLua = @(")
+    end = injector.index("\n)", start)
+    block = injector[start:end]
+
+    names = re.findall(r"tools\\runtime\\([A-Za-z0-9_.\-]+\.lua)", block)
+    assert names, "no observer names parsed out of the allowlist"
+
+    duplicates = {n for n in names if names.count(n) > 1}
+    assert not duplicates, f"allowlisted more than once: {sorted(duplicates)}"

@@ -40,11 +40,13 @@ record straight after the pointer table reproduces the shape the other 30
 canonical objects have, so the words are a frame header rather than an invented
 trailer.
 
-**Every direction cell names the same frame.** The compositor dereferences
-``obj+0x54`` with no null test and the corpus has 0 null cells among 13,660, so a
-null frame pointer is not an option. The Cui sheets are a single direction, so all
-four slots point at one record. The sprite therefore renders identically from
-every facing and does not turn or mirror, and no facing is named.
+**Four facings are wired, and they are the engine's own indices.** Every direction
+slot of every animation names a real frame record, because the compositor
+dereferences ``obj+0x54`` with no null test and the corpus has 0 null cells among
+13,660. The engine's direction index is 0 down, 1 up, 2 left, 3 right - read off
+the think routine's own switch, which steps ``+y`` for 0, ``-y`` for 1, ``-x`` for
+2 and ``+x`` for 3 - and the sheets' four facing groups are in exactly that order
+(down, up, left, right), so slot ``d`` names the facing the actor is moving in.
 
 **The frame is 32x32 and the controlled actor already draws 32x32.** CRASH-ROOT-
 CAUSE-001 measured a per-actor frame-composition budget and showed that growing a
@@ -270,21 +272,27 @@ def read_cui_cell(sheet: Path, cell: int) -> list[tuple[int, int, int]]:
 
 
 def cui_sheet_frames(sheet: Path) -> int:
-    """How many FRAMES a Cui sheet holds: four direction cells per frame.
+    """How many FRAMES a Cui sheet holds: four direction cells per frame group.
 
     CORRECTION to SPRITE-NEW-BOUNDARY-001, which recorded these sheets as a single
-    direction. They are not. Each sheet is four direction cells per frame, in
-    exactly the order the animation record stores them - slot ``d`` of frame ``f``
-    lives at flat index ``f * 4 + d`` - so a sheet of ``4 * n`` cells is ``n``
+    direction. They are not. Each sheet holds four facings, and each facing holds
+    the sheet's whole animation, laid out DIRECTION-major - every frame of facing 0,
+    then every frame of facing 1, and so on - so a sheet of ``4 * n`` cells is ``n``
     frames of four facings:
 
         block 4 cells = 1 frame, stand 8 = 2, hurt 12 = 3, walk 16 = 4,
         attack2 16 = 4
 
-    Rendering the cells individually is what shows it: block's four cells are four
-    different facings rather than four frames of one, and stand's eight are two
-    frames of four. The first revision used a single cell for all four direction
-    slots, which is why the runtime run showed a motionless stamp.
+    CORRECTION to this function's own earlier claim that the sheet is already in
+    the animation record's ``f * 4 + d`` order. The animation record IS indexed
+    ``f * 4 + d`` (the engine reads
+    ``*(u32*)(animation + 4 + 16 * frame + 4 * direction)``), but the sheet is not:
+    on the sheets themselves the four cells of one four-cell group are ONE facing
+    (mean channel distance 13,879 for walk and 7,464 for stand) while cells four
+    apart are four DIFFERENT facings (64,221 and 52,150). Reading the sheet
+    straight through therefore put a different facing in each frame slot, and the
+    actor rotated through all four facings while it walked. Use
+    :func:`cui_cell_index` to place a sheet cell in the record.
     """
     from PIL import Image
 
@@ -294,6 +302,16 @@ def cui_sheet_frames(sheet: Path) -> int:
             f"{sheet.name} is {width}x{height}; a Cui sheet must be a whole number "
             f"of four-cell frame groups")
     return (width // FRAME_SIDE) // sg.DIRECTION_COUNT
+
+
+def cui_cell_index(slot: int, frames: int) -> int:
+    """The sheet cell an animation slot names, for a direction-major sheet.
+
+    The animation record stores slot ``f * 4 + d``; the sheet stores
+    ``d * frames + f``. This is the one place those two orders are reconciled.
+    """
+    frame, direction = divmod(slot, sg.DIRECTION_COUNT)
+    return direction * frames + frame
 
 
 @dataclass(frozen=True, slots=True)
@@ -546,8 +564,10 @@ def build_experiment(image: bytes, identification, sheet: Path, cell: int,
         path = Path(sheet).parent / f"{name}.png"
         frames = cui_sheet_frames(path)
         cells = [
-            assign_palette(palette.rgb, read_cui_cell(path, i), free_indices)
-            for i in range(frames * sg.DIRECTION_COUNT)
+            assign_palette(palette.rgb,
+                           read_cui_cell(path, cui_cell_index(slot, frames)),
+                           free_indices)
+            for slot in range(frames * sg.DIRECTION_COUNT)
         ]
         assigned.append((name, frames, cells))
 

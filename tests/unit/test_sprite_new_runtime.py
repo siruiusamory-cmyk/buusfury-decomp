@@ -190,6 +190,33 @@ def test_frame_is_one_32x32_piece_at_the_donors_anchor():
     assert struct.unpack_from("<I", encoded, 16)[0] == 0x08800000
 
 
+def test_cui_cell_index_reconciles_sheet_order_with_animation_order():
+    """The sheet is direction-major; the animation record is frame-major.
+
+    The engine reads ``animation + 4 + 16 * frame + 4 * direction``, so slot
+    ``slot`` is frame ``slot // 4`` and direction ``slot % 4``. A sheet stores
+    ``direction * frames + frame``. Getting this wrong puts a different FACING in
+    each frame slot, and the actor rotates through all four facings while it
+    walks - which is exactly what a run showed before this mapping existed.
+    """
+    # One frame per direction: the two orders coincide, which is why a 4-cell
+    # sheet could never reveal the difference.
+    assert [snr.cui_cell_index(slot, 1) for slot in range(4)] == [0, 1, 2, 3]
+
+    # Two frames per direction (stand, 8 cells): direction d holds cells 2d, 2d+1.
+    assert [snr.cui_cell_index(slot, 2) for slot in range(8)] == [0, 2, 4, 6, 1, 3, 5, 7]
+
+    # Four frames per direction (walk, 16 cells): direction d holds 4d..4d+3, so
+    # the four direction slots of frame 0 are cells 0, 4, 8 and 12.
+    walk = [snr.cui_cell_index(slot, 4) for slot in range(16)]
+    assert walk[:4] == [0, 4, 8, 12]
+    assert walk[4:8] == [1, 5, 9, 13]
+    assert sorted(walk) == list(range(16))
+    for direction in range(4):
+        frames_of_one_facing = [walk[frame * 4 + direction] for frame in range(4)]
+        assert frames_of_one_facing == [direction * 4 + f for f in range(4)]
+
+
 def test_cui_sheet_frames_is_four_direction_cells_per_frame(tmp_path):
     """A Cui sheet is four direction cells per frame, not one direction.
 

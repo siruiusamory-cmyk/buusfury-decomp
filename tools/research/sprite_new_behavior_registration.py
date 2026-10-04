@@ -50,13 +50,21 @@ from research import sprite_new_runtime as snr  # noqa: E402
 ROM_BASE = 0x08000000
 CANONICAL_SHA256 = snr.CANONICAL_SHA256
 
-#: SPRITE-NEW-RUNTIME-001's recorded build digest, reproduced rather than trusted.
+#: SPRITE-NEW-RUNTIME-001's recorded build digest was
+#: 29f9195a2f7ed9ebb7cf72188dad2d52fec1b5cd1dc7d819432fa2954f946529.  It is
+#: superseded: the Cui sheets are direction-major and the animation record is
+#: frame-major, so the first build put a different FACING in each frame slot and
+#: the actor rotated through all four facings while it walked.
+#: ``sprite_new_runtime.cui_cell_index`` now reconciles the two orders, and the
+#: baseline it reproduces is this digest.  Everything else about the build - the
+#: registry, the structure, the containers, every address - is unchanged.
 RUNTIME_BUILD_SHA256 = (
-    "29f9195a2f7ed9ebb7cf72188dad2d52fec1b5cd1dc7d819432fa2954f946529"
+    "706a2615ddd1e722f73f42c2bae547cb1176480c1cac37b4ef8b02ead809f26b"
 )
 
 #: The new record the runtime ticket authored above canonical EOF.
 NEW_RECORD_ROM = 0x08801F38
+RECORD_DATA_FIELD = 0x0C
 RECORD_SPRITE_FIELD = 0x10
 RECORD_COUNT_FIELD = 0x14
 RECORD_ENTRY_FIELD = 0x18
@@ -84,6 +92,16 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--cell", type=int, default=0)
     parser.add_argument("--before", required=True, help="write the baseline image")
     parser.add_argument("--after", required=True, help="write the variant image")
+    parser.add_argument(
+        "--movement-data",
+        help="also write SPRITE-NEW-MOVEMENT-DATA-001's first image: `after` "
+             "with the new record's +0x0C repointed at the moving sibling's "
+             "data pointer")
+    parser.add_argument(
+        "--bounds",
+        help="also write SPRITE-NEW-MOVEMENT-DATA-001's second image: the "
+             "movement-data image with the new record's own template bounds "
+             "widened to contain its authored position")
     parser.add_argument("--manifest", required=True)
     args = parser.parse_args(argv)
 
@@ -145,6 +163,60 @@ def main(argv: list[str] | None = None) -> int:
     Path(args.before).write_bytes(before)
     Path(args.after).write_bytes(after_bytes)
 
+    movement_report = None
+    bounds_report = None
+    base_for_bounds = None
+    if args.movement_data or args.bounds:
+        moving_sibling_data = u32(canonical, COMPARABLE_RECORD_ROM + RECORD_DATA_FIELD)
+        inherited = u32(before, NEW_RECORD_ROM + RECORD_DATA_FIELD)
+        if inherited == moving_sibling_data:
+            raise RegistrationError(
+                "the new record already carries the moving sibling's +0x0C")
+        with_data = bytearray(after_bytes)
+        struct.pack_into("<I", with_data, NEW_RECORD_ROM + RECORD_DATA_FIELD - ROM_BASE,
+                         moving_sibling_data)
+        if args.movement_data:
+            Path(args.movement_data).write_bytes(bytes(with_data))
+        movement_report = {
+            "path": str(args.movement_data) if args.movement_data else None,
+            "sha256": hashlib.sha256(bytes(with_data)).hexdigest(),
+            "field": f"record + 0x{RECORD_DATA_FIELD:02X}",
+            "inherited_from_donor": f"0x{inherited:08X}",
+            "moving_sibling_value": f"0x{moving_sibling_data:08X}",
+            "moving_sibling_record": f"0x{COMPARABLE_RECORD_ROM:08X}",
+            "changed_byte_offsets": [
+                f"0x{i:08X}" for i in range(len(after_bytes))
+                if after_bytes[i] != with_data[i]],
+        }
+        base_for_bounds = bytes(with_data)
+
+    if args.bounds:
+        # The template the record's +0x18 names carries the wander bounds as four
+        # halfwords at +8..+0xF (x1, y1, x2, y2). The walk routine 0x0800A624
+        # accepts a step only while the actor's own rect, translated by the step,
+        # stays inside them. The donor's bounds are x 0x148..0x1A0, y 0x238..0x298
+        # and the authored position is x 0xD1, y 0x244, so every step in x is
+        # declined. This widens x to 0xC0..0x110 and y to 0x220..0x270.
+        bounds = (0x00C0, 0x0220, 0x0110, 0x0270)
+        with_bounds = bytearray(base_for_bounds)
+        struct.pack_into("<HH", with_bounds,
+                         body_address - ROM_BASE + 8, bounds[0], bounds[1])
+        struct.pack_into("<HH", with_bounds,
+                         body_address - ROM_BASE + 12, bounds[2], bounds[3])
+        Path(args.bounds).write_bytes(bytes(with_bounds))
+        bounds_report = {
+            "path": str(args.bounds),
+            "sha256": hashlib.sha256(bytes(with_bounds)).hexdigest(),
+            "template_rom": f"0x{body_address:08X}",
+            "bounds_before": "x 0x0148..0x01A0, y 0x0238..0x0298 (the donor's)",
+            "bounds_after": (f"x {bounds[0]:#06x}..{bounds[2]:#06x}, "
+                             f"y {bounds[1]:#06x}..{bounds[3]:#06x}"),
+            "actor_position": "x 0x00D1 (209), y 0x0244 (580)",
+            "changed_byte_offsets": [
+                f"0x{i:08X}" for i in range(len(base_for_bounds))
+                if base_for_bounds[i] != with_bounds[i]],
+        }
+
     report = {
         "ticket": "SPRITE-NEW-BEHAVIOR-REGISTRATION-001",
         "canonical_sha256": CANONICAL_SHA256,
@@ -170,6 +242,8 @@ def main(argv: list[str] | None = None) -> int:
         "own_template_equals_retail_template": template_identical,
         "comparable_retail_record_rom": f"0x{COMPARABLE_RECORD_ROM:08X}",
         "comparable_retail_entry_rom": f"0x{COMPARABLE_ENTRY_ROM:08X}",
+        "movement_data_variant": movement_report,
+        "bounds_variant": bounds_report,
         "base_identity_report": experiment.report,
     }
     Path(args.manifest).write_text(

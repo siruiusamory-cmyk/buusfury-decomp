@@ -327,6 +327,28 @@ $allowedLua = @(
     [System.IO.Path]::GetFullPath(
         (Join-Path $workspaceRoot 'tools\runtime\spritenew001_observer.lua')
     )
+    # Added by SPRITE-NEW-RECORD-RUN-001: the read-only object-run observer. It
+    # records the three ends of the sibling-family dispatch - the map object loop
+    # where the array names a record, the factory where the engine resolves that
+    # record's sprite id, and the behaviour constructor where the pointer the
+    # engine passes does not equal the record the array named - plus a per-word
+    # movement window over every behaviour object it sees. It reads memory and
+    # screenshots, and taps a controller key only on the named `menu` schedule
+    # that loads the saved game; it writes no emulated memory.
+    [System.IO.Path]::GetFullPath(
+        (Join-Path $workspaceRoot 'tools\runtime\spritenew002_record_run.lua')
+    )
+    # Added by SPRITE-NEW-RECORD-RUN-001: the two-breakpoint dispatch-table probe.
+    # The main observer above arms six breakpoints and the one on the dispatcher
+    # never reported a hit there in any registration order while the other five
+    # all produced data, so this probe arms that site and one liveness control and
+    # nothing else. "No hit" then means the site was not executed rather than that
+    # the breakpoint could not be installed. It is strictly read-only - it reads
+    # memory and registers and writes host files only, and drives no input at all,
+    # because the run it exists for loads a savestate from the launcher instead.
+    [System.IO.Path]::GetFullPath(
+        (Join-Path $workspaceRoot 'tools\runtime\spritenew003_dispatch_probe.lua')
+    )
 )
 $resolvedLua = [System.IO.Path]::GetFullPath($LuaPath)
 if ($resolvedLua -notin $allowedLua) {

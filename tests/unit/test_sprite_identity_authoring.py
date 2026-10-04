@@ -616,6 +616,101 @@ def test_an_entry_stored_with_bit_15_set_is_reused_rather_than_duplicated():
     assert _slots(output, result)[0][0] == bytes([5]) * (CELL_SIDE * CELL_SIDE)
 
 
+def _two_colour_sheet(first: tuple[int, int, int], second: tuple[int, int, int]):
+    """One sheet whose facing 0 is `first` and whose other facings are `second`.
+
+    Both colours are needed, and the order they are met in is the order of the
+    cells, which is what lets a test place the reuse and the write either way round.
+    """
+    pixels = bytearray()
+    for cell in range(sg.DIRECTION_COUNT):
+        colour = first if cell == 0 else second
+        pixels += bytes(colour) * (CELL_SIDE * CELL_SIDE)
+    return sid.SourceSheet(frames_per_direction=1, cell_width=CELL_SIDE,
+                           cell_height=CELL_SIDE, pixels=bytes(pixels))
+
+
+def _absent_word() -> int:
+    """The lowest 15-bit word no entry of the fixture's default palette holds."""
+    held = {_palette_word(index) & 0x7FFF for index in range(sg.PALETTE_ENTRIES)}
+    return next(word for word in range(1, 0x8000) if word not in held)
+
+
+def test_a_requested_entry_reused_for_its_own_colour_is_not_also_overwritten():
+    """A free entry cannot be handed out in two different roles.
+
+    Entry 5 holds a colour the artwork also uses. Reusing it for that colour must
+    reserve it: a later colour written into it would repaint the pixels that just
+    took it, and the plan would look successful while drawing the wrong colour.
+    """
+    world = _world(palette_overrides={5: _absent_word()})
+    held = sg.expand_bgr555(_absent_word())
+    novel = sg.expand_bgr555(0x7FFE)
+    identity = _identity(
+        sid.AnimationSource(name="stand", sheet=_two_colour_sheet(held, novel)),
+        free=(5, 6))
+    result = _plan(world, identity)
+    assert [entry.index for entry in result.identity.palette_entries] == [6]
+    output = _apply(world, result)
+    emitted = sg.decode_palette(output, PALETTE_OFFSET)
+    slots = _slots(output, result)
+    first, second = slots[0][0][0], slots[1][0][0]
+    assert emitted.raw[first] & 0x7FFF == _absent_word()
+    assert emitted.raw[second] == result.identity.palette_entries[0].word
+    assert emitted.raw[5] == _absent_word()
+
+
+def test_a_requested_entry_overwritten_first_withdraws_its_old_colour():
+    """The other order must be correct too: a written entry's old colour is gone."""
+    world = _world(palette_overrides={5: _absent_word()})
+    held = sg.expand_bgr555(_absent_word())
+    novel = sg.expand_bgr555(0x7FFE)
+    identity = _identity(
+        sid.AnimationSource(name="stand", sheet=_two_colour_sheet(novel, held)),
+        free=(5, 6))
+    result = _plan(world, identity)
+    output = _apply(world, result)
+    emitted = sg.decode_palette(output, PALETTE_OFFSET)
+    slots = _slots(output, result)
+    first, second = slots[0][0][0], slots[1][0][0]
+    assert first != second
+    assert emitted.raw[first] == sg.pack_gba_colour(*novel)
+    assert emitted.raw[second] & 0x7FFF == _absent_word()
+
+
+def test_more_frames_than_the_sdk_can_read_back_are_refused():
+    with pytest.raises(sid.SpriteIdentityError, match="could not be read back"):
+        _sheet(sid.MAX_FRAMES_PER_ANIMATION + 1)
+
+
+def test_a_donor_whose_piece_is_flipped_is_refused():
+    world = _world()
+    image, _profile, _document, _references = world
+    flipped = bytearray(image)
+    struct.pack_into("<I", flipped, DONOR_FRAME + 12,
+                     PIECE_ATTRIBUTES | (0x1000 << 16))
+    with pytest.raises(sid.SpriteIdentityError, match="flip bit"):
+        _plan(_rebuilt_world(world, bytes(flipped)), _identity(_animation()))
+
+
+def _rebuilt_world(world, image: bytes):
+    """The same synthetic world over different image bytes, re-verified."""
+    profile = profile_for(image, tables=_tables(), free_regions=[{
+        "file_offset": FREE_OFFSET, "size": FREE_SIZE, "status": "CONFIRMED",
+        "evidence": EVIDENCE,
+    }], generated_expansion={
+        "output_size": EXPANSION_SIZE, "padding_byte": 0xFF, "evidence": EVIDENCE,
+    })
+    references = _references(profile)
+    anchor = Anchor(AnchorId(_registry_identity()),
+                    RomRange(FileOffset(REGISTRY_OFFSET), REGISTRY_ENTRIES * 4),
+                    "character_pointer_table", _registry_identity(), 4, True,
+                    _proof(profile))
+    document = RomDocument.from_bytes(image, profile, anchors=(anchor,),
+                                      references=references)
+    return image, profile, document, references
+
+
 def test_a_requested_entry_a_decoded_graphic_draws_is_refused():
     world = _world()
     sprites = _sprites(world, drawn={200: ("synthetic/graphic:0001",)})

@@ -119,6 +119,11 @@ MAX_ANIMATION_SLOTS = 23
 #: An animation record: a frame count, then ``frame_count * 4`` frame pointers.
 ANIMATION_HEADER_SIZE = 4
 
+#: The largest frame count this write path will author. It is the bound the SDK's
+#: own animation reader applies (:func:`sprite_graphics.decode_animation`), so
+#: anything above it could not be read back by this project, let alone drawn.
+MAX_FRAMES_PER_ANIMATION = 64
+
 #: A frame record: a piece count, the frame's own bounding box, then pieces.
 FRAME_HEADER_SIZE = sg.FRAME_HEADER_SIZE
 FRAME_STRIDE = sg.FRAME_HEADER_SIZE + sg.PIECE_SIZE
@@ -176,6 +181,11 @@ class SourceSheet:
                             ("cell_height", self.cell_height)):
             if type(value) is not int or value <= 0:
                 raise SpriteIdentityError(f"a source sheet needs a positive {name}")
+        if self.frames_per_direction > MAX_FRAMES_PER_ANIMATION:
+            raise SpriteIdentityError(
+                f"a sheet of {self.frames_per_direction} frames per facing exceeds "
+                f"the {MAX_FRAMES_PER_ANIMATION}-frame animation this project's own "
+                "reader accepts, so the plan could not be read back")
         if type(self.pixels) is not bytes:
             raise SpriteIdentityError("a source sheet needs immutable pixel bytes")
         expected = self.width * self.height * 3
@@ -936,6 +946,11 @@ def _donor(image: bytes, identity: NewSpriteIdentity, entries, layout):
         raise SpriteIdentityError(
             "the donor's first frame is a 4bpp piece, and the authored containers are "
             "8bpp; a 4bpp donor is refused rather than reinterpreted")
+    if piece.horizontal_flip or piece.vertical_flip:
+        raise SpriteIdentityError(
+            "the donor's first piece carries a flip bit, so every authored frame "
+            "would mirror the sheet the author drew; choose a donor whose first piece "
+            "is unflipped, or draw the mirrored facing in the sheet")
     return header, piece
 
 
@@ -987,6 +1002,11 @@ def _assign_palette(palette, palette_offset: int, sprites,
     words - a strict comparison would fail to see a colour the palette already
     displays and write a duplicate entry for it. Index 0 is never reused and never
     written: it is the transparent entry the chroma key maps to.
+
+    An entry cannot be both reused for the colour it already holds and overwritten
+    with a different one. Reusing one reserves it - it leaves the free list - and
+    writing one withdraws the colour it used to hold, so a pixel the planner mapped
+    to an entry always displays the colour it was authored with.
     """
     free = _requested_free_entries(sprites, identity)
     by_word: dict[int, int] = {}
@@ -1014,8 +1034,13 @@ def _assign_palette(palette, palette_offset: int, sprites,
                     index = by_word.get(word)
                     if index is None:
                         index = _take_free_entry(remaining, palette, word, pixel)
+                        displaced = _colour_word(palette.raw[index])
+                        if by_word.get(displaced) == index:
+                            del by_word[displaced]
                         by_word[word] = index
                         written[index] = (word, sg.expand_bgr555(word))
+                    elif index in remaining:
+                        remaining.remove(index)
                     chosen[word] = index
                 out.append(index)
             cells.append(_Cell(

@@ -49,22 +49,37 @@ hardcoded frame geometry.
 
 Three differences from the research emitter, each a deliberate tightening:
 
-1. **The registry's inbound surface comes from the reference graph, not from a
-   census constant.** The research compared the published word count against
+1. **The registry's inbound surface is consumed from the reference graph, and a
+   scan of the image checks that the graph is complete.** The research planner
+   compared the published word count against
    `graphics.CHARACTER_TABLE_REFERENCE_OFFSETS`, which is a census of one image.
-   The planner instead requires the anchor to be published relocatable - the
-   graph's own statement that its inbound surface is fully expressed - and then
-   checks every word it is handed: confirmed, delta-free, absolute 32-bit, and
-   still holding the table address.
+   The production planner requires the anchor to be published relocatable - the
+   graph's own statement that its inbound surface is fully expressed - and checks
+   every word it is handed: confirmed, delta-free, absolute 32-bit, and still
+   holding the table address. What that does *not* add is new evidence about the
+   census itself: the graph's two words are published from that same measured
+   constant, so the planner and the constant cannot be checked against each other.
+   The ROM-gated suite therefore scans the canonical image for the table address
+   and requires every word-aligned occurrence to be exactly the published pair,
+   which is the measurement and not a restatement of it.
 2. **Frame geometry is read from the donor, not restated.** The research carried
    `PIECE_X`, `PIECE_Y` and `PIECE_ATTRIBUTE` as constants copied by hand from
    sprite 10's own piece. The planner reads that piece and requires the authored
    sheet cell to equal it, so a donor whose geometry differs cannot be authored at
-   the wrong size.
+   the wrong size. A donor whose first piece carries a flip bit is refused: the
+   authored pixels come from the sheet the author drew, and inheriting a mirror
+   would silently reverse them.
 3. **A palette entry's colour is its low 15 bits.** One canonical entry stores
    bit 15, and `pack_gba_colour` can only produce 15-bit words, so a strict word
    comparison would fail to see a colour the palette already displays and would
    spend a free entry duplicating it.
+4. **Reusing a requested free entry reserves it, and writing one withdraws the
+   colour it held.** Both directions are needed. A free entry holds a colour
+   before it is written, and the authored artwork may use that colour; if the
+   entry were reused for its own colour and then handed out again as free, every
+   pixel that had just taken it would be repainted, with no refusal anywhere. The
+   planner now removes a reused entry from the free list and drops a written
+   entry's old colour from the reuse map.
 
 ## 3. The API
 
@@ -87,13 +102,15 @@ structure, per-animation ranges and per-frame slot, cell and container ranges,
 and the palette entries written).
 
 Refused rather than guessed: a sprite id that is not the appended entry; an
-unknown donor; a donor whose first frame has more than one piece, is 4bpp, or does
-not decode; a sheet cell that does not equal the donor's own frame geometry; more
-animation slots than the engine's count byte is read against; a registry anchor of
-the wrong kind, size, offset or relocatability; a registry word that no longer
-holds the table address; a profile with no declared expansion; a requested free
-entry that a decoded actor-sprite graphic draws or that is out of range; and a
-colour the palette does not hold when no free entry is left.
+unknown donor; a donor whose first frame has more than one piece, is 4bpp, carries
+a flip bit, or does not decode; a sheet cell that does not equal the donor's own
+frame geometry; a sheet with more frames per facing than this project's own
+animation reader accepts; more animation slots than the engine's count byte is
+read against; a registry anchor of the wrong kind, size, offset or relocatability;
+a registry word that no longer holds the table address; a profile with no declared
+expansion; a requested free entry that a decoded actor-sprite graphic draws or
+that is out of range; and a colour the palette does not hold when no free entry is
+left.
 
 ## 4. The one mapping
 
@@ -112,10 +129,11 @@ Portable, measured on the ticket worktree:
 - `python -m pytest tests/unit -q` - **3882 passed, 45 skipped**, 0 failed. The
   skips are pre-existing (site not built, capstone present, and two files that
   need the canonical profile at a fixed local path).
-- `tests/unit/test_sprite_identity_authoring.py` - **49 passed**. Synthetic
+- `tests/unit/test_sprite_identity_authoring.py` - **53 passed**. Synthetic
   image holding a 297-entry registry, a decodable donor, a real `RomDocument` and
   a duck-typed corpus stub that supplies exactly the four members the planner
-  reads, so an accidental fifth dependency fails loudly.
+  reads, so an accidental fifth dependency fails loudly. Four of the cases are
+  regressions for findings the independent review raised and this ticket fixed.
 - `tests/unit/test_logx_synthesis_audit.py` - **26 passed**. Two superseded-
   assumption patterns matched the first draft of the module's prose
   (`fixed-23-animation-slots`, `four-byte-frame-header`); the wording was
@@ -123,11 +141,12 @@ Portable, measured on the ticket worktree:
   quietly fixed.
 
 ROM-gated, against the canonical image, `tests/integration/test_sprite_identity_rom.py`
-- **12 passed** (about 5 minutes; the corpus walk and one reference-document build
+- **13 passed** (about 5 minutes; the corpus walk and one reference-document build
 dominate). What they establish:
 
 - the published registry is 297 entries at `0x006B6BDC`, relocatable, with exactly
-  the two published inbound words;
+  the two published inbound words, and a scan of the image for the table address
+  finds exactly those two words and no others;
 - a planned identity grows it to 298 and carries the first 297 entries byte for
   byte;
 - both words are repointed, and no other canonical byte changes;
@@ -144,7 +163,22 @@ Repository gates, all green on the frozen candidate: `readability --all`
 (0 hard findings tree-wide), `architecture` (0 violations), `public_surface --all`
 (0 findings), `public_release` (0 findings).
 
-## 6. What remains open
+## 6. Independent review and its findings
+
+The review was run by the Claude CLI headless in this worktree against the frozen
+candidate, with a fresh context that did not implement the change. It returned
+**BLOCKED** with one blocking finding and three non-blocking ones, all of which
+are addressed here.
+
+| finding | disposition |
+| --- | --- |
+| BLOCKING: a requested free palette entry could be reused for its own colour and then overwritten with a different one, so authored pixels displayed the wrong colour with no refusal | fixed: a reused entry leaves the free list, and a written entry's old colour leaves the reuse map. Two regression cases, one for each order, now assert that every emitted cell's index displays the colour it was painted with. |
+| NONBLOCKING: no bound on frames per direction, so a plan could write an animation the SDK's own reader refuses | fixed: `SourceSheet` refuses above the 64-frame bound `sprite_graphics.decode_animation` applies. |
+| NONBLOCKING: the donor's flip bits were copied without a check, so a flipped first piece would mirror every authored frame | fixed: a donor whose first piece carries a flip bit is refused. |
+| NOTE: the evidence text claimed the inbound words come from the graph rather than a census constant, which overstated what changed, and a ROM test compared the graph to the constant it was built from | corrected in section 2, and the ROM suite now scans the image for the table address instead of restating the constant. |
+| NOTE: the review did not run the repository gates or the ROM-gated suite | recorded: those results are this ticket's own measurement, and CI is where they are reproducible. |
+
+## 7. What remains open
 
 - **Runtime.** No emulator run was performed for a derivative this planner
   produced. The runtime claim stays owned by `SPRITE_NEW_RUNTIME.md` and its mGBA

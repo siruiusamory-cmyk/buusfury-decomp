@@ -262,6 +262,29 @@ def test_the_canonical_registry_is_the_published_297_entry_one(canonical_bytes, 
                  corpus.registry_references()) == CHARACTER_TABLE_REFERENCE_OFFSETS
 
 
+def test_the_published_words_are_the_whole_census_of_the_table_address(
+        canonical_bytes, corpus):
+    """The graph's words are also every word the image itself holds.
+
+    The published pair is a measured census that the reference document re-checks
+    against the image, so comparing the graph to that constant alone is circular.
+    This scans the image for the table's address and requires the published set to
+    be exactly what the scan finds: a word the graph did not publish would be a
+    reader left pointing at the retired table.
+    """
+    needle = (ROM_BASE + corpus.table_offset).to_bytes(4, "little")
+    aligned = []
+    at = canonical_bytes.find(needle)
+    while at != -1:
+        if at % 4 == 0:
+            aligned.append(at)
+        at = canonical_bytes.find(needle, at + 1)
+    assert aligned == sorted(CHARACTER_TABLE_REFERENCE_OFFSETS)
+    published = tuple(reference.source.value for reference in
+                      corpus.registry_references())
+    assert sorted(published) == aligned
+
+
 def test_the_planner_grows_the_registry_from_297_to_298(canonical_bytes, corpus,
                                                         stand_plan):
     result, output = stand_plan

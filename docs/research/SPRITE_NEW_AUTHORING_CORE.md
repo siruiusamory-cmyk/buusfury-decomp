@@ -129,11 +129,11 @@ Portable, measured on the ticket worktree:
 - `python -m pytest tests/unit -q` - **3882 passed, 45 skipped**, 0 failed. The
   skips are pre-existing (site not built, capstone present, and two files that
   need the canonical profile at a fixed local path).
-- `tests/unit/test_sprite_identity_authoring.py` - **53 passed**. Synthetic
+- `tests/unit/test_sprite_identity_authoring.py` - **55 passed**. Synthetic
   image holding a 297-entry registry, a decodable donor, a real `RomDocument` and
   a duck-typed corpus stub that supplies exactly the four members the planner
-  reads, so an accidental fifth dependency fails loudly. Four of the cases are
-  regressions for findings the independent review raised and this ticket fixed.
+  reads, so an accidental fifth dependency fails loudly. Six of the cases are
+  regressions for findings the independent reviews raised and this ticket fixed.
 - `tests/unit/test_logx_synthesis_audit.py` - **26 passed**. Two superseded-
   assumption patterns matched the first draft of the module's prose
   (`fixed-23-animation-slots`, `four-byte-frame-header`); the wording was
@@ -165,10 +165,12 @@ Repository gates, all green on the frozen candidate: `readability --all`
 
 ## 6. Independent review and its findings
 
-The review was run by the Claude CLI headless in this worktree against the frozen
-candidate, with a fresh context that did not implement the change. It returned
-**BLOCKED** with one blocking finding and three non-blocking ones, all of which
-are addressed here.
+The review was run by an independent reviewer with a fresh context that did not
+implement the change, in a headless session inside this worktree, against each
+frozen candidate.
+
+**First pass, candidate `4cebac5`: BLOCKED**, with one blocking finding, two
+non-blocking findings and two notes.
 
 | finding | disposition |
 | --- | --- |
@@ -177,6 +179,22 @@ are addressed here.
 | NONBLOCKING: the donor's flip bits were copied without a check, so a flipped first piece would mirror every authored frame | fixed: a donor whose first piece carries a flip bit is refused. |
 | NOTE: the evidence text claimed the inbound words come from the graph rather than a census constant, which overstated what changed, and a ROM test compared the graph to the constant it was built from | corrected in section 2, and the ROM suite now scans the image for the table address instead of restating the constant. |
 | NOTE: the review did not run the repository gates or the ROM-gated suite | recorded: those results are this ticket's own measurement, and CI is where they are reproducible. |
+
+**Second pass, candidate `7007148`: PASS.** It confirmed all five earlier findings
+resolved and traced reuse, write and repeat in both orders for the palette
+assignment. It raised two new non-blocking findings, both addressed here:
+
+| finding | disposition |
+| --- | --- |
+| NONBLOCKING: the palette assignment refused identities it could author. Where a preserved entry and a requested free entry both showed the same colour, the free entry was used (and reserved) or the reused colour was dropped from the reuse map even though the preserved entry still showed it, so a new colour or the shared colour had nowhere to go | fixed: reuse prefers an entry the caller did not offer as free, and a candidate is only skipped if this plan actually wrote it. Two cases now assert that the preserved entry wins in both orders. |
+| NONBLOCKING: two statements in the previous revision of this document were inaccurate | corrected: the refusal wording in section 3 matches what the planner now does, and this section states the first pass's findings as they were. |
+
+Its one further note, carried forward rather than acted on: the flip check reads
+attribute-1 bits 12-13, which are flip bits only for the OBJ forms this project
+models. No affine form is modelled anywhere in the SDK and no canonical piece is
+known to use one; the check's comment records that, and an affine donor would be
+refused, which is the safe direction because its attribute word could not be
+copied meaningfully in any case.
 
 ## 7. What remains open
 

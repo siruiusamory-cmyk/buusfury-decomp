@@ -947,6 +947,11 @@ def _donor(image: bytes, identity: NewSpriteIdentity, entries, layout):
             "the donor's first frame is a 4bpp piece, and the authored containers are "
             "8bpp; a 4bpp donor is refused rather than reinterpreted")
     if piece.horizontal_flip or piece.vertical_flip:
+        # Bits 12-13 of attribute 1 are the flip bits for the OBJ forms this
+        # project models. No affine form is modelled anywhere in the SDK and no
+        # canonical piece is known to use one, so a donor that set them as an
+        # affine parameter index would be refused here too, which is the safe
+        # direction: its attribute word could not be copied meaningfully anyway.
         raise SpriteIdentityError(
             "the donor's first piece carries a flip bit, so every authored frame "
             "would mirror the sheet the author drew; choose a donor whose first piece "
@@ -1004,16 +1009,19 @@ def _assign_palette(palette, palette_offset: int, sprites,
     written: it is the transparent entry the chroma key maps to.
 
     An entry cannot be both reused for the colour it already holds and overwritten
-    with a different one. Reusing one reserves it - it leaves the free list - and
-    writing one withdraws the colour it used to hold, so a pixel the planner mapped
-    to an entry always displays the colour it was authored with.
+    with a different one. Reusing one reserves it - it leaves the free list - and a
+    written entry is no longer a candidate for the colour it used to hold, so a
+    pixel the planner mapped to an entry always displays the colour it was authored
+    with. Between two entries showing the same colour, one the caller offered as
+    free and one it did not, the preserved entry wins: reusing the free one would
+    reserve capacity the artwork may still need.
     """
     free = _requested_free_entries(sprites, identity)
-    by_word: dict[int, int] = {}
-    for index in range(TRANSPARENT_INDEX + 1, sg.PALETTE_ENTRIES):
-        by_word.setdefault(_colour_word(palette.raw[index]), index)
     remaining = list(free)
-    chosen: dict[int, int] = {}
+    holders: dict[int, list[int]] = {}
+    for index in range(TRANSPARENT_INDEX + 1, sg.PALETTE_ENTRIES):
+        holders.setdefault(_colour_word(palette.raw[index]), []).append(index)
+    held: dict[int, int] = {}
     written: dict[int, tuple[int, Colour]] = {}
     cells: list[_Cell] = []
     for animation_index, source in enumerate(identity.animations):
@@ -1029,19 +1037,13 @@ def _assign_palette(palette, palette_offset: int, sprites,
                     out.append(TRANSPARENT_INDEX)
                     continue
                 word = sg.pack_gba_colour(*pixel)
-                index = chosen.get(word)
+                index = held.get(word)
                 if index is None:
-                    index = by_word.get(word)
+                    index = _reuse_entry(holders.get(word, ()), remaining, written)
                     if index is None:
                         index = _take_free_entry(remaining, palette, word, pixel)
-                        displaced = _colour_word(palette.raw[index])
-                        if by_word.get(displaced) == index:
-                            del by_word[displaced]
-                        by_word[word] = index
                         written[index] = (word, sg.expand_bgr555(word))
-                    elif index in remaining:
-                        remaining.remove(index)
-                    chosen[word] = index
+                    held[word] = index
                 out.append(index)
             cells.append(_Cell(
                 animation_index=animation_index, slot=slot, frame_index=frame_index,
@@ -1067,6 +1069,26 @@ def _requested_free_entries(sprites, identity: NewSpriteIdentity) -> tuple[int, 
                 f"{len(users)} decoded actor-sprite graphic(s) draw it; writing this "
                 "identity's colour there would recolour them")
     return identity.free_palette_entries
+
+
+def _reuse_entry(candidates, remaining: list[int], written: dict) -> int | None:
+    """An entry that already displays this colour, or None.
+
+    ``candidates`` is every entry that held the colour before this plan ran, in
+    ascending order. An entry the caller did not offer as free is preferred: it
+    costs nothing to use, while reusing an entry that IS free must reserve it, and
+    a later colour may have nowhere else to go. An entry this plan has already
+    written is not a candidate for the colour it used to hold - it does not show
+    that colour any more.
+    """
+    for index in candidates:
+        if index not in written and index not in remaining:
+            return index
+    for index in candidates:
+        if index not in written and index in remaining:
+            remaining.remove(index)
+            return index
+    return None
 
 
 def _take_free_entry(remaining: list[int], palette, word: int, pixel: Colour) -> int:

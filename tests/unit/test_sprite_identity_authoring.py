@@ -711,6 +711,47 @@ def _rebuilt_world(world, image: bytes):
     return image, profile, document, references
 
 
+def test_a_preserved_entry_is_preferred_over_a_free_entry_showing_the_same_colour():
+    """A shared colour must not spend the free entry the artwork still needs.
+
+    Entry 7 is a preserved entry and entry 5 is requested as free; both show the
+    colour the first cell uses. Reusing entry 5 would reserve it and leave the new
+    colour with nowhere to go, so the preserved entry has to win and entry 5 has to
+    stay available.
+    """
+    world = _world(palette_overrides={5: 0x0100, 7: 0x0100})
+    held = sg.expand_bgr555(0x0100)
+    novel = sg.expand_bgr555(0x7FFE)
+    result = _plan(world, _identity(
+        sid.AnimationSource(name="stand", sheet=_two_colour_sheet(held, novel)),
+        free=(5,)))
+    assert [entry.index for entry in result.identity.palette_entries] == [5]
+    output = _apply(world, result)
+    emitted = sg.decode_palette(output, PALETTE_OFFSET)
+    slots = _slots(output, result)
+    assert slots[0][0][0] == 7
+    assert slots[1][0][0] == 5
+    assert emitted.raw[7] == 0x0100
+    assert emitted.raw[5] == sg.pack_gba_colour(*novel)
+
+
+def test_a_written_entry_does_not_hide_a_preserved_entry_holding_its_old_colour():
+    """The write order must not strand a colour another entry still shows."""
+    world = _world(palette_overrides={5: 0x0100, 7: 0x0100})
+    held = sg.expand_bgr555(0x0100)
+    novel = sg.expand_bgr555(0x7FFE)
+    result = _plan(world, _identity(
+        sid.AnimationSource(name="stand", sheet=_two_colour_sheet(novel, held)),
+        free=(5,)))
+    assert [entry.index for entry in result.identity.palette_entries] == [5]
+    output = _apply(world, result)
+    emitted = sg.decode_palette(output, PALETTE_OFFSET)
+    slots = _slots(output, result)
+    assert emitted.raw[slots[0][0][0]] == sg.pack_gba_colour(*novel)
+    assert slots[1][0][0] == 7
+    assert emitted.raw[7] == 0x0100
+
+
 def test_a_requested_entry_a_decoded_graphic_draws_is_refused():
     world = _world()
     sprites = _sprites(world, drawn={200: ("synthetic/graphic:0001",)})

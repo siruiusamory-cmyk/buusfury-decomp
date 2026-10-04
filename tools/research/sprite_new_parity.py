@@ -30,10 +30,15 @@ value are not the same number:
   is lossless and involves no rounding decision (``v = channel >> 3`` is exact for
   this art), and it isolates the mechanism from the art's encoding.
 
+Both images and the report go through the write layer's safety contract rather
+than raw file writes: `webfoot.write.emit_image` refuses to name the canonical
+image as an output and refuses to overwrite an existing artefact, and the report
+takes the same two guards. Pass a fresh `--out-dir` and manifest path per run.
+
     python tools/research/sprite_new_parity.py \\
         --rom <canonical> --stand <stand.png> --walk <walk.png> \\
         --reference <research bounds image> --reference-manifest <research json> \\
-        --identity-out <gba> --runtime-out <gba> --manifest <json>
+        --out-dir <fresh directory> --manifest <fresh json path>
 """
 
 from __future__ import annotations
@@ -137,13 +142,14 @@ def identity_ranges(materialization):
     return spans
 
 
-def build_variant(name, canonical, identification, profile, sheets, palette_grid,
-                  free_entries, reference, reference_manifest, out_dir,
+def build_variant(name, canonical_path, canonical, identification, profile, sheets,
+                  palette_grid, free_entries, reference, reference_manifest, out_dir,
                   reference_digest):
     """Plan one identity, compose the runtime image, and compare both."""
     from webfoot.sprite_identity import (AnimationSource, NewSpriteIdentity,
                                          plan_new_sprite_identity)
-    from webfoot.write import apply_plan, plan_changes
+    from webfoot.write import (ByteChange, emit_image, ensure_new_destination,
+                               ensure_not_source_alias, plan_changes)
 
     animations = []
     for sheet_name, expected_frames in SHEETS:
@@ -166,9 +172,12 @@ def build_variant(name, canonical, identification, profile, sheets, palette_grid
         base_sha256=profile.sha256, relocations=materialization.relocations,
         generated_image=generated,
         generated_allocations=materialization.generated_allocations)
-    identity_image = apply_plan(canonical, plan)
     identity_path = out_dir / f"{name}-identity.gba"
-    identity_path.write_bytes(identity_image)
+    # The identity image is written by the write layer, not by this script: the
+    # same path every build uses, so the canonical image can never be named as an
+    # output and an existing artefact is never clobbered.
+    emit_image(canonical_path, identity_path, plan)
+    identity_image = identity_path.read_bytes()
 
     spans = identity_ranges(materialization)
 
@@ -203,28 +212,42 @@ def build_variant(name, canonical, identification, profile, sheets, palette_grid
     new_record[0x18:0x1C] = (ROM_BASE + record_at + 0x1C).to_bytes(4, "little")
 
     actor_writes = [
-        ("actor:object-array", array_at, bytes(new_array)),
-        ("actor:placement", record_at, bytes(new_record)),
+        ("actor:object-array", array_at, bytes(new_array),
+         f"map 102 object array re-emitted with {array['new_count']} slots"),
+        ("actor:placement", record_at, bytes(new_record),
+         "the new map 102 object record, cloned from a retail sibling"),
         ("actor:object-count", int(array["count_field_file_offset"], 16),
-         bytes([array["new_count"]])),
+         bytes([array["new_count"]]),
+         f"map 102 object count {array['old_count']} -> {array['new_count']}"),
     ]
     for rewrite in array["references_rewritten"]:
         start = int(rewrite["file_offset"], 16)
-        actor_writes.append((f"actor:array-pointer@{rewrite['file_offset']}", start,
-                             (ROM_BASE + array_at).to_bytes(4, "little")))
+        actor_writes.append(
+            (f"actor:array-pointer@{rewrite['file_offset']}", start,
+             (ROM_BASE + array_at).to_bytes(4, "little"),
+             "the field that names map 102's object array"))
 
-    runtime = bytearray(identity_image)
-    for region_name, start, payload in actor_writes:
+    harness_changes = []
+    for region_name, start, payload, reason in actor_writes:
         end = start + len(payload)
         for span_name, span in spans:
             if start < span.end and span.start.value < end:
                 raise ParityError(
                     f"{name}: the controlled actor region {region_name} overlaps "
                     f"the identity region {span_name}")
-        runtime[start:end] = payload
-    runtime_bytes = bytes(runtime)
+        harness_changes.append(ByteChange(
+            offset=start, old=identity_image[start:end], new=payload,
+            owner=region_name, reason=reason))
+    # The composed image goes through the same validator and emitter as every
+    # other write: the harness region is planned against the identity image, which
+    # is the file this step reads, and an existing output is refused rather than
+    # clobbered.
+    runtime_plan = plan_changes(
+        identity_image, harness_changes, profile_id=profile.id,
+        base_sha256=hashlib.sha256(identity_image).hexdigest())
     runtime_path = out_dir / f"{name}-runtime.gba"
-    runtime_path.write_bytes(runtime_bytes)
+    emit_image(identity_path, runtime_path, runtime_plan)
+    runtime_bytes = runtime_path.read_bytes()
 
     # --- comparisons --------------------------------------------------------
     region_comparison = []
@@ -278,8 +301,8 @@ def build_variant(name, canonical, identification, profile, sheets, palette_grid
         "runtime_changed_canonical_offsets": [
             f"0x{offset:06X}" for offset in canonical_changes(runtime_bytes)],
         "runtime_copies": [{"region": region_name, "file_offset": start,
-                            "size": len(payload)}
-                           for region_name, start, payload in actor_writes],
+                            "size": len(payload), "reason": reason}
+                           for region_name, start, payload, reason in actor_writes],
         "identity_region_comparison": region_comparison,
         "identity_material_identical": all(item["identical"]
                                            for item in region_comparison),
@@ -318,6 +341,7 @@ def main(argv: list[str] | None = None) -> int:
 
     from webfoot.profile import RomProfileCatalog
     from webfoot.rom import identify_rom
+    from webfoot.write import ensure_new_destination, ensure_not_source_alias
 
     canonical_path = Path(args.rom)
     canonical = canonical_path.read_bytes()
@@ -337,11 +361,11 @@ def main(argv: list[str] | None = None) -> int:
     out_dir.mkdir(parents=True, exist_ok=True)
 
     as_authored = build_variant(
-        "as-authored", canonical, identification, profile,
+        "as-authored", canonical_path, canonical, identification, profile,
         {"stand": Path(args.stand), "walk": Path(args.walk)}, False, free_entries,
         reference, reference_manifest, out_dir, reference_digest)
     palette_grid = build_variant(
-        "palette-grid", canonical, identification, profile,
+        "palette-grid", canonical_path, canonical, identification, profile,
         {"stand": Path(args.stand), "walk": Path(args.walk)}, True, free_entries,
         reference, reference_manifest, out_dir, reference_digest)
 
@@ -351,7 +375,12 @@ def main(argv: list[str] | None = None) -> int:
         "reference": {"path": str(args.reference), "sha256": reference_digest},
         "variants": {"as-authored": as_authored, "palette-grid": palette_grid},
     }
-    Path(args.manifest).write_text(
+    manifest_path = Path(args.manifest)
+    # The report is not an image, so it takes the two guards rather than
+    # `emit_image`: it may not name a source image, and it may not clobber.
+    ensure_not_source_alias(canonical_path, manifest_path)
+    ensure_new_destination(manifest_path)
+    manifest_path.write_text(
         json.dumps(report, indent=2, sort_keys=True), encoding="utf-8")
     for name, variant in report["variants"].items():
         print(f"=== {name}")

@@ -7,10 +7,10 @@ SHA-256 `940AD5F01DB4465B8877DFE739510CBF34F4EA3D390F3DF13519808BC36F059E`),
 implemented.
 
 Baseline `origin/master` = `7ce5b7bdfba64de2d264305e9df878709167abcc`, confirmed
-before branching. Ticket worktree `C:\Dev\log1-remake-sprite-new-001`, branch
+before branching. Ticket worktree `log1-remake-sprite-new-001`, branch
 `ticket/sprite-new-boundary-001`.
 
-Target asset: `C:\Dev\log1-remake\Cui\Cui`, five PNGs, the custom Cui sprite.
+Target asset: `Cui/Cui` at the repository root, five PNGs, the custom Cui sprite.
 
 Evidence labels are the project's: **CONFIRMED** (measured here or already
 CONFIRMED_ROM), **CONFIRMED_RUNTIME** (measured in mGBA by an earlier ticket),

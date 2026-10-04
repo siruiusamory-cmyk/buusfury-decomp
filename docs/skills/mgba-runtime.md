@@ -1,7 +1,8 @@
 # Runtime evidence: the mGBA capture skill
 
 This file is the tracked authority for **any** emulator or runtime evidence in
-this repository. It was previously only a machine-local file under `.claude/`,
+this repository. It was previously only a machine-local file in an untracked
+configuration directory,
 which meant a fresh ticket worktree did not contain it and no reviewer could
 hold anyone to it. That gap is closed here: the rules travel with the
 repository, and `tests/unit/test_mgba_runtime_skill.py` fails when a launcher

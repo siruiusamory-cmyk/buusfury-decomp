@@ -1143,7 +1143,10 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--rom", required=True, help="the canonical image")
     parser.add_argument("--out", help="derivative image to write")
     parser.add_argument("--manifest", help="write the experiment report here")
-    parser.add_argument("--sheet", default=r"C:\Dev\log1-remake\Cui\Cui\stand.png")
+    parser.add_argument(
+        "--sheet", required=True,
+        help="a Cui sheet PNG; the artwork is a private research input and is "
+             "not tracked in this repository")
     parser.add_argument("--cell", type=int, default=0)
     parser.add_argument("--target", choices=("placement", "player", "new-actor"),
                         default="placement",

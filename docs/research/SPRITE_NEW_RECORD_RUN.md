@@ -2,7 +2,7 @@
 
 Runtime record. Baseline `origin/master` =
 `7ce5b7bdfba64de2d264305e9df878709167abcc`. Ticket worktree
-`C:\Dev\log1-remake-sprite-new-record-run-001`, branch
+`log1-remake-sprite-new-record-run-001`, branch
 `ticket/sprite-new-record-run-001`. Canonical image read-only throughout
 (`940ad5f0...36f059e`).
 
@@ -228,7 +228,8 @@ file, absent from every ticket worktree, which is why they were missed here.
 
 - `docs/skills/mgba-runtime.md` is now the tracked authority, named from
   `docs/DEVELOPMENT.md` under "Runtime evidence" as mandatory.
-- `.claude/skills/mgba-runtime/SKILL.md` is now a pointer to it.
+- The machine-local skill file in the untracked configuration directory is
+  now a pointer to it.
 - A SessionStart hook (`~/.dsh/hooks/mgba-runtime-order.mjs`, registered in
   `~/.dsh/hooks/dsh-hooks.json`) injects the authority's text at the start of
   any session whose working directory is inside a repository carrying it, and

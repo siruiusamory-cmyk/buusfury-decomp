@@ -2,7 +2,7 @@
 
 Runtime record. Baseline `origin/master` =
 `7ce5b7bdfba64de2d264305e9df878709167abcc`, confirmed before branching. Ticket
-worktree `C:\Dev\log1-remake-sprite-new-runtime-001`, branch
+worktree `log1-remake-sprite-new-runtime-001`, branch
 `ticket/sprite-new-runtime-001`. Canonical image read-only throughout and
 re-verified unchanged (`940ad5f0...36f059e`).
 

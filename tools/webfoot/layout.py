@@ -254,8 +254,27 @@ class FreeRegion:
 #: retiring them, and why `webfoot.relocation`'s per-anchor
 #: :func:`relocation_eligible` gate - not this constant - decides whether any
 #: particular container may move.
+#:
+#: SPRITE-NEW-RUNTIME-001 adds `character_pointer_table`, and it is admitted on a
+#: *measured* inbound scan rather than on a structural argument. What is
+#: established, against the canonical image: the 297-entry actor-sprite registry
+#: at ROM ``0x086B6BDC`` is reached by exactly TWO words in the whole 8 MiB image,
+#: both of them Thumb literal-pool entries - file ``0x0003C0``, consumed by
+#: ``ldr r1,[pc,#0x260]`` at ``0x0800015E`` in the sprite-id accessor
+#: ``0x08000158``, and file ``0x01715C``, consumed by ``ldr r1,[pc,#0x1c]`` at
+#: ``0x0801713E`` in the party re-entry path. A stride-4 census repeated at byte
+#: alignment returns the same two, so the registry's inbound surface is closed at
+#: two CONFIRMED references and no CANDIDATE reference reaches it.
+#:
+#: What is NOT established by membership here: that a 298-entry registry or any
+#: sprite structure, animation or frame record placed above canonical EOF is
+#: actually READ by the retail engine at runtime. The pointer fields can ENCODE
+#: such an address - the accessor's literal is a full 32-bit word - but that is an
+#: encoding claim. The mGBA run owned by SPRITE-NEW-RUNTIME-001 is the proof of
+#: the runtime claim, and membership here must not be read as it.
 RELOCATION_ELIGIBLE_KINDS = frozenset({"placement_reference_array", "text-string",
-                                       "graphics_container"})
+                                       "graphics_container",
+                                       "character_pointer_table"})
 
 
 def relocation_eligible(anchor: Anchor, references: Iterable[Reference]) -> bool:

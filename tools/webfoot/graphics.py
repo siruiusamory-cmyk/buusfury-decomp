@@ -53,6 +53,30 @@ class GraphicsError(capability.CapabilityError):
     """Unverified profile, malformed sprite record, or an unsafe edit."""
 
 
+#: The complete inbound surface of the actor-sprite character pointer registry,
+#: as file offsets of the 4-byte words that name it.
+#:
+#: MEASURED, and published rather than left implicit because the registry is the
+#: one table an additional sprite identity has to grow, and growing it means
+#: re-emitting it elsewhere and repointing every word that named the old address.
+#: A stride-4 census of the whole canonical image, repeated at byte alignment,
+#: returns exactly these two words and no others; both are Thumb literal-pool
+#: entries whose consuming instruction was read:
+#:
+#: * file ``0x0003C0`` - ``ldr r1,[pc,#0x260]`` at ``0x0800015E``, inside the
+#:   sprite-id accessor ``0x08000158`` that resolves ids ``>= 10``;
+#: * file ``0x01715C`` - ``ldr r1,[pc,#0x1c]`` at ``0x0801713E``, inside the
+#:   party re-entry path `0x0801713C`` that resolves a party record's
+#:   ``u16 +0x0E`` through the same arithmetic.
+#:
+#: BOTH encode ABSOLUTE_ROM_U32_LE and both hold ``0x086B6BDC`` in the canonical
+#: image. What this constant does NOT claim is completeness by construction: it is
+#: a census result for one image, which is why a caller that relies on it verifies
+#: the words still hold the registry address before rewriting them (see
+#: :meth:`ActorSprites.registry_references`).
+CHARACTER_TABLE_REFERENCE_OFFSETS: tuple[int, ...] = (0x0003C0, 0x0001715C)
+
+
 @dataclass(frozen=True, order=True)
 class GraphicIdentity:
     """Stable name for one shared graphics payload."""
@@ -375,6 +399,35 @@ class ActorSprites:
 
     # --- the common reference graph ------------------------------------------
 
+    @property
+    def registry_identity(self) -> str:
+        """The published anchor identity of the actor-sprite character registry."""
+        return f"{self.profile.id}/character_table:0000"
+
+    def registry_references(self) -> tuple:
+        """The CONFIRMED inbound words that name the character registry.
+
+        SPRITE-NEW-RUNTIME-001. The registry is the one table an additional
+        sprite identity has to grow, and growing it means re-emitting it in fresh
+        space and repointing every word that named the old address. This returns
+        that word set from the published graph instead of re-deriving it, so a
+        caller cannot invent a consumer list the document does not carry.
+
+        The set is two words on the canonical image, both
+        `ABSOLUTE_ROM_U32_LE`, both `CONFIRMED_REFERENCE`; see
+        :data:`CHARACTER_TABLE_REFERENCE_OFFSETS`. An empty result means the
+        registry is not published relocatable, and a caller must refuse rather
+        than move a table nothing is known to reach.
+        """
+        from .layout import AnchorId
+
+        document = self.reference_document()
+        return tuple(
+            reference
+            for reference in document.references
+            if reference.target == AnchorId(self.registry_identity)
+        )
+
     def reference_document(self):
         """Publish the verified graphics pointers into the shared graph.
 
@@ -431,7 +484,7 @@ class ActorSprites:
             alignment=2,
         )
 
-        table_id = f"{self.profile.id}/character_table:0000"
+        table_id = self.registry_identity
         anchor(
             table_id,
             self.table_offset,
@@ -439,6 +492,32 @@ class ActorSprites:
             "character_pointer_table",
             alignment=4,
         )
+        # The registry's OWN inbound surface, published so that growing it is a
+        # decision the reference graph already expresses. These are the two
+        # literal-pool words measured in CHARACTER_TABLE_REFERENCE_OFFSETS; each
+        # is re-checked against the image here rather than trusted, because the
+        # constant is a census result for one image and a build must refuse
+        # rather than repoint a word that no longer names the registry.
+        for reference_offset in CHARACTER_TABLE_REFERENCE_OFFSETS:
+            if self.base_bytes[reference_offset : reference_offset + 4] != (
+                self.layout.character_table_address.raw.to_bytes(4, "little")
+            ):
+                raise GraphicsError(
+                    f"file 0x{reference_offset:08X} is published as a reference to "
+                    f"the character registry at 0x"
+                    f"{self.layout.character_table_address.raw:08X}, but the image "
+                    "holds something else there"
+                )
+            references.append(
+                Reference(
+                    FileOffset(reference_offset),
+                    AnchorId(table_id),
+                    0,
+                    ReferenceEncoding.ABSOLUTE_ROM_U32_LE,
+                    ReferenceClass.CONFIRMED_REFERENCE,
+                    provenance,
+                )
+            )
 
         for character in self.characters():
             anchor(str(character.identity), character.file_offset, 1,

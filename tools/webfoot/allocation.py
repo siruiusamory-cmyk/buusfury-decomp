@@ -151,6 +151,25 @@ class AllocationKind(str, Enum):
     #: the set of CONFIRMED piece references the graphics reference document
     #: carries, and relocation rewrites exactly those.
     GRAPHICS_CONTAINER = "graphics_container"
+    #: SPRITE-NEW-RUNTIME-001. The actor-sprite identity domain: the relocated
+    #: character pointer registry together with the new character structure,
+    #: animation record and frame record that one additional sprite identity is
+    #: made of. They are ONE kind because they are one indivisible authored
+    #: object - a structure with no animation resolves to nothing, and an
+    #: animation with no frame is a null dereference - and because a caller that
+    #: allocated them under separate kinds could place them non-contiguously.
+    #:
+    #: The registry must be re-emitted WHOLE to grow: entry ``i`` is sprite id
+    #: ``i + 10`` and the engine indexes ``registry + 4 * (id - 10)`` with no
+    #: bound check, so a 298th identity means a 298-entry table in fresh space,
+    #: with the two literal-pool words that name the old table repointed.
+    #:
+    #: The extent the canonical image offers is a single 256-byte VERIFIED_FREE
+    #: region and the registry alone is 1,192 bytes, so this kind is
+    #: `EXPANDED_ONLY` for the same reason `LAYER_RECORD` is: no canonical
+    #: placement exists and a canonical-only request would fail closed every
+    #: time.
+    SPRITE_IDENTITY_RECORD = "sprite_identity_record"
 
 
 class Addressability(str, Enum):
@@ -260,6 +279,7 @@ DEFAULT_ADDRESSABILITY = {
     AllocationKind.TRANSITION_RECORD: Addressability.EXPANDED_ONLY,
     AllocationKind.TRANSITION_POINTER_ARRAY: Addressability.EXPANDED_ONLY,
     AllocationKind.GRAPHICS_CONTAINER: Addressability.EXPANDED_PERMITTED,
+    AllocationKind.SPRITE_IDENTITY_RECORD: Addressability.EXPANDED_ONLY,
 }
 
 

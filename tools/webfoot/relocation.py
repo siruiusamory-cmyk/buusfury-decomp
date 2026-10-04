@@ -31,6 +31,12 @@ _ALLOCATION_KIND = {
     "placement_reference_array": AllocationKind.PLACEMENT_REFERENCE_ARRAY,
     "text-string": AllocationKind.TEXT_STRING,
     "graphics_container": AllocationKind.GRAPHICS_CONTAINER,
+    #: SPRITE-NEW-RUNTIME-001. Without this entry a moved registry would fall
+    #: through to the canonical-only `RELOCATED_ANCHOR_PAYLOAD` default and be
+    #: refused for want of canonical free space rather than placed where its
+    #: domain actually puts it - the same trap the `graphics_container` entry
+    #: above exists to avoid.
+    "character_pointer_table": AllocationKind.SPRITE_IDENTITY_RECORD,
 }
 
 

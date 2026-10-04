@@ -485,10 +485,16 @@ def test_unlisted_anchor_kinds_stay_fixed_however_clean_their_references():
     `text-string`, whose whole inbound surface is its own pointer-table slot;
     GRAPHICS-IMPORT-BOUNDARY-001 added `graphics_container`, whose inbound surface
     is the CONFIRMED piece `+0x08` words the graphics reference walk publishes and
-    which is a graph leaf by construction.
+    which is a graph leaf by construction; SPRITE-NEW-RUNTIME-001 added
+    `character_pointer_table`, whose inbound surface is a whole-image census
+    result of exactly two CONFIRMED literal-pool words. A `character_structure`
+    is asserted fixed below: it is reached by a table slot that travels with the
+    structure only if the registry itself moves as one batch, which this constant
+    does not decide on its own.
     """
     assert RELOCATION_ELIGIBLE_KINDS == frozenset(
-        {"placement_reference_array", "text-string", "graphics_container"}
+        {"placement_reference_array", "text-string", "graphics_container",
+         "character_pointer_table"}
     )
     owner = _ref(0x200)
     for kind in ("map_entry", "placement", "enemy_stat_record", "thumb_entry",

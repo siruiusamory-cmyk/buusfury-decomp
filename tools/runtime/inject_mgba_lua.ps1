@@ -316,6 +316,17 @@ $allowedLua = @(
     [System.IO.Path]::GetFullPath(
         (Join-Path $workspaceRoot 'tools\runtime\enemypack002_live_slots.lua')
     )
+    # Added by SPRITE-NEW-RUNTIME-001: the read-only new-identity observer. It
+    # installs one breakpoint at 0x0800F6B4, the instruction after the registry
+    # accessor returns inside the placement constructor, and records the
+    # placement, the sprite id it asked for, the actor being built and the
+    # character structure the engine resolved, so a hit on the new identity's
+    # address is the engine's own statement that it resolved an identity the
+    # retail image does not contain. It reads memory, screenshots, and taps a
+    # controller key only on a named schedule; it writes no emulated memory.
+    [System.IO.Path]::GetFullPath(
+        (Join-Path $workspaceRoot 'tools\runtime\spritenew001_observer.lua')
+    )
 )
 $resolvedLua = [System.IO.Path]::GetFullPath($LuaPath)
 if ($resolvedLua -notin $allowedLua) {

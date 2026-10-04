@@ -74,8 +74,9 @@ Consequences, all measured: the container payload is 6,088 bytes instead of 6,08
 the metadata block therefore starts 8 bytes later (registry `0x088017C8`,
 structure `0x08801C70`), every internal pointer differs, and the composed image
 hashes `d21c2b1a0d748ad1dabc588f107d13e63c7c66338e1c6be4c749b624eb4a390d`. The
-colours differ by at most 8 of 255 per channel on 4 of the sheets' 36 source
-colours.
+colours differ by at most 9 of 255 per channel on 4 of the sheets' 36 source
+colours: `(192, 192, 192)` becomes `(189, 189, 189)` against the research
+emitter's `(198, 198, 198)`, which is the widest gap in the table above.
 
 This is recorded rather than corrected, and it is **not** a defect in the planner.
 `pack_gba_colour`'s rounding is the SDK's published conversion, the same one
@@ -137,7 +138,19 @@ Session 2, an independent boot ended by the operator at about frame 1,800:
   126 in session 2 matched**, with all four facings exercised. A mis-wired
   direction would show the animation advancing through the four facings while the
   displacement stayed constant, which is the spin defect the movement ticket
-  fixed; it is absent here.
+  fixed; it is absent here. The pairing is reproducible from the tree with
+  `tools/research/sprite_new_parity_report.py`, which reads one observer run
+  directory and the parity manifest's frame map:
+
+  ```text
+  python tools/research/sprite_new_parity_report.py \
+      --manifest <parity manifest> --variant as-authored \
+      --run-dir <observer out directory>
+  ```
+
+  Run over session 1 it prints `position changes 174, facing matched 174,
+  mismatched 0`, the ten resolution rows with the authored one marked, and the
+  nine retail actors with seven moving.
 - **Surrounding retail actors remain normal.** Seven of the nine sampled retail
   movers changed position during each session and two stayed still, which is the
   same split the movement record measured; 147 retail walk accepts in session 1;
@@ -158,9 +171,18 @@ movement ticket measured (`0x0878566C`), and the widened wander box
   `emu:setKeys` on the named schedule, and every memory read is wrapped.
 - Nothing ROM-derived is committed. The variant images, the logs and the
   screenshots live under `build/`, which is ignored.
-- The runtime image's only canonical changes are the two registry words and the
-  six object-palette entries; no existing sprite structure, animation, frame or
-  container byte changes.
+- The runtime image changes **22 canonical bytes** as `as-authored`, and every one
+  is accounted for: 18 for the identity (the two registry words, 6 bytes, and the
+  six object-palette entries the art needs, 12 bytes) plus 4 for the controlled
+  actor the research builder contributes (map 102's object count byte and the 3
+  changed bytes of the 4-byte word naming its object array). The `palette-grid`
+  variant is the same accounting with two entries: 10 for the identity plus the
+  same 4, which is the 14 the runtime record tabulates. No existing sprite
+  structure, animation, frame or container byte changes.
+- Both images and the parity report are written through
+  `webfoot.write.emit_image`, which refuses to name a source image as an output
+  and refuses to overwrite an existing artefact, so no run of the parity harness
+  can write over the canonical image or silently replace a previous result.
 
 ## 5. What this does not establish
 
@@ -175,15 +197,35 @@ movement ticket measured (`0x0878566C`), and the widened wander box
   is direction-indexed.
 - **The free palette entries are a caller claim**, checked against the decoded
   actor-sprite graphics only; portrait and user-interface payloads are not decoded.
-- **The engine draws the identity's stand animation** while the actor walks, not
-  the walk animation. Both are present and both were observed, and the landed
-  proof behaved the same way, but which slot the state machine selects is engine
-  behaviour this ticket did not change or explain.
+- **Both authored animations were drawn, and the selection rule is not explained.**
+  The actor drew stand cells on 323 of its 478 samples and walk cells on the other
+  155, interleaved across the whole session. Which slot the engine's state machine
+  selects, and when, is engine behaviour this ticket neither changed nor
+  determined; the facing check holds for both, since it pairs the displacement
+  with whatever frame record is being drawn.
 - A **source-art observation**: 5-bit artwork stored zero-padded is not on the
   object palette's own grid, so the SDK's rounding conversion shifts it by up to
   one 5-bit step. A future authoring helper that snaps imported art onto the grid
   would remove that surprise; the planner itself should not be the place it
   happens.
+
+## 5a. Follow-up from the cross-audit
+
+A read-only cross-audit of this ticket's commit raised four NOTE-level findings,
+none blocking, all resolved by SPRITE-NEW-PARITY-HYGIENE-001 and none of them a
+change to sprite authoring behaviour:
+
+1. the parity harness wrote its images and report with raw file writes; it now
+   emits both images through `webfoot.write.emit_image` and takes the same
+   source-alias and overwrite guards for the report, and the outputs are
+   byte-identical to the ones this record tabulates;
+2. this record under-counted the canonical bytes as 18; the composed image
+   changes 22, and section 4 now attributes all of them;
+3. the stated colour bound was 8 where the table's own widest gap is 9;
+4. the facing pairing was described but its script was not committed, and the
+   record's own summary of which animation was drawn contradicted its evidence;
+   the pairing is now `tools/research/sprite_new_parity_report.py`, named in
+   section 3, and section 5 states the animation split the samples actually show.
 
 ## Verdict
 

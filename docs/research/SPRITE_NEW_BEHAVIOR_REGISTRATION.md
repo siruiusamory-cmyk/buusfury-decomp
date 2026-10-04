@@ -1,7 +1,6 @@
 # SPRITE-NEW-BEHAVIOR-REGISTRATION-001: what populates `actor + 0x1B0`
 
-Baseline `0ff29c1d32f20a1fd40b2618366ae476d865efb6`. Ticket worktree
-`C:\Dev\log1-remake-sprite-new-behavior-001`, branch
+Baseline `0ff29c1d32f20a1fd40b2618366ae476d865efb6`. Ticket branch
 `ticket/sprite-new-behavior-001`. Canonical image read only throughout and
 re-verified after every run
 (`940ad5f01db4465b8877dfe739510cbf34f4ea3d390f3df13519808bc36f059e`).

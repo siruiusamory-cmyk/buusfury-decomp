@@ -42,10 +42,18 @@ def _injector_text() -> str:
 
 
 def _allowlisted_observers() -> list[str]:
-    """Every observer path the injector will accept, as repository-relative paths."""
+    """Every observer path the injector will accept, as repository-relative paths.
+
+    The injector registers its entries with Windows separators because that is
+    how PowerShell and the observer tree are written. They are normalised here:
+    a backslash is a literal character in a POSIX filename, so on a Linux CI
+    runner `ROOT / "tools\\runtime\\x.lua"` names one file that cannot exist and
+    every entry would read as missing.
+    """
     text = _injector_text()
     block = text.split("$allowedLua", 1)[1].split("\n)", 1)[0]
-    return re.findall(r"Join-Path \$workspaceRoot '([^']+)'", block)
+    return [name.replace("\\", "/")
+            for name in re.findall(r"Join-Path \$workspaceRoot '([^']+)'", block)]
 
 
 def test_the_tracked_authority_exists_and_is_not_a_stub():

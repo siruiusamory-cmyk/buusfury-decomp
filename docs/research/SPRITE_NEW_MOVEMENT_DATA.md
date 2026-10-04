@@ -173,7 +173,50 @@ canonical image and the private save were re-verified unchanged after every run.
   measured how each template's box relates to its own actor's spawn, and the
   box semantics are measured only on map 102.
 
-## 6. Instrument notes
+## 6. Facing wiring, found on verification
+
+The first `mv003-bounds` run made the actor walk, and the operator's own
+verification of that build found a second defect immediately: **he spun through
+all four facings while walking instead of facing the direction he moved in.**
+That is a wiring fault in the authored animation, not a movement fault, and it
+was measured on the sheets rather than guessed:
+
+| sheet | mean channel distance inside a four-cell group | inside a stride-4 group |
+| --- | --- | --- |
+| `stand.png` (8 cells) | 7,464 | 52,150 |
+| `walk.png` (16 cells) | 13,879 | 64,221 |
+
+Four neighbouring cells are **one facing over consecutive frames**; cells four
+apart are **four different facings**. The sheets are therefore *direction-major*
+(`d * frames + f`), while the animation record is *frame-major*
+(`f * 4 + d`, the engine's `animation + 4 + 16 * frame + 4 * direction`). The
+first build wrote sheet cell `i` into slot `i`, so what the engine read as frame
+`f` of direction `d` was frame `d` of facing `f`: as the walk animation advanced
+it changed the **facing**, four times per cycle. That is the spin.
+
+The facings themselves are already in the engine's own index order. The think
+routine's switch steps `+y` for heading 0, `-y` for 1, `-x` for 2 and `+x` for 3,
+so the engine's directions are 0 down, 1 up, 2 left, 3 right; rendering one cell
+per group (`directions-stand.png`) shows group 0 front, group 1 back, group 2
+left, group 3 right. No permutation is needed, only the frame/direction nesting.
+
+Fix: `sprite_new_runtime.cui_cell_index(slot, frames)` returns
+`direction * frames + frame`, and the builder reads each sheet through it.
+`tests/unit/test_sprite_new_cell_order` style coverage is in
+`tests/unit/test_sprite_new_runtime.py` (`test_cui_cell_index_reconciles_sheet_order_with_animation_order`);
+38 tests pass. Rebuilt images:
+
+| image | digest before this fix | digest after |
+| --- | --- | --- |
+| base identity build | `29f9195a...` | `706a2615ddd1e722f73f42c2bae547cb1176480c1cac37b4ef8b02ead809f26b` |
+| behaviour build | `9e384a7b...` | `efd9640ee8a46dc04c45b12e384c685c5fa6be9aac71b88d57e09b18f6e2b986` |
+| movement-data build | `98332381...` | `7b12576e9bd93b39d903560aa49fc87d98ba1ec97fe86dcba918872b2b70b402` |
+| bounds build (the one that walks) | `3354d7c3...` | `033e04ba27ac8fcafe99df1f4f6cf2aa6f9a09445eee1ad15b707d2ff694ff57` |
+
+Every address is unchanged (`record 0x08801F38`, template `0x08801F54`, bounds
+bytes still `0x00801F5C..0x00801F62`); only the facing each slot names changed.
+
+## 7. Instrument notes
 
 1. Breakpoint sites inside a routine fire reliably here (`0x0800A93C`,
    `0x0800A9A4`, `0x0800A7C0`, `0x0800A3B0`, `0x08017DA2`, `0x08017DB0`); the

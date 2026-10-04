@@ -50,9 +50,16 @@ from research import sprite_new_runtime as snr  # noqa: E402
 ROM_BASE = 0x08000000
 CANONICAL_SHA256 = snr.CANONICAL_SHA256
 
-#: SPRITE-NEW-RUNTIME-001's recorded build digest, reproduced rather than trusted.
+#: SPRITE-NEW-RUNTIME-001's recorded build digest was
+#: 29f9195a2f7ed9ebb7cf72188dad2d52fec1b5cd1dc7d819432fa2954f946529.  It is
+#: superseded: the Cui sheets are direction-major and the animation record is
+#: frame-major, so the first build put a different FACING in each frame slot and
+#: the actor rotated through all four facings while it walked.
+#: ``sprite_new_runtime.cui_cell_index`` now reconciles the two orders, and the
+#: baseline it reproduces is this digest.  Everything else about the build - the
+#: registry, the structure, the containers, every address - is unchanged.
 RUNTIME_BUILD_SHA256 = (
-    "29f9195a2f7ed9ebb7cf72188dad2d52fec1b5cd1dc7d819432fa2954f946529"
+    "706a2615ddd1e722f73f42c2bae547cb1176480c1cac37b4ef8b02ead809f26b"
 )
 
 #: The new record the runtime ticket authored above canonical EOF.

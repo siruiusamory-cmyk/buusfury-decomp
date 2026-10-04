@@ -343,6 +343,17 @@ $allowedLua = @(
     # loads the saved game; it writes no emulated memory.
     [System.IO.Path]::GetFullPath(
         (Join-Path $workspaceRoot 'tools\runtime\spritenew004_registration.lua')
+    ),
+    # Added by SPRITE-NEW-RUNTIME-PARITY-001: the read-only parity observer.
+    # It records the map object factory's resolution site 0x08017DB0, the walk
+    # action's result and step direction at 0x0800A3B0, and a periodic sample of
+    # every actor that reached the walk action: world position (+0x1A0/+0x1A4)
+    # and the frame record it is drawing (+0x54), which maps to the authored
+    # cell and therefore to the facing. It reads memory and registers,
+    # screenshots, and taps a controller key only on the named `menu` schedule
+    # that loads the saved game; it writes no emulated memory.
+    [System.IO.Path]::GetFullPath(
+        (Join-Path $workspaceRoot 'tools\runtime\spritenew005_parity.lua')
     )
 )
 $resolvedLua = [System.IO.Path]::GetFullPath($LuaPath)

@@ -19,17 +19,22 @@ larger frames than the engine's buffer for it is the case this planner does not
 see. It only appends: it never removes, reorders or rewrites an existing object.
 
 **The one supported record family.** The map-102 sibling family the runtime work
-proved: a ``0x1C``-byte object header led by factory ``0x08017DA3`` followed by a
-``0x10``-byte behaviour entry inline at ``+0x1C``. The record's ``+0x18`` is the
-dispatcher's entry word, and this planner points it at that inline entry, which
-is the wiring the behaviour-registration measurement established: a record whose
-``+0x18`` names some *other* record's entry inherits that entry's behaviour. The
-entry's body is carried from the caller; its wander box - four map-pixel
-halfwords at entry ``+0x08``, the bounds the class-A walk method tests - is
-authored explicitly. Anything else is refused rather than approximated: the
-other sibling factory ``0x080111A9`` (whose dispatcher reads its entry at a
-different offset), the ``0x0800FD55`` placement family, and any array that mixes
-families.
+proved: a ``0x1C``-byte object header led by factory ``0x08017DA3``, with a
+``0x10``-byte behaviour entry at ``+0x1C``. A retail record does not dispatch the
+entry stored at its own ``+0x1C``: of the image's 191 sibling slots, none names
+its own entry, 81 name the entry 1C into the record the previous array slot
+points at, and 67 name one shared address. What the runtime proved instead is the
+self-named shape this planner authors - the record's ``+0x18`` names the entry
+written at its own ``+0x1C``, which is the wiring
+``docs/research/SPRITE_NEW_BEHAVIOR_REGISTRATION.md`` measured when a clone that
+inherited a donor's word dispatched the donor's behaviour and the same clone
+pointed at its own entry moved. The entry's body is carried from the caller; its
+wander box - four map-pixel halfwords at entry ``+0x08``, the bounds the class-A
+walk method tests - is authored explicitly. Anything else is refused rather than
+approximated: the other sibling factory ``0x080111A9`` (whose dispatcher reads
+its entry at a different offset, ``SPRITE_NEW_BEHAVIOR_REGISTRATION.md`` section
+on per-family offsets), the ``0x0800FD55`` placement family, and any array that
+mixes families.
 
 **Addressability.** Both spans are ``EXPANDED_ONLY`` by policy. The array is new
 content with nowhere canonical to grow - the bytes that follow it are live - and
@@ -73,10 +78,10 @@ class SpriteAttachmentProfileError(SpriteAttachmentError, capability.CapabilityE
     """The ROM/profile is not authorized for the map-entry access this needs."""
 
 
-#: The write owner of the re-emitted object array and of the canonical words
-#: that name it.
+#: The write-owner prefix of the re-emitted object array and the new record. A
+#: resolved owner appends the map index, so a build that attaches several actors
+#: carries one distinguishable owner per edit rather than one shared string.
 ARRAY_OWNER = "sprite_attachment:object-array"
-#: The write owner of the one new object record.
 RECORD_OWNER = "sprite_attachment:object-record"
 
 #: The one domain string this module's allocation provenance is recorded under.
@@ -106,6 +111,9 @@ FAMILY_MAP_SIBLING = "map-sibling-08017da3"
 #: refused when it could not be one at all.
 MIN_SPRITE_ID = 1
 MAX_SPRITE_ID = 0xFFFFFFFF
+
+#: How a family's wander-box value is written, keyed by its measured width.
+_BOX_FORMATS = {1: "<B", 2: "<H", 4: "<I"}
 
 
 @dataclass(frozen=True, slots=True)
@@ -222,10 +230,12 @@ SUPPORTED_FAMILIES: dict[str, SupportedActorFamily] = {
         box_offset=0x08,
         box_value_width=2,
         evidence=(
-            "the map-102 sibling run: ten 0x08017DA3 records at 0x0807831C.., "
-            "factory and +0x14 = 1 on all ten, and a 0x10-byte 0x0800A7A1 "
-            "behaviour entry inline at +0x1C whose +0x08 halfwords are the bounds "
-            "the class-A walk method compares against"),
+            "the map-102 sibling run: ten 0x08017DA3 records from 0x0807831C, "
+            "factory and +0x14 = 1 on all ten, and the bytes at +0x1C a 0x10-byte "
+            "0x0800A7A1 behaviour entry whose +0x08 halfwords are the bounds the "
+            "class-A walk method compares against. Retail dispatch differs: across "
+            "the image's 191 sibling slots none names its own +0x1C, and the "
+            "self-named record is the shape the controlled-actor runtime runs"),
     ),
 }
 
@@ -258,7 +268,7 @@ class NewMapActor:
     family: str
     sprite_id: int
     position: tuple[int, int]
-    flags_raw: int
+    retained_04_raw: int
     data_pointer_raw: int
     behaviour_entry: bytes
     wander_box: WanderBox
@@ -272,7 +282,7 @@ class AuthoredMapActor:
     family: str
     sprite_id: int
     position: tuple[int, int]
-    flags_raw: int
+    retained_04_raw: int
     data_pointer_raw: int
     wander_box: WanderBox
     entry_class_raw: int
@@ -292,7 +302,8 @@ class AuthoredMapActor:
             "family": self.family,
             "sprite_id": self.sprite_id,
             "position": list(self.position),
-            "flags_raw": self.flags_raw,
+            "retained_04_raw": self.retained_04_raw,
+            "retained_04_hex": f"0x{self.retained_04_raw:08X}",
             "data_pointer_raw": self.data_pointer_raw,
             "data_pointer_hex": f"0x{self.data_pointer_raw:08X}",
             "wander_box": self.wander_box.to_json(),
@@ -361,10 +372,10 @@ def plan_new_map_actor(
     entry = me.MapEntry.from_bytes(
         image[entry_offset:entry_offset + me.MAP_ENTRY_SIZE])
     count, array_offset = _object_array(image, entry, request.map_index, family)
-    _require_single_name(image, entry, entry_offset, request.map_index)
-    allocations = _allocate(profile, request, family, count, reserved)
+    _require_no_other_name(image, entry, entry_offset, count, request.map_index)
+    placed = _allocate(profile, request, family, count, reserved)
     return _materialize(image, profile, family, request, entry, entry_offset,
-                        count, array_offset, allocations)
+                        count, array_offset, placed)
 
 
 # --- request validation ------------------------------------------------------
@@ -398,6 +409,10 @@ def _resolve_profile(image: bytes, profile, identification):
 
 def _require_request(image: bytes, profile, family: SupportedActorFamily,
                      request: NewMapActor) -> None:
+    if profile.generated_expansion is None:
+        raise SpriteAttachmentError(
+            "an appended actor lives above canonical EOF, so the profile must "
+            "declare a generated expansion")
     if type(request.map_index) is not int or request.map_index < 0:
         raise SpriteAttachmentError("a map index is a non-negative table index")
     if request.map_index >= profile.map_entries.count:
@@ -416,7 +431,7 @@ def _require_request(image: bytes, profile, family: SupportedActorFamily,
         mp.encode_position(*request.position)
     except mp.MapPlacementError as exc:
         raise SpriteAttachmentError(f"the position is not authorable: {exc}") from exc
-    for name in ("flags_raw", "data_pointer_raw"):
+    for name in ("retained_04_raw", "data_pointer_raw"):
         value = getattr(request, name)
         if type(value) is not int or not 0 <= value <= 0xFFFFFFFF:
             raise SpriteAttachmentError(
@@ -443,6 +458,12 @@ def _require_request(image: bytes, profile, family: SupportedActorFamily,
             f"{family.name} dispatches 0x{family.entry_class_raw:08X}")
     if not isinstance(request.wander_box, WanderBox):
         raise SpriteAttachmentError("a wander box must be a WanderBox")
+    box_maximum = (1 << (8 * family.box_value_width)) - 1
+    if any(value > box_maximum for value in request.wander_box.as_halfwords()):
+        raise SpriteAttachmentError(
+            f"family {family.name} writes each wander-box value in "
+            f"{family.box_value_width} byte(s), so a bound may not exceed "
+            f"{box_maximum}")
 
 
 def _window_size(profile, image_size: int) -> int:
@@ -515,40 +536,74 @@ def _family_name(family_raw: int | None) -> str:
     return f"family 0x{family_raw:08X}"
 
 
-def _require_single_name(image: bytes, entry: me.MapEntry, entry_offset: int,
-                         map_index: int) -> None:
-    """The array must be named by this map's own field and by nothing else.
+def _require_no_other_name(image: bytes, entry: me.MapEntry, entry_offset: int,
+                           count: int, map_index: int) -> None:
+    """The array must be named by this map's own field, and by nothing else.
 
     A relocation must move every reference to a structure or prove that none
-    other exists, and this is the census that decides which. It is deliberately
-    word-aligned: the engine's pointers are, and a byte-aligned coincidence is
-    noise rather than a reference. Any other word naming the array is a reference
-    this planner does not model, so it refuses instead of guessing which map or
-    structure the engine reads it through.
+    other exists, and this is the census that decides which. Every address the
+    move retires is searched, not only the array's base: a word naming slot *i*
+    would be stranded by a re-emitted array just as surely as one naming the base.
+    The census is deliberately word-aligned, because the engine's pointers are and
+    a byte-aligned coincidence is noise rather than a reference. Anything beyond
+    the one MapEntry field is a reference this planner does not model, so it
+    refuses instead of guessing which map or structure the engine reads it
+    through.
     """
     array_word = entry.scripts_pointer_raw
-    needle = array_word.to_bytes(4, "little")
-    holders = []
-    at = image.find(needle)
-    while at != -1:
-        if at % ALIGNMENT == 0:
-            holders.append(at)
-        at = image.find(needle, at + 1)
-    field = entry_offset + _map_field_offset("scripts_pointer_raw")
-    if tuple(holders) != (field,):
-        named = ", ".join(f"0x{offset:06X}" for offset in holders) or "nothing"
-        raise SpriteAttachmentError(
-            f"map {map_index}: the object array at 0x{array_word:08X} is named at "
-            f"{named}, not only by the MapEntry field at 0x{field:06X}; this "
-            "planner rewrites that field alone and will not leave a reference to "
-            "the old array behind")
+    base_field = entry_offset + _map_field_offset("scripts_pointer_raw")
+    for slot in range(count):
+        address = array_word + 4 * slot
+        needle = address.to_bytes(4, "little")
+        holders = []
+        at = image.find(needle)
+        while at != -1:
+            if at % ALIGNMENT == 0:
+                holders.append(at)
+            at = image.find(needle, at + 1)
+        if slot == 0:
+            if tuple(holders) != (base_field,):
+                raise SpriteAttachmentError(
+                    f"map {map_index}: the object array at 0x{array_word:08X} is "
+                    f"named at {_name_offsets(holders)}, not only by the MapEntry "
+                    f"field at 0x{base_field:06X}; this planner rewrites that field "
+                    "alone and will not leave a reference to the old array behind")
+        elif holders:
+            raise SpriteAttachmentError(
+                f"map {map_index}: slot {slot}'s address 0x{address:08X} is named at "
+                f"{_name_offsets(holders)}; a re-emitted array moves that address "
+                "too, and this planner does not model a reference into the middle "
+                "of the array")
+
+
+def _name_offsets(offsets: list[int], limit: int = 4) -> str:
+    """A bounded list of naming offsets, so a refusal stays readable."""
+    shown = ", ".join(f"0x{offset:06X}" for offset in offsets[:limit])
+    if len(offsets) > limit:
+        return f"{shown} and {len(offsets) - limit} more"
+    return shown or "nothing"
 
 
 # --- allocation and emission -------------------------------------------------
 
 
+def _owner(prefix: str, map_index: int) -> str:
+    """One write owner, resolved for the map it edits."""
+    return f"{prefix}:map-{map_index:04d}"
+
+
+@dataclass(frozen=True, slots=True)
+class _Placed:
+    """The two allocations and the owners the writes against them carry."""
+
+    array_owner: str
+    record_owner: str
+    array: Allocation
+    record: Allocation
+
+
 def _allocate(profile, request: NewMapActor, family: SupportedActorFamily,
-              count: int, reserved: tuple[OwnedRegion, ...]) -> dict[str, Allocation]:
+              count: int, reserved: tuple[OwnedRegion, ...]) -> _Placed:
     """Place the new record and the re-emitted array, both above canonical EOF.
 
     The array's payload needs the record's address, which is why nothing is
@@ -560,9 +615,11 @@ def _allocate(profile, request: NewMapActor, family: SupportedActorFamily,
         raise SpriteAttachmentError(
             f"map {request.map_index} already declares {count} object slots; "
             f"MapEntry+0x04 is one byte and the engine cannot count {count + 1}")
+    array_owner = _owner(ARRAY_OWNER, request.map_index)
+    record_owner = _owner(RECORD_OWNER, request.map_index)
     requests = (
         AllocationRequest(
-            AnchorId(ARRAY_OWNER), ARRAY_OWNER, 4 * (count + 1), ALIGNMENT,
+            AnchorId(array_owner), array_owner, 4 * (count + 1), ALIGNMENT,
             kind=AllocationKind.PLACEMENT_REFERENCE_ARRAY,
             addressability=Addressability.EXPANDED_ONLY,
             evidence=(
@@ -571,7 +628,7 @@ def _allocate(profile, request: NewMapActor, family: SupportedActorFamily,
                 "is carried verbatim and the array cannot grow in place because the "
                 "bytes that follow it are live")),
         AllocationRequest(
-            AnchorId(RECORD_OWNER), RECORD_OWNER, family.record_size, ALIGNMENT,
+            AnchorId(record_owner), record_owner, family.record_size, ALIGNMENT,
             kind=AllocationKind.MAP_OBJECT_RECORD,
             addressability=Addressability.EXPANDED_ONLY,
             evidence=(
@@ -586,9 +643,10 @@ def _allocate(profile, request: NewMapActor, family: SupportedActorFamily,
             raise SpriteAttachmentError(
                 f"{allocation.request.owner} landed inside the canonical image; "
                 "both spans of an appended actor are expansion-only")
-    if by_owner[ARRAY_OWNER].range.overlaps(by_owner[RECORD_OWNER].range):
+    if by_owner[array_owner].range.overlaps(by_owner[record_owner].range):
         raise SpriteAttachmentError("the new array and its record overlap")
-    return by_owner
+    return _Placed(array_owner=array_owner, record_owner=record_owner,
+                   array=by_owner[array_owner], record=by_owner[record_owner])
 
 
 def _padding(profile) -> int:
@@ -605,7 +663,7 @@ def _encode_record(family: SupportedActorFamily, request: NewMapActor,
     """The new object record: the family's shape, this actor's own fields."""
     record = bytearray(family.record_size)
     struct.pack_into("<I", record, family.factory_offset, family.factory_raw)
-    struct.pack_into("<I", record, family.flags_offset, request.flags_raw)
+    struct.pack_into("<I", record, family.flags_offset, request.retained_04_raw)
     low, high = mp.encode_position(*request.position)
     struct.pack_into("<I", record, family.position_offset, (high << 16) | low)
     struct.pack_into("<I", record, family.data_pointer_offset,
@@ -615,8 +673,9 @@ def _encode_record(family: SupportedActorFamily, request: NewMapActor,
                      SINGLE_ENTRY_TABLE_COUNT)
     struct.pack_into("<I", record, family.table_entry_offset, entry_address)
     entry = bytearray(request.behaviour_entry)
+    box_format = _BOX_FORMATS[family.box_value_width]
     for index, value in enumerate(request.wander_box.as_halfwords()):
-        struct.pack_into("<H", entry,
+        struct.pack_into(box_format, entry,
                          family.box_offset + index * family.box_value_width, value)
     record[family.entry_inline_offset:
            family.entry_inline_offset + family.entry_size] = entry
@@ -625,11 +684,11 @@ def _encode_record(family: SupportedActorFamily, request: NewMapActor,
 
 def _materialize(image: bytes, profile, family: SupportedActorFamily,
                  request: NewMapActor, entry: me.MapEntry, entry_offset: int,
-                 count: int, array_offset: int, allocations: dict[str, Allocation]):
+                 count: int, array_offset: int, placed: _Placed):
     """Encode both payloads, attribute every write, and describe the result."""
     padding = _padding(profile)
-    array_allocation = allocations[ARRAY_OWNER]
-    record_allocation = allocations[RECORD_OWNER]
+    array_allocation = placed.array
+    record_allocation = placed.record
     array_at = array_allocation.range.start.value
     record_at = record_allocation.range.start.value
     entry_address = record_allocation.rom_address + family.entry_inline_offset
@@ -643,19 +702,20 @@ def _materialize(image: bytes, profile, family: SupportedActorFamily,
     array_field = entry_offset + _map_field_offset("scripts_pointer_raw")
     changes = (
         ByteChange(record_at, bytes([padding]) * len(record_payload), record_payload,
-                   RECORD_OWNER,
+                   placed.record_owner,
                    f"map {request.map_index}: the new {family.name} object record "
                    f"carrying sprite id {request.sprite_id}"),
         ByteChange(array_at, bytes([padding]) * len(array_payload), array_payload,
-                   ARRAY_OWNER,
+                   placed.array_owner,
                    f"map {request.map_index}'s object array re-emitted with "
                    f"{count + 1} slots, the first {count} verbatim"),
         ByteChange(count_field, image[count_field:count_field + 1],
-                   bytes([count + 1]), ARRAY_OWNER,
+                   bytes([count + 1]), placed.array_owner,
                    f"map {request.map_index}'s object bound {count} -> {count + 1}, "
                    "the byte the engine's object loop reads"),
         ByteChange(array_field, image[array_field:array_field + 4],
-                   array_allocation.rom_address.to_bytes(4, "little"), ARRAY_OWNER,
+                   array_allocation.rom_address.to_bytes(4, "little"),
+                   placed.array_owner,
                    f"map {request.map_index}: the field that named the object array "
                    f"now names the {count + 1}-slot array"),
     )
@@ -671,7 +731,7 @@ def _materialize(image: bytes, profile, family: SupportedActorFamily,
     )
     old_range = RomRange(FileOffset(array_offset), 4 * count)
     relocation = RelocationProvenance(
-        anchor=anchor, owner=ARRAY_OWNER, old_range=old_range,
+        anchor=anchor, owner=placed.array_owner, old_range=old_range,
         new_range=array_allocation.range, alignment=ALIGNMENT,
         free_region_evidence=array_allocation.free_region_evidence,
         references=(ReferenceRewrite(
@@ -681,17 +741,18 @@ def _materialize(image: bytes, profile, family: SupportedActorFamily,
     )
     generated = (
         array_allocation.generated_allocation_provenance(
-            domain=DOMAIN, resource=ARRAY_OWNER, pointer_offset=array_field,
+            domain=DOMAIN, resource=placed.array_owner, pointer_offset=array_field,
             source_range=old_range),
         record_allocation.generated_allocation_provenance(
-            domain=DOMAIN, resource=RECORD_OWNER,
+            domain=DOMAIN, resource=placed.record_owner,
             pointer_offset=array_at + 4 * count,
             source_range=RomRange(FileOffset(array_at + 4 * count), 4)),
     )
     actor = AuthoredMapActor(
         map_index=request.map_index, family=family.name,
         sprite_id=request.sprite_id, position=request.position,
-        flags_raw=request.flags_raw, data_pointer_raw=request.data_pointer_raw,
+        retained_04_raw=request.retained_04_raw,
+        data_pointer_raw=request.data_pointer_raw,
         wander_box=request.wander_box, entry_class_raw=family.entry_class_raw,
         entry_size=family.entry_size, array_old_range=old_range,
         array_old_rom_address=entry.scripts_pointer_raw,
@@ -703,6 +764,6 @@ def _materialize(image: bytes, profile, family: SupportedActorFamily,
     )
     return ActorAttachment(
         actor=actor, changes=changes,
-        reserved=(OwnedRegion(array_allocation.range, ARRAY_OWNER),
-                  OwnedRegion(record_allocation.range, RECORD_OWNER)),
+        reserved=(OwnedRegion(array_allocation.range, placed.array_owner),
+                  OwnedRegion(record_allocation.range, placed.record_owner)),
         generated_allocations=generated, relocations=(relocation,))

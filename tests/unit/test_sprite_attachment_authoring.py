@@ -62,7 +62,9 @@ RECORD_COUNT = 3
 NEW_SPRITE_ID = 307
 NEW_POSITION = (209, 580)
 NEW_FLAGS = 0
-NEW_DATA_POINTER = ROM_BASE + 0x2180
+#: A retained pointer the records carry. Chosen outside every array layout the
+#: fixtures build, so the interior-reference census cannot collide with it.
+NEW_DATA_POINTER = ROM_BASE + 0x2700
 NEW_BOX = spa.WanderBox(0x00C0, 0x0220, 0x0110, 0x0270)
 RETAIL_BOX = (0x0148, 0x0238, 0x01A0, 0x0298)
 
@@ -141,7 +143,7 @@ def _world(count: int = RECORD_COUNT):
 
 
 def _request(image, *, template=None, position=NEW_POSITION, sprite_id=NEW_SPRITE_ID,
-             box=NEW_BOX, data_pointer=NEW_DATA_POINTER, flags=NEW_FLAGS,
+             box=NEW_BOX, data_pointer=NEW_DATA_POINTER, retained=NEW_FLAGS,
              family=spa.FAMILY_MAP_SIBLING, map_index=TARGET_MAP, count=RECORD_COUNT):
     if template is None:
         record = _records(count)[0]
@@ -149,8 +151,8 @@ def _request(image, *, template=None, position=NEW_POSITION, sprite_id=NEW_SPRIT
                          record + FAMILY.entry_inline_offset + FAMILY.entry_size]
     return spa.NewMapActor(
         map_index=map_index, family=family, sprite_id=sprite_id, position=position,
-        flags_raw=flags, data_pointer_raw=data_pointer, behaviour_entry=template,
-        wander_box=box)
+        retained_04_raw=retained, data_pointer_raw=data_pointer,
+        behaviour_entry=template, wander_box=box)
 
 
 def _plan(image, profile, request=None):
@@ -338,6 +340,18 @@ def test_the_relocation_record_names_the_field_it_rewrote():
     assert rewrite.new_target_file_offset == attachment.actor.array_range.start.value
 
 
+def test_write_owners_name_the_map_they_edit():
+    image, profile, _ = _world()
+    attachment = _plan(image, profile)
+    owners = {change.owner for change in attachment.changes}
+    assert owners == {f"{spa.ARRAY_OWNER}:map-{TARGET_MAP:04d}",
+                      f"{spa.RECORD_OWNER}:map-{TARGET_MAP:04d}"}
+    assert all(f"map-{TARGET_MAP:04d}" in region.owner
+               for region in attachment.reserved)
+    assert all(f"map-{TARGET_MAP:04d}" in entry.owner
+               for entry in attachment.generated_allocations)
+
+
 def test_identical_input_plans_deterministically():
     image, profile, _ = _world()
     first = _plan(image, profile)
@@ -386,6 +400,14 @@ def test_an_array_named_by_a_second_word_is_refused():
     other = bytearray(image)
     other[SPARE_WORD_OFFSET:SPARE_WORD_OFFSET + 4] = _address(TARGET_ARRAY_OFFSET)
     with pytest.raises(spa.SpriteAttachmentError, match="is named at"):
+        _plan(bytes(other), profile)
+
+
+def test_a_reference_into_the_middle_of_the_array_is_refused():
+    image, profile, _ = _world()
+    other = bytearray(image)
+    other[SPARE_WORD_OFFSET:SPARE_WORD_OFFSET + 4] = _address(TARGET_ARRAY_OFFSET + 4)
+    with pytest.raises(spa.SpriteAttachmentError, match="middle of the array"):
         _plan(bytes(other), profile)
 
 
@@ -462,6 +484,15 @@ def test_planning_without_a_profile_or_an_identification_is_refused():
     image, _, _ = _world()
     with pytest.raises(spa.SpriteAttachmentError, match="verified ROM identification"):
         spa.plan_new_map_actor(image, None, _request(image))
+
+
+def test_a_profile_without_a_generated_expansion_is_refused():
+    image, _, _ = _world()
+    profile = profile_for(image, tables={
+        "map_entries": {"address": ROM_BASE + MAP_TABLE_OFFSET,
+                        "count": MAP_TABLE_COUNT, "record_size": me.MAP_ENTRY_SIZE}})
+    with pytest.raises(spa.SpriteAttachmentError, match="generated expansion"):
+        spa.plan_new_map_actor(image, None, _request(image), profile=profile)
 
 
 def test_a_profile_without_a_map_table_is_refused():

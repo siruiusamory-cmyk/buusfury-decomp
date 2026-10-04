@@ -107,7 +107,7 @@ def _request(image: bytes, profile) -> spa.NewMapActor:
     return spa.NewMapActor(
         map_index=MAP_INDEX, family=spa.FAMILY_MAP_SIBLING,
         sprite_id=NEW_SPRITE_ID, position=NEW_POSITION,
-        flags_raw=_word(image, donor + 0x04),
+        retained_04_raw=_word(image, donor + 0x04),
         data_pointer_raw=_word(image, donor + 0x0C),
         behaviour_entry=image[donor + 0x1C:donor + 0x2C],
         wander_box=NEW_BOX)

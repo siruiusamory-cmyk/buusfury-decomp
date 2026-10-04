@@ -61,7 +61,7 @@ FAMILY = spa.supported_family(spa.FAMILY_MAP_SIBLING)
 RECORD_COUNT = 3
 NEW_SPRITE_ID = 307
 NEW_POSITION = (209, 580)
-NEW_FLAGS = 0
+NEW_RETAINED_04 = 0
 #: A retained pointer the records carry. Chosen outside every array layout the
 #: fixtures build, so the interior-reference census cannot collide with it.
 NEW_DATA_POINTER = ROM_BASE + 0x2700
@@ -143,7 +143,7 @@ def _world(count: int = RECORD_COUNT):
 
 
 def _request(image, *, template=None, position=NEW_POSITION, sprite_id=NEW_SPRITE_ID,
-             box=NEW_BOX, data_pointer=NEW_DATA_POINTER, retained=NEW_FLAGS,
+             box=NEW_BOX, data_pointer=NEW_DATA_POINTER, retained=NEW_RETAINED_04,
              family=spa.FAMILY_MAP_SIBLING, map_index=TARGET_MAP, count=RECORD_COUNT):
     if template is None:
         record = _records(count)[0]
@@ -241,7 +241,7 @@ def test_the_new_record_carries_the_requested_sprite_id_and_position():
     assert _word(out, at + FAMILY.sprite_id_offset) == NEW_SPRITE_ID
     low, high = mp.encode_position(*NEW_POSITION)
     assert _word(out, at + FAMILY.position_offset) == (high << 16) | low
-    assert _word(out, at + FAMILY.flags_offset) == NEW_FLAGS
+    assert _word(out, at + FAMILY.retained_04_offset) == NEW_RETAINED_04
     assert _word(out, at + FAMILY.table_count_offset) == spa.SINGLE_ENTRY_TABLE_COUNT
 
 

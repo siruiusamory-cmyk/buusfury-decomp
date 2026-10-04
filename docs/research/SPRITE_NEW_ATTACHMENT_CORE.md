@@ -52,7 +52,7 @@ behaviour entry:
 **What `+0x18` names in the retail corpus, measured over all 191 sibling slots in
 the image: none of them names its own `+0x1C`.** 81 name the entry `0x1C` into
 the record the previous array slot points at, 67 name one shared address
-`0x080716EC`, and the remaining 43 name one of a handful of other bodies. So the
+`0x080716EC`, and the remaining 43 name 43 distinct bodies, each named once. So the
 entry stored at a record's `+0x1C` is normally dispatched by a *different* record,
 and a record that names its own entry is not the retail shape. It is the shape
 the controlled-actor runtime proved: `br010-after` pointed the clone's `+0x18` at

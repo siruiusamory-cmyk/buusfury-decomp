@@ -164,7 +164,7 @@ class SupportedActorFamily:
     name: str
     factory_offset: int
     factory_raw: int
-    flags_offset: int
+    retained_04_offset: int
     position_offset: int
     data_pointer_offset: int
     sprite_id_offset: int
@@ -180,7 +180,7 @@ class SupportedActorFamily:
     evidence: str
 
     def __post_init__(self) -> None:
-        for name in ("factory_offset", "flags_offset", "position_offset",
+        for name in ("factory_offset", "retained_04_offset", "position_offset",
                      "data_pointer_offset", "sprite_id_offset",
                      "table_count_offset", "table_entry_offset"):
             offset = getattr(self, name)
@@ -216,7 +216,7 @@ SUPPORTED_FAMILIES: dict[str, SupportedActorFamily] = {
         name=FAMILY_MAP_SIBLING,
         factory_offset=0x00,
         factory_raw=0x08017DA3,
-        flags_offset=0x04,
+        retained_04_offset=0x04,
         position_offset=0x08,
         data_pointer_offset=0x0C,
         sprite_id_offset=0x10,
@@ -437,7 +437,7 @@ def _require_request(image: bytes, profile, family: SupportedActorFamily,
             raise SpriteAttachmentError(
                 f"{name} is a retained 32-bit word and must be an unsigned 32-bit "
                 f"integer; got {value!r}")
-    limit = _window_size(profile, len(image))
+    limit = _window_size(profile)
     if not GBA_ROM_BASE <= request.data_pointer_raw < GBA_ROM_BASE + limit:
         raise SpriteAttachmentError(
             f"the retained data pointer 0x{request.data_pointer_raw:08X} is outside "
@@ -466,10 +466,9 @@ def _require_request(image: bytes, profile, family: SupportedActorFamily,
             f"{box_maximum}")
 
 
-def _window_size(profile, image_size: int) -> int:
-    """The addressable output size: the declared expansion, else the image."""
-    expansion = profile.generated_expansion
-    return expansion.output_size if expansion is not None else image_size
+def _window_size(profile) -> int:
+    """The addressable output size, established by ``_require_request``."""
+    return profile.generated_expansion.output_size
 
 
 # --- reading the target map --------------------------------------------------
@@ -650,12 +649,8 @@ def _allocate(profile, request: NewMapActor, family: SupportedActorFamily,
 
 
 def _padding(profile) -> int:
-    expansion = profile.generated_expansion
-    if expansion is None:
-        raise SpriteAttachmentError(
-            "an appended actor lives above canonical EOF, so the profile must "
-            "declare a generated expansion")
-    return expansion.padding_byte
+    """The generated image's fill byte, established by ``_require_request``."""
+    return profile.generated_expansion.padding_byte
 
 
 def _encode_record(family: SupportedActorFamily, request: NewMapActor,
@@ -663,7 +658,7 @@ def _encode_record(family: SupportedActorFamily, request: NewMapActor,
     """The new object record: the family's shape, this actor's own fields."""
     record = bytearray(family.record_size)
     struct.pack_into("<I", record, family.factory_offset, family.factory_raw)
-    struct.pack_into("<I", record, family.flags_offset, request.retained_04_raw)
+    struct.pack_into("<I", record, family.retained_04_offset, request.retained_04_raw)
     low, high = mp.encode_position(*request.position)
     struct.pack_into("<I", record, family.position_offset, (high << 16) | low)
     struct.pack_into("<I", record, family.data_pointer_offset,

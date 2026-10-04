@@ -95,6 +95,25 @@ Rules that keep the labels honest:
   numeric pattern guessing.
 - Unknown means unknown. A hypothesis is recorded as a hypothesis.
 
+## Runtime evidence
+
+Any claim sourced from an emulator is governed by
+[`docs/skills/mgba-runtime.md`](skills/mgba-runtime.md), and using it is
+**mandatory**, not advisory:
+
+- Read that file before the first mGBA action of a ticket. It is tracked
+  precisely so that it exists in every worktree and can be reviewed; a runtime
+  ticket that never cites it has not been done.
+- Launch through a tracked launcher. Never invoke `mGBA.exe --script`: it
+  bypasses both the observer allowlist and the launcher's ROM gate.
+- An observer is read-only. Input and memory writes, including a savestate
+  load, belong in a separate driver.
+- Every observer carries a liveness channel, and the closure report says which
+  of the three instrument states in section 8 of that file applies. A silent
+  channel with a silent liveness channel is "no evidence", never a negative.
+- `tests/unit/test_mgba_runtime_skill.py` enforces the mechanically checkable
+  part of this. Loosening that test is loosening the policy.
+
 ## Semantic and binary rules
 
 - Preserve `_raw` suffixes until semantics are justified.

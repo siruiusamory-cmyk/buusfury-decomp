@@ -4,7 +4,14 @@ param(
     [Parameter(Mandatory = $true)]
     [string]$LuaPath,
     [string]$ReadyPath,
-    [string]$MarkerPath
+    [string]$MarkerPath,
+    # A Lua statement run immediately AFTER the observer's dofile and before the
+    # ready marker. The mgba-runtime skill's proven ordering is "inject the
+    # observer, then load the savestate": entities are built during a state load,
+    # so a breakpoint armed afterwards never sees construction. This is where the
+    # state load therefore goes. It is a separate parameter rather than a line in
+    # the observer because an observer stays read-only and a state load is not.
+    [string]$PostCommand
 )
 
 $ErrorActionPreference = 'Stop'
@@ -57,9 +64,6 @@ $allowedLua = @(
         (Join-Path $workspaceRoot 'tools\runtime\p004_wander.lua')
     )
     [System.IO.Path]::GetFullPath(
-        (Join-Path $workspaceRoot 'tools\runtime\p004_kihit.lua')
-    )
-    [System.IO.Path]::GetFullPath(
         (Join-Path $workspaceRoot 'tools\runtime\p004_watcher.lua')
     )
     [System.IO.Path]::GetFullPath(
@@ -99,9 +103,6 @@ $allowedLua = @(
         (Join-Path $workspaceRoot 'tools\runtime\p004_aggro.lua')
     )
     [System.IO.Path]::GetFullPath(
-        (Join-Path $workspaceRoot 'tools\runtime\p004_actor_enum.lua')
-    )
-    [System.IO.Path]::GetFullPath(
         (Join-Path $workspaceRoot 'tools\runtime\p006_reaction_trace.lua')
     )
     [System.IO.Path]::GetFullPath(
@@ -139,24 +140,6 @@ $allowedLua = @(
     )
     [System.IO.Path]::GetFullPath(
         (Join-Path $workspaceRoot 'tools\runtime\p010_death_timeline.lua')
-    )
-    [System.IO.Path]::GetFullPath(
-        (Join-Path $workspaceRoot 'tools\runtime\p011_wolf_speed_probe.lua')
-    )
-    [System.IO.Path]::GetFullPath(
-        (Join-Path $workspaceRoot 'tools\runtime\p012_rng_probe.lua')
-    )
-    [System.IO.Path]::GetFullPath(
-        (Join-Path $workspaceRoot 'tools\runtime\p013_knockback_probe.lua')
-    )
-    [System.IO.Path]::GetFullPath(
-        (Join-Path $workspaceRoot 'tools\runtime\p015_bodyrect_probe.lua')
-    )
-    [System.IO.Path]::GetFullPath(
-        (Join-Path $workspaceRoot 'tools\runtime\p016_anchor_probe.lua')
-    )
-    [System.IO.Path]::GetFullPath(
-        (Join-Path $workspaceRoot 'tools\runtime\p006_ewram_hp_scan.lua')
     )
     [System.IO.Path]::GetFullPath(
         (Join-Path $workspaceRoot 'tools\runtime\p006_hit_bracket_scan.lua')
@@ -315,6 +298,39 @@ $allowedLua = @(
     # names this file explicitly.
     [System.IO.Path]::GetFullPath(
         (Join-Path $workspaceRoot 'tools\runtime\enemypack002_live_slots.lua')
+    )
+    # Added by SPRITE-NEW-RUNTIME-001: the read-only new-identity observer. It
+    # installs one breakpoint at 0x0800F6B4, the instruction after the registry
+    # accessor returns inside the placement constructor, and records the
+    # placement, the sprite id it asked for, the actor being built and the
+    # character structure the engine resolved, so a hit on the new identity's
+    # address is the engine's own statement that it resolved an identity the
+    # retail image does not contain. It reads memory, screenshots, and taps a
+    # controller key only on a named schedule; it writes no emulated memory.
+    [System.IO.Path]::GetFullPath(
+        (Join-Path $workspaceRoot 'tools\runtime\spritenew001_observer.lua')
+    )
+    # Added by SPRITE-NEW-RECORD-RUN-001: the read-only object-run observer. It
+    # records the three ends of the sibling-family dispatch - the map object loop
+    # where the array names a record, the factory where the engine resolves that
+    # record's sprite id, and the behaviour constructor where the pointer the
+    # engine passes does not equal the record the array named - plus a per-word
+    # movement window over every behaviour object it sees. It reads memory and
+    # screenshots, and taps a controller key only on the named `menu` schedule
+    # that loads the saved game; it writes no emulated memory.
+    [System.IO.Path]::GetFullPath(
+        (Join-Path $workspaceRoot 'tools\runtime\spritenew002_record_run.lua')
+    )
+    # Added by SPRITE-NEW-RECORD-RUN-001: the two-breakpoint dispatch-table probe.
+    # The main observer above arms six breakpoints and the one on the dispatcher
+    # never reported a hit there in any registration order while the other five
+    # all produced data, so this probe arms that site and one liveness control and
+    # nothing else. "No hit" then means the site was not executed rather than that
+    # the breakpoint could not be installed. It is strictly read-only - it reads
+    # memory and registers and writes host files only, and drives no input at all,
+    # because the run it exists for loads a savestate from the launcher instead.
+    [System.IO.Path]::GetFullPath(
+        (Join-Path $workspaceRoot 'tools\runtime\spritenew003_dispatch_probe.lua')
     )
 )
 $resolvedLua = [System.IO.Path]::GetFullPath($LuaPath)
@@ -486,6 +502,9 @@ if ($resolvedMarker) {
     $command = 'rom011_marker_path = [[' + $luaMarker + ']]; '
 }
 $command += 'dofile([[' + ($resolvedLua -replace '\\', '/') + ']])'
+if ($PostCommand) {
+    $command += '; ' + $PostCommand
+}
 if ($resolvedReady) {
     $luaReady = $resolvedReady -replace '\\', '/'
     $command += '; local f=assert(io.open([[' + $luaReady + ']], [[w]])); ' +

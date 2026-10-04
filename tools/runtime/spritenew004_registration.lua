@@ -59,6 +59,8 @@ local INSTALLER = 0x0800A93C
 -- The object the class-A behaviour constructor allocated: r4 = object, r5 = the
 -- entry. Reached one instruction after the constructor's entry 0x0800A7A0.
 local HANDLER_A_ALLOCATED = 0x0800A7C0
+-- The instruction after the class-A think routine's actor-action call.
+local WALK_RESULT = 0x0800A3B0
 -- The instruction inside the dispatcher that has just loaded the table entry.
 local DISPATCH_ENTRY = 0x0800A9A4
 -- The map-102 record family's factory, and the registry return inside it.
@@ -383,6 +385,47 @@ safe(emu.setBreakpoint, emu, guarded("allocated", function(_info)
     register_sample("behaviour", object, record, sprite, "allocated")
 end), HANDLER_A_ALLOCATED)
 
+-- --- 5. the walk action's own return value ------------------------------------
+-- 0x0800A3B0 is reached only after the class-A think routine has called the
+-- actor-action method at obj->vtable[+0x10]; r0 is that call's result, r4 the
+-- behaviour object and r5 the actor. A zero here is the engine declining the
+-- walk, and it is the first thing to read when the behaviour runs and the actor
+-- does not move.
+
+local walk_file = open_log("walk.txt", {
+    "# 0x0800A3B0: r0 = the walk action's result, r4 = behaviour object, r5 = actor",
+    "# obj+0x28..0x37 is the actor-derived rect the think routine copies and",
+    "# translates; obj+0x38..0x47 is that rect moved by the step; obj+0x48..0x57",
+    "# holds the bounds the walk routine 0x0800A624 tests it against",
+    "# frame actor object result obj28 obj2C obj30 obj34 obj38 obj3C obj40 obj44",
+    "#   obj48 obj4C obj50 obj54 actor1A0 actor1A4 map",
+})
+local walk_seen = {}
+local walk_counts = {}
+
+safe(emu.setBreakpoint, emu, guarded("walk", function(_info)
+    local result = reg("r0")
+    local object = reg("r4")
+    local actor = reg("r5")
+    if object == nil or actor == nil then return end
+    local key = string.format("%s:%s", hex(actor), tostring(result))
+    local count = (walk_counts[actor] or 0) + 1
+    walk_counts[actor] = count
+    if walk_seen[key] then return end
+    walk_seen[key] = true
+    walk_file:write(tostring(frame) .. " " .. hex(actor) .. " " .. hex(object) ..
+        " " .. tostring(result) ..
+        " " .. hex(r32(object + 0x28)) .. " " .. hex(r32(object + 0x2c)) ..
+        " " .. hex(r32(object + 0x30)) .. " " .. hex(r32(object + 0x34)) ..
+        " " .. hex(r32(object + 0x38)) .. " " .. hex(r32(object + 0x3c)) ..
+        " " .. hex(r32(object + 0x40)) .. " " .. hex(r32(object + 0x44)) ..
+        " " .. hex(r32(object + 0x48)) .. " " .. hex(r32(object + 0x4c)) ..
+        " " .. hex(r32(object + 0x50)) .. " " .. hex(r32(object + 0x54)) ..
+        " " .. hex(r32(actor + 0x1a0)) .. " " .. hex(r32(actor + 0x1a4)) ..
+        " " .. tostring(map_index()) .. "\n")
+    walk_file:flush()
+end), WALK_RESULT)
+
 -- --- reporting ---------------------------------------------------------------
 
 local function count_keys(t)
@@ -473,6 +516,7 @@ callback_id = callbacks:add("frame", function()
         factory_file:close()
         resolution_file:close()
         allocated_file:close()
+        walk_file:close()
         error_file:close()
 
         local marker = assert(io.open(OUT_ROOT .. "/done.txt", "w"))

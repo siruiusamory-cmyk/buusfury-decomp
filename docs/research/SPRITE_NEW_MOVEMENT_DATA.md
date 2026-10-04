@@ -1,7 +1,6 @@
 # SPRITE-NEW-MOVEMENT-DATA-001: why Cui did not move, and what did
 
-Baseline `origin/master` = `0ff29c1d32f20a1fd40b2618366ae476d865efb6`. Ticket
-worktree `C:\Dev\log1-remake-sprite-new-behavior-001`, branch
+Baseline `origin/master` = `0ff29c1d32f20a1fd40b2618366ae476d865efb6`. Ticket branch
 `ticket/sprite-new-movement-data-001`, branched from the previous ticket's
 tooling commit `186ef15`. Canonical image read only and re-verified after every
 run (`940ad5f0...36f059e`); the private source save likewise

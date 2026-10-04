@@ -224,11 +224,20 @@ $mgbaArgs = @('-C', ("savegamePath=" + $saveDir), $stagedRom)
 $process = Start-Process -FilePath $resolvedMGB -ArgumentList $mgbaArgs -PassThru
 Start-Sleep -Seconds $UiSettleSeconds
 
-& powershell -NoProfile -ExecutionPolicy Bypass `
-    -File (Join-Path $PSScriptRoot 'inject_mgba_lua.ps1') `
-    -TargetProcessId $process.Id -LuaPath $resolvedLua `
-    -ReadyPath $ready -MarkerPath $marker `
-    -PostCommand $postCommand
+$injectArgs = @(
+    '-NoProfile', '-ExecutionPolicy', 'Bypass',
+    '-File', (Join-Path $PSScriptRoot 'inject_mgba_lua.ps1'),
+    '-TargetProcessId', $process.Id,
+    '-LuaPath', $resolvedLua,
+    '-ReadyPath', $ready,
+    '-MarkerPath', $marker
+)
+# An empty -PostCommand is dropped by Windows PowerShell's -File argument
+# parsing, which surfaces as "Missing an argument for parameter 'PostCommand'"
+# and aborts injection before the observer is ever sent. The switch is omitted
+# entirely when there is no state to load.
+if ($postCommand) { $injectArgs += @('-PostCommand', $postCommand) }
+& powershell @injectArgs
 if ($LASTEXITCODE -ne 0) {
     throw 'Lua injection failed - close the mGBA window before retrying'
 }

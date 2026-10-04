@@ -332,6 +332,18 @@ $allowedLua = @(
     [System.IO.Path]::GetFullPath(
         (Join-Path $workspaceRoot 'tools\runtime\spritenew003_dispatch_probe.lua')
     )
+    # Added by SPRITE-NEW-BEHAVIOR-REGISTRATION-001: the read-only registration
+    # observer. It records the block installer 0x0800A93C (which is what writes
+    # the table pointer into actor+0x1B0+0x08), both behaviour-constructor classes
+    # the dispatcher calls (0x0800A7A0 and 0x0800A222), the class-A behaviour
+    # object, the dispatcher's own table-entry site 0x0800A9A4 re-armed as a
+    # contradiction check, the map-102 record factory, and a per-word movement
+    # window over every actor the dispatch reached. It reads memory and registers,
+    # screenshots, and taps a controller key only on the named `menu` schedule that
+    # loads the saved game; it writes no emulated memory.
+    [System.IO.Path]::GetFullPath(
+        (Join-Path $workspaceRoot 'tools\runtime\spritenew004_registration.lua')
+    )
 )
 $resolvedLua = [System.IO.Path]::GetFullPath($LuaPath)
 if ($resolvedLua -notin $allowedLua) {

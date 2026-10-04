@@ -46,6 +46,12 @@ param(
     [Parameter(Mandatory = $true)][ValidateRange(1, 33554432)][UInt32]$ExpectedRomSize,
     [Parameter(Mandatory = $true)][string]$Label,
     [string]$SavePath,
+    # A savestate to stage beside the staged image. mGBA's command line has no
+    # savestate flag, so this is not launched with one: the file is copied to
+    # <run dir>\rom.ss1, which is the name and location mGBA itself writes and
+    # reads state 1 from when it saves beside the ROM, and the operator loads it
+    # with the emulator's own Load State action.
+    [string]$SavestatePath,
     [ValidateSet('human', 'boot', 'menu')][string]$Script = 'human',
     [ValidateRange(120, 200000)][int]$Ticks = 3600,
     [string]$StructureAddress = '0x088005B4',
@@ -151,6 +157,34 @@ if ($resolvedSave) {
     }
 }
 
+$stagedState = $null
+if ($SavestatePath) {
+    $resolvedState = Resolve-Required $SavestatePath 'Savestate'
+    $stateHash = (Get-FileHash -Algorithm SHA256 -LiteralPath $resolvedState).Hash
+    # State 1 beside the image, which is where mGBA itself reads and writes it.
+    $stagedState = Join-Path $runDir 'rom.ss1'
+    if (Test-Path -LiteralPath $stagedState) {
+        throw "Staged savestate already exists: $stagedState"
+    }
+    Copy-Item -LiteralPath $resolvedState -Destination $stagedState
+    if ((Get-FileHash -Algorithm SHA256 -LiteralPath $stagedState).Hash -ne $stateHash) {
+        throw 'Staged savestate copy hash mismatch'
+    }
+}
+
+# The state is loaded from the injected command, after the observer's dofile, by
+# the emulator's own `emu:loadStateFile`. Quote characters do not survive
+# PowerShell's SetValue into the Scripting prompt, so the path goes in a Lua
+# long-bracket string, which is also what the mgba-runtime skill requires.
+$postCommand = ''
+if ($stagedState) {
+    $luaState = $stagedState -replace '\\', '/'
+    if ($luaState.Contains(']]')) {
+        throw 'Savestate path contains an unsupported Lua long-string terminator'
+    }
+    $postCommand = 'emu:loadStateFile([[' + $luaState + ']])'
+}
+
 $ready = Join-Path $runDir 'lua-ready.txt'
 $marker = Join-Path $runDir 'lua-marker.txt'
 
@@ -172,6 +206,8 @@ $marker = Join-Path $runDir 'lua-marker.txt'
     run_dir            = $runDir
     out_root           = $outRoot
     staged_rom_path    = $stagedRom
+    source_state_path  = $resolvedState
+    staged_state_path  = $stagedState
 } | ConvertTo-Json -Depth 3 | Set-Content -LiteralPath (Join-Path $runDir 'inputs.json') -Encoding utf8
 
 # The observer reads these from the emulator's own environment.
@@ -191,7 +227,8 @@ Start-Sleep -Seconds $UiSettleSeconds
 & powershell -NoProfile -ExecutionPolicy Bypass `
     -File (Join-Path $PSScriptRoot 'inject_mgba_lua.ps1') `
     -TargetProcessId $process.Id -LuaPath $resolvedLua `
-    -ReadyPath $ready -MarkerPath $marker
+    -ReadyPath $ready -MarkerPath $marker `
+    -PostCommand $postCommand
 if ($LASTEXITCODE -ne 0) {
     throw 'Lua injection failed - close the mGBA window before retrying'
 }
@@ -203,6 +240,10 @@ Write-Output "  run dir  : $runDir"
 Write-Output "  outputs  : $outRoot"
 Write-Output "  rom hash : $romHashBefore"
 Write-Output "  schedule : $Script (observer finishes after $Ticks frames)"
+if ($stagedState) {
+    Write-Output "  savestate: $stagedState"
+    Write-Output "             loaded automatically after injection via emu:loadStateFile"
+}
 Write-Output ''
 Write-Output 'Collect the evidence with:'
 Write-Output "  powershell -NoProfile -ExecutionPolicy Bypass -File tools/runtime/finish_spritenew001_session.ps1 -Label $Label"

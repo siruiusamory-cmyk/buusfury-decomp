@@ -4,7 +4,14 @@ param(
     [Parameter(Mandatory = $true)]
     [string]$LuaPath,
     [string]$ReadyPath,
-    [string]$MarkerPath
+    [string]$MarkerPath,
+    # A Lua statement run immediately AFTER the observer's dofile and before the
+    # ready marker. The mgba-runtime skill's proven ordering is "inject the
+    # observer, then load the savestate": entities are built during a state load,
+    # so a breakpoint armed afterwards never sees construction. This is where the
+    # state load therefore goes. It is a separate parameter rather than a line in
+    # the observer because an observer stays read-only and a state load is not.
+    [string]$PostCommand
 )
 
 $ErrorActionPreference = 'Stop'
@@ -57,9 +64,6 @@ $allowedLua = @(
         (Join-Path $workspaceRoot 'tools\runtime\p004_wander.lua')
     )
     [System.IO.Path]::GetFullPath(
-        (Join-Path $workspaceRoot 'tools\runtime\p004_kihit.lua')
-    )
-    [System.IO.Path]::GetFullPath(
         (Join-Path $workspaceRoot 'tools\runtime\p004_watcher.lua')
     )
     [System.IO.Path]::GetFullPath(
@@ -99,9 +103,6 @@ $allowedLua = @(
         (Join-Path $workspaceRoot 'tools\runtime\p004_aggro.lua')
     )
     [System.IO.Path]::GetFullPath(
-        (Join-Path $workspaceRoot 'tools\runtime\p004_actor_enum.lua')
-    )
-    [System.IO.Path]::GetFullPath(
         (Join-Path $workspaceRoot 'tools\runtime\p006_reaction_trace.lua')
     )
     [System.IO.Path]::GetFullPath(
@@ -139,24 +140,6 @@ $allowedLua = @(
     )
     [System.IO.Path]::GetFullPath(
         (Join-Path $workspaceRoot 'tools\runtime\p010_death_timeline.lua')
-    )
-    [System.IO.Path]::GetFullPath(
-        (Join-Path $workspaceRoot 'tools\runtime\p011_wolf_speed_probe.lua')
-    )
-    [System.IO.Path]::GetFullPath(
-        (Join-Path $workspaceRoot 'tools\runtime\p012_rng_probe.lua')
-    )
-    [System.IO.Path]::GetFullPath(
-        (Join-Path $workspaceRoot 'tools\runtime\p013_knockback_probe.lua')
-    )
-    [System.IO.Path]::GetFullPath(
-        (Join-Path $workspaceRoot 'tools\runtime\p015_bodyrect_probe.lua')
-    )
-    [System.IO.Path]::GetFullPath(
-        (Join-Path $workspaceRoot 'tools\runtime\p016_anchor_probe.lua')
-    )
-    [System.IO.Path]::GetFullPath(
-        (Join-Path $workspaceRoot 'tools\runtime\p006_ewram_hp_scan.lua')
     )
     [System.IO.Path]::GetFullPath(
         (Join-Path $workspaceRoot 'tools\runtime\p006_hit_bracket_scan.lua')
@@ -519,6 +502,9 @@ if ($resolvedMarker) {
     $command = 'rom011_marker_path = [[' + $luaMarker + ']]; '
 }
 $command += 'dofile([[' + ($resolvedLua -replace '\\', '/') + ']])'
+if ($PostCommand) {
+    $command += '; ' + $PostCommand
+}
 if ($resolvedReady) {
     $luaReady = $resolvedReady -replace '\\', '/'
     $command += '; local f=assert(io.open([[' + $luaReady + ']], [[w]])); ' +

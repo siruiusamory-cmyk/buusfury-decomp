@@ -53,6 +53,8 @@ BG_PALETTE_OFFSET = 0x2400
 DONOR_STRUCTURE = 0x3000
 DONOR_ANIMATION = 0x3100
 DONOR_FRAME = 0x3200
+#: The frame a donor-with-two-rects fixture points its second animation at.
+DONOR_FRAME_2 = 0x3280
 DONOR_CONTAINER = 0x3400
 DONOR_SPRITE_ID = sid.SPRITE_ID_FLOOR
 NEW_SPRITE_ID = sid.SPRITE_ID_FLOOR + REGISTRY_ENTRIES
@@ -106,7 +108,7 @@ def _tables(entries: int = REGISTRY_ENTRIES) -> dict:
 
 def _world(*, entries: int = REGISTRY_ENTRIES, donor_pieces: int = 1,
            colour_256: bool = True, free: bool = True, expansion: bool = True,
-           relocatable: bool = True, palette_overrides=None):
+           relocatable: bool = True, palette_overrides=None, side: int = CELL_SIDE):
     """A 32 KiB synthetic image with a real registry, donor, palette and profile."""
     image = bytearray(make_synthetic_rom(size=ROM_SIZE))
 
@@ -138,7 +140,7 @@ def _world(*, entries: int = REGISTRY_ENTRIES, donor_pieces: int = 1,
             _address(DONOR_FRAME)
 
     attributes = PIECE_ATTRIBUTES if colour_256 else 0x00000000
-    geometry = struct.pack("<bbBB", PIECE_X, PIECE_Y, CELL_SIDE, CELL_SIDE)
+    geometry = struct.pack("<bbBB", PIECE_X, PIECE_Y, side, side)
     frame = struct.pack("<I", donor_pieces) + geometry
     for piece_index in range(donor_pieces):
         frame += geometry + struct.pack(
@@ -826,8 +828,87 @@ def test_a_4bpp_donor_is_refused_rather_than_reinterpreted():
 
 def test_a_sheet_at_another_size_than_the_donor_is_refused():
     world = _world()
-    with pytest.raises(sid.SpriteIdentityError, match="composition budget"):
+    with pytest.raises(sid.SpriteIdentityError, match="one composition shape"):
         _plan(world, _identity(_animation(side=16)))
+
+
+def test_a_sheet_smaller_than_the_donors_proven_frame_is_refused():
+    """A smaller frame has no measured placement, so it is refused too."""
+    world = _world(side=16)
+    with pytest.raises(sid.SpriteIdentityError, match="one composition shape"):
+        _plan(world, _identity(_animation(side=8)))
+
+
+def test_the_measured_envelope_is_the_rect_the_authored_frames_use():
+    """The guard's measurement and the emitted record agree, byte for byte."""
+    world = _world(side=16)
+    image = world[0]
+    envelope = sid.measure_donor_envelope(image, DONOR_STRUCTURE, _frame_at(image))
+    assert (envelope.width, envelope.height) == (16, 16)
+    assert envelope.piece_count == 1 and envelope.pixels == 256
+
+    # Every authored frame's header and piece carry that rect, and nothing else.
+    result = _plan(world, _identity(_animation(side=16)))
+    output = _apply(world, result)
+    for animation in result.identity.animations:
+        for frame in animation.frames:
+            record = frame.record_range.start.value
+            assert output[record + 6:record + 8] == bytes([envelope.width,
+                                                           envelope.height])
+            piece = record + sid.FRAME_HEADER_SIZE
+            assert output[piece + 2:piece + 4] == bytes([envelope.width,
+                                                         envelope.height])
+            assert output[piece + 8:piece + 12] == \
+                int(frame.container_range.start.to_gba_address(
+                    frame.container_range.end).raw).to_bytes(4, "little")
+
+
+def _frame_at(image: bytes):
+    """The one frame decoder ``_donor`` hands the envelope measurement."""
+    from tools.webfoot.binary import GbaRomAddress
+
+    def frame_at(pointer: int, _what: str):
+        return sg.decode_frame(image, GbaRomAddress(pointer).to_file_offset(len(image)))
+    return frame_at
+
+
+def test_a_valid_input_emits_the_same_bytes_it_emitted_before():
+    """The guard decides geometry only; a valid plan's bytes do not move."""
+    world = _world()
+    result = _plan(world, _identity(_animation()))
+    first = _apply(world, result)
+    second = _apply(world, _plan(world, _identity(_animation())))
+    assert first == second
+    # And the record's own geometry is still the donor's, not a guarded restatement.
+    record = result.identity.animations[0].frames[0].record_range.start.value
+    assert first[record:record + 8] == struct.pack(
+        "<Ibb", 1, PIECE_X, PIECE_Y) + bytes([CELL_SIDE, CELL_SIDE])
+    assert first[record + 8:record + 12] == struct.pack("<bbBB", PIECE_X, PIECE_Y,
+                                                        CELL_SIDE, CELL_SIDE)
+
+
+def test_a_donor_whose_frames_disagree_about_their_rect_is_refused():
+    """No single proven shape exists, so no authored geometry can be called one."""
+    world = _world()
+    image = bytearray(world[0])
+    struct.pack_into("<I", image, DONOR_ANIMATION, 2)
+    struct.pack_into(f"<{2 * sg.DIRECTION_COUNT}I", image, DONOR_ANIMATION + 4,
+                     *([ROM_BASE + DONOR_FRAME] * sg.DIRECTION_COUNT
+                       + [ROM_BASE + DONOR_FRAME_2] * sg.DIRECTION_COUNT))
+    struct.pack_into("<I", image, DONOR_FRAME_2, 1)
+    struct.pack_into("<bbBB", image, DONOR_FRAME_2 + 4, PIECE_X, PIECE_Y,
+                     CELL_SIDE * 2, CELL_SIDE * 2)
+    with pytest.raises(sid.SpriteIdentityError, match="several shapes"):
+        _plan(_rebuilt_world(world, bytes(image)), _identity(_animation()))
+
+
+def test_a_donor_whose_frame_box_contradicts_its_own_piece_is_refused():
+    """The box the authored record copies must be the rect the donor draws."""
+    world = _world()
+    image = bytearray(world[0])
+    struct.pack_into("<BB", image, DONOR_FRAME + 6, CELL_SIDE * 2, CELL_SIDE * 2)
+    with pytest.raises(sid.SpriteIdentityError, match="disagrees with itself"):
+        _plan(_rebuilt_world(world, bytes(image)), _identity(_animation()))
 
 
 def test_an_unrelocatable_registry_is_refused():

@@ -13,9 +13,18 @@ entries the artwork needs.
 **What it deliberately does not own.** It does not place an actor. Attaching the
 identity to a map object, a placement or the party table is a separate authoring
 act, and no placement, map or party byte is written here. It authors no dialogue
-and no script, it offers no user interface, and it does not model the per-actor
-frame-composition budget - :func:`plan_new_sprite_identity` states how the
-supported shape avoids that question instead of answering it.
+and no script, and it offers no user interface.
+
+**The composition guard.** The per-actor frame-composition buffer is sized by a
+rule this write path has not solved, so an authored frame is admitted only inside
+the donor's *proven* composition shape:
+:func:`measure_donor_envelope` reads every frame of every animation the donor's
+own structure decodes and reports the one frame rect the donor is seen to draw -
+and refuses a donor whose frames disagree, which is the case no single proven
+shape exists for. An authored frame must then be exactly that rect: a larger one
+is a composition budget this path cannot prove, and a smaller one has no measured
+placement, because the authored record copies the donor's own anchor. The guard
+decides geometry only; it never authors one.
 
 **The one mapping.** A source sheet is direction-major: four facings, each
 holding all of its own frames. The animation record is frame-major - a frame
@@ -63,6 +72,7 @@ from __future__ import annotations
 
 import struct
 from dataclasses import dataclass
+from typing import Callable
 
 from .allocation import (Addressability, AllocationKind, AllocationRequest,
                          allocate)
@@ -472,14 +482,16 @@ def plan_new_sprite_identity(
     **Why a frame cannot grow.** The retail engine sizes a per-actor composition
     buffer from the frame it is drawing, and the rule that sizes it is not solved
     here. This planner therefore does not let an author choose frame geometry at
-    all: every authored frame copies the donor's own first frame - the same
-    placement offsets, the same pixel extents, the same packed OAM attributes -
-    and the sheet cell dimensions must equal that piece exactly. The result is
-    that the authored frames are geometry the donor's animation already draws, so
-    the budget is not merely unmodelled here, it is unchanged. What this does NOT
-    establish: that the budget is adequate for whatever actor a later act points
-    at these frames. Attaching this identity to an actor that draws smaller
-    frames than the donor is the case that remains open.
+    all: it measures the donor's own proven frame rect
+    (:func:`measure_donor_envelope`) and every authored frame copies the donor's
+    own first frame - the same placement offsets, the same pixel extents, the same
+    packed OAM attributes - with the sheet cell dimensions required to BE that
+    rect. The result is that the authored frames are geometry the donor's
+    animation already draws, so the budget is not merely unmodelled here, it is
+    unchanged. What this does NOT establish: that the budget is adequate for
+    whatever actor a later act points at these frames. Attaching this identity to
+    an actor that draws smaller frames than the donor is the case that remains
+    open.
 
     ``reserved`` is the build-scoped reservation set every allocating domain
     shares; the spans this domain places are returned for the domains after it.
@@ -503,6 +515,34 @@ def plan_new_sprite_identity(
     generated, relocations = _provenance(authoring, allocations, block_layout, rewrites)
     return _materialize(authoring, block_layout, records, allocations, cell_offsets,
                         changes, generated, relocations)
+
+
+@dataclass(frozen=True, slots=True)
+class DonorEnvelope:
+    """The one frame rect a donor's own animation records are seen to draw.
+
+    ``width`` and ``height`` are pixel extents, not a tile count, and they are the
+    frame record's own bounding box - the rect the engine sizes its per-actor
+    composition buffer from and copies pieces into. ``piece_count`` is how many
+    pieces the frames carrying that rect hold, published so a caller can see that
+    the proven shape was reached by more than one piece rather than assume it.
+
+    The name is deliberately not "budget": what is proven here is the rectangle the
+    donor already draws, and the buffer rule that would let a frame exceed it is
+    still unsolved.
+    """
+
+    width: int
+    height: int
+    piece_count: int
+
+    @property
+    def pixels(self) -> int:
+        """The frame's ``w * h``; the quantity the retail compositor copies."""
+        return self.width * self.height
+
+    def __str__(self) -> str:
+        return f"{self.width}x{self.height}"
 
 
 @dataclass(frozen=True, slots=True)
@@ -574,9 +614,9 @@ def _authoring(image: bytes, sprites, identity: NewSpriteIdentity) -> _Authoring
     document = sprites.reference_document()
     anchor, references, entries = _registry(image, sprites, document, layout)
     _require_appended_id(identity, layout)
-    donor_header, piece = _donor(image, identity, entries, layout)
+    donor_header, piece, envelope = _donor(image, identity, entries, layout)
     for animation in identity.animations:
-        _require_cell_geometry(animation, piece)
+        _require_cell_geometry(animation, envelope)
     palette_offset = layout.object_palette_address.to_file_offset(len(image))
     palette = sg.decode_palette(image, palette_offset)
     return _Authoring(
@@ -905,14 +945,16 @@ def _registry(image: bytes, sprites, document, layout):
 
 
 def _donor(image: bytes, identity: NewSpriteIdentity, entries, layout):
-    """The donor's structure header and its first frame's single piece.
+    """The donor's structure header, its first frame's single piece, and its envelope.
 
     The header is cloned verbatim - including the four 16-byte blocks at
     ``+0x10..+0x4F``, whose meaning is unresolved - and only its count byte is
-    rewritten to match the animation array actually written. The piece fixes the
-    authored geometry, so every property that could silently change the actor's
-    drawing is read here instead of hardcoded: the placement offsets, the pixel
-    extents and the packed OAM attribute word.
+    rewritten to match the animation array actually written. The first frame's
+    piece fixes the authored geometry, so every property that could silently
+    change the actor's drawing is read here instead of hardcoded: the placement
+    offsets, the pixel extents and the packed OAM attribute word. Its frame rect
+    is checked to be that same piece, and :func:`measure_donor_envelope` states
+    the one rect the donor proves.
     """
     donor_offset = _donor_offset(identity, entries, layout, len(image))
     header = image[donor_offset:donor_offset + STRUCTURE_HEADER_SIZE]
@@ -926,12 +968,21 @@ def _donor(image: bytes, identity: NewSpriteIdentity, entries, layout):
             f"the donor structure at 0x{donor_offset:06X} declares {slots} animation "
             f"slots, outside 1..{MAX_ANIMATION_SLOTS}")
     table = donor_offset + STRUCTURE_ANIMATION_TABLE_OFFSET
+
+    def frame_at(pointer: int, what: str):
+        return sg.decode_frame(image, _file_offset(pointer, len(image), what))
+
+    try:
+        envelope = measure_donor_envelope(image, donor_offset, frame_at)
+    except sg.SpriteFormatError as exc:
+        raise SpriteIdentityError(
+            f"the donor structure at 0x{donor_offset:06X} does not decode: {exc}"
+        ) from exc
     pointer = int.from_bytes(image[table:table + REFERENCE_WIDTH], "little")
     try:
         animation = sg.decode_animation(
             image, _file_offset(pointer, len(image), "the donor animation"))
-        frame = sg.decode_frame(image, _file_offset(
-            animation.pointer_for(0, 0), len(image), "the donor frame"))
+        frame = frame_at(animation.pointer_for(0, 0), "the donor frame")
     except sg.SpriteFormatError as exc:
         raise SpriteIdentityError(
             f"the donor structure at 0x{donor_offset:06X} does not decode: {exc}"
@@ -942,6 +993,12 @@ def _donor(image: bytes, identity: NewSpriteIdentity, entries, layout):
             "path authors one piece per frame and will not invent a multi-piece "
             "layout out of the donor's first piece")
     piece = frame.pieces[0]
+    if (piece.dim_0, piece.dim_1) != (frame.width, frame.height):
+        raise SpriteIdentityError(
+            f"the donor's first frame declares a {frame.width}x{frame.height} frame "
+            f"box but its own piece is {piece.dim_0}x{piece.dim_1}; this write path "
+            "copies the frame box, so a donor whose record disagrees with itself "
+            "would author geometry the donor does not draw")
     if not piece.colour_256:
         raise SpriteIdentityError(
             "the donor's first frame is a 4bpp piece, and the authored containers are "
@@ -956,7 +1013,65 @@ def _donor(image: bytes, identity: NewSpriteIdentity, entries, layout):
             "the donor's first piece carries a flip bit, so every authored frame "
             "would mirror the sheet the author drew; choose a donor whose first piece "
             "is unflipped, or draw the mirrored facing in the sheet")
-    return header, piece
+    return header, piece, envelope
+
+
+def measure_donor_envelope(image: bytes, structure_offset: int,
+                           frame_at: Callable[[int, str], object]) -> DonorEnvelope:
+    """The one frame rect a donor's own animation records are seen to draw.
+
+    Every animation the structure's count byte names is walked, and every frame
+    each one repeats a pointer to is decoded, because a donor is a *population* of
+    frames rather than its first one: 212 of the canonical 297 structures hold
+    more than one frame rect, so a first-frame-only reading would measure a shape
+    the donor's own animation does not always draw. The one rect every decoded
+    frame agrees on is that shape - what the donor's animation already composes,
+    and therefore the only geometry this write path can call proven.
+
+    A donor whose decoded frames disagree about their rect has no single proven
+    shape, and is refused rather than resolved by preference: the authored record
+    copies one donor frame's geometry verbatim, so a shape chosen from one frame
+    while another frame is what a later actor draws would be a guess. The
+    ``pointer == 0`` slots the canonical sparse animation arrays contain are
+    skipped, as the engine's own accessors only ever read a slot the count byte
+    and a caller's animation index select.
+
+    ``frame_at`` decodes one frame by ROM pointer, so the one image-offset
+    conversion lives in the caller.
+    """
+    table = structure_offset + STRUCTURE_ANIMATION_TABLE_OFFSET
+    slots = image[structure_offset + STRUCTURE_COUNT_OFFSET]
+    rects: dict[tuple[int, int], int] = {}
+    for slot in range(slots):
+        pointer = int.from_bytes(image[table + 4 * slot:table + 4 * slot + 4], "little")
+        if pointer == 0:
+            continue
+        try:
+            animation = sg.decode_animation(
+                image, _file_offset(pointer, len(image), f"the donor animation {slot}"))
+            frames = [frame_at(animation.pointer_for(index, direction),
+                               f"the donor frame {slot}.{index}")
+                      for index in range(animation.frame_count)
+                      for direction in range(DIRECTION_COUNT)]
+        except sg.SpriteFormatError as exc:
+            raise SpriteIdentityError(
+                f"the donor structure at 0x{structure_offset:06X} does not decode: {exc}"
+            ) from exc
+        for frame in frames:
+            rect = (frame.width, frame.height)
+            rects[rect] = max(rects.get(rect, 0), frame.piece_count)
+    if not rects:
+        raise SpriteIdentityError(
+            f"the donor structure at 0x{structure_offset:06X} names no decodable "
+            "frame, so it proves no composition shape")
+    if len(rects) > 1:
+        shapes = ", ".join(f"{width}x{height}" for width, height in sorted(rects))
+        raise SpriteIdentityError(
+            f"the donor structure at 0x{structure_offset:06X} draws frames of "
+            f"several shapes ({shapes}), so it proves no single composition shape; "
+            "choose a donor whose own frames all occupy one rect")
+    (width, height), piece_count = next(iter(rects.items()))
+    return DonorEnvelope(width=width, height=height, piece_count=piece_count)
 
 
 def _donor_offset(identity: NewSpriteIdentity, entries, layout, image_size: int) -> int:
@@ -970,16 +1085,26 @@ def _donor_offset(identity: NewSpriteIdentity, entries, layout, image_size: int)
     return _file_offset(entries[slot], image_size, "the donor structure")
 
 
-def _require_cell_geometry(animation: AnimationSource, piece) -> None:
-    """The sheet must be authored at exactly the donor's own piece extents."""
+def _require_cell_geometry(animation: AnimationSource, envelope: DonorEnvelope) -> None:
+    """The sheet must be authored at exactly the donor's proven frame rect.
+
+    Exact equality is the guard, not a convenience. A larger cell is a
+    composition budget this write path cannot prove - the engine sizes a
+    per-actor buffer from the frame rect and the rule that sizes it is unsolved -
+    and a smaller one has no measured placement, because the authored record
+    copies the donor's own anchor instead of centring anything. A cell that is
+    both tile-whole and equal to the proven rect is one the donor already draws.
+    """
     sheet = animation.sheet
-    if (sheet.cell_width, sheet.cell_height) != (piece.dim_0, piece.dim_1):
+    if (sheet.cell_width, sheet.cell_height) != (envelope.width, envelope.height):
         raise SpriteIdentityError(
             f"animation {animation.name!r} is authored at "
-            f"{sheet.cell_width}x{sheet.cell_height}, but the donor's own frame is "
-            f"{piece.dim_0}x{piece.dim_1}; every authored frame copies a frame the "
-            "donor already draws, and a different size would change a per-actor "
-            "composition budget this write path does not model")
+            f"{sheet.cell_width}x{sheet.cell_height}, but the donor's own frames "
+            f"prove exactly one composition shape, {envelope}, drawn as "
+            f"{envelope.piece_count} piece(s) ({envelope.pixels} bytes); this write "
+            "path copies the donor's proven geometry verbatim, and neither a larger "
+            "frame (an unproven composition budget) nor a smaller one (an unmeasured "
+            "placement) is authored here")
 
 
 # --- colour ------------------------------------------------------------------

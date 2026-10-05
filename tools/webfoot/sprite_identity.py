@@ -977,12 +977,8 @@ def _donor(image: bytes, identity: NewSpriteIdentity, entries, layout):
     def frame_at(pointer: int, what: str):
         return sg.decode_frame(image, _file_offset(pointer, len(image), what))
 
-    try:
-        envelope = measure_donor_envelope(image, donor_offset, frame_at)
-    except sg.SpriteFormatError as exc:
-        raise SpriteIdentityError(
-            f"the donor structure at 0x{donor_offset:06X} does not decode: {exc}"
-        ) from exc
+    # This function states its own refusals in this module's terms; nothing to catch.
+    envelope = measure_donor_envelope(image, donor_offset, frame_at)
     pointer = int.from_bytes(image[table:table + REFERENCE_WIDTH], "little")
     try:
         animation = sg.decode_animation(

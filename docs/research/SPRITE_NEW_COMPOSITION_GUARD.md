@@ -53,10 +53,11 @@ donor's proven composition shape, measured from the donor's own decoded records:
      `w * h` and the largest piece count among the frames carrying it.
 2. **The donor's first frame must be self-consistent**: its frame box
    `(width, height)` and anchor `(min_x, min_y)` must equal its single piece's
-   stored extents `(dim_0, dim_1)` and placement `(x, y)`. That is the decoder's
-   structural check, not an assumption; `sprite_graphics` records the frame box
-   and does not require it to equal the pieces' union, so a donor whose record
-   disagrees with itself is refused here rather than copied.
+   stored extents `(dim_0, dim_1)` and placement `(x, y)`. The decoder does **not**
+   require this - `sprite_graphics` records the frame box and states that it need
+   not equal the pieces' union - so this is the write path's own structural check,
+   and a donor whose record disagrees with itself is refused here rather than
+   copied.
 3. **The anchor is part of the proven shape.** A donor whose frames share the rect
    but place it at different anchors proves no single placement, and is refused
    for that reason before the cell is considered; 31 of the canonical structures

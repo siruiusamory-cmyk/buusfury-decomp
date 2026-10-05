@@ -16,18 +16,23 @@ required every authored sheet cell to equal that piece's stored extents. The
 refusal message claimed the reason was "a per-actor composition budget this write
 path does not model".
 
-Two things were wrong with that as a *guard*:
+Three things were wrong with that as a *guard*:
 
 1. it was one frame, not the donor. A donor is a population of frames: 136 of the
-   297 canonical structures draw frames that do not all occupy one rect, and in
-   those the first frame is not reliably the largest. The old check would accept a
-   size measured from one frame of a donor whose own animation draws two
-   different rects.
+   297 canonical structures draw frames that do not all occupy one rect. The old
+   check read the first frame alone, so a donor whose later animations draw a
+   different rect was still admitted on the strength of a frame that does not
+   describe it.
 2. the refusal stated a budget veto. Nothing here has measured the per-actor
    composition budget. CRASH-ROOT-CAUSE-001 measured a `0x200` budget on one
    actor and could not locate the allocation site, so the rule that sizes it is
    still **unresolved**. Saying "budget" claimed a measurement that does not
    exist.
+3. it compared a size and nothing else. The donor's frame record also carries the
+   anchor the rect is drawn at, and 31 canonical structures draw one rect at
+   several anchors - sprite 94 to sprite 99 place `32x32` at `(-8, -26)`,
+   `(-8, -25)` and `(-8, -24)`. Copying frame 0's anchor there would be a
+   placement nothing measured, which is the same objection as a smaller cell.
 
 ## 2. The guard rule
 
@@ -46,12 +51,17 @@ donor's proven composition shape, measured from the donor's own decoded records:
    * exactly one rect -> that rect is the envelope, with its pixel count
      `w * h` and the largest piece count among the frames carrying it.
 2. **The donor's first frame must be self-consistent**: its frame box
-   `(width, height)` must equal its single piece's stored extents
-   `(dim_0, dim_1)`. That is the decoder's structural check, not an assumption;
-   `sprite_graphics` records the frame box and does not require it to equal the
-   pieces' union, so a donor whose record disagrees with itself is refused here
-   rather than copied.
-3. **`_require_cell_geometry`** then requires every authored sheet cell to be
+   `(width, height)` and anchor `(min_x, min_y)` must equal its single piece's
+   stored extents `(dim_0, dim_1)` and placement `(x, y)`. That is the decoder's
+   structural check, not an assumption; `sprite_graphics` records the frame box
+   and does not require it to equal the pieces' union, so a donor whose record
+   disagrees with itself is refused here rather than copied.
+3. **The anchor is part of the proven shape.** A donor whose frames share the rect
+   but place it at different anchors proves no single placement, and is refused
+   for that reason before the cell is considered; 22 of the canonical structures
+   with one rect are refused this way. Every authored frame takes the envelope's
+   anchor.
+4. **`_require_cell_geometry`** then requires every authored sheet cell to be
    exactly the envelope: `(cell_width, cell_height) == (envelope.width,
    envelope.height)`. A larger cell is a composition shape this path cannot prove;
    a smaller cell has no measured placement, because the authored record copies
@@ -59,32 +69,46 @@ donor's proven composition shape, measured from the donor's own decoded records:
    fall out of the same decoded geometry) instead of centring anything.
 
 The guard decides geometry only. It never authors a placement, an anchor or an
-allocation, and `_encode_frame` is untouched, so for every input the old check
-accepted the emitted bytes are unchanged.
+allocation, and `_encode_frame` is untouched, so for every input *both* checks
+accept - the old piece-equality check and the new envelope check - the emitted
+bytes are unchanged. The new check accepts a subset of the old one's inputs: a
+donor with several frame rects, a donor with one rect at several anchors and a
+donor whose record contradicts itself were all accepted before and are refused
+now.
 
 ## 3. The measured envelope
 
-Measured on the canonical Buu's Fury image (sha256 `940ad5f0...`) by
-`build/census_composition_guard.py`, which calls the **shipped**
-`measure_donor_envelope` once per registry entry with the same frame decoder
-`_donor` hands it, so these are the guard's own decisions and not a second
-reading of the same records:
+Local observation, 2026-10-05. Command (a local working probe that is ignored by
+git, not part of the module or of any test):
+
+```sh
+python build/census_composition_guard.py
+```
+
+It calls the **shipped** `measure_donor_envelope` once per registry entry with the
+same frame decoder `_donor` hands it, so these are the guard's own decisions and
+not a second reading of the same records. The image is the canonical Buu's Fury
+ROM, sha256
+`940ad5f01db4465b8877dfe739510cbf34f4ea3d390f3df13519808bc36f059e`, 8,388,608
+bytes, whose hash is asserted by every ROM-gated test and by the probe itself.
 
 * **Cui's donor is sprite id 10** (`sprite_identity.SPRITE_ID_FLOOR` + entry 0,
   structure at file `0x6A89D0`, two animation slots, four frames): every frame is
   `32x32` at anchor `(-8, -24)`, one piece, packed OAM attributes `0x80002000`
   (8bpp, square, size 2, no flip), container kind 1.
-  **Envelope: 32x32, 1024 bytes, 1 piece.** The authored cell is 32x32
-  (`CELL_SIDE` in `tests/integration/test_sprite_new_project_rom.py`), so the Cui
-  project sits exactly on the envelope.
-* Corpus census over all 297 registry entries: **161 admit exactly one rect, 136
-  are refused because their own frames disagree**, and the admitted 161 split:
+  **Envelope: 32x32, 1024 bytes, anchor (-8, -24), 1 piece.** The authored cell is
+  32x32 (`CELL_SIDE` in `tests/integration/test_sprite_new_project_rom.py`), so
+  the Cui project sits exactly on the envelope.
+* Corpus census over all 297 registry entries: **130 admit exactly one rect at one
+  anchor, 167 are refused** - 136 because their own frames disagree about the
+  rect, 31 because their frames share a rect but place it at more than one anchor.
+  The admitted 130 split:
 
   | envelope | pieces | structures |
   |---|---|---|
-  | 32x32 | 1 | 70 |
-  | 16x32 | 1 | 53 |
-  | 64x64 | 1 | 21 |
+  | 32x32 | 1 | 50 |
+  | 16x32 | 1 | 48 |
+  | 64x64 | 1 | 15 |
   | 16x16 | 1 | 7 |
   | 8x8 | 1 | 5 |
   | 32x16 | 1 | 2 |
@@ -94,25 +118,25 @@ reading of the same records:
 
   Two admitted structures - sprite 146 (`96x96`, four pieces) and sprite 163
   (`96x64`, two pieces) - have an envelope whose frames hold more than one piece,
-  which is what `DonorEnvelope.piece_count` records. The multi-piece *first
-  frame* refusal still fires first for them, because `_donor` decodes the first
-  frame after the envelope measurement; a donor refused for "several shapes" is
-  refused before either, so the refusal a reader sees for a mixed donor is the
-  shape one.
-* Examples of the 136 refusals: sprite 23 (slots 0, 1 and 9 draw `16x32` at
-  anchor `(0, -24)` while slot 4 draws `32x32` at `(-8, -24)`), sprite 29
-  (`16x16` and `8x16`), sprite 42 (`32x64` and `64x64`), sprite 47 (`32x48` and
-  `16x64`). 243 of the 297 animation arrays carry at least one null pointer in a
-  slot; the canonical total is 4,070 slots, and a null slot's word is zero, which
-  is not an address in this image, so it names no record to decode.
+  which is what `DonorEnvelope.piece_count` records. It is the largest piece count
+  among the frames sharing the rect, so the refusal message's "drawn as N pieces"
+  names the worst case rather than the single piece the authored record holds.
+* Examples of the refusals: sprite 23 (slots 0, 1 and 9 draw `16x32` at anchor
+  `(0, -24)` while slot 4 draws `32x32` at `(-8, -24)`), sprite 29 (`16x16` and
+  `8x16`), sprite 42 (`32x64` and `64x64`), sprite 47 (`32x48` and `16x64`);
+  sprites 94-99 draw one `32x32` rect at `(-8, -26)`, `(-8, -25)` and `(-8, -24)`,
+  which is the anchor refusal. 243 of the 297 animation arrays carry at least one
+  null pointer in a slot; the canonical total is 4,070 slots, and a null slot's
+  word is zero, which is not an address in this image, so it names no record to
+  decode.
 
 ## 4. Cui result
 
-Unchanged in every byte. The Cui donor's own frames are all exactly `32x32`, its
-first frame is a single 32x32 piece, and the private sheets are 512x32 and
-1024x32 pixel rows of 32-pixel cells, so the cell geometry already equalled the
-envelope and the guard admits the project as before. The project route's parity
-assertion still holds: the build emits
+Unchanged in every byte. The Cui donor's own frames are all exactly `32x32` at one
+anchor `(-8, -24)`, its first frame is a single 32x32 piece, and the private sheets
+are 512x32 and 1024x32 pixel rows of 32-pixel cells, so the cell geometry already
+equalled the envelope and the guard admits the project as before. The project
+route's parity assertion still holds: the build emits
 `033e04ba27ac8fcafe99df1f4f6cf2aa6f9a09445eee1ad15b707d2ff694ff57`, the image
 SPRITE-NEW-ATTACHMENT-RUNTIME-PARITY-001 composed and ran.
 
@@ -120,17 +144,19 @@ SPRITE-NEW-ATTACHMENT-RUNTIME-PARITY-001 composed and ran.
 
 | case | refusal |
 |---|---|
-| authored cell larger than the envelope | `animation '...' is authored at AxB, but the donor's own frames prove exactly one composition shape, WxH, drawn as N piece(s) (B bytes); this write path copies the donor's proven geometry verbatim, and neither a larger frame (an unproven composition shape) nor a smaller one (an unmeasured placement) is authored here` |
+| authored cell larger than the envelope | `animation '...' is authored at AxB, but the donor's own frames prove exactly one composition shape, WxH at anchor (X, Y), drawn as N piece(s) (B bytes); this write path copies the donor's proven geometry verbatim, and neither a larger frame (an unproven composition shape) nor a smaller one (an unmeasured placement) is authored here` |
 | authored cell smaller than the envelope | the same refusal: the envelope is one rect and the record copies its anchor |
 | donor frames disagree about their rect | `the donor structure at 0x...... draws frames of several shapes (16x32, 32x32), so it proves no single composition shape; choose a donor whose own frames all occupy one rect` |
-| donor frame box contradicts its own single piece | `the donor's first frame declares a AxB frame box but its own piece is CxD; this write path copies the frame box, so a donor whose record disagrees with itself would author geometry the donor does not draw` |
+| donor frames share a rect but not an anchor | `the donor structure at 0x...... draws its 32x32 frames at several anchors ((-8, -26), (-8, -25), (-8, -24)), so it proves no single placement; choose a donor whose frames all sit at one anchor` |
+| donor frame box or anchor contradicts its own single piece | `the donor's first frame declares a AxB frame box at (X, Y) but its own piece is CxD at (x, y); this write path copies the frame record, so a donor whose record disagrees with itself would author geometry the donor does not draw` |
+| every animation slot null | `the donor structure at 0x...... names no decodable frame, so it proves no composition shape` |
 | multi-piece donor, 4bpp donor, flipped donor, undecodable donor | unchanged from SPRITE-NEW-AUTHORING-CORE-001 |
 
 ## 6. Focused tests
 
 | file | what it establishes |
 |---|---|
-| `tests/unit/test_sprite_identity_authoring.py` (7 new or renamed cases) | a larger cell is refused; a smaller cell is refused; a donor with two frame rects is refused; a donor whose box contradicts its own piece is refused; the measured envelope is the rect the emitted records carry; a valid input is still deterministic and still carries the donor's own record geometry |
+| `tests/unit/test_sprite_identity_authoring.py` (10 new or renamed cases) | a larger cell is refused; a smaller cell is refused; a donor with two frame rects is refused; a donor with one rect at two anchors is refused; a donor whose box contradicts its own piece is refused; a null animation slot is skipped; a donor whose every slot is null is refused; the measured envelope is the rect the emitted records carry; a valid input is still deterministic and still carries the donor's own record geometry |
 | `tests/integration/test_sprite_identity_rom.py` (3 new cases) | on the canonical image: the donor's measured envelope is `32x32`, 1 piece, 1024 bytes and is what the emitted records carry; a doubled cell and a halved cell are both refused |
 | `tests/integration/test_sprite_new_project_rom.py` (unchanged) | the Cui project still emits the recorded runtime image byte for byte |
 

@@ -221,14 +221,14 @@ wander_box = [192, 544, 272, 624]
   cloned and its first frame supplies the geometry every authored frame copies -
   placement offsets, pixel extents and packed OAM attributes. Before that, every
   frame of every animation the donor structure names is decoded to measure the
-  one frame rect the donor proves: `width x height`, its pixel count and its piece
-  count (`sprite_identity.measure_donor_envelope`). A donor whose own frames
-  occupy more than one rect proves no single shape and is refused, and every sheet
-  cell must be exactly the measured rect. A larger cell is a per-actor
-  composition budget this build cannot prove and a smaller one would need a
-  placement nothing has measured, since the authored frame copies the donor's own
-  anchor; both are refused. The docstring of
-  `sprite_identity.plan_new_sprite_identity` and
+  one frame rect the donor proves: `width x height`, its anchor, its pixel count
+  and its piece count (`sprite_identity.measure_donor_envelope`). A donor whose
+  own frames occupy more than one rect, or one rect at more than one anchor,
+  proves no single shape or placement and is refused, and every sheet cell must be
+  exactly the measured rect. A larger cell is a composition shape this build
+  cannot prove and a smaller one would need a placement nothing has measured,
+  since the authored frame copies the donor's own anchor; both are refused. The
+  docstring of `sprite_identity.plan_new_sprite_identity` and
   `docs/research/SPRITE_NEW_COMPOSITION_GUARD.md` carry the measurement.
 - **Animation slots are ordered by name.** A TOML table has no order to inherit,
   and the engine reads an animation by its slot index, so the order is a stated

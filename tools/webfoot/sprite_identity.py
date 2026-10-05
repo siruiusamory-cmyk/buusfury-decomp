@@ -523,9 +523,12 @@ class DonorEnvelope:
 
     ``width`` and ``height`` are pixel extents, not a tile count, and they are the
     frame record's own bounding box: the rect the donor's animation declares for
-    its frames. ``piece_count`` is how many pieces the frames carrying that rect
-    hold, published so a caller can see that the proven shape was reached by more
-    than one piece rather than assume it.
+    its frames. ``anchor`` is that box's own signed minimum corner ``(min_x,
+    min_y)``, which is what places the rect in the actor's space; a donor whose
+    frames share the rect but not the anchor has no measured placement either.
+    ``piece_count`` is how many pieces the frames carrying that rect hold,
+    published so a caller can see that the proven shape was reached by more than
+    one piece rather than assume it.
 
     The name is deliberately not "budget". What is proven here is the rectangle
     the donor already draws; *how* the engine sizes the per-actor composition
@@ -535,6 +538,7 @@ class DonorEnvelope:
 
     width: int
     height: int
+    anchor: tuple[int, int]
     piece_count: int
 
     @property
@@ -994,11 +998,13 @@ def _donor(image: bytes, identity: NewSpriteIdentity, entries, layout):
             "path authors one piece per frame and will not invent a multi-piece "
             "layout out of the donor's first piece")
     piece = frame.pieces[0]
-    if (piece.dim_0, piece.dim_1) != (frame.width, frame.height):
+    if ((piece.dim_0, piece.dim_1) != (frame.width, frame.height)
+            or (piece.x, piece.y) != (frame.min_x, frame.min_y)):
         raise SpriteIdentityError(
             f"the donor's first frame declares a {frame.width}x{frame.height} frame "
-            f"box but its own piece is {piece.dim_0}x{piece.dim_1}; this write path "
-            "copies the frame box, so a donor whose record disagrees with itself "
+            f"box at ({frame.min_x}, {frame.min_y}) but its own piece is "
+            f"{piece.dim_0}x{piece.dim_1} at ({piece.x}, {piece.y}); this write path "
+            "copies the frame record, so a donor whose record disagrees with itself "
             "would author geometry the donor does not draw")
     if not piece.colour_256:
         raise SpriteIdentityError(
@@ -1044,6 +1050,7 @@ def measure_donor_envelope(image: bytes, structure_offset: int,
     table = structure_offset + STRUCTURE_ANIMATION_TABLE_OFFSET
     slots = image[structure_offset + STRUCTURE_COUNT_OFFSET]
     rects: dict[tuple[int, int], int] = {}
+    anchors: dict[tuple[int, int], set[tuple[int, int]]] = {}
     for slot in range(slots):
         pointer = int.from_bytes(image[table + 4 * slot:table + 4 * slot + 4], "little")
         if pointer == 0:
@@ -1062,6 +1069,7 @@ def measure_donor_envelope(image: bytes, structure_offset: int,
         for frame in frames:
             rect = (frame.width, frame.height)
             rects[rect] = max(rects.get(rect, 0), frame.piece_count)
+            anchors.setdefault(rect, set()).add((frame.min_x, frame.min_y))
     if not rects:
         raise SpriteIdentityError(
             f"the donor structure at 0x{structure_offset:06X} names no decodable "
@@ -1073,7 +1081,15 @@ def measure_donor_envelope(image: bytes, structure_offset: int,
             f"several shapes ({shapes}), so it proves no single composition shape; "
             "choose a donor whose own frames all occupy one rect")
     (width, height), piece_count = next(iter(rects.items()))
-    return DonorEnvelope(width=width, height=height, piece_count=piece_count)
+    placed = anchors[(width, height)]
+    if len(placed) > 1:
+        corners = ", ".join(f"({x}, {y})" for x, y in sorted(placed))
+        raise SpriteIdentityError(
+            f"the donor structure at 0x{structure_offset:06X} draws its {width}x"
+            f"{height} frames at several anchors ({corners}), so it proves no single "
+            "placement; choose a donor whose frames all sit at one anchor")
+    return DonorEnvelope(width=width, height=height, anchor=next(iter(placed)),
+                         piece_count=piece_count)
 
 
 def _donor_offset(identity: NewSpriteIdentity, entries, layout, image_size: int) -> int:
@@ -1102,8 +1118,9 @@ def _require_cell_geometry(animation: AnimationSource, envelope: DonorEnvelope) 
         raise SpriteIdentityError(
             f"animation {animation.name!r} is authored at "
             f"{sheet.cell_width}x{sheet.cell_height}, but the donor's own frames "
-            f"prove exactly one composition shape, {envelope}, drawn as "
-            f"{envelope.piece_count} piece(s) ({envelope.pixels} bytes); this write "
+            f"prove exactly one composition shape, {envelope} at anchor "
+            f"{envelope.anchor}, drawn as {envelope.piece_count} piece(s) "
+            f"({envelope.pixels} bytes); this write "
             "path copies the donor's proven geometry verbatim, and neither a larger "
             "frame (an unproven composition shape) nor a smaller one (an unmeasured "
             "placement) is authored here")

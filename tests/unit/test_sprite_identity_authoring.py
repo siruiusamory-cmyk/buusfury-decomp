@@ -917,6 +917,44 @@ def test_a_donor_whose_frame_box_contradicts_its_own_piece_is_refused():
         _plan(_rebuilt_world(world, bytes(image)), _identity(_animation()))
 
 
+def test_a_donor_whose_frames_share_a_rect_but_not_an_anchor_is_refused():
+    """One rect at two anchors is not one proven placement either."""
+    world = _world()
+    image = bytearray(world[0])
+    struct.pack_into("<I", image, DONOR_ANIMATION, 2)
+    struct.pack_into(f"<{2 * sg.DIRECTION_COUNT}I", image, DONOR_ANIMATION + 4,
+                     *([ROM_BASE + DONOR_FRAME] * sg.DIRECTION_COUNT
+                       + [ROM_BASE + DONOR_FRAME_2] * sg.DIRECTION_COUNT))
+    struct.pack_into("<I", image, DONOR_FRAME_2, 1)
+    struct.pack_into("<bbBB", image, DONOR_FRAME_2 + 4, PIECE_X, PIECE_Y - 1,
+                     CELL_SIDE, CELL_SIDE)
+    struct.pack_into("<bbBB", image, DONOR_FRAME_2 + 12, PIECE_X, PIECE_Y - 1,
+                     CELL_SIDE, CELL_SIDE)
+    with pytest.raises(sid.SpriteIdentityError, match="several anchors"):
+        _plan(_rebuilt_world(world, bytes(image)), _identity(_animation()))
+
+
+def test_a_donor_whose_animation_slot_is_null_is_skipped():
+    """A null animation word is skipped rather than decoded or refused."""
+    world = _world()
+    image = bytearray(world[0])
+    image[DONOR_STRUCTURE + sid.STRUCTURE_COUNT_OFFSET] = 2
+    struct.pack_into("<I", image, DONOR_STRUCTURE + sid.STRUCTURE_ANIMATION_TABLE_OFFSET
+                     + 4, 0)
+    result = _plan(_rebuilt_world(world, bytes(image)), _identity(_animation()))
+    assert result.identity.sprite_id == NEW_SPRITE_ID
+
+
+def test_a_donor_that_names_no_decodable_frame_is_refused():
+    """Every animation slot null: nothing is proven about the donor's frames."""
+    world = _world()
+    image = bytearray(world[0])
+    struct.pack_into("<I", image, DONOR_STRUCTURE + sid.STRUCTURE_ANIMATION_TABLE_OFFSET,
+                     0)
+    with pytest.raises(sid.SpriteIdentityError, match="names no decodable frame"):
+        _plan(_rebuilt_world(world, bytes(image)), _identity(_animation()))
+
+
 def test_an_unrelocatable_registry_is_refused():
     world = _world(relocatable=False)
     with pytest.raises(sid.SpriteIdentityError, match="not published relocatable"):

@@ -390,6 +390,84 @@ def test_the_authored_structure_copies_the_donor_header_verbatim(
     assert int.from_bytes(frame[16:20], "little") == slots[0][1]
 
 
+# --- the composition guard ---------------------------------------------------
+
+
+def test_the_donors_proven_envelope_is_the_rect_every_authored_frame_uses(
+        canonical_bytes, corpus):
+    """SPRITE-NEW-COMPOSITION-GUARD-001: measured, then stated in the record.
+
+    The donor's envelope is read from its own animation records - every frame of
+    every animation - and the authored identity's frame records are then checked
+    to carry exactly that rect. This is the claim the guard enforces, and the
+    emitted bytes are where it has to be true.
+    """
+    palette = _palette(canonical_bytes, corpus)
+    structure = int.from_bytes(
+        canonical_bytes[corpus.table_offset:corpus.table_offset + 4], "little") \
+        - ROM_BASE
+    envelope = sid.measure_donor_envelope(
+        canonical_bytes, structure, _frame_decoder(canonical_bytes))
+    piece = _donor_geometry(canonical_bytes, corpus.table_offset)
+    assert (envelope.width, envelope.height) == (piece.dim_0, piece.dim_1)
+    assert (envelope.width, envelope.height) == (32, 32)
+    assert envelope.piece_count == 1 and envelope.pixels == 1024
+
+    result = _plan(canonical_bytes, corpus, _identity(
+        sid.AnimationSource(name="stand",
+                            sheet=_sheet(canonical_bytes, palette, corpus))))
+    output = _apply(canonical_bytes, corpus, result)
+    for animation in result.identity.animations:
+        for frame in animation.frames:
+            record = frame.record_range.start.value
+            assert output[record + 6:record + 8] == bytes([envelope.width,
+                                                           envelope.height])
+            assert output[record + 10:record + 12] == bytes([envelope.width,
+                                                             envelope.height])
+
+
+def test_a_frame_larger_than_the_donors_proven_envelope_is_refused(
+        canonical_bytes, corpus):
+    """The unproven case stays refused: one size above the donor, nothing written."""
+    palette = _palette(canonical_bytes, corpus)
+    piece = _donor_geometry(canonical_bytes, corpus.table_offset)
+    side = piece.dim_0 * 2
+    colour = sg.expand_bgr555(palette.raw[1])
+    sheet = sid.SourceSheet(
+        frames_per_direction=1, cell_width=side, cell_height=side,
+        pixels=bytes(colour) * (side * side * sg.DIRECTION_COUNT))
+    with pytest.raises(sid.SpriteIdentityError, match="one composition shape"):
+        _plan(canonical_bytes, corpus, _identity(
+            sid.AnimationSource(name="stand", sheet=sheet)))
+
+
+def test_a_frame_smaller_than_the_donors_proven_envelope_is_refused(
+        canonical_bytes, corpus):
+    """A smaller frame would need a placement this path has not measured."""
+    palette = _palette(canonical_bytes, corpus)
+    piece = _donor_geometry(canonical_bytes, corpus.table_offset)
+    side = piece.dim_0 // 2
+    colour = sg.expand_bgr555(palette.raw[1])
+    sheet = sid.SourceSheet(
+        frames_per_direction=1, cell_width=side, cell_height=side,
+        pixels=bytes(colour) * (side * side * sg.DIRECTION_COUNT))
+    with pytest.raises(sid.SpriteIdentityError, match="one composition shape"):
+        _plan(canonical_bytes, corpus, _identity(
+            sid.AnimationSource(name="stand", sheet=sheet)))
+
+
+def _frame_decoder(image: bytes):
+    """A frame decoder by ROM pointer, as the envelope measurement is handed one.
+
+    This is the raw form - the pointer's window base subtracted - so it is only
+    equivalent to the planner's own decoder for pointers inside the image, which
+    is all this test feeds it.
+    """
+    def frame_at(pointer: int, _what: str):
+        return sg.decode_frame(image, pointer - ROM_BASE)
+    return frame_at
+
+
 # --- colour ------------------------------------------------------------------
 
 

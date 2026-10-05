@@ -169,14 +169,14 @@ ROM-gated tests below, and re-run at the frozen candidate.
 
 | case | refusal |
 |---|---|
-| authored cell larger than the envelope | `animation '...' is authored at AxB, but the donor's own frames prove exactly one composition shape, WxH at anchor (X, Y), drawn as N piece(s) (B bytes); this write path copies the donor's proven geometry verbatim, and neither a larger frame (an unproven composition shape) nor a smaller one (an unmeasured placement) is authored here` |
+| authored cell larger than the envelope | `animation '...' is authored at AxB, but the donor's own frames prove exactly one composition shape, WxH at anchor (X, Y), drawn as N piece(s) (P pixels); this write path copies the donor's proven geometry verbatim, and neither a larger frame (an unproven composition shape) nor a smaller one (an unmeasured placement) is authored here` |
 | authored cell smaller than the envelope | the same refusal: the envelope is one rect and the record copies its anchor |
 | donor frames disagree about their rect | `the donor structure at 0x...... draws frames of several shapes (16x32, 32x32), so it proves no single composition shape; choose a donor whose own frames all occupy one rect` |
 | donor frames share a rect but not an anchor | `the donor structure at 0x...... draws its 32x32 frames at several anchors ((-8, -26), (-8, -25), (-8, -24)), so it proves no single placement; choose a donor whose frames all sit at one anchor` |
 | donor frame box or anchor contradicts its own single piece | `the donor's first frame declares a AxB frame box at (X, Y) but its own piece is CxD at (x, y); this write path copies the frame record, so a donor whose record disagrees with itself would author geometry the donor does not draw` |
 | every animation slot null | `the donor structure at 0x...... names no decodable frame, so it proves no composition shape` |
 | slot 0 null but a later slot valid | refused safely, with the `_file_offset` message that 0x00000000 is not a file offset in this image: `_donor` decodes slot 0 for the geometry it copies, while the envelope measurement skips null slots |
-| multi-piece donor, 4bpp donor, flipped donor, undecodable donor | unchanged from SPRITE-NEW-AUTHORING-CORE-001 |
+| multi-piece donor, 4bpp donor, flipped donor, undecodable donor | the same refusals as SPRITE-NEW-AUTHORING-CORE-001, raised after the geometry checks: a multi-piece, 4bpp or flipped donor whose frames also disagree about their rect or about its anchor is refused for that reason first |
 
 ## 6. Focused tests
 

@@ -1106,11 +1106,12 @@ def _require_cell_geometry(animation: AnimationSource, envelope: DonorEnvelope) 
     """The sheet must be authored at exactly the donor's proven frame rect.
 
     Exact equality is the guard, not a convenience. A larger cell is a
-    composition shape this write path cannot prove - the engine does size a
-    per-actor buffer from the frame it composes, and the rule that sizes it is
-    unresolved - and a smaller one has no measured placement, because the authored
-    record copies the donor's own anchor instead of centring anything. A cell that
-    is both tile-whole and equal to the proven rect is one the donor already draws.
+    composition shape this write path cannot prove: the compositor's per-actor
+    buffer is sized by a rule nothing here has resolved, so a frame bigger than
+    the donor's own is an unmeasured case. A smaller one has no measured
+    placement either, because the authored record copies the donor's own anchor
+    instead of centring anything. A cell that is both tile-whole and equal to the
+    proven rect is one the donor already draws.
     """
     sheet = animation.sheet
     if (sheet.cell_width, sheet.cell_height) != (envelope.width, envelope.height):
@@ -1119,7 +1120,7 @@ def _require_cell_geometry(animation: AnimationSource, envelope: DonorEnvelope) 
             f"{sheet.cell_width}x{sheet.cell_height}, but the donor's own frames "
             f"prove exactly one composition shape, {envelope} at anchor "
             f"{envelope.anchor}, drawn as {envelope.piece_count} piece(s) "
-            f"({envelope.pixels} bytes); this write "
+            f"({envelope.pixels} pixels); this write "
             "path copies the donor's proven geometry verbatim, and neither a larger "
             "frame (an unproven composition shape) nor a smaller one (an unmeasured "
             "placement) is authored here")

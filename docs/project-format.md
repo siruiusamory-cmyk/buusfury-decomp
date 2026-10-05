@@ -216,12 +216,20 @@ wander_box = [192, 544, 272, 624]
   the id its appended registry entry yields, and the planner accepts exactly that
   number; stating it is what keeps a build from silently attaching an actor to an
   id this build did not author.
-- **`donor_sprite_id` names an identity the image already contains.** Its
-  character-structure header is cloned and its first frame supplies the geometry
-  every authored frame copies - placement offsets, pixel extents and packed OAM
-  attributes. Choosing a donor is how the file states what shape the new frames
-  are; the per-actor composition budget a different shape would change is not
-  modelled, so a sheet whose cells do not match the donor's own piece is refused.
+- **`donor_sprite_id` names an identity the image already contains, and it
+  supplies both the geometry and the shape.** Its character-structure header is
+  cloned and its first frame supplies the geometry every authored frame copies -
+  placement offsets, pixel extents and packed OAM attributes. Before that, every
+  frame of every animation the donor structure names is decoded to measure the
+  one frame rect the donor proves: `width x height`, its pixel count and its piece
+  count (`sprite_identity.measure_donor_envelope`). A donor whose own frames
+  occupy more than one rect proves no single shape and is refused, and every sheet
+  cell must be exactly the measured rect. A larger cell is a per-actor
+  composition budget this build cannot prove and a smaller one would need a
+  placement nothing has measured, since the authored frame copies the donor's own
+  anchor; both are refused. The docstring of
+  `sprite_identity.plan_new_sprite_identity` and
+  `docs/research/SPRITE_NEW_COMPOSITION_GUARD.md` carry the measurement.
 - **Animation slots are ordered by name.** A TOML table has no order to inherit,
   and the engine reads an animation by its slot index, so the order is a stated
   rule: `stand` precedes `walk`, and a build emits them in that order.

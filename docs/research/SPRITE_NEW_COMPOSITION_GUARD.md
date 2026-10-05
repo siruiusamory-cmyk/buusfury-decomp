@@ -1,8 +1,7 @@
 # SPRITE-NEW-COMPOSITION-GUARD-001: the proven composition shape
 
 Baseline `954a4027263c428fb2b0a48fcf78e478ec9a77b5` (`origin/master`, the
-SPRITE-NEW-PROJECT-SURFACE-001 merge). Worktree
-`C:\Dev\log1-remake-sprite-new-composition-guard-001`, branch
+SPRITE-NEW-PROJECT-SURFACE-001 merge), branch
 `ticket/sprite-new-composition-guard-001`.
 
 The ticket adds one production guard to the authored-sprite path and nothing

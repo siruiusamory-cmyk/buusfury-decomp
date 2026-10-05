@@ -96,9 +96,13 @@ is ignored by git rather than tracked, so it cannot be run from a fresh clone. I
 is short and self-contained, and this is its procedure:
 
 1. read the canonical image and assert its sha256;
-2. take the 297 registry entries from `layout.actor_sprites.character_table_address`;
-3. for each entry, call the shipped `measure_donor_envelope` with the shipped
-   `sprite_graphics.decode_frame`, counting the refusals by message;
+2. take the 297 registry entries from the address the profile declares
+   (`layout.actor_sprites.character_table_address`, `0x086B6BDC` in
+   `tools/webfoot/data/roms.yaml`);
+3. for each entry, call the shipped `measure_donor_envelope` with a
+   `sprite_graphics.decode_frame` over the pointer's raw window offset - the same
+   decode the planner performs, without the planner's own `_file_offset` bounds
+   message - and tally the refusals by message;
 4. print the admitted envelopes and the highest envelope piece count.
 
 ```sh
@@ -177,7 +181,7 @@ ROM-gated tests below, and re-run at the frozen candidate.
 
 | file | what it establishes |
 |---|---|
-| `tests/unit/test_sprite_identity_authoring.py` (8 new cases plus one whose refused message changed) | a larger cell is refused; a smaller cell is refused; a donor with two frame rects is refused; a donor with one rect at two anchors is refused; a donor whose box contradicts its own piece is refused; a null animation slot is skipped; a donor whose every slot is null is refused; a null first slot is refused before the geometry is read; the measured envelope is the rect the emitted records carry; a valid input is still deterministic and still carries the donor's own record geometry |
+| `tests/unit/test_sprite_identity_authoring.py` (9 new cases plus one whose refused message changed) | a larger cell is refused; a smaller cell is refused; a donor with two frame rects is refused; a donor with one rect at two anchors is refused; a donor whose box contradicts its own piece is refused; a null animation slot is skipped; a donor whose every slot is null is refused; a null first slot is refused before the geometry is read; the measured envelope is the rect the emitted records carry; a valid input is still deterministic and still carries the donor's own record geometry |
 | `tests/integration/test_sprite_identity_rom.py` (3 new cases) | on the canonical image: the donor's measured envelope is `32x32`, 1 piece, 1024 bytes and is what the emitted records carry; a doubled cell and a halved cell are both refused |
 | `tests/integration/test_sprite_new_project_rom.py` (unchanged) | the Cui project still emits the recorded runtime image byte for byte |
 

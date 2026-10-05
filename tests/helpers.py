@@ -116,6 +116,91 @@ def make_synthetic_sprite_rom() -> bytes:
     return bytes(data)
 
 
+def write_truecolour_png(
+    path,
+    rgb: bytes,
+    width: int,
+    height: int,
+    *,
+    alpha: bytes | None = None,
+    filter_type: int = 0,
+) -> "Path":
+    """Write the 8-bit truecolour PNG an author's image editor would produce.
+
+    SPRITE-NEW-PROJECT-SURFACE-001. The toolkit reads truecolour sheets and does
+    not write them - a project points at the author's own file - so the writer a
+    test needs lives here rather than in shipped code. ``filter_type`` applies one
+    PNG scanline filter (None, Sub, Up, Average or Paeth) on every row, which is
+    how a reader's per-filter arithmetic for multi-byte pixels is exercised
+    against bytes this repository did not produce.
+    """
+    import struct
+    import zlib
+    from pathlib import Path as _Path
+
+    channels = 4 if alpha is not None else 3
+    if len(rgb) != width * height * 3:
+        raise ValueError("rgb must hold three bytes per pixel")
+    if alpha is not None and len(alpha) != width * height:
+        raise ValueError("alpha must hold one byte per pixel")
+
+    raw = bytearray()
+    previous = bytearray(width * channels)
+    for y in range(height):
+        line = bytearray()
+        for x in range(width):
+            at = 3 * (y * width + x)
+            line += rgb[at : at + 3]
+            if alpha is not None:
+                line.append(alpha[y * width + x])
+        filtered = _png_filter(bytes(line), bytes(previous), width * channels,
+                               filter_type, channels)
+        raw += bytes([filter_type]) + filtered
+        previous = line
+
+    def chunk(kind: bytes, body: bytes) -> bytes:
+        return (struct.pack(">I", len(body)) + kind + body
+                + struct.pack(">I", zlib.crc32(kind + body) & 0xFFFFFFFF))
+
+    colour_type = 6 if alpha is not None else 2
+    data = (b"\x89PNG\r\n\x1a\n"
+            + chunk(b"IHDR", struct.pack(">IIBBBBB", width, height, 8, colour_type,
+                                         0, 0, 0))
+            + chunk(b"IDAT", zlib.compress(bytes(raw), 9))
+            + chunk(b"IEND", b""))
+    destination = _Path(path)
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    destination.write_bytes(data)
+    return destination
+
+
+def _png_filter(line: bytes, previous: bytes, stride: int, filter_type: int,
+                bpp: int) -> bytes:
+    """The forward PNG filter, the exact inverse of what a decoder must undo."""
+    out = bytearray(stride)
+    for index in range(stride):
+        left = line[index - bpp] if index >= bpp else 0
+        up = previous[index]
+        upper_left = previous[index - bpp] if index >= bpp else 0
+        if filter_type == 0:
+            predict = 0
+        elif filter_type == 1:
+            predict = left
+        elif filter_type == 2:
+            predict = up
+        elif filter_type == 3:
+            predict = (left + up) >> 1
+        elif filter_type == 4:
+            estimate = left + up - upper_left
+            da, db, dc = (abs(estimate - left), abs(estimate - up),
+                          abs(estimate - upper_left))
+            predict = left if (da <= db and da <= dc) else (up if db <= dc else upper_left)
+        else:
+            raise ValueError(f"unknown PNG filter type {filter_type}")
+        out[index] = (line[index] - predict) & 0xFF
+    return bytes(out)
+
+
 def write_catalog(path, profiles, tables: dict[str, object] | None = None) -> None:
     """Write a `--profiles` catalogue YAML from `RomProfile` objects.
 

@@ -24,6 +24,8 @@ project/
   text/strings.toml       1,534 strings                      (TOOLKIT-004)
   graphics/graphics.toml  sprite asset manifest + object palette (TOOLKIT-010)
   graphics/assets/        7,390 indexed PNGs, one per distinct payload (TOOLKIT-010)
+  sprites/sprites.toml    one new actor-sprite identity, and its actor
+  sprites/**/*.png        the source sheets that identity is drawn from
 ```
 
 One file per table rather than per record: 141 single-record files would be a
@@ -174,6 +176,82 @@ refused with the exact byte deficit. The relocation machinery itself is proved o
 **Repeated text is not shared text.** 153 texts occur more than once, but each
 occurrence has its own bytes, so editing one changes only that one.
 
+## New actor sprites
+
+SPRITE-NEW-PROJECT-SURFACE-001. A **new actor-sprite identity** is content the
+canonical image does not contain: a sprite the engine answers to by an id it has
+never had, plus the one map actor that draws it. `sprites/sprites.toml` describes
+exactly one, and the sheets it draws from are PNGs beside it.
+
+```toml
+[sprite.cui]
+sprite_id = 307
+donor_sprite_id = 10
+free_palette_entries = [8, 9, 103, 193, 236]
+
+[sprite.cui.animation.stand]
+sheet = "sprites/cui/stand.png"
+frames = 2
+
+[sprite.cui.animation.walk]
+sheet = "sprites/cui/walk.png"
+frames = 4
+
+[sprite.cui.actor]
+map = "map:0102"
+family = "map-sibling-08017da3"
+position = [209, 580]
+retained_raw = 0
+data_pointer_raw = 142104172
+behaviour_template = "map:0102/object:0007"
+wander_box = [192, 544, 272, 624]
+```
+
+- **Exactly one identity per build, and that is a property of the image.** An
+  identity is added by growing the character registry and repointing the two
+  literal words that name it, so a second identity in one build would grow the
+  same registry again and point the same two words at a different table. A
+  document declaring two is refused rather than half-applied.
+- **`sprite_id` is stated, not derived.** The engine id an identity answers to is
+  the id its appended registry entry yields, and the planner accepts exactly that
+  number; stating it is what keeps a build from silently attaching an actor to an
+  id this build did not author.
+- **`donor_sprite_id` names an identity the image already contains.** Its
+  character-structure header is cloned and its first frame supplies the geometry
+  every authored frame copies - placement offsets, pixel extents and packed OAM
+  attributes. Choosing a donor is how the file states what shape the new frames
+  are; the per-actor composition budget a different shape would change is not
+  modelled, so a sheet whose cells do not match the donor's own piece is refused.
+- **Animation slots are ordered by name.** A TOML table has no order to inherit,
+  and the engine reads an animation by its slot index, so the order is a stated
+  rule: `stand` precedes `walk`, and a build emits them in that order.
+- **A sheet is one row of square cells in four facing groups**, `frames` of them
+  per facing. The file's own width states the same count, so a sheet whose
+  dimensions and declaration disagree is refused instead of resolved by
+  preferring one. Eight-bit RGB and RGBA are both accepted; a fully transparent
+  pixel is a hole and becomes the transparent entry, and a partly transparent one
+  is refused because a sprite pixel is one palette index.
+- **`free_palette_entries` is the author's claim, and it is checked.** The SDK
+  decodes the actor-sprite graphics but not every payload that shares the 256-entry
+  object palette, so it cannot derive which entries are free; it verifies the
+  claim against what it can prove - no decoded actor-sprite graphic draws a
+  requested entry - and refuses an entry that fails rather than recolouring
+  another asset.
+- **The actor is authored, carried or resolved, and the three are kept apart.**
+  `map`, `position` and `wander_box` are authored. `retained_raw` and
+  `data_pointer_raw` are the new object header's `+0x04` and `+0x0C` words, whose
+  meanings are UNRESOLVED: they are stored as the raw words they are, carried
+  verbatim, and never dereferenced. `behaviour_template` names an existing slot of
+  the **same** map's object array; the build copies that record's inline behaviour
+  entry and writes the authored wander box into it, so the actor starts from a
+  behaviour the engine already runs on that map. A ROM address is not an
+  authoring API and is never accepted here.
+- **Two combinations are refused because only one writer can win.** The actor's
+  plan re-emits that map's `MapEntry` record and object array, so a project that
+  also edits that record's fields, or gives that map an authored placement
+  expansion, is refused rather than silently dropped or reported later as a
+  byte-range overlap.
+
 ## Determinism
 
 Given the same project files, the same verified base ROM and the same toolkit,
@@ -228,7 +306,12 @@ answers *which edit changed these bytes*, not merely *these bytes differ*.
 - for text: identity key form and range, encodability (unsupported characters,
   malformed `{08:XX}` tokens, embedded NULs), whether the encoded text fits its
   allocation, duplicate identities, strings the ROM lacks, and strings the
-  project omits.
+  project omits;
+- for a new actor sprite: every source sheet (present, the accepted PNG form, the
+  declared frame count), every claimed free palette entry against the decoded
+  corpus, the behaviour template against its map's own object array, and both
+  placements. Validation runs the same materialization the build does, so the two
+  cannot disagree about what may be authored.
 
 A failure names the offending entity and field. Nothing is written when
 validation fails.

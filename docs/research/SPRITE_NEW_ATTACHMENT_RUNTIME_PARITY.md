@@ -20,8 +20,9 @@ normal. Both production planners are now runtime-proven together.
 
 The research controlled-actor emitter was **not** used to plan anything here. The
 proven image was read only to recover the actor's parameters and to compare the
-result: the production composition is byte-for-byte the proven image in both
-variants.
+result: the palette-grid composition differs from the proven walking image by zero
+bytes, and the as-authored composition's sha256 is the image the previous parity
+session ran.
 
 ## 1. What was built, and by which code
 
@@ -48,10 +49,15 @@ the appended actor immediately above them.
 
 ## 2. The composed images against the proven builds
 
-| variant | runtime sha256 | identity regions identical to the proven walking image | byte differences versus that reference |
+| variant | runtime sha256 | identity regions versus the reference | byte differences versus the reference |
 | --- | --- | --- | --- |
-| `as-authored` | `d21c2b1a0d748ad1dabc588f107d13e63c7c66338e1c6be4c749b624eb4a390d` | 0 of 31 (its identity is not the reference's) | 7,072, all of them the identity's own colour and geometry shift |
-| `palette-grid` | `033e04ba27ac8fcafe99df1f4f6cf2aa6f9a09445eee1ad15b707d2ff694ff57` | 31 of 31 | **0** |
+| `as-authored` | `d21c2b1a0d748ad1dabc588f107d13e63c7c66338e1c6be4c749b624eb4a390d` | 29 of 29 differ (its identity is not the reference's) | 7,072 |
+| `palette-grid` | `033e04ba27ac8fcafe99df1f4f6cf2aa6f9a09445eee1ad15b707d2ff694ff57` | 29 of 29 identical | **0** |
+
+The two actor-region rows the driver also reports are comparable only in the
+`palette-grid` variant, which reproduces the reference's actor addresses; in the
+`as-authored` variant they are marked not comparable rather than counted, because
+at its offsets they would compare unrelated bytes.
 
 The `palette-grid` composition is **exactly** the recorded walking build
 `033e04ba...`: every identity region identical, zero differing bytes anywhere,
@@ -67,11 +73,16 @@ the palette-grid reference and the two identities are not the same bytes: the
 sheets as drawn carry four colours whose 8-bit encoding is not on the object
 palette's grid, so the production planner writes six palette entries instead of
 two, its container is 6088 bytes rather than 6080, and every identity address and
-pointer downstream of that shifts by 8 bytes. That is the SDK's published colour
-conversion doing its job, and it is the same finding
-SPRITE-NEW-RUNTIME-PARITY-001 recorded; the actor-region rows for this variant
-are marked not comparable for the same reason, since at these offsets they would
-compare unrelated bytes.
+pointer downstream of that shifts by 8 bytes.
+
+The 7,072 differing bytes split into 7,059 inside the two appended spans
+(`0x800012` to `0x801F6B`, the containers and the shifted identity records) and 13
+inside the canonical image: the two registry pointer words, four object-palette
+entries (8 bytes), and the map-102 array field, whose three differing bytes are
+the appended actor's own address moving with the identity. The cause of the
+expanded bulk is an inference consistent with that split rather than a measured
+classification: it is the identity's own colour and geometry shift just
+described, which is the same finding SPRITE-NEW-RUNTIME-PARITY-001 recorded.
 
 Required checks, both variants, from the emitted bytes:
 
@@ -113,7 +124,7 @@ actors_tracked=10   samples=600
 walk_calls=299 (328)  walk_accepts=211 (215)
 our_walk_calls=45 (44)  our_walk_accepts=27 (24)
 authored_frames=24
-error.txt: empty in both sessions
+error.txt: header line only in both sessions
 ```
 
 - **Boots and loads.** The game reaches the title, the save loads, and map 102 is
@@ -148,8 +159,8 @@ error.txt: empty in both sessions
   the map itself is the retail West City park.
 - **The instrument was live.** The same resolution site fired nine times for
   retail records and once for the authored one, and 299 (328) walk calls were
-  recorded; `error.txt` is empty in both sessions, so no breakpoint callback
-  raised. This is the "target fires, liveness fires" row of
+  recorded; `error.txt` holds only its header line in both sessions, so no
+  breakpoint callback raised. This is the "target fires, liveness fires" row of
   `docs/skills/mgba-runtime.md` section 8, not a silent channel.
 
 ## 4. Safety

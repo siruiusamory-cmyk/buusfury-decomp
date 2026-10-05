@@ -149,3 +149,28 @@ def test_a_reference_entry_of_another_class_is_refused():
                      0x0800A223)
     with pytest.raises(parity.AttachmentParityError, match="class word"):
         parity.reference_actor(bytes(other), profile=profile)
+
+
+class _Start:
+    def __init__(self, value):
+        self.value = value
+
+
+class _Range:
+    def __init__(self, start):
+        self.start = _Start(start)
+
+
+class _PlacedActor:
+    """Only the two ranges the comparability decision reads."""
+
+    def __init__(self, record, array):
+        self.record_range = _Range(record)
+        self.array_range = _Range(array)
+
+
+def test_the_reference_comparison_holds_only_at_the_reference_s_own_offsets():
+    report = {"record_file_offset": 0x801F38, "array_file_offset": 0x801F0C}
+    assert parity.actor_regions_comparable(_PlacedActor(0x801F38, 0x801F0C), report)
+    assert not parity.actor_regions_comparable(_PlacedActor(0x801F40, 0x801F14), report)
+    assert not parity.actor_regions_comparable(_PlacedActor(0x801F38, 0x801F14), report)

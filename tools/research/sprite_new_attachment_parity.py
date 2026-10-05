@@ -235,6 +235,20 @@ def build_variant(name, canonical_path, canonical, identification, profile, shee
                      materialization, attachment, actor)
 
 
+def actor_regions_comparable(placed_actor, reference_report) -> bool:
+    """Whether the emitted actor sits exactly where the reference's actor sits.
+
+    The reference is one specific composition. Its actor is at the addresses the
+    palette-grid variant reproduces; a variant whose identity is a different
+    length puts its own actor elsewhere, and slicing the reference at those
+    offsets would compare unrelated bytes and report the result as a difference.
+    """
+    return (placed_actor.record_range.start.value
+            == reference_report["record_file_offset"]
+            and placed_actor.array_range.start.value
+            == reference_report["array_file_offset"])
+
+
 def _describe(runtime_path, canonical, profile, reference_bytes, runtime_bytes,
               materialization, attachment, actor):
     """Compare the emitted image with the proven build and report the checks."""
@@ -253,15 +267,7 @@ def _describe(runtime_path, canonical, profile, reference_bytes, runtime_bytes,
                                     frame.record_range))
 
     image_size = len(runtime_bytes)
-    # The reference is one specific composition. Its own actor sits at the
-    # addresses the palette-grid variant reproduces; the as-authored variant's
-    # identity is 8 bytes longer, so its actor sits elsewhere and comparing that
-    # region against the reference would compare unrelated bytes. Say so instead
-    # of reporting a difference that is an artefact of the offset.
-    comparable = (attachment.actor.record_range.start.value
-                  == actor["record_file_offset"]
-                  and attachment.actor.array_range.start.value
-                  == actor["array_file_offset"])
+    comparable = actor_regions_comparable(attachment.actor, actor)
     region_rows = []
     for region_name, span in identity_ranges:
         left = runtime_bytes[span.start.value:span.end]

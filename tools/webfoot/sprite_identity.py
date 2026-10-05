@@ -1029,15 +1029,18 @@ def measure_donor_envelope(image: bytes, structure_offset: int,
 
     Every animation the structure's count byte names is walked, and every frame
     each one repeats a pointer to is decoded, because a donor is a *population* of
-    frames rather than its first one. The one rect every decoded frame agrees on is
-    that shape - what the donor's animation already composes, and therefore the
-    only geometry this write path can call proven. The population measurement is
-    evidence and lives in ``docs/research/SPRITE_NEW_COMPOSITION_GUARD.md``.
+    frames rather than its first one. The one rect - at one anchor - every decoded
+    frame agrees on is that shape: what the donor's animation already composes,
+    and therefore the only geometry this write path can call proven. The
+    population measurement is evidence and lives in
+    ``docs/research/SPRITE_NEW_COMPOSITION_GUARD.md``.
 
     A donor whose decoded frames disagree about their rect has no single proven
-    shape, and is refused rather than resolved by preference: the authored record
-    copies one donor frame's geometry verbatim, so a shape chosen from one frame
-    while another frame is what a later actor draws would be a guess.
+    shape, and a donor whose frames share a rect but place it at different anchors
+    has no single proven placement; both are refused rather than resolved by
+    preference, because the authored record copies one donor frame's geometry
+    verbatim, so a shape or anchor chosen from one frame while another frame is
+    what a later actor draws would be a guess.
 
     A slot whose animation pointer is null is skipped. That is stated as an
     observation rather than a rule of the engine's accessor: the canonical arrays

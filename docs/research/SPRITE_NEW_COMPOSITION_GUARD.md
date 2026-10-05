@@ -44,11 +44,13 @@ donor's proven composition shape, measured from the donor's own decoded records:
    animation word is null (an observation: the canonical arrays carry them, the
    word is zero, and zero is not an address in this image), decodes every frame
    each animation points at, and collects the set of frame rects
-   `(width, height)`.
+   `(width, height)` together with the anchors `(min_x, min_y)` they are drawn at.
    * more than one rect -> **refuse the donor**: it proves no single composition
      shape, and the authored record copies one donor frame's geometry verbatim,
      so choosing a shape would be a guess.
-   * exactly one rect -> that rect is the envelope, with its pixel count
+   * one rect at more than one anchor -> **refuse the donor**: it proves no single
+     placement either.
+   * one rect at one anchor -> that pair is the envelope, with its pixel count
      `w * h` and the largest piece count among the frames carrying it.
 2. **The donor's first frame must be self-consistent**: its frame box
    `(width, height)` and anchor `(min_x, min_y)` must equal its single piece's
@@ -164,7 +166,7 @@ SPRITE-NEW-ATTACHMENT-RUNTIME-PARITY-001 composed and ran.
 
 | file | what it establishes |
 |---|---|
-| `tests/unit/test_sprite_identity_authoring.py` (10 new or renamed cases) | a larger cell is refused; a smaller cell is refused; a donor with two frame rects is refused; a donor with one rect at two anchors is refused; a donor whose box contradicts its own piece is refused; a null animation slot is skipped; a donor whose every slot is null is refused; the measured envelope is the rect the emitted records carry; a valid input is still deterministic and still carries the donor's own record geometry |
+| `tests/unit/test_sprite_identity_authoring.py` (11 new or renamed cases) | a larger cell is refused; a smaller cell is refused; a donor with two frame rects is refused; a donor with one rect at two anchors is refused; a donor whose box contradicts its own piece is refused; a null animation slot is skipped; a donor whose every slot is null is refused; the measured envelope is the rect the emitted records carry; a valid input is still deterministic and still carries the donor's own record geometry |
 | `tests/integration/test_sprite_identity_rom.py` (3 new cases) | on the canonical image: the donor's measured envelope is `32x32`, 1 piece, 1024 bytes and is what the emitted records carry; a doubled cell and a halved cell are both refused |
 | `tests/integration/test_sprite_new_project_rom.py` (unchanged) | the Cui project still emits the recorded runtime image byte for byte |
 

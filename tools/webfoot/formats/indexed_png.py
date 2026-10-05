@@ -117,24 +117,16 @@ def encode(
     return bytes(out)
 
 
-def decode(data: bytes) -> tuple[bytes, int, int, tuple[tuple[int, int, int], ...], int | None]:
-    """Read an 8-bit indexed PNG.
-
-    Returns ``(pixels, width, height, palette_rgb, transparent_index)``. Anything
-    that is not 8-bit, non-interlaced, colour type 3 is refused by name rather
-    than converted: a caller who hands this an RGBA file has lost the index
-    identity somewhere upstream, and quietly re-quantising would hide that.
-
-    All five PNG filter types are supported on read, because an image editor
-    that round-trips one of these files will very likely re-filter it.
-    """
+#: The chunk framing and the deflate stream are the same for every PNG, so the
+#: two readers in this package share these helpers and differ only in what a
+#: pixel is: an index into PLTE here, a colour triple there. They are private
+#: because neither is a decoder on its own; ``decode`` and
+#: :func:`tools.webfoot.formats.rgb_png.decode_truecolour` are the entry points.
+def _read_chunks(data: bytes) -> dict[bytes, bytes]:
+    """Every chunk body, concatenated per chunk type, in file order."""
     if not data.startswith(_MAGIC):
         raise PngError("not a PNG")
-
-    header: tuple[int, ...] | None = None
-    palette = b""
-    transparency = b""
-    idat = bytearray()
+    chunks: dict[bytes, bytearray] = {}
     position = len(_MAGIC)
     while position + 8 <= len(data):
         length = struct.unpack_from(">I", data, position)[0]
@@ -142,41 +134,46 @@ def decode(data: bytes) -> tuple[bytes, int, int, tuple[tuple[int, int, int], ..
         body = data[position + 8 : position + 8 + length]
         if len(body) != length:
             raise PngError(f"chunk {kind!r} is truncated")
-        if kind == b"IHDR":
-            header = struct.unpack(">IIBBBBB", body)
-        elif kind == b"PLTE":
-            palette = body
-        elif kind == b"tRNS":
-            transparency = body
-        elif kind == b"IDAT":
-            idat += body
-        elif kind == b"IEND":
+        chunks.setdefault(kind, bytearray()).extend(body)
+        if kind == b"IEND":
             break
         position += 12 + length
+    return {kind: bytes(body) for kind, body in chunks.items()}
 
+
+def _read_header(chunks: dict[bytes, bytes]) -> tuple[int, ...]:
+    """The IHDR fields, or a refusal naming what is missing."""
+    header = chunks.get(b"IHDR")
     if header is None:
         raise PngError("PNG has no IHDR")
-    width, height, depth, colour_type, compression, filter_method, interlace = header
-    if depth != _BIT_DEPTH or colour_type != _COLOUR_TYPE_INDEXED:
-        raise PngError(
-            f"expected an 8-bit indexed PNG, got depth {depth} colour type {colour_type}"
-        )
-    if compression != 0 or filter_method != 0:
-        raise PngError("PNG uses a non-standard compression or filter method")
-    if interlace:
-        raise PngError("interlaced PNG is not supported")
-    if not palette or len(palette) % 3:
-        raise PngError("indexed PNG needs a PLTE chunk of whole RGB triples")
-    if width == 0 or height == 0:
-        raise PngError("PNG dimensions must be positive")
+    try:
+        return struct.unpack(">IIBBBBB", header[:13])
+    except struct.error as exc:
+        raise PngError(f"PNG header is malformed: {exc}") from exc
 
-    raw = zlib.decompress(bytes(idat))
-    stride = width
+
+def _inflate(chunks: dict[bytes, bytes]) -> bytes:
+    """The image data, refusing a deflate stream that cannot be read."""
+    try:
+        return zlib.decompress(chunks.get(b"IDAT", b""))
+    except zlib.error as exc:
+        raise PngError(
+            f"PNG image data is not a readable deflate stream: {exc}"
+        ) from exc
+
+
+def _unfilter(raw: bytes, width: int, height: int, channels: int) -> bytes:
+    """Reverse every scanline filter, for pixels ``channels`` bytes wide.
+
+    All five filter types are supported, because an image editor that round-trips
+    one of these files will very likely re-filter it.
+    """
+    stride = width * channels
     expected = (stride + 1) * height
     if len(raw) != expected:
         raise PngError(f"PNG image data is {len(raw)} bytes, expected {expected}")
 
-    pixels = bytearray(width * height)
+    pixels = bytearray(width * channels * height)
     previous = bytearray(stride)
     source = 0
     for y in range(height):
@@ -185,20 +182,20 @@ def decode(data: bytes) -> tuple[bytes, int, int, tuple[tuple[int, int, int], ..
         line = bytearray(raw[source : source + stride])
         source += stride
         if filter_type == 1:  # Sub
-            for x in range(1, stride):
-                line[x] = (line[x] + line[x - 1]) & 0xFF
+            for x in range(channels, stride):
+                line[x] = (line[x] + line[x - channels]) & 0xFF
         elif filter_type == 2:  # Up
             for x in range(stride):
                 line[x] = (line[x] + previous[x]) & 0xFF
         elif filter_type == 3:  # Average
             for x in range(stride):
-                left = line[x - 1] if x else 0
+                left = line[x - channels] if x >= channels else 0
                 line[x] = (line[x] + ((left + previous[x]) >> 1)) & 0xFF
         elif filter_type == 4:  # Paeth
             for x in range(stride):
-                left = line[x - 1] if x else 0
+                left = line[x - channels] if x >= channels else 0
                 up = previous[x]
-                upper_left = previous[x - 1] if x else 0
+                upper_left = previous[x - channels] if x >= channels else 0
                 estimate = left + up - upper_left
                 da, db, dc = (
                     abs(estimate - left),
@@ -214,8 +211,40 @@ def decode(data: bytes) -> tuple[bytes, int, int, tuple[tuple[int, int, int], ..
                 line[x] = (line[x] + predictor) & 0xFF
         elif filter_type != 0:
             raise PngError(f"unknown PNG filter type {filter_type}")
-        pixels[y * width : (y + 1) * width] = line
+        pixels[y * stride : (y + 1) * stride] = line
         previous = line
+    return bytes(pixels)
+
+
+def decode(data: bytes) -> tuple[bytes, int, int, tuple[tuple[int, int, int], ...], int | None]:
+    """Read an 8-bit indexed PNG.
+
+    Returns ``(pixels, width, height, palette_rgb, transparent_index)``. Anything
+    that is not 8-bit, non-interlaced, colour type 3 is refused by name rather
+    than converted: a caller who hands this an RGBA file has lost the index
+    identity somewhere upstream, and quietly re-quantising would hide that.
+    """
+    chunks = _read_chunks(data)
+    width, height, depth, colour_type, compression, filter_method, interlace = (
+        _read_header(chunks)
+    )
+    palette = chunks.get(b"PLTE", b"")
+    transparency = chunks.get(b"tRNS", b"")
+    if depth != _BIT_DEPTH or colour_type != _COLOUR_TYPE_INDEXED:
+        raise PngError(
+            f"expected an 8-bit indexed PNG, got depth {depth} colour type {colour_type}"
+        )
+    if compression != 0 or filter_method != 0:
+        raise PngError("PNG uses a non-standard compression or filter method")
+    if interlace:
+        raise PngError("interlaced PNG is not supported")
+    if not palette or len(palette) % 3:
+        raise PngError("indexed PNG needs a PLTE chunk of whole RGB triples")
+    if width == 0 or height == 0:
+        raise PngError("PNG dimensions must be positive")
+
+    raw = _inflate(chunks)
+    pixels = _unfilter(raw, width, height, 1)
 
     colours = tuple(
         (palette[i * 3], palette[i * 3 + 1], palette[i * 3 + 2])

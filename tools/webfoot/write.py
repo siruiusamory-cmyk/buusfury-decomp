@@ -953,6 +953,33 @@ class TransitionCreationProvenance:
 
 
 @dataclass(frozen=True, slots=True)
+class SpriteAuthoringProvenance:
+    """One authored actor sprite as the manifest records it.
+
+    SPRITE-NEW-PROJECT-SURFACE-001. An authored identity and its actor are the
+    only structures this build emits that have no canonical bytes at all, so the
+    manifest owes the addresses the planners actually chose: which registry the
+    identity landed in, which structure and frames it answers through, which
+    palette entries it wrote, which object array and record the actor occupies
+    and which existing entry its behaviour started from.
+
+    The two payloads are the planners' own ``to_json()`` documents rather than a
+    restatement of their fields. They already are the published description of a
+    planned identity and a planned actor - the runtime parity record reads the
+    same two documents - and a second description here is exactly how two
+    statements of one layout drift apart.
+    """
+
+    #: ``sprite_identity.AuthoredIdentity.to_json()``.
+    identity: dict
+    #: ``sprite_attachment.AuthoredMapActor.to_json()``.
+    actor: dict
+
+    def to_json(self) -> dict:
+        return {"identity": self.identity, "actor": self.actor}
+
+
+@dataclass(frozen=True, slots=True)
 class WritePlan:
     """A validated set of changes against one identified base image.
 
@@ -981,6 +1008,9 @@ class WritePlan:
     transition_edits: tuple[TransitionEditProvenance, ...] = ()
     #: MAP-WARP-CREATE-PROJECT-001. Empty for a build that created no transition.
     transition_creations: tuple[TransitionCreationProvenance, ...] = ()
+    #: SPRITE-NEW-PROJECT-SURFACE-001. Empty for a build that authored no new
+    #: actor-sprite identity.
+    sprite_authoring: tuple[SpriteAuthoringProvenance, ...] = ()
 
     @property
     def effective_changes(self) -> tuple[ByteChange, ...]:
@@ -1051,6 +1081,9 @@ class WriteManifest:
     #: project-created transition record and the expanded pointer array that
     #: reaches it.
     transition_creations: tuple[TransitionCreationProvenance, ...] = ()
+    #: SPRITE-NEW-PROJECT-SURFACE-001. Present only when a build authored a new
+    #: actor-sprite identity and attached it to a map actor.
+    sprite_authoring: tuple[SpriteAuthoringProvenance, ...] = ()
 
     def to_json(self) -> dict:
         document = {
@@ -1096,6 +1129,10 @@ class WriteManifest:
             document["transition_creations"] = [
                 creation.to_json() for creation in self.transition_creations
             ]
+        if self.sprite_authoring:
+            document["sprite_authoring"] = [
+                sprite.to_json() for sprite in self.sprite_authoring
+            ]
         return document
 
     def dumps(self) -> str:
@@ -1125,6 +1162,7 @@ def plan_changes(
     structure_edits: tuple[StructureEditProvenance, ...] = (),
     transition_edits: tuple[TransitionEditProvenance, ...] = (),
     transition_creations: tuple[TransitionCreationProvenance, ...] = (),
+    sprite_authoring: tuple[SpriteAuthoringProvenance, ...] = (),
 ) -> WritePlan:
     """Validate `changes` against `base` and return an applicable plan.
 
@@ -1209,6 +1247,7 @@ def plan_changes(
         structure_edits=tuple(structure_edits),
         transition_edits=tuple(transition_edits),
         transition_creations=tuple(transition_creations),
+        sprite_authoring=tuple(sprite_authoring),
     )
 
 
@@ -1317,6 +1356,7 @@ def emit_image(
         structure_edits=plan.structure_edits,
         transition_edits=plan.transition_edits,
         transition_creations=plan.transition_creations,
+        sprite_authoring=plan.sprite_authoring,
     )
     # Stage complete files first. Publish using exclusive links: never replace
     # a raced destination. Publish image last; roll back our links on failure.

@@ -961,6 +961,23 @@ def test_a_donor_that_names_no_decodable_frame_is_refused():
         _plan(_rebuilt_world(world, bytes(image)), _identity(_animation()))
 
 
+def test_a_null_first_slot_is_refused_before_the_geometry_is_read():
+    """The envelope skips a null slot, but the copied geometry still needs one.
+
+    ``_donor`` reads slot 0 for the frame it copies, so a null slot 0 is refused
+    by the file-offset check rather than silently authoring from a later slot.
+    """
+    world = _world()
+    image = bytearray(world[0])
+    image[DONOR_STRUCTURE + sid.STRUCTURE_COUNT_OFFSET] = 2
+    struct.pack_into("<I", image, DONOR_STRUCTURE + sid.STRUCTURE_ANIMATION_TABLE_OFFSET,
+                     0)
+    struct.pack_into("<I", image, DONOR_STRUCTURE + sid.STRUCTURE_ANIMATION_TABLE_OFFSET
+                     + 4, ROM_BASE + DONOR_ANIMATION)
+    with pytest.raises(sid.SpriteIdentityError, match="not a file offset"):
+        _plan(_rebuilt_world(world, bytes(image)), _identity(_animation()))
+
+
 def test_an_unrelocatable_registry_is_refused():
     world = _world(relocatable=False)
     with pytest.raises(sid.SpriteIdentityError, match="not published relocatable"):

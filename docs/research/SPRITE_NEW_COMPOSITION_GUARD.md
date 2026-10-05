@@ -18,21 +18,20 @@ path does not model".
 
 Three things were wrong with that as a *guard*:
 
-1. it was one frame, not the donor. A donor is a population of frames: 136 of the
-   297 canonical structures draw frames that do not all occupy one rect. The old
-   check read the first frame alone, so a donor whose later animations draw a
-   different rect was still admitted on the strength of a frame that does not
-   describe it.
-2. the refusal stated a budget veto. Nothing here has measured the per-actor
-   composition budget. CRASH-ROOT-CAUSE-001 measured a `0x200` budget on one
-   actor and could not locate the allocation site, so the rule that sizes it is
-   still **unresolved**. Saying "budget" claimed a measurement that does not
-   exist.
-3. it compared a size and nothing else. The donor's frame record also carries the
-   anchor the rect is drawn at, and 31 canonical structures draw one rect at
-   several anchors - sprite 94 to sprite 99 place `32x32` at `(-8, -26)`,
-   `(-8, -25)` and `(-8, -24)`. Copying frame 0's anchor there would be a
-   placement nothing measured, which is the same objection as a smaller cell.
+1. **CONFIRMED** it was one frame, not the donor. A donor is a population of
+   frames: 136 of the 297 canonical structures draw frames that do not all occupy
+   one rect. The old check read the first frame alone, so a donor whose later
+   animations draw a different rect was still admitted on the strength of a frame
+   that does not describe it.
+2. **UNKNOWN** is the veto itself. Nothing here has measured the per-actor
+   composition budget. CRASH-ROOT-CAUSE-001 measured a `0x200` budget on one actor
+   and could not locate the allocation site, so the rule that sizes it is still
+   unresolved. Saying "budget" claimed a measurement that does not exist.
+3. **CONFIRMED** it compared a size and nothing else. The donor's frame record also
+   carries the anchor the rect is drawn at, and 31 canonical structures draw one
+   rect at several anchors - sprite 94 to sprite 99 place `32x32` at `(-8, -26)`,
+   `(-8, -25)` and `(-8, -24)`. Copying frame 0's anchor there would be a placement
+   nothing measured, which is the same objection as a smaller cell.
 
 ## 2. The guard rule
 
@@ -87,17 +86,26 @@ require it to equal the pieces' union.
 
 ## 3. The measured envelope
 
-Local observation, 2026-10-05. Command (a local working probe that is ignored by
-git, not part of the module or of any test):
+**Local observation, 2026-10-05**, over the canonical image. The figures below are
+**CONFIRMED** by running the shipped function over every registry entry; what they
+do *not* establish is what the retail engine does with an authored frame, which is
+**UNKNOWN** here and is item 1 of section 7.
+
+The census probe is `build/census_composition_guard.py`, a local working tool that
+is ignored by git rather than tracked, so it cannot be run from a fresh clone. It
+is short and self-contained, and this is its procedure:
+
+1. read the canonical image and assert its sha256;
+2. take the 297 registry entries from `layout.actor_sprites.character_table_address`;
+3. for each entry, call the shipped `measure_donor_envelope` with the shipped
+   `sprite_graphics.decode_frame`, counting the refusals by message;
+4. print the admitted envelopes and the highest envelope piece count.
 
 ```sh
 python build/census_composition_guard.py
 ```
 
-It calls the **shipped** `measure_donor_envelope` once per registry entry with the
-same frame decoder `_donor` hands it, so these are the guard's own decisions and
-not a second reading of the same records. The image is the canonical Buu's Fury
-ROM, sha256
+The image is the canonical Buu's Fury ROM, sha256
 `940ad5f01db4465b8877dfe739510cbf34f4ea3d390f3df13519808bc36f059e`, 8,388,608
 bytes, whose hash is asserted by every ROM-gated test and by the probe itself.
 
@@ -129,7 +137,9 @@ bytes, whose hash is asserted by every ROM-gated test and by the probe itself.
   (`96x64`, two pieces) - have an envelope whose frames hold more than one piece,
   which is what `DonorEnvelope.piece_count` records. It is the largest piece count
   among the frames sharing the rect, so the refusal message's "drawn as N pieces"
-  names the worst case rather than the single piece the authored record holds.
+  names the worst case. **CONFIRMED** by decoders: their *first* frames hold four
+  and two pieces, so both are then refused by the single-piece rule, before the
+  cell is considered; the envelope measurement is what admits them for a moment.
 * Examples of the refusals: sprite 23 (slots 0, 1 and 9 draw `16x32` at anchor
   `(0, -24)` while slot 4 draws `32x32` at `(-8, -24)`), sprite 29 (`16x16` and
   `8x16`), sprite 42 (`32x64` and `64x64`), sprite 47 (`32x48` and `16x64`);
@@ -141,13 +151,14 @@ bytes, whose hash is asserted by every ROM-gated test and by the probe itself.
 
 ## 4. Cui result
 
-Unchanged in every byte. The Cui donor's own frames are all exactly `32x32` at one
-anchor `(-8, -24)`, its first frame is a single 32x32 piece, and the private sheets
-are 512x32 and 1024x32 pixel rows of 32-pixel cells, so the cell geometry already
-equalled the envelope and the guard admits the project as before. The project
-route's parity assertion still holds: the build emits
+**CONFIRMED**, unchanged in every byte. The Cui donor's own frames are all exactly
+`32x32` at one anchor `(-8, -24)`, its first frame is a single 32x32 piece, and the
+private sheets are 512x32 and 1024x32 pixel rows of 32-pixel cells, so the cell
+geometry already equalled the envelope and the guard admits the project as before.
+The project route's parity assertion still holds: the build emits
 `033e04ba27ac8fcafe99df1f4f6cf2aa6f9a09445eee1ad15b707d2ff694ff57`, the image
-SPRITE-NEW-ATTACHMENT-RUNTIME-PARITY-001 composed and ran.
+SPRITE-NEW-ATTACHMENT-RUNTIME-PARITY-001 composed and ran. Measured by the
+ROM-gated tests below, and re-run at the frozen candidate.
 
 ## 5. Refusal cases
 
@@ -166,7 +177,7 @@ SPRITE-NEW-ATTACHMENT-RUNTIME-PARITY-001 composed and ran.
 
 | file | what it establishes |
 |---|---|
-| `tests/unit/test_sprite_identity_authoring.py` (11 new or renamed cases) | a larger cell is refused; a smaller cell is refused; a donor with two frame rects is refused; a donor with one rect at two anchors is refused; a donor whose box contradicts its own piece is refused; a null animation slot is skipped; a donor whose every slot is null is refused; the measured envelope is the rect the emitted records carry; a valid input is still deterministic and still carries the donor's own record geometry |
+| `tests/unit/test_sprite_identity_authoring.py` (8 new cases plus one whose refused message changed) | a larger cell is refused; a smaller cell is refused; a donor with two frame rects is refused; a donor with one rect at two anchors is refused; a donor whose box contradicts its own piece is refused; a null animation slot is skipped; a donor whose every slot is null is refused; a null first slot is refused before the geometry is read; the measured envelope is the rect the emitted records carry; a valid input is still deterministic and still carries the donor's own record geometry |
 | `tests/integration/test_sprite_identity_rom.py` (3 new cases) | on the canonical image: the donor's measured envelope is `32x32`, 1 piece, 1024 bytes and is what the emitted records carry; a doubled cell and a halved cell are both refused |
 | `tests/integration/test_sprite_new_project_rom.py` (unchanged) | the Cui project still emits the recorded runtime image byte for byte |
 
@@ -183,10 +194,10 @@ SPRITE_NEW_CUI_SHEETS=<directory holding stand.png and walk.png> python -m pytes
 
 Unchanged by this ticket, and in this order:
 
-1. **No runtime proof of this guard.** The envelope is a property of the donor's
-   own records; the claim that an authored actor drawing the donor's exact frame
-   rect composes correctly on every actor that will be pointed at it is still a
-   runtime claim, and the runtime proof so far covers one map-102 actor.
+1. **UNKNOWN: no runtime proof of this guard.** The envelope is a property of the
+   donor's own records; the claim that an authored actor drawing the donor's exact
+   frame rect composes correctly on every actor that will be pointed at it is still
+   a runtime claim, and the runtime proof so far covers one map-102 actor.
 2. **The per-actor composition budget is still unmodelled.** An authored cell
    cannot exceed the donor's proven rect, so a genuinely larger sprite - the
    common want - is still refused rather than sized.

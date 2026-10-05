@@ -457,7 +457,12 @@ def test_a_frame_smaller_than_the_donors_proven_envelope_is_refused(
 
 
 def _frame_decoder(image: bytes):
-    """The one frame decoder ``_donor`` hands the envelope measurement."""
+    """A frame decoder by ROM pointer, as the envelope measurement is handed one.
+
+    This is the raw form - the pointer's window base subtracted - so it is only
+    equivalent to the planner's own decoder for pointers inside the image, which
+    is all this test feeds it.
+    """
     def frame_at(pointer: int, _what: str):
         return sg.decode_frame(image, pointer - ROM_BASE)
     return frame_at

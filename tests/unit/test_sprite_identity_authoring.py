@@ -872,8 +872,14 @@ def _frame_at(image: bytes):
     return frame_at
 
 
-def test_a_valid_input_emits_the_same_bytes_it_emitted_before():
-    """The guard decides geometry only; a valid plan's bytes do not move."""
+def test_a_valid_input_still_emits_the_donors_own_geometry():
+    """The guard measures the donor; it does not restate the emitted record.
+
+    This is determinism plus the record's own bytes, not a before/after diff
+    against the previous code - the byte-level parity proof for an already-valid
+    input is the ROM-gated Cui project case, which asserts the recorded runtime
+    digest.
+    """
     world = _world()
     result = _plan(world, _identity(_animation()))
     first = _apply(world, result)

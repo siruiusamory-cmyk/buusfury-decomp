@@ -22,7 +22,7 @@ the donor's *proven* composition shape:
 own structure decodes and reports the one frame rect the donor is seen to draw -
 and refuses a donor whose frames disagree, which is the case no single proven
 shape exists for. An authored frame must then be exactly that rect: a larger one
-is a composition budget this path cannot prove, and a smaller one has no measured
+is a composition shape this path cannot prove, and a smaller one has no measured
 placement, because the authored record copies the donor's own anchor. The guard
 decides geometry only; it never authors one.
 
@@ -522,14 +522,15 @@ class DonorEnvelope:
     """The one frame rect a donor's own animation records are seen to draw.
 
     ``width`` and ``height`` are pixel extents, not a tile count, and they are the
-    frame record's own bounding box - the rect the engine sizes its per-actor
-    composition buffer from and copies pieces into. ``piece_count`` is how many
-    pieces the frames carrying that rect hold, published so a caller can see that
-    the proven shape was reached by more than one piece rather than assume it.
+    frame record's own bounding box: the rect the donor's animation declares for
+    its frames. ``piece_count`` is how many pieces the frames carrying that rect
+    hold, published so a caller can see that the proven shape was reached by more
+    than one piece rather than assume it.
 
-    The name is deliberately not "budget": what is proven here is the rectangle the
-    donor already draws, and the buffer rule that would let a frame exceed it is
-    still unsolved.
+    The name is deliberately not "budget". What is proven here is the rectangle
+    the donor already draws; *how* the engine sizes the per-actor composition
+    buffer from that rect is unresolved, so this record states the shape and does
+    not claim a budget.
     """
 
     width: int
@@ -538,7 +539,7 @@ class DonorEnvelope:
 
     @property
     def pixels(self) -> int:
-        """The frame's ``w * h``; the quantity the retail compositor copies."""
+        """The frame's ``w * h``; the extent a composed frame occupies."""
         return self.width * self.height
 
     def __str__(self) -> str:
@@ -1022,19 +1023,20 @@ def measure_donor_envelope(image: bytes, structure_offset: int,
 
     Every animation the structure's count byte names is walked, and every frame
     each one repeats a pointer to is decoded, because a donor is a *population* of
-    frames rather than its first one: 212 of the canonical 297 structures hold
-    more than one frame rect, so a first-frame-only reading would measure a shape
-    the donor's own animation does not always draw. The one rect every decoded
-    frame agrees on is that shape - what the donor's animation already composes,
-    and therefore the only geometry this write path can call proven.
+    frames rather than its first one. The one rect every decoded frame agrees on is
+    that shape - what the donor's animation already composes, and therefore the
+    only geometry this write path can call proven. The population measurement is
+    evidence and lives in ``docs/research/SPRITE_NEW_COMPOSITION_GUARD.md``.
 
     A donor whose decoded frames disagree about their rect has no single proven
     shape, and is refused rather than resolved by preference: the authored record
     copies one donor frame's geometry verbatim, so a shape chosen from one frame
-    while another frame is what a later actor draws would be a guess. The
-    ``pointer == 0`` slots the canonical sparse animation arrays contain are
-    skipped, as the engine's own accessors only ever read a slot the count byte
-    and a caller's animation index select.
+    while another frame is what a later actor draws would be a guess.
+
+    A slot whose animation pointer is null is skipped. That is stated as an
+    observation rather than a rule of the engine's accessor: the canonical arrays
+    carry such slots, each one's word is zero, and zero is not an address in this
+    image, so it names no animation record to decode.
 
     ``frame_at`` decodes one frame by ROM pointer, so the one image-offset
     conversion lives in the caller.
@@ -1089,11 +1091,11 @@ def _require_cell_geometry(animation: AnimationSource, envelope: DonorEnvelope) 
     """The sheet must be authored at exactly the donor's proven frame rect.
 
     Exact equality is the guard, not a convenience. A larger cell is a
-    composition budget this write path cannot prove - the engine sizes a
-    per-actor buffer from the frame rect and the rule that sizes it is unsolved -
-    and a smaller one has no measured placement, because the authored record
-    copies the donor's own anchor instead of centring anything. A cell that is
-    both tile-whole and equal to the proven rect is one the donor already draws.
+    composition shape this write path cannot prove - the engine does size a
+    per-actor buffer from the frame it composes, and the rule that sizes it is
+    unresolved - and a smaller one has no measured placement, because the authored
+    record copies the donor's own anchor instead of centring anything. A cell that
+    is both tile-whole and equal to the proven rect is one the donor already draws.
     """
     sheet = animation.sheet
     if (sheet.cell_width, sheet.cell_height) != (envelope.width, envelope.height):
@@ -1103,7 +1105,7 @@ def _require_cell_geometry(animation: AnimationSource, envelope: DonorEnvelope) 
             f"prove exactly one composition shape, {envelope}, drawn as "
             f"{envelope.piece_count} piece(s) ({envelope.pixels} bytes); this write "
             "path copies the donor's proven geometry verbatim, and neither a larger "
-            "frame (an unproven composition budget) nor a smaller one (an unmeasured "
+            "frame (an unproven composition shape) nor a smaller one (an unmeasured "
             "placement) is authored here")
 
 

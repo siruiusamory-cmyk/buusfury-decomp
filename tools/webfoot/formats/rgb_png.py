@@ -17,9 +17,8 @@ which convention the project declared.
 
 from __future__ import annotations
 
-import zlib
-
-from .indexed_png import PngError, _read_chunks, _read_header, _unfilter
+from .indexed_png import (PngError, _inflate, _read_chunks, _read_header,
+                          _unfilter)
 
 #: Colour type 2 is three channels per pixel, colour type 6 is four.
 _COLOUR_TYPE_RGB = 2
@@ -38,7 +37,10 @@ def decode_truecolour(data: bytes) -> tuple[bytes, int, int, bytes | None]:
     pixel in row-major order and ``alpha`` is one byte per pixel for a colour
     type 6 image, or ``None`` for a colour type 2 one. Raises
     :class:`~tools.webfoot.formats.indexed_png.PngError` for anything that is not
-    the 8-bit non-interlaced RGB/RGBA form.
+    the 8-bit non-interlaced RGB/RGBA form: a truncated chunk, a short header, a
+    corrupt or missing deflate stream and a bad scanline length are all refused by
+    name, because the alternative is a library error escaping a build boundary
+    that promises to report a problem with the file.
     """
     chunks = _read_chunks(data)
     width, height, depth, colour_type, compression, filter_method, interlace = (
@@ -57,8 +59,7 @@ def decode_truecolour(data: bytes) -> tuple[bytes, int, int, bytes | None]:
     if width == 0 or height == 0:
         raise PngError("PNG dimensions must be positive")
 
-    pixels = _unfilter(zlib.decompress(chunks.get(b"IDAT", b"")), width, height,
-                       channels)
+    pixels = _unfilter(_inflate(chunks), width, height, channels)
     if channels == 3:
         return pixels, width, height, None
 

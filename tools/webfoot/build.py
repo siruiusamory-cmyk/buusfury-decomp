@@ -782,9 +782,42 @@ def _sprite_maps(project: StatProject) -> frozenset[MapIdentity]:
     return frozenset(MapIdentity(index) for index in project.sprites.actor_maps())
 
 
+def _sprite_map_clashes(project: StatProject, maps) -> list[str]:
+    """The two shapes that would give one map's object array two writers.
+
+    Run by `validate` and again by the build, from this one function, so a
+    project that cannot be built says so when it is validated rather than at the
+    end of a build. Each is a silent drop or a byte-range overlap otherwise: the
+    attachment plan emits that map's `MapEntry` record itself.
+    """
+    problems: list[str] = []
+    for index in project.sprites.actor_maps():
+        values = project.maps.get(index)
+        if not values:
+            continue
+        if values.get("authored_placements"):
+            problems.append(
+                f"map {index} receives an authored placement expansion and a new "
+                "actor; both re-emit the map's object array, so a build cannot "
+                "apply both"
+            )
+        if maps is None:
+            continue
+        identity = MapIdentity(index)
+        differing = sorted(name for name in MAP_FIELDS
+                           if maps.field(identity, name) != values[name])
+        if differing:
+            problems.append(
+                f"map {index}'s {', '.join(differing)} is edited and a new actor is "
+                "appended to it; the actor's plan emits that map's record itself, "
+                "so the field edit would be dropped"
+            )
+    return problems
+
+
 def _check_sprites(
     project: StatProject, profile: RomProfile, project_dir, canonical_image,
-    identification,
+    identification, maps,
 ) -> list[str]:
     """Check every authored actor sprite against the base image.
 
@@ -802,21 +835,22 @@ def _check_sprites(
     """
     if project.sprites.is_empty():
         return []
+    problems = _sprite_map_clashes(project, maps)
     for name, declared in (("actor sprites", capability.Capability.ACTOR_SPRITES),
                            ("map entries", capability.Capability.MAP_ENTRIES)):
         if not capability.declared(profile, declared):
-            return [
+            return problems + [
                 "project authors a new actor sprite, but this ROM's profile "
                 f"declares no {name}; a build would silently drop it"
             ]
     if canonical_image is None:
-        return []
+        return problems
     try:
         materialize_authored_sprites(canonical_image, identification, profile,
                                      project.sprites, project_dir)
     except _SPRITE_ERRORS as exc:
-        return [f"authored actor sprite: {exc}"]
-    return []
+        return problems + [f"authored actor sprite: {exc}"]
+    return problems
 
 
 def _transition_requests(project: StatProject) -> dict[TransitionIdentity, AuthoredTransitionEdit]:
@@ -1152,7 +1186,7 @@ def validate_project(
             + _check_transitions(project, profile, canonical_image)
             + _check_transition_creations(project, profile, canonical_image)
             + _check_sprites(project, profile, project_dir, canonical_image,
-                             identification)
+                             identification, maps)
             + _check_graphics(project, profile, project_dir, canonical_image, identification)
             + _check_dialogues(project, profile, rom_path)
         )
@@ -1289,18 +1323,23 @@ def build_project(
     # one to an authored placement expansion: the attachment planner rewrites that
     # map's ``MapEntry+0x04`` count and ``+0x14`` array pointer itself, so
     # re-encoding the record at its canonical values here would collide with it
-    # byte-for-byte. The two domains cannot both own one map's object array, so a
-    # project that asks for both is refused below rather than failing later with an
-    # overlap error that names bytes instead of the two edits.
+    # byte-for-byte. The two combinations that would give one map's object array
+    # two writers are refused by the same check `validate` runs, so a project that
+    # cannot be built is refused at validation rather than at the last step.
     sprite_maps = _sprite_maps(project)
+    sprite_clashes = _sprite_map_clashes(project, maps)
     if sprite_maps & authored_map_identities:
-        clash = ", ".join(sorted(str(identity) for identity in
-                                 sprite_maps & authored_map_identities))
-        raise ProjectValidationError(
+        # The authoritative form of the document check above: these are the maps
+        # the placement domain actually took ownership of.
+        clash = ", ".join(sorted(str(identity)
+                                 for identity in sprite_maps & authored_map_identities))
+        sprite_clashes.append(
             f"this project authors a new actor on {clash} and also gives that map an "
             "authored placement expansion; both re-emit the map's object array, so a "
             "build cannot apply both"
         )
+    if sprite_clashes:
+        raise ProjectValidationError("; ".join(sprite_clashes))
     authored_map_identities = authored_map_identities | sprite_maps
 
     # One plan for every subsystem, not one plan each. Overlap detection is
@@ -1326,30 +1365,14 @@ def build_project(
         reserved += strings.allocated_spans()
         base_bytes = strings.base_bytes if base_bytes is None else base_bytes
     if maps is not None:
-        # SPRITE-NEW-PROJECT-SURFACE-001. The yield below is why an authored FIELD
-        # on such a map is refused, and the check has to run BEFORE the authored
-        # values are pushed into the table: after that, every field already equals
-        # what the project states and nothing looks different.
-        for index in project.sprites.actor_maps():
-            values = project.maps.get(index)
-            if not values:
-                continue
-            identity = MapIdentity(index)
-            differing = sorted(name for name in MAP_FIELDS
-                               if maps.field(identity, name) != values[name])
-            if differing:
-                raise ProjectValidationError(
-                    f"this project edits map {index}'s {', '.join(differing)} and also "
-                    "appends a new actor to it; the actor's plan emits that map's "
-                    "record itself, so the field edit would be dropped"
-                )
         _apply_project_to_maps(project, maps)
         # TOOLKIT-028: an authored expansion derives its map's MapEntry record and
         # moves its object array, so `maps` yields both structures to it rather than
         # re-encoding them at their canonical values and colliding.
         #
         # SPRITE-NEW-PROJECT-SURFACE-001 extends that yield to a map an authored
-        # actor is appended to.
+        # actor is appended to. An authored FIELD on such a map was already refused
+        # above, because this domain emits the whole record.
         changes += maps.changes(authored_maps=authored_map_identities)
         from .data.placement_contracts import CONTRACTS
         if maps.profile.id in CONTRACTS:

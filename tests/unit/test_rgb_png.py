@@ -115,3 +115,43 @@ def test_a_hand_built_indexed_png_still_refuses_non_indexed_chunks():
              + struct.pack(">I", zlib.crc32(b"IHDR" + body) & 0xFFFFFFFF))
     with pytest.raises(ip.PngError, match="expected an 8-bit indexed PNG"):
         ip.decode(b"\x89PNG\r\n\x1a\n" + chunk)
+
+
+def _chunk(kind: bytes, body: bytes) -> bytes:
+    return (struct.pack(">I", len(body)) + kind + body
+            + struct.pack(">I", zlib.crc32(kind + body) & 0xFFFFFFFF))
+
+
+def _png(*chunks: bytes) -> bytes:
+    return b"\x89PNG\r\n\x1a\n" + b"".join(chunks)
+
+
+def _header(width: int, height: int, colour_type: int) -> bytes:
+    return _chunk(b"IHDR", struct.pack(">IIBBBBB", width, height, 8, colour_type,
+                                       0, 0, 0))
+
+
+def test_a_missing_deflate_stream_is_refused(tmp_path):
+    data = _png(_header(2, 2, 6), _chunk(b"IEND", b""))
+    with pytest.raises(rp.PngError, match="not a readable deflate stream"):
+        rp.decode_truecolour(data)
+
+
+def test_a_corrupt_deflate_stream_is_refused(tmp_path):
+    data = _png(_header(2, 2, 6), _chunk(b"IDAT", b"not deflate at all"),
+                _chunk(b"IEND", b""))
+    with pytest.raises(rp.PngError, match="not a readable deflate stream"):
+        rp.decode_truecolour(data)
+
+
+def test_a_short_header_is_refused():
+    with pytest.raises(rp.PngError, match="PNG header is malformed"):
+        rp.decode_truecolour(_png(_chunk(b"IHDR", b"short"), _chunk(b"IEND", b"")))
+
+
+def test_a_scanline_of_the_wrong_length_is_refused(tmp_path):
+    """The deflate stream inflates, but it is not one filtered row per row."""
+    data = _png(_header(2, 2, 2), _chunk(b"IDAT", zlib.compress(b"\x00" * 5)),
+                _chunk(b"IEND", b""))
+    with pytest.raises(rp.PngError, match="expected 14"):
+        rp.decode_truecolour(data)

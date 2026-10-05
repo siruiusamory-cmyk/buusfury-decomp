@@ -230,7 +230,10 @@ wander_box = [192, 544, 272, 624]
   dimensions and declaration disagree is refused instead of resolved by
   preferring one. Eight-bit RGB and RGBA are both accepted; a fully transparent
   pixel is a hole and becomes the transparent entry, and a partly transparent one
-  is refused because a sprite pixel is one palette index.
+  is refused because a sprite pixel is one palette index. The hole a sheet draws
+  in colour rather than in alpha is `(255, 0, 255)`: that is the chroma key the
+  planner uses, a fully transparent pixel's colour is normalised to it, and a
+  pixel that is that colour is a hole whether the sheet meant it or not.
 - **`free_palette_entries` is the author's claim, and it is checked.** The SDK
   decodes the actor-sprite graphics but not every payload that shares the 256-entry
   object palette, so it cannot derive which entries are free; it verifies the

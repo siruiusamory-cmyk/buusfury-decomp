@@ -376,6 +376,43 @@ def test_the_project_route_authors_the_identity_and_its_actor(
     assert Path(second_manifest).read_bytes() == manifest_path.read_bytes()
 
 
+def test_an_earlier_domains_reservations_reach_both_planners_and_come_back(
+        project, catalog, profile, canonical_bytes):
+    """The shared reservation set is threaded in AND out of this domain, once.
+
+    Two contract halves, and each has been wrong on its own: the set that arrives
+    has to reach the SECOND planner (or the actor lands on bytes an earlier domain
+    owns), and what comes back has to be this domain's OWN spans only (the build
+    accumulates them onto the set it already holds, so returning the incoming set
+    as well would reserve every earlier span twice).
+    """
+    from tools.webfoot.binary import FileOffset
+    from tools.webfoot.layout import OwnedRegion, RomRange
+    from tools.webfoot.project import read_project
+    from tools.webfoot.rom import identify_rom
+    from tools.webfoot.sprite_authoring import materialize_authored_sprites
+
+    synthetic_sheet(project, canonical_bytes, profile)
+    author_sprite(project, sheets={"stand": 1})
+    # The first 8 KiB of the expansion is what an earlier allocating domain would
+    # have taken; the actor's default spans sit inside it.
+    blocked = RomRange(FileOffset(0x800000), 0x2000)
+    incoming = (OwnedRegion(blocked, "test:earlier-domain"),)
+    materialization = materialize_authored_sprites(
+        canonical_bytes, identify_rom(_rom_path(), catalog), profile,
+        read_project(project).sprites, project, reserved=incoming)
+
+    # What the build holds after `reserved += materialization.reserved`.
+    accumulated = incoming + materialization.reserved
+    assert len(materialization.reserved) == 4  # the identity's two, the actor's two
+    for allocation in materialization.generated_allocations:
+        assert not blocked.overlaps(allocation.allocated_range)
+    spans = [region.range for region in accumulated]
+    for index, left in enumerate(spans):
+        for right in spans[index + 1:]:
+            assert not left.overlaps(right)
+
+
 def test_a_new_actor_on_a_map_with_an_authored_field_edit_is_refused(
         project, tmp_path, catalog, profile, canonical_bytes):
     """The attachment emits that map's record, so a field edit would be dropped."""
@@ -384,3 +421,14 @@ def test_a_new_actor_on_a_map_with_an_authored_field_edit_is_refused(
     edit_map_field(project)
     with pytest.raises(ProjectValidationError, match="field edit would be dropped"):
         build(project, tmp_path, "clash", catalog)
+
+
+def test_validate_reports_the_same_map_clash_the_build_refuses(
+        project, catalog, profile, canonical_bytes):
+    """Validation and build may not disagree about what can be authored."""
+    synthetic_sheet(project, canonical_bytes, profile)
+    author_sprite(project, sheets={"stand": 1})
+    edit_map_field(project)
+    report = validate_project(project, _rom_path(), catalog)
+    assert not report.passed
+    assert any("field edit would be dropped" in problem for problem in report.problems)

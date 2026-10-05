@@ -292,8 +292,9 @@ def materialize_authored_sprites(
     ``corpus`` is the decoded actor-sprite graphics when the caller already has
     it, so a build that also authors a palette or pixel override walks the corpus
     once rather than twice. ``reserved`` is the build-scoped reservation set every
-    allocating domain shares; the spans this domain places are returned for the
-    domains after it.
+    allocating domain shares; both of this domain's own spans - the identity's and
+    the actor's - are returned for the domains after it, and the caller adds them
+    to that set the way it does for every other domain.
     """
     capability.require(
         identification,
@@ -315,15 +316,22 @@ def materialize_authored_sprites(
         image, identification, identity_request(project_dir, sprite),
         reserved=reserved, sprites=corpus,
     )
+    # Both planners return only the spans THEY placed, because that is the shape
+    # every allocating domain returns and `build` accumulates: it does
+    # `reserved += materialization.reserved` on the set it already holds. So the
+    # build-scoped set this domain received travels into the second planner - or
+    # the actor could be handed bytes an earlier domain owns - and what comes back
+    # is this domain's OWN spans, both planners', so no caller sees a span twice.
+    placed = reserved + identity_plan.reserved
     attachment = plan_new_map_actor(
         image, identification, actor_request(image, profile, sprite),
-        profile=profile, reserved=identity_plan.reserved,
+        profile=profile, reserved=placed,
     )
     return AuthoredSpriteMaterialization(
         identity=identity_plan.identity,
         actor=attachment.actor,
         changes=identity_plan.changes + attachment.changes,
-        reserved=attachment.reserved,
+        reserved=identity_plan.reserved + attachment.reserved,
         generated_allocations=(identity_plan.generated_allocations
                                + attachment.generated_allocations),
         relocations=identity_plan.relocations + attachment.relocations,

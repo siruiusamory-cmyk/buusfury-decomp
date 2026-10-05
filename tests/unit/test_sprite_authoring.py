@@ -88,6 +88,31 @@ def test_the_sheet_must_be_one_row_of_square_cells(tmp_path):
         read_source_sheet(tmp_path, _animation(path, 2), where="test")
 
 
+def test_pixels_inside_a_cell_are_neither_transposed_nor_flipped(tmp_path):
+    """A solid cell cannot tell a transpose from a correct read, so draw a shape.
+
+    The pattern is asymmetric in both axes and every pixel differs from its
+    neighbours, so a reader that flipped or transposed within the cell fails here
+    rather than only in the one test that needs the private art.
+    """
+    side = SIDE
+    key = (255, 0, 255)
+    pixels = bytearray()
+    for y in range(side):
+        for x in range(side):
+            pixels += bytes((10 + x, 20 + y, 30 + 2 * (x * side + y)))
+    width = 4 * side
+    rows = [pixels[3 * y * side : 3 * (y + 1) * side] for y in range(side)]
+    rgb = bytearray()
+    for row in rows:
+        for _cell in range(4):
+            rgb += row
+    path = write_truecolour_png(tmp_path / "stand.png", bytes(rgb), width, side)
+    sheet = read_source_sheet(tmp_path, _animation(path, 1), where="test")
+    assert sheet.cell(2) == bytes(pixels)
+    assert sheet.cell(2) != bytes(pixels[3:] + pixels[:3])
+
+
 def test_a_missing_sheet_is_refused(tmp_path):
     animation = AuthoredSpriteAnimation(name="stand", sheet="missing.png", frames=1)
     with pytest.raises(SpriteAuthoringError, match="not a file in this project"):

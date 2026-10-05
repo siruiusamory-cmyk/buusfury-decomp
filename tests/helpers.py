@@ -130,9 +130,10 @@ def write_truecolour_png(
     SPRITE-NEW-PROJECT-SURFACE-001. The toolkit reads truecolour sheets and does
     not write them - a project points at the author's own file - so the writer a
     test needs lives here rather than in shipped code. ``filter_type`` applies one
-    PNG scanline filter (None, Sub, Up, Average or Paeth) on every row, which is
-    how a reader's per-filter arithmetic for multi-byte pixels is exercised
-    against bytes this repository did not produce.
+    PNG scanline filter (None, Sub, Up, Average or Paeth) on every row. It follows
+    the same convention the reader does, so it proves the arithmetic is
+    self-consistent and cannot prove it matches another encoder; the reader was
+    additionally checked by hand against images an independent encoder produced.
     """
     import struct
     import zlib

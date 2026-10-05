@@ -146,7 +146,20 @@ def _read_header(chunks: dict[bytes, bytes]) -> tuple[int, ...]:
     header = chunks.get(b"IHDR")
     if header is None:
         raise PngError("PNG has no IHDR")
-    return struct.unpack(">IIBBBBB", header[:13])
+    try:
+        return struct.unpack(">IIBBBBB", header[:13])
+    except struct.error as exc:
+        raise PngError(f"PNG header is malformed: {exc}") from exc
+
+
+def _inflate(chunks: dict[bytes, bytes]) -> bytes:
+    """The image data, refusing a deflate stream that cannot be read."""
+    try:
+        return zlib.decompress(chunks.get(b"IDAT", b""))
+    except zlib.error as exc:
+        raise PngError(
+            f"PNG image data is not a readable deflate stream: {exc}"
+        ) from exc
 
 
 def _unfilter(raw: bytes, width: int, height: int, channels: int) -> bytes:
@@ -230,7 +243,7 @@ def decode(data: bytes) -> tuple[bytes, int, int, tuple[tuple[int, int, int], ..
     if width == 0 or height == 0:
         raise PngError("PNG dimensions must be positive")
 
-    raw = zlib.decompress(chunks.get(b"IDAT", b""))
+    raw = _inflate(chunks)
     pixels = _unfilter(raw, width, height, 1)
 
     colours = tuple(

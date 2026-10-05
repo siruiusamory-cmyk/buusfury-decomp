@@ -68,13 +68,16 @@ Three decisions are the whole model:
   object array, whose inline behaviour entry the build copies. No ROM address is
   accepted from project source.
 
-Refused shapes, each with its own test: two identities; zero or two animations;
-an animation table key that disagrees with the animation's own name; a sheet path
-that is absolute, backslash-spelled, climbs out of the project or is not a PNG; a
-frame count outside the one bound this project reads; a free palette entry of 0,
-of 256 or repeated; a sprite id or donor that is not a non-negative integer; a
-retained word that is not an unsigned 32-bit value; a behaviour template from
-another map, or in the wrong identity form.
+Refused shapes, each with its own test: two identities; no animations; more
+animation slots than the structure's own count byte can state; an animation table
+key that disagrees with the animation's own name; a sheet path that is absolute,
+backslash-spelled, climbs out of the project or is not a PNG; a frame count
+outside the one bound this project reads; a free palette entry of 0, of 256 or
+repeated; a free palette entry the decoded corpus already draws; a retained word
+that is not an unsigned 32-bit value; a behaviour template from another map, or
+in the wrong identity form. A sprite id the appended registry entry does not
+yield, and a claimed free palette entry that fails the corpus check, are refused
+by the planners themselves rather than by the document model.
 
 ## 2. What the build path does
 
@@ -108,8 +111,9 @@ Two integration facts are worth naming because they are not optional:
 
 The manifest gains a `sprite_authoring` array holding the two planners' own
 `to_json()` documents, so a reader can answer where sprite 307 landed without
-re-deriving it. `validate` runs the same materialization, so validation and build
-cannot disagree about what may be authored.
+re-deriving it. `validate` runs the same materialization and the same map-clash
+check the build runs, so a project that cannot be built is refused at validation
+rather than at the last step.
 
 ## 3. Parity
 
@@ -154,7 +158,7 @@ merely differing.
 | `tests/unit/test_sprite_project.py` | `fast` | the document: round trip, writer determinism, every refusal, identity parsing |
 | `tests/unit/test_sprite_authoring.py` | `fast` | a sheet PNG as the planner reads it: cell order per facing and per frame, dimension, alpha and file refusals |
 | `tests/unit/test_rgb_png.py` | `fast` | the truecolour reader: RGB and RGBA, all five scanline filters at four bytes per pixel, and by-name refusals |
-| `tests/integration/test_sprite_new_project_rom.py` | `rom` | the project route against the canonical image: the Cui parity case, the five required properties, determinism, and the two refusals |
+| `tests/integration/test_sprite_new_project_rom.py` | `rom` | the project route against the canonical image: the Cui parity case, the five required properties, determinism, the reservation-set contract, and the map-clash refusal on both the validate and the build route |
 
 ## 5. Safety
 

@@ -58,9 +58,8 @@ donor's proven composition shape, measured from the donor's own decoded records:
    disagrees with itself is refused here rather than copied.
 3. **The anchor is part of the proven shape.** A donor whose frames share the rect
    but place it at different anchors proves no single placement, and is refused
-   for that reason before the cell is considered; 22 of the canonical structures
-   with one rect are refused this way. Every authored frame takes the envelope's
-   anchor.
+   for that reason before the cell is considered; 31 of the canonical structures
+   are refused this way. Every authored frame takes the envelope's anchor.
 4. **`_require_cell_geometry`** then requires every authored sheet cell to be
    exactly the envelope: `(cell_width, cell_height) == (envelope.width,
    envelope.height)`. A larger cell is a composition shape this path cannot prove;
@@ -75,6 +74,14 @@ bytes are unchanged. The new check accepts a subset of the old one's inputs: a
 donor with several frame rects, a donor with one rect at several anchors and a
 donor whose record contradicts itself were all accepted before and are refused
 now.
+
+Two limits of the check are deliberate. Only the **first frame** is compared
+against its own piece, because that frame is the one whose geometry the authored
+record copies; the remaining frames are read for their box and anchor and their
+piece records are not re-derived. And the envelope is measured from the frame
+record's stored box rather than from a union recomputed over its pieces, so the
+frame box is trusted exactly where `sprite_graphics` records it and does not
+require it to equal the pieces' union.
 
 ## 3. The measured envelope
 
@@ -150,6 +157,7 @@ SPRITE-NEW-ATTACHMENT-RUNTIME-PARITY-001 composed and ran.
 | donor frames share a rect but not an anchor | `the donor structure at 0x...... draws its 32x32 frames at several anchors ((-8, -26), (-8, -25), (-8, -24)), so it proves no single placement; choose a donor whose frames all sit at one anchor` |
 | donor frame box or anchor contradicts its own single piece | `the donor's first frame declares a AxB frame box at (X, Y) but its own piece is CxD at (x, y); this write path copies the frame record, so a donor whose record disagrees with itself would author geometry the donor does not draw` |
 | every animation slot null | `the donor structure at 0x...... names no decodable frame, so it proves no composition shape` |
+| slot 0 null but a later slot valid | refused safely, with the `_file_offset` message that 0x00000000 is not a file offset in this image: `_donor` decodes slot 0 for the geometry it copies, while the envelope measurement skips null slots |
 | multi-piece donor, 4bpp donor, flipped donor, undecodable donor | unchanged from SPRITE-NEW-AUTHORING-CORE-001 |
 
 ## 6. Focused tests

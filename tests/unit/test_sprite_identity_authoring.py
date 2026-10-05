@@ -918,7 +918,11 @@ def test_a_donor_whose_frame_box_contradicts_its_own_piece_is_refused():
 
 
 def test_a_donor_whose_frames_share_a_rect_but_not_an_anchor_is_refused():
-    """One rect at two anchors is not one proven placement either."""
+    """One rect at two anchors is not one proven placement either.
+
+    Both frames are 8x8 single pieces; the second sits one pixel higher, at
+    ``PIECE_Y - 1``, in both its frame box and its piece record.
+    """
     world = _world()
     image = bytearray(world[0])
     struct.pack_into("<I", image, DONOR_ANIMATION, 2)
@@ -928,8 +932,10 @@ def test_a_donor_whose_frames_share_a_rect_but_not_an_anchor_is_refused():
     struct.pack_into("<I", image, DONOR_FRAME_2, 1)
     struct.pack_into("<bbBB", image, DONOR_FRAME_2 + 4, PIECE_X, PIECE_Y - 1,
                      CELL_SIDE, CELL_SIDE)
-    struct.pack_into("<bbBB", image, DONOR_FRAME_2 + 12, PIECE_X, PIECE_Y - 1,
+    struct.pack_into("<bbBB", image, DONOR_FRAME_2 + 8, PIECE_X, PIECE_Y - 1,
                      CELL_SIDE, CELL_SIDE)
+    struct.pack_into("<II", image, DONOR_FRAME_2 + 12,
+                     PIECE_ATTRIBUTES, ROM_BASE + DONOR_CONTAINER)
     with pytest.raises(sid.SpriteIdentityError, match="several anchors"):
         _plan(_rebuilt_world(world, bytes(image)), _identity(_animation()))
 

@@ -170,6 +170,13 @@ class AllocationKind(str, Enum):
     #: placement exists and a canonical-only request would fail closed every
     #: time.
     SPRITE_IDENTITY_RECORD = "sprite_identity_record"
+    #: SPRITE-NEW-ATTACHMENT-CORE-001. One new map object record: the actor entity
+    #: appended to a map's engine-counted object array, for the one object family
+    #: that ticket's runtime evidence covers. It is new content with no canonical
+    #: extent to fit, and the array slot that names it is written in the same
+    #: transaction, so it is `EXPANDED_ONLY` by the same argument
+    #: `SPRITE_IDENTITY_RECORD` records.
+    MAP_OBJECT_RECORD = "map_object_record"
 
 
 class Addressability(str, Enum):
@@ -280,6 +287,11 @@ DEFAULT_ADDRESSABILITY = {
     AllocationKind.TRANSITION_POINTER_ARRAY: Addressability.EXPANDED_ONLY,
     AllocationKind.GRAPHICS_CONTAINER: Addressability.EXPANDED_PERMITTED,
     AllocationKind.SPRITE_IDENTITY_RECORD: Addressability.EXPANDED_ONLY,
+    #: SPRITE-NEW-ATTACHMENT-CORE-001. A new map object record is placed by
+    #: policy rather than by first fit, on the same argument as the identity
+    #: record above: it is new content whose canonical home does not exist, and
+    #: the one declared canonical free region is a shared resource.
+    AllocationKind.MAP_OBJECT_RECORD: Addressability.EXPANDED_ONLY,
 }
 
 

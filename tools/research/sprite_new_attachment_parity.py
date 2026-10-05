@@ -184,7 +184,7 @@ def reference_actor(reference: bytes, *, profile) -> dict:
 
 
 def build_variant(name, canonical_path, canonical, identification, profile, sheets,
-                  palette_grid, free_entries, reference, reference_bytes, out_dir):
+                  palette_grid, free_entries, reference_bytes, out_dir):
     """Plan both halves in production, merge them, and compare with the proven build."""
     from webfoot.sprite_attachment import (FAMILY_MAP_SIBLING, NewMapActor,
                                            plan_new_map_actor)
@@ -231,6 +231,14 @@ def build_variant(name, canonical_path, canonical, identification, profile, shee
     runtime_path = out_dir / f"{name}-runtime.gba"
     emit_image(canonical_path, runtime_path, plan)
     runtime_bytes = runtime_path.read_bytes()
+    return _describe(runtime_path, canonical, profile, reference_bytes, runtime_bytes,
+                     materialization, attachment, actor)
+
+
+def _describe(runtime_path, canonical, profile, reference_bytes, runtime_bytes,
+              materialization, attachment, actor):
+    """Compare the emitted image with the proven build and report the checks."""
+    from webfoot.sprite_attachment import FAMILY_MAP_SIBLING
 
     identity_ranges = []
     authored_identity = materialization.identity
@@ -245,6 +253,15 @@ def build_variant(name, canonical_path, canonical, identification, profile, shee
                                     frame.record_range))
 
     image_size = len(runtime_bytes)
+    # The reference is one specific composition. Its own actor sits at the
+    # addresses the palette-grid variant reproduces; the as-authored variant's
+    # identity is 8 bytes longer, so its actor sits elsewhere and comparing that
+    # region against the reference would compare unrelated bytes. Say so instead
+    # of reporting a difference that is an artefact of the offset.
+    comparable = (attachment.actor.record_range.start.value
+                  == actor["record_file_offset"]
+                  and attachment.actor.array_range.start.value
+                  == actor["array_file_offset"])
     region_rows = []
     for region_name, span in identity_ranges:
         left = runtime_bytes[span.start.value:span.end]
@@ -257,20 +274,24 @@ def build_variant(name, canonical_path, canonical, identification, profile, shee
                                  if left[index] != right[index]), None)})
     array_row = {
         "region": "map102:object-array",
+        "comparable": comparable,
         "file_offset": attachment.actor.array_range.start.value,
         "size": attachment.actor.array_range.size,
-        "identical": (runtime_bytes[attachment.actor.array_range.start.value:
-                                    attachment.actor.array_range.end]
-                      == reference_bytes[attachment.actor.array_range.start.value:
-                                         attachment.actor.array_range.end])}
+        "identical": None if not comparable else (
+            runtime_bytes[attachment.actor.array_range.start.value:
+                          attachment.actor.array_range.end]
+            == reference_bytes[attachment.actor.array_range.start.value:
+                               attachment.actor.array_range.end])}
     record_row = {
         "region": "map102:object-record",
+        "comparable": comparable,
         "file_offset": attachment.actor.record_range.start.value,
         "size": attachment.actor.record_range.size,
-        "identical": (runtime_bytes[attachment.actor.record_range.start.value:
-                                    attachment.actor.record_range.end]
-                      == reference_bytes[attachment.actor.record_range.start.value:
-                                         attachment.actor.record_range.end])}
+        "identical": None if not comparable else (
+            runtime_bytes[attachment.actor.record_range.start.value:
+                          attachment.actor.record_range.end]
+            == reference_bytes[attachment.actor.record_range.start.value:
+                               attachment.actor.record_range.end])}
     region_rows.extend([array_row, record_row])
 
     differing = [offset for offset in range(min(len(runtime_bytes), len(reference_bytes)))
@@ -386,7 +407,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--reference", required=True,
                         help="the proven walking image, whose own last map-102 array "
                              "slot names the actor record to reproduce and against "
-                             "which the result is compared")
+                             "which the palette-grid result is compared byte for byte")
     parser.add_argument("--out-dir", required=True)
     parser.add_argument("--manifest", required=True)
     parser.add_argument("--free-entries", default=",".join(
@@ -417,7 +438,7 @@ def main(argv: list[str] | None = None) -> int:
     for name, palette_grid in (("as-authored", False), ("palette-grid", True)):
         variants[name] = build_variant(
             name, canonical_path, canonical, identification, profile, sheets,
-            palette_grid, free_entries, reference_path, reference_bytes, out_dir)
+            palette_grid, free_entries, reference_bytes, out_dir)
 
     report = {
         "ticket": "SPRITE-NEW-ATTACHMENT-RUNTIME-PARITY-001",

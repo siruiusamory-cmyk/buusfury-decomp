@@ -48,9 +48,9 @@ the appended actor immediately above them.
 
 ## 2. The composed images against the proven builds
 
-| variant | runtime sha256 | identity regions identical to the proven build | byte differences vs the proven walking image |
+| variant | runtime sha256 | identity regions identical to the proven walking image | byte differences versus that reference |
 | --- | --- | --- | --- |
-| `as-authored` | `d21c2b1a0d748ad1dabc588f107d13e63c7c66338e1c6be4c749b624eb4a390d` | 0 of 31 (the identity differs from the palette-grid reference, as the colour finding predicts) | the recorded as-authored runtime image, byte for byte |
+| `as-authored` | `d21c2b1a0d748ad1dabc588f107d13e63c7c66338e1c6be4c749b624eb4a390d` | 0 of 31 (its identity is not the reference's) | 7,072, all of them the identity's own colour and geometry shift |
 | `palette-grid` | `033e04ba27ac8fcafe99df1f4f6cf2aa6f9a09445eee1ad15b707d2ff694ff57` | 31 of 31 | **0** |
 
 The `palette-grid` composition is **exactly** the recorded walking build
@@ -59,15 +59,19 @@ and the recorded 14 canonical bytes. Its appended actor landed on the same
 addresses the research composition used (array `0x08801F0C`, record
 `0x08801F38`, entry `0x08801F54`).
 
-The `as-authored` composition is **exactly** the image the previous parity
-session ran (`d21c2b1a...`, 22 canonical bytes), with the appended actor at array
-`0x08801F14`, record `0x08801F40`, entry `0x08801F5C`. The differences from the
-`033e04ba` reference are the identity's own: the sheets as drawn carry four
-colours whose 8-bit encoding is not on the object palette's grid, so the
-production planner writes six palette entries instead of two, its container is
-6088 bytes rather than 6080, and every identity address and pointer downstream of
-that shifts by 8 bytes. That is the SDK's published colour conversion doing its
-job, and it is the same finding SPRITE-NEW-RUNTIME-PARITY-001 recorded.
+The `as-authored` composition matches the image the previous parity session ran
+by digest: `d21c2b1a...`, 22 canonical bytes, appended actor at array
+`0x08801F14`, record `0x08801F40`, entry `0x08801F5C`. That equality is a
+sha256 comparison rather than a byte diff, because the driver's diff runs against
+the palette-grid reference and the two identities are not the same bytes: the
+sheets as drawn carry four colours whose 8-bit encoding is not on the object
+palette's grid, so the production planner writes six palette entries instead of
+two, its container is 6088 bytes rather than 6080, and every identity address and
+pointer downstream of that shifts by 8 bytes. That is the SDK's published colour
+conversion doing its job, and it is the same finding
+SPRITE-NEW-RUNTIME-PARITY-001 recorded; the actor-region rows for this variant
+are marked not comparable for the same reason, since at these offsets they would
+compare unrelated bytes.
 
 Required checks, both variants, from the emitted bytes:
 
@@ -92,6 +96,12 @@ itself. 2,400 frames, observer-completed, run directory
 `build/spritenew001/attachparity-as-authored`. A second independent boot
 (`attachparity-as-authored-2`, same image, same schedule) reproduced every result
 and is the numbers in parentheses below.
+
+The run follows `docs/skills/mgba-runtime.md`: the Lua scripted-breakpoint
+vehicle rather than the GDB-halted one, emulator identity asserted from the
+binary's version resource rather than its path, an allow-listed read-only
+observer with no emulated-memory writes, the image's own area construction rather
+than a restored savestate, and the liveness rule of section 8 stated below.
 
 ```text
 frame=2400
@@ -132,13 +142,15 @@ error.txt: empty in both sessions
   is accepting steps.
 - **Surrounding retail actors remain normal.** Nine retail actors were sampled in
   each session, seven moved and two stayed still, the same split the movement
-  record measured; 211 of 299 retail walk calls were accepted (215 of 328 in
-  session 2), the player and the retail worker NPCs render normally, and the map
-  itself is the retail West City park.
+  record measured; retail walk calls were accepted 184 of 254 times (191 of 284
+  in session 2), which excludes the authored actor's own calls (with them, 211 of
+  299 and 215 of 328), the player and the retail worker NPCs render normally, and
+  the map itself is the retail West City park.
 - **The instrument was live.** The same resolution site fired nine times for
   retail records and once for the authored one, and 299 (328) walk calls were
   recorded; `error.txt` is empty in both sessions, so no breakpoint callback
-  raised. This is the "target fires, liveness fires" row, not a silent channel.
+  raised. This is the "target fires, liveness fires" row of
+  `docs/skills/mgba-runtime.md` section 8, not a silent channel.
 
 ## 4. Safety
 

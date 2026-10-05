@@ -298,6 +298,7 @@ def _describe(runtime_path, canonical, profile, reference_bytes, runtime_bytes,
                           attachment.actor.record_range.end]
             == reference_bytes[attachment.actor.record_range.start.value:
                                attachment.actor.record_range.end])}
+    identity_rows = list(region_rows)
     region_rows.extend([array_row, record_row])
 
     differing = [offset for offset in range(min(len(runtime_bytes), len(reference_bytes)))
@@ -396,6 +397,11 @@ def _describe(runtime_path, canonical, profile, reference_bytes, runtime_bytes,
                       "data_pointer_raw": actor["data_pointer_raw"],
                       "entry_word": actor["entry_word"]},
         "region_comparison": region_rows,
+        "identity_region_count": len(identity_rows),
+        "identity_regions_identical": sum(1 for row in identity_rows
+                                          if row["identical"]),
+        "actor_rows_comparable": [row["comparable"]
+                                  for row in (array_row, record_row)],
         "regions_identical": sum(1 for row in region_rows if row["identical"]),
         "region_count": len(region_rows),
         "reference_difference_count": len(differing),
@@ -466,8 +472,10 @@ def main(argv: list[str] | None = None) -> int:
               " array", variant["actor"]["array_rom_address"],
               " entry", variant["actor"]["behaviour_entry_address"])
         print("  canonical bytes changed:", variant["canonical_changed_count"])
-        print("  regions identical to the reference:",
-              f"{variant['regions_identical']}/{variant['region_count']}")
+        print("  identity regions identical:",
+              f"{variant['identity_regions_identical']}/"
+              f"{variant['identity_region_count']}")
+        print("  actor rows comparable:", variant["actor_rows_comparable"])
         print("  reference byte differences:",
               variant["reference_difference_count"])
         print("  required checks:",

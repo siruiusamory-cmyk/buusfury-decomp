@@ -77,12 +77,13 @@ pointer downstream of that shifts by 8 bytes.
 
 The 7,072 differing bytes split into 7,059 inside the two appended spans
 (`0x800012` to `0x801F6B`, the containers and the shifted identity records) and 13
-inside the canonical image: the two registry pointer words, four object-palette
-entries (8 bytes), and the map-102 array field, whose three differing bytes are
-the appended actor's own address moving with the identity. The cause of the
-expanded bulk is an inference consistent with that split rather than a measured
-classification: it is the identity's own colour and geometry shift just
-described, which is the same finding SPRITE-NEW-RUNTIME-PARITY-001 recorded.
+inside the canonical image: the two registry pointer words (one byte each), five
+object-palette entries (8, 9, 103, 193 and 236; 10 bytes together) and one byte
+of the map-102 array field, 0x08F944, which moves by one byte because the
+appended actor's address shifts with the identity. The cause of the expanded bulk
+is an inference consistent with that split rather than a measured classification:
+it is the identity's own colour and geometry shift just described, which is the
+same finding SPRITE-NEW-RUNTIME-PARITY-001 recorded.
 
 Required checks, both variants, from the emitted bytes:
 

@@ -794,6 +794,14 @@ class WarpTab(QWidget):
 
         self._creation_arrival_x = self._creation_spin("Arrival X", arrival=True)
         self._creation_arrival_y = self._creation_spin("Arrival Y", arrival=True)
+        # WARP-CREATION-ARRIVAL-WIRING-001. Both widgets were built, shown and
+        # enabled, and `_on_creation_arrival_changed` existed to stage them, but
+        # nothing connected them: a typed point never reached the draft, the next
+        # synchronization rewrote the widgets from the seeded one, and Apply
+        # materialized the seeded point. Same shape as the region spins above and
+        # the existing-connection arrival spins.
+        for spin in (self._creation_arrival_x, self._creation_arrival_y):
+            spin.editingFinished.connect(self._on_creation_arrival_changed)
         arrival_row = QHBoxLayout()
         arrival_row.setContentsMargins(0, 0, 0, 0)
         arrival_row.setSpacing(theme.SPACE_SM)

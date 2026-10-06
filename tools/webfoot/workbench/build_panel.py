@@ -59,6 +59,26 @@ def is_safe_output_path(output_path, rom_path) -> bool:
     return not paths_are_the_same_file(output_path, rom_path)
 
 
+def _build_artefacts_for(output_path: Path) -> tuple[Path, ...]:
+    """Every file one build publishes for `output_path`, in publication order.
+
+    A build publishes more than its image: `build_project` defaults to
+    `MANIFEST_BESIDE_OUTPUT`, so the provenance document lands beside the image it
+    describes (CQA-12). The manifest name comes from the SDK's own authority rather
+    than being rebuilt here, so the panel cannot disagree with the build about what
+    a build writes.
+
+    WORKBENCH-OVERWRITE-ATOMICITY-001. Replacing only the image left this companion
+    behind, and `emit_image` refuses a destination that already exists, so the
+    rebuild failed with the user's previous output already deleted.
+    """
+    manifest_path = build_sdk.manifest_path_for_build(
+        build_sdk.MANIFEST_BESIDE_OUTPUT, output_path)
+    if manifest_path is None:  # pragma: no cover - MANIFEST_BESIDE_OUTPUT is set
+        return (Path(output_path),)
+    return (Path(output_path), Path(manifest_path))
+
+
 class BuildPanelTab(QWidget):
     """Extract / open, validate, and build a project against the open ROM."""
 
@@ -314,29 +334,57 @@ class BuildPanelTab(QWidget):
         except WriteError as exc:
             # WriteError is NOT a BuildError/ProjectError subclass, so it would
             # otherwise escape to the terminal (WORKBENCH-001 live defect). The
-            # only pre-existing-file case is the "output already exists" refusal;
-            # gate the overwrite offer on the file ACTUALLY existing, never on
-            # the message text, and NEVER auto-delete on other WriteErrors.
+            # only pre-existing-file case is the writer's refusal to replace an
+            # existing destination; gate the overwrite offer on a file ACTUALLY
+            # existing, never on the message text, and NEVER auto-delete on other
+            # WriteErrors.
             if not Path(output_path).exists():
                 QMessageBox.critical(self, "Build", str(exc))
                 return
-            # SAFETY: re-assert the output is not the source ROM before deleting.
-            # The pre-build guard already proved this, but the delete is the one
-            # irreversible act here, so it re-checks against exactly output_path.
-            if not is_safe_output_path(output_path, self._session.rom_path):
+            # WORKBENCH-OVERWRITE-ATOMICITY-001. One build publishes the image AND
+            # its beside-output manifest, and the writer refuses any destination
+            # that already exists. Replacing only the image left the stale manifest
+            # to fail the retry, after the previous output had been deleted, so the
+            # set this build is about to replace is what gets removed - and only
+            # that set.
+            occupied = tuple(
+                path for path in _build_artefacts_for(output_path) if path.exists()
+            )
+            # SAFETY: every path is re-checked against the source ROM before the
+            # one irreversible act here. The pre-build guard proved the image; the
+            # manifest is derived from it and is judged by the same policy.
+            unsafe = [
+                path for path in occupied
+                if not is_safe_output_path(path, self._session.rom_path)
+            ]
+            if unsafe:
                 QMessageBox.critical(
                     self, "Build refused",
-                    f"Refusing to delete - the output path is the source ROM:\n{output_path}"
+                    "Refusing to delete - these paths are the source ROM:\n"
+                    + "\n".join(str(path) for path in unsafe)
                 )
                 return
             answer = QMessageBox.question(
                 self, "Overwrite existing output?",
-                f"Output already exists:\n{output_path}\nOverwrite it and rebuild?",
+                "These files already exist:\n"
+                + "\n".join(str(path) for path in occupied)
+                + "\nOverwrite them and rebuild?",
                 QMessageBox.Yes | QMessageBox.No)
             if answer != QMessageBox.Yes:
                 self._status.setPlainText("Build cancelled - existing output kept.")
                 return
-            Path(output_path).unlink()
+            # The image goes last, mirroring the writer's own publish order, so a
+            # failure part-way leaves the artefact the user asked for rather than
+            # deleting it and stopping.
+            try:
+                for path in reversed(occupied):
+                    path.unlink()
+            except OSError as unlink_error:
+                QMessageBox.critical(
+                    self, "Build refused",
+                    f"The existing output could not be replaced: {unlink_error}"
+                )
+                return
             try:
                 self._run_build(output_path)
             except (build_sdk.BuildError, ProjectError, WriteError) as exc2:

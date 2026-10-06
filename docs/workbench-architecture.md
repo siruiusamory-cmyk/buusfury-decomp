@@ -145,8 +145,9 @@ Two safety rules hold across all four:
   It is a module-level, Qt-free function so it is unit-testable, and it
   delegates the comparison to the SDK's own `write.paths_are_the_same_file`
   rather than deriving a second, weaker one. The check runs before
-  `build_project` and again before the one irreversible delete
-  (`build_panel.py:299-307`, `323-331`).
+  `build_project` (`build_panel.py:321`) and again for every artefact in the
+  set a confirmed overwrite replaces (`build_panel.py:350-381`), which is the
+  image plus the provenance manifest the build publishes beside it.
 - **Fail closed.** An authoring target the SDK cannot resolve stays read-only
   with no raw-address or source-text fallback (`inspector.py:314-317`).
 
@@ -220,7 +221,7 @@ comment records the reason; do not generalise it to other slots.
    `except`; do not assume one family covers a sibling.
 4. Do not branch on exception message text. Branch on a checkable condition: the
    overwrite offer is gated on the output file actually existing, never on the
-   message (`build_panel.py:314-322`).
+   message (`build_panel.py:341-352`).
 
 ## Acceptance testing
 

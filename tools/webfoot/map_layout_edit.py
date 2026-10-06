@@ -828,9 +828,11 @@ class MapLayoutEditor:
         """Write a NEW ROM from the pending edit set, then publish it.
 
         Never writes the source: the output path is refused when it resolves to the
-        source, and the canonical image is only ever read. With no pending edits the
-        output is byte-identical to the source, because the edit plan is empty and
-        every emitted byte comes from the verified base.
+        source, and the canonical image is only ever read. An existing destination
+        is replaced, but a destination that hashes to the canonical image is
+        refused first, because replacing a second clean copy would destroy a ROM.
+        With no pending edits the output is byte-identical to the source, because
+        the edit plan is empty and every emitted byte comes from the verified base.
 
         The image and its provenance manifest are built at temporary sibling paths,
         verified there, and only then moved onto the requested destinations, so a

@@ -16,6 +16,7 @@ canonical bytes to mean anything.
 from __future__ import annotations
 
 import hashlib
+import json
 import os
 import shutil
 from pathlib import Path
@@ -30,6 +31,7 @@ from tools.webfoot.enemy_randomizer.planner import (
     EnemyRandomizerError,
     plan_enemy_randomization,
 )
+from tools.webfoot.randomizer.service import default_manifest_path, default_spoiler_path
 from tools.webfoot.write import apply_plan
 
 CANONICAL_SHA256 = "940ad5f01db4465b8877dfe739510cbf34f4ea3d390f3df13519808bc36f059e"
@@ -260,3 +262,97 @@ class TestContextCaching:
         for index in range(4):
             context.plan(f"stable-{index}", preset.config, preset_name=preset.name)
         assert context.plans == 4
+
+
+# --- --overwrite replaces the whole output set -------------------------------
+
+
+class TestOverwrite:
+    """``--overwrite`` used to permit the run and then refuse the write.
+
+    ``emit_image`` refuses an existing destination and the command removed
+    nothing first, so every overwrite exited 2 with nothing written. The
+    replacement policy is the shared service's: the output, its manifest and its
+    companion spoiler are ONE set, every refusal runs over the whole set before
+    the first unlink, and the unlink happens only once the plan is built.
+    """
+
+    def test_overwrite_replaces_the_whole_output_set(self, rom_copy, tmp_path, capsys):
+        out = tmp_path / "out.gba"
+        manifest = default_manifest_path(out)
+        stale_spoiler = default_spoiler_path(out)
+        decoy_spoiler = tmp_path / "other.spoiler.json"
+        decoy_notes = tmp_path / "out.notes.txt"
+        source_before = hashlib.sha256(rom_copy.read_bytes()).hexdigest()
+
+        fresh = tmp_path / "fresh.gba"
+        assert _run(_args(rom=rom_copy, output=fresh), capsys)[0] == 0
+        expected = fresh.read_bytes()
+
+        out.write_bytes(b"a previous run's randomized ROM")
+        manifest.write_text('{"run": "previous"}', encoding="utf-8")
+        stale_spoiler.write_text('{"seed": "previous"}', encoding="utf-8")
+        decoy_spoiler.write_text("unrelated", encoding="utf-8")
+        decoy_notes.write_text("unrelated", encoding="utf-8")
+
+        code, err = _run(_args(rom=rom_copy, output=out, overwrite=True), capsys)
+
+        assert code == 0, err
+        assert out.read_bytes() == expected, "the output was not replaced by this run"
+        document = json.loads(manifest.read_text(encoding="utf-8"))
+        assert document["output"]["sha256"] == hashlib.sha256(
+            out.read_bytes()
+        ).hexdigest()
+        assert not stale_spoiler.exists(), (
+            "a previous run's spoiler survived beside a different run's ROM"
+        )
+        assert decoy_spoiler.read_text(encoding="utf-8") == "unrelated"
+        assert decoy_notes.read_text(encoding="utf-8") == "unrelated"
+        assert hashlib.sha256(rom_copy.read_bytes()).hexdigest() == source_before
+
+    def test_an_existing_companion_spoiler_needs_overwrite(
+        self, rom_copy, tmp_path, capsys
+    ):
+        out = tmp_path / "out.gba"
+        companion = default_spoiler_path(out)
+        companion.write_text('{"seed": "previous"}', encoding="utf-8")
+
+        code, err = _run(_args(rom=rom_copy, output=out), capsys)
+
+        assert code == 2
+        assert "already exists" in err
+        assert companion.read_text(encoding="utf-8") == '{"seed": "previous"}'
+        assert not out.exists()
+
+    def test_overwrite_refuses_a_companion_that_is_a_canonical_copy(
+        self, rom_copy, tmp_path, capsys
+    ):
+        out = tmp_path / "out.gba"
+        out.write_bytes(b"a previous run's randomized ROM")
+        companion = default_spoiler_path(out)
+        shutil.copyfile(rom_copy, companion)
+
+        code, err = _run(_args(rom=rom_copy, output=out, overwrite=True), capsys)
+
+        assert code == 2
+        assert "copy of the canonical ROM" in err
+        assert hashlib.sha256(companion.read_bytes()).hexdigest() == CANONICAL_SHA256
+        assert out.read_bytes() == b"a previous run's randomized ROM", (
+            "a refusal must not have deleted a member of the set first"
+        )
+
+    def test_overwrite_refuses_a_companion_that_aliases_the_source(
+        self, rom_copy, tmp_path, capsys
+    ):
+        out = tmp_path / "out.gba"
+        out.write_bytes(b"a previous run's randomized ROM")
+        companion = default_spoiler_path(out)
+        os.link(rom_copy, companion)
+
+        code, err = _run(_args(rom=rom_copy, output=out, overwrite=True), capsys)
+
+        assert code == 2
+        assert "spoiler log path is the input ROM" in err
+        assert out.read_bytes() == b"a previous run's randomized ROM"
+        assert companion.exists()
+        assert hashlib.sha256(rom_copy.read_bytes()).hexdigest() == CANONICAL_SHA256

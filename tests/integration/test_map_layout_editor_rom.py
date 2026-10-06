@@ -32,6 +32,7 @@ from tools.export import map_browser as mb
 from tools.export import render as render_sdk
 from tools.webfoot import map_layout_provenance as prov
 from tools.webfoot import write as write_sdk
+from tools.webfoot.authored_image import staging_path
 from tools.webfoot.map_layout_edit import MapLayoutEditError, MapLayoutEditor
 from tools.webfoot.map_layout_write import MapLayoutWriteError, MapLayoutWriter
 
@@ -525,6 +526,85 @@ def test_a_no_op_save_still_publishes_a_manifest_and_stays_byte_identical(
     assert prov.manifest_path_for(output).is_file()
     with pytest.raises(prov.ProvenanceError):
         prov.verify_authored_rom(output)
+
+
+def test_a_save_over_a_canonical_copy_is_refused_and_touches_nothing(
+    canonical_rom: tuple[Path, bytes], editor: MapLayoutEditor, tmp_path: Path
+) -> None:
+    """The destination is a second clean canonical copy, and it survives.
+
+    A canonical copy is not an interchangeable output: replacing it destroys a
+    clean ROM. The refusal is the same rule the randomizer applies to a
+    destination that hashes to the canonical image, and it is checked before the
+    save removes or emits anything, so neither the copy nor its name-derived
+    manifest and staging siblings change.
+    """
+    path, source = canonical_rom
+    editor.reset()
+    editor.set_cell(GRAND_KAI, GRAND_KAI_LAYER, GRAND_KAI_CELL, GRAND_KAI_REPLACEMENT)
+    destination = tmp_path / "second-copy.gba"
+    destination.write_bytes(source)
+    manifest_destination = prov.manifest_path_for(destination)
+    staging_destination = staging_path(destination)
+    assert hashlib.sha256(destination.read_bytes()).hexdigest() == CANONICAL_SHA256
+
+    with pytest.raises(MapLayoutEditError) as excinfo:
+        editor.save(destination, source_path=path, profile_id=PROFILE_ID)
+    assert "copy of the canonical ROM" in str(excinfo.value)
+    # The destructive path - removed or replaced - never ran.
+    assert destination.read_bytes() == source
+    assert hashlib.sha256(destination.read_bytes()).hexdigest() == CANONICAL_SHA256
+    assert hashlib.sha256(path.read_bytes()).hexdigest() == CANONICAL_SHA256
+    assert not manifest_destination.exists()
+    assert not staging_destination.exists()
+
+
+def test_an_existing_non_canonical_destination_is_still_replaced(
+    canonical_rom: tuple[Path, bytes], editor: MapLayoutEditor, tmp_path: Path
+) -> None:
+    """The guard protects canonical identity, not "the destination must be new"."""
+    path, _source = canonical_rom
+    editor.reset()
+    editor.set_cell(GRAND_KAI, GRAND_KAI_LAYER, GRAND_KAI_CELL, GRAND_KAI_REPLACEMENT)
+    placeholder = tmp_path / "previous-build.gba"
+    placeholder.write_bytes(b"the user's previous build")
+    manifest_destination = prov.manifest_path_for(placeholder)
+    saved = editor.save(placeholder, source_path=path, profile_id=PROFILE_ID)
+    assert placeholder.read_bytes() == editor.build()
+    assert hashlib.sha256(placeholder.read_bytes()).hexdigest() == saved.output_sha256
+    assert manifest_destination.is_file()
+    editor.reset()
+
+
+def test_a_one_byte_off_canonical_copy_is_an_ordinary_existing_destination(
+    canonical_rom: tuple[Path, bytes], editor: MapLayoutEditor, tmp_path: Path
+) -> None:
+    """The refusal is hash-based: same name and nearly the same bytes is allowed.
+
+    This is the control that keeps the guard from decaying into a name or size
+    heuristic, and it doubles as the new-destination control: a destination that
+    does not exist yet is still written.
+    """
+    path, source = canonical_rom
+    editor.reset()
+    editor.set_cell(GRAND_KAI, GRAND_KAI_LAYER, GRAND_KAI_CELL, GRAND_KAI_REPLACEMENT)
+
+    near_match = tmp_path / "second-copy.gba"
+    payload = bytearray(source)
+    payload[0x100] ^= 0xFF
+    near_match.write_bytes(bytes(payload))
+    near_digest = hashlib.sha256(near_match.read_bytes()).hexdigest()
+    assert near_digest != CANONICAL_SHA256
+    saved = editor.save(near_match, source_path=path, profile_id=PROFILE_ID)
+    assert near_match.read_bytes() == editor.build()
+    assert hashlib.sha256(near_match.read_bytes()).hexdigest() == saved.output_sha256
+
+    fresh = tmp_path / "not-created-yet.gba"
+    assert not fresh.exists()
+    saved = editor.save(fresh, source_path=path, profile_id=PROFILE_ID)
+    assert fresh.is_file()
+    assert hashlib.sha256(fresh.read_bytes()).hexdigest() == saved.output_sha256
+    editor.reset()
 
 
 def test_arbitrary_modified_roms_are_refused(

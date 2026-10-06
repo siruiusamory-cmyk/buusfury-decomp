@@ -204,6 +204,27 @@ def test_the_source_may_not_be_any_path_the_save_touches(
         assert not destination.exists()
 
 
+def test_an_existing_destination_that_is_the_canonical_image_is_refused(
+    tmp_path: Path,
+) -> None:
+    """A destination that already holds the canonical image is a ROM, not an output.
+
+    The destination is a separate file from the source, so nothing here is an
+    alias refusal: only the canonical-copy guard can refuse this save, and it has
+    to refuse it before the destination is replaced.
+    """
+    destination = tmp_path / "out.gba"
+    destination.write_bytes(BASE)
+    source = tmp_path / "source.gba"
+    with pytest.raises(AuthoredImageError) as excinfo:
+        _save(tmp_path, [_change_at(16, b"\x01\x02\x03\x04")])
+    assert "copy of the canonical ROM" in str(excinfo.value)
+    assert destination.read_bytes() == BASE
+    assert source.read_bytes() == BASE
+    # The refusal is total: no provenance document and no staging artefact.
+    assert sorted(p.name for p in tmp_path.iterdir()) == ["out.gba", "source.gba"]
+
+
 def test_a_missing_source_or_an_unknown_profile_is_refused(tmp_path: Path) -> None:
     change = _change_at(16, b"\x01\x02\x03\x04")
     with pytest.raises(AuthoredImageError):

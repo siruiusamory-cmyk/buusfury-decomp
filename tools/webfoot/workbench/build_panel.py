@@ -15,6 +15,15 @@ path is compared. `is_safe_output_path` is a module-level, Qt-free function so
 that guard is unit-testable without a GUI, and it delegates the comparison
 itself to the SDK's one ownership of path identity
 (`write.paths_are_the_same_file`) rather than deriving a second, weaker one.
+
+That path comparison answers whether the destination IS the source file, not what
+the destination HOLDS, so a clean copy of the canonical ROM under the generated
+name passes it. The WriteError branch - a destination that already exists - is
+therefore resolved in one fixed order: establish the occupied artefact set,
+re-check every member against the source ROM, refuse a destination that is a copy
+of the canonical ROM by content hash, ask the user, unlink, rebuild. Nothing is
+deleted before every refusal has run, and a canonical copy is never offered for
+replacement.
 """
 
 from __future__ import annotations
@@ -27,6 +36,7 @@ from PySide6.QtWidgets import (QFileDialog, QHBoxLayout, QLabel, QMessageBox,
                                QWidget)
 
 from .. import build as build_sdk
+from ..authored_image import AuthoredImageError, refuse_canonical_destination
 from ..project import ProjectError
 from ..write import WriteError, paths_are_the_same_file
 from . import theme
@@ -363,6 +373,21 @@ class BuildPanelTab(QWidget):
                     "Refusing to delete - these paths are the source ROM:\n"
                     + "\n".join(str(path) for path in unsafe)
                 )
+                return
+            # SAFETY: a destination that already holds a clean copy of the
+            # canonical ROM is a ROM, not an output. The path-safety check above
+            # compares identities, so a byte-identical copy under the generated
+            # name passes it; this is the content check the SDK's shared
+            # output-safety boundary already applies to an authored-image Save As.
+            # It runs after every path check and before the confirmation and the
+            # first unlink, so a refusal here deletes nothing and, because the
+            # confirmation is no longer offered, never asks the user to approve an
+            # operation that cannot be allowed.
+            try:
+                refuse_canonical_destination(
+                    output_path, self._session.profile.identity.sha256)
+            except AuthoredImageError as exc:
+                QMessageBox.critical(self, "Build refused", str(exc))
                 return
             answer = QMessageBox.question(
                 self, "Overwrite existing output?",

@@ -21,7 +21,7 @@ import shutil
 import subprocess
 from pathlib import Path
 
-from PySide6.QtCore import QTimer
+from PySide6.QtCore import QTimer, Signal
 from PySide6.QtWidgets import (QFileDialog, QHBoxLayout, QLabel, QLineEdit,
                                QMessageBox, QPushButton, QVBoxLayout, QWidget)
 
@@ -58,6 +58,9 @@ def _initial_mgba() -> str:
 class LauncherTab(QWidget):
     """Pick the built ROM + mGBA, then launch mGBA on the ROM (fire-and-forget)."""
 
+    #: The ROM field changed: the shell derives its Run action from the same state.
+    romChanged = Signal()
+
     def __init__(self, session: Session) -> None:
         super().__init__()
         self._session = session
@@ -81,6 +84,8 @@ class LauncherTab(QWidget):
             "Run the built ROM in mGBA (Ctrl+R); this never writes a ROM"
         )
         self._launch_button.clicked.connect(self._launch)
+        self._rom_field.textChanged.connect(self._refresh_launch_availability)
+        self._refresh_launch_availability()
 
         rom_row = QHBoxLayout()
         self._rom_caption = QLabel("ROM:")
@@ -141,6 +146,20 @@ class LauncherTab(QWidget):
         else:
             self._rom_field.clear()
 
+    def rom_is_runnable(self) -> bool:
+        """The ONE statement of "is there a ROM to launch?". The visible button and
+        the shell's Ctrl+R action both read it, so the two cannot disagree."""
+        return self._rom_field.text().strip() != ""
+
+    def _refresh_launch_availability(self) -> None:
+        """Recompute launch availability from the field, then tell the shell.
+
+        Connected to the field, so a picker choice, a typed path and a cleared
+        field all reach the button and the shell action through one path.
+        """
+        self._launch_button.setEnabled(self.rom_is_runnable())
+        self.romChanged.emit()
+
     def on_project_mutated(self) -> None:
         """A project mutation: re-arm from the session, as a session change does.
 
@@ -161,13 +180,12 @@ class LauncherTab(QWidget):
             self._launcher_state.setText(
                 f"Ready to launch the last build: {Path(built).name}"
             )
-            self._launch_button.setEnabled(True)
         else:
             self._launcher_state.setText(
                 "No built ROM yet. Run Validate then Build; this tab only launches "
                 "what already exists."
             )
-        self._launch_button.setEnabled(self._rom_field.text().strip() != "")
+        self._refresh_launch_availability()
 
     def _pick_rom(self) -> None:
         path, _ = QFileDialog.getOpenFileName(
@@ -209,8 +227,9 @@ class LauncherTab(QWidget):
         except Exception:  # pragma: no cover - helper already fails safe
             pass
         # Debounce: re-enable after a beat so a double-click can't spawn twice.
+        # Re-derived from the field, because the field can change inside the beat.
         self._launch_button.setEnabled(False)
-        QTimer.singleShot(_DEBOUNCE_MS, lambda: self._launch_button.setEnabled(True))
+        QTimer.singleShot(_DEBOUNCE_MS, self._refresh_launch_availability)
 
     def launch_built_rom(self) -> None:
         """Launch the selected built ROM through the normal launcher action."""

@@ -1912,3 +1912,120 @@ def test_a_malformed_creation_document_is_reported(qapp, image, project):
     refusal = tab.creation_refusal()
     assert refusal is not None and "could not be read" in refusal
     assert tab.open_creation() is False
+
+
+# --- WARP-CREATION-ARRIVAL-WIRING-001 ----------------------------------------
+#
+# The creation form's Arrival X/Y widgets were built, shown and enabled, and the
+# `_on_creation_arrival_changed` slot that stages them existed, but nothing
+# connected the widgets to it. A typed arrival therefore never reached the draft:
+# the next synchronization wrote the draft's seeded point back into the widgets,
+# and Apply materialized the seeded point rather than the authored one. These
+# tests drive the widgets and their signals; the connection-count test intercepts
+# `stage_creation_arrival` to count calls rather than calling it to stage.
+
+
+def _type_arrival(tab: WarpTab, x: int, y: int) -> tuple[int, int]:
+    """Type into both Arrival widgets, emitting the signal a real edit emits."""
+    tab._creation_arrival_x.setValue(x)
+    tab._creation_arrival_x.editingFinished.emit()
+    tab._creation_arrival_y.setValue(y)
+    tab._creation_arrival_y.editingFinished.emit()
+    return (x, y)
+
+
+def _materialized_arrival(image, project) -> TransitionArrival:
+    """The arrival of the record the production build materializes."""
+    from tools.webfoot.write import apply_plan, plan_changes
+
+    result, _provenance = built_creation(image, project)
+    profile = profile_for(image)
+    plan = plan_changes(
+        image,
+        result.changes,
+        profile_id=profile.id,
+        base_sha256=profile.identity.sha256,
+        generated_image=result.generated_image,
+        generated_allocations=result.generated_allocations,
+        transition_creations=result.provenance,
+    )
+    built = apply_plan(image, plan)
+    corpus = mt.read_map_transitions(built, profile)
+    return corpus.entry(mt.TransitionIdentity(MapIdentity(0), 2)).record.arrival
+
+
+def test_the_arrival_widgets_stage_the_authored_point(tab, image, project):
+    """The typed point reaches the draft, survives a sync, and is materialized."""
+    assert tab.open_creation() is True
+    seeded = (TEMPLATE_ARRIVAL.x, TEMPLATE_ARRIVAL.y)
+    assert tab.creation_form_state()["arrival"] == seeded
+    assert (tab._creation_arrival_x.value(), tab._creation_arrival_y.value()) == seeded
+
+    typed = (60, 70)
+    assert typed != seeded
+    _type_arrival(tab, *typed)
+
+    # The draft carries what was typed, not the point the template seeded.
+    assert tab.creation_form_state()["arrival"] == typed
+
+    # Every other gesture resynchronizes the widgets FROM the draft, which is where
+    # a typed value that never reached the draft is lost.
+    tab.stage_creation_name(NAME)
+    tab.stage_creation_region(*REGION)
+    tab.stage_creation_destination(DESTINATION.index)
+    tab.stage_creation_facing(FACING_EAST)
+    assert (tab._creation_arrival_x.value(), tab._creation_arrival_y.value()) == typed
+    assert tab.creation_form_state()["arrival"] == typed
+
+    assert tab.apply_creations() is True
+    assert stored_in(project).arrival == TransitionArrival(*typed)
+    assert _materialized_arrival(image, project) == TransitionArrival(*typed)
+
+
+def test_an_untouched_arrival_keeps_the_seeded_point(tab, image, project):
+    """NEGATIVE CONTROL: not editing Arrival preserves the seeded behaviour."""
+    assert tab.open_creation() is True
+    seeded = (TEMPLATE_ARRIVAL.x, TEMPLATE_ARRIVAL.y)
+
+    tab.stage_creation_name(NAME)
+    tab.stage_creation_region(*REGION)
+    tab.stage_creation_destination(DESTINATION.index)
+    tab.stage_creation_facing(FACING_EAST)
+
+    assert (tab._creation_arrival_x.value(), tab._creation_arrival_y.value()) == seeded
+    assert tab.creation_form_state()["arrival"] == seeded
+
+    assert tab.apply_creations() is True
+    assert stored_in(project).arrival == TransitionArrival(*seeded)
+    assert _materialized_arrival(image, project) == TransitionArrival(*seeded)
+
+
+def test_each_arrival_widget_has_exactly_one_staged_connection(tab):
+    """One emission per widget stages once, before and after a resynchronization."""
+    assert tab.open_creation() is True
+    calls: list[tuple[int, int]] = []
+    tab.stage_creation_arrival = lambda x, y: calls.append((x, y)) or True
+
+    tab._creation_arrival_x.setValue(75)
+    tab._creation_arrival_x.editingFinished.emit()
+    assert calls == [(75, tab._creation_arrival_y.value())]
+
+    calls.clear()
+    tab._creation_arrival_y.setValue(85)
+    tab._creation_arrival_y.editingFinished.emit()
+    assert calls == [(tab._creation_arrival_x.value(), 85)]
+
+    # Re-rendering the form must not install a second connection.
+    calls.clear()
+    tab._refresh_pages()
+    tab._creation_arrival_x.setValue(95)
+    tab._creation_arrival_x.editingFinished.emit()
+    assert calls == [(95, tab._creation_arrival_y.value())]
+
+    # Neither must closing and reopening the form.
+    calls.clear()
+    assert tab.close_creation() is True
+    assert tab.open_creation() is True
+    tab._creation_arrival_x.setValue(105)
+    tab._creation_arrival_x.editingFinished.emit()
+    assert calls == [(105, tab._creation_arrival_y.value())]

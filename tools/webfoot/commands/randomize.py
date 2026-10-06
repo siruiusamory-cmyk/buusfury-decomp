@@ -59,6 +59,7 @@ from ..enemy_randomizer.seeds import (
     MODULE_ENEMY_TYPE,
     SeedError,
 )
+from ..randomizer.service import default_manifest_path, default_spoiler_path
 from ..rom import identify_rom
 from ..write import WriteError, emit_image, paths_are_the_same_file
 
@@ -262,8 +263,28 @@ def default_output(rom: Path, seed: str) -> Path:
     return rom.parent / OUTPUT_TEMPLATE.format(seed=_filename_safe(seed))
 
 
-def default_manifest(output: Path) -> Path:
-    return output.with_suffix(".manifest.json")
+def _remove_existing(paths: list[Path], *, overwrite: bool) -> None:
+    """Unlink the artefacts a confirmed overwrite replaces.
+
+    Every refusal has already run over the whole set and the plan is built, so
+    this is the point of no return. The image goes last, so a failure unlinking a
+    companion cannot cost the caller the ROM it was replacing.
+
+    The removal is duplicated from RandomizerService._remove_existing
+    (randomizer/service.py:964) because the CLI cannot route through that service
+    while the enemy-type registry gap stands; consolidate when it closes.
+    """
+    if not overwrite:
+        return
+    for path in reversed(paths):
+        if not path.exists():
+            continue
+        try:
+            path.unlink()
+        except OSError as exc:
+            raise RandomizeError(
+                f"the existing {path} could not be replaced: {exc}"
+            ) from exc
 
 
 def _git_commit() -> str | None:
@@ -334,13 +355,16 @@ def run(args) -> int:
     # spoiler aimed at the input would destroy the verified image with nothing
     # noticing. ROM_SAFETY.md forbids any write path reaching the input, and a
     # check covering some of them is not that rule.
-    manifest_path = Path(args.manifest) if args.manifest else default_manifest(output)
+    manifest_path = Path(args.manifest) if args.manifest else default_manifest_path(output)
+    spoiler_path = Path(args.spoiler) if args.spoiler else None
+    companion_spoiler = (
+        spoiler_path if spoiler_path is not None else default_spoiler_path(output)
+    )
     write_targets: list[tuple[Path, str]] = [
         (output, "output ROM"),
         (manifest_path, "manifest"),
+        (companion_spoiler, "spoiler log"),
     ]
-    if args.spoiler:
-        write_targets.append((Path(args.spoiler), "spoiler log"))
 
     for target, label in write_targets:
         if paths_are_the_same_file(target, source):
@@ -401,6 +425,8 @@ def run(args) -> int:
         print("\n# dry run: nothing was written", file=sys.stderr)
         return 0
 
+    _remove_existing([path for path, _ in write_targets], overwrite=args.overwrite)
+
     write_manifest = emit_image(source, output, result.plan)
 
     # Fail closed if the input moved under us: a run whose base changed mid-flight
@@ -424,7 +450,7 @@ def run(args) -> int:
     manifest_path.parent.mkdir(parents=True, exist_ok=True)
     manifest_path.write_text(canonical_json(document), encoding="utf-8")
 
-    if args.spoiler:
+    if spoiler_path is not None:
         spoiler = result.spoiler
         # Reuse the result's own log rather than rebuilding it. An earlier revision
         # reconstructed the dataclass and dropped module_summaries on the floor, so
@@ -433,8 +459,8 @@ def run(args) -> int:
         # object, not the file, so it never caught it.
         document_spoiler = spoiler.to_json()
         document_spoiler["output_sha256"] = write_manifest.output_sha256
-        Path(args.spoiler).parent.mkdir(parents=True, exist_ok=True)
-        Path(args.spoiler).write_text(canonical_json(document_spoiler), encoding="utf-8")
+        spoiler_path.parent.mkdir(parents=True, exist_ok=True)
+        spoiler_path.write_text(canonical_json(document_spoiler), encoding="utf-8")
 
     _report(result, output, manifest_path, write_manifest)
     return 0

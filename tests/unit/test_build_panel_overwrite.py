@@ -18,6 +18,11 @@ the REAL publication path over the REAL manifest-name authority
 (`build.manifest_path_for_build(MANIFEST_BESIDE_OUTPUT, ...)`) and the REAL
 refusal gate (`write.emit_image`); only the project pipeline behind `build_project`
 is replaced, so a stub can no longer hide the stale-manifest failure.
+
+WORKBENCH-OVERWRITE-CANONICAL-GUARD-001: the overwrite branch also refuses a
+destination that IS a copy of the canonical ROM, by content hash against
+`session.profile.identity.sha256`, before the confirmation and before the first
+unlink. The last test here drives that refusal over the same real publication path.
 """
 
 import hashlib
@@ -39,6 +44,13 @@ from tools.webfoot.write import WriteError  # noqa: E402
 from PySide6.QtWidgets import QApplication, QMessageBox  # noqa: E402
 
 
+#: The canonical bytes for this file's fake profile. The overwrite branch reads
+#: the canonical identity as `session.profile.identity.sha256`, so the fixture has
+#: to state one; it is derived from these bytes rather than written as a literal.
+_CANONICAL_BYTES = b"synthetic canonical ROM fixture bytes"
+_CANONICAL_SHA256 = hashlib.sha256(_CANONICAL_BYTES).hexdigest()
+
+
 @pytest.fixture(scope="module")
 def _app():
     return QApplication.instance() or QApplication([])
@@ -52,7 +64,10 @@ def _make_panel(tmp_path, _app):
     out_dir.mkdir()
     session = Session(
         rom_path=rom,
-        profile=SimpleNamespace(id="buus_fury_usa_rev0"),
+        profile=SimpleNamespace(
+            id="buus_fury_usa_rev0",
+            identity=SimpleNamespace(sha256=_CANONICAL_SHA256),
+        ),
         project_dir=tmp_path / "proj",
         output_dir=out_dir,
     )
@@ -278,3 +293,52 @@ def test_an_unsafe_artefact_is_refused_rather_than_unlinked(
     assert counter["n"] == attempts + 1, "no rebuild may run after the refusal"
     assert output_path.read_bytes() == image_before, "the image must survive"
     assert manifest_path.read_text(encoding="utf-8") == manifest_before
+
+
+# --- WORKBENCH-OVERWRITE-CANONICAL-GUARD-001 ---------------------------------
+
+
+def test_a_canonical_copy_at_the_output_is_never_replaced(tmp_path, monkeypatch, _app):
+    """SAFETY: a clean copy of the canonical ROM is a ROM, not an overwritable output.
+
+    `is_safe_output_path` compares the destination to the source ROM by FILE
+    IDENTITY, so a byte-identical copy of the canonical ROM sitting under the
+    generated-output name passes it. Nothing else on the overwrite path asked
+    whether the destination merely *is* the canonical image, so a confirmed
+    overwrite would unlink a ROM. The whole occupied set must survive a refusal,
+    and no rebuild may run.
+    """
+    panel, session, output_path = _make_panel(tmp_path, _app)
+    # The source ROM is the canonical image, and the destination is a second
+    # clean copy of it under the generated name.
+    session.rom_path.write_bytes(_CANONICAL_BYTES)
+    source_before = session.rom_path.read_bytes()
+    assert hashlib.sha256(source_before).hexdigest() == _CANONICAL_SHA256
+    manifest_path = build_sdk.manifest_path_for_build(
+        build_sdk.MANIFEST_BESIDE_OUTPUT, output_path)
+    output_path.write_bytes(_CANONICAL_BYTES)
+    manifest_path.write_text('{"stale": "manifest"}', encoding="utf-8")
+    image_before = output_path.read_bytes()
+    manifest_before = manifest_path.read_text(encoding="utf-8")
+    published_before = sorted(path.name for path in output_path.parent.iterdir())
+
+    counter = {"n": 0}
+    criticals = []
+    monkeypatch.setattr(bp.build_sdk, "build_project", _writer_backed_build(counter))
+    monkeypatch.setattr(
+        QMessageBox, "question", staticmethod(lambda *a, **k: QMessageBox.Yes))
+    monkeypatch.setattr(
+        QMessageBox, "critical", staticmethod(lambda *a, **k: criticals.append(a)))
+
+    panel._on_build()
+
+    assert criticals, "a canonical copy at the destination must refuse the overwrite"
+    assert "canonical" in criticals[0][2], criticals
+    assert counter["n"] == 1, "no rebuild may run after the refusal"
+    assert output_path.exists(), "the canonical copy must not be unlinked"
+    assert output_path.read_bytes() == image_before
+    assert manifest_path.exists(), "no companion artefact may be unlinked"
+    assert manifest_path.read_text(encoding="utf-8") == manifest_before
+    assert session.rom_path.read_bytes() == source_before
+    assert sorted(path.name for path in output_path.parent.iterdir()) == published_before
+    assert session.last_build is None

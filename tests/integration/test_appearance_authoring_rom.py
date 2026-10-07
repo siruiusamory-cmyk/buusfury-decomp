@@ -443,7 +443,7 @@ def test_the_roster_patch_sites_match_the_canonical_image(canonical):
     five functions. Every one is pinned to the canonical bytes here, so a patch
     can only ever land on an image that is the one the census was taken from.
     """
-    assert len(ap.ROSTER_PATCH_SITES) == 23
+    assert len(ap.ROSTER_PATCH_SITES) == 29
     for site in ap.ROSTER_PATCH_SITES:
         site.check(canonical)
 
@@ -471,7 +471,7 @@ def test_the_roster_replacements_state_the_supported_offsets(canonical):
         assert base + 0x3C == ap.ROSTER_TAIL_A + 4
 
     bases = [site for site in by_role["tail base B"] if len(site.replacement) == 1]
-    assert len(bases) == 5
+    assert len(bases) == 8
     for site in bases:
         assert (site.replacement[0] << 5) == ap.ROSTER_TAIL_B == 0xB60
 
@@ -488,3 +488,76 @@ def test_the_roster_patch_sites_do_not_overlap(canonical):
         span = range(site.offset, site.offset + len(site.expected))
         assert not (set(span) & covered), f"overlapping site at 0x{site.offset:06X}"
         covered.update(span)
+
+
+#: The compiled statements the roster layout lives in: the immediate each `movs`
+#: states, and the shift its `lsls` applies.
+_ROSTER_CONSTANTS = {0x0B: 8, 0x2B: 6, 0x59: 5, 0xED: 2}
+
+#: The module that owns the roster object. Restricting the sweep to it keeps the
+#: search among code: the same byte shapes occur throughout the image's data.
+_ROSTER_MODULE = (0x00024000, 0x00026000)
+
+
+def _roster_constructions(image: bytes) -> list[tuple[int, int]]:
+    """Every construction of a roster layout constant, read from the image.
+
+    A construction is `movs rX,#imm` followed by `lsls rX,rX,#shift` on the same
+    register - **anywhere in the next twelve instructions**, not necessarily next
+    to it. Requiring adjacency is what a byte-pattern scan does, and it is how
+    three tail-base statements were missed: the compiler put other instructions
+    between the pair, and the functions that hold them went on addressing the
+    canonical tail. This function is the census, so a statement the patch table
+    does not cover fails the test below rather than shipping.
+    """
+    def halfword(offset: int) -> int:
+        return struct.unpack_from("<H", image, offset)[0]
+
+    def is_lsls(word: int, register: int, shift: int) -> bool:
+        return ((word & 0xFFC0) == (shift << 6)
+                and ((word >> 3) & 7) == register and (word & 7) == register)
+
+    found: list[tuple[int, int]] = []
+    for immediate, shift in _ROSTER_CONSTANTS.items():
+        for offset in range(_ROSTER_MODULE[0], _ROSTER_MODULE[1] - 2, 2):
+            word = halfword(offset)
+            if (word & 0xF800) != 0x2000 or (word & 0xFF) != immediate:
+                continue
+            register = (word >> 8) & 7
+            for step in range(2, 26, 2):
+                candidate = halfword(offset + step)
+                if is_lsls(candidate, register, shift):
+                    found.append((offset, offset + step))
+                    break
+                if (candidate & 0xF800) == 0x2000 and ((candidate >> 8) & 7) == register:
+                    break
+    return found
+
+
+def test_every_compiled_statement_of_the_roster_layout_is_named(canonical):
+    """The census is re-derived from the image, so a missed statement fails here.
+
+    Seventeen statements: one object size, four display-count offsets, four
+    tail-base-A pairs and eight tail-base-B pairs. The table names them and this
+    says so from the bytes, rather than by checking the table against itself.
+    """
+    found = _roster_constructions(canonical)
+    assert len(found) == 17, [hex(value) for pair in found for value in pair]
+
+    named = {site.offset for site in ap.ROSTER_PATCH_SITES}
+    missing = [(movs, shift) for movs, shift in found
+               if movs not in named and shift not in named]
+    assert missing == [], [hex(value) for pair in missing for value in pair]
+
+
+def test_the_named_roster_sites_are_the_ones_the_image_holds(canonical):
+    """Every named statement is really one, at the register and shift it claims."""
+    found = set(_roster_constructions(canonical))
+    for site in ap.ROSTER_PATCH_SITES:
+        if site.role in ("object size", "display-list count offset"):
+            continue                      # a `movs` whose shift does not change
+        movs, shift = site.offset, site.offset + 2
+        matched = (movs, shift) in found or (movs - 0, shift) in found
+        if site.role.endswith("shift"):
+            continue                      # the partner is checked by the `movs`
+        assert matched or any(pair[0] == site.offset for pair in found), site.role

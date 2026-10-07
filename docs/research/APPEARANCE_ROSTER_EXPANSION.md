@@ -120,8 +120,9 @@ The builder is `0x08024F3C`. Its first instructions decide everything:
 08024f46  bl   0x0803D5B8        ; heap allocation
 ```
 
-**The one caller passes NULL.** At `0x08007510`-`0x08007512` inside the function
-at `0x080073F0`:
+**The one caller passes NULL.** At `0x08007510`-`0x08007512`, inside the function
+that begins at `0x080074EC` (section 0 records why an earlier edition named
+`0x080073F0`):
 
 ```
 08007510  movs r0, #0            ; arg0 = 0
@@ -217,15 +218,25 @@ is the object base plus the second-count offset.
 
 ## 4. Every reader and writer - CONFIRMED
 
-Fourteen sites for the roster object, across five functions:
+Twenty-nine sites for the roster object. The statements that state its layout
+are enumerated in section 5, which is generated from the patch table:
 
-| function | sites | what they state |
+| function | sites | roles |
 | --- | --- | --- |
-| `0x08024F3C` | `0x08024F42`, `0x08024F60`, `0x08024F6C`, `0x08024FD6`, `0x08024FE0`, `0x08024FE4`, `0x08024FF4`, `0x08024FFE`, `0x0802502C` | size, both counts, both tail bases |
-| `0x08025354` | `0x0802536E` | tail-B |
-| `0x08025404` | `0x0802541C` | second count |
-| `0x08025510` | `0x08025514`, `0x0802552C` | second count, tail-B |
-| `0x080255C4` | `0x0802561E`, `0x08025638` | tail-B, tail-A |
+| `0x08024F3C` | 6 | object size, display-count offset, both tail bases and their shifts |
+| `0x08025004` | 4 | both tail bases and their shifts |
+| `0x08025056` | 5 | display-count offset, both tail bases and their shifts |
+| `0x08025354` | 2 | tail base B and its shift |
+| `0x08025404` | 3 | display-count offset, tail base B and its shift |
+| `0x080254A8` | 2 | tail base B and its shift |
+| `0x08025510` | 3 | display-count offset, tail base B and its shift |
+| `0x080255C4` | 4 | both tail bases and their shifts |
+
+Eight functions, computed from each site's own containing prologue rather than
+asserted: an earlier edition of this table named five functions and attributed
+`0x0802502C` to the builder, which ends at `0x08025002`. It also listed instruction
+*uses* (`0x08024F6C`, `0x08024FE4`, `0x08024FF4`, `0x08024FFE`) as if they were
+patched sites, and omitted `0x0802500E`, `0x08025106` and `0x08025112`.
 
 Callers: `0x08024F3C` from `0x08007512`; `0x08025404` from `0x080255BE`;
 `0x08025354`, `0x08025510` and `0x080255C4` have no BL callers and are reached
@@ -237,19 +248,41 @@ positives**: both reach `block+0xDC`, a pointer, and then dereference it
 
 ## 5. Every layout-dependent constant - CONFIRMED
 
-Found by scanning the image for the exact `movs` + `lsls` idioms and for literal
-words equal to each constant:
+This table is generated from `ROSTER_PATCH_SITES`, so it cannot disagree with what
+the build patches:
 
-| constant | idiom | sites |
+**A correction that matters, and how it was caught.** The first edition of this
+census found fourteen statements and twenty-three sites. It was wrong. It searched
+for the `movs` and its `lsls` **next to each other**, and in three tail-base-B
+statements the compiler put other instructions between the pair:
+
+| `movs` | `lsls` | between them |
 | --- | --- | --- |
-| `0xB20` size | `0x59 << 5` | **1** - `0x08024F42` |
-| `0x3B4` second count | `0xED << 2` | **4** - `0x08024F60`, `0x08025112`, `0x0802541C`, `0x08025514` |
-| `0xAC0` tail-A | `0x2B << 6` | **4** - `0x08024FD6`, `0x0802502C`, `0x08025106`, `0x08025638` |
-| `0xB00` tail-B | `0x0B << 8` | **5** - `0x08024FE0`, `0x0802500E`, `0x0802536E`, `0x0802552C`, `0x0802561E` |
+| `0x0802505A` | `0x08025066` | `add sp,r3`, a `movs`/`lsls`/`add` building a stack address, and a load |
+| `0x0802541A` | `0x08025420` | the `movs r2,#0xED` / `lsls r2,#2` display-count pair |
+| `0x080254B0` | `0x080254B4` | one `ldrh` |
 
-No literal pool word in the image equals `0xB20`, `0x3B4`, `0xAF8`, `0xAC0` or
-`0xB00`. One data word equals `0x3B8` at GBA `0x08072158`, in the map/data region,
-unrelated to this object.
+Those three belong to the functions at `0x08025056`, `0x08025404` and `0x080254A8`,
+which address the object through `0x0802502C`, `0x0802541C` and `0x0802500E`
+respectively - so they are the same object and they were left pointing at
+`+0xB0C..+0xB18`. In the grown layout those offsets fall inside display entries, so
+the miss would have turned a hazard that needed 233 seen flags into a live
+inconsistency on **every** authored build. An independent review found it by
+tracking registers through `movs`/`lsls`/`adds` and literal loads instead of
+matching adjacent byte patterns.
+
+The true census is **seventeen statements and twenty-nine sites**. A test now
+re-derives it from the image with the pair allowed to be up to twelve instructions
+apart, and it was checked by removing one pair and watching it fail.
+
+| constant | role | sites |
+| --- | --- | --- |
+| `0xB20` size | object size | **1** - `0x024F42` |
+| `0x3B4` display count | display-list count offset | **4** - `0x024F60`, `0x025112`, `0x02541C`, `0x025514` |
+| `0xAC0` tail A | tail base A | **4** - `0x024FD6`, `0x02502C`, `0x025106`, `0x025638` |
+| `0xAC0` tail A shift | tail base A shift | **4** |
+| `0xB00` tail B | tail base B | **8** - `0x024FE0`, `0x02500E`, `0x02505A`, `0x02536E`, `0x02541A`, `0x0254B0`, `0x02552C`, `0x02561E` |
+| `0xB00` tail B shift | tail base B shift | **8** |
 
 ## 6. Can the data at +0x3B4 move independently - CONFIRMED, yes
 
@@ -356,8 +389,8 @@ uses, so the change is a constant patch rather than new code:
 - tail-A: `movs #0x59; lsls #5` then strides `+0x38`/`+0x3C` (shift 6 becomes 5)
 - tail-B: `movs #0x5B; lsls #5` (shift 8 becomes 5)
 
-**23 halfword patches across the fourteen sites, no data movement, no extra
-allocation, deterministic.**
+**29 halfword and immediate-byte patches across the seventeen statements, no data
+movement, no extra allocation, deterministic.**
 
 ## What this leaves
 

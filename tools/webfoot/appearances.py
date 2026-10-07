@@ -127,7 +127,7 @@ class RosterPatchSite:
 
 
 def _roster_sites() -> tuple[RosterPatchSite, ...]:
-    """The twenty-three halfwords and immediate bytes the roster layout lives in.
+    """The twenty-nine halfwords and immediate bytes the roster layout lives in.
 
     Four groups, each an idiom the engine already uses: the object size, the
     display-list count's offset, and the two tail bases. The tail bases are
@@ -152,9 +152,16 @@ def _roster_sites() -> tuple[RosterPatchSite, ...]:
             "tail base A shift"))
 
     # The second tail base: 0x0B << 8 becomes 0x5B << 5, same object address.
+    # Eight, not five: in three of them the compiler put other instructions
+    # between the `movs` and its `lsls`, so a scan that requires the pair to be
+    # adjacent misses them and leaves three functions addressing the canonical
+    # tail inside what the grown layout uses for display entries.
     for movs, shift, rd in ((0x00024FE0, 0x00024FE2, 0),
                             (0x0002500E, 0x00025010, 0),
+                            (0x0002505A, 0x00025066, 0),
                             (0x0002536E, 0x00025370, 1),
+                            (0x0002541A, 0x00025420, 1),
+                            (0x000254B0, 0x000254B4, 2),
                             (0x0002552C, 0x0002552E, 0),
                             (0x0002561E, 0x00025620, 1)):
         sites.append(RosterPatchSite(movs, b"\x0b", b"\x5b", "tail base B"))

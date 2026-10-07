@@ -46,6 +46,51 @@ scan that produced the earlier answer treated `push {r3,r4,r5,lr}` (`0xB538`) as
 not a function prologue, so it walked back past the real boundary. Any later
 function attribution derived from that scan should be re-derived.
 
+## Runtime: what was observed, and what was not
+
+Four governed sessions ran against a built image carrying this relocation
+(`build/roster001/with-roster.gba`, sha256 `bd9c7ace...`), each launched through
+`Start-MgbaSession` with the emulator version and the exact ROM digest named, and
+each observer checked by the injector's own allowlist gate first.
+
+**Observed.** The relocated image boots, loads the savestate, renders the
+overworld, opens the Scouter on Select and returns to the overworld into NPC
+dialogue. The Scouter overlay is recorded in `press-00500.png`: the green framed
+panel with the area map, which is what the game's controls give Select as. A
+hand-driven schedule of twenty input pulses produced twenty-five screenshots with
+no crash, no hang and no visible corruption. That is `PROCESS LAUNCHED` and an
+observed running scene, and it is the level it is: it says the build runs, not
+that the chain completed.
+
+**Not observed.** The seen flag for indices 231, 232, 233 and 239 read `0x00` in
+every session, so **the authored record was never resolved and flag 232 was never
+set**. The builder's append store, its loop bound and the flag write were armed as
+breakpoints and never fired; while they were armed the run stopped early with no
+handler error recorded, so the breakpoints themselves are the likely cause and a
+state-only observer is the instrument to use next.
+
+**Why the builder cannot have been reached this way.** The frozen appearance
+record already states it: a savestate load restores actors that were built before
+the state was taken, and "the trigger is an in-game event" - a map load constructs
+actors. So a state load cannot exercise the construction path at all, and the one
+session that ever did reach it was an operator walking into a new map (`map 40`,
+frame 7642, `actor_constructor` 24 hits).
+
+**The constraint that is actually unresolved is not this structure.** The engine
+search has two callers and the rule is per caller: `0x08010312` passes a zero
+second argument, while `0x0800FB72` passes `[actor+0x224]` and on that path both
+loops require `+0x0C >= 0`. An authored record is written with `+0x0C = -1`, so on
+the actor path it is never returned at all. No actor has been observed carrying an
+authored sprite id, and the frozen record lists that link as `NOT ESTABLISHED`.
+
+So the roster question this ticket was opened for is answered - the structure is
+grown, every offset that depends on it is restated, and the image is byte-verified
+to change nothing else - while the runtime acceptance the ticket asks for is gated
+on a reachability question this structure does not touch. Until an authored record
+can be resolved in a running scene, no flag at index 232 can be set, the builder
+cannot see a 233rd entry, and the overflow this relocation guards against cannot
+occur. That is the honest ordering of the two problems.
+
 ## 1. The containing object, and its extent - CONFIRMED
 
 The builder is `0x08024F3C`. Its first instructions decide everything:

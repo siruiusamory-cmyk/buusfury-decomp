@@ -105,15 +105,37 @@ def _write(target: Path, document: object) -> None:
 
 
 def _emulator_processes() -> int:
-    """How many mGBA processes this machine has, read from the OS itself."""
+    """How many mGBA processes this machine has, read from the OS itself.
+
+    A missing process lister is not a failure and must not be read as "none":
+    ``ps`` is absent from some CI images, so Linux falls back to reading
+    ``/proc`` directly, which answers the same question without one.
+    """
     if os.name == "nt":
         listing = subprocess.run(
             ["tasklist", "/NH"], capture_output=True, text=True, check=False
         ).stdout
-    else:
+        return sum("mgba" in line.lower() for line in listing.splitlines())
+    try:
         listing = subprocess.run(
             ["ps", "-A", "-o", "comm="], capture_output=True, text=True, check=False
         ).stdout
+    except OSError:
+        listing = ""
+    if not listing.strip():
+        proc = Path("/proc")
+        names: list[str] = []
+        if proc.is_dir():
+            for entry in proc.iterdir():
+                if not entry.name.isdigit():
+                    continue
+                try:
+                    names.append(
+                        (entry / "comm").read_text(encoding="utf-8").strip()
+                    )
+                except OSError:
+                    continue
+        listing = "\n".join(names)
     return sum("mgba" in line.lower() for line in listing.splitlines())
 
 

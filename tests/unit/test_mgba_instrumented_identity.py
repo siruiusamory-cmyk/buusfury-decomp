@@ -79,16 +79,42 @@ INSTRUMENTED_PATH = (
 
 
 def _emulator_processes() -> int:
-    """How many mGBA processes this machine has, read from the OS itself."""
+    """How many mGBA processes this machine has, read from the OS itself.
+
+    A missing process lister is not a failure and must not be read as "none":
+    ``ps`` is absent from some CI images, so Linux falls back to reading
+    ``/proc`` directly, which answers the same question without one.
+    """
     if os.name == "nt":
         listing = subprocess.run(
             ["tasklist", "/NH"], capture_output=True, text=True, check=False
         ).stdout
-    else:
+        return sum("mgba" in line.lower() for line in listing.splitlines())
+    try:
         listing = subprocess.run(
             ["ps", "-A", "-o", "comm="], capture_output=True, text=True, check=False
         ).stdout
+    except OSError:
+        listing = ""
+    if not listing.strip():
+        listing = "\n".join(_proc_commands())
     return sum("mgba" in line.lower() for line in listing.splitlines())
+
+
+def _proc_commands() -> list[str]:
+    """Process command names read from ``/proc``, empty where there is none."""
+    proc = Path("/proc")
+    if not proc.is_dir():
+        return []
+    names: list[str] = []
+    for entry in proc.iterdir():
+        if not entry.name.isdigit():
+            continue
+        try:
+            names.append((entry / "comm").read_text(encoding="utf-8").strip())
+        except OSError:
+            continue
+    return names
 
 
 def _refuse(call, run_root: Path) -> str:
@@ -187,17 +213,31 @@ def test_the_on_disk_rom012_build_matches_the_tracked_patch():
 
 
 def test_the_superseded_revision_is_the_tracked_patches_own_history():
-    """The superseded digest is a real earlier revision, not a stray value."""
+    """The superseded digest is a real earlier revision, not a stray value.
+
+    The revision is asserted only where the clone actually carries it. A
+    shallow or partial CI clone does not, and reading a missing object returns
+    empty bytes, whose digest is the empty-string hash rather than this one.
+    """
     if not (MAIN_CHECKOUT / ".git").exists():
         pytest.skip("no repository history on this machine")
+    commit = "61f062e7b355fc410c3f7229d8adac1702fedf4d"
+    # Plain `-e <sha>`: the `^{commit}` peel is mangled to `^commit` through
+    # subprocess on Windows, where git then rejects the name outright.
+    present = subprocess.run(
+        ["git", "-C", str(MAIN_CHECKOUT), "cat-file", "-e", commit],
+        capture_output=True,
+        check=False,
+    )
+    if present.returncode != 0:
+        pytest.skip("shallow or partial clone: the earlier revision is absent")
     blob = subprocess.run(
         [
             "git",
             "-C",
             str(MAIN_CHECKOUT),
             "rev-parse",
-            "61f062e7b355fc410c3f7229d8adac1702fedf4d:"
-            "tools/mgba_probe/mgba-0.10.5-log1-read-probe.patch",
+            f"{commit}:tools/mgba_probe/mgba-0.10.5-log1-read-probe.patch",
         ],
         capture_output=True,
         text=True,
@@ -209,6 +249,8 @@ def test_the_superseded_revision_is_the_tracked_patches_own_history():
         capture_output=True,
         check=False,
     ).stdout
+    if not content:
+        pytest.skip("shallow or partial clone: the earlier blob is unavailable")
     assert hashlib.sha256(content).hexdigest() == runtime.SUPERSEDED_PATCH_SHA256
 
 

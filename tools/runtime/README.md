@@ -38,7 +38,7 @@ Every entry is marked with one of two classes:
 | `mgba_capture.py` | Read-only GDB/RSP primitives: response framing, chunked reads, write-packet allowlist, versioned dump records. |
 | `inject_mgba_lua.ps1` | PID-scoped Lua injection through the mGBA Scripting window, allowlisted per script, via a bounded helper so a Run-button deadlock cannot strand the caller. |
 | `invoke_mgba_run.ps1` | The bounded helper process that clicks Run; separated because mGBA's synchronous handler can block Invoke from returning. |
-| `load_mgba_lua.ps1` | Launch mGBA on the verified ROM, run one allowlisted ROM-006 bootstrap script, and confirm the expected savestate appeared with the ROM unchanged. |
+| `load_mgba_lua.ps1` | Verify the ROM and the mGBA build identity, launch mGBA, delegate Lua injection to `inject_mgba_lua.ps1`, and confirm the named ROM-006 state appeared with the ROM unchanged. |
 | `toolkit031_load_state.ps1` | Load one savestate into an already-running, already-instrumented PID (observers must attach before entity construction). |
 | `start_toolkit031_session.ps1` | Start an instrumented play session and return, leaving mGBA running for the human operator. |
 | `finish_toolkit031_session.ps1` | Companion close-out: verify the ROM was not modified and summarise the session's evidence. |

@@ -85,9 +85,13 @@ def test_load_mgba_lua_enforces_the_mgba_build_identity_gate():
     assert "VersionInfo.FileVersion" in text
     assert "mGBA version mismatch" in text
     assert "Resolve-Path -LiteralPath $resolvedMgb" in text, "must resolve the binary"
+    # Pin the COMPARISON, not a version-looking string. Asserting that a path or a
+    # filename contains "0.10.5" would pass for exactly the path-based reason the
+    # gate exists to forbid.
+    assert "$mgbVersion.StartsWith($RequiredMGBVersion)" in text, (
+        "the gate must compare the version read from the binary")
     assert "$MgbaPath = 'C:\\Program Files\\mGBA" not in text, (
         "the default must not point at the shared install")
-    assert "mgba-0.10.5" in text
 
 
 def test_the_rom006_bootstraps_are_allowlisted_once_by_the_injector():

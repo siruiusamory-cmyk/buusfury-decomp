@@ -27,6 +27,14 @@ $allowedLua = @(
     [System.IO.Path]::GetFullPath(
         (Join-Path $workspaceRoot 'tools\runtime\appearance001_table_watch.lua')
     )
+    # Added by APPEARANCE-ROSTER-EXPANSION-001: the roster-object observer. It
+    # writes no emulated memory. It samples the context word at 0x03000F90 for the
+    # list object the engine builds from the seen-flag array, reads the seen flag
+    # for the authored index and both display-count offsets, and presses Select
+    # (the game's Scouter button) and Start, bounded by its own schedule.
+    [System.IO.Path]::GetFullPath(
+        (Join-Path $workspaceRoot 'tools\runtime\roster001_scouter_watch.lua')
+    )
     # Added by MAP-WARP-RUNTIME-EDIT-001: the read-only transition observer. It
     # reads the live map identity each frame plus the target record's destination
     # key through the engine's own MapEntry+0x2C -> root+0x44 route, and writes

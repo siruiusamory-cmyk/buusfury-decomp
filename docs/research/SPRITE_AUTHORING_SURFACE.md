@@ -263,3 +263,11 @@ canonical image, and no ROM-derived artifact is in the diff. The reviewer could
 not run the ROM-gated tests (no canonical image in its session) and said so
 rather than guessing; those are the commands this ticket ran itself.
 
+**Sign-off: PASS** at `f32bfe7`, on all three blocking findings and all four
+non-blocking ones. The reviewer also caught one slip the fix round introduced and
+named its exact correction: an edit had deleted the `def` line of
+`test_an_empty_draft_is_refused_in_the_summary`, folding that test's body into the
+one above it. The line is restored, the test collects under its own name again,
+and the two suites re-run at 31 passed. That is the one change made after the
+sign-off, on the reviewer's own instruction, and it touches no source.
+

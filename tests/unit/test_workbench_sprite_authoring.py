@@ -379,7 +379,7 @@ def test_undo_refuses_to_write_into_another_project(qapp, tmp_path, stubbed,
     assert told and "no longer open" in told[0]
 
 
-
+def test_an_empty_draft_is_refused_in_the_summary(qapp, tmp_path, stubbed):
     session = _session(_project(tmp_path))
     tab = _tab(qapp, session, stubbed)
     dialog = sd.SpriteAuthoringDialog(tab, session, editing=False)

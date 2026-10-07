@@ -135,36 +135,14 @@ $env:CAPACITY001_EXPECTED_POINTER = $ExpectedPointer
 
 $process = $null
 try {
-    $process = Start-Process -FilePath $resolvedMGB -ArgumentList @('"' + $resolvedRom + '"') -PassThru
-    Start-Sleep -Seconds 8
-
-    & powershell -NoProfile -ExecutionPolicy Bypass `
-        -File (Join-Path $root 'tools\runtime\inject_mgba_lua.ps1') `
-        -TargetProcessId $process.Id -LuaPath $resolvedLua `
-        -ReadyPath $ready -MarkerPath $marker
-    if ($LASTEXITCODE -ne 0) { throw 'Lua injection failed' }
-
-    # Load the state only AFTER the probe is attached, so its breakpoints are
-    # already armed when the fixture resumes (the skill's section 5 ordering).
-    #
-    # The load is retried once. `toolkit031_load_state.ps1` confirms the load from
-    # the Scripting log pane rather than assuming the Run click worked, and that
-    # confirmation can race the Run helper when it runs seconds after injection:
-    # measured here as "Savestate load was not confirmed" on one attempt and a
-    # confirmed load on the next from the same inputs. Retrying is honest - a
-    # failed confirmation means no load happened, so a retry cannot double-apply.
-    $loaded = $false
-    for ($attempt = 1; $attempt -le 2 -and -not $loaded; $attempt++) {
-        & powershell -NoProfile -ExecutionPolicy Bypass `
-            -File (Join-Path $PSScriptRoot 'toolkit031_load_state.ps1') `
-            -TargetProcessId $process.Id -StatePath $workingState
-        if ($LASTEXITCODE -eq 0) {
-            $loaded = $true
-        } else {
-            Start-Sleep -Seconds 3
-        }
-    }
-    if (-not $loaded) { throw 'Savestate load failed after two attempts' }
+    # One mechanism for every launcher: mGBA loads the state with -t and runs the
+    # observer with --script, so no Scripting window is opened, nothing takes the
+    # operator window, and the identity gates live with the flag that needs them.
+    . (Join-Path $PSScriptRoot 'mgba_session.ps1')
+    $process = Start-MgbaSession -MGBPath $resolvedMGB -RomPath $resolvedRom `
+        -LuaPath $resolvedLua -ReadyPath $ready -MarkerPath $marker -RunDir $runDir `
+        -RequiredMGBVersion $RequiredMGBVersion -ExpectedRomSha256 $expected `
+        -StatePath $workingState
 
     # The probe holds its input schedule until this appears, because the load goes
     # through mGBA's Scripting prompt and takes seconds of wall clock while the

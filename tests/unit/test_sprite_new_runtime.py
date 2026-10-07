@@ -341,10 +341,19 @@ def test_the_observer_never_writes_emulated_memory():
 
 def test_the_launcher_passes_the_rom_last_and_bare():
     """mGBA's usage is `[option ...] file`, and a multi-element ArgumentList with
-    a quoted path reaches it with the quote characters included."""
+    a quoted path reaches it with the quote characters included.
+
+    The argument text is built in the shared session mechanism now, so the shape is
+    asserted there and the launcher is asserted to hand it the staged ROM plus the
+    savegame override.
+    """
     launcher = (ROOT / "tools/runtime/start_spritenew001_session.ps1").read_text(
         encoding="utf-8")
-    assert "-ArgumentList $mgbaArgs" in launcher
-    assert "@('-C', (\"savegamePath=\" + $saveDir), $stagedRom)" in launcher
+    helper = (ROOT / "tools/runtime/mgba_session.ps1").read_text(encoding="utf-8")
+    assert "Start-MgbaSession" in launcher
+    assert "-ArgumentList @('-C', ('savegamePath=' + $saveDir))" in launcher
+    # One argument string, options first, the ROM LAST and bare.
+    assert "('-t \"{0}\" {1} \"{2}\"' -f" in helper or "$options += @('--script', $bootstrap)" in helper
+    assert "(' \"{0}\"' -f $RomPath)" in helper
     # The staged copy is what makes the bare form safe: no spaces in the path.
     assert "Join-Path $runDir 'rom.gba'" in launcher

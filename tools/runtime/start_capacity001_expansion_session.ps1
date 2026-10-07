@@ -135,30 +135,14 @@ if ((Get-FileHash -Algorithm SHA256 -LiteralPath $workingState).Hash -ne $stateH
 
 # Start the emulator on the generated image and return. The observer is armed
 # through the tracked, allowlisted injector; nothing here waits for the session.
-$process = Start-Process -FilePath $resolvedMGB -ArgumentList @('"' + $resolvedRom + '"') -PassThru
-Start-Sleep -Seconds 8
-
-& powershell -NoProfile -ExecutionPolicy Bypass `
-    -File (Join-Path $root 'tools\runtime\inject_mgba_lua.ps1') `
-    -TargetProcessId $process.Id -LuaPath $resolvedLua `
-    -ReadyPath $ready -MarkerPath $marker
-if ($LASTEXITCODE -ne 0) { throw 'Lua injection failed' }
-
-# Load the fixture AFTER the probe is armed, so its breakpoints are installed
-# before the resumed state constructs and speaks. Retried once: the tracked
-# loader confirms the load from the Scripting log pane, and that confirmation can
-# race the Run helper when it runs seconds after injection.
-$loaded = $false
-for ($attempt = 1; $attempt -le 2 -and -not $loaded; $attempt++) {
-    & powershell -NoProfile -ExecutionPolicy Bypass `
-        -File (Join-Path $root 'tools\runtime\toolkit031_load_state.ps1') `
-        -TargetProcessId $process.Id -StatePath $workingState
-    if ($LASTEXITCODE -eq 0) { $loaded = $true } else { Start-Sleep -Seconds 3 }
-}
-if (-not $loaded) {
-    Stop-Process -Id $process.Id -Force -ErrorAction SilentlyContinue
-    throw 'Savestate load failed after two attempts'
-}
+# One mechanism for every launcher: mGBA loads the state with -t and runs the
+# observer with --script, so no Scripting window is opened, nothing takes the
+# operator window, and the identity gates live with the flag that needs them.
+. (Join-Path $PSScriptRoot 'mgba_session.ps1')
+$process = Start-MgbaSession -MGBPath $resolvedMGB -RomPath $resolvedRom `
+    -LuaPath $resolvedLua -ReadyPath $ready -MarkerPath $marker -RunDir $runDir `
+    -RequiredMGBVersion $RequiredMGBVersion -ExpectedRomSha256 $expected `
+    -StatePath $workingState
 
 Remove-Item Env:\CAPACITY001_OUT -ErrorAction SilentlyContinue
 Remove-Item Env:\CAPACITY001_EXPECTED_POINTER -ErrorAction SilentlyContinue

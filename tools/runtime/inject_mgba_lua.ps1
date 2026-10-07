@@ -11,7 +11,8 @@ param(
     # so a breakpoint armed afterwards never sees construction. This is where the
     # state load therefore goes. It is a separate parameter rather than a line in
     # the observer because an observer stays read-only and a state load is not.
-    [string]$PostCommand
+    [string]$PostCommand,
+    [switch]$CheckOnly
 )
 
 $ErrorActionPreference = 'Stop'
@@ -420,6 +421,15 @@ if ($MarkerPath) {
     if (Test-Path -LiteralPath $resolvedMarker) {
         throw 'MarkerPath already exists'
     }
+}
+
+
+if ($CheckOnly) {
+    # A launcher that hands mGBA --script at startup still needs the allowlist
+    # and the path rules to be the gate, so it asks this script to do every check
+    # and stops here, before any window is touched.
+    Write-Output $resolvedLua
+    exit 0
 }
 
 Add-Type -AssemblyName UIAutomationClient

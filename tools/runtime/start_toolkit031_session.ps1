@@ -107,28 +107,15 @@ $csv = Join-Path $runDir 'toolkit031-execution.csv'
 # CHILD process that inherits it, so set it before launching mGBA.
 $env:TOOLKIT031_OUT = $csv
 
-$process = Start-Process -FilePath $resolvedMGB -ArgumentList @('"' + $resolvedRom + '"') -PassThru
-Start-Sleep -Seconds 8
-
-& powershell -NoProfile -ExecutionPolicy Bypass `
-    -File (Join-Path $PSScriptRoot 'inject_mgba_lua.ps1') `
-    -TargetProcessId $process.Id -LuaPath $resolvedLua `
-    -ReadyPath $ready -MarkerPath $marker
-if ($LASTEXITCODE -ne 0) {
-    Stop-Process -Id $process.Id -Force -ErrorAction SilentlyContinue
-    throw 'Lua injection failed'
-}
-
-# Load the state only AFTER the observer is armed, so the breakpoint is already
-# installed when the map's entities are constructed. Construction is one of the
-# trigger classes under test and must not be missed.
-& powershell -NoProfile -ExecutionPolicy Bypass `
-    -File (Join-Path $PSScriptRoot 'toolkit031_load_state.ps1') `
-    -TargetProcessId $process.Id -StatePath $workingState
-if ($LASTEXITCODE -ne 0) {
-    Stop-Process -Id $process.Id -Force -ErrorAction SilentlyContinue
-    throw 'Savestate load failed'
-}
+# One mechanism for every launcher: mGBA loads the state with -t and runs the
+# observer with --script, so no Scripting window is opened and nothing takes the
+# operator window. See tools/runtime/mgba_session.ps1.
+. (Join-Path $PSScriptRoot 'mgba_session.ps1')
+$process = Start-MgbaSession -MGBPath $resolvedMGB -RomPath $resolvedRom `
+    -LuaPath $resolvedLua -ReadyPath $ready -MarkerPath $marker -RunDir $runDir `
+    -RequiredMGBVersion $RequiredMGBVersion -ExpectedRomSha256 $expected `
+    -StatePath $workingState
+Set-Content -LiteralPath (Join-Path $runDir 'state-loaded.txt') -Value 'mGBA -t --script' -Encoding ascii
 
 $identity = [ordered]@{
     label        = $Label

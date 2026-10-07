@@ -75,23 +75,14 @@ $stateHash = (Get-FileHash -Algorithm SHA256 -LiteralPath $resolvedState).Hash
 $workingState = Join-Path $runDir 'working-state.ss1'
 Copy-Item -LiteralPath $resolvedState -Destination $workingState
 
-$process = Start-Process -FilePath $resolvedMGB -ArgumentList @('"' + $resolvedRom + '"') -PassThru
-Start-Sleep -Seconds $UiSettleSeconds
-& powershell -NoProfile -ExecutionPolicy Bypass `
-    -File (Join-Path $PSScriptRoot 'inject_mgba_lua.ps1') `
-    -TargetProcessId $process.Id -LuaPath $resolvedLua `
-    -ReadyPath (Join-Path $runDir 'lua-ready.txt') -MarkerPath (Join-Path $runDir 'marker.txt')
-if ($LASTEXITCODE -ne 0) {
-    Stop-Process -Id $process.Id -Force -ErrorAction SilentlyContinue
-    throw 'Lua injection failed'
-}
-& powershell -NoProfile -ExecutionPolicy Bypass `
-    -File (Join-Path $PSScriptRoot 'toolkit031_load_state.ps1') `
-    -TargetProcessId $process.Id -StatePath $workingState
-if ($LASTEXITCODE -ne 0) {
-    Stop-Process -Id $process.Id -Force -ErrorAction SilentlyContinue
-    throw 'savestate load failed'
-}
+# One mechanism for every launcher: mGBA loads the state with -t and runs the
+# observer with --script, so no Scripting window is opened, nothing takes the
+# operator window, and the identity gates live with the flag that needs them.
+. (Join-Path $PSScriptRoot 'mgba_session.ps1')
+$process = Start-MgbaSession -MGBPath $resolvedMGB -RomPath $resolvedRom `
+    -LuaPath $resolvedLua -ReadyPath (Join-Path $runDir 'lua-ready.txt') -MarkerPath (Join-Path $runDir 'marker.txt') -RunDir $runDir `
+    -RequiredMGBVersion $MGBVersion -ExpectedRomSha256 $RomSha256 `
+    -StatePath $workingState
 
 $indexPath = Join-Path $runDir 'snapshots.csv'
 @{

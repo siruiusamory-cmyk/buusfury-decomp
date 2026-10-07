@@ -80,6 +80,7 @@ local input_pulses, screenshots, object_count = 0, 0, 0
 -- Declared before anything reads them: a local declared later is a global here,
 -- and a nil global is how an instrument dies without saying so.
 local hits, arm_results, handler_errors = {}, {}, 0
+local search_dumps = 0
 local seen = { flag232 = false, max_index = 0 }
 local objects = {}
 
@@ -118,8 +119,8 @@ local function report_lines()
     lines[#lines + 1] = string.format("frames=%d started=%s limit=%d",
         frame, tostring(started), LIMIT)
     lines[#lines + 1] = string.format(
-        "liveness frame_callback=ran input_pulses=%d screenshots=%d handler_errors=%d",
-        input_pulses, screenshots, handler_errors)
+        "liveness frame_callback=ran input_pulses=%d screenshots=%d handler_errors=%d " ..
+        "search_dumps=%d", input_pulses, screenshots, handler_errors, search_dumps)
     -- The seen flag for the authored index: one bit, inside the saved record.
     for _, index in ipairs({ 231, 232, 233, 239 }) do
         local byte = emu:read8(BITSET + (index >> 3))
@@ -223,6 +224,39 @@ for _, site in ipairs({
     arm_results[#arm_results + 1] = string.format("site=%s address=%s ok=%s",
         site.name, hex(site.address), tostring(ok))
 end
+
+-- --- who does the search look up, and what do they carry? --------------------
+--
+-- The search at 0x08027948 is handed the object's embedded component pointer,
+-- which is the object plus 0x5C. So the object is r0 - 0x5C, and dumping its words
+-- shows what an actor actually carries where the search reads. That is the
+-- measurement the reachability question needs: which sprite a real actor resolves
+-- from, and therefore which sprite id an authored record would have to bind.
+local SEARCH_ENTRY = 0x08027948
+local SEARCH_DUMPS = 12
+
+local function on_search_input()
+    local component = reg("r0")
+    if component == nil or component < 0x02000000 then return end
+    if search_dumps >= SEARCH_DUMPS then return end
+    search_dumps = search_dumps + 1
+    local object = component - 0x5C
+    local words = {}
+    for i = 0, 31 do
+        words[#words + 1] = string.format("%08X", emu:read32(object + i * 4))
+    end
+    local lines = io.open(dir_file("search-objects.txt"), search_dumps == 1 and "w" or "a")
+    if lines then
+        lines:write(string.format("frame=%d object=%08X component=%08X second=%s\n",
+            frame, object, component, hex(reg("r1"))))
+        lines:write("  words=" .. table.concat(words, " ") .. "\n")
+        lines:close()
+    end
+end
+
+local ok_search = pcall(emu.setBreakpoint, emu, guarded(on_search_input), SEARCH_ENTRY)
+arm_results[#arm_results + 1] = string.format("site=search_entry address=%s ok=%s",
+    hex(SEARCH_ENTRY), tostring(ok_search))
 
 callback_id = callbacks:add("frame", function()
     frame = frame + 1

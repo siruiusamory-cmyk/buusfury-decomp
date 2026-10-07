@@ -152,7 +152,19 @@ Three levels, and nothing in this record may be read across them.
 
 **Runtime-proven.** Authored appearance records beyond the canonical table are
 resolved by the engine; post-canonical indices are reached; their state bits are
-written; and their appearance data is consumed visibly by the running game. The
+written; and their appearance data is consumed visibly by the running game.
+
+**The mechanism of that resolution, because it is not free.** The search at
+`0x08027948` has TWO loops and the first one runs first. Loop 2, at `0x0802799C`,
+skips the stat test entirely when the second argument is zero (`0x080279A6`-`0x080279A8`)
+and returns the first record whose sprite matches whatever its stat sign - which is
+how a retail object carrying sprite 209 resolves to canonical record 42. An
+appended record carries `+0x0C = -1`, so loop 1 returns it *before* loop 2 is ever
+reached. Resolution of an appended record therefore requires the appended record to
+bind a sprite id a retail record also selects, and the effect is that the object's
+message-path resolution moves from the retail record to the authored one. This was
+measured, not assumed: sessions resolved appended records 232, 233, 234 and 236 for
+objects carrying sprite ids 209, 211 and 215. The
 observations, from operator-driven sessions on the zero-second-argument path:
 
 ```

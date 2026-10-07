@@ -127,14 +127,32 @@ def authorable_sprite_ids(image: bytes, profile, *,
                           authored_sprite_id: int | None = None) -> tuple[int, ...]:
     """The sprite ids a new appearance definition may bind, ascending.
 
-    Every id a canonical record already selects is excluded, because the engine's
-    search returns the earliest match and an appended record is therefore either
-    unreachable or a replacement for that record's resolution. The authored
-    actor-sprite identity is admissible when the same project defines it, since no
-    canonical record selects it.
+    The exclusion is the ids a canonical record with a **negative** stat index
+    selects, not every id any canonical record selects. The engine's search at
+    `0x08027948` splits on the sign of the record's `+0x0C`, and the two paths are
+    disjoint:
+
+    * when its second argument is zero - the caller at `0x08010312` - it skips
+      every record whose `+0x0C` is not negative and returns the first that is
+      (`0x0802798E`-`0x08027992`);
+    * when that argument is set - the caller at `0x0800FB72`, which passes
+      `[actor+0x224]` - it skips every record whose `+0x0C` is negative
+      (`0x0802797A`).
+
+    An authored record is written with `+0x0C = -1`, so it is a candidate only on
+    the first path, and on that path a canonical record with a non-negative stat is
+    not a candidate at all. Sharing a sprite id with such a record cannot collide.
+    Measured in a driven session: objects carrying sprite ids 209, 213 and 215 are
+    bound by canonical records 42, 44 and 45, all with stat 86, and the search
+    reached the appended record at index 232 in every one of those scans without
+    the canonical record ever being returnable. An id a negative-stat canonical
+    record selects stays refused: that record is a candidate on the same path and
+    sits earlier in the table. The authored actor-sprite identity is admissible
+    when the same project defines it, since no canonical record selects it.
     """
     ceiling = _sprite_ceiling(profile, authored_sprite_id)
-    used = {record.sprite_id for record in ap.read_records(image, profile)}
+    used = {record.sprite_id for record in ap.read_records(image, profile)
+            if record.stat_index < 0}
     # 149 is offered by nothing and matched by nothing: the search replaces a
     # request for accessor(0x95) with accessor(0x92) at 0x0802794E before it
     # compares anything, and the two values differ (0x086AED8C and 0x086AEBF0),
@@ -158,18 +176,27 @@ def new_records(profile, definitions, *, authored_sprite_id: int | None = None,
     canonical record already selects. A value outside any of them is refused
     rather than written and left for the engine to misread.
 
-    The sprite-id rule is not cosmetic. The engine's search at 0x08027948 runs two
-    loops: the first returns the first record whose sprite matches AND whose
-    ``+0x0C`` is negative, the second returns the first record whose sprite matches
-    at all. An appended record sits last, so for a sprite id a canonical record
-    already selects it is either never reached or it takes over that record's
-    resolution, depending on the canonical record's own ``+0x0C``.
+    The sprite-id rule is not cosmetic, and it is narrower than "no canonical
+    record selects it". The engine's search at 0x08027948 runs two loops split by
+    the sign of the record's ``+0x0C``: with a zero second argument it returns the
+    first record whose sprite matches AND whose ``+0x0C`` is negative, skipping
+    every non-negative one; with a set second argument it returns the first whose
+    sprite matches AND whose ``+0x0C`` is non-negative AND whose stat pointer is
+    the argument, skipping every negative one. An appended record carries
+    ``+0x0C = -1``, so it is a candidate only in the first loop, and there a
+    canonical record with a non-negative stat is skipped rather than outranking it.
+    Only a canonical record with a negative stat competes on that path, and only
+    that is refused here.
     """
     text_count = _text_count(profile)
     ceiling = _sprite_ceiling(profile, authored_sprite_id)
     used: dict[int, int] = {}
     for position, record in enumerate(canonical):
-        used.setdefault(record.sprite_id, position)
+        # Only a negative-stat canonical record competes with an appended one: on
+        # the path where an appended record can be returned, the engine skips the
+        # non-negative ones before comparing anything.
+        if record.stat_index < 0:
+            used.setdefault(record.sprite_id, position)
     records = []
     for definition in definitions:
         index = definition.text_index
@@ -200,10 +227,10 @@ def new_records(profile, definitions, *, authored_sprite_id: int | None = None,
         if sprite_id in used:
             raise AppearanceAuthoringError(
                 f"appearance {definition.name!r}: sprite id {sprite_id} is already "
-                f"selected by canonical record {used[sprite_id]}, and the engine's "
-                f"search returns the earliest matching record, so an appended record "
-                f"for this id is either unreachable or replaces the retail "
-                f"resolution. Choose a sprite id no canonical record selects."
+                f"selected by canonical record {used[sprite_id]}, whose stat index is "
+                f"negative, so it is a candidate on the same search path as an "
+                f"appended record and sits earlier in the table. Choose a sprite id "
+                f"that no negative-stat canonical record selects."
             )
         records.append(ap.AppearanceRecord(
             text_index=index,

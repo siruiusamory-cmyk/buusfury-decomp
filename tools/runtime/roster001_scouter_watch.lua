@@ -317,8 +317,12 @@ local function on_search_input()
     end
     local lines = io.open(dir_file("search-objects.txt"), search_dumps == 1 and "w" or "a")
     if lines then
-        lines:write(string.format("frame=%d object=%08X component=%08X second=%s\n",
-            frame, object, component, hex(reg("r1"))))
+        local caller = reg("lr")
+        lines:write(string.format(
+            "frame=%d object=%08X component=%08X second=%s caller=%s path=%s\n",
+            frame, object, component, hex(reg("r1")), hex(caller),
+            caller == 0x0800FB76 and "actor(second set)" or
+            (caller == 0x08010316 and "message(second zero)" or "other")))
         lines:write("  words=" .. table.concat(words, " ") .. "\n")
         lines:close()
     end

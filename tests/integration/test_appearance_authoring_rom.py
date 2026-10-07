@@ -399,21 +399,36 @@ def test_validate_reports_the_same_refusal_a_build_would_raise(authored, tmp_pat
     with pytest.raises(ProjectValidationError):
         _build(authored, tmp_path, "refused", catalog)
 
-def test_a_sprite_id_a_canonical_record_selects_is_refused(canonical, identified,
-                                                           profile):
-    """The engine's search returns the earliest match, so an appended record that
-    reuses a retail sprite id is either unreachable or a replacement."""
-    used = ap.read_records(canonical, profile)[0].sprite_id
+def test_a_sprite_id_a_negative_stat_record_selects_is_refused(canonical, identified,
+                                                               profile):
+    """Only a negative-stat canonical record competes with an appended one.
+
+    An appended record carries `+0x0C = -1`, so the engine can return it only on
+    the path where non-negative-stat records are skipped (`0x0802798E`). A
+    canonical record with a negative stat is a candidate on that same path and sits
+    earlier, so its sprite id stays refused; a record with a non-negative stat is
+    skipped there and its sprite id is admitted.
+    """
+    records = ap.read_records(canonical, profile)
+    competing = next(record for record in records if record.stat_index < 0)
     with pytest.raises(ValueError) as refused:
-        aa.new_records(profile, _one(sprite=used).ordered(),
-                       canonical=ap.read_records(canonical, profile))
-    assert "already" in str(refused.value)
+        aa.new_records(profile, _one(sprite=competing.sprite_id).ordered(),
+                       canonical=records)
+    assert "negative" in str(refused.value)
     # and the full plan refuses it too, not only the field-level call
     with pytest.raises(ValueError) as planned:
         aa.materialize_authored_appearances(
             canonical, identified, profile,
-            _document(AuthoredAppearance(NAME, TEXT_INDEX, used)))
-    assert "already" in str(planned.value)
+            _document(AuthoredAppearance(NAME, TEXT_INDEX, competing.sprite_id)))
+    assert "negative" in str(planned.value)
+
+    # A record the search skips on that path is admissible, and the appended record
+    # is what gets returned there. This is the case the driven session measured.
+    skipped = next(record for record in records if record.stat_index >= 0)
+    authored = aa.new_records(profile, _one(sprite=skipped.sprite_id).ordered(),
+                              canonical=records)
+    assert authored[0].sprite_id == skipped.sprite_id
+    assert authored[0].stat_index < 0
 
 
 def test_the_sprite_id_the_engine_remaps_can_never_be_authored(canonical, identified,
@@ -429,12 +444,24 @@ def test_the_sprite_id_the_engine_remaps_can_never_be_authored(canonical, identi
                        canonical=ap.read_records(canonical, profile))
 
 
-def test_the_authorable_sprite_ids_exclude_every_canonical_one(canonical, profile):
-    used = {record.sprite_id for record in ap.read_records(canonical, profile)}
+def test_the_authorable_sprite_ids_exclude_the_competing_records(canonical, profile):
+    """The exclusion follows the path an appended record can be returned on.
+
+    Every id a negative-stat canonical record selects is excluded, because that
+    record is a candidate where the appended one is. An id that only non-negative
+    records select is offered, because the engine skips those before comparing.
+    """
+    records = ap.read_records(canonical, profile)
+    competing = {record.sprite_id for record in records if record.stat_index < 0}
+    skipped = {record.sprite_id for record in records if record.stat_index >= 0}
     offered = set(aa.authorable_sprite_ids(canonical, profile))
-    assert len(offered) == 98
-    assert not (offered & used)
+
+    assert competing, "the image must have records on both paths for this to mean anything"
+    assert skipped
+    assert not (offered & competing)
+    assert (skipped - competing) <= offered
     assert aa.UNMATCHABLE_SPRITE_ID not in offered
+    assert len(offered) == 208
 
 def test_the_roster_patch_sites_match_the_canonical_image(canonical):
     """Each stated site is checked against the image before anything is written.

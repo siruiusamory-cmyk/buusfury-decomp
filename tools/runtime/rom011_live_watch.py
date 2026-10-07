@@ -886,12 +886,14 @@ def run_live_session(
     if run_root.parent != allowed_root or run_root.exists():
         raise ValueError("run root must be one new direct child of build/rom011")
     build_manifest: dict[str, object] | None = None
-    if native_probe:
-        if dev_lua_range:
-            raise ValueError("native probe cannot be combined with development Lua")
-        if manifest_path is None:
-            raise ValueError("native probe requires an instrumented-build manifest")
-        build_manifest = verify_instrumented_mgba(mgba_path, manifest_path)
+    if dev_lua_range:
+        raise ValueError(
+            "development Lua range has no recorded mGBA build identity, so it "
+            "must not launch"
+        )
+    if manifest_path is None:
+        raise ValueError("native probe requires an instrumented-build manifest")
+    build_manifest = verify_instrumented_mgba(mgba_path, manifest_path)
     run_root.mkdir(parents=True)
 
     sources = (rom_path, state_path, save_path)

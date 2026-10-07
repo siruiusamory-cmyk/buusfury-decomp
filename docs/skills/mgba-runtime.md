@@ -49,6 +49,19 @@ Two builds exist and they are **not** interchangeable:
 build before. Always check `(Get-Item $path).VersionInfo.FileVersion`, never
 trust the path. Both launchers fail closed on a `-RequiredMGBVersion` mismatch.
 
+The Python drivers under `tools/runtime` obey the same rule.
+`tools/runtime/mgba_identity.py` is the one identity policy for the GDB probe
+family: `rom006_gdb_probe.py`, `rom007_factory_probe.py` and
+`rom008_query_probe.py` call `require_mgba_build` before their `subprocess`
+launch, and `rom009_callback_probe.py` is covered through
+`rom008_query_probe.run_probe`, which it calls. That policy pins the packaged
+0.10.5 executable SHA-256 which `docs/runtime-capture.md` already records beside
+its `FileVersion`, so a Python driver refuses the same mismatching binary the
+PowerShell launcher refuses. `rom011_live_watch.py` and
+`rom012_live_containment.py` keep the instrumented-build identity instead: a
+pinned source commit, the patch digest and the manifest-declared executable
+digest, verified by `verify_instrumented_mgba`.
+
 Measured API surface on the 0.11 dev build:
 
 ```text

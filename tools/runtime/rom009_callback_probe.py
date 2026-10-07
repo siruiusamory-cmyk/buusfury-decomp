@@ -7,6 +7,7 @@ import json
 from pathlib import Path
 from typing import Sequence
 
+from tools.runtime.mgba_identity import DEFAULT_PACKAGED_MGBA
 from tools.runtime.rom008_query_probe import (
     Rom008RspClient,
     _read_bytes,
@@ -61,7 +62,7 @@ def _parser() -> argparse.ArgumentParser:
     parser.add_argument("--lua", type=Path, required=True)
     parser.add_argument("--injector", type=Path, required=True)
     parser.add_argument(
-        "--mgba", type=Path, default=Path(r"C:\Program Files\mGBA\mGBA.exe")
+        "--mgba", type=Path, default=DEFAULT_PACKAGED_MGBA
     )
     parser.add_argument(
         "--profiles",

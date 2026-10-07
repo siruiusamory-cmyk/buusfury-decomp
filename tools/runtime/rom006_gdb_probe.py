@@ -17,6 +17,11 @@ import time
 from typing import Sequence
 import uuid
 
+from tools.runtime.mgba_identity import (
+    DEFAULT_PACKAGED_MGBA,
+    PACKAGED_0_10_5,
+    require_mgba_build,
+)
 from tools.webfoot.analysis.variation_arrays import (
     VariationArrayFirstWordObservation,
     census_variation_array_first_words,
@@ -199,6 +204,7 @@ def run_probe(
     max_stops: int,
     trace_registry: bool,
 ) -> dict[str, object]:
+    mgba_path = require_mgba_build(mgba_path, PACKAGED_0_10_5)
     before = rom_path.stat()
     before_hash = hashlib.sha256(rom_path.read_bytes()).hexdigest()
     if before.st_size != EXPECTED_SIZE or before_hash != EXPECTED_SHA256:
@@ -376,7 +382,7 @@ def _parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--mgba",
         type=Path,
-        default=Path(r"C:\Program Files\mGBA\mGBA.exe"),
+        default=DEFAULT_PACKAGED_MGBA,
     )
     parser.add_argument(
         "--profiles",

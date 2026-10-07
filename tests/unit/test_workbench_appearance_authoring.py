@@ -371,3 +371,24 @@ def test_a_name_that_is_already_taken_is_refused_by_the_dialog(qapp, tmp_path,
 
     assert not dialog._ok.isEnabled()
     assert "already exists" in dialog._summary.text()
+
+def test_the_merge_refuses_a_second_definition_that_shares_a_sprite_id(
+        qapp, tmp_path, stubbed, monkeypatch):
+    """The dialog sees one draft at a time, so the collision is only visible when
+    the accepted definition is merged with what is already committed."""
+    project = _project(tmp_path)
+    tab = _tab(qapp, _session(project), stubbed)
+    tab._commit_authored_appearances(
+        AuthoredAppearances(appearances={
+            "first": AuthoredAppearance("first", TEXT_INDEX, SPRITE_ID)}),
+        "New authored appearance")
+
+    refused = []
+    monkeypatch.setattr(QMessageBox, "critical",
+                        lambda *args: refused.append(args[2]))
+    tab._merge_authored_appearance(
+        AuthoredAppearance("second", TEXT_INDEX + 2, SPRITE_ID), None)
+
+    assert refused and "not added" in refused[0]
+    assert tuple(item.name for item in read_project(project).appearances.ordered()) \
+        == ("first",)

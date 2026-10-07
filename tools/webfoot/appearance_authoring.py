@@ -113,6 +113,16 @@ def _sprite_ceiling(profile, authored_sprite_id: int | None) -> int:
     return ceiling
 
 
+def _refuse_over_the_flag_ceiling(added, count) -> None:
+    """One statement of the count bound, so the two entry points cannot drift."""
+    if count > ap.APPEARANCE_COUNT_FLAG_CEILING:
+        raise AppearanceAuthoringError(
+            f"{len(added)} new appearance definition(s) would raise the record count "
+            f"to {count}, past {ap.APPEARANCE_COUNT_FLAG_CEILING}. The engine's seen-flag "
+            "array is 232 bits and the word at block+0xE4 is the engine's, so a record "
+            "beyond the first byte after the array has no established flag storage")
+
+
 def authorable_sprite_ids(image: bytes, profile, *,
                           authored_sprite_id: int | None = None) -> tuple[int, ...]:
     """The sprite ids a new appearance definition may bind, ascending.
@@ -179,6 +189,13 @@ def new_records(profile, definitions, *, authored_sprite_id: int | None = None,
             raise AppearanceAuthoringError(
                 f"appearance {definition.name!r}: sprite id {sprite_id} is outside "
                 f"the {SPRITE_ID_FLOOR}..{ceiling} range this image resolves"
+            )
+        if sprite_id == UNMATCHABLE_SPRITE_ID:
+            raise AppearanceAuthoringError(
+                f"appearance {definition.name!r}: sprite id "
+                f"{UNMATCHABLE_SPRITE_ID} is remapped by the engine at "
+                f"0x0802794E before the search compares anything, so a record "
+                f"bound to it can never be returned"
             )
         if sprite_id in used:
             raise AppearanceAuthoringError(
@@ -326,12 +343,7 @@ def materialize_authored_appearances(
     added = new_records(profile, appearances.ordered(),
                         authored_sprite_id=authored_sprite_id, canonical=canonical)
     count = ap.record_count(profile) + len(added)
-    if count > ap.APPEARANCE_COUNT_FLAG_CEILING:
-        raise AppearanceAuthoringError(
-            f"{len(added)} new appearance definition(s) would raise the record count "
-            f"to {count}, past {ap.APPEARANCE_COUNT_FLAG_CEILING}. The engine's seen-flag "
-            "array is 232 bits and the word at block+0xE4 is the engine's, so a record "
-            "beyond the first byte after the array has no established flag storage")
+    _refuse_over_the_flag_ceiling(added, count)
     if not added:
         raise AppearanceAuthoringError(
             "planning an appearance table needs at least one authored definition")
@@ -440,12 +452,7 @@ def validate_authored_appearances(
     added = new_records(profile, appearances.ordered(),
                         authored_sprite_id=authored_sprite_id, canonical=canonical)
     count = ap.record_count(profile) + len(added)
-    if count > ap.APPEARANCE_COUNT_FLAG_CEILING:
-        raise AppearanceAuthoringError(
-            f"{len(added)} new appearance definition(s) would raise the record count "
-            f"to {count}, past {ap.APPEARANCE_COUNT_FLAG_CEILING}. The engine's seen-flag "
-            "array is 232 bits and the word at block+0xE4 is the engine's, so a record "
-            "beyond the first byte after the array has no established flag storage")
+    _refuse_over_the_flag_ceiling(added, count)
     _table(image, profile)
 
 

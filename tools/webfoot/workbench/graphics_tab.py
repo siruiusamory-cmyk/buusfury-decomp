@@ -2072,16 +2072,23 @@ class GraphicsTab(QWidget):
         result = dialog.definition()
         if result is None:
             return
+        self._merge_authored_appearance(result, definition)
+
+    def _merge_authored_appearance(self, result, definition) -> None:
+        """Add one accepted definition, refusing a document the model will not build.
+
+        A duplicate sprite id or a count past the flag array is refused by the
+        model, and that refusal must not escape a Qt slot as a traceback: it is
+        reported the way the strip reports every other refusal, and nothing is
+        committed. Named rather than left inside the dialog's closure so the rule
+        can be exercised without opening a dialog.
+        """
         committed = self._appearances if self._appearances is not None \
             else AuthoredAppearances()
         merged = dict(committed.appearances)
         if definition is not None and definition.name != result.name:
             merged.pop(definition.name, None)
         merged[result.name] = result
-        # The model refuses a document it cannot build - a duplicate sprite id,
-        # a count past the flag array - and its refusal must not escape a Qt
-        # slot as a traceback. It is reported the way the strip reports every
-        # other refusal, and nothing is committed.
         try:
             document = AuthoredAppearances(appearances=merged)
         except _APPEARANCE_ERRORS as refused:

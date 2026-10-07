@@ -144,11 +144,16 @@ therefore uses IWRAM `0x0300112D + (i >> 3)`.
 sentinel on the index, so the engine will write that bit.
 
 Byte `0x0300114A` is interior to the block. The block's initialiser is reached
-from the only literal load of `0x03001068` (`0x0804819A`, pool `0x08004AE4`); it
-writes `+0xE4`, `+0x4F8` and `+0x8A0` and calls `0x08046FF4` with the base at
-`+0x4F8`, the base at `+0x8A0` and a length of `0x68`, so the object extends at
-least to offset `0x908`. The allocating branch of the same routine uses size
-`0x8A8`. Offset `0xE2` is interior under either number. The width of the array is
+from the only literal load of `0x03001068`: `0x0804819A` is `ldr r0,[pc,#0x2]`,
+whose pool word sits at `0x080481A4` and holds `0x03001068`. (An earlier revision
+cited `0x08004AE4` as that pool; that address is four kilobytes away from the load,
+which a Thumb literal load cannot reach, and it holds `0x000008A8`, the allocation
+size used below.) The initialiser writes `+0xE4`, `+0x4F8` and `+0x8A0` and calls
+`0x08046FF4` with the base at `+0x4F8`, the base at `+0x8A0` and a length of `0x68`,
+so the object extends at least to offset `0x908`. The allocating branch of the same
+routine uses size `0x8A8`. Offset `0xE2` is interior under either number, and that
+interiority is what the bound argument rests on - not a claim that those bytes are
+unused, which this document cannot support and does not. The width of the array is
 therefore a consequence of the loop bound and not a separate capacity: raising
 the bound raises the addressable range into bytes that already belong to the
 block.

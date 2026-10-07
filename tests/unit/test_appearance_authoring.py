@@ -155,3 +155,13 @@ def test_applying_an_unchanged_document_reports_no_change(tmp_path):
     assert appearance_sdk.apply_authored_appearances(project, document) is True
     assert appearance_sdk.apply_authored_appearances(project, document) is False
     assert appearance_sdk.authored_appearances(project) == document
+
+def test_two_definitions_may_not_share_a_sprite_id():
+    """The engine returns the first matching record, so the second could never be
+    selected; the dialog validates one draft at a time and cannot see this."""
+    with pytest.raises(ProjectValidationError) as refused:
+        AuthoredAppearances(appearances={
+            "first": AuthoredAppearance("first", TEXT_INDEX, SPRITE_ID),
+            "second": AuthoredAppearance("second", TEXT_INDEX + 2, SPRITE_ID),
+        })
+    assert "both bind sprite id" in str(refused.value)

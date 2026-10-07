@@ -385,3 +385,39 @@ def test_validate_reports_the_same_refusal_a_build_would_raise(authored, tmp_pat
                for problem in report.problems)
     with pytest.raises(ProjectValidationError):
         _build(authored, tmp_path, "refused", catalog)
+
+def test_a_sprite_id_a_canonical_record_selects_is_refused(canonical, identified,
+                                                           profile):
+    """The engine's search returns the earliest match, so an appended record that
+    reuses a retail sprite id is either unreachable or a replacement."""
+    used = ap.read_records(canonical, profile)[0].sprite_id
+    with pytest.raises(ValueError) as refused:
+        aa.new_records(profile, _one(sprite=used).ordered(),
+                       canonical=ap.read_records(canonical, profile))
+    assert "already" in str(refused.value)
+    # and the full plan refuses it too, not only the field-level call
+    with pytest.raises(ValueError):
+        aa.materialize_authored_appearances(
+            canonical, identified, profile,
+            _document(AuthoredAppearance(NAME, TEXT_INDEX, used)))
+
+
+def test_the_sprite_id_the_engine_remaps_can_never_be_authored(canonical, identified,
+                                                               profile):
+    """At 0x0802794E the search swaps accessor(0x95) for accessor(0x92) before it
+    compares anything, so a record bound to 149 can never be returned."""
+    assert aa.UNMATCHABLE_SPRITE_ID == 149
+    offered = aa.authorable_sprite_ids(canonical, profile)
+    assert aa.UNMATCHABLE_SPRITE_ID not in offered
+
+    with pytest.raises(ValueError):
+        aa.new_records(profile, _one(sprite=aa.UNMATCHABLE_SPRITE_ID).ordered(),
+                       canonical=ap.read_records(canonical, profile))
+
+
+def test_the_authorable_sprite_ids_exclude_every_canonical_one(canonical, profile):
+    used = {record.sprite_id for record in ap.read_records(canonical, profile)}
+    offered = set(aa.authorable_sprite_ids(canonical, profile))
+    assert len(offered) == 98
+    assert not (offered & used)
+    assert aa.UNMATCHABLE_SPRITE_ID not in offered

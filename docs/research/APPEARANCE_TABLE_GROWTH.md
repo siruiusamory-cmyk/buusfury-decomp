@@ -193,7 +193,7 @@ only one.
 | record layout known | five fields, every reader instruction cited, every value range measured |
 | every load-bearing consumer accounted for | six functions, eight sites, three compiled bounds, three unbounded single-index consumers |
 | every required update identified | five literal words and three instruction halfwords |
-| values fit their encoded widths | `cmp` immediate is `imm8`, ceiling 255; index registers and index fields are 32-bit; the address carrier is a full 32-bit word |
+| values fit their encoded widths | `cmp` immediate is `imm8`, so the ENCODING reaches 255, but the seen-flag array bounds a build to 240 records; index registers and index fields are 32-bit; the address carrier is a full 32-bit word |
 | allocation and relocation supported | existing allocator and write path; the naming seams are listed in section 8 |
 | no consumer can silently exclude or misindex | all three bounds are patchable and named; the flag byte for the new index is interior; the unbounded consumers take one index each and follow the base register |
 | project reopen can represent it | not yet: the project format has no appearance representation, which is Phase B work |
@@ -210,7 +210,7 @@ only one.
 3. Patch the low byte of the three `cmp rN,#0xE8` halfwords at `0x08024F92`,
    `0x08027998` and `0x080279CC` from `0xE8` to `0xE8 + n`. These are CODE, not
    reference fields, so they are ordinary byte changes with their own note.
-4. Fail closed when `232 + n` exceeds 255, the `imm8` ceiling, and when the
+4. Fail closed when `232 + n` exceeds 240, the flag array's extent, and when the
    aligned block cannot be placed in expanded storage.
 
 The two naming seams that do not exist yet, and their measured shape:

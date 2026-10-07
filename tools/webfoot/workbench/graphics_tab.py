@@ -2078,8 +2078,18 @@ class GraphicsTab(QWidget):
         if definition is not None and definition.name != result.name:
             merged.pop(definition.name, None)
         merged[result.name] = result
+        # The model refuses a document it cannot build - a duplicate sprite id,
+        # a count past the flag array - and its refusal must not escape a Qt
+        # slot as a traceback. It is reported the way the strip reports every
+        # other refusal, and nothing is committed.
+        try:
+            document = AuthoredAppearances(appearances=merged)
+        except _APPEARANCE_ERRORS as refused:
+            QMessageBox.critical(self._tab, "Authored appearance",
+                                 f"this definition was not added: {refused}")
+            return
         self._commit_authored_appearances(
-            AuthoredAppearances(appearances=merged),
+            document,
             ("Edit authored appearance" if definition is not None
              else "New authored appearance"))
 

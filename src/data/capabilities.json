@@ -340,7 +340,7 @@
       "limits": [
         "Not shipped: the growth route and the authoring surface exist and a build writes the record, but the retail engine has not been observed consuming the relocated table, so the runtime half of the proof is outstanding.",
         "The record count is stated by three compiled `cmp rN,#0xE8` loop bounds and there is no terminator, so growth means re-emitting the whole table, not appending in place.",
-        "The count bound is a Thumb `cmp rN,#imm8`, which reaches 255, so at most 23 records may be added to the 232 the image has.",
+        "The engine keeps one seen bit per record in a 232-bit array, and the block's own initializer zeroes a word immediately after it, so at most 8 records may be added to the 232 the image has.",
         "An authored definition shares an existing on-screen name, because creating new text-table ids is not shipped for any capability."
       ],
       "evidence": "APPEARANCE-AUTHORING-GATE-001; docs/research/APPEARANCE_TABLE_GROWTH.md; docs/research/APPEARANCE_AUTHORING_SURFACE.md"

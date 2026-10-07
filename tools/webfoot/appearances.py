@@ -72,7 +72,11 @@ APPEARANCE_BLOCK_FIRST_OWNED_WORD = 0xE4
 #: byte. Index 240 would write `block+0xE3`, which has no established owner, and
 #: index 248 would overwrite the word the initializer zeroes at `block+0xE4`. So
 #: eight is the largest number of appended records whose flag storage is confined
-#: to the single byte immediately after the array.
+#: to the single byte immediately after the array. INFERRED, not confirmed: no
+#: writer to `block+0xE2` was found, which is the same evidence that leaves
+#: `block+0xE3` unestablished, so this bound rests on the initializer zeroing a
+#: WORD at `block+0xE4` and on nothing else. Confirming it means showing that
+#: neither byte is read by any consumer of the block.
 APPEARANCE_COUNT_FLAG_CEILING = APPEARANCE_CANONICAL_COUNT + 8
 
 #: The record-index bound enforced by the engine's `blt` after each `cmp`.

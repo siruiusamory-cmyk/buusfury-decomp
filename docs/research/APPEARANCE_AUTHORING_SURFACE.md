@@ -39,8 +39,9 @@ the authored-sprite strip `SPRITE-PROJECT-SURFACE-001` established.
    authored definitions: "No authored appearance." and only Create enabled.
    A draft the SDK refuses: the dialog states the refusal and disables its OK
    button, so a refused draft can never be committed.
-9. **Expected data volume.** One to twenty-three definitions, bounded by the count
-   a Thumb `cmp rN,#imm8` can state.
+9. **Expected data volume.** One to eight definitions. The binding bound is the
+   engine's 232-bit seen-flag array and the word its initializer zeroes just after
+   it, which is well below the 255 a Thumb `cmp rN,#imm8` could state.
 10. **Performance risks.** None measured. Validation reads the image's five
     published words and the 232 records - microseconds - and the allocation is the
     build's, not the dialog's.
@@ -55,9 +56,15 @@ definition that first selects it).
 
 Refused by name, from the shared validation the build runs: a text index outside
 the declared table or one with no successor inside it; a sprite id below the
-accessor's floor of 10 or above what the registry reaches; a project that would
-exceed the count ceiling; and a project whose image does not publish the table's
-anchor, its five inbound words, or a relocatable anchor.
+accessor's floor of 10, above what the registry reaches, already selected by a
+canonical record, already bound by another authored definition, or the id 149 the
+engine remaps before it compares; a project that would exceed the flag array's
+count bound; and a project whose image does not publish the table's anchor, its
+five inbound words, or a relocatable anchor.
+
+The dialog offers the sprite ids nothing selects, which is 99 of them in this
+image, rather than the canonical vocabulary: an id a canonical record already
+selects is one the engine can never return from an appended record.
 
 Not offered, and stated as out of contract: a new text-table id, a portrait slot,
 and a stat record.
@@ -95,6 +102,15 @@ The authoring surface now refuses a sprite id any canonical record selects, so t
 first case cannot be authored any more; that refusal is not evidence about runs
 made before it existed.
 
+**And the rule is per caller.** The search is reached from two places. Caller
+`0x08010312` passes a zero second argument, which is the case described above.
+Caller `0x0800FB72` passes `[actor+0x224]`, and when that is non-zero BOTH loops
+require `+0x0C >= 0` and a computed stat-table pointer to match. An authored record
+is written with `+0x0C = -1`, so on that path it is never returned at all, whatever
+its sprite id. The authored definition therefore participates in one of the
+engine's two lookups and not the other, and that is a limit of the capability
+rather than a detail of the instrument.
+
 Link 3 is the one link with runtime evidence, and it goes further than a
 deduction, but not all the way. Both halves were measured, in the same run:
 
@@ -129,7 +145,7 @@ first hit, but the hit has not recurred since.
 * `tools/webfoot/appearance_authoring.py` - the plan and the project surface.
   The plan re-emits the whole table above canonical EOF with the authored records
   appended, copies the canonical records verbatim, rewrites the five words,
-  patches the three count halfwords, fails closed past the `imm8` ceiling, fails
+  patches the three count halfwords, fails closed past the flag array's bound, fails
   closed when the profile declares no generated expansion, and produces a
   `RelocationProvenance` plus a `GeneratedAllocationProvenance` for the manifest.
 * `appearances/appearances.toml` in the project model, with `AuthoredAppearance`,

@@ -2727,10 +2727,9 @@ class AuthoredAppearances:
         if len(self.appearances) > _MAX_AUTHORED_APPEARANCES:
             raise ProjectValidationError(
                 f"this project declares {len(self.appearances)} new appearance "
-                f"definitions; the record count is stated by a Thumb "
-                f"`cmp rN,#imm8`, which reaches at most "
-                f"{_MAX_AUTHORED_APPEARANCES} appended records, so this project "
-                "cannot be built"
+                f"definitions; the engine keeps one seen bit per record in a "
+                f"232-bit array, so at most {_MAX_AUTHORED_APPEARANCES} appended "
+                "records have flag storage, and this project cannot be built"
             )
 
     def is_empty(self) -> bool:

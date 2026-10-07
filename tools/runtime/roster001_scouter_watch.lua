@@ -60,6 +60,19 @@ local HOLD = 8
 
 -- One picture per step, so an empty report still says what the screen was.
 local SCHEDULE = {}
+-- ROSTER001_WALK walks instead of opening menus: the search path is reached by a
+-- map transition, and a transition needs the player to cross a boundary.
+local WALK = os.getenv("ROSTER001_WALK") == "1"
+if WALK then
+    local dirs = { RIGHT, LEFT, UP, DOWN }
+    for leg = 0, 22 do
+        local at = 200 + leg * 260
+        for pulse = 0, 7 do
+            SCHEDULE[#SCHEDULE + 1] = { at + pulse * 26, dirs[(leg % 4) + 1] }
+        end
+        SCHEDULE[#SCHEDULE + 1] = { at + 230, A }
+    end
+end
 if DRIVE then
     SCHEDULE = {
         { 420, SELECT },   -- the Scouter, per the game's controls

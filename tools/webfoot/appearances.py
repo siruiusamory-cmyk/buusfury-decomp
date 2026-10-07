@@ -50,8 +50,30 @@ APPEARANCE_COUNT_OFFSETS: tuple[int, ...] = (0x00024F92, 0x00027998, 0x000279CC)
 APPEARANCE_CANONICAL_COUNT = 0xE8
 
 #: The largest count a Thumb `cmp rN,#imm8` can state. Beyond this the bound
-#: would need code widening, so a build refuses instead.
+#: would need code widening, so a build refuses instead. This is the ENCODING
+#: limit and it is NOT the limit a build may use: see the flag array below.
 APPEARANCE_COUNT_CEILING = 0xFF
+
+#: The engine keeps one "seen" bit per record in the block it holds at
+#: `[reader+8]`. The bit for record `i` is bit `i & 7` of the byte at
+#: `block + 0xC5 + (i >> 3)`, so the 232 canonical records fill bytes
+#: `block+0xC5` through `block+0xE1` exactly: 29 bytes, 232 bits.
+APPEARANCE_FLAG_ARRAY_BYTES = 29
+
+#: The block initializer at file offset 0x00004838 zeroes a WORD at `block+0xE4`
+#: (`mov r1,#0xE4; mov r0,#0; str r0,[r1,r4]`), so that word is the engine's and
+#: record indices 248 and above overwrite it. The byte at `block+0xE3` has no
+#: established owner.
+APPEARANCE_BLOCK_FIRST_OWNED_WORD = 0xE4
+
+#: The largest count a build may state, from the flag array rather than from the
+#: encoding. Record indices at or above the canonical count write past the array:
+#: index 232 writes `block+0xE2`, and eight appended records all land in that one
+#: byte. Index 240 would write `block+0xE3`, which has no established owner, and
+#: index 248 would overwrite the word the initializer zeroes at `block+0xE4`. So
+#: eight is the largest number of appended records whose flag storage is confined
+#: to the single byte immediately after the array.
+APPEARANCE_COUNT_FLAG_CEILING = APPEARANCE_CANONICAL_COUNT + 8
 
 #: The record-index bound enforced by the engine's `blt` after each `cmp`.
 APPEARANCE_COUNT_OFFSET_WIDTH = 1

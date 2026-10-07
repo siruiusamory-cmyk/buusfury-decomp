@@ -143,16 +143,37 @@ verify emulator version from the binary
 entities are built during the load, so a breakpoint armed afterwards never sees
 it. `emu:loadStateFile` is available on the 0.11 build and is the mechanism.
 
-## 6. Injection, not `--script`
+## 6. How the observer is delivered
 
-`mGBA.exe --script foo.lua` bypasses the observer allowlist and the launcher's
-ROM gate. Node `88c0c745` measured that it *can* work on the 0.11 dev build,
-and its own note states the two governance caveats. It is not the route this
-repository takes. The working path is `tools/runtime/inject_mgba_lua.ps1`,
-which drives the Scripting window by UI Automation and requires the observer to
-be an exact allowlisted path.
+The working path has been `tools/runtime/inject_mgba_lua.ps1`, which drives the
+Scripting window by UI Automation and requires the observer to be an exact
+allowlisted path. `mGBA.exe --script foo.lua` on its own bypasses the observer
+allowlist and the launcher's ROM gate, and that is still forbidden. Node
+`88c0c745` measured that it *can* work on the 0.11 dev build and recorded the two
+governance caveats.
 
-Two details in it are load-bearing:
+`tools/runtime/mgba_session.ps1` is the current mechanism, and it uses `--script`
+while keeping both gates that a bare flag would drop:
+
+- every Lua file it hands mGBA, the observer and the input driver alike, is put
+  through `inject_mgba_lua.ps1 -CheckOnly` first, so the allowlist, the ready and
+  marker roots, the long-string terminator and the pre-existence rules all still
+  apply;
+- the mechanism itself fails closed on the emulator version and on an exact ROM
+  digest, so a launcher cannot reach the emulator without naming both. That is
+  what section 6's rule always meant: not "never use the flag" but "never use it
+  to leave the gates behind".
+
+What it replaced, measured on the same build: a fixed eight-to-twelve second
+sleep, a Scripting window opened by UI Automation, and a savestate loaded through
+the File dialog. That was 17.2 seconds and three windows taking the operator's
+foreground; it is now 7.6 seconds and none.
+
+The savestate is loaded by the bootstrap after the observer's `dofile`, not by
+mGBA's `-t`. Measured: with `-t` the state is already in memory when `--script`
+runs, so an observer armed afterwards would miss anything the load constructs.
+
+Two details in the injector are load-bearing, and `-CheckOnly` stops before both:
 
 - Prompt selection is by `AutomationId` ending `.prompt`. Qt reports an empty
   `IsReadOnly` for all three Edits, so "first non-read-only" selects the log
@@ -161,7 +182,9 @@ Two details in it are load-bearing:
   it to a synchronous handler that can fail to return.
 
 Every observer must be added to the `$allowedLua` allowlist in that script,
-registered with real backslashes.
+registered with real backslashes. `tools/runtime/appearance001_drive.lua` is the
+worked example of the input split: the observer reads, the driver sends keys, and
+they are two allow-listed files.
 
 Quote characters do **not** survive PowerShell to UI Automation `SetValue`.
 Write Lua sent that way with long-bracket strings: `print([[text]])`.

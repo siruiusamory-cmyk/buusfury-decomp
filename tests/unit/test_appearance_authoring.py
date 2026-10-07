@@ -97,8 +97,8 @@ def test_the_field_widths_are_the_record_widths():
 
 
 def test_a_document_over_the_count_ceiling_is_refused_by_the_model():
-    """The count is a Thumb `cmp rN,#imm8`, so the ceiling is stated, not trimmed."""
-    ceiling = appearance_format.APPEARANCE_COUNT_CEILING \
+    """The ceiling is the flag array's, not the encoding's, and it is stated."""
+    ceiling = appearance_format.APPEARANCE_COUNT_FLAG_CEILING \
         - appearance_format.APPEARANCE_CANONICAL_COUNT
     accepted = {f"a{index}": AuthoredAppearance(f"a{index}", index, 10)
                 for index in range(ceiling)}
@@ -114,7 +114,7 @@ def test_the_models_ceiling_cannot_drift_from_the_sdk_constant():
     from tools.webfoot.project import model
 
     assert model._MAX_AUTHORED_APPEARANCES == (
-        appearance_format.APPEARANCE_COUNT_CEILING
+        appearance_format.APPEARANCE_COUNT_FLAG_CEILING
         - appearance_format.APPEARANCE_CANONICAL_COUNT)
 
 

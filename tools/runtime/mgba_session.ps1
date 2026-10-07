@@ -116,6 +116,28 @@ function Start-MgbaSession {
     # would arm too late to see anything the load itself constructs - which is
     # exactly what several observers exist to catch. Loading it here, after the
     # observer is armed, reproduces the ordering the dialog flow had.
+    # -PostCommand is Lua that runs after the observer and before the ready marker.
+    # It is composed into the bootstrap, so it no longer passes through the
+    # injector's prompt validation. Two shapes are admitted - a savestate load and
+    # a dofile of another allow-listed file - and anything else is refused rather
+    # than run, so a launcher cannot smuggle arbitrary code past the allowlist.
+    if ($PostCommand) {
+        if ($PostCommand -match '^dofile\(\[\[(?<path>[^\]]+)\]\]\)$') {
+            $extra = [System.IO.Path]::GetFullPath($Matches['path'])
+            $extraCheckArgs = @(
+                '-NoProfile', '-ExecutionPolicy', 'Bypass',
+                '-File', (Join-Path $PSScriptRoot 'inject_mgba_lua.ps1'),
+                '-TargetProcessId', $PID,
+                '-LuaPath', $extra,
+                '-CheckOnly'
+            )
+            & powershell @extraCheckArgs | Out-Null
+            if ($LASTEXITCODE -ne 0) { throw 'PostCommand dofile target is not allowlisted' }
+        } elseif ($PostCommand -notmatch '^emu:loadStateFile\(\[\[(?<state>[^\]]+)\]\]\)$') {
+            throw ('PostCommand must be one of exactly two shapes: ' +
+                   'dofile([[<allowlisted lua>]]) or emu:loadStateFile([[<path>]])')
+        }
+    }
     $bootstrapLines = @(
         ('rom011_marker_path = [[{0}]]' -f ($MarkerPath -replace '\\', '/')),
         ('dofile([[{0}]])' -f ([System.IO.Path]::GetFullPath($LuaPath) -replace '\\', '/'))

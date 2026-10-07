@@ -2130,11 +2130,15 @@ APPEARANCES_FILE = Path("appearances") / "appearances.toml"
 APPEARANCE_TABLE = "appearance"
 
 #: How many records this document may append. The engine states the record count
-#: as a Thumb `cmp rN,#imm8`, whose immediate reaches 255, and the canonical table
-#: already holds 232 records. Stated locally like the other hardware numbers in
-#: this package and pinned by test against the SDK's own constant, so the two
-#: cannot drift.
-_MAX_AUTHORED_APPEARANCES = 23
+#: as a Thumb `cmp rN,#imm8`, whose immediate reaches 255, but the encoding is not
+#: the binding limit: the engine keeps one seen-flag bit per record in a 232-bit
+#: array spanning block+0xC5..block+0xE1, and the block initializer zeroes a WORD
+#: at block+0xE4. Eight appended records all set bits inside block+0xE2, the single
+#: byte immediately after the array; the ninth would write block+0xE3, which has no
+#: established owner. Stated locally like the other hardware numbers in this
+#: package and pinned by test against the SDK's own constant, so the two cannot
+#: drift.
+_MAX_AUTHORED_APPEARANCES = 8
 
 #: An authored sprite's name, the same durable shape a chunk and a created
 #: transition take: it becomes part of an identity a manifest carries, so it stays

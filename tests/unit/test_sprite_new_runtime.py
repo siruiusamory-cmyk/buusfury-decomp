@@ -353,7 +353,7 @@ def test_the_launcher_passes_the_rom_last_and_bare():
     assert "Start-MgbaSession" in launcher
     assert "-ArgumentList @('-C', ('savegamePath=' + $saveDir))" in launcher
     # One argument string, options first, the ROM LAST and bare.
-    assert "('-t \"{0}\" {1} \"{2}\"' -f" in helper or "$options += @('--script', $bootstrap)" in helper
+    assert "$options += @('--script', $bootstrap)" in helper
     assert "(' \"{0}\"' -f $RomPath)" in helper
     # The staged copy is what makes the bare form safe: no spaces in the path.
     assert "Join-Path $runDir 'rom.gba'" in launcher

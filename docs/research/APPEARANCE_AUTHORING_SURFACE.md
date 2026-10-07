@@ -68,7 +68,7 @@ and a stat record.
 | --- | --- | --- |
 | authored appearance id | the document, re-read by `read_project` after a write | CONFIRMED |
 | built table record | a real build: the 233rd record at file `0x800000`, the five words and three bounds patched, nothing else canonical changed | CONFIRMED |
-| engine lookup of the new id | the retail engine's own search executed and its record read reached index 232, through the base its own instruction loads from the pool word measured `0x08800000`; the register itself was not read at that instant | **PARTIAL** |
+| engine lookup of the new id | the retail engine's own search executed and its record read reached index 232, through the base its instruction loads from the pool word measured `0x08800000`. A fall-through of the first loop reaches index 232 without the new record being SELECTED, so this shows the read happened and not that the engine chose it; the register was not read at that instant either | **PARTIAL, and weaker than it first reads** |
 | bound sprite/visual configuration | the authored record binds a sprite id the accessor resolves | CONFIRMED statically, unobserved |
 | an actor using it | a retail-engine observation | **NOT ESTABLISHED** |
 
@@ -77,6 +77,23 @@ The capability is therefore **not claimed**. `src/data/capabilities.json` keeps
 not.
 
 ### SC3.1 - How far the lookup link actually goes
+
+**The matching rule, first, because it decides how much the numbers below are
+worth.** The search runs two loops. Loop 1 returns the first record whose sprite
+matches AND whose `+0x0C` is negative. Loop 2 is the fallback and returns the
+first record whose sprite matches at all. An appended record sits last, so:
+
+* an authored record whose sprite id a canonical record already selects is either
+  never reached (loop 1 finds the canonical generic record first) or it replaces
+  that record's resolution (loop 1 now matches an id that previously fell through
+  to loop 2);
+* **reaching index 232 therefore does not by itself mean the authored record was
+  chosen.** A full fall-through of both loops reaches index 232 too, which is
+  exactly what a search that found nothing would do.
+
+The authoring surface now refuses a sprite id any canonical record selects, so the
+first case cannot be authored any more; that refusal is not evidence about runs
+made before it existed.
 
 Link 3 is the one link with runtime evidence, and it goes further than a
 deduction, but not all the way. Both halves were measured, in the same run:

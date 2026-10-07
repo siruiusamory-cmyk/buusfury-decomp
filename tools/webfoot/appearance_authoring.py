@@ -95,8 +95,12 @@ def _text_count(profile) -> int:
 def _sprite_ceiling(profile, authored_sprite_id: int | None) -> int:
     layout = getattr(profile, "actor_sprites", None)
     if layout is None:
+        # The message names the profile when it can: a caller may hand this a
+        # stand-in profile, and a refusal must not become an AttributeError.
+        named = getattr(profile, "id", None) or getattr(profile, "profile_id", None) \
+            or "this profile"
         raise AppearanceAuthoringError(
-            f"profile {profile.id!r} declares no actor_sprites; an appearance "
+            f"profile {named!r} declares no actor_sprites; an appearance "
             "definition's sprite id has nowhere to resolve"
         )
     ceiling = SPRITE_ID_FLOOR + layout.character_count - 1
@@ -105,18 +109,48 @@ def _sprite_ceiling(profile, authored_sprite_id: int | None) -> int:
     return ceiling
 
 
-def new_records(profile, definitions, *, authored_sprite_id: int | None = None
-                ) -> tuple[ap.AppearanceRecord, ...]:
+def authorable_sprite_ids(image: bytes, profile, *,
+                          authored_sprite_id: int | None = None) -> tuple[int, ...]:
+    """The sprite ids a new appearance definition may bind, ascending.
+
+    Every id a canonical record already selects is excluded, because the engine's
+    search returns the earliest match and an appended record is therefore either
+    unreachable or a replacement for that record's resolution. The authored
+    actor-sprite identity is admissible when the same project defines it, since no
+    canonical record selects it.
+    """
+    ceiling = _sprite_ceiling(profile, authored_sprite_id)
+    used = {record.sprite_id for record in ap.read_records(image, profile)}
+    ids = [sprite_id for sprite_id in range(SPRITE_ID_FLOOR, ceiling + 1)
+           if sprite_id not in used]
+    if authored_sprite_id is not None and authored_sprite_id not in ids:
+        ids.append(authored_sprite_id)
+        ids.sort()
+    return tuple(ids)
+
+
+def new_records(profile, definitions, *, authored_sprite_id: int | None = None,
+                canonical=()) -> tuple[ap.AppearanceRecord, ...]:
     """The records the document asks for, each checked against the image's own
     sibling tables before anything is planned.
 
     The checks are the whole admissibility rule: a text pair that resolves inside
-    the declared text table, and a sprite id the accessor resolves. A value
-    outside either is refused rather than written and left for the engine to
-    misread.
+    the declared text table, a sprite id the accessor resolves, and a sprite id no
+    canonical record already selects. A value outside any of them is refused
+    rather than written and left for the engine to misread.
+
+    The sprite-id rule is not cosmetic. The engine's search at 0x08027948 runs two
+    loops: the first returns the first record whose sprite matches AND whose
+    ``+0x0C`` is negative, the second returns the first record whose sprite matches
+    at all. An appended record sits last, so for a sprite id a canonical record
+    already selects it is either never reached or it takes over that record's
+    resolution, depending on the canonical record's own ``+0x0C``.
     """
     text_count = _text_count(profile)
     ceiling = _sprite_ceiling(profile, authored_sprite_id)
+    used: dict[int, int] = {}
+    for position, record in enumerate(canonical):
+        used.setdefault(record.sprite_id, position)
     records = []
     for definition in definitions:
         index = definition.text_index
@@ -136,6 +170,14 @@ def new_records(profile, definitions, *, authored_sprite_id: int | None = None
             raise AppearanceAuthoringError(
                 f"appearance {definition.name!r}: sprite id {sprite_id} is outside "
                 f"the {SPRITE_ID_FLOOR}..{ceiling} range this image resolves"
+            )
+        if sprite_id in used:
+            raise AppearanceAuthoringError(
+                f"appearance {definition.name!r}: sprite id {sprite_id} is already "
+                f"selected by canonical record {used[sprite_id]}, and the engine's "
+                f"search returns the earliest matching record, so an appended record "
+                f"for this id is either unreachable or replaces the retail "
+                f"resolution. Choose a sprite id no canonical record selects."
             )
         records.append(ap.AppearanceRecord(
             text_index=index,
@@ -272,15 +314,15 @@ def materialize_authored_appearances(
                       "authored appearance definitions")
 
     canonical = ap.read_records(image, profile)
-    added = new_records(profile, appearances.ordered(), 
-                        authored_sprite_id=authored_sprite_id)
+    added = new_records(profile, appearances.ordered(),
+                        authored_sprite_id=authored_sprite_id, canonical=canonical)
     count = ap.record_count(profile) + len(added)
-    if count > ap.APPEARANCE_COUNT_CEILING:
+    if count > ap.APPEARANCE_COUNT_FLAG_CEILING:
         raise AppearanceAuthoringError(
             f"{len(added)} new appearance definition(s) would raise the record count "
-            f"to {count}, past the {ap.APPEARANCE_COUNT_CEILING} a Thumb "
-            "`cmp rN,#imm8` can state; the count bound would need code widening and "
-            "this build refuses rather than write a bound the engine cannot obey")
+            f"to {count}, past {ap.APPEARANCE_COUNT_FLAG_CEILING}. The engine's seen-flag "
+            "array is 232 bits and the word at block+0xE4 is the engine's, so a record "
+            "beyond the first byte after the array has no established flag storage")
     if not added:
         raise AppearanceAuthoringError(
             "planning an appearance table needs at least one authored definition")
@@ -385,14 +427,16 @@ def validate_authored_appearances(
                       "authored appearance definitions")
     _require_declared(identification, profile, Capability.ACTOR_SPRITES,
                       "authored appearance definitions")
+    canonical = ap.read_records(image, profile)
     added = new_records(profile, appearances.ordered(),
-                        authored_sprite_id=authored_sprite_id)
+                        authored_sprite_id=authored_sprite_id, canonical=canonical)
     count = ap.record_count(profile) + len(added)
-    if count > ap.APPEARANCE_COUNT_CEILING:
+    if count > ap.APPEARANCE_COUNT_FLAG_CEILING:
         raise AppearanceAuthoringError(
             f"{len(added)} new appearance definition(s) would raise the record count "
-            f"to {count}, past the {ap.APPEARANCE_COUNT_CEILING} a Thumb "
-            "`cmp rN,#imm8` can state")
+            f"to {count}, past {ap.APPEARANCE_COUNT_FLAG_CEILING}. The engine's seen-flag "
+            "array is 232 bits and the word at block+0xE4 is the engine's, so a record "
+            "beyond the first byte after the array has no established flag storage")
     _table(image, profile)
 
 

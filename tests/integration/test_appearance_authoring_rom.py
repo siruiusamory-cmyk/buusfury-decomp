@@ -40,7 +40,7 @@ NEW_TABLE_OFFSET = 0x800000
 NEW_TABLE_ADDRESS = 0x08800000
 NAME = "new_face"
 TEXT_INDEX = 1188
-SPRITE_ID = 137
+SPRITE_ID = 10
 SPRITE_CEILING = 306
 
 
@@ -266,16 +266,23 @@ def test_a_text_index_outside_the_declared_table_is_refused(canonical, identifie
 
 def test_the_count_ceiling_is_refused_rather_than_widened(canonical, identified,
                                                           profile):
-    """232 + 23 is the last count a Thumb `cmp rN,#imm8` can state."""
-    ceiling = ap.APPEARANCE_COUNT_CEILING - CANONICAL_COUNT
-    accepted = _document(*[AuthoredAppearance(f"a{index}", TEXT_INDEX, SPRITE_ID)
+    """The bound is the seen-flag array's, and it is refused rather than widened.
+
+    Eight appended records all set bits inside block+0xE2, the single byte after
+    the engine's 232-bit array. The ninth would write block+0xE3, whose owner is
+    not established, so the model states eight and the plan refuses the ninth."""
+    ceiling = ap.APPEARANCE_COUNT_FLAG_CEILING - CANONICAL_COUNT
+    assert ceiling == 8
+    free = aa.authorable_sprite_ids(canonical, profile)
+    assert len(free) >= ceiling + 1
+    accepted = _document(*[AuthoredAppearance(f"a{index}", TEXT_INDEX, free[index])
                            for index in range(ceiling)])
     materialization = aa.materialize_authored_appearances(
         canonical, identified, profile, accepted)
-    assert materialization.record_count == ap.APPEARANCE_COUNT_CEILING
+    assert materialization.record_count == ap.APPEARANCE_COUNT_FLAG_CEILING
 
     with pytest.raises(ValueError):
-        _document(*[AuthoredAppearance(f"a{index}", TEXT_INDEX, SPRITE_ID)
+        _document(*[AuthoredAppearance(f"a{index}", TEXT_INDEX, free[index])
                     for index in range(ceiling + 1)])
 
 

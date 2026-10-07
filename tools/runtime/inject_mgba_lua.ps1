@@ -18,10 +18,12 @@ param(
 $ErrorActionPreference = 'Stop'
 $workspaceRoot = [System.IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..\..'))
 $allowedLua = @(
-    # Added by APPEARANCE-AUTHORING-GATE-001: the read-only appearance-table
-    # observer. It counts four breakpoint sites - the id search's record read,
-    # the roster walk's patched bound, the sprite-id accessor and the record
-    # consumer - and writes only host files inside the run directory.
+    # Added by APPEARANCE-AUTHORING-GATE-001: the appearance-table observer. It
+    # writes no emulated memory and arms fifteen sites - the six reader functions'
+    # entry points,
+    # the six literal-pool base-load sites inside them, the search loop's record
+    # read, the roster walk's patched bound and the animation frame advance - and
+    # writes only host files inside the run directory.
     [System.IO.Path]::GetFullPath(
         (Join-Path $workspaceRoot 'tools\runtime\appearance001_table_watch.lua')
     )

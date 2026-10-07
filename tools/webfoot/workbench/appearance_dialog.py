@@ -120,7 +120,18 @@ class AppearanceAuthoringDialog(QDialog):
         for index in appearance_format.name_vocabulary(image, profile):
             self._text.addItem(_label(index, strings.get(index)), index)
         extra = self._authored_sprite_id()
-        for sprite_id in appearance_format.sprite_vocabulary(image, profile, extra=extra):
+        # Only ids no canonical record selects: the engine's search returns the
+        # earliest match, so a colliding id would be refused or would take over a
+        # retail record's resolution. A profile with no actor-sprite layout cannot
+        # state the resolvable window, so the canonical vocabulary stands in and
+        # the plan-time refusal remains the enforcement.
+        from .. import appearance_authoring as authoring
+        try:
+            offered = authoring.authorable_sprite_ids(
+                image, profile, authored_sprite_id=extra)
+        except authoring.AppearanceAuthoringError:
+            offered = appearance_format.sprite_vocabulary(image, profile, extra=extra)
+        for sprite_id in offered:
             name_index = first_by_sprite.get(sprite_id)
             suffix = strings.get(name_index, "") if name_index is not None else ""
             text = f"sprite {sprite_id}" + (f" - {suffix}" if suffix else "")

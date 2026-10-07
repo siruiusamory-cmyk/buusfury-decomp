@@ -18,8 +18,9 @@ currency, the undo stack and the project revision.
 from __future__ import annotations
 
 from PySide6.QtCore import Qt
-from PySide6.QtWidgets import (QComboBox, QDialog, QDialogButtonBox, QFormLayout,
-                               QLabel, QLineEdit, QMessageBox, QVBoxLayout)
+from PySide6.QtWidgets import (QCheckBox, QComboBox, QDialog, QDialogButtonBox,
+                               QFormLayout, QLabel, QLineEdit, QMessageBox,
+                               QVBoxLayout)
 
 from .. import appearance_authoring as appearance_sdk
 from .. import appearances as appearance_format
@@ -31,6 +32,16 @@ from .widgets import StateChip
 
 #: Every SDK family this dialog can be refused by.
 _SDK_ERRORS = (AppearanceAuthoringError, ProjectError, OSError)
+
+#: What enabling the takeover does, in the plainest terms the surface can state.
+_OVERRIDE_WARNING = (
+    "Taking over a retail binding redirects existing actors. The engine's search "
+    "returns an appended record before the retail one, so any actor in the game "
+    "that already carries this sprite id would show this authored appearance "
+    "instead - its on-screen name, description, portrait and stat record become "
+    "the ones this definition states. Enable this only when that redirection is "
+    "what you intend, and leaving it off keeps the retail resolution unchanged."
+)
 
 _OUT_OF_CONTRACT = (
     "Not offered here, and deliberately: a new text index (creating text-table "
@@ -60,6 +71,12 @@ class AppearanceAuthoringDialog(QDialog):
         self._name.setPlaceholderText("lowercase name, for example new_face")
         self._text = QComboBox()
         self._sprite = QComboBox()
+        self._override = QCheckBox("Take over a sprite identity the retail table "
+                                   "already uses")
+        self._override.setChecked(False)
+        self._override_warning = QLabel(_OVERRIDE_WARNING)
+        self._override_warning.setWordWrap(True)
+        self._override_warning.setProperty("dbzRole", "hint")
         self._state = StateChip("Reading the image\u2026", "readonly", plain=True)
         self._state.setWordWrap(False)
         self._summary = QLabel("")
@@ -86,6 +103,8 @@ class AppearanceAuthoringDialog(QDialog):
         root.setSpacing(theme.SPACE_MD)
         root.addWidget(self._state)
         root.addLayout(form)
+        root.addWidget(self._override)
+        root.addWidget(self._override_warning)
         root.addWidget(note)
         root.addWidget(self._summary)
         root.addWidget(buttons)
@@ -94,6 +113,7 @@ class AppearanceAuthoringDialog(QDialog):
         self._name.textChanged.connect(self._refresh)
         self._text.currentIndexChanged.connect(self._refresh)
         self._sprite.currentIndexChanged.connect(self._refresh)
+        self._override.toggled.connect(self._refresh)
         self._loading = False
         self._refresh()
 
@@ -114,8 +134,10 @@ class AppearanceAuthoringDialog(QDialog):
         records = appearance_format.read_records(image, profile)
         first_by_index = {record.text_index: record for record in records}
         first_by_sprite: dict[int, int] = {}
-        for record in records:
+        first_record_by_sprite: dict[int, int] = {}
+        for index, record in enumerate(records):
             first_by_sprite.setdefault(record.sprite_id, record.text_index)
+            first_record_by_sprite.setdefault(record.sprite_id, index)
 
         for index in appearance_format.name_vocabulary(image, profile):
             self._text.addItem(_label(index, strings.get(index)), index)
@@ -138,6 +160,18 @@ class AppearanceAuthoringDialog(QDialog):
             if sprite_id == extra:
                 text += " (the authored sprite identity)"
             self._sprite.addItem(text, sprite_id)
+        # The retail-selected ids are listed too, last and labelled with the record
+        # that selects them, because taking one over is a thing an author may
+        # deliberately choose. Selecting one without the opt-in is refused by the
+        # same validation the build runs.
+        for sprite_id in appearance_format.sprite_vocabulary(image, profile):
+            name_index = first_by_sprite.get(sprite_id)
+            suffix = strings.get(name_index, "") if name_index is not None else ""
+            record = first_record_by_sprite.get(sprite_id)
+            bound = f" (retail record {record})" if record is not None else ""
+            self._sprite.addItem(
+                f"sprite {sprite_id}" + (f" - {suffix}" if suffix else "") + bound,
+                sprite_id)
         # The record whose index is edited keeps its own values selectable even
         # when the image no longer offers them, so opening the dialog is never a
         # silent rewrite of a committed definition.
@@ -150,6 +184,7 @@ class AppearanceAuthoringDialog(QDialog):
             ):
                 if combo.findData(value) < 0:
                     combo.addItem(label, value)
+            self._override.setChecked(self._existing.override)
             _select(self._text, self._existing.text_index)
             _select(self._sprite, self._existing.sprite_id)
             self._name.setText(self._existing.name)
@@ -223,7 +258,8 @@ class AppearanceAuthoringDialog(QDialog):
                 f"appearance {name!r} already exists in this project")
         return AuthoredAppearance(name=name,
                                   text_index=self._text.currentData(),
-                                  sprite_id=self._sprite.currentData())
+                                  sprite_id=self._sprite.currentData(),
+                                  override=self._override.isChecked())
 
     # -- the answer ----------------------------------------------------------
 

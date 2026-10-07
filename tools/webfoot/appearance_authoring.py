@@ -212,15 +212,16 @@ def new_records(profile, definitions, *, authored_sprite_id: int | None = None,
                 f"0x0802794E before the search compares anything, so a record "
                 f"bound to it can never be returned"
             )
-        if sprite_id in used:
+        if sprite_id in used and not getattr(definition, "override", False):
             raise AppearanceAuthoringError(
                 f"appearance {definition.name!r}: sprite id {sprite_id} is already "
                 f"selected by canonical record {used[sprite_id]}. An appended record "
                 f"carries a negative stat index, so the engine's first search loop "
-                f"returns it before its second loop can return the retail record: "
-                f"binding this id would redirect that object's resolution to the "
-                f"authored appearance rather than extend the table. Choose a sprite "
-                f"id no canonical record selects."
+                f"returns it before its second loop can return the retail record, "
+                f"which means binding this id redirects that object's resolution to "
+                f"the authored appearance rather than extending the table. Set this "
+                f"definition's override to true to take the binding over "
+                f"deliberately, or choose a sprite id no canonical record selects."
             )
         records.append(ap.AppearanceRecord(
             text_index=index,

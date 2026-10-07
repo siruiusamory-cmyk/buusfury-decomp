@@ -165,3 +165,37 @@ def test_two_definitions_may_not_share_a_sprite_id():
             "second": AuthoredAppearance("second", TEXT_INDEX + 2, SPRITE_ID),
         })
     assert "both bind sprite id" in str(refused.value)
+
+def test_an_override_is_a_document_field_and_defaults_off():
+    """The intent is stored, not inferred from the sprite id.
+
+    A reader of the document can see whether a takeover was asked for, and the
+    absence of the key is the documented default rather than a guess.
+    """
+    plain = AuthoredAppearance("new_face", 1, 2)
+    assert plain.override is False
+    assert plain.to_document()["override"] is False
+
+    asserted = AuthoredAppearance("new_face", 1, 2, override=True)
+    assert asserted.to_document()["override"] is True
+    assert asserted.to_document()["sprite_id"] == 2
+
+    silent = AuthoredAppearance.from_document(
+        "new_face", {"text_index": 1, "sprite_id": 2}, "appearances.new_face")
+    assert silent.override is False
+    stated = AuthoredAppearance.from_document(
+        "new_face", {"text_index": 1, "sprite_id": 2, "override": True},
+        "appearances.new_face")
+    assert stated.override is True
+
+    with pytest.raises(ProjectLoadError) as refused:
+        AuthoredAppearance.from_document(
+            "new_face", {"text_index": 1, "sprite_id": 2, "override": "yes"},
+            "appearances.new_face")
+    assert "override" in str(refused.value)
+
+
+def test_an_override_must_be_a_boolean():
+    with pytest.raises(ProjectValidationError) as refused:
+        AuthoredAppearance("new_face", 1, 2, override=1)
+    assert "override" in str(refused.value)

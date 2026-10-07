@@ -600,3 +600,76 @@ def test_every_tail_base_shift_is_actually_restated(canonical):
             assert shift_before == canonical_shift, site.offset
             assert shift_after == 5, site.offset
             assert register_before == register_after, site.offset
+
+# --- the explicit takeover (APPEARANCE-BINDING-OVERRIDE-001) ------------------
+
+
+def _colliding(canonical, profile) -> int:
+    """A sprite id a canonical record really selects, so a collision is real."""
+    return ap.read_records(canonical, profile)[0].sprite_id
+
+
+def _asserted(name: str, text: int, sprite: int) -> AuthoredAppearances:
+    return _document(AuthoredAppearance(name, text, sprite, override=True))
+
+
+def test_a_colliding_sprite_id_is_refused_unless_that_record_opts_in(
+        canonical, identified, profile):
+    """Default refusal, and the refusal names the opt-in rather than the id."""
+    records = ap.read_records(canonical, profile)
+    colliding = _colliding(canonical, profile)
+
+    with pytest.raises(ValueError) as refused:
+        aa.new_records(profile, _one(sprite=colliding).ordered(), canonical=records)
+    assert "override" in str(refused.value)
+
+    admitted = aa.new_records(
+        profile, _asserted(NAME, TEXT_INDEX, colliding).ordered(), canonical=records)
+    assert admitted[0].sprite_id == colliding
+    # The record that takes the binding over is still an appended one, which is
+    # what makes the engine's first search loop return it.
+    assert admitted[0].stat_index < 0
+
+
+def test_the_plan_accepts_an_opted_in_collision(canonical, identified, profile):
+    colliding = _colliding(canonical, profile)
+    materialization = aa.materialize_authored_appearances(
+        canonical, identified, profile, _asserted(NAME, TEXT_INDEX, colliding))
+
+    assert materialization.record_count == CANONICAL_COUNT + 1
+    assert materialization.records[CANONICAL_COUNT].sprite_id == colliding
+    assert materialization.records[CANONICAL_COUNT].stat_index < 0
+
+
+def test_the_validation_refuses_a_collision_that_did_not_opt_in(canonical, authored,
+                                                                catalog, profile):
+    """The build boundary fails closed, not only the field-level call."""
+    write_authored_appearances(
+        authored, _one(sprite=_colliding(canonical, profile)))
+    report = validate_project(authored, _rom_path(), catalog)
+    assert not report.passed
+    assert any("override" in problem for problem in report.problems)
+
+
+def test_the_validation_accepts_the_same_collision_once_it_opts_in(canonical, authored,
+                                                                   catalog, profile):
+    colliding = _colliding(canonical, profile)
+    write_authored_appearances(
+        authored, _asserted(NAME, TEXT_INDEX, colliding))
+    report = validate_project(authored, _rom_path(), catalog)
+    assert report.passed, report.problems
+
+
+def test_the_build_writes_an_opted_in_takeover(canonical, authored, tmp_path, catalog,
+                                               profile):
+    colliding = _colliding(canonical, profile)
+    write_authored_appearances(authored, _asserted(NAME, TEXT_INDEX, colliding))
+    output, _manifest = _build(authored, tmp_path, "override", catalog)
+    produced = output.read_bytes()
+
+    assert struct.unpack_from(
+        "<HHIIi", produced,
+        NEW_TABLE_OFFSET + CANONICAL_COUNT * ap.APPEARANCE_RECORD_SIZE) \
+        == (TEXT_INDEX, TEXT_INDEX + 1, colliding, 0, -1)
+    for offset in ap.APPEARANCE_COUNT_OFFSETS:
+        assert produced[offset] == ap.APPEARANCE_CANONICAL_COUNT + 1

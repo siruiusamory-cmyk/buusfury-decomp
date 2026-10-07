@@ -2650,8 +2650,20 @@ class AuthoredAppearance:
     name: str
     text_index: int
     sprite_id: int
+    #: Whether this definition deliberately takes over a sprite id a canonical
+    #: record already selects. Off by default, and it is a document field rather
+    #: than something derived from the id: the engine's first search loop returns
+    #: an appended record (its `+0x0C` is negative) before the second loop can
+    #: return the retail one, so binding a selected id redirects that object's
+    #: resolution. An author has to say so.
+    override: bool = False
 
     def __post_init__(self) -> None:
+        if not isinstance(self.override, bool):
+            raise ProjectValidationError(
+                f"appearance {self.name!r}: override must be true or false, got "
+                f"{self.override!r}"
+            )
         if not isinstance(self.name, str) or _SPRITE_NAME.match(self.name) is None:
             raise ProjectValidationError(
                 f"appearance name {self.name!r} must be lowercase, start with a "
@@ -2673,13 +2685,14 @@ class AuthoredAppearance:
         return f"appearance:{self.name}"
 
     def to_document(self) -> dict[str, Any]:
-        return {"text_index": self.text_index, "sprite_id": self.sprite_id}
+        return {"text_index": self.text_index, "sprite_id": self.sprite_id,
+                "override": self.override}
 
     @classmethod
     def from_document(
         cls, name: str, document: object, where: object
     ) -> "AuthoredAppearance":
-        fields = ("text_index", "sprite_id")
+        fields = ("text_index", "sprite_id", "override")
         if not isinstance(document, Mapping):
             raise ProjectLoadError(f"{where}: an appearance must be a table")
         unexpected = set(document) - set(fields)
@@ -2689,7 +2702,7 @@ class AuthoredAppearance:
                 f"{where}: unknown key(s) {joined}; an appearance declares "
                 f"{', '.join(fields)}"
             )
-        for required in fields:
+        for required in ("text_index", "sprite_id"):
             if required not in document:
                 raise ProjectLoadError(f"{where}: an appearance must declare {required}")
             if type(document[required]) is not int:
@@ -2697,8 +2710,15 @@ class AuthoredAppearance:
                     f"{where}: {required} must be an integer, got "
                     f"{document[required]!r}"
                 )
+        # A document written before the field existed simply has the default, and
+        # an absent key is the documented default rather than an inference.
+        override = document.get("override", False)
+        if not isinstance(override, bool):
+            raise ProjectLoadError(
+                f"{where}: override must be true or false, got {override!r}"
+            )
         return cls(name=name, text_index=document["text_index"],
-                   sprite_id=document["sprite_id"])
+                   sprite_id=document["sprite_id"], override=override)
 
 
 @dataclass(frozen=True)

@@ -392,3 +392,32 @@ def test_the_merge_refuses_a_second_definition_that_shares_a_sprite_id(
     assert refused and "not added" in refused[0]
     assert tuple(item.name for item in read_project(project).appearances.ordered()) \
         == ("first",)
+
+def test_the_dialog_offers_the_takeover_explicitly_and_warns(qapp, tmp_path, stubbed):
+    """The control is off by default, and the wording says what it redirects."""
+    session = _session(_project(tmp_path))
+    tab = _tab(qapp, session, stubbed)
+    dialog = ad.AppearanceAuthoringDialog(tab, session)
+    _fill(dialog)
+
+    assert dialog._override.isChecked() is False
+    assert dialog._definition().override is False
+
+    warning = dialog._override_warning.text().lower()
+    assert "redirects existing actors" in warning
+    assert "sprite id" in warning
+    assert "retail" in warning
+
+    dialog._override.setChecked(True)
+    assert dialog._definition().override is True
+
+
+def test_editing_shows_the_stored_takeover(qapp, tmp_path, stubbed):
+    """Reopening a definition shows the intent the document carries."""
+    session = _session(_project(tmp_path))
+    tab = _tab(qapp, session, stubbed)
+    committed = AuthoredAppearance(NAME, TEXT_INDEX, SPRITE_ID, override=True)
+
+    dialog = ad.AppearanceAuthoringDialog(tab, session, definition=committed)
+    assert dialog._override.isChecked() is True
+    assert dialog._definition().override is True

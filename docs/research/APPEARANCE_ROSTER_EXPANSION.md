@@ -27,12 +27,24 @@ Two attempts to name the screen failed, and both are recorded as failures:
   single characters rather than names, so that route is not the string reader,
   and the fields at `+0x00` and `+0x02` are consecutive for every record, which
   two independent name and description lookups would not be;
-- the image contains no occurrence of `Scouter` in any case, so a "Scouter"
-  reading of this list has no textual support. `Character` occurs once, at
-  `0x08013BB6`.
+- an earlier search claimed the image contains no occurrence of `Scouter`, and
+  that claim was wrong: it searched ASCII only. The game's text is UTF-16LE,
+  and `Scouter` occurs at `0x0805E69A` inside the objective-string table, as
+  `Get the Scouter Upgrade from Dr. Brief at Capsule Corp`. So a Scouter
+  mechanic exists in this game, and the hypothesis that this list serves it
+  is live rather than dead. The one occurrence is a quest objective, not a
+  menu label, so it does not by itself name the screen. `Radar` occurs twice
+  in the same encoding, at `0x0805E57E` and `0x0806379A`.
 
 The screen the object is rendered on is therefore **not established**, and naming
 it needs the runtime run rather than more static reading.
+
+A correction to an earlier statement of this record: the roster builder's one
+caller is `0x08007512`, and that call sits in the function beginning at
+`0x080074EC`, not in the function at `0x080073F0` that an earlier note named. The
+scan that produced the earlier answer treated `push {r3,r4,r5,lr}` (`0xB538`) as
+not a function prologue, so it walked back past the real boundary. Any later
+function attribution derived from that scan should be re-derived.
 
 ## 1. The containing object, and its extent - CONFIRMED
 

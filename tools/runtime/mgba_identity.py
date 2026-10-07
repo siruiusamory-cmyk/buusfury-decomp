@@ -42,11 +42,8 @@ DEFAULT_PACKAGED_MGBA = (
 
 
 def _sha256(path: Path) -> str:
-    digest = hashlib.sha256()
     with path.open("rb") as stream:
-        for chunk in iter(lambda: stream.read(1024 * 1024), b""):
-            digest.update(chunk)
-    return digest.hexdigest().upper()
+        return hashlib.file_digest(stream, "sha256").hexdigest().upper()
 
 
 def require_mgba_build(executable: Path, build: MgbaBuild) -> Path:

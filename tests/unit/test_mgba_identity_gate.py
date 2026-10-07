@@ -66,11 +66,11 @@ POLICY: dict[str, str] = {
     "tools/runtime/rom012_live_containment.py": INSTRUMENTED,
 }
 
-#: The three probes that call `subprocess.Popen` themselves.
-LAUNCHING_PROBES = (
-    "rom006_gdb_probe",
-    "rom007_factory_probe",
-    "rom008_query_probe",
+#: The packaged probes that launch directly, derived from the policy so a
+#: fourth packaged driver cannot pass coverage while skipping the probe-level
+#: checks below.
+LAUNCHING_PROBES = tuple(
+    Path(relative).stem for relative, tag in POLICY.items() if tag == PACKAGED
 )
 
 MGBA_MARKERS = ("--gdb", "mgba_path", "mGBA.exe")
@@ -115,11 +115,10 @@ def _probe_module(name: str) -> Any:
     return importlib.import_module(f"tools.runtime.{name}")
 
 
-def _forbidden_popen(calls: list[Any]):
-    def record(*args: Any, **kwargs: Any) -> None:
-        calls.append((args, kwargs))
+def _forbidden_popen():
+    def refuse(*args: Any, **kwargs: Any) -> None:
         pytest.fail("subprocess.Popen was reached before the identity gate")
-    return record
+    return refuse
 
 
 def _probe_arguments(
@@ -295,8 +294,7 @@ def test_a_missing_or_wrong_executable_is_refused_before_a_process_starts(
     probe_artifacts: dict[str, Path],
 ):
     module = _probe_module(name)
-    calls: list[Any] = []
-    monkeypatch.setattr(module.subprocess, "Popen", _forbidden_popen(calls))
+    monkeypatch.setattr(module.subprocess, "Popen", _forbidden_popen())
     identity = _identity_module()
     executable = tmp_path / "mGBA.exe"
     if case == "wrong":
@@ -323,7 +321,6 @@ def test_a_missing_or_wrong_executable_is_refused_before_a_process_starts(
         assert "not found" in message, message
     else:
         assert "identity mismatch" in message, message
-    assert calls == []
 
 
 @pytest.mark.parametrize("name", LAUNCHING_PROBES)
@@ -341,8 +338,7 @@ def test_the_intended_build_reaches_the_probe_next_prerequisite(
         module, "PACKAGED_0_10_5",
         identity.MgbaBuild("synthetic packaged build", digest),
     )
-    calls: list[Any] = []
-    monkeypatch.setattr(module.subprocess, "Popen", _forbidden_popen(calls))
+    monkeypatch.setattr(module.subprocess, "Popen", _forbidden_popen())
 
     arguments = _probe_arguments(
         name,
@@ -362,4 +358,3 @@ def test_the_intended_build_reaches_the_probe_next_prerequisite(
     with pytest.raises(RuntimeError) as refused:
         module.run_probe(**arguments)
     assert str(refused.value) == expected
-    assert calls == []

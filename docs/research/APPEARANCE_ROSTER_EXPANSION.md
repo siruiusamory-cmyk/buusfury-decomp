@@ -228,6 +228,41 @@ count in a field narrower than the table's 32-bit form has not been established
 here. Four bounded read-only passes were run against this and the other items;
 their results must be folded in before this proof is called complete.
 
+## Ownership, lifecycle and the exact failure mode
+
+An independent read-only census of the same addresses (raw bytes, capstone, ROM
+hash checked before and after) confirmed every number above and added four things
+this design depends on.
+
+**The object is owned by its own lifecycle, not by a static holder.** The
+constructor's single caller `0x08007512` hands the pointer to `0x0803D8A0`, which
+pushes it on a context stack at IWRAM `0x03000F90`, sets that word to the object,
+dispatches the object's slot 1 and restores. No static word holds the object
+address. Its vtable is `0x0804A950`, reached by the pool at `0x08025308`; slot 1
+is `0x080255C4`, slot 10 is `0x08025354` and slot 16 is `0x08025510`, which is why
+those three have no direct caller. The deleting destructor is slot 2
+(`0x0804F55C`, stub `0x08051474`, free `0x0803D63C`) and is virtual-only.
+
+**The display list is a computed fixed offset, not a stored pointer.** Nothing
+stores an address into `+0x3B4`; it is a count, and the entries begin at `+0x3B8`
+with stride 8 holding `{first, last}` pairs. Its reachable last write is
+`obj+0xAF4`, and its capacity to the object end is 237 entries - five more than
+the 232 indices can produce, and the 232nd already stops short of the tail at
+`+0xAF8`.
+
+**The failure mode, precisely.** Patching `0x08024F92` from `0xE8` to `0xE9` and
+having all 233 flags set makes the 233rd append write the loop index over the
+display-list count at `obj+0x3B4`. The display loop then reads that clobbered word
+as its own count (`0x08024FB4`), so its first append lands on the two live pointer
+fields at `obj+0xAF8` and `obj+0xAFC`, and the count keeps climbing from there -
+through the tail struct at `+0xB00` and past `obj+0xB20` into adjacent heap. That
+is what "patch the bound but keep the 0xB20 allocation" actually does.
+
+**Both arrays must grow, and the count must be the driver.** The index array needs
+`4N` from `+0x14`, the display count sits at `+0x14+4N`, and the display entries
+need `8N` - which is the `0x40 + 12N` in the fixture below. Growing one without
+the other relocates the collision rather than removing it.
+
 ## The fixture for N = 240
 
 | what | canonical | at N = 240 |

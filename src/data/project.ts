@@ -278,16 +278,18 @@ export const project: ProjectStatus = {
     "The percentage above is counted from the capability list below, so it moves when a" +
     " capability does. It is a count of editor capabilities, not an estimate.",
   currentPhase: "DRAGONBYTE Z BUILDOUT",
-  blockerTitle: "Create graphics the game does not contain",
+  blockerTitle: "Bind new graphics into game-visible actors",
   blockerShort:
     "The resource pipeline is complete and curated, and map editing is finished:" +
     " DragonByte Z renders all 452 maps from ROM, paints tiles, creates chunks, grows" +
     " a map, adds a layer, and lists, retargets and creates the transitions between" +
     " areas - including on the map itself, where every supported transition is drawn" +
-    " as the region that triggers it. Graphics import has now shipped as well: an" +
-    " extracted sprite PNG can be edited in the project, rebuilt, and seen in the" +
-    " retail engine. What remains is creating graphics the game does not contain -" +
-    " new frames and animation slots rather than replacement art for existing ones.",
+    " as the region that triggers it. Graphics import shipped, and new sprite," +
+    " animation and frame authoring has now shipped with it: the Graphics tab creates" +
+    " the project's own actor-sprite identity and the retail engine resolves and draws" +
+    " it. What remains is binding authored graphics into game-visible actors - the" +
+    " appearance table, whose record count appears as compiled-in engine bounds with no" +
+    " terminator - and then new maps.",
   blockerParagraphs: [
     "Map editing is complete, and the capability list says so. Phase 2 covered the four" +
     " map capabilities in order: tile painting, chunk creation, map resizing with layer" +
@@ -306,13 +308,26 @@ export const project: ProjectStatus = {
     " every confirmed reference to it rewritten in the same transaction. A" +
     " human-operated run proved both halves, including that the engine follows a" +
     " rewritten reference into expanded storage.",
-    "The next capability, and the current blocker, is creating graphics the game does" +
-    " not contain: new sprites, animation slots and frames rather than replacement art." +
-    " It needs allocation plus same-count replacement of animation cell pointers and" +
-    " frame piece records, and it is the step that turns an edited asset into a new" +
-    " actor. Authoring entirely new content remains the project's final acceptance" +
-    " target, and the remaining steps are new sprites and animations, appearances, and" +
-    " finally new maps.",
+    "New sprite, animation and frame authoring has shipped as well. The Graphics tab's" +
+    " Authored sprite surface creates the project's one new actor-sprite identity: the" +
+    " donor whose proven composition shape every frame keeps, the sheet each animation" +
+    " slot draws from, and the existing object slot the appended actor starts its" +
+    " behaviour from. It refuses any field the build would refuse and writes" +
+    " sprites/sprites.toml, the same document the ordinary build consumes, and a" +
+    " ROM-gated build of the surface's own document authors the identity and actor the" +
+    " runtime record resolved. The engine observation itself covers the mechanism: the" +
+    " recorded runtime document carries a neighbouring sibling slot's data-pointer word" +
+    " and the surface carries the chosen slot's own, in a field whose meaning is" +
+    " unresolved, so the two images are not byte-identical and the capability is" +
+    " registered at application proof. Piece and OAM composition, frame geometry and" +
+    " frame timing are outside the modelled contract, and the surface states that where" +
+    " it is offered rather than pretending otherwise.",
+    "The next capability, and the current blocker, is appearance authoring: binding a" +
+    " newly authored identity into the game's own actor records so a character, form or" +
+    " costume selects it. That table's record count appears as compiled-in engine bounds" +
+    " with no terminator, so whether it can be grown at all is still an open question" +
+    " rather than a scheduled task, and it is the one remaining step that is research" +
+    " before it is implementation. New map authoring is deliberately last.",
   ],
   acceptanceTarget:
     "Author playable Legacy of Goku content inside the real LOGII/Buu engine.",
@@ -1394,12 +1409,6 @@ const roadmapTo1: RoadmapTo1 = {
         + " with the tool absorbing the format and engine constraints.",
       outcomes: [
         {
-          capabilityId: "sprite-new",
-          title: "Sprites and animation",
-          detail:
-            "Create new animated game graphics rather than only modifying existing ones.",
-        },
-        {
           capabilityId: "appearance",
           title: "Appearances",
           detail: "Bind newly authored graphics into game-visible actors.",
@@ -1414,6 +1423,18 @@ const roadmapTo1: RoadmapTo1 = {
         " including that the retail engine follows a rewritten reference into expanded" +
         " storage and renders the authored pixels. Same dimensions only - no resizing, no" +
         " new frames - and a confirmed-reference limit that is stated rather than assumed",
+        "New sprite, animation and frame authoring - SHIPPED: the Graphics tab's authored" +
+        " sprite surface creates the project's one new actor-sprite identity. Choose the" +
+        " donor whose proven composition shape every frame keeps, name the sheet each" +
+        " animation slot draws from, and choose the existing object slot the appended actor" +
+        " starts its behaviour from; the surface refuses a field the build would refuse and" +
+        " writes sprites/sprites.toml. A ROM-gated build of that document authors the" +
+        " identity and actor the runtime record resolved, and the engine observation covers" +
+        " the mechanism: the recorded document carried a neighbouring sibling slot's" +
+        " data-pointer word while the surface carries the chosen slot's own, so the" +
+        " capability is registered at application proof. Piece and OAM composition, frame" +
+        " geometry and frame timing stay outside the modelled contract and the surface says" +
+        " so where it is offered",
       ],
       state: "in-progress",
     },

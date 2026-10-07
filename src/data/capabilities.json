@@ -316,14 +316,20 @@
       "id": "sprite-new",
       "family": "author",
       "title": "New sprite, animation and frame authoring",
-      "state": "missing",
-      "detail": "Not shipped, and no longer unimplemented. The mechanism, the project document and the build path are merged and runtime-proven: an actor-sprite identity the image does not contain was allocated above the original end of the image and resolved and drawn by the retail engine, and a project authors it through sprites/sprites.toml and the ordinary build. What is missing is the shipped authoring surface, which is why the capability is not counted.",
+      "state": "shipped",
+      "detail": "A new actor-sprite identity can be created from DragonByte Z: choose the donor whose proven composition shape every frame keeps, name the sheet each animation slot draws from, choose the existing object slot the appended actor starts its behaviour from, and write sprites/sprites.toml. The document validates and builds through the ordinary project route, and it authors the same identity and actor the retail engine was observed resolving and drawing (SPRITE-NEW-ATTACHMENT-RUNTIME-PARITY-001).",
       "limits": [
-        "No editor surface authors a new sprite, animation or frame. The supported workflow is to write sprites/sprites.toml and supply the sheet PNGs: there is no GUI and no CLI subcommand, so the capability is not counted until one exists.",
-        "Every authored frame copies the donor's own first frame, so the frame-composition budget is unchanged rather than modelled; an authored frame whose footprint is not exactly the donor's proven composition shape is refused.",
-        "The engine's four direction slots are written in sheet order and their screen meaning is unresolved project-wide."
+        "Every authored frame copies the donor's own first frame, so the frame-composition budget is unchanged rather than modelled; a sheet cell that is not exactly the donor's proven rect is refused.",
+        "One identity per image, because an appended identity grows the character registry and repoints the two words that name it.",
+        "No piece or OAM composition, piece count, tile index or frame geometry is authorable, and no frame timing or delay is: the document has no field for any of them.",
+        "The engine's four direction slots are written in sheet order and their screen meaning is unresolved project-wide.",
+        "The surface refuses every field-level problem in the values it authors - donor admissibility, sheet form and cell geometry, template resolution, coordinates and the wander box - and carries the two header words it does not author, whose meaning is unresolved.",
+        "The surface's carried data-pointer word is the chosen template slot's own, and the recorded runtime document used a neighbouring sibling slot's value 16 bytes higher, so the two documents are not byte-identical and the engine observation is evidence for the mechanism rather than for this exact document.",
+        "The rest of the plan - the palette claim checked against the decoded graphics, the allocation and the relocation census - runs at Validate and Build, which report the same refusals with the same text."
       ],
-      "evidence": "LOGX-FRAME-001; SPRITE-NEW-AUTHORING-CORE-001; SPRITE-NEW-ATTACHMENT-RUNTIME-PARITY-001; SPRITE-NEW-PROJECT-SURFACE-001; SPRITE-NEW-COMPOSITION-GUARD-001; SPRITE-NEW-RUNTIME-001; docs/research/POST_LOGX_IMPLEMENTATION_ROADMAP.md"
+      "surface": "Workbench: Graphics tab, Authored sprite - New, Edit and Remove write sprites/sprites.toml",
+      "proof": "application",
+      "evidence": "SPRITE-PROJECT-SURFACE-001; SPRITE-NEW-PROJECT-SURFACE-001; SPRITE-NEW-ATTACHMENT-RUNTIME-PARITY-001; docs/research/SPRITE_AUTHORING_SURFACE.md; docs/research/SPRITE_NEW_ATTACHMENT_RUNTIME_PARITY.md"
     },
     {
       "id": "appearance",

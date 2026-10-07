@@ -601,14 +601,18 @@ class _Records:
     animation_ranges: tuple[RomRange, ...]
 
 
-def _authoring(image: bytes, sprites, identity: NewSpriteIdentity) -> _Authoring:
-    """Every check this write path makes before it is willing to plan anything."""
-    profile = sprites.profile
+def _layout(profile):
+    """The registry layout new content grows, or a refusal naming the profile."""
     layout = profile.actor_sprites
     if layout is None:
         raise SpriteIdentityError(
             f"profile {profile.id!r} declares no actor_sprites; there is no registry "
             "to grow")
+    return layout
+
+
+def _expansion(profile):
+    """The generated expansion new content is placed in, or a refusal."""
     expansion = profile.generated_expansion
     if expansion is None:
         raise SpriteIdentityError(
@@ -616,12 +620,22 @@ def _authoring(image: bytes, sprites, identity: NewSpriteIdentity) -> _Authoring
             "image - the grown registry and its frames outgrow the space a retail "
             "profile declares free - and this profile declares no generated "
             "expansion to place them in")
+    return expansion
+
+
+def _authoring(image: bytes, sprites, identity: NewSpriteIdentity) -> _Authoring:
+    """Every check this write path makes before it is willing to plan anything."""
+    profile = sprites.profile
+    layout = _layout(profile)
+    expansion = _expansion(profile)
     document = sprites.reference_document()
     anchor, references, entries = _registry(image, sprites, document, layout)
     _require_appended_id(identity, layout)
-    donor_header, piece, envelope = _donor(image, identity, entries, layout)
+    donor_header, piece, envelope = _donor_facts(
+        image, identity.donor_sprite_id,
+        layout.character_table_address.to_file_offset(len(image)), layout)
     for animation in identity.animations:
-        _require_cell_geometry(animation, envelope)
+        require_cell_geometry(animation, envelope)
     palette_offset = layout.object_palette_address.to_file_offset(len(image))
     palette = sg.decode_palette(image, palette_offset)
     return _Authoring(
@@ -949,7 +963,7 @@ def _registry(image: bytes, sprites, document, layout):
     return anchor, references, entries
 
 
-def _donor(image: bytes, identity: NewSpriteIdentity, entries, layout):
+def _donor_facts(image: bytes, donor_sprite_id: int, table_offset: int, layout):
     """The donor's structure header, its first frame's single piece, and its envelope.
 
     The header is cloned verbatim - including the four 16-byte blocks at
@@ -961,7 +975,7 @@ def _donor(image: bytes, identity: NewSpriteIdentity, entries, layout):
     is checked to be that same piece, and :func:`measure_donor_envelope` states
     the one rect the donor proves.
     """
-    donor_offset = _donor_offset(identity, entries, layout, len(image))
+    donor_offset = _donor_offset(image, donor_sprite_id, table_offset, layout)
     header = image[donor_offset:donor_offset + STRUCTURE_HEADER_SIZE]
     if len(header) != STRUCTURE_HEADER_SIZE:
         raise SpriteIdentityError(
@@ -1091,18 +1105,85 @@ def measure_donor_envelope(image: bytes, structure_offset: int,
                          piece_count=piece_count)
 
 
-def _donor_offset(identity: NewSpriteIdentity, entries, layout, image_size: int) -> int:
-    """The donor structure's file offset, or a refusal naming the id."""
-    slot = identity.donor_sprite_id - SPRITE_ID_FLOOR
+@dataclass(frozen=True, slots=True)
+class SpriteIdentityProbe:
+    """What this image can still offer a new identity, before anything is planned.
+
+    ``sprite_id`` is the only engine id a grown registry can address, and
+    ``donor`` is the measured envelope of the requested donor, or None when the
+    caller asked about no donor. A donor this write path cannot copy raises the
+    planner's own refusal instead of appearing here as a weaker value.
+    """
+
+    sprite_id: int
+    character_count: int
+    donor: DonorEnvelope | None = None
+
+
+def probe_new_sprite_identity(
+    image: bytes,
+    identification,
+    *,
+    donor_sprite_id: int | None = None,
+    profile=None,
+    sprites=None,
+) -> SpriteIdentityProbe:
+    """The identity this image can offer, and whether one donor is admissible.
+
+    The read-only half of :func:`plan_new_sprite_identity`, for a surface that has
+    to show what is possible BEFORE anything is written: the one addressable id
+    and, when a donor is named, its proven rect, anchor and piece count - or the
+    same refusal the planner would raise. Nothing is planned, allocated or written.
+
+    It reads no reference graph and builds no document: the id comes from the
+    profile's declared entry count and a donor costs one registry word plus that
+    donor's own frames. Measured on the canonical image, that is milliseconds
+    against the two minutes a full plan needs, which is what makes a dialog able to
+    answer while the author is still choosing.
+
+    ``profile`` is the profile the caller already holds. When it is omitted the
+    profile is taken from the decoded ``sprites`` corpus, or from ``identification``
+    through that same loader.
+    """
+    if profile is None:
+        if sprites is None:
+            from .graphics import load_actor_sprites
+
+            sprites = load_actor_sprites(image, identification)
+        profile = sprites.profile
+    layout = _layout(profile)
+    _expansion(profile)
+    donor = None
+    if donor_sprite_id is not None:
+        table_offset = layout.character_table_address.to_file_offset(len(image))
+        _header, _piece, donor = _donor_facts(image, donor_sprite_id, table_offset,
+                                              layout)
+    return SpriteIdentityProbe(
+        sprite_id=SPRITE_ID_FLOOR + layout.character_count,
+        character_count=layout.character_count,
+        donor=donor)
+
+
+def _donor_offset(image: bytes, donor_sprite_id: int, table_offset: int,
+                  layout) -> int:
+    """The donor structure's file offset, or a refusal naming the id.
+
+    The registry word is read straight from the image rather than from a decoded
+    entry list, so naming a donor costs one word read instead of the reference
+    document a relocation decision needs.
+    """
+    slot = donor_sprite_id - SPRITE_ID_FLOOR
     if not 0 <= slot < layout.character_count:
         raise SpriteIdentityError(
-            f"donor sprite id {identity.donor_sprite_id} is entry {slot}; the registry "
+            f"donor sprite id {donor_sprite_id} is entry {slot}; the registry "
             f"holds entries 0..{layout.character_count - 1}, sprite ids "
             f"{SPRITE_ID_FLOOR}..{SPRITE_ID_FLOOR + layout.character_count - 1}")
-    return _file_offset(entries[slot], image_size, "the donor structure")
+    at = table_offset + ALIGNMENT * slot
+    word = int.from_bytes(image[at:at + REFERENCE_WIDTH], "little")
+    return _file_offset(word, len(image), "the donor structure")
 
 
-def _require_cell_geometry(animation: AnimationSource, envelope: DonorEnvelope) -> None:
+def require_cell_geometry(animation: AnimationSource, envelope: DonorEnvelope) -> None:
     """The sheet must be authored at exactly the donor's proven frame rect.
 
     Exact equality is the guard, not a convenience. A larger cell is a

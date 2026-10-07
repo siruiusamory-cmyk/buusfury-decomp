@@ -12,13 +12,13 @@ Buu's Fury authoring environment.
 
 ## Current product status
 
-**21 / 24 capabilities - 88%**
+**22 / 24 capabilities - 92%**
 
 | Family | Progress |
 | --- | --- |
 | READ | 5 / 5 |
 | EDIT | 8 / 8 |
-| AUTHOR | 4 / 7 |
+| AUTHOR | 5 / 7 |
 | DELIVER | 4 / 4 |
 
 Variable-length dialogue authoring: **merged, deployed, runtime-proven.**
@@ -40,7 +40,18 @@ edited in the project, rebuilt, and rendered by the retail engine, whether the
 re-encoded payload still fits the slot the original occupied or has to be placed
 above the original end of the image.
 
-Next: **Phase 3B - sprite, animation and frame authoring. NEXT, not started.**
+New sprite, animation and frame authoring (Phase 3B): **shipped 2026-10-07.**
+`SPRITE-PROJECT-SURFACE-001` gives the phase its second capability: the Graphics
+tab's authored-sprite surface creates the project's one new actor-sprite identity
+- the donor whose proven composition shape every frame keeps, the sheet each
+animation slot draws from, and the existing object slot the appended actor starts
+its behaviour from - and writes `sprites/sprites.toml`, the document the ordinary
+build consumes.
+
+Next: **Phase 3C - appearance authoring. NEXT, not started.** Nothing was
+implemented: the appearance table's record count appears as compiled-in engine
+bounds with no terminator, so whether it can be grown at all is an open question
+rather than a scheduled task.
 
 > **North star.** An author should be able to create a genuinely new playable
 > piece of Buu's Fury content without manually editing a ROM offset.
@@ -65,10 +76,11 @@ becoming an endless roadmap of its own.
 
 The recommended path to 24/24 is: stabilize the Workbench; finish map editing
 (tile painting -> chunk creation -> resize/layers -> warps) - **now complete**;
-finish graphics authoring (graphics import - **shipped 2026-10-03**; then
-sprites/animations/frames - **next, not started**; then appearances); then make
-new-map creation the final composition capability. After 24/24, run a
-creator-UX/release-candidate phase and a final v1.0 ship phase.
+finish graphics authoring (graphics import - **shipped 2026-10-03**;
+sprites/animations/frames - **shipped 2026-10-07**; then appearances -
+**next, not started**); then make new-map creation the final composition
+capability. After 24/24, run a creator-UX/release-candidate phase and a final
+v1.0 ship phase.
 
 ## What this document is, and what it is not
 
@@ -118,20 +130,21 @@ Two supporting documents are deliberately **not** planning authority:
 
 ## 1. Current state and what has already been proven
 
-The current public product is **21/24 capabilities (88%)**. The denominator is
+The current public product is **22/24 capabilities (92%)**. The denominator is
 intentionally unchanged. Tile painting, chunk creation, map resizing with layer
-authoring, warp and connection editing, and graphics import each moved the count
-because each is a new capability an author can use, delivered at the engine's own
-unit rather than as a finer one the format does not have. Variable-length dialogue
-strengthened an existing capability rather than inventing one, which is why it did
-not move the count. The important point is that the infrastructure under those 21
-shipped capabilities is substantially stronger than the percentage alone suggests.
+authoring, warp and connection editing, graphics import and new sprite authoring
+each moved the count because each is a new capability an author can use, delivered
+at the engine's own unit rather than as a finer one the format does not have.
+Variable-length dialogue strengthened an existing capability rather than inventing
+one, which is why it did not move the count. The important point is that the
+infrastructure under those 22 shipped capabilities is substantially stronger than
+the percentage alone suggests.
 
 | Area | Current | Status | Shipped today |
 | --- | --- | --- | --- |
 | READ | 5 / 5 | Complete | Shell; atlas/search; record inspection; sprite/animation/palette browsing; Map Browser |
 | EDIT | 8 / 8 | Complete | Dialogue; palette recolor; object placement; map layout chunk-cell replacement; tile painting (chunk-cell, 2026-09-25); chunk creation (2026-09-25); map resizing and layer authoring (2026-09-26); warp and connection editing (2026-09-28) |
-| AUTHOR | 4 / 7 | 3 missing | Authored entities; behavior/scripts; text beyond retail slot; graphics import (2026-10-03) |
+| AUTHOR | 5 / 7 | 2 missing | Authored entities; behavior/scripts; text beyond retail slot; graphics import (2026-10-03); new sprite, animation and frame authoring (2026-10-07) |
 | DELIVER | 4 / 4 | Complete | Validate/build; safe Save As; derivative provenance/reopen; launch |
 
 ### Major foundations already complete
@@ -189,14 +202,12 @@ it now would make progress percentages historically meaningless. "100%" means
 all 24 currently-defined product capabilities are shipped and independently
 validated.
 
-The three missing capabilities are the only items that move the score from 88% to
-100%. Sprite, animation and frame authoring is the next one, and it has not
-started:
+The two missing capabilities are the only items that move the score from 92% to
+100%. Appearance authoring is the next one, and it has not started:
 
 | Family | Missing capability |
 | --- | --- |
-| AUTHOR | new sprite / animation / frame authoring (NEXT - not started) |
-| AUTHOR | new appearance definitions |
+| AUTHOR | new appearance definitions (NEXT - not started) |
 | AUTHOR | new maps |
 
 ### 2.2 24/24 is not automatically v1.0
@@ -292,8 +303,8 @@ unless new evidence proves a dependency wrong.
 | 2C - Resize + layers | Map editing | Resize grids, create/relocate layer resources, preserve handler semantics, validate boundaries and reopen. **COMPLETE** 2026-09-26: the grown grid is re-emitted above the original ROM's end, the map root is repointed, and the added ground is displayed at runtime. | 19/24 |
 | 2D - Warps / connections | Map editing | Visual destination editing, connection/warp consistency, runtime transition proof. **COMPLETE** 2026-09-28: a transition is retargeted through the project and one the image does not contain is authored above the original ROM's end; every supported transition is drawn and dragged on the map as its trigger region; and a human-operated run confirmed the retail engine consumes an authored transition. | 20/24 |
 | 3A - Graphics import | Graphics authoring | Image import -> quantization -> tiles/container encoding -> allocation -> runtime proof; prove graphics-domain expanded addressing as needed. **COMPLETE** 2026-10-03: an extracted actor-sprite PNG is edited in the project, rebuilt, and rendered by the retail engine both in place and from above the original ROM's end (`GRAPHICS-IMPORT-BOUNDARY-001`). | 21/24 |
-| 3B - Sprite / animation / frame authoring | Graphics authoring | Create new sprite definitions, frames/pieces/OAM and animation records; table expansion where necessary. **NEXT** (not started). The mechanism, project document and build path are merged and runtime-proven; what is missing is the authoring surface. | 22/24 |
-| 3C - Appearance authoring | Graphics authoring | Create new appearance definitions that bind authored graphics into game-visible actors. | 23/24 |
+| 3B - Sprite / animation / frame authoring | Graphics authoring | Create new sprite definitions, frames/pieces/OAM and animation records; table expansion where necessary. **COMPLETE** 2026-10-07: the Graphics tab's authored-sprite surface creates the project's new actor-sprite identity - donor composition, per-slot sheets and the object slot the appended actor starts from - and writes `sprites/sprites.toml`. A ROM-gated build of that document authors the identity and actor the runtime record resolved (`SPRITE-PROJECT-SURFACE-001`); the engine observation covers the mechanism, since the surface's carried data-pointer word is the chosen slot's own and the recorded document used a neighbour's, in a field whose meaning is unresolved. Piece/OAM composition, frame geometry and frame timing remain outside the modelled contract and are refused. | 22/24 |
+| 3C - Appearance authoring | Graphics authoring | Create new appearance definitions that bind authored graphics into game-visible actors. **NEXT** (not started): the record count appears as compiled-in engine bounds with no terminator, so whether the table can be grown is an open question. | 23/24 |
 | 4 - New maps | Final capability | Create MapEntry + layers/chunks + objects + warps + scripts/dialogue; expand/relocate tables; prove runtime scene. | 24/24 |
 | 5 - Creator UX / RC | Release candidate | Resource budget panel, warnings, Run From Here, recovery/migration, navigation, consistent undo, docs, patch export, end-to-end dogfood. | 24/24 |
 | 6 - v1.0 ship | Release | Packaging, hardware smoke, final high-risk debt disposition, release notes, tutorials, signed/reproducible artifacts where practical. | v1.0 |
@@ -328,10 +339,13 @@ dependency order, not the naming, is what must be honoured.
 - `GRAPHICS-IMPORT-001` - import original artwork into the retail graphics
   formats. **COMPLETE** 2026-10-03 as `GRAPHICS-IMPORT-BOUNDARY-001`:
   [`research/GRAPHICS_PIXEL_OVERRIDE.md`](research/GRAPHICS_PIXEL_OVERRIDE.md).
-- `SPRITE-ANIMATION-AUTHORING-001` - new sprite/frame/animation resources.
-  **NEXT** (not started); the mechanism and build path are already merged under
-  the `SPRITE-NEW-*` tickets, and the open work is the authoring surface.
-- `APPEARANCE-AUTHORING-001` - new appearance definitions and bindings.
+- `SPRITE-PROJECT-SURFACE-001` - the authoring surface for new sprite/frame/
+  animation resources. **COMPLETE** 2026-10-07: the Graphics tab's authored-sprite
+  strip writes `sprites/sprites.toml`; piece/OAM composition, frame geometry and
+  frame timing stay outside the modelled contract.
+- `APPEARANCE-AUTHORING-001` - new appearance definitions and bindings. **NEXT**,
+  not started: the table's record count appears as compiled-in engine bounds with
+  no terminator, so growth is an open question.
 - `MAP-AUTHOR-NEW-001` - new map/scene creation, the 24/24 capability.
 - `GOLDEN-AUTHORING-SLICE-001` - end-to-end dogfood project.
 - `PRODUCT-HARDENING-RC1-001` - recovery, packaging, patch export, docs,
@@ -477,8 +491,9 @@ fail closed with their reason stated rather than being forced.
 ## 8. Phase 3 - Complete graphics authoring (3 capabilities)
 
 **PHASE 3 - GRAPHICS AND ACTOR AUTHORING: STARTED.** Graphics import, the first
-capability of the phase, shipped 2026-10-03. The next capability is sprite,
-animation and frame authoring, which has not started.
+capability of the phase, shipped 2026-10-03, and new sprite, animation and frame
+authoring shipped 2026-10-07. The next capability is appearance authoring, which
+has not started.
 
 Graphics authoring should follow the same pattern as variable-length dialogue:
 the user performs a semantic edit, while the tool absorbs quantization, container
@@ -503,23 +518,38 @@ addressability domain it actually uses.
 
 ### 8.2 New sprite / animation / frame authoring -> 22/24
 
-**NEXT - not started.** Partially built already: the mechanism
-(`tools/webfoot/sprite_identity.py`, `sprite_attachment.py`), the project
-document and the build path are merged and runtime-proven, and a project authors
-a new actor-sprite identity through `sprites/sprites.toml` and the ordinary
-build. What is missing is the authoring surface, and the frame-composition budget
-is not modelled.
+**COMPLETE 2026-10-07.** `SPRITE-PROJECT-SURFACE-001` shipped the authoring
+surface the mechanism was waiting for. The Graphics tab's Authored sprite strip
+creates, edits and removes the project's one new actor-sprite identity: the donor
+whose proven composition shape every frame keeps, the sheet each animation slot
+draws from, and the existing object slot the appended actor starts its behaviour
+from. It writes `sprites/sprites.toml` through the project model's own writer, so
+the document the ordinary build consumes is the one the editor produces.
 
-Create new frame pieces/OAM definitions, frame resources, animation sequences and
-sprite-definition entries. Expand/relocate tables only when evidence requires it.
-Expose useful engine limits - piece counts, tile usage, palette constraints -
-before build failure.
+The engine observation (`SPRITE-NEW-ATTACHMENT-RUNTIME-PARITY-001`) is evidence
+for the mechanism rather than for the surface's exact document: the recorded
+runtime document carries a neighbouring sibling slot's data-pointer word, and the
+surface carries the chosen template slot's own, 16 bytes apart in a field whose
+meaning is unresolved. The surface's own document is therefore proven at the
+application level - a ROM-gated validate and build that authors the same identity
+and actor and touches exactly the canonical fields the runtime case does - and the
+capability is registered with `proof: application`.
+
+The exit condition was a semantic user workflow with no manual file editing, and
+it is met. Two things deliberately did NOT ship, and the surface says so where the
+control would be: the frame-composition budget is still unmodelled, so every
+authored frame copies the donor's own first frame and a sheet cell that is not
+exactly the donor's proven rect is refused; and piece/OAM composition, frame
+geometry and frame timing have no field in the document at all.
 
 ### 8.3 New appearance definitions -> 23/24
 
-Create the appearance records that connect authored graphics to actors/entities.
-Preserve semantic IDs and reopen behavior, prove a newly-authored appearance on a
-real actor, and keep table/count constraints visible in the editor.
+**NEXT - not started.** Create the appearance records that connect authored
+graphics to actors/entities. Preserve semantic IDs and reopen behavior, prove a
+newly-authored appearance on a real actor, and keep table/count constraints
+visible in the editor. Before any of that, the open question is whether the table
+can be grown at all: its record count appears as compiled-in engine bounds with no
+terminator.
 
 ## 9. Phase 4 - New map authoring and 24/24
 
@@ -662,8 +692,8 @@ which is authoritative; the roadmap note column is this document's.
 | AUTHOR | Authored behavior and scripts | Shipped | |
 | AUTHOR | Authored text beyond the retail slot | Shipped | Distinct from the compressed-dialogue capability |
 | AUTHOR | Graphics replacement and import | Shipped | Phase 3A, complete 2026-10-03: an extracted actor-sprite PNG is edited in the project, rebuilt, and rendered by the retail engine, in place or from above the original ROM's end |
-| AUTHOR | New sprite, animation and frame authoring | Missing | Phase 3B (NEXT, not started) -> 22/24: the mechanism, project document and build path are merged and runtime-proven; the authoring surface is not |
-| AUTHOR | New appearance definitions | Missing | Phase 3C -> 23/24 |
+| AUTHOR | New sprite, animation and frame authoring | Shipped | Phase 3B, complete 2026-10-07: the Graphics tab creates the project's new actor-sprite identity and writes `sprites/sprites.toml`, and a ROM-gated build of that document authors the identity and actor the runtime record resolved; registered at application proof because one carried word differs from the recorded document |
+| AUTHOR | New appearance definitions | Missing | Phase 3C (NEXT, not started) -> 23/24 |
 | AUTHOR | New map and scene materialisation | Missing | Phase 4 -> 24/24 |
 | DELIVER | Deterministic validate and build | Shipped | |
 | DELIVER | Safe Save As to a new file | Shipped | |
@@ -917,10 +947,10 @@ Buu's Fury's retail binary engine and this repository's evidence discipline.
 - The state reconciliation that corrected this document's status block, the
   capability matrix and the final snapshot to 21/24:
   ([reconciliation](research/PROJECT_STATE_AUDIT_RECONCILIATION.md)).
-- Current capability registry: 24 total, 21 shipped (READ 5/5, EDIT 8/8,
-  AUTHOR 4/7, DELIVER 4/4); Phase 2 map editing is complete, graphics import
-  shipped 2026-10-03, and the next capability is sprite, animation and frame
-  authoring (Phase 3B, not started).
+- Current capability registry: 24 total, 22 shipped (READ 5/5, EDIT 8/8,
+  AUTHOR 5/7, DELIVER 4/4); Phase 2 map editing is complete, graphics import
+  shipped 2026-10-03, new sprite/animation/frame authoring shipped 2026-10-07, and
+  the next capability is appearance authoring (Phase 3C, not started).
 - Known open/deferred items: CQA-10 (partial) and
   `ROM-CAPACITY-ATLAS-SEED-OVERLAY-001`. CQA-05, CQA-06, CQA-07 and CQA-08 are
   **CLOSED** (2026-09-24 and 2026-09-25).
@@ -929,9 +959,9 @@ Buu's Fury's retail binary engine and this repository's evidence discipline.
 
 | | |
 | --- | --- |
-| **Now** | 21/24 (88%); Phase 2 map editing is complete with all four map capabilities runtime-proven, and graphics import shipped 2026-10-03 |
-| **Next** | Phase 3B sprite, animation and frame authoring (`SPRITE-ANIMATION-AUTHORING-001`; NEXT, not started) |
-| **Then** | New sprites/animations, then appearances -> 23/24 |
+| **Now** | 22/24 (92%); Phase 2 map editing is complete with all four map capabilities runtime-proven, graphics import shipped 2026-10-03, and new sprite, animation and frame authoring shipped 2026-10-07 |
+| **Next** | Phase 3C appearance authoring (`APPEARANCE-AUTHORING-001`; NEXT, not started) |
+| **Then** | New appearance definitions -> 23/24 |
 | **Feature-complete finish** | New-map authoring -> 24/24 (100%) |
 | **Ship finish** | Creator UX/RC -> golden dogfood -> BPS distribution -> hardware smoke -> v1.0 |
 

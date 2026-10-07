@@ -529,6 +529,22 @@ def _object_array(image: bytes, entry: me.MapEntry, map_index: int,
     return count, array_offset
 
 
+def object_array_slots(image: bytes, profile, map_index: int,
+                       family: SupportedActorFamily):
+    """Every slot of one map's engine-counted object array, or a refusal.
+
+    The reader half of what :func:`plan_new_map_actor` writes: the same map entry,
+    the same bound and the same base, refusing an array that holds a family this
+    writer does not model. A surface listing the slots an authored actor can start
+    from calls this rather than re-deriving those three steps.
+    """
+    entry_offset = _map_entry_offset(image, profile, map_index)
+    entry = me.MapEntry.from_bytes(
+        image[entry_offset:entry_offset + me.MAP_ENTRY_SIZE])
+    count, array_offset = _object_array(image, entry, map_index, family)
+    return mp.iter_object_slots(image, array_offset, count)
+
+
 def _family_name(family_raw: int | None) -> str:
     if family_raw is None:
         return "a pointer outside the image"

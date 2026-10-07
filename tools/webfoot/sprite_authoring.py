@@ -43,7 +43,9 @@ from .project.model import (
 from .sprite_attachment import (
     AuthoredMapActor,
     NewMapActor,
+    SpriteAttachmentError,
     WanderBox,
+    object_array_slots,
     plan_new_map_actor,
     supported_family,
 )
@@ -161,16 +163,100 @@ def read_source_sheet(
                        transparent_colour=transparent_colour)
 
 
-def behaviour_template_entry(image: bytes, profile, family, template: str) -> bytes:
-    """The inline behaviour entry of one existing object array slot.
+@dataclass(frozen=True, slots=True)
+class ActorTemplate:
+    """One existing object-array slot an authored actor can start from.
+
+    Every field here is READ from that slot's own record. ``position`` is where
+    the template's actor stands and ``wander_box`` is the box its own behaviour
+    entry carries - both offered as starting values rather than invented;
+    ``retained_raw`` and ``data_pointer_raw`` are the new header's ``+0x04`` and
+    ``+0x0C`` words, carried verbatim because their meaning is unresolved; and
+    ``behaviour_entry`` is the inline entry the new actor's behaviour starts from.
+    """
+
+    identity: str
+    map: str
+    map_index: int
+    slot_index: int
+    family: str
+    position: tuple[int, int]
+    wander_box: tuple[int, int, int, int]
+    retained_raw: int
+    data_pointer_raw: int
+    behaviour_entry: bytes
+
+
+def _template_from_slot(image: bytes, family, slot, identity: str,
+                        map_index: int) -> ActorTemplate:
+    """One already-classified array slot, as the actor block's source.
+
+    The slot's entry has to lead with the family's class word: an entry lifted
+    from a record the engine dispatches differently would install a behaviour this
+    planner does not model. Nothing is inferred from the entry beyond that - the
+    bytes are copied verbatim and the planner then writes the authored wander box
+    into them.
+    """
+    if slot.target_offset is None:
+        raise SpriteAuthoringError(
+            f"behaviour template {identity}: slot {slot.index} points outside the "
+            "image")
+    at = slot.target_offset + family.entry_inline_offset
+    entry = image[at:at + family.entry_size]
+    if len(entry) != family.entry_size:
+        raise SpriteAuthoringError(
+            f"behaviour template {identity}: the behaviour entry runs past the image")
+    class_word = int.from_bytes(entry[family.entry_class_offset:
+                                      family.entry_class_offset + 4], "little")
+    if class_word != family.entry_class_raw:
+        raise SpriteAuthoringError(
+            f"behaviour template {identity}: the entry leads with "
+            f"0x{class_word:08X}, not the family's class word "
+            f"0x{family.entry_class_raw:08X}")
+    record = image[slot.target_offset:slot.target_offset + family.header_size]
+    if len(record) != family.header_size:
+        raise SpriteAuthoringError(
+            f"behaviour template {identity}: the object record runs past the image")
+    low = int.from_bytes(record[family.position_offset:
+                                family.position_offset + 2], "little")
+    high = int.from_bytes(record[family.position_offset + 2:
+                                 family.position_offset + 4], "little")
+    # The template's own wander box: the four values its behaviour entry carries
+    # at the family's measured offset, in the family's own value width. Reading it
+    # is what lets a surface offer the box the template already walks inside
+    # instead of a zero box nothing in the image justifies.
+    width = family.box_value_width
+    box = tuple(
+        int.from_bytes(entry[family.box_offset + index * width:
+                             family.box_offset + (index + 1) * width], "little")
+        for index in range(4))
+    return ActorTemplate(
+        identity=identity,
+        map=f"map:{map_index:04d}",
+        map_index=map_index,
+        slot_index=slot.index,
+        family=family.name,
+        position=mp.decode_position(low, high),
+        wander_box=box,
+        retained_raw=int.from_bytes(
+            record[family.retained_04_offset:family.retained_04_offset + 4],
+            "little"),
+        data_pointer_raw=int.from_bytes(
+            record[family.data_pointer_offset:family.data_pointer_offset + 4],
+            "little"),
+        behaviour_entry=entry,
+    )
+
+
+def actor_template(image: bytes, profile, family, template: str) -> ActorTemplate:
+    """The existing object array slot one behaviour template names, resolved.
 
     The template is named by map and slot rather than by address, and the slot is
     resolved against the canonical image here. Its record's own first word has to
     be the family this build writes and its entry has to lead with that family's
-    class word: an entry lifted from a record the engine dispatches differently
-    would install a behaviour this planner does not model. Nothing is inferred
-    from the entry beyond that - the bytes are copied verbatim and the planner
-    then writes the authored wander box into them.
+    class word. The slot's carried words and its own position come back with the
+    entry, so a surface can state what it carries instead of asking an author for
+    a number nothing in the image explains.
     """
     map_index, slot_index = parse_object_template_identity(template, "behaviour template")
     table = profile.map_entries
@@ -209,21 +295,37 @@ def behaviour_template_entry(image: bytes, profile, family, template: str) -> by
             f"0x{(slot.family_raw or 0):08X}, not the supported family "
             f"0x{family.factory_raw:08X}"
         )
-    at = slot.target_offset + family.entry_inline_offset
-    entry = image[at:at + family.entry_size]
-    if len(entry) != family.entry_size:
+    return _template_from_slot(image, family, slot, template, map_index)
+
+
+def actor_templates(image: bytes, profile, family) -> tuple[ActorTemplate, ...]:
+    """Every object-array slot an authored actor can start from, in array order.
+
+    A map is offered only when its WHOLE array is the supported family, which is
+    the same condition the planner enforces before it re-emits that array, and a
+    slot is offered only when its entry decodes to this family's class word. A map
+    or slot that would be refused later is left out here rather than listed and
+    then rejected on selection.
+    """
+    if profile.map_entries is None:
         raise SpriteAuthoringError(
-            f"behaviour template {template}: the behaviour entry runs past the image"
+            f"profile {profile.id!r} declares no map-entry table, so no object array "
+            "slot can be named"
         )
-    class_word = int.from_bytes(entry[family.entry_class_offset:
-                                      family.entry_class_offset + 4], "little")
-    if class_word != family.entry_class_raw:
-        raise SpriteAuthoringError(
-            f"behaviour template {template}: the entry leads with "
-            f"0x{class_word:08X}, not the family's class word "
-            f"0x{family.entry_class_raw:08X}"
-        )
-    return entry
+    found: list[ActorTemplate] = []
+    for map_index in range(profile.map_entries.count):
+        try:
+            slots = object_array_slots(image, profile, map_index, family)
+        except (SpriteAttachmentError, mp.MapPlacementError):
+            continue
+        for slot in slots:
+            identity = f"map:{map_index:04d}/object:{slot.index:04d}"
+            try:
+                found.append(_template_from_slot(image, family, slot, identity,
+                                                 map_index))
+            except SpriteAuthoringError:
+                continue
+    return tuple(found)
 
 
 def _rom_address(word: int, image_size: int) -> int:
@@ -241,7 +343,7 @@ def actor_request(image: bytes, profile, sprite: AuthoredSprite) -> NewMapActor:
     """The attachment planner's own request, resolved from the document."""
     actor = sprite.actor
     family = supported_family(actor.family)
-    entry = behaviour_template_entry(image, profile, family, actor.behaviour_template)
+    template = actor_template(image, profile, family, actor.behaviour_template)
     return NewMapActor(
         map_index=actor.map_index,
         family=family.name,
@@ -249,7 +351,7 @@ def actor_request(image: bytes, profile, sprite: AuthoredSprite) -> NewMapActor:
         position=actor.position,
         retained_04_raw=actor.retained_raw,
         data_pointer_raw=actor.data_pointer_raw,
-        behaviour_entry=entry,
+        behaviour_entry=template.behaviour_entry,
         wander_box=WanderBox(*actor.wander_box),
     )
 

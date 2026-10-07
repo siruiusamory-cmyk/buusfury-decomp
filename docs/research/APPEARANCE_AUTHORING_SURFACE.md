@@ -248,6 +248,24 @@ a live progress file every 300 frames so a session can be read while it runs.
 input: **none** enters the appearance readers. The trigger is an in-game event,
 and a state load restores already-built actors.
 
+**Automated driving did not reach it either.** Three drives ran without an
+operator, with the animation frame advance live in each (768, 1536 and 832 hits),
+so gameplay and actor animation were running in every one:
+
+1. a wandering schedule from the canonical state, 12,000 frames, active map 39
+   throughout;
+2. a boot to a loaded save through the title and continue prompts, 10,800 frames,
+   which did cross a real map load (active map 38 becomes 39) and still reported
+   none of the six readers;
+3. the same boot with the wander appended after the menu, 10,800 frames, active
+   map 39.
+
+The one difference that matters is the map: the only run that ever reached the
+lookup was on **map 40**, and no savestate in the local set is on map 40. Reach
+that map with an operator walking out of the park the canonical state starts in,
+and the observer as it now stands writes the register value and the record's words
+on the first hit.
+
 **What the whole set establishes.** The instrument works. The appearance table is
 not consulted by idle play, the status screens, dialogue, walking, or a state
 load. It was reached once, by the operator, at **frame 7642 of a 150-second

@@ -561,12 +561,29 @@ if DRIVE then
     -- transition: hold each direction in turn for nine pulses, then tap A, and
     -- repeat. Built here rather than typed out, so the length is a parameter.
     local dirs = { K.RIGHT, K.LEFT, K.UP, K.DOWN }
-    for leg = 0, 23 do
-        local at = 120 + leg * 400
-        for pulse = 0, 8 do
-            SCHEDULE[#SCHEDULE + 1] = { at + pulse * 40, dirs[(leg % 4) + 1] }
+    if os.getenv("APPEARANCE001_MENU") == "1" then
+        -- Boot to a loaded save instead: title, then the continue prompts. A real
+        -- map load constructs its actors, which is the path under test.
+        SCHEDULE = { { 180, K.START }, { 420, K.A }, { 560, K.A }, { 700, K.A },
+                     { 840, K.A }, { 980, K.A }, { 1120, K.A }, { 1260, K.A },
+                     { 1400, K.A }, { 1540, K.A }, { 1680, K.A }, { 1820, K.A } }
+        -- Then walk: the trigger seen under human play arrived while moving, and a
+        -- save point or a menu will not start it.
+        for leg = 0, 20 do
+            local at = 2000 + leg * 400
+            for pulse = 0, 8 do
+                SCHEDULE[#SCHEDULE + 1] = { at + pulse * 40, dirs[(leg % 4) + 1] }
+            end
+            SCHEDULE[#SCHEDULE + 1] = { at + 380, K.A }
         end
-        SCHEDULE[#SCHEDULE + 1] = { at + 380, K.A }
+    else
+        for leg = 0, 23 do
+            local at = 120 + leg * 400
+            for pulse = 0, 8 do
+                SCHEDULE[#SCHEDULE + 1] = { at + pulse * 40, dirs[(leg % 4) + 1] }
+            end
+            SCHEDULE[#SCHEDULE + 1] = { at + 380, K.A }
+        end
     end
     for _, item in ipairs(SCHEDULE) do
         scheduled[item[1]] = item[2]

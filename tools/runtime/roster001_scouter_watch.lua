@@ -321,8 +321,12 @@ local function on_search_input()
         lines:write(string.format(
             "frame=%d object=%08X component=%08X second=%s caller=%s path=%s\n",
             frame, object, component, hex(reg("r1")), hex(caller),
-            caller == 0x0800FB76 and "actor(second set)" or
-            (caller == 0x08010316 and "message(second zero)" or "other")))
+            -- Thumb BL leaves the return address with the state bit set, so both
+            -- are compared with it masked off.
+            (caller and (caller - (caller % 2)) == 0x0800FB76)
+                and "actor(second set)" or
+            ((caller and (caller - (caller % 2)) == 0x08010316)
+                and "message(second zero)" or "other")))
         lines:write("  words=" .. table.concat(words, " ") .. "\n")
         lines:close()
     end

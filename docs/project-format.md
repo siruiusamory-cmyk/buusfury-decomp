@@ -275,7 +275,7 @@ naming an on-screen name it already holds and the sprite identity that draws it.
 ```toml
 [appearance.new_face]
 text_index = 1188
-sprite_id = 137
+sprite_id = 10
 ```
 
 - **The record's own identity is its position in the table, and the build assigns
@@ -295,19 +295,23 @@ sprite_id = 137
   text-table id is not shipped, so an authored definition shares a name with the
   retail definition that already uses that index rather than inventing one. An
   index whose successor is outside the table is refused.
-- **`sprite_id` binds a supported sprite identity**, either one the canonical
-  records already select or the id an authored actor-sprite identity in the same
-  project takes. A value below the accessor's floor of 10 and a value the registry
+- **`sprite_id` binds a sprite identity no canonical record selects**, or the id
+  an authored actor-sprite identity in the same project takes. The engine's search
+  returns the earliest matching record, so an id a retail record already selects
+  would make the appended record either unreachable or a replacement for that
+  record's resolution; such a document is refused. Sprite id 149 is refused too,
+  because the engine remaps it before it compares. A value below the accessor's floor of 10 and a value the registry
   does not reach are both refused.
 - **The portrait slot and the stat index are not authorable here.** The record's
   `+0x08` and `+0x0C` are written to the two corpus-legal defaults the SDK states
   (no portrait, no stat record), which 98 and 88 of the 232 canonical records
   already carry. Offering either as a field would mean authoring a portrait or a
   stat record, and no shipped surface does.
-- **The count ceiling is enforced, not discovered later.** A Thumb `cmp rN,#imm8`
-  reaches 255, so at most 23 records may be appended to the 232 the image has. A
-  document over that is refused rather than written with a bound the engine cannot
-  obey.
+- **The count bound is enforced, not discovered later.** The engine keeps one seen
+  bit per record in a 232-bit array and the block initializer zeroes a word just
+  past it, so at most 8 records may be appended to the 232 the image has. That bound
+  is INFERRED, and it is below the 255 a Thumb `cmp rN,#imm8` could state: the
+  encoding is not the binding limit.
 
 ## Determinism
 

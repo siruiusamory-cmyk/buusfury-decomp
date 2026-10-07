@@ -2085,7 +2085,7 @@ class GraphicsTab(QWidget):
         try:
             document = AuthoredAppearances(appearances=merged)
         except _APPEARANCE_ERRORS as refused:
-            QMessageBox.critical(self._tab, "Authored appearance",
+            QMessageBox.critical(self, "Authored appearance",
                                  f"this definition was not added: {refused}")
             return
         self._commit_authored_appearances(

@@ -165,6 +165,21 @@ appearance. This is recorded as a limit of the capability rather than as a bound
 the build can patch, because the array is heap-allocated by retail code from a
 compiled size.
 
+**Correction, and it is a blocking one.** An earlier revision of this section
+argued that "ordinary play does not approach" the limit, and that is an
+assumption, not a measurement. Three things are true at once: the builder appends
+one entry per set flag with no bound check of its own, its array is sized for
+exactly 232 entries, and this document records flag initialisation and persistence
+as UNKNOWN. Under `docs/ROM_SAFETY.md` a grown structure has to be checked against
+the engine's own bounds rather than argued past, so the honest statement is that
+**appending any record can overflow the roster array if its flag is ever set**, and
+that nothing in this build prevents it. The count ceiling bounds what the
+authoring surface may write; it does not bound a retail array the engine owns.
+
+That makes the capability unsafe to claim until either the roster array grows with
+the table and its display list is relocated, or the flag array's reachable maximum
+is shown to stay at 232. Neither has been done here.
+
 ## 6. End-of-table neighbourhood
 
 The 16 bytes immediately after the extent are live, multiply-named data, so a

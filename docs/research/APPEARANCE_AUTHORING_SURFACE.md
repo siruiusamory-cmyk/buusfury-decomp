@@ -319,7 +319,7 @@ own ticket.
   is not claimed. Everything else in `SC3` is measured.
 * **The roster's flag array is sized for 232 entries** (see the gate record,
   section 5). The theoretical maximum of simultaneously set flags rises by one
-  per authored definition, which a scene in ordinary play does not approach.
+  per authored definition. That is not a safety argument: the builder appends without a bound check and its array holds exactly 232 entries, so an appended record whose flag is ever set can overflow it, and nothing in this build prevents that. See the correction in the growth record, section 5.
 * **A new text-table id is not authorable**, so an authored definition shares a
   retail definition's on-screen name. That is a limit, not a defect: creating text
   ids is not shipped for any capability.

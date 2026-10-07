@@ -185,6 +185,14 @@ That makes the capability unsafe to claim until either the roster array grows wi
 the table and its display list is relocated, or the flag array's reachable maximum
 is shown to stay at 232. Neither has been done here.
 
+**And the write is not hypothetical.** The constructor at `0x08025E6E` reads an
+index once and uses it for both jobs: `asrs r2, r5, #3` and `lsls r6, r5, #0x1d`
+derive the byte and the bit of `block+0xC5`, `ldrb r2, [r1, #5]` / `orrs` / `strb`
+set it, and two instructions later `lsls r1, r5, #4` / `adds r1, r1, r2` store
+`record[index]` on the object. The same index is therefore both the record the
+engine resolved and the flag it sets, so resolving an authored appearance at index
+232 sets flag 232 by construction. It is not a case that needs an unusual save.
+
 ## 6. End-of-table neighbourhood
 
 The 16 bytes immediately after the extent are live, multiply-named data, so a

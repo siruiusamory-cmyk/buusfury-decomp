@@ -221,6 +221,13 @@ Two limits are recorded rather than hidden:
   verifier is a separate change with its own blast radius and is not attempted
   here.
 
+> **SUPERSEDED (2026-10-07) by `DERIVATIVE-16M-REOPEN-001`.** The shared verifier
+> no longer reconstructs and hashes the whole file: the caller states the
+> canonical span and only that span is verified, so a valid expanded derivative
+> now reopens. See the `chunks` record in `src/data/capabilities.json` and
+> `docs/research/PROJECT_STATE_AUDIT_RECONCILIATION.md` finding 70. The paragraph
+> above is the state when this record was written and is not restated.
+
 Also noted for the record: `tools/runtime/inject_mgba_lua.ps1` keeps its own
 CRLF line endings, so `git diff --check` reports the documented CRLF artifact on
 added lines. Measured separately: that file is 481 CRLF and 0 LF-only lines, with

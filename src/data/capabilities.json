@@ -205,8 +205,7 @@
         "A chunk is map-scoped. Its plane holds tile ordinals, which only resolve through the assembled character block of the map it was composed against, so it is composed against one map and placed only in that map's layers, which may be any of them.",
         "The chunk container is emitted in the one kind every canonical chunk uses, so this is not an engine-format experiment, but the format is not re-opened either: a chunk is still a 32x32 plane of 16-bit screen entries and nothing else.",
         "No new-map creation, no graphics import and no collision editing. Chunks stay map-scoped, so a chunk composed against one map is not reusable in another.",
-        "The authored body must go above the original ROM end: the canonical image's only declared free region is 256 bytes and a chunk container is larger, so this capability depends on generated expansion rather than fitting in place.",
-        "A 16 MiB derivative is not reopened by the authoring tool's derivative verifier, which reconstructs and hashes the canonical image from the whole file. That limit is shared with compressed dialogue and predates this capability; the project itself reopens fully."
+        "The authored body must go above the original ROM end: the canonical image's only declared free region is 256 bytes and a chunk container is larger, so this capability depends on generated expansion rather than fitting in place."
       ],
       "evidence": "MAP-CHUNK-AUTHORING-001; docs/research/MAP_CHUNK_AUTHORING.md"
     },
@@ -318,12 +317,13 @@
       "family": "author",
       "title": "New sprite, animation and frame authoring",
       "state": "missing",
-      "detail": "Not implemented. Needs allocation plus same-count in-place replacement of animation cell pointers and frame piece records.",
+      "detail": "Not shipped, and no longer unimplemented. The mechanism, the project document and the build path are merged and runtime-proven: an actor-sprite identity the image does not contain was allocated above the original end of the image and resolved and drawn by the retail engine, and a project authors it through sprites/sprites.toml and the ordinary build. What is missing is the shipped authoring surface, which is why the capability is not counted.",
       "limits": [
-        "Not implemented, and no editor surface authors a new sprite, animation or frame.",
-        "Needs allocation plus same-count in-place replacement of animation cell pointers and frame piece records."
+        "No editor surface authors a new sprite, animation or frame. The supported workflow is to write sprites/sprites.toml and supply the sheet PNGs: there is no GUI and no CLI subcommand, so the capability is not counted until one exists.",
+        "Every authored frame copies the donor's own first frame, so the frame-composition budget is unchanged rather than modelled; an authored frame whose footprint is not exactly the donor's proven composition shape is refused.",
+        "The engine's four direction slots are written in sheet order and their screen meaning is unresolved project-wide."
       ],
-      "evidence": "LOGX-FRAME-001; docs/research/POST_LOGX_IMPLEMENTATION_ROADMAP.md"
+      "evidence": "LOGX-FRAME-001; SPRITE-NEW-AUTHORING-CORE-001; SPRITE-NEW-ATTACHMENT-RUNTIME-PARITY-001; SPRITE-NEW-PROJECT-SURFACE-001; SPRITE-NEW-COMPOSITION-GUARD-001; SPRITE-NEW-RUNTIME-001; docs/research/POST_LOGX_IMPLEMENTATION_ROADMAP.md"
     },
     {
       "id": "appearance",

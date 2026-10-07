@@ -1758,10 +1758,13 @@ expanded write**, and a larger file authorizes nothing on its own.
   and chunk windows. The claim is scoped to the map/layer reference domains
   actually demonstrated.
 
-**Debt retained:** a 16 MiB derivative is not reopened by the shared derivative
-verifier, which reconstructs and hashes the canonical image from the whole file.
-This is pre-existing and shared with compressed dialogue since ROM-EXPAND-001;
-project reopen passes.
+**Debt closed:** a 16 MiB derivative was not reopened by the shared derivative
+verifier, which reconstructed and hashed the canonical image from the whole file;
+this was pre-existing and shared with compressed dialogue since ROM-EXPAND-001.
+`DERIVATIVE-16M-REOPEN-001` fixed it: the verifier now checks only the canonical
+span stated by the profile identity, so a valid expanded derivative reopens.
+`tests/unit/test_authored_image.py:500` and
+`tests/unit/test_map_layout_provenance.py:172` assert it.
 
 **The runtime rebuild rule.** A savestate restores emulated RAM and VRAM,
 including the already-assembled background, so the engine never re-reads the map
@@ -2155,14 +2158,16 @@ terrain-field window, so the editor refuses it by name.
 
 ## Capability registry
 
-DragonByte Z reads **20 / 24 (83%)**: READ 5/5, EDIT 8/8, AUTHOR 3/7, DELIVER 4/4.
-The four unshipped capabilities are graphics import, new sprites, appearance
-authoring and new maps. Phase 2 (map editing) is complete: tile painting, chunk
-creation, map resizing with layer authoring and warp/connection editing all ship.
-The next capability is graphics import, and the roadmap phase state is `next`,
-deliberately distinct from `in-progress`, so the page says the next phase is chosen
-and not started. The exact per-capability limits and proof levels live in
-[`capability-registry.md`](capability-registry.md).
+DragonByte Z reads **21 / 24 (88%)**: READ 5/5, EDIT 8/8, AUTHOR 4/7, DELIVER 4/4.
+The three unshipped capabilities are new sprites, appearance authoring and new
+maps. Phase 2 (map editing) is complete: tile painting, chunk creation, map
+resizing with layer authoring and warp/connection editing all ship. Phase 3 has
+started: graphics import shipped 2026-10-03, and the next capability is sprite,
+animation and frame authoring, which the roadmap marks `next`, deliberately
+distinct from `in-progress`. The exact per-capability limits and proof levels live
+in [`capability-registry.md`](capability-registry.md), and the reconciliation of
+this paragraph against the registry is recorded in
+[`research/PROJECT_STATE_AUDIT_RECONCILIATION.md`](research/PROJECT_STATE_AUDIT_RECONCILIATION.md).
 
 ## Research posture
 
@@ -2191,17 +2196,19 @@ solved.
    `packed_end` by 4 bytes on 2,728 containers; the behaviour is documented, not
    changed.
 4. The pre-existing `declared_size == 0` acceptance remains.
-5. A 16 MiB derivative is not reopened by the shared derivative verifier, which
-   reconstructs and hashes the canonical image from the whole file. This is
-   pre-existing, shared with compressed dialogue since ROM-EXPAND-001; project
-   reopen passes.
-6. The live screenblock is not the chunk plane verbatim, so the engine's
+5. The live screenblock is not the chunk plane verbatim, so the engine's
    map-upload transformation (ROM to charblock/screenblock) remains unknown.
-7. The atlas seed overlay work is open, and the production allocator does not use
+6. The atlas seed overlay work is open, and the production allocator does not use
    the atlas seed as its free-space authority.
-8. `tools/webfoot/atlas_producers/scan.py::_compression_rows` is a stride-4
+7. `tools/webfoot/atlas_producers/scan.py::_compression_rows` is a stride-4
    heuristic sweep whose own docstring calls its output noise (24,285 hits /
    68.7 MiB); it is outside the SDK's canonical path.
+
+The former defect 5, that a 16 MiB derivative was not reopened by the shared
+derivative verifier, is **fixed**: `DERIVATIVE-16M-REOPEN-001` made the verifier
+check only the canonical span stated by the profile identity, so a valid
+expanded derivative reopens. `tests/unit/test_authored_image.py:500` and
+`tests/unit/test_map_layout_provenance.py:172` assert it.
 
 ## Open questions
 

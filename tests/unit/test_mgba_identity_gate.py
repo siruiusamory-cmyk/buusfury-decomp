@@ -15,7 +15,8 @@ What each test here protects:
    identity policy, and must equal every policy entry except the one driver
    covered by delegation, so a new launcher cannot escape the gate by being
    written later;
-2. ordering: the gate call precedes the launch, in the same function;
+2. ordering: the gate call is unconditional and precedes the launch, with no
+   function boundary between them, so the gate covers the launch that follows;
 3. the two probe families keep two different requirements - the packaged
    executable digest for the GDB family, the instrumented manifest for
    rom011/rom012 - rather than one universal version check;
@@ -75,6 +76,13 @@ LAUNCHING_PROBES = tuple(
 
 MGBA_MARKERS = ("--gdb", "mgba_path", "mGBA.exe")
 
+#: Any of these puts a process on this machine, so a file using one of them is
+#: a launcher whatever spelling it chose.
+LAUNCH_CALLS = (
+    re.compile(r"\bPopen\("),
+    re.compile(r"\bsubprocess\.(run|call|check_call|check_output|check_run)\("),
+)
+
 
 def _identity_module():
     """Imported late so the source-level gates below fail as assertions on the
@@ -102,12 +110,12 @@ def _discovered_launchers() -> set[str]:
     predicate.
     """
     discovered: set[str] = set()
-    for path in sorted(RUNTIME.glob("*.py")):
+    for path in sorted(RUNTIME.rglob("*.py")):
         source = path.read_text(encoding="utf-8")
-        if "subprocess.Popen(" not in source:
+        if not any(call.search(source) for call in LAUNCH_CALLS):
             continue
         if any(marker in source for marker in MGBA_MARKERS):
-            discovered.add(f"tools/runtime/{path.name}")
+            discovered.add(path.relative_to(ROOT).as_posix())
     return discovered
 
 
@@ -205,9 +213,17 @@ def test_the_identity_gate_precedes_every_launch(relative: str):
     gate_call = (
         "verify_instrumented_mgba(" if tag == INSTRUMENTED else "require_mgba_build("
     )
-    assert _position(source, gate_call, relative) < _position(
-        source, "subprocess.Popen(", relative
-    ), f"{relative} reaches subprocess.Popen before its identity gate"
+    gate_at = _position(source, gate_call, relative)
+    launch_at = _position(source, "subprocess.Popen(", relative)
+    assert gate_at < launch_at, (
+        f"{relative} reaches subprocess.Popen before its identity gate")
+    assert "\ndef " not in source[gate_at:launch_at], (
+        f"{relative} leaves its enclosing function between the identity gate and "
+        "the launch, so the gate does not cover the launch that follows")
+    gate_line = next(line for line in source.splitlines() if gate_call in line)
+    assert gate_line.startswith("    ") and not gate_line.startswith("        "), (
+        f"{relative} calls its identity gate inside a nested block, so a path "
+        "that still launches can skip it")
 
 
 @pytest.mark.parametrize("relative", sorted(POLICY))

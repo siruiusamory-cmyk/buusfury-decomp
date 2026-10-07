@@ -108,6 +108,44 @@ can be resolved in a running scene, no flag at index 232 can be set, the builder
 cannot see a 233rd entry, and the overflow this relocation guards against cannot
 occur. That is the honest ordering of the two problems.
 
+## What would unblock the runtime chain
+
+Recorded because a failure report is only useful if it says what to do next, and
+because two of these were measured this session rather than guessed.
+
+**1. A savestate taken at a transition, or an operator walking into one.** The
+search path runs when an object is constructed, and a loaded state restores
+objects that were already built. Five sessions this ticket ran - two savestates,
+menu navigation and seventy input pulses of walking - never entered it, and the
+frozen appearance record adds that a 12,000-frame wandering schedule did not
+either. The one session that did was an operator walking into a new map (`map 40`,
+frame 7642). So the cheapest path is a state taken *during* a transition, or a
+human driving to one.
+
+**2. Or set the seen flag in the save image, which is where the persistence lives.**
+This ticket measured the save path: the record IS the runtime state object at
+`0x03001068`, `0x8A8` bytes, written to the EEPROM image at `0x10 + 0x8B0*slot`,
+with its first `0x4F8` bytes copied verbatim and a checksum over the whole record.
+That means the flag for the authored index can be set by writing one bit at
+`record + 0xC5 + (index >> 3)` in a save, which would make the builder append the
+233rd entry and exercise the overflow path directly - without needing an actor at
+all. Two things are needed to do it, and neither is in place:
+
+- the checksum, which `0x0803FC4E` computes as an additive running pair over
+  `0x8A8` bytes and returns packed (`(second << 16) | first`), with the running
+  values passed through the ARM helper at `0x08053180` once per `0x15B0`-byte
+  chunk. A single-chunk record therefore needs that helper's mask, which this
+  session did not determine: the routine is an ARM veneer and the formulas tried
+  against the local save did not match it;
+- a save that has a record in it. The `.sav` in this worktree does not: slot 0's
+  checksum word is zero and slots 1 and 2 hold `0xFFFFFFFF`. The real save image
+  travels inside the mGBA savestate, not in that file.
+
+Route 2 proves the builder half of the chain - flag set, display list built, no
+overflow - without proving that the engine resolves an authored record, which is
+the reachability question in its own right. Both routes are recorded as measured
+openings rather than as plans that were carried out.
+
 ## 1. The containing object, and its extent - CONFIRMED
 
 The builder is `0x08024F3C`. Its first instructions decide everything:

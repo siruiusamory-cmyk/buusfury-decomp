@@ -170,6 +170,39 @@ appearance. This is recorded as a limit of the capability rather than as a bound
 the build can patch, because the array is heap-allocated by retail code from a
 compiled size.
 
+**The mechanism, stated exactly, because a falsification pass nearly retired this
+finding on a correct but narrower measurement.** The builder's append loop is
+bounded by a compiled immediate, not by the record count:
+
+```
+08024f90  adds r0, #1
+08024f92  cmp  r0, #0xE8        ; halfword 0x28E8, 232
+08024f94  blt  0x08024F6E
+```
+
+`r0` is written only at `0x08024F5E` (zero) and `0x08024F90` (increment), so the
+loop runs 232 times and the last possible entry write is
+`obj+0x14+231*4` ending at `obj+0x3B3`, immediately below the display-list count
+at `obj+0x3B4`. **On the canonical image there is no overflow and slack is zero.**
+A longer record table alone changes nothing, which is what the falsification pass
+measured.
+
+What makes it reachable is the appearance build itself. `0x08024F92` is one of the
+three `cmp rN,#0xE8` halfwords this work patches, and a built image carries:
+
+```
+file 0x24F92   canonical 0x28E8   built 0x28E9   PATCHED
+file 0x27998   canonical 0x2CE8   built 0x2CE9   PATCHED
+file 0x279CC   canonical 0x2CE8   built 0x2CE9   PATCHED
+```
+
+With the bound at 233 the loop reaches index 232, the authored appearance's flag
+is set (the constructor sets it for the same index), and the 233rd append writes
+`obj+0x3B4` - the display-list count. So the hazard is not "a longer table"; it is
+"this build raising the very bound that sizes the array". Leaving `0x24F92`
+unpatched would avoid it and is refused deliberately: it would omit authored
+appearances from the display list.
+
 **Correction, and it is a blocking one.** An earlier revision of this section
 argued that "ordinary play does not approach" the limit, and that is an
 assumption, not a measurement. Three things are true at once: the builder appends

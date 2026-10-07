@@ -58,9 +58,11 @@ def _registry():
 
 def _sites():
     sites = _registry().LAUNCH_SITES
-    assert len(sites) == 30, (
+    assert len(sites) == 31, (
         f"the launch-site registry has {len(sites)} entries; the inventory found "
-        "30 repository-controlled mGBA launch sites")
+        "31 repository-controlled mGBA launch sites, the thirty-first being "
+        "tools/mgba_probe/build.ps1, which starts the instrumented build it has "
+        "just produced through PowerShell's call operator")
     return sites
 
 

@@ -138,6 +138,15 @@ _TEST_ONLY = (
     "is reached."
 )
 
+_BUILD_TOOLING = (
+    "Build tooling rather than a runtime probe: the script builds the "
+    "instrumented SDL executable in the same run from the pinned source commit "
+    "and the tracked patch, so identity is established by construction, and then "
+    "checks the produced binary's --version output for the required version and "
+    "commit prefix before recording its digest into the manifest. No executable "
+    "digest can exist before the build this script performs."
+)
+
 LAUNCH_SITES: tuple[LaunchSite, ...] = (
     LaunchSite("tools/runtime/rom006_gdb_probe.py", "run_probe",
                PACKAGED_REQUIRED, EXECUTABLE_DIGEST, _PACKAGED_PROBE),
@@ -158,6 +167,8 @@ LAUNCH_SITES: tuple[LaunchSite, ...] = (
                INSTRUMENTED_REQUIRED, INSTRUMENTED_MANIFEST,
                "Not an emulator launch: it runs <instrumented> --version to "
                "finish the instrumented identity gate before any run starts."),
+    LaunchSite("tools/mgba_probe/build.ps1", "& $executable --version",
+               INSTRUMENTED_REQUIRED, FILE_VERSION, _BUILD_TOOLING),
     LaunchSite("tools/mgba_probe/benchmark.py", "run_gate instrumented cases",
                INSTRUMENTED_REQUIRED, INSTRUMENTED_MANIFEST,
                "The disarmed and armed cases reach _measure, and run_gate "

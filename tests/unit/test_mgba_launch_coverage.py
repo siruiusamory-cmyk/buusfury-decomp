@@ -73,12 +73,16 @@ GATE_FOR_PROOF: Mapping[str, str] = {
 GATE_NAMES = frozenset(GATE_FOR_PROOF.values())
 
 MGBA = "mgba"
-POWERSHELL_VERSION_TOKEN = "VersionInfo.FileVersion"
+POWERSHELL_VERSION_TOKENS = ("VersionInfo.FileVersion", "--version")
 POWERSHELL_DIGEST_TOKENS = ("Get-FileHash", "MGBSha256")
 PYTHON_VERSION_TOKEN = "--version"
 POWERSHELL_START = re.compile(
     r"Start-Process|\[System\.Diagnostics\.Process\]::Start", re.IGNORECASE
 )
+#: PowerShell's call operator also creates a process, and a launcher written
+#: with `& $exe` is invisible to the two cmdlets above. `tools/mgba_probe/build.ps1`
+#: starts the instrumented build this way.
+POWERSHELL_CALL = re.compile(r"&\s+([^\s;|&]+)")
 POWERSHELL_FILE_PATH = re.compile(r"-FilePath\s+([^\s`]+)", re.IGNORECASE)
 
 #: Process starts in this repository that cannot start mGBA, keyed by
@@ -91,6 +95,10 @@ POWERSHELL_FILE_PATH = re.compile(r"-FilePath\s+([^\s`]+)", re.IGNORECASE)
 #: with a reason, or `test_the_current_tree_has_no_unregistered_launch_site`
 #: fails. That is what makes the exemption explicit rather than implicit.
 NON_MGBA_SITES: Mapping[tuple[str, str, str], str] = {
+    ("tools/runtime/stage_text_handle_001.ps1", "&", "powershell"):
+        "delegates to the tracked toolkit session launcher; it starts no emulator",
+    ("tools/runtime/stage_toolkit034_trial.ps1", "&", "powershell"):
+        "delegates to the tracked toolkit session launcher; it starts no emulator",
     ("tests/integration/test_logx_connector_rom.py",
      "test_documented_module_invocation_emits_the_canonical_report",
      "sys.executable"):
@@ -400,6 +408,16 @@ def powershell_launch_sites(root: Path, files: Iterable[str]) -> tuple[Found, ..
                     name=match.group(0),
                 )
             )
+        for match in POWERSHELL_CALL.finditer(text):
+            found.append(
+                Found(
+                    path=relative,
+                    line=text.count("\n", 0, match.start()) + 1,
+                    anchor="&",
+                    target=match.group(1),
+                    name="&",
+                )
+            )
     return tuple(found)
 
 
@@ -474,10 +492,10 @@ def _ungated(
                         f"(missing {', '.join(missing)})"
                     )
             elif site.proof == identity.FILE_VERSION:
-                if POWERSHELL_VERSION_TOKEN not in text:
+                if not any(token in text for token in POWERSHELL_VERSION_TOKENS):
                     failures.append(
                         f"{site.path} ({site.anchor}): proof {site.proof} requires "
-                        f"{POWERSHELL_VERSION_TOKEN!r} in the script"
+                        f"one of {', '.join(POWERSHELL_VERSION_TOKENS)} in the script"
                     )
             elif site.proof == identity.NO_PROOF:
                 if not site.rationale.strip():
@@ -744,6 +762,26 @@ def test_a_new_powershell_mgba_launcher_is_reported(tmp_path: Path):
 
     assert report["unregistered"], "a new PowerShell launcher escaped the predicate"
     assert any("tools/run_newbuild.ps1:3" in item for item in report["unregistered"])
+
+
+def test_a_call_operator_launcher_is_reported(tmp_path: Path):
+    """The call operator starts a process too, and used to be invisible.
+
+    `tools/mgba_probe/build.ps1` launches the instrumented build it has just
+    produced this way, which is how a real mGBA launch escaped the inventory.
+    """
+    _write_module(
+        tmp_path,
+        "tools/run_instrumented.ps1",
+        "# launches the instrumented mGBA build\n"
+        "$exe = 'build/rom012/mgba-probe-sdl/mgba-sdl.exe'\n"
+        "& $exe --version\n",
+    )
+
+    report = audit(tmp_path, [], ["tools/run_instrumented.ps1"], sites=(), exemptions={})
+
+    assert report["unregistered"], "a call-operator launcher escaped the predicate"
+    assert any("tools/run_instrumented.ps1:3" in item for item in report["unregistered"])
 
 
 def test_a_keyed_exemption_clears_only_its_own_call_site(tmp_path: Path):

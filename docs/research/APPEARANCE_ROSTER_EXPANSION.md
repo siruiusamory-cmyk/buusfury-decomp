@@ -200,7 +200,23 @@ The block's address appears as a literal word in 41 places: one code pool
 occurrences in the `0x0806xxxx`-`0x0807xxxx` region, which is the shape of pointer
 tables to static RAM structures rather than of code.
 
-**Item 8.2 - whether the flags are persisted is OUTSTANDING.** Following those
+**Item 8.2a - how many code paths can reach the block at all.** The reader
+descriptor `0x087319CC` is named by exactly one code pool (`0x0802530C`, in the
+builder) and one data word (`0x080256BC`, a literal pool inside the function at
+`0x080255C4`). The writer descriptor `0x08732374` is named by exactly one code
+pool (`0x08026188`, in the constructor). So three code paths reach the block, and
+all three are in the appearance/roster module: `0x08024F3C`, `0x08025E50` and
+`0x080255C4`. No save, load or copy routine appears among them, which is evidence
+that the flags are session state rather than persisted - but it is not proof,
+because a bulk copy could take the block's IWRAM address directly.
+
+**Item 8.2 - whether the flags are persisted is OUTSTANDING.** Byte-pattern
+scanning cannot settle it: the `adds rX,#0xC0` idiom returns hundreds of sites
+across the image because any structure with a `0xC0` offset produces it, and the
+same is true of `adds rX,#0xC5` (314 sites). Settling this needs a dataflow trace
+from a register known to hold the block, which is what the delegated save census
+is for, or a check of the forty data words that carry the block's address to see
+whether any of them is a copy region rather than a descriptor field. Following those
 pointer tables to whatever copies regions into the save medium is the remaining
 work, and it has not been done here. Until it is, this document does not claim
 that the bitset is transient, and the supported count above rests only on the

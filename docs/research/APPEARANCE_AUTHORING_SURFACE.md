@@ -319,6 +319,36 @@ changes this ticket does not make: a size guard that admits an expanded image, a
 a worktree virtualenv. Both are runtime-infrastructure work and belong to their
 own ticket.
 
+## SC6.1 - The one decision this ticket cannot make
+
+The roster finding in the growth record, section 5, is a product decision rather
+than a defect to fix in passing. The measured position, in one place:
+
+* Resolving an authored appearance sets that record's own seen flag. The
+  constructor at `0x08025E6E` reads one index and uses it twice - for the bit at
+  `block+0xC5+(index>>3)` and for `record[index]` - so an authored record at index
+  232 sets flag 232 by construction.
+* The roster display-list builder at `0x08024F3C` appends one entry per set flag
+  into `0xB20` bytes, which holds exactly 232 entries before its display list at
+  `+0x3B4`, and it checks no bound of its own.
+* So a save in which the authored appearance is flagged can push that builder one
+  entry past its array.
+
+Three ways to close it, and they are not equivalent:
+
+1. **Grow the roster array with the table and relocate its display list.** Keeps
+   the capability and the strip. It is a larger engine change than this ticket:
+   the allocation site, the display-list base and every consumer of it move.
+2. **Show the flag maximum cannot exceed 232.** This ticket cannot, because the
+   constructor above sets a flag per resolved appearance and the authored record
+   is one.
+3. **Do not ship it.** The capability stays unclaimed, which it already is, and
+   the Workbench strip stops offering a definition the build should refuse. This
+   is the smallest change and the only one that leaves nothing live.
+
+Until one of them is chosen, **this branch is not for merging**: the strip is live
+and would build the record that section 5 of the growth record calls unsafe.
+
 ## SC7 - Open, and honest about it
 
 * **The runtime chain is unestablished**, one of two reasons the capability is not

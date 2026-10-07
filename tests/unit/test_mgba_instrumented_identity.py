@@ -194,13 +194,20 @@ def _run_root(module: str) -> Path:
     return root / f"identity-refusal-{uuid.uuid4().hex}"
 
 
-def test_the_on_disk_rom011_build_is_from_a_superseded_probe_patch():
-    """The determination, read from the real manifest rather than restated."""
+def test_the_on_disk_rom011_build_now_matches_the_tracked_patch():
+    """RUNTIME-INSTRUMENTED-CAPTURE-CLOSURE-001: rom011 was rebuilt.
+
+    The on-disk rom011 build used to record the superseded revision and be
+    refused by name. It has since been rebuilt from the pinned source commit and
+    the tracked patch, so the same manifest now carries the current digest. The
+    superseded refusal itself is still covered, by the synthetic manifest tests
+    below and by the history test that proves the digest is a real revision.
+    """
     if not ROM011_MANIFEST.is_file():
         pytest.skip("the rom011 instrumented build tree is not on this machine")
     manifest = json.loads(ROM011_MANIFEST.read_text(encoding="utf-8"))
-    assert manifest["patch_sha256"] == runtime.SUPERSEDED_PATCH_SHA256
-    assert manifest["patch_sha256"] != runtime.sha256(runtime.PATCH_PATH)
+    assert manifest["patch_sha256"] == runtime.sha256(runtime.PATCH_PATH)
+    assert manifest["patch_sha256"] != runtime.SUPERSEDED_PATCH_SHA256
 
 
 def test_the_on_disk_rom012_build_matches_the_tracked_patch():

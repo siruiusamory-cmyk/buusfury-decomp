@@ -64,10 +64,27 @@ that the chain completed.
 
 **Not observed.** The seen flag for indices 231, 232, 233 and 239 read `0x00` in
 every session, so **the authored record was never resolved and flag 232 was never
-set**. The builder's append store, its loop bound and the flag write were armed as
-breakpoints and never fired; while they were armed the run stopped early with no
-handler error recorded, so the breakpoints themselves are the likely cause and a
-state-only observer is the instrument to use next.
+set**.
+
+An earlier session with breakpoints armed stopped early with no handler error
+recorded, and this record first blamed the breakpoints. That was wrong. The cause
+was a defect in the observer itself: two locals the report read were declared
+after the report function, so they resolved as globals, were nil, and killed the
+script the first time it journalled. Once declared before use, a session with four
+sites armed ran to its limit - 1,500 elapsed frames, 19 input pulses, 22
+screenshots, zero handler errors. Breakpoints are not a hazard here; a silent
+instrument is.
+
+**The search itself never ran.** A probe on the search entry `0x08027948`, which
+identifies the object as `r0 - 0x5C` because `[object+0x58]` is the object's own
+component pointer, reported **0 executions across a completed session that
+included walking and menu navigation**. That is the measured form of what the
+frozen appearance record states: a loaded savestate restores actors that were
+already built, so the construction path is not reached by loading a state, and
+neither a menu nor a short walk reaches it in the state this worktree has. The
+frozen record adds that a 12,000-frame wandering schedule on the same map did not
+reach it either, and that the one session which did was an operator walking into a
+new map.
 
 **Why the builder cannot have been reached this way.** The frozen appearance
 record already states it: a savestate load restores actors that were built before

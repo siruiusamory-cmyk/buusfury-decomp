@@ -303,7 +303,7 @@ unless new evidence proves a dependency wrong.
 | 2C - Resize + layers | Map editing | Resize grids, create/relocate layer resources, preserve handler semantics, validate boundaries and reopen. **COMPLETE** 2026-09-26: the grown grid is re-emitted above the original ROM's end, the map root is repointed, and the added ground is displayed at runtime. | 19/24 |
 | 2D - Warps / connections | Map editing | Visual destination editing, connection/warp consistency, runtime transition proof. **COMPLETE** 2026-09-28: a transition is retargeted through the project and one the image does not contain is authored above the original ROM's end; every supported transition is drawn and dragged on the map as its trigger region; and a human-operated run confirmed the retail engine consumes an authored transition. | 20/24 |
 | 3A - Graphics import | Graphics authoring | Image import -> quantization -> tiles/container encoding -> allocation -> runtime proof; prove graphics-domain expanded addressing as needed. **COMPLETE** 2026-10-03: an extracted actor-sprite PNG is edited in the project, rebuilt, and rendered by the retail engine both in place and from above the original ROM's end (`GRAPHICS-IMPORT-BOUNDARY-001`). | 21/24 |
-| 3B - Sprite / animation / frame authoring | Graphics authoring | Create new sprite definitions, frames/pieces/OAM and animation records; table expansion where necessary. **COMPLETE** 2026-10-07: the Graphics tab's authored-sprite surface creates the project's new actor-sprite identity - donor composition, per-slot sheets and the object slot the appended actor starts from - and writes `sprites/sprites.toml`; the retail engine resolves the authored identity and draws its own frames, and the document route reproduces that image byte for byte (`SPRITE-PROJECT-SURFACE-001`). Piece/OAM composition, frame geometry and frame timing remain outside the modelled contract and are refused. | 22/24 |
+| 3B - Sprite / animation / frame authoring | Graphics authoring | Create new sprite definitions, frames/pieces/OAM and animation records; table expansion where necessary. **COMPLETE** 2026-10-07: the Graphics tab's authored-sprite surface creates the project's new actor-sprite identity - donor composition, per-slot sheets and the object slot the appended actor starts from - and writes `sprites/sprites.toml`. A ROM-gated build of that document authors the identity and actor the runtime record resolved (`SPRITE-PROJECT-SURFACE-001`); the engine observation covers the mechanism, since the surface's carried data-pointer word is the chosen slot's own and the recorded document used a neighbour's, in a field whose meaning is unresolved. Piece/OAM composition, frame geometry and frame timing remain outside the modelled contract and are refused. | 22/24 |
 | 3C - Appearance authoring | Graphics authoring | Create new appearance definitions that bind authored graphics into game-visible actors. **NEXT** (not started): the record count appears as compiled-in engine bounds with no terminator, so whether the table can be grown is an open question. | 23/24 |
 | 4 - New maps | Final capability | Create MapEntry + layers/chunks + objects + warps + scripts/dialogue; expand/relocate tables; prove runtime scene. | 24/24 |
 | 5 - Creator UX / RC | Release candidate | Resource budget panel, warnings, Run From Here, recovery/migration, navigation, consistent undo, docs, patch export, end-to-end dogfood. | 24/24 |
@@ -524,9 +524,16 @@ creates, edits and removes the project's one new actor-sprite identity: the dono
 whose proven composition shape every frame keeps, the sheet each animation slot
 draws from, and the existing object slot the appended actor starts its behaviour
 from. It writes `sprites/sprites.toml` through the project model's own writer, so
-the document the ordinary build consumes is the one the editor produces; the
-retail engine resolves the authored identity and draws its own frames, and the
-project-document route reproduces that image byte for byte.
+the document the ordinary build consumes is the one the editor produces.
+
+The engine observation (`SPRITE-NEW-ATTACHMENT-RUNTIME-PARITY-001`) is evidence
+for the mechanism rather than for the surface's exact document: the recorded
+runtime document carries a neighbouring sibling slot's data-pointer word, and the
+surface carries the chosen template slot's own, 16 bytes apart in a field whose
+meaning is unresolved. The surface's own document is therefore proven at the
+application level - a ROM-gated validate and build that authors the same identity
+and actor and touches exactly the canonical fields the runtime case does - and the
+capability is registered with `proof: application`.
 
 The exit condition was a semantic user workflow with no manual file editing, and
 it is met. Two things deliberately did NOT ship, and the surface says so where the
@@ -685,7 +692,7 @@ which is authoritative; the roadmap note column is this document's.
 | AUTHOR | Authored behavior and scripts | Shipped | |
 | AUTHOR | Authored text beyond the retail slot | Shipped | Distinct from the compressed-dialogue capability |
 | AUTHOR | Graphics replacement and import | Shipped | Phase 3A, complete 2026-10-03: an extracted actor-sprite PNG is edited in the project, rebuilt, and rendered by the retail engine, in place or from above the original ROM's end |
-| AUTHOR | New sprite, animation and frame authoring | Shipped | Phase 3B, complete 2026-10-07: the Graphics tab creates the project's new actor-sprite identity and writes `sprites/sprites.toml`; the retail engine resolves and draws it, and the document route reproduces that image byte for byte |
+| AUTHOR | New sprite, animation and frame authoring | Shipped | Phase 3B, complete 2026-10-07: the Graphics tab creates the project's new actor-sprite identity and writes `sprites/sprites.toml`, and a ROM-gated build of that document authors the identity and actor the runtime record resolved; registered at application proof because one carried word differs from the recorded document |
 | AUTHOR | New appearance definitions | Missing | Phase 3C (NEXT, not started) -> 23/24 |
 | AUTHOR | New map and scene materialisation | Missing | Phase 4 -> 24/24 |
 | DELIVER | Deterministic validate and build | Shipped | |

@@ -23,7 +23,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 
-from PySide6.QtCore import Qt
+from PySide6.QtCore import QSignalBlocker, Qt
 from PySide6.QtGui import QImage, QPixmap
 from PySide6.QtWidgets import (QComboBox, QDialog, QDialogButtonBox, QFileDialog,
                                QFormLayout, QFrame, QHBoxLayout, QLabel,
@@ -31,7 +31,8 @@ from PySide6.QtWidgets import (QComboBox, QDialog, QDialogButtonBox, QFileDialog
                                QScrollArea, QSpinBox, QVBoxLayout, QWidget)
 
 from .. import sprite_project as sprite_sdk
-from ..project.model import (AuthoredSprite, AuthoredSpriteAnimation, ProjectError)
+from ..project.model import (AuthoredSprite, AuthoredSpriteAnimation,
+                             AuthoredSprites, ProjectError)
 from ..sprite_authoring import (ActorTemplate, SourceSheet, SpriteAuthoringError,
                                 read_source_sheet)
 from . import theme
@@ -232,7 +233,14 @@ class SpriteAuthoringDialog(QDialog):
     # -- population -----------------------------------------------------------
 
     def _load(self) -> None:
-        """Fill the pickers the image can answer, then any committed document."""
+        """Fill the pickers the image can answer, then any committed document.
+
+        The template's own position and box are a STARTING point for a new
+        identity. A document that already states them keeps what it says: applying
+        the defaults after loading a committed document is what silently replaced
+        an author's own placement with the template's.
+        """
+        committed = None
         self._loading = True
         try:
             self._populate_donors()
@@ -242,8 +250,9 @@ class SpriteAuthoringDialog(QDialog):
                 self._load_committed(committed)
         finally:
             self._loading = False
-        self._on_donor_changed(self._donor.currentIndex())
-        self._on_template_changed(self._template.currentIndex())
+        if committed is None:
+            self._apply_template_defaults(
+                self._template_facts(self._template.currentData()))
         self._refresh()
 
     def _populate_donors(self) -> None:
@@ -274,22 +283,36 @@ class SpriteAuthoringDialog(QDialog):
 
     def _load_committed(self, sprite: AuthoredSprite) -> None:
         self._name.setText(sprite.name)
-        index = self._donor.findData(sprite.donor_sprite_id)
-        if index >= 0:
-            self._donor.setCurrentIndex(index)
+        self._donor.setCurrentIndex(
+            self._select_or_add(self._donor, sprite.donor_sprite_id,
+                                f"sprite {sprite.donor_sprite_id}"))
         self._animations = [_AnimationDraft(animation.name, animation.sheet,
                                             animation.frames)
                             for animation in sprite.ordered_animations()]
         self._reload_animations()
-        index = self._template.findData(sprite.actor.behaviour_template)
-        if index >= 0:
-            self._template.setCurrentIndex(index)
+        self._template.setCurrentIndex(
+            self._select_or_add(self._template, sprite.actor.behaviour_template,
+                                sprite.actor.behaviour_template))
         self._position_x.setValue(sprite.actor.position[0])
         self._position_y.setValue(sprite.actor.position[1])
         for box, value in zip(self._box, sprite.actor.wander_box):
             box.setValue(value)
         self._palette.setText(", ".join(str(entry)
                                         for entry in sprite.free_palette_entries))
+
+    def _select_or_add(self, combo: QComboBox, data, label: str) -> int:
+        """The index of ``data``, adding it when the open image does not offer it.
+
+        A document naming a donor or template this image no longer lists must be
+        shown as what it says. Falling back to the combo's first entry would let
+        Save silently swap in a different donor or behaviour, and validation is the
+        right place to refuse it instead.
+        """
+        index = combo.findData(data)
+        if index < 0:
+            combo.addItem(label, data)
+            index = combo.count() - 1
+        return index
 
     def _reload_animations(self) -> None:
         current = self._anim_list.currentRow()
@@ -399,7 +422,7 @@ class SpriteAuthoringDialog(QDialog):
                 f"drawn as {envelope.piece_count} piece(s) ({envelope.pixels} pixels)")
 
     def _on_template_changed(self, _index: int) -> None:
-        """A new template offers its own position, and states what it carries."""
+        """A new template offers its own placement, and states what it carries."""
         identity = self._template.currentData()
         if identity is not None:
             template = self._template_facts(str(identity))
@@ -409,15 +432,28 @@ class SpriteAuthoringDialog(QDialog):
                     f"carried verbatim, meaning unresolved - "
                     f"retained_raw 0x{template.retained_raw:08X}, "
                     f"data_pointer_raw 0x{template.data_pointer_raw:08X}")
-                self._loading = True
-                try:
-                    self._position_x.setValue(template.position[0])
-                    self._position_y.setValue(template.position[1])
-                    for box, value in zip(self._box, template.wander_box):
-                        box.setValue(value)
-                finally:
-                    self._loading = False
-        self._refresh()
+                if not self._loading:
+                    self._apply_template_defaults(template)
+        if not self._loading:
+            self._refresh()
+
+    def _apply_template_defaults(self, template: ActorTemplate | None) -> None:
+        """Offer the template's own position and box without disturbing a document.
+
+        Written quietly, so filling five spin boxes is not five validations, and
+        without touching the loading guard: this is called from inside `_load`.
+        """
+        if template is None:
+            return
+        widgets = (self._position_x, self._position_y, *self._box)
+        blockers = [QSignalBlocker(widget) for widget in widgets]
+        try:
+            self._position_x.setValue(template.position[0])
+            self._position_y.setValue(template.position[1])
+            for box, value in zip(self._box, template.wander_box):
+                box.setValue(value)
+        finally:
+            blockers.clear()
 
     def _template_facts(self, identity: str | None) -> ActorTemplate | None:
         if identity is None:

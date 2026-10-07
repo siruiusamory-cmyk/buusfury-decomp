@@ -16,6 +16,7 @@ document route is owned by `tests/integration/test_sprite_new_project_rom.py`.
 from __future__ import annotations
 
 import hashlib
+import json
 import os
 from pathlib import Path
 
@@ -227,3 +228,101 @@ def test_a_sheet_whose_dimensions_disagree_with_its_frames_is_refused(
     with pytest.raises(sp.SpriteAuthoringError, match="one row of square cells"):
         sp.validate_authored_sprite(canonical, identified, profile,
                                     _request(sheet, frames=1), project_dir=project)
+
+
+def test_an_inverted_wander_box_is_refused_by_the_surface(canonical, identified,
+                                                          profile, project):
+    """The box is a field the surface authors, so the surface refuses it."""
+    sheet = _sheet(project)
+    request = _request(sheet)
+    inverted = sp.AuthoredSpriteRequest(
+        name=request.name, donor_sprite_id=request.donor_sprite_id,
+        animations=request.animations,
+        free_palette_entries=request.free_palette_entries,
+        behaviour_template=request.behaviour_template, position=request.position,
+        wander_box=(400, 500, 300, 600))
+
+    with pytest.raises(sp.SpriteAuthoringError, match="inverted"):
+        sp.validate_authored_sprite(canonical, identified, profile, inverted,
+                                    project_dir=project)
+
+
+# --- the surface's own output, built and compared to the runtime image -------
+
+
+def test_the_surface_writes_the_document_the_runtime_record_ran(
+        canonical, identified, profile, tmp_path):
+    """The surface's own output, built and compared with the runtime document.
+
+    The comparison is exact except for ONE field, and the exception is stated
+    rather than assumed: the recorded runtime document states a
+    ``data_pointer_raw`` taken from a NEIGHBOURING sibling slot of the same map,
+    while the surface carries the chosen template slot's own word. The two differ
+    by 16 bytes. That is why the capability is registered at `application` proof
+    and the engine observation stays attached to the mechanism.
+
+    What this proves is the application-level claim: the surface's document
+    validates, builds to a valid image, authors the same identity and actor, and
+    touches exactly the canonical fields and retail records the runtime case does.
+    Skipped without the private sheets, exactly like the parity case itself.
+    """
+    import dataclasses
+
+    from tests.integration import test_sprite_new_project_rom as parity
+    from tools.webfoot.build import extract_project, validate_project
+    from tools.webfoot.profile import RomProfileCatalog
+
+    sources = parity.private_sheets()
+    if sources is None:
+        pytest.skip("private Cui sheets not configured locally")
+
+    catalog = RomProfileCatalog.load("config/roms.yaml")
+    rom = _rom_path()
+
+    handwritten = tmp_path / "handwritten"
+    through_surface = tmp_path / "through-surface"
+    for destination in (handwritten, through_surface):
+        extract_project(rom, destination, catalog, name="surface-parity",
+                        graphics=False)
+
+    parity.author_sprite(handwritten, sheets=parity.copy_sheets(handwritten, sources))
+    expected = read_project(handwritten).sprites
+
+    sheets = parity.copy_sheets(through_surface, sources)
+    request = sp.AuthoredSpriteRequest(
+        name="cui", donor_sprite_id=parity.DONOR_SPRITE_ID,
+        animations=tuple(AuthoredSpriteAnimation(name=name,
+                                                 sheet=f"sprites/cui/{name}.png",
+                                                 frames=frames)
+                         for name, frames in sorted(sheets.items())),
+        free_palette_entries=parity.FREE_ENTRIES,
+        behaviour_template=f"map:{parity.MAP_INDEX:04d}/object:{parity.DONOR_SLOT:04d}",
+        position=parity.POSITION, wander_box=parity.WANDER_BOX)
+    document = sp.validate_authored_sprite(canonical, identified, profile, request,
+                                           project_dir=through_surface)
+    sp.apply_authored_sprite(through_surface, document)
+
+    # Everything except the one carried word, which is what the template itself
+    # states rather than what the recorded document chose.
+    written = document.only()
+    recorded = expected.only()
+    assert written.actor.data_pointer_raw == sp.supported_template(
+        canonical, profile, request.behaviour_template).data_pointer_raw
+    assert written.actor.data_pointer_raw != recorded.actor.data_pointer_raw
+    assert dataclasses.replace(recorded, actor=dataclasses.replace(
+        recorded.actor,
+        data_pointer_raw=written.actor.data_pointer_raw)) == written
+
+    report = validate_project(through_surface, rom, catalog)
+    assert report.passed, report.problems
+    output, manifest = parity.build(through_surface, tmp_path, "surface", catalog)
+    produced = Path(output).read_bytes()
+    assert len(produced) == 16 * 1024 * 1024
+
+    entry = json.loads(Path(manifest).read_text(encoding="utf-8"))["sprite_authoring"][0]
+    identity, actor = entry["identity"], entry["actor"]
+    assert identity["sprite_id"] == parity.SPRITE_ID
+    assert actor["map_index"] == parity.MAP_INDEX
+    assert actor["array_slots"] == 11
+    parity.assert_only_canonical_fields_changed(canonical, produced, profile, identity)
+    parity.assert_retail_object_records_preserved(canonical, produced, profile, actor)

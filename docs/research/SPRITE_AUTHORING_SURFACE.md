@@ -87,13 +87,26 @@ identity the image does not contain (`new_sprite_id=307`, `structure=0x088005B4`
 and `docs/research/SPRITE_NEW_ATTACHMENT_RUNTIME_PARITY.md:10-19` records both
 production planners run together in the retail engine, drawing the identity's own
 frames across all four facings with a liveness channel that fired
-(`:161-165`). This ticket changes no planner, no allocation and no byte of the
-build path, so that engine observation still describes the emitted image: the
-document the surface writes is the document that path plans. The surface itself is
-covered by application-level tests, and the document-to-image identity is asserted
-by the ROM-gated suite this ticket runs
-(`tests/integration/test_sprite_new_project_rom.py`, whose parity case rebuilds the
-exact image the runtime record ran).
+(`:161-165`).
+
+**The runtime observation is evidence for the mechanism, not for this exact
+document, and the difference is one word.** The recorded runtime document states
+`data_pointer_raw = 142104172`, taken from a NEIGHBOURING sibling slot of map 102,
+while the surface carries the chosen template slot's own `+0x0C` word, which is
+`142104156`. Map 102's ten sibling records carry ten distinct values 16 bytes
+apart, and slots 7, 8 and 9 all draw sprite 69, so the two are equally plausible
+and neither is derivable from the field's meaning, which is unresolved. The
+surface's choice is the honest one - it carries what the template it was pointed
+at carries - and it means the surface's own image is NOT byte-identical to the
+image the engine ran.
+
+So the capability is registered at `proof: "application"`, with a ROM-gated build
+proof of the surface's own output, and the engine observation stays attached to
+the mechanism and the research records. The surface writes the same document in
+every other field: `tests/integration/test_sprite_project_surface_rom.py` compares
+the two field by field, asserts the one difference, builds the surface's document,
+and checks that it authors the same identity and actor while touching exactly the
+canonical fields and retail records the runtime case touches.
 
 ## SC4 -- What shipped, and the two measurements that shaped it
 
@@ -202,3 +215,51 @@ One process note, so the captures are not misread: the first successful run reus
 a project directory an earlier attempt had already written to, so the dialog
 picked up the committed identity and the strip reported three animation slots. The
 final captures come from a freshly extracted project and show one.
+
+## SC7 -- The independent review, and what it found
+
+Reviewed at the frozen candidate `6c0d841` by a fresh-context reviewer that did
+not implement the change, with the review scope, the evidence document and the
+candidate diff. Verdict: **BLOCKED**, three blocking findings. All three held up
+under inspection, and the fourth fixed a claim of mine that the tests did not
+support.
+
+**B1, the Edit path overwrote the author's own placement.** `_load` called the
+template handler unconditionally after loading a committed document, and that
+handler reset the position and all four wander-box values to the template's own;
+it also cleared the loading guard partway through the load. Fixed: the defaults
+apply only to a NEW draft, the guard is no longer touched by the handler, the
+spin boxes are filled under `QSignalBlocker`, and a test now commits a document
+whose position and box differ from the template's and asserts Edit shows them and
+saves them back.
+
+**B2, Undo wrote into whichever project was open.** The command resolved
+`session.project_dir` when it ran, so creating a sprite in one project and then
+opening another let Undo delete the second project's document. Fixed: the command
+captures its project directory and refuses a mismatch with a message, and the
+strip retires the whole history when the open project changes. Two tests cover it.
+
+**B3, the `runtime` proof label was not supported.** The reviewer was right twice
+over: no test built a document the surface wrote, and when that test was written
+the two documents turned out not to be identical (see SC3). Fixed: the record is
+`proof: "application"`, the difference is stated in the registry's own limits, and
+a ROM-gated test builds the surface's document and checks the authored identity,
+the actor and the canonical field set.
+
+**Non-blocking, all fixed anyway.** An inverted wander box passed the surface and
+stopped the build, so the surface now validates the box through the planner's own
+`WanderBox` and the registry limit text says exactly which fields it refuses. A
+no-op commit bumped the project revision, so it now writes nothing, records no
+history and leaves the validation and build current. A failed write inside a
+command left the history out of step with the disk, so the command now reports the
+refusal instead of raising. And a saved donor or template that the open image no
+longer offers was silently replaced by the first entry, so the dialog now keeps
+what the document says and lets validation refuse it.
+
+**Confirmed by the reviewer as holding:** the probe refactor reads the same word
+the planner read, the profile-based probe returns the id `_require_appended_id`
+enforces, the template entry bytes are unchanged, no write path reaches the
+canonical image, and no ROM-derived artifact is in the diff. The reviewer could
+not run the ROM-gated tests (no canonical image in its session) and said so
+rather than guessing; those are the commands this ticket ran itself.
+

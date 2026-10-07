@@ -24,7 +24,7 @@ from .project.model import (AuthoredSprite, AuthoredSpriteActor,
                             AuthoredSpriteAnimation, AuthoredSprites,
                             read_project, write_authored_sprites)
 from .sprite_attachment import (FAMILY_MAP_SIBLING, SpriteAttachmentError,
-                                supported_family)
+                                WanderBox, supported_family)
 from .sprite_authoring import (ActorTemplate, SpriteAuthoringError,
                                actor_template, actor_templates,
                                read_source_sheet)
@@ -156,9 +156,10 @@ def validate_authored_sprite(
     """The field-level half of the plan, and the document to write.
 
     Every refusal that precedes the registry runs here: the model's own validation,
-    the donor probe, the planner's sheet reader and the planner's cell-geometry
-    guard. A draft that returns from this has no field the planner refuses on
-    sight, and the surface can answer between a click and its own repaint.
+    the donor probe, the planner's sheet reader, the planner's cell-geometry guard
+    and the planner's own wander-box type. A draft that returns from this has no
+    field the planner refuses on sight, and the surface can answer between a click
+    and its own repaint.
 
     The REST of the plan is the build's: the palette claim checked against the
     decoded actor-sprite graphics, the allocation and the relocation census.
@@ -174,6 +175,9 @@ def validate_authored_sprite(
                                   supported_family(ACTOR_FAMILY),
                                   request.behaviour_template)
         sprite = request.to_sprite(template=template, sprite_id=probe.sprite_id)
+        # The planner's own box type, so an inverted box is refused here with the
+        # build's wording instead of passing the surface and stopping the build.
+        WanderBox(*request.wander_box)
         sprites = AuthoredSprites(sprites={sprite.name: sprite})
         envelope = probe.donor
         for animation in request.animations:

@@ -27,13 +27,15 @@ from PySide6.QtWidgets import QApplication, QMessageBox  # noqa: E402
 from tests.unit.test_sprite_project_surface import (  # noqa: E402
     SPRITE_ID, TEMPLATE, _template)
 from tools.webfoot import sprite_project as sp  # noqa: E402
-from tools.webfoot.project.model import (AuthoredSprites, ProjectMeta,  # noqa: E402
+from tools.webfoot.project.model import (AuthoredSpriteAnimation,  # noqa: E402
+                                         AuthoredSprites, ProjectMeta,
                                          ProjectValidationError, read_project,
                                          write_project)
 from tools.webfoot.sprite_authoring import SourceSheet  # noqa: E402
 from tools.webfoot.sprite_identity import DonorEnvelope  # noqa: E402
 from tools.webfoot.workbench import sprite_dialog as sd  # noqa: E402
-from tools.webfoot.workbench.graphics_tab import GraphicsTab  # noqa: E402
+from tools.webfoot.workbench.graphics_tab import (AuthoredSpriteCommand,  # noqa: E402
+                                                  GraphicsTab)
 from tools.webfoot.workbench.session import Session  # noqa: E402
 
 CELL = 8
@@ -258,6 +260,50 @@ def test_editing_reloads_the_committed_document(qapp, tmp_path, stubbed):
     assert editing._anim_sheet.text() == "sprites/cui/stand.png"
 
 
+def test_editing_keeps_the_placement_the_document_states(qapp, tmp_path, stubbed):
+    """The template's own position and box are a default, never an override."""
+    project = _project(tmp_path)
+    session = _session(project)
+    tab = _tab(qapp, session, stubbed)
+    dialog = sd.SpriteAuthoringDialog(tab, session, editing=False)
+    _fill(dialog)
+    dialog._position_x.setValue(5)
+    dialog._position_y.setValue(6)
+    for box, value in zip(dialog._box, (1, 2, 300, 400)):
+        box.setValue(value)
+    dialog._refresh()
+    dialog._on_accept()
+    tab._commit_authored_sprite(dialog.document(), "New authored sprite")
+
+    editing = sd.SpriteAuthoringDialog(tab, session, editing=True)
+
+    assert (editing._position_x.value(), editing._position_y.value()) == (5, 6)
+    assert tuple(box.value() for box in editing._box) == (1, 2, 300, 400)
+    editing._on_accept()
+    assert editing.document() == read_project(project).sprites
+
+
+def test_editing_keeps_a_template_the_image_no_longer_offers(qapp, tmp_path, stubbed):
+    """A saved template that is missing must be kept, not silently swapped."""
+    project = _project(tmp_path)
+    session = _session(project)
+    tab = _tab(qapp, session, stubbed)
+    sprite = sp.AuthoredSpriteRequest(
+        name="cui", donor_sprite_id=10,
+        animations=(AuthoredSpriteAnimation(name="stand",
+                                            sheet="sprites/cui/stand.png",
+                                            frames=1),),
+        free_palette_entries=(), behaviour_template="map:0102/object:0001",
+        position=(1, 2), wander_box=(1, 2, 3, 4)).to_sprite(
+            template=_template(identity="map:0102/object:0001", slot_index=1),
+            sprite_id=SPRITE_ID)
+    sp.apply_authored_sprite(project, AuthoredSprites(sprites={sprite.name: sprite}))
+
+    editing = sd.SpriteAuthoringDialog(tab, session, editing=True)
+
+    assert editing._template.currentData() == "map:0102/object:0001"
+
+
 # --- refusals ----------------------------------------------------------------
 
 
@@ -272,7 +318,68 @@ def test_a_project_that_cannot_be_read_leaves_the_strip_read_only(qapp, tmp_path
     assert tab._authored_chip.text() == "Project unreadable."
 
 
-def test_an_empty_draft_is_refused_in_the_summary(qapp, tmp_path, stubbed):
+def test_a_commit_that_changes_nothing_does_not_touch_the_project(qapp, tmp_path,
+                                                                  stubbed):
+    """An unchanged save must not make a good validation or build stale."""
+    project = _project(tmp_path)
+    session = _session(project)
+    tab = _tab(qapp, session, stubbed)
+    dialog = sd.SpriteAuthoringDialog(tab, session, editing=False)
+    _fill(dialog)
+    dialog._on_accept()
+    tab._commit_authored_sprite(dialog.document(), "New authored sprite")
+
+    revision = session.project_revision
+    depth = tab._undo_stack.count()
+    written = (project / "sprites" / "sprites.toml").read_bytes()
+
+    tab._commit_authored_sprite(dialog.document(), "New authored sprite")
+
+    assert session.project_revision == revision
+    assert tab._undo_stack.count() == depth
+    assert (project / "sprites" / "sprites.toml").read_bytes() == written
+
+
+def test_undo_refuses_to_write_into_another_project(qapp, tmp_path, stubbed,
+                                                    monkeypatch):
+    """The history names one project; opening another must not redirect it."""
+    first = _project(tmp_path / "first")
+    second = _project(tmp_path / "second")
+    session = _session(first)
+    tab = _tab(qapp, session, stubbed)
+    dialog = sd.SpriteAuthoringDialog(tab, session, editing=False)
+    _fill(dialog)
+    dialog._on_accept()
+    tab._commit_authored_sprite(dialog.document(), "New authored sprite")
+    prior = AuthoredSprites()
+    current = read_project(first).sprites
+    command = AuthoredSpriteCommand(tab, first, prior, current, "New authored sprite")
+
+    other = sp.AuthoredSpriteRequest(
+        name="bsprite", donor_sprite_id=10,
+        animations=(AuthoredSpriteAnimation(name="stand",
+                                            sheet="sprites/cui/stand.png",
+                                            frames=1),),
+        free_palette_entries=(), behaviour_template=TEMPLATE,
+        position=(1, 2), wander_box=(1, 2, 3, 4)).to_sprite(
+            template=_template(), sprite_id=SPRITE_ID)
+    sp.apply_authored_sprite(second, AuthoredSprites(sprites={other.name: other}))
+    told = []
+    monkeypatch.setattr(QMessageBox, "information",
+                        lambda *args, **kwargs: told.append(args[2]))
+
+    session.set_project(second)
+    # The strip is the method that reads the open project, so it is also the one
+    # that notices the project changed and retires the history with it.
+    tab._refresh_authored_strip()
+    assert tab._undo_stack.count() == 0  # the history went with the project
+    command.undo()
+
+    assert sp.authored_sprite(second).name == "bsprite"
+    assert told and "no longer open" in told[0]
+
+
+
     session = _session(_project(tmp_path))
     tab = _tab(qapp, session, stubbed)
     dialog = sd.SpriteAuthoringDialog(tab, session, editing=False)

@@ -313,11 +313,15 @@ export const project: ProjectStatus = {
     " donor whose proven composition shape every frame keeps, the sheet each animation" +
     " slot draws from, and the existing object slot the appended actor starts its" +
     " behaviour from. It refuses any field the build would refuse and writes" +
-    " sprites/sprites.toml, the same document the ordinary build consumes. The retail" +
-    " engine resolves the authored identity and draws its own frames, and the" +
-    " project-document route reproduces that image byte for byte. Piece and OAM" +
-    " composition, frame geometry and frame timing are outside the modelled contract," +
-    " and the surface states that where it is offered rather than pretending otherwise.",
+    " sprites/sprites.toml, the same document the ordinary build consumes, and a" +
+    " ROM-gated build of the surface's own document authors the identity and actor the" +
+    " runtime record resolved. The engine observation itself covers the mechanism: the" +
+    " recorded runtime document carries a neighbouring sibling slot's data-pointer word" +
+    " and the surface carries the chosen slot's own, in a field whose meaning is" +
+    " unresolved, so the two images are not byte-identical and the capability is" +
+    " registered at application proof. Piece and OAM composition, frame geometry and" +
+    " frame timing are outside the modelled contract, and the surface states that where" +
+    " it is offered rather than pretending otherwise.",
     "The next capability, and the current blocker, is appearance authoring: binding a" +
     " newly authored identity into the game's own actor records so a character, form or" +
     " costume selects it. That table's record count appears as compiled-in engine bounds" +
@@ -1424,10 +1428,13 @@ const roadmapTo1: RoadmapTo1 = {
         " donor whose proven composition shape every frame keeps, name the sheet each" +
         " animation slot draws from, and choose the existing object slot the appended actor" +
         " starts its behaviour from; the surface refuses a field the build would refuse and" +
-        " writes sprites/sprites.toml. The retail engine resolves the new identity and draws" +
-        " its own frames, and the document route reproduces that image byte for byte. Piece" +
-        " and OAM composition, frame geometry and frame timing stay outside the modelled" +
-        " contract and the surface says so where it is offered",
+        " writes sprites/sprites.toml. A ROM-gated build of that document authors the" +
+        " identity and actor the runtime record resolved, and the engine observation covers" +
+        " the mechanism: the recorded document carried a neighbouring sibling slot's" +
+        " data-pointer word while the surface carries the chosen slot's own, so the" +
+        " capability is registered at application proof. Piece and OAM composition, frame" +
+        " geometry and frame timing stay outside the modelled contract and the surface says" +
+        " so where it is offered",
       ],
       state: "in-progress",
     },

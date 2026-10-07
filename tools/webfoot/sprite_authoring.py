@@ -285,6 +285,10 @@ def actor_template(image: bytes, profile, family, template: str) -> ActorTemplat
             f"behaviour template {template}: map {map_index}'s object array: {exc}"
         ) from exc
     slot = slots[slot_index]
+    if slot.target_offset is None:
+        raise SpriteAuthoringError(
+            f"behaviour template {template}: slot {slot_index} points outside the image"
+        )
     if slot.family_raw != family.factory_raw:
         raise SpriteAuthoringError(
             f"behaviour template {template}: slot {slot_index} is family "

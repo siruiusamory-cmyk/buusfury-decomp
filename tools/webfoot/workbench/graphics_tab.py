@@ -205,12 +205,18 @@ class AuthoredSpriteCommand(QUndoCommand):
     an empty one, which is how undo removes the file - and both directions go
     through the tab's one write path, so an undo is a fresh project mutation
     rather than a silent return to a clean point.
+
+    The project directory is captured here, at construction. The tab's history
+    outlives an Open Project, and resolving the session's CURRENT directory when
+    the command runs would write one project's document into another; a mismatch
+    is refused and reported instead.
     """
 
-    def __init__(self, tab: "GraphicsTab", prior: AuthoredSprites,
+    def __init__(self, tab: "GraphicsTab", project_dir, prior: AuthoredSprites,
                  current: AuthoredSprites, text: str):
         super().__init__(text)
         self._tab = tab
+        self._project = Path(project_dir) if project_dir is not None else None
         self._prior = prior
         self._current = current
         self._applied = True
@@ -219,11 +225,32 @@ class AuthoredSpriteCommand(QUndoCommand):
         if self._applied:
             self._applied = False
             return
-        self._tab._write_authored_document(self._current)
-        self._tab._after_authored_change()
+        self._write(self._current)
 
     def undo(self) -> None:
-        self._tab._write_authored_document(self._prior)
+        self._write(self._prior)
+
+    def _write(self, document: AuthoredSprites) -> None:
+        """Write this command's document into the project it was made in.
+
+        A failed write leaves the file as it was, so the history and the disk can
+        disagree; the strip re-reads the project on the next refresh, which is what
+        shows the author that nothing moved. Qt gives a command no way to abort
+        mid-stack, so the refusal is surfaced rather than swallowed.
+        """
+        current = self._tab._session.project_dir
+        if (current is None or self._project is None
+                or Path(current) != self._project):
+            QMessageBox.information(
+                self._tab, "Authored sprite",
+                "This change belongs to a project that is no longer open, so it was "
+                "not written. Open that project and use Undo there.")
+            return
+        try:
+            self._tab._write_authored_document(document)
+        except _SPRITE_ERRORS as exc:
+            QMessageBox.critical(self._tab, "Authored sprite", str(exc))
+            return
         self._tab._after_authored_change()
 
 
@@ -717,6 +744,8 @@ class GraphicsTab(QWidget):
         #: a repaint never re-parses the project for a fact that has not moved.
         self._authored = None
         self._authored_key: tuple[str | None, int] | None = None
+        #: The project the current undo history belongs to.
+        self._authored_project: str | None = None
 
         # -- Layout: splitter (browser | inspector) over palette + status -----
         splitter = QSplitter(Qt.Orientation.Horizontal)
@@ -1686,8 +1715,15 @@ class GraphicsTab(QWidget):
         directory or the project revision moves, and never on a plain repaint.
         """
         project = self._session.project_dir
-        key = (str(project) if project is not None else None,
-               self._session.project_revision)
+        project_key = str(project) if project is not None else None
+        if project_key != self._authored_project:
+            self._authored_project = project_key
+            # A history entry names ONE project's document. Carrying the stack
+            # across an Open Project would let Undo write the old project's
+            # document into the new one, so the history goes with the project.
+            if self._undo_stack.count():
+                self._undo_stack.clear()
+        key = (project_key, self._session.project_revision)
         if key == self._authored_key:
             return
         self._authored_key = key
@@ -1773,18 +1809,23 @@ class GraphicsTab(QWidget):
         """Write the document, then record it as one undoable project mutation.
 
         The write runs HERE, before the push, so an SDK failure is caught by this
-        guard and the history is left untouched (`AuthoredSpriteCommand`).
+        guard and the history is left untouched (`AuthoredSpriteCommand`). A
+        document identical to the committed one writes nothing, records no history
+        entry and bumps no revision: an unchanged save must not make a good
+        validation or a good build stale.
         """
+        project = self._session.project_dir
         try:
-            prior = read_project(self._session.project_dir).sprites
+            prior = read_project(project).sprites
             changed = self._write_authored_document(document)
         except _SPRITE_ERRORS as exc:
             QMessageBox.critical(self, "Authored sprite", str(exc))
             return
+        if not changed:
+            return
         self._after_authored_change()
-        if changed:
-            self._undo_stack.push(
-                AuthoredSpriteCommand(self, prior, document, label))
+        self._undo_stack.push(
+            AuthoredSpriteCommand(self, project, prior, document, label))
 
     def _write_authored_document(self, document: AuthoredSprites) -> bool:
         """The one write path for the authored-sprite document."""

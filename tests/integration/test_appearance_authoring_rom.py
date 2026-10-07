@@ -128,6 +128,8 @@ def _named_offsets() -> set[int]:
     for offset in ap.APPEARANCE_TABLE_REFERENCE_OFFSETS:
         named.update(range(offset, offset + 4))
     named.update(ap.APPEARANCE_COUNT_OFFSETS)
+    for site in ap.ROSTER_PATCH_SITES:
+        named.update(range(site.offset, site.offset + len(site.expected)))
     return named
 
 
@@ -201,7 +203,13 @@ def test_the_plan_moves_the_whole_table_and_patches_only_what_it_names(
 
     assert {change.offset for change in materialization.changes} \
         == set(ap.APPEARANCE_TABLE_REFERENCE_OFFSETS) \
-        | set(ap.APPEARANCE_COUNT_OFFSETS) | {NEW_TABLE_OFFSET}
+        | set(ap.APPEARANCE_COUNT_OFFSETS) | {NEW_TABLE_OFFSET} \
+        | {site.offset for site in ap.ROSTER_PATCH_SITES}
+    for site in ap.ROSTER_PATCH_SITES:
+        change = next(item for item in materialization.changes
+                      if item.offset == site.offset)
+        assert change.old == site.expected
+        assert change.new == site.replacement
     block = next(change for change in materialization.changes
                  if change.offset == NEW_TABLE_OFFSET)
     assert block.new[:CANONICAL_COUNT * ap.APPEARANCE_RECORD_SIZE] \
@@ -333,6 +341,11 @@ def test_the_build_writes_the_record_where_the_engine_looks_for_it(
         assert struct.unpack_from("<I", produced, offset)[0] == NEW_TABLE_ADDRESS
     for offset in ap.APPEARANCE_COUNT_OFFSETS:
         assert produced[offset] == ap.APPEARANCE_CANONICAL_COUNT + 1
+    # The roster object grows with the table: every statement of its layout is
+    # restated, so the builder's own storage holds one entry per index.
+    for site in ap.ROSTER_PATCH_SITES:
+        assert produced[site.offset:site.offset + len(site.replacement)] \
+            == site.replacement, site.role
 
     # Nothing canonical moved except the fields this domain names.
     replaced = {index for index in range(len(canonical))

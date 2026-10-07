@@ -293,6 +293,49 @@ def _expansion(profile):
     return expansion
 
 
+def _roster_changes(image: bytes, count: int) -> list[ByteChange]:
+    """The roster object's grown layout, stated in the twenty-three sites that hold it.
+
+    The engine's roster builder sizes one heap object for the count it can scan:
+    `4 * count` bytes of index entries, then the display-list count, then
+    `8 * count` bytes of display entries, then a `0x28`-byte tail. Raising the
+    count from the canonical 232 therefore moves three things past where they were
+    - the end of the index array, the display-list count, and both tail bases - and
+    the patch that raises the count is the same one that lets the builder reach the
+    new index. Leaving the object at its canonical size would let the builder write
+    an entry over the display-list count, and the display loop would then read that
+    clobbered word as its own count and walk off the object.
+
+    Every site is checked against the canonical bytes before anything is written,
+    which is what makes the patch safe on an image that is not the one the census
+    was taken from. The object is sized for the supported maximum rather than the
+    authored count, so one statement of the layout serves every build.
+    """
+    if count > ap.ROSTER_SUPPORTED_COUNT:
+        raise AppearanceAuthoringError(
+            f"a {count}-record table needs roster storage for {count} entries and "
+            f"this build relocates it for {ap.ROSTER_SUPPORTED_COUNT}; the index "
+            f"array, the display list, the object's own allocation size and the two "
+            f"tail bases would all have to grow again"
+        )
+    changes = []
+    for site in ap.ROSTER_PATCH_SITES:
+        try:
+            site.check(image)
+        except ap.AppearanceError as refused:
+            raise AppearanceAuthoringError(str(refused)) from refused
+        changes.append(ByteChange(
+            site.offset,
+            image[site.offset:site.offset + len(site.expected)],
+            site.replacement,
+            TABLE_OWNER,
+            f"roster layout: the {site.role} restated for "
+            f"{ap.ROSTER_SUPPORTED_COUNT} entries, so the builder's own object grows "
+            f"with the table",
+        ))
+    return changes
+
+
 def _count_changes(image: bytes, count: int) -> list[ByteChange]:
     """The three compiled count bounds, patched or refused.
 
@@ -390,6 +433,7 @@ def materialize_authored_appearances(
             new_target_file_offset=table_at,
         ))
     changes.extend(_count_changes(image, count))
+    changes.extend(_roster_changes(image, count))
 
     generated = (allocation.generated_allocation_provenance(
         domain=DOMAIN, resource=TABLE_OWNER,

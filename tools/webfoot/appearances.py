@@ -119,7 +119,7 @@ class RosterPatchSite:
     def check(self, image: bytes) -> None:
         found = image[self.offset:self.offset + len(self.expected)]
         if found != self.expected:
-            raise AppearanceFormatError(
+            raise AppearanceError(
                 f"file 0x{self.offset:06X} is published as the roster {self.role}, "
                 f"but it holds {found.hex() or 'nothing'} rather than the canonical "
                 f"{self.expected.hex()}"

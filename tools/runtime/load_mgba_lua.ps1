@@ -6,7 +6,10 @@ param(
     [Parameter(Mandatory = $true)]
     [string]$ExpectedState,
     [string]$MgbaPath = 'build\tools\mgba-0.10.5\extracted\mGBA-0.10.5-win64\mGBA.exe',
-    [string]$RequiredMGBVersion = '0.10.5'
+    [string]$RequiredMGBVersion = '0.10.5',
+    # Exact digest the resolved mGBA executable must have. Overriding it is a
+    # deliberate act and stays an equality test; there is no accept-anything value.
+    [string]$MGBSha256 = '5A3C98C2984DD04BD0D7C9378CDFAE937AE0D73A196C880BB2EECF3B254AF247'
 )
 
 $ErrorActionPreference = 'Stop'
@@ -43,8 +46,9 @@ $ExpectedState = $resolvedExpectedState
 # bootstraps are written for: each opens with
 # assert(emu:getGameCode() == "AGB-BG3E"), and the 0.11 development build reports
 # the bare "BG3E" instead. The shared C:\Program Files install was measured
-# holding 0.11.0.0, so the version is read from the binary and compared here,
-# never inferred from the path, the filename or mere existence.
+# holding 0.11.0.0. Identity is the executable's bytes: a wrong binary can report
+# any version string, so the version below is the better error message and the
+# digest is the gate.
 $resolvedMgb = if ([System.IO.Path]::IsPathRooted($MgbaPath)) {
     $MgbaPath
 } else {
@@ -61,6 +65,11 @@ if (-not $mgbVersion) {
 if (-not $mgbVersion.StartsWith($RequiredMGBVersion)) {
     throw ("mGBA version mismatch: required $RequiredMGBVersion, found " +
         "$mgbVersion at $resolvedMgb")
+}
+$mgbHash = (Get-FileHash -Algorithm SHA256 -LiteralPath $resolvedMgb).Hash
+if ($mgbHash -ne $MGBSha256.Trim().ToUpperInvariant()) {
+    throw ("mGBA identity mismatch: required executable SHA-256 $MGBSha256, " +
+        "found $mgbHash at $resolvedMgb. Pass -MGBSha256 to override deliberately.")
 }
 
 $rom = Get-Item -LiteralPath $RomPath

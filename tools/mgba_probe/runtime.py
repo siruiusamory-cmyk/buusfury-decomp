@@ -23,6 +23,11 @@ WATCH_RANGES = ((0x04, 0x10), (0x14, 0x18))
 MATCH_RANGE = 0
 MATCH_ACCEPTED_X0C = 1
 PATCH_PATH = Path(__file__).with_name("mgba-0.10.5-log1-read-probe.patch")
+#: The probe patch revision the on-disk rom011 build records. It is a real
+#: earlier tracked revision of the same file (blob 29efbe22f7ef, at 61f062e7 and
+#: 0d0c0e39) that predates the matchKind/ACCEPTED_X0C protocol this client
+#: speaks, so that build is refused by name instead of by a bare digest.
+SUPERSEDED_PATCH_SHA256 = "8863b2e235add144c7af6d817bf30375a44326ccd13dc1acb89ccf6cd3be9e9a"
 
 
 def _parse_hex(value: object, name: str) -> int:
@@ -268,6 +273,12 @@ def verify_instrumented_mgba(executable: Path, manifest_path: Path) -> dict[str,
         not isinstance(expected_patch_hash, str)
         or sha256(PATCH_PATH) != expected_patch_hash
     ):
+        if expected_patch_hash == SUPERSEDED_PATCH_SHA256:
+            raise ValueError(
+                "instrumented mGBA build is from the superseded probe patch "
+                f"{SUPERSEDED_PATCH_SHA256}; rebuild it with "
+                "tools/mgba_probe/build.ps1"
+            )
         raise ValueError("instrumented mGBA patch hash mismatch")
     expected_hash = manifest.get("executable_sha256")
     if not isinstance(expected_hash, str) or sha256(executable) != expected_hash:

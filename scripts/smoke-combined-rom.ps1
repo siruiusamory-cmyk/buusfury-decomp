@@ -81,6 +81,7 @@ try {
         if ($process.HasExited) {
             throw "mGBA exited immediately with code $($process.ExitCode) - the image did not boot"
         }
+        Write-Host "launched     : $($process.Path)"
 
         $windows = Get-Process -Id $process.Id | Select-Object -ExpandProperty MainWindowTitle
         Write-Host "window title : $windows"

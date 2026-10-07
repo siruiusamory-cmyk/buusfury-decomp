@@ -19,6 +19,9 @@ param(
     [string]$GeneratedRomSha256,
     [string]$MGBPath = 'build\tools\mgba-0.10.5\extracted\mGBA-0.10.5-win64\mGBA.exe',
     [string]$RequiredMGBVersion = '0.10.5',
+    # Exact digest the resolved mGBA executable must have. Overriding it is a
+    # deliberate act and stays an equality test; there is no accept-anything value.
+    [string]$MGBSha256 = '5A3C98C2984DD04BD0D7C9378CDFAE937AE0D73A196C880BB2EECF3B254AF247',
     [string]$LuaPath,
     [switch]$LuaStartup,
     [int]$DumpRegister = 1,
@@ -80,7 +83,9 @@ $resolvedMGB = Resolve-RequiredFile $MGBPath 'mGBA executable'
 # Fail closed on emulator identity. The stable 0.10.5 install at
 # C:\Program Files\mGBA was once overwritten in place by a 0.11 development
 # build, so every capture silently ran an emulator the research tickets do not
-# accept. Version is therefore verified, not assumed from the path.
+# accept. Identity is the executable's bytes: a wrong binary can report any
+# version string, so the version is kept only as the better error message and
+# the digest below is the gate.
 if ($RequiredMGBVersion) {
     $mgbVersion = (Get-Item -LiteralPath $resolvedMGB).VersionInfo.FileVersion
     if (-not $mgbVersion) {
@@ -91,6 +96,11 @@ if ($RequiredMGBVersion) {
             "$mgbVersion at $resolvedMGB. Pass -RequiredMGBVersion to override " +
             'deliberately.')
     }
+}
+$mgbHash = (Get-FileHash -Algorithm SHA256 -LiteralPath $resolvedMGB).Hash
+if ($mgbHash -ne $MGBSha256.Trim().ToUpperInvariant()) {
+    throw ("mGBA identity mismatch: required executable SHA-256 $MGBSha256, " +
+        "found $mgbHash at $resolvedMGB. Pass -MGBSha256 to override deliberately.")
 }
 
 $resolvedLua = if ($LuaPath) { Resolve-RequiredFile $LuaPath 'Lua script' } else { $null }

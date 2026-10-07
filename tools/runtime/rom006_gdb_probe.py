@@ -17,6 +17,7 @@ import time
 from typing import Sequence
 import uuid
 
+from tools.runtime.evidence_bundle import write_run_bundle
 from tools.runtime.mgba_identity import (
     DEFAULT_PACKAGED_MGBA,
     PACKAGED_0_10_5,
@@ -357,6 +358,29 @@ def run_probe(
         before_hash == after_hash
         and before.st_size == after.st_size
         and before.st_mtime_ns == after.st_mtime_ns
+    )
+    write_run_bundle(
+        probe_root,
+        tool="tools.runtime.rom006_gdb_probe",
+        arguments={
+            "timeout_seconds": timeout_seconds,
+            "max_stops": max_stops,
+            "trace_registry": trace_registry,
+        },
+        rom=rom_path,
+        emulator=mgba_path,
+        observations={
+            "level3_valid": bool(
+                isinstance(selected_capture, dict)
+                and selected_capture.get("level3_valid") is True
+            ),
+            "registry_capture": registry_capture is not None,
+            "rom_unchanged": unchanged,
+        },
+        artifacts={
+            state_path: "input-savestate",
+            save_root / rom_path.with_suffix(".sav").name: "savegame",
+        },
     )
     return {
         "rom": str(rom_path),

@@ -62,6 +62,17 @@ PowerShell launcher refuses. `rom011_live_watch.py` and
 pinned source commit, the patch digest and the manifest-declared executable
 digest, verified by `verify_instrumented_mgba`.
 
+`tools/runtime/mgba_identity.py::LAUNCH_SITES` is the registry of every
+repository-controlled place an mGBA process can start, in Python and in
+PowerShell. Each entry carries one frozen classification, the `proof` mechanism
+that actually gates it - `executable-digest`, `instrumented-manifest`,
+`file-version` or `none` - and a written rationale. Read `proof`, not the class
+name, to know which gate a site must have: the class name does not distinguish
+the two builds that live inside `instrumented-required`. The recorded exceptions
+where no emulator identity is checked at all are the Workbench launch, where a
+user-selected mGBA is a product decision, and the combined-ROM smoke check,
+whose claim is only that the image boots.
+
 Measured API surface on the 0.11 dev build:
 
 ```text

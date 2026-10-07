@@ -146,6 +146,46 @@ overflow - without proving that the engine resolves an authored record, which is
 the reachability question in its own right. Both routes are recorded as measured
 openings rather than as plans that were carried out.
 
+## The evidence boundary, stated once
+
+Three levels, and nothing in this record may be read across them.
+
+**Runtime-proven.** Authored appearance records beyond the canonical table are
+resolved by the engine; post-canonical indices are reached; their state bits are
+written; and their appearance data is consumed visibly by the running game. The
+observations, from operator-driven sessions on the zero-second-argument path:
+
+```
+caller=0x08010317  second=0x00000000
+compare  index=232  record_sprite=0x086B1DE8  actor_sprite=0x086B1DE8  matched=true
+resolved index=232/233/234/236  past_canonical=true
+flag_write index=233  past_canonical=true
+flag index=233  value=0x02  set=true          (byte 0x0300114A)
+```
+
+and on the Scouter's own character screen the consumed fields are visible: OLIBU
+with HP/STR/POW/END, a portrait and a description, which are the appearance
+record's own fields.
+
+**Not runtime-proven.** The relocated roster/display-list builder appending a 233rd
+entry. Seventeen instrumented sessions, six of them operator-driven, with the same
+seven armed sites reporting `ok=true` and other sites in the same sessions firing
+thousands of times, never executed the builder at `0x08024F3C`. **This is recorded
+as a limitation of the roster subproof, not as outstanding work**: the builder has
+one caller, reached indirectly, and ordinary play does not reach it. The ticket
+does not require proof of a path that cannot be shown to be relevant to the
+capability.
+
+**Statically and review-proven.** If that builder does execute, all twenty-nine
+dependent sites and seventeen statements have been relocated consistently. The
+census was independently reviewed, which found three statements this work had
+missed, and the corrected census is re-derived from the image by a test whose
+enforcement was falsified twice.
+
+The capability is about authoring and consuming a new appearance, not about
+proving that every dormant consumer of the same index space executes during
+ordinary play.
+
 ## 1. The containing object, and its extent - CONFIRMED
 
 The builder is `0x08024F3C`. Its first instructions decide everything:

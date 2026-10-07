@@ -79,6 +79,95 @@ APPEARANCE_BLOCK_FIRST_OWNED_WORD = 0xE4
 #: neither byte is read by any consumer of the block.
 APPEARANCE_COUNT_FLAG_CEILING = APPEARANCE_CANONICAL_COUNT + 8
 
+#: The roster object the engine builds from the seen-flag array, and the one
+#: structure whose compiled offsets have to move when the count grows. It is
+#: heap-allocated (the builder's single caller passes a null argument) and its
+#: layout is `0x40 + 12 * count`: `+0x14` holds `4 * count` bytes of index
+#: entries, then the display-list count, then `8 * count` bytes of display
+#: entries, then a `0x28`-byte tail.
+ROSTER_CANONICAL_COUNT = APPEARANCE_CANONICAL_COUNT
+
+#: The count this build relocates the roster object for. Eight records is what
+#: the flag array admits, so 240 is the largest count that can be built at all,
+#: and sizing every build for it needs no per-count encoding: the additions all
+#: land inside one `movs`/`lsls` pair whatever the authored count is.
+#: The flag array's ceiling IS the largest buildable count, so the roster is sized
+#: for exactly that.
+ROSTER_SUPPORTED_COUNT = APPEARANCE_COUNT_FLAG_CEILING
+
+#: The canonical object size and the supported one, with the three offsets that
+#: follow from them.
+ROSTER_CANONICAL_OBJECT_SIZE = 0x40 + 12 * ROSTER_CANONICAL_COUNT
+ROSTER_OBJECT_SIZE = 0x40 + 12 * ROSTER_SUPPORTED_COUNT
+ROSTER_CANONICAL_SECOND_COUNT = 0x14 + 4 * ROSTER_CANONICAL_COUNT
+ROSTER_SECOND_COUNT = 0x14 + 4 * ROSTER_SUPPORTED_COUNT
+ROSTER_CANONICAL_TAIL_A = 0x18 + 12 * ROSTER_CANONICAL_COUNT
+ROSTER_TAIL_A = 0x18 + 12 * ROSTER_SUPPORTED_COUNT
+ROSTER_CANONICAL_TAIL_B = ROSTER_CANONICAL_TAIL_A + 8
+ROSTER_TAIL_B = ROSTER_TAIL_A + 8
+
+#: One compiled statement of the roster layout that has to change with the count.
+#: `expected` is what the canonical image holds, checked before anything is
+#: written, and `replacement` is what states the grown offset.
+@dataclass(frozen=True)
+class RosterPatchSite:
+    offset: int
+    expected: bytes
+    replacement: bytes
+    role: str
+
+    def check(self, image: bytes) -> None:
+        found = image[self.offset:self.offset + len(self.expected)]
+        if found != self.expected:
+            raise AppearanceFormatError(
+                f"file 0x{self.offset:06X} is published as the roster {self.role}, "
+                f"but it holds {found.hex() or 'nothing'} rather than the canonical "
+                f"{self.expected.hex()}"
+            )
+
+
+def _roster_sites() -> tuple[RosterPatchSite, ...]:
+    """The twenty-three halfwords and immediate bytes the roster layout lives in.
+
+    Four groups, each an idiom the engine already uses: the object size, the
+    display-list count's offset, and the two tail bases. The tail bases are
+    `movs` plus `lsls` pairs, so both halves are stated.
+    """
+    sites = [RosterPatchSite(0x00024F42, b"\x59", b"\x5c", "object size")]
+
+    # The display-list count's offset: 0xED << 2 becomes 0xF5 << 2.
+    for offset in (0x00024F60, 0x00025112, 0x0002541C, 0x00025514):
+        sites.append(RosterPatchSite(offset, b"\xed", b"\xf5",
+                                     "display-list count offset"))
+
+    # The first tail base: 0x2B << 6 becomes 0x59 << 5, same object address.
+    for movs, shift, rd in ((0x00024FD6, 0x00024FD8, 0),
+                            (0x0002502C, 0x0002502E, 0),
+                            (0x00025106, 0x00025108, 1),
+                            (0x00025638, 0x0002563A, 1)):
+        sites.append(RosterPatchSite(movs, b"\x2b", b"\x59", "tail base A"))
+        sites.append(RosterPatchSite(
+            shift, ((6 << 6) | (rd << 3) | rd).to_bytes(2, "little"),
+            ((5 << 6) | (rd << 3) | rd).to_bytes(2, "little"),
+            "tail base A shift"))
+
+    # The second tail base: 0x0B << 8 becomes 0x5B << 5, same object address.
+    for movs, shift, rd in ((0x00024FE0, 0x00024FE2, 0),
+                            (0x0002500E, 0x00025010, 0),
+                            (0x0002536E, 0x00025370, 1),
+                            (0x0002552C, 0x0002552E, 0),
+                            (0x0002561E, 0x00025620, 1)):
+        sites.append(RosterPatchSite(movs, b"\x0b", b"\x5b", "tail base B"))
+        sites.append(RosterPatchSite(
+            shift, ((8 << 6) | (rd << 3) | rd).to_bytes(2, "little"),
+            ((5 << 6) | (rd << 3) | rd).to_bytes(2, "little"),
+            "tail base B shift"))
+    return tuple(sites)
+
+
+#: Every compiled statement of the roster layout, in file-offset order.
+ROSTER_PATCH_SITES: tuple[RosterPatchSite, ...] = _roster_sites()
+
 #: The record-index bound enforced by the engine's `blt` after each `cmp`.
 APPEARANCE_COUNT_OFFSET_WIDTH = 1
 

@@ -422,3 +422,56 @@ def test_the_authorable_sprite_ids_exclude_every_canonical_one(canonical, profil
     assert len(offered) == 98
     assert not (offered & used)
     assert aa.UNMATCHABLE_SPRITE_ID not in offered
+
+def test_the_roster_patch_sites_match_the_canonical_image(canonical):
+    """Each stated site is checked against the image before anything is written.
+
+    The roster object's layout lives in twenty-three compiled statements across
+    five functions. Every one is pinned to the canonical bytes here, so a patch
+    can only ever land on an image that is the one the census was taken from.
+    """
+    assert len(ap.ROSTER_PATCH_SITES) == 23
+    for site in ap.ROSTER_PATCH_SITES:
+        site.check(canonical)
+
+
+def test_the_roster_replacements_state_the_supported_offsets(canonical):
+    """The replacements decode to the offsets the grown layout needs."""
+    by_role: dict[str, list] = {}
+    for site in ap.ROSTER_PATCH_SITES:
+        by_role.setdefault(site.role, []).append(site)
+
+    size = by_role["object size"]
+    assert len(size) == 1
+    assert (size[0].replacement[0] << 5) == ap.ROSTER_OBJECT_SIZE == 0xB80
+
+    counts = by_role["display-list count offset"]
+    assert len(counts) == 4
+    for site in counts:
+        assert (site.replacement[0] << 2) == ap.ROSTER_SECOND_COUNT == 0x3D4
+
+    bases = [site for site in by_role["tail base A"] if len(site.replacement) == 1]
+    assert len(bases) == 4
+    for site in bases:
+        base = site.replacement[0] << 5
+        assert base + 0x38 == ap.ROSTER_TAIL_A == 0xB58
+        assert base + 0x3C == ap.ROSTER_TAIL_A + 4
+
+    bases = [site for site in by_role["tail base B"] if len(site.replacement) == 1]
+    assert len(bases) == 5
+    for site in bases:
+        assert (site.replacement[0] << 5) == ap.ROSTER_TAIL_B == 0xB60
+
+    assert ap.ROSTER_SUPPORTED_COUNT == 240
+    assert ap.ROSTER_CANONICAL_OBJECT_SIZE == 0xB20
+    assert ap.ROSTER_CANONICAL_SECOND_COUNT == 0x3B4
+    assert ap.ROSTER_CANONICAL_TAIL_A == 0xAF8
+
+
+def test_the_roster_patch_sites_do_not_overlap(canonical):
+    """No two statements share a byte, so the patch set is order-independent."""
+    covered: set[int] = set()
+    for site in ap.ROSTER_PATCH_SITES:
+        span = range(site.offset, site.offset + len(site.expected))
+        assert not (set(span) & covered), f"overlapping site at 0x{site.offset:06X}"
+        covered.update(span)

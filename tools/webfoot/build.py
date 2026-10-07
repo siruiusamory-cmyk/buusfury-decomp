@@ -32,6 +32,10 @@ from pathlib import Path
 
 from . import capability
 from .allocation import AllocationError
+from .appearance_authoring import (
+    AppearanceAuthoringError,
+    materialize_authored_appearances,
+)
 from .profile import RomProfile, RomProfileCatalog, VerificationStatus
 from .project import (
     PROJECT_FORMAT_VERSION,
@@ -776,6 +780,23 @@ _TRANSITION_ERRORS = (MapTransitionsError, MapTransitionError)
 _SPRITE_ERRORS = (SpriteAuthoringError, SpriteIdentityError, SpriteAttachmentError,
                   SpriteFormatError, AllocationError)
 
+#: APPEARANCE-AUTHORING-GATE-001. One family at the build boundary for the same
+#: reason `_SPRITE_ERRORS` is one: the document's own refusals and the allocator's
+#: are all problems with this project against this image, so they are reported in
+#: the same family rather than raw.
+_APPEARANCE_ERRORS = (AppearanceAuthoringError, AllocationError)
+
+
+def _authored_sprite_id(project: StatProject) -> int | None:
+    """The engine id the project's authored sprite identity will take, if any.
+
+    An appearance definition may bind it, which is the one case where the sprite
+    id an authored record names is not an id the canonical image already has.
+    """
+    if project.sprites.is_empty():
+        return None
+    return project.sprites.only().sprite_id
+
 
 def _sprite_maps(project: StatProject) -> frozenset[MapIdentity]:
     """The maps an authored actor is appended to, as map-domain identities."""
@@ -851,6 +872,41 @@ def _check_sprites(
     except _SPRITE_ERRORS as exc:
         return problems + [f"authored actor sprite: {exc}"]
     return problems
+
+
+def _check_appearances(
+    project: StatProject, profile: RomProfile, canonical_image, identification,
+) -> list[str]:
+    """Check every authored appearance definition against the base image.
+
+    `materialize_authored_appearances` *is* the check, the way
+    `materialize_authored_sprites` is for an authored sprite: it re-checks the
+    published inbound words against the image, the text and sprite admissibility of
+    every definition and the count ceiling before anything is emitted. Running it
+    here reports the same refusals a build would raise, as validation problems
+    rather than as a half-applied build, and the work is repeated by the build on
+    purpose.
+    """
+    if project.appearances.is_empty():
+        return []
+    for name, required in (("an appearance table", capability.Capability.APPEARANCES),
+                           ("a text table", capability.Capability.TEXT_STRINGS),
+                           ("actor sprites", capability.Capability.ACTOR_SPRITES)):
+        if not capability.declared(profile, required):
+            return [
+                "project authors a new appearance definition, but this ROM's "
+                f"profile declares no {name}; a build would silently drop it"
+            ]
+    if canonical_image is None:
+        return []
+    try:
+        materialize_authored_appearances(
+            canonical_image, identification, profile, project.appearances,
+            authored_sprite_id=_authored_sprite_id(project),
+        )
+    except _APPEARANCE_ERRORS as exc:
+        return [f"authored appearance definition: {exc}"]
+    return []
 
 
 def _transition_requests(project: StatProject) -> dict[TransitionIdentity, AuthoredTransitionEdit]:
@@ -1175,6 +1231,7 @@ def validate_project(
                 or not project.transitions.is_empty()
                 or not project.transition_creations.is_empty()
                 or not project.sprites.is_empty()
+                or not project.appearances.is_empty()
                 or authored_graphics)
             else None
         )
@@ -1187,6 +1244,7 @@ def validate_project(
             + _check_transition_creations(project, profile, canonical_image)
             + _check_sprites(project, profile, project_dir, canonical_image,
                              identification, maps)
+            + _check_appearances(project, profile, canonical_image, identification)
             + _check_graphics(project, profile, project_dir, canonical_image, identification)
             + _check_dialogues(project, profile, rom_path)
         )
@@ -1685,6 +1743,30 @@ def build_project(
         sprite_authoring = (sprite_materialization.provenance(),)
         base_bytes = image if base_bytes is None else base_bytes
 
+    # APPEARANCE-AUTHORING-GATE-001. The character appearance-definition table is
+    # re-emitted whole, with the project's authored records appended and the five
+    # words and three count halfwords that reach it updated in the same change
+    # list. It runs after the sprite identity so a definition can bind the id that
+    # identity takes, and before the graphics pixel domain, which is last.
+    appearance_relocations: tuple = ()
+    if not project.appearances.is_empty():
+        image = Path(rom_path).read_bytes()
+        try:
+            appearance_materialization = materialize_authored_appearances(
+                image, identification, profile, project.appearances,
+                authored_sprite_id=_authored_sprite_id(project),
+                reserved=reserved,
+            )
+        except _APPEARANCE_ERRORS as exc:
+            raise ProjectValidationError(
+                f"authored appearance definition: {exc}") from exc
+        changes += appearance_materialization.changes
+        reserved += appearance_materialization.reserved
+        generated_allocations += list(
+            appearance_materialization.generated_allocations)
+        appearance_relocations = appearance_materialization.relocations
+        base_bytes = image if base_bytes is None else base_bytes
+
     # GRAPHICS-IMPORT-BOUNDARY-001: authored graphic pixels are the last allocating
     # domain, and they run here rather than beside the palette block above for a
     # deliberate reason. A re-encoded payload that fits its original container
@@ -1753,7 +1835,7 @@ def build_project(
         changes,
         profile_id=profile.id,
         base_sha256=identification.hashes.sha256,
-        relocations=graphic_relocations + sprite_relocations,
+        relocations=graphic_relocations + sprite_relocations + appearance_relocations,
         generated_image=generated_image,
         generated_allocations=tuple(generated_allocations),
         dialogue_edits=dialogue_edits,

@@ -339,6 +339,12 @@ class StatProject:
     #: authors, each with the one map actor that draws it. Empty for a project that
     #: authors none, which stays loadable on the same reasoning as `strings`.
     sprites: "AuthoredSprites" = field(default_factory=lambda: AuthoredSprites())
+    #: APPEARANCE-AUTHORING-GATE-001. New appearance definitions this project
+    #: authors. Empty for a project that authors none, which stays loadable on the
+    #: same reasoning as `strings`.
+    appearances: "AuthoredAppearances" = field(
+        default_factory=lambda: AuthoredAppearances()
+    )
 
 
 @dataclass(frozen=True, slots=True)
@@ -2115,6 +2121,21 @@ SPRITES_FILE = Path("sprites") / "sprites.toml"
 
 SPRITE_TABLE = "sprite"
 
+#: APPEARANCE-AUTHORING-GATE-001. A document of its own for the same reason
+#: `sprites/sprites.toml` is: it authors content the canonical image does not
+#: contain. A missing file means the project authors no new appearance
+#: definition, so a project extracted before this capability stays loadable.
+APPEARANCES_FILE = Path("appearances") / "appearances.toml"
+
+APPEARANCE_TABLE = "appearance"
+
+#: How many records this document may append. The engine states the record count
+#: as a Thumb `cmp rN,#imm8`, whose immediate reaches 255, and the canonical table
+#: already holds 232 records. Stated locally like the other hardware numbers in
+#: this package and pinned by test against the SDK's own constant, so the two
+#: cannot drift.
+_MAX_AUTHORED_APPEARANCES = 23
+
 #: An authored sprite's name, the same durable shape a chunk and a created
 #: transition take: it becomes part of an identity a manifest carries, so it stays
 #: lowercase, bounded and free of path or separator characters.
@@ -2604,6 +2625,145 @@ class AuthoredSprites:
             sprites[str(name)] = AuthoredSprite.from_document(str(name), entry,
                                                               f"{where}: {label}")
         return cls(sprites=sprites)
+
+
+@dataclass(frozen=True, slots=True)
+class AuthoredAppearance:
+    """One new appearance definition a project authors.
+
+    Only what an author decides. The engine record's own identity is its position
+    in the table, which the build assigns, and its `+0x08` and `+0x0C` fields stay
+    at the corpus-legal defaults the SDK states, so neither is a document field.
+
+    ``text_index`` is the record's `+0x00`: an index into the profile's declared
+    text pointer table. The record's `+0x02` is authored as its successor, which
+    holds on 232 of 232 canonical records. Creating a new text-table id is not
+    shipped, so this names an existing string rather than a new one, and the
+    record's own name in this document is what gives the identity a durable
+    handle a person can read.
+    """
+
+    name: str
+    text_index: int
+    sprite_id: int
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.name, str) or _SPRITE_NAME.match(self.name) is None:
+            raise ProjectValidationError(
+                f"appearance name {self.name!r} must be lowercase, start with a "
+                "letter, and use only letters, digits, '_' and '-'"
+            )
+        if type(self.text_index) is not int or not 0 <= self.text_index < 2**16:
+            raise ProjectValidationError(
+                f"appearance {self.name!r}: text index must be an unsigned 16-bit "
+                f"integer, got {self.text_index!r}"
+            )
+        if type(self.sprite_id) is not int or not 0 <= self.sprite_id < 2**32:
+            raise ProjectValidationError(
+                f"appearance {self.name!r}: sprite id must be an unsigned 32-bit "
+                f"integer, got {self.sprite_id!r}"
+            )
+
+    @property
+    def identity(self) -> str:
+        return f"appearance:{self.name}"
+
+    def to_document(self) -> dict[str, Any]:
+        return {"text_index": self.text_index, "sprite_id": self.sprite_id}
+
+    @classmethod
+    def from_document(
+        cls, name: str, document: object, where: object
+    ) -> "AuthoredAppearance":
+        fields = ("text_index", "sprite_id")
+        if not isinstance(document, Mapping):
+            raise ProjectLoadError(f"{where}: an appearance must be a table")
+        unexpected = set(document) - set(fields)
+        if unexpected:
+            joined = ", ".join(sorted(unexpected))
+            raise ProjectLoadError(
+                f"{where}: unknown key(s) {joined}; an appearance declares "
+                f"{', '.join(fields)}"
+            )
+        for required in fields:
+            if required not in document:
+                raise ProjectLoadError(f"{where}: an appearance must declare {required}")
+            if type(document[required]) is not int:
+                raise ProjectLoadError(
+                    f"{where}: {required} must be an integer, got "
+                    f"{document[required]!r}"
+                )
+        return cls(name=name, text_index=document["text_index"],
+                   sprite_id=document["sprite_id"])
+
+
+@dataclass(frozen=True)
+class AuthoredAppearances:
+    """Every new appearance definition a project authors.
+
+    A mapping rather than a list because the name is the durable handle a surface
+    and a manifest carry, and a TOML table has no order to inherit. The BUILD
+    order is stated instead: `ordered()` sorts by name, which is the only order
+    this document defines, so two runs of the same document append the same
+    records in the same order.
+    """
+
+    appearances: dict[str, AuthoredAppearance] = field(default_factory=dict)
+
+    def __post_init__(self) -> None:
+        if len(self.appearances) > _MAX_AUTHORED_APPEARANCES:
+            raise ProjectValidationError(
+                f"this project declares {len(self.appearances)} new appearance "
+                f"definitions; the record count is stated by a Thumb "
+                f"`cmp rN,#imm8`, which reaches at most "
+                f"{_MAX_AUTHORED_APPEARANCES} appended records, so this project "
+                "cannot be built"
+            )
+
+    def is_empty(self) -> bool:
+        return not self.appearances
+
+    def ordered(self) -> tuple[AuthoredAppearance, ...]:
+        """The definitions in the one order this document defines."""
+        return tuple(self.appearances[name] for name in sorted(self.appearances))
+
+    def names(self) -> tuple[str, ...]:
+        return tuple(sorted(self.appearances))
+
+    def to_document(self) -> dict[str, Any]:
+        return {
+            APPEARANCE_TABLE: {
+                name: appearance.to_document()
+                for name, appearance in sorted(self.appearances.items())
+            }
+        }
+
+    @classmethod
+    def from_document(
+        cls, document: Mapping[str, Any], where: object
+    ) -> "AuthoredAppearances":
+        table = document.get(APPEARANCE_TABLE)
+        if table is None:
+            raise ProjectLoadError(
+                f"{where}: missing required [{APPEARANCE_TABLE}] table"
+            )
+        if not isinstance(table, Mapping) or not table:
+            raise ProjectLoadError(
+                f"{where}: [{APPEARANCE_TABLE}] must be a table declaring at least "
+                "one appearance"
+            )
+        appearances: dict[str, AuthoredAppearance] = {}
+        for name, entry in table.items():
+            label = f"{APPEARANCE_TABLE}.{name}"
+            if _SPRITE_NAME.match(str(name)) is None:
+                raise ProjectLoadError(
+                    f"{where}: {label} is not an appearance name; it must be "
+                    "lowercase, start with a letter, and use only letters, digits, "
+                    "'_' and '-'"
+                )
+            appearances[str(name)] = AuthoredAppearance.from_document(
+                str(name), entry, f"{where}: {label}")
+        return cls(appearances=appearances)
 
 
 def _require_identity(value: object, pattern: "re.Pattern[str]", form: str,
@@ -3450,6 +3610,33 @@ def write_authored_sprites(directory: str | Path, sprites: "AuthoredSprites") ->
     return path
 
 
+def write_authored_appearances(
+    directory: str | Path, appearances: "AuthoredAppearances"
+) -> Path:
+    """Persist only the authored-appearance document for a loaded project.
+
+    APPEARANCE-AUTHORING-GATE-001. The ONE place an authored appearance definition
+    reaches disk. An empty document means the project authors no new appearance, so
+    the optional file is removed rather than written as an invalid empty table
+    (which `read_project` would then refuse).
+    """
+    path = Path(directory) / APPEARANCES_FILE
+    if appearances is None or appearances.is_empty():
+        path.unlink(missing_ok=True)
+        return path
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(dump_toml(appearances.to_document()), encoding="utf-8",
+                    newline="\n")
+    return path
+
+
+def _read_appearances(path: Path) -> "AuthoredAppearances":
+    """Load `appearances/appearances.toml`, or nothing at all if it is absent."""
+    if not path.is_file():
+        return AuthoredAppearances()
+    return AuthoredAppearances.from_document(_read_document(path), path)
+
+
 def _read_sprites(path: Path) -> "AuthoredSprites":
     """Load `sprites/sprites.toml`, or nothing at all if it is absent.
 
@@ -3522,6 +3709,7 @@ def read_project(directory: str | Path) -> StatProject:
     transitions = _read_transitions(root / TRANSITION_FILE)
     transition_creations = _read_transition_creations(root / TRANSITION_CREATION_FILE)
     sprites = _read_sprites(root / SPRITES_FILE)
+    appearances = _read_appearances(root / APPEARANCES_FILE)
 
     # MAP-CHUNK-AUTHORING-001. A layout cell that names an authored chunk must
     # name one this project declares. Checked here because it is the one place
@@ -3579,6 +3767,7 @@ def read_project(directory: str | Path) -> StatProject:
         transitions=transitions,
         transition_creations=transition_creations,
         sprites=sprites,
+        appearances=appearances,
         placement_events=events,
         placement_types=(_read_document(root / PLACEMENT_TYPES_FILE)
                          if (root / PLACEMENT_TYPES_FILE).exists() else None),

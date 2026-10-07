@@ -35,7 +35,7 @@ _ALLOWED_KEYS = {
     "free_regions",
     "generated_expansion",
 }
-_ALLOWED_TABLES = {"map_entries", "enemy_stats", "character_base_stats", "text_strings", "scripts", "placement_types", "actor_sprites"}
+_ALLOWED_TABLES = {"map_entries", "enemy_stats", "character_base_stats", "text_strings", "scripts", "placement_types", "actor_sprites", "appearances"}
 _ALLOWED_MAP_ENTRY_TABLE_KEYS = {"address", "count", "record_size"}
 _ALLOWED_RECORD_TABLE_KEYS = {"address", "count", "record_size"}
 _ALLOWED_TEXT_TABLE_KEYS = {
@@ -649,6 +649,12 @@ class RomProfile:
     scripts: tuple[ScriptProfile, ...] | None = None
     placement_types: PlacementTypeProfile | None = None
     actor_sprites: ActorSpriteProfile | None = None
+    #: APPEARANCE-AUTHORING-GATE-001. The character appearance-definition
+    #: table: a fixed-stride record table whose count the engine states only
+    #: as compiled loop bounds. Declaring it here is what makes its extent a
+    #: project fact rather than a literal in a consuming module, exactly as
+    #: `actor_sprites` is for the character registry.
+    appearances: RecordTableProfile | None = None
     generated_expansion: GeneratedExpansionProfile | None = None
 
     @property
@@ -758,6 +764,7 @@ class RomProfile:
             scripts=_optional_scripts(tables_value, size),
             placement_types=_optional_placement_types(tables_value, size),
             actor_sprites=_optional_actor_sprites(tables_value, size),
+            appearances=_optional_record_table(tables_value, "appearances"),
             free_regions=_free_regions(data.get("free_regions", []), size),
             generated_expansion=_optional_generated_expansion(
                 data.get("generated_expansion"), size

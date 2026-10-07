@@ -336,12 +336,14 @@
       "family": "author",
       "title": "New appearance definitions",
       "state": "missing",
-      "detail": "Not implemented. The record count appears as compiled-in bounds in the engine and there is no terminator, so whether the table can be grown at all is still an open question rather than a task.",
+      "detail": "Implemented, build-proven and deliberately not shipped. Growth is proven: the record count is three compiled loop bounds rather than a stored number, and the build moves the whole table above the original end of the image with the authored records appended, rewriting the five literal words and three count bounds that reach it. A project can author a definition through the Workbench and a build writes it. What is missing is the observation: the retail engine has not been seen reading the relocated table, and a capability is claimed on observation rather than on construction.",
       "limits": [
-        "Not implemented, and whether the appearance table can be grown at all is an open question rather than a scheduled task.",
-        "The record count appears as compiled-in engine bounds and there is no terminator to extend from."
+        "Not shipped: the growth route and the authoring surface exist and a build writes the record, but the retail engine has not been observed consuming the relocated table, so the runtime half of the proof is outstanding.",
+        "The record count is stated by three compiled `cmp rN,#0xE8` loop bounds and there is no terminator, so growth means re-emitting the whole table, not appending in place.",
+        "The count bound is a Thumb `cmp rN,#imm8`, which reaches 255, so at most 23 records may be added to the 232 the image has.",
+        "An authored definition shares an existing on-screen name, because creating new text-table ids is not shipped for any capability."
       ],
-      "evidence": "GRAPHICS-COVERAGE-001; docs/research/GRAPHICS_COVERAGE.md"
+      "evidence": "APPEARANCE-AUTHORING-GATE-001; docs/research/APPEARANCE_TABLE_GROWTH.md; docs/research/APPEARANCE_AUTHORING_SURFACE.md"
     },
     {
       "id": "map-new",

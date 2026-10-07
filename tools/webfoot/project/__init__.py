@@ -12,6 +12,7 @@ from .format import (
     load_toml,
 )
 from .model import (
+    APPEARANCES_FILE,
     CHUNK_FILE,
     LAYOUT_FILE,
     PROJECT_FORMAT_VERSION,
@@ -19,6 +20,8 @@ from .model import (
     STRUCTURE_FILE,
     TRANSITION_CREATION_FILE,
     TRANSITION_FILE,
+    AuthoredAppearance,
+    AuthoredAppearances,
     AuthoredChunk,
     AuthoredChunkEntry,
     AuthoredChunks,
@@ -44,6 +47,7 @@ from .model import (
     parse_transition_creation_identity,
     read_project,
     transition_creation_identity,
+    write_authored_appearances,
     write_authored_chunks,
     write_authored_sprites,
     write_dialogue_replacements,
@@ -57,6 +61,7 @@ from .model import (
 from .placements import remove_authored_placement
 
 __all__ = [
+    "APPEARANCES_FILE",
     "CHUNK_FILE",
     "LAYOUT_FILE",
     "PROJECT_FORMAT_VERSION",
@@ -64,6 +69,8 @@ __all__ = [
     "STRUCTURE_FILE",
     "TRANSITION_CREATION_FILE",
     "TRANSITION_FILE",
+    "AuthoredAppearance",
+    "AuthoredAppearances",
     "AuthoredChunk",
     "AuthoredChunkEntry",
     "AuthoredChunks",
@@ -93,6 +100,7 @@ __all__ = [
     "read_project",
     "remove_authored_placement",
     "transition_creation_identity",
+    "write_authored_appearances",
     "write_authored_chunks",
     "write_authored_sprites",
     "write_dialogue_replacements",

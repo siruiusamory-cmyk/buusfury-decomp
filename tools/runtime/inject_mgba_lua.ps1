@@ -17,6 +17,13 @@ param(
 $ErrorActionPreference = 'Stop'
 $workspaceRoot = [System.IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..\..'))
 $allowedLua = @(
+    # Added by APPEARANCE-AUTHORING-GATE-001: the read-only appearance-table
+    # observer. It counts four breakpoint sites - the id search's record read,
+    # the roster walk's patched bound, the sprite-id accessor and the record
+    # consumer - and writes only host files inside the run directory.
+    [System.IO.Path]::GetFullPath(
+        (Join-Path $workspaceRoot 'tools\runtime\appearance001_table_watch.lua')
+    )
     # Added by MAP-WARP-RUNTIME-EDIT-001: the read-only transition observer. It
     # reads the live map identity each frame plus the target record's destination
     # key through the engine's own MapEntry+0x2C -> root+0x44 route, and writes

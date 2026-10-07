@@ -50,7 +50,7 @@ the authored-sprite strip `SPRITE-PROJECT-SURFACE-001` established.
 
 Exposed: the project name, the on-screen name (an existing text index, labelled
 with the retail string it resolves to when the project carries a text table), and
-the sprite identity (the ids the canonical records select, plus the id an authored
+the sprite identity (the ids no canonical record selects, plus the id an authored
 actor-sprite identity in the same project takes, each labelled with the retail
 definition that first selects it).
 
@@ -62,12 +62,18 @@ engine remaps before it compares; a project that would exceed the flag array's
 count bound; and a project whose image does not publish the table's anchor, its
 five inbound words, or a relocatable anchor.
 
-The dialog offers the sprite ids nothing selects, which is 99 of them in this
+The dialog offers only sprite ids nothing selects, which is 98 of them in this
 image, rather than the canonical vocabulary: an id a canonical record already
 selects is one the engine can never return from an appended record.
 
 Not offered, and stated as out of contract: a new text-table id, a portrait slot,
 and a stat record.
+
+**An unselected sprite id is not a free one.** Refusing the ids retail records use
+removes the collision this surface can see; it does not make a chosen id inert. Any
+actor that carries the id - retail or authored - resolves through the same search,
+so binding an unused id changes how such an actor resolves if one exists in a scene
+this ticket has not measured. That is recorded as a limit, not as a closed question.
 
 ## SC3 - The evidence chain for the capability claim
 
@@ -315,8 +321,9 @@ own ticket.
 
 ## SC7 - Open, and honest about it
 
-* **The runtime chain is unestablished**, and it is the only reason the capability
-  is not claimed. Everything else in `SC3` is measured.
+* **The runtime chain is unestablished**, one of two reasons the capability is not
+  claimed. The other is the roster array: see the correction in the growth
+  record's section 5, which is a bound this build cannot yet show it respects. Everything else in `SC3` is measured.
 * **The roster's flag array is sized for 232 entries** (see the gate record,
   section 5). The theoretical maximum of simultaneously set flags rises by one
   per authored definition. That is not a safety argument: the builder appends without a bound check and its array holds exactly 232 entries, so an appended record whose flag is ever set can overflow it, and nothing in this build prevents that. See the correction in the growth record, section 5.

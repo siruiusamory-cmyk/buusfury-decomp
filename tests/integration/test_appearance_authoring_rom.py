@@ -396,10 +396,11 @@ def test_a_sprite_id_a_canonical_record_selects_is_refused(canonical, identified
                        canonical=ap.read_records(canonical, profile))
     assert "already" in str(refused.value)
     # and the full plan refuses it too, not only the field-level call
-    with pytest.raises(ValueError):
+    with pytest.raises(ValueError) as planned:
         aa.materialize_authored_appearances(
             canonical, identified, profile,
             _document(AuthoredAppearance(NAME, TEXT_INDEX, used)))
+    assert "already" in str(planned.value)
 
 
 def test_the_sprite_id_the_engine_remaps_can_never_be_authored(canonical, identified,

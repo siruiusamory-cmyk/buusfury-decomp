@@ -144,7 +144,7 @@ therefore uses IWRAM `0x0300112D + (i >> 3)`.
 sentinel on the index, so the engine will write that bit.
 
 Byte `0x0300114A` is interior to the block. The block's initialiser is reached
-from the only literal load of `0x03001068`: `0x0804819A` is `ldr r0,[pc,#0x2]`,
+from the only literal load of `0x03001068`: `0x0804819A` is `ldr r0,[pc,#8]`,
 whose pool word sits at `0x080481A4` and holds `0x03001068`. (An earlier revision
 cited `0x08004AE4` as that pool; that address is four kilobytes away from the load,
 which a Thumb literal load cannot reach, and it holds `0x000008A8`, the allocation
@@ -215,7 +215,7 @@ only one.
 | every required update identified | five literal words and three instruction halfwords |
 | values fit their encoded widths | `cmp` immediate is `imm8`, so the ENCODING reaches 255, but the seen-flag array bounds a build to 240 records; index registers and index fields are 32-bit; the address carrier is a full 32-bit word |
 | allocation and relocation supported | existing allocator and write path; the naming seams are listed in section 8 |
-| no consumer can silently exclude or misindex | all three bounds are patchable and named; the flag byte for the new index is interior; the unbounded consumers take one index each and follow the base register |
+| no consumer can silently exclude or misindex | **FALSIFIED for the roster consumer.** All three bounds are patchable and named, and the flag byte for the new index is interior to the block, but the roster display-list builder appends one entry per set flag into an array sized for exactly 232 and checks nothing, so a raised count can overflow it. See section 5's correction; the flag byte for the new index is interior; the unbounded consumers take one index each and follow the base register |
 | project reopen can represent it | not yet: the project format has no appearance representation, which is Phase B work |
 | deterministic build plan exists | yes: allocate above EOF, emit the grown block, rewrite the five words, patch the three halfwords |
 

@@ -354,6 +354,22 @@ $allowedLua = @(
     # that loads the saved game; it writes no emulated memory.
     [System.IO.Path]::GetFullPath(
         (Join-Path $workspaceRoot 'tools\runtime\spritenew005_parity.lua')
+    ),
+    # Added by RUNTIME-LUA-INJECTOR-CONSOLIDATION-001: the two ROM-006 bootstrap
+    # scripts, moved here from the private allowlist load_mgba_lua.ps1 used to carry
+    # so that membership is decided in exactly one place. Both drive input
+    # (emu:setKeys, emu:addKey, emu:clearKey), write one savestate
+    # (emu:saveStateFile) and take one screenshot, which is what makes the two
+    # ROM-006 samples deterministic. Both reset the core, pulse A on named frames
+    # and self-terminate, they write only beneath build\rom006, and each opens with
+    # assert(emu:getGameCode() == "AGB-BG3E"), so they are only valid on the 0.10.5
+    # build that load_mgba_lua.ps1 pins by VersionInfo.FileVersion. The ROM-006 GDB
+    # sample that consumes the state is tools/runtime/rom006_gdb_probe.py.
+    [System.IO.Path]::GetFullPath(
+        (Join-Path $workspaceRoot 'tools\runtime\rom006_bootstrap.lua')
+    )
+    [System.IO.Path]::GetFullPath(
+        (Join-Path $workspaceRoot 'tools\runtime\rom006_bootstrap_map4.lua')
     )
 )
 $resolvedLua = [System.IO.Path]::GetFullPath($LuaPath)

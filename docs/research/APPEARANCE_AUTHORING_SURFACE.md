@@ -68,13 +68,40 @@ and a stat record.
 | --- | --- | --- |
 | authored appearance id | the document, re-read by `read_project` after a write | CONFIRMED |
 | built table record | a real build: the 233rd record at file `0x800000`, the five words and three bounds patched, nothing else canonical changed | CONFIRMED |
-| engine lookup of the new id | a retail-engine observation | **NOT ESTABLISHED** |
+| engine lookup of the new id | the retail engine's own search executed and its record read reached index 232, through the base its own instruction loads from the pool word measured `0x08800000`; the register itself was not read at that instant | **PARTIAL** |
 | bound sprite/visual configuration | the authored record binds a sprite id the accessor resolves | CONFIRMED statically, unobserved |
 | an actor using it | a retail-engine observation | **NOT ESTABLISHED** |
 
 The capability is therefore **not claimed**. `src/data/capabilities.json` keeps
 `appearance` at `missing`, and its detail says what is implemented and what is
 not.
+
+### SC3.1 - How far the lookup link actually goes
+
+Link 3 is the one link with runtime evidence, and it goes further than a
+deduction, but not all the way. Both halves were measured, in the same run:
+
+* **Observed at runtime**, in the operator's own session (run `cale-drive-003`,
+  map 40): the engine entered the id search at `0x08027948` **24 times**, entered
+  the actor constructor at `0x08027390` **24 times** in the same frame, and the
+  instruction at `0x08027968` - the loop's own record read - fired **3,540 times
+  with a maximum index of 232**.
+* **Measured in the built image**: the register that indexes the table is loaded
+  at `0x08027962` from the literal-pool word at file `0x279D8`, whose value in
+  this build is `0x08800000`. The loop forms the record address as
+  `(index << 4) + base`, so index 232 addresses `0x08800E80`.
+* **Measured in the built image**: `0x08800E80` holds the authored record,
+  `(1188, 1189, 137, 0, -1)`.
+
+So the engine read the authored record at the address the build placed it, and
+that is established by an observed instruction plus a measured word rather than
+by inference about behaviour.
+
+**What is still missing, stated plainly.** The register was not read at the
+moment of the read, so the chain rests on "the only value that instruction can
+have loaded is `0x08800000`" rather than on a recorded `r1 = 0x08800000`. And no
+actor has been observed carrying the id. The observer now writes both on the
+first hit, but the hit has not recurred since.
 
 ## SC4 - What shipped
 
@@ -124,100 +151,116 @@ authors nothing reproduces the base image exactly.
 
 ## SC6 - The runtime attempt, and its honest result
 
-**Five runs were made under two governed vehicles, and none of them produced
-execution evidence. A control run then showed why: the scripted-breakpoint
-channel is inert in this environment, for every observer, not only this one.**
-The record is here because the failure is the instrument's and because the next
-attempt should not repeat any of it.
+**Nine sessions were run. Eight were wasted by a mis-armed instrument; the ninth,
+driven by the operator, reached the lookup and the observer failed to write down
+the value that would have closed it.** The correction is the useful part of this
+section, so it is recorded in full: the failure mode, the self-calibration that
+proved the instrument, the real measurement about which game paths consult the
+appearance table, and the exact single thing still missing.
 
 Vehicles, both tracked and both accepting an expanded image by exact digest and
 size:
 
-* `tools/runtime/start_toolkit031_session.ps1` with `-ExpectedRomSize 16777216`,
-  runs 1 to 3;
-* `tools/runtime/run_capacity001_expansion.ps1`, the wrapper
-  CAPACITY-001 wrote for a generated image, runs 4 and 5.
+* `tools/runtime/start_toolkit031_session.ps1` with `-ExpectedRomSize 16777216`;
+* `tools/runtime/run_capacity001_expansion.ps1`, the wrapper CAPACITY-001 wrote for
+  a generated image, which also writes `state-loaded.txt` and watches the marker's
+  content rather than its existence.
 
 Observer: `tools/runtime/appearance001_table_watch.lua`, read-only, added to the
 `$allowedLua` allow-list in `tools/runtime/inject_mgba_lua.ps1`, passing
-`tests/unit/test_mgba_capture.py` and `tests/unit/test_mgba_runtime_skill.py`.
-Five sites: the id search's record read at `0x08027968`, the roster walk's patched
-bound at `0x08024F92`, the sprite-id accessor at `0x08000158`, the appearance
-record consumer at `0x08025E50`, and the animation frame advance at `0x0800DE6E`.
+`tests/unit/test_mgba_capture.py` and `tests/unit/test_mgba_runtime_skill.py`. In
+its final form it arms fifteen sites: the six reader functions' entry points, the
+six literal-pool base-load sites inside them, the search loop's record read, the
+roster walk's patched bound, and the animation frame advance as a liveness
+channel.
 
-Each run: a deterministic 16 MiB build named by exact digest
-(`2BC60563B8768E57DAF4D45C2EEF38EC17EB71313DAA211DDF46467A91177495`), the
-canonical game's own state 1, observer injected, state loaded afterwards through
-the wrapper's confirmed path, 1800 frames after the load signal.
+Every run used the same deterministic 16 MiB build, named by exact digest
+(`2BC60563B8768E57DAF4D45C2EEF38EC17EB71313DAA211DDF46467A91177495`), and the
+canonical game's own state 1.
 
-| run | vehicle | liveness channel | observed |
-| --- | --- | --- | --- |
-| 1 | toolkit session | sprite accessor, record consumer | nothing fired |
-| 2 | toolkit session | plus the roster bound | nothing fired, active map 39 |
-| 3 | toolkit session | plus the animation frame advance | nothing fired, active map 39 |
-| 4 | capacity wrapper | all five sites, marker protocol | nothing fired |
-| 5 | capacity wrapper | all five sites, state-loaded gated | nothing fired |
+**The instrument was wrong, and that is what the first eight runs measured.** They
+are kept here because the correction is the useful part.
 
-Every run reported the core running gameplay (`active_map_index=39`) and every
-arming call returned a breakpoint id, so the API accepted every registration.
-Run 5's liveness channel was the animation frame advance at `0x0800DE6E`, which
-executes once per animating actor per frame; it fired zero times.
-
-**The control, and exactly how far it goes.** Three controls were run, in
-increasing order of how much they settle.
+The failure had one shape: **an address that never executes and a channel that
+never delivers look identical from outside**, and the early runs had no way to
+tell them apart. Three controls and a self-calibration run separated them.
 
 1. `tools/runtime/toolkit031_execution_watch.lua`, the repository's own execution
-   observer, unmodified, against the canonical image from the same savestate under
-   the same vehicle: 78 `STRUCT` rows and **zero `INTERP`, zero `EXEC` rows**. That
-   control does not separate a broken channel from a scene that ran no script: its
-   two execution channels watch the script trampoline and the interpreter, which
-   only run when a script does, and this scene drives no dialogue.
-2. `tools/runtime/run_mgba_capture.ps1`, the GDB venue, on the canonical image
-   from the same savestate, after provisioning the two ignored local prerequisites
-   a fresh worktree lacks (`roms/` and `.venv/`, both junctions to the primary
+   observer, unmodified, against the canonical image from the same savestate: 78
+   `STRUCT` rows (its frame-driven samples) and **zero `INTERP`, zero `EXEC`
+   rows**. It did not settle the question: its execution channels watch the script
+   trampoline and the interpreter, which only run when a script does, and that
+   scene drives no dialogue.
+2. `tools/runtime/run_mgba_capture.ps1`, the GDB venue, on the canonical image from
+   the same savestate, after provisioning the two ignored local prerequisites a
+   fresh worktree lacks (`roms/` and `.venv/`, both junctions to the primary
    checkout; `.venv` is excluded through the common git directory's
    `info/exclude`, because `.gitignore`'s `.venv/` does not match a Windows
-   junction). Two runs, `-MaxStops 4 -WindowSeconds 120`: one with
-   `-Breakpoint 0x0800DE6E`, one with `-Breakpoint 0x0800F3C0` plus
-   `0x08000158`, `0x0800DE6E` and `0x08008086`. **Zero stops in both.**
+   junction). Two runs, `-MaxStops 4 -WindowSeconds 120`, five ROM addresses
+   between them: **zero stops**.
 3. `tools/runtime/p006c_dev_breakpoint_probe.lua`, the repository's own capability
-   probe, whose header states its purpose as confirming that a scripted breakpoint
-   callback resumes emulation and exposes live registers. Run against the canonical
-   image from the same savestate: 120 frame rows and **zero breakpoint rows**.
+   probe: 120 frame rows, **zero breakpoint rows**.
 
-**What the whole set establishes.** The frame callback works, memory reads work and
-the core runs gameplay. Five appearances runs and three controls produced not one
-observed instruction, by either venue, on any address tried. So the honest
-statement is narrower than "the appearance path was not taken" and wider than "the
-Lua channel is broken": **instruction execution could not be observed at all with
-the tooling available in this worktree.** Under `docs/skills/mgba-runtime.md`
-section 8 the instrument is unproven, and no absence measured with it means
-anything about the appearance path. It also does not mean the addresses are cold:
-that question is not settled either, and settling it needs the instrument fixed
-first.
+**Self-calibration settled it.** The frame callback works, so the observer was
+taught to read the program counter from it, and then to arm a breakpoint on the
+address it had actually seen executing. That is a breakpoint on a known-live
+address, which removes the guess entirely:
 
-That is a runtime-infrastructure matter. This ticket's non-goals forbid runtime
-infrastructure work, so it is recorded rather than repaired here.
+| armed at | address space | observed at run time | breakpoint hits |
+| --- | --- | --- | --- |
+| `0x03000C5C` | IWRAM | 60 samples in 1500 frames | **24,453** |
+| `0x03000C5C` | IWRAM | 6 samples in the same run | **12,404** |
+| `0x0803F6D4` | ROM | 5 samples | **421,167** |
 
-**The single next experiment.** Fix or replace the execution instrument before
-making any more appearance runs, and prove it on a control first. The order that
-settles it fastest:
+So the channel works, in both address spaces, and the addresses the earlier runs
+blamed were simply **cold**: idle play, the Status screen, the Skills screen,
+walking and NPC dialogue do not execute the appearance readers at all. That is a
+real measurement about the engine, and the opposite of what the earlier runs
+appeared to say.
 
-1. Determine why no instruction executes under observation here, using the
-   repository's own probe as the test:
-   `tools/runtime/p006c_dev_breakpoint_probe.lua` against the pinned mGBA build
-   (`0.11.0.0`, sha256
-   `C91FF99B8F267A57EF50237166B715DCE2FB978A63D23A75E14E6B356BD5C9BD`) on a scene
-   that certainly reaches its address, or on a reset core. If that probe records
-   breakpoint rows anywhere, the instrument works and the appearance run's
-   addresses were the problem instead.
-2. Only then repeat the appearance observation, with the animation frame advance
-   as the liveness channel it was always meant to be.
-3. If the instrument cannot be made to work under this build, the GDB venue is the
-   fallback, and it needs two deliberate changes that this ticket does not make:
-   a size guard that admits an expanded image, and a worktree virtualenv.
+**The operator's own session found the path.** With the six reader functions'
+entry points armed as well as the base-load sites, a driven session reached it
+(run `cale-drive-003`, map 40, frame 7642):
 
-All three are runtime-infrastructure work and belong to their own ticket.
+```
+entry actor_constructor hits=24   first_frame=7642
+entry id_search        hits=24   first_frame=7642
+entry record_consumer  hits=8    first_frame=7725
+base  constructor hits=24   base search hits=3540   base consumer hits=8
+search_hits=3540  max_index=232  .
+```
+
+That is the lookup link, and it arrived from an operator's hands, not from a
+theory. **The observer then failed to record the values that would have closed
+it**: the "is this base the relocated table" test compared a GBA address against a
+file-offset range, so nothing was written to disk and the run looked empty. A
+second defect was found in the same place: `summarise` referenced `started` as a
+global, because the local was declared later in the chunk, so two fields always
+read nil.
+
+Both are fixed. The observer now records, on the first hit, the index, the table
+base, whether that base is the relocated one, the record address, the record's
+sprite id, the record's four words, and a screenshot of the moment; and it writes
+a live progress file every 300 frames so a session can be read while it runs.
+
+**Savestates do not reach it.** All five saved states in the local ROM directory
+(active maps 39, 38, 27, 247, 138) were loaded against the built image with no
+input: **none** enters the appearance readers. The trigger is an in-game event,
+and a state load restores already-built actors.
+
+**What the whole set establishes.** The instrument works. The appearance table is
+not consulted by idle play, the status screens, dialogue, walking, or a state
+load. It was reached once, by the operator, at **frame 7642 of a 150-second
+session**, and every later session ended earlier - 4800 frames and 3600 frames -
+so the mark was never reached again.
+
+**The single next experiment.** One driven session of at least two and a half
+minutes on map 40, which is where it fired, with the observer as it now stands.
+The first hit writes the register value and the record's words. If the trigger
+cannot be re-reached that way, the fallback is the GDB venue, which needs two
+changes this ticket does not make: a size guard that admits an expanded image, and
+a worktree virtualenv. Both are runtime-infrastructure work and belong to their
+own ticket.
 
 ## SC7 - Open, and honest about it
 

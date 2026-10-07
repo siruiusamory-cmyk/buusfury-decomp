@@ -94,6 +94,7 @@ local input_pulses, screenshots, object_count = 0, 0, 0
 -- and a nil global is how an instrument dies without saying so.
 local hits, arm_results, handler_errors = {}, {}, 0
 local search_dumps = 0
+local compare_seen, compare_records = 0, 0
 local seen = { flag232 = false, max_index = 0 }
 local objects = {}
 
@@ -133,7 +134,9 @@ local function report_lines()
         frame, tostring(started), LIMIT)
     lines[#lines + 1] = string.format(
         "liveness frame_callback=ran input_pulses=%d screenshots=%d handler_errors=%d " ..
-        "search_dumps=%d", input_pulses, screenshots, handler_errors, search_dumps)
+        "search_dumps=%d resolver_compares=%d resolver_recorded=%d",
+        input_pulses, screenshots, handler_errors, search_dumps, compare_seen,
+        compare_records)
     -- The seen flag for the authored index: one bit, inside the saved record.
     for _, index in ipairs({ 231, 232, 233, 239 }) do
         local byte = emu:read8(BITSET + (index >> 3))
@@ -226,6 +229,60 @@ local function on_flag()
     local index = reg("r5")
     record("flag_write", string.format("index=%s past_canonical=%s",
         tostring(index), tostring(index ~= nil and index >= 232)))
+end
+
+-- The resolver's own comparison and return, because "the function fired" is not
+-- the acceptance. At 0x0802796E, r0 is accessor(record.sprite_id) for the record
+-- at index r4 and r7 is the sprite the actor actually carries (the requested
+-- value, after the 0x95 -> 0x92 remap at 0x08027954). At the two return sites r4
+-- is the index the resolver resolved. Recording the pair identifies both the
+-- actor's sprite id and the record reached, for the 231/232 boundary included.
+local COMPARE = 0x0802796E
+local RETURN_ARG1_SET = 0x0802798A
+local RETURN_ARG1_ZERO = 0x08027992
+local COMPARE_CAP = 40
+
+local function on_compare()
+    local index = reg("r4")
+    local record_sprite, wanted = reg("r0"), reg("r7")
+    if index == nil then return end
+    -- Every hit for indices at or past the canonical end, plus any match, plus
+    -- the first few, so the run shows the boundary and the actor's sprite.
+    local interesting = record_sprite == wanted or index >= 231 or compare_seen < 3
+    compare_seen = compare_seen + 1
+    if not interesting or compare_records >= COMPARE_CAP then return end
+    compare_records = compare_records + 1
+    local lines = io.open(dir_file("resolver.txt"), compare_records == 1 and "w" or "a")
+    if lines then
+        lines:write(string.format(
+            "frame=%d compare index=%d record_sprite=%s actor_sprite=%s matched=%s\n",
+            frame, index, hex(record_sprite), hex(wanted),
+            tostring(record_sprite == wanted)))
+        lines:close()
+    end
+end
+
+local function on_return()
+    local index = reg("r4")
+    local wanted = reg("r7")
+    local lines = io.open(dir_file("resolved.txt"), "a")
+    if lines then
+        lines:write(string.format(
+            "frame=%d resolved index=%s actor_sprite=%s past_canonical=%s\n",
+            frame, tostring(index), hex(wanted),
+            tostring(index ~= nil and index >= 232)))
+        lines:close()
+    end
+end
+
+for _, site in ipairs({
+    { name = "resolver_compare", address = COMPARE, handler = guarded(on_compare) },
+    { name = "resolver_return_set", address = RETURN_ARG1_SET, handler = guarded(on_return) },
+    { name = "resolver_return_zero", address = RETURN_ARG1_ZERO, handler = guarded(on_return) },
+}) do
+    local ok = pcall(emu.setBreakpoint, emu, site.handler, site.address)
+    arm_results[#arm_results + 1] = string.format("site=%s address=%s ok=%s",
+        site.name, hex(site.address), tostring(ok))
 end
 
 for _, site in ipairs({

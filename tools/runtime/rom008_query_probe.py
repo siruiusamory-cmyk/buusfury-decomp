@@ -19,6 +19,11 @@ import time
 from typing import Callable, Sequence
 import uuid
 
+from tools.runtime.mgba_identity import (
+    DEFAULT_PACKAGED_MGBA,
+    PACKAGED_0_10_5,
+    require_mgba_build,
+)
 from tools.runtime.rom006_gdb_probe import (
     EXPECTED_SHA256,
     EXPECTED_SIZE,
@@ -196,6 +201,7 @@ def run_probe(
     | None = None,
     point_context_pointer_address: int | None = None,
 ) -> dict[str, object]:
+    mgba_path = require_mgba_build(mgba_path, PACKAGED_0_10_5)
     sources = (rom_path, state_path, save_path)
     before = {path: (path.stat(), sha256(path)) for path in sources}
     if before[rom_path][0].st_size != EXPECTED_SIZE or before[rom_path][1] != EXPECTED_SHA256:
@@ -764,7 +770,7 @@ def _parser() -> argparse.ArgumentParser:
     parser.add_argument("--save-sha256", required=True)
     parser.add_argument("--lua", type=Path, required=True)
     parser.add_argument("--injector", type=Path, required=True)
-    parser.add_argument("--mgba", type=Path, default=Path(r"C:\Program Files\mGBA\mGBA.exe"))
+    parser.add_argument("--mgba", type=Path, default=DEFAULT_PACKAGED_MGBA)
     parser.add_argument(
         "--profiles",
         type=Path,

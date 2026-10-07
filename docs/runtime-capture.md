@@ -211,6 +211,10 @@ Stable mGBA 0.10.5 is now kept separately at
 `-RequiredMGBVersion` (default `0.10.5`) against the binary's `FileVersion`,
 failing closed on mismatch. Overriding the version is a deliberate act.
 
+The Python GDB probes refuse the same mismatching binary through
+`tools/runtime/mgba_identity.py`, which pins the executable SHA-256 above and
+checks it before any `subprocess` launch is reached.
+
 ### Select the Lua prompt by control identity, not `IsReadOnly`
 
 The Scripting window exposes three `Edit` elements: the log pane

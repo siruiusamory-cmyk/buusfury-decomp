@@ -11,6 +11,29 @@ Evidence labels are the project's: CONFIRMED means the bytes were read here,
 INFERRED means the conclusion rests on reasoning over measurements. Addresses are
 GBA addresses; file offset is address minus `0x08000000`.
 
+## 0. What "roster" means here, and what it does not
+
+"Roster" is a working label this ticket coined for the list the builder at
+`0x08024F3C` produces. It is not a term from the game, from the code, or from any
+string in the image. The measured description is: a scrollable list built from the
+seen-appearance bitset, holding one 4-byte appearance index per seen appearance
+and an 8-byte `{first, last}` run list over them, with a display cursor, a
+selected index, a counter and a limit, and a vtable with render and dispatch
+slots.
+
+Two attempts to name the screen failed, and both are recorded as failures:
+
+- resolving the record text fields through the table at `0x0806BCE8` returned
+  single characters rather than names, so that route is not the string reader,
+  and the fields at `+0x00` and `+0x02` are consecutive for every record, which
+  two independent name and description lookups would not be;
+- the image contains no occurrence of `Scouter` in any case, so a "Scouter"
+  reading of this list has no textual support. `Character` occurs once, at
+  `0x08013BB6`.
+
+The screen the object is rendered on is therefore **not established**, and naming
+it needs the runtime run rather than more static reading.
+
 ## 1. The containing object, and its extent - CONFIRMED
 
 The builder is `0x08024F3C`. Its first instructions decide everything:

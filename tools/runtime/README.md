@@ -36,7 +36,7 @@ Every entry is marked with one of two classes:
 | `run_mgba_capture.ps1` | Tracked launcher: identity checks, isolated GDB-halted launch, optional Lua injection, capture invocation, cleanup, post-run ROM verification. |
 | `capture_mgba_event.py` | Bounded, object-attributed breakpoint event loop; owns the GDB connection and writes the evidence files. |
 | `mgba_capture.py` | Read-only GDB/RSP primitives: response framing, chunked reads, write-packet allowlist, versioned dump records. |
-| `mgba_identity.py` | Fail-closed emulator identity for the Python GDB probes: one pinned build label and executable SHA-256, checked before any process is launched. |
+| `mgba_identity.py` | Fail-closed emulator identity for the Python GDB probes: one pinned build label and executable SHA-256, checked before any process is launched. Also carries `LAUNCH_SITES`: the registry of every repository-controlled place an mGBA process can start, each with one frozen classification, the `proof` mechanism that gates it, and a written rationale. |
 | `inject_mgba_lua.ps1` | PID-scoped Lua injection through the mGBA Scripting window, allowlisted per script, via a bounded helper so a Run-button deadlock cannot strand the caller. |
 | `invoke_mgba_run.ps1` | The bounded helper process that clicks Run; separated because mGBA's synchronous handler can block Invoke from returning. |
 | `load_mgba_lua.ps1` | Verify the ROM and the mGBA build identity, launch mGBA, delegate Lua injection to `inject_mgba_lua.ps1`, and confirm the named ROM-006 state appeared with the ROM unchanged. |

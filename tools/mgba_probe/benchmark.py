@@ -17,6 +17,12 @@ from tools.mgba_probe.runtime import (
     sha256,
     verify_instrumented_mgba,
 )
+from tools.runtime.evidence_bundle import write_run_bundle
+from tools.runtime.mgba_identity import (
+    PACKAGED_0_10_5,
+    PACKAGED_REQUIRED,
+    require_mgba_build,
+)
 from tools.runtime.rom006_gdb_probe import EXPECTED_SHA256, EXPECTED_SIZE, _connect
 from tools.runtime.rom011_live_watch import Rom011RspClient
 
@@ -198,11 +204,10 @@ def run_gate(
         raise RuntimeError("save identity mismatch")
     manifest = verify_instrumented_mgba(instrumented, manifest_path)
     environment = instrumented_environment(manifest)
+    require_mgba_build(stock, PACKAGED_0_10_5)
     stock_version = subprocess.run(
         [str(stock), "--version"], check=True, capture_output=True, text=True, timeout=10
     ).stdout.strip()
-    if "0.10.5" not in stock_version:
-        raise RuntimeError("stock control is not mGBA 0.10.5")
     run_root.mkdir(parents=True)
     before = {path: sha256(path) for path in (rom, state, save)}
     results = [
@@ -240,6 +245,34 @@ def run_gate(
     report_path.write_text(json.dumps(report, indent=2) + "\n", encoding="utf-8")
     if not automated_passed:
         raise RuntimeError(f"native probe failed speed gate; report: {report_path}")
+    write_run_bundle(
+        run_root,
+        tool="tools.mgba_probe.benchmark",
+        arguments={
+            "duration_seconds_per_case": duration,
+            "manifest_path": str(manifest_path),
+        },
+        rom=rom,
+        emulator=instrumented,
+        instrumented_manifest=manifest_path,
+        observations={
+            "stock_control": {
+                "path": str(stock.resolve()),
+                "sha256": PACKAGED_0_10_5.sha256,
+                "build_class": PACKAGED_REQUIRED,
+                "version_output": stock_version,
+            },
+            "automated_near_realtime_observation_passed": automated_passed,
+            "stock_fps": stock_fps,
+        },
+        artifacts={
+            report_path: "performance-gate-report",
+            **{
+                run_root / str(item["case"]) / "vcount-samples.json": "vcount-samples"
+                for item in results
+            },
+        },
+    )
     return report
 
 

@@ -213,7 +213,11 @@ failing closed on mismatch. Overriding the version is a deliberate act.
 
 The Python GDB probes refuse the same mismatching binary through
 `tools/runtime/mgba_identity.py`, which pins the executable SHA-256 above and
-checks it before any `subprocess` launch is reached.
+checks it before any `subprocess` launch is reached. The same module keeps
+`LAUNCH_SITES`, the registry of every repository-controlled mGBA launch site
+with its classification and the `proof` mechanism that gates it; the PowerShell
+sites in it prove identity from `VersionInfo.FileVersion` rather than from the
+digest.
 
 ### Select the Lua prompt by control identity, not `IsReadOnly`
 

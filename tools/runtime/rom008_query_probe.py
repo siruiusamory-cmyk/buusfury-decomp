@@ -19,6 +19,7 @@ import time
 from typing import Callable, Sequence
 import uuid
 
+from tools.runtime.evidence_bundle import write_run_bundle
 from tools.runtime.mgba_identity import (
     DEFAULT_PACKAGED_MGBA,
     PACKAGED_0_10_5,
@@ -736,6 +737,26 @@ def run_probe(
         raise RuntimeError("ROM or source save artifact changed during runtime probe") from probe_error
     if probe_error is not None:
         raise probe_error
+    write_run_bundle(
+        run_root,
+        tool="tools.runtime.rom008_query_probe",
+        arguments={
+            "run_label": run_label,
+            "timeout_seconds": timeout_seconds,
+            "dynamic_load": dynamic_load,
+        },
+        rom=rom_path,
+        emulator=mgba_path,
+        observations={
+            "timeline_events": len(timeline),
+            "query_entries": len(query_entries),
+            "callsites": len(callsites),
+            "callbacks": len(callbacks),
+            "exact_query": exact_query is not None,
+            "rejecting_guard": rejecting_guard is not None,
+        },
+        artifacts={state_copy: "input-savestate", save_copy: "savegame"},
+    )
     return {
         "probe_configuration": {
             "run_label": run_label,

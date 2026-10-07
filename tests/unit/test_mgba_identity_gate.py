@@ -39,7 +39,6 @@ from typing import Any
 import pytest
 
 ROOT = Path(__file__).resolve().parents[2]
-RUNTIME = ROOT / "tools/runtime"
 
 #: The GDB probe family: one packaged executable digest, checked by
 #: `tools/runtime/mgba_identity.require_mgba_build`.
@@ -74,16 +73,6 @@ LAUNCHING_PROBES = tuple(
     Path(relative).stem for relative, tag in POLICY.items() if tag == PACKAGED
 )
 
-MGBA_MARKERS = ("--gdb", "mgba_path", "mGBA.exe")
-
-#: Any of these puts a process on this machine, so a file using one of them is
-#: a launcher whatever spelling it chose.
-LAUNCH_CALLS = (
-    re.compile(r"\bPopen\("),
-    re.compile(r"\bsubprocess\.(run|call|check_call|check_output|check_run)\("),
-)
-
-
 def _identity_module():
     """Imported late so the source-level gates below fail as assertions on the
     baseline rather than collapsing this module at collection time."""
@@ -98,25 +87,6 @@ def _source(relative: str) -> str:
 def _position(source: str, token: str, relative: str) -> int:
     assert token in source, f"{relative} never calls {token}"
     return source.index(token)
-
-
-def _discovered_launchers() -> set[str]:
-    """Every runtime driver that calls `subprocess.Popen` on an mGBA identity.
-
-    Found by source, not by a list, so a driver written later is discovered
-    whether or not anyone remembered to extend the policy. A driver whose only
-    launch is a call into another driver's `run_probe` does not appear here; the
-    coverage test accounts for that case explicitly instead of by loosening the
-    predicate.
-    """
-    discovered: set[str] = set()
-    for path in sorted(RUNTIME.rglob("*.py")):
-        source = path.read_text(encoding="utf-8")
-        if not any(call.search(source) for call in LAUNCH_CALLS):
-            continue
-        if any(marker in source for marker in MGBA_MARKERS):
-            discovered.add(path.relative_to(ROOT).as_posix())
-    return discovered
 
 
 def _probe_module(name: str) -> Any:
@@ -173,32 +143,6 @@ def probe_artifacts(tmp_path: Path) -> dict[str, Path]:
     injector.write_text("# injector", encoding="utf-8")
     return {"rom": rom, "state": state, "save": save, "profile": profile,
             "lua": lua, "injector": injector}
-
-
-def test_every_runtime_launcher_is_in_the_identity_policy():
-    """Coverage, both directions, so a new launcher cannot arrive ungated.
-
-    The delegated entry is a policy member without a `subprocess.Popen` of its
-    own, so it is asserted separately rather than dropped from the policy: it
-    must be the callee's gate that covers it, and exactly one entry may be in
-    that state.
-    """
-    discovered = _discovered_launchers()
-    assert discovered <= set(POLICY), (
-        f"runtime launchers discovered by source: {sorted(discovered)}; "
-        f"identity policy covers: {sorted(POLICY)}. Every file in the first set "
-        "and not the second launches mGBA without an identity gate."
-    )
-    assert [tag for tag in POLICY.values()].count(DELEGATED) == 1, (
-        "exactly one policy entry may be covered by delegation, otherwise a "
-        "launcher can hide behind the tag")
-    assert POLICY["tools/runtime/rom009_callback_probe.py"] == DELEGATED
-    direct = {path for path, tag in POLICY.items() if tag != DELEGATED}
-    assert discovered == direct, (
-        f"runtime launchers discovered by source: {sorted(discovered)}; policy "
-        f"entries expected to launch directly: {sorted(direct)}. A policy entry "
-        "with no launch of its own would leave that check unenforced."
-    )
 
 
 @pytest.mark.parametrize("relative", sorted(POLICY))

@@ -21,6 +21,7 @@ from tools.mgba_probe.runtime import (
     instrumented_environment,
     verify_instrumented_mgba,
 )
+from tools.runtime.evidence_bundle import write_run_bundle
 from tools.runtime.rom006_gdb_probe import (
     EXPECTED_SHA256,
     EXPECTED_SIZE,
@@ -1017,6 +1018,26 @@ def run_live_session(
         "source_artifacts": source_artifacts,
     }
     _write_new_json(run_root / "result.json", output)
+    write_run_bundle(
+        run_root,
+        tool="tools.runtime.rom012_live_containment",
+        arguments={
+            "timeout_seconds": timeout_seconds,
+            "manifest_path": str(manifest_path),
+        },
+        rom=rom_path,
+        emulator=mgba_path,
+        instrumented_manifest=manifest_path,
+        observations={
+            "result": output.get("result"),
+            "timeline_events": len(timeline),
+        },
+        artifacts={
+            state_copy: "input-savestate",
+            save_copy: "savegame",
+            run_root / "capture-ready.json": "capture-ready",
+        },
+    )
     return output
 
 

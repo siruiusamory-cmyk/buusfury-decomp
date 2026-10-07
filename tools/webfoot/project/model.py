@@ -2715,6 +2715,15 @@ class AuthoredAppearances:
     appearances: dict[str, AuthoredAppearance] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
+        sprite_ids: dict[int, str] = {}
+        for item in self.appearances.values():
+            if item.sprite_id in sprite_ids:
+                raise ProjectValidationError(
+                    f"appearances {sprite_ids[item.sprite_id]!r} and "
+                    f"{item.name!r} both bind sprite id {item.sprite_id}; the "
+                    f"engine's search returns the first matching record, so the "
+                    f"second could never be selected")
+            sprite_ids[item.sprite_id] = item.name
         if len(self.appearances) > _MAX_AUTHORED_APPEARANCES:
             raise ProjectValidationError(
                 f"this project declares {len(self.appearances)} new appearance "

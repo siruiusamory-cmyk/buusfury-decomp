@@ -100,13 +100,16 @@ def test_a_document_over_the_count_ceiling_is_refused_by_the_model():
     """The ceiling is the flag array's, not the encoding's, and it is stated."""
     ceiling = appearance_format.APPEARANCE_COUNT_FLAG_CEILING \
         - appearance_format.APPEARANCE_CANONICAL_COUNT
-    accepted = {f"a{index}": AuthoredAppearance(f"a{index}", index, 10)
+    # Distinct sprite ids: two definitions may not share one, because the engine
+    # returns the first matching record and the second would never be selected.
+    accepted = {f"a{index}": AuthoredAppearance(f"a{index}", index, 10 + index)
                 for index in range(ceiling)}
     assert len(AuthoredAppearances(appearances=accepted).appearances) == ceiling
 
     with pytest.raises(ProjectValidationError):
         AuthoredAppearances(appearances={
-            **accepted, f"a{ceiling}": AuthoredAppearance(f"a{ceiling}", 0, 10)})
+            **accepted,
+            f"a{ceiling}": AuthoredAppearance(f"a{ceiling}", 0, 10 + ceiling)})
 
 
 def test_the_models_ceiling_cannot_drift_from_the_sdk_constant():

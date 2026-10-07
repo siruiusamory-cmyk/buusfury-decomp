@@ -50,6 +50,10 @@ ALIGNMENT = 4
 #: registry. Ids below it are party-slot aliases and take a different path.
 SPRITE_ID_FLOOR = 10
 
+#: The sprite id the engine remaps before the search compares it, so no
+#: record bound to it is ever returned.
+UNMATCHABLE_SPRITE_ID = 149
+
 
 class AppearanceAuthoringError(ValueError):
     """A refusal from the authored-appearance domain, in this domain's terms."""
@@ -121,6 +125,11 @@ def authorable_sprite_ids(image: bytes, profile, *,
     """
     ceiling = _sprite_ceiling(profile, authored_sprite_id)
     used = {record.sprite_id for record in ap.read_records(image, profile)}
+    # 149 is offered by nothing and matched by nothing: the search replaces a
+    # request for accessor(0x95) with accessor(0x92) at 0x0802794E before it
+    # compares anything, and the two values differ (0x086AED8C and 0x086AEBF0),
+    # so a record bound to 149 can never be returned.
+    used.add(UNMATCHABLE_SPRITE_ID)
     ids = [sprite_id for sprite_id in range(SPRITE_ID_FLOOR, ceiling + 1)
            if sprite_id not in used]
     if authored_sprite_id is not None and authored_sprite_id not in ids:

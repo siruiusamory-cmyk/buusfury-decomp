@@ -182,9 +182,15 @@ Two details in the injector are load-bearing, and `-CheckOnly` stops before both
   it to a synchronous handler that can fail to return.
 
 Every observer must be added to the `$allowedLua` allowlist in that script,
-registered with real backslashes. `tools/runtime/appearance001_drive.lua` is the
-worked example of the input split: the observer reads, the driver sends keys, and
-they are two allow-listed files.
+registered with real backslashes.
+
+**Input in an observer is existing practice, not an exception.** Twenty-six of
+the allow-listed observers call `emu:setKeys`, so an observer that drives a
+controller is not by itself a rule break. What the rule asks is that the input is
+deliberate and bounded: `tools/runtime/appearance001_table_watch.lua` sends keys
+only when `APPEARANCE001_KEYS=1` is set by the launcher, which is off by default,
+and its schedule is bounded so the run ends by itself. A future observer that
+sends input should state that the same way rather than silently.
 
 Quote characters do **not** survive PowerShell to UI Automation `SetValue`.
 Write Lua sent that way with long-bracket strings: `print([[text]])`.

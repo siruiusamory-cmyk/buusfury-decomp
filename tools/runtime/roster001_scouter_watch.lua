@@ -138,7 +138,7 @@ local function report_lines()
         input_pulses, screenshots, handler_errors, search_dumps, compare_seen,
         compare_records)
     -- The seen flag for the authored index: one bit, inside the saved record.
-    for _, index in ipairs({ 231, 232, 233, 239 }) do
+    for _, index in ipairs({ 231, 232, 233, 234, 235, 239 }) do
         local byte = emu:read8(BITSET + (index >> 3))
         local bit = (byte >> (index & 7)) & 1
         lines[#lines + 1] = string.format(
@@ -196,8 +196,16 @@ local function reg(name) return tonumber(safe(emu.readRegister, emu, name)) end
 local function hex(v) return v and string.format("0x%08X", v) or "nil" end
 
 local function record(site, text)
-    if #hits >= 60 then return end
-    hits[#hits + 1] = string.format("frame=%d site=%s %s", frame, site, text)
+    local line = string.format("frame=%d site=%s %s", frame, site, text)
+    if #hits < 60 then hits[#hits + 1] = line end
+    -- Written here, not only into the report: the frame callback stops at the
+    -- limit while the breakpoints keep firing, and a hit that happened after
+    -- that would otherwise exist only in memory that is never written again.
+    local f = io.open(dir_file("hits.txt"), "a")
+    if f then
+        f:write(line .. "\n")
+        f:close()
+    end
 end
 
 local APPEND_STORE = 0x08024F8E
@@ -357,6 +365,16 @@ callback_id = callbacks:add("frame", function()
     end
     sample_object()
     if elapsed % 200 == 0 and elapsed > 0 then journal() end
+    if elapsed % 600 == 0 and elapsed > 0 then
+        local f = io.open(dir_file("flags.txt"), "a")
+        if f then
+            f:write(string.format(
+                "frame=%d bytes 0x1149=%02X 0x114A=%02X 0x114B=%02X\n", frame,
+                emu:read8(BITSET + 28), emu:read8(BITSET + 29),
+                emu:read8(BITSET + 30)))
+            f:close()
+        end
+    end
     if elapsed % 400 == 0 and elapsed > 0 then
         emu:screenshot(string.format("%s/at-%05d.png", DIR, elapsed))
         screenshots = screenshots + 1

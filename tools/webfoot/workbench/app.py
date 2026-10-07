@@ -170,6 +170,9 @@ class MainWindow(QMainWindow):
         self._scene.projectChanged.connect(self._on_project_changed)
         self._build.projectChanged.connect(self._on_project_changed)
         self._build.buildFinished.connect(self._on_build_finished)
+        # Run availability lives with the ROM field that owns it, so a manually
+        # chosen ROM arms Ctrl+R exactly as a build's output does.
+        self._launcher.romChanged.connect(self._refresh_action_state)
 
     def _on_rom_opened(self) -> None:
         """A new image is open: EVERY surface re-reads it, one failure contained.
@@ -919,7 +922,7 @@ class MainWindow(QMainWindow):
         self._action_output_dir.setEnabled(True)
         self._action_validate.setEnabled(rom_open and has_project)
         self._action_build.setEnabled(self._session.validation_current)
-        self._action_run.setEnabled(self._session.last_build is not None)
+        self._action_run.setEnabled(self._launcher.rom_is_runnable())
         self._refresh_undo_actions()
 
     def refresh_shell(self) -> None:

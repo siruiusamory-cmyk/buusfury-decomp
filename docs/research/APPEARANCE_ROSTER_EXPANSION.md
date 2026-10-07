@@ -262,10 +262,14 @@ statements the compiler put other instructions between the pair:
 | `0x0802541A` | `0x08025420` | the `movs r2,#0xED` / `lsls r2,#2` display-count pair |
 | `0x080254B0` | `0x080254B4` | one `ldrh` |
 
-Those three belong to the functions at `0x08025056`, `0x08025404` and `0x080254A8`,
-which address the object through `0x0802502C`, `0x0802541C` and `0x0802500E`
-respectively - so they are the same object and they were left pointing at
-`+0xB0C..+0xB18`. In the grown layout those offsets fall inside display entries, so
+Those three sit in the functions at `0x08025056`, `0x08025404` and `0x080254A8`.
+What shows they address the same object is the read/write census in section 4:
+the sites that hand the object around are the ones section 5 lists, and each of
+these three functions contains at least one of them. A first version of this
+sentence said they reach the object through `0x0802502C`, `0x0802541C` and
+`0x0802500E` "respectively", which is wrong - `0x0802502C` and `0x0802500E` are
+both in `0x08025004`, and only `0x0802541C` sits in the function this paragraph
+names it with. In the grown layout those offsets fall inside display entries, so
 the miss would have turned a hazard that needed 233 seen flags into a live
 inconsistency on **every** authored build. An independent review found it by
 tracking registers through `movs`/`lsls`/`adds` and literal loads instead of

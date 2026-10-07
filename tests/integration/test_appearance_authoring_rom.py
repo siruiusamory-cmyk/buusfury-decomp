@@ -545,19 +545,43 @@ def test_every_compiled_statement_of_the_roster_layout_is_named(canonical):
     assert len(found) == 17, [hex(value) for pair in found for value in pair]
 
     named = {site.offset for site in ap.ROSTER_PATCH_SITES}
-    missing = [(movs, shift) for movs, shift in found
-               if movs not in named and shift not in named]
+    missing = []
+    for movs, shift in found:
+        # The size and display-count `movs` keep their shift, so only the movs is
+        # patched for those. Every tail-base pair has both halves patched, and
+        # naming one of them must not pass.
+        both = (movs in named and shift in named)
+        constant = struct.unpack_from("<H", canonical, movs)[0] & 0xFF
+        if constant in (0x59, 0xED):
+            if movs not in named:
+                missing.append((movs, shift))
+        elif not both:
+            missing.append((movs, shift))
     assert missing == [], [hex(value) for pair in missing for value in pair]
 
 
-def test_the_named_roster_sites_are_the_ones_the_image_holds(canonical):
-    """Every named statement is really one, at the register and shift it claims."""
-    found = set(_roster_constructions(canonical))
-    for site in ap.ROSTER_PATCH_SITES:
-        if site.role in ("object size", "display-list count offset"):
-            continue                      # a `movs` whose shift does not change
-        movs, shift = site.offset, site.offset + 2
-        matched = (movs, shift) in found or (movs - 0, shift) in found
-        if site.role.endswith("shift"):
-            continue                      # the partner is checked by the `movs`
-        assert matched or any(pair[0] == site.offset for pair in found), site.role
+def _lsls_parts(halfword: int) -> tuple[int, int]:
+    """The shift and the register a `lsls rX,rX,#imm` states."""
+    return (halfword >> 6) & 0x1F, (halfword >> 3) & 7
+
+
+def test_every_tail_base_shift_is_actually_restated(canonical):
+    """Both halves of a tail-base pair have to change, not just the `movs`.
+
+    A no-op replacement passes every self-consistency check in this file: the plan
+    would still name the site, still write its replacement, and the build test
+    would still find those bytes. So the semantics are asserted here instead -
+    the canonical shift is the one the census measured, the replacement really is
+    shift 5, and it is the same register the `movs` beside it sets.
+    """
+    for role, canonical_shift in (("tail base A shift", 6), ("tail base B shift", 8)):
+        rows = [site for site in ap.ROSTER_PATCH_SITES if site.role == role]
+        assert rows, role
+        for site in rows:
+            before = struct.unpack_from("<H", canonical, site.offset)[0]
+            after = struct.unpack_from("<H", site.replacement)[0]
+            shift_before, register_before = _lsls_parts(before)
+            shift_after, register_after = _lsls_parts(after)
+            assert shift_before == canonical_shift, site.offset
+            assert shift_after == 5, site.offset
+            assert register_before == register_after, site.offset

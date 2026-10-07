@@ -145,6 +145,10 @@ REQUIRED_GUI_MODULES: tuple[str, ...] = (
     "unit/test_workbench_palette_cost.py",
     "unit/test_workbench_project_status.py",
     "unit/test_workbench_scene.py",
+    # The authored-sprite surface: the Graphics tab strip and its dialog are the
+    # only product entry point that writes sprites/sprites.toml, so their refusal
+    # and undo regressions must execute in CI rather than collapse to a skip.
+    "unit/test_workbench_sprite_authoring.py",
     "unit/test_workbench_smoke.py",
     # The CQA-05/CQA-06 state and error-surface regression.
     "unit/test_workbench_state_and_errors.py",

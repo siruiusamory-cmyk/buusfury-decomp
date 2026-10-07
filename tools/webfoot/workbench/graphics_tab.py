@@ -42,6 +42,7 @@ from PySide6.QtWidgets import (
     QAbstractItemView,
     QCheckBox,
     QColorDialog,
+    QDialog,
     QFileDialog,
     QFrame,
     QGridLayout,
@@ -60,13 +61,16 @@ from PySide6.QtWidgets import (
 )
 
 from .. import graphics as graphics_sdk
+from .. import sprite_project as sprite_sdk
 from ..formats.indexed_png import PngError
 from ..formats.sprite_graphics import SpriteFormatError
 from ..graphics import CharacterIdentity, GraphicIdentity, GraphicsError
-from ..project import ProjectError
+from ..project import AuthoredSprites, ProjectError, read_project
+from ..sprite_authoring import SpriteAuthoringError
 from ..write import OutputPathError, ensure_not_source_alias
 from . import theme
 from .session import Session
+from .sprite_dialog import SpriteAuthoringDialog
 from .widgets import PanelHeader, StateChip, ToolStrip
 
 #: The SDK exception families a Graphics slot must catch at its boundary. The
@@ -105,6 +109,12 @@ _ANIM_BUTTON_W = 34
 _PREVIEW_PLAY_MS = 240
 _IDENTITY_ROLE = Qt.ItemDataRole.UserRole
 _PALETTE_CMD_ID = 0xB005  # shared id() so palette recolours can merge (WB-005 L3)
+_SPRITE_CMD_ID = 0xB006  # one authored-sprite commit is one history entry
+
+#: The SDK families an authored-sprite slot must catch at its boundary. The
+#: facade translates the planners' own families into `SpriteAuthoringError`, the
+#: model raises `ProjectError`, and the write touches the filesystem.
+_SPRITE_ERRORS = (SpriteAuthoringError, ProjectError, OSError)
 
 #: Index -> alpha mask byte, applied to a whole scanline buffer in one C-level
 #: `bytes.translate`. Entry 0 is 0 (transparent); every other index is 255
@@ -183,6 +193,38 @@ class PaletteRecolourCommand(QUndoCommand):
         # adopt the later new rgb, so a single undo restores the original.
         self._new.update(other._new)
         return True
+
+
+class AuthoredSpriteCommand(QUndoCommand):
+    """One undoable commit to the project's authored-sprite document.
+
+    The write ALREADY happened before the push, because a Python exception raised
+    inside `redo()` does not propagate cleanly through Qt's C++ `push()` and the
+    failed command would still be recorded on the stack. The first, push-driven
+    redo is therefore a no-op. Undo writes the prior document - for a first commit
+    an empty one, which is how undo removes the file - and both directions go
+    through the tab's one write path, so an undo is a fresh project mutation
+    rather than a silent return to a clean point.
+    """
+
+    def __init__(self, tab: "GraphicsTab", prior: AuthoredSprites,
+                 current: AuthoredSprites, text: str):
+        super().__init__(text)
+        self._tab = tab
+        self._prior = prior
+        self._current = current
+        self._applied = True
+
+    def redo(self) -> None:
+        if self._applied:
+            self._applied = False
+            return
+        self._tab._write_authored_document(self._current)
+        self._tab._after_authored_change()
+
+    def undo(self) -> None:
+        self._tab._write_authored_document(self._prior)
+        self._tab._after_authored_change()
 
 
 def indexed_pixmap(pixels: bytes, width: int, height: int, rgb) -> QPixmap:
@@ -629,6 +671,53 @@ class GraphicsTab(QWidget):
         palette_box_layout.addWidget(palette_header)
         palette_box_layout.addWidget(palette_body, 1)
 
+        # -- E. Authored sprite (project-scoped, not selection-scoped) ----------
+        # The one surface that CREATES `sprites/sprites.toml`. A project documents
+        # at most one new identity, so this is a strip that states the document and
+        # offers create/edit/remove - not a collection and not a per-sprite panel.
+        self._authored_chip = StateChip("No project open.", "readonly", plain=True)
+        # The chip states the STATE in a few words and the summary line below
+        # carries the sentence. A wrapping chip in a fixed-height ToolStrip grows
+        # to two lines and pushes the strip's buttons outside the visible row,
+        # which is what the first visual review of this surface caught.
+        self._authored_chip.setWordWrap(False)
+        self._authored_chip.setSizePolicy(QSizePolicy.Policy.Preferred,
+                                          QSizePolicy.Policy.Fixed)
+        self._authored_summary = QLabel("")
+        self._authored_summary.setWordWrap(True)
+        self._authored_summary.setProperty("dbzRole", "hint")
+        self._authored_new = QPushButton("New authored sprite\u2026")
+        self._authored_new.clicked.connect(self._on_new_authored_sprite)
+        self._authored_edit = QPushButton("Edit\u2026")
+        self._authored_edit.clicked.connect(self._on_edit_authored_sprite)
+        self._authored_remove = QPushButton("Remove")
+        self._authored_remove.clicked.connect(self._on_remove_authored_sprite)
+        authored_tips = (
+            (self._authored_new, "Create the project's one new actor-sprite identity"),
+            (self._authored_edit, "Edit the authored sprite this project already has"),
+            (self._authored_remove,
+             "Remove the authored sprite from this project; Undo reverses it"),
+        )
+        for button, tip in authored_tips:
+            button.setToolTip(tip)
+        authored_strip = ToolStrip()
+        authored_strip.add(self._authored_chip)
+        authored_strip.add(self._authored_new)
+        authored_strip.add(self._authored_edit)
+        authored_strip.add(self._authored_remove)
+        authored_strip.add_stretch()
+        authored_box = QWidget()
+        authored_box_layout = QVBoxLayout(authored_box)
+        authored_box_layout.setContentsMargins(0, 0, 0, 0)
+        authored_box_layout.setSpacing(0)
+        authored_box_layout.addWidget(PanelHeader("Authored sprite"))
+        authored_box_layout.addWidget(authored_strip)
+        authored_box_layout.addWidget(self._authored_summary)
+        #: The committed document and the (project, revision) key it was read at, so
+        #: a repaint never re-parses the project for a fact that has not moved.
+        self._authored = None
+        self._authored_key: tuple[str | None, int] | None = None
+
         # -- Layout: splitter (browser | inspector) over palette + status -----
         splitter = QSplitter(Qt.Orientation.Horizontal)
         splitter.addWidget(browser)
@@ -656,7 +745,12 @@ class GraphicsTab(QWidget):
         root.setContentsMargins(0, 0, 0, 0)
         root.setSpacing(theme.SPACE_SM)
         root.addWidget(splitter, 3)
+        root.addWidget(authored_box)
         root.addWidget(palette_box, 2)
+        # No session change has happened yet, so the authored-sprite strip states
+        # its opening condition here rather than leaving its buttons default-enabled
+        # on a window that cannot author anything.
+        self._refresh_authored_strip()
 
     # -- session wiring -------------------------------------------------------
 
@@ -735,6 +829,7 @@ class GraphicsTab(QWidget):
         # before reading when nothing is staged, and it is handed this repaint's
         # one effective-palette map when something is.
         self._refresh_pending_ui(rgb)
+        self._refresh_authored_strip()
         self._update_status()
 
     def _sprites(self):
@@ -1580,6 +1675,137 @@ class GraphicsTab(QWidget):
         # and the enabled Apply/Revert outliving the edit they described). Costs
         # no project read, because nothing is staged.
         self._refresh_pending_ui()
+
+    # -- E. authored sprite ---------------------------------------------------
+
+    def _refresh_authored_strip(self) -> None:
+        """State the project's authored-sprite document, read once per revision.
+
+        The document is project state and can move from anywhere - an undo here,
+        another editor, a reopened project - so it is re-read whenever the project
+        directory or the project revision moves, and never on a plain repaint.
+        """
+        project = self._session.project_dir
+        key = (str(project) if project is not None else None,
+               self._session.project_revision)
+        if key == self._authored_key:
+            return
+        self._authored_key = key
+        sprite = None
+        problem = None
+        if project is not None:
+            try:
+                sprite = sprite_sdk.authored_sprite(project)
+            except (*_SDK_ERRORS, ProjectError, OSError) as exc:
+                problem = str(exc)
+        self._authored = sprite
+        if problem is not None:
+            self._authored_chip.set_state("Project unreadable.", "invalid")
+            self._authored_summary.setText(problem)
+            available = False
+        elif not self._authoring_available():
+            self._authored_chip.set_state("Authoring not available.", "readonly")
+            self._authored_summary.setText(
+                "Authoring a new sprite needs an open image whose profile declares "
+                "actor sprites, and a project extracted from that image.")
+            available = False
+        elif sprite is None:
+            self._authored_chip.set_state("No authored sprite.", "neutral")
+            self._authored_summary.setText(
+                "A new actor-sprite identity is content the image does not contain: "
+                "its own animation slots and frames, drawn by one appended map actor. "
+                "One image hosts one such identity per build.")
+            available = True
+        else:
+            self._authored_chip.set_state(f"Authored: {sprite.name}", "saved")
+            self._authored_summary.setText(
+                f"{sprite.identity} - engine id {sprite.sprite_id}, donor sprite "
+                f"{sprite.donor_sprite_id}, {len(sprite.animations)} animation slot(s), "
+                f"actor on {sprite.actor.map} with behaviour template "
+                f"{sprite.actor.behaviour_template}. A change here makes the current "
+                "validation and build stale.")
+            available = True
+        self._authored_new.setEnabled(available)
+        self._authored_edit.setEnabled(available and sprite is not None)
+        self._authored_remove.setEnabled(available and sprite is not None)
+
+    def _authoring_available(self) -> bool:
+        session = self._session
+        return (session.project_dir is not None
+                and session.profile is not None
+                and session.map_image is not None)
+
+    def _open_authored_dialog(self, *, editing: bool) -> None:
+        if self._session.project_dir is None:
+            QMessageBox.information(
+                self, "Authored sprite",
+                "Open or extract a project first: a new sprite is written into the "
+                "project, not into the ROM.")
+            return
+        dialog = SpriteAuthoringDialog(self, self._session, editing=editing)
+        if dialog.exec() != QDialog.DialogCode.Accepted:
+            return
+        document = dialog.document()
+        if document is None:
+            return
+        self._commit_authored_sprite(document, dialog.windowTitle())
+
+    def _on_new_authored_sprite(self) -> None:
+        self._open_authored_dialog(editing=False)
+
+    def _on_edit_authored_sprite(self) -> None:
+        self._open_authored_dialog(editing=True)
+
+    def _on_remove_authored_sprite(self) -> None:
+        if self._session.project_dir is None or self._authored is None:
+            return
+        confirm = QMessageBox.question(
+            self, "Remove authored sprite",
+            f"Remove {self._authored.identity} from this project? The sheets it "
+            "draws from stay on disk; the project stops authoring the identity. "
+            "Undo reverses this.",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
+        if confirm != QMessageBox.StandardButton.Yes:
+            return
+        self._commit_authored_sprite(AuthoredSprites(), "Remove authored sprite")
+
+    def _commit_authored_sprite(self, document: AuthoredSprites, label: str) -> None:
+        """Write the document, then record it as one undoable project mutation.
+
+        The write runs HERE, before the push, so an SDK failure is caught by this
+        guard and the history is left untouched (`AuthoredSpriteCommand`).
+        """
+        try:
+            prior = read_project(self._session.project_dir).sprites
+            changed = self._write_authored_document(document)
+        except _SPRITE_ERRORS as exc:
+            QMessageBox.critical(self, "Authored sprite", str(exc))
+            return
+        self._after_authored_change()
+        if changed:
+            self._undo_stack.push(
+                AuthoredSpriteCommand(self, prior, document, label))
+
+    def _write_authored_document(self, document: AuthoredSprites) -> bool:
+        """The one write path for the authored-sprite document."""
+        return sprite_sdk.apply_authored_sprite(self._session.project_dir, document)
+
+    def _after_authored_change(self) -> None:
+        """Post-commit refresh: session currency, peers, and this tab's strip.
+
+        Touching the project bumps the revision and re-arms Validate and Build, the
+        contract every authoring surface follows. The palette is deliberately NOT
+        repainted: the effective colours have not moved, so re-decoding the grid
+        would be work for nothing.
+        """
+        self._session.project_mutated()
+        self._emitting_project_change = True
+        try:
+            self.projectChanged.emit()
+        finally:
+            self._emitting_project_change = False
+        self._refresh_authored_strip()
+        self._update_status()
 
     # -- status line ----------------------------------------------------------
 

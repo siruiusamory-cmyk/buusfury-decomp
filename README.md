@@ -84,18 +84,20 @@ in a configured emulator.
 
 ## Current status
 
-**21 / 24 capabilities (88%).** That is the exact count reported by the
+**22 / 24 capabilities (92%).** That is the exact count reported by the
 repository's capability registry,
 [`src/data/capabilities.json`](src/data/capabilities.json), which is the single
-authority for what is shipped: READ 5 / 5, EDIT 8 / 8, AUTHOR 4 / 7,
+authority for what is shipped: READ 5 / 5, EDIT 8 / 8, AUTHOR 5 / 7,
 DELIVER 4 / 4.
 
 **Phase 2 - complete map editing - is complete.** Tile painting, chunk creation,
 map resizing and layer authoring, and warp and connection editing have all
 shipped, the last of them runtime-proven in the retail engine. Phase 3, graphics
-and actor authoring, has started with **graphics import**, which has shipped; the
-next capability is authoring new sprites and animation frames. The full route to
-1.0 is in the
+and actor authoring, has shipped **graphics import** and then **new sprite,
+animation and frame authoring**: the Graphics tab creates a project's own
+actor-sprite identity and the retail engine resolves and draws it. The next
+capability is appearance authoring, which binds authored graphics into
+game-visible actors. The full route to 1.0 is in the
 [roadmap](docs/ROADMAP_TO_1_0.md).
 
 ## What makes this different

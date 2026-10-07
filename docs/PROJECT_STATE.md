@@ -2158,12 +2158,13 @@ terrain-field window, so the editor refuses it by name.
 
 ## Capability registry
 
-DragonByte Z reads **21 / 24 (88%)**: READ 5/5, EDIT 8/8, AUTHOR 4/7, DELIVER 4/4.
-The three unshipped capabilities are new sprites, appearance authoring and new
-maps. Phase 2 (map editing) is complete: tile painting, chunk creation, map
-resizing with layer authoring and warp/connection editing all ship. Phase 3 has
-started: graphics import shipped 2026-10-03, and the next capability is sprite,
-animation and frame authoring, which the roadmap marks `next`, deliberately
+DragonByte Z reads **22 / 24 (92%)**: READ 5/5, EDIT 8/8, AUTHOR 5/7, DELIVER 4/4.
+The two unshipped capabilities are appearance authoring and new maps. Phase 2
+(map editing) is complete: tile painting, chunk creation, map resizing with layer
+authoring and warp/connection editing all ship. Phase 3 has started: graphics
+import shipped 2026-10-03 and new sprite, animation and frame authoring shipped
+2026-10-07 through the Graphics tab's authored-sprite surface, and the next
+capability is appearance authoring, which the roadmap marks `next`, deliberately
 distinct from `in-progress`. The exact per-capability limits and proof levels live
 in [`capability-registry.md`](capability-registry.md), and the reconciliation of
 this paragraph against the registry is recorded in

@@ -178,6 +178,35 @@ and is left unused deliberately.
 
 ## 8. Save data and narrower fields
 
+**Item 8.1 - the bitset's containing block is STATIC, not heap.** Two ROM
+descriptors name their RAM blocks by absolute address, and both name the same
+one for the flag block:
+
+```
+reader descriptor 0x087319CC:  +0x00 0x03003300  +0x04 0x03003898
+                               +0x08 0x03001068  +0x0C 0x03001C4C  +0x10 0x0806EE6C
+writer descriptor 0x08732374:  +0x00 0x03003300  +0x04 0x03001C4C
+                               +0x08 0x03001068  +0x0C 0x0806EE6C  +0x10 0x00000001
+```
+
+So the block the bitset lives in is a static object at `0x03001068` in IWRAM, and
+the descriptor's `+0x08` is the field the accessors load. That is a different
+structure from the roster object, which the builder heap-allocates. It also means
+`+0xE2` and `+0xE3` are **inside** the static block rather than past the end of an
+allocation, since the block is initialised as a `0x8A8`-byte object.
+
+The block's address appears as a literal word in 41 places: one code pool
+(`0x080481A4`, read by the initializer function `0x08047FF4`) and 40 data
+occurrences in the `0x0806xxxx`-`0x0807xxxx` region, which is the shape of pointer
+tables to static RAM structures rather than of code.
+
+**Item 8.2 - whether the flags are persisted is OUTSTANDING.** Following those
+pointer tables to whatever copies regions into the save medium is the remaining
+work, and it has not been done here. Until it is, this document does not claim
+that the bitset is transient, and the supported count above rests only on the
+bytes being inside the object and unreferenced by the code measured in item 7.
+
+
 **OUTSTANDING.** Whether any save block or subsystem stores an appearance id or
 count in a field narrower than the table's 32-bit form has not been established
 here. Four bounded read-only passes were run against this and the other items;

@@ -200,68 +200,45 @@ The block's address appears as a literal word in 41 places: one code pool
 occurrences in the `0x0806xxxx`-`0x0807xxxx` region, which is the shape of pointer
 tables to static RAM structures rather than of code.
 
-**Item 8.2a - how many code paths can reach the block at all.** The reader
-descriptor `0x087319CC` is named by exactly one code pool (`0x0802530C`, in the
-builder) and one data word (`0x080256BC`, a literal pool inside the function at
-`0x080255C4`). The writer descriptor `0x08732374` is named by exactly one code
-pool (`0x08026188`, in the constructor). So three code paths reach the block, and
-all three are in the appearance/roster module: `0x08024F3C`, `0x08025E50` and
-`0x080255C4`. No save, load or copy routine appears among them, which is evidence
-that the flags are session state rather than persisted - but it is not proof,
-because a bulk copy could take the block's IWRAM address directly.
+**Item 8.2 - the bitset IS persisted, and the saved record has room for 240.**
+An independent read-only census followed the save path end to end. The medium is
+**EEPROM**, not SRAM or FLASH: the `EEPROM_V124` tag sits at file `0x7B7964`, the
+driver selects the `0x2000`-byte descriptor (`0x0803FB80`), and `0x0803FB96`-`0x0803FB9A`
+allocates an 8192-byte save image whose pointer lands at `0x03004A64`.
 
-**Item 8.2 - whether the flags are persisted is OUTSTANDING.** Byte-pattern
-scanning cannot settle it: the `adds rX,#0xC0` idiom returns hundreds of sites
-across the image because any structure with a `0xC0` offset produces it, and the
-same is true of `adds rX,#0xC5` (314 sites). Settling this needs a dataflow trace
-from a register known to hold the block, which is what the delegated save census
-is for, or a check of the forty data words that carry the block's address to see
-whether any of them is a copy region rather than a descriptor field. Following those
-pointer tables to whatever copies regions into the save medium is the remaining
-work, and it has not been done here. Until it is, this document does not claim
-that the bitset is transient, and the supported count above rests only on the
-bytes being inside the object and unreferenced by the code measured in item 7.
+The persisted record **is the runtime state object at IWRAM `0x03001068`**, 0x8A8
+bytes, written to the image at `0x10 + 0x8B0 * slot`:
 
+```
+08004944  movs r1, #0x8B
+08004946  lsls r1, r1, #4        ; 0x8B0, the slot stride
+08004948  muls r1, r5, r1
+08004950  adds r1, #0x10         ; image offset
+0800494E  r3 = 0x8B0             ; length
+08004956  bl   0x0803FBDE        ; copy the region out and write it
+```
 
-**OUTSTANDING.** Whether any save block or subsystem stores an appearance id or
-count in a field narrower than the table's 32-bit form has not been established
-here. Four bounded read-only passes were run against this and the other items;
-their results must be folded in before this proof is called complete.
+`0x08020504` is the save entry, and `0x08020516`-`0x0802051A` passes exactly that
+pointer: the literal at file `0x72085C` is `68 10 00 03` = `0x03001068`.
 
-## Ownership, lifecycle and the exact failure mode
+**The first `0x4F8` bytes are copied verbatim** by an ARM memcpy reached through
+the interworking veneer at `0x08046DD0` (`0x080502C6` sets `r2 = 0x9F << 3`), and
+the checksum covers the whole `0x8A8` record (`0x080048C8` length, compared at
+`0x080048DA`).
 
-An independent read-only census of the same addresses (raw bytes, capstone, ROM
-hash checked before and after) confirmed every number above and added four things
-this design depends on.
+So appearance persistence is **one bit per index in a byte array** - there is no
+count field and no index list - and that array lies inside the verbatim prefix.
+Indices 232 to 239 reach `record+0xC5+29 = +0xE2` at most, which is inside both
+the verbatim `0x4F8` prefix and the checksummed `0x8A8` record. **The saved region
+does not cap at 232**, so the supported N of 240 sits entirely inside it.
 
-**The object is owned by its own lifecycle, not by a static holder.** The
-constructor's single caller `0x08007512` hands the pointer to `0x0803D8A0`, which
-pushes it on a context stack at IWRAM `0x03000F90`, sets that word to the object,
-dispatches the object's slot 1 and restores. No static word holds the object
-address. Its vtable is `0x0804A950`, reached by the pool at `0x08025308`; slot 1
-is `0x080255C4`, slot 10 is `0x08025354` and slot 16 is `0x08025510`, which is why
-those three have no direct caller. The deleting destructor is slot 2
-(`0x0804F55C`, stub `0x08051474`, free `0x0803D63C`) and is virtual-only.
-
-**The display list is a computed fixed offset, not a stored pointer.** Nothing
-stores an address into `+0x3B4`; it is a count, and the entries begin at `+0x3B8`
-with stride 8 holding `{first, last}` pairs. Its reachable last write is
-`obj+0xAF4`, and its capacity to the object end is 237 entries - five more than
-the 232 indices can produce, and the 232nd already stops short of the tail at
-`+0xAF8`.
-
-**The failure mode, precisely.** Patching `0x08024F92` from `0xE8` to `0xE9` and
-having all 233 flags set makes the 233rd append write the loop index over the
-display-list count at `obj+0x3B4`. The display loop then reads that clobbered word
-as its own count (`0x08024FB4`), so its first append lands on the two live pointer
-fields at `obj+0xAF8` and `obj+0xAFC`, and the count keeps climbing from there -
-through the tail struct at `+0xB00` and past `obj+0xB20` into adjacent heap. That
-is what "patch the bound but keep the 0xB20 allocation" actually does.
-
-**Both arrays must grow, and the count must be the driver.** The index array needs
-`4N` from `+0x14`, the display count sits at `+0x14+4N`, and the display entries
-need `8N` - which is the `0x40 + 12N` in the fixture below. Growing one without
-the other relocates the collision rather than removing it.
+**Item 8.3 - no narrower field holds an appearance id or count.** The census
+traced every carrier: the search returns the index as a 32-bit `r0`, both callers
+store it with `str r0` into 0x28-byte entries, the constructor stores the record
+*pointer* at `object+0x20`, and every consumer reads `record+0x04` and `record+0x0C`
+as words. The only sub-32-bit values near the table are the record's own `u16`
+text indices, which bound the string table rather than the appearance count. The
+one narrow store derived from an index resolves to the 1-bit flag itself.
 
 ## The fixture for N = 240
 

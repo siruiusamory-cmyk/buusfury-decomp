@@ -419,8 +419,9 @@ def _census_evidence(doc: dict) -> str:
     out.append("- **Refuted.** Same-offset sharing of the actor-sprite table does not hold: at file `0x6B6BDC` LOG1 "
                "holds `0x88888890` and zeros, and LOGII holds bitmap-shaped noise. LOGII does carry a pointer cluster at "
                "`0x6A8938` into `0x086A88xx`, which is a same-address-space coincidence, not a proven shared format.")
-    out.append("- **LOG1.** Identity only. The profile declares zero tables, the image retains zero developer strings, "
-               "and no LOG1-specific decoder exists in the product. Its one measured cell is the cartridge header.")
+    out.append("- **LOG1.** Identity and save media only. The profile declares zero tables, the image retains zero developer "
+               "strings, and no LOG1-specific decoder exists in the product. Two of its cells carry a measured basis: the "
+               "cartridge header, and the save-library variant `EEPROM_V122` at `0x087A6390`.")
     out.append("- **LOGII.** Two declared tables, both with their own evidence: 260 ASCII text pointers and 43 script "
                "roots. Its dialogue is script-interleaved and partly compressed and is declared unsupported. Its "
                "0x38-stride table at `0x08409368` is real but a variant record type; field-level identity to the Buu "
@@ -507,7 +508,7 @@ def summary(doc: dict) -> str:
     l2_unknown, l2_ni = unknown_basis("logii")
     out.append("Per-game differences, in cells: Buu's Fury has {} of {} cells writable and is the only title with a broad "
                "writable set; LOGII has one writable cell, its text table, plus four read-only domains including its own "
-               "script encoding; LOG1 has none and is identity-only. {} of LOG1's {} cells and {} of LOGII's {} cells are "
+               "script encoding; LOG1 has none and is identity and save media only. {} of LOG1's {} cells and {} of LOGII's {} cells are "
                "`UNKNOWN_UNMAPPED`, and {} of those and {} respectively rest on a NOT_INVESTIGATED basis: that basis is a "
                "statement about this lab's evidence, not about those games, and the rest are measured negatives over "
                "declared tables.\n".format(bf["PARTIALLY_EDITABLE"], bf["measured_cells"], l1_unknown, lg1["measured_cells"],

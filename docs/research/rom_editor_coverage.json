@@ -2824,7 +2824,13 @@
         "zero N_A cells with evidence-backed absences in excluded_seed_areas",
         "the fifteen facilities outside the denominator"
       ],
-      "confirmation": "PENDING"
+      "confirmation": {
+        "candidate_sha": "a8ae66b4468ff0c7c1cb7373328247be4603b9ec",
+        "verdict": "BLOCK, on a single LOW finding, with everything else verified",
+        "verified": "both blocking findings fixed and recomputed by the reviewer for all six areas and both sibling titles; all non-blocking notes confirmed; no forbidden vocabulary left and no dangling id after the row rename; all published counts, the ROM surface sum, and the registry claim re-derived; both earlier judgement calls re-judged and resolved",
+        "low_finding": "the census said LOG1 has one measured cell and named only the cartridge header, while the JSON carries two MEASURED cells for LOG1: the header and the save-library variant EEPROM_V122 at 0x087A6390",
+        "resolution": "fixed in the same commit as this record, in the generator rather than by hand: the census now says identity and save media only and names both measured cells, and the summary says identity and save media only. The reviewer had expressly framed the item as accept-now rather than a defect this fix introduced, so no further review round was run, and the returned verdict is recorded verbatim above rather than restated as an approval."
+      }
     }
   }
 }

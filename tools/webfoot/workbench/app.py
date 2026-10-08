@@ -89,6 +89,11 @@ class MainWindow(QMainWindow):
         # Not destinations: reached from an editor or from a project action.
         self._scene = SceneTab(session)
         self._build = BuildPanelTab(session, catalog)
+        # CQA-27: the shell owns the unsaved-work policy and the panel asks it before
+        # every project change, whichever button or menu action started one. The
+        # panel's own Open Project and Extract buttons used to change the project
+        # with no prompt at all.
+        self._build.projectChangeGate = self._project_change
         self._launcher = LauncherTab(session)
 
         #: Editor name -> host, so the strip and the switcher share one map.
@@ -802,12 +807,35 @@ class MainWindow(QMainWindow):
             return
         self._atlas.open_rom_dialog()
 
+    def _project_change(self, action: str, run) -> None:
+        """Run a project-setting dialog behind the unsaved-work guard.
+
+        CQA-27. A project switch is destructive to staged layout work for a reason a
+        ROM change does not have: those edits name records in the OUTGOING project,
+        so carrying them across would commit one project's work into another. The
+        guard runs before the directory dialog, so cancelling it changes nothing,
+        and the discard happens only once the project has actually moved - a user
+        who cancels inside the picker keeps every staged edit.
+
+        The Build panel installs this as its `projectChangeGate`, so the panel's own
+        buttons and the File menu both pass through it and neither can bypass the
+        policy.
+        """
+        if not self._confirm_discard_staged_edits(action):
+            return
+        before = self._session.project_dir
+        run()
+        if self._session.project_dir != before:
+            self._maps.discard_staged_work()
+
     def _confirm_discard_staged_edits(self, action: str) -> bool:
         """Ask before an operation that cannot preserve staged layout edits.
 
-        The count is `MapsEditor.unsaved_edit_count()`, the same authority the
-        window title and the status bar already report as unsaved work, so the
-        prompt can never disagree with the number on screen.
+        The count is `Session.unsaved_edit_count()`, the same authority the window
+        title and the status bar already report as unsaved work, so the prompt can
+        never disagree with the number on screen. Every editor that stages layout
+        work registers there, which is what makes a staged Warp transition visible
+        to this guard and not only to its own surface.
 
         Other editors also stage values - unapplied palette colours, unapplied
         dialogue text - but those describe the *outgoing* image and have no
@@ -815,7 +843,7 @@ class MainWindow(QMainWindow):
         layout edits are authored work that a ROM change would silently destroy,
         which is why the guard is derived from that one count.
         """
-        pending = self._maps.unsaved_edit_count()
+        pending = self._session.unsaved_edit_count()
         if not pending:
             return True
         answer = QMessageBox.question(
@@ -865,7 +893,7 @@ class MainWindow(QMainWindow):
             title = f"DragonByte Z \u2014 {rom.name}{suffix}{kind}"
         if project is not None:
             title = f"{title} \u00b7 {project.name}"
-        pending = self._maps.unsaved_edit_count()
+        pending = self._session.unsaved_edit_count()
         if pending:
             title = f"{theme.TITLE_DIRTY} {title} \u2014 {pending} unsaved"
         self.setWindowTitle(title)

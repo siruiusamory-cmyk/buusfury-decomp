@@ -333,10 +333,10 @@ export const project: ProjectStatus = {
     " identity the retail table already uses is an explicit, default-off choice per" +
     " definition, because that redirection is real and the build refuses a takeover" +
     " nobody asked for.",
-    "The last capability, and the current blocker, is new map authoring: composing the" +
-    " verified systems into one genuinely new playable area with its own layout," +
-    " graphics, actors, events, dialogue and transitions, and running it in the retail" +
-    " engine. Everything it composes has shipped.",
+    "The capability list is complete: all 24 capabilities in the fixed registry are" +
+    " shipped and reachable from DragonByte Z. The remaining work is the" +
+    " release-candidate phase - creator experience, recovery, packaging and the" +
+    " end-to-end dogfood gate - and it has not started.",
   ],
   acceptanceTarget:
     "Author playable Legacy of Goku content inside the real LOGII/Buu engine.",
@@ -710,14 +710,13 @@ export const project: ProjectStatus = {
   frontier: [
     {
       kind: "near",
-      title: "Author new sprites and animation frames",
+      title: "Author new sprite identities and animation slots",
       detail:
-        "Graphics import shipped: an extracted sprite PNG can be edited and built," +
-        " and the retail engine renders the authored pixels - in place when the" +
-        " re-encoded payload still fits, or from storage above the original end of" +
-        " the image when it does not. The next capability is creating graphics the" +
-        " game does not contain: new frames and animation slots rather than" +
-        " replacement art.",
+        "The Graphics tab creates the project's new actor-sprite identity - donor" +
+        " composition, per-slot sheets and the object slot the appended actor starts" +
+        " from - and writes `sprites/sprites.toml`, which a ROM-gated build turns into" +
+        " authored sprite and actor records. Piece/OAM composition, frame geometry and" +
+        " frame timing remain outside the modelled contract and are refused.",
     },
     {
       kind: "near",

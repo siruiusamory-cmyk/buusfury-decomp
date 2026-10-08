@@ -200,3 +200,78 @@ def test_apply_still_records_and_emits(project):
     _apply(tab, 40, (5, 6, 7))
     assert emitted == [True]
     assert graphics_sdk.get_palette_override(project, p, 40) == (5, 6, 7)
+
+
+# --- CQA-23: the shell's Edit-menu Undo/Redo must reach the Graphics history --
+#
+# Graphics is wrapped in a plain `EditorHost` (app.py:111-113). The base
+# `EditorHost.undo_stack()` answered None unconditionally (editors.py:173), so
+# `MainWindow._active_undo_stack` (app.py:634-643) found no stack for it,
+# `_refresh_undo_actions` (:659) disabled both menu actions, and the tab's own
+# window-context Ctrl+Z was the only route left. These three drive the real
+# shell, not the tab.
+
+
+def _shell(project):
+    """A real MainWindow whose Graphics tab is the active editor."""
+    from tools.webfoot.profile import RomProfileCatalog
+    from tools.webfoot.workbench.app import MainWindow
+
+    catalog = RomProfileCatalog.load(os.path.join("config", "roms.yaml"))
+    window = MainWindow(_session_with_sprites(project), catalog)
+    window.show_editor("Graphics")
+    return window
+
+
+def test_shell_edit_menu_undo_reaches_the_graphics_history(project):
+    window = _shell(project)
+    tab = window._graphics
+    p = _profile()
+
+    _apply(tab, 40, (10, 20, 30))
+
+    assert window._active_undo_stack() is tab._undo_stack
+    assert window._action_undo.isEnabled() is True
+
+    window._action_undo.trigger()
+    assert graphics_sdk.get_palette_override(project, p, 40) is None
+    assert window._action_redo.isEnabled() is True
+
+    window._action_redo.trigger()
+    assert graphics_sdk.get_palette_override(project, p, 40) == (10, 20, 30)
+
+
+def test_shell_undo_is_not_offered_while_another_editor_is_active(project):
+    """A hidden editor's history must not be reachable from the shell."""
+    window = _shell(project)
+    _apply(window._graphics, 40, (10, 20, 30))
+
+    window.show_editor("Atlas")
+
+    assert window._active_undo_stack() is None
+    assert window._action_undo.isEnabled() is False
+
+
+def test_shell_undo_is_not_offered_after_the_project_changes(project):
+    """Undo must never carry one project's history onto another project."""
+    window = _shell(project)
+    _apply(window._graphics, 40, (10, 20, 30))
+    assert window._action_undo.isEnabled() is True
+
+    other = project / "other"
+    other.mkdir()
+    write_project(
+        other,
+        ProjectMeta(1, _PROFILE, "Fake Game", "0" * 64, 1024, "undo-test-2"),
+        enemies=[],
+        characters=[],
+    )
+    tab = window._graphics
+    tab._session.set_project(other)
+    tab.on_project_mutated()
+    window._refresh_undo_actions()
+
+    stack = window._active_undo_stack()
+    assert stack is not None, "the shell must still reach the Graphics history"
+    assert stack.count() == 0, "the retired project's history must be dropped"
+    assert window._action_undo.isEnabled() is False

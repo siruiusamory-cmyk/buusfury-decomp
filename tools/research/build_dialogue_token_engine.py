@@ -182,6 +182,12 @@ def build_fitter_copy(image: bytes) -> bytes:
 
 
 def patch(source: Path, destination: Path, expected_sha256: str) -> dict[str, object]:
+    # A source image is immutable. Refuse before opening anything: a check after
+    # the write would only report the damage.
+    if destination.resolve() == source.resolve():
+        raise SystemExit(
+            f"refusing to write the derivative over its own source image: {source}"
+        )
     if sha256(source) != expected_sha256:
         raise SystemExit(
             f"source is not the declared image: {sha256(source)} != {expected_sha256}"

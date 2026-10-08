@@ -115,10 +115,17 @@ rather than the feature.
 | OAM snapshots | 30 | 30 |
 | VRAM window changes | 55 | 55 |
 
-Identical on every channel, so the relocated copy and both retargetings are
-behaviour-preserving on the canonical image at 3,000 frames. The composition hook
-at `0x0800B066` was already runtime-proven by the two-glyph POC, so both ends of
-the design's hook plan now have runtime evidence.
+Identical on every channel. **What that proves, and how it was observed, stated
+separately.** Observed: the route ran to 3,000 frames with the two dialogue call
+sites patched to branch into the cave, and every instrument counts exactly what
+the canonical control counts. Inferred, not directly observed: that the cave's
+copy is what executed, because the observer arms no breakpoint inside the cave and
+its ROMCHECK reads only the two hook words. A cave that never ran would produce
+the same counters, which is why the conclusion is "the relocation changed no
+observed behaviour" and not "the copy was watched running". The counter argument
+is that the two retargeted `BL`s are the only fitter calls reachable from
+`FUN_0800AE74`, and 941 compositions happened, so the calls did arrive somewhere;
+the cave is where they were pointed.
 
 Built by `tools/research/build_dialogue_token_engine.py --variant fitter-control`:
 
@@ -162,14 +169,15 @@ python -m tools.research.build_dialogue_token_engine --variant fitter-control \
     --expect-sha256 940AD5F01DB4465B8877DFE739510CBF34F4EA3D390F3DF13519808BC36F059E \
     --out build/runtime-roms/dialogue-fitter-control.gba
 
-powershell -File tools/runtime/run_token_engine_session.ps1 -Phase start \
-    -RomPath build/runtime-roms/dialogue-fitter-control.gba \
-    -ExpectedRomSha256 8fa424d93a256239a82626eab99ec30074f421a82334676d8a14a9fb6fbdeb7d \
-    -RunDir build/fitter-control-run-01
-powershell -File tools/runtime/run_token_engine_session.ps1 -Phase finish \
-    -RomPath build/runtime-roms/dialogue-fitter-control.gba \
-    -ExpectedRomSha256 8fa424d93a256239a82626eab99ec30074f421a82334676d8a14a9fb6fbdeb7d \
-    -RunDir build/fitter-control-run-01
+powershell -File tools/runtime/run_token_engine_session.ps1 -Phase start `
+    -RomPath build/runtime-roms/dialogue-fitter-control.gba `
+    -ExpectedRomSha256 8fa424d93a256239a82626eab99ec30074f421a82334676d8a14a9fb6fbdeb7d `
+    -RunDir build/fitter-control-run-01 -MGBPath "<0.11 dev build>" `
+    -StatePath "<retail savestate>"
+powershell -File tools/runtime/run_token_engine_session.ps1 -Phase finish `
+    -RomPath build/runtime-roms/dialogue-fitter-control.gba `
+    -ExpectedRomSha256 8fa424d93a256239a82626eab99ec30074f421a82334676d8a14a9fb6fbdeb7d `
+    -RunDir build/fitter-control-run-01 -StatePath "<retail savestate>"
 ```
 
 The launcher and the savestate are not inside a ticket worktree (`build/` and
@@ -207,11 +215,25 @@ The launcher and the savestate are not inside a ticket worktree (`build/` and
 * **The unrelated defects are untouched**, as the ticket required: the
   `F0674DD8` crash and the unsafe tail allocation are not investigated here and
   no claim is made that tokens affect either.
-* Two corrections to the design record fell out of this work, both measured:
-  the `BL` at `0x0800B06A` targets `0x0803DE50` (the composition wrapper), not the
-  fitter `0x0803DE6A`, and the `0x082ED210` run is 3,019 bytes which is under the
-  4,096-byte threshold the design compared it against (the only other uniform run
-  that large is the `0xFF` tail). Neither changes the design's plan.
+* **Two design rules are enforced only when a caller opts in**, and this ticket
+  did not build the caller that would: the "no glyph record" image check is the
+  `has_glyph` seam on `build_blob` and `decode_blob`, and the 108 px expansion
+  bound is `check_widths`, which nothing calls yet. The C0 block is refused
+  unconditionally, because the design measures it as glyph-less, but a build that
+  emits a token must still pass the font and call `check_widths` or those two
+  rules are inert. The `DTKN` table base and count literals the engine reads have
+  no producer at all yet, so the design's section 14 check that they agree with
+  the blob header is likewise still to be written.
+* **The cave address is still a constant.** The design requires taking the region
+  from the project's free-space machinery and running a cave-only control against
+  it; the builder checks that its 512 reserved bytes are one uniform filler run
+  and nothing more. It does not re-derive the 3,019-byte run the design measures.
+* Three measurements of this ticket are worth carrying even though they touch
+  other records: the `BL` at `0x0800B06A` targets `0x0803DE50`, the composition
+  wrapper, while the fitter `0x0803DE6A` is a separate six-caller function; the
+  `0x082ED210` run is 3,019 bytes, so it is below a 4,096-byte threshold rather
+  than above one; and the only other uniform run that large is the `0xFF` ROM
+  tail. None of the three changes the design's plan.
 
 ## 8. Next steps, in order
 

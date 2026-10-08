@@ -135,6 +135,48 @@ def test_a_glyph_with_no_glyph_record_is_refused_by_the_build() -> None:
     assert build_blob(source, has_glyph=lambda glyph: True)
 
 
+def test_a_c0_formatting_operand_has_no_glyph_record_and_is_refused() -> None:
+    """0x02 and 0x07 are the 0x0008 escape's operands and carry no glyph."""
+    for operand in (0x02, 0x07, 0x01, 0x1F):
+        assert not glyph_admissible(operand)
+        with pytest.raises(TokenDictionaryError) as caught:
+            TokenDictionary(("A" + chr(operand),))
+        assert "has no glyph record" in str(caught.value)
+
+
+def test_a_nested_token_is_refused_and_named_as_one() -> None:
+    with pytest.raises(TokenDictionaryError) as caught:
+        TokenDictionary((f"{chr(TOKEN_BASE)}b",))
+    assert "a nested expansion token" in str(caught.value)
+
+
+def test_an_empty_dictionary_emits_no_blob() -> None:
+    with pytest.raises(TokenDictionaryError) as caught:
+        build_blob(TokenDictionary(()))
+    assert "empty dictionary" in str(caught.value)
+
+
+def test_a_blob_declaring_no_tokens_is_refused() -> None:
+    blob = (b"DTKN" + bytes([1, 0]) + (0).to_bytes(2, "little")
+            + bytes([3, ENTRY_STRIDE_HALFWORDS]) + bytes([0, 0]))
+    expect(blob, "declares no tokens")
+
+
+def test_a_nonzero_reserved_or_flags_field_is_refused() -> None:
+    blob = bytearray(build_blob(dictionary()))
+    blob[5] = 1
+    expect(bytes(blob), "unsupported dictionary version/flags")
+    reserved = bytearray(build_blob(dictionary()))
+    reserved[10] = 1
+    assert decode_blob(bytes(reserved)).expansions == dictionary().expansions
+
+
+def test_a_glyph_after_the_terminator_is_refused() -> None:
+    blob = bytearray(build_blob(dictionary("Ya")))
+    blob[18:20] = (0x0042).to_bytes(2, "little")
+    expect(bytes(blob), "glyph after its")
+
+
 def test_two_expansions_with_the_same_text_are_refused() -> None:
     with pytest.raises(TokenDictionaryError) as caught:
         dictionary("in", "in")
@@ -266,6 +308,39 @@ def test_a_three_glyph_entry_that_would_overshoot_is_skipped() -> None:
     encoded = encode_to_length("thein", source, 4)
     assert encoded == f"the{token_unit(1)}"
     assert decode_text(encoded, source) == "thein"
+
+
+def test_a_shorter_entry_at_the_same_position_is_tried_after_an_overshoot() -> None:
+    """An overshoot falls through to a shorter key, not to no key at all.
+
+    With a three-glyph key this matters: "ing" saves two units and cannot serve a
+    one-unit target, but "in" at the very same position can.
+    """
+    source = TokenDictionary(("ing", "in"))
+    encoded = encode_to_length("ing", source, 2)
+    assert encoded == f"{token_unit(1)}g"
+    assert decode_text(encoded, source) == "ing"
+
+
+def test_the_matcher_is_greedy_and_refuses_rather_than_guessing() -> None:
+    """A left-to-right pass can refuse text an optimal choice would close.
+
+    The design specifies longest-first left-to-right matching, so this is the
+    specified behaviour and not a defect: the refusal is fail-closed, and with a
+    dictionary whose entries are all the same length the greedy pass needs the
+    fewest possible positions and is optimal, which is what the shipped
+    allocation uses.
+    """
+    source = TokenDictionary(("ab", "bcd"))
+    with pytest.raises(TokenDictionaryError) as caught:
+        encode_to_length("abcd", source, 2)
+    assert "cannot close the record" in str(caught.value)
+
+
+def test_the_refusal_reports_what_the_text_offers_not_what_was_spent() -> None:
+    with pytest.raises(TokenDictionaryError) as caught:
+        encode_to_length("ing", TokenDictionary(("ing",)), 2)
+    assert "offers 2 units of saving but the target needs 1" in str(caught.value)
 
 
 def test_a_target_equal_to_the_text_is_returned_untouched() -> None:

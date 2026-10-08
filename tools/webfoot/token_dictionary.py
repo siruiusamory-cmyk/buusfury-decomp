@@ -55,6 +55,11 @@ TERMINATOR = 0xFFFF
 #: class. A glyph code at or above it is never a glyph the rasteriser will draw.
 WIDE_CLASS_THRESHOLD = 0xFF
 
+#: Below this, the code map holds no glyph record at all: the 32 values 0x00..0x1F
+#: are the empty C0 block, and 27 of them are otherwise free. None of them is
+#: usable, which is a measured property of the image rather than a preference.
+MIN_GLYPH = 0x20
+
 #: Source units the dialogue path reads as an instruction rather than as text:
 #: the terminator, the two-unit ink escape, the line break, the soft end, the
 #: space that records a wrap checkpoint, and the hyphen join. A token is one unit
@@ -76,7 +81,8 @@ def glyph_admissible(glyph: int) -> bool:
     """Whether a unit may appear inside an expansion."""
     if not 0 <= glyph <= 0xFFFF:
         return False
-    return glyph < WIDE_CLASS_THRESHOLD and glyph not in STREAM_CONTROLS
+    return (MIN_GLYPH <= glyph < WIDE_CLASS_THRESHOLD
+            and glyph not in STREAM_CONTROLS)
 
 
 def is_token_unit(unit: int) -> bool:
@@ -111,15 +117,23 @@ def _require_admissible(expansion: str, has_glyph: Callable[[int], bool] | None)
             f"{MIN_GLYPHS}..{MAX_GLYPHS}"
         )
     for glyph in units:
+        if is_token_unit(glyph):
+            raise TokenDictionaryError(
+                f"expansion {expansion!r} names {glyph:#06x}, a nested expansion token"
+            )
         if glyph >= WIDE_CLASS_THRESHOLD:
             raise TokenDictionaryError(
                 f"expansion {expansion!r} names {glyph:#06x}, at or above the "
                 f"{WIDE_CLASS_THRESHOLD:#04x} wide-class threshold"
             )
-        if not glyph_admissible(glyph):
+        if glyph in STREAM_CONTROLS:
             raise TokenDictionaryError(
                 f"expansion {expansion!r} names {glyph:#06x}, which the dialogue path "
                 f"reads as an instruction rather than as text"
+            )
+        if glyph < MIN_GLYPH:
+            raise TokenDictionaryError(
+                f"expansion {expansion!r} names {glyph:#06x}, which has no glyph record"
             )
         if has_glyph is not None and not has_glyph(glyph):
             raise TokenDictionaryError(
@@ -206,6 +220,10 @@ def dictionary_to_document(dictionary: TokenDictionary) -> dict[str, object]:
 def build_blob(dictionary: TokenDictionary, *,
                has_glyph: Callable[[int], bool] | None = None) -> bytes:
     """Validate every entry against the image and emit the blob the engine reads."""
+    if not dictionary.expansions:
+        # The header's count is 1..256. An empty document means the feature is
+        # off, and the build emits no blob and no hook for it.
+        raise TokenDictionaryError("refusing to emit a blob for an empty dictionary")
     for expansion in dictionary.expansions:
         _require_admissible(expansion, has_glyph)
     blob = bytearray(MAGIC + bytes([VERSION, FLAGS])
@@ -232,6 +250,8 @@ def decode_blob(blob: bytes, *,
         raise TokenDictionaryError("dictionary stride or max glyphs is not this design's")
     if count > MAX_TOKENS:
         raise TokenDictionaryError(f"token count {count} is above the {MAX_TOKENS} window")
+    if count == 0:
+        raise TokenDictionaryError("dictionary declares no tokens")
     if len(blob) != HEADER_BYTES + count * stride * 2:
         raise TokenDictionaryError("dictionary length does not match its header")
     expansions: list[str] = []
@@ -242,6 +262,10 @@ def decode_blob(blob: bytes, *,
         if TERMINATOR not in raw:
             raise TokenDictionaryError(f"entry {index} has no {TERMINATOR:#06x} terminator")
         glyphs = raw[:raw.index(TERMINATOR)]
+        if any(value != TERMINATOR for value in raw[len(glyphs):]):
+            raise TokenDictionaryError(
+                f"entry {index} holds a glyph after its {TERMINATOR:#06x} terminator"
+            )
         text = "".join(chr(glyph) for glyph in glyphs)
         if not MIN_GLYPHS <= len(glyphs) <= MAX_GLYPHS:
             raise TokenDictionaryError(
@@ -286,11 +310,9 @@ def assert_authored_text(text: object, *, what: str = "text") -> None:
         raise TokenDictionaryError(problem)
 
 
-def _match(text: str, position: int, keys: tuple[str, ...]) -> str | None:
-    for expansion in keys:
-        if text.startswith(expansion, position):
-            return expansion
-    return None
+def _matches(text: str, position: int, keys: tuple[str, ...]) -> list[str]:
+    """Every expansion that starts here, longest first."""
+    return [expansion for expansion in keys if text.startswith(expansion, position)]
 
 
 def encode_text(text: str, dictionary: TokenDictionary) -> str:
@@ -306,13 +328,13 @@ def encode_text(text: str, dictionary: TokenDictionary) -> str:
     out: list[str] = []
     position = 0
     while position < len(text):
-        expansion = _match(text, position, keys)
-        if expansion is None:
+        expansion = _matches(text, position, keys)
+        if not expansion:
             out.append(text[position])
             position += 1
             continue
-        out.append(token_unit(dictionary.expansions.index(expansion)))
-        position += len(expansion)
+        out.append(token_unit(dictionary.expansions.index(expansion[0])))
+        position += len(expansion[0])
     return "".join(out)
 
 
@@ -364,22 +386,27 @@ def encode_to_length(text: str, dictionary: TokenDictionary, target_units: int) 
     position = 0
     spent = 0
     while position < len(text):
-        expansion = _match(text, position, keys) if spent < saving else None
-        # A three-glyph entry saves two units, so a match that would overshoot the
-        # target is skipped rather than spent.
-        if expansion is not None and spent + len(_units(expansion)) - 1 > saving:
-            expansion = None
-        if expansion is None:
+        chosen = None
+        if spent < saving:
+            for expansion in _matches(text, position, keys):
+                # A three-glyph entry saves two units, so a match that would
+                # overshoot the target is passed over in favour of a shorter one
+                # at the same position rather than abandoned.
+                if spent + len(_units(expansion)) - 1 <= saving:
+                    chosen = expansion
+                    break
+        if chosen is None:
             out.append(text[position])
             position += 1
             continue
-        out.append(token_unit(dictionary.expansions.index(expansion)))
-        position += len(expansion)
-        spent += len(_units(expansion)) - 1
+        out.append(token_unit(dictionary.expansions.index(chosen)))
+        position += len(chosen)
+        spent += len(_units(chosen)) - 1
     if spent != saving:
+        offered = available - encoded_units(encode_text(text, dictionary))
         raise TokenDictionaryError(
-            f"the text offers {spent} units of saving but the target needs {saving}; "
-            f"this dictionary cannot close the record"
+            f"this text offers {offered} units of saving but the target needs "
+            f"{saving}; the dictionary cannot close the record"
         )
     return "".join(out)
 

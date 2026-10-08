@@ -128,3 +128,18 @@ def test_the_encoder_refuses_a_substitution_the_map_does_not_perform() -> None:
     old, new = "Goku wins", "Yamcha wins"
     with pytest.raises(SpliceError):
         encode_record(row(old, new), DICTIONARY, {"Vegeta": "Tien"})
+
+
+@pytest.mark.parametrize("old,new", [("Goku", "Yamcha"), ("Trunks", "Uub"),
+                                     ("Goten", "Videl")])
+def test_a_reserved_code_point_in_the_map_is_refused_on_every_path(old: str,
+                                                                   new: str) -> None:
+    """Growth, shrink and same-length all take the same refusal.
+
+    Only the growth path used to check, so a U+E000..U+E0FF character in a map
+    reached the image as text on the other two.
+    """
+    planted = new[:1] + chr(0xE000) + new[1:]
+    with pytest.raises(Exception) as caught:
+        local_replacement(old, planted, DICTIONARY)
+    assert "cannot be authored" in str(caught.value)

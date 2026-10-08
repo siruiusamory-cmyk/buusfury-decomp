@@ -97,6 +97,14 @@ Three defects were found by building and running it, and each is now a refusal:
   address is exported as a label rather than derived by hand, so a probe can watch the
   consumption the expansion performs itself.
 
+The table read-back is done the way the engine does it: the descriptor is fetched from
+the cave's own literal-pool word with the same halfword reads the lookup uses, and only
+then are the entries fetched at `descriptor + index * 8` (CONFIRMED,
+`verify_token_table`). The dictionary is also tied across the three tools - the splice
+report records the expansions in id order, and the engine builder and the verifier each
+refuse a `--tokens` that disagrees with it (CONFIRMED), because otherwise a splice and a
+patch built from different dictionaries would both pass their own checks.
+
 ### 3.1 The three cases, run on the canonical image
 
 All three are LEVEL 3, a verified runtime observation, from

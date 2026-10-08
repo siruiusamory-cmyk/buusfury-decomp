@@ -37,8 +37,8 @@ from pathlib import Path
 
 from tools.webfoot import compressed_dialogue as cd
 from tools.webfoot.formats import webfoot_lz
-from tools.webfoot.token_dictionary import (TokenDictionary, encode_to_length,
-                                            is_token_unit)
+from tools.webfoot.token_dictionary import (TokenDictionary, assert_authored_text,
+                                            encode_to_length, is_token_unit)
 from tools.webfoot.write import WriteError, ensure_not_source_alias
 
 ROM_BASE = 0x08000000
@@ -71,11 +71,13 @@ def load_map(path: Path) -> dict[str, dict]:
     for key, row in document.items():
         if not isinstance(row, dict):
             raise SpliceError(f"{key}: not an object")
-        for field in ("old_selector", "old_start", "old_length", "new_text"):
+        for field in ("old_selector", "old_start", "old_length", "old_text", "new_text"):
             if field not in row:
                 raise SpliceError(f"{key}: no {field}")
         if not isinstance(row["new_text"], str) or not row["new_text"]:
             raise SpliceError(f"{key}: new_text is not a non-empty string")
+        if not isinstance(row["old_text"], str) or not row["old_text"]:
+            raise SpliceError(f"{key}: old_text is not a non-empty string")
         if row["old_length"] % 2:
             raise SpliceError(f"{key}: old_length {row['old_length']} is not even")
     return document
@@ -123,6 +125,10 @@ def local_replacement(old_side: str, new_side: str,
     displays shifted text.
     """
     delta = len(new_side) - len(old_side)
+    # A reserved code point in the map is refused on EVERY path, not only where a
+    # name grows: the equal-length and shrinking branches copy the new side through
+    # unchecked, and a U+E000..U+E0FF character there would be written as text.
+    assert_authored_text(new_side, what=f"the replacement {new_side!r}")
     if delta == 0:
         return new_side
     if delta < 0:
@@ -283,7 +289,13 @@ def splice(base: Path, destination: Path, base_sha256: str, rows: dict[str, dict
         )
 
     placements: dict[int, int] = {}
-    report: dict[str, object] = {"selectors": {}, "records": len(rows)}
+    report: dict[str, object] = {
+        "selectors": {}, "records": len(rows),
+        # The dictionary this build used, in id order. The engine builder and the
+        # verifier both take their own --tokens and read this back, so a splice and an
+        # engine patch made with different dictionaries cannot pass unnoticed.
+        "tokens": list(dictionary.expansions),
+    }
     table = bytearray(TABLE_SLOTS * 4)
     for index in range(TABLE_SLOTS):
         source = table_offset + index * 4
@@ -372,8 +384,16 @@ def splice(base: Path, destination: Path, base_sha256: str, rows: dict[str, dict
     with tempfile.NamedTemporaryFile(dir=destination.parent,
                                      prefix=destination.name + ".",
                                      suffix=".partial", delete=False) as handle:
-        handle.write(bytes(image))
         staged = Path(handle.name)
+        try:
+            handle.write(bytes(image))
+        except BaseException:
+            # NamedTemporaryFile(delete=False) leaves the file behind, and a stray
+            # named `.partial` beside a build is exactly the predictable name this
+            # staging exists to avoid.
+            handle.close()
+            staged.unlink(missing_ok=True)
+            raise
     staged.replace(destination)
     if sha256(base) != base_sha256:
         raise SystemExit("the base image changed during the build")

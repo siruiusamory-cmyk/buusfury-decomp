@@ -34,6 +34,7 @@ from __future__ import annotations
 
 import argparse
 import hashlib
+import json
 import sys
 import tempfile
 from dataclasses import dataclass
@@ -264,6 +265,7 @@ class Emitter:
         self.calls: list[tuple[int, str]] = []
         self.call_targets: dict[str, int] = {}
         self.blob_address = 0
+        self.pool_words: dict[str, int] = {}
 
     def here(self) -> int:
         return self.base + len(self.words) * 2
@@ -305,9 +307,12 @@ class Emitter:
                     f"branch from {site:#010x} to {target:#010x} is out of range"
                 )
             return 0xE000 | ((offset // 2) & 0x7FF)
-        if offset % 2 or not 0 <= offset // 2 <= 0xFF:
+        # The Thumb B<cond> offset is a SIGNED 8-bit count of halfwords, so the range
+        # is -128..127. An earlier version accepted 0..255, which would have encoded a
+        # forward branch of 0x80 or more as a BACKWARD one.
+        if offset % 2 or not -128 <= offset // 2 <= 127:
             raise SystemExit(f"conditional branch from {site:#010x} is out of range")
-        return 0xD000 | (condition << 8) | (offset // 2)
+        return 0xD000 | (condition << 8) | ((offset // 2) & 0xFF)
 
     def branch(self, condition: int, target: int) -> None:
         self.emit(self._branch_word(condition, self.here(), target))
@@ -352,6 +357,7 @@ class Emitter:
             value = self.literals[key]
             self.emit(value & 0xFFFF)
             self.emit((value >> 16) & 0xFFFF)
+        self.pool_words = addresses
         for word_index, register, key in self.references:
             site = self.base + word_index * 2
             base = (site + 4) & ~3
@@ -549,7 +555,7 @@ def assemble_token_cave(image: bytes, blob: bytes, count: int,
         raise SystemExit("the dictionary blob is not the size its header declares")
     payload += blob
     payload = bytes(payload)
-    verify_token_table(payload, blob_at, e.literals["blob"], blob, count)
+    verify_token_table(payload, blob_at, e.pool_words["blob"], blob, count)
     return payload, {
         "cave": CAVE,
         "helpers": e.labels["token_lookup"],
@@ -568,16 +574,20 @@ def assemble_token_cave(image: bytes, blob: bytes, count: int,
     }
 
 
-def verify_token_table(payload: bytes, blob_at: int, table: int, blob: bytes,
+def verify_token_table(payload: bytes, blob_at: int, descriptor_word: int, blob: bytes,
                        count: int) -> None:
     """Read the table the ENGINE will read, out of the cave bytes, and check it.
 
-    This is the design's section 14 requirement that the table the cave is handed
-    agree with the blob header, done the only way that cannot drift: the words are
-    fetched exactly as the lookup fetches them, `table + index * 8`, and compared
-    with the entries the builder meant to write. A descriptor that points at the
-    header passes every other check in this file and fails here, reporting the
-    magic it would have handed the renderer as glyph codes.
+    The descriptor is fetched from the cave's own literal-pool word, not from the
+    builder's variable: the engine loads it with `ldr rX,[pc,#imm]`, so a build whose
+    pool word disagreed with the builder's intent would hand the renderer something
+    else entirely, and this is the check that sees it. An earlier version read the
+    builder's value and then claimed to be reading it as the engine does.
+
+    The words are then fetched exactly as the lookup fetches them,
+    `descriptor + index * 8`, and compared with the entries the builder meant to
+    write. A descriptor pointing at the blob header passes every other check in this
+    file and fails here, reporting the magic it would have handed the renderer.
     """
     def halfword(address: int) -> int:
         offset = address - CAVE
@@ -588,6 +598,7 @@ def verify_token_table(payload: bytes, blob_at: int, table: int, blob: bytes,
             )
         return payload[offset] | (payload[offset + 1] << 8)
 
+    table = (halfword(descriptor_word) | (halfword(descriptor_word + 2) << 16))
     expected = [blob[index] | (blob[index + 1] << 8)
                 for index in range(BLOB_ENTRY_OFFSET, len(blob), 2)]
     actual = [halfword(table + index * 2) for index in range(count * 4)]
@@ -596,6 +607,11 @@ def verify_token_table(payload: bytes, blob_at: int, table: int, blob: bytes,
             f"the token table the cave loads does not hold the dictionary: read "
             f"[{', '.join(f'{value:#06x}' for value in actual[:6])}] at {table:#010x}, "
             f"expected [{', '.join(f'{value:#06x}' for value in expected[:6])}]"
+        )
+    if table != blob_at + BLOB_ENTRY_OFFSET:
+        raise SystemExit(
+            f"the pool word names {table:#010x}, not the entries at "
+            f"{blob_at + BLOB_ENTRY_OFFSET:#010x}"
         )
 
 
@@ -689,8 +705,16 @@ def patch(source: Path, destination: Path, expected_sha256: str, *,
     with tempfile.NamedTemporaryFile(dir=destination.parent,
                                      prefix=destination.name + ".",
                                      suffix=".partial", delete=False) as handle:
-        handle.write(bytes(image))
         staged = Path(handle.name)
+        try:
+            handle.write(bytes(image))
+        except BaseException:
+            # NamedTemporaryFile(delete=False) leaves the file behind, and a stray
+            # named `.partial` beside a build is exactly the predictable name this
+            # staging exists to avoid.
+            handle.close()
+            staged.unlink(missing_ok=True)
+            raise
     staged.replace(destination)
     if sha256(source) != expected_sha256:
         raise SystemExit("the source image changed during the build")
@@ -783,9 +807,22 @@ def main() -> int:
                              "0xE000; a diagnostic build moves it onto a unit that "
                              "occurs naturally in retail text, because a token unit "
                              "never does and planting one needs a container edit")
+    parser.add_argument("--splice-report",
+                        help="the splice report whose dictionary this patch must use")
     args = parser.parse_args()
 
     base = int(args.token_base, 0)
+    if args.splice_report:
+        # The tokens a splice wrote and the tokens this patch expands must be the
+        # same list in the same order, or the patch renders a different dictionary
+        # than the image contains. Nothing else ties the two together.
+        reported = json.loads(Path(args.splice_report).read_text(encoding="utf-8")).get(
+            "tokens")
+        if reported != list(args.tokens):
+            raise SystemExit(
+                f"the splice used {reported} and this patch was given "
+                f"{list(args.tokens)}; they must be the same dictionary in id order"
+            )
     if base != 0xE000:
         print(f"DIAGNOSTIC     : token base moved to {base:#06x}; not a shipping build")
 

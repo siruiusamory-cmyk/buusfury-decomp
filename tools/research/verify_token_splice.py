@@ -29,6 +29,7 @@ Nothing here writes an image.
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import struct
 import sys
@@ -70,12 +71,17 @@ def visible(text: str, dictionary: TokenDictionary) -> str:
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--base", required=True)
+    parser.add_argument("--base-sha256", required=True,
+                        help="the exact digest the base must have, so the check cannot "
+                             "silently describe a different image")
     parser.add_argument("--spliced", required=True)
     parser.add_argument("--map", required=True)
     parser.add_argument("--tokens", nargs="*", required=True)
+    parser.add_argument("--splice-report", required=True,
+                        help="the splicer's report. Required: its refused records must "
+                             "be excluded from the oracle, and its dictionary must be "
+                             "the one this check decodes with")
     parser.add_argument("--report")
-    parser.add_argument("--splice-report",
-                        help="the splicer's report, whose refused records are excluded")
     parser.add_argument("--show", type=int, default=10)
     args = parser.parse_args()
 
@@ -84,15 +90,24 @@ def main() -> int:
     table = substitution_table(rows)
     base = Path(args.base).read_bytes()
     spliced = Path(args.spliced).read_bytes()
+    if hashlib.sha256(base).hexdigest() != args.base_sha256.lower():
+        raise SystemExit("the base is not the declared image")
 
     # The regions that were actually written. A record the splicer refused kept its
     # retail bytes, so its substitutions are not in the image and must not be in the
     # oracle either - the oracle's job is to describe what the image DID, and then
     # the two checks below hold every record to it.
     refused = set()
-    if args.splice_report:
-        refused = set(json.loads(Path(args.splice_report).read_text(encoding="utf-8"))
-                      .get("refused", {}))
+    splice_report = json.loads(Path(args.splice_report).read_text(encoding="utf-8"))
+    if splice_report.get("tokens") != list(args.tokens):
+        # The splice wrote one dictionary and this check decodes with another. The
+        # verifier would still pass, because it decodes with whatever it is handed,
+        # so the tie has to be asserted here.
+        raise SystemExit(
+            f"the splice used {splice_report.get('tokens')} and this check was given "
+            f"{list(args.tokens)}; they must be the same dictionary in id order"
+        )
+    refused = set(splice_report.get("refused", {}))
     applied_rows = {key: row for key, row in rows.items() if key not in refused}
 
     # Every substitution the map performs, as an absolute region of its container,

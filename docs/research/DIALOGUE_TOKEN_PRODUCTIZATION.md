@@ -139,12 +139,16 @@ image              8388608 bytes, game code BG3E, digest unchanged after the run
 run                build/fitter-control-run-01, marker done:StripProbe
 ```
 
-The build refuses, rather than discovers: a source digest other than the declared
-one, a cave region that is not a uniform filler run, a caller whose bytes are not
-the expected `BL`, any `BL` displacement outside the ARMv4T 23-bit range or needing
-`J1`/`J2` other than 1, a copy that differs from the original anywhere but its
-prologue and epilogue, a copy whose last branch leaves the copy, and any stray byte
-outside the two patched regions.
+The build refuses, rather than discovers: a destination that is its source image or
+any filesystem alias of it, through the repository's own `ensure_not_source_alias`
+rule, before the source is even hashed; a source digest other than the declared
+one; a cave region that is not a uniform filler run; a caller whose bytes are not
+the expected `BL`; any `BL` displacement outside the ARMv4T 23-bit range or needing
+`J1`/`J2` other than 1; a copy that differs from the original anywhere but its
+prologue and epilogue; a copy whose last branch leaves the copy; and any stray byte
+outside the two patched regions. The derivative is staged through an exclusively
+created temporary file and published by rename, so no predictable staged name can
+be an alias of the source either.
 
 ## 5. The authored-window refusal
 

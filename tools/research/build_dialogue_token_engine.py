@@ -35,6 +35,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import sys
+import tempfile
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -235,10 +236,16 @@ def patch(source: Path, destination: Path, expected_sha256: str) -> dict[str, ob
 
     verify(bytes(image), original, payload)
     destination.parent.mkdir(parents=True, exist_ok=True)
-    # Stage and publish, so a failure part-way through cannot leave a half-written
-    # derivative that looks like a built image.
-    staged = destination.with_name(destination.name + ".partial")
-    staged.write_bytes(bytes(image))
+    # Stage through an exclusively created temporary file, never a predictable
+    # name beside the destination: a name like `<out>.partial` can itself be a
+    # hard link to the source, which `write_bytes` would then truncate through.
+    # A fresh inode cannot be an alias of anything. The publish is a rename, so
+    # the destination name only ever points at the staged inode.
+    with tempfile.NamedTemporaryFile(dir=destination.parent,
+                                     prefix=destination.name + ".",
+                                     suffix=".partial", delete=False) as handle:
+        handle.write(bytes(image))
+        staged = Path(handle.name)
     staged.replace(destination)
     if sha256(source) != expected_sha256:
         raise SystemExit("the source image changed during the build")

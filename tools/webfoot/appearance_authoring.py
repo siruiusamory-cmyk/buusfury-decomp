@@ -142,9 +142,11 @@ def authorable_sprite_ids(image: bytes, profile, *,
     canonical record 42. An appended record carries `+0x0C = -1`, so loop 1
     returns it *before* loop 2 is reached, and the object's resolution moves from
     the retail record to the authored one. Admitting a canonically-selected id is
-    thus a takeover, not a free extension, and it is refused here rather than
-    performed silently. The authored actor-sprite identity is admissible when the
-    same project defines it, since no canonical record selects it.
+    thus a takeover, not a free extension. It is refused by default and permitted
+    only when that definition opts in, which is `new_records`' rule; this function
+    lists the ids no canonical record selects. The authored actor-sprite identity is
+    admissible when the same project defines it, since no canonical record selects
+    it.
     """
     ceiling = _sprite_ceiling(profile, authored_sprite_id)
     used = {record.sprite_id for record in ap.read_records(image, profile)}
@@ -171,20 +173,38 @@ def new_records(profile, definitions, *, authored_sprite_id: int | None = None,
     canonical record already selects. A value outside any of them is refused
     rather than written and left for the engine to misread.
 
-    The sprite-id rule is not cosmetic, and it is not narrow. The engine's search
-    at 0x08027948 has two loops and the first one runs first. Loop 2 skips the stat
-    test entirely when its second argument is zero (``0x080279A6``-``0x080279A8``)
-    and returns the first record whose sprite matches whatever its stat sign, which
-    is how a retail object resolves today. An appended record carries
-    ``+0x0C = -1``, so loop 1 returns it before loop 2 is reached. Binding a sprite
-    id a canonical record selects therefore redirects that object's resolution, so
-    it is refused here.
+    The sprite-id rule is not cosmetic. The engine's search at 0x08027948 has two
+    loops and the first one runs first, and what each returns depends on the
+    caller's second argument:
+
+    * with the second argument ZERO - the caller at 0x08010312 - loop 1 returns the
+      first record whose sprite matches AND whose ``+0x0C`` is negative
+      (``0x0802798E``-``0x08027992``); loop 2 runs only if loop 1 found nothing and
+      skips the stat test entirely (``0x080279A6``-``0x080279A8``), returning the
+      first record whose sprite matches whatever its sign. An appended record
+      carries ``+0x0C = -1``, so it is returned by loop 1 before loop 2 is reached,
+      and the lookup moves from the retail record to the authored one;
+    * with the second argument SET - the caller at 0x0800FB72, which passes
+      ``[actor+0x224]`` - both loops require ``+0x0C >= 0`` and a computed
+      stat-record pointer to equal that argument (``0x08027978``-``0x08027988`` and
+      ``0x080279AA``-``0x080279BA``), so an appended record is never returned on
+      that path at all.
+
+    Two consequences the rule follows. An id a canonical record with a NEGATIVE stat
+    selects can never be taken over, because that record is returned by loop 1
+    before the appended one, so it is refused outright, on the same grounds as id
+    149. An id whose canonical records are all non-negative can be taken over, but
+    only on the zero-argument path, which is why the opt-in exists and why the
+    surface says which lookups it redirects.
     """
     text_count = _text_count(profile)
     ceiling = _sprite_ceiling(profile, authored_sprite_id)
     used: dict[int, int] = {}
+    negative_bound: set[int] = set()
     for position, record in enumerate(canonical):
         used.setdefault(record.sprite_id, position)
+        if record.stat_index < 0:
+            negative_bound.add(record.sprite_id)
     records = []
     for definition in definitions:
         index = definition.text_index
@@ -211,6 +231,15 @@ def new_records(profile, definitions, *, authored_sprite_id: int | None = None,
                 f"{UNMATCHABLE_SPRITE_ID} is remapped by the engine at "
                 f"0x0802794E before the search compares anything, so a record "
                 f"bound to it can never be returned"
+            )
+        if sprite_id in negative_bound:
+            raise AppearanceAuthoringError(
+                f"appearance {definition.name!r}: sprite id {sprite_id} is selected "
+                f"by a canonical record whose stat index is negative, and the "
+                f"engine's first search loop returns that record before any appended "
+                f"one, so an authored record bound to this id can never be returned "
+                f"even with the override set. Choose a sprite id no canonical record "
+                f"selects."
             )
         if sprite_id in used and not getattr(definition, "override", False):
             raise AppearanceAuthoringError(

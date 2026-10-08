@@ -12,24 +12,41 @@ change admitted the ids that only non-negative-stat records select, on the
 reasoning that those records cannot compete. **That reasoning was wrong**, and an
 independent review of it found the loop that had been missed.
 
-The resolver at `0x08027948` has two loops, and loop 1 runs first:
+The resolver at `0x08027948` has two loops, loop 1 runs first, and what each
+returns depends on the caller's second argument:
 
 ```
-08027960  loop 1: returns the first record whose sprite matches AND +0x0C < 0
-0802799C  loop 2: runs only when loop 1 found nothing
+08027960  loop 1
+08027972  cmp r5, #0            ; the second argument
+08027978  blt -> skip           ; argument set: skip records with +0x0C < 0
+0802798E  cmp r0, #0
+08027990  bge -> skip           ; argument zero: skip records with +0x0C >= 0
+08027992  return the index      ; so the argument decides which sign is a candidate
+0802799C  loop 2, only if loop 1 found nothing
 080279A6  cmp r5, #0
-080279A8  beq 0x080279BC     ; second argument zero -> skip the stat test entirely
-080279BC  ldr r0, [r0, #4]   ; the record's sprite
-080279C2  cmp r0, r7
-080279C6  adds r0, r4, #0    ; return it, whatever the stat sign
+080279A8  beq 0x080279BC        ; argument zero: skip the stat test entirely
+080279BC  compare the record's sprite and return it, whatever its sign
 ```
 
-So a retail object carrying sprite 209 resolves **through loop 2** to canonical
-record 42. An appended record carries `+0x0C = -1`, so loop 1 returns it before
-loop 2 is reached. Binding a canonically selected id therefore **redirects an
-existing object's resolution**; it is a takeover, not an extension. The widening
-did that silently, and the previous claim that "the resolver path is unchanged for
-every canonical resolution" was false on the message path.
+Consequences, both of which the rule follows:
+
+- **Argument zero** (the caller at `0x08010312`): loop 1 returns the first record
+  whose sprite matches AND whose `+0x0C` is negative; loop 2 would return the first
+  match whatever its sign. A retail object carrying sprite 209 resolves through
+  loop 2 to canonical record 42 today. An appended record carries `+0x0C = -1`, so
+  loop 1 returns it **before** loop 2 is reached, and that lookup moves from the
+  retail record to the authored one. **This is the takeover the opt-in is for.**
+- **Argument set** (the caller at `0x0800FB72`, passing `[actor+0x224]`): both loops
+  require `+0x0C >= 0` and a computed stat-record pointer to equal the argument, so
+  an appended record is **never returned on that path at all**. Lookups through it
+  are not redirected, and the surface says so rather than claiming every lookup
+  changes.
+
+And one id class that can never be taken over: if a canonical record with a
+**negative** stat selects the id, loop 1 returns *that* record before any appended
+one, at index 60-something rather than 232, so the authored record can never be
+returned even with the opt-in set. 88 of the 198 canonical sprite ids are in that
+class, and they are refused outright on the same grounds as id 149.
 
 ## The contract
 
@@ -84,3 +101,30 @@ retail actor using a colliding sprite id
 
 The takeover observations recorded before this ticket existed are supporting
 evidence only until the same behaviour is reproduced this way.
+
+## The review, and what it changed
+
+The first focused review of this contract returned **NOT SOUND**, with two blocking
+findings, both verified here before the fix:
+
+1. **The override was accepted for 88 ids where nothing is taken over.** An id a
+   negative-stat canonical record selects is resolved by loop 1 to *that* record
+   before any appended one, so the opt-in could not do anything. This inverted part
+   of the earlier reasoning: the sign of the canonical record's stat decides whether
+   an id is overridable at all, and the ids that *can* be taken over are exactly
+   those whose canonical records are all non-negative. Those 88 ids are now refused
+   outright.
+2. **The two-loop description covered only a zero second argument.** With the
+   argument set, an appended record is never returned, so the surface's warning
+   overstated the effect. The wording now names the sprite-only lookup and says that
+   stat-matched lookups are unaffected, and the docstrings state both cases.
+
+Also fixed from the same review: duplicate entries in the sprite list when the
+canonical vocabulary is the fallback, a label that named the first record selecting
+an id rather than the one that resolves it, and wording that still said colliding
+ids are refused without mentioning the opt-in.
+
+Two tests were added at its request: one mixing an opted-in definition with a
+colliding one that did not opt in, which a rule reading the opt-in once per
+document would wrongly pass; and one using a negative-stat id, which the previous
+helper never produced.

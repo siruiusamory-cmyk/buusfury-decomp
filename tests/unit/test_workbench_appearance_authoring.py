@@ -403,9 +403,14 @@ def test_the_dialog_offers_the_takeover_explicitly_and_warns(qapp, tmp_path, stu
     assert dialog._override.isChecked() is False
     assert dialog._definition().override is False
 
+    # The wording has to name the redirection AND its scope: the takeover applies to
+    # the engine's sprite-only lookup, not to every lookup, and a wording that
+    # claimed otherwise would overstate what the author is enabling.
     warning = dialog._override_warning.text().lower()
     assert "redirects existing actors" in warning
-    assert "sprite id" in warning
+    assert "sprite-only lookup" in warning
+    assert "stat record" in warning
+    assert "unaffected" in warning
     assert "retail" in warning
 
     dialog._override.setChecked(True)

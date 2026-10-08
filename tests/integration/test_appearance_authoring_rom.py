@@ -673,3 +673,42 @@ def test_the_build_writes_an_opted_in_takeover(canonical, authored, tmp_path, ca
         == (TEXT_INDEX, TEXT_INDEX + 1, colliding, 0, -1)
     for offset in ap.APPEARANCE_COUNT_OFFSETS:
         assert produced[offset] == ap.APPEARANCE_CANONICAL_COUNT + 1
+
+def test_an_id_that_can_never_be_taken_over_is_refused_with_the_override_too(
+        canonical, identified, profile):
+    """An id a negative-stat canonical record selects is unreachable for an
+    appended record, because loop 1 returns that canonical record first. The
+    override cannot change that, so it is refused on the same grounds as id 149.
+    """
+    records = ap.read_records(canonical, profile)
+    negative = next(record.sprite_id for record in records if record.stat_index < 0)
+    with pytest.raises(ValueError) as refused:
+        aa.new_records(profile,
+                       _asserted(NAME, TEXT_INDEX, negative).ordered(),
+                       canonical=records)
+    assert "can never be returned" in str(refused.value)
+    with pytest.raises(ValueError):
+        aa.materialize_authored_appearances(
+            canonical, identified, profile, _asserted(NAME, TEXT_INDEX, negative))
+
+
+def test_the_opt_in_is_read_from_each_definition_not_from_the_set(canonical, identified,
+                                                                 profile):
+    """One definition opting in must not carry another colliding one with it.
+
+    The gate is per definition. A document that opts one appearance in and leaves a
+    second colliding appearance silent has to be refused, and a rule that read the
+    opt-in once for the whole document would pass this test wrongly.
+    """
+    records = ap.read_records(canonical, profile)
+    first = _colliding(canonical, profile)
+    second = next(record.sprite_id for record in records
+                  if record.sprite_id != first and record.stat_index >= 0)
+    document = _document(
+        AuthoredAppearance("asserted", 1188, first, override=True),
+        AuthoredAppearance("silent", 1190, second),
+    )
+    with pytest.raises(ValueError) as refused:
+        aa.new_records(profile, document.ordered(), canonical=records)
+    assert "silent" in str(refused.value)
+    assert "override" in str(refused.value)

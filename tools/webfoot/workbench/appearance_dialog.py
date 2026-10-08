@@ -34,13 +34,16 @@ from .widgets import StateChip
 _SDK_ERRORS = (AppearanceAuthoringError, ProjectError, OSError)
 
 #: What enabling the takeover does, in the plainest terms the surface can state.
+#: The redirection is a property of one of the engine's two searches, so the
+#: wording names it rather than claiming every lookup is affected.
 _OVERRIDE_WARNING = (
-    "Taking over a retail binding redirects existing actors. The engine's search "
-    "returns an appended record before the retail one, so any actor in the game "
-    "that already carries this sprite id would show this authored appearance "
-    "instead - its on-screen name, description, portrait and stat record become "
-    "the ones this definition states. Enable this only when that redirection is "
-    "what you intend, and leaving it off keeps the retail resolution unchanged."
+    "Taking over a retail binding redirects existing actors on the engine's "
+    "sprite-only lookup. There the search returns an appended record before the "
+    "retail one, so an actor looked up that way would show this authored appearance "
+    "instead: its on-screen name, description, portrait and stat record become the "
+    "ones this definition states. Lookups that also match a stat record are "
+    "unaffected. Enable this only when that redirection is what you intend, and "
+    "leaving it off keeps every retail resolution unchanged."
 )
 
 _OUT_OF_CONTRACT = (
@@ -148,11 +151,25 @@ class AppearanceAuthoringDialog(QDialog):
         # state the resolvable window, so the canonical vocabulary stands in and
         # the plan-time refusal remains the enforcement.
         from .. import appearance_authoring as authoring
+        #: The record the engine actually returns for a sprite: the first one with a
+        #: negative stat index if any, because loop 1 returns that before anything
+        #: else, otherwise the first record that selects it.
+        resolves: dict[int, int] = {}
+        takeable: dict[int, bool] = {}
+        for index, record in enumerate(records):
+            if record.sprite_id not in resolves or record.stat_index < 0:
+                resolves.setdefault(record.sprite_id, index)
+            if record.stat_index < 0:
+                resolves[record.sprite_id] = index
+            takeable[record.sprite_id] = (
+                takeable.get(record.sprite_id, True) and record.stat_index >= 0)
+        listed = False
         try:
             offered = authoring.authorable_sprite_ids(
                 image, profile, authored_sprite_id=extra)
         except authoring.AppearanceAuthoringError:
             offered = appearance_format.sprite_vocabulary(image, profile, extra=extra)
+            listed = True          # the vocabulary already carries the retail ids
         for sprite_id in offered:
             name_index = first_by_sprite.get(sprite_id)
             suffix = strings.get(name_index, "") if name_index is not None else ""
@@ -160,18 +177,23 @@ class AppearanceAuthoringDialog(QDialog):
             if sprite_id == extra:
                 text += " (the authored sprite identity)"
             self._sprite.addItem(text, sprite_id)
-        # The retail-selected ids are listed too, last and labelled with the record
-        # that selects them, because taking one over is a thing an author may
-        # deliberately choose. Selecting one without the opt-in is refused by the
-        # same validation the build runs.
-        for sprite_id in appearance_format.sprite_vocabulary(image, profile):
-            name_index = first_by_sprite.get(sprite_id)
-            suffix = strings.get(name_index, "") if name_index is not None else ""
-            record = first_record_by_sprite.get(sprite_id)
-            bound = f" (retail record {record})" if record is not None else ""
-            self._sprite.addItem(
-                f"sprite {sprite_id}" + (f" - {suffix}" if suffix else "") + bound,
-                sprite_id)
+        # The retail-selected ids are listed last and labelled with the record that
+        # resolves them, because taking one over is a deliberate choice. Selecting
+        # one without the opt-in, or selecting one that can never be taken over, is
+        # refused by the same validation the build runs.
+        if not listed:
+            for sprite_id in appearance_format.sprite_vocabulary(image, profile):
+                name_index = first_by_sprite.get(sprite_id)
+                suffix = strings.get(name_index, "") if name_index is not None else ""
+                record = resolves.get(sprite_id)
+                if takeable.get(sprite_id, False):
+                    bound = f" (retail record {record})" if record is not None else ""
+                else:
+                    bound = (f" (retail record {record}, already resolved by a "
+                             f"negative-stat record: cannot be taken over)")
+                self._sprite.addItem(
+                    f"sprite {sprite_id}" + (f" - {suffix}" if suffix else "") + bound,
+                    sprite_id)
         # The record whose index is edited keeps its own values selectable even
         # when the image no longer offers them, so opening the dialog is never a
         # silent rewrite of a committed definition.

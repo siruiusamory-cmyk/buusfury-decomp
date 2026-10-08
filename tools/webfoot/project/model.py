@@ -2650,12 +2650,15 @@ class AuthoredAppearance:
     name: str
     text_index: int
     sprite_id: int
-    #: Whether this definition deliberately takes over a sprite id a canonical
-    #: record already selects. Off by default, and it is a document field rather
-    #: than something derived from the id: the engine's first search loop returns
-    #: an appended record (its `+0x0C` is negative) before the second loop can
-    #: return the retail one, so binding a selected id redirects that object's
-    #: resolution. An author has to say so.
+    #: Whether this definition deliberately takes over a sprite id whose canonical
+    #: records all have non-negative stat indices. Off by default, and a document
+    #: field rather than something derived from the id. On the engine's
+    #: sprite-only search the first loop returns an appended record (its `+0x0C` is
+    #: negative) before the second loop can return the retail one, so such a binding
+    #: redirects that lookup; on the stat-matched search an appended record is never
+    #: returned at all. An author has to ask for the takeover, and an id a
+    #: negative-stat canonical record selects is refused outright because it can
+    #: never be taken over.
     override: bool = False
 
     def __post_init__(self) -> None:

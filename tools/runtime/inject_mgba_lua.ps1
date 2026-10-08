@@ -29,6 +29,17 @@ $allowedLua = @(
     [System.IO.Path]::GetFullPath(
         (Join-Path $workspaceRoot 'tools\runtime\dialogue_strip_probe.lua')
     )
+    # Added by DIALOGUE-TOKEN-PRODUCTIZATION-001: the token-lookup observer. The
+    # strip probe logs composition and advance but never the SOURCE UNIT handed to
+    # the token lookup, which is the one value that tells whether the line fitter
+    # and the composer agree about a unit. This one arms the lookup, the fitter's
+    # token branch, the shared glyph advance, the cave's expansion loop, the game's
+    # composer and the record copier as liveness, and reads registers only. It
+    # writes no emulated memory, presses no keys and writes host files inside the
+    # run directory only.
+    [System.IO.Path]::GetFullPath(
+        (Join-Path $workspaceRoot 'tools\runtime\dialogue_token_probe.lua')
+    )
     # Added by DIALOGUE-RENDER-PATH-001 and published with the dialogue research
     # set: the dialogue input driver. It is DRIVING CODE in its own file, which is
     # why it is separate from the observer above. It presses A once every 180

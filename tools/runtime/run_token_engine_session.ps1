@@ -20,6 +20,13 @@ param(
     [Parameter(Mandatory)][string]$RunDir,
     [Parameter(Mandatory)][string]$StatePath,
     [string]$MGBPath = '',
+    [string]$ExpandAddr = '',
+    [string]$Observer = '',
+    [string]$TokenLookup = '',
+    [string]$TokenAdvancePath = '',
+    [string]$TokenGlyphAdvance = '',
+    [string]$TokenComposeLoop = '',
+    [string]$TokenConsume = '',
     [int]$TimeoutSeconds = 600
 )
 
@@ -35,7 +42,7 @@ if (-not $MGBPath) {
     $MGBPath = Join-Path $root 'build\tools\mgba-dev\extracted\mGBA-build-2026-08-27-win64-9128-c65e8a3d4666b0ea68a01578232452f31b185332\mGBA.exe'
 }
 $mgb = $MGBPath
-$observer = Join-Path $root 'tools\runtime\dialogue_strip_probe.lua'
+$observer = if ($Observer) { $Observer } else { Join-Path $root 'tools\runtime\dialogue_strip_probe.lua' }
 $driver = Join-Path $root 'tools\runtime\npc_talk_driver.lua'
 $pidFile = Join-Path $RunDir 'mgba.pid'
 $marker = Join-Path $RunDir 'lua-marker.txt'
@@ -67,7 +74,36 @@ if ($Phase -eq 'start') {
         throw 'the savestate copy does not match its source'
     }
     $env:TOOLKIT031_OUT = $csv
-    Remove-Item Env:\DIALOGUE_EXPAND_ADDR -ErrorAction SilentlyContinue
+    # The observer's own size identity check. The launcher already gates the exact
+    # digest, so this is a second, independent statement of which image is running;
+    # it is derived from the file rather than assumed, because a generated-expansion
+    # derivative is legitimately larger than the canonical image.
+    $env:DIALOGUE_ROM_SIZE = (Get-Item -LiteralPath $RomPath).Length.ToString()
+    # The observer arms its EXPAND probe only when this names an address, and the
+    # child emulator inherits it. Unset it otherwise, so a probe left over in the
+    # caller's shell cannot silently change what a run measures.
+    if ($ExpandAddr) {
+        $env:DIALOGUE_EXPAND_ADDR = $ExpandAddr
+    } else {
+        Remove-Item Env:\DIALOGUE_EXPAND_ADDR -ErrorAction SilentlyContinue
+    }
+    # The token observer's four optional probe addresses, also inherited. Any that
+    # is not named is cleared, so a value left over in the caller's shell cannot
+    # silently change what a run measures.
+    $probes = @{
+        'DIALOGUE_TOKEN_LOOKUP'         = $TokenLookup
+        'DIALOGUE_TOKEN_ADVANCE_PATH'   = $TokenAdvancePath
+        'DIALOGUE_TOKEN_GLYPH_ADVANCE'  = $TokenGlyphAdvance
+        'DIALOGUE_TOKEN_COMPOSE_LOOP'   = $TokenComposeLoop
+        'DIALOGUE_TOKEN_CONSUME'        = $TokenConsume
+    }
+    foreach ($name in $probes.Keys) {
+        if ($probes[$name]) {
+            Set-Item -Path "Env:\$name" -Value $probes[$name]
+        } else {
+            Remove-Item -Path "Env:\$name" -ErrorAction SilentlyContinue
+        }
+    }
 
     . (Join-Path $root 'tools\runtime\mgba_session.ps1')
     $process = Start-MgbaSession -MGBPath $mgb -RomPath $RomPath -LuaPath $observer `

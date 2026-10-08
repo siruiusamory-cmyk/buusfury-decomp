@@ -1,255 +1,264 @@
-# Dialogue expansion tokens: the encoder, and the engine patch's relocation
+# Dialogue expansion tokens: the encoder, the engine patch, and the rename splice
 
 Ticket: DIALOGUE-TOKEN-PRODUCTIZATION-001. This record carries what the ticket
-measured, what it showed at runtime, and what it neither showed nor ran. It is
-explicit about the gap: the token branch of the engine patch has not executed, and
-the friend-image acceptance run has not been made.
+measured, what it showed at runtime, and what it has not done. Baseline
+`origin/master` `b7f90a42393c42cea03cfbd36b8967621dbefca6`, branch
+`ticket/dialogue-token-productization-001`.
 
-Baseline: `origin/master` `b7f90a42393c42cea03cfbd36b8967621dbefca6`, branch
-`ticket/dialogue-token-productization-001`. The canonical image is unchanged:
+The canonical image is unchanged:
 `940AD5F01DB4465B8877DFE739510CBF34F4EA3D390F3DF13519808BC36F059E`. Every
-derivative this ticket built lives under ignored `build/`; no ROM, savestate,
-capture or screenshot is committed.
+derivative, capture and screenshot lives under ignored `build/`; no ROM, savestate,
+capture or screenshot is committed. The private v3 base images and the rename map
+are NOT in this repository and are passed to the tools as arguments.
 
 ## 1. What was recovered, and what this ticket adds
 
-The approved design is already on master: `docs/research/DIALOGUE_EXPANSION_TOKEN_DESIGN.md`
+The approved design is on master: `docs/research/DIALOGUE_EXPANSION_TOKEN_DESIGN.md`
 (token window `0xE000..0xE0FF`, the `DTKN` dictionary blob, the three hook sites,
 the relocated line fitter, the fail-closed rules). The prior proof is
-`docs/research/DIALOGUE_TWO_GLYPH_POC.md`, which runtime-proved the composition
-hook at `0x0800B066` with a cave at `0x082ED210`.
+`docs/research/DIALOGUE_TWO_GLYPH_POC.md`, which runtime-proved the composition hook
+at `0x0800B066` with a cave at `0x082ED210`.
 
-This ticket adds three things:
+This ticket adds five things:
 
-1. the **production encoder and dictionary codec**, `tools/webfoot/token_dictionary.py`,
-   with every design rule as a refusal and a test per rule;
-2. the **authored-window refusal** wired into the dialogue authoring path, which
-   the design names as the prerequisite of the first build that emits a token;
-3. the **first runtime evidence for the measure side** of the engine patch: the
-   relocated copy of the line fitter with its two retargeted callers. The counters
-   it produced are observed; that the copy is what ran is inferred, and section 4
-   keeps those two claims apart.
+1. the production encoder and dictionary codec, `tools/webfoot/token_dictionary.py`,
+   with every design rule a refusal and a test per rule;
+2. the authored-window refusal wired into the dialogue authoring path, which the
+   design names as the prerequisite of the first build that emits a token;
+3. the **token branch of the engine patch**, built and executed at runtime:
+   `token_lookup`, the shared `glyph_advance`, `token_advance` in the relocated
+   fitter, the composition cave, and the dictionary blob;
+4. a rename splice that is **prefix-preserving**, `tools/research/splice_dialogue_tokens.py`,
+   so a rename cannot move another word;
+5. the verifier that proves it, `tools/research/verify_token_splice.py`, over every
+   record the image's own inventory can name.
 
 ## 2. The five named expansions, checked against the design
 
 The ticket names `[Ya]`, `[ha]`, `[Kr]`, `[in]`, `[Ti]` as the token allocation.
-Under the recovered design an expansion is **text**, and its id is **generated**:
-the document lists expansions in key order and the build assigns `0xE000 + index`
-(`DIALOGUE_EXPANSION_TOKEN_DESIGN.md` section 4, "Token ids are generated, not
-authored"). So the five names are expansion texts, not ids, and nothing about
-them may be inferred from the name: `[Ya]` expands to the two glyphs `Y` and `a`
-and to nothing else.
+Under the recovered design an expansion is **text** and its id is **generated**: the
+document lists expansions in key order and the build assigns `0xE000 + index`
+(design section 4). So the five names are expansion texts, not ids, and nothing may
+be inferred from a name: `[Ya]` expands to the glyphs `Y` and `a` and to nothing else.
 
-Checked against the design's entry rules, each of the five is admissible:
-
-| rule | source | `Ya` | `ha` | `Kr` | `in` | `Ti` |
-| --- | --- | --- | --- | --- | --- | --- |
-| 2 to 3 glyphs | design section 4 | 2 | 2 | 2 | 2 | 2 |
-| below the `0xFF` class threshold | design section 2.3 | yes | yes | yes | yes | yes |
-| not a stream control (`0x00 0x08 0x0A 0x0B 0x20 0x2D`) | design section 4 | yes | yes | yes | yes | yes |
-| has a glyph record | design section 2.3 | yes | yes | yes | yes | yes |
-| expansion advance at or under 108 px | design section 11 | yes | yes | yes | yes | yes |
-| not a duplicate | design section 4 | yes | yes | yes | yes | yes |
+Checked against the design's entry rules, each of the five is admissible: two
+glyphs, below the `0xFF` class threshold, not a stream control, has a glyph record,
+expansion advance under 108 px, not a duplicate.
 
 Two glyphs is the design's own minimum, and a two-glyph entry replaces two units
 with one, so every applied expansion saves exactly one unit. That is the whole
 mechanism this feature exists for.
 
-## 3. The measured coverage, and the one adjustment it needs
+## 3. The engine patch, and what running it proved
 
-The 451 records are the spoken-dialogue rename set of the v3 line (a local
-artifact, see section 7). Measured against the canonical image's own text stores,
-the corpus of handle-defined records is 2,805 spans over seven containers with
-194,717 reachable units, 89 distinct values and a highest value of `0x00EF`; the
-menu and quest pool tops out at `0x00E9`. Nothing in either store is in the token
-window, which is what makes the window reservable at all.
+`tools/research/build_dialogue_token_engine.py` builds the patch:
 
-For each rename record the requirement is arithmetic: the record's new text is
-`g` units longer than retail, and each applied expansion saves one unit, so the
-record lands exactly on retail when exactly `g` non-overlapping occurrences are
-tokenised. Measured over the rename set:
-
-| expansion set | entries | growing records closed | short |
-| --- | --- | --- | --- |
-| the five, case-sensitive | 5 | 210 | 5 |
-| the five plus their uppercase forms | 10 | 215 | 0 |
-
-The five records the case-sensitive set cannot close are the all-caps lines, for
-example `COME ON, KRILLIN! SHOW US WHAT YOU GOT! GO GO KRILLIN!` and `YAMCHA!`.
-Adding the uppercase forms is not a design change: the window holds 256 ids and
-the blob for ten entries is 92 bytes.
-
-Result, produced by the shipped encoder rather than by an independent count:
-**215 of 215 growing records land on exactly their retail unit count, the other
-236 are already at or under it, and all 451 round-trip**. So the set that ships
-today (236) and the set it withholds (215) together become 451 records whose
-encoded lengths are unchanged, which is the property the friend-image defect
-turned on.
-
-The record enforces that result rather than trusting it: `encode_to_length`
-refuses a target the text cannot reach and refuses a record the dictionary cannot
-close, so a dictionary that does not cover a record fails at build time and never
-degrades into a padded or truncated line.
-
-## 4. The engine patch: the runtime evidence, and what it does not show
-
-The design's measure side is a **relocated copy** of the line fitter
-`FUN_0803DE6A`, because that function is a leaf (`push {r4,r5,r6,r7}` at
-`0x0803DE6A`, `pop {r4,r5,r6,r7}` + `bx lr` at `0x0803DEA2`/`0x0803DEA4`, with no
-saved LR), so a `BL` written into it in place would destroy the return address of
-all six of its callers. The design retargets the two dialogue call sites
-`0x0800AF3A` and `0x0800AFC8` to the copy.
-
-That relocation was the design's riskiest unexecuted step, so it was built and
-run as a **control that changes no behaviour**: the copy is the original 144-byte
-body with the production prologue and epilogue (`push {r4,r5,r6,r7,lr}` /
-`pop {r4,r5,r6,r7,pc}`), and the two callers are retargeted, with no token logic
-anywhere. If the counters had moved, the fault would have been the relocation
-rather than the feature.
-
-| instrument | canonical control (DIALOGUE-TWO-GLYPH-POC record) | relocated-fitter control |
+| piece | address | what it is |
 | --- | --- | --- |
-| compositions | 941 | 941 |
-| advances | 941 | 941 |
-| consumes | 941 | 941 |
-| queue writes | 6 | 6 |
-| copier (liveness) | 5 | 5 |
-| OAM snapshots | 30 | 30 |
-| VRAM window changes | 55 | 55 |
+| fitter copy | `0x082ED210` | 144 bytes; prologue and epilogue edited, width site replaced by `bl token_advance` |
+| `token_lookup` | cave + `0x90` | `r4 = unit -> r5 = entry or 0`; the table base and count are literals |
+| `glyph_advance` | after it | `r0 = strip, r1 = glyph -> r2 = width + 1`, the same two-level read the engine uses |
+| `token_advance` | after it | prices a unit and jumps back into the copy; never returns through LR |
+| `cave_compose` | after it | the ordinary path resumes the game's own `bl 0x0803DE50`; the expansion path composes each glyph |
+| dictionary blob | cave + `0x16C` | `DTKN`, ten entries, 92 bytes; the descriptor points PAST its 12-byte header |
 
-Identical on every channel. **What that proves, and how it was observed, stated
-separately.** Observed: the route ran to 3,000 frames with the two dialogue call
-sites patched to branch into the cave, and every instrument counts exactly what
-the canonical control counts. Inferred, not directly observed: that the cave's
-copy is what executed, because the observer arms no breakpoint inside the cave and
-its ROMCHECK reads only the two hook words. A cave that never ran would produce
-the same counters, which is why the conclusion is "the relocation changed no
-observed behaviour" and not "the copy was watched running". The counter argument
-is that the two retargeted `BL`s are the only fitter calls reachable from
-`FUN_0800AE74`, and 941 compositions happened, so the calls did arrive somewhere;
-the cave is where they were pointed.
+Three defects were found by building and running it, and each is now a refusal:
 
-Built by `tools/research/build_dialogue_token_engine.py --variant fitter-control`:
+* **The descriptor pointed at the blob's magic.** The engine indexes
+  `base + (unit - 0xE000) * 8` and the design's section 4 puts the entries at
+  `+0x0C`, so the header is builder metadata the engine never reads. Handed the
+  header, the lookup returned `DTKN` as glyph codes: the probe logged glyphs 21572
+  and 20043 (`"DT"`, `"KN"`) being composed, the fitter priced a name as six garbage
+  glyphs, and the line broke after six units. The build now reads the table back out
+  of the finished cave exactly as the engine reads it and refuses a mismatch.
+* **A jump back into the copy used an even address.** `bx` with bit 0 clear switches
+  the CPU to ARM state; the four bytes there are not ARM code, so the frame never
+  completed and both token builds wedged at frame 187 while the relocation-only
+  control ran to 3000. The builder now refuses any `bx` target without the Thumb bit.
+* **The composition cave's source-consume store is `str r1,[r2,#0x14]`,** and its
+  address is exported as a label rather than derived by hand, so a probe can watch
+  the consumption the expansion performs itself.
 
-```text
-derivative sha256  8fa424d93a256239a82626eab99ec30074f421a82334676d8a14a9fb6fbdeb7d
-cave               0x082ED210, 144 bytes
-retargeted         0x0800AF3A, 0x0800AFC8  (both decode back to the cave)
-image              8388608 bytes, game code BG3E, digest unchanged after the run
-run                build/fitter-control-run-01, marker done:StripProbe
-```
+### 3.1 The three cases, run on the canonical image
 
-The build refuses, rather than discovers: a destination that is its source image or
-any filesystem alias of it, through the repository's own `ensure_not_source_alias`
-rule, before the source is even hashed; a source digest other than the declared
-one; a cave region that is not a uniform filler run; a caller whose bytes are not
-the expected `BL`; any `BL` displacement outside the ARMv4T 23-bit range or needing
-`J1`/`J2` other than 1; a copy that differs from the original anywhere but its
-prologue and epilogue; a copy whose last branch leaves the copy; and any stray byte
-outside the two patched regions. The derivative is staged through an exclusively
-created temporary file and published by rename, so no predictable staged name can
-be an alias of the source either.
+| case | derivative | result |
+| --- | --- | --- |
+| relocation-only control | `8fa424d9` | compose 941, advance 941, consume 941, qwrite 6, copier 5 |
+| token build, window matching nothing (`0xE000`, ten entries) | `186871ac` | compose 941, advance 941, consume 941, qwrite 6, copier 5 |
+| token build, window on a unit that occurs (`0x65`, entry `"A!"`) | `efc15cc5` | lookup 2767, tokenpath 250, glyphadv 706, **cexpand 309, consume 103**, compose 940, copier 4 |
 
-## 5. The authored-window refusal
+The two controls are identical to each other and to the published canonical control,
+so the patch is a no-op on ordinary text. In the third case the composer expands the
+token into the entry's two glyphs with the design's own advances, measured from the
+live text object: the walker moves `0x082ED388 -> 0x38A -> 0x38C` while x moves
+`64 -> 72 -> 78`, i.e. `+8` for `Y` and `+6` for `a`, and the cave consumes exactly
+one source unit per expansion.
 
-The design makes this rule the prerequisite of any build that emits a token: the
-window is safe for authored text only while a validator refuses it, so without
-the rule a paste could produce a unit the decoder would silently expand.
+VISIBLE, same savestate and same driver as the control: the control reads
+`Awwww, yeah! I'm the bomb! No one can beat me` and this build reads
+`Awwww, yA!ah! I'm thA! bomb! No onA! can bA!at mA!!`. Every `e` is composed as the
+entry's two glyphs at the right x, and the text reflows to three lines because each
+token is wider than the unit it replaced.
 
-`tools/webfoot/token_dictionary.py` now exposes the predicate, and it is applied
-at both seats an authored replacement passes through:
+### 3.2 The shipping window, planted in a displayed record
 
-* `tools/webfoot/dialogue.py::validate_dialogue_replacement`, which the editor's
-  live validation, the apply path and the build's `_check_dialogues` all funnel
-  through, reports it as `reserved_token_window`;
-* `tools/webfoot/compressed_dialogue.py::_prepare_replacement`, which encodes
-  directly and is therefore reachable without the validator.
+The window `0xE000` cannot be exercised by retail text, because no retail unit is in
+it: a token has to be planted. `tools/research/splice_dialogue_tokens.py` replaced
+ONE unit of the record that carries the displayed line (selector 0, byte span
+60046 + 168, 84 units) with `U+E000`, leaving the record's decoded length untouched,
+and the engine patch was applied on top. Derivative `89ca497b`.
+
+Runtime, unit `57344 = 0xE000`, priced by BOTH sides (`caller fitter` at the
+`token_advance` return address and `caller composer` at the `cave_compose` one):
+cexpand 309, consume 103, tokenpath 250, copier 5 liveness. The line reads
+`Awwww, Yaeah! I'm the bomb! No one can beat me` - the `y` of "yeah" is gone and the
+token's `Ya` is composed in its place, with the record's 84 units and 168 bytes
+unchanged.
+
+## 4. The rename splice, and the no-bleed property
+
+The v3 rename line measured the constraint: a rename is safe when the record's
+decoded byte length lands exactly on retail. The first version of this ticket's
+splice did that by tokenising anywhere in the record and padding the end. It kept
+each record's total length and still corrupted neighbours, because retail records
+**overlap**: about 40 percent of decoded units are read by more than one record, so
+rewriting one record's bytes rewrites what its neighbours display, and a substituted
+name of a different length slides every character after it inside the span.
+
+Measured on that first build: 12 renamed records and 87 untouched records displayed
+text the map never asked for. One example, a record whose retail text is
+`!Listen to your mother, Trunks! I need the Dragon Balls.` read
+`isten to your mother, Uub! I need the Dragon Balls.@Bulm` - a one-unit shift plus
+the neighbouring record's text.
+
+**The fix is to pay for each substitution INSIDE the name it changes.** Growth is
+paid for by tokenising inside the new name; a shrink is paid for with spaces
+immediately after it. The replacement then occupies exactly as many units as the
+text it replaced, so no prefix of any record changes length, no offset in the
+container moves, and no neighbouring record can be shifted. Of the 84 distinct
+substitutions the map performs, all are payable this way: 31 growths by tokenising
+inside the name with zero unpayable, 41 shrinks with spaces, 12 needing no change.
+
+### 4.1 The verifier, and what it found
+
+`tools/research/verify_token_splice.py` reads the finished image the way the engine
+does - the image's own relocated table, every record's own span - and holds every
+record to a **positional** oracle: the splicer exports each substitution as
+`(start, length, replacement)` in the decoded container, and every record must equal
+its retail text with those regions applied, character for character outside them.
+Two earlier oracles that matched old and new strings instead were tried and both
+produced false failures, because a table of names matches ambiguously; that is
+recorded in the tool's own docstring so it is not tried a third time.
+
+Over the 7 containers, 2,814 records read back out of the image:
+
+| result | count |
+| --- | --- |
+| text entirely untouched | 2,303 |
+| only substituted names differ | 511 |
+| **anything else differs** | **0** |
+| unresolvable token | 0 |
+| stored length preserved | every record |
+
+So a rename changes the names and nothing else, anywhere in the image, and no
+record's bytes moved.
+
+## 5. The v3 candidate, and the Kibito A/B
+
+Built from the verified friend baseline `v3-safe.gba`
+(`b0de6ddffe53961bcade893107b7f9a8004d684b919552480ca688207e8f56d5`, the friend's
+work plus levels, menu text, credits and the slot-292 fix, WITHOUT spoken-dialogue
+renames) by `tools/research/splice_dialogue_tokens.py` with the ten-entry shipping
+dictionary:
+
+* 451 records encoded, **450 applied**, 1 refused and reported
+  (`3:2184:2112`, whose bytes another record's replacement disagrees with);
+* 435 tokenised, 15 exact, 0 padded at the record end;
+* every rebuilt container is byte-for-byte the same decoded size as retail
+  (65348, 65474, 65464, 65334, 65322, 65394);
+* derivative `cffdb81e471567fab623d3ec3a0b920cc0b5ef3f0a11bc5f3c70e5bab1395446`,
+  engine patch applied on top:
+  `d401d71c0ed3fbf93476aaa1825ea8c680e3caac7f7d7fbc05cbfe16344ab0f5`.
+
+The A/B, on the operator's Kibito savestate, driven by the A-tap driver, with the
+frame heartbeat as the detector (the fault is a freeze with no emulator popup and a
+normal idle program counter, so the detector has to be the frame count from
+outside). A positive control is part of the A/B: if the known crash build does not
+hang here, the instrument is not measuring the fault.
+
+| image | frame reached | verdict |
+| --- | --- | --- |
+| `v3-fixed-credits.gba` `ddfdf780` (known crash) | 1946 of 3000 | **HANG**, as expected |
+| `v3-renames-clean.gba` `328f5dcf` (shipped 236 renames) | 3000 of 3000 | SURVIVED, as expected |
+| **candidate `d401d71c` (450 renames + token engine)** | 3000 of 3000 | **SURVIVED** |
+
+Dialogue displays through the cutscene, and the tokens are expanded on this route:
+cexpand 6, consume 2, tokenpath 4, copier 9 liveness. The cutscene frames match the
+control where the text is unchanged, and the composed lines are coherent.
 
 ## 6. Reproduction
 
 ```text
-python -m pytest tests/unit/test_token_dictionary.py -q
+python -m pytest tests/unit/test_token_dictionary.py tests/unit/test_dialogue_token_splice.py \
+    tests/unit/test_dialogue_token_engine_build.py -q
 
 python -m tools.research.build_dialogue_token_engine --variant fitter-control \
     --rom "<canonical>.gba" \
     --expect-sha256 940AD5F01DB4465B8877DFE739510CBF34F4EA3D390F3DF13519808BC36F059E \
     --out build/runtime-roms/dialogue-fitter-control.gba
 
-powershell -File tools/runtime/run_token_engine_session.ps1 -Phase start `
-    -RomPath build/runtime-roms/dialogue-fitter-control.gba `
-    -ExpectedRomSha256 8fa424d93a256239a82626eab99ec30074f421a82334676d8a14a9fb6fbdeb7d `
-    -RunDir build/fitter-control-run-01 -MGBPath "<0.11 dev build>" `
-    -StatePath "<retail savestate>"
-powershell -File tools/runtime/run_token_engine_session.ps1 -Phase finish `
-    -RomPath build/runtime-roms/dialogue-fitter-control.gba `
-    -ExpectedRomSha256 8fa424d93a256239a82626eab99ec30074f421a82334676d8a14a9fb6fbdeb7d `
-    -RunDir build/fitter-control-run-01 -StatePath "<retail savestate>"
+python -m tools.research.splice_dialogue_tokens --base "<friend baseline>.gba" \
+    --base-sha256 <exact digest> --map <private rename map>.json \
+    --tokens Ya ha Kr in Ti YA HA KR IN TI --out build/runtime-roms/v3.gba \
+    --report build/token-analysis/v3-token-report.json
+
+python -m tools.research.verify_token_splice --base "<friend baseline>.gba" \
+    --spliced build/runtime-roms/v3.gba --map <private rename map>.json \
+    --tokens Ya ha Kr in Ti YA HA KR IN TI \
+    --splice-report build/token-analysis/v3-token-report.json
+
+python -m tools.research.build_dialogue_token_engine --variant token \
+    --rom build/runtime-roms/v3.gba --expect-sha256 <exact digest> \
+    --out build/runtime-roms/v3-engine.gba --tokens Ya ha Kr in Ti YA HA KR IN TI
 ```
 
-The launcher and the savestate are not inside a ticket worktree (`build/` and
-`roms/` are not shared with one), so the run script takes `-MGBPath` and
-`-StatePath`. The 0.11 dev build is required: the observer asserts
-`emu.setBreakpoint`.
+Unattended runs use `tools/runtime/run_token_engine_session.ps1` (start and finish
+phases, so the launcher never owns the emulator's lifetime) and the A/B driver at
+`build/token-analysis/kibito_ab.ps1`.
 
 ## 7. What is NOT proven, and the limits of the measurements
 
-* **The token branch has not executed.** No build has yet composed an expansion:
-  the dictionary lookup, the shared per-glyph advance helper and the
-  `token_advance` call at the copy's width site are designed and statically
-  consistent, but unrun. The composition hook and the relocated fitter each have
-  separate runtime evidence; the two together, with a token in the stream, do not.
-* **No token has been planted in a displayed record**, so no in-game visible
-  text has been shown to change. The two-glyph POC planted its trigger by gating
-  on a unit that occurs naturally (`K`, twice in the 3,000-frame route); a token
-  unit does not occur naturally anywhere in retail text, so this needs a
-  length-neutral container edit, which this ticket did not build.
-* **The friend-image acceptance run has not been made.** The Kibito cutscene A/B
-  on a token-compressed 451-rename image is the acceptance the ticket asked for,
-  and it is outstanding. Nothing here says the cutscene will survive.
-* **The 451-record measurement rests on an untracked artifact.** The rename set is
-  `rename_map.json` under the working checkout's ignored `build/crash-repro/`
-  directory, beside the bisection harness. It is not committed, deliberately: it
-  carries dialogue text derived from a proprietary image. The arithmetic in
-  section 3 is reproducible where that file exists and from nothing in this
-  repository. Recovering it needs the v3 images and `extract_rename_map.py`, both
-  local.
-* **`451 dialogue records` is not a repository measurement.** The tracked corpus is
-  2,805 record spans over the seven containers (447 in selector 1, the only
-  container with a registered editable target). Every literal `451` in tracked
-  files is `MapEntry 451` or a map-root count. The 451 here is the v3 rename
-  set's own size, and it is stated as such wherever it appears.
-* **The unrelated defects are untouched**, as the ticket required: the
-  `F0674DD8` crash and the unsafe tail allocation are not investigated here and
-  no claim is made that tokens affect either.
-* **Two design rules are enforced only when a caller opts in**, and this ticket
-  did not build the caller that would: the "no glyph record" image check is the
-  `has_glyph` seam on `build_blob` and `decode_blob`, and the 108 px expansion
-  bound is `check_widths`, which nothing calls yet. The C0 block is refused
-  unconditionally, because the design measures it as glyph-less, but a build that
-  emits a token must still pass the font and call `check_widths` or those two
-  rules are inert. The `DTKN` table base and count literals the engine reads have
-  no producer at all yet, so the design's section 14 check that they agree with
-  the blob header is likewise still to be written.
-* **The cave address is still a constant.** The design requires taking the region
-  from the project's free-space machinery and running a cave-only control against
-  it; the builder checks that its 512 reserved bytes are one uniform filler run
-  and nothing more. It does not re-derive the 3,019-byte run the design measures.
-* Three measurements of this ticket are worth carrying even though they touch
-  other records: the `BL` at `0x0800B06A` targets `0x0803DE50`, the composition
-  wrapper, while the fitter `0x0803DE6A` is a separate six-caller function; the
-  `0x082ED210` run is 3,019 bytes, so it is below a 4,096-byte threshold rather
-  than above one; and the only other uniform run that large is the `0xFF` ROM
-  tail. None of the three changes the design's plan.
+* **The base images and the rename map are not in this repository.** They are private
+  derivatives of a proprietary image, so the v3 numbers cannot be reproduced from a
+  clone alone. The tools take them as arguments and refuse anything that is not the
+  declared digest; the canonical-image results in section 3 reproduce from a clone.
+* **The Kibito route is driven from a savestate.** That state's EWRAM holds a decoded
+  dialogue cache captured on an earlier build, and an earlier session recorded that
+  the engine caches decoded containers there. So this A/B shows the route survives on
+  the candidate; it does not by itself prove a cold boot reaches the same data. The
+  cold-boot test needs the operator to drive.
+* **One of the 451 records is not applied** (`3:2184:2112`), and a rename that does
+  not apply is a gap, not a corruption. It stays at retail text and is listed by the
+  tool.
+* **Shrinking names are paid for with spaces.** The spaces sit immediately after the
+  name they pay for and preserve every later offset, but they are visible as a wider
+  gap, and extra spaces are extra wrap opportunities for the line fitter. The
+  verifier reports these records separately; no word is created or destroyed.
+* **The "no glyph record" image check and the 108 px width bound** on the production
+  encoder are still opt-in seams (`has_glyph`, `check_widths`) with no caller from the
+  product build; the splice path passes neither.
+* **The cave address is still a constant** (`0x082ED210`, inside a measured
+  3,019-byte zero run). The design asks for the region to come from the project's
+  free-space machinery, and for a cave-only control; the builder checks that its 512
+  reserved bytes are one uniform filler run and nothing more.
+* **The unrelated defects are untouched**, as the ticket required: the `F0674DD8`
+  crash and the unsafe tail allocation are not investigated here.
 
-## 8. Next steps, in order
+## 8. Next steps
 
-1. Extend `build_dialogue_token_engine.py` with the token variant: the `DTKN` blob
-   in the cave region, `token_lookup`, a shared `glyph_advance`, the
-   `token_advance` call at the copy's width site, and the composition cave gated
-   on the unit window. Re-decode the cave from the finished image against a
-   written instruction table, the check that caught the first cave's encoding
-   error.
-2. Plant token units length-neutrally in the record the NPC-front route displays,
-   and run the same route to see the expansion in game.
-3. Only then build the 451-rename v3 image with the encoder of section 3 and run
-   the Kibito A/B.
+1. Cold-boot the Kibito route from the battery save, with the operator driving, to
+   remove the savestate-cache caveat from section 7.
+2. Decide the content question for the one refused record, whose bytes two records
+   both name.
+3. Wire the dictionary document and the blob emission into the product build, and
+   bring the two opt-in encoder rules into that path.

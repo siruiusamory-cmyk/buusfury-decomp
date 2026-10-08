@@ -70,7 +70,7 @@ def test_a_thumb_bl_matches_its_hand_computed_encoding() -> None:
     This states the encoding independently, from the ARMv7-M manual's T1 layout for
     the ARMv4T 23-bit BL: 11110 S imm10 in the first halfword and 11111 imm11 in the
     second, where the J1 and J2 bits of the Thumb-2 form are both 1 here. A
-    displacement of +4 halfwords is S=0, imm10=0, imm11=2.
+    displacement of +4 BYTES is 2 halfwords, so S=0, imm10=0, imm11=2.
     """
     origin = 0x08000000
     assert bl_encode(origin, origin + 4 + 4) == (0xF000, 0xF802)

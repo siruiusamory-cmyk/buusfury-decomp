@@ -23,16 +23,21 @@ applied, character for character outside them.
 
 HOW INDEPENDENT THIS IS, stated plainly. The regions come from the splicer's own
 `substitution_regions` and `local_replacement`, so the oracle re-derives part of the
-builder's answer, and that is a real limit: it checks the WRITE, not the INTENT. Four
+builder's answer, and that is a real limit: it checks the WRITE, not the INTENT. Five
 checks do not depend on the builder at all, and they are the ones that would catch a
-build that wrote the wrong thing anywhere:
+build that wrote the wrong thing, or a report that described a different build:
 
   * the images are read through their own relocated tables, unpacking and record
     inventory, not through anything the builder reported;
   * every record's STORED text must be the same length as retail, which is what stops
     any record from moving any other;
-  * each record the map names must display the map's own `new_text`, spaces aside;
-  * the spliced image's digest must be the one the splice report names.
+  * the set of records the image actually CHANGED is derived from the two images and
+    must equal the map minus the report's refused set, so a report claiming every
+    record was refused cannot pass a build that renamed them;
+  * the spliced image's digest must be the one the splice report names, and a report
+    without one is refused rather than skipped;
+  * each record the map names must display the map's own `new_text`, spaces aside
+    (this one uses the report only to know which records were claimed applied).
 
 Nothing here writes an image.
 """
@@ -105,18 +110,18 @@ def main() -> int:
         raise SystemExit("the base is not the declared image")
     splice_report = json.loads(Path(args.splice_report).read_text(encoding="utf-8"))
     declared = splice_report.get("sha256")
-    if declared and hashlib.sha256(spliced).hexdigest() != declared:
-        # Not just "a spliced image": the one the report describes.
+    if not declared:
+        # Fail closed rather than skip: a report without its digest cannot be tied to
+        # the image being checked, and skipping the check silently is how a verifier
+        # ends up describing something it never looked at.
+        raise SystemExit("the splice report names no sha256, so it cannot be tied to "
+                         "the image under test")
+    if hashlib.sha256(spliced).hexdigest() != declared:
         raise SystemExit(
             f"the spliced image is not the one the report describes: "
             f"{hashlib.sha256(spliced).hexdigest()} != {declared}"
         )
 
-    # The regions that were actually written. A record the splicer refused kept its
-    # retail bytes, so its substitutions are not in the image and must not be in the
-    # oracle either - the oracle's job is to describe what the image DID, and then
-    # the two checks below hold every record to it.
-    refused = set()
     if splice_report.get("tokens") != list(args.tokens):
         # The splice wrote one dictionary and this check decodes with another. The
         # verifier would still pass, because it decodes with whatever it is handed,
@@ -125,8 +130,52 @@ def main() -> int:
             f"the splice used {splice_report.get('tokens')} and this check was given "
             f"{list(args.tokens)}; they must be the same dictionary in id order"
         )
+
+    # The regions that were actually written. A record the splicer refused kept its
+    # retail bytes, so its substitutions are not in the image and must not be in the
+    # oracle either - the oracle's job is to describe what the image DID, and then
+    # the two checks below hold every record to it.
     refused = set(splice_report.get("refused", {}))
     applied_rows = {key: row for key, row in rows.items() if key not in refused}
+
+    # WHICH RECORDS THE IMAGE ACTUALLY CHANGED, derived from the image rather than
+    # taken from the report. This is what stops a report that declares every record
+    # refused from passing, and it is precise about the one case that looks like a
+    # disagreement: a record the splice REFUSED can still have changed bytes, because
+    # its span overlaps a neighbour that was applied. So two things must hold - every
+    # record the report claims applied really differs, and every record that differs
+    # without being applied overlaps a record that was.
+    changed: set[str] = set()
+    for selector in range(TABLE_SLOTS):
+        base_stream = stream_of(base, selector)
+        spliced_stream = stream_of(spliced, selector)
+        for key, row in rows.items():
+            if row["old_selector"] != selector:
+                continue
+            start, length = row["old_start"], row["old_length"]
+            if spliced_stream[start:start + length] != base_stream[start:start + length]:
+                changed.add(key)
+    declared_applied = set(rows) - refused
+    applied_spans = [(row["old_selector"], row["old_start"], row["old_length"])
+                     for key, row in applied_rows.items()]
+
+    def overlaps_an_applied_record(row: dict) -> bool:
+        selector, start, length = row["old_selector"], row["old_start"], row["old_length"]
+        return any(other_selector == selector
+                   and not (start + length <= other_start
+                            or start >= other_start + other_length)
+                   for other_selector, other_start, other_length in applied_spans)
+
+    not_written = sorted(key for key in declared_applied if key not in changed)
+    unexplained = sorted(key for key in changed if key not in declared_applied
+                         and not overlaps_an_applied_record(rows[key]))
+    if not_written or unexplained:
+        raise SystemExit(
+            f"the report and the image disagree: {len(not_written)} record(s) claimed "
+            f"applied did not change {not_written[:3]}, and {len(unexplained)} changed "
+            f"record(s) are neither applied nor inside an applied span "
+            f"{unexplained[:3]}"
+        )
 
     # Every substitution the map performs, as an absolute region of its container,
     # in UNITS. `old_start` is a byte offset into the decoded container
@@ -254,6 +303,9 @@ def main() -> int:
           f"{len(findings['record_WRONG'])}")
     print(f"streams holding an unresolvable token           : "
           f"{len(findings['unknown_token'])}")
+    print(f"records the splice report refused                : {len(refused)}")
+    print(f"records whose bytes the image changed            : {len(changed)} "
+          f"(applied {len(declared_applied)}; the rest overlap an applied span)")
     print(f"records examined                                : {seen}")
     print(f"records sharing at least one byte with another  : {sharing}")
     print("scope: the seven decoded containers, over every record their own inventory "

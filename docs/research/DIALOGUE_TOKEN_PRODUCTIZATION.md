@@ -219,12 +219,22 @@ the containers. Those are not claimed. The tool prints this scope itself.
 
 **How independent the checks are.** The regions the expected text is built from come
 from the splicer's own functions, so this verifies the write rather than the author's
-intent: a build that substituted the wrong name consistently would satisfy it. Four
+intent: a build that substituted the wrong name consistently would satisfy it. Five
 checks do not depend on the builder, and they are the ones that catch a build writing
-the wrong thing anywhere: the images are read through their own relocated tables,
-unpacking and record inventory; every record's stored text must be the same length as
-retail; every record the map names must display the map's own `new_text`; and the
-spliced image's digest must be the one the splice report names.
+the wrong thing, or a report describing a different build:
+
+* the images are read through their own relocated tables, unpacking and record
+  inventory, not through anything the builder reported;
+* every record's stored text must be the same length as retail (all 2,814 examined);
+* the set of records whose bytes the image changed is derived from the two images and
+  cross-checked against the report: every record the report claims applied must really
+  differ, and every record that differs without being applied must overlap a record
+  that was. A report claiming every record refused, against a build that renamed 450,
+  is refused (CONFIRMED: that attempt was made and failed);
+* the spliced image's digest must be the one the report names, and a report without
+  one is refused rather than skipped;
+* every record the map names must display the map's own `new_text`, spaces aside (this
+  one uses the report only to know which records were claimed applied).
 
 ## 5. The v3 candidate, and the Kibito A/B
 

@@ -24,8 +24,8 @@ from pathlib import Path
 
 from tools.research.dialogue_wrap_sim import load_font
 from tools.webfoot.token_dictionary import (LINE_WIDTH_FLOOR, TokenDictionary,
-                                            build_blob, check_widths,
-                                            expansion_advance)
+                                            TokenDictionaryError, build_blob,
+                                            check_widths, expansion_advance)
 
 CANONICAL_SHA256 = "940ad5f01db4465b8877dfe739510cbf34f4ea3d390f3df13519808bc36f059e"
 
@@ -58,6 +58,22 @@ def main() -> int:
     print(f"width bound   : every expansion is at or under {LINE_WIDTH_FLOOR} px "
           f"(check_widths accepted)")
     print(f"blob          : {len(blob)} bytes for {dictionary.count} entries")
+
+    # NEGATIVE CONTROLS. On this image every code that passes the codec's other rules
+    # has a glyph record, so `has_glyph` rejects nothing above and the check would look
+    # the same if the seam were disconnected. These show both seams can refuse, which
+    # is what makes the acceptances above mean something.
+    denied = dictionary.entries()[0].glyphs[0]
+    try:
+        build_blob(dictionary, has_glyph=lambda code: code != denied)
+        print("negative control: FAILED, build_blob accepted a missing glyph record")
+    except TokenDictionaryError:
+        print(f"negative control: build_blob refuses when {denied:#06x} has no record")
+    try:
+        check_widths(dictionary, lambda code: LINE_WIDTH_FLOOR)
+        print("negative control: FAILED, check_widths accepted an over-wide expansion")
+    except TokenDictionaryError:
+        print(f"negative control: check_widths refuses a {LINE_WIDTH_FLOOR} px glyph")
 
     if args.map:
         import json

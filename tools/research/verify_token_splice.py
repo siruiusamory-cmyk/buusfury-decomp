@@ -155,6 +155,7 @@ def main() -> int:
     findings: dict[str, list] = {"record_unchanged": [], "record_name_only": [],
                                  "record_WRONG": [], "unknown_token": []}
     seen = 0
+    sharing = 0
     for selector in range(TABLE_SLOTS):
         base_stream = stream_of(base, selector)
         spliced_stream = stream_of(spliced, selector)
@@ -164,6 +165,18 @@ def main() -> int:
                 f"({len(spliced_stream)} vs {len(base_stream)}), so an offset moved "
                 f"and every handle in it would have to be re-checked"
             )
+        spans = [(record.handle.decoded_start, record.handle.decoded_length)
+                 for record in cd.dialogue_record_inventory(base, selector,
+                                                            len(base_stream))]
+        # How much of this container is read by more than one record. This is why a
+        # rewrite is visible to its neighbours at all, and it is reported here rather
+        # than in a scratch script so the figure can be reproduced from this tool.
+        for index, (start, length) in enumerate(spans):
+            if any(not (other + other_len <= start or other >= start + length)
+                   for other_index, (other, other_len) in enumerate(spans)
+                   if other_index != index):
+                sharing += 1
+
         for record in cd.dialogue_record_inventory(base, selector, len(base_stream)):
             start, length = record.handle.decoded_start, record.handle.decoded_length
             retail = base_stream[start:start + length].decode("utf-16le", "replace")
@@ -209,6 +222,10 @@ def main() -> int:
     print(f"streams holding an unresolvable token           : "
           f"{len(findings['unknown_token'])}")
     print(f"records examined                                : {seen}")
+    print(f"records sharing at least one byte with another  : {sharing}")
+    print("scope: the seven decoded containers, over every record their own inventory "
+          "names.\n       Bytes outside those records, in container gaps, and outside "
+          "the containers are not covered.")
 
     if findings["record_WRONG"]:
         print("\nrecords where something other than a substituted name changed:")

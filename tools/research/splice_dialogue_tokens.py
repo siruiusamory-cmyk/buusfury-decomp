@@ -32,11 +32,13 @@ import json
 import struct
 import sys
 import tempfile
+from collections import Counter
 from pathlib import Path
 
 from tools.webfoot import compressed_dialogue as cd
 from tools.webfoot.formats import webfoot_lz
-from tools.webfoot.token_dictionary import TokenDictionary, encode_to_length
+from tools.webfoot.token_dictionary import (TokenDictionary, encode_to_length,
+                                            is_token_unit)
 from tools.webfoot.write import WriteError, ensure_not_source_alias
 
 ROM_BASE = 0x08000000
@@ -174,10 +176,15 @@ def substitution_regions(old_text: str, new_text: str, dictionary: TokenDictiona
 
 def encode_record(row: dict, dictionary: TokenDictionary,
                   table: dict[str, str]) -> tuple[str, str]:
-    """The stored text whose every prefix is the length retail had.
+    """The stored text whose every prefix is the length retail had, and its method.
 
     Only the substitution regions move: everything the table does not name is copied
     character for character, so the result is the retail text with names changed.
+
+    The method is decided PER REGION, from the region's own new side. An earlier
+    version compared each replacement with the start of the whole record's new text,
+    which labelled every shrink and every same-length rename "tokenised" - a number
+    the evidence record then published.
     """
     regions = substitution_regions(row["old_text"], row["new_text"], dictionary, table)
     text = row["old_text"]
@@ -188,15 +195,24 @@ def encode_record(row: dict, dictionary: TokenDictionary,
             f"the replacement is {len(text)} units where retail had "
             f"{len(row['old_text'])}; that difference is what moves other records"
         )
-    kinds = []
-    for _, length, replacement in regions:
-        if len(replacement) > length:
-            kinds.append("padded")
-        elif replacement != row["new_text"][:len(replacement)]:
-            kinds.append("tokenised")
+    kinds: set[str] = set()
+    for start, length, replacement in regions:
+        old_side = row["old_text"][start:start + length]
+        new_side = table.get(old_side)
+        if new_side is None:
+            raise SpliceError(f"{old_side!r} is not in the substitution table")
+        if any(is_token_unit(ord(character)) for character in replacement):
+            kinds.add("tokenised")
+        elif replacement == new_side:
+            kinds.add("exact")
+        elif replacement.startswith(new_side) and not replacement[len(new_side):].strip():
+            kinds.add("padded")
         else:
-            kinds.append("exact")
-    return text, "+".join(sorted(set(kinds))) or "none"
+            raise SpliceError(
+                f"{old_side!r} -> {new_side!r} produced {replacement!r}, which is "
+                f"neither the new name, nor it plus spaces, nor a tokenisation of it"
+            )
+    return text, "+".join(sorted(kinds)) or "none"
 
 
 def find_text(image: bytes, needle: str) -> list[dict]:
@@ -245,17 +261,22 @@ def splice(base: Path, destination: Path, base_sha256: str, rows: dict[str, dict
 
     literal_offset = TABLE_LITERAL
     table_address = struct.unpack_from("<I", original, literal_offset)[0]
-    if table_address < ROM_BASE:
+    if table_address < ROM_BASE or table_address - ROM_BASE + TABLE_SLOTS * 4 > len(original):
         raise SystemExit(f"the table literal at {literal_offset:#x} is not a ROM pointer")
+    # The table is read WHERE THE IMAGE'S OWN LITERAL POINTS, not at the retail offset.
+    # A base whose table was already relocated (any earlier pass over it) would
+    # otherwise be rebuilt from a stale container, and the earlier version of this
+    # function read the literal and then ignored it.
+    table_offset = table_address - ROM_BASE
 
     # 1. the substitution table, then every record encoded to a text whose every
     #    prefix is the length retail had.
-    table = substitution_table(rows)
+    substitutions = substitution_table(rows)
     edits: dict[int, list[tuple[int, int, bytes, str, str]]] = {}
     how: dict[str, str] = {}
     for key in sorted(rows):
         row = rows[key]
-        text, method = encode_record(row, dictionary, table)
+        text, method = encode_record(row, dictionary, substitutions)
         how[key] = method
         edits.setdefault(row["old_selector"], []).append(
             (row["old_start"], row["old_length"], text.encode("utf-16le"), key, method)
@@ -265,28 +286,23 @@ def splice(base: Path, destination: Path, base_sha256: str, rows: dict[str, dict
     report: dict[str, object] = {"selectors": {}, "records": len(rows)}
     table = bytearray(TABLE_SLOTS * 4)
     for index in range(TABLE_SLOTS):
-        source = RETAIL_TABLE + index * 4
+        source = table_offset + index * 4
         table[index * 4:index * 4 + 4] = original[source:source + 4]
 
     for selector in sorted(edits):
-        pointer = struct.unpack_from("<I", image, RETAIL_TABLE + selector * 4)[0]
+        pointer = struct.unpack_from("<I", original, table_offset + selector * 4)[0]
         stream = bytearray(webfoot_lz.unpack(original, pointer - ROM_BASE).data)
         stream_length = len(stream)
         retail_stream = bytes(stream)
-        # A refused rewrite is reverted from the retail bytes, which is exact because
-        # two accepted rewrites never overlap.
 
-        # Every prefix of every replacement is the length retail had, so this loop
-        # needs no overlap policy: two records that share bytes are writing the same
-        # substituted characters there, and the second write is the same bytes as the
-        # first. A span that holds neither its retail bytes nor this record's
-        # replacement is the one case that cannot be reasoned about, and it is
-        # refused rather than written over.
-        #
-        # The check that this holds across the whole container is not here; it is
-        # tools/research/verify_token_splice.py, which reads every record back out of
-        # the finished image and compares its visible text with the substitution
-        # applied to its retail text. Reading the result is the only way to know.
+        # Every prefix of every replacement is the length retail had, so two records
+        # that share bytes are writing the same substituted characters there. They are
+        # allowed to agree only unit by unit: a record whose span already holds another
+        # record's replacement is written over, because where this record has no
+        # substitution of its own the bytes are the other record's and must be kept.
+        # Comparing the whole span instead - which an earlier version did - refused a
+        # record for holding a neighbour's replacement plus its own retail bytes,
+        # even though nothing disagreed.
         conflicts: dict[str, str] = {}
         applied = 0
         for start, old_length, new_bytes, key, _ in sorted(edits[selector], reverse=True):
@@ -299,11 +315,22 @@ def splice(base: Path, destination: Path, base_sha256: str, rows: dict[str, dict
                     f"map describes a different build"
                 )
             current = bytes(stream[start:start + old_length])
-            if current not in (retail_stream[start:start + old_length], new_bytes):
-                conflicts[key] = "another record's rewrite disagrees at these bytes"
-                continue
-            stream[start:start + old_length] = new_bytes
-            applied += 1
+            retail = retail_stream[start:start + old_length]
+            disagreement = None
+            for offset in range(0, old_length, 2):
+                unit = current[offset:offset + 2]
+                if unit == retail[offset:offset + 2]:
+                    continue
+                if unit != new_bytes[offset:offset + 2]:
+                    disagreement = offset // 2
+                    break
+            if disagreement is None:
+                stream[start:start + old_length] = new_bytes
+                applied += 1
+            else:
+                conflicts[key] = (
+                    f"another record's rewrite disagrees at unit {disagreement} of the span"
+                )
 
         if len(stream) != stream_length:
             raise SystemExit(
@@ -336,11 +363,10 @@ def splice(base: Path, destination: Path, base_sha256: str, rows: dict[str, dict
 
     report["bytes"] = len(image)
     report["applied"] = sum(row["records"] for row in report["selectors"].values())
-    report["methods"] = {
-        "padded": sum(1 for value in how.values() if value == "padded"),
-        "exact": sum(1 for value in how.values() if value == "exact"),
-        "tokenised": sum(1 for value in how.values() if value.startswith("tokenised")),
-    }
+    # The method histogram, not three hand-rolled counters: a record can mix ways of
+    # paying (one name tokenised, another padded), and an earlier version counted
+    # those under none of its three headings.
+    report["methods"] = dict(sorted(Counter(how.values()).items()))
 
     destination.parent.mkdir(parents=True, exist_ok=True)
     with tempfile.NamedTemporaryFile(dir=destination.parent,
@@ -385,9 +411,9 @@ def main() -> int:
     print(f"derivative     : {args.out}")
     print(f"derivative sha : {report['sha256']}")
     print(f"size           : {report['bytes']} bytes")
-    print(f"records        : {report['records']} encoded, {report['applied']} applied  "
-          f"padded {report['methods']['padded']}  exact {report['methods']['exact']}  "
-          f"tokenised {report['methods']['tokenised']}")
+    print(f"records        : {report['records']} encoded, {report['applied']} applied")
+    for method, count in report["methods"].items():
+        print(f"  {method:<24}: {count}")
     if report.get("refused"):
         print(f"refused        : {len(report['refused'])} record(s), each with its reason")
     for selector, row in sorted(report["selectors"].items(), key=lambda item: int(item[0])):

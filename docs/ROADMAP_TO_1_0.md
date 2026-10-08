@@ -12,13 +12,13 @@ Buu's Fury authoring environment.
 
 ## Current product status
 
-**22 / 24 capabilities - 92%**
+**24 / 24 capabilities - 100%**
 
 | Family | Progress |
 | --- | --- |
 | READ | 5 / 5 |
 | EDIT | 8 / 8 |
-| AUTHOR | 5 / 7 |
+| AUTHOR | 7 / 7 |
 | DELIVER | 4 / 4 |
 
 Variable-length dialogue authoring: **merged, deployed, runtime-proven.**
@@ -130,15 +130,17 @@ Two supporting documents are deliberately **not** planning authority:
 
 ## 1. Current state and what has already been proven
 
-The current public product is **22/24 capabilities (92%)**. The denominator is
+The current public product is **24/24 capabilities (100%)**. The denominator is
 intentionally unchanged. Tile painting, chunk creation, map resizing with layer
-authoring, warp and connection editing, graphics import and new sprite authoring
-each moved the count because each is a new capability an author can use, delivered
-at the engine's own unit rather than as a finer one the format does not have.
-Variable-length dialogue strengthened an existing capability rather than inventing
-one, which is why it did not move the count. The important point is that the
-infrastructure under those 22 shipped capabilities is substantially stronger than
-the percentage alone suggests.
+authoring, warp and connection editing, graphics import, new sprite authoring,
+appearance authoring and new map authoring each moved the count because each is a
+new capability an author can use, delivered at the engine's own unit rather than
+as a finer one the format does not have. Variable-length dialogue strengthened an
+existing capability rather than inventing one, which is why it did not move the
+count. The important point is that the infrastructure under those 24 shipped
+capabilities is substantially stronger than the percentage alone suggests, and
+that 100% here means feature complete, not released: the release-candidate phase
+and its gate are section 10.
 
 | Area | Current | Status | Shipped today |
 | --- | --- | --- | --- |
@@ -202,13 +204,14 @@ it now would make progress percentages historically meaningless. "100%" means
 all 24 currently-defined product capabilities are shipped and independently
 validated.
 
-The two missing capabilities are the only items that move the score from 92% to
-100%. Appearance authoring is the next one, and it has not started:
+The two capabilities that moved the score from 92% to 100% have both shipped:
 
-| Family | Missing capability |
+| Family | Capability |
 | --- | --- |
-| AUTHOR | new appearance definitions (NEXT - not started) |
-| AUTHOR | new maps |
+| AUTHOR | new appearance definitions (SHIPPED) |
+| AUTHOR | new maps (SHIPPED) |
+
+No capability in the fixed denominator is missing.
 
 ### 2.2 24/24 is not automatically v1.0
 
@@ -304,8 +307,8 @@ unless new evidence proves a dependency wrong.
 | 2D - Warps / connections | Map editing | Visual destination editing, connection/warp consistency, runtime transition proof. **COMPLETE** 2026-09-28: a transition is retargeted through the project and one the image does not contain is authored above the original ROM's end; every supported transition is drawn and dragged on the map as its trigger region; and a human-operated run confirmed the retail engine consumes an authored transition. | 20/24 |
 | 3A - Graphics import | Graphics authoring | Image import -> quantization -> tiles/container encoding -> allocation -> runtime proof; prove graphics-domain expanded addressing as needed. **COMPLETE** 2026-10-03: an extracted actor-sprite PNG is edited in the project, rebuilt, and rendered by the retail engine both in place and from above the original ROM's end (`GRAPHICS-IMPORT-BOUNDARY-001`). | 21/24 |
 | 3B - Sprite / animation / frame authoring | Graphics authoring | Create new sprite definitions, frames/pieces/OAM and animation records; table expansion where necessary. **COMPLETE** 2026-10-07: the Graphics tab's authored-sprite surface creates the project's new actor-sprite identity - donor composition, per-slot sheets and the object slot the appended actor starts from - and writes `sprites/sprites.toml`. A ROM-gated build of that document authors the identity and actor the runtime record resolved (`SPRITE-PROJECT-SURFACE-001`); the engine observation covers the mechanism, since the surface's carried data-pointer word is the chosen slot's own and the recorded document used a neighbour's, in a field whose meaning is unresolved. Piece/OAM composition, frame geometry and frame timing remain outside the modelled contract and are refused. | 22/24 |
-| 3C - Appearance authoring | Graphics authoring | Create new appearance definitions that bind authored graphics into game-visible actors. **NEXT** (not started): the record count appears as compiled-in engine bounds with no terminator, so whether the table can be grown is an open question. | 23/24 |
-| 4 - New maps | Final capability | Create MapEntry + layers/chunks + objects + warps + scripts/dialogue; expand/relocate tables; prove runtime scene. | 24/24 |
+| 3C - Appearance authoring | Graphics authoring | Create new appearance definitions that bind authored graphics into game-visible actors. **COMPLETE**: the Graphics tab authors a definition, the build re-emits the table above the original ROM's end with the authored records appended and rewrites the words and bounds that reach it, and a driven session watched the retail search return an authored record and the Scouter display it. | 23/24 |
+| 4 - New maps | Final capability | Create MapEntry + layers/chunks + objects + warps + scripts/dialogue; expand/relocate tables; prove runtime scene. **COMPLETE**: the Maps editor authors a new map identity with its own two-byte key; the build re-emits the whole map table above the original ROM's end with the authored row appended, repoints the one literal-pool word the engine's key lookup loads, raises the one compiled row bound, and gives the row its own selector word, root and layer record. A retail door retargeted at it carried the player in and back out, observed as the engine's own active map row becoming the authored index (`MAP-NEW-AUTHORING-001`). | 24/24 |
 | 5 - Creator UX / RC | Release candidate | Resource budget panel, warnings, Run From Here, recovery/migration, navigation, consistent undo, docs, patch export, end-to-end dogfood. | 24/24 |
 | 6 - v1.0 ship | Release | Packaging, hardware smoke, final high-risk debt disposition, release notes, tutorials, signed/reproducible artifacts where practical. | v1.0 |
 
@@ -490,10 +493,9 @@ fail closed with their reason stated rather than being forced.
 
 ## 8. Phase 3 - Complete graphics authoring (3 capabilities)
 
-**PHASE 3 - GRAPHICS AND ACTOR AUTHORING: STARTED.** Graphics import, the first
-capability of the phase, shipped 2026-10-03, and new sprite, animation and frame
-authoring shipped 2026-10-07. The next capability is appearance authoring, which
-has not started.
+**PHASE 3 - GRAPHICS AND ACTOR AUTHORING: COMPLETE.** Graphics import shipped
+2026-10-03, new sprite, animation and frame authoring shipped 2026-10-07, and
+appearance authoring closed the phase.
 
 Graphics authoring should follow the same pattern as variable-length dialogue:
 the user performs a semantic edit, while the tool absorbs quantization, container
@@ -544,12 +546,13 @@ geometry and frame timing have no field in the document at all.
 
 ### 8.3 New appearance definitions -> 23/24
 
-**NEXT - not started.** Create the appearance records that connect authored
-graphics to actors/entities. Preserve semantic IDs and reopen behavior, prove a
-newly-authored appearance on a real actor, and keep table/count constraints
-visible in the editor. Before any of that, the open question is whether the table
-can be grown at all: its record count appears as compiled-in engine bounds with no
-terminator.
+**COMPLETE.** The Graphics tab authors the appearance records that connect
+authored graphics to actors/entities, the build re-emits the table above the
+original ROM's end with the authored records appended and rewrites the words and
+bounds that reach it, and a driven session watched the retail search return an
+authored record at a post-canonical index and the Scouter display it. The open
+question is closed: the record count is compiled-in engine bounds with no
+terminator, and growth is a table re-emission plus those bounds.
 
 ## 9. Phase 4 - New map authoring and 24/24
 
@@ -560,26 +563,43 @@ allocation at the same time. **It should be treated as composition of
 already-proven systems, not as the place where every subsystem is invented
 simultaneously.**
 
-### `MAP-AUTHOR-NEW-001` -> 24/24
+### `MAP-AUTHOR-NEW-001` -> 24/24 - **COMPLETE**
+
+Delivered as `MAP-NEW-AUTHORING-001`, with each item closed or bounded and stated
+in the capability registry's own limits:
 
 - Create a new `MapEntry` with a stable project identity and profile-backed table
-  ownership.
+  ownership. **Done**: `maps/authored.toml` carries a durable name, a donor and
+  the engine's two-byte key; the build appends the row to a re-emitted table.
 - Create the required layers/chunks and allocate their data through the
-  production allocator.
+  production allocator. **Bounded**: the new root names its own layer record,
+  allocated above the original ROM's end, and the layer's chunk bodies are the
+  donor's, which the canonical corpus already shares across maps.
 - Populate placements/entities using the existing authored-entity machinery.
+  **Inherited**: the new row carries the donor's object array.
 - Attach behavior/scripts and dialogue using already-shipped authoring paths.
+  **Inherited**: the donor's own fields and pointers.
 - Create at least one connection/warp from an existing map into the new map and
-  back out.
+  back out. **Done**: a retail door retargeted at the new map carried the player
+  in, and the new map's inherited door carried them back, observed at runtime.
 - Use imported/new graphics or existing assets as appropriate; **no manual offset
-  entry by the author.**
+  entry by the author.** Done: the author names a donor; no offset is entered.
 - Expand/relocate the map table if the fixed retail count must change, with
-  explicit runtime proof.
+  explicit runtime proof. **Done**: the table is re-emitted whole above the
+  original ROM's end, and the engine's own reading of the moved base and the
+  raised bound was observed in the session.
 - Close only when the retail engine loads, renders, runs scripts in, and
-  transitions through the newly-created map.
+  transitions through the newly-created map. **Loads and transitions are proven by
+  the engine's own state**: the observer records memory, not images, and the walk
+  through the door and back out was a person at the controls. Rendering was
+  likewise seen by that person rather than captured, so it is human observation
+  with the row log as corroboration. Running the donor's scripts *in* the new map
+  is not observed, and no surface authors a script for it; that is a stated limit
+  of the capability rather than a claim.
 
-> **24/24 milestone.** At this point every capability in the fixed registry is
-> shipped. Public feature progress may legitimately read 100%. The project is
-> **feature complete** - but not yet automatically **release complete**.
+> **24/24 milestone reached.** Every capability in the fixed registry is shipped
+> and public feature progress reads 100%. The project is **feature complete** -
+> but not yet automatically **release complete**.
 
 ## 10. Phase 5 - Creator UX and release candidate
 
@@ -693,8 +713,8 @@ which is authoritative; the roadmap note column is this document's.
 | AUTHOR | Authored text beyond the retail slot | Shipped | Distinct from the compressed-dialogue capability |
 | AUTHOR | Graphics replacement and import | Shipped | Phase 3A, complete 2026-10-03: an extracted actor-sprite PNG is edited in the project, rebuilt, and rendered by the retail engine, in place or from above the original ROM's end |
 | AUTHOR | New sprite, animation and frame authoring | Shipped | Phase 3B, complete 2026-10-07: the Graphics tab creates the project's new actor-sprite identity and writes `sprites/sprites.toml`, and a ROM-gated build of that document authors the identity and actor the runtime record resolved; registered at application proof because one carried word differs from the recorded document |
-| AUTHOR | New appearance definitions | Missing | Phase 3C (NEXT, not started) -> 23/24 |
-| AUTHOR | New map and scene materialisation | Missing | Phase 4 -> 24/24 |
+| AUTHOR | New appearance definitions | Shipped | Phase 3C, complete: the table is re-emitted above the original ROM's end with the authored records appended and a driven session watched the retail search return one |
+| AUTHOR | New map and scene materialisation | Shipped | Phase 4, complete: the map table is re-emitted above the original ROM's end with the authored row appended, the one word the key lookup loads is repointed, the one compiled row bound is raised, and a driven session watched the engine's own active map row become the authored index, with the player walking in and back out |
 | DELIVER | Deterministic validate and build | Shipped | |
 | DELIVER | Safe Save As to a new file | Shipped | |
 | DELIVER | Derivative provenance and reopen | Shipped | |
@@ -947,10 +967,11 @@ Buu's Fury's retail binary engine and this repository's evidence discipline.
 - The state reconciliation that corrected this document's status block, the
   capability matrix and the final snapshot to 21/24:
   ([reconciliation](research/PROJECT_STATE_AUDIT_RECONCILIATION.md)).
-- Current capability registry: 24 total, 22 shipped (READ 5/5, EDIT 8/8,
-  AUTHOR 5/7, DELIVER 4/4); Phase 2 map editing is complete, graphics import
-  shipped 2026-10-03, new sprite/animation/frame authoring shipped 2026-10-07, and
-  the next capability is appearance authoring (Phase 3C, not started).
+- Current capability registry: 24 total, 24 shipped (READ 5/5, EDIT 8/8,
+  AUTHOR 7/7, DELIVER 4/4). No capability in the fixed denominator is missing.
+  Phase 2 map editing is complete, graphics import shipped 2026-10-03, new
+  sprite/animation/frame authoring shipped 2026-10-07, appearance authoring
+  shipped after it, and Phase 4's new map authoring completed the denominator.
 - Known open/deferred items: CQA-10 (partial) and
   `ROM-CAPACITY-ATLAS-SEED-OVERLAY-001`. CQA-05, CQA-06, CQA-07 and CQA-08 are
   **CLOSED** (2026-09-24 and 2026-09-25).
@@ -959,10 +980,10 @@ Buu's Fury's retail binary engine and this repository's evidence discipline.
 
 | | |
 | --- | --- |
-| **Now** | 22/24 (92%); Phase 2 map editing is complete with all four map capabilities runtime-proven, graphics import shipped 2026-10-03, and new sprite, animation and frame authoring shipped 2026-10-07 |
-| **Next** | Phase 3C appearance authoring (`APPEARANCE-AUTHORING-001`; NEXT, not started) |
-| **Then** | New appearance definitions -> 23/24 |
-| **Feature-complete finish** | New-map authoring -> 24/24 (100%) |
+| **Now** | 24/24 (100%); Phase 4 new map authoring shipped, so the fixed capability denominator is complete and the product is feature complete |
+| **Next** | Phase 5 creator experience (`CREATOR-EXPERIENCE-001`; not started) |
+| **Then** | Recovery, navigation, Run From Here, migration, packaging -> release candidate |
+| **Feature-complete finish** | Reached: new-map authoring closed the denominator at 24/24 |
 | **Ship finish** | Creator UX/RC -> golden dogfood -> BPS distribution -> hardware smoke -> v1.0 |
 
 > The roadmap is complete when there is always a known next move, but the

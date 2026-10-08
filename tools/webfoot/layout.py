@@ -272,10 +272,24 @@ class FreeRegion:
 #: such an address - the accessor's literal is a full 32-bit word - but that is an
 #: encoding claim. The mGBA run owned by SPRITE-NEW-RUNTIME-001 is the proof of
 #: the runtime claim, and membership here must not be read as it.
+#:
+#: MAP-NEW-AUTHORING-001 adds `map_entry_table`, also on a measured scan. Against
+#: the canonical image the 452-record MapEntry table at ROM ``0x0808E2E0`` is
+#: reached by exactly ONE word in the whole image - file ``0x0008A58``, the
+#: literal pool entry of ``ldr r1,[pc,#0x4c]`` at ``0x08008A0A`` in the key
+#: lookup ``0x080089FC`` - and that lookup is the only caller of the count helper
+#: ``0x080125E0``, which returns the compiled bound ``0x1C4``. A stride-4 census
+#: repeated at every byte offset returns the same single word.
+#:
+#: What membership here does NOT establish: that the retail engine follows a
+#: ``MapEntry+0x2C`` word or a root placed above canonical EOF. The field encodes
+#: such an address; the mGBA run owned by MAP-NEW-AUTHORING-001 is the proof of
+#: the runtime claim.
 RELOCATION_ELIGIBLE_KINDS = frozenset({"placement_reference_array", "text-string",
                                        "graphics_container",
                                        "character_pointer_table",
-                                       "appearance_record_table"})
+                                       "appearance_record_table",
+                                       "map_entry_table"})
 
 
 def relocation_eligible(anchor: Anchor, references: Iterable[Reference]) -> bool:

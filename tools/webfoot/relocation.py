@@ -43,6 +43,12 @@ _ALLOCATION_KIND = {
     #: through to the canonical-only default and be refused for want of canonical
     #: free space rather than placed where its domain actually puts it.
     "appearance_record_table": AllocationKind.APPEARANCE_RECORD_TABLE,
+    #: MAP-NEW-AUTHORING-001. The MapEntry table plans through its own
+    #: materializer, and this entry exists for the same reason the appearance one
+    #: does: without it a moved table would fall through to the canonical-only
+    #: default and be refused for want of canonical free space rather than placed
+    #: where its domain actually puts it.
+    "map_entry_table": AllocationKind.MAP_ENTRY_TABLE,
 }
 
 

@@ -357,13 +357,20 @@
       "id": "map-new",
       "family": "author",
       "title": "New map and scene materialisation",
-      "state": "missing",
-      "detail": "Not implemented. The terminal authoring frontier. Warps and connections now ship, so the authored warp it needs is available; what remains are the map-root fields that are still unresolved.",
+      "state": "shipped",
+      "detail": "A project authors a map identity the image does not contain. The Maps editor's New map action records a durable name, a donor map and the engine's own two-byte key; the build re-emits the whole map table above the original end of the image with the authored row appended, repoints the one word the engine's key lookup loads and raises the one compiled row bound, and gives the new row its own selector word, its own root and its own layer record. A retail map's existing door can then be pointed at it, and the retail engine loads the new map: a person-driven session, watched by a read-only observer that records the engine's own state, saw the active-MapEntry row become index 452 with the authored key, twice, and the player walk in and back out.",
       "limits": [
-        "Not implemented: no editor surface materialises a new map or scene.",
-        "The terminal frontier. The authored warp it depends on now ships with warps and connections; the remaining blockers are map-root fields that are still unresolved."
+        "The map table carries no count word and no terminator. The row bound is the two instructions of the engine's own helper at 0x080125E0, so growth is a patch of that immediate plus a repoint of the one literal-pool word the key lookup loads at 0x08008A58, not a data edit. At most 58 rows can be appended before a second instruction would have to change; a project past that is refused rather than written.",
+        "A created transition whose trigger region overlaps a retail record's own region did not fire in an observed run: the engine keeps every record's trigger live and the retail record took the player instead. Point a supported door at the new map, or author a region no retail record covers.",
+        "An authored map inherits its donor's record fields, root, layer records and chunk bodies, so it draws and collides as the donor does. No shipped surface authors a map root's unresolved fields, a new map's on-screen name, or new tiles for it.",
+        "The authored row is reached through the project. A reader that reads the map table from the profile still reads the canonical rows, which are retained verbatim, so a retail row is still answered correctly and a built derivative is not re-extracted.",
+        "An authored row's table index is its position in name order, and a transition stores map:NNNN, so adding, removing or renaming an authored map moves the rows after it. A change that would move an index a transition already names is refused by name rather than silently re-pointing that door; a hand edit of maps/authored.toml is outside that guard.",
+        "Every MapEntry write the build plans stays visible in the moved table, because the map domain runs after every other domain that writes one. An undo or redo of a new-map gesture that the re-index guard refuses leaves the project file correct but the editor's undo history one step out of step, which the surface reports rather than hides.",
+        "A savestate written on the canonical image restores a canonical-era MapEntry pointer, so the first rows of such a capture name a retail row until the engine's next transition."
       ],
-      "evidence": "DRAGONBYTE-Z-MAP-LAYOUT-EDITOR-001; docs/research/MAP_LAYOUT_EDITOR_VERIFICATION.md; docs/research/POST_LOGX_IMPLEMENTATION_ROADMAP.md"
+      "surface": "Maps editor: New map authors a new map identity; the Warps editor offers authored maps as transition destinations",
+      "proof": "runtime",
+      "evidence": "MAP-NEW-AUTHORING-001; docs/research/MAP_NEW_AUTHORING.md"
     },
     {
       "id": "validate",

@@ -345,6 +345,11 @@ class StatProject:
     appearances: "AuthoredAppearances" = field(
         default_factory=lambda: AuthoredAppearances()
     )
+    #: MAP-NEW-AUTHORING-001. New map identities this project authors: engine
+    #: rows the canonical image does not contain, each inheriting a donor's record,
+    #: root, layers and chunks. Empty for a project that authors none, which stays
+    #: loadable on the same reasoning as `strings`.
+    authored_maps: "AuthoredMaps" = field(default_factory=lambda: AuthoredMaps())
 
 
 @dataclass(frozen=True, slots=True)
@@ -2140,6 +2145,25 @@ APPEARANCE_TABLE = "appearance"
 #: drift.
 _MAX_AUTHORED_APPEARANCES = 8
 
+#: MAP-NEW-AUTHORING-001. A document of its own for the same reason
+#: `sprites/sprites.toml` and `appearances/appearances.toml` are: it authors
+#: content the canonical image does not contain. `maps/maps.toml` cannot hold it,
+#: because that document's key IS a canonical table index and every record it
+#: carries must reconstruct canonical bytes. A missing file means the project
+#: authors no new map identity, so an older project stays loadable.
+AUTHORED_MAPS_FILE = Path("maps") / "authored.toml"
+
+AUTHORED_MAP_TABLE = "map"
+
+#: How many rows this document may append. The engine states the map-table bound
+#: as `movs r0,#0xff; adds r0,#imm8` in the helper at 0x080125E0, so the count is
+#: `0xff + imm8` and the encodable ceiling is 510 rows: 58 appended rows. The
+#: helper's immediate is the one instruction the build patches, and a 59th map
+#: would need a second instruction changed, which this capability does not do.
+#: Stated locally like the other hardware numbers in this package and pinned by
+#: test against the SDK's own constant, so the two cannot drift.
+_MAX_AUTHORED_MAPS = 58
+
 #: An authored sprite's name, the same durable shape a chunk and a created
 #: transition take: it becomes part of an identity a manifest carries, so it stays
 #: lowercase, bounded and free of path or separator characters.
@@ -2801,6 +2825,157 @@ class AuthoredAppearances:
         return cls(appearances=appearances)
 
 
+@dataclass(frozen=True)
+class AuthoredMap:
+    """One new map identity a project authors.
+
+    Only what an author decides. The engine identity is the two-byte key the
+    lookup at `0x080089FC` compares, and everything else about the new map is
+    inherited from ``donor``: the donor's record fields, its root load template,
+    its layer records and its chunks. ``name`` is this document's durable handle,
+    which a manifest carries and a surface shows; the table index the record takes
+    is assigned by the build and reported in the manifest, never stored here.
+    """
+
+    name: str
+    donor: int
+    key_high: int
+    key_low: int
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.name, str) or _SPRITE_NAME.match(self.name) is None:
+            raise ProjectValidationError(
+                f"authored map name {self.name!r} must be lowercase, start with a "
+                "letter, and use only letters, digits, '_' and '-'"
+            )
+        if type(self.donor) is not int or self.donor < 0:
+            raise ProjectValidationError(
+                f"authored map {self.name!r}: donor must be a map table index, got "
+                f"{self.donor!r}"
+            )
+        for field_name, value in (("key_high", self.key_high),
+                                  ("key_low", self.key_low)):
+            if type(value) is not int or not 0 <= value <= 0xFF:
+                raise ProjectValidationError(
+                    f"authored map {self.name!r}: {field_name} must be one byte, got "
+                    f"{value!r}"
+                )
+        if self.key == (0, 0):
+            raise ProjectValidationError(
+                f"authored map {self.name!r}: a zero key is not a map identity; the "
+                "canonical corpus uses 0x0001..0x1601"
+            )
+
+    @property
+    def identity(self) -> str:
+        return f"map-new:{self.name}"
+
+    @property
+    def key(self) -> tuple[int, int]:
+        return (self.key_high, self.key_low)
+
+    def to_document(self) -> dict[str, Any]:
+        return {"donor": self.donor, "key_high": self.key_high,
+                "key_low": self.key_low}
+
+    @classmethod
+    def from_document(cls, name: str, document: object,
+                      where: object) -> "AuthoredMap":
+        fields = ("donor", "key_high", "key_low")
+        if not isinstance(document, Mapping):
+            raise ProjectLoadError(f"{where}: an authored map must be a table")
+        unexpected = set(document) - set(fields)
+        if unexpected:
+            joined = ", ".join(sorted(unexpected))
+            raise ProjectLoadError(
+                f"{where}: unknown key(s) {joined}; an authored map declares "
+                f"{', '.join(fields)}"
+            )
+        for required in fields:
+            if required not in document:
+                raise ProjectLoadError(
+                    f"{where}: an authored map must declare {required}")
+            if type(document[required]) is not int:
+                raise ProjectLoadError(
+                    f"{where}: {required} must be an integer, got "
+                    f"{document[required]!r}"
+                )
+        return cls(name=name, donor=document["donor"],
+                   key_high=document["key_high"], key_low=document["key_low"])
+
+
+@dataclass(frozen=True)
+class AuthoredMaps:
+    """Every new map identity a project authors.
+
+    A mapping rather than a list because the name is the durable handle a surface
+    and a manifest carry, and a TOML table has no order to inherit. The BUILD
+    order is stated instead: `ordered()` sorts by name, so two runs of the same
+    document append the same rows in the same order and land on the same
+    addresses.
+    """
+
+    maps: dict[str, AuthoredMap] = field(default_factory=dict)
+
+    def __post_init__(self) -> None:
+        keys: dict[tuple[int, int], str] = {}
+        for item in self.maps.values():
+            if item.key in keys:
+                raise ProjectValidationError(
+                    f"authored maps {keys[item.key]!r} and {item.name!r} both claim "
+                    f"key 0x{item.key[0]:02X}{item.key[1]:02X}; the engine's lookup "
+                    "returns the first match, so the second could never be loaded"
+                )
+            keys[item.key] = item.name
+        if len(self.maps) > _MAX_AUTHORED_MAPS:
+            raise ProjectValidationError(
+                f"this project declares {len(self.maps)} new maps; the engine's map "
+                f"count helper is `movs r0,#0xff; adds r0,#imm8`, so at most "
+                f"{_MAX_AUTHORED_MAPS} rows can be appended, and this project cannot "
+                "be built"
+            )
+
+    def is_empty(self) -> bool:
+        return not self.maps
+
+    def ordered(self) -> tuple[AuthoredMap, ...]:
+        """The maps in the one order this document defines."""
+        return tuple(self.maps[name] for name in sorted(self.maps))
+
+    def to_document(self) -> dict[str, Any]:
+        return {
+            AUTHORED_MAP_TABLE: {
+                name: item.to_document()
+                for name, item in sorted(self.maps.items())
+            }
+        }
+
+    @classmethod
+    def from_document(cls, document: Mapping[str, Any],
+                      where: object) -> "AuthoredMaps":
+        table = document.get(AUTHORED_MAP_TABLE)
+        if table is None:
+            raise ProjectLoadError(
+                f"{where}: missing required [{AUTHORED_MAP_TABLE}] table")
+        if not isinstance(table, Mapping) or not table:
+            raise ProjectLoadError(
+                f"{where}: [{AUTHORED_MAP_TABLE}] must be a table declaring at least "
+                "one map"
+            )
+        maps: dict[str, AuthoredMap] = {}
+        for name, entry in table.items():
+            label = f"{AUTHORED_MAP_TABLE}.{name}"
+            if _SPRITE_NAME.match(str(name)) is None:
+                raise ProjectLoadError(
+                    f"{where}: {label} is not an authored map name; it must be "
+                    "lowercase, start with a letter, and use only letters, digits, "
+                    "'_' and '-'"
+                )
+            maps[str(name)] = AuthoredMap.from_document(
+                str(name), entry, f"{where}: {label}")
+        return cls(maps=maps)
+
+
 def _require_identity(value: object, pattern: "re.Pattern[str]", form: str,
                       name: str) -> None:
     """Refuse anything that is not one of this document's durable identity forms."""
@@ -3029,6 +3204,7 @@ def write_project(
     structure: "MapStructure | None" = None,
     transitions: "TransitionEdits | None" = None,
     transition_creations: "TransitionCreations | None" = None,
+    authored_maps: "AuthoredMaps | None" = None,
 ) -> list[Path]:
     """Write the whole authored tree. Returns the files written, in order.
 
@@ -3075,6 +3251,8 @@ def write_project(
         documents.append(
             (TRANSITION_CREATION_FILE, transition_creations.to_document())
         )
+    if authored_maps and not authored_maps.is_empty():
+        documents.append((AUTHORED_MAPS_FILE, authored_maps.to_document()))
 
     for relative, document in documents:
         path = root / relative
@@ -3665,6 +3843,31 @@ def write_authored_appearances(
     return path
 
 
+def write_authored_maps(directory: str | Path, authored_maps: "AuthoredMaps") -> Path:
+    """Persist only the authored-map document for a loaded project.
+
+    MAP-NEW-AUTHORING-001. The ONE place an authored map identity reaches disk.
+    An empty document means the project authors no new map, so the optional file
+    is removed rather than written as an invalid empty table (which `read_project`
+    would then refuse).
+    """
+    path = Path(directory) / AUTHORED_MAPS_FILE
+    if authored_maps is None or authored_maps.is_empty():
+        path.unlink(missing_ok=True)
+        return path
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(dump_toml(authored_maps.to_document()), encoding="utf-8",
+                    newline="\n")
+    return path
+
+
+def _read_authored_maps(path: Path) -> "AuthoredMaps":
+    """Load `maps/authored.toml`, or nothing at all if it is absent."""
+    if not path.is_file():
+        return AuthoredMaps()
+    return AuthoredMaps.from_document(_read_document(path), path)
+
+
 def _read_appearances(path: Path) -> "AuthoredAppearances":
     """Load `appearances/appearances.toml`, or nothing at all if it is absent."""
     if not path.is_file():
@@ -3745,6 +3948,9 @@ def read_project(directory: str | Path) -> StatProject:
     transition_creations = _read_transition_creations(root / TRANSITION_CREATION_FILE)
     sprites = _read_sprites(root / SPRITES_FILE)
     appearances = _read_appearances(root / APPEARANCES_FILE)
+    # A donor index is checked against the image's real count at build time, which
+    # is the only layer that has an image; here the shape alone is checked.
+    authored_maps = _read_authored_maps(root / AUTHORED_MAPS_FILE)
 
     # MAP-CHUNK-AUTHORING-001. A layout cell that names an authored chunk must
     # name one this project declares. Checked here because it is the one place
@@ -3803,6 +4009,7 @@ def read_project(directory: str | Path) -> StatProject:
         transition_creations=transition_creations,
         sprites=sprites,
         appearances=appearances,
+        authored_maps=authored_maps,
         placement_events=events,
         placement_types=(_read_document(root / PLACEMENT_TYPES_FILE)
                          if (root / PLACEMENT_TYPES_FILE).exists() else None),

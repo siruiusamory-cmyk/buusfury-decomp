@@ -278,14 +278,15 @@ export const project: ProjectStatus = {
     "The percentage above is counted from the capability list below, so it moves when a" +
     " capability does. It is a count of editor capabilities, not an estimate.",
   currentPhase: "DRAGONBYTE Z BUILDOUT",
-  blockerTitle: "Create a new playable map",
+  blockerTitle: "Reach a v1.0 release candidate",
   blockerShort:
-    "Appearance authoring has shipped. The Graphics tab creates a new appearance" +
-    " definition, the build appends it above the original end of the image, and the" +
-    " retail engine resolves and displays it: a driven session watched an actor whose" +
-    " retail record reads \"Fighter\" show the authored \"Goku\" instead. New map" +
-    " authoring is the last remaining capability, composing the verified systems into" +
-    " one new playable area, and it is the current blocker.",
+    "Map authoring has shipped and the capability list is complete. Every capability" +
+    " in the fixed registry is now reachable from DragonByte Z: the terminal one" +
+    " composes the map table, a map root, its layers, chunks and connections into a" +
+    " new playable area, and a driven session watched the retail engine transition" +
+    " into it and back out. Nothing is missing any more. The remaining work is the" +
+    " release-candidate phase - creator experience, recovery, packaging and the" +
+    " end-to-end dogfood gate - and it has not started.",
   blockerParagraphs: [
     "Map editing is complete, and the capability list says so. Phase 2 covered the four" +
     " map capabilities in order: tile painting, chunk creation, map resizing with layer" +
@@ -729,10 +730,12 @@ export const project: ProjectStatus = {
     },
     {
       kind: "horizon",
-      title: "Authored maps and new content",
+      title: "Creator experience and release",
       detail:
-        "The terminal frontier. It needs a verified allocator for every new structure," +
-        " authored map roots, and several map-root fields that are unresolved today.",
+        "No capability is missing any more. What is left is the release-candidate"
+        + " phase: engine limits shown before a build fails, recovery from" +
+        " interrupted work, navigation between related resources, Run From Here," +
+        " project migration, packaging and the end-to-end dogfood gate.",
     },
   ],
   breakthroughs: [
@@ -1453,19 +1456,26 @@ const roadmapTo1: RoadmapTo1 = {
       ordinal: "4",
       title: "New map authoring",
       summary:
-        "The final missing capability, and deliberately last: it is the point"
-        + " where every system above is composed into one new playable area.",
-      outcomes: [
-        {
-          capabilityId: "map-new",
-          title: "New map and scene authoring",
-          detail:
-            "Create a genuinely new playable area — its layout, graphics,"
-            + " actors, events, dialogue and transitions — and run it in the game.",
-        },
+        "The terminal capability, and deliberately last: it is the point where"
+        + " every system above is composed into one new playable area.",
+      //: No outcome is promised here any more: an outcome names a capability the
+      //: registry still reports missing, and with the denominator complete there
+      //: is none. The delivered work is stated in `work` instead.
+      outcomes: [],
+      work: [
+        "New maps - SHIPPED: the Maps editor's New map action records a durable name," +
+        " a donor map and the engine's own two-byte key. The build re-emits the whole" +
+        " map table above the original end of the image with the authored row appended," +
+        " repoints the one literal-pool word the engine's key lookup loads, raises the" +
+        " one compiled row bound, and gives the new row its own selector word, its own" +
+        " root and its own layer record. A retail map's existing door can then be" +
+        " pointed at it. A person-driven session, watched by a read-only observer" +
+        " that records the engine's own state, saw the active-MapEntry row become" +
+        " index 452 with the authored key, twice, and the player walk in and back" +
+        " out. The observer records memory rather than images, so the walking is" +
+        " human observation corroborated by the frame-stamped row log",
       ],
-      work: [],
-      state: "next",
+      state: "complete",
     },
     {
       id: "creator-experience",
@@ -1671,8 +1681,11 @@ function validateProjectStatus(value: ProjectStatus): void {
     throw new Error(`Buildout capability keys must be unique; "${duplicate}" appears twice.`);
   }
 
-  if (!buildoutTotal || !buildoutDone || buildoutDone === buildoutTotal) {
-    throw new Error("The buildout must report at least one shipped and one missing capability.");
+  //: A complete buildout is a legitimate state - `docs/ROADMAP_TO_1_0.md` calls
+  //: 24/24 feature complete - so this guard refuses an EMPTY buildout rather than
+  //: requiring a missing capability. The percent bound below still holds at 100.
+  if (!buildoutTotal || !buildoutDone) {
+    throw new Error("The buildout must report at least one shipped capability.");
   }
 
   if (buildoutPercent < 0 || buildoutPercent > 100) {

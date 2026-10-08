@@ -926,6 +926,13 @@ class WarpTab(QWidget):
         """
         self._corpus = None
         self._corpus_error = None
+        #: The project revision the current corpus was resolved against. A
+        #: MAP-NEW-AUTHORING-001 map made in the Maps editor is a destination this
+        #: surface has to offer, so a moved revision rebuilds the corpus.
+        self._corpus_revision = None
+        #: The authored maps the one project parse supplied, or None when no
+        #: project is open or it could not be read.
+        self._authored_maps = None
         self._committed = {}
         self._staged = {}
         self._committed_creations = {}
@@ -960,6 +967,12 @@ class WarpTab(QWidget):
     def refresh(self) -> None:
         """Re-assert the surface when the mode becomes visible."""
         if self._corpus is None and self._corpus_error is None:
+            self._populate_after_session_change()
+            return
+        if self._corpus_revision != self._session.project_revision:
+            # The project changed under this surface: a map may have been authored
+            # since, which is a destination this list has to offer. One rebuild,
+            # only when the revision really moved.
             self._populate_after_session_change()
             return
         self._populate_rows()
@@ -2290,10 +2303,17 @@ class WarpTab(QWidget):
     # -- population -----------------------------------------------------------
 
     def _populate_after_session_change(self) -> None:
-        """Rebuild every session-bound cache and put a real map on screen."""
+        """Rebuild every session-bound cache and put a real map on screen.
+
+        The committed documents are read FIRST and the corpus second, because the
+        corpus resolves the maps the project authors (MAP-NEW-AUTHORING-001) and
+        one parse of the project supplies both: reading it again here would be
+        exactly the growth CQA-07 forbids.
+        """
+        self._reload_committed()
         self._load_corpus()
         self._load_labels()
-        self._reload_committed()
+        self._corpus_revision = self._session.project_revision
         self._populate_source_maps()
         self._populate_destination_maps()
         self._creation = None
@@ -2313,7 +2333,17 @@ class WarpTab(QWidget):
         if image is None or profile is None:
             return
         try:
-            self._corpus = mt.read_map_transitions(image, profile)
+            authored = ()
+            if self._authored_maps is not None:
+                # MAP-NEW-AUTHORING-001: a project-authored map is a legal
+                # destination even though the canonical image has no row for it, so
+                # the corpus this surface offers destinations from is the one that
+                # resolves the project's own maps too. The document comes from the
+                # one parse `_reload_committed` already performed.
+                from tools.webfoot.map_authoring import authored_map_facts
+
+                authored = authored_map_facts(image, profile, self._authored_maps)
+            self._corpus = mt.read_map_transitions(image, profile, authored=authored)
         except _WARP_SESSION_ERRORS as exc:
             self._corpus = None
             self._corpus_error = str(exc)
@@ -2357,6 +2387,7 @@ class WarpTab(QWidget):
         self._committed = {}
         self._committed_creations = {}
         self._project_error = None
+        self._authored_maps = None
         project = self._session.project_dir
         if project is None:
             return
@@ -2364,6 +2395,7 @@ class WarpTab(QWidget):
             from tools.webfoot.project import read_project
 
             document = read_project(project)
+            self._authored_maps = document.authored_maps
             self._committed = dict(
                 mt.transition_edits_to_requests(document.transitions)
             )

@@ -84,21 +84,25 @@ in a configured emulator.
 
 ## Current status
 
-**22 / 24 capabilities (92%).** That is the exact count reported by the
+**24 / 24 capabilities (100%).** That is the exact count reported by the
 repository's capability registry,
 [`src/data/capabilities.json`](src/data/capabilities.json), which is the single
-authority for what is shipped: READ 5 / 5, EDIT 8 / 8, AUTHOR 5 / 7,
-DELIVER 4 / 4.
+authority for what is shipped: READ 5 / 5, EDIT 8 / 8, AUTHOR 7 / 7,
+DELIVER 4 / 4. The fixed capability denominator is complete; that is feature
+completeness, not a v1.0 release.
 
 **Phase 2 - complete map editing - is complete.** Tile painting, chunk creation,
 map resizing and layer authoring, and warp and connection editing have all
 shipped, the last of them runtime-proven in the retail engine. Phase 3, graphics
-and actor authoring, has shipped **graphics import** and then **new sprite,
-animation and frame authoring**: the Graphics tab creates a project's own
-actor-sprite identity and the retail engine resolves and draws it. The next
-capability is appearance authoring, which binds authored graphics into
-game-visible actors. The full route to 1.0 is in the
-[roadmap](docs/ROADMAP_TO_1_0.md).
+and actor authoring, shipped **graphics import**, **new sprite, animation and
+frame authoring** and **appearance authoring**. Phase 4, the terminal capability,
+shipped **new map authoring**: the Maps editor authors a map identity the image
+does not contain, the build re-emits the map table above the original end of the
+image with the authored row appended, and a driven session watched the retail
+engine transition into it and back out. Every capability in the fixed
+denominator is shipped. The full route to 1.0 is in the
+[roadmap](docs/ROADMAP_TO_1_0.md); feature complete is not the same as released,
+and the release-candidate phase has not started.
 
 ## What makes this different
 
@@ -232,12 +236,13 @@ scripts/             setup, test and packaging entry points
 
 ## Project status / experimental warning
 
-The project is active and not yet 1.0. Supported operations are deliberately
-narrower than the goal: some planned capabilities are unfinished or missing,
-several editor surfaces are read-only for forms that have not been measured, and
-unverified inputs fail closed. Treat built images and project documents as
-experimental, keep your own backups, and expect the project file format to change
-before 1.0.
+The project is active and not yet 1.0. Every capability in the fixed registry is
+shipped, so the feature list is complete, but supported operations are still
+deliberately narrower than the goal: an authored map or appearance inherits the
+donor's unresolved engine fields rather than inventing them, several editor
+surfaces are read-only for forms that have not been measured, and unverified
+inputs fail closed. Treat built images and project documents as experimental,
+keep your own backups, and expect the project file format to change before 1.0.
 
 ## License
 

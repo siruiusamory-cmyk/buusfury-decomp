@@ -189,6 +189,30 @@ class AllocationKind(str, Enum):
     #: alone is 3,712 bytes, so a canonical-only request would fail closed every
     #: time.
     APPEARANCE_RECORD_TABLE = "appearance_record_table"
+    #: MAP-NEW-AUTHORING-001. The MapEntry table, re-emitted WHOLE with the
+    #: authored rows appended. The table carries no count word and no terminator:
+    #: the engine's key lookup `0x080089FC` walks `base + 0x38 * i` below a count
+    #: it reads from `0x080125E0`, and the byte after the last canonical record is
+    #: a live tileset container, so a 453rd row has nowhere canonical to go. The
+    #: canonical records are copied verbatim and the one literal-pool word that
+    #: names the table is repointed, so the 452 existing rows move as one
+    #: indivisible placement.
+    #:
+    #: `EXPANDED_ONLY` on the same argument as `APPEARANCE_RECORD_TABLE`: the
+    #: table is 25 KB and the canonical image declares one 256-byte verified-free
+    #: region.
+    MAP_ENTRY_TABLE = "map_entry_table"
+    #: MAP-NEW-AUTHORING-001. One authored map's root: the selector word that
+    #: `MapEntry+0x2C` names, followed by the engine's own load template for the
+    #: map. They are ONE kind because they are one indivisible object - the word is
+    #: four bytes and carries the root's address, and a word without its root is a
+    #: null dereference on the map-load path.
+    #:
+    #: `EXPANDED_ONLY`: no canonical extent can host it (the record is new
+    #: content with no prior home and the one free region is shared), and the
+    #: addressability this capability must prove is the one where a `+0x2C` word
+    #: reaches generated storage.
+    MAP_ROOT_RECORD = "map_root_record"
 
 
 class Addressability(str, Enum):
@@ -309,6 +333,17 @@ DEFAULT_ADDRESSABILITY = {
     #: states: no canonical extent can host it and the addressability this
     #: capability has to prove is exactly the expanded one.
     AllocationKind.APPEARANCE_RECORD_TABLE: Addressability.EXPANDED_ONLY,
+    #: MAP-NEW-AUTHORING-001. The MapEntry table is placed above canonical EOF by
+    #: policy for the same reason the appearance table is: the byte after its last
+    #: record is a live tileset container, so a 453rd row has nowhere canonical to
+    #: go, and the moved table is 25 KB against a single declared 256-byte
+    #: verified-free region.
+    AllocationKind.MAP_ENTRY_TABLE: Addressability.EXPANDED_ONLY,
+    #: MAP-NEW-AUTHORING-001. The root a new map's `MapEntry+0x2C` names is placed
+    #: above canonical EOF by policy. The field is a full 32-bit word, so the
+    #: encoding claim holds; whether the engine follows it there is the runtime
+    #: proof this capability owns, and this member does not assert it.
+    AllocationKind.MAP_ROOT_RECORD: Addressability.EXPANDED_ONLY,
 }
 
 

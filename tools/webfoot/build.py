@@ -52,6 +52,7 @@ from .project import (
     read_project,
     write_project,
 )
+from .project.atomic import replace_document
 from .rom import RomIdentification, identify_rom
 from .stats import (
     CHARACTER_FIELDS,
@@ -267,7 +268,19 @@ def extract_project(
     unaffected, and a build from such a project is still exact, because
     unchanged graphics are re-emitted from the base image rather than from the
     project. Omitting them therefore costs authoring reach, not correctness.
+
+    The destination must be empty or absent. Extraction writes a fresh tree and
+    would otherwise overwrite authored files in place, so a non-empty
+    destination is refused before the image is even opened.
     """
+    target = Path(project_dir)
+    if target.exists() and (not target.is_dir() or any(target.iterdir())):
+        raise BuildError(
+            f"{target} is not empty; extract writes a new project into a clean "
+            "directory so it never overwrites authored files. Remove it or "
+            "choose an empty destination."
+        )
+
     identification = identify_rom(rom_path, catalog)
     profile = _require_extractable_profile(identification)
 
@@ -340,8 +353,7 @@ def extract_project(
         from .project.format import dump_toml
         document = load_placement_types(rom_path, catalog).project_document()
         target = Path(project_dir) / PLACEMENT_TYPES_FILE
-        target.parent.mkdir(parents=True, exist_ok=True)
-        target.write_text(dump_toml(document), encoding="utf-8", newline="\n")
+        replace_document(target, dump_toml(document))
         written.append(target)
     from .data.placement_contracts import CONTRACTS
     if profile.id in CONTRACTS:
@@ -351,8 +363,7 @@ def extract_project(
         document = events.project_document()
         document['reference_graph'] = load_placement_types(rom_path, catalog).reference_document().to_compact_json()
         target = Path(project_dir) / 'events/placement_descriptors.json'
-        target.parent.mkdir(parents=True, exist_ok=True)
-        target.write_text(json.dumps(document, sort_keys=True, separators=(',', ':')) + '\n', encoding='utf-8', newline='\n')
+        replace_document(target, json.dumps(document, sort_keys=True, separators=(',', ':')) + '\n')
         written.append(target)
     if graphics and capability.declared(profile, capability.Capability.ACTOR_SPRITES):
         written.extend(
@@ -448,8 +459,7 @@ def _extract_graphics(
         "character": characters,
     }
     manifest_path = root / GRAPHICS_FILE
-    manifest_path.parent.mkdir(parents=True, exist_ok=True)
-    manifest_path.write_text(dump_toml(manifest), encoding="utf-8", newline="\n")
+    replace_document(manifest_path, dump_toml(manifest))
     written.append(manifest_path)
     return written
 

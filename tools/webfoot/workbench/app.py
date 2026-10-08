@@ -168,6 +168,9 @@ class MainWindow(QMainWindow):
         self._maps.openSceneRequested.connect(self._open_scene_placement)
         self._maps.buildRunRequested.connect(self._build_and_run)
         self._maps.dirtyChanged.connect(self._refresh_identity)
+        # A pending palette colour is unsaved work too, so the title and status
+        # bar re-state as soon as the count moves (N-04).
+        self._graphics.dirtyChanged.connect(self._refresh_identity)
         # A mode switch changes WHICH surface's history Edit -> Undo reaches, so the
         # two actions are re-enabled from the newly active stack.
         self._maps.modeChanged.connect(lambda _mode: self._refresh_undo_actions())
@@ -833,15 +836,15 @@ class MainWindow(QMainWindow):
 
         The count is `Session.unsaved_edit_count()`, the same authority the window
         title and the status bar already report as unsaved work, so the prompt can
-        never disagree with the number on screen. Every editor that stages layout
-        work registers there, which is what makes a staged Warp transition visible
-        to this guard and not only to its own surface.
+        never disagree with the number on screen. The Maps editor and the Graphics
+        palette register there, which is what makes a staged Warp transition and a
+        pending palette colour visible to this guard and not only to their own
+        surface.
 
-        Other editors also stage values - unapplied palette colours, unapplied
-        dialogue text - but those describe the *outgoing* image and have no
-        meaning across it, so a session change clears them by design. Only
-        layout edits are authored work that a ROM change would silently destroy,
-        which is why the guard is derived from that one count.
+        Palette colours are staged against one project's override document and
+        have no meaning across a project or image change, so they are discarded
+        there; counting them here is what makes that discard visible instead of
+        silent.
         """
         pending = self._session.unsaved_edit_count()
         if not pending:
@@ -849,9 +852,10 @@ class MainWindow(QMainWindow):
         answer = QMessageBox.question(
             self,
             action,
-            f"{pending} unsaved layout edit(s) have not been written to a ROM.\n\n"
-            f"{action} discards them; the Map Browser's Save As writes them to a "
-            "new ROM first.\n\nDiscard them and continue?",
+            f"{pending} unsaved edit(s) have not been written to a ROM.\n\n"
+            f"{action} discards them. The Map Browser's Save As writes layout "
+            "edits to a new ROM first, and Graphics Apply writes palette colours "
+            "to the project.\n\nDiscard them and continue?",
             QMessageBox.StandardButton.Discard | QMessageBox.StandardButton.Cancel,
             QMessageBox.StandardButton.Cancel,
         )
@@ -876,12 +880,12 @@ class MainWindow(QMainWindow):
 
         Identity is global, so the title carries it. Godot puts its ``(*)`` marker
         *first* so the OS task bar always shows it; DragonByte Z names the count in
-        words as well, because the pending work here is a pending layout-edit list
+        words as well, because the pending work here is a pending edit list
         rather than an open document.
 
         The status bar's permanent zone carries the three project states that are
         otherwise invisible and that every editor needs: validation, build and
-        unsaved layout edits.
+        unsaved edits.
         """
         rom = self._session.rom_path
         profile = self._session.profile
@@ -934,7 +938,7 @@ class MainWindow(QMainWindow):
             else:
                 parts.append("not built")
         if pending:
-            parts.append(f"{theme.TITLE_DIRTY} {pending} unsaved layout edit(s)")
+            parts.append(f"{theme.TITLE_DIRTY} {pending} unsaved edit(s)")
         return "   \u2502   ".join(parts)
 
     def _refresh_action_state(self) -> None:

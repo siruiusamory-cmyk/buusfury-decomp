@@ -91,6 +91,9 @@ class SceneTab(QWidget):
     def __init__(self, session: Session) -> None:
         super().__init__()
         self._session = session
+        # The project the Add NPC form was typed against: a switch resets the
+        # form, an unrelated mutation leaves it alone (N-09).
+        self._form_project = session.project_dir
 
         # -- Map selector -----------------------------------------------------
         self._map_select = QComboBox()
@@ -299,12 +302,24 @@ class SceneTab(QWidget):
 
         CQA-05. The maps and placements this editor lists are project state, so
         an unrelated mutation - a placement dragged in the visual workspace, a
-        dialogue applied - has to become visible here. The one thing the user
-        stages between gestures is the Add NPC form itself (name, position,
-        behaviour, script, trigger); ``_populate_maps`` does not touch those
-        fields, so re-reading the project keeps them exactly as typed.
+        dialogue applied - has to become visible here, and the Add NPC form the
+        user is composing keeps exactly what was typed.
+
+        N-09. A mutation that swapped the open project is not unrelated: the typed
+        form names the outgoing project's intent, so it is reset before the
+        incoming project is read.
         """
+        if self._session.project_dir != self._form_project:
+            self._form_project = self._session.project_dir
+            self._reset_form()
         self._populate_maps()
+
+    def _reset_form(self) -> None:
+        """Drop unapplied Add NPC input that was typed against another project."""
+        self._name.clear()
+        for box in (self._pos_low, self._pos_high, self._script_text,
+                    self._script_x, self._script_y):
+            box.setValue(box.minimum())
 
     def select_placement(self, map_id: str, placement_identity: str) -> None:
         """Focus one semantic placement from the visual Map workspace."""

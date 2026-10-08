@@ -398,7 +398,7 @@ def test_opening_another_image_asks_before_discarding_staged_edits(
 
     shell.window._open_rom()
 
-    assert asked and "unsaved layout edit" in asked[0]
+    assert asked and "unsaved edit" in asked[0]
     assert opened == [], "cancelling the prompt does not open anything"
     assert browser.unsaved_edit_count() == 1
     assert browser._edit_mode

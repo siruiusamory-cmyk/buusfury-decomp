@@ -68,6 +68,7 @@ from ..formats.map_transitions import (
     MapTransitionError,
     TransitionRegion,
 )
+from .atomic import replace_document
 from .format import ProjectFormatError, dump_toml, load_toml
 
 #: TOOLKIT-007. Authored map field order, mirroring `_ENEMY_FIELD_ORDER`:
@@ -3255,13 +3256,7 @@ def write_project(
         documents.append((AUTHORED_MAPS_FILE, authored_maps.to_document()))
 
     for relative, document in documents:
-        path = root / relative
-        path.parent.mkdir(parents=True, exist_ok=True)
-        # newline="\n" explicitly: the default on Windows would translate to
-        # CRLF and the "same project extracts to the same bytes" property would
-        # then depend on which machine ran the extraction.
-        path.write_text(dump_toml(document), encoding="utf-8", newline="\n")
-        written.append(path)
+        written.append(replace_document(root / relative, dump_toml(document)))
 
     return written
 
@@ -3279,11 +3274,7 @@ def write_dialogue_replacements(
     if not dialogues:
         path.unlink(missing_ok=True)
         return path
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(
-        dump_toml(_dialogue_document(dialogues)), encoding="utf-8", newline="\n"
-    )
-    return path
+    return replace_document(path, dump_toml(_dialogue_document(dialogues)))
 
 
 def write_graphics_overrides(
@@ -3300,10 +3291,8 @@ def write_graphics_overrides(
     if not palette:
         path.unlink(missing_ok=True)
         return path
-    path.parent.mkdir(parents=True, exist_ok=True)
     document = GraphicsOverrides(palette=dict(palette)).to_document()
-    path.write_text(dump_toml(document), encoding="utf-8", newline="\n")
-    return path
+    return replace_document(path, dump_toml(document))
 
 
 def _read_document(path: Path) -> dict[str, Any]:
@@ -3657,9 +3646,7 @@ def write_layout_edits(directory: str | Path, layout: "LayoutEdits") -> Path:
     if layout is None or layout.is_empty():
         path.unlink(missing_ok=True)
         return path
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(dump_toml(layout.to_document()), encoding="utf-8", newline="\n")
-    return path
+    return replace_document(path, dump_toml(layout.to_document()))
 
 
 def _read_graphics_overrides(path: Path) -> "GraphicsOverrides":
@@ -3687,9 +3674,7 @@ def write_authored_chunks(directory: str | Path, chunks: "AuthoredChunks") -> Pa
     if chunks is None or chunks.is_empty():
         path.unlink(missing_ok=True)
         return path
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(dump_toml(chunks.to_document()), encoding="utf-8", newline="\n")
-    return path
+    return replace_document(path, dump_toml(chunks.to_document()))
 
 
 def write_map_structure(directory: str | Path, structure: "MapStructure") -> Path:
@@ -3705,9 +3690,7 @@ def write_map_structure(directory: str | Path, structure: "MapStructure") -> Pat
     if structure is None or structure.is_empty():
         path.unlink(missing_ok=True)
         return path
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(dump_toml(structure.to_document()), encoding="utf-8", newline="\n")
-    return path
+    return replace_document(path, dump_toml(structure.to_document()))
 
 
 def _read_structure(path: Path) -> "MapStructure":
@@ -3760,9 +3743,7 @@ def write_transition_edits(directory: str | Path, transitions: "TransitionEdits"
     if transitions is None or transitions.is_empty():
         path.unlink(missing_ok=True)
         return path
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(dump_toml(transitions.to_document()), encoding="utf-8", newline="\n")
-    return path
+    return replace_document(path, dump_toml(transitions.to_document()))
 
 
 def _read_transitions(path: Path) -> "TransitionEdits":
@@ -3792,9 +3773,7 @@ def write_transition_creations(
     if creations is None or creations.is_empty():
         path.unlink(missing_ok=True)
         return path
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(dump_toml(creations.to_document()), encoding="utf-8", newline="\n")
-    return path
+    return replace_document(path, dump_toml(creations.to_document()))
 
 
 def _read_transition_creations(path: Path) -> "TransitionCreations":
@@ -3818,9 +3797,7 @@ def write_authored_sprites(directory: str | Path, sprites: "AuthoredSprites") ->
     if sprites is None or sprites.is_empty():
         path.unlink(missing_ok=True)
         return path
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(dump_toml(sprites.to_document()), encoding="utf-8", newline="\n")
-    return path
+    return replace_document(path, dump_toml(sprites.to_document()))
 
 
 def write_authored_appearances(
@@ -3837,10 +3814,7 @@ def write_authored_appearances(
     if appearances is None or appearances.is_empty():
         path.unlink(missing_ok=True)
         return path
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(dump_toml(appearances.to_document()), encoding="utf-8",
-                    newline="\n")
-    return path
+    return replace_document(path, dump_toml(appearances.to_document()))
 
 
 def write_authored_maps(directory: str | Path, authored_maps: "AuthoredMaps") -> Path:
@@ -3855,10 +3829,7 @@ def write_authored_maps(directory: str | Path, authored_maps: "AuthoredMaps") ->
     if authored_maps is None or authored_maps.is_empty():
         path.unlink(missing_ok=True)
         return path
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(dump_toml(authored_maps.to_document()), encoding="utf-8",
-                    newline="\n")
-    return path
+    return replace_document(path, dump_toml(authored_maps.to_document()))
 
 
 def _read_authored_maps(path: Path) -> "AuthoredMaps":

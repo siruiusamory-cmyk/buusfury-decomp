@@ -193,6 +193,86 @@ def test_a_cancelled_project_dialog_discards_nothing(session, catalog, monkeypat
     assert window._maps.unsaved_edit_count() == 1, "nothing was discarded with it"
 
 
+# --- a staged palette colour is unsaved work too (N-04) ----------------------
+
+
+def _stage_one_palette_colour(window) -> None:
+    """Stage one colour through the tab's own refresh, as a pick does."""
+    window._graphics._palette_pending[7] = (10, 20, 30)
+    window._graphics._refresh_pending_ui()
+
+
+def test_a_pending_palette_colour_is_unsaved_work(session, catalog):
+    window = MainWindow(session, catalog)
+    _stage_one_palette_colour(window)
+
+    assert session.unsaved_edit_count() == 1, "the session's one authority counts it"
+    assert "1 unsaved" in window.windowTitle(), "and the title says so"
+
+
+def test_a_clean_graphics_session_still_reports_clean(session, catalog):
+    window = MainWindow(session, catalog)
+    window._graphics._refresh_pending_ui()
+
+    assert session.unsaved_edit_count() == 0
+    assert "unsaved" not in window.windowTitle()
+
+
+def test_closing_asks_when_only_a_palette_colour_is_unwritten(session, catalog, monkeypatch):
+    window = MainWindow(session, catalog)
+    _stage_one_palette_colour(window)
+    asked = _answer(monkeypatch, QMessageBox.StandardButton.Cancel)
+
+    event = QCloseEvent()
+    window.closeEvent(event)
+
+    assert asked, "closing must ask when a staged colour is unwritten"
+    assert not event.isAccepted()
+    assert window._graphics._palette_pending == {7: (10, 20, 30)}
+
+
+def test_switching_project_asks_when_only_a_palette_colour_is_staged(
+    session, catalog, tmp_path, image, monkeypatch
+):
+    window = MainWindow(session, catalog)
+    _stage_one_palette_colour(window)
+    other = tmp_path / "other"
+    other.mkdir()
+    write_project(other, project_meta(image), enemies=[], characters=[])
+    asked = _answer(monkeypatch, QMessageBox.StandardButton.Cancel)
+
+    window._project_change(
+        "Opening another project", lambda: session.set_project(other)
+    )
+
+    assert asked, "a staged palette colour must reach the one guard"
+    assert session.project_dir != other
+    assert session.unsaved_edit_count() == 1, "Cancel keeps the staged colour"
+
+
+def test_a_confirmed_switch_clears_the_palette_and_the_count(
+    session, catalog, tmp_path, image, monkeypatch
+):
+    from tools.webfoot.workbench import build_panel as bp
+
+    window = MainWindow(session, catalog)
+    _stage_one_palette_colour(window)
+    other = tmp_path / "other"
+    other.mkdir()
+    write_project(other, project_meta(image), enemies=[], characters=[])
+    asked = _answer(monkeypatch, QMessageBox.StandardButton.Discard)
+    monkeypatch.setattr(
+        bp.QFileDialog, "getExistingDirectory", staticmethod(lambda *a, **k: str(other))
+    )
+
+    window._build.open_project_dialog()
+
+    assert asked
+    assert session.project_dir == other
+    assert window._graphics._palette_pending == {}
+    assert session.unsaved_edit_count() == 0
+
+
 # --- every entry point passes the one gate -----------------------------------
 #
 # The Build panel has its own Open Project and Extract buttons beside the shell's

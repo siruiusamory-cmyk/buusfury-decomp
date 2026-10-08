@@ -40,10 +40,12 @@ def replace_document(path: str | Path, text: str) -> Path:
         suffix=".webfoot-partial",
     )
     try:
-        # mkstemp creates 0600; a project document keeps the mode a plain write
-        # would have given it, so a shareable 0644 file does not become private.
-        os.chmod(temporary, _document_mode(destination))
         with os.fdopen(handle, "wb") as stream:
+            # mkstemp creates 0600; a project document keeps the mode a plain
+            # write would have given it, so a shareable 0644 file does not
+            # become private. The stream owns the descriptor from here, so a
+            # failure below still closes it and the cleanup unlink succeeds.
+            os.chmod(temporary, _document_mode(destination))
             stream.write(text.encode("utf-8"))
             stream.flush()
             os.fsync(stream.fileno())

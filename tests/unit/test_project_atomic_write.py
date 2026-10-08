@@ -78,6 +78,23 @@ def test_a_failure_during_the_replace_leaves_the_old_document(tmp_path: Path, mo
     assert _stray_temporaries(tmp_path) == []
 
 
+def test_a_failure_while_setting_the_mode_still_cleans_up(tmp_path: Path, monkeypatch):
+    """The descriptor is owned by the stream, so a mode failure cannot leak it."""
+    path = tmp_path / "document.toml"
+    path.write_bytes(b"old\n")
+
+    def boom(*_args, **_kwargs):
+        raise OSError("induced chmod failure")
+
+    monkeypatch.setattr(atomic.os, "chmod", boom)
+
+    with pytest.raises(OSError):
+        atomic.replace_document(path, "new\n")
+
+    assert path.read_bytes() == b"old\n"
+    assert _stray_temporaries(tmp_path) == []
+
+
 def test_a_narrow_writer_leaves_the_old_document_on_a_failed_write(
     tmp_path: Path, monkeypatch
 ):

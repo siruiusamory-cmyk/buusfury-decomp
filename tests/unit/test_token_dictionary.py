@@ -162,13 +162,10 @@ def test_a_blob_declaring_no_tokens_is_refused() -> None:
     expect(blob, "declares no tokens")
 
 
-def test_a_nonzero_reserved_or_flags_field_is_refused() -> None:
+def test_a_nonzero_reserved_field_is_refused() -> None:
     blob = bytearray(build_blob(dictionary()))
-    blob[5] = 1
-    expect(bytes(blob), "unsupported dictionary version/flags")
-    reserved = bytearray(build_blob(dictionary()))
-    reserved[10] = 1
-    assert decode_blob(bytes(reserved)).expansions == dictionary().expansions
+    blob[10] = 1
+    expect(bytes(blob), "reserved field")
 
 
 def test_a_glyph_after_the_terminator_is_refused() -> None:

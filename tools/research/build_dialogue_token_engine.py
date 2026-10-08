@@ -26,8 +26,8 @@ relative to a block that moved as a whole, and the last halfword is the loop-bac
 branch), decodes both retargeted callers back to the cave, and refuses any
 displacement outside the ARMv4T 23-bit `BL` range.
 
-Nothing here writes to any source image; the derivative goes under ignored
-`build/`.
+Nothing here writes to any source image: the derivative is staged and published at
+the path the caller names, and this ticket's runs put it under ignored `build/`.
 """
 
 from __future__ import annotations
@@ -37,6 +37,8 @@ import hashlib
 import sys
 from dataclasses import dataclass
 from pathlib import Path
+
+from tools.webfoot.write import WriteError, ensure_not_source_alias
 
 ROM_BASE = 0x08000000
 
@@ -182,12 +184,14 @@ def build_fitter_copy(image: bytes) -> bytes:
 
 
 def patch(source: Path, destination: Path, expected_sha256: str) -> dict[str, object]:
-    # A source image is immutable. Refuse before opening anything: a check after
-    # the write would only report the damage.
-    if destination.resolve() == source.resolve():
-        raise SystemExit(
-            f"refusing to write the derivative over its own source image: {source}"
-        )
+    # A source image is immutable. Refuse before opening anything, and through the
+    # repository's own guard rather than a comparison of path strings: a hard-link
+    # alias of the source is the same file, and comparing resolved paths would not
+    # see it. A check after the write would only report the damage.
+    try:
+        ensure_not_source_alias(source, destination)
+    except WriteError as exc:
+        raise SystemExit(str(exc)) from exc
     if sha256(source) != expected_sha256:
         raise SystemExit(
             f"source is not the declared image: {sha256(source)} != {expected_sha256}"
@@ -231,7 +235,11 @@ def patch(source: Path, destination: Path, expected_sha256: str) -> dict[str, ob
 
     verify(bytes(image), original, payload)
     destination.parent.mkdir(parents=True, exist_ok=True)
-    destination.write_bytes(bytes(image))
+    # Stage and publish, so a failure part-way through cannot leave a half-written
+    # derivative that looks like a built image.
+    staged = destination.with_name(destination.name + ".partial")
+    staged.write_bytes(bytes(image))
+    staged.replace(destination)
     if sha256(source) != expected_sha256:
         raise SystemExit("the source image changed during the build")
     if destination.stat().st_size != source.stat().st_size:

@@ -1,9 +1,9 @@
 # Dialogue expansion tokens: the encoder, and the engine patch's relocation
 
 Ticket: DIALOGUE-TOKEN-PRODUCTIZATION-001. This record carries what the ticket
-measured and what it proved, and it is explicit about the two things it did not:
-the token branch of the engine patch has not executed, and the friend-image
-acceptance run has not been made.
+measured, what it showed at runtime, and what it neither showed nor ran. It is
+explicit about the gap: the token branch of the engine patch has not executed, and
+the friend-image acceptance run has not been made.
 
 Baseline: `origin/master` `b7f90a42393c42cea03cfbd36b8967621dbefca6`, branch
 `ticket/dialogue-token-productization-001`. The canonical image is unchanged:
@@ -25,8 +25,10 @@ This ticket adds three things:
    with every design rule as a refusal and a test per rule;
 2. the **authored-window refusal** wired into the dialogue authoring path, which
    the design names as the prerequisite of the first build that emits a token;
-3. the **first runtime proof of the measure side** of the engine patch: the
-   relocated copy of the line fitter with its two retargeted callers.
+3. the **first runtime evidence for the measure side** of the engine patch: the
+   relocated copy of the line fitter with its two retargeted callers. The counters
+   it produced are observed; that the copy is what ran is inferred, and section 4
+   keeps those two claims apart.
 
 ## 2. The five named expansions, checked against the design
 
@@ -89,7 +91,7 @@ refuses a target the text cannot reach and refuses a record the dictionary canno
 close, so a dictionary that does not cover a record fails at build time and never
 degrades into a padded or truncated line.
 
-## 4. The engine patch: what is now runtime-proven
+## 4. The engine patch: the runtime evidence, and what it does not show
 
 The design's measure side is a **relocated copy** of the line fitter
 `FUN_0803DE6A`, because that function is a leaf (`push {r4,r5,r6,r7}` at
@@ -190,8 +192,8 @@ The launcher and the savestate are not inside a ticket worktree (`build/` and
 * **The token branch has not executed.** No build has yet composed an expansion:
   the dictionary lookup, the shared per-glyph advance helper and the
   `token_advance` call at the copy's width site are designed and statically
-  consistent, but unrun. The compose hook and the relocated fitter are each
-  proven separately; the two together, with a token in the stream, are not.
+  consistent, but unrun. The composition hook and the relocated fitter each have
+  separate runtime evidence; the two together, with a token in the stream, do not.
 * **No token has been planted in a displayed record**, so no in-game visible
   text has been shown to change. The two-glyph POC planted its trigger by gating
   on a unit that occurs naturally (`K`, twice in the 3,000-frame route); a token

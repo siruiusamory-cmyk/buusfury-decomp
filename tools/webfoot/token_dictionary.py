@@ -248,6 +248,9 @@ def decode_blob(blob: bytes, *,
         raise TokenDictionaryError(f"unsupported dictionary version/flags {version}/{flags}")
     if max_glyphs != MAX_GLYPHS or stride != ENTRY_STRIDE_HALFWORDS:
         raise TokenDictionaryError("dictionary stride or max glyphs is not this design's")
+    reserved = int.from_bytes(blob[10:12], "little")
+    if reserved != 0:
+        raise TokenDictionaryError(f"dictionary reserved field is {reserved}, not zero")
     if count > MAX_TOKENS:
         raise TokenDictionaryError(f"token count {count} is above the {MAX_TOKENS} window")
     if count == 0:

@@ -6,9 +6,15 @@ Canonical image sha256
 `940ad5f01db4465b8877dfe739510cbf34f4ea3d390f3df13519808bc36f059e`.
 
 This record holds the measured storage and engine facts a new-map capability
-depends on, the decision they force, and the implementation plan. It is written
-before implementation; the verification record written afterwards supersedes
-nothing here and adds the runtime result.
+depends on, the decision they force, the implementation and its runtime result.
+It began as the plan written before implementation and carries the outcome in the
+same document; sections 1 to 3 are the plan, sections 5 to 7 are what was built
+and what was observed.
+
+Runtime evidence follows `docs/skills/mgba-runtime.md`. Every run below is a
+human-operated session under the governed launcher, with a read-only observer
+whose liveness channel is its own heartbeat and whose target channel is the
+engine's active-MapEntry row; the instrument state of each run is stated with it.
 
 ## 1. Storage contract
 
@@ -101,7 +107,7 @@ chunk bodies are shared across maps (160 of 165 reused bodies cross a map
 boundary). Sharing is the lazy correct choice for v1 and needs no new
 allocation kind.
 
-## 5. Reachability: the door into the new map
+## 4. Reachability: the door into the new map
 
 Resolution is by key, so a retail map can reach the new one as soon as a
 transition record names the new row's two bytes. The shipped creation authority
@@ -183,12 +189,18 @@ deterministic build and provenance.
    and the row bound from the count helper at `0x080125E0` - so an authored index
    is reported as the row the engine loaded rather than asserted.
 
-   **Instrument check, measured** (26 rows, 25 heartbeats, 0 unresolved): the
-   running engine reported `table_base = 0x08800094` and `row_bound = 453`, its
-   own readings of the two patches. A savestate written on the canonical image
-   restores a canonical-era row pointer (`entry = 0x0808EB68`,
-   `versus = prior_table`, key `0x01 0x0b` = map 39), which is the state a
-   state-load run starts in and is reported as a state.
+   **Instrument check, measured** (run directory
+   `build/mapnew001/mapnew001-instrument2`, derivative sha256
+   `E9F6C2FE5D5CF09DEA4527956A4CC55349FBF4F48F9BCEB6CBA84196FCCA62ED`, 26 rows,
+   25 heartbeats, 0 unresolved): the running engine reported
+   `table_base = 0x08800094` and `row_bound = 453`, its own readings of the two
+   patches. That base differs from the accepted run's `0x08800070` because the
+   accepted build allocates a transition array and record as well, so the
+   allocator places the table at a different address; the engine reads whichever
+   base the image carries, which is the point of the check. A savestate written on
+   the canonical image restores a canonical-era row pointer
+   (`entry = 0x0808EB68`, `versus = prior_table`, key `0x01 0x0b` = map 39), which
+   is the state a state-load run starts in and is reported as a state.
 
    **Accepted run**, derivative sha256
    `A70C9D262947C3E4D38FB82614998938319A08A321B9305DDB70BC5C3B4D51B8`, savestate
@@ -208,8 +220,15 @@ deterministic build and provenance.
    The engine's own loaded row became index 452 - an index the canonical bound of
    452 cannot express - with the authored key `0x9901` and its selector word,
    root and layer slot all above canonical EOF. The player spent the whole of
-   frames 1440-1920 and 2040-2160 in the new map and then walked out of it, which
-   is both the movement evidence and the return-transition evidence.
+   frames 1440-1920 and 2040-2160 in the new map and then walked out of it.
+
+   **Who drove it.** The observer records memory only: it presses no key and takes
+   no screenshot. The transition into map 452, the frames spent there and the walk
+   back out are the engine's own row changes, and the walking itself was a person
+   at the controls, not a scripted input sequence. The "movement" and "return
+   transition" claims are therefore human observation corroborated by the frame
+   stamps in that row log, which is the strongest form this repository's runtime
+   stack produces for a map transition; no screenshot accompanies them.
 
    **What the runs taught about the door.** Three configurations were tried
    before the accepted one, and each failure is a fact about the engine rather
@@ -244,6 +263,19 @@ project, not by re-extracting the derivative.
 
 - An above-EOF `MapEntry+0x2C` has no prior observation. It is the read class
   already proven for root slot pointers; the runtime proof is what decides it.
+- A new map inherits its donor's **canonical** root, layer and chunks. If the same
+  project also edits that donor - a resize, an added door, a repainted layer - the
+  new map keeps the donor's original bytes, not the edited ones. That is a stated
+  limit, not a defect: the root fields this capability does not author are copied
+  from a named donor deliberately.
+- The relocated table carries every `MapEntry` write the domains before it planned
+  (`_carry_prior_table_edits`), so a map field edit, an expanded placement run or
+  an appended actor stays visible once the base word moves. A planned write that
+  straddled the table's boundary would be refused rather than carried.
+- An authored row's table index is its position in name order, and a transition
+  stores `map:NNNN`. Adding, removing or renaming a map therefore re-indexes the
+  ones after it, so a change that would move an index a transition already names
+  is refused by name rather than silently re-pointing that door.
 - The engine's fallback when an arrival is `>= 0xFFF8` is not established, so the
   authored transition always carries an explicit arrival inside the new map.
 - The SDK's own map viewer reads the canonical address, so a built derivative is

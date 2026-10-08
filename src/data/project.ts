@@ -1469,9 +1469,11 @@ const roadmapTo1: RoadmapTo1 = {
         " repoints the one literal-pool word the engine's key lookup loads, raises the" +
         " one compiled row bound, and gives the new row its own selector word, its own" +
         " root and its own layer record. A retail map's existing door can then be" +
-        " pointed at it. A driven session watched the engine's own active-MapEntry row" +
-        " become index 452 with the authored key, twice, with the player walking in and" +
-        " back out",
+        " pointed at it. A person-driven session, watched by a read-only observer" +
+        " that records the engine's own state, saw the active-MapEntry row become" +
+        " index 452 with the authored key, twice, and the player walk in and back" +
+        " out. The observer records memory rather than images, so the walking is" +
+        " human observation corroborated by the frame-stamped row log",
       ],
       state: "complete",
     },

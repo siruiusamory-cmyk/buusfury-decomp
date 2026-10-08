@@ -166,6 +166,9 @@ class MapMaterialization:
     reserved: tuple[RomRange, ...]
     generated_allocations: tuple
     relocations: tuple[RelocationProvenance, ...]
+    #: How many earlier domains' writes the moved table carried. Non-zero when the
+    #: project edits a `MapEntry` field in the same build that authors a map.
+    carried_edits: int = 0
 
 
 # --- the declared table ------------------------------------------------------
@@ -481,6 +484,44 @@ def _row_count_change(image: bytes, profile, rows: int) -> ByteChange:
     )
 
 
+def _carry_prior_table_edits(block: bytearray, profile, image_size: int,
+                             prior: tuple) -> tuple:
+    """Apply every already-planned write that lands inside the table, or refuse.
+
+    The relocated table is a copy of the canonical rows, and the engine reads the
+    copy. Every other domain that writes a `MapEntry` field - a map field edit, an
+    expanded placement run's count and array pointer, an appended map actor -
+    plans its write at the CANONICAL offset, which the engine would no longer
+    read once the base word moves. Copying those writes into the copy is what
+    keeps such a project's edits visible; refusing a write that straddles the
+    table's boundary is what keeps the copy honest.
+
+    Returns the changes that were carried, so a caller can say so.
+    """
+    start = table_offset(profile, image_size)
+    end = start + len(block)
+    carried = []
+    for change in prior:
+        if change.end <= start or change.offset >= end:
+            continue
+        if change.offset < start or change.end > end:
+            raise MapAuthoringError(
+                f"a planned write at 0x{change.offset:06X} straddles the map "
+                "table's boundary, so a moved table cannot carry it"
+            )
+        low = change.offset - start
+        high = low + len(change.old)
+        if bytes(block[low:high]) != change.old:
+            raise MapAuthoringError(
+                f"the planned write at 0x{change.offset:06X} was computed against "
+                "different table bytes; refusing to build a moved table from an "
+                "image this plan does not describe"
+            )
+        block[low:high] = change.new
+        carried.append(change)
+    return tuple(carried)
+
+
 # --- the plan ----------------------------------------------------------------
 
 
@@ -491,11 +532,15 @@ def materialize_authored_maps(
     maps,
     *,
     reserved: tuple[OwnedRegion, ...] = (),
+    prior_changes: tuple = (),
 ) -> MapMaterialization:
     """Compile the project's authored maps into attributed changes.
 
     ``reserved`` is the build-scoped reservation set every allocating domain
     shares; the spans this domain places are returned for the domains after it.
+    ``prior_changes`` is every change the domains before this one have already
+    planned, which this domain must carry into the table copy it emits: those
+    writes are addressed at the canonical table, and the engine reads the copy.
     """
     _require_declared(identification, profile, "authored maps")
     canonical_rows = record_count(profile)
@@ -571,6 +616,7 @@ def materialize_authored_maps(
     generated: list = []
     rewrites: list[ReferenceRewrite] = []
     block = bytearray(canonical)
+    carried = _carry_prior_table_edits(block, profile, len(image), prior_changes)
     placements: list[MapPlacement] = []
 
     for position, (authored, donor) in enumerate(zip(maps, donors, strict=True)):
@@ -685,6 +731,7 @@ def materialize_authored_maps(
         reserved=tuple(allocation.range for allocation in allocations),
         generated_allocations=tuple(generated),
         relocations=relocations,
+        carried_edits=len(carried),
     )
 
 
@@ -729,18 +776,89 @@ def authored_maps(project_dir: str | Path):
     return read_project(project_dir).authored_maps
 
 
-def apply_authored_maps(project_dir: str | Path, authored) -> bool:
+def authored_map_identity(index: int) -> str:
+    """The durable spelling of an authored row's index, as a transition stores it."""
+    return f"map:{index:04d}"
+
+
+def _referenced_authored_indices(project, canonical_rows: int) -> set[int]:
+    """Every authored index this project's transition documents name.
+
+    A transition stores its destination as the same `map:NNNN` index the canonical
+    table uses, because a canonical index never moves. An authored index is a
+    project-local assignment, so a reference to one is a reference to *whatever
+    currently holds that slot*.
+    """
+    import re
+
+    references: set[int] = set()
+    values: list = []
+    for item in project.transitions.edits().values():
+        values.extend((item.destination, item.prior_destination))
+    for item in project.transition_creations.edits().values():
+        values.extend((item.destination, getattr(item, "prior_destination", None)))
+    for value in values:
+        if not isinstance(value, str):
+            continue
+        match = re.fullmatch(r"map:(\d{4})", value)
+        if match and int(match.group(1)) >= canonical_rows:
+            references.add(int(match.group(1)))
+    return references
+
+
+def _assignment(document, canonical_rows: int) -> dict[int, str]:
+    """Which authored name holds which table index, for one document."""
+    if document is None:
+        return {}
+    return {canonical_rows + position: item.name
+            for position, item in enumerate(document.ordered())}
+
+
+def _refuse_a_reindexing(committed, authored, project, canonical_rows: int) -> None:
+    """Fail closed when a change would move an index a door already names.
+
+    MAP-NEW-AUTHORING-001. An authored row's index is its position in name order
+    (AuthoredMaps.ordered), so adding, removing or renaming a map re-indexes the
+    ones after it. A transition stores the index it was authored against, so a
+    silent re-index would re-point a real door at a different map. Refusing is the
+    only safe answer: the author re-points the door, or keeps the assignment.
+    """
+    before = _assignment(committed, canonical_rows)
+    after = _assignment(authored, canonical_rows)
+    for index in sorted(_referenced_authored_indices(project, canonical_rows)):
+        was, now = before.get(index), after.get(index)
+        if was == now:
+            continue
+        raise MapAuthoringError(
+            f"{authored_map_identity(index)} is named by a transition in this "
+            f"project, and this change would make it {now or 'no map'} instead of "
+            f"{was or 'no map'}. An authored row's index is its position in name "
+            "order, so adding, removing or renaming a map moves the ones after it; "
+            "re-point the transition first, or keep the assignment it was "
+            "authored against"
+        )
+
+
+def apply_authored_maps(project_dir: str | Path, authored, *,
+                        canonical_rows: int | None = None) -> bool:
     """Write the authored-map document, or remove it when it is empty.
 
     The ONE write path for this document. Returns whether the project changed, so
     a surface can leave the project revision and the build state alone on a
     no-op.
+
+    ``canonical_rows`` is the image's own row count when the caller has one. It is
+    what lets this refuse a change that would re-index a map a transition already
+    names, which is a silent re-pointing otherwise.
     """
     from .project.model import read_project, write_authored_maps
 
-    committed = read_project(project_dir).authored_maps
+    project = read_project(project_dir)
+    committed = project.authored_maps
     if committed == authored:
         return False
+    if canonical_rows is not None:
+        _refuse_a_reindexing(committed, authored, project, canonical_rows)
     write_authored_maps(project_dir, authored)
     return True
 

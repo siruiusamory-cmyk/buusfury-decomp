@@ -1762,7 +1762,7 @@ def build_project(
         try:
             authored_map_materialization = materialize_authored_maps(
                 image, identification, profile, _map_authoring_requests(project),
-                reserved=reserved,
+                reserved=reserved, prior_changes=tuple(changes),
             )
         except _MAP_AUTHORING_ERRORS as exc:
             raise ProjectValidationError(f"authored map: {exc}") from exc

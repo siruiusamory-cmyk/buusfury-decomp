@@ -589,10 +589,13 @@ in the capability registry's own limits:
   original ROM's end, and the engine's own reading of the moved base and the
   raised bound was observed in the session.
 - Close only when the retail engine loads, renders, runs scripts in, and
-  transitions through the newly-created map. **Loads, renders and transitions are
-  proven.** Running the donor's scripts *in* the new map is not separately
-  observed, and no surface authors a script for it; that is a stated limit of the
-  capability rather than a claim.
+  transitions through the newly-created map. **Loads and transitions are proven by
+  the engine's own state**: the observer records memory, not images, and the walk
+  through the door and back out was a person at the controls. Rendering was
+  likewise seen by that person rather than captured, so it is human observation
+  with the row log as corroboration. Running the donor's scripts *in* the new map
+  is not observed, and no surface authors a script for it; that is a stated limit
+  of the capability rather than a claim.
 
 > **24/24 milestone reached.** Every capability in the fixed registry is shipped
 > and public feature progress reads 100%. The project is **feature complete** -

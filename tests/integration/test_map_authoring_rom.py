@@ -723,3 +723,111 @@ def test_the_retargeted_build_is_reproducible(retargeted, tmp_path, catalog):
     build_project(project, _rom_path(), again, catalog)
 
     assert again.read_bytes() == image
+
+
+# --- the two silent-loss defects the review found ----------------------------
+
+
+def test_a_map_field_edit_is_carried_into_the_moved_table(project, profile, catalog):
+    """Every other MapEntry writer plans its change at the CANONICAL offset.
+
+    Once the engine's base word moves, those writes land in a table the engine no
+    longer reads, so a project that edits a map field and authors a map would
+    build cleanly and silently drop the edit. The moved table must carry them.
+    """
+    import struct
+
+    from tools.webfoot.project.format import dump_toml, load_toml
+
+    path = project / "maps" / "maps.toml"
+    document = load_toml(path.read_text(encoding="utf-8"))
+    entry = document["map"][f"map:{SOURCE:04d}"]
+    entry["flags"] = (entry["flags"] + 1) % 256
+    path.write_text(dump_toml(document), encoding="utf-8", newline="\n")
+    write_authored_maps(project, _one())
+
+    output = project / "field-edit.gba"
+    build_project(project, _rom_path(), output, catalog)
+    image = output.read_bytes()
+
+    canonical_table = ma.canonical_table(_rom_path().read_bytes(), profile)
+    table_address = struct.unpack_from("<I", image, ma.BASE_POOL_FILE_OFFSET)[0]
+    table_at = table_address - 0x08000000
+    moved = image[table_at + SOURCE * STRIDE: table_at + (SOURCE + 1) * STRIDE]
+
+    assert canonical_table[SOURCE * STRIDE + 0x09] != entry["flags"], (
+        "the fixture did not actually change the field")
+    assert moved[0x09] == entry["flags"], (
+        "the moved table did not carry the project's own MapEntry field edit")
+
+
+def test_adding_a_map_that_would_move_a_named_door_is_refused(
+        project, canonical, identified, profile):
+    """An authored row's index is its position in name order, and a door stores it.
+
+    Adding a map whose name sorts earlier would re-index the one a transition
+    already names, silently pointing a real door at a different map.
+    """
+    from tools.webfoot.map_transitions import (MapIdentity, TransitionEdit,
+                                               set_transition_edits)
+
+    document = _one()
+    write_authored_maps(project, document)
+    corpus = read_map_transitions(canonical, profile,
+                                  authored=_facts(canonical, profile, document))
+    door = next(
+        entry.identity for entry in corpus.for_map(MapIdentity(SOURCE))
+        if corpus.destination(entry.identity).index == RETARGET_DONOR
+    )
+    set_transition_edits(project, profile, canonical,
+                         {door: TransitionEdit(destination=MapIdentity(CANONICAL_ROWS))})
+
+    reindexed = AuthoredMaps(maps={
+        "alpha": AuthoredMap("alpha", SOURCE, 0x98, 0x01),
+        NAME: AuthoredMap(NAME, SOURCE, KEY[0], KEY[1]),
+    })
+    with pytest.raises(ma.MapAuthoringError) as refused:
+        ma.apply_authored_maps(project, reindexed, canonical_rows=CANONICAL_ROWS)
+    assert "re-point the transition" in str(refused.value)
+
+    # The refusal changed nothing: the committed assignment still holds the door.
+    assert read_project(project).authored_maps == document
+
+
+def test_a_removal_that_would_move_a_named_door_is_refused(
+        project, canonical, identified, profile):
+    from tools.webfoot.map_transitions import (MapIdentity, TransitionEdit,
+                                               set_transition_edits)
+
+    document = AuthoredMaps(maps={
+        "alpha": AuthoredMap("alpha", SOURCE, 0x98, 0x01),
+        NAME: AuthoredMap(NAME, SOURCE, KEY[0], KEY[1]),
+    })
+    write_authored_maps(project, document)
+    corpus = read_map_transitions(canonical, profile,
+                                  authored=_facts(canonical, profile, document))
+    door = next(
+        entry.identity for entry in corpus.for_map(MapIdentity(SOURCE))
+        if corpus.destination(entry.identity).index == RETARGET_DONOR
+    )
+    # `alpha` sorts first, so it holds 452 and `cave` holds 453.
+    set_transition_edits(project, profile, canonical,
+                         {door: TransitionEdit(destination=MapIdentity(CANONICAL_ROWS + 1))})
+
+    with pytest.raises(ma.MapAuthoringError) as refused:
+        ma.apply_authored_maps(project, _one(), canonical_rows=CANONICAL_ROWS)
+    assert "re-point the transition" in str(refused.value)
+
+
+def test_a_reindex_nothing_names_is_allowed(project):
+    """The guard is about a named door, not about adding maps at all."""
+    write_authored_maps(project, _one())
+    assert ma.apply_authored_maps(
+        project,
+        AuthoredMaps(maps={
+            "alpha": AuthoredMap("alpha", SOURCE, 0x98, 0x01),
+            NAME: AuthoredMap(NAME, SOURCE, KEY[0], KEY[1]),
+        }),
+        canonical_rows=CANONICAL_ROWS,
+    ) is True
+    assert len(read_project(project).authored_maps.maps) == 2

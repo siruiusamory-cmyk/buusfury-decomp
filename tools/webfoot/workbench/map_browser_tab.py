@@ -6244,8 +6244,9 @@ class MapBrowserTab(QWidget):
             QMessageBox.warning(self, "New map", str(exc))
             return False
         try:
-            map_new.apply_authored_maps(self._session.project_dir, document)
-        except (ProjectError, OSError) as exc:
+            map_new.apply_authored_maps(self._session.project_dir, document,
+                                        canonical_rows=self._map_row_count())
+        except (ProjectError, OSError, map_new.MapAuthoringError) as exc:
             QMessageBox.warning(self, "New map", str(exc))
             return False
         self._undo_stack.push(NewMapCommand(
@@ -6262,12 +6263,19 @@ class MapBrowserTab(QWidget):
         if self._session.project_dir is None:
             return
         try:
-            map_new.apply_authored_maps(self._session.project_dir, document)
-        except (ProjectError, OSError) as exc:
+            map_new.apply_authored_maps(self._session.project_dir, document,
+                                        canonical_rows=self._map_row_count())
+        except (ProjectError, OSError, map_new.MapAuthoringError) as exc:
             QMessageBox.warning(self, "New map", str(exc))
             return
         self._session.project_mutated()
         self._publish_status("New-map document restored.")
+
+    def _map_row_count(self) -> "int | None":
+        """The open image's canonical map row count, or None without an image."""
+        profile = self._session.profile
+        layout = getattr(profile, "map_entries", None) if profile else None
+        return layout.count if layout is not None else None
 
     def build_new_map_dialog(self) -> "NewMapDialog | None":
         """The new-map form, built but not shown. None when it cannot be offered."""

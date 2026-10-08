@@ -59,6 +59,7 @@ from .formats.webfoot_lz import (DEFAULT_MAX_OUTPUT, ContainerError, pack, unpac
 from .handles import DialogueHandle, HandleError, unpack_handle
 from .layout import AnchorId, OwnedRegion, RomRange
 from .profile import RomProfile
+from .token_dictionary import authored_window_problem
 from .write import (ByteChange, DialogueEditProvenance, GeneratedAllocationProvenance,
                     GeneratedImage, WritePlan, plan_changes)
 
@@ -646,6 +647,11 @@ def _prepare_replacement(canonical: bytes, profile: RomProfile,
         raise CompressedDialogueError("profile declares no verified generated expansion")
     if not replacement:
         raise CompressedDialogueError("replacement dialogue must not be empty")
+    # The second seat for the same rule, because this function encodes directly and
+    # a caller of materialize_dialogues never reaches the editor's validator.
+    window_problem = authored_window_problem(replacement, what="replacement dialogue")
+    if window_problem is not None:
+        raise CompressedDialogueError(f"{target.name}: {window_problem}")
     table_slot, old_offset, container = _retail_container(canonical, profile, target)
     try:
         encoded = replacement.encode("utf-16le")

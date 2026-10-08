@@ -32,10 +32,14 @@
 # is the PowerShell 7 spelling and does not exist on Windows PowerShell 5.1.
 $script:RandomizerLatin1 = [System.Text.Encoding]::GetEncoding(28591)
 
-#: Extensions that must never appear in a release archive.
+#: Extensions that must never appear in a release archive. This list and
+#: `FORBIDDEN_SUFFIXES` in `tools/quality/public_release.py` are the same set:
+#: the static guard and the packaging-time probe must refuse the same files, or a
+#: release is protected by whichever one happens to be weaker. `tests/unit/
+#: test_package_content.py` fails if the two drift apart.
 $script:RandomizerForbiddenExtensions = @(
     '.gba', '.agb', '.sav', '.ss0', '.ss1', '.ss2', '.ss3', '.ss4', '.ss5',
-    '.ss6', '.ss7', '.ss8', '.ss9', '.sps', '.state', '.srm'
+    '.ss6', '.ss7', '.ss8', '.ss9', '.sps', '.state', '.srm', '.dump'
 )
 
 #: The one supported image's identity, stated once for BOTH products. Each package

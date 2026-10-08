@@ -152,6 +152,8 @@ _STAGE_DESTINATION = re.compile(
 )
 _COPY_ITEM = re.compile(r"(?m)^\s*Copy-Item\b")
 _SPEC_DATAS = re.compile(r"datas\s*=\s*\[(.*?)\]", re.DOTALL)
+_SPEC_ANALYSIS = re.compile(r"Analysis\(\s*\[([^\]]*)\]", re.DOTALL)
+_SPEC_RESOURCE_PAIR = re.compile(r"\(\s*'([^']*)'\s*,\s*'([^']*)'\s*\)")
 _QUOTED = re.compile(r"'([^']*)'|\"([^\"]*)\"")
 _COPY_SOURCE = re.compile(r"(?m)^\s*Copy-Item\s+(\S+)")
 _PARAMETER = re.compile(r"\$(BuildName|ReadmePath)\s*=\s*(?:'([^']*)'|\"([^\"]*)\")")
@@ -467,6 +469,71 @@ def _spec_wiring_findings(
     return findings
 
 
+def _spec_resource_findings(
+    base: Path, product: ReleaseProduct, relative: str, text: str
+) -> list[Finding]:
+    """The spec must name a frozen entry script and resources that exist.
+
+    RELEASE-ARTEFACT-001 added this because the wiring check below reads the
+    ``datas`` list only to hunt forbidden suffixes, so a spec that staged a file
+    nobody had written passed the guard and failed at build time - or, worse,
+    produced a package whose resource was silently absent. Both halves are release
+    DEFINITION facts, which is what this module exists to check.
+    """
+    findings: list[Finding] = []
+    analysis = _SPEC_ANALYSIS.search(text)
+    if analysis is None:
+        findings.append(
+            Finding(
+                "spec-analysis-missing",
+                product.build_name,
+                relative,
+                "the spec does not declare an Analysis entry script",
+            )
+        )
+    else:
+        scripts = [first or second for first, second in _QUOTED.findall(analysis.group(1))]
+        if not scripts:
+            findings.append(
+                Finding(
+                    "spec-analysis-missing",
+                    product.build_name,
+                    relative,
+                    "the spec's Analysis names no entry script",
+                )
+            )
+        for script in scripts:
+            if not (base / script).is_file():
+                findings.append(
+                    Finding(
+                        "spec-entry-script-missing",
+                        product.build_name,
+                        relative,
+                        f"the frozen entry script {script!r} is not in the tree",
+                    )
+                )
+
+    datas = _SPEC_DATAS.search(text)
+    if datas is None:
+        # A product with no data files is legitimate, so an absent ``datas`` list is
+        # not itself a finding. Whether the resources a packaged application NEEDS
+        # actually arrived is answered against the staged directory, by
+        # `tools/quality/package_content.py --require`; this check is about a
+        # definition naming a file that does not exist at all.
+        return findings
+    for source, _destination in _SPEC_RESOURCE_PAIR.findall(datas.group(1)):
+        if not (base / source).is_file():
+            findings.append(
+                Finding(
+                    "spec-resource-missing",
+                    product.build_name,
+                    relative,
+                    f"the spec stages {source!r} and it is not in the tree",
+                )
+            )
+    return findings
+
+
 def _product_findings(
     base: Path,
     product: ReleaseProduct,
@@ -497,6 +564,11 @@ def _product_findings(
     if product.spec in texts:
         findings.extend(
             _spec_wiring_findings(product, product.spec, texts[product.spec])
+        )
+        findings.extend(
+            _spec_resource_findings(
+                base, product, product.spec, texts[product.spec]
+            )
         )
     if product.packager in texts:
         findings.extend(

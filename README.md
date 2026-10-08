@@ -190,7 +190,13 @@ webfoot identify ".\roms\Dragon Ball Z - Buu's Fury (U).gba"
 webfoot extract  ".\roms\Dragon Ball Z - Buu's Fury (U).gba" ".\work\my-mod" --no-graphics
 webfoot validate ".\work\my-mod" --rom ".\roms\Dragon Ball Z - Buu's Fury (U).gba"
 webfoot build    ".\work\my-mod" --rom ".\roms\Dragon Ball Z - Buu's Fury (U).gba" --output ".\build\my-mod.gba"
+webfoot patch export ".\work\my-mod" --rom ".\roms\Dragon Ball Z - Buu's Fury (U).gba" --output ".\build\my-mod.bps"
 ```
+
+The built image is the playable local result; the `.bps` patch is the distributable
+modification, and it is the one you share. [Release artefacts](docs/release-artefacts.md)
+states what a user receives, what must never be distributed, and how version and
+build identity work.
 
 The desktop editor needs the PySide6 extra
 (`uv pip install -e ".[workbench]"`) and starts from `DragonByte Z.cmd` or with

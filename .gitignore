@@ -36,6 +36,13 @@ node_modules/
 *.egg-info/
 *.spec
 
+# The generated build-identity record a package build bakes in, so a packaged
+# application can name the commit it was cut from. It is a module rather than a
+# data file so it travels inside a frozen build through the import graph, and it
+# is never tracked because it names one machine's commit rather than the
+# project's content.
+tools/webfoot/_build_identity.py
+
 # Generated ROM provenance manifests. A build or an authored-image save writes
 # one BESIDE its output image (`authored_image.manifest_path_for`), and `*.gba`
 # does not match `foo.gba.dragonbyte.json` - so a derivative saved outside an

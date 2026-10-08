@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import base64
 import json
+import re
 import struct
 from pathlib import Path
 
@@ -146,7 +147,12 @@ def _write(root: Path, relative: str, content) -> None:
 
 
 def _tree(root: Path, product: ReleaseProduct = FUTURE) -> None:
-    """A complete, valid release definition for one product."""
+    """A complete, valid release definition for one product.
+
+    The files the spec names are written too, because RELEASE-ARTEFACT-001 made
+    naming a file that does not exist a finding: a release definition that stages a
+    resource nobody wrote is not complete, whether or not the build would notice.
+    """
     _write(root, product.spec, _spec(product))
     _write(root, product.version_resource, _version(product))
     _write(root, product.readme, "A future randomizer.\n")
@@ -157,6 +163,8 @@ def _tree(root: Path, product: ReleaseProduct = FUTURE) -> None:
         release.SHARED_RELEASE_SCRIPT,
         "function Assert-RandomizerNoProprietaryContent { }\n",
     )
+    _write(root, f"tools/webfoot/{product.package}/_pyinstaller_entry.py", "main()\n")
+    _write(root, "tools/webfoot/data/roms.yaml", "schema_version: 1\n")
 
 
 def _codes(root: Path, product: ReleaseProduct = FUTURE) -> set[str]:
@@ -186,6 +194,34 @@ def test_the_shipped_icon_covers_the_required_sizes():
 
 def test_a_complete_future_release_definition_passes(tmp_path):
     _tree(tmp_path)
+
+    assert _codes(tmp_path) == set()
+
+
+def test_a_spec_naming_an_entry_script_that_does_not_exist_fails(tmp_path):
+    """RELEASE-ARTEFACT-001: the definition is incomplete, not merely unwired."""
+    _tree(tmp_path)
+    _write(tmp_path, FUTURE.spec, _spec().replace("_pyinstaller_entry.py", "_gone.py"))
+
+    assert "spec-entry-script-missing" in _codes(tmp_path)
+
+
+def test_a_spec_staging_a_resource_that_does_not_exist_fails(tmp_path):
+    _tree(tmp_path)
+    (tmp_path / "tools/webfoot/data/roms.yaml").unlink()
+
+    assert "spec-resource-missing" in _codes(tmp_path)
+
+
+def test_a_spec_declaring_no_resources_is_not_a_finding(tmp_path):
+    """A product with no data files is legitimate; the staged census is the check
+    that the resources an application actually needs arrived."""
+    _tree(tmp_path)
+    _write(
+        tmp_path,
+        FUTURE.spec,
+        re.sub(r"datas=\[[^\]]*\]", "datas=[]", _spec()),
+    )
 
     assert _codes(tmp_path) == set()
 

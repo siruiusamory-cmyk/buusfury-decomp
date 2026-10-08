@@ -257,6 +257,36 @@ def test_the_version_resource_names_the_product_it_is_built_into(package: str, b
 
 
 @pytest.mark.parametrize("package,build_name", PRODUCTS, ids=[p[0] for p in PRODUCTS])
+def test_the_packaging_script_names_the_version_the_product_reports(package: str, build_name: str):
+    """One version source, or the downloaded file lies about what it contains.
+
+    ``$Version`` in the packaging script decides the archive's name, and it is an
+    independent literal; before RELEASE-ARTEFACT-001 nothing tied it to the
+    product's own ``TOOL_VERSION``, so a release could be named v0.2.0 while the
+    executable inside reported 0.1.0. N-30's portable half.
+    """
+    product = next(item for item in public_release.PRODUCTS if item.package == package)
+    script = (REPO_ROOT / product.packager).read_text(encoding="utf-8")
+
+    declared = re.search(r"\$Version\s*=\s*'([^']*)'", script)
+    assert declared is not None, f"{product.packager} declares no $Version default"
+    assert '"$BuildName-v$Version-win64.zip"' in script, (
+        f"{product.packager} builds the archive name from something other than "
+        "$Version, so the check below would not cover it"
+    )
+
+    service = (REPO_ROOT / "tools" / "webfoot" / package / "service.py").read_text(
+        encoding="utf-8"
+    )
+    reported = re.search(r'^TOOL_VERSION = "([^"]*)"$', service, flags=re.MULTILINE)
+    assert reported is not None, f"tools/webfoot/{package}/service.py has no TOOL_VERSION"
+    assert declared.group(1) == reported.group(1), (
+        f"{product.packager} names the release v{declared.group(1)} while the "
+        f"product reports {reported.group(1)}"
+    )
+
+
+@pytest.mark.parametrize("package,build_name", PRODUCTS, ids=[p[0] for p in PRODUCTS])
 def test_the_spec_freezes_the_identity_and_the_icon_the_release_carries(package: str, build_name: str):
     spec = (REPO_ROOT / f"{build_name}.spec.in").read_text(encoding="utf-8")
     assert f"version='{build_name}.version.txt'" in spec

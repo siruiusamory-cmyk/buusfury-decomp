@@ -57,6 +57,16 @@ from .maps import (
     load_maps,
 )
 from .write import WriteError, emit_image, ensure_not_source_alias
+# RELEASE-ARTEFACT-001. The patch service is the one authority for the
+# distributable artefact; this command parses arguments and prints the result.
+from .patch import (
+    PatchError,
+    PatchResult,
+    PatchVerification,
+    export_patch,
+    read_patch_metadata,
+    verify_patch,
+)
 # Compatibility exports for the atlas text-search interface. The implementation
 # lives in ``handles`` so dialogue authoring and CLI lookup share one decoder.
 from .handles import (
@@ -570,6 +580,36 @@ def build_parser() -> argparse.ArgumentParser:
     )
 
     randomize_command.add_parser(subparsers)
+
+    # RELEASE-ARTEFACT-001. Two artefacts, two commands, one authority each: the
+    # `build` command produces the playable image, and `patch export` produces the
+    # distributable modification. Export rebuilds through the same `build_project`
+    # the build command calls, so a patch can never describe an image the project
+    # does not currently produce.
+    patch = subparsers.add_parser(
+        "patch",
+        help="export a distributable patch for a project, or verify one",
+    )
+    patch_commands = patch.add_subparsers(dest="patch_command", required=True)
+
+    patch_export = patch_commands.add_parser(
+        "export",
+        help="build the project and export the patch that reproduces the build",
+    )
+    patch_export.add_argument("project", type=Path)
+    patch_export.add_argument(
+        "--rom", type=Path, required=True, help="the verified source ROM"
+    )
+    patch_export.add_argument(
+        "--output", type=Path, required=True, help="patch path (must not exist)"
+    )
+
+    patch_verify = patch_commands.add_parser(
+        "verify",
+        help="apply a patch to a verified source ROM and report what it reproduces",
+    )
+    patch_verify.add_argument("patch", type=Path)
+    patch_verify.add_argument("--rom", type=Path, required=True)
 
     # TILESET-COMPOSITOR-001. A derived-resource view: it reads the ROM, learns
     # tile relationships from how maps actually use the banks, and writes an
@@ -1382,6 +1422,57 @@ def _print_build(result: BuildResult) -> None:
     print("COMPLETE")
 
 
+def _print_patch_export(result: "PatchResult") -> None:
+    print("Webfoot Patch Export")
+    print("--------------------")
+    print()
+    print(f"Project: {result.project_name}")
+    print(f"Patch:   {result.patch_path}")
+    print(f"SHA256:  {result.patch_sha256}")
+    print(f"Size:    {result.patch_size} bytes")
+    print()
+    print(f"Source profile: {result.base_profile_id}")
+    print(f"Source SHA256:  {result.base_sha256} ({result.base_size} bytes)")
+    print(f"Target SHA256:  {result.target_sha256} ({result.target_size} bytes)")
+    print()
+    print(
+        "This patch applies to the verified source ROM and reproduces the built "
+        "image exactly. It contains no ROM bytes beyond the changed regions."
+    )
+    print()
+    print("RESULT:")
+    print("COMPLETE")
+
+
+def _print_patch_verification(result: "PatchVerification") -> None:
+    print("Webfoot Patch Verification")
+    print("--------------------------")
+    print()
+    print(f"Patch:  {result.patch_path}")
+    print(f"SHA256: {result.patch_sha256} ({result.patch_size} bytes)")
+    print()
+    print(f"Source SHA256:  {result.source_sha256} ({result.source_size} bytes)")
+    print(f"Rebuilt SHA256: {result.target_sha256} ({result.target_size} bytes)")
+    print()
+    # Provenance is printed when the patch carries it. A patch made elsewhere has
+    # none, and that is not a refusal: verification is about the bytes.
+    try:
+        document = read_patch_metadata(Path(result.patch_path).read_bytes())
+    except ValueError:
+        print("Provenance: this patch carries no readable DragonByte Z record.")
+    else:
+        print("Provenance:")
+        print(json.dumps(document, indent=2, sort_keys=True))
+    print()
+    print(
+        "The patch applies to this source and its rebuilt image matches the "
+        "checksum the patch declares."
+    )
+    print()
+    print("RESULT:")
+    print("COMPLETE")
+
+
 def _parse_graphic_identity(value: str):
     """`<profile>/graphic:NNNN` -> a GraphicIdentity, or a clear refusal."""
     from .graphics import GraphicIdentity
@@ -1989,7 +2080,7 @@ def main(argv: list[str] | None = None) -> int:
             print(f"error: {exc}", file=sys.stderr)
             return 2
 
-    if args.command in ("extract", "validate", "build"):
+    if args.command in ("extract", "validate", "build", "patch"):
         try:
             catalog = load_catalog(args.profiles)
             if args.command == "extract":
@@ -2009,6 +2100,16 @@ def main(argv: list[str] | None = None) -> int:
                 report = validate_project(args.project, args.rom, catalog)
                 _print_validate(report)
                 return 0 if report.passed else 2
+            if args.command == "patch":
+                if args.patch_command == "export":
+                    _print_patch_export(
+                        export_patch(args.project, args.rom, args.output, catalog)
+                    )
+                else:
+                    _print_patch_verification(
+                        verify_patch(args.patch, args.rom, catalog)
+                    )
+                return 0
             _print_build(
                 build_project(
                     args.project,
@@ -2029,6 +2130,7 @@ def main(argv: list[str] | None = None) -> int:
             StatTableError,
             StatEncodeError,
             WriteError,
+            PatchError,
             OSError,
         ) as exc:
             print(f"error: {exc}", file=sys.stderr)

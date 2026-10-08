@@ -33,6 +33,14 @@ try {
     Copy-Item $template $spec -Force
     Write-Host "generated $spec from $template (the .spec is a build artifact)"
 
+    # RELEASE-ARTEFACT-001 / N-26. Bake the build identity in BEFORE the analysis
+    # runs. A packaged build has no checkout and no git to ask, so without this the
+    # manifest it writes records a null commit; with it, the packaged executable
+    # names the commit it was cut from. The record is ignored by git and is
+    # regenerated on every build, so it cannot describe an earlier commit.
+    & python -m tools.webfoot.release_identity --write-record
+    if ($LASTEXITCODE -ne 0) { throw "could not write the build identity record" }
+
     $arguments = @('-m', 'PyInstaller', '--noconfirm')
     if ($Clean) { $arguments += '--clean' }
     $arguments += $spec

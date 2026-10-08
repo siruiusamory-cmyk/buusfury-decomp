@@ -41,7 +41,41 @@ machine, path or private process of its own. Those rules are enforced by
 `python -m tools.quality.public_release`, which reads every release definition
 through one shared product list in `tools/quality/public_release.py`. A new
 randomizer product is added to that list and is then checked by the same rules,
-never by a second copy of them.
+never by a second copy of them. The guard also fails a definition that stages a
+resource nobody wrote or names an entry script that does not exist, because an
+incomplete definition is a release defect whether or not a build would notice it.
+
+Four further packaging facts are checked where they cannot drift:
+
+- the product version has **one** authority, `tools/webfoot/release_identity.py`,
+  and a test fails if that version string appears a second time in the shipped
+  package;
+- the packaging script's archive version is the product's own version, so a
+  download cannot be named one version and contain another;
+- a staged package directory is censused for ROMs, saves, machine paths and
+  absent resources by `python -m tools.quality.package_content <directory>`, which
+  prints what it cannot see along with what it found;
+- a packaged build records the commit it was cut from, baked into the package
+  before PyInstaller runs by `scripts/build-*.ps1`.
+
+Building a frozen Windows executable cannot run in the Linux CI job: PyInstaller
+does not cross-compile to win64, and the packaging-time byte probe needs the
+canonical image, which may never live in public CI. The portable checks above are
+what CI proves. The executable itself is an owner-run release gate, run in order,
+with the artifact digests recorded alongside the release:
+
+```powershell
+pwsh scripts/build-<product>.ps1 -Clean      # bakes the build identity, freezes the executable
+pwsh scripts/smoke-<product>-packaged.ps1    # drives the real executable, not a fixture
+pwsh scripts/package-<product>.ps1           # stages, probes and archives
+```
+
+Do not claim byte-identical executable bytes. PyInstaller's archive carries
+per-entry timestamps, the PE carries build metadata, and the toolchain is floored
+rather than pinned, so the container is not reproducible and nothing here claims
+it is. The reproducible claim is about product content: the same verified base
+ROM, the same project and the same toolkit produce a byte-identical image, and
+the same input pair produces a byte-identical patch.
 
 ## Repository independence
 

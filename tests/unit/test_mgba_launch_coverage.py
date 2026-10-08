@@ -243,10 +243,11 @@ NON_MGBA_SITES: Mapping[tuple[str, str, str], str] = {
      "_git_commit",
      "'git'"):
         "commits a generated randomizer artifact with git; it starts no emulator",
-    ("tools/webfoot/randomizer/service.py",
+    ("tools/webfoot/release_identity.py",
      "_git",
      "'git'"):
-        "reads repository state with git; it starts no emulator",
+        "reads repository state to name the build a package was cut from; it "
+        "starts no emulator",
 }
 
 

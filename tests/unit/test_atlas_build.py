@@ -377,6 +377,67 @@ def test_the_conflicts_writer_guards_its_own_destination(tmp_path, report, monke
     assert destination.read_bytes() == b"canonical"
 
 
+def test_an_interrupted_atlas_write_leaves_the_previous_atlas_untouched(
+    tmp_path, report, monkeypatch
+):
+    """Audit row 13, remaining half: the atlas is replaced as a whole or not at all.
+
+    The failure is induced in the flush, which is where a full disk or a dying
+    process lands. Before the fix this truncated the destination; the assertion is
+    that the file the reader would load is still the file that was there.
+    """
+    destination = tmp_path / "atlas.jsonl"
+    previous = "the atlas from the previous run\n"
+    destination.write_text(previous, encoding="utf-8", newline="")
+
+    def fail(*arguments, **keywords):
+        raise OSError("induced failure before the replace")
+
+    monkeypatch.setattr("tools.webfoot.project.atomic.os.fsync", fail)
+
+    with pytest.raises(OSError, match="induced failure"):
+        ab.write_atlas(report, destination)
+
+    assert destination.read_text(encoding="utf-8") == previous
+    assert not [
+        p.name for p in tmp_path.iterdir() if p.name.endswith(".webfoot-partial")
+    ], "a failed write must not leave its staging sibling behind"
+
+
+def test_an_interrupted_conflicts_write_leaves_the_previous_file_untouched(
+    tmp_path, report, monkeypatch
+):
+    destination = tmp_path / "atlas_conflicts.jsonl"
+    previous = "{}\n"
+    destination.write_text(previous, encoding="utf-8", newline="")
+
+    def fail(*arguments, **keywords):
+        raise OSError("induced failure before the replace")
+
+    monkeypatch.setattr("tools.webfoot.project.atomic.os.fsync", fail)
+
+    with pytest.raises(OSError, match="induced failure"):
+        ab.write_conflicts(report, destination)
+
+    assert destination.read_text(encoding="utf-8") == previous
+    assert not [
+        p.name for p in tmp_path.iterdir() if p.name.endswith(".webfoot-partial")
+    ]
+
+
+def test_the_atlas_writer_publishes_both_files_unchanged(tmp_path, report):
+    """The positive control for the two tests above: a normal write still lands."""
+    atlas = tmp_path / "atlas.jsonl"
+    conflicts = tmp_path / "atlas_conflicts.jsonl"
+
+    ab.write_atlas(report, atlas)
+
+    assert atlas.is_file() and conflicts.is_file()
+    assert list(ab.load_atlas(atlas).to_jsonl_lines()) == list(
+        report.atlas.to_jsonl_lines()
+    )
+
+
 # --- queries ------------------------------------------------------------------
 
 

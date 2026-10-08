@@ -56,6 +56,7 @@ from ..catalog import load_catalog
 from ..gba_header import GbaHeaderError
 from ..profile import RomProfile, RomProfileCatalog, VerificationStatus
 from ..rom import RomIdentification, RomReadError, identify_rom
+from ..release_identity import build_identity
 from ..write import (
     OverlappingChangeError,
     WriteError,
@@ -196,86 +197,36 @@ def random_seed() -> str:
     return f"{word}-{secrets.randbelow(10000):04d}"
 
 
-_COMMIT: str | None | bool = False
-_DIRTY: bool | None | bool = False
-
-
-def _git(*arguments: str) -> str | None:
-    """Run one read-only git command in the package's directory.
-
-    Started without a console window, because a windowed build that flashed a
-    console on every run would be a worse defect than the provenance it was
-    fetching.
-    """
-    import subprocess
-    import sys
-
-    creation_flags = 0
-    if sys.platform == "win32":
-        creation_flags = getattr(subprocess, "CREATE_NO_WINDOW", 0x08000000)
-    try:
-        result = subprocess.run(
-            ["git", *arguments],
-            cwd=Path(__file__).resolve().parent,
-            capture_output=True,
-            text=True,
-            timeout=10,
-            creationflags=creation_flags,
-        )
-    except (OSError, subprocess.SubprocessError):
-        return None
-    if result.returncode != 0:
-        return None
-    return result.stdout.strip()
-
-
 def repository_commit() -> str | None:
-    """The checkout's commit, or ``None`` when there is no repository to ask.
+    """The commit this build was cut from, or ``None`` when it cannot be named.
 
-    Read once and cached, because it is provenance for a manifest rather than an
-    input to a run. A **packaged** build returns ``None`` without asking: a one-file
-    executable has no checkout and no ``git``, so running the command there would
-    either fail slowly or, worse, find some unrelated repository through the
-    process's working directory and record a commit that did not produce the build.
-    The manifest records the null honestly.
+    The answer comes from :mod:`tools.webfoot.release_identity`, which owns the
+    question: a checkout is asked directly, and a **packaged** build reports the
+    commit baked in when it was packaged (N-26). Asking the filesystem from a
+    packaged build instead would either fail slowly or, worse, find some unrelated
+    repository through the process's working directory and record a commit that did
+    not produce the build. A package that carries no baked record still reports the
+    null honestly, and the read is cached because this is provenance for a manifest
+    rather than an input to a run.
 
     It is deliberately not part of the reproducibility contract - a seed is
     identified by the tool version and the module algorithm versions, which are
     stated constants - so a missing commit is a gap in the record, not a refusal.
     """
-    global _COMMIT
-    if _COMMIT is not False:
-        return _COMMIT  # type: ignore[return-value]
-    import sys
-
-    if getattr(sys, "frozen", False):
-        _COMMIT = None
-        return None
-    text = _git("rev-parse", "HEAD")
-    _COMMIT = text or None
-    return _COMMIT  # type: ignore[return-value]
+    return build_identity().commit
 
 
 def repository_is_dirty() -> bool | None:
-    """Whether the checkout had uncommitted changes when the run was planned.
+    """Whether the tree the run was planned in had uncommitted changes.
 
-    ``None`` when the question cannot be asked, which is the packaged case. The
-    manifest records this beside the commit, because a commit recorded from a
-    checkout with uncommitted changes names the commit the files were *based* on
-    rather than the bytes that actually produced the build - and a reader
-    comparing two manifests deserves to know which of those they are looking at.
+    ``None`` when the question cannot be asked, which is a packaged build with no
+    baked record. The manifest records this beside the commit, because a commit
+    recorded from a checkout with uncommitted changes names the commit the files
+    were *based* on rather than the bytes that actually produced the build - and a
+    reader comparing two manifests deserves to know which of those they are looking
+    at.
     """
-    global _DIRTY
-    if _DIRTY is not False:
-        return _DIRTY  # type: ignore[return-value]
-    import sys
-
-    if getattr(sys, "frozen", False):
-        _DIRTY = None
-        return None
-    status = _git("status", "--porcelain")
-    _DIRTY = None if status is None else bool(status)
-    return _DIRTY  # type: ignore[return-value]
+    return build_identity().dirty
 
 
 # --- the ROM check -----------------------------------------------------------

@@ -112,12 +112,32 @@ finds 362 dwords, and the mod overwrote none of their targets. Only the ROM-addr
 is the population a reader would dereference.
 
 Whether any of the 99 is reachable at runtime, meaning actually loaded as a pointer by
-code that runs, is the question that decides demonstrated versus latent, and this pass
-does **not** settle it: it is recorded as UNKNOWN in section 8 rather than asserted either
-way. What this pass does establish is narrower and sufficient for the verdict: nothing in
-the measurements so far shows a live reader of those addresses, and the crash they were
-once blamed for is attributed elsewhere and fixed. A hidden reader would be a real hazard
-and remains the reason to treat the tail as a risk rather than as cleared ground.
+code that runs, is the question that decides demonstrated versus latent. A separate
+read-only analysis swept the whole image for literal loads (Capstone, Thumb at both even
+parities plus ARM, `skipdata` mandatory because a plain disassembly stops 90 instructions
+in and silently yields a three-word scan) and marked 113,083 aligned words as
+literal-loaded: **none of the 99**. Under a uniform-random null about 143 would be expected.
+
+| evidence that the 99 are not consumed | value |
+| --- | --- |
+| source words whose address is materialised by a literal load | **0 of 99** |
+| source words appearing as a reference source in the project's own graph | **0 of 99** (graph has 19,720 references over 10,238 anchors) |
+| source words with an adjacent ROM-address word | 1 of 99 |
+| source words sitting inside verified packed container payload | 42 of 99 |
+| source words covered by no anchor at all | 57 of 99 |
+
+The instrument is proven by controls that must fire and do: documented literal pools
+resolve 7/7 (the startup code), 51/51 (the text pointer table), 13/13 (the enemy stat
+table), 5/5 (the appearance table, reproducing the documented holder offsets), 1/1 (the
+map entry table), 1/1 (the portrait array).
+
+**Verdict: LATENT, not demonstrated.** The hazard is real in the bytes - the canonical
+image reads `0xFF` where the delivered images read payload, 71 of the 99 target windows
+are now entirely non-`0xFF`, and exactly one target, `0x7BB114`, is a kind-1 container
+header declaring `0x400` - but no consumer was demonstrated for any of them. The census
+was reproduced with the project's own free-space tool: 516 candidates into the window, 99
+word-aligned, 95 distinct targets, sources from file `0x073E34` to `0x7AD3C0`, and all 99
+source words byte-identical in the canonical image, the friend's image and `v3-safe`.
 
 ## 6. Runtime regression on the delivered image
 
@@ -162,13 +182,15 @@ stat table, the granted-level bytes, the credits pointer, or the tail window.
    and the project's container/piece invariant does not catch it: declared size still
    equals the pieces' union, because the violated bound is a runtime buffer the ROM does
    not declare. A writer that resizes a frame should enlarge that slot's field with it.
-2. **The tail write is a latent hazard, not a demonstrated one, and its reachability is
-   UNKNOWN.** 275,033 bytes of the third party's payload sit over the targets of 99
-   canonical references that still hold their canonical values. Whether any of those 99 is
-   ever loaded as a pointer by running code was not established here. Undoing the write
-   would mean relocating that payload and repointing the mod's own references, which risks
-   the verified graphics for no demonstrated gain; the honest position is that the hazard
-   is one-sided, measured where it can be and open where it cannot.
+2. **The tail write is a latent hazard with no demonstrated consumer.** 275,033 bytes of
+   the third party's payload sit over the targets of 99 canonical references that still
+   hold their canonical values, and none of those 99 is reachable by any instrument
+   applied in section 5. Undoing the write would mean relocating that payload and
+   repointing the mod's own references, which risks the verified graphics for no
+   demonstrated gain. What keeps this a risk rather than a closed matter is the reach the
+   instruments do not have: an indexed read through a computed base is invisible to the
+   literal-load sweep, and the decompilation map calls only 104 KB of the 8 MB image code,
+   though no member of the 99 sits in a region it calls code.
 
 ## 8. Limits of this pass
 
@@ -181,10 +203,12 @@ stat table, the granted-level bytes, the credits pointer, or the tail window.
   (INFERRED: the front-end owns the key mask while unfocused). The driver was therefore
   reverted, and route regressions here are hand-driven.
 * Same save, same route, one operator. A different route is a different experiment.
-* **The tail reachability question is UNKNOWN.** A separate read-only analysis was
-  commissioned to decide whether any of the 99 canonical references into the overwritten
-  window is loaded as a pointer by running code, and it had not reported when this record
-  was written. Nothing here should be read as having cleared those addresses.
+* **The tail sweep cannot see everything.** It finds PC-relative literal loads. An indexed
+  read through a computed base, and whether the record structures two of the 99 sources
+  belong to are reachable at runtime at all, are outside it; and the decompilation map
+  covers 104 KB of the 8 MB image's code, so a consumer in unmapped code would not have
+  been visible. The LATENT verdict in section 5 rests on that static evidence plus the
+  3,600-frame A/B, not on a write or read watchpoint.
 * Not covered: the `F0674DD8` fault on any route other than map 134; sprites outside the
   297-entry table; and anything the tail write might affect that no measurement has yet
   reached.

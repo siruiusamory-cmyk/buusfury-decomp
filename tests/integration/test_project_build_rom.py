@@ -27,6 +27,7 @@ import pytest
 
 from tools.webfoot.authored_image import manifest_path_for
 from tools.webfoot.build import (
+    BuildError,
     ProjectRomMismatchError,
     build_project,
     extract_project,
@@ -125,6 +126,44 @@ def test_extraction_produces_a_deterministic_project(
     assert [p.name for p in first] == [p.name for p in second]
     for left, right in zip(first, second):
         assert left.read_bytes() == right.read_bytes(), left.name
+
+
+def test_an_empty_destination_is_extracted_into(
+    tmp_path: Path, rom: str, catalog: RomProfileCatalog
+):
+    """A destination that already exists and is empty is a normal target.
+
+    The Workbench directory picker only returns directories that exist, so this
+    is its everyday path; the guard must refuse only an occupied one.
+    """
+    destination = tmp_path / "empty"
+    destination.mkdir()
+
+    extract_project(rom, destination, catalog, graphics=False)
+
+    assert (destination / "project.toml").is_file()
+
+
+def test_re_extraction_refuses_an_authored_project_and_destroys_nothing(
+    project: Path, rom: str, catalog: RomProfileCatalog
+):
+    """N-03: a second extraction over authored work is refused, not applied.
+
+    Before the guard this rewrote enemies.toml from the image, so the edit below
+    was gone. The refusal precedes the first write, and a call that never reached
+    the image leaves the canonical ROM byte-identical.
+    """
+    _set_wolf_hp(project, WOLF_NEW_HP)
+    authored = (project / "enemies" / "enemies.toml").read_bytes()
+    rom_before = hashlib.sha256(Path(rom).read_bytes()).hexdigest()
+
+    with pytest.raises(BuildError, match="is not empty"):
+        extract_project(rom, project, catalog, graphics=False)
+
+    assert (project / "enemies" / "enemies.toml").read_bytes() == authored
+    assert b"hp = 200" in authored
+    assert hashlib.sha256(Path(rom).read_bytes()).hexdigest() == rom_before
+    assert rom_before == CANONICAL_SHA256
 
 
 def test_project_pins_the_correct_profile_and_base_identity(project: Path):

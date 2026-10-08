@@ -402,6 +402,9 @@ class GraphicsTab(QWidget):
     """Browse decoded sprites, inspect one, step animations, recolour palette."""
 
     projectChanged = Signal()  # emitted on a committed palette edit
+    #: The staged palette count moved, so the shell can re-state the title and
+    #: its discard guard from the one unsaved-work total (N-04).
+    dirtyChanged = Signal()
     #: This editor's own status line, republished for the shell. The shell owns the
     #: one status bar and mirrors this editor's line into it, so the bar cannot show
     #: a stale selection state: a plain QLabel has no text-change signal of its own,
@@ -421,6 +424,9 @@ class GraphicsTab(QWidget):
         self._frame_index = 0
         # Palette editor state: index -> pending (r,g,b) not yet applied.
         self._palette_pending: dict[int, tuple[int, int, int]] = {}
+        # A staged colour is unsaved work, so the session's one discard count
+        # includes it (N-04). The bound method lets a repeat registration dedupe.
+        session.register_staged_work(self._palette_edit_count)
         # Swatches keyed by their TRUE global palette index, so the scoped view
         # (a subset of indices) and _pick_colour both address the real index.
         self._swatches: dict[int, QFrame] = {}
@@ -1653,6 +1659,10 @@ class GraphicsTab(QWidget):
             self._paint_swatch(swatch, chosen.red(), chosen.green(), chosen.blue())
         self._refresh_pending_ui(rgb)
 
+    def _palette_edit_count(self) -> int:
+        """The staged palette colours the project does not hold yet."""
+        return len(self._palette_pending)
+
     def _refresh_pending_ui(self, rgb=None) -> None:
         """Re-state every staged recolour, and disclose its known consumers.
 
@@ -1660,6 +1670,7 @@ class GraphicsTab(QWidget):
         one; the "from" colour is the effective colour before this pending edit
         (committed override if any, else canonical), never the raw ROM word.
         """
+        self.dirtyChanged.emit()
         pending = bool(self._palette_pending)
         self._revert.setEnabled(pending)
         self._apply.setEnabled(pending and self._session.project_dir is not None)
@@ -1834,6 +1845,10 @@ class GraphicsTab(QWidget):
             # project's colour into the incoming one.
             if self._palette_pending:
                 self._palette_pending.clear()
+                # The grid was painted from the pending set before this ran, so
+                # repaint it from the empty set or the dropped colour stays on
+                # screen beside a bucket the session now calls clean.
+                self._populate_palette()
                 self._refresh_pending_ui()
         return project_key
 

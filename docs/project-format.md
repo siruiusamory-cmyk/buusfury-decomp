@@ -12,7 +12,9 @@ webfoot build <project-dir> --rom <base-rom> --output <output-rom> [--manifest <
 ```
 
 The base ROM is an input on every path and an output on none. A build always
-writes a new image and refuses to overwrite an existing one.
+writes a new image and refuses to overwrite an existing one. Extraction writes
+into a clean directory: `webfoot extract` refuses a destination that exists and
+is not empty, so re-running it never overwrites authored files.
 
 ## Layout
 

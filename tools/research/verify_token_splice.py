@@ -398,8 +398,14 @@ def main() -> int:
                                      "records": refused_outcomes[failure_kind]})
 
     if args.report:
+        counts = {name: len(value) for name, value in findings.items()}
+        # A consumer keying on `counts` alone must not read success while the exit code
+        # says failure, so the refused-record failures are counted here as well as
+        # listed in full below.
+        counts["refused_record_failure"] = sum(len(entry["records"])
+                                               for entry in refused_failures)
         Path(args.report).write_text(json.dumps({
-            "counts": {name: len(value) for name, value in findings.items()},
+            "counts": counts,
             "records_examined": seen,
             "substitution_regions": sum(len(spans) for spans in regions.values()),
             "refused_record_failures": refused_failures,

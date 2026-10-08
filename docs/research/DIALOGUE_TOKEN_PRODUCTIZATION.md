@@ -234,7 +234,10 @@ the wrong thing, or a report describing a different build:
 * the spliced image's digest must be the one the report names, and a report without
   one is refused rather than skipped;
 * every record the map names must display the map's own `new_text`, spaces aside (this
-  one uses the report only to know which records were claimed applied).
+  one uses the report only to know which records were claimed applied);
+* every record the report refused is read out of the image and reported as displaying
+  the renamed text, still at retail, or neither, and a refused rename that did not land
+  fails the check rather than being printed.
 
 ## 5. The v3 candidate, and the Kibito A/B
 
@@ -367,9 +370,8 @@ phases, so the launcher never owns the emulator's lifetime) and the A/B driver a
 * **A replacement is sized in code points, not stored units.** `local_replacement`
   measures a name's growth with `len`, so a name holding a character above the Basic
   Multilingual Plane would be sized one unit short per such character. No character in
-  this map is above the BMP, and a build that did contain one fails closed at the
-  stream-length guard rather than writing it; the refusal is not by name, which is the
-  part that would be worth improving.
+  this map is above the BMP, and a build that did contain one is now refused per record
+  by name, at the write, before any byte of it reaches the container.
 * **The cave address is still a constant** (`0x082ED210`, inside a measured
   3,019-byte zero run). The design asks for the region to come from the project's
   free-space machinery, and for a cave-only control; the builder checks that its 512

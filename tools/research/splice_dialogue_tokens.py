@@ -334,6 +334,15 @@ def splice(base: Path, destination: Path, base_sha256: str, rows: dict[str, dict
                 )
             current = bytes(stream[start:start + old_length])
             retail = retail_stream[start:start + old_length]
+            # Per record, by name. The stream-length check after the loop is a TOTAL and
+            # two records could cancel: one replacement sized short by a character above
+            # the Basic Multilingual Plane and another sized long, in the same container.
+            if len(new_bytes) != old_length:
+                raise SystemExit(
+                    f"{key}: the replacement is {len(new_bytes)} bytes where retail had "
+                    f"{old_length}. A name holding a character above the Basic "
+                    f"Multilingual Plane is measured in code points, not stored units"
+                )
             disagreement = None
             for offset in range(0, old_length, 2):
                 unit = current[offset:offset + 2]

@@ -130,6 +130,21 @@ def test_the_encoder_refuses_a_substitution_the_map_does_not_perform() -> None:
         encode_record(row(old, new), DICTIONARY, {"Vegeta": "Tien"})
 
 
+def test_a_name_above_the_bmp_passes_the_code_point_check_and_fails_the_byte_one() -> None:
+    """The known limitation, stated where it lives.
+
+    `encode_record` compares CODE POINTS, so an astral character is sized one unit
+    short per character and its own check passes. The bytes are then wrong, which is
+    why the splicer asserts the encoded byte length per record, by name, before writing.
+    No character in the v3 map is above the BMP, so this is unreachable there.
+    """
+    old, new = "Goku wins", "G\U0001F600ku wins"
+    table = substitution_table({"a": row(old, new)})
+    text, _ = encode_record(row(old, new), DICTIONARY, table)
+    assert len(text) == len(old)
+    assert len(text.encode("utf-16le")) == len(old.encode("utf-16le")) + 2
+
+
 @pytest.mark.parametrize("old,new", [("Goku", "Yamcha"), ("Trunks", "Uub")])
 def test_a_reserved_code_point_in_the_map_is_refused_on_a_growing_or_shrinking_name(
         old: str, new: str) -> None:

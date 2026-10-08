@@ -1462,8 +1462,12 @@ def _print_patch_verification(result: "PatchVerification") -> None:
     except ValueError:
         print("Provenance: this patch carries no readable DragonByte Z record.")
     else:
-        print("Provenance:")
+        print("Provenance (as recorded in the patch):")
         print(json.dumps(document, indent=2, sort_keys=True))
+        print(
+            "Its source and target sha256 fields were checked against the source "
+            "and the rebuilt image above."
+        )
     print()
     print(
         "The patch applies to this source and its rebuilt image matches the "

@@ -56,6 +56,9 @@ EXCEPTIONS_FILE = "config/public_surface_exceptions.json"
 LIMITATIONS: tuple[str, ...] = (
     "a file is searched only when it decodes as UTF-8; anything else is counted as "
     "binary and left unsearched",
+    "a ROM or save is caught by its extension, so one renamed to an innocuous "
+    "suffix passes this census; searching content for the image's bytes is what "
+    "scripts/randomizer-release.ps1 does, and it needs the canonical image",
     "the members of a compressed PyInstaller executable are not enumerated here, so "
     "a clean census is not a statement that the executable is free of private bytes",
     "only the files present are examined: a resource that never reached the staging "

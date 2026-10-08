@@ -106,11 +106,42 @@ def test_an_existing_output_is_refused_by_the_source_alias_rule_first(synthetic)
 
 
 def test_a_truncated_patch_is_refused_before_the_source_is_read(tmp_path):
-    """The patch is parsed first, so a broken file is reported as a broken file."""
+    """The patch is parsed first, and a codec error is a PatchError, not a crash.
+
+    The command line catches this module's error family; a bare codec error would
+    escape it and print a traceback, which is what a user would see for a corrupt
+    file they were sent.
+    """
     truncated = tmp_path / "broken.bps"
     truncated.write_bytes(b"BPS1" + b"\x00" * 4)
-    with pytest.raises(ValueError, match="at least"):
+    with pytest.raises(PatchVerificationError, match="at least"):
         verify_patch(truncated, tmp_path / "missing.gba", RomProfileCatalog([]))
+
+
+def test_the_cli_reports_a_corrupt_patch_instead_of_crashing(tmp_path, capsys):
+    from tests.helpers import write_catalog
+    from tools.webfoot.cli import main as cli_main
+
+    data = make_synthetic_rom()
+    rom = tmp_path / "synthetic.gba"
+    rom.write_bytes(data)
+    catalog_path = tmp_path / "roms.yaml"
+    write_catalog(catalog_path, [profile_for(data)])
+
+    corrupt = tmp_path / "corrupt.bps"
+    corrupt.write_bytes(b"BPS1" + b"\x00" * 8)
+
+    code = cli_main(
+        [
+            "--profiles", str(catalog_path),
+            "patch", "verify", str(corrupt), "--rom", str(rom),
+        ]
+    )
+    captured = capsys.readouterr()
+
+    assert code == 2
+    assert captured.err.startswith("error:")
+    assert "Traceback" not in captured.err
 
 
 def test_a_patch_without_a_provenance_record_is_refused():
@@ -320,6 +351,27 @@ def test_publishing_creates_a_missing_parent_directory(tmp_path):
     destination = tmp_path / "nested" / "deeper" / "mod.bps"
     publish_new_files([(destination, b"patch bytes")])
     assert destination.read_bytes() == b"patch bytes"
+
+
+def test_a_withdrawal_removes_only_the_file_this_call_published(tmp_path):
+    """The refusal after a failed verification says what actually happened."""
+    from tools.webfoot import patch as patch_module
+
+    mine = tmp_path / "mine.bps"
+    mine.write_bytes(b"published by this call")
+    digest = hashlib.sha256(mine.read_bytes()).hexdigest()
+
+    with pytest.raises(PatchVerificationError, match="was removed"):
+        patch_module._raise_withdrawn(mine, digest, "does not verify")
+    assert not mine.exists()
+
+    someone_elses = tmp_path / "theirs.bps"
+    someone_elses.write_bytes(b"a different file")
+    with pytest.raises(PatchVerificationError, match="could not be removed"):
+        patch_module._raise_withdrawn(
+            someone_elses, "0" * 64, "does not rebuild the built image"
+        )
+    assert someone_elses.read_bytes() == b"a different file"
 
 
 def test_a_derivative_cannot_be_named_as_the_output():

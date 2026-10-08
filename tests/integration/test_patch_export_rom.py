@@ -26,7 +26,6 @@ import pytest
 
 from tools.webfoot.build import build_project
 from tools.webfoot.formats.bps import (
-    BpsFormatError,
     apply as apply_bps,
     crc32,
     inspect as inspect_bps,
@@ -34,6 +33,7 @@ from tools.webfoot.formats.bps import (
 from tools.webfoot.patch import (
     PatchError,
     PatchSourceError,
+    PatchVerificationError,
     export_patch,
     read_patch_metadata,
     verify_patch,
@@ -207,14 +207,14 @@ def test_a_truncated_or_corrupted_patch_is_refused(world, tmp_path):
 
     truncated = tmp_path / "truncated.bps"
     truncated.write_bytes(patch[:-8])
-    with pytest.raises(BpsFormatError):
+    with pytest.raises(PatchVerificationError):
         verify_patch(truncated, world["rom"], world["catalog"])
 
     corrupted = tmp_path / "corrupted.bps"
     damaged = bytearray(patch)
     damaged[len(damaged) // 2] ^= 0x01
     corrupted.write_bytes(bytes(damaged))
-    with pytest.raises(BpsFormatError):
+    with pytest.raises(PatchVerificationError):
         verify_patch(corrupted, world["rom"], world["catalog"])
 
 
@@ -231,6 +231,22 @@ def test_an_export_may_not_replace_an_existing_patch(world):
             world["project"], world["rom"], world["patch_path"], world["catalog"]
         )
     assert world["patch_path"].read_bytes() == previous
+
+
+def test_a_patch_that_fails_its_own_verification_is_withdrawn(world, tmp_path, monkeypatch):
+    """The refusal branch: nothing unverified is left on disk for somebody to send."""
+    from tools.webfoot import patch as patch_module
+
+    def refuse(*arguments, **keywords):
+        raise patch_module.PatchVerificationError("induced verification failure")
+
+    monkeypatch.setattr(patch_module, "verify_patch", refuse)
+    output = tmp_path / "withdrawn.bps"
+
+    with pytest.raises(PatchVerificationError, match="was removed"):
+        export_patch(world["project"], world["rom"], output, world["catalog"])
+
+    assert not output.exists()
 
 
 def test_a_project_that_builds_to_its_base_image_exports_no_patch(tmp_path):

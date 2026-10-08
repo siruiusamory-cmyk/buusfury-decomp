@@ -62,6 +62,14 @@ _ACTION_MASK = 0x03
 #: from growing an unbounded integer while it is being decoded.
 _MAX_SHIFT = 1 << 70
 
+#: The largest image this applier will build, and the largest source it will accept.
+#: The format allows far more, and this toolkit's subject is a 32 MiB address space,
+#: so the ceiling is a deliberate domain limit rather than a format rule: without it,
+#: a patch may declare a target of any size and a valid-checksum patch from a
+#: stranger would spend the machine's memory and time reaching it. A caller that
+#: genuinely needs a larger image must raise this and say why.
+MAX_IMAGE_SIZE = 32 * 1024 * 1024
+
 
 class BpsError(ValueError):
     """Base error for encoding, reading or applying a BPS patch."""
@@ -216,6 +224,13 @@ def inspect(patch: bytes) -> BpsHeader:
         raise BpsFormatError("the metadata block runs past the patch body")
     metadata = data[offset : offset + metadata_size]
 
+    for label, size in (("source", source_size), ("target", target_size)):
+        if size > MAX_IMAGE_SIZE:
+            raise BpsFormatError(
+                f"the patch declares a {size}-byte {label}; this applier builds "
+                f"images up to {MAX_IMAGE_SIZE} bytes"
+            )
+
     source_crc32, target_crc32, patch_crc32 = struct.unpack_from("<III", data, body_end)
     # The patch checksum covers the two image checksums as well, so a footer whose
     # values were substituted cannot be made to agree by recomputing only the body.
@@ -246,6 +261,9 @@ def apply(source: bytes, patch: bytes) -> bytes:
     source read can never exceed the source it names; the same bound is checked
     again here rather than trusted.
     """
+    # The walk is bounded twice: by the size the patch declares, checked before each
+    # action writes, and by MAX_IMAGE_SIZE in `inspect`, so a patch cannot make the
+    # applier spend an unbounded amount of memory or time reaching a target it named.
     header = inspect(patch)
     if len(source) != header.source_size:
         raise BpsSourceError(
@@ -298,6 +316,11 @@ def apply(source: bytes, patch: bytes) -> bytes:
             if source_relative < 0 or source_relative + length > header.source_size:
                 raise BpsFormatError("a source copy reads outside the source")
             output += source[source_relative : source_relative + length]
+            # The cursor follows the copy, one step per byte read. Without this the
+            # next source copy would re-read the same window, and a patch from an
+            # encoder that emits runs of source copies would be mis-decoded rather
+            # than applied.
+            source_relative += length
         else:
             distance, position = decode_number(data, position, body_end)
             target_relative += _signed_offset(distance)

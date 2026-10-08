@@ -140,8 +140,9 @@ What exists and is checked:
 | build identity baked into a package | `scripts/build-*.ps1`, before PyInstaller runs |
 
 The census is the portable half of the release-content check. It reports every
-ROM, save or save state in a staged directory, every machine path or user name in
-a text file, and every declared resource that is not staged:
+ROM, save or save state in a staged directory **by its extension**, every machine
+path or user name in a text file, and every declared resource that is not staged,
+and it prints what it cannot see along with what it found:
 
 ```powershell
 python -m tools.quality.package_content .\dist\My-Product-release --require tools/webfoot/data/roms.yaml
@@ -176,7 +177,8 @@ per-entry timestamps, the PE carries build metadata, and the toolchain is floore
 rather than pinned, so the container is not reproducible and nothing here claims it
 is. What is reproducible is the product content: the same verified base ROM, the
 same project and the same toolkit produce a byte-identical image, and the same
-pair produces a byte-identical patch.
+input pair produces a byte-identical patch from one build of the tool, because an
+exported patch names the tool build that produced it while a built image does not.
 
 ## First-run prerequisites
 

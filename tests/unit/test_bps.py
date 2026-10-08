@@ -423,6 +423,57 @@ def test_an_action_that_writes_past_the_declared_target_is_refused():
         apply(source, patch)
 
 
+def test_a_second_source_copy_continues_where_the_first_stopped():
+    """The source cursor follows the copy: the next one starts after it.
+
+    This is the discriminating case for a cursor that is not advanced. With the
+    first copy reading source[4:6] and the second one starting at +0, a correct
+    applier returns the last four bytes of the source; an applier that leaves the
+    cursor where it was returns the same two bytes twice.
+    """
+    source = b"ABCDEFGH"
+    actions = (
+        encode_number((2 - 1) << 2 | 2)
+        + encode_number((4 << 1) | 0)
+        + encode_number((2 - 1) << 2 | 2)
+        + encode_number(0)
+    )
+    target = b"EFGH"
+    patch = _assemble(
+        8, 4, actions, source_crc=crc32(source), target_crc=crc32(target)
+    )
+    assert apply(source, patch) == target
+
+
+def test_a_target_copy_expands_a_run():
+    """The spec's own run-length example: a copy that reads what it is writing."""
+    source = b"ABCDEFGH"
+    actions = (
+        encode_number((1 - 1) << 2 | 1)
+        + b"Z"
+        + encode_number((7 - 1) << 2 | 3)
+        + encode_number(0)
+    )
+    target = b"Z" * 8
+    patch = _assemble(
+        8, 8, actions, source_crc=crc32(source), target_crc=crc32(target)
+    )
+    assert apply(source, patch) == target
+
+
+def test_a_declared_image_larger_than_the_applier_builds_is_refused():
+    """A patch cannot make the applier spend unbounded memory reaching its target."""
+    from tools.webfoot.formats.bps import MAX_IMAGE_SIZE
+
+    patch = _assemble(0, MAX_IMAGE_SIZE + 1, b"", target_crc=0)
+    with pytest.raises(BpsFormatError, match="this applier builds images up to"):
+        inspect(patch)
+
+    oversized_source = _assemble(MAX_IMAGE_SIZE + 1, 0, b"", source_crc=0)
+    with pytest.raises(BpsFormatError, match="this applier builds images up to"):
+        inspect(oversized_source)
+
+
 def test_the_patch_checksum_is_required_to_be_present_and_correct():
     source, target = _source(32), _source(32, seed=8)
     patch = encode(source, target)

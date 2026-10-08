@@ -170,6 +170,29 @@ def test_a_malformed_record_is_treated_as_absent(monkeypatch):
     assert build_identity().source == "unknown"
 
 
+@pytest.mark.parametrize(
+    "commit",
+    ["abc", "A" * 40, "a" * 39, "a" * 41, "a" * 40 + "!", "g" * 40, " " * 40],
+    ids=["short", "uppercase", "39", "41", "trailing", "non-hex", "blank"],
+)
+def test_a_recorded_commit_must_be_a_commit(monkeypatch, commit):
+    """Anything that is not forty hexadecimal characters is not an identity."""
+    monkeypatch.setattr(sys, "frozen", True, raising=False)
+    _install_record(monkeypatch, commit=commit)
+    _no_process_may_start(monkeypatch)
+    assert build_identity().source == "unknown"
+
+
+def test_a_checkout_without_a_usable_git_reports_the_record(monkeypatch):
+    """The fallback direction, stated: no live answer, so the baked one is used."""
+    _install_record(monkeypatch, commit=SENTINEL_COMMIT)
+    monkeypatch.setattr(release_identity, "_git", lambda *arguments: None)
+
+    identity = build_identity()
+    assert identity.source == "record"
+    assert identity.commit == SENTINEL_COMMIT
+
+
 # --- baking the record into a package ---------------------------------------
 
 

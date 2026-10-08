@@ -113,20 +113,32 @@ def _digest(data: bytes) -> str:
     return hashlib.sha256(data).hexdigest()
 
 
-def _withdraw(path: Path, digest: str) -> None:
+def _withdraw(path: Path, digest: str) -> bool:
     """Remove the file this call published, and only while it is still that file.
 
     A published patch that fails its own verification must not be left behind for
     somebody to distribute. The digest guard is what keeps this from deleting a
-    file another writer put there in the meantime.
+    file another writer put there in the meantime. Returns whether the file is gone,
+    so the refusal that follows can say what actually happened rather than assume
+    the removal succeeded.
     """
     try:
         if path.is_file() and _digest(path.read_bytes()) == digest:
             path.unlink()
     except OSError:
-        # Nothing further can be done about a file that cannot be removed, and the
-        # caller is already raising the reason the patch was withdrawn.
-        pass
+        return not path.exists()
+    return not path.exists()
+
+
+def _raise_withdrawn(path: Path, digest: str, reason: str) -> None:
+    """Refuse, and say whether the artefact this call wrote is still there."""
+    removed = _withdraw(path, digest)
+    state = (
+        f"{path} was removed rather than left as an artefact that cannot be applied"
+        if removed
+        else f"{path} could not be removed and still needs deleting by hand"
+    )
+    raise PatchVerificationError(f"the published patch {reason}; {state}")
 
 
 def require_verified_source(
@@ -212,9 +224,15 @@ def read_patch_metadata(patch: bytes) -> dict:
 
     A patch whose metadata is absent or is not a JSON object is refused: an
     artefact this module produced always has one, and treating a missing record as
-    acceptable would let a stripped patch pass as a provenanced one.
+    acceptable would let a stripped patch pass as a provenanced one. A patch from
+    another tool carries its own metadata, which the format says may be anything,
+    so this is the strict reader for our own record rather than the check that
+    decides whether a patch may be applied.
     """
-    header = inspect_bps(patch)
+    try:
+        header = inspect_bps(patch)
+    except BpsError as exc:
+        raise PatchVerificationError(str(exc)) from exc
     try:
         document = json.loads(header.metadata.decode("utf-8"))
     except (UnicodeDecodeError, json.JSONDecodeError) as exc:
@@ -234,6 +252,33 @@ def read_patch_metadata(patch: bytes) -> dict:
             f"this toolkit understands ({PATCH_METADATA_SCHEMA})"
         )
     return document
+
+
+def _recorded_image_hashes(metadata: bytes) -> tuple[str | None, str | None] | None:
+    """The image digests a provenance record names, or None when it names none.
+
+    Deliberately tolerant, and deliberately independent of our schema version. A
+    patch from another tool carries metadata the format allows to be anything, and
+    refusing those would make the verifier useless for the patches a creator is
+    most likely to be handed. What must never happen is the opposite: a record that
+    DOES name digests, names the wrong ones, and is shown as if it were proved.
+    """
+    try:
+        document = json.loads(metadata.decode("utf-8"))
+    except (UnicodeDecodeError, json.JSONDecodeError):
+        return None
+    if not isinstance(document, dict):
+        return None
+    base = document.get("base")
+    target = document.get("target")
+    base_sha256 = base.get("sha256") if isinstance(base, dict) else None
+    target_sha256 = target.get("sha256") if isinstance(target, dict) else None
+    if base_sha256 is None and target_sha256 is None:
+        return None
+    return (
+        base_sha256 if isinstance(base_sha256, str) else None,
+        target_sha256 if isinstance(target_sha256, str) else None,
+    )
 
 
 def export_patch(
@@ -301,17 +346,9 @@ def export_patch(
         verification = verify_patch(output, rom_path, catalog)
         reproduced = verification.target_sha256 == _digest(target)
     except PatchError as error:
-        _withdraw(output, published_digest)
-        raise PatchVerificationError(
-            f"the published patch does not verify ({error}); {output} was removed "
-            "rather than left as an artefact that cannot be applied"
-        ) from error
+        _raise_withdrawn(output, published_digest, f"does not verify ({error})")
     if not reproduced:
-        _withdraw(output, published_digest)
-        raise PatchVerificationError(
-            f"the published patch does not rebuild the built image; {output} was "
-            "removed rather than left as an artefact that cannot be applied"
-        )
+        _raise_withdrawn(output, published_digest, "does not rebuild the built image")
 
     return PatchResult(
         patch_path=output,
@@ -342,7 +379,13 @@ def verify_patch(
     """
     path = Path(patch_path)
     patch = path.read_bytes()
-    header = inspect_bps(patch)
+    try:
+        header = inspect_bps(patch)
+    except BpsError as exc:
+        # The codec's errors are translated here so that every refusal this module
+        # makes is a `PatchError`: a caller that catches the family, the command line
+        # included, must not meet a bare codec error and print a traceback.
+        raise PatchVerificationError(str(exc)) from exc
     identification = require_verified_source(rom_path, catalog)
     source = _read_verified_source(rom_path, identification)
     try:
@@ -354,30 +397,22 @@ def verify_patch(
 
     # A provenance record that names different images than the ones just proved is
     # a lying record, and a distributed patch is only worth anything if its
-    # provenance can be believed. A patch made elsewhere carries no record of ours,
-    # which is not a refusal: verification is about the bytes.
-    try:
-        document = read_patch_metadata(patch)
-    except PatchVerificationError:
-        document = None
-    if document is not None:
-        base = document.get("base")
-        recorded_target = document.get("target")
-        if not isinstance(base, dict) or not isinstance(recorded_target, dict):
+    # provenance can be believed. A record that names no digests of ours is not a
+    # refusal: verification is about the bytes, and the format lets a patch made
+    # elsewhere carry anything at all.
+    recorded = _recorded_image_hashes(header.metadata)
+    if recorded is not None:
+        base_sha256, target_sha256 = recorded
+        if base_sha256 is not None and base_sha256 != identification.hashes.sha256:
             raise PatchVerificationError(
-                "the patch provenance record names no source and target images"
-            )
-        if base.get("sha256") != identification.hashes.sha256:
-            raise PatchVerificationError(
-                f"the patch provenance record names source sha256 "
-                f"{base.get('sha256')} and this source is "
-                f"{identification.hashes.sha256}"
+                f"the patch provenance record names source sha256 {base_sha256} and "
+                f"this source is {identification.hashes.sha256}"
             )
         rebuilt = _digest(target)
-        if recorded_target.get("sha256") != rebuilt:
+        if target_sha256 is not None and target_sha256 != rebuilt:
             raise PatchVerificationError(
-                f"the patch provenance record names target sha256 "
-                f"{recorded_target.get('sha256')} and the patch rebuilds {rebuilt}"
+                f"the patch provenance record names target sha256 {target_sha256} "
+                f"and the patch rebuilds {rebuilt}"
             )
 
     return PatchVerification(

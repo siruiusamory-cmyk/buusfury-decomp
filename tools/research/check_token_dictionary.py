@@ -78,7 +78,6 @@ def main() -> int:
         print(f"negative control: check_widths refuses a {LINE_WIDTH_FLOOR} px glyph")
     for failure in failures:
         print(f"FAILED: {failure}")
-    return 1 if failures else 0
 
     if args.map:
         import json
@@ -94,7 +93,11 @@ def main() -> int:
                   if len(new) > len(old)
                   and not _payable(new, len(old), dictionary)]
         print(f"unpayable     : {unpaid or 'none'}")
-    return 0
+
+    # ONE return, at the end. An earlier version returned on the control result before
+    # the breakdown above, which silently made the breakdown unreachable and left a
+    # published figure with no working tool behind it.
+    return 1 if failures else 0
 
 
 def _payable(new_side: str, target: int, dictionary: TokenDictionary) -> bool:

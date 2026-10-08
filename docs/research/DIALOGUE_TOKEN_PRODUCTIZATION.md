@@ -247,18 +247,17 @@ dictionary:
 * 451 records encoded, **450 written directly**, and 1 whose own write was refused:
   `3:2184:2112`, where another record's replacement disagrees at unit 594 of the span.
   That refusal is about the WRITE, not the outcome: the record's span overlaps applied
-  neighbours whose bytes it shares, so their writes rewrote it, and the verifier -
-  which reads every one of the 2,814 records back out of the image - finds it holding
-  its substituted text like every other record. **All 451 names are therefore applied
-  in the image, 450 by their own write and 1 by a neighbour's** (CONFIRMED by the
-  verifier's 0 failures across all records, and by reading that span out of the image);
+  neighbours whose bytes it shares, so their writes rewrote it. The verifier reads that
+  record's span out of the image and reports it as displaying the renamed text, 1 of 1
+  refused, 0 still at retail (CONFIRMED, that tool's own line). **All 451 names are
+  therefore applied in the image, 450 by their own write and 1 by a neighbour's**;
 * how each record was paid, as the tool reports it (CONFIRMED, the method histogram):
   212 tokenised only, 180 padded only, 21 exact only, and 38 mixing ways
   (16 exact+padded, 17 padded+tokenised, 4 all three, 1 exact+tokenised). So 234
   records use a token in at least one substitution and 217 pad at least one;
 * the substitution breakdown, printed by `tools/research/check_token_dictionary.py`
-  from the map itself (CONFIRMED): 84 distinct substitutions, 31 grow, 41 shrink, 12
-  unchanged, and none of the growths is unpayable;
+  from the map itself (CONFIRMED, that tool's own output): 84 distinct substitutions,
+  31 grow, 41 shrink, 12 unchanged, and none of the growths is unpayable;
 * every rebuilt container is byte-for-byte the same decoded size as retail
   (65348, 65474, 65464, 65334, 65322, 65394) (CONFIRMED by the tool's report);
 * derivative `cffdb81e471567fab623d3ec3a0b920cc0b5ef3f0a11bc5f3c70e5bab1395446`,
@@ -338,10 +337,10 @@ phases, so the launcher never owns the emulator's lifetime) and the A/B driver a
 * **One record's own write is refused, and its text is renamed anyway.** The splicer
   will not write `3:2184:2112` because another record's replacement disagrees with it
   at unit 594 of the span; its bytes are rewritten by the applied records whose spans
-  cross it, and the verifier confirms it displays its substituted text. So the image
-  has all 451 names, while the splicer reports 450 writes. A reader who takes the
+  cross it, and the verifier reports that record as displaying the renamed text. So the
+  image has all 451 names, while the splicer reports 450 writes. A reader who takes the
   splicer's `applied` count as the coverage of the rename would understate it by one;
-  the verifier's per-record check is the one that answers coverage.
+  the verifier's refused-record line is what answers coverage.
 * **Shrinking names are paid for with spaces.** The spaces sit immediately after the
   name they pay for and preserve every later offset, but they are visible as a wider
   gap, and extra spaces are extra wrap opportunities for the line fitter. The
@@ -360,7 +359,7 @@ phases, so the launcher never owns the emulator's lifetime) and the A/B driver a
 
 1. Cold-boot the Kibito route from the battery save, with the operator driving, to
    remove the savestate-cache caveat from section 7.
-2. Report coverage from the verifier rather than from the splicer's write count, so
-   the one record a neighbour renamed is not counted as a gap.
+2. Keep reporting coverage from the verifier rather than from the splicer's write
+   count, so the one record a neighbour renamed is not counted as a gap.
 3. Wire the dictionary document and the blob emission into the product build, and
    bring the two opt-in encoder rules into that path.

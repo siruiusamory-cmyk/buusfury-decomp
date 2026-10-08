@@ -39,7 +39,11 @@ build that wrote the wrong thing, or a report that described a different build:
   * the spliced image's digest must be the one the splice report names, and a report
     without one is refused rather than skipped;
   * each record the map names must display the map's own `new_text`, spaces aside
-    (this one uses the report only to know which records were claimed applied).
+    (this one uses the report only to know which records were claimed applied);
+  * every record the report REFUSED is read out of the image and reported as displaying
+    the renamed text, still at retail, or neither. That is the check that answers
+    coverage, and it has to exist because the refused record's own regions are out of
+    the oracle: without it, a refused record left holding retail text would pass.
 
 Nothing here writes an image.
 """
@@ -160,11 +164,20 @@ def main() -> int:
         )
 
     # The regions that were actually written. A record the splicer refused kept its
-    # retail bytes, so its substitutions are not in the image and must not be in the
-    # oracle either - the oracle's job is to describe what the image DID, and then
-    # the two checks below hold every record to it.
+    # own bytes, so its substitutions are not in the oracle either - the oracle's job
+    # is to describe what the image DID, and then the checks below hold every record to
+    # it. Its DISPLAYED text is still checked, further down: applied neighbours whose
+    # spans cross it rewrite its bytes, and that outcome is reported rather than
+    # assumed, because nothing else looks at it.
     refused = set(splice_report.get("refused", {}))
     applied_rows = {key: row for key, row in rows.items() if key not in refused}
+    streams: dict[int, bytes] = {}
+    # A record whose OWN write was refused can still display its new name, because
+    # applied neighbours whose spans cross it rewrite its bytes. The intent check below
+    # only covers records the report claims applied, and the refused record's own
+    # regions are deliberately out of the oracle, so this is the only check that looks.
+    refused_outcomes: dict[str, list[str]] = {"shows_the_new_name": [],
+                                              "still_at_retail": [], "neither": []}
 
     # WHICH RECORDS THE IMAGE ACTUALLY CHANGED, derived from the image rather than
     # taken from the report. This is what stops a report that declares every record
@@ -177,6 +190,7 @@ def main() -> int:
     for selector in range(TABLE_SLOTS):
         base_stream = stream_of(base, selector)
         spliced_stream = stream_of(spliced, selector)
+        streams[selector] = spliced_stream
         for key, row in rows.items():
             if row["old_selector"] != selector:
                 continue
@@ -204,6 +218,20 @@ def main() -> int:
             f"record(s) are neither applied nor inside an applied span "
             f"{unexplained[:3]}"
         )
+
+    # What each refused record displays, read out of the image.
+    for key in sorted(refused):
+        row = rows[key]
+        start, length = row["old_start"], row["old_length"]
+        stored = streams[row["old_selector"]][start:start + length]
+        now = visible(stored.decode("utf-16le", "replace"), dictionary)
+        retail = visible(row["old_text"], dictionary)
+        if now.replace(" ", "") == row["new_text"].replace(" ", ""):
+            refused_outcomes["shows_the_new_name"].append(key)
+        elif now == retail:
+            refused_outcomes["still_at_retail"].append(key)
+        else:
+            refused_outcomes["neither"].append(key)
 
     # Every substitution the map performs, as an absolute region of its container,
     # in UNITS. `old_start` is a byte offset into the decoded container
@@ -313,6 +341,13 @@ def main() -> int:
     print(f"streams holding an unresolvable token           : "
           f"{len(findings['unknown_token'])}")
     print(f"records the splice report refused                : {len(refused)}")
+    print(f"  of those, displaying the renamed text         : "
+          f"{len(refused_outcomes['shows_the_new_name'])}")
+    print(f"  of those, still at retail text                : "
+          f"{len(refused_outcomes['still_at_retail'])}")
+    print(f"  of those, neither                             : "
+          f"{len(refused_outcomes['neither'])} "
+          f"{refused_outcomes['neither'][:3]}")
     print(f"records whose bytes the image changed            : {len(changed)} "
           f"(applied {len(declared_applied)}; the rest overlap an applied span)")
     print(f"records examined                                : {seen}")

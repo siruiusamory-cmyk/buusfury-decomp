@@ -1,9 +1,14 @@
 """The verifier's oracle: what a record must hold, built from the substitution regions.
 
 DIALOGUE-TOKEN-PRODUCTIZATION-001. `expected_text` is the piece of the verifier that
-has been wrong twice - first by mixing units with bytes, then by skipping a region
-whose substituted name ran past the record's end instead of clipping it - and neither
-mistake needed an image to make or to catch. These tests are pure string arithmetic.
+has been wrong twice - first by skipping a region whose substituted name ran past the
+record's end instead of clipping it, then by applying the same substitution twice when
+two overlapping records described it - and neither mistake needed an image to make or
+to catch. These tests are pure string arithmetic.
+
+The unit/byte mix-up that reported 66 correct records as changed lived in `main`,
+where a container offset is divided by two, and is NOT covered here: it needs an image
+to exercise. These tests cover the arithmetic only.
 
 The strings here are STORED text, not visible text: a replacement is exactly as many
 units as the region it replaces, which is the property the whole rename method rests

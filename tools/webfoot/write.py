@@ -52,7 +52,7 @@ import json
 import os
 import tempfile
 from pathlib import Path
-from typing import Iterable
+from typing import Iterable, Sequence
 
 from .rom import RomReadError
 from .layout import Reference, RomRange
@@ -1287,6 +1287,45 @@ def apply_plan(base: bytes, plan: WritePlan) -> bytes:
     return result
 
 
+def publish_new_files(artifacts: Sequence[tuple[Path, bytes]]) -> None:
+    """Publish complete files that must not already exist, or publish none of them.
+
+    The one owner of "put these bytes on disk as new files". Every file is staged
+    beside its destination, flushed and synced, and only then published with an
+    exclusive link, so an existing destination is never replaced and a raced
+    writer loses rather than silently overwriting someone else's artefact. A
+    failure unlinks only the links this call published.
+
+    Files that legitimately replace an existing destination are a different policy
+    and belong to `tools.webfoot.project.atomic.replace_document`, which replaces
+    through `os.replace`; this function deliberately cannot do that.
+    """
+    staged: list[tuple[Path, Path]] = []
+    published: list[tuple[Path, Path]] = []
+    try:
+        for path, data in artifacts:
+            path.parent.mkdir(parents=True, exist_ok=True)
+            with tempfile.NamedTemporaryFile(
+                dir=path.parent, prefix=".webfoot-", delete=False
+            ) as stream:
+                temporary = Path(stream.name)
+                staged.append((temporary, path))
+                stream.write(data)
+                stream.flush()
+                os.fsync(stream.fileno())
+        for temporary, path in staged:
+            os.link(temporary, path)
+            published.append((temporary, path))
+    except BaseException:
+        for temporary, path in reversed(published):
+            if path.exists() and os.path.samefile(temporary, path):
+                path.unlink()
+        raise
+    finally:
+        for temporary, _ in staged:
+            temporary.unlink(missing_ok=True)
+
+
 def emit_image(
     base_path: str | Path,
     output_path: str | Path,
@@ -1364,26 +1403,5 @@ def emit_image(
     if manifest_destination is not None:
         artifacts.append((manifest_destination, manifest.dumps().encode("utf-8")))
     artifacts.append((destination, output))
-    staged = []
-    published = []
-    try:
-        for path, data in artifacts:
-            path.parent.mkdir(parents=True, exist_ok=True)
-            with tempfile.NamedTemporaryFile(dir=path.parent, prefix=".webfoot-", delete=False) as stream:
-                temporary = Path(stream.name)
-                staged.append((temporary, path))
-                stream.write(data)
-                stream.flush()
-                os.fsync(stream.fileno())
-        for temporary, path in staged:
-            os.link(temporary, path)
-            published.append((temporary, path))
-    except BaseException:
-        for temporary, path in reversed(published):
-            if path.exists() and os.path.samefile(temporary, path):
-                path.unlink()
-        raise
-    finally:
-        for temporary, _ in staged:
-            temporary.unlink(missing_ok=True)
+    publish_new_files(artifacts)
     return manifest

@@ -36,6 +36,19 @@ node_modules/
 *.egg-info/
 *.spec
 
+# Release artefacts. A distributable patch and a frozen executable are both
+# build output, so neither can be committed by accident; `docs/release-artefacts.md`
+# states what a user distributes and what must never travel with it.
+*.bps
+*.exe
+
+# The generated build-identity record a package build bakes in, so a packaged
+# application can name the commit it was cut from. It is a module rather than a
+# data file so it travels inside a frozen build through the import graph, and it
+# is never tracked because it names one machine's commit rather than the
+# project's content.
+tools/webfoot/_build_identity.py
+
 # Generated ROM provenance manifests. A build or an authored-image save writes
 # one BESIDE its output image (`authored_image.manifest_path_for`), and `*.gba`
 # does not match `foo.gba.dragonbyte.json` - so a derivative saved outside an

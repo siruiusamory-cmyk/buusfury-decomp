@@ -30,6 +30,7 @@ The index for everything under `docs/`. Start with the root
 | [`asset-export.md`](asset-export.md) | Building a resource library from the ROM (a separate tool, not a `webfoot` subcommand). |
 | [`relocation.md`](relocation.md) | Trust boundaries, limitations and APIs of the relocation layer. |
 | [`rom-profiles.md`](rom-profiles.md) | Supported images and how identity is configured. |
+| [`release-artefacts.md`](release-artefacts.md) | What a user receives: the built image, the distributable patch, version and build identity, the packaging foundation, and what must never be distributed. |
 
 ## Reverse engineering
 

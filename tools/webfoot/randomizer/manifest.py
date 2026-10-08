@@ -151,10 +151,11 @@ def build_manifest(
         "tool": {"name": tool_name, "version": tool_version},
         # The commit is stated under its own key rather than inside ``tool``, so
         # adding provenance never changes the shape of the two facts every reader
-        # already looks for. A packaged build has no repository to ask, so this is
-        # legitimately null there - a provenance gap, recorded rather than hidden -
-        # and ``dirty`` says whether the recorded commit is the bytes that produced
-        # the build or only the tree they were based on.
+        # already looks for. A packaged build has no repository to ask, so it
+        # reports the commit baked in when it was packaged; a package that carries
+        # no baked record is legitimately null there - a provenance gap, recorded
+        # rather than hidden - and ``dirty`` says whether the recorded commit is the
+        # bytes that produced the build or only the tree they were based on.
         "build": {"commit": tool_commit, "dirty": tool_dirty},
         "source": {
             "profile": profile_id,

@@ -184,3 +184,94 @@ section 4, and the three persistence residuals in section 5.
 **Nothing in this ledger is undecided.** Every row above carries one disposition,
 and the ten release-debt questions the sweep was asked are answered in the ticket
 record.
+
+## 10. `RELEASE-ARTEFACT-001` dispositions
+
+| Field | Value |
+| --- | --- |
+| Status | Current layer for the rows this ticket owns. It supersedes section 9's reading of them and rewrites no older record. |
+| Ticket | `RELEASE-ARTEFACT-001` |
+| Baseline | `b7f90a42393c42cea03cfbd36b8967621dbefca6` (the merge of `RC-DEBT-SWEEP-001`) |
+| Date | 2026-10-08 |
+| Supersedes | nothing. Section 9's list is where this ticket was assigned, not a claim it left untouched. |
+
+### 10.1 The product boundary this ticket was corrected to
+
+The owner corrected the direction during this ticket: the existing Webfoot
+Workbench and the two randomizers are engineering and reference surfaces, not the
+future shipping DragonByte Z application, which is being built as its own product
+over the same SDK. Packaging the beta Workbench and calling it DragonByte Z is
+therefore not an honest close of `N-02`, and the row splits.
+
+### 10.2 Row dispositions
+
+| Row | Disposition | Where it is proved |
+| --- | --- | --- |
+| `N-01` no distributable patch path | **CLOSED** | `tools/webfoot/formats/bps.py` (encoder and applier), `tools/webfoot/patch.py` (the one export and verify service), `webfoot patch export` / `webfoot patch verify`, `tests/unit/test_bps.py`, `tests/unit/test_patch_export.py`, and the ROM-gated `tests/integration/test_patch_export_rom.py` (verified source plus built derivative to patch, and back to the exact image) |
+| `N-02` no packaged release path and no visible version | **SPLIT**, see 10.3 | `N-02a` in the same files as the version authority and the release guards; `N-02b` belongs to the new product |
+| `N-17` "using only DragonByte Z" with no in-app pixel surface | **CORRECTED NOW** as a wording defect, and its feature gap **MOVED** to the new product | the limits note under the golden acceptance list in `docs/ROADMAP_TO_1_0.md` section 15, which names the one step that consumes a file edited outside the application and records that the section is the new product's acceptance target |
+| `N-26` packaged randomizer records a null build commit | **CLOSED** | `tools/webfoot/release_identity.py` bakes the identity in, `scripts/build-warprand.ps1` and `scripts/build-enemy-randomizer.ps1` write it before PyInstaller runs, and `tools/webfoot/randomizer/service.py` reports it instead of a null. Proved by `tests/unit/test_release_identity.py`; the packaged-manifest readback is an owner-run gate (10.4) |
+| `N-30` no CI job builds the frozen executables | **SPLIT**: the portable and static half **CLOSED**, the platform half an **OWNER DECISION**, recorded | 10.4 |
+| row 10 output-path safety has no single owner | **SPLIT AND RE-LABELLED** | the source-alias half was already owned by `tools/webfoot/write.py`; the atomic half is row 13 and closes with it; the exporter and output-directory policy with the eight `tools/export` helpers stays `DEFER - 1.x` with the audit's own reason (exporter hygiene that does not block the milestone) |
+| row 13's remaining atomic write | **CLOSED** | `atlas_build.write_atlas` and `write_conflicts` now replace through `tools/webfoot/project/atomic.replace_document`, the discipline the project documents already use. Proved by the two interrupted-write tests in `tests/unit/test_atlas_build.py`, whose positive control is the ordinary replacement that must keep working |
+| section 5's atlas residual | **CLOSED for the two writers**, COUNTED and deferred for the producers | `atlas_producers/_io.py:22`, `code_functions.py:348` and `scan.py:554` write under the ignored `build/` tree, and `webfoot atlas regenerate` already refuses a non-empty target, so they are the same class as this row but not this row's citation. Recorded here rather than discovered later |
+
+### 10.3 `N-02`, split honestly
+
+| Row | Disposition | Statement |
+| --- | --- | --- |
+| `N-02a` reusable packaging and version foundation | **CLOSED** | One version and build identity authority (`tools/webfoot/release_identity.py`), a portable census of a staged package (`tools/quality/package_content.py`) that reports ROMs, saves, machine paths and absent resources, a release-definition guard that now fails a definition naming a resource nobody wrote (`tools/quality/public_release.py`), and a test that the archive a packaging script names carries the version the product reports. The internal packaging shape, the packaging-time probe and the owner-run gate are recorded in `docs/release-artefacts.md` and `docs/DEVELOPMENT.md` |
+| `N-02b` final DragonByte Z packaging and visible in-product identity | **DEFERRED TO THE NEW PRODUCT** | The application the user runs does not exist yet. Its package definition, entry point, About surface, visible version and packaged resource list are that product's to define, and this ticket deliberately does not approximate them by packaging an engineering surface under the product's name. This is a corrected product boundary, not a regression and not a new blocker. One consequence is already visible and is left for that product: the `dragonbyte-z` console entry point in `pyproject.toml` still starts the engineering Workbench |
+
+The capability denominator is unchanged by this ticket: **24 / 24 (100%)**, no
+capability added, none decremented. Packaging and patch support are release
+obligations around a complete product, not a twenty-fifth capability.
+
+### 10.4 `N-30`, and what CI can honestly prove
+
+The real position, measured at this baseline: `.gitlab-ci.yml` declares no `tags`
+at all, and its two test jobs run on Linux images. PyInstaller does not
+cross-compile to win64, and the packaging-time byte probe needs the canonical
+image, which may never live in public CI. So no job can build or smoke a frozen
+executable here, and none pretends to.
+
+| Half | Disposition | Statement |
+| --- | --- | --- |
+| Portable and static validation | **CLOSED** | It runs in the existing `test-sdk` job, through `python -m pytest tests/unit`: the release-definition guard's new resource and entry-script checks, the single-version-source test, and the package census's own tests |
+| A Windows packaging job | **OWNER DECISION, recorded** | Adding a Windows runner is a cost decision, not a code decision, exactly as section 7 item 4 states. Declined for this ticket rather than faked. The owner-run gate that replaces it is named in `docs/DEVELOPMENT.md` and `docs/release-artefacts.md`, with the artifact digests recorded alongside the release |
+
+No byte-identical executable claim is made anywhere, and none may be added:
+PyInstaller's archive carries per-entry timestamps and the PE carries build
+metadata. The reproducible claim is about product content, and it is asserted
+separately.
+
+### 10.5 Owner-run verification still owed
+
+Two facts cannot be proved from a Linux checkout and are recorded rather than
+claimed:
+
+1. a manifest written by a **packaged** randomizer, read back to confirm
+   `build.commit` is no longer null (`pwsh scripts/build-warprand.ps1 -Clean`,
+   then `smoke-warprand-packaged.ps1`, then the manifest);
+2. a third-party BPS applier accepting an exported patch. The round trip here is
+   proved against an independent decoder written from the published specification
+   in `tests/unit/test_bps.py`, and no external BPS tool is installed on this
+   machine, so the ecosystem cross-check remains owner-run.
+
+### 10.6 A finding this ticket measured
+
+- **NEW-1** ROM discovery in the ROM-gated suite takes the first filesystem match:
+  `glob("roms/*Buu*.gba")[0]` in `tests/integration/test_project_build_rom.py` (and
+  the copies of that helper). A worktree that also holds randomized derivatives
+  matches eight files and the canonical image is not the first, so the proof
+  silently skips while reporting that the ROM is absent. Measured here. The patch
+  proof finds the image by digest instead.
+  Disposition: **BUNDLE - GOLDEN/CI PREP**, which owns gate honesty and the
+  ROM-gated gate's relocation, because fixing every copy is a sweep rather than a
+  release artefact.
+
+### 10.7 What is now blocked
+
+Nothing in this ledger is release-blocking. `N-01` and `N-02a` are closed, `N-02b`
+waits on a product that has not been started, and every other row above carries one
+disposition.

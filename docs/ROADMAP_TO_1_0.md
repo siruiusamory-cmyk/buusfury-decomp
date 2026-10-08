@@ -858,6 +858,14 @@ The acceptance criterion explicitly requires that no manual ROM offsets are used
 no hex editor is used, and no one-off research script substitutes for a product
 feature.
 
+> **Limits, as of RELEASE-ARTEFACT-001.** Step 6 imports a PNG the author has
+> already edited outside the application, because no editor surface edits pixels
+> yet. Step 15 is now a supported path: `webfoot patch export` produces the
+> distributable patch from the verified base and the rebuilt derivative. Every
+> other step is done inside the application. The creator-facing application is
+> being rebuilt on the same SDK, so this section is that product's acceptance
+> target rather than the current engineering surfaces' one.
+
 ## 16. What we deliberately do not put before 1.0
 
 A complete roadmap needs explicit non-goals, so the finish line cannot move

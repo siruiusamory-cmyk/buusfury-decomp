@@ -651,7 +651,14 @@ def _allocate(profile, request: NewMapActor, family: SupportedActorFamily,
                 f"carries sprite id {request.sprite_id}, its inline behaviour entry "
                 "and its authored wander box")),
     )
-    allocations = allocate(profile, requests, occupied=tuple(reserved))
+    allocations = allocate(
+        profile, requests,
+        # The build-scoped set is stated in plain `RomRange` spans, the way
+        # `compressed_dialogue` consumes it, so each span is wrapped here rather
+        # than assumed to already arrive owned.
+        occupied=tuple(span if isinstance(span, OwnedRegion)
+                       else OwnedRegion(span, "build reservation")
+                       for span in reserved))
     by_owner = {allocation.request.owner: allocation for allocation in allocations}
     for allocation in allocations:
         if not allocation.is_expanded:

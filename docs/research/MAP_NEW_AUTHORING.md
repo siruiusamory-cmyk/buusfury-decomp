@@ -8,7 +8,7 @@ Canonical image sha256
 This record holds the measured storage and engine facts a new-map capability
 depends on, the decision they force, the implementation and its runtime result.
 It began as the plan written before implementation and carries the outcome in the
-same document; sections 1 to 3 are the plan, sections 5 to 7 are what was built
+same document; sections 1 to 3 are the plan, sections 4 to 6 are what was built
 and what was observed.
 
 Runtime evidence follows `docs/skills/mgba-runtime.md`. Every run below is a
@@ -148,7 +148,7 @@ from map 40 into it, built from the canonical image:
 | canonical bytes changed elsewhere | `0` |
 | rebuild | byte-identical |
 
-## 6. What is genuinely new code
+## 5. What is genuinely new code
 
 | piece | authority today |
 | --- | --- |
@@ -164,7 +164,7 @@ Everything else the roadmap listed for this capability already ships:
 dimensions/layers/chunks, placements, graphics, dialogue, warps/connections,
 deterministic build and provenance.
 
-## 7. Plan and status
+## 6. Plan and status
 
 1. **Evidence and census test.** Done:
    `tests/integration/test_map_authoring_rom.py` re-derives both patch sites and
@@ -253,7 +253,7 @@ deterministic build and provenance.
 8. **Closure.** Registry `map-new` to `shipped`, rendered status, then independent
    review of the frozen candidate, then integration.
 
-## 8. Risks carried openly
+## 7. Risks carried openly
 
 The relocated table means the engine's own base is no longer the profile's
 declared address. A reader in this toolkit that reads the map table from the
@@ -268,10 +268,13 @@ project, not by re-extracting the derivative.
   new map keeps the donor's original bytes, not the edited ones. That is a stated
   limit, not a defect: the root fields this capability does not author are copied
   from a named donor deliberately.
-- The relocated table carries every `MapEntry` write the domains before it planned
-  (`_carry_prior_table_edits`), so a map field edit, an expanded placement run or
-  an appended actor stays visible once the base word moves. A planned write that
-  straddled the table's boundary would be refused rather than carried.
+- The relocated table carries every `MapEntry` write planned by the domains before
+  it (`_carry_prior_table_edits`): a map field edit, an expanded placement run, a
+  retargeted transition record and an appended map actor all stay visible once the
+  base word moves. That is why the map domain runs after every other `MapEntry`
+  writer and only the graphics-pixel domain follows it. A planned write that
+  straddled the table's boundary, or whose bytes do not match the table, is refused
+  rather than carried.
 - An authored row's table index is its position in name order, and a transition
   stores `map:NNNN`. Adding, removing or renaming a map therefore re-indexes the
   ones after it, so a change that would move an index a transition already names

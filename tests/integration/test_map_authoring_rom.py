@@ -831,3 +831,70 @@ def test_a_reindex_nothing_names_is_allowed(project):
         canonical_rows=CANONICAL_ROWS,
     ) is True
     assert len(read_project(project).authored_maps.maps) == 2
+
+
+#: The map an appended actor lands in, and the slot it starts from. Measured by
+#: SPRITE-NEW-ATTACHMENT-CORE-001 and used by the sprite surface's own tests.
+ACTOR_MAP = 102
+ACTOR_TEMPLATE = "map:0102/object:0007"
+ACTOR_POSITION = (209, 580)
+ACTOR_WANDER_BOX = (192, 544, 272, 624)
+DONOR_SPRITE_ID = 10
+DONOR_CELL = 32
+
+
+def test_the_appended_actor_is_carried_into_the_moved_table(
+        tmp_path, extracted, identified, canonical, profile, catalog):
+    """The sprite domain runs BEFORE the table moves, and its write must survive.
+
+    This is the combination the fix round is about: an appended actor rewrites map
+    102's `+0x04` object count and its `+0x14` array pointer at the CANONICAL table
+    offset, and the engine reads only the moved copy.
+    """
+    import shutil
+    import struct
+
+    from tests.helpers import write_truecolour_png
+    from tools.webfoot import sprite_project as sp
+    from tools.webfoot.project.model import AuthoredSpriteAnimation
+
+    tmp_path = tmp_path / "actor"
+    shutil.copytree(extracted, tmp_path)
+    sheet = tmp_path / "sprites" / "cui" / "stand.png"
+    sheet.parent.mkdir(parents=True, exist_ok=True)
+    write_truecolour_png(sheet, bytes((247, 8, 16)) * (DONOR_CELL * DONOR_CELL * 2 * 4),
+                         DONOR_CELL * 4 * 2, DONOR_CELL)
+    request = sp.AuthoredSpriteRequest(
+        name="cui", donor_sprite_id=DONOR_SPRITE_ID,
+        animations=(AuthoredSpriteAnimation(name="stand",
+                                            sheet="sprites/cui/stand.png",
+                                            frames=2),),
+        free_palette_entries=(8, 9, 103), behaviour_template=ACTOR_TEMPLATE,
+        position=ACTOR_POSITION, wander_box=ACTOR_WANDER_BOX)
+    document = sp.validate_authored_sprite(canonical, identified, profile, request,
+                                           project_dir=tmp_path)
+    assert sp.apply_authored_sprite(tmp_path, document) is True
+    write_authored_maps(tmp_path, _one())
+
+    output = tmp_path / "actor.gba"
+    build_project(tmp_path, _rom_path(), output, catalog)
+    image = output.read_bytes()
+
+    canonical_table = ma.canonical_table(canonical, profile)
+    table_address = struct.unpack_from("<I", image, ma.BASE_POOL_FILE_OFFSET)[0]
+    table_at = table_address - 0x08000000
+    moved = image[table_at + ACTOR_MAP * STRIDE: table_at + (ACTOR_MAP + 1) * STRIDE]
+    original = canonical_table[ACTOR_MAP * STRIDE: (ACTOR_MAP + 1) * STRIDE]
+    # What the sprite domain planned, read where it planned it.
+    planned = image[TABLE_OFFSET + ACTOR_MAP * STRIDE:
+                    TABLE_OFFSET + (ACTOR_MAP + 1) * STRIDE]
+
+    assert planned[0x04] != original[0x04], (
+        "the fixture did not actually append an actor to this map")
+    assert struct.unpack_from("<I", planned, 0x14)[0] >= 0x08800000, (
+        "the appended actor's array is not above canonical EOF")
+    assert moved[0x04] == planned[0x04], (
+        "the moved table did not carry the appended actor's object count")
+    assert (struct.unpack_from("<I", moved, 0x14)[0]
+            == struct.unpack_from("<I", planned, 0x14)[0]), (
+        "the moved table did not carry the appended actor's array pointer")

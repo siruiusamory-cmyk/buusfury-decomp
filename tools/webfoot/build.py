@@ -1749,29 +1749,7 @@ def build_project(
         transition_creations = creation_materialization.provenance
         base_bytes = image if base_bytes is None else base_bytes
 
-    # MAP-NEW-AUTHORING-001's domain: the MapEntry table is re-emitted whole with
-    # the project's authored rows appended, the one literal-pool word that names
-    # the table is repointed and the one compiled row bound is raised, all in this
-    # change list. It runs after the transition-creation domain because the
-    # authored rows must be placed clear of every span that domain already took,
-    # and before the content domains that follow it, which read the table through
-    # the profile and would otherwise see the canonical address.
-    authored_map_relocations: tuple = ()
-    if not project.authored_maps.is_empty():
-        image = Path(rom_path).read_bytes()
-        try:
-            authored_map_materialization = materialize_authored_maps(
-                image, identification, profile, _map_authoring_requests(project),
-                reserved=reserved, prior_changes=tuple(changes),
-            )
-        except _MAP_AUTHORING_ERRORS as exc:
-            raise ProjectValidationError(f"authored map: {exc}") from exc
-        changes += authored_map_materialization.changes
-        reserved += authored_map_materialization.reserved
-        generated_allocations += list(
-            authored_map_materialization.generated_allocations)
-        authored_map_relocations = authored_map_materialization.relocations
-        base_bytes = image if base_bytes is None else base_bytes
+    # MAP-NEW-AUTHORING-001 runs last among the writing domains, just above.
 
     # ROM-EXPAND-001: compressed dialogue is a normal allocating build domain. It
     # receives every span reserved by earlier domains and returns its own span to
@@ -1848,6 +1826,32 @@ def build_project(
         generated_allocations += list(
             appearance_materialization.generated_allocations)
         appearance_relocations = appearance_materialization.relocations
+        base_bytes = image if base_bytes is None else base_bytes
+
+    # MAP-NEW-AUTHORING-001's domain: the MapEntry table is re-emitted whole with
+    # the project's authored rows appended, the one literal-pool word that names
+    # the table is repointed and the one compiled row bound is raised, all in this
+    # change list. It runs AFTER every other domain that writes a `MapEntry` field -
+    # a map field edit, an expanded placement run, an appended map actor - because
+    # those writes are planned at the CANONICAL table offset and the engine reads
+    # only the moved copy. `prior_changes` is what lets the copy carry them; a
+    # domain that ran later could not be carried, which is why this is the last
+    # writing domain and only the graphics pixels are after it.
+    authored_map_relocations: tuple = ()
+    if not project.authored_maps.is_empty():
+        image = Path(rom_path).read_bytes()
+        try:
+            authored_map_materialization = materialize_authored_maps(
+                image, identification, profile, _map_authoring_requests(project),
+                reserved=reserved, prior_changes=tuple(changes),
+            )
+        except _MAP_AUTHORING_ERRORS as exc:
+            raise ProjectValidationError(f"authored map: {exc}") from exc
+        changes += authored_map_materialization.changes
+        reserved += authored_map_materialization.reserved
+        generated_allocations += list(
+            authored_map_materialization.generated_allocations)
+        authored_map_relocations = authored_map_materialization.relocations
         base_bytes = image if base_bytes is None else base_bytes
 
     # GRAPHICS-IMPORT-BOUNDARY-001: authored graphic pixels are the last allocating

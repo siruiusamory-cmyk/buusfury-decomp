@@ -1828,6 +1828,13 @@ class GraphicsTab(QWidget):
             self._authored_project = project_key
             if self._undo_stack.count():
                 self._undo_stack.clear()
+            # CQA-27: unapplied palette colours are a staged intent against ONE
+            # project's override document. They are cleared on an image change, but
+            # they survived a project change, so the next Apply wrote the outgoing
+            # project's colour into the incoming one.
+            if self._palette_pending:
+                self._palette_pending.clear()
+                self._refresh_pending_ui()
         return project_key
 
     def _refresh_authored_strip(self) -> None:

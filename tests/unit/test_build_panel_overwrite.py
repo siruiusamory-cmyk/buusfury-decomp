@@ -342,3 +342,61 @@ def test_a_canonical_copy_at_the_output_is_never_replaced(tmp_path, monkeypatch,
     assert session.rom_path.read_bytes() == source_before
     assert sorted(path.name for path in output_path.parent.iterdir()) == published_before
     assert session.last_build is None
+
+
+# --- CQA-11: a failed rebuild must not destroy the known-good output ---------
+
+
+def test_a_failed_rebuild_keeps_the_previous_output(tmp_path, monkeypatch, _app):
+    """RELEASE BLOCKER CQA-11: a confirmed overwrite must not delete before it builds.
+
+    The overwrite branch unlinked every occupied artefact and only then called
+    `_run_build`, so a rebuild that failed after the delete left the user with
+    neither the previous output nor a new one. The previous set is now renamed
+    aside and restored when the rebuild fails.
+    """
+    panel, session, output_path = _make_panel(tmp_path, _app)
+    session.rom_path.write_bytes(b"\x00" * 64)
+    manifest_path = build_sdk.manifest_path_for_build(
+        build_sdk.MANIFEST_BESIDE_OUTPUT, output_path)
+
+    counter = {"n": 0}
+    monkeypatch.setattr(bp.build_sdk, "build_project", _writer_backed_build(counter))
+    monkeypatch.setattr(
+        QMessageBox, "question", staticmethod(lambda *a, **k: QMessageBox.Yes))
+    panel._on_build()  # a real image and its real manifest now exist
+
+    assert output_path.is_file() and manifest_path.is_file()
+    first_image = output_path.read_bytes()
+    first_manifest = manifest_path.read_text(encoding="utf-8")
+    published_before = sorted(path.name for path in output_path.parent.iterdir())
+    first_build = session.last_build
+
+    def failing_build(project_dir, rom_path, out, catalog):
+        if Path(out).exists():
+            raise WriteError("refusing to overwrite an existing output image")
+        raise failure
+
+    for failure in (
+        build_sdk.BuildError("the replacement could not be built"),
+        # A bare OSError is the writer's own staging failure (a full disk, a
+        # read-only output directory). It is not a BuildError and not a WriteError,
+        # so the slot has to name it explicitly or the click produces no dialog.
+        OSError("the output directory is not writable"),
+    ):
+        criticals = []
+        monkeypatch.setattr(bp.build_sdk, "build_project", failing_build)
+        monkeypatch.setattr(
+            QMessageBox, "critical", staticmethod(lambda *a, **k: criticals.append(a)))
+
+        panel._on_build()  # must not raise
+
+        assert criticals, f"a failed rebuild must be reported: {failure!r}"
+        assert output_path.is_file(), "the known-good image must survive a failed rebuild"
+        assert output_path.read_bytes() == first_image
+        assert manifest_path.is_file()
+        assert manifest_path.read_text(encoding="utf-8") == first_manifest
+        assert sorted(path.name for path in output_path.parent.iterdir()) == published_before, (
+            "no staging artefact may be left behind")
+        assert session.last_build is first_build
+        assert session.rom_path.read_bytes() == b"\x00" * 64

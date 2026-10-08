@@ -225,6 +225,22 @@ _EDIT_ERRORS = (
     WriteError,
 )
 
+#: CQA-26. A cell whose pointer could NOT be read. `0` is a real pointer - it is
+#: the engine's own null chunk, the value a genuinely empty cell holds - so a
+#: failed or not-yet-loaded read must not be spelled with it, or the author is
+#: shown a confident "empty cell" for a cell nothing managed to read. The GBA
+#: address space starts at 0x08000000, so -1 can never be a real pointer.
+_UNREAD_POINTER = -1
+
+#: What every surface says for `_UNREAD_POINTER`, so the unread state reads the
+#: same wherever the author meets it and is never mistaken for data.
+_UNREAD_CELL = "cell could not be read"
+
+#: The remembered read failure a cell action publishes, in the same shape as
+#: `_structure_read_error`: `_update_status` republishes it, so the refresh at the
+#: end of a gesture cannot bury the fact that nothing was staged.
+_UNREAD_CELL_ACTION = "A cell could not be read, so nothing was staged."
+
 #: The families a *project* read can fail with. `ProjectError` is the project
 #: package's own parent (`ProjectLoadError` / `ProjectValidationError`) and
 #: `OSError` covers the file read behind it; neither is under `_EDIT_ERRORS`, so a
@@ -2028,6 +2044,10 @@ class MapBrowserTab(QWidget):
         #: background event, so this is the channel that reports it where a user is
         #: looking - the same rule the layout and chunk readers already follow.
         self._structure_read_error: str = ""
+        #: CQA-26: the last cell read that failed, republished by `_update_status`
+        #: so a gesture's own refresh cannot bury it. Cleared by the next read that
+        #: succeeds, which every refresh performs.
+        self._cell_read_error: str = ""
         #: The merged document (committed + staged), rebuilt without any I/O.
         self._staged_document: MapStructure | None = None
         #: Staged resizes and layers: the value, or None meaning "remove the
@@ -3708,8 +3728,12 @@ class MapBrowserTab(QWidget):
         if authored is not None:
             name = self._authored_name(authored)
         else:
-            chunk = self._slot.ordinal_of(self._working_pointer(self._slot.slot, cell))
-            name = f"Chunk {chunk}" if chunk else "an empty cell"
+            pointer = self._working_pointer(self._slot.slot, cell)
+            name = (
+                _UNREAD_CELL
+                if pointer == _UNREAD_POINTER
+                else self._chunk_name(self._slot.ordinal_of(pointer))
+            )
         self._hover_cell = (
             f"BG{self._slot.slot} cell {cell + 1}/{self._slot.grid.cell_count} · {name}"
         )
@@ -3915,6 +3939,9 @@ class MapBrowserTab(QWidget):
             )
             return
         pointer = self._working_pointer(self._slot.slot, cell)
+        if pointer == _UNREAD_POINTER:
+            self._publish_status(self._cell_read_error or _UNREAD_CELL_ACTION)
+            return
         ordinal = self._slot.ordinal_of(pointer)
         if ordinal is None:
             self._publish_status(
@@ -3963,6 +3990,11 @@ class MapBrowserTab(QWidget):
             self._publish_status("Choose a chunk in the palette first.")
             return False
         before = self._working_pointer(slot.slot, cell)
+        if before == _UNREAD_POINTER:
+            # CQA-26: staging a paint whose "previous" value was never read would
+            # record a fabricated original and hand it back to the SDK on revert.
+            self._publish_status(self._cell_read_error or _UNREAD_CELL_ACTION)
+            return False
         if cell not in self._stroke_previous:
             self._stroke_previous[cell] = before
         # The gesture's span is where the pointer WENT, not only where it changed
@@ -4526,15 +4558,27 @@ class MapBrowserTab(QWidget):
         MAP-RESIZE-AND-LAYERS-001: a project-authored grid's cells are resolved
         through the structural staging table first, because the layout session has no
         cell to ask about for a grid the canonical record does not state.
+
+        CQA-26: an unread cell answers `_UNREAD_POINTER`, never the null pointer. A
+        failed read is not data, and every caller has to say so rather than render
+        it as an empty cell.
         """
+        # CQA-26: cleared on EVERY attempt, before either early return, so a failure
+        # recorded for one layer or one image cannot outlive the read that replaces
+        # it. A read that still fails re-sets it on this same call.
+        self._cell_read_error = ""
         if self._structure_slot is not None:
             return self._structural_pointer(self._structure_slot, cell)
         if self._editor is None or self._current is None:
-            return 0
+            return _UNREAD_POINTER
         try:
-            return self._editor.working_pointer(self._current.index, layer_slot, cell)
-        except _EDIT_ERRORS:
-            return 0
+            pointer = self._editor.working_pointer(self._current.index, layer_slot, cell)
+        except _EDIT_ERRORS as exc:
+            # The reader's own reason is the author's; a bare "could not be read" is
+            # not, and every other edit failure in this tab shows `str(exc)`.
+            self._cell_read_error = f"{_UNREAD_CELL_ACTION} ({exc})"
+            return _UNREAD_POINTER
+        return pointer
 
     def _apply_draft(self) -> None:
         """Apply the brush to the selected cell, as one undoable gesture.
@@ -4839,6 +4883,9 @@ class MapBrowserTab(QWidget):
             self._publish_status("That cell has no staged paint to revert.")
             return
         before = self._working_pointer(slot, cell)
+        if before == _UNREAD_POINTER:
+            self._publish_status(self._cell_read_error or _UNREAD_CELL_ACTION)
+            return
         base = self._editor.committed_pointer(index, slot, cell)
         self._draft = None
         try:
@@ -5158,25 +5205,35 @@ class MapBrowserTab(QWidget):
                 )
             else:
                 working = self._working_pointer(slot.slot, cell.cell)
-                ordinal = slot.ordinal_of(working)
-                used = len(slot.cells_using(working))
+                # CQA-26: a cell nothing could read is not reported as empty, is
+                # not counted among a chunk's users, and does not ask the session
+                # for a committed pointer it may not be able to answer for.
+                unread = working == _UNREAD_POINTER
+                ordinal = None if unread else slot.ordinal_of(working)
+                used = 0 if unread else len(slot.cells_using(working))
                 self._chunk_label.setText(
-                    f"{self._chunk_name(ordinal)} · used by {used} cell(s) of BG{slot.slot}"
+                    f"{_UNREAD_CELL} · BG{slot.slot}"
+                    if unread
+                    else f"{self._chunk_name(ordinal)} · used by {used} cell(s) of BG{slot.slot}"
                 )
                 source = slot.ordinal_of(cell.pointer)
-                painted = (
-                    self._structural_staged_value(self._structure_slot, cell.cell)
-                    is not None
-                    if self._structure_slot is not None
-                    else (
-                        self._editor.committed_pointer(
-                            result.index, slot.slot, cell.cell
+                # The unread guard only has to run first: it is what keeps the
+                # committed-pointer call below out of a read that already failed.
+                painted = False
+                if not unread:
+                    painted = (
+                        self._structural_staged_value(self._structure_slot, cell.cell)
+                        is not None
+                        if self._structure_slot is not None
+                        else (
+                            self._editor.committed_pointer(
+                                result.index, slot.slot, cell.cell
+                            )
+                            != cell.pointer
+                            if (self._editor and result)
+                            else False
                         )
-                        != cell.pointer
-                        if (self._editor and result)
-                        else False
                     )
-                )
                 # A cell that exists only in a project-authored grid has no
                 # four-byte field in the canonical image to rewrite: saying "field
                 # 0x-0000001" would be a lie about how the paint is stored, so the
@@ -5190,7 +5247,7 @@ class MapBrowserTab(QWidget):
                     f"source ROM holds {self._chunk_name(source)}\n"
                     + ("project paints this cell\n" if painted else "")
                     + (f"{self._structural_marker(self._structure_slot)}\n" if self._structure_slot is not None else "")
-                    + f"pointer {working:#010x}\n"
+                    + (f"{_UNREAD_CELL}\n" if unread else f"pointer {working:#010x}\n")
                     + field
                 )
         else:
@@ -5335,8 +5392,10 @@ class MapBrowserTab(QWidget):
     def unsaved_edit_count(self) -> int:
         """Pending layout changes no Save As has written yet.
 
-        Public because the shell shows the same number in the window title and
-        the status bar, and two authorities on "is there unsaved work" would drift.
+        This is the BROWSER's count, which is what its change label and its
+        Discard-pending button are scoped to. The window title and the status bar
+        report `Session.unsaved_edit_count()`, which also counts the Warps surface,
+        so the two legitimately differ by the staged connection edits.
         """
         return self._unsaved_count()
 
@@ -5378,6 +5437,9 @@ class MapBrowserTab(QWidget):
         """
         if self._structure_read_error:
             self._publish_status(self._structure_read_error)
+            return
+        if self._cell_read_error:
+            self._publish_status(self._cell_read_error)
             return
         result = self._current
         if result is None:
@@ -5588,6 +5650,9 @@ class MapBrowserTab(QWidget):
         self._structure = None
         self._structure_unavailable = ""
         self._structure_read_error = ""
+        # CQA-26: the cell-read failure names THIS image's map table, so it goes
+        # with the image for the same reason the structural one does.
+        self._cell_read_error = ""
         self._staged_document = None
         self._staged_resizes = {}
         self._staged_layers = {}
@@ -5618,11 +5683,13 @@ class MapBrowserTab(QWidget):
         if self._editor is None:
             return False
         try:
-            return self._working_pointer(layer_slot, cell) != self._editor.committed_pointer(
-                map_index, layer_slot, cell
-            )
+            working = self._working_pointer(layer_slot, cell)
+            committed = self._editor.committed_pointer(map_index, layer_slot, cell)
         except _EDIT_ERRORS:
             return False
+        # CQA-26: an unread cell has nothing to revert, and comparing the sentinel
+        # against the committed pointer would otherwise report a staged paint.
+        return working != _UNREAD_POINTER and working != committed
 
     def _reselect_layer(self) -> None:
         """Re-point the editor at the selected slot after the structure changed.

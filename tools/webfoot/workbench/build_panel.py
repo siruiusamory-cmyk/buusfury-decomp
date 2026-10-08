@@ -28,6 +28,7 @@ replacement.
 
 from __future__ import annotations
 
+import os
 from pathlib import Path
 
 from PySide6.QtCore import Signal
@@ -36,7 +37,8 @@ from PySide6.QtWidgets import (QFileDialog, QHBoxLayout, QLabel, QMessageBox,
                                QWidget)
 
 from .. import build as build_sdk
-from ..authored_image import AuthoredImageError, refuse_canonical_destination
+from ..authored_image import (AuthoredImageError, refuse_canonical_destination,
+                              staging_path)
 from ..project import ProjectError
 from ..write import WriteError, paths_are_the_same_file
 from . import theme
@@ -87,6 +89,24 @@ def _build_artefacts_for(output_path: Path) -> tuple[Path, ...]:
     if manifest_path is None:  # pragma: no cover - MANIFEST_BESIDE_OUTPUT is set
         return (Path(output_path),)
     return (Path(output_path), Path(manifest_path))
+
+
+def _restore_previous(backups) -> tuple[tuple[Path, Path], ...]:
+    """Put the artefacts a failed rebuild moved aside back at their own paths.
+
+    CQA-11: the overwrite branch moves the known-good set aside instead of
+    deleting it, so a failed rebuild leaves its bytes on disk. This is the other
+    half of that trade. The pairs that could not be restored are returned, so the
+    caller can name the files still sitting under a staging name rather than
+    claiming a clean rollback.
+    """
+    stranded = []
+    for path, backup in backups:
+        try:
+            os.replace(backup, path)
+        except OSError:
+            stranded.append((path, backup))
+    return tuple(stranded)
 
 
 class BuildPanelTab(QWidget):
@@ -338,7 +358,12 @@ class BuildPanelTab(QWidget):
 
         try:
             self._run_build(output_path)
-        except (build_sdk.BuildError, ProjectError) as exc:
+        except (build_sdk.BuildError, ProjectError, OSError) as exc:
+            # OSError is the writer's own staging failure: a full disk, a read-only
+            # output directory, a file held open elsewhere. It is not a BuildError,
+            # so without this the click produced no dialog at all - the
+            # WORKBENCH-001 dead-click class, and the reason the retry below names
+            # it too.
             QMessageBox.critical(self, "Build", str(exc))
             return
         except WriteError as exc:
@@ -348,9 +373,6 @@ class BuildPanelTab(QWidget):
             # existing destination; gate the overwrite offer on a file ACTUALLY
             # existing, never on the message text, and NEVER auto-delete on other
             # WriteErrors.
-            if not Path(output_path).exists():
-                QMessageBox.critical(self, "Build", str(exc))
-                return
             # WORKBENCH-OVERWRITE-ATOMICITY-001. One build publishes the image AND
             # its beside-output manifest, and the writer refuses any destination
             # that already exists. Replacing only the image left the stale manifest
@@ -360,6 +382,13 @@ class BuildPanelTab(QWidget):
             occupied = tuple(
                 path for path in _build_artefacts_for(output_path) if path.exists()
             )
+            # CQA-11: gate on the ARTEFACT SET, not on the image alone. A stale
+            # manifest with no image is still a destination the writer refuses, and
+            # testing only the image turned that into a refusal with no way forward
+            # inside the GUI.
+            if not occupied:
+                QMessageBox.critical(self, "Build", str(exc))
+                return
             # SAFETY: every path is re-checked against the source ROM before the
             # one irreversible act here. The pre-build guard proved the image; the
             # manifest is derived from it and is judged by the same policy.
@@ -398,23 +427,46 @@ class BuildPanelTab(QWidget):
             if answer != QMessageBox.Yes:
                 self._status.setPlainText("Build cancelled - existing output kept.")
                 return
-            # The image goes last, mirroring the writer's own publish order, so a
-            # failure part-way leaves the artefact the user asked for rather than
-            # deleting it and stopping.
-            try:
-                for path in reversed(occupied):
-                    path.unlink()
-            except OSError as unlink_error:
-                QMessageBox.critical(
-                    self, "Build refused",
-                    f"The existing output could not be replaced: {unlink_error}"
-                )
-                return
+            # CQA-11: the previous set is moved ASIDE, never deleted, until the
+            # replacement has been built. A rebuild that fails - including a bare
+            # OSError from the writer's own staging, which is not a WriteError and
+            # used to escape this handler entirely - restores the previous output
+            # byte-for-byte, so the user is never left with neither artefact.
+            backups: list[tuple[Path, Path]] = []
+            for path in reversed(occupied):
+                backup = staging_path(path)
+                try:
+                    os.replace(path, backup)
+                except OSError as move_error:
+                    stranded = _restore_previous(backups)
+                    detail = (
+                        " These files could not be restored and are kept as: "
+                        + ", ".join(str(backup) for _, backup in stranded)
+                        if stranded else ""
+                    )
+                    QMessageBox.critical(
+                        self, "Build refused",
+                        f"The existing output could not be moved aside: {move_error}.{detail}"
+                    )
+                    return
+                backups.append((path, backup))
             try:
                 self._run_build(output_path)
-            except (build_sdk.BuildError, ProjectError, WriteError) as exc2:
-                QMessageBox.critical(self, "Build", str(exc2))
+            except (build_sdk.BuildError, ProjectError, WriteError, OSError) as exc2:
+                stranded = _restore_previous(backups)
+                detail = (
+                    "\n\nThese files could not be restored and are kept as: "
+                    + ", ".join(str(backup) for _, backup in stranded)
+                    if stranded else
+                    "\n\nThe previous output was restored."
+                )
+                QMessageBox.critical(self, "Build", f"{exc2}{detail}")
                 return
+            for _, backup in backups:
+                try:
+                    backup.unlink(missing_ok=True)
+                except OSError:
+                    pass  # a staging file left behind is untidy, never unsafe
 
     def _run_build(self, output_path) -> None:
         """Build, record the result, and emit buildFinished. Raises on failure."""

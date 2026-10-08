@@ -101,6 +101,7 @@ are ROM-verified rather than editorial:
   attempt was refused for being four bytes too long). Relocation can lift the
   allocation limit for a relocatable table and a single-reference entry, but
   creating new text ids is not claimed.
-- **New maps and scenes are not materialised.** `map-new` is a missing
-  capability: it needs an authored warp and map-root fields that are still
-  unresolved.
+- **A new map inherits its layout from a named donor, and the Scene editor's map
+  list is the map table the open image carries.** An authored map therefore becomes
+  a placement target once the project has been built and the built image reopened;
+  the map identity itself is authored and runtime-proven.

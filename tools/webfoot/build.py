@@ -978,6 +978,25 @@ def _transition_requests(project: StatProject) -> dict[TransitionIdentity, Autho
     return transition_edits_to_requests(project.transitions)
 
 
+def _authored_facts(
+    project: StatProject, canonical: RomProfile, canonical_image: bytes | None
+):
+    """The authored-map facts the transition domain resolves destinations against.
+
+    MAP-NEW-AUTHORING-001. Both the checks that run before a build and the build
+    itself have to hand the SAME facts to `plan_transition_edits` and
+    `materialize_transition_creations`. When only the build passed them, a project
+    that authors a map and a transition into it validated as "map:0452 is outside
+    this profile's 0..451 declared map-entry range" and then built perfectly - and
+    the Workbench refuses to build a project that did not validate, so the authored
+    map was unreachable through the product's own UI. One function, so a check
+    cannot forget what the build remembers.
+    """
+    if canonical_image is None:
+        return None
+    return authored_map_facts(canonical_image, canonical, project.authored_maps)
+
+
 def _check_transitions(
     project: StatProject, profile: RomProfile, canonical_image: bytes | None
 ) -> list[str]:
@@ -1005,7 +1024,10 @@ def _check_transitions(
             "authored transition"
         ]
     try:
-        plan_transition_edits(canonical_image, requests, profile=canonical)
+        plan_transition_edits(
+            canonical_image, requests, profile=canonical,
+            authored=_authored_facts(project, canonical, canonical_image),
+        )
     except _TRANSITION_ERRORS as exc:
         return [f"authored map transition: {exc}"]
     return []
@@ -1050,7 +1072,10 @@ def _check_transition_creations(
             "transition"
         ]
     try:
-        materialize_transition_creations(canonical_image, requests, profile=canonical)
+        materialize_transition_creations(
+            canonical_image, requests, profile=canonical,
+            authored=_authored_facts(project, canonical, canonical_image),
+        )
     except _TRANSITION_ERRORS as exc:
         return [f"created map transition: {exc}"]
     return []
@@ -1709,7 +1734,7 @@ def build_project(
         try:
             transition_application = plan_transition_edits(
                 image, _transition_requests(project), profile=canonical,
-                authored=authored_map_facts(image, canonical, project.authored_maps),
+                authored=_authored_facts(project, canonical, image),
             )
         except _TRANSITION_ERRORS as exc:
             # One validation family at the build boundary, naming the transition.
@@ -1738,7 +1763,7 @@ def build_project(
         try:
             creation_materialization = materialize_transition_creations(
                 image, _creation_requests(project), profile=canonical, reserved=reserved,
-                authored=authored_map_facts(image, canonical, project.authored_maps),
+                authored=_authored_facts(project, canonical, image),
             )
         except _TRANSITION_ERRORS as exc:
             # One validation family at the build boundary, naming the creation.

@@ -541,6 +541,59 @@ def test_a_created_transition_may_name_the_authored_map(project, catalog,
     assert stored[(SOURCE, "to-cave")].destination == f"map:{CANONICAL_ROWS:04d}"
 
 
+# --- CQA-RELEASE: the Validate step must agree with the Build step -----------
+#
+# Found by the golden-journey drive, not by any per-capability proof: the checks
+# that run before a build materialized the transition domain WITHOUT the
+# authored-map facts the build passes, so a project that authors a map and a
+# transition into it validated as "map:0452 is outside this profile's 0..451
+# declared map-entry range" while it built perfectly. The Workbench refuses to
+# build a project that did not validate, so the flagship composition was
+# unbuildable through the product's own UI.
+
+
+def test_a_project_that_authors_a_map_and_a_door_into_it_validates_clean(
+        project, catalog, canonical, profile):
+    from tools.webfoot.map_transitions import (read_map_transitions,
+                                               set_transition_creations)
+
+    write_authored_maps(project, _one())
+    corpus = read_map_transitions(canonical, profile,
+                                  authored=_facts(canonical, profile))
+    identity, creation = _door(corpus)
+    assert set_transition_creations(project, profile, canonical,
+                                    {identity: creation}) is True
+
+    report = validate_project(project, _rom_path(), catalog)
+
+    assert report.problems == ()
+    assert report.passed
+
+
+def test_a_project_that_retargets_a_door_to_its_own_map_validates_clean(
+        project, catalog, canonical, profile):
+    from tools.webfoot.map_transitions import (MapIdentity, TransitionEdit,
+                                               read_map_transitions,
+                                               set_transition_edits)
+
+    document = AuthoredMaps(maps={
+        NAME: AuthoredMap(NAME, RETARGET_DONOR, KEY[0], KEY[1])})
+    write_authored_maps(project, document)
+    corpus = read_map_transitions(canonical, profile,
+                                  authored=_facts(canonical, profile, document))
+    door = next(
+        entry.identity for entry in corpus.for_map(MapIdentity(SOURCE))
+        if corpus.destination(entry.identity).index == RETARGET_DONOR
+    )
+    set_transition_edits(project, profile, canonical,
+                         {door: TransitionEdit(destination=MapIdentity(CANONICAL_ROWS))})
+
+    report = validate_project(project, _rom_path(), catalog)
+
+    assert report.problems == ()
+    assert report.passed
+
+
 @pytest.fixture(scope="module")
 def doored(tmp_path_factory, extracted, catalog, canonical, identified, profile):
     """One project that authors a map AND a door into it, built once."""

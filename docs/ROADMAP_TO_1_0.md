@@ -48,10 +48,12 @@ animation slot draws from, and the existing object slot the appended actor start
 its behaviour from - and writes `sprites/sprites.toml`, the document the ordinary
 build consumes.
 
-Next: **Phase 3C - appearance authoring. NEXT, not started.** Nothing was
-implemented: the appearance table's record count appears as compiled-in engine
-bounds with no terminator, so whether it can be grown at all is an open question
-rather than a scheduled task.
+Next: **Phase 5 - the creator-UX / release-candidate phase.** Every capability in the
+fixed contract is shipped, appearance authoring included: the table is re-emitted
+above the original ROM's end with the authored records appended, and a driven session
+watched the retail search return one (Phase 3C, section 13). The table's record count
+appears as compiled-in engine bounds with no terminator, which is a published limit of
+the shipped surface rather than an open question.
 
 > **North star.** An author should be able to create a genuinely new playable
 > piece of Buu's Fury content without manually editing a ROM offset.
@@ -77,10 +79,10 @@ becoming an endless roadmap of its own.
 The recommended path to 24/24 is: stabilize the Workbench; finish map editing
 (tile painting -> chunk creation -> resize/layers -> warps) - **now complete**;
 finish graphics authoring (graphics import - **shipped 2026-10-03**;
-sprites/animations/frames - **shipped 2026-10-07**; then appearances -
-**next, not started**); then make new-map creation the final composition
-capability. After 24/24, run a creator-UX/release-candidate phase and a final
-v1.0 ship phase.
+sprites/animations/frames - **shipped 2026-10-07**; appearances -
+**shipped 2026-10-07**); then make new-map creation the final composition
+capability - **shipped 2026-10-07**, completing 24/24. The work in flight is the
+creator-UX/release-candidate phase, and after that the v1.0 ship phase.
 
 ## What this document is, and what it is not
 
@@ -187,8 +189,9 @@ and its gate are section 10.
 > addressability proof**, not scavenging "empty-looking" retail bytes.
 
 Checkpoint A measured only **256 bytes** as production-safe canonical free space.
-Thirteen of sixteen inventoried domains can encode above-EOF addresses, but only
-packed dialogue is runtime-proven there today. The allocator therefore has a
+Thirteen of sixteen inventoried domains can encode above-EOF addresses, and four
+families are runtime-proven there today: packed dialogue, map chunks/layers,
+connections/warps and graphics containers (section 13). The allocator therefore has a
 global storage model plus a domain-specific addressability policy; it does not
 pretend the full 8 MiB expansion is universally usable.
 
@@ -346,10 +349,14 @@ dependency order, not the naming, is what must be honoured.
   animation resources. **COMPLETE** 2026-10-07: the Graphics tab's authored-sprite
   strip writes `sprites/sprites.toml`; piece/OAM composition, frame geometry and
   frame timing stay outside the modelled contract.
-- `APPEARANCE-AUTHORING-001` - new appearance definitions and bindings. **NEXT**,
-  not started: the table's record count appears as compiled-in engine bounds with
-  no terminator, so growth is an open question.
+- `APPEARANCE-AUTHORING-001` - new appearance definitions and bindings.
+  **COMPLETE** 2026-10-07: the table is re-emitted above the original ROM's end with
+  the authored records appended and the words and bounds that reach it rewritten, and
+  a driven session watched the retail search return an authored record. The record
+  count is compiled-in engine bounds with no terminator, which is a published limit
+  of the shipped surface.
 - `MAP-AUTHOR-NEW-001` - new map/scene creation, the 24/24 capability.
+  **COMPLETE** 2026-10-07.
 - `GOLDEN-AUTHORING-SLICE-001` - end-to-end dogfood project.
 - `PRODUCT-HARDENING-RC1-001` - recovery, packaging, patch export, docs,
   shipping-path audit closure.

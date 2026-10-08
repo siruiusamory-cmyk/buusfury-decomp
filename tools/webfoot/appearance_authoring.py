@@ -169,9 +169,10 @@ def new_records(profile, definitions, *, authored_sprite_id: int | None = None,
     sibling tables before anything is planned.
 
     The checks are the whole admissibility rule: a text pair that resolves inside
-    the declared text table, a sprite id the accessor resolves, and a sprite id no
-    canonical record already selects. A value outside any of them is refused
-    rather than written and left for the engine to misread.
+    the declared text table, a sprite id the accessor resolves, and a sprite id that
+    is either selected by no canonical record or deliberately taken over by this
+    definition's own ``override``. A value outside any of them is refused rather
+    than written and left for the engine to misread.
 
     The sprite-id rule is not cosmetic. The engine's search at 0x08027948 has two
     loops and the first one runs first, and what each returns depends on the

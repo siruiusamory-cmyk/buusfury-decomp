@@ -24,7 +24,8 @@ from PySide6.QtWidgets import (QCheckBox, QComboBox, QDialog, QDialogButtonBox,
 
 from .. import appearance_authoring as appearance_sdk
 from .. import appearances as appearance_format
-from ..appearance_authoring import AppearanceAuthoringError
+from ..appearance_authoring import (AppearanceAuthoringError,
+                                   UNMATCHABLE_SPRITE_ID)
 from ..project.model import (AuthoredAppearance, AuthoredAppearances, ProjectError,
                              read_project)
 from . import theme
@@ -154,15 +155,34 @@ class AppearanceAuthoringDialog(QDialog):
         #: The record the engine actually returns for a sprite: the first one with a
         #: negative stat index if any, because loop 1 returns that before anything
         #: else, otherwise the first record that selects it.
-        resolves: dict[int, int] = {}
-        takeable: dict[int, bool] = {}
+        first_any: dict[int, int] = {}
+        first_negative: dict[int, int] = {}
         for index, record in enumerate(records):
-            if record.sprite_id not in resolves or record.stat_index < 0:
-                resolves.setdefault(record.sprite_id, index)
+            first_any.setdefault(record.sprite_id, index)
             if record.stat_index < 0:
-                resolves[record.sprite_id] = index
-            takeable[record.sprite_id] = (
-                takeable.get(record.sprite_id, True) and record.stat_index >= 0)
+                first_negative.setdefault(record.sprite_id, index)
+        resolves = {sprite: first_negative.get(sprite, index)
+                    for sprite, index in first_any.items()}
+        takeable = {sprite: sprite not in first_negative for sprite in first_any}
+
+        def sprite_label(sprite_id: int) -> str:
+            name_index = first_by_sprite.get(sprite_id)
+            suffix = strings.get(name_index, "") if name_index is not None else ""
+            text = f"sprite {sprite_id}" + (f" - {suffix}" if suffix else "")
+            if sprite_id == extra:
+                text += " (the authored sprite identity)"
+            if sprite_id == UNMATCHABLE_SPRITE_ID - 3:
+                # The engine searches for 149 as 146 before comparing anything, so a
+                # takeover of 146 also redirects whatever carries 149.
+                text += " (also the id the engine remaps 149 onto)"
+            record = resolves.get(sprite_id)
+            if record is None:
+                return text
+            if takeable.get(sprite_id, False):
+                return text + f" (retail record {record})"
+            return text + (f" (retail record {record}, already resolved by a "
+                           f"negative-stat record: cannot be taken over)")
+
         listed = False
         try:
             offered = authoring.authorable_sprite_ids(
@@ -171,29 +191,14 @@ class AppearanceAuthoringDialog(QDialog):
             offered = appearance_format.sprite_vocabulary(image, profile, extra=extra)
             listed = True          # the vocabulary already carries the retail ids
         for sprite_id in offered:
-            name_index = first_by_sprite.get(sprite_id)
-            suffix = strings.get(name_index, "") if name_index is not None else ""
-            text = f"sprite {sprite_id}" + (f" - {suffix}" if suffix else "")
-            if sprite_id == extra:
-                text += " (the authored sprite identity)"
-            self._sprite.addItem(text, sprite_id)
-        # The retail-selected ids are listed last and labelled with the record that
-        # resolves them, because taking one over is a deliberate choice. Selecting
-        # one without the opt-in, or selecting one that can never be taken over, is
-        # refused by the same validation the build runs.
+            # The label handles an id no canonical record selects as well: it simply
+            # has no retail record to name.
+            self._sprite.addItem(sprite_label(sprite_id), sprite_id)
+        # The retail-selected ids are listed unless the vocabulary above already
+        # carried them, labelled with the record that resolves each one.
         if not listed:
             for sprite_id in appearance_format.sprite_vocabulary(image, profile):
-                name_index = first_by_sprite.get(sprite_id)
-                suffix = strings.get(name_index, "") if name_index is not None else ""
-                record = resolves.get(sprite_id)
-                if takeable.get(sprite_id, False):
-                    bound = f" (retail record {record})" if record is not None else ""
-                else:
-                    bound = (f" (retail record {record}, already resolved by a "
-                             f"negative-stat record: cannot be taken over)")
-                self._sprite.addItem(
-                    f"sprite {sprite_id}" + (f" - {suffix}" if suffix else "") + bound,
-                    sprite_id)
+                self._sprite.addItem(sprite_label(sprite_id), sprite_id)
         # The record whose index is edited keeps its own values selectable even
         # when the image no longer offers them, so opening the dialog is never a
         # silent rewrite of a committed definition.

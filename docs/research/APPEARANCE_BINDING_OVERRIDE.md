@@ -128,3 +128,23 @@ Two tests were added at its request: one mixing an opted-in definition with a
 colliding one that did not opt in, which a rule reading the opt-in once per
 document would wrongly pass; and one using a negative-stat id, which the previous
 helper never produced.
+
+## Known limits of this contract
+
+Recorded rather than left implicit, because each is a way the surface can mislead:
+
+- **An opt-in on an id no canonical record selects does nothing.** The flag is
+  accepted and the build is unaffected, because there is no retail resolution to
+  take over. It is harmless, but it is not a silent takeover and the document says
+  so; a reader of the build sees an ordinary appended record.
+- **Taking over sprite 146 also redirects whatever carries 149.** The engine
+  searches for 149 as 146 at `0x0802794E`-`0x0802795E` before it compares anything, so
+  the two share a lookup. The surface labels 146 with that fact, and 149 itself
+  remains unauthorable because a request for it is rewritten before any record is
+  examined.
+- **The takeover applies to the sprite-only search.** On the stat-matched path an
+  appended record is never returned, so actors looked up that way keep their retail
+  resolution. The warning states this rather than claiming every lookup changes.
+- **No canonical id currently has two negative-stat records**, so the label that
+  names the resolving record is unambiguous today. If one ever did, the label names
+  the first, which is what the engine returns.

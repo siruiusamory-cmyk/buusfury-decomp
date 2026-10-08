@@ -191,3 +191,65 @@ def test_a_cancelled_project_dialog_discards_nothing(session, catalog, monkeypat
 
     assert asked
     assert window._maps.unsaved_edit_count() == 1, "nothing was discarded with it"
+
+
+# --- every entry point passes the one gate -----------------------------------
+#
+# The Build panel has its own Open Project and Extract buttons beside the shell's
+# File menu. They used to call the dialogs directly, so the panel could change the
+# project with no prompt while the menu asked - the same defect, reachable one
+# button to the left.
+
+
+def test_the_build_panels_own_open_button_is_gated(session, catalog, tmp_path, monkeypatch):
+    from tools.webfoot.workbench import build_panel as bp
+
+    window = _window(session, catalog)
+    asked = _answer(monkeypatch, QMessageBox.StandardButton.Cancel)
+    picked = []
+    monkeypatch.setattr(
+        bp.QFileDialog,
+        "getExistingDirectory",
+        staticmethod(lambda *a, **k: picked.append(a) or str(tmp_path)),
+    )
+    original = session.project_dir
+
+    window._build.open_project_dialog()  # exactly what the panel's button calls
+
+    assert asked, "the panel's own entry point must pass the unsaved-work guard"
+    assert picked == [], "Cancel must not even open the directory picker"
+    assert session.project_dir == original
+    assert window._maps.unsaved_edit_count() == 1
+
+
+def test_the_build_panels_own_extract_button_is_gated(session, catalog, monkeypatch):
+    from tools.webfoot.workbench import build_panel as bp
+
+    window = _window(session, catalog)
+    asked = _answer(monkeypatch, QMessageBox.StandardButton.Cancel)
+    monkeypatch.setattr(
+        bp.QFileDialog, "getExistingDirectory", staticmethod(lambda *a, **k: "")
+    )
+
+    window._build.extract_project_dialog()
+
+    assert asked, "the panel's own Extract button must pass the same guard"
+    assert window._maps.unsaved_edit_count() == 1
+
+
+def test_a_file_menu_project_change_asks_exactly_once(session, catalog, tmp_path, monkeypatch):
+    """One gate: the shell must not ask and then have the panel ask again."""
+    from tools.webfoot.workbench import build_panel as bp
+
+    window = _window(session, catalog)
+    asked = _answer(monkeypatch, QMessageBox.StandardButton.Cancel)
+    monkeypatch.setattr(
+        bp.QFileDialog,
+        "getExistingDirectory",
+        staticmethod(lambda *a, **k: str(tmp_path)),
+    )
+
+    window._action_open_project.trigger()
+
+    assert len(asked) == 1, "exactly one prompt for one project change"
+    assert window._maps.unsaved_edit_count() == 1

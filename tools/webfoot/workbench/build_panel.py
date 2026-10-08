@@ -119,6 +119,11 @@ class BuildPanelTab(QWidget):
         super().__init__()
         self._session = session
         self._catalog = catalog
+        #: CQA-27: the shell installs its unsaved-work guard here, so the panel's own
+        #: buttons and the shell's File menu cannot disagree about whether a project
+        #: change may proceed. None means the panel has no shell around it, and the
+        #: step runs unguarded, which is what a bare panel has always done.
+        self.projectChangeGate = None
         self._open_button = QPushButton("Open Project")
         self._open_button.clicked.connect(self._on_open_project)
 
@@ -234,12 +239,25 @@ class BuildPanelTab(QWidget):
         self.open_project_dialog()
 
     def open_project_dialog(self) -> None:
-        """Choose an extracted project directory.
+        """Choose an extracted project directory, behind the unsaved-work guard.
 
         One implementation, shared by the tab's button and the shell toolbar, so
         the global action and the panel cannot disagree about what opening a
-        project does.
+        project does - including whether it may discard staged work. The guard is
+        asked HERE rather than by each caller, which is what left the panel's own
+        button unguarded when only the menu action carried it.
         """
+        self._project_change("Opening another project", self._choose_project)
+
+    def _project_change(self, action: str, run) -> None:
+        """Run a project-setting step behind the shell's guard, when there is one."""
+        gate = self.projectChangeGate
+        if gate is None:
+            run()
+            return
+        gate(action, run)
+
+    def _choose_project(self) -> None:
         chosen = QFileDialog.getExistingDirectory(self, "Open Project")
         if not chosen:
             return
@@ -264,8 +282,15 @@ class BuildPanelTab(QWidget):
         self.extract_project_dialog()
 
     def extract_project_dialog(self) -> None:
-        """Write a project from the open ROM. One implementation, shared by the
-        panel's own button and the shell's File menu."""
+        """Write a project from the open ROM, behind the unsaved-work guard.
+
+        One implementation, shared by the panel's own button and the shell's File
+        menu. The guard is asked here for the same reason `open_project_dialog`
+        asks it: every entry point passes through one gate.
+        """
+        self._project_change("Extracting a project", self._choose_extract_destination)
+
+    def _choose_extract_destination(self) -> None:
         if not self._rom_open():
             QMessageBox.information(self, "Extract", "Open a ROM first.")
             return
@@ -392,8 +417,15 @@ class BuildPanelTab(QWidget):
             # SAFETY: every path is re-checked against the source ROM before the
             # one irreversible act here. The pre-build guard proved the image; the
             # manifest is derived from it and is judged by the same policy.
+            # SAFETY: every path this branch will WRITE is re-checked against the
+            # source ROM, and that includes the move-aside destinations the rename
+            # below uses: a file sitting at a staging name would be overwritten by
+            # it, so the staging names are judged by the same policy as the
+            # artefacts. `authored_image.save_authored_image` refuses the same set
+            # for its own staging names.
+            backups = tuple(staging_path(path) for path in occupied)
             unsafe = [
-                path for path in occupied
+                path for path in (*occupied, *backups)
                 if not is_safe_output_path(path, self._session.rom_path)
             ]
             if unsafe:
@@ -413,8 +445,9 @@ class BuildPanelTab(QWidget):
             # confirmation is no longer offered, never asks the user to approve an
             # operation that cannot be allowed.
             try:
-                refuse_canonical_destination(
-                    output_path, self._session.profile.identity.sha256)
+                for candidate in (*occupied, *backups):
+                    refuse_canonical_destination(
+                        candidate, self._session.profile.identity.sha256)
             except AuthoredImageError as exc:
                 QMessageBox.critical(self, "Build refused", str(exc))
                 return

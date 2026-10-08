@@ -89,6 +89,11 @@ class MainWindow(QMainWindow):
         # Not destinations: reached from an editor or from a project action.
         self._scene = SceneTab(session)
         self._build = BuildPanelTab(session, catalog)
+        # CQA-27: the shell owns the unsaved-work policy and the panel asks it before
+        # every project change, whichever button or menu action started one. The
+        # panel's own Open Project and Extract buttons used to change the project
+        # with no prompt at all.
+        self._build.projectChangeGate = self._project_change
         self._launcher = LauncherTab(session)
 
         #: Editor name -> host, so the strip and the switcher share one map.
@@ -288,21 +293,13 @@ class MainWindow(QMainWindow):
         self._action_open_project = QAction("Open Project\u2026", self)
         self._action_open_project.setShortcut(QKeySequence("Ctrl+Shift+O"))
         self._action_open_project.setStatusTip("Open an extracted Webfoot project")
-        self._action_open_project.triggered.connect(
-            lambda: self._project_change(
-                "Opening another project", self._build.open_project_dialog
-            )
-        )
+        self._action_open_project.triggered.connect(self._build.open_project_dialog)
 
         self._action_extract_project = QAction("Extract Project\u2026", self)
         self._action_extract_project.setStatusTip(
             "Write a project from the open ROM, which is never modified"
         )
-        self._action_extract_project.triggered.connect(
-            lambda: self._project_change(
-                "Extracting a project", self._build.extract_project_dialog
-            )
-        )
+        self._action_extract_project.triggered.connect(self._build.extract_project_dialog)
 
         self._action_output_dir = QAction("Output Directory\u2026", self)
         self._action_output_dir.setStatusTip("Where a built ROM is written")
@@ -819,6 +816,10 @@ class MainWindow(QMainWindow):
         guard runs before the directory dialog, so cancelling it changes nothing,
         and the discard happens only once the project has actually moved - a user
         who cancels inside the picker keeps every staged edit.
+
+        The Build panel installs this as its `projectChangeGate`, so the panel's own
+        buttons and the File menu both pass through it and neither can bypass the
+        policy.
         """
         if not self._confirm_discard_staged_edits(action):
             return

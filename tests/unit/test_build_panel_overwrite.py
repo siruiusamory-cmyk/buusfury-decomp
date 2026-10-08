@@ -37,6 +37,7 @@ pytest.importorskip("PySide6")
 
 from tools.webfoot import build as build_sdk  # noqa: E402
 from tools.webfoot import write  # noqa: E402
+from tools.webfoot.authored_image import staging_path  # noqa: E402
 from tools.webfoot.workbench import build_panel as bp  # noqa: E402
 from tools.webfoot.workbench.build_panel import BuildPanelTab, output_file_for  # noqa: E402
 from tools.webfoot.workbench.session import Session  # noqa: E402
@@ -400,3 +401,93 @@ def test_a_failed_rebuild_keeps_the_previous_output(tmp_path, monkeypatch, _app)
             "no staging artefact may be left behind")
         assert session.last_build is first_build
         assert session.rom_path.read_bytes() == b"\x00" * 64
+
+
+def test_a_first_build_that_fails_with_a_bare_oserror_is_reported(
+    tmp_path, monkeypatch, _app
+):
+    """The FIRST attempt's handler names OSError too, not only the retry's.
+
+    `emit_image` raises a bare OSError from its own staging (a full disk, a
+    read-only output directory). It is neither a BuildError nor a WriteError, so a
+    handler that omits it turns the click into a traceback with no dialog.
+    """
+    panel, session, output_path = _make_panel(tmp_path, _app)
+    session.rom_path.write_bytes(b"\x00" * 64)
+    criticals = []
+
+    def failing_build(project_dir, rom_path, out, catalog):
+        raise OSError("the output directory is not writable")
+
+    monkeypatch.setattr(bp.build_sdk, "build_project", failing_build)
+    monkeypatch.setattr(
+        QMessageBox, "critical", staticmethod(lambda *a, **k: criticals.append(a)))
+
+    panel._on_build()  # must not raise
+
+    assert criticals, "a first-build OSError must reach the user as a dialog"
+    assert "not writable" in criticals[0][2]
+
+
+def test_a_stale_manifest_with_no_image_can_still_be_replaced(
+    tmp_path, monkeypatch, _app
+):
+    """The gate judges the artefact set, so a lone manifest is not a dead end."""
+    panel, session, output_path = _make_panel(tmp_path, _app)
+    session.rom_path.write_bytes(b"\x00" * 64)
+    manifest_path = build_sdk.manifest_path_for_build(
+        build_sdk.MANIFEST_BESIDE_OUTPUT, output_path)
+    manifest_path.write_text('{"stale": "manifest"}', encoding="utf-8")
+
+    counter = {"n": 0}
+    criticals = []
+    monkeypatch.setattr(bp.build_sdk, "build_project", _writer_backed_build(counter))
+    monkeypatch.setattr(
+        QMessageBox, "question", staticmethod(lambda *a, **k: QMessageBox.Yes))
+    monkeypatch.setattr(
+        QMessageBox, "critical", staticmethod(lambda *a, **k: criticals.append(a)))
+
+    panel._on_build()
+
+    assert not criticals, criticals
+    assert output_path.is_file(), "the build must be allowed to replace a lone manifest"
+    assert counter["n"] == 2, "the first attempt is refused, the retry writes"
+
+
+def test_a_canonical_copy_at_a_staging_name_is_never_overwritten(
+    tmp_path, monkeypatch, _app
+):
+    """SAFETY: the move-aside destination is judged too.
+
+    The rename that moves an old artefact aside would overwrite whatever sits at
+    the staging name. A clean copy of the canonical ROM there is a ROM, not a spare
+    slot, so the whole overwrite must refuse with nothing moved.
+    """
+    panel, session, output_path = _make_panel(tmp_path, _app)
+    session.rom_path.write_bytes(_CANONICAL_BYTES)
+    manifest_path = build_sdk.manifest_path_for_build(
+        build_sdk.MANIFEST_BESIDE_OUTPUT, output_path)
+    output_path.write_bytes(b"OLD")
+    manifest_path.write_text('{"stale": "manifest"}', encoding="utf-8")
+    staging = staging_path(output_path)
+    staging.write_bytes(_CANONICAL_BYTES)
+    staged_before = staging.read_bytes()
+    published_before = sorted(path.name for path in output_path.parent.iterdir())
+
+    counter = {"n": 0}
+    criticals = []
+    monkeypatch.setattr(bp.build_sdk, "build_project", _writer_backed_build(counter))
+    monkeypatch.setattr(
+        QMessageBox, "question", staticmethod(lambda *a, **k: QMessageBox.Yes))
+    monkeypatch.setattr(
+        QMessageBox, "critical", staticmethod(lambda *a, **k: criticals.append(a)))
+
+    panel._on_build()
+
+    assert criticals, "a canonical copy at the staging name must refuse the overwrite"
+    assert "canonical" in criticals[0][2], criticals
+    assert counter["n"] == 1, "no rebuild may run after the refusal"
+    assert staging.read_bytes() == staged_before, "the canonical copy must survive"
+    assert output_path.read_bytes() == b"OLD", "nothing may be moved"
+    assert manifest_path.read_text(encoding="utf-8") == '{"stale": "manifest"}'
+    assert sorted(path.name for path in output_path.parent.iterdir()) == published_before

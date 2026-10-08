@@ -23,7 +23,7 @@ applied, character for character outside them.
 
 HOW INDEPENDENT THIS IS, stated plainly. The regions come from the splicer's own
 `substitution_regions` and `local_replacement`, so the oracle re-derives part of the
-builder's answer, and that is a real limit: it checks the WRITE, not the INTENT. Five
+builder's answer, and that is a real limit: it checks the WRITE, not the INTENT. Six
 checks do not depend on the builder at all, and they are the ones that would catch a
 build that wrote the wrong thing, or a report that described a different build:
 
@@ -162,6 +162,13 @@ def main() -> int:
         raise SystemExit(
             f"the splice used {splice_report.get('tokens')} and this check was given "
             f"{list(args.tokens)}; they must be the same dictionary in id order"
+        )
+    if "map_sha256" not in splice_report:
+        # A report made before the map digest was recorded. Saying so beats reporting a
+        # mismatch against a digest that was never written.
+        raise SystemExit(
+            "the splice report carries no map_sha256: it predates the map digest. "
+            "Re-run the splicer to produce a report this check can tie to a map"
         )
     if splice_report.get("map_sha256") != map_digest:
         # The map is private and lives outside the repository, so its digest is the
@@ -375,19 +382,10 @@ def main() -> int:
             print(f"    want   : {want[max(0, first - 25):first + 35]!r}")
             print(f"    now    : {now[max(0, first - 25):first + 35]!r}")
 
-    if args.report:
-        Path(args.report).write_text(json.dumps({
-            "counts": {name: len(value) for name, value in findings.items()},
-            "records_examined": seen,
-            "substitution_regions": sum(len(spans) for spans in regions.values()),
-            "records_wrong": [
-                {"selector": selector, "start": start, "length": length,
-                 "stored_length_preserved": same_length, "retail": retail,
-                 "want": want, "now": now, "first_divergence": first}
-                for selector, start, length, same_length, retail, want, now, first
-                in findings["record_WRONG"]],
-        }, indent=2), encoding="utf-8")
-
+    # The refused-record failures are recorded BEFORE the report is written, or a
+    # failing run would publish a report saying nothing was wrong while its exit code
+    # said otherwise, and a consumer reading the report would see success.
+    refused_failures: list[dict] = []
     for failure_kind in ("neither", "still_at_retail"):
         if refused_outcomes[failure_kind]:
             # A refused record left at retail text is a rename that did not land, and
@@ -396,12 +394,27 @@ def main() -> int:
             print(f"FAILED: {len(refused_outcomes[failure_kind])} refused record(s) "
                   f"{'showing neither the new name nor retail text' if failure_kind == 'neither' else 'still at retail text'}: "
                   f"{refused_outcomes[failure_kind][:3]}")
-            findings["record_WRONG"].append(("refused", failure_kind, 0, False, "", "",
-                                             "", 0))
+            refused_failures.append({"kind": failure_kind,
+                                     "records": refused_outcomes[failure_kind]})
 
-    # Fail closed: one record whose characters changed outside a substituted name is
-    # the thing this tool exists to refuse.
-    return 1 if findings["record_WRONG"] or findings["unknown_token"] else 0
+    if args.report:
+        Path(args.report).write_text(json.dumps({
+            "counts": {name: len(value) for name, value in findings.items()},
+            "records_examined": seen,
+            "substitution_regions": sum(len(spans) for spans in regions.values()),
+            "refused_record_failures": refused_failures,
+            "records_wrong": [
+                {"selector": selector, "start": start, "length": length,
+                 "stored_length_preserved": same_length, "retail": retail,
+                 "want": want, "now": now, "first_divergence": first}
+                for selector, start, length, same_length, retail, want, now, first
+                in findings["record_WRONG"]],
+        }, indent=2), encoding="utf-8")
+
+    # Fail closed: one record whose characters changed outside a substituted name, or
+    # one refused rename that did not land, is what this tool exists to refuse.
+    return 1 if (findings["record_WRONG"] or findings["unknown_token"]
+                 or refused_failures) else 0
 
 
 if __name__ == "__main__":

@@ -89,62 +89,28 @@ Nothing in the roster relocation or its census is touched by this ticket.
 
 ## Runtime acceptance
 
-The chain to observe, through the explicit opt-in path only:
+The chain, and what was observed through the explicit opt-in path
+(`build/roster001/takeover.gba`, sha256 `DE9660F2...`, built from a document whose
+every definition carries `override = true`):
 
-```
-retail actor using a colliding sprite id
-  -> explicit authored override enabled
-  -> resolver returns an authored appearance >= 232
-  -> post-canonical seen flag written
-  -> authored appearance data visibly consumed
-```
+| link | observation | where |
+| --- | --- | --- |
+| a retail actor using a colliding sprite id | objects `0x086B1DE8`, `0x086B1FE0`, `0x086B23D0` carry sprite ids 209, 211 and 215 | `takeover-run2` |
+| an explicit authored override enabled | those records exist only because the document opted in; the same ids are refused without it | build and tests |
+| the resolver returns an authored appearance >= 232 | `resolved index=232/233/235 past_canonical=true`, with `compare index=232 matched=true` | `takeover-run2`, frames 3466 and 4302 |
+| the authored appearance data is visibly consumed | the Scouter's character screen shows **GOKU** and the Goku description for an object whose retail record says **Fighter** / "This is a martial artist from the Other World" | `takeover-run2`, `at-04000.png` |
+| the post-canonical seen flag is written | **not observed on this build.** It was observed on the earlier engine-identical build (appended record at index 232, sprite 209, `+0x0C = -1`), whose only difference is the authoring-side gate the engine never sees: `flag_write index=232` and `flag index=232 value=0x01` | earlier campaign |
 
-The takeover observations recorded before this ticket existed are supporting
-evidence only until the same behaviour is reproduced this way.
+The strings settle the fourth link because they cannot be confused. Canonical record
+42 binds text 988, which reads "Fighter"; appended record 232 binds text 1188, which
+reads "Goku" and whose successor 1189 is the Goku description. A screen showing the
+second pair for an object whose retail record holds the first is the authored record
+being displayed.
 
-## The review, and what it changed
-
-The first focused review of this contract returned **NOT SOUND**, with two blocking
-findings, both verified here before the fix:
-
-1. **The override was accepted for 88 ids where nothing is taken over.** An id a
-   negative-stat canonical record selects is resolved by loop 1 to *that* record
-   before any appended one, so the opt-in could not do anything. This inverted part
-   of the earlier reasoning: the sign of the canonical record's stat decides whether
-   an id is overridable at all, and the ids that *can* be taken over are exactly
-   those whose canonical records are all non-negative. Those 88 ids are now refused
-   outright.
-2. **The two-loop description covered only a zero second argument.** With the
-   argument set, an appended record is never returned, so the surface's warning
-   overstated the effect. The wording now names the sprite-only lookup and says that
-   stat-matched lookups are unaffected, and the docstrings state both cases.
-
-Also fixed from the same review: duplicate entries in the sprite list when the
-canonical vocabulary is the fallback, a label that named the first record selecting
-an id rather than the one that resolves it, and wording that still said colliding
-ids are refused without mentioning the opt-in.
-
-Two tests were added at its request: one mixing an opted-in definition with a
-colliding one that did not opt in, which a rule reading the opt-in once per
-document would wrongly pass; and one using a negative-stat id, which the previous
-helper never produced.
-
-## Known limits of this contract
-
-Recorded rather than left implicit, because each is a way the surface can mislead:
-
-- **An opt-in on an id no canonical record selects does nothing.** The flag is
-  accepted and the build is unaffected, because there is no retail resolution to
-  take over. It is harmless, but it is not a silent takeover and the document says
-  so; a reader of the build sees an ordinary appended record.
-- **Taking over sprite 146 also redirects whatever carries 149.** The engine
-  searches for 149 as 146 at `0x0802794E`-`0x0802795E` before it compares anything, so
-  the two share a lookup. The surface labels 146 with that fact, and 149 itself
-  remains unauthorable because a request for it is rewritten before any record is
-  examined.
-- **The takeover applies to the sprite-only search.** On the stat-matched path an
-  appended record is never returned, so actors looked up that way keep their retail
-  resolution. The warning states this rather than claiming every lookup changes.
-- **No canonical id currently has two negative-stat records**, so the label that
-  names the resolving record is unambiguous today. If one ever did, the label names
-  the first, which is what the engine returns.
+The fifth link is the one gap. The message path that returns an appended record
+appends the resolved index to a list (`0x0801031E`-`0x0801032E`) and does not
+construct the appearance object, so the flag is written by a later step - in the
+earlier campaign about five hundred frames after the resolution. The opt-in session
+that reached the resolver ended roughly twelve hundred frames later, before that
+step, and the run was never continued. Recording it as a gap rather than describing
+it as satisfied.

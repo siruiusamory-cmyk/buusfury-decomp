@@ -253,7 +253,7 @@ def find_text(image: bytes, needle: str) -> list[dict]:
 
 
 def splice(base: Path, destination: Path, base_sha256: str, rows: dict[str, dict],
-           dictionary: TokenDictionary) -> dict[str, object]:
+           dictionary: TokenDictionary, map_path: Path | None = None) -> dict[str, object]:
     try:
         ensure_not_source_alias(base, destination)
     except WriteError as exc:
@@ -262,6 +262,9 @@ def splice(base: Path, destination: Path, base_sha256: str, rows: dict[str, dict
         raise SystemExit(
             f"the base is not the declared image: {sha256(base)} != {base_sha256}"
         )
+    # The map is private and outside the repository, so its digest is the only thing
+    # that can tie a published figure to the map that produced it.
+    map_digest = sha256(map_path) if map_path else "unrecorded"
     original = base.read_bytes()
     image = bytearray(original)
 
@@ -295,6 +298,9 @@ def splice(base: Path, destination: Path, base_sha256: str, rows: dict[str, dict
         # verifier both take their own --tokens and read this back, so a splice and an
         # engine patch made with different dictionaries cannot pass unnoticed.
         "tokens": list(dictionary.expansions),
+        # The rename map's digest. The map is private and lives outside the repository,
+        # so without this the v3 figures cannot be tied to a specific map at all.
+        "map_sha256": map_digest,
     }
     table = bytearray(TABLE_SLOTS * 4)
     for index in range(TABLE_SLOTS):
@@ -427,7 +433,7 @@ def main() -> int:
         raise SystemExit("--map and --out are required")
     dictionary = TokenDictionary(tuple(args.tokens))
     report = splice(base, Path(args.out), args.base_sha256.lower(),
-                    load_map(Path(args.map)), dictionary)
+                    load_map(Path(args.map)), dictionary, map_path=Path(args.map))
     print(f"derivative     : {args.out}")
     print(f"derivative sha : {report['sha256']}")
     print(f"size           : {report['bytes']} bytes")

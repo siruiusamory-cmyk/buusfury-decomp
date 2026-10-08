@@ -140,6 +140,7 @@ def main() -> int:
     spliced = Path(args.spliced).read_bytes()
     if hashlib.sha256(base).hexdigest() != args.base_sha256.lower():
         raise SystemExit("the base is not the declared image")
+    map_digest = hashlib.sha256(Path(args.map).read_bytes()).hexdigest()
     splice_report = json.loads(Path(args.splice_report).read_text(encoding="utf-8"))
     declared = splice_report.get("sha256")
     if not declared:
@@ -161,6 +162,13 @@ def main() -> int:
         raise SystemExit(
             f"the splice used {splice_report.get('tokens')} and this check was given "
             f"{list(args.tokens)}; they must be the same dictionary in id order"
+        )
+    if splice_report.get("map_sha256") != map_digest:
+        # The map is private and lives outside the repository, so its digest is the
+        # only thing that ties these numbers to the map that produced them.
+        raise SystemExit(
+            f"the splice used a map with digest {splice_report.get('map_sha256')} and "
+            f"this one is {map_digest}: these figures describe a different rename"
         )
 
     # The regions that were actually written. A record the splicer refused kept its
@@ -379,6 +387,17 @@ def main() -> int:
                 for selector, start, length, same_length, retail, want, now, first
                 in findings["record_WRONG"]],
         }, indent=2), encoding="utf-8")
+
+    for failure_kind in ("neither", "still_at_retail"):
+        if refused_outcomes[failure_kind]:
+            # A refused record left at retail text is a rename that did not land, and
+            # "neither" is an outcome nothing explains. Both are failures: this tool's
+            # job is to answer coverage, not to print it and exit zero.
+            print(f"FAILED: {len(refused_outcomes[failure_kind])} refused record(s) "
+                  f"{'showing neither the new name nor retail text' if failure_kind == 'neither' else 'still at retail text'}: "
+                  f"{refused_outcomes[failure_kind][:3]}")
+            findings["record_WRONG"].append(("refused", failure_kind, 0, False, "", "",
+                                             "", 0))
 
     # Fail closed: one record whose characters changed outside a substituted name is
     # the thing this tool exists to refuse.

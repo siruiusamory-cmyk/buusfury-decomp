@@ -242,7 +242,11 @@ Built from the verified friend baseline `v3-safe.gba`
 (`b0de6ddffe53961bcade893107b7f9a8004d684b919552480ca688207e8f56d5`, the friend's
 work plus levels, menu text, credits and the slot-292 fix, WITHOUT spoken-dialogue
 renames) by `tools/research/splice_dialogue_tokens.py` with the ten-entry shipping
-dictionary:
+dictionary and the private rename map `8fc91afc83614eb299a46cf4a62594fdc4586ee765cc4c24013a1a94e37cd138`
+(187,943 bytes, 451 records). The map is not in the repository, so that digest is the
+only thing that ties these figures to the map that produced them, and the splicer
+records it in its report and the verifier refuses a map whose digest differs
+(CONFIRMED: a map with one extra record is refused, naming both digests):
 
 * 451 records encoded, **450 written directly**, and 1 whose own write was refused:
   `3:2184:2112`, where another record's replacement disagrees at unit 594 of the span.
@@ -274,15 +278,16 @@ hang here, the instrument is not measuring the fault.
 | --- | --- | --- |
 | `v3-fixed-credits.gba` `ddfdf780` (known crash) | 1946 of 3000 | **HANG**, as expected |
 | `v3-renames-clean.gba` `328f5dcf` (shipped 236 renames) | 3000 of 3000 | SURVIVED, as expected |
-| **candidate `d401d71c` (450 renames + token engine)** | 3000 of 3000 | **SURVIVED** |
+| **candidate `d401d71c` (450 names by their own write, 1 by a neighbour)** | 3000 of 3000 | **SURVIVED** |
 
 Dialogue displays through the cutscene, and the tokens are expanded on this route:
 cexpand 6, consume 2, tokenpath 4, copier 9 liveness (LEVEL 3). The cutscene frames
 match the control where the text is unchanged, and the composed lines are coherent
-(LEVEL 4). That the renames display CORRECTLY as text is CONFIRMED by the verifier
-over the containers, not by reading them off the screenshots: the screenshots sampled
-for this record show the cutscene's own lines, and the lines sampled happen not to
-name a renamed character.
+(LEVEL 4). That the renamed records hold the right TEXT is CONFIRMED by the verifier
+reading the containers, not by these screenshots: the verifier expands tokens through
+the same decoder the encoder is built against, so it proves the decoded container, and
+what reaches the screen is INFERRED from there. The screenshots sampled for this record
+show the cutscene's own lines, and the lines sampled name no renamed character.
 
 ## 6. Reproduction
 
@@ -340,7 +345,9 @@ phases, so the launcher never owns the emulator's lifetime) and the A/B driver a
   cross it, and the verifier reports that record as displaying the renamed text. So the
   image has all 451 names, while the splicer reports 450 writes. A reader who takes the
   splicer's `applied` count as the coverage of the rename would understate it by one;
-  the verifier's refused-record line is what answers coverage.
+  the verifier's refused-record line is what answers coverage, and a refused record left
+  at retail text or holding neither text makes the verifier exit non-zero rather than
+  printing the fact and succeeding.
 * **Shrinking names are paid for with spaces.** The spaces sit immediately after the
   name they pay for and preserve every later offset, but they are visible as a wider
   gap, and extra spaces are extra wrap opportunities for the line fitter. The

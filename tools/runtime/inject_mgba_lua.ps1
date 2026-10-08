@@ -40,6 +40,17 @@ $allowedLua = @(
     [System.IO.Path]::GetFullPath(
         (Join-Path $workspaceRoot 'tools\runtime\dialogue_token_probe.lua')
     )
+    # Added by FRIEND-V3-COLD-BOOT-ACCEPTANCE-001: the cold-boot acceptance
+    # observer. Every earlier Kibito comparison loaded a savestate whose EWRAM
+    # held dialogue decoded on an older build, so each compared the image beside
+    # restored RAM. This one is for a launch with no savestate: it logs the
+    # engine's own record copies with a text snippet from each pointer register,
+    # counts the dialogue copier as a liveness channel, and screenshots every
+    # five seconds. It reads registers and memory only, arms one breakpoint,
+    # writes host files inside the run directory, and never touches input.
+    [System.IO.Path]::GetFullPath(
+        (Join-Path $workspaceRoot 'tools\runtime\friendv3_coldboot_probe.lua')
+    )
     # Added by DIALOGUE-RENDER-PATH-001 and published with the dialogue research
     # set: the dialogue input driver. It is DRIVING CODE in its own file, which is
     # why it is separate from the observer above. It presses A once every 180

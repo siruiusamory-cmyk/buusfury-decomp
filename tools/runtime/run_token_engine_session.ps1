@@ -37,8 +37,8 @@ $root = Split-Path -Parent (Split-Path -Parent $PSScriptRoot)
 # worktree, because `build/` and `roms/` are not shared with a worktree. The
 # savestate is passed in and has no default, because naming a commercial image's
 # save state in a tracked file is both a machine-specific path and a proprietary
-# filename; the emulator path has a default, and it is refused above unless the
-# binary it names is really the 0.11 build.
+# filename; the emulator path has a default, and the start phase refuses it below
+# unless the binary it names really is the 0.11 build.
 if (-not $MGBPath) {
     $MGBPath = Join-Path $root 'build\tools\mgba-dev\extracted\mGBA-build-2026-08-27-win64-9128-c65e8a3d4666b0ea68a01578232452f31b185332\mGBA.exe'
 }

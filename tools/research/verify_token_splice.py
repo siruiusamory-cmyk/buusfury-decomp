@@ -16,12 +16,23 @@ method could fail that:
 THE ORACLE, and why it is positional. Two text-matching oracles were tried first and
 both produced false failures: a table of old and new strings matches ambiguously
 ("Tien" and "Tien!" are both in it), so masking the names on each side and comparing
-the rest is not a well-defined test. Instead the splicer exports what it did as
-POSITIONS - each substitution is (start, length, replacement) inside the decoded
-container - and this rebuilds what every record must hold from those positions:
-retail inside, replacement over the region. Everything outside the regions has to be
-character-identical, in every record, and every record's STORED text has to be the
-same length so nothing can shift.
+the rest is not a well-defined test. Instead the expected text is built from the
+substitution POSITIONS - each substitution is (start, length, replacement) inside the
+decoded container - and every record must equal its retail text with those regions
+applied, character for character outside them.
+
+HOW INDEPENDENT THIS IS, stated plainly. The regions come from the splicer's own
+`substitution_regions` and `local_replacement`, so the oracle re-derives part of the
+builder's answer, and that is a real limit: it checks the WRITE, not the INTENT. Four
+checks do not depend on the builder at all, and they are the ones that would catch a
+build that wrote the wrong thing anywhere:
+
+  * the images are read through their own relocated tables, unpacking and record
+    inventory, not through anything the builder reported;
+  * every record's STORED text must be the same length as retail, which is what stops
+    any record from moving any other;
+  * each record the map names must display the map's own `new_text`, spaces aside;
+  * the spliced image's digest must be the one the splice report names.
 
 Nothing here writes an image.
 """
@@ -92,13 +103,20 @@ def main() -> int:
     spliced = Path(args.spliced).read_bytes()
     if hashlib.sha256(base).hexdigest() != args.base_sha256.lower():
         raise SystemExit("the base is not the declared image")
+    splice_report = json.loads(Path(args.splice_report).read_text(encoding="utf-8"))
+    declared = splice_report.get("sha256")
+    if declared and hashlib.sha256(spliced).hexdigest() != declared:
+        # Not just "a spliced image": the one the report describes.
+        raise SystemExit(
+            f"the spliced image is not the one the report describes: "
+            f"{hashlib.sha256(spliced).hexdigest()} != {declared}"
+        )
 
     # The regions that were actually written. A record the splicer refused kept its
     # retail bytes, so its substitutions are not in the image and must not be in the
     # oracle either - the oracle's job is to describe what the image DID, and then
     # the two checks below hold every record to it.
     refused = set()
-    splice_report = json.loads(Path(args.splice_report).read_text(encoding="utf-8"))
     if splice_report.get("tokens") != list(args.tokens):
         # The splice wrote one dictionary and this check decodes with another. The
         # verifier would still pass, because it decodes with whatever it is handed,

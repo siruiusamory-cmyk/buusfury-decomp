@@ -64,6 +64,19 @@ def test_a_thumb_bl_round_trips_across_its_whole_range() -> None:
         assert bl_decode(origin, high, low) == origin + 4 + offset
 
 
+def test_a_thumb_bl_matches_its_hand_computed_encoding() -> None:
+    """The round trip above compares the encoder with its own decoder.
+
+    This states the encoding independently, from the ARMv7-M manual's T1 layout for
+    the ARMv4T 23-bit BL: 11110 S imm10 in the first halfword and 11111 imm11 in the
+    second, where the J1 and J2 bits of the Thumb-2 form are both 1 here. A
+    displacement of +4 halfwords is S=0, imm10=0, imm11=2.
+    """
+    origin = 0x08000000
+    assert bl_encode(origin, origin + 4 + 4) == (0xF000, 0xF802)
+    assert bl_encode(origin, origin + 4 - 4) == (0xF7FF, 0xFFFE)
+
+
 def test_a_thumb_bl_refuses_a_displacement_arm7tdmi_cannot_decode() -> None:
     origin = 0x08000000
     with pytest.raises(ValueError) as caught:

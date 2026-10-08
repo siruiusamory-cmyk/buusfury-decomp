@@ -42,9 +42,11 @@ This ticket adds five things:
 4. a rename splice that is **prefix-preserving**, `tools/research/splice_dialogue_tokens.py`,
    so a rename cannot move another word (CONFIRMED for the encoding, section 4;
    the v3 result itself is UNVERIFIABLE-BY-REVIEW);
-5. the verifier that proves it, `tools/research/verify_token_splice.py`, over every
-   record the image's own inventory can name (CONFIRMED within its stated scope,
-   section 4.1).
+5. a verifier, `tools/research/verify_token_splice.py`, over every record the image's
+   own inventory can name (CONFIRMED within its stated scope, section 4.1). It checks
+   the WRITE rather than the author's intent: part of its expected text is built from
+   the splicer's own substitution functions, and section 4.1 says which of its checks
+   do not depend on the builder.
 
 ## 2. The five named expansions, checked against the design
 
@@ -56,10 +58,22 @@ be inferred from a name: `[Ya]` expands to the glyphs `Y` and `a` and to nothing
 (CONFIRMED by the codec: `TokenDictionary.entries` derives the glyphs from the text,
 `tools/webfoot/token_dictionary.py`).
 
-Checked against the design's entry rules, each of the five is admissible: two
-glyphs, below the `0xFF` class threshold, not a stream control, has a glyph record,
-expansion advance under 108 px, not a duplicate (CONFIRMED by construction: the codec
-refuses each of those, and the five pass).
+Checked against the design's entry rules, each of the five is admissible. Two of those
+rules need the image rather than the text, and they were run against the canonical
+font rather than asserted: `tools/research/check_token_dictionary.py` passes the real
+code map and the real widths into the codec, and both `build_blob(has_glyph=...)` and
+`check_widths(...)` accept the ten-entry dictionary (CONFIRMED, that tool's output).
+Every glyph of every entry has a record, and the composed advance of each entry is 10
+to 20 px against the 108 px narrowest line:
+
+| id | expansion | composed advance |
+| --- | --- | --- |
+| U+E000 | `Ya` | 16 px |
+| U+E001 | `ha` | 14 px |
+| U+E002 | `Kr` | 15 px |
+| U+E003 | `in` | 10 px |
+| U+E004 | `Ti` | 12 px |
+| U+E005..E009 | `YA` `HA` `KR` `IN` `TI` | 20, 20, 19, 12, 12 px |
 
 Two glyphs is the design's own minimum, and a two-glyph entry replaces two units
 with one, so every applied expansion saves exactly one unit. That is the whole
@@ -158,9 +172,11 @@ sharing at least one byte with another (CONFIRMED, printed by
 rewrites what its neighbours display, and a substituted name of a different length
 slides every character after it inside the span.
 
-Measured on that first build (CONFIRMED, `build/token-analysis/bleed-report.json`
-written by the verifier against it): 12 renamed records and 87 untouched records
-displayed text the map never asked for. One example, a record whose retail text is
+Measured on that first build, HISTORICAL and UNVERIFIABLE-BY-REVIEW: 12 renamed
+records and 87 untouched records displayed text the map never asked for. The report
+those figures came from was overwritten by the corrected build, so this record cannot
+reproduce them from the candidate; the figures are kept because they are why the
+method changed. One example from that build, a record whose retail text is
 `!Listen to your mother, Trunks! I need the Dragon Balls.` read
 `isten to your mother, Uub! I need the Dragon Balls.@Bulm` - a one-unit shift plus
 the neighbouring record's text.
@@ -201,6 +217,15 @@ for those records, only substituted names differ and no record's bytes moved. It
 not cover bytes that no record names, the gaps between records, or anything outside
 the containers. Those are not claimed. The tool prints this scope itself.
 
+**How independent the checks are.** The regions the expected text is built from come
+from the splicer's own functions, so this verifies the write rather than the author's
+intent: a build that substituted the wrong name consistently would satisfy it. Four
+checks do not depend on the builder, and they are the ones that catch a build writing
+the wrong thing anywhere: the images are read through their own relocated tables,
+unpacking and record inventory; every record's stored text must be the same length as
+retail; every record the map names must display the map's own `new_text`; and the
+spliced image's digest must be the one the splice report names.
+
 ## 5. The v3 candidate, and the Kibito A/B
 
 Built from the verified friend baseline `v3-safe.gba`
@@ -216,6 +241,9 @@ dictionary:
   212 tokenised only, 180 padded only, 21 exact only, and 38 mixing ways
   (16 exact+padded, 17 padded+tokenised, 4 all three, 1 exact+tokenised). So 234
   records use a token in at least one substitution and 217 pad at least one;
+* the substitution breakdown, printed by `tools/research/check_token_dictionary.py`
+  from the map itself (CONFIRMED): 84 distinct substitutions, 31 grow, 41 shrink, 12
+  unchanged, and none of the growths is unpayable;
 * every rebuilt container is byte-for-byte the same decoded size as retail
   (65348, 65474, 65464, 65334, 65322, 65394) (CONFIRMED by the tool's report);
 * derivative `cffdb81e471567fab623d3ec3a0b920cc0b5ef3f0a11bc5f3c70e5bab1395446`,
@@ -248,10 +276,15 @@ name a renamed character.
 python -m pytest tests/unit/test_token_dictionary.py tests/unit/test_dialogue_token_splice.py \
     tests/unit/test_dialogue_token_engine_build.py -q
 
+# The five expansions against the real font: glyph records and the width bound.
+python -m tools.research.check_token_dictionary --rom "<canonical>.gba" \
+    --tokens Ya ha Kr in Ti YA HA KR IN TI --map <private rename map>.json
+
 python -m tools.research.build_dialogue_token_engine --variant fitter-control \
     --rom "<canonical>.gba" \
     --expect-sha256 940AD5F01DB4465B8877DFE739510CBF34F4EA3D390F3DF13519808BC36F059E \
-    --out build/runtime-roms/dialogue-fitter-control.gba
+    --out build/runtime-roms/dialogue-fitter-control.gba \
+    --splice-report build/token-analysis/v3-token-report.json
 
 python -m tools.research.splice_dialogue_tokens --base "<friend baseline>.gba" \
     --base-sha256 <exact digest> --map <private rename map>.json \
@@ -259,14 +292,18 @@ python -m tools.research.splice_dialogue_tokens --base "<friend baseline>.gba" \
     --report build/token-analysis/v3-token-report.json
 
 python -m tools.research.verify_token_splice --base "<friend baseline>.gba" \
-    --spliced build/runtime-roms/v3.gba --map <private rename map>.json \
-    --tokens Ya ha Kr in Ti YA HA KR IN TI \
+    --base-sha256 <exact digest> --spliced build/runtime-roms/v3.gba \
+    --map <private rename map>.json --tokens Ya ha Kr in Ti YA HA KR IN TI \
     --splice-report build/token-analysis/v3-token-report.json
 
 python -m tools.research.build_dialogue_token_engine --variant token \
     --rom build/runtime-roms/v3.gba --expect-sha256 <exact digest> \
-    --out build/runtime-roms/v3-engine.gba --tokens Ya ha Kr in Ti YA HA KR IN TI
+    --out build/runtime-roms/v3-engine.gba --tokens Ya ha Kr in Ti YA HA KR IN TI \
+    --splice-report build/token-analysis/v3-token-report.json
 ```
+
+`--splice-report` is required by both the engine builder and the verifier: it is what
+ties the dictionary the image was built with to the dictionary the patch expands.
 
 Unattended runs use `tools/runtime/run_token_engine_session.ps1` (start and finish
 phases, so the launcher never owns the emulator's lifetime) and the A/B driver at

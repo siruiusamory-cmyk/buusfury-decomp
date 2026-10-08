@@ -807,22 +807,23 @@ def main() -> int:
                              "0xE000; a diagnostic build moves it onto a unit that "
                              "occurs naturally in retail text, because a token unit "
                              "never does and planting one needs a container edit")
-    parser.add_argument("--splice-report",
-                        help="the splice report whose dictionary this patch must use")
+    parser.add_argument("--splice-report", required=True,
+                        help="the splice report whose dictionary this patch must use. "
+                             "Required, because the patch and the image must expand the "
+                             "same dictionary and nothing else ties them together")
     args = parser.parse_args()
 
     base = int(args.token_base, 0)
-    if args.splice_report:
-        # The tokens a splice wrote and the tokens this patch expands must be the
-        # same list in the same order, or the patch renders a different dictionary
-        # than the image contains. Nothing else ties the two together.
-        reported = json.loads(Path(args.splice_report).read_text(encoding="utf-8")).get(
-            "tokens")
-        if reported != list(args.tokens):
-            raise SystemExit(
-                f"the splice used {reported} and this patch was given "
-                f"{list(args.tokens)}; they must be the same dictionary in id order"
-            )
+    # The tokens a splice wrote and the tokens this patch expands must be the same
+    # list in the same order, or the patch renders a different dictionary than the
+    # image contains. Nothing else ties the two together, so this is not optional.
+    reported = json.loads(Path(args.splice_report).read_text(encoding="utf-8")).get(
+        "tokens")
+    if reported != list(args.tokens):
+        raise SystemExit(
+            f"the splice used {reported} and this patch was given "
+            f"{list(args.tokens)}; they must be the same dictionary in id order"
+        )
     if base != 0xE000:
         print(f"DIAGNOSTIC     : token base moved to {base:#06x}; not a shipping build")
 

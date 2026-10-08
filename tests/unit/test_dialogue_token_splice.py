@@ -130,16 +130,24 @@ def test_the_encoder_refuses_a_substitution_the_map_does_not_perform() -> None:
         encode_record(row(old, new), DICTIONARY, {"Vegeta": "Tien"})
 
 
-@pytest.mark.parametrize("old,new", [("Goku", "Yamcha"), ("Trunks", "Uub"),
-                                     ("Goten", "Videl")])
-def test_a_reserved_code_point_in_the_map_is_refused_on_every_path(old: str,
-                                                                   new: str) -> None:
-    """Growth, shrink and same-length all take the same refusal.
-
-    Only the growth path used to check, so a U+E000..U+E0FF character in a map
-    reached the image as text on the other two.
-    """
+@pytest.mark.parametrize("old,new", [("Goku", "Yamcha"), ("Trunks", "Uub")])
+def test_a_reserved_code_point_in_the_map_is_refused_on_a_growing_or_shrinking_name(
+        old: str, new: str) -> None:
     planted = new[:1] + chr(0xE000) + new[1:]
+    with pytest.raises(Exception) as caught:
+        local_replacement(old, planted, DICTIONARY)
+    assert "cannot be authored" in str(caught.value)
+
+
+def test_a_reserved_code_point_is_refused_when_the_name_keeps_its_length() -> None:
+    """The same-length branch, where nothing grows or shrinks.
+
+    Swapping a character rather than inserting one is what keeps the length equal; an
+    earlier version of this test inserted, which made it a growth case and left the
+    branch the fix was written for untested.
+    """
+    old, planted = "Goten", "V\ue000del"
+    assert len(planted) == len(old)
     with pytest.raises(Exception) as caught:
         local_replacement(old, planted, DICTIONARY)
     assert "cannot be authored" in str(caught.value)

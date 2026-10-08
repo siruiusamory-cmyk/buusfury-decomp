@@ -15,12 +15,12 @@ marker registry by `tests/unit/test_test_gates.py`.
 
 | gate | selects | collected | needs |
 |---|---|---|---|
-| `fast` | `tests/unit`, the portable suite | 4,333 | nothing beyond the dev extra, except the six members listed below |
+| `fast` | `tests/unit`, the portable suite | 4,337 | nothing beyond the dev extra, except the six members listed below |
 | `rom` | `tests/integration`, the ROM-gated suite | 1,503 | a canonical local ROM image |
-| `workbench` | DragonByte Z UI, session and editor regressions | 608 | PySide6 (skips without it; must not skip in CI) |
+| `workbench` | DragonByte Z UI, session and editor regressions | 611 | PySide6 (skips without it; must not skip in CI) |
 | `writer` | authored images, provenance, allocation and output safety | 1,306 | nothing extra |
-| `map` | map reading, placement, rendering and layout | 1,250 | a ROM for its integration members |
-| `research` | research and runtime tooling (atlas, mGBA, logx, disassembly) | 1,118 | a ROM for its integration members |
+| `map` | map reading, placement, rendering and layout | 1,251 | a ROM for its integration members |
+| `research` | research and runtime tooling (atlas, mGBA, logx, disassembly) | 1,119 | a ROM for its integration members |
 
 `fast` and `rom` are the axis: every test is in exactly one of them, decided by
 which directory it lives in, and the two collected counts sum to the whole tree.
@@ -185,13 +185,13 @@ present:
 | `tests/integration/test_map_render_rom.py` | 3 passed, 2 skipped, ~5 s |
 
 Most recent measurement, 2026-10-08, same machine and the same installed extras,
-with no canonical image staged, so the ROM-gated members skip exactly as they do
-in CI:
+with the canonical image staged so the ROM-dependent portable members ran rather
+than skipped:
 
 | command | result |
 |---|---|
-| `python -m pytest tests/unit` (the `fast` gate) | 4,285 passed, 48 skipped, 0 failed, ~420 s |
-| `python -m pytest --collect-only` (the whole tree) | 5,836 collected |
+| `python -m pytest tests/unit` (the `fast` gate) | 4,300 passed, 37 skipped, 0 failed, ~406 s |
+| `python -m pytest --collect-only` (the whole tree) | 5,840 collected |
 
 The portable gate is the row measured as a run; the whole-tree row is a
 collection, not a run, because the full `rom` gate is the expensive integration

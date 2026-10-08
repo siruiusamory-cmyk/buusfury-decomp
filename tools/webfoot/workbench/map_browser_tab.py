@@ -3547,6 +3547,11 @@ class MapBrowserTab(QWidget):
     def _sync_editor_for_map(self, index: int) -> None:
         """Re-point the edit surface at the newly selected map."""
         self._forget_map_selection()
+        # CQA-26: the read failure belonged to the cell it was measured on, and
+        # this is the other half of the layer-switch reset - the two early
+        # returns below never reach `_select_layer`, and `_refresh_editor_state`
+        # republishes the field ahead of every other fact.
+        self._cell_read_error = ""
         editor = self._editor_session()
         if editor is None:
             self._editor_box.setToolTip(self._editor_error or "")

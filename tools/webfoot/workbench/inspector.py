@@ -251,10 +251,7 @@ class InspectorTab(QWidget):
         would write that text into the incoming project, so a moved project
         directory drops it and re-reads.
         """
-        if (
-            self._form_project is not None
-            and self._session.project_dir != self._form_project
-        ):
+        if self._session.project_dir != self._form_project:
             self._form_project = self._session.project_dir
             if self._session.selected_result is not None:
                 self._refresh_authoring(self._session.selected_result)
@@ -448,15 +445,12 @@ class InspectorTab(QWidget):
 
     def _clear(self) -> None:
         self._text.clear()
-        while self._handle_form.count():
-            item = self._handle_form.takeAt(0)
-            widget = item.widget()
-            if widget is not None:
-                # Detach instead of deleteLater(): this now runs on a session
-                # change, and a deletion queued there can fire after the window
-                # it belongs to has gone. An orphaned widget is owned by Python
-                # and freed as soon as its last reference is dropped.
-                widget.setParent(None)
+        while self._handle_form.rowCount():
+            # removeRow deletes the row's own label as well as its field. It must
+            # not be deleteLater(): this now runs on a session change, and a
+            # deletion queued there can fire after the window it belongs to has
+            # gone.
+            self._handle_form.removeRow(0)
         self._handle_rows.clear()
         self._refs.setRowCount(0)
         self._set_authoring_unavailable("Editing not available for this record yet.")

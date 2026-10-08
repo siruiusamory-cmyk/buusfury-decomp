@@ -1295,9 +1295,11 @@ class GraphicsTab(QWidget):
         sprites = self._sprites()
         if sprites is None:
             return
+        # Read the committed palette ONCE, here. Testing a flag left by an earlier
+        # repaint would let a project that broke since then export canonical
+        # colours as if they were authored.
+        rgb = self._effective_rgb(sprites)
         if self._palette_read_error:
-            # The encode would use canonical colours, so the PNG would be a
-            # plausible file stating a palette the project does not hold.
             QMessageBox.critical(
                 self,
                 "Export PNG",
@@ -1314,7 +1316,7 @@ class GraphicsTab(QWidget):
             return
         try:
             self._refuse_source_alias(path)
-            blob = sprites.export_graphic_png(self._selected, self._effective_rgb(sprites))
+            blob = sprites.export_graphic_png(self._selected, rgb)
             Path(path).write_bytes(blob)
         except (*_SDK_ERRORS, OSError) as exc:
             QMessageBox.critical(self, "Export PNG", str(exc))

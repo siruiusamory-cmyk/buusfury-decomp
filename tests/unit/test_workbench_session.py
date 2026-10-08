@@ -57,6 +57,9 @@ def test_open_rom_populates_session(catalog: RomProfileCatalog) -> None:
     assert isinstance(session.decoded_text, list)
     assert session.rom_path == Path(rom)
     assert session.rom_image == open(rom, "rb").read()
+    # The Inspector's selected record belongs to the image it was resolved
+    # against, so opening another image cannot leave the old one addressable.
+    assert session.selected_result is None
 
 
 def test_open_rom_rejects_unrecognized_bytes(

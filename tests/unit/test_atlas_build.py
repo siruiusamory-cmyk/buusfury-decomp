@@ -361,6 +361,22 @@ def test_an_ordinary_existing_atlas_destination_is_still_replaceable(tmp_path, r
     assert destination.read_text(encoding="utf-8") != "stale run\n"
 
 
+def test_the_conflicts_writer_guards_its_own_destination(tmp_path, report, monkeypatch):
+    """`write_conflicts` is public, so its destination is guarded too."""
+    import hashlib
+
+    destination = tmp_path / "atlas_conflicts.jsonl"
+    destination.write_bytes(b"canonical")
+    monkeypatch.setattr(
+        ab, "BASE_SHA256", hashlib.sha256(destination.read_bytes()).hexdigest()
+    )
+
+    with pytest.raises(ab.AtlasBuildError, match="canonical"):
+        ab.write_conflicts(report, destination)
+
+    assert destination.read_bytes() == b"canonical"
+
+
 # --- queries ------------------------------------------------------------------
 
 

@@ -1406,6 +1406,24 @@ def test_a_layer_switch_drops_a_stale_cell_read_error(edit_tab):
     assert "could not be read" not in edit_tab._status.text()
 
 
+def test_a_map_switch_drops_a_stale_cell_read_error(edit_tab, monkeypatch):
+    """N-20, the other half: a map switch never reaches `_select_layer`.
+
+    `_sync_editor_for_map` returns early when the target cannot be read, after
+    republishing the status line, so the reset has to be its first act.
+    """
+    edit_tab._edit_toggle.setChecked(True)
+    edit_tab._cell_read_error = "A cell could not be read, so nothing was staged."
+
+    def unreadable(index):
+        raise MapLayoutEditError("the map table could not be read")
+
+    monkeypatch.setattr(edit_tab.editor, "target", unreadable)
+    edit_tab._sync_editor_for_map(MAP)
+
+    assert edit_tab._cell_read_error == ""
+
+
 def test_save_as_says_what_a_rom_copy_cannot_carry(edit_tab, monkeypatch, tmp_path):
     """N-05: a ROM copy carries layout edits only.
 

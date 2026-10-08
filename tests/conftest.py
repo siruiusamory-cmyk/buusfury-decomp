@@ -371,6 +371,12 @@ def _collapsed_gui_modules() -> list[tuple[str, str]]:
     ``SKIPPED`` line, which leaves the job green while the surface it tests never
     ran. The reason is pytest's own collection report, so this is evidence of what
     happened rather than a guess made from the source text.
+
+    The rule is keyed on the reason naming PySide6, because that is what the
+    shipping GUI surface imports. A module that collapsed because some other
+    optional dependency was missing is not this guard's business; every Qt-guarded
+    unit module in the tree spells its guard ``importorskip("PySide6...")``, so all
+    of them are covered.
     """
     collapsed: list[tuple[str, str]] = []
     for key in sorted(_CANDIDATE_TEST_FILES & _ATTEMPTED_TEST_FILES):

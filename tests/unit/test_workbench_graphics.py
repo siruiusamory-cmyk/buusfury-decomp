@@ -604,6 +604,65 @@ def test_export_refuses_while_the_palette_read_failed(qapp, project, monkeypatch
     assert shown and "could not be read" in shown[0]
 
 
+def test_apply_refuses_while_the_palette_read_failed(qapp, project, monkeypatch):
+    """Applying could overwrite committed colours chosen against canonical ones."""
+    session = _session_with_sprites(project)
+    t = GraphicsTab(session)
+    t.on_session_changed()
+    t._grid.setCurrentRow(0)
+    _fail_palette_read(monkeypatch)
+    t._effective_rgb(t._session.sprites)
+    t._palette_pending[40] = (1, 2, 3)
+
+    shown: list[str] = []
+    monkeypatch.setattr(
+        "tools.webfoot.workbench.graphics_tab.QMessageBox.critical",
+        lambda *a, **k: shown.append(a[-1]),
+    )
+    monkeypatch.setattr(
+        "tools.webfoot.workbench.graphics_tab.QMessageBox.question",
+        lambda *a, **k: pytest.fail("a failed read must not reach the confirm step"),
+    )
+
+    t._on_apply()
+
+    assert t._palette_pending == {40: (1, 2, 3)}, "nothing may be written"
+    assert shown and "could not be read" in shown[0]
+
+
+def test_export_reads_the_palette_at_export_time(qapp, project, monkeypatch, tmp_path):
+    """A project that breaks between the repaint and the export must refuse.
+
+    Checking a flag left by an earlier repaint would let this export write
+    canonical colours into the PNG as if the project held them.
+    """
+    session = _session_with_sprites(project)
+    t = GraphicsTab(session)
+    t.on_session_changed()
+    t._grid.setCurrentRow(0)
+    # A successful read leaves no standing failure...
+    t._effective_rgb(t._session.sprites)
+    assert t._palette_read_error == ""
+    # ...and the project breaks before the export.
+    _fail_palette_read(monkeypatch)
+
+    out = tmp_path / "graphic_0000.png"
+    monkeypatch.setattr(
+        "tools.webfoot.workbench.graphics_tab.QFileDialog.getSaveFileName",
+        lambda *a, **k: (str(out), ""),
+    )
+    shown: list[str] = []
+    monkeypatch.setattr(
+        "tools.webfoot.workbench.graphics_tab.QMessageBox.critical",
+        lambda *a, **k: shown.append(a[-1]),
+    )
+
+    t._on_export()
+
+    assert not out.exists()
+    assert shown and "could not be read" in shown[0]
+
+
 def test_apply_clears_pixmap_cache_so_thumbnails_repaint(qapp, project, monkeypatch):
     _auto_yes(monkeypatch)
     session = _session_with_sprites(project)

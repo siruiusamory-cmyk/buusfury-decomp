@@ -130,15 +130,22 @@ def _withdraw(path: Path, digest: str) -> bool:
     return not path.exists()
 
 
-def _raise_withdrawn(path: Path, digest: str, reason: str) -> None:
-    """Refuse, and say whether the artefact this call wrote is still there."""
+def _raise_withdrawn(
+    path: Path, digest: str, reason: str, cause: BaseException | None = None
+) -> None:
+    """Refuse, and say what actually happened to the artefact this call wrote."""
     removed = _withdraw(path, digest)
-    state = (
-        f"{path} was removed rather than left as an artefact that cannot be applied"
-        if removed
-        else f"{path} could not be removed and still needs deleting by hand"
-    )
-    raise PatchVerificationError(f"the published patch {reason}; {state}")
+    if removed:
+        state = f"{path} was removed rather than left as an artefact that cannot be applied"
+    else:
+        state = (
+            f"{path} was not removed: the file there is no longer the one this run "
+            "published, so it is not this run's to delete"
+        )
+    error = PatchVerificationError(f"the published patch {reason}; {state}")
+    if cause is None:
+        raise error
+    raise error from cause
 
 
 def require_verified_source(
@@ -254,14 +261,27 @@ def read_patch_metadata(patch: bytes) -> dict:
     return document
 
 
+def _named_digest(value: object) -> str | None:
+    """One digest from a record, or a refusal when it is present and is not one."""
+    if value is None:
+        return None
+    if not isinstance(value, str):
+        raise PatchVerificationError(
+            f"the patch provenance record names a sha256 that is not a string: "
+            f"{value!r}"
+        )
+    return value
+
+
 def _recorded_image_hashes(metadata: bytes) -> tuple[str | None, str | None] | None:
     """The image digests a provenance record names, or None when it names none.
 
-    Deliberately tolerant, and deliberately independent of our schema version. A
-    patch from another tool carries metadata the format allows to be anything, and
-    refusing those would make the verifier useless for the patches a creator is
-    most likely to be handed. What must never happen is the opposite: a record that
-    DOES name digests, names the wrong ones, and is shown as if it were proved.
+    Deliberately tolerant about the *shape* of a record and deliberately independent
+    of our schema version. A patch from another tool carries metadata the format
+    allows to be anything, and refusing those would make the verifier useless for
+    the patches a creator is most likely to be handed. What must never happen is
+    the opposite: a record that DOES name digests, names the wrong ones, and is
+    shown as if it were proved.
     """
     try:
         document = json.loads(metadata.decode("utf-8"))
@@ -271,14 +291,13 @@ def _recorded_image_hashes(metadata: bytes) -> tuple[str | None, str | None] | N
         return None
     base = document.get("base")
     target = document.get("target")
-    base_sha256 = base.get("sha256") if isinstance(base, dict) else None
-    target_sha256 = target.get("sha256") if isinstance(target, dict) else None
+    base_sha256 = _named_digest(base.get("sha256")) if isinstance(base, dict) else None
+    target_sha256 = (
+        _named_digest(target.get("sha256")) if isinstance(target, dict) else None
+    )
     if base_sha256 is None and target_sha256 is None:
         return None
-    return (
-        base_sha256 if isinstance(base_sha256, str) else None,
-        target_sha256 if isinstance(target_sha256, str) else None,
-    )
+    return (base_sha256, target_sha256)
 
 
 def export_patch(
@@ -346,7 +365,9 @@ def export_patch(
         verification = verify_patch(output, rom_path, catalog)
         reproduced = verification.target_sha256 == _digest(target)
     except PatchError as error:
-        _raise_withdrawn(output, published_digest, f"does not verify ({error})")
+        _raise_withdrawn(
+            output, published_digest, f"does not verify ({error})", cause=error
+        )
     if not reproduced:
         _raise_withdrawn(output, published_digest, "does not rebuild the built image")
 

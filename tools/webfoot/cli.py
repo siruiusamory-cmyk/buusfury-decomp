@@ -1465,8 +1465,8 @@ def _print_patch_verification(result: "PatchVerification") -> None:
         print("Provenance (as recorded in the patch):")
         print(json.dumps(document, indent=2, sort_keys=True))
         print(
-            "Its source and target sha256 fields were checked against the source "
-            "and the rebuilt image above."
+            "Its source and target sha256 fields, where the record carries them, "
+            "were checked against the source and the rebuilt image above."
         )
     print()
     print(

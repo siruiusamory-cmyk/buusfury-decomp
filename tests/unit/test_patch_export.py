@@ -367,11 +367,31 @@ def test_a_withdrawal_removes_only_the_file_this_call_published(tmp_path):
 
     someone_elses = tmp_path / "theirs.bps"
     someone_elses.write_bytes(b"a different file")
-    with pytest.raises(PatchVerificationError, match="could not be removed"):
+    with pytest.raises(PatchVerificationError, match="no longer the one this run"):
         patch_module._raise_withdrawn(
             someone_elses, "0" * 64, "does not rebuild the built image"
         )
     assert someone_elses.read_bytes() == b"a different file"
+
+
+def test_a_record_whose_digest_is_not_a_digest_is_refused(synthetic):
+    """A present-but-unusable digest is a malformed record, not an absent one."""
+    rom, catalog, _ = synthetic
+    source = rom.read_bytes()
+    target = source[:100] + b"changed" + source[107:]
+    patch = rom.parent / "bad-digest.bps"
+    patch.write_bytes(
+        encode(
+            source,
+            target,
+            b'{"base": {"sha256": 123}, "target": {"sha256": ["x"]}}',
+        )
+    )
+
+    with pytest.raises(
+        PatchVerificationError, match="sha256 that is not a string"
+    ):
+        verify_patch(patch, rom, catalog)
 
 
 def test_a_derivative_cannot_be_named_as_the_output():

@@ -116,10 +116,13 @@ from tools.webfoot.map_resize import (
 from tools.webfoot.project import (
     AuthoredChunk,
     AuthoredLayer,
+    AuthoredMap,
+    AuthoredMaps,
     LayerResize,
     MapStructure,
     ProjectError,
 )
+from tools.webfoot import map_authoring as map_new
 from tools.webfoot.write import WriteError
 
 from . import theme
@@ -1235,6 +1238,158 @@ def _checkerboard() -> QBrush:
     painter.fillRect(cell, cell, cell, cell, theme.color("checker_light"))
     painter.end()
     return QBrush(pixmap)
+
+
+class NewMapCommand(QUndoCommand):
+    """One undoable new-map gesture: author a map identity, or un-author it.
+
+    MAP-NEW-AUTHORING-001. The document is project-wide rather than per-map -
+    `maps/authored.toml` holds every authored identity in one file - so the
+    command carries the whole document before and after the gesture and rewrites
+    it through the SDK's one writer. ``previous`` and ``applied`` are those two
+    documents, which is what makes undo remove exactly the definition this
+    gesture added and leave every other one alone.
+    """
+
+    def __init__(self, tab, previous: "AuthoredMaps", applied: "AuthoredMaps",
+                 text: str) -> None:
+        super().__init__()
+        self._tab = tab
+        self._previous = previous
+        self._applied = applied
+        self._first_run = True
+        self.setText(text)
+
+    def id(self) -> int:  # noqa: A003 - QUndoCommand's own name
+        return 0x4D41  # "MA", distinct from every other gesture family
+
+    def mergeWith(self, other: QUndoCommand) -> bool:
+        return False
+
+    def redo(self) -> None:
+        if self._first_run:
+            self._first_run = False
+            return
+        self._tab.write_authored_maps_document(self._applied)
+
+    def undo(self) -> None:
+        self._tab.write_authored_maps_document(self._previous)
+
+    @property
+    def previous(self) -> "AuthoredMaps":
+        return self._previous
+
+    @property
+    def applied(self) -> "AuthoredMaps":
+        return self._applied
+
+
+class NewMapDialog(QDialog):
+    """The new-map form: a durable name, a donor, and the engine's two key bytes.
+
+    Only what the author decides is a field. Everything else about the new map is
+    inherited from the donor, which is why the form offers a donor rather than a
+    root, a layer list or a table index: those are the donor's own values, and a
+    form that asked for them would be asking the author to invent engine
+    semantics nothing has resolved.
+
+    Validation is not duplicated here. The tab hands in ``preview``, which runs
+    the SDK's own plan against the open image and raises its own error type, so
+    the refusal a person reads is the one the build would raise.
+    """
+
+    def __init__(self, parent, *, donors, default_name: str, default_donor: int,
+                 default_key, preview, apply_command) -> None:
+        super().__init__(parent)
+        self.setWindowTitle("New map")
+        self.setModal(True)
+        self._preview = preview
+        self._apply = apply_command
+
+        self._name = QLineEdit(default_name)
+        self._name.setAccessibleName("New map name")
+        self._name.setToolTip(
+            "A stable project identity: a lowercase letter followed by a-z, 0-9, "
+            "'_' or '-'."
+        )
+        self._donor = QComboBox()
+        self._donor.setAccessibleName("Donor map")
+        for index, label in donors:
+            self._donor.addItem(f"map:{index:04d} \u00b7 {label}", index)
+        position = self._donor.findData(default_donor)
+        if position >= 0:
+            self._donor.setCurrentIndex(position)
+        self._donor.setToolTip(
+            "The map whose record fields, graphics, layers and chunks the new map "
+            "inherits. The engine's unresolved root fields are copied from it "
+            "rather than invented."
+        )
+        self._key_high = QSpinBox()
+        self._key_high.setRange(0, 0xFF)
+        self._key_high.setValue(default_key[0])
+        self._key_high.setPrefix("0x")
+        self._key_high.setDisplayIntegerBase(16)
+        self._key_high.setAccessibleName("New map key high byte")
+        self._key_low = QSpinBox()
+        self._key_low.setRange(0, 0xFF)
+        self._key_low.setValue(default_key[1])
+        self._key_low.setPrefix("0x")
+        self._key_low.setDisplayIntegerBase(16)
+        self._key_low.setAccessibleName("New map key low byte")
+        self._key_low.setToolTip(
+            "The engine's own map identity: the two bytes the lookup at 0x080089FC "
+            "compares and a transition record carries. They must be a pair no map "
+            "in this image uses."
+        )
+        self._summary = QLabel("")
+        self._summary.setWordWrap(True)
+        self._summary.setProperty("dbzRole", "hint")
+
+        form = QFormLayout(self)
+        form.setFieldGrowthPolicy(QFormLayout.FieldGrowthPolicy.AllNonFixedFieldsGrow)
+        form.addRow("Name", self._name)
+        form.addRow("Donor", self._donor)
+        form.addRow("Key high byte", self._key_high)
+        form.addRow("Key low byte", self._key_low)
+        form.addRow("Result", self._summary)
+
+        buttons = QDialogButtonBox(
+            QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel
+        )
+        self._ok = buttons.button(QDialogButtonBox.StandardButton.Ok)
+        buttons.accepted.connect(self._accept)
+        buttons.rejected.connect(self.reject)
+        form.addRow(buttons)
+
+        self._name.textChanged.connect(lambda *_: self._refresh())
+        self._donor.currentIndexChanged.connect(lambda *_: self._refresh())
+        self._key_high.valueChanged.connect(lambda *_: self._refresh())
+        self._key_low.valueChanged.connect(lambda *_: self._refresh())
+        self._refresh()
+
+    def request(self):
+        """The form's current request, in the order the tab's guard takes it."""
+        return (self._name.text().strip(), int(self._donor.currentData()),
+                self._key_high.value(), self._key_low.value())
+
+    def _refresh(self) -> None:
+        try:
+            summary = self._preview(*self.request())
+        except map_new.MapAuthoringError as exc:
+            self._summary.setText(f"Not supported \u00b7 {exc}")
+            self._summary.setStyleSheet(
+                f"color: {theme.color('danger').name()}; background: transparent;"
+            )
+            return
+        self._summary.setText(summary)
+        self._summary.setStyleSheet(
+            f"color: {theme.color('accent').name()}; background: transparent;"
+        )
+
+    def _accept(self) -> None:
+        """Run the tab's own SDK guard; stay open when it refuses."""
+        if self._apply(*self.request()):
+            self.accept()
 
 
 class ChunkGridOverlay(QGraphicsItem):
@@ -2510,6 +2665,16 @@ class MapBrowserTab(QWidget):
             "it already holds (this is itself undoable)"
         )
         self._revert_structure_button.clicked.connect(self.revert_selected_structure)
+        # MAP-NEW-AUTHORING-001. A project-level command rather than a per-layer
+        # one, so it sits on its own row with the other project-wide action rather
+        # than in the row of layer-structure commands, where it read as "a fifth
+        # layer gesture".
+        self._new_map_button = QPushButton("New map\u2026")
+        self._new_map_button.setToolTip(
+            "Author a new map identity: a row the image does not contain, built "
+            "from a donor map's record, root, layers and chunks"
+        )
+        self._new_map_button.clicked.connect(self.open_new_map_dialog)
 
         structure_form = QFormLayout()
         structure_form.setContentsMargins(theme.SPACE_SM, theme.SPACE_XS, theme.SPACE_SM, 0)
@@ -2535,6 +2700,7 @@ class MapBrowserTab(QWidget):
         structure_revert = QHBoxLayout()
         structure_revert.setContentsMargins(theme.SPACE_SM, 0, theme.SPACE_SM, 0)
         structure_revert.addWidget(self._revert_structure_button, 1)
+        structure_revert.addWidget(self._new_map_button, 1)
         structure_body = QWidget()
         structure_body_layout = QVBoxLayout(structure_body)
         structure_body_layout.setContentsMargins(0, 0, 0, 0)
@@ -5987,6 +6153,158 @@ class MapBrowserTab(QWidget):
     def open_new_layer_dialog(self) -> "NewLayerDialog | None":
         """The layer-authoring form, shown modally."""
         dialog = self.build_new_layer_dialog()
+        if dialog is None:
+            return None
+        dialog.exec()
+        return dialog
+
+    # -- MAP-NEW-AUTHORING-001: a new map identity --------------------------
+
+    def new_map_donors(self):
+        """Every canonical map as a donor, with the browser's own labels."""
+        return [(entry.index, entry.label)
+                for entry in sorted(self._entries.values(),
+                                    key=lambda item: item.index)]
+
+    def used_map_keys(self):
+        """Every engine key this image already uses, plus the project's own."""
+        import struct
+
+        image = self._session.map_image
+        profile = self._session.profile
+        used = set()
+        if image is None or profile is None:
+            return used
+        layout = profile.map_entries
+        if layout is None:
+            return used
+        offset = layout.address.to_file_offset(len(image))
+        for index in range(layout.count):
+            at = offset + index * layout.record_size
+            used.add(struct.unpack_from("<BB", image, at))
+        window = self._session.project_dir
+        if window is not None:
+            try:
+                for item in map_new.authored_maps(window).ordered():
+                    used.add(item.key)
+            except (ProjectError, OSError):
+                pass
+        return used
+
+    def next_map_key(self):
+        """The first unused engine key above the canonical corpus's own range."""
+        used = self.used_map_keys()
+        for high in range(0x17, 0x100):
+            for low in range(1, 0x100):
+                if (high, low) not in used:
+                    return (high, low)
+        return (0x99, 0x01)
+
+    def _draft_new_map(self, name: str, donor: int, key_high: int,
+                       key_low: int) -> "AuthoredMaps":
+        """The document this form's fields would write, or the model's refusal."""
+        previous = map_new.authored_maps(self._session.project_dir)
+        item = AuthoredMap(name=name, donor=donor, key_high=key_high,
+                           key_low=key_low)
+        return AuthoredMaps(maps={**previous.maps, item.name: item})
+
+    def preview_new_map(self, name: str, donor: int, key_high: int,
+                        key_low: int) -> str:
+        """Run the SDK's own plan against the open image and state the verdict."""
+        document = self._draft_new_map(name, donor, key_high, key_low)
+        image = self._session.map_image
+        identification = self._session.identification
+        profile = self._session.profile
+        if image is None or identification is None or profile is None:
+            raise map_new.MapAuthoringError(
+                "opening a ROM is what makes a map authorable")
+        map_new.validate_authored_maps(image, identification, profile, document)
+        item = document.maps[name]
+        position = sorted(document.maps).index(name)
+        index = profile.map_entries.count + position
+        return (f"Creates map:{index:04d} key 0x{key_high:02X}{key_low:02X} from "
+                f"donor map:{donor:04d}: the map table is re-emitted with this row "
+                "appended, and the two engine sites that name the table and its "
+                "bound are repointed.")
+
+    def apply_new_map(self, name: str, donor: int, key_high: int,
+                      key_low: int) -> bool:
+        """Validate, write and stage ONE new map as ONE undoable command."""
+        if self._session.project_dir is None:
+            QMessageBox.warning(
+                self, "New map",
+                "Open or extract a project first: a new map identity is stored in "
+                "the project's own maps/authored.toml.")
+            return False
+        try:
+            document = self._draft_new_map(name, donor, key_high, key_low)
+            previous = map_new.authored_maps(self._session.project_dir)
+            self.preview_new_map(name, donor, key_high, key_low)
+        except (map_new.MapAuthoringError, ProjectError, OSError) as exc:
+            QMessageBox.warning(self, "New map", str(exc))
+            return False
+        try:
+            map_new.apply_authored_maps(self._session.project_dir, document)
+        except (ProjectError, OSError) as exc:
+            QMessageBox.warning(self, "New map", str(exc))
+            return False
+        self._undo_stack.push(NewMapCommand(
+            self, previous, document,
+            f"Create map-new:{name} from map:{donor:04d}"))
+        self._session.project_mutated()
+        self._publish_status(
+            f"Staged map-new:{name} \u00b7 Apply to project is already written; "
+            "Build compiles it into the image.")
+        return True
+
+    def write_authored_maps_document(self, document: "AuthoredMaps") -> None:
+        """The one write path the new-map command uses, for redo and undo."""
+        if self._session.project_dir is None:
+            return
+        try:
+            map_new.apply_authored_maps(self._session.project_dir, document)
+        except (ProjectError, OSError) as exc:
+            QMessageBox.warning(self, "New map", str(exc))
+            return
+        self._session.project_mutated()
+        self._publish_status("New-map document restored.")
+
+    def build_new_map_dialog(self) -> "NewMapDialog | None":
+        """The new-map form, built but not shown. None when it cannot be offered."""
+        image = self._session.map_image
+        identification = self._session.identification
+        profile = self._session.profile
+        if image is None or identification is None or profile is None:
+            QMessageBox.warning(
+                self, "New map",
+                "Open a supported ROM first: a new map identity is planned against "
+                "the image it will be built from.")
+            return None
+        if self._session.project_dir is None:
+            QMessageBox.warning(
+                self, "New map",
+                "Open or extract a project first: a new map identity is stored in "
+                "the project's own maps/authored.toml.")
+            return None
+        donors = self.new_map_donors()
+        if not donors:
+            QMessageBox.warning(self, "New map", "this image lists no map to copy")
+            return None
+        default_donor = (self._current.index if self._current is not None
+                         else donors[0][0])
+        return NewMapDialog(
+            self,
+            donors=donors,
+            default_name=f"map{profile.map_entries.count:04d}",
+            default_donor=default_donor,
+            default_key=self.next_map_key(),
+            preview=self.preview_new_map,
+            apply_command=self.apply_new_map,
+        )
+
+    def open_new_map_dialog(self) -> "NewMapDialog | None":
+        """The new-map form, shown modally."""
+        dialog = self.build_new_map_dialog()
         if dialog is None:
             return None
         dialog.exec()

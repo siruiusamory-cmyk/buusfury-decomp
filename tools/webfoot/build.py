@@ -36,6 +36,13 @@ from .appearance_authoring import (
     AppearanceAuthoringError,
     materialize_authored_appearances,
 )
+from .map_authoring import (
+    AuthoredMap as AuthoredMapRequest,
+    MapAuthoringError,
+    authored_map_facts,
+    materialize_authored_maps,
+    validate_authored_maps,
+)
 from .profile import RomProfile, RomProfileCatalog, VerificationStatus
 from .project import (
     PROJECT_FORMAT_VERSION,
@@ -786,6 +793,54 @@ _SPRITE_ERRORS = (SpriteAuthoringError, SpriteIdentityError, SpriteAttachmentErr
 #: the same family rather than raw.
 _APPEARANCE_ERRORS = (AppearanceAuthoringError, AllocationError)
 
+#: MAP-NEW-AUTHORING-001. The refusals the authored-map domain can raise at the
+#: build boundary: the domain's own terms, and the allocator's when the declared
+#: expansion cannot host the moved table.
+_MAP_AUTHORING_ERRORS = (MapAuthoringError, AllocationError)
+
+
+def _map_authoring_requests(project: StatProject) -> tuple[AuthoredMapRequest, ...]:
+    """The project's authored maps, in the one order the document defines.
+
+    The document stores the engine identity as its two explicit bytes and the
+    donor as a canonical index; nothing here is inferred, and the order is
+    `ordered()`'s so two builds of one document append the same rows.
+    """
+    return tuple(
+        AuthoredMapRequest(name=item.name, donor=item.donor, key=item.key)
+        for item in project.authored_maps.ordered()
+    )
+
+
+def _check_authored_maps(
+    project: StatProject, profile: RomProfile, canonical_image, identification,
+) -> list[str]:
+    """Check every authored map against the base image.
+
+    `materialize_authored_maps` *is* the check, the way
+    `materialize_authored_appearances` is for an authored appearance: it re-checks
+    the published inbound word against the image, every donor's record and root,
+    the key admissibility and the row ceiling before anything is emitted. Running
+    it here reports the same refusals a build would raise, as validation problems
+    rather than as a half-applied build, and the work is repeated by the build on
+    purpose.
+    """
+    if project.authored_maps.is_empty():
+        return []
+    if not capability.declared(profile, capability.Capability.MAP_ENTRIES):
+        return [
+            "project authors a new map, but this ROM's profile declares no map_entry "
+            "table; a build would silently drop it"
+        ]
+    if canonical_image is None:
+        return []
+    try:
+        validate_authored_maps(
+            canonical_image, identification, profile, project.authored_maps)
+    except _MAP_AUTHORING_ERRORS as exc:
+        return [f"authored map: {exc}"]
+    return []
+
 
 def _authored_sprite_id(project: StatProject) -> int | None:
     """The engine id the project's authored sprite identity will take, if any.
@@ -1232,6 +1287,7 @@ def validate_project(
                 or not project.transition_creations.is_empty()
                 or not project.sprites.is_empty()
                 or not project.appearances.is_empty()
+                or not project.authored_maps.is_empty()
                 or authored_graphics)
             else None
         )
@@ -1245,6 +1301,7 @@ def validate_project(
             + _check_sprites(project, profile, project_dir, canonical_image,
                              identification, maps)
             + _check_appearances(project, profile, canonical_image, identification)
+            + _check_authored_maps(project, profile, canonical_image, identification)
             + _check_graphics(project, profile, project_dir, canonical_image, identification)
             + _check_dialogues(project, profile, rom_path)
         )
@@ -1651,7 +1708,8 @@ def build_project(
         image = Path(rom_path).read_bytes()
         try:
             transition_application = plan_transition_edits(
-                image, _transition_requests(project), profile=canonical
+                image, _transition_requests(project), profile=canonical,
+                authored=authored_map_facts(image, canonical, project.authored_maps),
             )
         except _TRANSITION_ERRORS as exc:
             # One validation family at the build boundary, naming the transition.
@@ -1679,7 +1737,8 @@ def build_project(
         image = Path(rom_path).read_bytes()
         try:
             creation_materialization = materialize_transition_creations(
-                image, _creation_requests(project), profile=canonical, reserved=reserved
+                image, _creation_requests(project), profile=canonical, reserved=reserved,
+                authored=authored_map_facts(image, canonical, project.authored_maps),
             )
         except _TRANSITION_ERRORS as exc:
             # One validation family at the build boundary, naming the creation.
@@ -1688,6 +1747,30 @@ def build_project(
         reserved += creation_materialization.reserved
         generated_allocations += list(creation_materialization.generated_allocations)
         transition_creations = creation_materialization.provenance
+        base_bytes = image if base_bytes is None else base_bytes
+
+    # MAP-NEW-AUTHORING-001's domain: the MapEntry table is re-emitted whole with
+    # the project's authored rows appended, the one literal-pool word that names
+    # the table is repointed and the one compiled row bound is raised, all in this
+    # change list. It runs after the transition-creation domain because the
+    # authored rows must be placed clear of every span that domain already took,
+    # and before the content domains that follow it, which read the table through
+    # the profile and would otherwise see the canonical address.
+    authored_map_relocations: tuple = ()
+    if not project.authored_maps.is_empty():
+        image = Path(rom_path).read_bytes()
+        try:
+            authored_map_materialization = materialize_authored_maps(
+                image, identification, profile, _map_authoring_requests(project),
+                reserved=reserved,
+            )
+        except _MAP_AUTHORING_ERRORS as exc:
+            raise ProjectValidationError(f"authored map: {exc}") from exc
+        changes += authored_map_materialization.changes
+        reserved += authored_map_materialization.reserved
+        generated_allocations += list(
+            authored_map_materialization.generated_allocations)
+        authored_map_relocations = authored_map_materialization.relocations
         base_bytes = image if base_bytes is None else base_bytes
 
     # ROM-EXPAND-001: compressed dialogue is a normal allocating build domain. It
@@ -1835,7 +1918,8 @@ def build_project(
         changes,
         profile_id=profile.id,
         base_sha256=identification.hashes.sha256,
-        relocations=graphic_relocations + sprite_relocations + appearance_relocations,
+        relocations=(graphic_relocations + sprite_relocations
+                     + appearance_relocations + authored_map_relocations),
         generated_image=generated_image,
         generated_allocations=tuple(generated_allocations),
         dialogue_edits=dialogue_edits,

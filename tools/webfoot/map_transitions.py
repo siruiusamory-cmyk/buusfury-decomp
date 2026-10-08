@@ -172,6 +172,11 @@ MAP_ENTRY_SOURCE_OFFSET = mg.MAP_ENTRY_SOURCE_OFFSET
 #: is what keeps this module from silently disagreeing with that layout.
 MAP_ENTRY_KEY_OFFSETS = (0x00, 0x01)
 
+#: How wide the engine's map identity is: the two bytes above, read as two
+#: separate `ldrb` by the lookup and written as two separate `strb` by the warp
+#: routine, so it is a pair of bytes and never one halfword.
+MAP_ENTRY_KEY_BYTES = bytes(len(MAP_ENTRY_KEY_OFFSETS))
+
 _KEY_FIELD_NAMES = tuple(
     field.name for field in me.MAP_ENTRY_LAYOUT if field.offset in MAP_ENTRY_KEY_OFFSETS
 )
@@ -363,6 +368,45 @@ def _resolve_pair(image: bytes, root: int, index: int) -> tuple[int, int]:
     return count, array
 
 
+@dataclass(frozen=True, slots=True)
+class AuthoredMapFact:
+    """What a transition corpus needs to know about a map the image does not hold.
+
+    MAP-NEW-AUTHORING-001. A created or retargeted transition may name a map
+    identity the canonical table has no row for: a project-authored map is
+    compiled into the table at build time, at an index past the canonical count.
+    Two of this module's answers read the map table for the *destination* - its
+    two-byte lookup key and its walkable extent - and both have to answer for such
+    a row without pretending the canonical image contains it.
+
+    The row is stated by the facts a destination needs, never by a table slot: the
+    index it will take, the key it will carry, and its two stored extent halfwords
+    (`root + 0x08`/`+0x0A`, which hold `extent - 1`). The root address is not one
+    of them, because no transition record ever names a root.
+    """
+
+    index: int
+    key: bytes
+    extent_x_raw: int
+    extent_y_raw: int
+
+    def __post_init__(self) -> None:
+        if type(self.index) is not int or self.index < 0:
+            raise TransitionFieldError(
+                f"an authored map needs a table index, got {self.index!r}")
+        if len(bytes(self.key)) != len(MAP_ENTRY_KEY_BYTES):
+            raise TransitionFieldError(
+                f"authored map:{self.index:04d} needs a {len(MAP_ENTRY_KEY_BYTES)}"
+                f"-byte key, got {bytes(self.key).hex() or 'nothing'}")
+        for name, value in (("extent_x_raw", self.extent_x_raw),
+                            ("extent_y_raw", self.extent_y_raw)):
+            if type(value) is not int or not 0 <= value <= 0xFFFF:
+                raise TransitionFieldError(
+                    f"authored map:{self.index:04d}: {name} must be an unsigned "
+                    f"16-bit halfword, got {value!r}"
+                )
+
+
 def _read_corpus(
     image: bytes,
     *,
@@ -371,6 +415,7 @@ def _read_corpus(
     profile_id: str,
     base_sha256: str,
     profile: "RomProfile | None" = None,
+    authored: tuple[AuthoredMapFact, ...] = (),
 ) -> "MapTransitions":
     """Resolve every transition in ``image``, failing closed on an unknown form.
 
@@ -400,6 +445,30 @@ def _read_corpus(
         key_owner[key] = index
         keys.append(key)
         entries_by_map.append(entry)
+
+    # MAP-NEW-AUTHORING-001. Project-authored rows, appended after the canonical
+    # ones - which is exactly where the build puts them, so the identity a
+    # transition names and the index the corpus reports cannot disagree. They are
+    # admitted by the facts a destination needs and nothing else: no record is
+    # decoded for them, because the canonical image holds no such record.
+    authored_extents: dict[int, tuple[int, int]] = {}
+    for fact in authored:
+        if fact.index != len(keys):
+            raise MapTransitionsError(
+                f"authored map:{fact.index:04d} is declared at index {fact.index}, "
+                f"but an authored row is appended after the {table_count} canonical "
+                f"ones, at index {len(keys)}"
+            )
+        if fact.key in key_owner:
+            raise MapTransitionsError(
+                f"authored map:{fact.index:04d} claims key {fact.key.hex()}, which "
+                f"map:{key_owner[fact.key]:04d} already carries; the engine's lookup "
+                "returns the first match, so a destination written as that key would "
+                "resolve to the canonical row"
+            )
+        key_owner[fact.key] = fact.index
+        keys.append(fact.key)
+        authored_extents[fact.index] = (fact.extent_x_raw, fact.extent_y_raw)
 
     # Pass 1 - the pointer structure. Every address the format defines is
     # resolved and checked *before* any record is decoded, so a shared or
@@ -488,6 +557,7 @@ def _read_corpus(
         entries=tuple(entries),
         roots=roots,
         profile=profile,
+        authored_extents=authored_extents,
     )
 
 
@@ -510,6 +580,7 @@ class MapTransitions:
         entries: tuple[TransitionEntry, ...],
         roots: "Mapping[int, TransitionRoot] | None" = None,
         profile: "RomProfile | None" = None,
+        authored_extents: "Mapping[int, tuple[int, int]] | None" = None,
     ) -> None:
         self.profile_id = profile_id
         self.base_sha256 = base_sha256
@@ -525,6 +596,12 @@ class MapTransitions:
         #: answers that read that table again (`destination_bounds`) cannot fall
         #: back to a different one. None means the packaged canonical profile.
         self._profile = profile
+        #: MAP-NEW-AUTHORING-001. map index -> the two stored extent halfwords of an
+        #: authored row, for the destination answers that read the map table. A
+        #: canonical row is absent here and is read from the image as before.
+        self._authored_extents: dict[int, tuple[int, int]] = dict(
+            authored_extents or {}
+        )
         self._edits: dict[TransitionIdentity, TransitionRecord] = {}
 
     # --- reading -------------------------------------------------------
@@ -719,6 +796,12 @@ class MapTransitions:
         a point inside this box can still be inside scenery.
         """
         index = self._require_map(destination)
+        authored = self._authored_extents.get(index)
+        if authored is not None:
+            # MAP-NEW-AUTHORING-001. A project-authored row's extent is its donor's,
+            # carried in the fact rather than read from an image that does not hold
+            # the row yet.
+            return authored[0] + 1 + SCREEN_WIDTH, authored[1] + 1 + SCREEN_HEIGHT
         table = self._map_entries()
         root = table[index].root_address
         offset = GbaRomAddress(root + 0x08).to_file_offset(len(self._base_bytes))
@@ -1231,6 +1314,7 @@ def plan_transition_edits(
     edits: Mapping[TransitionIdentity, AuthoredTransitionEdit],
     *,
     profile: RomProfile | None = None,
+    authored: tuple[AuthoredMapFact, ...] = (),
 ) -> TransitionApplication:
     """Apply a project's stored transition edits to a canonical image.
 
@@ -1238,7 +1322,9 @@ def plan_transition_edits(
 
     1. load the canonical corpus through :func:`read_map_transitions`, so a record
        is reached by `TransitionIdentity` and by nothing else - no address is
-       accepted from the project and none is computed by it;
+       accepted from the project and none is computed by it; ``authored`` states
+       the rows the project adds (MAP-NEW-AUTHORING-001), so a retarget can name a
+       map the canonical image does not contain yet;
     2. check each stored prior against the record the image actually holds;
     3. stage the authored fields through :meth:`MapTransitions.set_destination`
        and :meth:`MapTransitions.set_region`, which refuse an unknown transition,
@@ -1259,7 +1345,7 @@ def plan_transition_edits(
     if not edits:
         return TransitionApplication()
     canonical = packaged_profile() if profile is None else profile
-    corpus = read_map_transitions(image, canonical)
+    corpus = read_map_transitions(image, canonical, authored=authored)
     provenance: list[TransitionEditProvenance] = []
     for identity in sorted(edits):
         edit = edits[identity]
@@ -1814,6 +1900,7 @@ def materialize_transition_creations(
     *,
     profile: RomProfile | None = None,
     reserved: Iterable[RomRange] = (),
+    authored: tuple[AuthoredMapFact, ...] = (),
 ) -> TransitionCreationMaterialization:
     """Allocate, emit and reference every transition a project creates.
 
@@ -1847,7 +1934,7 @@ def materialize_transition_creations(
     if not creations:
         return TransitionCreationMaterialization()
     resolved_profile = profile if profile is not None else packaged_profile()
-    corpus = read_map_transitions(image, resolved_profile)
+    corpus = read_map_transitions(image, resolved_profile, authored=authored)
     expansion = resolved_profile.generated_expansion
     prior_reservations = tuple(reserved)
     taken: list[OwnedRegion] = [
@@ -2299,6 +2386,29 @@ def _transition_identity(key: object) -> TransitionIdentity:
     return TransitionIdentity(MapIdentity(int(match.group(1), 10)), int(match.group(2), 10))
 
 
+def _project_corpus(project_dir, profile: RomProfile, canonical_bytes: bytes,
+                    project=None) -> MapTransitions:
+    """A transition corpus that also resolves the maps this project authors.
+
+    MAP-NEW-AUTHORING-001. A surface that offers a destination and a build that
+    writes one must resolve the same set of map identities, and a project-authored
+    map is not in the canonical image. The facts come from the project document
+    plus the donor roots it names, so the authoring check and the build cannot
+    disagree about which identities exist.
+
+    ``project`` is the already-parsed document when the caller has one, so one
+    surface action stays one project read.
+    """
+    from .map_authoring import authored_map_facts
+    from .project import read_project
+
+    document = project if project is not None else read_project(project_dir)
+    return read_map_transitions(
+        canonical_bytes, profile,
+        authored=authored_map_facts(canonical_bytes, profile, document.authored_maps),
+    )
+
+
 def set_transition_creations(
     project_dir,
     profile: RomProfile,
@@ -2325,7 +2435,8 @@ def set_transition_creations(
         write_transition_creations,
     )
 
-    corpus = read_map_transitions(canonical_bytes, profile)
+    document = read_project(project_dir)
+    corpus = _project_corpus(project_dir, profile, canonical_bytes, project=document)
     requested: dict[CreatedTransitionIdentity, TransitionCreation] = {}
     for identity, request in sorted(creations.items()):
         if request is None:
@@ -2349,7 +2460,7 @@ def set_transition_creations(
         _resolve_creation(corpus, identity, authored)
         measured[identity] = authored
 
-    committed = read_project(project_dir).transition_creations.edits()
+    committed = document.transition_creations.edits()
     updated = dict(committed)
     for identity, authored in measured.items():
         key = (identity.source.index, identity.name)
@@ -2425,7 +2536,8 @@ def set_transition_edits(
         write_transition_edits,
     )
 
-    corpus = read_map_transitions(canonical_bytes, profile)
+    document = read_project(project_dir)
+    corpus = _project_corpus(project_dir, profile, canonical_bytes, project=document)
     # Pass 1 - resolve and refuse the whole batch before any document is touched.
     requests: dict[TransitionIdentity, TransitionEdit] = {}
     for identity, request in sorted(edits.items()):
@@ -2440,7 +2552,7 @@ def set_transition_edits(
             corpus.key_for(request.destination)
         requests[identity] = request
 
-    committed = read_project(project_dir).transitions.edits()
+    committed = document.transitions.edits()
     updated = dict(committed)
     for identity, request in requests.items():
         key = (identity.source.index, identity.index)
@@ -2569,7 +2681,12 @@ def remove_transition_edit(project_dir, identity: TransitionIdentity) -> bool:
     return True
 
 
-def read_map_transitions(image: bytes, profile: RomProfile) -> MapTransitions:
+def read_map_transitions(
+    image: bytes,
+    profile: RomProfile,
+    *,
+    authored: tuple[AuthoredMapFact, ...] = (),
+) -> MapTransitions:
     """Resolve a transition corpus from an in-memory image and its profile.
 
     The bytes seam `load_map_transitions` uses once identification is done, exposed
@@ -2582,6 +2699,11 @@ def read_map_transitions(image: bytes, profile: RomProfile) -> MapTransitions:
 
     A profile that declares no map-entry table has no transition corpus to read,
     and that is refused by name rather than answered with an empty corpus.
+
+    ``authored`` states the project-authored rows this corpus is planned against
+    (MAP-NEW-AUTHORING-001). A created transition may name one of them as its
+    destination, so the corpus has to resolve its key and its extent while the
+    image still holds only the canonical table.
     """
     if not capability.declared(profile, capability.Capability.MAP_ENTRIES):
         raise TransitionProfileError(
@@ -2598,6 +2720,7 @@ def read_map_transitions(image: bytes, profile: RomProfile) -> MapTransitions:
         profile_id=profile.id,
         base_sha256=profile.identity.sha256,
         profile=profile,
+        authored=authored,
     )
 
 

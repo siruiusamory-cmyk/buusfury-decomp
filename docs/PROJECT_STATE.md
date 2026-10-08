@@ -2158,14 +2158,18 @@ terrain-field window, so the editor refuses it by name.
 
 ## Capability registry
 
-DragonByte Z reads **22 / 24 (92%)**: READ 5/5, EDIT 8/8, AUTHOR 5/7, DELIVER 4/4.
-The two unshipped capabilities are appearance authoring and new maps. Phase 2
-(map editing) is complete: tile painting, chunk creation, map resizing with layer
-authoring and warp/connection editing all ship. Phase 3 has started: graphics
-import shipped 2026-10-03 and new sprite, animation and frame authoring shipped
-2026-10-07 through the Graphics tab's authored-sprite surface, and the next
-capability is appearance authoring, which the roadmap marks `next`, deliberately
-distinct from `in-progress`. The exact per-capability limits and proof levels live
+DragonByte Z reads **24 / 24 (100%)**: READ 5/5, EDIT 8/8, AUTHOR 7/7, DELIVER 4/4.
+No capability in the fixed denominator is missing. Phase 2 (map editing) is
+complete: tile painting, chunk creation, map resizing with layer authoring and
+warp/connection editing all ship. Phase 3 shipped graphics import on 2026-10-03,
+new sprite, animation and frame authoring on 2026-10-07, and appearance authoring
+after it. Phase 4, the terminal capability, shipped new map authoring: a project
+authors a map identity the image does not contain, the build re-emits the whole
+map table above the original end of the image with the authored row appended,
+repoints the one literal-pool word the engine's key lookup loads and raises the
+one compiled row bound, and a driven session watched the retail engine load the
+authored row and the player walk in and back out. The exact per-capability limits
+and proof levels live
 in [`capability-registry.md`](capability-registry.md), and the reconciliation of
 this paragraph against the registry is recorded in
 [`research/PROJECT_STATE_AUDIT_RECONCILIATION.md`](research/PROJECT_STATE_AUDIT_RECONCILIATION.md).

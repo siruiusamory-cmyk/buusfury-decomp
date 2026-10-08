@@ -196,6 +196,12 @@ def test_the_declared_total_matches_the_registry_list():
     This is the milestone-total guard: the family tallies, the denominator and
     the list itself must agree, so a capability cannot be added, dropped or
     moved between families without the public total moving with it.
+
+    ``done <= total`` rather than ``done < total``: the registry reaching its
+    whole denominator is the state `docs/ROADMAP_TO_1_0.md` calls feature
+    complete, and a guard that required a missing capability would make the
+    milestone itself a test failure. The floor stays, because a registry that
+    counts nothing is still a defect.
     """
     total = registry()["track"]["capabilityTotal"]
     assert total == len(capabilities())
@@ -204,7 +210,7 @@ def test_the_declared_total_matches_the_registry_list():
     assert per_family == total
 
     done = len(shipped())
-    assert 0 < done < total, "the buildout must report at least one shipped and one missing capability"
+    assert 0 < done <= total, "the buildout must report at least one shipped capability"
     assert all(0 <= count <= size for count, size in family_tallies().values())
 
 

@@ -63,6 +63,17 @@ $allowedLua = @(
     [System.IO.Path]::GetFullPath(
         (Join-Path $workspaceRoot 'tools\runtime\warpedit001_transition_watch.lua')
     )
+    # Added by MAP-NEW-AUTHORING-001: the live map-identity observer. It writes no
+    # emulated memory and presses no keys. It derives the loaded map row from the
+    # engine's own active-MapEntry pointer 0x03001980, the table base from the
+    # literal pool word the engine's key lookup loads at 0x08008A58, and the row
+    # bound from the count helper at 0x080125E0, then reads that row's key bytes,
+    # its +0x2C source word and the root it names - so a map identity the
+    # canonical image does not contain is reported as the row the engine loaded
+    # rather than asserted. It writes only host files inside the run directory.
+    [System.IO.Path]::GetFullPath(
+        (Join-Path $workspaceRoot 'tools\runtime\mapnew001_live_identity.lua')
+    )
     [System.IO.Path]::GetFullPath(
         (Join-Path $workspaceRoot 'tools\runtime\rom007_move_south.lua')
     )

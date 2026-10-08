@@ -13,6 +13,7 @@ from .format import (
 )
 from .model import (
     APPEARANCES_FILE,
+    AUTHORED_MAPS_FILE,
     CHUNK_FILE,
     LAYOUT_FILE,
     PROJECT_FORMAT_VERSION,
@@ -26,6 +27,8 @@ from .model import (
     AuthoredChunkEntry,
     AuthoredChunks,
     AuthoredLayer,
+    AuthoredMap,
+    AuthoredMaps,
     AuthoredSprite,
     AuthoredSpriteActor,
     AuthoredSpriteAnimation,
@@ -49,6 +52,7 @@ from .model import (
     transition_creation_identity,
     write_authored_appearances,
     write_authored_chunks,
+    write_authored_maps,
     write_authored_sprites,
     write_dialogue_replacements,
     write_graphics_overrides,
@@ -62,6 +66,7 @@ from .placements import remove_authored_placement
 
 __all__ = [
     "APPEARANCES_FILE",
+    "AUTHORED_MAPS_FILE",
     "CHUNK_FILE",
     "LAYOUT_FILE",
     "PROJECT_FORMAT_VERSION",
@@ -75,6 +80,8 @@ __all__ = [
     "AuthoredChunkEntry",
     "AuthoredChunks",
     "AuthoredLayer",
+    "AuthoredMap",
+    "AuthoredMaps",
     "AuthoredSprite",
     "AuthoredSpriteActor",
     "AuthoredSpriteAnimation",
@@ -102,6 +109,7 @@ __all__ = [
     "transition_creation_identity",
     "write_authored_appearances",
     "write_authored_chunks",
+    "write_authored_maps",
     "write_authored_sprites",
     "write_dialogue_replacements",
     "write_graphics_overrides",

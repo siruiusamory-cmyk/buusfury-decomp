@@ -15,25 +15,26 @@ marker registry by `tests/unit/test_test_gates.py`.
 
 | gate | selects | collected | needs |
 |---|---|---|---|
-| `fast` | `tests/unit`, the portable suite | 2,066 | nothing beyond the dev extra |
-| `rom` | `tests/integration`, the ROM-gated suite | 985 | a canonical local ROM image |
-| `workbench` | DragonByte Z UI, session and editor regressions | 137 | PySide6 (skips without it; must not skip in CI) |
-| `writer` | authored images, provenance, allocation and output safety | 638 | nothing extra |
-| `map` | map reading, placement, rendering and layout | 508 | a ROM for its integration members |
-| `research` | research and runtime tooling (atlas, mGBA, logx, disassembly) | 919 | a ROM for its integration members |
+| `fast` | `tests/unit`, the portable suite | 4,333 | nothing beyond the dev extra, except the six members listed below |
+| `rom` | `tests/integration`, the ROM-gated suite | 1,503 | a canonical local ROM image |
+| `workbench` | DragonByte Z UI, session and editor regressions | 608 | PySide6 (skips without it; must not skip in CI) |
+| `writer` | authored images, provenance, allocation and output safety | 1,306 | nothing extra |
+| `map` | map reading, placement, rendering and layout | 1,250 | a ROM for its integration members |
+| `research` | research and runtime tooling (atlas, mGBA, logx, disassembly) | 1,118 | a ROM for its integration members |
 
 `fast` and `rom` are the axis: every test is in exactly one of them, decided by
-which directory it lives in. The four subsystem gates cut across that axis, so
-a map-layout write test is `rom`, `map` *and* `writer` at once. Counts above
-are what the collection reported on 2026-09-20 in this checkout; they move as
-tests are added, and they are not a maintained fact.
+which directory it lives in, and the two collected counts sum to the whole tree.
+The four subsystem gates cut across that axis, so a map-layout write test is
+`rom`, `map` *and* `writer` at once. Counts above are what the collection
+reported on 2026-10-08 in this checkout; they move as tests are added, and they
+are not a maintained fact.
 
 ## Running a gate
 
 The whole of each gate, on its own:
 
 ```bash
-python -m pytest -m fast          # the portable suite; about 6.5 minutes here
+python -m pytest -m fast          # the portable suite; about 7 minutes here
 python -m pytest -m workbench     # DragonByte Z UI and editor regressions
 python -m pytest -m writer        # write-path safety
 python -m pytest -m map           # map reading, placement, rendering, layout
@@ -54,9 +55,14 @@ collects the whole tree first (a few seconds here) before deselecting, so
 `python -m pytest tests/unit -m "fast and writer"` finishes sooner.
 
 A gate is a *selection*, not a promise: `-m rom` on a machine with no ROM
-reports skips, and `-m fast` includes a few members that skip when a local
-artifact (the assembled atlas, a built site, a VRAM oracle) is absent. Read the
-summary line, not just the exit code.
+reports skips, and `-m fast` includes members that need the canonical image or a
+local artifact and skip without them. Measured 2026-10-08, six of the portable
+gate's members read the canonical image - four in
+`tests/unit/test_workbench_session.py`, one in `tests/unit/test_workbench_graphics.py`,
+and `tests/unit/test_map_render.py:test_map40_renders_from_vram_capture`, which
+also needs a captured map40 VRAM dump - and further members skip when the
+assembled atlas, a built site or the VRAM oracle is absent. Read the summary
+line, not just the exit code.
 
 `tests/unit/test_write_invariants_property.py` is property-based: it explores
 generated edit sets and images with Hypothesis, derandomized so the gate is
@@ -178,16 +184,21 @@ present:
 | `-m "fast and research"` | 648 passed, 1 skipped, ~73 s |
 | `tests/integration/test_map_render_rom.py` | 3 passed, 2 skipped, ~5 s |
 
-Most recent measurement, 2026-10-02, same machine and the same installed extras:
+Most recent measurement, 2026-10-08, same machine and the same installed extras,
+with no canonical image staged, so the ROM-gated members skip exactly as they do
+in CI:
 
 | command | result |
 |---|---|
-| `python -m pytest tests/unit` (the `fast` gate) | 3,592 passed, 9 skipped, 0 failed, ~392 s |
-| `python -m pytest` (the whole tree) | 3,609 passed, 1,239 skipped, 0 failed, ~448 s |
+| `python -m pytest tests/unit` (the `fast` gate) | 4,285 passed, 48 skipped, 0 failed, ~420 s |
+| `python -m pytest --collect-only` (the whole tree) | 5,836 collected |
 
-The whole-tree run skips the ROM-gated half because no canonical image was
-configured for it, so the 90-minute figure for the full `rom` gate remains a
-statement about the ROM-gated suite rather than something this table measured.
+The portable gate is the row measured as a run; the whole-tree row is a
+collection, not a run, because the full `rom` gate is the expensive integration
+gate the policy forbids running by reflex. The whole-tree run skips the
+ROM-gated half because no canonical image is configured for it, so the 90-minute
+figure for the full `rom` gate remains a statement about the ROM-gated suite
+rather than something this table measured.
 
 The full `rom` gate was not run: it is the expensive integration gate the
 policy forbids running by reflex. The single ROM-gated file above is a

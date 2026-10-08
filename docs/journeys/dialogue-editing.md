@@ -58,18 +58,22 @@ restate it as a fresh run without making one.
 - **Exactly one editable target.** `AUTHORED_DIALOGUE_TARGETS` holds a single
   entry, `goku-greeting`; resolution matches the exact packed handle. Everything
   else is read-only until a target is registered.
-- **The replacement must encode to exactly the host record's decoded length** -
-  32 bytes, 16 UTF-16LE characters, for that target. The editor is a single-line
-  field and cannot lengthen or shorten the line; an inexact length is refused by
-  validation rather than truncated.
-- **Relocation happens at build even for that equal-length edit.** The retail
-  container recompresses 1,076 bytes larger (16,856 to 17,932) and is placed in
-  the profile's generated-expansion region, so the emitted image is a 16 MiB
-  generated image rather than an 8 MiB in-place patch. That is generated
-  expansion, not canonical free space.
-- The packed handle, dialogue record identity and decoded length are unchanged:
-  an **existing** record is rewritten in place semantically, and creating new
-  text-table ids is not claimed.
+- **The replacement may change decoded length.** The editor is a single-line
+  field, and a line longer or shorter than the one it replaces is accepted; an
+  unencodable line is refused by validation rather than truncated. The bound for
+  this target is not the record's own length but the container: the rebuilt
+  container must stay inside the toolkit's 64 KiB decoded-container limit, which
+  puts the ceiling at a 94-byte line.
+- **Relocation happens at build, and a longer line re-authors the handle.** The
+  retail container recompresses 1,076 bytes larger (16,856 to 17,932) and is
+  placed in the profile's generated-expansion region, so the emitted image is a
+  16 MiB generated image rather than an 8 MiB in-place patch. That is generated
+  expansion, not canonical free space. A longer replacement re-authors the
+  record's durable handle and re-lays out its decoded container, so every record
+  after it moves inside the container.
+- Creating new text-table ids is not claimed: an **existing** mapped record is
+  rewritten, and a container whose records cross the edited one is refused rather
+  than reinterpreted.
 - No automated test drives the shipped GUI end to end on a real ROM. The
   headless tests pin the state transitions (supported target enables editing,
   unsupported result fails closed, invalid apply does not mutate the project,

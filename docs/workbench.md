@@ -30,11 +30,14 @@ always selectable and show their own empty state until a ROM is loaded.
 ## Maps editor: Layout mode
 
 `DRAGONBYTE-Z-MAP-LAYOUT-EDITOR-001`. The Maps editor's **Browse** mode is
-read-only; switching to **Layout** mode enables editing. That mode edits exactly
-one thing, through
-`tools/webfoot/map_layout_edit.py` and the proven writer in
+read-only; switching to **Layout** mode enables editing. Four shipped operations
+live there, over `tools/webfoot/map_layout_edit.py` and the proven writer in
 `tools/webfoot/map_layout_write.py`: one 256x256 chunk cell of a map's dominant
-layer may be reassigned to another chunk **that same layer already uses**. The
+layer may be reassigned to another chunk **that same layer already uses**; one of
+that layer's existing chunks can be painted onto those chunk cells; a chunk the
+layer did not have can be created and its 32x32 plane painted; and the structure
+section can grow a supported layer's chunk grid or activate an unused layer slot.
+The
 grid overlay marks each chunk cell, the chooser offers that layer's own existing
 chunks as thumbnails, and a pick previews immediately in memory - no ROM file is
 opened to preview. Apply commits a pick, Revert cell restores one cell to the

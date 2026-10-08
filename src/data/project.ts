@@ -710,22 +710,13 @@ export const project: ProjectStatus = {
   frontier: [
     {
       kind: "near",
-      title: "Author new sprite identities and animation slots",
-      detail:
-        "The Graphics tab creates the project's new actor-sprite identity - donor" +
-        " composition, per-slot sheets and the object slot the appended actor starts" +
-        " from - and writes `sprites/sprites.toml`, which a ROM-gated build turns into" +
-        " authored sprite and actor records. Piece/OAM composition, frame geometry and" +
-        " frame timing remain outside the modelled contract and are refused.",
-    },
-    {
-      kind: "near",
       title: "Compose a frame's pieces into one displayed image",
       detail:
         "The accepted frame layout is an 8-byte header with 12-byte pieces, and the" +
         " reader and codec now read exactly that, so multipart frames are decoded and" +
         " exported. Compositing one frame's pieces into a single displayed image, and" +
-        " replacing them, is the step that remains.",
+        " replacing them, is the step that remains, together with authoring a frame's" +
+        " own piece composition, geometry and timing.",
     },
     {
       kind: "horizon",
@@ -746,8 +737,9 @@ export const project: ProjectStatus = {
         " completeness, what each one adds, and the separate release gate that" +
         " follows it.",
       technical:
-        "The tracked roadmap orders the eight remaining authoring capabilities and" +
-        " states its dependencies, its addressability strategy and its acceptance" +
+        "The tracked roadmap ordered the eight authoring capabilities that were" +
+        " still missing when it was published, and states its dependencies, its" +
+        " addressability strategy and its acceptance" +
         " project. The site derives every phase count from the same capability" +
         " registry the capability list uses, so the published plan cannot drift" +
         " from what the product can actually do.",

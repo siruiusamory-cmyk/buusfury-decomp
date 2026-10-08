@@ -324,7 +324,7 @@ export const project: ProjectStatus = {
     " image's end and rewrites the five literal words and three count bounds that reach" +
     " it. The roster structure the engine builds from the seen flags is relocated with" +
     " it, all twenty-nine compiled statements of its layout restated for the supported" +
-    " maximum. A driven session then watched the retail search return an authored record" +
+    " maximum of 240 records against the 232 the image has. A driven session then watched the retail search return an authored record" +
     " at a post-canonical index for a retail actor, and the Scouter's own character" +
     " screen displayed the authored data for that actor - an object whose retail record" +
     " reads \"Fighter\" and \"This is a martial artist from the Other World\" showed the" +

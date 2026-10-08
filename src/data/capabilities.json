@@ -345,7 +345,11 @@
                 "The engine keeps one seen bit per record in a 232-bit array, and the block's own initializer zeroes a word two bytes after it, so at most 8 records may be added to the 232 the image has.",
                 "An authored definition shares an existing on-screen name, because creating new text-table ids is not shipped for any capability."
           ],
-          "surface": "Workbench: Graphics tab, Authored appearance - New, Edit and Remove write the project's appearance definitions",
+          "measurements": {
+        "canonicalRecords": 232,
+        "supportedRecords": 240
+      },
+      "surface": "Workbench: Graphics tab, Authored appearance - New, Edit and Remove write the project's appearance definitions",
           "proof": "runtime",
           "evidence": "APPEARANCE-AUTHORING-GATE-001; APPEARANCE-ROSTER-EXPANSION-001; APPEARANCE-BINDING-OVERRIDE-001; docs/research/APPEARANCE_TABLE_GROWTH.md; docs/research/APPEARANCE_AUTHORING_SURFACE.md; docs/research/APPEARANCE_ROSTER_EXPANSION.md; docs/research/APPEARANCE_BINDING_OVERRIDE.md"
     },

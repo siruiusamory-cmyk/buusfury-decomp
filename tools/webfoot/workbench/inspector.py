@@ -62,6 +62,9 @@ class InspectorTab(QWidget):
         self._original = ""
         self._project_replacement: str | None = None
         self._loading_editor = False
+        # The project the current editor state belongs to; a moved directory means
+        # the typed value was composed against a project that is no longer open.
+        self._form_project = session.project_dir
 
         # -- 1. the game content: the record's own text, read first ------------
         self._text = QPlainTextEdit()
@@ -224,8 +227,12 @@ class InspectorTab(QWidget):
 
     def on_session_changed(self) -> None:
         """Re-read project override state after project open/extract."""
-        if self._session.selected_result is not None:
-            self._refresh_authoring(self._session.selected_result)
+        if self._session.selected_result is None:
+            # A new image invalidates every fact this panel shows, so it is emptied
+            # rather than left describing the image that is no longer open.
+            self._clear()
+            return
+        self._refresh_authoring(self._session.selected_result)
 
     def on_project_mutated(self) -> None:
         """A project mutation elsewhere: keep text the user typed but did not apply.
@@ -238,7 +245,20 @@ class InspectorTab(QWidget):
         is re-read, which is also how this tab's own Apply and Revert come to
         show their result: both write first and then emit ``projectChanged``
         with the editor already equal to the committed text.
+
+        N-09 shape. A mutation that swapped the open project is not unrelated:
+        the typed value names the outgoing project's intent, and applying it
+        would write that text into the incoming project, so a moved project
+        directory drops it and re-reads.
         """
+        if (
+            self._form_project is not None
+            and self._session.project_dir != self._form_project
+        ):
+            self._form_project = self._session.project_dir
+            if self._session.selected_result is not None:
+                self._refresh_authoring(self._session.selected_result)
+            return
         if self._editor_is_dirty():
             self._refresh_committed_state()
             self._on_editor_changed(self._edit.text())
@@ -352,6 +372,7 @@ class InspectorTab(QWidget):
             + (replacement if replacement is not None else "none")
         )
         self._set_editor_text(replacement if replacement is not None else original)
+        self._form_project = self._session.project_dir
         self._edit.setEnabled(True)
         self._revert.setEnabled(replacement is not None)
         self._on_editor_changed(self._edit.text())
@@ -429,8 +450,13 @@ class InspectorTab(QWidget):
         self._text.clear()
         while self._handle_form.count():
             item = self._handle_form.takeAt(0)
-            if item.widget():
-                item.widget().deleteLater()
+            widget = item.widget()
+            if widget is not None:
+                # Detach instead of deleteLater(): this now runs on a session
+                # change, and a deletion queued there can fire after the window
+                # it belongs to has gone. An orphaned widget is owned by Python
+                # and freed as soon as its last reference is dropped.
+                widget.setParent(None)
         self._handle_rows.clear()
         self._refs.setRowCount(0)
         self._set_authoring_unavailable("Editing not available for this record yet.")

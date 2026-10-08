@@ -88,7 +88,6 @@ def test_scene_editor_is_reached_from_a_placement_not_the_strip(window) -> None:
     window._maps.set_mode("browse")
     assert not window._scene_action.isEnabled()
     window._maps.set_mode("objects")
-    window._sync_scene_action()
     assert window._scene_action.isEnabled()
     window.show_editor("Atlas")
 

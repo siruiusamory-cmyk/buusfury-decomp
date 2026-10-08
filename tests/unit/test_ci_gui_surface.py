@@ -259,3 +259,52 @@ def test_the_required_gui_surface_covers_the_named_editor_regressions():
         "CI is required to execute: "
         + ", ".join(f"{name} ({required[name]})" for name in missing)
     )
+
+
+def test_a_pyside6_collapse_outside_the_named_list_still_fails_the_session():
+    """N-12: the named list is the regression set; the guard covers the rest.
+
+    ``REQUIRED_GUI_MODULES`` names the surfaces CI is required to execute, but a
+    Workbench module that carries its own module-level ``pytest.importorskip`` and
+    was never registered collapsed to one SKIPPED line and left the job green. The
+    guard in ``tests/conftest.py`` is therefore keyed on pytest's own collection
+    report: any opened test file whose whole-file skip names PySide6 counts, and a
+    file that collapsed for another reason (a missing ROM, say) does not.
+    """
+    from tests import conftest
+
+    guarded = (
+        REPOSITORY_ROOT
+        / TESTS_DIRECTORY
+        / "unit/test_unregistered_gui_surface_probe.py"
+    )
+    other = REPOSITORY_ROOT / TESTS_DIRECTORY / "unit/test_map_render.py"
+    guarded_key = conftest._path_key(guarded)
+    other_key = conftest._path_key(other)
+    reason = "could not import 'PySide6.QtTest': No module named 'PySide6'"
+    saved = (
+        set(conftest._CANDIDATE_TEST_FILES),
+        set(conftest._ATTEMPTED_TEST_FILES),
+        set(conftest._COLLECTED_TEST_FILES),
+        dict(conftest._COLLAPSED_REASONS),
+    )
+    try:
+        conftest._CANDIDATE_TEST_FILES.update({guarded_key, other_key})
+        conftest._ATTEMPTED_TEST_FILES.update({guarded_key, other_key})
+        conftest._COLLAPSED_REASONS[guarded_key] = reason
+        conftest._COLLAPSED_REASONS[other_key] = (
+            "canonical ROM or map40 VRAM dump not present"
+        )
+
+        collapsed = dict(conftest._collapsed_gui_modules())
+
+        assert collapsed == {
+            "unit/test_unregistered_gui_surface_probe.py": reason
+        }
+    finally:
+        (
+            conftest._CANDIDATE_TEST_FILES,
+            conftest._ATTEMPTED_TEST_FILES,
+            conftest._COLLECTED_TEST_FILES,
+            conftest._COLLAPSED_REASONS,
+        ) = saved

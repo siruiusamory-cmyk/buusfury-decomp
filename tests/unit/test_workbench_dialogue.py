@@ -192,3 +192,60 @@ def test_revert_removes_override_and_invalidates_state(inspector, session, proje
     assert not session.build_current
     assert session.last_build is None
     assert inspector._edit.text() == "Good luck, Goku!"
+
+
+def test_a_new_image_empties_the_record_panel(inspector, session):
+    """N-07: the record, handle rows and references belong to one image.
+
+    The panel used to keep the previous image's text while re-reading its
+    authoring labels against the new image's bytes, so "Original:" and "Record
+    text" could describe two different ROMs with nothing naming which.
+    """
+    with_refs = {
+        **SUPPORTED,
+        "identity": {**SUPPORTED["identity"], "reference_sites": [0x08001234]},
+    }
+    inspector.show_result(with_refs)
+    assert inspector._text.toPlainText()
+    assert inspector._handle_rows
+    assert inspector._refs.rowCount() == 1
+
+    session.selected_result = None
+    inspector.on_session_changed()
+
+    assert inspector._text.toPlainText() == ""
+    assert inspector._handle_rows == {}
+    assert inspector._refs.rowCount() == 0
+    assert not inspector._edit.isEnabled()
+
+
+def test_typed_text_does_not_cross_a_project_switch(inspector, session, tmp_path):
+    """N-09 shape: the staged value names the outgoing project's intent.
+
+    An unrelated project mutation keeps what the user typed (CQA-05). A mutation
+    that swapped the open project is not unrelated: applying the typed value would
+    write it into the incoming project's dialogues document.
+    """
+    inspector.show_result(SUPPORTED)
+    inspector._edit.setText("typed against the first project")
+    assert inspector._editor_is_dirty()
+
+    other = tmp_path / "second-project"
+    write_project(
+        other,
+        ProjectMeta(
+            format_version=PROJECT_FORMAT_VERSION,
+            profile_id=PROFILE_ID,
+            game="buus_fury",
+            base_rom_sha256=SHA256,
+            base_rom_size=8388608,
+            name="second",
+        ),
+        enemies=[],
+        characters=[],
+    )
+    session.project_dir = other
+    inspector.on_project_mutated()
+
+    assert inspector._edit.text() == "Good luck, Goku!"
+    assert not inspector._editor_is_dirty()

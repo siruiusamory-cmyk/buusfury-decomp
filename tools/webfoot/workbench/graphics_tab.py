@@ -424,6 +424,11 @@ class GraphicsTab(QWidget):
         self._frame_index = 0
         # Palette editor state: index -> pending (r,g,b) not yet applied.
         self._palette_pending: dict[int, tuple[int, int, int]] = {}
+        # CQA-26, graphics half: the committed override map could not be read, so
+        # every swatch is showing canonical colours the project may not hold. It is
+        # recorded and published rather than rendered as a legal state, and the two
+        # actions that would write those colours refuse while it stands.
+        self._palette_read_error = ""
         # A staged colour is unsaved work, so the session's one discard count
         # includes it (N-04). The bound method lets a repeat registration dedupe.
         session.register_staged_work(self._palette_edit_count)
@@ -990,18 +995,26 @@ class GraphicsTab(QWidget):
         for an unauthored index, the authored colour where a recolour is
         committed. This is a pure tuple copy + dict overlay - no ROM-format math;
         the override map is loaded ONCE (not per index) via the SDK. A missing
-        project (or an SDK read failure) just yields the canonical palette.
+        project yields the canonical palette, which is the correct answer.
+
+        CQA-26: a FAILED read is not the same answer. The canonical palette is
+        still returned so a repaint cannot crash, but the failure is recorded for
+        this tab to publish, because rendering it silently presents unauthored
+        colours as the project's own.
         """
         rgb = list(sprites.palette.rgb)
         profile = self._session.profile
         if self._session.project_dir is None or profile is None:
+            self._palette_read_error = ""
             return rgb
         try:
             overrides = graphics_sdk.get_palette_overrides(
                 self._session.project_dir, profile
             )
-        except (*_SDK_ERRORS, ProjectError, OSError):
+        except (*_SDK_ERRORS, ProjectError, OSError) as exc:
+            self._palette_read_error = str(exc)
             return rgb
+        self._palette_read_error = ""
         for index, colour in overrides.items():
             if 0 <= index < len(rgb):
                 rgb[index] = colour
@@ -1282,7 +1295,18 @@ class GraphicsTab(QWidget):
         sprites = self._sprites()
         if sprites is None:
             return
-        suggested = f"sprite_{self._selected.index}.png"
+        if self._palette_read_error:
+            # The encode would use canonical colours, so the PNG would be a
+            # plausible file stating a palette the project does not hold.
+            QMessageBox.critical(
+                self,
+                "Export PNG",
+                "The project's palette changes could not be read, so the sprite's "
+                "authored colours are not known. Fix the project read and try "
+                f"again. ({self._palette_read_error})",
+            )
+            return
+        suggested = f"graphic_{self._selected.index:04d}.png"
         path, _filter = QFileDialog.getSaveFileName(
             self, "Export sprite PNG", suggested, "PNG image (*.png)"
         )
@@ -1708,6 +1732,15 @@ class GraphicsTab(QWidget):
 
     def _on_apply(self) -> None:
         if not self._palette_pending or self._session.project_dir is None:
+            return
+        if self._palette_read_error:
+            QMessageBox.critical(
+                self,
+                "Apply recolour",
+                "The project's palette changes could not be read, so applying now "
+                "could overwrite committed colours with a set chosen against the "
+                f"canonical palette. Fix the project read first. ({self._palette_read_error})",
+            )
             return
         profile = self._session.profile
         sprites = self._sprites()
@@ -2203,7 +2236,15 @@ class GraphicsTab(QWidget):
         this editor's own label and the shell's bar can never disagree.
         """
         sprites = self._sprites()
-        if sprites is None:
+        if self._palette_read_error:
+            # One authoritative line, and this failure outranks the selection
+            # facts: a swatch showing canonical colours is state the project may
+            # not hold, so the reason is what the editor states.
+            text = (
+                "The project's palette changes could not be read, so canonical "
+                f"colours are shown. ({self._palette_read_error})"
+            )
+        elif sprites is None:
             text = "Open a ROM to load its sprites."
         else:
             parts = []

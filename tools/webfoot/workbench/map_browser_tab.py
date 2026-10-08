@@ -3669,6 +3669,10 @@ class MapBrowserTab(QWidget):
         self._brush_ordinal = None
         self._brush_pointer = None
         self._brush_authored = None
+        # CQA-26: the read failure belongs to the cell it was measured on, so a
+        # layer switch drops it rather than republishing it as the new layer's
+        # status; the next read sets it again if the new layer also fails.
+        self._cell_read_error = ""
         if self._target is None or layer_slot is None:
             self._clear_grid_item()
             self._populate_chooser()
@@ -8251,6 +8255,16 @@ class MapBrowserTab(QWidget):
             else f"{len(saved.changes)} layout change(s), "
             f"{len(saved.changed_offsets)} byte(s) changed"
         )
+        # A ROM copy carries layout edits only. Authored chunks, placements and
+        # project structure are materialized by the build, so the confirmation has
+        # to name what stayed behind; without it, "no layout changes were pending"
+        # reads as "nothing was staged" next to a title that says otherwise.
+        staged_in_project = self._unsaved_count()
+        if staged_in_project:
+            detail += (
+                f"; {staged_in_project} staged change(s) stay in the project, because a "
+                "ROM copy carries layout edits only - Apply or Build writes them"
+            )
         self._status.setText(f"Saved {saved.output_path} · {detail}")
         QMessageBox.information(
             self,

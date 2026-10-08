@@ -328,6 +328,39 @@ def test_written_atlas_round_trips(tmp_path, report):
     assert list(reloaded.to_jsonl_lines()) == list(report.atlas.to_jsonl_lines())
 
 
+def test_the_atlas_refuses_a_destination_that_is_the_canonical_image(
+    tmp_path, report, monkeypatch
+):
+    """N-13 (audit row): the atlas path is caller-supplied, so it can name the ROM.
+
+    Identity is the content hash, so a small file stands in for the image once the
+    canonical digest is pointed at it. The refusal precedes the write: the file is
+    left exactly as it was.
+    """
+    import hashlib
+
+    destination = tmp_path / "atlas.jsonl"
+    destination.write_bytes(b"canonical")
+    monkeypatch.setattr(
+        ab, "BASE_SHA256", hashlib.sha256(destination.read_bytes()).hexdigest()
+    )
+
+    with pytest.raises(ab.AtlasBuildError, match="canonical"):
+        ab.write_atlas(report, destination)
+
+    assert destination.read_bytes() == b"canonical"
+
+
+def test_an_ordinary_existing_atlas_destination_is_still_replaceable(tmp_path, report):
+    """The positive control: only the canonical image is refused, not any file."""
+    destination = tmp_path / "atlas.jsonl"
+    destination.write_text("stale run\n", encoding="utf-8")
+
+    ab.write_atlas(report, destination)
+
+    assert destination.read_text(encoding="utf-8") != "stale run\n"
+
+
 # --- queries ------------------------------------------------------------------
 
 

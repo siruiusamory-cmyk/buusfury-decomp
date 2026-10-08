@@ -364,6 +364,9 @@ class Session:
         self.maps = maps
         self.text_strings = text_strings
         self.selected_map = None
+        # The Inspector's record belongs to the image it was resolved against, so a
+        # new image clears it rather than re-reading it against different bytes.
+        self.selected_result = None
         self.rom_path = path
         self.rom_image = rom_image
         # Drop the prior ROM's sprite corpus; the next `sprites` read rebuilds it.

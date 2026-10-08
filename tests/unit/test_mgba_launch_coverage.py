@@ -249,10 +249,6 @@ NON_MGBA_SITES: Mapping[tuple[str, str, str], str] = {
      "'powershell.exe'"):
         "starts a helper shell that clicks the Scripting window's Run button in "
         "an already-running mGBA; it starts no emulator itself",
-    ("tools/webfoot/commands/randomize.py",
-     "_git_commit",
-     "'git'"):
-        "commits a generated randomizer artifact with git; it starts no emulator",
     ("tools/webfoot/release_identity.py",
      "_git",
      "'git'"):

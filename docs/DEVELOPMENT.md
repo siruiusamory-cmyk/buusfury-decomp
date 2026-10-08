@@ -52,11 +52,16 @@ Four further packaging facts are checked where they cannot drift:
   package;
 - the packaging script's archive version is the product's own version, so a
   download cannot be named one version and contain another;
-- a staged package directory is censused for ROMs, saves, machine paths and
-  absent resources by `python -m tools.quality.package_content <directory>`, which
-  prints what it cannot see along with what it found;
 - a packaged build records the commit it was cut from, baked into the package
-  before PyInstaller runs by `scripts/build-*.ps1`.
+  before PyInstaller runs by `scripts/build-*.ps1`;
+- one authority answers "which commit is this", for the manifests, the module
+  plans and the product identity alike.
+
+The staged package itself is censused before it is called a release, by
+`python -m tools.quality.package_content <directory>`, which reports ROMs, saves,
+machine paths and absent resources and prints what it cannot see along with what it
+found. It is a release engineer's step rather than a CI gate, because CI has no
+staged package to point it at; the tests in `tests/unit` cover the census itself.
 
 Building a frozen Windows executable cannot run in the Linux CI job: PyInstaller
 does not cross-compile to win64, and the packaging-time byte probe needs the

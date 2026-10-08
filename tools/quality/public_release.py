@@ -401,6 +401,29 @@ def _forbidden_input_findings(
     ]
 
 
+def residue_signals(
+    relative: str, text: str, table: public_surface.ExceptionTable
+) -> list[tuple[int, str]]:
+    """Every residue signal in one text, as ``(line, detail)`` pairs.
+
+    The one owner of "what counts as residue in a release input": the release-local
+    screens (`RELEASE_RESIDUE`) plus the tree-wide screens
+    (`tools/quality/public_surface.py`), reused with its exception table intact.
+    Two release checks ask this question - the definition guard and the staged
+    package census - and a second copy of the loop is a second answer waiting to
+    drift from the first.
+    """
+    signals: list[tuple[int, str]] = []
+    for number, line in enumerate(text.splitlines(), 1):
+        for label, pattern in RELEASE_RESIDUE:
+            if pattern.search(line):
+                signals.append((number, f"{label}: {line.strip()[:120]}"))
+    shared, _ = public_surface.scan(relative=relative, exceptions=table, text=text)
+    for item in shared:
+        signals.append((item["line"], f"{item['signal']}: {item['text'][:120]}"))
+    return signals
+
+
 def _residue_findings(
     product_name: str,
     relative: str,
@@ -408,33 +431,10 @@ def _residue_findings(
     table: public_surface.ExceptionTable,
 ) -> list[Finding]:
     """The release-local residue screens, plus the tree-wide screens, reused."""
-    findings = []
-    for number, line in enumerate(text.splitlines(), 1):
-        for label, pattern in RELEASE_RESIDUE:
-            if pattern.search(line):
-                findings.append(
-                    Finding(
-                        "private-path-residue",
-                        product_name,
-                        relative,
-                        f"{label}: {line.strip()[:120]}",
-                        number,
-                    )
-                )
-    shared, _ = public_surface.scan(
-        relative=relative, exceptions=table, text=text
-    )
-    for item in shared:
-        findings.append(
-            Finding(
-                "private-path-residue",
-                product_name,
-                relative,
-                f"{item['signal']}: {item['text'][:120]}",
-                item["line"],
-            )
-        )
-    return findings
+    return [
+        Finding("private-path-residue", product_name, relative, detail, number)
+        for number, detail in residue_signals(relative, text, table)
+    ]
 
 
 def _spec_wiring_findings(

@@ -59,7 +59,11 @@ from ..enemy_randomizer.seeds import (
     MODULE_ENEMY_TYPE,
     SeedError,
 )
-from ..randomizer.service import default_manifest_path, default_spoiler_path
+from ..randomizer.service import (
+    default_manifest_path,
+    default_spoiler_path,
+    repository_commit,
+)
 from ..rom import identify_rom
 from ..write import WriteError, emit_image, paths_are_the_same_file
 
@@ -288,25 +292,14 @@ def _remove_existing(paths: list[Path], *, overwrite: bool) -> None:
 
 
 def _git_commit() -> str | None:
-    """The SDK commit, for the manifest. Best-effort: a non-checkout has none.
+    """The commit this run came from, read from the one authority that owns it.
 
-    Read through ``git rev-parse`` rather than a library so the command works in
-    an installed layout, and return ``None`` rather than failing when there is no
-    repository, because a missing commit is a provenance gap and not a reason to
-    refuse an otherwise reproducible run.
+    RELEASE-ARTEFACT-001 removed a second ``git rev-parse`` that lived here: it
+    answered the same question with its own process, from its own working
+    directory, and with no baked-record fallback, so a frozen build would have
+    reported a null commit through this path.
     """
-    import subprocess
-
-    try:
-        result = subprocess.run(
-            ["git", "rev-parse", "HEAD"],
-            cwd=Path(__file__).resolve().parent,
-            capture_output=True, text=True, timeout=10,
-        )
-    except (OSError, subprocess.SubprocessError):
-        return None
-    text = result.stdout.strip()
-    return text if result.returncode == 0 and text else None
+    return repository_commit()
 
 
 def _print_presets() -> int:

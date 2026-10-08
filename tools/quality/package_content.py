@@ -43,8 +43,8 @@ import json
 from pathlib import Path
 import sys
 
-from tools.quality import public_surface
-from tools.quality.public_release import FORBIDDEN_SUFFIXES, RELEASE_RESIDUE
+from tools.quality import public_release, public_surface
+from tools.quality.public_release import FORBIDDEN_SUFFIXES
 
 #: Bumped when the report document's shape changes in a way a reader must notice.
 SCHEMA = 1
@@ -94,7 +94,6 @@ def census(
     directory: Path | str,
     *,
     required: tuple[str, ...] | list[str] = (),
-    exceptions: public_surface.ExceptionTable | None = None,
 ) -> dict:
     """Every finding for one staged package directory.
 
@@ -107,9 +106,7 @@ def census(
     check that passed.
     """
     root = Path(directory)
-    table = exceptions or public_surface.ExceptionTable.load(
-        REPOSITORY_ROOT / EXCEPTIONS_FILE
-    )
+    table = public_surface.ExceptionTable.load(REPOSITORY_ROOT / EXCEPTIONS_FILE)
     findings: list[Finding] = []
     unreadable: list[str] = []
     binary = 0
@@ -148,29 +145,8 @@ def census(
             binary += 1
             continue
         text_files += 1
-        for number, line in enumerate(text.splitlines(), 1):
-            for label, pattern in RELEASE_RESIDUE:
-                if pattern.search(line):
-                    findings.append(
-                        Finding(
-                            "private-path-residue",
-                            relative,
-                            f"{label}: {line.strip()[:120]}",
-                            number,
-                        )
-                    )
-        shared, _ = public_surface.scan(
-            relative=relative, exceptions=table, text=text
-        )
-        for item in shared:
-            findings.append(
-                Finding(
-                    "private-path-residue",
-                    relative,
-                    f"{item['signal']}: {item['text'][:120]}",
-                    item["line"],
-                )
-            )
+        for number, detail in public_release.residue_signals(relative, text, table):
+            findings.append(Finding("private-path-residue", relative, detail, number))
 
     for name in required:
         if not (root / name).is_file():

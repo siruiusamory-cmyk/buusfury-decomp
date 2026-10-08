@@ -65,8 +65,10 @@ values are right.** The document lists x = 8, 18, 28, 38, 48, 58, 60, 64, 70, 76
 (`build/toolkit031/twog3-caveonly/strip-probe.csv`, the unpatched control) has
 those twenty x values exactly, and its codes read 65, 119×4, 44, 32, 121, 101, 97,
 104, 33, **32, 73, 39**, 109, 32, 116, 104, 101: three units are transposed in the
-document, nothing else is wrong. `tools/research/dialogue_wrap_sim.py` now asserts
-the run in the log's own order, so the erratum is executable. The advance formula
+document, nothing else is wrong. `tools/research/dialogue_wrap_sim.py` carries the
+run in the log's own order, asserts it against the font table, and with
+`--runtime-log` reports whether the log's first twenty compositions are those same
+pairs, so the erratum is checkable rather than asserted in prose. The advance formula
 is separately validated over the whole log: **941 compositions, 896
 consecutive-advance checks, 0 mismatches.** The older document is left untouched.
 

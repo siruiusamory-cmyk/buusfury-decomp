@@ -19,7 +19,10 @@ Rules for this table, so it does not decay into folklore:
   not a class; it is a font fact and belongs to the census, not here.
 
 Evidence vocabulary follows docs/research-conventions.md: MEASURED (observed at
-runtime) and STATIC (read from the image) are kept distinct.
+runtime) and STATIC (read from the image) are kept distinct. Every entry published
+here is STATIC, because a reader can re-read the instruction from the canonical
+image. Where an earlier session also observed the site at runtime, that log is not
+part of this repository, so the label does not claim it.
 """
 
 from __future__ import annotations
@@ -59,14 +62,14 @@ CONTROL_CODES: tuple[ControlCode, ...] = (
         "The other payload value; same evidence as 0x0002 (164 occurrences).",
     ),
     ControlCode(
-        0x0008, "inline-formatting", 1, "MEASURED+STATIC",
+        0x0008, "inline-formatting", 1, "STATIC",
         "0x0800AE20, 0x0800B046 and 0x0803DEBE compare a unit against 8. The "
         "reveal loop stores the next halfword into strip+3 at 0x0800B04C and "
         "advances the source cursor by four bytes at 0x0800B052; the fitter skips "
         "two units at 0x0803DEC2; the dispatcher writes obj+0x83 at 0x0800AE30.",
     ),
     ControlCode(
-        0x000A, "line-break", 0, "MEASURED+STATIC",
+        0x000A, "line-break", 0, "STATIC",
         "0x0800AE06 (dispatcher: advance one unit) and 0x0803DEB0 (fitter: "
         "return, ending the line). Also skipped as a leading unit at 0x0803DE7C.",
     ),
@@ -93,7 +96,7 @@ CONTROL_CODES: tuple[ControlCode, ...] = (
         leading_only=True,
     ),
     ControlCode(
-        0x002D, "hyphen-join", 0, "MEASURED",
+        0x002D, "hyphen-join", 0, "STATIC",
         "0x0800AE42: advance one unit, then eat the following 0x20 units and "
         "return 1.",
     ),

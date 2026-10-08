@@ -65,8 +65,10 @@ each run directory and the copy verified.
 **PROCESS LAUNCHED.** `Start-MgbaSession` returned the mGBA process for each run
 below. No mGBA process was raced or left behind.
 
-**OBSERVED STATE.** Two canonical runs and one derivative run, each 3000 frames
-of emulated time, each ending by itself through the observer's own frame budget.
+**OBSERVED STATE.** Three runs, each ending by itself through the observer's own
+frame budget: the box-closed baseline at 1800 frames, and the control and the
+causal diagnostic at 3000 frames each (measured from each run's own
+`strip-probe.csv`).
 
 | Run | Image | Purpose |
 | --- | --- | --- |

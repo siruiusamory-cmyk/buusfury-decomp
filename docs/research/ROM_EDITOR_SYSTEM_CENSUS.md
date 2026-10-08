@@ -25,7 +25,7 @@ The ticket pins the baseline, the fixed product facts are stated at it, the froz
 
 ## 2. Results that correct the tracked research
 
-Five tracked claims were re-checked against the bytes and did not survive, which is why they are recorded here rather than repeated:
+Four tracked claims were re-checked against the bytes and did not survive, and a fifth was found to be an open disagreement between tracked records rather than a refutation. All five are recorded here instead of being repeated:
 
 1. The "map loader at `0x08008B30`" attribution is wrong. The bytes at that address are backup-media code reading `0x0E000000`. The count and array loop the research quotes is real, and where it says: `0x08008CA2` is `ldrb r0,[r0,#0x4]` and `0x08008CAC` is `ldr r0,[r0,#0x14]`.
 2. `library_signal_strings` at file `0x7B71A2` is not a string table. It is 2,050 bytes of signed 16-bit values forming a smooth curve, symmetric about zero, in 1,025 values.
@@ -83,7 +83,7 @@ Every accepted row, with its Buu's Fury state. The full dimensions are in `docs/
 - `techniques-and-attacks` - Techniques and attacks (UNKNOWN_UNMAPPED)
 - `items-and-inventory` - Item table (KNOWN_BUT_UNSUPPORTED)
 - `shops-and-scenarios` - Shops and shop scenarios (KNOWN_BUT_UNSUPPORTED)
-- `enemy-ai-behaviours` - Enemy AI and behaviour data (UNKNOWN_UNMAPPED)
+- `enemy-behaviour-data` - Enemy behaviour data (UNKNOWN_UNMAPPED)
 - `behaviour-attachment-authoring` - Engine trigger and effect contract family (PARTIALLY_EDITABLE)
 
 **Script and text**

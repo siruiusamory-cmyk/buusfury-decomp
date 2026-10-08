@@ -64,14 +64,13 @@ def test_published_counts_equal_the_counts_recomputed_from_the_rows():
     by_area: dict[str, dict[str, int]] = {}
     ek = {g: {k: 0 for k in doc["vocabularies"]["engine_knowledge"]} for g in GAMES}
     for row in doc["rows"]:
-        slot = by_area.setdefault(row["area"], {"rows": 0, **{s: 0 for s in states if s != "N_A"}})
+        slot = by_area.setdefault(row["area"], {"rows": 0, **{s: 0 for s in states}})
         slot["rows"] += 1
+        slot[row["games"]["buus_fury"]["state"]] += 1
         for game in GAMES:
             cell = row["games"][game]
             by_game[game][cell["state"]] += 1
             ek[game][cell["engine_knowledge"]] += 1
-            if cell["state"] != "N_A":
-                slot[cell["state"]] += 1
 
     for game in GAMES:
         published = totals["by_game"][game]

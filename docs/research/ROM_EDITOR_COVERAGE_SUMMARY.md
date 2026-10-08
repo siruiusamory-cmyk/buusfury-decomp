@@ -34,7 +34,7 @@ Writable cells: **20 of 120 measured = 16.67 percent**, and that is a cell count
 
 **Zero systems are FULLY EDITABLE at the strict definition, and that is the finding rather than an artefact.** Every writable domain carries a boundary that matters to ordinary hacking: 341 of 452 maps for the chunk grid, five of about fourteen map-record fields with no UI, a refused 169-class warp family and no deletion, no new text ids, clone-only placements, one record per dialogue container, one palette entry at a time, one added sprite identity per image, and one trigger contract out of the engine's set. The product is genuinely useful and it is not yet unrestricted anywhere.
 
-Per-game differences, in cells: Buu's Fury has 19 of 40 cells writable and is the only title with a broad writable set; LOGII has one writable cell, its text table, plus four read-only domains including its own script encoding; LOG1 has none and is identity-only. 39 of LOG1's 40 cells and 35 of LOGII's 40 cells are `UNKNOWN_UNMAPPED` on a NOT_INVESTIGATED basis, which is a statement about this lab's evidence, not about those games.
+Per-game differences, in cells: Buu's Fury has 19 of 40 cells writable and is the only title with a broad writable set; LOGII has one writable cell, its text table, plus four read-only domains including its own script encoding; LOG1 has none and is identity-only. 39 of LOG1's 40 cells and 35 of LOGII's 40 cells are `UNKNOWN_UNMAPPED`, and 38 of those and 30 respectively rest on a NOT_INVESTIGATED basis: that basis is a statement about this lab's evidence, not about those games, and the rest are measured negatives over declared tables.
 
 ## 3. Engine knowledge is not editor support
 
@@ -50,7 +50,7 @@ The distinction is the point of the census. Several domains are well understood 
 4. **The event resource pool is bounded and has no element layout.** 522 pointers, 127,328 bytes, tiling proven, internal element boundaries not recovered.
 5. **An entire audio row is unknown**, and the instrument could not search for it: no region, no table, no consumer, no register constant.
 6. **The save format is unknown while a 16 MiB expansion ships**, so nothing certifies that a generated image round-trips a retail save.
-7. **Five tracked research claims were refuted by the bytes**, including a string table that is a numeric curve and an ARM region that is Thumb.
+7. **Four tracked research claims were refuted by the bytes** (a string table that is a numeric curve, an ARM region that decodes as Thumb, a signed-data region labelled a pointer table, and a map-loader attribution), and a fifth tracked record disagrees with two others on an address, which is left open.
 8. **Four original compilation units are named by the cartridge itself**, which is the best naming oracle in the image and is used by no ticket.
 9. **The capability registry's own proof field is stale for `sprite-new`**: it reads `application` while its evidence cites a runtime parity run. A bookkeeping defect, reported not fixed.
 10. **Nothing in the product can write an arbitrary byte**, and the write stack refuses any change without a named semantic owner. That is a correctness property, and it is also why integrated hex editing needs new core authority rather than a new window.

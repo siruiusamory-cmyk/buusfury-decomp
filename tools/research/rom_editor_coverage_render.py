@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import io
 import json
+import re
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -52,6 +53,11 @@ def rows_of(doc: dict, area: str) -> list[dict]:
     return [r for r in doc["rows"] if r["area"] == area]
 
 
+def sentence(text: str) -> str:
+    t = text.strip()
+    return t if t.endswith(".") else t + "."
+
+
 def matrix_row(r: dict) -> str:
     g = r["games"]
     cells = []
@@ -61,10 +67,9 @@ def matrix_row(r: dict) -> str:
         cells.append(STATE_SHORT[c["state"]] + marker)
     ek = g["buus_fury"]["engine_knowledge"]
     rt = g["buus_fury"]["runtime_evidence"]
+    tool = re.split(r"(?<=\.)\s+", r["external_tool"].split(";")[0], maxsplit=1)[0]
     return "| `{}` | {} | {} | {} | {} | {} | {} | {} |".format(
-        r["id"], r["name"], cells[0], cells[1], cells[2], ek, rt,
-        r["external_tool"].split(";")[0].split(".")[0].strip() + "."
-    )
+        r["id"], r["name"], cells[0], cells[1], cells[2], ek, rt, tool)
 
 
 def row_block(r: dict) -> str:
@@ -133,9 +138,8 @@ def ledger(doc: dict) -> str:
     out.append("Accepted rows: **{}**. {}\n".format(d["accepted_rows"], doc["schema"]["aggregate_rule"]))
     out.append("Seed areas the census investigated and did **not** turn into rows:\n")
     for e in d["excluded_seed_areas"]:
-        out.append("- **{}** - {}. Evidence: {}".format(e["area"], e["finding"], e["evidence"]))
+        out.append("- **{}** - {} Evidence: {}".format(e["area"], sentence(e["finding"]), e["evidence"]))
     out.append("")
-
     out.append("## 3. Denominator review gate\n")
     rv = d["row_boundary_review"]
     out.append("The row set was frozen before any count was taken, by an independent read-only reviewer with veto "
@@ -187,7 +191,7 @@ def ledger(doc: dict) -> str:
     out.append("Writable cells (FULLY_EDITABLE + PARTIALLY_EDITABLE): {} of {} measured cells = {}%. "
                "{}\n".format(t["family_wide"]["writable_cells"], t["family_wide"]["measured_cells"],
                              t["family_wide"]["writable_pct_of_measured"], t["shared_path_caveat"]))
-    out.append("Per area, Buu's Fury:\n")
+    out.append("Per area, Buu's Fury (this title's cells only, so the state columns sum to the row count):\n")
     out.append("| area | rows | " + " | ".join(
         s for s in doc["vocabularies"]["coverage_states"] if s != "N_A") + " |")
     out.append("| --- | --- |" + " --- |" * (len(doc["vocabularies"]["coverage_states"]) - 1))
@@ -211,15 +215,16 @@ def ledger(doc: dict) -> str:
     out.append("Recommendations, not owner decisions. The integrated hex editor remains V1.0 ESSENTIAL by prior owner "
                "decision.\n")
     for v in doc["v1_triage"]:
-        out.append("- **{}** (`{}`) - {}. {}".format(v["gap"], v["recommendation"], v["why"],
+        out.append("- **{}** (`{}`) - {} {}".format(v["gap"], v["recommendation"], sentence(v["why"]),
                                                     ("Rows: " + ", ".join("`{}`".format(x) for x in v["rows"])) if v["rows"] else "Applies across the census."))
     out.append("")
-
     out.append("## 9. Highest-value reverse-engineering targets\n")
     for h in doc["highest_value_re_targets"]:
-        out.append("- **{}.** {} Addresses: {}. Payoff: {}".format(h["rank"], h["target"],
+        out.append("- **{}.** {} Addresses: {}. Payoff: {}".format(h["rank"], sentence(h["target"]),
                                                                    ", ".join("`{}`".format(a) for a in h["addresses"]), h["payoff"]))
     out.append("")
+    out.append("## 10. Baseline drift\n")
+    out.append(drift_note(doc) or "None measured.\n")
     return "\n".join(out)
 
 
@@ -283,8 +288,9 @@ def _census_inventory(doc: dict) -> str:
 
     out.append(drift_note(doc))
     out.append("## 2. Results that correct the tracked research\n")
-    out.append("Five tracked claims were re-checked against the bytes and did not survive, which is why they are "
-               "recorded here rather than repeated:\n")
+    out.append("Four tracked claims were re-checked against the bytes and did not survive, and a fifth was found to be an "
+               "open disagreement between tracked records rather than a refutation. All five are recorded here instead of "
+               "being repeated:\n")
     out.append("1. The \"map loader at `0x08008B30`\" attribution is wrong. The bytes at that address are "
                "backup-media code reading `0x0E000000`. The count and array loop the research quotes is real, and where "
                "it says: `0x08008CA2` is `ldrb r0,[r0,#0x4]` and `0x08008CAC` is `ldr r0,[r0,#0x14]`.")
@@ -493,12 +499,19 @@ def summary(doc: dict) -> str:
                "family and no deletion, no new text ids, clone-only placements, one record per dialogue container, one "
                "palette entry at a time, one added sprite identity per image, and one trigger contract out of the "
                "engine's set. The product is genuinely useful and it is not yet unrestricted anywhere.\n")
+    def unknown_basis(game: str) -> tuple[int, int]:
+        cells = [r["games"][game] for r in doc["rows"] if r["games"][game]["state"] == "UNKNOWN_UNMAPPED"]
+        return len(cells), sum(1 for c in cells if c["basis"] == "NOT_INVESTIGATED")
+
+    l1_unknown, l1_ni = unknown_basis("log1")
+    l2_unknown, l2_ni = unknown_basis("logii")
     out.append("Per-game differences, in cells: Buu's Fury has {} of {} cells writable and is the only title with a broad "
                "writable set; LOGII has one writable cell, its text table, plus four read-only domains including its own "
                "script encoding; LOG1 has none and is identity-only. {} of LOG1's {} cells and {} of LOGII's {} cells are "
-               "`UNKNOWN_UNMAPPED` on a NOT_INVESTIGATED basis, which is a statement about this lab's evidence, not about "
-               "those games.\n".format(bf["PARTIALLY_EDITABLE"], bf["measured_cells"], lg1["UNKNOWN_UNMAPPED"],
-                                        lg1["measured_cells"], lg2["UNKNOWN_UNMAPPED"], lg2["measured_cells"]))
+               "`UNKNOWN_UNMAPPED`, and {} of those and {} respectively rest on a NOT_INVESTIGATED basis: that basis is a "
+               "statement about this lab's evidence, not about those games, and the rest are measured negatives over "
+               "declared tables.\n".format(bf["PARTIALLY_EDITABLE"], bf["measured_cells"], l1_unknown, lg1["measured_cells"],
+                                           l2_unknown, lg2["measured_cells"], l1_ni, l2_ni))
     out.append("## 3. Engine knowledge is not editor support\n")
     out.append("Engine knowledge, family-wide cells: " + ", ".join(
         "**{}** {}".format(k, v) for k, v in t["engine_knowledge_family_wide"].items()) + ".\n")
@@ -525,8 +538,9 @@ def summary(doc: dict) -> str:
                "no consumer, no register constant.")
     out.append("6. **The save format is unknown while a 16 MiB expansion ships**, so nothing certifies that a generated "
                "image round-trips a retail save.")
-    out.append("7. **Five tracked research claims were refuted by the bytes**, including a string table that is a "
-               "numeric curve and an ARM region that is Thumb.")
+    out.append("7. **Four tracked research claims were refuted by the bytes** (a string table that is a numeric curve, an "
+               "ARM region that decodes as Thumb, a signed-data region labelled a pointer table, and a map-loader "
+               "attribution), and a fifth tracked record disagrees with two others on an address, which is left open.")
     out.append("8. **Four original compilation units are named by the cartridge itself**, which is the best naming "
                "oracle in the image and is used by no ticket.")
     out.append("9. **The capability registry's own proof field is stale for `sprite-new`**: it reads `application` "

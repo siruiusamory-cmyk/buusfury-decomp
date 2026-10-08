@@ -15,7 +15,7 @@
       "rows[].games.<game>.confidence": "CONFIRMED | INFERRED | UNKNOWN, per docs/research-conventions.md",
       "rows[].read|edit|author|xref|raw_range|validation_rebuild|ui|restrictions|external_tool": "row-level prose; each names the title when the titles differ",
       "facilities[]": "generic ROM-editor facilities. Deliberately NOT part of denominator.accepted_rows: a facility is a product capability, not a game system.",
-      "totals": "computed strictly from rows[].games; a cell whose state is N_A is excluded from that game's denominator"
+      "totals": "computed strictly from rows[].games; a cell whose state is N_A is excluded from that title's denominator. by_area_buus_fury counts this title's cells only, so its state columns sum to its row count."
     },
     "aggregate_rule": "The family-wide aggregate counts (row, game) cells, not rows: one cell per row per title. A cell whose state is N_A is excluded from both numerator and denominator. Because the state vocabulary is ordinal only for FULLY_EDITABLE and PARTIALLY_EDITABLE (the two states in which the product can write), the only aggregate percentage published is writable_cells / measured_cells; the five state counts are published separately per title and never summed into one score."
   },
@@ -112,11 +112,11 @@
       "UNKNOWN"
     ],
     "coverage_state_definitions": {
-      "FULLY_EDITABLE": "Inspectable, safely editable, validated against known-invalid writes, persisted through project and build, and not restricted to a subset that materially changes ordinary hacking of that system.",
+      "FULLY_EDITABLE": "Inspectable, safely editable, validated against known-invalid writes, persisted through project and build, not restricted to a subset that materially changes ordinary hacking of that system, and observed in the governed emulator; where a runtime observation is impossible for the domain, the state is PARTIALLY_EDITABLE with that reason stated.",
       "PARTIALLY_EDITABLE": "The product can semantically modify the system and material restrictions remain; the restriction is named numerically where a number exists.",
       "SEMANTIC_READ_ONLY": "The product identifies and displays the system and no semantic write path reaches it. Raw hex editing does not count.",
       "KNOWN_BUT_UNSUPPORTED": "The system is identified and bounded enough to say what it is, and the product has no semantic model for it.",
-      "UNKNOWN_UNMAPPED": "An editor-relevant region or system is known to exist and its semantic role or boundaries are not understood well enough to classify it.",
+      "UNKNOWN_UNMAPPED": "An editor-relevant region or system is known or plausibly held to exist and its semantic role or boundary is not understood well enough to classify it, or it has been measured only as a negative over declared tables. A measured negative is not a proven boundary.",
       "N_A": "Evidence shows the system genuinely does not exist in that title."
     }
   },
@@ -181,7 +181,7 @@
       }
     ],
     "row_boundary_review": {
-      "reviewer": "subagent_re_coverage, mechanically read-only, agent 5",
+      "reviewer": "subagent_re_coverage, mechanically read-only, the fifth and final evidence lane",
       "required_before_counts": true,
       "recorded_in": "docs/research/ROM_EDITOR_COVERAGE_LEDGER.md",
       "result": "ACCEPTED_WITH_CORRECTIONS",
@@ -189,7 +189,7 @@
       "splits": "none; sibling-object-record-families retained whole",
       "drops": "rom-expansion-and-free-space (a property of images and a product substrate, not a game system)",
       "adds": "event-resource-pool-and-index (proven 522-entry index and 127,328-byte pool with a product display path)",
-      "state_corrections": "sibling-object-record-families, enemy-ai-behaviours and global-flags-state demoted from KNOWN_BUT_UNSUPPORTED to UNKNOWN_UNMAPPED for want of a proven boundary; area-object-array-tables engine knowledge SUBSTANTIAL to PARTIAL for a misattributed function and a disputed four-array model",
+      "state_corrections": "sibling-object-record-families, enemy-behaviour-data and global-flags-state demoted from KNOWN_BUT_UNSUPPORTED to UNKNOWN_UNMAPPED for want of a proven boundary; area-object-array-tables engine knowledge SUBSTANTIAL to PARTIAL for a misattributed function and a disputed four-array model",
       "evidence_corrections": "shops evidence replaced with the CONFIRMED_ROM producer addresses; Buu-offset negatives no longer stand in for sibling-title investigations; enemy and character stat field names restored from tools/webfoot/stats.py:76-93; LOGII text edit path corrected against tests/integration/test_logii_text_rom.py:386-422",
       "frozen_row_count": 40
     }
@@ -1024,11 +1024,11 @@
       ]
     },
     {
-      "id": "enemy-ai-behaviours",
-      "name": "Enemy AI and behaviour data",
+      "id": "enemy-behaviour-data",
+      "name": "Enemy behaviour data",
       "area": "ENTITIES/GAMEPLAY",
-      "description": "The per-actor movement, aggression and reaction logic behind the placed objects. The product can attach an authored script to an authored entity; the engine's own AI data and interpreter are not modelled.",
-      "evidence_authority": "Negative result for a table: no AI table is declared in tools/webfoot/data/roms.yaml; the placement record's fields beyond the sprite id and position are unknown; the sprite-facing wander box is the only movement data the product authors",
+      "description": "The per-actor movement, aggression and reaction logic behind the placed objects. The product can attach an authored script to an authored entity; the engine's own behaviour data and interpreter are not modelled.",
+      "evidence_authority": "Negative result for a table: no behaviour table is declared in tools/webfoot/data/roms.yaml; the placement record's fields beyond the sprite id and position are unknown; the sprite-facing wander box is the only movement data the product authors",
       "games": {
         "buus_fury": {
           "state": "UNKNOWN_UNMAPPED",
@@ -1052,21 +1052,21 @@
           "confidence": "UNKNOWN"
         }
       },
-      "read": "None as AI data. The product reads a placement's wander box for authoring purposes.",
+      "read": "None as behaviour data. The product reads a placement's wander box for authoring purposes.",
       "edit": "None.",
-      "author": "Only through the behaviour attachment row, which writes a script rather than AI data.",
-      "xref": "Placement record to wherever its behaviour parameters live, unestablished; the stat table to the damage the AI's attacks do, unestablished.",
+      "author": "Only through the behaviour attachment row, which writes a script rather than behaviour data.",
+      "xref": "Placement record to wherever its behaviour parameters live, unestablished; the stat table to the damage the actor's attacks do, unestablished.",
       "raw_range": "Not established.",
       "validation_rebuild": "Not applicable.",
       "ui": "None.",
-      "restrictions": "The boundary is unknown: it is not established whether AI is data-driven per actor, code-driven per type, or both, so the state is UNKNOWN_UNMAPPED rather than KNOWN_BUT_UNSUPPORTED. A negative search over the declared tables is not a proven boundary.",
+      "restrictions": "The boundary is unknown: it is not established whether behaviour is data-driven per actor, code-driven per type, or both, so the state is UNKNOWN_UNMAPPED rather than KNOWN_BUT_UNSUPPORTED. A negative search over the declared tables is not a proven boundary.",
       "external_tool": "mGBA debugger to trace an actor's decision, which is the cheapest route; Ghidra afterwards.",
       "open_questions": [
-        "Is there a per-actor AI parameter block, and where is it reached from?"
+        "Is there a per-actor behaviour parameter block, and where is it reached from?"
       ],
       "evidence_refs": [
         "tools/webfoot/data/roms.yaml:34-44 (placement fields)",
-        "tools/runtime/p004_* observers (existing AI traces, research only)"
+        "tools/runtime/p004_* observers (existing behaviour traces, research only)"
       ]
     },
     {
@@ -1729,7 +1729,7 @@
       "raw_range": "A 155 x 4,096-byte pointer run at 0x086F395C, and a related 140 x 1,024 run at 0x082ABF08 whose consumers are unknown; the two records partially overlap and the count needs reconciling.",
       "validation_rebuild": "Not applicable.",
       "ui": "None.",
-      "restrictions": "Pixel format, dimensions and the rendering claim are not confirmed, and portrait recall is unmeasured. Two tracked counts for the packed residual tables (177 of 387 residuals against 155 plus 140 entries) do not reconcile yet.",
+      "restrictions": "Pixel format, dimensions and the rendering claim are not confirmed, and portrait recall is unmeasured. Two tracked counts for the packed residual tables (177 of 387 residuals against 155 plus 140 entries) do not reconcile yet. A tracked research record places the portrait pointer array at 0x086F393C while this census's decomp lane read the run at 0x086F395C; the 0x20 difference is not reconciled here and is recorded as an open address disagreement.",
       "external_tool": "a graphics decoder and a runtime observation to confirm the format; otherwise none.",
       "open_questions": [
         "What is the portrait pixel format and dimensions?",
@@ -1937,8 +1937,8 @@
       "id": "resource-index-and-relocation",
       "name": "Engine reference and pointer-table family",
       "area": "SYSTEM/ROM",
-      "description": "The engine's own tables of pointers: the 20 pointer_table regions the region map bounds (166,260 bytes), the packed handles and reference documents the product builds over them, and the relocation layer that rewrites references when a body moves. The row's evidence is ROM-side tables first; the SDK modules are the reader, not the subject.",
-      "evidence_authority": "tools/webfoot/handles.py:17-31; tools/webfoot/layout.py; tools/webfoot/relocation.py; tools/webfoot/allocation.py; tools/webfoot/document.py:87; tools/research/domain_reachability.py:150-441",
+      "description": "The engine's own tables of pointers: the 20 pointer_table regions the region map bounds (166,260 bytes), the packed handles and reference documents the product builds over them, and the relocation layer that rewrites references when a body moves. The row's evidence is ROM-side tables first; the SDK modules are the reader, not the subject. The 20 pointer_table regions are the subject; the reference, relocation and allocation modules are the reader, not the evidence.",
+      "evidence_authority": "tools/webfoot/handles.py:17-31; tools/webfoot/layout.py; tools/webfoot/relocation.py; tools/webfoot/allocation.py; tools/webfoot/document.py:87; tools/research/domain_reachability.py:150-441; the 20 pointer_table regions and their 166,260 bytes were re-measured by this census from the public reconstruction's config/rom_map.json at commit 5a6d3349199d16b1800d55d200bcbf2f8d91b29e",
       "games": {
         "buus_fury": {
           "state": "PARTIALLY_EDITABLE",
@@ -2063,7 +2063,7 @@
       "edit": "None. Nothing in tools/webfoot assembles, compiles or emits an instruction.",
       "author": "None.",
       "xref": "Every consumer function that the format rows cite is a member of this row.",
-      "raw_range": "25 code regions and 8 code-candidate regions, 186,542 bytes in the reconstruction's map; the Ghidra function count is not a code count because the whole image was analysed as code.",
+      "raw_range": "25 code regions and 8 code-candidate regions, 186,538 bytes in the reconstruction's map; the Ghidra function count is not a code count because the whole image was analysed as code.",
       "validation_rebuild": "Not applicable to code. The relocation layer can move an existing code body and rewrite its references, which is not code authoring.",
       "ui": "Atlas displays classified code ranges; no surface edits them.",
       "restrictions": "Two static instruments disagree in kind: Ghidra reports 85,181 functions over an image that is 54 percent unclassified, while the reconstruction credits 268 tracked functions and 2.73 percent semantically. Neither number is a measure of understanding. Preserved developer source paths name four compilation units, which is the richest naming lead in the image.",
@@ -2083,7 +2083,7 @@
       "name": "IWRAM-resident code and data",
       "area": "SYSTEM/ROM",
       "description": "The 4,100-byte ARM blob copied by DMA3 to 0x03000000 at reset, plus the IWRAM work area the engine runs from. Code relocated into RAM cannot be read correctly as ROM bytes.",
-      "evidence_authority": "ROM reset code at 0x08000108..0x08000124 with literals 0x087B79A4 / 0x03000000 / 0x00001007; tools/webfoot/webfoot_lz.py:68 names the retail decoder at 0x087B79E4 as executed from IWRAM 0x03000040; tools/webfoot/data/placement_contracts.py:31 and tools/webfoot/formats/placement_links.py:196 state the limitation; the decomp credits 19 lifted IWRAM units of which 14 are complete",
+      "evidence_authority": "ROM reset code at 0x08000108..0x08000124 with literals 0x087B79A4 / 0x03000000 / 0x00001007; tools/webfoot/formats/webfoot_lz.py:68 names the retail decoder at 0x087B79E4 as executed from IWRAM 0x03000040; tools/webfoot/data/placement_contracts.py:31 and tools/webfoot/formats/placement_links.py:196 state the limitation; the decomp credits 19 lifted IWRAM units of which 14 are complete",
       "games": {
         "buus_fury": {
           "state": "KNOWN_BUT_UNSUPPORTED",
@@ -2122,7 +2122,7 @@
       "evidence_refs": [
         "0x08000108..0x08000124 (reset code)",
         "0x087B79A4 (blob)",
-        "tools/webfoot/webfoot_lz.py:68",
+        "tools/webfoot/formats/webfoot_lz.py:68",
         "tools/webfoot/data/placement_contracts.py:31",
         "tools/webfoot/formats/placement_links.py:196",
         "decomp config/regions.json iwram class"
@@ -2363,7 +2363,8 @@
         "PARTIALLY_EDITABLE": 0,
         "SEMANTIC_READ_ONLY": 0,
         "KNOWN_BUT_UNSUPPORTED": 0,
-        "UNKNOWN_UNMAPPED": 3
+        "UNKNOWN_UNMAPPED": 1,
+        "N_A": 0
       },
       "ENTITIES/GAMEPLAY": {
         "rows": 10,
@@ -2371,7 +2372,8 @@
         "PARTIALLY_EDITABLE": 4,
         "SEMANTIC_READ_ONLY": 0,
         "KNOWN_BUT_UNSUPPORTED": 2,
-        "UNKNOWN_UNMAPPED": 24
+        "UNKNOWN_UNMAPPED": 4,
+        "N_A": 0
       },
       "GRAPHICS": {
         "rows": 8,
@@ -2379,7 +2381,8 @@
         "PARTIALLY_EDITABLE": 4,
         "SEMANTIC_READ_ONLY": 1,
         "KNOWN_BUT_UNSUPPORTED": 2,
-        "UNKNOWN_UNMAPPED": 17
+        "UNKNOWN_UNMAPPED": 1,
+        "N_A": 0
       },
       "MAP/WORLD": {
         "rows": 7,
@@ -2387,23 +2390,26 @@
         "PARTIALLY_EDITABLE": 5,
         "SEMANTIC_READ_ONLY": 1,
         "KNOWN_BUT_UNSUPPORTED": 0,
-        "UNKNOWN_UNMAPPED": 15
+        "UNKNOWN_UNMAPPED": 1,
+        "N_A": 0
       },
       "SCRIPT/TEXT": {
         "rows": 7,
         "FULLY_EDITABLE": 0,
-        "PARTIALLY_EDITABLE": 5,
-        "SEMANTIC_READ_ONLY": 3,
+        "PARTIALLY_EDITABLE": 4,
+        "SEMANTIC_READ_ONLY": 1,
         "KNOWN_BUT_UNSUPPORTED": 2,
-        "UNKNOWN_UNMAPPED": 11
+        "UNKNOWN_UNMAPPED": 0,
+        "N_A": 0
       },
       "SYSTEM/ROM": {
         "rows": 7,
         "FULLY_EDITABLE": 0,
         "PARTIALLY_EDITABLE": 2,
-        "SEMANTIC_READ_ONLY": 4,
+        "SEMANTIC_READ_ONLY": 1,
         "KNOWN_BUT_UNSUPPORTED": 2,
-        "UNKNOWN_UNMAPPED": 13
+        "UNKNOWN_UNMAPPED": 2,
+        "N_A": 0
       }
     },
     "engine_knowledge_by_game": {
@@ -2448,7 +2454,7 @@
         "enemy-stat-records",
         "techniques-and-attacks",
         "player-progression",
-        "enemy-ai-behaviours",
+        "enemy-behaviour-data",
         "map-event-trigger-records"
       ]
     },
@@ -2480,7 +2486,7 @@
         "iwram-resident-code",
         "save-data",
         "audio-data",
-        "enemy-ai-behaviours"
+        "enemy-behaviour-data"
       ]
     },
     {
@@ -2784,13 +2790,41 @@
       "reviewer": "subagent_re_coverage",
       "status": "COMPLETE",
       "verdict": "DENOMINATOR LEGITIMATE AND REFROZEN AT 40 ROWS, WITH MANDATORY TOTALS RECOMPUTATION, THREE STATE DEMOTIONS, ONE DROP, ONE ADD AND SIX EVIDENCE CORRECTIONS BEFORE ANY NUMBER IS PUBLISHED",
-      "note": "The reviewer's first finding was that the draft's totals did not match its rows and that a count had been published before the gate it declared. Every count in this file is now recomputed from rows by this census's validator; see docs/research/ROM_EDITOR_COVERAGE_LEDGER.md."
+      "note": "The reviewer's first finding was that the draft's totals did not match its rows and that a count had been published before the gate it declared. Every count in this file is now recomputed from rows by this census's validator; see docs/research/ROM_EDITOR_COVERAGE_LEDGER.md. A second, independent review of the frozen candidate followed: see review.independent_review."
     },
     "independent_review": {
-      "backend": "claude_local",
-      "candidate_sha": null,
-      "status": "PENDING",
-      "findings": []
+      "backend": "subagent_re_coverage (DSH RE Lab coverage role, fresh context, mechanically read-only)",
+      "candidate_sha": "f2f80a991bd762c02038b9cf33dc36c31283c6bd",
+      "verdict": "BLOCK",
+      "blocking_findings": [
+        {
+          "id": "A",
+          "severity": "MEDIUM",
+          "claim": "The per-area table was published under the title Buu's Fury while its values were family-wide cell counts, and the validator locked the mislabel in.",
+          "fix": "by_area_buus_fury now counts this title's cells only, and the validator counts only buus_fury, so the state columns sum to the row count."
+        },
+        {
+          "id": "B",
+          "severity": "MEDIUM",
+          "claim": "The summary asserted that all 39 LOG1 and 35 LOGII UNKNOWN_UNMAPPED cells rested on NOT_INVESTIGATED; six of them are MEASURED.",
+          "fix": "the summary derives both numbers from rows[] instead of hard-coding them."
+        }
+      ],
+      "non_blocking_fixed": [
+        "wrong module path in the IWRAM row",
+        "186,542 typo for 186,538",
+        "the pointer-table count now cites its own measurement",
+        "the four-refuted-plus-one-open wording",
+        "the portrait address disagreement",
+        "the FULLY_EDITABLE and UNKNOWN_UNMAPPED definitions now match their use",
+        "the ledger now carries the baseline drift note",
+        "renderer punctuation artifacts"
+      ],
+      "accepted_without_change": [
+        "zero N_A cells with evidence-backed absences in excluded_seed_areas",
+        "the fifteen facilities outside the denominator"
+      ],
+      "confirmation": "PENDING"
     }
   }
 }

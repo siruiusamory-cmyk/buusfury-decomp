@@ -22,7 +22,7 @@ Fields:
 - `rows[].games.<game>.confidence` - CONFIRMED | INFERRED | UNKNOWN, per docs/research-conventions.md
 - `rows[].read|edit|author|xref|raw_range|validation_rebuild|ui|restrictions|external_tool` - row-level prose; each names the title when the titles differ
 - `facilities[]` - generic ROM-editor facilities. Deliberately NOT part of denominator.accepted_rows: a facility is a product capability, not a game system.
-- `totals` - computed strictly from rows[].games; a cell whose state is N_A is excluded from that game's denominator
+- `totals` - computed strictly from rows[].games; a cell whose state is N_A is excluded from that title's denominator. by_area_buus_fury counts this title's cells only, so its state columns sum to its row count.
 
 Vocabularies:
 
@@ -34,11 +34,11 @@ Vocabularies:
 
 Coverage-state definitions:
 
-- `FULLY_EDITABLE` - Inspectable, safely editable, validated against known-invalid writes, persisted through project and build, and not restricted to a subset that materially changes ordinary hacking of that system.
+- `FULLY_EDITABLE` - Inspectable, safely editable, validated against known-invalid writes, persisted through project and build, not restricted to a subset that materially changes ordinary hacking of that system, and observed in the governed emulator; where a runtime observation is impossible for the domain, the state is PARTIALLY_EDITABLE with that reason stated.
 - `PARTIALLY_EDITABLE` - The product can semantically modify the system and material restrictions remain; the restriction is named numerically where a number exists.
 - `SEMANTIC_READ_ONLY` - The product identifies and displays the system and no semantic write path reaches it. Raw hex editing does not count.
 - `KNOWN_BUT_UNSUPPORTED` - The system is identified and bounded enough to say what it is, and the product has no semantic model for it.
-- `UNKNOWN_UNMAPPED` - An editor-relevant region or system is known to exist and its semantic role or boundaries are not understood well enough to classify it.
+- `UNKNOWN_UNMAPPED` - An editor-relevant region or system is known or plausibly held to exist and its semantic role or boundary is not understood well enough to classify it, or it has been measured only as a negative over declared tables. A measured negative is not a proven boundary.
 - `N_A` - Evidence shows the system genuinely does not exist in that title.
 
 ## 2. Denominator
@@ -49,29 +49,29 @@ Accepted rows: **40**. The family-wide aggregate counts (row, game) cells, not r
 
 Seed areas the census investigated and did **not** turn into rows:
 
-- **collision** - Measured on Buu's Fury only: this title keeps no separate per-map collision table, so collision is not a distinct editor-relevant structure in it. The game certainly has walls; the finding is that they are not carried by a collision table of their own. Nothing is claimed for LOGII or LOG1.. Evidence: tests/integration/test_local_collision_rom.py:214
-- **inventory** - Not established as a ROM structure. The two item index lists the consumer FUN_080164d0 builds are runtime state in an object at +0x134 and +0x284, and a runtime structure is not a ROM-editable domain.. Evidence: FUN_080164d0 (ROM decompilation)
-- **unowned proven strides** - A 20-byte-stride table at 0x083BB78C and a 33-byte pool at 0x083BBBB0 are bounded in stride and have no found consumer. An unexplained stride is not a system until a consumer exists, so they get no row.. Evidence: 0x083BB78C and 0x083BBBB0 (ROM bytes); no inbound code reference found
-- **world map** - No world-map table, region or consumer was established in any title.. Evidence: Ghidra lane: symbol-name search returned empty and no byte search exists; no tracked research document names one
-- **encounters and spawn logic** - No separate encounter or spawn table was found; spawns are carried by the per-area object arrays that row area-object-array-tables covers.. Evidence: docs/research/BUU_MAP_OBJECT_ARRAYS.md; 0x08008b30 array walk
-- **boss definitions** - No boss classification exists in the project and none was established in the image; bosses are not a separate structure with its own boundary.. Evidence: tools/webfoot/enemy_randomizer/eligibility.py:18-24
-- **RNG** - No engine RNG state or table was established; the project has randomizer seeds, which are product inputs.. Evidence: tools/webfoot/randomizer/service.py:188; no engine RNG evidence found
-- **effects and projectiles as a source system** - No separate deterministic effect definition system was found; effects ride the sprite pipeline.. Evidence: docs/research/GRAPHICS_COVERAGE.md
-- **cutscene art as a separate family** - No evidence separates cutscene art from the title and static screen family.. Evidence: docs/research/GRAPHICS_COVERAGE.md (TITLE/STATIC/CUTSCENE UNRESOLVED as one load list)
-- **overlays and code loading** - The platform is the GBA, which has no overlay mechanism; the relocation layer is a codec over anchors, not a runtime loader.. Evidence: tools/research/domain_reachability.py:417-418
-- **compiler-embedded source paths and assert strings** - Real and proven at four sites, but it is build debris that names compilation units, not a system an editor would expose on its own; it is recorded as census evidence.. Evidence: ROM 0x08004160, 0x08004818, 0x08008A5C, 0x08013BAC
+- **collision** - Measured on Buu's Fury only: this title keeps no separate per-map collision table, so collision is not a distinct editor-relevant structure in it. The game certainly has walls; the finding is that they are not carried by a collision table of their own. Nothing is claimed for LOGII or LOG1. Evidence: tests/integration/test_local_collision_rom.py:214
+- **inventory** - Not established as a ROM structure. The two item index lists the consumer FUN_080164d0 builds are runtime state in an object at +0x134 and +0x284, and a runtime structure is not a ROM-editable domain. Evidence: FUN_080164d0 (ROM decompilation)
+- **unowned proven strides** - A 20-byte-stride table at 0x083BB78C and a 33-byte pool at 0x083BBBB0 are bounded in stride and have no found consumer. An unexplained stride is not a system until a consumer exists, so they get no row. Evidence: 0x083BB78C and 0x083BBBB0 (ROM bytes); no inbound code reference found
+- **world map** - No world-map table, region or consumer was established in any title. Evidence: Ghidra lane: symbol-name search returned empty and no byte search exists; no tracked research document names one
+- **encounters and spawn logic** - No separate encounter or spawn table was found; spawns are carried by the per-area object arrays that row area-object-array-tables covers. Evidence: docs/research/BUU_MAP_OBJECT_ARRAYS.md; 0x08008b30 array walk
+- **boss definitions** - No boss classification exists in the project and none was established in the image; bosses are not a separate structure with its own boundary. Evidence: tools/webfoot/enemy_randomizer/eligibility.py:18-24
+- **RNG** - No engine RNG state or table was established; the project has randomizer seeds, which are product inputs. Evidence: tools/webfoot/randomizer/service.py:188; no engine RNG evidence found
+- **effects and projectiles as a source system** - No separate deterministic effect definition system was found; effects ride the sprite pipeline. Evidence: docs/research/GRAPHICS_COVERAGE.md
+- **cutscene art as a separate family** - No evidence separates cutscene art from the title and static screen family. Evidence: docs/research/GRAPHICS_COVERAGE.md (TITLE/STATIC/CUTSCENE UNRESOLVED as one load list)
+- **overlays and code loading** - The platform is the GBA, which has no overlay mechanism; the relocation layer is a codec over anchors, not a runtime loader. Evidence: tools/research/domain_reachability.py:417-418
+- **compiler-embedded source paths and assert strings** - Real and proven at four sites, but it is build debris that names compilation units, not a system an editor would expose on its own; it is recorded as census evidence. Evidence: ROM 0x08004160, 0x08004818, 0x08008A5C, 0x08013BAC
 
 ## 3. Denominator review gate
 
 The row set was frozen before any count was taken, by an independent read-only reviewer with veto power over the denominator.
 
-- Reviewer: subagent_re_coverage, mechanically read-only, agent 5
+- Reviewer: subagent_re_coverage, mechanically read-only, the fifth and final evidence lane
 - Result: **ACCEPTED_WITH_CORRECTIONS**
 - Merges: none; nine duplicate candidates refused on evidence
 - Splits: none; sibling-object-record-families retained whole
 - Drops: rom-expansion-and-free-space (a property of images and a product substrate, not a game system)
 - Adds: event-resource-pool-and-index (proven 522-entry index and 127,328-byte pool with a product display path)
-- State corrections: sibling-object-record-families, enemy-ai-behaviours and global-flags-state demoted from KNOWN_BUT_UNSUPPORTED to UNKNOWN_UNMAPPED for want of a proven boundary; area-object-array-tables engine knowledge SUBSTANTIAL to PARTIAL for a misattributed function and a disputed four-array model
+- State corrections: sibling-object-record-families, enemy-behaviour-data and global-flags-state demoted from KNOWN_BUT_UNSUPPORTED to UNKNOWN_UNMAPPED for want of a proven boundary; area-object-array-tables engine knowledge SUBSTANTIAL to PARTIAL for a misattributed function and a disputed four-array model
 - Evidence corrections: shops evidence replaced with the CONFIRMED_ROM producer addresses; Buu-offset negatives no longer stand in for sibling-title investigations; enemy and character stat field names restored from tools/webfoot/stats.py:76-93; LOGII text edit path corrected against tests/integration/test_logii_text_rom.py:386-422
 - Frozen row count: **40**
 
@@ -84,51 +84,51 @@ The reviewer's first finding was that the draft's totals did not match its own r
 | census id | system | Buu's Fury | LOGII | LOG1 | Engine knowledge | Runtime evidence | External tool |
 | --- | --- | --- | --- | --- | --- | --- | --- |
 | **Map and world data** | | | | | | | |
-| `map-entry-records` | Map identity and header records | PARTIAL | UNKNOWN | UNKNOWN (ni) | PROVEN | PROVEN | hex editor for the unmodelled fields. |
+| `map-entry-records` | Map identity and header records | PARTIAL | UNKNOWN | UNKNOWN (ni) | PROVEN | PROVEN | hex editor for the unmodelled fields |
 | `map-layout-chunk-grids` | Map layout chunk grids | PARTIAL | UNKNOWN (ni) | UNKNOWN (ni) | PROVEN | PROVEN | tile editor plus a custom decoder for anything below the chunk: tileset entries, tile bits 12-15 and palettes outside the shared object palette. |
 | `map-chunk-containers` | Map chunk containers | PARTIAL | UNKNOWN (ni) | UNKNOWN (ni) | PROVEN | PROVEN | tile editor and a graphics codec writer for genuinely new artwork. |
-| `map-graphics-tilesets` | Map graphics: character blocks, tilesets and screen-entry planes | READ-ONLY | UNKNOWN (ni) | UNKNOWN (ni) | SUBSTANTIAL | NOT_NEEDED_FOR_CLASSIFICATION | standalone tile or graphics editor plus a custom decoder. |
-| `area-object-array-tables` | Per-area counted object array tables | PARTIAL | UNKNOWN (ni) | UNKNOWN (ni) | PARTIAL | PROVEN | Ghidra to decode the element types of the +0x18, +0x1C and +0x20 families. |
-| `warps-transitions` | Warps and map transitions | PARTIAL | UNKNOWN (ni) | UNKNOWN (ni) | PROVEN | PROVEN | Ghidra for the 169-class arrival semantics and the two unresolved byte fields. |
+| `map-graphics-tilesets` | Map graphics: character blocks, tilesets and screen-entry planes | READ-ONLY | UNKNOWN (ni) | UNKNOWN (ni) | SUBSTANTIAL | NOT_NEEDED_FOR_CLASSIFICATION | standalone tile or graphics editor plus a custom decoder |
+| `area-object-array-tables` | Per-area counted object array tables | PARTIAL | UNKNOWN (ni) | UNKNOWN (ni) | PARTIAL | PROVEN | Ghidra to decode the element types of the +0x18, +0x1C and +0x20 families |
+| `warps-transitions` | Warps and map transitions | PARTIAL | UNKNOWN (ni) | UNKNOWN (ni) | PROVEN | PROVEN | Ghidra for the 169-class arrival semantics and the two unresolved byte fields |
 | `map-event-trigger-records` | Map event and trigger records | UNKNOWN | UNKNOWN (ni) | UNKNOWN (ni) | MINIMAL | NEEDED | Ghidra to settle the offset conflict by reading the consumer's arithmetic, then a runtime probe on a map with a live event. |
 | **Entities and gameplay** | | | | | | | |
-| `placement-records` | Placement-family object records | PARTIAL | UNKNOWN (ni) | UNKNOWN (ni) | SUBSTANTIAL | PROVEN | Ghidra for the unmodelled fields and the enemy-to-sprite link. |
+| `placement-records` | Placement-family object records | PARTIAL | UNKNOWN (ni) | UNKNOWN (ni) | SUBSTANTIAL | PROVEN | Ghidra for the unmodelled fields and the enemy-to-sprite link |
 | `sibling-object-record-families` | Unmodelled sibling object record families (two families) | UNKNOWN | UNKNOWN (ni) | UNKNOWN (ni) | PARTIAL | NEEDED | Ghidra with byte-level verification, plus runtime observation to see when each family is constructed. |
-| `enemy-stat-records` | Enemy and character stat records | PARTIAL | UNKNOWN | UNKNOWN (ni) | SUBSTANTIAL | PARTIAL | Ghidra to name the fields through the damage formula. |
-| `character-base-stats` | Playable-character base stats | PARTIAL | UNKNOWN (ni) | UNKNOWN (ni) | SUBSTANTIAL | UNKNOWN | Ghidra to decompile 0x08004904. |
-| `player-progression` | Player progression and level-up | UNKNOWN | UNKNOWN (ni) | UNKNOWN (ni) | MINIMAL | NEEDED | Ghidra starting from the character-data unit name and the experience value the HUD displays. |
-| `techniques-and-attacks` | Techniques and attacks | UNKNOWN | UNKNOWN (ni) | UNKNOWN (ni) | MINIMAL | NEEDED | Ghidra over the 266 native handlers. |
-| `items-and-inventory` | Item table | KNOWN | UNKNOWN (ni) | UNKNOWN (ni) | SUBSTANTIAL | NOT_NEEDED_FOR_CLASSIFICATION | Ghidra to find the consumer of the 33-byte pool and to name +0x0C. |
+| `enemy-stat-records` | Enemy and character stat records | PARTIAL | UNKNOWN | UNKNOWN (ni) | SUBSTANTIAL | PARTIAL | Ghidra to name the fields through the damage formula |
+| `character-base-stats` | Playable-character base stats | PARTIAL | UNKNOWN (ni) | UNKNOWN (ni) | SUBSTANTIAL | UNKNOWN | Ghidra to decompile 0x08004904 |
+| `player-progression` | Player progression and level-up | UNKNOWN | UNKNOWN (ni) | UNKNOWN (ni) | MINIMAL | NEEDED | Ghidra starting from the character-data unit name and the experience value the HUD displays |
+| `techniques-and-attacks` | Techniques and attacks | UNKNOWN | UNKNOWN (ni) | UNKNOWN (ni) | MINIMAL | NEEDED | Ghidra over the 266 native handlers |
+| `items-and-inventory` | Item table | KNOWN | UNKNOWN (ni) | UNKNOWN (ni) | SUBSTANTIAL | NOT_NEEDED_FOR_CLASSIFICATION | Ghidra to find the consumer of the 33-byte pool and to name +0x0C..+0x20 |
 | `shops-and-scenarios` | Shops and shop scenarios | KNOWN | UNKNOWN (ni) | UNKNOWN (ni) | PARTIAL | NOT_NEEDED_FOR_CLASSIFICATION | Ghidra plus mGBA to observe a purchase and find the debited value. |
-| `enemy-ai-behaviours` | Enemy AI and behaviour data | UNKNOWN | UNKNOWN (ni) | UNKNOWN (ni) | MINIMAL | NEEDED | mGBA debugger to trace an actor's decision, which is the cheapest route. |
+| `enemy-behaviour-data` | Enemy behaviour data | UNKNOWN | UNKNOWN (ni) | UNKNOWN (ni) | MINIMAL | NEEDED | mGBA debugger to trace an actor's decision, which is the cheapest route |
 | `behaviour-attachment-authoring` | Engine trigger and effect contract family | PARTIAL | UNKNOWN (ni) | UNKNOWN (ni) | SUBSTANTIAL | PROVEN | Ghidra for the remaining trigger and effect contracts, which is what would widen this row. |
 | **Script and text** | | | | | | | |
-| `script-bytecode-vm` | Script bytecode and interpreter | PARTIAL | READ-ONLY | UNKNOWN (ni) | SUBSTANTIAL | PROVEN | Ghidra over the handler table and the dispatch veneer. |
-| `script-tables` | Script root tables | PARTIAL | READ-ONLY | UNKNOWN (ni) | PROVEN | PROVEN | Ghidra to find a growth path, which is where the compiled bounds live. |
-| `text-string-tables` | Text string tables | PARTIAL | PARTIAL | UNKNOWN (ni) | PROVEN | PROVEN | Ghidra to widen the reference set beyond the 51 measured for the Buu table. |
-| `dialogue-records` | Dialogue records and containers | PARTIAL | UNKNOWN | UNKNOWN (ni) | PROVEN | PROVEN | Ghidra over the script VM for LOGII dialogue. |
-| `event-resource-pool-and-index` | Event resource pool and its index | READ-ONLY | UNKNOWN (ni) | UNKNOWN (ni) | SUBSTANTIAL | NOT_NEEDED_FOR_CLASSIFICATION | Ghidra to decode one element's internal structure. |
-| `dialogue-control-codes` | Dialogue control codes and tokens | KNOWN | UNKNOWN (ni) | UNKNOWN (ni) | PARTIAL | NOT_NEEDED_FOR_CLASSIFICATION | Ghidra on the text renderer. |
-| `fonts-and-glyph-metrics` | Fonts and glyph metrics | KNOWN | UNKNOWN (ni) | UNKNOWN (ni) | PARTIAL | NOT_NEEDED_FOR_CLASSIFICATION | standalone tile or graphics editor plus a custom decoder. |
+| `script-bytecode-vm` | Script bytecode and interpreter | PARTIAL | READ-ONLY | UNKNOWN (ni) | SUBSTANTIAL | PROVEN | Ghidra over the handler table and the dispatch veneer |
+| `script-tables` | Script root tables | PARTIAL | READ-ONLY | UNKNOWN (ni) | PROVEN | PROVEN | Ghidra to find a growth path, which is where the compiled bounds live |
+| `text-string-tables` | Text string tables | PARTIAL | PARTIAL | UNKNOWN (ni) | PROVEN | PROVEN | Ghidra to widen the reference set beyond the 51 measured for the Buu table |
+| `dialogue-records` | Dialogue records and containers | PARTIAL | UNKNOWN | UNKNOWN (ni) | PROVEN | PROVEN | Ghidra over the script VM for LOGII dialogue |
+| `event-resource-pool-and-index` | Event resource pool and its index | READ-ONLY | UNKNOWN (ni) | UNKNOWN (ni) | SUBSTANTIAL | NOT_NEEDED_FOR_CLASSIFICATION | Ghidra to decode one element's internal structure |
+| `dialogue-control-codes` | Dialogue control codes and tokens | KNOWN | UNKNOWN (ni) | UNKNOWN (ni) | PARTIAL | NOT_NEEDED_FOR_CLASSIFICATION | Ghidra on the text renderer |
+| `fonts-and-glyph-metrics` | Fonts and glyph metrics | KNOWN | UNKNOWN (ni) | UNKNOWN (ni) | PARTIAL | NOT_NEEDED_FOR_CLASSIFICATION | standalone tile or graphics editor plus a custom decoder |
 | **Graphics** | | | | | | | |
-| `actor-sprite-registry` | Actor sprite identity registry | PARTIAL | UNKNOWN (ni) | UNKNOWN (ni) | PROVEN | PROVEN | Ghidra for the identity structure's remaining fields. |
-| `appearance-records` | Appearance records | PARTIAL | UNKNOWN (ni) | UNKNOWN (ni) | PROVEN | PROVEN | Ghidra for the roster builder at 0x08024F3C. |
-| `sprite-frame-records` | Sprite frames, pieces and graphics payloads | PARTIAL | UNKNOWN (ni) | UNKNOWN (ni) | SUBSTANTIAL | PROVEN | a standalone graphics editor for pixel work. |
-| `animation-records` | Animation records | READ-ONLY | UNKNOWN (ni) | UNKNOWN (ni) | SUBSTANTIAL | NOT_NEEDED_FOR_CLASSIFICATION | mGBA to confirm the axis convention. |
-| `object-palettes` | Object palettes | PARTIAL | UNKNOWN (ni) | UNKNOWN (ni) | PROVEN | NOT_NEEDED_FOR_CLASSIFICATION | none for the supported recolour. |
-| `ui-hud-graphics` | UI, HUD and menu graphics | KNOWN | UNKNOWN (ni) | UNKNOWN (ni) | PARTIAL | NOT_NEEDED_FOR_CLASSIFICATION | standalone tile editor and a custom decoder. |
+| `actor-sprite-registry` | Actor sprite identity registry | PARTIAL | UNKNOWN (ni) | UNKNOWN (ni) | PROVEN | PROVEN | Ghidra for the identity structure's remaining fields |
+| `appearance-records` | Appearance records | PARTIAL | UNKNOWN (ni) | UNKNOWN (ni) | PROVEN | PROVEN | Ghidra for the roster builder at 0x08024F3C |
+| `sprite-frame-records` | Sprite frames, pieces and graphics payloads | PARTIAL | UNKNOWN (ni) | UNKNOWN (ni) | SUBSTANTIAL | PROVEN | a standalone graphics editor for pixel work |
+| `animation-records` | Animation records | READ-ONLY | UNKNOWN (ni) | UNKNOWN (ni) | SUBSTANTIAL | NOT_NEEDED_FOR_CLASSIFICATION | mGBA to confirm the axis convention |
+| `object-palettes` | Object palettes | PARTIAL | UNKNOWN (ni) | UNKNOWN (ni) | PROVEN | NOT_NEEDED_FOR_CLASSIFICATION | none for the supported recolour |
+| `ui-hud-graphics` | UI, HUD and menu graphics | KNOWN | UNKNOWN (ni) | UNKNOWN (ni) | PARTIAL | NOT_NEEDED_FOR_CLASSIFICATION | standalone tile editor and a custom decoder |
 | `title-static-screens` | Title and static screens | UNKNOWN | UNKNOWN (ni) | UNKNOWN (ni) | MINIMAL | NOT_NEEDED_FOR_CLASSIFICATION | Ghidra and mGBA to identify which container the title screen loads. |
-| `portraits` | Character portraits | KNOWN | UNKNOWN (ni) | UNKNOWN (ni) | PARTIAL | NOT_NEEDED_FOR_CLASSIFICATION | a graphics decoder and a runtime observation to confirm the format. |
+| `portraits` | Character portraits | KNOWN | UNKNOWN (ni) | UNKNOWN (ni) | PARTIAL | NOT_NEEDED_FOR_CLASSIFICATION | a graphics decoder and a runtime observation to confirm the format |
 | **Audio** | | | | | | | |
-| `audio-data` | Music, sound effects and audio tables | UNKNOWN | UNKNOWN (ni) | UNKNOWN (ni) | UNKNOWN | NEEDED | mGBA debugger with a sound-register watch to find the mixer, then Ghidra. |
+| `audio-data` | Music, sound effects and audio tables | UNKNOWN | UNKNOWN (ni) | UNKNOWN (ni) | UNKNOWN | NEEDED | mGBA debugger with a sound-register watch to find the mixer, then Ghidra |
 | **System and ROM** | | | | | | | |
-| `save-data` | Save data and backup media | UNKNOWN | UNKNOWN | UNKNOWN | MINIMAL | NEEDED | mGBA debugger with a memory watch on 0x0E000000 to capture a save write. |
-| `global-flags-state` | Global flags, story state and seen bits | UNKNOWN | UNKNOWN (ni) | UNKNOWN (ni) | PARTIAL | NOT_NEEDED_FOR_CLASSIFICATION | Ghidra over the flag accessors. |
+| `save-data` | Save data and backup media | UNKNOWN | UNKNOWN | UNKNOWN | MINIMAL | NEEDED | mGBA debugger with a memory watch on 0x0E000000 to capture a save write |
+| `global-flags-state` | Global flags, story state and seen bits | UNKNOWN | UNKNOWN (ni) | UNKNOWN (ni) | PARTIAL | NOT_NEEDED_FOR_CLASSIFICATION | Ghidra over the flag accessors |
 | `rom-identity-header` | ROM identity and cartridge header | READ-ONLY | READ-ONLY | READ-ONLY | PROVEN | NOT_NEEDED_FOR_CLASSIFICATION | hex editor for anything beyond identity. |
-| `resource-index-and-relocation` | Engine reference and pointer-table family | PARTIAL | READ-ONLY | UNKNOWN (ni) | SUBSTANTIAL | NOT_NEEDED_FOR_CLASSIFICATION | Ghidra to widen a reference set. |
-| `compression-codec` | Graphics and container compression codec | PARTIAL | UNKNOWN | UNKNOWN (ni) | SUBSTANTIAL | NOT_NEEDED_FOR_CLASSIFICATION | Ghidra on the retail decoder to settle the literal base. |
+| `resource-index-and-relocation` | Engine reference and pointer-table family | PARTIAL | READ-ONLY | UNKNOWN (ni) | SUBSTANTIAL | NOT_NEEDED_FOR_CLASSIFICATION | Ghidra to widen a reference set |
+| `compression-codec` | Graphics and container compression codec | PARTIAL | UNKNOWN | UNKNOWN (ni) | SUBSTANTIAL | NOT_NEEDED_FOR_CLASSIFICATION | Ghidra on the retail decoder to settle the literal base |
 | `executable-code-region` | Executable code | KNOWN | UNKNOWN (ni) | UNKNOWN (ni) | PARTIAL | NOT_NEEDED_FOR_CLASSIFICATION | Ghidra, a patcher or assembler, and the public decomp repository for orientation. |
-| `iwram-resident-code` | IWRAM-resident code and data | KNOWN | UNKNOWN (ni) | UNKNOWN (ni) | SUBSTANTIAL | NEEDED | mGBA debugger with a memory probe on 0x03000000. |
+| `iwram-resident-code` | IWRAM-resident code and data | KNOWN | UNKNOWN (ni) | UNKNOWN (ni) | SUBSTANTIAL | NEEDED | mGBA debugger with a memory probe on 0x03000000 |
 
 ## 5. Per-row dimensions
 
@@ -406,23 +406,23 @@ The reviewer's first finding was that the draft's totals did not match its own r
 - **Open research questions:** Is shop inventory ROM data or code-driven from the item table?
 - **Evidence references:** docs/research/BUU_SHOP_SCENARIO_MODEL.md; tools/webfoot/atlas_build.py:449-456
 
-#### `enemy-ai-behaviours`
+#### `enemy-behaviour-data`
 
-**Enemy AI and behaviour data** - The per-actor movement, aggression and reaction logic behind the placed objects. The product can attach an authored script to an authored entity; the engine's own AI data and interpreter are not modelled.
+**Enemy behaviour data** - The per-actor movement, aggression and reaction logic behind the placed objects. The product can attach an authored script to an authored entity; the engine's own behaviour data and interpreter are not modelled.
 
-- **Semantic read:** None as AI data. The product reads a placement's wander box for authoring purposes.
+- **Semantic read:** None as behaviour data. The product reads a placement's wander box for authoring purposes.
 - **Existing-record edit:** None.
-- **New-record authoring:** Only through the behaviour attachment row, which writes a script rather than AI data.
-- **Cross-reference and navigation:** Placement record to wherever its behaviour parameters live, unestablished; the stat table to the damage the AI's attacks do, unestablished.
+- **New-record authoring:** Only through the behaviour attachment row, which writes a script rather than behaviour data.
+- **Cross-reference and navigation:** Placement record to wherever its behaviour parameters live, unestablished; the stat table to the damage the actor's attacks do, unestablished.
 - **Raw backing range:** Not established.
 - **Validation and rebuild:** Not applicable.
 - **Current product and UI exposure:** None.
-- **Known restrictions:** The boundary is unknown: it is not established whether AI is data-driven per actor, code-driven per type, or both, so the state is UNKNOWN_UNMAPPED rather than KNOWN_BUT_UNSUPPORTED. A negative search over the declared tables is not a proven boundary.
+- **Known restrictions:** The boundary is unknown: it is not established whether behaviour is data-driven per actor, code-driven per type, or both, so the state is UNKNOWN_UNMAPPED rather than KNOWN_BUT_UNSUPPORTED. A negative search over the declared tables is not a proven boundary.
 - **External tool currently required:** mGBA debugger to trace an actor's decision, which is the cheapest route; Ghidra afterwards.
 - **Per-game state:** Buu's Fury = UNKNOWN_UNMAPPED (basis MEASURED, engine knowledge MINIMAL, runtime NEEDED, confidence INFERRED); LOGII = UNKNOWN_UNMAPPED (basis NOT_INVESTIGATED, engine knowledge UNKNOWN, runtime UNKNOWN, confidence UNKNOWN); LOG1 = UNKNOWN_UNMAPPED (basis NOT_INVESTIGATED, engine knowledge UNKNOWN, runtime UNKNOWN, confidence UNKNOWN)
-- **Evidence authority:** Negative result for a table: no AI table is declared in tools/webfoot/data/roms.yaml; the placement record's fields beyond the sprite id and position are unknown; the sprite-facing wander box is the only movement data the product authors
-- **Open research questions:** Is there a per-actor AI parameter block, and where is it reached from?
-- **Evidence references:** tools/webfoot/data/roms.yaml:34-44 (placement fields); tools/runtime/p004_* observers (existing AI traces, research only)
+- **Evidence authority:** Negative result for a table: no behaviour table is declared in tools/webfoot/data/roms.yaml; the placement record's fields beyond the sprite id and position are unknown; the sprite-facing wander box is the only movement data the product authors
+- **Open research questions:** Is there a per-actor behaviour parameter block, and where is it reached from?
+- **Evidence references:** tools/webfoot/data/roms.yaml:34-44 (placement fields); tools/runtime/p004_* observers (existing behaviour traces, research only)
 
 #### `behaviour-attachment-authoring`
 
@@ -709,7 +709,7 @@ The reviewer's first finding was that the draft's totals did not match its own r
 - **Raw backing range:** A 155 x 4,096-byte pointer run at 0x086F395C, and a related 140 x 1,024 run at 0x082ABF08 whose consumers are unknown; the two records partially overlap and the count needs reconciling.
 - **Validation and rebuild:** Not applicable.
 - **Current product and UI exposure:** None.
-- **Known restrictions:** Pixel format, dimensions and the rendering claim are not confirmed, and portrait recall is unmeasured. Two tracked counts for the packed residual tables (177 of 387 residuals against 155 plus 140 entries) do not reconcile yet.
+- **Known restrictions:** Pixel format, dimensions and the rendering claim are not confirmed, and portrait recall is unmeasured. Two tracked counts for the packed residual tables (177 of 387 residuals against 155 plus 140 entries) do not reconcile yet. A tracked research record places the portrait pointer array at 0x086F393C while this census's decomp lane read the run at 0x086F395C; the 0x20 difference is not reconciled here and is recorded as an open address disagreement.
 - **External tool currently required:** a graphics decoder and a runtime observation to confirm the format; otherwise none.
 - **Per-game state:** Buu's Fury = KNOWN_BUT_UNSUPPORTED (basis MEASURED, engine knowledge PARTIAL, runtime NOT_NEEDED_FOR_CLASSIFICATION, confidence CONFIRMED); LOGII = UNKNOWN_UNMAPPED (basis NOT_INVESTIGATED, engine knowledge UNKNOWN, runtime UNKNOWN, confidence UNKNOWN); LOG1 = UNKNOWN_UNMAPPED (basis NOT_INVESTIGATED, engine knowledge UNKNOWN, runtime UNKNOWN, confidence UNKNOWN)
 - **Evidence authority:** docs/research/POST_LOGX_IMPLEMENTATION_ROADMAP.md (LOGX-PORTRAIT-FORMAT-001); docs/research/GRAPHICS_COVERAGE.md matrix (PORTRAITS enumerable, render and palette UNKNOWN); the decomp region map names a 155 x 4,096 pointer run at 0x086F395C
@@ -794,7 +794,7 @@ The reviewer's first finding was that the draft's totals did not match its own r
 
 #### `resource-index-and-relocation`
 
-**Engine reference and pointer-table family** - The engine's own tables of pointers: the 20 pointer_table regions the region map bounds (166,260 bytes), the packed handles and reference documents the product builds over them, and the relocation layer that rewrites references when a body moves. The row's evidence is ROM-side tables first; the SDK modules are the reader, not the subject.
+**Engine reference and pointer-table family** - The engine's own tables of pointers: the 20 pointer_table regions the region map bounds (166,260 bytes), the packed handles and reference documents the product builds over them, and the relocation layer that rewrites references when a body moves. The row's evidence is ROM-side tables first; the SDK modules are the reader, not the subject. The 20 pointer_table regions are the subject; the reference, relocation and allocation modules are the reader, not the evidence.
 
 - **Semantic read:** Sixteen domains are mapped with proof levels and per-domain reference documents; the Atlas answers address, refs-to, refs-from, in-range and unknowns.
 - **Existing-record edit:** Relocation is gated per table by declared capability and per entry by measured single-reference ownership; overlapping ownership is refused. Not every table is relocatable: the script and LOGII text tables declare false because no verified free region exists for those profiles.
@@ -806,7 +806,7 @@ The reviewer's first finding was that the draft's totals did not match its own r
 - **Known restrictions:** Relocatability is false for the two Buu script families and for LOGII text. The published reference set for a moved body is not claimed complete. Known ownership of the image is incomplete by design.
 - **External tool currently required:** Ghidra to widen a reference set; hex editor for unowned ranges.
 - **Per-game state:** Buu's Fury = PARTIALLY_EDITABLE (basis MEASURED, engine knowledge SUBSTANTIAL, runtime NOT_NEEDED_FOR_CLASSIFICATION, confidence CONFIRMED); LOGII = SEMANTIC_READ_ONLY (basis MEASURED, engine knowledge PARTIAL, runtime UNKNOWN, confidence INFERRED); LOG1 = UNKNOWN_UNMAPPED (basis NOT_INVESTIGATED, engine knowledge UNKNOWN, runtime UNKNOWN, confidence UNKNOWN)
-- **Evidence authority:** tools/webfoot/handles.py:17-31; tools/webfoot/layout.py; tools/webfoot/relocation.py; tools/webfoot/allocation.py; tools/webfoot/document.py:87; tools/research/domain_reachability.py:150-441
+- **Evidence authority:** tools/webfoot/handles.py:17-31; tools/webfoot/layout.py; tools/webfoot/relocation.py; tools/webfoot/allocation.py; tools/webfoot/document.py:87; tools/research/domain_reachability.py:150-441; the 20 pointer_table regions and their 166,260 bytes were re-measured by this census from the public reconstruction's config/rom_map.json at commit 5a6d3349199d16b1800d55d200bcbf2f8d91b29e
 - **Open research questions:** What is the complete reference population for the largest declared tables?
 - **Evidence references:** tools/webfoot/handles.py:17-31; tools/webfoot/relocation.py; tools/webfoot/allocation.py; tools/research/domain_reachability.py:150-441; tools/research/free_space_audit.py:61
 
@@ -836,7 +836,7 @@ The reviewer's first finding was that the draft's totals did not match its own r
 - **Existing-record edit:** None. Nothing in tools/webfoot assembles, compiles or emits an instruction.
 - **New-record authoring:** None.
 - **Cross-reference and navigation:** Every consumer function that the format rows cite is a member of this row.
-- **Raw backing range:** 25 code regions and 8 code-candidate regions, 186,542 bytes in the reconstruction's map; the Ghidra function count is not a code count because the whole image was analysed as code.
+- **Raw backing range:** 25 code regions and 8 code-candidate regions, 186,538 bytes in the reconstruction's map; the Ghidra function count is not a code count because the whole image was analysed as code.
 - **Validation and rebuild:** Not applicable to code. The relocation layer can move an existing code body and rewrite its references, which is not code authoring.
 - **Current product and UI exposure:** Atlas displays classified code ranges; no surface edits them.
 - **Known restrictions:** Two static instruments disagree in kind: Ghidra reports 85,181 functions over an image that is 54 percent unclassified, while the reconstruction credits 268 tracked functions and 2.73 percent semantically. Neither number is a measure of understanding. Preserved developer source paths name four compilation units, which is the richest naming lead in the image.
@@ -860,9 +860,9 @@ The reviewer's first finding was that the draft's totals did not match its own r
 - **Known restrictions:** The blob's overall purpose is minimally understood; the 18.14 fixed-point signed-byte kernel at 0x087B8210 is decoded arithmetically but its purpose is not established. No 0x04000000-range register constant appears in the sampled spans, so the blob is not obviously display or sound code.
 - **External tool currently required:** mGBA debugger with a memory probe on 0x03000000; the decomp repo's lifted units as a starting point.
 - **Per-game state:** Buu's Fury = KNOWN_BUT_UNSUPPORTED (basis MEASURED, engine knowledge SUBSTANTIAL, runtime NEEDED, confidence CONFIRMED); LOGII = UNKNOWN_UNMAPPED (basis NOT_INVESTIGATED, engine knowledge UNKNOWN, runtime UNKNOWN, confidence UNKNOWN); LOG1 = UNKNOWN_UNMAPPED (basis NOT_INVESTIGATED, engine knowledge UNKNOWN, runtime UNKNOWN, confidence UNKNOWN)
-- **Evidence authority:** ROM reset code at 0x08000108..0x08000124 with literals 0x087B79A4 / 0x03000000 / 0x00001007; tools/webfoot/webfoot_lz.py:68 names the retail decoder at 0x087B79E4 as executed from IWRAM 0x03000040; tools/webfoot/data/placement_contracts.py:31 and tools/webfoot/formats/placement_links.py:196 state the limitation; the decomp credits 19 lifted IWRAM units of which 14 are complete
+- **Evidence authority:** ROM reset code at 0x08000108..0x08000124 with literals 0x087B79A4 / 0x03000000 / 0x00001007; tools/webfoot/formats/webfoot_lz.py:68 names the retail decoder at 0x087B79E4 as executed from IWRAM 0x03000040; tools/webfoot/data/placement_contracts.py:31 and tools/webfoot/formats/placement_links.py:196 state the limitation; the decomp credits 19 lifted IWRAM units of which 14 are complete
 - **Open research questions:** What does the copied blob implement, and what does the fixed-point kernel serve?
-- **Evidence references:** 0x08000108..0x08000124 (reset code); 0x087B79A4 (blob); tools/webfoot/webfoot_lz.py:68; tools/webfoot/data/placement_contracts.py:31; tools/webfoot/formats/placement_links.py:196; decomp config/regions.json iwram class
+- **Evidence references:** 0x08000108..0x08000124 (reset code); 0x087B79A4 (blob); tools/webfoot/formats/webfoot_lz.py:68; tools/webfoot/data/placement_contracts.py:31; tools/webfoot/formats/placement_links.py:196; decomp config/regions.json iwram class
 
 ## 6. Derived counts
 
@@ -880,16 +880,16 @@ Every figure below is computed from the rows. A cell whose state is `N_A` is exc
 
 Writable cells (FULLY_EDITABLE + PARTIALLY_EDITABLE): 20 of 120 measured cells = 16.67%. The family-wide writable count is over (row, game) cells and several writable cells are one product path: Create Chunk backs map-chunk-containers and part of map-layout-chunk-grids; the placement clone and move contract backs placement-records, area-object-array-tables and behaviour-attachment-authoring; the object palette recolour backs object-palettes and actor-sprite-registry; PNG import backs sprite-frame-records and actor-sprite-registry. Five capabilities carry about ten writable cells, so the percentage must be read with the per-title counts and not as ten independent systems.
 
-Per area, Buu's Fury:
+Per area, Buu's Fury (this title's cells only, so the state columns sum to the row count):
 
 | area | rows | FULLY_EDITABLE | PARTIALLY_EDITABLE | SEMANTIC_READ_ONLY | KNOWN_BUT_UNSUPPORTED | UNKNOWN_UNMAPPED |
 | --- | --- | --- | --- | --- | --- | --- |
-| AUDIO | 1 | 0 | 0 | 0 | 0 | 3 |
-| ENTITIES/GAMEPLAY | 10 | 0 | 4 | 0 | 2 | 24 |
-| GRAPHICS | 8 | 0 | 4 | 1 | 2 | 17 |
-| MAP/WORLD | 7 | 0 | 5 | 1 | 0 | 15 |
-| SCRIPT/TEXT | 7 | 0 | 5 | 3 | 2 | 11 |
-| SYSTEM/ROM | 7 | 0 | 2 | 4 | 2 | 13 |
+| AUDIO | 1 | 0 | 0 | 0 | 0 | 1 |
+| ENTITIES/GAMEPLAY | 10 | 0 | 4 | 0 | 2 | 4 |
+| GRAPHICS | 8 | 0 | 4 | 1 | 2 | 1 |
+| MAP/WORLD | 7 | 0 | 5 | 1 | 0 | 1 |
+| SCRIPT/TEXT | 7 | 0 | 4 | 1 | 2 | 0 |
+| SYSTEM/ROM | 7 | 0 | 2 | 1 | 2 | 2 |
 
 Engine knowledge, family-wide cells: PROVEN 14, SUBSTANTIAL 13, PARTIAL 12, MINIMAL 11, UNKNOWN 70.
 
@@ -899,10 +899,10 @@ Ranked by how much meaningful ROM hacking escapes DragonByte Z.
 
 | # | tool class | forces the exit | rows |
 | --- | --- | --- | --- |
-| 1 | Ghidra plus an assembler or patcher | Any change to what the executable does: damage formulas, enemy behaviour, a bug fix, a new feature. Nothing in tools/webfoot assembles, compiles or emits an instruction. | `executable-code-region`, `enemy-stat-records`, `techniques-and-attacks`, `player-progression`, `enemy-ai-behaviours`, `map-event-trigger-records` |
+| 1 | Ghidra plus an assembler or patcher | Any change to what the executable does: damage formulas, enemy behaviour, a bug fix, a new feature. Nothing in tools/webfoot assembles, compiles or emits an instruction. | `executable-code-region`, `enemy-stat-records`, `techniques-and-attacks`, `player-progression`, `enemy-behaviour-data`, `map-event-trigger-records` |
 | 2 | custom Python script over an unidentified format | Audio: no region, table or consumer identified and no product module exists. | `audio-data` |
 | 3 | standalone tile or graphics editor plus a custom decoder | UI/HUD, fonts and glyphs, portraits, title and static screens, and map graphics below the chunk level: enumerable at best, never writable. | `ui-hud-graphics`, `fonts-and-glyph-metrics`, `portraits`, `title-static-screens`, `map-graphics-tilesets` |
-| 4 | mGBA debugger | IWRAM-resident code, save writes, the sound mixer, and any causal question about which consumer reads a structure at run time. | `iwram-resident-code`, `save-data`, `audio-data`, `enemy-ai-behaviours` |
+| 4 | mGBA debugger | IWRAM-resident code, save writes, the sound mixer, and any causal question about which consumer reads a structure at run time. | `iwram-resident-code`, `save-data`, `audio-data`, `enemy-behaviour-data` |
 | 5 | Ghidra over the script VM | The game-level meaning of most of the 266 native handlers, which blocks general script authoring and all LOGII dialogue. | `script-bytecode-vm`, `dialogue-records`, `dialogue-control-codes` |
 | 6 | custom Python script over the compressed stream | No production encoder exists, so any change whose encoded size changes must be hand-built. | `compression-codec`, `sprite-frame-records`, `ui-hud-graphics` |
 | 7 | hex editor | Every unmodelled field and every unresolved byte the SDK preserves but does not name. | `map-entry-records`, `map-event-trigger-records`, `items-and-inventory`, `warps-transitions`, `shops-and-scenarios` |
@@ -914,28 +914,38 @@ Ranked by how much meaningful ROM hacking escapes DragonByte Z.
 
 Recommendations, not owner decisions. The integrated hex editor remains V1.0 ESSENTIAL by prior owner decision.
 
-- **Integrated hex editing with safe arbitrary byte authoring that preserves the attributable-change invariant.** (`V1.0 ESSENTIAL`) - A prior owner decision already makes integrated hex a 1.0 requirement; the core currently has no anonymous byte-write entry point at all, so this is core authority before it is a surface.. Rows: `all rows`
-- **A byte-range-to-semantic-owner index that answers for the whole image, and a search that can scan raw bytes as well as classified structures.** (`V1.0 ESSENTIAL`) - Without it, a hex editor writes bytes the product cannot attribute, and the raw browser cannot answer what owns a range.. Rows: `resource-index-and-relocation`, `executable-code-region`
-- **A container encoder that can grow a filtered or packed payload.** (`V1.0 ESSENTIAL`) - It gates every insertion capability: new graphics, new dialogue text, new sprite payloads. Named in the roadmap as the Phase 3/4 gate.. Rows: `compression-codec`
-- **Stat-table and map-header surfaces over the SDK models that already exist.** (`V1.0 ESSENTIAL`) - The SDK reads and writes these domains today and the product neither names nor surfaces them, so the claim to be a general-purpose editor is materially overstated without them. This is surfacing plus registry honesty, not new research.. Rows: `enemy-stat-records`, `character-base-stats`, `map-entry-records`
-- **Patch export and modified-range visualisation in the desktop shell.** (`V1.0 NICE_TO_HAVE`) - Both services exist and are verified; the remaining cost is a surface.. Applies across the census.
-- **The three unmodelled per-area object arrays and their record families.** (`RESEARCH FIRST`) - Three of four engine-owned object families are invisible to the product. Until element types are decoded the editor cannot scope them, and the decoding is cheap because the consumer function is already decompiled.. Rows: `area-object-array-tables`, `sibling-object-record-families`
-- **The save format and whether expansion preserves it.** (`RESEARCH FIRST`) - A 16 MiB generated image is shipped as a product path with no save-compatibility argument. This is a correctness risk before it is a feature.. Rows: `save-data`
-- **Audio: locate the engine, the tables and the sequence or sample data.** (`RESEARCH FIRST`) - An entire row is unknown, and the instrument could not search for it. Editor scoping is impossible today.. Rows: `audio-data`
-- **The game-level meaning of the 266 script native handlers.** (`RESEARCH FIRST`) - It blocks general script authoring and all LOGII dialogue, and it is the shared unknown behind several rows.. Rows: `script-bytecode-vm`, `dialogue-records`
-- **Portrait, UI/HUD and font authoring.** (`POST-1.0`) - Real gaps with no format yet. Valuable expansions, safe to defer.. Rows: `portraits`, `ui-hud-graphics`, `fonts-and-glyph-metrics`
-- **Map graphics below the chunk level, and tileset authoring.** (`POST-1.0`) - The chunk-level surface already covers ordinary map hacking; tile-level work needs the encoder first.. Rows: `map-graphics-tilesets`
-- **A dedicated editor for the compiler-embedded assertion strings, the colour lookup block and the debug debris.** (`NOT_PRODUCT_WORTHY`) - Real ROM internals that need no editor surface: a semantic or raw browser covers them.. Applies across the census.
+- **Integrated hex editing with safe arbitrary byte authoring that preserves the attributable-change invariant.** (`V1.0 ESSENTIAL`) - A prior owner decision already makes integrated hex a 1.0 requirement; the core currently has no anonymous byte-write entry point at all, so this is core authority before it is a surface. Rows: `all rows`
+- **A byte-range-to-semantic-owner index that answers for the whole image, and a search that can scan raw bytes as well as classified structures.** (`V1.0 ESSENTIAL`) - Without it, a hex editor writes bytes the product cannot attribute, and the raw browser cannot answer what owns a range. Rows: `resource-index-and-relocation`, `executable-code-region`
+- **A container encoder that can grow a filtered or packed payload.** (`V1.0 ESSENTIAL`) - It gates every insertion capability: new graphics, new dialogue text, new sprite payloads. Named in the roadmap as the Phase 3/4 gate. Rows: `compression-codec`
+- **Stat-table and map-header surfaces over the SDK models that already exist.** (`V1.0 ESSENTIAL`) - The SDK reads and writes these domains today and the product neither names nor surfaces them, so the claim to be a general-purpose editor is materially overstated without them. This is surfacing plus registry honesty, not new research. Rows: `enemy-stat-records`, `character-base-stats`, `map-entry-records`
+- **Patch export and modified-range visualisation in the desktop shell.** (`V1.0 NICE_TO_HAVE`) - Both services exist and are verified; the remaining cost is a surface. Applies across the census.
+- **The three unmodelled per-area object arrays and their record families.** (`RESEARCH FIRST`) - Three of four engine-owned object families are invisible to the product. Until element types are decoded the editor cannot scope them, and the decoding is cheap because the consumer function is already decompiled. Rows: `area-object-array-tables`, `sibling-object-record-families`
+- **The save format and whether expansion preserves it.** (`RESEARCH FIRST`) - A 16 MiB generated image is shipped as a product path with no save-compatibility argument. This is a correctness risk before it is a feature. Rows: `save-data`
+- **Audio: locate the engine, the tables and the sequence or sample data.** (`RESEARCH FIRST`) - An entire row is unknown, and the instrument could not search for it. Editor scoping is impossible today. Rows: `audio-data`
+- **The game-level meaning of the 266 script native handlers.** (`RESEARCH FIRST`) - It blocks general script authoring and all LOGII dialogue, and it is the shared unknown behind several rows. Rows: `script-bytecode-vm`, `dialogue-records`
+- **Portrait, UI/HUD and font authoring.** (`POST-1.0`) - Real gaps with no format yet. Valuable expansions, safe to defer. Rows: `portraits`, `ui-hud-graphics`, `fonts-and-glyph-metrics`
+- **Map graphics below the chunk level, and tileset authoring.** (`POST-1.0`) - The chunk-level surface already covers ordinary map hacking; tile-level work needs the encoder first. Rows: `map-graphics-tilesets`
+- **A dedicated editor for the compiler-embedded assertion strings, the colour lookup block and the debug debris.** (`NOT_PRODUCT_WORTHY`) - Real ROM internals that need no editor surface: a semantic or raw browser covers them. Applies across the census.
 
 ## 9. Highest-value reverse-engineering targets
 
-- **1.** Decode the element types of the three unmodelled per-area object arrays Addresses: `0x08008b30`, `0x08008CA2`, `0x08008CAC`. Payoff: Turns three of four engine-owned object families from invisible into classifiable, which is the largest single map-system coverage gain available.
-- **2.** Recover the container encoder's initial literal width Addresses: `0x087B79E4`, `0x087B79A4`. Payoff: Unblocks every insertion capability in the product.
-- **3.** Recover the event resource pool's element lengths Addresses: `0x0877C5A4`, `0x0879B704`. Payoff: 127,328 bytes with a proven 522-entry index and no recoverable element boundary: nothing in that span is authorable until lengths exist.
-- **4.** Name the stat fields through their consumers Addresses: `0x08004904`, `0x0801b984`, `0x083BB78C`. Payoff: Turns two readable tables into meaningful editors and closes the 20-byte-stride family that no consumer is known for.
-- **5.** Identify the save serializer Addresses: `0x0E000000 (media)`, `0x087B7964 (EEPROM_V124)`. Payoff: Closes a correctness risk in the shipped expansion path and enables save work.
-- **6.** Find the audio engine Addresses: `unlocated`. Payoff: An entire unknown row; a sound-register watch in the debugger is the cheapest route.
-- **7.** Settle the map record's disputed +0x04 and +0x10 layout Addresses: `0x08008b30`, `0x0800742C`. Payoff: Resolves a conflict between tracked research and the decompiled consumer, and either creates or dissolves a trigger row.
-- **8.** Decode the sprite container span's header Addresses: `0x083C34D0`. Payoff: The largest single identified-but-unreconstructed block at 3,035,864 bytes.
-- **9.** Recover what reset transfers to at 0x08049114 Addresses: `0x08049114`. Payoff: Gates the whole startup sequence and sits in a region the region map calls unknown.
-- **10.** Bound the sibling object families' records and counts Addresses: `0x08017DA2`, `0x080111A8`. Payoff: Makes the 148 and 191 counts re-derivable rather than inherited from research.
+- **1.** Decode the element types of the three unmodelled per-area object arrays. Addresses: `0x08008b30`, `0x08008CA2`, `0x08008CAC`. Payoff: Turns three of four engine-owned object families from invisible into classifiable, which is the largest single map-system coverage gain available.
+- **2.** Recover the container encoder's initial literal width. Addresses: `0x087B79E4`, `0x087B79A4`. Payoff: Unblocks every insertion capability in the product.
+- **3.** Recover the event resource pool's element lengths. Addresses: `0x0877C5A4`, `0x0879B704`. Payoff: 127,328 bytes with a proven 522-entry index and no recoverable element boundary: nothing in that span is authorable until lengths exist.
+- **4.** Name the stat fields through their consumers. Addresses: `0x08004904`, `0x0801b984`, `0x083BB78C`. Payoff: Turns two readable tables into meaningful editors and closes the 20-byte-stride family that no consumer is known for.
+- **5.** Identify the save serializer. Addresses: `0x0E000000 (media)`, `0x087B7964 (EEPROM_V124)`. Payoff: Closes a correctness risk in the shipped expansion path and enables save work.
+- **6.** Find the audio engine. Addresses: `unlocated`. Payoff: An entire unknown row; a sound-register watch in the debugger is the cheapest route.
+- **7.** Settle the map record's disputed +0x04 and +0x10 layout. Addresses: `0x08008b30`, `0x0800742C`. Payoff: Resolves a conflict between tracked research and the decompiled consumer, and either creates or dissolves a trigger row.
+- **8.** Decode the sprite container span's header. Addresses: `0x083C34D0`. Payoff: The largest single identified-but-unreconstructed block at 3,035,864 bytes.
+- **9.** Recover what reset transfers to at 0x08049114. Addresses: `0x08049114`. Payoff: Gates the whole startup sequence and sits in a region the region map calls unknown.
+- **10.** Bound the sibling object families' records and counts. Addresses: `0x08017DA2`, `0x080111A8`. Payoff: Makes the 148 and 191 counts re-derivable rather than inherited from research.
+
+## 10. Baseline drift
+
+### Baseline drift measured while this ticket was open
+
+This census measures `486e3c665929a8dc57c63b7915f74606e30ccb0d`, the pinned baseline, and its row set was frozen and reviewed there. While the ticket was open, `origin/master` advanced to `f3955e1b9fc4fba012ceedb7cc9f8a8f8db0f4d0` (the baseline is an ancestor). The merges since the baseline are `cc9265f Merge branch 'ticket/dialogue-token-productization-001' into 'master'`; `f3955e1 Merge branch 'ticket/friend-v3-cold-boot-acceptance-001' into 'master'`. The capability registry is unchanged between the two commits. The product change is 3 files, +443 lines: a new tools/webfoot/token_dictionary.py (430 lines), tools/webfoot/dialogue.py +7, tools/webfoot/compressed_dialogue.py +6, plus docs/research/DIALOGUE_TOKEN_PRODUCTIZATION.md and FRIEND_V3_COLD_BOOT_ACCEPTANCE.md.
+
+Two rows are affected: `dialogue-control-codes`, `dialogue-records`. This census is measured at the pinned baseline 486e3c6, and its row set was frozen and reviewed there. The dialogue token merge landed after that commit and ships a production token encoder, a dictionary codec and an authored-window refusal (tools/webfoot/token_dictionary.py), so row dialogue-control-codes, which records that no token authoring shipped, and row dialogue-records, whose recovered ceiling is quoted for the pre-token fitter, are correct as of 486e3c6 and may be conservative afterwards. Re-measuring those two rows against the merged tree is a separate bounded task and was not done here.
+
+The ticket pins the baseline, the fixed product facts are stated at it, the frozen row set was reviewed against it, and the registry is unchanged between the two commits, so the census keeps its stated measurement commit and declares the drift instead of re-deriving facts against a tip that moved mid-ticket.

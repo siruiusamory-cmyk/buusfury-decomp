@@ -222,6 +222,13 @@ deterministic build and provenance.
    root and layer slot all above canonical EOF. The player spent the whole of
    frames 1440-1920 and 2040-2160 in the new map and then walked out of it.
 
+   **The observed build is the shipped build.** Two later fix rounds changed where
+   in the sequence this domain runs, so the artifact was rebuilt from the final
+   candidate and its digest compared: it is still
+   `A70C9D262947C3E4D38FB82614998938319A08A321B9305DDB70BC5C3B4D51B8`, byte for
+   byte the image the run above observed. The reorder moved the map domain past
+   domains that allocate nothing in this project, so no address moved.
+
    **Who drove it.** The observer records memory only: it presses no key and takes
    no screenshot. The transition into map 452, the frames spent there and the walk
    back out are the engine's own row changes, and the walking itself was a person

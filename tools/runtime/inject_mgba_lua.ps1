@@ -18,6 +18,27 @@ param(
 $ErrorActionPreference = 'Stop'
 $workspaceRoot = [System.IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..\..'))
 $allowedLua = @(
+    # Added by DIALOGUE-RENDER-PATH-001 and published with the dialogue research
+    # set: the dialogue strip observer. READ-ONLY. It arms five breakpoints - the
+    # glyph composer at 0x0803DE5E, the persistent-cursor store at 0x0800B08E, the
+    # source-consume store at 0x0800B092, the reveal queue store at 0x0800B006 and
+    # the dialogue record copier at 0x0801227A - dumps the 128-entry OAM per
+    # snapshot and byte-diffs the OBJ VRAM window 0x06014360..0x06014EC0. It writes
+    # no emulated memory and presses no keys; it writes host files inside the run
+    # directory only.
+    [System.IO.Path]::GetFullPath(
+        (Join-Path $workspaceRoot 'tools\runtime\dialogue_strip_probe.lua')
+    )
+    # Added by DIALOGUE-RENDER-PATH-001 and published with the dialogue research
+    # set: the dialogue input driver. It is DRIVING CODE in its own file, which is
+    # why it is separate from the observer above. It presses A once every 180
+    # frames for six frames and nothing else - no directional input, no mashing,
+    # because a direction walks the character off the NPC and mashing skips the
+    # per-glyph reveal being measured. It touches no emulated memory and writes no
+    # file.
+    [System.IO.Path]::GetFullPath(
+        (Join-Path $workspaceRoot 'tools\runtime\npc_talk_driver.lua')
+    )
     # Added by APPEARANCE-AUTHORING-GATE-001: the appearance-table observer. It
     # writes no emulated memory and arms fifteen sites - the six reader functions'
     # entry points,

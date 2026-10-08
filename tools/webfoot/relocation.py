@@ -37,6 +37,12 @@ _ALLOCATION_KIND = {
     #: domain actually puts it - the same trap the `graphics_container` entry
     #: above exists to avoid.
     "character_pointer_table": AllocationKind.SPRITE_IDENTITY_RECORD,
+    #: APPEARANCE-AUTHORING-GATE-001. The appearance-definition table plans
+    #: through its own materializer for the same reason the registry does, and
+    #: this entry exists for the same reason: without it a moved table would fall
+    #: through to the canonical-only default and be refused for want of canonical
+    #: free space rather than placed where its domain actually puts it.
+    "appearance_record_table": AllocationKind.APPEARANCE_RECORD_TABLE,
 }
 
 

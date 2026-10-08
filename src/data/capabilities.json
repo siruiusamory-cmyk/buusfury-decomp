@@ -332,16 +332,26 @@
       "evidence": "SPRITE-PROJECT-SURFACE-001; SPRITE-NEW-PROJECT-SURFACE-001; SPRITE-NEW-ATTACHMENT-RUNTIME-PARITY-001; docs/research/SPRITE_AUTHORING_SURFACE.md; docs/research/SPRITE_NEW_ATTACHMENT_RUNTIME_PARITY.md"
     },
     {
-      "id": "appearance",
-      "family": "author",
-      "title": "New appearance definitions",
-      "state": "missing",
-      "detail": "Not implemented. The record count appears as compiled-in bounds in the engine and there is no terminator, so whether the table can be grown at all is still an open question rather than a task.",
-      "limits": [
-        "Not implemented, and whether the appearance table can be grown at all is an open question rather than a scheduled task.",
-        "The record count appears as compiled-in engine bounds and there is no terminator to extend from."
-      ],
-      "evidence": "GRAPHICS-COVERAGE-001; docs/research/GRAPHICS_COVERAGE.md"
+          "id": "appearance",
+          "family": "author",
+          "title": "New appearance definitions",
+          "state": "shipped",
+          "detail": "An author creates a new appearance definition in the Graphics tab, and the build writes it as a record appended above the original end of the image. The engine resolves it: a driven session on the final build watched the retail search return an authored record at a post-canonical index for a retail actor, and the Scouter's own character screen then displayed the authored data for that actor - an object whose retail record reads \"Fighter\" and \"This is a martial artist from the Other World\" showed the authored name \"Goku\" and the authored description instead. Growth is by re-emission: the record count is three compiled loop bounds rather than a stored number, so the build moves the whole table above the image's end and rewrites the five literal words and three count bounds that reach it. The roster structure the engine builds from the seen flags is relocated with it, so all twenty-nine compiled statements of its layout are restated for the supported maximum of 240 records.",
+          "limits": [
+                "Not observed on the final opt-in build: the post-canonical seen-flag write. The message path that returns an appended record appends the resolved index to a list rather than constructing the appearance object, so that flag is written by a later step, and the session that reached the resolver ended before it. The flag write was observed previously for the same post-canonical record shape, on a build whose appended record is byte-identical in everything the engine reads; that stands as supporting evidence and is not claimed as re-observed here.",
+                "Not observed in ordinary play: the roster display-list builder at 0x08024F3C executing. It has one caller, reached indirectly, and no session reached it. Its layout is statically and review-proven for the supported count of 240, and a build that would exceed that count is refused rather than written.",
+                "Taking over a sprite id a canonical record already selects is an explicit, default-off choice per definition, because the engine's search returns an appended record before the retail one and the lookup would be redirected. The surface states the consequence and the build refuses a takeover that was not asked for. Ids a negative-stat record selects can never be taken over and are refused outright.",
+                "The record count is stated by three compiled `cmp rN,#0xE8` loop bounds and there is no terminator, so growth means re-emitting the whole table, not appending in place.",
+                "The engine keeps one seen bit per record in a 232-bit array, and the block's own initializer zeroes a word two bytes after it, so at most 8 records may be added to the 232 the image has.",
+                "An authored definition shares an existing on-screen name, because creating new text-table ids is not shipped for any capability."
+          ],
+          "measurements": {
+        "canonicalRecords": 232,
+        "supportedRecords": 240
+      },
+      "surface": "Workbench: Graphics tab, Authored appearance - New, Edit and Remove write the project's appearance definitions",
+          "proof": "runtime",
+          "evidence": "APPEARANCE-AUTHORING-GATE-001; APPEARANCE-ROSTER-EXPANSION-001; APPEARANCE-BINDING-OVERRIDE-001; docs/research/APPEARANCE_TABLE_GROWTH.md; docs/research/APPEARANCE_AUTHORING_SURFACE.md; docs/research/APPEARANCE_ROSTER_EXPANSION.md; docs/research/APPEARANCE_BINDING_OVERRIDE.md"
     },
     {
       "id": "map-new",

@@ -177,6 +177,18 @@ class AllocationKind(str, Enum):
     #: transaction, so it is `EXPANDED_ONLY` by the same argument
     #: `SPRITE_IDENTITY_RECORD` records.
     MAP_OBJECT_RECORD = "map_object_record"
+    #: APPEARANCE-AUTHORING-GATE-001. The character appearance-definition table,
+    #: re-emitted WHOLE with the authored records appended. The canonical table
+    #: ends exactly where a literal-named descriptor block begins, so a 233rd
+    #: record has nowhere canonical to go and the whole table moves: entry `i` is
+    #: at `table + 16 * i` and the engine indexes with no bound check, so the
+    #: existing 232 records and the new ones are one indivisible placement.
+    #:
+    #: `EXPANDED_ONLY` for the same reason `SPRITE_IDENTITY_RECORD` is: the
+    #: canonical image declares one 256-byte verified-free region and the table
+    #: alone is 3,712 bytes, so a canonical-only request would fail closed every
+    #: time.
+    APPEARANCE_RECORD_TABLE = "appearance_record_table"
 
 
 class Addressability(str, Enum):
@@ -292,6 +304,11 @@ DEFAULT_ADDRESSABILITY = {
     #: record above: it is new content whose canonical home does not exist, and
     #: the one declared canonical free region is a shared resource.
     AllocationKind.MAP_OBJECT_RECORD: Addressability.EXPANDED_ONLY,
+    #: APPEARANCE-AUTHORING-GATE-001. The appearance table is placed above
+    #: canonical EOF by policy, on the argument its own `AllocationKind` member
+    #: states: no canonical extent can host it and the addressability this
+    #: capability has to prove is exactly the expanded one.
+    AllocationKind.APPEARANCE_RECORD_TABLE: Addressability.EXPANDED_ONLY,
 }
 
 

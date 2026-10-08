@@ -1,0 +1,199 @@
+# The one place that starts an instrumented mGBA session.
+#
+# Every launcher used to repeat the same four steps: start mGBA, sleep eight
+# seconds, drive the Scripting window through UI Automation to send the observer,
+# then load a savestate through the File dialog. That is three windows' worth of
+# focus stealing and about seventeen seconds before the operator can play.
+#
+# mGBA can do all of it itself:
+#   * `-t FILE` loads a savestate when starting
+#   * `--script FILE` runs a script when starting
+# so this helper renders a small bootstrap, hands both to mGBA, and gets out of
+# the way. No Scripting window is opened and nothing takes the foreground.
+#
+# Governance is unchanged: `--script` leaves the injector's path, so the injector
+# is still asked to run every one of its checks (allowlist, ready root, marker
+# root, long-string terminator, pre-existence) before anything is launched. The
+# caller keeps its own emulator-version and ROM-digest gates.
+
+function Initialize-SessionWindow {
+    # Windows refuses SetForegroundWindow from a process that does not already own
+    # the foreground, so the caller's thread attaches its input to the foreground
+    # thread for the duration of the call. That is the supported way to do this.
+    if ('DbzSessionWindow' -as [type]) { return $true }
+    try {
+        Add-Type -Namespace '' -Name 'DbzSessionWindow' -MemberDefinition @'
+[DllImport("user32.dll")] public static extern bool ShowWindow(IntPtr hWnd, int nCmdShow);
+[DllImport("user32.dll")] public static extern IntPtr GetForegroundWindow();
+[DllImport("user32.dll")] public static extern bool SetForegroundWindow(IntPtr hWnd);
+[DllImport("user32.dll")] public static extern uint GetWindowThreadProcessId(IntPtr hWnd, out uint pid);
+[DllImport("user32.dll")] public static extern bool AttachThreadInput(uint idAttach, uint idAttachTo, bool fAttach);
+[DllImport("kernel32.dll")] public static extern uint GetCurrentThreadId();
+'@
+    } catch {
+        return $false
+    }
+    return $true
+}
+
+function Set-SessionWindowFocus {
+    param([Parameter(Mandatory)][IntPtr]$Target)
+    if (-not (Initialize-SessionWindow)) { return $false }
+    if ($Target -eq [IntPtr]::Zero) { return $false }
+    $targetPid = 0
+    $foreground = [DbzSessionWindow]::GetForegroundWindow()
+    $foregroundThread = [DbzSessionWindow]::GetWindowThreadProcessId($foreground, [ref]$targetPid)
+    $ownThread = [DbzSessionWindow]::GetCurrentThreadId()
+    $attached = $false
+    if ($foregroundThread -ne 0 -and $foregroundThread -ne $ownThread) {
+        $attached = [DbzSessionWindow]::AttachThreadInput($ownThread, $foregroundThread, $true)
+    }
+    $ok = [DbzSessionWindow]::SetForegroundWindow($Target)
+    if ($attached) {
+        [void][DbzSessionWindow]::AttachThreadInput($ownThread, $foregroundThread, $false)
+    }
+    return $ok
+}
+
+function Start-MgbaSession {
+    <#
+    Starts mGBA with the state loaded and the observer running, without opening the
+    Scripting window. Returns the started process.
+
+    -ArgumentList carries any extra mGBA options the caller needs, such as a
+    savegame override. The ROM is always passed last and bare.
+    #>
+    param(
+        [Parameter(Mandatory)][string]$MGBPath,
+        [Parameter(Mandatory)][string]$RomPath,
+        [Parameter(Mandatory)][string]$LuaPath,
+        [Parameter(Mandatory)][string]$ReadyPath,
+        [Parameter(Mandatory)][string]$MarkerPath,
+        [Parameter(Mandatory)][string]$RunDir,
+        [Parameter(Mandatory)][string]$RequiredMGBVersion,
+        [Parameter(Mandatory)][string]$ExpectedRomSha256,
+        [string]$StatePath,
+        [string]$PostCommand,
+        [string[]]$ArgumentList = @(),
+        [int]$ReadyTimeoutSeconds = 20
+    )
+
+    # The identity gates live here, with the flag that makes them necessary.
+    # `--script` leaves the injector's allowlist path, so a caller must not be able
+    # to reach the emulator without naming the build and the exact ROM it expects.
+    $mgbVersion = (Get-Item -LiteralPath $MGBPath).VersionInfo.FileVersion
+    if (-not $mgbVersion.StartsWith($RequiredMGBVersion)) {
+        throw "mGBA version mismatch: required $RequiredMGBVersion, found $mgbVersion at $MGBPath"
+    }
+    $expectedHash = $ExpectedRomSha256.Trim().ToUpperInvariant()
+    if ($expectedHash -notmatch '^[0-9A-F]{64}$') {
+        throw 'ExpectedRomSha256 must be a full 64-character SHA-256 hex digest'
+    }
+    $romHash = (Get-FileHash -Algorithm SHA256 -LiteralPath $RomPath).Hash
+    if ($romHash -ne $expectedHash) {
+        throw "ROM identity mismatch; run refused. Expected $expectedHash, found $romHash"
+    }
+
+    $checkArgs = @(
+        '-NoProfile', '-ExecutionPolicy', 'Bypass',
+        '-File', (Join-Path $PSScriptRoot 'inject_mgba_lua.ps1'),
+        '-TargetProcessId', $PID,
+        '-LuaPath', $LuaPath,
+        '-ReadyPath', $ReadyPath,
+        '-MarkerPath', $MarkerPath,
+        '-CheckOnly'
+    )
+    & powershell @checkArgs | Out-Null
+    if ($LASTEXITCODE -ne 0) {
+        throw 'Observer rejected by the allowlist or the path rules'
+    }
+
+    if (Test-Path -LiteralPath $ReadyPath) { Remove-Item -LiteralPath $ReadyPath -Force }
+    if (Test-Path -LiteralPath $MarkerPath) { Remove-Item -LiteralPath $MarkerPath -Force }
+
+    # The savestate is loaded by the bootstrap, NOT by mGBA's `-t`. Measured: with
+    # `-t` the state is already in memory when `--script` runs, so an observer
+    # would arm too late to see anything the load itself constructs - which is
+    # exactly what several observers exist to catch. Loading it here, after the
+    # observer is armed, reproduces the ordering the dialog flow had.
+    # -PostCommand is Lua that runs after the observer and before the ready marker.
+    # It is composed into the bootstrap, so it no longer passes through the
+    # injector's prompt validation. Two shapes are admitted - a savestate load and
+    # a dofile of another allow-listed file - and anything else is refused rather
+    # than run, so a launcher cannot smuggle arbitrary code past the allowlist.
+    if ($PostCommand) {
+        if ($PostCommand -match '^dofile\(\[\[(?<path>[^\]]+)\]\]\)$') {
+            $extra = [System.IO.Path]::GetFullPath($Matches['path'])
+            $extraCheckArgs = @(
+                '-NoProfile', '-ExecutionPolicy', 'Bypass',
+                '-File', (Join-Path $PSScriptRoot 'inject_mgba_lua.ps1'),
+                '-TargetProcessId', $PID,
+                '-LuaPath', $extra,
+                '-CheckOnly'
+            )
+            & powershell @extraCheckArgs | Out-Null
+            if ($LASTEXITCODE -ne 0) { throw 'PostCommand dofile target is not allowlisted' }
+        } elseif ($PostCommand -notmatch '^emu:loadStateFile\(\[\[(?<state>[^\]]+)\]\]\)$') {
+            throw ('PostCommand must be one of exactly two shapes: ' +
+                   'dofile([[<allowlisted lua>]]) or emu:loadStateFile([[<path>]])')
+        }
+    }
+    $bootstrapLines = @(
+        ('rom011_marker_path = [[{0}]]' -f ($MarkerPath -replace '\\', '/')),
+        ('dofile([[{0}]])' -f ([System.IO.Path]::GetFullPath($LuaPath) -replace '\\', '/'))
+    )
+    if ($PostCommand) { $bootstrapLines += $PostCommand }
+    if ($StatePath) {
+        $bootstrapLines += ('assert(pcall(emu.loadStateFile, emu, [[{0}]]), [[savestate load failed]])' -f `
+            ([System.IO.Path]::GetFullPath($StatePath) -replace '\\', '/'))
+    }
+    $bootstrapLines += @(
+        ('local f = assert(io.open([[{0}]], [[w]]))' -f ($ReadyPath -replace '\\', '/')),
+        'f:write([[ready]])',
+        'f:close()'
+    )
+    $bootstrap = Join-Path $RunDir 'observer-boot.lua'
+    Set-Content -LiteralPath $bootstrap -Value $bootstrapLines -Encoding ascii
+
+    # Paths go in as ONE argument string. As separate array elements PowerShell
+    # mangles the embedded quotes and mGBA then reports "Failed to open game file"
+    # for a ROM that is perfectly readable.
+    $options = @()
+    if ($ArgumentList.Count -gt 0) { $options += $ArgumentList }
+    $options += @('--script', $bootstrap)
+    $argumentText = (($options | ForEach-Object { '"{0}"' -f $_ }) -join ' ') +
+        (' "{0}"' -f $RomPath)
+
+    $previousForeground = [IntPtr]::Zero
+    if (Initialize-SessionWindow) {
+        $previousForeground = [DbzSessionWindow]::GetForegroundWindow()
+    }
+
+    $process = Start-Process -FilePath $MGBPath -ArgumentList $argumentText -PassThru
+
+    $deadline = (Get-Date).AddSeconds(30)
+    while ((Get-Date) -lt $deadline) {
+        $process.Refresh()
+        if ($process.HasExited) { throw 'mGBA exited before its window appeared' }
+        if ($process.MainWindowHandle -ne [IntPtr]::Zero) { break }
+        Start-Sleep -Milliseconds 100
+    }
+    if ('DbzSessionWindow' -as [type]) {
+        # 4 = SW_SHOWNOACTIVATE: visible, not foreground.
+        [void][DbzSessionWindow]::ShowWindow($process.MainWindowHandle, 4)
+        if ($previousForeground -ne [IntPtr]::Zero) {
+            [void](Set-SessionWindowFocus -Target $previousForeground)
+        }
+    }
+
+    $readyDeadline = (Get-Date).AddSeconds($ReadyTimeoutSeconds)
+    while ((Get-Date) -lt $readyDeadline) {
+        if (Test-Path -LiteralPath $ReadyPath) { break }
+        Start-Sleep -Milliseconds 100
+    }
+    if (-not (Test-Path -LiteralPath $ReadyPath)) {
+        Stop-Process -Id $process.Id -Force -ErrorAction SilentlyContinue
+        throw 'Lua script did not report ready'
+    }
+    return $process
+}

@@ -217,30 +217,16 @@ $env:SPRITENEW001_SPRITE_ID = "$SpriteId"
 $env:SPRITENEW001_SCRIPT = $Script
 $env:SPRITENEW001_TICKS = "$Ticks"
 
-# ROM LAST and BARE, and space-free because it is the staged copy. See the
-# comment block above; this is the fix for a whole class of "mGBA did not report
-# the loaded ROM title" failures.
-$mgbaArgs = @('-C', ("savegamePath=" + $saveDir), $stagedRom)
-$process = Start-Process -FilePath $resolvedMGB -ArgumentList $mgbaArgs -PassThru
-Start-Sleep -Seconds $UiSettleSeconds
-
-$injectArgs = @(
-    '-NoProfile', '-ExecutionPolicy', 'Bypass',
-    '-File', (Join-Path $PSScriptRoot 'inject_mgba_lua.ps1'),
-    '-TargetProcessId', $process.Id,
-    '-LuaPath', $resolvedLua,
-    '-ReadyPath', $ready,
-    '-MarkerPath', $marker
-)
-# An empty -PostCommand is dropped by Windows PowerShell's -File argument
-# parsing, which surfaces as "Missing an argument for parameter 'PostCommand'"
-# and aborts injection before the observer is ever sent. The switch is omitted
-# entirely when there is no state to load.
-if ($postCommand) { $injectArgs += @('-PostCommand', $postCommand) }
-& powershell @injectArgs
-if ($LASTEXITCODE -ne 0) {
-    throw 'Lua injection failed - close the mGBA window before retrying'
-}
+# One mechanism for every launcher: mGBA runs the observer with --script, so no
+# Scripting window is opened, nothing takes the operator window, and the identity
+# gates live with the flag that needs them. The savegame override and the state
+# load (through the observer's own emu:loadStateFile) ride along.
+. (Join-Path $PSScriptRoot 'mgba_session.ps1')
+$process = Start-MgbaSession -MGBPath $resolvedMGB -RomPath $stagedRom `
+    -LuaPath $resolvedLua -ReadyPath $ready -MarkerPath $marker -RunDir $runDir `
+    -RequiredMGBVersion $RequiredMGBVersion -ExpectedRomSha256 $expected `
+    -ArgumentList @('-C', ('savegamePath=' + $saveDir)) `
+    -PostCommand $postCommand
 
 Write-Output 'SESSION LIVE'
 Write-Output "  label    : $Label"

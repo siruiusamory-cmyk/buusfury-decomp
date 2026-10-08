@@ -224,6 +224,8 @@ LAUNCH_SITES: tuple[LaunchSite, ...] = (
                "and the claim is only that the image boots and reports its own "
                "game code, so requiring a particular build would invent a "
                "requirement the check does not have."),
+    LaunchSite("tools/runtime/mgba_session.ps1", "Start-Process $MGBPath",
+               INSTRUMENTED_REQUIRED, FILE_VERSION, _DEV_SESSION),
     LaunchSite("tests/unit/test_mgba_identity_gate.py", "_forbidden_popen",
                NON_RUNTIME_TEST_ONLY, NO_PROOF, _TEST_ONLY),
     LaunchSite("tests/unit/test_workbench_launcher_settings.py",

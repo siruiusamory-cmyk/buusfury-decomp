@@ -104,19 +104,14 @@ $ready = Join-Path $runDir 'lua-ready.txt'
     run_dir      = $runDir
 } | ConvertTo-Json -Depth 3 | Set-Content -LiteralPath (Join-Path $runDir 'inputs.json') -Encoding utf8
 
-$process = Start-Process -FilePath $resolvedMGB -ArgumentList @('"' + $resolvedRom + '"') -PassThru
-Start-Sleep -Seconds $UiSettleSeconds
-
-& powershell -NoProfile -ExecutionPolicy Bypass `
-    -File (Join-Path $PSScriptRoot 'inject_mgba_lua.ps1') `
-    -TargetProcessId $process.Id -LuaPath $resolvedLua `
-    -ReadyPath $ready -MarkerPath $marker
-if ($LASTEXITCODE -ne 0) { throw 'Lua injection failed' }
-
-& powershell -NoProfile -ExecutionPolicy Bypass `
-    -File (Join-Path $PSScriptRoot 'toolkit031_load_state.ps1') `
-    -TargetProcessId $process.Id -StatePath $workingState
-if ($LASTEXITCODE -ne 0) { throw 'Savestate load failed' }
+# One mechanism for every launcher: mGBA loads the state with -t and runs the
+# observer with --script, so no Scripting window is opened, nothing takes the
+# operator window, and the identity gates live with the flag that needs them.
+. (Join-Path $PSScriptRoot 'mgba_session.ps1')
+$process = Start-MgbaSession -MGBPath $resolvedMGB -RomPath $resolvedRom `
+    -LuaPath $resolvedLua -ReadyPath $ready -MarkerPath $marker -RunDir $runDir `
+    -RequiredMGBVersion $RequiredMGBVersion -ExpectedRomSha256 $expected `
+    -StatePath $workingState
 
 Write-Output 'SESSION LIVE - leave and re-enter the area now'
 Write-Output "  mGBA pid : $($process.Id)"

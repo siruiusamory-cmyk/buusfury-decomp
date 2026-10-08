@@ -11,12 +11,30 @@ param(
     # so a breakpoint armed afterwards never sees construction. This is where the
     # state load therefore goes. It is a separate parameter rather than a line in
     # the observer because an observer stays read-only and a state load is not.
-    [string]$PostCommand
+    [string]$PostCommand,
+    [switch]$CheckOnly
 )
 
 $ErrorActionPreference = 'Stop'
 $workspaceRoot = [System.IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..\..'))
 $allowedLua = @(
+    # Added by APPEARANCE-AUTHORING-GATE-001: the appearance-table observer. It
+    # writes no emulated memory and arms fifteen sites - the six reader functions'
+    # entry points,
+    # the six literal-pool base-load sites inside them, the search loop's record
+    # read, the roster walk's patched bound and the animation frame advance - and
+    # writes only host files inside the run directory.
+    [System.IO.Path]::GetFullPath(
+        (Join-Path $workspaceRoot 'tools\runtime\appearance001_table_watch.lua')
+    )
+    # Added by APPEARANCE-ROSTER-EXPANSION-001: the roster-object observer. It
+    # writes no emulated memory. It samples the context word at 0x03000F90 for the
+    # list object the engine builds from the seen-flag array, reads the seen flag
+    # for the authored index and both display-count offsets, and presses Select
+    # (the game's Scouter button) and Start, bounded by its own schedule.
+    [System.IO.Path]::GetFullPath(
+        (Join-Path $workspaceRoot 'tools\runtime\roster001_scouter_watch.lua')
+    )
     # Added by MAP-WARP-RUNTIME-EDIT-001: the read-only transition observer. It
     # reads the live map identity each frame plus the target record's destination
     # key through the engine's own MapEntry+0x2C -> root+0x44 route, and writes
@@ -413,6 +431,15 @@ if ($MarkerPath) {
     if (Test-Path -LiteralPath $resolvedMarker) {
         throw 'MarkerPath already exists'
     }
+}
+
+
+if ($CheckOnly) {
+    # A launcher that hands mGBA --script at startup still needs the allowlist
+    # and the path rules to be the gate, so it asks this script to do every check
+    # and stops here, before any window is touched.
+    Write-Output $resolvedLua
+    exit 0
 }
 
 Add-Type -AssemblyName UIAutomationClient

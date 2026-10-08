@@ -278,18 +278,14 @@ export const project: ProjectStatus = {
     "The percentage above is counted from the capability list below, so it moves when a" +
     " capability does. It is a count of editor capabilities, not an estimate.",
   currentPhase: "DRAGONBYTE Z BUILDOUT",
-  blockerTitle: "Bind new graphics into game-visible actors",
+  blockerTitle: "Create a new playable map",
   blockerShort:
-    "The resource pipeline is complete and curated, and map editing is finished:" +
-    " DragonByte Z renders all 452 maps from ROM, paints tiles, creates chunks, grows" +
-    " a map, adds a layer, and lists, retargets and creates the transitions between" +
-    " areas - including on the map itself, where every supported transition is drawn" +
-    " as the region that triggers it. Graphics import shipped, and new sprite," +
-    " animation and frame authoring has now shipped with it: the Graphics tab creates" +
-    " the project's own actor-sprite identity and the retail engine resolves and draws" +
-    " it. What remains is binding authored graphics into game-visible actors - the" +
-    " appearance table, whose record count appears as compiled-in engine bounds with no" +
-    " terminator - and then new maps.",
+    "Appearance authoring has shipped. The Graphics tab creates a new appearance" +
+    " definition, the build appends it above the original end of the image, and the" +
+    " retail engine resolves and displays it: a driven session watched an actor whose" +
+    " retail record reads \"Fighter\" show the authored \"Goku\" instead. New map" +
+    " authoring is the last remaining capability, composing the verified systems into" +
+    " one new playable area, and it is the current blocker.",
   blockerParagraphs: [
     "Map editing is complete, and the capability list says so. Phase 2 covered the four" +
     " map capabilities in order: tile painting, chunk creation, map resizing with layer" +
@@ -322,12 +318,24 @@ export const project: ProjectStatus = {
     " registered at application proof. Piece and OAM composition, frame geometry and" +
     " frame timing are outside the modelled contract, and the surface states that where" +
     " it is offered rather than pretending otherwise.",
-    "The next capability, and the current blocker, is appearance authoring: binding a" +
-    " newly authored identity into the game's own actor records so a character, form or" +
-    " costume selects it. That table's record count appears as compiled-in engine bounds" +
-    " with no terminator, so whether it can be grown at all is still an open question" +
-    " rather than a scheduled task, and it is the one remaining step that is research" +
-    " before it is implementation. New map authoring is deliberately last.",
+    "Appearance authoring has shipped as well, and it was the capability research had to" +
+    " settle first. The table's record count is three compiled loop bounds with no" +
+    " terminator, so growth is by re-emission: the build moves the whole table above the" +
+    " image's end and rewrites the five literal words and three count bounds that reach" +
+    " it. The roster structure the engine builds from the seen flags is relocated with" +
+    " it, all twenty-nine compiled statements of its layout restated for the supported" +
+    " maximum of 240 records against the 232 the image has. A driven session then watched the retail search return an authored record" +
+    " at a post-canonical index for a retail actor, and the Scouter's own character" +
+    " screen displayed the authored data for that actor - an object whose retail record" +
+    " reads \"Fighter\" and \"This is a martial artist from the Other World\" showed the" +
+    " authored name \"Goku\" and the authored description instead. Taking over a sprite" +
+    " identity the retail table already uses is an explicit, default-off choice per" +
+    " definition, because that redirection is real and the build refuses a takeover" +
+    " nobody asked for.",
+    "The last capability, and the current blocker, is new map authoring: composing the" +
+    " verified systems into one genuinely new playable area with its own layout," +
+    " graphics, actors, events, dialogue and transitions, and running it in the retail" +
+    " engine. Everything it composes has shipped.",
   ],
   acceptanceTarget:
     "Author playable Legacy of Goku content inside the real LOGII/Buu engine.",
@@ -1407,13 +1415,7 @@ const roadmapTo1: RoadmapTo1 = {
       summary:
         "Let an author bring their own art in and build new actors around it,"
         + " with the tool absorbing the format and engine constraints.",
-      outcomes: [
-        {
-          capabilityId: "appearance",
-          title: "Appearances",
-          detail: "Bind newly authored graphics into game-visible actors.",
-        },
-      ],
+      outcomes: [],
       work: [
         "Graphics import - SHIPPED: edit an extracted sprite asset's PNG in the project," +
         " validate, and build. A re-encoded payload that still fits the slot the original" +
@@ -1435,8 +1437,16 @@ const roadmapTo1: RoadmapTo1 = {
         " capability is registered at application proof. Piece and OAM composition, frame" +
         " geometry and frame timing stay outside the modelled contract and the surface says" +
         " so where it is offered",
+        "Appearances - SHIPPED: the Graphics tab creates a new appearance definition and" +
+        " the build appends it above the image's end, rewriting the five literal words and" +
+        " three count bounds that reach the table, with the roster structure built from" +
+        " the seen flags relocated alongside it. A driven session watched the retail" +
+        " search return an authored record at a post-canonical index, and the Scouter's" +
+        " character screen displayed the authored name and description for an actor whose" +
+        " retail record reads \"Fighter\". Taking over a retail sprite binding is an" +
+        " explicit, default-off choice per definition and the build refuses it otherwise",
       ],
-      state: "in-progress",
+      state: "complete",
     },
     {
       id: "new-map",
@@ -1455,7 +1465,7 @@ const roadmapTo1: RoadmapTo1 = {
         },
       ],
       work: [],
-      state: "planned",
+      state: "next",
     },
     {
       id: "creator-experience",

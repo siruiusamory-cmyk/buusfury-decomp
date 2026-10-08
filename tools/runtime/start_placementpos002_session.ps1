@@ -134,27 +134,14 @@ $csv = Join-Path $runDir 'placementpos002-construct.csv'
 # before launching.
 $env:PLACEMENTPOS001_OUT = $csv
 
-$process = Start-Process -FilePath $resolvedMGB -ArgumentList @('"' + $resolvedRom + '"') -PassThru
-Start-Sleep -Seconds 8
-
-& powershell -NoProfile -ExecutionPolicy Bypass `
-    -File (Join-Path $PSScriptRoot 'inject_mgba_lua.ps1') `
-    -TargetProcessId $process.Id -LuaPath $resolvedLua `
-    -ReadyPath $ready -MarkerPath $marker
-if ($LASTEXITCODE -ne 0) {
-    Stop-Process -Id $process.Id -Force -ErrorAction SilentlyContinue
-    throw 'Lua injection failed'
-}
-
-# Load the state AFTER the observer is armed. (Construction still requires the
-# operator to re-enter map 40; the savestate restore alone does not re-construct.)
-& powershell -NoProfile -ExecutionPolicy Bypass `
-    -File (Join-Path $PSScriptRoot 'toolkit031_load_state.ps1') `
-    -TargetProcessId $process.Id -StatePath $workingState
-if ($LASTEXITCODE -ne 0) {
-    Stop-Process -Id $process.Id -Force -ErrorAction SilentlyContinue
-    throw 'Savestate load failed'
-}
+# One mechanism for every launcher: mGBA loads the state with -t and runs the
+# observer with --script, so no Scripting window is opened, nothing takes the
+# operator window, and the identity gates live with the flag that needs them.
+. (Join-Path $PSScriptRoot 'mgba_session.ps1')
+$process = Start-MgbaSession -MGBPath $resolvedMGB -RomPath $resolvedRom `
+    -LuaPath $resolvedLua -ReadyPath $ready -MarkerPath $marker -RunDir $runDir `
+    -RequiredMGBVersion $RequiredMGBVersion -ExpectedRomSha256 $expected `
+    -StatePath $workingState
 
 $identity = [ordered]@{
     label             = $Label

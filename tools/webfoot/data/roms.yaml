@@ -54,6 +54,10 @@ profiles:
         address: 0x086fda4c
         count: 9
         record_size: 0x12
+      appearances:
+        address: 0x0874d380
+        count: 232
+        record_size: 0x10
       text_strings:
         pointer_table_address: 0x0806bce8
         count: 1534

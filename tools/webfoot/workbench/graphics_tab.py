@@ -26,7 +26,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from PySide6.QtCore import QSize, Qt, QTimer, Signal
+from PySide6.QtCore import QSignalBlocker, QSize, Qt, QTimer, Signal
 from PySide6.QtGui import (
     QBrush,
     QColor,
@@ -42,6 +42,7 @@ from PySide6.QtWidgets import (
     QAbstractItemView,
     QCheckBox,
     QColorDialog,
+    QComboBox,
     QDialog,
     QFileDialog,
     QFrame,
@@ -60,15 +61,19 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from .. import appearance_authoring as appearance_sdk
 from .. import graphics as graphics_sdk
 from .. import sprite_project as sprite_sdk
+from ..appearance_authoring import AppearanceAuthoringError
 from ..formats.indexed_png import PngError
 from ..formats.sprite_graphics import SpriteFormatError
 from ..graphics import CharacterIdentity, GraphicIdentity, GraphicsError
-from ..project import AuthoredSprites, ProjectError, read_project
+from ..project import (AuthoredAppearances, AuthoredSprites, ProjectError,
+                       read_project)
 from ..sprite_authoring import SpriteAuthoringError
 from ..write import OutputPathError, ensure_not_source_alias
 from . import theme
+from .appearance_dialog import AppearanceAuthoringDialog
 from .session import Session
 from .sprite_dialog import SpriteAuthoringDialog
 from .widgets import PanelHeader, StateChip, ToolStrip
@@ -79,6 +84,11 @@ from .widgets import PanelHeader, StateChip, ToolStrip
 #: the write module's own family, raised by the shared source-alias policy the
 #: export slot applies before it lets a byte reach the destination.
 _SDK_ERRORS = (GraphicsError, SpriteFormatError, PngError, OutputPathError)
+
+#: APPEARANCE-AUTHORING-GATE-001. The authored-appearance domain's own families,
+#: for the same reason `_SDK_ERRORS` names three leaves of `ValueError` rather
+#: than one.
+_APPEARANCE_ERRORS = (AppearanceAuthoringError, ProjectError, OSError)
 
 _THUMB = 64  # icon-grid thumbnail edge, px
 _PREVIEW_MIN = 320  # selected/animation preview min edge, px (was 160/120)
@@ -252,6 +262,51 @@ class AuthoredSpriteCommand(QUndoCommand):
             QMessageBox.critical(self._tab, "Authored sprite", str(exc))
             return
         self._tab._after_authored_change()
+
+
+class AuthoredAppearanceCommand(QUndoCommand):
+    """One undoable commit to the project's authored-appearance document.
+
+    The same shape and the same reasoning as `AuthoredSpriteCommand`: the write
+    ALREADY happened before the push, because an exception raised inside `redo()`
+    does not propagate cleanly through Qt's C++ `push()`; the first push-driven
+    redo is therefore a no-op; and the project directory is captured at
+    construction because the tab's history outlives an Open Project.
+    """
+
+    def __init__(self, tab: "GraphicsTab", project_dir, prior: AuthoredAppearances,
+                 current: AuthoredAppearances, text: str):
+        super().__init__(text)
+        self._tab = tab
+        self._project = Path(project_dir) if project_dir is not None else None
+        self._prior = prior
+        self._current = current
+        self._applied = True
+
+    def redo(self) -> None:
+        if self._applied:
+            self._applied = False
+            return
+        self._write(self._current)
+
+    def undo(self) -> None:
+        self._write(self._prior)
+
+    def _write(self, document: AuthoredAppearances) -> None:
+        current = self._tab._session.project_dir
+        if (current is None or self._project is None
+                or Path(current) != self._project):
+            QMessageBox.information(
+                self._tab, "Authored appearance",
+                "This change belongs to a project that is no longer open, so it was "
+                "not written. Open that project and use Undo there.")
+            return
+        try:
+            self._tab._write_appearance_document(document)
+        except _APPEARANCE_ERRORS as exc:
+            QMessageBox.critical(self._tab, "Authored appearance", str(exc))
+            return
+        self._tab._after_appearance_change()
 
 
 def indexed_pixmap(pixels: bytes, width: int, height: int, rgb) -> QPixmap:
@@ -747,6 +802,56 @@ class GraphicsTab(QWidget):
         #: The project the current undo history belongs to.
         self._authored_project: str | None = None
 
+        # -- F. Authored appearance (project-scoped, not selection-scoped) ------
+        # APPEARANCE-AUTHORING-GATE-001. The one surface that CREATES
+        # `appearances/appearances.toml`. A project may author more than one new
+        # definition, so the strip carries a selection combo where the sprite strip
+        # carries only a chip; everything else - the write path, the undo stack, the
+        # revision guard - is the same shape the authored-sprite strip established.
+        self._appearance_chip = StateChip("No project open.", "readonly", plain=True)
+        self._appearance_chip.setWordWrap(False)
+        self._appearance_chip.setSizePolicy(QSizePolicy.Policy.Preferred,
+                                            QSizePolicy.Policy.Fixed)
+        self._appearance_pick = QComboBox()
+        self._appearance_pick.setMinimumWidth(220)
+        self._appearance_pick.currentIndexChanged.connect(
+            self._on_appearance_selection_changed)
+        self._appearance_summary = QLabel("")
+        self._appearance_summary.setWordWrap(True)
+        self._appearance_summary.setProperty("dbzRole", "hint")
+        self._appearance_new = QPushButton("New authored appearance\u2026")
+        self._appearance_new.clicked.connect(self._on_new_authored_appearance)
+        self._appearance_edit = QPushButton("Edit\u2026")
+        self._appearance_edit.clicked.connect(self._on_edit_authored_appearance)
+        self._appearance_remove = QPushButton("Remove")
+        self._appearance_remove.clicked.connect(self._on_remove_authored_appearance)
+        for button, tip in (
+            (self._appearance_new,
+             "Create a new appearance definition the image does not contain"),
+            (self._appearance_edit,
+             "Edit the selected authored appearance definition"),
+            (self._appearance_remove,
+             "Remove the selected authored appearance definition; Undo reverses it"),
+        ):
+            button.setToolTip(tip)
+        appearance_strip = ToolStrip()
+        appearance_strip.add(self._appearance_chip)
+        appearance_strip.add(self._appearance_pick)
+        appearance_strip.add(self._appearance_new)
+        appearance_strip.add(self._appearance_edit)
+        appearance_strip.add(self._appearance_remove)
+        appearance_strip.add_stretch()
+        appearance_box = QWidget()
+        appearance_box_layout = QVBoxLayout(appearance_box)
+        appearance_box_layout.setContentsMargins(0, 0, 0, 0)
+        appearance_box_layout.setSpacing(0)
+        appearance_box_layout.addWidget(PanelHeader("Authored appearance"))
+        appearance_box_layout.addWidget(appearance_strip)
+        appearance_box_layout.addWidget(self._appearance_summary)
+        #: The committed document and the (project, revision) key it was read at.
+        self._appearances = None
+        self._appearances_key: tuple[str | None, int] | None = None
+
         # -- Layout: splitter (browser | inspector) over palette + status -----
         splitter = QSplitter(Qt.Orientation.Horizontal)
         splitter.addWidget(browser)
@@ -775,11 +880,13 @@ class GraphicsTab(QWidget):
         root.setSpacing(theme.SPACE_SM)
         root.addWidget(splitter, 3)
         root.addWidget(authored_box)
+        root.addWidget(appearance_box)
         root.addWidget(palette_box, 2)
-        # No session change has happened yet, so the authored-sprite strip states
-        # its opening condition here rather than leaving its buttons default-enabled
+        # No session change has happened yet, so both authored strips state their
+        # opening condition here rather than leaving their buttons default-enabled
         # on a window that cannot author anything.
         self._refresh_authored_strip()
+        self._refresh_appearance_strip()
 
     # -- session wiring -------------------------------------------------------
 
@@ -859,6 +966,7 @@ class GraphicsTab(QWidget):
         # one effective-palette map when something is.
         self._refresh_pending_ui(rgb)
         self._refresh_authored_strip()
+        self._refresh_appearance_strip()
         self._update_status()
 
     def _sprites(self):
@@ -1707,6 +1815,21 @@ class GraphicsTab(QWidget):
 
     # -- E. authored sprite ---------------------------------------------------
 
+    def _retire_history_on_project_change(self, project) -> str | None:
+        """Retire the undo history when the open project changes.
+
+        A history entry names ONE project's document. Carrying the stack across an
+        Open Project would let Undo write the old project's document into the new
+        one, so the history goes with the project. Both authored strips read the
+        project, so both ask this rather than one of them owning the rule.
+        """
+        project_key = str(project) if project is not None else None
+        if project_key != self._authored_project:
+            self._authored_project = project_key
+            if self._undo_stack.count():
+                self._undo_stack.clear()
+        return project_key
+
     def _refresh_authored_strip(self) -> None:
         """State the project's authored-sprite document, read once per revision.
 
@@ -1715,14 +1838,7 @@ class GraphicsTab(QWidget):
         directory or the project revision moves, and never on a plain repaint.
         """
         project = self._session.project_dir
-        project_key = str(project) if project is not None else None
-        if project_key != self._authored_project:
-            self._authored_project = project_key
-            # A history entry names ONE project's document. Carrying the stack
-            # across an Open Project would let Undo write the old project's
-            # document into the new one, so the history goes with the project.
-            if self._undo_stack.count():
-                self._undo_stack.clear()
+        project_key = self._retire_history_on_project_change(project)
         key = (project_key, self._session.project_revision)
         if key == self._authored_key:
             return
@@ -1846,6 +1962,208 @@ class GraphicsTab(QWidget):
         finally:
             self._emitting_project_change = False
         self._refresh_authored_strip()
+        self._refresh_appearance_strip()
+        self._update_status()
+
+    # -- F. authored appearance -----------------------------------------------
+
+    def _refresh_appearance_strip(self) -> None:
+        """State the project's authored-appearance document, read once per revision.
+
+        The same rule the sprite strip follows: the document is project state and
+        can move from anywhere - an undo here, another editor, a reopened project -
+        so it is re-read whenever the project directory or the project revision
+        moves, and never on a plain repaint.
+        """
+        project = self._session.project_dir
+        project_key = self._retire_history_on_project_change(project)
+        key = (project_key, self._session.project_revision)
+        if key == self._appearances_key:
+            return
+        self._appearances_key = key
+        document = None
+        problem = None
+        if project is not None:
+            try:
+                document = appearance_sdk.authored_appearances(project)
+            except _APPEARANCE_ERRORS as exc:
+                problem = str(exc)
+        self._appearances = document
+        available = self._appearance_authoring_available()
+        blocker = QSignalBlocker(self._appearance_pick)
+        try:
+            self._appearance_pick.clear()
+            if document is not None:
+                for name in document.names():
+                    self._appearance_pick.addItem(name, name)
+        finally:
+            del blocker
+        if problem is not None:
+            self._appearance_chip.set_state("Project unreadable.", "invalid")
+            self._appearance_summary.setText(problem)
+            available = False
+        elif not available:
+            self._appearance_chip.set_state("Authoring not available.", "readonly")
+            self._appearance_summary.setText(
+                "A new appearance definition needs an open image whose profile "
+                "declares the appearance table, and a project extracted from that "
+                "image.")
+        elif document is None or document.is_empty():
+            self._appearance_chip.set_state("No authored appearance.", "neutral")
+            self._appearance_summary.setText(
+                "A new appearance definition is content the image does not contain: "
+                "its own record in the appearance table, naming an existing "
+                "on-screen name and the sprite identity that draws it.")
+        else:
+            count = len(document.appearances)
+            self._appearance_chip.set_state(
+                f"{count} authored appearance{'s' if count != 1 else ''}.", "saved")
+        self._appearance_new.setEnabled(available)
+        selected = self._selected_appearance()
+        self._appearance_edit.setEnabled(available and selected is not None)
+        self._appearance_remove.setEnabled(available and selected is not None)
+        self._appearance_pick.setEnabled(available and document is not None
+                                         and not document.is_empty())
+        self._describe_selected_appearance(selected)
+
+    def _appearance_authoring_available(self) -> bool:
+        session = self._session
+        return (session.project_dir is not None
+                and session.profile is not None
+                and session.map_image is not None
+                and getattr(session.profile, "appearances", None) is not None)
+
+    def _selected_appearance(self):
+        document = self._appearances
+        if document is None or document.is_empty():
+            return None
+        name = self._appearance_pick.currentData()
+        if name is None:
+            return None
+        return document.appearances.get(str(name))
+
+    def _describe_selected_appearance(self, definition) -> None:
+        """Say what the selected definition is, in the words an author chose."""
+        if definition is None:
+            return
+        self._appearance_summary.setText(
+            f"{definition.identity}: on-screen name index {definition.text_index}, "
+            f"sprite id {definition.sprite_id}. A change here makes the current "
+            "validation and build stale.")
+
+    def _on_appearance_selection_changed(self) -> None:
+        selected = self._selected_appearance()
+        self._appearance_edit.setEnabled(selected is not None)
+        self._appearance_remove.setEnabled(selected is not None)
+        self._describe_selected_appearance(selected)
+
+    def _open_appearance_dialog(self, *, definition) -> None:
+        if self._session.project_dir is None:
+            QMessageBox.information(
+                self, "Authored appearance",
+                "Open or extract a project first: a new appearance definition is "
+                "written into the project, not into the ROM.")
+            return
+        dialog = AppearanceAuthoringDialog(
+            self, self._session, definition=definition,
+            taken=() if self._appearances is None else self._appearances.names())
+        if dialog.exec() != QDialog.DialogCode.Accepted:
+            return
+        result = dialog.definition()
+        if result is None:
+            return
+        self._merge_authored_appearance(result, definition)
+
+    def _merge_authored_appearance(self, result, definition) -> None:
+        """Add one accepted definition, refusing a document the model will not build.
+
+        A duplicate sprite id or a count past the flag array is refused by the
+        model, and that refusal must not escape a Qt slot as a traceback: it is
+        reported the way the strip reports every other refusal, and nothing is
+        committed. Named rather than left inside the dialog's closure so the rule
+        can be exercised without opening a dialog.
+        """
+        committed = self._appearances if self._appearances is not None \
+            else AuthoredAppearances()
+        merged = dict(committed.appearances)
+        if definition is not None and definition.name != result.name:
+            merged.pop(definition.name, None)
+        merged[result.name] = result
+        try:
+            document = AuthoredAppearances(appearances=merged)
+        except _APPEARANCE_ERRORS as refused:
+            QMessageBox.critical(self, "Authored appearance",
+                                 f"this definition was not added: {refused}")
+            return
+        self._commit_authored_appearances(
+            document,
+            ("Edit authored appearance" if definition is not None
+             else "New authored appearance"))
+
+    def _on_new_authored_appearance(self) -> None:
+        self._open_appearance_dialog(definition=None)
+
+    def _on_edit_authored_appearance(self) -> None:
+        selected = self._selected_appearance()
+        if selected is None:
+            return
+        self._open_appearance_dialog(definition=selected)
+
+    def _on_remove_authored_appearance(self) -> None:
+        selected = self._selected_appearance()
+        if self._session.project_dir is None or selected is None:
+            return
+        confirm = QMessageBox.question(
+            self, "Remove authored appearance",
+            f"Remove {selected.identity} from this project? The image keeps its "
+            "records; the project stops authoring this definition. Undo reverses "
+            "this.",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
+        if confirm != QMessageBox.StandardButton.Yes:
+            return
+        committed = self._appearances if self._appearances is not None \
+            else AuthoredAppearances()
+        remaining = {name: item for name, item in committed.appearances.items()
+                     if name != selected.name}
+        self._commit_authored_appearances(AuthoredAppearances(appearances=remaining),
+                                          "Remove authored appearance")
+
+    def _commit_authored_appearances(self, document: AuthoredAppearances,
+                                     label: str) -> None:
+        """Write the document, then record it as one undoable project mutation.
+
+        The same two properties the sprite path has: the write runs HERE, before
+        the push, so an SDK failure leaves the history untouched; and a document
+        identical to the committed one writes nothing, records no history entry and
+        bumps no revision.
+        """
+        project = self._session.project_dir
+        try:
+            prior = read_project(project).appearances
+            changed = self._write_appearance_document(document)
+        except _APPEARANCE_ERRORS as exc:
+            QMessageBox.critical(self, "Authored appearance", str(exc))
+            return
+        if not changed:
+            return
+        self._after_appearance_change()
+        self._undo_stack.push(
+            AuthoredAppearanceCommand(self, project, prior, document, label))
+
+    def _write_appearance_document(self, document: AuthoredAppearances) -> bool:
+        """The one write path for the authored-appearance document."""
+        return appearance_sdk.apply_authored_appearances(
+            self._session.project_dir, document)
+
+    def _after_appearance_change(self) -> None:
+        """Post-commit refresh: session currency, peers, and this tab's strip."""
+        self._session.project_mutated()
+        self._emitting_project_change = True
+        try:
+            self.projectChanged.emit()
+        finally:
+            self._emitting_project_change = False
+        self._refresh_appearance_strip()
         self._update_status()
 
     # -- status line ----------------------------------------------------------

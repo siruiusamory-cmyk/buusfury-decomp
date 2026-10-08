@@ -26,6 +26,7 @@ project/
   graphics/assets/        7,390 indexed PNGs, one per distinct payload (TOOLKIT-010)
   sprites/sprites.toml    one new actor-sprite identity, and its actor
   sprites/**/*.png        the source sheets that identity is drawn from
+  appearances/appearances.toml   new character-appearance definitions
 ```
 
 One file per table rather than per record: 141 single-record files would be a
@@ -263,6 +264,54 @@ wander_box = [192, 544, 272, 624]
   also edits that record's fields, or gives that map an authored placement
   expansion, is refused rather than silently dropped or reported later as a
   byte-range overlap.
+
+## New appearance definitions
+
+APPEARANCE-AUTHORING-GATE-001. A **new appearance definition** is one more record
+in the engine's character-appearance table: an identity the image does not have,
+naming an on-screen name it already holds and the sprite identity that draws it.
+`appearances/appearances.toml` describes one or more.
+
+```toml
+[appearance.new_face]
+text_index = 1188
+sprite_id = 10
+```
+
+- **The record's own identity is its position in the table, and the build assigns
+  it.** The engine addresses record `i` as `table + 16 * i` with no bound check, so
+  an appended definition is index 232, then 233, in the document's own name order.
+  A raw offset is not an authoring API and is never accepted here.
+- **The whole table moves, because it cannot grow where it is.** The canonical
+  extent ends exactly where a literal-named descriptor block begins, and the count
+  is three compiled `cmp rN,#0xE8` loop bounds rather than a stored number. The
+  build therefore re-emits the table above the original end of the image with the
+  authored records appended, rewrites the five literal-pool words that name it and
+  patches the three bounds. The canonical records are copied verbatim, not
+  re-encoded, so an untouched definition keeps its own bytes.
+- **`text_index` names an existing string.** It is the record's `+0x00`, an index
+  into the profile's declared text pointer table; the record's `+0x02` is written
+  as its successor, which holds on 232 of 232 canonical records. Creating a new
+  text-table id is not shipped, so an authored definition shares a name with the
+  retail definition that already uses that index rather than inventing one. An
+  index whose successor is outside the table is refused.
+- **`sprite_id` binds a sprite identity no canonical record selects**, or the id
+  an authored actor-sprite identity in the same project takes. The engine's search
+  returns the earliest matching record, so an id a retail record already selects
+  would make the appended record either unreachable or a replacement for that
+  record's resolution; such a document is refused. Sprite id 149 is refused too,
+  because the engine remaps it before it compares. A value below the accessor's floor of 10 and a value the registry
+  does not reach are both refused.
+- **The portrait slot and the stat index are not authorable here.** The record's
+  `+0x08` and `+0x0C` are written to the two corpus-legal defaults the SDK states
+  (no portrait, no stat record), which 98 and 88 of the 232 canonical records
+  already carry. Offering either as a field would mean authoring a portrait or a
+  stat record, and no shipped surface does.
+- **The count bound is enforced, not discovered later.** The engine keeps one seen
+  bit per record in a 232-bit array and the block initializer zeroes a word just
+  past it, so at most 8 records may be appended to the 232 the image has. That bound
+  is INFERRED, and it is below the 255 a Thumb `cmp rN,#imm8` could state: the
+  encoding is not the binding limit.
 
 ## Determinism
 

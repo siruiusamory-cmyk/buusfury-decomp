@@ -274,7 +274,8 @@ class FreeRegion:
 #: the runtime claim, and membership here must not be read as it.
 RELOCATION_ELIGIBLE_KINDS = frozenset({"placement_reference_array", "text-string",
                                        "graphics_container",
-                                       "character_pointer_table"})
+                                       "character_pointer_table",
+                                       "appearance_record_table"})
 
 
 def relocation_eligible(anchor: Anchor, references: Iterable[Reference]) -> bool:

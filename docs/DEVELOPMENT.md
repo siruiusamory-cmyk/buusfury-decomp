@@ -104,10 +104,16 @@ Any claim sourced from an emulator is governed by
 - Read that file before the first mGBA action of a ticket. It is tracked
   precisely so that it exists in every worktree and can be reviewed; a runtime
   ticket that never cites it has not been done.
-- Launch through a tracked launcher. Never invoke `mGBA.exe --script`: it
-  bypasses both the observer allowlist and the launcher's ROM gate.
-- An observer is read-only. Input and memory writes, including a savestate
-  load, belong in a separate driver.
+- Launch through a tracked launcher. A launcher may hand mGBA `--script` only
+  when it keeps both gates that flag would otherwise bypass: every Lua file it
+  passes must be accepted by `inject_mgba_lua.ps1 -CheckOnly`, and the launcher
+  must itself fail closed on the emulator version and an exact ROM digest. A
+  bare `mGBA.exe --script` outside a launcher is still forbidden, because it
+  carries neither.
+- An observer writes no emulated memory. Controller input is allowed but must be
+  deliberate: gated by an environment variable the launcher sets, off by default,
+  and bounded so the run ends by itself. Twenty-six allow-listed observers drive
+  input this way; a new one states its gate rather than assuming it.
 - Every observer carries a liveness channel, and the closure report says which
   of the three instrument states in section 8 of that file applies. A silent
   channel with a silent liveness channel is "no evidence", never a negative.

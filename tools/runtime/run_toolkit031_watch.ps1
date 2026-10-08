@@ -119,21 +119,14 @@ $env:TOOLKIT031_OUT = $csv
 
 $process = $null
 try {
-    $process = Start-Process -FilePath $resolvedMGB -ArgumentList @('"' + $resolvedRom + '"') -PassThru
-    Start-Sleep -Seconds 8
-
-    & powershell -NoProfile -ExecutionPolicy Bypass `
-        -File (Join-Path $root 'tools\runtime\inject_mgba_lua.ps1') `
-        -TargetProcessId $process.Id -LuaPath $resolvedLua `
-        -ReadyPath $ready -MarkerPath $marker
-    if ($LASTEXITCODE -ne 0) { throw 'Lua injection failed' }
-
-    # Load the state only AFTER the observer is attached, so the breakpoint is
-    # already armed when the map's entities are constructed.
-    & powershell -NoProfile -ExecutionPolicy Bypass `
-        -File (Join-Path $PSScriptRoot 'toolkit031_load_state.ps1') `
-        -TargetProcessId $process.Id -StatePath $workingState
-    if ($LASTEXITCODE -ne 0) { throw 'Savestate load failed' }
+    # One mechanism for every launcher: mGBA loads the state with -t and runs the
+    # observer with --script, so no Scripting window is opened, nothing takes the
+    # operator window, and the identity gates live with the flag that needs them.
+    . (Join-Path $PSScriptRoot 'mgba_session.ps1')
+    $process = Start-MgbaSession -MGBPath $resolvedMGB -RomPath $resolvedRom `
+        -LuaPath $resolvedLua -ReadyPath $ready -MarkerPath $marker -RunDir $runDir `
+        -RequiredMGBVersion $RequiredMGBVersion -ExpectedRomSha256 $expected `
+        -StatePath $workingState
 
     # Wait for the OPERATOR to finish, not for a clock.
     #

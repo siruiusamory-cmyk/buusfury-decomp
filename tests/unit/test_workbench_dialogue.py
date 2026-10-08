@@ -209,6 +209,7 @@ def test_a_new_image_empties_the_record_panel(inspector, session):
     assert inspector._text.toPlainText()
     assert inspector._handle_rows
     assert inspector._refs.rowCount() == 1
+    assert inspector._handle_form.rowCount() >= 1
 
     session.selected_result = None
     inspector.on_session_changed()
@@ -216,6 +217,12 @@ def test_a_new_image_empties_the_record_panel(inspector, session):
     assert inspector._text.toPlainText() == ""
     assert inspector._handle_rows == {}
     assert inspector._refs.rowCount() == 0
+    # Every row must actually be removed, not merely detached: the form owns the
+    # rows the next record's rows stack below. (A detached label becomes a stray
+    # top-level widget rather than a row, and a shared QApplication makes that
+    # count unstable to assert from a portable test.)
+    assert inspector._handle_form.rowCount() == 0
+    assert inspector._handle_form.count() == 0
     assert not inspector._edit.isEnabled()
 
 

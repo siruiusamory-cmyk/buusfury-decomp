@@ -49,6 +49,8 @@ def test_open_rom_populates_session(catalog: RomProfileCatalog) -> None:
         pytest.skip("assembled atlas.jsonl not present locally")
 
     session = Session()
+    # A record resolved against an earlier image is what this open must clear.
+    session.selected_result = {"_mode": "decoded", "text": "stale"}
     session.open_rom(Path(rom), catalog)
 
     assert session.profile is not None

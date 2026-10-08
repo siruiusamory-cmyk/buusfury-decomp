@@ -62,18 +62,23 @@ def main() -> int:
     # NEGATIVE CONTROLS. On this image every code that passes the codec's other rules
     # has a glyph record, so `has_glyph` rejects nothing above and the check would look
     # the same if the seam were disconnected. These show both seams can refuse, which
-    # is what makes the acceptances above mean something.
+    # is what makes the acceptances above mean something. A control that does NOT
+    # refuse is a failure of this tool, so it exits non-zero.
+    failures = []
     denied = dictionary.entries()[0].glyphs[0]
     try:
         build_blob(dictionary, has_glyph=lambda code: code != denied)
-        print("negative control: FAILED, build_blob accepted a missing glyph record")
+        failures.append("build_blob accepted a dictionary whose glyph has no record")
     except TokenDictionaryError:
         print(f"negative control: build_blob refuses when {denied:#06x} has no record")
     try:
         check_widths(dictionary, lambda code: LINE_WIDTH_FLOOR)
-        print("negative control: FAILED, check_widths accepted an over-wide expansion")
+        failures.append("check_widths accepted an over-wide expansion")
     except TokenDictionaryError:
         print(f"negative control: check_widths refuses a {LINE_WIDTH_FLOOR} px glyph")
+    for failure in failures:
+        print(f"FAILED: {failure}")
+    return 1 if failures else 0
 
     if args.map:
         import json

@@ -32,8 +32,10 @@ build that wrote the wrong thing, or a report that described a different build:
   * every record's STORED text must be the same length as retail, which is what stops
     any record from moving any other;
   * the set of records the image actually CHANGED is derived from the two images and
-    must equal the map minus the report's refused set, so a report claiming every
-    record was refused cannot pass a build that renamed them;
+    cross-checked against the report: every record the report claims applied must
+    really differ, and every record that differs without being applied must overlap a
+    record that was, since a refused record's bytes are still rewritten by applied
+    neighbours whose spans cross it;
   * the spliced image's digest must be the one the splice report names, and a report
     without one is refused rather than skipped;
   * each record the map names must display the map's own `new_text`, spaces aside
@@ -82,6 +84,32 @@ def stream_of(image: bytes, selector: int) -> bytes:
 def visible(text: str, dictionary: TokenDictionary) -> str:
     """The text the engine composes, with every token expanded to its glyphs."""
     return decode_text(text, dictionary)
+
+
+def expected_text(retail: str, span_start: int,
+                  regions: list[tuple[int, int, str]]) -> str:
+    """What a record must hold, built from the regions that were written.
+
+    A region whose substituted name runs past this record's end is CLIPPED, not
+    skipped, and the clip is exact because a stored replacement occupies the same
+    number of units as the text it replaces - which is the property the whole method
+    rests on. Skipping instead reported three correct records as changed. Two regions
+    covering the same bytes are applied once, which is what the caller's dedup by
+    (start, length) is for.
+    """
+    out: list[str] = []
+    position = 0
+    for start, length, replacement in regions:
+        local = start - span_start
+        first = max(local, 0)
+        last = min(local + length, len(retail))
+        if first >= last or first < position:
+            continue
+        out.append(retail[position:first])
+        out.append(replacement[first - local:last - local])
+        position = last
+    out.append(retail[position:])
+    return "".join(out)
 
 
 def main() -> int:
@@ -213,26 +241,7 @@ def main() -> int:
                 )
 
     def expected(retail: str, span_start: int, selector: int) -> str:
-        """What this record must hold, built from the regions that were written.
-
-        A region whose substituted name runs past this record's end is CLIPPED, not
-        skipped, and the clip is exact because a stored replacement occupies the same
-        number of units as the text it replaces - which is the property the whole
-        method rests on. Skipping instead reported three correct records as changed.
-        """
-        out: list[str] = []
-        position = 0
-        for start, length, replacement in regions[selector]:
-            local = start - span_start
-            first = max(local, 0)
-            last = min(local + length, len(retail))
-            if first >= last or first < position:
-                continue
-            out.append(retail[position:first])
-            out.append(replacement[first - local:last - local])
-            position = last
-        out.append(retail[position:])
-        return "".join(out)
+        return expected_text(retail, span_start, regions[selector])
 
     findings: dict[str, list] = {"record_unchanged": [], "record_name_only": [],
                                  "record_WRONG": [], "unknown_token": []}

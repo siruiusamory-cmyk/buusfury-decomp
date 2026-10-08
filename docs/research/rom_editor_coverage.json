@@ -1,0 +1,2796 @@
+{
+  "schema": {
+    "version": 1,
+    "artifact": "docs/research/rom_editor_coverage.json",
+    "ticket": "DRAGONBYTE-Z-ROM-EDITOR-COVERAGE-001",
+    "authority": "Authoritative machine-readable form of the ROM-editor coverage census. docs/research/ROM_EDITOR_COVERAGE_LEDGER.md renders this file; docs/research/ROM_EDITOR_SYSTEM_CENSUS.md carries the evidence narrative; docs/research/ROM_EDITOR_COVERAGE_SUMMARY.md carries the decisions.",
+    "determinism": "Rows are grouped by area in a fixed order (MAP/WORLD, ENTITIES/GAMEPLAY, SCRIPT/TEXT, GRAPHICS, AUDIO, SYSTEM/ROM) and hold the order the census enumerated them. Every list is sorted where it is a set of names. No timestamp, host path or run-specific value is stored. Every count in totals and rom_surface is recomputed from rows by tests/unit/test_rom_editor_coverage.py, which fails on any difference; no count is authored by hand.",
+    "fields": {
+      "rows[].id": "stable census id, kebab-case, unique across the file",
+      "rows[].area": "MAP/WORLD | ENTITIES/GAMEPLAY | SCRIPT/TEXT | GRAPHICS | AUDIO | SYSTEM/ROM",
+      "rows[].games.<game>.state": "one of vocabularies.coverage_states; the row's current top-level coverage state for that title",
+      "rows[].games.<game>.basis": "MEASURED (this title was investigated and the cell is supported by evidence) | NOT_INVESTIGATED (no adequate evidence for this title exists; the state is a statement about this lab, not about the game)",
+      "rows[].games.<game>.engine_knowledge": "one of vocabularies.engine_knowledge",
+      "rows[].games.<game>.runtime_evidence": "one of vocabularies.runtime_evidence",
+      "rows[].games.<game>.confidence": "CONFIRMED | INFERRED | UNKNOWN, per docs/research-conventions.md",
+      "rows[].read|edit|author|xref|raw_range|validation_rebuild|ui|restrictions|external_tool": "row-level prose; each names the title when the titles differ",
+      "facilities[]": "generic ROM-editor facilities. Deliberately NOT part of denominator.accepted_rows: a facility is a product capability, not a game system.",
+      "totals": "computed strictly from rows[].games; a cell whose state is N_A is excluded from that game's denominator"
+    },
+    "aggregate_rule": "The family-wide aggregate counts (row, game) cells, not rows: one cell per row per title. A cell whose state is N_A is excluded from both numerator and denominator. Because the state vocabulary is ordinal only for FULLY_EDITABLE and PARTIALLY_EDITABLE (the two states in which the product can write), the only aggregate percentage published is writable_cells / measured_cells; the five state counts are published separately per title and never summed into one score."
+  },
+  "baseline": {
+    "repository": "log1-remake",
+    "branch": "ticket/dragonbyte-z-rom-editor-coverage-001",
+    "commit": "486e3c665929a8dc57c63b7915f74606e30ccb0d",
+    "capability_registry": {
+      "path": "src/data/capabilities.json",
+      "capabilities": 24,
+      "state_shipped": 24,
+      "proof_runtime": 13,
+      "proof_application": 11,
+      "note": "Read, not modified. This registry is not this denominator and was not recomputed into one."
+    },
+    "origin_master_at_ticket_start": "486e3c665929a8dc57c63b7915f74606e30ccb0d",
+    "drift": {
+      "measured": true,
+      "origin_master_while_this_ticket_was_open": "f3955e1b9fc4fba012ceedb7cc9f8a8f8db0f4d0",
+      "ticket_baseline_is_an_ancestor": true,
+      "merges_since_the_baseline": [
+        "cc9265f Merge branch 'ticket/dialogue-token-productization-001' into 'master'",
+        "f3955e1 Merge branch 'ticket/friend-v3-cold-boot-acceptance-001' into 'master'"
+      ],
+      "capability_registry_changed": false,
+      "product_change": "3 files, +443 lines: a new tools/webfoot/token_dictionary.py (430 lines), tools/webfoot/dialogue.py +7, tools/webfoot/compressed_dialogue.py +6, plus docs/research/DIALOGUE_TOKEN_PRODUCTIZATION.md and FRIEND_V3_COLD_BOOT_ACCEPTANCE.md",
+      "rows_affected": [
+        "dialogue-control-codes",
+        "dialogue-records"
+      ],
+      "effect": "This census is measured at the pinned baseline 486e3c6, and its row set was frozen and reviewed there. The dialogue token merge landed after that commit and ships a production token encoder, a dictionary codec and an authored-window refusal (tools/webfoot/token_dictionary.py), so row dialogue-control-codes, which records that no token authoring shipped, and row dialogue-records, whose recovered ceiling is quoted for the pre-token fitter, are correct as of 486e3c6 and may be conservative afterwards. Re-measuring those two rows against the merged tree is a separate bounded task and was not done here.",
+      "why_not_rebased": "The ticket pins the baseline, the fixed product facts are stated at it, the frozen row set was reviewed against it, and the registry is unchanged between the two commits, so the census keeps its stated measurement commit and declares the drift instead of re-deriving facts against a tip that moved mid-ticket."
+    }
+  },
+  "games": [
+    {
+      "id": "buus_fury",
+      "title": "Buu's Fury (USA, rev 0)",
+      "profile_id": "buus_fury_usa_rev0_01c1707f",
+      "game_code": "BG3E",
+      "sha256": "940ad5f01db4465b8877dfe739510cbf34f4ea3d390f3df13519808bc36f059e",
+      "declared_tables": 9,
+      "evidence": "tools/webfoot/data/roms.yaml:4-183"
+    },
+    {
+      "id": "logii",
+      "title": "The Legacy of Goku II (USA, rev 0)",
+      "profile_id": "legacy_of_goku_ii_usa_rev0_204142e1",
+      "game_code": "ALFE",
+      "sha256": "6e6c370c339ec9171cb1956adf837a0d342a197f78964882ef46c3086656ff75",
+      "declared_tables": 2,
+      "evidence": "tools/webfoot/data/roms.yaml:212-269"
+    },
+    {
+      "id": "log1",
+      "title": "The Legacy of Goku (USA)",
+      "profile_id": "legacy_of_goku_usa_a3c8c767",
+      "game_code": "ALGE",
+      "sha256": "3ba9919e26704b0f5fdc2bfabc7f7a0404c71413761d38abcd94224c3bd4b1b9",
+      "declared_tables": 0,
+      "evidence": "tools/webfoot/data/roms.yaml:200-210 (identity and a hash source only; no tables key)"
+    }
+  ],
+  "vocabularies": {
+    "coverage_states": [
+      "FULLY_EDITABLE",
+      "PARTIALLY_EDITABLE",
+      "SEMANTIC_READ_ONLY",
+      "KNOWN_BUT_UNSUPPORTED",
+      "UNKNOWN_UNMAPPED",
+      "N_A"
+    ],
+    "engine_knowledge": [
+      "PROVEN",
+      "SUBSTANTIAL",
+      "PARTIAL",
+      "MINIMAL",
+      "UNKNOWN"
+    ],
+    "runtime_evidence": [
+      "PROVEN",
+      "PARTIAL",
+      "NOT_NEEDED_FOR_CLASSIFICATION",
+      "NEEDED",
+      "UNKNOWN"
+    ],
+    "basis": [
+      "MEASURED",
+      "NOT_INVESTIGATED"
+    ],
+    "confidence": [
+      "CONFIRMED",
+      "INFERRED",
+      "UNKNOWN"
+    ],
+    "coverage_state_definitions": {
+      "FULLY_EDITABLE": "Inspectable, safely editable, validated against known-invalid writes, persisted through project and build, and not restricted to a subset that materially changes ordinary hacking of that system.",
+      "PARTIALLY_EDITABLE": "The product can semantically modify the system and material restrictions remain; the restriction is named numerically where a number exists.",
+      "SEMANTIC_READ_ONLY": "The product identifies and displays the system and no semantic write path reaches it. Raw hex editing does not count.",
+      "KNOWN_BUT_UNSUPPORTED": "The system is identified and bounded enough to say what it is, and the product has no semantic model for it.",
+      "UNKNOWN_UNMAPPED": "An editor-relevant region or system is known to exist and its semantic role or boundaries are not understood well enough to classify it.",
+      "N_A": "Evidence shows the system genuinely does not exist in that title."
+    }
+  },
+  "denominator": {
+    "definition": "One row per coherent editor-relevant semantic domain: a structure, resource family or engine system whose support can meaningfully be classified, with a boundary that evidence supports. A row is not a map, not a function, not a capability and not a UI surface. Rows were enumerated before any count was taken; the count in totals is computed, never chosen.",
+    "accepted_rows": 40,
+    "excluded_seed_areas": [
+      {
+        "area": "collision",
+        "finding": "Measured on Buu's Fury only: this title keeps no separate per-map collision table, so collision is not a distinct editor-relevant structure in it. The game certainly has walls; the finding is that they are not carried by a collision table of their own. Nothing is claimed for LOGII or LOG1.",
+        "evidence": "tests/integration/test_local_collision_rom.py:214"
+      },
+      {
+        "area": "inventory",
+        "finding": "Not established as a ROM structure. The two item index lists the consumer FUN_080164d0 builds are runtime state in an object at +0x134 and +0x284, and a runtime structure is not a ROM-editable domain.",
+        "evidence": "FUN_080164d0 (ROM decompilation)"
+      },
+      {
+        "area": "unowned proven strides",
+        "finding": "A 20-byte-stride table at 0x083BB78C and a 33-byte pool at 0x083BBBB0 are bounded in stride and have no found consumer. An unexplained stride is not a system until a consumer exists, so they get no row.",
+        "evidence": "0x083BB78C and 0x083BBBB0 (ROM bytes); no inbound code reference found"
+      },
+      {
+        "area": "world map",
+        "finding": "No world-map table, region or consumer was established in any title.",
+        "evidence": "Ghidra lane: symbol-name search returned empty and no byte search exists; no tracked research document names one"
+      },
+      {
+        "area": "encounters and spawn logic",
+        "finding": "No separate encounter or spawn table was found; spawns are carried by the per-area object arrays that row area-object-array-tables covers.",
+        "evidence": "docs/research/BUU_MAP_OBJECT_ARRAYS.md; 0x08008b30 array walk"
+      },
+      {
+        "area": "boss definitions",
+        "finding": "No boss classification exists in the project and none was established in the image; bosses are not a separate structure with its own boundary.",
+        "evidence": "tools/webfoot/enemy_randomizer/eligibility.py:18-24"
+      },
+      {
+        "area": "RNG",
+        "finding": "No engine RNG state or table was established; the project has randomizer seeds, which are product inputs.",
+        "evidence": "tools/webfoot/randomizer/service.py:188; no engine RNG evidence found"
+      },
+      {
+        "area": "effects and projectiles as a source system",
+        "finding": "No separate deterministic effect definition system was found; effects ride the sprite pipeline.",
+        "evidence": "docs/research/GRAPHICS_COVERAGE.md"
+      },
+      {
+        "area": "cutscene art as a separate family",
+        "finding": "No evidence separates cutscene art from the title and static screen family.",
+        "evidence": "docs/research/GRAPHICS_COVERAGE.md (TITLE/STATIC/CUTSCENE UNRESOLVED as one load list)"
+      },
+      {
+        "area": "overlays and code loading",
+        "finding": "The platform is the GBA, which has no overlay mechanism; the relocation layer is a codec over anchors, not a runtime loader.",
+        "evidence": "tools/research/domain_reachability.py:417-418"
+      },
+      {
+        "area": "compiler-embedded source paths and assert strings",
+        "finding": "Real and proven at four sites, but it is build debris that names compilation units, not a system an editor would expose on its own; it is recorded as census evidence.",
+        "evidence": "ROM 0x08004160, 0x08004818, 0x08008A5C, 0x08013BAC"
+      }
+    ],
+    "row_boundary_review": {
+      "reviewer": "subagent_re_coverage, mechanically read-only, agent 5",
+      "required_before_counts": true,
+      "recorded_in": "docs/research/ROM_EDITOR_COVERAGE_LEDGER.md",
+      "result": "ACCEPTED_WITH_CORRECTIONS",
+      "merges": "none; nine duplicate candidates refused on evidence",
+      "splits": "none; sibling-object-record-families retained whole",
+      "drops": "rom-expansion-and-free-space (a property of images and a product substrate, not a game system)",
+      "adds": "event-resource-pool-and-index (proven 522-entry index and 127,328-byte pool with a product display path)",
+      "state_corrections": "sibling-object-record-families, enemy-ai-behaviours and global-flags-state demoted from KNOWN_BUT_UNSUPPORTED to UNKNOWN_UNMAPPED for want of a proven boundary; area-object-array-tables engine knowledge SUBSTANTIAL to PARTIAL for a misattributed function and a disputed four-array model",
+      "evidence_corrections": "shops evidence replaced with the CONFIRMED_ROM producer addresses; Buu-offset negatives no longer stand in for sibling-title investigations; enemy and character stat field names restored from tools/webfoot/stats.py:76-93; LOGII text edit path corrected against tests/integration/test_logii_text_rom.py:386-422",
+      "frozen_row_count": 40
+    }
+  },
+  "rows": [
+    {
+      "id": "map-entry-records",
+      "name": "Map identity and header records",
+      "area": "MAP/WORLD",
+      "description": "The per-area record the engine's own key lookup reads: 452 records of 56 bytes at 0x0808E2E0. Carries the two-byte map key the engine searches by, the metadata fields the SDK exposes, and pointers to the area's object arrays.",
+      "evidence_authority": "ROM bytes at 0x0808E2E0 and record 10 at 0x0808E510; consumer FUN_080089fc with stride 0x38 and the key-lookup literal 0x08008A58 = 0x0808E2E0; tools/webfoot/data/roms.yaml:45-48",
+      "games": {
+        "buus_fury": {
+          "state": "PARTIALLY_EDITABLE",
+          "basis": "MEASURED",
+          "engine_knowledge": "PROVEN",
+          "runtime_evidence": "PROVEN",
+          "confidence": "CONFIRMED"
+        },
+        "logii": {
+          "state": "UNKNOWN_UNMAPPED",
+          "basis": "MEASURED",
+          "engine_knowledge": "MINIMAL",
+          "runtime_evidence": "UNKNOWN",
+          "confidence": "INFERRED"
+        },
+        "log1": {
+          "state": "UNKNOWN_UNMAPPED",
+          "basis": "NOT_INVESTIGATED",
+          "engine_knowledge": "UNKNOWN",
+          "runtime_evidence": "UNKNOWN",
+          "confidence": "UNKNOWN"
+        }
+      },
+      "read": "All 452 records enumerate. The key, the five metadata fields the SDK names (zone, area, variation, flags, music_id) and the leading counts read. LOGII: a real 0x38-stride table exists at 0x08409368 with the same two-leading-byte key shape and ROM pointers in its +0x10/+0x14/+0x18 slots, and the profile deliberately does not declare it against this codec; field-level identity is UNKNOWN.",
+      "edit": "Five metadata fields are writable through tools/webfoot/maps.py set_field with a per-field range table; identity sharing is refused by measured exclusive-ownership checks. No Workbench surface calls set_field, so field editing is SDK and CLI only.",
+      "author": "New rows are authorable: the build re-emits the whole table above the original end, repoints the one literal the key lookup loads and raises the compiled row bound. Ceiling 58 appended rows, runtime-observed.",
+      "xref": "Inbound: the key lookup at 0x08008A58, the linear key scan in FUN_080089fc, the map list, the Atlas index. Outbound: the per-area object-array pointers and the trailing per-area pointer.",
+      "raw_range": "file 0x08E2E0..0x0945C0 = image 0x0808E2E0..0x080945C0, 25,312 bytes, 452 x 0x38.",
+      "validation_rebuild": "Build re-emits the table and the compiled bound; project validate refuses an index-moving change by name. Byte-exact round trip of canonical records is proven by the profile reader.",
+      "ui": "Maps editor lists and renders every map; New map is a shipped surface. Field-level header editing has no UI.",
+      "restrictions": "Record fields +0x0C, +0x10, +0x18, +0x1C, +0x20, +0x24, +0x28, +0x30 and +0x34 are not modelled; the trigger semantics some tracked notes place at +0x04 and +0x10 are disputed (see map-event-trigger-records). New-row authoring is capped at 58 rows and an authored row inherits its donor.",
+      "external_tool": "hex editor for the unmodelled fields; Ghidra to settle the disputed offsets.",
+      "open_questions": [
+        "Which of +0x0C..+0x34 are counts, pointers or flags?",
+        "Is the 0x08409368 LOGII table the same record family in a variant layout?"
+      ],
+      "evidence_refs": [
+        "0x0808E2E0 (ROM bytes)",
+        "FUN_080089fc (stride 0x38)",
+        "0x08008A58 literal = 0x0808E2E0",
+        "tools/webfoot/maps.py:625",
+        "tools/webfoot/project/model.py:80,118",
+        "tools/webfoot/data/roms.yaml:45-48",
+        "docs/research/MAP_NEW_AUTHORING.md"
+      ]
+    },
+    {
+      "id": "map-layout-chunk-grids",
+      "name": "Map layout chunk grids",
+      "area": "MAP/WORLD",
+      "description": "A map's layers and the fixed-size grid of four-byte chunk references inside each layer record, which is what the engine draws as the map's visible layout.",
+      "evidence_authority": "tools/webfoot/map_layout_edit.py:63-76; tests/integration/test_map_layout_editor_rom.py:56-58 (452/341/111); runtime observation recorded in src/data/capabilities.json:185 (tiles) and :219 (resize)",
+      "games": {
+        "buus_fury": {
+          "state": "PARTIALLY_EDITABLE",
+          "basis": "MEASURED",
+          "engine_knowledge": "PROVEN",
+          "runtime_evidence": "PROVEN",
+          "confidence": "CONFIRMED"
+        },
+        "logii": {
+          "state": "UNKNOWN_UNMAPPED",
+          "basis": "NOT_INVESTIGATED",
+          "engine_knowledge": "UNKNOWN",
+          "runtime_evidence": "UNKNOWN",
+          "confidence": "UNKNOWN"
+        },
+        "log1": {
+          "state": "UNKNOWN_UNMAPPED",
+          "basis": "NOT_INVESTIGATED",
+          "engine_knowledge": "UNKNOWN",
+          "runtime_evidence": "UNKNOWN",
+          "confidence": "UNKNOWN"
+        }
+      },
+      "read": "All 452 maps and 1,808 layer slots enumerate; 1,516 slots are the dominant chunk-grid form. Cell values, layer pointers and classification are read and rendered.",
+      "edit": "341 of 452 maps expose an editable layer; a cell is reassigned in place to another chunk the same layer already uses. Painting, undo and eyedropper are one history. 111 maps are refused for three named reasons: single-chunk dominant grids, absent dominant layers, forms outside the proven grid (screen-entry layers, the terrain-field form used by map 19, zero-dimension records).",
+      "author": "Growth only: a supported layer's grid may be enlarged and re-emitted above the original end with the layer-slot pointer repointed, and the map extent word raised. Shrinking is refused. One unused layer slot may be activated with a new supported visual layer.",
+      "xref": "Map identity to layer records to chunk containers; Atlas lists the layer and cell owners; the renderer resolves cells through the map's assembled character block.",
+      "raw_range": "Layer records and their grids are addressed per layer from the map root; no single table. The chunk-container table reached from the grid is row map-chunk-containers.",
+      "validation_rebuild": "Validate plus build; the application round-trip reopens the emitted image through its own manifest. Emulator validation of the layout-write capability itself was not performed; the painting and resize capabilities were.",
+      "ui": "Maps editor Layout mode: grid view, cell replacement, chunk chooser, resize form, layer list, Create Chunk.",
+      "restrictions": "The writable unit is a four-byte chunk reference, not a hardware tile. A layer that draws one chunk has nothing to paint with. No new graphics reach a layer: only arrangements of chunks the layer already draws. Authored grids are map-scoped. The runtime evidence on this row comes from the painted-cell authority, which writes the same four-byte cell and was observed after leaving and re-entering the area; the registry's layout capability separately records that emulator validation of its own single-operation write was not performed, so the two records must not be quoted as one.",
+      "external_tool": "tile editor plus a custom decoder for anything below the chunk: tileset entries, tile bits 12-15 and palettes outside the shared object palette.",
+      "open_questions": [
+        "What do tile-map bits 12-15 mean (they are zero in all 3,834,880 canonical entries and are preserve-only)?",
+        "Map 19 uses the terrain-field layer form that the editor refuses; whether a background ever displays its composite plane is provisional and waits on a map-19 fixture, not on tooling (docs/research/ASSET_EXPORT_MAP19_VERIFICATION.md:380-449)."
+      ],
+      "evidence_refs": [
+        "tools/webfoot/map_layout_edit.py:63-76",
+        "tools/webfoot/map_layout_write.py:38",
+        "tools/webfoot/map_resize.py",
+        "tests/integration/test_map_layout_editor_rom.py:56-58,162-168",
+        "src/data/capabilities.json:157-194,213-229"
+      ]
+    },
+    {
+      "id": "map-chunk-containers",
+      "name": "Map chunk containers",
+      "area": "MAP/WORLD",
+      "description": "The engine's chunk resource: a 32x32 plane of 16-bit screen entries that a layout cell refers to by address. This is the level at which map graphics are composed in this engine.",
+      "evidence_authority": "tools/webfoot/map_chunk.py; docs/research/MAP_CHUNK_AUTHORING.md; runtime observation recorded in src/data/capabilities.json:195-211",
+      "games": {
+        "buus_fury": {
+          "state": "PARTIALLY_EDITABLE",
+          "basis": "MEASURED",
+          "engine_knowledge": "PROVEN",
+          "runtime_evidence": "PROVEN",
+          "confidence": "CONFIRMED"
+        },
+        "logii": {
+          "state": "UNKNOWN_UNMAPPED",
+          "basis": "NOT_INVESTIGATED",
+          "engine_knowledge": "UNKNOWN",
+          "runtime_evidence": "UNKNOWN",
+          "confidence": "UNKNOWN"
+        },
+        "log1": {
+          "state": "UNKNOWN_UNMAPPED",
+          "basis": "NOT_INVESTIGATED",
+          "engine_knowledge": "UNKNOWN",
+          "runtime_evidence": "UNKNOWN",
+          "confidence": "UNKNOWN"
+        }
+      },
+      "read": "Chunk bodies are reached through the layer grid and are rendered; the chunk's 16-bit entries are decoded for display.",
+      "edit": "Existing chunks are readable but the shipped surface composes new ones rather than editing retail ones in place.",
+      "author": "A new chunk may be created from one a dominant layer already draws: its 32x32 plane is rearranged using only screen entries that same layer already displays, it gets its own project identity, and the build materialises it above the original ROM end. Runtime-observed: the engine's loaded BG1 tilemap carries the authored arrangement while BG0, BG2 and BG3 stay byte-identical.",
+      "xref": "Layer grid cell to chunk address; chunk to the map's assembled character block that resolves its tile ordinals.",
+      "raw_range": "Chunk bodies are addressed per map; a new body is emitted above the original ROM end through the allocator.",
+      "validation_rebuild": "Validate refuses an entry outside the layer's own vocabulary; build allocates and resolves the cell. Runtime-proven for the authored case.",
+      "ui": "Maps editor Layout mode: Create Chunk, chunk editor, chunk brush.",
+      "restrictions": "An authored chunk adds no tiles and no palettes: it is a new arrangement of graphics the map already draws. Chunks are map-scoped because their tile ordinals only resolve through one map's character block. Creation depends on generated expansion, since the canonical image declares 256 bytes of free space.",
+      "external_tool": "tile editor and a graphics codec writer for genuinely new artwork.",
+      "open_questions": [
+        "Is a chunk body ever shared between maps, and what would make one portable?"
+      ],
+      "evidence_refs": [
+        "tools/webfoot/map_chunk.py",
+        "docs/research/MAP_CHUNK_AUTHORING.md",
+        "src/data/capabilities.json:195-211"
+      ]
+    },
+    {
+      "id": "map-graphics-tilesets",
+      "name": "Map graphics: character blocks, tilesets and screen-entry planes",
+      "area": "MAP/WORLD",
+      "description": "The assembled graphics a map's chunk entries index: the character block, the tileset and the palettes a layer draws with. Distinct from chunk containers, which hold only references into this vocabulary.",
+      "evidence_authority": "tools/webfoot/formats/map_graphics.py; tools/webfoot/tileset_compositor.py; tools/research/domain_reachability.py:366 (proven render for maps 39 and 40 only); tools/webfoot/cli.py:618-643",
+      "games": {
+        "buus_fury": {
+          "state": "SEMANTIC_READ_ONLY",
+          "basis": "MEASURED",
+          "engine_knowledge": "SUBSTANTIAL",
+          "runtime_evidence": "NOT_NEEDED_FOR_CLASSIFICATION",
+          "confidence": "CONFIRMED"
+        },
+        "logii": {
+          "state": "UNKNOWN_UNMAPPED",
+          "basis": "NOT_INVESTIGATED",
+          "engine_knowledge": "UNKNOWN",
+          "runtime_evidence": "UNKNOWN",
+          "confidence": "UNKNOWN"
+        },
+        "log1": {
+          "state": "UNKNOWN_UNMAPPED",
+          "basis": "NOT_INVESTIGATED",
+          "engine_knowledge": "UNKNOWN",
+          "runtime_evidence": "UNKNOWN",
+          "confidence": "UNKNOWN"
+        }
+      },
+      "read": "The tileset census and atlas commands enumerate a map's graphics, and the compositor renders them. The proven render path covers maps 39 and 40; the general case is not proven, which is the main limit on this row's read side.",
+      "edit": "None. No SDK writer addresses a tileset or a character-block entry.",
+      "author": "None. No shipped surface composes new tiles or tilesets.",
+      "xref": "Chunk to character block; the map record to its graphics; Atlas carries the owners.",
+      "raw_range": "Character-block and tileset bodies are addressed per map; the renderer resolves them from the map record.",
+      "validation_rebuild": "Not applicable at this state: there is no write path to validate.",
+      "ui": "Maps editor Layout mode renders chunk cells; there is no tile or tileset surface.",
+      "restrictions": "Read coverage itself is partial: proven for two maps. Tile-map bits 12-15 are zero in every canonical entry and must be preserved by any future writer, which needs no semantics. Palettes are shared with the object palette system.",
+      "external_tool": "standalone tile or graphics editor plus a custom decoder; the compressed container format also needs the encoder that row compression-codec covers.",
+      "open_questions": [
+        "What is the full map-graphics load list, and why does only maps 39/40 render?"
+      ],
+      "evidence_refs": [
+        "tools/webfoot/formats/map_graphics.py",
+        "tools/webfoot/tileset_compositor.py",
+        "tools/research/domain_reachability.py:366",
+        "tools/webfoot/cli.py:618-643"
+      ]
+    },
+    {
+      "id": "area-object-array-tables",
+      "name": "Per-area counted object array tables",
+      "area": "MAP/WORLD",
+      "description": "The engine loads four independent counted arrays per area, each reached through the map record's +0x04 pointer: a count byte per family in the pointed-to structure and an array pointer per family at +0x14 (stride 4), +0x18 (stride 4), +0x1C (stride 4) and +0x20 (stride 8). This is the structural answer to what the unmodelled sibling records are.",
+      "evidence_authority": "FUN_08008b30 decompilation and the inline walk at 0x08008C9E..0x08008CAE; ROM bytes at 0x08008CA2 (ldrb r0,[r0,#0x4]) and 0x08008CAC (ldr r0,[r0,#0x14]); docs/research/BUU_MAP_OBJECT_ARRAYS.md",
+      "games": {
+        "buus_fury": {
+          "state": "PARTIALLY_EDITABLE",
+          "basis": "MEASURED",
+          "engine_knowledge": "PARTIAL",
+          "runtime_evidence": "PROVEN",
+          "confidence": "INFERRED"
+        },
+        "logii": {
+          "state": "UNKNOWN_UNMAPPED",
+          "basis": "NOT_INVESTIGATED",
+          "engine_knowledge": "UNKNOWN",
+          "runtime_evidence": "UNKNOWN",
+          "confidence": "UNKNOWN"
+        },
+        "log1": {
+          "state": "UNKNOWN_UNMAPPED",
+          "basis": "NOT_INVESTIGATED",
+          "engine_knowledge": "UNKNOWN",
+          "runtime_evidence": "UNKNOWN",
+          "confidence": "UNKNOWN"
+        }
+      },
+      "read": "One of the four arrays is enumerated and rendered by the product. The existence of the other three is proven, but the product has no reader for their elements.",
+      "edit": "Array +0x14 is editable through the placement surfaces. Arrays +0x18, +0x1C and +0x20 have no reader and no writer.",
+      "author": "Clone-only for array +0x14, ceiling 255 object slots per map. The other three arrays have no authoring path.",
+      "xref": "Map record +0x04 to the object block; the object block's four counts and array pointers; placement records to the sprite resolver and the enemy stat table.",
+      "raw_range": "The array pointers are per area; the map-10 array is at file 0x07293C. No fixed table bounds the whole family.",
+      "validation_rebuild": "Array +0x14 writing validates and builds and is runtime-proven. The other three arrays participate in no validation because nothing writes them.",
+      "ui": "Maps editor Objects mode and the Scene editor both operate on array +0x14 only.",
+      "restrictions": "Structure confidence on the count bytes and on the pointed-to structure's base is PARTIAL rather than PROVEN: the decompiled walk dereferences map+0x04 before reading a count, while a tracked note places counts directly on the map record, and the same lane that produced the four-array claim separately found the 0x08008B30 map-loader attribution wrong, so the four-array model is INFERRED and disputed rather than settled. Three of four families are unmodelled, which is the largest single map-system coverage gap found. The row's writable cell is shared: the write path named in edit is the placement path of row placement-records, and the aggregate rule prints a shared-path caveat for it.",
+      "external_tool": "Ghidra to decode the element types of the +0x18, +0x1C and +0x20 families; hex editor to read them now.",
+      "open_questions": [
+        "What are the +0x18, +0x1C and +0x20 arrays: warps, spawns, triggers, decorations?",
+        "Is the count byte base the map record or the structure +0x04 points at?"
+      ],
+      "evidence_refs": [
+        "0x08008b30 (ROM decompilation)",
+        "0x08008C9E..0x08008CAE (ROM bytes)",
+        "docs/research/BUU_MAP_OBJECT_ARRAYS.md:15"
+      ]
+    },
+    {
+      "id": "placement-records",
+      "name": "Placement-family object records",
+      "area": "ENTITIES/GAMEPLAY",
+      "description": "The object family the SDK models, reached from the first per-area array: records whose lead word is the constructor wrapper 0x0800FD55 and which carry a sprite id read at +0x10 and handed to the sprite-id resolver.",
+      "evidence_authority": "ROM bytes at 0x0800FD55 and the constructor FUN_0800f68c; the field read at 0x0800F6AE (ldr r0,[r5,#0x10]) and the call at 0x0800F6B0; tools/webfoot/data/roms.yaml:34-44",
+      "games": {
+        "buus_fury": {
+          "state": "PARTIALLY_EDITABLE",
+          "basis": "MEASURED",
+          "engine_knowledge": "SUBSTANTIAL",
+          "runtime_evidence": "PROVEN",
+          "confidence": "CONFIRMED"
+        },
+        "logii": {
+          "state": "UNKNOWN_UNMAPPED",
+          "basis": "NOT_INVESTIGATED",
+          "engine_knowledge": "UNKNOWN",
+          "runtime_evidence": "UNKNOWN",
+          "confidence": "UNKNOWN"
+        },
+        "log1": {
+          "state": "UNKNOWN_UNMAPPED",
+          "basis": "NOT_INVESTIGATED",
+          "engine_knowledge": "UNKNOWN",
+          "runtime_evidence": "UNKNOWN",
+          "confidence": "UNKNOWN"
+        }
+      },
+      "read": "Placements enumerate per map with their stored signed position; supported types are classified; unsupported types render read-only.",
+      "edit": "Position moves through the proven signed map-pixel contract with an explicit signed-16 guard. Runtime-proven.",
+      "author": "Clone-only: an authored entity is a configured clone of a supported existing type; 268 maps are clone-capable; 255 slots per map is the ceiling because the count is one byte.",
+      "xref": "Placement to sprite identity (identity of the drawn sprite is not proven), placement to behaviour attachment, placement to the enemy stat table through the factory's literal 0x0800FD75 = 0x08711274.",
+      "raw_range": "Records are scattered across the object-array span from file 0x0728FC upward; no contiguous table and no stride: the codec is factory-led and variable-length.",
+      "validation_rebuild": "Validate plus build; the authored entity and its slot resolution are runtime-proven.",
+      "ui": "Maps editor Objects mode; Scene editor opened from the placement.",
+      "restrictions": "Clone-only authoring. Placement-to-sprite identity is not proven, so markers are neutral and browsing cannot say which sprite an object uses. The profile declares placement selector maximum 149 while the independently verified enemy-stat extent is 141 records, so selectors 141..149 name targets outside any verified codec.",
+      "external_tool": "Ghidra for the unmodelled fields and the enemy-to-sprite link; hex editor otherwise.",
+      "open_questions": [
+        "Which fields of a placement record beyond the sprite id and position are read by the engine?",
+        "What resolves an enemy's sprite at runtime?",
+        "The construction site writes actor+0x1A0 with 40 of 40 rows matched, while the vertical field actor+0x1A4 and the facing selector 0x03001A34 are unproven: a fresh-map-load run would close them."
+      ],
+      "evidence_refs": [
+        "0x0800FD55 (ROM bytes)",
+        "FUN_0800f68c at 0x0800F6AE",
+        "tools/webfoot/data/roms.yaml:34-44",
+        "tools/research/domain_reachability.py (placement types)",
+        "docs/research/PLACEMENT_POSITION_PROVENANCE.md"
+      ]
+    },
+    {
+      "id": "sibling-object-record-families",
+      "name": "Unmodelled sibling object record families (two families)",
+      "area": "ENTITIES/GAMEPLAY",
+      "description": "Two further object families sharing the per-area array mechanism: records whose lead words are 0x08017DA3 (191 sprite-bearing records reported) and 0x080111A9 (148 reported), the third family at that address family being the placements of the row placement-records. Each is proven to load one field and call the same sprite resolver.",
+      "evidence_authority": "ROM disassembly at 0x08017DA6 (ldr r0,[r0,#0x10]; bl 0x08000158) and 0x080111AC (ldr r0,[r0,#0xc]; bl 0x08000158); counts from docs/research/BUU_MAP_OBJECT_ARRAYS.md:36-48, which proves three leading words over 1,898 slots, and are not re-derived",
+      "games": {
+        "buus_fury": {
+          "state": "UNKNOWN_UNMAPPED",
+          "basis": "MEASURED",
+          "engine_knowledge": "PARTIAL",
+          "runtime_evidence": "NEEDED",
+          "confidence": "INFERRED"
+        },
+        "logii": {
+          "state": "UNKNOWN_UNMAPPED",
+          "basis": "NOT_INVESTIGATED",
+          "engine_knowledge": "UNKNOWN",
+          "runtime_evidence": "UNKNOWN",
+          "confidence": "UNKNOWN"
+        },
+        "log1": {
+          "state": "UNKNOWN_UNMAPPED",
+          "basis": "NOT_INVESTIGATED",
+          "engine_knowledge": "UNKNOWN",
+          "runtime_evidence": "UNKNOWN",
+          "confidence": "UNKNOWN"
+        }
+      },
+      "read": "No product reader. The sprite id field offset is proven for each family (+0x10 and +0x0C) and nothing else is decoded.",
+      "edit": "None.",
+      "author": "None.",
+      "xref": "Both families call the sprite-id resolver FUN_08000158; the containing array is one of the three unmodelled per-area arrays.",
+      "raw_range": "Not bounded. No stride and no table were found for either family.",
+      "validation_rebuild": "Not applicable: no write path exists.",
+      "ui": "None.",
+      "restrictions": "The record lengths, the record counts and every field except the sprite id are unknown for both families, which is why the state is UNKNOWN_UNMAPPED rather than KNOWN_BUT_UNSUPPORTED: a proven field offset is not a proven boundary. The counts 191 and 148 come from tracked research and were not re-derived in this census.",
+      "external_tool": "Ghidra with byte-level verification, plus runtime observation to see when each family is constructed.",
+      "open_questions": [
+        "What are these families: decorations, projectiles, interactive props, spawn points?",
+        "Which per-area array reaches each one, and what bounds either family's records?"
+      ],
+      "evidence_refs": [
+        "0x08017DA2 (ROM disassembly)",
+        "0x080111A8 (ROM disassembly)",
+        "docs/research/BUU_MAP_OBJECT_ARRAYS.md:36-48"
+      ]
+    },
+    {
+      "id": "warps-transitions",
+      "name": "Warps and map transitions",
+      "area": "MAP/WORLD",
+      "description": "The records that carry the player between areas: 735 transition records across nineteen or more classes, with the 566 class covering most of them.",
+      "evidence_authority": "tools/webfoot/formats/map_transitions.py; tools/webfoot/map_transitions.py; tests pinning 735 records; runtime observation recorded in src/data/capabilities.json:232-253",
+      "games": {
+        "buus_fury": {
+          "state": "PARTIALLY_EDITABLE",
+          "basis": "MEASURED",
+          "engine_knowledge": "PROVEN",
+          "runtime_evidence": "PROVEN",
+          "confidence": "CONFIRMED"
+        },
+        "logii": {
+          "state": "UNKNOWN_UNMAPPED",
+          "basis": "NOT_INVESTIGATED",
+          "engine_knowledge": "UNKNOWN",
+          "runtime_evidence": "UNKNOWN",
+          "confidence": "UNKNOWN"
+        },
+        "log1": {
+          "state": "UNKNOWN_UNMAPPED",
+          "basis": "NOT_INVESTIGATED",
+          "engine_knowledge": "UNKNOWN",
+          "runtime_evidence": "UNKNOWN",
+          "confidence": "UNKNOWN"
+        }
+      },
+      "read": "All 735 records are enumerated and round-trip byte-exactly with no anomalies. Trigger regions are drawn on the map.",
+      "edit": "Destination, arrival position and facing are retargetable for the supported classes; bytes with unresolved meaning (+0x13 and the low nibble of +0x10) are preserved and not editable.",
+      "author": "A transition the image does not contain can be authored from a same-map class-566 template with an expanded record-pointer array above the original end. Runtime-proven: a human-operated run consumed an authored transition.",
+      "xref": "Map to map through destinations; transition to its trigger region on the canvas; the Warps list selects on the canvas.",
+      "raw_range": "The record array is reached from the map's connection root; record-array bases are in the pointer-table infrastructure row.",
+      "validation_rebuild": "Validate plus build; a shared connection root or an unsupported class fails closed with its reason. Runtime-proven for creation.",
+      "ui": "Maps editor Warps mode, plus canvas trigger regions with drag-to-move.",
+      "restrictions": "The 169-class family is refused for retargeting and creation because its stored arrival is a scene-relative delta. A map sharing its connection root is refused. No deletion exists. A stale staged creation has no per-row discard.",
+      "external_tool": "Ghidra for the 169-class arrival semantics and the two unresolved byte fields; hex editor otherwise.",
+      "open_questions": [
+        "What does the 169-class arrival delta compose against?",
+        "What selects through 0x03001A34, which read zero on every runtime sample?"
+      ],
+      "evidence_refs": [
+        "tools/webfoot/map_transitions.py",
+        "tools/webfoot/formats/map_transitions.py",
+        "src/data/capabilities.json:232-253",
+        "docs/research/MAP_WARPS_AND_CONNECTIONS.md"
+      ]
+    },
+    {
+      "id": "map-event-trigger-records",
+      "name": "Map event and trigger records",
+      "area": "MAP/WORLD",
+      "description": "The per-map event or trigger structure: tracked research places an eight-byte trigger record array at map record +0x10 with a count at +0x04 and a handler at 0x0800742C, while the decompiled object-array walk reads +0x04 as a pointer and counts from the structure it addresses.",
+      "evidence_authority": "docs/research/BUU_MAP_EVENT_REFERENCES.md and docs/research/BUU_MAP_DIALOG_SEMANTICS.md (tracked claims); FUN_08008b30 decompilation (contradicting structure); no trigger symbol name exists in the image",
+      "games": {
+        "buus_fury": {
+          "state": "UNKNOWN_UNMAPPED",
+          "basis": "MEASURED",
+          "engine_knowledge": "MINIMAL",
+          "runtime_evidence": "NEEDED",
+          "confidence": "UNKNOWN"
+        },
+        "logii": {
+          "state": "UNKNOWN_UNMAPPED",
+          "basis": "NOT_INVESTIGATED",
+          "engine_knowledge": "UNKNOWN",
+          "runtime_evidence": "UNKNOWN",
+          "confidence": "UNKNOWN"
+        },
+        "log1": {
+          "state": "UNKNOWN_UNMAPPED",
+          "basis": "NOT_INVESTIGATED",
+          "engine_knowledge": "UNKNOWN",
+          "runtime_evidence": "UNKNOWN",
+          "confidence": "UNKNOWN"
+        }
+      },
+      "read": "Tracked research documents reference the trigger family, and the SDK's script-ownership analysis reaches per-map script roots. No product reader enumerates trigger records as records.",
+      "edit": "None.",
+      "author": "None. Authored behaviour attaches through the placement behaviour path instead, which is a different mechanism.",
+      "xref": "Map record to script roots; the disputed handler 0x0800742C to the 0x18 rectangle object.",
+      "raw_range": "Claimed at map record +0x10; not independently bounded.",
+      "validation_rebuild": "Not applicable: no write path exists.",
+      "ui": "None.",
+      "restrictions": "The evidence conflicts on the map record's own layout, so the boundary is not established. The strongest measured statement is that the object-array mechanism is reached through a pointer at map record +0x04, which is not compatible with a count byte at the same offset.",
+      "external_tool": "Ghidra to settle the offset conflict by reading the consumer's arithmetic, then a runtime probe on a map with a live event.",
+      "open_questions": [
+        "Is +0x04 a count or a pointer?",
+        "Is there a separate eight-byte trigger family, or is the trigger family the same array the placements live in?"
+      ],
+      "evidence_refs": [
+        "FUN_08008b30 (ROM decompilation)",
+        "docs/research/BUU_MAP_EVENT_REFERENCES.md",
+        "docs/research/BUU_MAP_DIALOG_SEMANTICS.md",
+        "0x0800742C (claimed handler)"
+      ]
+    },
+    {
+      "id": "enemy-stat-records",
+      "name": "Enemy and character stat records",
+      "area": "ENTITIES/GAMEPLAY",
+      "description": "The 141-record, 28-byte stat table the placement factory indexes: a per-record id field, a shared pointer and a per-record pointer into a variable pool.",
+      "evidence_authority": "ROM bytes at 0x08711274 with the recurring pointer at a 7-word period; the base literal 0x0801BA90 = 0x08711274; tools/webfoot/stats.py; tools/webfoot/formats/stat_tables.py; tools/webfoot/data/roms.yaml:49-52",
+      "games": {
+        "buus_fury": {
+          "state": "PARTIALLY_EDITABLE",
+          "basis": "MEASURED",
+          "engine_knowledge": "SUBSTANTIAL",
+          "runtime_evidence": "PARTIAL",
+          "confidence": "INFERRED"
+        },
+        "logii": {
+          "state": "UNKNOWN_UNMAPPED",
+          "basis": "MEASURED",
+          "engine_knowledge": "UNKNOWN",
+          "runtime_evidence": "UNKNOWN",
+          "confidence": "INFERRED"
+        },
+        "log1": {
+          "state": "UNKNOWN_UNMAPPED",
+          "basis": "NOT_INVESTIGATED",
+          "engine_knowledge": "UNKNOWN",
+          "runtime_evidence": "UNKNOWN",
+          "confidence": "UNKNOWN"
+        }
+      },
+      "read": "All 141 records of 28 bytes enumerate with field decode, round-trip and a CLI listing.",
+      "edit": "Fields are rewritable in place through the SDK and its CLI, and the packaged enemy randomizer rewrites fields in place with a changed-field list. No Workbench surface reaches the stat tables, and no capability in the registry names them.",
+      "author": "Not meaningful: the count is fixed and no growth path for a stat record is claimed.",
+      "xref": "Placement factory to stat table; enemy stats to the character-sprite table is NOT established: no enemy record holds a pointer into the graphics regions and no field indexes the 297-entry table, so the selection happens in code.",
+      "raw_range": "file 0x711274..0x7121E0 = image 0x08711274..0x087121E0, 3,948 bytes, 141 x 28.",
+      "validation_rebuild": "Stat round-trip tests exist; in-place field writes build into the image. A LOGII stat codec does not exist and the profile states no LOGII table matches these record shapes.",
+      "ui": "None in the Workbench; the packaged enemy randomizer has its own window.",
+      "restrictions": "Field semantics are named by the product for the fields it models: tools/webfoot/stats.py:76-93 defines the enemy fields exp, hp, level, strength, power and endurance, with level bounded 1..200 from a disassembled comparison in the experience award path, and stats.py:231 exposes a lookup by hp. The residual gaps are the unnamed pointer and pool fields, the byte pairs, and the absence of runtime proof that an edited value is consumed. The profile declares placement selector maximum 149 while this extent holds 141 records, so selectors 141..149 point outside any verified codec. Runtime evidence is PARTIAL and the gap is named: the enemy randomizer's recorded runs read the engine's own MapEntry+0x14 slots and two reward counters, but the record states the run does not read a constructed actor.",
+      "external_tool": "Ghidra to name the fields through the damage formula; mGBA debugger to confirm a changed value is read.",
+      "open_questions": [
+        "Which field feeds the damage formula?",
+        "What does the shared 0x08708920 pointer name?"
+      ],
+      "evidence_refs": [
+        "0x08711274 (ROM bytes)",
+        "0x0801BA90 literal = 0x08711274",
+        "tools/webfoot/stats.py",
+        "tools/webfoot/formats/stat_tables.py",
+        "tools/webfoot/data/roms.yaml:49-52",
+        "tools/research/domain_reachability.py"
+      ]
+    },
+    {
+      "id": "character-base-stats",
+      "name": "Playable-character base stats",
+      "area": "ENTITIES/GAMEPLAY",
+      "description": "Nine records of nine halfwords at 0x086FDA4C: three leading stat values, five byte-pair fields and a trailing zero. Nine records matches the plausible party size.",
+      "evidence_authority": "ROM bytes at 0x086FDA4C; tools/webfoot/stats.py; tools/webfoot/data/roms.yaml:53-56; tools/research/domain_reachability.py:394",
+      "games": {
+        "buus_fury": {
+          "state": "PARTIALLY_EDITABLE",
+          "basis": "MEASURED",
+          "engine_knowledge": "SUBSTANTIAL",
+          "runtime_evidence": "UNKNOWN",
+          "confidence": "INFERRED"
+        },
+        "logii": {
+          "state": "UNKNOWN_UNMAPPED",
+          "basis": "NOT_INVESTIGATED",
+          "engine_knowledge": "UNKNOWN",
+          "runtime_evidence": "UNKNOWN",
+          "confidence": "UNKNOWN"
+        },
+        "log1": {
+          "state": "UNKNOWN_UNMAPPED",
+          "basis": "NOT_INVESTIGATED",
+          "engine_knowledge": "UNKNOWN",
+          "runtime_evidence": "UNKNOWN",
+          "confidence": "UNKNOWN"
+        }
+      },
+      "read": "All nine records of 18 bytes enumerate through the same stat module and CLI.",
+      "edit": "Fields are rewritable in place through the SDK and CLI. No Workbench surface.",
+      "author": "Not meaningful at nine fixed records.",
+      "xref": "The only inbound reference is a parameter literal inside the unnamed function at 0x08004904, so the consumer is located but not named.",
+      "raw_range": "file 0x6FDA4C..0x6FDAEE = image 0x086FDA4C..0x086FDAEE, 162 bytes, 9 x 18.",
+      "validation_rebuild": "Round-trip is covered by the stat module's tests. In-place edits build into the image.",
+      "ui": "None.",
+      "restrictions": "The product names the character fields it models: tools/webfoot/stats.py:76-93 defines level, hp, ep, strength, power, endurance and speed. What is not established is the byte-pair fields' meaning, whether they are growth rates or resistances, and whether level-up deltas live in this table at all, so it may be base-only.",
+      "external_tool": "Ghidra to decompile 0x08004904; mGBA to watch a stat change on level-up.",
+      "open_questions": [
+        "Where do level-up deltas live?",
+        "Which halfword is which stat?"
+      ],
+      "evidence_refs": [
+        "0x086FDA4C (ROM bytes)",
+        "0x08004904 (unnamed consumer)",
+        "tools/webfoot/data/roms.yaml:53-56"
+      ]
+    },
+    {
+      "id": "player-progression",
+      "name": "Player progression and level-up",
+      "area": "ENTITIES/GAMEPLAY",
+      "description": "The rules that turn experience into levels and stats. The game certainly levels the player; no table, curve or consumer for it was identified in this census.",
+      "evidence_authority": "Negative result: no progression module exists in tools/webfoot; the character base stat table at 0x086FDA4C is bounded and its deltas are not there; the character stat table's fields are not named",
+      "games": {
+        "buus_fury": {
+          "state": "UNKNOWN_UNMAPPED",
+          "basis": "MEASURED",
+          "engine_knowledge": "MINIMAL",
+          "runtime_evidence": "NEEDED",
+          "confidence": "UNKNOWN"
+        },
+        "logii": {
+          "state": "UNKNOWN_UNMAPPED",
+          "basis": "NOT_INVESTIGATED",
+          "engine_knowledge": "UNKNOWN",
+          "runtime_evidence": "UNKNOWN",
+          "confidence": "UNKNOWN"
+        },
+        "log1": {
+          "state": "UNKNOWN_UNMAPPED",
+          "basis": "NOT_INVESTIGATED",
+          "engine_knowledge": "UNKNOWN",
+          "runtime_evidence": "UNKNOWN",
+          "confidence": "UNKNOWN"
+        }
+      },
+      "read": "None.",
+      "edit": "None.",
+      "author": "None.",
+      "xref": "None established. The character-data compilation unit name survives in the image at 0x08013BAC, which is where the search should continue.",
+      "raw_range": "Not established.",
+      "validation_rebuild": "Not applicable.",
+      "ui": "None.",
+      "restrictions": "The boundary is unknown, so no state better than UNKNOWN_UNMAPPED is available.",
+      "external_tool": "Ghidra starting from the character-data unit name and the experience value the HUD displays; mGBA to observe a level-up.",
+      "open_questions": [
+        "Is progression a table, a formula in code, or both?"
+      ],
+      "evidence_refs": [
+        "0x08013BAC (preserved source path for CharacterData.cpp)",
+        "grep over tools/webfoot for progression returned only refusal text in tools/webfoot/enemy_randomizer/gui.py:118-128"
+      ]
+    },
+    {
+      "id": "techniques-and-attacks",
+      "name": "Techniques and attacks",
+      "area": "ENTITIES/GAMEPLAY",
+      "description": "The player's and enemies' moves: their costs, damage and animation. The game has them; no table, definition record or consumer was identified.",
+      "evidence_authority": "Negative result: no technique, attack or move table is declared in tools/webfoot/data/roms.yaml; the stat tables are bounded to 141 x 28 and 9 x 18; the script corpus carries no named technique opcode",
+      "games": {
+        "buus_fury": {
+          "state": "UNKNOWN_UNMAPPED",
+          "basis": "MEASURED",
+          "engine_knowledge": "MINIMAL",
+          "runtime_evidence": "NEEDED",
+          "confidence": "UNKNOWN"
+        },
+        "logii": {
+          "state": "UNKNOWN_UNMAPPED",
+          "basis": "NOT_INVESTIGATED",
+          "engine_knowledge": "UNKNOWN",
+          "runtime_evidence": "UNKNOWN",
+          "confidence": "UNKNOWN"
+        },
+        "log1": {
+          "state": "UNKNOWN_UNMAPPED",
+          "basis": "NOT_INVESTIGATED",
+          "engine_knowledge": "UNKNOWN",
+          "runtime_evidence": "UNKNOWN",
+          "confidence": "UNKNOWN"
+        }
+      },
+      "read": "None.",
+      "edit": "None.",
+      "author": "None.",
+      "xref": "None established.",
+      "raw_range": "Not established.",
+      "validation_rebuild": "Not applicable.",
+      "ui": "None.",
+      "restrictions": "Boundary unknown. The 266 script native handlers include several whose game-level purpose is unknown, and a technique system is a plausible home for them.",
+      "external_tool": "Ghidra over the 266 native handlers; mGBA debugger to catch a technique's cost being debited.",
+      "open_questions": [
+        "Are techniques script-driven, table-driven, or both?"
+      ],
+      "evidence_refs": [
+        "docs/research/SCRIPT_VM.md:55-63 (native handler purposes mostly unknown)",
+        "tools/webfoot/data/roms.yaml (no technique table declared)"
+      ]
+    },
+    {
+      "id": "items-and-inventory",
+      "name": "Item table",
+      "area": "ENTITIES/GAMEPLAY",
+      "description": "The 83-record, 52-byte item table at 0x083BD2F8 with a class bit, four text indices, a price, and two out-pointers into per-item pools, plus the two item index lists an engine consumer builds.",
+      "evidence_authority": "ROM bytes at 0x083BD2F8 with the base literal 0x08016790; the consumer FUN_080164d0 with the loop bound 0x53; tools/webfoot/data/roms.yaml:109-137",
+      "games": {
+        "buus_fury": {
+          "state": "KNOWN_BUT_UNSUPPORTED",
+          "basis": "MEASURED",
+          "engine_knowledge": "SUBSTANTIAL",
+          "runtime_evidence": "NOT_NEEDED_FOR_CLASSIFICATION",
+          "confidence": "CONFIRMED"
+        },
+        "logii": {
+          "state": "UNKNOWN_UNMAPPED",
+          "basis": "NOT_INVESTIGATED",
+          "engine_knowledge": "UNKNOWN",
+          "runtime_evidence": "UNKNOWN",
+          "confidence": "UNKNOWN"
+        },
+        "log1": {
+          "state": "UNKNOWN_UNMAPPED",
+          "basis": "NOT_INVESTIGATED",
+          "engine_knowledge": "UNKNOWN",
+          "runtime_evidence": "UNKNOWN",
+          "confidence": "UNKNOWN"
+        }
+      },
+      "read": "No product reader enumerates items as items. The SDK reaches this table only as the static owner of the item_use script family, where the four halfwords at +0x02..+0x08 are proven text indices read through the text pointer table.",
+      "edit": "None as items. Item-owned scripts are not authored.",
+      "author": "None.",
+      "xref": "Item record +0x30 to its script in the item_use family (23 of 83 non-null); +0x02..+0x08 to the text table; the two index lists FUN_080164d0 builds are the closest thing to an inventory structure found.",
+      "raw_range": "file 0x3BD2F8..0x3BE3D4 = image 0x083BD2F8..0x083BE3D4, 4,316 bytes, 83 x 52. Sub-pools: 33-byte pool at 0x083BBBB0, 703 bytes; variable pool at 0x083BBE70; 20-byte-stride table at 0x083BB78C.",
+      "validation_rebuild": "Not applicable at this state. The item-owned script corpus re-encodes byte-identically, which is a script-codec result, not an item-editing result.",
+      "ui": "None. The item table appears in the Atlas only through research artifacts.",
+      "restrictions": "Field semantics beyond the class bit, the price and the four text indices are not established; the repeating 16-byte block at +0x0C..+0x20 is unexplained; the 33-byte pool has no found consumer, so its element shape beyond the stride is unconstrained; the inventory itself has no located structure. The inventory is not established as a ROM structure: the two item index lists the consumer FUN_080164d0 builds live at +0x134 and +0x284 of a runtime object, so they are runtime state rather than an editable ROM domain.",
+      "external_tool": "Ghidra to find the consumer of the 33-byte pool and to name +0x0C..+0x20; hex editor otherwise.",
+      "open_questions": [
+        "Where does the inventory live at runtime, and is it ROM-initiated?",
+        "What are the 33-byte records?"
+      ],
+      "evidence_refs": [
+        "0x083BD2F8 (ROM bytes)",
+        "0x08016790 literal = 0x083BD2F8",
+        "FUN_080164d0 (loop bound 0x53)",
+        "tools/webfoot/data/roms.yaml:109-137",
+        "docs/research/BUU_SCRIPT_OWNERSHIP.md"
+      ]
+    },
+    {
+      "id": "shops-and-scenarios",
+      "name": "Shops and shop scenarios",
+      "area": "ENTITIES/GAMEPLAY",
+      "description": "Shop inventory and the dialogue scenario a shop runs. tools/webfoot/atlas_producers/seed.py:588-644 records a CONFIRMED_ROM shop producer: six stride-4 script-pointer arrays at 0x0877F3B0, 0x0877F73C, 0x0877FAB8, 0x0877FE00, 0x08780008 and 0x087803E4, each preceded by an 8-byte type-0x05 descriptor whose u16 count equals that array's entry count, plus five confirmed shop object records from 0x08074360 to 0x0807451C carrying scenario pointers. This corrects an earlier revision of this row that reported no table located.",
+      "evidence_authority": "tools/webfoot/atlas_producers/seed.py:588-644 (TOOLKIT-038 CONFIRMED_ROM); docs/research/BUU_SHOP_SCENARIO_MODEL.md; the master index at 0x0879B774 is CANDIDATE with no found consumer",
+      "games": {
+        "buus_fury": {
+          "state": "KNOWN_BUT_UNSUPPORTED",
+          "basis": "MEASURED",
+          "engine_knowledge": "PARTIAL",
+          "runtime_evidence": "NOT_NEEDED_FOR_CLASSIFICATION",
+          "confidence": "CONFIRMED"
+        },
+        "logii": {
+          "state": "UNKNOWN_UNMAPPED",
+          "basis": "NOT_INVESTIGATED",
+          "engine_knowledge": "UNKNOWN",
+          "runtime_evidence": "UNKNOWN",
+          "confidence": "UNKNOWN"
+        },
+        "log1": {
+          "state": "UNKNOWN_UNMAPPED",
+          "basis": "NOT_INVESTIGATED",
+          "engine_knowledge": "UNKNOWN",
+          "runtime_evidence": "UNKNOWN",
+          "confidence": "UNKNOWN"
+        }
+      },
+      "read": "The Atlas resolves shop identities and lists shop objects, and shop-related dialogue resolves through the dialogue reader. Six pointer arrays and five object records have confirmed ROM addresses; the 8-byte descriptors' ownership is UNKNOWN and the branch correspondence to Buy, Sell and End is INFERRED.",
+      "edit": "None.",
+      "author": "None.",
+      "xref": "Shop object record to its scenario pointers; shop records to the dialogue system; prices to the item table.",
+      "raw_range": "Six script-pointer arrays at 0x0877F3B0, 0x0877F73C, 0x0877FAB8, 0x0877FE00, 0x08780008 and 0x087803E4; five shop object records 0x08074360..0x0807451C; candidate master index at 0x0879B774.",
+      "validation_rebuild": "Not applicable at this state: no writer.",
+      "ui": "Atlas lists shops as objects; no editor surface.",
+      "restrictions": "The master index at 0x0879B774 is a CANDIDATE with no consumer found, the 8-byte descriptor's ownership is UNKNOWN, and which array slot means Buy, Sell or End is INFERRED rather than proven. No shop writer exists, so the state is KNOWN_BUT_UNSUPPORTED on proven table boundaries and zero product callers.",
+      "external_tool": "Ghidra plus mGBA to observe a purchase and find the debited value.",
+      "open_questions": [
+        "Is shop inventory ROM data or code-driven from the item table?"
+      ],
+      "evidence_refs": [
+        "docs/research/BUU_SHOP_SCENARIO_MODEL.md",
+        "tools/webfoot/atlas_build.py:449-456"
+      ]
+    },
+    {
+      "id": "actor-sprite-registry",
+      "name": "Actor sprite identity registry",
+      "area": "GRAPHICS",
+      "description": "The 297-entry character-sprite pointer table at 0x086B6BDC and the resolver that indexes it, plus the per-identity structure whose +0x54 word walks to animations.",
+      "evidence_authority": "ROM disassembly of FUN_08000158 at 0x0800015A with the literal 0x080003C0 = 0x086B6BDC; tools/webfoot/data/roms.yaml:15-33; tools/webfoot/sprite_identity.py",
+      "games": {
+        "buus_fury": {
+          "state": "PARTIALLY_EDITABLE",
+          "basis": "MEASURED",
+          "engine_knowledge": "PROVEN",
+          "runtime_evidence": "PROVEN",
+          "confidence": "CONFIRMED"
+        },
+        "logii": {
+          "state": "UNKNOWN_UNMAPPED",
+          "basis": "NOT_INVESTIGATED",
+          "engine_knowledge": "UNKNOWN",
+          "runtime_evidence": "UNKNOWN",
+          "confidence": "UNKNOWN"
+        },
+        "log1": {
+          "state": "UNKNOWN_UNMAPPED",
+          "basis": "NOT_INVESTIGATED",
+          "engine_knowledge": "UNKNOWN",
+          "runtime_evidence": "UNKNOWN",
+          "confidence": "UNKNOWN"
+        }
+      },
+      "read": "All 297 entries resolve; ascending pointers are verified; animation walking reaches 1,017 animation objects, 10,980 frame records and 7,390 container offsets. The sprite browser draws one piece per direction slot.",
+      "edit": "Palette recolour and graphics import reach the art; identity fields are not editable in place.",
+      "author": "A new sprite identity can be created from a donor, one per image, appended above the original end and runtime-observed resolving and drawing. The surface is application-proof while the underlying mechanism was runtime-observed.",
+      "xref": "Placement records and the two sibling families call the resolver; the resolver reaches the identity's animation list; Atlas lists the owners.",
+      "raw_range": "table file 0x6B6BDC..0x6B7080 = image 0x086B6BDC..0x086B7080, 1,188 bytes, 297 x 4.",
+      "validation_rebuild": "Validate refuses donor, sheet, geometry and template problems; build allocates and relocates; the authored identity was runtime-observed.",
+      "ui": "Graphics editor Sprites tab: browse, animation stepping, palette recolour, authored sprite New/Edit/Remove.",
+      "restrictions": "At most one new identity per image, because an appended identity grows the registry and repoints the two words that name it. Every authored frame copies the donor's own first frame, so the frame-composition budget is unchanged rather than modelled. The four direction slots' screen meaning is unresolved project-wide. The Buu table is not at the same offset in either sibling: at file offset 0x6B6BDC LOG1 holds 0x88888890 and zeros and LOGII holds bitmap-shaped noise. That refutes same-offset sharing of the Buu table and measures nothing about either sibling's own sprite system, so the LOGII and LOG1 cells stay not investigated.",
+      "external_tool": "Ghidra for the identity structure's remaining fields; a custom script for bulk identity work.",
+      "open_questions": [
+        "What are the two header words the surface carries but does not author?",
+        "What do the sub-10 resolver ids select?",
+        "Bookkeeping defect: the capability registry's sprite-new proof field reads application while its own evidence names a runtime parity run on an as-authored production image, so the registry proof level is stale, not the coverage."
+      ],
+      "evidence_refs": [
+        "FUN_08000158 at 0x0800015A",
+        "0x080003C0 literal = 0x086B6BDC",
+        "tools/webfoot/data/roms.yaml:15-33",
+        "src/data/capabilities.json:315-334",
+        "docs/research/SPRITE_NEW_ATTACHMENT_RUNTIME_PARITY.md"
+      ]
+    },
+    {
+      "id": "appearance-records",
+      "name": "Appearance records",
+      "area": "GRAPHICS",
+      "description": "The 232-record, 16-byte appearance table at 0x0874D380 that binds a character to an on-screen name and description; the Scouter's character screen reads it.",
+      "evidence_authority": "ROM bytes at 0x0874D380; tools/webfoot/appearances.py; tools/webfoot/appearance_authoring.py; runtime observation recorded in src/data/capabilities.json:335-356",
+      "games": {
+        "buus_fury": {
+          "state": "PARTIALLY_EDITABLE",
+          "basis": "MEASURED",
+          "engine_knowledge": "PROVEN",
+          "runtime_evidence": "PROVEN",
+          "confidence": "CONFIRMED"
+        },
+        "logii": {
+          "state": "UNKNOWN_UNMAPPED",
+          "basis": "NOT_INVESTIGATED",
+          "engine_knowledge": "UNKNOWN",
+          "runtime_evidence": "UNKNOWN",
+          "confidence": "UNKNOWN"
+        },
+        "log1": {
+          "state": "UNKNOWN_UNMAPPED",
+          "basis": "NOT_INVESTIGATED",
+          "engine_knowledge": "UNKNOWN",
+          "runtime_evidence": "UNKNOWN",
+          "confidence": "UNKNOWN"
+        }
+      },
+      "read": "All 232 records enumerate; the five literal-bound words are published as an absolute ROM reference document.",
+      "edit": "Existing records are editable through the project, with an explicit opt-in to take over a sprite id a canonical record already selects.",
+      "author": "New records are appended above the original end and the whole table is re-emitted, supporting 232 to 240. Runtime-observed: a driven session saw the retail search return an authored record for a retail actor and the character screen display the authored name and description.",
+      "xref": "Appearance to sprite id; appearance to the seen-flag array; the roster structure the engine builds from the seen flags is relocated with the table.",
+      "raw_range": "file 0x74D380..0x74E200, 3,712 bytes, 232 x 16.",
+      "validation_rebuild": "Validate refuses a takeover that was not asked for and refuses ids a negative-stat record selects; build re-emits the table and restates the twenty-nine compiled statements of the roster layout.",
+      "ui": "Graphics editor: Authored appearance New/Edit/Remove.",
+      "restrictions": "Growth is capped at eight added records because the seen-bit array is 232 bits and its initializer zeroes a word just after it. New text ids are not available, so an authored definition shares an existing on-screen name. The post-canonical seen-flag write and the roster display-list builder were not observed on the final build.",
+      "external_tool": "Ghidra for the roster builder at 0x08024F3C; mGBA to observe the seen-flag write.",
+      "open_questions": [
+        "What writes the seen bit for an appended record?"
+      ],
+      "evidence_refs": [
+        "0x0874D380 (ROM bytes)",
+        "0x08024F3C (roster display-list builder)",
+        "tools/webfoot/data/roms.yaml:57-60",
+        "src/data/capabilities.json:335-356"
+      ]
+    },
+    {
+      "id": "enemy-ai-behaviours",
+      "name": "Enemy AI and behaviour data",
+      "area": "ENTITIES/GAMEPLAY",
+      "description": "The per-actor movement, aggression and reaction logic behind the placed objects. The product can attach an authored script to an authored entity; the engine's own AI data and interpreter are not modelled.",
+      "evidence_authority": "Negative result for a table: no AI table is declared in tools/webfoot/data/roms.yaml; the placement record's fields beyond the sprite id and position are unknown; the sprite-facing wander box is the only movement data the product authors",
+      "games": {
+        "buus_fury": {
+          "state": "UNKNOWN_UNMAPPED",
+          "basis": "MEASURED",
+          "engine_knowledge": "MINIMAL",
+          "runtime_evidence": "NEEDED",
+          "confidence": "INFERRED"
+        },
+        "logii": {
+          "state": "UNKNOWN_UNMAPPED",
+          "basis": "NOT_INVESTIGATED",
+          "engine_knowledge": "UNKNOWN",
+          "runtime_evidence": "UNKNOWN",
+          "confidence": "UNKNOWN"
+        },
+        "log1": {
+          "state": "UNKNOWN_UNMAPPED",
+          "basis": "NOT_INVESTIGATED",
+          "engine_knowledge": "UNKNOWN",
+          "runtime_evidence": "UNKNOWN",
+          "confidence": "UNKNOWN"
+        }
+      },
+      "read": "None as AI data. The product reads a placement's wander box for authoring purposes.",
+      "edit": "None.",
+      "author": "Only through the behaviour attachment row, which writes a script rather than AI data.",
+      "xref": "Placement record to wherever its behaviour parameters live, unestablished; the stat table to the damage the AI's attacks do, unestablished.",
+      "raw_range": "Not established.",
+      "validation_rebuild": "Not applicable.",
+      "ui": "None.",
+      "restrictions": "The boundary is unknown: it is not established whether AI is data-driven per actor, code-driven per type, or both, so the state is UNKNOWN_UNMAPPED rather than KNOWN_BUT_UNSUPPORTED. A negative search over the declared tables is not a proven boundary.",
+      "external_tool": "mGBA debugger to trace an actor's decision, which is the cheapest route; Ghidra afterwards.",
+      "open_questions": [
+        "Is there a per-actor AI parameter block, and where is it reached from?"
+      ],
+      "evidence_refs": [
+        "tools/webfoot/data/roms.yaml:34-44 (placement fields)",
+        "tools/runtime/p004_* observers (existing AI traces, research only)"
+      ]
+    },
+    {
+      "id": "behaviour-attachment-authoring",
+      "name": "Engine trigger and effect contract family",
+      "area": "ENTITIES/GAMEPLAY",
+      "description": "The engine's trigger and effect contracts that an authored entity can be attached to: the trigger receivers the script VM dispatches through, and the native effect handlers a script can invoke. The product reaches exactly one trigger contract and one effect through it, which is the measured subset, not the family.",
+      "evidence_authority": "tools/webfoot/authored_placements.py:144,226; tools/webfoot/data/behavior_triggers.py; tools/webfoot/data/script_effects.py; runtime observations in src/data/capabilities.json:269-282",
+      "games": {
+        "buus_fury": {
+          "state": "PARTIALLY_EDITABLE",
+          "basis": "MEASURED",
+          "engine_knowledge": "SUBSTANTIAL",
+          "runtime_evidence": "PROVEN",
+          "confidence": "CONFIRMED"
+        },
+        "logii": {
+          "state": "UNKNOWN_UNMAPPED",
+          "basis": "NOT_INVESTIGATED",
+          "engine_knowledge": "UNKNOWN",
+          "runtime_evidence": "UNKNOWN",
+          "confidence": "UNKNOWN"
+        },
+        "log1": {
+          "state": "UNKNOWN_UNMAPPED",
+          "basis": "NOT_INVESTIGATED",
+          "engine_knowledge": "UNKNOWN",
+          "runtime_evidence": "UNKNOWN",
+          "confidence": "UNKNOWN"
+        }
+      },
+      "read": "The script-ownership analysis reads which records own which script roots; the product shows an authored entity's attached behaviour.",
+      "edit": "An attached script can be replaced through the project.",
+      "author": "A straight-line script can be authored, with no branches and no native calls, attached to one proven trigger contract and one proven effect; the engine has executed the authored bytes and rendered the result.",
+      "xref": "Authored entity to script body to effect to trigger; the trigger selector is checked against the clone source's qualification.",
+      "raw_range": "The authored script body is allocated above the original ROM end or in the declared 256-byte window when it fits.",
+      "validation_rebuild": "Validate refuses anything outside the proven contract; build emits the script and the placement expansion; runtime-proven.",
+      "ui": "Maps editor Objects mode and the Scene editor.",
+      "restrictions": "One trigger out of the engine's whole set is offered, one effect is proven, no branches and no native calls, and the trigger is only offered when the clone source qualifies. A map cannot receive both a new actor and an authored placement expansion.",
+      "external_tool": "Ghidra for the remaining trigger and effect contracts, which is what would widen this row.",
+      "open_questions": [
+        "What is the concrete action target for the trigger-family receivers the script VM cannot name?"
+      ],
+      "evidence_refs": [
+        "tools/webfoot/authored_placements.py:144,226",
+        "tools/webfoot/data/behavior_triggers.py",
+        "src/data/capabilities.json:269-282",
+        "docs/journeys/scene-authoring.md:88-98"
+      ]
+    },
+    {
+      "id": "script-bytecode-vm",
+      "name": "Script bytecode and interpreter",
+      "area": "SCRIPT/TEXT",
+      "description": "The engine's script VM: an opcode byte fetched by the interpreter at 0x08004038, indexed through the primary dispatch table at 0x080554C0, with 266 native handlers. The product reads, disassembles and assembles a subset.",
+      "evidence_authority": "tools/webfoot/formats/script_vm.py and tools/webfoot/scripts.py; docs/research/BUU_SCRIPT_VM.md; tools/webfoot/data/roms.yaml:85-137",
+      "games": {
+        "buus_fury": {
+          "state": "PARTIALLY_EDITABLE",
+          "basis": "MEASURED",
+          "engine_knowledge": "SUBSTANTIAL",
+          "runtime_evidence": "PROVEN",
+          "confidence": "CONFIRMED"
+        },
+        "logii": {
+          "state": "SEMANTIC_READ_ONLY",
+          "basis": "MEASURED",
+          "engine_knowledge": "PARTIAL",
+          "runtime_evidence": "UNKNOWN",
+          "confidence": "CONFIRMED"
+        },
+        "log1": {
+          "state": "UNKNOWN_UNMAPPED",
+          "basis": "NOT_INVESTIGATED",
+          "engine_knowledge": "UNKNOWN",
+          "runtime_evidence": "UNKNOWN",
+          "confidence": "UNKNOWN"
+        }
+      },
+      "read": "Both Buu families disassemble with opcode widths, ownership and tiling verified against the canonical image; the LOGII family is declared with its own encoding (stack_be7_v1) and is readable.",
+      "edit": "Buu script bodies are rewritable in place within their pool; there is no general script editor and no instruction-level authoring surface.",
+      "author": "A straight-line effect script only, through the behaviour attachment path. No new script root can be created.",
+      "xref": "Script root to owning record; opcode to native handler; item and static40 records to their script slots.",
+      "raw_range": "Buu static40 roots tile the 548-byte pool at 0x08720340; item_use roots tile the 703-byte pool at 0x083BBBB0. LOGII: 539-byte pool at 0x086D66C0.",
+      "validation_rebuild": "The corpus re-encodes byte-identically for both Buu families; validate refuses an unsupported form. LOGII has no proven write path.",
+      "ui": "Scene editor shows an attached script's body; no VM-level editor.",
+      "restrictions": "The game-level meaning of most of the 266 native handlers is unknown, which is what blocks general script authoring and LOGII dialogue. Buu's static40 corpus contains no branch opcode, so the branch contract rests on handler disassembly; the item_use corpus does exercise branches 0x12 and 0x13.",
+      "external_tool": "Ghidra over the handler table and the dispatch veneer; decomp repo for orientation.",
+      "open_questions": [
+        "What do the 266 handlers do at the game level?",
+        "Which opcodes can an authored script safely use?"
+      ],
+      "evidence_refs": [
+        "0x08004038 (interpreter)",
+        "0x080554C0 (dispatch table, 31 slots)",
+        "tools/webfoot/formats/script_vm.py",
+        "docs/research/BUU_SCRIPT_VM.md:55-63",
+        "tools/webfoot/data/roms.yaml:85-137,223-232"
+      ]
+    },
+    {
+      "id": "script-tables",
+      "name": "Script root tables",
+      "area": "SCRIPT/TEXT",
+      "description": "The pointer tables that index script roots: Buu's static40 (40 x 16 at 0x08720564 with slots 4, 8 and 12) and item_use (83 x 52 at 0x083BD2F8 with slot 48), and LOGII's static43 (43 x 16 at 0x086D68DC with slots 4 and 8).",
+      "evidence_authority": "tools/webfoot/data/roms.yaml:85-137 and :223-232; tools/webfoot/scripts.py; tools/research/domain_reachability.py:325-331",
+      "games": {
+        "buus_fury": {
+          "state": "PARTIALLY_EDITABLE",
+          "basis": "MEASURED",
+          "engine_knowledge": "PROVEN",
+          "runtime_evidence": "PROVEN",
+          "confidence": "CONFIRMED"
+        },
+        "logii": {
+          "state": "SEMANTIC_READ_ONLY",
+          "basis": "MEASURED",
+          "engine_knowledge": "PARTIAL",
+          "runtime_evidence": "UNKNOWN",
+          "confidence": "CONFIRMED"
+        },
+        "log1": {
+          "state": "UNKNOWN_UNMAPPED",
+          "basis": "NOT_INVESTIGATED",
+          "engine_knowledge": "UNKNOWN",
+          "runtime_evidence": "UNKNOWN",
+          "confidence": "UNKNOWN"
+        }
+      },
+      "read": "All three tables enumerate; every pointer is non-null, distinct and strictly ascending for the Buu families; the LOGII family is declared with its encoding.",
+      "edit": "Roots are rewritable in place within the pools. Table growth is not supported: static40 is exactly 40 records and retail sits at the bound.",
+      "author": "No new script roots.",
+      "xref": "Table slot to root; owning record to slot; the walker 0x080141EE forms table + 16 x i for the Buu static40 family.",
+      "raw_range": "Buu static40 file 0x720564, 640 bytes; item_use file 0x3BD2F8, 4,316 bytes; LOGII static43 file 0x6D68DC, stride 16.",
+      "validation_rebuild": "Both Buu corpora re-encode byte-identically and the pools are exhaustively tiled; validate refuses an unsupported form.",
+      "ui": "Scene editor for the authored case only.",
+      "restrictions": "Fixed capacity with no growth path for any family; each family's table has no count word, so the bound lives in compiled instructions. Relocatable is false for every family because no verified free region is declared for those profiles.",
+      "external_tool": "Ghidra to find a growth path, which is where the compiled bounds live; otherwise hex editor.",
+      "open_questions": [
+        "What would a growth path cost for static40, whose bound is a compiled comparison?"
+      ],
+      "evidence_refs": [
+        "tools/webfoot/data/roms.yaml:85-137,223-232",
+        "0x080141EE (walker)",
+        "tools/research/domain_reachability.py:325-331"
+      ]
+    },
+    {
+      "id": "text-string-tables",
+      "name": "Text string tables",
+      "area": "SCRIPT/TEXT",
+      "description": "The pointer table and NUL-terminated pool that hold the game's ordinary strings: Buu's 1,534 UTF-16LE entries in an 82,874-byte pool at 0x0805792C, and LOGII's 260 ASCII entries in a 5,184-byte pool at 0x080E2C50.",
+      "evidence_authority": "ROM bytes at 0x0805792C and 0x0806BCE8 with 43 inbound references; tools/webfoot/text.py; tools/webfoot/data/roms.yaml:61-84 and :233-255; tests/integration/test_logii_text_rom.py",
+      "games": {
+        "buus_fury": {
+          "state": "PARTIALLY_EDITABLE",
+          "basis": "MEASURED",
+          "engine_knowledge": "PROVEN",
+          "runtime_evidence": "PROVEN",
+          "confidence": "CONFIRMED"
+        },
+        "logii": {
+          "state": "PARTIALLY_EDITABLE",
+          "basis": "MEASURED",
+          "engine_knowledge": "PROVEN",
+          "runtime_evidence": "UNKNOWN",
+          "confidence": "CONFIRMED"
+        },
+        "log1": {
+          "state": "UNKNOWN_UNMAPPED",
+          "basis": "NOT_INVESTIGATED",
+          "engine_knowledge": "UNKNOWN",
+          "runtime_evidence": "UNKNOWN",
+          "confidence": "UNKNOWN"
+        }
+      },
+      "read": "Buu's table and pool tile exhaustively with no gap or overlap and each of the 1,534 pointers resolves to a string start; LOGII's 260 pointers name all 246 distinct targets and its pool tiles exhaustively.",
+      "edit": "An existing id is rewritten; a replacement longer than its record is placed in verified writable space and the owning entry repointed, gated per table by declared capability and per entry by measured single-reference ownership. Buu is runtime-proven. LOGII has an application-proof write path: tests/integration/test_logii_text_rom.py:386-422 builds a LOGII image with an edited string and asserts the exact seven differing bytes, with relocation refused and no free region declared. No LOGII runtime observation exists.",
+      "author": "New text-table ids are not claimed for any title. A 1,535th Buu entry would require rewriting 51 code references.",
+      "xref": "43 inbound references for the Buu table; item records index the table through their text halfwords at +0x02..+0x08; Atlas indexes strings including inside compressed containers.",
+      "raw_range": "Buu pool file 0x05792C..0x06BCE6, table file 0x06BCE8..0x06D4E0. LOGII pool 0x080E2C50..0x080E4090, table at 0x080E2840.",
+      "validation_rebuild": "Buu relocation is proven through build and runtime; five Buu entries (indices 689, 818, 819, 856, 1342) carry a second aligned word and are refused per entry rather than by a list. LOGII relocation is false.",
+      "ui": "Inspector edits dialogue lines, which is the dialogue row; ordinary strings have no Workbench surface.",
+      "restrictions": "No new ids. Buu's display width still limits a centred long line. LOGII's table aliases, so its pointers are neither unique nor strictly ascending and it has no relocation.",
+      "external_tool": "Ghidra to widen the reference set beyond the 51 measured for the Buu table; otherwise none.",
+      "open_questions": [
+        "What is the complete reference set for a Buu text body outside the 51 measured table references?"
+      ],
+      "evidence_refs": [
+        "0x0805792C (ROM bytes)",
+        "0x0806BCE8 (ROM bytes)",
+        "tools/webfoot/data/roms.yaml:61-84,233-255",
+        "tools/research/domain_reachability.py:307-313",
+        "tests/integration/test_logii_text_rom.py"
+      ]
+    },
+    {
+      "id": "dialogue-records",
+      "name": "Dialogue records and containers",
+      "area": "SCRIPT/TEXT",
+      "description": "The dialogue system itself: records reached through seven selectors and carried in compressed containers, distinct from the ordinary string tables.",
+      "evidence_authority": "tools/webfoot/dialogue.py:107,244; tools/webfoot/compressed_dialogue.py:155,185,233; tools/webfoot/formats/webfoot_lz.py; runtime observation recorded in src/data/capabilities.json:111-126",
+      "games": {
+        "buus_fury": {
+          "state": "PARTIALLY_EDITABLE",
+          "basis": "MEASURED",
+          "engine_knowledge": "PROVEN",
+          "runtime_evidence": "PROVEN",
+          "confidence": "CONFIRMED"
+        },
+        "logii": {
+          "state": "UNKNOWN_UNMAPPED",
+          "basis": "MEASURED",
+          "engine_knowledge": "MINIMAL",
+          "runtime_evidence": "UNKNOWN",
+          "confidence": "INFERRED"
+        },
+        "log1": {
+          "state": "UNKNOWN_UNMAPPED",
+          "basis": "NOT_INVESTIGATED",
+          "engine_knowledge": "UNKNOWN",
+          "runtime_evidence": "UNKNOWN",
+          "confidence": "UNKNOWN"
+        }
+      },
+      "read": "Mapped targets resolve; records can be enumerated, found by start offset and found by crossing offset. LOGII dialogue is a script-interleaved, partly compressed stream that the profile states cannot be enumerated without script-VM work.",
+      "edit": "A mapped line is edited, validated and built. A replacement that changes decoded length re-authors the record's durable handle and re-lays out its container.",
+      "author": "Not claimed: the product rewrites an existing record, it does not create a new dialogue id.",
+      "xref": "Line to owning map or event; dialogue to its container; Atlas and the Inspector share the target registry.",
+      "raw_range": "Containers are reached by seven selectors; the emitted pointer for one observed case lives at 0x08800000 in a generated 16 MiB image.",
+      "validation_rebuild": "A container whose records cross the edited one is refused; the rebuilt container must stay inside the toolkit's 64 KiB decoded-container limit. Runtime-proven: the retail dialogue box displayed a longer authored line wrapped across two lines.",
+      "ui": "Inspector mapped dialogue line editing.",
+      "restrictions": "One record at a time: registered targets hold a single record. The retail container nearly fills the 64 KiB decoded limit, so this target's ceiling is a 94-byte line. LOGII dialogue is unsupported by declaration.",
+      "external_tool": "Ghidra over the script VM for LOGII dialogue; hex editor for unmapped containers.",
+      "open_questions": [
+        "What would a batch re-layout cost for two records in one container?"
+      ],
+      "evidence_refs": [
+        "tools/webfoot/dialogue.py:107,244",
+        "tools/webfoot/compressed_dialogue.py:155,185,233",
+        "src/data/capabilities.json:111-126",
+        "tools/webfoot/data/roms.yaml:262-269"
+      ]
+    },
+    {
+      "id": "event-resource-pool-and-index",
+      "name": "Event resource pool and its index",
+      "area": "SCRIPT/TEXT",
+      "description": "The engine's event or script resource store: a 522-entry, 2,088-byte pointer table at 0x0879B704 whose entries are strictly ascending pointers into a 127,328-byte pool from 0x0877C5A4 to 0x0879B704. Six small accessor functions sit in the code around 0x080030da..0x080032b4, one per query kind.",
+      "evidence_authority": "ROM bytes at 0x0879B704 (first 16 words are in-image ascending pointers); tools/webfoot/atlas_producers/seed.py:652-679; tools/webfoot/data/placement_contracts.py:16-39; tools/webfoot/formats/placement_links.py:209; docs/research/BUU_EVENT_RESOURCE.md; tests/integration/test_buu_event_resource_rom.py",
+      "games": {
+        "buus_fury": {
+          "state": "SEMANTIC_READ_ONLY",
+          "basis": "MEASURED",
+          "engine_knowledge": "SUBSTANTIAL",
+          "runtime_evidence": "NOT_NEEDED_FOR_CLASSIFICATION",
+          "confidence": "CONFIRMED"
+        },
+        "logii": {
+          "state": "UNKNOWN_UNMAPPED",
+          "basis": "NOT_INVESTIGATED",
+          "engine_knowledge": "UNKNOWN",
+          "runtime_evidence": "UNKNOWN",
+          "confidence": "UNKNOWN"
+        },
+        "log1": {
+          "state": "UNKNOWN_UNMAPPED",
+          "basis": "NOT_INVESTIGATED",
+          "engine_knowledge": "UNKNOWN",
+          "runtime_evidence": "UNKNOWN",
+          "confidence": "UNKNOWN"
+        }
+      },
+      "read": "The index enumerates and the product resolves event_resource identities through the Atlas and the CLI, so a display path exists by name.",
+      "edit": "None. No writer addresses the pool or the index.",
+      "author": "None. Resource element boundaries are not established, so nothing in the span can be re-emitted.",
+      "xref": "Index entry to pool element; the Atlas resolves event_resource identities; the pool carries at least one embedded Thumb literal pool, so it is not pure data.",
+      "raw_range": "index file 0x79B704..0x79BF2C = image 0x0879B704, 2,088 bytes, 522 x 4; pool file 0x77C5A4..0x79B704 = 127,328 bytes.",
+      "validation_rebuild": "Not applicable at this state: no writer. A tracked record asserts the records tile the pool exhaustively; see the conflict recorded in restrictions.",
+      "ui": "Atlas lists event_resource objects; no editor surface.",
+      "restrictions": "Two tracked records conflict and the ledger must not merge them: tiling proves the EXTENT (that the pool has no uncovered bytes between resource starts), while the INTERNAL layout of each variable-length element is not recovered, so element boundaries that a writer would need are still unknown. The pool also contains embedded Thumb code, which is why a reader must not treat it as a pure data blob.",
+      "external_tool": "Ghidra to decode one element's internal structure; a custom script to enumerate it today.",
+      "open_questions": [
+        "What is the internal layout of one resource element?",
+        "Which accessor corresponds to which query kind?"
+      ],
+      "evidence_refs": [
+        "0x0879B704 (ROM bytes)",
+        "0x0877C5A4 (pool)",
+        "tools/webfoot/atlas_producers/seed.py:652-679",
+        "tools/webfoot/cli.py:1800-1823",
+        "tests/integration/test_buu_event_resource_rom.py"
+      ]
+    },
+    {
+      "id": "dialogue-control-codes",
+      "name": "Dialogue control codes and tokens",
+      "area": "SCRIPT/TEXT",
+      "description": "The in-line control codes that move a dialogue window, wait, name a speaker or trigger an effect, and the font or colour state they select.",
+      "evidence_authority": "tools/research/dialogue_control_codes.py; tools/research/dialogue_unit_census.py; docs/research/DIALOGUE_EXPANSION_TOKEN_DESIGN.md; docs/research/DIALOGUE_TWO_GLYPH_POC.md",
+      "games": {
+        "buus_fury": {
+          "state": "KNOWN_BUT_UNSUPPORTED",
+          "basis": "MEASURED",
+          "engine_knowledge": "PARTIAL",
+          "runtime_evidence": "NOT_NEEDED_FOR_CLASSIFICATION",
+          "confidence": "CONFIRMED"
+        },
+        "logii": {
+          "state": "UNKNOWN_UNMAPPED",
+          "basis": "NOT_INVESTIGATED",
+          "engine_knowledge": "UNKNOWN",
+          "runtime_evidence": "UNKNOWN",
+          "confidence": "UNKNOWN"
+        },
+        "log1": {
+          "state": "UNKNOWN_UNMAPPED",
+          "basis": "NOT_INVESTIGATED",
+          "engine_knowledge": "UNKNOWN",
+          "runtime_evidence": "UNKNOWN",
+          "confidence": "UNKNOWN"
+        }
+      },
+      "read": "Research tooling decodes and censuses the code population; the dialogue reader preserves codes it does not model.",
+      "edit": "None as tokens. A dialogue edit preserves the codes already in the line.",
+      "author": "None. A token-design document exists and a two-glyph proof of concept was run, but no token authoring shipped.",
+      "xref": "Code to font or window state; the document records a three-way control table that cannot be rebuilt from committed code, which is a provenance defect.",
+      "raw_range": "Codes live inside the string and dialogue bodies that the text and dialogue rows bound.",
+      "validation_rebuild": "Not applicable: no token write path.",
+      "ui": "None.",
+      "restrictions": "The full code set is not established, and the design records a control table whose far branch the committed builder refuses and for which no image digests are given.",
+      "external_tool": "Ghidra on the text renderer; mGBA to observe what a code does.",
+      "open_questions": [
+        "Which codes are safe to author, and what does each select?"
+      ],
+      "evidence_refs": [
+        "tools/research/dialogue_control_codes.py",
+        "docs/research/DIALOGUE_EXPANSION_TOKEN_DESIGN.md",
+        "docs/research/DIALOGUE_TWO_GLYPH_POC.md"
+      ]
+    },
+    {
+      "id": "fonts-and-glyph-metrics",
+      "name": "Fonts and glyph metrics",
+      "area": "SCRIPT/TEXT",
+      "description": "The glyph tiles and the per-glyph width or spacing tables the text renderer reads. The dialogue render path depends on them, so they are proven to exist.",
+      "evidence_authority": "tools/research/dialogue_font_probe.py; tools/research/dialogue_wrap_sim.py; tools/research/dialogue_unit_census.py:78-81,160; docs/research/UI_HUD_GRAPHICS.md (FONTS/GLYPHS PARTIAL, export coverage NONE)",
+      "games": {
+        "buus_fury": {
+          "state": "KNOWN_BUT_UNSUPPORTED",
+          "basis": "MEASURED",
+          "engine_knowledge": "PARTIAL",
+          "runtime_evidence": "NOT_NEEDED_FOR_CLASSIFICATION",
+          "confidence": "CONFIRMED"
+        },
+        "logii": {
+          "state": "UNKNOWN_UNMAPPED",
+          "basis": "NOT_INVESTIGATED",
+          "engine_knowledge": "UNKNOWN",
+          "runtime_evidence": "UNKNOWN",
+          "confidence": "UNKNOWN"
+        },
+        "log1": {
+          "state": "UNKNOWN_UNMAPPED",
+          "basis": "NOT_INVESTIGATED",
+          "engine_knowledge": "UNKNOWN",
+          "runtime_evidence": "UNKNOWN",
+          "confidence": "UNKNOWN"
+        }
+      },
+      "read": "Research tooling locates a font descriptor and a metrics table and reads glyph widths through a two-level table. No SDK font module and no product surface display the font.",
+      "edit": "None.",
+      "author": "None.",
+      "xref": "Text and dialogue bodies to the glyph set that renders them.",
+      "raw_range": "A font descriptor and metrics table are located per the research records; the glyph-tile population and its format are not established.",
+      "validation_rebuild": "Not applicable.",
+      "ui": "None.",
+      "restrictions": "Glyph tile format, population and completeness are unknown, and the family's export coverage is recorded as NONE.",
+      "external_tool": "standalone tile or graphics editor plus a custom decoder; Ghidra for the renderer's metrics lookup.",
+      "open_questions": [
+        "What is the complete glyph population and its tile encoding?"
+      ],
+      "evidence_refs": [
+        "tools/research/dialogue_font_probe.py",
+        "tools/research/dialogue_unit_census.py:78-81,160",
+        "docs/research/UI_HUD_GRAPHICS.md"
+      ]
+    },
+    {
+      "id": "sprite-frame-records",
+      "name": "Sprite frames, pieces and graphics payloads",
+      "area": "GRAPHICS",
+      "description": "The frame records behind a sprite identity: an 8-byte frame header with 12-byte piece records carrying stored pixel extents, whose containers hold the compressed pixel payload.",
+      "evidence_authority": "tools/webfoot/formats/sprite_graphics.py; docs/research/GRAPHICS_FORMAT.md; src/data/capabilities.json:443-447 (research-only record of the frame layout); runtime observation recorded in src/data/capabilities.json:299-314",
+      "games": {
+        "buus_fury": {
+          "state": "PARTIALLY_EDITABLE",
+          "basis": "MEASURED",
+          "engine_knowledge": "SUBSTANTIAL",
+          "runtime_evidence": "PROVEN",
+          "confidence": "CONFIRMED"
+        },
+        "logii": {
+          "state": "UNKNOWN_UNMAPPED",
+          "basis": "NOT_INVESTIGATED",
+          "engine_knowledge": "UNKNOWN",
+          "runtime_evidence": "UNKNOWN",
+          "confidence": "UNKNOWN"
+        },
+        "log1": {
+          "state": "UNKNOWN_UNMAPPED",
+          "basis": "NOT_INVESTIGATED",
+          "engine_knowledge": "UNKNOWN",
+          "runtime_evidence": "UNKNOWN",
+          "confidence": "UNKNOWN"
+        }
+      },
+      "read": "Frames, pieces and containers decode; every container decodes and each decoded length equals the width by height its piece record independently declares; 7,390 container offsets are reachable by a piece.",
+      "edit": "An extracted sprite asset's PNG can be edited and rebuilt, same dimensions only. No pixel editor exists: the workflow is extract, edit the PNG, validate, build.",
+      "author": "Replacement only within the original topology; a new frame layout is not authorable and the frame-composition budget is copied from a donor.",
+      "xref": "Identity to animation to frame to piece to container; Atlas lists the owners of a container.",
+      "raw_range": "1,017 animation objects, 10,980 frame records and 11,005 piece records are reachable; the container span 0x083C34D0..0x086A87A8 is 3,035,864 bytes at medium confidence.",
+      "validation_rebuild": "Every confirmed reference to a relocated payload is rewritten, but the published reference set is not claimed complete. Only the expanded case was proven in the running engine.",
+      "ui": "Graphics editor Sprites tab browses and steps; import is a project workflow rather than a pixel surface.",
+      "restrictions": "Same dimensions only: dimensions, frame layout and topology are fixed. Actor-sprite graphics only. The re-encoder is not competitive, so a payload that no longer fits its slot is relocated and the build may emit a 16 MiB image. A container that no piece references is invisible to the product.",
+      "external_tool": "a standalone graphics editor for pixel work; a custom decoder plus the missing encoder for containers with no referring piece.",
+      "open_questions": [
+        "Which containers have no referring piece, and what reaches them?"
+      ],
+      "evidence_refs": [
+        "tools/webfoot/formats/sprite_graphics.py",
+        "docs/research/GRAPHICS_FORMAT.md",
+        "src/data/capabilities.json:299-314,443-447",
+        "3,035,864-byte container span at 0x083C34D0"
+      ]
+    },
+    {
+      "id": "animation-records",
+      "name": "Animation records",
+      "area": "GRAPHICS",
+      "description": "The per-frame animation data behind a sprite: the 24-byte records of three signed pairs indexed as base + 24 x animation + 8 x frame, with a 40-frame counter.",
+      "evidence_authority": "ROM disassembly of FUN_0801b984 with the literal 0x0801BA8C = 0x0871E024 and its multiply by 0x18; ROM bytes at 0x0871E024",
+      "games": {
+        "buus_fury": {
+          "state": "SEMANTIC_READ_ONLY",
+          "basis": "MEASURED",
+          "engine_knowledge": "SUBSTANTIAL",
+          "runtime_evidence": "NOT_NEEDED_FOR_CLASSIFICATION",
+          "confidence": "INFERRED"
+        },
+        "logii": {
+          "state": "UNKNOWN_UNMAPPED",
+          "basis": "NOT_INVESTIGATED",
+          "engine_knowledge": "UNKNOWN",
+          "runtime_evidence": "UNKNOWN",
+          "confidence": "UNKNOWN"
+        },
+        "log1": {
+          "state": "UNKNOWN_UNMAPPED",
+          "basis": "NOT_INVESTIGATED",
+          "engine_knowledge": "UNKNOWN",
+          "runtime_evidence": "UNKNOWN",
+          "confidence": "UNKNOWN"
+        }
+      },
+      "read": "The product reads and steps animations and draws one piece per direction slot.",
+      "edit": "None. No frame timing, delay, piece count, tile index or frame geometry is authorable.",
+      "author": "None, beyond accepting a donor's frames in the new-identity path.",
+      "xref": "Identity to animation pointer at structure +0x54; animation record to frame offsets.",
+      "raw_range": "Records begin at file 0x71E024 = image 0x0871E024, 24 bytes per record with an 8-byte element; the upper bound is unknown.",
+      "validation_rebuild": "Not applicable: no write path.",
+      "ui": "Graphics editor animation stepping.",
+      "restrictions": "Whether the six dwords are three (x, y) pairs or two (x, y, z) triples is not decided; the sign and axis convention need runtime confirmation; the record count is unknown.",
+      "external_tool": "mGBA to confirm the axis convention; Ghidra to bound the record count.",
+      "open_questions": [
+        "Three pairs or two triples?",
+        "What is the animation record count and where does it end?"
+      ],
+      "evidence_refs": [
+        "FUN_0801b984 (ROM decompilation)",
+        "0x0801BA8C literal = 0x0871E024",
+        "0x0871E024 (ROM bytes)"
+      ]
+    },
+    {
+      "id": "object-palettes",
+      "name": "Object palettes",
+      "area": "GRAPHICS",
+      "description": "The shared object palette at 0x0805652C and the background palette at 0x0805632C that sprite and background graphics resolve through, plus the colour lookup block at 0x0805672C.",
+      "evidence_authority": "tools/webfoot/graphics.py:431,487-506; tools/webfoot/graphics_authoring.py; tools/webfoot/data/roms.yaml:19-20; the decomp region map classifies both palettes as proven",
+      "games": {
+        "buus_fury": {
+          "state": "PARTIALLY_EDITABLE",
+          "basis": "MEASURED",
+          "engine_knowledge": "PROVEN",
+          "runtime_evidence": "NOT_NEEDED_FOR_CLASSIFICATION",
+          "confidence": "CONFIRMED"
+        },
+        "logii": {
+          "state": "UNKNOWN_UNMAPPED",
+          "basis": "NOT_INVESTIGATED",
+          "engine_knowledge": "UNKNOWN",
+          "runtime_evidence": "UNKNOWN",
+          "confidence": "UNKNOWN"
+        },
+        "log1": {
+          "state": "UNKNOWN_UNMAPPED",
+          "basis": "NOT_INVESTIGATED",
+          "engine_knowledge": "UNKNOWN",
+          "runtime_evidence": "UNKNOWN",
+          "confidence": "UNKNOWN"
+        }
+      },
+      "read": "Palette entries decode and the product shows which records refer to a palette; the object palette has 16 references against the background palette's one.",
+      "edit": "One shared object palette entry is recolourable through the project; the SDK owns RGB-to-GBA packing and applies it at build.",
+      "author": "Not meaningful: entries are recoloured, not created.",
+      "xref": "Sprite identity to palette; map layer to palette; Atlas reference counts distinguish shared from private palettes.",
+      "raw_range": "object palette file 0x05652C, 512 bytes; background palette file 0x05632C, 512 bytes; colour lookup block file 0x05672C, 4,608 bytes.",
+      "validation_rebuild": "Proven at the emitted-ROM level by rendering the built image. An emulator run of the recolour was not performed, so this row is not FULLY_EDITABLE.",
+      "ui": "Graphics editor palette recolour with an undoable command.",
+      "restrictions": "One entry at a time; no arbitrary graphics replacement; the recolour's runtime effect is unobserved. Two tracked sources disagree on the background palette address (0x080701B0 in the profile against 0x0805632C in the region map and the graphics coverage matrix), which is an open documentation defect.",
+      "external_tool": "none for the supported recolour; hex editor beyond it.",
+      "open_questions": [
+        "Which address is the background palette the engine loads?"
+      ],
+      "evidence_refs": [
+        "tools/webfoot/graphics.py:431,487-506",
+        "tools/webfoot/data/roms.yaml:19-20",
+        "src/data/capabilities.json:127-139",
+        "0x0805632C / 0x0805652C / 0x0805672C"
+      ]
+    },
+    {
+      "id": "ui-hud-graphics",
+      "name": "UI, HUD and menu graphics",
+      "area": "GRAPHICS",
+      "description": "The containers that draw the game's interface: status bars, menu frames, the dialogue box and the Scouter's screens. Thirty-four containers have been enumerated.",
+      "evidence_authority": "tools/research/ui_graphics_probe.py:10 (records the family as PARTIAL/UNRESOLVED); docs/research/UI_HUD_GRAPHICS.md; docs/research/GRAPHICS_COVERAGE.md matrix",
+      "games": {
+        "buus_fury": {
+          "state": "KNOWN_BUT_UNSUPPORTED",
+          "basis": "MEASURED",
+          "engine_knowledge": "PARTIAL",
+          "runtime_evidence": "NOT_NEEDED_FOR_CLASSIFICATION",
+          "confidence": "CONFIRMED"
+        },
+        "logii": {
+          "state": "UNKNOWN_UNMAPPED",
+          "basis": "NOT_INVESTIGATED",
+          "engine_knowledge": "UNKNOWN",
+          "runtime_evidence": "UNKNOWN",
+          "confidence": "UNKNOWN"
+        },
+        "log1": {
+          "state": "UNKNOWN_UNMAPPED",
+          "basis": "NOT_INVESTIGATED",
+          "engine_knowledge": "UNKNOWN",
+          "runtime_evidence": "UNKNOWN",
+          "confidence": "UNKNOWN"
+        }
+      },
+      "read": "34 containers are enumerable and 7 render; completeness is explicitly not proven. There is no SDK UI/HUD module.",
+      "edit": "None.",
+      "author": "None.",
+      "xref": "None modelled.",
+      "raw_range": "The 34 enumerated containers are addressed through the research probe; no table bounds them.",
+      "validation_rebuild": "Not applicable.",
+      "ui": "None.",
+      "restrictions": "Container completeness, palette binding and rendering are all unproven, and export coverage is recorded as NONE. Seven of 34 containers rendering is the whole proven read side.",
+      "external_tool": "standalone tile editor and a custom decoder; the missing container encoder.",
+      "open_questions": [
+        "What is the complete UI/HUD container set and its palette binding?"
+      ],
+      "evidence_refs": [
+        "tools/research/ui_graphics_probe.py:10",
+        "docs/research/UI_HUD_GRAPHICS.md",
+        "docs/research/GRAPHICS_COVERAGE.md"
+      ]
+    },
+    {
+      "id": "title-static-screens",
+      "name": "Title and static screens",
+      "area": "GRAPHICS",
+      "description": "The title screen, splash screens and other static full-screen images, reached through a seven-container load list at 0x087B5B64.",
+      "evidence_authority": "docs/research/GRAPHICS_COVERAGE.md (TITLE/STATIC/CUTSCENE UNRESOLVED); the decomp region map names titlescreen_data at file 0x0561C4 (104 bytes, medium) and a 7-container list at 0x087B5B64",
+      "games": {
+        "buus_fury": {
+          "state": "UNKNOWN_UNMAPPED",
+          "basis": "MEASURED",
+          "engine_knowledge": "MINIMAL",
+          "runtime_evidence": "NOT_NEEDED_FOR_CLASSIFICATION",
+          "confidence": "CONFIRMED"
+        },
+        "logii": {
+          "state": "UNKNOWN_UNMAPPED",
+          "basis": "NOT_INVESTIGATED",
+          "engine_knowledge": "UNKNOWN",
+          "runtime_evidence": "UNKNOWN",
+          "confidence": "UNKNOWN"
+        },
+        "log1": {
+          "state": "UNKNOWN_UNMAPPED",
+          "basis": "NOT_INVESTIGATED",
+          "engine_knowledge": "UNKNOWN",
+          "runtime_evidence": "UNKNOWN",
+          "confidence": "UNKNOWN"
+        }
+      },
+      "read": "A seven-entry load list is known but its entries are not established to be graphics rather than other resources.",
+      "edit": "None.",
+      "author": "None.",
+      "xref": "None established.",
+      "raw_range": "Load list at 0x087B5B64; titlescreen data at file 0x0561C4 is 104 bytes.",
+      "validation_rebuild": "Not applicable.",
+      "ui": "None.",
+      "restrictions": "Whether the family is graphics at all is unresolved, so no better state than UNKNOWN_UNMAPPED is available.",
+      "external_tool": "Ghidra and mGBA to identify which container the title screen loads.",
+      "open_questions": [
+        "Are the seven containers graphics, palettes, tilemaps, or a mix?"
+      ],
+      "evidence_refs": [
+        "docs/research/GRAPHICS_COVERAGE.md",
+        "0x087B5B64 (load list)",
+        "file 0x0561C4 (titlescreen_data)"
+      ]
+    },
+    {
+      "id": "portraits",
+      "name": "Character portraits",
+      "area": "GRAPHICS",
+      "description": "The portrait container run used by dialogue and character screens: 155 entries whose pointer relationship is confirmed, each decoding to 4,096 bytes.",
+      "evidence_authority": "docs/research/POST_LOGX_IMPLEMENTATION_ROADMAP.md (LOGX-PORTRAIT-FORMAT-001); docs/research/GRAPHICS_COVERAGE.md matrix (PORTRAITS enumerable, render and palette UNKNOWN); the decomp region map names a 155 x 4,096 pointer run at 0x086F395C",
+      "games": {
+        "buus_fury": {
+          "state": "KNOWN_BUT_UNSUPPORTED",
+          "basis": "MEASURED",
+          "engine_knowledge": "PARTIAL",
+          "runtime_evidence": "NOT_NEEDED_FOR_CLASSIFICATION",
+          "confidence": "CONFIRMED"
+        },
+        "logii": {
+          "state": "UNKNOWN_UNMAPPED",
+          "basis": "NOT_INVESTIGATED",
+          "engine_knowledge": "UNKNOWN",
+          "runtime_evidence": "UNKNOWN",
+          "confidence": "UNKNOWN"
+        },
+        "log1": {
+          "state": "UNKNOWN_UNMAPPED",
+          "basis": "NOT_INVESTIGATED",
+          "engine_knowledge": "UNKNOWN",
+          "runtime_evidence": "UNKNOWN",
+          "confidence": "UNKNOWN"
+        }
+      },
+      "read": "155 containers are enumerable and each decodes to 4,096 bytes; no product surface displays a portrait.",
+      "edit": "None.",
+      "author": "None. Portrait import is a named, unscoped future capability.",
+      "xref": "Pointer run to containers; the relationship is confirmed, the pixel format is not.",
+      "raw_range": "A 155 x 4,096-byte pointer run at 0x086F395C, and a related 140 x 1,024 run at 0x082ABF08 whose consumers are unknown; the two records partially overlap and the count needs reconciling.",
+      "validation_rebuild": "Not applicable.",
+      "ui": "None.",
+      "restrictions": "Pixel format, dimensions and the rendering claim are not confirmed, and portrait recall is unmeasured. Two tracked counts for the packed residual tables (177 of 387 residuals against 155 plus 140 entries) do not reconcile yet.",
+      "external_tool": "a graphics decoder and a runtime observation to confirm the format; otherwise none.",
+      "open_questions": [
+        "What is the portrait pixel format and dimensions?",
+        "How do the 177 residual and the 155 + 140 counts reconcile?"
+      ],
+      "evidence_refs": [
+        "docs/research/POST_LOGX_IMPLEMENTATION_ROADMAP.md",
+        "docs/research/GRAPHICS_COVERAGE.md",
+        "0x086F395C and 0x082ABF08 (pointer runs)"
+      ]
+    },
+    {
+      "id": "audio-data",
+      "name": "Music, sound effects and audio tables",
+      "area": "AUDIO",
+      "description": "The game's music and sound effect data and the tables or engine that drive the GBA sound hardware. The game plainly has audio; nothing in this census identified a table, a region or a consumer.",
+      "evidence_authority": "Negative result: grep over tools/webfoot for audio returns no audio subsystem and the nine music matches are all the map record's music_id integer; docs/research/SUBSYSTEM_MAP.md lists animation and audio loaders as not mapped; the Ghidra lane's name search for sound, audio, music, snd, seq, voice, sample, mixer and wave returned empty and its project has no string or byte search",
+      "games": {
+        "buus_fury": {
+          "state": "UNKNOWN_UNMAPPED",
+          "basis": "MEASURED",
+          "engine_knowledge": "UNKNOWN",
+          "runtime_evidence": "NEEDED",
+          "confidence": "UNKNOWN"
+        },
+        "logii": {
+          "state": "UNKNOWN_UNMAPPED",
+          "basis": "NOT_INVESTIGATED",
+          "engine_knowledge": "UNKNOWN",
+          "runtime_evidence": "UNKNOWN",
+          "confidence": "UNKNOWN"
+        },
+        "log1": {
+          "state": "UNKNOWN_UNMAPPED",
+          "basis": "NOT_INVESTIGATED",
+          "engine_knowledge": "UNKNOWN",
+          "runtime_evidence": "UNKNOWN",
+          "confidence": "UNKNOWN"
+        }
+      },
+      "read": "None. The map record's music_id is carried as a raw integer and is not resolved to any audio resource.",
+      "edit": "None. The music_id field is preserved by the map writer, which is a map-record behaviour, not audio support.",
+      "author": "None.",
+      "xref": "None established.",
+      "raw_range": "Not established. One unproven candidate: the IWRAM-resident 18.14 fixed-point signed-byte multiply-accumulate kernel at 0x087B8210 is arithmetically compatible with a resampler but was not tied to audio.",
+      "validation_rebuild": "Not applicable.",
+      "ui": "None.",
+      "restrictions": "No region, table or consumer is identified. The instrument cannot search the image for the sound register constants it would need, so this is an instrument limitation as well as a knowledge gap.",
+      "external_tool": "mGBA debugger with a sound-register watch to find the mixer, then Ghidra; a standalone audio sequencer or tracker. No practical workflow exists today.",
+      "open_questions": [
+        "Is there a sequence, instrument or sample table, and where is it reached from?",
+        "Is the map music_id an index into a table or a pointer?"
+      ],
+      "evidence_refs": [
+        "docs/research/SUBSYSTEM_MAP.md:186-187",
+        "grep over tools/webfoot/** (no audio module)",
+        "0x087B8210 (candidate kernel, unproven)"
+      ]
+    },
+    {
+      "id": "save-data",
+      "name": "Save data and backup media",
+      "area": "SYSTEM/ROM",
+      "description": "The saved game: the backup-media routines and the block layout the game writes, on EEPROM for this cartridge.",
+      "evidence_authority": "ROM string EEPROM_V124 at image 0x087B7964; ROM disassembly of FUN_08008b30 reading 0x0E000000; negative result: grep over tools/webfoot for EEPROM and save type returns nothing and the profile declares no save table",
+      "games": {
+        "buus_fury": {
+          "state": "UNKNOWN_UNMAPPED",
+          "basis": "MEASURED",
+          "engine_knowledge": "MINIMAL",
+          "runtime_evidence": "NEEDED",
+          "confidence": "CONFIRMED"
+        },
+        "logii": {
+          "state": "UNKNOWN_UNMAPPED",
+          "basis": "MEASURED",
+          "engine_knowledge": "MINIMAL",
+          "runtime_evidence": "UNKNOWN",
+          "confidence": "CONFIRMED"
+        },
+        "log1": {
+          "state": "UNKNOWN_UNMAPPED",
+          "basis": "MEASURED",
+          "engine_knowledge": "MINIMAL",
+          "runtime_evidence": "UNKNOWN",
+          "confidence": "CONFIRMED"
+        }
+      },
+      "read": "None in the product. The save library variant per title is measured: EEPROM_V124 at 0x087B7964 for Buu, EEPROM_V122 at 0x087A6390 for LOG1 and EEPROM_V122 at 0x087FD638 for LOGII.",
+      "edit": "None.",
+      "author": "None.",
+      "xref": "None established.",
+      "raw_range": "Not established. No save header, magic, slot table or checksum was recovered, and no block size is known.",
+      "validation_rebuild": "Not applicable, and this is a live product risk: nothing certifies that a generated 16 MiB expansion still round-trips a retail save, because the save path is not modelled at all.",
+      "ui": "None.",
+      "restrictions": "Different library variants and addresses across the three titles mean a save-format commonality claim is not established. EEPROM is the media type, not the format.",
+      "external_tool": "mGBA debugger with a memory watch on 0x0E000000 to capture a save write; standalone save editor presently.",
+      "open_questions": [
+        "What is the save block layout, and does expansion break it?"
+      ],
+      "evidence_refs": [
+        "0x087B7964 (EEPROM_V124)",
+        "0x087A6390 (LOG1 EEPROM_V122)",
+        "0x087FD638 (LOGII EEPROM_V122)",
+        "FUN_08008b30 (backup-media code)",
+        "docs/research/SUBSYSTEM_MAP.md:186-187"
+      ]
+    },
+    {
+      "id": "global-flags-state",
+      "name": "Global flags, story state and seen bits",
+      "area": "SYSTEM/ROM",
+      "description": "The runtime flag and state block the game advances the story with, including the 232-bit seen array the appearance system uses.",
+      "evidence_authority": "tools/research/domain_reachability.py for the appearance seen array; the decomp credits a flag_state category of 6 lifted functions and 262 bytes; src/data/capabilities.json:346 records the 232-bit array and its initializer",
+      "games": {
+        "buus_fury": {
+          "state": "UNKNOWN_UNMAPPED",
+          "basis": "MEASURED",
+          "engine_knowledge": "PARTIAL",
+          "runtime_evidence": "NOT_NEEDED_FOR_CLASSIFICATION",
+          "confidence": "INFERRED"
+        },
+        "logii": {
+          "state": "UNKNOWN_UNMAPPED",
+          "basis": "NOT_INVESTIGATED",
+          "engine_knowledge": "UNKNOWN",
+          "runtime_evidence": "UNKNOWN",
+          "confidence": "UNKNOWN"
+        },
+        "log1": {
+          "state": "UNKNOWN_UNMAPPED",
+          "basis": "NOT_INVESTIGATED",
+          "engine_knowledge": "UNKNOWN",
+          "runtime_evidence": "UNKNOWN",
+          "confidence": "UNKNOWN"
+        }
+      },
+      "read": "The appearance seen array is read indirectly: the product knows its 232-bit width and the initializer's behaviour, and the roster structure is restated for growth.",
+      "edit": "None as flags. The appearance capability grows the array it lives in, which is a different operation from setting a flag.",
+      "author": "No flag authoring.",
+      "xref": "Seen bit to appearance record; the roster structure the engine builds from the seen flags.",
+      "raw_range": "The seen array's width is 232 bits; its address and the flag block's layout are not published as a table.",
+      "validation_rebuild": "The appearance build refuses a count that would overrun the array, which is a validation of the array's width rather than of a flag editor.",
+      "ui": "None.",
+      "restrictions": "The flag block itself has no modelled boundary, so the state is UNKNOWN_UNMAPPED rather than KNOWN_BUT_UNSUPPORTED. Its only proven content is the 232-bit seen array, and that array's behaviour belongs to the row appearance-records, which grows it; structure present on loan is not semantics understood.",
+      "external_tool": "Ghidra over the flag accessors; mGBA to watch flags change on a story event.",
+      "open_questions": [
+        "Where is the flag block, and which bits are story versus system state?"
+      ],
+      "evidence_refs": [
+        "src/data/capabilities.json:346",
+        "decomp config/decompdev_inventory.json flag_state category (6 functions, 262 bytes)",
+        "tools/research/domain_reachability.py"
+      ]
+    },
+    {
+      "id": "rom-identity-header",
+      "name": "ROM identity and cartridge header",
+      "area": "SYSTEM/ROM",
+      "description": "The 192-byte GBA header and the identity contract built on it: title, game code, and the header checksum.",
+      "evidence_authority": "ROM bytes at 0x08000000 (title DBZBUUSFURY, code BG3E, maker 70, fixed 0x96, stored checksum 0x84 at 0x080000BD); tools/webfoot/gba_header.py:22,46,92; tools/webfoot/rom.py identify_rom; tools/webfoot/data/roms.yaml:4-13,200-207,212-221",
+      "games": {
+        "buus_fury": {
+          "state": "SEMANTIC_READ_ONLY",
+          "basis": "MEASURED",
+          "engine_knowledge": "PROVEN",
+          "runtime_evidence": "NOT_NEEDED_FOR_CLASSIFICATION",
+          "confidence": "CONFIRMED"
+        },
+        "logii": {
+          "state": "SEMANTIC_READ_ONLY",
+          "basis": "MEASURED",
+          "engine_knowledge": "PROVEN",
+          "runtime_evidence": "NOT_NEEDED_FOR_CLASSIFICATION",
+          "confidence": "CONFIRMED"
+        },
+        "log1": {
+          "state": "SEMANTIC_READ_ONLY",
+          "basis": "MEASURED",
+          "engine_knowledge": "PROVEN",
+          "runtime_evidence": "NOT_NEEDED_FOR_CLASSIFICATION",
+          "confidence": "CONFIRMED"
+        }
+      },
+      "read": "The header decodes, the checksum is computed and compared, and a loaded image must match a configured profile identity before its content is editable. All three titles carry a configured identity (BG3E, ALFE, ALGE).",
+      "edit": "None. Nothing in the product writes a header field, and the input image is refused as an output destination.",
+      "author": "Not meaningful.",
+      "xref": "Profile identity to profile tables; the header is the gate every other row sits behind.",
+      "raw_range": "file 0x000000..0x0000C0, 192 bytes.",
+      "validation_rebuild": "Checksum validation is in place and the Build action refuses to write over the source image.",
+      "ui": "The shell states the loaded image and its profile before content is usable.",
+      "restrictions": "Read and validate only. A self-recomputed header checksum is claimed by the region map and confirmed only as a stored value by this census.",
+      "external_tool": "hex editor for anything beyond identity.",
+      "open_questions": [
+        "Is the header checksum independently recomputed and verified in the product, or only compared?"
+      ],
+      "evidence_refs": [
+        "0x080000A0..0x080000BD (ROM bytes)",
+        "tools/webfoot/gba_header.py:22,46,92",
+        "tools/webfoot/rom.py",
+        "tools/webfoot/data/roms.yaml:4-13"
+      ]
+    },
+    {
+      "id": "resource-index-and-relocation",
+      "name": "Engine reference and pointer-table family",
+      "area": "SYSTEM/ROM",
+      "description": "The engine's own tables of pointers: the 20 pointer_table regions the region map bounds (166,260 bytes), the packed handles and reference documents the product builds over them, and the relocation layer that rewrites references when a body moves. The row's evidence is ROM-side tables first; the SDK modules are the reader, not the subject.",
+      "evidence_authority": "tools/webfoot/handles.py:17-31; tools/webfoot/layout.py; tools/webfoot/relocation.py; tools/webfoot/allocation.py; tools/webfoot/document.py:87; tools/research/domain_reachability.py:150-441",
+      "games": {
+        "buus_fury": {
+          "state": "PARTIALLY_EDITABLE",
+          "basis": "MEASURED",
+          "engine_knowledge": "SUBSTANTIAL",
+          "runtime_evidence": "NOT_NEEDED_FOR_CLASSIFICATION",
+          "confidence": "CONFIRMED"
+        },
+        "logii": {
+          "state": "SEMANTIC_READ_ONLY",
+          "basis": "MEASURED",
+          "engine_knowledge": "PARTIAL",
+          "runtime_evidence": "UNKNOWN",
+          "confidence": "INFERRED"
+        },
+        "log1": {
+          "state": "UNKNOWN_UNMAPPED",
+          "basis": "NOT_INVESTIGATED",
+          "engine_knowledge": "UNKNOWN",
+          "runtime_evidence": "UNKNOWN",
+          "confidence": "UNKNOWN"
+        }
+      },
+      "read": "Sixteen domains are mapped with proof levels and per-domain reference documents; the Atlas answers address, refs-to, refs-from, in-range and unknowns.",
+      "edit": "Relocation is gated per table by declared capability and per entry by measured single-reference ownership; overlapping ownership is refused. Not every table is relocatable: the script and LOGII text tables declare false because no verified free region exists for those profiles.",
+      "author": "Allocation kinds exist for the appending capabilities; a whole-table relocation is supported only where the capability declares it.",
+      "xref": "This is the mechanism behind every reference-lookup answer.",
+      "raw_range": "Coverage of the 8 MiB image by declared owners is deliberately incomplete; absent coverage is UNKNOWN, not free.",
+      "validation_rebuild": "The write plan refuses a change with no semantic owner and refuses overlapping ownership; the build re-verifies the emitted image.",
+      "ui": "Atlas reference panels expose lookups; relocation itself has no surface.",
+      "restrictions": "Relocatability is false for the two Buu script families and for LOGII text. The published reference set for a moved body is not claimed complete. Known ownership of the image is incomplete by design.",
+      "external_tool": "Ghidra to widen a reference set; hex editor for unowned ranges.",
+      "open_questions": [
+        "What is the complete reference population for the largest declared tables?"
+      ],
+      "evidence_refs": [
+        "tools/webfoot/handles.py:17-31",
+        "tools/webfoot/relocation.py",
+        "tools/webfoot/allocation.py",
+        "tools/research/domain_reachability.py:150-441",
+        "tools/research/free_space_audit.py:61"
+      ]
+    },
+    {
+      "id": "compression-codec",
+      "name": "Graphics and container compression codec",
+      "area": "SYSTEM/ROM",
+      "description": "The LZ-family codec the cartridge packs graphics and dialogue containers with, at the level of both decode and encode.",
+      "evidence_authority": "tools/webfoot/formats/webfoot_lz.py (pack at :515, decoder); tests/unit/test_asset_export_strict_lz.py; docs/research/WEBFOOT_LZ_LITERAL_BASE.md; docs/research/POST_LOGX_IMPLEMENTATION_ROADMAP.md (LOGX-CODEC-WRITE-001)",
+      "games": {
+        "buus_fury": {
+          "state": "PARTIALLY_EDITABLE",
+          "basis": "MEASURED",
+          "engine_knowledge": "SUBSTANTIAL",
+          "runtime_evidence": "NOT_NEEDED_FOR_CLASSIFICATION",
+          "confidence": "CONFIRMED"
+        },
+        "logii": {
+          "state": "UNKNOWN_UNMAPPED",
+          "basis": "MEASURED",
+          "engine_knowledge": "MINIMAL",
+          "runtime_evidence": "UNKNOWN",
+          "confidence": "CONFIRMED"
+        },
+        "log1": {
+          "state": "UNKNOWN_UNMAPPED",
+          "basis": "NOT_INVESTIGATED",
+          "engine_knowledge": "UNKNOWN",
+          "runtime_evidence": "UNKNOWN",
+          "confidence": "UNKNOWN"
+        }
+      },
+      "read": "Every reachable canonical container decodes byte- and extent-identically; the decoder refuses a malformed stream rather than clipping it into a success.",
+      "edit": "A container whose payload does not change size can be rewritten. A payload that changes size cannot be rewritten in place.",
+      "author": "A production encoder does not exist. The initial literal width is unresolved and the available pack path has a measured size penalty.",
+      "xref": "Reached from every container consumer: sprites, dialogue, UI, portraits.",
+      "raw_range": "Container boundaries are per resource; the decoder is strict about the stream, not about a table.",
+      "validation_rebuild": "A strict-LZ test refuses a malformed stream. The encoder's unresolved literal base is the named gate for every insertion capability.",
+      "ui": "None; the codec is reached through extract, edit and build.",
+      "restrictions": "The encoder is the single largest blocker in the product: it gates adding anything whose encoded size changes. LOGII dialogue is separately partly compressed with a codec the profile states cannot be enumerated without script-VM work.",
+      "external_tool": "Ghidra on the retail decoder to settle the literal base; a custom Python script as the interim encoder.",
+      "open_questions": [
+        "What is the initial literal width of the canonical stream?"
+      ],
+      "evidence_refs": [
+        "tools/webfoot/formats/webfoot_lz.py:515",
+        "tests/unit/test_asset_export_strict_lz.py",
+        "docs/research/WEBFOOT_LZ_LITERAL_BASE.md",
+        "docs/research/POST_LOGX_IMPLEMENTATION_ROADMAP.md"
+      ]
+    },
+    {
+      "id": "executable-code-region",
+      "name": "Executable code",
+      "area": "SYSTEM/ROM",
+      "description": "The game's own machine code: the ARM and Thumb routines that implement every system above. The lab has a decompiling instrument and a public reconstruction; the editor has no assembler, no compiler and no patcher.",
+      "evidence_authority": "Ghidra program /baserom.gba at base 0x08000000 (85,181 functions, 1,027,810 instructions, no semantic symbols, code indexing incomplete); the public reconstruction's config/rom_map.json (25 code regions 104,796 bytes and 8 code-candidate regions 81,742 bytes) and config/decompdev_inventory.json (45 of 268 credited functions, 5,088 of 186,346 credited executable bytes = 2.73 percent)",
+      "games": {
+        "buus_fury": {
+          "state": "KNOWN_BUT_UNSUPPORTED",
+          "basis": "MEASURED",
+          "engine_knowledge": "PARTIAL",
+          "runtime_evidence": "NOT_NEEDED_FOR_CLASSIFICATION",
+          "confidence": "CONFIRMED"
+        },
+        "logii": {
+          "state": "UNKNOWN_UNMAPPED",
+          "basis": "NOT_INVESTIGATED",
+          "engine_knowledge": "UNKNOWN",
+          "runtime_evidence": "UNKNOWN",
+          "confidence": "UNKNOWN"
+        },
+        "log1": {
+          "state": "UNKNOWN_UNMAPPED",
+          "basis": "NOT_INVESTIGATED",
+          "engine_knowledge": "UNKNOWN",
+          "runtime_evidence": "UNKNOWN",
+          "confidence": "UNKNOWN"
+        }
+      },
+      "read": "The lab reads code through Ghidra and through the reconstruction's disassembly; the product reads it only as classified Atlas ranges and as the WIRING that validation refuses to break.",
+      "edit": "None. Nothing in tools/webfoot assembles, compiles or emits an instruction.",
+      "author": "None.",
+      "xref": "Every consumer function that the format rows cite is a member of this row.",
+      "raw_range": "25 code regions and 8 code-candidate regions, 186,542 bytes in the reconstruction's map; the Ghidra function count is not a code count because the whole image was analysed as code.",
+      "validation_rebuild": "Not applicable to code. The relocation layer can move an existing code body and rewrite its references, which is not code authoring.",
+      "ui": "Atlas displays classified code ranges; no surface edits them.",
+      "restrictions": "Two static instruments disagree in kind: Ghidra reports 85,181 functions over an image that is 54 percent unclassified, while the reconstruction credits 268 tracked functions and 2.73 percent semantically. Neither number is a measure of understanding. Preserved developer source paths name four compilation units, which is the richest naming lead in the image.",
+      "external_tool": "Ghidra, a patcher or assembler, and the public decomp repository for orientation. This is the largest single exit from the product.",
+      "open_questions": [
+        "Which of the image's 85,181 Ghidra functions are real code?"
+      ],
+      "evidence_refs": [
+        "Ghidra program /baserom.gba at base 0x08000000",
+        "0x08004160, 0x08004818, 0x08008A5C, 0x08013BAC (preserved source paths)",
+        "config/decompdev_inventory.json (local clone of the public reconstruction)",
+        "public reconstruction commit 5a6d3349199d16b1800d55d200bcbf2f8d91b29e"
+      ]
+    },
+    {
+      "id": "iwram-resident-code",
+      "name": "IWRAM-resident code and data",
+      "area": "SYSTEM/ROM",
+      "description": "The 4,100-byte ARM blob copied by DMA3 to 0x03000000 at reset, plus the IWRAM work area the engine runs from. Code relocated into RAM cannot be read correctly as ROM bytes.",
+      "evidence_authority": "ROM reset code at 0x08000108..0x08000124 with literals 0x087B79A4 / 0x03000000 / 0x00001007; tools/webfoot/webfoot_lz.py:68 names the retail decoder at 0x087B79E4 as executed from IWRAM 0x03000040; tools/webfoot/data/placement_contracts.py:31 and tools/webfoot/formats/placement_links.py:196 state the limitation; the decomp credits 19 lifted IWRAM units of which 14 are complete",
+      "games": {
+        "buus_fury": {
+          "state": "KNOWN_BUT_UNSUPPORTED",
+          "basis": "MEASURED",
+          "engine_knowledge": "SUBSTANTIAL",
+          "runtime_evidence": "NEEDED",
+          "confidence": "CONFIRMED"
+        },
+        "logii": {
+          "state": "UNKNOWN_UNMAPPED",
+          "basis": "NOT_INVESTIGATED",
+          "engine_knowledge": "UNKNOWN",
+          "runtime_evidence": "UNKNOWN",
+          "confidence": "UNKNOWN"
+        },
+        "log1": {
+          "state": "UNKNOWN_UNMAPPED",
+          "basis": "NOT_INVESTIGATED",
+          "engine_knowledge": "UNKNOWN",
+          "runtime_evidence": "UNKNOWN",
+          "confidence": "UNKNOWN"
+        }
+      },
+      "read": "The image bytes are readable, but the product's own code states that a routine relocated into IWRAM is unsupported and that ROM bytes alone cannot answer for it.",
+      "edit": "None. The decompression routine itself executes from IWRAM, which is why the codec row's encoder work cannot be done from ROM bytes alone.",
+      "author": "None.",
+      "xref": "Every domain whose decoder runs from IWRAM depends on this row.",
+      "raw_range": "Blob file 0x7B79A4..0x7B89A8, 4,100 bytes, copied to 0x03000000..0x03001004; IWRAM globals at 0x0300348C, 0x03004A70, 0x03004A74, 0x03004A9C.",
+      "validation_rebuild": "Not applicable; the product refuses rather than misreads.",
+      "ui": "None.",
+      "restrictions": "The blob's overall purpose is minimally understood; the 18.14 fixed-point signed-byte kernel at 0x087B8210 is decoded arithmetically but its purpose is not established. No 0x04000000-range register constant appears in the sampled spans, so the blob is not obviously display or sound code.",
+      "external_tool": "mGBA debugger with a memory probe on 0x03000000; the decomp repo's lifted units as a starting point.",
+      "open_questions": [
+        "What does the copied blob implement, and what does the fixed-point kernel serve?"
+      ],
+      "evidence_refs": [
+        "0x08000108..0x08000124 (reset code)",
+        "0x087B79A4 (blob)",
+        "tools/webfoot/webfoot_lz.py:68",
+        "tools/webfoot/data/placement_contracts.py:31",
+        "tools/webfoot/formats/placement_links.py:196",
+        "decomp config/regions.json iwram class"
+      ]
+    }
+  ],
+  "facilities": [
+    {
+      "id": "address-read-and-jump",
+      "name": "Address read and jump to address",
+      "sdk": "tools/webfoot/binary.py:13,33; tools/webfoot/atlas.py:544 addr; tools/webfoot/cli.py:290",
+      "ui": "Inspector detail rows",
+      "state": "SHIPPED",
+      "gap": "none identified"
+    },
+    {
+      "id": "safe-project-backed-write",
+      "name": "Safe project-backed write",
+      "sdk": "tools/webfoot/write.py plan_changes:1151, emit_image:1329, ensure_not_source_alias, ensure_new_destination; tools/webfoot/project/atomic.py",
+      "ui": "Build and Save As",
+      "state": "SHIPPED",
+      "gap": "none identified"
+    },
+    {
+      "id": "canonical-base-diff",
+      "name": "Canonical-base comparison",
+      "sdk": "tools/webfoot/authored_image.py:465 _canonical_base, :653 verify_authored_image, :111 refuse_canonical_destination",
+      "ui": "reopen path",
+      "state": "SHIPPED",
+      "gap": "not presented as a diff view"
+    },
+    {
+      "id": "modified-range-tracking",
+      "name": "Modified-range and dirty-byte tracking",
+      "sdk": "tools/webfoot/write.py:295 ByteChange, :1024 changed_byte_count, :982-1013 provenance tuples; tools/webfoot/map_layout_edit.py:577",
+      "ui": "not surfaced as a range view",
+      "state": "SHIPPED_CORE_UI_MISSING",
+      "gap": "a dirty-byte visualisation is a surface over an existing core record"
+    },
+    {
+      "id": "semantic-range-ownership",
+      "name": "Semantic ownership of ranges",
+      "sdk": "tools/webfoot/write.py:6,310,324; tools/webfoot/document.py:87; tools/webfoot/allocation.py:656",
+      "ui": "refusal reasons",
+      "state": "SHIPPED",
+      "gap": "the owned population of the image is deliberately incomplete"
+    },
+    {
+      "id": "reference-lookup",
+      "name": "Cross-reference and used-by lookup",
+      "sdk": "tools/webfoot/atlas.py:554 refs_to, :565 refs_from, :571 in_range; per-domain reference_document",
+      "ui": "Atlas reference panels",
+      "state": "SHIPPED",
+      "gap": "coverage of the image by declared owners is partial"
+    },
+    {
+      "id": "rom-semantic-search",
+      "name": "Whole-image semantic search",
+      "sdk": "tools/webfoot/atlas.py:626 search_text; tools/webfoot/atlas_build.py claims",
+      "ui": "Atlas editor",
+      "state": "SHIPPED",
+      "gap": "it is a lookup over classified structures, not a blind byte scan; a byte-pattern search is a different feature"
+    },
+    {
+      "id": "arbitrary-byte-write",
+      "name": "Safe arbitrary byte write",
+      "sdk": "ABSENT: tools/webfoot/write.py plan_changes requires a named semantic owner and there is no anonymous byte-write entry point",
+      "ui": "absent",
+      "state": "CORE_AUTHORITY_REQUIRED",
+      "gap": "an anonymous byte edit needs a new owner class admitted through the same validation, or the attributable-change invariant breaks"
+    },
+    {
+      "id": "undo-redo",
+      "name": "Undo and redo",
+      "sdk": "absent in core; QUndoStack per editor in tools/webfoot/workbench/map_browser_tab.py:1959, map_tab.py:824, warp_tab.py:717, graphics_tab.py:447",
+      "ui": "per-editor histories",
+      "state": "UI_ONLY",
+      "gap": "core has no undo; a hex editor would need its own history or a shared one"
+    },
+    {
+      "id": "validation",
+      "name": "Project validation",
+      "sdk": "tools/webfoot/build.py:1295 validate_project; ValidationReport at :129",
+      "ui": "Build panel",
+      "state": "SHIPPED",
+      "gap": "validation is per-domain; a byte-range write would have nothing to validate against"
+    },
+    {
+      "id": "rebuild",
+      "name": "Deterministic rebuild",
+      "sdk": "tools/webfoot/build.py:1408 build_project; extract_project at :240",
+      "ui": "Build panel",
+      "state": "SHIPPED",
+      "gap": "repeated builds are byte-identical"
+    },
+    {
+      "id": "patch-export",
+      "name": "Patch export and verify",
+      "sdk": "tools/webfoot/patch.py:303 export_patch, :390 verify_patch; codec tools/webfoot/formats/bps.py; CLI patch export|verify",
+      "ui": "no Workbench surface found",
+      "state": "SHIPPED_CORE_UI_MISSING",
+      "gap": "a desktop dialog is the whole remaining cost"
+    },
+    {
+      "id": "provenance",
+      "name": "Derivative provenance and reproducibility",
+      "sdk": "manifest write and reopen, tools/webfoot/authored_image.py; tools/webfoot/hashing.py; tools/webfoot/release_identity.py",
+      "ui": "reopen flow and Build panel",
+      "state": "SHIPPED",
+      "gap": "none identified"
+    },
+    {
+      "id": "emulator-launch",
+      "name": "Launch the built image",
+      "sdk": "tools/webfoot/workbench/launcher.py",
+      "ui": "Run action",
+      "state": "SHIPPED",
+      "gap": "the editor does not observe or validate the running game; launch is not evidence"
+    },
+    {
+      "id": "range-to-semantic-overlay",
+      "name": "Byte range to semantic owner and back",
+      "sdk": "partial: tools/webfoot/atlas.py CoverageMap is a start-sorted span list with classification and confidence, built from producers; tools/research/free_space_audit.py:61 states known ownership is incomplete",
+      "ui": "Atlas",
+      "state": "PARTIAL",
+      "gap": "widening the owned population of the image is core research, not a surface"
+    }
+  ],
+  "rom_surface": {
+    "source": "Re-measured by this census from a local clone of the public Buu's Fury reconstruction at commit 5a6d3349199d16b1800d55d200bcbf2f8d91b29e, config/rom_map.json, whose 249 region lengths sum to 8,388,608. The reconstruction is a lower evidence rung than the bytes; its classes are used as a classification and each class names who decided it.",
+    "classes": [
+      {
+        "class": "executable code, identified but not semantically reconstructed",
+        "bytes": 186538,
+        "pct": 2.224,
+        "regions": 33,
+        "decided_by": "reconstruction region map, code plus code_candidate classes; corroborated by the Ghidra program's disassembly",
+        "note": "The reconstruction credits 5,088 of 186,346 tracked executable bytes semantically. The Ghidra program reports 85,181 functions over the whole image, which is not a code count."
+      },
+      {
+        "class": "known structured data declared by the product",
+        "bytes": 292524,
+        "pct": 3.487,
+        "regions": 32,
+        "decided_by": "reconstruction region map, pointer_table, lookup_table, palette and strings classes, which contain the nine tables tools/webfoot/data/roms.yaml declares",
+        "note": "Semantic ownership is established for the declared subset. Ownership of the rest of this class is not established, and a class is not a claim about every byte in it."
+      },
+      {
+        "class": "known graphics assets",
+        "bytes": 3060696,
+        "pct": 36.486,
+        "regions": 4,
+        "decided_by": "reconstruction region map, compressed_asset class at medium confidence",
+        "note": "Identified as an asset span, not reconstructed as a format; 3,035,864 bytes of it is the sprite container span at 0x083C34D0. No audio span is identified in any class."
+      },
+      {
+        "class": "known opaque or raw data",
+        "bytes": 292442,
+        "pct": 3.486,
+        "regions": 2,
+        "decided_by": "reconstruction region map, padding class at proven confidence (0x087B89A8..0x08800000)",
+        "note": "The tail. 516 unresolved candidate references target this region, which is why only a carved 256-byte window inside it is declared free."
+      },
+      {
+        "class": "unidentified or uncertain",
+        "bytes": 4556216,
+        "pct": 54.314,
+        "regions": 177,
+        "decided_by": "reconstruction region map, unknown class plus the library_data and structured_data regions, which are moved here because they are refuted or uncertified (see caveats)",
+        "note": "This is where deeper reverse engineering would most improve editor coverage. The largest single region is 937,984 bytes at 0x0945C0. 101 unknown regions carry confidence unknown and 73 low."
+      },
+      {
+        "class": "cartridge header",
+        "bytes": 192,
+        "pct": 0.002,
+        "regions": 1,
+        "decided_by": "reconstruction region map, header class",
+        "note": "The 192-byte GBA header, read and checksum-validated by the product."
+      }
+    ],
+    "total_bytes": 8388608,
+    "rom_size": 8388608,
+    "caveats": [
+      "An incbin region is not automatically unknown: this classification separates identified-but-unreconstructed from unidentified.",
+      "Four region classifications were re-checked against the bytes and refuted, so those classes carry no independent certification: library_signal_strings at file 0x7B71A2 is a 2,050-byte signed-16-bit curve and not strings; file 0x03D4D0 labelled ARM decodes as clean Thumb; the region at 0x0871D1E0 holds signed data, not only pointers; and the map-loader attribution at 0x08008B30 is wrong.",
+      "A file offset and an image identity are a measurement convention, not an engine fact; both static lanes map offset 0 to 0x08000000 and the engine was not consulted.",
+      "Two static instruments agreeing is a consistency check, not corroboration, when the question is causal."
+    ]
+  },
+  "totals": {
+    "computed_by": "docs/research/rom_editor_coverage.json is validated by tests/unit/test_rom_editor_coverage.py, which recomputes every count in this block from rows[].games and fails on any difference. No count here is authored by hand.",
+    "accepted_rows": 40,
+    "facility_rows_excluded_from_denominator": 15,
+    "by_game": {
+      "buus_fury": {
+        "measured_cells": 40,
+        "FULLY_EDITABLE": 0,
+        "PARTIALLY_EDITABLE": 19,
+        "SEMANTIC_READ_ONLY": 4,
+        "KNOWN_BUT_UNSUPPORTED": 8,
+        "UNKNOWN_UNMAPPED": 9,
+        "N_A": 0
+      },
+      "logii": {
+        "measured_cells": 40,
+        "FULLY_EDITABLE": 0,
+        "PARTIALLY_EDITABLE": 1,
+        "SEMANTIC_READ_ONLY": 4,
+        "KNOWN_BUT_UNSUPPORTED": 0,
+        "UNKNOWN_UNMAPPED": 35,
+        "N_A": 0
+      },
+      "log1": {
+        "measured_cells": 40,
+        "FULLY_EDITABLE": 0,
+        "PARTIALLY_EDITABLE": 0,
+        "SEMANTIC_READ_ONLY": 1,
+        "KNOWN_BUT_UNSUPPORTED": 0,
+        "UNKNOWN_UNMAPPED": 39,
+        "N_A": 0
+      }
+    },
+    "family_wide": {
+      "measured_cells": 120,
+      "FULLY_EDITABLE": 0,
+      "PARTIALLY_EDITABLE": 20,
+      "SEMANTIC_READ_ONLY": 9,
+      "KNOWN_BUT_UNSUPPORTED": 8,
+      "UNKNOWN_UNMAPPED": 83,
+      "N_A": 0,
+      "writable_cells": 20,
+      "writable_pct_of_measured": 16.67
+    },
+    "by_area_buus_fury": {
+      "AUDIO": {
+        "rows": 1,
+        "FULLY_EDITABLE": 0,
+        "PARTIALLY_EDITABLE": 0,
+        "SEMANTIC_READ_ONLY": 0,
+        "KNOWN_BUT_UNSUPPORTED": 0,
+        "UNKNOWN_UNMAPPED": 3
+      },
+      "ENTITIES/GAMEPLAY": {
+        "rows": 10,
+        "FULLY_EDITABLE": 0,
+        "PARTIALLY_EDITABLE": 4,
+        "SEMANTIC_READ_ONLY": 0,
+        "KNOWN_BUT_UNSUPPORTED": 2,
+        "UNKNOWN_UNMAPPED": 24
+      },
+      "GRAPHICS": {
+        "rows": 8,
+        "FULLY_EDITABLE": 0,
+        "PARTIALLY_EDITABLE": 4,
+        "SEMANTIC_READ_ONLY": 1,
+        "KNOWN_BUT_UNSUPPORTED": 2,
+        "UNKNOWN_UNMAPPED": 17
+      },
+      "MAP/WORLD": {
+        "rows": 7,
+        "FULLY_EDITABLE": 0,
+        "PARTIALLY_EDITABLE": 5,
+        "SEMANTIC_READ_ONLY": 1,
+        "KNOWN_BUT_UNSUPPORTED": 0,
+        "UNKNOWN_UNMAPPED": 15
+      },
+      "SCRIPT/TEXT": {
+        "rows": 7,
+        "FULLY_EDITABLE": 0,
+        "PARTIALLY_EDITABLE": 5,
+        "SEMANTIC_READ_ONLY": 3,
+        "KNOWN_BUT_UNSUPPORTED": 2,
+        "UNKNOWN_UNMAPPED": 11
+      },
+      "SYSTEM/ROM": {
+        "rows": 7,
+        "FULLY_EDITABLE": 0,
+        "PARTIALLY_EDITABLE": 2,
+        "SEMANTIC_READ_ONLY": 4,
+        "KNOWN_BUT_UNSUPPORTED": 2,
+        "UNKNOWN_UNMAPPED": 13
+      }
+    },
+    "engine_knowledge_by_game": {
+      "buus_fury": {
+        "PROVEN": 11,
+        "SUBSTANTIAL": 13,
+        "PARTIAL": 9,
+        "MINIMAL": 6,
+        "UNKNOWN": 1
+      },
+      "logii": {
+        "PROVEN": 2,
+        "SUBSTANTIAL": 0,
+        "PARTIAL": 3,
+        "MINIMAL": 4,
+        "UNKNOWN": 31
+      },
+      "log1": {
+        "PROVEN": 1,
+        "SUBSTANTIAL": 0,
+        "PARTIAL": 0,
+        "MINIMAL": 1,
+        "UNKNOWN": 38
+      }
+    },
+    "engine_knowledge_family_wide": {
+      "PROVEN": 14,
+      "SUBSTANTIAL": 13,
+      "PARTIAL": 12,
+      "MINIMAL": 11,
+      "UNKNOWN": 70
+    },
+    "shared_path_caveat": "The family-wide writable count is over (row, game) cells and several writable cells are one product path: Create Chunk backs map-chunk-containers and part of map-layout-chunk-grids; the placement clone and move contract backs placement-records, area-object-array-tables and behaviour-attachment-authoring; the object palette recolour backs object-palettes and actor-sprite-registry; PNG import backs sprite-frame-records and actor-sprite-registry. Five capabilities carry about ten writable cells, so the percentage must be read with the per-title counts and not as ten independent systems."
+  },
+  "external_tool_dependencies": [
+    {
+      "rank": 1,
+      "tool_class": "Ghidra plus an assembler or patcher",
+      "forced_by": "Any change to what the executable does: damage formulas, enemy behaviour, a bug fix, a new feature. Nothing in tools/webfoot assembles, compiles or emits an instruction.",
+      "rows": [
+        "executable-code-region",
+        "enemy-stat-records",
+        "techniques-and-attacks",
+        "player-progression",
+        "enemy-ai-behaviours",
+        "map-event-trigger-records"
+      ]
+    },
+    {
+      "rank": 2,
+      "tool_class": "custom Python script over an unidentified format",
+      "forced_by": "Audio: no region, table or consumer identified and no product module exists.",
+      "rows": [
+        "audio-data"
+      ]
+    },
+    {
+      "rank": 3,
+      "tool_class": "standalone tile or graphics editor plus a custom decoder",
+      "forced_by": "UI/HUD, fonts and glyphs, portraits, title and static screens, and map graphics below the chunk level: enumerable at best, never writable.",
+      "rows": [
+        "ui-hud-graphics",
+        "fonts-and-glyph-metrics",
+        "portraits",
+        "title-static-screens",
+        "map-graphics-tilesets"
+      ]
+    },
+    {
+      "rank": 4,
+      "tool_class": "mGBA debugger",
+      "forced_by": "IWRAM-resident code, save writes, the sound mixer, and any causal question about which consumer reads a structure at run time.",
+      "rows": [
+        "iwram-resident-code",
+        "save-data",
+        "audio-data",
+        "enemy-ai-behaviours"
+      ]
+    },
+    {
+      "rank": 5,
+      "tool_class": "Ghidra over the script VM",
+      "forced_by": "The game-level meaning of most of the 266 native handlers, which blocks general script authoring and all LOGII dialogue.",
+      "rows": [
+        "script-bytecode-vm",
+        "dialogue-records",
+        "dialogue-control-codes"
+      ]
+    },
+    {
+      "rank": 6,
+      "tool_class": "custom Python script over the compressed stream",
+      "forced_by": "No production encoder exists, so any change whose encoded size changes must be hand-built.",
+      "rows": [
+        "compression-codec",
+        "sprite-frame-records",
+        "ui-hud-graphics"
+      ]
+    },
+    {
+      "rank": 7,
+      "tool_class": "hex editor",
+      "forced_by": "Every unmodelled field and every unresolved byte the SDK preserves but does not name.",
+      "rows": [
+        "map-entry-records",
+        "map-event-trigger-records",
+        "items-and-inventory",
+        "warps-transitions",
+        "shops-and-scenarios"
+      ]
+    },
+    {
+      "rank": 8,
+      "tool_class": "decomp repository",
+      "forced_by": "Orientation at machine-code level and the only source-backed map of the image.",
+      "rows": [
+        "executable-code-region",
+        "iwram-resident-code"
+      ]
+    },
+    {
+      "rank": 9,
+      "tool_class": "standalone save editor, or no practical workflow",
+      "forced_by": "No save model exists, so a save cannot be edited or even certified compatible with an expanded image.",
+      "rows": [
+        "save-data"
+      ]
+    },
+    {
+      "rank": 10,
+      "tool_class": "manual ROM patching with no workflow",
+      "forced_by": "LOG1 as a whole: identity only, zero declared tables, no LOG1-specific decoder in the product.",
+      "rows": [
+        "all rows for log1"
+      ]
+    }
+  ],
+  "v1_triage": [
+    {
+      "rank": 1,
+      "recommendation": "V1.0 ESSENTIAL",
+      "gap": "Integrated hex editing with safe arbitrary byte authoring that preserves the attributable-change invariant.",
+      "why": "A prior owner decision already makes integrated hex a 1.0 requirement; the core currently has no anonymous byte-write entry point at all, so this is core authority before it is a surface.",
+      "rows": [
+        "all rows"
+      ]
+    },
+    {
+      "rank": 2,
+      "recommendation": "V1.0 ESSENTIAL",
+      "gap": "A byte-range-to-semantic-owner index that answers for the whole image, and a search that can scan raw bytes as well as classified structures.",
+      "why": "Without it, a hex editor writes bytes the product cannot attribute, and the raw browser cannot answer what owns a range.",
+      "rows": [
+        "resource-index-and-relocation",
+        "executable-code-region"
+      ]
+    },
+    {
+      "rank": 3,
+      "recommendation": "V1.0 ESSENTIAL",
+      "gap": "A container encoder that can grow a filtered or packed payload.",
+      "why": "It gates every insertion capability: new graphics, new dialogue text, new sprite payloads. Named in the roadmap as the Phase 3/4 gate.",
+      "rows": [
+        "compression-codec"
+      ]
+    },
+    {
+      "rank": 4,
+      "recommendation": "V1.0 ESSENTIAL",
+      "gap": "Stat-table and map-header surfaces over the SDK models that already exist.",
+      "why": "The SDK reads and writes these domains today and the product neither names nor surfaces them, so the claim to be a general-purpose editor is materially overstated without them. This is surfacing plus registry honesty, not new research.",
+      "rows": [
+        "enemy-stat-records",
+        "character-base-stats",
+        "map-entry-records"
+      ]
+    },
+    {
+      "rank": 5,
+      "recommendation": "V1.0 NICE_TO_HAVE",
+      "gap": "Patch export and modified-range visualisation in the desktop shell.",
+      "why": "Both services exist and are verified; the remaining cost is a surface.",
+      "rows": []
+    },
+    {
+      "rank": 6,
+      "recommendation": "RESEARCH FIRST",
+      "gap": "The three unmodelled per-area object arrays and their record families.",
+      "why": "Three of four engine-owned object families are invisible to the product. Until element types are decoded the editor cannot scope them, and the decoding is cheap because the consumer function is already decompiled.",
+      "rows": [
+        "area-object-array-tables",
+        "sibling-object-record-families"
+      ]
+    },
+    {
+      "rank": 7,
+      "recommendation": "RESEARCH FIRST",
+      "gap": "The save format and whether expansion preserves it.",
+      "why": "A 16 MiB generated image is shipped as a product path with no save-compatibility argument. This is a correctness risk before it is a feature.",
+      "rows": [
+        "save-data"
+      ]
+    },
+    {
+      "rank": 8,
+      "recommendation": "RESEARCH FIRST",
+      "gap": "Audio: locate the engine, the tables and the sequence or sample data.",
+      "why": "An entire row is unknown, and the instrument could not search for it. Editor scoping is impossible today.",
+      "rows": [
+        "audio-data"
+      ]
+    },
+    {
+      "rank": 9,
+      "recommendation": "RESEARCH FIRST",
+      "gap": "The game-level meaning of the 266 script native handlers.",
+      "why": "It blocks general script authoring and all LOGII dialogue, and it is the shared unknown behind several rows.",
+      "rows": [
+        "script-bytecode-vm",
+        "dialogue-records"
+      ]
+    },
+    {
+      "rank": 10,
+      "recommendation": "POST-1.0",
+      "gap": "Portrait, UI/HUD and font authoring.",
+      "why": "Real gaps with no format yet. Valuable expansions, safe to defer.",
+      "rows": [
+        "portraits",
+        "ui-hud-graphics",
+        "fonts-and-glyph-metrics"
+      ]
+    },
+    {
+      "rank": 11,
+      "recommendation": "POST-1.0",
+      "gap": "Map graphics below the chunk level, and tileset authoring.",
+      "why": "The chunk-level surface already covers ordinary map hacking; tile-level work needs the encoder first.",
+      "rows": [
+        "map-graphics-tilesets"
+      ]
+    },
+    {
+      "rank": 12,
+      "recommendation": "NOT_PRODUCT_WORTHY",
+      "gap": "A dedicated editor for the compiler-embedded assertion strings, the colour lookup block and the debug debris.",
+      "why": "Real ROM internals that need no editor surface: a semantic or raw browser covers them.",
+      "rows": []
+    }
+  ],
+  "highest_value_re_targets": [
+    {
+      "rank": 1,
+      "target": "Decode the element types of the three unmodelled per-area object arrays",
+      "addresses": [
+        "0x08008b30",
+        "0x08008CA2",
+        "0x08008CAC"
+      ],
+      "payoff": "Turns three of four engine-owned object families from invisible into classifiable, which is the largest single map-system coverage gain available."
+    },
+    {
+      "rank": 2,
+      "target": "Recover the container encoder's initial literal width",
+      "addresses": [
+        "0x087B79E4",
+        "0x087B79A4"
+      ],
+      "payoff": "Unblocks every insertion capability in the product."
+    },
+    {
+      "rank": 3,
+      "target": "Recover the event resource pool's element lengths",
+      "addresses": [
+        "0x0877C5A4",
+        "0x0879B704"
+      ],
+      "payoff": "127,328 bytes with a proven 522-entry index and no recoverable element boundary: nothing in that span is authorable until lengths exist."
+    },
+    {
+      "rank": 4,
+      "target": "Name the stat fields through their consumers",
+      "addresses": [
+        "0x08004904",
+        "0x0801b984",
+        "0x083BB78C"
+      ],
+      "payoff": "Turns two readable tables into meaningful editors and closes the 20-byte-stride family that no consumer is known for."
+    },
+    {
+      "rank": 5,
+      "target": "Identify the save serializer",
+      "addresses": [
+        "0x0E000000 (media)",
+        "0x087B7964 (EEPROM_V124)"
+      ],
+      "payoff": "Closes a correctness risk in the shipped expansion path and enables save work."
+    },
+    {
+      "rank": 6,
+      "target": "Find the audio engine",
+      "addresses": [
+        "unlocated"
+      ],
+      "payoff": "An entire unknown row; a sound-register watch in the debugger is the cheapest route."
+    },
+    {
+      "rank": 7,
+      "target": "Settle the map record's disputed +0x04 and +0x10 layout",
+      "addresses": [
+        "0x08008b30",
+        "0x0800742C"
+      ],
+      "payoff": "Resolves a conflict between tracked research and the decompiled consumer, and either creates or dissolves a trigger row."
+    },
+    {
+      "rank": 8,
+      "target": "Decode the sprite container span's header",
+      "addresses": [
+        "0x083C34D0"
+      ],
+      "payoff": "The largest single identified-but-unreconstructed block at 3,035,864 bytes."
+    },
+    {
+      "rank": 9,
+      "target": "Recover what reset transfers to at 0x08049114",
+      "addresses": [
+        "0x08049114"
+      ],
+      "payoff": "Gates the whole startup sequence and sits in a region the region map calls unknown."
+    },
+    {
+      "rank": 10,
+      "target": "Bound the sibling object families' records and counts",
+      "addresses": [
+        "0x08017DA2",
+        "0x080111A8"
+      ],
+      "payoff": "Makes the 148 and 191 counts re-derivable rather than inherited from research."
+    }
+  ],
+  "product_implications": {
+    "categories_supported_by_census": "The five provisional categories still describe the data, with one correction: Graphics is really two domains at different maturity (payload graphics and sprites, which are partially editable, versus UI, HUD, fonts, portraits and static screens, which are not), and Data is the load-bearing category rather than a leftover.",
+    "first_class_category_required": "One: a raw and semantic browser over byte ranges with an integrated hex surface, owning address navigation, range-to-owner and owner-to-range lookup, modified-range tracking and arbitrary byte authoring. It is the only category that can reach the 54 percent of the image that no domain row owns.",
+    "safe_cross_navigation": [
+      "map to layout to chunk to map graphics",
+      "map to warp to destination map",
+      "object array to placement to behaviour to script to text",
+      "script root to owning record (item or map)",
+      "sprite identity to animation to frame to container",
+      "appearance to sprite id to text",
+      "item to text indices and to its script"
+    ],
+    "unproven_cross_navigation": [
+      "placement to the sprite it draws",
+      "enemy stat record to its character sprite",
+      "map trigger to the script it fires",
+      "shop to the item list it sells",
+      "any relationship into the audio system"
+    ],
+    "data_browser_must_own": [
+      "address and range lookup for the whole image",
+      "range to semantic owner and owner to range",
+      "the owned-coverage population and its honest gaps",
+      "raw byte search alongside semantic search",
+      "modified-range and dirty-byte state",
+      "canonical-base comparison for a range"
+    ],
+    "hex_editor_must_bridge": [
+      "an anonymous byte-write owner admitted through the existing validation, or the attributable-change invariant breaks",
+      "range-to-semantic overlay for the whole image, not just declared tables",
+      "undo and redo, which core does not own today"
+    ],
+    "stage_3_ready": "Yes for the census's own categories and the two Essential core authorities named above; no for scoping a dedicated editor for audio, UI/HUD, fonts, portraits, static screens or map graphics below the chunk level, each of which is RESEARCH FIRST."
+  },
+  "review": {
+    "denominator_review": {
+      "reviewer": "subagent_re_coverage",
+      "status": "COMPLETE",
+      "verdict": "DENOMINATOR LEGITIMATE AND REFROZEN AT 40 ROWS, WITH MANDATORY TOTALS RECOMPUTATION, THREE STATE DEMOTIONS, ONE DROP, ONE ADD AND SIX EVIDENCE CORRECTIONS BEFORE ANY NUMBER IS PUBLISHED",
+      "note": "The reviewer's first finding was that the draft's totals did not match its rows and that a count had been published before the gate it declared. Every count in this file is now recomputed from rows by this census's validator; see docs/research/ROM_EDITOR_COVERAGE_LEDGER.md."
+    },
+    "independent_review": {
+      "backend": "claude_local",
+      "candidate_sha": null,
+      "status": "PENDING",
+      "findings": []
+    }
+  }
+}

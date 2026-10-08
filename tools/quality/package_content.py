@@ -111,6 +111,7 @@ def census(
     unreadable: list[str] = []
     binary = 0
     text_files = 0
+    forbidden = 0
     total_bytes = 0
 
     for path in sorted(root.rglob("*")):
@@ -133,6 +134,10 @@ def census(
                     "travel in a release",
                 )
             )
+            # Counted, not searched: the suffix is the finding, and reading eight
+            # megabytes of it as text to hunt for a machine path would find nothing
+            # the suffix has not already said.
+            forbidden += 1
             continue
 
         text = _read_text(path)
@@ -181,9 +186,10 @@ def census(
     return {
         "schema": SCHEMA,
         "directory": root.name,
-        "files": text_files + binary,
+        "files": text_files + binary + forbidden,
         "text_files": text_files,
         "binary_files": binary,
+        "forbidden_files": forbidden,
         "bytes": total_bytes,
         "required": sorted(required),
         "unreadable": sorted(set(unreadable)),

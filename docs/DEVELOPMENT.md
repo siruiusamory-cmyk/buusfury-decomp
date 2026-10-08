@@ -74,8 +74,10 @@ Do not claim byte-identical executable bytes. PyInstaller's archive carries
 per-entry timestamps, the PE carries build metadata, and the toolchain is floored
 rather than pinned, so the container is not reproducible and nothing here claims
 it is. The reproducible claim is about product content: the same verified base
-ROM, the same project and the same toolkit produce a byte-identical image, and
-the same input pair produces a byte-identical patch.
+ROM, the same project and the same toolkit produce a byte-identical image, and the
+same input pair produces a byte-identical patch **from one build of the tool**,
+because an exported patch names the tool build that produced it while a built
+image does not.
 
 ## Repository independence
 

@@ -1437,7 +1437,8 @@ def _print_patch_export(result: "PatchResult") -> None:
     print()
     print(
         "This patch applies to the verified source ROM and reproduces the built "
-        "image exactly. It contains no ROM bytes beyond the changed regions."
+        "image exactly. It is a difference, not a copy: it cannot rebuild the "
+        "image without the source ROM."
     )
     print()
     print("RESULT:")

@@ -62,7 +62,12 @@ def test_a_save_or_save_state_in_the_package_is_a_finding(tmp_path):
 def test_a_rom_in_the_package_is_a_finding(tmp_path):
     package = _stage(tmp_path)
     (package / "derivative.gba").write_bytes(b"\x00" * 16)
-    assert "forbidden-artifact" in _codes(census(package))
+    report = census(package)
+    assert "forbidden-artifact" in _codes(report)
+    # Counted in the totals: a release engineer reads "N file(s)", and a forbidden
+    # file that is invisible in the count makes the count wrong where it matters.
+    assert report["forbidden_files"] == 1
+    assert report["files"] == 3
 
 
 def test_a_machine_path_in_a_staged_text_file_is_a_finding(tmp_path):

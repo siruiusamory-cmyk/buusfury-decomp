@@ -127,8 +127,18 @@ def test_a_provenance_record_that_is_not_json_is_refused():
 
 def test_a_provenance_record_with_no_schema_is_refused():
     patch = encode(b"source", b"target", b'{"project": "authored"}')
-    with pytest.raises(PatchVerificationError, match="no schema version"):
+    with pytest.raises(PatchVerificationError, match="no integer schema version"):
         read_patch_metadata(patch)
+
+
+def test_a_provenance_record_whose_schema_is_not_a_number_is_refused():
+    """A string or a null schema must be a refusal, not a comparison error."""
+    for schema in ('"2"', "null", "true", "[]"):
+        patch = encode(
+            b"source", b"target", f'{{"schema_version": {schema}}}'.encode("utf-8")
+        )
+        with pytest.raises(PatchVerificationError, match="no integer schema version"):
+            read_patch_metadata(patch)
 
 
 def test_a_newer_provenance_schema_is_refused():
@@ -198,8 +208,66 @@ def test_the_provenance_record_names_the_product_the_project_and_both_images(
     assert document["target"]["size"] == len(target)
 
 
+def test_verification_refuses_a_record_that_names_another_target(synthetic):
+    """A lying provenance record must not be printed as if it were proved.
+
+    The record is the only reason to trust a patch a stranger sent, so a record
+    that disagrees with the bytes the patch actually rebuilds is a refusal, not a
+    footnote.
+    """
+    rom, catalog, _ = synthetic
+    source = rom.read_bytes()
+    target = source[:100] + b"changed" + source[107:]
+    document = json.loads(_metadata_for(rom, catalog, source, target))
+    document["target"]["sha256"] = "0" * 64
+    patch = rom.parent / "lying-target.bps"
+    patch.write_bytes(
+        encode(
+            source,
+            target,
+            json.dumps(document, sort_keys=True, separators=(",", ":")).encode(),
+        )
+    )
+
+    with pytest.raises(PatchVerificationError, match="target sha256"):
+        verify_patch(patch, rom, catalog)
+
+
+def test_verification_refuses_a_record_that_names_another_source(synthetic):
+    rom, catalog, _ = synthetic
+    source = rom.read_bytes()
+    target = source[:100] + b"changed" + source[107:]
+    document = json.loads(_metadata_for(rom, catalog, source, target))
+    document["base"]["sha256"] = "1" * 64
+    patch = rom.parent / "lying-base.bps"
+    patch.write_bytes(
+        encode(
+            source,
+            target,
+            json.dumps(document, sort_keys=True, separators=(",", ":")).encode(),
+        )
+    )
+
+    with pytest.raises(PatchVerificationError, match="source sha256"):
+        verify_patch(patch, rom, catalog)
+
+
+def test_verification_accepts_a_patch_that_carries_no_record_of_ours(synthetic):
+    """A patch made elsewhere has no DragonByte Z record, and is still verifiable."""
+    rom, catalog, _ = synthetic
+    source = rom.read_bytes()
+    target = source[:100] + b"changed" + source[107:]
+    patch = rom.parent / "foreign.bps"
+    patch.write_bytes(encode(source, target, b"<a foreign metadata block>"))
+
+    verification = verify_patch(patch, rom, catalog)
+
+    assert verification.target_sha256 == hashlib.sha256(target).hexdigest()
+    with pytest.raises(PatchVerificationError):
+        read_patch_metadata(patch.read_bytes())
+
+
 def test_the_provenance_record_and_the_patch_footer_agree(synthetic):
-    """Two records of the same two images, produced independently, must match."""
     rom, catalog, _ = synthetic
     source = rom.read_bytes()
     target = source[:100] + b"changed" + source[107:]

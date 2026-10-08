@@ -4,8 +4,14 @@ This is the product behaviour around :mod:`tools.webfoot.formats.bps`. A creator
 builds a modified ROM and has to be able to hand somebody a small file that
 reproduces it, without handing over the commercial image the modification was made
 against. The patch is that file: it carries the CRC-32 of the exact source image it
-was made for, so an applier refuses any other image, and it carries no ROM bytes
-that are not already public in the derivative's changed regions.
+was made for, so an applier refuses any other image.
+
+The patch is a difference, not a copy. Regions the build did not touch are re-read
+from the source ROM on the other side of the patch, so a patch is a small fraction
+of the image. The literal bytes it does carry are the bytes that differ and the
+bytes a rebuild moved to a new offset, which is the same property every
+difference-based patch format has: it helps somebody who already holds the source
+build a modified image, and it cannot reconstruct the source on its own.
 
 The three rules this module exists to enforce:
 
@@ -57,9 +63,6 @@ from .write import ensure_new_destination, ensure_not_source_alias, publish_new_
 #: The metadata schema this module writes, and the highest it will read.
 PATCH_METADATA_SCHEMA = 1
 
-#: The suffix the supported patch workflow produces.
-PATCH_SUFFIX = ".bps"
-
 
 class PatchError(ValueError):
     """Base error for exporting or verifying a distributable patch."""
@@ -108,6 +111,22 @@ class PatchVerification:
 
 def _digest(data: bytes) -> str:
     return hashlib.sha256(data).hexdigest()
+
+
+def _withdraw(path: Path, digest: str) -> None:
+    """Remove the file this call published, and only while it is still that file.
+
+    A published patch that fails its own verification must not be left behind for
+    somebody to distribute. The digest guard is what keeps this from deleting a
+    file another writer put there in the meantime.
+    """
+    try:
+        if path.is_file() and _digest(path.read_bytes()) == digest:
+            path.unlink()
+    except OSError:
+        # Nothing further can be done about a file that cannot be removed, and the
+        # caller is already raising the reason the patch was withdrawn.
+        pass
 
 
 def require_verified_source(
@@ -202,12 +221,17 @@ def read_patch_metadata(patch: bytes) -> dict:
         raise PatchVerificationError(
             f"the patch carries no readable provenance record: {exc}"
         ) from exc
-    if not isinstance(document, dict) or "schema_version" not in document:
-        raise PatchVerificationError("the patch provenance record has no schema version")
-    if document["schema_version"] > PATCH_METADATA_SCHEMA:
+    if not isinstance(document, dict):
+        raise PatchVerificationError("the patch provenance record is not an object")
+    schema = document.get("schema_version")
+    if not isinstance(schema, int) or isinstance(schema, bool):
         raise PatchVerificationError(
-            f"the patch provenance record is schema {document['schema_version']}, "
-            f"which is newer than this toolkit understands ({PATCH_METADATA_SCHEMA})"
+            f"the patch provenance record has no integer schema version: {schema!r}"
+        )
+    if schema > PATCH_METADATA_SCHEMA:
+        raise PatchVerificationError(
+            f"the patch provenance record is schema {schema}, which is newer than "
+            f"this toolkit understands ({PATCH_METADATA_SCHEMA})"
         )
     return document
 
@@ -273,12 +297,17 @@ def export_patch(
     publish_new_files([(output, patch)])
 
     published_digest = _digest(patch)
-    verification = verify_patch(output, rom_path, catalog)
-    if verification.target_sha256 != _digest(target):
-        # Only the file this call published is removed, and only while it is still
-        # the file this call published.
-        if output.is_file() and _digest(output.read_bytes()) == published_digest:
-            output.unlink()
+    try:
+        verification = verify_patch(output, rom_path, catalog)
+        reproduced = verification.target_sha256 == _digest(target)
+    except PatchError as error:
+        _withdraw(output, published_digest)
+        raise PatchVerificationError(
+            f"the published patch does not verify ({error}); {output} was removed "
+            "rather than left as an artefact that cannot be applied"
+        ) from error
+    if not reproduced:
+        _withdraw(output, published_digest)
         raise PatchVerificationError(
             f"the published patch does not rebuild the built image; {output} was "
             "removed rather than left as an artefact that cannot be applied"
@@ -322,6 +351,34 @@ def verify_patch(
         raise PatchSourceError(str(exc)) from exc
     except BpsError as exc:
         raise PatchVerificationError(str(exc)) from exc
+
+    # A provenance record that names different images than the ones just proved is
+    # a lying record, and a distributed patch is only worth anything if its
+    # provenance can be believed. A patch made elsewhere carries no record of ours,
+    # which is not a refusal: verification is about the bytes.
+    try:
+        document = read_patch_metadata(patch)
+    except PatchVerificationError:
+        document = None
+    if document is not None:
+        base = document.get("base")
+        recorded_target = document.get("target")
+        if not isinstance(base, dict) or not isinstance(recorded_target, dict):
+            raise PatchVerificationError(
+                "the patch provenance record names no source and target images"
+            )
+        if base.get("sha256") != identification.hashes.sha256:
+            raise PatchVerificationError(
+                f"the patch provenance record names source sha256 "
+                f"{base.get('sha256')} and this source is "
+                f"{identification.hashes.sha256}"
+            )
+        rebuilt = _digest(target)
+        if recorded_target.get("sha256") != rebuilt:
+            raise PatchVerificationError(
+                f"the patch provenance record names target sha256 "
+                f"{recorded_target.get('sha256')} and the patch rebuilds {rebuilt}"
+            )
 
     return PatchVerification(
         patch_path=path,

@@ -210,6 +210,16 @@ NON_MGBA_SITES: Mapping[tuple[str, str, str], str] = {
      "_git",
      "'git'"):
         "reports the repository's architecture with git; it starts no emulator",
+    ("tests/unit/test_release_identity.py",
+     "test_a_checkout_reports_its_own_commit_and_tree_state",
+     "'git'"):
+        "reads the repository's own head and status to check the identity a "
+        "checkout reports against them; it starts no emulator",
+    ("tests/unit/test_release_identity.py",
+     "test_the_generated_record_is_ignored_by_git",
+     "'git'"):
+        "asks git whether the generated build record is ignored; it starts no "
+        "emulator",
     ("tools/quality/public_surface.py",
      "changed_text_files",
      "'git'"):

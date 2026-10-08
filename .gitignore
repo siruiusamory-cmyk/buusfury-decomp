@@ -36,6 +36,12 @@ node_modules/
 *.egg-info/
 *.spec
 
+# Release artefacts. A distributable patch and a frozen executable are both
+# build output, so neither can be committed by accident; `docs/release-artefacts.md`
+# states what a user distributes and what must never travel with it.
+*.bps
+*.exe
+
 # The generated build-identity record a package build bakes in, so a packaged
 # application can name the commit it was cut from. It is a module rather than a
 # data file so it travels inside a frozen build through the import graph, and it

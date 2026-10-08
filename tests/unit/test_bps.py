@@ -368,6 +368,61 @@ def test_a_target_copy_of_unwritten_bytes_is_refused():
         apply(source, patch)
 
 
+def test_a_source_copy_is_decoded():
+    """A positive vector for the general applier, not only the refusal paths.
+
+    Our own encoder emits only source reads and literals, so a copy action is
+    exercised here by a hand-built patch. A patch made by another tool reaches
+    `webfoot patch verify`, and an applier that only understands its own encoder's
+    subset would mis-report one.
+    """
+    source = b"ABCDEFGH"
+    # SourceRead 4, then a source copy of 4 bytes at delta 0 (reads source[0:4]).
+    actions = encode_number((4 - 1) << 2 | 0) + encode_number((4 - 1) << 2 | 2) + encode_number(0)
+    target = b"ABCDABCD"
+    patch = _assemble(
+        8, 8, actions, source_crc=crc32(source), target_crc=crc32(target)
+    )
+    assert apply(source, patch) == target
+
+
+def test_a_target_copy_is_decoded():
+    source = b"ABCDEFGH"
+    # TargetRead 4, then a target copy of 4 bytes at delta 0: the target cursor
+    # starts at 0, so delta 0 points back at the four bytes just written and the
+    # copy then grows its own source as it goes.
+    actions = (
+        encode_number((4 - 1) << 2 | 1)
+        + b"ABCD"
+        + encode_number((4 - 1) << 2 | 3)
+        + encode_number(0)
+    )
+    target = b"ABCDABCD"
+    patch = _assemble(
+        8, 8, actions, source_crc=crc32(source), target_crc=crc32(target)
+    )
+    assert apply(source, patch) == target
+
+
+def test_an_action_that_writes_past_the_declared_target_is_refused():
+    """The walk is bounded by the target the patch declares, before it writes.
+
+    A target copy that reads output it has just written never runs out of written
+    data, so an action stream claiming an enormous length would append without
+    limit. The bound is what makes the walk finite; the ``match`` is what proves
+    the bound fired rather than a later size check.
+    """
+    source = _source(8)
+    actions = encode_number((4 - 1) << 2 | 1) + b"ABCD" + encode_number(
+        (4096 - 1) << 2 | 3
+    ) + encode_number(0)
+    patch = _assemble(
+        8, 8, actions, source_crc=crc32(source), target_crc=crc32(b"ABCD"),
+    )
+    with pytest.raises(BpsFormatError, match="writes past the target size"):
+        apply(source, patch)
+
+
 def test_the_patch_checksum_is_required_to_be_present_and_correct():
     source, target = _source(32), _source(32, seed=8)
     patch = encode(source, target)

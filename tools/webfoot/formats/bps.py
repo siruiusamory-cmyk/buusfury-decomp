@@ -272,6 +272,17 @@ def apply(source: bytes, patch: bytes) -> bytes:
         action = value & _ACTION_MASK
         length = (value >> 2) + 1
 
+        # Every action appends exactly `length` bytes, so this single bound keeps
+        # the whole walk inside the target the patch declares. It is not an
+        # optimisation: without it a crafted patch that passes its own checksum can
+        # claim an enormous length, and a target copy that reads output it has just
+        # written advances its read cursor and the output together, so it never runs
+        # out of written data and the loop never ends.
+        if len(output) + length > header.target_size:
+            raise BpsFormatError(
+                "an action writes past the target size the patch declares"
+            )
+
         if action == SOURCE_READ:
             if len(output) + length > header.source_size:
                 raise BpsFormatError("a source read runs past the end of the source")

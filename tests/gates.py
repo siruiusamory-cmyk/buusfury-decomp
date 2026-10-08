@@ -119,7 +119,9 @@ GATE_RULES: tuple[tuple[str, tuple[str, ...]], ...] = (
 #: collapse to one ``SKIPPED`` line each and still exits 0, claiming a green
 #: Workbench suite that never executed the shipping surface. ``tests/conftest.py``
 #: therefore fails the session when one of these files is collected but
-#: contributes no test, and ``tests/unit/test_ci_gui_surface.py`` checks the CI
+#: contributes no test, and it fails for any other opened test file that
+#: collapses on a PySide6 import too, so an unregistered Workbench module cannot
+#: report a green job either. ``tests/unit/test_ci_gui_surface.py`` checks the CI
 #: environment that must make them run (the extras, the headless Qt platform,
 #: the guards, and the named editor regressions).
 #:

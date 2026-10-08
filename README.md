@@ -34,7 +34,10 @@ existing chunks can be painted onto 256x256 chunk cells with undo, redo and an
 eyedropper; a chunk the layer did not have can be created and painted with, and
 its 32x32 plane rearranged from graphics that layer already draws. Every one of
 those edits is saved and reopened like any other authored content, and the retail
-engine has drawn the authored result after the area is rebuilt.
+engine has drawn the authored result after the area is rebuilt. A map the image
+does not contain can be authored too: the build re-emits the whole map table above
+the original end of the image with the authored row appended, and a driven session
+watched the retail engine load that row and the player walk in and back out.
 
 **Change map structure.**
 A supported layer's chunk grid can be grown - top-left anchored, so existing cells
@@ -65,6 +68,20 @@ chosen trigger rather than at load.
 A line longer than the one it replaces is placed in verified writable space and
 the owning table entry is repointed, so the engine resolves and renders the whole
 authored message. Creating entirely new text-table ids is not claimed.
+
+**Author graphics, sprites and appearances.**
+An extracted sprite asset's PNG can be edited in the project and rebuilt, and the
+retail engine renders the authored pixels. A new actor-sprite identity can be
+created from a donor - naming the sheet each animation slot draws from and the
+existing object slot the appended actor starts from - and a new appearance
+definition is written above the original end of the image and resolved by the
+engine, which displayed authored name and description text for a retail actor in
+its own character screen. Shared object palette entries are recoloured through
+the same project and build path. Every bound is stated in the registry: a
+graphics replacement keeps its dimensions, an authored frame copies the donor's
+own shape with no piece, OAM, geometry or timing authoring, one sprite identity
+per image, and the appearance table is re-emitted above the original end of the
+image.
 
 **Build deterministically, safely and reproducibly.**
 `extract` -> `validate` -> `build`: a project validates before it builds, repeated
@@ -177,7 +194,13 @@ webfoot build    ".\work\my-mod" --rom ".\roms\Dragon Ball Z - Buu's Fury (U).gb
 
 The desktop editor needs the PySide6 extra
 (`uv pip install -e ".[workbench]"`) and starts from `DragonByte Z.cmd` or with
-`python -m tools.webfoot.workbench`.
+`python -m tools.webfoot.workbench`. Before it can open any ROM it also needs the
+assembled atlas at `build\atlas\atlas.jsonl`, and it refuses every ROM without it.
+Produce one from a local ROM:
+
+```powershell
+webfoot atlas regenerate ".\roms\Dragon Ball Z - Buu's Fury (U).gba" --out .\build\atlas
+```
 
 Read next: [project format](docs/project-format.md),
 [Workbench](docs/workbench.md), [architecture](docs/architecture.md) and

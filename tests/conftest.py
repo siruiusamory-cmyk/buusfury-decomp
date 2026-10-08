@@ -249,6 +249,7 @@ def pytest_sessionfinish(session: pytest.Session, exitstatus: int) -> None:
     stopped. See the module docstring for the CI/local/opt-in scope.
     """
     collapsed = _collapsed_required_modules()
+    collapsed += [entry for entry in _collapsed_gui_modules() if entry not in collapsed]
     if not collapsed:
         return
     enforced = _required_gui_surface_is_enforced()
@@ -358,6 +359,33 @@ def _collapsed_required_modules() -> list[tuple[str, str]]:
         collapsed.append(
             (relative, _COLLAPSED_REASONS.get(key, "contributed no collected test"))
         )
+    return collapsed
+
+
+def _collapsed_gui_modules() -> list[tuple[str, str]]:
+    """Every opened test module that collapsed on a PySide6 import.
+
+    ``REQUIRED_GUI_MODULES`` is the explicit shipping-surface regression set. This
+    generalisation covers the rest: a Workbench module that carries its own
+    module-level ``pytest.importorskip`` and was never registered collapses to one
+    ``SKIPPED`` line, which leaves the job green while the surface it tests never
+    ran. The reason is pytest's own collection report, so this is evidence of what
+    happened rather than a guess made from the source text.
+
+    The rule is keyed on the reason naming PySide6, because that is what the
+    shipping GUI surface imports. A module that collapsed because some other
+    optional dependency was missing is not this guard's business; every Qt-guarded
+    unit module in the tree spells its guard ``importorskip("PySide6...")``, so all
+    of them are covered.
+    """
+    collapsed: list[tuple[str, str]] = []
+    for key in sorted(_CANDIDATE_TEST_FILES & _ATTEMPTED_TEST_FILES):
+        if key in _COLLECTED_TEST_FILES:
+            continue
+        reason = _COLLAPSED_REASONS.get(key, "")
+        if "PySide6" not in reason:
+            continue
+        collapsed.append((relative_test_path(key) or key, reason))
     return collapsed
 
 

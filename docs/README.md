@@ -27,7 +27,7 @@ The index for everything under `docs/`. Start with the root
 | [`workbench.md`](workbench.md) | The Maps editor's Layout mode and reopening a ROM the tool wrote. |
 | [`workbench-architecture.md`](workbench-architecture.md) | The desktop editor's structure and its hard rules. |
 | [`desktop-ui.md`](desktop-ui.md) | How a DragonByte Z editor surface should look, behave and be reviewed. |
-| [`asset-export.md`](asset-export.md) | Exporting game resources out of a project. |
+| [`asset-export.md`](asset-export.md) | Building a resource library from the ROM (a separate tool, not a `webfoot` subcommand). |
 | [`relocation.md`](relocation.md) | Trust boundaries, limitations and APIs of the relocation layer. |
 | [`rom-profiles.md`](rom-profiles.md) | Supported images and how identity is configured. |
 

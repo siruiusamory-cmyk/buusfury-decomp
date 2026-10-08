@@ -2170,9 +2170,12 @@ repoints the one literal-pool word the engine's key lookup loads and raises the
 one compiled row bound, and a driven session watched the retail engine load the
 authored row and the player walk in and back out. The exact per-capability limits
 and proof levels live
-in [`capability-registry.md`](capability-registry.md), and the reconciliation of
-this paragraph against the registry is recorded in
-[`research/PROJECT_STATE_AUDIT_RECONCILIATION.md`](research/PROJECT_STATE_AUDIT_RECONCILIATION.md).
+in [`capability-registry.md`](capability-registry.md). The 2026-10-07
+reconciliation of this paragraph against the registry is recorded in
+[`research/PROJECT_STATE_AUDIT_RECONCILIATION.md`](research/PROJECT_STATE_AUDIT_RECONCILIATION.md);
+its section A scoreboard reads 21 / 24 for the baseline it measured, which is that
+record's history rather than the current count. The current debt position is in
+[`research/RC_DEBT_LEDGER.md`](research/RC_DEBT_LEDGER.md).
 
 ## Research posture
 

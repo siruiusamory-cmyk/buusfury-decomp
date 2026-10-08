@@ -291,7 +291,7 @@
         "Relocation is gated per table by declared capability and per entry by measured single-reference ownership, so an entry carrying a second reference is refused.",
         "Storage length is no longer the limit, but display width still is: a long line drawn centred in a large font runs past the edges of the screen."
       ],
-      "surface": "Inspector editor: authored text relocated through the normal build",
+      "surface": "Project workflow: author text/strings.toml, validate, build (or the `webfoot text set` one-off image edit)",
       "proof": "runtime",
       "evidence": "TOOLKIT-037; TEXT-HANDLE-001; TEXT-HANDLE-002"
     },
@@ -325,7 +325,8 @@
         "The engine's four direction slots are written in sheet order and their screen meaning is unresolved project-wide.",
         "The surface refuses every field-level problem in the values it authors - donor admissibility, sheet form and cell geometry, template resolution, coordinates and the wander box - and carries the two header words it does not author, whose meaning is unresolved.",
         "The surface's carried data-pointer word is the chosen template slot's own, and the recorded runtime document used a neighbouring sibling slot's value 16 bytes higher, so the two documents are not byte-identical and the engine observation is evidence for the mechanism rather than for this exact document.",
-        "The rest of the plan - the palette claim checked against the decoded graphics, the allocation and the relocation census - runs at Validate and Build, which report the same refusals with the same text."
+        "The rest of the plan - the palette claim checked against the decoded graphics, the allocation and the relocation census - runs at Validate and Build, which report the same refusals with the same text.",
+        "A new actor cannot share a map with other map-level authoring: a map receiving an authored placement expansion and a new actor is refused because both re-emit the map's object array, and a map whose record fields are edited is refused because the actor's own plan emits that record and would drop the field edit. A map already declaring 255 object slots cannot take another actor either, because the slot count is one byte."
       ],
       "surface": "Workbench: Graphics tab, Authored sprite - New, Edit and Remove write sprites/sprites.toml",
       "proof": "application",

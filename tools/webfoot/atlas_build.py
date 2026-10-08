@@ -26,6 +26,7 @@ from typing import Iterable, Iterator, Sequence
 from .atlas import (Atlas, AtlasObject, AtlasReference, Confidence, CoverageMap,
                     CoverageSpan, Observation, PADDING_CANDIDATE, UNKNOWN,
                     VERIFIED_FREE, strength)
+from .authored_image import AuthoredImageError, refuse_canonical_destination
 from .binary import FileOffset, GBA_ROM_BASE
 from .layout import LayoutError, Provenance, ReferenceEncoding, RomRange
 
@@ -534,7 +535,22 @@ def build_atlas(directory: Path) -> BuildReport:
     return BuildReport(atlas, tuple(conflicts), rows_read)
 
 
+def _refuse_canonical_destination(path: Path) -> None:
+    """Refuse an atlas destination that is a copy of the canonical image.
+
+    The atlas is derived evidence and may replace an ordinary existing file, but
+    the canonical image is the one input every guard here protects, and the
+    ``--atlas`` path is caller-supplied, so it can name it. Identity is the
+    content hash, from the shared owner of that rule, never the file name.
+    """
+    try:
+        refuse_canonical_destination(path, BASE_SHA256)
+    except AuthoredImageError as exc:
+        raise AtlasBuildError(str(exc)) from exc
+
+
 def write_atlas(report: BuildReport, path: Path) -> None:
+    _refuse_canonical_destination(path)
     path.parent.mkdir(parents=True, exist_ok=True)
     with path.open("w", encoding="utf-8", newline="") as handle:
         handle.writelines(report.atlas.to_jsonl_lines())
@@ -549,6 +565,7 @@ def write_conflicts(report: BuildReport, path: Path) -> None:
     detail would make "recorded, not silently resolved" untrue, so the pairs
     are written beside the atlas for a later ticket to arbitrate.
     """
+    _refuse_canonical_destination(path)
     path.parent.mkdir(parents=True, exist_ok=True)
     with path.open("w", encoding="utf-8", newline="") as handle:
         for conflict in sorted(report.conflicts, key=lambda c: (c.start, c.end)):

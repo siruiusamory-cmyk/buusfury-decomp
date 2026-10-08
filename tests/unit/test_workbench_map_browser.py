@@ -1378,3 +1378,71 @@ def test_switching_maps_drops_the_selection_and_brush(edit_tab):
     edit_tab._sync_editor_for_map(MAP)
     assert edit_tab._draft is None
     assert edit_tab._selected_cell == 0
+
+
+def test_a_layer_switch_drops_a_stale_cell_read_error(edit_tab):
+    """N-20: a read failure belongs to the cell it was measured on.
+
+    The status line publishes ``_cell_read_error`` ahead of every other fact, so
+    a failure left standing after the layer changed is the only text on screen
+    and it describes a cell the user is no longer looking at.
+    """
+    edit_tab._edit_toggle.setChecked(True)
+    _choose(edit_tab, 1)
+    _paint_cells(edit_tab, 3)  # select cell 3 through the ordinary gesture
+    edit_tab.editor.reject_read = mbt.MapLayoutWriteError(
+        "the map table could not be read"
+    )
+    edit_tab._refresh_editor_state()
+    assert "could not be read" in edit_tab._status.text()
+
+    # The read is healthy again and the user moves to another layer: the failure
+    # measured on the old layer must not be republished as the new layer's state.
+    edit_tab.editor.reject_read = None
+    edit_tab._select_layer(1)
+    edit_tab._refresh_editor_state()
+
+    assert edit_tab._cell_read_error == ""
+    assert "could not be read" not in edit_tab._status.text()
+
+
+def test_a_map_switch_drops_a_stale_cell_read_error(edit_tab, monkeypatch):
+    """N-20, the other half: a map switch never reaches `_select_layer`.
+
+    `_sync_editor_for_map` returns early when the target cannot be read, after
+    republishing the status line, so the reset has to be its first act.
+    """
+    edit_tab._edit_toggle.setChecked(True)
+    edit_tab._cell_read_error = "A cell could not be read, so nothing was staged."
+
+    def unreadable(index):
+        raise MapLayoutEditError("the map table could not be read")
+
+    monkeypatch.setattr(edit_tab.editor, "target", unreadable)
+    edit_tab._sync_editor_for_map(MAP)
+
+    assert edit_tab._cell_read_error == ""
+
+
+def test_save_as_says_what_a_rom_copy_cannot_carry(edit_tab, monkeypatch, tmp_path):
+    """N-05: a ROM copy carries layout edits only.
+
+    With only project-side work staged, the confirmation used to read "no layout
+    changes were pending, so the copy is byte-identical" while the window title
+    counted one staged change, which reads as "nothing was staged".
+    """
+    target = tmp_path / "copy.gba"
+    monkeypatch.setattr(
+        mbt.QFileDialog, "getSaveFileName", staticmethod(lambda *a, **k: (str(target), ""))
+    )
+    monkeypatch.setattr(mbt.QMessageBox, "information", lambda *args: None)
+    edit_tab._edit_toggle.setChecked(True)
+    # A staged paint on a project-authored grid: real tab state, and work a ROM
+    # copy cannot carry because the build materializes it from the project.
+    edit_tab._structural_cells[(0, 0, 3)] = 7
+
+    edit_tab._on_save_as()
+
+    status = edit_tab._status.text()
+    assert "byte-identical" in status
+    assert "stay in the project" in status

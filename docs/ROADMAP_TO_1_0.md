@@ -148,7 +148,7 @@ and its gate are section 10.
 | --- | --- | --- | --- |
 | READ | 5 / 5 | Complete | Shell; atlas/search; record inspection; sprite/animation/palette browsing; Map Browser |
 | EDIT | 8 / 8 | Complete | Dialogue; palette recolor; object placement; map layout chunk-cell replacement; tile painting (chunk-cell, 2026-09-25); chunk creation (2026-09-25); map resizing and layer authoring (2026-09-26); warp and connection editing (2026-09-28) |
-| AUTHOR | 5 / 7 | 2 missing | Authored entities; behavior/scripts; text beyond retail slot; graphics import (2026-10-03); new sprite, animation and frame authoring (2026-10-07) |
+| AUTHOR | 7 / 7 | Complete | Authored entities; behavior/scripts; text beyond retail slot; graphics import (2026-10-03); new sprite, animation and frame authoring (2026-10-07); appearance authoring (2026-10-08); new map authoring (2026-10-08) |
 | DELIVER | 4 / 4 | Complete | Validate/build; safe Save As; derivative provenance/reopen; launch |
 
 ### Major foundations already complete

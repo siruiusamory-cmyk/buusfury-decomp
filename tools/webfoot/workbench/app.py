@@ -174,6 +174,9 @@ class MainWindow(QMainWindow):
         # A mode switch changes WHICH surface's history Edit -> Undo reaches, so the
         # two actions are re-enabled from the newly active stack.
         self._maps.modeChanged.connect(lambda _mode: self._refresh_undo_actions())
+        # The Scene editor is offered only in Objects mode, so the same switch moves
+        # the View action rather than leaving it as the last editor change left it.
+        self._maps.modeChanged.connect(lambda _mode: self._sync_scene_action())
         self._graphics.projectChanged.connect(self._on_project_changed)
         self._scene.projectChanged.connect(self._on_project_changed)
         self._build.projectChanged.connect(self._on_project_changed)

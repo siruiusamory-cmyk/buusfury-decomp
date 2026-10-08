@@ -60,6 +60,18 @@ local HOLD = 8
 
 -- One picture per step, so an empty report still says what the screen was.
 local SCHEDULE = {}
+-- ROSTER001_TALK presses the interact button where the state starts, which is in
+-- front of a character: the message path that can return an appended record is
+-- reached by interaction, and steady walking does not reach it.
+local TALK = os.getenv("ROSTER001_TALK") == "1"
+if TALK then
+    -- Interaction only, and nothing else: the state starts facing a character, and
+    -- a schedule that also walked could move away from them between presses.
+    for step = 0, 60 do
+        local at = 260 + step * 120
+        SCHEDULE[#SCHEDULE + 1] = { at, A }
+    end
+end
 -- ROSTER001_WALK walks instead of opening menus: the search path is reached by a
 -- map transition, and a transition needs the player to cross a boundary.
 local WALK = os.getenv("ROSTER001_WALK") == "1"

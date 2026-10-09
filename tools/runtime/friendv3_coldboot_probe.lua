@@ -32,10 +32,18 @@ local exp_dir = done_path:gsub("[^/\\]+$", "")
 local out = (os.getenv("TOOLKIT031_OUT") or (exp_dir .. "coldboot.csv"))
 local declared_size = tonumber(os.getenv("DIALOGUE_ROM_SIZE") or "")
 
+-- The snippet window and the screenshot cadence are the two things a run needs to
+-- change, because 40 units stop inside a line that opens with eight control codes and
+-- five seconds can miss a dialogue box between two copies. Both are environment
+-- overrides with these defaults, so a session can widen them without editing this file.
+local function knob(name, default)
+    return tonumber(os.getenv(name) or "") or default
+end
+
 local HORIZON = 200000     -- about fifty minutes; the operator closes the window
-local SHOT_EVERY = 300     -- one screenshot every five seconds
+local SHOT_EVERY = knob("DIALOGUE_SHOT_EVERY", 300)   -- default one shot every five seconds
 local BEAT_EVERY = 60
-local SNIPPET_UNITS = 40
+local SNIPPET_UNITS = knob("DIALOGUE_SNIPPET_UNITS", 40)
 local SNIPPET_ROWS = 40    -- the first copies only: the cutscene's own lines
 
 assert(emu ~= nil, "mGBA did not attach the emulation core")

@@ -96,6 +96,8 @@ QT_FREE_MODULES = (
     "tools.dragonbyte.destination",
     "tools.dragonbyte.diagnostics",
     "tools.dragonbyte.settings",
+    "tools.dragonbyte.journal",
+    "tools.dragonbyte.rawbytes",
 )
 
 

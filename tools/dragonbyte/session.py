@@ -21,8 +21,10 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from tools.webfoot.authored_image import AuthoredImageError, refuse_canonical_destination
 from tools.webfoot.catalog import load_catalog
 from tools.webfoot.gba_header import GbaHeaderError
+from tools.webfoot.layout import RomRange
 from tools.webfoot.profile import (
     ProfileConfigError,
     RomProfile,
@@ -37,8 +39,16 @@ from tools.webfoot.project import (
 )
 from tools.webfoot.rom import RomIdentification, RomReadError, identify_rom
 
-from .journal import EditJournal, EditKind, JournalError, project_authority
+from .journal import (
+    EditJournal,
+    EditKind,
+    JournalError,
+    RawContext,
+    RawRequest,
+    project_authority,
+)
 from .navigation import NavigationHistory
+from .rawbytes import RAW_DOCUMENT, RAW_TARGET, RawRefusal, RawWrite, read_raw_document
 
 
 class SessionError(Exception):
@@ -84,10 +94,20 @@ _OPEN_PROJECT_ERRORS = (ProjectError, ProjectFormatError, OSError)
 #: The families an edit or a save converts into `SessionError`.
 #:
 #: `JournalError` is the journal's own boundary type and covers an unregistered
-#: target, a foreign authority, an empty history and a failed write; `OSError`
-#: and the project families are named because the journal's writer reaches the
-#: filesystem and the project codec directly.
-_EDIT_ERRORS = (JournalError, OSError, ProjectError, ProjectFormatError)
+#: target, a foreign authority, an empty history and a failed write; `RawRefusal`
+#: is the raw byte layer's refusal and is deliberately not a `JournalError`, so a
+#: caller can tell a claimed byte from a broken journal. `AuthoredImageError` is
+#: the SDK's own save-boundary refusal, which a canonical destination raises.
+#: `OSError` and the project families are named because the journal's writer
+#: reaches the filesystem and the project codec directly.
+_EDIT_ERRORS = (
+    JournalError,
+    RawRefusal,
+    AuthoredImageError,
+    OSError,
+    ProjectError,
+    ProjectFormatError,
+)
 
 
 @dataclass
@@ -99,6 +119,10 @@ class Session:
     profile: RomProfile | None = None
     project_dir: Path | None = None
     project: StatProject | None = None
+    #: The verified base image's bytes, read once when an image is opened. The
+    #: base is immutable and never written; a raw write needs it to prove what it
+    #: replaces.
+    base_image: bytes | None = None
     navigation: NavigationHistory = field(default_factory=NavigationHistory)
     #: The one journal for this session. It owns every edit, every checkpoint and
     #: the derived dirty state; the session holds no second answer to any of them.
@@ -166,6 +190,7 @@ class Session:
         self.rom_path = path
         self.identification = identification
         self.profile = match.profile
+        self.base_image = path.read_bytes()
 
     def open_project(self, directory: Path, *, discard_unsaved: bool = False) -> None:
         """Read and hold the authored project at `directory`.
@@ -184,7 +209,8 @@ class Session:
         directory = Path(directory)
         try:
             project = read_project(directory)
-        except _OPEN_PROJECT_ERRORS as exc:
+            raw = read_raw_document(directory / RAW_DOCUMENT)
+        except _OPEN_PROJECT_ERRORS + (RawRefusal,) as exc:
             raise SessionError(str(exc)) from exc
         if self.journal.is_dirty and not discard_unsaved:
             raise UnsavedChangesError(
@@ -195,7 +221,7 @@ class Session:
             )
         self.project_dir = directory
         self.project = project
-        self.journal.bind(project_authority(project))
+        self.journal.bind(project_authority(project), raw=raw)
 
     # -- editing --------------------------------------------------------------
 
@@ -245,10 +271,16 @@ class Session:
         target: str,
         after: object,
         resources: tuple[str, ...] = (),
+        claimed: tuple[RomRange, ...] = (),
         reason: str = "",
         coalesce_key: str = "",
     ) -> None:
-        """Commit one edit to the held project, or refuse with its reason."""
+        """Commit one edit to the held project, or refuse with its reason.
+
+        `claimed` is the byte range the edit changes, when the caller knows it.
+        A raw write is refused against those bytes, which is the one collision the
+        SDK cannot see: an edit that has not been built has no word in an image.
+        """
         if self.project is None:
             raise SessionError("No project is open, so there is nothing to edit.")
         try:
@@ -258,20 +290,126 @@ class Session:
                 target=target,
                 after=after,
                 resources=resources,
+                claimed=claimed,
                 reason=reason,
                 coalesce_key=coalesce_key,
             )
         except _EDIT_ERRORS as exc:
             raise SessionError(str(exc)) from exc
 
+    def raw_write_problem(
+        self, offset: int, new: bytes, *, atlas: object | None = None
+    ) -> str:
+        """Why this raw write would be refused, or an empty string. Commits nothing.
+
+        A caller that has to decide whether to ask a person uses this first, so an
+        owned range is refused without a confirmation the user cannot act on.
+        """
+        try:
+            request = self._raw_request(offset, new, confirmed=True, atlas=atlas)
+        except _EDIT_ERRORS as exc:
+            return str(exc)
+        refusal = self.journal.raw_refusal(request)
+        return "" if refusal is None else str(refusal)
+
+    def apply_raw_edit(
+        self,
+        offset: int,
+        new: bytes,
+        *,
+        confirmed: bool = False,
+        atlas: object | None = None,
+    ) -> None:
+        """Commit one free byte write, or refuse it with the claiming owner.
+
+        The bytes this write replaces are read from the held base image, so a
+        write computed against a different image is refused rather than applied.
+        `confirmed` is the product's own gate: the caller sets it only after the
+        range, the old bytes and the new bytes have been shown to a person.
+        """
+        if self.project is None:
+            raise SessionError("No project is open, so there is nothing to edit.")
+        try:
+            request = self._raw_request(offset, new, confirmed=confirmed, atlas=atlas)
+            self.project = self.journal.apply(
+                self.project,
+                kind=EditKind.RAW,
+                target=RAW_TARGET,
+                after=request,
+                reason=f"raw byte write at 0x{offset:06X}",
+            )
+        except _EDIT_ERRORS as exc:
+            raise SessionError(str(exc)) from exc
+
+    def _raw_request(
+        self, offset: int, new: bytes, *, confirmed: bool, atlas: object | None
+    ) -> RawRequest:
+        """The write this session would judge, reading the bytes it replaces."""
+        if self.base_image is None or self.profile is None:
+            raise SessionError(
+                "No ROM is open, so the bytes a raw write replaces cannot be read."
+            )
+        if (
+            type(offset) is not int
+            or offset < 0
+            or not new
+            or not isinstance(new, bytes)
+            or offset + len(new) > len(self.base_image)
+        ):
+            raise SessionError(
+                f"0x{offset:06X} is not a {len(new)}-byte range inside the "
+                f"{len(self.base_image)}-byte open image."
+            )
+        # What the write replaces is the bytes as they now stand, so a write that
+        # replaces a pending one records the value someone could come back to. A
+        # pending write of a different length is not this write's predecessor, so
+        # it is left to the journal's own overlap refusal rather than being
+        # reported as a resize.
+        before = self.base_image[offset : offset + len(new)]
+        pending = self.journal.raw_edits().bytes_by_offset.get(offset)
+        if pending is not None and len(pending) == len(new):
+            before = pending
+        return RawRequest(
+            write=RawWrite(offset=offset, before=before, new=new, confirmed=confirmed),
+            context=RawContext(
+                base_image=self.base_image,
+                profile=self.profile,
+                atlas=atlas,
+            ),
+        )
+
     def save_project(self) -> None:
         """Write the held project's unsaved edits, or refuse with the reason."""
         if self.project is None or self.project_dir is None:
             raise SessionError("No project is open, so there is nothing to save.")
         try:
+            self._refuse_canonical_destination()
             self.journal.save(self.project_dir, self.project)
         except _EDIT_ERRORS as exc:
             raise SessionError(str(exc)) from exc
+
+    def _refuse_canonical_destination(self) -> None:
+        """Refuse a Save whose destination is the canonical image itself.
+
+        The project directory is what a save writes into, and the SDK identifies
+        an image by content hash rather than by name, so a destination that IS the
+        canonical ROM this profile names is refused here, before any document is
+        written. The digest compared against is the profile's own canonical digest,
+        never the destination's own: a destination compared with itself would
+        refuse every image. An ordinary project directory is not an image, so this
+        does nothing at all for the common case.
+        """
+        if self.project_dir is None or self._catalog is None or self.profile is None:
+            return
+        if not self.project_dir.is_file():
+            return
+        try:
+            identification = identify_rom(self.project_dir, self._catalog)
+        except (RomReadError, OSError, GbaHeaderError, ProfileConfigError):
+            return
+        refuse_canonical_destination(
+            identification.path, self.profile.sha256
+        )
 
     def undo_edit(self) -> None:
         """Step the project back one committed edit."""
